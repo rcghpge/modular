@@ -684,6 +684,18 @@ HEAD
   compile count and artifact size); CPU keeps the full 1..5 sweep. A
   rank outside the warm is not unsupported — it lazy-compiles on first
   dispatch and is cached, now covered by a GPU test.
+
+- `mo.resize.nearest` skips the coordinate arithmetic when every axis
+  scales by an exact integer of at least 1 and the modes reduce to floor
+  division (asymmetric + floor, half_pixel + half_down, half_pixel +
+  half_up), gathering from `out_coord // scale` (a shift when the scale is
+  a power of two) instead. On the benchmark's vision-encoder shape
+  (float32, 224x224 -> 448x448) this is 1.66x faster than the generic
+  path (22.9us vs 38.2us median). The VAE and diffusion 2x-upsample
+  helpers in `max.pipelines.architectures` (autoencoders, flux,
+  qwen_image and their ModuleV3 ports) now delegate to
+  `ops.resize_nearest` instead of hand-rolling reshape + broadcast /
+  concat expansions; output is bit-identical at 2x.
 - Added GPU support for `mo.roi_align` / `ops.roi_align`. The op previously
   ran only on the host, so every ROI-align call on a GPU tensor copied the
   input and ROIs to the host and back. It now runs on the input's device

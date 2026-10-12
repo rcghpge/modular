@@ -7642,11 +7642,42 @@ class TestRoiAlignOp:
         must come back GPU-resident and match the CPU reference.
         """
         device = Accelerator()
-        x_np = np.arange(100, dtype=dtype.to_numpy()).reshape(1, 10, 10, 1)
-        rois_np = np.array([[0, 1, 1, 5, 5]], dtype=dtype.to_numpy())
 
-        x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
-        rois = Tensor(storage=Buffer.from_numpy(rois_np).to(device))
+        if dtype == DType.bfloat16:
+            # NumPy has no bf16 dtype, so dtype.to_numpy() raised before
+            # the kernel ever ran. Every input value here (0..99 and the
+            # roi coordinates) is an integer that bf16 represents exactly,
+            # so build the buffers from the float32 patterns truncated to
+            # the bf16 half, per this file's uint16-view bf16 idiom.
+            x_u16 = (
+                (
+                    np.ascontiguousarray(np.arange(100, dtype=np.float32)).view(
+                        np.uint32
+                    )
+                    >> 16
+                )
+                .astype(np.uint16)
+                .reshape(1, 10, 10, 1)
+            )
+            rois_u16 = (
+                np.ascontiguousarray(
+                    np.array([[0, 1, 1, 5, 5]], dtype=np.float32)
+                ).view(np.uint32)
+                >> 16
+            ).astype(np.uint16)
+            x = Tensor(
+                storage=Buffer.from_numpy(x_u16).view(DType.bfloat16).to(device)
+            )
+            rois = Tensor(
+                storage=Buffer.from_numpy(rois_u16)
+                .view(DType.bfloat16)
+                .to(device)
+            )
+        else:
+            x_np = np.arange(100, dtype=dtype.to_numpy()).reshape(1, 10, 10, 1)
+            rois_np = np.array([[0, 1, 1, 5, 5]], dtype=dtype.to_numpy())
+            x = Tensor(storage=Buffer.from_numpy(x_np).to(device))
+            rois = Tensor(storage=Buffer.from_numpy(rois_np).to(device))
         with (
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
@@ -7665,18 +7696,33 @@ class TestRoiAlignOp:
         # np.from_dlpack rejects GPU-resident buffers, so move to host first.
         # The kernel accumulates in float32, so compare against a float32
         # reference with a tolerance that covers the output dtype's rounding.
+        x_ref = (
+            np.arange(100, dtype=np.float32).reshape(1, 10, 10, 1)
+            if dtype == DType.bfloat16
+            else x_np.astype(np.float32)
+        )
+        rois_ref = (
+            np.array([[0, 1, 1, 5, 5]], dtype=np.float32)
+            if dtype == DType.bfloat16
+            else rois_np.astype(np.float32)
+        )
         expected = self._roi_align_ref(
-            x_np.astype(np.float32),
-            rois_np.astype(np.float32),
+            x_ref,
+            rois_ref,
             3,
             3,
             aligned=aligned,
             mode=mode,
         )
         rtol, atol = (1e-2, 1e-2) if dtype != DType.float32 else (1e-5, 1e-5)
-        np.testing.assert_allclose(
-            y.to(CPU()).to_numpy(), expected, rtol=rtol, atol=atol
-        )
+        if dtype == DType.bfloat16:
+            # to_numpy() has no bf16 mapping either; read the host buffer
+            # as uint16 patterns and widen them back to float32.
+            buf = y.storage.to(CPU()).view(DType.uint16)
+            got = (buf.to_numpy().astype(np.uint32) << 16).view(np.float32)
+        else:
+            got = y.to(CPU()).to_numpy()
+        np.testing.assert_allclose(got, expected, rtol=rtol, atol=atol)
 
 
 class TestTopKOp:

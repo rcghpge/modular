@@ -19,7 +19,7 @@ from std.math import align_down, align_up, ceil, ceildiv, floor
 
 from max.algorithm.functional import elementwise
 from max.algorithm.reduction import _get_nd_indices_from_flat_index
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.host.info import is_gpu
 from layout import (
     Coord,
@@ -255,6 +255,14 @@ def resize_nearest_neighbor[
 ) raises:
     """Resizes input to output shape using nearest-neighbor interpolation.
 
+    When every axis scales by an exact integer factor and the transform
+    and round modes collapse to floor division at whole factors
+    (asymmetric + floor, half_pixel + half_down, half_pixel + half_up),
+    the kernel skips the coordinate arithmetic entirely and gathers from
+    ``out_coord // scale``. Models used to hand-roll this case with
+    reshape + broadcast to avoid the coordinate math; the fast path makes
+    the standard op just as cheap.
+
     Parameters:
         coordinate_transformation_mode: How to map a coordinate in output to a coordinate in input.
         round_mode: How to round fractional input coordinates to integer indices.
@@ -270,6 +278,163 @@ def resize_nearest_neighbor[
     var scales = StaticTuple[Float32, input.rank]()
     for i in range(input.rank):
         scales[i] = _axis_scale(Int(input.dim(i)), Int(output.dim(i)))
+
+    # At an exact integer scale of at least 1 on every axis, these mode
+    # combinations reduce the coordinate math to floor division:
+    # - asymmetric + floor maps out_coord / scale, floored.
+    # - half_pixel + half_down / half_up: (out + 0.5) / scale - 0.5 always
+    #   lands strictly between floor(out / scale) - 1 and its next integer,
+    #   so both half roundings pick floor(out / scale).
+    # Other combinations (align_corners, half_pixel + floor/ceil) distribute
+    # output coordinates unevenly, so they keep the generic path.
+    #
+    # The generic path maps coordinates in Float32, which is exact only for
+    # integers below 2**24. The fast path's integer division is exact for all
+    # coordinates, so it would diverge from the generic path once an output
+    # axis reaches 2**24. Restrict the fast path to axes below that bound so
+    # the two paths stay bit-identical.
+    comptime floor_divides = (
+        coordinate_transformation_mode
+        == CoordinateTransformationMode.Asymmetric
+        and round_mode == RoundMode.Floor
+    ) or (
+        coordinate_transformation_mode == CoordinateTransformationMode.HalfPixel
+        and (round_mode == RoundMode.HalfDown or round_mode == RoundMode.HalfUp)
+    )
+
+    comptime if floor_divides:
+        # TileTensor dims are launch-time values even for dynamic graph
+        # shapes, so runtime checks per launch keep one registration for
+        # both paths.
+        var exact_integer_scale = True
+        comptime last = input.rank - 1
+        var int_scales = StaticTuple[Int, input.rank](1)
+        var shift_scales = StaticTuple[Int, input.rank](0)
+        var pow2_scales = StaticTuple[Int, input.rank](0)
+        for i in range(input.rank):
+            var in_dim = Int(input.dim(i))
+            var out_dim = Int(output.dim(i))
+            if in_dim <= 0 or out_dim % in_dim != 0 or out_dim >= 1 << 24:
+                exact_integer_scale = False
+            else:
+                var scale = out_dim // in_dim
+                int_scales[i] = scale
+                # A power-of-two scale shifts; any other exact integer
+                # scale divides. Both amounts are launch-time values.
+                if (scale & (scale - 1)) == 0:
+                    pow2_scales[i] = 1
+                    var s = 0
+                    var v = scale
+                    while v > 1:
+                        v >>= 1
+                        s += 1
+                    shift_scales[i] = s
+
+        if exact_integer_scale:
+            # Index math reduces to floor division. No clamping is needed
+            # because out_dim == in_dim * scale bounds the index to
+            # [0, in_dim). Host code picks one body per launch, so the
+            # kernel runs either pure shifts or pure divisions, never an
+            # in-kernel mix of both.
+            comptime all_pow2 = True
+            var all_pow2_runtime = True
+            for i in range(input.rank):
+                if pow2_scales[i] == 0:
+                    all_pow2_runtime = False
+
+            comptime width = (
+                simd_width_of[dtype, target=get_gpu_target()]() if is_gpu[
+                    target
+                ]() else simd_width_of[dtype]()
+            )
+
+            if all_pow2_runtime:
+
+                def nn_shift[
+                    simd_width: Int, alignment: Int = 1
+                ](out_coords: Coord) {var}:
+                    var in_coords = IndexList[input.rank](0)
+
+                    comptime for i in range(last):
+                        in_coords[i] = (
+                            Int(out_coords[i].value()) >> shift_scales[i]
+                        )
+
+                    var out_last = Int(out_coords[last].value())
+                    var values = SIMD[dtype, simd_width]()
+                    comptime for lane in range(simd_width):
+                        in_coords[last] = (out_last + lane) >> shift_scales[
+                            last
+                        ]
+                        values[lane] = input.ptr[input.layout(Coord(in_coords))]
+
+                    output.raw_store[width=simd_width, alignment=alignment](
+                        output.layout(out_coords), values
+                    )
+
+                elementwise[width, target=target](
+                    nn_shift, output.layout.shape_coord(), ctx
+                )
+            else:
+
+                def nn_div[
+                    simd_width: Int, alignment: Int = 1
+                ](out_coords: Coord) {var}:
+                    var in_coords = IndexList[input.rank](0)
+
+                    comptime for i in range(last):
+                        in_coords[i] = (
+                            Int(out_coords[i].value()) // int_scales[i]
+                        )
+
+                    var out_last = Int(out_coords[last].value())
+                    var values = SIMD[dtype, simd_width]()
+                    comptime for lane in range(simd_width):
+                        in_coords[last] = (out_last + lane) // int_scales[last]
+                        values[lane] = input.ptr[input.layout(Coord(in_coords))]
+
+                    output.raw_store[width=simd_width, alignment=alignment](
+                        output.layout(out_coords), values
+                    )
+
+                elementwise[width, target=target](
+                    nn_div, output.layout.shape_coord(), ctx
+                )
+            return
+
+    @inline(.always)
+    def round[dtype: DType](val: Scalar[dtype]) -> Scalar[dtype]:
+        comptime match round_mode:
+            case .HalfDown:
+                return ceil(val - 0.5)
+            case .HalfUp:
+                return floor(val + 0.5)
+            case .Floor:
+                return floor(val)
+            case .Ceil:
+                return ceil(val)
+            case _:
+                comptime assert False, "round_mode not implemented"
+
+    @inline(.always)
+    def source_index(
+        out_coord: Int, in_dim: Int, out_dim: Int, scale: Float32
+    ) -> Int:
+        # Floor with half_pixel maps the first output coordinate of an
+        # upsample below zero, so clamp both ends.
+        return min(
+            max(
+                Int(
+                    round(
+                        coord_transform[coordinate_transformation_mode](
+                            out_coord, in_dim, out_dim, scale
+                        )
+                    )
+                ),
+                0,
+            ),
+            in_dim - 1,
+        )
 
     # Every lane of a vector shares its outer coordinates, so the outer source
     # indices are computed once per vector and only the innermost axis is
