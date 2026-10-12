@@ -240,38 +240,41 @@ struct ConvShape[rank: Int](TrivialRegisterPassable):
             Self.rank == 1 or Self.rank == 2 or Self.rank == 3
         ), "Only support 1d, 2d, and 3d convolution."
 
-        comptime if Self.rank == 1:
-            var w = output_flat_coord * self.stride_at[0]() - self.pad_w_lower()
+        comptime match Self.rank:
+            case 1:
+                var w = (
+                    output_flat_coord * self.stride_at[0]() - self.pad_w_lower()
+                )
 
-            return self.c * w
+                return self.c * w
 
-        elif Self.rank == 2:
-            # Unpack output coordinates
-            var ho, wo = divmod(output_flat_coord, self.wo())
+            case 2:
+                # Unpack output coordinates
+                var ho, wo = divmod(output_flat_coord, self.wo())
 
-            # Input coordinates
-            var h = ho * self.stride_at[0]() - self.pad_h_lower()
-            var w = wo * self.stride_at[1]() - self.pad_w_lower()
+                # Input coordinates
+                var h = ho * self.stride_at[0]() - self.pad_h_lower()
+                var w = wo * self.stride_at[1]() - self.pad_w_lower()
 
-            return self.c * (w + self.w() * (h + n * self.h()))
+                return self.c * (w + self.w() * (h + n * self.h()))
 
-        elif Self.rank == 3:
-            # Unpack output coordinates
-            var doho, wo = divmod(output_flat_coord, self.wo())
-            var do, ho = divmod(doho, self.ho())
+            case 3:
+                # Unpack output coordinates
+                var doho, wo = divmod(output_flat_coord, self.wo())
+                var do, ho = divmod(doho, self.ho())
 
-            # Input coordinates
-            var d = do * self.stride_at[0]() - self.pad_d_lower()
-            var h = ho * self.stride_at[1]() - self.pad_h_lower()
-            var w = wo * self.stride_at[2]() - self.pad_w_lower()
+                # Input coordinates
+                var d = do * self.stride_at[0]() - self.pad_d_lower()
+                var h = ho * self.stride_at[1]() - self.pad_h_lower()
+                var w = wo * self.stride_at[2]() - self.pad_w_lower()
 
-            return self.c * (
-                w + self.w() * (h + self.h() * (d + self.d() * self.n))
-            )
+                return self.c * (
+                    w + self.w() * (h + self.h() * (d + self.d() * self.n))
+                )
 
-        else:
-            # Pass compile.
-            return -1
+            case _:
+                # Pass compile.
+                return -1
 
     @inline(.always)
     def matmul_M(self) -> Int:
@@ -551,12 +554,13 @@ def reorder_padding[rank: Int](pad: IntTuple) -> IntTuple:
     Returns:
         Flattened padding tuple ordered as per-dimension `(lower, upper)` pairs.
     """
-    comptime if rank == 1:
-        return IntTuple(pad).flatten()
-    elif rank == 2:
-        return IntTuple(pad[0], pad[2], pad[1], pad[3])
-    else:
-        return IntTuple(pad[0], pad[2], pad[4], pad[1], pad[3], pad[5])
+    comptime match rank:
+        case 1:
+            return IntTuple(pad).flatten()
+        case 2:
+            return IntTuple(pad[0], pad[2], pad[1], pad[3])
+        case _:
+            return IntTuple(pad[0], pad[2], pad[4], pad[1], pad[3], pad[5])
 
 
 struct ConvInfoStatic[rank: Int](Defaultable):
