@@ -531,7 +531,7 @@ def advanced_indexing_getitem[
         simd_width_of[
             input_type, target=CompilationTarget.current()
         ]() if is_cpu[target]() else simd_width_of[
-            input_type, target=get_gpu_target()
+            input_type, target=ctx.target
         ]()
     )
     var use_simd = _advanced_indexing_use_simd[
@@ -755,7 +755,7 @@ def advanced_indexing_setitem_inplace[
         simd_width_of[
             input_type, target=CompilationTarget.current()
         ]() if is_cpu[target]() else simd_width_of[
-            input_type, target=get_gpu_target()
+            input_type, target=ctx.target
         ]()
     )
     var use_simd = _advanced_indexing_use_simd[

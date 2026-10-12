@@ -37,7 +37,7 @@ from max.gpu.sync import (
     syncwarp,
     barrier,
 )
-from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.info import is_cpu, is_gpu
 from max.gpu.memory import external_memory
 from std.sys.info import is_apple_gpu
@@ -951,7 +951,7 @@ def rms_norm_gpu[
         indices[rank - 1] = col
         return input_fn[simd_width](Coord(indices))
 
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
     comptime sm_version = ctx.default_device_info.version
     comptime sm_count = ctx.default_device_info.sm_count
@@ -1664,7 +1664,7 @@ def apply_qk_rms_norm_gpu[
     if rows == 0 or (q_cols == 0 and k_cols == 0):
         return
 
-    comptime simd_width = simd_width_of[in_dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[in_dtype, target=ctx.target]()
     comptime max_warps_per_block = ctx.default_device_info.max_thread_block_size // WARP_SIZE
 
     # 2D grid: x = row, y = operand (0 = Q, 1 = K). One block per (row, operand)
@@ -2486,7 +2486,7 @@ def group_norm_gpu[
         else:
             comptime assert False, "group_norm_gpu requires a rank of 3 or 4"
 
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     if num_cols < OutputLinearIdxType(simd_width):
         raise Error(
             "group_norm_gpu requires num_cols >= simd_width; got num_cols="

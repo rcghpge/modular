@@ -35,7 +35,7 @@ from max.gpu import (
     thread_idx,
 )
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
@@ -385,7 +385,7 @@ def moe_finalize[
             )
         output.store[width=width](Coord(token, col), acc.cast[out_type]())
 
-    comptime simd_width = simd_width_of[down_type, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[down_type, target=context.target]()
     var shape = output.layout.shape_coord()
 
     # `down` rows are only vector-aligned when the row width is a multiple of

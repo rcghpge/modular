@@ -27,7 +27,7 @@ to indexing the block buffer by hand, on every target.
 from std.sys.info import CompilationTarget, simd_width_of
 
 from max.algorithm import elementwise
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 
 from kv_cache.types import KVCacheT
@@ -104,7 +104,7 @@ def kv_cache_gather_rows_ragged[
         simd_width_of[
             cache_t.dtype, target=CompilationTarget.current()
         ]() if is_cpu[target]() else simd_width_of[
-            cache_t.dtype, target=get_gpu_target()
+            cache_t.dtype, target=ctx.target
         ]()
     )
 

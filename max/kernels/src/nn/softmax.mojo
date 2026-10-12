@@ -44,7 +44,7 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceAttribute, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceAttribute, DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
 from max.gpu.primitives import block
 from layout._utils import idx2crd
@@ -1786,7 +1786,7 @@ def softmax_with_temperature[
         temp_ptr = temperature_arr.ptr
 
     comptime BLOCK_SIZE = 256
-    comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     var sm_count = ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT)
     comptime sm_overprovision_factor = 32
     var num_blocks = min(batch_size, sm_overprovision_factor * sm_count)

@@ -63,7 +63,6 @@ from max.gpu.sync import barrier
 from max.gpu.host import (
     DeviceContext,
     FuncAttribute,
-    get_gpu_target,
     DeviceBuffer,
     Dim as LaunchDim,
 )
@@ -4874,7 +4873,7 @@ def _k_cache_to_buffer[
         buffer.store_linear(idx, cache_val)
 
     var launch_shape = Coord(Int(length), Int(buffer.dim[1]()))
-    comptime target_simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime target_simd_width = simd_width_of[dtype, target=context.target]()
 
     def copy_fn_unified[width: Int, alignment: Int = 1](idx: Coord):
         copy_fn[width, idx.rank, alignment](coord_to_index_list(idx))

@@ -19,7 +19,7 @@ from std.sys.info import CompilationTarget, align_of, simd_width_of
 from max.algorithm.functional import elementwise
 from std.utils.numerics import get_accum_type
 from std.complex import ComplexSIMD
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 from internal_utils.fp8_utils import cast_saturating
 from kv_cache.types import KVCacheT, KVCollectionT
@@ -534,7 +534,7 @@ def fused_qk_rope_ragged[
     comptime target_simd_width = (
         simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
             target
-        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+        ]() else simd_width_of[dtype, target=context.target]()
     )
     comptime kernel_simd_width = gcd(target_simd_width, rope_dim)
 

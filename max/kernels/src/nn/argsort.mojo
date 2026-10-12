@@ -25,7 +25,7 @@ from max.gpu import (
     thread_idx,
 )
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 from std.memory import unsafe_stack_allocation
 from layout import (
@@ -486,8 +486,8 @@ def _argsort_gpu[
 
         elementwise[
             simd_width=min(
-                simd_width_of[indices.dtype, target=get_gpu_target()](),
-                simd_width_of[input.dtype, target=get_gpu_target()](),
+                simd_width_of[indices.dtype, target=ctx.target](),
+                simd_width_of[input.dtype, target=ctx.target](),
             ),
             target="gpu",
             _trace_description="argsort_fill_indices",
@@ -555,7 +555,7 @@ def _argsort_gpu[
 
     # Extract the unpadded indices from the padded indices.
     elementwise[
-        simd_width=simd_width_of[indices.dtype, target=get_gpu_target()](),
+        simd_width=simd_width_of[indices.dtype, target=ctx.target](),
         target="gpu",
         _trace_description="argsort_extract_indices",
     ](extract_indices, Coord(n), ctx)

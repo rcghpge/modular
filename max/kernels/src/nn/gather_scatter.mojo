@@ -840,7 +840,7 @@ def gather[
     comptime target_simd_width = (
         simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
             target
-        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+        ]() else simd_width_of[dtype, target=context.target]()
     )
 
     gather_guards(axis, input_shape, indices_shape, output_shape)
@@ -1378,11 +1378,9 @@ def scatter_nd_generator[
             # iteration dim), so the bases must also be multiples of the
             # width — slice_elems, every stride feeding a base offset, and
             # the raw pointers all have to be pack-divisible.
-            comptime pack = simd_width_of[
-                output_type, target=get_gpu_target()
-            ]()
+            comptime pack = simd_width_of[output_type, target=context.target]()
             comptime vector_alignment = align_of[
-                SIMD[output_type, pack], target=get_gpu_target()
+                SIMD[output_type, pack], target=context.target
             ]()
 
             var vector_safe = (
@@ -1980,7 +1978,7 @@ def gather_nd[
     comptime target_simd_width = (
         simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
             target
-        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+        ]() else simd_width_of[dtype, target=ctx.target]()
     )
 
     # Only use SIMD if:

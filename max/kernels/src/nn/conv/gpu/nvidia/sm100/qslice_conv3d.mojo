@@ -67,7 +67,7 @@ Declined shapes fall through to `dispatch_im2col_matmul_conv3d`.
 from std.math import ceildiv, gcd
 from std.math.uutils import udivmod
 from max.gpu import global_idx
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import _is_sm10x_gpu
 from layout import Coord, TileTensor, row_major
 from std.sys import align_of, simd_width_of
@@ -307,7 +307,7 @@ def dispatch_qslice_conv3d_sm100[
     var symmetric_padding_2d = IndexList[2](pad_h, pad_w)
 
     comptime output_simd_width = gcd(
-        simd_width_of[output_type, target=get_gpu_target()](), C_out
+        simd_width_of[output_type, target=ctx.target](), C_out
     )
 
     var per_batch_elems = D_out * H_out * W_out * C_out

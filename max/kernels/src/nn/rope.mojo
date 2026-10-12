@@ -17,7 +17,7 @@ from std.sys.info import CompilationTarget, simd_width_of
 
 from max.algorithm.functional import elementwise
 from std.complex import ComplexSIMD
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu
 from layout import (
     Coord,
@@ -287,7 +287,7 @@ def rope_ragged[
     comptime target_simd_width = (
         simd_width_of[dtype, target=CompilationTarget.current()]() if is_cpu[
             target
-        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+        ]() else simd_width_of[dtype, target=context.target]()
     )
     comptime kernel_simd_width = gcd(target_simd_width, rope_dim)
 

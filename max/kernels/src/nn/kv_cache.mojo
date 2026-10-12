@@ -20,7 +20,7 @@ from std.sys.info import align_of, simd_width_of
 from max.gpu import WARP_SIZE, block_dim, block_idx, thread_idx
 from max.gpu.primitives.warp import shuffle_xor
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
 from std.collections import OptionalReg
 from kv_cache.types import (
@@ -702,7 +702,7 @@ def fused_qk_rms_norm_ragged_paged[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(context),
     ):
-        comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+        comptime simd_width = simd_width_of[dtype, target=context.target]()
         comptime assert (
             rms_norm_cols % simd_width == 0
         ), "rms_norm_cols must be divisible by simd_width"
@@ -1232,7 +1232,7 @@ def fused_qk_rms_norm_rope_ragged_paged[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(context),
     ):
-        comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+        comptime simd_width = simd_width_of[dtype, target=context.target]()
         comptime assert (
             rms_norm_cols % simd_width == 0
         ), "rms_norm_cols must be divisible by simd_width"
@@ -1680,7 +1680,7 @@ def fused_dual_qk_rms_norm_rope_ragged_paged[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(context),
     ):
-        comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+        comptime simd_width = simd_width_of[dtype, target=context.target]()
         comptime assert (
             main_rms_cols % simd_width == 0
         ), "rms_norm_cols must be divisible by simd_width"
@@ -2452,7 +2452,7 @@ def fused_dual_qk_rms_norm_rope_nvfp4_ragged_paged[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(context),
     ):
-        comptime simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+        comptime simd_width = simd_width_of[dtype, target=context.target]()
         comptime assert (
             head_dim % simd_width == 0 and rope_dim % simd_width == 0
         ), "head_dim and rope_dim must be divisible by simd_width"

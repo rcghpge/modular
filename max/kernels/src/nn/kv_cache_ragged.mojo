@@ -23,7 +23,7 @@ from std.algorithm.functional import unswitch
 
 from max.algorithm.functional import elementwise
 from max.gpu import global_idx
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
 from max.gpu.primitives.grid_controls import PDLLevel
 from std.collections import Optional, OptionalReg
@@ -5320,7 +5320,7 @@ def generic_kv_cache_radd_dispatch[
         )
 
     comptime if is_gpu[target]():
-        comptime compile_target = get_gpu_target()
+        comptime compile_target = ctx.target
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
         elementwise[do_radd, simd_width, target=target](
@@ -5417,7 +5417,7 @@ def kv_cache_store_ragged[
         simd_width_of[
             cache_t.dtype, target=CompilationTarget.current()
         ]() if is_cpu[target]() else simd_width_of[
-            cache_t.dtype, target=get_gpu_target()
+            cache_t.dtype, target=context.target
         ]()
     )
 
@@ -5498,7 +5498,7 @@ def kv_cache_store_padded[
         simd_width_of[
             cache_t.dtype, target=CompilationTarget.current()
         ]() if is_cpu[target]() else simd_width_of[
-            cache_t.dtype, target=get_gpu_target()
+            cache_t.dtype, target=context.target
         ]()
     )
 
@@ -5638,7 +5638,7 @@ def kv_cache_2m_iadd_dispatch[
             "kv-cache-2m-iadd",
             task_id=Int(ctx.id()),
         ):
-            comptime compile_target = get_gpu_target()
+            comptime compile_target = ctx.target
             comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
             elementwise[iadd, simd_width, target=target](

@@ -103,7 +103,7 @@ from linalg.utils import (
     partial_simd_store,
 )
 from max.gpu import block_dim, block_idx, thread_idx
-from max.gpu.host import get_gpu_target, DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
 from max.gpu.host.info import _is_sm10x_gpu
@@ -4728,7 +4728,7 @@ def _conv_miopen[
             )
 
         elementwise[
-            simd_width_of[output_type, target=get_gpu_target()](),
+            simd_width_of[output_type, target=ctx.target](),
             target="gpu",
         ](
             miopen_epilogue,

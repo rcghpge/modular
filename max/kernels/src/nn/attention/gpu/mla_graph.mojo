@@ -40,7 +40,7 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
 )
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.host.info import _is_sm10x_gpu
 from std.utils.coord import Coord, Idx, coord_to_index_list
 from layout import (
@@ -543,7 +543,7 @@ def mla_fused_rope_rmsnorm_quantization[
 
     # Default block size used by the `elementwise` function on Blackwell.
     comptime block_size = 128
-    comptime kernel_simd_width = simd_width_of[dtype, target=get_gpu_target()]()
+    comptime kernel_simd_width = simd_width_of[dtype, target=ctx.target]()
     comptime n_rope_elems = (num_q_heads + num_k_heads) * rope_dim
 
     # Make sure that we can use one block to process the rmsnorm.
@@ -2056,7 +2056,7 @@ def convert_bf16_to_fp8_e4m3fn(
         )
 
     comptime target_simd_width = simd_width_of[
-        DType.bfloat16, target=get_gpu_target()
+        DType.bfloat16, target=context.target
     ]()
 
     def convert_kernel_unified[width: Int, alignment: Int = 1](idx: Coord):
