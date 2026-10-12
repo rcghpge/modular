@@ -23,7 +23,9 @@ from the context itself, as they do in a real pipeline.
 from __future__ import annotations
 
 import dataclasses
+import gc
 import logging
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -524,6 +526,20 @@ def test_close_is_idempotent() -> None:
 
     assert batch.done
     _assert_nothing_held(pipeline, 2)
+    with pytest.raises(RuntimeError, match="no live rows"):
+        batch.step()
+
+
+def test_closed_batch_drops_its_pipeline() -> None:
+    pipeline = FakePipeline()
+    with Batch(pipeline, _prompts(1, 3), max_new_tokens=5) as batch:
+        batch.step()
+    pipeline_ref = weakref.ref(pipeline)
+    del pipeline
+    gc.collect()
+
+    assert pipeline_ref() is None
+    assert _new_tokens(batch.sequences) == [[EOS], [101]]
     with pytest.raises(RuntimeError, match="no live rows"):
         batch.step()
 

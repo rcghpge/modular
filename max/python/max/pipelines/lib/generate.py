@@ -772,7 +772,7 @@ class Batch:
                     "results to whichever batch steps next. Finish or close "
                     "that batch first."
                 )
-        self._pipeline = pipeline
+        self._pipeline: BatchPipeline | None = pipeline
         self._dp_degree = dp_degree
         self._synchronous = synchronous
         self._contexts = contexts
@@ -845,6 +845,8 @@ class Batch:
         """
         if self.done:
             raise RuntimeError("Batch has no live rows to step.")
+        pipeline = self._pipeline
+        assert pipeline is not None
         # Fresh lists every step: OverlapTextGenerationPipeline keeps a
         # reference to the previous step's batch, which must not change
         # underneath it.
@@ -854,11 +856,11 @@ class Batch:
             # A KV connector's onload lands off the forward stream, so the
             # scheduler holds the row back until the onload lands. Batch
             # waits instead.
-            self._pipeline.kv_manager.alloc(context).synchronize()
+            pipeline.kv_manager.alloc(context).synchronize()
             batches[replica_idx].append(context)
         # Rebuilt each step so decode runs as TG, as under the scheduler.
         # Reusing one inputs object would leave every step CE.
-        outputs = self._pipeline.execute(TextGenerationInputs(batches=batches))
+        outputs = pipeline.execute(TextGenerationInputs(batches=batches))
 
         # Looking up live rows only drops the extra output a pipeline that
         # is not synchronous emits for a row already released.
@@ -893,10 +895,11 @@ class Batch:
             self._release(row)
 
     def close(self) -> None:
-        """Releases every live row.
+        """Releases every live row, then drops the pipeline reference.
 
         Safe to call more than once. Every row is attempted even if one
-        fails, and the first error is re-raised afterwards.
+        fails, and the first error is re-raised afterwards with the
+        pipeline still held.
         """
         first_error: BaseException | None = None
         for row in list(self._live):
@@ -907,15 +910,20 @@ class Batch:
                     first_error = error
         if first_error is not None:
             raise first_error
+        # A caller that keeps the batch for its sequences must not keep the
+        # pipeline's device memory alive.
+        self._pipeline = None
 
     def _release(self, row: int) -> None:
         context = self._contexts[row]
+        pipeline = self._pipeline
+        assert pipeline is not None
         # Not a double free: the pipeline's release leaves the paged KV
         # cache alone and frees what the manager cannot, such as recurrent
         # state slots and encoder-cache refs.
-        if self._pipeline.kv_manager.contains(context):
-            self._pipeline.kv_manager.release(context)
-        self._pipeline.release(context.request_id)
+        if pipeline.kv_manager.contains(context):
+            pipeline.kv_manager.release(context)
+        pipeline.release(context.request_id)
         # Dropped last, so a release that raises leaves the row to retry.
         del self._live[row]
 
