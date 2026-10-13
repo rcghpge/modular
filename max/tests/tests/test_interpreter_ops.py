@@ -6687,6 +6687,19 @@ class TestConv2dOp:
                 y = F.conv2d(x, f)
                 assert y is not None
 
+    def test_conv3d_is_refused(self) -> None:
+        """The rank-4 conv model must not execute a rank-5 convolution."""
+        x = Tensor.from_dlpack(np.ones((1, 4, 4, 4, 1), dtype=np.float32))
+        f = Tensor.from_dlpack(np.ones((2, 2, 2, 1, 1), dtype=np.float32))
+
+        with pytest.raises(UnsupportedGraphError, match="rank-4 NHWC"):
+            with (
+                rc.EagerRealizationContext() as ctx,
+                realization_context(ctx),
+            ):
+                y = F.conv3d(x, f)
+                assert y is not None
+
 
 class TestConvTranspose2dOp:
     """Tests for the mo.conv_transpose (2D transposed conv) handler."""

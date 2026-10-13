@@ -26,7 +26,7 @@ from typing import Any, Protocol, cast
 
 import numpy as np
 import numpy.typing as npt
-from max import _core, graph
+from max import _core, _eager_policy, graph
 from max._core.dialects import builtin, kgen, mo, mosh
 from max._interpreter_ops import (
     band_part_gc,
@@ -1875,6 +1875,8 @@ def _handle_conv(
         List containing the convolution output buffer.
 
     Raises:
+        UnsupportedOpVariant: If the input or filter rank is not 4, allowing
+            the eager executor to compile an unsupported convolution instead.
         NotImplementedError: If groups != 1 -- grouped conv needs a
             pre-packed filter layout, and there's no Python-exposed op to
             produce one (the packing kernel is only invoked by an internal
@@ -1889,6 +1891,14 @@ def _handle_conv(
     assert isinstance(dilations, Buffer)
     assert isinstance(paddings, Buffer)
     assert isinstance(num_groups, Buffer)
+
+    if len(input_buffer.shape) != 4 or len(filter_buffer.shape) != 4:
+        raise _eager_policy.UnsupportedOpVariant(
+            "Unsupported conv rank: the eager interpreter only supports "
+            "2-D convolution with rank-4 NHWC inputs and rank-4 RSCF "
+            f"filters, got input rank {len(input_buffer.shape)} and filter "
+            f"rank {len(filter_buffer.shape)}."
+        )
 
     groups = int(num_groups.to_numpy().item())
     if groups != 1:
