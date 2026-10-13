@@ -79,8 +79,8 @@ struct Node[
             next: Optional pointer to the next node.
         """
         self.value = value^
-        self._prev = prev.value() if prev else Self._PointerType()
-        self._next = next.value() if next else Self._PointerType()
+        self._prev = prev.or_else(Self._PointerType())
+        self._next = next.or_else(Self._PointerType())
 
     def _into_value(deinit self) -> Self.T:
         return self.value^

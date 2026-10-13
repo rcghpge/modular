@@ -2382,10 +2382,7 @@ def _create_tma_and_launch[
     ]
     comptime smem_size = size_of[SmemType]()
 
-    comptime max_profiled_tiles = (
-        0 if max_profiled_tiles_per_SM
-        is None else max_profiled_tiles_per_SM.value()
-    )
+    comptime max_profiled_tiles = max_profiled_tiles_per_SM.or_else(0)
     comptime enable_profiling = max_profiled_tiles > 0
 
     # Kernel instantiation

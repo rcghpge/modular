@@ -2342,7 +2342,7 @@ def _grouped_matmul_sm100_persistent[
             num_pipeline_stages.value() <= max_pipeline_stages
         ), "Pipeline stage must be less than or equal to max pipeline stages"
 
-    comptime pipeline_stage = num_pipeline_stages.value() if num_pipeline_stages else max_pipeline_stages
+    comptime pipeline_stage = num_pipeline_stages.or_else(max_pipeline_stages)
     comptime producer_consumer_smem = producer_consumer_smem_per_stage * pipeline_stage
 
     comptime smem_size = (

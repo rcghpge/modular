@@ -105,7 +105,7 @@ def test[
         "batch_size:",
         batch_size,
         "num_partitions:",
-        num_partitions.value() if num_partitions else -1,
+        num_partitions.or_else(-1),
         "seq_len:",
         seq_len,
         "num_keys:",

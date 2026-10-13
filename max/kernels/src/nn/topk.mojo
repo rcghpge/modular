@@ -1752,9 +1752,9 @@ def _topk_gpu[
         effective_block_size = WARP_SIZE
 
     # Define the number of blocks per grid
-    var num_blocks_per_input_: Int = ceildiv(
-        N, effective_block_size
-    ) if not num_blocks_per_input else num_blocks_per_input.value()
+    var num_blocks_per_input_: Int = num_blocks_per_input.or_else(
+        ceildiv(N, effective_block_size)
+    )
     # Calculate largest num bytes of shmem for each stage
     if effective_block_size % WARP_SIZE != 0:
         # TODO: Need to pad in this case
@@ -1990,7 +1990,7 @@ def topk_gpu[
             block_size_ = 512
         else:
             block_size_ = 1024
-        block_size_ = block_size.value() if block_size else block_size_
+        block_size_ = block_size.or_else(block_size_)
 
         # On Apple GPUs, clamp block_size to a single warp so the shared-memory
         # top-k kernels stay within Apple's static shared-memory budget.
@@ -2115,9 +2115,9 @@ def topk_gpu[
                 return
 
         # Calculate the number of blocks per input
-        var num_blocks_per_input_ = min(
-            ceildiv(N, block_size_), 8
-        ) if not num_blocks_per_input else num_blocks_per_input.value()
+        var num_blocks_per_input_ = num_blocks_per_input.or_else(
+            min(ceildiv(N, block_size_), 8)
+        )
 
         # Bound stage-2 shared memory: `_topk_stage2` reduces
         # `num_blocks_per_input * max_k` candidates inside a SINGLE block's

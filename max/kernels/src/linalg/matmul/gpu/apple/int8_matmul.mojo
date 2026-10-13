@@ -977,7 +977,7 @@ def enqueue_apple_int8_matmul[
 
     # Gate on the int32-indexed extents (m*k, n*k) -- not m*n, since only A/B are
     # int32-indexed (C stays i64). Non-qualifying shapes use the i64 `_mma_width16`.
-    var use_i32 = _use_i32_override.value() if _use_i32_override else (
+    var use_i32 = _use_i32_override.or_else(
         (k % 16 == 0) and (max(m * k, n * k) < (Int(1) << 31))
     )
     if use_i32:

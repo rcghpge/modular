@@ -132,9 +132,9 @@ def test_case_batched[
         out_idxs_shape.flattened_length()
     )
 
-    var num_blocks_per_input_: Int = ceildiv(
-        N, block_size
-    ) if not num_blocks_per_input else num_blocks_per_input.value()
+    var num_blocks_per_input_: Int = num_blocks_per_input.or_else(
+        ceildiv(N, block_size)
+    )
     var local_topk_shape = IndexList[2](batch_size, num_blocks_per_input_ * K)
     var device_local_topk_vals = ctx.enqueue_create_buffer[dtype](
         local_topk_shape.flattened_length()

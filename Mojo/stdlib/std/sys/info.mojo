@@ -225,7 +225,7 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
             note: Optional additional note to print.
         """
 
-        comptime note_text = String(" Note: ", note.value() if note else "")
+        comptime note_text = String(" Note: ", note.or_else(""))
         comptime msg = "Current compilation target does not support"
         comptime op_text = String(
             " operation: ", operation.value(), "."

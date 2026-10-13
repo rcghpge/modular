@@ -289,7 +289,7 @@ def test[
         "num_keys=",
         num_keys,
         "np=",
-        num_partitions.value() if num_partitions else -1,
+        num_partitions.or_else(-1),
         "kv_stress=",
         kv_stress,
         "mask=",

@@ -571,7 +571,7 @@ struct ComposedLayout[offset: Optional[Int] = 0](Copyable):
         Returns:
             The transformed index.
         """
-        var offset_val = Self.offset.value() if Self.offset else 0
+        var offset_val = Self.offset.or_else(0)
         return self.layout_b(offset_val + self.layout_a(idx))
 
     @inline(.always)

@@ -2024,7 +2024,7 @@ def _load_matrix_frag[
 
     comptime ldmatrix_layout = ComposedLayout(
         x4_layout,
-        swizzle.value() if swizzle else Swizzle(0, 0, 1),
+        swizzle.or_else(Swizzle(0, 0, 1)),
     )
 
     var lane_offset = eval_composed[ldmatrix_layout](lane, offset) * simd_size

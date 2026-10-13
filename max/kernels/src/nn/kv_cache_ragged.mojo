@@ -4470,9 +4470,7 @@ def _flare_mla_decode_kv_cache_ragged[
     # (has, value) pair, capture the primitives, then rebuild Optional[Int]
     # inside the closure.
     var has_num_partitions = num_partitions_in.__bool__()
-    var num_partitions_val = (
-        num_partitions_in.value() if has_num_partitions else 0
-    )
+    var num_partitions_val = num_partitions_in.or_else(0)
 
     @inline(.always)
     def _dispatch_mla[

@@ -288,7 +288,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
     ]
     comptime smem_size = size_of[SmemType]()
 
-    comptime max_profiled_tiles = 0 if max_profiled_tiles_per_SM is None else max_profiled_tiles_per_SM.value()
+    comptime max_profiled_tiles = max_profiled_tiles_per_SM.or_else(0)
     comptime enable_profiling = max_profiled_tiles > 0
 
     # Instantiate kernel first -- TMA layouts are computed from config
@@ -1247,7 +1247,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     comptime smem_size = size_of[SmemType]()
     comptime b200_smem = B200.shared_memory_per_multiprocessor - 1024
 
-    comptime max_profiled_tiles = 0 if max_profiled_tiles_per_SM is None else max_profiled_tiles_per_SM.value()
+    comptime max_profiled_tiles = max_profiled_tiles_per_SM.or_else(0)
     comptime enable_profiling = max_profiled_tiles > 0
 
     # Instantiate kernel first -- TMA layouts are computed from config

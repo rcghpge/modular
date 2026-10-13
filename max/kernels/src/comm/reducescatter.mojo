@@ -1358,9 +1358,7 @@ def _reducescatter_plan[
     comptime _default_num_blocks = (
         128 if ctx.target.is_amd_gpu() else MAX_NUM_BLOCKS_UPPER_BOUND
     )
-    var max_num_blocks = (
-        _max_num_blocks.value() if _max_num_blocks else _default_num_blocks
-    )
+    var max_num_blocks = _max_num_blocks.or_else(_default_num_blocks)
     return (axis_size, unit_numel, max_num_blocks)
 
 
@@ -1457,7 +1455,7 @@ def reducescatter[
             a grouped reduce-scatter has no non-P2P fallback).
         Error: If input buffer size is not a multiple of SIMD width.
     """
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     var plan = _reducescatter_plan[
         dtype,
         ngpus,
@@ -1560,7 +1558,7 @@ def reducescatter[
         Error: If P2P access is not available between GPUs.
         Error: If the input or output shapes do not partition evenly.
     """
-    var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+    var global_rank = my_rank.or_else(Int(ctx.id()))
     var plan = _reducescatter_plan[
         dtype,
         ngpus,

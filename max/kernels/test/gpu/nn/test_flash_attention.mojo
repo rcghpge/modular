@@ -64,7 +64,7 @@ def test[
         "batch_size:",
         batch_size,
         "num_partitions:",
-        num_partitions.value() if num_partitions else -1,
+        num_partitions.or_else(-1),
         "num_heads:",
         num_heads,
         "seq_len:",
@@ -214,7 +214,7 @@ def test[
     ctx.synchronize()
 
     def get_rtol() -> Float64:
-        return 2e-2 if num_partitions and num_partitions.value() >= 4 else 1e-2
+        return 2e-2 if num_partitions.or_else(0) >= 4 else 1e-2
 
     var rtol = get_rtol()
     for h in range(num_heads):

@@ -653,11 +653,7 @@ struct GenericToSharedAsyncTileCopier[
             # with an explicit runtime value when `src`'s own dim0 is static
             # (e.g. a `.tile[...]` sub-view, which does not runtime-clip dim0
             # the way the legacy `LayoutTensor` iterator did).
-            var src_num_rows = (
-                src_num_valid_rows.value() if src_num_valid_rows else Int(
-                    src.dim[0]()
-                )
-            )
+            var src_num_rows = src_num_valid_rows.or_else(Int(src.dim[0]()))
             src_idx_bound = Scalar[idx_type](
                 src_num_rows * Int(src.LayoutType.static_stride[0])
             ) - Scalar[idx_type](src_fragments._distance(src))

@@ -87,7 +87,7 @@ def unsafe_stack_allocation[
     comptime if is_gpu():
         # On NVGPU, SHARED and CONSTANT address spaces lower to global memory.
 
-        comptime global_name = name.value() if name else "_global_alloc"
+        comptime global_name = name.or_else("_global_alloc")
 
         comptime match address_space:
             case .SHARED:

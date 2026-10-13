@@ -1969,7 +1969,7 @@ def enqueue_apple_matmul[
     # normal shapes (many tiles) take the single-pass launch below.
     var tiles = grid_m * grid_n
     var num_strips = ceildiv(k, MM.BK)
-    var route_split_k = force_split_k.value() if force_split_k else (
+    var route_split_k = force_split_k.or_else(
         tiles <= 16 and num_strips >= 32 and num_strips >= 8 * tiles
     )
     if route_split_k:
