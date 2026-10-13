@@ -1344,40 +1344,6 @@ def rms_norm_cpu[
 
 def rms_norm_cpu[
     dtype: DType,
-    //,
-    input_fn: def[width: Int](Int, Int) capturing -> SIMD[dtype, width],
-    output_fn: def[width: SIMDLength, alignment: Int](
-        Int, Int, SIMD[dtype, width]
-    ) capturing -> None,
-    multiply_before_cast: Bool,
-](
-    gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype],
-    out_shape: Coord,
-):
-    @inline(.always)
-    def input_fn_value[width: Int](row: Int, col: Int) -> SIMD[dtype, width]:
-        return input_fn[width](row, col)
-
-    @inline(.always)
-    def output_fn_value[
-        width: SIMDLength, alignment: Int
-    ](row: Int, col: Int, val: SIMD[dtype, width]):
-        output_fn[width, alignment](row, col, val)
-
-    rms_norm_cpu[multiply_before_cast=multiply_before_cast](
-        input_fn_value,
-        output_fn_value,
-        gamma,
-        epsilon,
-        weight_offset,
-        out_shape,
-    )
-
-
-def rms_norm_cpu[
-    dtype: DType,
     InputFnType: def[width: Int](Coord) -> SIMD[dtype, width],
     OutputFnType: def[width: SIMDLength, alignment: Int](
         Coord, SIMD[dtype, width]
