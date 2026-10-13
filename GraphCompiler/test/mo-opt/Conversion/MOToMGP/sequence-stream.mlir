@@ -50,3 +50,24 @@ mo.graph @seq2dev(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32
   }
   mo.output %r#0, %r#1 : !mo.tensor<[2, 2], f32, gpu:0>, !mo.tensor<[2, 2], f32, gpu:1>
 }
+
+// A region input computed in the graph lowers to a tensor view of a buffer the
+// body reads. The hold takes that buffer, not the view, which has no other user.
+
+// CHECK-LABEL: mgp.model @seq_computed_input
+// CHECK: %[[BUF:[0-9]+]] = mgp.buffer.alloc
+// CHECK: mgp.tensor.create %{{[0-9]+}}, %[[BUF]],
+// CHECK: mgp.device_context.select_stream[1]
+// CHECK: mogg.generic.compiled.region (%{{[0-9]+}}, %[[BUF]],
+// CHECK: %[[JOIN:[0-9]+]] = mgp.device_wait({{.*}}isSideStreamJoin
+// CHECK-NEXT: mgp.extend.lifetime %[[JOIN]], %[[BUF]] :
+mo.graph @seq_computed_input(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0> {
+  %c = mo.relu(%a) : !mo.tensor<[2, 2], f32, gpu:0>
+  %s = mo.sequence[1] (%c : !mo.tensor<[2, 2], f32, gpu:0>) (%arg) -> (!mo.tensor<[2, 2], f32, gpu:0>) {
+    %r = mo.relu(%arg) : !mo.tensor<[2, 2], f32, gpu:0>
+    mo.yield %r : !mo.tensor<[2, 2], f32, gpu:0>
+  }
+  %main = mo.relu(%b) : !mo.tensor<[2, 2], f32, gpu:0>
+  %out = mo.add(%main, %s) : !mo.tensor<[2, 2], f32, gpu:0>
+  mo.output %out : !mo.tensor<[2, 2], f32, gpu:0>
+}

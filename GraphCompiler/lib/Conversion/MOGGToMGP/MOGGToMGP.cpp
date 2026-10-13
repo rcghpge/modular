@@ -1893,8 +1893,11 @@ LogicalResult MOGraphLowering::lower(MO::SequenceOp seq) {
       SmallVector<Value> held;
       for (Value in : inputs)
         if (deviceOf(in) == dev)
-          if (Value lowered = loweringState.lookupExecuteLoweredValue(in))
+          if (Value lowered = loweringState.lookupExecuteLoweredValue(in)) {
+            if (auto view = lowered.getDefiningOp<MGP::TensorCreateOp>())
+              lowered = view.getBuffer();
             held.push_back(lowered);
+          }
       if (!held.empty())
         MGP::ExtendLifetimeOp::create(b, loc, joinChainFor[dev], held);
     }
