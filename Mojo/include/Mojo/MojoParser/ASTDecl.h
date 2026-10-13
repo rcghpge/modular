@@ -522,8 +522,7 @@ public:
     return decl->getKind() == Kind::Alias;
   }
 
-  /// Return the alias operation represented by this declaration, or null if
-  /// its operation has been cleared.
+  /// Return the alias operation represented by this declaration.
   AliasDeclOp getOp() const;
 
 private:

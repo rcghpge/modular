@@ -19,6 +19,7 @@
 #include "IREmitter.h"
 #include "Mojo/MojoParser/ASTDecl.h"
 #include "Mojo/MojoParser/DocString.h"
+#include "Mojo/MojoParser/ModuleLoader.h"
 #include "Mojo/Support/CompilerProfiling.h"
 #include "MojoUtils.h"
 #include "ParserBase.h"
@@ -80,6 +81,8 @@ DeclResolver::~DeclResolver() {
   // Run the destructors on all the ASTDecl objects to make sure any
   // transitively allocated data is released.
   for (ASTDecl *decl : parsedDeclList)
+    decl->~ASTDecl();
+  for (ASTDecl *decl : retiredDeclList)
     decl->~ASTDecl();
 }
 
@@ -385,16 +388,39 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
   registerDeclSymbol(decl);
 }
 
-void DeclResolver::removeDeclFromParentNameTable(ASTDecl &decl) {
-  assert(decl.getCursor().isInvalid() &&
-         "only synthetic declarations can be removed");
-  ASTDecl *parentDecl = decl.getParentDecl();
-  assert(parentDecl && "cannot remove a top-level declaration");
-  if (!parentDecl->declsInScope)
-    return;
+void DeclResolver::eraseDecl(ASTDecl &decl) {
+  assert(llvm::is_contained(parsedDeclList, &decl) &&
+         "declaration has already been erased");
 
-  for (auto &[_, entries] : *parentDecl->declsInScope)
-    llvm::erase(entries, &decl);
+  SmallVector<ASTDecl *> ownedChildren;
+  for (auto &[_, children] : decl.getDeclsInScope())
+    for (ASTDecl *child : children)
+      if (child->getParentDecl() == &decl)
+        ownedChildren.push_back(child);
+  for (ASTDecl *child : ownedChildren)
+    if (llvm::is_contained(parsedDeclList, child))
+      eraseDecl(*child);
+
+  shared.getModuleLoader().eraseState(&decl);
+  for (ASTDecl *scope : parsedDeclList) {
+    if (!scope->declsInScope)
+      continue;
+    for (auto &[_, entries] : *scope->declsInScope)
+      llvm::erase(entries, &decl);
+  }
+  auto eraseMappings = [&](auto &map) {
+    for (auto it = map.begin(); it != map.end();) {
+      auto current = it++;
+      if (current->second == &decl)
+        map.erase(current);
+    }
+  };
+  eraseMappings(declForTypeSymbol);
+  eraseMappings(declForFuncSymbol);
+  eraseMappings(canonicalTraitCompositionDecls);
+
+  llvm::erase(parsedDeclList, &decl);
+  retiredDeclList.push_back(&decl);
 }
 
 void DeclResolver::registerDeclSymbol(ASTDecl *decl) {
@@ -1652,8 +1678,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       completeModuleScope(decl);
   }
 
-  declsCurrentlyProcessing.pop();
   // If decl is busted, then return failure.
+  declsCurrentlyProcessing.pop();
   return success(!decl.isErroneous());
 }
 
@@ -1782,7 +1808,7 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
     llvm::SmallPtrSet<Operation *, 8> opsToErase;
     for (ASTDecl *decl : parsedDeclList) {
       // Trait-body decls alias their parent trait's FnOps. Such a decl must not
-      // drive the erase, but is still nulled below.
+      // drive the erase, but is still removed below.
       if (decl->getCursor().isInvalid())
         continue;
       if (decl->resolvedness == DeclResolvedness::unparsed &&
@@ -1794,12 +1820,13 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
       }
     }
 
-    // Compares pointers without dereferencing: a decl may already hold a stale
-    // operation by this point.
-    for (ASTDecl *decl : parsedDeclList) {
+    SmallVector<ASTDecl *> declsToErase;
+    for (ASTDecl *decl : parsedDeclList)
       if (opsToErase.contains(decl->getIfOperation()))
-        decl->setIRValue(nullptr);
-    }
+        declsToErase.push_back(decl);
+    for (ASTDecl *decl : declsToErase)
+      if (llvm::is_contained(parsedDeclList, decl))
+        eraseDecl(*decl);
 
     for (Operation *op : opsToErase)
       op->erase();
@@ -1807,12 +1834,16 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
     // Erase from-import placeholders that resolved to a submodule and were
     // superseded by an ImportOp (see importDeclFromModule). This runs
     // after all resolution, so any sibling decl surfaced over the same op has
-    // already been re-pointed at its own gate; null out any decl that still
-    // references one before erasing it, to avoid a dangling ASTDecl.
+    // already been re-pointed at its own gate; remove any decl that still
+    // references one before erasing it.
     if (!deadImportPlaceholders.empty()) {
+      SmallVector<ASTDecl *> placeholderDecls;
       for (ASTDecl *decl : parsedDeclList)
         if (deadImportPlaceholders.contains(decl->getIfOperation()))
-          decl->setIRValue(nullptr);
+          placeholderDecls.push_back(decl);
+      for (ASTDecl *decl : placeholderDecls)
+        if (llvm::is_contained(parsedDeclList, decl))
+          eraseDecl(*decl);
       for (Operation *op : deadImportPlaceholders)
         op->erase();
       deadImportPlaceholders.clear();

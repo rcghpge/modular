@@ -242,10 +242,6 @@ public:
   /// not get used in the future.
   Block &getArgumentOwningBlock();
 
-  /// Delete this decl and the operation associated with it. Handles all the
-  /// related bookkeeping.
-  void deleteDecl(ASTDecl &decl);
-
   //===--------------------------------------------------------------------===//
   // Name Lookup
 

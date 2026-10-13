@@ -235,7 +235,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
              "synthesizeMethodInStruct is only valid on non-body resolved Fn "
              "ASTDecls");
       structFnDecl->resolvedness = DeclResolvedness::body;
-      shared.declResolver->removeDeclFromParentNameTable(*structFnDecl);
+      shared.declResolver->eraseDecl(*structFnDecl);
       return success();
     }
 

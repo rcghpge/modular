@@ -112,8 +112,8 @@ public:
   /// `makeUnlistedDecl`.
   void attachDeclToParentNameTable(ASTDecl *decl, StringAttr name);
 
-  /// Remove every name-table entry referring to a declaration.
-  void removeDeclFromParentNameTable(ASTDecl &decl);
+  /// Remove an unreachable declaration and its owned children.
+  void eraseDecl(ASTDecl &decl);
 
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the
@@ -470,6 +470,10 @@ private:
 
   /// This array holds all of the parsed declarations in a deterministic order.
   std::vector<ASTDecl *> parsedDeclList;
+
+  /// Removed declarations retained until the resolver is destroyed so active
+  /// resolution frames can unwind safely.
+  std::vector<ASTDecl *> retiredDeclList;
 
   /// From-import placeholders (`from a.b import c`) that resolved to a
   /// submodule and were superseded by an ImportOp.

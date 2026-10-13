@@ -56,7 +56,7 @@ AliasASTDecl::AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp,
               cursor, endCursor, indentation) {}
 
 AliasDeclOp AliasASTDecl::getOp() const {
-  return cast_or_null<AliasDeclOp>(getIfOperation());
+  return cast<AliasDeclOp>(getIfOperation());
 }
 
 WitnessASTDecl::WitnessASTDecl(SharedState &shared,

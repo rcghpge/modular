@@ -724,9 +724,7 @@ ModuleState *ModuleLoader::importSubModuleStateImpl(StringRef name,
   if (parentState->failedImports) {
     auto failedIt = parentState->failedImports->find(declNameAttr);
     if (failedIt != parentState->failedImports->end()) {
-      shared.declResolver->removeDeclFromParentNameTable(
-          *failedIt->second->decl);
-      eraseState(failedIt->second->decl);
+      shared.declResolver->eraseDecl(*failedIt->second->decl);
       parentState->failedImports->erase(failedIt);
     }
   }

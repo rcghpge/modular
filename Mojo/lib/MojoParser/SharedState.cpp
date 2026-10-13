@@ -520,30 +520,6 @@ void SharedState::collectParamRefsInType(
                                       requiredSignatureDepth);
 }
 
-void SharedState::deleteDecl(ASTDecl &decl) {
-  if (!decl.getUserNameIfOperation())
-    return;
-  Operation *op = decl.getIfOperation();
-
-  // Remove from global maps.
-  // Func needs a special case since it may or may not be a symbol.
-  if (auto func = dyn_cast<FnOp>(op)) {
-    if (SymbolRefAttr sym = decl.getSymbolRef())
-      declResolver->declForFuncSymbol.erase(sym);
-    impl->sourceNames.forgetSourceName(func);
-  } else if (auto symbolDecl = dyn_cast<mlir::SymbolOpInterface>(op)) {
-    if (SymbolRefAttr sym = decl.getSymbolRef())
-      declResolver->declForTypeSymbol.erase(sym);
-    impl->sourceNames.forgetSourceName(symbolDecl);
-    impl->symbolTables.getSymbolTable(op->getParentOp()).remove(op);
-  }
-  op->erase();
-
-  // Set the IRValue to nullptr, so that any reference pointing to the decl can
-  // check if it's valid.
-  decl.setIRValue(nullptr);
-}
-
 ASTDecl &SharedState::getTopLevelDecl() { return *impl->topLevelDecl; }
 
 MojoInflightDiag SharedState::emitError(Location loc, const Twine &message) {
@@ -1725,10 +1701,12 @@ LogicalResult SharedState::finalizeImportedBytecodeModules() {
   // reference structs that finalize() will delete as stubs, causing
   // verifySymbolUses to fail. We must erase them after finalize() runs.
   SmallVector<Operation *> materializedUnparsedOps;
+  SmallVector<ASTDecl *> unparsedBytecodeDecls;
   for (ASTDecl *decl : declResolver->parsedDeclList) {
     if (!decl->loadedFromBytecode ||
         decl->resolvedness != DeclResolvedness::unparsed)
       continue;
+    unparsedBytecodeDecls.push_back(decl);
     if (Operation *op = decl->getIfOperation()) {
       bool isLazy = llvm::any_of(readers, [op](mlir::BytecodeReader *r) {
         return r->isMaterializable(op);
@@ -1736,10 +1714,10 @@ LogicalResult SharedState::finalizeImportedBytecodeModules() {
       if (!isLazy)
         materializedUnparsedOps.push_back(op);
     }
-    // Clear the ASTDecl pointer to avoid a dangling reference after the op
-    // is erased below or deleted as a stub by finalize().
-    decl->setIRValue(PValue(BoolAttr::get(getContext(), false)));
   }
+  for (ASTDecl *decl : unparsedBytecodeDecls)
+    if (llvm::is_contained(declResolver->parsedDeclList, decl))
+      declResolver->eraseDecl(*decl);
 
   for (auto &origin : getModuleLoader().getOrigins()) {
     if (!origin->bytecodeReader)
