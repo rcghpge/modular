@@ -390,8 +390,7 @@ def bench_combine[
 
     # Dispatch helpers
     @inline(.always)
-    @__parameter
-    def get_dispatch_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt8, MutAnyOrigin]) raises:
+    def get_dispatch_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt8, MutAnyOrigin]) raises {mut dispatch_send_bufs_list, imm}:
         result = (dispatch_send_bufs_list[dev_idx].unsafe_ptr() + slot_idx * n_tokens_per_rank * msg_bytes).as_unsafe_any_origin()
 
     # Combine helpers
@@ -408,31 +407,31 @@ def bench_combine[
         result = (combine_recv_count_bufs_list[dev_idx].unsafe_ptr() + slot_idx * n_experts).as_unsafe_any_origin()
 
     @inline(.always)
-    @__parameter
-    def get_atomic_counters(dev_idx: Int, slot_idx: Int, out result: EPLocalSyncCounters[n_experts]) raises:
+    def get_atomic_counters(dev_idx: Int, slot_idx: Int, out result: EPLocalSyncCounters[n_experts]) raises {mut atomic_counters_list, imm}:
         return EPLocalSyncCounters[n_experts](atomic_counters_list[dev_idx].unsafe_ptr() + slot_idx * EPLocalSyncCounters[n_experts].total_size())
 
     # fmt: off
     comptime counters_size = EPLocalSyncCounters[n_experts].total_size()
     var counters_layout = row_major[counters_size]()
 
+    comptime get_atomic_counters_tt_result_type = TileTensor[.int32, type_of(counters_layout), MutAnyOrigin]
     @inline(.always)
-    @__parameter
-    def get_atomic_counters_tt(dev_idx: Int, slot_idx: Int, out result: TileTensor[.int32, type_of(counters_layout), MutAnyOrigin]) raises:
+    def get_atomic_counters_tt(dev_idx: Int, slot_idx: Int, out result: get_atomic_counters_tt_result_type) raises {mut atomic_counters_list, imm}:
         return type_of(result)(
             ptr=(atomic_counters_list[dev_idx].unsafe_ptr() + slot_idx * counters_size).as_unsafe_any_origin(), layout=counters_layout
         )
     # fmt: on
 
+    comptime get_topk_ids_tensor_result_type = TileTensor[
+        .int32, type_of(topk_ids_layout), ImmutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_topk_ids_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            .int32, type_of(topk_ids_layout), ImmutAnyOrigin
-        ],
-    ) raises:
+        out result: get_topk_ids_tensor_result_type,
+    ) raises {imm}:
         return type_of(result)(
             ptr=(
                 device_topk_bufs_list[dev_idx].unsafe_ptr()
@@ -441,15 +440,16 @@ def bench_combine[
             layout=topk_ids_layout,
         )
 
+    comptime get_input_tokens_tensor_result_type = TileTensor[
+        input_type, type_of(input_tokens_layout), ImmutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_input_tokens_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            input_type, type_of(input_tokens_layout), ImmutAnyOrigin
-        ],
-    ) raises:
+        out result: get_input_tokens_tensor_result_type,
+    ) raises {imm}:
         return type_of(result)(
             ptr=(
                 device_input_bufs_list[dev_idx].unsafe_ptr()
@@ -458,15 +458,16 @@ def bench_combine[
             layout=input_tokens_layout,
         )
 
+    comptime get_output_tensor_result_type = TileTensor[
+        input_type, type_of(output_tt_layout), MutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_output_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            input_type, type_of(output_tt_layout), MutAnyOrigin
-        ],
-    ) raises:
+        out result: get_output_tensor_result_type,
+    ) raises {mut device_output_bufs_list, imm}:
         return type_of(result)(
             ptr=(
                 device_output_bufs_list[dev_idx].unsafe_ptr()
@@ -475,15 +476,16 @@ def bench_combine[
             layout=output_tt_layout,
         )
 
+    comptime get_row_offsets_tensor_result_type = TileTensor[
+        .uint32, type_of(row_offsets_layout), MutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_row_offsets_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            .uint32, type_of(row_offsets_layout), MutAnyOrigin
-        ],
-    ) raises:
+        out result: get_row_offsets_tensor_result_type,
+    ) raises {mut device_row_offsets_bufs_list, imm}:
         return type_of(result)(
             ptr=(
                 device_row_offsets_bufs_list[dev_idx].unsafe_ptr()
@@ -492,15 +494,16 @@ def bench_combine[
             layout=row_offsets_layout,
         )
 
+    comptime get_expert_ids_tensor_result_type = TileTensor[
+        .int32, type_of(expert_ids_layout), MutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_expert_ids_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            .int32, type_of(expert_ids_layout), MutAnyOrigin
-        ],
-    ) raises:
+        out result: get_expert_ids_tensor_result_type,
+    ) raises {mut device_expert_ids_bufs_list, imm}:
         return type_of(result)(
             ptr=(
                 device_expert_ids_bufs_list[dev_idx].unsafe_ptr()
@@ -509,15 +512,16 @@ def bench_combine[
             layout=expert_ids_layout,
         )
 
+    comptime get_src_token_info_tensor_result_type = TileTensor[
+        .int32, type_of(src_token_info_layout), MutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_src_token_info_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            .int32, type_of(src_token_info_layout), MutAnyOrigin
-        ],
-    ) raises:
+        out result: get_src_token_info_tensor_result_type,
+    ) raises {mut device_src_token_info_bufs_list, imm}:
         return type_of(result)(
             ptr=(
                 device_src_token_info_bufs_list[dev_idx].unsafe_ptr()
@@ -526,15 +530,16 @@ def bench_combine[
             layout=src_token_info_layout,
         )
 
+    comptime get_output_2_tensor_result_type = TileTensor[
+        input_type, type_of(output_2_layout), MutAnyOrigin
+    ]
+
     @inline(.always)
-    @__parameter
     def get_output_2_tensor(
         dev_idx: Int,
         slot_idx: Int,
-        out result: TileTensor[
-            input_type, type_of(output_2_layout), MutAnyOrigin
-        ],
-    ) raises:
+        out result: get_output_2_tensor_result_type,
+    ) raises {mut device_output_2_bufs_list, imm}:
         return type_of(result)(
             ptr=(
                 device_output_2_bufs_list[dev_idx].unsafe_ptr()
@@ -593,8 +598,7 @@ def bench_combine[
     ]
 
     @inline(.always)
-    @__parameter
-    def run_dispatch_async(dev_idx: Int, slot_idx: Int) raises:
+    def run_dispatch_async(dev_idx: Int, slot_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         ctx.enqueue_function[dispatch_async](
             get_input_tokens_tensor(dev_idx, slot_idx),
@@ -609,8 +613,7 @@ def bench_combine[
         )
 
     @inline(.always)
-    @__parameter
-    def run_dispatch_async_wait(dev_idx: Int, slot_idx: Int) raises:
+    def run_dispatch_async_wait(dev_idx: Int, slot_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         ctx.enqueue_function[dispatch_wait](
             type_of(format_handler)(get_output_tensor(dev_idx, slot_idx)),
@@ -626,7 +629,7 @@ def bench_combine[
         )
 
     @inline(.always)
-    def run_full_dispatch(dev_idx: Int, slot_idx: Int) raises:
+    def run_full_dispatch(dev_idx: Int, slot_idx: Int) raises {imm}:
         run_dispatch_async(dev_idx, slot_idx)
         run_dispatch_async_wait(dev_idx, slot_idx)
 
@@ -645,19 +648,19 @@ def bench_combine[
 
     var c_ptrs_layout = row_major[n_ranks]()
 
+    comptime get_c_send_ptrs_result_type = TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]
     @inline(.always)
-    @__parameter
-    def get_c_send_ptrs(slot_idx: Int, out result: TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]) raises:
+    def get_c_send_ptrs(slot_idx: Int, out result: get_c_send_ptrs_result_type) raises {imm}:
         return type_of(result)(ptr=(c_send_ptrs + slot_idx * n_ranks).as_unsafe_any_origin(), layout=c_ptrs_layout)
 
+    comptime get_c_recv_ptrs_result_type = TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]
     @inline(.always)
-    @__parameter
-    def get_c_recv_ptrs(slot_idx: Int, out result: TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]) raises:
+    def get_c_recv_ptrs(slot_idx: Int, out result: get_c_recv_ptrs_result_type) raises {imm}:
         return type_of(result)(ptr=(c_recv_ptrs + slot_idx * n_ranks).as_unsafe_any_origin(), layout=c_ptrs_layout)
 
+    comptime get_c_recv_count_ptrs_result_type = TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]
     @inline(.always)
-    @__parameter
-    def get_c_recv_count_ptrs(slot_idx: Int, out result: TileTensor[.uint64, type_of(c_ptrs_layout), ImmutAnyOrigin]) raises:
+    def get_c_recv_count_ptrs(slot_idx: Int, out result: get_c_recv_count_ptrs_result_type) raises {imm}:
         return type_of(result)(ptr=(c_recv_count_ptrs + slot_idx * n_ranks).as_unsafe_any_origin(), layout=c_ptrs_layout)
     # fmt: on
 
@@ -673,8 +676,7 @@ def bench_combine[
         return SIMD[.float32, width](1.0)
 
     @inline(.always)
-    @__parameter
-    def run_combine_async(dev_idx: Int, slot_idx: Int) raises:
+    def run_combine_async(dev_idx: Int, slot_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         ep_combine_async_kernel_api[
             input_type,
@@ -697,8 +699,7 @@ def bench_combine[
         )
 
     @inline(.always)
-    @__parameter
-    def run_combine_async_wait(dev_idx: Int, slot_idx: Int) raises:
+    def run_combine_async_wait(dev_idx: Int, slot_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
 
@@ -732,13 +733,12 @@ def bench_combine[
         )
 
     @inline(.always)
-    def run_e2e(dev_idx: Int, slot_idx: Int) raises:
+    def run_e2e(dev_idx: Int, slot_idx: Int) raises {imm}:
         run_combine_async(dev_idx, slot_idx)
         run_combine_async_wait(dev_idx, slot_idx)
 
     @inline(.always)
-    @__parameter
-    def run_fused_combine(dev_idx: Int, slot_idx: Int) raises:
+    def run_fused_combine(dev_idx: Int, slot_idx: Int) raises {imm}:
         var ctx = list_of_ctx[dev_idx]
         var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
 
@@ -859,7 +859,7 @@ def bench_combine[
         list_of_ctx[dev_i].synchronize()
 
     @inline(.always)
-    def call_fn_combine(ctx: DeviceContext, cache_iter: Int) raises {}:
+    def call_fn_combine(ctx: DeviceContext, cache_iter: Int) raises {imm}:
         var dev_id = Int(ctx.id())
         run_combine_async(dev_id, cache_iter)
 
@@ -899,7 +899,7 @@ def bench_combine[
         list_of_ctx[dev_i].synchronize()
 
     @inline(.always)
-    def call_fn_combine_wait(ctx: DeviceContext, cache_iter: Int) raises {}:
+    def call_fn_combine_wait(ctx: DeviceContext, cache_iter: Int) raises {imm}:
         var dev_id = Int(ctx.id())
         run_combine_async_wait(dev_id, cache_iter)
 
@@ -956,7 +956,7 @@ def bench_combine[
         list_of_ctx[dev_i].synchronize()
 
     @inline(.always)
-    def call_fn_e2e_split(ctx: DeviceContext, cache_iter: Int) raises {}:
+    def call_fn_e2e_split(ctx: DeviceContext, cache_iter: Int) raises {imm}:
         var dev_id = Int(ctx.id())
         run_e2e(dev_id, cache_iter + 1)
 
@@ -1007,7 +1007,7 @@ def bench_combine[
         list_of_ctx[dev_i].synchronize()
 
     @inline(.always)
-    def call_fn_e2e_fused(ctx: DeviceContext, cache_iter: Int) raises {}:
+    def call_fn_e2e_fused(ctx: DeviceContext, cache_iter: Int) raises {imm}:
         var dev_id = Int(ctx.id())
         run_fused_combine(dev_id, cache_iter + 1)
 

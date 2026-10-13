@@ -803,12 +803,12 @@ struct _FlashAttention[
                 if m >= seq_len:
                     continue
 
-                @__parameter
-                @__copy_capture(batch, batch_head, kv_head, head)
                 @inline(.always)
                 def get_nd_index[
                     is_kv: Bool = False
-                ](x: Int, y: Int) -> IndexList[Self.rank]:
+                ](x: Int, y: Int) {
+                    var batch, var kv_head, var head
+                } -> IndexList[Self.rank]:
                     comptime if Self.rank == 4:
                         return IndexList[Self.rank](
                             batch, x, kv_head if is_kv else head, y
@@ -816,12 +816,10 @@ struct _FlashAttention[
                     else:
                         return IndexList[Self.rank](batch, x, y)
 
-                @__parameter
-                @__copy_capture(batch, head)
                 @inline(.always)
                 def get_mask_nd_index(
                     x: Int, y: Int
-                ) -> IndexList[Self.mask_rank]:
+                ) {var batch, var head} -> IndexList[Self.mask_rank]:
                     comptime match Self.mask_rank:
                         case 4:
                             return IndexList[Self.mask_rank](batch, head, x, y)

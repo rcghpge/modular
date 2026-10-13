@@ -530,8 +530,7 @@ def test_gpu_logsoftmax(ctx: DeviceContext) raises:
     comptime type = DType.float32
     comptime rank = 3
 
-    @__parameter
-    def _test_shape(shape: IndexList[rank]) raises:
+    def _test_shape(shape: IndexList[rank]) raises {imm}:
         var in_host_ptr = ctx.enqueue_create_host_buffer[type](
             shape.flattened_length()
         )
