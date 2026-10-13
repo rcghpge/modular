@@ -1792,8 +1792,7 @@ def _matmul[
                 var b_val = b.load[1]((l, j)).cast[c.dtype]()
                 c_val += a_val * b_val
 
-            comptime if elementwise_lambda_fn:
-                comptime func = elementwise_lambda_fn.value()
+            comptime if case .Some(func) = elementwise_lambda_fn:
                 func((i, j), c_val)
             else:
                 c.store[1]((i, j), c_val)

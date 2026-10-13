@@ -94,8 +94,7 @@ struct DeviceSpec(
 
     @staticmethod
     def _mlir_target[comptime_self: Self]() -> _TargetType:
-        comptime if Bool(comptime_self.info):
-            comptime info = comptime_self.info.unsafe_value()
+        comptime if case .Some(info) = comptime_self.info:
             return comptime (
                 TargetAccelerator.from_gpu_name[info.name].mlir_target
             )
