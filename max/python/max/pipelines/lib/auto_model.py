@@ -259,9 +259,9 @@ class AutoModel:
             ``warmup_graph_capture()``, so decode steps replay captured
             graphs. Steps stay synchronous unless
             ``enable_overlap_scheduler=True`` is also passed.
-        **config_overrides: Flat :class:`PipelineArgs` field names, such as
-            ``device_specs`` or ``enable_prefix_caching``. They win over the
-            debug defaults.
+        **config_overrides: Flat :class:`~max.pipelines.lib.PipelineArgs`
+            field names, such as ``device_specs`` or
+            ``enable_prefix_caching``. They win over the debug defaults.
 
     Raises:
         TypeError: If both ``devices`` and ``device_specs`` are passed, if an

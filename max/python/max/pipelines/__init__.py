@@ -50,7 +50,6 @@ from .lib.config import (
 )
 from .lib.embeddings_pipeline import EmbeddingsPipeline, EmbeddingsPipelineType
 from .lib.interfaces import (
-    GenerateMixin,
     ModelInputs,
     ModelOutputs,
     PipelineModel,
@@ -87,7 +86,6 @@ __all__ = [
     "EagerValidatorMode",
     "EmbeddingsPipeline",
     "EmbeddingsPipelineType",
-    "GenerateMixin",
     "IdentityPipelineTokenizer",
     "KVCacheConfig",
     "LoRAConfig",

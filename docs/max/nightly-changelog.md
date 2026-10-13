@@ -598,6 +598,16 @@ This version is still a work in progress.
 
 ### `max` CLI
 
+- `max generate` with speculative decoding now verifies drafts on decode
+  steps, as serving does. Before, it generated one token per step without
+  verification.
+
+- `max generate` now runs with device graph capture off unless you pass
+  `--device-graph-capture`, which it then warms up so decode steps replay.
+  Before, capture could turn on by itself but never replayed. It also plans
+  for a batch of one unless you pass `--max-batch-size`, since it runs one
+  prompt.
+
 ### Python API
 
 - Added `max.experimental.custom.declare`, which declares a custom op's
@@ -652,6 +662,15 @@ This version is still a work in progress.
   read that layout. Under expert parallelism, an interleaved `MoEQuantized`
   layer needs the fused NVFP4 or MXFP8 grouped-matmul SwiGLU path, since the
   fused SiLU quantize kernels read only `[gate | up]`.
+- Added `AutoModel` and `AutoTokenizer` to `max.pipelines` for generating
+  with a model in-process.
+  `model.generate(**tokenizer(prompts), max_new_tokens=16)` runs exactly the
+  batch you pass, takes the same sampling arguments as `max generate`, and can
+  return each token's logits and log probabilities. `model.batch()` returns a
+  `Batch` from `max.pipelines.lib.generate` that runs one forward pass per
+  step. Asking for a feature that only serving supports raises an error with
+  the matching `max serve` command.
+- `OverlapTextGenerationPipeline` has a new `graph_capture_ready` property.
 
 ### C API
 
@@ -869,6 +888,14 @@ HEAD
   block at a time like DFlash but runs a different draft step, so a DSpark
   draft under any other method now fails at startup with a message naming
   the method to use.
+
+- Removed `max.pipelines.GenerateMixin` and the `generate()` and
+  `generate_async()` methods it gave text generation pipelines. Build
+  contexts with `pipeline.tokenizer.new_context()` and run them with
+  `Batch.from_contexts()`, or pass token ids to
+  `max.pipelines.lib.generate.generate()`. `TextGenerationPipelineInterface`
+  now declares `pipeline_config` and `tokenizer` as abstract properties, so
+  custom subclasses must implement them.
 
 - `max.gpu.primitives.warp.reduce()` and `lane_group_reduce()` now take the
   reduction function as a runtime closure argument instead of a compile-time

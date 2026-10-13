@@ -150,13 +150,16 @@ class _PipelineModelLimits(Protocol):
 class BatchPipeline(Protocol):
     """The pipeline surface :class:`Batch` drives.
 
-    :class:`~max.pipelines.lib.TextGenerationPipeline` and
+    :class:`~max.pipelines.TextGenerationPipeline` and
     :class:`~max.pipelines.lib.OverlapTextGenerationPipeline` over
     :class:`~max.pipelines.context.TextContext` satisfy it. A pipeline whose
     ``execute`` returns the previous call's results also defines a boolean
     ``overlap_active`` property, read the way serve's schedulers read it. A
     pipeline that can replay captured device graphs defines a boolean
     ``graph_capture_ready`` property, true once its graphs are captured.
+    Batch also reads the memory plan's max length, batch token limits and
+    LoRA adapters from the private ``_pipeline_model``, the only place they
+    live, so another implementation must define it as well.
     """
 
     @property
@@ -179,8 +182,6 @@ class BatchPipeline(Protocol):
         """The planned maximum batch size per data-parallel replica."""
         ...
 
-    # The memory plan's max length and batch token limits live only on the
-    # model.
     @property
     def _pipeline_model(self) -> _PipelineModelLimits: ...
 

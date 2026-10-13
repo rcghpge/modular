@@ -768,6 +768,21 @@ def test_overlap_pending_batch_after_close_leaves_next_batch_clean() -> None:
     _assert_nothing_held(pipeline, 4)
 
 
+@pytest.mark.parametrize("pipeline_type", [FakePipeline, FakeOverlapPipeline])
+@pytest.mark.parametrize("eos_steps", [(1, 2, 3), (3, 1, 2), (2, 3, 1)])
+def test_rows_finishing_in_any_order_are_released_once(
+    pipeline_type: type[FakePipeline], eos_steps: tuple[int, ...]
+) -> None:
+    """Rows finish in any order, and late overlap outputs are dropped."""
+    pipeline = pipeline_type()
+    output = generate(pipeline, _prompts(*eos_steps), max_new_tokens=5)
+
+    assert _new_tokens(output.sequences) == [
+        [*range(101, 100 + eos_step), EOS] for eos_step in eos_steps
+    ]
+    _assert_nothing_held(pipeline, len(eos_steps))
+
+
 def _prompt_of_length(length: int) -> list[int]:
     return [NEVER] + [7] * (length - 1)
 

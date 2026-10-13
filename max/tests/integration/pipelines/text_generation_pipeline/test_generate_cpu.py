@@ -43,9 +43,13 @@ PROMPTS = [
     "The capital of France is",
     "Here is a short list of prime numbers: 2, 3, 5,",
 ]
-# Greedy tokens from GenerateMixin.generate before its callers moved onto
-# Batch, batched as here. Hugging Face generate(do_sample=False) on this
-# model gives the same tokens.
+# Hugging Face greedy decoding on CPU gives these tokens. To regenerate them:
+#   tokenizer = AutoTokenizer.from_pretrained(REPO_ID)
+#   model = AutoModelForCausalLM.from_pretrained(REPO_ID)
+#   for prompt in PROMPTS:
+#       ids = tokenizer(prompt, return_tensors="pt").input_ids
+#       out = model.generate(ids, do_sample=False, max_new_tokens=12)
+#       print(out[0, ids.shape[1] :].tolist())
 GOLDEN_SEQUENCES = [
     [7042, 28, 260, 3995, 2240, 281, 4649, 284, 260, 2642, 284, 2536],
     [216, 39, 28, 216, 33, 33, 28, 216, 33, 35, 28, 216],

@@ -123,9 +123,10 @@ architecture from
 [`PIPELINE_REGISTRY`](/api/python/generated/max.pipelines.lib.registry.PIPELINE_REGISTRY/),
 then builds a
 [`TextGenerationRequest`](/api/python/generated/max.pipelines.modeling.types.TextGenerationRequest/)
-per prompt and runs it to completion with `Batch` from
-`max.pipelines.lib.generate`, one forward pass per step. To capture each step's
-logits, the request's
+per prompt and runs it to completion with
+[`Batch`](/api/python/generated/max.pipelines.lib.generate.Batch/) from
+[`max.pipelines.lib.generate`](/api/python/pipelines.lib.generate), one forward
+pass per step. To capture each step's logits, the request's
 [`SamplingParams`](/api/python/generated/max.pipelines.context.SamplingParams/)
 attaches a
 [`LogitsProcessor`](/api/python/generated/max.pipelines.context.LogitsProcessor/)
