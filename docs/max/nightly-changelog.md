@@ -115,6 +115,14 @@ This version is still a work in progress.
   checkpoint size. It requires `--target` (compile-only mode) and a
   safetensors repo on HuggingFace.
 
+- Added `max.experimental.sharding.visualize`, which draws a `DeviceMesh`,
+  `TensorLayout` or `Tensor` twice over: as a grid of colored blocks sized in
+  proportion to the slice each device holds, and as a tree with one level per
+  mesh axis. A slice that is a partial sum, or whose relation to the others
+  is `Unknown`, is marked and drawn see-through. Pass `blocks=False` or
+  `tree=False` for one of the two, or a dict of values to draw them side by
+  side. It renders as SVG in a notebook and as Unicode text anywhere else.
+
 - Added the `uninitialized-read-mode` debug option
   (`MODULAR_DEBUG=uninitialized-read-mode=report`,
   `[max-debug] uninitialized-read-mode`, or
