@@ -25,6 +25,7 @@ probabilities when a context asks for them.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import gc
 import logging
@@ -36,16 +37,20 @@ from unittest.mock import MagicMock
 import numpy as np
 import numpy.typing as npt
 import pytest
+from max._entrypoints.cli.generate import stream_context
 from max.driver import Buffer, DeviceSpec
 from max.pipelines.context import (
+    EOSTracker,
     GenerationStatus,
     LogProbabilities,
     PixelContext,
     ProcessorInputs,
+    SamplingParams,
     SamplingParamsGenerationConfigDefaults,
     TextAndVisionContext,
     TextContext,
     TextGenerationOutput,
+    TokenBuffer,
 )
 from max.pipelines.lib.config import PipelineConfig
 from max.pipelines.lib.generate import Batch, generate
@@ -53,7 +58,11 @@ from max.pipelines.lib.log_probabilities import _MAX_TOP_LOGPROBS
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
 from max.pipelines.lora import LoRAConfig
-from max.pipelines.modeling.types import RequestID, TextGenerationInputs
+from max.pipelines.modeling.types import (
+    BatchType,
+    RequestID,
+    TextGenerationInputs,
+)
 from max.pipelines.sampling import SamplingConfig, request_row_seed
 from max.pipelines.speculative import SpeculativeConfig
 
@@ -143,10 +152,23 @@ class FakeBatchProcessor:
 
 
 @dataclasses.dataclass
+class FakeLoRAManager:
+    loaded: set[str]
+    active: set[str]
+
+    def is_lora(self, name: str) -> bool:
+        return name in self.loaded
+
+    def is_active_lora(self, name: str) -> bool:
+        return name in self.active
+
+
+@dataclasses.dataclass
 class FakeModel:
     max_seq_len: int = 64
     batch_processor: FakeBatchProcessor | None = None
     planned_max_batch_total_tokens: int | None = None
+    lora_manager: FakeLoRAManager | None = None
 
 
 class FakePipeline:
@@ -235,6 +257,7 @@ class FakePipeline:
         self.steps_run = 0
         # Rows per replica on each step.
         self.batch_sizes: list[list[int]] = []
+        self.batch_types: list[BatchType] = []
         self.released: list[RequestID] = []
 
     def execute(
@@ -244,6 +267,7 @@ class FakePipeline:
         if self.steps_run == self.fail_on_step:
             raise RuntimeError("execute interrupted")
         self.batch_sizes.append([len(batch) for batch in inputs.batches])
+        self.batch_types.append(inputs.batch_type)
         for context in inputs.flat_batch:
             assert self.kv_manager.transfers[context.request_id].landed
         return self._forward(inputs.flat_batch)
@@ -389,6 +413,13 @@ def test_finished_rows_leave_the_batch() -> None:
     assert pipeline.batch_sizes == [[2], [1], [1]]
     assert _new_tokens(batch.sequences) == [[EOS], [101, 102, EOS]]
     _assert_nothing_held(pipeline, 2)
+
+
+def test_decode_steps_run_as_token_generation() -> None:
+    pipeline = FakePipeline()
+    generate(pipeline, _prompts(3), max_new_tokens=5)
+
+    assert pipeline.batch_types == [BatchType.CE, BatchType.TG, BatchType.TG]
 
 
 def test_rows_stop_at_max_new_tokens() -> None:
@@ -659,8 +690,9 @@ def test_prefill_over_a_replica_token_budget_raises() -> None:
 
     with pytest.raises(
         ValueError,
-        match=r"(?s)chunked prefill\. Replica 0's prompts total 9 tokens"
-        r".*raise max_batch_input_tokens",
+        match=r"(?s)chunked prefill\. Replica 0's prompts total 9 tokens, "
+        r"over the pipeline's per-replica prefill budget of 6 tokens"
+        r".*raise max_batch_input_tokens or turn chunked prefill off",
     ) as error:
         Batch(pipeline, _prompts(1, 1, 1, 1, 1), max_new_tokens=5)
     _assert_points_to_serve(
@@ -1500,4 +1532,239 @@ def test_outputs_out_of_step_with_tokens_raise(
             output_logits=output_logits,
             output_logprobs=output_logprobs,
         )
+    _assert_nothing_held(pipeline, 1)
+
+
+def _built_contexts(*eos_steps: int, model_name: str = "") -> list[TextContext]:
+    """Builds contexts that stop at EOS or after 4 new tokens."""
+    return [
+        TextContext(
+            max_length=len(prompt) + 4,
+            tokens=TokenBuffer(np.asarray(prompt, dtype=np.int64)),
+            eos_tracker=EOSTracker(eos_token_ids={EOS}),
+            model_name=model_name,
+        )
+        for prompt in _prompts(*eos_steps)
+    ]
+
+
+def test_from_contexts_runs_vision_contexts_to_their_own_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "retrieve_context_type",
+        lambda pipeline_config: TextAndVisionContext,
+    )
+    pipeline = FakePipeline()
+    contexts = [
+        TextAndVisionContext(
+            max_length=len(prompt) + 4,
+            tokens=TokenBuffer(np.asarray(prompt, dtype=np.int64)),
+            eos_tracker=EOSTracker(eos_token_ids={EOS}),
+            vision_token_ids=[],
+        )
+        for prompt in _prompts(2, NEVER)
+    ]
+    with Batch.from_contexts(pipeline, contexts) as batch:
+        assert pipeline.kv_manager.claimed == {
+            context.request_id: 0 for context in contexts
+        }
+        steps = []
+        while not batch.done:
+            steps.append(batch.step())
+
+    assert steps == [
+        {0: [101], 1: [101]},
+        {0: [EOS], 1: [102]},
+        {1: [103]},
+        {1: [104]},
+    ]
+    assert _new_tokens(batch.sequences) == [[101, EOS], [101, 102, 103, 104]]
+    assert [context.status for context in contexts] == [
+        GenerationStatus.END_OF_SEQUENCE,
+        GenerationStatus.MAXIMUM_LENGTH,
+    ]
+    assert pipeline.released == [context.request_id for context in contexts]
+    _assert_nothing_held(pipeline, 2)
+
+
+def test_from_contexts_keeps_each_contexts_sampling_params() -> None:
+    pipeline = FakePipeline()
+    seen: list[RequestID] = []
+
+    def processor(inputs: ProcessorInputs) -> None:
+        seen.append(inputs.context.request_id)
+
+    # Row 1, since a per-row reseed of seed + row * 2**32 is a no-op at row 0.
+    contexts = _built_contexts(1, 2)
+    sampling_params = SamplingParams(seed=123, logits_processors=[processor])
+    contexts[1].sampling_params = sampling_params
+    with Batch.from_contexts(pipeline, contexts) as batch:
+        while not batch.done:
+            batch.step()
+
+    assert contexts[1].sampling_params is sampling_params
+    assert sampling_params.seed == 123
+    assert sampling_params.logits_processors == [processor]
+    assert seen == [contexts[1].request_id] * 2
+    assert _new_tokens(batch.sequences) == [[EOS], [101, EOS]]
+
+
+def test_from_contexts_fit_checks_count_context_tokens() -> None:
+    pipeline = FakePipeline(max_batch_active_tokens=5)
+    with pytest.raises(ValueError, match="prompts total 6 tokens"):
+        Batch.from_contexts(pipeline, _built_contexts(1, 1))
+    assert pipeline.kv_manager.contexts == []
+
+
+def test_from_contexts_oversize_batch_raises_before_claiming() -> None:
+    pipeline = FakePipeline(max_batch_size=1)
+    with pytest.raises(ValueError, match="never splits"):
+        Batch.from_contexts(pipeline, _built_contexts(1, 1))
+    assert pipeline.kv_manager.contexts == []
+
+
+def test_from_contexts_runs_a_speculative_pipeline() -> None:
+    pipeline = FakePipeline(
+        speculative=SpeculativeConfig(
+            speculative_method="eagle", num_speculative_tokens=3
+        ),
+    )
+    with Batch.from_contexts(pipeline, _built_contexts(2)) as batch:
+        while not batch.done:
+            batch.step()
+
+    assert _new_tokens(batch.sequences) == [[101, EOS]]
+    _assert_nothing_held(pipeline, 1)
+
+
+def test_from_contexts_graph_capture_without_warmup_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pipeline = FakePipeline(device_graph_capture=True)
+    with Batch.from_contexts(pipeline, _built_contexts(2)) as batch:
+        while not batch.done:
+            batch.step()
+
+    assert _new_tokens(batch.sequences) == [[101, EOS]]
+    assert len(_graph_capture_warnings(caplog)) == 1
+
+
+def test_from_contexts_warmed_up_with_data_parallelism_points_to_serve() -> (
+    None
+):
+    pipeline = FakeWarmedUpPipeline(
+        data_parallel_degree=2, device_graph_capture=True
+    )
+    with pytest.raises(ValueError) as error:
+        Batch.from_contexts(pipeline, _built_contexts(1, 1))
+    _assert_points_to_serve(
+        error,
+        "device graph capture with data parallelism",
+        " --data-parallel-degree 2 --device-graph-capture",
+    )
+    assert pipeline.kv_manager.contexts == []
+
+
+def test_from_contexts_rejects_an_inactive_adapter() -> None:
+    pipeline = FakePipeline(
+        lora=LoRAConfig(enable_lora=True, lora_paths=["sql=/adapters/sql"])
+    )
+    pipeline._pipeline_model.lora_manager = FakeLoRAManager(
+        loaded={"sql"}, active=set()
+    )
+    contexts = [
+        *_built_contexts(1),
+        *_built_contexts(1, model_name="sql"),
+    ]
+    with pytest.raises(ValueError) as error:
+        Batch.from_contexts(pipeline, contexts)
+    _assert_points_to_serve(
+        error,
+        "inactive LoRA adapters",
+        " --enable-lora --no-enable-prefix-caching --lora-paths"
+        " sql=/adapters/sql --max-lora-rank 16 --max-num-loras 1",
+    )
+    lines = str(error.value).splitlines()
+    assert lines[0] == (
+        "generate() does not support inactive LoRA adapters. Row 1 names "
+        'the adapter "sql", which is loaded but not active, and generate() '
+        "never activates an adapter."
+    )
+    assert lines[-1] == (
+        "To run it here, activate it first with "
+        "max.pipelines.lora.get_lora_manager(pipeline)"
+        '.activate_adapter("sql").'
+    )
+    assert pipeline.kv_manager.contexts == []
+
+
+def test_from_contexts_runs_an_active_adapter_and_the_base_model() -> None:
+    pipeline = FakePipeline(
+        lora=LoRAConfig(enable_lora=True, lora_paths=["sql=/adapters/sql"])
+    )
+    pipeline._pipeline_model.lora_manager = FakeLoRAManager(
+        loaded={"sql"}, active={"sql"}
+    )
+    contexts = [
+        *_built_contexts(1, model_name="base"),
+        *_built_contexts(2, model_name="sql"),
+    ]
+    with Batch.from_contexts(pipeline, contexts) as batch:
+        while not batch.done:
+            batch.step()
+
+    assert _new_tokens(batch.sequences) == [[EOS], [101, EOS]]
+
+
+def test_from_contexts_shares_the_one_open_batch_limit() -> None:
+    pipeline = FakeOverlapPipeline()
+    first = Batch.from_contexts(pipeline, _built_contexts(2))
+    with pytest.raises(RuntimeError, match="already running another batch"):
+        Batch(pipeline, _prompts(2), max_new_tokens=5)
+    with pytest.raises(RuntimeError, match="already running another batch"):
+        Batch.from_contexts(pipeline, _built_contexts(2))
+    assert len(pipeline.kv_manager.claimed) == 1
+
+    first.close()
+    with Batch(pipeline, _prompts(2), max_new_tokens=5):
+        with pytest.raises(RuntimeError, match="already running another batch"):
+            Batch.from_contexts(pipeline, _built_contexts(2))
+
+
+def test_from_contexts_batch_records_no_logits_or_log_probs() -> None:
+    contexts = _built_contexts(1)
+    contexts[0].log_probabilities = 1
+    with Batch.from_contexts(FakePipeline(), contexts) as batch:
+        batch.step()
+        with pytest.raises(
+            RuntimeError, match="from_contexts records no logits"
+        ):
+            _ = batch.logits
+        with pytest.raises(
+            RuntimeError, match="from_contexts records no log probabilities"
+        ):
+            _ = batch.log_probs
+
+
+def test_cli_stream_cancelled_between_steps_releases_the_row() -> None:
+    pipeline = FakePipeline()
+    [context] = _built_contexts(NEVER)
+
+    async def cancel_after_first_step() -> None:
+        first_step = asyncio.Event()
+
+        async def on_tokens(tokens: list[int]) -> None:
+            first_step.set()
+
+        task = asyncio.create_task(stream_context(pipeline, context, on_tokens))
+        await first_step.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(cancel_after_first_step())
+
+    assert pipeline.steps_run == 1
     _assert_nothing_held(pipeline, 1)

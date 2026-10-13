@@ -43,6 +43,13 @@ PROMPTS = [
     "The capital of France is",
     "Here is a short list of prime numbers: 2, 3, 5,",
 ]
+# Greedy tokens from GenerateMixin.generate before its callers moved onto
+# Batch, batched as here. Hugging Face generate(do_sample=False) on this
+# model gives the same tokens.
+GOLDEN_SEQUENCES = [
+    [7042, 28, 260, 3995, 2240, 281, 4649, 284, 260, 2642, 284, 2536],
+    [216, 39, 28, 216, 33, 33, 28, 216, 33, 35, 28, 216],
+]
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +84,7 @@ def input_ids(pipeline: TextGenerationPipeline[TextContext]) -> list[list[int]]:
     return [asyncio.run(encode(prompt)) for prompt in PROMPTS]
 
 
-def test_greedy_tokens_match_generate_mixin(
+def test_greedy_tokens_match_golden(
     pipeline: TextGenerationPipeline[TextContext], input_ids: list[list[int]]
 ) -> None:
     sampling = SamplingParamsInput(
@@ -95,7 +102,13 @@ def test_greedy_tokens_match_generate_mixin(
         )
         for prompt in input_ids
     ]
-    expected = [output.tokens for output in pipeline.generate(requests)]
+    contexts = [
+        asyncio.run(pipeline.tokenizer.new_context(request))
+        for request in requests
+    ]
+    with Batch.from_contexts(pipeline, contexts) as batch:
+        while not batch.done:
+            batch.step()
 
     output = generate(
         pipeline,
@@ -105,12 +118,12 @@ def test_greedy_tokens_match_generate_mixin(
         top_k=1,
     )
 
-    new_tokens = [
-        sequence[len(prompt) :]
-        for sequence, prompt in zip(output.sequences, input_ids, strict=True)
-    ]
-    assert new_tokens == expected
-    assert all(len(tokens) > 0 for tokens in new_tokens)
+    for sequences in (batch.sequences, output.sequences):
+        new_tokens = [
+            sequence[len(prompt) :]
+            for sequence, prompt in zip(sequences, input_ids, strict=True)
+        ]
+        assert new_tokens == GOLDEN_SEQUENCES
 
 
 def test_serve_command_rebuilds_the_cpu_pipeline(

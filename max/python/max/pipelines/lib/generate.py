@@ -127,9 +127,18 @@ class _BatchProcessor(Protocol):
     def runtime(self) -> _BatchProcessorRuntime: ...
 
 
+class _LoRAAdapters(Protocol):
+    def is_lora(self, name: str) -> bool: ...
+
+    def is_active_lora(self, name: str) -> bool: ...
+
+
 class _PipelineModelLimits(Protocol):
     @property
     def max_seq_len(self) -> int: ...
+
+    @property
+    def lora_manager(self) -> _LoRAAdapters | None: ...
 
     @property
     def batch_processor(self) -> _BatchProcessor | None: ...
@@ -434,39 +443,84 @@ def _check_supported(
         )
     lora = pipeline_config.lora
     if lora is not None and lora.enable_lora:
-        flags = ["--enable-lora", "--no-enable-prefix-caching"]
-        for path in lora.lora_paths:
-            flags += ["--lora-paths", path]
-        flags += [
-            "--max-lora-rank",
-            str(lora.max_lora_rank),
-            "--max-num-loras",
-            str(lora.max_num_loras),
-        ]
-        if lora.lora_paths:
-            # The same naming rule serve's LoRAQueue applies.
-            names = ", ".join(
-                f'"{path.partition("=")[0]}"' for path in lora.lora_paths
-            )
-            note = (
-                'Then send requests with "model": "<adapter name>". An '
-                "adapter's name is the part of its --lora-paths entry before "
-                f'"=", or the whole entry if it has no "=" (names here: '
-                f"{names})."
-            )
-        else:
-            note = (
-                "Load an adapter with POST /v1/load_lora_adapter, then send "
-                'requests with "model": "<lora_name>".'
-            )
-        raise _unsupported(
+        raise _lora_unsupported(
             pipeline_config,
-            "LoRA adapters",
             f"{caller} runs only the base model and never activates an adapter",
-            flags,
             caller=caller,
-            note=note,
         )
+
+
+def _lora_unsupported(
+    pipeline_config: PipelineConfig,
+    reason: str,
+    feature: str = "LoRA adapters",
+    local_note: str | None = None,
+    caller: str = "generate()",
+) -> ValueError:
+    """Returns the LoRA error, with serve flags that load the same adapters.
+
+    ``local_note``, if given, follows the serve note to say how to run the
+    batch in-process instead.
+    """
+    lora = pipeline_config.lora
+    assert lora is not None
+    flags = ["--enable-lora", "--no-enable-prefix-caching"]
+    for path in lora.lora_paths:
+        flags += ["--lora-paths", path]
+    flags += [
+        "--max-lora-rank",
+        str(lora.max_lora_rank),
+        "--max-num-loras",
+        str(lora.max_num_loras),
+    ]
+    if lora.lora_paths:
+        # The same naming rule serve's LoRAQueue applies.
+        names = ", ".join(
+            f'"{path.partition("=")[0]}"' for path in lora.lora_paths
+        )
+        note = (
+            'Then send requests with "model": "<adapter name>". An '
+            "adapter's name is the part of its --lora-paths entry before "
+            f'"=", or the whole entry if it has no "=" (names here: '
+            f"{names})."
+        )
+    else:
+        note = (
+            "Load an adapter with POST /v1/load_lora_adapter, then send "
+            'requests with "model": "<lora_name>".'
+        )
+    if local_note is not None:
+        note += f"\n{local_note}"
+    return _unsupported(
+        pipeline_config, feature, reason, flags, caller=caller, note=note
+    )
+
+
+def _check_adapters_active(
+    pipeline: BatchPipeline, contexts: Sequence[TextContext]
+) -> None:
+    """Raises if a context names a loaded LoRA adapter that is not active.
+
+    Serve's scheduler activates a request's adapter. Batch does not, so the
+    row would run the base weights without an error.
+    """
+    lora_manager = pipeline._pipeline_model.lora_manager
+    if lora_manager is None:
+        return
+    for row, context in enumerate(contexts):
+        name = context.model_name
+        if lora_manager.is_lora(name) and not lora_manager.is_active_lora(name):
+            raise _lora_unsupported(
+                pipeline.pipeline_config,
+                f'Row {row} names the adapter "{name}", which is loaded but '
+                "not active, and generate() never activates an adapter",
+                feature="inactive LoRA adapters",
+                local_note=(
+                    "To run it here, activate it first with "
+                    "max.pipelines.lora.get_lora_manager(pipeline)"
+                    f'.activate_adapter("{name}").'
+                ),
+            )
 
 
 def _check_graph_capture(pipeline: BatchPipeline, dp_degree: int) -> None:
@@ -592,8 +646,9 @@ def _check_batch_fits(
         )
     model = pipeline._pipeline_model
     batch_processor = model.batch_processor
-    # The scheduler chunks a prefill to fit this budget. Batch does not, and
-    # an overflow would otherwise fail deep in graph input staging.
+    # The scheduler chunks each replica's prefill to fit its own share of
+    # this budget. Batch does not chunk, and an overflow would otherwise fail
+    # deep in graph input staging.
     token_budget = (
         None
         if batch_processor is None
@@ -608,14 +663,17 @@ def _check_batch_fits(
                 pipeline_config,
                 "chunked prefill",
                 f"Replica {replica_idx}'s prompts total {sum(lengths)} "
-                f"tokens, but the pipeline stages at most {token_budget} per "
-                "replica in one forward",
+                "tokens, over the pipeline's per-replica prefill budget of "
+                f"{token_budget} tokens",
                 [
                     "--enable-chunked-prefill",
                     "--max-batch-input-tokens",
                     str(pipeline_config.runtime.max_batch_input_tokens),
                 ],
-                note="To run this batch here, raise max_batch_input_tokens.",
+                note=(
+                    "To run this batch here, raise max_batch_input_tokens or "
+                    "turn chunked prefill off."
+                ),
             )
         if total_tokens_cap is None or not lengths:
             continue
@@ -652,12 +710,17 @@ class Batch:
     gives the matching ``max serve`` command.
 
     Constructing the batch claims KV cache for every row. Use it as a
-    context manager so an exception releases the rows. Row ``i`` samples
-    with ``seed + i * 2**32``. Serve deliberately makes requests with the
-    same pinned seed draw identically. Batch instead gives each row its own
+    context manager so an exception releases the rows. To run contexts built
+    elsewhere, such as by the pipeline's tokenizer, use :meth:`from_contexts`.
+
+    In a batch built from ``input_ids``, row ``i`` samples with
+    ``seed + i * 2**32``. Serve deliberately makes requests with the same
+    pinned seed draw identically. Batch instead gives each row its own
     stream, as Hugging Face users expect, so identical prompts draw
     different samples, a rerun reproduces them, and row 0 matches serve for
     the same seed. A prompt's draw still depends on its row index.
+    :meth:`from_contexts` keeps each context's own seed, so it draws as
+    serve does.
 
     On a :attr:`synchronous` pipeline, each :meth:`step` returns its own
     forward's tokens and the device is idle between steps. A pipeline that
@@ -742,7 +805,7 @@ class Batch:
             ``max serve``: LoRA, device graph capture with ``data_parallel_degree > 1`` on
             a warmed-up pipeline, or a batch that only fits by scheduling or
             chunked prefill (more rows than the planned max batch size, or a
-            replica's prompts over the staged token budget or the batch
+            replica's prompts over its per-replica prefill budget or the batch
             total-token cap). Also raised for a prompt with no
             room to generate within the planned max length, an invalid
             sampling value, penalties on a pipeline built without
@@ -758,6 +821,9 @@ class Batch:
         RuntimeError: If the pipeline is not synchronous and another batch
             on it is still open.
     """
+
+    _logits_recorders: list[_LogitsRecorder] | None
+    _log_probs: list[LogProbabilities] | None
 
     def __init__(
         self,
@@ -834,6 +900,80 @@ class Batch:
         dp_degree = pipeline_config.model.data_parallel_degree
         _check_batch_fits(pipeline, [len(p) for p in prompts], dp_degree)
         _check_graph_capture(pipeline, dp_degree)
+        self._start(pipeline, contexts, dp_degree)
+        _check_output_options(
+            pipeline, self._synchronous, output_logits, output_logprobs
+        )
+        if output_logits:
+            self._logits_recorders = [_LogitsRecorder() for _ in contexts]
+            for context, recorder in zip(
+                contexts, self._logits_recorders, strict=True
+            ):
+                context.sampling_params.logits_processors = [
+                    *(context.sampling_params.logits_processors or ()),
+                    recorder,
+                ]
+        if output_logprobs:
+            self._log_probs = [
+                LogProbabilities(
+                    token_log_probabilities=[],
+                    top_log_probabilities=[],
+                    sampled_token_ids=[],
+                )
+                for _ in contexts
+            ]
+            for context in contexts:
+                context.log_probabilities = output_logprobs
+        self._claim_rows()
+
+    @classmethod
+    def from_contexts(
+        cls, pipeline: BatchPipeline, contexts: Iterable[TextContext]
+    ) -> Batch:
+        """Claims a batch over contexts already built, one row per context.
+
+        Each context keeps its own sampling params, seed, logits processors,
+        stop criteria and max length, so this runs the contexts a pipeline's
+        tokenizer builds, image contexts included. On a speculative
+        pipeline one step can return several tokens per row. It runs
+        base-model contexts and contexts that name an active LoRA adapter. The batch records no :attr:`logits` or
+        :attr:`log_probs`.
+
+        Args:
+            pipeline: The pipeline to run.
+            contexts: One built context per row, for example from
+                ``tokenizer.new_context``, claimed in order.
+
+        Returns:
+            A batch with every row claimed.
+
+        Raises:
+            ValueError: If a context names a LoRA adapter that is loaded but
+                not active, or for device graph capture with
+                ``data_parallel_degree > 1`` on a warmed-up pipeline, or if
+                the batch does not fit the pipeline's plan, as described for
+                :class:`Batch`.
+            RuntimeError: If the pipeline is not synchronous and another
+                batch on it is still open.
+        """
+        contexts = list(contexts)
+        _check_adapters_active(pipeline, contexts)
+        dp_degree = pipeline.pipeline_config.model.data_parallel_degree
+        _check_batch_fits(
+            pipeline, [len(context.tokens) for context in contexts], dp_degree
+        )
+        _check_graph_capture(pipeline, dp_degree)
+        batch = cls.__new__(cls)
+        batch._start(pipeline, contexts, dp_degree)
+        batch._claim_rows()
+        return batch
+
+    def _start(
+        self,
+        pipeline: BatchPipeline,
+        contexts: list[TextContext],
+        dp_degree: int,
+    ) -> None:
         synchronous = not (
             isinstance(pipeline, _OverlapSource) and pipeline.overlap_active
         )
@@ -849,50 +989,34 @@ class Batch:
                     "results to whichever batch steps next. Finish or close "
                     "that batch first."
                 )
-        _check_output_options(
-            pipeline, synchronous, output_logits, output_logprobs
-        )
         self._pipeline: BatchPipeline | None = pipeline
         self._dp_degree = dp_degree
         self._synchronous = synchronous
         self._contexts = contexts
-        self._prompts = prompts
+        self._prompts = [
+            [int(token) for token in context.tokens.prompt]
+            for context in contexts
+        ]
         self._generated: list[list[int]] = [[] for _ in contexts]
-        self._logits_recorders: list[_LogitsRecorder] | None = None
-        if output_logits:
-            self._logits_recorders = [_LogitsRecorder() for _ in contexts]
-            for context, recorder in zip(
-                contexts, self._logits_recorders, strict=True
-            ):
-                context.sampling_params.logits_processors = [
-                    *(context.sampling_params.logits_processors or ()),
-                    recorder,
-                ]
-        self._log_probs: list[LogProbabilities] | None = None
-        if output_logprobs:
-            self._log_probs = [
-                LogProbabilities(
-                    token_log_probabilities=[],
-                    top_log_probabilities=[],
-                    sampled_token_ids=[],
-                )
-                for _ in contexts
-            ]
-            for context in contexts:
-                context.log_probabilities = output_logprobs
+        self._logits_recorders = None
+        self._log_probs = None
         # Live rows in input order, mapped to their DP replica. Replicas
         # need no padding: Batch rejects data parallelism on a warmed-up
         # pipeline, and eager steps accept unequal replicas.
         self._live: dict[int, int] = {}
+
+    def _claim_rows(self) -> None:
+        pipeline = self._pipeline
+        assert pipeline is not None
         try:
-            for row, context in enumerate(contexts):
-                replica_idx = row % dp_degree
+            for row, context in enumerate(self._contexts):
+                replica_idx = row % self._dp_degree
                 pipeline.kv_manager.claim(context, replica_idx=replica_idx)
                 self._live[row] = replica_idx
         except BaseException:
             self.close()
             raise
-        if not synchronous:
+        if not self._synchronous:
             _open_batches[pipeline] = weakref.ref(self)
 
     def __enter__(self) -> Batch:
@@ -941,10 +1065,15 @@ class Batch:
         with no new tokens has shape ``[0, 0]``.
 
         Raises:
-            RuntimeError: If the batch was built without ``output_logits``.
+            RuntimeError: If the batch was built without ``output_logits``,
+                as every :meth:`from_contexts` batch is.
         """
         if self._logits_recorders is None:
-            raise RuntimeError("Build the batch with output_logits=True.")
+            raise RuntimeError(
+                "Build the batch with output_logits=True. A batch from "
+                "Batch.from_contexts records no logits, so read them through "
+                "a logits processor on each context."
+            )
         return [
             np.stack(recorder.logits[: len(tokens)])
             if tokens
@@ -970,10 +1099,14 @@ class Batch:
         come from the unpenalized logits.
 
         Raises:
-            RuntimeError: If the batch was built without ``output_logprobs``.
+            RuntimeError: If the batch was built without ``output_logprobs``,
+                as every :meth:`from_contexts` batch is.
         """
         if self._log_probs is None:
-            raise RuntimeError("Build the batch with output_logprobs > 0.")
+            raise RuntimeError(
+                "Build the batch with output_logprobs > 0. A batch from "
+                "Batch.from_contexts records no log probabilities."
+            )
         return [
             LogProbabilities(
                 token_log_probabilities=log_probs.token_log_probabilities[
