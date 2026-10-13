@@ -625,6 +625,15 @@ This version is still a work in progress.
   for a batch of one unless you pass `--max-batch-size`, since it runs one
   prompt.
 
+- `max generate` now raises an error that gives the `max serve` command to
+  use when you pass `--device-graph-capture` with `--data-parallel-degree`
+  above 1, or when the prompt is over a replica's prefill token budget.
+
+- On AMD GPUs, `max generate` and `AutoModel` now turn off the vendor BLAS
+  matmul fallback, as `max serve` does when it captures device graphs, so they
+  compile the same matmul kernels. Pass `--no-disable-vendor-blas-fallback` or
+  `disable_vendor_blas_fallback=False` to keep the fallback.
+
 ### Python API
 
 - Added `max.experimental.custom.declare`, which declares a custom op's
