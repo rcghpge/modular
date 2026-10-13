@@ -149,8 +149,16 @@ ASTDecl &DeclResolver::createUnlistedDecl(DeclIRValue irValue, SMLoc loc,
                                           LexerCursor cursor,
                                           LexerCursor endCursor,
                                           ssize_t indentation) {
-  ASTDecl *decl = new (shared.persistentAllocator.allocate<ASTDecl>())
-      ASTDecl(shared, irValue, loc, parentDecl, cursor, endCursor, indentation);
+  ASTDecl *decl;
+  if (auto aliasOp =
+          dyn_cast_if_present<AliasDeclOp>(dyn_cast<Operation *>(irValue))) {
+    decl = new (shared.persistentAllocator.allocate<AliasASTDecl>())
+        AliasASTDecl(shared, aliasOp, loc, parentDecl, cursor, endCursor,
+                     indentation);
+  } else {
+    decl = new (shared.persistentAllocator.allocate<ASTDecl>()) ASTDecl(
+        shared, irValue, loc, parentDecl, cursor, endCursor, indentation);
+  }
   parsedDeclList.push_back(decl);
 
   // If this is a declaration which has a TypeCheckErrorType, then all
@@ -171,14 +179,19 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *declOp, SMLoc loc,
                             endCursor, indentation);
 }
 
-WitnessASTDecl &DeclResolver::createUnlistedWitnessDecl(
-    WitnessASTDecl::UnresolvedDecls unresolvedDecls,
-    TraitSymbolAttr traitSymbol, SMLoc loc, ASTDecl *parentDecl,
-    LexerCursor cursor, LexerCursor endCursor, ssize_t indentation) {
+WitnessASTDecl &
+DeclResolver::createWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
+                                TraitSymbolAttr traitSymbol, SMLoc loc,
+                                ASTDecl &traitDecl, StringAttr name) {
+  if (!traitDecl.declsInScope)
+    traitDecl.declsInScope.reset(new ASTDecl::DeclInScopeType());
+
   auto *decl = new (shared.persistentAllocator.allocate<WitnessASTDecl>())
       WitnessASTDecl(shared, std::move(unresolvedDecls), traitSymbol, loc,
-                     parentDecl, cursor, endCursor, indentation);
+                     &traitDecl, LexerCursor(), LexerCursor(),
+                     /*indentation=*/-1);
   parsedDeclList.push_back(decl);
+  (*traitDecl.declsInScope)[name].push_back(decl);
   return *decl;
 }
 
@@ -437,18 +450,8 @@ TraitType DeclResolver::getCanonicalTrait(
 void DeclResolver::attachDeclToTraitCompositionDecl(
     ASTDecl *traitDecl, TraitSymbolAttr witnessFor,
     SmallVector<ASTDecl *> &&childDecl, StringAttr name) {
-  // Lazy allocate declsInScope.
-  if (!traitDecl->declsInScope)
-    traitDecl->declsInScope.reset(new ASTDecl::DeclInScopeType());
-
   auto loc = childDecl.front()->getLoc(); // Just use the first location.
-  ASTDecl *witnessDecl = &createUnlistedWitnessDecl(
-      std::move(childDecl), witnessFor, loc,
-      /*parentDecl=*/traitDecl, LexerCursor(), LexerCursor(),
-      /*indentation=*/-1);
-  witnessDecl->resolvedness = DeclResolvedness::unparsed;
-
-  (*traitDecl->declsInScope)[name].push_back(witnessDecl);
+  createWitnessDecl(std::move(childDecl), witnessFor, loc, *traitDecl, name);
 }
 
 //===----------------------------------------------------------------------===//

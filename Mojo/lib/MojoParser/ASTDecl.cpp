@@ -49,6 +49,17 @@ ASTDecl::ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue,
 
 ASTDecl::~ASTDecl() = default;
 
+AliasASTDecl::AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp,
+                           llvm::SMLoc loc, ASTDecl *parentDecl,
+                           LexerCursor cursor, LexerCursor endCursor,
+                           ssize_t indentation)
+    : ASTDecl(Kind::Alias, shared, aliasOp.getOperation(), loc, parentDecl,
+              cursor, endCursor, indentation) {}
+
+AliasDeclOp AliasASTDecl::getOp() const {
+  return cast_or_null<AliasDeclOp>(getIfOperation());
+}
+
 WitnessASTDecl::WitnessASTDecl(SharedState &shared,
                                UnresolvedDecls unresolvedDecls,
                                TraitSymbolAttr traitSymbol, llvm::SMLoc loc,

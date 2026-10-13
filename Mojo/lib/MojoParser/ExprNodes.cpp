@@ -1487,7 +1487,8 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
                          expr->getRange(), CallSyntax::kDirectCall, {});
 
   // Aliases form a PValue.
-  if (auto param = dyn_cast_or_null<AliasDeclOp>(decl->getIfOperation())) {
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(decl)) {
+    AliasDeclOp param = aliasDecl->getOp();
     PValue result =
         resolveAliasReference(param, spelling, /*bindings=*/{}, loc, emitter);
 
@@ -2000,8 +2001,7 @@ AnyValue emitGetterSetterAccess(const ExprNode *node, ASTExprAnd<CValue> base,
         StringAttr::get(emitter.getContext(), staticGetterName));
     SubscriptNode subscriptNode(&getItemNode, node->getLoc(), exprOperands,
                                 node->getLoc());
-    if (isa_and_nonnull<AliasDeclOp>(
-            staticGetters.getIfSuccess().front()->getIfOperation())) {
+    if (isa<AliasASTDecl>(staticGetters.getIfSuccess().front())) {
       return emitter.emitExpr(&subscriptNode, dest);
     }
 
@@ -2432,16 +2432,16 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   };
 
   // References to an AliasDecl form a PValue.
-  if (isa_and_nonnull<AliasDeclOp>(memberDecls[0]->getIfOperation())) {
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(memberDecls[0])) {
     // Handle accessing an alias in a struct or an extension.
     // Can not be a TraitDeclOp, member lookup should be routed with a TraitType
     // Decl, and should be handled below;
     assert(isa_and_nonnull<StructDeclOp>(typeDeclOp) ||
            isa_and_nonnull<ExtensionDeclOp>(
                memberDecls[0]->getParentDecl()->getIfOperation()));
-    PValue result = resolveAliasReference(
-        cast<AliasDeclOp>(memberDecls[0]->getIfOperation()), spelling,
-        baseRVType.getParamBindings(), getLoc(), emitter);
+    PValue result =
+        resolveAliasReference(aliasDecl->getOp(), spelling,
+                              baseRVType.getParamBindings(), getLoc(), emitter);
     return emitter.emitResult(getParamMemberSugar(result), this, dest);
   } else if (auto *witness = dyn_cast<WitnessASTDecl>(memberDecls[0])) {
     assert(sugarIsa<TraitType>(typeDecl->getIfTypeValue()) &&

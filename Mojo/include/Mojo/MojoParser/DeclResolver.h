@@ -101,11 +101,12 @@ public:
   ASTDecl &createUnlistedDecl(Operation *decl, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
+
+  /// Create a witness declaration and install it in the trait's scope.
   WitnessASTDecl &
-  createUnlistedWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
-                            TraitSymbolAttr traitSymbol, llvm::SMLoc loc,
-                            ASTDecl *parentDecl, LexerCursor cursor,
-                            LexerCursor endCursor, ssize_t indentation);
+  createWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
+                    TraitSymbolAttr traitSymbol, llvm::SMLoc loc,
+                    ASTDecl &traitDecl, StringAttr name);
 
   /// Attach a declaration to its parent's name table.  For use with
   /// `makeUnlistedDecl`.

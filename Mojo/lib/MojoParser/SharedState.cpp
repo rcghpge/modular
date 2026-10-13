@@ -1055,9 +1055,8 @@ ASTDecl *SharedState::lookupNamedTypeDecl(StringRef name, ASTDecl &context,
   if (isa_and_nonnull<StructDeclOp>(firstDecl.getIfOperation()))
     return &firstDecl;
 
-  if (auto aliasDecl =
-          dyn_cast_or_null<AliasDeclOp>(firstDecl.getIfOperation())) {
-    if (LIT::isMetaType(aliasDecl.getType()))
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&firstDecl)) {
+    if (LIT::isMetaType(aliasDecl->getOp().getType()))
       return &firstDecl;
   }
 
@@ -1070,10 +1069,10 @@ static ASTType typeForResolvedTypeDecl(SharedState &state, ASTDecl *decl,
                                        SMLoc loc) {
   if (auto structDecl = dyn_cast_or_null<StructDeclOp>(decl->getIfOperation()))
     return structDecl.bindReference();
-  if (auto aliasDecl = dyn_cast_or_null<AliasDeclOp>(decl->getIfOperation())) {
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(decl)) {
     if (failed(state.declResolver->resolveBody(*decl, loc)))
       return state.getTypeCheckErrorType();
-    return aliasDecl.getValueAttr();
+    return aliasDecl->getOp().getValueAttr();
   }
   return state.getTypeCheckErrorType();
 }
@@ -1814,8 +1813,9 @@ FnTypeGeneratorType SharedState::getClosureFnSig(TraitSymbolAttr closureInst) {
   ParameterEvaluator evaluator = *populateTraitBindingEvaluator(
       closureInst, cast<TraitDeclOp>(traitDecl->getIfOperation()));
 
-  auto callAlias = cast<AliasDeclOp>(
-      traitDecl->lookupInCurrentScope("__call__").front()->getIfOperation());
+  AliasDeclOp callAlias =
+      cast<AliasASTDecl>(traitDecl->lookupInCurrentScope("__call__").front())
+          ->getOp();
   return cast<FnTypeGeneratorType>(evaluator.replace(callAlias.getType()));
 }
 

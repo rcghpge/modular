@@ -36,6 +36,8 @@ class ParamDeclRefAttr;
 
 namespace M::KGEN::LIT {
 class ASTDecl;
+class AliasASTDecl;
+class AliasDeclOp;
 class WitnessASTDecl;
 class StructType;
 class DocStringAttr;
@@ -75,6 +77,7 @@ class ASTDecl {
 public:
   enum class Kind : uint8_t {
     Base,
+    Alias,
     Witness,
   };
 
@@ -531,6 +534,25 @@ private:
   /// this declaration. It may reference parameter declarations from this
   /// ASTDecl or its parent ASTDecls.
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
+};
+
+/// An AST declaration backed by an alias declaration operation.
+class AliasASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Alias;
+  }
+
+  /// Return the alias operation represented by this declaration, or null when
+  /// the declaration is disabled.
+  AliasDeclOp getOp() const;
+
+private:
+  friend class DeclResolver;
+
+  AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp, llvm::SMLoc loc,
+               ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+               ssize_t indentation);
 };
 
 /// A synthesized declaration for a member inherited through trait composition.

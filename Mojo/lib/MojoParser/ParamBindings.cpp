@@ -92,10 +92,10 @@ FnTypeGeneratorType LIT::substituteTraitAliasesIntoSignature(
       declResolver.shared.getParameterEvaluator();
   for (auto &[name, decls] : traitDecl.getDeclsInScope()) {
     for (ASTDecl *decl : decls) {
-      AliasDeclOp traitAlias =
-          dyn_cast_or_null<LIT::AliasDeclOp>(decl->getIfOperation());
-      if (!traitAlias)
+      auto *traitAliasDecl = dyn_cast<AliasASTDecl>(decl);
+      if (!traitAliasDecl)
         continue;
+      AliasDeclOp traitAlias = traitAliasDecl->getOp();
       StringAttr nameStringAttr =
           StringAttr::get(traitDecl.getContext(), name.str());
       TypedAttr aliasRef =

@@ -662,14 +662,13 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
     // If there is no user defined alias nor defaulted alias, raise an error.
     // When there are multiple decls, it can not be an AliasDeclOp either,
     // otherwise we should have already reported "redefinition" error.
-    if (decls.empty() ||
-        !isa_and_nonnull<AliasDeclOp>(decls.front()->getIfOperation())) {
+    if (decls.empty() || !isa<AliasASTDecl>(decls.front())) {
       diag->attachNote(*traitAliasDecl)
           << "required member '" << name.str() << "' is not specified";
       return failure(); // Stop the outer loop.
     }
-    ASTDecl *structAliasDecl = decls.front();
-    auto structAliasDeclOp = cast<AliasDeclOp>(decls.front()->getIfOperation());
+    auto *structAliasDecl = cast<AliasASTDecl>(decls.front());
+    AliasDeclOp structAliasDeclOp = structAliasDecl->getOp();
 
     PValue aliasValue;
     if (!structAliasDeclOp.isDefaultedAssociatedAlias()) {
@@ -825,7 +824,7 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
     assert(traitDecl.getDeclsInScope().front().second.size() == 1);
 
     ASTDecl *decl = traitDecl.getDeclsInScope().front().second.front();
-    auto callAlias = cast<AliasDeclOp>(decl->getIfOperation());
+    AliasDeclOp callAlias = cast<AliasASTDecl>(decl)->getOp();
     auto evaluator = populateTraitBindingEvaluator(parent, shared);
     auto fullSig =
         cast<FnTypeGeneratorType>(evaluator->replace(callAlias.getType()));
@@ -843,9 +842,8 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
             break;
           }
         }
-        if (AliasDeclOp traitAlias =
-                dyn_cast_or_null<LIT::AliasDeclOp>(decl->getIfOperation())) {
-          if (failed(checkAlias(name, decl, traitAlias))) {
+        if (auto *traitAliasDecl = dyn_cast<AliasASTDecl>(decl)) {
+          if (failed(checkAlias(name, decl, traitAliasDecl->getOp()))) {
             allMatchFound = false;
             break;
           }
@@ -1646,8 +1644,8 @@ FailureOr<TypedAttr> LIT::getUniqueWitnessForTypeIfConforms(
   // this function does not properly replace alias mentions with the struct
   // type, but that does not impact any use case since this is only ever called
   // on AnyType and Movable right now.
-  if (auto aliasDecl = dyn_cast_or_null<AliasDeclOp>(entry.getIfOperation())) {
-    resultType = aliasDecl.getType();
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&entry)) {
+    resultType = aliasDecl->getOp().getType();
   } else if (auto fnDecl = dyn_cast_or_null<FnOp>(entry.getIfOperation())) {
     // Ensure the function is signature resolved so we can access the mangled
     // name.

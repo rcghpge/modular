@@ -455,11 +455,12 @@ LogicalResult Decorators::handleDocHidden(ExprNode *expr, ASTDecl &decl) {
   if (!declRef || declRef->spelling != "doc_hidden")
     return failure(); // Not our decorator.
 
-  Operation *op = decl.getIfOperation();
-  if (auto aliasOp = dyn_cast_if_present<AliasDeclOp>(op)) {
+  if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&decl)) {
+    AliasDeclOp aliasOp = aliasDecl->getOp();
     aliasOp.setHasDocHiddenDecoratorAttr(UnitAttr::get(aliasOp.getContext()));
     return success();
   }
+  Operation *op = decl.getIfOperation();
   if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
     fieldOp.setIsDocHiddenAttr(UnitAttr::get(fieldOp.getContext()));
     return success();
@@ -1501,9 +1502,8 @@ static std::optional<AliasDeclOp> getLLVMMetadataNameAlias(SharedState &shared,
         return {};
       }
     }
-    if (auto aliasOp =
-            dyn_cast_or_null<AliasDeclOp>(nameDecls.back()->getIfOperation()))
-      return aliasOp;
+    if (auto *aliasDecl = dyn_cast<AliasASTDecl>(nameDecls.back()))
+      return aliasDecl->getOp();
 
     shared.emitError(funcDecl.getLoc(), "name '")
         << name << "' cannot be used in '@__llvm_metadata'";
@@ -4577,9 +4577,10 @@ ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
         // defaulted alias with the same name, raise an error.
         for (ASTDecl *existingDecl :
              structDecl.lookupInCurrentScope(childName)) {
-          Operation *op = existingDecl->getIfOperation();
-          if (auto existingAlias = dyn_cast_or_null<AliasDeclOp>(op);
-              existingAlias && existingAlias.isDefaultedAssociatedAlias()) {
+          auto *existingAliasDecl = dyn_cast<AliasASTDecl>(existingDecl);
+          if (existingAliasDecl &&
+              existingAliasDecl->getOp().isDefaultedAssociatedAlias()) {
+            AliasDeclOp existingAlias = existingAliasDecl->getOp();
 
             SymbolRefAttr currentTraitRef = getFullyResolvedSymbolRef(
                 existingAlias->getParentOfType<TraitDeclOp>());
@@ -5417,8 +5418,9 @@ ParseResult DeclResolver::resolveSignature(LIT::UnresolvedImportOp op,
 //===----------------------------------------------------------------------===//
 
 ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
-  if (auto alias =
-          dyn_cast<AliasDeclOp>(witness.getDecls().front()->getIfOperation())) {
+  if (auto *firstAliasDecl =
+          dyn_cast<AliasASTDecl>(witness.getDecls().front())) {
+    AliasDeclOp firstAlias = firstAliasDecl->getOp();
     Type mergedType;
     ASTDecl *mergedTypeDecl = nullptr;
 
@@ -5428,7 +5430,7 @@ ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
                          curDecl->getLoc())))
         return failure();
 
-      auto alias = cast<AliasDeclOp>(curDecl->getIfOperation());
+      AliasDeclOp alias = cast<AliasASTDecl>(curDecl)->getOp();
       Type aliasType = alias.getType();
       std::optional<ParameterEvaluator> evaluatorOpt =
           populateTraitBindingEvaluator(witness.traitSymbol, shared);
@@ -5476,7 +5478,7 @@ ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
     // all of them agree on the name, and conformance checking re-verifies the
     // merged bound against each.
     WitnessASTDecl::ResolvedType resolved;
-    resolved.witnessName = alias.getDeclName();
+    resolved.witnessName = firstAlias.getDeclName();
     resolved.witnessType = mergedType;
     witness.storage = resolved;
     return success();

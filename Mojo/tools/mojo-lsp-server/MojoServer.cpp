@@ -1637,7 +1637,7 @@ getSemanticTokenKind(MojoASTDeclRef symDecl,
 
   switch (*declKind) {
   case PublicDeclKind::DK_PublicAliasDecl: {
-    auto aliasOp = cast<AliasDeclOp>(symDecl->getIfOperation());
+    AliasDeclOp aliasOp = cast<AliasASTDecl>(&*symDecl)->getOp();
     if (Attribute aliasValue = aliasOp.getValueAttr()) {
       // Try to decipher a token kind from the alias value.
       if (isa<ModuleAttr>(aliasValue))
