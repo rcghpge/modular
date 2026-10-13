@@ -912,6 +912,10 @@ HEAD
 
 ## Breaking changes
 
+- Removed the `DeviceQueue` overloads of `max.driver.Buffer.to()` and
+  `Buffer.copy()`. Pass a `Device` (or, for `to()`, a sequence of devices)
+  instead: `buffer.to(device)` and `buffer.copy(device=device)`.
+
 - DSpark speculative decoding now has its own method: serve a DSpark draft
   with `--speculative-method dspark` instead of `dflash`. DSpark drafts a
   block at a time like DFlash but runs a different draft step, so a DSpark
