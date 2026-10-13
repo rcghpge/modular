@@ -384,8 +384,7 @@ def non_max_suppression[
                 )
 
             @inline(.always)
-            @__parameter
-            def sorted() -> Bool:
+            def sorted() {imm} -> Bool:
                 for i in range(len(box_idxs) - 1):
                     if (
                         per_class_scores[Int(box_idxs[i])]
