@@ -638,7 +638,7 @@ alias(
         "//AsyncRT:__subpackages__",
         "//GraphCompiler:__subpackages__",
         "//MLRT:__subpackages__",
-        "//max/python/max/_core/mcl:__subpackages__",
+        "//max/python/max/_core/max_license:__subpackages__",
         "//plugins:__subpackages__",
     ],
 )
@@ -665,7 +665,7 @@ mojo_shared_library(
     # under the HAL branch. No single configuration closes that loop, yet it is
     # a cycle in the unconfigured graph that `bazel query` reports.
     deps = [
-        "//max/driver/src/mcl:max",
+        "//max/driver/src/max_license:max",
         "@mojo//:std",
     ],
 )
@@ -819,7 +819,7 @@ modular_cc_library(
         "//Kernels:__subpackages__",
         "//MLRT:__subpackages__",
         "//Mojo:__subpackages__",
-        "//max/python/max/_core/mcl:__subpackages__",
+        "//max/python/max/_core/max_license:__subpackages__",
     ],
     deps = [
         ":Driver/CompilationDeviceImpl",
