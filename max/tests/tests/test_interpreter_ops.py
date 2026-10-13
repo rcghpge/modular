@@ -7697,7 +7697,11 @@ class TestRoiAlignOp:
         ids=["f32", "f16", "bf16", "f32-max", "f32-aligned"],
     )
     def test_gpu_keeps_output_resident(
-        self, dtype: DType, aligned: bool, mode: str
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        dtype: DType,
+        aligned: bool,
+        mode: str,
     ) -> None:
         """GPU eager roi_align keeps the output on the input device.
 
@@ -7705,6 +7709,10 @@ class TestRoiAlignOp:
         the input device, the four numeric scalars stay host-side. The result
         must come back GPU-resident and match the CPU reference.
         """
+        monkeypatch.setenv(
+            _eager_policy.ALLOW_LAZY_COMPILE_ENV_VAR,
+            "1",
+        )
         device = Accelerator()
 
         if dtype == DType.bfloat16:
