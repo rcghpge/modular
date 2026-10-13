@@ -1407,7 +1407,6 @@ def _matmul_gpu_impl[
                                 block_m_override=block_m,
                                 block_n_override=block_n,
                                 block_k_override=block_k,
-                                elementwise_lambda_fn=elementwise_lambda_wrapper,
                             ](a, b, c, ctx, workspace=workspace)
                         _ = workspace^
 
@@ -1439,7 +1438,6 @@ def _matmul_gpu_impl[
                                 block_m_override=block_m,
                                 block_n_override=block_n,
                                 block_k_override=block_k,
-                                elementwise_lambda_fn=elementwise_lambda_wrapper,
                             ](a, b, c, ctx)
 
                     comptime if (
