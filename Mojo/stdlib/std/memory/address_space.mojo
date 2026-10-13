@@ -127,8 +127,8 @@ struct AddressSpace(
             `name` must be defined by the active `PluginHooks` backend;
             otherwise this is a compile-time error.
         """
-        comptime if CurrentPlugin.address_space_fn[name]:
-            return CurrentPlugin.address_space_fn[name].value()
+        comptime if case .Some(space) = CurrentPlugin.address_space_fn[name]:
+            return space
         else:
             comptime assert False, "unknown address space: '" + name + "'"
 

@@ -1343,8 +1343,7 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
         ).cast[accum_type]()
         accum = accum * a_scale * b_scale
 
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
+    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
         elementwise_lambda[c_type, 1]((Int(m_global), n), accum.cast[c_type]())
     else:
         var c_by_expert = c.ptr + Int64(a_start_row) * Int64(N)

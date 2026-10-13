@@ -4488,7 +4488,7 @@ struct PagedKVCacheCollection[
             self.kv_cache_scales_dynamic_shape, self.kv_cache_scales_dynamic_strides = _compute_kv_cache_dynamic_shape_strides[
                 4, [1, 2]
             ](
-                self.scales.value(), scales_page_stride
+                scales, scales_page_stride
             )
         else:
             self.scales = None

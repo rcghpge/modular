@@ -417,8 +417,7 @@ def _reduce_output[
 
         vectorize[simd_size, unroll_factor=4](reduce_range[1] * F, sum)
 
-        comptime if elementwise_epilogue:
-            comptime epilogue = elementwise_epilogue.value()
+        comptime if case .Some(epilogue) = elementwise_epilogue:
             for m in range(reduce_range[0], reduce_range[0] + reduce_range[1]):
                 var nhowo = _m_to_n_ho_wo_nhwc(
                     m, output_space_dims[0], output_space_dims[1]
@@ -3670,8 +3669,7 @@ def conv2d_gpu_naive_nhwc_rscf[
                             ]()
                         )
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_func = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
             epilogue_func(
                 (n, h, w, co),
                 value.cast[output_type](),
@@ -4693,10 +4691,9 @@ def _conv_miopen[
     num_groups: Int,
     ctx: DeviceContext,
 ) raises:
-    comptime if maybe_epilogue_func:
+    comptime if case .Some(epilogue) = maybe_epilogue_func:
         # MIOpen doesn't support epilogues. Compute to temp buffer,
         # then apply epilogue.
-        comptime epilogue = maybe_epilogue_func.value()
         var output_tmp_data = ctx.enqueue_create_buffer[output_type](
             output.num_elements()
         )
@@ -5038,12 +5035,11 @@ def conv_gpu[
                         beta,
                     )
 
-                comptime if maybe_epilogue_func:
+                comptime if case .Some(epilogue) = maybe_epilogue_func:
                     # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                     # void epilogue for the SM100 kernel. The kernel
                     # calls this with (m, n) coords where
                     # m = batch*H_out*W_out + h*W_out + w, n = channel.
-                    comptime epilogue = maybe_epilogue_func.value()
                     var out_h = Int(output.dim[1]())
                     var out_w = Int(output.dim[2]())
                     var hw = out_h * out_w
@@ -5376,13 +5372,12 @@ def conv_gpu[
                 _ = host_mio^
                 _ = host_src^
 
-            comptime if maybe_epilogue_func:
+            comptime if case .Some(_amd_4wave_epi) = maybe_epilogue_func:
                 # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                 # epilogue for the AMD 4-wave kernel. The kernel calls
                 # this with (m, n) coords where
                 # `m = batch*H_out*W_out + h*W_out + w` and `n = channel`.
                 # Mirrors the SM100 wrapper just above.
-                comptime _amd_4wave_epi = maybe_epilogue_func.value()
                 var _amd_4wave_out_h = Int(output.dim[1]())
                 var _amd_4wave_out_w = Int(output.dim[2]())
                 var _amd_4wave_hw = _amd_4wave_out_h * _amd_4wave_out_w
@@ -5476,8 +5471,7 @@ def conv_gpu[
                 )
             )
 
-            comptime if maybe_epilogue_func:
-                comptime epilogue = maybe_epilogue_func.value()
+            comptime if case .Some(epilogue) = maybe_epilogue_func:
                 var output_tmp_data = ctx.enqueue_create_buffer[output_type](
                     output.num_elements()
                 )
@@ -5629,8 +5623,7 @@ def conv_gpu[
                 # void epilogue for the 4-wave kernel. The kernel
                 # calls this with (m, n) coords where m flattens
                 # batch*d*h*w and n is the channel.
-                comptime if maybe_epilogue_func:
-                    comptime _amd_3d_epi_5d = maybe_epilogue_func.value()
+                comptime if case .Some(_amd_3d_epi_5d) = maybe_epilogue_func:
                     var _amd_3d_D_out = Int(output.dim[1]())
                     var _amd_3d_H_out = Int(output.dim[2]())
                     var _amd_3d_W_out = Int(output.dim[3]())
@@ -5896,8 +5889,7 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 
         var value = simd_value.reduce_add() + scalar_value
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_func = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
             epilogue_func(
                 (n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),

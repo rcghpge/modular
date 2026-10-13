@@ -2084,11 +2084,10 @@ struct CPython(Defaultable, Movable):
         # instance.
         var maybe_ptr = self.lib.get_symbol[PyObjectPtr](global_name)
 
-        if not maybe_ptr:
-            abort(t"error: symbol `{global_name}` not found in CPython library")
+        if case .Some(ptr) = maybe_ptr:
+            return ptr[]
         else:
-            # SAFETY: maybe_ptr is checked above
-            return maybe_ptr.unsafe_value()[]
+            abort(t"error: symbol `{global_name}` not found in CPython library")
 
     # ===-------------------------------------------------------------------===#
     # Python/C API

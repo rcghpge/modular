@@ -168,8 +168,7 @@ def fp4_gemv_kernel[
     if lid == 0:
         var y = dot.cast[c_type]()
 
-        comptime if elementwise_lambda_fn:
-            comptime epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(epilogue) = elementwise_lambda_fn:
             epilogue[c_type, 1]((0, n_idx), y)
         else:
             c.store[width=1](Coord(0, n_idx), y)

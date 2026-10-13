@@ -374,8 +374,7 @@ def apple_gemv[
 
             var val = acc_vector.reduce_add() + acc_scalar
 
-            comptime if elementwise_lambda_fn:
-                comptime func = elementwise_lambda_fn.value()
+            comptime if case .Some(func) = elementwise_lambda_fn:
                 func[c.dtype, 1]((0, n), val)
             else:
                 c.store[width=1](Coord(Idx[0], n), val)
@@ -454,10 +453,9 @@ def apple_matmul[
         rebind[UnsafePointer[Float32, ImmutAnyOrigin]](b.ptr),
     )
 
-    comptime if elementwise_lambda_fn:
+    comptime if case .Some(epilogue) = elementwise_lambda_fn:
         var m = Int(c.dim[0]())
         var n = Int(c.dim[1]())
-        comptime epilogue = elementwise_lambda_fn.value()
         comptime simd_size = simd_width_of[c.dtype]()
 
         @inline(.always)

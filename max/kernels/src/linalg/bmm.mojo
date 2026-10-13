@@ -393,11 +393,10 @@ def _batched_matmul_cpu[
                 # the caller provided the elementwise epilogue def over the original
                 # buffer rank, not the collapsed buffer rank
                 # so un-collapse the batch dims here
-                comptime if elementwise_epilogue_fn:
+                comptime if case .Some(func) = elementwise_epilogue_fn:
                     batch_coords[rank - 1] = Int(out_coords[1].value())
                     batch_coords[rank - 2] = Int(out_coords[0].value())
 
-                    comptime func = elementwise_epilogue_fn.value()
                     func[c_type, width](Coord(batch_coords), out_val)
 
             var sub_matmul_config = get_partitioned_matmul[
@@ -534,8 +533,7 @@ def naive_batched_matmul_kernel[
         var b_val = b_tensor[z, x, ki] if transpose_b else b_tensor[z, ki, x]
         val += a_tensor[z, y, ki].cast[accum_type]() * b_val.cast[accum_type]()
 
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
+    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
         var nd_corrds = _get_start_indices_of_nth_subvolume[2](
             z, c_buff_nd_shape
         )
@@ -640,8 +638,7 @@ def batched_matmul_kernel_gpu[
         comptime assert (
             out_coords.rank == 2
         ), "the matmul epilogue contract is rank 2"
-        comptime if elementwise_lambda_fn:
-            comptime elementwise_epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(elementwise_epilogue) = elementwise_lambda_fn:
             var nd_coords = _get_start_indices_of_nth_subvolume[2](
                 block_idx.z, c_buff_nd_shape
             )
@@ -744,8 +741,7 @@ def _batched_matmul_gpu[
                 ),
             )
 
-            comptime if elementwise_epilogue_fn:
-                comptime elementwise_epilogue = elementwise_epilogue_fn.value()
+            comptime if case .Some(epilogue) = elementwise_epilogue_fn:
 
                 @__parameter
                 @__copy_capture(c_buf)
@@ -760,7 +756,7 @@ def _batched_matmul_gpu[
                     batch_coords[rank - 1] = Int(out_coords[1].value())
                     batch_coords[rank - 2] = Int(out_coords[0].value())
 
-                    elementwise_epilogue(Coord(batch_coords), val)
+                    epilogue(Coord(batch_coords), val)
 
                 _matmul_gpu[
                     transpose_b=transpose_b,
@@ -804,8 +800,7 @@ def _batched_matmul_gpu[
                 ctx,
             )
 
-            comptime if elementwise_epilogue_fn:
-                comptime epilogue = elementwise_epilogue_fn.value()
+            comptime if case .Some(epilogue) = elementwise_epilogue_fn:
                 # SM100+ supports 32B load/store to global memory.
                 comptime simd_size = 32 // size_of[c_type]()
 
@@ -1177,8 +1172,7 @@ def _bmm_sm100_blockwise_scaled_fp8_kernel[
         comptime assert (
             out_coords.rank == 2
         ), "the matmul epilogue contract is rank 2"
-        comptime if elementwise_lambda_fn:
-            comptime elementwise_epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(elementwise_epilogue) = elementwise_lambda_fn:
             elementwise_epilogue(
                 (block_idx.z, out_coords[0], out_coords[1]), val
             )

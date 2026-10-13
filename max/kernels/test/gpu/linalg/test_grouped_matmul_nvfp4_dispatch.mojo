@@ -560,14 +560,14 @@ def test_tuned_stages() raises:
     """Pins the stage lookup: tuned rows, the decode default, and auto."""
     # An untuned decode shape, and the decode rows the default replaced.
     assert_equal(
-        _tuned_stages[1856, 2688, DECODE_AVG_M]().value(),
-        DECODE_DEFAULT_STAGES,
+        _tuned_stages[1856, 2688, DECODE_AVG_M](),
+        Optional(DECODE_DEFAULT_STAGES),
     )
-    assert_equal(_tuned_stages[4096, 7168, DECODE_AVG_M]().value(), 6)
-    assert_equal(_tuned_stages[7168, 2048, DECODE_AVG_M]().value(), 6)
-    assert_equal(_tuned_stages[2048, 4096, DECODE_AVG_M]().value(), 6)
+    assert_equal(_tuned_stages[4096, 7168, DECODE_AVG_M](), Optional(6))
+    assert_equal(_tuned_stages[7168, 2048, DECODE_AVG_M](), Optional(6))
+    assert_equal(_tuned_stages[2048, 4096, DECODE_AVG_M](), Optional(6))
     # Tuned prefill rows, and auto stages for untuned prefill.
-    assert_equal(_tuned_stages[4096, 7168, -1]().value(), 7)
+    assert_equal(_tuned_stages[4096, 7168, -1](), Optional(7))
     assert_false(Bool(_tuned_stages[1856, 2688, SMALL_PREFILL_AVG_M]()))
     assert_false(Bool(_tuned_stages[2048, 4096, -1]()))
 

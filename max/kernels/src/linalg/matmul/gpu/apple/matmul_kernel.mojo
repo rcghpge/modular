@@ -1824,8 +1824,7 @@ struct AppleM5MatMul[
             acc += partials_ptr[s * mn + idx]
 
         var y = acc.cast[Self.c_type]()
-        comptime if Self.elementwise_lambda_fn:
-            comptime epilogue = Self.elementwise_lambda_fn.value()
+        comptime if case .Some(epilogue) = Self.elementwise_lambda_fn:
             var row, col = divmod(idx, n)
             epilogue[Self.c_type, 1]((row, col), SIMD[Self.c_type, 1](y))
         else:

@@ -2337,9 +2337,9 @@ def _grouped_matmul_sm100_persistent[
         max_pipeline_stages >= 1
     ), "Max pipeline stages must be at least 1"
 
-    comptime if num_pipeline_stages:
+    comptime if case .Some(stages) = num_pipeline_stages:
         comptime assert (
-            num_pipeline_stages.value() <= max_pipeline_stages
+            stages <= max_pipeline_stages
         ), "Pipeline stage must be less than or equal to max pipeline stages"
 
     comptime pipeline_stage = num_pipeline_stages.or_else(max_pipeline_stages)

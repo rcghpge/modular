@@ -258,8 +258,7 @@ def matmul_kernel[
     )
 
     if row < m and col < n:
-        comptime if elementwise_lambda_fn:
-            comptime elementwise_lambda = elementwise_lambda_fn.value()
+        comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
             elementwise_lambda[c_type, 1]((row, col), result.cast[c_type]())
         else:
             c[row, col] = result.cast[c_type]()
@@ -735,8 +734,7 @@ def _matmul_gpu[
     """
     # Kernels that take epilogue values get the lambda forwarded through a
     # value; the lambda itself still reaches the Apple and RDNA ones.
-    comptime if elementwise_compute_lambda_fn:
-        comptime compute_lambda = elementwise_compute_lambda_fn.value()
+    comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
 
         def compute_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int
@@ -753,8 +751,7 @@ def _matmul_gpu[
             has_epilogue_fn=False,
             has_compute_fn=True,
         ](c, a, b, no_epilogue_fn, compute_fn, ctx)
-    elif elementwise_lambda_fn:
-        comptime store_lambda = elementwise_lambda_fn.value()
+    elif case .Some(store_lambda) = elementwise_lambda_fn:
 
         def epilogue_fn[
             dtype: DType, width: SIMDLength, *, alignment: Int
@@ -953,8 +950,7 @@ def _matmul_gpu_impl[
         comptime assert (
             coords.rank == 2
         ), "the matmul epilogue contract is rank 2"
-        comptime if elementwise_compute_lambda_fn:
-            comptime compute_lambda = elementwise_compute_lambda_fn.value()
+        comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
             var output = compute_lambda(coords, val)
             comptime assert (
                 output.dtype == c_type

@@ -736,8 +736,7 @@ def gather_elementwise_fn_wrapper[
                 data_indices.replace_dynamic[i](Int64(coords[i].value()))
 
     # Load the data.
-    comptime if prefetch_fn:
-        comptime func = prefetch_fn.value()
+    comptime if case .Some(func) = prefetch_fn:
         func(data_indices, indices_index)
     var data = input_fn[simd_width, element_alignment](data_indices)
 
@@ -1225,8 +1224,7 @@ def scatter_nd_generator[
                     output_offset + output_strides[i] * output_index_tensor[i]
                 )
 
-            comptime if atomic_update_fn:
-                comptime atomic_update = atomic_update_fn.value()
+            comptime if case .Some(atomic_update) = atomic_update_fn:
                 for i in range(count_copy):
                     atomic_update(
                         output_flat.ptr.unsafe_offset(output_offset + i),
@@ -1307,8 +1305,7 @@ def scatter_nd_generator[
                 width=simd_width, alignment=access_alignment
             ](Coord(updates_base + elem))
 
-            comptime if atomic_update_fn:
-                comptime atomic_update = atomic_update_fn.value()
+            comptime if case .Some(atomic_update) = atomic_update_fn:
                 comptime for lane in range(simd_width):
                     atomic_update(
                         output_flat.ptr.unsafe_offset(
@@ -1636,8 +1633,7 @@ def scatter_elements[
         )
         var update_val = updates.to_tile_tensor()[indices_coords]
 
-        comptime if atomic_update_fn:
-            comptime atomic_update = atomic_update_fn.value()
+        comptime if case .Some(atomic_update) = atomic_update_fn:
             var output_tt = output.to_tile_tensor()
             var output_offset = 0
             for i in range(rank):

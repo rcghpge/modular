@@ -673,10 +673,10 @@ struct Trace[
             self._name_value = _name_value^
             self.detail = detail
 
-            comptime if Self.target:
+            comptime if case .Some(target_name) = Self.target:
                 if self.detail:
                     self.detail += ";"
-                self.detail += String("target=", Self.target.value())
+                self.detail += String("target=", target_name)
             self.int_payload = task_id
         else:
             self._name_value = _name_value^

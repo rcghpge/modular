@@ -483,7 +483,7 @@ def conv2d_kernel_rdna[
                 )
 
                 if global_row < _M and global_col < _N:
-                    comptime if elementwise_lambda_fn:
+                    comptime if case .Some(epilogue) = elementwise_lambda_fn:
                         comptime elementwise_lambda = (
                             elementwise_lambda_fn.value()
                         )

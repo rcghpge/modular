@@ -444,7 +444,7 @@ def _colorize_diff_string[color: Color](s: String, other: String) -> String:
     var other_codepoints = other.codepoints()
     for s_codepoint in s.codepoints():
         var other_codepoint = other_codepoints.next()
-        if other_codepoint and s_codepoint == other_codepoint.value():
+        if other_codepoint == Optional(s_codepoint):
             # Codepoints match - no color
             result.append(s_codepoint)
         else:

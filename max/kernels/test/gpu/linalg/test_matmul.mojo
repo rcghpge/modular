@@ -189,17 +189,15 @@ def test[
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var update_val: SIMD[_dtype, width] = val
 
-        comptime if lambda_fn:
-            comptime func = lambda_fn.value()
+        comptime if case .Some(func) = lambda_fn:
             var il = rebind[IndexList[2]](coord_to_index_list(idx))
             update_val = func(il, (m, n), update_val)
         c_device.store[alignment=alignment * size_of[dtype]()](
             idx, rebind[SIMD[dtype, width]](update_val)
         )
 
-    comptime if lambda_fn:
-        comptime if config:
-            comptime func = lambda_fn.value()
+    comptime if case .Some(func) = lambda_fn:
+        comptime if case .Some(cfg) = config:
 
             def compute_fn[
                 _dtype: DType, width: SIMDLength, *, alignment: Int
@@ -217,7 +215,7 @@ def test[
 
             multistage_gemm[
                 transpose_b=transpose_b,
-                config=config.value(),
+                config=cfg,
             ](
                 c_device,
                 a_device,
@@ -237,10 +235,10 @@ def test[
                 ctx,
             )
     else:
-        comptime if config:
+        comptime if case .Some(cfg) = config:
             multistage_gemm[
                 transpose_b=transpose_b,
-                config=config.value(),
+                config=cfg,
             ](
                 c_device,
                 a_device,
@@ -277,8 +275,7 @@ def test[
 
         var update_val = val
 
-        comptime if lambda_fn:
-            comptime element_lambda = lambda_fn.value()
+        comptime if case .Some(element_lambda) = lambda_fn:
             update_val = element_lambda(
                 rebind[IndexList[2]](coord_to_index_list(idx0)), (m, n), val
             )

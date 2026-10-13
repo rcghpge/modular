@@ -377,8 +377,7 @@ def dispatch_qslice_conv3d_sm100[
     comptime final_block = 256
     var final_grid = ceildiv(output_elems // output_simd_width, final_block)
 
-    comptime if maybe_epilogue_func:
-        comptime epilogue_5d = maybe_epilogue_func.value()
+    comptime if case .Some(epilogue_5d) = maybe_epilogue_func:
         comptime output_kernel = _fp32_to_dtype_epilogue_kernel[
             output_type, C_out, epilogue_5d, output_simd_width
         ]

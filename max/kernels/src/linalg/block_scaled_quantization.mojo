@@ -849,8 +849,7 @@ def naive_block_scaled_matmul_kernel[
 
     accum *= alpha.cast[accum_type]()
 
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
+    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
         elementwise_lambda[c_type, 1]((row_idx, col_idx), accum.cast[c_type]())
     else:
         c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
@@ -2041,20 +2040,7 @@ def block_scaled_matmul_with_epilogue[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(ctx),
     ):
-        comptime if not elementwise_lambda_fn:
-            matmul[scales_type=scales_dtype](
-                ctx,
-                c,
-                a,
-                b,
-                a_scales=a_scales,
-                b_scales=b_scales,
-                transpose_b=True,
-                c_row_major=True,
-                alpha=tensor_sf,
-            )
-        else:
-            comptime epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(epilogue) = elementwise_lambda_fn:
             # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
             comptime use_32b_simd = True
             comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
@@ -2079,6 +2065,18 @@ def block_scaled_matmul_with_epilogue[
                 c_row_major=True,
             )
             elementwise[simd_size, target="gpu"](epilogue_wrapper, (m, n), ctx)
+        else:
+            matmul[scales_type=scales_dtype](
+                ctx,
+                c,
+                a,
+                b,
+                a_scales=a_scales,
+                b_scales=b_scales,
+                transpose_b=True,
+                c_row_major=True,
+                alpha=tensor_sf,
+            )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2251,8 +2249,7 @@ def block_scaled_matmul[
         comptime assert (
             coords.rank == 2
         ), "the matmul epilogue contract is rank 2"
-        comptime if elementwise_compute_lambda_fn:
-            comptime compute_lambda = elementwise_compute_lambda_fn.value()
+        comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
             var output = compute_lambda(coords, val)
             comptime assert (
                 output.dtype == c_type

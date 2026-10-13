@@ -1786,8 +1786,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
     var MAT_B_ROWS_SCALE_SIZE: Int
     var MAT_B_COLS_SCALE_SIZE: Int
 
-    comptime if scales_granularity_mnk:
-        comptime scales_granularity = scales_granularity_mnk.value()
+    comptime if case .Some(scales_granularity) = scales_granularity_mnk:
         MAT_A_ROWS_SCALE_SIZE = scales_granularity[2]
         MAT_A_COLS_SCALE_SIZE = scales_granularity[0]
         MAT_B_ROWS_SCALE_SIZE = scales_granularity[
@@ -1856,8 +1855,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
 
         accum += a_val * b_val * a_scale_factor * b_scale_factor
 
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
+    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
         elementwise_lambda[c_type, 1]((x, y), accum.cast[c_type]())
     else:
         c.store_linear(Index(x, y), accum.cast[c_type]())
@@ -2056,8 +2054,7 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
     var MAT_B_ROWS_SCALE_SIZE: Int
     var MAT_B_COLS_SCALE_SIZE: Int
 
-    comptime if scales_granularity_mnk:
-        comptime scales_granularity = scales_granularity_mnk.value()
+    comptime if case .Some(scales_granularity) = scales_granularity_mnk:
         MAT_A_ROWS_SCALE_SIZE = scales_granularity[2]
         MAT_A_COLS_SCALE_SIZE = scales_granularity[0]
         MAT_B_ROWS_SCALE_SIZE = scales_granularity[1]
@@ -2100,8 +2097,7 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
             ).cast[accum_type]()
             accum += a_val * b_val * a_scale * b_scale
 
-    comptime if elementwise_lambda_fn:
-        comptime ep = elementwise_lambda_fn.value()
+    comptime if case .Some(ep) = elementwise_lambda_fn:
         ep[c_type, 1]((a_start_row + m_local, n), accum.cast[c_type]())
     else:
         var c_ptr = c.ptr + a_start_row * N
@@ -2285,16 +2281,7 @@ def blockwise_scaled_fp8_with_epilogue[
             gemm_kind=GEMMKind.BLOCK_SCALED_1D2D_FP8,
         )
 
-        comptime if not elementwise_lambda_fn:
-            blockwise_fp8_matmul[
-                transpose_b=transpose_b,
-                a_scales_type=a_scales_type,
-                b_scales_type=b_scales_type,
-                config=matmul_config,
-                n_scale_granularity=scales_granularity_mnk[1],
-            ](c, a, b, a_scales, b_scales, ctx)
-        else:
-            comptime epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(epilogue) = elementwise_lambda_fn:
             # We hardcode simd width to 16B for Nvidia GPUs but >= sm_100
             # arch support 32B load/store to global memory, see KERN-2037.
             comptime use_32b_simd = (
@@ -2324,6 +2311,14 @@ def blockwise_scaled_fp8_with_epilogue[
             elementwise[simd_size, target="gpu"](
                 epilogue_wrapper, Coord(m, n), ctx
             )
+        else:
+            blockwise_fp8_matmul[
+                transpose_b=transpose_b,
+                a_scales_type=a_scales_type,
+                b_scales_type=b_scales_type,
+                config=matmul_config,
+                n_scale_granularity=scales_granularity_mnk[1],
+            ](c, a, b, a_scales, b_scales, ctx)
 
     else:
         # AMD gfx950: tiled MFMA blockwise-FP8 dense matmul for the GLM E4M3 +

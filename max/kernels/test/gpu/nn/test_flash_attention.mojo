@@ -404,9 +404,7 @@ def test_decoding[
         ](1, 11, ctx, use_index_input=use_index_input)
 
         comptime if (
-            not is_sm8(ctx.default_device_info)
-            or num_partitions
-            and num_partitions.value() == 1
+            not is_sm8(ctx.default_device_info) or num_partitions == Optional(1)
         ):
             test[
                 qkv_type,

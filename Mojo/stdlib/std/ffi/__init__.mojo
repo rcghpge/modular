@@ -1078,9 +1078,9 @@ struct _Global[
             Self.name, Self._init_wrapper, Self._deinit_wrapper
         ]()
 
-        comptime if Self.on_error_msg:
+        comptime if case .Some(on_error_msg) = Self.on_error_msg:
             if not ptr:
-                raise Self.on_error_msg.value()()
+                raise on_error_msg()
 
         return unsafe_cast[Type=Self.StorageType](ptr).value()
 
@@ -1106,9 +1106,9 @@ struct _Global[
             Self._deinit_wrapper,
         )
 
-        comptime if Self.on_error_msg:
+        comptime if case .Some(on_error_msg) = Self.on_error_msg:
             if not ptr:
-                raise Self.on_error_msg.value()()
+                raise on_error_msg()
 
         return unsafe_cast[Type=Self.StorageType](ptr).value()
 

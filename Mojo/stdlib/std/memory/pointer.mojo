@@ -1274,10 +1274,8 @@ struct Pointer[
         ```
         """
         comptime alignment = align_of[Self.T]()
-        comptime if CurrentPlugin.unsafe_dangling_fn:
-            comptime address = CurrentPlugin.unsafe_dangling_fn.value()[
-                alignment
-            ]()
+        comptime if case .Some(dangling_fn) = CurrentPlugin.unsafe_dangling_fn:
+            comptime address = dangling_fn[alignment]()
             comptime assert (
                 address != 0
             ), "Pointer cannot be constructed with address 0"

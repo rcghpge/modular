@@ -984,8 +984,7 @@ struct TileWriter[
         c_shape: Tuple[UInt32, UInt32],
     ):
         """TMEM → Registers → SMEM → GMEM pipeline (2D coords)."""
-        comptime if Self.elementwise_lambda_fn:
-            comptime elementwise_lambda = Self.elementwise_lambda_fn.value()
+        comptime if case .Some(elementwise_lambda) = Self.elementwise_lambda_fn:
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
@@ -1013,8 +1012,7 @@ struct TileWriter[
         If elementwise epilogue function is provided, it will be used to write the results to global memory.
         Otherwise, the results will be written to global memory using the standard TMA based pipeline.
         """
-        comptime if Self.elementwise_lambda_fn:
-            comptime elementwise_lambda = Self.elementwise_lambda_fn.value()
+        comptime if case .Some(elementwise_lambda) = Self.elementwise_lambda_fn:
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
@@ -1310,17 +1308,12 @@ struct TileWriter[
         batch_idx: UInt32 = 0,
     ):
         """Run the unified pipeline with `elementwise_compute_lambda_fn`."""
-        comptime if Self.elementwise_compute_lambda_fn:
-            comptime compute_lambda_fn = (
-                Self.elementwise_compute_lambda_fn.value()
-            )
+        comptime if case .Some(compute_fn) = Self.elementwise_compute_lambda_fn:
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
             ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-                return compute_lambda_fn[dtype, width, alignment=alignment](
-                    idx, val
-                )
+                return compute_fn[dtype, width, alignment=alignment](idx, val)
 
             self._copy_to_gmem_impl[has_compute_fn=True](
                 c_tiles,
@@ -2745,7 +2738,7 @@ struct TileWriter[
             # lambda owns the GMEM write (post-residual contract — see
             # `nn/conv/gpu/amd/amd_4wave_conv_residual.mojo` for the matching
             # AMD path); otherwise stage to SMEM and TMA-store.
-            comptime if Self.elementwise_lambda_fn:
+            comptime if case .Some(epilogue) = Self.elementwise_lambda_fn:
                 # Cast fragments from epilogue_dtype to c_type. Chunked by
                 # 4 bytes to match the hardware cvt instruction width.
                 comptime cast_width = 4 // size_of[Scalar[Self.c_type]]()
@@ -2765,16 +2758,10 @@ struct TileWriter[
                         upper_simd[offset + _j] = dst_u[_j]
                         lower_simd[offset + _j] = dst_l[_j]
 
-                comptime elementwise_lambda = (
-                    Self.elementwise_lambda_fn.value()
-                )
-
                 def forward[
                     dtype: DType, width: SIMDLength, *, alignment: Int
                 ](idx: Coord, val: SIMD[dtype, width]):
-                    elementwise_lambda[dtype, width, alignment=alignment](
-                        idx, val
-                    )
+                    epilogue[dtype, width, alignment=alignment](idx, val)
 
                 epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
                     Self.c_type,

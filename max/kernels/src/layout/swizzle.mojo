@@ -553,9 +553,10 @@ struct ComposedLayout[offset: Optional[Int] = 0](Copyable):
             layout_a: The base layout.
             layout_b: The swizzle.
         """
-        comptime assert (
-            not Self.offset or Self.offset.value() >= 0
-        ), "Requires non-negative offset if present"
+        comptime if case .Some(offset) = Self.offset:
+            comptime assert (
+                offset >= 0
+            ), "Requires non-negative offset if present"
         self.layout_a = layout_a^
         self.layout_b = layout_b
 

@@ -292,12 +292,12 @@ def test_matmul_sm90[
                     (i, j), c_host_ref[i * N + j]
                 )
 
-    comptime if measure_threshold:
+    comptime if case .Some(threshold) = measure_threshold:
         assert_with_measure[relative_difference](
             c_host,
             c_host_ref,
             c_size,
-            threshold=measure_threshold.value(),
+            threshold=threshold,
         )
 
     comptime rtol = 1e-2

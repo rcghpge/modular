@@ -444,11 +444,11 @@ def fused_qk_rope_ragged[
                 comptime PIdTensor = type_of(position_ids)
                 comptime assert PIdTensor.flat_rank == 2
 
-                comptime if mrope_section:
+                comptime if case .Some(sections) = mrope_section:
                     var section_idx = 0
 
-                    comptime for i in range(len(mrope_section.value())):
-                        comptime val = Int(mrope_section.value()[i].value())
+                    comptime for i in range(len(sections)):
+                        comptime val = Int(sections[i].value())
                         if head_dim_idx < val:
                             section_idx = i
                             break
@@ -536,10 +536,10 @@ def fused_qk_rope_ragged[
     )
     comptime kernel_simd_width = gcd(target_simd_width, rope_dim)
 
-    comptime if mrope_section:
-        comptime for i in range(len(mrope_section.value())):
+    comptime if case .Some(sections) = mrope_section:
+        comptime for i in range(len(sections)):
             comptime assert (
-                Int(mrope_section.value()[i].value()) % kernel_simd_width == 0
+                Int(sections[i].value()) % kernel_simd_width == 0
             ), "mrope_section must be divisible by rope kernel simd_width"
 
     comptime assert kernel_simd_width >= 2, "invalid simd_width and head size"

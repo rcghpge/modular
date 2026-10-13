@@ -3042,8 +3042,7 @@ def gemv[
     def output_fn[
         out_type: DType, width: SIMDLength
     ](idx: Coord, value: SIMD[out_type, width]):
-        comptime if elementwise_lambda_fn:
-            comptime func = elementwise_lambda_fn.value()
+        comptime if case .Some(func) = elementwise_lambda_fn:
             var m = Int(idx[0].value())
 
             comptime for i in range(width):

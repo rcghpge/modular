@@ -1020,7 +1020,7 @@ def matmul_dispatch_sm90_bf16_fp32[
             pdl_level=pdl_level,
         )
 
-        comptime if not entry.splits:
+        comptime if case .Some(splits) = entry.splits:
             warp_specialize_gemm_with_multicasting[
                 transpose_b=transpose_b,
                 has_epilogue_fn=has_epilogue_fn,
@@ -1028,6 +1028,8 @@ def matmul_dispatch_sm90_bf16_fp32[
                 config=config,
                 schedule=entry.schedule,
                 grid_shape=entry.grid_shape,
+                splits=splits,
+                raster_order=entry.raster_order.value(),
             ](c, a, b, ctx, epilogue_fn=epilogue_fn, compute_fn=compute_fn)
         else:
             warp_specialize_gemm_with_multicasting[
@@ -1037,8 +1039,6 @@ def matmul_dispatch_sm90_bf16_fp32[
                 config=config,
                 schedule=entry.schedule,
                 grid_shape=entry.grid_shape,
-                splits=entry.splits.value(),
-                raster_order=entry.raster_order.value(),
             ](c, a, b, ctx, epilogue_fn=epilogue_fn, compute_fn=compute_fn)
 
     @inline(.nodebug)

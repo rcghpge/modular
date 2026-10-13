@@ -249,8 +249,7 @@ def _naive_matmul_kernel[
                         a[global_row, i].cast[s_type]()
                     ) * rebind[Scalar[s_type]](b[i, global_col].cast[s_type]())
 
-            comptime if elementwise_lambda_fn:
-                comptime elementwise_lambda = elementwise_lambda_fn.value()
+            comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
                 elementwise_lambda[c_type, 1](
                     (global_row, global_col),
                     accum.cast[c_type](),
@@ -774,7 +773,7 @@ def _wmma_matmul_kernel[
                 )
 
                 if global_row < m and global_col < n:
-                    comptime if elementwise_lambda_fn:
+                    comptime if case .Some(epilogue) = elementwise_lambda_fn:
                         comptime elementwise_lambda = (
                             elementwise_lambda_fn.value()
                         )

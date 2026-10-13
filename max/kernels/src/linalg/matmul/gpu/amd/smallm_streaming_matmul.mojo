@@ -282,10 +282,9 @@ def _gemm_smallm_streaming_kernel[
                         comptime for r4 in range(4):
                             var row = t * _TILE_N + (lane // _TILE_N) * 4 + r4
                             if row < _m:
-                                comptime if elementwise_lambda_fn:
-                                    comptime elementwise_lambda = (
-                                        elementwise_lambda_fn.value()
-                                    )
+                                comptime if case .Some(
+                                    elementwise_lambda
+                                ) = elementwise_lambda_fn:
                                     elementwise_lambda(
                                         (row, out_col),
                                         acc[t][r4].cast[c_type](),
@@ -359,10 +358,9 @@ def _gemm_smallm_streaming_kernel[
                         comptime for r4 in range(4):
                             var row = t * _TILE_N + (lane // _TILE_N) * 4 + r4
                             if row < _m:
-                                comptime if elementwise_lambda_fn:
-                                    comptime elementwise_lambda = (
-                                        elementwise_lambda_fn.value()
-                                    )
+                                comptime if case .Some(
+                                    elementwise_lambda
+                                ) = elementwise_lambda_fn:
                                     elementwise_lambda(
                                         (row, out_col),
                                         acc[u * m_tiles + t][r4].cast[c_type](),

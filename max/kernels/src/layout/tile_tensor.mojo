@@ -1912,10 +1912,8 @@ struct TileTensor[
         # hand-rolled `Swizzle(bits, base, shift)` with
         # `base < log2_floor(element_size)` would silently produce misaligned
         # offsets and trigger CUDA_ERROR_MISALIGNED_ADDRESS.
-        comptime if swizzle:
-            comptime assert swizzle.value().base >= log2_floor(
-                Self.element_size
-            ), (
+        comptime if case .Some(swizzle_fn) = swizzle:
+            comptime assert swizzle_fn.base >= log2_floor(Self.element_size), (
                 "swizzle.base is too small for the requested element_size:"
                 " cp.async would receive misaligned offsets. Construct the"
                 " swizzle with `make_swizzle[..., access_size=element_size]`"
@@ -1957,8 +1955,7 @@ struct TileTensor[
             )
 
             var swizzled_idx: Scalar[Self.linear_idx_type]
-            comptime if swizzle:
-                comptime swizzle_fn = swizzle.value()
+            comptime if case .Some(swizzle_fn) = swizzle:
                 # The destination address is swizzled in absolute tile
                 # coordinates (`base_offset` + the in-window position), then
                 # rebased back onto the fragment. Only the in-window position
@@ -4222,8 +4219,7 @@ def _distribute[
     # widen at that boundary and narrow back after.
     var swizzled_offset = offset
 
-    comptime if swizzle:
-        comptime swizzle_fn = swizzle.value()
+    comptime if case .Some(swizzle_fn) = swizzle:
         comptime element_size = data_layout_tensor.element_size
         swizzled_offset = Scalar[data_layout_tensor.linear_idx_type](
             swizzle_fn(Int(offset) // element_size) * element_size
@@ -4322,8 +4318,7 @@ def _distribute_with_offset[
     # the former is the unit in distribution.
     var swizzled_offset = offset
 
-    comptime if swizzle:
-        comptime swizzle_fn = swizzle.value()
+    comptime if case .Some(swizzle_fn) = swizzle:
         comptime element_size = data_layout_tensor.element_size
         swizzled_offset = swizzle_fn(offset // element_size) * element_size
 

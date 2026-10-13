@@ -476,12 +476,12 @@ def _warp_specialize_gemm_with_multicasting_impl[
             ds_grid_shape[0] <= H100.sm_count and ds_grid_shape[1] == 1
         ), "Deepseek scheduler only accepts grid shape with 1 column"
 
-    elif grid_shape:
+    elif case .Some(grid_override) = grid_shape:
         comptime assert _is_valid_grid_shape[
-            grid_shape.value(), config.cluster_shape
+            grid_override, config.cluster_shape
         ](ceildiv(N_static, BN)), String(
             "grid shape:",
-            grid_shape.value(),
+            grid_override,
             "is not compatible with cluster shape:",
             config.cluster_shape,
             "and static N:",

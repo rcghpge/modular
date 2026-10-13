@@ -402,8 +402,7 @@ def _launch_plain_conv[
         alignment: Int = align_of[SIMD[_dtype, width]](),
     ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        comptime if Bool(elementwise_lambda_fn):
-            comptime _user_lambda = elementwise_lambda_fn.value()
+        comptime if case .Some(_user_lambda) = elementwise_lambda_fn:
             _user_lambda[alignment=alignment](idx, val)
         else:
             # No user lambda — store directly.

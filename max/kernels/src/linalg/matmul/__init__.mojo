@@ -192,7 +192,7 @@ def matmul[
                 comptime assert (
                     coords.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                comptime if elementwise_compute_lambda_fn:
+                comptime if case .Some(compute) = elementwise_compute_lambda_fn:
                     comptime compute_lambda = elementwise_compute_lambda_fn.value()
                     var output = compute_lambda(coords, val)
                     c.store[alignment=alignment](

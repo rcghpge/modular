@@ -632,11 +632,11 @@ def async_copy[
         comptime n_scalars = size // size_of[dtype]()
         var n_src_scalars = src_size // Int32(size_of[dtype]())
 
-        comptime if fill:
+        comptime if case .Some(fill_value) = fill:
             for i in range(n_src_scalars):
                 dst.unsafe_store(i, src.unsafe_load(i))
             for i in range(Int(n_src_scalars), n_scalars):
-                dst.unsafe_store(i, fill.value())
+                dst.unsafe_store(i, fill_value)
         else:
             comptime for i in range(n_scalars):
                 dst.unsafe_store(i, src.unsafe_load(i))
@@ -2774,8 +2774,8 @@ def _load_impl[
         comptime assert read_only == False
         return ptr.unsafe_load[width=width]()
 
-    comptime if prefetch_size:
-        comptime assert prefetch_size.value() in (64, 128, 256)
+    comptime if case .Some(prefetch_bytes) = prefetch_size:
+        comptime assert prefetch_bytes in (64, 128, 256)
 
     comptime bytes_to_load = size_of[dtype]() * width
     comptime dtype_bitwidth = bit_width_of[dtype]()

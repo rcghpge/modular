@@ -142,10 +142,8 @@ def unsafe_stack_allocation[
             case _:
                 pass
 
-    elif CurrentPlugin.stack_allocation_fn[address_space]:
-        return comptime (
-            CurrentPlugin.stack_allocation_fn[address_space].value()
-        )[count, type, name=name, alignment=alignment]()
+    elif case .Some(hook) = CurrentPlugin.stack_allocation_fn[address_space]:
+        return hook[count, type, name=name, alignment=alignment]()
 
     # Perform a stack allocation of the requested size, alignment, and type.
     return {

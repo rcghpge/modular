@@ -518,10 +518,9 @@ def matmul_sm100_grouped_blockwise_scaled_fp8_1d2d_kernel[
                             c_frag[2 * i_vec], c_frag[2 * i_vec + 1]
                         ).cast[c_type]()
 
-                        comptime if elementwise_lambda_fn:
+                        comptime if case .Some(ep) = elementwise_lambda_fn:
                             comptime alignment = align_of[SIMD[c_type, 2]]()
-                            comptime epilogue = elementwise_lambda_fn.value()
-                            epilogue[alignment=alignment](
+                            ep[alignment=alignment](
                                 (Int(a_start_row + m), Int(n)), c_mn
                             )
                         else:

@@ -339,9 +339,9 @@ struct SharedMemBarrier(TrivialRegisterPassable):
 
         comptime constraints = "r,r" + (",r" if ticks else "")
 
-        comptime if ticks:
+        comptime if case .Some(timeout_ticks) = ticks:
             inlined_assembly[asm, NoneType, constraints=constraints](
-                Int32(Int(self.unsafe_ptr())), phase, ticks.value()
+                Int32(Int(self.unsafe_ptr())), phase, timeout_ticks
             )
         else:
             inlined_assembly[asm, NoneType, constraints=constraints](

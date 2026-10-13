@@ -368,8 +368,7 @@ def dispatch_im2col_matmul_conv2d[
         var c_engine = output._offset_storage(m_offset * N)
         var c_tt = TileTensor(c_engine, row_major(m_count, N))
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_4d = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_4d) = maybe_epilogue_func:
 
             @__parameter
             @inline(.always)
@@ -593,8 +592,7 @@ def dispatch_fused_im2col_conv2d_apple[
         stride_w=Int32(stride[1]),
     )
 
-    comptime if maybe_epilogue_func:
-        comptime epilogue_4d = maybe_epilogue_func.value()
+    comptime if case .Some(epilogue_4d) = maybe_epilogue_func:
         var HW_out = _H_out * _W_out
 
         @__parameter

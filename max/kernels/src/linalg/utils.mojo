@@ -239,8 +239,7 @@ def apply_elementwise_epilogue[
         idx: Output coordinates.
         val: Output value.
     """
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
+    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
         elementwise_lambda[dtype, width, alignment=alignment](idx, val)
     else:
         epilogue_fn[dtype, width, alignment=alignment](idx, val)

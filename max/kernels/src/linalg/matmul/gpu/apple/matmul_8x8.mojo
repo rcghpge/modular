@@ -212,8 +212,7 @@ def _mma8_store[
             var col = col_base + ni * MMA8_DIM + fcol
             comptime if INTERIOR:
                 # Odd `n` allows only element alignment.
-                comptime if elementwise_lambda_fn:
-                    comptime ep = elementwise_lambda_fn.value()
+                comptime if case .Some(ep) = elementwise_lambda_fn:
                     ep[c_type, FRAG8, alignment=size_of[c_type]()](
                         (row, col), frag
                     )
@@ -224,8 +223,7 @@ def _mma8_store[
             else:
                 comptime for s in range(FRAG8):
                     if row < m and col + s < n:
-                        comptime if elementwise_lambda_fn:
-                            comptime ep = elementwise_lambda_fn.value()
+                        comptime if case .Some(ep) = elementwise_lambda_fn:
                             ep[c_type, 1]((row, col + s), frag[s])
                         else:
                             c.store_linear[alignment=size_of[c_type]()](

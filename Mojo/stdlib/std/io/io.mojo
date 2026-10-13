@@ -418,13 +418,11 @@ def print[
 
         return
 
-    comptime if CurrentPlugin.print_emit_fn:
+    comptime if case .Some(_emit) = CurrentPlugin.print_emit_fn:
         var buffer = _FixedWriteBuffer()
         values._write_to(buffer, sep=sep, end=end)
 
         var cstr = buffer.nul_terminate()
-
-        comptime _emit = CurrentPlugin.print_emit_fn.unsafe_value()
 
         # FIXME: The origin param of `_emit` should be inferred from `cstr`.
         _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)

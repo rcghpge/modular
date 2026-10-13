@@ -3118,13 +3118,12 @@ struct BlackwellMatmulSM100FallbackKernel[
                                 c_frag[2 * i_vec], c_frag[2 * i_vec + 1]
                             ).cast[Self.c_type]()
 
-                            comptime if Self.elementwise_lambda_fn:
+                            comptime if case .Some(
+                                epilogue
+                            ) = Self.elementwise_lambda_fn:
                                 comptime alignment = align_of[
                                     SIMD[Self.c_type, 2]
                                 ]()
-                                comptime epilogue = (
-                                    Self.elementwise_lambda_fn.value()
-                                )
                                 epilogue[alignment=alignment](
                                     (Int(m), Int(n)), c_mn
                                 )

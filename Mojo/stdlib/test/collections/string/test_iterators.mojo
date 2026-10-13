@@ -66,9 +66,9 @@ def test_chars_iter() raises:
     var s1 = StringSlice("abc")
     var s1_iter = s1.codepoints()
 
-    assert_equal(s1_iter.next().value(), Codepoint.ord("a"))
-    assert_equal(s1_iter.next().value(), Codepoint.ord("b"))
-    assert_equal(s1_iter.next().value(), Codepoint.ord("c"))
+    assert_equal(s1_iter.next(), Optional(Codepoint.ord("a")))
+    assert_equal(s1_iter.next(), Optional(Codepoint.ord("b")))
+    assert_equal(s1_iter.next(), Optional(Codepoint.ord("c")))
     assert_true(s1_iter.next() is None)
 
     # Multibyte character decoding: A visual character composed of a combining

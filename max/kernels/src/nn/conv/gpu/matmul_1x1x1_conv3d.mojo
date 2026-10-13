@@ -150,8 +150,7 @@ def dispatch_1x1x1_matmul_conv3d[
     var a_tt = input.reshape(row_major(full_M, K))
     var c_tt = output.reshape(row_major(full_M, N))
 
-    comptime if maybe_epilogue_func:
-        comptime epilogue_5d = maybe_epilogue_func.value()
+    comptime if case .Some(epilogue_5d) = maybe_epilogue_func:
 
         @__parameter
         @inline(.always)

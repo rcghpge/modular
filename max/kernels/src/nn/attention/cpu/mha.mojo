@@ -612,8 +612,8 @@ struct _FlashAttention[
 
         var sink_logit: Scalar[Self.dtype] = 0
         var do_sink = sink_weight is not None
-        if do_sink:
-            sink_logit = sink_weight.value()
+        if case .Some(weight) = sink_weight:
+            sink_logit = weight
 
         for m in range(count_m):
             var qk_row = TileTensor(qk_row_ptr, row_major(Int64(kv_seq_cnt)))

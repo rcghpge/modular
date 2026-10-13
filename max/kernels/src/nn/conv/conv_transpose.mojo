@@ -1024,9 +1024,7 @@ struct ConvTransposedPacked[
             self.output.ptr + n * num_rows * self.conv_shape.f + f_offset
         )
 
-        comptime if Self.elementwise_epilogue:
-            comptime epilogue = Self.elementwise_epilogue.value()
-
+        comptime if case .Some(epilogue) = Self.elementwise_epilogue:
             var output_ptr = output_base
 
             comptime if Self.InputLayoutType.rank == 4:  # 2D ConvTransposed.
@@ -1732,9 +1730,7 @@ def conv_transposed_gpu[
         padding: Padding along each spatial axis.
         ctx: Device context used to access the cuDNN handle and device buffers.
     """
-    comptime if elementwise_epilogue:
-        comptime epilogue = elementwise_epilogue.value()
-
+    comptime if case .Some(epilogue) = elementwise_epilogue:
         var output_tmp_data = ctx.enqueue_create_buffer[output_type](
             output.num_elements()
         )

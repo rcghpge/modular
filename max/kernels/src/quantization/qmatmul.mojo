@@ -1048,9 +1048,7 @@ def _matmul_qint4_m_1[
 
             c_float.store(c.ptr.unsafe_offset(c.layout(Coord(Idx[0], n))), N)
 
-            comptime if elementwise_lambda_fn:
-                comptime func = elementwise_lambda_fn.value()
-
+            comptime if case .Some(func) = elementwise_lambda_fn:
                 comptime for nn in range(tile_n):
                     var val = c_float[0, nn]
                     func[.float32, simd_width]((0, n + nn * simd_width), val)
@@ -1207,9 +1205,7 @@ def _matmul_qint4_m_any[
                     # otherwise we give intermediate results.
                     var last_k_iter = ceildiv(K, K_BATCH_SIZE) - 1
                     if ko == last_k_iter * K_BATCH_SIZE:
-                        comptime if elementwise_lambda_fn:
-                            comptime func = elementwise_lambda_fn.value()
-
+                        comptime if case .Some(func) = elementwise_lambda_fn:
                             comptime for mm in range(tile_m):
                                 comptime for nn in range(tile_n):
                                     var val = c_float[mm, nn]

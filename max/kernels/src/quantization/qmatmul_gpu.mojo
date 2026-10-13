@@ -1176,8 +1176,7 @@ def multistage_qgemm_kernel[
 
         # The local-to-shared copy has already cast the accumulators to half
         # precision. Read the staged values in vectors for 16-byte global stores.
-        comptime if elementwise_lambda_fn:
-            comptime epilogue = elementwise_lambda_fn.value()
+        comptime if case .Some(epilogue) = elementwise_lambda_fn:
             comptime warp_layout = Layout.row_major(
                 WARP_SIZE * simd_size // WN, WN // simd_size
             )

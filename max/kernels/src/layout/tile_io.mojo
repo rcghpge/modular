@@ -245,15 +245,10 @@ struct SharedToGenericTileCopier[
         var src_fragments = src.distribute[Self.thread_layout](worker_idx)
         var dst_fragments = dst.distribute[Self.thread_layout](worker_idx)
 
-        comptime if not Self.swizzle:
-            dst_fragments.copy_from(
-                src_fragments.bitcast[dst_fragments.dtype]()
-            )
-        else:
+        comptime if case .Some(swizzle_fn) = Self.swizzle:
             comptime simd_size = src.element_size
             comptime src_align = align_of[SIMD[src.dtype, simd_size]]()
             comptime dst_align = align_of[SIMD[dst.dtype, simd_size]]()
-            comptime swizzle_fn = Self.swizzle.value()
 
             var src_frag_offset = Scalar[src.linear_idx_type](
                 src_fragments._distance(src)
@@ -280,6 +275,10 @@ struct SharedToGenericTileCopier[
                     width=simd_size, alignment=src_align
                 ](swizzled_idx).cast[dst.dtype]()
                 dst_fragments.raw_store[alignment=dst_align](dst_idx, src_vec)
+        else:
+            dst_fragments.copy_from(
+                src_fragments.bitcast[dst_fragments.dtype]()
+            )
 
 
 @fieldwise_init
@@ -497,16 +496,10 @@ struct LocalToSharedTileCopier[
                 == dst_fragments.LayoutType.static_product
             )
 
-        comptime if not Self.swizzle:
-            comptime if src.dtype == dst.dtype:
-                dst_fragments.copy_from(src.bitcast[dst_fragments.dtype]())
-            else:
-                dst_fragments.copy_from(src)
-        else:
+        comptime if case .Some(swizzle_fn) = Self.swizzle:
             comptime simd_size = src.element_size
             comptime src_align = align_of[SIMD[src.dtype, simd_size]]()
             comptime dst_align = align_of[SIMD[dst.dtype, simd_size]]()
-            comptime swizzle_fn = Self.swizzle.value()
 
             var dst_frag_offset = Scalar[dst.linear_idx_type](
                 dst_fragments._distance(dst)
@@ -530,6 +523,11 @@ struct LocalToSharedTileCopier[
                     width=simd_size, alignment=src_align
                 ](src_idx).cast[dst.dtype]()
                 dst.raw_store[alignment=dst_align](swizzled_idx, src_vec)
+        else:
+            comptime if src.dtype == dst.dtype:
+                dst_fragments.copy_from(src.bitcast[dst_fragments.dtype]())
+            else:
+                dst_fragments.copy_from(src)
 
 
 @fieldwise_init

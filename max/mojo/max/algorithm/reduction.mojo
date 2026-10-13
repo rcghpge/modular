@@ -219,7 +219,7 @@ def _reduce_generator[
             reduce_function,
             reduce_dim=reduce_dim,
         ](shape, init)
-    elif CurrentPlugin.reduce_generator_fn:
+    elif case .Some(plugin_reduce) = CurrentPlugin.reduce_generator_fn:
 
         @inline(.always)
         def input_fn[
@@ -241,9 +241,9 @@ def _reduce_generator[
 
         # The plugin hook takes `reduce_dim` as a runtime argument; feed it the
         # compile-time value.
-        return comptime (CurrentPlugin.reduce_generator_fn.value())[
-            num_reductions, init_type
-        ](shape_index_list, init, reduce_dim, input_fn, output_fn, reduce_fn)
+        return plugin_reduce[num_reductions, init_type](
+            shape_index_list, init, reduce_dim, input_fn, output_fn, reduce_fn
+        )
     else:
         _reduce_generator_gpu[
             num_reductions,

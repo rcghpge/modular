@@ -104,8 +104,8 @@ def test[
     ctx.enqueue_copy(b_device_buffer, b_host_ptr)
     ctx.enqueue_copy(c_device_buffer, c_host_ptr)
 
-    comptime if config:
-        multistage_gemm[transpose_b=transpose_b, config=config.value()](
+    comptime if case .Some(cfg) = config:
+        multistage_gemm[transpose_b=transpose_b, config=cfg](
             c_tensor,
             a_tensor.as_imm(),
             b_tensor.as_imm(),

@@ -190,8 +190,8 @@ def _swizzled_smem_off[
     """Flat `row*BK_BYTES + col_byte` in-tile byte offset, XOR-swizzled if enabled.
     """
     var off = row * BK_BYTES + col_byte
-    comptime if swizzle:
-        off = swizzle.value()(off)
+    comptime if case .Some(swizzle_fn) = swizzle:
+        off = swizzle_fn(off)
     return off
 
 

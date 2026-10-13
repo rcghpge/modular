@@ -744,8 +744,7 @@ def matmul[
                 coord.rank == 2
             ), "the matmul epilogue contract is rank 2"
             var cast_val = val.cast[c.dtype]()
-            comptime if elementwise_lambda_fn:
-                comptime user_fn = elementwise_lambda_fn.value()
+            comptime if case .Some(user_fn) = elementwise_lambda_fn:
                 user_fn[c.dtype, width, alignment=alignment](coord, cast_val)
             else:
                 c.store[width=width, alignment=alignment](coord, cast_val)
@@ -864,8 +863,7 @@ def _submatmul_sequential_sync[
         shape: GemmShape,
         c_read: TileTensor[mut=False, address_space=.GENERIC, ...],
     ):
-        comptime if elementwise_lambda_fn:
-            comptime func = elementwise_lambda_fn.value()
+        comptime if case .Some(func) = elementwise_lambda_fn:
             elementwise_epilogue_c_tile[
                 simd_size,
                 c_read.dtype,

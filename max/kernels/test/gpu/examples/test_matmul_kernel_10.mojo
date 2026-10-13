@@ -259,7 +259,7 @@ def sgemm_warp_tiling_kernel[
                         width=4, alignment=16
                     ](c_idx)
 
-                    comptime if elementwise_lambda_fn:
+                    comptime if case .Some(epilogue) = elementwise_lambda_fn:
                         comptime elementwise_lambda = elementwise_lambda_fn.value()
                         elementwise_lambda[c_type, 4](
                             (

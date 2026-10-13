@@ -2129,16 +2129,16 @@ struct NVBlockScaledTokenFormat[
             UnsafePointer[Scalar[Self.scales_dtype], MutUntrackedOrigin]
         ]()
         if not oob:
-            scales_gmem_ptr = (
+            var scales_base = (
                 recv_buf_ptr_functor(scales_tok) + Self.scales_offset()
             ).bitcast[Scalar[Self.scales_dtype]]()
-            scales_gmem_ptr.unsafe_value() += n_scales_per_token * k_tile_idx
+            scales_gmem_ptr = scales_base + n_scales_per_token * k_tile_idx
 
         comptime for i in range(0, n_scales_simd_per_token, sub_warp_size):
             var _i = i + lane_in_sub_warp
             var scales_simd = SIMD[Self.scales_dtype, SF_ATOM_K](0.0)
-            if not oob:
-                scales_simd = scales_gmem_ptr.unsafe_value().load[
+            if case .Some(scales_ptr) = scales_gmem_ptr:
+                scales_simd = scales_ptr.load[
                     width=SF_ATOM_K, invariant=True, alignment=SF_ATOM_K
                 ](_i * SF_ATOM_K)
 
@@ -3375,8 +3375,7 @@ struct EPDispatchKernel[
 
         var input_scale = Float32(1.0)
 
-        comptime if input_scales_wrapper is not None:
-            comptime input_scale_fn = input_scales_wrapper.value()
+        comptime if case .Some(input_scale_fn) = input_scales_wrapper:
             input_scale = input_scale_fn[.float32](0)
 
         var n_active_async_comm_sms = n_active_send_sms
@@ -5519,10 +5518,8 @@ struct EPCombineKernel[
                     )
                 )
 
-                comptime if router_weights_wrapper:
-                    comptime router_weights_fn = router_weights_wrapper.value()
-
-                    var weight = router_weights_fn[1](token_idx, topk_idx)
+                comptime if case .Some(weights_fn) = router_weights_wrapper:
+                    var weight = weights_fn[1](token_idx, topk_idx)
                     accum += weight * recv_chunk.cast[.float32]()
 
                 else:

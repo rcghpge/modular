@@ -975,7 +975,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl[
 
     comptime if case .Some(group_size) = group_size:
         comptime assert (
-            not has_zp.value()
+            Optional(False) == has_zp
         ), "Zero point is not supported for quantization."
         comptime assert (
             weight_dtype == .uint8
@@ -1112,7 +1112,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
 
     comptime if case .Some(group_size) = group_size:
         comptime assert (
-            not has_zp.value()
+            Optional(False) == has_zp
         ), "Zero point is not supported for quantization."
         comptime assert (
             weight_dtype == .uint8

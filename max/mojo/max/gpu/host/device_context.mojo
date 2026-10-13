@@ -3695,31 +3695,26 @@ struct DeviceFunction[
                     ] = first_word_addr.as_unsafe_any_origin()
                     translated_arg_idx += 1
 
-            if extra_host_count >= 1 and host0:
-                dense_args_addrs[
-                    unsafe_offset=translated_arg_idx
-                ] = host0.value()
-                translated_arg_idx += 1
-            if extra_host_count >= 2 and host1:
-                dense_args_addrs[
-                    unsafe_offset=translated_arg_idx
-                ] = host1.value()
-                translated_arg_idx += 1
-            if extra_host_count >= 3 and host2:
-                dense_args_addrs[
-                    unsafe_offset=translated_arg_idx
-                ] = host2.value()
-                translated_arg_idx += 1
-            if extra_host_count >= 4 and host3:
-                dense_args_addrs[
-                    unsafe_offset=translated_arg_idx
-                ] = host3.value()
-                translated_arg_idx += 1
-            if extra_host_count >= 5 and host4:
-                dense_args_addrs[
-                    unsafe_offset=translated_arg_idx
-                ] = host4.value()
-                translated_arg_idx += 1
+            if extra_host_count >= 1:
+                if case .Some(addr) = host0:
+                    dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+                    translated_arg_idx += 1
+            if extra_host_count >= 2:
+                if case .Some(addr) = host1:
+                    dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+                    translated_arg_idx += 1
+            if extra_host_count >= 3:
+                if case .Some(addr) = host2:
+                    dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+                    translated_arg_idx += 1
+            if extra_host_count >= 4:
+                if case .Some(addr) = host3:
+                    dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+                    translated_arg_idx += 1
+            if extra_host_count >= 5:
+                if case .Some(addr) = host4:
+                    dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+                    translated_arg_idx += 1
 
             comptime func_name = reflect_fn[Self.func].display_name()
             _enqueue_packed_checked(
@@ -5085,13 +5080,14 @@ struct DeviceContextBase[
         """
         self._check_supports_default_compile_function()
 
-        assert (
-            not func_attribute
-            or func_attribute.value().attribute
-            != Attribute.MAX_DYNAMIC_SHARED_SIZE_BYTES
-            or func_attribute.value().value
-            <= Int32(self.default_device_info.shared_memory_per_multiprocessor)
-        ), "Requested more than available shared memory."
+        if case .Some(attr) = func_attribute:
+            assert (
+                attr.attribute != Attribute.MAX_DYNAMIC_SHARED_SIZE_BYTES
+                or attr.value
+                <= Int32(
+                    self.default_device_info.shared_memory_per_multiprocessor
+                )
+            ), "Requested more than available shared memory."
         comptime result_type = type_of(result)
         result = result_type(
             self,

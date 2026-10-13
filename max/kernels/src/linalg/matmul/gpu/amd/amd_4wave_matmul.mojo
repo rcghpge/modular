@@ -2012,10 +2012,9 @@ struct AMD4WaveMatmul[
                         # semantics. Fires on the post-cast `c_type`
                         # MMA output (use cases: bias / ReLU / SiLU /
                         # GELU before the skip add).
-                        comptime if elementwise_compute_lambda_fn:
-                            comptime _compute_fn = (
-                                elementwise_compute_lambda_fn.value()
-                            )
+                        comptime if case .Some(
+                            _compute_fn
+                        ) = elementwise_compute_lambda_fn:
                             v = _compute_fn[
                                 alignment=align_of[
                                     SIMD[Self.c_type, c_frag_size]

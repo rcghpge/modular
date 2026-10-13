@@ -452,8 +452,7 @@ def dispatch_im2col_matmul_conv3d[
         var c_ptr = output.ptr + _m_offset * N
         var c_tt = TileTensor(c_ptr, row_major(_m_count, N))
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_5d = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_5d) = maybe_epilogue_func:
 
             @__parameter
             @inline(.always)

@@ -257,7 +257,7 @@ def test_product_bounds() raises:
     var it = product(range(3), range(2))
     for i in range(6, -1, -1):
         assert_equal(it.bounds()[0], i)
-        assert_equal(it.bounds()[1].value(), i)
+        assert_equal(it.bounds()[1], Optional(i))
         try:
             _ = next(it)
         except:

@@ -903,12 +903,12 @@ def _test_list_iter_bounds[
     for i in range(list_len):
         var lower, upper = iter.bounds()
         assert_equal(list_len - i, lower)
-        assert_equal(list_len - i, upper.value())
+        assert_equal(Optional(list_len - i), upper)
         _ = iter.__next__()
 
     var lower, upper = iter.bounds()
     assert_equal(0, lower)
-    assert_equal(0, upper.value())
+    assert_equal(Optional(0), upper)
 
 
 def test_list_iter_bounds() raises:

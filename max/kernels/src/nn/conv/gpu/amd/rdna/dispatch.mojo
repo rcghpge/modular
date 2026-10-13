@@ -425,8 +425,7 @@ def dispatch_rdna_conv2d[
                     )
                     out_val = out_val + s * resid_beta.cast[_dtype]()
 
-                comptime if maybe_epilogue_func:
-                    comptime epilogue_4d = maybe_epilogue_func.value()
+                comptime if case .Some(epilogue_4d) = maybe_epilogue_func:
                     var batch_idx: Int
                     var rem_idx: Int
                     var h_idx: Int

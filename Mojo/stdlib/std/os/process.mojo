@@ -258,8 +258,9 @@ struct Process:
         # We need to check the "cached" status to avoid trying to
         # kill a process after already having waited upon its exit.
         # Such a process no longer exists and its pid could be reused
-        if self.status and self.status.value().has_exited():
-            return False
+        if case .Some(status) = self.status:
+            if status.has_exited():
+                return False
 
         # `kill` returns 0 on success and -1 on failure
         return kill(Int32(self.child_pid), Int32(signal)) > -1

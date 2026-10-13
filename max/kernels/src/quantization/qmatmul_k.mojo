@@ -959,9 +959,7 @@ def _accumulate_and_store[
 
     c_float.store(c_ptr, N)
 
-    comptime if elementwise_lambda_fn:
-        comptime func = elementwise_lambda_fn.value()
-
+    comptime if case .Some(func) = elementwise_lambda_fn:
         if is_last_k_iter:
             comptime for mm in range(tile_m):
                 comptime for nn in range(tile_n):

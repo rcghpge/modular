@@ -538,12 +538,12 @@ struct TiledMmaLoader[
         def _load_keys[key_base: Int]() {imm} -> SIMD[Self.in_type, 8]:
             var key = row_offset + key_base + rel_key + hw_key_shift
             var byte_offset = key * BK + d_in_blk + depth_base
-            comptime if Self.swizzle:
+            comptime if case .Some(swizzle_fn) = Self.swizzle:
                 # Decompose byte_offset = vec_idx * simd_w + sub_vec,
                 # permute vec_idx, then reassemble.
                 var vec_idx = byte_offset // simd_w
                 var sub_vec = byte_offset & (simd_w - 1)
-                var swizzled_vec = Self.swizzle.value()(vec_idx)
+                var swizzled_vec = swizzle_fn(vec_idx)
                 var addr = block_base + swizzled_vec * simd_w + sub_vec
                 return ds_read_tr8_b64(addr)
             else:
@@ -658,9 +658,9 @@ struct TiledMmaLoader[
         def _load_keys[key_base: Int]() {imm} -> SIMD[Self.in_type, 8]:
             var key = row_offset + key_group * 32 + key_base + pair_idx
             var byte_offset = key * block_width + depth_base
-            comptime if Self.swizzle:
+            comptime if case .Some(swizzle_fn) = Self.swizzle:
                 var vec_idx, sub_vec = udivmod(byte_offset, simd_w)
-                var swizzled_vec = Self.swizzle.value()(vec_idx)
+                var swizzled_vec = swizzle_fn(vec_idx)
                 var addr = block_base + swizzled_vec * simd_w + sub_vec
                 return ds_read_tr8_b64(addr)
             else:
@@ -723,12 +723,12 @@ struct TiledMmaLoader[
             ]().distribute_with_offset[thread_layout](lane_id())
             offset = sub_offset + Scalar[idx_type](dist_res[2])
 
-        comptime if Self.swizzle:
-            offset = Self.swizzle.value()(
+        comptime if case .Some(swizzle_fn) = Self.swizzle:
+            offset = swizzle_fn(
                 offset // Scalar[idx_type](simd_width)
             ) * Scalar[idx_type](simd_width)
-        comptime if Self.swizzle2:
-            offset = Self.swizzle2.value()(
+        comptime if case .Some(swizzle2_fn) = Self.swizzle2:
+            offset = swizzle2_fn(
                 offset // Scalar[idx_type](simd_width)
             ) * Scalar[idx_type](simd_width)
 
@@ -1091,8 +1091,8 @@ def load_lds_fragment[
                 var iter_base = m_idx * m_stride + k_idx * k_stride
                 var full_offset = iter_base + lane_offset
 
-                comptime if swizzle:
-                    full_offset = swizzle.value()(full_offset)
+                comptime if case .Some(swizzle_fn) = swizzle:
+                    full_offset = swizzle_fn(full_offset)
 
                 comptime frag_idx = m_idx * k_splits + k_idx
                 reg_ptr.store[width=lds_frag_width](
@@ -1108,8 +1108,8 @@ def load_lds_fragment[
             var iter_base = i * WARP_SIZE * lds_frag_width
             var full_offset = iter_base + lane_offset
 
-            comptime if swizzle:
-                full_offset = swizzle.value()(full_offset)
+            comptime if case .Some(swizzle_fn) = swizzle:
+                full_offset = swizzle_fn(full_offset)
 
             reg_ptr.store[width=lds_frag_width](
                 i * _reg_stride,
@@ -1843,10 +1843,10 @@ struct SubTileLoaderLDS[
                 worker_idx + (m_sub_tile + worker_base) * WARP_SIZE
             )
             var swizzled_worker_idx = worker_idx_with_offset
-            comptime if Self.swizzle:
-                swizzled_worker_idx = Self.swizzle.value()(swizzled_worker_idx)
-            comptime if Self.swizzle2:
-                swizzled_worker_idx = Self.swizzle2.value()(swizzled_worker_idx)
+            comptime if case .Some(swizzle_fn) = Self.swizzle:
+                swizzled_worker_idx = swizzle_fn(swizzled_worker_idx)
+            comptime if case .Some(swizzle2_fn) = Self.swizzle2:
+                swizzled_worker_idx = swizzle2_fn(swizzled_worker_idx)
             var src_dist = src_partitions.vectorize[1, load_width]().distribute[
                 thread_layout
             ](umod(swizzled_worker_idx, WARP_SIZE))
@@ -2684,8 +2684,7 @@ struct RegTileEpilogue[
                 offset by `lane_group * chunk_width` already.
         """
         if n + Self.chunk_width <= self.n_total:
-            comptime if Bool(Self.elementwise_lambda_fn):
-                comptime epilogue_fn = Self.elementwise_lambda_fn.value()
+            comptime if case .Some(epilogue_fn) = Self.elementwise_lambda_fn:
                 epilogue_fn[
                     alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
                 ](Coord(m, n), v)
@@ -2697,9 +2696,8 @@ struct RegTileEpilogue[
             for e in range(Self.chunk_width):
                 var col = n + e
                 if col < self.n_total:
-                    comptime if Bool(Self.elementwise_lambda_fn):
-                        comptime epilogue_fn = Self.elementwise_lambda_fn.value()
-                        epilogue_fn[alignment=align_of[Scalar[Self.c_type]]()](
+                    comptime if case .Some(ep) = Self.elementwise_lambda_fn:
+                        ep[alignment=align_of[Scalar[Self.c_type]]()](
                             Coord(m, col),
                             SIMD[Self.c_type, 1](v[e]),
                         )
@@ -3051,8 +3049,7 @@ struct RegTileWriterLDS[
         # range, so swz(base + delta) == swz(base) + delta.
         var blk, col_in_blk = divmod(base_vcol, UInt32(cols_per_blk))
         var local_idx = base_row * UInt32(cols_per_blk) + col_in_blk
-        comptime if Self.swizzle:
-            comptime swizzle_fn = Self.swizzle.value()
+        comptime if case .Some(swizzle_fn) = Self.swizzle:
             local_idx = UInt32(swizzle_fn(Int(local_idx)))
 
         var base_offset = blk * UInt32(

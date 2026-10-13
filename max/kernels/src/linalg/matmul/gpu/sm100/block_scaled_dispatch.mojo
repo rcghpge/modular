@@ -416,23 +416,7 @@ def _vendor_blas_block_scaled_matmul_with_epilogue[
     if m == 0 or n == 0:
         return
 
-    comptime if not elementwise_lambda_fn:
-        if not c.ptr:
-            raise "c must be allocated!"
-
-        matmul(
-            ctx,
-            c.value(),
-            a,
-            b,
-            a_scales=a_scales,
-            b_scales=b_scales,
-            transpose_b=True,
-            c_row_major=True,
-            alpha=tensor_sf,
-        )
-    else:
-        comptime epilogue = elementwise_lambda_fn.value()
+    comptime if case .Some(epilogue) = elementwise_lambda_fn:
         # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
         comptime use_32b_simd = True
         comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
@@ -484,4 +468,19 @@ def _vendor_blas_block_scaled_matmul_with_epilogue[
             b_scales,
             tensor_sf,
             ctx,
+        )
+    else:
+        if not c.ptr:
+            raise "c must be allocated!"
+
+        matmul(
+            ctx,
+            c.value(),
+            a,
+            b,
+            a_scales=a_scales,
+            b_scales=b_scales,
+            transpose_b=True,
+            c_row_major=True,
+            alpha=tensor_sf,
         )

@@ -788,7 +788,7 @@ def test_region_node_structure(ctx: DeviceContext) raises:
         # Two nodes in, two nodes added: chaining makes the second the scope's
         # sole sink, so there is no third (join) node, and the handle returned
         # is that sink.
-        assert_equal(Int(builder._last_node_id().value()), 1)
+        assert_equal(builder._last_node_id(), Optional(Int32(1)))
         assert_equal(Int(chained.id), 1)
 
         # An outer scope spanning a nested scope adds one node per `add_*` and
@@ -805,7 +805,7 @@ def test_region_node_structure(ctx: DeviceContext) raises:
             _ = b.add_memset(buf, UInt8(0x55))
 
         var outer_sink = builder.region(outer)
-        assert_equal(Int(builder._last_node_id().value()), 4)
+        assert_equal(builder._last_node_id(), Optional(Int32(4)))
         assert_equal(Int(outer_sink.id), 4)
 
         # A scope that adds nothing still materializes its fallback empty node.
@@ -813,7 +813,7 @@ def test_region_node_structure(ctx: DeviceContext) raises:
             return
 
         var empty_sink = builder.region(nothing)
-        assert_equal(Int(builder._last_node_id().value()), 5)
+        assert_equal(builder._last_node_id(), Optional(Int32(5)))
         assert_equal(Int(empty_sink.id), 5)
 
     var graph = DeviceGraph.create(ctx, build)

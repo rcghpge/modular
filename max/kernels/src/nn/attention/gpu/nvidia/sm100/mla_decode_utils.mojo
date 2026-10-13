@@ -3931,10 +3931,8 @@ struct MLA_SM100_Decode_Common[
         # (comptime) but don't actually thread a logical index buffer (e.g.
         # direct-kernel tests, or sparse kernels not yet wired for it) fall
         # back to the prior slot-count behavior instead of a null deref.
-        var use_sparse_causal_logical: Bool = False
         comptime if SparseCausalLogical:
-            use_sparse_causal_logical = Bool(logical_indices)
-            if use_sparse_causal_logical:
+            if case .Some(logical_ptr) = logical_indices:
                 # Decide visibility for the whole group up front and hand the
                 # element loop the same `mask_bits` word every other mask
                 # produces. Deciding it per element instead put the read
@@ -3953,7 +3951,7 @@ struct MLA_SM100_Decode_Common[
                 var n_readable = max(
                     min(logical_indices_len - col_base, half_load), 0
                 )
-                var logical_row = logical_indices.unsafe_value() + (
+                var logical_row = logical_ptr + (
                     q_token_idx * logical_indices_stride + col_base
                 )
                 # `pos <= causal_limit - 1` in 32 bits is `pos <
