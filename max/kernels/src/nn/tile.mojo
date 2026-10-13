@@ -20,7 +20,7 @@ from std.memory import unsafe_memcpy
 from std.sys.info import simd_width_of
 from std.utils import IndexList, StaticTuple
 
-# Note: This implementation supports up to 5 dimensions.
+# Note: This implementation supports tensors of any rank.
 
 # Note: ONNX spec specifies that `tile` behaves like Numpy's tile, but without
 #       broadcast. This means that `repeats` is a 1D int64 tensor of the SAME
@@ -57,7 +57,7 @@ def _tile_cpu[
         type_repeats: Type of the repeats tensor.
 
     Args:
-        input: The input tensor. Up to 5 dimensions are supported.
+        input: The input tensor. Any rank is supported.
         repeats: One-dimensional tensor that specifies the number of repeated
                  copies along each of the input's dimensions. Length equals
                  input tensor rank.
@@ -66,10 +66,6 @@ def _tile_cpu[
     comptime assert (
         input.rank == output.rank
     ), "input and output must have the same rank"
-
-    comptime assert (
-        input.rank <= 5
-    ), "Currently only inputs of up to five dimensions are supported."
 
     comptime assert (
         repeats.flat_rank == 1 and type_repeats == .int64
@@ -240,7 +236,7 @@ def _tile_gpu[
     comptime assert (
         input.rank == output.rank
     ), "input and output must have the same rank"
-    comptime assert input.rank <= 5, "up to five dimensions are supported"
+    # Any rank: the elementwise decode wraps each axis by the input extent.
     comptime assert (
         repeats.flat_rank == 1 and type_repeats == .int64
     ), "repeats must be rank-1 int64"

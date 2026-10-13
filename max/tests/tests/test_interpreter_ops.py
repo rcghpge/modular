@@ -7012,7 +7012,7 @@ class TestTileOp:
         np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
 
     def test_5d(self) -> None:
-        """Test tiling a 5-D tensor, the kernel's rank cap."""
+        """Test tiling a 5-D tensor, the top of the precompiled sweep."""
         x_np = np.arange(2 * 3 * 2 * 2 * 2, dtype=np.float32).reshape(
             2, 3, 2, 2, 2
         )
@@ -7026,6 +7026,41 @@ class TestTileOp:
             y = F.tile(x, reps)
 
         np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
+
+    def test_6d_and_7d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test tiling 6-D and 7-D tensors, lazily compiled past the sweep.
+
+        The warm suite forbids cold compiles (eager_py_test.bzl sets
+        MAX_EAGER_ALLOW_LAZY_COMPILE=0 on CPU lanes); this test exercises
+        the over-sweep lazy path, so it re-allows it for itself, like the
+        resize lazy test does.
+        """
+        monkeypatch.setenv("MAX_EAGER_ALLOW_LAZY_COMPILE", "1")
+        x_np = np.arange(2 * 1 * 3 * 2 * 2 * 2, dtype=np.float32).reshape(
+            2, 1, 3, 2, 2, 2
+        )
+        reps = (2, 1, 1, 3, 2, 1)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.tile(x, reps)
+
+        np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
+
+        x7_np = x_np.reshape(2, 1, 1, 3, 2, 2, 2)
+        reps7 = (1, 2, 1, 1, 2, 3, 1)
+
+        x7 = Tensor.from_dlpack(x7_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y7 = F.tile(x7, reps7)
+
+        np.testing.assert_array_equal(np.from_dlpack(y7), np.tile(x7_np, reps7))
 
 
 class TestBandPartOp:
@@ -9942,15 +9977,37 @@ class TestLazyGCModelCompilation:
             gc_compile.uint_view_dtype(DType.float4_e2m1fn)
 
     def test_tile_rank_over_cap_raises(self) -> None:
-        """Rank beyond an op's cap raises cleanly, not a kernel comptime assert.
+        """Rank past the sweep raises only when lazy compile is disallowed.
 
-        Uses the same KeyError "Unsupported" signal as an unsupported dtype.
+        tile is arbitrary-rank: rank 6 is outside the precompiled sweep but
+        compiles on demand. The same KeyError "Unsupported" signal as an
+        unsupported dtype fires only under MAX_EAGER_ALLOW_LAZY_COMPILE=0.
         """
-        # tile's GC kernel supports up to rank 5; rank 6 must be rejected here.
-        with pytest.raises(
-            KeyError, match="Unsupported shape-rearrange rank 6"
-        ):
-            shape_rearrange_gc.model(mo.TileOp, CPU(), DType.uint8, rank=6)
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setenv("MAX_EAGER_ALLOW_LAZY_COMPILE", "0")
+        try:
+            with pytest.raises(
+                KeyError, match="Unsupported shape-rearrange rank 6"
+            ):
+                shape_rearrange_gc.model(mo.TileOp, CPU(), DType.uint8, rank=6)
+        finally:
+            monkeypatch.undo()
+
+    def test_tile_rank_past_sweep_compiles_lazily(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rank past the sweep passes the support gate in the default mode.
+
+        Checks the gate only (the model object needs the full GC stack);
+        rank 6 must not be refused when lazy compile is allowed.
+        """
+        monkeypatch.delenv("MAX_EAGER_ALLOW_LAZY_COMPILE", raising=False)
+        spec = shape_rearrange_gc._spec_for(mo.TileOp)
+        assert spec is not None and spec.arbitrary_rank
+        # The sweep itself still precompiles only 1..MAX_RANK.
+        assert shape_rearrange_gc._ranks_for(spec)[-1] == (
+            shape_rearrange_gc.MAX_RANK
+        )
 
 
 class TestDataMovementGCFamily:
