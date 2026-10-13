@@ -1,0 +1,79 @@
+load("@rules_rust_pyo3//:defs.bzl", "pyo3_extension")
+load("//bazel:api.bzl", "copy_files", "modular_py_library")
+load(
+    "//utils/packaging:common.bzl",
+    "ARCH_SPECIFIC_PLATFORM",
+    "PYTHON_VERSION_MINIMUM",
+    "PYTHON_VERSION_UPPER_BOUND",
+    "modular_base_wheel",
+)
+
+# GPU (dlopen'd CUDA/ROCm) target; gated to x86_64 Linux like its consumers.
+_GPU_PLATFORM = [
+    "@platforms//cpu:x86_64",
+    "@platforms//os:linux",
+]
+
+package(default_visibility = ["//rust_kv:consumers"])
+
+pyo3_extension(
+    name = "_kv_tier_connector_pyo3_so",
+    srcs = glob(["src/**/*.rs"]),
+    module_name = "_kv_tier_connector_pyo3",
+    rustc_flags = [
+        # Python C-API symbols are resolved at import time; cancel the
+        # toolchain's default -Wl,-z,defs so the intentional undefined refs pass.
+        "-C",
+        "link-arg=-Wl,-z,undefs",
+    ],
+    stubs = False,
+    target_compatible_with = _GPU_PLATFORM,
+    # NOTE: pyo3 itself is injected by `pyo3_extension` via the
+    # `@rules_rust_pyo3` toolchain (bound to @crates//:pyo3); depending on
+    # @rust_kv_crates' pyo3 as well would give two pyo3 candidates. Same
+    # posture as `tokenizer/crates/tokenizer-pyo3/BUILD.bazel`.
+    deps = [
+        "//rust_kv/kv-tier-connector",
+        "@rust_kv_crates//:max-profiler",
+    ],
+)
+
+# Move the .so next to the package __init__.py so imports resolve.
+copy_files(
+    name = "_kv_tier_connector_pyo3",
+    srcs = [":_kv_tier_connector_pyo3_so"],
+    outs = ["python/kv_tier_connector/_kv_tier_connector_pyo3.so"],
+)
+
+modular_py_library(
+    name = "connector",
+    srcs = [
+        "python/kv_tier_connector/__init__.py",
+    ],
+    data = [":_kv_tier_connector_pyo3"],
+    imports = ["python"],
+    tags = [
+        "no-pydeps",
+    ],
+    target_compatible_with = _GPU_PLATFORM,
+)
+
+modular_base_wheel(
+    name = "kv_tier_connector_wheel",
+    abi3_min_python = PYTHON_VERSION_MINIMUM,
+    data_files = {
+        ":_kv_tier_connector_pyo3_so": "platlib/kv_tier_connector/",
+    },
+    distribution = "kv-tier-connector",
+    platform = ARCH_SPECIFIC_PLATFORM,
+    python_requires = ">={},<{}".format(
+        PYTHON_VERSION_MINIMUM,
+        PYTHON_VERSION_UPPER_BOUND,
+    ),
+    strip_path_prefixes = ["rust_kv/kv-tier-connector-pyo3/python"],
+    summary = "Rust host/disk tiered KV connector (pyo3-backed).",
+    tags = ["top-level"],
+    target_compatible_with = _GPU_PLATFORM,
+    universal = False,
+    deps = [":connector"],
+)

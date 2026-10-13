@@ -315,7 +315,7 @@ class Device:
         """Gets the device context pointer."""
 
     @staticmethod
-    def cpu(id: int = -1) -> CPU:
+    def cpu(id: int = 0) -> CPU:
         """Creates a CPU device. The id is ignored currently."""
 
 class Accelerator(Device):
@@ -355,7 +355,7 @@ class Accelerator(Device):
         """
 
 class CPU(Device):
-    def __init__(self, id: int = -1) -> None:
+    def __init__(self, id: int = 0) -> None:
         """
         Creates a CPU device.
 
@@ -369,7 +369,7 @@ class CPU(Device):
 
         Args:
             id (int, optional): The device ID to use.
-                Defaults to -1.
+                Defaults to 0.
 
         Returns:
             CPU: A new CPU device object.

@@ -1,0 +1,26 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rust_kv_crates//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//rust_kv:consumers"])
+
+# GPU (dlopen'd CUDA/ROCm) target; gated to x86_64 Linux like its consumers.
+_GPU_PLATFORM = [
+    "@platforms//cpu:x86_64",
+    "@platforms//os:linux",
+]
+
+rust_library(
+    name = "kv-tier-connector",
+    srcs = glob(["src/**/*.rs"]),
+    edition = "2024",
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    target_compatible_with = _GPU_PLATFORM,
+    deps = all_crate_deps(normal = True) + ["//rust_kv/kv-core"],
+)
+
+rust_test(
+    name = "kv-tier-connector-test",
+    crate = ":kv-tier-connector",
+    edition = "2024",
+    target_compatible_with = _GPU_PLATFORM,
+)
