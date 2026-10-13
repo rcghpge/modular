@@ -15,9 +15,12 @@ The memory manager implementation consists of three main components:
 - **MemoryManagerFreeList**: Hierarchical free list for allocation/deallocation
 - **Supporting classes**: Chunk, Desc, DescMap for internal management
 
-Existing test coverage is limited to a single test in
-`DeviceContextTest.cpp:460` that focuses on basic allocation patterns mixed with
-device context functionality.
+Test coverage now spans roughly 80 tests across eight files under
+`MLRT/unittests/Driver/` (`MemoryManagerTest.cpp`,
+`MemoryManagerChunkGrowthTest.cpp`, the `MemoryManagerVMM*` suites, and the
+`GPUMemoryManager*` suites), in addition to the original allocation-pattern
+coverage in `DeviceContextTest.cpp`. This document tracks the remaining gaps
+against the components and behaviors enumerated below.
 
 ## Key Components to Test
 

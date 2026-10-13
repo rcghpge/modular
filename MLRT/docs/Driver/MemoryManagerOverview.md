@@ -251,8 +251,12 @@ We want to allocate a 1.8MB block on the pictured DeviceContext:
   when absolute size (above) is specified. Otherwise, a value of 0 disables the
   memory manager.
 - **`MODULAR_DEVICE_CONTEXT_MEMORY_MANAGER_CHUNK_PERCENT`**: Chunk size as
-  percentage of max memory manager size (default: 8%). Integer-valued. Must be
-  between 1 and 100; clamped to these limits if found to lie outside.
+  percentage of max memory manager size (device default: 100%; host default:
+  8%). Integer-valued. Must be between 1 and 100; clamped to these limits if
+  found to lie outside. A device default of 100% effectively disables
+  incremental chunking (the whole pool is one chunk); the smaller host default
+  keeps the pinned-memory cache from allocating its full capacity on the first
+  allocation.
 
 #### Defragmenting Allocator (CUDA VMM)
 
@@ -676,10 +680,13 @@ Monitor these metrics in production:
 
 - `MemoryManager` was originally called `BufferCache`.
 
-- `MemoryManager::DescMap` is basically just a hash-map. This could very well
-  have
-been std::unordered_map except that we implement per-bucket mutexes for
-fine-grain locking, for performance (hence the custom implementation).
+- `MemoryManager::DescMap` is basically just a hash-map. It could have been a
+  `std::unordered_map`, but the custom implementation lets each `Desc` carry its
+  own `nextMap_` chaining pointer, so insert and remove reuse `Desc` objects
+  drawn from the manager's descriptor pool instead of allocating map nodes on
+  the heap. That avoids calling `malloc`/`free` while holding the manager's lock
+  on every allocation. `DescMap` has no locking of its own; all access is
+  serialized under the single global `MemoryManager::mu_`.
 - The MemoryManager feature looks a lot like CUDA's mempools but in early
 experiments we found ~10% gains from such application-space memory pool
 management so we built this.
