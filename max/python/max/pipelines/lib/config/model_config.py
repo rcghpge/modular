@@ -1633,12 +1633,13 @@ class MAXModelConfig(MAXModelConfigBase):
         """
         return self.device_specs[0]
 
-    def log_model_info(self, role: str) -> None:
+    def log_model_info(self, role: str, *, uses_kv_cache: bool = True) -> None:
         """Logs model configuration information for this config.
 
         Args:
             role: The semantic role of this model (such as ``"main"``,
                 ``"draft"``, ``"vae"``).
+            uses_kv_cache: Whether the pipeline uses a KV cache.
         """
         logger.info("")
         logger.info("  Model: %s", role)
@@ -1677,8 +1678,8 @@ class MAXModelConfig(MAXModelConfigBase):
         for line in _format_config_entries(entries, indent="    "):
             logger.info(line)
 
-        # KVCache configuration
-        self._log_kvcache_info()
+        if uses_kv_cache:
+            self._log_kvcache_info()
 
     def _log_kvcache_info(self) -> None:
         """Logs KV cache configuration details for this model config."""
