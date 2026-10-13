@@ -4058,6 +4058,8 @@ struct _MoggShapeTensorArg[
     _alignment: Int,
     _data_visible: Bool,
 ](
+    Copyable,
+    Movable,
     Tensor,
     # `_data_visible` gates `DenseTensor`/`TileTensorable` off for a bare
     # `Tensor` bound, so such an argument cannot reach element values.

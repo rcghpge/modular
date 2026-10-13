@@ -2628,6 +2628,42 @@ def trait_reshape_shape_op_shape[
     return shape
 
 
+# A custom op whose shape function takes its variadic operands as a
+# `TensorTuple` of bare-`Tensor` elements, so the tuple holds one emitted
+# `_MoggShapeTensorArg` per operand by value. `execute` copies the first input
+# to the output. CPU only.
+@extensibility.register("trait_tensor_tuple_shape_op")
+struct TraitTensorTupleShapeOp:
+    @staticmethod
+    def execute[
+        Ins: TypeList[Trait=Input & DenseTensor, ...],
+        //,
+        target: StaticString,
+    ](
+        output: Some[Output & DenseTensor],
+        inputs: TensorTuple[*Ins],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if not is_cpu[target]():
+            raise Error("trait_tensor_tuple_shape_op only runs on the CPU")
+        comptime assert conforms_to(type_of(output), TileTensorable)
+        comptime assert conforms_to(type_of(inputs[0]), TileTensorable)
+        var zt = to_tile_tensor(output)
+        var xt = to_tile_tensor(inputs[0])
+        comptime OutT = SIMD[type_of(zt).dtype, 1]
+        for j in range(Int(output.shape().product())):
+            zt.raw_store(j, rebind[OutT](xt.raw_load(j)))
+
+
+@extensibility.register_shape_function("trait_tensor_tuple_shape_op")
+def trait_tensor_tuple_shape_op_shape[
+    Ts: TypeList[Trait=Tensor, ...], //
+](inputs: TensorTuple[*Ts]) -> IndexList[Ts[0].rank]:
+    return rebind[IndexList[Ts[0].rank]](
+        coord_to_index_list(inputs[0].shape().tuple())
+    )
+
+
 @extensibility.register("single_device_context")
 struct SingleDeviceContext:
     @staticmethod
