@@ -62,14 +62,26 @@ def _bytes_of(buf: ctypes.Array[ctypes.c_uint8]) -> bytes:
 # ----------------------------------------------------------------------
 
 
-def test_driver_load() -> None:
-    driver = Driver()
+# Share one driver and context across the module. Each new driver loads and
+# starts the GPU driver library, and each new context makes the GPU primary
+# context. On a busy GPU host either step can take a minute, so doing them for
+# every test runs past the test timeout.
+@pytest.fixture(scope="module")
+def driver() -> Driver:
+    return Driver()
+
+
+@pytest.fixture(scope="module")
+def ctx(driver: Driver) -> Context:
+    return driver.get_device(0).get_context()
+
+
+def test_driver_load(driver: Driver) -> None:
     assert isinstance(driver.name, str) and driver.name != ""
     assert driver.device_count >= 1
 
 
-def test_queue_record_event_and_synchronize() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_record_event_and_synchronize(ctx: Context) -> None:
     queue = ctx.create_queue()
     event = queue.record_event()
     assert isinstance(event, Event)
@@ -82,24 +94,20 @@ def test_queue_record_event_and_synchronize() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_context_alloc_sync_returns_buffer() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_context_alloc_sync_returns_buffer(ctx: Context) -> None:
     buf = ctx.alloc_sync(64)
     assert isinstance(buf, Buffer)
     assert buf.byte_size == 64
     assert ctx.memory_get_address(buf) != 0
 
 
-def test_context_alloc_host_pinned_returns_buffer() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_context_alloc_host_pinned_returns_buffer(ctx: Context) -> None:
     buf = ctx.alloc_host_pinned(64)
     assert isinstance(buf, Buffer)
     assert buf.byte_size == 64
 
 
-def test_context_wrap_unwrap() -> None:
-    ctx = Driver().get_device(0).get_context()
-
+def test_context_wrap_unwrap(ctx: Context) -> None:
     # A zero address is rejected by every plugin rather than minting a
     # handle that would segfault on first use.
     with pytest.raises(Exception):
@@ -133,8 +141,7 @@ def test_context_wrap_unwrap() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_queue_host_to_device_to_host_roundtrip() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_host_to_device_to_host_roundtrip(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 256
@@ -150,8 +157,7 @@ def test_queue_host_to_device_to_host_roundtrip() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_queuecopy_intra_device() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queuecopy_intra_device(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 256
@@ -169,8 +175,7 @@ def test_queuecopy_intra_device() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_unified_copy_device_to_device() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_unified_copy_device_to_device(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 128
@@ -196,9 +201,7 @@ def test_unified_copy_device_to_device() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_context_sync_copy_roundtrip() -> None:
-    ctx = Driver().get_device(0).get_context()
-
+def test_context_sync_copy_roundtrip(ctx: Context) -> None:
     n = 256
     src_data = bytes((i * 11) % 256 for i in range(n))
     _src, src_addr = _make_host_buf(src_data)
@@ -218,8 +221,7 @@ def test_context_sync_copy_roundtrip() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_queue_set_memory() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_set_memory(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 128
@@ -233,8 +235,7 @@ def test_queue_set_memory() -> None:
     assert _bytes_of(dst) == bytes([0x5A]) * n
 
 
-def test_queue_fill() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_fill(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 128
@@ -254,8 +255,7 @@ def test_queue_fill() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_set_memory_sync() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_set_memory_sync(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 128
@@ -270,8 +270,7 @@ def test_set_memory_sync() -> None:
     assert _bytes_of(dst) == bytes([0x5A]) * n
 
 
-def test_fill_sync() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_fill_sync(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 128
@@ -291,8 +290,7 @@ def test_fill_sync() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_stream_host_to_device_to_host_roundtrip() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_host_to_device_to_host_roundtrip(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     n = 256
@@ -308,8 +306,7 @@ def test_stream_host_to_device_to_host_roundtrip() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_streamcopy_intra_device() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_streamcopy_intra_device(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     n = 256
@@ -327,8 +324,7 @@ def test_streamcopy_intra_device() -> None:
     assert _bytes_of(dst) == src_data
 
 
-def test_stream_set_memory() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_set_memory(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     n = 128
@@ -342,8 +338,7 @@ def test_stream_set_memory() -> None:
     assert _bytes_of(dst) == bytes([0x5A]) * n
 
 
-def test_stream_fill() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_fill(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     n = 128
@@ -362,8 +357,7 @@ def test_stream_fill() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_queue_partial_copy_roundtrip() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_partial_copy_roundtrip(ctx: Context) -> None:
     queue = ctx.create_queue()
 
     n = 256
@@ -383,8 +377,7 @@ def test_queue_partial_copy_roundtrip() -> None:
     assert _bytes_of(dst)[192:] == bytes(64)
 
 
-def test_stream_partial_copy_roundtrip() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_partial_copy_roundtrip(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     n = 256
@@ -408,8 +401,7 @@ def test_stream_partial_copy_roundtrip() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_queue_wait_for_events_single() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_wait_for_events_single(ctx: Context) -> None:
     producer = ctx.create_queue()
     consumer = ctx.create_queue()
     event = producer.record_event()
@@ -417,8 +409,7 @@ def test_queue_wait_for_events_single() -> None:
     consumer.synchronize()
 
 
-def test_stream_wait_for_events_single() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_wait_for_events_single(ctx: Context) -> None:
     producer = ctx.create_stream()
     consumer = ctx.create_stream()
     event = producer.record_event()
@@ -431,16 +422,14 @@ def test_stream_wait_for_events_single() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_compile_returns_bundle_with_name() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_compile_returns_bundle_with_name(ctx: Context) -> None:
     bundle = ctx.compile(vec_add)
     assert isinstance(bundle, Bundle)
     assert isinstance(bundle.function_name, str)
     assert len(bundle.function_name) > 0
 
 
-def test_load_function_returns_function() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_load_function_returns_function(ctx: Context) -> None:
     bundle = ctx.compile(vec_add)
     func = ctx.load_function(bundle, bundle.function_name)
     assert isinstance(func, Function)
@@ -503,8 +492,7 @@ def _vec_add_kernel_args(
     return addrs, sizes, [a_ptr, b_ptr, out_ptr, n_val]
 
 
-def test_queue_execute_vec_add() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_execute_vec_add(ctx: Context) -> None:
     bundle = ctx.compile(vec_add)
     func = ctx.load_function(bundle, bundle.function_name)
     queue = ctx.create_queue()
@@ -543,8 +531,7 @@ def test_queue_execute_vec_add() -> None:
         )
 
 
-def test_stream_execute_vec_add() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_stream_execute_vec_add(ctx: Context) -> None:
     bundle = ctx.compile(vec_add)
     func = ctx.load_function(bundle, bundle.function_name)
     stream = ctx.create_stream()
@@ -581,8 +568,7 @@ def test_stream_execute_vec_add() -> None:
         )
 
 
-def test_queue_execute_validates_shapes() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_queue_execute_validates_shapes(ctx: Context) -> None:
     bundle = ctx.compile(vec_add)
     func = ctx.load_function(bundle, bundle.function_name)
     queue = ctx.create_queue()
@@ -602,9 +588,7 @@ def test_queue_execute_validates_shapes() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_array_construction_and_fill(tmp_path: Path) -> None:
-    ctx = Driver().get_device(0).get_context()
-
+def test_array_construction_and_fill(ctx: Context, tmp_path: Path) -> None:
     # Host -> device -> host roundtrip preserves data and metadata.
     src = np.arange(12, dtype=np.float32).reshape(3, 4)
     arr = Array.from_numpy(ctx, src)
@@ -645,13 +629,12 @@ def test_array_construction_and_fill(tmp_path: Path) -> None:
     ).all()
 
 
-def test_array_copy_false_adoption(tmp_path: Path) -> None:
+def test_array_copy_false_adoption(ctx: Context, tmp_path: Path) -> None:
     # copy=False adopts host memory zero-copy, which only works when the source
     # is already on the context's device. On a host (CPU) context a numpy
     # array is on-device and is adopted; on a device context it is not, so
     # adoption is refused rather than silently copied. Whichever context this
     # suite runs against, one branch below exercises the routing.
-    ctx = Driver().get_device(0).get_context()
     src = np.arange(6, dtype=np.float32)
     path = tmp_path / "raw.bin"
     path.write_bytes(src.tobytes())
@@ -669,8 +652,7 @@ def test_array_copy_false_adoption(tmp_path: Path) -> None:
             Array.from_file(ctx, path, DType.float32, (6,), copy=False)
 
 
-def test_array_slicing_and_views() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_array_slicing_and_views(ctx: Context) -> None:
     src = np.arange(24, dtype=np.int32).reshape(4, 6)
     arr = Array.from_numpy(ctx, src)
 
@@ -713,11 +695,10 @@ def test_array_slicing_and_views() -> None:
         arr[None]
 
 
-def test_array_fill_slice_stays_in_range() -> None:
+def test_array_fill_slice_stays_in_range(ctx: Context) -> None:
     # A sliced fill must touch only the slice's bytes, not the whole backing
     # buffer: exercises the view offset+size through the synchronous Context
     # fill path (a middle row has a non-zero byte offset).
-    ctx = Driver().get_device(0).get_context()
     arr = Array.full(ctx, DType.int32, (4, 6), 0)
     arr[1].fill(7)
     out = arr.as_numpy()
@@ -727,9 +708,7 @@ def test_array_fill_slice_stays_in_range() -> None:
     assert (out[3] == 0).all()
 
 
-def test_array_copy_and_subbyte_packing() -> None:
-    ctx = Driver().get_device(0).get_context()
-
+def test_array_copy_and_subbyte_packing(ctx: Context) -> None:
     # Device-to-device copy into existing storage.
     src = Array.from_numpy(ctx, np.arange(12, dtype=np.int32).reshape(3, 4))
     dst = Array.empty(ctx, DType.int32, (3, 4))
@@ -759,8 +738,7 @@ def test_array_copy_and_subbyte_packing() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_array_dlpack_export() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_array_dlpack_export(ctx: Context) -> None:
     arr = Array.from_numpy(ctx, np.arange(6, dtype=np.float32).reshape(2, 3))
 
     # The capsule pins the owning array; releasing it restores the balance.
@@ -816,9 +794,7 @@ class _ForeignDeviceProducer:
         raise AssertionError("capsule must not be requested")
 
 
-def test_array_dlpack_import() -> None:
-    ctx = Driver().get_device(0).get_context()
-
+def test_array_dlpack_import(ctx: Context) -> None:
     src = np.arange(6, dtype=np.float32).reshape(2, 3)
     with pytest.raises(ValueError, match="host"):
         Array.from_dlpack(ctx, src)
@@ -863,8 +839,7 @@ def test_array_dlpack_import() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_array_async_ops() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_array_async_ops(ctx: Context) -> None:
     stream = ctx.create_stream()
 
     # array_full / array_fill / array_copy enqueue WITHOUT waiting; the caller
@@ -900,8 +875,7 @@ def test_array_async_ops() -> None:
     np.testing.assert_array_equal(qn.as_numpy(), qsrc)
 
 
-def test_array_async_dlpack() -> None:
-    ctx = Driver().get_device(0).get_context()
+def test_array_async_dlpack(ctx: Context) -> None:
     stream = ctx.create_stream()
     src = Array.from_numpy(ctx, np.arange(6, dtype=np.float32).reshape(2, 3))
 
