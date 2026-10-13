@@ -261,6 +261,36 @@ void M::Graph::Python::bindProfilerModule(nb::module_ m) {
           incomplete.
   )nbdoc");
 
+  m.def(
+      "request_burst",
+      [](std::string_view reason) {
+        // The scheduler calls this for every prefill batch; keep the
+        // profiling-off path to the one check, without a GIL round trip.
+        if (!M::Profiling::isEnabled())
+          return false;
+        nb::gil_scoped_release release;
+        return M::Profiling::requestBurst(reason);
+      },
+      nb::arg("reason"), R"nbdoc(
+      Requests an extra step-window burst for an event, opened now.
+
+      Applies only to a capture with ``profiling-period-steps`` set, where it
+      adds a burst between scheduled ones for an event the schedule would
+      likely miss, such as a prefill batch. Call it just before the execute
+      the burst should start with. The burst covers ``profiling-active-steps``
+      steps and is saved to ``<output>.event<k>.json``, labeled with
+      ``reason``. At most one request is honored per gap between scheduled
+      bursts, and none before the first scheduled burst.
+
+      Args:
+          reason: Why the burst was requested, recorded in the trace.
+              Characters outside ``[A-Za-z0-9_.-]`` become ``_``.
+
+      Returns:
+          True if a burst opened. False when profiling is off, which costs a
+          single check, or when the request was not honored.
+  )nbdoc");
+
   m.def("is_capture_recording", &isCaptureRecording, R"nbdoc(
       Returns whether a capture is recording.
 
