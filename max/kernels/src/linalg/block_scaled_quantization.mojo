@@ -1317,6 +1317,8 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         *Coord[Int64].element_types
     ],
     RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
     num_threads: Int = 128,
     k_tiles_per_block: Int = 1,
 ](
@@ -1346,7 +1348,10 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     ],  # tensor-wise scale factor
     row_indices: OptionalReg[
         TileTensor[
-            .int32, row_indices_layout, ImmutAnyOrigin, Engine=RowIndicesEngine
+            row_indices_dtype,
+            row_indices_layout,
+            ImmutAnyOrigin,
+            Engine=RowIndicesEngine,
         ]
     ] = None,
 ):
@@ -1391,6 +1396,9 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_indices_layout: TileTensor layout of the optional source row
             indices tensor.
         RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of the `row_indices` tensor.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
         num_threads: Number of threads per block in the launch grid
             (defaults to 128).
         k_tiles_per_block: Column tiles handled by one block. Batching them
@@ -1405,12 +1413,12 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_offsets: Contiguous row boundaries per expert of shape
             `[num_experts + 1]` as `uint32`, where range `i` spans
             rows `row_offsets[i]` through `row_offsets[i + 1]`.
-        row_indices: Optional source row indices of shape `[padded_rows]` as
-            `int32`. When present, permuted output row `i` reads input row
-            `row_indices[i]`, fusing the MoE expert permutation gather into
-            the quantize loads. The output layout and scale tiles are
-            unchanged; absent means the input is already in permuted row
-            order.
+        row_indices: Optional source row indices of shape `[padded_rows]`.
+            When present, permuted output row `i` reads input row
+            `row_indices[i] // row_index_divisor`, fusing the MoE expert
+            permutation gather into the quantize loads. The output layout and
+            scale tiles are unchanged; absent means the input is already in
+            permuted row order.
         scales_offsets: Per-expert offset into the scales tensor of
             shape `[num_experts]` as `uint32`.
         expert_ids: Expert ID for each active range of shape
@@ -1627,7 +1635,9 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             if is_valid:
                 var source_row = token_start + local_row
                 if case .Some(row_indices) = row_indices:
-                    source_row = Int(row_indices[source_row])
+                    source_row = (
+                        Int(row_indices[source_row]) // row_index_divisor
+                    )
                 input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
                     (source_row, input_col)
                 )
@@ -1714,6 +1724,8 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         *Coord[Int64].element_types
     ],
     RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
 ](
     output_tensor: TileTensor[
         mut=True, output_dtype, address_space=.GENERIC, ..., Engine=OutputEngine
@@ -1748,7 +1760,7 @@ def grouped_quantize_dynamic_scaled_fp4_async[
     row_indices: OptionalReg[
         TileTensor[
             mut=False,
-            .int32,
+            row_indices_dtype,
             RowIndicesLayoutType,
             ImmutAnyOrigin,
             Engine=RowIndicesEngine,
@@ -1777,6 +1789,9 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         SfEngine: Engine policy of the `sf_tensor`.
         RowIndicesLayoutType: Layout of the optional `row_indices` tensor.
         RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of the `row_indices` tensor.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
     Args:
         output_tensor: Output quantized tensor of packed FP4 `uint8`
             or `float8_e4m3fn` for MXFP8.
@@ -1793,11 +1808,17 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         sf_tensor: Per-expert tensor-wise scale factor of shape
             `[num_experts]` as `float32`.
         ctx: Device context used to enqueue the kernel.
-        row_indices: Optional source row indices of shape `[padded_rows]`
-            as `int32`. When present, permuted output row `i` reads input row
-            `row_indices[i]`, fusing the MoE expert permutation gather into
-            the quantize loads; the output stays in permuted row order.
+        row_indices: Optional source row indices of shape `[padded_rows]`.
+            When present, permuted output row `i` reads input row
+            `row_indices[i] // row_index_divisor`, fusing the MoE expert
+            permutation gather into the quantize loads; the output stays in
+            permuted row order.
     """
+    comptime assert (
+        row_indices_dtype.is_integral()
+    ), "row_indices must hold integers"
+    comptime assert row_index_divisor > 0, "row_index_divisor must be positive"
+
     # The kernel masks columns at 8-element lane granularity, so a column
     # count that is not a multiple of 8 would still load and store partially
     # out of bounds within the straddling lane.
@@ -1883,6 +1904,8 @@ def grouped_quantize_dynamic_scaled_fp4_async[
             SfEngine,
             RowIndicesLayoutType,
             RowIndicesEngine,
+            row_indices_dtype,
+            row_index_divisor,
             num_threads=BLOCK_THREADS,
             k_tiles_per_block=k_tiles_per_block,
         ]
