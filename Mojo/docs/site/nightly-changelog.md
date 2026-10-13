@@ -196,6 +196,11 @@ This version is still a work in progress.
 
 ## Library changes
 
+- `Defaultable` now provides a default `__init__()` implementation that
+  default-constructs each field using reflection. A struct can conform to
+  `Defaultable` without defining an initializer when all its fields also
+  conform to `Defaultable`.
+
 - The enum-behaving structs across the standard library, MAX kernels, and
   MAX runtime now conform to `EnumLike`, so they support enum-style pattern
   matching (`match` with `case .NAME`) and reflective case metadata:
