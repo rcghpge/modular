@@ -17,7 +17,7 @@ import extensibility
 
 from max.gpu.host import DeviceContext
 
-from extensibility import InputTensor, OutputTensor, foreach
+from extensibility import InputTensor, OutputTensor, Tensor, foreach
 
 from std.utils.coord import Coord
 from std.utils.index import IndexList
@@ -48,6 +48,6 @@ struct AddOne:
 # output shapes in the graph.
 @extensibility.register_shape_function("add_one")
 def add_one_shape(
-    x: InputTensor,
-) raises -> IndexList[x.rank]:
+    x: Some[Tensor],
+) raises -> IndexList[type_of(x).rank]:
     raise Error("NotImplemented")

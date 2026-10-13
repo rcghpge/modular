@@ -184,12 +184,17 @@ the [next example](#example-2-write-device-specific-kernels).)
 
 If you don't annotate output shapes manually in the Python graph, you must tell
 the compiler how to infer them by registering a shape function with
-[`@extensibility.register_shape_function()`](/api/mojo/extensibility/decorators/register_shape_function/):
+[`@extensibility.register_shape_function()`](/api/mojo/extensibility/decorators/register_shape_function/).
+A shape function that reads only its inputs' shapes takes them as
+`Some[Tensor]`, which exposes a tensor's shape, rank, and dtype but not its
+elements:
 
 ```mojo title="kernels/add_one.mojo"
 @extensibility.register_shape_function("add_one")
-def add_one_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def add_one_shape(x: Some[Tensor]) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 ```
 
 ### Add the custom op to a Python graph

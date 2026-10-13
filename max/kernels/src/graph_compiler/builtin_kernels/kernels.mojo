@@ -147,13 +147,12 @@ from max.runtime.tracing import trace_arg
 from extensibility import (
     InputTensor,
     InputVariadicTensors,
-    IOSpec,
     ManagedTensorSlice,
     OutputTensor,
     StableInputVariadicTensors,
     Tensor,
+    TensorTuple,
     TileTensorable,
-    VariadicTensors,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
 )
@@ -1000,29 +999,24 @@ def random_uniform_shape[
 
 
 def concat_shape_impl[
-    dtype: DType, rank: Int, size: Int, io_spec: IOSpec
-](
-    axis0: Int,
-    inputs: VariadicTensors[dtype=dtype, rank=rank, size, io_spec=io_spec, ...],
-) raises -> IndexList[rank]:
+    Ins: TypeList[Trait=Tensor, ...], //
+](axis0: Int, inputs: TensorTuple[*Ins]) raises -> IndexList[Ins[0].rank]:
     """Computes the concatenated output shape from the input tensor shapes.
 
     Parameters:
-        dtype: Element type of the input tensors.
-        rank: Number of dimensions in each input tensor.
-        size: Number of variadic input tensors.
-        io_spec: Input/output specification for the variadic tensors.
+        Ins: Types of the input tensors, which must share a rank.
 
     Args:
         axis0: Axis along which to concatenate; negative values index
             from the last dimension.
-        inputs: Variadic input tensors to concatenate, all matching in
-            shape except along the concat axis.
+        inputs: Input tensors to concatenate, all matching in shape except
+            along the concat axis.
 
     Returns:
         The output shape with the concat axis dimension summed across
         all inputs.
     """
+    comptime rank = Ins[0].rank
     var axis = normalize_neg_index(axis0, rank)
 
     @inline(.always)
@@ -1035,19 +1029,22 @@ def concat_shape_impl[
         return True
 
     var concat_axis_dim_sum = 0
+    var output_shape = rebind[IndexList[rank]](
+        coord_to_index_list(inputs[0].shape().tuple())
+    )
 
-    comptime for i in range(inputs.size):
-        concat_axis_dim_sum += inputs[i].dim_size(axis)
-        if not shape_equal_ignore_axis(
-            inputs[0].shape(),
-            inputs[i].shape(),
-        ):
+    comptime for i in range(len(Ins)):
+        comptime assert Ins[i].rank == rank, "inputs must share a rank"
+        var input_shape = rebind[IndexList[rank]](
+            coord_to_index_list(inputs[i].shape().tuple())
+        )
+        concat_axis_dim_sum += input_shape[axis]
+        if not shape_equal_ignore_axis(output_shape, input_shape):
             raise Error(
                 "[concat] input shapes must match except at concat axis"
             )
 
     # compute and return the output shape
-    var output_shape = inputs[0].shape()
     output_shape[axis] = concat_axis_dim_sum
     return output_shape
 
