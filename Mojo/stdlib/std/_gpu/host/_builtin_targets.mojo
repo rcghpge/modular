@@ -14,6 +14,9 @@
 
 from std.sys import CompilationTarget
 
+from std._plugin.cuda import CUDAPlugin
+from std._plugin.hip import HIPPlugin
+
 from .info import (
     TargetAcceleratorCollection,
     AcceleratorArchitectureFamily,
@@ -25,6 +28,9 @@ from .info import (
     _KB,
     NoGPU,
 )
+
+comptime CUDAPlugin_list = TypeList.of[CUDAPlugin]().values
+comptime HIPPlugin_list = TypeList.of[HIPPlugin]().values
 
 
 struct BuiltinTargets(TargetAcceleratorCollection):
@@ -314,6 +320,9 @@ comptime _a100_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_80", `,
         `features = "+ptx81,+sm_80", `,
         `tune_cpu = "sm_80", `,
@@ -349,6 +358,9 @@ comptime _a10_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_86", `,
         `features = "+ptx81,+sm_86", `,
         `tune_cpu = "sm_86", `,
@@ -384,6 +396,9 @@ comptime _orin_nano_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_87", `,
         `features = "+ptx81,+sm_87", `,
         `tune_cpu = "sm_87", `,
@@ -419,6 +434,9 @@ comptime _jetson_thor_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_110", `,
         `features = "+ptx90,+sm_110", `,
         `tune_cpu = "sm_110", `,
@@ -454,6 +472,9 @@ comptime _dgx_spark_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_121a", `,
         `features = "+ptx88,+sm_121a", `,
         `tune_cpu = "sm_121a", `,
@@ -489,6 +510,9 @@ comptime _l4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_89", `,
@@ -524,6 +548,9 @@ comptime _rtx4090m_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_90a", `,
@@ -559,6 +586,9 @@ comptime _rtx4090_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_89", `,
         `features = "+ptx81,+sm_89", `,
         `tune_cpu = "sm_90a", `,
@@ -595,6 +625,9 @@ comptime _h100_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_90a", `,
         `features = "+ptx85,+sm_90a", `,
         `tune_cpu = "sm_90a", `,
@@ -631,6 +664,9 @@ comptime _b100_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_100a", `,
         `features = "+ptx88,+sm_100a", `,
         `tune_cpu = "sm_100a", `,
@@ -684,6 +720,9 @@ comptime _b300_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_103a", `,
         `features = "+ptx88,+sm_103a", `,
         `tune_cpu = "sm_103a", `,
@@ -756,6 +795,9 @@ comptime _rtx5090_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_120a", `,
         `features = "+ptx87,+sm_120a", `,
         `tune_cpu = "sm_120a", `,
@@ -793,6 +835,9 @@ comptime _rtx3090_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_86", `,
         `features = "+ptx63,+sm_86", `,
         `tune_cpu = "sm_86", `,
@@ -832,6 +877,9 @@ comptime _gtx1080ti_target = CompilationTarget[
     __mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_61", `,
         `features = "+ptx50,+sm_61", `,
         `simd_bit_width = 128`,
@@ -865,6 +913,9 @@ comptime _gtx1060_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_61", `,
         `features = "+ptx50,+sm_61", `,
         `tune_cpu = "sm_61", `,
@@ -903,6 +954,9 @@ comptime _gtx970_target = CompilationTarget[
     __mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_52", `,
         `features = "+ptx50,+sm_52", `,
         `simd_bit_width = 128`,
@@ -936,6 +990,9 @@ comptime _teslap100_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_60", `,
         `features = "+ptx50,+sm_60", `,
         `tune_cpu = "sm_60", `,
@@ -972,6 +1029,9 @@ comptime _rtx2060_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "nvptx64-nvidia-cuda", `,
         `stdlib_plugin = "cuda", `,
+        `opaque_plugin = `,
+        CUDAPlugin_list,
+        `,`,
         `arch = "sm_75", `,
         `features = "+ptx63,+sm_75", `,
         `tune_cpu = "sm_75", `,
@@ -1008,6 +1068,9 @@ comptime _mi250x_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu9.0a-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx90a", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1043,6 +1106,9 @@ comptime _mi300x_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu9.42-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx942", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1078,6 +1144,9 @@ comptime _mi300a_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu9.42-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx942", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1120,6 +1189,9 @@ comptime _mi355x_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu9.50-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx950", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1155,6 +1227,9 @@ comptime _mi455x_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu12.50-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1250", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1190,6 +1265,9 @@ comptime _9070_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu12.01-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1201", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1205,6 +1283,9 @@ comptime _9060_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu12.00-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1200", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1220,6 +1301,9 @@ comptime _7900_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.00-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1100", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1235,6 +1319,9 @@ comptime _7800_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.01-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1101", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1250,6 +1337,9 @@ comptime _7600_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.02-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1102", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1265,6 +1355,9 @@ comptime _6900_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu10.30-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1030", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1280,6 +1373,9 @@ comptime _780m_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.03-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1103", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1295,6 +1391,9 @@ comptime _880m_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.50-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1150", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1310,6 +1409,9 @@ comptime _8060s_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.51-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1151", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1325,6 +1427,9 @@ comptime _860m_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu11.52-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1152", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,
@@ -1340,6 +1445,9 @@ comptime _steamdeck_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "amdgpu10.33-amd-amdhsa", `,
         `stdlib_plugin = "hip", `,
+        `opaque_plugin = `,
+        HIPPlugin_list,
+        `,`,
         `arch = "gfx1033", `,
         `features = "", `,
         `data_layout = "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-p10:32:32-p11:32:32-p12:32:32-p13:32:32-p14:32:32-p15:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1-ni:7:8:9",`,

@@ -24,6 +24,8 @@ from std._gpu.host.info import (
     _supported_archs_line,
 )
 
+from .metal_plugin import MetalPlugin
+
 
 struct MetalTargets(TargetAcceleratorCollection):
     """Apple GPU targets that the Metal plugin contributes."""
@@ -63,6 +65,8 @@ struct MetalTargets(TargetAcceleratorCollection):
         )
 
 
+comptime MetalPlugin_list = TypeList.of[MetalPlugin]().values
+
 # ===-----------------------------------------------------------------------===#
 # Apple Architecture Families
 # ===-----------------------------------------------------------------------===#
@@ -86,6 +90,9 @@ comptime _metal_m1_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m1", `,
         `features = "+metal3_2,+air2_7_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -100,6 +107,9 @@ comptime _metal_m2_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m2", `,
         `features = "+metal3_2,+air2_7_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -114,6 +124,9 @@ comptime _metal_m3_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m3", `,
         `features = "+metal3_2,+air2_7_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -128,6 +141,9 @@ comptime _metal_m4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m4", `,
         `features = "+metal3_2,+air2_7_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -142,6 +158,9 @@ comptime _metal_m5_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m5", `,
         `features = "+metal3_2,+air2_7_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -156,6 +175,9 @@ comptime _metal_m1_metal4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m1", `,
         `features = "+metal4_0,+air2_8_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -170,6 +192,9 @@ comptime _metal_m2_metal4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m2", `,
         `features = "+metal4_0,+air2_8_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -184,6 +209,9 @@ comptime _metal_m3_metal4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m3", `,
         `features = "+metal4_0,+air2_8_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -198,6 +226,9 @@ comptime _metal_m4_metal4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m4", `,
         `features = "+metal4_0,+air2_8_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,
@@ -212,6 +243,9 @@ comptime _metal_m5_metal4_target = CompilationTarget[
     _mlir_value=__mlir_attr[
         `#kgen.target<triple = "air64-apple-macosx", `,
         `stdlib_plugin = "metal", `,
+        `opaque_plugin = `,
+        MetalPlugin_list,
+        `,`,
         `arch = "apple-m5", `,
         `features = "+metal4_0,+air2_8_0", `,
         `data_layout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v16:16:16-v24:32:32-v32:32:32-v48:64:64-v64:64:64-v96:128:128-v128:128:128-v192:256:256-v256:256:256-v512:512:512-v1024:1024:1024-n8:16:32", `,

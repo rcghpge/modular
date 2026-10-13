@@ -28,6 +28,9 @@ from std.ffi import _external_call_const, external_call
 
 from std._gpu.host.info import GPUInfo, get_gpu_target, TargetAccelerator
 
+from std._plugin.selector import TargetPluginSelector
+from std._plugin import StdPlugin, DefaultPlugin, PluginHooks
+
 comptime _TargetType = __mlir_type.`!kgen.target`
 
 
@@ -265,6 +268,10 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
             `> : i1`,
         ]
 
+    # ===----------------------------------------------------------------------=== #
+    # Target attribute getters
+    # ===----------------------------------------------------------------------=== #
+
     @inline(.nodebug)
     @staticmethod
     def _arch() -> StaticString:
@@ -384,6 +391,33 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
             `> : !kgen.string`,
         ]
         return StaticString(res)
+
+    # ===----------------------------------------------------------------------=== #
+    # Plugin attribute access
+    # ===----------------------------------------------------------------------=== #
+
+    comptime _first_conforming_plugin[
+        Trait: type_of(AnyType), *, default: Trait
+    ] = TargetPluginSelector[
+        Self(),
+        default,
+    ].selected
+    """The first conforming plugin implementing `Trait` set on this target, or
+    `default` if no such plugin is set.
+
+    Parameters:
+        Trait: The plugin trait to look for.
+        default: The default implementation of `Trait` to use if no conforming plugin is set.
+    """
+
+    comptime stdlib_plugin: PluginHooks = Self._first_conforming_plugin[
+        StdPlugin, default=DefaultPlugin
+    ].HookFor[Self()]
+    """The stdlib plugin to use for this target."""
+
+    # ===----------------------------------------------------------------------=== #
+    # Predicates
+    # ===----------------------------------------------------------------------=== #
 
     @inline(.nodebug)
     @staticmethod
