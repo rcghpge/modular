@@ -26,7 +26,7 @@ from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.context import TextContext, TokenBuffer
 from max.pipelines.kv_cache import InsufficientBlocksError
 from max.pipelines.kv_cache.kv_connector import BlockCount, KVConnector
-from max.pipelines.kv_cache.paged_kv_cache.block_manager import PrefixCacheHits
+from max.pipelines.kv_cache.paged_kv_cache._common import PrefixCacheHits
 from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
     JengaBlockManager,
     KVLeafInfo,

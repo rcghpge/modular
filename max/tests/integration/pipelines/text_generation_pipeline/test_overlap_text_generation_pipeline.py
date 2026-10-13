@@ -27,7 +27,7 @@ from max.pipelines.context import (
     TokenBuffer,
 )
 from max.pipelines.context.context import FUTURE_TOKEN
-from max.pipelines.kv_cache.paged_kv_cache.block_manager import (
+from max.pipelines.kv_cache.paged_kv_cache._common import (
     _compute_seq_len,
 )
 from max.pipelines.lib import (

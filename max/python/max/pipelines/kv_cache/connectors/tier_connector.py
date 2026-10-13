@@ -87,7 +87,7 @@ from ..kv_connector import (
     KVLoadRefused,
     KVTransfer,
 )
-from ..paged_kv_cache.block_manager import (
+from ..paged_kv_cache._common import (
     _resolve_only_use_kv_connector_last_level_cache,
 )
 from ._offload_dir import OffloadDirectory, acquire_offload_dir

@@ -46,7 +46,7 @@ from max.pipelines.kv_cache._nixl_plugin_deps import preload_nixl_plugin_deps
 
 from ._cuda_alloc import allocation_splits
 from ._ucx_env import configure_ucx_env
-from .cache_manager import PagedKVCacheManagerInterface
+from .cache_manager_interface import PagedKVCacheManagerInterface
 
 logger = logging.getLogger("max.pipelines")
 

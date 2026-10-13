@@ -130,7 +130,7 @@ from max.pipelines.graph_input_stager import (
     InputDescriptor,
 )
 from max.pipelines.kv_cache import PagedKVCacheManagerInterface
-from max.pipelines.kv_cache.paged_kv_cache.cache_manager import (
+from max.pipelines.kv_cache.paged_kv_cache._common import (
     cache_valid_length_for_context,
     prompt_tokens_for_context,
 )

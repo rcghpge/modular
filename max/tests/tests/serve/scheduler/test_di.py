@@ -25,9 +25,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from max.driver import CPU, Device
+from max.dtype import DType
+from max.graph import DeviceRef
 from max.nn.kv_cache import (
     KVCacheGroupId,
     KVConnectorType,
+    MHAKVCacheParams,
     MultiKVCacheParams,
 )
 from max.pipelines.context import (
@@ -37,13 +40,11 @@ from max.pipelines.context import (
     TokenBuffer,
 )
 from max.pipelines.context.context import FUTURE_TOKEN
+from max.pipelines.kv_cache import JengaKVCacheManager, PagedKVCacheManager
 from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.connectors import NullConnector
 from max.pipelines.kv_cache.kv_connector import KVTransfer
-from max.pipelines.kv_cache.paged_kv_cache import (
-    cache_manager,
-    jenga_cache_manager,
-)
+from max.pipelines.kv_cache.paged_kv_cache import jenga_cache_manager
 from max.pipelines.kv_cache.paged_kv_cache.transfer_engine import (
     KVTransferEngineMetadata,
 )
@@ -64,6 +65,7 @@ from max.serve.scheduler.base import (
     PrefillRequest,
     PrefillResponse,
     SchedulerProgress,
+    check_di_supports,
 )
 from max.serve.scheduler.batch_constructor.text_batch_constructor import (
     TextBatchConstructor,
@@ -92,10 +94,9 @@ from max.serve.worker_interface._zmq_queue import (
 from tests.serve.scheduler.common import (
     FakeOverlapPipeline,
     FakeTokenGeneratorPipeline,
-    PagedKVCacheManager,
     PagedKVCacheManagerInterface,
     create_jenga_fp8_kv_cache,
-    create_kv_cache,
+    create_jenga_kv_cache,
 )
 
 # Window for one blocking dispatcher read over loopback ZMQ IPC (delivery is
@@ -347,14 +348,17 @@ def create_di_scheduler(
     # KVTransferEngine.from_paged_kv_cache goes untested.
     multi_kv = effective_num_spec_tokens > 0
 
-    def _create_prefill_kv_cache() -> PagedKVCacheManager:
-        return create_kv_cache(
+    def _create_prefill_kv_cache() -> PagedKVCacheManagerInterface:
+        return create_jenga_kv_cache(
             num_blocks=num_blocks,
             max_batch_size=max_batch_size,
             max_seq_len=max_seq_len,
             page_size=page_size,
             enable_prefix_caching=enable_prefix_caching,
-            kv_connector_config=kv_connector_config,
+            # Jenga discards the connector when the config names none.
+            kv_connector_config=KVConnectorConfig(type=KVConnectorType.dkv)
+            if prefill_connector is not None
+            else kv_connector_config,
             dp=effective_prefill_dp,
             device=device,
             num_speculative_tokens=effective_num_spec_tokens,
@@ -363,8 +367,8 @@ def create_di_scheduler(
             multi_kv=multi_kv,
         )
 
-    def _create_decode_kv_cache() -> PagedKVCacheManager:
-        return create_kv_cache(
+    def _create_decode_kv_cache() -> PagedKVCacheManagerInterface:
+        return create_jenga_kv_cache(
             num_blocks=num_blocks,
             max_batch_size=max_batch_size,
             max_seq_len=max_seq_len,
@@ -419,23 +423,14 @@ def create_di_scheduler(
     kv_cache_prefill: PagedKVCacheManagerInterface
     kv_cache_decode: PagedKVCacheManagerInterface
     if jenga_fp8:
-        with _prefill_connector_patch(jenga_cache_manager):
-            kv_cache_prefill = create_jenga_fp8_kv_cache(
-                64,
-                max_batch_size,
-                max_seq_len,
-                page_size,
-                enable_prefix_caching,
-                # Jenga discards the connector when the config names none.
-                kv_connector_config=KVConnectorConfig(type=KVConnectorType.dkv)
-                if prefill_connector is not None
-                else None,
-            )
+        kv_cache_prefill = create_jenga_fp8_kv_cache(
+            64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
+        )
         kv_cache_decode = create_jenga_fp8_kv_cache(
             64, max_batch_size, max_seq_len, page_size, enable_prefix_caching
         )
     else:
-        with _prefill_connector_patch(cache_manager):
+        with _prefill_connector_patch(jenga_cache_manager):
             kv_cache_prefill = _create_prefill_kv_cache()
         kv_cache_decode = _create_decode_kv_cache()
     server_addr = generate_zmq_ipc_path()
@@ -773,7 +768,7 @@ def test_di_with_dp2_requests_distributed_to_different_replicas() -> None:
     assert isinstance(prefill_request1, PrefillRequest)
     assert prefill_request1.dst_replica_idx == 0
     assert list(prefill_request1.dst_block_ids.values()) == [
-        [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        [1, 2, 3, 4, 5, 6, 7, 8, 9]
     ]
 
     # Check that second request was assigned to replica 1
@@ -781,7 +776,7 @@ def test_di_with_dp2_requests_distributed_to_different_replicas() -> None:
     assert isinstance(prefill_request2, PrefillRequest)
     assert prefill_request2.dst_replica_idx == 1
     assert list(prefill_request2.dst_block_ids.values()) == [
-        [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        [1, 2, 3, 4, 5, 6, 7, 8, 9]
     ]
 
     # Check that third request was assigned to replica 0
@@ -789,7 +784,7 @@ def test_di_with_dp2_requests_distributed_to_different_replicas() -> None:
     assert isinstance(prefill_request3, PrefillRequest)
     assert prefill_request3.dst_replica_idx == 0
     assert list(prefill_request3.dst_block_ids.values()) == [
-        [9, 10, 11, 12, 13, 14, 15, 16, 17]
+        [10, 11, 12, 13, 14, 15, 16, 17, 18]
     ]
 
 
@@ -1536,8 +1531,7 @@ def test_prefix_caching_prefill_skips_cached_blocks_in_transfer() -> None:
     )
 
 
-@pytest.mark.parametrize("jenga_fp8", [False, True], ids=["paged", "jenga"])
-def test_dkv_cache_hint_reaches_prefill_connector(jenga_fp8: bool) -> None:
+def test_dkv_cache_hint_reaches_prefill_connector() -> None:
     """A request's ``dkv_cache_hint`` reaches the prefill connector's
     ``lookup`` and ``load`` through the real DI path.
 
@@ -1552,7 +1546,6 @@ def test_dkv_cache_hint_reaches_prefill_connector(jenga_fp8: bool) -> None:
     decode, prefill, server_addr, q = create_di_scheduler(
         page_size=page_size,
         enable_prefix_caching=True,
-        jenga_fp8=jenga_fp8,
         prefill_connector=connector,
     )
 
@@ -1885,7 +1878,7 @@ def test_kv_backpressure_stops_sending_to_prefill() -> None:
     # After the first request: 9/10 = 90% utilization, which is NOT < 0.9
     # Therefore, backpressure gate blocks the second request
     decode, _, server_addr, q = create_di_scheduler(
-        num_blocks=10, page_size=128
+        num_blocks=10, page_size=128, max_seq_len=1280
     )
 
     ctx1 = create_text_context(
@@ -2092,7 +2085,7 @@ def test_overlap_prefill_pending_first_token_defers_insufficient_blocks() -> (
     new CE request hitting InsufficientBlocksError at that moment must
     requeue as transient rather than raise (SERVOPT-1551)."""
     decode, prefill, server_addr, q = create_di_scheduler(
-        overlap_prefill=True, num_blocks=2, page_size=128
+        overlap_prefill=True, num_blocks=2, page_size=128, max_seq_len=256
     )
     assert isinstance(prefill.pipeline, FakeOverlapPipeline)
 
@@ -2992,7 +2985,7 @@ def _setup_tg_alloc_deferred_with_pending_prefill() -> DecodeScheduler:
     that never arrives (prefill is not pumped after req2 is sent).
     """
     decode, prefill, server_addr, q = create_di_scheduler(
-        num_blocks=2, page_size=128
+        num_blocks=2, page_size=128, max_seq_len=256
     )
 
     ctx1 = create_text_context(
@@ -3096,3 +3089,29 @@ def test_decode_publish_metrics_emits_pending_snapshot() -> None:
 
         assert recorder.last == 0
         assert len(decode.pending_reqs) + len(decode.requests) == recorder.last
+
+
+def test_check_di_supports_rejects_the_legacy_manager() -> None:
+    with pytest.raises(NotImplementedError, match="legacy KV manager"):
+        check_di_supports(MagicMock(spec=PagedKVCacheManager))
+
+
+def test_check_di_supports_rejects_a_sliding_window_leaf() -> None:
+    kv_cache = MagicMock(spec=JengaKVCacheManager)
+    kv_cache.params = MHAKVCacheParams(
+        dtype=DType.float32,
+        n_kv_heads=1,
+        head_dim=1,
+        num_layers=1,
+        devices=[DeviceRef.CPU()],
+        page_size=128,
+        window_size=256,
+    )
+    with pytest.raises(NotImplementedError, match="full-attention"):
+        check_di_supports(kv_cache)
+
+
+def test_check_di_supports_accepts_full_attention_jenga() -> None:
+    decode, prefill, _, _ = create_di_scheduler()
+    check_di_supports(decode.kv_cache)
+    check_di_supports(prefill.kv_cache)

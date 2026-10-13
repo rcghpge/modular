@@ -133,11 +133,18 @@ class CancelRequest(msgspec.Struct, tag=True, omit_defaults=True, kw_only=True):
 
 
 def check_di_supports(kv_cache: PagedKVCacheManagerInterface) -> None:
-    """Raises if disaggregated serving cannot transfer this KV cache."""
-    if isinstance(kv_cache, JengaKVCacheManager) and not jenga_supports_di(
-        kv_cache.params
-    ):
+    """Raises if disaggregated serving cannot transfer this KV cache.
+
+    Only the Jenga manager can serve disaggregated inference, and only for full
+    attention leaves, because a sliding-window leaf nulls the pages its window
+    slid past and so has no contiguous prefix of block ids to transfer.
+    """
+    if not isinstance(kv_cache, JengaKVCacheManager):
         raise NotImplementedError(
-            "Disaggregated inference with the Jenga KV cache supports only "
-            "full attention KV groups"
+            "Disaggregated inference is incompatible with the legacy KV"
+            " manager; unset MODULAR_USE_LEGACY_KV_CACHE."
+        )
+    if not jenga_supports_di(kv_cache.params):
+        raise NotImplementedError(
+            "Disaggregated inference supports only full-attention KV caches."
         )

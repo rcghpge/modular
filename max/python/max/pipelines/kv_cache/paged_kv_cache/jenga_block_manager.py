@@ -34,16 +34,19 @@ from max.nn.kv_cache import KVCacheGroupId, KVLeafRegion
 from max.nn.kv_cache.cache_params import KVCacheMemory
 from max.nn.kv_cache.metrics import KVCacheMetrics
 from max.pipelines.context import TextContext
-from max.pipelines.kv_cache.kv_connector import BlockCount, KVConnector
+from max.pipelines.kv_cache.kv_connector import (
+    BlockCount,
+    CompletedTransfer,
+    KVConnector,
+    KVLoadFailed,
+    KVLoadRefused,
+    KVTransfer,
+)
 from max.pipelines.modeling.types import RequestID
 from max.profiler import traced
 from max.support.math import ceildiv
 
-from .block_manager import (
-    CompletedTransfer,
-    KVLoadFailed,
-    KVLoadRefused,
-    KVTransfer,
+from ._common import (
     PrefixCacheHits,
     _compute_seq_len,
     _OnloadSplice,
@@ -1170,6 +1173,7 @@ class JengaBlockManager:
             # visible to every request, so its page must already be filled.
             for block_hash, dst in staged:
                 pool.commit_into_prefix_cache(block_hash, dst)
+            self._metrics.cross_replica_blocks_copied += len(copies)
             self._metrics.cross_replica_bytes_copied += num_bytes
         finally:
             for block in held:
