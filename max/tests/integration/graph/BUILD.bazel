@@ -600,8 +600,14 @@ modular_py_test(
     ],
     # The checks read the IR dump a compile writes, which a cache hit skips.
     env = {"MODULAR_MAX_ENABLE_MODEL_IR_CACHE": "false"},
+    # The checks target a virtual device, so the host CPU doesn't matter; run
+    # them on m7i only.
     # TODO(SDLC-4684): run on asan in a scheduled tier once CI supports one.
-    tags = ["skip-ci-asan"],
+    tags = [
+        "skip-ci-asan",
+        "skip-ci-m7g",
+        "skip-ci-ubsan",
+    ],
     # The virtual CUDA (sm_100a) graphs need the NVPTX compiler to elaborate
     # kernels, which is Linux-only (CUDACompilationDevice).
     target_compatible_with = select({
