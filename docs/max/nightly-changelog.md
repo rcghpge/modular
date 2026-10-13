@@ -78,6 +78,15 @@ This version is still a work in progress.
 
 ## MAX framework
 
+- `max.experimental.functional.cumsum` now has its own sharding rule,
+  `cumsum_rule`. A `Partial` input of an integral dtype passes through the
+  scan without an all-reduce (resolved results agree bit-for-bit with
+  resolve-first execution under the dtype's wrapping arithmetic); floating-
+  point dtypes still resolve first, because scanning each fragment and then
+  summing reassociates the sum. A `Sharded` scan axis still replicates
+  first. Previously every `Partial` input raised `ShardingError` under the
+  default reshard policy, whatever its dtype.
+
 - Fixed memory planning on Linux CUDA and HIP GPUs that share physical memory
   with the CPU. MAX now includes reclaimable filesystem cache in available
   memory and respects cgroup memory limits, preventing false out-of-memory
