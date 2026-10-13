@@ -85,7 +85,6 @@ MODELS: Mapping[str, set[str]] = {
     "meta-llama/Llama-3.1-8B-Instruct__dflash": VARIANT | _1xB200 | _1xMI355,  # TODO(SERVOPT-1168)
     "meta-llama/Llama-3.1-8B-Instruct__eagle": VARIANT | _1xB200 | _1xMI355,  # TODO(SERVOPT-1168)
     "meta-llama/Llama-3.1-8B-Instruct__modulev3": VARIANT | _1xB200 | _1xMI355,
-    "meta-llama/Llama-3.1-8B-Instruct__mojo_tiered_kvconnector": VARIANT | _1xB200,
     "meta-llama/Llama-3.1-8B-Instruct__rust_tiered_kvconnector": VARIANT | _1xB200,
     "meta-models/Muse-Glimmer-30B": NIGHTLY | _1xB200,
     "microsoft/Phi-3.5-mini-instruct": _1xB200 | _1xMI355,
