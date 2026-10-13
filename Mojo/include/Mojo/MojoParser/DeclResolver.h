@@ -112,6 +112,9 @@ public:
   /// `makeUnlistedDecl`.
   void attachDeclToParentNameTable(ASTDecl *decl, StringAttr name);
 
+  /// Remove every name-table entry referring to a declaration.
+  void removeDeclFromParentNameTable(ASTDecl &decl);
+
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the
   /// decl to be found via ModuleType::getDecl() but not via name lookup.

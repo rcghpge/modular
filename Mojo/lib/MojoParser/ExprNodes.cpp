@@ -1272,8 +1272,6 @@ lookupMembersInDecls(SmallVectorImpl<ASTDecl *> &memberDecls,
     bool isExtension =
         isa_and_nonnull<ExtensionDeclOp>(containerDecl->getIfOperation());
     for (ASTDecl *decl : lookup.getIfSuccess()) {
-      if (decl->isDisabled())
-        continue;
       if (isExtension)
         if (!decl->getIfOperation())
           if (PValue cv = decl->getIfIRValue().getIfPValue())

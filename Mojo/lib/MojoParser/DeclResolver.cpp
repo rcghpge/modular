@@ -385,6 +385,18 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
   registerDeclSymbol(decl);
 }
 
+void DeclResolver::removeDeclFromParentNameTable(ASTDecl &decl) {
+  assert(decl.getCursor().isInvalid() &&
+         "only synthetic declarations can be removed");
+  ASTDecl *parentDecl = decl.getParentDecl();
+  assert(parentDecl && "cannot remove a top-level declaration");
+  if (!parentDecl->declsInScope)
+    return;
+
+  for (auto &[_, entries] : *parentDecl->declsInScope)
+    llvm::erase(entries, &decl);
+}
+
 void DeclResolver::registerDeclSymbol(ASTDecl *decl) {
   if (auto symbolDecl =
           dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getIfOperation())) {
@@ -1400,13 +1412,6 @@ LogicalResult DeclResolver::importWildcardDeclsFromModule(
       if (isInternalName(name))
         continue;
 
-      // A name whose decls are all disabled is a miss.
-      if (LLVM_UNLIKELY(iterScope.hasDisabledDecls) &&
-          llvm::all_of(decls,
-                       [](ASTDecl *decl) { return decl->isDisabled(); })) {
-        continue;
-      }
-
       if (failed(importWildcardDecl(name, decls)))
         result = failure();
     }
@@ -1658,9 +1663,6 @@ void DeclResolver::resolveAllWithin(ASTDecl &decl) {
     ASTDecl *declIt = worklist.back();
     worklist.pop_back();
 
-    if (declIt->isDisabled())
-      continue;
-
     (void)resolveBody(*declIt, declIt->getLoc());
 
     for (auto &[name, decls] : declIt->getDeclsInScope()) {
@@ -1739,9 +1741,6 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
 
     // Resolve the decl.
     (void)resolveBody(*declIt, declIt->getLoc());
-
-    if (declIt->isDisabled())
-      continue;
 
     // When validating doc strings, we wish to only validate those defined on
     // decl in the main container. As this point the main container decl has

@@ -40,7 +40,6 @@ ASTDecl::ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue,
       endCursorState(endCursor.getState()), indentation(indentation) {
   resolvedness = DeclResolvedness::unparsed;
   referencedFromBytecode = false;
-  hasDisabledDecls = false;
   hasReferenceError = false;
   hasBodyDecorators = false;
   loadedFromBytecode = false;
@@ -140,15 +139,8 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
     return {};
 
   auto it = declsInScope->find(name);
-  if (it != declsInScope->end() && !it->second.empty()) {
-    // A name whose decls are all disabled is a miss
-    if (LLVM_UNLIKELY(hasDisabledDecls) &&
-        llvm::all_of(it->second,
-                     [](ASTDecl *decl) { return decl->isDisabled(); })) {
-      return {};
-    }
+  if (it != declsInScope->end() && !it->second.empty())
     return it->second;
-  }
   return {};
 }
 

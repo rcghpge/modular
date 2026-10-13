@@ -125,9 +125,9 @@ static bool isInheritedFnOp(FnOp fnOp) {
 // signature.
 //
 // Why constraint checking is needed here (not just in later witness selection):
-// This function decides whether to disable the trait's default method stub or
+// This function decides whether to discard the trait's default method stub or
 // create a wrapper for it. If a struct method has a matching signature but
-// incompatible constraints, we must NOT disable the stub, because:
+// incompatible constraints, we must NOT discard the stub, because:
 //
 // Example 1 - Struct method with incompatible constraints:
 //   trait Copyable:
@@ -139,7 +139,7 @@ static bool isInheritedFnOp(FnOp fnOp) {
 //         where not conforms_to(T, Copyable):  # <-- Incompatible!
 //       ...
 //
-// Without constraint checking: We'd see a signature match, disable the stub,
+// Without constraint checking: We'd see a signature match, discard the stub,
 // and lose the default implementation. Later constraint filtering would reject
 // the struct's method, leaving no valid implementation.
 //
@@ -153,7 +153,7 @@ static bool isInheritedFnOp(FnOp fnOp) {
 //       ...
 //
 // The conformance constraint implies the method constraint, so this method
-// is a valid override - we disable the stub.
+// is a valid override - we discard the stub.
 static LogicalResult signatureResolveDefaultTraitFnStubs(
     ASTDecl &structDecl, ASTDecl &traitDecl, StringAttr name,
     ArrayRef<ASTDecl *> candidates, ParameterEvaluator &traitAliasReplacer,
@@ -231,17 +231,11 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     ASTDecl *decl =
         wrapperResult.isYes() ? wrapperResult.getYes().decl : nullptr;
     if (decl) {
-      // Since we are not using the default implementation, set the ASTDecl
-      // which were inserted for referencing default method to be fully
-      // resolved.
       assert(structFnDecl->resolvedness <= DeclResolvedness::signature &&
              "synthesizeMethodInStruct is only valid on non-body resolved Fn "
              "ASTDecls");
-      // This was pointed to the trait default implementation, now that we
-      // know this decl is useless, simply disable it. We mark the ASTDecl as
-      // disabled instead of creating a fake FnOp and mark the FnOp to be
-      // disabled.
-      structFnDecl->markDisabled();
+      structFnDecl->resolvedness = DeclResolvedness::body;
+      shared.declResolver->removeDeclFromParentNameTable(*structFnDecl);
       return success();
     }
 
@@ -249,10 +243,6 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     // about to create has a matching signature to an existing wrapper function
     // in the struct.
     for (ASTDecl *decl : possibleOverloads) {
-      // Skip any decls currently pointing to the parent trait method
-      if (decl->isDisabled())
-        continue;
-
       auto fnOp = cast<FnOp>(decl->getIfOperation());
 
       auto existingSignature = fnOp.getFullSignature();

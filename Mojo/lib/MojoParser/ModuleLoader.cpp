@@ -719,12 +719,13 @@ ModuleState *ModuleLoader::importSubModuleStateImpl(StringRef name,
     return notFoundModule();
 
   // A name that previously failed to resolve through this scope now resolves
-  // successfully: drop the stale failure record and disable its decl so neither
-  // shadows the fresh binding.
+  // successfully, so remove the stale error declaration before adding the
+  // fresh binding.
   if (parentState->failedImports) {
     auto failedIt = parentState->failedImports->find(declNameAttr);
     if (failedIt != parentState->failedImports->end()) {
-      failedIt->second->decl->markDisabled();
+      shared.declResolver->removeDeclFromParentNameTable(
+          *failedIt->second->decl);
       eraseState(failedIt->second->decl);
       parentState->failedImports->erase(failedIt);
     }

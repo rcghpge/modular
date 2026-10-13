@@ -5489,14 +5489,6 @@ ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
                      onlyWitness.getLoc())))
     return failure();
 
-  // Propagate the disabled state. Signature resolution is what disables an
-  // overridden method, so this has to be checked before touching the
-  // operation, which disabling clears.
-  if (onlyWitness.isDisabled()) {
-    witness.markDisabled();
-    return success();
-  }
-
   auto fnOp = cast<FnOp>(onlyWitness.getIfOperation());
 
   WitnessASTDecl::ResolvedType resolved;
@@ -5548,9 +5540,6 @@ ParseResult DeclResolver::resolveBody(TraitType traitType, ASTDecl &traitDecl) {
     for (auto &[name, decls] : parentDecl.getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
         Operation *memberOp = decl->getIfOperation();
-        // Skip disabled member and inherited decls.
-        if (decl->isDisabled())
-          continue;
         if (!isa<AliasDeclOp, FnOp>(memberOp)) {
           // If the decl is not a function or alias, it is an error.
           return emitError(parentDecl.getLoc(), "unexpected decl in trait")

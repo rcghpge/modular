@@ -108,23 +108,6 @@ public:
   /// Return how this decl may be used as an implicit conversion.
   ImplicitConversionKind getDeclImplicitConversionKind() const;
 
-  // When handling things like default trait method, we might insert placeholder
-  // ASTDecl for default implementation that later become invalid after body
-  // resolving the struct (e.g., when there is a user-provided overload), this
-  // that case, we  need to mark the ASTDecl to be invalid. We cannot simply
-  // detach it from the parent decl as it corrupt a lot of loop iteration over
-  // ASTDecls.
-  void markDisabled() {
-    assert(getCursor().isInvalid() && "should only disable synthetic ASTDecl");
-    resolvedness = DeclResolvedness::body;
-    irValue = std::nullopt;
-    // Let the parent scope's name lookups know they must now filter disabled
-    // decls; scopes without any stay on the fast path.
-    if (ASTDecl *parentDecl = getParentDecl())
-      parentDecl->hasDisabledDecls = true;
-  }
-  bool isDisabled() const { return isa<std::nullopt_t>(irValue); }
-
   /// Get the user-printable name of the declaration if it has one.
   ///  This removes any mangling (e.g. for parameters).
   std::optional<StringRef> getUserNameIfOperation() const;
@@ -450,10 +433,6 @@ private:
   /// Cache this process using a flag on the decl.
   bool referencedFromBytecode : 1;
 
-  /// True if any decl in this scope has been disabled, so name lookup must
-  /// filter tombstones. Cache this using a flag on the decl.
-  bool hasDisabledDecls : 1;
-
   /// This is set to true when an error is detected and reported about this
   /// declaration that could cause references to it to cause spurious downstream
   /// errors.  For example, "var x : SomeUndeclaredType" will cause errors for
@@ -543,8 +522,8 @@ public:
     return decl->getKind() == Kind::Alias;
   }
 
-  /// Return the alias operation represented by this declaration, or null when
-  /// the declaration is disabled.
+  /// Return the alias operation represented by this declaration, or null if
+  /// its operation has been cleared.
   AliasDeclOp getOp() const;
 
 private:
