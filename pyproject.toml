@@ -147,7 +147,6 @@ convention = "google"
 "max/python/max/serve/**/*" = ["D"]
 "max/python/max/support/**/*" = ["D"]
 # Exclude private packages and modules (NOTE: this allows max/_core/*.pyi files):
-"max/python/max/_core_mojo/**/*" = ["D"]
 "max/python/max/_core_types/**/*" = ["D"]
 "max/python/max/_entrypoints/**/*" = ["D"]
 "max/python/max/_interpreter_ops/**/*" = ["D"]

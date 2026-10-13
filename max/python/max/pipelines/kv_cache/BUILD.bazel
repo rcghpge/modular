@@ -121,7 +121,6 @@ modular_py_library(
         "//max/python/max:_core",
         "//max/python/max:_kv_core",
         "//max/python/max:tree",
-        "//max/python/max/_core_mojo",
         "//max/python/max/config",
         "//max/python/max/driver",
         "//max/python/max/dtype",

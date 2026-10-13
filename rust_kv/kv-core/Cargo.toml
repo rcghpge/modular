@@ -10,6 +10,9 @@ description = "Host-side KV cache bookkeeping shared by MAX Serve and Mach."
 [lib]
 crate-type = ["rlib"]
 
+[dependencies]
+sha2 = "0.10"
+
 [lints.rust]
 warnings = "deny"
 unsafe_code = "deny"

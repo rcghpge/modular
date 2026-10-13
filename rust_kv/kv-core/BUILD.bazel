@@ -2,12 +2,17 @@ load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 package(default_visibility = ["//rust_kv:consumers"])
 
-# Pure host code with no crate dependencies, so unlike kv-tier-connector this is
-# neither gated to a GPU platform nor wired to all_crate_deps.
+# Pure host code, so unlike kv-tier-connector this is not gated to a GPU
+# platform. Its one third-party crate (sha2, for the SHA-256 block hash) is taken
+# from the kv_core_crates universe, the only one the open-source export has.
+# That universe only aliases a crate without its version for the direct
+# dependencies of its workspace root, and kv-core is a path dependency of it, so
+# the label carries the version. Bump it with rust_kv/kv-core-pyo3/Cargo.lock.
 rust_library(
     name = "kv-core",
     srcs = glob(["src/**/*.rs"]),
     edition = "2024",
+    deps = ["@kv_core_crates//:sha2-0.10.9"],
 )
 
 rust_test(
