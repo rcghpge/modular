@@ -1634,17 +1634,18 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           threads (int, optional): Parallel page-touch workers. Defaults to 16. Unused with ``driver_alloc``.
           chunk_bytes (int, optional): Registration granularity, rounded up to whole rows and pages. Defaults to 512 MiB.
           driver_alloc (bool, optional): Allocate each chunk as pinned host memory from the GPU driver instead of registering one host mapping. Defaults to False.
+          mlock_pages (bool, optional): ``mlock`` the registered mapping. Not allowed with ``driver_alloc``. Defaults to False.
 
       Raises:
           ValueError: If ``device`` is a CPU device, any size is zero, or ``byte_size`` is not a multiple of ``row_bytes``.
           RuntimeError: If registering or allocating a chunk fails.
   )nbdoc")
-      .def(nb::init<size_t, size_t, Python::PyDeviceTy, unsigned, size_t,
+      .def(nb::init<size_t, size_t, Python::PyDeviceTy, unsigned, size_t, bool,
                     bool>(),
            "byte_size"_a, "row_bytes"_a, "device"_a,
            "threads"_a = Python::kDefaultTouchThreads,
            "chunk_bytes"_a = Python::kDefaultChunkBytes,
-           "driver_alloc"_a = false)
+           "driver_alloc"_a = false, "mlock_pages"_a = false)
       .def_prop_ro("address", &Python::ChunkedStagingRegion::address,
                    "Base host address, valid until this is released. Raises "
                    "for a ``driver_alloc`` region, which has no single base.")
@@ -1654,6 +1655,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
                    "region bytes ``[i * chunk_bytes, (i + 1) * "
                    "chunk_bytes)``.")
       .def_prop_ro("driver_alloc", &Python::ChunkedStagingRegion::driverAlloc)
+      .def_prop_ro("mlocked", &Python::ChunkedStagingRegion::mlocked)
       .def_prop_ro("byte_size", &Python::ChunkedStagingRegion::byteSize)
       .def_prop_ro("row_bytes", &Python::ChunkedStagingRegion::rowBytes)
       .def_prop_ro("chunk_bytes", &Python::ChunkedStagingRegion::chunkBytes,

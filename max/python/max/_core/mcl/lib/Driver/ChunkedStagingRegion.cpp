@@ -284,7 +284,7 @@ std::string verifyDriverOwned(void *, Device::API) { return {}; }
 
 Python::ChunkedStagingRegion::ChunkedStagingRegion(
     size_t byteSize, size_t rowBytes, PyDeviceTy device, unsigned threads,
-    size_t chunkBytes, bool driverAlloc)
+    size_t chunkBytes, bool driverAlloc, bool mlockPages)
     : device_(std::move(device)), byteSize_(byteSize), rowBytes_(rowBytes) {
   if (device_->isHost())
     throw std::invalid_argument(
@@ -303,6 +303,10 @@ Python::ChunkedStagingRegion::ChunkedStagingRegion(
   if (chunkBytes == 0)
     throw std::invalid_argument("ChunkedStagingRegion: chunk_bytes must be "
                                 "> 0");
+  if (driverAlloc && mlockPages)
+    throw std::invalid_argument(
+        "ChunkedStagingRegion: mlock_pages applies to the registered path; "
+        "driver_alloc memory is already owned by the driver");
 
 #if !defined(__linux__)
   MLOG_WARN("ChunkedStagingRegion is tuned for Linux; on this platform the "
@@ -398,6 +402,22 @@ Python::ChunkedStagingRegion::ChunkedStagingRegion(
   }
 
   base_ = mapNamedContiguous(byteSize, chunkBytes_, numChunks, page, &mapLen_);
+
+  if (mlockPages) {
+    // Keeps these pages off the kernel's reclaim lists. Compaction still
+    // migrates unevictable pages unless the node sets
+    // vm.compact_unevictable_allowed=0, which the caller reports.
+    if (mlock(base_, mapLen_) != 0) {
+      std::string err = std::strerror(errno);
+      munmap(base_, mapLen_);
+      base_ = nullptr;
+      throw std::runtime_error(
+          "ChunkedStagingRegion: mlock of " + std::to_string(mapLen_) +
+          " bytes failed: " + err +
+          "; raise RLIMIT_MEMLOCK (ulimit -l) or grant CAP_IPC_LOCK");
+    }
+    mlocked_ = true;
+  }
 
   std::vector<Slice> slices(numChunks);
   for (unsigned i = 0; i < numChunks; ++i) {
@@ -497,7 +517,8 @@ Python::ChunkedStagingRegion::ChunkedStagingRegion(
     : device_(std::move(other.device_)), wraps_(std::move(other.wraps_)),
       driverChunks_(std::move(other.driverChunks_)), base_(other.base_),
       mapLen_(other.mapLen_), byteSize_(other.byteSize_),
-      rowBytes_(other.rowBytes_), chunkBytes_(other.chunkBytes_) {
+      rowBytes_(other.rowBytes_), chunkBytes_(other.chunkBytes_),
+      mlocked_(other.mlocked_) {
   other.driverChunks_.clear();
   other.base_ = nullptr;
 }

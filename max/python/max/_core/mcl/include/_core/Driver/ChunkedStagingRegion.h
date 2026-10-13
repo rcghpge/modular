@@ -47,7 +47,7 @@ struct ChunkedStagingRegion {
   ChunkedStagingRegion(size_t byteSize, size_t rowBytes, PyDeviceTy device,
                        unsigned threads = kDefaultTouchThreads,
                        size_t chunkBytes = kDefaultChunkBytes,
-                       bool driverAlloc = false);
+                       bool driverAlloc = false, bool mlockPages = false);
 
   /// Drains the device, then unregisters every chunk and unmaps, or frees
   /// every driver-allocated chunk.
@@ -69,6 +69,9 @@ struct ChunkedStagingRegion {
   std::vector<uintptr_t> chunkAddresses() const;
 
   bool driverAlloc() const { return !driverChunks_.empty(); }
+
+  /// Whether the registered mapping was `mlock`ed.
+  bool mlocked() const { return mlocked_; }
 
   size_t byteSize() const { return byteSize_; }
   size_t rowBytes() const { return rowBytes_; }
@@ -92,6 +95,7 @@ private:
   size_t byteSize_ = 0;
   size_t rowBytes_ = 0;
   size_t chunkBytes_ = 0;
+  bool mlocked_ = false;
 };
 
 } // namespace M::Driver::Python
