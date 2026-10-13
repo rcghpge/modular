@@ -58,6 +58,8 @@ constexpr llvm::StringLiteral kProfilingWarmupSteps =
     "max-debug.profiling-warmup-steps";
 constexpr llvm::StringLiteral kProfilingActiveSteps =
     "max-debug.profiling-active-steps";
+constexpr llvm::StringLiteral kProfilingPeriodSteps =
+    "max-debug.profiling-period-steps";
 constexpr llvm::StringLiteral kProfilingPeriodicFlushSeconds =
     "max-debug.profiling-periodic-flush-seconds";
 
@@ -258,6 +260,19 @@ void DebugConfig::setProfilingActiveSteps(int64_t v) {
   M::Config::setGlobalValue(kProfilingActiveSteps, std::to_string(v));
 }
 
+// 0 (the unset default) means one window. A nonzero period repeats the
+// active window every `v` steps; the plugin falls back to one window unless
+// it exceeds active-steps.
+int64_t DebugConfig::getProfilingPeriodSteps() const {
+  return readInt64(kProfilingPeriodSteps, /*defaultValue=*/0);
+}
+void DebugConfig::setProfilingPeriodSteps(int64_t v) {
+  if (v < 0)
+    throw std::invalid_argument("profiling_period_steps must be >= 0 (got " +
+                                std::to_string(v) + "); 0 means one window");
+  M::Config::setGlobalValue(kProfilingPeriodSteps, std::to_string(v));
+}
+
 int64_t DebugConfig::getProfilingPeriodicFlushSeconds() const {
   return readInt64(kProfilingPeriodicFlushSeconds, /*defaultValue=*/60);
 }
@@ -312,6 +327,7 @@ void DebugConfig::reset() {
   M::Config::unsetGlobalValue(kProfilingDynologEnabled);
   M::Config::unsetGlobalValue(kProfilingWarmupSteps);
   M::Config::unsetGlobalValue(kProfilingActiveSteps);
+  M::Config::unsetGlobalValue(kProfilingPeriodSteps);
   M::Config::unsetGlobalValue(kProfilingPeriodicFlushSeconds);
 }
 

@@ -93,6 +93,9 @@ public:
   int64_t getProfilingActiveSteps() const;
   void setProfilingActiveSteps(int64_t v);
 
+  int64_t getProfilingPeriodSteps() const;
+  void setProfilingPeriodSteps(int64_t v);
+
   int64_t getProfilingPeriodicFlushSeconds() const;
   void setProfilingPeriodicFlushSeconds(int64_t v);
 
