@@ -153,13 +153,21 @@ ASTDecl &DeclResolver::createUnlistedDecl(DeclIRValue irValue, SMLoc loc,
                                           LexerCursor endCursor,
                                           ssize_t indentation) {
   ASTDecl *decl;
-  if (auto aliasOp =
-          dyn_cast_if_present<AliasDeclOp>(dyn_cast<Operation *>(irValue))) {
-    decl = new (shared.persistentAllocator.allocate<AliasASTDecl>())
-        AliasASTDecl(shared, aliasOp, loc, parentDecl, cursor, endCursor,
-                     indentation);
+  Operation *op = dyn_cast<Operation *>(irValue);
+  if (auto structOp = dyn_cast_if_present<StructDeclOp>(op)) {
+    decl = shared.persistentAllocator.create<StructASTDecl>(
+        shared, structOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto traitOp = dyn_cast_if_present<TraitDeclOp>(op)) {
+    decl = shared.persistentAllocator.create<TraitASTDecl>(
+        shared, traitOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto extensionOp = dyn_cast_if_present<ExtensionDeclOp>(op)) {
+    decl = shared.persistentAllocator.create<ExtensionASTDecl>(
+        shared, extensionOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto aliasOp = dyn_cast_if_present<AliasDeclOp>(op)) {
+    decl = shared.persistentAllocator.create<AliasASTDecl>(
+        shared, aliasOp, loc, parentDecl, cursor, endCursor, indentation);
   } else {
-    decl = new (shared.persistentAllocator.allocate<ASTDecl>()) ASTDecl(
+    decl = shared.persistentAllocator.create<ASTDecl>(
         shared, irValue, loc, parentDecl, cursor, endCursor, indentation);
   }
   parsedDeclList.push_back(decl);
@@ -189,10 +197,9 @@ DeclResolver::createWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
   if (!traitDecl.declsInScope)
     traitDecl.declsInScope.reset(new ASTDecl::DeclInScopeType());
 
-  auto *decl = new (shared.persistentAllocator.allocate<WitnessASTDecl>())
-      WitnessASTDecl(shared, std::move(unresolvedDecls), traitSymbol, loc,
-                     &traitDecl, LexerCursor(), LexerCursor(),
-                     /*indentation=*/-1);
+  auto *decl = shared.persistentAllocator.create<WitnessASTDecl>(
+      shared, std::move(unresolvedDecls), traitSymbol, loc, &traitDecl,
+      LexerCursor(), LexerCursor(), /*indentation=*/-1);
   parsedDeclList.push_back(decl);
   (*traitDecl.declsInScope)[name].push_back(decl);
   return *decl;

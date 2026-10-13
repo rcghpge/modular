@@ -2572,11 +2572,11 @@ TypeCheckedFnSignature::TypeCheckedFnSignature(TypeCheckedParamList &paramList,
 
   // If this definition is a struct/class member, compute the self type.
   if (fnDecl) {
-    if (ASTDecl *parent = fnDecl->tryGetMethodParentDecl()) {
+    if (TypeScopeASTDecl *parent = fnDecl->tryGetMethodParentDecl()) {
       // The parent decl must be fully resolved in order to resolve any of its
       // members.
       assert(parent->resolvedness == DeclResolvedness::body);
-      selfType = parent->getTypeDeclSelf();
+      selfType = parent->getSelfType();
     }
   }
 
@@ -2751,7 +2751,7 @@ void TypeCheckedFnSignature::verifyFunctionNameBinding(ASTDecl &decl,
     // The parent decl must be fully resolved in order to resolve any of its
     // members.
     assert(parent->resolvedness == DeclResolvedness::body);
-    selfType = parent->getTypeDeclSelf();
+    selfType = cast<TypeASTDecl>(parent)->getSelfType();
   }
 
   // Check any special function information.

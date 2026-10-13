@@ -155,7 +155,7 @@ static bool isInheritedFnOp(FnOp fnOp) {
 // The conformance constraint implies the method constraint, so this method
 // is a valid override - we discard the stub.
 static LogicalResult signatureResolveDefaultTraitFnStubs(
-    ASTDecl &structDecl, ASTDecl &traitDecl, StringAttr name,
+    StructASTDecl &structDecl, ASTDecl &traitDecl, StringAttr name,
     ArrayRef<ASTDecl *> candidates, ParameterEvaluator &traitAliasReplacer,
     ConstraintAttr conformanceConstraint) {
 
@@ -163,7 +163,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 
   SyntheticNode node(structDecl.getLoc());
   IREmitter emitter(structDecl, EC_Trait);
-  auto structSelfType = structDecl.getTypeDeclSelf();
+  auto structSelfType = structDecl.getSelfType();
 
   /// Will attempt to create a wrapper fn op in structFnDecl that will call into
   /// the fn op in traitFnDecl (taking things like aliases that show up in
@@ -300,7 +300,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     StructEmitter structEmitter(structDecl);
 
     // Create builder positioned before the first ConformanceOp.
-    auto structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+    auto structDeclOp = structDecl.getOp();
     Block &fieldsBlock = structDeclOp.getFields().front();
 
     // Position builder before the first ConformanceOp (there will always be
@@ -384,7 +384,8 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 }
 
 LogicalResult
-LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
+LIT::verifyAndBuildConformance(StructASTDecl &structDecl,
+                               TraitSymbolAttr parent,
                                std::optional<MojoInflightDiag> &diag,
                                ConformanceOp op, ASTDecl &conformanceDecl) {
   // If the conformance table already has witnesses, it was pre-built (e.g., for
@@ -414,7 +415,7 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
       ImplicitLocOpBuilder::atBlockEnd(op.getLoc(), &op.getBody().front());
 
   auto &shared = structDecl.getShared();
-  auto structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+  auto structDeclOp = structDecl.getOp();
 
   // Find extensions that target this struct and implement this trait.
   // This implements a form of the orphan rule: extensions can be defined either
@@ -432,8 +433,8 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
   }
 
   // Search for extensions in the trait's file scope
-  ASTDecl &traitDecl =
-      shared.declResolver->getDeclForTypeSymbol(parent.getSymbol());
+  auto &traitDecl = cast<TraitASTDecl>(
+      shared.declResolver->getDeclForTypeSymbol(parent.getSymbol()));
   if (ASTDecl *traitFileScope =
           traitDecl.getNearestDeclOfType<FileModuleOp>()) {
     traitFileScope->findExtensionsInScopeForStruct(structDecl.getSymbolRef(),
@@ -445,8 +446,8 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
 
   bool hadErrors = false;
   IREmitter emitter(structDecl, EC_Trait);
-  ASTType selfType = structDecl.getTypeDeclSelf();
-  TraitDeclOp traitDeclOp = cast<TraitDeclOp>(*traitDecl.getIfOperation());
+  ASTType selfType = structDecl.getSelfType();
+  TraitDeclOp traitDeclOp = traitDecl.getOp();
 
   // Make sure to fully resolve the trait first.
   if (failed(shared.declResolver->resolveBody(traitDecl, structDecl.getLoc())))
@@ -517,9 +518,9 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
   // These traitAliasReplacer help us do the needle substitutions later.
   //
   // TODO(MOCO-1993): Consolidate docs on this.
-  auto structSelf = PValue(structDecl.getTypeDeclSelf());
+  auto structSelf = PValue(structDecl.getSelfType());
   auto traitSelfDecl =
-      cast<ParamDeclRefAttr>(PValue(traitDecl.getTypeDeclSelf()).get());
+      cast<ParamDeclRefAttr>(PValue(traitDecl.getSelfType()).get());
   ParameterEvaluator traitAliasReplacer = shared.getParameterEvaluator();
   for (size_t i = 0; i < parent.getParamValues().size(); i++) {
     traitAliasReplacer.setDeclBinding(
@@ -863,7 +864,8 @@ LIT::verifyAndBuildConformance(ASTDecl &structDecl, TraitSymbolAttr parent,
     diag->attachNote(traitDecl)
         << "trait " << ASTType(shared.declResolver->getCanonicalTrait(parent))
         << " declared here";
-    if (auto *inheritedFrom = structDecl.getTraitConformanceLineage()) {
+    if (auto *inheritedFrom =
+            cast<StructASTDecl>(structDecl).getTraitConformanceLineage()) {
       if (auto it = inheritedFrom->find(parent);
           it != inheritedFrom->end() && it->second.first != parent) {
         ASTDecl &parentDecl = emitter.getDeclResolver().getDeclForTypeSymbol(

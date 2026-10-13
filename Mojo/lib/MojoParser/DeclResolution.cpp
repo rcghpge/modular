@@ -92,13 +92,13 @@ static ParseResult parseType(ParserBase &p, ASTType &result, ASTDecl &declScope,
 
 static LogicalResult resolveDefaultedOpFromTrait(DeclResolver &resolver,
                                                  Operation *defaultedOp,
-                                                 ASTDecl *structDecl) {
+                                                 StructASTDecl &structDecl) {
   auto traitFnDecl = defaultedOp->getParentOfType<TraitDeclOp>();
 
   auto traitSymbol =
       TraitSymbolAttr::get(getFullyResolvedSymbolRef(traitFnDecl));
   auto conformanceDecl =
-      structDecl->lookupInCurrentScope(traitSymbol.getFlattenedName());
+      structDecl.lookupInCurrentScope(traitSymbol.getFlattenedName());
 
   return resolver.resolveBody(*conformanceDecl.front(),
                               conformanceDecl.front()->getLoc());
@@ -2561,7 +2561,7 @@ LogicalResult DeclResolver::resolveSyntheticBody(FnOp fn, ASTDecl &decl) {
   // TODO: Sink this to when the body is actually resolved.
   decl.resolvedness = DeclResolvedness::body;
 
-  StructEmitter gen(*decl.getParentDecl());
+  StructEmitter gen(cast<StructASTDecl>(*decl.getParentDecl()));
 
   if (fn.getInheritedFrom())
     return gen.populateDefaultedTraitFunction(decl);
@@ -3525,7 +3525,8 @@ static ParseResult resolveConformanceList(
     return success();
 
   DenseMap<TraitSymbolAttr, std::pair<TraitSymbolAttr, SMLoc>> *inheritedFrom =
-      decl.getTraitConformanceLineage(/*createIfMissing=*/true);
+      cast<TypeScopeASTDecl>(decl).getTraitConformanceLineage(
+          /*createIfMissing=*/true);
 
   for (const ParsedConformanceEntry &conformance : parsedConformances) {
     IREmitter typeEmitter(declScope, EC_Type);
@@ -3889,6 +3890,7 @@ static LogicalResult parseExplicitDestroyMessage(SharedState &shared,
 ///
 LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
                                              Lexer &lexer, ASTDecl &decl) {
+  auto &structDecl = cast<StructASTDecl>(decl);
   ParserBase p(shared, lexer);
   auto decoratorExprs = p.parseDecorators(decl);
 
@@ -3977,7 +3979,7 @@ LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
   structOp.setSignature(sig);
 
   SmallVector<TraitSymbolAttr> traitConformed;
-  if (auto *inheritedFrom = decl.getTraitConformanceLineage())
+  if (auto *inheritedFrom = structDecl.getTraitConformanceLineage())
     for (auto [symbol, _] : *inheritedFrom)
       traitConformed.push_back(symbol);
 
@@ -3994,9 +3996,8 @@ LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
   if (movableDecl)
     traitConformed.push_back(TraitSymbolAttr::get(movableDecl->getSymbolRef()));
 
-  // This is a struct, so we can use 'computeSelfTypeForStruct' to figure out
-  // the self type.
-  decl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(structOp));
+  // Compute the struct's self type.
+  structDecl.setSelfType(StructASTDecl::computeSelfType(structOp));
 
   // Structs are memory-only unless they opt-in to being passed in registers.
   structOp.setConvention(TypeConvention::MemoryOnly);
@@ -4231,7 +4232,7 @@ void StructDecorators::processFieldwiseInitDecorator(SMLoc decoratorLoc,
   }
 
   // Generate the fieldwise init.
-  StructEmitter structEmitter(structDecl);
+  StructEmitter structEmitter(cast<StructASTDecl>(structDecl));
   auto fn = structEmitter.synthesizeFieldwiseInit();
   if (!fn)
     return;
@@ -4367,7 +4368,8 @@ void DeclResolver::resolveEnumCases(ASTDecl &structDecl,
 }
 
 ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
-                                      ASTDecl &structDecl) {
+                                      ASTDecl &decl) {
+  auto &structDecl = cast<StructASTDecl>(decl);
 
   // If the type lacks a __sp_fn__is_trivial member, synthesize it to
   // unresolved.
@@ -4835,7 +4837,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
 // Trait Decl implementation
 //===----------------------------------------------------------------------===//
 LogicalResult
-DeclResolver::addSelfTypeToTrait(TraitDeclOp traitOp, ASTDecl &decl,
+DeclResolver::addSelfTypeToTrait(TraitDeclOp traitOp, TraitASTDecl &decl,
                                  SmallVector<TraitSymbolAttr> &parentTraits,
                                  DenseSet<TraitSymbolAttr> &immediateParents,
                                  ArrayRef<ParamDeclAttr> parameters,
@@ -4884,22 +4886,24 @@ DeclResolver::addSelfTypeToTrait(TraitDeclOp traitOp, ASTDecl &decl,
   traitOp.setImmediateParents(
       TraitSymbolArrayAttr::get(ctx, immediateParentsVec));
 
-  decl.setTypeDeclSelf(ASTDecl::computeSelfTypeForTrait(traitOp));
+  decl.setSelfType(TraitASTDecl::computeSelfType(traitOp));
   return success();
 }
 
 LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
                                              ASTDecl &decl) {
+  auto &traitDecl = cast<TraitASTDecl>(decl);
   ParserBase p(shared, lexer);
-  auto decoratorExprs = p.parseDecorators(decl);
-  Decorators(decl).applySignatureDecorators(decoratorExprs,
-                                            [&](ExprNode *decorator) {
-                                              // No trait decorators supported.
-                                              return failure();
-                                            });
+  auto decoratorExprs = p.parseDecorators(traitDecl);
+  Decorators(traitDecl).applySignatureDecorators(decoratorExprs,
+                                                 [&](ExprNode *decorator) {
+                                                   // No trait decorators
+                                                   // supported.
+                                                   return failure();
+                                                 });
 
   // TODO(MOCO-1468): Pull this out into a common helper.
-  ArrayRef<ExprNode *> bodyDecorators = decl.getBodyDecorators();
+  ArrayRef<ExprNode *> bodyDecorators = traitDecl.getBodyDecorators();
   for (auto decorator : bodyDecorators) {
     if (auto declRef = dyn_cast<DeclRefNode>(decorator)) {
       if (declRef->spelling == "explicit_destroy") {
@@ -4938,13 +4942,13 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
   DenseSet<TraitSymbolAttr> immediateParents;
   SmallVector<ParsedConformanceEntry> parsedConformances;
   if (parseOptionalConformanceListSyntax(
-          p, parsedConformances, decl.getParentDecl()->getIndentation(),
+          p, parsedConformances, traitDecl.getParentDecl()->getIndentation(),
           /*allowConformanceConstraints=*/false) ||
-      resolveConformanceList(parsedConformances, *decl.getParentDecl(), decl,
-                             shared, immediateParents))
+      resolveConformanceList(parsedConformances, *traitDecl.getParentDecl(),
+                             traitDecl, shared, immediateParents))
     return failure();
   SmallVector<TraitSymbolAttr> parentTraits;
-  if (auto *inheritedFrom = decl.getTraitConformanceLineage()) {
+  if (auto *inheritedFrom = traitDecl.getTraitConformanceLineage()) {
     for (auto [symbol, _] : *inheritedFrom)
       parentTraits.push_back(symbol);
   }
@@ -4955,7 +4959,7 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
   // Make every trait inherit from `AnyType`, except itself.
   if (parentTraits.empty() && traitOp.getSymName() != "AnyType") {
     if (ASTDecl *anyTypeDecl =
-            shared.lookupBuiltinTrait("AnyType", decl.getLoc())) {
+            shared.lookupBuiltinTrait("AnyType", traitDecl.getLoc())) {
       parentTraits.push_back(TraitSymbolAttr::get(anyTypeDecl->getSymbolRef()));
       // No need to add AnyType to immediateParents, since it
       // has an empty requirements table.
@@ -4992,8 +4996,8 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
     if (auto *declRefNode = dyn_cast<DeclRefNode>(decoratorExpr.first)) {
       if (declRefNode->spelling == "explicit_destroy") {
         emitExplicitDestroyRequiresArgError(shared, declRefNode->getLoc(),
-                                            decl);
-        decl.setErroneous();
+                                            traitDecl);
+        traitDecl.setErroneous();
         return failure();
       }
     } else if (auto *callNode = dyn_cast<CallNode>(decoratorExpr.first)) {
@@ -5011,7 +5015,7 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
   // Validate @explicit_destroy usage and set error message for linear traits.
   if (conformsToDeinitable) {
     if (linearTypeErrorMsg) {
-      shared.emitError(decl.getLoc(),
+      shared.emitError(traitDecl.getLoc(),
                        "@explicit_destroy cannot be used on a trait that "
                        "conforms to Deinitable");
       return failure();
@@ -5029,10 +5033,11 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
 
   // Insert the implicit trait parameter:
   // - _Self: a value of this trait type - the struct conforming to this trait.
-  if (failed(addSelfTypeToTrait(traitOp, decl, parentTraits, immediateParents)))
+  if (failed(addSelfTypeToTrait(traitOp, traitDecl, parentTraits,
+                                immediateParents)))
     return failure();
 
-  shared.notifyListenerOnTraitDecl(decl, identifierLoc);
+  shared.notifyListenerOnTraitDecl(traitDecl, identifierLoc);
 
   return success();
 }
@@ -5066,9 +5071,8 @@ DeclResolver::resolveSyntheticSignature(FnOp inheritedFnOp,
   assert(isa<TraitDeclOp>(inheritedFnOp->getParentOp()) &&
          "Expected synthetic function decl's parent to be a trait");
 
-  ASTDecl *structDecl = childTraitFnDecl.getParentDecl();
+  auto &structDecl = cast<StructASTDecl>(*childTraitFnDecl.getParentDecl());
   assert(inheritedFnOp.isDefaultedTraitFn() &&
-         isa_and_nonnull<StructDeclOp>(structDecl->getIfOperation()) &&
          "Expected trait -> struct default method inheritance");
 
   // TODO(MOCO-4712): this can be further simplified too.
@@ -5094,9 +5098,7 @@ DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
     return SpecialFunctionKind::kNormal;
   };
 
-  ASTDecl *structDecl = childTraitAliasDecl.getParentDecl();
-  assert(isa_and_nonnull<StructDeclOp>(structDecl->getIfOperation()) &&
-         "Expected the inherited alias to be resolved into a struct");
+  auto &structDecl = cast<StructASTDecl>(*childTraitAliasDecl.getParentDecl());
 
   // '__*__is_trivial' aliases are synthesized when a struct inherits from a
   // trait that declares them, and take their value from the struct's fields
@@ -5104,7 +5106,7 @@ DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
   SpecialFunctionKind spFn = getFnIsTrivialKind(inheritedAliasOp.getDeclName());
   if (spFn != SpecialFunctionKind::kNormal) {
     TypedAttr isTrivial =
-        StructEmitter(*structDecl).populateSpecialFnIsTrivial(spFn);
+        StructEmitter(structDecl).populateSpecialFnIsTrivial(spFn);
 
     if (isTrivial) {
       inheritedAliasOp.setParamDeclAttr(ParamDeclAttr::get(
@@ -5131,6 +5133,7 @@ DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
 
 LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
                                              Lexer &lexer, ASTDecl &decl) {
+  auto &extensionDecl = cast<ExtensionASTDecl>(decl);
   ParserBase p(shared, lexer);
 
   SMLoc identifierLoc;
@@ -5142,7 +5145,7 @@ LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
                         &identifierLoc))
     return failure();
 
-  ASTDecl *parentDecl = decl.getParentDecl();
+  ASTDecl *parentDecl = extensionDecl.getParentDecl();
   assert(parentDecl && "Extension has no parent decl");
 
   // Look up all declarations with the same name. We need to look up ALL because
@@ -5191,10 +5194,8 @@ LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
   SymbolRefAttr targetStructAttr = structAstDecl->getSymbolRef();
   extensionDeclOp.setTargetStructAttr(targetStructAttr);
 
-  // This is an extension, but all the methods should think they're inside a
-  // struct, so let's use 'computeSelfTypeForStruct' on the structDeclOp to
-  // figure out the self type they can use.
-  decl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(structDeclOp));
+  // Extension methods use the target struct's self type.
+  extensionDecl.setSelfType(StructASTDecl::computeSelfType(structDeclOp));
 
   // Use the parent scope to resolve the traits in the conformance list.
   // TODO(MOCO-522): This might need to change once we have parametric traits,
@@ -5204,8 +5205,8 @@ LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
   if (failed(parseOptionalConformanceListSyntax(
           p, parsedConformances, parentDecl->getIndentation(),
           /*allowConformanceConstraints=*/false)) ||
-      failed(resolveConformanceList(parsedConformances, *parentDecl, decl,
-                                    shared, immediateParents)))
+      failed(resolveConformanceList(parsedConformances, *parentDecl,
+                                    extensionDecl, shared, immediateParents)))
     return failure();
 
   // Store the immediate parent traits in the extension
@@ -5222,7 +5223,7 @@ LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
     extensionDeclOp.setCanonicalTrait(canonicalTrait);
   }
 
-  shared.notifyListenerOnTraitDecl(decl, identifierLoc);
+  shared.notifyListenerOnTraitDecl(extensionDecl, identifierLoc);
 
   if (p.consumeIf(Token::l_square)) {
     // If the current token is on a new line, report the error on the end of
@@ -5603,8 +5604,8 @@ ParseResult DeclResolver::resolveBody(ConformanceOp op, ASTDecl &decl) {
   TraitSymbolAttr traitSymbol = op.getTraitSymbolAttr();
   assert(traitSymbol && "conformance bodies are resolved before `lower-lit` "
                         "erases the trait reference");
-  if (failed(verifyAndBuildConformance(*declToVerify, traitSymbol, diag, op,
-                                       decl)))
+  if (failed(verifyAndBuildConformance(cast<StructASTDecl>(*declToVerify),
+                                       traitSymbol, diag, op, decl)))
     return failure();
 
   return success();

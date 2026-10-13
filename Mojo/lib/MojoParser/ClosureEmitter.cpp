@@ -185,12 +185,12 @@ static LogicalResult emitForwardingCall(ImplicitLocOpBuilder &builder,
 }
 
 static void
-addConformanceTable(ASTDecl &structDecl,
+addConformanceTable(StructASTDecl &structDecl,
                     const ClosureEmitter::ClosureParent &closureParent,
                     ArrayRef<std::pair<StringRef, TypedAttr>> witnesses) {
   // Insert the new witness into the conformance table.
   MLIRContext *ctx = structDecl.getContext();
-  StructDeclOp structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+  StructDeclOp structDeclOp = structDecl.getOp();
   ImplicitLocOpBuilder b(structDeclOp->getLoc(), structDeclOp.getContext());
   b.setInsertionPointToEnd(&structDeclOp.getBodyRegion().front());
   TraitDeclOp traitDeclOp = closureParent.getTrait(structDecl.getShared());
@@ -284,7 +284,7 @@ ClosureEmitter::ClosureParent::ClosureParent(SharedState &shared,
 
 static StructFieldOp addFieldOpAndDecl(StringAttr name, Type type,
                                        StructDeclOp structOp,
-                                       ASTDecl &structDecl, OpBuilder &b,
+                                       StructASTDecl &structDecl, OpBuilder &b,
                                        DeclResolver &declResolver) {
   auto field = StructFieldOp::create(b, structOp.getLoc(), name, type);
   declResolver.addFullyResolvedDecl(&*field, field.getNameAttr(),
@@ -292,7 +292,7 @@ static StructFieldOp addFieldOpAndDecl(StringAttr name, Type type,
   return field;
 }
 
-static std::pair<ASTDecl &, StructDeclOp>
+static std::pair<StructASTDecl &, StructDeclOp>
 createStruct(SharedState &shared, ASTDecl &moduleDecl, StringAttr name,
              ArrayRef<ParamDeclAttr> params, SMLoc loc,
              ArrayRef<PassingKind> passingKinds) {
@@ -330,10 +330,11 @@ createStruct(SharedState &shared, ASTDecl &moduleDecl, StringAttr name,
   attrs.set(declOp.getSignatureAttrName(), TypeAttr::get(sig));
   declOp->setAttrs(attrs.getDictionary(shared.getContext()));
 
-  ASTDecl &structDecl = shared.declResolver->addFullyResolvedDecl(
-      &*declOp, name, loc, &moduleDecl);
+  auto &structDecl =
+      cast<StructASTDecl>(shared.declResolver->addFullyResolvedDecl(
+          &*declOp, name, loc, &moduleDecl));
 
-  structDecl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(declOp));
+  structDecl.setSelfType(StructASTDecl::computeSelfType(declOp));
   return {structDecl, declOp};
 }
 
@@ -380,10 +381,10 @@ getReboundCaptureDeviceFieldType(ASTType captureStorageHostType,
 
 static FailureOr<LIT::StructType>
 createDeviceTypeStruct(SharedState &shared, ASTDecl &moduleDecl,
-                       ASTDecl &storageStructDecl,
+                       StructASTDecl &storageStructDecl,
                        ArrayRef<Type> deviceFieldTypes) {
   MLIRContext *ctx = shared.getContext();
-  auto storageStruct = cast<StructDeclOp>(storageStructDecl.getIfOperation());
+  auto storageStruct = storageStructDecl.getOp();
   ArrayRef<ParamDeclAttr> structParams = storageStruct.getInputParams();
   StringAttr thunkKey = storageStruct.getSymNameAttr();
   auto creation = [&]() -> StructDeclOp {
@@ -559,9 +560,10 @@ emitCallForwarderBody(SharedState &shared, FnOp wrapperFn, ASTDecl &wrapperDecl,
 /// Synthesize the trait-shaped always-inline `__call__$trait` forwarder and
 /// publish it as storage `__call__`.
 static FnOp emitStorageCallWitness(
-    ASTDecl &structDecl, StructDeclOp structOp, FnOp promotedCall, SMLoc smLoc,
+    StructASTDecl &structDecl, StructDeclOp structOp, FnOp promotedCall,
+    SMLoc smLoc,
     llvm::function_ref<std::tuple<FnOp, ArrayRef<ParamDeclAttr>, Type>(
-        ASTDecl &, bool, StringAttr)>
+        StructASTDecl &, bool, StringAttr)>
         pushBackTraitFn) {
   SharedState &shared = structDecl.getShared();
   MLIRContext *ctx = shared.getContext();
@@ -635,11 +637,11 @@ inline static std::string getTraitMethodParamName(size_t idx) {
 
 std::tuple<FnOp, ArrayRef<ParamDeclAttr>, Type>
 ClosureEmitter::pushBackTraitFunctionImpl(FnTypeGeneratorType traitFnSignature,
-                                          ASTDecl &structDecl, bool synthetic,
-                                          StringAttr fnName,
+                                          StructASTDecl &structDecl,
+                                          bool synthetic, StringAttr fnName,
                                           SpecialFunctionKind specialFnID,
                                           InlineLevel inlineLevel) {
-  StructDeclOp structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+  StructDeclOp structDeclOp = structDecl.getOp();
   ImplicitLocOpBuilder b(structDeclOp.getLoc(), structDeclOp);
   b.setInsertionPointToEnd(&structDeclOp.getFields().front());
   SharedState &shared = structDecl.getShared();
@@ -647,7 +649,7 @@ ClosureEmitter::pushBackTraitFunctionImpl(FnTypeGeneratorType traitFnSignature,
   // We create it by specializing the trait method by binding the struct type
   // to the self parameter.
   FnTypeGeneratorType wrapperSignature = specializeSignature(
-      traitFnSignature, structDecl.getTypeDeclSelf(), *shared.declResolver);
+      traitFnSignature, structDecl.getSelfType(), *shared.declResolver);
 
   // Calculate the argument types and result types in terms of the named
   // parameters.
@@ -707,10 +709,10 @@ static ConformanceOp lookupConformanceTable(StructDeclOp op,
 
 static void
 generateIsTrivialSpecialAlias(StringRef name, bool value, SharedState &shared,
-                              ASTDecl &structDecl,
+                              StructASTDecl &structDecl,
                               const ClosureEmitter::ClosureParent &parent) {
   auto ctx = shared.getContext();
-  auto declOp = dyn_cast<StructDeclOp>(structDecl.getIfOperation());
+  auto declOp = structDecl.getOp();
   auto conformanceOp = lookupConformanceTable(declOp, parent.getSymbolRef());
 
   ImplicitLocOpBuilder b = ImplicitLocOpBuilder::atBlockEnd(
@@ -736,8 +738,8 @@ generateIsTrivialSpecialAlias(StringRef name, bool value, SharedState &shared,
 }
 
 void ClosureEmitter::addTrivialClosureLifecycle(
-    ASTDecl &structDecl, const ClosureParent &callParent) {
-  auto declOp = cast<StructDeclOp>(structDecl.getIfOperation());
+    StructASTDecl &structDecl, const ClosureParent &callParent) {
+  auto declOp = structDecl.getOp();
   declOp.setConvention(TypeConvention::RegisterPassableTrivial);
 
   ClosureParent movable = getMoveParent();
@@ -780,7 +782,7 @@ void ClosureEmitter::addTrivialClosureLifecycle(
   auto initName = StringAttr::get(ctx, "__init__");
   SmallVector<Type> initArgumentTypes;
   SmallVector<ArgConvention> argConventions;
-  RefType refSelfType = ASTType(structDecl.getTypeDeclSelf())
+  RefType refSelfType = ASTType(structDecl.getSelfType())
                             .getRefForArgument(selfName.getValue(), true);
   argConventions.push_back(ArgConvention::ByRefResult);
   initArgumentTypes.push_back(refSelfType);
@@ -1628,7 +1630,7 @@ addOriginReplacements(mlir::AttrTypeReplacer &originReplacer,
 }
 
 ASTDecl *ClosureEmitter::liftClosureIntoMethod(
-    ASTDecl &nestedFnDecl, ASTDecl &storageStructDecl,
+    ASTDecl &nestedFnDecl, StructASTDecl &storageStructDecl,
     PromotedClosureSelfArg selfArg,
     ArrayRef<StructDefFieldAttr> concreteFieldDecls,
     ArrayRef<Value> concreteFieldCaptures,
@@ -1878,7 +1880,7 @@ ClosureEmitter::Closure ClosureEmitter::liftClosure(
 
   // The trailing implicit `self` argument is the result slot the constructor
   // initializes.
-  ASTType selfType = structDecl.getTypeDeclSelf();
+  ASTType selfType = structDecl.getSelfType();
   initArgumentTypes.push_back(
       selfType.getRefForArgument("self", /*isMut=*/true));
   argConventions.push_back(ArgConvention::ByRefResult);
@@ -1960,7 +1962,7 @@ ClosureEmitter::Closure ClosureEmitter::liftClosure(
   const ClosureParent &callParent = *callParentIt;
   FnOp callWitness = emitStorageCallWitness(
       structDecl, structOp, promotedCallFunction, smLoc,
-      [&](ASTDecl &decl, bool synthetic, StringAttr name) {
+      [&](StructASTDecl &decl, bool synthetic, StringAttr name) {
         // Storage has no `impl` param — do not redirect Self witnesses to it.
         return pushBackTraitFunctionImpl(
             callParent.getSignature(), decl, synthetic, name,
@@ -2050,9 +2052,9 @@ static TypeConvention meetCaptureConvention(TypeConvention lhs,
 static TypeConvention typeConventionOf(SharedState &shared,
                                        LIT::StructType structType,
                                        ASTDecl &nestedFnDecl) {
-  ASTDecl &structDecl =
-      shared.declResolver->getDeclForTypeSymbol(structType.getSymbol());
-  StructDeclOp structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+  auto &structDecl = cast<StructASTDecl>(
+      shared.declResolver->getDeclForTypeSymbol(structType.getSymbol()));
+  StructDeclOp structDeclOp = structDecl.getOp();
   if (structDeclOp.isRegisterPassableTrivial())
     return TypeConvention::RegisterPassableTrivial;
   if (structDeclOp.isRegisterPassable())
@@ -2298,8 +2300,7 @@ Value ClosureEmitter::emitClosure(ASTDecl &moduleDecl, ASTDecl &nestedFnDecl,
 
   // Instantiate the storage struct directly through its synthesized `__init__`,
   // passing the captured values as the positional arguments.
-  StructDeclOp storageStructOp =
-      cast<StructDeclOp>(liftedClosure.structDecl->getIfOperation());
+  StructDeclOp storageStructOp = liftedClosure.structDecl->getOp();
   VarDeclOp storageVar = emitInitializerCall(
       *nestedFnDecl.getParentDecl(), builder, location, storageStructOp,
       storageParamBindings, /*args=*/constructorArgs, fnName.getValue());
@@ -2729,7 +2730,7 @@ static DebugInfo::DIBuilder::ScopeGuard pushFnDebugScope(SharedState &shared,
 }
 
 static void populateDevicePassableTypeName(FnOp implementation,
-                                           ASTDecl &structDecl,
+                                           StructASTDecl &structDecl,
                                            TypedAttr closureName) {
   MLIRContext *ctx = structDecl.getContext();
   Block &block = implementation.getBodyRegion().front();
@@ -2772,7 +2773,7 @@ static void emitIsConvertibleToDeviceTypeBody(
 // TODO: replace clone with witness entry that binds self parameter once self
 // parameter of traits becomes function level.
 static void cloneTraitDefaultBody(FnOp implementation, FnOp traitFn,
-                                  ASTDecl &structDecl) {
+                                  StructASTDecl &structDecl) {
   implementation.getBodyRegion().getBlocks().clear();
   IRMapping mapping;
   traitFn.getBodyRegion().cloneInto(&implementation.getBodyRegion(), mapping);
@@ -2783,7 +2784,7 @@ static void cloneTraitDefaultBody(FnOp implementation, FnOp traitFn,
        llvm::zip(traitFn.getInputParams(), implementation.getInputParams()))
     paramNames.insert({traitParam.getName(), implParam.getName()});
 
-  ASTType selfType = structDecl.getTypeDeclSelf();
+  ASTType selfType = structDecl.getSelfType();
   mlir::AttrTypeReplacer replacer;
   replacer.addReplacement([&](ParamDeclRefAttr paramRef) -> TypedAttr {
     if (auto it = paramNames.find(paramRef.getName()); it != paramNames.end())
@@ -2817,7 +2818,7 @@ static AliasDeclOp getDeviceTypeAlias(SharedState &shared, llvm::SMLoc loc) {
 }
 
 void ClosureEmitter::addConformanceToDevicePassable(
-    ASTDecl &structDecl, const DevicePassablePopulators &populators) {
+    StructASTDecl &structDecl, const DevicePassablePopulators &populators) {
   ASTDecl *devicePassableTrait =
       shared.getBuiltinDevicePassableTrait(structDecl.getLoc());
   if (!devicePassableTrait)
@@ -2879,7 +2880,7 @@ void ClosureEmitter::addConformanceToDevicePassable(
 }
 
 void ClosureEmitter::addStorageConformanceToDevicePassable(
-    ASTDecl &structDecl, ArrayRef<Type> deviceCaptureFieldTypes,
+    StructASTDecl &structDecl, ArrayRef<Type> deviceCaptureFieldTypes,
     StringRef name) {
   ASTDecl *fileModule = structDecl.getNearestDeclOfType<FileModuleOp>();
   if (!fileModule) {
@@ -2888,7 +2889,7 @@ void ClosureEmitter::addStorageConformanceToDevicePassable(
     fileModule = &structDecl.getShared().getTopLevelDecl();
   }
   MLIRContext *ctx = structDecl.getContext();
-  StructDeclOp structDeclOp = cast<StructDeclOp>(structDecl.getIfOperation());
+  StructDeclOp structDeclOp = structDecl.getOp();
   ImplicitLocOpBuilder b(structDeclOp->getLoc(), structDeclOp);
   FailureOr<LIT::StructType> deviceType = createDeviceTypeStruct(
       shared, *fileModule, structDecl, deviceCaptureFieldTypes);

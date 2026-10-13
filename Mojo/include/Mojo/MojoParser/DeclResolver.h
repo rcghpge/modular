@@ -373,7 +373,7 @@ public:
   ///
   /// trait @vanilla<?, *"_Self`": !lit.trait<@vanilla>>(!lit.trait<@AnyType,
   /// @Movable>) attributes {immediateParents = #M<symbols[@AnyType]>}
-  LogicalResult addSelfTypeToTrait(TraitDeclOp traitOp, ASTDecl &decl,
+  LogicalResult addSelfTypeToTrait(TraitDeclOp traitOp, TraitASTDecl &decl,
                                    SmallVector<TraitSymbolAttr> &parentTraits,
                                    DenseSet<TraitSymbolAttr> &immediateParents,
                                    ArrayRef<ParamDeclAttr> parameters = {},

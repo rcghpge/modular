@@ -1793,12 +1793,13 @@ LogicalResult CallParamInf::inferCTADParams() {
 
   // Get the ASTDecl for the declared self type.  This will give us the struct
   // that we are referring to without bound parameters.
-  ASTDecl *decl = declaredSelfType.getDecl(getShared());
+  auto *decl =
+      cast_or_null<StructASTDecl>(declaredSelfType.getDecl(getShared()));
   if (!decl)
     return success();
 
   // Get the Self type, with parameters bound to the structs CTAD parameters.
-  ASTType selfType = decl->getTypeDeclSelf();
+  ASTType selfType = decl->getSelfType();
   if (!selfType)
     return success();
 

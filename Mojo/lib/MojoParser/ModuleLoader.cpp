@@ -1243,10 +1243,11 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
 
       structOp->remove();
       theModule.push_back(structOp);
-      ASTDecl &structDecl = shared.declResolver->addBytecodeDecl(
-          &*structOp, structOp.getSymNameAttr(), &shared.getTopLevelDecl(),
-          DeclResolvedness::body);
-      structDecl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(structOp));
+      auto &structDecl =
+          cast<StructASTDecl>(shared.declResolver->addBytecodeDecl(
+              &*structOp, structOp.getSymNameAttr(), &shared.getTopLevelDecl(),
+              DeclResolvedness::body));
+      structDecl.setSelfType(StructASTDecl::computeSelfType(structOp));
       for (auto fn : structOp.getOps<FnOp>()) {
         ASTDecl &fnDecl = shared.declResolver->addBytecodeDecl(
             fn, fn.getSourceNameAttr(), &structDecl, DeclResolvedness::body);

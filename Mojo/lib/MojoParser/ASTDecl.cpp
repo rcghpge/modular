@@ -48,6 +48,53 @@ ASTDecl::ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue,
 
 ASTDecl::~ASTDecl() = default;
 
+TypeScopeASTDecl::TypeScopeASTDecl(Kind kind, SharedState &shared,
+                                   Operation *op, llvm::SMLoc loc,
+                                   ASTDecl *parentDecl, LexerCursor cursor,
+                                   LexerCursor endCursor, ssize_t indentation)
+    : ASTDecl(kind, shared, op, loc, parentDecl, cursor, endCursor,
+              indentation) {}
+
+TypeASTDecl::TypeASTDecl(Kind kind, SharedState &shared, Operation *op,
+                         llvm::SMLoc loc, ASTDecl *parentDecl,
+                         LexerCursor cursor, LexerCursor endCursor,
+                         ssize_t indentation)
+    : TypeScopeASTDecl(kind, shared, op, loc, parentDecl, cursor, endCursor,
+                       indentation) {}
+
+ExtensionASTDecl::ExtensionASTDecl(SharedState &shared,
+                                   ExtensionDeclOp extensionOp, llvm::SMLoc loc,
+                                   ASTDecl *parentDecl, LexerCursor cursor,
+                                   LexerCursor endCursor, ssize_t indentation)
+    : TypeScopeASTDecl(Kind::Extension, shared, extensionOp.getOperation(), loc,
+                       parentDecl, cursor, endCursor, indentation) {}
+
+ExtensionDeclOp ExtensionASTDecl::getOp() const {
+  return cast<ExtensionDeclOp>(getIfOperation());
+}
+
+StructASTDecl::StructASTDecl(SharedState &shared, StructDeclOp structOp,
+                             llvm::SMLoc loc, ASTDecl *parentDecl,
+                             LexerCursor cursor, LexerCursor endCursor,
+                             ssize_t indentation)
+    : TypeASTDecl(Kind::Struct, shared, structOp.getOperation(), loc,
+                  parentDecl, cursor, endCursor, indentation) {}
+
+StructDeclOp StructASTDecl::getOp() const {
+  return cast<StructDeclOp>(getIfOperation());
+}
+
+TraitASTDecl::TraitASTDecl(SharedState &shared, TraitDeclOp traitOp,
+                           llvm::SMLoc loc, ASTDecl *parentDecl,
+                           LexerCursor cursor, LexerCursor endCursor,
+                           ssize_t indentation)
+    : TypeASTDecl(Kind::Trait, shared, traitOp.getOperation(), loc, parentDecl,
+                  cursor, endCursor, indentation) {}
+
+TraitDeclOp TraitASTDecl::getOp() const {
+  return cast<TraitDeclOp>(getIfOperation());
+}
+
 AliasASTDecl::AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp,
                            llvm::SMLoc loc, ASTDecl *parentDecl,
                            LexerCursor cursor, LexerCursor endCursor,
@@ -144,19 +191,14 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
   return {};
 }
 
-/// If this is a method of a struct or trait, return the decl for the struct
-/// or trait.
-ASTDecl *ASTDecl::tryGetMethodParentDecl() const {
+/// If this is a method of a struct, trait, or extension, return its parent.
+TypeScopeASTDecl *ASTDecl::tryGetMethodParentDecl() const {
   // Methods are always FuncOps.
   if (!isa_and_nonnull<FnOp>(getIfOperation()))
     return nullptr;
 
   // Don't return non-null for nested functions or module-level functions.
-  ASTDecl *parent = getParentDecl();
-  return isa_and_nonnull<StructDeclOp, TraitDeclOp, ExtensionDeclOp>(
-             parent->getIfOperation())
-             ? parent
-             : nullptr;
+  return dyn_cast_if_present<TypeScopeASTDecl>(getParentDecl());
 }
 
 /// Collect the struct/trait declaration and all visible extension declarations
@@ -247,7 +289,7 @@ void ASTDecl::mergeDeclsFrom(ASTDecl &src) {
 }
 
 DenseMap<TraitSymbolAttr, std::pair<TraitSymbolAttr, SMLoc>> *
-ASTDecl::getTraitConformanceLineage(bool createIfMissing) {
+TypeScopeASTDecl::getTraitConformanceLineage(bool createIfMissing) {
   if (!traitConformanceLineage && createIfMissing)
     traitConformanceLineage.reset(new TraitConformanceLineageType());
   return traitConformanceLineage.get();
@@ -461,7 +503,7 @@ SymbolRefAttr ASTDecl::getSymbolRef() const {
 }
 
 /// Given an MLIR op for a struct declaration, return the self type.
-Type ASTDecl::computeSelfTypeForStruct(StructDeclOp structOp) {
+Type StructASTDecl::computeSelfType(StructDeclOp structOp) {
   SmallVector<TypedAttr> parameters;
   for (auto decl : structOp.getParams()) {
     // We're using the parameter from the type declaration scope in the
@@ -474,7 +516,7 @@ Type ASTDecl::computeSelfTypeForStruct(StructDeclOp structOp) {
   return structOp.bindReference(parameters);
 }
 
-Type ASTDecl::computeSelfTypeForTrait(TraitDeclOp traitOp) {
+Type TraitASTDecl::computeSelfType(TraitDeclOp traitOp) {
   // The last parameter to the trait is the 'T' parameter which (when everything
   // gets instantiated) resolves to the final type the trait is instantiated on.
   return ASTType(ParamDeclRefAttr::get(traitOp.getParamsAttr().back()));

@@ -25,6 +25,8 @@
 
 namespace M::KGEN::LIT {
 
+class StructASTDecl;
+
 /// This struct bundles up analysis of the value members of a struct.
 class ValueInfo {
 public:
@@ -60,10 +62,10 @@ public:
 class StructEmitter : public FunctionEmitter {
 public:
   // The struct we're working on.
-  ASTDecl &structDecl;
+  StructASTDecl &structDecl;
   StructDeclOp structDeclOp;
 
-  StructEmitter(ASTDecl &structDecl);
+  StructEmitter(StructASTDecl &structDecl);
 
   /// Generate empty stubs for the destructor, copy constructor, and move
   /// constructor on the declOp if they are eligible and do not already exist.

@@ -384,8 +384,8 @@ FnOp StructEmitter::synthesizeDefaultTraitMethodWrapper(
 /// trait method.
 LogicalResult StructEmitter::populateDefaultedTraitFunction(ASTDecl &fnDecl) {
   auto fn = cast<FnOp>(fnDecl.getIfOperation());
-  ASTDecl &structDecl = *fnDecl.getParentDecl();
-  ASTType structSelfType = structDecl.getTypeDeclSelf();
+  auto &structDecl = cast<StructASTDecl>(*fnDecl.getParentDecl());
+  ASTType structSelfType = structDecl.getSelfType();
 
   IREmitter emitter(fnDecl, EC_Trait);
   fn.getBody()->clear(); // Remove the lit.end_fn
@@ -486,9 +486,9 @@ LogicalResult StructEmitter::populateDefaultedTraitFunction(ASTDecl &fnDecl) {
 // StructEmitter
 //===----------------------------------------------------------------------===//
 
-StructEmitter::StructEmitter(ASTDecl &structDecl)
+StructEmitter::StructEmitter(StructASTDecl &structDecl)
     : FunctionEmitter(structDecl.getShared()), structDecl(structDecl) {
-  structDeclOp = cast<StructDeclOp>(*structDecl.getIfOperation());
+  structDeclOp = structDecl.getOp();
 }
 
 std::pair<FnOp, ASTDecl *> StructEmitter::synthesizeMethodInStruct(
@@ -537,7 +537,7 @@ static void addTraitParent(StructDeclOp structOp, ASTDecl *traitDecl) {
 
 /// Add a attribute initializer method for this struct with a body.
 FnOp StructEmitter::synthesizeFieldwiseInit() {
-  ASTType selfType = structDecl.getTypeDeclSelf();
+  ASTType selfType = structDecl.getSelfType();
 
   SmallVector<Type> argTypes;
   SmallVector<ArgConvention> argConventions;
@@ -687,7 +687,7 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
 
   // Figure out the type of the 'self' argument, which is always indirect since
   // it is owned.
-  ASTType selfType = structDecl.getTypeDeclSelf();
+  ASTType selfType = structDecl.getSelfType();
   if (!selfType)
     return {};
 
@@ -754,7 +754,7 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
 
 FnOp StructEmitter::synthesizeEmptyMoveOrCopyInit(
     bool isMove, ConstraintAttr conformanceConstraint) {
-  ASTType selfType = structDecl.getTypeDeclSelf();
+  ASTType selfType = structDecl.getSelfType();
   MLIRContext *ctx = shared.getContext();
   Builder b(ctx);
   StringAttr srcName = b.getStringAttr(isMove ? "move" : "copy");
@@ -864,8 +864,8 @@ LogicalResult StructEmitter::populateMoveCopy(ASTDecl &fnDecl, bool isMove) {
 
   // Otherwise, invoke the copy/move ctors fieldwise as appropriate.
   bool isImplicitlyCopyableStruct =
-      structDecl.getTypeDeclSelf().isImplicitlyCopyable(structDecl.getLoc(),
-                                                        shared, fnDecl);
+      structDecl.getSelfType().isImplicitlyCopyable(structDecl.getLoc(), shared,
+                                                    fnDecl);
   ArrayRef<ConstraintAttr> bodyConstraints =
       fn.getFuncTypeGenerator().getParamListAttrs().getBodyConstraints();
 

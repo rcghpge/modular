@@ -51,7 +51,7 @@ public:
   /// Move `nestedFnDecl` into `storageStructDecl` as a method and wire its
   /// captured values to the storage struct fields. Returns the method decl.
   ASTDecl *
-  liftClosureIntoMethod(ASTDecl &nestedFnDecl, ASTDecl &storageStructDecl,
+  liftClosureIntoMethod(ASTDecl &nestedFnDecl, StructASTDecl &storageStructDecl,
                         PromotedClosureSelfArg selfArg,
                         ArrayRef<StructDefFieldAttr> concreteFieldDecls,
                         ArrayRef<Value> concreteFieldCaptures,
@@ -142,7 +142,7 @@ public:
 
   /// Bundles the IR artifacts produced by liftClosure.
   struct Closure {
-    ASTDecl *structDecl;         ///< The closure storage struct.
+    StructASTDecl *structDecl;   ///< The closure storage struct.
     ASTDecl *promotedCallMethod; ///< The storage struct's `__call__` method.
     TypedAttr typeAttr;          ///< Bound closure storage struct type.
   };
@@ -154,7 +154,7 @@ private:
   StringAttr selfName, copyName;
 
   /// Augment a synthesized struct with trivial lifecycle traits.
-  void addTrivialClosureLifecycle(ASTDecl &structDecl,
+  void addTrivialClosureLifecycle(StructASTDecl &structDecl,
                                   const ClosureParent &callParent);
 
   /// Construct the closure struct, lift the nested function into a method, and
@@ -181,7 +181,7 @@ private:
   /// parameters instead of indices.
   std::tuple<FnOp, ArrayRef<ParamDeclAttr>, Type>
   pushBackTraitFunctionImpl(FnTypeGeneratorType traitFnSignature,
-                            ASTDecl &structDecl, bool synthetic,
+                            StructASTDecl &structDecl, bool synthetic,
                             StringAttr fnName, SpecialFunctionKind specialFnID,
                             InlineLevel inlineLevel);
   struct DevicePassablePopulators {
@@ -194,12 +194,12 @@ private:
   /// Add DevicePassable conformance using callbacks that populate each
   /// interface member and return its witness.
   void
-  addConformanceToDevicePassable(ASTDecl &structDecl,
+  addConformanceToDevicePassable(StructASTDecl &structDecl,
                                  const DevicePassablePopulators &populators);
   /// Add DevicePassable conformance to closure storage (__storage), whose
   /// device_type reflects the device representations of its captures.
   void
-  addStorageConformanceToDevicePassable(ASTDecl &structDecl,
+  addStorageConformanceToDevicePassable(StructASTDecl &structDecl,
                                         ArrayRef<Type> deviceCaptureFieldTypes,
                                         StringRef name);
 

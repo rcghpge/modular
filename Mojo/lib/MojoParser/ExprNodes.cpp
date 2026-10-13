@@ -602,7 +602,8 @@ AnyValue SimpleLiteralNode::emitIR(ExprDest &dest, IREmitter &emitter) const {
     return {};
   }
 
-  ASTType selfType = astDecl->getTypeDeclSelf();
+  auto *typeScopeDecl = cast<TypeScopeASTDecl>(astDecl);
+  ASTType selfType = typeScopeDecl->getSelfType();
   if (!selfType) {
     // The user is attempting to use "Self" when the self type hasn't yet been
     // computed (e.g. inside a struct's parameter list). This is not allowed.
@@ -617,7 +618,7 @@ AnyValue SimpleLiteralNode::emitIR(ExprDest &dest, IREmitter &emitter) const {
   // Once we have the type in question we can just return its Self type as an
   // PValue.  This already includes bound parameters etc.
   assert(astDecl->resolvedness >= DeclResolvedness::signature);
-  return emitter.emitResult(astDecl->getTypeDeclSelf(), this, dest);
+  return emitter.emitResult(typeScopeDecl->getSelfType(), this, dest);
 }
 
 // Handle generation of a constructor call to one of::
@@ -1537,8 +1538,8 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
       // being signature resolved (and the ASTDecl we're looking at is the
       // temporary one made for signature emission). In this case, we allow
       // unqualified access to parameters.
-      if (parentDecl && isa<StructDeclOp>(parentDecl->getIfOperation()) &&
-          parentDecl->getTypeDeclSelf()) {
+      if (auto *structDecl = dyn_cast_if_present<StructASTDecl>(parentDecl);
+          structDecl && structDecl->getSelfType()) {
         auto diag =
             emitter.emitError(loc, "unqualified access to struct parameter '")
             << spelling << "'; use 'Self." << spelling << "' instead";

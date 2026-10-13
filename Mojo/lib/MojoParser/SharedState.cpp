@@ -1456,7 +1456,8 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
               auto structOp = dyn_cast_or_null<StructDeclOp>(
                   structAstDecl.getIfOperation());
               assert(structOp && "extension target is not a struct");
-              decl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(structOp));
+              cast<ExtensionASTDecl>(decl).setSelfType(
+                  StructASTDecl::computeSelfType(structOp));
               return success();
             })
             .Case([&](ImportOp) {
@@ -1605,8 +1606,9 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
                 op.getModulePathAttr(), decl.getLoc()});
           })
           .Case([&](StructDeclOp op) {
-            ASTDecl &structDecl = addDeclForOp(op, op.getSymNameAttr());
-            structDecl.setTypeDeclSelf(ASTDecl::computeSelfTypeForStruct(op));
+            auto &structDecl =
+                cast<StructASTDecl>(addDeclForOp(op, op.getSymNameAttr()));
+            structDecl.setSelfType(StructASTDecl::computeSelfType(op));
             for (ParamDeclAttr param : op.getParams()) {
               // Add the parameters as accessible member decls. Make sure
               // to only demangle user-visible names. Synthetic closure structs
@@ -1620,8 +1622,9 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
             }
           })
           .Case([&](TraitDeclOp op) {
-            ASTDecl &traitDecl = addDeclForOp(op, op.getSymNameAttr());
-            traitDecl.setTypeDeclSelf(ASTDecl::computeSelfTypeForTrait(op));
+            auto &traitDecl =
+                cast<TraitASTDecl>(addDeclForOp(op, op.getSymNameAttr()));
+            traitDecl.setSelfType(TraitASTDecl::computeSelfType(op));
             // TODO(traits): Add decls for parameters, when they exist.
           })
           .Case([&](ExtensionDeclOp op) {
