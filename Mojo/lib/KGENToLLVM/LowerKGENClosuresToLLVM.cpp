@@ -356,7 +356,7 @@ struct CallIndirectOpConversion
       llvmCall = createLLVMCall(rewriter, loc, prep.signature, prep.callArgs);
       CABICallHelper::applySRetAttrIfNeeded(llvmCall, origRetTy, prep.usesSRet,
                                             rewriter);
-      cabi.applyByvalAttrsToCall(llvmCall, prep.argClass,
+      cabi.applyByvalAttrsToCall(llvmCall, prep.classification.args,
                                  adaptor.getArguments().getTypes(),
                                  prep.usesSRet, rewriter);
       // A tail call is only safe when the callee and the caller's return ABIs
@@ -373,8 +373,9 @@ struct CallIndirectOpConversion
         return success();
       }
       Value rawResult = prep.usesSRet ? Value{} : llvmCall.getResult();
-      Value coerced = cabi.extractReturn(prep.retClass, rawResult, prep.sretPtr,
-                                         origRetTy, loc, rewriter);
+      Value coerced =
+          cabi.extractReturn(prep.classification.ret, rawResult, prep.sretPtr,
+                             origRetTy, loc, rewriter);
       rewriter.replaceOp(op, coerced);
       return success();
     }

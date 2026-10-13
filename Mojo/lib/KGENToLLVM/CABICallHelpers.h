@@ -53,9 +53,7 @@ inline void applyTailKind(mlir::LLVM::CallOp call, TailKind kind) {
 /// during the classify/build phase that callers need to emit the actual call.
 struct CABICallPrep {
   mlir::LLVM::LLVMFunctionType signature;
-  /// Per-argument ABI classifications (needed by callers that set byval attrs).
-  mlir::SmallVector<CoercionInfo> argClass;
-  CoercionInfo retClass;
+  SignatureClassification classification;
   mlir::SmallVector<mlir::Value> callArgs;
   mlir::Value sretPtr;
   bool usesSRet;
@@ -81,15 +79,6 @@ struct CABICallHelper {
   /// classification. Returns a DefaultCABIInfo (pass-through) when C ABI
   /// is disabled or the platform is unsupported.
   std::unique_ptr<CABIInfo> createABIHandler() const;
-
-  /// Build LLVM function type with C ABI type coercion applied.
-  /// Returns the function type and whether sret is used.
-  /// For variadic functions, only fixed parameters are included in the
-  /// function type.
-  std::pair<mlir::LLVM::LLVMFunctionType, bool>
-  buildFunctionType(const SignatureClassification &sigClass,
-                    mlir::ValueRange originalArgs, mlir::Type origRetTy,
-                    size_t numFixedArgs, bool isVariadic) const;
 
   /// Create an alloca in the entry block of the enclosing function.
   /// This ensures stack allocations don't grow unboundedly when the

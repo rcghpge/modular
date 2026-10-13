@@ -832,7 +832,7 @@ struct ConvertKGENCall : public ConvertPOPToLLVMPattern<CallOp> {
           rewriter, loc, prep.signature, flatSymbol, prep.callArgs);
       CABICallHelper::applySRetAttrIfNeeded(llvmCall, origRetTy, prep.usesSRet,
                                             rewriter);
-      cabi.applyByvalAttrsToCall(llvmCall, prep.argClass,
+      cabi.applyByvalAttrsToCall(llvmCall, prep.classification.args,
                                  mlir::ValueRange(filteredOperands).getTypes(),
                                  prep.usesSRet, rewriter);
       // A tail call is only safe when the callee does not write through any
@@ -849,9 +849,9 @@ struct ConvertKGENCall : public ConvertPOPToLLVMPattern<CallOp> {
         return success();
       }
       Value rawResult = prep.usesSRet ? Value{} : llvmCall.getResult();
-      rewriter.replaceOp(op, cabi.extractReturn(prep.retClass, rawResult,
-                                                prep.sretPtr, origRetTy, loc,
-                                                rewriter));
+      rewriter.replaceOp(op, cabi.extractReturn(prep.classification.ret,
+                                                rawResult, prep.sretPtr,
+                                                origRetTy, loc, rewriter));
       return success();
     }
 

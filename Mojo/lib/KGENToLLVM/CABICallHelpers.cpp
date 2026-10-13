@@ -32,60 +32,6 @@ std::unique_ptr<CABIInfo> CABICallHelper::createABIHandler() const {
   return M::KGEN::createCABIInfo(triple, ctx, dataLayout);
 }
 
-std::pair<LLVMFunctionType, bool>
-CABICallHelper::buildFunctionType(const SignatureClassification &sigClass,
-                                  ValueRange originalArgs, Type origRetTy,
-                                  size_t numFixedArgs, bool isVariadic) const {
-  ArrayRef<CoercionInfo> argClass = sigClass.args;
-  const CoercionInfo &retClass = sigClass.ret;
-  SmallVector<Type> paramTypes;
-  Type resultType;
-  bool usesSRet = retClass.useSRet;
-
-  // Add sret parameter if needed
-  if (usesSRet) {
-    paramTypes.push_back(LLVMPointerType::get(ctx));
-  }
-
-  // Build parameter types (only fixed params for variadic functions)
-  size_t numParams = isVariadic ? numFixedArgs : argClass.size();
-  for (size_t idx = 0; idx < numParams; ++idx) {
-    const auto &coercion = argClass[idx];
-    if (coercion.isIdentity()) {
-      paramTypes.push_back(originalArgs[idx].getType());
-    } else if (coercion.useIndirect) {
-      paramTypes.push_back(LLVMPointerType::get(ctx));
-    } else if (coercion.coercedType) {
-      paramTypes.push_back(coercion.coercedType);
-      if (coercion.isTwoRegister()) {
-        assert(coercion.coercedSecondType &&
-               "two-register classification must have coercedSecondType");
-        paramTypes.push_back(coercion.coercedSecondType);
-      }
-    }
-  }
-
-  // Build result type
-  if (usesSRet) {
-    resultType = LLVMVoidType::get(ctx);
-  } else if (retClass.isTwoRegister()) {
-    // Two-register return: use LLVM struct {firstType, secondType}
-    assert(retClass.coercedType && retClass.coercedSecondType &&
-           "two-register classification must have both coerced types");
-    resultType = LLVMStructType::getLiteral(
-        ctx, {retClass.coercedType, retClass.coercedSecondType});
-  } else if (retClass.coercedType) {
-    resultType = retClass.coercedType;
-  } else if (origRetTy) {
-    resultType = origRetTy;
-  } else {
-    resultType = LLVMVoidType::get(ctx);
-  }
-
-  auto funcType = LLVMFunctionType::get(resultType, paramTypes, isVariadic);
-  return {funcType, usesSRet};
-}
-
 Value CABICallHelper::createEntryBlockAlloca(
     ConversionPatternRewriter &rewriter, Location loc, Type elemType) const {
   auto ptrType = LLVMPointerType::get(ctx);
@@ -288,13 +234,12 @@ CABICallPrep CABICallHelper::prepareCall(TypeRange argTypes,
   SignatureClassification sigClass =
       handler->computeSignatureInfo(llvmArgTypes, llvmRetTy, loc, numFixedArgs);
 
-  auto [sig, usesSRet] = buildFunctionType(sigClass, argValues, origRetTy,
-                                           numFixedArgs, isVariadic);
+  LLVMFunctionType sig = sigClass.getFunctionType(
+      ctx, argValues.getTypes(), origRetTy, isVariadic, numFixedArgs);
+  bool usesSRet = sigClass.ret.useSRet;
   auto [callArgs, sretPtr] = buildCallArgs(sigClass.args, sigClass.ret,
                                            argValues, origRetTy, loc, rewriter);
-  return {sig,          std::move(sigClass.args),
-          sigClass.ret, std::move(callArgs),
-          sretPtr,      usesSRet};
+  return {sig, std::move(sigClass), std::move(callArgs), sretPtr, usesSRet};
 }
 
 /// Return the number of operands `call` passes to its callee, including the
