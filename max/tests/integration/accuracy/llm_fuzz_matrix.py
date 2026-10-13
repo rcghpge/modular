@@ -49,6 +49,14 @@ PIPELINES: Final[list[PipelineEntry]] = [
         timeout=60,
     ),
     PipelineEntry(
+        pipeline="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+        model_path="nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+        runner="modrunner-b200",
+        gpu_flag="--devices gpu:0",
+        instance_type="bm.gpu.b200.1",
+        timeout=90,
+    ),
+    PipelineEntry(
         pipeline="meta-models/Muse-Glimmer-30B",
         model_path="meta-models/Muse-Glimmer-30B",
         runner="modrunner-b200",
