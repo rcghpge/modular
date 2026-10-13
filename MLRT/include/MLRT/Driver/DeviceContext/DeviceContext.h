@@ -1060,7 +1060,7 @@ public:
   inline ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst,
                                                   DeviceBuffer &src,
                                                   bool crossStreamSync = true) {
-    return enqueueCopyDeviceToDevice(dst, src, 0, src.byteSize(),
+    return enqueueCopyDeviceToDevice(dst, src, 0, dst.byteSize(),
                                      crossStreamSync);
   }
   ErrorOrSuccess enqueueCopyDeviceToDevice(DeviceBuffer &dst, DeviceBuffer &src,

@@ -1628,8 +1628,10 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     size_t srcByteSize, bool crossStreamSync) {
   const Device::API srcApi = src.context().device().api();
   const Device::API dstApi = dst.context().device().api();
-  if ((srcByteOffset + srcByteSize) < dst.byteSize())
+  if (srcByteOffset + srcByteSize > src.byteSize())
     RETURN_ERROR("not enough data in src");
+  if (srcByteSize != dst.byteSize())
+    RETURN_ERROR("size mismatch with dst");
 
   // Treat host memory and memory owned by a CPU device context as DtoH
   // or HtoD. If the host memory is owned by a CPU device context,
