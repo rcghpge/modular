@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -242,6 +243,7 @@ def _create_with_driver_staging_on_hip(
     monkeypatch: pytest.MonkeyPatch,
     use_disk_direct_io: bool = False,
     disk_offload_max_gb: float = 1.0,
+    host_staging_mlock: bool = False,
 ) -> None:
     """Drives ``TierConnector.create`` up to its HSA_USERPTR_FOR_PAGED_MEM
     check with ``host_staging_alloc='driver'`` on a stubbed HIP device.
@@ -259,6 +261,7 @@ def _create_with_driver_staging_on_hip(
         type=KVConnectorType.rust_tiered,
         host_staging_alloc="driver",
         use_disk_direct_io=use_disk_direct_io,
+        host_staging_mlock=host_staging_mlock,
         host_offload_max_gb=1.0,
         disk_offload_max_gb=disk_offload_max_gb,
     )
@@ -354,6 +357,7 @@ def test_create_refuses_direct_io_with_unaligned_leaf_sizes(
         type=KVConnectorType.rust_tiered,
         host_staging_alloc="registered",
         use_disk_direct_io=True,
+        host_staging_mlock=False,
         host_offload_max_gb=None,
         disk_offload_max_gb=1.0,
         disk_offload_dir=None,
@@ -412,3 +416,40 @@ def test_driver_staging_alloc_failure_propagates_unwrapped(
         tier_connector._alloc_chunked_staging_region(
             4, 1024**3, CPU(), "driver"
         )
+
+
+def test_connector_config_defaults_mlock_off() -> None:
+    assert KVConnectorConfig().host_staging_mlock is False
+    assert KVConnectorConfig(host_staging_mlock=True).host_staging_mlock is True
+
+
+def test_create_refuses_mlock_with_driver_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Driver-allocated memory is already driver-owned, so locking it is a
+    configuration mistake and is refused up front."""
+    monkeypatch.setenv("HSA_USERPTR_FOR_PAGED_MEM", "0")
+
+    with pytest.raises(ValueError, match="host_staging_mlock"):
+        _create_with_driver_staging_on_hip(monkeypatch, host_staging_mlock=True)
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected"),
+    [("1\n", True), ("0\n", False)],
+)
+def test_compact_unevictable_allowed_reads_the_sysctl(
+    tmp_path: Path, contents: str, expected: bool
+) -> None:
+    path = tmp_path / "compact_unevictable_allowed"
+    path.write_text(contents)
+
+    assert tier_connector._compact_unevictable_allowed(str(path)) is expected
+
+
+def test_compact_unevictable_allowed_is_unknown_when_unreadable(
+    tmp_path: Path,
+) -> None:
+    missing = str(tmp_path / "missing")
+
+    assert tier_connector._compact_unevictable_allowed(missing) is None

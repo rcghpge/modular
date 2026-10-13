@@ -405,19 +405,32 @@ class _TierTransfer:
         self._inner.synchronize()
 
 
+def _compact_unevictable_allowed(
+    path: str = "/proc/sys/vm/compact_unevictable_allowed",
+) -> bool | None:
+    """Whether kernel compaction may migrate mlocked pages, if readable."""
+    try:
+        with open(path) as f:
+            return f.read().strip() != "0"
+    except OSError:
+        return None
+
+
 def _alloc_chunked_staging_region(
     host_offload_num_huge_blocks: int,
     host_offload_huge_page_bytes: int,
     device: Device,
     host_staging_alloc: HostStagingAlloc = "registered",
+    host_staging_mlock: bool = False,
 ) -> _ChunkedStagingRegion:
     host_offload_bytes = (
         host_offload_num_huge_blocks * host_offload_huge_page_bytes
     )
     logger.info(
-        "Allocating %s host KV cache staging region (%s)...",
+        "Allocating %s host KV cache staging region (%s%s)...",
         to_human_readable_bytes(host_offload_bytes),
         host_staging_alloc,
+        ", mlocked" if host_staging_mlock else "",
     )
     start = time.perf_counter()
     # The connectors copy a block at a time, so no chunk boundary may split
@@ -441,6 +454,7 @@ def _alloc_chunked_staging_region(
             byte_size=host_offload_bytes,
             row_bytes=host_offload_huge_page_bytes,
             device=device,
+            mlock_pages=host_staging_mlock,
         )
     elapsed = time.perf_counter() - start
     logger.info(
@@ -473,6 +487,7 @@ class TierConnector(KVConnector):
         connector_type: KVConnectorType = KVConnectorType.rust_tiered,
         host_staging_alloc: HostStagingAlloc = "registered",
         use_disk_direct_io: bool = False,
+        host_staging_mlock: bool = False,
     ) -> None:
         """Initializes the connector over ``replica_kv_memory``'s device buffers.
 
@@ -488,6 +503,7 @@ class TierConnector(KVConnector):
             host_offload_huge_page_bytes,
             gpu0,
             host_staging_alloc,
+            host_staging_mlock,
         )
         if self._host_region.driver_alloc:
             host_chunk_bases = list(self._host_region.chunk_addresses)
@@ -646,6 +662,21 @@ class TierConnector(KVConnector):
                 "read this variable either way."
             )
 
+        if cfg.host_staging_mlock:
+            if cfg.host_staging_alloc == "driver":
+                raise ValueError(
+                    "kv_connector_config.host_staging_mlock applies to "
+                    "host_staging_alloc='registered'; driver-allocated "
+                    "staging memory is already owned by the driver."
+                )
+            if _compact_unevictable_allowed() is True:
+                logger.warning(
+                    "host_staging_mlock locks the staging pages, but with "
+                    "vm.compact_unevictable_allowed=1 (the kernel default) "
+                    "compaction still migrates them. Set it to 0 on the node "
+                    "for the lock to protect the region."
+                )
+
         disk_offload_max_bytes: int = (
             int(cfg.disk_offload_max_gb * 1024**3)
             if cfg.disk_offload_max_gb is not None
@@ -788,6 +819,7 @@ class TierConnector(KVConnector):
                 connector_type=cfg.type,
                 host_staging_alloc=cfg.host_staging_alloc,
                 use_disk_direct_io=use_disk_direct_io,
+                host_staging_mlock=cfg.host_staging_mlock,
             )
         except BaseException:
             if disk_dir is not None:

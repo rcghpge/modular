@@ -342,6 +342,11 @@ class KVConnectorConfigInterface(Protocol):
         ...
 
     @property
+    def host_staging_mlock(self) -> bool:
+        """Whether the registered host staging region is locked with ``mlock``."""
+        ...
+
+    @property
     def disk_offload_max_gb(self) -> float | None:
         """Disk budget in GiB; ``None`` sizes it from the device pool."""
         ...
@@ -383,6 +388,7 @@ class NullKVConnectorConfig:
     type: KVConnectorType = KVConnectorType.null
     host_offload_max_gb: float | None = None
     host_staging_alloc: HostStagingAlloc = "registered"
+    host_staging_mlock: bool = False
     disk_offload_max_gb: float | None = None
     disk_offload_dir: str | None = None
     num_disk_workers: int = 32

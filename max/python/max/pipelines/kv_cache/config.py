@@ -186,6 +186,17 @@ class KVConnectorConfig(ConfigFileModel):
     this.
     """
 
+    host_staging_mlock: bool = Field(
+        default=False,
+        description=(
+            "``mlock`` the registered host staging region. Only protects it "
+            "from compaction when the node sets "
+            "vm.compact_unevictable_allowed=0. Not allowed with "
+            "host_staging_alloc='driver'."
+        ),
+    )
+    """Whether the registered host staging region is locked with ``mlock``."""
+
     disk_offload_dir: str | None = Field(
         default=None,
         description=(

@@ -1558,6 +1558,7 @@ class _ChunkedStagingRegion:
         threads (int, optional): Parallel page-touch workers. Defaults to 16. Unused with ``driver_alloc``.
         chunk_bytes (int, optional): Registration granularity, rounded up to whole rows and pages. Defaults to 512 MiB.
         driver_alloc (bool, optional): Allocate each chunk as pinned host memory from the GPU driver instead of registering one host mapping. Defaults to False.
+        mlock_pages (bool, optional): ``mlock`` the registered mapping. Not allowed with ``driver_alloc``. Defaults to False.
 
     Raises:
         ValueError: If ``device`` is a CPU device, any size is zero, or ``byte_size`` is not a multiple of ``row_bytes``.
@@ -1572,6 +1573,7 @@ class _ChunkedStagingRegion:
         threads: int = 16,
         chunk_bytes: int = 536870912,
         driver_alloc: bool = False,
+        mlock_pages: bool = False,
     ) -> None: ...
     @property
     def address(self) -> int:
@@ -1587,6 +1589,8 @@ class _ChunkedStagingRegion:
 
     @property
     def driver_alloc(self) -> bool: ...
+    @property
+    def mlocked(self) -> bool: ...
     @property
     def byte_size(self) -> int: ...
     @property

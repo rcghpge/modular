@@ -51,6 +51,7 @@ def _region(
     block_bytes: int = BLOCK_BYTES,
     chunk_bytes: int = 512 * 1024 * 1024,
     driver_alloc: bool = False,
+    mlock_pages: bool = False,
 ) -> _ChunkedStagingRegion:
     """A region shaped as the host KV cache allocates one."""
     return _ChunkedStagingRegion(
@@ -59,7 +60,17 @@ def _region(
         device=Accelerator(),
         chunk_bytes=chunk_bytes,
         driver_alloc=driver_alloc,
+        mlock_pages=mlock_pages,
     )
+
+
+def _vm_locked_kib() -> int:
+    """This process's locked memory, as the kernel reports it."""
+    with open("/proc/self/status") as f:
+        for line in f:
+            if line.startswith("VmLck:"):
+                return int(line.split()[1])
+    raise AssertionError("no VmLck line in /proc/self/status")
 
 
 def _block_view(region: _ChunkedStagingRegion, bid: int) -> memoryview:
@@ -309,3 +320,23 @@ def test_rejects_zero_chunk_bytes() -> None:
             device=Accelerator(),
             chunk_bytes=0,
         )
+
+
+def test_mlock_pages_locks_the_registered_mapping() -> None:
+    soft, _ = resource.getrlimit(resource.RLIMIT_MEMLOCK)
+    if soft != resource.RLIM_INFINITY and soft < 8 * BLOCK_BYTES:
+        pytest.skip("RLIMIT_MEMLOCK is too low to lock the test region")
+    before = _vm_locked_kib()
+    region = _region(8, mlock_pages=True)
+
+    assert region.mlocked
+    assert _vm_locked_kib() - before >= 8 * BLOCK_BYTES // 1024
+
+
+def test_mlock_is_off_by_default() -> None:
+    assert not _region(4).mlocked
+
+
+def test_mlock_pages_rejected_with_driver_alloc() -> None:
+    with pytest.raises(ValueError, match="mlock_pages"):
+        _region(4, driver_alloc=True, mlock_pages=True)
