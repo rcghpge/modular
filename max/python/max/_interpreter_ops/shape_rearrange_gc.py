@@ -336,7 +336,8 @@ _register_spec(
         build_graph=_build_tile_graph,
         devices=DeviceClass.ALL,
         rank_keyed=True,
-        max_rank=4,  # The tile kernel supports up to rank 4 on every target.
+        # The tile kernel supports up to rank 5 on every target.
+        max_rank=5,
     ),
 )
 

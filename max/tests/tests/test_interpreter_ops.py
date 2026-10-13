@@ -7011,6 +7011,22 @@ class TestTileOp:
 
         np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
 
+    def test_5d(self) -> None:
+        """Test tiling a 5-D tensor, the kernel's rank cap."""
+        x_np = np.arange(2 * 3 * 2 * 2 * 2, dtype=np.float32).reshape(
+            2, 3, 2, 2, 2
+        )
+        reps = (2, 1, 3, 2, 1)
+
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = F.tile(x, reps)
+
+        np.testing.assert_array_equal(np.from_dlpack(y), np.tile(x_np, reps))
+
 
 class TestBandPartOp:
     """Tests for the mo.linalg.band_part interpreter handler."""
@@ -9930,11 +9946,11 @@ class TestLazyGCModelCompilation:
 
         Uses the same KeyError "Unsupported" signal as an unsupported dtype.
         """
-        # tile's GC kernel supports up to rank 4; rank 5 must be rejected here.
+        # tile's GC kernel supports up to rank 5; rank 6 must be rejected here.
         with pytest.raises(
-            KeyError, match="Unsupported shape-rearrange rank 5"
+            KeyError, match="Unsupported shape-rearrange rank 6"
         ):
-            shape_rearrange_gc.model(mo.TileOp, CPU(), DType.uint8, rank=5)
+            shape_rearrange_gc.model(mo.TileOp, CPU(), DType.uint8, rank=6)
 
 
 class TestDataMovementGCFamily:

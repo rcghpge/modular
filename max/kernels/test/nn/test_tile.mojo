@@ -702,6 +702,68 @@ def test_tile_eg14() raises:
     print()
 
 
+# CHECK-LABEL: test_tile_eg15
+# CHECK: 0.0 ,
+# CHECK: 1.0 ,
+# CHECK: 0.0 ,
+# CHECK: 1.0 ,
+# CHECK: 2.0 ,
+# CHECK: 3.0 ,
+# CHECK: 2.0 ,
+# CHECK: 3.0 ,
+# CHECK: 4.0 ,
+# CHECK: 5.0 ,
+# CHECK: 4.0 ,
+# CHECK: 5.0 ,
+# CHECK: 6.0 ,
+# CHECK: 7.0 ,
+# CHECK: 6.0 ,
+# CHECK: 7.0 ,
+# CHECK: 0.0 ,
+def test_tile_eg15() raises:
+    print("== test_tile_eg15")
+    comptime type = DType.float32
+
+    var input_stack = Array[Scalar[type], 2 * 2 * 2 * 1 * 1](
+        fill_with=lambda (i: Int) -> Scalar[type]: Scalar[type](i)
+    )
+    var input = TileTensor(input_stack, row_major[2, 2, 2, 1, 1]())
+
+    # type_repeats is always .int64
+    comptime type_repeats = DType.int64
+
+    var repeats_stack = Array[Scalar[type_repeats], 5](fill={})
+    var repeats = TileTensor(repeats_stack, row_major[5]())
+
+    repeats[0] = 3
+    repeats[1] = 1
+    repeats[2] = 2
+    repeats[3] = 1
+    repeats[4] = 1
+
+    # Output rank = input rank
+    # output_dim[i] = input_dim[i] * repeats[i]
+    var output_stack = Array[Scalar[type], 6 * 2 * 4](fill=0)
+    var output = TileTensor(output_stack, row_major[6, 2, 4, 1, 1]())
+
+    tile[type, type_repeats](
+        input.make_dynamic[.int64](),
+        repeats.make_dynamic[.int64](),
+        output.make_dynamic[.int64](),
+    )
+
+    print()
+    for i in range(6):
+        for j in range(2):
+            for k in range(4):
+                for l in range(1):
+                    for m in range(1):
+                        print(output[i, j, k, l, m], ",", end="")
+                print()
+            print()
+    print()
+
+
 def test_tile_1d() raises:
     """Test tiling a 1D tensor.
 
@@ -769,3 +831,4 @@ def main() raises:
     test_tile_eg12()
     test_tile_eg13()
     test_tile_eg14()
+    test_tile_eg15()

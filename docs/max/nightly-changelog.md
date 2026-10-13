@@ -673,6 +673,8 @@ This version is still a work in progress.
   host metadata: the public API still accepts constant or symbolic repeat
   counts, and a data-dependent output size is computed from a host copy of
   the repeats, which blocks device-graph capture for such graphs.
+- `ops.tile` now accepts up to 5-dimensional tensors on every device. It
+  previously supported at most 4 dimensions, rejecting rank-5 inputs.
 - `max.nn.moe.MoE` takes `interleaved_gate_up=True` for gate/up projections
   stored as `[gate_0, up_0, gate_1, up_1, ...]`, and runs its fused activation
   on them; `max.nn.comm.ep.ep_kernels.fused_silu` takes `interleaved=True` to
