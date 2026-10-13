@@ -2343,6 +2343,11 @@ def block_scaled_matmul[
         comptime CTA_GROUP = get_defined_int["TUNE_CTA_GROUP", 2]()
         comptime K_GROUP_SIZE = get_defined_int["TUNE_K_GROUP_SIZE", 1]()
         comptime AB_SWAPPED = get_defined_bool["TUNE_AB_SWAPPED", False]()
+        # Two stages of an MMA_N = 256 accumulator fill all 512 TMEM columns
+        # before the scale factors, so N = 256 tiles need 1.
+        comptime NUM_ACCUM_STAGES = get_defined_int[
+            "TUNE_NUM_ACCUM_STAGES", 2
+        ]()
 
         comptime umma_shape = Index(BM * CTA_GROUP, BN * CTA_GROUP, MMA_K)
 
@@ -2359,6 +2364,7 @@ def block_scaled_matmul[
             cta_group=CTA_GROUP,
             AB_swapped=AB_SWAPPED,
             k_group_size=K_GROUP_SIZE,
+            num_accum_pipeline_stages=NUM_ACCUM_STAGES,
         )
 
         return blackwell_block_scaled_matmul_tma_umma_warp_specialized[
