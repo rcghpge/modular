@@ -295,12 +295,15 @@ public:
     // Step 7: Create call
     LLVM::CallOp call = createLLVMCall(rewriter, loc, func, prep.callArgs);
 
-    // Mirror byval onto the call args. A direct call lowers from the call-site
-    // attributes, so the declaration attribute alone does not make the caller
-    // emit the by-memory copy. This covers both fixed and variadic args.
+    // Mirror sret and byval onto the call args. A direct call lowers from the
+    // call-site attributes, so the declaration attribute alone does not make
+    // the caller emit the by-memory copy. This covers both fixed and variadic
+    // args.
     SmallVector<Type> llvmArgTypes;
     for (Type t : op.getOperandTypes())
       llvmArgTypes.push_back(getTypeConverter()->convertType(t));
+    CABICallHelper::applySRetAttrIfNeeded(call, llvmReturnType, usesSRet,
+                                          rewriter);
     cabi.applyByvalAttrsToCall(call, sigClass.args, llvmArgTypes, usesSRet,
                                rewriter, /*startArgIdx=*/0);
 
