@@ -260,16 +260,6 @@ Python::Buffer::Buffer(std::shared_ptr<BufferStorage> storage,
   hostHazardRecord = cloneHostHazardRecord(record);
 }
 
-Python::Buffer::Buffer(std::shared_ptr<BufferStorage> storage,
-                       PyDeviceStreamTy stream, const HostHazardRecord *record)
-    : stream(std::move(stream)) {
-  spec = storage->getSpec();
-  this->storage = std::move(storage);
-  strides = rowMajorStrides(spec);
-  startOffset = 0;
-  hostHazardRecord = cloneHostHazardRecord(record);
-}
-
 //===----------------------------------------------------------------------===//
 // Buffer: views and DLPack interop
 //===----------------------------------------------------------------------===//
@@ -706,41 +696,6 @@ Python::Buffer Python::Buffer::copyTo(Python::PyDeviceTy device) {
       /*hostHazardRecord=*/nullptr);
 }
 
-Python::Buffer Python::Buffer::copyTo(Python::PyDeviceStreamTy stream) {
-  nb::gil_scoped_release release;
-  ErrorOr<M::Driver::DeviceBufferRef> dstBufOr =
-      stream->dev->allocateBuffer(spec);
-  if (dstBufOr.isError())
-    throw std::runtime_error(dstBufOr.getError());
-  M::Driver::DeviceBufferRef dstBuf = dstBufOr.takeValue();
-
-  // For sliced tensors, we need to copy only the sliced portion, not the entire
-  // storage
-  size_t byteOffset = spec.getEltType().getSizeInBytes(startOffset);
-  ErrorOrSuccess copyErrorOr =
-      storage->buf->copyTo(*dstBuf, byteOffset, dstBuf->byteSize());
-
-  if (copyErrorOr.isError())
-    throw std::runtime_error(copyErrorOr.getError());
-
-  // Record on the context the copy runs on, as in the device overload above.
-  if (hostHazardRecord) {
-    M::Driver::DeviceContext *ctx = copyContext(*storage->buf, *dstBuf);
-    hostHazardRecord->stampRead(HostHazardCompletion::recordOn(
-        ctx == &storage->buf->context()
-            ? getStream()
-            : std::make_shared<Python::DeviceStream>(
-                  *stream->dev, M::Driver::DeviceContextRef::copy(ctx))));
-  }
-
-  // A copy destination is a fresh allocation with no requested staging
-  // intent, regardless of the source buffer's usage.
-  return Python::Buffer(
-      std::make_shared<BufferStorage>(std::move(dstBuf), spec, Usage::Default),
-      std::move(stream),
-      /*hostHazardRecord=*/nullptr);
-}
-
 Python::Buffer Python::Buffer::to(Python::PyDeviceTy device) {
   // Pinned host memory and device memory are different memory spaces
   // even if associated with the same device. Always copy if source is pinned.
@@ -756,33 +711,12 @@ Python::Buffer Python::Buffer::to(Python::PyDeviceTy device) {
                         startOffset, hostHazardRecord.get());
 }
 
-Python::Buffer Python::Buffer::to(Python::PyDeviceStreamTy stream) {
-  if (*this->stream->dev != *stream->dev)
-    return copyTo(std::move(stream));
-
-  ErrorOr<std::shared_ptr<BufferStorage>> storageOr =
-      createStorageViewOn(*storage, stream->stream->ctx);
-  if (storageOr.isError())
-    throw std::runtime_error(storageOr.takeError().get());
-  return Python::Buffer(spec, storageOr.takeValue(), std::move(stream), strides,
-                        startOffset, hostHazardRecord.get());
-}
-
 std::vector<Python::Buffer>
 Python::Buffer::to(std::vector<Python::PyDeviceTy> devices) {
   std::vector<Python::Buffer> tensors;
   tensors.reserve(devices.size());
   for (const auto &device : devices)
     tensors.emplace_back(to(device));
-  return tensors;
-}
-
-std::vector<Python::Buffer>
-Python::Buffer::to(std::vector<Python::PyDeviceStreamTy> streams) {
-  std::vector<Python::Buffer> tensors;
-  tensors.reserve(streams.size());
-  for (const auto &stream : streams)
-    tensors.emplace_back(to(stream));
   return tensors;
 }
 

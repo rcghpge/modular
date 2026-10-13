@@ -72,8 +72,6 @@ struct Buffer {
   /// `Device::allocate`/`copyTo` and similar.
   Buffer(std::shared_ptr<BufferStorage> storage, PyDeviceTy device,
          const HostHazardRecord *record);
-  Buffer(std::shared_ptr<BufferStorage> storage, PyDeviceStreamTy stream,
-         const HostHazardRecord *record);
 
   //===--------------------------------------------------------------------===//
   // Views and DLPack interop
@@ -205,13 +203,10 @@ struct Buffer {
 
   /// Copies buffer to the provided device.
   Buffer copyTo(PyDeviceTy device);
-  Buffer copyTo(PyDeviceStreamTy stream);
 
   /// Implementation of Python Buffer.to.
   Buffer to(PyDeviceTy device);
-  Buffer to(PyDeviceStreamTy stream);
   std::vector<Buffer> to(std::vector<PyDeviceTy> devices);
-  std::vector<Buffer> to(std::vector<PyDeviceStreamTy> streams);
 
   /// Copies buffer from another buffer.
   void inplaceCopyFrom(const Buffer &src);

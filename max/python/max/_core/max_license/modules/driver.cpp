@@ -1262,21 +1262,6 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           "Creates a contiguous copy of the buffer.")
       .def(
           "copy",
-          [](Python::Buffer &self, Python::PyDeviceStreamTy stream) {
-            return self.copyTo(std::move(stream));
-          },
-          "stream"_a,
-          R"nbdoc(
-        Creates a deep copy on the device associated with the queue.
-
-        Args:
-            stream (DeviceQueue): The queue to associate the new buffer with.
-
-        Returns:
-            Buffer: A new buffer that is a copy of this buffer.
-      )nbdoc")
-      .def(
-          "copy",
           [](Python::Buffer &self,
              std::optional<Python::PyDeviceTy> maybeDevice) {
             return self.copyTo(maybeDevice ? std::move(maybeDevice.value())
@@ -1405,41 +1390,6 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       .def(
           "to",
           [](nb::pointer_and_handle<Python::Buffer> self,
-             Python::PyDeviceStreamTy stream)
-              -> nb::typed<nb::object, Python::Buffer> {
-            // Variation of tensorTo() that avoids the copy if the current and
-            // target devices are the same. After all, this is a
-            // stream-to-stream transfer.
-            Python::PyDeviceTy &currentDevice =
-                self.p->getStream()->stream; // yeah, I know!
-            Python::PyDeviceTy &targetDevice = stream->stream;
-            M::Driver::DeviceContext const &srcCtx = *currentDevice->ctx;
-            M::Driver::DeviceContext const &dstCtx = *targetDevice->ctx;
-            if (srcCtx == dstCtx) {
-              // Same contexts: noop
-              return nb::borrow(self.h);
-            } else if (*(self.p->getDevice()) == *(stream->getDevice())) {
-              // Different contexts on same device.
-              // Transfer ownership with proper synchronization.
-              // Applies to pinned buffers too.
-              return nb::cast(self.p->to(stream));
-            } else {
-              // Different devices. Copy.
-              return nb::cast(self.p->to(targetDevice));
-            }
-          },
-          "stream"_a,
-          R"nbdoc(
-        Returns a buffer that's guaranteed to be on the given device and associated with the given queue.
-
-        The buffer is only copied if the requested device is different from the
-        device upon which the buffer is already resident. If the destination
-        queue is on the same device, then a new reference to the same buffer is
-        returned.
-      )nbdoc")
-      .def(
-          "to",
-          [](nb::pointer_and_handle<Python::Buffer> self,
              std::vector<Python::PyDeviceTy> devices) {
             std::vector<nb::typed<nb::object, Python::Buffer>> tensors;
             for (Python::PyDeviceTy &device : devices) {
@@ -1454,24 +1404,6 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             The buffers are only copied if the requested devices are different from the
             device upon which the buffer is already resident.
-          )nbdoc")
-      .def(
-          "to",
-          [](nb::pointer_and_handle<Python::Buffer> &self,
-             std::vector<Python::PyDeviceStreamTy> streams) {
-            std::vector<nb::typed<nb::object, Python::Buffer>> tensors;
-            for (Python::PyDeviceStreamTy &stream : streams) {
-              tensors.emplace_back(
-                  tensorTo(self, self.p->getStream()->stream, stream->stream));
-            }
-            return tensors;
-          },
-          "streams"_a,
-          R"nbdoc(
-            Returns a list of buffers that are guaranteed to be on the given queues.
-
-            The buffers are only copied if the requested queues are different from the
-            queue upon which the buffer is already resident.
           )nbdoc")
       .def(
           "to_numpy", [](Python::Buffer &) { /* Replaced in Python */ },
