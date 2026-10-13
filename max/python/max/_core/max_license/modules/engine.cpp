@@ -638,9 +638,9 @@ Args:
       .def_prop_rw("op_log_level", &M::Core::DebugConfig::getOpLogLevel,
                    &M::Core::DebugConfig::setOpLogLevel,
                    "A string that sets the log level for per-op "
-                   "tracing. One of ``''``, ``'notset'``, ``'trace'``, "
-                   "``'debug'``, ``'info'``, ``'warning'``, "
-                   "``'error'``, ``'critical'``. Takes effect at "
+                   "tracing. One of ``''``, ``'NOTSET'``, ``'TRACE'``, "
+                   "``'DEBUG'``, ``'INFO'``, ``'WARNING'``, "
+                   "``'ERROR'``, ``'CRITICAL'``. Takes effect at "
                    "model build time.")
       .def_prop_rw("assert_level", &M::Core::DebugConfig::getAssertLevel,
                    &M::Core::DebugConfig::setAssertLevel,
