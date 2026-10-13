@@ -222,7 +222,6 @@ public:
                                  llvmReturnType, loc, rewriter, numFixedArgs,
                                  isVariadic);
     const SignatureClassification &sigClass = prep.classification;
-    const bool usesSRet = prep.usesSRet;
     const LLVM::LLVMFunctionType &signature = prep.signature;
 
     // Step 4: Compute the final LLVM-level attributes we expect on the
@@ -241,7 +240,7 @@ public:
         buildLLVMArgAttrs(argAttrs, sigClass, op, numFixedArgs, rewriter);
     // resAttrs are dropped when sret is active (no LLVM-level return value).
     mlir::ArrayAttr expectedResAttrs;
-    if (resAttrs && !usesSRet)
+    if (resAttrs && !sigClass.ret.useSRet)
       expectedResAttrs = rewriter.getArrayAttr(resAttrs);
 
     // Step 5: Lookup existing function (unified path - no early return!)
@@ -292,36 +291,13 @@ public:
                                      rewriter);
     }
 
-    // Step 7: Create call
+    // Step 7: Create call and handle the return value
     LLVM::CallOp call = createLLVMCall(rewriter, loc, func, prep.callArgs);
-
-    // Mirror sret and byval onto the call args. A direct call lowers from the
-    // call-site attributes, so the declaration attribute alone does not make
-    // the caller emit the by-memory copy. This covers both fixed and variadic
-    // args.
-    SmallVector<Type> llvmArgTypes;
-    for (Type t : op.getOperandTypes())
-      llvmArgTypes.push_back(getTypeConverter()->convertType(t));
-    CABICallHelper::applySRetAttrIfNeeded(call, llvmReturnType, usesSRet,
-                                          rewriter);
-    cabi.applyByvalAttrsToCall(call, sigClass.args, llvmArgTypes, usesSRet,
-                               rewriter, /*startArgIdx=*/0);
-
-    // Step 8: Handle return value
-    if (op.getResults().empty()) {
-      // Void return
-      rewriter.eraseOp(op);
-    } else if (!sigClass.ret.isIdentity()) {
-      // ABI coercion: reverse coercion on the return value.
-      Value callResult = call.getNumResults() > 0 ? call.getResult() : Value();
-      Value result = cabi.extractReturn(sigClass.ret, callResult, prep.sretPtr,
-                                        llvmReturnType, loc, rewriter);
+    if (Value result =
+            cabi.finishCall(call, prep, TailKind::None, loc, rewriter))
       rewriter.replaceOp(op, result);
-    } else {
-      // Identity return: use standard replacement
-      replaceCallWithLLVMCall(rewriter, op, call);
-    }
-
+    else
+      rewriter.eraseOp(op);
     return success();
   }
 };
