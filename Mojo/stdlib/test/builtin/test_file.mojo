@@ -444,7 +444,7 @@ def test_file_get_raw_fd() raises:
 
     print(
         "test from file 1",
-        file=FileDescriptor(f1._get_raw_fd()),
+        file=FileDescriptor(f1),
         flush=True,
         end="",
     )
@@ -459,13 +459,13 @@ def test_file_get_raw_fd() raises:
 
     print(
         "test from file 2",
-        file=FileDescriptor(f2._get_raw_fd()),
+        file=FileDescriptor(f2),
         flush=True,
         end="",
     )
     print(
         "test from file 3",
-        file=FileDescriptor(f3._get_raw_fd()),
+        file=FileDescriptor(f3),
         flush=True,
         end="",
     )

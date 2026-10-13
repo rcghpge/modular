@@ -74,7 +74,7 @@ struct _fdopen[mode: StaticString = "a"](ImplicitlyCopyable, RegisterPassable):
         """
 
         self.handle = fdopen(
-            dup(Int32(stream_id.value)),
+            dup(stream_id.value),
             Self.mode.as_c_string_span(),
         )
 

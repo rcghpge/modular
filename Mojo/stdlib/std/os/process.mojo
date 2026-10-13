@@ -143,8 +143,8 @@ struct Pipe:
                 _ = close(pipe_fds[1])
                 raise Error("Failed to configure output pipe close on exec")
 
-        self.fd_in = FileDescriptor(Int(pipe_fds[0]))
-        self.fd_out = FileDescriptor(Int(pipe_fds[1]))
+        self.fd_in = FileDescriptor(pipe_fds[0])
+        self.fd_out = FileDescriptor(pipe_fds[1])
 
     def __deinit__(deinit self):
         """Ensures pipes input and output file descriptors are closed, when the object is destroyed.
@@ -167,14 +167,14 @@ struct Pipe:
     def set_input_only(mut self):
         """Close the output descriptor/ channel for this side of the pipe."""
         if case .Some(fd_out) = self.fd_out:
-            _ = close(Int32(rebind[Int](fd_out)))
+            _ = close(fd_out.value)
             self.fd_out = None
 
     @inline(.always)
     def set_output_only(mut self):
         """Close the input descriptor/ channel for this side of the pipe."""
         if case .Some(fd_in) = self.fd_in:
-            _ = close(Int32(rebind[Int](fd_in)))
+            _ = close(fd_in.value)
             self.fd_in = None
 
     @inline(.always)
