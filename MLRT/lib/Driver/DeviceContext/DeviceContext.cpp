@@ -39,7 +39,7 @@ static_assert(
 #include "Support/HashUtils.h"
 #include "Support/SymbolExport.h"
 #include "Support/max_license/Tracy/Tracy.h"
-#include "Target/mcl/DriverPlugin.h"
+#include "Target/max_license/DriverPlugin.h"
 #include "Virtual/VirtualDeviceContext.h"
 
 #include "llvm/ADT/STLExtras.h"
