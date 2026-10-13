@@ -1070,8 +1070,16 @@ def _matmul_gpu_impl[
                 a_type,
                 c_type=c_type,
                 transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_wrapper,
-            ](c, a, rebind[BAsAType](b), ctx)
+                has_epilogue_fn=has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
+            ](
+                c,
+                a,
+                rebind[BAsAType](b),
+                ctx,
+                epilogue_fn=epilogue_fn,
+                compute_fn=compute_fn,
+            )
             return
 
         # 8x8 `simdgroup_matrix` GEMM:
@@ -1095,8 +1103,9 @@ def _matmul_gpu_impl[
                 logger.info("Executing: Apple GPU 8x8 simdgroup MATMUL kernel")
                 enqueue_apple_matmul_8x8[
                     transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_wrapper,
-                ](c, a, b, m, n, k, ctx)
+                    has_epilogue_fn=has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
+                ](c, a, b, m, n, k, ctx, epilogue_fn, compute_fn)
                 return
 
     @inline(.always)
