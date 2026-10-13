@@ -17,7 +17,10 @@ over ``execute``: which rows run each step, when a row's KV cache and
 pipeline state are released, and whether a failed run leaves anything
 claimed. Each prompt's first token is the step on which it emits EOS, and
 the fakes update the real ``TextContext`` so EOS and max-length stops come
-from the context itself, as they do in a real pipeline.
+from the context itself, as they do in a real pipeline. The fakes also run
+each context's logits processors on logits whose argmax is the token they
+emit, then overwrite those logits as a graph replay would, and attach log
+probabilities when a context asks for them.
 """
 
 from __future__ import annotations
@@ -31,11 +34,14 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import numpy.typing as npt
 import pytest
-from max.driver import DeviceSpec
+from max.driver import Buffer, DeviceSpec
 from max.pipelines.context import (
     GenerationStatus,
+    LogProbabilities,
     PixelContext,
+    ProcessorInputs,
     SamplingParamsGenerationConfigDefaults,
     TextAndVisionContext,
     TextContext,
@@ -43,6 +49,7 @@ from max.pipelines.context import (
 )
 from max.pipelines.lib.config import PipelineConfig
 from max.pipelines.lib.generate import Batch, generate
+from max.pipelines.lib.log_probabilities import _MAX_TOP_LOGPROBS
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
 from max.pipelines.lora import LoRAConfig
@@ -53,6 +60,9 @@ from max.pipelines.speculative import SpeculativeConfig
 EOS = 2
 NEVER = 99
 MODEL_PATH = "org/model"
+VOCAB = 128
+# Wins the argmax on every prefill position but the last.
+DECOY = 1
 
 
 @pytest.fixture(autouse=True)
@@ -219,6 +229,9 @@ class FakePipeline:
         self.pipeline_config: PipelineConfig = config
         self.fail_on_step: int | None = None
         self.fail_next_release = False
+        self.run_logits_processors = True
+        self.return_log_probs = True
+        self.report_sampled_tokens = True
         self.steps_run = 0
         # Rows per replica on each step.
         self.batch_sizes: list[list[int]] = []
@@ -240,7 +253,26 @@ class FakePipeline:
     ) -> dict[RequestID, TextGenerationOutput]:
         outputs: dict[RequestID, TextGenerationOutput] = {}
         for context in contexts:
-            context.update(_next_token(context))
+            token = _next_token(context)
+            if self.run_logits_processors:
+                logits = Buffer.from_numpy(_logits(context, token))
+                for processor in (
+                    context.sampling_params.logits_processors or ()
+                ):
+                    processor(ProcessorInputs(logits=logits, context=context))
+                # Replay reuses its output buffer on the next step.
+                logits.to_numpy().fill(np.nan)
+            log_probs = None
+            if context.log_probabilities and self.return_log_probs:
+                log_prob = -float(context.tokens.generated_length + 1)
+                log_probs = LogProbabilities(
+                    token_log_probabilities=[log_prob],
+                    top_log_probabilities=[{token: log_prob, 0: -50.0}],
+                    sampled_token_ids=[
+                        token if self.report_sampled_tokens else 0
+                    ],
+                )
+            context.update(token, log_probabilities=log_probs)
             outputs[context.request_id] = context.to_generation_output()
         return outputs
 
@@ -304,6 +336,17 @@ class FakeWarmedUpOverlapPipeline(FakeOverlapPipeline):
 def _next_token(context: TextContext) -> int:
     step = context.tokens.generated_length + 1
     return EOS if step == int(context.tokens.prompt[0]) else 100 + step
+
+
+def _logits(context: TextContext, token: int) -> npt.NDArray[np.float32]:
+    """Returns a logits row per active token, as ``ReturnLogits.ALL`` would.
+
+    Only the last row predicts ``token``, and its peak grows each step.
+    """
+    logits = np.zeros((context.tokens.active_length, VOCAB), dtype=np.float32)
+    logits[:-1, DECOY] = 100.0
+    logits[-1, token] = 5.0 + context.tokens.generated_length
+    return logits
 
 
 def _prompts(*eos_steps: int) -> list[list[int]]:
@@ -744,7 +787,7 @@ def test_batch_total_tokens_cap_admits_a_lone_row_under_the_cap() -> None:
         Batch(pipeline, [_prompt_of_length(11)], max_new_tokens=1)
 
 
-def test_speculative_pipeline_runs_but_rejects_ignore_eos() -> None:
+def test_speculative_pipeline_runs_but_rejects_per_token_outputs() -> None:
     pipeline = FakePipeline(
         speculative=SpeculativeConfig(
             speculative_method="eagle", num_speculative_tokens=3
@@ -756,6 +799,12 @@ def test_speculative_pipeline_runs_but_rejects_ignore_eos() -> None:
 
     with pytest.raises(ValueError, match="ignore_eos cannot keep"):
         Batch(pipeline, _prompts(1), max_new_tokens=5, ignore_eos=True)
+    _assert_nothing_held(pipeline, 1)
+
+    with pytest.raises(ValueError, match="speculative decoding"):
+        Batch(pipeline, _prompts(1), max_new_tokens=5, output_logits=True)
+    with pytest.raises(ValueError, match="speculative decoding"):
+        Batch(pipeline, _prompts(1), max_new_tokens=5, output_logprobs=1)
     _assert_nothing_held(pipeline, 1)
 
 
@@ -1266,3 +1315,189 @@ def test_synchronous_pipeline_allows_concurrent_batches(
 
     assert _new_tokens(first.sequences) == [[101, EOS]]
     assert _new_tokens(second.sequences) == [[101, 102, EOS]]
+
+
+def test_logits_follow_each_rows_tokens_from_prefill_on() -> None:
+    pipeline = FakePipeline()
+    result = generate(
+        pipeline, _prompts(1, 3), max_new_tokens=5, output_logits=True
+    )
+
+    assert result.log_probs is None
+    assert result.logits is not None
+    assert [logits.shape for logits in result.logits] == [
+        (1, VOCAB),
+        (3, VOCAB),
+    ]
+    # The prefill step's row is the last prompt position, not the decoy.
+    assert [
+        logits.argmax(axis=1).tolist() for logits in result.logits
+    ] == _new_tokens(result.sequences)
+    # Copied inside the processor, so the fake's overwrite never shows.
+    assert result.logits[1].max(axis=1).tolist() == [5.0, 6.0, 7.0]
+    _assert_nothing_held(pipeline, 2)
+
+
+def test_logits_on_a_synchronous_overlap_pipeline() -> None:
+    pipeline = FakeOverlapDisabledPipeline()
+    result = generate(
+        pipeline, _prompts(2), max_new_tokens=5, output_logits=True
+    )
+
+    assert result.logits is not None
+    assert (
+        result.logits[0].argmax(axis=1).tolist()
+        == _new_tokens(result.sequences)[0]
+    )
+
+
+def test_log_probs_follow_each_rows_tokens() -> None:
+    pipeline = FakePipeline()
+    result = generate(
+        pipeline, _prompts(1, 3), max_new_tokens=5, output_logprobs=1
+    )
+
+    assert result.logits is None
+    assert result.log_probs is not None
+    assert [lp.token_log_probabilities for lp in result.log_probs] == [
+        [-1.0],
+        [-1.0, -2.0, -3.0],
+    ]
+    assert [
+        [max(top, key=top.__getitem__) for top in lp.top_log_probabilities]
+        for lp in result.log_probs
+    ] == _new_tokens(result.sequences)
+    assert [lp.sampled_token_ids for lp in result.log_probs] == (
+        _new_tokens(result.sequences)
+    )
+    _assert_nothing_held(pipeline, 2)
+
+
+def test_ignore_eos_keeps_logits_and_log_probs_past_eos() -> None:
+    pipeline = FakePipeline()
+    with Batch(
+        pipeline,
+        _prompts(1, 3),
+        max_new_tokens=5,
+        ignore_eos=True,
+        output_logits=True,
+        output_logprobs=1,
+    ) as batch:
+        assert [logits.shape for logits in batch.logits] == [(0, 0)] * 2
+        for _ in batch:
+            pass
+
+    new_tokens = _new_tokens(batch.sequences)
+    assert pipeline.batch_sizes == [[2]] * 5
+    assert new_tokens == [[EOS, 102, 103, 104, 105], [101, 102, EOS, 104, 105]]
+    assert [
+        logits.argmax(axis=1).tolist() for logits in batch.logits
+    ] == new_tokens
+    assert [lp.token_log_probabilities for lp in batch.log_probs] == [
+        [-1.0, -2.0, -3.0, -4.0, -5.0]
+    ] * 2
+    assert [len(lp.top_log_probabilities) for lp in batch.log_probs] == [5, 5]
+    assert [lp.sampled_token_ids for lp in batch.log_probs] == new_tokens
+
+
+def test_removed_row_keeps_logits_and_log_probs_aligned() -> None:
+    with Batch(
+        FakePipeline(),
+        _prompts(NEVER, NEVER),
+        max_new_tokens=5,
+        output_logits=True,
+        output_logprobs=1,
+    ) as batch:
+        batch.step()
+        batch.remove(1)
+        while not batch.done:
+            batch.step()
+
+    new_tokens = _new_tokens(batch.sequences)
+    assert [len(tokens) for tokens in new_tokens] == [5, 1]
+    assert [logits.shape[0] for logits in batch.logits] == [5, 1]
+    assert [lp.sampled_token_ids for lp in batch.log_probs] == new_tokens
+
+
+def test_logits_need_a_synchronous_pipeline() -> None:
+    pipeline = FakeOverlapPipeline()
+    with pytest.raises(
+        ValueError, match="output_logits needs a synchronous pipeline"
+    ):
+        Batch(pipeline, _prompts(1), max_new_tokens=5, output_logits=True)
+    assert pipeline.kv_manager.claimed == {}
+
+
+@pytest.mark.parametrize(
+    "pipeline_type", [FakeOverlapPipeline, FakeOverlapDisabledPipeline]
+)
+def test_log_probs_rejected_on_any_overlap_pipeline(
+    pipeline_type: type[FakePipeline],
+) -> None:
+    pipeline = pipeline_type()
+    with pytest.raises(ValueError) as error:
+        Batch(pipeline, _prompts(1), max_new_tokens=5, output_logprobs=1)
+    message = str(error.value)
+    assert "rejects log probabilities even with overlap off" in message
+    assert "log_softmax" in message
+    assert "max serve" not in message
+    assert pipeline.kv_manager.claimed == {}
+
+
+@pytest.mark.parametrize("output_logprobs", [-1, _MAX_TOP_LOGPROBS + 1])
+def test_out_of_range_output_logprobs_raises(output_logprobs: int) -> None:
+    pipeline = FakePipeline()
+    with pytest.raises(
+        ValueError,
+        match=rf"in \[0, {_MAX_TOP_LOGPROBS}\], was {output_logprobs}\.",
+    ):
+        Batch(
+            pipeline,
+            _prompts(1),
+            max_new_tokens=5,
+            output_logprobs=output_logprobs,
+        )
+    assert pipeline.kv_manager.claimed == {}
+
+
+def test_unrequested_logits_and_log_probs_raise() -> None:
+    with Batch(FakePipeline(), _prompts(1), max_new_tokens=5) as batch:
+        with pytest.raises(RuntimeError, match="output_logits=True"):
+            _ = batch.logits
+        with pytest.raises(RuntimeError, match="output_logprobs > 0"):
+            _ = batch.log_probs
+
+
+@pytest.mark.parametrize(
+    ("attribute", "output_logits", "output_logprobs", "message"),
+    [
+        (
+            "run_logits_processors",
+            True,
+            0,
+            "0 logits rows for 1 tokens. The pipeline did not run the "
+            "logits processors",
+        ),
+        ("return_log_probs", False, 1, "log probabilities for 0 of 1 tokens"),
+        (
+            "report_sampled_tokens",
+            False,
+            1,
+            r"log probabilities for \[0\] but generated \[101\]",
+        ),
+    ],
+)
+def test_outputs_out_of_step_with_tokens_raise(
+    attribute: str, output_logits: bool, output_logprobs: int, message: str
+) -> None:
+    pipeline = FakePipeline()
+    setattr(pipeline, attribute, False)
+    with pytest.raises(RuntimeError, match=message):
+        generate(
+            pipeline,
+            _prompts(3),
+            max_new_tokens=5,
+            output_logits=output_logits,
+            output_logprobs=output_logprobs,
+        )
+    _assert_nothing_held(pipeline, 1)

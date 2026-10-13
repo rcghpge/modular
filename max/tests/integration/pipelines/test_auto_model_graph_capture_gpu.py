@@ -12,14 +12,15 @@
 # ===----------------------------------------------------------------------=== #
 """AutoModel with device graph capture on a real GPU model.
 
-Every decode step must replay a captured graph, and the greedy tokens must
-match an AutoModel built without capture.
+Every decode step must replay a captured graph, and the greedy tokens and
+the logits Batch records must match an AutoModel built without capture.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
+import numpy as np
 import pytest
 from max.driver import DeviceSpec
 from max.pipelines import AutoModel, AutoTokenizer, TextGenerationPipeline
@@ -62,7 +63,11 @@ def test_graph_capture_replays_and_matches_eager(
     with _load(device_graph_capture=False) as model:
         assert isinstance(model.pipeline, TextGenerationPipeline)
         eager = model.generate(
-            input_ids, max_new_tokens=MAX_NEW_TOKENS, top_k=1, ignore_eos=True
+            input_ids,
+            max_new_tokens=MAX_NEW_TOKENS,
+            top_k=1,
+            ignore_eos=True,
+            output_logits=True,
         )
 
     with _load(device_graph_capture=True) as model:
@@ -84,7 +89,11 @@ def test_graph_capture_replays_and_matches_eager(
 
         steps = 0
         with model.batch(
-            input_ids, max_new_tokens=MAX_NEW_TOKENS, top_k=1, ignore_eos=True
+            input_ids,
+            max_new_tokens=MAX_NEW_TOKENS,
+            top_k=1,
+            ignore_eos=True,
+            output_logits=True,
         ) as batch:
             for _ in batch:
                 steps += 1
@@ -92,3 +101,7 @@ def test_graph_capture_replays_and_matches_eager(
         # Only the prefill step runs eagerly.
         assert replays == steps - 1
     assert eager.sequences == batch.sequences
+    assert eager.logits is not None
+    for expected, actual in zip(eager.logits, batch.logits, strict=True):
+        assert actual.shape == expected.shape
+        np.testing.assert_allclose(actual, expected, atol=1e-2, rtol=1e-3)

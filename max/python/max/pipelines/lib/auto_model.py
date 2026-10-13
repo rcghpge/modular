@@ -373,6 +373,8 @@ class AutoModel:
         ignore_eos: bool = False,
         stop_token_ids: Sequence[int] | None = None,
         seed: int = 0,
+        output_logits: bool = False,
+        output_logprobs: int = 0,
     ) -> GenerateResult:
         """Runs :func:`~max.pipelines.lib.generate.generate` on :attr:`pipeline`.
 
@@ -380,7 +382,12 @@ class AutoModel:
         max_new_tokens=16)`` works with an :class:`AutoTokenizer`.
 
         Raises:
-            RuntimeError: If the model has been closed.
+            TypeError: As described for
+                :func:`~max.pipelines.lib.generate.generate`.
+            ValueError: As described for
+                :func:`~max.pipelines.lib.generate.generate`.
+            RuntimeError: If the model has been closed, or as described for
+                :func:`~max.pipelines.lib.generate.generate`.
         """
         return generate(
             self.pipeline,
@@ -398,6 +405,8 @@ class AutoModel:
             ignore_eos=ignore_eos,
             stop_token_ids=stop_token_ids,
             seed=seed,
+            output_logits=output_logits,
+            output_logprobs=output_logprobs,
         )
 
     def batch(
@@ -417,6 +426,8 @@ class AutoModel:
         ignore_eos: bool = False,
         stop_token_ids: Sequence[int] | None = None,
         seed: int = 0,
+        output_logits: bool = False,
+        output_logprobs: int = 0,
     ) -> Batch:
         """Opens a :class:`~max.pipelines.lib.generate.Batch` on :attr:`pipeline`.
 
@@ -424,7 +435,12 @@ class AutoModel:
         so its rows are released.
 
         Raises:
-            RuntimeError: If the model has been closed.
+            TypeError: As described for
+                :class:`~max.pipelines.lib.generate.Batch`.
+            ValueError: As described for
+                :class:`~max.pipelines.lib.generate.Batch`.
+            RuntimeError: If the model has been closed, or as described for
+                :class:`~max.pipelines.lib.generate.Batch`.
         """
         return Batch(
             self.pipeline,
@@ -442,6 +458,8 @@ class AutoModel:
             ignore_eos=ignore_eos,
             stop_token_ids=stop_token_ids,
             seed=seed,
+            output_logits=output_logits,
+            output_logprobs=output_logprobs,
         )
 
     def close(self) -> None:

@@ -224,6 +224,7 @@ modular_py_test(
         "//max/python/max/pipelines",
         "//max/python/max/pipelines/architectures/llama3",
         "//max/python/max/pipelines/lib",
+        requirement("numpy"),
     ],
 )
 

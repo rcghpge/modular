@@ -127,6 +127,53 @@ def test_batch_steps_synchronously_like_generate(model_path: str) -> None:
     assert batch.sequences == expected
 
 
+def test_greedy_logits_and_log_probs_match_sequences(model_path: str) -> None:
+    num_top_log_probs = 3
+    with _load_cpu(model_path, max_batch_size=len(PROMPTS)) as model:
+        # The sampler's penalties and min-tokens mask edit the logits that
+        # log probs read, so log probs match log_softmax only with both off.
+        sampling = model.pipeline_config.sampling
+        assert not sampling.enable_penalties
+        assert not sampling.enable_min_tokens
+        result = model.generate(
+            PROMPTS,
+            max_new_tokens=NUM_NEW_TOKENS,
+            temperature=0.0,
+            top_k=1,
+            output_logits=True,
+            output_logprobs=num_top_log_probs,
+        )
+    assert result.logits is not None
+    assert result.log_probs is not None
+    for prompt, sequence, logits, log_probs in zip(
+        PROMPTS, result.sequences, result.logits, result.log_probs, strict=True
+    ):
+        new_tokens = sequence[len(prompt) :]
+        assert new_tokens
+        assert logits.dtype == np.float32
+        assert logits.shape[0] == len(new_tokens)
+        assert logits.argmax(axis=1).tolist() == new_tokens
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        log_softmax = shifted - np.log(
+            np.exp(shifted).sum(axis=1, keepdims=True)
+        )
+        assert log_probs.sampled_token_ids == new_tokens
+        assert len(log_probs.token_log_probabilities) == len(new_tokens)
+        assert len(log_probs.top_log_probabilities) == len(new_tokens)
+        for t, (token, log_prob, top) in enumerate(
+            zip(
+                new_tokens,
+                log_probs.token_log_probabilities,
+                log_probs.top_log_probabilities,
+                strict=True,
+            )
+        ):
+            assert len(top) == num_top_log_probs
+            assert top[token] == pytest.approx(log_prob)
+            assert log_prob == pytest.approx(max(top.values()))
+            assert log_prob == pytest.approx(log_softmax[t, token], abs=1e-3)
+
+
 def test_auto_tokenizer_matches_the_pipeline_tokenizer(model_path: str) -> None:
     tokenizer = AutoTokenizer(model_path)
     with _load_cpu(model_path) as model:
@@ -522,6 +569,8 @@ def test_generate_and_batch_pass_every_argument(
             ignore_eos=True,
             stop_token_ids=[9],
             seed=7,
+            output_logits=True,
+            output_logprobs=2,
         )
         model.batch(
             PROMPTS,
@@ -538,6 +587,8 @@ def test_generate_and_batch_pass_every_argument(
             ignore_eos=True,
             stop_token_ids=[9],
             seed=7,
+            output_logits=True,
+            output_logprobs=2,
         )
     expected_kwargs: dict[str, object] = {
         "max_new_tokens": 3,
@@ -552,6 +603,8 @@ def test_generate_and_batch_pass_every_argument(
         "ignore_eos": True,
         "stop_token_ids": [9],
         "seed": 7,
+        "output_logits": True,
+        "output_logprobs": 2,
     }
     assert calls == [((pipeline, PROMPTS, MASKS), expected_kwargs)] * 2
 

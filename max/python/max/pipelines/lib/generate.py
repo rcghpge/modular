@@ -36,9 +36,12 @@ from types import TracebackType
 from typing import Protocol, runtime_checkable
 
 import numpy as np
+import numpy.typing as npt
 from max.driver import DeviceSpec
 from max.pipelines.context import (
     EOSTracker,
+    LogProbabilities,
+    ProcessorInputs,
     SamplingParams,
     SamplingParamsInput,
     TextAndVisionContext,
@@ -54,6 +57,7 @@ from max.pipelines.modeling.types import (
 )
 
 from .config import PipelineConfig
+from .log_probabilities import _MAX_TOP_LOGPROBS
 from .registry import PIPELINE_REGISTRY
 
 __all__ = [
@@ -189,6 +193,29 @@ class GenerateResult:
     sequences: list[list[int]]
     """Each row's prompt followed by its new tokens, in input order, as in
     Hugging Face ``generate``."""
+
+    logits: list[npt.NDArray[np.float32]] | None = None
+    """Each row's next-token logits, as :attr:`Batch.logits`, when
+    requested."""
+
+    log_probs: list[LogProbabilities] | None = None
+    """Each row's log probabilities, as :attr:`Batch.log_probs`, when
+    requested."""
+
+
+class _LogitsRecorder:
+    """Records one context's next-token logits on each forward."""
+
+    def __init__(self) -> None:
+        self.logits: list[npt.NDArray[np.float32]] = []
+
+    def __call__(self, inputs: ProcessorInputs) -> None:
+        # The last row predicts the next token whether the model returned
+        # one row per sequence or one per prompt position. Copied here,
+        # because the next step or graph replay reuses the buffer.
+        self.logits.append(
+            np.array(inputs.logits[-1, :].to_numpy(), dtype=np.float32)
+        )
 
 
 # A pipeline that is not synchronous hands its pending forward's results to
@@ -499,6 +526,42 @@ def _check_penalties_enabled(
         )
 
 
+def _check_output_options(
+    pipeline: BatchPipeline,
+    synchronous: bool,
+    output_logits: bool,
+    output_logprobs: int,
+) -> None:
+    """Raises if the pipeline cannot return the requested outputs."""
+    if not 0 <= output_logprobs <= _MAX_TOP_LOGPROBS:
+        raise ValueError(
+            f"output_logprobs must be in [0, {_MAX_TOP_LOGPROBS}], was "
+            f"{output_logprobs}."
+        )
+    if (
+        output_logits or output_logprobs
+    ) and pipeline.pipeline_config.speculative is not None:
+        raise ValueError(
+            "output_logits and output_logprobs need one logits row per new "
+            "token, and with speculative decoding a step can add several "
+            "tokens to a row."
+        )
+    if output_logits and not synchronous:
+        raise ValueError(
+            "output_logits needs a synchronous pipeline, but this pipeline "
+            "has overlap active, so each step returns the tokens sampled "
+            "from the previous step's logits. Use AutoModel, which turns the "
+            "overlap scheduler off."
+        )
+    # The pipeline checks this only after the rows have claimed KV.
+    if output_logprobs and isinstance(pipeline, _OverlapSource):
+        raise ValueError(
+            "OverlapTextGenerationPipeline rejects log probabilities even "
+            "with overlap off. Pass output_logits=True and take log_softmax "
+            "over the logits, or use AutoModel without device graph capture."
+        )
+
+
 def _align_up(value: int, alignment: int) -> int:
     return -(-value // alignment) * alignment
 
@@ -598,10 +661,11 @@ class Batch:
 
     On a :attr:`synchronous` pipeline, each :meth:`step` returns its own
     forward's tokens and the device is idle between steps. A pipeline that
-    is not synchronous returns the previous execute's tokens instead: the
-    first step returns ``{}``, a row finishes one step after its last token
-    is sampled, ``ignore_eos`` takes ``max_new_tokens + 1`` steps, and a
-    forward can still be running between steps and after :attr:`done`. Such
+    is not synchronous (an overlap pipeline with overlap active) returns
+    the previous execute's tokens instead: the first step returns ``{}``, a
+    row finishes one step after its last token is sampled, ``ignore_eos``
+    takes ``max_new_tokens + 1`` steps, and a forward can still be running
+    between steps and after :attr:`done`. Such
     a pipeline allows one open batch at a time, and if its execute raises,
     reload it: closing the batch frees the rows but cannot repair the
     pipeline's pending state.
@@ -621,7 +685,9 @@ class Batch:
     before creating a Batch. With device graph capture on but no warmup,
     Batch logs a warning and runs every step eagerly. A logits processor
     receives the captured output buffer, which the next replay overwrites,
-    so it must copy what it keeps.
+    so it must copy what it keeps. ``output_logits`` copies a float32
+    ``[vocab]`` logits row to host for every generated token, so host
+    memory grows by ``4 * vocab`` bytes per token.
 
     .. Skipped: the example needs a loaded pipeline.
     .. skip: next
@@ -663,6 +729,11 @@ class Batch:
         stop_token_ids: Token ids that end a row, in addition to EOS.
         seed: The sampling seed for row 0. Row ``i`` uses
             ``seed + i * 2**32``.
+        output_logits: Copies each row's next-token logits to host on every
+            step, for :attr:`logits`. Needs a :attr:`synchronous` pipeline.
+        output_logprobs: Records the log probability of each generated token
+            and of this many top candidates, for :attr:`log_probs`. A model
+            that does not compute log probabilities fails on the first step.
 
     Raises:
         TypeError: If ``input_ids`` or ``attention_mask`` is not a list of
@@ -679,7 +750,11 @@ class Batch:
             ``min_new_tokens``, ``attention_mask`` with a different shape
             than ``input_ids``, ``ignore_eos`` with a row that does not fit
             or with speculative decoding, image inputs, or a model that does
-            not generate text.
+            not generate text. Also raised for ``output_logprobs`` outside
+            ``[0, 7]``, ``output_logits`` on a pipeline that is not
+            synchronous, ``output_logits`` or ``output_logprobs`` with
+            speculative decoding, or ``output_logprobs`` on an
+            :class:`~max.pipelines.lib.OverlapTextGenerationPipeline`.
         RuntimeError: If the pipeline is not synchronous and another batch
             on it is still open.
     """
@@ -702,6 +777,8 @@ class Batch:
         ignore_eos: bool = False,
         stop_token_ids: Sequence[int] | None = None,
         seed: int = 0,
+        output_logits: bool = False,
+        output_logprobs: int = 0,
     ) -> None:
         prompts = _materialize_prompts(input_ids, attention_mask)
         pipeline_config = pipeline.pipeline_config
@@ -772,12 +849,37 @@ class Batch:
                     "results to whichever batch steps next. Finish or close "
                     "that batch first."
                 )
+        _check_output_options(
+            pipeline, synchronous, output_logits, output_logprobs
+        )
         self._pipeline: BatchPipeline | None = pipeline
         self._dp_degree = dp_degree
         self._synchronous = synchronous
         self._contexts = contexts
         self._prompts = prompts
         self._generated: list[list[int]] = [[] for _ in contexts]
+        self._logits_recorders: list[_LogitsRecorder] | None = None
+        if output_logits:
+            self._logits_recorders = [_LogitsRecorder() for _ in contexts]
+            for context, recorder in zip(
+                contexts, self._logits_recorders, strict=True
+            ):
+                context.sampling_params.logits_processors = [
+                    *(context.sampling_params.logits_processors or ()),
+                    recorder,
+                ]
+        self._log_probs: list[LogProbabilities] | None = None
+        if output_logprobs:
+            self._log_probs = [
+                LogProbabilities(
+                    token_log_probabilities=[],
+                    top_log_probabilities=[],
+                    sampled_token_ids=[],
+                )
+                for _ in contexts
+            ]
+            for context in contexts:
+                context.log_probabilities = output_logprobs
         # Live rows in input order, mapped to their DP replica. Replicas
         # need no padding: Batch rejects data parallelism on a warmed-up
         # pipeline, and eager steps accept unequal replicas.
@@ -829,6 +931,64 @@ class Batch:
             )
         ]
 
+    @property
+    def logits(self) -> list[npt.NDArray[np.float32]]:
+        """The next-token logits behind each row's new tokens, in input order.
+
+        Row ``i`` has one ``[vocab]`` row per new token, and ``logits[i][t]``
+        holds the raw model output that produced the row's ``t``-th new
+        token, before temperature, top-k, penalties or token masks. A row
+        with no new tokens has shape ``[0, 0]``.
+
+        Raises:
+            RuntimeError: If the batch was built without ``output_logits``.
+        """
+        if self._logits_recorders is None:
+            raise RuntimeError("Build the batch with output_logits=True.")
+        return [
+            np.stack(recorder.logits[: len(tokens)])
+            if tokens
+            else np.empty((0, 0), dtype=np.float32)
+            for recorder, tokens in zip(
+                self._logits_recorders, self._generated, strict=True
+            )
+        ]
+
+    @property
+    def log_probs(self) -> list[LogProbabilities]:
+        """The log probabilities behind each row's new tokens, in input order.
+
+        For row ``i``, ``token_log_probabilities[t]`` is the log probability
+        of the row's ``t``-th new token, and ``top_log_probabilities[t]``
+        maps the ``output_logprobs`` most likely token ids, plus that token
+        if it is not among them, to their log probabilities.
+        ``sampled_token_ids`` holds the row's new tokens. They match
+        ``log_softmax(logits[i][t])`` when the sampler applies no penalties
+        and no ``min_new_tokens`` mask. With the default sampler on the
+        model device, both edit the logits before log probabilities are
+        taken. With ``enable_echo`` or ``sample_on_host``, log probabilities
+        come from the unpenalized logits.
+
+        Raises:
+            RuntimeError: If the batch was built without ``output_logprobs``.
+        """
+        if self._log_probs is None:
+            raise RuntimeError("Build the batch with output_logprobs > 0.")
+        return [
+            LogProbabilities(
+                token_log_probabilities=log_probs.token_log_probabilities[
+                    : len(tokens)
+                ],
+                top_log_probabilities=log_probs.top_log_probabilities[
+                    : len(tokens)
+                ],
+                sampled_token_ids=log_probs.sampled_token_ids[: len(tokens)],
+            )
+            for log_probs, tokens in zip(
+                self._log_probs, self._generated, strict=True
+            )
+        ]
+
     def step(self) -> dict[int, list[int]]:
         """Runs exactly one ``pipeline.execute`` over the live rows.
 
@@ -841,7 +1001,10 @@ class Batch:
             index.
 
         Raises:
-            RuntimeError: If no rows are live.
+            RuntimeError: If no rows are live, or if the pipeline returns log
+                probabilities or logits rows that do not line up one per
+                generated token, as when the model does not compute log
+                probabilities.
         """
         if self.done:
             raise RuntimeError("Batch has no live rows to step.")
@@ -871,10 +1034,53 @@ class Batch:
                 continue
             tokens = [int(token) for token in output.tokens]
             self._generated[row].extend(tokens)
+            self._record_log_probs(row, output, tokens)
+            self._check_logits_aligned(row)
             step_tokens[row] = tokens
             if output.is_done:
                 self._release(row)
         return step_tokens
+
+    def _record_log_probs(
+        self, row: int, output: TextGenerationOutput, tokens: list[int]
+    ) -> None:
+        if self._log_probs is None:
+            return
+        entries = output.log_probabilities or []
+        if len(entries) != len(tokens):
+            raise RuntimeError(
+                f"Row {row} got log probabilities for {len(entries)} of "
+                f"{len(tokens)} tokens. The model may not compute them."
+            )
+        sampled = [
+            token for entry in entries for token in entry.sampled_token_ids
+        ]
+        if sampled != tokens:
+            raise RuntimeError(
+                f"Row {row} got log probabilities for {sampled} but "
+                f"generated {tokens}."
+            )
+        row_log_probs = self._log_probs[row]
+        for entry in entries:
+            row_log_probs.token_log_probabilities.extend(
+                entry.token_log_probabilities
+            )
+            row_log_probs.top_log_probabilities.extend(
+                entry.top_log_probabilities
+            )
+            row_log_probs.sampled_token_ids.extend(entry.sampled_token_ids)
+
+    def _check_logits_aligned(self, row: int) -> None:
+        if self._logits_recorders is None:
+            return
+        num_logits = len(self._logits_recorders[row].logits)
+        num_tokens = len(self._generated[row])
+        if num_logits != num_tokens:
+            raise RuntimeError(
+                f"Row {row} has {num_logits} logits rows for {num_tokens} "
+                "tokens. The pipeline did not run the logits processors once "
+                "per sampled token."
+            )
 
     def remove(self, row: int) -> None:
         """Releases ``row`` so later steps run without it.
@@ -945,6 +1151,8 @@ def generate(
     ignore_eos: bool = False,
     stop_token_ids: Sequence[int] | None = None,
     seed: int = 0,
+    output_logits: bool = False,
+    output_logprobs: int = 0,
 ) -> GenerateResult:
     """Generates tokens for a fixed batch of prompts, run as one batch.
 
@@ -972,20 +1180,28 @@ def generate(
         stop_token_ids: Token ids that end a row, in addition to EOS.
         seed: The sampling seed for row 0. Row ``i`` uses
             ``seed + i * 2**32``.
+        output_logits: Returns each row's next-token logits, as
+            :attr:`Batch.logits`.
+        output_logprobs: Returns the log probabilities of each token and of
+            this many top candidates, as :attr:`Batch.log_probs`.
 
     Returns:
-        Each row's prompt followed by its new tokens, in input order.
+        Each row's prompt followed by its new tokens, in input order, with
+        the requested logits and log probabilities.
 
     Raises:
         TypeError: If ``input_ids`` or ``attention_mask`` is not a list of
             integer lists.
         ValueError: If the request needs a feature Batch leaves to
             ``max serve``, such as device graph capture with
-            ``data_parallel_degree > 1`` on a warmed-up pipeline, or the
-            batch does not fit the pipeline's plan, as described for
-            :class:`Batch`.
+            ``data_parallel_degree > 1`` on a warmed-up pipeline, the batch
+            does not fit the pipeline's plan, or the pipeline cannot return
+            the requested outputs, as described for :class:`Batch`.
         RuntimeError: If the pipeline is not synchronous and another batch
-            on it is still open.
+            on it is still open, or if the pipeline returns log
+            probabilities or logits rows that do not line up one per
+            generated token, as when the model does not compute log
+            probabilities.
     """
     with Batch(
         pipeline,
@@ -1003,7 +1219,13 @@ def generate(
         ignore_eos=ignore_eos,
         stop_token_ids=stop_token_ids,
         seed=seed,
+        output_logits=output_logits,
+        output_logprobs=output_logprobs,
     ) as batch:
         while not batch.done:
             batch.step()
-        return GenerateResult(sequences=batch.sequences)
+        return GenerateResult(
+            sequences=batch.sequences,
+            logits=batch.logits if output_logits else None,
+            log_probs=batch.log_probs if output_logprobs else None,
+        )
