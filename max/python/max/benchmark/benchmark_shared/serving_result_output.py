@@ -63,6 +63,10 @@ from max.benchmark.benchmark_shared.percentile_metrics import (
 )
 from max.benchmark.benchmark_shared.server_metrics import print_server_metrics
 from max.benchmark.benchmark_shared.utils import print_section
+from max.benchmark.benchmark_shared.workload_stats import (
+    Distribution,
+    WorkloadStats,
+)
 from PIL import Image, UnidentifiedImageError
 from tabulate import tabulate
 
@@ -206,12 +210,63 @@ def _print_image_stats(
         )
 
 
-def print_workload_stats(samples: Samples) -> None:
+def _format_stats_distribution(dist: Distribution, label: str) -> str:
+    columns = ["count", "mean", *(f"p{p}" for p in dist.percentiles), "max"]
+    values = [dist.count, dist.mean, *dist.percentiles.values(), dist.max]
+    header = "    " + "".join(f"{name:<10}" for name in columns)
+    row = "    " + "".join(f"{v:<10.2f}" for v in values)
+    lines = [f"  {label}:", header, row]
+    if dist.fraction_above:
+        shares = ", ".join(
+            f">{t // 1000}k: {share:.2%}"
+            for t, share in dist.fraction_above.items()
+        )
+        lines.append(f"    share above {shares}")
+    return "\n".join(lines)
+
+
+def _print_requests_sent(stats: WorkloadStats) -> None:
+    """Prints the requests the run would send, in production's terms."""
+    print()
+    print_section(title=" Requests Sent ", char="-")
+    print(f"  {'Requests:':<30} {stats.requests}")
+    if stats.context_limit is not None:
+        print(f"  {'Context limit:':<30} {stats.context_limit}")
+    if (dropped := stats.dropped_turn_fraction) is not None and dropped > 0:
+        print(
+            f"  {'Turns dropped at the limit:':<30}"
+            f" {stats.turns_dropped_at_context_limit} ({dropped:.2%})"
+        )
+    for dist, label in (
+        (stats.input_len, "Input length"),
+        (stats.input_len_first_turn, "Input length (first turn)"),
+        (stats.input_len_later_turn, "Input length (later turns)"),
+        (stats.output_len, "Output length"),
+        (stats.tools_per_request, "Tools per tool-offering request"),
+    ):
+        if dist is not None:
+            print()
+            print(_format_stats_distribution(dist, label))
+    print()
+    for share, label in (
+        (stats.tool_request_fraction, "Tool-offering requests:"),
+        (stats.image_request_fraction, "Image-carrying requests:"),
+        (stats.constrained_request_fraction, "Structured-output requests:"),
+    ):
+        if share is not None:
+            print(f"  {label:<30} {share:.2%}")
+
+
+def print_workload_stats(
+    samples: Samples, stats: WorkloadStats | None = None
+) -> None:
     """Print workload distribution statistics and exit.
 
     For single-turn workloads, prints input/output length stats.
     For multi-turn workloads, additionally prints num_turns and
-    delay_until_next_message stats.
+    delay_until_next_message stats. When ``stats`` is given, also prints the
+    requests the run would send: lengths split by turn, the long-context
+    tail and the request mix.
     """
     print_section(title=" Workload Statistics ", char="=")
 
@@ -332,6 +387,9 @@ def print_workload_stats(samples: Samples) -> None:
             for img in msg.images
         ]
         _print_image_stats(images_per_session, all_images, "per session")
+
+    if stats is not None:
+        _print_requests_sent(stats)
 
     print("=" * 50)
 

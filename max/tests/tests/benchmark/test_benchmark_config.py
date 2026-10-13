@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 import yaml
+from max.benchmark import benchmark_serving
 from max.benchmark.benchmark_serving import (
     _load_workload_yaml,
     main_with_parsed_args,
@@ -40,6 +41,7 @@ from max.benchmark.benchmark_shared.workload import (
     load_workload_file,
 )
 from pydantic import ValidationError
+from pytest_mock import MockerFixture
 
 
 class TestServingSweepFields:
@@ -323,6 +325,41 @@ class TestWorkloadMaxConcurrency:
         results = list(main_with_parsed_args(config))
         assert len(results) == 1
         assert results[0].max_concurrency == 4
+
+
+@pytest.mark.usefixtures("offline_dryrun_mocks")
+def test_live_run_stats_json_reflects_server_clamped_limit(
+    tmp_path: Path, mocker: MockerFixture
+) -> None:
+    """A live run writes --workload-stats-json after the server-ready clamp.
+
+    The clamp adopts the server's tighter ``max_model_len`` once it is
+    reachable; writing the stats before it would describe a workload the
+    server would truncate.
+    """
+    stats_path = tmp_path / "stats.json"
+    # The server is unreachable while the session builds (the first probe
+    # misses) and reports a tighter limit once ready.
+    mocker.patch.object(
+        benchmark_serving,
+        "fetch_server_max_model_len",
+        side_effect=[None, 2048],
+    )
+    mocker.patch.object(
+        benchmark_serving, "wait_for_server_ready", return_value=None
+    )
+    mocker.patch.object(
+        benchmark_serving, "_run_benchmark_sweep", return_value=iter(())
+    )
+
+    config = ServingBenchmarkConfig(
+        model="HuggingFaceTB/SmolLM2-135M",
+        workload_stats_json=str(stats_path),
+    )
+    list(main_with_parsed_args(config))
+
+    blob = json.loads(stats_path.read_text())
+    assert blob["context_limit"] == 2048
 
 
 # ===----------------------------------------------------------------------=== #

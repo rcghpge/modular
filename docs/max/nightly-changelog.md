@@ -321,6 +321,14 @@ This version is still a work in progress.
   requests whose payload carried an image (including images resent with a
   session's earlier turns), and `lora_request_rate`, the share routed to a LoRA
   adapter. Existing top-level keys in the result JSON are unchanged.
+- Added `--workload-stats-json` to `max benchmark`, which writes the
+  statistics of the requests a workload would send as JSON. With `--dry-run`
+  it needs no server, only the tokenizer. Input length is split into first
+  and later turns and reports the share of requests above 128k, 192k and
+  256k tokens. The tool-calling, image and structured-output shares are
+  included, as are any turns a session drops at the context limit. Warm-up
+  prefix turns, which are never sent, are left out. `--print-workload-stats`
+  and `--dry-run` print the same figures in a new "Requests Sent" section.
 - Added a `Cat(v1:w1, v2:w2, ...)` categorical distribution for every
   `max benchmark` config field that accepts a distribution string (for
   example `--image-long-side`, `--image-count`, `--random-input-len`), so an

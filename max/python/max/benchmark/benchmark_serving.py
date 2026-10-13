@@ -149,6 +149,11 @@ from max.benchmark.benchmark_shared.workload import (
     apply_workload,
     load_workload_file,
 )
+from max.benchmark.benchmark_shared.workload_stats import (
+    WorkloadStats,
+    compute_workload_stats,
+    write_workload_stats,
+)
 from max.profiler.cpu import (
     CPUMetrics,
     CPUMetricsCollector,
@@ -1318,15 +1323,48 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
     )
 
 
+def _compute_session_stats(
+    args: ServingBenchmarkConfig, session: BenchmarkSession
+) -> WorkloadStats:
+    """Stats of the requests this run would send.
+
+    Multi-turn sessions end at the tokenizer's context limit, so the stats
+    cut them at the same one, and ``--force-unique-runs`` prepends its
+    prefix to every request, so the stats count it.
+    """
+    return compute_workload_stats(
+        session.samples,
+        context_limit=session.tokenizer.model_max_length
+        if session.tokenizer
+        else None,
+        run_prefix_len=_run_prefix_len(
+            args, session.benchmark_task, session.tokenizer
+        ),
+    )
+
+
+def _emit_workload_stats(
+    args: ServingBenchmarkConfig,
+    session: BenchmarkSession,
+    stats: WorkloadStats,
+) -> None:
+    if args.workload_stats_json is not None:
+        write_workload_stats(stats, args.workload_stats_json)
+        logger.info("Wrote workload stats to %s", args.workload_stats_json)
+    if args.print_workload_stats:
+        print_workload_stats(session.samples, stats)
+
+
 def _run_dry_run_sweep(
     args: ServingBenchmarkConfig,
     session: BenchmarkSession,
     end_condition: EndCondition,
     concurrency_range: Sequence[int | None],
     request_rate_range: Sequence[float],
+    stats: WorkloadStats,
 ) -> Iterator[BenchmarkRunResult]:
     if not args.print_workload_stats:
-        print_workload_stats(session.samples)
+        print_workload_stats(session.samples, stats)
     if isinstance(session.samples, ChatSamples) and args.warmup_to_steady_state:
         rng = np.random.default_rng(args.seed or 0)
         for mc in concurrency_range:
@@ -1509,18 +1547,20 @@ def main_with_parsed_args(
 
     session = _build_session(args)
 
-    if args.print_workload_stats:
-        print_workload_stats(session.samples)
-    if args.print_inputs_and_outputs:
-        print_input_prompts(session.samples)
-
     if args.dry_run:
+        # Dry-run exits before the server-ready clamp below, so the
+        # tokenizer's limit is the tightest bound it can apply.
+        stats = _compute_session_stats(args, session)
+        _emit_workload_stats(args, session, stats)
+        if args.print_inputs_and_outputs:
+            print_input_prompts(session.samples)
         yield from _run_dry_run_sweep(
             args=args,
             session=session,
             end_condition=end_condition,
             concurrency_range=args.max_concurrency,
             request_rate_range=args.request_rate,
+            stats=stats,
         )
         return
 
@@ -1552,6 +1592,16 @@ def main_with_parsed_args(
                 max_model_len,
             )
             session.tokenizer.model_max_length = max_model_len
+
+    # After the clamp above, which may have just tightened the limit the
+    # stats cut multi-turn sessions at, and still before any request is
+    # sent: the stats must describe what this run will actually send.
+    if args.print_workload_stats or args.workload_stats_json:
+        _emit_workload_stats(
+            args, session, _compute_session_stats(args, session)
+        )
+    if args.print_inputs_and_outputs:
+        print_input_prompts(session.samples)
 
     yield from _run_benchmark_sweep(
         args=args, session=session, end_condition=end_condition
