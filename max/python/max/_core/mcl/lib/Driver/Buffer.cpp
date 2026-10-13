@@ -188,8 +188,8 @@ Python::Buffer::~Buffer() {
 Python::Buffer::Buffer(M::DType dtype, ArrayRef<size_t> shape,
                        std::optional<Python::PyDeviceTy> device, Usage usage)
     : spec(shape, dtype),
-      stream(std::make_shared<DeviceStream>(
-          device ? std::move(device.value()) : Python::getCpuDevice(-1))) {
+      stream(std::make_shared<DeviceStream>(device ? std::move(device.value())
+                                                   : Python::getCpuDevice(0))) {
   // Staging only changes the allocation where a transfer can be asynchronous.
   const bool stagingAlloc =
       usageContains(usage, Usage::Staging) && !this->stream->dev->isHost();

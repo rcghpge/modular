@@ -354,7 +354,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 #endif
           },
           "Gets the device context pointer.")
-      .def_static("cpu", &Python::getCpuDevice, "id"_a = -1,
+      .def_static("cpu", &Python::getCpuDevice, "id"_a = 0,
                   "Creates a CPU device. The id is ignored currently.");
 
   // Note the use of __new__ here instead of __init__. This allows us to use a
@@ -398,7 +398,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         )nbdoc");
 
   nb::class_<Python::CPU, Python::Device>(m, "CPU").def(
-      nb::new_(&Python::getCpuDevice), "id"_a = -1, R"nbdoc(
+      nb::new_(&Python::getCpuDevice), "id"_a = 0, R"nbdoc(
           Creates a CPU device.
 
           .. code-block:: python
@@ -411,7 +411,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
           Args:
               id (int, optional): The device ID to use.
-                  Defaults to -1.
+                  Defaults to 0.
 
           Returns:
               CPU: A new CPU device object.
@@ -1366,7 +1366,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           "scalar",
           [](nb::any value, M::DType dtype,
              std::optional<Python::PyDeviceTy> device) {
-            auto cpu = Python::getCpuDevice(-1);
+            auto cpu = Python::getCpuDevice(0);
             Python::Buffer t{dtype, {}, cpu};
             t.set(nb::cast(0), value);
             if (device && device.value() != cpu) {

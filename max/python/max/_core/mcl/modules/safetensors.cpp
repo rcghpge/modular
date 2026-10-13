@@ -90,7 +90,7 @@ void M::Graph::Python::bindSafetensorsModule(nb::module_ m) {
          std::optional<Driver::Python::PyDeviceTy> maybeDevice) {
         Driver::Python::PyDeviceTy device =
             maybeDevice ? std::move(maybeDevice.value())
-                        : Driver::Python::getCpuDevice(-1);
+                        : Driver::Python::getCpuDevice(0);
         auto result = SafeTensor::get(filepath, device->ctx);
         if (result.isError())
           //  TODO: more specific error

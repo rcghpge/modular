@@ -563,10 +563,6 @@ Python::getPyDevice(DLDeviceType deviceType, ssize_t deviceID) {
 std::tuple<std::shared_ptr<Python::Device>, std::optional<intptr_t>>
 Python::getPyDevice(const nb::object &arrayOrTensor) {
   auto [deviceType, deviceID] = DLPack::callDLPackDevice(arrayOrTensor);
-  // DLPack CPU arrays report device_id=0, but our canonical default CPU id
-  // is -1.
-  if (deviceType == DLDeviceType::kDLCPU)
-    deviceID = -1;
   return getPyDevice(deviceType, deviceID);
 }
 
@@ -686,6 +682,7 @@ ErrorOr<DeviceContextPair> makeAcceleratorDeviceContext(ssize_t deviceId) {
 } // namespace
 
 std::shared_ptr<Python::CPU> Python::getCpuDevice(ssize_t numaId) {
+  numaId = numaId >= 0 ? numaId : 0;
   CPUCache &cache = getCPUCache();
   {
     std::lock_guard<std::mutex> lock(getCPUCacheMutex());

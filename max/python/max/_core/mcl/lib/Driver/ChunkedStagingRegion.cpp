@@ -315,7 +315,7 @@ Python::ChunkedStagingRegion::ChunkedStagingRegion(
 
   DeviceContextRef dctx = device_->ctx;
   M::AsyncRT::CPUDeviceRef cpuDeviceRef =
-      Python::getCpuDevice(-1)->getAsyncRTCPUDevice();
+      Python::getCpuDevice(0)->getAsyncRTCPUDevice();
 
   size_t page = static_cast<size_t>(sysconf(_SC_PAGE_SIZE));
   // A boundary inside a row breaks transfers; a boundary mid-page makes two
