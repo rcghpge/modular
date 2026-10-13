@@ -1,3 +1,0 @@
-package(default_visibility = ["//max:consumers"])
-
-exports_files(["tblgen_main.py"])
