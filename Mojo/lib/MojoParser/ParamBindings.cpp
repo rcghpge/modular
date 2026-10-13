@@ -121,8 +121,6 @@ void ParamBindings::operator=(ParamBindings &&other) {
   parameters = std::move(other.parameters);
   additionalConstraints = std::move(other.additionalConstraints);
   ctadPogs = std::move(other.ctadPogs);
-  numKwOnlyCtadParams = other.numKwOnlyCtadParams;
-  numPosCtadParams = other.numPosCtadParams;
   bindingKind = other.bindingKind;
 }
 
@@ -147,12 +145,6 @@ ParamBindings ParamBindings::getForDeclaredType(ASTDecl &declScope,
       llvm::append_range(
           paramBindings.ctadPogs,
           structDecl.getSignature().getParamListAttrs().getPogs());
-      for (auto pog : paramBindings.ctadPogs) {
-        if (pog.getPassingKind() == PassingKind::KwOnly)
-          paramBindings.numKwOnlyCtadParams++;
-        else
-          paramBindings.numPosCtadParams++;
-      }
     }
   }
 
