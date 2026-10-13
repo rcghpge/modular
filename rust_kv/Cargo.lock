@@ -114,6 +114,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kv-core-pyo3"
+version = "0.1.0"
+dependencies = [
+ "kv-core",
+ "pyo3",
+ "pyo3-build-config",
+ "pyo3-introspection",
+]
+
+[[package]]
 name = "kv-tier-connector"
 version = "0.1.0"
 dependencies = [

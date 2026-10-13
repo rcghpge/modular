@@ -2,16 +2,11 @@
 resolver = "3"
 members = [
     "kv-core",
+    "kv-core-pyo3",
+    "max-profiler",
     "kv-tier-connector",
     "kv-tier-connector-pyo3",
 ]
-
-# kv-core-pyo3 is open sourced (MXSERV-665) and roots its own workspace so the
-# export resolves without this manifest, which reaches mach's max-profiler
-# through kv-tier-connector. kv-core stays a member here so the crate universe
-# treats it as first-party rather than vendoring a second copy; its lints are
-# inlined, so it still resolves standalone once exported.
-exclude = ["kv-core-pyo3"]
 
 [workspace.dependencies]
 itertools = "0.14"

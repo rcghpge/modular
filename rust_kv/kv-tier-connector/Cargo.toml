@@ -23,7 +23,7 @@ crate-type = ["rlib"]
 itertools = { workspace = true }
 kv-core = { path = "../kv-core" }
 libloading = "0.8"
-max-profiler = { path = "../../mach/crates/max-profiler" }
+max-profiler = { path = "../max-profiler" }
 parking_lot = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

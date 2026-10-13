@@ -120,8 +120,8 @@ write_source_files(
     }),
 )
 
-# kv-core, the KV cache bookkeeping shared with Mach, built from closed Rust
-# sources like _core is from closed C++. Its stub is written by hand.
+# kv-core, the KV cache bookkeeping shared with Mach, built from the open-source
+# Rust sources under //rust_kv. Its stub is written by hand.
 modular_pyo3_extension(
     name = "_kv_core.bindings",
     srcs = ["//rust_kv/kv-core-pyo3:srcs"],
