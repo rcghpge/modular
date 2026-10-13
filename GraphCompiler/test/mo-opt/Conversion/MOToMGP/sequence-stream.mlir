@@ -58,7 +58,7 @@ mo.graph @seq2dev(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32
 // CHECK: %[[BUF:[0-9]+]] = mgp.buffer.alloc
 // CHECK: mgp.tensor.create %{{[0-9]+}}, %[[BUF]],
 // CHECK: mgp.device_context.select_stream[1]
-// CHECK: mogg.generic.compiled.region (%{{[0-9]+}}, %[[BUF]],
+// CHECK: mogg.routine.async {{(dispatch\([a-z]+\) )?}}(%{{[0-9]+}}, %[[BUF]],
 // CHECK: %[[JOIN:[0-9]+]] = mgp.device_wait({{.*}}isSideStreamJoin
 // CHECK-NEXT: mgp.extend.lifetime %[[JOIN]], %[[BUF]] :
 mo.graph @seq_computed_input(%a: !mo.tensor<[2, 2], f32, gpu:0>, %b: !mo.tensor<[2, 2], f32, gpu:0>) -> !mo.tensor<[2, 2], f32, gpu:0> {
