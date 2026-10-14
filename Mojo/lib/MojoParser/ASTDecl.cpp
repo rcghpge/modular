@@ -125,6 +125,90 @@ WitnessASTDecl::WitnessASTDecl(SharedState &shared,
               parentDecl, cursor, endCursor, indentation),
       storage(std::move(unresolvedDecls)), traitSymbol(traitSymbol) {}
 
+LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
+  auto &resolver = shared.getDeclResolver();
+  if (Operation *op = getIfOperation()) {
+    if (auto fieldOp = dyn_cast<StructFieldOp>(op))
+      return resolver.resolveSignature(fieldOp, lexer, *this);
+    if (auto caseOp = dyn_cast<EnumCaseOp>(op))
+      return resolver.resolveSignature(caseOp, lexer, *this);
+    if (auto importOp = dyn_cast<UnresolvedImportOp>(op))
+      return success(!failed(resolver.resolveSignature(importOp, *this)));
+    if (isa<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
+            UnresolvedWildcardImportOp>(op))
+      return success();
+    llvm_unreachable("do not know how to resolve this decl signature");
+  }
+
+  if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue()))
+    return success(!failed(resolver.resolveSignature(traitType, *this)));
+
+  llvm_unreachable("do not know how to resolve this decl signature");
+}
+
+LogicalResult ASTDecl::resolveSyntheticSignature() {
+  auto &resolver = shared.getDeclResolver();
+  if (Operation *op = getIfOperation()) {
+    if (auto importOp = dyn_cast<UnresolvedImportOp>(op))
+      return success(!failed(resolver.resolveSignature(importOp, *this)));
+    if (isa<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
+            UnresolvedWildcardImportOp>(op))
+      return success();
+  } else if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
+    return success(!failed(resolver.resolveSignature(traitType, *this)));
+  }
+
+  Lexer lexer(getShared().diags, getCursor());
+  LogicalResult result = resolveSignature(lexer);
+  getCursor() = lexer.getCursor();
+  return result;
+}
+
+LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
+  auto &resolver = shared.getDeclResolver();
+  if (Operation *op = getIfOperation()) {
+    if (auto fileModuleOp = dyn_cast<LIT::FileModuleOp>(op))
+      return success(!failed(resolver.resolveBody(fileModuleOp, lexer, *this)));
+    if (auto fieldOp = dyn_cast<StructFieldOp>(op))
+      return success(!failed(resolver.resolveBody(fieldOp, lexer, *this)));
+    if (auto conformanceOp = dyn_cast<ConformanceOp>(op))
+      return success(!failed(resolver.resolveBody(conformanceOp, *this)));
+    if (auto packageOp = dyn_cast<PackageOp>(op)) {
+      (void)resolver.resolveBody(packageOp, *this);
+      return success();
+    }
+    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp,
+            EnumCaseOp>(op))
+      return success();
+    llvm_unreachable("do not know how to resolve this decl body");
+  }
+
+  if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue()))
+    return success(!failed(resolver.resolveBody(traitType, *this)));
+
+  llvm_unreachable("do not know how to resolve this decl body");
+}
+
+LogicalResult ASTDecl::resolveSyntheticBody() {
+  auto &resolver = shared.getDeclResolver();
+  if (Operation *op = getIfOperation()) {
+    if (auto conformanceOp = dyn_cast<ConformanceOp>(op))
+      return success(!failed(resolver.resolveBody(conformanceOp, *this)));
+    if (auto packageOp = dyn_cast<PackageOp>(op)) {
+      (void)resolver.resolveBody(packageOp, *this);
+      return success();
+    }
+    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp,
+            EnumCaseOp, StructDeclOp, StructFieldOp, ExtensionDeclOp,
+            TraitDeclOp, AliasDeclOp>(op))
+      return success();
+  } else if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
+    return success(!failed(resolver.resolveBody(traitType, *this)));
+  }
+
+  llvm_unreachable("do not know how to resolve this synthetic decl body");
+}
+
 bool ASTDecl::isCallableDecl() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this))
     return isa<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType);

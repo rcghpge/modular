@@ -108,10 +108,7 @@ static void removeImplicitCtorCall(TypedAttr &value, SharedState *shared) {
 
   if (shared) {
     DefASTDecl *decl = shared->getDeclResolver().getDeclForFuncSymbol(nameAttr);
-    if (!decl)
-      return;
-    auto calleeFn = decl->getOp();
-    if (!calleeFn.isImplicitConversion())
+    if (!decl || !decl->getOp().isImplicitConversion())
       return; // If it's not an implicit conversion, don't remove it.
   }
 

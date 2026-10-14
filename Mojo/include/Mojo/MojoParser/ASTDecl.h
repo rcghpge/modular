@@ -38,9 +38,11 @@ namespace M::KGEN::LIT {
 class ASTDecl;
 class AliasASTDecl;
 class AliasDeclOp;
+class DeclResolver;
 class ExtensionASTDecl;
 class ExtensionDeclOp;
 class DefASTDecl;
+class Lexer;
 class StructASTDecl;
 class StructDeclOp;
 class TraitASTDecl;
@@ -96,6 +98,18 @@ public:
   virtual ~ASTDecl();
 
   Kind getKind() const { return parentDeclAndKind.getInt(); }
+
+  /// Resolve this source declaration's signature.
+  virtual LogicalResult resolveSignature(Lexer &lexer);
+
+  /// Resolve this declaration's signature when it has no source to parse.
+  virtual LogicalResult resolveSyntheticSignature();
+
+  /// Resolve this source declaration's body.
+  virtual LogicalResult resolveBody(Lexer &lexer);
+
+  /// Resolve this declaration's body when it has no source to parse.
+  virtual LogicalResult resolveSyntheticBody();
 
   /// ASTDecl's always have a notion of where they came from.
   SharedState &getShared() const { return shared; }
@@ -374,10 +388,10 @@ protected:
           ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
           ssize_t indentation);
 
-private:
   /// The Mojo shared state this decl is associated with.
   SharedState &shared;
 
+private:
   /// This is the IRValue or MLIR operation that this decl corresponds to if it
   /// has one.
   DeclIRValue irValue;
@@ -500,6 +514,11 @@ public:
   /// replaced by its captured function value during closure lowering.
   FnOp getOp() const;
 
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveSyntheticSignature() override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
+
   /// If this is a method of a struct, trait, or extension, return its parent.
   TypeScopeASTDecl *tryGetMethodParentDecl() const;
 
@@ -570,6 +589,8 @@ public:
   }
 
   ExtensionDeclOp getOp() const;
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveBody(Lexer &lexer) override;
 
 private:
   friend class M::BumpAllocator;
@@ -588,6 +609,8 @@ public:
   }
 
   StructDeclOp getOp() const;
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveBody(Lexer &lexer) override;
 
   /// Compute the `Self` type represented by a struct declaration operation.
   static Type computeSelfType(StructDeclOp structOp);
@@ -609,6 +632,8 @@ public:
   }
 
   TraitDeclOp getOp() const;
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveBody(Lexer &lexer) override;
 
   /// Compute the `Self` type represented by a trait declaration operation.
   static Type computeSelfType(TraitDeclOp traitOp);
@@ -631,6 +656,9 @@ public:
 
   /// Return the alias operation represented by this declaration.
   AliasDeclOp getOp() const;
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveSyntheticSignature() override;
+  LogicalResult resolveBody(Lexer &lexer) override;
 
 private:
   friend class M::BumpAllocator;
@@ -665,6 +693,10 @@ public:
 
   UnresolvedDecls getDecls() const { return cast<UnresolvedDecls>(storage); }
   ResolvedType getWitnessEntry() const { return cast<ResolvedType>(storage); }
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveSyntheticSignature() override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
 
   /// Holds contributing declarations before resolution and the merged type
   /// afterward.

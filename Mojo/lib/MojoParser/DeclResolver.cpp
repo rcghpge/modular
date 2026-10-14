@@ -1526,84 +1526,18 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
 
   // If the signature hasn't been parsed, do so.
   if (decl.resolvedness < DeclResolvedness::signature) {
-    // Handle each operation that can be name bound.  We handle this by
-    // restoring the lexer to the position where parsing can continue, calling
-    // the `resolveSignature` method for the op, and re-saving the new cursor
-    // for the next stage of resolution.
-    if (auto declOp = decl.getIfOperation()) {
-      TypeSwitch<Operation &>(*declOp)
-          .Case<FnOp, StructDeclOp, StructFieldOp, EnumCaseOp, TraitDeclOp,
-                ExtensionDeclOp, AliasDeclOp>([&](auto op) {
-            // If this is a synthetic decl, resolve it specially.
-            if (decl.getCursor().isInvalid()) {
-              if constexpr (std::is_same_v<FnOp, decltype(op)>) {
-                if (failed(
-                        resolveSyntheticSignature(op, cast<DefASTDecl>(decl))))
-                  decl.setErroneous();
-                return;
-              }
-              if constexpr (std::is_same_v<AliasDeclOp, decltype(op)>) {
-                if (failed(resolveSyntheticSignature(op,
-                                                     cast<AliasASTDecl>(decl))))
-                  decl.setErroneous();
-                return;
-              }
-            }
-
-            // Generate pretty stack traces if a crash happens in this scope.
-            CrashReporter crashReporter(decl.getLoc(),
-                                        "resolving decl signature", shared);
-
-            // Resolve the signature: on a parse error, we note that the
-            // decl is malformed and should not be referenced to silence
-            // downstream errors.
-            Lexer lexer(shared.diags, decl.getCursor());
-            auto resolveTypedSignature = [&](auto &typedDecl) {
-              if (failed(resolveSignature(op, lexer, typedDecl)))
-                decl.setErroneous();
-            };
-            if constexpr (std::is_same_v<FnOp, decltype(op)>) {
-              resolveTypedSignature(cast<DefASTDecl>(decl));
-            } else if constexpr (std::is_same_v<StructDeclOp, decltype(op)>) {
-              resolveTypedSignature(cast<StructASTDecl>(decl));
-            } else if constexpr (std::is_same_v<TraitDeclOp, decltype(op)>) {
-              resolveTypedSignature(cast<TraitASTDecl>(decl));
-            } else if constexpr (std::is_same_v<ExtensionDeclOp,
-                                                decltype(op)>) {
-              resolveTypedSignature(cast<ExtensionASTDecl>(decl));
-            } else if constexpr (std::is_same_v<AliasDeclOp, decltype(op)>) {
-              resolveTypedSignature(cast<AliasASTDecl>(decl));
-            } else {
-              resolveTypedSignature(decl);
-            }
-            decl.getCursor() = lexer.getCursor();
-          })
-          .Case<UnresolvedImportOp>([&](auto op) {
-            // Resolve the signature: on a parse error, we note that the decl
-            // is malformed and should not be referenced to silence downstream
-            // errors.
-            if (failed(resolveSignature(op, decl)))
-              decl.setErroneous();
-          })
-          .Case<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
-                UnresolvedWildcardImportOp>([&](auto op) { /*Nothing*/ })
-          .Default([&](Operation &attr) {
-            llvm_unreachable(
-                "do not know how to resolve the signature of this decl!");
-          });
-    } else if (auto typeValue = decl.getIfTypeValue()) {
-      auto traitType = dyn_cast_or_null<TraitType>(decl.getIfTypeValue());
-      assert(traitType && "do not know how to resolve the signature of this "
-                          "decl!");
-      if (failed(resolveSignature(traitType, decl)))
-        decl.setErroneous();
-    } else if (auto *witness = dyn_cast<WitnessASTDecl>(&decl)) {
-      if (failed(resolveSignature(*witness)))
+    if (decl.getCursor().isInvalid()) {
+      if (failed(decl.resolveSyntheticSignature()))
         decl.setErroneous();
     } else {
-      llvm_unreachable(
-          "do not know how to resolve the signature of this decl!");
+      CrashReporter crashReporter(decl.getLoc(), "resolving decl signature",
+                                  shared);
+      Lexer lexer(shared.diags, decl.getCursor());
+      if (failed(decl.resolveSignature(lexer)))
+        decl.setErroneous();
+      decl.getCursor() = lexer.getCursor();
     }
+
     // Never regress resolvedness. In the case of non inlined nested functions,
     // the body is fully resolved when the signature is resolved in order
     // to identify the value of 'capturing'
@@ -1637,87 +1571,25 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       }
     };
 
-    // Mark the body as already resolved so that name lookup can be performed
-    // in the decl during resolution.
-    //    decl.resolvedness = DeclResolvedness::body;
-
-    // Handle each operation that can be name bound.
     if (decl.isErroneous()) {
       // If the decl is already erroneous, trying to process further may crash
       // or cause spurious error messages.
-    } else if (auto declOp = decl.getIfOperation()) {
-      TypeSwitch<Operation &>(*declOp)
-          .Case<FileModuleOp, FnOp, StructDeclOp, StructFieldOp,
-                ExtensionDeclOp, TraitDeclOp, AliasDeclOp>([&](auto op) {
-            // A deferred source module opens + lexes its file lazily here, on
-            // first body resolution, mirroring how a bytecode child
-            // materializes from its reader. This sets up its parse cursor.
-            if constexpr (std::is_same_v<FileModuleOp, decltype(op)>) {
-              if (decl.getCursor().isInvalid() &&
-                  failed(shared.materializeDeferredModule(decl, loc))) {
-                decl.setErroneous();
-                return;
-              }
-            }
-
-            // If this is a synthetic decl, complete it specially.
-            if (decl.getCursor().isInvalid()) {
-              if constexpr (std::is_same_v<FnOp, decltype(op)>) {
-                if (op.isSynthetic() &&
-                    failed(resolveSyntheticBody(op, cast<DefASTDecl>(decl))))
-                  decl.setErroneous();
-                return;
-              }
-            }
-
-            // Generate pretty stack traces if a crash happens in this scope.
-            CrashReporter crashReporter(decl.getLoc(), "resolving decl body",
-                                        shared);
-
-            // Parse the body of the declaration from the correct point.
-            Lexer lexer(shared.diags, decl.getCursor());
-            bool bodyFailed = [&] {
-              if constexpr (std::is_same_v<FnOp, decltype(op)>)
-                return bool(resolveBody(op, lexer, cast<DefASTDecl>(decl)));
-              else if constexpr (std::is_same_v<StructDeclOp, decltype(op)>)
-                return bool(resolveBody(op, lexer, cast<StructASTDecl>(decl)));
-              else if constexpr (std::is_same_v<TraitDeclOp, decltype(op)>)
-                return bool(resolveBody(op, lexer, cast<TraitASTDecl>(decl)));
-              else if constexpr (std::is_same_v<ExtensionDeclOp, decltype(op)>)
-                return bool(
-                    resolveBody(op, lexer, cast<ExtensionASTDecl>(decl)));
-              else if constexpr (std::is_same_v<AliasDeclOp, decltype(op)>)
-                return bool(resolveBody(op, lexer, cast<AliasASTDecl>(decl)));
-              else
-                return bool(resolveBody(op, lexer, decl));
-            }();
-            if (bodyFailed)
-              return;
-
-            checkEndOfBodyCursor(lexer);
-          })
-          .Case<ConformanceOp>([&](auto op) {
-            if (failed(resolveBody(op, decl)))
-              decl.setErroneous();
-          })
-          .Case<PackageOp>([&](auto op) { (void)resolveBody(op, decl); })
-          .Case<ModuleOp, ImportOp, UnresolvedImportOp,
-                UnresolvedWildcardImportOp, EnumCaseOp>(
-              [&](auto op) { /*Nothing*/ })
-          .Default([&](Operation &attr) {
-            llvm_unreachable(
-                "do not know how to resolve the body of this decl!");
-          });
-    } else if (auto typeVal = decl.getIfTypeValue()) {
-      auto traitType = dyn_cast_or_null<TraitType>(decl.getIfTypeValue());
-      assert(traitType && "do not know how to resolve the body of this decl!");
-      if (failed(resolveBody(traitType, decl)))
-        decl.setErroneous();
-    } else if (auto *witness = dyn_cast<WitnessASTDecl>(&decl)) {
-      if (failed(resolveBody(*witness)))
-        decl.setErroneous();
     } else {
-      llvm_unreachable("do not know how to resolve the body of this decl!");
+      // Deferred source modules materialize their lexer cursor on first use.
+      if (isa_and_nonnull<FileModuleOp>(decl.getIfOperation()) &&
+          decl.getCursor().isInvalid() &&
+          failed(shared.materializeDeferredModule(decl, loc))) {
+        decl.setErroneous();
+      } else if (decl.getCursor().isInvalid()) {
+        if (failed(decl.resolveSyntheticBody()))
+          decl.setErroneous();
+      } else {
+        CrashReporter crashReporter(decl.getLoc(), "resolving decl body",
+                                    shared);
+        Lexer lexer(shared.diags, decl.getCursor());
+        if (succeeded(decl.resolveBody(lexer)))
+          checkEndOfBodyCursor(lexer);
+      }
     }
 
     if (decl.resolvedness == DeclResolvedness::signature)

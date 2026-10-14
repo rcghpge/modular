@@ -399,6 +399,14 @@ public:
   };
 
 private:
+  friend class ASTDecl;
+  friend class AliasASTDecl;
+  friend class DefASTDecl;
+  friend class ExtensionASTDecl;
+  friend class StructASTDecl;
+  friend class TraitASTDecl;
+  friend class WitnessASTDecl;
+
   /// Iteratively resolve all parsed decls that were referenced outside the
   /// main container (typically stdlib/library declarations). Called by
   /// resolveAllReferencedFrom when no errors have been emitted.
@@ -408,12 +416,6 @@ private:
   /// check the signature for the operation.  On parse failure, these should
   /// return a failure, which will cause the driver to mark the decl as invalid
   /// for further references.
-  LogicalResult resolveSignature(FnOp op, Lexer &lexer, DefASTDecl &decl);
-  ParseResult resolveBody(FnOp op, Lexer &lexer, DefASTDecl &decl);
-  LogicalResult resolveSyntheticBody(FnOp op, DefASTDecl &decl);
-  LogicalResult resolveSyntheticSignature(FnOp op, DefASTDecl &decl);
-  LogicalResult resolveSyntheticSignature(AliasDeclOp op, AliasASTDecl &decl);
-
   ParseResult resolveBody(LIT::FileModuleOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveBody(PackageOp op, ASTDecl &decl);
 
@@ -422,9 +424,6 @@ private:
   ParseResult resolveSignature(LIT::UnresolvedImportOp op, ASTDecl &decl,
                                bool resolveTarget = true);
 
-  LogicalResult resolveSignature(StructDeclOp op, Lexer &lexer,
-                                 StructASTDecl &decl);
-  ParseResult resolveBody(StructDeclOp op, Lexer &lexer, StructASTDecl &decl);
   /// Resolve one case of an enum. `firstByName` maps each case name resolved
   /// so far to its case; a repeated name is reported and the case removed.
   LogicalResult
@@ -433,21 +432,8 @@ private:
   LogicalResult resolveSignature(EnumCaseOp op, Lexer &lexer, ASTDecl &decl);
   LogicalResult resolveSignature(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveBody(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(TraitDeclOp op, Lexer &lexer,
-                                 TraitASTDecl &decl);
-  ParseResult resolveBody(TraitDeclOp op, Lexer &lexer, TraitASTDecl &decl);
-  LogicalResult resolveSignature(AliasDeclOp op, Lexer &lexer,
-                                 AliasASTDecl &decl);
-  ParseResult resolveBody(AliasDeclOp op, Lexer &lexer, AliasASTDecl &decl);
-  LogicalResult resolveSignature(ExtensionDeclOp op, Lexer &lexer,
-                                 ExtensionASTDecl &decl);
-  ParseResult resolveBody(ExtensionDeclOp op, Lexer &lexer,
-                          ExtensionASTDecl &decl);
-
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);
-  ParseResult resolveSignature(WitnessASTDecl &witness);
-  ParseResult resolveBody(WitnessASTDecl &witness);
 
   ParseResult resolveBody(ConformanceOp op, ASTDecl &decl);
 
