@@ -16,6 +16,10 @@ from std.builtin.rebind import downcast
 from std.builtin.variadics import TypeList
 from std.sys.info import CompilationTarget, _TargetType, _current_target
 
+from std._plugin.cuda import CUDAPlugin
+from std._plugin.hip import HIPPlugin
+from std._plugin.metal import MetalPlugin
+
 
 trait Plugin:
     """Defines the identity required by a compile-time plugin registry.
@@ -133,7 +137,17 @@ struct TargetPluginSelector[
             `, :`,
             +Self._plugin_list_mlir_type,
             ` `,
-            TypeList.of[Trait=AnyType, Self.Default]().values,
+            TypeList.of[
+                Trait=AnyType,
+                Self.Default,
+                # FIXME(MOCO-5090): Workaround plugin struct types not always
+                #   being included in offload compilation elaboration context.
+                #   Once this bug is fixed, these plugins should not be
+                #   referenced here, which is a layering violation.
+                CUDAPlugin,
+                HIPPlugin,
+                MetalPlugin,
+            ]().values,
             `> : `,
             +Self._plugin_list_mlir_type,
         ],
