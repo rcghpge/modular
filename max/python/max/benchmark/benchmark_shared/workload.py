@@ -103,10 +103,9 @@ def _resolve_workload_path(value: str, base_dir: Path) -> str:
     Falls back to the original path when nothing exists in ``base_dir``, so
     it resolves against the process CWD instead: workloads written outside
     the repo, such as kimberlite's fitted configs, name repo files by their
-    repo-root path. A leading ``@`` is dropped; the config reads a bare path
-    the same way.
+    repo-root path.
     """
-    path = Path(os.path.expandvars(value.removeprefix("@")))
+    path = Path(os.path.expandvars(value))
     if path.is_absolute() or not (base_dir / path).exists():
         return str(path)
     return str(base_dir / path)

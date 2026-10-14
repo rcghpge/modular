@@ -930,6 +930,11 @@ This version is still a work in progress.
 
 ## Breaking changes
 
+- `max benchmark` no longer strips a leading `@` from a file path, whether it
+  is passed to `--response-format`, `--tools`, `--extra-body` or
+  `--agentic-tool-profiles` or named in a `--workload-config` YAML. Pass the
+  bare path instead: `--tools path/to/tools.json`.
+
 - Removed the `DeviceQueue` overloads of `max.driver.Buffer.to()` and
   `Buffer.copy()`. Pass a `Device` (or, for `to()`, a sequence of devices)
   instead: `buffer.to(device)` and `buffer.copy(device=device)`.

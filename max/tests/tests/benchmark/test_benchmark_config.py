@@ -497,13 +497,6 @@ class TestExtraBodyValidator:
         with pytest.raises(ValueError, match="not a readable file path"):
             self._build_with_extra("/nonexistent/payload.yaml")
 
-    def test_at_prefixed_file_path(self, tmp_path: Path) -> None:
-        """An ``@`` prefix reads the file, as it does for the other fields."""
-        payload = tmp_path / "payload.yaml"
-        _write_yaml(payload, self._NESTED)
-        config = self._build_with_extra(f"@{payload}")
-        assert config.extra_body == self._NESTED
-
     def test_file_beside_a_workload_resolves(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -556,6 +549,20 @@ def test_empty_file_rejected(tmp_path: Path, field: str, content: str) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["extra_body", "agentic_tool_profiles", "response_format", "tools"],
+)
+def test_at_prefixed_file_path_rejected(tmp_path: Path, field: str) -> None:
+    """``@`` is part of the path, not a prefix to strip."""
+    payload = tmp_path / "payload.yaml"
+    payload.write_text("{}\n")
+    with pytest.raises(ValueError, match=rf"{field} .* not a readable file"):
+        ServingBenchmarkConfig.model_validate(
+            {"model": "m", field: f"@{payload}"}
+        )
+
+
 @pytest.mark.parametrize("field", ["extra_body", "agentic_tool_profiles"])
 @pytest.mark.parametrize("content", ["- stop\n", "42\n"])
 def test_non_mapping_file_rejected(
@@ -587,7 +594,7 @@ class TestApplyWorkload:
     def test_resolves_response_format_and_tools_against_base_dir(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``@`` and bare paths both resolve beside the workload, not in cwd."""
+        """Bare paths resolve beside the workload, not in cwd."""
         (tmp_path / "schema.json").write_text(json.dumps(_RESPONSE_FORMAT))
         (tmp_path / "tools.json").write_text(json.dumps(_TOOLS))
         elsewhere = tmp_path / "elsewhere"
@@ -597,7 +604,7 @@ class TestApplyWorkload:
         args = ServingBenchmarkConfig(model="m")
         apply_workload(
             args,
-            {"response-format": "@schema.json", "tools": "tools.json"},
+            {"response-format": "schema.json", "tools": "tools.json"},
             base_dir=tmp_path,
         )
         assert args.response_format == _RESPONSE_FORMAT
@@ -614,9 +621,17 @@ class TestApplyWorkload:
 
         args = ServingBenchmarkConfig(model="m")
         apply_workload(
-            args, {"tools": "@tools/t.json"}, base_dir=tmp_path / "workloads"
+            args, {"tools": "tools/t.json"}, base_dir=tmp_path / "workloads"
         )
         assert args.tools == _TOOLS
+
+    def test_at_prefixed_path_rejected(self, tmp_path: Path) -> None:
+        """A workload path keeps its ``@``, so the file it names is missing."""
+        (tmp_path / "tools.json").write_text(json.dumps(_TOOLS))
+
+        args = ServingBenchmarkConfig(model="m")
+        with pytest.raises(ValueError, match="not a readable file path"):
+            apply_workload(args, {"tools": "@tools.json"}, base_dir=tmp_path)
 
     def test_inline_response_format_and_tools_are_not_paths(
         self, tmp_path: Path

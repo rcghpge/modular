@@ -293,7 +293,7 @@ def _json_from_argument(value: object, field: str, inline_start: str) -> object:
     """Resolve one argument into parsed JSON, from any of its spellings.
 
     A string is inline JSON when it starts with ``inline_start``, and
-    otherwise a path to a JSON/YAML file, optionally prefixed with ``@``.
+    otherwise a path to a JSON/YAML file.
     Anything else is already parsed, as from a config or workload YAML, and
     passes through for the field's type to check.
 
@@ -315,7 +315,7 @@ def _json_from_argument(value: object, field: str, inline_start: str) -> object:
     if text.startswith(inline_start):
         source, origin = text, "inline JSON"
     else:
-        path = Path(text.removeprefix("@"))
+        path = Path(text)
         try:
             source = path.read_text()
         except OSError as e:

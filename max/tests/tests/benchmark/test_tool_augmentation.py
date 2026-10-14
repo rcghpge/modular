@@ -334,7 +334,7 @@ def test_tools_flag_reads_inline_json_and_files(tmp_path: Path) -> None:
     """Every spelling goes through the CLI parser, which wraps the token."""
     tools_file = tmp_path / "tools.json"
     tools_file.write_text(json.dumps(_TOOLS))
-    for value in (json.dumps(_TOOLS), f"@{tools_file}", str(tools_file)):
+    for value in (json.dumps(_TOOLS), str(tools_file)):
         args = parse_args(["--model", "m", "--tools", value])
         assert args.tools == _TOOLS
 
@@ -345,7 +345,7 @@ def test_tools_flag_reads_inline_json_and_files(tmp_path: Path) -> None:
         ("[]", "at least one tool definition"),
         ("[not json", "Failed to parse tools"),
         ('[{"type": "function"}]', "Invalid tools"),
-        ("@/nonexistent/tools.json", "not a readable file path"),
+        ("/nonexistent/tools.json", "not a readable file path"),
     ],
 )
 def test_tools_flag_rejects_malformed_input(value: str, match: str) -> None:
