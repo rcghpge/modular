@@ -82,10 +82,11 @@ static void maybeApplyTypeRefinement(VarDeclOp varOp, ASTDecl &declScope,
   // 3. Look up the ASTDecl registered for this VarDeclOp. With variable
   // shadowing, multiple decls can share a name in the same scope, so
   // disambiguate by matching on the defining Operation*.
-  ASTDecl *varASTDecl = nullptr;
+  VarASTDecl *varASTDecl = nullptr;
   for (ASTDecl *decl : declScope.lookupInCurrentScope(varOp.getNameAttr())) {
-    if (decl->getIfOperation() == varOp.getOperation()) {
-      varASTDecl = decl;
+    auto *candidate = dyn_cast<VarASTDecl>(decl);
+    if (candidate && candidate->getOp() == varOp) {
+      varASTDecl = candidate;
       break;
     }
   }

@@ -537,13 +537,12 @@ PublicVariableDecl::PublicVariableDecl(MojoASTDeclRef declRef)
       isGlobalVariable(false),
       deprecated(declRef.getDeprecationWarning().value_or(StringRef())) {
   auto &shared = *declRef.getShared();
-  TypeSwitch<mlir::Operation *>(declRef.getIfOperation())
-      .Case([&](VarDeclOp op) {
-        MojoASTTypeRef astType = declRef.getType().getReferenceElementType();
-        type = astType.getAsString(shared);
-        typeMetadata = ::KGEN::TypeExtractionUtils::extractLibraryInfo(
-            type, &declRef, &shared);
-      });
+  if (isa<VarASTDecl>(&*declRef)) {
+    MojoASTTypeRef astType = declRef.getType().getReferenceElementType();
+    type = astType.getAsString(shared);
+    typeMetadata = ::KGEN::TypeExtractionUtils::extractLibraryInfo(
+        type, &declRef, &shared);
+  }
 }
 
 //===----------------------------------------------------------------------===//

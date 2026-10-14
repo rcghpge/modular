@@ -2311,7 +2311,8 @@ static CValue ASTDeclToCValue(ASTDecl *decl, OpBuilder &builder, Location loc) {
     return {};
   if (auto cv = decl->getIfIRValue()) {
     return cv;
-  } else if (auto var = dyn_cast_or_null<VarDeclOp>(decl->getIfOperation())) {
+  } else if (auto *varDecl = dyn_cast<VarASTDecl>(decl)) {
+    VarDeclOp var = varDecl->getOp();
     if (!sugarIsa<RefType>(var.getType()))
       return SRValue(var);
     Value value = var;

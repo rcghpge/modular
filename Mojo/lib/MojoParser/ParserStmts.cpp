@@ -877,8 +877,9 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
     return failure();
 
   // We cannot emit general statements unless we're in a function body.
-  if (!isa_and_nonnull<FnOp, UnboundRegionOp>(
-          getParentDecl().getIfOperation())) {
+  auto *otherParent = dyn_cast<OtherOpASTDecl>(&getParentDecl());
+  if (!isa<DefASTDecl>(getParentDecl()) &&
+      !(otherParent && otherParent->isUnboundRegion())) {
     // TODO: Top level expressions will be supported in the future.
     if (isa<FileModuleASTDecl>(parentDecl)) {
       emitError(startCursor.getToken().getLoc())
@@ -3227,9 +3228,9 @@ ParseResult StmtParser::parseTryStmt(size_t curIndent) {
 
           // Add an ASTDecl for the error name. TODO: Generalize to an
           // arbitrary pattern.
-          auto &vd = getDeclResolver().addFullyResolvedDecl(
+          auto &vd = cast<VarASTDecl>(getDeclResolver().addFullyResolvedDecl(
               DeclIRValue(errDecl), errDecl.getNameAttr(), errExpr->getLoc(),
-              curDeclScope);
+              curDeclScope));
           getEmitter().shared.notifyListenerOnVariableDecl(vd,
                                                            errExpr->getLoc());
         }
@@ -4961,12 +4962,13 @@ ParseResult StmtParser::parseVarStmt(LexerCursor startCursor,
       stmtIndent);
   getDeclResolver().attachDeclToParentNameTable(&decl, name);
 
-  auto varOp = dyn_cast_or_null<VarDeclOp>(decl.getIfOperation());
-  if (!varOp) {
+  auto *varDecl = dyn_cast<VarASTDecl>(&decl);
+  if (!varDecl) {
     // Parse docstrings for struct fields here.
     parseDocString(decl);
     return success();
   }
+  VarDeclOp varOp = varDecl->getOp();
 
   // Local variable declarations inside functions are lexically resolved, so
   // fully resolve the decl now. If an error occurs, skip the declaration and

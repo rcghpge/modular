@@ -218,6 +218,12 @@ ASTDecl &DeclResolver::createUnlistedDecl(DeclIRValue irValue, SMLoc loc,
   } else if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
     decl = shared.persistentAllocator.create<StructFieldASTDecl>(
         shared, fieldOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto varOp = dyn_cast_if_present<VarDeclOp>(op)) {
+    decl = shared.persistentAllocator.create<VarASTDecl>(
+        shared, varOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (op) {
+    decl = shared.persistentAllocator.create<OtherOpASTDecl>(
+        shared, op, loc, parentDecl, cursor, endCursor, indentation);
   } else {
     decl = shared.persistentAllocator.create<ASTDecl>(
         shared, irValue, loc, parentDecl, cursor, endCursor, indentation);

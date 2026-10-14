@@ -21,49 +21,13 @@
 #include "Mojo/MojoParser/Constraints.h"
 #include "Mojo/MojoParser/Lexer.h"
 #include "Mojo/MojoParser/SharedState.h"
-#include "Mojo/Support/TriBool.h"
-#include "Support/LLVMCompilerForwardDecls.h"
-#include "mlir/IR/Builders.h"
-#include "llvm/ADT/MapVector.h"
+
+#include "Mojo/LITDialect/LITOps.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 
-namespace M::KGEN {
-class ConformanceOp;
-class ConstraintAttr;
-class ParamDeclRefAttr;
-} // end namespace M::KGEN
-
 namespace M::KGEN::LIT {
-class ASTDecl;
-class AliasASTDecl;
-class AliasDeclOp;
-class ConformanceASTDecl;
-class DeclResolver;
-class EnumCaseASTDecl;
-class EnumCaseOp;
-class ExtensionASTDecl;
-class ExtensionDeclOp;
-class DefASTDecl;
-class FileModuleOp;
-class ImportASTDecl;
-class ImportOp;
-class Lexer;
-class PackageOp;
-class StructASTDecl;
-class StructDeclOp;
-class StructFieldASTDecl;
-class StructFieldOp;
-class TraitASTDecl;
-class UnresolvedImportOp;
-class UnresolvedWildcardImportOp;
-class WitnessASTDecl;
-class StructType;
-class DocStringAttr;
 class DocString;
-class TraitDeclOp;
-class TraitType;
-class TypeASTDecl;
 class TypeScopeASTDecl;
 
 using DeclIRValue = SmartVariant<Operation *, CValue, std::nullopt_t>;
@@ -98,6 +62,8 @@ class ASTDecl {
 public:
   enum class Kind : uint8_t {
     Base,
+    OtherOp,
+    Var,
     Alias,
     Conformance,
     Extension,
@@ -523,6 +489,58 @@ private:
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
 };
 
+/// An AST declaration backed by an operation without dedicated declaration
+/// semantics. This is intended for the long tail of operations that are
+/// uncommonly used but are represented by an Operation.
+class OtherOpASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::OtherOp;
+  }
+
+  Operation *getOp() const { return getIfOperation(); }
+  ParamAssertOp getIfParamAssertOp() const {
+    return dyn_cast_if_present<ParamAssertOp>(getOp());
+  }
+  UnboundRegionOp getIfUnboundRegionOp() const {
+    return dyn_cast_if_present<UnboundRegionOp>(getOp());
+  }
+  bool isParamAssert() const { return bool(getIfParamAssertOp()); }
+  bool isUnboundRegion() const { return bool(getIfUnboundRegionOp()); }
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  OtherOpASTDecl(SharedState &shared, Operation *op, llvm::SMLoc loc,
+                 ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+                 ssize_t indentation);
+};
+
+/// The AST representation of a variable declaration.
+class VarASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Var;
+  }
+
+  VarDeclOp getOp() const {
+    return dyn_cast_if_present<VarDeclOp>(getIfOperation());
+  }
+  bool isArgument() const {
+    VarDeclOp op = getOp();
+    return op && op.getKind() == VarDeclKind::Arg;
+  }
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  VarASTDecl(SharedState &shared, VarDeclOp varOp, llvm::SMLoc loc,
+             ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+             ssize_t indentation);
+};
+
 /// Base class for top-level, file, and package module declarations.
 class ModuleASTDecl : public ASTDecl {
 public:
@@ -553,7 +571,7 @@ public:
     return decl->getKind() == Kind::TopLevelModule;
   }
 
-  ModuleOp getOp() const;
+  ModuleOp getOp() const { return cast<ModuleOp>(getIfOperation()); }
 
 private:
   friend class M::BumpAllocator;
@@ -571,7 +589,7 @@ public:
     return decl->getKind() == Kind::FileModule;
   }
 
-  FileModuleOp getOp() const;
+  FileModuleOp getOp() const { return cast<FileModuleOp>(getIfOperation()); }
   LogicalResult resolveBody(Lexer &lexer) override;
 
 private:
@@ -590,7 +608,7 @@ public:
     return decl->getKind() == Kind::Package;
   }
 
-  PackageOp getOp() const;
+  PackageOp getOp() const { return cast<PackageOp>(getIfOperation()); }
   /// Resolve and return the package's __init__ module, if present.
   FailureOr<ASTDecl *> resolveInitModule(llvm::SMLoc loc);
   LogicalResult resolveBody(Lexer &lexer) override;
@@ -616,7 +634,7 @@ public:
 
   /// Return the function operation, or null after a nested function has been
   /// replaced by its captured function value during closure lowering.
-  FnOp getOp() const;
+  FnOp getOp() const { return dyn_cast_if_present<FnOp>(getIfOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
@@ -692,7 +710,9 @@ public:
     return decl->getKind() == Kind::Extension;
   }
 
-  ExtensionDeclOp getOp() const;
+  ExtensionDeclOp getOp() const {
+    return cast<ExtensionDeclOp>(getIfOperation());
+  }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 
@@ -712,7 +732,7 @@ public:
     return decl->getKind() == Kind::Struct;
   }
 
-  StructDeclOp getOp() const;
+  StructDeclOp getOp() const { return cast<StructDeclOp>(getIfOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 
@@ -735,7 +755,7 @@ public:
     return decl->getKind() == Kind::Trait;
   }
 
-  TraitDeclOp getOp() const;
+  TraitDeclOp getOp() const { return cast<TraitDeclOp>(getIfOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 
@@ -759,7 +779,7 @@ public:
   }
 
   /// Return the alias operation represented by this declaration.
-  AliasDeclOp getOp() const;
+  AliasDeclOp getOp() const { return cast<AliasDeclOp>(getIfOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
   LogicalResult resolveBody(Lexer &lexer) override;
@@ -780,7 +800,7 @@ public:
     return decl->getKind() == Kind::Conformance;
   }
 
-  ConformanceOp getOp() const;
+  ConformanceOp getOp() const { return cast<ConformanceOp>(getIfOperation()); }
   StructASTDecl &getStructDecl() const;
   LogicalResult resolveBody(Lexer &lexer) override;
   LogicalResult resolveSyntheticBody() override;
@@ -803,13 +823,19 @@ public:
     return decl->getKind() == Kind::Import;
   }
 
-  ImportOp getIfResolvedOp() const;
-  UnresolvedImportOp getIfUnresolvedOp() const;
-  UnresolvedWildcardImportOp getIfWildcardOp() const;
+  ImportOp getIfResolvedOp() const {
+    return dyn_cast_if_present<ImportOp>(getIfOperation());
+  }
+  UnresolvedImportOp getIfUnresolvedOp() const {
+    return dyn_cast_if_present<UnresolvedImportOp>(getIfOperation());
+  }
+  UnresolvedWildcardImportOp getIfWildcardOp() const {
+    return dyn_cast_if_present<UnresolvedWildcardImportOp>(getIfOperation());
+  }
   bool isResolved() const { return bool(getIfResolvedOp()); }
   bool isUnresolved() const { return bool(getIfUnresolvedOp()); }
   bool isWildcard() const { return bool(getIfWildcardOp()); }
-  void setResolvedOp(ImportOp op);
+  void setResolvedOp(ImportOp op) { setIRValue(op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSignature(bool resolveTarget);
@@ -833,8 +859,10 @@ public:
     return decl->getKind() == Kind::EnumCase;
   }
 
-  EnumCaseOp getOp() const;
-  StructASTDecl &getEnumDecl() const;
+  EnumCaseOp getOp() const { return cast<EnumCaseOp>(getIfOperation()); }
+  StructASTDecl &getEnumDecl() const {
+    return cast<StructASTDecl>(*getParentDecl());
+  }
   LogicalResult
   resolveAndCheckRedefinition(EnumCaseASTDecl *previousDefinition);
   LogicalResult resolveSignature(Lexer &lexer) override;
@@ -856,8 +884,10 @@ public:
     return decl->getKind() == Kind::StructField;
   }
 
-  StructFieldOp getOp() const;
-  StructASTDecl &getStructDecl() const;
+  StructFieldOp getOp() const { return cast<StructFieldOp>(getIfOperation()); }
+  StructASTDecl &getStructDecl() const {
+    return cast<StructASTDecl>(*getParentDecl());
+  }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 

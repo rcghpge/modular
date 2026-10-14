@@ -1347,8 +1347,9 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
     VarDeclOp varDecl = emitter.emitVarDecl(
         spelling, varType, expr->getLocation(emitter), declKind);
-    ASTDecl &varASTDecl = emitter.getDeclResolver().addFullyResolvedDecl(
-        DeclIRValue(varDecl), varDecl.getNameAttr(), loc, &lookupScope);
+    auto &varASTDecl =
+        cast<VarASTDecl>(emitter.getDeclResolver().addFullyResolvedDecl(
+            DeclIRValue(varDecl), varDecl.getNameAttr(), loc, &lookupScope));
     emitter.shared.notifyListenerOnVariableDecl(varASTDecl, loc);
 
     CValue result = isRefOrBind ? CValue(RLValue(varDecl)) : MLValue(varDecl);
@@ -1600,7 +1601,10 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
   // Narrow the decl to a CValue.
   CValue value;
-  if (auto var = dyn_cast_or_null<VarDeclOp>(decl->getIfOperation())) {
+  if (auto cv = decl->getIfIRValue()) {
+    value = cv;
+  } else if (auto *varDecl = dyn_cast<VarASTDecl>(decl)) {
+    VarDeclOp var = varDecl->getOp();
     // Normal 'var' declarations are MLValues, but 'ref' declarations hold the
     // reference as its value and need to be loaded.
     if (var.getKind() == VarDeclKind::Bound) {
@@ -1616,8 +1620,6 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
           RefLoadOp::create(*emitter.builder, expr->getLocation(emitter), var);
       value = CValue::getMValueForRef(ref);
     }
-  } else if (auto cv = decl->getIfIRValue()) {
-    value = cv;
   } else {
     emitter.emitError(loc, "use of declaration '")
         << spelling << "' as a value isn't supported yet" << expr->getRange();
@@ -2745,14 +2747,16 @@ static AnyValue emitMLIROperatorCall(const CallNode &call,
           bodyRef, call.getLoc(), emitter.declScope,
           /*searchParentScopes=*/false);
       ArrayRef<ASTDecl *> results = result.getIfSuccess();
-      if (result.isFailure() || results.size() != 1 ||
-          !isa<LIT::UnboundRegionOp>(results.front()->getIfOperation())) {
+      auto *regionDecl = results.size() == 1
+                             ? dyn_cast<LIT::OtherOpASTDecl>(results.front())
+                             : nullptr;
+      auto unboundRegion = regionDecl ? regionDecl->getIfUnboundRegionOp()
+                                      : LIT::UnboundRegionOp();
+      if (result.isFailure() || !unboundRegion) {
         emitter.emitError(call.getLoc(), "MLIR operation region reference did "
                                          "not resolve to a region body");
         return {};
       }
-      auto unboundRegion =
-          cast_or_null<LIT::UnboundRegionOp>(results.front()->getIfOperation());
       auto region = std::make_unique<Region>();
       region->takeBody(unboundRegion.getRegion());
       unboundRegion.erase();
