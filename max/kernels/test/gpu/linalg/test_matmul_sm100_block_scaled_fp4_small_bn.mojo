@@ -295,6 +295,32 @@ def run_matmul_sm100_block_scaled_fp4_small_bn_suite[
                 Idx[1024 + 32],
             )
 
+        print("\n--- Value-closure epilogue tests ---")
+        comptime for use_compute in [False, True]:
+            comptime for swap in [False, True]:
+                test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+                    dtype,
+                    dtype,
+                    out_dtype,
+                    scales_dtype,
+                    Index(128, 32, BK),
+                    Index(128, 32, MMA_K),
+                    cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
+                    cta_group=1,
+                    a_swizzle=swizzle,
+                    b_swizzle=swizzle,
+                    swapAB=swap,
+                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                    is_small_bn=True,
+                    value_epilogue=not use_compute,
+                    value_compute=use_compute,
+                ](
+                    ctx,
+                    Int(16),
+                    Idx[1024],
+                    Idx[1024 + 32],
+                )
+
         # swapAB + epilogue fusion
         comptime epi_block_tile_swap = Index(128, 8, BK)
         comptime epi_umma_swap = Index(128, 8, MMA_K)

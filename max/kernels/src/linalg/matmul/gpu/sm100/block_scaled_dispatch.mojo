@@ -33,8 +33,12 @@ from linalg.fp4_utils import (
 from max.gpu.host.info import _is_sm10x_gpu
 from std.collections import Optional
 from linalg.utils import (
+    ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
     elementwise_epilogue_type,
     elementwise_compute_lambda_type,
+    no_compute_fn,
+    no_epilogue_fn,
 )
 from std.utils.index import Index
 from linalg.matmul.vendor.blas import matmul
@@ -43,7 +47,7 @@ from std.sys import size_of, simd_width_of
 from max.algorithm import elementwise
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 from linalg.matmul.gpu.sm100.block_scaled_matmul import (
-    blackwell_block_scaled_matmul_tma_umma_warp_specialized,
+    _blackwell_block_scaled_matmul_impl,
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
 from linalg.matmul.gpu.sm100_structured.default.tuning_configs import (
@@ -124,6 +128,167 @@ def heuristic_and_outliers_dispatch[
     Returns:
         `DISPATCH_HIT` if a config was selected and the kernel launched, otherwise `DISPATCH_MISS`.
     """
+    return _heuristic_and_outliers_dispatch_impl[
+        SF_VECTOR_SIZE,
+        transpose_b,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+        elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+        pdl_level=pdl_level,
+        has_epilogue_fn=False,
+        has_compute_fn=False,
+    ](
+        c,
+        a,
+        b,
+        a_scales,
+        b_scales,
+        tensor_sf,
+        no_epilogue_fn,
+        no_compute_fn,
+        ctx,
+    )
+
+
+def heuristic_and_outliers_dispatch[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    SF_VECTOR_SIZE: Int,
+    transpose_b: Bool = True,
+    pdl_level: PDLLevel = PDLLevel(),
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises -> Int:
+    """Dispatches an SM100 block-scaled matmul (see the other overload),
+    delivering each output value to an epilogue closure instead of writing
+    `c`.
+
+    Parameters:
+        c_type: Element type of the output tensor `c` (inferred).
+        a_type: Element type of the LHS input tensor `a` (inferred).
+        b_type: Element type of the RHS input tensor `b` (inferred).
+        scales_dtype: Element type of the per-block scale tensors (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        SF_VECTOR_SIZE: Number of elements each scale factor covers.
+        transpose_b: Whether `b` is stored transposed. Must be `True`.
+        pdl_level: Programmatic Dependent Launch scheduling level.
+
+    Args:
+        c: Output TileTensor; only its shape is read.
+        a: LHS input TileTensor.
+        b: RHS input TileTensor (must be transposed).
+        a_scales: Per-block scales for `a`.
+        b_scales: Per-block scales for `b`.
+        tensor_sf: Global tensor scaling factor applied as `alpha`.
+        epilogue_fn: Stores each output value at its global `(m, n)`.
+        ctx: Device context used to launch the kernel.
+
+    Returns:
+        `DISPATCH_HIT` if a config was selected and the kernel launched, otherwise `DISPATCH_MISS`.
+    """
+    return _heuristic_and_outliers_dispatch_impl[
+        SF_VECTOR_SIZE,
+        transpose_b,
+        pdl_level=pdl_level,
+        has_epilogue_fn=True,
+        has_compute_fn=False,
+    ](c, a, b, a_scales, b_scales, tensor_sf, epilogue_fn, no_compute_fn, ctx)
+
+
+def heuristic_and_outliers_dispatch[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    SF_VECTOR_SIZE: Int,
+    transpose_b: Bool = True,
+    pdl_level: PDLLevel = PDLLevel(),
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises -> Int:
+    """Dispatches an SM100 block-scaled matmul (see the other overload),
+    storing `compute_fn(idx, value)` into `c`.
+
+    Parameters:
+        c_type: Element type of the output tensor `c` (inferred).
+        a_type: Element type of the LHS input tensor `a` (inferred).
+        b_type: Element type of the RHS input tensor `b` (inferred).
+        scales_dtype: Element type of the per-block scale tensors (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
+        SF_VECTOR_SIZE: Number of elements each scale factor covers.
+        transpose_b: Whether `b` is stored transposed. Must be `True`.
+        pdl_level: Programmatic Dependent Launch scheduling level.
+
+    Args:
+        c: Output TileTensor accumulating the matmul result.
+        a: LHS input TileTensor.
+        b: RHS input TileTensor (must be transposed).
+        a_scales: Per-block scales for `a`.
+        b_scales: Per-block scales for `b`.
+        tensor_sf: Global tensor scaling factor applied as `alpha`.
+        compute_fn: Transforms each output value before it is stored.
+        ctx: Device context used to launch the kernel.
+
+    Returns:
+        `DISPATCH_HIT` if a config was selected and the kernel launched, otherwise `DISPATCH_MISS`.
+    """
+    return _heuristic_and_outliers_dispatch_impl[
+        SF_VECTOR_SIZE,
+        transpose_b,
+        pdl_level=pdl_level,
+        has_epilogue_fn=False,
+        has_compute_fn=True,
+    ](c, a, b, a_scales, b_scales, tensor_sf, no_epilogue_fn, compute_fn, ctx)
+
+
+def _heuristic_and_outliers_dispatch_impl[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    SF_VECTOR_SIZE: Int,
+    transpose_b: Bool = True,
+    *,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    elementwise_compute_lambda_fn: Optional[
+        elementwise_compute_lambda_type
+    ] = None,
+    pdl_level: PDLLevel = PDLLevel(),
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises -> Int:
     var m = Int(c.dim[0]())
 
     comptime scaling_kind = get_scaling_kind[
@@ -219,7 +384,19 @@ def heuristic_and_outliers_dispatch[
                 elementwise_lambda_fn=elementwise_lambda_fn,
                 elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
                 pdl_level=pdl_level,
-            ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
+                has_epilogue_fn=has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
+            ](
+                c,
+                a,
+                b,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                epilogue_fn,
+                compute_fn,
+                ctx,
+            )
 
             return DISPATCH_HIT
 
@@ -257,7 +434,19 @@ def heuristic_and_outliers_dispatch[
             elementwise_lambda_fn=elementwise_lambda_fn,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             pdl_level=pdl_level,
-        ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
+        ](
+            c,
+            a,
+            b,
+            a_scales,
+            b_scales,
+            tensor_sf,
+            epilogue_fn,
+            compute_fn,
+            ctx,
+        )
 
         logger.info("Using small-BN config: ", config)
         return DISPATCH_HIT
@@ -286,7 +475,19 @@ def heuristic_and_outliers_dispatch[
                 elementwise_lambda_fn=elementwise_lambda_fn,
                 elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
                 pdl_level=pdl_level,
-            ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
+                has_epilogue_fn=has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
+            ](
+                c,
+                a,
+                b,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                epilogue_fn,
+                compute_fn,
+                ctx,
+            )
             return DISPATCH_HIT
 
     return DISPATCH_MISS
@@ -302,6 +503,8 @@ def _block_scaled_matmul_with_epilogue[
     a_type: DType,
     b_type: DType,
     scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
     //,
     *,
     SF_VECTOR_SIZE: Int,
@@ -314,6 +517,8 @@ def _block_scaled_matmul_with_epilogue[
         elementwise_compute_lambda_type
     ] = None,
     pdl_level: PDLLevel = PDLLevel(),
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[a_type, ...],
@@ -321,6 +526,8 @@ def _block_scaled_matmul_with_epilogue[
     a_scales: TileTensor[scales_dtype, ...],
     b_scales: TileTensor[scales_dtype, ...],
     tensor_sf: Float32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
     ctx: DeviceContext,
 ) raises:
     """Launch the SM100 block-scaled matmul, fusing the elementwise epilogue
@@ -347,21 +554,25 @@ def _block_scaled_matmul_with_epilogue[
     # (`TileWriter` fires the store-redirect on both the main and small-BN
     # paths), so redirect the store through `elementwise_lambda_fn` directly
     # rather than falling back to a separate elementwise pass at small M.
-    blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+    _blackwell_block_scaled_matmul_impl[
         transpose_b=transpose_b,
         K=K_phys,
         config=config,
         elementwise_lambda_fn=elementwise_lambda_fn,
         elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
         pdl_level=pdl_level,
+        has_epilogue_fn=has_epilogue_fn,
+        has_compute_fn=has_compute_fn,
     ](
         c,
         a,
         b,
         a_scales,
         b_scales,
+        epilogue_fn,
+        compute_fn,
         ctx,
-        alpha=tensor_sf,
+        tensor_sf,
     )
 
 

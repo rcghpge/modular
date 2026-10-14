@@ -30,7 +30,7 @@ from linalg.matmul.gpu.sm100.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
-from linalg.utils import elementwise_epilogue_type
+from linalg.utils import _as_compute_fn, elementwise_epilogue_type
 from std.math import ceildiv, align_up
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
@@ -82,6 +82,8 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
     num_clc_pipeline_stages: Int = 2,
     scaling_kind: UMMAKind = UMMAKind.KIND_MXF4NVF4,
     normal_epilogue: Bool = False,
+    value_epilogue: Bool = False,
+    value_compute: Bool = False,
 ](
     ctx: DeviceContext,
     m: MType,
@@ -261,21 +263,63 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
         epilogue_fn
     ) if normal_epilogue else None
 
+    def store_doubled[
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var scaled = rebind[SIMD[c_type, width]](val) * Scalar[c_type](2)
+        c_tensor.store[alignment=alignment * size_of[c_type]()](idx, scaled)
+
+    def double[
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[_dtype, width]) -> SIMD[_dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        return val * 2
+
     comptime K_phys = KType.static_value
-    blackwell_block_scaled_matmul_tma_umma_warp_specialized[
-        transpose_b=transpose_b,
-        K=K_phys,
-        config=matmul_config,
-        elementwise_lambda_fn=epi,
-    ](
-        c_tensor,
-        a_tensor,
-        b_tensor,
-        a_scales_tensor,
-        b_scales_tensor,
-        ctx,
-        alpha,
-    )
+    comptime if value_epilogue:
+        # `store_doubled` owns `c_tensor`, so `c_ref_tensor` (written by the
+        # reference below) carries the output shape.
+        blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+            transpose_b=transpose_b, K=K_phys, config=matmul_config
+        ](
+            c_ref_tensor,
+            a_tensor,
+            b_tensor,
+            a_scales_tensor,
+            b_scales_tensor,
+            store_doubled,
+            ctx,
+            alpha,
+        )
+    elif value_compute:
+        blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+            transpose_b=transpose_b, K=K_phys, config=matmul_config
+        ](
+            c_tensor,
+            a_tensor,
+            b_tensor,
+            a_scales_tensor,
+            b_scales_tensor,
+            _as_compute_fn(double),
+            ctx,
+            alpha,
+        )
+    else:
+        blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+            transpose_b=transpose_b,
+            K=K_phys,
+            config=matmul_config,
+            elementwise_lambda_fn=epi,
+        ](
+            c_tensor,
+            a_tensor,
+            b_tensor,
+            a_scales_tensor,
+            b_scales_tensor,
+            ctx,
+            alpha,
+        )
 
     # TODO implement MXFP4 support for cuBLASLt reference path.
     comptime if scales_dtype == MXFP4_SF_DTYPE:
@@ -312,7 +356,7 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
     ctx.synchronize()
 
     # When epilogue multiplies by 2, scale reference to match.
-    comptime if normal_epilogue:
+    comptime if normal_epilogue or value_epilogue or value_compute:
         for i in range(c_host_ref.num_elements()):
             c_host_ref._storage[i] = c_host_ref._storage[i] * Scalar[c_type](2)
 
@@ -376,6 +420,8 @@ def run_matmul_sm100_block_scaled_fp4_suite[
             num_accum_pipeline_stages: Int = 0,
             num_clc_pipeline_stages: Int = 2,
             normal_epilogue: Bool = False,
+            value_epilogue: Bool = False,
+            value_compute: Bool = False,
         ](
             ctx: DeviceContext,
             m: MType,
@@ -405,6 +451,8 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                 num_clc_pipeline_stages=num_clc_pipeline_stages,
                 scaling_kind=suite_scaling_kind,
                 normal_epilogue=normal_epilogue,
+                value_epilogue=value_epilogue,
+                value_compute=value_compute,
             ](ctx, m, n, k, alpha)
 
         comptime for cta_group in [1, 2]:
@@ -651,6 +699,53 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                     Idx[1024],
                     Idx[1024 + 32],
                 )
+
+        print("\n--- Value-closure epilogue tests ---")
+        comptime for use_compute in [False, True]:
+            comptime for cta_group in [1, 2]:
+                test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+                    dtype,
+                    dtype,
+                    out_dtype,
+                    scales_dtype,
+                    Index(128, 128 // cta_group, BK),
+                    Index(cta_group * 128, 128, MMA_K),
+                    cluster_shape=StaticTuple[Int32, 3](Int32(cta_group), 1, 1),
+                    cta_group=cta_group,
+                    a_swizzle=swizzle,
+                    b_swizzle=swizzle,
+                    block_swizzle_size=8,
+                    SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                    value_epilogue=not use_compute,
+                    value_compute=use_compute,
+                ](
+                    ctx,
+                    Int(16),
+                    Idx[1024],
+                    Idx[1024 + 32],
+                )
+
+            test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
+                dtype,
+                dtype,
+                out_dtype,
+                scales_dtype,
+                Index(128, 64, BK),
+                Index(128, 64, MMA_K),
+                cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
+                cta_group=1,
+                a_swizzle=swizzle,
+                b_swizzle=swizzle,
+                swapAB=True,
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                value_epilogue=not use_compute,
+                value_compute=use_compute,
+            ](
+                ctx,
+                Int(16),
+                Idx[1024],
+                Idx[1024 + 32],
+            )
 
         # swapAB + epilogue fusion
         comptime epi_swap_bt = Index(128, 64, BK)
