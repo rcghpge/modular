@@ -38,11 +38,8 @@ from .infer import (
 # ===-----------------------------------------------------------------------===#
 
 comptime CUDA_CUDNN_CNN_INFER_LIBRARY_PATHS: List[Path] = [
-    "libcudnn.so",
     "libcudnn.so.9",
-    "libcudnn.so.8",
     "/usr/lib/x86_64-linux-gnu/libcudnn.so.9",
-    "/usr/lib/x86_64-linux-gnu/libcudnn.so.8",
 ]
 
 

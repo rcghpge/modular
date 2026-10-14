@@ -6531,9 +6531,8 @@ def _conv3d_cudnn[
     )
     if (
         fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_V9
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_DEVICE_MEMORY
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_HOST_MEMORY
+        or fwd_status
+        == cudnnStatus_t.CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED
     ) and algo != IMPLICIT_GEMM:
         ctx.synchronize()  # Flush pending work and reclaim held memory.
         algo = IMPLICIT_GEMM

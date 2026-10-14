@@ -24,6 +24,7 @@ from _cudnn.infer import (
     cudnnConvolutionFwdAlgo_t,
     cudnnDataType_t,
     cudnnDeterminism_t,
+    cudnnGetErrorString,
     cudnnMathType_t,
     cudnnSetFilter4dDescriptor,
     cudnnSetTensor4dDescriptor,
@@ -155,6 +156,47 @@ def test_algo_count_out_param() raises:
                 perf_alloc.unsafe_ptr().unsafe_offset(i)[].algo._value
             )
             assert_true(algo >= 0 and algo < max_algos)
+
+
+def test_status_names_match_library() raises:
+    # cuDNN names its own status codes, so a wrong value prints a wrong name.
+    var statuses = [
+        cudnnStatus_t.CUDNN_STATUS_SUCCESS,
+        cudnnStatus_t.CUDNN_STATUS_NOT_INITIALIZED,
+        cudnnStatus_t.CUDNN_STATUS_BAD_PARAM,
+        cudnnStatus_t.CUDNN_STATUS_BAD_PARAM_NULL_POINTER,
+        cudnnStatus_t.CUDNN_STATUS_NOT_SUPPORTED,
+        cudnnStatus_t.CUDNN_STATUS_NOT_SUPPORTED_SHAPE,
+        cudnnStatus_t.CUDNN_STATUS_INTERNAL_ERROR,
+        cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED,
+        cudnnStatus_t.CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED,
+        cudnnStatus_t.CUDNN_STATUS_EXECUTION_FAILED,
+    ]
+    for status in statuses:
+        assert_equal(
+            String(status),
+            String(
+                unsafe_from_utf8_ptr=cudnnGetErrorString(status).unsafe_bitcast[
+                    UInt8
+                ]()
+            ),
+        )
+
+
+def test_bad_param_status() raises:
+    with DeviceContext() as ctx:
+        _ = ctx
+        var meta = CuDNNConvMeta()
+        var status = cudnnSetTensor4dDescriptor(
+            meta.ptr_input_desc,
+            cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
+            cudnnDataType_t.CUDNN_DATA_FLOAT,
+            -1,
+            8,
+            16,
+            16,
+        )
+        assert_equal(String(status), "CUDNN_STATUS_BAD_PARAM")
 
 
 def main() raises:

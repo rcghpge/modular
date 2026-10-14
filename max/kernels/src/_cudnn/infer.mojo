@@ -26,11 +26,8 @@ from std.utils import StaticTuple
 # ===-----------------------------------------------------------------------===#
 
 comptime CUDA_CUDNN_LIBRARY_PATHS: List[Path] = [
-    "libcudnn.so",
     "libcudnn.so.9",
-    "libcudnn.so.8",
     "/usr/lib/x86_64-linux-gnu/libcudnn.so.9",
-    "/usr/lib/x86_64-linux-gnu/libcudnn.so.8",
 ]
 
 
@@ -483,62 +480,61 @@ comptime cudnnActivationDescriptor_t = UnsafePointer[cudnnActivationStruct, _]
 struct cudnnStatus_t(Equatable, TrivialRegisterPassable, Writable):
     var _value: Int32
     comptime CUDNN_STATUS_SUCCESS = Self(0)
-    comptime CUDNN_STATUS_NOT_INITIALIZED = Self(1)
-    comptime CUDNN_STATUS_ALLOC_FAILED = Self(2)
-    comptime CUDNN_STATUS_BAD_PARAM = Self(3)
-    comptime CUDNN_STATUS_INTERNAL_ERROR = Self(4)
-    comptime CUDNN_STATUS_INVALID_VALUE = Self(5)
-    comptime CUDNN_STATUS_ARCH_MISMATCH = Self(6)
-    comptime CUDNN_STATUS_MAPPING_ERROR = Self(7)
-    comptime CUDNN_STATUS_EXECUTION_FAILED = Self(8)
-    comptime CUDNN_STATUS_NOT_SUPPORTED = Self(9)
-    comptime CUDNN_STATUS_LICENSE_ERROR = Self(10)
-    comptime CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING = Self(11)
-    comptime CUDNN_STATUS_RUNTIME_IN_PROGRESS = Self(12)
-    comptime CUDNN_STATUS_RUNTIME_FP_OVERFLOW = Self(13)
-    comptime CUDNN_STATUS_VERSION_MISMATCH = Self(14)
-
-    # cuDNN 9 renumbered the status enum and added several new entries.
-    comptime CUDNN_STATUS_NOT_INITIALIZED_V9 = Self(1001)
-    comptime CUDNN_STATUS_LEARNING_RATE_NOT_INITIALIZED = Self(1002)
-    comptime CUDNN_STATUS_ALLOC_FAILED_V9 = Self(2000)
-    comptime CUDNN_STATUS_ALLOC_FAILED_DEVICE_MEMORY = Self(2001)
-    comptime CUDNN_STATUS_ALLOC_FAILED_HOST_MEMORY = Self(2002)
-    comptime CUDNN_STATUS_BAD_PARAM_V9 = Self(3000)
-    comptime CUDNN_STATUS_BAD_PARAM_NULL_POINTER = Self(3001)
-    comptime CUDNN_STATUS_BAD_PARAM_MISALIGNED_POINTER = Self(3002)
-    comptime CUDNN_STATUS_BAD_PARAM_NOT_FINALIZED = Self(3003)
-    comptime CUDNN_STATUS_BAD_PARAM_OUT_OF_BOUND = Self(3004)
-    comptime CUDNN_STATUS_BAD_PARAM_SIZE_INSUFFICIENT = Self(3005)
-    comptime CUDNN_STATUS_BAD_PARAM_STREAM_MISMATCH = Self(3006)
-    comptime CUDNN_STATUS_BAD_PARAM_SHAPE_MISMATCH = Self(3007)
-    comptime CUDNN_STATUS_BAD_PARAM_DUPLICATED_ENTRIES = Self(3008)
-    comptime CUDNN_STATUS_BAD_PARAM_ATTRIBUTE_TYPE = Self(3009)
-    comptime CUDNN_STATUS_ARCH_MISMATCH_V9 = Self(6000)
-    comptime CUDNN_STATUS_MAPPING_ERROR_V9 = Self(7000)
-    comptime CUDNN_STATUS_INTERNAL_ERROR_V9 = Self(4000)
+    comptime CUDNN_STATUS_NOT_INITIALIZED = Self(1001)
+    comptime CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH = Self(1002)
+    comptime CUDNN_STATUS_SERIALIZATION_VERSION_MISMATCH = Self(1003)
+    comptime CUDNN_STATUS_DEPRECATED = Self(1004)
+    comptime CUDNN_STATUS_LICENSE_ERROR = Self(1005)
+    comptime CUDNN_STATUS_RUNTIME_IN_PROGRESS = Self(1006)
+    comptime CUDNN_STATUS_RUNTIME_FP_OVERFLOW = Self(1007)
+    comptime CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED = Self(1008)
+    comptime CUDNN_STATUS_BAD_PARAM = Self(2000)
+    comptime CUDNN_STATUS_BAD_PARAM_NULL_POINTER = Self(2002)
+    comptime CUDNN_STATUS_BAD_PARAM_MISALIGNED_POINTER = Self(2003)
+    comptime CUDNN_STATUS_BAD_PARAM_NOT_FINALIZED = Self(2004)
+    comptime CUDNN_STATUS_BAD_PARAM_OUT_OF_BOUND = Self(2005)
+    comptime CUDNN_STATUS_BAD_PARAM_SIZE_INSUFFICIENT = Self(2006)
+    comptime CUDNN_STATUS_BAD_PARAM_STREAM_MISMATCH = Self(2007)
+    comptime CUDNN_STATUS_BAD_PARAM_SHAPE_MISMATCH = Self(2008)
+    comptime CUDNN_STATUS_BAD_PARAM_DUPLICATED_ENTRIES = Self(2009)
+    comptime CUDNN_STATUS_BAD_PARAM_ATTRIBUTE_TYPE = Self(2010)
+    comptime CUDNN_STATUS_BAD_PARAM_CUDA_GRAPH_MISMATCH = Self(2011)
+    comptime CUDNN_STATUS_BAD_PARAM_DESCRIPTOR_TYPE = Self(2012)
+    comptime CUDNN_STATUS_NOT_SUPPORTED = Self(3000)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_GRAPH_PATTERN = Self(3001)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_SHAPE = Self(3002)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_DATA_TYPE = Self(3003)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_LAYOUT = Self(3004)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDA_DRIVER = Self(3005)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDART = Self(3006)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_ARCH_MISMATCH = Self(3007)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_RUNTIME_PREREQUISITE_MISSING = Self(
+        3008
+    )
+    comptime CUDNN_STATUS_NOT_SUPPORTED_SUBLIBRARY_UNAVAILABLE = Self(3009)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_SHARED_MEMORY_INSUFFICIENT = Self(3010)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_PADDING = Self(3011)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_BAD_LAUNCH_PARAM = Self(3012)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_CUDA_GRAPH_NATIVE_API = Self(3013)
+    comptime CUDNN_STATUS_NOT_SUPPORTED_INVALID_DYNAMIC_SHAPE = Self(3014)
+    comptime CUDNN_STATUS_INTERNAL_ERROR = Self(4000)
     comptime CUDNN_STATUS_INTERNAL_ERROR_COMPILATION_FAILED = Self(4001)
     comptime CUDNN_STATUS_INTERNAL_ERROR_UNEXPECTED_VALUE = Self(4002)
     comptime CUDNN_STATUS_INTERNAL_ERROR_HOST_ALLOCATION_FAILED = Self(4003)
     comptime CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED = Self(4004)
     comptime CUDNN_STATUS_INTERNAL_ERROR_BAD_LAUNCH_PARAM = Self(4005)
     comptime CUDNN_STATUS_INTERNAL_ERROR_TEXTURE_CREATION_FAILED = Self(4006)
-    comptime CUDNN_STATUS_EXECUTION_FAILED_V9 = Self(8000)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_V9 = Self(9000)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_GRAPH_PATTERN = Self(9001)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_SHAPE = Self(9002)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_DATA_TYPE = Self(9003)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_LAYOUT = Self(9004)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDART = Self(9005)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_ARCH_MISMATCH = Self(9006)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_RUNTIME_PREREQUISITE_MISSING = Self(
-        9007
-    )
-    comptime CUDNN_STATUS_NOT_SUPPORTED_SUBLIBRARY_UNAVAILABLE = Self(9008)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_SHARED_MEMORY_INSUFFICIENT = Self(9009)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_PADDING = Self(9010)
-    comptime CUDNN_STATUS_NOT_SUPPORTED_BAD_LAUNCH_PARAM = Self(9011)
-    comptime CUDNN_STATUS_VERSION_MISMATCH_V9 = Self(14000)
+    comptime CUDNN_STATUS_EXECUTION_FAILED = Self(5000)
+    comptime CUDNN_STATUS_EXECUTION_FAILED_CUDA_DRIVER = Self(5001)
+    comptime CUDNN_STATUS_EXECUTION_FAILED_CUBLAS = Self(5002)
+    comptime CUDNN_STATUS_EXECUTION_FAILED_CUDART = Self(5003)
+    comptime CUDNN_STATUS_EXECUTION_FAILED_CURAND = Self(5004)
+    comptime CUDNN_STATUS_ALLOC_FAILED = Self(4003)
+    comptime CUDNN_STATUS_INVALID_VALUE = Self(2001)
+    comptime CUDNN_STATUS_ARCH_MISMATCH = Self(3007)
+    comptime CUDNN_STATUS_MAPPING_ERROR = Self(4006)
+    comptime CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING = Self(3008)
+    comptime CUDNN_STATUS_VERSION_MISMATCH = Self(1002)
 
     def __init__(out self, value: Int):
         self._value = Int32(value)
@@ -555,49 +551,25 @@ struct cudnnStatus_t(Equatable, TrivialRegisterPassable, Writable):
             return writer.write_string("CUDNN_STATUS_SUCCESS")
         if self is Self.CUDNN_STATUS_NOT_INITIALIZED:
             return writer.write_string("CUDNN_STATUS_NOT_INITIALIZED")
-        if self is Self.CUDNN_STATUS_ALLOC_FAILED:
-            return writer.write_string("CUDNN_STATUS_ALLOC_FAILED")
-        if self is Self.CUDNN_STATUS_BAD_PARAM:
-            return writer.write_string("CUDNN_STATUS_BAD_PARAM")
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR:
-            return writer.write_string("CUDNN_STATUS_INTERNAL_ERROR")
-        if self is Self.CUDNN_STATUS_INVALID_VALUE:
-            return writer.write_string("CUDNN_STATUS_INVALID_VALUE")
-        if self is Self.CUDNN_STATUS_ARCH_MISMATCH:
-            return writer.write_string("CUDNN_STATUS_ARCH_MISMATCH")
-        if self is Self.CUDNN_STATUS_MAPPING_ERROR:
-            return writer.write_string("CUDNN_STATUS_MAPPING_ERROR")
-        if self is Self.CUDNN_STATUS_EXECUTION_FAILED:
-            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED")
-        if self is Self.CUDNN_STATUS_NOT_SUPPORTED:
-            return writer.write_string("CUDNN_STATUS_NOT_SUPPORTED")
+        if self is Self.CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH:
+            return writer.write_string(
+                "CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH"
+            )
+        if self is Self.CUDNN_STATUS_SERIALIZATION_VERSION_MISMATCH:
+            return writer.write_string(
+                "CUDNN_STATUS_SERIALIZATION_VERSION_MISMATCH"
+            )
+        if self is Self.CUDNN_STATUS_DEPRECATED:
+            return writer.write_string("CUDNN_STATUS_DEPRECATED")
         if self is Self.CUDNN_STATUS_LICENSE_ERROR:
             return writer.write_string("CUDNN_STATUS_LICENSE_ERROR")
-        if self is Self.CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING:
-            return writer.write_string(
-                "CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING"
-            )
         if self is Self.CUDNN_STATUS_RUNTIME_IN_PROGRESS:
             return writer.write_string("CUDNN_STATUS_RUNTIME_IN_PROGRESS")
         if self is Self.CUDNN_STATUS_RUNTIME_FP_OVERFLOW:
             return writer.write_string("CUDNN_STATUS_RUNTIME_FP_OVERFLOW")
-        if self is Self.CUDNN_STATUS_VERSION_MISMATCH:
-            return writer.write_string("CUDNN_STATUS_VERSION_MISMATCH")
-        if self is Self.CUDNN_STATUS_NOT_INITIALIZED_V9:
-            return writer.write_string("CUDNN_STATUS_NOT_INITIALIZED")
-        if self is Self.CUDNN_STATUS_LEARNING_RATE_NOT_INITIALIZED:
-            return writer.write_string(
-                "CUDNN_STATUS_LEARNING_RATE_NOT_INITIALIZED"
-            )
-        if self is Self.CUDNN_STATUS_ALLOC_FAILED_V9:
-            return writer.write_string("CUDNN_STATUS_ALLOC_FAILED")
-        if self is Self.CUDNN_STATUS_ALLOC_FAILED_DEVICE_MEMORY:
-            return writer.write_string(
-                "CUDNN_STATUS_ALLOC_FAILED_DEVICE_MEMORY"
-            )
-        if self is Self.CUDNN_STATUS_ALLOC_FAILED_HOST_MEMORY:
-            return writer.write_string("CUDNN_STATUS_ALLOC_FAILED_HOST_MEMORY")
-        if self is Self.CUDNN_STATUS_BAD_PARAM_V9:
+        if self is Self.CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED:
+            return writer.write_string("CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED")
+        if self is Self.CUDNN_STATUS_BAD_PARAM:
             return writer.write_string("CUDNN_STATUS_BAD_PARAM")
         if self is Self.CUDNN_STATUS_BAD_PARAM_NULL_POINTER:
             return writer.write_string("CUDNN_STATUS_BAD_PARAM_NULL_POINTER")
@@ -623,39 +595,13 @@ struct cudnnStatus_t(Equatable, TrivialRegisterPassable, Writable):
             )
         if self is Self.CUDNN_STATUS_BAD_PARAM_ATTRIBUTE_TYPE:
             return writer.write_string("CUDNN_STATUS_BAD_PARAM_ATTRIBUTE_TYPE")
-        if self is Self.CUDNN_STATUS_ARCH_MISMATCH_V9:
-            return writer.write_string("CUDNN_STATUS_ARCH_MISMATCH")
-        if self is Self.CUDNN_STATUS_MAPPING_ERROR_V9:
-            return writer.write_string("CUDNN_STATUS_MAPPING_ERROR")
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_V9:
-            return writer.write_string("CUDNN_STATUS_INTERNAL_ERROR")
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_COMPILATION_FAILED:
+        if self is Self.CUDNN_STATUS_BAD_PARAM_CUDA_GRAPH_MISMATCH:
             return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_COMPILATION_FAILED"
+                "CUDNN_STATUS_BAD_PARAM_CUDA_GRAPH_MISMATCH"
             )
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_UNEXPECTED_VALUE:
-            return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_UNEXPECTED_VALUE"
-            )
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_HOST_ALLOCATION_FAILED:
-            return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_HOST_ALLOCATION_FAILED"
-            )
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED:
-            return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED"
-            )
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_BAD_LAUNCH_PARAM:
-            return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_BAD_LAUNCH_PARAM"
-            )
-        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_TEXTURE_CREATION_FAILED:
-            return writer.write_string(
-                "CUDNN_STATUS_INTERNAL_ERROR_TEXTURE_CREATION_FAILED"
-            )
-        if self is Self.CUDNN_STATUS_EXECUTION_FAILED_V9:
-            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED")
-        if self is Self.CUDNN_STATUS_NOT_SUPPORTED_V9:
+        if self is Self.CUDNN_STATUS_BAD_PARAM_DESCRIPTOR_TYPE:
+            return writer.write_string("CUDNN_STATUS_BAD_PARAM_DESCRIPTOR_TYPE")
+        if self is Self.CUDNN_STATUS_NOT_SUPPORTED:
             return writer.write_string("CUDNN_STATUS_NOT_SUPPORTED")
         if self is Self.CUDNN_STATUS_NOT_SUPPORTED_GRAPH_PATTERN:
             return writer.write_string(
@@ -667,6 +613,10 @@ struct cudnnStatus_t(Equatable, TrivialRegisterPassable, Writable):
             return writer.write_string("CUDNN_STATUS_NOT_SUPPORTED_DATA_TYPE")
         if self is Self.CUDNN_STATUS_NOT_SUPPORTED_LAYOUT:
             return writer.write_string("CUDNN_STATUS_NOT_SUPPORTED_LAYOUT")
+        if self is Self.CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDA_DRIVER:
+            return writer.write_string(
+                "CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDA_DRIVER"
+            )
         if self is Self.CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDART:
             return writer.write_string(
                 "CUDNN_STATUS_NOT_SUPPORTED_INCOMPATIBLE_CUDART"
@@ -693,7 +643,65 @@ struct cudnnStatus_t(Equatable, TrivialRegisterPassable, Writable):
             return writer.write_string(
                 "CUDNN_STATUS_NOT_SUPPORTED_BAD_LAUNCH_PARAM"
             )
-        if self is Self.CUDNN_STATUS_VERSION_MISMATCH_V9:
+        if self is Self.CUDNN_STATUS_NOT_SUPPORTED_CUDA_GRAPH_NATIVE_API:
+            return writer.write_string(
+                "CUDNN_STATUS_NOT_SUPPORTED_CUDA_GRAPH_NATIVE_API"
+            )
+        if self is Self.CUDNN_STATUS_NOT_SUPPORTED_INVALID_DYNAMIC_SHAPE:
+            return writer.write_string(
+                "CUDNN_STATUS_NOT_SUPPORTED_INVALID_DYNAMIC_SHAPE"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR:
+            return writer.write_string("CUDNN_STATUS_INTERNAL_ERROR")
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_COMPILATION_FAILED:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_COMPILATION_FAILED"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_UNEXPECTED_VALUE:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_UNEXPECTED_VALUE"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_HOST_ALLOCATION_FAILED:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_HOST_ALLOCATION_FAILED"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_BAD_LAUNCH_PARAM:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_BAD_LAUNCH_PARAM"
+            )
+        if self is Self.CUDNN_STATUS_INTERNAL_ERROR_TEXTURE_CREATION_FAILED:
+            return writer.write_string(
+                "CUDNN_STATUS_INTERNAL_ERROR_TEXTURE_CREATION_FAILED"
+            )
+        if self is Self.CUDNN_STATUS_EXECUTION_FAILED:
+            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED")
+        if self is Self.CUDNN_STATUS_EXECUTION_FAILED_CUDA_DRIVER:
+            return writer.write_string(
+                "CUDNN_STATUS_EXECUTION_FAILED_CUDA_DRIVER"
+            )
+        if self is Self.CUDNN_STATUS_EXECUTION_FAILED_CUBLAS:
+            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED_CUBLAS")
+        if self is Self.CUDNN_STATUS_EXECUTION_FAILED_CUDART:
+            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED_CUDART")
+        if self is Self.CUDNN_STATUS_EXECUTION_FAILED_CURAND:
+            return writer.write_string("CUDNN_STATUS_EXECUTION_FAILED_CURAND")
+        if self is Self.CUDNN_STATUS_ALLOC_FAILED:
+            return writer.write_string("CUDNN_STATUS_ALLOC_FAILED")
+        if self is Self.CUDNN_STATUS_INVALID_VALUE:
+            return writer.write_string("CUDNN_STATUS_INVALID_VALUE")
+        if self is Self.CUDNN_STATUS_ARCH_MISMATCH:
+            return writer.write_string("CUDNN_STATUS_ARCH_MISMATCH")
+        if self is Self.CUDNN_STATUS_MAPPING_ERROR:
+            return writer.write_string("CUDNN_STATUS_MAPPING_ERROR")
+        if self is Self.CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING:
+            return writer.write_string(
+                "CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING"
+            )
+        if self is Self.CUDNN_STATUS_VERSION_MISMATCH:
             return writer.write_string("CUDNN_STATUS_VERSION_MISMATCH")
         t"cudnnStatus_t(unknown={self._value})".write_to(writer)
 
