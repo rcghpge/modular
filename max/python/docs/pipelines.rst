@@ -118,6 +118,36 @@ Model interface
    ModelOutputs
    PipelineModel
 
+Eager usage validation
+----------------------
+
+The eager usage validator adds guard rails around eager code running
+inside a compiled pipeline. Configure it with the
+``runtime.eager_usage_validator`` MAX config setting.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/class.rst
+
+   EagerUsageValidator
+   EagerValidatorMode
+   ~max.pipelines.modeling.eager_validation.Phase
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/function.rst
+
+   ~max.pipelines.modeling.eager_validation.eager_usage_validator
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/data.rst
+
+   eager_validator
+
 Tokenizers
 ----------
 

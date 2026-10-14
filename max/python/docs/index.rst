@@ -33,9 +33,10 @@ Modules
    engine
    experimental
    graph
+   mlir
    nn
    pipelines
    profiler
    serve.media
-   support.image
+   support
    tree

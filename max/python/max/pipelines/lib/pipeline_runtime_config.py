@@ -28,7 +28,7 @@ from max.pipelines.modeling.config_enums import (
 )
 from pydantic import ConfigDict, Field, PrivateAttr
 
-# Default max batch input tokens for chunked prefill and memory estimation.
+#: Default max batch input tokens for chunked prefill and memory estimation.
 DEFAULT_MAX_BATCH_INPUT_TOKENS = 8192
 
 # Sentinel value users can pass to ``reasoning_parser`` / ``tool_parser`` to

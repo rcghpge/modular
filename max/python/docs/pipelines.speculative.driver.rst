@@ -19,9 +19,21 @@ Sequential driver
    :toctree: generated
    :template: autosummary/class.rst
 
+   CarryDimNames
    DecodeKVSwap
+   DistributedInputs
+   DraftCache
    DraftStepInput
    Proposed
+   ReuseSpec
    SequentialBatch
    SequentialDriver
    SequentialProposer
+   TensorAdapter
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/function.rst
+
+   gather_variable_rows

@@ -94,9 +94,9 @@ class TemplateType:
 
     ``dtype`` is a concrete :class:`~max.dtype.DType` or a :class:`DTypeVar`;
     entries sharing a variable must agree on the actual dtype at call time.
-    ``shape`` holds :class:`Symbol`s, :class:`Param`s, statics, or expressions
-    over them; its length is the entry's rank. There is no device: the op takes
-    its device from its operands at each call.
+    ``shape`` holds :class:`Symbol` and :class:`Param` values, statics, or
+    expressions over them; its length is the entry's rank. There is no
+    device: the op takes its device from its operands at each call.
 
     Instances are immutable: :class:`CustomOp` validates a signature once
     at declaration, so an entry must not change underneath it afterwards.
@@ -369,8 +369,8 @@ class CustomOp:
     compiles the kernel packages once. Instances are immutable and compare
     by declaration.
 
-    The same op accepts eager :class:`~max.experimental.tensor.Tensor`s,
-    running the kernel immediately, or :class:`~max.graph.TensorValue`s
+    The same op accepts an eager :class:`~max.experimental.tensor.Tensor`,
+    running the kernel immediately, or a :class:`~max.graph.TensorValue`
     inside a :class:`~max.graph.Graph` build, staging a ``mo.custom`` op.
     Output types come from the declared signature, so nothing is computed
     per call beyond binding the signature's symbols to the operands' dims.
@@ -480,8 +480,9 @@ class CustomOp:
     def _check_signature(self) -> None:
         """Rejects any dim a signature is not allowed to name.
 
-        Every dim must reduce to statics, :class:`Symbol`s, or :class:`Param`s.
-        Because dim arithmetic erases the Python subclass, the test is on the
+        Every dim must reduce to statics, :class:`Symbol` values, or
+        :class:`Param` values. Because dim arithmetic erases the Python
+        subclass, the test is on the
         namespaced name, which is exactly what a :class:`Symbol` or
         :class:`Param` contributes and nothing else can.
 
@@ -952,9 +953,9 @@ def declare(
             in diagnostics and accepted as a keyword at call time. Iteration
             order is operand order.
         outputs: One :class:`TemplateType` per result. Dims may only be
-            statics, :class:`Symbol`s, :class:`Param`s, or expressions over
-            them. A :class:`Symbol` no input binds is data-dependent: the
-            kernel must register a shape function with
+            statics, :class:`Symbol` and :class:`Param` values, or
+            expressions over them. A :class:`Symbol` no input binds is
+            data-dependent: the kernel must register a shape function with
             ``@extensibility.register_shape_function`` (see the "Declare the
             output shape" section of
             https://docs.modular.com/max/develop/build-custom-ops).

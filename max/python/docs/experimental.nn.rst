@@ -41,6 +41,7 @@ Base classes
    ModuleList
    PinnedDeviceTensor
    Sequential
+   TransparentModule
 
 Linear layers
 -------------
@@ -53,6 +54,24 @@ Linear layers
    Conv2d
    Embedding
    Linear
+
+LoRA
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/class.rst
+
+   LoRA
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/function.rst
+
+   lora_layers
+   lora_parameters
 
 Hyper-connection
 ----------------
@@ -75,3 +94,13 @@ Functions
    as_subgraph
    module_dataclass
 
+Mesh axes
+---------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: generated
+   :template: autosummary/data.rst
+
+   ~max.experimental.nn.common_layers.mesh_axis.DP
+   ~max.experimental.nn.common_layers.mesh_axis.TP
