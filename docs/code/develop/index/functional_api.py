@@ -12,12 +12,10 @@
 # ===----------------------------------------------------------------------=== #
 # DOC: max/develop/eager-execution.mdx
 
-from max.driver import CPU
 from max.experimental import functional as F
 from max.experimental.tensor import Tensor
 
-# Force CPU execution to avoid GPU compiler issues
-x = Tensor([[1.0, 2.0], [3.0, 4.0]], device=CPU())
+x = Tensor([[1.0, 2.0], [3.0, 4.0]])
 
 y = F.sqrt(x)  # Element-wise square root
 z = F.softmax(x, axis=-1)  # Softmax along last axis

@@ -14,20 +14,22 @@ expert assignments from a router, require
 which takes a tensor of indices and returns the selected values. When a boolean
 condition determines which values to keep,
 [`F.where`](/api/python/experimental.functional#max.experimental.functional.where)
-selects element-wise from two tensors based on a mask. To write values back to
-specific positions,
-[`F.scatter`](/api/python/experimental.functional#max.experimental.functional.scatter)
-is the inverse of `F.gather`.
+selects element-wise from two tensors based on a mask. To write values to
+specific positions, use
+[`F.scatter`](/api/python/experimental.functional#max.experimental.functional.scatter).
 
 :::note Coming from PyTorch or NumPy?
-Slice syntax behaves identically to PyTorch and NumPy.
-`F.where(condition, x, y)` corresponds to `torch.where` with the same signature.
+Integer, range, and `...` indexing follow PyTorch and NumPy conventions. For
+index lists or boolean masks, use `F.gather` or `F.where`.
+`F.where(cond, x, y)` takes its arguments in the same positional order as
+`torch.where`.
 
-`F.gather` differs from `torch.gather`: PyTorch's `torch.gather` requires
-`indices.shape == input.shape` and returns the same shape as `input`. MAX's
-`F.gather` broadcasts `indices` into the output, producing shape
-`[*shape[:axis], *indices.shape, *shape[axis+1:]]`. This is closer to NumPy
-advanced indexing than to `torch.gather`.
+`F.gather` differs from `torch.gather`. PyTorch's `torch.gather` requires
+`index` to have the same rank as `input` and returns a tensor with the shape of
+`index`. MAX's `F.gather` replaces the `axis` dimension of `input` with the
+full shape of `indices`, producing shape
+`[*shape[:axis], *indices.shape, *shape[axis+1:]]`. This matches `np.take` and
+`torch.index_select`.
 :::
 
 ## Extract values by position
@@ -36,15 +38,26 @@ Slice syntax works the same way it does in Python, NumPy, and PyTorch: `x[i]`
 selects by index, `x[a:b]` selects a range, and negative indices count from the
 end.
 
+{/* @sync: ../../code/develop/indexing/slicing.py */}
+
 ```python
 from max.experimental.tensor import Tensor
 
 hidden = Tensor.ones((2, 4, 8))  # (batch=2, seq_len=4, features=8)
 
-print(hidden[0].shape)        # drop batch dim         → [Dim(4), Dim(8)]
-print(hidden[:, 1:3].shape)   # window along seq_len   → [Dim(2), Dim(2), Dim(8)]
-print(hidden[:, -1].shape)    # last token             → [Dim(2), Dim(8)]
-print(hidden[..., -1].shape)  # last feature, any rank → [Dim(2), Dim(4)]
+print(hidden[0].shape)  # drop batch dim
+print(hidden[:, 1:3].shape)  # window along seq_len
+print(hidden[:, -1].shape)  # last token
+print(hidden[..., -1].shape)  # last feature, any rank
+```
+
+The expected output is:
+
+```text
+[Dim(4), Dim(8)]
+[Dim(2), Dim(2), Dim(8)]
+[Dim(2), Dim(8)]
+[Dim(2), Dim(4)]
 ```
 
 When the position is computed at runtime, like token IDs from a sampler or
@@ -89,12 +102,12 @@ which values to keep, use `F.where` instead.
 
 ## Select elements by condition
 
-[`F.where(condition, x, y)`](/api/python/experimental.functional#max.experimental.functional.where)
-takes from `x` where `condition` is `True` and from `y` where it's `False`,
-element-wise. The `condition` argument must be boolean dtype.
+[`F.where(cond, x, y)`](/api/python/experimental.functional#max.experimental.functional.where)
+takes from `x` where `cond` is `True` and from `y` where it's `False`,
+element-wise. The `cond` argument must have a boolean dtype.
 
 The most common use in model code is applying a causal attention mask.
-`condition` is a lower-triangular boolean matrix that allows each position to
+`cond` is a lower-triangular boolean matrix that allows each position to
 attend only to itself and earlier positions; `y` is a large negative constant.
 After `F.where`, softmax drives the masked positions toward zero.
 
@@ -131,17 +144,16 @@ Because `F.where` follows the same
 mask applies to every sequence in the batch without any reshaping. Positions
 above the diagonal receive `-1e9`; after softmax, their contribution to the
 attention weights is negligible. All three arguments to `F.where` must be
-broadcastable to a common shape. When you need to write values back to specific
-positions rather than reading from them, `F.scatter` is the inverse operation.
+broadcastable to a common shape. To write values to specific positions, use
+`F.scatter`.
 
 ## Place values by index
 
 [`F.scatter`](/api/python/experimental.functional#max.experimental.functional.scatter)
-is the inverse of `F.gather`: where `gather` reads values at positions given by
-an index tensor, `scatter` writes values back to those positions. The signature
-is `F.scatter(input, updates, indices, axis=-1)`. `updates` comes before
-`indices`, the opposite of the argument order you might expect. The `indices`
-tensor must have the same shape as `updates`.
+writes `updates` into a copy of `input` at the positions in `indices`. The
+signature is `F.scatter(input, updates, indices, axis=-1)`. `updates` comes
+before `indices`, the opposite of the argument order you might expect. The
+`indices` tensor must have the same shape as `updates`.
 
 The following example writes 4 expert outputs back into an 8-token sequence.
 [`F.tile`](/api/python/experimental.functional#max.experimental.functional.tile)
@@ -182,7 +194,7 @@ same ones from broadcasting:
 
 - **Review broadcasting for `F.where` and elementwise alignment**:
   [Broadcasting](/develop/broadcasting)
-- **Compare eager execution and explicit graph construction**:
+- **Create tensors and run a small forward pass**:
   [Eager execution](/develop/eager-execution)
 - **Follow an end-to-end model workflow**:
   [Model bring-up workflow](/develop/model-bringup-workflow)

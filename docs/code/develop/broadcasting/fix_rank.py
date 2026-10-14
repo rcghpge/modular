@@ -15,13 +15,12 @@
 # fix_rank.py: use unsqueeze to fix a rank mismatch before broadcasting
 #
 # Output:
-#   [Dim(2), Dim(4), Dim(8)]
+#   [Dim(4), Dim(8)]
 
 from max.experimental.tensor import Tensor
 
-v = Tensor.ones([8])  # (features=8,)
-v2d = v.unsqueeze(0)  # (1, features=8)
-v3d = v2d.unsqueeze(0)  # (1, 1, features=8)
-x = Tensor.zeros([2, 4, 8])  # (seq_len=2, batch=4, features=8)
-result = x + v3d
+x = Tensor.ones([4, 8])  # (batch=4, features=8)
+scale = Tensor([1.0, 2.0, 3.0, 4.0])  # (batch=4,)
+scale2d = scale.unsqueeze(-1)  # (batch=4, 1)
+result = x * scale2d
 print(result.shape)

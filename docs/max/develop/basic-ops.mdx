@@ -9,15 +9,6 @@ step: multiplying inputs by weights, applying activation functions, reducing
 across batch dimensions. Operations are the functions that perform these
 computations on tensors.
 
-:::note
-
-This page covers how to use operations with the
-[`max.experimental`](/api/python/experimental/) API. Be aware that you
-cannot use these operations with [`Graph`](/api/python/graph/) objects
-directly. See [Graph overview](/develop/graph) for more information.
-
-:::
-
 ## How to call operations
 
 MAX provides three ways to call operations on tensors:
@@ -47,18 +38,15 @@ are a few examples of each:
 - **Multi-tensor operations**:
   [`F.concat()`](/api/python/experimental.functional#max.experimental.functional.concat)
   operates on multiple tensors at once.
-- **Selected reductions**:
-  [`F.min()`](/api/python/experimental.functional#max.experimental.functional.min)
-  is functional-only; `sum`, `mean`, and `max` have both tensor method and
-  functional forms.
 
 ## Perform arithmetic operations
 
 :::note Device and dtype defaults
 
-By default, MAX uses `float32` on CPU and `bfloat16` on GPU (if one is
-available). The expected output shown below reflects a CPU environment; on a
-GPU, dtype will be `bfloat16` and device will show the GPU.
+By default, MAX places tensors on a GPU when one is available, otherwise on the
+CPU. It uses `float32` on CPU and `bfloat16` on GPU. The expected output on
+this page reflects a CPU environment. On a GPU, the dtype is `bfloat16` and the
+device is the GPU.
 
 :::
 
@@ -74,10 +62,10 @@ from max.experimental.tensor import Tensor
 a = Tensor([1.0, 2.0, 3.0])
 b = Tensor([4.0, 5.0, 6.0])
 
-addition       = a + b
-subtraction    = a - b
+addition = a + b
+subtraction = a - b
 multiplication = a * b
-division       = a / b
+division = a / b
 
 print(addition)
 print(multiplication)
@@ -104,9 +92,9 @@ from max.experimental.tensor import Tensor
 
 x = Tensor([1.0, -4.0, 9.0, -16.0])
 
-absolute     = abs(x)
-power        = x ** 2
-square_root  = F.sqrt(abs(x))
+absolute = abs(x)
+power = x**2
+square_root = F.sqrt(abs(x))
 
 print(f"Absolute value: {absolute}")
 print(f"Power (x**2): {power}")
@@ -219,7 +207,8 @@ Tensor([1 4
  3 6], dtype=DType.float32, device=Device(type=cpu,id=0))
 ```
 
-`.T` is equivalent to `transpose(-1, -2)` and works on tensors of any rank.
+`.T` is equivalent to `transpose(-1, -2)` and works on tensors of rank 2 or
+higher.
 
 When you need to rearrange more than two dimensions,
 [`permute()`](/api/python/generated/max.experimental.tensor.Tensor#max.experimental.tensor.Tensor.permute)
@@ -233,8 +222,12 @@ example converts a `(batch, channels, length)` tensor to
 from max.experimental.tensor import Tensor
 
 # (batch=2, channels=3, length=4)
-x = Tensor([[[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
-            [[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]])
+x = Tensor(
+    [
+        [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+        [[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]],
+    ]
+)
 print(f"Original shape: {x.shape}")
 
 # Rearrange to (batch, length, channels)
@@ -264,7 +257,7 @@ from max.experimental.tensor import Tensor
 a = Tensor([[1, 2], [3, 4]])
 b = Tensor([[5, 6], [7, 8]])
 
-vertical   = F.concat([a, b], axis=0)
+vertical = F.concat([a, b], axis=0)
 horizontal = F.concat([a, b], axis=1)
 
 print(f"Concatenated along axis 0: {vertical.shape}")
@@ -294,10 +287,9 @@ operates on multiple tensors.
 ## Apply reduction operations
 
 Reduction operations aggregate values along a specified dimension, producing a
-smaller tensor. All reductions require an explicit `axis` argument; without
-one, the reduction applies along the last axis by default. All reductions keep
-the reduced dimension in the output shape (unlike NumPy and PyTorch, which
-drop it by default).
+smaller tensor. Each reduction takes an `axis` argument, which defaults to `-1`
+(the last axis). Reductions keep the reduced dimension in the output shape
+with size 1. NumPy and PyTorch drop it by default.
 
 The following example shows `sum`, `mean`, `max`, and `min` along axis 0,
 summing across rows to get per-column results:
@@ -305,20 +297,19 @@ summing across rows to get per-column results:
 {/* @sync: ../../code/develop/basic-ops/tensor_reductions.py */}
 
 ```python
-import max.experimental.functional as F
 from max.experimental.tensor import Tensor
 
 x = Tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-sum_axis0 = x.sum(axis=0)   # sum each column across rows
-sum_axis1 = x.sum(axis=1)   # sum each row across columns
+sum_axis0 = x.sum(axis=0)  # sum each column across rows
+sum_axis1 = x.sum(axis=1)  # sum each row across columns
 
 print(f"Sum along axis 0: {sum_axis0}")
 print(f"Sum along axis 1: {sum_axis1}")
 
 mean_val = x.mean(axis=0)
-max_val  = x.max(axis=0)
-min_val  = F.min(x, axis=0)
+max_val = x.max(axis=0)
+min_val = x.min(axis=0)
 
 print(f"Mean along axis 0: {mean_val}")
 print(f"Max along axis 0: {max_val}")
@@ -337,12 +328,13 @@ Min along axis 0: Tensor([1 2 3], dtype=DType.float32, device=Device(type=cpu,id
 ```
 
 `sum(axis=0)` and `sum(axis=1)` return tensors with shape `[Dim(1), Dim(3)]` and
-`[Dim(2), Dim(1)]` respectively, with the reduced dimension kept at size 1.
-`F.min()` is functional-only; `sum`, `mean`, and `max` are also available as
+`[Dim(2), Dim(1)]` respectively, with the reduced dimension kept at size 1. Each
+reduction is also available in the functional API as
 [`F.sum()`](/api/python/experimental.functional#max.experimental.functional.sum),
 [`F.mean()`](/api/python/experimental.functional#max.experimental.functional.mean),
+[`F.max()`](/api/python/experimental.functional#max.experimental.functional.max),
 and
-[`F.max()`](/api/python/experimental.functional#max.experimental.functional.max).
+[`F.min()`](/api/python/experimental.functional#max.experimental.functional.min).
 
 ## Perform matrix operations
 
@@ -391,9 +383,9 @@ from max.experimental.tensor import Tensor
 
 x = Tensor([[-2.0, -1.0, 0.0], [1.0, 2.0, 3.0]])
 
-relu_output    = F.relu(x)
+relu_output = F.relu(x)
 sigmoid_output = F.sigmoid(x)
-tanh_output    = F.tanh(x)
+tanh_output = F.tanh(x)
 
 print(f"ReLU: {relu_output}")
 print(f"Sigmoid: {sigmoid_output}")
@@ -427,7 +419,7 @@ standard deviation. Values vary each run:
 import max.experimental.functional as F
 
 uniform_tensor = F.uniform([3, 3], range=(0.0, 1.0))
-normal_tensor  = F.normal([3, 3], mean=0.0, std=1.0)
+normal_tensor = F.normal([3, 3], mean=0.0, std=1.0)
 
 print("Uniform distribution:")
 print(uniform_tensor)
@@ -443,9 +435,9 @@ example shows a linear layer using `@` for matrix multiplication, `+` for bias
 addition, and
 [`F.relu()`](/api/python/experimental.functional#max.experimental.functional.relu)
 for the activation step. Pre-built layers like
-[`nn.Linear`](/api/python/generated/max.nn.Linear) work this way internally.
-Understanding the operations gives you the foundation for custom layers when
-standard ones don't fit:
+[`Linear`](/api/python/generated/max.experimental.nn.Linear/) use the same
+matrix multiplication and bias addition internally. Understanding the operations
+gives you the foundation for custom layers when standard ones don't fit:
 
 {/* @sync: ../../code/develop/basic-ops/compose_linear_layer.py */}
 
@@ -459,9 +451,9 @@ def linear_layer(x: Tensor, weights: Tensor, bias: Tensor) -> Tensor:
 
 
 # input: (batch=2, features=4)
-x       = Tensor([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])
+x = Tensor([[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]])
 weights = F.normal([4, 3])  # (features=4, output=3)
-bias    = Tensor.zeros([3])
+bias = Tensor.zeros([3])
 
 output = linear_layer(x, weights, bias)
 print(f"Output shape: {output.shape}")
@@ -477,9 +469,12 @@ Output shape: [Dim(2), Dim(3)]
 
 Now that you understand tensor operations, continue learning with these topics:
 
-- **[Build a model graph with Module](/develop/modules)**: Use operations
-in your model's `__call__()` method to define computation.
-- **[Neural network modules](/api/python/nn)**: Explore pre-built layers in
-`max.nn` such as `Linear`, `Conv2d`, and `ReLU`.
+- **[Model bring-up workflow](/develop/model-bringup-workflow)**: Use
+  operations in a module's `forward()` method to implement a model
+  architecture.
+- **[Neural network modules](/api/python/experimental.nn)**: Explore
+  pre-built layers in `max.experimental.nn` such as `Linear`,
+  [`Conv2d`](/api/python/generated/max.experimental.nn.Conv2d/), and
+  [`Embedding`](/api/python/generated/max.experimental.nn.Embedding/).
 - **[Custom operations](/develop/custom-ops)**: Implement your own
   operations in Mojo when built-in operations don't meet your needs.

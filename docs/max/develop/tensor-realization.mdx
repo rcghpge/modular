@@ -43,10 +43,16 @@ together at the function boundary. The next section covers how that works.
 
 :::note Lazy execution mode
 
-MAX previously used a fully lazy execution model where tensors were only
-realized when their values were read. You can still use this model with the
-[`lazy()`](/api/python/experimental.functional/#max.experimental.functional.lazy)
-context manager, but we recommend you use the default eager pattern.
+The
+[`F.lazy()`](/api/python/experimental.functional/#max.experimental.functional.lazy)
+context manager defers realization. Ops you call inside it build one graph, and
+their tensors stay unrealized after the block exits. MAX compiles and runs that
+graph when you read a tensor's values, for example with `item()` or
+`to_numpy()`. Printing an unrealized tensor shows its shape, dtype, and device
+without running the graph. Building a module inside `F.lazy()` defers the ops
+that initialize its weights, so MAX doesn't allocate weights that
+`Module.compile()` replaces with checkpoint values. Those ops run only if you
+read a tensor from that block.
 
 :::
 
@@ -57,40 +63,57 @@ they execute as a single graph that the graph compiler can fuse and optimize as
 a unit.
 
 You can manually define a fusion region with
-[`F.functional()`](/api/python/experimental.functional). Apply it as a
-decorator on a method or call it directly to wrap a graph op. This example
-shows how to use the decorator form on a module's `forward()` method:
+[`F.functional()`](/api/python/experimental.functional/#max.experimental.functional.functional).
+Apply it as a decorator on a method or call it directly to wrap a graph op. This
+example uses the decorator form on a module's `forward()` method, then calls the
+module:
+
+{/* @sync: ../../code/develop/tensor-realization/functional_layer.py */}
 
 ```python
 from max.experimental import functional as F
 from max.experimental.nn import Module, module_dataclass
 from max.experimental.tensor import Tensor
 
+
 @module_dataclass
-class MyLayer(Module):
+class MyLayer(Module[[Tensor], Tensor]):
     weight: Tensor
     bias: Tensor
 
     @F.functional
     def forward(self, x: Tensor) -> Tensor:
         return x @ self.weight.T + self.bias
+
+
+layer = MyLayer(weight=Tensor.ones([3, 4]), bias=Tensor.zeros([3]))
+y = layer(Tensor.ones([2, 4]))
+print(y.shape)
 ```
 
-Built-in layers like
-[`Linear`](/api/python/generated/max.experimental.nn.Linear/) and
-[`RotaryEmbedding`](/api/python/generated/max.experimental.nn.rope.RotaryEmbedding/)
-already apply `F.functional` to their `forward()` methods, which is why they
-perform well. Because of this, you don't typically need to use `F.functional`
-yourself.
+The expected output is:
+
+```output
+[Dim(2), Dim(3)]
+```
+
+Built-in layers such as
+[`RMSNorm`](/api/python/generated/max.experimental.nn.norm.RMSNorm/) call graph
+ops that MAX already wraps with `F.functional()`. To run a whole module as one
+graph, compile it with
+[`Module.compile()`](/api/python/generated/max.experimental.nn.Module/#max.experimental.nn.Module.compile),
+which compiles `forward()` into a callable. Because of this, you don't typically
+need to use `F.functional()` yourself.
 
 ## Next steps
 
 You just learned how MAX supports eager execution under the hood. For more
 advanced topics, see:
 
-- [Graph overview](/develop/graph): Drop down to the explicit graph API
-  and build models without the realization context layer.
+- [Model bring-up workflow](/develop/model-bringup-workflow): Implement a
+  model architecture with
+  [`max.experimental.nn`](/api/python/experimental.nn/) and compile it.
 - [Build custom ops](/develop/build-custom-ops): Extend MAX with your own
   ops.
-- [Trace execution](/develop/debugging-tracing): Inspect when
-  realization happens at runtime.
+- [Trace execution](/develop/debugging-tracing): See which ops MAX
+  launches, in what order, and on which device.

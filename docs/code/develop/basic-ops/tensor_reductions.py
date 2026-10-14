@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 # DOC: max/develop/basic-ops.mdx
 
-import max.experimental.functional as F
 from max.experimental.tensor import Tensor
 
 x = Tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -25,7 +24,7 @@ print(f"Sum along axis 1: {sum_axis1}")
 
 mean_val = x.mean(axis=0)
 max_val = x.max(axis=0)
-min_val = F.min(x, axis=0)
+min_val = x.min(axis=0)
 
 print(f"Mean along axis 0: {mean_val}")
 print(f"Max along axis 0: {max_val}")

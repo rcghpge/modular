@@ -70,3 +70,25 @@ modular_run_binary_test(
         "//conditions:default": [],
     }),
 )
+
+# slicing.py
+modular_py_binary(
+    name = "slicing",
+    srcs = ["slicing.py"],
+    imports = ["."],
+    deps = [
+        "//max/python/max:tensor",
+    ],
+)
+
+modular_run_binary_test(
+    name = "slicing_test",
+    size = "large",
+    binary = "slicing",
+    tags = ["skip-ci-asan"],
+    # Incompatible with macOS: these doc-example tests time out on remote macOS CI workers; Linux CI provides equivalent coverage.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)

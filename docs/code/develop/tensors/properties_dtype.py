@@ -15,7 +15,7 @@
 from max.dtype import DType
 from max.experimental.tensor import Tensor
 
-# Float tensor (default for most operations)
+# Float tensor (the default on CPU)
 floats = Tensor.ones([2, 2], dtype=DType.float32)
 
 # Integer tensor

@@ -92,6 +92,28 @@ modular_run_binary_test(
     }),
 )
 
+# create_random_mean_std.py
+modular_py_binary(
+    name = "create_random_mean_std",
+    srcs = ["create_random_mean_std.py"],
+    imports = ["."],
+    deps = [
+        "//max/python/max:tensor",
+    ],
+)
+
+modular_run_binary_test(
+    name = "create_random_mean_std_test",
+    size = "large",
+    binary = "create_random_mean_std",
+    tags = ["skip-ci-asan"],
+    # Incompatible with macOS: these doc-example tests time out on remote macOS CI workers; Linux CI provides equivalent coverage.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
 # properties_shape.py
 modular_py_binary(
     name = "properties_shape",

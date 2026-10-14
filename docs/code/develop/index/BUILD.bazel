@@ -80,7 +80,6 @@ modular_py_binary(
     imports = ["."],
     deps = [
         "//max/python/max:tensor",
-        "//max/python/max/driver",
     ],
 )
 

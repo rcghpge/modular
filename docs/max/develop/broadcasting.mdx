@@ -145,8 +145,8 @@ vector to `(batch, features)`:
 {/* @sync: ../../code/develop/broadcasting/explicit_broadcast.py */}
 
 ```python
-from max.experimental.tensor import Tensor
 from max.experimental import functional as F
+from max.experimental.tensor import Tensor
 
 weight = Tensor.ones([1, 8])  # (1, features=8)
 expanded = F.broadcast_to(weight, [4, 8])  # (batch=4, features=8)
@@ -178,35 +178,34 @@ dimensions.
 
 ### Misaligned ranks
 
-Adding a `(features,)` vector to a `(seq_len, batch, features)` tensor fails
-because right-alignment places `features` against `features`, but the
-`(seq_len, batch)` dimensions have no counterpart in the vector. The solution is
-to introduce the missing leading dimensions with
+Multiplying a `(batch, features)` tensor by a per-row `(batch,)` vector fails
+because right-alignment places the vector's `batch` against `features`. The
+solution is to add the missing trailing dimension with
 [`Tensor.unsqueeze(axis)`](/api/python/generated/max.experimental.tensor.Tensor#max.experimental.tensor.Tensor.unsqueeze)
-before the operation. The following example adds two leading dimensions to a
-`(features,)` vector so it aligns with a `(seq_len, batch, features)` tensor:
+before the operation. The following example turns a `(batch,)` vector into a
+`(batch, 1)` column so it broadcasts across the features of a
+`(batch, features)` tensor:
 
 {/* @sync: ../../code/develop/broadcasting/fix_rank.py */}
 
 ```python
 from max.experimental.tensor import Tensor
 
-v = Tensor.ones([8])  # (features=8,)
-v2d = v.unsqueeze(0)  # (1, features=8)
-v3d = v2d.unsqueeze(0)  # (1, 1, features=8)
-x = Tensor.zeros([2, 4, 8])  # (seq_len=2, batch=4, features=8)
-result = x + v3d
+x = Tensor.ones([4, 8])  # (batch=4, features=8)
+scale = Tensor([1.0, 2.0, 3.0, 4.0])  # (batch=4,)
+scale2d = scale.unsqueeze(-1)  # (batch=4, 1)
+result = x * scale2d
 print(result.shape)
 ```
 
 The expected output is:
 
 ```text
-[Dim(2), Dim(4), Dim(8)]
+[Dim(4), Dim(8)]
 ```
 
-In this example, two `.unsqueeze()` calls add the missing dimensions so
-right-alignment produces three compatible pairs.
+In this example, `unsqueeze(-1)` adds a trailing dimension of size 1, so
+right-alignment pairs `features` with 1 and `batch` with `batch`.
 
 ### Mismatched non-1 dimensions
 
@@ -214,11 +213,13 @@ Adding a `(3, 4)` tensor to a `(3, 5)` tensor fails because 4 and 5 are
 neither equal nor 1. The error names the axis:
 
 ```text
-ValueError: Failed to create op 'add':
-...
-error: Input lhs (shape [3, 4]) dimension at axis 1 (value 4) and input rhs
-(shape [3, 5]) dimension at axis 1 (value 5) are neither equivalent nor
-broadcastable.
+ValueError: Failed to create op 'AddOp':
+Inputs:
+    input_x = TensorValue(dtype=float32, shape=[Dim(3), Dim(4)], device=cpu:0)
+    input_y = TensorValue(dtype=float32, shape=[Dim(3), Dim(5)], device=cpu:0)
+Diagnostics:
+    Input lhs (shape [3, 4]) dimension at axis 1 (value 4) and input rhs (shape [3, 5]) dimension at axis 1 (value 5) are neither equivalent nor broadcastable. Insert an explicit rebind if these dims will be equivalent at runtime.
+Failed to infer result type(s) for 'rmo.add'
 ```
 
 There's no broadcast fix: the shapes must match. Print each tensor's shape

@@ -26,7 +26,7 @@ w = F.gaussian([2, 2], mean=0.0, std=0.1, dtype=DType.float32, device=CPU())
 # Forward pass - each operation executes as you write it
 z = x @ w  # Matrix multiply
 h = F.relu(z)  # Activation
-out = h.mean()  # Reduce to scalar
+out = h.mean()  # Mean along the last axis
 
 # Inspect intermediate results anytime
 print(f"Input shape: {x.shape}")
