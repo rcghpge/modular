@@ -3719,7 +3719,7 @@ def MO_ScatterNdMulOp : MO_ScatterNdReductionOp<"mul"> {
 //===----------------------------------------------------------------------===//
 
 def MO_NonMaximumSuppressionOp : MO_TensorOp<"non_maximum_suppression", [
-  MO_HostOnly,
+  MO_SingleDeviceWithHostOperands<["maxOutputBoxesPerClass", "iouThreshold", "scoreThreshold"]>,
   MO_ParamDeclaration,
 ]> {
   let summary = "Non-max suppression operation";
