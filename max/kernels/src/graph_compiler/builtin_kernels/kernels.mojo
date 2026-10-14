@@ -627,8 +627,8 @@ struct NonMaximumSuppression:
         var score_threshold_float = score_threshold
 
         non_max_suppression[target=target,](
-            boxes.to_tile_tensor[.int64](),
-            scores.to_tile_tensor[.int64](),
+            boxes.to_tile_tensor[.int64]().as_imm(),
+            scores.to_tile_tensor[.int64]().as_imm(),
             output.to_tile_tensor[.int64](),
             max_output_boxes_int,
             iou_threshold_float,
