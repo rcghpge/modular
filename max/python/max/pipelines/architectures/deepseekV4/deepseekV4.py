@@ -46,14 +46,13 @@ no Sinkhorn step and keeps the checkpoint's flat ``hc_head_*`` names.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
-    Dim,
     ShardingStrategy,
     TensorValue,
     Weight,
@@ -551,12 +550,9 @@ class _TensorParallelBlock(Module):
         self.blocks = LayerList(list(blocks))
         self.replicas = tuple(blocks)
 
-    def layer_indices(self, xs: Sequence[TensorValue]) -> list[LayerIndex]:
+    def layer_indices(self) -> list[LayerIndex]:
         """Each replica's place in its device's leaves, as constants."""
-        return [
-            block.attn.layer_index(x.device)
-            for block, x in zip(self.replicas, xs, strict=True)
-        ]
+        return [block.attn.layer_index() for block in self.replicas]
 
     def __call__(
         self,
@@ -702,7 +698,7 @@ class DeepseekV4(Module):
         ) -> list[Tree[Any]]:
             block = self.layers[layer_idx]
             assert isinstance(block, DeepseekV4Block)
-            index = block.attn.layer_index(hs[0].device)
+            index = block.attn.layer_index()
             return [hs[0], rows, tokens, cache, index]
 
         (h,) = forward_sequential_layers(
@@ -765,7 +761,6 @@ class DeepseekV4(Module):
         tokens: TensorValue,
         input_row_offsets: TensorValue,
         return_n_logits: TensorValue,
-        windows: Mapping[int, Dim],
         cache: DeepseekV4Cache,
     ) -> tuple[TensorValue, ...]:
         """The serving graph body: ragged tokens in, the pipeline's logits out.
@@ -774,8 +769,6 @@ class DeepseekV4(Module):
             tokens: ``[T]`` token ids of the whole batch.
             input_row_offsets: ``[batch + 1]`` uint32 row offsets.
             return_n_logits: ``[1]`` int64, trailing logits per request.
-            windows: Per compression ratio, the batch's window count
-                (:func:`~.layers.ragged.window_count`).
             cache: The paged leaves.
 
         Returns:
@@ -784,7 +777,10 @@ class DeepseekV4(Module):
         """
         t = tokens.shape[0]
         rows = RaggedRows.from_offsets(
-            input_row_offsets, t, cache.cache_lengths, windows
+            input_row_offsets,
+            t,
+            cache.cache_lengths,
+            dict.fromkeys(self.config.window_ratios),
         )
         x, _ = self.trunk(ops.reshape(tokens, [1, t]), rows, cache)
         return logits_postprocess(
@@ -845,7 +841,6 @@ class DeepseekV4(Module):
         tokens: Sequence[TensorValue],
         input_row_offsets: Sequence[TensorValue],
         return_n_logits: TensorValue,
-        windows: Mapping[int, Dim],
         caches: Sequence[DeepseekV4Cache],
         signal_buffers: Sequence[BufferValue],
     ) -> tuple[TensorValue, ...]:
@@ -856,6 +851,7 @@ class DeepseekV4(Module):
         """
         lead = replicas[0]
         t = tokens[0].shape[0]
+        windows = dict.fromkeys(lead.config.window_ratios)
         rows = [
             RaggedRows.from_offsets(offsets, t, cache.cache_lengths, windows)
             for offsets, cache in zip(input_row_offsets, caches, strict=True)
@@ -930,7 +926,7 @@ class DeepseekV4(Module):
                 list(tokens),
                 list(caches),
                 list(signal_buffers),
-                lead.tp_blocks[layer_idx].layer_indices(xs),
+                lead.tp_blocks[layer_idx].layer_indices(),
             ]
 
         hs = forward_sequential_layers(

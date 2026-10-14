@@ -242,12 +242,10 @@ class DeepseekV4Attention(Module):
         if self.indexer is not None:
             self.indexer.keep_local_heads(num_devices)
 
-    def layer_index(self, device: DeviceRef) -> LayerIndex:
+    def layer_index(self) -> LayerIndex:
         """This layer's place in the leaves, as constants."""
         return LayerIndex.constant(
-            self.swa_layer,
-            self.zone_layer if self.compress_ratio else None,
-            device,
+            self.swa_layer, self.zone_layer if self.compress_ratio else None
         )
 
     def _output_projection(self, o: TensorValue) -> TensorValue:
@@ -348,7 +346,7 @@ class DeepseekV4Attention(Module):
         rd = self.rope_head_dim
         positions = rows.positions
         if index is None:
-            index = self.layer_index(device)
+            index = self.layer_index()
         freqs_table = self.rope.freqs_cis_base()
         freqs_cis = ops.gather(freqs_table, positions, axis=0)
 
@@ -529,7 +527,7 @@ class DeepseekV4Attention(Module):
                     kv,
                     ops.reshape(
                         ops.cast(stream.fresh, kv.dtype),
-                        [1, stream.windows.total, head_dim],
+                        [1, stream.fresh.shape[0], head_dim],
                     ),
                 ],
                 axis=1,

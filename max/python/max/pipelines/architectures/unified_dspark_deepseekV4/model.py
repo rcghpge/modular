@@ -29,7 +29,7 @@ from typing_extensions import override
 from ..deepseekV4.model import DeepseekV4Model
 from ..deepseekV4.model_config import DeepseekV4Config
 from .batch_processor import UnifiedDSparkDeepseekV4BatchProcessor
-from .spec_adapters import VERIFY_WINDOWS, WINDOW_LEAF
+from .spec_adapters import WINDOW_LEAF
 from .unified_dspark_deepseekV4 import UnifiedDSparkDeepseekV4
 
 __all__ = ["UnifiedDSparkDeepseekV4Model"]
@@ -117,9 +117,6 @@ class UnifiedDSparkDeepseekV4Model(
                 pinned_bitmask=inputs.pinned_bitmask,
                 wait_payload=inputs.wait_payload,
                 device_bitmask_scratch=inputs.device_bitmask_scratch,
-                extra={
-                    VERIFY_WINDOWS: nn_model.verify_windows(inputs.trailing)
-                },
             )
             graph.output(*outputs)
         return graph, weights_registry

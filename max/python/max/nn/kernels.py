@@ -13414,6 +13414,115 @@ def indexer_score_ragged(
     )[0].tensor
 
 
+def compress_windows_ragged(
+    kv: TensorValue,
+    score: TensorValue,
+    ape: TensorValue,
+    norm_weight: TensorValue,
+    freqs: TensorValue,
+    input_row_offsets: TensorValue,
+    window_offsets: TensorValue,
+    starts: TensorValue,
+    state: PagedCacheValues,
+    layer: TensorValue,
+    *,
+    epsilon: float,
+    rotate: bool,
+) -> TensorValue:
+    """Pools every window of a ragged chunk into one compressed entry.
+
+    DeepSeek-V4's compressor. Request ``b``'s chunk touches
+    ``ceil(len_b / ratio)`` windows of ``ratio`` positions, the first at
+    ``P - P % ratio`` for ``P = starts[b]``. A window's entry is a per-channel
+    softmax over ``score + ape`` weighting ``kv`` across its positions, and
+    its predecessor's when ``ape`` is twice the entry's width (the
+    predecessor's low half, then the window's high half). Positions before
+    ``P`` are read from the state leaf, later ones from ``kv`` and ``score``.
+    The entry is then RMS-normed, its trailing ``2 * freqs.shape[1]`` channels
+    rotated at the window's first position, and snapped to the FP8 grid on the
+    other channels, or with ``rotate`` Hadamard-rotated and snapped to FP4.
+
+    Args:
+        kv: ``[total_rows, proj_dim]`` float32 raw ``wkv`` rows of the chunk.
+        score: ``[total_rows, proj_dim]`` float32 raw ``wgate`` rows.
+        ape: ``[ratio, proj_dim]`` float32 per-slot gate bias.
+        norm_weight: ``[head_dim]`` RMSNorm weight, in the entries' dtype.
+        freqs: ``[positions, rope_dim // 2, 2]`` float32 rotary cos/sin.
+        input_row_offsets: ``[batch + 1]`` uint32 row offsets of ``kv``.
+        window_offsets: ``[batch + 1]`` uint32 window offsets, request ``b``
+            owning ``ceil(len_b / ratio)`` entries.
+        starts: ``[batch]`` int32 tokens cached before the chunk.
+        state: The state leaf, one head of ``proj_dim`` float32 channels
+            holding ``wkv`` as K and ``wgate`` as V by position.
+        layer: uint32 scalar, this layer's index in the leaf.
+        epsilon: RMSNorm epsilon.
+        rotate: The indexer's variant.
+
+    Returns:
+        ``[rows, head_dim]`` entries in ``norm_weight``'s dtype, where
+        ``rows = (total_rows + batch * (ratio - 1)) // ratio`` bounds the
+        window count. Rows past ``window_offsets[batch]`` are left unwritten;
+        the ragged store skips them.
+    """
+    _check_rank(2, kv=kv, score=score, ape=ape)
+    _check_rank(
+        1,
+        norm_weight=norm_weight,
+        input_row_offsets=input_row_offsets,
+        window_offsets=window_offsets,
+        starts=starts,
+    )
+    _check_rank(3, freqs=freqs)
+    _check_rank(6, kv_blocks=state.kv_blocks)
+    _check_dtype(DType.float32, kv=kv, score=score, ape=ape, freqs=freqs)
+    _check_dtype(
+        DType.uint32,
+        input_row_offsets=input_row_offsets,
+        window_offsets=window_offsets,
+        layer=layer,
+    )
+    _check_dtype(DType.int32, starts=starts)
+    ratio = int(ape.shape[0])
+    head_dim = int(norm_weight.shape[0])
+    if ape.shape[1] not in (head_dim, 2 * head_dim):
+        raise ValueError(
+            f"ape width {ape.shape[1]} is neither the entry width {head_dim}"
+            " nor twice it"
+        )
+    if kv.shape[1] != ape.shape[1] or score.shape[1] != ape.shape[1]:
+        raise ValueError(
+            f"kv and score must be {ape.shape[1]} wide, got {kv.shape[1]}"
+            f" and {score.shape[1]}"
+        )
+
+    batch = window_offsets.shape[0] - 1
+    rows = (kv.shape[0] + batch * (ratio - 1)) // ratio
+    return ops.inplace_custom(
+        "mo.compress_windows.ragged.paged",
+        device=kv.device,
+        values=[
+            kv,
+            score,
+            ape,
+            norm_weight,
+            freqs,
+            input_row_offsets,
+            window_offsets,
+            starts,
+            state.kv_blocks,
+            state.page_stride,
+            state.cache_lengths,
+            state.lookup_table,
+            state.max_prompt_length,
+            state.max_cache_length,
+            layer,
+            ops.constant(epsilon, DType.float32, DeviceRef.CPU()),
+        ],
+        out_types=[TensorType(norm_weight.dtype, [rows, head_dim], kv.device)],
+        parameters={"rotate": rotate},
+    )[0].tensor
+
+
 def latent_sparse_attention_ragged(
     q: TensorValue,
     input_row_offsets: TensorValue,
