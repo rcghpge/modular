@@ -36,7 +36,7 @@ rust.toolchain(
     # a better approach here though. The build fails without these flags.
     extra_exec_rustc_flags_triples = {"x86_64-unknown-linux-gnu": ["-Clink-self-contained=no"]},
     extra_rustc_flags_triples = {"x86_64-unknown-linux-gnu": ["-Clink-self-contained=no"]},
-    versions = ["1.94.0"],
+    versions = ["1.95.0"],
 )
 
 # The crate universe behind max._kv_core and the tiered KV connector: the
