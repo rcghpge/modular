@@ -17,7 +17,9 @@ platforms, Linux and macOS.
 from std.ffi import c_int, c_size_t, c_ssize_t, c_uint, external_call
 from std.sys.info import platform_map, platform_type_map
 
+from .inet import SockaddrIn, SockaddrIn6
 from .linux import (
+    AF_INET6 as linux_AF_INET6,
     sockaddr as linux_sockaddr,
     sockaddr_in as linux_sockaddr_in,
     sockaddr_in6 as linux_sockaddr_in6,
@@ -25,6 +27,7 @@ from .linux import (
     sockaddr_un as linux_sockaddr_un,
 )
 from .macos import (
+    AF_INET6 as macos_AF_INET6,
     sockaddr as macos_sockaddr,
     sockaddr_in as macos_sockaddr_in,
     sockaddr_in6 as macos_sockaddr_in6,
@@ -50,7 +53,9 @@ comptime AF_UNIX: c_int = 1
 """Unix domain (local) sockets."""
 comptime AF_INET: c_int = 2
 """IPv4 internet protocols."""
-comptime AF_INET6: c_int = constant["AF_INET6", linux=10, macos=30]()
+comptime AF_INET6: c_int = constant[
+    "AF_INET6", linux=linux_AF_INET6, macos=macos_AF_INET6
+]()
 """IPv6 internet protocols."""
 
 # ===----------------------------------------------------------------------=== #
@@ -186,14 +191,14 @@ comptime sockaddr = platform_type_map[
 """The compilation target's C `struct sockaddr`."""
 
 comptime sockaddr_in = platform_type_map[
-    Trait=Copyable,
+    Trait=SockaddrIn,
     linux=linux_sockaddr_in,
     macos=macos_sockaddr_in,
 ]
 """The compilation target's C `struct sockaddr_in`."""
 
 comptime sockaddr_in6 = platform_type_map[
-    Trait=Copyable,
+    Trait=SockaddrIn6,
     linux=linux_sockaddr_in6,
     macos=macos_sockaddr_in6,
 ]
