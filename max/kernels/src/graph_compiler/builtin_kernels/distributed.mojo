@@ -2025,30 +2025,6 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
 
             @inline(.always)
             def two_launch_with_quant() raises {imm}:
-                var base = rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
-                    sum_buf._storage
-                )
-                comptime OutViewType = type_of(
-                    TileTensor(base, row_major(cols_rt, cols_rt))
-                )
-                # See `DistributedAllGatherRMSNorm.two_launch`: only THIS
-                # device's own slice of the world-view output array is ever
-                # read back by `allgather`.
-                var world_out_views = Array[
-                    OutViewType, num_devices * group_size
-                ](uninitialized=True)
-                var row_off = 0
-                comptime for i in range(group_size):
-                    var len_i = (
-                        Int(in_tensors[group_start + i].num_elements())
-                        // cols_rt
-                    )
-                    world_out_views[index * group_size + i] = TileTensor(
-                        base + row_off * cols_rt,
-                        row_major(len_i, cols_rt),
-                    )
-                    row_off += len_i
-
                 allgather[
                     dtype=dtype, ngpus=num_devices, group_size=group_size
                 ](
