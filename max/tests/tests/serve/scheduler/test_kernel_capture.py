@@ -325,6 +325,12 @@ def test_two_traced_requests_share_one_capture(
     assert [p.batch_span_context for p in passes] == [
         s.get_span_context() for s in batch_spans
     ]
+    # Launch lag counts from the max.batch span's start, which follows the
+    # host time the clock-offset bound uses.
+    assert [p.batch_start_ns for p in passes] == [
+        s.start_time for s in batch_spans
+    ]
+    assert all(p.host_start_ns <= p.batch_start_ns for p in passes)
 
 
 @pytest.mark.parametrize("exit_by", ["release", "cancel"])
