@@ -2994,6 +2994,15 @@ struct SIMD[dtype: DType, length: SIMDLength](
             ), "the input width must be 1 if the size is 1"
             return value[0]
 
+        # `llvm.vector.insert` needs a vector as its subvector operand, but a
+        # width-1 `SIMD` lowers to a scalar. The Metal backend does not
+        # support the intrinsic at all.
+        comptime if input_width == 1 or is_apple_gpu():
+            var result = self
+            comptime for i in range(input_width):
+                result[offset + i] = value[i]
+            return result
+
         return llvm_intrinsic[
             "llvm.vector.insert", Self, has_side_effect=False
         ](self, value, Int64(offset))

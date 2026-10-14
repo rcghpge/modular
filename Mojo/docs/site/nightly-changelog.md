@@ -613,3 +613,5 @@ This version is still a work in progress.
 - `log()`, `log2()`, and `log1p()` of `inf` now return `inf` instead of `nan`.
 - `float64` `log1p()` is now accurate for inputs whose `1 + x` falls in
   `[sqrt(2)/2, sqrt(2))`, where it was off by up to about 7e9 ulp.
+- `SIMD.insert()` now compiles when the inserted value is a `Scalar`, and on
+  Apple GPUs.
