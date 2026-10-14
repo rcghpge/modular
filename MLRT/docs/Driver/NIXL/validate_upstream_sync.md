@@ -69,6 +69,8 @@ gh workflow run benchmarkMammoth.yaml \
   -f benchmark_config=<the job's benchmark_config>
 ```
 
+Add `-f modelapp_wait_timeout=<value>` when the job sets one.
+
 To run the full validation (correctness gate, which also dispatches the
 shared-pool tests — KV smoke + the nixl-validation benchmarks — as an
 informational companion run):
