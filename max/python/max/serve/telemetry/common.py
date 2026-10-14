@@ -14,12 +14,14 @@
 from __future__ import annotations
 
 import atexit
+import collections
 import json
 import logging
 import logging.handlers
 import os
 import platform
 import signal
+import threading
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -71,8 +73,12 @@ from opentelemetry.sdk.metrics.export import (
 )
 from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import SpanLimits, TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
+from opentelemetry.sdk.trace import ReadableSpan, SpanLimits, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
 from opentelemetry.trace import set_tracer_provider
 from pythonjsonlogger import jsonlogger
 
@@ -808,6 +814,7 @@ def _grpc_span_exporter() -> SpanExporter:
     logger = logging.getLogger(__name__)
     endpoint = _tls_by_omission()
     if endpoint is not None:
+        endpoint = _without_credentials(endpoint)[0]
         logger.warning(
             "OTLP traces endpoint %r has no http:// or https:// scheme, so "
             "spans will be exported over TLS. Write it as http://%s for a "
@@ -839,6 +846,149 @@ def _span_exporter() -> SpanExporter:
     return OTLPSpanExporter()
 
 
+def _without_credentials(endpoint: str) -> tuple[str, list[str]]:
+    """Returns the endpoint as logs show it, and the parts it leaves out.
+
+    Userinfo or a query can carry a credential. A gRPC endpoint may have no
+    scheme, so one without ``://`` is read as an authority.
+    """
+    url = urlparse(endpoint if "://" in endpoint else "//" + endpoint)
+    userinfo, _, host = url.netloc.rpartition("@")
+    shown = url._replace(netloc=host, query="").geturl().removeprefix("//")
+    return shown, [s for s in (userinfo, url.query) if s]
+
+
+# An exporter that returns a failure code logs why only here. MAX sends only
+# spans over gRPC, whose signals share one logger.
+_EXPORT_ERROR_LOGGERS = (
+    "opentelemetry.exporter.otlp.proto.http.trace_exporter",
+    "opentelemetry.exporter.otlp.proto.grpc.exporter",
+)
+
+
+class _CountingQueue(collections.deque[ReadableSpan]):
+    """The SDK's span queue, counting the spans it drops to make room.
+
+    The SDK drops a full queue's oldest span without a word. The fullness
+    check and the append share a lock with the worker's pops, so each drop
+    is counted once.
+    """
+
+    def __init__(self, maxlen: int) -> None:
+        super().__init__([], maxlen)
+        self.dropped = 0
+        self._lock = threading.Lock()
+
+    def appendleft(self, span: ReadableSpan) -> None:
+        with self._lock:
+            if len(self) == self.maxlen:
+                self.dropped += 1
+            super().appendleft(span)
+
+    def pop(self, *args: int) -> ReadableSpan:
+        with self._lock:
+            return super().pop(*args)
+
+    def clear(self) -> None:
+        # The SDK clears the queue in a forked child, where a thread that no
+        # longer exists may hold the lock.
+        self._lock = threading.Lock()
+        super().clear()
+
+
+class _ReportingSpanExporter(SpanExporter):
+    """Warns through a ``max.serve`` logger when span export starts failing,
+    when it recovers, and once when a full queue has dropped spans.
+
+    ``configure_logging()`` drops the SDK's own ``opentelemetry.*`` records,
+    and admitting them would print a metrics-export traceback every interval
+    wherever Modular's collector is unreachable.
+    """
+
+    def __init__(
+        self,
+        exporter: SpanExporter,
+        what: str = "spans",
+        queue_size: int | None = None,
+        size_setting: str = "OTEL_BSP_MAX_QUEUE_SIZE",
+    ) -> None:
+        self._exporter = exporter
+        self._what = what
+        self._size_setting = size_setting
+        self._endpoint, self._secrets = _without_credentials(
+            os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"]
+        )
+        self._failing = False
+        self._warned_of_drops = False
+        # The replay's exporter logs to the same loggers from its own thread.
+        self._thread = threading.local()
+        self.queue_size = (
+            queue_size or BatchSpanProcessor._default_max_queue_size()
+        )
+        self.queue = _CountingQueue(self.queue_size)
+        for name in _EXPORT_ERROR_LOGGERS:
+            logging.getLogger(name).addFilter(self._keep_error)
+
+    def _keep_error(self, record: logging.LogRecord) -> bool:
+        self._thread.error = record.getMessage()
+        return True
+
+    def _redact(self, text: str | None) -> str | None:
+        for secret in self._secrets:
+            text = text and text.replace(secret, "<redacted>")
+        return text
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        self._thread.error = None
+        try:
+            result = self._exporter.export(spans)
+        except Exception as e:
+            self._thread.error = f"{type(e).__name__}: {e}"
+            result = SpanExportResult.FAILURE
+        logger = logging.getLogger(__name__)
+        if result is SpanExportResult.SUCCESS:
+            if self._failing:
+                self._failing = False
+                logger.warning(
+                    "Exporting %s to %s recovered.", self._what, self._endpoint
+                )
+        else:
+            if not self._failing:
+                self._failing = True
+                logger.warning(
+                    "Exporting %s to %s failed, and spans are lost until an"
+                    " export succeeds. Error: %s",
+                    self._what,
+                    self._endpoint,
+                    self._redact(self._thread.error),
+                )
+        if self.queue.dropped and not self._warned_of_drops:
+            self._warned_of_drops = True
+            logger.warning(
+                "The queue of %s for %s is full and has dropped %d so far;"
+                " raise %s (%d) or check that the collector keeps up.",
+                self._what,
+                self._endpoint,
+                self.queue.dropped,
+                self._size_setting,
+                self.queue_size,
+            )
+        return result
+
+    def shutdown(self) -> None:
+        for name in _EXPORT_ERROR_LOGGERS:
+            logging.getLogger(name).removeFilter(self._keep_error)
+        self._exporter.shutdown()
+
+
+class _CountingSpanProcessor(BatchSpanProcessor):
+    """Queues spans in :class:`_ReportingSpanExporter`'s counting queue."""
+
+    def __init__(self, exporter: _ReportingSpanExporter) -> None:
+        super().__init__(exporter, max_queue_size=exporter.queue_size)
+        self._batch_processor._queue = exporter.queue
+
+
 def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
     """Installs the process's tracer provider if it is to export spans.
 
@@ -863,8 +1013,8 @@ def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
                 else None
             ),
         )
-        exporter = _span_exporter()
-        provider.add_span_processor(BatchSpanProcessor(exporter))
+        exporter = _ReportingSpanExporter(_span_exporter())
+        provider.add_span_processor(_CountingSpanProcessor(exporter))
         set_tracer_provider(provider)
         _trace_level_header_enabled = settings.kernel_trace_headers
 

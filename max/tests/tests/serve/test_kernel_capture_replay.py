@@ -37,10 +37,7 @@ from max.serve.telemetry._kernel_capture import (
 )
 from max.serve.telemetry._trace_context import RequestTraceLevel
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
-from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    SimpleSpanProcessor,
-)
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -397,22 +394,20 @@ def test_replay_queue_holds_the_span_cap(
 ) -> None:
     """The queue holds the span cap, but no fewer spans than the SDK's
     512-span export batch, since the SDK rejects a queue smaller than its
-    batch."""
-    sizes: list[int] = []
-
-    def processor(
-        exporter: InMemorySpanExporter, max_queue_size: int
-    ) -> BatchSpanProcessor:
-        sizes.append(max_queue_size)
-        return BatchSpanProcessor(exporter, max_queue_size=max_queue_size)
-
+    batch. Its exports warn on failure and on drops, as the main
+    exporter's do."""
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://agent:4318"
+    )
     monkeypatch.setattr(_kernel_capture, "_replay_provider", None)
     monkeypatch.setattr(_kernel_capture, "_span_exporter", InMemorySpanExporter)
-    monkeypatch.setattr(_kernel_capture, "BatchSpanProcessor", processor)
     _kernel_capture._replay_tracer(max_spans)
-    assert _kernel_capture._replay_provider is not None
-    _kernel_capture._replay_provider.shutdown()
-    assert sizes == [queue_size]
+    provider = _kernel_capture._replay_provider
+    assert provider is not None
+    [processor] = provider._active_span_processor._span_processors
+    provider.shutdown()
+    assert isinstance(processor, _kernel_capture._CountingSpanProcessor)
+    assert processor._batch_processor._queue.maxlen == queue_size
 
 
 def test_capture_thread_replays_after_a_successful_stop(

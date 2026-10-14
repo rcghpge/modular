@@ -42,9 +42,13 @@ from max.serve.telemetry._trace_context import (
     TRACE_LEVEL_HEADER,
     RequestTraceLevel,
 )
-from max.serve.telemetry.common import _span_exporter, logs_resource
+from max.serve.telemetry.common import (
+    _CountingSpanProcessor,
+    _ReportingSpanExporter,
+    _span_exporter,
+    logs_resource,
+)
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import (
     NonRecordingSpan,
     Span,
@@ -412,9 +416,13 @@ def _replay_tracer(max_spans: int) -> Tracer:
     if _replay_provider is None:
         _replay_provider = TracerProvider(resource=logs_resource)
         _replay_provider.add_span_processor(
-            BatchSpanProcessor(
-                _span_exporter(),
-                max_queue_size=max(max_spans, _SDK_EXPORT_BATCH_SIZE),
+            _CountingSpanProcessor(
+                _ReportingSpanExporter(
+                    _span_exporter(),
+                    "kernel replay spans",
+                    max(max_spans, _SDK_EXPORT_BATCH_SIZE),
+                    "kernel_trace_max_spans",
+                )
             )
         )
     return _replay_provider.get_tracer("max.serve.kernel_replay")
