@@ -4273,10 +4273,13 @@ struct RopeRaggedSplitConcatPattern
 // Into:
 //   %out = mo.matmul_add(%a, %b, %residual) {transpose_b = ...}
 //
-// Only a 1D bias is fused: the addend must be a rank-1 tensor broadcast to the
-// matmul's [M, N] output (`add(matmul, broadcast(bias_1d))`). A full rank-2
-// residual is left as a separate `mo.add`. The fused op is GPU-only and
-// requires a single consumer for the matmul result.
+// The addend is either a rank-1 bias broadcast to the matmul's [M, N] output
+// (`add(matmul, broadcast(bias_1d))`), which is fused unbroadcast, or a full
+// rank-2 residual, which is fused as-is. A biased linear followed by a residual
+// (`add(add(matmul, bias), residual)`) also matches: the composite op carries a
+// single addend, so the bias is reassociated into the residual as one
+// elementwise add. The fused op is GPU-only and requires a single consumer for
+// the matmul result.
 //
 //===----------------------------------------------------------------------===//
 
@@ -4302,6 +4305,62 @@ private:
       return nullptr;
 
     reshapeOp = reshape;
+    return matmulOp;
+  }
+
+  // What a matched bias add contributes: the addend to fold into the residual,
+  // plus the ops the fold consumes, which the caller registers with `addOps`.
+  struct BiasFold {
+    Value addend;
+    Operation *add = nullptr;
+    Operation *reshape = nullptr;
+  };
+
+  // Matches `add(matmul, inner)` feeding this add, so that
+  // `add(add(matmul, bias), residual)` -- a `Linear(bias=True)` followed by a
+  // residual -- can still fuse. The composite op carries one addend, so the
+  // caller folds the bias into the residual with a single elementwise add,
+  // which is far cheaper than leaving the matmul on the generic closure
+  // epilogue.
+  static MO::MatmulOp matchMatmulThroughAdd(Value val,
+                                            MO::Static::ReshapeOp &reshapeOp,
+                                            BiasFold &fold) {
+    // Built locally and published only on a match, so a failed attempt on one
+    // operand leaves nothing behind for the attempt on the other.
+    BiasFold candidate;
+
+    // The rank-2 bias add is reshaped back to the matmul's logical rank before
+    // the residual add, so peel that reshape before looking for the add.
+    MO::Static::ReshapeOp outerReshape;
+    if (auto reshape = val.getDefiningOp<MO::Static::ReshapeOp>()) {
+      if (!reshape.getResult().hasOneUse())
+        return nullptr;
+      outerReshape = reshape;
+      candidate.reshape = reshape;
+      val = reshape.getInput();
+    }
+
+    auto innerAdd = val.getDefiningOp<MO::AddOp>();
+    if (!innerAdd || !innerAdd.getResult().hasOneUse())
+      return nullptr;
+
+    MO::Static::ReshapeOp innerReshape;
+    MO::MatmulOp matmulOp;
+    if ((matmulOp = matchMatmulOp(innerAdd.getInputX(), innerReshape))) {
+      candidate.addend = innerAdd.getInputY();
+    } else if ((matmulOp = matchMatmulOp(innerAdd.getInputY(), innerReshape))) {
+      candidate.addend = innerAdd.getInputX();
+    } else {
+      return nullptr;
+    }
+
+    // One reshape is rewritten around the fused op; two would need a pair.
+    if (outerReshape && innerReshape)
+      return nullptr;
+
+    reshapeOp = outerReshape ? outerReshape : innerReshape;
+    candidate.add = innerAdd;
+    fold = candidate;
     return matmulOp;
   }
 
@@ -4391,9 +4450,16 @@ private:
     MO::MatmulOp matmulOp;
     Value residual;
 
+    // Set when an intervening bias add is folded into the residual below.
+    BiasFold fold;
+
     if ((matmulOp = matchMatmulOp(lhs, reshapeOp))) {
       residual = rhs;
     } else if ((matmulOp = matchMatmulOp(rhs, reshapeOp))) {
+      residual = lhs;
+    } else if ((matmulOp = matchMatmulThroughAdd(lhs, reshapeOp, fold))) {
+      residual = rhs;
+    } else if ((matmulOp = matchMatmulThroughAdd(rhs, reshapeOp, fold))) {
       residual = lhs;
     } else {
       return rewriter.notifyMatchFailure(addOp,
@@ -4408,17 +4474,13 @@ private:
     if (failed(checkKernelConstraints(matmulOp, addOp, rewriter)))
       return failure();
 
-    // Only fuse a 1D bias (`matmul + broadcast(bias_1d)`).
-    // TODO: Enable fusion of a full 2D residual
-    bool is1DBias = false;
+    // A rank-1 bias is passed through unbroadcast so the kernel takes its 1D
+    // epilogue path; a full rank-2 residual is passed as-is. A folded addend
+    // keeps its broadcast, since it becomes an operand of a plain add.
     if (auto broadcastOp = residual.getDefiningOp<MO::Static::BroadcastToOp>();
-        broadcastOp && !reshapeOp && is1DTo2DBroadcast(broadcastOp)) {
+        broadcastOp && !reshapeOp && !fold.addend &&
+        is1DTo2DBroadcast(broadcastOp)) {
       residual = broadcastOp.getInput();
-      is1DBias = true;
-    }
-    if (!is1DBias) {
-      return rewriter.notifyMatchFailure(
-          addOp, "fused_matmul_add only fuses a 1D bias, not a 2D residual");
     }
 
     if (wouldBlockPrologueFusion(residual)) {
@@ -4426,7 +4488,16 @@ private:
           addOp, "residual cannot be an elementwise op");
     }
 
-    if (!rewriter.addOps({matmulOp})) {
+    // The fold is emitted at the matmul's own result type, after the residual
+    // has been reshaped to it: the bias broadcast is rank 2 while the residual
+    // is the block's rank-3 activation.
+    if (fold.addend &&
+        fold.addend.getType() != matmulOp.getResult().getType()) {
+      return rewriter.notifyMatchFailure(
+          addOp, "bias type does not match the matmul result, cannot fold");
+    }
+
+    if (!rewriter.addOps({matmulOp, fold.add, fold.reshape})) {
       return rewriter.notifyMatchFailure(
           addOp, "matched ops have inconsistent devices");
     }
@@ -4434,6 +4505,14 @@ private:
     if (reshapeOp) {
       residual = rewriter.create<MO::Static::ReshapeOp>(
           residual.getLoc(), matmulOp.getResult().getType(), residual);
+    }
+
+    // `(matmul + bias) + residual` is rewritten as `matmul + (bias + residual)`
+    // so the single-addend composite op can take it. The reassociation rounds
+    // differently in bf16, within the tolerance the epilogue already carries.
+    if (fold.addend) {
+      residual = rewriter.create<MO::AddOp>(addOp.getLoc(), residual.getType(),
+                                            residual, fold.addend);
     }
 
     Value newOutput = rewriter.create<MO::Composite::FusedMatmulAddOp>(
