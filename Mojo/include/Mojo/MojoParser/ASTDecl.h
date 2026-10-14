@@ -25,11 +25,11 @@
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
 
 namespace M::KGEN {
+class ConformanceOp;
 class ConstraintAttr;
 class ParamDeclRefAttr;
 } // end namespace M::KGEN
@@ -38,13 +38,18 @@ namespace M::KGEN::LIT {
 class ASTDecl;
 class AliasASTDecl;
 class AliasDeclOp;
+class ConformanceASTDecl;
 class DeclResolver;
+class EnumCaseASTDecl;
+class EnumCaseOp;
 class ExtensionASTDecl;
 class ExtensionDeclOp;
 class DefASTDecl;
 class Lexer;
 class StructASTDecl;
 class StructDeclOp;
+class StructFieldASTDecl;
+class StructFieldOp;
 class TraitASTDecl;
 class WitnessASTDecl;
 class StructType;
@@ -88,16 +93,19 @@ public:
   enum class Kind : uint8_t {
     Base,
     Alias,
+    Conformance,
     Extension,
     Def,
+    EnumCase,
     Struct,
+    StructField,
     Trait,
     Witness,
   };
 
   virtual ~ASTDecl();
 
-  Kind getKind() const { return parentDeclAndKind.getInt(); }
+  Kind getKind() const { return static_cast<Kind>(kind); }
 
   /// Resolve this source declaration's signature.
   virtual LogicalResult resolveSignature(Lexer &lexer);
@@ -148,7 +156,7 @@ public:
   void setLoc(llvm::SMLoc newLoc) { loc = newLoc; }
   LLVM_ATTRIBUTE_ALWAYS_INLINE LLVM_ATTRIBUTE_NODEBUG ASTDecl *
   getParentDecl() const {
-    return parentDeclAndKind.getPointer();
+    return parentDecl;
   }
 
   /// Get the nearest decl backed by one of the given operations. This can
@@ -384,9 +392,9 @@ private:
   ASTDecl &operator=(const ASTDecl &) = delete;
 
 protected:
-  ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue, llvm::SMLoc loc,
-          ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
-          ssize_t indentation);
+  ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
+          llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
+          LexerCursor endCursor, ssize_t indentation);
 
   /// The Mojo shared state this decl is associated with.
   SharedState &shared;
@@ -400,9 +408,8 @@ private:
   /// debug information.
   llvm::SMLoc loc;
 
-  /// The parent scope that should continue name lookup, plus the declaration
-  /// kind in the pointer's low bits.
-  llvm::PointerIntPair<ASTDecl *, 3, Kind> parentDeclAndKind;
+  /// The parent scope that should continue name lookup.
+  ASTDecl *parentDecl;
 
   /// This is the cursor that points to the next part of declaration to continue
   /// parsing as the declaration is progressively resolved.
@@ -417,6 +424,9 @@ private:
   /// parsing the body of the declaration.  If the declaration was not at the
   /// start of a line or this is the top level module, then this is set to -1.
   ssize_t indentation;
+
+  /// The kind of the ASTDecl subclass, tested with isa/dyn_cast etc.
+  const uint8_t kind;
 
 public:
   /// This keeps track of what level of type checking this declaration has been
@@ -667,6 +677,73 @@ private:
   AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp, llvm::SMLoc loc,
                ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
                ssize_t indentation);
+};
+
+/// The AST representation of a trait conformance declaration.
+class ConformanceASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Conformance;
+  }
+
+  ConformanceOp getOp() const;
+  StructASTDecl &getStructDecl() const;
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  LogicalResult resolveConformance();
+
+  ConformanceASTDecl(SharedState &shared, ConformanceOp conformanceOp,
+                     llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
+                     LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of an enum case declaration.
+class EnumCaseASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::EnumCase;
+  }
+
+  EnumCaseOp getOp() const;
+  StructASTDecl &getEnumDecl() const;
+  LogicalResult
+  resolveAndCheckRedefinition(EnumCaseASTDecl *previousDefinition);
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  EnumCaseASTDecl(SharedState &shared, EnumCaseOp caseOp, llvm::SMLoc loc,
+                  ASTDecl *parentDecl, LexerCursor cursor,
+                  LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of a stored struct field declaration.
+class StructFieldASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::StructField;
+  }
+
+  StructFieldOp getOp() const;
+  StructASTDecl &getStructDecl() const;
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  StructFieldASTDecl(SharedState &shared, StructFieldOp fieldOp,
+                     llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
+                     LexerCursor endCursor, ssize_t indentation);
 };
 
 /// A synthesized declaration for a member inherited through trait composition.

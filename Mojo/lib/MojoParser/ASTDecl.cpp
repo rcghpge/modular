@@ -32,12 +32,13 @@ ASTDecl::ASTDecl(SharedState &shared, DeclIRValue irValue, llvm::SMLoc loc,
     : ASTDecl(Kind::Base, shared, std::move(irValue), loc, parentDecl, cursor,
               endCursor, indentation) {}
 
-ASTDecl::ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue,
+ASTDecl::ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
                  llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                  LexerCursor endCursor, ssize_t indentation)
     : shared(shared), irValue(std::move(irValue)), loc(loc),
-      parentDeclAndKind(parentDecl, kind), cursor(cursor),
-      endCursorState(endCursor.getState()), indentation(indentation) {
+      parentDecl(parentDecl), cursor(cursor),
+      endCursorState(endCursor.getState()), indentation(indentation),
+      kind(static_cast<unsigned char>(declKind)) {
   resolvedness = DeclResolvedness::unparsed;
   referencedFromBytecode = false;
   hasReferenceError = false;
@@ -116,6 +117,50 @@ AliasDeclOp AliasASTDecl::getOp() const {
   return cast<AliasDeclOp>(getIfOperation());
 }
 
+ConformanceASTDecl::ConformanceASTDecl(SharedState &shared,
+                                       ConformanceOp conformanceOp,
+                                       llvm::SMLoc loc, ASTDecl *parentDecl,
+                                       LexerCursor cursor,
+                                       LexerCursor endCursor,
+                                       ssize_t indentation)
+    : ASTDecl(Kind::Conformance, shared, conformanceOp.getOperation(), loc,
+              parentDecl, cursor, endCursor, indentation) {}
+
+ConformanceOp ConformanceASTDecl::getOp() const {
+  return cast<ConformanceOp>(getIfOperation());
+}
+
+EnumCaseASTDecl::EnumCaseASTDecl(SharedState &shared, EnumCaseOp caseOp,
+                                 llvm::SMLoc loc, ASTDecl *parentDecl,
+                                 LexerCursor cursor, LexerCursor endCursor,
+                                 ssize_t indentation)
+    : ASTDecl(Kind::EnumCase, shared, caseOp.getOperation(), loc, parentDecl,
+              cursor, endCursor, indentation) {}
+
+EnumCaseOp EnumCaseASTDecl::getOp() const {
+  return cast<EnumCaseOp>(getIfOperation());
+}
+
+StructASTDecl &EnumCaseASTDecl::getEnumDecl() const {
+  return cast<StructASTDecl>(*getParentDecl());
+}
+
+StructFieldASTDecl::StructFieldASTDecl(SharedState &shared,
+                                       StructFieldOp fieldOp, llvm::SMLoc loc,
+                                       ASTDecl *parentDecl, LexerCursor cursor,
+                                       LexerCursor endCursor,
+                                       ssize_t indentation)
+    : ASTDecl(Kind::StructField, shared, fieldOp.getOperation(), loc,
+              parentDecl, cursor, endCursor, indentation) {}
+
+StructFieldOp StructFieldASTDecl::getOp() const {
+  return cast<StructFieldOp>(getIfOperation());
+}
+
+StructASTDecl &StructFieldASTDecl::getStructDecl() const {
+  return cast<StructASTDecl>(*getParentDecl());
+}
+
 WitnessASTDecl::WitnessASTDecl(SharedState &shared,
                                UnresolvedDecls unresolvedDecls,
                                TraitSymbolAttr traitSymbol, llvm::SMLoc loc,
@@ -128,10 +173,6 @@ WitnessASTDecl::WitnessASTDecl(SharedState &shared,
 LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
   auto &resolver = shared.getDeclResolver();
   if (Operation *op = getIfOperation()) {
-    if (auto fieldOp = dyn_cast<StructFieldOp>(op))
-      return resolver.resolveSignature(fieldOp, lexer, *this);
-    if (auto caseOp = dyn_cast<EnumCaseOp>(op))
-      return resolver.resolveSignature(caseOp, lexer, *this);
     if (auto importOp = dyn_cast<UnresolvedImportOp>(op))
       return success(!failed(resolver.resolveSignature(importOp, *this)));
     if (isa<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
@@ -169,16 +210,12 @@ LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
   if (Operation *op = getIfOperation()) {
     if (auto fileModuleOp = dyn_cast<LIT::FileModuleOp>(op))
       return success(!failed(resolver.resolveBody(fileModuleOp, lexer, *this)));
-    if (auto fieldOp = dyn_cast<StructFieldOp>(op))
-      return success(!failed(resolver.resolveBody(fieldOp, lexer, *this)));
-    if (auto conformanceOp = dyn_cast<ConformanceOp>(op))
-      return success(!failed(resolver.resolveBody(conformanceOp, *this)));
     if (auto packageOp = dyn_cast<PackageOp>(op)) {
       (void)resolver.resolveBody(packageOp, *this);
       return success();
     }
-    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp,
-            EnumCaseOp>(op))
+    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp>(
+            op))
       return success();
     llvm_unreachable("do not know how to resolve this decl body");
   }
@@ -192,8 +229,6 @@ LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
 LogicalResult ASTDecl::resolveSyntheticBody() {
   auto &resolver = shared.getDeclResolver();
   if (Operation *op = getIfOperation()) {
-    if (auto conformanceOp = dyn_cast<ConformanceOp>(op))
-      return success(!failed(resolver.resolveBody(conformanceOp, *this)));
     if (auto packageOp = dyn_cast<PackageOp>(op)) {
       (void)resolver.resolveBody(packageOp, *this);
       return success();
@@ -355,7 +390,7 @@ void ASTDecl::takeDecls(ASTDecl &src) {
     setErroneous();
   for (auto &[name, children] : src.getDeclsInScope())
     for (ASTDecl *child : children)
-      child->parentDeclAndKind.setPointer(this);
+      child->parentDecl = this;
   declsInScope = std::move(src.declsInScope);
   counter = src.counter;
   assert(!knownAssumptions && "assumptions should be empty before overwriting");
@@ -375,7 +410,7 @@ void ASTDecl::mergeDeclsFrom(ASTDecl &src) {
   for (auto &[name, children] : *src.declsInScope) {
     TinyPtrVector<ASTDecl *> &entries = (*declsInScope)[name];
     for (ASTDecl *child : children) {
-      child->parentDeclAndKind.setPointer(this);
+      child->parentDecl = this;
       entries.push_back(child);
     }
   }

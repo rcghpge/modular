@@ -166,9 +166,18 @@ ASTDecl &DeclResolver::createUnlistedDecl(DeclIRValue irValue, SMLoc loc,
   } else if (auto aliasOp = dyn_cast_if_present<AliasDeclOp>(op)) {
     decl = shared.persistentAllocator.create<AliasASTDecl>(
         shared, aliasOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto conformanceOp = dyn_cast_if_present<ConformanceOp>(op)) {
+    decl = shared.persistentAllocator.create<ConformanceASTDecl>(
+        shared, conformanceOp, loc, parentDecl, cursor, endCursor, indentation);
   } else if (auto fnOp = dyn_cast_if_present<FnOp>(op)) {
     decl = shared.persistentAllocator.create<DefASTDecl>(
         shared, fnOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto caseOp = dyn_cast_if_present<EnumCaseOp>(op)) {
+    decl = shared.persistentAllocator.create<EnumCaseASTDecl>(
+        shared, caseOp, loc, parentDecl, cursor, endCursor, indentation);
+  } else if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
+    decl = shared.persistentAllocator.create<StructFieldASTDecl>(
+        shared, fieldOp, loc, parentDecl, cursor, endCursor, indentation);
   } else {
     decl = shared.persistentAllocator.create<ASTDecl>(
         shared, irValue, loc, parentDecl, cursor, endCursor, indentation);

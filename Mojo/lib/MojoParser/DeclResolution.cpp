@@ -532,9 +532,8 @@ void Decorators::applySignatureDecorators(
 
 namespace {
 struct StructDecorators : public SharedStateUser {
-  StructDecorators(StructDeclOp structOp, ASTDecl &structDecl,
-                   DeclResolver &resolver)
-      : SharedStateUser(resolver.shared), structOp(structOp),
+  explicit StructDecorators(StructASTDecl &structDecl)
+      : SharedStateUser(structDecl.getShared()), structOp(structDecl.getOp()),
         structDecl(structDecl) {}
 
   /// Return true if `decorator` is `@__annotation`, in either the bare or the
@@ -567,7 +566,7 @@ private:
   void applyAnnotationDecorator(const CallNode *callNode, OpTy op);
 
   StructDeclOp structOp;
-  ASTDecl &structDecl;
+  StructASTDecl &structDecl;
 };
 } // namespace
 
@@ -3813,8 +3812,8 @@ static bool conformancePrecluded(ArrayRef<TypedAttr> bodyPropositions,
 // when the struct does not conform to the trait at all (including if the
 // conformance condition is precluded by the struct's own body constraints).
 static std::optional<ConstraintAttr>
-getConformanceCondition(ASTDecl &structDecl, StringRef traitName) {
-  StructDeclOp structOp = cast<StructDeclOp>(structDecl.getIfOperation());
+getConformanceCondition(StructASTDecl &structDecl, StringRef traitName) {
+  StructDeclOp structOp = structDecl.getOp();
   TraitType canonicalTrait = structOp.getCanonicalTrait();
   ArrayRef<TraitSymbolAttr> symbols = canonicalTrait.getSymbols();
   ArrayRef<ConstraintAttr> constraints = canonicalTrait.getConstraints();
@@ -4165,7 +4164,7 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
 /// Look up a special method impl for the specified `type` when there is exactly
 /// one implementation (not overloaded).  This returns the method if successful,
 /// and returns null if there is none.
-static FnOp lookupSpecialInit(ASTDecl &structDecl,
+static FnOp lookupSpecialInit(StructASTDecl &structDecl,
                               SpecialFunctionKind specialKind) {
   auto &shared = structDecl.getShared();
   LookupResult inits =
@@ -4189,7 +4188,7 @@ static FnOp lookupSpecialInit(ASTDecl &structDecl,
 
 /// Look at the initializers of the specified struct to see if there is already
 /// a fieldwise init.  If so, return it, otherwise return null.
-static FnOp findFieldwiseInit(ASTDecl &structDecl) {
+static FnOp findFieldwiseInit(StructASTDecl &structDecl) {
   auto &shared = structDecl.getShared();
 
   LookupResult inits =
@@ -4198,7 +4197,7 @@ static FnOp findFieldwiseInit(ASTDecl &structDecl) {
   if (inits.isErroneous())
     return {};
 
-  auto structOp = cast_or_null<StructDeclOp>(structDecl.getIfOperation());
+  StructDeclOp structOp = structDecl.getOp();
   unsigned numFields = std::distance(structOp.getFieldDecls().begin(),
                                      structOp.getFieldDecls().end());
   for (ASTDecl *declaration : inits.getIfSuccess()) {
@@ -4253,31 +4252,29 @@ static FnOp findFieldwiseInit(ASTDecl &structDecl) {
 void StructDecorators::processFieldwiseInitDecorator(SMLoc decoratorLoc,
                                                      bool isImplicit) {
   // An enum's only field is its hidden storage.
-  if (cast<StructDeclOp>(structDecl.getIfOperation()).isEnum()) {
+  if (structOp.isEnum()) {
     emitError(decoratorLoc, "'@fieldwise_init' cannot be applied to an enum");
     return;
   }
 
   // Don't add one if we already have one.
   if (FnOp init = findFieldwiseInit(structDecl)) {
-    auto diag =
-        emitError(decoratorLoc, "'")
-        << cast_or_null<StructDeclOp>(structDecl.getIfOperation()).getSymName()
-        << "' has an explicitly declared fieldwise initializer";
+    auto diag = emitError(decoratorLoc, "'")
+                << structOp.getSymName()
+                << "' has an explicitly declared fieldwise initializer";
     diag.attachNote(init.getLoc()) << "initializer declared here";
     return;
   }
 
   // Generate the fieldwise init.
-  StructEmitter structEmitter(cast<StructASTDecl>(structDecl));
+  StructEmitter structEmitter(structDecl);
   auto fn = structEmitter.synthesizeFieldwiseInit();
   if (!fn)
     return;
 
   // If "implicit", check for validity and set the bit.
   if (isImplicit) {
-    auto fieldsRange =
-        cast_or_null<StructDeclOp>(structDecl.getIfOperation()).getFieldDecls();
+    auto fieldsRange = structOp.getFieldDecls();
     if (std::distance(fieldsRange.begin(), fieldsRange.end()) != 1) {
       emitError(decoratorLoc,
                 "@fieldwise_init(\"implicit\") is only valid on structs "
@@ -4330,13 +4327,15 @@ LogicalResult StructDecorators::processBodyDecorator(ExprNode *decorator) {
 
 /// Process the RegisterPassable decorator on structs.  This finalizes
 /// semantic checks.
-static void processRegisterPassableDecorator(
-    StructDeclOp structOp, ASTDecl &structDecl,
-    ArrayRef<std::pair<StructFieldOp, ASTDecl *>> structFields,
-    DeclResolver &resolver, TypeConvention structPassability) {
-
+static void
+processRegisterPassableDecorator(StructASTDecl &structDecl,
+                                 ArrayRef<StructFieldASTDecl *> structFields,
+                                 TypeConvention structPassability) {
+  StructDeclOp structOp = structDecl.getOp();
+  SharedState &shared = structDecl.getShared();
   bool isTrivial = structPassability == TypeConvention::RegisterPassableTrivial;
-  for (auto [fieldOp, fieldDecl] : structFields) {
+  for (StructFieldASTDecl *fieldDecl : structFields) {
+    StructFieldOp fieldOp = fieldDecl->getOp();
     ASTType fieldType = fieldOp.getType();
 
     // Register-passable structs may only contain register-passable stored
@@ -4348,14 +4347,14 @@ static void processRegisterPassableDecorator(
 
     // If the field is at least as register-passable as the container then
     // we're happy.
-    if (fieldType.getRegisterPassability(fieldDecl->getLoc(), resolver.shared) <
+    if (fieldType.getRegisterPassability(fieldDecl->getLoc(), shared) <
         structPassability) {
       StringRef trivialPrefix;
       if (isTrivial) {
         trivialPrefix = "Trivial";
       }
 
-      auto diag = structDecl.getShared().emitError(structOp.getLoc())
+      auto diag = shared.emitError(structOp.getLoc())
                   << "all members of '" << trivialPrefix
                   << "RegisterPassable' struct must themselves be '"
                   << trivialPrefix << "RegisterPassable'";
@@ -4365,34 +4364,28 @@ static void processRegisterPassableDecorator(
       // We cannot support IRGen'ing references to this type, since it will
       // break invariant about being register passable without being composed
       // of such types.
-      fieldDecl->getParentDecl()->setErroneous();
+      structDecl.setErroneous();
       return;
     }
   }
 }
 
-LogicalResult DeclResolver::resolveEnumCase(
-    ASTDecl &caseDecl,
-    llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> &firstByName) {
-  // Cases are not in the enum's name table, so duplicates are found here,
-  // before the case's line is re-read: a duplicate's payload types are never
-  // resolved.
-  auto caseOp = cast<EnumCaseOp>(caseDecl.getIfOperation());
-  auto [previous, inserted] =
-      firstByName.try_emplace(caseOp.getNameAttr(), &caseDecl);
-  if (!inserted) {
-    auto diag = emitError(caseDecl.getLoc())
+LogicalResult EnumCaseASTDecl::resolveAndCheckRedefinition(
+    EnumCaseASTDecl *previousDefinition) {
+  if (previousDefinition) {
+    EnumCaseOp caseOp = getOp();
+    auto diag = shared.emitError(getLoc())
                 << "invalid redefinition of '" << caseOp.getName() << "'";
-    diag.attachNote(previous->second->getLoc()) << "previous definition here";
+    diag.attachNote(previousDefinition->getLoc()) << "previous definition here";
     // Leave the decl as `resolve` leaves a malformed case, so that nothing
     // resolves it.
     caseOp.erase();
-    caseDecl.setIRValue(std::nullopt);
-    caseDecl.setErroneous();
-    caseDecl.resolvedness = DeclResolvedness::body;
+    setIRValue(std::nullopt);
+    setErroneous();
+    resolvedness = DeclResolvedness::body;
     return failure();
   }
-  return resolveSignature(caseDecl, caseDecl.getLoc());
+  return shared.getDeclResolver().resolveSignature(*this, getLoc());
 }
 
 LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
@@ -4420,13 +4413,13 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
 
   // An enum's cases are unlisted, so collect them from the decls the body
   // created.
-  SmallVector<ASTDecl *> caseDecls;
+  SmallVector<EnumCaseASTDecl *> caseDecls;
   if (structOp.isEnum())
     for (ASTDecl *decl :
          ArrayRef(resolver.parsedDeclList).drop_front(firstBodyDecl))
-      if (decl->getParentDecl() == this &&
-          isa_and_nonnull<EnumCaseOp>(decl->getIfOperation()))
-        caseDecls.push_back(decl);
+      if (decl->getParentDecl() == this)
+        if (auto *caseDecl = dyn_cast<EnumCaseASTDecl>(decl))
+          caseDecls.push_back(caseDecl);
 
   // At this point, we have to mark the struct as body resolved... for very
   // unfortunate reasons. The issue is that we need nested declarations (e.g.
@@ -4447,15 +4440,19 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
   // This collects all the resolved struct fields. Now that the body is
   // parsed we can check the declared fields for extra invariants.
   bool hasBadMember = false;
-  SmallVector<std::pair<StructFieldOp, ASTDecl *>> structFields;
+  SmallVector<StructFieldASTDecl *> structFields;
 
   // Resolve an enum's cases first: synthesis adds `__enum_storage`, the
   // enum's only field, so the loop below finds it as it finds a struct's
   // declared fields and collects it into `structFields`.
-  llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> firstCaseByName;
-  for (ASTDecl *caseDecl : caseDecls)
-    if (failed(resolver.resolveEnumCase(*caseDecl, firstCaseByName)))
+  llvm::SmallDenseMap<StringAttr, EnumCaseASTDecl *, 8> firstCaseByName;
+  for (EnumCaseASTDecl *caseDecl : caseDecls) {
+    auto [previous, inserted] =
+        firstCaseByName.try_emplace(caseDecl->getOp().getNameAttr(), caseDecl);
+    if (failed(caseDecl->resolveAndCheckRedefinition(
+            inserted ? nullptr : previous->second)))
       hasBadMember = true;
+  }
   if (structOp.isEnum() && failed(StructEmitter(*this).synthesizeEnumMembers()))
     hasBadMember = true;
 
@@ -4465,15 +4462,13 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
   for (std::pair<StringAttr, TinyPtrVector<ASTDecl *>> decls :
        getDeclsInScope()) {
     for (ASTDecl *decl : decls.second) {
-      auto fieldOp = dyn_cast_or_null<StructFieldOp>(decl->getIfOperation());
-      if (!fieldOp)
-        continue;
-
-      if (failed(resolver.resolveSignature(*decl, decl->getLoc()))) {
-        hasBadMember = true;
-        continue;
+      if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(decl)) {
+        if (failed(resolver.resolveSignature(*decl, decl->getLoc()))) {
+          hasBadMember = true;
+          continue;
+        }
+        structFields.push_back(fieldDecl);
       }
-      structFields.push_back({fieldOp, decl});
     }
   }
 
@@ -4524,7 +4519,7 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
   // checking other decorators.  This ensures that we reject invalid
   // RegisterPassable types before processing them.
   if (structOp.isRegisterPassable())
-    processRegisterPassableDecorator(structOp, *this, structFields, resolver,
+    processRegisterPassableDecorator(*this, structFields,
                                      structOp.getConvention());
 
   // With a bad member, body resolution ends here: for a struct with body
@@ -4537,7 +4532,7 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
   }
 
   // If there are any body decorators, resolve them now.
-  StructDecorators structDecorators(structOp, *this, resolver);
+  StructDecorators structDecorators(*this);
   Decorators(*this).applyBodyDecorators([&](ExprNode *decorator) {
     return structDecorators.processBodyDecorator(decorator);
   });
@@ -4579,8 +4574,8 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
                                     constraints[i])
             : ConformanceOp::create(b, traitSymbol, immediateParents);
     witnessTable.getBody().push_back(new Block());
-    ASTDecl &decl =
-        resolver.addDecl(witnessTable, getLoc(), name, this, {}, {}, -1);
+    auto &decl = cast<ConformanceASTDecl>(
+        resolver.addDecl(witnessTable, getLoc(), name, this, {}, {}, -1));
     decl.resolvedness = DeclResolvedness::signature;
     // Conformances are always created as signature-resolved because there's no
     // less-resolved state for it (see CALROC for more).
@@ -4721,10 +4716,10 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
 /// struct_field_decl_stmt ::= "var" identifier ":" expression
 /// TODO: Support default values?
 ///
-LogicalResult DeclResolver::resolveSignature(StructFieldOp fieldOp,
-                                             Lexer &lexer, ASTDecl &decl) {
+LogicalResult StructFieldASTDecl::resolveSignature(Lexer &lexer) {
+  StructFieldOp fieldOp = getOp();
   ParserBase p(shared, lexer);
-  auto decoratorExprs = p.parseDecorators(decl);
+  auto decoratorExprs = p.parseDecorators(*this);
 
   ASTType type;
   SMLoc identifierLoc;
@@ -4733,12 +4728,12 @@ LogicalResult DeclResolver::resolveSignature(StructFieldOp fieldOp,
   if (p.parseIdentifier("internal error: checked by stmt parser",
                         &identifierLoc) ||
       p.parseToken(Token::colon, "struct field declaration must have a type") ||
-      parseType(p, type, *decl.getParentDecl(), decl.getIndentation(),
+      parseType(p, type, getStructDecl(), getIndentation(),
                 /*allowUnbound=*/false))
     return failure();
 
   if (sugarIsa<TraitType>(type)) {
-    emitError(decl.getLoc())
+    shared.emitError(getLoc())
         << "struct fields do not support trait types; " << type
         << " is a trait, use a concrete type or "
            "compile-time generic";
@@ -4754,9 +4749,7 @@ LogicalResult DeclResolver::resolveSignature(StructFieldOp fieldOp,
   // arbitrary comptime expressions. Those are emitted in the struct's scope,
   // which is already name-lookup ready: resolveBody(StructDeclOp) marks it
   // before resolving any field.
-  ASTDecl &structDecl = *decl.getParentDecl();
-  StructDecorators structDecorators(
-      cast<StructDeclOp>(structDecl.getIfOperation()), structDecl, *this);
+  StructDecorators structDecorators(getStructDecl());
   for (auto &[decorator, _] : decoratorExprs) {
     if (auto *declRef = dyn_cast<DeclRefNode>(decorator)) {
       if (declRef->spelling == "doc_hidden") {
@@ -4776,12 +4769,12 @@ LogicalResult DeclResolver::resolveSignature(StructFieldOp fieldOp,
         << SourceRange(decorator->getRangeStart(), decorator->getRangeEnd());
   }
 
-  shared.notifyListenerOnStructFieldDecl(decl, identifierLoc);
+  shared.notifyListenerOnStructFieldDecl(*this, identifierLoc);
   return success();
 }
 
-ParseResult DeclResolver::resolveBody(StructFieldOp op, Lexer &lexer,
-                                      ASTDecl &decl) {
+LogicalResult StructFieldASTDecl::resolveBody(Lexer &) {
+  StructFieldOp op = getOp();
   // Perform additional semantic analysis of the fields. Erasing an AnyOrigin is
   // not allowed because Mojo won't know that the enclosing struct contains it,
   // and therefore won't do lifetime extension.
@@ -4796,10 +4789,10 @@ ParseResult DeclResolver::resolveBody(StructFieldOp op, Lexer &lexer,
   for (TypedAttr origin :
        shared.cachedOriginFinder.findOriginsIn(getCanonicalType(fieldType))) {
     if (sugarIsa<AnyOriginAttr>(OriginType::stripMutCastAndRebind(origin))) {
-      auto diag = emitError(decl.getLoc())
+      auto diag = shared.emitError(getLoc())
                   << "struct fields cannot expose AnyOrigin in their type; "
                   << op.getNameAttr().getValue() << " has type " << fieldType;
-      diag.attachNote(decl)
+      diag.attachNote(*this)
           << "consider parameterizing enclosing struct with an Origin";
       diag.attachNote(op.getLoc()) << "alternatively, use UntrackedOrigin if "
                                       "lifetime is managed explicitly";
@@ -4816,15 +4809,15 @@ ParseResult DeclResolver::resolveBody(StructFieldOp op, Lexer &lexer,
 /// enum_case ::= "case" identifier ["(" expression ("," expression)* [","] ")"]
 ///
 /// Every other spelling after `case` is reserved and rejected.
-LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
-                                             ASTDecl &decl) {
+LogicalResult EnumCaseASTDecl::resolveSignature(Lexer &lexer) {
+  EnumCaseOp caseOp = getOp();
   ParserBase p(shared, lexer);
-  size_t stmtIndent = decl.getIndentation();
+  size_t stmtIndent = getIndentation();
 
   // A malformed case declares no case.
   auto removeCase = [&] {
     caseOp.erase();
-    decl.setIRValue(std::nullopt);
+    setIRValue(std::nullopt);
     return failure();
   };
   auto rejectCase = [&](SMLoc loc) {
@@ -4867,7 +4860,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
       p.isTokenInCurrentStatement(stmtIndent))
     return rejectCase(p.getToken().getLoc());
 
-  ASTDecl &enumDecl = *decl.getParentDecl();
+  StructASTDecl &enumDecl = getEnumDecl();
 
   // Struct synthesis later generates the following members for every enum, and
   // `__copy_ctor_is_trivial` for a `Copyable` one, but only when no member of
@@ -4880,7 +4873,8 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
     structMemberNames.push_back("__copy_ctor_is_trivial");
   if (llvm::is_contained(structMemberNames,
                          SpecialFunctionInfo::getCanonicalSpelling(caseName))) {
-    emitError(decl.getLoc()) << "invalid redefinition of '" << caseName << "'";
+    shared.emitError(getLoc())
+        << "invalid redefinition of '" << caseName << "'";
     return failure();
   }
   // A case named like a special method that takes `self` is rejected: the
@@ -4889,7 +4883,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
   const SpecialFunctionInfo &specialInfo =
       SpecialFunctionInfo::get(SpecialFunctionInfo::lookupKind(caseName));
   if (specialInfo.isInstMethod() && !specialInfo.isImplicitlyStatic()) {
-    emitError(decl.getLoc())
+    shared.emitError(getLoc())
         << "case '" << caseName
         << "' must not use the name of a special method that takes 'self'; "
            "rename the case";
@@ -4936,7 +4930,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
     if (!type)
       return failure();
     if (sugarIsa<TraitType>(type)) {
-      emitError(typeExpr->getLoc())
+      shared.emitError(typeExpr->getLoc())
           << "enum case payloads do not support trait types; " << type
           << " is a trait, use a concrete type or compile-time generic";
       return failure();
@@ -4945,7 +4939,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
     // `NoneType`, so a case cannot carry one; the marker goes away once every
     // payload is a `Tuple`.
     if (payload.size() == 1 && type.isEqualCanon(noneType)) {
-      emitError(typeExpr->getLoc())
+      shared.emitError(typeExpr->getLoc())
           << "enum case payload must not be 'NoneType'; a case without a "
              "payload is written 'case "
           << caseName << "'" << typeExpr->getRange();
@@ -4953,7 +4947,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
     }
     // The enum occurring as a payload implies an infinite type/layout.
     if (type.getDecl(shared) == &enumDecl) {
-      emitError(typeExpr->getLoc())
+      shared.emitError(typeExpr->getLoc())
           << "case '" << caseName << "' has recursive payload type " << type
           << typeExpr->getRange();
       return failure();
@@ -4963,7 +4957,7 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
                                       assumptions)
               .first.isTrue())
         continue;
-      emitError(typeExpr->getLoc())
+      shared.emitError(typeExpr->getLoc())
           << "case '" << caseName << "' has non-'" << traitName
           << "' payload type " << type << typeExpr->getRange();
       return failure();
@@ -4974,6 +4968,8 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
       OpBuilder(caseOp.getContext()).getTypeArrayAttr(payloadTypes));
   return success();
 }
+
+LogicalResult EnumCaseASTDecl::resolveBody(Lexer &) { return success(); }
 
 //===----------------------------------------------------------------------===//
 // Trait Decl implementation
@@ -5266,7 +5262,7 @@ LogicalResult AliasASTDecl::resolveSyntheticSignature() {
   // (`synthesizeEnumMembers`), hence resolves here, but it is not a trait's
   // default: its value is the case's constructor call.
   if (!inheritedAliasOp.isDefaultedAssociatedAlias() &&
-      cast<StructDeclOp>(structDecl.getIfOperation()).isEnum())
+      structDecl.getOp().isEnum())
     return StructEmitter(structDecl).resolveEnumCaseAlias(*this);
 
   assert(inheritedAliasOp.isDefaultedAssociatedAlias() &&
@@ -5521,8 +5517,8 @@ LogicalResult ExtensionASTDecl::resolveBody(Lexer &lexer) {
       ConformanceOp witnessTable =
           ConformanceOp::create(b, traitSymbol, immediateParents);
       witnessTable.getBody().push_back(new Block());
-      ASTDecl &decl =
-          resolver.addDecl(witnessTable, getLoc(), name, this, {}, {}, -1);
+      auto &decl = cast<ConformanceASTDecl>(
+          resolver.addDecl(witnessTable, getLoc(), name, this, {}, {}, -1));
       decl.resolvedness = DeclResolvedness::signature;
       // Conformances are always created as signature-resolved because there's
       // no less-resolved state for it (see CALROC for more).
@@ -5742,28 +5738,34 @@ ParseResult DeclResolver::resolveBody(TraitType traitType, ASTDecl &traitDecl) {
 // WitnessTable Decl implementation
 //===----------------------------------------------------------------------===//
 
-ParseResult DeclResolver::resolveBody(ConformanceOp op, ASTDecl &decl) {
-  // TODO: Sink this to when the body is actually resolved.
-  decl.resolvedness = DeclResolvedness::body;
+StructASTDecl &ConformanceASTDecl::getStructDecl() const {
+  ASTDecl *structDecl =
+      getStructOrTargetStruct(*getParentDecl(), shared.getDeclResolver());
+  assert(structDecl &&
+         "ConformanceOps are only created inside structs or extensions");
+  return cast<StructASTDecl>(*structDecl);
+}
+
+LogicalResult ConformanceASTDecl::resolveBody(Lexer &) {
+  return resolveConformance();
+}
+
+LogicalResult ConformanceASTDecl::resolveSyntheticBody() {
+  return resolveConformance();
+}
+
+LogicalResult ConformanceASTDecl::resolveConformance() {
+  ConformanceOp op = getOp();
+  resolvedness = DeclResolvedness::body;
 
   if (ConstraintAttr constraint = op.getConstraintAttr())
     if (!isTriviallyTrueConstraint(constraint))
-      decl.insertKnownAssumptions({constraint});
+      insertKnownAssumptions({constraint});
 
   // Verify conformance explicitly.
   std::optional<MojoInflightDiag> diag;
 
-  // For extension conformances, we need to pass the target struct, not the
-  // extension
-  ASTDecl *declToVerify = getStructOrTargetStruct(*decl.getParentDecl(), *this);
-  assert(declToVerify &&
-         "ConformanceOps are only created inside structs or extensions");
-
-  TraitSymbolAttr traitSymbol = op.getTraitSymbolAttr();
-  assert(traitSymbol && "conformance bodies are resolved before `lower-lit` "
-                        "erases the trait reference");
-  if (failed(verifyAndBuildConformance(cast<StructASTDecl>(*declToVerify),
-                                       traitSymbol, diag, op, decl)))
+  if (failed(verifyAndBuildConformance(*this, diag)))
     return failure();
 
   return success();

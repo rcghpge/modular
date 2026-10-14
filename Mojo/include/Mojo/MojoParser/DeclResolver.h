@@ -29,7 +29,6 @@
 
 namespace M::KGEN {
 class ParamDeclAttr;
-class ConformanceOp;
 class StructGeneratorOp;
 enum class PassingKind : uint32_t;
 } // namespace M::KGEN
@@ -404,6 +403,7 @@ private:
   friend class DefASTDecl;
   friend class ExtensionASTDecl;
   friend class StructASTDecl;
+  friend class StructFieldASTDecl;
   friend class TraitASTDecl;
   friend class WitnessASTDecl;
 
@@ -424,18 +424,8 @@ private:
   ParseResult resolveSignature(LIT::UnresolvedImportOp op, ASTDecl &decl,
                                bool resolveTarget = true);
 
-  /// Resolve one case of an enum. `firstByName` maps each case name resolved
-  /// so far to its case; a repeated name is reported and the case removed.
-  LogicalResult
-  resolveEnumCase(ASTDecl &caseDecl,
-                  llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> &firstByName);
-  LogicalResult resolveSignature(EnumCaseOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);
-
-  ParseResult resolveBody(ConformanceOp op, ASTDecl &decl);
 
   /// This map tracks the ASTDecl for every MLIR type declaration with a symbol.
   /// This does not include functions, only things that may be referred to by a

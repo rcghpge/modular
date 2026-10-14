@@ -1670,7 +1670,7 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
             // Witness tables are considered signature-resolved from the start
             // since there's nothing else to resolve for its "signature". (see
             // CALROC for more).
-            ASTDecl &decl =
+            auto &decl =
                 addDeclForOp(op, op.getTraitSymbol().getFlattenedName());
             decl.resolvedness = DeclResolvedness::signature;
           })

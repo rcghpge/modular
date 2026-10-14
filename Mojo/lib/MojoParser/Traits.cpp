@@ -386,10 +386,13 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 }
 
 LogicalResult
-LIT::verifyAndBuildConformance(StructASTDecl &structDecl,
-                               TraitSymbolAttr parent,
-                               std::optional<MojoInflightDiag> &diag,
-                               ConformanceOp op, ASTDecl &conformanceDecl) {
+LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
+                               std::optional<MojoInflightDiag> &diag) {
+  StructASTDecl &structDecl = conformanceDecl.getStructDecl();
+  ConformanceOp op = conformanceDecl.getOp();
+  TraitSymbolAttr parent = op.getTraitSymbolAttr();
+  assert(parent && "conformance bodies are resolved before `lower-lit` erases "
+                   "the trait reference");
   // If the conformance table already has witnesses, it was pre-built (e.g., for
   // closure wrappers). Skip verification since conformance is already complete.
   if (!op.getBody().front().empty())
