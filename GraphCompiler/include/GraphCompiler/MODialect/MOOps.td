@@ -41,6 +41,16 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 class MO_Op<string mnemonic, list<Trait> traits = []> :
   Op<MODialect, mnemonic, [MO_BufferOpConformance] # traits>;
 
+// A compile-time f32 scalar, stored as a rank-0 elements attribute (e.g.
+// `#M.dense_array`) rather than a builtin `FloatAttr`: `max._core` static-links
+// its own LLVM, and its bytecode reader and writer reject `APFloat` semantics
+// owned by libmax (GEX-4052).
+def MO_F32ScalarAttr : ConfinedAttr<ElementsAttr, [AttrConstraint<
+  CPred<"::llvm::cast<::mlir::ElementsAttr>($_self).getShapedType()"
+        ".getRank() == 0 && ::llvm::cast<::mlir::ElementsAttr>($_self)"
+        ".getElementType().isF32()">,
+  "rank-0 f32 elements attribute">]>;
+
 // Base class for ops that work with tensors in the MO dialect.
 class MO_TensorOp<string mnemonic, list<Trait> traits = []> :
   MO_Op<mnemonic, [
@@ -2152,12 +2162,15 @@ def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
   AllDTypesMatch<["input", "result"]>,
   AllShapeAttrsMatch<["input", "result"]>,
   MO_ParamDeclaration,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_SingleDevice,
   Pure,
 ]> {
   let summary = "RMS normalization operation";
   let description = [{
-    Computes `input / sqrt(mean(input^2) + epsilon) * weight`.
+    Computes `input / sqrt(mean(input^2) + epsilon) * (weight + weight_offset)`.
+
+    `epsilon` and `weight_offset` are compile-time constants: targets that
+    need scalar constants as attributes cannot take them as operands.
 
     `multiply_before_cast` false (Llama-style) casts to the output dtype
     before multiplying by the weight; true (Gemma-style) multiplies first.
@@ -2165,25 +2178,28 @@ def MO_ReduceRMSNormOp : MO_TensorOp<"reduce.rms_norm", [
     Example:
 
     ```mlir
-      %res = mo.reduce.rms_norm(%input, %weight, %epsilon, %weight_offset)
-        {multiply_before_cast = false} :
-        (!mo.tensor<[2, 3], bf16, gpu:0>, !mo.tensor<[3], bf16, gpu:0>,
-         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>) -> !mo.tensor<[2, 3], bf16, gpu:0>
+      %res = mo.reduce.rms_norm(%input, %weight)
+        {epsilon = #M.dense_array<9.99999997E-7> : tensor<f32>,
+         weight_offset = #M.dense_array<0.0> : tensor<f32>,
+         multiply_before_cast = false} :
+        (!mo.tensor<[2, 3], bf16, gpu:0>, !mo.tensor<[3], bf16, gpu:0>)
+        -> !mo.tensor<[2, 3], bf16, gpu:0>
     ```
   }];
 
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$weight,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     BoolAttr:$multiply_before_cast,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
-    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `,`
+    `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
     functional-type(operands, results)
   }];
 }

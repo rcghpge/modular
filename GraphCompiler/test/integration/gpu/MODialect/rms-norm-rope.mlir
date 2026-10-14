@@ -11,15 +11,12 @@
 mo.graph @rms_norm_rope_gpu() -> !mo.tensor<[2, 4], f32> {
   %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0> : tensor<2x4xf32>> : !mo.tensor<[2, 4], f32, gpu:0>
   %weight = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0> : tensor<4xf32>> : !mo.tensor<[4], f32, gpu:0>
-  %epsilon = mo.constant <#M.dense_array<1.0e-5> : tensor<f32>> : !mo.tensor<[], f32>
-  %offset = mo.constant <#M.dense_array<0.0> : tensor<f32>> : !mo.tensor<[], f32>
   %cos_vals = mo.constant <#M.dense_array<1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0> : tensor<2x4xf32>> : !mo.tensor<[2, 4], f32, gpu:0>
   %sin_vals = mo.constant <#M.dense_array<0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0> : tensor<2x4xf32>> : !mo.tensor<[2, 4], f32, gpu:0>
 
-  %result = mo.composite.rms_norm_rope(%input, %weight, %epsilon, %offset, %cos_vals, %sin_vals)
-    {multiply_before_cast = false} :
+  %result = mo.composite.rms_norm_rope(%input, %weight, %cos_vals, %sin_vals)
+    {epsilon = #M.dense_array<1.0e-5> : tensor<f32>, weight_offset = #M.dense_array<0.0> : tensor<f32>, multiply_before_cast = false} :
     (!mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[4], f32, gpu:0>,
-     !mo.tensor<[], f32>, !mo.tensor<[], f32>,
      !mo.tensor<[2, 4], f32, gpu:0>, !mo.tensor<[2, 4], f32, gpu:0>)
     -> !mo.tensor<[2, 4], f32, gpu:0>
 

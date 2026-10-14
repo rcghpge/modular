@@ -11,12 +11,10 @@ mo.graph @rms_norm_residual_add() -> !mo.tensor<[3, 2], f32> {
   %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<3x2xf32>> : !mo.tensor<[3, 2], f32>
   %residual = mo.constant <#M.dense_array<0.5, 0.5, 0.5, 0.5, 0.5, 0.5> : tensor<3x2xf32>> : !mo.tensor<[3, 2], f32>
   %gamma = mo.constant <#M.dense_array<1.1, 2.1> : tensor<2xf32>> : !mo.tensor<[2], f32>
-  %eps   = mo.constant <#M.dense_array<0.00001> : tensor<f32>> : !mo.tensor<[], f32>
-  %weight_offset = mo.constant <#M.dense_array<0.0> : tensor<f32>> : !mo.tensor<[], f32>
 
   // This should be fused into rms_norm_residual_add.
   %residual_add = mo.add(%input, %residual) : !mo.tensor<[3, 2], f32>
-  %rnorm = mo.reduce.rms_norm(%residual_add, %gamma, %eps, %weight_offset) {multiply_before_cast = true} : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>, !mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[3, 2], f32>
+  %rnorm = mo.reduce.rms_norm(%residual_add, %gamma) {epsilon = #M.dense_array<0.00001> : tensor<f32>, weight_offset = #M.dense_array<0.0> : tensor<f32>, multiply_before_cast = true} : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], f32>) -> !mo.tensor<[3, 2], f32>
   // Consume the intermediate (post-add) value too, so the fused op's second
   // output is used and not dead-code-eliminated.
   %out = mo.add(%rnorm, %residual_add) : !mo.tensor<[3, 2], f32>

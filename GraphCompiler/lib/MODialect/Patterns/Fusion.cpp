@@ -2699,14 +2699,14 @@ struct RMSNormFusedResidualAddPattern
     Value originalInput = innerRmsNorm.getInput();
 
     Value gamma2 = op.getWeight();
-    Value eps2 = op.getEpsilon();
-    Value weightOffset2 = op.getWeightOffset();
+    ElementsAttr eps2 = op.getEpsilon();
+    ElementsAttr weightOffset2 = op.getWeightOffset();
     // Use outer op's multiply_before_cast (inner assumed to match outer)
     BoolAttr multiplyBeforeCast = op.getMultiplyBeforeCastAttr();
 
     Value gamma1 = innerRmsNorm.getWeight();
-    Value eps1 = innerRmsNorm.getEpsilon();
-    Value weightOffset1 = innerRmsNorm.getWeightOffset();
+    ElementsAttr eps1 = innerRmsNorm.getEpsilon();
+    ElementsAttr weightOffset1 = innerRmsNorm.getWeightOffset();
 
     if (!rewriter.addOps({addOp, innerRmsNorm})) {
       return rewriter.notifyMatchFailure(
@@ -2764,8 +2764,8 @@ struct RMSNormResidualAddPattern
           op, "matched ops have inconsistent devices");
 
     Value gamma = op.getWeight();
-    Value eps = op.getEpsilon();
-    Value weightOffset = op.getWeightOffset();
+    ElementsAttr eps = op.getEpsilon();
+    ElementsAttr weightOffset = op.getWeightOffset();
     BoolAttr multiplyBeforeCast = op.getMultiplyBeforeCastAttr();
 
     // The fused op returns [output, intermediate] where
@@ -2840,17 +2840,11 @@ struct RMSNormFusedQuantizeDynamicScaledFP8Pattern
     if (!rmsNormOp.getMultiplyBeforeCast())
       return rewriter.notifyMatchFailure(op, "multiply_before_cast required");
 
-    SmallVector<Value> fusedOperands = {
-        rmsNormOp.getInput(),        // rms_norm.input
-        rmsNormOp.getWeight(),       // rms_norm.gamma
-        rmsNormOp.getEpsilon(),      // rms_norm.epsilon
-        rmsNormOp.getWeightOffset(), // rms_norm.weight_offset
-        op.getOperand(1),            // quantize.scale_ub
-    };
-
     rewriter.replaceOpWithNewOp<
         MO::Composite::RMSNormFusedQuantizeDynamicScaledFP8Op>(
-        op, op.getResultTypes(), fusedOperands);
+        op, op.getResultTypes(), rmsNormOp.getInput(), rmsNormOp.getWeight(),
+        /*scaleUb=*/op.getOperand(1), rmsNormOp.getEpsilonAttr(),
+        rmsNormOp.getWeightOffsetAttr());
 
     return mlir::success();
   }
@@ -2984,6 +2978,12 @@ public:
     quantizes = !quantizeOps.empty();
     if (quantizes && quantizeOps.size() != devicesCount)
       return;
+    // The composite carries one epsilon and weight_offset for every device.
+    MO::ReduceRMSNormOp firstNorm = rmsNormOps.begin()->second;
+    for (auto &[device, rmsNormOp] : rmsNormOps)
+      if (rmsNormOp.getEpsilonAttr() != firstNorm.getEpsilonAttr() ||
+          rmsNormOp.getWeightOffsetAttr() != firstNorm.getWeightOffsetAttr())
+        return;
 
     builder.setInsertionPointAfter(allReduceOp);
     if (!quantizes)
@@ -2996,8 +2996,6 @@ public:
     llvm::SmallVector<Type> outResidualTypes;
     llvm::SmallVector<Value> residualOperands;
     llvm::SmallVector<Value> gammaOperands;
-    llvm::SmallVector<Value> epsilonOperands;
-    llvm::SmallVector<Value> weightOffsetOperands;
     llvm::SmallVector<Value> scaleUbOperands;
     for (Value out : allReduceOp.getOutputs()) {
       DeviceRefAttr device = cast<TensorValue>(out).getType().getDeviceRef();
@@ -3008,8 +3006,6 @@ public:
       outResidualTypes.push_back(residualOps.at(device).getResult().getType());
       residualOperands.push_back(residualValues.at(device));
       gammaOperands.push_back(rmsNormOp.getWeight());
-      epsilonOperands.push_back(rmsNormOp.getEpsilon());
-      weightOffsetOperands.push_back(rmsNormOp.getWeightOffset());
     }
 
     auto allReduceFusedOp =
@@ -3023,10 +3019,10 @@ public:
             /*signalBuffers=*/allReduceOp.getSignalBuffers(),
             /*residual=*/residualOperands,
             /*gamma=*/gammaOperands,
-            /*epsilon=*/epsilonOperands,
-            /*weightOffset=*/weightOffsetOperands,
             /*scaleUb=*/scaleUbOperands,
-            /*inChain=*/allReduceOp.getInChain());
+            /*inChain=*/allReduceOp.getInChain(),
+            /*epsilon=*/firstNorm.getEpsilonAttr(),
+            /*weight_offset=*/firstNorm.getWeightOffsetAttr());
 
     allReduceOp.getOutChain().replaceAllUsesWith(
         allReduceFusedOp.getOutChain());
@@ -3194,8 +3190,6 @@ private:
   SmallVector<Value> residualValues;
   SmallVector<Value> gammaValues;
   // Captured (same SSA value across launches).
-  Value epsilonValue;
-  Value weightOffsetValue;
   Value scaleUbValue;
 
   bool matchAll() {
@@ -3288,15 +3282,11 @@ private:
         return false;
     }
 
-    // 6. Captured operands: epsilon, weight_offset, scale_ub must be the
-    //    same SSA value on every launch.
-    epsilonValue = rmsNormOps[0].getEpsilon();
-    weightOffsetValue = rmsNormOps[0].getWeightOffset();
+    // 6. Captured operand: scale_ub must be the same SSA value on every
+    //    launch. Step 5 already matched the rms_norm attributes.
     scaleUbValue = quantizeOps[0].getOperand(1);
     for (size_t i = 1; i < numLaunches; ++i) {
-      if (rmsNormOps[i].getEpsilon() != epsilonValue ||
-          rmsNormOps[i].getWeightOffset() != weightOffsetValue ||
-          quantizeOps[i].getOperand(1) != scaleUbValue)
+      if (quantizeOps[i].getOperand(1) != scaleUbValue)
         return false;
     }
 
@@ -3400,8 +3390,8 @@ private:
     }
 
     // Build the fused op in place of the seed. Peer inputs and the
-    // chain operand come through the IRMapping; signal buffers, eps, wo
-    // and scale_ub are captured from outer scope (the graph region
+    // chain operand come through the IRMapping; signal buffers and
+    // scale_ub are captured from outer scope (the graph region
     // permits direct outer-SSA references).
     SmallVector<Value> fusedInputs;
     fusedInputs.reserve(allReduceOp.getInputs().size());
@@ -3423,10 +3413,10 @@ private:
         /*signalBuffers=*/fusedSignals,
         /*residual=*/residualArg,
         /*gamma=*/gammaArg,
-        /*epsilon=*/epsilonValue,
-        /*weightOffset=*/weightOffsetValue,
         /*scaleUb=*/scaleUbValue,
-        /*inChain=*/fusedChain);
+        /*inChain=*/fusedChain,
+        /*epsilon=*/rmsNormOps[0].getEpsilonAttr(),
+        /*weight_offset=*/rmsNormOps[0].getWeightOffsetAttr());
 
     // The body yields the seed's out-chain (chained parallels); route it to the
     // fused op, which subsumes the seed.
@@ -3810,8 +3800,8 @@ struct ReduceRMSNormRoPEPattern
 
     auto fusedOp = rewriter.create<MO::Composite::ReduceRMSNormRoPEOp>(
         rmsNormOp.getLoc(), outputTy, rmsNormOp.getInput(),
-        rmsNormOp.getWeight(), rmsNormOp.getEpsilon(),
-        rmsNormOp.getWeightOffset(), cosVals, sinVals, multiplyBeforeCast,
+        rmsNormOp.getWeight(), cosVals, sinVals, rmsNormOp.getEpsilon(),
+        rmsNormOp.getWeightOffset(), multiplyBeforeCast,
         rmsNormOp.getOutputParamDecls());
 
     rewriter.replaceAllUsesWith(finalResult, fusedOp.getResult());

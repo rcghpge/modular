@@ -36,7 +36,7 @@ class MO_CompositeOp<string mnemonic, list<Trait> traits = []>
 
 def MOComposite_ReduceRMSNormRoPEOp : MO_CompositeOp<"rms_norm_rope", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_SingleDevice,
   MO_ParamDeclaration,
 ]> {
   let hasVerifier = 1;
@@ -50,11 +50,12 @@ def MOComposite_ReduceRMSNormRoPEOp : MO_CompositeOp<"rms_norm_rope", [
     Example:
 
     ```mlir
-      %result = mo.composite.rms_norm_rope(%input, %weight, %epsilon, %offset,
-                                           %cos_vals, %sin_vals)
-        {multiply_before_cast = false} :
+      %result = mo.composite.rms_norm_rope(%input, %weight, %cos_vals,
+                                           %sin_vals)
+        {epsilon = #M.dense_array<9.99999997E-7> : tensor<f32>,
+         weight_offset = #M.dense_array<0.0> : tensor<f32>,
+         multiply_before_cast = false} :
         (!mo.tensor<[2, 3, 128], bf16, gpu:0>, !mo.tensor<[128], bf16, gpu:0>,
-         !mo.tensor<[], bf16>, !mo.tensor<[], bf16>,
          !mo.tensor<[2, 3, 128], f32, gpu:0>, !mo.tensor<[2, 3, 128], f32, gpu:0>)
         -> !mo.tensor<[2, 3, 128], bf16, gpu:0>
     ```
@@ -63,17 +64,18 @@ def MOComposite_ReduceRMSNormRoPEOp : MO_CompositeOp<"rms_norm_rope", [
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$weight,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset,
     MO_Tensor:$cosVals,
     MO_Tensor:$sinVals,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     BoolAttr:$multiply_before_cast,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$result);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
-    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `,`
+    `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -184,7 +186,7 @@ def MOComposite_LayerNormRopeRaggedOp : MO_CompositeOp<"layer_norm_rope_ragged",
 
 def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused_residual_add", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon1", "epsilon2", "weightOffset1", "weightOffset2"]>,
+  MO_SingleDevice,
   MO_ParamDeclaration,
 ]> {
   let summary = "Fused RMS norm with residual add operation";
@@ -196,8 +198,9 @@ def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused
 
     ```mlir
       %output, %intermediate = mo.composite.rms_norm_fused_residual_add(
-          %input, %residual, %gamma1, %gamma2, %eps1, %eps2, %offset1, %offset2) {
-          multiply_before_cast1 = false, multiply_before_cast2 = false} :
+          %input, %residual, %gamma1, %gamma2) {
+          epsilon1 = #M.dense_array<9.99999997E-7> : tensor<f32>, ...,
+          multiply_before_cast = false} :
         (...) -> (!mo.tensor<[3, 2], f32>, !mo.tensor<[3, 2], f32>)
     ```
   }];
@@ -207,17 +210,20 @@ def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused
     MO_Tensor:$residualInput,
     MO_Tensor:$gamma1,
     MO_Tensor:$gamma2,
-    MO_Tensor:$epsilon1,
-    MO_Tensor:$epsilon2,
-    MO_Tensor:$weightOffset1,
-    MO_Tensor:$weightOffset2,
+    MO_F32ScalarAttr:$epsilon1,
+    MO_F32ScalarAttr:$epsilon2,
+    MO_F32ScalarAttr:$weight_offset1,
+    MO_F32ScalarAttr:$weight_offset2,
     BoolAttr:$multiply_before_cast,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$output, MO_Tensor:$intermediate);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
-    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    `{` `epsilon1` `=` $epsilon1 `,` `epsilon2` `=` $epsilon2 `,`
+    `weight_offset1` `=` $weight_offset1 `,`
+    `weight_offset2` `=` $weight_offset2 `,`
+    `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -228,7 +234,7 @@ def MOComposite_ReduceRMSNormFusedResidualAddOp : MO_CompositeOp<"rms_norm_fused
 
 def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_SingleDevice,
   MO_ParamDeclaration,
 ]> {
   let summary = "Fused single-norm residual add + RMS norm operation";
@@ -244,7 +250,9 @@ def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
 
     ```mlir
       %output, %intermediate = mo.composite.rms_norm_residual_add(
-          %input, %residual, %gamma, %eps, %offset) {
+          %input, %residual, %gamma) {
+          epsilon = #M.dense_array<9.99999997E-7> : tensor<f32>,
+          weight_offset = #M.dense_array<0.0> : tensor<f32>,
           multiply_before_cast = false} :
         (...) -> (!mo.tensor<[3, 2], f32>, !mo.tensor<[3, 2], f32>)
     ```
@@ -254,15 +262,16 @@ def MOComposite_RMSNormResidualAddOp : MO_CompositeOp<"rms_norm_residual_add", [
     MO_Tensor:$input,
     MO_Tensor:$residualInput,
     MO_Tensor:$gamma,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     BoolAttr:$multiply_before_cast,
     MO_ParamDecls:$outputParamDecls
   );
   let results = (outs MO_Tensor:$output, MO_Tensor:$intermediate);
   let assemblyFormat = [{
     `` custom<ParamDecls>($outputParamDecls) `(` operands `)`
-    `{` `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `,`
+    `multiply_before_cast` `=` $multiply_before_cast `}` attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -334,10 +343,10 @@ def MOComposite_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"composite.dist
     Variadic<MO_Buffer>:$signalBuffers,
     Variadic<MO_Tensor>:$residual,
     Variadic<MO_Tensor>:$gamma,
-    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>: $weightOffset,
     Variadic<MO_RankedScalarFloatTensor>: $scaleUb,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset
   );
   let results = (outs
     Variadic<MO_Tensor>:$output,
@@ -346,7 +355,9 @@ def MOComposite_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"composite.dist
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -356,7 +367,7 @@ def MOComposite_AllReduceAddRMSNormQuantFP8Op : MO_DistributedOp<"composite.dist
 
 def MOComposite_BundledAllReduceAddRMSNormQuantFP8Op : MO_CompositeOp<
     "bundled.allreduce_add_rms_norm_quant_fp8", [
-  MO_SingleDeviceWithPeerInputs<["epsilon", "weightOffset", "scaleUb"]>,
+  MO_SingleDeviceWithPeerInputs<["scaleUb"]>,
   DeclareOpInterfaceMethods<MO_MutableOpInterface>,
   DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
   MO_SameVariadicOperandSize,
@@ -375,10 +386,10 @@ def MOComposite_BundledAllReduceAddRMSNormQuantFP8Op : MO_CompositeOp<
     Variadic<MO_Buffer>:$signalBuffers,
     MO_Tensor:$residual,
     MO_Tensor:$gamma,
-    MO_RankedScalarFloatTensor:$epsilon,
-    MO_RankedScalarFloatTensor:$weightOffset,
     MO_RankedScalarFloatTensor:$scaleUb,
-    MO_Chain:$inChain
+    MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset
   );
   let results = (outs
     MO_Tensor:$output,
@@ -387,7 +398,9 @@ def MOComposite_BundledAllReduceAddRMSNormQuantFP8Op : MO_CompositeOp<
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -474,7 +487,7 @@ def MOComposite_MaskedFlashAttentionGPUOp
 def MOComposite_RMSNormFusedQuantizeDynamicScaledFP8Op
     : MO_CompositeOp<"rms_norm_fused_quantize_dynamic_scaled_fp8", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset", "scaleUb"]>,
+  MO_SingleDeviceWithHostOperands<["scaleUb"]>,
 ]> {
   let summary = "Fused RMS norm + dynamic-scaled FP8 quantize";
   let description = [{
@@ -488,13 +501,15 @@ def MOComposite_RMSNormFusedQuantizeDynamicScaledFP8Op
   let arguments = (ins
     MO_Tensor:$input,
     MO_Tensor:$weight,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset,
-    MO_Tensor:$scaleUb
+    MO_Tensor:$scaleUb,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset
   );
   let results = (outs MO_Tensor:$output, MO_Tensor:$scale);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -505,7 +520,7 @@ def MOComposite_RMSNormFusedQuantizeDynamicScaledFP8Op
 def MOComposite_MatmulFusedPartialRMSNormOp
     : MO_CompositeOp<"matmul_fused_partial_rms_norm", [
   Pure,
-  MO_SingleDeviceWithHostOperands<["epsilon", "weightOffset"]>,
+  MO_SingleDevice,
 ]> {
   let summary = "Fused matmul + partial RMS norm";
   let description = [{
@@ -520,12 +535,14 @@ def MOComposite_MatmulFusedPartialRMSNormOp
     MO_Rank2Tensor:$input_a,
     MO_Rank2Tensor:$input_b,
     MO_Tensor:$gamma,
-    MO_Tensor:$epsilon,
-    MO_Tensor:$weightOffset
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset
   );
   let results = (outs MO_Tensor:$normed, MO_Tensor:$unnormed);
   let assemblyFormat = [{
-    `(` operands `)` attr-dict `:` functional-type(operands, results)
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    attr-dict `:` functional-type(operands, results)
   }];
 }
 
@@ -608,10 +625,10 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     Variadic<MO_Tensor>:$gamma,
-    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
     Variadic<MO_Tensor>:$residuals,
     MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     DefaultValuedAttr<I64Attr, "0">:$group_size,
     DefaultValuedAttr<BoolAttr, "false">:$has_residual
   );
@@ -622,6 +639,7 @@ def MOComposite_DistributedReduceScatterRMSNormOp : MO_DistributedOp<"composite.
   );
   let assemblyFormat = [{
     `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
     `` custom<ReduceScatterRMSNormAttrs>($group_size, $has_residual)
     attr-dict `:` functional-type(operands, results)
   }];
@@ -652,9 +670,9 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     Variadic<MO_Tensor>:$gamma,
-    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
     MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
@@ -663,7 +681,9 @@ def MOComposite_DistributedAllGatherRMSNormOp : MO_DistributedOp<"composite.dist
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -687,9 +707,9 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP8Op : MO_DistributedOp<"comp
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     Variadic<MO_Tensor>:$gamma,
-    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
     MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     DefaultValuedAttr<I64Attr, "0">:$group_size
   );
   let results = (outs
@@ -700,7 +720,9 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP8Op : MO_DistributedOp<"comp
     MO_Chain:$outChain
   );
   let assemblyFormat = [{
-    `(` operands `)` (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
+    `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
+    (` ` `[` `group_size` `=` $group_size^ `]`)? attr-dict `:`
     functional-type(operands, results)
   }];
 }
@@ -725,9 +747,9 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
     Variadic<MO_Tensor>:$inputs,
     Variadic<MO_Buffer>:$signalBuffers,
     Variadic<MO_Tensor>:$gamma,
-    Variadic<MO_RankedScalarFloatTensor>:$epsilon,
-    Variadic<MO_RankedScalarFloatTensor>:$weightOffset,
     MO_Chain:$inChain,
+    MO_F32ScalarAttr:$epsilon,
+    MO_F32ScalarAttr:$weight_offset,
     DefaultValuedAttr<I64Attr, "0">:$group_size,
     DefaultValuedAttr<I64Attr, "0">:$fp6_format
   );
@@ -740,6 +762,7 @@ def MOComposite_DistributedAllGatherRMSNormQuantMXFP6Op : MO_DistributedOp<"comp
   );
   let assemblyFormat = [{
     `(` operands `)`
+    `{` `epsilon` `=` $epsilon `,` `weight_offset` `=` $weight_offset `}`
     `` custom<AllGatherRMSNormQuantMXFP6Attrs>($group_size, $fp6_format)
     attr-dict `:` functional-type(operands, results)
   }];

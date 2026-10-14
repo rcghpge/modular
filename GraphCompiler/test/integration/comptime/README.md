@@ -66,7 +66,3 @@ wc -l /tmp/out.mojo                  # generated Mojo LOC
   Passes run inside another pass's own nested `PassManager` (like
   `MergeIdenticalFuncs` inside `EmitMojo`) are invisible to these
   flags -- bracket the *outer* pass instead, as above.
-- `mo.reduce.rms_norm`'s `epsilon`/`weight_offset` operands are
-  host-constrained (`MO_SingleDeviceWithHostOperands`) -- keep those two
-  constants device-generic (no `gpu:0`) even in an otherwise GPU-typed
-  graph, or `mo-opt` rejects the op with a device-mismatch error.

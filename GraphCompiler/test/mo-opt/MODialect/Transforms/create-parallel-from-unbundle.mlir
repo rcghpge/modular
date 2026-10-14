@@ -224,8 +224,8 @@ mo.graph @reject_shared_binary_consumer(
 // ============================================================================
 // Rejection: a consumer with a shared outer host scalar (would require
 // capturing an outer SSA value into the body).  Per-launch
-// `mo.reduce.rms_norm` ops share `%eps` and `%wo`, so the `all_equal`
-// check in classifyOperands fires.
+// `mo.reduce.layer_norm` ops share `%eps`, so the `all_equal` check in
+// planInputs fires.
 // ============================================================================
 
 // CHECK-LABEL: mo.graph @reject_shared_outer_scalar
@@ -234,8 +234,9 @@ mo.graph @reject_shared_outer_scalar(
     %sig1: !mo.buffer<[1], ui8, gpu:1>,
     %gamma0: !mo.tensor<[3], f32, gpu:0>,
     %gamma1: !mo.tensor<[3], f32, gpu:1>,
-    %eps: !mo.tensor<[], f32>,
-    %wo: !mo.tensor<[], f32>
+    %beta0: !mo.tensor<[3], f32, gpu:0>,
+    %beta1: !mo.tensor<[3], f32, gpu:1>,
+    %eps: !mo.tensor<[], f32>
 ) -> (!mo.tensor<[3], f32>, !mo.tensor<[3], f32>) {
   %c0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0> : tensor<3xf32>>
       : !mo.tensor<[3], f32, gpu:0>
@@ -264,20 +265,20 @@ mo.graph @reject_shared_outer_scalar(
       : (!mo.bundle<[3], f32, gpu:0-1>)
      -> (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:1>)
 
-  // Operand 0 is DRIVING; operand 1 is per-launch gamma (BUNDLE);
-  // operand 2 (%eps) is shared, triggering rejection.
+  // Operand 0 is DRIVING; operands 1 and 2 are per-launch gamma and beta
+  // (BUNDLE); operand 3 (%eps) is shared, triggering rejection.
   // CHECK: mo.parallel
   // CHECK:   mo.bundled.allreduce.sum
   // CHECK-NOT: mo.parallel
-  // CHECK: mo.reduce.rms_norm
-  // CHECK: mo.reduce.rms_norm
-  %n0 = mo.reduce.rms_norm(%u#0, %gamma0, %eps, %wo) {multiply_before_cast = false}
+  // CHECK: mo.reduce.layer_norm
+  // CHECK: mo.reduce.layer_norm
+  %n0 = mo.reduce.layer_norm(%u#0, %gamma0, %beta0, %eps)
       : (!mo.tensor<[3], f32, gpu:0>, !mo.tensor<[3], f32, gpu:0>,
-         !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+         !mo.tensor<[3], f32, gpu:0>, !mo.tensor<[], f32>)
      -> !mo.tensor<[3], f32, gpu:0>
-  %n1 = mo.reduce.rms_norm(%u#1, %gamma1, %eps, %wo) {multiply_before_cast = false}
+  %n1 = mo.reduce.layer_norm(%u#1, %gamma1, %beta1, %eps)
       : (!mo.tensor<[3], f32, gpu:1>, !mo.tensor<[3], f32, gpu:1>,
-         !mo.tensor<[], f32>, !mo.tensor<[], f32>)
+         !mo.tensor<[3], f32, gpu:1>, !mo.tensor<[], f32>)
      -> !mo.tensor<[3], f32, gpu:1>
 
   %t0, %tc0 = mo.transfer[%ar#1] %n0

@@ -550,7 +550,18 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     else if (auto intAttr = dyn_cast<IntegerAttr>(customParam))
       // getInt() asserts signless or index; this may be signed (e.g. si32).
       return intAttr.getValue().getSExtValue();
-    else if (auto dtypeAttr = dyn_cast<KGEN::DTypeConstantAttr>(customParam))
+    else if (auto elems = dyn_cast<ElementsAttr>(customParam);
+             elems && elems.getShapedType().getRank() == 0 &&
+             isa<FloatType>(elems.getElementType())) {
+      // A float scalar param is a rank-0 elements attribute (see
+      // MO_F32ScalarAttr). `#M.dense_array` only iterates as `Attribute`.
+      auto values = elems.tryGetValues<Attribute>();
+      auto scalar = values ? dyn_cast<FloatAttr>(*values->begin()) : nullptr;
+      if (!scalar || !scalar.getValue().isFinite())
+        return Error(
+            llvm::formatv("Float param `{}` has no Mojo literal", paramName));
+      return MojoValue(scalar.getValue());
+    } else if (auto dtypeAttr = dyn_cast<KGEN::DTypeConstantAttr>(customParam))
       return EmitMojoState::mlirDTypeToMojoType(dtypeAttr.getDType());
     else if (auto arrAttr = dyn_cast<ArrayAttr>(customParam);
              arrAttr && !arrAttr.empty() && isa<IntegerAttr>(arrAttr[0])) {
