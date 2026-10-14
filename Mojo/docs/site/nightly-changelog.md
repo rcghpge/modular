@@ -225,6 +225,14 @@ This version is still a work in progress.
           launch_2stage()
   ```
 
+- `Array` now supports slicing with contiguous slices, returning a `Span` over
+  the selected elements whose mutability matches the array reference:
+
+  ```mojo
+  var arr = [1, 2, 3, 4]
+  var middle = arr[1:3]  # Span over [2, 3]
+  ```
+
 - `Tuple` gained `first_of[T]()`, which returns a reference to the first
   element of type `T`. The lookup is resolved at compile time, and it is a
   compile-time error if the tuple has no element of that type:
