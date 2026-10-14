@@ -133,6 +133,7 @@
 /max/python/max/BUILD.bazel @modular/runtime
 /max/python/max/all_deps.bzl @modular/sdlc
 /max/python/max/_core/ @modular/max-sdk @modular/runtime
+/max/python/max/_core/driver.pyi @modular/driver
 /max/python/max/_core_types/ @modular/runtime
 /max/python/max/_eager_policy.py @modular/max-sdk
 /max/python/max/tree.py @modular/max-sdk
