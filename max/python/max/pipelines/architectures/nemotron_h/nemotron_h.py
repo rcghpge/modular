@@ -500,6 +500,8 @@ class NemotronHAttention(Module):
         self,
         config: NemotronHConfig,
         kv_layer_idx: int,
+        *,
+        quant_config: QuantConfig | None = None,
     ) -> None:
         super().__init__()
         dev = config.devices[0]
@@ -514,11 +516,32 @@ class NemotronHAttention(Module):
 
         self.q_dim = self.n_heads * self.head_dim
         self.kv_dim = self.n_kv_heads * self.head_dim
-        # Attention projections are bf16 here: the 4B FP8 checkpoint excludes
-        # them from quantization, and the 8B Reasoning checkpoint's per-tensor
-        # FP8 q/k/v/o are dequantized to bf16 at load by the weight adapter. So
-        # no quantization config is wired here.
-        #
+        # ``quant_config`` is set when this layer's q/k/v/o are per-tensor
+        # static FP8 (the 8B Reasoning checkpoint). Each projection has its own
+        # weight and input scale, so they run as separate FP8 Linears.
+        self.qkv_proj: Linear | None = None
+        if quant_config is not None:
+            fp8_linear = functools.partial(
+                Linear,
+                in_dim=config.hidden_size,
+                dtype=DType.float8_e4m3fn,
+                device=dev,
+                has_bias=config.attention_bias,
+                quant_config=quant_config,
+            )
+            self.q_proj = fp8_linear(out_dim=self.q_dim)
+            self.k_proj = fp8_linear(out_dim=self.kv_dim)
+            self.v_proj = fp8_linear(out_dim=self.kv_dim)
+            self.o_proj = Linear(
+                in_dim=self.q_dim,
+                out_dim=config.hidden_size,
+                dtype=DType.float8_e4m3fn,
+                device=dev,
+                has_bias=config.attention_bias,
+                quant_config=quant_config,
+            )
+            return
+        # bf16 (the 4B checkpoint, which leaves attention unquantized).
         # Fused QKV: one matmul over the concatenated [q | k | v] out-dim, then
         # ``ops.split``. The HF checkpoint ships q/k/v as separate weights; the
         # adapter concatenates them (q, then k, then v) into ``qkv_proj.weight``.
@@ -551,10 +574,15 @@ class NemotronHAttention(Module):
         input_row_offsets: TensorValue,
     ) -> TensorValue:
         total_seq_len = x.shape[0]
-        # One fused QKV matmul, then split into q | k | v (sizes q_dim, kv_dim,
-        # kv_dim along the feature axis).
-        qkv = self.qkv_proj(x)
-        q, k, v = ops.split(qkv, [self.q_dim, self.kv_dim, self.kv_dim], axis=1)
+        if self.qkv_proj is None:
+            q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x)
+        else:
+            # One fused QKV matmul, then split into q | k | v (sizes q_dim,
+            # kv_dim, kv_dim along the feature axis).
+            qkv = self.qkv_proj(x)
+            q, k, v = ops.split(
+                qkv, [self.q_dim, self.kv_dim, self.kv_dim], axis=1
+            )
         query = ops.reshape(q, [-1, self.n_heads, self.head_dim])
         key = ops.reshape(k, [-1, self.n_kv_heads, self.head_dim])
         value = ops.reshape(v, [-1, self.n_kv_heads, self.head_dim])
@@ -860,7 +888,9 @@ class NemotronHBlock(Module):
         if self.kind == "mamba":
             self.mixer = NemotronHMamba2Mixer(config, quant_config=quant_config)
         elif self.kind == "attention":
-            self.mixer = NemotronHAttention(config, kv_layer_idx)
+            self.mixer = NemotronHAttention(
+                config, kv_layer_idx, quant_config=quant_config
+            )
         elif self.kind == "moe":
             # Non-gated relu2 MoE. ``quant_config`` is set only when this MoE
             # layer is FP8 (the 30B-A3B FP8 checkpoint); it makes the routed +
@@ -938,6 +968,8 @@ class NemotronH(Module):
             elif kind == "mlp" and li in config.fp8_mlp_layers:
                 qc = quant_config
             elif kind == "moe" and li in config.fp8_moe_layers:
+                qc = quant_config
+            elif kind == "attention" and li in config.fp8_attention_layers:
                 qc = quant_config
             blocks.append(NemotronHBlock(config, li, kv_layer, quant_config=qc))
             if kind == "attention":
