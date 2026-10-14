@@ -64,10 +64,12 @@ def get_sign(x: StringSlice[_]) -> Tuple[Float64, type_of(x)]:
 
 # Powers of 10 and integers below 2**53 are exactly representable as Float64.
 # Thus any operation done on them must be exact.
+@inline(.always)
 def can_use_clinger_fast_path(w: UInt64, q: Int64) -> Bool:
     return w <= UInt64(2**53) and (Int64(-22) <= q <= Int64(22))
 
 
+@inline(.always)
 def clinger_fast_path(w: UInt64, q: Int64) -> Float64:
     if q >= 0:
         return Float64(w) * global_constant[POWERS_OF_10]()[q]
@@ -75,6 +77,7 @@ def clinger_fast_path(w: UInt64, q: Int64) -> Float64:
         return Float64(w) / global_constant[POWERS_OF_10]()[-q]
 
 
+@inline(.always)
 def full_multiplication(x: UInt64, y: UInt64) -> UInt128Decomposed:
     # Note that there are assembly instructions to
     # do all that on some architectures.
@@ -83,6 +86,7 @@ def full_multiplication(x: UInt64, y: UInt64) -> UInt128Decomposed:
     return UInt128Decomposed(result)
 
 
+@inline(.always)
 def get_128_bit_truncated_product(w: UInt64, q: Int64) -> UInt128Decomposed:
     comptime bit_precision = MANTISSA_EXPLICIT_BITS + 3
     var index = 2 * (q - SMALLEST_POWER_OF_5)
@@ -107,6 +111,7 @@ def create_subnormal_float64(m: UInt64) -> Float64:
     return create_float64(m, -1023)
 
 
+@inline(.always)
 def create_float64(m: UInt64, p: Int64) -> Float64:
     var m_mask = UInt64(2**MANTISSA_EXPLICIT_BITS - 1)
     var p_shifted = UInt64(p + 1023) << MANTISSA_EXPLICIT_BITS
@@ -114,6 +119,7 @@ def create_float64(m: UInt64, p: Int64) -> Float64:
     return std.memory.bitcast[.float64](representation_as_int)
 
 
+@inline(.always)
 def lemire_algorithm(var w: UInt64, var q: Int64) -> Float64:
     # This algorithm has 22 steps described
     # in https://arxiv.org/pdf/2101.11408 (algorithm 1)
