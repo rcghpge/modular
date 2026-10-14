@@ -748,7 +748,6 @@ This version is still a work in progress.
 - Added GPU support for `ops.resize_nearest` / `mo.resize.nearest`. The op
   was host-only; its kernel is a pure gather, so it now launches on the
   input's device (the op is single-device with a host `size` operand, like
-HEAD
   bicubic). The eager resize family sweeps accelerators for all three
   modes; new Metal-verified GPU kernel tests cover up/downsampling and
   both coordinate modes, plus an eager GPU-residency test.
