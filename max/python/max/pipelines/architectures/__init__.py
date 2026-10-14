@@ -272,11 +272,6 @@ def register_all_models() -> None:
         ),
         _LazyArch("MambaForCausalLM", ".mamba", "mamba_arch"),
         _LazyArch("MiMoV2ForCausalLM", ".mimo_v2", "mimo_v2_arch"),
-        _LazyArch(
-            "MiMoV2DFlashContextForCausalLM",
-            ".unified_dflash_mimo_v2",
-            "mimo_v2_dflash_context_arch",
-        ),
         _LazyArch("MiniMaxM2ForCausalLM", ".minimax_m2", "minimax_m2_arch"),
         _LazyArch(
             "MiniMaxMusic3ModularPipeline",

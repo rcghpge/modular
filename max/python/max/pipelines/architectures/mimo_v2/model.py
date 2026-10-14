@@ -45,7 +45,7 @@ from max.pipelines.lib import (
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.weights import HuggingFaceRepo
 
-from .mimo_v2 import MiMoV2, TapHook
+from .mimo_v2 import MiMoV2
 from .model_config import MiMoV2Config
 
 _WEIGHT_INDEX = "model.safetensors.index.json"
@@ -178,7 +178,7 @@ class MiMoV2Model(
         )
         signals = Signals(devices=device_refs)
 
-        nn_model = MiMoV2(model_config, tap_hook=self._tap_hook(model_config))
+        nn_model = MiMoV2(model_config)
         nn_model.load_state_dict(
             state_dict,
             weight_alignment=1,
@@ -201,7 +201,7 @@ class MiMoV2Model(
             n = len(device_refs)
             input_row_offsets = [v.tensor for v in rest[:n]]
             signal_buffers = [v.buffer for v in rest[n : 2 * n]]
-            sliding_kv, full_kv, *tail = self.kv_params.unflatten_basic_kv_tree(
+            sliding_kv, full_kv = self.kv_params.unflatten_basic_kv_tree(
                 iter(rest[2 * n :])
             )
             outputs = nn_model(
@@ -211,16 +211,9 @@ class MiMoV2Model(
                 full_kv_collections=full_kv,
                 return_n_logits=return_n_logits.tensor,
                 input_row_offsets=input_row_offsets,
-                tail_kv_collections=tail[0] if tail else None,
             )
             graph.output(*outputs)
         return graph, weights_registry
-
-    def _tap_hook(self, model_config: MiMoV2Config) -> TapHook | None:
-        """What reads the layer taps inside the graph, with a KV group of its
-        own after the target's two; the plain base graph has none."""
-        del model_config
-        return None
 
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
         """Runs the model on inputs from :class:`GptOssBatchProcessor`."""
