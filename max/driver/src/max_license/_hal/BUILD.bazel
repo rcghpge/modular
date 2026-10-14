@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "mojo_library", "mojo_overlay_layer")
+load("//bazel:api.bzl", "mojo_library", "overlay_layer")
 
 package(default_visibility = ["//max:consumers"])
 
@@ -16,7 +16,7 @@ filegroup(
 
 # Staged into the MAX overlay under --config=hal-device-context (see
 # //max/driver/src/max_license:max_srcs_hal).
-mojo_overlay_layer(
+overlay_layer(
     name = "_hal_staged_layer",
     file_map = {src: "max/gpu/host/_hal/" + src for src in _HAL_SRCS},
     visibility = ["//visibility:public"],

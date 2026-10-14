@@ -1,6 +1,6 @@
 """Generate tblgen source from the tblgen json dumps."""
 
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_filegroup")
+load("//oss/modular/bazel/internal:tablegen.bzl", "gentbl_filegroup")  # buildifier: disable=bzl-visibility
 
 def _tblgen_nanobind_impl(ctx):
     defined_in = ["--defined-in", ctx.attr.defined_in] if ctx.attr.defined_in else []
