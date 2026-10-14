@@ -73,6 +73,11 @@ from std.net._sys.unix import (
     SO_SNDTIMEO,
     SO_TYPE,
     TCP_NODELAY,
+    sockaddr,
+    sockaddr_in,
+    sockaddr_in6,
+    sockaddr_storage,
+    sockaddr_un,
     socklen_t,
 )
 
@@ -81,10 +86,20 @@ comptime CABI_INCLUDES: List[StaticString] = [
     "<netinet/in.h>",
     "<netinet/tcp.h>",
     "<sys/socket.h>",
+    "<sys/un.h>",
 ]
 """The headers that declare the C side."""
 
-comptime CABI_STRUCTS = TypeList.of[Trait=AnyType, in_addr, in6_addr]()
+comptime CABI_STRUCTS = TypeList.of[
+    Trait=AnyType,
+    in_addr,
+    in6_addr,
+    sockaddr,
+    sockaddr_in,
+    sockaddr_in6,
+    sockaddr_un,
+    sockaddr_storage,
+]()
 """The struct mirrors to check."""
 
 comptime CABI_TYPEDEFS = TypeList.of[

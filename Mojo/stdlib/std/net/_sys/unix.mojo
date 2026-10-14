@@ -17,8 +17,20 @@ platforms, Linux and macOS.
 from std.ffi import c_int, c_size_t, c_ssize_t, c_uint, external_call
 from std.sys.info import platform_map, platform_type_map
 
-from .linux import sockaddr as linux_sockaddr
-from .macos import sockaddr as macos_sockaddr
+from .linux import (
+    sockaddr as linux_sockaddr,
+    sockaddr_in as linux_sockaddr_in,
+    sockaddr_in6 as linux_sockaddr_in6,
+    sockaddr_storage as linux_sockaddr_storage,
+    sockaddr_un as linux_sockaddr_un,
+)
+from .macos import (
+    sockaddr as macos_sockaddr,
+    sockaddr_in as macos_sockaddr_in,
+    sockaddr_in6 as macos_sockaddr_in6,
+    sockaddr_storage as macos_sockaddr_storage,
+    sockaddr_un as macos_sockaddr_un,
+)
 
 comptime socklen_t = c_uint
 """C `socklen_t`: the size of a socket address or option value, in bytes."""
@@ -167,10 +179,39 @@ comptime O_NONBLOCK: c_int = constant[
 # ===----------------------------------------------------------------------=== #
 
 comptime sockaddr = platform_type_map[
+    Trait=Copyable,
     linux=linux_sockaddr,
     macos=macos_sockaddr,
 ]
 """The compilation target's C `struct sockaddr`."""
+
+comptime sockaddr_in = platform_type_map[
+    Trait=Copyable,
+    linux=linux_sockaddr_in,
+    macos=macos_sockaddr_in,
+]
+"""The compilation target's C `struct sockaddr_in`."""
+
+comptime sockaddr_in6 = platform_type_map[
+    Trait=Copyable,
+    linux=linux_sockaddr_in6,
+    macos=macos_sockaddr_in6,
+]
+"""The compilation target's C `struct sockaddr_in6`."""
+
+comptime sockaddr_un = platform_type_map[
+    Trait=Copyable,
+    linux=linux_sockaddr_un,
+    macos=macos_sockaddr_un,
+]
+"""The compilation target's C `struct sockaddr_un`."""
+
+comptime sockaddr_storage = platform_type_map[
+    Trait=Copyable,
+    linux=linux_sockaddr_storage,
+    macos=macos_sockaddr_storage,
+]
+"""The compilation target's C `struct sockaddr_storage`."""
 
 
 # ===----------------------------------------------------------------------=== #
