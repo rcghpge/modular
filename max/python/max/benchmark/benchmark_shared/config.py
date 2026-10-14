@@ -600,8 +600,7 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
         default=None,
         description=(
             "JSON response format for structured output. Can be a JSON string, "
-            "or a path to a JSON/YAML file with an optional '@' prefix "
-            "('@path/to/schema.json'); in a "
+            "or a path to a JSON/YAML file ('path/to/schema.json'); in a "
             "--workload-config YAML, a relative path resolves against the "
             "YAML's directory, or the cwd when nothing is there. "
             'Example: \'{"type": "json_schema", "json_schema": {...}}\'. '
@@ -648,8 +647,7 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
         default=None,
         description=(
             "OpenAI chat-completions tool definitions to send, as a JSON list "
-            "or a path to a JSON/YAML file with an optional '@' prefix "
-            "('@path/to/tools.json'); in a "
+            "or a path to a JSON/YAML file ('path/to/tools.json'); in a "
             "--workload-config YAML, a relative path resolves against the "
             "YAML's directory, or the cwd when nothing is there. Applied to "
             "the share "

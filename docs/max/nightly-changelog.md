@@ -324,8 +324,8 @@ This version is still a work in progress.
 - Added `--tools` and `--tools-fraction` to `max benchmark`, which send OpenAI
   tool definitions on any workload, multi-turn chat sessions included.
   Previously only datasets that carry their own tools sent any, and only on
-  single-turn requests. `--tools` takes a `tools` list (inline JSON or
-  `@file`); `--tools-fraction` (default 1.0) sets the fraction of requests, or
+  single-turn requests. `--tools` takes a `tools` list (inline JSON or a
+  file path); `--tools-fraction` (default 1.0) sets the fraction of requests, or
   of chat sessions, that carry it, and a selected session sends its tools on
   every turn. The rendered definitions are carved out of a session's first
   turn or a single-turn string prompt, so the input-length distribution still
