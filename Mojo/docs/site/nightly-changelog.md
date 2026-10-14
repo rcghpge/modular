@@ -191,6 +191,8 @@ This version is still a work in progress.
   unprefixed spellings still work but emit a warning that async is unstable,
   with a fix-it to the prefixed spelling. The prefixed spelling suppresses the
   warning but doesn't make async stable.
+- The empty tuple `()` now always refers to a tuple value and not a type. The
+  type of an empty tuple should now always be written as `Tuple[]`.
 
 ## Library stabilizations
 

@@ -539,13 +539,6 @@ ExprNode *ExprNode::getWithoutParens() {
   return this;
 }
 
-/// Return true if this is a TupleNode with no subexpressions.
-bool ExprNode::isEmptyTuple() const {
-  if (auto *tuple = dyn_cast<TupleNode>(this))
-    return tuple->exprs.empty();
-  return false;
-}
-
 //===----------------------------------------------------------------------===//
 // ExprNode implementations
 //===----------------------------------------------------------------------===//
