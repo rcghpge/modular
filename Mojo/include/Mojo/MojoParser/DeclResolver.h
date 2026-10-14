@@ -425,9 +425,11 @@ private:
   LogicalResult resolveSignature(StructDeclOp op, Lexer &lexer,
                                  StructASTDecl &decl);
   ParseResult resolveBody(StructDeclOp op, Lexer &lexer, StructASTDecl &decl);
-  /// Resolve the cases parsed in the body of an enum, given in declaration
-  /// order.
-  void resolveEnumCases(ASTDecl &decl, ArrayRef<ASTDecl *> caseDecls);
+  /// Resolve one case of an enum. `firstByName` maps each case name resolved
+  /// so far to its case; a repeated name is reported and the case removed.
+  LogicalResult
+  resolveEnumCase(ASTDecl &caseDecl,
+                  llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> &firstByName);
   LogicalResult resolveSignature(EnumCaseOp op, Lexer &lexer, ASTDecl &decl);
   LogicalResult resolveSignature(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
   ParseResult resolveBody(StructFieldOp op, Lexer &lexer, ASTDecl &decl);

@@ -137,6 +137,29 @@ public:
 
   /// Synthesize an unresolved alias into the struct with the specified name .
   ASTDecl *synthesizeUnresolvedAlias(StringRef name);
+
+  /// Synthesize the members of an `__enum` from the `lit.enum.case` ops in its
+  /// body: the `EnumLike` case lists, the storage field, a `comptime` member
+  /// per payloadless case, and a static method for each case with a payload.
+  LogicalResult synthesizeEnumMembers();
+  /// Synthesize the `EnumLike` aliases `_enum_case_names` and
+  /// `_enum_case_types` with the given values, and the enum's only field,
+  /// `__enum_storage`, of type `__EnumStorage[caseTypes]`. All three are
+  /// registered as resolved declarations and hidden from the docs.
+  void synthesizeEnumCaseListsAndStorage(StructDeclOp enumStorageDeclOp,
+                                         ParamListAttr caseNames,
+                                         ParamListAttr caseTypes);
+  /// Synthesize the static method that constructs case `caseName` of an
+  /// `__enum` from its `payload` types.
+  LogicalResult synthesizeEnumCaseConstructor(StringRef caseName,
+                                              ArrayRef<Type> payload,
+                                              SMLoc caseLoc);
+  /// Populate the body of a case constructor synthesized by
+  /// `synthesizeEnumCaseConstructor`.
+  LogicalResult populateEnumCaseConstructor(ASTDecl &fnDecl);
+  /// Compute the value of `aliasDecl`, the `comptime` member that
+  /// `synthesizeEnumMembers` declared for a case without a payload.
+  LogicalResult resolveEnumCaseAlias(ASTDecl &aliasDecl);
   TypedAttr populateSpecialFnIsTrivial(SpecialFunctionKind kind);
 
   /// Like synthesizeMethodInStruct but accepts higher-level signature
@@ -152,6 +175,10 @@ public:
       ImplicitLocOpBuilder &builder, StringRef suffix = "",
       ConstraintAttr conformanceConstraint = {});
 };
+
+/// Look up `name` in the standard library module that implements enums,
+/// emitting an error if it is missing.
+ASTDecl *lookupEnumSupportDecl(SharedState &shared, StringRef name, SMLoc loc);
 
 } // namespace M::KGEN::LIT
 

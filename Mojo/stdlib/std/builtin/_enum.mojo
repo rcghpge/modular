@@ -235,18 +235,10 @@ trait __Enum(EnumLike):
             size_of[Self]() == size_of[Storage]()
             and align_of[Self]() == align_of[Storage]()
         ), "an `__Enum` must have its storage as its only field"
-        return __get_litref_as_mvalue(
-            __mlir_op.`lit.ref.struct.ger`[
-                index=__mlir_attr.`0:index`,
-                _type=__mlir_type[
-                    `!lit.ref<`,
-                    __EnumStorage[Self._enum_case_types],
-                    `, `,
-                    origin_of(self)._mlir_origin,
-                    `>`,
-                ],
-            ](__get_mvalue_as_litref(self))
-        )
+        # A cast, not a field access: a register-passable enum is lowered as
+        # its storage itself, and a field access on the generic `Self` relies
+        # on the compiler folding it away for such an enum.
+        return Pointer(to=self).unsafe_bitcast[Storage]()[]
 
     @staticmethod
     @inline(.always)

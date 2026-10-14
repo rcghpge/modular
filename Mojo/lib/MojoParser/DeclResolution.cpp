@@ -2565,6 +2565,10 @@ LogicalResult DeclResolver::resolveSyntheticBody(FnOp fn, DefASTDecl &decl) {
   if (fn.getInheritedFrom())
     return gen.populateDefaultedTraitFunction(decl);
 
+  if (fn.getSpecialFunctionKind() == SpecialFunctionKind::kNormal &&
+      gen.structDeclOp.isEnum())
+    return gen.populateEnumCaseConstructor(decl);
+
   switch (fn.getSpecialFunctionKind()) {
   default:
     llvm_unreachable("unknown synthetic function to synthesize");
@@ -3996,6 +4000,21 @@ LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
   if (movableDecl)
     traitConformed.push_back(TraitSymbolAttr::get(movableDecl->getSymbolRef()));
 
+  // An enum conforms to `__Enum`, which refines `EnumLike` with defaults that
+  // read `__enum_storage`; body resolution adds that field.
+  if (structOp.isEnum()) {
+    ASTDecl *traitDecl = lookupEnumSupportDecl(shared, "__Enum", decl.getLoc());
+    if (traitDecl && !isa_and_nonnull<TraitDeclOp>(traitDecl->getIfOperation()))
+      shared.emitError(decl.getLoc())
+          << "internal error: '__Enum' in 'std.builtin._enum' must be a trait";
+    if (!traitDecl ||
+        !isa_and_nonnull<TraitDeclOp>(traitDecl->getIfOperation())) {
+      decl.setErroneous();
+      return failure();
+    }
+    traitConformed.push_back(TraitSymbolAttr::get(traitDecl->getSymbolRef()));
+  }
+
   // Compute the struct's self type.
   structDecl.setSelfType(StructASTDecl::computeSelfType(structOp));
 
@@ -4127,6 +4146,13 @@ LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
       decl.setErroneous();
       return failure();
     }
+    // An enum's storage has non-trivial copy, move and destruction.
+    if (structOp.isEnum()) {
+      shared.emitError(decl.getLoc())
+          << "enums cannot conform to 'TrivialRegisterPassable'";
+      decl.setErroneous();
+      return failure();
+    }
     structOp.setConvention(TypeConvention::RegisterPassableTrivial);
   }
 
@@ -4224,6 +4250,12 @@ static FnOp findFieldwiseInit(ASTDecl &structDecl) {
 /// indicates whether it is an error to already have a fieldwise init.
 void StructDecorators::processFieldwiseInitDecorator(SMLoc decoratorLoc,
                                                      bool isImplicit) {
+  // An enum's only field is its hidden storage.
+  if (cast<StructDeclOp>(structDecl.getIfOperation()).isEnum()) {
+    emitError(decoratorLoc, "'@fieldwise_init' cannot be applied to an enum");
+    return;
+  }
+
   // Don't add one if we already have one.
   if (FnOp init = findFieldwiseInit(structDecl)) {
     auto diag =
@@ -4337,37 +4369,28 @@ static void processRegisterPassableDecorator(
   }
 }
 
-void DeclResolver::resolveEnumCases(ASTDecl &structDecl,
-                                    ArrayRef<ASTDecl *> caseDecls) {
+LogicalResult DeclResolver::resolveEnumCase(
+    ASTDecl &caseDecl,
+    llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> &firstByName) {
   // Cases are not in the enum's name table, so duplicates are found here,
-  // before a case's line is re-read: a duplicate's payload types are never
+  // before the case's line is re-read: a duplicate's payload types are never
   // resolved.
-  SmallDenseMap<StringAttr, ASTDecl *, 8> firstByName;
-  bool hasBadCase = false;
-  for (ASTDecl *caseDecl : caseDecls) {
-    auto caseOp = cast<EnumCaseOp>(caseDecl->getIfOperation());
-    auto [previous, inserted] =
-        firstByName.try_emplace(caseOp.getNameAttr(), caseDecl);
-    if (!inserted) {
-      auto diag = emitError(caseDecl->getLoc())
-                  << "invalid redefinition of '" << caseOp.getName() << "'";
-      diag.attachNote(previous->second->getLoc()) << "previous definition here";
-      // Leave the decl as `resolve` leaves a malformed case, so that nothing
-      // resolves it.
-      caseOp.erase();
-      caseDecl->setIRValue(std::nullopt);
-      caseDecl->setErroneous();
-      caseDecl->resolvedness = DeclResolvedness::body;
-      hasBadCase = true;
-      continue;
-    }
-    if (failed(resolveSignature(*caseDecl, caseDecl->getLoc())))
-      hasBadCase = true;
+  auto caseOp = cast<EnumCaseOp>(caseDecl.getIfOperation());
+  auto [previous, inserted] =
+      firstByName.try_emplace(caseOp.getNameAttr(), &caseDecl);
+  if (!inserted) {
+    auto diag = emitError(caseDecl.getLoc())
+                << "invalid redefinition of '" << caseOp.getName() << "'";
+    diag.attachNote(previous->second->getLoc()) << "previous definition here";
+    // Leave the decl as `resolve` leaves a malformed case, so that nothing
+    // resolves it.
+    caseOp.erase();
+    caseDecl.setIRValue(std::nullopt);
+    caseDecl.setErroneous();
+    caseDecl.resolvedness = DeclResolvedness::body;
+    return failure();
   }
-  // Any rejected case makes the enum erroneous, but only once every case is
-  // resolved: an erroneous enum silences the errors in later payload types.
-  if (hasBadCase)
-    structDecl.setErroneous();
+  return resolveSignature(caseDecl, caseDecl.getLoc());
 }
 
 ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
@@ -4419,8 +4442,19 @@ ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
 
   // This collects all the resolved struct fields. Now that the body is
   // parsed we can check the declared fields for extra invariants.
-  bool hasBadField = false;
+  bool hasBadMember = false;
   SmallVector<std::pair<StructFieldOp, ASTDecl *>> structFields;
+
+  // Resolve an enum's cases first: synthesis adds `__enum_storage`, the
+  // enum's only field, so the loop below finds it as it finds a struct's
+  // declared fields and collects it into `structFields`.
+  llvm::SmallDenseMap<StringAttr, ASTDecl *, 8> firstCaseByName;
+  for (ASTDecl *caseDecl : caseDecls)
+    if (failed(resolveEnumCase(*caseDecl, firstCaseByName)))
+      hasBadMember = true;
+  if (structOp.isEnum() &&
+      failed(StructEmitter(structDecl).synthesizeEnumMembers()))
+    hasBadMember = true;
 
   // Iterate over all the parsed decls.  in general these won't be signature
   // resolved, and we don't want to resolve functions.  We do need to resolve
@@ -4433,15 +4467,12 @@ ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
         continue;
 
       if (failed(resolveSignature(*decl, decl->getLoc()))) {
-        hasBadField = true;
+        hasBadMember = true;
         continue;
       }
       structFields.push_back({fieldOp, decl});
     }
   }
-
-  if (structOp.isEnum())
-    resolveEnumCases(structDecl, caseDecls);
 
   // Determine if there is an explicit conformance to Deinitable.
   if (std::optional<ConstraintAttr> deinitableConstraint =
@@ -4496,9 +4527,12 @@ ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
     processRegisterPassableDecorator(structOp, structDecl, structFields, *this,
                                      structOp.getConvention());
 
-  // If any of the fields are bad, we do not process decorators since they
-  // assume that the struct body is valid.
-  if (hasBadField && !structDecl.getBodyDecorators().empty()) {
+  // With a bad member, body resolution ends here: for a struct with body
+  // decorators, which assume a valid body; for an enum, whose synthesis was
+  // skipped or failed. The declaration is marked erroneous, so its uses report
+  // nothing further.
+  if (hasBadMember &&
+      (structOp.isEnum() || !structDecl.getBodyDecorators().empty())) {
     structDecl.setErroneous();
     return failure();
   }
@@ -4658,6 +4692,28 @@ ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
       }
     }
   }
+
+  // Workaround: the conformances to a trait and to a trait that extends it
+  // aren't forced to be checked in order. `__Enum` extends
+  // `EnumLike`, and when the former's conformance is checked first, its default
+  // implementations of `EnumLike`'s methods cannot find the witnesses for
+  // `EnumLike`'s members. Check `EnumLike`'s conformance now, so that the
+  // witnesses exist by the time `__Enum`'s conformance is checked.
+  // TODO(MOCO-5078): remove once a refining trait's default implementations
+  // resolve in any verification order.
+  if (structOp.isEnum()) {
+    ASTDecl *enumLikeDecl =
+        shared.lookupBuiltinTrait("EnumLike", structDecl.getLoc());
+    assert(enumLikeDecl &&
+           "`__Enum` resolved, so its parent `EnumLike` exists");
+    ArrayRef<ASTDecl *> conformanceDecls = structDecl.lookupInCurrentScope(
+        TraitSymbolAttr::get(enumLikeDecl->getSymbolRef()).getFlattenedName());
+    assert(!conformanceDecls.empty() &&
+           "an enum conforms to `EnumLike` through `__Enum`");
+    // The check records a failure on the conformance declaration, where every
+    // later use reads it; the enum itself stays resolvable, as for a struct.
+    (void)resolveBody(*conformanceDecls.front(), structDecl.getLoc());
+  }
   return success();
 }
 
@@ -4815,6 +4871,67 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
     return rejectCase(p.getToken().getLoc());
 
   ASTDecl &enumDecl = *decl.getParentDecl();
+
+  // Struct synthesis later generates the following members for every enum, and
+  // `__copy_ctor_is_trivial` for a `Copyable` one, but only when no member of
+  // that name exists yet. A case's member is generated first, so a case of
+  // that name would silently stand in for the generated member; reject it.
+  StringRef caseName = caseOp.getName();
+  SmallVector<StringRef, 5> structMemberNames = {
+      "__init__", "__deinit__", "__del__is_trivial", "__move_ctor_is_trivial"};
+  if (getConformanceCondition(enumDecl, "Copyable"))
+    structMemberNames.push_back("__copy_ctor_is_trivial");
+  if (llvm::is_contained(structMemberNames,
+                         SpecialFunctionInfo::getCanonicalSpelling(caseName))) {
+    emitError(decl.getLoc()) << "invalid redefinition of '" << caseName << "'";
+    return failure();
+  }
+  // A case named like a special method that takes `self` is rejected: the
+  // case's member is a static method or a `comptime` value, not an instance
+  // method.
+  const SpecialFunctionInfo &specialInfo =
+      SpecialFunctionInfo::get(SpecialFunctionInfo::lookupKind(caseName));
+  if (specialInfo.isInstMethod() && !specialInfo.isImplicitlyStatic()) {
+    emitError(decl.getLoc())
+        << "case '" << caseName
+        << "' must not use the name of a special method that takes 'self'; "
+           "rename the case";
+    return failure();
+  }
+
+  // A conformance the enum declares that copies, moves or destroys it requires
+  // the same of every payload type, as for a struct's fields. A hand-written
+  // copy constructor, move constructor or `__deinit__` lifts the requirement
+  // for its conformance. `RegisterPassable` is about the representation,
+  // hence, when declared, requires the payloads to conform to it as well.
+  SmallVector<StringRef, 5> traitsRequiredOfPayloads;
+  if (!shared.typeHasMember(enumDecl, "__deinit__", enumDecl.getLoc()))
+    traitsRequiredOfPayloads.push_back("Deinitable");
+  if (!lookupSpecialInit(enumDecl, SpecialFunctionKind::kMoveCtor))
+    traitsRequiredOfPayloads.push_back("Movable");
+  if (!lookupSpecialInit(enumDecl, SpecialFunctionKind::kCopyCtor))
+    traitsRequiredOfPayloads.append({"Copyable", "ImplicitlyCopyable"});
+  traitsRequiredOfPayloads.push_back("RegisterPassable");
+  SmallVector<std::pair<StringRef, SmallVector<ConstraintAttr>>, 5>
+      payloadRequirements;
+  for (StringRef traitName : traitsRequiredOfPayloads) {
+    std::optional<ConstraintAttr> whereClauseForTrait =
+        getConformanceCondition(enumDecl, traitName);
+    if (!whereClauseForTrait)
+      continue;
+    SmallVector<ConstraintAttr> assumptions;
+    enumDecl.getKnownAssumptionsIncludingParents(assumptions);
+    if (!isTriviallyTrueConstraint(*whereClauseForTrait))
+      assumptions.push_back(*whereClauseForTrait);
+    payloadRequirements.push_back({traitName, std::move(assumptions)});
+  }
+
+  // `NoneType` as a payload type marks a case without a payload.
+  ASTType noneType =
+      shared.lookupBuiltinType("NoneType", enumDecl, enumDecl.getLoc());
+  assert(!noneType.isTypeCheckErrorType() &&
+         "the builtin module resolved `__Enum`, so it has `NoneType`");
+
   SmallVector<Type> payloadTypes;
   for (ExprNode *typeExpr : payload) {
     IREmitter emitter(enumDecl, EC_Type);
@@ -4825,6 +4942,33 @@ LogicalResult DeclResolver::resolveSignature(EnumCaseOp caseOp, Lexer &lexer,
       emitError(typeExpr->getLoc())
           << "enum case payloads do not support trait types; " << type
           << " is a trait, use a concrete type or compile-time generic";
+      return failure();
+    }
+    // TODO(MOCO-5080): `EnumLike` marks a case without a payload with
+    // `NoneType`, so a case cannot carry one; the marker goes away once every
+    // payload is a `Tuple`.
+    if (payload.size() == 1 && type.isEqualCanon(noneType)) {
+      emitError(typeExpr->getLoc())
+          << "enum case payload must not be 'NoneType'; a case without a "
+             "payload is written 'case "
+          << caseName << "'" << typeExpr->getRange();
+      return failure();
+    }
+    // The enum occurring as a payload implies an infinite type/layout.
+    if (type.getDecl(shared) == &enumDecl) {
+      emitError(typeExpr->getLoc())
+          << "case '" << caseName << "' has recursive payload type " << type
+          << typeExpr->getRange();
+      return failure();
+    }
+    for (auto &[traitName, assumptions] : payloadRequirements) {
+      if (type.conformsToBuiltinTrait(traitName, typeExpr->getLoc(), shared,
+                                      assumptions)
+              .first.isTrue())
+        continue;
+      emitError(typeExpr->getLoc())
+          << "case '" << caseName << "' has non-'" << traitName
+          << "' payload type " << type << typeExpr->getRange();
       return failure();
     }
     payloadTypes.push_back(type);
@@ -5119,6 +5263,13 @@ DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
     childTraitAliasDecl.resolvedness = DeclResolvedness::body;
     return success();
   }
+
+  // The `comptime` member of an enum case without a payload is synthesized
+  // (`synthesizeEnumMembers`), hence resolves here, but it is not a trait's
+  // default: its value is the case's constructor call.
+  if (!inheritedAliasOp.isDefaultedAssociatedAlias() &&
+      cast<StructDeclOp>(structDecl.getIfOperation()).isEnum())
+    return StructEmitter(structDecl).resolveEnumCaseAlias(childTraitAliasDecl);
 
   assert(inheritedAliasOp.isDefaultedAssociatedAlias() &&
          "Expected trait -> struct default associated alias");
