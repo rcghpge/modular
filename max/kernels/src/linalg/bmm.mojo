@@ -85,6 +85,8 @@ from .utils import (
     get_matmul_num_tasks,
     get_min_task_size,
     get_partitioned_matmul,
+    no_compute_fn,
+    no_epilogue_fn,
     packA_i8mm,
     partition_work,
     use_i8mm_fn,
@@ -1210,6 +1212,8 @@ def _bmm_sm100_blockwise_scaled_fp8_kernel[
         a_scales_tma_op,
         b_scales_tt,
         Int32(_num_iters),
+        no_epilogue_fn,
+        no_compute_fn,
     )
 
 

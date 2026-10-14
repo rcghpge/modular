@@ -47,7 +47,13 @@ from std.utils.static_tuple import StaticTuple
 from internal_utils.fp8_utils import cast_saturating
 
 from ....arch.sm100 import MmaOpSM100_SS
-from ....utils import elementwise_epilogue_type
+from ....utils import (
+    ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
+    elementwise_epilogue_type,
+    no_compute_fn,
+    no_epilogue_fn,
+)
 
 comptime logger = Logger()
 
@@ -56,6 +62,9 @@ comptime logger = Logger()
     t"matmul_sm100_blockwise_scaled_fp8_1d2d_{a_type}_{b_type}_{c_type}",
 )
 def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
     a_type: DType,
     b_type: DType,
     c_type: DType,
@@ -84,6 +93,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     # value (e.g. 64) when N-direction scale granularity is finer than
     # the kernel's BK.
     b_scaling_block_n: Int = 128,
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
 ](
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
@@ -93,6 +104,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     ],
     b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
     num_iters: Int32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
 ):
     var _num_iters = Int(num_iters)
     comptime assert transpose_b, "Only support transposed B"
@@ -451,8 +464,16 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
                             )
                         )
 
-                        comptime if case .Some(ep) = elementwise_lambda_fn:
-                            comptime alignment = align_of[SIMD[c_type, 2]]()
+                        comptime alignment = align_of[SIMD[c_type, 2]]()
+                        comptime if has_epilogue_fn:
+                            epilogue_fn[c_type, 2, alignment=alignment](
+                                (Int(m), Int(n)), c_mn
+                            )
+                        elif has_compute_fn:
+                            c_gmem_frag[m_vec, n_vec] = compute_fn[
+                                c_type, 2, alignment=alignment
+                            ]((Int(m), Int(n)), c_mn)
+                        elif case .Some(ep) = elementwise_lambda_fn:
                             ep[alignment=alignment]((Int(m), Int(n)), c_mn)
                         else:
                             c_gmem_frag[m_vec, n_vec] = c_mn
@@ -463,7 +484,7 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
 @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
 @__llvm_arg_metadata(a_scales_tma_op, `nvvm.grid_constant`)
 @__name(
-    t"matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper_{a_type}_{b_type}_{c_type}",
+    t"matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper_{a_type}_{b_type}_{c_type}{"_epilogue_fn" if has_epilogue_fn else ""}{"_compute_fn" if has_compute_fn else ""}",
 )
 def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
     a_type: DType,
@@ -490,6 +511,11 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
     num_threads: Int = 128,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     b_scaling_block_n: Int = 128,
+    *,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
 ](
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
@@ -499,6 +525,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
     ],
     b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
     num_iters: Int32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
 ):
     var _num_iters2 = Int(
         num_iters
@@ -531,6 +559,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         num_threads=num_threads,
         elementwise_lambda_fn=elementwise_lambda_fn,
         b_scaling_block_n=b_scaling_block_n,
+        has_epilogue_fn=has_epilogue_fn,
+        has_compute_fn=has_compute_fn,
     ](
         a_tma_op,
         b_tma_op,
@@ -538,6 +568,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         a_scales_tma_op,
         b_scales,
         num_iters,
+        epilogue_fn,
+        compute_fn,
     )
 
 
@@ -592,6 +624,143 @@ def matmul_sm100_blockwise_scaled_fp8[
             elements and 2D scaling granularity along N and K.
         ctx: Device context used to enqueue the kernel launch.
     """
+    _matmul_sm100_blockwise_scaled_fp8_impl[
+        transpose_b=transpose_b,
+        umma_shape=umma_shape,
+        block_tile_shape=block_tile_shape,
+        a_swizzle=a_swizzle,
+        b_swizzle=b_swizzle,
+        elementwise_lambda_fn=elementwise_lambda_fn,
+        has_epilogue_fn=False,
+        has_compute_fn=False,
+    ](c, a, b, a_scales, b_scales, no_epilogue_fn, no_compute_fn, ctx)
+
+
+def matmul_sm100_blockwise_scaled_fp8[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    *,
+    transpose_b: Bool,
+    umma_shape: IndexList[3],
+    block_tile_shape: IndexList[3],
+    a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+    b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+](
+    c: TileTensor,
+    a: TileTensor,
+    b: TileTensor,
+    a_scales: TileTensor,
+    b_scales: TileTensor,
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    """Enqueues a blockwise scaled FP8 GEMM on SM100 (see the other
+    overload), delivering each output value to an epilogue closure instead
+    of writing `c`.
+
+    Parameters:
+        EpilogueFnType: Type of `epilogue_fn`.
+        transpose_b: Whether B is loaded transposed; must be `True`.
+        umma_shape: 3D MMA instruction shape `(MMA_M, MMA_N, MMA_K)`.
+        block_tile_shape: 3D block tile shape `(BM, BN, BK)`.
+        a_swizzle: TMA swizzle mode applied to A shared memory loads.
+        b_swizzle: TMA swizzle mode applied to B shared memory loads.
+
+    Args:
+        c: Rank-2 output `TileTensor`; only its shape is read.
+        a: Rank-2 `TileTensor` of A operands with `float8_e4m3fn` elements.
+        b: Rank-2 `TileTensor` of B operands with `float8_e4m3fn` elements.
+        a_scales: Rank-2 `TileTensor` of A scale factors.
+        b_scales: Rank-2 `TileTensor` of B scale factors.
+        epilogue_fn: Stores each output value at its global `(m, n)`.
+        ctx: Device context used to enqueue the kernel launch.
+    """
+    _matmul_sm100_blockwise_scaled_fp8_impl[
+        transpose_b=transpose_b,
+        umma_shape=umma_shape,
+        block_tile_shape=block_tile_shape,
+        a_swizzle=a_swizzle,
+        b_swizzle=b_swizzle,
+        has_epilogue_fn=True,
+        has_compute_fn=False,
+    ](c, a, b, a_scales, b_scales, epilogue_fn, no_compute_fn, ctx)
+
+
+def matmul_sm100_blockwise_scaled_fp8[
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    transpose_b: Bool,
+    umma_shape: IndexList[3],
+    block_tile_shape: IndexList[3],
+    a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+    b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+](
+    c: TileTensor,
+    a: TileTensor,
+    b: TileTensor,
+    a_scales: TileTensor,
+    b_scales: TileTensor,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises:
+    """Enqueues a blockwise scaled FP8 GEMM on SM100 (see the other
+    overload), storing `compute_fn(idx, value)` into `c`.
+
+    Parameters:
+        ComputeFnType: Type of `compute_fn`.
+        transpose_b: Whether B is loaded transposed; must be `True`.
+        umma_shape: 3D MMA instruction shape `(MMA_M, MMA_N, MMA_K)`.
+        block_tile_shape: 3D block tile shape `(BM, BN, BK)`.
+        a_swizzle: TMA swizzle mode applied to A shared memory loads.
+        b_swizzle: TMA swizzle mode applied to B shared memory loads.
+
+    Args:
+        c: Rank-2 output `TileTensor` accumulating the scaled GEMM result.
+        a: Rank-2 `TileTensor` of A operands with `float8_e4m3fn` elements.
+        b: Rank-2 `TileTensor` of B operands with `float8_e4m3fn` elements.
+        a_scales: Rank-2 `TileTensor` of A scale factors.
+        b_scales: Rank-2 `TileTensor` of B scale factors.
+        compute_fn: Transforms each output value before it is stored.
+        ctx: Device context used to enqueue the kernel launch.
+    """
+    _matmul_sm100_blockwise_scaled_fp8_impl[
+        transpose_b=transpose_b,
+        umma_shape=umma_shape,
+        block_tile_shape=block_tile_shape,
+        a_swizzle=a_swizzle,
+        b_swizzle=b_swizzle,
+        has_epilogue_fn=False,
+        has_compute_fn=True,
+    ](c, a, b, a_scales, b_scales, no_epilogue_fn, compute_fn, ctx)
+
+
+def _matmul_sm100_blockwise_scaled_fp8_impl[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    transpose_b: Bool,
+    umma_shape: IndexList[3],
+    block_tile_shape: IndexList[3],
+    a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+    b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
+](
+    c: TileTensor,
+    a: TileTensor,
+    b: TileTensor,
+    a_scales: TileTensor,
+    b_scales: TileTensor,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises:
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "pass either an epilogue or a compute closure, not both"
     comptime assert transpose_b, "Only support transposed B"
 
     comptime a_type = type_of(a).dtype
@@ -735,6 +904,10 @@ def matmul_sm100_blockwise_scaled_fp8[
         b_swizzle=b_swizzle,
         num_threads=block_dim,
         elementwise_lambda_fn=elementwise_lambda_fn,
+        EpilogueFnType=EpilogueFnType,
+        ComputeFnType=ComputeFnType,
+        has_epilogue_fn=has_epilogue_fn,
+        has_compute_fn=has_compute_fn,
     ]
 
     ctx.enqueue_function[kernel](
@@ -744,6 +917,8 @@ def matmul_sm100_blockwise_scaled_fp8[
         a_scales_tma_op,
         b_scales_kernel,
         Int32(ceildiv(Int(K), BK)),
+        host_arg=epilogue_fn,
+        host_arg2=compute_fn,
         grid_dim=(ceildiv(Int(N), BN), ceildiv(Int(M), BM)),
         block_dim=(block_dim),
         shared_mem_bytes=smem_use,
