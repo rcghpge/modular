@@ -543,6 +543,9 @@ class TextBatchConstructor:
         )
         self._ce_arrival: dict[RequestID, float] = {}
         self._ce_deferred_replicas: set[int] = set()
+        # Replicas whose last mixed step deferred a prompt too long for it;
+        # their next step runs prefill only. Cleared once read.
+        self._ce_priority_replicas: set[int] = set()
         # Per-replica CE token quota for this iteration, set by
         # ``_plan_ce_step`` when it reduces a below-threshold step's chunk
         # size to its balance level. ``None`` means no quota (full CE chunk
@@ -1176,6 +1179,9 @@ class TextBatchConstructor:
         if kv_percentage > self.tg_priority_kv_percentage:
             return RequestType.TG
 
+        if replica_idx in self._ce_priority_replicas:
+            return RequestType.CE
+
         # If we've enabled in flight batching, prioritize TG
         if self.scheduler_config.enable_in_flight_batching:
             return RequestType.TG
@@ -1269,6 +1275,7 @@ class TextBatchConstructor:
 
         replica_requests = self.replicas[replica_idx]
         max_batch_size = self.scheduler_config.max_batch_size
+        draft_width = self.scheduler_config.spec_decode_mixed_verify_width
 
         # If there is anything in the batch, we can assume its TG, and the requests
         # are also counted in the tg_reqs.
@@ -1346,14 +1353,31 @@ class TextBatchConstructor:
                     )
                     continue
 
-            # Check if it fits within the token budget
+            # Check if it fits within the token budget. Under DP, a decode row
+            # on any replica makes every row in the step carry drafts, so a
+            # prompt row needs room for them on every path.
+            batch.token_budget.reserve(draft_width)
             match batch.token_budget.status_after_context(
                 ctx, request_type=RequestType.CE
             ):
                 case BudgetStatus.BUDGET_EXHAUSTED:
+                    batch.token_budget.reserve(-draft_width)
                     self._return_to_request_queue(ctx, replica_idx)
                     return
                 case BudgetStatus.BUDGET_REACHED:
+                    # Without chunking the budget is soft, so a prompt longer
+                    # than this mixed step's room would go in whole and its
+                    # drafts would overrun the step. Prefill it alone next.
+                    if (
+                        draft_width > 0
+                        and starting_tg_reqs_count > 0
+                        and ctx.tokens.active_length
+                        > batch.token_budget.remaining
+                    ):
+                        batch.token_budget.reserve(-draft_width)
+                        self._ce_priority_replicas.add(replica_idx)
+                        self._return_to_request_queue(ctx, replica_idx)
+                        return
                     batch.batch[req_id] = ctx
                     replica_requests.add_active_lora(ctx, self._lora_manager)
                     batch.token_budget.add_to_budget(
@@ -1582,6 +1606,7 @@ class TextBatchConstructor:
             if priority_override is not None
             else self._identify_priority(replica_idx)
         )
+        self._ce_priority_replicas.discard(replica_idx)
 
         match priority:
             case RequestType.CE:
@@ -1612,6 +1637,11 @@ class TextBatchConstructor:
                     and priority_override is None
                     and self._ce_backfill_open
                 ):
+                    # A mixed step verifies each decode row's drafts too.
+                    batch.token_budget.reserve(
+                        len(batch)
+                        * self.scheduler_config.spec_decode_mixed_verify_width
+                    )
                     self._add_ce_requests(batch, replica_idx)
 
             case None:
