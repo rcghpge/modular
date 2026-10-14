@@ -177,10 +177,21 @@ class Gemma4TextModel(Module[..., tuple[Tensor, ...]]):
         image_embeddings: Tensor,
         image_token_indices: Tensor,
     ) -> tuple[Tensor, ...]:
-        tokens = tokens.to(self.mesh)
-        input_row_offsets = input_row_offsets.to(self.mesh)
-        image_embeddings = image_embeddings.to(self.mesh)
-        image_token_indices = image_token_indices.to(self.mesh)
+        # Stage on every device with one collective each. A plain transfer
+        # per device lowers to mgp.buffer.device_to_device wrapped in
+        # mgp.device_wait on both sides (a host-enqueued cross-device stream
+        # wait), which is illegal inside device-graph capture
+        # (CUDA_ERROR_STREAM_CAPTURE_MERGE). The broadcast lowers to a
+        # signal-buffer kernel instead. Mirrors the V2 model's staging
+        # (gemma4/model.py:389-394).
+        tokens = F.distributed_broadcast(tokens, self.mesh)
+        input_row_offsets = F.distributed_broadcast(
+            input_row_offsets, self.mesh
+        )
+        image_embeddings = F.distributed_broadcast(image_embeddings, self.mesh)
+        image_token_indices = F.distributed_broadcast(
+            image_token_indices, self.mesh
+        )
         h = self.embed_tokens(tokens)
         self.prepare_freq_cis(self.mesh)
 
