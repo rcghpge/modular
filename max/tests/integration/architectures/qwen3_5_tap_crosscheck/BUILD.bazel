@@ -23,7 +23,7 @@ modular_py_test(
     size = "large",
     srcs = ["test_tap_matches_huggingface.py"],
     exec_properties = {
-        "test.resources:gpu-memory": "8",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = ["//:has_gpu"] + select({
         "//:apple_gpu": ["@platforms//:incompatible"],

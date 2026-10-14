@@ -157,7 +157,7 @@ modular_py_test(
         "MIMO_DFLASH_MEF_RLOCATIONS": "$(rlocationpaths :mimo_dflash_mefs)",
     },
     exec_properties = {
-        "test.resources:gpu-memory": "8",
+        "test.resources:gpu-memory": "4",
     },
     gpu_constraints = [
         "//:b200_gpu",
@@ -189,7 +189,7 @@ modular_py_test(
         "MIMO_DFLASH_MEF_RLOCATIONS": "$(rlocationpaths :mimo_dflash_mefs)",
     },
     exec_properties = {
-        "test.resources:gpu-memory": "8",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = [
         "//:b200_gpu",

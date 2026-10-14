@@ -101,7 +101,7 @@ modular_py_test(
     srcs = ["test_serving_numerics_gpu.py"],
     data = [":tiny_goldens"],
     exec_properties = {
-        "test.resources:gpu-memory": "4",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = [
         "//:b200_gpu",
