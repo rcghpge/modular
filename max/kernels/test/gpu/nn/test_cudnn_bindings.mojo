@@ -14,6 +14,15 @@
 from std.sys.info import size_of
 from std.testing import TestSuite, assert_equal, assert_true
 
+from _cudnn.backend import (
+    cudnnBackendAttributeName_t,
+    cudnnBackendAttributeType_t,
+    cudnnBackendCreateDescriptor,
+    cudnnBackendDescriptorType_t,
+    cudnnBackendDestroyDescriptor,
+    cudnnBackendFinalize,
+    cudnnBackendSetAttribute,
+)
 from _cudnn.cnn_infer import (
     cudnnConvolutionFwdAlgoPerf_t,
     cudnnConvolutionMode_t,
@@ -197,6 +206,86 @@ def test_bad_param_status() raises:
             16,
         )
         assert_equal(String(status), "CUDNN_STATUS_BAD_PARAM")
+
+
+def test_backend_convolution_attributes() raises:
+    # cuDNN rejects an attribute name the descriptor does not have, so this
+    # checks the attribute and descriptor values against the library.
+    with DeviceContext() as ctx:
+        _ = ctx
+        var maybe_desc: Optional[OpaquePointer[AnyOrigin[mut=True]]] = None
+        check_cudnn_error(
+            cudnnBackendCreateDescriptor(
+                cudnnBackendDescriptorType_t.CUDNN_BACKEND_CONVOLUTION_DESCRIPTOR,
+                Pointer(to=maybe_desc).unsafe_bitcast[
+                    OpaquePointer[AnyOrigin[mut=True]]
+                ](),
+            )
+        )
+        var desc = maybe_desc.value()
+
+        var comp_type = cudnnDataType_t.CUDNN_DATA_FLOAT
+        var mode = cudnnConvolutionMode_t.CUDNN_CROSS_CORRELATION
+        var spatial_dims = Int64(2)
+        var ones = [Int64(1), Int64(1)]
+        var zeros = [Int64(0), Int64(0)]
+        comptime Attr = cudnnBackendAttributeName_t
+        comptime Type = cudnnBackendAttributeType_t
+        check_cudnn_error(
+            cudnnBackendSetAttribute(
+                desc,
+                Attr.CUDNN_ATTR_CONVOLUTION_COMP_TYPE,
+                Type.CUDNN_TYPE_DATA_TYPE,
+                1,
+                Pointer(to=comp_type).unsafe_bitcast[NoneType](),
+            )
+        )
+        check_cudnn_error(
+            cudnnBackendSetAttribute(
+                desc,
+                Attr.CUDNN_ATTR_CONVOLUTION_CONV_MODE,
+                Type.CUDNN_TYPE_CONVOLUTION_MODE,
+                1,
+                Pointer(to=mode).unsafe_bitcast[NoneType](),
+            )
+        )
+        check_cudnn_error(
+            cudnnBackendSetAttribute(
+                desc,
+                Attr.CUDNN_ATTR_CONVOLUTION_SPATIAL_DIMS,
+                Type.CUDNN_TYPE_INT64,
+                1,
+                Pointer(to=spatial_dims).unsafe_bitcast[NoneType](),
+            )
+        )
+        for attr in [
+            Attr.CUDNN_ATTR_CONVOLUTION_DILATIONS,
+            Attr.CUDNN_ATTR_CONVOLUTION_FILTER_STRIDES,
+        ]:
+            check_cudnn_error(
+                cudnnBackendSetAttribute(
+                    desc,
+                    attr,
+                    Type.CUDNN_TYPE_INT64,
+                    2,
+                    ones.unsafe_ptr().unsafe_bitcast[NoneType](),
+                )
+            )
+        for attr in [
+            Attr.CUDNN_ATTR_CONVOLUTION_PRE_PADDINGS,
+            Attr.CUDNN_ATTR_CONVOLUTION_POST_PADDINGS,
+        ]:
+            check_cudnn_error(
+                cudnnBackendSetAttribute(
+                    desc,
+                    attr,
+                    Type.CUDNN_TYPE_INT64,
+                    2,
+                    zeros.unsafe_ptr().unsafe_bitcast[NoneType](),
+                )
+            )
+        check_cudnn_error(cudnnBackendFinalize(desc))
+        check_cudnn_error(cudnnBackendDestroyDescriptor(desc))
 
 
 def main() raises:

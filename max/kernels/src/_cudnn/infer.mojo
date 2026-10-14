@@ -2674,6 +2674,13 @@ struct cudnnDataType_t(Equatable, TrivialRegisterPassable, Writable):
     comptime CUDNN_DATA_FP8_E4M3 = Self(12)
     comptime CUDNN_DATA_FP8_E5M2 = Self(13)
     comptime CUDNN_DATA_FAST_FLOAT_FOR_FP8 = Self(14)
+    comptime CUDNN_DATA_FP8_E8M0 = Self(15)
+    comptime CUDNN_DATA_FP4_E2M1 = Self(16)
+    comptime CUDNN_DATA_INT4 = Self(17)
+    comptime CUDNN_DATA_UINT4 = Self(18)
+    comptime CUDNN_DATA_UINT32 = Self(19)
+    comptime CUDNN_DATA_COMPLEX_FP32 = Self(20)
+    comptime CUDNN_DATA_COMPLEX_FP64 = Self(21)
 
     def __init__(out self, value: Int):
         self._value = Int32(value)
@@ -2716,6 +2723,20 @@ struct cudnnDataType_t(Equatable, TrivialRegisterPassable, Writable):
             return writer.write_string("CUDNN_DATA_FP8_E5M2")
         if self is Self.CUDNN_DATA_FAST_FLOAT_FOR_FP8:
             return writer.write_string("CUDNN_DATA_FAST_FLOAT_FOR_FP8")
+        if self is Self.CUDNN_DATA_FP8_E8M0:
+            return writer.write_string("CUDNN_DATA_FP8_E8M0")
+        if self is Self.CUDNN_DATA_FP4_E2M1:
+            return writer.write_string("CUDNN_DATA_FP4_E2M1")
+        if self is Self.CUDNN_DATA_INT4:
+            return writer.write_string("CUDNN_DATA_INT4")
+        if self is Self.CUDNN_DATA_UINT4:
+            return writer.write_string("CUDNN_DATA_UINT4")
+        if self is Self.CUDNN_DATA_UINT32:
+            return writer.write_string("CUDNN_DATA_UINT32")
+        if self is Self.CUDNN_DATA_COMPLEX_FP32:
+            return writer.write_string("CUDNN_DATA_COMPLEX_FP32")
+        if self is Self.CUDNN_DATA_COMPLEX_FP64:
+            return writer.write_string("CUDNN_DATA_COMPLEX_FP64")
         abort("invalid cudnnDataType_t entry")
 
     @inline(.never)

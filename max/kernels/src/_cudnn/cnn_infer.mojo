@@ -837,10 +837,10 @@ struct cudnnFusedOpsVariantParamLabel_t(
     comptime CUDNN_PTR_DZDATA = Self(21)
     comptime CUDNN_PTR_BN_DSCALE = Self(22)
     comptime CUDNN_PTR_BN_DBIAS = Self(23)
-    comptime CUDNN_SCALAR_SIZE_T_WORKSPACE_SIZE_IN_BYTES = Self(24)
-    comptime CUDNN_SCALAR_INT64_T_BN_ACCUMULATION_COUNT = Self(25)
-    comptime CUDNN_SCALAR_DOUBLE_BN_EXP_AVG_FACTOR = Self(26)
-    comptime CUDNN_SCALAR_DOUBLE_BN_EPSILON = Self(27)
+    comptime CUDNN_SCALAR_SIZE_T_WORKSPACE_SIZE_IN_BYTES = Self(100)
+    comptime CUDNN_SCALAR_INT64_T_BN_ACCUMULATION_COUNT = Self(101)
+    comptime CUDNN_SCALAR_DOUBLE_BN_EXP_AVG_FACTOR = Self(102)
+    comptime CUDNN_SCALAR_DOUBLE_BN_EPSILON = Self(103)
 
     def __init__(out self, value: Int):
         self._value = Int32(value)
