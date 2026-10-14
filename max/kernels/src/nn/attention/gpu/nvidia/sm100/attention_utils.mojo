@@ -4293,10 +4293,14 @@ def splitk_window(
 @inline(.always)
 def peel_mask[
     num_sets: Int,
+    LoadFnType: def[mask_strategy: MaskStrategy](UInt32) -> Float32,
     //,
     mask_strategies: StaticTuple[MaskStrategy, num_sets],
-    load_fn: def[mask_strategy: MaskStrategy](UInt32) capturing -> Float32,
-](mut mask_iters: StaticTuple[UInt32, num_sets], kv_row: UInt32,) -> Float32:
+](
+    load_fn: LoadFnType,
+    mut mask_iters: StaticTuple[UInt32, num_sets],
+    kv_row: UInt32,
+) -> Float32:
     """Determine which mask strategy applies to the peeled first iteration.
 
     Walks through mask sets to find the first with remaining iterations,
@@ -4306,14 +4310,15 @@ def peel_mask[
 
     Parameters:
         num_sets: Number of mask sets to walk through (inferred).
+        LoadFnType: Type of `load_fn` (inferred).
         mask_strategies: `MaskStrategy` per set, in evaluation order;
             the first set with remaining iterations supplies the
             strategy.
+
+    Args:
         load_fn: Callback invoked as
             `load_fn[strategy](kv_row)` to load the mask value for the
             selected strategy.
-
-    Args:
         mask_iters: Remaining iteration count per set; the selected
             set's count is decremented in place.
         kv_row: KV row index forwarded to `load_fn`.

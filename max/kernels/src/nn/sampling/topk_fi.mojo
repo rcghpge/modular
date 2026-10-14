@@ -3401,9 +3401,8 @@ def TopKTopPMaskedProbsKernel[
             coop_ws.unsafe_value(), coop_table, SIMD[.float32, 1](m)
         )[0]
 
-    @__parameter
     @inline(.always)
-    def compute_e(offset: Int) -> SIMD[.float32, vec_size]:
+    def compute_e(offset: Int) {imm} -> SIMD[.float32, vec_size]:
         var v = logits_row.load[width=vec_size]((Idx[0], offset)).cast[
             .float32
         ]()
