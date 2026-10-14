@@ -901,7 +901,7 @@ def test_text_batch_constructor__batch_construction_without_chunked_prefill_and_
 
 def _three_decode_rows(
     pipeline: Pipeline[TextGenerationInputs[TextContext], TextGenerationOutput],
-    width: int,
+    width: int = 0,
     enable_chunked_prefill: bool = True,
 ) -> TextBatchConstructor:
     batch_constructor = TextBatchConstructor(
@@ -1052,6 +1052,100 @@ def test_text_batch_constructor__mixed_step_defers_unchunkable_prompt(
     rows = batch_constructor.construct_batch().batches[0]
     assert [ctx.request_id for ctx in rows] == [prompt.request_id]
     assert prompt.tokens.active_length == 25
+
+
+@pytest.mark.parametrize(
+    ("used_fraction", "admitted"), [(0.5, True), (0.9, True), (0.95, False)]
+)
+def test_text_batch_constructor__inflight_backfill_kv_gate(
+    pipeline: Pipeline[TextGenerationInputs[TextContext], TextGenerationOutput],
+    used_fraction: float,
+    admitted: bool,
+) -> None:
+    """The in-flight backfill admits a new prompt only at or below the
+    TG-priority KV threshold (90% by default)."""
+    batch_constructor = _three_decode_rows(pipeline)
+    set_mock_kv_usage(cast(Mock, batch_constructor.kv_cache), used_fraction)
+    prompt = TextContext(
+        request_id=RequestID(),
+        tokens=TokenBuffer(np.ones(5, dtype=np.int64)),
+        max_length=100,
+    )
+    batch_constructor.enqueue_new_request(prompt)
+    rows = batch_constructor.construct_batch().batches[0]
+
+    assert has_request(rows, prompt.request_id) == admitted
+    assert len(rows) == 3 + admitted
+    assert (prompt.request_id in batch_constructor.replicas[0].ce_reqs) != (
+        admitted
+    )
+
+
+def test_text_batch_constructor__inflight_backfill_kv_gate_continues_chunked_prefill(
+    pipeline: Pipeline[TextGenerationInputs[TextContext], TextGenerationOutput],
+) -> None:
+    """Above the threshold, a prefill that already holds KV keeps going, and
+    a new prompt queued behind it waits."""
+    batch_constructor = _three_decode_rows(pipeline)
+    kv_cache = cast(Mock, batch_constructor.kv_cache)
+    chunked = TextContext(
+        request_id=RequestID(),
+        tokens=TokenBuffer(np.ones(50, dtype=np.int64)),
+        max_length=100,
+    )
+    batch_constructor.enqueue_new_request(chunked)
+    inputs = batch_constructor.construct_batch()
+    for context in inputs.batches[0]:
+        context.update(0)
+    batch_constructor.advance_requests(inputs)
+    assert next(iter(batch_constructor.replicas[0].ce_reqs)) == (
+        chunked.request_id
+    )
+
+    new = TextContext(
+        request_id=RequestID(),
+        tokens=TokenBuffer(np.ones(5, dtype=np.int64)),
+        max_length=100,
+    )
+    batch_constructor.enqueue_new_request(new)
+    set_mock_kv_usage(kv_cache, 0.95)
+    kv_cache.contains = Mock(
+        side_effect=lambda ctx: ctx.request_id == chunked.request_id
+    )
+    rows = batch_constructor.construct_batch().batches[0]
+
+    assert has_request(rows, chunked.request_id)
+    assert not has_request(rows, new.request_id)
+    assert new.request_id in batch_constructor.replicas[0].ce_reqs
+
+
+def test_text_batch_constructor__kv_gate_spares_prefill_only_step(
+    pipeline: Pipeline[TextGenerationInputs[TextContext], TextGenerationOutput],
+) -> None:
+    """With no decode rows to drain, in-flight batching still runs prefill
+    above the threshold, as the production path does."""
+    kv_cache = create_mock_kv_cache()
+    set_mock_kv_usage(kv_cache, 0.95)
+    batch_constructor = TextBatchConstructor(
+        scheduler_config=TokenGenerationSchedulerConfig(
+            max_batch_size=10,
+            max_batch_total_tokens=None,
+            enable_in_flight_batching=True,
+            enable_chunked_prefill=True,
+            target_tokens_per_batch_ce=30,
+        ),
+        pipeline=pipeline,
+        kv_cache=kv_cache,
+    )
+    prompt = TextContext(
+        request_id=RequestID(),
+        tokens=TokenBuffer(np.ones(5, dtype=np.int64)),
+        max_length=100,
+    )
+    batch_constructor.enqueue_new_request(prompt)
+    rows = batch_constructor.construct_batch().batches[0]
+
+    assert [ctx.request_id for ctx in rows] == [prompt.request_id]
 
 
 def test_text_batch_constructor__advance_requests_requeues_every_chunked_request(

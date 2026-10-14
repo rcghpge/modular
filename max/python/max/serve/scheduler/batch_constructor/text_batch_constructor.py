@@ -416,6 +416,8 @@ class TextBatchConstructor:
     - Once a replica's device KV usage exceeds
       ``TG_PRIORITY_KV_PERCENTAGE_ENV_VAR`` percent, it prioritizes TG over CE
       so in-flight generations drain before new prefills compete for blocks.
+      With in-flight batching, the same threshold stops the CE backfill from
+      admitting new requests; prefills that already hold KV blocks continue.
     - During TG, if allocating KV blocks for a candidate request fails due to
       insufficient capacity, the constructor may preempt other TG candidates
       to free KV space, ensuring that at least a subset of requests can
@@ -1280,6 +1282,15 @@ class TextBatchConstructor:
         # If there is anything in the batch, we can assume its TG, and the requests
         # are also counted in the tg_reqs.
         starting_tg_reqs_count = len(batch)
+        # The in-flight backfill runs under a TG priority, so it also slips
+        # past the KV-pressure check in _identify_priority. Above that
+        # threshold a new prefill takes blocks the running generations need
+        # next, so only prefills that already hold KV continue.
+        admit_new = not (
+            starting_tg_reqs_count > 0
+            and self.kv_cache.pressure_pct(replica_idx)
+            > self.tg_priority_kv_percentage
+        )
         max_batch_size = self.scheduler_config.max_batch_size
         while (
             len(batch) < max_batch_size
@@ -1292,6 +1303,10 @@ class TextBatchConstructor:
         ):
             # Pop new request off the queue.
             req_id, ctx = replica_requests.ce_reqs.popitem(last=False)
+
+            if not admit_new and not self.kv_cache.contains(ctx):
+                self._return_to_request_queue(ctx, replica_idx)
+                break
 
             # Check LoRA budget before resource allocation
             if not replica_requests.can_allocate_lora_request(
