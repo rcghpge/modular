@@ -1528,6 +1528,41 @@ class TestConstructionResolution:
             self._assert_resolve_preserves(config)
 
     @prepare_registry
+    def test_spec_decode_speculator_of_module_v3_only_target(self) -> None:
+        """A target registered only as ``<name>_ModuleV3`` is reached from
+        the checkpoint's bare name, and so are the speculators filed under
+        it."""
+        base = dataclasses.replace(
+            DUMMY_LLAMA_ARCH, name="DeepseekV3ForCausalLM_ModuleV3"
+        )
+        PIPELINE_REGISTRY.register(base)
+        PIPELINE_REGISTRY.register(
+            Speculator(
+                name="UnifiedMTPDeepseekV3ForCausalLM",
+                base=base,
+                draft_arch=None,
+                method="mtp",
+                pipeline_model=DummyLlamaPipelineModel,
+            )
+        )
+        hf_config = dict(_LLAMA_CONFIG)
+        hf_config["architectures"] = ["DeepseekV3ForCausalLM"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _make_local_repo(
+                tmpdir,
+                hf_config=hf_config,
+                safetensors_files={"model.safetensors": {"w": "BF16"}},
+            )
+            config = self._from_args(
+                tmpdir,
+                speculative=SpeculativeConfig(speculative_method="mtp"),
+            )
+            resolved = PIPELINE_REGISTRY.architecture_for_config(config)
+            assert resolved is not None
+            assert resolved.name == "UnifiedMTPDeepseekV3ForCausalLM"
+            assert resolved.pipeline_model is DummyLlamaPipelineModel
+
+    @prepare_registry
     def test_spec_decode_no_speculator_for_method_raises(self) -> None:
         """A target that declares speculators but none for the requested
         method is a configuration error, not a silent fallback to the
