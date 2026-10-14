@@ -22,6 +22,7 @@ import numpy as np
 from max.driver import CPU
 from max.dtype import DType
 from max.experimental import functional as F
+from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.functional_kernels import (
     mla_decode_graph,
     mla_prefill_decode_graph,
@@ -30,17 +31,16 @@ from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.nn.common_layers.multi_latent_attention import (
     MLAPrefillMetadata,
 )
+from max.experimental.nn.common_layers.quant_mla import (
+    QuantizedLatentAttention,
+    tensor_parallel_latent_attention_with_rope,
+)
+from max.experimental.nn.common_layers.quant_tensor import FP8BlockTensor
 from max.experimental.sharding import DeviceMapping
 from max.experimental.tensor import Tensor
 from max.nn.attention import MHAMaskVariant
 from max.nn.quant_config import QuantConfig
 
-from ...deepseekV3_modulev3.layers import quant_ops
-from ...deepseekV3_modulev3.layers.quant_mla import (
-    QuantizedLatentAttention,
-    tensor_parallel_latent_attention_with_rope,
-)
-from ...deepseekV3_modulev3.layers.quant_tensor import FP8BlockTensor
 from .indexer import Indexer
 
 logger = logging.getLogger("max.pipelines")

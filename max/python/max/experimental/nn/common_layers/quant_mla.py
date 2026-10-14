@@ -173,6 +173,7 @@ class QuantizedLatentAttention(Module[..., Any]):
         )
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
+        """Moves the layer and its quantized projections to ``target`` in place."""
         super().to(target)
 
         self.kv_a_proj_with_mqa = self.kv_a_proj_with_mqa.to(target)
@@ -257,6 +258,17 @@ class QuantizedLatentAttention(Module[..., Any]):
     def create_mla_prefill_metadata(
         self, input_row_offsets: Tensor, kv_collection: PagedCacheValues
     ) -> MLAPrefillMetadata:
+        """Creates the prefill planning metadata required by MLA prefill kernels.
+
+        Args:
+            input_row_offsets: Ragged row offsets tensor describing the token
+                boundaries for each sequence in the batch.
+            kv_collection: Paged KV cache values for the current device.
+
+        Returns:
+            An :class:`MLAPrefillMetadata` instance containing buffer row
+            offsets, cache offsets, and buffer lengths for the prefill step.
+        """
         layer_idx = F.constant(0, DType.uint32, device=CPU())
         replicated = DeviceMapping.replicated(input_row_offsets.mesh)
         buffer_row_offsets, cache_offsets, buffer_lengths = (
@@ -370,6 +382,7 @@ class QuantizedLatentAttentionWithRope(QuantizedLatentAttention):
         input_row_offsets: Tensor,
         mla_prefill_metadata: MLAPrefillMetadata | None = None,
     ) -> Tensor:
+        """Computes latent attention with RoPE over the paged KV cache."""
         if self.q_lora_rank is not None:
             qkv = quant_ops.matmul(x, self.wqkv)
             xq, kv = qkv.split([self.q_lora_rank, self.cache_head_dim], axis=1)

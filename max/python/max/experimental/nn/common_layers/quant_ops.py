@@ -750,9 +750,9 @@ def _matmul_nvfp4(x: Tensor, weight: NVFP4Tensor) -> Tensor:
 
 
 def _matmul_fp8_block(x: Tensor, weight: FP8BlockTensor) -> Tensor:
-    """Block-scaled FP8 matmul ``x @ weight.data.T`` with dynamic activation
-    quantization.
+    """Block-scaled FP8 matmul ``x @ weight.data.T``.
 
+    Activations are quantized dynamically.
     The activation block is ``(1, block_k)`` and the weight block is
     ``(block_m, block_k) = weight.block_size``. The kernel returns bf16.
     """

@@ -45,22 +45,27 @@ class QTensor(Module[[], None]):
     """
 
     def forward(self) -> None:
+        """Raises, since a QTensor is a data wrapper rather than a layer."""
         raise NotImplementedError("QTensor is not a callable layer")
 
     @property
     def local_shards(self) -> tuple[Self, ...]:
+        """Per-device shards of this tensor; subclasses implement it."""
         raise NotImplementedError("QTensor does not support local_shards")
 
     @property
     def mesh(self) -> DeviceMesh:
+        """Device mesh the tensor is placed on; subclasses implement it."""
         raise NotImplementedError("mesh is not implemented for QTensor")
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
+        """Returns a copy placed on ``target``; subclasses implement it."""
         raise NotImplementedError("to() is not implemented for QTensor")
 
 
 class FP8BlockTensor(QTensor):
     """FP8 block-scaled quantized tensor.
+
     Args:
         data: Packed ``float8_e4m3fn`` data of shape ``[rows, cols]``.
         weight_scale_inv: Per-block inverse ``float32`` scales of shape
@@ -104,6 +109,7 @@ class FP8BlockTensor(QTensor):
 
     @property
     def block_size(self) -> tuple[int, int]:
+        """Quantization block shape as ``(rows, cols)``."""
         return self._block_size
 
     def shard(self, axis: int, mesh: DeviceMesh) -> FP8BlockTensor:
@@ -128,6 +134,7 @@ class FP8BlockTensor(QTensor):
 
     @property
     def local_shards(self) -> tuple[FP8BlockTensor, ...]:
+        """Per-device shards, pairing each ``data`` shard with its scales."""
         return tuple(
             FP8BlockTensor(
                 data=self.data.local_shards[i],
@@ -139,6 +146,7 @@ class FP8BlockTensor(QTensor):
 
     @property
     def mesh(self) -> DeviceMesh:
+        """Device mesh of the packed ``data`` tensor."""
         return self.data.mesh
 
     @property
@@ -151,6 +159,7 @@ class FP8BlockTensor(QTensor):
         self.weight_scale_inv._mapping = mapping
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> FP8BlockTensor:
+        """Returns a copy with ``data`` and its scales placed on ``target``."""
         return FP8BlockTensor(
             data=self.data.to(target),
             weight_scale_inv=self.weight_scale_inv.to(target),
@@ -228,6 +237,7 @@ class NVFP4Tensor(QTensor):
 
     @property
     def block_size(self) -> tuple[int, int]:
+        """Quantization block shape as ``(rows, cols)``."""
         return self._block_size
 
     def shard(self, axis: int, mesh: DeviceMesh) -> NVFP4Tensor:
@@ -243,6 +253,7 @@ class NVFP4Tensor(QTensor):
 
     @property
     def local_shards(self) -> tuple[NVFP4Tensor, ...]:
+        """Per-device shards, pairing each ``data`` shard with its scales."""
         n = self.data.num_shards
         return tuple(
             NVFP4Tensor(
@@ -257,6 +268,7 @@ class NVFP4Tensor(QTensor):
 
     @property
     def mesh(self) -> DeviceMesh:
+        """Device mesh of the packed ``data`` tensor."""
         return self.data.mesh
 
     @property
@@ -269,6 +281,7 @@ class NVFP4Tensor(QTensor):
         self.weight_scale._mapping = mapping
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> NVFP4Tensor:
+        """Returns a copy with ``data`` and ``weight_scale`` placed on ``target``."""
         return NVFP4Tensor(
             data=self.data.to(target),
             weight_scale=self.weight_scale.to(target),

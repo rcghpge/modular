@@ -23,11 +23,11 @@ from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.nn.common_layers.multi_latent_attention import (
     MLAPrefillMetadata,
 )
+from max.experimental.nn.common_layers.quant_linear import tensor_parallel_mlp
 from max.experimental.nn.norm import RMSNorm
 from max.experimental.tensor import Tensor
 from max.nn.comm.ep import EPBatchManager, EPCommBuffers
 
-from ...deepseekV3_modulev3.layers.quant_linear import tensor_parallel_mlp
 from ...deepseekV3_modulev3.layers.transformer_block import (
     ParallelismMode,
     post_attention,

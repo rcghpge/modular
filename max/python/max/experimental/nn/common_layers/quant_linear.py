@@ -54,12 +54,14 @@ class QuantizedLinear(Module[[Tensor], Tensor]):
         self.bias = Tensor.zeros((out_dim,)) if bias else 0
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
+        """Moves the weight and any tensor bias to ``target`` in place."""
         self.weight = self.weight.to(target)
         if isinstance(self.bias, QuantAwareTensor):
             self.bias = self.bias.to(target)
         return self
 
     def forward(self, x: Tensor) -> Tensor:
+        """Applies the quantize-aware projection ``x @ weight.T + bias``."""
         return quant_ops.matmul(x, self.weight) + self.bias
 
 
@@ -109,6 +111,7 @@ class QuantizedMLP(Module[[Tensor], Tensor]):
         )
 
     def forward(self, x: Tensor) -> Tensor:
+        """Applies the gated MLP to ``x``."""
         # Fuse the gate and up projections into a single matmul.
         gate_up_weight = quant_ops.concat_weights(
             self.gate_proj.weight, self.up_proj.weight, axis=0

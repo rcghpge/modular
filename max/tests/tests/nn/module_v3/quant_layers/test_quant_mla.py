@@ -26,6 +26,14 @@ from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.nn.common_layers.mesh_axis import TP
+from max.experimental.nn.common_layers.quant_mla import (
+    QuantizedLatentAttentionWithRope,
+    tensor_parallel_latent_attention_with_rope,
+)
+from max.experimental.nn.common_layers.quant_tensor import (
+    FP8BlockTensor,
+    NVFP4Tensor,
+)
 from max.experimental.sharding import (
     DeviceMapping,
     DeviceMesh,
@@ -50,14 +58,6 @@ from max.nn.quant_config import QuantConfig
 from max.pipelines.architectures.deepseekV3_2_modulev3.layers.sparse_mla import (
     QuantizedSparseLatentAttentionWithRope,
     tensor_parallel_sparse_latent_attention_with_rope,
-)
-from max.pipelines.architectures.deepseekV3_modulev3.layers.quant_mla import (
-    QuantizedLatentAttentionWithRope,
-    tensor_parallel_latent_attention_with_rope,
-)
-from max.pipelines.architectures.deepseekV3_modulev3.layers.quant_tensor import (
-    FP8BlockTensor,
-    NVFP4Tensor,
 )
 
 # Block-aligned dimensions (multiples of 128 on the quantized axes) so the FP8

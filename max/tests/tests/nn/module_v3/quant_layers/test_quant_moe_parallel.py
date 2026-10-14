@@ -26,6 +26,14 @@ from max.experimental.nn.common_layers.functional_kernels import (
     moe_create_indices,
 )
 from max.experimental.nn.common_layers.mesh_axis import TP
+from max.experimental.nn.common_layers.quant_moe import (
+    ExpertParallelMoE,
+    TensorParallelMoE,
+)
+from max.experimental.nn.common_layers.quant_tensor import (
+    FP8BlockTensor,
+    NVFP4Tensor,
+)
 from max.experimental.sharding import (
     DeviceMapping,
     DeviceMesh,
@@ -44,14 +52,6 @@ from max.nn.comm.ep.ep_manager import (
 from max.nn.quant_config import QuantConfig
 from max.pipelines.architectures.deepseekV3_2_modulev3.layers.moe_gate import (
     DeepseekV3_2TopKRouter,
-)
-from max.pipelines.architectures.deepseekV3_modulev3.layers.quant_moe import (
-    ExpertParallelMoE,
-    TensorParallelMoE,
-)
-from max.pipelines.architectures.deepseekV3_modulev3.layers.quant_tensor import (
-    FP8BlockTensor,
-    NVFP4Tensor,
 )
 
 _HIDDEN_DIM = 256

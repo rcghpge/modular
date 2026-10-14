@@ -26,6 +26,7 @@ from max.experimental.nn.common_layers.embedding import VocabParallelEmbedding
 from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.nn.common_layers.linear import ColumnParallelLinear
 from max.experimental.nn.common_layers.mesh_axis import DP
+from max.experimental.nn.common_layers.quant_moe import QuantizedMoE
 from max.experimental.nn.common_layers.rotary_embedding import RotaryEmbedding
 from max.experimental.nn.sequential import ModuleList
 from max.experimental.sharding import (
@@ -51,7 +52,6 @@ from ..deepseekV3_modulev3.deepseekV3 import (
     gather_last_tokens,
     split_replicated_batch,
 )
-from ..deepseekV3_modulev3.layers.quant_moe import QuantizedMoE
 from .layers.rms_norm import MultiplyBeforeCastRMSNorm
 from .layers.transformer_block import DeepseekV3_2TransformerBlock
 from .model_config import DeepseekV3_2Config
