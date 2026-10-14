@@ -611,7 +611,8 @@ struct NonMaximumSuppression:
 
     @staticmethod
     def execute[
-        dtype: DType
+        dtype: DType,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=.int64, rank=2, ...],
         boxes: InputTensor[dtype=dtype, rank=3, ...],
@@ -619,18 +620,20 @@ struct NonMaximumSuppression:
         max_output_boxes_per_class: Int64,
         iou_threshold: Float32,
         score_threshold: Float32,
-    ):
+        ctx: DeviceContext,
+    ) raises:
         var max_output_boxes_int = Int(max_output_boxes_per_class)
         var iou_threshold_float = iou_threshold
         var score_threshold_float = score_threshold
 
-        non_max_suppression(
+        non_max_suppression[target=target,](
             boxes.to_tile_tensor[.int64](),
             scores.to_tile_tensor[.int64](),
             output.to_tile_tensor[.int64](),
             max_output_boxes_int,
             iou_threshold_float,
             score_threshold_float,
+            ctx,
         )
 
 

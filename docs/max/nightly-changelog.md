@@ -78,6 +78,28 @@ This version is still a work in progress.
 
 ## MAX framework
 
+- `mo.non_maximum_suppression` now executes on GPU devices in compiled
+  graphs. Boxes and scores stay on the device through a single-CTA
+  greedy kernel (shared-memory bitonic order by score descending, box
+  index ascending); the three scalar thresholds remain host operands.
+  The output's row count is still sized by the host shape function,
+  which reads the operands, so data-dependent sizing cost is unchanged.
+  Float32 inputs with up to 4096 boxes per batch take the GPU path on
+  NVIDIA and AMD; Apple targets and other shapes fall back to the
+  existing host implementation on host copies (the kernel's
+  shared-memory candidate state exceeds Metal's 32 KiB threadgroup
+  limit). Tied scores now follow a pinned total order (score
+  descending, box index ascending) on both the GPU kernel and the host
+  path, so both -- and the shape function that sizes the output --
+  always agree on the selection. The eager interpreter keeps running
+  this op on the host, transferring device-resident operands to CPU.
+  Measured on one B200, compute-kernel time only: 60x faster than the
+  host compute path at 1024 boxes (0.7 ms vs 42 ms for 1 batch, 1
+  class) and 152x at 4096 boxes (1.3 ms vs 203 ms). The host shape
+  function that sizes the output still reads the operands on every
+  execution, so total graph latency improves by less than these
+  ratios.
+
 - `max.experimental.functional.cumsum` now has its own sharding rule,
   `cumsum_rule`. A `Partial` input of an integral dtype passes through the
   scan without an all-reduce (resolved results agree bit-for-bit with

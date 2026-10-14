@@ -2594,9 +2594,10 @@ def _handle_non_maximum_suppression(
 ) -> Sequence[Buffer]:
     """Dispatches eager non-maximum suppression to its GC model.
 
-    ``MO_HostOnly`` keeps every operand on CPU. The op's shape function runs the
-    real suppression to size the output, so the handler no longer allocates an
-    upper-bound buffer or truncates the result.
+    The interpreter executes this op on the host; any device-resident
+    ``boxes``/``scores`` transfer to CPU here (compiled graphs run the
+    op on-device). The op's shape function runs the real suppression to
+    size the output, so the handler allocates no upper-bound buffer.
 
     Args:
         op: The non-maximum suppression operation.
@@ -2619,6 +2620,12 @@ def _handle_non_maximum_suppression(
     assert isinstance(max_output, Buffer)
     assert isinstance(iou_threshold, Buffer)
     assert isinstance(score_threshold, Buffer)
+
+    # The interpreter path runs NMS on the host: device-resident
+    # operands transfer to CPU (the compiled-graph path executes
+    # on-device via the op's device support).
+    boxes = boxes.to(CPU())
+    scores = scores.to(CPU())
 
     if boxes.dtype != scores.dtype:
         raise ValueError(
