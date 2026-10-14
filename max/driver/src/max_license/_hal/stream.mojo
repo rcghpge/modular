@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from .plugin import OpaquePointer, FunctionHandle, OutParam, ContextHandle
+from ._plugin._overlay import HAL_PLUGINS
 from std.collections import OptionalReg
 from .buffer import Buffer, BufferView
 from .context import Context
@@ -45,6 +46,12 @@ struct Stream[device_spec: DeviceSpec](Deinitable, Movable):
     var _queue_is_stream: Bool
     var _self_ref: WeakPointer[Self]
 
+    comptime HALExtensions = HAL_PLUGINS.for_target[
+        DeviceSpec._mlir_target[Self.device_spec]()
+    ].HookFor[DeviceSpec.target[Self.device_spec]()].extensions
+
+    var _extensions: Pointer[Self.HALExtensions, ImmUntrackedOrigin]
+
     @staticmethod
     def _create(
         out _self: ArcPointer[Self], context: Context[Self.device_spec]
@@ -58,6 +65,7 @@ struct Stream[device_spec: DeviceSpec](Deinitable, Movable):
         ref context: Context[Self.device_spec],
     ) raises HALError:
         self._queue = context.create_queue()
+        self._extensions = self._queue[]._extensions
 
         var is_stream = MaybeUninit[Bool]()
         var status = context._raw[]._raw.base.queue_is_stream.get()(
@@ -74,6 +82,22 @@ struct Stream[device_spec: DeviceSpec](Deinitable, Movable):
         self._queue_is_stream = is_stream.unsafe_assume_init()
         self._chain_event = None
         self._self_ref = WeakPointer[Self]()
+
+    def extensions(
+        imm self,
+    ) -> ref[origin_of(self)] Self.HALExtensions:
+        """Returns a ref to the HAL extension carrier object that
+        lives on the `Device` this is peripherally derived from.
+
+        Returns:
+            An immutable ref to the extension carrier.
+        """
+
+        # SAFETY: this ref is valid up through destruction of `self`,
+        # as it must live on the `Device` that `self` was peripherally
+        # derived from and that `self` keeps alive
+        # through `self._queue`.
+        return self._extensions.unsafe_origin_cast[origin_of(self)]()[]
 
     # ===-------------------------------------------------------------------===#
     # Internal helpers

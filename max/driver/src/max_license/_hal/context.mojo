@@ -24,6 +24,7 @@ from .plugin import (
     M_driver_bundle_compilation_options,
     M_driver_dlpack_device,
 )
+from ._plugin._overlay import HAL_PLUGINS
 
 from .buffer import Buffer, BufferView
 from .device import DeviceSpec
@@ -106,6 +107,13 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
     var _device: ArcPointer[Device[Self.device_spec]]
     var _raw: ArcPointer[RawDriver]
     var _self_ref: WeakPointer[Self]
+
+    comptime HALExtensions = HAL_PLUGINS.for_target[
+        DeviceSpec._mlir_target[Self.device_spec]()
+    ].HookFor[DeviceSpec.target[Self.device_spec]()].extensions
+
+    var _extensions: Pointer[Self.HALExtensions, ImmUntrackedOrigin]
+
     # Loaded functions keyed by code content, so byte-identical code dedupes
     # across the separate buffers it arrives in (one per MEF kernel archive).
     # Entries own their handle and bundle, released at context teardown.
@@ -131,6 +139,13 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         ref device: Device[Self.device_spec],
     ) raises HALError:
         self._device = device._self_ref.try_upgrade().value()
+        # Points into the Arc'd `_device`, which keeps the extensions
+        # instance alive, so the erased origin is sound here.
+        self._extensions = (
+            Pointer(to=self._device[].extensions())
+            .as_imm()
+            .unsafe_origin_cast[ImmUntrackedOrigin]()
+        )
         self._raw = device._raw
         self._self_ref = WeakPointer[Self]()
         self._function_cache = {}
@@ -177,6 +192,22 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         except e:
             print("warning: destroy_context failed:", e)
 
+    def extensions(
+        imm self,
+    ) -> ref[origin_of(self)] Self.HALExtensions:
+        """Returns a ref to the HAL extension carrier object that
+        lives on the `Device` this is peripherally derived from.
+
+        Returns:
+            An immutable ref to the extension carrier.
+        """
+
+        # SAFETY: this ref is valid up through destruction of `self`,
+        # as it must live on the `Device` that `self` was peripherally
+        # derived from and that `self` keeps alive
+        # through `self._context`.
+        return self._extensions.unsafe_origin_cast[origin_of(self)]()[]
+
     def handle[
         origin: Origin, //
     ](ref[origin] self) -> Pointer[ContextHandle.T, origin]:
@@ -219,7 +250,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         Device[Self.device_spec].Extensions, SupportsPeerAccessV1
     ):
         """Makes `peer`'s memory addressable from this context. Idempotent."""
-        var peer_access = self._device[].extensions.peer_access()
+        var peer_access = self._device[].extensions().peer_access()
         if not peer_access:
             raise HALError(
                 STATUS_UNKNOWN_SYMBOL,
@@ -405,6 +436,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
             byte_size=byte_size,
             is_host_pinned=False,
             _context=self._self_ref.try_upgrade().value(),
+            _extensions=self._extensions,
         )
 
     def free_sync(self, var mem: Buffer[Self.device_spec]) raises HALError:
@@ -418,6 +450,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
             byte_size=byte_size,
             is_host_pinned=True,
             _context=self._self_ref.try_upgrade().value(),
+            _extensions=self._extensions,
         )
 
     def free_host_pinned(
@@ -445,6 +478,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
             byte_size=byte_size,
             is_host_pinned=False,
             _context=self._self_ref.try_upgrade().value(),
+            _extensions=self._extensions,
         )
 
     def unwrap_memory(

@@ -18,6 +18,7 @@ from .plugin import (
     FunctionHandle,
     ContextHandle,
 )
+from ._plugin._overlay import HAL_PLUGINS
 from .buffer import Buffer, BufferView
 from .context import Context
 from .memory import _enqueue_copy
@@ -51,6 +52,12 @@ struct Queue[device_spec: DeviceSpec](Deinitable, Movable):
     var _context: ArcPointer[Context[Self.device_spec]]
     var _self_ref: WeakPointer[Self]
 
+    comptime HALExtensions = HAL_PLUGINS.for_target[
+        DeviceSpec._mlir_target[Self.device_spec]()
+    ].HookFor[DeviceSpec.target[Self.device_spec]()].extensions
+
+    var _extensions: Pointer[Self.HALExtensions, ImmUntrackedOrigin]
+
     @staticmethod
     def _create(
         out _self: ArcPointer[Self], context: Context[Self.device_spec]
@@ -65,6 +72,7 @@ struct Queue[device_spec: DeviceSpec](Deinitable, Movable):
     ) raises HALError:
         self._self_ref = WeakPointer[Self]()
         self._context = context._self_ref.try_upgrade().value()
+        self._extensions = self._context[]._extensions
         self._raw = context._raw
 
         ref raw = context._raw[]
@@ -88,6 +96,22 @@ struct Queue[device_spec: DeviceSpec](Deinitable, Movable):
             self._raw[].destroy_queue(self._context[].handle(), self._handle)
         except e:
             print("warning: destroy_queue failed:", e)
+
+    def extensions(
+        imm self,
+    ) -> ref[origin_of(self)] Self.HALExtensions:
+        """Returns a ref to the HAL extension carrier object that
+        lives on the `Device` this is peripherally derived from.
+
+        Returns:
+            An immutable ref to the extension carrier.
+        """
+
+        # SAFETY: this ref is valid up through destruction of `self`,
+        # as it must live on the `Device` that `self` was peripherally
+        # derived from and that `self` keeps alive
+        # through `self._context`.
+        return self._extensions.unsafe_origin_cast[origin_of(self)]()[]
 
     # TODO: revisit all of these when we get to queue dependency ordering
     def execute(

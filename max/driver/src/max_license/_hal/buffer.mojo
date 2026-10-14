@@ -13,10 +13,11 @@
 """HAL Buffer — device allocations and non-owning views into them."""
 
 from .plugin import M_driver_memory_view, MemoryHandle
+from ._plugin._overlay import HAL_PLUGINS
 from .device import DeviceSpec
 from .context import Context
 
-from std.memory import ArcPointer
+from std.memory import ArcPointer, Pointer
 
 
 struct BufferView(Copyable, Movable):
@@ -63,6 +64,28 @@ struct Buffer[device_spec: DeviceSpec](Movable):
     var byte_size: UInt64
     var is_host_pinned: Bool
     var _context: ArcPointer[Context[Self.device_spec]]
+
+    comptime HALExtensions = HAL_PLUGINS.for_target[
+        DeviceSpec._mlir_target[Self.device_spec]()
+    ].HookFor[DeviceSpec.target[Self.device_spec]()].extensions
+
+    var _extensions: Pointer[Self.HALExtensions, ImmUntrackedOrigin]
+
+    def extensions(
+        imm self,
+    ) -> ref[origin_of(self)] Self.HALExtensions:
+        """Returns a ref to the HAL extension carrier object that
+        lives on the `Device` this is peripherally derived from.
+
+        Returns:
+            An immutable ref to the extension carrier.
+        """
+
+        # SAFETY: this ref is valid up through destruction of `self`,
+        # as it must live on the `Device` that `self` was peripherally
+        # derived from and that `self` keeps alive
+        # through `self._context`.
+        return self._extensions.unsafe_origin_cast[origin_of(self)]()[]
 
     def view(self) -> BufferView:
         """Returns a view over the whole allocation."""

@@ -2605,7 +2605,7 @@ struct DeviceContextBase[
             return False
         if self._device[].id == peer._device[].id:
             return False
-        comptime Ext = type_of(self._device[].extensions)
+        comptime Ext = type_of(self._device[].extensions())
         comptime if conforms_to(Ext, SupportsPeerAccessV1):
             return self._device[].can_access_peer(peer._device[])
         else:
@@ -2623,9 +2623,9 @@ struct DeviceContextBase[
         """
         if not (self._driver is peer._driver):
             raise Error("Peer access not implemented")
-        comptime Ext = type_of(self._device[].extensions)
+        comptime Ext = type_of(self._device[].extensions())
         comptime if conforms_to(Ext, SupportsPeerAccessV1):
-            if not self._device[].extensions.peer_access():
+            if not self._device[].extensions().peer_access():
                 raise Error("Peer access not implemented")
             self._context[].enable_peer_access(peer._context[])
             var src = Int(self._device[].id)
@@ -2665,7 +2665,7 @@ struct DeviceContextBase[
                     driver[].get_device_dynamic[Optional[Int64](0)](Int64(i))
                 )
                 # A non-vendor `.so` may lack the group; stay a no-op.
-                if not device[].extensions.peer_access():
+                if not device[].extensions().peer_access():
                     return
                 contexts.append(device[].get_context())
             # Concurrent callers may repeat a grant; the plugin treats an

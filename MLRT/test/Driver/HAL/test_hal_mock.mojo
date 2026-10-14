@@ -719,7 +719,7 @@ def test_peer_access_mock() raises:
     var driver = Driver.create(_get_plugin_spec())
     var dev0 = driver[].get_device_dynamic(Int64(0))
     var dev1 = driver[].get_device_dynamic(Int64(1))
-    comptime Ext = type_of(dev0[].extensions)
+    comptime Ext = type_of(dev0[].extensions())
     comptime if conforms_to(Ext, SupportsPeerAccessV1):
         # The mock exports the peer group but has no peer-capable pair.
         assert_false(dev0[].can_access_peer(dev1[]))

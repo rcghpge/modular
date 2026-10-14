@@ -90,7 +90,12 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
     comptime Extensions = HAL_PLUGINS.for_target[
         DeviceSpec._mlir_target[Self.spec]()
     ].HookFor[DeviceSpec.target[Self.spec]()].extensions
-    var extensions: Self.Extensions
+
+    # SAFETY: this field is immutably shared across the HAL
+    # object graph, and must not be mutated without
+    # universal synchronization over an internally mutable
+    # member or member set.
+    var _extensions: Self.Extensions
 
     @staticmethod
     def _create(
@@ -120,7 +125,7 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
                 ),
             )
 
-        self.extensions = type_of(self.extensions)(
+        self._extensions = Self.Extensions(
             self._raw[]._raw._lib.borrow(), self._raw[]._raw.so_path
         )
 
@@ -141,6 +146,17 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
 
         self._handle = device_handle.unsafe_assume_init()
 
+    def extensions(
+        imm self,
+    ) -> ref[self._extensions] Self.Extensions:
+        """Returns a ref to the HAL extension carrier object that
+        lives on this `Device`.
+
+        Returns:
+            An immutable ref to the extension carrier.
+        """
+        return self._extensions
+
     def get_context(
         self,
     ) raises HALError -> ArcPointer[Context[Self.spec]]:
@@ -156,7 +172,7 @@ struct Device[spec: DeviceSpec](Deinitable, Movable):
         Self.Extensions, SupportsPeerAccessV1
     ):
         """Returns whether this device can access `peer` once enabled."""
-        var peer_access = self.extensions.peer_access()
+        var peer_access = self._extensions.peer_access()
         if not peer_access:
             return False
         return peer_access.value().can_access_peer(

@@ -25,7 +25,7 @@ trait HALExtensions(Deinitable, HALPluginConstructable, Movable):
     Each backend provides a struct conforming to this trait to expose its
     surface of HAL extension functions. A plugin advertises its extension set
     via the `comptime extensions` member on `HalPluginHooks`, and each
-    `Device` holds one as `extensions`.
+    `Device` holds one behind its `extensions()` accessor.
 
     A capability is a `Supports<Name>V<N>` trait; the vendor set holds its
     symbols as a `RawPluginComponent` field resolved in `__init__`. Callers
@@ -33,9 +33,9 @@ trait HALExtensions(Deinitable, HALPluginConstructable, Movable):
     type-checks; the Bool flags below do not refine:
 
     ```mojo
-    comptime Ext = type_of(device.extensions)
+    comptime Ext = type_of(device.extensions())
     comptime if conforms_to(Ext, SupportsPeerAccessV1):
-        var peer_access = device.extensions.peer_access()
+        var peer_access = device.extensions().peer_access()
     ```
     """
 

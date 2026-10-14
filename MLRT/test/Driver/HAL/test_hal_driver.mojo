@@ -69,7 +69,7 @@ def test_peer_access() raises:
         return
     var dev0 = driver[].get_device_dynamic(Int64(0))
     var dev1 = driver[].get_device_dynamic(Int64(1))
-    comptime Ext = type_of(dev0[].extensions)
+    comptime Ext = type_of(dev0[].extensions())
     comptime if conforms_to(Ext, SupportsPeerAccessV1):
         assert_false(dev0[].can_access_peer(dev0[]))
         var forward = dev0[].can_access_peer(dev1[])

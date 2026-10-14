@@ -969,6 +969,7 @@ def MojoHAL_CompletionFlag_release(flag: _CompletionFlagBoxPtr) abi("C"):
         byte_size=box.buffer.byte_size,
         is_host_pinned=True,
         _context=box.ctx._context,
+        _extensions=box.buffer._extensions,
     )
     try:
         box.ctx._context[].free_host_pinned(buffer^)
