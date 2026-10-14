@@ -98,8 +98,7 @@ class DeepseekV4Indexer(Module):
         )
         # The reference pins this one to bf16 explicitly
         # (``dtype=torch.bfloat16`` on the ColumnParallelLinear), which for this
-        # checkpoint is what ``config.dtype`` already is; ``wo_a`` in the block
-        # is declared the same way and followed the config there too.
+        # checkpoint is what ``config.dtype`` already is.
         self.weights_proj = Linear(
             config.hidden_size, self.n_heads, config.dtype, device
         )

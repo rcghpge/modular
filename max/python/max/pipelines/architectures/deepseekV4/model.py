@@ -211,8 +211,8 @@ class DeepseekV4Model(GraphPipelineModelWithKVCache[TextContext]):
             # The encoding names the fp8 projections only. The activation
             # dtype is the reference's default dtype, bf16, which is also
             # what the checkpoint stores ``embed`` / ``ffn.gate`` /
-            # ``indexer.weights_proj`` / ``wo_a`` in and the reference declares
-            # them as; those follow ``config.dtype``. The weights the reference
+            # ``indexer.weights_proj`` in and the reference declares them as;
+            # those follow ``config.dtype``. The weights the reference
             # declares float32 (norms, head, compressor ``wkv`` / ``wgate``)
             # are declared so by the modules and upcast by the adapter.
             quant_config = fp8_block_quant_config(
