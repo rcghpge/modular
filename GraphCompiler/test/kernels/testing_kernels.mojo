@@ -260,8 +260,12 @@ struct Foo:
 
 
 @extensibility.register_shape_function("imposter_add")
-def imposter_add_shape(x: InputTensor, y: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def imposter_add_shape(
+    x: Some[Tensor], y: Some[Tensor]
+) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 # Same as `imposter_add`, but its shape function raises, so the generated shape
@@ -288,11 +292,13 @@ struct FooRaisingShape:
 
 @extensibility.register_shape_function("imposter_add_raising_shape")
 def imposter_add_raising_shape_shape(
-    x: InputTensor, y: InputTensor
-) raises -> IndexList[x.rank]:
-    if x.rank == 0:
+    x: Some[Tensor], y: Some[Tensor]
+) raises -> IndexList[type_of(x).rank]:
+    if type_of(x).rank == 0:
         raise "imposter_add_raising_shape: rank-0 is not supported"
-    return x.shape()
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 # Device entry for the GPU negate path: one thread per flat element, negating
@@ -1772,8 +1778,12 @@ struct FooWithStructParam[flip: Bool]:
 
 
 @extensibility.register_shape_function("imposter_add_struct_param")
-def imposter_add_struct_param_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def imposter_add_struct_param_shape(
+    x: Some[Tensor],
+) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 def _matmul[
@@ -1822,11 +1832,11 @@ struct ImposterMatmul:
 
 @extensibility.register_shape_function("imposter_matmul")
 def imposter_matmul_shape(
-    a: InputTensor,
-    b: InputTensor,
+    a: Some[Tensor],
+    b: Some[Tensor],
 ) -> IndexList[2]:
-    var shape = a.shape()
-    shape[1] = b.dim_size[1]()
+    var shape = coord_to_index_list(a.shape().tuple())
+    shape[1] = coord_to_index_list(b.shape().tuple())[1]
     return rebind[IndexList[2]](shape)
 
 
@@ -1849,8 +1859,10 @@ struct PrintTensorSpecOp:
 
 
 @extensibility.register_shape_function("print_tensor_spec")
-def print_tensor_spec_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def print_tensor_spec_shape(x: Some[Tensor]) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 @extensibility.register("print_tensor")
@@ -1891,8 +1903,12 @@ struct PrintTensorSpecFusedOp:
 
 
 @extensibility.register_shape_function("print_tensor_spec_fused")
-def print_tensor_spec_fused_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def print_tensor_spec_fused_shape(
+    x: Some[Tensor],
+) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 @extensibility.register("print_output_shape_strides_fused")
@@ -1921,8 +1937,12 @@ struct PrintOutputShapeStridesFusedOp:
 
 
 @extensibility.register_shape_function("print_output_shape_strides_fused")
-def print_output_shape_strides_fused_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def print_output_shape_strides_fused_shape(
+    x: Some[Tensor],
+) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 @extensibility.register("test_monoid_mixed_fields")
@@ -2129,9 +2149,11 @@ struct AddComputeFusion:
 
 @extensibility.register_shape_function("imposter_add_compute_fusion")
 def imposter_add_compute_fusion_shape(
-    x: InputTensor, y: InputTensor
-) -> IndexList[x.rank]:
-    return x.shape()
+    x: Some[Tensor], y: Some[Tensor]
+) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 @extensibility.register("imposter_add_fuse_output")
@@ -2186,11 +2208,11 @@ struct MatmulFuseOut:
 
 @extensibility.register_shape_function("matmul_fuse_out")
 def matmul_fuse_out_shape(
-    a: InputTensor,
-    b: InputTensor,
+    a: Some[Tensor],
+    b: Some[Tensor],
 ) -> IndexList[2]:
-    var shape = a.shape()
-    shape[1] = b.dim_size[1]()
+    var shape = coord_to_index_list(a.shape().tuple())
+    shape[1] = coord_to_index_list(b.shape().tuple())[1]
     return rebind[IndexList[2]](shape)
 
 
@@ -2301,8 +2323,10 @@ struct ElementwisePrintShape:
 
 
 @extensibility.register_shape_function("print_shape_fused")
-def print_shape_fused_shape(x: InputTensor) -> IndexList[x.rank]:
-    return x.shape()
+def print_shape_fused_shape(x: Some[Tensor]) -> IndexList[type_of(x).rank]:
+    return rebind[IndexList[type_of(x).rank]](
+        coord_to_index_list(x.shape().tuple())
+    )
 
 
 # Raises if input shape is 10
@@ -2323,12 +2347,14 @@ struct CustomOpThatRaises:
 
 
 @extensibility.register_shape_function("custom_op_that_raises")
-def custom_op_that_raises_shape(x: InputTensor) raises -> IndexList[x.rank]:
+def custom_op_that_raises_shape(
+    x: Some[Tensor],
+) raises -> IndexList[type_of(x).rank]:
     print("Hello")
-    var out_shape = x.shape()
+    var out_shape = coord_to_index_list(x.shape().tuple())
     if out_shape[0] == 20:
         raise ("data.get_shape()[0] == 20")
-    return out_shape
+    return rebind[IndexList[type_of(x).rank]](out_shape)
 
 
 @extensibility.register("mo.test.failing_constraint")
@@ -2526,11 +2552,11 @@ struct TestCustomOp:
 
 
 @extensibility.register_shape_function("test_custom_op")
-def test_custom_op_shape[
-    dtype: DType, rank: Int
-](input: InputTensor[dtype=dtype, rank=rank, ...]) -> IndexList[rank]:
+def test_custom_op_shape(input: Some[Tensor]) -> IndexList[type_of(input).rank]:
     print("Hello")
-    return input.shape()
+    return rebind[IndexList[type_of(input).rank]](
+        coord_to_index_list(input.shape().tuple())
+    )
 
 
 # A custom op whose shape function is trait-typed: a metadata-only, no-role
@@ -2846,8 +2872,10 @@ struct CustomOpWithCustomParameterShapeFunc:
 )
 def custom_op_with_custom_parameter_shape_func_shape[
     test_flag: Int
-](input_tensor: InputTensor) -> IndexList[input_tensor.rank]:
-    return input_tensor.shape()
+](input_tensor: Some[Tensor]) -> IndexList[type_of(input_tensor).rank]:
+    return rebind[IndexList[type_of(input_tensor).rank]](
+        coord_to_index_list(input_tensor.shape().tuple())
+    )
 
 
 @extensibility.register("custom_op_with_static_string_params")
@@ -3065,9 +3093,10 @@ struct ShapeFuncWithMutable:
 
 @extensibility.register_shape_function("shape_func_with_mutable")
 def shape_func_with_mutable_shape(
-    x: InputTensor[rank=2, ...],
+    x: Some[Tensor],
 ) -> IndexList[2]:
-    return x.shape()
+    comptime assert type_of(x).rank == 2, "x must be rank 2"
+    return rebind[IndexList[2]](coord_to_index_list(x.shape().tuple()))
 
 
 @extensibility.register("elemwise_add_with_param")
