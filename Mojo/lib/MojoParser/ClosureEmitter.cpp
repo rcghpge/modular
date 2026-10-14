@@ -1060,8 +1060,8 @@ static PromotedSignature buildPromotedSignature(
           std::move(newParams)};
 }
 
-ASTDecl *ClosureEmitter::promoteClosure(
-    ASTDecl &nestedFnDecl, ArrayRef<ParamDeclAttr> prependedParams,
+DefASTDecl *ClosureEmitter::promoteClosure(
+    DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclAttr> prependedParams,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
     ASTDecl *targetParent) {
   assert(nestedFnDecl.resolvedness == DeclResolvedness::body &&
@@ -1076,7 +1076,7 @@ ASTDecl *ClosureEmitter::promoteClosure(
     }
   }
   MLIRContext *ctx = shared.getContext();
-  FnOp function = cast<FnOp>(nestedFnDecl.getIfOperation());
+  FnOp function = nestedFnDecl.getOp();
   SMLoc loc = nestedFnDecl.getLoc();
   if (!targetParent)
     targetParent = nestedFnDecl.getNearestDeclOfType<FileModuleOp>();
@@ -1149,8 +1149,8 @@ ASTDecl *ClosureEmitter::promoteClosure(
     function.setLinkageNameAttr(linkageName);
   function.setNoDocRequired(true);
   function.setSynthetic(true);
-  auto &decl = shared.declResolver->addFullyResolvedDecl(
-      function, /*name=*/StringAttr(), loc, targetParent);
+  auto &decl = cast<DefASTDecl>(shared.declResolver->addFullyResolvedDecl(
+      function, /*name=*/StringAttr(), loc, targetParent));
   // Transfer child decls from the original to the promoted decl. Since the op
   // was moved (not cloned), all mlir::Value pointers are still valid.
   decl.takeDecls(nestedFnDecl);
@@ -1184,8 +1184,8 @@ ASTDecl *ClosureEmitter::promoteClosure(
   return &decl;
 }
 
-ASTDecl *ClosureEmitter::promoteClosure(
-    ASTDecl &nestedFnDecl, ArrayRef<ParamDeclRefAttr> prependedParamRefs,
+DefASTDecl *ClosureEmitter::promoteClosure(
+    DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclRefAttr> prependedParamRefs,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
     ASTDecl *targetParent) {
   SmallVector<ParamDeclAttr> prependedParams =
@@ -1629,8 +1629,8 @@ addOriginReplacements(mlir::AttrTypeReplacer &originReplacer,
       });
 }
 
-ASTDecl *ClosureEmitter::liftClosureIntoMethod(
-    ASTDecl &nestedFnDecl, StructASTDecl &storageStructDecl,
+DefASTDecl *ClosureEmitter::liftClosureIntoMethod(
+    DefASTDecl &nestedFnDecl, StructASTDecl &storageStructDecl,
     PromotedClosureSelfArg selfArg,
     ArrayRef<StructDefFieldAttr> concreteFieldDecls,
     ArrayRef<Value> concreteFieldCaptures,
@@ -1639,11 +1639,11 @@ ASTDecl *ClosureEmitter::liftClosureIntoMethod(
   MLIRContext *ctx = shared.getContext();
   // Nest under the storage struct as a method. Captured parameters already
   // live on the storage struct, so do not prepend them to the method.
-  ASTDecl *promotedDecl = promoteClosure(
+  DefASTDecl *promotedDecl = promoteClosure(
       nestedFnDecl, ArrayRef<ParamDeclAttr>{}, /*selfArg=*/selfArg,
       /*capturingOverride=*/TriBool::yes(),
       /*targetParent=*/&storageStructDecl);
-  FnOp promotedCallFunction = cast<FnOp>(promotedDecl->getIfOperation());
+  FnOp promotedCallFunction = promotedDecl->getOp();
   assert(concreteFieldDecls.size() == concreteFieldCaptures.size() &&
          "expected one capture value per closure field");
   assert(concreteFieldDecls.size() == captureConventions.size() &&
@@ -1731,7 +1731,7 @@ ClosureEmitter::Closure ClosureEmitter::liftClosure(
     SmallVector<ParamDeclAttr> &&concreteParams,
     SmallVector<TypedAttr> &&concreteStructBindings, StringAttr name,
     TypeConvention convention, SmallVector<Type> &&deviceCaptureFieldTypes,
-    bool capturesEncodable, ASTDecl &nestedFnDecl) {
+    bool capturesEncodable, DefASTDecl &nestedFnDecl) {
   Location location = shared.translateLocation(smLoc);
   MLIRContext *ctx = shared.getContext();
 
@@ -1778,20 +1778,18 @@ ClosureEmitter::Closure ClosureEmitter::liftClosure(
                       structDecl, structBuilder, *shared.declResolver);
   LIT::StructType closureStructType =
       structOp.bindReference(selfRefParamValues);
-  assert(isa<FnOp>(nestedFnDecl.getIfOperation()) &&
-         "expected nested closure declaration to be a function");
   PromotedClosureSelfArg selfArg{closureStructType, ArgConvention::ImmMem};
-  ASTDecl *promotedCallDecl = liftClosureIntoMethod(
+  DefASTDecl *promotedCallDecl = liftClosureIntoMethod(
       nestedFnDecl, structDecl, selfArg, concreteFieldDecls,
       concreteFieldCaptures, concreteFieldCaptureConventions,
       selfBoundFieldTypes, location);
-  FnOp promotedCallFunction = cast<FnOp>(promotedCallDecl->getIfOperation());
+  FnOp promotedCallFunction = promotedCallDecl->getOp();
   StructEmitter structEmitter(structDecl);
   DenseMap<ClosureMethod, FnOp> methodImpls;
   methodImpls[ClosureMethod::CALL] = promotedCallFunction;
   auto synthesizeValueMethodBody = [&](bool isMove) -> FnOp {
     FnOp fn = structEmitter.synthesizeEmptyMoveOrCopyInit(/*isMove=*/isMove);
-    ASTDecl *decl = shared.declResolver->getDeclForFuncSymbol(
+    DefASTDecl *decl = shared.declResolver->getDeclForFuncSymbol(
         getFullyResolvedSymbolRef(fn));
     assert(decl && "synthesized value method must be registered");
     (void)structEmitter.populateMoveCopy(*decl, isMove);
@@ -2102,12 +2100,12 @@ static TypeConvention typeConventionOf(SharedState &shared, ParamType paramType,
                                                    shared);
 }
 
-Value ClosureEmitter::emitClosure(ASTDecl &moduleDecl, ASTDecl &nestedFnDecl,
+Value ClosureEmitter::emitClosure(ASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
                                   ArrayRef<Capture> captures, Location location,
                                   bool isCopyable,
                                   ArrayRef<ParamDeclRefAttr> paramCaptures) {
   // (1) Lift the nested function into a storage struct and instantiate it.
-  FnOp nestedFn = cast<FnOp>(nestedFnDecl.getIfOperation());
+  FnOp nestedFn = nestedFnDecl.getOp();
   FnOp parent = nestedFn->getParentOfType<FnOp>();
   assert(parent && "expected the function to be a nested function");
   Block *closureInsertBlock = nestedFn->getBlock();
@@ -2324,10 +2322,11 @@ static CValue ASTDeclToCValue(ASTDecl *decl, OpBuilder &builder, Location loc) {
   return {};
 }
 
-ASTDecl *ClosureEmitter::addCaptureValue(SharedState &shared, ASTDecl &closure,
-                                         StringRef name, SMLoc location) {
+ASTDecl *ClosureEmitter::addCaptureValue(SharedState &shared,
+                                         DefASTDecl &closure, StringRef name,
+                                         SMLoc location) {
   CaptureConvention capture = shared.defaultCaptureConventionInScope(closure);
-  FnOp funcOp = cast<FnOp>(closure.getIfOperation());
+  FnOp funcOp = closure.getOp();
   IREmitter emitter(*closure.getParentDecl(), OpBuilder(funcOp));
   return ClosureEmitter::addCaptureValue(closure, location, name, capture,
                                          emitter);
@@ -2372,7 +2371,7 @@ static FailureOr<ASTDecl *> findCapture(SharedState &shared, StringRef name,
   return nullptr;
 }
 
-ASTDecl *ClosureEmitter::addCaptureValue(ASTDecl &closure, SMLoc location,
+ASTDecl *ClosureEmitter::addCaptureValue(DefASTDecl &closure, SMLoc location,
                                          StringRef name,
                                          CaptureConvention parsedConvention,
                                          IREmitter &emitter,
@@ -2387,9 +2386,10 @@ ASTDecl *ClosureEmitter::addCaptureValue(ASTDecl &closure, SMLoc location,
            "been registered in the scope");
     return existing.front();
   }
-  FnOp funcOp = cast<FnOp>(closure.getIfOperation());
+  FnOp funcOp = closure.getOp();
   ASTDecl *fnParentDecl = closure.getParentDecl()->getNearestDeclOfType<FnOp>();
-  auto parentFn = cast<FnOp>(fnParentDecl->getIfOperation());
+  auto &parentDef = cast<DefASTDecl>(*fnParentDecl);
+  auto parentFn = parentDef.getOp();
   ASTDecl *result = nullptr;
   if (usesClosurePipeline(parentFn)) {
     auto localMaybe = findCapture(shared, name, location,
@@ -2398,7 +2398,7 @@ ASTDecl *ClosureEmitter::addCaptureValue(ASTDecl &closure, SMLoc location,
       return nullptr;
     result = localMaybe.value();
     if (!result) {
-      result = addCaptureValue(shared, *fnParentDecl, name, location);
+      result = addCaptureValue(shared, parentDef, name, location);
       if (!result)
         return nullptr;
     }

@@ -50,8 +50,9 @@ public:
 
   /// Move `nestedFnDecl` into `storageStructDecl` as a method and wire its
   /// captured values to the storage struct fields. Returns the method decl.
-  ASTDecl *
-  liftClosureIntoMethod(ASTDecl &nestedFnDecl, StructASTDecl &storageStructDecl,
+  DefASTDecl *
+  liftClosureIntoMethod(DefASTDecl &nestedFnDecl,
+                        StructASTDecl &storageStructDecl,
                         PromotedClosureSelfArg selfArg,
                         ArrayRef<StructDefFieldAttr> concreteFieldDecls,
                         ArrayRef<Value> concreteFieldCaptures,
@@ -60,28 +61,28 @@ public:
 
   /// Promote a closure decl into `targetParent`. nullptr → nearest FileModuleOp
   /// (thin/stateless promotions).
-  ASTDecl *
-  promoteClosure(ASTDecl &nestedFnDecl,
+  DefASTDecl *
+  promoteClosure(DefASTDecl &nestedFnDecl,
                  ArrayRef<ParamDeclAttr> prependedParams = {},
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,
                  TriBool capturingOverride = TriBool::unknown(),
                  ASTDecl *targetParent = nullptr);
 
   /// Adapter overload for callsites that currently hold ParamDeclRefAttr.
-  ASTDecl *
-  promoteClosure(ASTDecl &nestedFnDecl,
+  DefASTDecl *
+  promoteClosure(DefASTDecl &nestedFnDecl,
                  ArrayRef<ParamDeclRefAttr> prependedParamRefs,
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,
                  TriBool capturingOverride = TriBool::unknown(),
                  ASTDecl *targetParent = nullptr);
 
-  Value emitClosure(ASTDecl &moduleDecl, ASTDecl &nestedFnDecl,
+  Value emitClosure(ASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
                     ArrayRef<Capture> captures, Location location,
                     bool isCopyable, ArrayRef<ParamDeclRefAttr> paramCaptures);
-  static ASTDecl *addCaptureValue(SharedState &shared, ASTDecl &closure,
+  static ASTDecl *addCaptureValue(SharedState &shared, DefASTDecl &closure,
                                   StringRef name, SMLoc location);
 
-  static ASTDecl *addCaptureValue(ASTDecl &closure, SMLoc location,
+  static ASTDecl *addCaptureValue(DefASTDecl &closure, SMLoc location,
                                   StringRef name, CaptureConvention capture,
                                   IREmitter &emitter,
                                   ASTDecl *signatureDecl = nullptr);
@@ -169,7 +170,7 @@ private:
                       SmallVector<TypedAttr> &&structParamBindings,
                       StringAttr name, TypeConvention typeConvention,
                       SmallVector<Type> &&deviceCaptureFieldTypes,
-                      bool capturesEncodable, ASTDecl &nestedFnDecl);
+                      bool capturesEncodable, DefASTDecl &nestedFnDecl);
 
   /// Given the signature of a trait function, specialize it and add it to the
   /// struct as \p fnName.

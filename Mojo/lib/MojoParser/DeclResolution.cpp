@@ -271,7 +271,9 @@ LogicalResult Decorators::handleMessageDecorator(
     // If the decorated decl is a method, look for a sibling member in the
     // same struct/trait/extension. For non-methods (top-level functions,
     // structs, aliases), use the standard lookup with searchParentScopes=true.
-    ASTDecl *methodParent = decl.tryGetMethodParentDecl();
+    auto *defDecl = dyn_cast<DefASTDecl>(&decl);
+    ASTDecl *methodParent =
+        defDecl ? defDecl->tryGetMethodParentDecl() : nullptr;
     ASTDecl *scope = methodParent ? methodParent : decl.getParentDecl();
     LookupResult lookup = shared.lookupAndResolveDecl(
         target->spelling, target->getLoc(), *scope,
@@ -763,11 +765,9 @@ static constexpr const StringLiteral kMainSymbolName = "main";
 
 /// Try to set the linkage name on a FnOp. If a different linkage name is
 /// already set, emit an error and return true.
-static bool trySetLinkageName(SMLoc loc, ASTDecl &decl,
+static bool trySetLinkageName(SMLoc loc, DefASTDecl &decl,
                               LinkageNameAttr linkageName) {
-  auto fnOp = llvm::dyn_cast_if_present<FnOp>(decl.getIfOperation());
-  if (!fnOp)
-    return false;
+  auto fnOp = decl.getOp();
 
   if (auto existing = fnOp.getLinkageNameAttr()) {
     if (existing != linkageName) {
@@ -784,11 +784,10 @@ static bool trySetLinkageName(SMLoc loc, ASTDecl &decl,
 
 namespace {
 struct FnSigDecorators : public SharedStateUser {
-  FnSigDecorators(ASTDecl &decl, ASTDecl &sigDecl, SharedState &shared,
+  FnSigDecorators(DefASTDecl &decl, ASTDecl &sigDecl, SharedState &shared,
                   StringRef baseName, TypeCheckedFnSignature &tcSignature)
       : SharedStateUser(shared), decl(decl), sigDecl(sigDecl),
-        funcOp(cast_or_null<FnOp>(decl.getIfOperation())), baseName(baseName),
-        tcSignature(tcSignature) {}
+        funcOp(decl.getOp()), baseName(baseName), tcSignature(tcSignature) {}
 
   /// Apply a function signature decorator.
   LogicalResult applyOne(ExprNode *decorator);
@@ -823,7 +822,7 @@ private:
   /// to actually apply metadata onto the function.
   void applyLLVMArgMetadata(SMLoc decoratorLoc, const CallNode *node);
 
-  ASTDecl &decl;
+  DefASTDecl &decl;
   ASTDecl &sigDecl;
   FnOp funcOp;
   StringRef baseName;
@@ -1265,7 +1264,7 @@ void FnSigDecorators::applyExportLike(SMLoc loc, bool isExport,
   if (simpleLinkageName == kMainSymbolName) {
     if (baseName != kMainSymbolName)
       emitError(loc, "only 'main' can be exported as 'main'");
-    if (!isa<FnOp>(decl.getIfOperation()))
+    if (!isa<DefASTDecl>(decl))
       emitError(loc, "exported 'main' must be a function");
     return;
   }
@@ -1721,10 +1720,10 @@ static bool allCopyable(ArrayRef<Capture> captures, SharedState &shared,
 }
 
 static MLValue
-emitClosureInstance(ArrayRef<Capture> captures, ASTDecl &nestedFnDecl,
+emitClosureInstance(ArrayRef<Capture> captures, DefASTDecl &nestedFnDecl,
                     SharedState &shared,
                     ArrayRef<ParamDeclRefAttr> bodyParamCaptures) {
-  FnOp nestedFn = cast<FnOp>(nestedFnDecl.getIfOperation());
+  FnOp nestedFn = nestedFnDecl.getOp();
   SMLoc loc = nestedFnDecl.getLoc();
   Location mlirLoc = shared.translateLocation(loc);
   if (shared.diBuilder)
@@ -1772,7 +1771,7 @@ struct BodyCaptures {
 /// enclosing scopes: `values` are the captured runtime values in scope and
 /// `paramRefs` are the parameter references used from above (deduplicated
 /// across the sugared/canonical versions of the same type).
-static BodyCaptures collectBodyCaptures(SharedState &shared, ASTDecl &decl,
+static BodyCaptures collectBodyCaptures(SharedState &shared, DefASTDecl &decl,
                                         FnOp funcOp) {
   BodyCaptures result;
 
@@ -1812,7 +1811,7 @@ static BodyCaptures collectBodyCaptures(SharedState &shared, ASTDecl &decl,
 /// Construct the runtime value for a fully-resolved non-legacy nested-`def`
 /// closure: promote a stateless closure to a top-level function, or otherwise
 /// materialize a storage-struct instance. Sets the decl's IR value on success.
-static LogicalResult constructClosure(SharedState &shared, ASTDecl &decl,
+static LogicalResult constructClosure(SharedState &shared, DefASTDecl &decl,
                                       FnOp funcOp, ArrayRef<Capture> captures,
                                       ArrayRef<ParamDeclRefAttr> paramCaptures,
                                       const ParsedCaptureList &captureSignature,
@@ -1863,8 +1862,8 @@ static LogicalResult constructClosure(SharedState &shared, ASTDecl &decl,
 /// emit an extra copy/move.
 static LogicalResult createCaptureValues(ParserBase &p, ASTDecl &sigDecl,
                                          ParsedCaptureList &captureSignature,
-                                         ASTDecl &decl) {
-  FnOp funcOp = cast<FnOp>(decl.getIfOperation());
+                                         DefASTDecl &decl) {
+  FnOp funcOp = decl.getOp();
   IREmitter emitter(*decl.getParentDecl(), OpBuilder(funcOp));
   bool didFail = false;
   for (auto [name, capture, location] : captureSignature.parsedCaptures) {
@@ -2010,8 +2009,8 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
   //    identifier can contain -- backtick-quoted identifiers strip their
   //    backticks) means user source cannot even spell the symbol it emits, so
   //    user code can neither reference the closure nor collide with it.
-  ASTDecl &decl = addFullyResolvedDecl(funcOp.getOperation(), StringAttr(), loc,
-                                       &parentScope);
+  auto &decl = cast<DefASTDecl>(addFullyResolvedDecl(
+      funcOp.getOperation(), StringAttr(), loc, &parentScope));
   ASTDecl &sigDecl = addFullyResolvedDecl(funcOp.getOperation(), StringAttr(),
                                           loc, &parentScope);
 
@@ -2163,7 +2162,7 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
 /// funcdef   ::=  [decorators] "def" identifier [param_signature]
 ///                "(" [argument_list] ")" ["->" expression] ":" suite
 LogicalResult DeclResolver::resolveSignature(FnOp funcOp, Lexer &lexer,
-                                             ASTDecl &decl) {
+                                             DefASTDecl &decl) {
   ParserBase p(shared, lexer);
   auto decoratorExprs = p.parseDecorators(decl);
   assert(p.getToken().isAny(Token::kw___async, Token::kw_def, Token::kw_fn) &&
@@ -2557,7 +2556,7 @@ LogicalResult DeclResolver::resolveSignature(FnOp funcOp, Lexer &lexer,
                    "'capturing' to form a closure");
 }
 
-LogicalResult DeclResolver::resolveSyntheticBody(FnOp fn, ASTDecl &decl) {
+LogicalResult DeclResolver::resolveSyntheticBody(FnOp fn, DefASTDecl &decl) {
   // TODO: Sink this to when the body is actually resolved.
   decl.resolvedness = DeclResolvedness::body;
 
@@ -2579,7 +2578,7 @@ LogicalResult DeclResolver::resolveSyntheticBody(FnOp fn, ASTDecl &decl) {
 }
 
 ParseResult DeclResolver::resolveBody(FnOp funcOp, Lexer &lexer,
-                                      ASTDecl &decl) {
+                                      DefASTDecl &decl) {
   // TODO: Sink this to when the body is actually resolved.
   decl.resolvedness = DeclResolvedness::body;
 
@@ -2897,7 +2896,7 @@ ParseResult DeclResolver::resolveBody(LIT::PackageOp op, ASTDecl &decl) {
 ///   | "alias" identifier [param_signature] ("where" expression)* "="
 ///   expression
 LogicalResult DeclResolver::resolveSignature(AliasDeclOp aliasDeclOp,
-                                             Lexer &lexer, ASTDecl &decl) {
+                                             Lexer &lexer, AliasASTDecl &decl) {
   ParserBase p(shared, lexer);
 
   // Parse the decorators for alias declarations but only process them if they
@@ -2905,7 +2904,7 @@ LogicalResult DeclResolver::resolveSignature(AliasDeclOp aliasDeclOp,
   // bodies are not allowed, and this prevents redundant (and potentially
   // confusing) error messages.
   auto decoratorExprs = p.parseDecorators(decl);
-  if (!isa_and_nonnull<FnOp>(decl.getParentDecl()->getIfOperation())) {
+  if (!isa<DefASTDecl>(decl.getParentDecl())) {
     Decorators(decl, /*signatureOnly=*/true)
         .applySignatureDecorators(decoratorExprs);
   }
@@ -3068,7 +3067,7 @@ LogicalResult DeclResolver::resolveSignature(AliasDeclOp aliasDeclOp,
 }
 
 ParseResult DeclResolver::resolveBody(AliasDeclOp op, Lexer &lexer,
-                                      ASTDecl &decl) {
+                                      AliasASTDecl &decl) {
   // TODO: Sink this to when the body is actually resolved.
   decl.resolvedness = DeclResolvedness::body;
   return success();
@@ -3889,8 +3888,9 @@ static LogicalResult parseExplicitDestroyMessage(SharedState &shared,
 ///                ["(" conformance_list ")"] ("where" expression)* ":" suite
 ///
 LogicalResult DeclResolver::resolveSignature(StructDeclOp structOp,
-                                             Lexer &lexer, ASTDecl &decl) {
-  auto &structDecl = cast<StructASTDecl>(decl);
+                                             Lexer &lexer,
+                                             StructASTDecl &decl) {
+  auto &structDecl = decl;
   ParserBase p(shared, lexer);
   auto decoratorExprs = p.parseDecorators(decl);
 
@@ -4145,10 +4145,12 @@ static FnOp lookupSpecialInit(ASTDecl &structDecl,
                                   /*searchParentScopes=*/false);
 
   for (ASTDecl *candidate : inits.getIfSuccess()) {
-    FnOp func = dyn_cast_or_null<FnOp>(candidate->getIfOperation());
-    if (!func || failed(shared.getDeclResolver().resolveSignature(
-                     *candidate, candidate->getLoc())))
+    auto *defDecl = dyn_cast<DefASTDecl>(candidate);
+    if (!defDecl || !defDecl->getOp() ||
+        failed(shared.getDeclResolver().resolveSignature(*candidate,
+                                                         candidate->getLoc())))
       continue;
+    FnOp func = defDecl->getOp();
 
     // Found it.
     if (func.getSpecialFunctionKind() == specialKind)
@@ -4172,9 +4174,10 @@ static FnOp findFieldwiseInit(ASTDecl &structDecl) {
   unsigned numFields = std::distance(structOp.getFieldDecls().begin(),
                                      structOp.getFieldDecls().end());
   for (ASTDecl *declaration : inits.getIfSuccess()) {
-    auto func = dyn_cast_or_null<FnOp>(declaration->getIfOperation());
-    if (!func)
+    auto *defDecl = dyn_cast<DefASTDecl>(declaration);
+    if (!defDecl || !defDecl->getOp())
       continue;
+    auto func = defDecl->getOp();
     auto signature = func.getFuncTypeGenerator();
     ArrayRef<Type> inputTypes = signature.getArguments();
     ArrayRef<ArgConvention> convs = signature.getArgConventions();
@@ -4368,9 +4371,7 @@ void DeclResolver::resolveEnumCases(ASTDecl &structDecl,
 }
 
 ParseResult DeclResolver::resolveBody(StructDeclOp structOp, Lexer &lexer,
-                                      ASTDecl &decl) {
-  auto &structDecl = cast<StructASTDecl>(decl);
-
+                                      StructASTDecl &structDecl) {
   // If the type lacks a __sp_fn__is_trivial member, synthesize it to
   // unresolved.
   auto synthesizeTrivialFlagIfNeeded = [&](StringRef spFnName) {
@@ -4891,8 +4892,7 @@ DeclResolver::addSelfTypeToTrait(TraitDeclOp traitOp, TraitASTDecl &decl,
 }
 
 LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
-                                             ASTDecl &decl) {
-  auto &traitDecl = cast<TraitASTDecl>(decl);
+                                             TraitASTDecl &traitDecl) {
   ParserBase p(shared, lexer);
   auto decoratorExprs = p.parseDecorators(traitDecl);
   Decorators(traitDecl).applySignatureDecorators(decoratorExprs,
@@ -5043,7 +5043,7 @@ LogicalResult DeclResolver::resolveSignature(TraitDeclOp traitOp, Lexer &lexer,
 }
 
 ParseResult DeclResolver::resolveBody(TraitDeclOp traitOp, Lexer &lexer,
-                                      ASTDecl &traitDecl) {
+                                      TraitASTDecl &traitDecl) {
   // TODO: Sink this to when the body is actually resolved.
   traitDecl.resolvedness = DeclResolvedness::body;
 
@@ -5067,7 +5067,7 @@ ParseResult DeclResolver::resolveBody(TraitDeclOp traitOp, Lexer &lexer,
 /// the function op it contains belongs to the trait supplying the default.
 LogicalResult
 DeclResolver::resolveSyntheticSignature(FnOp inheritedFnOp,
-                                        ASTDecl &childTraitFnDecl) {
+                                        DefASTDecl &childTraitFnDecl) {
   assert(isa<TraitDeclOp>(inheritedFnOp->getParentOp()) &&
          "Expected synthetic function decl's parent to be a trait");
 
@@ -5084,7 +5084,7 @@ DeclResolver::resolveSyntheticSignature(FnOp inheritedFnOp,
 /// alias.decl op it contains belongs to the trait it is inherited from.
 LogicalResult
 DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
-                                        ASTDecl &childTraitAliasDecl) {
+                                        AliasASTDecl &childTraitAliasDecl) {
   auto getFnIsTrivialKind = [](StringRef trivialTagName) {
     // Matching by name is a bit gross, but we don't have general synthesized
     // decls so it should be robust.
@@ -5132,8 +5132,8 @@ DeclResolver::resolveSyntheticSignature(AliasDeclOp inheritedAliasOp,
 //===----------------------------------------------------------------------===//
 
 LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
-                                             Lexer &lexer, ASTDecl &decl) {
-  auto &extensionDecl = cast<ExtensionASTDecl>(decl);
+                                             Lexer &lexer,
+                                             ExtensionASTDecl &extensionDecl) {
   ParserBase p(shared, lexer);
 
   SMLoc identifierLoc;
@@ -5245,7 +5245,8 @@ LogicalResult DeclResolver::resolveSignature(ExtensionDeclOp extensionDeclOp,
 }
 
 ParseResult DeclResolver::resolveBody(ExtensionDeclOp extensionDeclOp,
-                                      Lexer &lexer, ASTDecl &extensionDecl) {
+                                      Lexer &lexer,
+                                      ExtensionASTDecl &extensionDecl) {
   SymbolRefAttr structSymbolRef = extensionDeclOp.getTargetStruct().value();
 
   ASTDecl &structAstDecl = getDeclForTypeSymbol(structSymbolRef);
@@ -5305,16 +5306,14 @@ ParseResult DeclResolver::resolveBody(ExtensionDeclOp extensionDeclOp,
           if (isa<ParamDeclRefAttr>(pval.get()))
             continue;
 
-      bool isExtensionMethod =
-          isa_and_nonnull<FnOp>(firstExtensionMemberDecl->getIfOperation());
+      bool isExtensionMethod = isa<DefASTDecl>(firstExtensionMemberDecl);
       auto it = structAstDecl.declsInScope->find(declName);
       if (it == structAstDecl.declsInScope->end()) {
         // If there's nothing in the struct with this name, no conflict, done.
         continue;
       }
       ASTDecl *firstStructMemberDecl = it->second.front();
-      bool isStructMethod =
-          isa_and_nonnull<FnOp>(firstStructMemberDecl->getIfOperation());
+      bool isStructMethod = isa<DefASTDecl>(firstStructMemberDecl);
 
       if (isExtensionMethod && isStructMethod) {
         // Method overloading is okay, done.
@@ -5490,7 +5489,7 @@ ParseResult DeclResolver::resolveSignature(WitnessASTDecl &witness) {
                      onlyWitness.getLoc())))
     return failure();
 
-  auto fnOp = cast<FnOp>(onlyWitness.getIfOperation());
+  auto fnOp = cast<DefASTDecl>(onlyWitness).getOp();
 
   WitnessASTDecl::ResolvedType resolved;
   resolved.witnessName = fnOp.getSymNameAttr();

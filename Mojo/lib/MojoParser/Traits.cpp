@@ -170,9 +170,9 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
   /// signature into account). This will also report if another trait has
   /// already provided a default implementation and the struct itself does not
   /// provide an override.
-  auto signatureResolveStub = [&](ASTDecl *traitFnDecl,
-                                  ASTDecl *structFnDecl) -> LogicalResult {
-    FnOp traitFn = cast<FnOp>(traitFnDecl->getIfOperation());
+  auto signatureResolveStub = [&](DefASTDecl *traitFnDecl,
+                                  DefASTDecl *structFnDecl) -> LogicalResult {
+    FnOp traitFn = traitFnDecl->getOp();
 
     SyntheticNode syntheticNode(structDecl.getLoc());
     auto [wrapperSignature, bindings] = getTraitFunctionSignature(
@@ -190,8 +190,8 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 
     SmallVector<ASTDecl *> structDefinesMethods;
     for (ASTDecl *decl : possibleOverloads) {
-      auto impl = llvm::dyn_cast_if_present<FnOp>(decl->getIfOperation());
-      if (!impl || isInheritedFnOp(impl))
+      auto *implDecl = llvm::dyn_cast_if_present<DefASTDecl>(decl);
+      if (!implDecl || !implDecl->getOp() || isInheritedFnOp(implDecl->getOp()))
         continue;
 
       structDefinesMethods.push_back(decl);
@@ -243,7 +243,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     // about to create has a matching signature to an existing wrapper function
     // in the struct.
     for (ASTDecl *decl : possibleOverloads) {
-      auto fnOp = cast<FnOp>(decl->getIfOperation());
+      auto fnOp = cast<DefASTDecl>(decl)->getOp();
 
       auto existingSignature = fnOp.getFullSignature();
       // now we need to compare the full signature to the trait signature
@@ -344,9 +344,10 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
   };
 
   for (ASTDecl *decl : candidates) {
-    FnOp fnOp = dyn_cast_if_present<FnOp>(decl->getIfOperation());
-    if (!fnOp)
+    auto *fnDecl = dyn_cast_if_present<DefASTDecl>(decl);
+    if (!fnDecl || !fnDecl->getOp())
       continue;
+    FnOp fnOp = fnDecl->getOp();
 
     // Indicates we've already signature resolved this decl, should actually
     // be able to assume this given the decl is signature resolved, but
@@ -377,7 +378,8 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 
     // Grab the actual decl corresponding to the trait function we'll be
     // wrapping.
-    if (failed(signatureResolveStub(traitFnDecl, decl)))
+    if (failed(signatureResolveStub(cast<DefASTDecl>(traitFnDecl),
+                                    cast<DefASTDecl>(decl))))
       return failure();
   }
   return success();
@@ -554,12 +556,9 @@ LIT::verifyAndBuildConformance(StructASTDecl &structDecl,
     // methods first. This helps us avoid any infinite loops as signature
     // resolution for inherited methods also calls verifyConformance.
     for (ASTDecl *decl : decls) {
-      if (Operation *op = decl->getIfOperation()) {
-        if (auto fnOp = dyn_cast<FnOp>(op)) {
-          if (isInheritedFnOp(fnOp))
-            continue;
-        }
-      }
+      if (auto *fnDecl = dyn_cast<DefASTDecl>(decl))
+        if (fnDecl->getOp() && isInheritedFnOp(fnDecl->getOp()))
+          continue;
       if (failed(shared.declResolver->resolveSignature(*decl,
                                                        structDecl.getLoc()))) {
         hadErrors = true;
@@ -826,7 +825,9 @@ LIT::verifyAndBuildConformance(StructASTDecl &structDecl,
     for (auto &[name, decls] : traitDecl.getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
         // Skip any children that aren't methods or aliases.
-        if (auto traitFn = dyn_cast_or_null<FnOp>(decl->getIfOperation())) {
+        if (auto *traitFnDecl = dyn_cast<DefASTDecl>(decl);
+            traitFnDecl && traitFnDecl->getOp()) {
+          auto traitFn = traitFnDecl->getOp();
           if (failed(checkMethod(name, decl, traitFn.getSymNameAttr(),
                                  traitFn.getFullSignature()))) {
             allMatchFound = false;
@@ -1638,15 +1639,17 @@ FailureOr<TypedAttr> LIT::getUniqueWitnessForTypeIfConforms(
   // on AnyType and Movable right now.
   if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&entry)) {
     resultType = aliasDecl->getOp().getType();
-  } else if (auto fnDecl = dyn_cast_or_null<FnOp>(entry.getIfOperation())) {
+  } else if (auto *fnDecl = dyn_cast<DefASTDecl>(&entry);
+             fnDecl && fnDecl->getOp()) {
     // Ensure the function is signature resolved so we can access the mangled
     // name.
     if (failed(shared.declResolver->resolveSignature(entry, errorLoc)))
       return failure();
-    resultType = createRequirementSignature(fnDecl.getFullSignature(), type,
-                                            nullptr, *shared.declResolver);
+    resultType =
+        createRequirementSignature(fnDecl->getOp().getFullSignature(), type,
+                                   nullptr, *shared.declResolver);
     // Use the mangled name from the trait declaration for function witnesses.
-    witnessName = *fnDecl.getSymName();
+    witnessName = *fnDecl->getOp().getSymName();
   } else {
     llvm_unreachable("expected an alias or a function");
   }

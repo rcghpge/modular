@@ -48,6 +48,16 @@ ASTDecl::ASTDecl(Kind kind, SharedState &shared, DeclIRValue irValue,
 
 ASTDecl::~ASTDecl() = default;
 
+DefASTDecl::DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
+                       ASTDecl *parentDecl, LexerCursor cursor,
+                       LexerCursor endCursor, ssize_t indentation)
+    : ASTDecl(Kind::Def, shared, fnOp.getOperation(), loc, parentDecl, cursor,
+              endCursor, indentation) {}
+
+FnOp DefASTDecl::getOp() const {
+  return dyn_cast_if_present<FnOp>(getIfOperation());
+}
+
 TypeScopeASTDecl::TypeScopeASTDecl(Kind kind, SharedState &shared,
                                    Operation *op, llvm::SMLoc loc,
                                    ASTDecl *parentDecl, LexerCursor cursor,
@@ -118,25 +128,26 @@ WitnessASTDecl::WitnessASTDecl(SharedState &shared,
 bool ASTDecl::isCallableDecl() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this))
     return isa<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType);
-  return isa_and_nonnull<FnOp>(getIfOperation());
+  auto *defDecl = dyn_cast<DefASTDecl>(this);
+  return defDecl && defDecl->getOp();
 }
 
 FnTypeGeneratorType ASTDecl::getDeclFullSignature() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this)) // already expanded.
     return cast<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType);
-  return cast<FnOp>(getIfOperation()).getFullSignature();
+  return cast<DefASTDecl>(this)->getOp().getFullSignature();
 }
 
 bool ASTDecl::isStaticMethodDecl() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this))
     return witness->getWitnessEntry().isStaticMethod;
-  return cast<FnOp>(getIfOperation()).getIsStatic();
+  return cast<DefASTDecl>(this)->getOp().getIsStatic();
 }
 
 ImplicitConversionKind ASTDecl::getDeclImplicitConversionKind() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this))
     return witness->getWitnessEntry().implicitConversion;
-  return cast<FnOp>(getIfOperation()).getImplicitConversion();
+  return cast<DefASTDecl>(this)->getOp().getImplicitConversion();
 }
 
 DocStringAttr ASTDecl::getDocString() const {
@@ -192,9 +203,8 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
 }
 
 /// If this is a method of a struct, trait, or extension, return its parent.
-TypeScopeASTDecl *ASTDecl::tryGetMethodParentDecl() const {
-  // Methods are always FuncOps.
-  if (!isa_and_nonnull<FnOp>(getIfOperation()))
+TypeScopeASTDecl *DefASTDecl::tryGetMethodParentDecl() const {
+  if (!getOp())
     return nullptr;
 
   // Don't return non-null for nested functions or module-level functions.

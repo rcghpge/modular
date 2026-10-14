@@ -25,6 +25,7 @@
 
 namespace M::KGEN::LIT {
 
+class DefASTDecl;
 class StructASTDecl;
 
 /// This struct bundles up analysis of the value members of a struct.
@@ -48,7 +49,7 @@ public:
   /// are added to the body of the function but no ops are added to the body.
   /// `suffix` is appended to the mangled function name. This adds the
   /// declaration to `parent`.
-  std::pair<FnOp, ASTDecl *> synthesizeFunction(
+  std::pair<FnOp, DefASTDecl *> synthesizeFunction(
       ASTDecl &parent, StringRef name, ArrayRef<ParamDeclAttr> params,
       PogListAttr paramListAttrs, ArrayRef<Type> argTypes,
       ArrayRef<ArgConvention> argConventions, PogListAttr argListAttrs,
@@ -94,12 +95,12 @@ public:
                                      ConstraintAttr conformanceConstraint = {});
   /// Populate the function with a field by field copy. This will fail if the
   /// given function does not have the expected signature.
-  LogicalResult populateMoveCopy(ASTDecl &fnDecl, bool isMove);
+  LogicalResult populateMoveCopy(DefASTDecl &fnDecl, bool isMove);
 
   /// Populate a trait function with its default implementation. Returns
   /// failure() if the meta-type to trait conversion fails; in this case the
   /// provided fnDecl is marked erroneous. Otherwise returns success().
-  LogicalResult populateDefaultedTraitFunction(ASTDecl &fnDecl);
+  LogicalResult populateDefaultedTraitFunction(DefASTDecl &fnDecl);
 
   /// Add a attribute initializer method for this struct with a body.
   FnOp synthesizeFieldwiseInit();
@@ -146,7 +147,7 @@ public:
   /// resolution rejects calls when the conditional conformance cannot be
   /// proven.
   FnOp synthesizeDefaultTraitMethodWrapper(
-      ASTDecl &existingDecl, StringRef name,
+      DefASTDecl &existingDecl, StringRef name,
       FnTypeGeneratorType wrapperSignature, FnOp traitFn, ASTDecl *traitFnDecl,
       ImplicitLocOpBuilder &builder, StringRef suffix = "",
       ConstraintAttr conformanceConstraint = {});

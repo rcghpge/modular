@@ -201,7 +201,7 @@ createFunction(ASTDecl &parent, StringRef name, ArrayRef<ParamDeclAttr> params,
   return fnOp;
 }
 
-std::pair<FnOp, ASTDecl *> FunctionEmitter::synthesizeFunction(
+std::pair<FnOp, DefASTDecl *> FunctionEmitter::synthesizeFunction(
     ASTDecl &parent, StringRef name, ArrayRef<ParamDeclAttr> params,
     PogListAttr paramListAttrs, ArrayRef<Type> argTypes,
     ArrayRef<ArgConvention> argConventions, PogListAttr argListAttrs,
@@ -218,9 +218,9 @@ std::pair<FnOp, ASTDecl *> FunctionEmitter::synthesizeFunction(
     return {nullptr, nullptr};
 
   // Register the method in the struct.
-  ASTDecl &funcDecl = shared.declResolver->addFullyResolvedDecl(
+  auto &funcDecl = cast<DefASTDecl>(shared.declResolver->addFullyResolvedDecl(
       funcOp.getOperation(), StringAttr::get(shared.getContext(), name), loc,
-      &parent);
+      &parent));
 
   // Synthesized functions skip DeclResolution's insertKnownAssumptions, so
   // inject the fn's where-clause constraints as known assumptions here,
@@ -236,9 +236,10 @@ std::pair<FnOp, ASTDecl *> FunctionEmitter::synthesizeFunction(
 }
 
 FnOp StructEmitter::synthesizeDefaultTraitMethodWrapper(
-    ASTDecl &existingDecl, StringRef name, FnTypeGeneratorType wrapperSignature,
-    FnOp traitFn, ASTDecl *traitFnDecl, ImplicitLocOpBuilder &builder,
-    StringRef suffix, ConstraintAttr conformanceConstraint) {
+    DefASTDecl &existingDecl, StringRef name,
+    FnTypeGeneratorType wrapperSignature, FnOp traitFn, ASTDecl *traitFnDecl,
+    ImplicitLocOpBuilder &builder, StringRef suffix,
+    ConstraintAttr conformanceConstraint) {
 
   assert(existingDecl.resolvedness <= DeclResolvedness::signature &&
          "synthesizeMethodInStruct is only valid on non-body resolved Fn "
@@ -382,8 +383,9 @@ FnOp StructEmitter::synthesizeDefaultTraitMethodWrapper(
 /// created during synthesizeDefaultTraitMethodWrapper and forwards all the
 /// arguments of the FnOp created there to the call op on the actual defaulted
 /// trait method.
-LogicalResult StructEmitter::populateDefaultedTraitFunction(ASTDecl &fnDecl) {
-  auto fn = cast<FnOp>(fnDecl.getIfOperation());
+LogicalResult
+StructEmitter::populateDefaultedTraitFunction(DefASTDecl &fnDecl) {
+  auto fn = fnDecl.getOp();
   auto &structDecl = cast<StructASTDecl>(*fnDecl.getParentDecl());
   ASTType structSelfType = structDecl.getSelfType();
 
@@ -398,7 +400,7 @@ LogicalResult StructEmitter::populateDefaultedTraitFunction(ASTDecl &fnDecl) {
          " default-method stub");
 
   // Look up the trait's default implementation function
-  ASTDecl *traitDefaultMethodDecl =
+  DefASTDecl *traitDefaultMethodDecl =
       shared.declResolver->getDeclForFuncSymbol(*defaultFnRefAttr);
   assert(traitDefaultMethodDecl &&
          "Could not find trait default method implementation");
@@ -426,8 +428,7 @@ LogicalResult StructEmitter::populateDefaultedTraitFunction(ASTDecl &fnDecl) {
     return failure();
   }
 
-  FnOp traitDefaultMethodOp =
-      cast<FnOp>(traitDefaultMethodDecl->getIfOperation());
+  FnOp traitDefaultMethodOp = traitDefaultMethodDecl->getOp();
   auto fnTypeGen = traitDefaultMethodOp.getFullSignature();
 
   auto &builder = *emitter.builder;
@@ -818,13 +819,13 @@ static Value rebindRefForTrait(Value fieldRef, Type fieldMLIRType,
 ///   %targetField0Ptr = lit.ref.struct.ger %self[field0]
 ///   %sourceField0Ptr = lit.ref.struct.ger %copy[field0]
 ///   copyinit_of_type_of_field0(%targetField0, %field)
-LogicalResult StructEmitter::populateMoveCopy(ASTDecl &fnDecl, bool isMove) {
+LogicalResult StructEmitter::populateMoveCopy(DefASTDecl &fnDecl, bool isMove) {
   // This method body resolves the decl.
   // TODO: This is because clients are directly calling this instead of having
   // declresolution do it.
   fnDecl.resolvedness = DeclResolvedness::body;
 
-  auto fn = cast<FnOp>(fnDecl.getIfOperation());
+  auto fn = fnDecl.getOp();
 
   // We want to populate a move but the move/copy should be a method!
   SMLoc location = fnDecl.getLoc();
@@ -1000,9 +1001,10 @@ std::optional<ValueInfo> ValueInfo::lookupExisting(ASTDecl &structDecl) {
     if (!lookupResult.isSuccess())
       return success();
     for (ASTDecl *decl : lookupResult.getIfSuccess()) {
-      if (auto func = dyn_cast_or_null<FnOp>(decl->getIfOperation()))
-        if (SpecialFunctionKind(func.getSpecialFnKind()) == kind)
-          member = func;
+      if (auto *fnDecl = dyn_cast<DefASTDecl>(decl))
+        if (fnDecl->getOp() &&
+            SpecialFunctionKind(fnDecl->getOp().getSpecialFnKind()) == kind)
+          member = fnDecl->getOp();
     }
 
     return success();
@@ -1095,9 +1097,10 @@ TypedAttr StructEmitter::populateSpecialFnIsTrivial(SpecialFunctionKind kind) {
   if (spDecls.isErroneous())
     return nullptr;
   for (ASTDecl *decl : spDecls.getIfSuccess()) {
-    auto fnOp = dyn_cast<FnOp>(decl->getIfOperation());
-    if (!fnOp)
+    auto *fnDecl = dyn_cast<DefASTDecl>(decl);
+    if (!fnDecl || !fnDecl->getOp())
       continue;
+    auto fnOp = fnDecl->getOp();
     if (fnOp.getSpecialFunctionKind() == kind) {
       // If has a user provided implementation, consider them as non-trivial.
       if (!decl->getCursor().isInvalid())

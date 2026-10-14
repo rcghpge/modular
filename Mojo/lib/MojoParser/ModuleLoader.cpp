@@ -1227,9 +1227,9 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
       return makeError("failed to materialize function thunk");
     thunk->remove();
     theModule.push_back(thunk);
-    ASTDecl &thunkDecl = shared.declResolver->addBytecodeDecl(
+    auto &thunkDecl = cast<DefASTDecl>(shared.declResolver->addBytecodeDecl(
         &*thunk, thunk.getSourceNameAttr(), &shared.getTopLevelDecl(),
-        DeclResolvedness::body);
+        DeclResolvedness::body));
     shared.declResolver->finalizeFuncSignature(thunk, thunkDecl);
   }
   for (auto structOp :
@@ -1249,8 +1249,8 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
               DeclResolvedness::body));
       structDecl.setSelfType(StructASTDecl::computeSelfType(structOp));
       for (auto fn : structOp.getOps<FnOp>()) {
-        ASTDecl &fnDecl = shared.declResolver->addBytecodeDecl(
-            fn, fn.getSourceNameAttr(), &structDecl, DeclResolvedness::body);
+        auto &fnDecl = cast<DefASTDecl>(shared.declResolver->addBytecodeDecl(
+            fn, fn.getSourceNameAttr(), &structDecl, DeclResolvedness::body));
         shared.declResolver->finalizeFuncSignature(fn, fnDecl);
       }
       for (auto conformance : structOp.getOps<ConformanceOp>()) {

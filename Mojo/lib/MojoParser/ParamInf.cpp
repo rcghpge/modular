@@ -909,7 +909,8 @@ VerifiedParamBindings ParamInf::inferForStruct() {
 
   auto attachNoteOnError = llvm::scope_exit([&]() {
     if (diag.hasErrorEmitted() && declIfKnown) {
-      if (llvm::isa_and_nonnull<FnOp>(declIfKnown->getIfOperation())) {
+      auto *defDecl = llvm::dyn_cast<DefASTDecl>(declIfKnown);
+      if (defDecl && defDecl->getOp()) {
         diag.attachNote(*declIfKnown) << "function declared here";
       } else {
         diag.attachNote(*declIfKnown)
@@ -1289,9 +1290,10 @@ LogicalResult ParamInf::finalizeWithUnbound() {
 
     // If this is a method on a struct and we couldn't infer something from
     // its self parameters, complain about the struct.
-    if (declIfKnown && isa_and_nonnull<FnOp>(declIfKnown->getIfOperation())) {
-      if (auto structOp = dyn_cast<StructDeclOp>(
-              cast<FnOp>(declIfKnown->getIfOperation())->getParentOp())) {
+    if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown);
+        fnDecl && fnDecl->getOp()) {
+      if (auto structOp =
+              dyn_cast<StructDeclOp>(fnDecl->getOp()->getParentOp())) {
         auto structSig = structOp.getSignature();
         if (paramIdx < structSig.getNumParams()) {
           diag << " of parent struct '" << structOp.getDeclName().getValue()
@@ -2380,10 +2382,9 @@ VerifiedParamBindings CallParamInf::inferForCall() {
   //         pass
   // All of the arguments have been resolved here so all parameters must be
   // inferred (or not able to).
-  if (declIfKnown && declIfKnown->getIfOperation()) {
-    if (cast<FnOp>(declIfKnown->getIfOperation())
-            .getSpecialFunctionInfo()
-            .hasSelfResult())
+  if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown);
+      fnDecl && fnDecl->getOp()) {
+    if (fnDecl->getOp().getSpecialFunctionInfo().hasSelfResult())
       if (failed(inferSelfFromInitResult()))
         return {};
   }
@@ -2406,8 +2407,8 @@ VerifiedParamBindings CallParamInf::inferForCall() {
   // that doesn't have us shadowing parameters like this!
   // A trait member's enclosing declaration is a trait rather than a struct, so
   // the struct-shaped CTAD inference never applies to one.
-  if (declIfKnown && !isa<WitnessASTDecl>(declIfKnown)) {
-    auto fnOp = cast<FnOp>(declIfKnown->getIfOperation());
+  if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown)) {
+    auto fnOp = fnDecl->getOp();
     if (!fnOp.getIsStatic() && isa<StructDeclOp>(fnOp->getParentOp())) {
       if (failed(inferCTADParams()))
         return {};

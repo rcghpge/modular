@@ -40,6 +40,7 @@ class AliasASTDecl;
 class AliasDeclOp;
 class ExtensionASTDecl;
 class ExtensionDeclOp;
+class DefASTDecl;
 class StructASTDecl;
 class StructDeclOp;
 class TraitASTDecl;
@@ -86,6 +87,7 @@ public:
     Base,
     Alias,
     Extension,
+    Def,
     Struct,
     Trait,
     Witness,
@@ -247,9 +249,6 @@ public:
   /// might be in any of those declarations.
   llvm::SmallVector<ASTDecl *, 4> collectTypeAndExtensions(ASTType type,
                                                            llvm::SMLoc callLoc);
-
-  /// If this is a method of a struct, trait, or extension, return its parent.
-  TypeScopeASTDecl *tryGetMethodParentDecl() const;
 
   /// Whether this decl was loaded from bytecode.
   bool isLoadedFromBytecode() const { return loadedFromBytecode; }
@@ -488,6 +487,29 @@ private:
   /// this declaration. It may reference parameter declarations from this
   /// ASTDecl or its parent ASTDecls.
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
+};
+
+/// The AST representation of a function declaration.
+class DefASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Def;
+  }
+
+  /// Return the function operation, or null after a nested function has been
+  /// replaced by its captured function value during closure lowering.
+  FnOp getOp() const;
+
+  /// If this is a method of a struct, trait, or extension, return its parent.
+  TypeScopeASTDecl *tryGetMethodParentDecl() const;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
+             ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+             ssize_t indentation);
 };
 
 /// An AST declaration that provides a `Self` type to its members.
