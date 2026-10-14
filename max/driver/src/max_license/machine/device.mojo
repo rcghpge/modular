@@ -37,7 +37,7 @@ struct DeviceRef(Copyable, Movable):
 
     @doc_hidden
     def __init__(
-        out self, var spec: DeviceSpec, device_index: Int, *, private: ()
+        out self, var spec: DeviceSpec, device_index: Int, *, private: Tuple[]
     ):
         """
         This exists only as support code for enabling machine definition

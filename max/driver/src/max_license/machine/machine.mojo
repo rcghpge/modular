@@ -47,7 +47,7 @@ struct MachineDefinition:
         return self._devices
 
     @doc_hidden
-    def __init__(out self, *, private: ()):
+    def __init__(out self, *, private: Tuple[]):
         """
         This constructor for MachineDefinition is
         introduced as a bridge construct that allows

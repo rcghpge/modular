@@ -217,7 +217,7 @@ trait HALPluginConstructable(Deinitable, TrivialRegisterPassable):
         var handle: _DLHandle,
         so_path: StringSlice,
         *,
-        use_reflection: (),
+        use_reflection: Tuple[],
     ) raises HALError:
         # This looks very weird, but is indeed sound here.
         # All HALFunction are TrivialRegisterPassable,
