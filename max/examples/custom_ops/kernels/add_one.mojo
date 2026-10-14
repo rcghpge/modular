@@ -17,7 +17,13 @@ import extensibility
 
 from max.gpu.host import DeviceContext
 
-from extensibility import InputTensor, OutputTensor, Tensor, foreach
+from extensibility import (
+    ElementwiseUnaryOp,
+    InputTensor,
+    OutputTensor,
+    Tensor,
+    foreach,
+)
 
 from std.utils.coord import Coord
 from std.utils.index import IndexList
@@ -51,3 +57,14 @@ def add_one_shape(
     x: Some[Tensor],
 ) raises -> IndexList[type_of(x).rank]:
     raise Error("NotImplemented")
+
+
+# The graph compiler can fuse this op with the ops around it.
+@extensibility.register("add_one_elementwise")
+struct AddOneElementwise(ElementwiseUnaryOp):
+    @staticmethod
+    def elementwise[
+        dtype: DType,
+        width: SIMDLength,
+    ](x: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        return x + 1
