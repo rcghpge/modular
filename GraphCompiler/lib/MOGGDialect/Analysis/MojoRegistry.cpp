@@ -307,6 +307,16 @@ resolveBuiltInKernelPackagePaths(LITModuleResolver &resolver) {
       return pathOr.takeError();
     paths.push_back(*pathOr);
   }
+
+  // Optional, per `kMoggInternalKernelsModuleName`: a tree without it still
+  // has a complete registry of the open-source kernels, and a graph that uses
+  // one of its ops fails later with that op unresolved rather than here with
+  // every op unresolved.
+  auto internalPathOr =
+      resolver.resolveBinaryPackagePath(kMoggInternalKernelsModuleName);
+  if (!internalPathOr.isError())
+    paths.push_back(*internalPathOr);
+
   return paths;
 }
 

@@ -1,3 +1,4 @@
+load("@mojo//:mojo.bzl", "INTERNAL_KERNEL_MOJOPKGS")
 load("//bazel:api.bzl", "modular_cc_binary")
 load("//bazel:config.bzl", "ASYNCRT_PROFILING_LOCAL_DEFINES")
 
@@ -13,7 +14,7 @@ modular_cc_binary(
     mojo_deps = [
         "//max:builtin_kernels",
         "//max:builtin_primitives",
-    ],
+    ] + INTERNAL_KERNEL_MOJOPKGS,
     deps = [
         "//GraphCompiler:CommonDriver",
         "//GraphCompiler:ExecutionDriver",

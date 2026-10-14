@@ -151,6 +151,13 @@ constexpr llvm::StringLiteral kReduceOpWidthAlias = "width";
 constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
 constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
 
+/// The closed-source half of the built-in kernel registrations, holding the
+/// wrappers for the kernels under `//Kernels/lib`. Unlike the two above it is
+/// optional: it is absent from a tree built without `//Kernels`, and from any
+/// install that ships only the open-source kernel packages. Missing it costs
+/// the ops it registers, not the whole registry.
+constexpr llvm::StringLiteral kMoggInternalKernelsModuleName = "graph_compiler";
+
 /// Prefixes an async error with its region name. Called from
 /// `AsyncErrorOp::emitMojo` besides the op's own primitive, so it can't come
 /// from `getOperationName()`.

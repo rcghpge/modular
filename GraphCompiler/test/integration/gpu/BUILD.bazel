@@ -1,3 +1,4 @@
+load("@mojo//:mojo.bzl", "INTERNAL_KERNEL_MOJOPKGS")
 load("//bazel:api.bzl", "lit_tests", "modular_py_test", "requirement")
 
 # gazelle:default_visibility //visibility:private
@@ -32,7 +33,7 @@ _COMMON_MOJO_DEPS = [
     "//max:builtin_kernels",
     "//max:builtin_primitives",
     "//max:extensibility",
-]
+] + INTERNAL_KERNEL_MOJOPKGS
 
 _COMMON_TOOLS = [
     "//GraphCompiler/tools/mo-opt",

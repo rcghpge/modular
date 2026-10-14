@@ -1,3 +1,4 @@
+load("@mojo//:mojo.bzl", "INTERNAL_KERNEL_MOJOPKGS")
 load("//bazel:api.bzl", "modular_cc_test")
 
 package(default_visibility = ["//visibility:private"])
@@ -5,7 +6,9 @@ package(default_visibility = ["//visibility:private"])
 modular_cc_test(
     name = "MEFCacheKeyTest",
     srcs = ["MEFCacheKeyTest.cpp"],
-    mojo_deps = ["//max:builtin_kernels"],
+    mojo_deps = [
+        "//max:builtin_kernels",
+    ] + INTERNAL_KERNEL_MOJOPKGS,
     deps = [
         "//GraphCompiler:FrameworkFrontend",
         "//GraphCompiler:MODialect",
