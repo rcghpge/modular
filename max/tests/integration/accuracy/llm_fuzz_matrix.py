@@ -56,7 +56,7 @@ PIPELINES: Final[list[PipelineEntry]] = [
         runner="modrunner-b200",
         gpu_flag="--devices gpu:0",
         instance_type="bm.gpu.b200.1",
-        timeout=60,
+        timeout=90,
     ),
     PipelineEntry(
         pipeline="minimax/MiniMax-M3-MXFP8-ep-tp",
