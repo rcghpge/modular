@@ -178,8 +178,8 @@ struct cudnnRNNDataLayout_t(TrivialRegisterPassable):
 def cudnnGetRNNDescriptor_v6(
     handle: UnsafePointer[cudnnContext, _],
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    hidden_size: UnsafePointer[Int16, _],
-    num_layers: UnsafePointer[Int16, _],
+    hidden_size: UnsafePointer[Int32, _],
+    num_layers: UnsafePointer[Int32, _],
     dropout_desc: DoubleNestedPointer[cudnnDropoutStruct],
     input_mode: UnsafePointer[cudnnRNNInputMode_t, _],
     direction: UnsafePointer[cudnnDirectionMode_t, _],
@@ -219,12 +219,12 @@ def cudnnGetRNNDescriptor_v6(
 struct cudnnForwardMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_FWD_MODE_INFERENCE = Self(0)
     comptime CUDNN_FWD_MODE_TRAINING = Self(1)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -281,8 +281,8 @@ def cudnnGetRNNTempSpaceSizes(
 def cudnnSetRNNDescriptor_v6(
     handle: UnsafePointer[cudnnContext, _],
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    hidden_size: Int16,
-    num_layers: Int16,
+    hidden_size: Int32,
+    num_layers: Int32,
     dropout_desc: UnsafePointer[cudnnDropoutStruct, _],
     input_mode: cudnnRNNInputMode_t,
     direction: cudnnDirectionMode_t,
@@ -320,7 +320,7 @@ def cudnnSetRNNDescriptor_v6(
 
 def cudnnCreatePersistentRNNPlan(
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    minibatch: Int16,
+    minibatch: Int32,
     data_type: cudnnDataType_t,
     plan: DoubleNestedPointer[cudnnPersistentRNNPlan],
 ) raises -> cudnnStatus_t:
@@ -338,8 +338,8 @@ def cudnnCreatePersistentRNNPlan(
 def cudnnGetSeqDataDescriptor(
     seq_data_desc: UnsafePointer[cudnnSeqDataStruct, _],
     data_type: UnsafePointer[cudnnDataType_t, _],
-    nb_dims: UnsafePointer[Int16, _],
-    nb_dims_requested: Int16,
+    nb_dims: UnsafePointer[Int32, _],
+    nb_dims_requested: Int32,
     dim_a: OpaquePointer,
     axes: OpaquePointer,
     seq_length_array_size: UnsafePointer[Int, _],
@@ -439,25 +439,25 @@ def cudnnSetRNNMatrixMathType(
 
 def cudnnGetAttnDescriptor(
     attn_desc: UnsafePointer[cudnnAttnStruct, _],
-    attn_mode: UnsafePointer[Int16, _],
-    n_heads: UnsafePointer[Int16, _],
+    attn_mode: UnsafePointer[Int32, _],
+    n_heads: UnsafePointer[Int32, _],
     sm_scaler: UnsafePointer[Float64, _],
     data_type: UnsafePointer[cudnnDataType_t, _],
     compute_prec: UnsafePointer[cudnnDataType_t, _],
     math_type: UnsafePointer[cudnnMathType_t, _],
     attn_dropout_desc: DoubleNestedPointer[cudnnDropoutStruct],
     post_dropout_desc: DoubleNestedPointer[cudnnDropoutStruct],
-    q_size: UnsafePointer[Int16, _],
-    k_size: UnsafePointer[Int16, _],
-    v_size: UnsafePointer[Int16, _],
-    q_proj_size: UnsafePointer[Int16, _],
-    k_proj_size: UnsafePointer[Int16, _],
-    v_proj_size: UnsafePointer[Int16, _],
-    o_proj_size: UnsafePointer[Int16, _],
-    qo_max_seq_length: UnsafePointer[Int16, _],
-    kv_max_seq_length: UnsafePointer[Int16, _],
-    max_batch_size: UnsafePointer[Int16, _],
-    max_beam_size: UnsafePointer[Int16, _],
+    q_size: UnsafePointer[Int32, _],
+    k_size: UnsafePointer[Int32, _],
+    v_size: UnsafePointer[Int32, _],
+    q_proj_size: UnsafePointer[Int32, _],
+    k_proj_size: UnsafePointer[Int32, _],
+    v_proj_size: UnsafePointer[Int32, _],
+    o_proj_size: UnsafePointer[Int32, _],
+    qo_max_seq_length: UnsafePointer[Int32, _],
+    kv_max_seq_length: UnsafePointer[Int32, _],
+    max_batch_size: UnsafePointer[Int32, _],
+    max_beam_size: UnsafePointer[Int32, _],
 ) raises -> cudnnStatus_t:
     return _get_dylib_function[
         "cudnnGetAttnDescriptor",
@@ -556,7 +556,7 @@ def cudnnGetMultiHeadAttnWeights(
 def cudnnSetSeqDataDescriptor(
     seq_data_desc: UnsafePointer[cudnnSeqDataStruct, _],
     data_type: cudnnDataType_t,
-    nb_dims: Int16,
+    nb_dims: Int32,
     dim_a: OpaquePointer,
     axes: OpaquePointer,
     seq_length_array_size: Int,
@@ -600,7 +600,7 @@ def cudnnCreateSeqDataDescriptor(
 
 def cudnnGetRNNPaddingMode(
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    padding_mode: UnsafePointer[Int16, _],
+    padding_mode: UnsafePointer[Int32, _],
 ) raises -> cudnnStatus_t:
     return _get_dylib_function[
         "cudnnGetRNNPaddingMode",
@@ -612,17 +612,17 @@ comptime cudnnAttnDescriptor_t = UnsafePointer[
     cudnnAttnStruct, UntrackedOrigin[mut=True]
 ]
 
-comptime cudnnAttnQueryMap_t = Int16
+comptime cudnnAttnQueryMap_t = Int32
 
 
 def cudnnGetRNNLinLayerBiasParams(
     handle: UnsafePointer[cudnnContext, _],
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    pseudo_layer: Int16,
+    pseudo_layer: Int32,
     x_desc: UnsafePointer[cudnnTensorStruct, _],
     w_desc: UnsafePointer[cudnnFilterStruct, _],
     w: OpaquePointer,
-    lin_layer_id: Int16,
+    lin_layer_id: Int32,
     lin_layer_bias_desc: UnsafePointer[cudnnFilterStruct, _],
     lin_layer_bias: UnsafePointer[AnyOpaquePointer, _],
 ) raises -> cudnnStatus_t:
@@ -655,7 +655,7 @@ def cudnnGetRNNLinLayerBiasParams(
 def cudnnGetRNNForwardInferenceAlgorithmMaxCount(
     handle: UnsafePointer[cudnnContext, _],
     rnn_desc: UnsafePointer[cudnnRNNStruct, _],
-    count: UnsafePointer[Int16, _],
+    count: UnsafePointer[Int32, _],
 ) raises -> cudnnStatus_t:
     return _get_dylib_function[
         "cudnnGetRNNForwardInferenceAlgorithmMaxCount",
@@ -766,14 +766,14 @@ def cudnnGetRNNDescriptor_v8(
 struct cudnnSeqDataAxis_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_SEQDATA_TIME_DIM = Self(0)
     comptime CUDNN_SEQDATA_BATCH_DIM = Self(1)
     comptime CUDNN_SEQDATA_BEAM_DIM = Self(2)
     comptime CUDNN_SEQDATA_VECT_DIM = Self(3)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -802,7 +802,7 @@ struct cudnnSeqDataAxis_t(
 
 
 def cudnnSetRNNPaddingMode(
-    rnn_desc: UnsafePointer[cudnnRNNStruct, _], padding_mode: Int16
+    rnn_desc: UnsafePointer[cudnnRNNStruct, _], padding_mode: Int32
 ) raises -> cudnnStatus_t:
     return _get_dylib_function[
         "cudnnSetRNNPaddingMode",
@@ -823,9 +823,9 @@ def cudnnSetRNNDataDescriptor(
     rnn_data_desc: UnsafePointer[cudnnRNNDataStruct, _],
     data_type: cudnnDataType_t,
     layout: cudnnRNNDataLayout_t,
-    max_seq_length: Int16,
-    batch_size: Int16,
-    vector_size: Int16,
+    max_seq_length: Int32,
+    batch_size: Int32,
+    vector_size: Int32,
     seq_length_array: OpaquePointer,
     padding_fill: OpaquePointer,
 ) raises -> cudnnStatus_t:

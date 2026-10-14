@@ -85,7 +85,7 @@ def cudnnBackendInitialize(
 
 @fieldwise_init
 struct cudnnBackendKnobType_t(Equatable, TrivialRegisterPassable, Writable):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_KNOB_TYPE_SPLIT_K = Self(0)
     comptime CUDNN_KNOB_TYPE_SWIZZLE = Self(1)
     comptime CUDNN_KNOB_TYPE_TILE_SIZE = Self(2)
@@ -126,7 +126,7 @@ struct cudnnBackendKnobType_t(Equatable, TrivialRegisterPassable, Writable):
     comptime CUDNN_KNOB_TYPE_COUNTS = Self(37)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -224,7 +224,7 @@ struct cudnnBackendKnobType_t(Equatable, TrivialRegisterPassable, Writable):
 
 @fieldwise_init
 struct cudnnPointwiseMode_t(Equatable, TrivialRegisterPassable, Writable):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_POINTWISE_ADD = Self(0)
     comptime CUDNN_POINTWISE_ADD_SQUARE = Self(1)
     comptime CUDNN_POINTWISE_DIV = Self(2)
@@ -277,7 +277,7 @@ struct cudnnPointwiseMode_t(Equatable, TrivialRegisterPassable, Writable):
     comptime CUDNN_POINTWISE_BINARY_SELECT = Self(49)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -401,7 +401,7 @@ struct cudnnPointwiseMode_t(Equatable, TrivialRegisterPassable, Writable):
 struct cudnnBackendDescriptorType_t(
     Equatable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_BACKEND_POINTWISE_DESCRIPTOR = Self(0)
     comptime CUDNN_BACKEND_CONVOLUTION_DESCRIPTOR = Self(1)
     comptime CUDNN_BACKEND_ENGINE_DESCRIPTOR = Self(2)
@@ -444,7 +444,7 @@ struct cudnnBackendDescriptorType_t(
     comptime CUDNN_BACKEND_OPERATION_RNG_DESCRIPTOR = Self(33)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -608,14 +608,14 @@ def cudnnBackendSetAttribute(
 struct cudnnBackendBehaviorNote_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_BEHAVIOR_NOTE_RUNTIME_COMPILATION = Self(0)
     comptime CUDNN_BEHAVIOR_NOTE_REQUIRES_FILTER_INT8x32_REORDER = Self(1)
     comptime CUDNN_BEHAVIOR_NOTE_REQUIRES_BIAS_INT8x32_REORDER = Self(2)
     comptime CUDNN_BEHAVIOR_NOTE_TYPE_COUNT = Self(3)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -653,7 +653,7 @@ struct cudnnBackendBehaviorNote_t(
 struct cudnnBackendLayoutType_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_LAYOUT_TYPE_PREFERRED_NCHW = Self(0)
     comptime CUDNN_LAYOUT_TYPE_PREFERRED_NHWC = Self(1)
     comptime CUDNN_LAYOUT_TYPE_PREFERRED_PAD4CK = Self(2)
@@ -661,7 +661,7 @@ struct cudnnBackendLayoutType_t(
     comptime CUDNN_LAYOUT_TYPE_COUNT = Self(4)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -695,12 +695,12 @@ struct cudnnBackendLayoutType_t(
 struct cudnnBackendNormFwdPhase_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_NORM_FWD_INFERENCE = Self(0)
     comptime CUDNN_NORM_FWD_TRAINING = Self(1)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -728,7 +728,7 @@ struct cudnnBackendNormFwdPhase_t(
 struct cudnnBackendHeurMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_HEUR_MODE_INSTANT = Self(0)
     comptime CUDNN_HEUR_MODE_B = Self(1)
     comptime CUDNN_HEUR_MODE_FALLBACK = Self(2)
@@ -736,7 +736,7 @@ struct cudnnBackendHeurMode_t(
     comptime CUDNN_HEUR_MODES_COUNT = Self(4)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -775,7 +775,7 @@ struct cudnnFractionStruct(TrivialRegisterPassable):
 struct cudnnBackendNumericalNote_t(
     Equatable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_NUMERICAL_NOTE_TENSOR_CORE = Self(0)
     comptime CUDNN_NUMERICAL_NOTE_DOWN_CONVERT_INPUTS = Self(1)
     comptime CUDNN_NUMERICAL_NOTE_REDUCED_PRECISION_REDUCTION = Self(2)
@@ -788,7 +788,7 @@ struct cudnnBackendNumericalNote_t(
     comptime CUDNN_NUMERICAL_NOTE_TYPE_COUNT = Self(9)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -850,7 +850,7 @@ def cudnnBackendCreateDescriptor(
 struct cudnnBackendAttributeType_t(
     Equatable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_TYPE_HANDLE = Self(0)
     comptime CUDNN_TYPE_DATA_TYPE = Self(1)
     comptime CUDNN_TYPE_BOOLEAN = Self(2)
@@ -883,7 +883,7 @@ struct cudnnBackendAttributeType_t(
     comptime CUDNN_TYPE_RNG_DISTRIBUTION = Self(29)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -967,13 +967,13 @@ struct cudnnBackendAttributeType_t(
 struct cudnnRngDistribution_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_RNG_DISTRIBUTION_BERNOULLI = Self(0)
     comptime CUDNN_RNG_DISTRIBUTION_UNIFORM = Self(1)
     comptime CUDNN_RNG_DISTRIBUTION_NORMAL = Self(2)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -1009,13 +1009,13 @@ def cudnnBackendFinalize(descriptor: OpaquePointer) raises -> cudnnStatus_t:
 struct cudnnBackendTensorReordering_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_TENSOR_REORDERING_NONE = Self(0)
     comptime CUDNN_TENSOR_REORDERING_INT8x32 = Self(1)
     comptime CUDNN_TENSOR_REORDERING_F16x16 = Self(2)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -1045,7 +1045,7 @@ struct cudnnBackendTensorReordering_t(
 struct cudnnBackendAttributeName_t(
     Equatable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_ATTR_POINTWISE_MODE = Self(0)
     comptime CUDNN_ATTR_POINTWISE_MATH_PREC = Self(1)
     comptime CUDNN_ATTR_POINTWISE_NAN_PROPAGATION = Self(2)
@@ -1266,7 +1266,7 @@ struct cudnnBackendAttributeName_t(
     comptime CUDNN_ATTR_OPERATION_RNG_OFFSET_DESC = Self(211)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -1916,7 +1916,7 @@ struct cudnnBackendAttributeName_t(
 struct cudnnBackendNormMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_LAYER_NORM = Self(0)
     comptime CUDNN_INSTANCE_NORM = Self(1)
     comptime CUDNN_BATCH_NORM = Self(2)
@@ -1924,7 +1924,7 @@ struct cudnnBackendNormMode_t(
     comptime CUDNN_RMS_NORM = Self(4)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -1958,12 +1958,12 @@ struct cudnnBackendNormMode_t(
 struct cudnnSignalMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_SIGNAL_SET = Self(0)
     comptime CUDNN_SIGNAL_WAIT = Self(1)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -1994,12 +1994,12 @@ comptime cudnnBackendDescriptor_t = OpaquePointer[AnyOrigin[mut=True]]
 struct cudnnBnFinalizeStatsMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_BN_FINALIZE_STATISTICS_TRAINING = Self(0)
     comptime CUDNN_BN_FINALIZE_STATISTICS_INFERENCE = Self(1)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -2027,11 +2027,11 @@ struct cudnnBnFinalizeStatsMode_t(
 struct cudnnGenStatsMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_GENSTATS_SUM_SQSUM = Self(0)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -2081,7 +2081,7 @@ def cudnnBackendExecute(
 struct cudnnResampleMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_RESAMPLE_NEAREST = Self(0)
     comptime CUDNN_RESAMPLE_BILINEAR = Self(1)
     comptime CUDNN_RESAMPLE_AVGPOOL = Self(2)
@@ -2090,7 +2090,7 @@ struct cudnnResampleMode_t(
     comptime CUDNN_RESAMPLE_MAXPOOL = Self(5)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value
@@ -2157,13 +2157,13 @@ def cudnnBackendGetAttribute(
 struct cudnnPaddingMode_t(
     Equatable, Identifiable, TrivialRegisterPassable, Writable
 ):
-    var _value: Int8
+    var _value: Int32
     comptime CUDNN_ZERO_PAD = Self(0)
     comptime CUDNN_NEG_INF_PAD = Self(1)
     comptime CUDNN_EDGE_VAL_PAD = Self(2)
 
     def __init__(out self, value: Int):
-        self._value = Int8(value)
+        self._value = Int32(value)
 
     def __eq__(self, other: Self) -> Bool:
         return self._value == other._value

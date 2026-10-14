@@ -4016,10 +4016,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_input_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[input_type](),
-                Int16(in_[0]),
-                Int16(in_[3]),
-                Int16(in_[1]),
-                Int16(in_[2]),
+                Int32(in_[0]),
+                Int32(in_[3]),
+                Int32(in_[1]),
+                Int32(in_[2]),
             )
         )
 
@@ -4029,10 +4029,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_filter_desc,
                 get_cudnn_dtype[filter_type](),
                 cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-                Int16(filt[0]),
-                Int16(filt[1]),
-                Int16(filt[2]),
-                Int16(filt[3]),
+                Int32(filt[0]),
+                Int32(filt[1]),
+                Int32(filt[2]),
+                Int32(filt[3]),
             )
         )
 
@@ -4040,12 +4040,12 @@ def _conv_cudnn[
         check_cudnn_error(
             cudnnSetConvolution2dDescriptor(
                 ptr_meta[].ptr_conv_desc,
-                Int16(pad[0]),
-                Int16(pad[1]),
-                Int16(stride[0]),
-                Int16(stride[1]),
-                Int16(dil[0]),
-                Int16(dil[1]),
+                Int32(pad[0]),
+                Int32(pad[1]),
+                Int32(stride[0]),
+                Int32(stride[1]),
+                Int32(dil[0]),
+                Int32(dil[1]),
                 cudnnConvolutionMode_t.CUDNN_CROSS_CORRELATION,
                 cudnnDataType_t.CUDNN_DATA_FLOAT,
             )
@@ -4053,7 +4053,7 @@ def _conv_cudnn[
 
         check_cudnn_error(
             cudnnSetConvolutionGroupCount(
-                ptr_meta[].ptr_conv_desc, Int16(num_groups)
+                ptr_meta[].ptr_conv_desc, Int32(num_groups)
             )
         )
 
@@ -4063,10 +4063,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_output_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[output_type](),
-                Int16(out[0]),
-                Int16(out[3]),
-                Int16(out[1]),
-                Int16(out[2]),
+                Int32(out[0]),
+                Int32(out[3]),
+                Int32(out[1]),
+                Int32(out[2]),
             )
         )
 
@@ -4084,14 +4084,11 @@ def _conv_cudnn[
         )
 
         # Algorithm Autotuning.
-        # The Mojo binding cudnnConvolutionFwdAlgoPerfStruct has incorrect
-        # layout (Int8 enums vs C's 4-byte int enums). We bypass it by
-        # allocating a raw 48-byte buffer matching the C ABI layout and
-        # reading the algo Int32 at offset 0.
-        var perf_buf_alloc = alloc[UInt8]({count = 48}).into_managed()
-        var perf_buf = UnsafePointer(perf_buf_alloc.unsafe_ptr())
-        var requested_count: Int16 = 1
-        var returned_count: Int16 = 0
+        var perf_alloc = alloc[cudnnConvolutionFwdAlgoPerf_t](
+            {count = 1}
+        ).into_managed()
+        var perf = perf_alloc.unsafe_ptr()
+        var returned_count: Int32 = 0
 
         check_cudnn_error(
             cudnnGetConvolutionForwardAlgorithm_v7(
@@ -4100,16 +4097,14 @@ def _conv_cudnn[
                 ptr_meta[].ptr_filter_desc,
                 ptr_meta[].ptr_conv_desc,
                 ptr_meta[].ptr_output_desc,
-                requested_count,
+                1,
                 UnsafePointer(to=returned_count),
-                perf_buf.bitcast[cudnnConvolutionFwdAlgoPerf_t](),
+                perf,
             )
         )
 
         if returned_count > 0:
-            # Read algo enum (C int32) at byte offset 0
-            var algo_val = perf_buf.bitcast[Int32]()[]
-            ptr_meta[].best_algo = cudnnConvolutionFwdAlgo_t(Int(algo_val))
+            ptr_meta[].best_algo = perf[].algo
         else:
             ptr_meta[].best_algo = (
                 cudnnConvolutionFwdAlgo_t.CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
@@ -5910,11 +5905,8 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 struct _Conv3dAlgoCacheEntry(Copyable, Movable):
     """Cached cuDNN algorithm selection result for a conv3d shape."""
 
-    var algo_value: Int8
+    var algo: cudnnConvolutionFwdAlgo_t
     var workspace_size: Int
-
-    def algo(self) -> cudnnConvolutionFwdAlgo_t:
-        return rebind[cudnnConvolutionFwdAlgo_t](self.algo_value)
 
 
 def _conv3d_cudnn_depth_tiled[
@@ -6007,7 +5999,7 @@ def _conv3d_cudnn_depth_tiled[
             ptr_meta[].ptr_filter_desc,
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-            Int16(5),
+            Int32(5),
             filter_dims.bitcast[NoneType](),
         )
     )
@@ -6073,7 +6065,7 @@ def _conv3d_cudnn_depth_tiled[
                 ptr_meta[].ptr_input_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[input_type](),
-                Int16(5),
+                Int32(5),
                 input_dims.bitcast[NoneType](),
             )
         )
@@ -6090,7 +6082,7 @@ def _conv3d_cudnn_depth_tiled[
                 ptr_meta[].ptr_output_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[output_type](),
-                Int16(5),
+                Int32(5),
                 output_dims.bitcast[NoneType](),
             )
         )
@@ -6103,7 +6095,7 @@ def _conv3d_cudnn_depth_tiled[
         check_cudnn_error(
             cudnnSetConvolutionNdDescriptor(
                 ptr_meta[].ptr_conv_desc,
-                Int16(3),
+                Int32(3),
                 pad_a.bitcast[NoneType](),
                 stride_a.bitcast[NoneType](),
                 dilation_a.bitcast[NoneType](),
@@ -6113,7 +6105,7 @@ def _conv3d_cudnn_depth_tiled[
         )
         check_cudnn_error(
             cudnnSetConvolutionGroupCount(
-                ptr_meta[].ptr_conv_desc, Int16(num_groups)
+                ptr_meta[].ptr_conv_desc, Int32(num_groups)
             )
         )
         check_cudnn_error(
@@ -6260,7 +6252,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_input_desc,
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[input_type](),
-            Int16(5),
+            Int32(5),
             input_dims.bitcast[NoneType](),
         )
     )
@@ -6279,7 +6271,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_filter_desc,
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-            Int16(5),
+            Int32(5),
             filter_dims.bitcast[NoneType](),
         )
     )
@@ -6306,7 +6298,7 @@ def _conv3d_cudnn[
     check_cudnn_error(
         cudnnSetConvolutionNdDescriptor(
             ptr_meta[].ptr_conv_desc,
-            Int16(3),
+            Int32(3),
             pad_a.bitcast[NoneType](),
             stride_a.bitcast[NoneType](),
             dilation_a.bitcast[NoneType](),
@@ -6317,7 +6309,7 @@ def _conv3d_cudnn[
 
     check_cudnn_error(
         cudnnSetConvolutionGroupCount(
-            ptr_meta[].ptr_conv_desc, Int16(num_groups)
+            ptr_meta[].ptr_conv_desc, Int32(num_groups)
         )
     )
 
@@ -6335,7 +6327,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_output_desc,
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[output_type](),
-            Int16(5),
+            Int32(5),
             output_dims.bitcast[NoneType](),
         )
     )
@@ -6402,28 +6394,18 @@ def _conv3d_cudnn[
     if case .Some(ptr_cached) = ptr_cached:
         # Cache hit — reuse previously selected algorithm.
         var entry = ptr_cached.unsafe_bitcast[_Conv3dAlgoCacheEntry]()
-        algo = entry[].algo()
+        algo = entry[].algo
         workspace_size_var = entry[].workspace_size
     else:
         # Cache miss — run FindEx to find the fastest algorithm.
         var find_ws = ctx.enqueue_create_buffer[.uint8](FIND_WS_CAP)
 
-        # CRITICAL: The Mojo cudnnConvolutionFwdAlgoPerfStruct uses Int8 for
-        # enum fields, but the C struct uses int (4 bytes). This causes a
-        # size mismatch: Mojo struct = ~32 bytes, C struct = 48 bytes.
-        # Allocating with the Mojo struct size would cause a buffer overflow
-        # when cuDNN writes 8 * 48 = 384 bytes. We allocate raw bytes with
-        # the correct C struct size and read fields at proper offsets.
-        comptime C_PERF_STRUCT_SIZE = 48  # sizeof(cudnnConvolutionFwdAlgoPerf_t)
         comptime MAX_ALGOS = 8
-        var perf_bytes_alloc = alloc[UInt8](
-            {count = MAX_ALGOS * C_PERF_STRUCT_SIZE}
+        var perf_alloc = alloc[cudnnConvolutionFwdAlgoPerfStruct](
+            {count = MAX_ALGOS}
         ).into_managed()
-        var perf_bytes = perf_bytes_alloc.unsafe_ptr()
-
-        # returned_algo_count is int* in C (4 bytes), not Int16*.
-        # Use Int32 and bitcast the pointer.
-        var returned_count_i32 = Int32(0)
+        var perf = perf_alloc.unsafe_ptr()
+        var returned_count: Int32 = 0
 
         var find_status = cudnnFindConvolutionForwardAlgorithmEx(
             ptr_meta[].ptr_handle,
@@ -6434,47 +6416,34 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].ptr_output_desc,
             output.ptr.bitcast[NoneType](),
-            Int16(MAX_ALGOS),
-            UnsafePointer(to=returned_count_i32).bitcast[Int16](),
-            perf_bytes.unsafe_bitcast[cudnnConvolutionFwdAlgoPerfStruct](),
+            MAX_ALGOS,
+            Pointer(to=returned_count),
+            perf,
             find_ws.unsafe_ptr().bitcast[NoneType](),
             FIND_WS_CAP,
         )
         _ = find_ws^
 
-        # Read the returned count (C int at offset 0 of returned_count_i32).
-        var returned_count = Int(returned_count_i32)
-
         # Pick the fastest successful algorithm within workspace cap.
-        # Read fields from raw bytes at correct C struct offsets:
-        #   offset  0: algo (int32)
-        #   offset  4: status (int32)
-        #   offset  8: time (float32)
-        #   offset 16: memory (size_t / int64)
         algo = (
             cudnnConvolutionFwdAlgo_t.CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM
         )
         workspace_size_var = 0
 
-        var find_status_val = rebind[Int32](find_status)
-        if find_status_val == 0:  # CUDNN_STATUS_SUCCESS
-            for i in range(returned_count):
-                var base = perf_bytes.unsafe_offset(i * C_PERF_STRUCT_SIZE)
-                var algo_val = base.unsafe_bitcast[Int32]()[]  # offset 0
-                var status_val = base.unsafe_offset(4).unsafe_bitcast[
-                    Int32
-                ]()[]  # offset 4
-                var memory_val = base.unsafe_offset(16).unsafe_bitcast[
-                    Int
-                ]()[]  # offset 16
-                if status_val == 0 and memory_val <= FIND_WS_CAP:
-                    algo = rebind[cudnnConvolutionFwdAlgo_t](Int8(algo_val))
-                    workspace_size_var = memory_val
+        if find_status == .CUDNN_STATUS_SUCCESS:
+            for i in range(Int(returned_count)):
+                ref result = perf.unsafe_offset(i)[]
+                if (
+                    result.status == .CUDNN_STATUS_SUCCESS
+                    and result.memory <= FIND_WS_CAP
+                ):
+                    algo = result.algo
+                    workspace_size_var = result.memory
                     break
         else:
             print(
                 "conv3d FindEx FAILED: status=",
-                Int(find_status_val),
+                find_status,
                 " input=[N=",
                 input.dim[0](),
                 " C=",
@@ -6518,7 +6487,7 @@ def _conv3d_cudnn[
         var ptr_entry = alloc[_Conv3dAlgoCacheEntry]({count = 1}).unsafe_leak()
         ptr_entry.unsafe_write(
             _Conv3dAlgoCacheEntry(
-                algo_value=rebind[Int8](algo),
+                algo=algo,
                 workspace_size=workspace_size_var,
             )
         )
@@ -6597,7 +6566,7 @@ def _conv3d_cudnn[
             ).unsafe_leak()
             retry_entry.unsafe_write(
                 _Conv3dAlgoCacheEntry(
-                    algo_value=rebind[Int8](algo),
+                    algo=algo,
                     workspace_size=0,
                 )
             )
