@@ -497,6 +497,13 @@ class TestExtraBodyValidator:
         with pytest.raises(ValueError, match="not a readable file path"):
             self._build_with_extra("/nonexistent/payload.yaml")
 
+    def test_at_prefixed_file_path(self, tmp_path: Path) -> None:
+        """An ``@`` prefix reads the file, as it does for the other fields."""
+        payload = tmp_path / "payload.yaml"
+        _write_yaml(payload, self._NESTED)
+        config = self._build_with_extra(f"@{payload}")
+        assert config.extra_body == self._NESTED
+
     def test_file_beside_a_workload_resolves(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -525,6 +532,44 @@ class TestExtraBodyValidator:
         assert args.extra_body == self._NESTED
 
 
+_RESPONSE_FORMAT: dict[str, Any] = {"type": "json_object"}
+_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {"name": "f", "parameters": {"type": "object"}},
+    }
+]
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["extra_body", "agentic_tool_profiles", "response_format", "tools"],
+)
+@pytest.mark.parametrize("content", ["", "null\n", "# only a comment\n"])
+def test_empty_file_rejected(tmp_path: Path, field: str, content: str) -> None:
+    """A file that loads as nothing is an error, not an unset field."""
+    payload = tmp_path / "payload.yaml"
+    payload.write_text(content)
+    with pytest.raises(ValueError, match=rf"{field} \(file .*\) is empty"):
+        ServingBenchmarkConfig.model_validate(
+            {"model": "m", field: str(payload)}
+        )
+
+
+@pytest.mark.parametrize("field", ["extra_body", "agentic_tool_profiles"])
+@pytest.mark.parametrize("content", ["- stop\n", "42\n"])
+def test_non_mapping_file_rejected(
+    tmp_path: Path, field: str, content: str
+) -> None:
+    """A file holding something other than a mapping is an error."""
+    payload = tmp_path / "payload.yaml"
+    payload.write_text(content)
+    with pytest.raises(ValidationError, match=field):
+        ServingBenchmarkConfig.model_validate(
+            {"model": "m", field: str(payload)}
+        )
+
+
 class TestApplyWorkload:
     """`apply_workload` applies an in-memory workload like a YAML file."""
 
@@ -538,6 +583,62 @@ class TestApplyWorkload:
         )
         assert args.extra_body == {"k": "v"}
         assert args.num_prompts == 7
+
+    def test_resolves_response_format_and_tools_against_base_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``@`` and bare paths both resolve beside the workload, not in cwd."""
+        (tmp_path / "schema.json").write_text(json.dumps(_RESPONSE_FORMAT))
+        (tmp_path / "tools.json").write_text(json.dumps(_TOOLS))
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+
+        args = ServingBenchmarkConfig(model="m")
+        apply_workload(
+            args,
+            {"response-format": "@schema.json", "tools": "tools.json"},
+            base_dir=tmp_path,
+        )
+        assert args.response_format == _RESPONSE_FORMAT
+        assert args.tools == _TOOLS
+
+    def test_falls_back_to_cwd_when_nothing_is_beside_the_workload(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A repo-root path in a workload written elsewhere still resolves."""
+        (tmp_path / "repo" / "tools").mkdir(parents=True)
+        (tmp_path / "repo" / "tools" / "t.json").write_text(json.dumps(_TOOLS))
+        (tmp_path / "workloads").mkdir()
+        monkeypatch.chdir(tmp_path / "repo")
+
+        args = ServingBenchmarkConfig(model="m")
+        apply_workload(
+            args, {"tools": "@tools/t.json"}, base_dir=tmp_path / "workloads"
+        )
+        assert args.tools == _TOOLS
+
+    def test_inline_response_format_and_tools_are_not_paths(
+        self, tmp_path: Path
+    ) -> None:
+        """Path resolution must not touch a value that is the content itself."""
+        for options in (
+            {"response-format": _RESPONSE_FORMAT, "tools": _TOOLS},
+            {
+                "response-format": json.dumps(_RESPONSE_FORMAT),
+                "tools": json.dumps(_TOOLS),
+            },
+        ):
+            args = ServingBenchmarkConfig(model="m")
+            apply_workload(args, options, base_dir=tmp_path)
+            assert args.response_format == _RESPONSE_FORMAT
+            assert args.tools == _TOOLS
+
+    def test_invalid_response_format_rejected(self) -> None:
+        with pytest.raises(ValueError, match="Invalid response_format"):
+            ServingBenchmarkConfig.model_validate(
+                {"model": "m", "response_format": '{"type": "nope"}'}
+            )
 
 
 class TestLoadWorkloadFile:
