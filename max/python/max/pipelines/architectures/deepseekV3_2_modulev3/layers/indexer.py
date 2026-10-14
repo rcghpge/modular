@@ -18,7 +18,7 @@ from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Module
 from max.experimental.nn.common_layers.functional_kernels import (
-    mla_fp8_index_top_k,
+    mla_fp8_index_top_k_physical,
     quantize_dynamic_scaled_float8,
     rope_ragged,
     store_k_cache_ragged,
@@ -111,6 +111,7 @@ class Indexer(
             Tensor,
             PagedCacheValues,
             Tensor,
+            PagedCacheValues,
             MHAMaskVariant,
         ],
         Tensor,
@@ -180,6 +181,7 @@ class Indexer(
         input_row_offsets: Tensor,
         indexer_k_collection: PagedCacheValues,
         layer_idx: Tensor,
+        mla_collection: PagedCacheValues,
         mask_variant: MHAMaskVariant = MHAMaskVariant.NULL_MASK,
     ) -> Tensor:
         """
@@ -192,11 +194,13 @@ class Indexer(
                 ends in a concatenated "ragged" input.
             indexer_k_collection: Indexer's K cache values
             layer_idx: Layer index for cache lookup
+            mla_collection: The MLA cache the selected rows index.
             mask_variant: Mask applied to the index scores.
 
         Returns:
-            Tensor of shape (total_seq_len, index_topk): indices of the top k
-            keys selected by the indexer for MLA to attend to.
+            Tensor of shape (total_seq_len, index_topk): the physical rows in
+            ``mla_collection`` of the top k keys selected for MLA to attend
+            to, ``-1`` past a token's candidates.
         """
         # qr comes projected to lora rank and pre-normed;
         # q_lora_rank -> self.n_heads * self.head_dim
@@ -254,11 +258,12 @@ class Indexer(
         )  # dim -> n_heads
         weights = F.unsqueeze(weights, axis=-1) * q_scale * self.softmax_scale
 
-        return mla_fp8_index_top_k(
+        return mla_fp8_index_top_k_physical(
             q_fp8,
             F.squeeze(weights, axis=-1),
             input_row_offsets,
             indexer_k_collection,
+            mla_collection,
             layer_idx,
             self.index_topk,
             self.quant_config.scales_granularity_mnk[2],

@@ -120,6 +120,7 @@ def _local_expert_matmul(
     scales_offset: Tensor | None = None,
     estimated_total_m: Tensor | None = None,
     accum_dtype: DType | None = None,
+    decode_grid_m_cap: int = 0,
 ) -> Tensor:
     """Runs local expert matmuls on dispatched tokens."""
     down_in = quant_ops.grouped_matmul_silu(
@@ -133,6 +134,7 @@ def _local_expert_matmul(
         scales_offset=scales_offset,
         estimated_total_m=estimated_total_m,
         accum_dtype=accum_dtype,
+        decode_grid_m_cap=decode_grid_m_cap,
     )
     return quant_ops.grouped_matmul(
         down_in,
@@ -142,6 +144,7 @@ def _local_expert_matmul(
         usage_stats,
         scales_offset=scales_offset,
         estimated_total_m=estimated_total_m,
+        decode_grid_m_cap=decode_grid_m_cap,
     )
 
 
@@ -629,6 +632,15 @@ class ExpertParallelMoE(QuantizedMoE):
         gate_up = self.gate_up_proj
         down = self.down_proj
         usage_stats = payload.usage_stats
+        # The decode concurrency cap bounds every expert's rows to
+        # ``cap * n_ranks / top_k``; 0 leaves the MI355 kernel unbounded.
+        config = self.ep_batch_manager.config
+        decode_grid_m_cap = 0
+        if config.max_batch_size > 0:
+            n_ranks = config.n_gpus_per_node * config.n_nodes
+            decode_grid_m_cap = -(
+                -config.max_batch_size * n_ranks // config.top_k
+            )
         with ensure_context():
             return [
                 _local_expert_matmul(
@@ -641,6 +653,7 @@ class ExpertParallelMoE(QuantizedMoE):
                     quant_config=self.quant_config,
                     estimated_total_m=estimated_total_m,
                     accum_dtype=self.gate_up_accum_dtype,
+                    decode_grid_m_cap=decode_grid_m_cap,
                 )
                 for i in range(len(tokens))
             ]

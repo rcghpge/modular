@@ -19,7 +19,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from max.driver import CPU
+from max.driver import CPU, accelerator_api, accelerator_architecture_name
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn.common_layers.functional_kernels import (
@@ -174,6 +174,8 @@ def _grouped_scaled_matmul_rule(
     input_scale_spec: InputScaleSpec,
     weight_scale_spec: WeightScaleSpec,
     out_type: DType = DType.bfloat16,
+    static_grid_z: bool = False,
+    decode_grid_m_cap: int = 0,
 ) -> list[AxisAssignment]:
     """Sharding rule for the FP8 block-scaled grouped (MoE) matmul."""
     return [
@@ -789,6 +791,7 @@ def grouped_matmul(
     scales_offset: Tensor | None = None,
     out_type: DType = DType.bfloat16,
     estimated_total_m: Tensor | None = None,
+    decode_grid_m_cap: int = 0,
 ) -> Tensor:
     """Grouped (MoE) matmul dispatching on the stacked-weight type.
 
@@ -813,8 +816,11 @@ def grouped_matmul(
             required for the NVFP4 branch, ignored otherwise.
         out_type: Output dtype for the FP8/NVFP4 branch (bf16 by default).
         estimated_total_m: Host scalar estimate of the non-padded token-expert
-            row count. The SM100 NVFP4 dispatch picks its tile regime from it;
-            ignored by the bf16/FP8 branches.
+            row count. The SM100 NVFP4 dispatch picks its tile regime from it,
+            and the MI355 FP8 kernel bounds its grid.y with it; ignored by the
+            bf16 branch.
+        decode_grid_m_cap: Capture-safe decode grid.y cap for the MI355 FP8
+            kernel; 0 disables. Ignored elsewhere.
     """
     if isinstance(weight, NVFP4Tensor):
         if isinstance(x, NVFP4Activation):
@@ -869,6 +875,8 @@ def grouped_matmul(
             expert_ids,
             expert_usage_stats,
             out_type=out_type,
+            estimated_total_m=estimated_total_m,
+            decode_grid_m_cap=decode_grid_m_cap,
         )
     assert isinstance(x, Tensor) and isinstance(weight, Tensor)
     assert scales_offset is None
@@ -1010,6 +1018,7 @@ def grouped_matmul_silu(
     scales_offset: Tensor | None = None,
     estimated_total_m: Tensor | None = None,
     accum_dtype: DType | None = None,
+    decode_grid_m_cap: int = 0,
 ) -> QuantAwareTensor:
     """Gate/up grouped matmul + SwiGLU, returning the down-projection input.
 
@@ -1064,6 +1073,8 @@ def grouped_matmul_silu(
         expert_ids,
         expert_usage_stats,
         scales_offset=scales_offset,
+        estimated_total_m=estimated_total_m,
+        decode_grid_m_cap=decode_grid_m_cap,
     )
     # Fuse the down-proj re-quant into the SiLU only when the activation was
     # pre-quantized upstream (EP dispatch); otherwise emit bf16 and let the
@@ -1111,6 +1122,8 @@ def _grouped_fp8_matmul(
     expert_usage_stats: Tensor,
     *,
     out_type: DType = DType.bfloat16,
+    estimated_total_m: Tensor | None = None,
+    decode_grid_m_cap: int = 0,
 ) -> Tensor:
     """Block-scaled FP8 grouped matmul on already-quantized activations."""
     block_m, block_k = weight.block_size
@@ -1119,6 +1132,18 @@ def _grouped_fp8_matmul(
     )
     # This kernel reads the usage stats host-side, so copy to CPU here rather
     # than at the call site (the bf16 path needs them on-device).
+    usage_stats = expert_usage_stats.to(CPU())
+    grid_kwargs: dict[str, Any] = {}
+    if _amd_tiled_grouped_fp8(x_scales, weight):
+        # MI355 replays decode from a captured device graph, so the grid must
+        # not come from runtime reads: grid.z uses the static expert count and
+        # grid.y is bounded by this step's routed rows.
+        grid_kwargs = {
+            "static_grid_z": True,
+            "decode_grid_m_cap": decode_grid_m_cap,
+        }
+        if estimated_total_m is not None:
+            usage_stats = _bound_grid_y(usage_stats, estimated_total_m)
     return grouped_dynamic_scaled_fp8_matmul(
         x_fp8,
         weight.data,
@@ -1126,11 +1151,46 @@ def _grouped_fp8_matmul(
         weight.weight_scale_inv,
         expert_start_indices,
         expert_ids,
-        expert_usage_stats.to(CPU()),
+        usage_stats,
         input_spec,
         weight_spec,
         out_type=out_type,
+        **grid_kwargs,
     )
+
+
+def _amd_tiled_grouped_fp8(x_scales: Tensor, weight: FP8BlockTensor) -> bool:
+    """Returns whether the FP8 grouped matmul takes the MI355 tiled kernel.
+
+    Mirrors the kernel's ``amd_tiled`` predicate: only that kernel accepts
+    the capture-safe grid controls, and the other arms reject them.
+    """
+    n, k = int(weight.data.shape[1]), int(weight.data.shape[2])
+    return (
+        accelerator_api() == "hip"
+        and accelerator_architecture_name().startswith("gfx950")
+        and x_scales.dtype == DType.float32
+        and weight.weight_scale_inv.dtype == DType.float32
+        and n % 128 == 0
+        and k % 128 == 0
+    )
+
+
+def _bound_grid_y(usage_stats: Tensor, estimated_total_m: Tensor) -> Tensor:
+    """Bounds the usage stats' grid.y hint by the step's routed rows.
+
+    ``usage_stats[0]`` is the prefill-sized dispatch bound; at decode it
+    launches mostly empty CTAs. The tiled kernel strides over M tiles, so a
+    smaller grid.y only packs the same tiles into fewer CTAs. The floor of 1
+    keeps a ``top_k < n_gpus`` estimate that floors to 0 from skipping the
+    kernel entirely.
+    """
+    device = usage_stats.device
+    bounded = F.max(
+        F.min(usage_stats[0], estimated_total_m.to(device)),
+        F.constant(1, DType.uint32, device=device),
+    )
+    return F.stack([bounded, usage_stats[1]])
 
 
 def _silu_quantize_fp8_graph(
