@@ -1,16 +1,16 @@
 """One overlay layer: a map of staged relative path -> source File.
 
-Consumers (`mojo_overlay_srcs`, `mojo_merged_precompile`) take an ordered
-`layers` list and merge them last-writer-wins per staged path, so any number of
-layers can stack. A layer carries the underlying source `File`s (not a generated
-tree), so one layer target can feed both the symlink-tree and the
-precompile-into-a-dir consumer.
+Consumers (`overlay_srcs`, `mojo_merged_precompile`, and the
+package-level overlays in `overlay.bzl`) take one or more layers and merge them
+last-writer-wins per staged path, so any number of layers can stack. A layer
+carries the underlying source `File`s (not a generated tree), so one layer
+target can feed both the symlink-tree and the precompile-into-a-dir consumer.
 
 Name staged paths via `srcs` + `strip_prefix` (bulk) and/or `file_map` (per-file
 rename); `file_map` wins on a collision.
 """
 
-MojoOverlayLayerInfo = provider(
+OverlayLayerInfo = provider(
     doc = "One overlay layer: a dict of staged relative path -> source File.",
     fields = {
         "entries": "dict[str, File]: staged relative path -> source File.",
@@ -33,13 +33,13 @@ def _rel_from_strip(short_path, prefix):
 def _single_file(target):
     files = target[DefaultInfo].files.to_list()
     if len(files) != 1:
-        fail("mojo_overlay_layer file_map target %s must provide exactly one file, got %d" % (
+        fail("overlay_layer file_map target %s must provide exactly one file, got %d" % (
             target.label,
             len(files),
         ))
     return files[0]
 
-def _mojo_overlay_layer_impl(ctx):
+def _overlay_layer_impl(ctx):
     entries = {}
     for f in ctx.files.srcs:
         entries[_rel_from_strip(f.short_path, ctx.attr.strip_prefix)] = f
@@ -50,16 +50,16 @@ def _mojo_overlay_layer_impl(ctx):
         entries[rel] = _single_file(target)
 
     return [
-        MojoOverlayLayerInfo(entries = entries),
+        OverlayLayerInfo(entries = entries),
         DefaultInfo(files = depset(entries.values())),
     ]
 
-mojo_overlay_layer = rule(
-    implementation = _mojo_overlay_layer_impl,
-    doc = "Declare one overlay layer for `layers` on the mojo staging rules.",
+overlay_layer = rule(
+    implementation = _overlay_layer_impl,
+    doc = "Declare one overlay layer of files staged at relative paths.",
     attrs = {
         "srcs": attr.label_list(
-            allow_files = [".mojo"],
+            allow_files = True,
             doc = "Sources bulk-staged at their short path minus `strip_prefix`.",
         ),
         "strip_prefix": attr.string(
@@ -67,7 +67,7 @@ mojo_overlay_layer = rule(
                   "staged relative path.",
         ),
         "file_map": attr.label_keyed_string_dict(
-            allow_files = [".mojo"],
+            allow_files = True,
             doc = "Maps an individual source file to the staged relative path " +
                   "it should occupy, shadowing any `srcs` entry at that path.",
         ),
