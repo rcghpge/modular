@@ -11,6 +11,7 @@ modular_py_test(
     srcs = glob(
         ["test_*.py"],
         exclude = [
+            "test_artifact.py",
             "test_bounded_cache.py",
             "test_chat_encoder.py",
             "test_reasoning.py",
@@ -66,6 +67,17 @@ modular_py_test(
         requirement("pytest-mock"),
         requirement("pyyaml"),
         requirement("transformers"),
+    ],
+)
+
+modular_py_test(
+    name = "test_artifact",
+    srcs = ["test_artifact.py"],
+    deps = [
+        "//max/python/max:_core",
+        "//max/python/max/pipelines/lib",
+        requirement("huggingface-hub"),
+        requirement("typing-extensions"),
     ],
 )
 
