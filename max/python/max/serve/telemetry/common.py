@@ -73,13 +73,19 @@ from opentelemetry.sdk.metrics.export import (
 )
 from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import ReadableSpan, SpanLimits, TracerProvider
+from opentelemetry.sdk.trace import (
+    ReadableSpan,
+    SpanLimits,
+    TracerProvider,
+    sampling,
+)
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SpanExporter,
     SpanExportResult,
 )
 from opentelemetry.trace import set_tracer_provider
+from opentelemetry.util.types import Attributes
 from pythonjsonlogger import jsonlogger
 
 if TYPE_CHECKING:
@@ -989,6 +995,41 @@ class _CountingSpanProcessor(BatchSpanProcessor):
         self._batch_processor._queue = exporter.queue
 
 
+class _LinkedRootSampler(sampling.Sampler):
+    """Samples a root span with a sampled link, such as ``max.batch``, so a
+    pass follows its requests, and leaves every other span to ``fallback``.
+
+    Args:
+        fallback: The sampler the SDK builds from ``OTEL_TRACES_SAMPLER``.
+    """
+
+    def __init__(self, fallback: sampling.Sampler) -> None:
+        self._fallback = fallback
+
+    def should_sample(
+        self,
+        parent_context: OtelContext | None,
+        trace_id: int,
+        name: str,
+        kind: trace.SpanKind | None = None,
+        attributes: Attributes = None,
+        links: Sequence[trace.Link] | None = None,
+        trace_state: trace.TraceState | None = None,
+    ) -> sampling.SamplingResult:
+        if links and any(link.context.trace_flags.sampled for link in links):
+            parent = trace.get_current_span(parent_context).get_span_context()
+            if not parent.is_valid:
+                return sampling.SamplingResult(
+                    sampling.Decision.RECORD_AND_SAMPLE, attributes
+                )
+        return self._fallback.should_sample(
+            parent_context, trace_id, name, kind, attributes, links, trace_state
+        )
+
+    def get_description(self) -> str:
+        return f"LinkedRootSampler{{{self._fallback.get_description()}}}"
+
+
 def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
     """Installs the process's tracer provider if it is to export spans.
 
@@ -1006,6 +1047,7 @@ def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
     )
     if export_spans:
         provider = TracerProvider(
+            sampler=_LinkedRootSampler(sampling._get_from_env_or_default()),
             resource=logs_resource,
             span_limits=(
                 SpanLimits(max_links=max_links)

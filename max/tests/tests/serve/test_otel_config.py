@@ -13,7 +13,7 @@
 """Tests that MAX Serve honours the standard OTel SDK configuration
 environment variables.
 
-MAX deliberately supplies no ``service.name``, no sampler and, once an
+MAX deliberately supplies no ``service.name``, no sampler settings and, once an
 operator has set an endpoint variable, no endpoint — leaving each to the
 SDK's own resolution. Those omissions decide the behaviour but are
 invisible at the call site, so they are pinned here.
@@ -32,6 +32,7 @@ import grpc
 import pytest
 from max.serve.config import Settings
 from max.serve.telemetry import common
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as OTLPGrpcSpanExporter,
 )
@@ -51,7 +52,7 @@ from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
 )
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider, sampling
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SpanExporter,
@@ -60,7 +61,6 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 
 GENERIC = "OTEL_EXPORTER_OTLP_ENDPOINT"
 TRACES = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
@@ -291,7 +291,7 @@ def test_resource_leaves_service_name_to_the_sdk(
     )
 
 
-def test_configure_tracing_passes_no_sampler(
+def test_configure_tracing_defers_to_the_sdk_sampler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Captured at the call site because the global provider is write-once, so
@@ -303,7 +303,46 @@ def test_configure_tracing_passes_no_sampler(
     monkeypatch.setenv("OTEL_TRACES_SAMPLER", "traceidratio")
     monkeypatch.setenv("OTEL_TRACES_SAMPLER_ARG", "0.25")
     common.configure_tracing(Settings(disable_telemetry=False))
-    assert isinstance(captured[0].sampler, TraceIdRatioBased)
+    sampler = captured[0].sampler
+    assert isinstance(sampler, common._LinkedRootSampler)
+    assert isinstance(sampler._fallback, sampling.TraceIdRatioBased)
+
+
+def _span_context(n: int, sampled: bool) -> trace.SpanContext:
+    return trace.SpanContext(n, n, True, trace.TraceFlags(sampled))
+
+
+@pytest.mark.parametrize(
+    ("parent", "link", "sampled"),
+    [
+        pytest.param(None, None, False, id="root"),
+        pytest.param(None, True, True, id="linked"),
+        pytest.param(None, False, False, id="unsampled-link"),
+        pytest.param(False, True, False, id="unsampled-parent"),
+        pytest.param(True, None, True, id="sampled-parent"),
+    ],
+)
+def test_a_root_with_a_sampled_link_is_sampled(
+    parent: bool | None, link: bool | None, sampled: bool
+) -> None:
+    """Every other span gets the fallback's decision."""
+    fallback = sampling.ParentBased(sampling.ALWAYS_OFF)
+    provider = TracerProvider(sampler=common._LinkedRootSampler(fallback))
+    span = provider.get_tracer("test").start_span(
+        "max.batch",
+        context=None
+        if parent is None
+        else trace.set_span_in_context(
+            trace.NonRecordingSpan(_span_context(1, parent))
+        ),
+        links=None if link is None else [trace.Link(_span_context(2, link))],
+        attributes={"max.batch_id": 1},
+    )
+    assert span.get_span_context().trace_flags.sampled is sampled
+    if sampled:
+        # The SDK takes a span's attributes from the sampling result only.
+        assert isinstance(span, ReadableSpan)
+        assert span.attributes == {"max.batch_id": 1}
 
 
 @pytest.mark.parametrize(

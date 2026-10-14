@@ -48,12 +48,15 @@ from max.serve.telemetry.common import (
     _span_exporter,
     logs_resource,
 )
+from opentelemetry.context import Context as OtelContext
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ParentBased
 from opentelemetry.trace import (
     NonRecordingSpan,
     Span,
     SpanContext,
     Tracer,
+    get_current_span,
     set_span_in_context,
 )
 
@@ -171,17 +174,20 @@ class KernelCapture:
         self._thread: KernelCaptureThread | None = None
         self._warned_not_started = False
 
-    def admit(self, context: TextContext) -> bool:
-        """Traces a new request if its ``x-max-trace-level`` header asks.
+    def admit(self, context: TextContext, parent: OtelContext | None) -> bool:
+        """Traces a sampled request if its ``x-max-trace-level`` header asks.
 
         Args:
             context: The request, as the scheduler admits it.
+            parent: The request's context, from its trace carrier.
 
         Returns:
             Whether the request is traced.
         """
         level = _request_trace_level(context)
-        if level is None:
+        if level is None or parent is None:
+            return False
+        if not get_current_span(parent).get_span_context().trace_flags.sampled:
             return False
         self._traced[context.request_id] = level
         return True
@@ -414,7 +420,11 @@ def _replay_tracer(max_spans: int) -> Tracer:
     """
     global _replay_provider
     if _replay_provider is None:
-        _replay_provider = TracerProvider(resource=logs_resource)
+        # max.batch may be sampled for its links alone, so replayed spans
+        # follow it rather than OTEL_TRACES_SAMPLER.
+        _replay_provider = TracerProvider(
+            resource=logs_resource, sampler=ParentBased(ALWAYS_OFF)
+        )
         _replay_provider.add_span_processor(
             _CountingSpanProcessor(
                 _ReportingSpanExporter(
@@ -540,7 +550,7 @@ def replay_kernel_capture(
             ``kernel_trace_max_capture_bytes`` bound the replay, or None for
             their defaults.
     """
-    # A pass's replayed spans share its max.batch span's trace and sampler,
+    # A pass's replayed spans follow its max.batch span's sampling decision,
     # so they'd be dropped wherever it was; parsing for them would hold the
     # GIL for nothing.
     passes = [p for p in passes if p.batch_span_context.trace_flags.sampled]

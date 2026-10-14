@@ -36,6 +36,7 @@ from max.serve.telemetry._kernel_capture import (
     replay_kernel_capture,
 )
 from max.serve.telemetry._trace_context import RequestTraceLevel
+from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -408,6 +409,25 @@ def test_replay_queue_holds_the_span_cap(
     provider.shutdown()
     assert isinstance(processor, _kernel_capture._CountingSpanProcessor)
     assert processor._batch_processor._queue.maxlen == queue_size
+
+
+def test_replay_follows_its_max_batch_span_not_the_configured_sampler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_off")
+    monkeypatch.setenv(
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://agent:4318"
+    )
+    monkeypatch.setattr(_kernel_capture, "_replay_provider", None)
+    monkeypatch.setattr(_kernel_capture, "_span_exporter", InMemorySpanExporter)
+    batch = SpanContext(1, 1, False, TraceFlags(TraceFlags.SAMPLED))
+    span = _kernel_capture._replay_tracer(1).start_span(
+        "max.batch.gpu",
+        context=trace.set_span_in_context(trace.NonRecordingSpan(batch)),
+    )
+    assert _kernel_capture._replay_provider is not None
+    _kernel_capture._replay_provider.shutdown()
+    assert span.get_span_context().trace_flags.sampled
 
 
 def test_capture_thread_replays_after_a_successful_stop(
