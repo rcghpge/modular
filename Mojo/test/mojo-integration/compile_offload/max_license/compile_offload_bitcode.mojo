@@ -82,5 +82,5 @@ def main() raises:
         hello, emission_kind=4, target=CompilationTarget.current()
     ]()
     var f = open(tmp_file, "w")
-    print(t6.kernel, sep="", end="", flush=True, file=FileDescriptor(f))
+    print(t6.kernel, sep="", end="", flush=True, file=RawFileDescriptor(f))
     f.close()
