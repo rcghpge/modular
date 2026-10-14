@@ -3252,6 +3252,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         rank: Int,
         target: StaticString,
         _trace_name: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
     ](
         output: OutputTensor[dtype=output_type, rank=rank, ...],
         out_scale: OutputTensor[dtype=scales_type, rank=rank, ...],
@@ -3262,8 +3264,6 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         ],
         residual: InputTensor[dtype=dtype, rank=rank, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: InputTensor[dtype=DType.float32, ...],
-        weight_offset: InputTensor[dtype=dtype, ...],
         scale_ub: InputTensor[dtype=DType.float32, ...],
         ctx: DeviceContext,
     ) capturing raises:
@@ -3282,6 +3282,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             rank: Number of dimensions in the input and output tensors.
             target: Target device identifier for code generation.
             _trace_name: Trace name used for profiling and debugging.
+            epsilon: RMSNorm epsilon scalar.
+            weight_offset: RMSNorm weight offset scalar.
 
         Args:
             output: FP8 quantized output tensor for THIS GPU.
@@ -3291,8 +3293,6 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             signal_buffers: Signal buffers for ALL participating GPUs.
             residual: Residual tensor for THIS GPU.
             gamma: RMSNorm weight for THIS GPU.
-            epsilon: RMSNorm epsilon scalar (host).
-            weight_offset: RMSNorm weight offset scalar (host).
             scale_ub: Quantization scale upper bound scalar (host).
             ctx: Device context for THIS GPU.
         """
@@ -3350,8 +3350,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             output.to_tile_tensor[.int64](),
             out_residual.to_tile_tensor[.int64](),
             gamma.to_tile_tensor[.int64](),
-            epsilon.unsafe_ptr()[],
-            weight_offset.unsafe_ptr()[],
+            epsilon,
+            weight_offset.cast[dtype](),
             scale_ub.unsafe_ptr()[],
             out_scale.to_tile_tensor[.int64](),
             rank_sigs,

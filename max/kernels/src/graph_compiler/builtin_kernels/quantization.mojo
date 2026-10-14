@@ -121,13 +121,13 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
         scale_dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
     ](
         output: OutputTensor[dtype=output_dtype, rank=rank, ...],
         scales: OutputTensor[dtype=scale_dtype, rank=rank, ...],
         input: FusedInputTensor[dtype=input_dtype, rank=rank, ...],
         gamma: InputTensor[dtype=input_dtype, rank=1, ...],
-        epsilon: Float32,
-        weight_offset: Scalar[dtype=input_dtype],
         scale_ub: Float32,
         ctx: DeviceContext,
     ) capturing raises:
@@ -182,7 +182,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
                 ComptimeInt[cols](),
                 gamma.to_tile_tensor[.int64](),
                 epsilon.cast[input_dtype](),
-                weight_offset,
+                weight_offset.cast[input_dtype](),
                 scale_ub,
                 ctx,
             )
@@ -197,7 +197,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
                 Int(Int(input.shape()[rank - 1])),
                 gamma.to_tile_tensor[.int64](),
                 epsilon.cast[input_dtype](),
-                weight_offset,
+                weight_offset.cast[input_dtype](),
                 scale_ub,
                 ctx,
             )
@@ -206,13 +206,9 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
 @extensibility.register_shape_function(
     "mo.composite.rms_norm_fused_quantize_dynamic_scaled_fp8"
 )
-def composite_rms_norm_fused_quantize_dynamic_scaled_fp8_shape[
-    input_dtype: DType,
-](
+def composite_rms_norm_fused_quantize_dynamic_scaled_fp8_shape(
     input: Some[Tensor],
     gamma: Some[Tensor],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype=input_dtype],
     scale_ub: Float32,
 ) -> IndexList[type_of(input).rank]:
     """Computes the output shapes for the fused RMS norm and dynamic scaled FP8 quantization op.
@@ -221,9 +217,6 @@ def composite_rms_norm_fused_quantize_dynamic_scaled_fp8_shape[
         type_of(gamma).dtype == type_of(input).dtype
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
-    comptime assert (
-        input_dtype == type_of(input).dtype
-    ), "weight_offset dtype must match input dtype"
     return rebind[IndexList[type_of(input).rank]](
         coord_to_index_list(input.shape().tuple())
     )

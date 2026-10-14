@@ -974,13 +974,13 @@ struct ReduceRMSNorm:
         dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
         multiply_before_cast: Bool = True,
     ](
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
-        weight_offset: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) capturing raises:
         """Executes the `mo.reduce.rms_norm` graph op.
@@ -989,14 +989,14 @@ struct ReduceRMSNorm:
             dtype: Element type of the input and output tensors.
             rank: Tensor rank of the input and output tensors.
             target: Compilation target string.
+            epsilon: Small constant for numerical stability.
+            weight_offset: Scalar offset added to the weight.
             multiply_before_cast: See the graph op signature.
 
         Args:
             output: Output tensor receiving the result.
             input: Input tensor to reduce.
             gamma: Per-column scale weights.
-            epsilon: Small constant for numerical stability.
-            weight_offset: Scalar offset added to the weight.
             ctx: Device context used to enqueue the kernel.
 
         Raises:
@@ -1042,7 +1042,7 @@ struct ReduceRMSNorm:
                 ComptimeInt[rms_cols](),
                 gamma.to_tile_tensor[.int64](),
                 epsilon.cast[dtype](),
-                weight_offset,
+                weight_offset.cast[dtype](),
                 ctx,
             )
         else:
@@ -1058,28 +1058,21 @@ struct ReduceRMSNorm:
                 Int(Int(input.shape()[rank - 1])),
                 gamma.to_tile_tensor[.int64](),
                 epsilon.cast[dtype](),
-                weight_offset,
+                weight_offset.cast[dtype](),
                 ctx,
             )
 
 
 @extensibility.register_shape_function("mo.reduce.rms_norm")
-def reduce_rms_norm_shape[
-    dtype: DType,
-](
+def reduce_rms_norm_shape(
     input: Some[Tensor],
     gamma: Some[Tensor],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype=dtype],
 ) -> IndexList[type_of(input).rank]:
     """Computes the output shape for the `mo.reduce.rms_norm` graph op.
 
     Args:
         input: Input tensor normalized across the last dimension.
         gamma: Per-column scale weights applied after normalization.
-        epsilon: Small constant added inside the RMS normalization square
-            root for numerical stability.
-        weight_offset: Scalar offset added to `gamma` before scaling.
 
     Returns:
         The output shape, which matches the `input` shape.
@@ -1088,9 +1081,6 @@ def reduce_rms_norm_shape[
         type_of(gamma).dtype == type_of(input).dtype
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
-    comptime assert (
-        dtype == type_of(input).dtype
-    ), "weight_offset dtype must match input dtype"
     return rebind[IndexList[type_of(input).rank]](
         coord_to_index_list(input.shape().tuple())
     )
@@ -1112,13 +1102,13 @@ struct ReduceRMSNormRoPE:
         cos_sin_dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
         multiply_before_cast: Bool = True,
     ](
         output: FusedOutputTensor[dtype=output_dtype, rank=rank, ...],
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         weight: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
-        weight_offset: Scalar[dtype=dtype],
         cos_vals: FusedInputTensor[dtype=cos_sin_dtype, rank=rank, ...],
         sin_vals: FusedInputTensor[dtype=cos_sin_dtype, rank=rank, ...],
         ctx: DeviceContext,
@@ -1181,7 +1171,7 @@ struct ReduceRMSNormRoPE:
                 ComptimeInt[rope_cols](),
                 weight.to_tile_tensor[.int64](),
                 epsilon.cast[dtype](),
-                weight_offset,
+                weight_offset.cast[dtype](),
                 ctx,
             )
         else:
@@ -1201,19 +1191,15 @@ struct ReduceRMSNormRoPE:
                 Int(Int(input.shape()[rank - 1])),
                 weight.to_tile_tensor[.int64](),
                 epsilon.cast[dtype](),
-                weight_offset,
+                weight_offset.cast[dtype](),
                 ctx,
             )
 
 
 @extensibility.register_shape_function("mo.composite.rms_norm_rope")
-def composite_rms_norm_rope_shape[
-    dtype: DType,
-](
+def composite_rms_norm_rope_shape(
     input: Some[Tensor],
     weight: Some[Tensor],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype=dtype],
     cos_vals: Some[Tensor],
     sin_vals: Some[Tensor],
 ) -> IndexList[type_of(input).rank]:
@@ -1223,9 +1209,6 @@ def composite_rms_norm_rope_shape[
         input: Activation tensor normalized by RMS then rotated by RoPE;
             the last dimension must be even.
         weight: Per-column scale weights applied after RMS normalization.
-        epsilon: Small constant added inside the RMS normalization square
-            root for numerical stability.
-        weight_offset: Scalar offset added to `weight` before scaling.
         cos_vals: Cosine table used by the RoPE rotation, matching
             `input` rank.
         sin_vals: Sine table used by the RoPE rotation, matching `input`
@@ -1238,9 +1221,6 @@ def composite_rms_norm_rope_shape[
         type_of(weight).dtype == type_of(input).dtype
     ), "weight dtype must match input dtype"
     comptime assert type_of(weight).rank == 1, "weight must be rank 1"
-    comptime assert (
-        dtype == type_of(input).dtype
-    ), "weight_offset dtype must match input dtype"
     comptime assert (
         type_of(cos_vals).dtype == type_of(sin_vals).dtype
     ), "cos_vals and sin_vals must share a dtype"
@@ -1600,6 +1580,10 @@ struct ReduceRMSNormFusedResidualAdd:
         dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon1: Float32,
+        epsilon2: Float32,
+        weight_offset1: Float32,
+        weight_offset2: Float32,
         multiply_before_cast: Bool = True,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -1608,10 +1592,6 @@ struct ReduceRMSNormFusedResidualAdd:
         residual_input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         gamma1: InputTensor[dtype=dtype, rank=1, ...],
         gamma2: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon1: Float32,
-        epsilon2: Float32,
-        weight_offset1: Scalar[dtype=dtype],
-        weight_offset2: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) capturing raises:
         """Executes the `mo.composite.rms_norm_fused_residual_add` graph op.
@@ -1620,6 +1600,10 @@ struct ReduceRMSNormFusedResidualAdd:
             dtype: Element type of the input and output tensors.
             rank: Tensor rank of the input and output tensors.
             target: Compilation target string.
+            epsilon1: Stability constant for the first normalization.
+            epsilon2: Stability constant for the second normalization.
+            weight_offset1: Scalar offset for the first weight.
+            weight_offset2: Scalar offset for the second weight.
             multiply_before_cast: See the graph op signature.
 
         Args:
@@ -1629,10 +1613,6 @@ struct ReduceRMSNormFusedResidualAdd:
             residual_input: Residual tensor added to the normalized input.
             gamma1: Scale weights for the first normalization.
             gamma2: Scale weights for the second normalization.
-            epsilon1: Stability constant for the first normalization.
-            epsilon2: Stability constant for the second normalization.
-            weight_offset1: Scalar offset for the first weight.
-            weight_offset2: Scalar offset for the second weight.
             ctx: Device context used to enqueue the kernel.
 
         Raises:
@@ -1697,10 +1677,10 @@ struct ReduceRMSNormFusedResidualAdd:
                 ComptimeInt[cols](),
                 gamma1.to_tile_tensor[.int64](),
                 epsilon1.cast[dtype](),
-                weight_offset1,
+                weight_offset1.cast[dtype](),
                 gamma2.to_tile_tensor[.int64](),
                 epsilon2.cast[dtype](),
-                weight_offset2,
+                weight_offset2.cast[dtype](),
                 ctx,
             )
         else:
@@ -1718,10 +1698,10 @@ struct ReduceRMSNormFusedResidualAdd:
                 Int(Int(input.shape()[rank - 1])),
                 gamma1.to_tile_tensor[.int64](),
                 epsilon1.cast[dtype](),
-                weight_offset1,
+                weight_offset1.cast[dtype](),
                 gamma2.to_tile_tensor[.int64](),
                 epsilon2.cast[dtype](),
-                weight_offset2,
+                weight_offset2.cast[dtype](),
                 ctx,
             )
 
@@ -1729,17 +1709,11 @@ struct ReduceRMSNormFusedResidualAdd:
 @extensibility.register_shape_function(
     "mo.composite.rms_norm_fused_residual_add"
 )
-def composite_rms_norm_fused_residual_add_shape[
-    dtype: DType,
-](
+def composite_rms_norm_fused_residual_add_shape(
     input: Some[Tensor],
     residual_input: Some[Tensor],
     gamma1: Some[Tensor],
     gamma2: Some[Tensor],
-    epsilon1: Float32,
-    epsilon2: Float32,
-    weight_offset1: Scalar[dtype=dtype],
-    weight_offset2: Scalar[dtype=dtype],
 ) -> IndexList[type_of(input).rank]:
     """Computes the output shape for the `mo.composite.rms_norm_fused_residual_add` graph op.
 
@@ -1750,14 +1724,6 @@ def composite_rms_norm_fused_residual_add_shape[
             normalization.
         gamma2: Per-column scale weights applied to the second RMS
             normalization.
-        epsilon1: Small constant added inside the first RMS normalization
-            square root for numerical stability.
-        epsilon2: Small constant added inside the second RMS normalization
-            square root for numerical stability.
-        weight_offset1: Scalar offset added to `gamma1` before scaling the
-            first normalization.
-        weight_offset2: Scalar offset added to `gamma2` before scaling the
-            second normalization.
 
     Returns:
         The output shape, which matches the `input` shape.
@@ -1776,9 +1742,6 @@ def composite_rms_norm_fused_residual_add_shape[
     ), "gamma2 dtype must match input dtype"
     comptime assert type_of(gamma1).rank == 1, "gamma1 must be rank 1"
     comptime assert type_of(gamma2).rank == 1, "gamma2 must be rank 1"
-    comptime assert (
-        dtype == type_of(input).dtype
-    ), "weight_offset1/weight_offset2 dtype must match input dtype"
     return rebind[IndexList[type_of(input).rank]](
         coord_to_index_list(input.shape().tuple())
     )
@@ -1802,6 +1765,8 @@ struct RMSNormResidualAdd:
         dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
         multiply_before_cast: Bool = True,
     ](
         output: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -1809,8 +1774,6 @@ struct RMSNormResidualAdd:
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         residual_input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
-        weight_offset: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) capturing raises:
         if output.shape() != input.shape():
@@ -1872,7 +1835,7 @@ struct RMSNormResidualAdd:
                 input.shape_coord(),
                 gamma.to_tile_tensor[.int64](),
                 epsilon,
-                weight_offset,
+                weight_offset.cast[dtype](),
                 ctx,
             )
         else:
@@ -1925,19 +1888,15 @@ struct RMSNormResidualAdd:
                 input.shape_coord(),
                 gamma.to_tile_tensor[.int64](),
                 epsilon,
-                weight_offset,
+                weight_offset.cast[dtype](),
             )
 
 
 @extensibility.register_shape_function("mo.composite.rms_norm_residual_add")
-def composite_rms_norm_residual_add_shape[
-    dtype: DType,
-](
+def composite_rms_norm_residual_add_shape(
     input: Some[Tensor],
     residual_input: Some[Tensor],
     gamma: Some[Tensor],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype=dtype],
 ) -> IndexList[type_of(input).rank]:
     comptime assert (
         type_of(residual_input).dtype == type_of(input).dtype
@@ -1949,9 +1908,6 @@ def composite_rms_norm_residual_add_shape[
         type_of(gamma).dtype == type_of(input).dtype
     ), "gamma dtype must match input dtype"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
-    comptime assert (
-        dtype == type_of(input).dtype
-    ), "weight_offset dtype must match input dtype"
     return rebind[IndexList[type_of(input).rank]](
         coord_to_index_list(input.shape().tuple())
     )

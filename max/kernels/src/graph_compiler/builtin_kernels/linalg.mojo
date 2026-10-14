@@ -137,6 +137,8 @@ struct MatmulFusedPartialRMSNorm:
         dtype: DType,
         rank: Int,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
         transpose_b: Bool = True,
     ](
         normed_output: OutputTensor[dtype=dtype, rank=rank, ...],
@@ -144,8 +146,6 @@ struct MatmulFusedPartialRMSNorm:
         input: InputTensor[dtype=dtype, rank=rank, ...],
         weight: InputTensor[dtype=dtype, rank=2, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
-        weight_offset: Scalar[dtype=dtype],
         ctx: DeviceContext,
     ) capturing raises:
         """Execute fused GEMV + partial RMS norm.
@@ -158,6 +158,10 @@ struct MatmulFusedPartialRMSNorm:
             dtype: Element type of all input and output tensors.
             rank: Tensor rank of the input and output tensors.
             target: The target GPU device.
+            epsilon: Small constant added to the squared mean before
+                the reciprocal square root for numerical stability.
+            weight_offset: Reserved for API consistency with other RMS
+                norm ops; not consumed by this kernel.
             transpose_b: Whether to transpose `weight` before the matmul
                 (defaults to `True`).
 
@@ -169,16 +173,8 @@ struct MatmulFusedPartialRMSNorm:
             input: Input activation tensor `x` of the GEMV.
             weight: Weight matrix `W` of shape `(N, K)` (rank 2).
             gamma: RMS normalization scale vector (rank 1).
-            epsilon: Small constant added to the squared mean before
-                the reciprocal square root for numerical stability.
-            weight_offset: Reserved for API consistency with other RMS
-                norm ops; not consumed by this kernel.
             ctx: The device context used to enqueue the kernel.
         """
-        # weight_offset is passed but not used in this kernel - it's kept
-        # for API consistency with other RMS norm ops.
-        _ = weight_offset
-
         gemv_and_partial_norm[
             c_type=dtype,
             a_type=dtype,
@@ -198,14 +194,10 @@ struct MatmulFusedPartialRMSNorm:
 @extensibility.register_shape_function(
     "mo.composite.matmul_fused_partial_rms_norm"
 )
-def composite_matmul_fused_partial_rms_norm_shape[
-    dtype: DType,
-](
+def composite_matmul_fused_partial_rms_norm_shape(
     input: Some[Tensor],
     weight: Some[Tensor],
     gamma: Some[Tensor],
-    epsilon: Float32,
-    weight_offset: Scalar[dtype=dtype],
 ) -> IndexList[type_of(input).rank]:
     """Computes the output shape for the `mo.composite.matmul_fused_partial_rms_norm` graph op.
 
@@ -213,10 +205,6 @@ def composite_matmul_fused_partial_rms_norm_shape[
         input: Input activation tensor `x` of the GEMV.
         weight: Weight matrix `W` of shape `(N, K)` (rank 2).
         gamma: RMS normalization scale vector (rank 1).
-        epsilon: Small constant added to the squared mean before the
-            reciprocal square root for numerical stability.
-        weight_offset: Reserved for API consistency with other RMS norm
-            ops; not consumed by the shape function.
 
     Returns:
         The output shape, which matches the `input` shape.
@@ -229,9 +217,6 @@ def composite_matmul_fused_partial_rms_norm_shape[
     ), "gamma and input must share a dtype"
     comptime assert type_of(weight).rank == 2, "weight must be rank 2"
     comptime assert type_of(gamma).rank == 1, "gamma must be rank 1"
-    comptime assert (
-        dtype == type_of(input).dtype
-    ), "weight_offset dtype must match input dtype"
     # Return the input shape for normed output
     # The actual shape split is handled by the op semantics
     return rebind[IndexList[type_of(input).rank]](
