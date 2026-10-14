@@ -5265,6 +5265,81 @@ struct Sleep:
 # ===-----------------------------------------------------------------------===#
 
 
+@extensibility.register("state_space_copy_rows")
+struct StateSpaceCopyRows:
+    """Copies selected state rows into a separately addressed scratch pool.
+
+    Only the active batch's rows move; the pool may be much larger. Both
+    operands are mutable to order this snapshot with the verify and replay.
+    """
+
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int, target: StaticString
+    ](
+        dst: MutableInputTensor[dtype=dtype, rank=rank, ...],
+        src: MutableInputTensor[dtype=dtype, rank=rank, ...],
+        dst_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        src_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        ctx: DeviceContext,
+    ) raises:
+        from max.gpu import global_idx
+
+        if dst_rows.dim_size(0) != src_rows.dim_size(0) or (
+            dst_rows.dim_size(1) != src_rows.dim_size(1)
+        ):
+            raise Error("state_space_copy_rows: row tables must match")
+        var row_size = 1
+        comptime for axis in range(1, rank):
+            if dst.dim_size(axis) != src.dim_size(axis):
+                raise Error("state_space_copy_rows: row shapes must match")
+            row_size *= src.dim_size(axis)
+        var rows = src_rows.size()
+        if rows == 0:
+            return
+
+        @__name("state_space_copy_rows")
+        def copy_rows_kernel(
+            dst_ptr: Pointer[Scalar[dtype], MutAnyOrigin],
+            src_ptr: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+            dst_ids: Pointer[UInt32, ImmutAnyOrigin],
+            src_ids: Pointer[UInt32, ImmutAnyOrigin],
+            count: Int64,
+            width: Int64,
+        ):
+            var index = global_idx.x
+            var row_width = Int(width)
+            if index < Int(count) * row_width:
+                var row, col = divmod(index, row_width)
+                dst_ptr[Int(dst_ids[row]) * row_width + col] = src_ptr[
+                    Int(src_ids[row]) * row_width + col
+                ]
+
+        comptime if is_gpu[target]():
+            ctx.enqueue_function[copy_rows_kernel](
+                dst.unsafe_ptr(),
+                # `src` is only read. Its tensor stays mutable to order the
+                # snapshot in the graph.
+                rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
+                    src.unsafe_ptr()
+                ),
+                dst_rows.unsafe_ptr(),
+                src_rows.unsafe_ptr(),
+                Int64(rows),
+                Int64(row_size),
+                grid_dim=(ceildiv(rows * row_size, 256),),
+                block_dim=(256,),
+            )
+        else:
+            for row in range(rows):
+                var dst_row = Int(dst_rows.unsafe_ptr()[row])
+                var src_row = Int(src_rows.unsafe_ptr()[row])
+                for col in range(row_size):
+                    dst.unsafe_ptr()[
+                        dst_row * row_size + col
+                    ] = src.unsafe_ptr()[src_row * row_size + col]
+
+
 @extensibility.register("mo.inplace_memcpy")
 struct InplaceMemcpy[DstDevice: StaticString, SrcDevice: StaticString]:
     """Copies the contents of `src` into `dst` in place.
