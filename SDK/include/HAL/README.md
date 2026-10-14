@@ -14,6 +14,10 @@ Officially-supported consumers - CUDA, HIP and Metal - live in
 `//Target/...`. Experimental consumers (like ongoing pre-market partnerships)
 live in repos outside the mono-repo.
 
+For the NeoDriver design built on this interface, including the Mojo client API,
+plugin hooks, and capability-based extensions, see
+[`max/driver/src/max_license/README.md`](../../../max/driver/src/max_license/README.md).
+
 ## Development Philosophy
 
 This sub-package is a prescription for external HW vendors, not just for
