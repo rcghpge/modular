@@ -4285,6 +4285,81 @@ def flash_attention_gpu(
     Returns:
         The output tensor, of shape ``[batch, seq_len, num_heads,
         head_dim]``.
+
+    The following example applies causal attention to a batch of
+    queries on a GPU:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.attention import MHAMaskVariant
+        from max.nn.kernels import flash_attention_gpu
+
+        batch, seq_len, num_heads, head_dim = 2, 8, 4, 128
+        shape = [batch, seq_len, num_heads, head_dim]
+        qkv_type = TensorType(DType.float32, shape, device=DeviceRef.GPU())
+
+        with Graph(
+            "flash_attention_gpu_example",
+            input_types=(qkv_type, qkv_type, qkv_type),
+        ) as graph:
+            # NumPy has no bfloat16, so cast at the graph boundary.
+            q, k, v = (
+                value.tensor.cast(DType.bfloat16) for value in graph.inputs
+            )
+            output = flash_attention_gpu(
+                q,
+                k,
+                v,
+                mask_variant=MHAMaskVariant.CAUSAL_MASK,
+                scale=head_dim**-0.5,
+            )
+            graph.output(output.cast(DType.float32))
+
+        rng = np.random.default_rng(0)
+        q_np, k_np, v_np = (
+            rng.standard_normal(shape, dtype=np.float32) for _ in range(3)
+        )
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        inputs = [Buffer.from_numpy(x).to(gpu) for x in (q_np, k_np, v_np)]
+        result = model.execute(*inputs)[0].to_numpy()
+        # result.shape is (2, 8, 4, 128): one attention output per query.
+
+    .. invisible-code-block: python
+
+        def round_to_bf16(x):
+            bits = x.view(np.uint32)
+            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+
+        assert output.dtype == DType.bfloat16
+        assert result.shape == (batch, seq_len, num_heads, head_dim)
+        assert result.dtype == np.float32
+
+        # softmax(Q K^T * scale) V for each batch and head, causal mask.
+        qr, kr, vr = (
+            round_to_bf16(x).astype(np.float64) for x in (q_np, k_np, v_np)
+        )
+        scores = np.einsum("bqhd,bkhd->bhqk", qr, kr) * head_dim**-0.5
+        future = np.triu(np.ones((seq_len, seq_len), dtype=bool), k=1)
+        scores = np.where(future, -np.inf, scores)
+        probs = np.exp(scores - scores.max(axis=-1, keepdims=True))
+        probs /= probs.sum(axis=-1, keepdims=True)
+        expected = np.einsum("bhqk,bkhd->bqhd", probs, vr)
+        np.testing.assert_allclose(result, expected, rtol=2e-2, atol=2e-2)
+
+    .. skip: end
     """
     if q.dtype != k.dtype or q.dtype != v.dtype:
         raise ValueError(
@@ -4661,6 +4736,107 @@ def flash_attention_ragged_gpu(
     Returns:
         The output tensor, of shape ``[total_seq_len, num_heads,
         head_dim]``.
+
+    The following example applies causal attention to a ragged batch of
+    two sequences, of lengths 3 and 5, on a GPU:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.attention import MHAMaskVariant
+        from max.nn.kernels import flash_attention_ragged_gpu
+
+        seq_lens = [3, 5]
+        total_seq_len, num_heads, head_dim = sum(seq_lens), 4, 128
+        shape = [total_seq_len, num_heads, head_dim]
+        qkv_type = TensorType(DType.float32, shape, device=DeviceRef.GPU())
+
+        with Graph(
+            "flash_attention_ragged_gpu_example",
+            input_types=(
+                qkv_type,
+                qkv_type,
+                qkv_type,
+                TensorType(
+                    DType.uint32, [len(seq_lens) + 1], device=DeviceRef.GPU()
+                ),
+                TensorType(DType.uint32, [1], device=DeviceRef.CPU()),
+            ),
+        ) as graph:
+            q, k, v, input_row_offsets, max_seq_len = (
+                value.tensor for value in graph.inputs
+            )
+            # NumPy has no bfloat16, so cast at the graph boundary.
+            output = flash_attention_ragged_gpu(
+                q.cast(DType.bfloat16),
+                k.cast(DType.bfloat16),
+                v.cast(DType.bfloat16),
+                input_row_offsets,
+                max_seq_len,
+                mask_variant=MHAMaskVariant.CAUSAL_MASK,
+                scale=head_dim**-0.5,
+            )
+            graph.output(output.cast(DType.float32))
+
+        rng = np.random.default_rng(0)
+        q_np, k_np, v_np = (
+            rng.standard_normal(shape, dtype=np.float32) for _ in range(3)
+        )
+        offsets = np.array([0, 3, 8], dtype=np.uint32)
+        max_len = np.array([max(seq_lens)], dtype=np.uint32)
+
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        inputs = [
+            Buffer.from_numpy(x).to(gpu) for x in (q_np, k_np, v_np, offsets)
+        ]
+        # max_seq_len stays on the host.
+        inputs.append(Buffer.from_numpy(max_len))
+        result = model.execute(*inputs)[0].to_numpy()
+        # result.shape is (8, 4, 128): one attention output per token.
+
+    .. invisible-code-block: python
+
+        def round_to_bf16(x):
+            bits = x.view(np.uint32)
+            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+
+        assert output.dtype == DType.bfloat16
+        assert result.shape == (total_seq_len, num_heads, head_dim)
+        assert result.dtype == np.float32
+
+        # Each sequence attends only to its own earlier tokens:
+        # softmax(Q K^T * scale) V per sequence and head, causal mask.
+        qr, kr, vr = (
+            round_to_bf16(x).astype(np.float64) for x in (q_np, k_np, v_np)
+        )
+        expected = np.empty_like(qr)
+        for start, end in zip(offsets[:-1], offsets[1:]):
+            n = end - start
+            scores = np.einsum(
+                "qhd,khd->hqk", qr[start:end], kr[start:end]
+            ) * head_dim**-0.5
+            future = np.triu(np.ones((n, n), dtype=bool), k=1)
+            scores = np.where(future, -np.inf, scores)
+            probs = np.exp(scores - scores.max(axis=-1, keepdims=True))
+            probs /= probs.sum(axis=-1, keepdims=True)
+            expected[start:end] = np.einsum(
+                "hqk,khd->qhd", probs, vr[start:end]
+            )
+        np.testing.assert_allclose(result, expected, rtol=2e-2, atol=2e-2)
+
+    .. skip: end
     """
     q = TensorValue(q)
     k = TensorValue(k)
@@ -6146,9 +6322,94 @@ def moe_create_indices(
           group in the reordered sequence.
         - restore_token_order: The indices that restore the original token
           ordering after expert computation.
-        - expert_ids: The IDs of the active experts selected for tokens.
+        - expert_ids: The expert ID of each group in the reordered
+          sequence.
         - expert_usage_stats: The maximum number of tokens assigned to
-          any expert, and the number of active experts.
+          any expert, and the number of expert groups
+          (``num_local_experts``), including empty ones.
+
+    The following example groups eight token assignments by expert, for
+    eight experts on a GPU:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.kernels import moe_create_indices
+
+        num_experts = 8
+        topk_ids = np.array([3, 0, 3, 5, 0, 3, 7, 5], dtype=np.int32)
+
+        with Graph(
+            "moe_create_indices_example",
+            input_types=(
+                TensorType(
+                    DType.int32, [len(topk_ids)], device=DeviceRef.GPU()
+                ),
+            ),
+        ) as graph:
+            outputs = moe_create_indices(
+                graph.inputs[0].tensor, num_local_experts=num_experts
+            )
+            graph.output(*outputs)
+
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        outputs = model.execute(Buffer.from_numpy(topk_ids).to(gpu))
+        (
+            token_expert_order,
+            expert_start_indices,
+            restore_token_order,
+            expert_ids,
+            expert_usage_stats,
+        ) = (buffer.to_numpy() for buffer in outputs)
+        # expert_start_indices is [0, 2, 2, 2, 5, 5, 7, 7, 8]: expert 0
+        # owns positions 0-1, expert 3 owns 2-4, expert 5 owns 5-6, and
+        # expert 7 owns position 7. expert_usage_stats is [3, 8].
+
+    .. invisible-code-block: python
+
+        assert token_expert_order.shape == (len(topk_ids),)
+        assert token_expert_order.dtype == np.uint32
+        assert restore_token_order.shape == (len(topk_ids),)
+        assert restore_token_order.dtype == np.uint32
+        assert expert_start_indices.shape == (num_experts + 1,)
+        assert expert_start_indices.dtype == np.uint32
+        assert expert_ids.shape == (num_experts,)
+        assert expert_ids.dtype == np.int32
+        assert expert_usage_stats.shape == (2,)
+        assert expert_usage_stats.dtype == np.uint32
+
+        counts = np.bincount(topk_ids, minlength=num_experts)
+        np.testing.assert_array_equal(
+            expert_start_indices, np.concatenate([[0], np.cumsum(counts)])
+        )
+        # Order within an expert's group is unspecified, so check the
+        # expert that each reordered token maps to.
+        np.testing.assert_array_equal(
+            topk_ids[token_expert_order],
+            np.repeat(np.arange(num_experts), counts),
+        )
+        np.testing.assert_array_equal(
+            np.sort(token_expert_order), np.arange(len(topk_ids))
+        )
+        np.testing.assert_array_equal(
+            token_expert_order[restore_token_order], np.arange(len(topk_ids))
+        )
+        np.testing.assert_array_equal(expert_ids, np.arange(num_experts))
+        assert expert_usage_stats[0] == counts.max()
+        assert expert_usage_stats[1] == num_experts
+
+    .. skip: end
     """
 
     op_name = "mo.moe.create.indices"
@@ -6303,6 +6564,109 @@ def moe_router_group_limited(
           token. Shape: ``[num_tokens, n_experts_per_tok]``.
         - expert_weights: The weights of the routed experts for each
           token. Shape: ``[num_tokens, n_experts_per_tok]``.
+
+    The following example routes each of four tokens to two of 16 experts
+    on a GPU. The experts form four groups of four, and each token draws
+    its experts from its two best groups:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.kernels import moe_router_group_limited
+
+        num_tokens, n_routed_experts = 4, 16
+
+        with Graph(
+            "moe_router_group_limited_example",
+            input_types=(
+                TensorType(
+                    DType.float32,
+                    [num_tokens, n_routed_experts],
+                    device=DeviceRef.GPU(),
+                ),
+                TensorType(
+                    DType.float32, [n_routed_experts], device=DeviceRef.GPU()
+                ),
+            ),
+        ) as graph:
+            expert_scores, expert_bias = (
+                value.tensor for value in graph.inputs
+            )
+            expert_indices, expert_weights = moe_router_group_limited(
+                expert_scores,
+                expert_bias,
+                n_routed_experts=n_routed_experts,
+                n_experts_per_tok=2,
+                n_groups=4,
+                topk_group=2,
+                norm_weights=True,
+                routed_scaling_factor=2.5,
+            )
+            graph.output(expert_indices, expert_weights)
+
+        rng = np.random.default_rng(0)
+        # The router takes activated scores, such as sigmoid outputs.
+        logits = rng.standard_normal((num_tokens, n_routed_experts))
+        scores = (1 / (1 + np.exp(-logits))).astype(np.float32)
+        bias = rng.uniform(-0.1, 0.1, n_routed_experts).astype(np.float32)
+
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        outputs = model.execute(
+            Buffer.from_numpy(scores).to(gpu), Buffer.from_numpy(bias).to(gpu)
+        )
+        indices, weights = (buffer.to_numpy() for buffer in outputs)
+        # indices and weights have shape (4, 2). Each token's two weights
+        # sum to routed_scaling_factor (2.5).
+
+    .. invisible-code-block: python
+
+        assert indices.shape == (num_tokens, 2)
+        assert indices.dtype == np.int32
+        assert weights.shape == (num_tokens, 2)
+        assert weights.dtype == np.float32
+
+        # Rank groups by the sum of their top two biased scores, keep the
+        # top two groups, then take the top two biased scores among them.
+        # Weights are the unbiased scores, normalized, then scaled.
+        biased = scores + bias
+        grouped = biased.reshape(num_tokens, 4, 4)
+        group_scores = np.sort(grouped, axis=-1)[..., -2:].sum(axis=-1)
+        top_groups = np.argsort(-group_scores, axis=-1)[:, :2]
+        group_of_expert = np.arange(n_routed_experts) // 4
+        allowed = (group_of_expert[None, None, :] == top_groups[..., None])
+        candidates = np.where(allowed.any(axis=1), biased, -np.inf)
+        expected_indices = np.sort(
+            np.argsort(-candidates, axis=-1)[:, :2], axis=-1
+        )
+        expected_weights = np.take_along_axis(scores, expected_indices, -1)
+        expected_weights = (
+            2.5 * expected_weights / expected_weights.sum(-1, keepdims=True)
+        )
+
+        # Sort by expert index, since the kernel's slot order is unspecified.
+        order = np.argsort(indices, axis=-1)
+        np.testing.assert_array_equal(
+            np.take_along_axis(indices, order, -1), expected_indices
+        )
+        np.testing.assert_allclose(
+            np.take_along_axis(weights, order, -1),
+            expected_weights,
+            rtol=1e-5,
+            atol=1e-6,
+        )
+
+    .. skip: end
     """
 
     if expert_bias.rank != 1:
@@ -7033,6 +7397,103 @@ def grouped_matmul_ragged(
 
     Returns:
         The ragged matmul output.
+
+    The following example multiplies four groups of tokens by the
+    weights of four experts on a GPU. The groups hold 3, 1, 2, and 2
+    tokens and map to experts 2, 0, 3, and 1:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.kernels import grouped_matmul_ragged
+
+        num_experts, total_tokens, in_features, out_features = 4, 8, 64, 32
+        gpu = DeviceRef.GPU()
+
+        with Graph(
+            "grouped_matmul_ragged_example",
+            input_types=(
+                TensorType(
+                    DType.float32, [total_tokens, in_features], device=gpu
+                ),
+                TensorType(
+                    DType.float32,
+                    [num_experts, out_features, in_features],
+                    device=gpu,
+                ),
+                TensorType(DType.uint32, [num_experts + 1], device=gpu),
+                TensorType(DType.int32, [num_experts], device=gpu),
+                TensorType(DType.uint32, [2], device=DeviceRef.CPU()),
+            ),
+        ) as graph:
+            (
+                hidden_states,
+                weight,
+                expert_start_indices,
+                expert_ids,
+                expert_usage_stats,
+            ) = (value.tensor for value in graph.inputs)
+            # NumPy has no bfloat16, so cast at the graph boundary.
+            output = grouped_matmul_ragged(
+                hidden_states.cast(DType.bfloat16),
+                weight.cast(DType.bfloat16),
+                expert_start_indices,
+                expert_ids,
+                expert_usage_stats,
+            )
+            graph.output(output.cast(DType.float32))
+
+        rng = np.random.default_rng(0)
+        hidden = rng.uniform(-1, 1, (total_tokens, in_features))
+        hidden = hidden.astype(np.float32)
+        weights = rng.uniform(-1, 1, (num_experts, out_features, in_features))
+        weights = weights.astype(np.float32)
+        starts = np.array([0, 3, 4, 6, 8], dtype=np.uint32)
+        ids = np.array([2, 0, 3, 1], dtype=np.int32)
+        # [max tokens in any group, number of groups]
+        usage = np.array([3, num_experts], dtype=np.uint32)
+
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        inputs = [
+            Buffer.from_numpy(x).to(gpu) for x in (hidden, weights, starts, ids)
+        ]
+        # The usage stats stay on the host.
+        inputs.append(Buffer.from_numpy(usage))
+        result = model.execute(*inputs)[0].to_numpy()
+        # result.shape is (8, 32): each token's row of its expert's output.
+
+    .. invisible-code-block: python
+
+        def round_to_bf16(x):
+            bits = x.view(np.uint32)
+            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+
+        assert output.dtype == DType.bfloat16
+        assert result.shape == (total_tokens, out_features)
+        assert result.dtype == np.float32
+
+        # Each group computes group @ weight[expert].T.
+        hidden_r = round_to_bf16(hidden).astype(np.float64)
+        weights_r = round_to_bf16(weights).astype(np.float64)
+        expected = np.empty((total_tokens, out_features))
+        for group, expert in enumerate(ids):
+            start, end = starts[group : group + 2]
+            expected[start:end] = hidden_r[start:end] @ weights_r[expert].T
+        np.testing.assert_allclose(result, expected, rtol=1e-2, atol=5e-2)
+
+    .. skip: end
     """
     if weight.rank != 3:
         raise ValueError(f"expected weight of rank 3 but got {weight.rank}")

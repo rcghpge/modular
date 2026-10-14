@@ -1500,7 +1500,80 @@ def fused_silu(
 
     Returns:
         The output tokens after the SILU operation. Shape:
-        ``[max_recv_tokens, hidden_size]``.
+        ``[max_recv_tokens, hidden_size // 2]``.
+
+    The following example applies the fused SILU on a GPU to a buffer of
+    eight token slots, of which two local experts received five tokens:
+
+    .. Skipped without an NVIDIA or AMD GPU: the kernel has no CPU
+       implementation, and Apple GPUs are untested. The ``start``/``end``
+       pair also covers the invisible check, which reads this block's
+       results.
+    .. skip: start if(__import__("max.driver").driver.accelerator_count() == 0 or __import__("sys").platform == "darwin", reason="requires an NVIDIA or AMD GPU")
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import Accelerator, Buffer
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import DeviceRef, Graph, TensorType
+        from max.nn.comm.ep.ep_kernels import fused_silu
+
+        max_recv_tokens, hidden_size = 8, 64
+
+        with Graph(
+            "fused_silu_example",
+            input_types=(
+                TensorType(
+                    DType.float32,
+                    [max_recv_tokens, hidden_size],
+                    device=DeviceRef.GPU(),
+                ),
+                TensorType(DType.uint32, [3], device=DeviceRef.GPU()),
+            ),
+        ) as graph:
+            input_tokens, row_offsets = (
+                value.tensor for value in graph.inputs
+            )
+            # NumPy has no bfloat16, so cast at the graph boundary.
+            output = fused_silu(input_tokens.cast(DType.bfloat16), row_offsets)
+            graph.output(output.cast(DType.float32))
+
+        rng = np.random.default_rng(0)
+        tokens = rng.uniform(-2, 2, (max_recv_tokens, hidden_size))
+        tokens = tokens.astype(np.float32)
+        # Expert 0 received tokens 0-2 and expert 1 received tokens 3-4.
+        offsets = np.array([0, 3, 5], dtype=np.uint32)
+
+        gpu = Accelerator()
+        model = InferenceSession(devices=[gpu]).load(graph)
+        inputs = [Buffer.from_numpy(x).to(gpu) for x in (tokens, offsets)]
+        result = model.execute(*inputs)[0].to_numpy()
+        # result.shape is (8, 32). Rows 0-4 hold silu(gate) * up. The op
+        # doesn't write rows 5-7.
+
+    .. invisible-code-block: python
+
+        def round_to_bf16(x):
+            bits = x.view(np.uint32)
+            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+
+        assert output.dtype == DType.bfloat16
+        assert result.shape == (max_recv_tokens, hidden_size // 2)
+        assert result.dtype == np.float32
+
+        # Each input row is [gate | up], and the output is silu(gate) * up.
+        received = int(offsets[-1])
+        rounded = round_to_bf16(tokens).astype(np.float64)[:received]
+        gate, up = np.split(rounded, 2, axis=1)
+        expected = gate / (1 + np.exp(-gate)) * up
+        np.testing.assert_allclose(
+            result[:received], expected, rtol=1e-2, atol=1e-2
+        )
+
+    .. skip: end
     """
     if input.rank != 2:
         raise ValueError("input must be rank 2 tensor")

@@ -72,6 +72,114 @@ def causal_conv1d_varlen_fwd(
     Returns:
         The conv output with the same shape/layout as ``x``.
         ``conv_states`` is mutated in place.
+
+    The following example convolves a ragged batch of two sequences, of
+    lengths 3 and 2, with a width-4 kernel. The first sequence continues
+    from the history stored in slot 2. The second starts fresh in slot 0:
+
+    .. code-block:: python
+
+        import numpy as np
+        from max.driver import CPU, Accelerator, Buffer, accelerator_count
+        from max.dtype import DType
+        from max.engine import InferenceSession
+        from max.graph import BufferType, DeviceRef, Graph, TensorType
+        from max.nn.state_space import causal_conv1d_varlen_fwd
+
+        device = Accelerator() if accelerator_count() > 0 else CPU()
+        device_ref = DeviceRef.from_device(device)
+        dim, total_seqlen, width, max_slots = 8, 5, 4, 3
+
+        with Graph(
+            "causal_conv1d_varlen_fwd_example",
+            input_types=(
+                TensorType(
+                    DType.float32, [dim, total_seqlen], device=device_ref
+                ),
+                TensorType(DType.float32, [dim, width], device=device_ref),
+                TensorType(DType.float32, [dim], device=device_ref),
+                BufferType(
+                    DType.float32,
+                    [max_slots, dim, width - 1],
+                    device=device_ref,
+                ),
+                TensorType(DType.int32, [3], device=device_ref),
+                TensorType(DType.uint32, [2], device=device_ref),
+                TensorType(DType.bool, [2], device=device_ref),
+            ),
+        ) as graph:
+            (
+                x,
+                weight,
+                bias,
+                conv_states,
+                query_start_loc,
+                cache_indices,
+                has_initial_state,
+            ) = graph.inputs
+            output = causal_conv1d_varlen_fwd(
+                x.tensor,
+                weight.tensor,
+                bias.tensor,
+                conv_states.buffer,
+                query_start_loc.tensor,
+                cache_indices.tensor,
+                has_initial_state.tensor,
+            )
+            graph.output(output)
+
+        rng = np.random.default_rng(0)
+        x_np = rng.standard_normal((dim, total_seqlen), dtype=np.float32)
+        weight_np = rng.standard_normal((dim, width), dtype=np.float32)
+        bias_np = rng.standard_normal(dim, dtype=np.float32)
+        states_np = rng.standard_normal(
+            (max_slots, dim, width - 1), dtype=np.float32
+        )
+        starts = np.array([0, 3, 5], dtype=np.int32)
+        slots = np.array([2, 0], dtype=np.uint32)
+        use_history = np.array([True, False])
+
+        inputs = [
+            Buffer.from_numpy(array).to(device)
+            for array in (
+                x_np,
+                weight_np,
+                bias_np,
+                states_np.copy(),
+                starts,
+                slots,
+                use_history,
+            )
+        ]
+        model = InferenceSession(devices=[device]).load(graph)
+        result = model.execute(*inputs)[0].to_numpy()
+        # The op updated the state pool, inputs[3], in place.
+        states = inputs[3]
+        # result.shape is (8, 5), the same layout as x.
+
+    .. invisible-code-block: python
+
+        assert result.shape == (dim, total_seqlen)
+        assert result.dtype == np.float32
+
+        # out[:, t] = silu(bias + sum_j weight[:, j] * window[:, t + j]),
+        # where window prepends the slot's history (or zeros for a fresh
+        # sequence). The slot then keeps the last width - 1 inputs.
+        expected = np.empty((dim, total_seqlen))
+        expected_states = states_np.astype(np.float64)
+        sequences = zip(slots, use_history, starts[:-1], starts[1:])
+        for slot, use_state, start, end in sequences:
+            history = states_np[slot] if use_state else 0 * states_np[slot]
+            window = np.concatenate([history, x_np[:, start:end]], axis=1)
+            for t in range(end - start):
+                taps = weight_np * window[:, t : t + width]
+                pre = bias_np + taps.sum(axis=1)
+                expected[:, start + t] = pre / (1 + np.exp(-pre))
+            expected_states[slot] = window[:, -(width - 1) :]
+        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(
+            states.to_numpy(), expected_states, rtol=1e-6, atol=1e-6
+        )
     """
     device = x.device
 
