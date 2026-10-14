@@ -408,8 +408,7 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Sized, Writable):
     @doc_hidden
     def __init__(
         out self,
-        # FIXME(MSTDL-3258): DeviceContext target type erasure.
-        ctx: DeviceContext.Generic,
+        ctx: DeviceContext,
         size: Int,
     ) raises:
         """This init takes in a constructed `DeviceContext` and schedules an
@@ -1505,8 +1504,7 @@ struct DeviceBuffer[dtype: DType](
     @inline(.always)
     def __init__(
         out self,
-        # FIXME(MSTDL-3258): DeviceContext target type erasure.
-        ctx: DeviceContext.Generic,
+        ctx: DeviceContext,
         size: Int,
         mode: _DeviceBufferMode,
     ) raises:
@@ -1560,8 +1558,7 @@ struct DeviceBuffer[dtype: DType](
     @doc_hidden
     def __init__(
         out self,
-        # FIXME(MSTDL-3258): DeviceContext target type erasure.
-        ctx: DeviceContext.Generic,
+        ctx: DeviceContext,
         ptr: Self._DevicePtr,
         size: Int,
         *,
@@ -1599,8 +1596,7 @@ struct DeviceBuffer[dtype: DType](
         _dtype: DType,
     ](
         out self: DeviceBuffer[_dtype],
-        # FIXME(MSTDL-3258): DeviceContext target type erasure.
-        ctx: DeviceContext.Generic,
+        ctx: DeviceContext,
         ptr: Pointer[Scalar[_dtype], ...],
         size: Int,
         *,
@@ -5031,7 +5027,9 @@ struct DeviceContextBase[
         Raises:
             If the operation fails.
         """
-        return DeviceBuffer[dtype](self, size, _DeviceBufferMode._ASYNC)
+        return DeviceBuffer[dtype](
+            self.assert_default_target(), size, _DeviceBufferMode._ASYNC
+        )
 
     def create_buffer_sync[
         dtype: DType
@@ -5050,7 +5048,9 @@ struct DeviceContextBase[
         Raises:
             If the operation fails.
         """
-        var result = DeviceBuffer[dtype](self, size, _DeviceBufferMode._ASYNC)
+        var result = DeviceBuffer[dtype](
+            self.assert_default_target(), size, _DeviceBufferMode._ASYNC
+        )
         self.synchronize()
         return result
 
@@ -5100,7 +5100,7 @@ struct DeviceContextBase[
             # ...
         ```
         """
-        return HostBuffer[dtype](self, size)
+        return HostBuffer[dtype](self.assert_default_target(), size)
 
     @inline(.always)
     def wrap_host_memory[
@@ -6288,7 +6288,7 @@ struct DeviceContextBase[
             pointer: Pointer[Scalar[dtype], _]
         ) {imm} -> DeviceBuffer[dtype]:
             return DeviceBuffer[dtype](
-                self,
+                self.assert_default_target(),
                 pointer,
                 size,
                 owning=False,
@@ -6709,7 +6709,7 @@ struct DeviceContextBase[
     @doc_hidden
     @inline(.always)
     def stream(self) raises -> DeviceStream:
-        return DeviceStream(self)
+        return DeviceStream(self.assert_default_target())
 
     @inline(.always)
     def create_event[
