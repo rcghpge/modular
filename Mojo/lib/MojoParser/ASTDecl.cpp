@@ -49,6 +49,67 @@ ASTDecl::ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
 
 ASTDecl::~ASTDecl() = default;
 
+ModuleASTDecl::ModuleASTDecl(Kind kind, SharedState &shared,
+                             Operation *moduleOp, llvm::SMLoc loc,
+                             ASTDecl *parentDecl, LexerCursor cursor,
+                             LexerCursor endCursor, ssize_t indentation)
+    : ASTDecl(kind, shared, moduleOp, loc, parentDecl, cursor, endCursor,
+              indentation) {}
+
+LogicalResult ModuleASTDecl::resolveSignature(Lexer &) { return success(); }
+
+LogicalResult ModuleASTDecl::resolveSyntheticSignature() { return success(); }
+
+LogicalResult ModuleASTDecl::resolveBody(Lexer &) { return success(); }
+
+LogicalResult ModuleASTDecl::resolveSyntheticBody() { return success(); }
+
+ImportPathAttr ModuleASTDecl::getAbsoluteModuleName() const {
+  SymbolRefAttr ref = getSymbolRef();
+  if (!ref)
+    return {};
+  SmallVector<StringRef> components;
+  components.push_back(ref.getRootReference().getValue());
+  for (FlatSymbolRefAttr nested : ref.getNestedReferences())
+    components.push_back(nested.getValue());
+  return ImportPathAttr::get(getContext(), /*relativeLevel=*/0, components);
+}
+
+TopLevelModuleASTDecl::TopLevelModuleASTDecl(SharedState &shared,
+                                             ModuleOp moduleOp, llvm::SMLoc loc,
+                                             ASTDecl *parentDecl,
+                                             LexerCursor cursor,
+                                             LexerCursor endCursor,
+                                             ssize_t indentation)
+    : ModuleASTDecl(Kind::TopLevelModule, shared, moduleOp.getOperation(), loc,
+                    parentDecl, cursor, endCursor, indentation) {}
+
+ModuleOp TopLevelModuleASTDecl::getOp() const {
+  return cast<ModuleOp>(getIfOperation());
+}
+
+FileModuleASTDecl::FileModuleASTDecl(SharedState &shared, FileModuleOp moduleOp,
+                                     llvm::SMLoc loc, ASTDecl *parentDecl,
+                                     LexerCursor cursor, LexerCursor endCursor,
+                                     ssize_t indentation)
+    : ModuleASTDecl(Kind::FileModule, shared, moduleOp.getOperation(), loc,
+                    parentDecl, cursor, endCursor, indentation) {}
+
+FileModuleOp FileModuleASTDecl::getOp() const {
+  return cast<FileModuleOp>(getIfOperation());
+}
+
+PackageASTDecl::PackageASTDecl(SharedState &shared, PackageOp packageOp,
+                               llvm::SMLoc loc, ASTDecl *parentDecl,
+                               LexerCursor cursor, LexerCursor endCursor,
+                               ssize_t indentation)
+    : ModuleASTDecl(Kind::Package, shared, packageOp.getOperation(), loc,
+                    parentDecl, cursor, endCursor, indentation) {}
+
+PackageOp PackageASTDecl::getOp() const {
+  return cast<PackageOp>(getIfOperation());
+}
+
 DefASTDecl::DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
                        ASTDecl *parentDecl, LexerCursor cursor,
                        LexerCursor endCursor, ssize_t indentation)
@@ -130,6 +191,33 @@ ConformanceOp ConformanceASTDecl::getOp() const {
   return cast<ConformanceOp>(getIfOperation());
 }
 
+ImportASTDecl::ImportASTDecl(SharedState &shared, Operation *importOp,
+                             llvm::SMLoc loc, ASTDecl *parentDecl,
+                             LexerCursor cursor, LexerCursor endCursor,
+                             ssize_t indentation)
+    : ASTDecl(Kind::Import, shared, importOp, loc, parentDecl, cursor,
+              endCursor, indentation) {
+  assert((isa<ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp>(
+             importOp)) &&
+         "expected an import operation");
+}
+
+ImportOp ImportASTDecl::getIfResolvedOp() const {
+  return dyn_cast_if_present<ImportOp>(getIfOperation());
+}
+
+UnresolvedImportOp ImportASTDecl::getIfUnresolvedOp() const {
+  return dyn_cast_if_present<UnresolvedImportOp>(getIfOperation());
+}
+
+UnresolvedWildcardImportOp ImportASTDecl::getIfWildcardOp() const {
+  return dyn_cast_if_present<UnresolvedWildcardImportOp>(getIfOperation());
+}
+
+void ImportASTDecl::setResolvedOp(ImportOp op) {
+  setIRValue(op.getOperation());
+}
+
 EnumCaseASTDecl::EnumCaseASTDecl(SharedState &shared, EnumCaseOp caseOp,
                                  llvm::SMLoc loc, ASTDecl *parentDecl,
                                  LexerCursor cursor, LexerCursor endCursor,
@@ -172,12 +260,7 @@ WitnessASTDecl::WitnessASTDecl(SharedState &shared,
 
 LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
   auto &resolver = shared.getDeclResolver();
-  if (Operation *op = getIfOperation()) {
-    if (auto importOp = dyn_cast<UnresolvedImportOp>(op))
-      return success(!failed(resolver.resolveSignature(importOp, *this)));
-    if (isa<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
-            UnresolvedWildcardImportOp>(op))
-      return success();
+  if (getIfOperation()) {
     llvm_unreachable("do not know how to resolve this decl signature");
   }
 
@@ -189,15 +272,9 @@ LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
 
 LogicalResult ASTDecl::resolveSyntheticSignature() {
   auto &resolver = shared.getDeclResolver();
-  if (Operation *op = getIfOperation()) {
-    if (auto importOp = dyn_cast<UnresolvedImportOp>(op))
-      return success(!failed(resolver.resolveSignature(importOp, *this)));
-    if (isa<LIT::FileModuleOp, ModuleOp, PackageOp, ImportOp,
-            UnresolvedWildcardImportOp>(op))
-      return success();
-  } else if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
-    return success(!failed(resolver.resolveSignature(traitType, *this)));
-  }
+  if (!getIfOperation())
+    if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue()))
+      return success(!failed(resolver.resolveSignature(traitType, *this)));
 
   Lexer lexer(getShared().diags, getCursor());
   LogicalResult result = resolveSignature(lexer);
@@ -207,16 +284,7 @@ LogicalResult ASTDecl::resolveSyntheticSignature() {
 
 LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
   auto &resolver = shared.getDeclResolver();
-  if (Operation *op = getIfOperation()) {
-    if (auto fileModuleOp = dyn_cast<LIT::FileModuleOp>(op))
-      return success(!failed(resolver.resolveBody(fileModuleOp, lexer, *this)));
-    if (auto packageOp = dyn_cast<PackageOp>(op)) {
-      (void)resolver.resolveBody(packageOp, *this);
-      return success();
-    }
-    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp>(
-            op))
-      return success();
+  if (getIfOperation()) {
     llvm_unreachable("do not know how to resolve this decl body");
   }
 
@@ -229,12 +297,7 @@ LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
 LogicalResult ASTDecl::resolveSyntheticBody() {
   auto &resolver = shared.getDeclResolver();
   if (Operation *op = getIfOperation()) {
-    if (auto packageOp = dyn_cast<PackageOp>(op)) {
-      (void)resolver.resolveBody(packageOp, *this);
-      return success();
-    }
-    if (isa<ModuleOp, ImportOp, UnresolvedImportOp, UnresolvedWildcardImportOp,
-            EnumCaseOp, StructDeclOp, StructFieldOp, ExtensionDeclOp,
+    if (isa<EnumCaseOp, StructDeclOp, StructFieldOp, ExtensionDeclOp,
             TraitDeclOp, AliasDeclOp>(op))
       return success();
   } else if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
@@ -466,7 +529,7 @@ static std::pair<ASTDecl *, size_t> getNearestParamScopeAndDepth(
 
     if (isParamScope) {
       ++depth;
-      if (isa_and_nonnull<FileModuleOp>(decl->getIfOperation()))
+      if (isa<FileModuleASTDecl>(decl))
         break;
     }
 

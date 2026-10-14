@@ -1507,7 +1507,8 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
   // If this is an ImportOp, form a module reference pointing to the ImportOp's
   // own symbol. The ImportOp gates child access via allowedChildren.
-  if (isa_and_nonnull<ImportOp>(decl->getIfOperation())) {
+  if (auto *importDecl = dyn_cast<ImportASTDecl>(decl);
+      importDecl && importDecl->isResolved()) {
     PValue result(ModuleAttr::get(LIT::ModuleType::get(decl->getSymbolRef())));
     return emitter.emitCResult(result, expr, dest);
   }
@@ -1516,7 +1517,7 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
   // Cross-package access goes through an ImportOp (handled above); this is
   // reached for a sibling module resolved via the deprecated intra-package
   // fallback above (a bare sibling reference with no explicit import).
-  if (isa_and_nonnull<FileModuleOp, PackageOp>(decl->getIfOperation())) {
+  if (isa<FileModuleASTDecl, PackageASTDecl>(decl)) {
     PValue result(ModuleAttr::get(LIT::ModuleType::get(decl->getSymbolRef())));
     return emitter.emitCResult(result, expr, dest);
   }
@@ -2241,7 +2242,8 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     // Look for a child ImportOp matching the member name via decl lookup.
     ArrayRef<ASTDecl *> children = typeDecl->lookupInCurrentScope(spelling);
     for (ASTDecl *childDecl : children) {
-      if (isa_and_nonnull<ImportOp>(childDecl->getIfOperation())) {
+      auto *importDecl = dyn_cast<ImportASTDecl>(childDecl);
+      if (importDecl && importDecl->isResolved()) {
         PValue result(
             ModuleAttr::get(LIT::ModuleType::get(childDecl->getSymbolRef())));
         return emitter.emitCResult(result, this, dest);
@@ -2263,7 +2265,8 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
       // A re-exported submodule surfaces as a nested ImportOp. Hand
       // back that op's module directly; it is in scope only because __init__
       // re-exported it.
-      if (isa_and_nonnull<ImportOp>(memberDecl->getIfOperation())) {
+      auto *importDecl = dyn_cast<ImportASTDecl>(memberDecl);
+      if (importDecl && importDecl->isResolved()) {
         PValue result(
             ModuleAttr::get(LIT::ModuleType::get(memberDecl->getSymbolRef())));
         return emitter.emitCResult(result, this, dest);

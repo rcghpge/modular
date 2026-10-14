@@ -71,6 +71,17 @@ public:
   ASTDecl &addDecl(DeclIRValue irValue, llvm::SMLoc loc, StringAttr baseName,
                    ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
+  TopLevelModuleASTDecl &addDecl(ModuleOp op, llvm::SMLoc loc,
+                                 StringAttr baseName, ASTDecl *parentDecl,
+                                 LexerCursor cursor, LexerCursor endCursor,
+                                 ssize_t indentation);
+  ImportASTDecl &addDecl(ImportOp op, llvm::SMLoc loc, StringAttr baseName,
+                         ASTDecl *parentDecl, LexerCursor cursor,
+                         LexerCursor endCursor, ssize_t indentation);
+  ImportASTDecl &addDecl(UnresolvedImportOp op, llvm::SMLoc loc,
+                         StringAttr baseName, ASTDecl *parentDecl,
+                         LexerCursor cursor, LexerCursor endCursor,
+                         ssize_t indentation);
 
   /// Add a declaration that was loaded from bytecode.
   ASTDecl &addBytecodeDecl(Operation *op, StringAttr baseName,
@@ -100,6 +111,14 @@ public:
   ASTDecl &createUnlistedDecl(Operation *decl, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
+  FileModuleASTDecl &createUnlistedDecl(FileModuleOp op, llvm::SMLoc loc,
+                                        ASTDecl *parentDecl, LexerCursor cursor,
+                                        LexerCursor endCursor,
+                                        ssize_t indentation);
+  PackageASTDecl &createUnlistedDecl(PackageOp op, llvm::SMLoc loc,
+                                     ASTDecl *parentDecl, LexerCursor cursor,
+                                     LexerCursor endCursor,
+                                     ssize_t indentation);
 
   /// Create a witness declaration and install it in the trait's scope.
   WitnessASTDecl &
@@ -193,16 +212,9 @@ private:
 public:
   /// Create a resolved ImportOp in \p dest's scope. Only nested ImportOps in
   /// the region gate access to child modules of \p modulePath.
-  ASTDecl &createImportOp(ASTDecl &dest, mlir::OpBuilder &builder,
-                          StringAttr name, ImportPathAttr modulePath,
-                          mlir::Location loc);
-
-  /// Return the absolute module path of a resolved module/package decl
-  /// (e.g. `a.b.c`), derived from its fully-resolved symbol. Used as a
-  /// gate's `modulePath` for imports whose syntactic path is relative
-  /// (`import .foo as z`, `from . import sub`), where there is no absolute name
-  /// to copy from the source. Returns {} if \p moduleDecl has no symbol.
-  ImportPathAttr getAbsoluteModuleName(ASTDecl &moduleDecl);
+  ImportASTDecl &createImportOp(ASTDecl &dest, mlir::OpBuilder &builder,
+                                StringAttr name, ImportPathAttr modulePath,
+                                mlir::Location loc);
 
   /// Import the provided decl from the given module decl, into the provided
   /// destination.
@@ -234,11 +246,6 @@ public:
   LogicalResult resolveBody(ASTDecl &decl, llvm::SMLoc loc) {
     return resolve(decl, DeclResolvedness::body, loc);
   }
-
-  /// For a given package, find the __init__ module, resolve its body, and
-  /// return it. Returns nullptr if the package is not a package or has no
-  /// __init__. Returns failure() if body resolution fails.
-  FailureOr<ASTDecl *> bodyResolvePackageInit(ASTDecl &package, SMLoc loc);
 
   /// Body-resolve the specified declaration and all declarations contained
   /// within it.
@@ -411,18 +418,6 @@ private:
   /// main container (typically stdlib/library declarations). Called by
   /// resolveAllReferencedFrom when no errors have been emitted.
   void resolveReferencedDecls();
-
-  /// The resolveSignature methods are invoked on an operation to parse and type
-  /// check the signature for the operation.  On parse failure, these should
-  /// return a failure, which will cause the driver to mark the decl as invalid
-  /// for further references.
-  ParseResult resolveBody(LIT::FileModuleOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(PackageOp op, ASTDecl &decl);
-
-  /// resolveTarget determines whether we also resolve the decl the
-  /// UnresolvedImportOp is referring to.
-  ParseResult resolveSignature(LIT::UnresolvedImportOp op, ASTDecl &decl,
-                               bool resolveTarget = true);
 
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);

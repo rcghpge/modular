@@ -54,6 +54,7 @@ class ASTType;
 class ClosureEmitter;
 class DeclResolver;
 class ModuleLoader;
+class ModuleASTDecl;
 class ExprNode;
 struct ModuleOrigin;
 struct ModuleState;
@@ -69,6 +70,7 @@ class LookupAllResult;
 class PackageOp;
 class ParserListener;
 class StructDeclOp;
+class TopLevelModuleASTDecl;
 class TraitType;
 class CallOperands;
 class ParserEvaluationContext;
@@ -188,11 +190,11 @@ public:
   StringRef getDocsBasePath() const { return docsBasePath; }
 
   /// Initialize the shared state for the given top-level decl.
-  void initialize(ASTDecl &topLevelDecl);
+  void initialize(TopLevelModuleASTDecl &topLevelDecl);
 
   /// Return the top-level decl where modules can created in. This can only be
   /// used after the SharedState has been initialized.
-  ASTDecl &getTopLevelDecl();
+  TopLevelModuleASTDecl &getTopLevelDecl();
 
   /// This is the AST type that corresponds to TypeCheckErrorType.
   ASTType getTypeCheckErrorType() const;
@@ -347,7 +349,8 @@ public:
 
   /// Try to import a direct submodule with the given name, returning the
   /// submodule's decl, or null if no such submodule exists.
-  ASTDecl *tryImportSubModule(ASTDecl &parent, StringRef name, llvm::SMLoc loc);
+  ASTDecl *tryImportSubModule(ModuleASTDecl &parent, StringRef name,
+                              llvm::SMLoc loc);
 
   /// Return the decls of every nested module/package currently materialized in
   /// the package's module-state cache. These are navigable but unlisted (not
@@ -372,7 +375,7 @@ public:
 
   /// Return the source path for the given module decl, or nullopt if the decl
   /// doesn't have a source path.
-  std::optional<std::string> getModuleSourcePath(ASTDecl &module);
+  std::optional<std::string> getModuleSourcePath(ModuleASTDecl &module);
 
   /// Resolve a declaration that originated from bytecode to the given
   /// resolvedness.

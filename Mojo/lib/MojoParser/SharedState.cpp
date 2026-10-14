@@ -307,7 +307,7 @@ struct SharedState::Impl {
   DenseMap<std::pair<SymbolTable *, StringAttr>, unsigned> symbolTableCounters;
 
   /// The top-level decl containing everything being parsed.
-  ASTDecl *topLevelDecl = nullptr;
+  TopLevelModuleASTDecl *topLevelDecl = nullptr;
 
   /// This is the AST type that corresponds to TypeCheckErrorType.
   ASTType typeCheckErrorType;
@@ -482,7 +482,7 @@ bool SharedState::shouldDiagnoseMissingDocStrings() const {
   return impl->diagnoseMissingDocStrings;
 }
 
-void SharedState::initialize(ASTDecl &topLevelDecl) {
+void SharedState::initialize(TopLevelModuleASTDecl &topLevelDecl) {
   assert(!impl->topLevelDecl && "already initialized");
   impl->topLevelDecl = &topLevelDecl;
   getModuleLoader().initializeTopLevel(topLevelDecl);
@@ -492,8 +492,8 @@ void SharedState::initialize(ASTDecl &topLevelDecl) {
   // https://docs.python.org/3/library/functions.html#built-in-funcs
   // https://docs.python.org/3/reference/executionmodel.html#naming-and-binding
   ASTDecl &builtinsDecl = declResolver->addDecl(
-      topLevelDecl.getIfOperation(), topLevelDecl.getLoc(), StringAttr(),
-      nullptr, topLevelDecl.getCursor(), topLevelDecl.getCursor(), -1);
+      topLevelDecl.getOp(), topLevelDecl.getLoc(), StringAttr(), nullptr,
+      topLevelDecl.getCursor(), topLevelDecl.getCursor(), -1);
   addBuiltinTypes(builtinsDecl);
   builtinsDecl.resolvedness = DeclResolvedness::body;
 
@@ -520,7 +520,9 @@ void SharedState::collectParamRefsInType(
                                       requiredSignatureDepth);
 }
 
-ASTDecl &SharedState::getTopLevelDecl() { return *impl->topLevelDecl; }
+TopLevelModuleASTDecl &SharedState::getTopLevelDecl() {
+  return *impl->topLevelDecl;
+}
 
 MojoInflightDiag SharedState::emitError(Location loc, const Twine &message) {
   return diags.emitError(loc, message);
@@ -705,9 +707,8 @@ auto SharedState::lookupAndResolveDecl(StringRef name, SMLoc loc,
     // A package's own scope is empty: its public surface is its __init__'s
     // scope. Redirect any lookup *rooted at* a package to __init__, so
     // component access and re-export resolution see the package's symbols.
-    if (isa_and_nonnull<PackageOp>(scope.getIfOperation())) {
-      FailureOr<ASTDecl *> initOrFailure =
-          declResolver->bodyResolvePackageInit(scope, loc);
+    if (auto *package = dyn_cast<PackageASTDecl>(&scope)) {
+      FailureOr<ASTDecl *> initOrFailure = package->resolveInitModule(loc);
       if (failed(initOrFailure))
         return LookupResult::getErroneous();
       if (ASTDecl *initDecl = *initOrFailure)
@@ -755,16 +756,18 @@ auto SharedState::lookupAndResolveDecl(StringRef name, SMLoc loc,
   // If the lookup succeeded, make sure the signature for the referenced decls
   // are understood. Make a copy of the entries to avoid dangling references if
   // we end up invalidating the decl map.
+  auto isUnresolvedImport = [](ASTDecl *decl) {
+    auto *importDecl = dyn_cast_if_present<ImportASTDecl>(decl);
+    return importDecl && importDecl->isUnresolved();
+  };
   bool wasUnresolvedImport = !resultDecls.empty() && resultDecls.front() &&
-                             isa_and_nonnull<UnresolvedImportOp>(
-                                 resultDecls.front()->getIfOperation());
+                             isUnresolvedImport(resultDecls.front());
   for (ASTDecl *decl : resultDecls) {
     // Always resolve UnresolvedImportOps since that's the point of this whole
     // function. But only resolve the ultimate declaration it's pointing to if
     // resolveTarget is true.
     // TODO(MOCO-522): Arcana docs on imports!
-    bool shouldResolve = resolveTarget || isa_and_nonnull<UnresolvedImportOp>(
-                                              decl->getIfOperation());
+    bool shouldResolve = resolveTarget || isUnresolvedImport(decl);
     if (shouldResolve) {
       if (failed(
               declResolver->resolve(*decl, DeclResolvedness::signature, loc))) {
@@ -866,13 +869,12 @@ auto SharedState::lookupAllDeclsWithName(StringRef name, SMLoc loc,
 
   bool resolvedImport = false;
   for (ASTDecl *decl : resultDecls) {
-    if (auto importOp =
-            dyn_cast_or_null<UnresolvedImportOp>(decl->getIfOperation())) {
+    if (auto *importDecl = dyn_cast<ImportASTDecl>(decl);
+        importDecl && importDecl->isUnresolved()) {
       DeclResolvedness resolvedness = decl->resolvedness;
       if (resolvedness < DeclResolvedness::signature) {
         resolvedImport = true;
-        if (failed(declResolver->resolveSignature(importOp, *decl,
-                                                  /*resolveTarget=*/resolve))) {
+        if (failed(importDecl->resolveSignature(/*resolveTarget=*/resolve))) {
           return LookupAllResult::getErroneous();
         }
       }
@@ -895,7 +897,8 @@ PackageOp SharedState::getPrecompiledStdlibPackage() {
   ModuleState *stdState = impl->stdPackageState;
   if (!stdState || !stdState->origin || !stdState->origin->bytecodeReader)
     return {};
-  return dyn_cast_or_null<PackageOp>(stdState->decl->getIfOperation());
+  auto *packageDecl = dyn_cast<PackageASTDecl>(stdState->decl);
+  return packageDecl ? packageDecl->getOp() : PackageOp();
 }
 
 void SharedState::materializePrecompiledStdlibOp(Operation *op) {
@@ -939,7 +942,7 @@ const llvm::MemoryBuffer *SharedState::openModuleFile(StringRef path,
   return getSourceMgr().getMemoryBuffer(fileID);
 }
 
-ASTDecl *SharedState::tryImportSubModule(ASTDecl &parent, StringRef name,
+ASTDecl *SharedState::tryImportSubModule(ModuleASTDecl &parent, StringRef name,
                                          llvm::SMLoc loc) {
   return getModuleLoader().tryImportSubModule(parent, name, loc);
 }
@@ -1242,7 +1245,8 @@ ASTDecl &SharedState::createBinaryPackage(StringRef path, StringRef name) {
   return *state.decl;
 }
 
-std::optional<std::string> SharedState::getModuleSourcePath(ASTDecl &module) {
+std::optional<std::string>
+SharedState::getModuleSourcePath(ModuleASTDecl &module) {
   ModuleState *state = getModuleLoader().lookupState(&module);
   if (!state)
     return std::nullopt;
@@ -1469,8 +1473,9 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
             .Case([&](UnresolvedImportOp unresolvedImport) {
               // Let the normal decl resolver handling insert aliases and other
               // import behavior.
-              if (failed(
-                      declResolver->resolveSignature(unresolvedImport, decl)))
+              auto &importDecl = cast<ImportASTDecl>(decl);
+              assert(importDecl.getIfUnresolvedOp() == unresolvedImport);
+              if (failed(importDecl.resolveSignature(/*resolveTarget=*/true)))
                 return failure();
               return mlir::success();
             })
@@ -1500,7 +1505,7 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
   SMLoc packageImportLoc;
   ASTDecl *parentDecl = &decl;
   do {
-    if (!isa_and_nonnull<FileModuleOp, PackageOp>(parentDecl->getIfOperation()))
+    if (!isa<FileModuleASTDecl, PackageASTDecl>(parentDecl))
       continue;
 
     // Any module inside the artifact answers, since they all share its origin.

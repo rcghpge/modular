@@ -2152,11 +2152,9 @@ PValue IREmitter::getStdlibOriginOf(TypedAttr litOrigin, SMLoc loc) {
 //===--------------------------------------------------------------------===//
 
 ASTDecl *IREmitter::createParametricClosureTrait(SharedState &shared) {
-  OpBuilder b(shared.getTopLevelDecl().getIfOperation());
+  OpBuilder b(shared.getTopLevelDecl().getOp());
   b.setInsertionPointToStart(
-      &cast<ModuleOp>(shared.getTopLevelDecl().getIfOperation())
-           .getBodyRegion()
-           .front());
+      &shared.getTopLevelDecl().getOp().getBodyRegion().front());
   MLIRContext *ctx = b.getContext();
 
   // A illegal name to avoid collisions.

@@ -880,7 +880,7 @@ ParseResult StmtParser::parseStmt(bool onlySimpleStmt, bool &parsedCompound,
   if (!isa_and_nonnull<FnOp, UnboundRegionOp>(
           getParentDecl().getIfOperation())) {
     // TODO: Top level expressions will be supported in the future.
-    if (isa_and_nonnull<FileModuleOp>(parentDecl.getIfOperation())) {
+    if (isa<FileModuleASTDecl>(parentDecl)) {
       emitError(startCursor.getToken().getLoc())
           << "expressions must not appear at file scope; move this into a "
              "function body";
@@ -4385,15 +4385,15 @@ ParseResult StmtParser::parseFromImportStmt(FromImportDecorators decorators) {
       // Resolve the module if we haven't yet.
       if (!currentResolvedModule) {
         ASTDecl *curModuleDecl = curDeclScope;
-        while (curModuleDecl &&
-               !isa_and_nonnull<FileModuleOp>(curModuleDecl->getIfOperation()))
+        while (curModuleDecl && !isa<FileModuleASTDecl>(curModuleDecl))
           curModuleDecl = curModuleDecl->getParentDecl();
 
         currentResolvedModule = &shared.importModule(
             modulePath,
-            curModuleDecl
-                ? curModuleDecl->getIfOperation()->getParentOfType<PackageOp>()
-                : PackageOp(),
+            curModuleDecl ? cast<FileModuleASTDecl>(curModuleDecl)
+                                ->getOp()
+                                ->getParentOfType<PackageOp>()
+                          : PackageOp(),
             importLoc);
       }
       return *currentResolvedModule;
@@ -4514,7 +4514,8 @@ static void buildImportChain(ParserBase &p, ASTDecl &dest, OpBuilder builder,
     // one.
     ASTDecl *node = nullptr;
     for (ASTDecl *d : scope->lookupInCurrentScope(segName)) {
-      if (isa_and_nonnull<ImportOp>(d->getIfOperation())) {
+      auto *importDecl = dyn_cast<ImportASTDecl>(d);
+      if (importDecl && importDecl->isResolved()) {
         node = d;
         break;
       }
@@ -5260,7 +5261,7 @@ ParseResult StmtParser::parseEnumCaseStmt(size_t stmtIndent) {
 ParseResult StmtParser::parseTraitStmt(LexerCursor startCursor,
                                        size_t curIndent) {
   // We don't support non-top level traits (yet?).
-  if (!isa_and_nonnull<FileModuleOp>(getParentDecl().getIfOperation()))
+  if (!isa<FileModuleASTDecl>(getParentDecl()))
     emitTokenError("nested trait not supported here");
 
   consumeToken(Token::kw_trait);

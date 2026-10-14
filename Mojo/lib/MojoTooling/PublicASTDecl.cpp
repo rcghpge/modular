@@ -756,9 +756,8 @@ llvm::json::Object PublicAliasDecl::toJSON(MojoParserContext &ctx) const {
 /// Return if the given alias decl is global, i.e. nested within a module,
 /// package, or struct.
 static bool isGlobalAliasDecl(MojoASTDeclRef declRef) {
-  return declRef->getParentDecl() &&
-         isa_and_nonnull<FileModuleOp, PackageOp, StructDeclOp>(
-             declRef->getParentDecl()->getIfOperation());
+  return isa_and_nonnull<FileModuleASTDecl, PackageASTDecl, StructASTDecl>(
+      declRef->getParentDecl());
 }
 
 void PublicAliasDecl::augmentWithDocumentation(ArrayRef<StringRef> desc) {
@@ -1673,18 +1672,17 @@ llvm::json::Object PublicPackageDecl::toJSON(MojoParserContext &ctx) const {
   // modules are hidden, matching extractChildDecls' filtering.
   SmallVector<PublicModuleDecl> modules;
   SmallVector<PublicPackageDecl> packages;
-  if (auto packageOp = dyn_cast_or_null<PackageOp>(decl->getIfOperation())) {
+  if (auto *packageDecl = dyn_cast<PackageASTDecl>(&*decl)) {
     for (ASTDecl *child :
-         ctx.getSharedState().getNestedModuleDecls(packageOp)) {
+         ctx.getSharedState().getNestedModuleDecls(packageDecl->getOp())) {
       MojoASTDeclRef childRef(child);
       StringRef name = childRef.getName().value_or(StringRef());
       if (shouldHideDeclInDocGen(*child, name) ||
           child->getParentDecl() != &*decl)
         continue;
-      Operation *childOp = child->getIfOperation();
-      if (isa_and_nonnull<FileModuleOp>(childOp))
+      if (isa<FileModuleASTDecl>(child))
         modules.push_back(cast<PublicModuleDecl>(*childRef.getDecl()));
-      else if (isa_and_nonnull<PackageOp>(childOp))
+      else if (isa<PackageASTDecl>(child))
         packages.push_back(cast<PublicPackageDecl>(*childRef.getDecl()));
     }
   }

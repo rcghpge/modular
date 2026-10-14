@@ -365,7 +365,7 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
 
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        ASTDecl &topLevelDecl = sharedState.declResolver->addDecl(
+        auto &topLevelDecl = sharedState.declResolver->addDecl(
             module, startSMLoc, StringAttr(), /*parentDecl=*/nullptr,
             lexer.getCursor(), LexerCursor::getEOF(sourceBuf), -1);
         sharedState.initialize(topLevelDecl);
@@ -409,7 +409,7 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
       sharedState, ts, includedFiles, [&](ModuleOp module) -> ASTDecl & {
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        ASTDecl &topLevelDecl = sharedState.declResolver->addDecl(
+        auto &topLevelDecl = sharedState.declResolver->addDecl(
             module, SMLoc(), StringAttr(), /*parentDecl=*/nullptr,
             LexerCursor(), LexerCursor(), /*indentation=*/-1);
         sharedState.initialize(topLevelDecl);
@@ -429,8 +429,7 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
       << " bytes in " << sharedState.stmtAllocator.getNumSlabs() << " slabs\n");
   if (!module)
     return {};
-  return {std::move(module),
-          cast_or_null<PackageOp>(packageDecl->getIfOperation())};
+  return {std::move(module), cast<PackageASTDecl>(packageDecl)->getOp()};
 }
 
 OwningOpRef<mlir::ModuleOp>

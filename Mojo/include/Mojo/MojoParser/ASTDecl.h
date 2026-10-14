@@ -45,12 +45,18 @@ class EnumCaseOp;
 class ExtensionASTDecl;
 class ExtensionDeclOp;
 class DefASTDecl;
+class FileModuleOp;
+class ImportASTDecl;
+class ImportOp;
 class Lexer;
+class PackageOp;
 class StructASTDecl;
 class StructDeclOp;
 class StructFieldASTDecl;
 class StructFieldOp;
 class TraitASTDecl;
+class UnresolvedImportOp;
+class UnresolvedWildcardImportOp;
 class WitnessASTDecl;
 class StructType;
 class DocStringAttr;
@@ -97,6 +103,10 @@ public:
     Extension,
     Def,
     EnumCase,
+    Import,
+    TopLevelModule,
+    FileModule,
+    Package,
     Struct,
     StructField,
     Trait,
@@ -513,6 +523,90 @@ private:
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
 };
 
+/// Base class for top-level, file, and package module declarations.
+class ModuleASTDecl : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() >= Kind::TopLevelModule &&
+           decl->getKind() <= Kind::Package;
+  }
+
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveSyntheticSignature() override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
+
+  /// Return the absolute import path for this module, or null if it has no
+  /// symbol.
+  ImportPathAttr getAbsoluteModuleName() const;
+
+protected:
+  ModuleASTDecl(Kind kind, SharedState &shared, Operation *moduleOp,
+                llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
+                LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of the outer MLIR module.
+class TopLevelModuleASTDecl final : public ModuleASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::TopLevelModule;
+  }
+
+  ModuleOp getOp() const;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  TopLevelModuleASTDecl(SharedState &shared, ModuleOp moduleOp, llvm::SMLoc loc,
+                        ASTDecl *parentDecl, LexerCursor cursor,
+                        LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of a source file module.
+class FileModuleASTDecl final : public ModuleASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::FileModule;
+  }
+
+  FileModuleOp getOp() const;
+  LogicalResult resolveBody(Lexer &lexer) override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  FileModuleASTDecl(SharedState &shared, FileModuleOp moduleOp, llvm::SMLoc loc,
+                    ASTDecl *parentDecl, LexerCursor cursor,
+                    LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of a source package.
+class PackageASTDecl final : public ModuleASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Package;
+  }
+
+  PackageOp getOp() const;
+  /// Resolve and return the package's __init__ module, if present.
+  FailureOr<ASTDecl *> resolveInitModule(llvm::SMLoc loc);
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  LogicalResult resolvePackage();
+
+  PackageASTDecl(SharedState &shared, PackageOp packageOp, llvm::SMLoc loc,
+                 ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+                 ssize_t indentation);
+};
+
 /// The AST representation of a function declaration.
 class DefASTDecl final : public ASTDecl {
 public:
@@ -700,6 +794,36 @@ private:
   ConformanceASTDecl(SharedState &shared, ConformanceOp conformanceOp,
                      llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                      LexerCursor endCursor, ssize_t indentation);
+};
+
+/// The AST representation of an import declaration.
+class ImportASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::Import;
+  }
+
+  ImportOp getIfResolvedOp() const;
+  UnresolvedImportOp getIfUnresolvedOp() const;
+  UnresolvedWildcardImportOp getIfWildcardOp() const;
+  bool isResolved() const { return bool(getIfResolvedOp()); }
+  bool isUnresolved() const { return bool(getIfUnresolvedOp()); }
+  bool isWildcard() const { return bool(getIfWildcardOp()); }
+  void setResolvedOp(ImportOp op);
+
+  LogicalResult resolveSignature(Lexer &lexer) override;
+  LogicalResult resolveSignature(bool resolveTarget);
+  LogicalResult resolveSyntheticSignature() override;
+  LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override;
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  ImportASTDecl(SharedState &shared, Operation *importOp, llvm::SMLoc loc,
+                ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+                ssize_t indentation);
 };
 
 /// The AST representation of an enum case declaration.

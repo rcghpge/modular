@@ -1491,8 +1491,8 @@ static std::optional<AliasDeclOp> getLLVMMetadataNameAlias(SharedState &shared,
     if (nameDecls.empty())
       continue;
 
-    if (isa_and_nonnull<UnresolvedImportOp>(
-            nameDecls.back()->getIfOperation())) {
+    auto *importDecl = dyn_cast<ImportASTDecl>(nameDecls.back());
+    if (importDecl && importDecl->isUnresolved()) {
       if (failed(shared.getDeclResolver().resolveBody(*nameDecls.back(),
                                                       funcDecl.getLoc()))) {
         shared.emitError(funcDecl.getLoc(), "cannot resolve comptime value '")
@@ -1506,7 +1506,7 @@ static std::optional<AliasDeclOp> getLLVMMetadataNameAlias(SharedState &shared,
     shared.emitError(funcDecl.getLoc(), "name '")
         << name << "' cannot be used in '@__llvm_metadata'";
     return {};
-  } while (!isa_and_nonnull<FileModuleOp>(parent->getIfOperation()));
+  } while (!isa<FileModuleASTDecl>(parent));
   return {};
 }
 
@@ -2828,10 +2828,8 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
 // Module Decl implementation
 //===----------------------------------------------------------------------===//
 
-ParseResult DeclResolver::resolveBody(LIT::FileModuleOp op, Lexer &lexer,
-                                      ASTDecl &decl) {
-  // TODO: Sink this to when the body is actually resolved.
-  decl.resolvedness = DeclResolvedness::body;
+LogicalResult FileModuleASTDecl::resolveBody(Lexer &lexer) {
+  resolvedness = DeclResolvedness::body;
 
   // Push a scope for the file of this module.
   DebugInfo::DIBuilder::ScopeGuard fileGuard;
@@ -2842,16 +2840,43 @@ ParseResult DeclResolver::resolveBody(LIT::FileModuleOp op, Lexer &lexer,
       fileGuard = shared.diBuilder->pushFile(loc.getFilename().getValue());
   }
 
-  return ParserBase(shared, lexer).parseSuite(decl);
+  return ParserBase(shared, lexer).parseSuite(*this);
 }
 
 //===----------------------------------------------------------------------===//
 // Package Decl implementation
 //===----------------------------------------------------------------------===//
 
-ParseResult DeclResolver::resolveBody(LIT::PackageOp op, ASTDecl &decl) {
-  // TODO: Sink this to when the body is actually resolved.
-  decl.resolvedness = DeclResolvedness::body;
+LogicalResult PackageASTDecl::resolveBody(Lexer &) { return resolvePackage(); }
+
+LogicalResult PackageASTDecl::resolveSyntheticBody() {
+  return resolvePackage();
+}
+
+FailureOr<ASTDecl *> PackageASTDecl::resolveInitModule(SMLoc loc) {
+  PackageOp packageOp = getOp();
+  if (!shared.hasNestedModule(packageOp, "__init__"))
+    return nullptr;
+  ASTDecl &initDecl = shared.importModule(
+      SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), packageOp,
+      loc);
+  if (initDecl.isErroneous())
+    return nullptr;
+
+  // Avoid recursing when a statement in __init__ needs to look through its
+  // containing package while __init__ is still being resolved.
+  auto &resolver = shared.getDeclResolver();
+  if (resolver.isAlreadyProcessing(initDecl))
+    return nullptr;
+  if (failed(resolver.resolveBody(initDecl, loc)))
+    return failure();
+  return &initDecl;
+}
+
+LogicalResult PackageASTDecl::resolvePackage() {
+  auto &resolver = shared.getDeclResolver();
+  PackageOp op = getOp();
+  resolvedness = DeclResolvedness::body;
 
   // A source package corresponds to a directory. Its children (modules
   // and sub-packages) become decls, but the package's own importable scope
@@ -2863,22 +2888,22 @@ ParseResult DeclResolver::resolveBody(LIT::PackageOp op, ASTDecl &decl) {
   // the package IR; just not in declsInScope.
 
   // Grab the directory that this package is defined in.
-  std::optional<std::string> directoryStr = shared.getModuleSourcePath(decl);
+  std::optional<std::string> directoryStr = shared.getModuleSourcePath(*this);
   if (!directoryStr)
-    return emitError(op.getLoc(), "unable to locate package directory");
+    return shared.emitError(op.getLoc(), "unable to locate package directory");
 
   std::error_code ec;
   std::filesystem::path directory(*directoryStr);
   if (!std::filesystem::is_directory(directory, ec) || ec)
-    return emitError(op.getLoc(), "unable to locate package directory");
+    return shared.emitError(op.getLoc(), "unable to locate package directory");
 
   // Resolve __init__ (the public surface) if present, inheriting its docstring.
   if (std::filesystem::exists(directory / "__init__.mojo", ec) && !ec) {
     ASTDecl &initModule = shared.importModule(
         SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), op,
-        decl.loc);
+        getLoc());
     if (!initModule.isErroneous()) {
-      if (failed(resolveBody(initModule, decl.loc)))
+      if (failed(resolver.resolveBody(initModule, getLoc())))
         return failure();
       if (auto initDeclOp =
               dyn_cast_or_null<ASTDeclInterface>(initModule.getIfOperation()))
@@ -2889,7 +2914,7 @@ ParseResult DeclResolver::resolveBody(LIT::PackageOp op, ASTDecl &decl) {
 
   // Register a (deferred, unlisted) child decl for every sibling module and
   // sub-package.
-  shared.getModuleLoader().registerSourcePackageChildren(decl);
+  shared.getModuleLoader().registerSourcePackageChildren(*this);
 
   return success();
 }
@@ -5536,15 +5561,22 @@ LogicalResult ExtensionASTDecl::resolveBody(Lexer &lexer) {
 // UnresolvedImport Decl implementation
 //===----------------------------------------------------------------------===//
 
-ParseResult DeclResolver::resolveSignature(LIT::UnresolvedImportOp op,
-                                           ASTDecl &decl, bool resolveTarget) {
+LogicalResult ImportASTDecl::resolveSignature(Lexer &) {
+  return resolveSignature(/*resolveTarget=*/true);
+}
+
+LogicalResult ImportASTDecl::resolveSignature(bool resolveTarget) {
+  UnresolvedImportOp op = getIfUnresolvedOp();
+  if (!op)
+    return success();
+
   PackageOp packageOp = op->getParentOfType<PackageOp>();
 
   // Grab the location of the import name if present.
   SMLoc importNameLoc =
       shared.diags.convertLocToSMLoc(op.getImportNameLocAttr());
   if (!importNameLoc.isValid())
-    importNameLoc = decl.getLoc();
+    importNameLoc = getLoc();
 
   // Check that we are importing a specific decl within the module.
   auto declName = op.getDeclNameAttr();
@@ -5552,13 +5584,21 @@ ParseResult DeclResolver::resolveSignature(LIT::UnresolvedImportOp op,
 
   SMLoc declNameLoc = shared.diags.convertLocToSMLoc(op.getDeclNameLocAttr());
   if (!declNameLoc.isValid())
-    declNameLoc = decl.getLoc();
+    declNameLoc = getLoc();
 
-  return getDeclResolver().importDeclFromModule(
-      *decl.getParentDecl(), packageOp, op.getModulePathAttr(), declName,
-      op.getImportNameAttr(), decl.getLoc(), declNameLoc, importNameLoc,
+  return shared.getDeclResolver().importDeclFromModule(
+      *getParentDecl(), packageOp, op.getModulePathAttr(), declName,
+      op.getImportNameAttr(), getLoc(), declNameLoc, importNameLoc,
       resolveTarget);
 }
+
+LogicalResult ImportASTDecl::resolveSyntheticSignature() {
+  return resolveSignature(/*resolveTarget=*/true);
+}
+
+LogicalResult ImportASTDecl::resolveBody(Lexer &) { return success(); }
+
+LogicalResult ImportASTDecl::resolveSyntheticBody() { return success(); }
 
 //===----------------------------------------------------------------------===//
 // Trait Composition Decl implementation
