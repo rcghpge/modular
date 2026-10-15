@@ -132,14 +132,14 @@ void printAllGatherRMSNormQuantMXFP6Attrs(OpAsmPrinter &p, Operation *,
 
 ParseResult parseGroupedMatmulSwigluNvfp4Attrs(OpAsmParser &p,
                                                StringAttr &activation,
-                                               StringAttr &swigluAlpha,
-                                               StringAttr &swigluLimit,
+                                               ElementsAttr &swigluAlpha,
+                                               ElementsAttr &swigluLimit,
                                                BoolAttr &hasARowScales);
 
 void printGroupedMatmulSwigluNvfp4Attrs(OpAsmPrinter &p, Operation *,
                                         StringAttr activation,
-                                        StringAttr swigluAlpha,
-                                        StringAttr swigluLimit,
+                                        ElementsAttr swigluAlpha,
+                                        ElementsAttr swigluLimit,
                                         BoolAttr hasARowScales);
 
 ParseResult parseCustomAttrs(OpAsmParser &p, StringAttr &symbol,

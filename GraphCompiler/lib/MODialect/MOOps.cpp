@@ -148,7 +148,13 @@ void printAttrGroup(AsmPrinter &p, ArrayRef<AttrGroupElement> elements) {
   p << " [";
   llvm::interleaveComma(present, p, [&](const AttrGroupElement *element) {
     p << element->name << " = ";
-    p.printAttributeWithoutType(element->value);
+    // String/bool/integer attributes are self-describing without their
+    // type, but an elements attribute is not (`#M.dense_array<1.5>` needs
+    // its `: tensor<f32>` to re-parse), so print those in full.
+    if (isa<ElementsAttr>(element->value))
+      p << element->value;
+    else
+      p.printAttributeWithoutType(element->value);
   });
   p << ']';
 }
@@ -289,8 +295,8 @@ void printAllGatherRMSNormQuantMXFP6Attrs(OpAsmPrinter &p, Operation *,
 
 ParseResult parseGroupedMatmulSwigluNvfp4Attrs(OpAsmParser &p,
                                                StringAttr &activation,
-                                               StringAttr &swigluAlpha,
-                                               StringAttr &swigluLimit,
+                                               ElementsAttr &swigluAlpha,
+                                               ElementsAttr &swigluLimit,
                                                BoolAttr &hasARowScales) {
   Type i1 = p.getBuilder().getIntegerType(1);
   return parseAttrGroup(
@@ -303,12 +309,12 @@ ParseResult parseGroupedMatmulSwigluNvfp4Attrs(OpAsmParser &p,
 
 void printGroupedMatmulSwigluNvfp4Attrs(OpAsmPrinter &p, Operation *,
                                         StringAttr activation,
-                                        StringAttr swigluAlpha,
-                                        StringAttr swigluLimit,
+                                        ElementsAttr swigluAlpha,
+                                        ElementsAttr swigluLimit,
                                         BoolAttr hasARowScales) {
   printAttrGroup(p, {nonDefault("activation", activation, "silu"),
-                     nonDefault("swiglu_alpha", swigluAlpha, "0.0"),
-                     nonDefault("swiglu_limit", swigluLimit, "0.0"),
+                     {"swiglu_alpha", swigluAlpha},
+                     {"swiglu_limit", swigluLimit},
                      nonDefault("has_a_row_scales", hasARowScales, false)});
 }
 

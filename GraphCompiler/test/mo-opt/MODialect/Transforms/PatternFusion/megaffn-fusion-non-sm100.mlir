@@ -1,4 +1,5 @@
 // RUN: mo-opt %s --mo-pattern-fusion="mega-ffn-enable=true" | FileCheck %s
+// RUN: mo-opt %s --mo-pattern-fusion="mega-ffn-enable=true" | mo-opt - --mo-pattern-fusion="mega-ffn-enable=true" | FileCheck %s
 
 // Arch negative: a non-SM100 (sm_90a) module. The MegaFFN pattern arch-gates
 // itself to sm_100a via DeviceInfoMapping (mirroring MatmulAddPattern), so the
@@ -7,6 +8,8 @@ module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda",
 
 // CHECK-LABEL: mo.graph @neg_non_sm100
 // CHECK: mo.composite.grouped_matmul_swiglu_nvfp4
+// CHECK-SAME: swiglu_alpha = #M.dense_array<0.000000e+00> : tensor<f32>
+// CHECK-SAME: swiglu_limit = #M.dense_array<0.000000e+00> : tensor<f32>
 // CHECK: mo.composite.grouped_matmul_block_scaled
 // CHECK-NOT: mo.composite.mega_ffn_nvfp4
 mo.graph @neg_non_sm100(
@@ -29,7 +32,7 @@ mo.graph @neg_non_sm100(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.000000e+00> : tensor<f32>, swiglu_limit = #M.dense_array<0.000000e+00> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,

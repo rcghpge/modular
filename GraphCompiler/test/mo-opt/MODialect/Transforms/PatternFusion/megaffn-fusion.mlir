@@ -21,7 +21,7 @@ module attributes {mo.device_info_mapping = {gpu = #M.device_info<"gpu", "cuda",
 // CHECK: mo.buffer.create
 // CHECK-SAME: [267840], ui32
 // CHECK: mo.composite.mega_ffn_nvfp4
-// CHECK-SAME: activation = "silu", swiglu_alpha = "0.0", swiglu_limit = "0.0"
+// CHECK-SAME: activation = "silu", swiglu_alpha = #M.dense_array<0.000000e+00> : tensor<f32>, swiglu_limit = #M.dense_array<0.000000e+00> : tensor<f32>
 // CHECK-NOT: mo.composite.grouped_matmul_swiglu_nvfp4
 // CHECK-NOT: mo.composite.grouped_matmul_block_scaled
 //
@@ -52,7 +52,7 @@ mo.graph @mega_ffn_fuses(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -83,7 +83,7 @@ mo.graph @mega_ffn_fuses(
 //
 // CHECK-LABEL: mo.graph @mega_ffn_fuses_clamp
 // CHECK: mo.composite.mega_ffn_nvfp4
-// CHECK-SAME: activation = "swigluoai", swiglu_alpha = "1.5", swiglu_limit = "5.0"
+// CHECK-SAME: activation = "swigluoai", swiglu_alpha = #M.dense_array<1.500000e+00> : tensor<f32>, swiglu_limit = #M.dense_array<5.000000e+00> : tensor<f32>
 // CHECK-NOT: mo.composite.grouped_matmul_swiglu_nvfp4
 // CHECK-NOT: mo.composite.grouped_matmul_block_scaled
 mo.graph @mega_ffn_fuses_clamp(
@@ -106,7 +106,7 @@ mo.graph @mega_ffn_fuses_clamp(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) [activation = "swigluoai", swiglu_alpha = "1.5", swiglu_limit = "5.0"] : (
+      %gate_up_nae) [activation = "swigluoai", swiglu_alpha = #M.dense_array<1.5> : tensor<f32>, swiglu_limit = #M.dense_array<5.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -159,7 +159,7 @@ mo.graph @neg_multi_use_intermediate(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -213,7 +213,7 @@ mo.graph @neg_mismatched_routing(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -265,7 +265,7 @@ mo.graph @neg_too_many_experts(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[129, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -323,7 +323,7 @@ mo.graph @mega_ffn_fuses_row_scales(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %row_scales, %c_in_scales, %est_m,
       %gate_up_nae)
-      [has_a_row_scales = true] : (
+      [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>, has_a_row_scales = true] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -379,8 +379,7 @@ mo.graph @neg_down_row_scales(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae)
- : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[49, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
@@ -435,7 +434,7 @@ mo.graph @mega_ffn_fuses_128_experts(
   %down_in, %silu_scales = mo.composite.grouped_matmul_swiglu_nvfp4(
       %hidden, %gate_up_w, %a_scales, %gate_up_bs, %row_off, %expert_ids,
       %scale_off, %gate_up_es, %gate_up_es, %c_in_scales, %est_m,
-      %gate_up_nae) : (
+      %gate_up_nae) [activation = "silu", swiglu_alpha = #M.dense_array<0.0> : tensor<f32>, swiglu_limit = #M.dense_array<0.0> : tensor<f32>] : (
       !mo.tensor<[66560, 3584], ui8, gpu:0>,
       !mo.tensor<[128, 4096, 3584], ui8, gpu:0>,
       !mo.tensor<[569, 112, 32, 4, 4], f8e4m3fn, gpu:0>,
