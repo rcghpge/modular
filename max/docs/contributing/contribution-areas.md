@@ -15,6 +15,8 @@ Many parts of the codebase are under active development. Contributions to
 these components may receive closer review or be superseded by internal work,
 so opening an issue to discuss first is strongly recommended.
 
+Before you start work, check that the part of MAX you want to improve is
+covered here, then follow the [contribution process](contribution-process.md).
 Keep each pull request inside a single area. See
 [keep pull requests small](issue-pr-etiquette.md#keep-pull-requests-small).
 

@@ -36,6 +36,9 @@ contributing documentation, examples, or code.
 
 ## How a contribution works
 
+The [contribution process](./contribution-process.md) takes you from signaling
+your intent on an issue through to your change shipping in a nightly.
+
 For the mechanics of forking, branching, and opening a pull request against
 this repository, see the [Modular contributor guide on
 GitHub](https://github.com/modular/modular/blob/main/CONTRIBUTING.md).
