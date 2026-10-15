@@ -197,15 +197,16 @@ _ParamKey = tuple[tuple[str, str, object], ...]
 
 
 def _frozen_params(
-    params: Mapping[str, bool | int | str | DType | None],
+    params: Mapping[str, bool | int | float | str | DType | None],
 ) -> _ParamKey:
     """Canonicalizes a param dict into a hashable, order-independent key.
 
     Each entry carries its value's type name, because ``ops.custom`` lowers
-    ``bool``, ``int``, ``str`` and ``DType`` to four different MLIR
+    ``bool``, ``int``, ``float``, ``str`` and ``DType`` to different MLIR
     attributes (see ``_parameter_attribute``) while a key over the values
-    alone collapses two of those pairs: ``DType.float32`` and ``"float32"``
-    share a spelling, and ``True`` and ``1`` compare and hash equal.
+    alone collapses some of those pairs: ``DType.float32`` and ``"float32"``
+    share a spelling, ``True`` and ``1`` compare and hash equal, and so do
+    ``1`` and ``1.0``.
     """
     return tuple(
         sorted(
@@ -316,7 +317,7 @@ def _resolve_extension(path: Path) -> Path:
 def _resolve_parameters(
     inputs: Mapping[str, TemplateType],
     outputs: Sequence[TemplateType],
-    parameters: Mapping[str, bool | int | str | DType | None],
+    parameters: Mapping[str, bool | int | float | str | DType | None],
 ) -> tuple[
     dict[str, TemplateType],
     tuple[TemplateType, ...],
@@ -414,7 +415,7 @@ class CustomOp:
     extensions: tuple[Path, ...]
     #: Compile-time parameters passed to the kernel. ``None`` declares one
     #: without giving it a value yet (see :attr:`is_complete`).
-    parameters: Mapping[str, bool | int | str | DType | None] = field(
+    parameters: Mapping[str, bool | int | float | str | DType | None] = field(
         hash=False
     )
     #: The signature as declared, before valued parameters were folded
@@ -678,7 +679,7 @@ class CustomOp:
         )
 
     def __getitem__(
-        self, params: Mapping[str, bool | int | str | DType | None]
+        self, params: Mapping[str, bool | int | float | str | DType | None]
     ) -> CustomOp:
         """Returns a derived op specialized with per-call *params*.
 
@@ -938,7 +939,8 @@ def declare(
     *,
     inputs: Mapping[str, TemplateType],
     outputs: Sequence[TemplateType],
-    parameters: Mapping[str, bool | int | str | DType | None] | None = None,
+    parameters: Mapping[str, bool | int | float | str | DType | None]
+    | None = None,
     custom_extensions: Sequence[Path | str] = (),
 ) -> CustomOp:
     """Declares a custom op from its signature.
