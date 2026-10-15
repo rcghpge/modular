@@ -359,6 +359,20 @@ def test_moe_splits_each_experts_channels(w4a4: bool) -> None:
     assert moe.gate.weight.placements == (Replicated(),)
 
 
+@pytest.mark.parametrize("bf16_gate", [False, True])
+def test_router_gate_is_built_in_the_dtype_it_loads(bf16_gate: bool) -> None:
+    """The router's gate weight has the dtype that ``_prepare_state_dict``
+    casts the checkpoint's gate to."""
+    config = model_config(TINY_LAYERS, TINY)
+    config.bf16_router_gate = bf16_gate
+    moe = _model(config).backbone.layers[1].mixer
+    assert isinstance(moe, NemotronHMoE)
+    assert moe.gate.weight.dtype == config.router_gate_dtype
+    assert config.router_gate_dtype == (
+        DType.bfloat16 if bf16_gate else DType.float32
+    )
+
+
 def test_mamba_shards_by_head() -> None:
     """Each device runs half the heads and the groups they read."""
     model = _model_on_devices(model_config(TINY_LAYERS, TINY, n_devices=2))
@@ -671,16 +685,20 @@ def _scheme_with_w4a4_experts(config: NemotronHConfig) -> NemotronHQuantScheme:
         (8, W4A4_DIMS, _scheme_with_w4a4_experts),
     ],
 )
+@pytest.mark.parametrize("bf16_gate", [False, True])
 def test_weights_are_planned_as_the_modules_place_them(
-    n: int, dims: dict[str, int], scheme: Scheme | None
+    n: int, dims: dict[str, int], scheme: Scheme | None, bf16_gate: bool
 ) -> None:
     """Sharded weights are counted once, replicated ones per device, and a
     repeated KV head once per device that holds it. NVFP4 block scales are
-    counted with each device's padding."""
+    counted with each device's padding, and the router gates in their
+    dtype."""
     pipeline = Mock()
     pipeline.model.weights_size.return_value = 1000
     one_config = model_config(TINY_LAYERS, dims)
     config = model_config(TINY_LAYERS, dims, n_devices=n)
+    one_config.bf16_router_gate = bf16_gate
+    config.bf16_router_gate = bf16_gate
     if scheme is not None:
         one_config.quant_scheme = scheme(one_config)
         config.quant_scheme = scheme(config)

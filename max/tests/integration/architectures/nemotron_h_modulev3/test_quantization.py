@@ -37,6 +37,7 @@ from max.pipelines.architectures.nemotron_h_modulev3.quantization import (
 )
 from max.pipelines.architectures.nemotron_h_modulev3.weight_adapters import (
     _bytes,
+    cast_router_gates,
     interleave_nvfp4_scales,
     permute_mamba_for_tp,
     prepare_nvfp4_linears,
@@ -585,3 +586,21 @@ def test_each_device_gets_a_copy_of_its_kv_head() -> None:
         )
     # Two devices split the heads without repeating them.
     assert repeat_kv_heads_for_tp(state_dict, config, 2) == state_dict
+
+
+def test_only_the_router_gates_are_cast() -> None:
+    gate = "backbone.layers.1.mixer.gate.weight"
+    bias = "backbone.layers.1.mixer.gate.e_score_correction_bias"
+    weights = cast_router_gates(
+        {
+            gate: _weight(
+                np.array([[1.0, 1.0 + 2.0**-10, -3.0]], np.float32),
+                DType.float32,
+            ),
+            bias: _weight(np.ones(3, np.float32), DType.float32),
+        },
+        DType.bfloat16,
+    )
+    # 1 + 2^-10 is below bfloat16's resolution at 1 and rounds to 1.
+    np.testing.assert_array_equal(_values(weights[gate]), [[1.0, 1.0, -3.0]])
+    assert weights[bias].dtype == DType.float32

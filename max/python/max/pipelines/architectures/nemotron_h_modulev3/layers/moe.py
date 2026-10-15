@@ -225,13 +225,15 @@ class NemotronHRouter(Module[[Tensor], tuple[Tensor, Tensor]]):
     """
 
     def __init__(self, config: NemotronHConfig) -> None:
+        self.bf16_gate = config.bf16_router_gate
         self.fused = config.fused_router
         self.num_experts = config.num_experts
         self.num_experts_per_tok = config.num_experts_per_tok
         self.norm_topk_prob = config.norm_topk_prob
         self.routed_scaling_factor = config.routed_scaling_factor
         self.weight = Tensor.zeros(
-            [config.num_experts, config.hidden_size], dtype=DType.float32
+            [config.num_experts, config.hidden_size],
+            dtype=config.router_gate_dtype,
         )
         self.e_score_correction_bias = Tensor.zeros(
             [config.num_experts], dtype=DType.float32
@@ -261,7 +263,12 @@ class NemotronHRouter(Module[[Tensor], tuple[Tensor, Tensor]]):
     def _route(
         self, x: Tensor, weight: Tensor, bias: Tensor
     ) -> tuple[Tensor, Tensor]:
-        if self.fused:
+        if self.bf16_gate:
+            # A tensor-core GEMM. The router reads float32 scores, so the
+            # logits widen before the sigmoid.
+            logits = F.cast(x, DType.bfloat16) @ weight.T
+            scores = F.sigmoid(F.cast(logits, DType.float32))
+        elif self.fused:
             return moe_sigmoid_gemv_router(
                 x,
                 weight,
@@ -270,7 +277,8 @@ class NemotronHRouter(Module[[Tensor], tuple[Tensor, Tensor]]):
                 norm_weights=self.norm_topk_prob,
                 routed_scaling_factor=self.routed_scaling_factor,
             )
-        scores = F.sigmoid(F.cast(x, DType.float32) @ weight.T)
+        else:
+            scores = F.sigmoid(F.cast(x, DType.float32) @ weight.T)
         return moe_router_group_limited(
             scores,
             bias,

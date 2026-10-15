@@ -26,6 +26,7 @@ from ..llama3_modulev3.batch_processor import Llama3ModuleV3BatchProcessor
 from .model_config import LayerKind, NemotronHConfig
 from .nemotron_h import NemotronH
 from .weight_adapters import (
+    cast_router_gates,
     permute_mamba_for_tp,
     prepare_nvfp4_linears,
     repeat_kv_heads_for_tp,
@@ -70,6 +71,9 @@ class NemotronHModel(
             num_experts,
             model_config.mixers(LayerKind.MOE) - w4a4_mixers,
             n,
+        )
+        state_dict = cast_router_gates(
+            state_dict, model_config.router_gate_dtype
         )
         state_dict = permute_mamba_for_tp(state_dict, model_config, n)
         state_dict = prepare_nvfp4_linears(state_dict, model_config, n)

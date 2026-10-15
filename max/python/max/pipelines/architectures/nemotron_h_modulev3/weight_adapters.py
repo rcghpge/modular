@@ -51,7 +51,8 @@ def convert_nemotron_h_state_dict(
 ) -> dict[str, WeightData]:
     """Returns the tensors Nemotron-H reads, under their own names.
 
-    Upcasts the router weight to float32; the router matmul runs in float32.
+    The router gate weight keeps its stored dtype, and
+    :func:`cast_router_gates` casts it to the router's at prepare time.
     Stores each depthwise conv weight ``[dim, 1, kernel]`` as the
     ``[dim, kernel]`` the conv kernel reads.
     """
@@ -64,9 +65,7 @@ def convert_nemotron_h_state_dict(
         ):
             continue
         data = value.data()
-        if name.endswith(".mixer.gate.weight") and data.dtype != DType.float32:
-            data = data.astype(DType.float32)
-        elif name.endswith(".mixer.conv1d.weight"):
+        if name.endswith(".mixer.conv1d.weight"):
             dim, _, kernel = (int(d) for d in data.shape)
             data = WeightData(
                 data=data.to_buffer().view(data.dtype, (dim, kernel)),
@@ -76,6 +75,21 @@ def convert_nemotron_h_state_dict(
             )
         weights[name] = data
     return weights
+
+
+def cast_router_gates(
+    state_dict: dict[str, WeightData], dtype: DType
+) -> dict[str, WeightData]:
+    """Returns ``state_dict`` with every MoE router gate weight in ``dtype``,
+    the router module's (:attr:`NemotronHConfig.router_gate_dtype`)."""
+    return {
+        name: (
+            data.astype(dtype)
+            if name.endswith(".mixer.gate.weight") and data.dtype != dtype
+            else data
+        )
+        for name, data in state_dict.items()
+    }
 
 
 def _bytes(weight: WeightData) -> npt.NDArray[np.uint8]:

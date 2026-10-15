@@ -241,12 +241,23 @@ class NemotronHConfig(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
     return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE
     target_layer_ids: tuple[int, ...] = ()
     fused_router: bool = False
-    """Whether the MoE router runs its gate GEMV, sigmoid and top-k as one
-    fused op instead of a separate float32 matmul."""
+    """Whether the MoE router runs its float32 gate GEMV, sigmoid and top-k
+    as one fused op instead of a separate float32 matmul. Off whenever
+    ``bf16_router_gate`` is on."""
+    bf16_router_gate: bool = False
+    """Whether the MoE router computes its gate scores with a bfloat16
+    tensor-core matmul (float32 accumulation) and keeps its gate weight in
+    bfloat16, instead of a float32 gate GEMV or matmul."""
     capture_mamba_replay: bool = False
     """Whether each Mamba block also returns the inputs of its state updates,
     so that a speculative verify can replay the accepted prefix onto the live
     state afterwards (see :mod:`.state_rollback`)."""
+
+    @property
+    def router_gate_dtype(self) -> DType:
+        """The dtype of the MoE router's gate weight, both in the module and
+        in the state dict it loads."""
+        return DType.bfloat16 if self.bf16_router_gate else DType.float32
 
     def w4a4_mixers(self) -> frozenset[str]:
         """Returns the MoE mixers whose routed experts are NVFP4, run W4A4."""
@@ -509,11 +520,20 @@ class NemotronHConfig(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
             hf, kv_params=kv_params, devices=devices, max_seq_len=max_seq_len
         )
         _check_quantized_runs_on(model_config.device_specs, config.quant_scheme)
-        config.fused_router = _runs_fused_router(
-            model_config.device_specs,
-            num_experts=config.num_experts,
-            num_experts_per_tok=config.num_experts_per_tok,
-            hidden_size=config.hidden_size,
+        config.bf16_router_gate = all(
+            is_sm100(device)
+            for device in load_devices(model_config.device_specs)
+        )
+        # The bf16 gate matmul replaces the fused float32 GEMV, so at most
+        # one of the two flags is on.
+        config.fused_router = (
+            not config.bf16_router_gate
+            and _runs_fused_router(
+                model_config.device_specs,
+                num_experts=config.num_experts,
+                num_experts_per_tok=config.num_experts_per_tok,
+                hidden_size=config.hidden_size,
+            )
         )
         hf_quant_config = resolve_hf_quant_config(hf, {}) or {}
         if hf_quant_config.get("kv_cache_scheme") and kv_cache_format is None:
