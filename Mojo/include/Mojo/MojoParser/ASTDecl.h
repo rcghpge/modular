@@ -30,7 +30,7 @@ namespace M::KGEN::LIT {
 class DocString;
 class TypeScopeASTDecl;
 
-using DeclIRValue = SmartVariant<Operation *, CValue, std::nullopt_t>;
+using DeclIRValue = SmartVariant<Operation *, CValue>;
 
 struct UnresolvedWildcardImport {
   ImportPathAttr moduleName;

@@ -4404,12 +4404,11 @@ LogicalResult EnumCaseASTDecl::resolveAndCheckRedefinition(
     auto diag = shared.emitError(getLoc())
                 << "invalid redefinition of '" << caseOp.getName() << "'";
     diag.attachNote(previousDefinition->getLoc()) << "previous definition here";
-    // Leave the decl as `resolve` leaves a malformed case, so that nothing
-    // resolves it.
+    // The duplicate does not declare a case.
     caseOp.erase();
-    setIRValue(std::nullopt);
     setErroneous();
     resolvedness = DeclResolvedness::body;
+    shared.getDeclResolver().eraseDecl(*this);
     return failure();
   }
   return shared.getDeclResolver().resolveSignature(*this, getLoc());
@@ -4842,7 +4841,9 @@ LogicalResult EnumCaseASTDecl::resolveSignature(Lexer &lexer) {
   // A malformed case declares no case.
   auto removeCase = [&] {
     caseOp.erase();
-    setIRValue(std::nullopt);
+    setErroneous();
+    resolvedness = DeclResolvedness::body;
+    shared.getDeclResolver().eraseDecl(*this);
     return failure();
   };
   auto rejectCase = [&](SMLoc loc) {
