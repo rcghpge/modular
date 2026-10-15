@@ -110,6 +110,7 @@ from nn.gemv_partial_norm import gemv_and_partial_norm
 from extensibility import InputTensor, OutputTensor
 from extensibility import Tensor, TileTensorable
 from extensibility import _FusedComputeOutputTensor
+from extensibility import _FusedOutputTensor as FusedOutputTensor
 from extensibility import (
     _FusedInputTensor as FusedInputTensor,
 )
@@ -224,9 +225,61 @@ def composite_matmul_fused_partial_rms_norm_shape(
     )
 
 
-@extensibility.register("mo.matmul")
-struct Matmul:
-    """Registers the `mo.matmul` graph op with the graph compiler."""
+@extensibility.register("mo.matmul", type="cpu")
+struct MatmulCPU:
+    """Registers the `mo.matmul` graph op for CPU devices."""
+
+    @staticmethod
+    def execute[
+        transpose_b: Bool,
+        packed_b: Bool,
+        has_epilogue_fusion: Bool,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        c: FusedOutputTensor[rank=2, ...],
+        a: InputTensor[rank=2, ...],
+        b: InputTensor[rank=2, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        comptime assert not (packed_b and transpose_b), (
+            "transpose_b and b_packed cannot both be true because"
+            " pre-packing transposes B"
+        )
+
+        @__parameter
+        @inline(.always)
+        def epilogue_fn[
+            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
+        ](coords: Coord, val: SIMD[_dtype, _width]):
+            comptime assert (
+                coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
+            c._lambda_store[width=_width, element_alignment=alignment](
+                coords,
+                rebind[SIMD[c.dtype, _width]](val),
+            )
+
+        matmul[
+            transpose_a=False,
+            transpose_b=transpose_b,
+            b_packed=packed_b,
+            elementwise_lambda_fn=Optional[matmul_elementwise_epilogue_type](
+                epilogue_fn
+            ) if has_epilogue_fusion else None,
+            _trace_description=_trace_name,
+            target=target,
+        ](
+            c.to_tile_tensor[.int64](),
+            a.to_tile_tensor[.int64](),
+            b.to_tile_tensor[.int64](),
+            ctx,
+        )
+
+
+@extensibility.register("mo.matmul", type="gpu")
+struct MatmulGPU:
+    """Registers the `mo.matmul` graph op for GPU devices."""
 
     @staticmethod
     def execute[
@@ -241,12 +294,7 @@ struct Matmul:
         b: InputTensor[rank=2, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        comptime assert not (packed_b and transpose_b), (
-            "transpose_b and b_packed cannot both be true because"
-            " pre-packing transposes B"
-        )
-
-        comptime transposed_a = False
+        comptime assert not packed_b, "packed B is only supported on CPU"
 
         @__parameter
         @inline(.always)
@@ -290,13 +338,12 @@ struct Matmul:
         ) if has_epilogue_fusion and has_compute_lambda else None
 
         matmul[
-            transposed_a,
-            transpose_b,
-            packed_b,
-            elementwise_lambda,
-            compute_lambda,
-            target=target,
+            transpose_a=False,
+            transpose_b=transpose_b,
+            elementwise_lambda_fn=elementwise_lambda,
+            elementwise_compute_lambda_fn=compute_lambda,
             _trace_description=_trace_name,
+            target=target,
         ](
             c.to_tile_tensor[.int64](),
             a.to_tile_tensor[.int64](),
@@ -305,9 +352,9 @@ struct Matmul:
         )
 
 
-@extensibility.register("mo.batch_matmul")
-struct BatchMatmul:
-    """Registers the `mo.batch_matmul` graph op with the graph compiler."""
+@extensibility.register("mo.batch_matmul", type="cpu")
+struct BatchMatmulCPU:
+    """Registers the `mo.batch_matmul` graph op for CPU devices."""
 
     @staticmethod
     def execute[
@@ -321,17 +368,13 @@ struct BatchMatmul:
         b: InputTensor[rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        comptime transpose_a = False
-
-        var a_tile = a.to_tile_tensor[.int64]()
-        var b_tile = b.to_tile_tensor[.int64]()
-        var c_tile = c.to_tile_tensor[.int64]()
-
         @__parameter
         @inline(.always)
         def output_fn[
             _type: DType, _width: SIMDLength, *, alignment: Int = 1
         ](coords: Coord, val: SIMD[_type, _width]):
+            # TODO(GEX-4375): `batched_matmul` only takes a store epilogue, so
+            # take a plain `FusedOutputTensor` and drop this compute branch.
             comptime has_compute_lambda = type_of(c)._has_compute_fusion
 
             comptime if has_compute_lambda:
@@ -345,13 +388,68 @@ struct BatchMatmul:
                 )
 
         batched_matmul[
-            transpose_a=transpose_a,
+            transpose_a=False,
             transpose_b=transpose_b,
             elementwise_epilogue_fn=Optional[
                 batched_matmul_elementwise_epilogue_type
             ](output_fn) if has_epilogue_fusion else None,
             target=target,
-        ](c_tile, a_tile, b_tile, context=ctx)
+        ](
+            c.to_tile_tensor[.int64](),
+            a.to_tile_tensor[.int64](),
+            b.to_tile_tensor[.int64](),
+            context=ctx,
+        )
+
+
+@extensibility.register("mo.batch_matmul", type="gpu")
+struct BatchMatmulGPU:
+    """Registers the `mo.batch_matmul` graph op for GPU devices."""
+
+    @staticmethod
+    def execute[
+        has_epilogue_fusion: Bool,
+        rank: Int,
+        transpose_b: Bool,
+        target: StaticString,
+    ](
+        c: _FusedComputeOutputTensor[rank=rank, ...],
+        a: InputTensor[rank=rank, ...],
+        b: InputTensor[rank=rank, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        @__parameter
+        @inline(.always)
+        def output_fn[
+            _type: DType, _width: SIMDLength, *, alignment: Int = 1
+        ](coords: Coord, val: SIMD[_type, _width]):
+            # TODO(GEX-4375): `batched_matmul` only takes a store epilogue, so
+            # take a plain `FusedOutputTensor` and drop this compute branch.
+            comptime has_compute_lambda = type_of(c)._has_compute_fusion
+
+            comptime if has_compute_lambda:
+                var output = c._fused_compute_output_lambda[
+                    element_alignment=alignment
+                ](coords, rebind[SIMD[c.dtype, _width]](val))
+                c.store[element_alignment=alignment](coords, output)
+            else:
+                c._lambda_store[width=_width, element_alignment=alignment](
+                    coords, rebind[SIMD[c.dtype, _width]](val)
+                )
+
+        batched_matmul[
+            transpose_a=False,
+            transpose_b=transpose_b,
+            elementwise_epilogue_fn=Optional[
+                batched_matmul_elementwise_epilogue_type
+            ](output_fn) if has_epilogue_fusion else None,
+            target=target,
+        ](
+            c.to_tile_tensor[.int64](),
+            a.to_tile_tensor[.int64](),
+            b.to_tile_tensor[.int64](),
+            context=ctx,
+        )
 
 
 @extensibility.register_shape_function("mo.batch_matmul")
