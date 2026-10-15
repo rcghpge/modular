@@ -203,9 +203,7 @@ def test_router_group_limited_fused_scores[
     # Descends strictly with the expert index, so group 0 wins the group stage
     # and its experts come back in index order.
     @inline(.always)
-    def scores_input_fn[
-        width: Int
-    ](coords: Coord) capturing -> SIMD[.float32, width]:
+    def scores_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
@@ -220,11 +218,11 @@ def test_router_group_limited_fused_scores[
         topk_group,
         True,
         target="gpu",
-        scores_input_fn=scores_input_fn,
     ](
         indices_tensor,
         weights_tensor,
         scores_tensor.layout,
+        scores_input_fn,
         bias_tensor.as_imm(),
         Float32(1.0),
         ctx,
@@ -302,9 +300,7 @@ def test_single_group_router_fused_scores[
     var bias_tensor = TileTensor(bias_dev, row_major[n_experts]())
 
     @inline(.always)
-    def scores_input_fn[
-        width: Int
-    ](coords: Coord) capturing -> SIMD[.float32, width]:
+    def scores_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
@@ -320,11 +316,11 @@ def test_single_group_router_fused_scores[
         topk_experts,
         True,
         "gpu",
-        scores_input_fn=scores_input_fn,
     ](
         indices_tensor,
         weights_tensor,
         scores_tensor.layout,
+        scores_input_fn,
         bias_tensor.as_imm(),
         Float32(1.0),
         ctx,
@@ -438,9 +434,7 @@ def test_single_group_router_eplb_fused_scores[
     var layer_idx = TileTensor(layer_idx_dev, row_major[1]())
 
     @inline(.always)
-    def scores_input_fn[
-        width: Int
-    ](coords: Coord) capturing -> SIMD[.float32, width]:
+    def scores_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
@@ -459,12 +453,12 @@ def test_single_group_router_eplb_fused_scores[
         max_replicas=max_replicas,
         hash_decorrelate=False,
         target="gpu",
-        scores_input_fn=scores_input_fn,
     ](
         expert_indices,
         expert_indices_log,
         expert_weights,
         expert_scores.layout,
+        scores_input_fn,
         expert_bias.as_imm(),
         logcnt.as_imm(),
         log2phy.as_imm(),
@@ -687,7 +681,7 @@ def test_single_group_router_scores_from_layout_and_lambda[
     var weights_tensor = TileTensor(weights_dev, out_layout)
     var bias_tensor = TileTensor(bias_dev, row_major[n_experts]())
 
-    def scores_fn[width: Int](coords: Coord) capturing -> SIMD[.float32, width]:
+    def scores_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
@@ -696,12 +690,11 @@ def test_single_group_router_scores_from_layout_and_lambda[
         ) % n_experts
         return SIMD[.float32, width](Float32(n_experts - rotated))
 
-    single_group_router[
-        n_experts, topk_experts, True, "gpu", scores_input_fn=scores_fn
-    ](
+    single_group_router[n_experts, topk_experts, True, "gpu"](
         indices_tensor,
         weights_tensor,
         row_major(Coord(num_tokens, Idx[n_experts])),
+        scores_fn,
         bias_tensor.as_imm(),
         Float32(1.0),
         ctx,

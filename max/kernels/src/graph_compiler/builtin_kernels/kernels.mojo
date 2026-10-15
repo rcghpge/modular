@@ -2090,11 +2090,10 @@ struct Struct_moe_router_group_limited:
         routed_scaling_factor: Float32,
         context: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: Coord) -> SIMD[scores_type, width]:
+        ](coords: Coord) {var expert_scores} -> SIMD[scores_type, width]:
             comptime assert (
                 coords.rank == 2
             ), "the expert-scores lambda contract is rank 2"
@@ -2107,11 +2106,11 @@ struct Struct_moe_router_group_limited:
             topk_group,
             norm_weights,
             target=target,
-            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
             expert_scores.runtime_layout(),
+            scores_input_fn,
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             routed_scaling_factor,
             context,
@@ -2179,11 +2178,10 @@ struct Struct_moe_single_group_router_eplb:
         routed_scaling_factor: Float32,
         context: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: Coord) -> SIMD[scores_type, width]:
+        ](coords: Coord) {var expert_scores} -> SIMD[scores_type, width]:
             comptime assert (
                 coords.rank == 2
             ), "the expert-scores lambda contract is rank 2"
@@ -2197,12 +2195,12 @@ struct Struct_moe_single_group_router_eplb:
             max_replicas=max_replicas,
             hash_decorrelate=hash_decorrelate,
             target=target,
-            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_indices_log.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
             expert_scores.runtime_layout(),
+            scores_input_fn,
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             logcnt.to_tile_tensor[.int64]().as_imm(),
             log2phy.to_tile_tensor[.int64]().as_imm(),
@@ -2235,11 +2233,10 @@ struct Struct_moe_single_group_router:
         routed_scaling_factor: Float32,
         context: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: Coord) -> SIMD[scores_type, width]:
+        ](coords: Coord) {var expert_scores} -> SIMD[scores_type, width]:
             comptime assert (
                 coords.rank == 2
             ), "the expert-scores lambda contract is rank 2"
@@ -2250,11 +2247,11 @@ struct Struct_moe_single_group_router:
             n_experts_per_tok,
             norm_weights=norm_weights,
             target=target,
-            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
             expert_scores.runtime_layout(),
+            scores_input_fn,
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             routed_scaling_factor,
             context,
