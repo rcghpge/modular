@@ -43,11 +43,13 @@ from max.experimental import functional as F
 from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
 from max.experimental.sharding import DeviceMapping, DeviceMesh
 from max.experimental.tensor import Tensor
-from max.graph import BufferType, TensorType, TensorValue, ops
+from max.graph import BufferType, DeviceRef, TensorType, TensorValue, ops
+from max.nn.kernels import argmax_with_bias
 from max.nn.kv_cache import RecurrentStateInputsPerDevice
 from max.pipelines.speculative._tensor_compat import as_graph_values
 from max.pipelines.speculative.block_driver import (
     Accepted,
+    ArgmaxDraftSampler,
     BlockBatch,
     DraftSampler,
     block_kv_with_dispatch,
@@ -361,7 +363,17 @@ class DSparkNemotronHProposer:
         logits = self.target.target.lm_head(
             drafted.reshape([-1, self.hidden_size])
         )
-        logits = F.allgather(logits, tensor_axis=-1).cast(DType.float32)
+        logits = F.allgather(logits, tensor_axis=-1)
+        # A greedy draft takes each position's argmax of base + bias in one
+        # fused pass that reads the logits in place and adds in float32 in
+        # registers, the same index as an argmax of the float32 sum. The
+        # sampled draft keeps the float32 logits its sampler draws from.
+        fused_argmax = (
+            isinstance(sampler, ArgmaxDraftSampler)
+            and TensorValue(logits.local_shards[0]).device != DeviceRef.CPU()
+        )
+        if not fused_argmax:
+            logits = logits.cast(DType.float32)
         vocab = logits.shape[-1]
         base = TensorValue(logits.local_shards[0]).reshape(
             ("batch_size", drafts, vocab)
@@ -375,8 +387,11 @@ class DSparkNemotronHProposer:
             bias = TensorValue(
                 markov_bias(head, Tensor.from_graph_value(previous))
             )
-            previous = sampler.sample_next(
-                base[:, step, :] + bias.cast(DType.float32), step
-            )
+            if fused_argmax:
+                previous = argmax_with_bias(base, bias, position=step)
+            else:
+                previous = sampler.sample_next(
+                    base[:, step, :] + bias.cast(DType.float32), step
+                )
             sampled.append(ops.unsqueeze(previous, axis=1))
         return ops.concat(sampled, axis=1)

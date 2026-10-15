@@ -12155,6 +12155,62 @@ def gumbel_argmax_from_probs(
     )[0].tensor
 
 
+def argmax_with_bias(
+    logits: TensorValue, bias: TensorValue, *, position: int
+) -> TensorValue:
+    """Takes each row's argmax of one position's logits plus a bias.
+
+    Computes ``argmax(logits[:, position, :].cast(float32) +
+    bias.cast(float32), axis=-1)`` in one pass, adding in float32 in
+    registers. The upcast is exact for 16-bit inputs, so the index equals the
+    one ``ops.argmax`` returns on the materialized float32 sum: the lowest
+    index wins a tie and NaN never wins. ``logits`` is read in place, so a
+    caller that walks the positions of a ``[rows, positions, vocab]`` tensor
+    never relays it out. GPU-only.
+
+    Args:
+        logits: ``[rows, positions, vocab_size]`` logits.
+        bias: ``[rows, vocab_size]`` bias.
+        position: The position of ``logits`` to read.
+
+    Returns:
+        The argmax per row, ``int64 [rows]``.
+
+    Raises:
+        ValueError: If the ranks are wrong, the position is out of range, or
+            the inputs are on the CPU.
+    """
+    if logits.rank != 3 or bias.rank != 2:
+        raise ValueError(
+            "argmax_with_bias requires rank-3 logits and rank-2 bias, got "
+            f"{logits.rank} and {bias.rank}"
+        )
+    if logits.device == DeviceRef.CPU():
+        raise ValueError("argmax_with_bias is GPU-only")
+    positions = logits.shape[1]
+    if isinstance(positions, StaticDim) and not 0 <= position < int(positions):
+        raise ValueError(
+            f"position {position} is outside the {int(positions)} positions"
+        )
+
+    return ops.custom(
+        "sampler.argmax_with_bias",
+        device=logits.device,
+        values=[
+            ops.constant(position, DType.int64, device=DeviceRef.CPU()),
+            logits,
+            bias,
+        ],
+        out_types=[
+            TensorType(
+                dtype=DType.int64,
+                shape=[logits.shape[0]],
+                device=logits.device,
+            )
+        ],
+    )[0].tensor
+
+
 def sgmv_kernel(  # noqa: ANN201
     input: TensorValue,
     lora: TensorValue,

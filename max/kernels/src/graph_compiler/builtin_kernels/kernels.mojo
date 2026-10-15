@@ -116,6 +116,7 @@ from nn.sampling import (
 from nn.split import split
 from nn.topk import fused_token_sampling_cpu as _fused_token_sampling_cpu
 from nn.topk import fused_token_sampling_gpu as _fused_token_sampling_gpu
+from nn.argmaxmin_gpu import argmax_with_bias_gpu
 from nn.topk import gumbel_sampling_fused_gpu
 from nn.sampling import topk_topp_masked_probs, topk_topp_sampling_from_prob
 from nn.toppminp import min_p_sampling as min_p_sampling_cpu
@@ -2855,6 +2856,40 @@ struct Struct_gumbel_argmax_from_probs:
             probs.to_tile_tensor[.int64](),
             out_tokens.to_tile_tensor[.int64](),
             seed=seed.to_tile_tensor[.int64]().as_unsafe_any_origin().as_imm(),
+        )
+
+
+@extensibility.register("sampler.argmax_with_bias")
+struct Struct_argmax_with_bias:
+    """Registers the `sampler.argmax_with_bias` graph op.
+
+    Takes, per row, the argmax of `logits[:, position, :] + bias`, with both
+    inputs upcast and added in float32 in registers: the same index as an
+    argmax of the materialized float32 sum. The DSpark Markov head runs it
+    once per draft position and reads the draft logits in place.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        dtype: DType,
+        bias_dtype: DType,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        out_tokens: OutputTensor[dtype=.int64, rank=1, ...],
+        position: Scalar,
+        logits: InputTensor[dtype=dtype, rank=3, ...],
+        bias: InputTensor[dtype=bias_dtype, rank=2, ...],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[target](), "sampler.argmax_with_bias is GPU-only"
+        argmax_with_bias_gpu(
+            ctx,
+            logits.to_tile_tensor[.int64](),
+            bias.to_tile_tensor[.int64](),
+            Int(position),
+            out_tokens.to_tile_tensor[.int64](),
         )
 
 
