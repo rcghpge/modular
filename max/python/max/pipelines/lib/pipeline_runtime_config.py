@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+from typing import Literal
 
 from max.config import ConfigFileModel
 from max.pipelines.diffusion.config import (
@@ -257,6 +258,16 @@ class PipelineRuntimeConfig(ConfigFileModel):
             "per GPU; total redundant slots = k * ep_size (so num_redundant "
             "is always a multiple of the device count, which the rebalance "
             "algorithm requires)."
+        ),
+    )
+
+    eplb_planner: Literal["per_layer", "aggregated"] = Field(
+        default="per_layer",
+        description=(
+            "How EPLB turns a routing snapshot into an expert placement. "
+            "per_layer (default) balances each MoE layer on its own "
+            "histogram; aggregated balances the sum over layers and uses one "
+            "placement for every layer."
         ),
     )
 
