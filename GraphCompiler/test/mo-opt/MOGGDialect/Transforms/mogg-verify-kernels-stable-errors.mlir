@@ -7,7 +7,6 @@
 // violation rather than stopping at the first.
 
 // CHECK-DAG: error: stable tensor arguments (StableTensor / StableVariadicTensors) are only supported on build_graph functions (argument at position 1 of the execute function)
-// CHECK-DAG: error: stable tensor arguments (StableTensor / StableVariadicTensors) are only supported on build_graph functions (argument at position 0 of the shape function)
 // CHECK-DAG: error: a stable tensor argument cannot be an output (argument at position 0 of the build_graph function)
 
 module {}

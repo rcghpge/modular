@@ -28,6 +28,14 @@ from extensibility import (
     DenseTensor,
     Fused,
     Input,
+    InputTensor,
+    InputVariadicTensors,
+    ManagedTensorSlice,
+    StableInputTensor,
+    StableInputVariadicTensors,
+    VariadicTensors,
+    _FusedInputVariadicTensors as FusedInputVariadicTensors,
+    _FusedOutputVariadicTensors as FusedOutputVariadicTensors,
     LoadAccess,
     Loadable,
     MutableInput,
@@ -275,3 +283,30 @@ struct TraitStableNoDense:
 @extensibility.register_shape_function("trait_shape_fn_stable")
 def trait_shape_fn_stable[T: Stable & DenseTensor](x: T) -> IndexList[T.rank]:
     return rebind[IndexList[T.rank]](coord_to_index_list(x.shape().tuple()))
+
+
+# Unbound IO parameters must not hide a legacy shape-function tensor argument.
+@extensibility.register_shape_function("legacy_shape_tensor")
+def legacy_shape_tensor(x: ManagedTensorSlice, y: InputTensor) -> IndexList[1]:
+    return IndexList[1]()
+
+
+@extensibility.register_shape_function("legacy_shape_variadic")
+def legacy_shape_variadic(
+    x: VariadicTensors, y: InputVariadicTensors
+) -> IndexList[1]:
+    return IndexList[1]()
+
+
+@extensibility.register_shape_function("legacy_shape_fused_variadic")
+def legacy_shape_fused_variadic(
+    x: FusedInputVariadicTensors, y: FusedOutputVariadicTensors
+) -> IndexList[1]:
+    return IndexList[1]()
+
+
+@extensibility.register_shape_function("legacy_shape_stable")
+def legacy_shape_stable(
+    x: StableInputTensor, y: StableInputVariadicTensors
+) -> IndexList[1]:
+    return IndexList[1]()

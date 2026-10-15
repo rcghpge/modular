@@ -755,6 +755,20 @@ struct ImportPackagesPass
       bool contractFailed = false;
       if (distillTraitArgs) {
         for (mlir::Type argType : fn.getArgumentTypes()) {
+          if (isShapeFunc) {
+            if (auto legacyType = getLegacyTensorArgType(argType)) {
+              mlir::emitError(fn.getLoc())
+                  << "shape-function tensor arguments must use tensor traits "
+                     "instead of '"
+                  << legacyType.getSymbol().getLeafReference().getValue()
+                  << "'; use 'Some[Tensor]' for shapes, 'Some[TileTensorable]' "
+                     "for element values, or 'TensorTuple' for variadic "
+                     "operands";
+              contractFailed = true;
+              contractAttrs.push_back(mlir::UnitAttr::get(ctx));
+              continue;
+            }
+          }
           if (getTensorArgPackTraitType(argType)) {
             mlir::emitError(fn.getLoc())
                 << "variadic packs of tensor-trait arguments are not "

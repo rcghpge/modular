@@ -1119,6 +1119,21 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   return contract;
 }
 
+KGEN::LIT::StructType getLegacyTensorArgType(mlir::Type argType) {
+  KGEN::LIT::StructType structType = getAsStructType(argType);
+  if (!structType)
+    return {};
+  auto sym = structType.getSymbol();
+  if (symbolMatches(sym, kMaxManagedTensorSlice) ||
+      symbolMatches(sym, kMaxVariadicTensors) ||
+      symbolMatches(sym, kMaxFusedInputVariadicTensors) ||
+      symbolMatches(sym, kMaxFusedOutputVariadicTensors) ||
+      symbolMatches(sym, kMaxStableTensor) ||
+      symbolMatches(sym, kMaxStableVariadicTensors))
+    return structType;
+  return {};
+}
+
 KGEN::LIT::TraitType getTensorArgTraitType(mlir::Type argType) {
   mlir::Type t = argType;
   // Borrowed tensor args are wrapped in a ref; strip it (mirrors

@@ -9,7 +9,7 @@ users who want to invoke the resulting functions.
 An example can be found in the `BottomK` struct in
 `max/kernels/src/graph_compiler/builtin_kernels/reductions.mojo`.
 
-```python
+```mojo
 @extensibility.register("mo.bottom_k")
 struct BottomK:
     @staticmethod
@@ -36,20 +36,17 @@ struct BottomK:
             ctx,
         )
 
-    @staticmethod
-    def shape(
-        input: InputTensor[...],
-        k: Scalar,
-        axis: Scalar,
-        sorted: Scalar[DType.bool],
-    ) raises -> IndexList[input.rank]:
-        return rebind[IndexList[input.rank]](
-            top_k_shape_impl(
-                input.to_tile_tensor[DType.int64](),
-                Int(k),
-                Int(axis),
-            )
-        )
+
+@extensibility.register_shape_function("mo.bottom_k")
+def bottom_k_shape(
+    input: Some[TileTensorable],
+    k: Scalar,
+    axis: Scalar,
+    sorted: Scalar[.bool],
+) raises -> IndexList[type_of(input).rank]:
+    return rebind[IndexList[type_of(input).rank]](
+        top_k_shape_impl(input.to_tile_tensor(), Int(k), Int(axis))
+    )
 ```
 
 We go over the most important components and what they mean:
@@ -58,7 +55,7 @@ We go over the most important components and what they mean:
 
 The key is one operation is organized under a singular struct:
 
-```python
+```mojo
 @extensibility.register("mo.bottom_k")
 struct BottomK:
 ```
@@ -70,18 +67,20 @@ to a custom op with symbol “my_cool_op.”
 
 ### Required Methods
 
-Right now we have two supported methods (plus one special thing for PT):
+Right now we have two supported functions (plus one special thing for PT):
 
-```python
-def execute():
-def shape() raises -> IndexList[input.rank]
+```mojo
+def execute()
+@extensibility.register_shape_function("mo.bottom_k")
+def bottom_k_shape() raises -> IndexList[rank]
 ```
 
-Execute implements the kernel body, while shape is used by the compiler to
-calculate the dynamic shape of outputs.
+Execute implements the kernel body, while the shape function is used by the
+compiler to calculate the dynamic shape of outputs. The shape function is a
+standalone function, not a method of the struct.
 
-Note **shape** is only needed if the compiler cannot otherwise figure out the
-parametric shapes.
+Note the **shape function** is only needed if the compiler cannot otherwise
+figure out the parametric shapes.
 
 E.g. for the graph-api folks if at the end of the compilation pipeline for MO
 you have:
@@ -90,7 +89,7 @@ you have:
 mo.foo<() -> A, B, C>(...) ... -> !mo.tensor<[A, B, C], f32>
 ```
 
-This needs a shape() implementation to run in order to define “A”, “B”, and
+This needs a registered shape function to run to define “A”, “B”, and
 “C”. Note:
 
 ```python
@@ -177,6 +176,31 @@ struct MyOp:
         ctx: DeviceContext,
     ) raises:
      ...
+```
+
+### Shape function operands
+
+Shape functions run on the host and must declare tensor arguments with tensor
+traits rather than `ManagedTensorSlice` or its aliases:
+
+- `Some[Tensor]` when the function reads only shapes.
+- `Some[TileTensorable]` when the function reads element values or calls a
+  helper that takes a tile tensor, as `bottom_k_shape` does above.
+- `TensorTuple` for variadic inputs.
+
+These arguments carry no IO-role, fusion, access, or stable marker. For
+example, `convert_e4m3fn_to_e4m3fnuz_shape` in
+`max/kernels/src/graph_compiler/builtin_kernels/conv.mojo` reads only the input
+shape:
+
+```mojo
+@extensibility.register_shape_function("mo.convert_e4m3fn_to_e4m3fnuz")
+def convert_e4m3fn_to_e4m3fnuz_shape(
+    input: Some[Tensor],
+) -> IndexList[type_of(input).rank]:
+    return rebind[IndexList[type_of(input).rank]](
+        coord_to_index_list(input.shape().tuple())
+    )
 ```
 
 ### **Parameters Supported**

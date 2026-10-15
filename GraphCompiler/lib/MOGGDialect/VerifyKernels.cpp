@@ -43,16 +43,11 @@ template <typename Func, typename... Args>
 // KernelDeclAdaptor-based verification (mogg.kernel.decl path)
 //===----------------------------------------------------------------------===//
 
-LogicalResult declVerifyShapeFunctionHasNoDPSOutputs(
+LogicalResult declVerifyShapeFunctionReturnsShape(
     KernelDeclOp decl,
     const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
   if (!shapeFunction.has_value())
     return success();
-  if (!shapeFunction->outputArguments.empty()) {
-    decl->emitError() << "Shape functions must not have any output tensor "
-                         "arguments";
-    return failure();
-  }
   if (!shapeFunction->outputResult.has_value()) {
     decl->emitError() << "Shape functions must return a shape";
     return failure();
@@ -198,9 +193,9 @@ declVerifyExecuteMatchesBuildGraph(KernelDeclOp decl,
 /// builder, so only `build_graph` may declare them, and only as inputs (a
 /// kernel writes its outputs through live addresses). The pack never carries
 /// fusion functors, so a fused stable argument is rejected too.
-LogicalResult declVerifyStableTensorArguments(
-    KernelDeclOp decl, const KernelDeclAdaptor &adaptor,
-    const std::optional<KernelDeclFunctionAdaptor> &shapeFunction) {
+LogicalResult
+declVerifyStableTensorArguments(KernelDeclOp decl,
+                                const KernelDeclAdaptor &adaptor) {
   auto positionOf = [](const KernelDeclOperandAdaptor &arg) -> uint64_t {
     return arg.sourceDescriptor ? arg.sourceDescriptor->position : 0;
   };
@@ -221,7 +216,6 @@ LogicalResult declVerifyStableTensorArguments(
   };
 
   if (rejectStable(adaptor.executeFunction, "execute").failed() ||
-      rejectStable(shapeFunction, "shape").failed() ||
       rejectStable(adaptor.elementwiseFunction, "elementwise").failed() ||
       rejectStable(adaptor.tileElementwiseFunction, "tile_elementwise")
           .failed())
@@ -920,7 +914,7 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
         continue;
       }
 
-      if (setFlagIfFailed(failed, declVerifyShapeFunctionHasNoDPSOutputs, decl,
+      if (setFlagIfFailed(failed, declVerifyShapeFunctionReturnsShape, decl,
                           shapeFnAdaptor)
               .failed())
         continue;
@@ -941,7 +935,7 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
         continue;
 
       if (setFlagIfFailed(failed, declVerifyStableTensorArguments, decl,
-                          adaptor, shapeFnAdaptor)
+                          adaptor)
               .failed())
         continue;
 

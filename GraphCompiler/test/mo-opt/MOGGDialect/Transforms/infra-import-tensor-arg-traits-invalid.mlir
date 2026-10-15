@@ -114,3 +114,14 @@ module {}
 
 // `Stable & DenseTensor` on a shape function (`trait_shape_fn_stable`).
 // CHECK-DAG: error: Stable is not allowed on a shape-function tensor argument
+
+
+// Legacy structs and aliases are rejected before IO parameter decoding.
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'ManagedTensorSlice'; use 'Some[Tensor]' for shapes, 'Some[TileTensorable]' for element values, or 'TensorTuple' for variadic operands
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'ManagedTensorSlice'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'VariadicTensors'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'VariadicTensors'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of '_FusedInputVariadicTensors'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of '_FusedOutputVariadicTensors'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'StableTensor'
+// CHECK-DAG: error: shape-function tensor arguments must use tensor traits instead of 'StableVariadicTensors'
