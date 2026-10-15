@@ -80,7 +80,7 @@ ErrorOr<KernelDeclAdaptor> getMojoKernelAdaptor(const MojoRegistry &registry,
   KernelDeclAdaptor adaptor(*declOpOr);
 
   if (!adaptor.executeFunction.has_value() &&
-      !adaptor.elementwiseFunction.has_value()) {
+      !adaptor.elementwiseFunction.has_value() && !adaptor.isReduction()) {
     return Error(
         llvm::formatv(
             "Could not find an execute or elementwise function for '{}'",

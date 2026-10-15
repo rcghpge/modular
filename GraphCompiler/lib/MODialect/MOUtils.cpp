@@ -102,3 +102,32 @@ LogicalResult M::MO::checkReshapeShapesCompatible(
                        << *inNumEles << " vs " << *outNumEles;
   return success();
 }
+
+ErrorOr<int64_t> M::MO::getReductionAxis(Value input, TypeRange results) {
+  auto inputTy = dyn_cast<TensorType>(input.getType());
+  if (!inputTy || !inputTy.hasRank())
+    return Error("needs a ranked tensor input");
+  MOSH::ShapeAttr inShape = inputTy.getShape();
+
+  std::optional<int64_t> axis;
+  for (Type type : results) {
+    auto resultTy = dyn_cast<TensorType>(type);
+    if (!resultTy || !resultTy.hasRank() ||
+        resultTy.getRank() != inputTy.getRank())
+      return Error("results must be tensors of the input's rank");
+    MOSH::ShapeAttr outShape = resultTy.getShape();
+    SmallVector<int64_t> changed;
+    for (int64_t d = 0, e = inShape.getRank(); d < e; ++d)
+      if (outShape[d] != inShape[d])
+        changed.push_back(d);
+    if (changed.size() != 1 ||
+        MOSH::ShapeAttr::getStaticDim(outShape[changed.front()]) != 1)
+      return Error("must turn exactly one input dimension into 1");
+    if (axis && *axis != changed.front())
+      return Error("results reduce different axes");
+    axis = changed.front();
+  }
+  if (!axis)
+    return Error("has no results");
+  return *axis;
+}

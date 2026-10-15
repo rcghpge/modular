@@ -665,13 +665,33 @@ ErrorOrSuccess M::MOGG::verifyCustomOp(const MojoRegistry &registry,
   if (declOpOr.isError())
     return declOpOr.takeError();
   KernelDeclAdaptor adaptor(*declOpOr);
-  if (!adaptor.executeFunction)
-    return Error(
-        llvm::formatv("kernel '{}' has no execute function", info.operationName)
-            .str());
-  auto mappingOr = mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
-  if (mappingOr.isError())
-    return mappingOr.takeError();
+  if (adaptor.isReduction()) {
+    StringRef name = info.operationName;
+    if (op->getNumOperands() != 1)
+      return Error(llvm::formatv("reduction '{}' takes one input, got {}", name,
+                                 op->getNumOperands())
+                       .str());
+    size_t numFields = adaptor.reduction->getOutputs().size();
+    if (op->getNumResults() != numFields)
+      return Error(llvm::formatv("reduction '{}' has {} output fields, but the "
+                                 "op has {} results",
+                                 name, numFields, op->getNumResults())
+                       .str());
+    ErrorOr<int64_t> axis =
+        MO::getReductionAxis(op->getOperand(0), op->getResultTypes());
+    if (axis.isError())
+      return Error(
+          llvm::formatv("reduction '{}' {}", name, axis.getError()).str());
+  } else {
+    if (!adaptor.executeFunction)
+      return Error(llvm::formatv("kernel '{}' has no execute function",
+                                 info.operationName)
+                       .str());
+    auto mappingOr =
+        mapMOOpToKernelImplementation(op, *adaptor.executeFunction);
+    if (mappingOr.isError())
+      return mappingOr.takeError();
+  }
 
   // For mo.custom, additionally check that user-supplied params match the
   // kernel's compile-time parameter list (struct + fn-level).

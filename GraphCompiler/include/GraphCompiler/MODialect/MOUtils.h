@@ -20,6 +20,7 @@
 #define GENERICML_GRAPHCOMPILER_MODIALECT_MOUTILS_H
 
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
+#include "Support/ErrorOr.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "Support/MDialect/MAttrs.h"
@@ -147,6 +148,11 @@ bool isMutableOperand(Value val);
 LogicalResult checkReshapeShapesCompatible(
     MOSH::ShapeAttr inShape, MOSH::ShapeAttr outShape,
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError);
+
+/// Returns the axis a reduction of `input` into `results` reduces: the one
+/// input dimension that every result keeps as a static 1. Errors on any other
+/// shape.
+ErrorOr<int64_t> getReductionAxis(Value input, TypeRange results);
 
 } // namespace M::MO
 

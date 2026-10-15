@@ -16,6 +16,7 @@
 // to that kernel (with a trivial store epilogue per result), or, for
 // elementwise kernels, a `map.iter.foreach` expressing the loop body
 // explicitly as scalar `map.load` / `map.call.elementwise` / `map.store` ops.
+// A reduction monoid becomes a `map.iter.rowwise`.
 // Contexts, variadics and scalars are materialized after fusion, not here.
 //
 //===----------------------------------------------------------------------===//
@@ -640,6 +641,66 @@ LogicalResult lowerTransposeToForeach(MO::TransposeOp op) {
   return success();
 }
 
+// Lowers a reduction monoid to a `map.iter.rowwise`: one fold over the input,
+// then a per-row store of each output field. Expects a verified reduction.
+LogicalResult lowerReductionToRowwise(Operation *op,
+                                      const MOGG::KernelDeclAdaptor &adaptor) {
+  ErrorOr<int64_t> axis =
+      MO::getReductionAxis(op->getOperand(0), op->getResultTypes());
+  if (axis.isError())
+    return op->emitOpError("MOToMAP: reduction ") << axis.getError();
+
+  MLIRContext *ctx = op->getContext();
+  Location loc = op->getLoc();
+  OpBuilder builder(op);
+
+  Value input = op->getOperand(0);
+  auto inputTy = cast<MO::TensorType>(input.getType());
+  MOSH::ShapeAttr shapeAttr = inputTy.getShape();
+  auto indexTy = MAP::IndexType::get(ctx, shapeAttr.getRank());
+
+  auto rowwiseOp = MAP::IterRowwiseOp::create(
+      builder, loc, op->getResultTypes(), shapeAttr,
+      builder.getI64IntegerAttr(*axis), ValueRange{input},
+      /*chain=*/Value(),
+      MOGG::FusionInfoAttr::get(ctx, MOGG::createFusionLeaf(op)));
+  stampAsyncLaunch(rowwiseOp, op);
+
+  // Body block args: [input, outputs..., row].
+  Block *body = &rowwiseOp.getBody().emplaceBlock();
+  BlockArgument inputArg = body->addArgument(inputTy, loc);
+  SmallVector<BlockArgument> outputArgs;
+  for (Type resultTy : op->getResultTypes())
+    outputArgs.push_back(body->addArgument(resultTy, loc));
+  BlockArgument rowArg = body->addArgument(indexTy, loc);
+
+  SmallVector<Type> foldTypes;
+  for (Type resultTy : op->getResultTypes())
+    foldTypes.push_back(cast<MO::TensorType>(resultTy).getElementType());
+
+  OpBuilder bodyBuilder = OpBuilder::atBlockEnd(body);
+  auto reduceOp = MAP::IterReduceOp::create(
+      bodyBuilder, loc, foldTypes,
+      FlatSymbolRefAttr::get(ctx, adaptor.fullyResolvedName.strref()));
+  {
+    OpBuilder::InsertionGuard guard(bodyBuilder);
+    Block *foldBody = &reduceOp.getBody().emplaceBlock();
+    BlockArgument idxArg = foldBody->addArgument(indexTy, loc);
+    bodyBuilder.setInsertionPointToEnd(foldBody);
+    Value loaded = MAP::LoadOp::create(
+        bodyBuilder, loc, inputTy.getElementType(), inputArg, idxArg);
+    MAP::YieldOp::create(bodyBuilder, loc, loaded);
+  }
+
+  for (auto [outputArg, field] :
+       llvm::zip_equal(outputArgs, reduceOp.getResults()))
+    MAP::StoreOp::create(bodyBuilder, loc, outputArg, rowArg, field);
+
+  op->replaceAllUsesWith(rowwiseOp.getResults());
+  op->erase();
+  return success();
+}
+
 // See `lowerMOOpToMAP`.
 FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
   ErrorOr<MOGG::KernelDeclAdaptor> adaptor =
@@ -649,6 +710,13 @@ FailureOr<Operation *> lowerOp(Operation *op, MOGG::MojoRegistry &registry) {
 
   if (auto mutableStoreOp = dyn_cast<MO::MutableStoreOp>(op)) {
     if (failed(lowerMutableStoreToForeach(mutableStoreOp, *adaptor)))
+      return failure();
+    return static_cast<Operation *>(nullptr);
+  }
+
+  // Reductions have no executeFunction either.
+  if (adaptor->isReduction()) {
+    if (failed(lowerReductionToRowwise(op, *adaptor)))
       return failure();
     return static_cast<Operation *>(nullptr);
   }
