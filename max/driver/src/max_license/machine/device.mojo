@@ -16,7 +16,7 @@ Provides types and helpers for describing individual computational
 devices to be used within the Mojo metaprogramm.
 """
 
-from std._gpu.host.info import GPUInfo, _empty_target, TargetAccelerator
+from std._gpu.host.info import GPUInfo, TargetAccelerator
 from std.sys.info import _TargetType, CompilationTarget
 
 
@@ -106,4 +106,4 @@ struct DeviceSpec(
                 TargetAccelerator.from_gpu_name[info.name].mlir_target
             )
         else:
-            return _empty_target._mlir_value
+            return CompilationTarget._unknown()._mlir_value
