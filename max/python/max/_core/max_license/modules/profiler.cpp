@@ -124,26 +124,24 @@ std::string stopCapture(const std::string &outputPath) {
 
 void M::Graph::Python::bindProfilerModule(nb::module_ m) {
   m.doc() = R"nbdoc(
-      MAX profiler Python bindings.
+      Provides Python bindings for the MAX profiler.
   )nbdoc";
 
   nb::class_<PyMojoTrace>(m, "Trace", R"nbdoc(
-      Context manager for creating profiling spans.
+      A context manager for creating profiling spans.
 
       Examples:
           >>> with Trace("foo", color="modular_purple"):
           >>>   # Run `bar()` inside the profiling span.
           >>>   bar()
           >>> # The profiling span ends when the context manager exits.
+
+      Args:
+          message: The name of the span.
+          color: The color of the span.
   )nbdoc")
       .def(nb::init<const char *, const char *>(), nb::arg("message"),
-           nb::arg("color") = "modular_purple", R"nbdoc(
-           Constructs and initializes the underlying Mojo Trace object.
-
-           Args:
-               message: Name of the span.
-               color: Color of the span.
-      )nbdoc")
+           nb::arg("color") = "modular_purple")
       .def("__enter__", &PyMojoTrace::enter,
            // Reference the parent Trace object without taking ownership.
            nb::rv_policy::reference_internal, R"nbdoc(
@@ -294,8 +292,8 @@ void M::Graph::Python::bindProfilerModule(nb::module_ m) {
               Characters outside ``[A-Za-z0-9_.-]`` become ``_``.
 
       Returns:
-          True if a burst opened. False when profiling is off, which costs a
-          single check, or when the request was not honored.
+          ``True`` if a burst opened. ``False`` when profiling is off, which
+          costs a single check, or when the request was not honored.
   )nbdoc");
 
   m.def("is_capture_recording", &isCaptureRecording, R"nbdoc(

@@ -264,7 +264,7 @@ buffer_from_constant_attr(mlir::ElementsAttr attr, M::DType dtype,
 
 void M::Graph::Python::bindGraphModule(nb::module_ m) {
   m.doc() = R"nbdoc(
-        MAX Graph Python bindings.
+        Provides Python bindings for the MAX Graph API.
     )nbdoc";
 
   /// Attribute factories
@@ -287,11 +287,11 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
         "Creates a Buffer from an MLIR constant attribute.");
 
   m.def("next_operation", &next_operation,
-        "Returns the next operation in the parent block, or None.");
+        "Returns the next operation in the parent block, or ``None``.");
   m.def("prev_operation", &prev_operation,
-        "Returns the previous operation in the parent block, or None.");
+        "Returns the previous operation in the parent block, or ``None``.");
   m.def("last_operation", &last_operation,
-        "Returns the last operation in the given block, or None.");
+        "Returns the last operation in the given block, or ``None``.");
 
   /// Converts a dtype to an MLIR type.
   m.def("dtype_to_type",
@@ -301,7 +301,7 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
             throw std::runtime_error("Invalid dtype");
           return *mlirType;
         }),
-        "Converts a MAX DType to the corresponding MLIR type.");
+        "Converts a MAX :class:`DType` to the corresponding MLIR type.");
 
   m.def(
       "type_to_dtype",
@@ -311,7 +311,7 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
           throw std::runtime_error("Invalid type");
         return *type;
       },
-      "Converts an MLIR type to the corresponding MAX DType.");
+      "Converts an MLIR type to the corresponding MAX :class:`DType`.");
 
   /// Creates an opaque location containing a python frame.
   m.def("frame_loc", &frame_loc,
@@ -345,16 +345,17 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
   //===----------------------------------------------------------------------===//
 
   nb::class_<Python::KernelTorchInfo>(m, "KernelTorchInfo", R"nbdoc(
-      Info needed to register a Mojo kernel as a PyTorch custom op.
+      The info needed to register a Mojo kernel as a PyTorch custom op.
 
-      Built by ``max.experimental.torch`` from the kernel's ``execute``
+      Built by :obj:`max.experimental.torch` from the kernel's ``execute``
       signature via ``KernelDeclAdaptor``.
   )nbdoc")
       .def_ro("num_dps_outputs", &Python::KernelTorchInfo::numDpsOutputs,
-              "Number of leading destination-passing-style output arguments.")
+              "The number of leading destination-passing-style output "
+              "arguments.")
       .def_ro("tensor_arg_names", &Python::KernelTorchInfo::tensorArgNames,
-              "Source names of tensor-like arguments in declaration order "
-              "(DPS outputs first, then inputs).");
+              "The source names of tensor-like arguments in declaration "
+              "order (DPS outputs first, then inputs).");
 
   nb::class_<Python::Analysis>(m, "Analysis", R"nbdoc(
       Analyzes Mojo kernel libraries for custom operator integration.
@@ -362,20 +363,17 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
       Loads one or more Mojo shared libraries and exposes their exported
       kernel operations for use in MAX graphs. Used internally to validate
       and register custom operations.
-  )nbdoc")
-      .def(nb::init<nb::object, std::vector<std::filesystem::path>>(),
-           "context"_a, "paths"_a,
-           R"nbdoc(
-      Creates an analysis by loading the given Mojo libraries.
 
       Args:
           context: A Mojo library object or path.
-          paths: Additional library search paths.
-      )nbdoc")
+          paths: The additional library search paths.
+  )nbdoc")
+      .def(nb::init<nb::object, std::vector<std::filesystem::path>>(),
+           "context"_a, "paths"_a)
       .def_prop_ro("symbol_names", &Analysis::symbolNames,
-                   "Returns the list of exported kernel symbol names.")
+                   "The list of exported kernel symbol names.")
       .def_prop_ro("library_paths", &Analysis::libraryPaths,
-                   "Returns the paths of all loaded libraries.")
+                   "The paths of all loaded libraries.")
       .def(
           "kernel",
           [](Analysis *self, const std::string &name) {
@@ -390,11 +388,12 @@ void M::Graph::Python::bindGraphModule(nb::module_ m) {
            "Copies kernel decl ops and the opaque-type mapping attribute "
            "into the given target module. Called by the compile path to "
            "seed a model module so the GC pipeline can skip "
-           "mogg-import-packages.")
+           "``mogg-import-packages``.")
       .def("kernel_torch_info", &Analysis::kernelTorchInfo, "name"_a,
-           "Returns the info ``max.experimental.torch`` needs to register the "
-           "named kernel as a PyTorch custom op. Raises ``ValueError`` if "
-           "the kernel is unknown or has an unsupported argument type.")
+           "Returns the :class:`KernelTorchInfo` that "
+           ":obj:`max.experimental.torch` needs to register the named kernel "
+           "as a PyTorch custom op. Raises ``ValueError`` if the kernel is "
+           "unknown or has an unsupported argument type.")
       .def("has_shape_function", &Analysis::hasShapeFunction, "name"_a,
            "Returns true if a shape function is registered for the named "
            "kernel.");

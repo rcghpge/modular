@@ -79,12 +79,16 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       Do not instantiate this class directly; use :class:`CPU` for host
       devices and :class:`Accelerator` for any hardware accelerator.
 
+      .. invisible-code-block: python
+
+          from max import driver
+
       .. code-block:: python
 
           from max import driver
 
           cpu = driver.CPU()
-          gpu = driver.Accelerator()
+          device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
   )nbdoc")
       .def(
           "can_access",
@@ -94,6 +98,12 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           "other"_a,
           R"nbdoc(
          Checks if this device can directly access memory of another device.
+
+         .. invisible-code-block: python
+
+              from max import driver
+
+         .. skip: next if(driver.accelerator_count() < 2, reason="requires two accelerators")
 
          .. code-block:: python
 
@@ -106,10 +116,10 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
                   print("GPU0 can directly access GPU1 memory.")
 
          Args:
-             other (Device): The other device to check peer access against.
+             other: The other device to check peer access against.
 
          Returns:
-             bool: True if peer access is possible, False otherwise.
+             ``True`` if peer access is possible, ``False`` otherwise.
          )nbdoc")
       .def("synchronize", &Python::Device::synchronize, R"nbdoc(
         Ensures all operations on this device complete before returning.
@@ -124,7 +134,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             from max import driver
 
-            device = driver.CPU()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device.is_host
       )nbdoc")
       .def_prop_ro("is_host_unified", &Python::Device::isHostUnified, R"nbdoc(
@@ -137,7 +147,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             from max import driver
 
-            device = driver.Accelerator()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device.is_host_unified
       )nbdoc")
       .def_prop_ro(
@@ -154,11 +164,11 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             from max import driver
 
-            device = driver.CPU()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             stats = device.stats
 
         Returns:
-            dict: A dictionary containing device utilization statistics.
+            A dictionary containing device utilization statistics.
       )nbdoc")
       .def_prop_ro("max_single_alloc_size",
                    &Python::Device::getMaxSingleAllocSize,
@@ -179,7 +189,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             from max import driver
 
-            device = driver.CPU()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device.label
       )nbdoc")
       .def_prop_ro("api", &Python::Device::getApi, R"nbdoc(
@@ -196,7 +206,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             from max import driver
 
-            device = driver.CPU()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device.api
       )nbdoc")
       .def_prop_ro("architecture_name", &Python::Device::getArchName,
@@ -208,6 +218,12 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         - ``gfx90a``, ``gfx942`` for AMD GPUs.
         - ``sm_80``, ``sm_86`` for NVIDIA GPUs.
         - CPU devices raise an exception.
+
+        .. invisible-code-block: python
+
+            from max import driver
+
+        .. skip: next if(driver.accelerator_count() == 0, reason="requires an accelerator")
 
         .. code-block:: python
 
@@ -224,31 +240,32 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         - ``NVIDIA H100 80GB HBM3`` for an H100.
         - ``NVIDIA B200`` for a B200.
         - ``AMD Instinct MI300X`` for an MI300X.
+        - ``cpu`` for a CPU device.
 
         .. code-block:: python
 
             from max import driver
 
-            device = driver.Accelerator()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device.model_name
       )nbdoc")
       .def_prop_ro("id", &Python::Device::getId, R"nbdoc(
         Returns a zero-based device id.
 
         For a CPU device this is always 0.
-        For GPU accelerators this is the id of the device relative to this host.
-        Along with the ``label``, an id can uniquely identify a device,
+        For GPU accelerators this is the ID of the device relative to this host.
+        Along with the ``label``, an ID can uniquely identify a device,
         such as ``gpu:0`` or ``gpu:1``.
 
         .. code-block:: python
 
             from max import driver
 
-            device = driver.Accelerator()
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
             device_id = device.id
 
         Returns:
-            int: The device ID.
+            The device ID.
       )nbdoc")
       .def_prop_ro("default_queue", &Python::Device::defaultStream, R"nbdoc(
         Returns the default queue for this device.
@@ -256,13 +273,14 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         The default queue is initialized when the device object is created.
 
         Returns:
-            DeviceQueue: The default execution queue for this device.
+            The default execution queue for this device.
       )nbdoc")
       .def_prop_ro("is_compatible", &Python::Device::isCompatible, R"nbdoc(
         Returns whether this device is compatible with MAX.
 
         Returns:
-            bool: True if the device is compatible with MAX, False otherwise.
+            ``True`` if the device is compatible with MAX, ``False``
+            otherwise.
       )nbdoc")
       .def(
           "__unsafe_enqueue_py_host_func",
@@ -362,100 +380,94 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           },
           "Gets the device context pointer.")
       .def_static("cpu", &Python::getCpuDevice, "id"_a = 0,
-                  "Creates a CPU device. The id is ignored currently.");
+                  R"nbdoc(
+        Creates a CPU device.
+
+        Args:
+            id: The device ID. Currently ignored.
+      )nbdoc");
 
   // Note the use of __new__ here instead of __init__. This allows us to use a
   // factory function on the C++ side to produce the Accelerator type from a
   // cache. We could also use __init__ here if we changed the C++
   // implementation.
-  nb::class_<Python::Accelerator, Python::Device>(m, "Accelerator")
-      .def(nb::new_(&Python::getAccelerator), "id"_a = -1,
-           R"nbdoc(
-        Creates an accelerator device with the specified ID and memory limit.
+  nb::class_<Python::Accelerator, Python::Device>(m, "Accelerator", R"nbdoc(
+        Represents any hardware accelerator attached to the host.
 
-        Represents any hardware accelerator attached to the host: the
-        graph compiler reaches CUDA, HIP, Metal and plugin-provided
+        The graph compiler reaches CUDA, HIP, Metal and plugin-provided
         backends alike through this one device class. Use
         ``isinstance(device, Accelerator)`` to mean "any non-CPU device",
         and :attr:`api` to tell the concrete backends apart.
 
-        Repeated instantiations with a previously-used device-id will still
-        refer to the first such instance that was created. This is especially
-        important when providing a different memory limit: only the value
-        (implicitly or explicitly) provided in the first such instantiation
-        is effective.
+        .. invisible-code-block: python
+
+            from max import driver
+
+        .. skip: next if(driver.accelerator_count() == 0, reason="requires an accelerator")
 
         .. code-block:: python
 
-          from max import driver
-          # Create default accelerator (usually first available GPU)
-          device = driver.Accelerator()
-          # Or specify GPU id
-          device = driver.Accelerator(id=0)  # First GPU
-          device = driver.Accelerator(id=1)  # Second GPU
-          # Get device id
-          device_id = device.id
+            from max import driver
+
+            device = driver.Accelerator()
+            first = driver.Accelerator(id=0)
 
         Args:
-            id (int, optional): The device ID to use. Defaults to -1, which selects
-                the first available accelerator.
+            id: The zero-based ID of the accelerator to select. Defaults to
+                -1, which selects the first available accelerator.
 
-        Returns:
-            Accelerator: A new Accelerator device object.
-        )nbdoc");
+        Raises:
+            ValueError: If the device cannot be created, for example when no
+                compatible accelerator is available.
+        )nbdoc")
+      .def(nb::new_(&Python::getAccelerator), "id"_a = -1);
 
-  nb::class_<Python::CPU, Python::Device>(m, "CPU").def(
-      nb::new_(&Python::getCpuDevice), "id"_a = 0, R"nbdoc(
-          Creates a CPU device.
+  nb::class_<Python::CPU, Python::Device>(m, "CPU", R"nbdoc(
+          A host (CPU) device.
 
           .. code-block:: python
 
               from max import driver
-              # Create default CPU device
+
               device = driver.CPU()
-              # Device id is always 0 for CPU devices
               device_id = device.id
 
           Args:
-              id (int, optional): The device ID to use.
-                  Defaults to 0.
-
-          Returns:
-              CPU: A new CPU device object.
-       )nbdoc");
+              id: The device ID. Defaults to 0.
+       )nbdoc")
+      .def(nb::new_(&Python::getCpuDevice), "id"_a = 0);
 
   nb::class_<Python::CompletionFlag>(m, "CompletionFlag", R"nbdoc(
           An 8-byte completion flag in pinned host memory mapped into a device's address space.
 
-          Lets a CPU thread signal a GPU queue (or vice versa) by
-          writing a 64-bit value to a single location that's visible to
-          both. Pair with ``DeviceQueue.wait_for_host_value`` (added in
-          a follow-on PR) or the ``mo.wait_host_value`` graph op to gate
-          downstream GPU work on a host-produced result without a
-          second queue or a blocking host callback.
+          Lets a CPU thread signal a GPU queue (or vice versa) by writing a
+          64-bit value to a single location that is visible to both. Pair
+          with :meth:`DeviceQueue.wait_for_host_value` or the
+          ``mo.wait_host_value`` graph op to gate downstream GPU work on a
+          host-produced result without a second queue or a blocking host
+          callback.
 
-          Currently requires a CUDA-backed ``Device``; constructing
+          Currently requires a CUDA-backed :class:`Device`; constructing
           against any other backend raises ``RuntimeError``.
+
+          .. invisible-code-block: python
+
+              from max import driver
+
+          .. skip: next if(driver.accelerator_count() == 0 or driver.Accelerator().api != "cuda", reason="requires a CUDA device")
 
           .. code-block:: python
 
               from max.driver import Accelerator, CompletionFlag
 
-              accel = Accelerator()
-              flag = CompletionFlag(accel)
+              flag = CompletionFlag(Accelerator())
               assert flag.load() == 0  # initialized to zero
 
-              # Subsequent PRs add the producer/consumer methods that
-              # actually use the flag's device pointer.
+          Args:
+              device: A CUDA-backed device. Other backends raise
+                  ``RuntimeError``.
        )nbdoc")
-      .def(nb::init<const Python::Device &>(), "device"_a,
-           R"nbdoc(
-              Allocates a fresh device-mapped pinned u64 bound to ``device``.
-
-              Args:
-                  device: A CUDA-backed device. Other backends raise
-                      ``RuntimeError``.
-            )nbdoc")
+      .def(nb::init<const Python::Device &>(), "device"_a)
       .def_prop_ro("device_ptr", &Python::CompletionFlag::devicePtr,
                    R"nbdoc(
               Device-visible 64-bit address of the 8-byte slot.
@@ -480,7 +492,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
               the first captured-graph replay's ``mo.wait_host_value``
               passes immediately, before any async kickoff has run.
               Direct Python signalling on the hot path is usually a
-              mistake -- prefer the async-host-func trampoline which
+              mistake; prefer the async-host-func trampoline, which
               signals from its AsyncRT worker.
 
               Args:
@@ -493,7 +505,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
               Pairs with a release-ordered store on the producer side.
 
               Returns:
-                  int: Current 64-bit flag value.
+                  The current 64-bit flag value.
             )nbdoc")
       .def_prop_ro(
           "_unsafe_ptr",
@@ -528,21 +540,18 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           .. code-block:: python
 
               from max import driver
-              # Create a default accelerator device
-              device = driver.Accelerator()
-              # Create an event on the device
+
+              device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
               event = driver.DeviceEvent(device)
-              # Record an event on the device (default queue)
               device.default_queue.record_event(event)
-              # Wait for execution on the default queue to reach the event
               event.synchronize()
 
           Args:
-              device (Device): The device on which to create the event.
-              enable_timing (bool): If True, enable GPU timing on this event.
+              device: The device on which to create the event.
+              enable_timing: If ``True``, enables GPU timing on this event.
                   Events created with ``enable_timing=True`` can be used with
                   :meth:`elapsed_time` to measure GPU execution time.
-                  Defaults to False.
+                  Defaults to ``False``.
 
           Raises:
               ValueError: If event creation failed.
@@ -559,7 +568,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Returns whether this event is ready.
 
         Returns:
-            bool: True if the event is complete, otherwise false.
+            ``True`` if the event is complete, ``False`` otherwise.
 
         Raises:
             ValueError: If querying the event status returned an error.
@@ -573,6 +582,12 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         event must be synchronized before calling this method.
 
         For example, time the GPU work enqueued between two recorded events:
+
+        .. invisible-code-block: python
+
+            from max import driver
+
+        .. skip: next if(driver.accelerator_count() == 0 or driver.Accelerator().api not in ("cuda", "hip"), reason="requires a CUDA or HIP device")
 
         .. code-block:: python
 
@@ -591,10 +606,10 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
             elapsed_ms = start.elapsed_time(end)
 
         Args:
-            end_event (DeviceEvent): The ending event.
+            end_event: The ending event.
 
         Returns:
-            float: Elapsed time in milliseconds.
+            The elapsed time in milliseconds.
 
         Raises:
             RuntimeError: If either event was not created with timing
@@ -700,21 +715,15 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           .. code-block:: python
 
               from max import driver
-              # Create a default accelerator device
-              device = driver.Accelerator()
-              # Get the default queue for the device
+              device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
               queue = device.default_queue
-              # Create a new queue of execution on the device
               new_queue = driver.DeviceQueue(device)
   )nbdoc")
       .def(nb::new_(&Python::DeviceStream::createStream), "device"_a, R"nbdoc(
           Creates a new queue of execution associated with the device.
 
           Args:
-              device (Device): The device to create the queue on.
-
-          Returns:
-              DeviceQueue: A new queue of execution.
+              device: The device to create the queue on.
       )nbdoc")
       .def("synchronize", &Python::DeviceStream::synchronize, R"nbdoc(
           Ensures all operations on this queue complete before returning.
@@ -729,9 +738,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           Records an event on this queue.
 
           Returns:
-              DeviceEvent: A new event that will be signaled when all
-              operations submitted to this queue before this call
-              have completed.
+              A new event that will be signaled when all operations
+              submitted to this queue before this call have completed.
 
           Raises:
               ValueError: If recording the event failed.
@@ -745,7 +753,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           Records an existing event on this queue.
 
           Args:
-              event (DeviceEvent): The event to record on this queue.
+              event: The event to record on this queue.
 
           Raises:
               ValueError: If recording the event failed.
@@ -754,14 +762,14 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           Ensures all operations on the other queue complete before future work submitted to this queue is scheduled.
 
           Args:
-              stream (DeviceQueue): The queue to wait for.
+              stream: The queue to wait for.
       )nbdoc")
       .def("wait_for", &Python::DeviceStream::waitForDevice, "device"_a,
            R"nbdoc(
-          Ensures all operations on device's default queue complete before future work submitted to this queue is scheduled.
+          Ensures all operations on the device's default queue complete before future work submitted to this queue is scheduled.
 
           Args:
-              device (Device): The device whose default queue to wait for.
+              device: The device whose default queue to wait for.
       )nbdoc")
       .def("wait_for_host_value", &Python::DeviceStream::waitForHostValue,
            "flag"_a, "value"_a,
@@ -777,10 +785,9 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           CUDA graph as a wait-value node.
 
           Args:
-              flag (CompletionFlag): The completion flag to wait on.
-                  The queue observes ``flag.device_ptr`` via the
-                  pinned device-mapped alias.
-              value (int): The 64-bit value to wait for (equality).
+              flag: The completion flag to wait on. The queue observes
+                  ``flag.device_ptr`` via the pinned device-mapped alias.
+              value: The 64-bit value to wait for (equality).
 
           Raises:
               RuntimeError: If the underlying device does not support
@@ -849,13 +856,13 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         The native stream handle as an integer, or ``0`` if there is none.
 
         The handle is the CUDA ``CUstream`` / HIP ``hipStream_t``; ``0`` means
-        the stream has no native handle (such as a CPU device). Lets native code
-        outside MLRT order its own work against this stream -- for example,
-        record a CUDA event on it. The handle remains owned by this stream; do
-        not destroy it.
+        the stream has no native handle (such as a CPU device). Native code
+        outside MLRT can use the handle to order its own work against this
+        stream, for example by recording a CUDA event on it. The handle
+        remains owned by this stream; do not destroy it.
 
         Returns:
-            int: The native stream handle, or ``0`` if there is none.
+            The native stream handle, or ``0`` if there is none.
       )nbdoc")
       .def("__str__", &Python::DeviceStream::getAsString)
       .def("__repr__", &Python::DeviceStream::getAsString)
@@ -866,7 +873,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
            nb::sig("def __eq__(self, arg: object, /) -> bool"));
 
   m.def("accelerator_count", &Python::acceleratorCount,
-        "Returns number of accelerator devices available.");
+        "Returns the number of accelerator devices available.");
 
   m.def(
       "begin_launch_trace",
@@ -933,13 +940,13 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         R"nbdoc(
         Sets the number of virtual devices for device creation.
 
-        When count is greater than 0, device creation returns
-        virtual devices for GPU APIs, and device
-        enumeration reports this count. This allows creating devices for
-        GPU configurations beyond the current hardware.
+        When ``count`` is greater than 0, device creation returns virtual
+        devices for GPU APIs, and device enumeration reports this count. This
+        allows creating devices for GPU configurations beyond the current
+        hardware.
 
         Args:
-            count (int): The number of virtual devices. Set to 0 to disable
+            count: The number of virtual devices. Set to 0 to disable
                 virtual device mode.
     )nbdoc");
 
@@ -947,15 +954,16 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Gets the current virtual device count.
 
         Returns:
-            int: The number of virtual devices, or 0 if virtual device mode
-            is disabled.
+            The number of virtual devices, or 0 if virtual device mode is
+            disabled.
     )nbdoc");
 
   m.def("is_virtual_device_mode", &M::AsyncRT::isVirtualDeviceMode, R"nbdoc(
         Checks if virtual device mode is currently enabled.
 
         Returns:
-            bool: True if virtual device mode is enabled (count > 0), False otherwise.
+            ``True`` if virtual device mode is enabled (``count > 0``),
+            ``False`` otherwise.
     )nbdoc");
 
   m.def(
@@ -996,8 +1004,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         :func:`~max.driver.set_virtual_device_count`.
 
         Args:
-            api (str): The target API string, such as ``"cuda"`` for
-                NVIDIA, ``"hip"`` for AMD, or ``"metal"`` for Apple.
+            api: The target API string, such as ``"cuda"`` for NVIDIA,
+                ``"hip"`` for AMD, or ``"metal"`` for Apple.
     )nbdoc");
 
   m.def("get_virtual_device_api", &M::AsyncRT::getVirtualDeviceAPI,
@@ -1005,7 +1013,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Gets the current target API for virtual devices.
 
         Returns:
-            str: The target API string, or empty string if not set.
+            The target API string, or an empty string if not set.
     )nbdoc");
 
   m.def("set_virtual_device_target_arch",
@@ -1019,8 +1027,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         :func:`~max.driver.set_virtual_device_count`.
 
         Args:
-            arch (str): The target GPU architecture string, such as
-                ``"sm_80"`` for Ampere/A100 or ``"sm_90"`` for Hopper/H100.
+            arch: The target GPU architecture string, such as ``"sm_80"``
+                for Ampere/A100 or ``"sm_90"`` for Hopper/H100.
     )nbdoc");
 
   m.def("get_virtual_device_target_arch",
@@ -1029,7 +1037,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Gets the current target GPU architecture for virtual devices.
 
         Returns:
-            str: The target GPU architecture string, or empty string if not set.
+            The target GPU architecture string, or an empty string if not
+            set.
     )nbdoc");
 
   m.def("set_virtual_cpu_target", &M::Driver::setVirtualCpuTarget, "cpu"_a,
@@ -1042,7 +1051,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         :func:`set_virtual_device_target_arch` for GPUs.
 
         Args:
-            cpu (str): An LLVM target-CPU name, such as ``x86-64-v3`` or
+            cpu: An LLVM target-CPU name, such as ``x86-64-v3`` or
                 ``neoverse-n1``; ``generic``, for the most portable baseline
                 of the host architecture family (``x86-64`` on x86_64, the
                 armv8-a baseline on AArch64, an error for other families);
@@ -1056,7 +1065,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Gets the current virtual CPU target.
 
         Returns:
-            str: The CPU target string, or empty string if not set (host CPU).
+            The CPU target string, or an empty string if not set (host CPU).
     )nbdoc");
 
   nb::enum_<Python::Usage>(m, "Usage", nb::is_flag(), R"nbdoc(
@@ -1091,18 +1100,18 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
               from max import driver
               from max.dtype import DType
 
-              gpu = driver.Accelerator()
+              device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
               staging = driver.Buffer(
-                  DType.float32, [4], device=gpu, usage=driver.Usage.STAGING
+                  DType.float32, [4], device=device, usage=driver.Usage.STAGING
               )
               host = np.zeros(4, dtype=np.float32)
-              source = driver.Buffer.from_numpy(host).to(gpu)
+              source = driver.Buffer.from_numpy(host).to(device)
 
               # Record a token on the queue that will signal the copy, then
               # stamp it onto every buffer that submission touched.
               staging.inplace_copy_from(source)
 
-              # The host read waits on that token instead of draining `gpu`.
+              # The host read waits on that token without draining the device.
               value = staging[0].item()
     )nbdoc")
       .def_static("record_on", &Python::HostHazardCompletion::recordOn,
@@ -1156,7 +1165,7 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       )nbdoc");
 
   nb::class_<Python::Buffer>(m, "Buffer", R"nbdoc(
-          Device-resident buffer representation.
+          A multi-dimensional buffer allocated on a device.
 
           Allocates memory onto a given device with the provided shape and dtype.
           Buffers can be sliced to provide strided views of the underlying memory,
@@ -1170,20 +1179,25 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
               from max import driver
               from max.dtype import DType
 
-              # Create a buffer on CPU
               cpu_buffer = driver.Buffer(shape=[2, 3], dtype=DType.float32)
 
-              # Create a buffer on GPU
-              gpu = driver.Accelerator()
-              gpu_buffer = driver.Buffer(shape=[2, 3], dtype=DType.float32, device=gpu)
+          .. code-block:: python
+
+              from max import driver
+              from max.dtype import DType
+
+              device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
+              device_buffer = driver.Buffer(shape=[2, 3], dtype=DType.float32, device=device)
 
           Args:
-              dtype (DType): Data type of buffer elements.
-              shape (Sequence[int]): Tuple of positive, non-zero integers denoting the buffer shape.
-              device (Device, optional): Device to allocate buffer onto. Defaults to the CPU.
-              stream (DeviceQueue, optional): Queue to associate the buffer with.
-              usage (Usage, optional): Allocation intent, see :obj:`Usage`.
-                  Defaults to ``Usage.DEFAULT``.
+              dtype: The data type of buffer elements.
+              shape: The buffer shape as a sequence of positive, non-zero
+                  integers.
+              device: The device to allocate the buffer on. Defaults to the
+                  CPU.
+              stream: The queue to associate the buffer with.
+              usage: The allocation intent, see :obj:`Usage`. Defaults to
+                  ``Usage.DEFAULT``.
       )nbdoc")
       // Constructors
       .def(nb::init<M::DType, const std::vector<size_t> &,
@@ -1197,23 +1211,23 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
            "device"_a)
       // Properties
       .def_prop_ro("device", &Python::Buffer::getDevice,
-                   "Device on which tensor is resident.")
+                   "The device on which the buffer is resident.")
       .def_prop_ro("stream", &Python::Buffer::getStream,
-                   "Stream to which tensor is bound.")
+                   "The stream to which the buffer is bound.")
       .def_prop_ro("dtype", &Python::Buffer::getDType,
-                   "DType of constituent elements in tensor.")
+                   "The data type of the buffer elements.")
       .def_prop_ro(
           "element_size",
           [](Python::Buffer &self) { return self.getDType().getSizeInBytes(); },
-          "Return the size of the element type in bytes.")
+          "The size of the element type in bytes.")
       .def_prop_ro("is_contiguous", &Python::Buffer::isContiguous, R"nbdoc(
-            Whether or not buffer is contiguously allocated in memory.
+            Whether the buffer is contiguously allocated in memory.
 
-            Returns false if the buffer is a non-contiguous slice.
+            Returns ``False`` if the buffer is a non-contiguous slice.
 
-            Currently, we consider certain situations that are contiguous as
-            non-contiguous for the purposes of our engine, such as when a buffer
-            has negative steps.
+            Currently, some situations that are contiguous are considered
+            non-contiguous for the purposes of the engine, such as when a
+            buffer has negative steps.
       )nbdoc")
       .def_prop_ro("strides", &Python::Buffer::getStrides, R"nbdoc(
             How far apart consecutive elements are, per dimension.
@@ -1235,9 +1249,9 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
             A buffer must be contiguous to be passed into model execution.
           )nbdoc")
       .def_prop_ro("is_host", &Python::Buffer::isHost, R"nbdoc(
-            Whether or not buffer is host-resident.
+            Whether the buffer is host-resident.
 
-            Returns false for GPU buffers, true for CPU buffers.
+            Returns ``False`` for GPU buffers and ``True`` for CPU buffers.
 
             .. code-block:: python
 
@@ -1253,8 +1267,9 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
 
             Rank-0 buffers have 1 element by convention.
       )nbdoc")
-      .def_prop_ro("rank", &Python::Buffer::getRank, "Buffer rank.")
-      .def_prop_ro("shape", &Python::Buffer::getShape, "Shape of buffer.")
+      .def_prop_ro("rank", &Python::Buffer::getRank, "The rank of the buffer.")
+      .def_prop_ro("shape", &Python::Buffer::getShape,
+                   "The shape of the buffer.")
       // Methods (including statics)
       .def(
           "contiguous", [](Python::Buffer &) { /* Replaced in Python */ },
@@ -1271,7 +1286,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           R"nbdoc(
         Creates a deep copy on an optionally given device.
 
-        If device is None (default), a copy is created on the same device.
+        If ``device`` is ``None`` (the default), a copy is created on the
+        same device.
 
         .. code-block:: python
 
@@ -1281,16 +1297,21 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
             cpu_buffer = driver.Buffer(shape=[2, 3], dtype=DType.bfloat16, device=driver.CPU())
             cpu_copy = cpu_buffer.copy()
 
-            # Copy to GPU
-            gpu = driver.Accelerator()
-            gpu_copy = cpu_buffer.copy(device=gpu)
+        .. code-block:: python
+
+            from max import driver
+            from max.dtype import DType
+
+            device = driver.Accelerator() if driver.accelerator_count() else driver.CPU()
+            cpu_buffer = driver.Buffer(shape=[2, 3], dtype=DType.bfloat16, device=driver.CPU())
+            device_copy = cpu_buffer.copy(device=device)
 
         Args:
-            device (Device, optional): The device to create the copy on.
-                Defaults to None (same device).
+            device: The device to create the copy on. Defaults to ``None``
+                (same device).
 
         Returns:
-            Buffer: A new buffer that is a copy of this buffer.
+            A new buffer that is a copy of this buffer.
       )nbdoc")
       .def_static(
           "mmap", []() { /* Replaced in Python */ },
@@ -1303,7 +1324,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           R"nbdoc(
           Creates a memory-mapped buffer from a binary file on disk.
 
-          The constructor argument semantics follow that of np.memmap.
+          The constructor argument semantics follow those of
+          ``numpy.memmap``.
       )nbdoc")
       .def(
           "inplace_copy_from",
@@ -1313,40 +1335,39 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           Copies the contents of another buffer into this one.
 
           These buffers may be on different devices.
-          Requires that both buffers are contiguous and have same size.
+          Requires that both buffers are contiguous and have the same size.
       )nbdoc")
       .def_static(
           "from_dlpack", []() { /* Replaced in Python */ },
           nb::sig("def from_dlpack(array: Any, *, copy: bool | None = None) -> "
                   "Buffer"),
           R"nbdoc(
-        Creates a buffer from an object implementing the dlpack protocol.
+        Creates a buffer from an object implementing the DLPack protocol.
 
         This usually does not result in a copy, and the producer of the object
         retains ownership of the underlying memory.
 
         Args:
-            array (Any): An object that implements the dlpack protocol.
-            copy (bool, optional): Whether to create a copy of the data.
-                Defaults to None.
+            array: An object that implements the DLPack protocol.
+            copy: Whether to create a copy of the data. Defaults to ``None``.
 
         Returns:
-            Buffer: A new buffer that views or copies the dlpack data.
+            A new buffer that views or copies the DLPack data.
       )nbdoc")
       .def_static(
           "from_numpy", []() { /* Replaced in Python */ },
           nb::sig("def from_numpy(arr: numpy.ndarray) -> Buffer"),
           R"nbdoc(
-        Creates a buffer from a provided numpy array on the host device.
+        Creates a buffer from a NumPy array on the host device.
 
-        The underlying data is not copied unless the array is noncontiguous. If
-        it is, a contiguous copy will be returned.
+        The underlying data is not copied unless the array is noncontiguous.
+        If it is, a contiguous copy is returned.
 
         Args:
-            arr (numpy.ndarray): The numpy array to convert.
+            arr: The NumPy array to convert.
 
         Returns:
-            Buffer: A new buffer that views or copies the numpy array data.
+            A new buffer that views or copies the NumPy array data.
       )nbdoc")
       .def("item", &Python::Buffer::item, R"nbdoc(
         Returns the scalar value at a given location.
@@ -1372,7 +1393,14 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           "value"_a, "dtype"_a, "device"_a = nb::none(), R"nbdoc(
         Creates a scalar value of a given dtype and value.
 
-        If device is None (default), the buffer will be allocated on the CPU.
+        Args:
+            value: The scalar value.
+            dtype: The data type of the scalar.
+            device: The device to allocate the buffer on. Defaults to
+                ``None``, which allocates the buffer on the CPU.
+
+        Returns:
+            A new rank-0 buffer holding the scalar value.
       )nbdoc")
       .def(
           "to",
@@ -1411,11 +1439,11 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           R"nbdoc(
         Converts the buffer to a numpy array.
 
-        If the buffer is on the host (CPU), the numpy array aliases the existing memory.
-        Otherwise, it is copied to the host device.
+        If the buffer is on the host (CPU), the NumPy array aliases the
+        existing memory. Otherwise, it is copied to the host device.
 
         Returns:
-            numpy.ndarray: A numpy array containing the buffer data.
+            A NumPy array containing the buffer data.
       )nbdoc")
       .def_prop_ro(
           "pinned", &Python::Buffer::isPinned,
@@ -1434,8 +1462,8 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           R"nbdoc(
         Returns a new buffer with the given type and shape that shares the underlying memory.
 
-        If the shape is not given, it will be deduced if possible, or a
-        ValueError is raised.
+        If the shape is not given, it is deduced if possible, otherwise a
+        ``ValueError`` is raised.
       )nbdoc")
       .def_static(
           "zeros",
@@ -1451,22 +1479,22 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         Allocates a buffer with all elements initialized to zero.
 
         Args:
-            shape (Sequence[int]): The shape of the buffer.
-            dtype (DType): The data type of the buffer.
-            device (Device, optional): The device to allocate the buffer on.
-                Defaults to None (CPU).
-            usage (Usage, optional): Allocation intent, see :obj:`Usage`.
-                Defaults to ``Usage.DEFAULT``.
+            shape: The shape of the buffer.
+            dtype: The data type of the buffer.
+            device: The device to allocate the buffer on. Defaults to
+                ``None`` (CPU).
+            usage: The allocation intent, see :obj:`Usage`. Defaults to
+                ``Usage.DEFAULT``.
 
         Returns:
-            Buffer: A new buffer filled with zeros.
+            A new buffer filled with zeros.
       )nbdoc")
       // Dunders
       .def("__dlpack__", &Python::Buffer::dlPack, nb::kw_only(),
            "stream"_a = nb::none(), "kwargs"_a,
-           "Implements part of the dlpack contract.")
+           "Implements part of the DLPack contract.")
       .def("__dlpack_device__", &Python::Buffer::dlPackDevice,
-           "Implements part of the dlpack contract.")
+           "Implements part of the DLPack contract.")
 #define ShapeType "int | slice | Sequence[int | slice]"
       .def("__getitem__", &Python::Buffer::get, "index"_a, R"nbdoc(
           Gets a buffer slice.

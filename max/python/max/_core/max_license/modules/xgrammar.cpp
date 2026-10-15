@@ -73,7 +73,7 @@ void M::Graph::Python::bindXGrammarModule(nb::module_ m) {
   using namespace xgrammar;
   SetLogHandler(&forwardXGrammarLog);
 
-  m.doc() = "Bindings for the xgrammar grammar engine (CPU subset).";
+  m.doc() = "Provides bindings for the xgrammar grammar engine (CPU subset).";
 
   nb::enum_<VocabType>(m, "VocabType")
       .value("RAW", VocabType::RAW)
@@ -204,5 +204,6 @@ void M::Graph::Python::bindXGrammarModule(nb::module_ m) {
       .def_prop_ro("stop_token_ids", &GrammarMatcher::GetStopTokenIds);
 
   m.def("get_bitmask_size", &GetBitmaskSize, nb::arg("vocab_size"),
-        "Number of int32 words in a packed bitmask for the given vocab size.");
+        "Returns the number of ``int32`` words in a packed bitmask for the "
+        "given vocabulary size.");
 }

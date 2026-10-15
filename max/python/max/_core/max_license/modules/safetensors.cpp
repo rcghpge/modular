@@ -41,7 +41,7 @@ struct SafeTensorWrapper {
 
 void M::Graph::Python::bindSafetensorsModule(nb::module_ m) {
   nb::class_<SafeTensorWrapper>(
-      m, "SafeTensor", "A parser for the HuggingFace SafeTensors format.")
+      m, "SafeTensor", "A parser for the Hugging Face SafeTensors format.")
       .def(
           "keys",
           [](SafeTensorWrapper &self) {
@@ -61,7 +61,7 @@ void M::Graph::Python::bindSafetensorsModule(nb::module_ m) {
           },
           "Returns the file-level ``__metadata__`` map from the SafeTensors "
           "header. Only string-valued entries are included; non-string values "
-          "(which the HuggingFace spec forbids) are skipped. Returns an empty "
+          "(which the Hugging Face spec forbids) are skipped. Returns an empty "
           "dict when the header has no ``__metadata__`` section.")
       .def(
           "get_buffer",
@@ -109,6 +109,8 @@ void M::Graph::Python::bindSafetensorsModule(nb::module_ m) {
 
         Defaults to loading on the CPU.
 
-        NOTE: Currently only implemented for CPUs.
+        .. note::
+
+           Currently only implemented for CPUs.
       )nbdoc");
 }

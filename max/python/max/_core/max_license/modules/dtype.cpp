@@ -18,7 +18,7 @@ namespace nb = nanobind;
 
 void M::Graph::Python::bindDTypeModule(nb::module_ m) {
   m.doc() = R"nbdoc(
-        Max DType definitions.
+        Defines the data types of MAX tensors.
     )nbdoc";
 
   nb::enum_<M::DType::Cases>(m, "DType", "The tensor data type.")
@@ -53,7 +53,7 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
              "16-bit bfloat16 (Brain Float) format. 1 sign bit, 8 exponent "
              "bits, 7 mantissa bits.")
       .value("float4_e2m1fn", DType::f4e2m1fn,
-             "4-bit floating-point with 2 exponent bits and 1 mantissa bits, "
+             "4-bit floating-point with 2 exponent bits and 1 mantissa bit, "
              "finite values only.")
       .value("float6_e2m3fn", DType::f6e2m3fn,
              "6-bit floating-point with 2 exponent bits and 3 mantissa bits, "
@@ -79,7 +79,7 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
           "align",
           [](M::DType::Cases dtype) { return M::DType(dtype).getAlignment(); },
           R"nbdoc(
-          Returns the alignment requirement of the data type in bytes.
+          The alignment requirement of the data type in bytes.
 
           The alignment specifies the memory boundary that values of this data type
           must be aligned to for optimal performance and correctness.
@@ -90,7 +90,7 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
             return M::DType(dtype).getWidthInBits();
           },
           R"nbdoc(
-          Returns the size of the data type in bits.
+          The size of the data type in bits.
 
           This indicates how many bits are required to store a single value
           of this data type in memory.
@@ -101,7 +101,7 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
             return M::DType(dtype).getSizeInBytes();
           },
           R"nbdoc(
-          Returns the size of the data type in bytes.
+          The size of the data type in bytes.
 
           This indicates how many bytes are required to store a single value
           of this data type in memory.
@@ -151,10 +151,10 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
       // The definitions of the following functions will be replaced in Python
       .def(
           "to_numpy", [](M::DType::Cases dtype) {}, R"nbdoc(
-        Converts this ``DType`` to the corresponding NumPy dtype.
+        Converts this :class:`DType` to the corresponding NumPy dtype.
 
         Returns:
-            DType: The corresponding NumPy dtype object.
+            The corresponding NumPy dtype object.
 
         Raises:
             ValueError: If the dtype is not supported.
@@ -162,13 +162,13 @@ void M::Graph::Python::bindDTypeModule(nb::module_ m) {
           nb::sig("def to_numpy(self) -> numpy.dtype"))
       .def_static(
           "from_numpy", []() {}, R"nbdoc(
-        Converts a NumPy dtype to the corresponding DType.
+        Converts a NumPy dtype to the corresponding :class:`DType`.
 
         Args:
-            dtype (np.dtype): The NumPy dtype to convert.
+            dtype: The NumPy dtype to convert.
 
         Returns:
-            DType: The corresponding DType enum value.
+            The corresponding :class:`DType` enum value.
 
         Raises:
             ValueError: If the input dtype is not supported.
