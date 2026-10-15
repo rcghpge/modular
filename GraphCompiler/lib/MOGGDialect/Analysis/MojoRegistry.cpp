@@ -585,6 +585,18 @@ static ErrorOrSuccess validateCustomOpParameters(const MojoRegistry &registry,
             customOp.getSymbol(), customParamDecl.getName()));
       }
     } else if (typeName && (typeName == MOGG::kMojoInternalDpsSimdTypeName)) {
+      // `Float32` (SIMD[f32, 1]) params arrive as the same rank-0 f32
+      // elements attribute the RMS norm ops use for their scalar
+      // attributes (see `MO_F32ScalarAttr`); integer SIMD params arrive
+      // as `IntegerAttr`. Only f32 matches here: `MO_F32ScalarAttr` and
+      // the Python side (`rms_norm._float32_attr`) are f32-only. A float
+      // value against an integer SIMD param is not caught here — this
+      // branch keys on the SIMD kind, not the element type — and fails
+      // later, at Mojo elaboration.
+      if (auto elems = dyn_cast<ElementsAttr>(mlirParamAttr);
+          elems && elems.getShapedType().getRank() == 0 &&
+          elems.getElementType().isF32())
+        continue;
       auto asInt = dyn_cast<IntegerAttr>(mlirParamAttr);
       if (asInt == nullptr) {
         return Error(llvm::formatv(

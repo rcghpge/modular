@@ -2427,16 +2427,20 @@ struct OpWithCustomParams:
         dtype: DType,
         rank: Int,
         custom_int: Int,
+        custom_i32: Int32,
         custom_str: StaticString,
         custom_dtype: DType,
+        custom_float: Float32,
     ](
         out_tensor: OutputTensor[dtype=dtype, rank=rank, ...],
         in_tensor: InputTensor[dtype=dtype, rank=rank, ...],
     ) raises:
         out_tensor[0] = in_tensor[0]
         print("custom_int =", custom_int)
+        print("custom_i32 =", custom_i32)
         print("custom_str =", custom_str)
         print("custom_dtype =", custom_dtype)
+        print("custom_float =", custom_float)
 
 
 @extensibility.register("mgprt_test_func")

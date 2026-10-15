@@ -3,10 +3,12 @@
 
 // CHECK: Running 'test_op_with_custom_params':
 // CHECK-NEXT: custom_int = 42
+// CHECK-NEXT: custom_i32 = -7
 // CHECK-NEXT: custom_str = hello
 // CHECK-NEXT: custom_dtype = int32
+// CHECK-NEXT: custom_float = 2.5
 mo.graph @test_op_with_custom_params(%arg0: !mo.tensor<[4], f32>) -> (!mo.tensor<[4], f32>) {
-  %res = mo.custom [symbol = "op_with_custom_params", device = #M.device_ref<"cpu", 0>, parameters = { "custom_int" = 42, "custom_str" = "hello", "custom_dtype" = si32 }] (%arg0) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
+  %res = mo.custom [symbol = "op_with_custom_params", device = #M.device_ref<"cpu", 0>, parameters = { "custom_int" = 42, "custom_i32" = -7, "custom_str" = "hello", "custom_dtype" = si32, "custom_float" = #M.dense_array<2.5> : tensor<f32> }] (%arg0) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
 
   mo.output %res: !mo.tensor<[4], f32>
 }
