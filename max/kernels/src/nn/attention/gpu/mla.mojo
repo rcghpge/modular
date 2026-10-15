@@ -632,6 +632,84 @@ def flare_mla_decoding[
     )
 
 
+def flare_mla_decoding_rows[
+    k_t: MHAOperand,
+    mask_t: MHAMask,
+    dtype: DType,
+    //,
+    config: MHAConfig[dtype],
+](
+    output: TileTensor[mut=True, address_space=.GENERIC, ...],
+    q: TileTensor[dtype, address_space=.GENERIC, ...],
+    k: k_t,
+    num_keys: Int,
+    mask_functor: mask_t,
+    scale: Float32,
+    ctx: DeviceContext,
+    scalar_args_buf: NullableTileTensor[
+        DType.int64, address_space=.GENERIC, ...
+    ],
+    num_partitions: Optional[Int] = None,
+) raises:
+    """Runs MLA decode over a K operand with `num_keys` keys per entry.
+
+    The operand form of the `TileTensor` overload: `k` decides where each
+    key row lives, so a `SparseRowsMHAOperand` attends a top-k selection
+    straight from the paged cache, with no gathered copy. Each entry has one
+    absorbed-latent KV head.
+
+    Parameters:
+        k_t: The K operand type (inferred).
+        mask_t: The mask type (inferred).
+        dtype: Q's element type (inferred).
+        config: The attention configuration.
+
+    Args:
+        output: `[batch, 1, num_heads, v_depth]` output.
+        q: `[batch, 1, num_heads, depth]` queries.
+        k: The K (and aliased V) operand.
+        num_keys: Keys per batch entry; `mask_functor` hides the invalid ones.
+        mask_functor: The attention mask.
+        scale: The softmax scale.
+        ctx: The device context.
+        scalar_args_buf: Precomputed dispatch scalars, or null.
+        num_partitions: Split-K partition count; `None` picks heuristically.
+    """
+    comptime assert q.rank == 4, "only support rank 4 inputs."
+    # Only the AMD decode loader honors `rows_indexed`; the SM100 kernels
+    # would read the base operand's dense rows instead.
+    comptime assert (
+        not k_t.rows_indexed or ctx.target.is_amd_gpu()
+    ), "row-indexed K operands are only supported on AMD"
+
+    var valid_length = TileTensor(
+        UnsafePointer[UInt32, MutUntrackedOrigin].unsafe_dangling(),
+        row_major(Idx[0]),
+    )
+
+    flare_mla_decoding_dispatch[
+        kv_num_heads=1,
+        config=config,
+        ragged=False,
+        _is_cache_length_accurate=True,
+        _use_valid_length=False,
+        decoding_warp_split_k=False,
+    ](
+        output,
+        q,
+        k,
+        mask_functor,
+        valid_length,
+        Int(q.dim[1]()),
+        num_keys,
+        scale,
+        ctx,
+        scalar_args_buf,
+        kv_input_row_offsets=None,
+        num_partitions=num_partitions,
+    )
+
+
 @inline(.always)
 def flare_mla_decoding_dispatch[
     k_t: MHAOperand,
