@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
 from typing import Any, ClassVar, cast
@@ -46,6 +46,14 @@ from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
+)
+from max.nn.quant_config import (
+    InputScaleSpec,
+    QuantConfig,
+    QuantFormat,
+    ScaleGranularity,
+    ScaleOrigin,
+    WeightScaleSpec,
 )
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import ImageMetadata
@@ -83,6 +91,39 @@ from .kimik2_5 import KimiK2_5
 from .model_config import KimiK2_5Config, KimiK2_5TextConfig
 
 logger = logging.getLogger("max.pipelines")
+
+
+def _fp8_attention_quant_config(
+    state_dict: Mapping[str, WeightData],
+    quant_config: QuantConfig | None,
+    num_layers: int,
+) -> QuantConfig | None:
+    """Returns the quantization of FP8 attention beside FP4 experts, if any.
+
+    AMD's MXFP4 Kimi checkpoints store the MLA projections in FP8 with one
+    scale per output row, and their Quark config quantizes activations per
+    token at runtime.
+    """
+    if quant_config is None or not quant_config.is_fp4:
+        return None
+    scale = state_dict.get(
+        "language_model.layers.0.self_attn.q_a_proj.weight_scale"
+    )
+    if scale is None:
+        return None
+    return QuantConfig(
+        input_scale=InputScaleSpec(
+            granularity=ScaleGranularity.COLWISE,
+            origin=ScaleOrigin.DYNAMIC,
+            dtype=scale.dtype,
+        ),
+        weight_scale=WeightScaleSpec(
+            granularity=ScaleGranularity.ROWWISE, dtype=scale.dtype
+        ),
+        mlp_quantized_layers=set(),
+        attn_quantized_layers=set(range(num_layers)),
+        format=QuantFormat.FBGEMM_FP8,
+    )
 
 
 @dataclass
@@ -384,6 +425,9 @@ class KimiK2_5Model(
         model_config.correction_bias_dtype = correction_bias_dtype
         model_config.max_batch_context_length = max_batch_total_tokens
         model_config.quant_config = quant_config
+        model_config.attn_quant_config = _fp8_attention_quant_config(
+            state_dict, quant_config, config.num_hidden_layers
+        )
         model_config.ep_config = ep_config
         model_config.graph_mode = graph_mode
         model_config.data_parallel_degree = data_parallel_degree
