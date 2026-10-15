@@ -298,15 +298,18 @@ class StagedGraph(Generic[_P, _R]):
         *,
         prefix: str = "",
         subgraph_cache: dict[Any, Any] | None = None,
+        signal_buffer_index: int | None = None,
     ) -> None:
         arity = sum(len(layout.local_types) for layout in layouts)
+        at = arity if signal_buffer_index is None else signal_buffer_index
+        end = at + len(graph.inputs) - arity
         ctx = GraphRealizationContext(
             graph,
-            signal_buffers=[i.buffer for i in graph.inputs[arity:]] or None,
+            signal_buffers=[i.buffer for i in graph.inputs[at:end]] or None,
             prefix=prefix,
         )
         ctx.subgraph_cache = subgraph_cache
-        rest = iter(graph.inputs[:arity])
+        rest = iter([*graph.inputs[:at], *graph.inputs[end:]])
         with realization_context(ctx), ctx:
             in_args, in_kwargs = tree.unflatten(
                 treedef, [_argument_tensor(rest, layout) for layout in layouts]
@@ -327,6 +330,7 @@ class StagedGraph(Generic[_P, _R]):
         self.out_layouts = [r.layout for r in results]
         self.out_tree = out_tree
         self._signal_device_ids = signal_device_ids
+        self._signal_buffer_index = signal_buffer_index
 
     def __str__(self) -> str:
         """Returns the MLIR of the whole module, including subgraphs."""
@@ -408,6 +412,7 @@ class CompiledCallable(Generic[_P, _R]):
         self.in_layouts, self.in_tree = staged.in_layouts, staged.in_tree
         self.out_layouts, self.out_tree = staged.out_layouts, staged.out_tree
         self._signal_device_ids = staged._signal_device_ids
+        self._signal_buffer_index = staged._signal_buffer_index
         session = _session() if session is None else session
         # Use the session's MEF cache. Plain ``compile`` bypasses it.
         self._artifact = session.compile_reusing_mefs(staged.graph)
@@ -494,12 +499,22 @@ class CompiledCallable(Generic[_P, _R]):
         Args:
             buffers: One buffer per graph input, in graph order. A distributed
                 argument takes one buffer per shard. Do not pass the signal
-                buffers; they are appended automatically.
+                buffers; they are added automatically, after the other
+                inputs or where ``signal_buffer_index`` placed them.
 
         Returns:
             One buffer per graph output, in graph order.
         """
-        results = list(self.engine_model(*buffers, *self._signal_buffers))
+        at = (
+            len(buffers)
+            if self._signal_buffer_index is None
+            else self._signal_buffer_index
+        )
+        results = list(
+            self.engine_model(
+                *buffers[:at], *self._signal_buffers, *buffers[at:]
+            )
+        )
         _validation_hooks.compiled_call(self.engine_model, buffers, results)
         return results
 
@@ -554,6 +569,7 @@ def stage(
     allow_subgraphs: bool = True,
     signal_devices: Iterable[Device] = (),
     is_device_graph: bool = False,
+    signal_buffer_index: int | None = None,
 ) -> Callable[..., StagedGraph[_P, _R]]:
     """Traces a function into a graph without compiling it.
 
@@ -596,6 +612,10 @@ def stage(
             for, beyond the devices of the input types and of the tensors
             held by ``fn``.
         is_device_graph: Whether to build a device graph.
+        signal_buffer_index: The graph input position of the signal buffers,
+            counted over the flattened input types. Defaults to after the
+            last input. Set it to match a calling convention that fixes
+            their position, such as an exported graph's.
 
     Returns:
         A function that takes one input type per tensor argument of ``fn``
@@ -625,10 +645,11 @@ def stage(
         ids = ids if len(ids) > 1 else ()
         graph = Graph(
             name or _sanitized_graph_name(fn),
-            input_types=[
-                *(t for layout in layouts for t in layout.local_types),
-                *_signal_buffer_types(ids),
-            ],
+            input_types=_with_signal_buffers(
+                [t for layout in layouts for t in layout.local_types],
+                _signal_buffer_types(ids),
+                signal_buffer_index,
+            ),
             custom_extensions=custom_extensions,
             is_device_graph=is_device_graph,
         )
@@ -639,9 +660,22 @@ def stage(
             treedef,
             ids,
             subgraph_cache={} if allow_subgraphs else None,
+            signal_buffer_index=signal_buffer_index,
         )
 
     return record
+
+
+def _with_signal_buffers(
+    inputs: list[Any], signals: Sequence[Any], at: int | None
+) -> list[Any]:
+    """Returns ``inputs`` with ``signals`` inserted at ``at``, or appended."""
+    at = len(inputs) if at is None else at
+    if not 0 <= at <= len(inputs):
+        raise ValueError(
+            f"signal_buffer_index={at} is outside the {len(inputs)} inputs."
+        )
+    return [*inputs[:at], *signals, *inputs[at:]]
 
 
 def compile(
@@ -654,6 +688,7 @@ def compile(
     signal_devices: Iterable[Device] = (),
     is_device_graph: bool = False,
     session: InferenceSession | None = None,
+    signal_buffer_index: int | None = None,
 ) -> Callable[..., CompiledCallable[_P, _R]]:
     """Traces and compiles a function.
 
@@ -710,6 +745,8 @@ def compile(
         is_device_graph: Whether to build a device graph.
         session: The session that compiles and initializes the graph.
             Defaults to a session shared by the whole process.
+        signal_buffer_index: The graph input position of the signal buffers.
+            See :func:`stage`.
 
     Returns:
         A function that takes one input type per tensor argument of ``fn``
@@ -726,6 +763,7 @@ def compile(
             allow_subgraphs=allow_subgraphs,
             signal_devices=signal_devices,
             is_device_graph=is_device_graph,
+            signal_buffer_index=signal_buffer_index,
         )(*args, **kwargs)
         return CompiledCallable(staged, weights, session=session)
 

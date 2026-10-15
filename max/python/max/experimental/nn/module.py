@@ -551,6 +551,7 @@ class Module(Generic[_P, _R]):
         custom_extensions: Iterable[Path] = (),
         allow_subgraphs: bool = True,
         is_device_graph: bool = False,
+        signal_buffer_index: int | None = None,
     ) -> compilation.StagedGraph[..., Any]:
         """Traces ``forward`` into a graph without compiling it.
 
@@ -589,6 +590,8 @@ class Module(Generic[_P, _R]):
                 :func:`~max.experimental.compilation.as_subgraph` are traced
                 as subgraphs. If ``False``, they are inlined.
             is_device_graph: Whether to build a device graph.
+            signal_buffer_index: The graph input position of the signal
+                buffers. See :func:`~max.experimental.compilation.stage`.
 
         Returns:
             The :class:`~max.experimental.compilation.StagedGraph`. Print it
@@ -604,6 +607,7 @@ class Module(Generic[_P, _R]):
             custom_extensions=custom_extensions,
             allow_subgraphs=allow_subgraphs,
             is_device_graph=is_device_graph,
+            signal_buffer_index=signal_buffer_index,
         )(*input_types)
 
     def compile(
@@ -616,6 +620,7 @@ class Module(Generic[_P, _R]):
         auto_cast: bool = False,
         allow_subgraphs: bool = True,
         is_device_graph: bool = False,
+        signal_buffer_index: int | None = None,
     ) -> compilation.CompiledCallable[_P, _R]:
         """Traces ``forward`` and compiles it into a callable.
 
@@ -673,6 +678,8 @@ class Module(Generic[_P, _R]):
                 :func:`~max.experimental.compilation.as_subgraph` are traced
                 as subgraphs. If ``False``, they are inlined.
             is_device_graph: Whether to build a device graph.
+            signal_buffer_index: The graph input position of the signal
+                buffers. See :func:`~max.experimental.compilation.stage`.
 
         Returns:
             A :class:`~max.experimental.compilation.CompiledCallable` with
@@ -707,6 +714,7 @@ class Module(Generic[_P, _R]):
                 custom_extensions=custom_extensions,
                 allow_subgraphs=allow_subgraphs,
                 is_device_graph=is_device_graph,
+                signal_buffer_index=signal_buffer_index,
             )(*input_types)
             timer.mark_build_complete()
             return compilation.CompiledCallable(
