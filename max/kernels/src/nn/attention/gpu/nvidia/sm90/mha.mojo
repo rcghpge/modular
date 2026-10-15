@@ -56,7 +56,7 @@ from layout import (
 )
 from layout.tile_layout import Layout as TTLayout
 from layout.tensor_engine import DefaultEngine
-from layout.layout_tensor import copy_sram_to_dram
+from layout.tile_io import copy_sram_to_dram
 from layout.swizzle import make_swizzle
 from layout.tensor_core_async import (
     TensorCoreAsync,
@@ -1849,7 +1849,7 @@ def _mha_sm90[
                 local_warp_group_idx,
                 warp_y,
                 (q_smem + q_idx * q_tile_size).as_unsafe_any_origin(),
-                output_reg_tile,
+                output_reg_buffer,
             )
             # Guard writing to shared memory.
             named_barrier[Int32(num_consumer_threads)]()
@@ -1857,14 +1857,16 @@ def _mha_sm90[
             # are cast to 2 BF16 so that 2 4xFP32 vectors are merged into 1 8xBF16
             # vector and stored using 16B store instruction.
             copy_sram_to_dram[
-                thread_layout=Layout.row_major(
+                thread_layout=row_major[
                     num_consumer_threads * simd_size // config.depth,
                     config.depth // simd_size,
-                ),
+                ](),
                 swizzle=swizzle,
+                masked=True,
             ](
                 output_gmem_tile.vectorize[1, simd_size](),
                 accum_smem_tile.vectorize[1, simd_size](),
+                Int(position.q_tile_num_rows()),
             )
 
         var startend = position.get_start_and_end_for_partitions[
