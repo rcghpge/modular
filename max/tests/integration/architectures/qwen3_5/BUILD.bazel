@@ -319,6 +319,7 @@ modular_py_test(
 modular_py_test(
     name = "test_gdn_prefill_routing",
     srcs = ["test_gdn_prefill_routing.py"],
+    tags = ["skip-external-ci"],
     deps = [
         "//max/python/max/dtype",
         "//max/python/max/graph",

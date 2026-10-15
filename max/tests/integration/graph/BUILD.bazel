@@ -634,6 +634,7 @@ modular_py_test(
         "skip-ci-asan",
         "skip-ci-m7g",
         "skip-ci-ubsan",
+        "skip-external-ci",
     ],
     # The virtual CUDA (sm_100a) graphs need the NVPTX compiler to elaborate
     # kernels, which is Linux-only (CUDACompilationDevice).

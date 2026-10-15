@@ -29,6 +29,7 @@ modular_py_test(
         ],
     ),
     per_test_tags = {
+        "test_ep_config.py": ["skip-external-ci"],
         "test_module.py": ["skip-external-ci"],
     },
     deps = _COMMON_DEPS + [
