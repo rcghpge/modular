@@ -115,6 +115,56 @@ def MOGG_Async : MOGG_Type<"Async", "async"> {
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// Tile fusion types
+//===----------------------------------------------------------------------===//
+
+def MOGG_Tile : MOGG_Type<"Tile", "tile"> {
+  let summary = "A tile of a captured tensor inside a tile fusion body";
+  let description = [{
+    One tile of a captured tensor. A tile fusion body computes on tiles, where
+    a SIMD body computes on single elements.
+
+    `mogg.tile.load` reads a tile from a capture at a `!mogg.tile_coord<N>`.
+    `mogg.call.elementwise` runs the kernel's `TileTensor` overload on it.
+    `mogg.tile.store` or `mogg.yield` hands it back.
+
+    The kernel chooses the tile shape at Mojo compile time. The type therefore
+    carries only the element type, which must be a scalar dtype.
+
+    Example:
+    ```mlir
+    !mogg.tile<f32>
+    ```
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
+def MOGG_TileCoord : MOGG_Type<"TileCoord", "tile_coord"> {
+  let summary = "The coordinate of a tile inside a tile fusion body";
+  let description = [{
+    The loop index of a tile fusion body. It is the tile counterpart of
+    `!map.index<N>`, and it addresses a whole tile rather than an element.
+
+    Example:
+    ```mlir
+    !mogg.tile_coord<2>    // a rank-2 tile coordinate
+    ```
+  }];
+
+  let parameters = (ins "uint64_t":$rank);
+  let assemblyFormat = "`<` $rank `>`";
+}
+
 // A `!mogg.async<T>` with `T` in `allowedTypes`. `ConfinedType` keeps the
 // accessor typed as `TypedValue<MOGG::AsyncType>`.
 class MOGG_AsyncOf<list<Type> allowedTypes> : ConfinedType<MOGG_Async,

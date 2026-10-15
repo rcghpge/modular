@@ -2064,6 +2064,37 @@ LogicalResult TensorStoreOp::emitMojo(EmitMojoState &state) {
   return success();
 }
 
+/// Checks that `tile` moves elements of `tensor`'s type. A capture is a block
+/// argument with no creating op, so only a tensor whose creating op is in
+/// view is checked.
+static LogicalResult verifyTileElementType(Operation *op, Value tensor,
+                                           TileType tile) {
+  auto create = tensor.getDefiningOp<TensorCreateInterface>();
+  if (!create || create.getElementType() == tile.getElementType())
+    return success();
+  return op->emitOpError("tile element type ")
+         << tile.getElementType() << " does not match tensor element type "
+         << create.getElementType();
+}
+
+LogicalResult TileLoadOp::verify() {
+  return verifyTileElementType(*this, getTensor(), getResult().getType());
+}
+
+LogicalResult TileStoreOp::verify() {
+  return verifyTileElementType(*this, getTensor(), getValue().getType());
+}
+
+// Tile ops have no standalone Mojo form: the tile fusion container that holds
+// them emits its body as a whole.
+LogicalResult TileLoadOp::emitMojo(EmitMojoState &) {
+  return emitOpError("is only emitted by its tile fusion container");
+}
+
+LogicalResult TileStoreOp::emitMojo(EmitMojoState &) {
+  return emitOpError("is only emitted by its tile fusion container");
+}
+
 /// One fused-region functor capture, as the enclosing function sees it.
 /// `!mogg.tensor` is opaque, so shape / dtype / mutability are read from the
 /// op that creates the capture, as in `CallForeachOp::emitMojo`.
@@ -4665,6 +4696,27 @@ LogicalResult ChainSinkOp::canonicalize(ChainSinkOp sinkOp,
 //===----------------------------------------------------------------------===//
 // CallElementwiseOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult CallElementwiseOp::verify() {
+  auto isTile = [](Value v) { return isa<TileType>(v.getType()); };
+  if (llvm::none_of(getOutputs(), isTile)) {
+    if (llvm::any_of(getInputs(), isTile))
+      return emitOpError("a tile input requires a tile result");
+    return success();
+  }
+  // The `TileTensor` overload computes on whole tiles. A literal is the one
+  // scalar it takes, which emit passes alongside the tiles.
+  if (!llvm::all_of(getOutputs(), isTile))
+    return emitOpError("cannot mix tile and scalar results");
+  for (Value input : getInputs())
+    if (!isTile(input) && !input.getDefiningOp<ConstantScalarOp>())
+      return emitOpError("a tile call takes tiles or mogg.constant.scalar "
+                         "literals, got ")
+             << input.getType();
+  if (getIndex())
+    return emitOpError("a tile call takes no index");
+  return success();
+}
 
 LogicalResult
 CallElementwiseOp::verifySymbolUses(SymbolTableCollection &symbolTable) {

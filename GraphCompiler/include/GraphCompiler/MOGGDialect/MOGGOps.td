@@ -1399,6 +1399,54 @@ def MOGG_TensorLoadOp : MOGG_Op<"tensor.load", [
   }];
 }
 
+def MOGG_TileLoadOp : MOGG_Op<"tile.load", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Load a tile of a codegen tensor at a tile coordinate.";
+  let description = [{
+    Reads the whole tile of `$tensor` at `$coord`, the tile counterpart of
+    `mogg.tensor.load`. Emission stages each load into its own on-chip tile,
+    so the op is not `Pure`: merging two loads would merge their staging
+    tiles. Where `$tensor`'s element type is known from its creating op, it
+    must match the result tile's.
+
+    Example:
+    ```mlir
+    %t = mogg.tile.load %x[%coord] : !mogg.tensor, !mogg.tile_coord<2> -> !mogg.tile<f32>
+    ```
+  }];
+  let arguments = (ins MOGG_TensorLike:$tensor, MOGG_TileCoord:$coord);
+  let results = (outs MOGG_Tile:$result);
+  let assemblyFormat = [{
+    $tensor `[` $coord `]` attr-dict `:`
+    qualified(type($tensor)) `,` qualified(type($coord)) `->` qualified(type($result))
+  }];
+  let hasVerifier = 1;
+}
+
+def MOGG_TileStoreOp : MOGG_Op<"tile.store", [
+  DeclareOpInterfaceMethods<EmitsMojoInterface>,
+]> {
+  let summary = "Store a tile into a codegen tensor at a tile coordinate.";
+  let description = [{
+    Writes `$value` as the tile of `$tensor` at `$coord`, the tile counterpart
+    of `mogg.tensor.store`. Where `$tensor`'s element type is known from its
+    creating op, it must match the stored tile's.
+
+    Example:
+    ```mlir
+    mogg.tile.store %out[%coord] = %t : !mogg.tensor, !mogg.tile_coord<2>, !mogg.tile<f32>
+    ```
+  }];
+  let arguments = (ins MOGG_TensorLike:$tensor, MOGG_TileCoord:$coord,
+                       MOGG_Tile:$value);
+  let assemblyFormat = [{
+    $tensor `[` $coord `]` `=` $value attr-dict `:`
+    qualified(type($tensor)) `,` qualified(type($coord)) `,` qualified(type($value))
+  }];
+  let hasVerifier = 1;
+}
+
 def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
   Pure,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
@@ -1598,6 +1646,7 @@ def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
     OptionalAttr<DictionaryAttr>:$kernel_param
   );
   let results = (outs Variadic<AnyType>:$outputs);
+  let hasVerifier = 1;
 
   let assemblyFormat = [{
     $callee `` custom<OptionalKernelParams>($kernel_param) ``

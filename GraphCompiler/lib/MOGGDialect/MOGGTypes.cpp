@@ -74,6 +74,21 @@ static void printDimName(mlir::AsmPrinter &printer,
 #include "GraphCompiler/MOGGDialect/MOGGTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
+// TileType
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+MOGG::TileType::verify(function_ref<InFlightDiagnostic()> emitError,
+                       Type elementType) {
+  // `fromMLIRType` maps `none` to the unknown dtype, so it is excluded first.
+  if (!isa<IntegerType, FloatType>(elementType) ||
+      MO::fromMLIRType(elementType).isError())
+    return emitError() << "expected a scalar dtype element type, got "
+                       << elementType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MOKernelOperandTypeInterface
 //===----------------------------------------------------------------------===//
 
