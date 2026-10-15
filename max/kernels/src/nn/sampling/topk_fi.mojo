@@ -2029,6 +2029,32 @@ def TopKTopPSamplingFromProbKernel[
                     )
                 return
 
+        comptime if not is_apple_gpu() and not emit_dist and coop_size == 1:
+            # A k=1 draw is the row's first argmax whatever the temperature,
+            # top-p or min-p: the k == 1 block after the search overwrites
+            # whatever the search drew. Take that argmax up front and skip the
+            # softmax passes and the search, which would only be thrown away.
+            # `k` is uniform per block, so the collectives stay legal, and
+            # the branch is decided on the device, so a captured graph keeps
+            # serving each row by its own `k`. Rows with k > 1 run the code
+            # below unchanged. `emit_dist` still needs the distribution, and
+            # split rows (`coop_size > 1`) keep the combined path below.
+            if k == 1:
+                comptime vec_bytes = align_of[SIMD[dtype, vec_size]]()
+                var best = _block_reduce_topk[ascending=True](
+                    _argmaxmin_block_partial[dtype, True, vec_size, 4](
+                        probs_ptr.as_unsafe_any_origin(),
+                        0,
+                        _d,
+                        _d % vec_size == 0 and Int(probs.ptr) % vec_bytes == 0,
+                        Int(tx),
+                        block_size,
+                    )
+                )
+                if tx == 0:
+                    output[bx] = Scalar[out_idx_type](best.p)
+                return
+
         # From-logits mode: resolve per-row temperature / min-p and compute
         # the row max and total unnormalized softmax mass z in two uniform
         # passes. z defaults to 1.0 in from-prob mode so the CDF budget and
