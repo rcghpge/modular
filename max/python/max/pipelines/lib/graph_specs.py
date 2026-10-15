@@ -57,6 +57,11 @@ class GraphRole(str, Enum):
     EP_INIT = "ep_init"
     """The one-time expert-parallel setup graph run at engine startup."""
 
+    SPEC_DECODER = "spec_decoder"
+    """One speculative-decoding step, the target and draft models fused:
+    tokens, the previous drafts and KV cache to the accepted tokens and the
+    next drafts."""
+
 
 @dataclass(frozen=True)
 class GraphSpec:

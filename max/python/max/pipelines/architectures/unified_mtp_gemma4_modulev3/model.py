@@ -38,6 +38,7 @@ from max.pipelines.architectures.gemma4_modulev3.vision_model.vision_model impor
     Gemma4VisionModel,
 )
 from max.pipelines.lib import ModelInputs, UnifiedEagleOutputs
+from max.pipelines.lib.graph_specs import GraphRole
 from max.profiler import traced
 from typing_extensions import override
 
@@ -124,11 +125,11 @@ class UnifiedMTPGemma4ModuleV3Model(UnifiedMTPGemma4Model):
 
         return config
 
+    # TODO(kathywu): Return ModuleV3 graph specs once
+    # GraphSpec takes ModuleV3 modules, instead of compiling here.
     @traced
     @override
-    def load_model(
-        self, session: InferenceSession
-    ) -> tuple[Model | None, Model]:
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
         del session
         state_dict = self._load_state_dict()
         model_config = self._create_model_config(state_dict)
@@ -142,8 +143,11 @@ class UnifiedMTPGemma4ModuleV3Model(UnifiedMTPGemma4Model):
         # queries).
         model = self._compiled.engine_model
 
+        models: dict[str, Model] = {GraphRole.SPEC_DECODER: model}
         vision_model = self._compile_vision_model(model_config)
-        return vision_model, model
+        if vision_model is not None:
+            models[GraphRole.VISION] = vision_model
+        return models
 
     def _build_module(
         self, model_config: Gemma4ForConditionalGenerationConfig
