@@ -1,7 +1,7 @@
 # MAX documentation
 
 This directory contains the bulk of documentation about MAX, both for
-developers using MAX form the `max` package and for developers building with
+developers using MAX from the `max` package and for developers building with
 and contributing to the MAX framework through this repo.
 
 ## Public website docs

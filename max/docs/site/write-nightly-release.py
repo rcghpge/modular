@@ -101,7 +101,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python3 write-nightly-release.py <output-nightly.md>")
         print(
-            "  Reads max/nightly-changelog.md next to this script; "
+            "  Reads nightly-changelog.md next to this script; "
             "writes the processed release page to <output-nightly.md>."
         )
         sys.exit(1)
