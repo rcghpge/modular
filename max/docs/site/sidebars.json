@@ -429,6 +429,17 @@
             },
             {
               "type": "category",
+              "label": "sequence",
+              "link": {
+                "type": "doc",
+                "id": "api/python/graph.ops.sequence"
+              },
+              "items": [
+                "__AUTOGEN:max.graph.ops.sequence__"
+              ]
+            },
+            {
+              "type": "category",
               "label": "weights",
               "link": {
                 "type": "doc",
@@ -734,6 +745,17 @@
                   },
                   "items": [
                     "__AUTOGEN:max.pipelines.lib.arch_lookup__"
+                  ]
+                },
+                {
+                  "type": "category",
+                  "label": "artifact",
+                  "link": {
+                    "type": "doc",
+                    "id": "api/python/pipelines.lib.artifact"
+                  },
+                  "items": [
+                    "__AUTOGEN:max.pipelines.lib.artifact__"
                   ]
                 },
                 {
