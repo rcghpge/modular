@@ -241,11 +241,10 @@ LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
 
 LogicalResult ASTDecl::resolveSyntheticBody() {
   auto &resolver = shared.getDeclResolver();
-  if (Operation *op = getIfOperation()) {
-    if (isa<EnumCaseOp, StructDeclOp, StructFieldOp, ExtensionDeclOp,
-            TraitDeclOp, AliasDeclOp>(op))
-      return success();
-  } else if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
+  if (isa<EnumCaseASTDecl, StructASTDecl, StructFieldASTDecl, ExtensionASTDecl,
+          TraitASTDecl, AliasASTDecl>(this))
+    return success();
+  if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
     return success(!failed(resolver.resolveBody(traitType, *this)));
   }
 
@@ -350,8 +349,8 @@ ASTDecl::collectTypeAndExtensions(ASTType type, llvm::SMLoc callLoc) {
     result.push_back(astDecl);
 
   // Handle both struct and trait types for extension lookup.
-  if (!astDecl || !astDecl->getUserNameIfOperation() ||
-      !isa<StructDeclOp, TraitDeclOp>(astDecl->getIfOperation()))
+  if (!isa_and_nonnull<TypeASTDecl>(astDecl) ||
+      !astDecl->getUserNameIfOperation())
     return result;
 
   // Now find all extensions that target this struct/trait.
@@ -383,9 +382,9 @@ ASTDecl::collectTypeAndExtensions(ASTType type, llvm::SMLoc callLoc) {
     // extension visible in its source module, so one extension can be found in
     // several enclosing scopes; count it once, or its methods tie with
     // themselves in overload resolution.
-    auto extOp =
-        dyn_cast_or_null<ExtensionDeclOp>(foundAstDecl->getIfOperation());
-    if (extOp && extOp.getTargetStructAttr() == typeSymbol &&
+    auto *extensionDecl = dyn_cast<ExtensionASTDecl>(foundAstDecl);
+    if (extensionDecl &&
+        extensionDecl->getOp().getTargetStructAttr() == typeSymbol &&
         !llvm::is_contained(result, foundAstDecl))
       result.push_back(foundAstDecl);
   }
@@ -682,10 +681,11 @@ void ASTDecl::findExtensionsInScopeForStruct(
     return;
 
   for (ASTDecl *decl : it->second) {
-    auto extOp = dyn_cast_or_null<ExtensionDeclOp>(decl->getIfOperation());
-    if (!extOp || !extOp.getTargetStructAttr() ||
-        extOp.getTargetStructAttr() != targetStruct)
+    auto *extensionDecl = dyn_cast<ExtensionASTDecl>(decl);
+    if (!extensionDecl ||
+        extensionDecl->getOp().getTargetStructAttr() != targetStruct)
       continue;
+    ExtensionDeclOp extOp = extensionDecl->getOp();
 
     // If no trait filter specified, add this extension.
     if (!filterTrait.has_value()) {

@@ -796,8 +796,7 @@ ModuleLoader::importRelativeModuleState(const SharedState::ImportPath &path,
     while (--relativeLevel) {
       identifierLoc = adjustIdentifierLoc(1);
       if (!parentDecl->getParentDecl() ||
-          !isa_and_nonnull<PackageOp>(
-              parentDecl->getParentDecl()->getIfOperation())) {
+          !isa<PackageASTDecl>(parentDecl->getParentDecl())) {
         return emitError(
             "attempted relative import with no known parent package");
       }

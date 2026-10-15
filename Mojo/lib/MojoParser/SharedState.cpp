@@ -178,7 +178,7 @@ private:
       assert(rootAttr.getValue().starts_with(kClosurePrefix) ||
              rootAttr.getValue().starts_with(kClosureExtensionPrefix) ||
              rootAttr.getValue().starts_with(kClosureInflatedPrefix));
-      assert(isa<StructDeclOp>(st->getIfOperation()));
+      assert(isa<StructASTDecl>(st));
       return st;
     }
 
@@ -229,8 +229,7 @@ private:
 
           // Don't fully resolve containers, they'll get resolved if something
           // is needed from within them.
-          if (isa_and_nonnull<FileModuleOp, PackageOp, StructDeclOp,
-                              TraitDeclOp>(decl->getIfOperation()))
+          if (isa<FileModuleASTDecl, PackageASTDecl, TypeASTDecl>(decl))
             return mlir::success();
 
           // Fully resolve every other decl.
@@ -727,9 +726,7 @@ auto SharedState::lookupAndResolveDecl(StringRef name, SMLoc loc,
     do {
       ArrayRef<ASTDecl *> e = lookupInScope(*curSearchScope);
       if (!e.empty()) {
-        if (curSearchScope &&
-            isa_and_nonnull<StructDeclOp, TraitDeclOp>(
-                curSearchScope->getIfOperation()) &&
+        if (isa_and_nonnull<TypeASTDecl>(curSearchScope) &&
             !(*e.front()).getIfIRValue().getIfPValue()) {
           // Skip struct/trait bodies when searching up parent scopes, unless
           // the value is a parameter.
@@ -828,8 +825,7 @@ auto SharedState::lookupAllDeclsWithName(StringRef name, SMLoc loc,
       expandWildcardImports(*curSearchScope);
       ArrayRef<ASTDecl *> e = curSearchScope->lookupInCurrentScope(nameAttr);
       if (!e.empty()) {
-        if (curSearchScope &&
-            isa_and_nonnull<StructDeclOp>(curSearchScope->getIfOperation()) &&
+        if (isa_and_nonnull<StructASTDecl>(curSearchScope) &&
             !(*e.front()).getIfIRValue().getIfPValue()) {
           // Skip struct bodies when searching up parent scopes, unless the
           // value is a parameter. But still collect them for potential use.
@@ -983,7 +979,7 @@ static SmallString<64> makeBuiltinCacheKey(const SharedState::ImportPath &path,
 
 /// Lookup a builtin trait like `AnyType`, `Deinitable`, `Copyable`,
 /// `Movable` etc.  On error this returns null but does not print an error.
-ASTDecl *SharedState::lookupBuiltinTrait(StringRef traitName, SMLoc loc) {
+TraitASTDecl *SharedState::lookupBuiltinTrait(StringRef traitName, SMLoc loc) {
   if (LLVM_UNLIKELY(!hasBuiltinModule())) {
     // I don't even know why we are allowing this
     return {};
@@ -993,16 +989,16 @@ ASTDecl *SharedState::lookupBuiltinTrait(StringRef traitName, SMLoc loc) {
   const SmallString<64> cacheKey = makeBuiltinCacheKey(path, traitName);
   if (auto it = impl->builtinTraitCache.find(cacheKey);
       it != impl->builtinTraitCache.end())
-    return it->second;
+    return cast<TraitASTDecl>(it->second);
 
   LookupResult lookup = lookupAndResolveDecl(
       traitName, loc, importModule(path, /*currentPackage=*/nullptr, loc), true,
       false);
   if (!lookup.isFailure() && !lookup.getIfSuccess().empty()) {
     for (ASTDecl *result : lookup.getIfSuccess()) {
-      if (isa_and_nonnull<TraitDeclOp>(result->getIfOperation())) {
+      if (auto *traitDecl = dyn_cast<TraitASTDecl>(result)) {
         impl->builtinTraitCache.try_emplace(cacheKey, result);
-        return result;
+        return traitDecl;
       }
     }
   }
@@ -1010,12 +1006,12 @@ ASTDecl *SharedState::lookupBuiltinTrait(StringRef traitName, SMLoc loc) {
 }
 
 TraitType SharedState::lookupBuiltinTraitType(StringRef traitName, SMLoc loc) {
-  ASTDecl *traitDecl = lookupBuiltinTrait(traitName, loc);
-  if (!traitDecl || !isa_and_nonnull<TraitDeclOp>(traitDecl->getIfOperation()))
+  TraitASTDecl *traitDecl = lookupBuiltinTrait(traitName, loc);
+  if (!traitDecl)
     return {};
   if (failed(declResolver->resolveSignature(*traitDecl, loc)))
     return {};
-  return cast<TraitDeclOp>(traitDecl->getIfOperation()).getCanonicalTrait();
+  return traitDecl->getOp().getCanonicalTrait();
 }
 
 ASTDecl *SharedState::lookupNamedTypeDecl(StringRef name, ASTDecl &context,
@@ -1031,7 +1027,7 @@ ASTDecl *SharedState::lookupNamedTypeDecl(StringRef name, ASTDecl &context,
   // The overload set may contain multiple entries, but if it is a struct, it
   // must be a single entry and therefore we can just check that one.
   ASTDecl &firstDecl = *result.getIfSuccess()[0];
-  if (isa_and_nonnull<StructDeclOp>(firstDecl.getIfOperation()))
+  if (isa<StructASTDecl>(firstDecl))
     return &firstDecl;
 
   if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&firstDecl)) {
@@ -1046,8 +1042,8 @@ ASTDecl *SharedState::lookupNamedTypeDecl(StringRef name, ASTDecl &context,
 
 static ASTType typeForResolvedTypeDecl(SharedState &state, ASTDecl *decl,
                                        SMLoc loc) {
-  if (auto structDecl = dyn_cast_or_null<StructDeclOp>(decl->getIfOperation()))
-    return structDecl.bindReference();
+  if (auto *structDecl = dyn_cast_if_present<StructASTDecl>(decl))
+    return structDecl->getOp().bindReference();
   if (auto *aliasDecl = dyn_cast<AliasASTDecl>(decl)) {
     if (failed(state.declResolver->resolveBody(*decl, loc)))
       return state.getTypeCheckErrorType();
@@ -1096,7 +1092,7 @@ ASTDecl *SharedState::getBuiltinCoroutineType(llvm::SMLoc loc) {
                                   loc);
 }
 
-ASTDecl *SharedState::getBuiltinDevicePassableTrait(llvm::SMLoc loc) {
+TraitASTDecl *SharedState::getBuiltinDevicePassableTrait(llvm::SMLoc loc) {
   ASTDecl &devicePassableModule =
       importModule({"std", "builtin", "device_passable"},
                    /*currentPackage=*/nullptr, loc);
@@ -1108,8 +1104,7 @@ ASTDecl *SharedState::getBuiltinDevicePassableTrait(llvm::SMLoc loc) {
     emitError(loc, "could not find a 'DevicePassable' type");
     return {};
   }
-  ASTDecl &firstDecl = *result.getIfSuccess()[0];
-  return &firstDecl;
+  return cast<TraitASTDecl>(result.getIfSuccess()[0]);
 }
 
 ASTDecl *SharedState::getBuiltinRaisingCoroutineType(llvm::SMLoc loc) {
@@ -1459,11 +1454,10 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
               refWalker.walk(StructMetaType::get(structType));
               ASTDecl &structAstDecl =
                   declResolver->getDeclForTypeSymbol(targetStruct);
-              auto structOp = dyn_cast_or_null<StructDeclOp>(
-                  structAstDecl.getIfOperation());
-              assert(structOp && "extension target is not a struct");
+              auto *structDecl = dyn_cast<StructASTDecl>(&structAstDecl);
+              assert(structDecl && "extension target is not a struct");
               cast<ExtensionASTDecl>(decl).setSelfType(
-                  StructASTDecl::computeSelfType(structOp));
+                  StructASTDecl::computeSelfType(structDecl->getOp()));
               return success();
             })
             .Case([&](ImportOp) {
@@ -1786,20 +1780,20 @@ static void adjustTokenEndPoint(SharedState &shared, SMLoc &loc) {
   loc = SMLoc::getFromPointer(loc.getPointer() + tokenSize);
 }
 
-ASTDecl *SharedState::getUniversalParametricClosureTrait() {
+TraitASTDecl *SharedState::getUniversalParametricClosureTrait() {
   if (!impl->parametricClosureTrait) {
     auto *closureTrait = IREmitter::createParametricClosureTrait(*this);
     assert(closureTrait && "internal error: failed to create closure trait");
     impl->parametricClosureTrait = closureTrait;
   }
 
-  return impl->parametricClosureTrait;
+  return cast<TraitASTDecl>(impl->parametricClosureTrait);
 }
 
 FnTypeGeneratorType SharedState::getClosureFnSig(TraitSymbolAttr closureInst) {
-  ASTDecl *traitDecl = getUniversalParametricClosureTrait();
-  ParameterEvaluator evaluator = *populateTraitBindingEvaluator(
-      closureInst, cast<TraitDeclOp>(traitDecl->getIfOperation()));
+  TraitASTDecl *traitDecl = getUniversalParametricClosureTrait();
+  ParameterEvaluator evaluator =
+      *populateTraitBindingEvaluator(closureInst, traitDecl->getOp());
 
   AliasDeclOp callAlias =
       cast<AliasASTDecl>(traitDecl->lookupInCurrentScope("__call__").front())
@@ -1815,6 +1809,10 @@ SharedState::getClosureFnSigWithoutSelf(TraitSymbolAttr closureInst) {
 bool SharedState::isUniversalParametricClosureTrait(TraitSymbolAttr symbol) {
   return getUniversalParametricClosureTrait()->getSymbolRef() ==
          symbol.getSymbol();
+}
+
+bool SharedState::isUniversalParametricClosureTrait(ASTDecl *trait) {
+  return trait == getUniversalParametricClosureTrait();
 }
 
 FnOp SharedState::getOrCreateFunctionThunk(Attribute key, CreateThunkFn create,
@@ -2352,8 +2350,9 @@ struct BuiltinFunctionFolder {
 
       // We need the struct decl to get the fields.
       auto structType = cast<LIT::StructType>(whole.getType());
-      auto structDecl = ASTType(structType).getDecl(shared);
-      auto structOp = cast<StructDeclOp>(structDecl->getIfOperation());
+      auto *structDecl =
+          cast<StructASTDecl>(ASTType(structType).getDecl(shared));
+      StructDeclOp structOp = structDecl->getOp();
 
       // Rebuild the struct with the new value in the field.
       SmallVector<std::tuple<StringAttr, TypedAttr>> fields;
@@ -2704,8 +2703,8 @@ FailureOr<TypedAttr> BuiltinFunctionFolder::fold(Operation &op) {
         ASTType(eltType).isTrivialRegisterType(decl->getLoc(), shared)) {
       // A struct with no fields never get initialized, so it has to start as a
       // pre-built value.
-      auto structOp = dyn_cast_or_null<StructDeclOp>(decl->getIfOperation());
-      if (structOp && structOp.getFieldDecls().empty())
+      auto *structDecl = dyn_cast<StructASTDecl>(decl);
+      if (structDecl && structDecl->getOp().getFieldDecls().empty())
         varDeclSoFar[varDecl] = LIT::getEmptyStructValue(eltType);
       else
         varDeclSoFar[varDecl] = UninitMemAttr::get(eltType);

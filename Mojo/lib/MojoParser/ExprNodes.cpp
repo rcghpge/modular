@@ -500,8 +500,7 @@ static PValue resolveAliasReference(AliasDeclOp decl, StringRef declName,
       // test too.
       ASTDecl &structAstDecl =
           emitter.shared.declResolver->getDeclForTypeSymbol(*targetStructRef);
-      StructDeclOp structDeclOp =
-          cast<StructDeclOp>(structAstDecl.getIfOperation());
+      StructDeclOp structDeclOp = cast<StructASTDecl>(structAstDecl).getOp();
       assert(decl.getValueAttr() && "Extension's alias should have value");
       TypedAttr aliasValue = decl.getValueAttr();
       ParameterEvaluator evaluator = emitter.shared.getParameterEvaluator(
@@ -625,7 +624,8 @@ static CValue handleIntFPStringLiteral(TypedAttr value, ASTType type,
     return {}; // Sanity check the returned declaration.
   ASTDecl *decl = type.getDecl(emitter.shared);
 
-  auto litStruct = dyn_cast_if_present<StructDeclOp>(decl->getIfOperation());
+  auto *structDecl = dyn_cast_if_present<StructASTDecl>(decl);
+  StructDeclOp litStruct = structDecl ? structDecl->getOp() : nullptr;
   if (!litStruct || litStruct.getParams().size() != 1 ||
       !sugarIsa<POP::IntLiteralType, POP::FloatLiteralType, StringType>(
           litStruct.getParams()[0].getType())) {
@@ -760,12 +760,12 @@ static ASTType getArgumentType(IREmitter &emitter, const ExprNode *expr,
       expr->getLoc());
   if (!decl)
     return {};
-  auto structOp = dyn_cast_if_present<StructDeclOp>(decl->getIfOperation());
-  assert(structOp && "builtin '_FormatArgument' does not refer to a struct");
+  auto *structDecl = dyn_cast<StructASTDecl>(decl);
+  assert(structDecl && "builtin '_FormatArgument' does not refer to a struct");
 
   ParamBindings bindings(emitter.declScope, expr);
   bindings.add(expr, origin);
-  return specializeStruct(bindings, structOp, decl);
+  return specializeStruct(bindings, structDecl->getOp(), decl);
 }
 
 /// Look up a t-string entry point and bind the parameters given, in order.
@@ -793,8 +793,8 @@ static AnyValue emitArgumentArray(IREmitter &emitter, const ExprNode *expr,
       SharedState::ImportPath({"std", "collections"}), "Array", expr->getLoc());
   if (!decl)
     return {};
-  auto structOp = dyn_cast_if_present<StructDeclOp>(decl->getIfOperation());
-  assert(structOp && "builtin 'Array' does not refer to a struct");
+  auto *structDecl = dyn_cast<StructASTDecl>(decl);
+  assert(structDecl && "builtin 'Array' does not refer to a struct");
 
   // The element type is bound rather than inferred, because a t-string with
   // no interpolations has no element to infer it from.  The length is left
@@ -803,7 +803,7 @@ static AnyValue emitArgumentArray(IREmitter &emitter, const ExprNode *expr,
   bindings.add(expr, PValue(argumentType));
   bindings.add(expr,
                UnboundAttr::get(UnresolvedType::get(emitter.getContext())));
-  ASTType arrayType = specializeStruct(bindings, structOp, decl);
+  ASTType arrayType = specializeStruct(bindings, structDecl->getOp(), decl);
   if (!arrayType)
     return {};
 
@@ -913,13 +913,11 @@ ExprNode::ELVIITResult DeclRefNode::emitLCVIR(ExprDest &dest,
 /// ASTDecl.
 /// - If it's anything else, return success with nullptr.
 /// - If signature resolution fails, return failure.
-static FailureOr<ASTDecl *> getTargetStructDecl(ASTDecl *referencedDecl,
-                                                IREmitter &emitter) {
-  if (isa_and_nonnull<StructDeclOp>(referencedDecl->getIfOperation())) {
-    return referencedDecl;
-  }
-  if (auto extensionDeclOp =
-          dyn_cast_or_null<ExtensionDeclOp>(referencedDecl->getIfOperation())) {
+static FailureOr<StructASTDecl *> getTargetStructDecl(ASTDecl *referencedDecl,
+                                                      IREmitter &emitter) {
+  if (auto *structDecl = dyn_cast<StructASTDecl>(referencedDecl))
+    return structDecl;
+  if (auto *extensionDecl = dyn_cast<ExtensionASTDecl>(referencedDecl)) {
     // Signature resolve the extension so targetStruct gets populated.
     if (failed(emitter.shared.declResolver->resolve(
             *referencedDecl, DeclResolvedness::signature,
@@ -927,8 +925,10 @@ static FailureOr<ASTDecl *> getTargetStructDecl(ASTDecl *referencedDecl,
       return failure();
     }
 
-    SymbolRefAttr targetStructRef = extensionDeclOp.getTargetStruct().value();
-    return &emitter.shared.declResolver->getDeclForTypeSymbol(targetStructRef);
+    SymbolRefAttr targetStructRef =
+        extensionDecl->getOp().getTargetStruct().value();
+    return &cast<StructASTDecl>(
+        emitter.shared.declResolver->getDeclForTypeSymbol(targetStructRef));
   }
   return nullptr;
 }
@@ -984,8 +984,7 @@ diagnoseUnknownDeclaration(StringRef spelling, ASTDecl &lookupScope,
   auto loc = expr->getLoc();
   if (!failureDecls.empty()) {
     // Reject unqualified struct field references.
-    if (auto fieldOp = dyn_cast_or_null<StructFieldOp>(
-            failureDecls[0]->getIfOperation())) {
+    if (isa<StructFieldASTDecl>(failureDecls[0])) {
       emitter.emitError(loc, "cannot access instance field '")
           << spelling << "' directly; did you mean 'self.'?" << expr->getRange()
           << FixIt::insertBeforeToken(loc, "self.");
@@ -994,11 +993,10 @@ diagnoseUnknownDeclaration(StringRef spelling, ASTDecl &lookupScope,
 
     // Reject unqualified struct/trait method/alias references.
     ASTDecl *parentDecl = failureDecls[0]->getParentDecl();
-    if (parentDecl && isa_and_nonnull<StructDeclOp, TraitDeclOp>(
-                          parentDecl->getIfOperation())) {
+    if (isa_and_nonnull<TypeASTDecl>(parentDecl)) {
       const char *declKind = "";
       const char *replacement =
-          isa<StructDeclOp>(parentDecl->getIfOperation()) ? "self." : "Self.";
+          isa<StructASTDecl>(parentDecl) ? "self." : "Self.";
       // References to static methods can always use capital Self.
       Operation *firstCandidate = failureDecls[0]->getIfOperation();
       if (auto fnCandidate = dyn_cast_or_null<FnOp>(firstCandidate)) {
@@ -1263,8 +1261,7 @@ lookupMembersInDecls(SmallVectorImpl<ASTDecl *> &memberDecls,
     // ParamDeclRefAttr from the struct and the extension, and it would look
     // like a conflict further below. So filter out the param refs from
     // extensions to avoid duplicates.
-    bool isExtension =
-        isa_and_nonnull<ExtensionDeclOp>(containerDecl->getIfOperation());
+    bool isExtension = isa<ExtensionASTDecl>(containerDecl);
     for (ASTDecl *decl : lookup.getIfSuccess()) {
       if (isExtension)
         if (!decl->getIfOperation())
@@ -1375,12 +1372,11 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
     // If 'x' is also a struct field, also suggest 'self.x'.
     if (auto failureDecls = lookup.getIfFailure(); !failureDecls.empty()) {
-      if (auto fieldOp = dyn_cast_or_null<StructFieldOp>(
-              failureDecls[0]->getIfOperation())) {
+      if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(failureDecls[0])) {
         diag.attachNote(loc)
             << "'" << spelling
             << "' is also a struct field; did you mean 'self.'?";
-        diag.attachNote(fieldOp.getLoc())
+        diag.attachNote(fieldDecl->getOp().getLoc())
             << "'" << spelling << "' declared here";
       }
     }
@@ -1420,26 +1416,25 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
   // If the first result is a struct or an extension, their intention is
   // to use the struct.
-  if (isa_and_nonnull<StructDeclOp>(firstExistingDecl->getIfOperation()) ||
-      isa_and_nonnull<ExtensionDeclOp>(firstExistingDecl->getIfOperation())) {
+  if (isa<StructASTDecl, ExtensionASTDecl>(firstExistingDecl)) {
     // We'll assume the first one is the one they intend to import, and any
     // conflicting later imports are the problem.
     ASTDecl *intendedReferencedDecl = firstExistingDecl;
-    FailureOr<ASTDecl *> intendedTargetStructResult =
+    FailureOr<StructASTDecl *> intendedTargetStructResult =
         getTargetStructDecl(intendedReferencedDecl, emitter);
     if (failed(intendedTargetStructResult))
       return {}; // Signature resolution failed, return early.
-    ASTDecl *intendedTargetStructDecl = *intendedTargetStructResult;
+    StructASTDecl *intendedTargetStructDecl = *intendedTargetStructResult;
     // Should be impossible because of the isa_and_nonnull checks above.
     assert(intendedTargetStructDecl && "no target struct");
 
     for (ssize_t i = decls.size() - 1; i >= 0; i--) {
       ASTDecl *otherReferencedDecl = decls[i];
-      FailureOr<ASTDecl *> otherTargetStructResult =
+      FailureOr<StructASTDecl *> otherTargetStructResult =
           getTargetStructDecl(otherReferencedDecl, emitter);
       if (failed(otherTargetStructResult))
         return {}; // Signature resolution failed, return early.
-      ASTDecl *otherTargetStructDecl = *otherTargetStructResult;
+      StructASTDecl *otherTargetStructDecl = *otherTargetStructResult;
       if (!otherTargetStructDecl) {
         // Skip non-struct/extension declarations (where getTargetStructDecl
         // returns null). This can happen when lookup returns mixed declaration
@@ -1501,10 +1496,11 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
   }
 
   // If this is a type declaration, return it as a type.
-  if (auto structOp = dyn_cast_or_null<StructDeclOp>(decl->getIfOperation()))
-    return emitter.emitCResult(structOp.bindReference(), expr, dest);
-  if (auto traitOp = dyn_cast_or_null<TraitDeclOp>(decl->getIfOperation()))
-    return emitter.emitCResult(traitOp.getCanonicalTrait(), expr, dest);
+  if (auto *structDecl = dyn_cast<StructASTDecl>(decl))
+    return emitter.emitCResult(structDecl->getOp().bindReference(), expr, dest);
+  if (auto *traitDecl = dyn_cast<TraitASTDecl>(decl))
+    return emitter.emitCResult(traitDecl->getOp().getCanonicalTrait(), expr,
+                               dest);
 
   // If this is an ImportOp, form a module reference pointing to the ImportOp's
   // own symbol. The ImportOp gates child access via allowedChildren.
@@ -2434,9 +2430,8 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     // Handle accessing an alias in a struct or an extension.
     // Can not be a TraitDeclOp, member lookup should be routed with a TraitType
     // Decl, and should be handled below;
-    assert(isa_and_nonnull<StructDeclOp>(typeDeclOp) ||
-           isa_and_nonnull<ExtensionDeclOp>(
-               memberDecls[0]->getParentDecl()->getIfOperation()));
+    assert(isa<StructASTDecl>(typeDecl) ||
+           isa_and_nonnull<ExtensionASTDecl>(memberDecls[0]->getParentDecl()));
     PValue result =
         resolveAliasReference(aliasDecl->getOp(), spelling,
                               baseRVType.getParamBindings(), getLoc(), emitter);
@@ -2462,11 +2457,10 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
 
     // Upcast the composition into the trait that defined the alias so that
     // types match.
-    ASTDecl *traitDecl =
-        &shared.declResolver->getDeclForTypeSymbol(traitSymbol.getSymbol());
+    auto *traitDecl = cast<TraitASTDecl>(
+        &shared.declResolver->getDeclForTypeSymbol(traitSymbol.getSymbol()));
     basePValue = emitter.emitMetaTypeToTraitConversion(
-        {basePValue, base},
-        cast<TraitDeclOp>(traitDecl->getIfOperation()).getCanonicalTrait());
+        {basePValue, base}, traitDecl->getOp().getCanonicalTrait());
 
     // In the case that aliasDeclOpParam is a dependent associated type alias,
     // we need to first rebind `_Self` to `T`.
@@ -2493,8 +2487,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     //       #get_witness_attr<T, "Trait", "T1">: AnyType
 
     // TraitDeclOp always have one input parameter `_Self`
-    ParamDeclAttr traitSelf =
-        cast<TraitDeclOp>(traitDecl->getIfOperation()).getParamsAttr().back();
+    ParamDeclAttr traitSelf = traitDecl->getOp().getParamsAttr().back();
     ParameterEvaluator selfReplacer = shared.getParameterEvaluator();
     selfReplacer.setDeclBinding(traitSelf.getName(), basePValue);
     aliasType = selfReplacer.getReboundType(aliasType);
@@ -2508,8 +2501,8 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
 
   ASTDecl &memberDecl = *memberDecls[0];
   // If the field is a variable, emit a reference to it.
-  if (auto fieldOp =
-          dyn_cast_or_null<StructFieldOp>(memberDecl.getIfOperation())) {
+  if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(&memberDecl)) {
+    StructFieldOp fieldOp = fieldDecl->getOp();
     if (hasTypeBase || sugarIsa<StructMetaType>(baseRVType)) {
       emitter.emitError(getLoc(), "cannot access instance field '")
           << spelling << "' without an instance of " << baseRVType
@@ -2538,9 +2531,9 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   // This parameter will refer to the generic parameter on the base type decl,
   // e.g the base struct. We need to substitute it for the "real" parameter used
   // to construct this specific type, not the shared type on the struct.
-  auto structDeclOp = dyn_cast<StructDeclOp>(typeDecl->getIfOperation());
+  auto *structDecl = dyn_cast<StructASTDecl>(typeDecl);
   if (auto parameter = memberDecl.getIfIRValue().getIfPValue();
-      parameter && structDeclOp) {
+      parameter && structDecl) {
     auto paramRef = cast<ParamDeclRefAttr>(parameter.get());
     auto baseRVMetaType = baseRVType.extractMetaType();
 
@@ -2560,7 +2553,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
 
     if (!paramValues.empty()) {
       for (auto [name, value] :
-           llvm::zip(structDeclOp.getParams(), paramValues)) {
+           llvm::zip(structDecl->getOp().getParams(), paramValues)) {
         // If this binding is for this parameter propagate the bound
         // parameter.
         if (name.getName() == paramRef.getName()) {
@@ -5380,9 +5373,8 @@ AnyValue MagicFunctionNode::emitStructFieldRef(ExprDest &dest,
     SymbolRefAttr structSymbol = structType.getSymbol();
     ASTDecl &structAstDecl =
         emitter.shared.declResolver->getDeclForTypeSymbol(structSymbol);
-    auto structDecl =
-        dyn_cast<LIT::StructDeclOp>(structAstDecl.getIfOperation());
-    if (!structDecl) {
+    auto *structASTDecl = dyn_cast<LIT::StructASTDecl>(&structAstDecl);
+    if (!structASTDecl) {
       std::string symbolStr;
       llvm::raw_string_ostream os(symbolStr);
       structSymbol.print(os);
@@ -5391,6 +5383,7 @@ AnyValue MagicFunctionNode::emitStructFieldRef(ExprDest &dest,
                                       symbolStr);
       return {};
     }
+    LIT::StructDeclOp structDecl = structASTDecl->getOp();
 
     // Concrete index case: emit RefStructGEROp directly
     size_t idx = static_cast<size_t>(*indexValueOr);

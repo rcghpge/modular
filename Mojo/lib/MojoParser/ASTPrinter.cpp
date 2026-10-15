@@ -1739,9 +1739,9 @@ void ASTType::print(raw_ostream &os, ASTTypePrinterContext ctx) const {
                            ASTDecl *typeDecl) {
     // Handle special cases that should be aliased.
     // FIXME(MOCO-367): maintain "typedef" sugar in the type system.
-    if (typeDecl &&
-        isa_and_nonnull<LIT::StructDeclOp>(typeDecl->getIfOperation())) {
-      auto structDecl = cast<LIT::StructDeclOp>(typeDecl->getIfOperation());
+    if (auto *structASTDecl =
+            dyn_cast_if_present<LIT::StructASTDecl>(typeDecl)) {
+      LIT::StructDeclOp structDecl = structASTDecl->getOp();
       if (params.size() == 2 && structDecl.getDeclName().strref() == "Origin") {
         // Check to see if we have a Bool with a known constant parameter.
         //   #lit.struct<{value: i1 = 1}>
@@ -1821,7 +1821,8 @@ void ASTType::print(raw_ostream &os, ASTTypePrinterContext ctx) const {
     // Print any type parameters if we can find the struct.
     PogListAttr paramInfo;
     if (typeDecl) {
-      paramInfo = cast<StructDeclOp>(typeDecl->getIfOperation())
+      paramInfo = cast<StructASTDecl>(typeDecl)
+                      ->getOp()
                       .getSignature()
                       .getParamListAttrs();
     }

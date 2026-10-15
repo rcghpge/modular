@@ -2110,7 +2110,8 @@ PValue IREmitter::getStdlibOriginOf(TypedAttr litOrigin, SMLoc loc) {
   PValue mutBool = LITStructAttr::get({field}, boolStructType);
 
   ASTDecl *decl = originType.getDecl(shared);
-  auto litStruct = dyn_cast_if_present<StructDeclOp>(decl->getIfOperation());
+  auto *structDecl = dyn_cast_if_present<StructASTDecl>(decl);
+  StructDeclOp litStruct = structDecl ? structDecl->getOp() : nullptr;
   if (!litStruct || litStruct.getParams().size() != 2 ||
       !sugarIsa<OriginType>(litStruct.getParams()[1].getType())) {
     emitError(loc, "malformed Origin type");
@@ -2171,12 +2172,11 @@ ASTDecl *IREmitter::createParametricClosureTrait(SharedState &shared) {
   SmallVector<TraitSymbolAttr> parents;
   DenseSet<TraitSymbolAttr> immediateParents;
   for (auto traitName : {"AnyType", "Movable", "Deinitable"}) {
-    ASTDecl *traitDecl = shared.lookupBuiltinTrait(traitName, SMLoc());
+    TraitASTDecl *traitDecl = shared.lookupBuiltinTrait(traitName, SMLoc());
     if (traitDecl) { // builtin might be disabled.
       if (failed(shared.declResolver->resolveSignature(*traitDecl, SMLoc())))
         return nullptr; // should this be an assertion?
-      parents.push_back(
-          cast<TraitDeclOp>(traitDecl->getIfOperation()).bindReference({}));
+      parents.push_back(traitDecl->getOp().bindReference({}));
     }
   }
 
@@ -2286,7 +2286,7 @@ private:
 TraitSymbolAttr
 IREmitter::bindParamsToClosureTraitFromSig(FnTypeGeneratorType sig) {
   MLIRContext *ctx = shared.getContext();
-  ASTDecl *closureTraitDecl = shared.getUniversalParametricClosureTrait();
+  TraitASTDecl *closureTraitDecl = shared.getUniversalParametricClosureTrait();
 
   // The universal closure trait prepends a `_Self` parameter and a `mut self`
   // argument/origin, so shift the closure's own parameter and implicit-origin
@@ -2360,7 +2360,7 @@ IREmitter::bindParamsToClosureTraitFromSig(FnTypeGeneratorType sig) {
       PogMetadataAttr::get(StringAttr::get(ctx, ""), PassingKind::PosOnly));
   llvm::append_range(pogArgs, sig.getArgListAttrs().getPogs());
 
-  auto traitDeclOp = cast<TraitDeclOp>(closureTraitDecl->getIfOperation());
+  TraitDeclOp traitDeclOp = closureTraitDecl->getOp();
   return traitDeclOp.bindReference(
       {paramDeclList, argTypeList, resultType, metadata,
        shiftAndQuote(PogListAttr::get(

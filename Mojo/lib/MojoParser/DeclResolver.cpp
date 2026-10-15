@@ -305,14 +305,12 @@ canMergeSingleNamespaceDecls(ArrayRef<ASTDecl *> incoming,
   bool structFound = false;
 
   for (ASTDecl *decl : llvm::concat<ASTDecl *const>(existing, incoming)) {
-    auto op = decl->getIfOperation();
     auto *importDecl = dyn_cast<ImportASTDecl>(decl);
-    bool couldContribute = isa_and_nonnull<StructDeclOp>(op) ||
-                           isa_and_nonnull<ExtensionDeclOp>(op) ||
+    bool couldContribute = isa<StructASTDecl, ExtensionASTDecl>(decl) ||
                            (importDecl && importDecl->getIfUnresolvedOp());
     if (!couldContribute)
       return failure();
-    if (isa_and_nonnull<StructDeclOp>(op)) {
+    if (isa<StructASTDecl>(decl)) {
       if (structFound) {
         // User is trying to add a second struct with the same name, fail.
         return failure();
@@ -365,18 +363,15 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
 
   // Structs and extensions can both have the same name in the same scope.
   // TODO(MOCO-522): Reference some arcana docs on this
-  bool addingStruct = isa_and_nonnull<StructDeclOp>(decl->getIfOperation());
-  bool addingExtension =
-      isa_and_nonnull<ExtensionDeclOp>(decl->getIfOperation());
+  bool addingStruct = isa<StructASTDecl>(decl);
+  bool addingExtension = isa<ExtensionASTDecl>(decl);
   if (addingStruct || addingExtension) {
     // Verify that all previous entries are also structs or extensions.  Note
     // that we can't check the overload set is compatible with each other
     // because the signatures aren't all resolved.
     for (ASTDecl *previous : entries) {
-      bool previousIsStruct =
-          isa_and_nonnull<StructDeclOp>(previous->getIfOperation());
-      bool previousIsExtension =
-          isa_and_nonnull<ExtensionDeclOp>(previous->getIfOperation());
+      bool previousIsStruct = isa<StructASTDecl>(previous);
+      bool previousIsExtension = isa<ExtensionASTDecl>(previous);
       auto *previousImport = dyn_cast<ImportASTDecl>(previous);
       bool previousIsImport =
           previousImport && previousImport->getIfUnresolvedOp();
@@ -1535,9 +1530,8 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       if (!name)
         return;
       diag << " '";
-      if (auto structOp = dyn_cast_or_null<StructDeclOp>(
-              decl->getParentDecl()->getIfOperation()))
-        diag << structOp.getDeclName().getValue() << ".";
+      if (auto *structDecl = dyn_cast<StructASTDecl>(decl->getParentDecl()))
+        diag << structDecl->getOp().getDeclName().getValue() << ".";
       diag << *name << "'";
     };
 
@@ -1690,10 +1684,9 @@ void DeclResolver::resolveReferencedDecls() {
       if (decl.resolvedness == DeclResolvedness::unparsed) {
         // Some decls always need to be resolved if their parents were resolved,
         // allowlist the decls that we can safely ignore when unparsed.
-        if (isa_and_nonnull<FnOp, FileModuleOp, PackageOp, ImportOp,
-                            UnresolvedImportOp, UnresolvedWildcardImportOp,
-                            StructDeclOp, TraitDeclOp, AliasDeclOp>(
-                decl.getIfOperation())) {
+        if ((isa<DefASTDecl>(decl) && cast<DefASTDecl>(decl).getOp()) ||
+            isa<FileModuleASTDecl, PackageASTDecl, ImportASTDecl, StructASTDecl,
+                TraitASTDecl, AliasASTDecl>(decl)) {
           deferredDecls.insert(&decl);
           continue;
         }
@@ -1878,10 +1871,10 @@ LogicalResult DeclResolver::importModuleExtensions(ASTDecl &module,
 
   // collectTypeAndExtensions finds extensions by their specific name.
   for (ASTDecl *extensionDecl : allExtensions) {
-    auto extOp =
-        dyn_cast_or_null<ExtensionDeclOp>(extensionDecl->getIfOperation());
-    if (!extOp)
+    auto *extensionASTDecl = dyn_cast<ExtensionASTDecl>(extensionDecl);
+    if (!extensionASTDecl)
       continue;
+    ExtensionDeclOp extOp = extensionASTDecl->getOp();
     std::optional<StringRef> targetStructName = extOp.getTargetStructName();
     if (!targetStructName)
       continue;

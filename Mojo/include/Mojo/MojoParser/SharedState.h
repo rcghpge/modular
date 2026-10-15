@@ -71,6 +71,7 @@ class PackageOp;
 class ParserListener;
 class StructDeclOp;
 class TopLevelModuleASTDecl;
+class TraitASTDecl;
 class TraitType;
 class CallOperands;
 class ParserEvaluationContext;
@@ -543,7 +544,7 @@ public:
 
   /// Lookup a builtin trait like `AnyType`, `Copyable`, `Movable` etc.  On
   /// error this returns null but does not print an error.
-  ASTDecl *lookupBuiltinTrait(StringRef traitName, SMLoc loc);
+  TraitASTDecl *lookupBuiltinTrait(StringRef traitName, SMLoc loc);
 
   /// A handy version of lookupBuiltinTrait, which returns the trait type.
   TraitType lookupBuiltinTraitType(StringRef traitName, SMLoc loc);
@@ -563,7 +564,7 @@ public:
   /// Get a builtin type, or emit an error and return TypeCheckErrorType if
   /// invalid. These never return null.
   ASTDecl *getBuiltinCoroutineType(llvm::SMLoc loc);
-  ASTDecl *getBuiltinDevicePassableTrait(llvm::SMLoc loc);
+  TraitASTDecl *getBuiltinDevicePassableTrait(llvm::SMLoc loc);
   ASTDecl *getBuiltinRaisingCoroutineType(llvm::SMLoc loc);
   ASTType getStandardCollectionType(llvm::SMLoc loc, StringRef name);
   ASTType getBuiltinSliceType(llvm::SMLoc loc, StringRef name);
@@ -587,7 +588,7 @@ public:
 
   /// Get or create the universal closure trait, we don't care about the
   /// signatures and we can adapt the trait to any signature.
-  ASTDecl *getUniversalParametricClosureTrait();
+  TraitASTDecl *getUniversalParametricClosureTrait();
 
   FnTypeGeneratorType getClosureFnSig(TraitSymbolAttr closureInst);
   // Get the closure fn sig without self, this is the signature that we used to
@@ -596,9 +597,7 @@ public:
   FnTypeGeneratorType getClosureFnSigWithoutSelf(TraitSymbolAttr closureInst);
 
   bool isUniversalParametricClosureTrait(TraitSymbolAttr symbol);
-  bool isUniversalParametricClosureTrait(ASTDecl *trait) {
-    return trait == getUniversalParametricClosureTrait();
-  }
+  bool isUniversalParametricClosureTrait(ASTDecl *trait);
 
   /// Function used to create a thunk. This API is limited intentionally to
   /// ensure that the creation is transaction. This is important to retain

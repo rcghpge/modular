@@ -60,15 +60,15 @@ using namespace LIT;
 /// If the given ASTDecl represents an extension, return the ASTDecl for its
 /// target struct. If the given ASTDecl represents a struct, return the struct
 /// itself. Returns nullptr if this is neither a struct nor an extension.
-static ASTDecl *getStructOrTargetStruct(ASTDecl &decl,
-                                        DeclResolver &declResolver) {
-  if (auto extensionOp =
-          dyn_cast_or_null<ExtensionDeclOp>(decl.getIfOperation())) {
-    auto targetStructRefMaybe = extensionOp.getTargetStruct();
+static StructASTDecl *getStructOrTargetStruct(ASTDecl &decl,
+                                              DeclResolver &declResolver) {
+  if (auto *extensionDecl = dyn_cast<ExtensionASTDecl>(&decl)) {
+    auto targetStructRefMaybe = extensionDecl->getOp().getTargetStruct();
     if (targetStructRefMaybe)
-      return &declResolver.getDeclForTypeSymbol(*targetStructRefMaybe);
-  } else if (isa_and_nonnull<StructDeclOp>(decl.getIfOperation())) {
-    return &decl;
+      return &cast<StructASTDecl>(
+          declResolver.getDeclForTypeSymbol(*targetStructRefMaybe));
+  } else if (auto *structDecl = dyn_cast<StructASTDecl>(&decl)) {
+    return structDecl;
   }
   return nullptr;
 }
@@ -462,8 +462,8 @@ LogicalResult Decorators::handleDocHidden(ExprNode *expr, ASTDecl &decl) {
     aliasOp.setHasDocHiddenDecoratorAttr(UnitAttr::get(aliasOp.getContext()));
     return success();
   }
-  Operation *op = decl.getIfOperation();
-  if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
+  if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(&decl)) {
+    StructFieldOp fieldOp = fieldDecl->getOp();
     fieldOp.setIsDocHiddenAttr(UnitAttr::get(fieldOp.getContext()));
     return success();
   }
@@ -1168,8 +1168,7 @@ void FnSigDecorators::applyExtern(SMLoc decoratorLoc,
   auto ctx = funcOp->getContext();
   funcOp.setLinkageNameAttr(LinkageNameAttr::get(ctx, libName));
 
-  if (decl.getParentDecl() && llvm::isa_and_nonnull<TraitDeclOp, StructDeclOp>(
-                                  decl.getParentDecl()->getIfOperation())) {
+  if (isa_and_nonnull<TypeASTDecl>(decl.getParentDecl())) {
     emitError(callNode->getLoc(), "'@extern' cannot be applied to a method");
     return;
   }
@@ -1661,9 +1660,8 @@ isCapturingByDefault(SharedState &shared, FnOp funcOp, TraitType canonicalTrait,
     auto traitDecl = shared.declResolver->getDeclForTypeSymbolIfExists(symbol);
     if (!traitDecl)
       return WalkResult::advance();
-    TraitDeclOp traitDeclOp =
-        dyn_cast_if_present<TraitDeclOp>(traitDecl->getIfOperation());
-    if (traitDeclOp && shared.isUniversalParametricClosureTrait(traitDecl))
+    if (isa<TraitASTDecl>(traitDecl) &&
+        shared.isUniversalParametricClosureTrait(traitDecl))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
@@ -2207,8 +2205,8 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   //
   // struct S[param: Int]:
   //     def method[param: Int](self): pass
-  if (auto structOp =
-          dyn_cast_or_null<StructDeclOp>(parentDecl->getIfOperation())) {
+  if (auto *structDecl = dyn_cast<StructASTDecl>(parentDecl)) {
+    StructDeclOp structOp = structDecl->getOp();
     for (auto pog : structOp.getSignature().getParamListAttrs().getPogs()) {
       StringRef paramName = pog.getName().getValue();
       ArrayRef<ASTDecl *> paramDecls =
@@ -2240,7 +2238,7 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
     return failure();
 
   if (!parsedParamList.params.empty() && baseName == "__call__" &&
-      dyn_cast_or_null<StructDeclOp>(parentDecl->getIfOperation())) {
+      isa<StructASTDecl>(parentDecl)) {
 
     bool hasOnlyInferredParams =
         llvm::all_of(parsedParamList.params, [](const ParsedArgument &param) {
@@ -2367,7 +2365,7 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   // See: https://www.notion.so/modularai/Conditional-Method-Availability for a
   // discussion on conditional availability vs. callability.
   if (!parsedParamList.bodyConstraints.empty() &&
-      isa_and_nonnull<TraitDeclOp>(getParentDecl()->getIfOperation())) {
+      isa_and_nonnull<TraitASTDecl>(getParentDecl())) {
     shared.emitError(funcOp.getLoc())
         << "'where' clauses on trait methods are not supported";
     return failure();
@@ -2393,16 +2391,14 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
 
   TraitType traitType;
   std::optional<ArrayRef<ParamDeclAttr>> parentParams;
-  ASTDecl *structDecl = getStructOrTargetStruct(*getParentDecl(), resolver);
-  StructDeclOp structOp = nullptr;
-  if (structDecl)
-    structOp = dyn_cast_or_null<StructDeclOp>(structDecl->getIfOperation());
-  if (structOp) {
+  StructASTDecl *structDecl =
+      getStructOrTargetStruct(*getParentDecl(), resolver);
+  if (structDecl) {
+    StructDeclOp structOp = structDecl->getOp();
     traitType = structOp.getCanonicalTrait();
     parentParams = structOp.getParams();
-  } else if (auto traitDecl = dyn_cast_or_null<TraitDeclOp>(
-                 getParentDecl()->getIfOperation())) {
-    traitType = traitDecl.getCanonicalTrait();
+  } else if (auto *traitDecl = dyn_cast<TraitASTDecl>(getParentDecl())) {
+    traitType = traitDecl->getOp().getCanonicalTrait();
   }
   if (isCapturingByDefault(shared, funcOp, traitType, parentParams,
                            paramList.paramDeclAttrs))
@@ -2620,8 +2616,8 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
   // "..." as the body. If it's a trait method this must mean it's not
   // defaulted so we can early exit the function here as well.
   bool isUnavailableFn = funcOp.isUnavailable();
-  if (isa_and_nonnull<TraitDeclOp>(getParentDecl()->getIfOperation()) ||
-      funcOp.isExternal() || isUnavailableFn) {
+  if (isa_and_nonnull<TraitASTDecl>(getParentDecl()) || funcOp.isExternal() ||
+      isUnavailableFn) {
     // Skip any docstring's that might be present.
     ParserBase p(shared, lexer);
     p.parseDocString(*this);
@@ -2677,10 +2673,9 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
   // marks a requirement and `pass` a default implementation; a struct method
   // still accepts `...` as `pass`, which is to be deprecated (MOCO-5076), so
   // enums reject it from the start.
-  ASTDecl *structDecl = getStructOrTargetStruct(*getParentDecl(), resolver);
-  if (auto structOp = dyn_cast_or_null<StructDeclOp>(
-          structDecl ? structDecl->getIfOperation() : nullptr);
-      structOp && structOp.isEnum()) {
+  StructASTDecl *structDecl =
+      getStructOrTargetStruct(*getParentDecl(), resolver);
+  if (structDecl && structDecl->getOp().isEnum()) {
     LexerCursor bodyCursor = lexer.getCursor();
     ParserBase p(shared, lexer);
     StringRef docString;
@@ -3049,7 +3044,7 @@ LogicalResult AliasASTDecl::resolveSignature(Lexer &lexer) {
     initValue = rhsValue.get();
   } else {
     ASTDecl &parentDecl = *getParentDecl();
-    if (!isa_and_nonnull<LIT::TraitDeclOp>(parentDecl.getIfOperation())) {
+    if (!isa<TraitASTDecl>(parentDecl)) {
       // Disallow this, because it would create diamond inheritance problems.
       p.emitError(identifierLoc)
           << "only traits may contain a comptime member without an initializer";
@@ -3183,13 +3178,12 @@ static LogicalResult verifyDerivedAncestorImplication(
 
     ASTDecl &traitDecl =
         shared.declResolver->getDeclForTypeSymbol(symbol.getSymbol());
-    auto traitDeclOp =
-        dyn_cast_or_null<TraitDeclOp>(traitDecl.getIfOperation());
-    if (!traitDeclOp)
+    auto *traitASTDecl = dyn_cast<TraitASTDecl>(&traitDecl);
+    if (!traitASTDecl)
       continue;
 
     for (TraitSymbolAttr ancestor :
-         traitDeclOp.getCanonicalTrait().getSymbols()) {
+         traitASTDecl->getOp().getCanonicalTrait().getSymbols()) {
       if (ancestor == symbol)
         continue;
 
@@ -3536,7 +3530,7 @@ static ParseResult resolveConformanceList(
 
   // Helper to emit an error for a non-trait type in a conformance list.
   auto emitNonTraitTypeInConformanceListError = [&](Type type, SMLoc loc) {
-    bool isTrait = isa_and_nonnull<TraitDeclOp>(decl.getIfOperation());
+    bool isTrait = isa<TraitASTDecl>(decl);
     if (sugarIsa<LIT::StructType>(type)) {
       if (isTrait) {
         shared.emitError(loc)
@@ -3653,7 +3647,7 @@ static ParseResult resolveConformanceList(
       // Check for API author error: stable trait cannot inherit from unstable.
       // Only applies when `decl` is a trait (not a struct conforming to a
       // trait).
-      if (isa<TraitDeclOp>(decl.getIfOperation())) {
+      if (isa<TraitASTDecl>(decl)) {
         // Need to sig resolve to get stable marker.
         if (failed(shared.declResolver->resolveSignature(traitDecl, SMLoc())))
           return failure();
@@ -3661,8 +3655,7 @@ static ParseResult resolveConformanceList(
       }
 
       TraitType canonicalParent =
-          cast_or_null<TraitDeclOp>(traitDecl.getIfOperation())
-              .getCanonicalTrait();
+          cast<TraitASTDecl>(traitDecl).getOp().getCanonicalTrait();
 
       auto paramEvaluator = populateTraitBindingEvaluator(symbol, shared);
       for (TraitSymbolAttr ancestor : canonicalParent.getSymbols()) {
@@ -4039,12 +4032,12 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
   // An enum conforms to `__Enum`, which refines `EnumLike` with defaults that
   // read `__enum_storage`; body resolution adds that field.
   if (structOp.isEnum()) {
-    ASTDecl *traitDecl = lookupEnumSupportDecl(shared, "__Enum", getLoc());
-    if (traitDecl && !isa_and_nonnull<TraitDeclOp>(traitDecl->getIfOperation()))
+    ASTDecl *supportDecl = lookupEnumSupportDecl(shared, "__Enum", getLoc());
+    auto *traitDecl = dyn_cast_if_present<TraitASTDecl>(supportDecl);
+    if (supportDecl && !traitDecl)
       shared.emitError(getLoc())
           << "internal error: '__Enum' in 'std.builtin._enum' must be a trait";
-    if (!traitDecl ||
-        !isa_and_nonnull<TraitDeclOp>(traitDecl->getIfOperation())) {
+    if (!traitDecl) {
       setErroneous();
       return failure();
     }
@@ -4597,10 +4590,10 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
 
     TraitSymbolAttr traitSymbol = parent;
     StringAttr name = traitSymbol.getFlattenedName();
-    ASTDecl &parentDecl = resolver.getDeclForTypeSymbol(parent.getSymbol());
+    auto &parentDecl =
+        cast<TraitASTDecl>(resolver.getDeclForTypeSymbol(parent.getSymbol()));
     TraitSymbolArrayAttr immediateParents =
-        cast_or_null<TraitDeclOp>(parentDecl.getIfOperation())
-            .getImmediateParentsAttr();
+        parentDecl.getOp().getImmediateParentsAttr();
     // Use 3-arg builder for unconditional conformance, 4-arg for conditional.
     ConformanceOp witnessTable =
         hasConstraints
@@ -4705,17 +4698,15 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
     SmallVector<std::pair<FnOp, ASTDecl *>> nonEmptyTraitFns;
     for (auto &[childName, childDecls] : parentDecl.getDeclsInScope()) {
       for (ASTDecl *childDecl : childDecls) {
-        if (auto nestedOp = childDecl->getIfOperation()) {
-          LogicalResult result =
-              TypeSwitch<Operation &, LogicalResult>(*nestedOp)
-                  .Case<FnOp, AliasDeclOp>([&](auto nestedOp) {
-                    return insertDefaultDecl(nestedOp, childName, childDecl);
-                  })
-                  .Default(LogicalResult::success());
-
-          if (failed(result))
-            return failure();
+        LogicalResult result = success();
+        if (auto *fnDecl = dyn_cast<DefASTDecl>(childDecl)) {
+          if (FnOp fnOp = fnDecl->getOp())
+            result = insertDefaultDecl(fnOp, childName, childDecl);
+        } else if (auto *aliasDecl = dyn_cast<AliasASTDecl>(childDecl)) {
+          result = insertDefaultDecl(aliasDecl->getOp(), childName, childDecl);
         }
+        if (failed(result))
+          return failure();
       }
     }
   }
@@ -5351,17 +5342,14 @@ LogicalResult ExtensionASTDecl::resolveSignature(Lexer &lexer) {
       structName, identifierLoc, *parentDecl, /*resolve=*/false);
   ArrayRef<ASTDecl *> foundDecls = lookupResult.getIfSuccess();
   // Find the actual struct declaration among all the found declarations.
-  StructDeclOp structDeclOp = nullptr;
-  ASTDecl *structAstDecl = nullptr;
+  StructASTDecl *structAstDecl = nullptr;
   for (ASTDecl *decl : foundDecls) {
-    if (auto foundStructDeclOp =
-            dyn_cast_or_null<StructDeclOp>(decl->getIfOperation())) {
-      structDeclOp = foundStructDeclOp;
-      structAstDecl = decl;
+    if (auto *foundStructDecl = dyn_cast<StructASTDecl>(decl)) {
+      structAstDecl = foundStructDecl;
       break;
     }
   }
-  if (!structDeclOp) {
+  if (!structAstDecl) {
     return shared.emitError(identifierLoc, "can't find a struct named '")
            << structName << "'";
   }
@@ -5370,6 +5358,7 @@ LogicalResult ExtensionASTDecl::resolveSignature(Lexer &lexer) {
     return failure();
   }
 
+  StructDeclOp structDeclOp = structAstDecl->getOp();
   SymbolRefAttr targetStructAttr = structAstDecl->getSymbolRef();
   extensionDeclOp.setTargetStructAttr(targetStructAttr);
 
@@ -5429,8 +5418,7 @@ LogicalResult ExtensionASTDecl::resolveBody(Lexer &lexer) {
   SymbolRefAttr structSymbolRef = extensionDeclOp.getTargetStruct().value();
 
   ASTDecl &structAstDecl = resolver.getDeclForTypeSymbol(structSymbolRef);
-  StructDeclOp structDeclOp =
-      cast<StructDeclOp>(structAstDecl.getIfOperation());
+  StructDeclOp structDeclOp = cast<StructASTDecl>(structAstDecl).getOp();
 
   // Copy struct param decls into the extension, so extension methods and
   // aliases can reference the struct's param decls.
@@ -5543,11 +5531,10 @@ LogicalResult ExtensionASTDecl::resolveBody(Lexer &lexer) {
     // Create conformances only for extension-specific traits
     for (TraitSymbolAttr traitSymbol : extensionOnlyTraits) {
       StringAttr name = traitSymbol.getFlattenedName();
-      ASTDecl &parentDecl =
-          resolver.getDeclForTypeSymbol(traitSymbol.getSymbol());
+      auto &parentDecl = cast<TraitASTDecl>(
+          resolver.getDeclForTypeSymbol(traitSymbol.getSymbol()));
       TraitSymbolArrayAttr immediateParents =
-          cast_or_null<TraitDeclOp>(parentDecl.getIfOperation())
-              .getImmediateParentsAttr();
+          parentDecl.getOp().getImmediateParentsAttr();
       ConformanceOp witnessTable =
           ConformanceOp::create(b, traitSymbol, immediateParents);
       witnessTable.getBody().push_back(new Block());
@@ -5743,14 +5730,15 @@ ParseResult DeclResolver::resolveBody(TraitType traitType, ASTDecl &traitDecl) {
     // Inherit members from the parent.
     for (auto &[name, decls] : parentDecl.getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
-        Operation *memberOp = decl->getIfOperation();
-        if (!isa<AliasDeclOp, FnOp>(memberOp)) {
+        auto *fnDecl = dyn_cast<DefASTDecl>(decl);
+        bool isFunction = fnDecl && fnDecl->getOp();
+        if (!isFunction && !isa<AliasASTDecl>(decl)) {
           // If the decl is not a function or alias, it is an error.
           return emitError(parentDecl.getLoc(), "unexpected decl in trait")
                      .attachNote(decl->getLoc())
                  << " declared here";
         }
-        if (isa<FnOp>(memberOp)) {
+        if (isFunction) {
           attachDeclToTraitCompositionDecl(&traitDecl, symbol,
                                            SmallVector<ASTDecl *>{decl}, name);
           fnDecls.push_back(std::make_pair(name, decl));
@@ -5788,11 +5776,11 @@ ParseResult DeclResolver::resolveBody(TraitType traitType, ASTDecl &traitDecl) {
 //===----------------------------------------------------------------------===//
 
 StructASTDecl &ConformanceASTDecl::getStructDecl() const {
-  ASTDecl *structDecl =
+  StructASTDecl *structDecl =
       getStructOrTargetStruct(*getParentDecl(), shared.getDeclResolver());
   assert(structDecl &&
          "ConformanceOps are only created inside structs or extensions");
-  return cast<StructASTDecl>(*structDecl);
+  return *structDecl;
 }
 
 LogicalResult ConformanceASTDecl::resolveBody(Lexer &) {
