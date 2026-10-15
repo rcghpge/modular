@@ -67,8 +67,12 @@ from max.gpu.host.info import B200, MI355X, _is_sm10x_gpu, _is_sm12x_gpu
 from std.utils import StaticTuple
 from std.collections import Optional
 from linalg.utils import (
+    ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
     elementwise_epilogue_type,
     elementwise_compute_lambda_type,
+    no_compute_fn,
+    no_epilogue_fn,
 )
 from std.utils.index import Index, IndexList
 from linalg.matmul.vendor.blas import matmul
@@ -1980,11 +1984,15 @@ def block_scaled_matmul_with_epilogue[
     a_type: DType,
     b_type: DType,
     scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[mut=False, a_type, ...],
@@ -1993,6 +2001,8 @@ def block_scaled_matmul_with_epilogue[
     b_scales: TileTensor[mut=False, scales_dtype, ...],
     tensor_sf: Float32,
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
+    compute_fn: ComputeFnType = no_compute_fn,
 ) raises:
     """Our sm100 block scaled matmul kernel still does not support fusion of elementwise
     operations. This is a temporary implementation that uses our sm100 block scaled matmul
@@ -2007,11 +2017,17 @@ def block_scaled_matmul_with_epilogue[
         b_type: Element type of the RHS input matrix (inferred).
         scales_dtype: Element type of the block scale-factor tensors
             (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
         SF_VECTOR_SIZE: Number of elements covered by each block scale
             factor: 16 for NVFP4 or 32 for MXFP8.
         transpose_b: Whether `b` is stored transposed (defaults to `True`).
         elementwise_lambda_fn: Optional epilogue lambda applied to the
             matmul result after it is written to `c` (defaults to `None`).
+        has_epilogue_fn: Whether `epilogue_fn` receives the matmul result
+            after it is written to `c`.
+        has_compute_fn: Whether `compute_fn` transforms the matmul result
+            in `c`.
     Args:
         c: Output matrix of shape `[M, N]`.
         a: LHS input matrix of shape `[M, K]` for FP8 or `[M, K//2]` for
@@ -2024,6 +2040,10 @@ def block_scaled_matmul_with_epilogue[
             layout.
         tensor_sf: Scalar multiplier applied to the matmul result.
         ctx: Device context used to enqueue kernels.
+        epilogue_fn: With `has_epilogue_fn`, receives each output value
+            at its `(m, n)`.
+        compute_fn: With `has_compute_fn`, maps each output value before it
+            is stored back into `c`.
     """
 
     comptime assert _is_sm10x_gpu(ctx.default_device_info) or _is_sm12x_gpu(
@@ -2031,6 +2051,16 @@ def block_scaled_matmul_with_epilogue[
     ), "This kernel is only supported on SM100 or SM120"
 
     comptime assert transpose_b, "Only support transposed B"
+
+    comptime assert (
+        Int(has_epilogue_fn)
+        + Int(has_compute_fn)
+        + Int(elementwise_lambda_fn is not None)
+        <= 1
+    ), (
+        "pass at most one of the epilogue lambda, epilogue closure, or compute"
+        " closure"
+    )
 
     # The vendor (cuBLASLt) block-scaled backend supports both NVFP4
     # (float8_e4m3fn scales, 16-vector) and MXFP8 (float8_e8m0fnu scales,
@@ -2094,7 +2124,41 @@ def block_scaled_matmul_with_epilogue[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(ctx),
     ):
-        comptime if case .Some(epilogue) = elementwise_lambda_fn:
+        comptime if has_epilogue_fn or has_compute_fn:
+            # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
+            comptime simd_size = 32 // size_of[c_type]()
+
+            def value_epilogue_wrapper[
+                simd_width: Int, alignment: Int = 1
+            ](idx: Coord) {var c, var epilogue_fn, var compute_fn}:
+                var c_val = c.load[width=simd_width](idx)
+                comptime if has_epilogue_fn:
+                    epilogue_fn[c_type, simd_width, alignment=alignment](
+                        idx, c_val
+                    )
+                else:
+                    c.store[alignment=alignment * size_of[c_type]()](
+                        idx,
+                        compute_fn[c_type, simd_width, alignment=alignment](
+                            idx, c_val
+                        ),
+                    )
+
+            matmul[scales_type=scales_dtype](
+                ctx,
+                c,
+                a,
+                b,
+                a_scales=a_scales,
+                b_scales=b_scales,
+                alpha=tensor_sf,
+                transpose_b=True,
+                c_row_major=True,
+            )
+            elementwise[simd_size, target="gpu"](
+                value_epilogue_wrapper, (m, n), ctx
+            )
+        elif case .Some(epilogue) = elementwise_lambda_fn:
             # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
             comptime use_32b_simd = True
             comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
@@ -2144,6 +2208,8 @@ def block_scaled_matmul[
     a_type: DType,
     b_type: DType,
     scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
     SF_VECTOR_SIZE: Int,
@@ -2153,6 +2219,8 @@ def block_scaled_matmul[
     elementwise_compute_lambda_fn: Optional[
         elementwise_compute_lambda_type
     ] = None,
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
     pdl_level: PDLLevel = PDLLevel.OFF,
     _trace_description: StaticString = "",
     target: StaticString = "cpu",
@@ -2168,6 +2236,8 @@ def block_scaled_matmul[
     ],
     tensor_sf: Float32,
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
+    compute_fn: ComputeFnType = no_compute_fn,
 ) raises:
     """Dispatches the SM100 block-scaled matmul for NVFP4 or MXFP8, selecting between the Mojo heuristic kernel and the vendor fallback.
 
@@ -2181,6 +2251,8 @@ def block_scaled_matmul[
         b_type: Element type of the RHS input matrix (inferred).
         scales_dtype: Element type of the block scale-factor tensors
             (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
         SF_VECTOR_SIZE: Number of elements covered by each block scale
             factor: 16 for NVFP4 or 32 for MXFP8.
         transpose_b: Whether `b_device` is stored transposed (defaults
@@ -2193,6 +2265,10 @@ def block_scaled_matmul[
         elementwise_compute_lambda_fn: Optional compute lambda that
             transforms the matmul result in-flight before storage
             (defaults to `None`).
+        has_epilogue_fn: Whether `epilogue_fn` stores the output instead
+            of the kernel writing `c_device`.
+        has_compute_fn: Whether `compute_fn` maps each output value before
+            it is stored.
         pdl_level: Programmatic dependency launch level for the
             heuristic dispatch kernel (defaults to `PDLLevel.OFF`).
         _trace_description: Extra label appended to the trace event
@@ -2211,6 +2287,10 @@ def block_scaled_matmul[
             TCGEN interleaved layout.
         tensor_sf: Scalar multiplier applied to the matmul result.
         ctx: Device context used to enqueue kernels.
+        epilogue_fn: With `has_epilogue_fn`, stores each output value at
+            its `(m, n)`. `c_device` still backs the vendor fallback.
+        compute_fn: With `has_compute_fn`, maps each output value before it
+            is stored into `c_device`.
     """
     comptime assert c_device.rank == 2 and c_device.flat_rank == 2
     comptime assert a_device.rank == 2 and a_device.flat_rank == 2
@@ -2290,8 +2370,12 @@ def block_scaled_matmul[
     )
 
     comptime assert (
-        elementwise_lambda_fn is None or elementwise_compute_lambda_fn is None
-    ), "Either the epilogue lambda or the compute lambda can be used"
+        Int(has_epilogue_fn)
+        + Int(has_compute_fn)
+        + Int(elementwise_lambda_fn is not None)
+        + Int(elementwise_compute_lambda_fn is not None)
+        <= 1
+    ), "pass at most one epilogue or compute lambda or closure"
 
     # vendor block scaled matmul kernels don't support compute lambda, so we wrap it around an epilogue lambda instead.
     @__parameter
@@ -2376,13 +2460,25 @@ def block_scaled_matmul[
     comptime if get_defined_bool[
         "ENABLE_EXPERIMENTAL_SM100_BLOCK_SCALED_MATMUL", False
     ]():
-        var status = heuristic_and_outliers_dispatch[
+        var status = _heuristic_and_outliers_dispatch_any_epilogue[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
             elementwise_lambda_fn=elementwise_lambda_fn,
             elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
             pdl_level=pdl_level,
-        ](c_device, a_device, b_device, a_scales, b_scales, tensor_sf, ctx)
+        ](
+            c_device,
+            a_device,
+            b_device,
+            a_scales,
+            b_scales,
+            tensor_sf,
+            epilogue_fn,
+            compute_fn,
+            ctx,
+        )
 
         if status == DISPATCH_HIT:
             logger.info("Executing SM100 Block Scaled matmul kernel")
@@ -2434,11 +2530,13 @@ def block_scaled_matmul[
         # compile time and control falls straight to the vendor fallback below.
         comptime if _is_sm10x_gpu(ctx.default_device_info):
             if m <= mojo_m_cap or is_mxfp8_scaling:
-                var status = heuristic_and_outliers_dispatch[
+                var status = _heuristic_and_outliers_dispatch_any_epilogue[
                     SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                     transpose_b=transpose_b,
                     elementwise_lambda_fn=elementwise_lambda_fn,
                     elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+                    has_epilogue_fn=has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
                     pdl_level=pdl_level,
                 ](
                     c_device,
@@ -2447,6 +2545,8 @@ def block_scaled_matmul[
                     a_scales,
                     b_scales,
                     tensor_sf,
+                    epilogue_fn,
+                    compute_fn,
                     ctx,
                 )
                 if status == DISPATCH_HIT:
@@ -2460,19 +2560,87 @@ def block_scaled_matmul[
         #
         # vendor matmul only supports epilogue lambda, so we wrap it around an
         # epilogue lambda instead.
-        block_scaled_matmul_with_epilogue[
+        comptime if has_epilogue_fn or has_compute_fn:
+            block_scaled_matmul_with_epilogue[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                transpose_b=transpose_b,
+                has_epilogue_fn=has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
+            ](
+                c,
+                a,
+                b,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                ctx,
+                epilogue_fn,
+                compute_fn,
+            )
+        else:
+            block_scaled_matmul_with_epilogue[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                transpose_b=transpose_b,
+                elementwise_lambda_fn=elementwise_lambda_wrapper,
+            ](
+                c,
+                a,
+                b,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                ctx,
+            )
+
+
+@inline(.always)
+def _heuristic_and_outliers_dispatch_any_epilogue[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    SF_VECTOR_SIZE: Int,
+    transpose_b: Bool,
+    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
+    elementwise_compute_lambda_fn: Optional[elementwise_compute_lambda_type],
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
+    pdl_level: PDLLevel,
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises -> Int:
+    comptime if has_epilogue_fn:
+        return heuristic_and_outliers_dispatch[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_wrapper,
-        ](
-            c,
-            a,
-            b,
-            a_scales,
-            b_scales,
-            tensor_sf,
-            ctx,
-        )
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, epilogue_fn, ctx)
+    elif has_compute_fn:
+        return heuristic_and_outliers_dispatch[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, compute_fn, ctx)
+    else:
+        return heuristic_and_outliers_dispatch[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            elementwise_lambda_fn=elementwise_lambda_fn,
+            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
 
 
 @inline(.always)

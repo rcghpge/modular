@@ -58,7 +58,11 @@ from .matmul.gpu.amd.blockwise_scaled_fp8_matmul_amd import (
 from .matmul.gpu.sm100_structured.blockwise_fp8.blockwise_fp8_matmul import (
     blockwise_fp8_matmul,
 )
-from .utils import elementwise_epilogue_type
+from .utils import (
+    ElementwiseEpilogueFn,
+    elementwise_epilogue_type,
+    no_epilogue_fn,
+)
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
     MatmulConfig,
     GEMMKind,
@@ -1590,6 +1594,7 @@ def naive_blockwise_scaled_fp8_matmul[
     b_type: DType,
     a_scales_type: DType,
     b_scales_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     *,
     BLOCK_DIM: Int = 16,
@@ -1597,6 +1602,7 @@ def naive_blockwise_scaled_fp8_matmul[
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     accum_type: DType = get_accum_type[c_type](),
     scales_granularity_mnk: Optional[IndexList[3]] = None,
+    has_epilogue_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
@@ -1604,6 +1610,7 @@ def naive_blockwise_scaled_fp8_matmul[
     a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
     b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises:
     """Dispatches the naive blockwise scaled FP8 matmul kernel on the GPU.
 
@@ -1617,6 +1624,8 @@ def naive_blockwise_scaled_fp8_matmul[
         a_scales: Rank-2 per-block scales for ``a`` in M-major format.
         b_scales: Rank-2 per-block scales for ``b``; K-major when ``transpose_b`` is True, otherwise N-major.
         ctx: Device context used to enqueue the kernel.
+        epilogue_fn: With ``has_epilogue_fn``, stores each output value at
+            its ``(m, n)`` instead of the kernel writing ``c``.
     """
     comptime assert a_type == b_type == .float8_e4m3fn, (
         "Only float8_e4m3fn is supported for input dtype for blockwise"
@@ -1689,6 +1698,8 @@ def naive_blockwise_scaled_fp8_matmul[
         transpose_b=transpose_b,
         elementwise_lambda_fn=elementwise_lambda_fn,
         scales_granularity_mnk=scales_granularity_mnk,
+        EpilogueFnType=EpilogueFnType,
+        has_epilogue_fn=has_epilogue_fn,
     ]
 
     ctx.enqueue_function[kernel](
@@ -1697,6 +1708,7 @@ def naive_blockwise_scaled_fp8_matmul[
         b,
         a_scales,
         b_scales,
+        host_arg=epilogue_fn,
         grid_dim=(ceildiv(M, BLOCK_DIM), ceildiv(N, BLOCK_DIM), 1),
         block_dim=(BLOCK_DIM, BLOCK_DIM, 1),
     )
@@ -1718,12 +1730,16 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
     transpose_b: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     scales_granularity_mnk: Optional[IndexList[3]] = None,
+    *,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    has_epilogue_fn: Bool,
 ](
     c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
     a: TileTensor[a_type, a_layout, ImmutAnyOrigin],
     b: TileTensor[b_type, b_layout, ImmutAnyOrigin],
     a_scales: TileTensor[a_scales_type, a_scale_layout, ImmutAnyOrigin],
     b_scales: TileTensor[b_scales_type, b_scale_layout, ImmutAnyOrigin],
+    epilogue_fn: EpilogueFnType,
 ):
     """Computes one output element per thread for the naive blockwise scaled FP8 matmul GPU kernel.
 
@@ -1743,6 +1759,8 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
         b: Rank-2 FP8 weight matrix; K-major when ``transpose_b`` is True, otherwise N-major.
         a_scales: Rank-2 per-block scales for ``a`` in M-major format.
         b_scales: Rank-2 per-block scales for ``b``; K-major when ``transpose_b`` is True, otherwise N-major.
+        epilogue_fn: With ``has_epilogue_fn``, stores the output element
+            instead of the kernel writing ``c``.
     """
     # Note: This is a naive kernel that supports a generalized blockwise scaled
     # fp8 matmul.
@@ -1855,7 +1873,9 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
 
         accum += a_val * b_val * a_scale_factor * b_scale_factor
 
-    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
+    comptime if has_epilogue_fn:
+        epilogue_fn[c_type, 1, alignment=1]((x, y), accum.cast[c_type]())
+    elif case .Some(elementwise_lambda) = elementwise_lambda_fn:
         elementwise_lambda[c_type, 1]((x, y), accum.cast[c_type]())
     else:
         c.store_linear(Index(x, y), accum.cast[c_type]())
@@ -2230,11 +2250,13 @@ def blockwise_scaled_fp8_with_epilogue[
     b_type: DType,
     a_scales_type: DType,
     b_scales_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     *,
     scales_granularity_mnk: IndexList[3],
     transpose_b: Bool = False,
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
@@ -2242,14 +2264,19 @@ def blockwise_scaled_fp8_with_epilogue[
     a_scales: TileTensor[mut=False, a_scales_type, address_space=.GENERIC, ...],
     b_scales: TileTensor[mut=False, b_scales_type, address_space=.GENERIC, ...],
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises:
     """Our sm100 blockwise scaled fp8 matmul kernel still does not support fusion of elementwise
     operations. This is a temporary implementation that uses our sm100 blockwise scaled fp8 matmul
     kernel and dispatch a separate epilogue kernel to apply the elementwise
     operations. For non B200 GPUs, we use the naive blockwise scaled fp8 matmul which support normal epilogue natively.
-    Callers must allocate `c`; when an `elementwise_lambda_fn` is supplied
-    the matmul result is written into `c` and then read back by the lambda.
+    Callers must allocate `c`; when an `elementwise_lambda_fn` or
+    `has_epilogue_fn` is supplied the matmul result is written into `c` and
+    then read back by the epilogue.
     """
+    comptime assert (
+        not has_epilogue_fn or elementwise_lambda_fn is None
+    ), "pass either a legacy epilogue lambda or an epilogue closure"
 
     # 1D/2D blockwise scaling with (m, n, k) granularity in
     # (1, {64,128}, 128).
@@ -2281,7 +2308,28 @@ def blockwise_scaled_fp8_with_epilogue[
             gemm_kind=GEMMKind.BLOCK_SCALED_1D2D_FP8,
         )
 
-        comptime if case .Some(epilogue) = elementwise_lambda_fn:
+        comptime if has_epilogue_fn:
+            comptime simd_size = 32 // size_of[c_type]()
+            var m = Int(c.dim[0]())
+            var n = Int(c.dim[1]())
+
+            def value_epilogue_wrapper[
+                simd_width: Int, alignment: Int = 1
+            ](idx: Coord) {var c, var epilogue_fn}:
+                var c_val = c.load[simd_width](idx)
+                epilogue_fn[c_type, simd_width, alignment=alignment](idx, c_val)
+
+            blockwise_fp8_matmul[
+                transpose_b=transpose_b,
+                a_scales_type=a_scales_type,
+                b_scales_type=b_scales_type,
+                config=matmul_config,
+                n_scale_granularity=scales_granularity_mnk[1],
+            ](c, a, b, a_scales, b_scales, ctx)
+            elementwise[simd_size, target="gpu"](
+                value_epilogue_wrapper, Coord(m, n), ctx
+            )
+        elif case .Some(epilogue) = elementwise_lambda_fn:
             # We hardcode simd width to 16B for Nvidia GPUs but >= sm_100
             # arch support 32B load/store to global memory, see KERN-2037.
             comptime use_32b_simd = (
@@ -2323,7 +2371,7 @@ def blockwise_scaled_fp8_with_epilogue[
     else:
         # AMD gfx950: tiled MFMA blockwise-FP8 dense matmul for the GLM E4M3 +
         # fp32-per-[128,128]-block case; everything else falls back to naive.
-        comptime amd_blockwise_tiled_ok = _amd_blockwise_tiled_ok[
+        comptime amd_blockwise_tiled_ok = not has_epilogue_fn and _amd_blockwise_tiled_ok[
             c_type=c_type,
             a_type=a_type,
             b_type=b_type,
@@ -2349,6 +2397,7 @@ def blockwise_scaled_fp8_with_epilogue[
                 transpose_b=transpose_b,
                 scales_granularity_mnk=scales_granularity_mnk,
                 elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
@@ -2356,5 +2405,6 @@ def blockwise_scaled_fp8_with_epilogue[
                 a_scales,
                 b_scales,
                 ctx,
+                epilogue_fn,
             )
         return
