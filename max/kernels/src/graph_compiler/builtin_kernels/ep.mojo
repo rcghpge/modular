@@ -261,8 +261,9 @@ struct Struct_ep_init:
             combine_recv_count_p = shmem_malloc[.uint64](n_experts)
 
         else:
-            if not is_p2p_enabled():
-                raise Error("P2P is not supported on this system.")
+            comptime if n_gpus_per_node > 1:
+                if not is_p2p_enabled():
+                    raise Error("P2P is not supported on this system.")
             dispatch_send_p = gpu_ctx.enqueue_create_buffer[.uint8](
                 dispatch_send_size
             ).take_ptr()
