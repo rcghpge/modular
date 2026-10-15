@@ -7102,34 +7102,27 @@ def _router_gate_mixed_gemv(
     )[0].tensor
 
 
-def smallm_streaming_matmul(
-    a: TensorValue,
-    b_shuffled: TensorValue,
-    b: TensorValue,
-) -> TensorValue:
-    """Computes bf16 ``a @ b^T`` over a smallm-preshuffled weight.
+def smallm_streaming_matmul(a: TensorValue, b: TensorValue) -> TensorValue:
+    """Computes bf16 ``a @ b^T`` with the MI355X small-M streaming kernel.
 
-    ``b_shuffled`` must already be in the fragment-major layout produced by
-    :func:`max.pipelines.weights.smallm_preshuffle.preshuffle_smallm_b` (a
-    one-time CPU permutation at weight-load time); the layout is private to
-    this op pair and a row-major weight here computes garbage. ``b`` is the
-    same weight row-major: the streaming kernel serves ``M <= 32`` (its
-    measured win band) and larger batches fall back to generic matmul
-    dispatch over ``b`` at execute time, so the op is never worse than the
-    dispatch it replaces. MiniMax-M3's MTP draft emits this op explicitly on
-    MI355X for its decode-band vocab projections; nothing routes here through
+    The kernel reads ``b`` in a fragment-major layout that this op permutes
+    in the graph with :func:`preshuffle_block_scaled_b`; for a weight ``b``
+    the graph compiler runs that once, at model init. The streaming kernel
+    serves ``M <= 32`` (its measured win band) and larger batches fall back
+    to generic matmul dispatch over the row-major ``b`` at execute time, so
+    the op is never worse than the dispatch it replaces. Callers emit this op
+    explicitly for decode-band vocab projections; nothing routes here through
     generic matmul dispatch.
     """
-    _check_rank(2, a=a, b_shuffled=b_shuffled, b=b)
-    _check_dtype(DType.bfloat16, a=a, b_shuffled=b_shuffled, b=b)
-    _check_same_device(a=a, b_shuffled=b_shuffled, b=b)
+    _check_rank(2, a=a, b=b)
+    _check_dtype(DType.bfloat16, a=a, b=b)
+    _check_same_device(a=a, b=b)
 
-    n_dim = b_shuffled.shape[0]
-    k_dim = b_shuffled.shape[1]
+    n_dim, k_dim = b.shape
     if not isinstance(n_dim, StaticDim) or not isinstance(k_dim, StaticDim):
         raise ValueError(
             "smallm_streaming_matmul requires a static weight shape, got"
-            f" {b_shuffled.shape}"
+            f" {b.shape}"
         )
     if int(n_dim) % 16 != 0 or int(k_dim) % 256 != 0:
         raise ValueError(
@@ -7140,11 +7133,9 @@ def smallm_streaming_matmul(
         raise ValueError(
             f"activation K must match weight K, got {a.shape[1]} and {k_dim}"
         )
-    if b.shape != b_shuffled.shape:
-        raise ValueError(
-            "the row-major weight must match the shuffled weight shape, got"
-            f" {b.shape} and {b_shuffled.shape}"
-        )
+    b_shuffled = preshuffle_block_scaled_b(
+        b.reshape([1, n_dim, k_dim])
+    ).reshape([n_dim, k_dim])
 
     # The second output is a graph-managed workspace for the op's activation
     # shuffle (32 rows covers every streaming band; m > 32 falls back and
@@ -7750,10 +7741,12 @@ def preshuffle_block_scaled_b(
     the ``b_5d_grouped_layout`` the kernel reads with coalesced loads. With
     :data:`MXFP6_LANE_BYTES`, no power-of-two load covers a lane, so each MFMA
     tile stores the first 16 bytes of every lane fragment as one plane and the
-    last 8 as a second, each ordered ``(KLane, NLane, byte)``.
+    last 8 as a second, each ordered ``(KLane, NLane, byte)``. Lanes are
+    counted in bytes, so a wider element type permutes as its bytes would: a
+    bf16 weight lands in the B layout of :func:`smallm_streaming_matmul`.
 
     Args:
-        weight: Row-major expert weights ``[E, N, K_BYTES]`` as the checkpoint
+        weight: Row-major expert weights ``[E, N, K]`` as the checkpoint
             stores them, with any graph-side reordering of N already applied.
         lane_bytes: Bytes one lane feeds the MFMA: 16, or
             :data:`MXFP6_LANE_BYTES` for MXFP6.
@@ -7763,7 +7756,7 @@ def preshuffle_block_scaled_b(
 
     Raises:
         ValueError: If the weight is not rank 3, ``N`` is not a multiple of 16,
-            or ``K_BYTES`` is not a whole number of MFMA K tiles.
+            or a row is not a whole number of MFMA K tiles.
     """
     if lane_bytes not in (_MFMA_LANE_BYTES, MXFP6_LANE_BYTES):
         raise ValueError(
@@ -7772,27 +7765,26 @@ def preshuffle_block_scaled_b(
         )
     if weight.rank != 3:
         raise ValueError(f"expected weight of rank 3 but got {weight.rank}")
-    e, n, k_bytes = (int(d) for d in weight.shape)
+    e, n, k = (int(d) for d in weight.shape)
+    elem_bytes = weight.dtype.size_in_bytes
     tile_k_bytes = _MFMA_K_LANES * lane_bytes
-    if n % _MFMA_MN_LANES or k_bytes % tile_k_bytes:
+    if n % _MFMA_MN_LANES or (k * elem_bytes) % tile_k_bytes:
         raise ValueError(
             f"preb weights need N % {_MFMA_MN_LANES} == 0 and K_BYTES %"
-            f" {tile_k_bytes} == 0, got {weight.shape}"
+            f" {tile_k_bytes} == 0, got {weight.shape} {weight.dtype}"
         )
-    n0, k0 = n // _MFMA_MN_LANES, k_bytes // tile_k_bytes
-    w = weight.reshape([e, n0, _MFMA_MN_LANES, k0, _MFMA_K_LANES, lane_bytes])
+    lane = lane_bytes // elem_bytes
+    n0, k0 = n // _MFMA_MN_LANES, k // (_MFMA_K_LANES * lane)
+    w = weight.reshape([e, n0, _MFMA_MN_LANES, k0, _MFMA_K_LANES, lane])
     # (n0, nlane, k0, klane, byte) -> (n0, k0, klane, nlane, byte)
     w = ops.permute(w, [0, 1, 3, 4, 2, 5])
     if lane_bytes == MXFP6_LANE_BYTES:
-        planes = ops.split(
-            w,
-            [_MFMA_LANE_BYTES, MXFP6_LANE_BYTES - _MFMA_LANE_BYTES],
-            axis=-1,
-        )
+        plane = _MFMA_LANE_BYTES // elem_bytes
+        planes = ops.split(w, [plane, lane - plane], axis=-1)
         w = ops.concat(
             [plane.reshape([e, n0, k0, -1]) for plane in planes], axis=-1
         )
-    return w.reshape([e, n, k_bytes])
+    return w.reshape([e, n, k])
 
 
 def preshuffle_block_scaled_b_scales(scales: TensorValue) -> TensorValue:

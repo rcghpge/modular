@@ -2418,17 +2418,17 @@ struct Struct_smallm_streaming_matmul:
     """MOGG wrapper for the MI355X small-M streaming matmul.
 
     Computes ``c = a @ b^T`` where ``b`` is a bf16 weight ALREADY permuted
-    into the fragment-major layout of ``smallm_preshuffle_b`` (done on the
-    CPU at weight-load time). The layout is private to this op: reading a
-    row-major weight here is silently wrong, so nothing routes here through
-    generic dispatch — MiniMax-M3's MTP draft emits this op explicitly on
-    MI355X for its decode-band vocab projections.
+    into the fragment-major layout of ``smallm_preshuffle_b`` (done in the
+    graph by the Python wrapper, once at model init). The layout is private
+    to this op: reading a row-major weight here is silently wrong, so nothing
+    routes here through generic dispatch; callers emit this op explicitly for
+    decode-band vocab projections.
 
     ``N``/``K`` come from the weight's static ``[N, K]`` layout. The
-    streaming kernel wins up to ``M == 32`` (measured on the MiniMax-M3
-    vocab-head shapes); larger runtime ``M`` falls back to generic matmul
-    dispatch over ``b``, the row-major twin of the same weight, so a
-    batch-config change can never turn into a regression or a failure.
+    streaming kernel wins up to ``M == 32`` (measured on vocab-head shapes);
+    larger runtime ``M`` falls back to generic matmul dispatch over ``b``, the
+    row-major twin of the same weight, so a batch-config change can never turn
+    into a regression or a failure.
     """
 
     @inline(.always)
