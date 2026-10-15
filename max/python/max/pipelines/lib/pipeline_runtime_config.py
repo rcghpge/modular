@@ -402,15 +402,15 @@ class PipelineRuntimeConfig(ConfigFileModel):
         ),
     )
 
-    enable_overlap_scheduler: bool = Field(
-        default=False,
+    enable_overlap_scheduler: bool | None = Field(
+        default=None,
         description=(
             "Whether to enable the overlap scheduler. This feature allows the scheduler "
             "to run alongside GPU execution. This helps improve GPU utilization. "
             "This is an experimental feature which may crash and burn. "
-            "This feature will be enabled by default for some selected architectures. "
-            "You can forcibly disable this by setting "
-            "``--no-enable-overlap-scheduler --force``."
+            "When unset, the architecture decides, and most turn it on. "
+            "Device graph capture turns it on too. "
+            "You can disable this by setting ``--no-enable-overlap-scheduler``."
         ),
     )
 

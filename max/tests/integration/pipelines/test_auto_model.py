@@ -22,6 +22,7 @@ import asyncio
 import gc
 import weakref
 from collections.abc import Mapping
+from typing import get_origin
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -41,6 +42,7 @@ from max.pipelines.lib import (
     auto_model,
     generate_local_model_path,
 )
+from max.pipelines.lib.registry import get_pipeline_for_task
 from max.pipelines.modeling.types import PipelineTask
 
 REPO_ID = "modularai/SmolLM-135M-Instruct-FP32"
@@ -232,8 +234,6 @@ def test_debug_defaults_and_overrides(model_path: str) -> None:
         assert config.runtime.enable_chunked_prefill is False
         assert config.model.kv_cache.enable_prefix_caching is False
         assert config.runtime.max_batch_size == 2
-        # CPU never auto-enables overlap, so AutoModel leaves force off.
-        assert config.runtime.force is False
         pipeline = model.pipeline
         assert isinstance(pipeline, TextGenerationPipeline)
         assert pipeline.max_batch_size == 2
@@ -302,28 +302,51 @@ def built_configs(monkeypatch: pytest.MonkeyPatch) -> list[PipelineConfig]:
 
 
 @pytest.mark.parametrize(
-    ("device_graph_capture", "overrides", "expect_force"),
+    ("device_graph_capture", "overrides", "expected_overlap"),
     [
-        (False, {}, True),
-        (False, {"enable_overlap_scheduler": False}, True),
-        (False, {"force": False}, False),
-        (False, {"enable_overlap_scheduler": True}, False),
-        (True, {}, False),
+        (False, {}, False),
+        (False, {"enable_overlap_scheduler": True}, True),
+        (True, {}, True),
     ],
 )
-def test_force_set_only_where_overlap_auto_enables(
+def test_builds_the_config_once(
     model_path: str,
     built_configs: list[PipelineConfig],
+    monkeypatch: pytest.MonkeyPatch,
     device_graph_capture: bool,
     overrides: Mapping[str, object],
-    expect_force: bool,
+    expected_overlap: bool,
 ) -> None:
+    from_args = PipelineConfig.from_args
+    builds: list[PipelineArgs] = []
+
+    def count(args: PipelineArgs) -> PipelineConfig:
+        builds.append(args)
+        return from_args(args)
+
+    monkeypatch.setattr(PipelineConfig, "from_args", count)
     with pytest.raises(_StopBeforeBuild):
         _load_accelerator(model_path, device_graph_capture, **overrides)
     [config] = built_configs
-    assert config.runtime.force is expect_force
-    if expect_force:
-        assert config.runtime.enable_overlap_scheduler is False
+    assert len(builds) == 1
+    assert config.runtime.force is False
+    assert config.runtime.enable_overlap_scheduler is expected_overlap
+
+
+def test_overlap_architecture_gets_a_synchronous_pipeline(
+    model_path: str, built_configs: list[PipelineConfig]
+) -> None:
+    serve_config = PipelineConfig.from_args(
+        PipelineArgs(
+            model_path=model_path, device_specs=[DeviceSpec.accelerator()]
+        )
+    )
+    assert serve_config.runtime.enable_overlap_scheduler is True
+    with pytest.raises(_StopBeforeBuild):
+        _load_accelerator(model_path)
+    [config] = built_configs
+    pipeline_class = get_pipeline_for_task(PipelineTask.TEXT_GENERATION, config)
+    assert get_origin(pipeline_class) is TextGenerationPipeline
 
 
 def test_devices_takes_the_cli_format(
@@ -346,7 +369,8 @@ def test_signature_defaults(
     [config] = built_configs
     assert config.runtime.max_batch_size == 1
     assert config.runtime.device_graph_capture is False
-    assert config.runtime.force is True
+    assert config.runtime.enable_overlap_scheduler is False
+    assert config.runtime.force is False
 
 
 @pytest.mark.parametrize(
@@ -387,7 +411,7 @@ def llama_arch_required(
     return required
 
 
-def test_force_passes_required_arguments(
+def test_required_arguments_win_over_debug_defaults(
     model_path: str,
     built_configs: list[PipelineConfig],
     llama_arch_required: dict[str, object],
@@ -398,11 +422,10 @@ def test_force_passes_required_arguments(
     with pytest.raises(_StopBeforeBuild):
         _load_accelerator(model_path)
     [config] = built_configs
-    assert config.runtime.force is True
     assert config.model.kv_cache.enable_prefix_caching is True
 
 
-def test_force_skips_required_arguments_that_name_no_field(
+def test_required_arguments_that_name_no_field_are_skipped(
     model_path: str,
     built_configs: list[PipelineConfig],
     llama_arch_required: dict[str, object],
@@ -413,41 +436,21 @@ def test_force_skips_required_arguments_that_name_no_field(
     with pytest.raises(_StopBeforeBuild):
         _load_accelerator(model_path)
     [config] = built_configs
-    assert config.runtime.force is True
     assert config.model.kv_cache.enable_prefix_caching is True
 
 
-def test_force_rejects_overrides_that_contradict_required_arguments(
+def test_required_arguments_win_over_model_override(
     model_path: str,
     built_configs: list[PipelineConfig],
     llama_arch_required: dict[str, object],
 ) -> None:
     llama_arch_required["trust_remote_code"] = True
-    with pytest.raises(ValueError, match="trust_remote_code"):
+    with pytest.raises(_StopBeforeBuild):
         _load_accelerator(
             model_path, model_override=["main.trust_remote_code=false"]
         )
-    assert built_configs == []
-
-
-def test_no_force_where_arch_never_enables_overlap(
-    model_path: str,
-    built_configs: list[PipelineConfig],
-    llama_arch_required: dict[str, object],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    arch = PIPELINE_REGISTRY.retrieve_architecture(
-        "LlamaForCausalLM", task=PipelineTask.TEXT_GENERATION
-    )
-    assert arch is not None
-    monkeypatch.setattr(arch, "supports_overlap_scheduler", False)
-    llama_arch_required["enable_prefix_caching"] = True
-    with pytest.raises(_StopBeforeBuild):
-        _load_accelerator(model_path)
     [config] = built_configs
-    assert config.runtime.force is False
-    assert config.runtime.enable_overlap_scheduler is False
-    assert config.model.kv_cache.enable_prefix_caching is True
+    assert config.model.trust_remote_code is True
 
 
 def _assert_points_to_serve(

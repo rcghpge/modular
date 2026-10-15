@@ -1626,3 +1626,119 @@ class TestConstructionResolution:
             )
             assert _model(config).quantization_encoding == "bfloat16"
             assert _model(config).weight_path == [Path("model.safetensors")]
+
+
+# ---------------------------------------------------------------------------
+# Category M: Overlap scheduler resolution
+# ---------------------------------------------------------------------------
+
+
+@prepare_registry
+@pytest.mark.parametrize(
+    (
+        "enable_overlap_scheduler",
+        "device_graph_capture",
+        "api",
+        "expected_capture",
+        "expected_overlap",
+    ),
+    [
+        (None, None, "cpu", False, True),
+        (False, None, "cpu", False, False),
+        (True, None, "cpu", False, True),
+        (None, None, "cuda", True, True),
+        (False, None, "cuda", False, False),
+        (False, True, "cuda", True, True),
+    ],
+)
+def test_overlap_scheduler_resolution(
+    enable_overlap_scheduler: bool | None,
+    device_graph_capture: bool | None,
+    api: str,
+    expected_capture: bool,
+    expected_overlap: bool,
+) -> None:
+    """Unset lets the architecture decide, and False stays off without force.
+
+    Only device graph capture the caller asks for turns overlap back on.
+    """
+    PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH)
+    with _temp_repo_dir() as tmpdir:
+        _make_local_repo(
+            tmpdir, safetensors_files={"model.safetensors": {"w": "BF16"}}
+        )
+        with patch(
+            "max.pipelines.lib.config.config.accelerator_api",
+            return_value=api,
+        ):
+            config = PipelineConfig.from_args(
+                PipelineArgs(
+                    model_path=tmpdir,
+                    device_specs=[GPU_DEVICE_SPEC],
+                    runtime=PipelineRuntimeConfig(
+                        enable_overlap_scheduler=enable_overlap_scheduler,
+                        device_graph_capture=device_graph_capture,
+                    ),
+                )
+            )
+    assert config.runtime.device_graph_capture is expected_capture
+    assert config.runtime.enable_overlap_scheduler is expected_overlap
+    assert config.runtime.force is False
+
+
+@prepare_registry
+@pytest.mark.parametrize("enable_overlap_scheduler", [None, False])
+def test_capture_warns_when_it_overrides_overlap_off(
+    caplog: pytest.LogCaptureFixture, enable_overlap_scheduler: bool | None
+) -> None:
+    PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH)
+    with _temp_repo_dir() as tmpdir:
+        _make_local_repo(
+            tmpdir, safetensors_files={"model.safetensors": {"w": "BF16"}}
+        )
+        with (
+            patch(
+                "max.pipelines.lib.config.config.accelerator_api",
+                return_value="cuda",
+            ),
+            caplog.at_level(logging.INFO, logger="max.pipelines"),
+        ):
+            PipelineConfig.from_args(
+                PipelineArgs(
+                    model_path=tmpdir,
+                    device_specs=[GPU_DEVICE_SPEC],
+                    runtime=PipelineRuntimeConfig(
+                        enable_overlap_scheduler=enable_overlap_scheduler,
+                        device_graph_capture=True,
+                    ),
+                )
+            )
+    warnings = [
+        r.message
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "overrides" in r.message
+    ]
+    infos = [
+        r.message
+        for r in caplog.records
+        if r.message == "Enabling overlap scheduling for device graph capture."
+    ]
+    if enable_overlap_scheduler is False:
+        assert warnings == [
+            "Device graph capture needs the overlap scheduler, so it "
+            "overrides --no-enable-overlap-scheduler."
+        ]
+        assert infos == []
+    else:
+        assert warnings == []
+        assert len(infos) == 1
+
+
+@prepare_registry
+def test_overlap_scheduler_resolves_to_a_bool_without_an_architecture() -> None:
+    PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH)
+    with _temp_repo_dir() as tmpdir:
+        write_fake_safetensors(os.path.join(tmpdir, "model.safetensors"))
+        config = _make_pipeline_config(tmpdir)
+    assert config.runtime.enable_overlap_scheduler is False
+    assert config.runtime.device_graph_capture is False

@@ -370,8 +370,8 @@ class SupportedArchitecture:
     """Whether this architecture supports auto-enabling the overlap scheduler.
 
     When ``False``, the overlap scheduler is not auto-enabled for this
-    architecture even when otherwise eligible. Users can still force-enable
-    via ``--enable-overlap-scheduler --force``.
+    architecture even when otherwise eligible. Users can still enable it
+    via ``--enable-overlap-scheduler``.
     """
 
     supports_nvfp4_kv_cache: bool = False

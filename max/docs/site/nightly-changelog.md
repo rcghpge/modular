@@ -291,6 +291,11 @@ This version is still a work in progress.
 - `max serve --disable-overlap` keeps the overlap pipeline but synchronizes
   after every model execution, so device graph capture can run without
   CPU/GPU overlap. `MAX_DISABLE_OVERLAP=1` sets its default.
+- `max serve --no-enable-overlap-scheduler` (or
+  `enable_overlap_scheduler=False`) now turns the overlap scheduler off
+  without `--force`. Device graph capture, which needs the overlap scheduler,
+  then stays off unless you pass `--device-graph-capture`. Leaving the flag
+  unset still lets the architecture turn the overlap scheduler on.
 - Hardened decoding of client-supplied images. `Image.open` is now restricted
   to an explicit format allowlist (PNG, JPEG, WEBP, GIF, BMP, PPM, TIFF, TGA,
   and AVIF where the platform provides it), shrinking the native-decoder attack

@@ -66,6 +66,7 @@ from max.pipelines.modeling.types import (
     TextGenerationRequestTool,
     VideoContentPart,
 )
+from max.pipelines.speculative import SpeculativeConfig
 from max.serve.api_server import ServingTokenGeneratorSettings, fastapi_app
 from max.serve.config import APIType, Settings
 from max.serve.mocks.mock_api_requests import simple_openai_request
@@ -4051,7 +4052,8 @@ async def test_chat_completion_logprobs_with_overlap_scheduler_rejected_by_defau
 
     assert response.status_code == 400
     message = response.json()["error"]["message"]
-    assert "--no-enable-overlap-scheduler --force" in message
+    assert "--no-enable-overlap-scheduler to use logprobs" in message
+    assert "--force" not in message
     assert "--allow-unsupported-logprobs" in message
 
 
@@ -4080,6 +4082,71 @@ async def test_chat_completion_logprobs_with_overlap_scheduler_dropped_when_flag
     assert choice.message.content == "logprobs please"
     # When logprobs is downgraded, the response carries no logprob content.
     assert choice.logprobs is None or not choice.logprobs.content
+
+
+@pytest_asyncio.fixture(scope="function")
+def speculative_app(fixture_tokenizer, mock_pipeline_config: PipelineConfig):  # noqa: ANN001, ANN201
+    pipeline_config = mock_pipeline_config.model_copy(
+        update={
+            "speculative": SpeculativeConfig(
+                speculative_method="eagle", num_speculative_tokens=3
+            )
+        }
+    )
+    serving_settings = ServingTokenGeneratorSettings(
+        model_factory=EchoTokenGenerator,
+        pipeline_config=pipeline_config,
+        tokenizer=EchoPipelineTokenizer(),
+    )
+    return fastapi_app(
+        Settings(api_types=[APIType.OPENAI], use_heartbeat=False),
+        serving_settings,
+    )
+
+
+def _assert_speculative_logprobs_error(response: Any) -> None:
+    assert response.status_code == 400
+    message = response.json()["error"]["message"]
+    assert message.startswith(
+        "Log probabilities are not supported with speculative decoding."
+    )
+    assert "--no-enable-overlap-scheduler" not in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "runtime_overrides",
+    [{"enable_overlap_scheduler": False, "allow_unsupported_logprobs": False}],
+    indirect=True,
+)
+async def test_chat_completion_logprobs_with_speculative_decoding_rejected(
+    speculative_app,  # noqa: ANN001
+) -> None:
+    """Speculative decoding runs the overlap pipeline even with overlap off."""
+    async with AsyncTestClient(speculative_app) as client:
+        body = simple_openai_request(model_name="echo", content="hi")
+        body["logprobs"] = True
+        response = await client.post("/v1/chat/completions", json=body)
+
+    _assert_speculative_logprobs_error(response)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "runtime_overrides",
+    [{"enable_overlap_scheduler": False, "allow_unsupported_logprobs": False}],
+    indirect=True,
+)
+async def test_completion_logprobs_with_speculative_decoding_rejected(
+    speculative_app,  # noqa: ANN001
+) -> None:
+    async with AsyncTestClient(speculative_app) as client:
+        response = await client.post(
+            "/v1/completions",
+            json={"model": "echo", "prompt": "hi", "logprobs": 3},
+        )
+
+    _assert_speculative_logprobs_error(response)
 
 
 @pytest.mark.asyncio
@@ -4144,7 +4211,8 @@ async def test_completion_logprobs_with_overlap_scheduler_rejected_by_default(
 
     assert response.status_code == 400
     message = response.json()["error"]["message"]
-    assert "--no-enable-overlap-scheduler --force" in message
+    assert "--no-enable-overlap-scheduler to use logprobs" in message
+    assert "--force" not in message
     assert "--allow-unsupported-logprobs" in message
 
 

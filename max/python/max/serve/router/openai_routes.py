@@ -281,12 +281,18 @@ _DEFAULT_VALID_TOOL_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 # Tool-name length cap; checked by length so it holds even when a parser widens the charset.
 _MAX_TOOL_NAME_LEN = 1024
 
-# Config resolution auto-enables the overlap scheduler for architectures
-# that support it unless ``--force`` is set, so the advice names both flags.
 _OVERLAP_LOGPROBS_ERROR = (
     "Log probabilities are not supported with the overlap scheduler. Start"
-    " the server with --no-enable-overlap-scheduler --force to use logprobs,"
-    " or --allow-unsupported-logprobs to silently ignore the field."
+    " the server with --no-enable-overlap-scheduler to use logprobs, or"
+    " --allow-unsupported-logprobs to silently ignore the field."
+)
+
+# Speculative decoding always runs the overlap pipeline, so no flag turns
+# logprobs on.
+_SPECULATIVE_LOGPROBS_ERROR = (
+    "Log probabilities are not supported with speculative decoding. Start"
+    " the server with --allow-unsupported-logprobs to silently ignore the"
+    " field."
 )
 
 # Standard OpenAI message roles; a tokenizer may allow more via ``extra_chat_roles``.
@@ -2529,7 +2535,10 @@ async def openai_create_chat_completion(
             _validate_logprobs_count(logprobs_count, "top_logprobs")
 
         runtime_cfg = pipeline_config.runtime
-        if logprobs_count != 0 and runtime_cfg.enable_overlap_scheduler:
+        speculative = pipeline_config.speculative is not None
+        if logprobs_count != 0 and (
+            runtime_cfg.enable_overlap_scheduler or speculative
+        ):
             if runtime_cfg.allow_unsupported_logprobs:
                 logger.warning(
                     "Request %s asked for logprobs but the overlap scheduler "
@@ -2539,7 +2548,11 @@ async def openai_create_chat_completion(
                 )
                 logprobs_count = 0
             else:
-                raise InputError(_OVERLAP_LOGPROBS_ERROR)
+                raise InputError(
+                    _SPECULATIVE_LOGPROBS_ERROR
+                    if speculative
+                    else _OVERLAP_LOGPROBS_ERROR
+                )
 
         # When the orchestrator has already tokenized the prompt for
         # KV cache-aware routing, pass the token IDs directly so MAX Serve
@@ -3635,10 +3648,13 @@ async def openai_create_completion(
         if completion_request.logprobs is not None:
             _validate_logprobs_count(completion_request.logprobs, "logprobs")
 
+        speculative = pipeline_config.speculative is not None
         if (
             completion_request.logprobs is not None
             and completion_request.logprobs != 0
-            and pipeline_config.runtime.enable_overlap_scheduler
+            and (
+                pipeline_config.runtime.enable_overlap_scheduler or speculative
+            )
         ):
             if pipeline_config.runtime.allow_unsupported_logprobs:
                 logger.warning(
@@ -3649,7 +3665,11 @@ async def openai_create_completion(
                 )
                 completion_request.logprobs = None
             else:
-                raise InputError(_OVERLAP_LOGPROBS_ERROR)
+                raise InputError(
+                    _SPECULATIVE_LOGPROBS_ERROR
+                    if speculative
+                    else _OVERLAP_LOGPROBS_ERROR
+                )
 
         response_generator = OpenAICompletionResponseGenerator(
             pipeline,

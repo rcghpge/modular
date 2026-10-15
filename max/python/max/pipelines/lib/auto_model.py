@@ -30,7 +30,6 @@ from types import TracebackType
 from max.driver import accelerator_api
 from max.pipelines.context import TextContext
 from max.pipelines.modeling.types import PipelineTask
-from pydantic import BaseModel
 from transformers import AutoTokenizer as _HFAutoTokenizer
 from transformers import BatchEncoding, PreTrainedTokenizerBase
 
@@ -74,42 +73,6 @@ def _clobbered_sections(config_overrides: Mapping[str, object]) -> list[str]:
     return sorted(sections)
 
 
-def _config_sections(config: PipelineConfig) -> tuple[BaseModel, ...]:
-    return (
-        config,
-        config.runtime,
-        config.sampling,
-        config.model,
-        config.model.kv_cache,
-    )
-
-
-def _config_fields(
-    config: PipelineConfig, values: Mapping[str, object]
-) -> dict[str, object]:
-    """Returns the entries of ``values`` that name a field of ``config``."""
-    return {
-        name: value
-        for name, value in values.items()
-        if any(
-            name in type(section).model_fields
-            for section in _config_sections(config)
-        )
-    }
-
-
-def _unmet_values(
-    config: PipelineConfig, required: Mapping[str, object]
-) -> dict[str, object]:
-    return {
-        name: value
-        for name, value in required.items()
-        for section in _config_sections(config)
-        if name in type(section).model_fields
-        and getattr(section, name) != value
-    }
-
-
 def _build_config(
     model_path: str,
     max_batch_size: int,
@@ -146,28 +109,6 @@ def _build_config(
         raise ValueError(
             f"AutoModel runs text generation models only, and {model_path} "
             f"loads {arch.name} for {arch.task.value.replace('_', ' ')}."
-        )
-    if (
-        not pipeline_config.runtime.enable_overlap_scheduler
-        or device_graph_capture
-        or "force" in config_overrides
-        or config_overrides.get("enable_overlap_scheduler", False) is not False
-    ):
-        return pipeline_config
-    # Only force keeps an architecture's overlap auto-enable off, and force
-    # also skips the architecture's required arguments.
-    required = _config_fields(
-        pipeline_config, arch.required_arguments if arch is not None else {}
-    )
-    pipeline_config = PipelineConfig.from_args(
-        PipelineArgs.from_flat_kwargs(
-            model_path=model_path, **{**flat, **required, "force": True}
-        )
-    )
-    if unmet := _unmet_values(pipeline_config, required):
-        raise ValueError(
-            f"The architecture requires {unmet}, which the config overrides "
-            "contradict."
         )
     return pipeline_config
 
@@ -255,11 +196,8 @@ class AutoModel:
     The config turns off the overlap scheduler, device graph capture, prefix
     caching and chunked prefill. On AMD it also turns off the vendor BLAS
     fallback, as serve does with capture on, so matmuls compile to serve's
-    kernels. Where an architecture turns overlap on by itself, the caller
-    passes no ``force``, and ``enable_overlap_scheduler`` is unset or
-    ``False``, AutoModel rebuilds the config with ``force=True`` and passes
-    the architecture's ``required_arguments`` explicitly. As in serve, these
-    required arguments win over flat overrides.
+    kernels. As in serve, the architecture's ``required_arguments`` win over
+    the overrides.
 
     References to the pipeline, its KV cache manager, an open
     :class:`~max.pipelines.lib.generate.GenerateIterator`, or a live traceback
@@ -289,10 +227,8 @@ class AutoModel:
             or a ``model_override`` entry sets one of them whole.
         ValueError: If the config needs a feature that only ``max serve``
             runs, such as LoRA, if the model takes image inputs or does not
-            generate text, if a
-            ``model_override`` entry contradicts an argument the architecture
-            requires, or if ``device_graph_capture=True`` builds a pipeline
-            that cannot capture graphs.
+            generate text, or if ``device_graph_capture=True`` builds a
+            pipeline that cannot capture graphs.
     """
 
     def __init__(
