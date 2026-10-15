@@ -60,7 +60,6 @@ from nn.normalization import rms_norm_gpu
 from max.benchmark import bench_multicontext, bencher_iter_custom
 
 from std.math import rsqrt
-from std.utils.index import Index
 
 
 @inline(.always)
@@ -85,9 +84,9 @@ def _launch_norm_full[
     """Standalone RMSNorm over the full `[rows, num_cols]` tensor (M3
     input_layernorm is replicate -> norms all `rows` on every GPU). Fixed
     buffers, captured once (no per-iter rotation). Caller ensures `rows > 0`."""
-    var gamma = TileTensor(gamma_ptr, row_major(Coord(Index(num_cols))))
-    var in_buf = TileTensor(in_ptr, row_major(Coord(Index(rows, num_cols))))
-    var out_buf = TileTensor(out_ptr, row_major(Coord(Index(rows, num_cols))))
+    var gamma = TileTensor(gamma_ptr, row_major(Coord(num_cols)))
+    var in_buf = TileTensor(in_ptr, row_major(Coord(rows, num_cols)))
+    var out_buf = TileTensor(out_ptr, row_major(Coord(rows, num_cols)))
 
     @inline(.always)
     @__copy_capture(in_buf)
@@ -112,7 +111,7 @@ def _launch_norm_full[
         epsilon=epsilon,
         weight_offset=weight_offset,
         multiply_before_cast=True,
-    ](Coord(Index(rows, num_cols)), gamma, ctx)
+    ](Coord(rows, num_cols), gamma, ctx)
 
 
 def _verify_results[
@@ -138,30 +137,30 @@ def _verify_results[
 
     # Shard views (non-rotated, offset 0) and full output views.
     comptime ShardType = TileTensor[
-        in_dtype, type_of(row_major(Coord(Index(0, num_cols)))), ImmutAnyOrigin
+        in_dtype, type_of(row_major(Coord(0, num_cols))), ImmutAnyOrigin
     ]
     comptime FullType = TileTensor[
         mut=True,
         in_dtype,
-        type_of(row_major(Coord(Index(0, num_cols)))),
+        type_of(row_major(Coord(0, num_cols))),
         MutAnyOrigin,
     ]
     comptime GammaType = TileTensor[
-        in_dtype, type_of(row_major(Coord(Index(0)))), ImmutAnyOrigin
+        in_dtype, type_of(row_major(Coord(0))), ImmutAnyOrigin
     ]
     var in_shards = Array[ShardType, ngpus](
         fill_with=lambda (i: Int) -> ShardType: ShardType(
             rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
                 cb_shards[i].offset_ptr(0)
             ),
-            row_major(Coord(Index(config.rank_units(i), num_cols))),
+            row_major(Coord(config.rank_units(i), num_cols)),
         )
     )
     var gamma_view = GammaType(
         rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
             gamma_dev.unsafe_ptr()
         ),
-        row_major(Coord(Index(num_cols))),
+        row_major(Coord(num_cols)),
     )
 
     var normed_r = List[DeviceBuffer[in_dtype]](capacity=ngpus)
@@ -180,11 +179,11 @@ def _verify_results[
     for i in range(ngpus):
         var normed_view = FullType(
             normed_r[i].unsafe_ptr().as_unsafe_any_origin(),
-            row_major(Coord(Index(num_rows, num_cols))),
+            row_major(Coord(num_rows, num_cols)),
         )
         var sum_view = FullType(
             sum_r[i].unsafe_ptr().as_unsafe_any_origin(),
-            row_major(Coord(Index(num_rows, num_cols))),
+            row_major(Coord(num_rows, num_cols)),
         )
         allgather_rmsnorm(
             in_shards,
@@ -217,7 +216,7 @@ def _verify_results[
         comptime for src in range(ngpus):
             world_out_views[i * ngpus + src] = FullType(
                 out_base + config.rank_unit_start(src) * num_cols,
-                row_major(Coord(Index(config.rank_units(src), num_cols))),
+                row_major(Coord(config.rank_units(src), num_cols)),
             )
         allgather(in_shards, world_out_views, rank_sigs, list_of_ctx[i], i)
     group_end()
@@ -393,23 +392,23 @@ def bench_allgather_rmsnorm[
         list_of_ctx[i].synchronize()
 
     comptime ShardType = TileTensor[
-        in_dtype, type_of(row_major(Coord(Index(0, num_cols)))), ImmutAnyOrigin
+        in_dtype, type_of(row_major(Coord(0, num_cols))), ImmutAnyOrigin
     ]
     comptime FullType = TileTensor[
         mut=True,
         in_dtype,
-        type_of(row_major(Coord(Index(0, num_cols)))),
+        type_of(row_major(Coord(0, num_cols))),
         MutAnyOrigin,
     ]
     comptime GammaType = TileTensor[
-        in_dtype, type_of(row_major(Coord(Index(0)))), ImmutAnyOrigin
+        in_dtype, type_of(row_major(Coord(0))), ImmutAnyOrigin
     ]
     var in_shards = Array[ShardType, ngpus](
         fill_with=lambda (i: Int) -> ShardType: ShardType(
             rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
                 cb_shards[i].unsafe_ptr()
             ),
-            row_major(Coord(Index(config.rank_units(i), num_cols))),
+            row_major(Coord(config.rank_units(i), num_cols)),
         )
     )
     var normed_views = Array[FullType, ngpus](
@@ -417,7 +416,7 @@ def bench_allgather_rmsnorm[
             mut normed, imm num_rows
         } -> FullType: FullType(
             normed[i].unsafe_ptr().as_unsafe_any_origin(),
-            row_major(Coord(Index(num_rows, num_cols))),
+            row_major(Coord(num_rows, num_cols)),
         )
     )
     var sum_views = Array[FullType, ngpus](
@@ -425,14 +424,14 @@ def bench_allgather_rmsnorm[
             mut sum_full, imm num_rows
         } -> FullType: FullType(
             sum_full[i].unsafe_ptr().as_unsafe_any_origin(),
-            row_major(Coord(Index(num_rows, num_cols))),
+            row_major(Coord(num_rows, num_cols)),
         )
     )
     var gamma_shard = GammaType(
         rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
             gamma_dev.unsafe_ptr()
         ),
-        row_major(Coord(Index(num_cols))),
+        row_major(Coord(num_cols)),
     )
     var rank_counts = Array[Int, ngpus](
         fill_with=lambda (i: Int) -> Int: config.rank_units(i)
@@ -483,7 +482,7 @@ def bench_allgather_rmsnorm[
                 rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
                     cb_shards[_j].offset_ptr(cache_iter)
                 ),
-                row_major(Coord(Index(rank_counts[_j], num_cols))),
+                row_major(Coord(rank_counts[_j], num_cols)),
             )
 
     # ===== Variant 1: all-gather only -> t_AG =====
@@ -509,7 +508,7 @@ def bench_allgather_rmsnorm[
             comptime for src in range(ngpus):
                 world_out_views[ctx_idx * ngpus + src] = FullType(
                     out_base + config.rank_unit_start(src) * num_cols,
-                    row_major(Coord(Index(config.rank_units(src), num_cols))),
+                    row_major(Coord(config.rank_units(src), num_cols)),
                 )
             allgather(in_shards, world_out_views, rank_sigs, ctx_inner, ctx_idx)
 
@@ -574,7 +573,7 @@ def bench_allgather_rmsnorm[
             comptime for src in range(ngpus):
                 world_out_views[ctx_idx * ngpus + src] = FullType(
                     out_base + config.rank_unit_start(src) * num_cols,
-                    row_major(Coord(Index(config.rank_units(src), num_cols))),
+                    row_major(Coord(config.rank_units(src), num_cols)),
                 )
             allgather(in_shards, world_out_views, rank_sigs, ctx_inner, ctx_idx)
             if num_rows > 0:
@@ -653,9 +652,7 @@ def bench_allgather_rmsnorm[
                 comptime for src in range(ngpus):
                     world_out_views[ctx_idx * ngpus + src] = FullType(
                         out_base + config.rank_unit_start(src) * num_cols,
-                        row_major(
-                            Coord(Index(config.rank_units(src), num_cols))
-                        ),
+                        row_major(Coord(config.rank_units(src), num_cols)),
                     )
                 allgather(
                     in_shards, world_out_views, rank_sigs, ctx_inner, ctx_idx

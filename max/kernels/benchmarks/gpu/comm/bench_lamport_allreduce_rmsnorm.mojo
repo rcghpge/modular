@@ -88,7 +88,7 @@ def _run_rms_norm[
     var shape = Index(M, K)
     var in_view = TileTensor(in_ptr, row_major(Coord(shape)))
     var out_view = TileTensor(out_ptr, row_major(Coord(shape)))
-    var gamma_view = TileTensor(gamma_ptr, row_major(Coord(Index(K))))
+    var gamma_view = TileTensor(gamma_ptr, row_major(Coord(K)))
 
     @inline(.always)
     @__copy_capture(in_view)
