@@ -120,6 +120,11 @@ def takes_2d_constrained(tensor2d: TileTensor) where tensor2d.flat_rank == 2:
     var el0 = tensor2d[0, 0]
 ```
 
+These checks verify the *number* of coordinates, not their values. Neither the
+compiler nor the subscript operator checks that an index falls within the
+tensor's dimensions, so an out-of-range index reads or writes memory outside the
+tensor.
+
 For information on using `where` clauses and `comptime` assertions, see the
 section on [comptime
 constraints](https://mojolang.org/docs/manual/metaprogramming/constraints/).
@@ -290,6 +295,43 @@ Keep the backing `Array` or `List` alive while any tensor view uses it, and
 don't resize the list while a view refers to its storage.
 
 :::
+
+You can also create a `TileTensor` from a pointer to memory that you allocate
+and free yourself. This gives you direct control over the allocation and how
+it's initialized:
+
+```mojo
+from std.memory import dealloc, unsafe_memset
+from layout import TileTensor, row_major
+
+comptime rows = 1024
+comptime columns = 1024
+comptime buf_size = rows * columns
+comptime layout = row_major[rows, columns]()
+var allocation = alloc[Float32]({count = buf_size})
+var ptr = allocation.unsafe_ptr()
+unsafe_memset(ptr, 0, buf_size)
+var tensor = TileTensor(ptr, layout)
+# ... use the tensor and any views of it ...
+dealloc(allocation^)
+```
+
+The [`alloc()`](https://mojolang.org/docs/std/memory/alloc/alloc/) function
+returns an
+[`Allocation`](https://mojolang.org/docs/std/memory/alloc/Allocation/) that owns
+the memory. The tensor only borrows it, so keep the allocation alive while the
+tensor or any view of it (such as a tile) is in use. Free it with
+[`dealloc()`](https://mojolang.org/docs/std/memory/alloc/dealloc/) after the
+last use, and don't access the tensor or its views afterward. The compiler
+requires you to dispose of the allocation on every path out of the function,
+including paths that raise an error.
+
+This example initializes the memory with
+[`unsafe_memset()`](https://mojolang.org/docs/std/memory/memory/unsafe_memset/)
+instead of the tensor's
+[`fill()`](/api/mojo/layout/tile_tensor/TileTensor/#fill) method. The `fill()`
+method initializes the tensor element by element without vectorization, so it
+may be slow for large tensors.
 
 ### Creating a `TileTensor` on the GPU
 
@@ -561,6 +603,80 @@ to construct nested layouts with
 [`row_major_nested()`](/api/mojo/layout/tile_layout/row_major_nested/)
 and
 [`col_major_nested()`](/api/mojo/layout/tile_layout/col_major_nested/).
+
+### Iterating over tiles
+
+`TileTensor` doesn't provide a tile iterator. To visit every tile in a tensor,
+loop over the tile coordinates and call `tile()` for each one:
+
+```mojo
+from std.math import ceildiv
+
+# given a tensor of size rows x cols
+comptime num_row_tiles = ceildiv(rows, tile_size)
+comptime num_col_tiles = ceildiv(cols, tile_size)
+
+for i in range(num_row_tiles):
+    for j in range(num_col_tiles):
+        var tile = tensor.tile[tile_size, tile_size](i, j)
+        # ... do something with the tile
+```
+
+Because each tile is a view, this loop doesn't copy any data.
+
+### Handling tensor boundaries
+
+The `tile()` method doesn't clip a tile at the edge of its parent tensor: the
+tile always has the shape you request. When a tensor's dimensions aren't
+multiples of the tile size, the last tile along each axis extends past the
+tensor's data, and accessing those positions reads or writes memory outside the
+tensor. (The legacy `LayoutTensor` type supports masked tiles that shrink at the
+boundary. `TileTensor` has no equivalent.)
+
+To process an incomplete edge tile, compare each position's coordinates in the
+parent tensor against the parent's dimensions before you access it:
+
+```mojo
+from std.collections import Array
+from std.math import ceildiv
+from layout import TileTensor, row_major
+
+comptime rows = 6
+comptime cols = 10
+comptime tile_size = 4
+var storage = Array[Float32, rows * cols](fill=1.0)
+var tensor = TileTensor(storage, row_major[rows, cols]())
+
+var total = Float32(0)
+for tile_row in range(ceildiv(rows, tile_size)):
+    for tile_col in range(ceildiv(cols, tile_size)):
+        var tile = tensor.tile[tile_size, tile_size](tile_row, tile_col)
+        # The tile's top-left corner, in the parent's coordinates.
+        var row0 = tile_row * tile_size
+        var col0 = tile_col * tile_size
+        for i in range(tile_size):
+            for j in range(tile_size):
+                if row0 + i < rows and col0 + j < cols:
+                    total += tile[i, j][0]
+```
+
+The
+[`tile_with_offset()`](/api/mojo/layout/tile_tensor/TileTensor/#tile_with_offset)
+method returns the tile's corner coordinates along with the tile, so you don't
+need to compute them yourself. It works only on tensors with flat (non-nested)
+layouts.
+
+When you load tiles from global memory into shared memory on the GPU, a masked
+asynchronous copy can handle the boundary for you. The
+[`GenericToSharedAsyncTileCopier`](/api/mojo/layout/tile_io/GenericToSharedAsyncTileCopier/)
+copier, created with `masked=True`, zero-fills the destination for source rows
+past a bound instead of reading them. Because a tile from `tile()` always has
+its full static row count, pass the number of valid rows to its
+[`copy_bounded()`](/api/mojo/layout/tile_io/GenericToSharedAsyncTileCopier/#copy_bounded)
+method. The bound applies to rows only, so columns past the edge still need
+their own handling. For lower-level control, the
+[`copy_from_async()`](/api/mojo/layout/tile_tensor/TileTensor/#copy_from_async)
+method accepts the same masking options directly.
 
 ## Vectorizing tensors
 

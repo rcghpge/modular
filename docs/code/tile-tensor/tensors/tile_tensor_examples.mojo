@@ -15,6 +15,7 @@
 from layout import TileTensor, Idx, Coord, coord
 from std.math import ceildiv
 from std.collections import Array
+from std.memory import dealloc, unsafe_memset
 
 from layout.tile_layout import (
     row_major,
@@ -126,6 +127,27 @@ def tile_tensor_from_list_example() raises:
     _ = storage^
 
 
+def tile_tensor_from_allocation_example() raises:
+    # start-tile-tensor-from-allocation-example
+    comptime rows = 1024
+    comptime columns = 1024
+    comptime buf_size = rows * columns
+    comptime layout = row_major[rows, columns]()
+    var allocation = alloc[Float32]({count = buf_size})
+    var ptr = allocation.unsafe_ptr()
+    unsafe_memset(ptr, 0, buf_size)
+    var tensor = TileTensor(ptr, layout)
+    # ... use the tensor and any views of it ...
+    # end-tile-tensor-from-allocation-example
+    var num_elements = tensor.num_elements()
+    var last = tensor[rows - 1, columns - 1][0]
+    # start-tile-tensor-free-allocation-example
+    dealloc(allocation^)
+    # end-tile-tensor-free-allocation-example
+    assert_equal(num_elements, rows * columns)
+    assert_equal(last, Float32(0))
+
+
 def tile_tensor_tile_example() raises:
     # start-layout-tensor-tile-example
     comptime tile_size = 32
@@ -220,6 +242,29 @@ def nested_tile_example() raises:
     assert_equal(fragment[2, 3], Float32(43))
 
 
+def tile_boundary_example() raises:
+    # start-tile-boundary-example
+    comptime rows = 6
+    comptime cols = 10
+    comptime tile_size = 4
+    var storage = Array[Float32, rows * cols](fill=1.0)
+    var tensor = TileTensor(storage, row_major[rows, cols]())
+
+    var total = Float32(0)
+    for tile_row in range(ceildiv(rows, tile_size)):
+        for tile_col in range(ceildiv(cols, tile_size)):
+            var tile = tensor.tile[tile_size, tile_size](tile_row, tile_col)
+            # The tile's top-left corner, in the parent's coordinates.
+            var row0 = tile_row * tile_size
+            var col0 = tile_col * tile_size
+            for i in range(tile_size):
+                for j in range(tile_size):
+                    if row0 + i < rows and col0 + j < cols:
+                        total += tile[i, j][0]
+    # end-tile-boundary-example
+    assert_equal(total, Float32(rows * cols))
+
+
 def copy_from_example() raises:
     # start-copy-from-example
     var src_data: Array[Int32, 4] = [1, 2, 3, 4]
@@ -266,10 +311,12 @@ def main() raises:
     test_scalar_tensor()
     tile_tensor_on_cpu_example()
     tile_tensor_from_list_example()
+    tile_tensor_from_allocation_example()
     tile_tensor_tile_example()
     nested_tile_example()
     layout_tensor_iterator_example()
     layout_tensor_iterator_example2()
+    tile_boundary_example()
     copy_from_example()
     split_static_example()
     split_dynamic_example()
