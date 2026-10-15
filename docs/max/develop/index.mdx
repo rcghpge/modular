@@ -12,15 +12,13 @@ While MAX supports multiple modalities (including image and video generation),
 the guides in this section currently focus on transformer-based text generation
 models, as they follow the most stable and established implementation paradigms.
 
-:::note Stable and experimental APIs
+:::note ModuleV3 API
 
-Most guides in this section demonstrate usage of the
-[`max.graph`](/api/python/graph) and [`max.nn`](/api/python/nn)
-packages. These are the stable APIs used by all production MAX model
-architectures. However, MAX also provides an experimental API
-([`max.experimental`](/api/python/experimental)) that you can learn about in
-the [Eager fundamentals](/develop/eager-execution/) section. Be aware that
-its namespace may change in the future as the API matures.
+Use ModuleV3 when porting a new model architecture to MAX. To migrate an
+existing architecture from the Graph API ([`max.graph`](/api/python/graph) and
+[`max.nn`](/api/python/nn)) to ModuleV3, use our
+[`/migrate-max-v2-to-v3`](https://github.com/modular/skills/blob/main/migrate-max-v2-to-v3/SKILL.md)
+skill.
 
 :::
 
