@@ -876,6 +876,65 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// map.iter.rowwise.body -> mogg.call.rowwise.
+LogicalResult IterRowwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
+  Location loc = getLoc();
+  Value rowShape = buildShape(loc, getShape(), state);
+
+  Block &body = getBody().front();
+  BlockArgument oldRowArg = body.getArgument(0);
+  ValueRange captures = getCaptures();
+  Block::BlockArgListType captureBlockArgs =
+      body.getArguments().take_back(captures.size());
+
+  SmallVector<Value> capturing;
+  for (Value v : captures)
+    capturing.push_back(state.mapping.lookup(v));
+
+  auto callRowwise = MOGG::CallRowwiseOp::create(
+      state.builder, loc, rowShape, getAxisAttr(), state.contextArgs.front(),
+      capturing, state.builder.getStringAttr(state.device.getLabel()));
+
+  // One arg per capture, then the row index.
+  Block *rowwiseBlock = state.builder.createBlock(&callRowwise.getBody());
+  for (auto [i, v] : llvm::enumerate(captureBlockArgs))
+    state.mapping.map(v,
+                      rowwiseBlock->addArgument(capturing[i].getType(), loc));
+  state.mapping.map(oldRowArg,
+                    rowwiseBlock->addArgument(oldRowArg.getType(), loc));
+
+  state.builder.setInsertionPointToStart(rowwiseBlock);
+  if (failed(state.lowerRegionBody(body)))
+    return failure();
+
+  state.builder.setInsertionPointAfter(callRowwise);
+  return success();
+}
+
+// map.iter.reduce -> mogg.rowwise.reduce.
+LogicalResult IterReduceOp::lowerToMOGG(MAPToMOGGState &state) {
+  Location loc = getLoc();
+  auto reduce = MOGG::RowwiseReduceOp::create(
+      state.builder, loc, getResultTypes(), getMonoidAttr());
+
+  Block *reduceBlock = state.builder.createBlock(&reduce.getBody());
+  state.mapping.map(getIndexArg(),
+                    reduceBlock->addArgument(getIndexArg().getType(), loc));
+
+  state.builder.setInsertionPointToStart(reduceBlock);
+  for (Operation &op : getBody().front().without_terminator())
+    if (failed(state.lowerOp(&op)))
+      return failure();
+  SmallVector<Value> yielded;
+  for (Value v : getYield().getOperands())
+    yielded.push_back(state.mapping.lookup(v));
+  MOGG::YieldOp::create(state.builder, getYield().getLoc(), yielded);
+
+  state.builder.setInsertionPointAfter(reduce);
+  state.mapping.map(getResults(), reduce.getResults());
+  return success();
+}
+
 // map.iter.opaque -> mogg.kernel.
 LogicalResult IterOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   MLIRContext *ctx = getContext();

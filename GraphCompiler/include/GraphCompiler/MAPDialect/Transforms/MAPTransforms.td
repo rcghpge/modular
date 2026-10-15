@@ -195,11 +195,11 @@ def OutlineStructuredKernelBodies
   let summary =
       "Outline structured MAP kernel bodies into `map.iter.opaque` regions.";
   let description = [{
-    Wraps each structured MAP loop (`map.iter.foreach`, and future reduce /
-    rowwise) in a `map.iter.opaque` region so sequential setup (e.g. strided-view
-    lifting) can live outside the structured loop body. The loop's own shape and
-    body move into a nested `map.iter.foreach.body`, which reaches the wrapper's
-    inputs/outputs by SSA dominance rather than by operand or block argument.
+    Wraps each structured MAP loop (`map.iter.foreach`, `map.iter.rowwise`) in
+    a `map.iter.opaque` region so sequential setup (e.g. strided-view lifting)
+    can live outside the structured loop body. The loop's own shape and body
+    move into a nested `map.iter.foreach.body` or `map.iter.rowwise.body`,
+    which reaches the wrapper's inputs/outputs through its captures.
     After outlining, nothing inspects the inside of the `map.iter.opaque` again.
   }];
 

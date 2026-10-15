@@ -31,55 +31,55 @@ namespace M::MAP {
 
 namespace {
 
-// Wraps `foreachOp` in a `map.iter.opaque`, moving its shape and body into a
-// nested `map.iter.foreach.body`. Both are isolated from above, so the opaque's
-// block args are threaded into the nested body as `$captures`.
-void outlineForeach(IterForeachOp foreachOp) {
-  Location loc = foreachOp.getLoc();
-  OpBuilder builder(foreachOp);
+// Wraps `loop` in a `map.iter.opaque`, moving its body into the matching
+// closure. Both are isolated from above, so the opaque's block args become the
+// closure's `$captures`.
+void outline(StructuredIterOpInterface loop) {
+  auto kernel = cast<IterOpInterface>(loop.getOperation());
+  Location loc = loop.getLoc();
+  OpBuilder builder(loop);
 
-  auto opaque = IterOpaqueOp::create(
-      builder, loc, foreachOp.getResultTypes(), foreachOp.getInputs(),
-      foreachOp.getInputChain(), /*fusionInfo=*/Attribute());
-  // `map.iter.opaque` states its device explicitly; an unannotated foreach
-  // runs on the host, the `getDeviceOrDefault` fallback.
-  opaque.setDeviceRef(MO::getDeviceOrDefault(foreachOp));
-  if (Attribute fusionInfo = foreachOp.getFusionInfoAttr())
+  auto opaque = IterOpaqueOp::create(builder, loc, loop->getResultTypes(),
+                                     kernel.getInputs(), kernel.getInputChain(),
+                                     /*fusionInfo=*/Attribute());
+  // `map.iter.opaque` states its device explicitly; an unannotated loop runs
+  // on the host, the `getDeviceOrDefault` fallback.
+  opaque.setDeviceRef(MO::getDeviceOrDefault(
+      cast<MO::MOHasDeviceInterface>(loop.getOperation())));
+  if (Attribute fusionInfo = kernel.getFusionInfoAttr())
     opaque.setFusionInfoAttr(fusionInfo);
-  opaque.setHasReadEffect(foreachOp.getHasReadEffect());
-  opaque.setHasWriteEffect(foreachOp.getHasWriteEffect());
-  opaque.setDispatch(foreachOp.getDispatch());
+  opaque.setHasReadEffect(kernel.getHasReadEffect());
+  opaque.setHasWriteEffect(kernel.getHasWriteEffect());
+  opaque.setDispatch(kernel.getDispatch());
 
   // Chains get no block arg; the non-chain inputs and outputs are exactly the
-  // `map.iter.foreach.body`'s captures.
+  // closure's captures.
   Block *opaqueBody = builder.createBlock(&opaque.getBody());
   SmallVector<Value> bodyCaptures;
-  for (Value input : foreachOp.getInputs())
+  for (Value input : kernel.getInputs())
     bodyCaptures.push_back(opaqueBody->addArgument(input.getType(), loc));
-  for (Type resultType : foreachOp.getResultTypes())
+  for (Type resultType : loop->getResultTypes())
     if (!isa<MO::ChainType>(resultType))
       bodyCaptures.push_back(opaqueBody->addArgument(resultType, loc));
 
   builder.setInsertionPointToStart(opaqueBody);
-  auto body = IterForeachBodyOp::create(builder, loc, foreachOp.getShape(),
-                                        bodyCaptures);
+  CapturingFusionClosure body =
+      loop.createBodyClosure(builder, loc, bodyCaptures);
 
-  // Move the body without cloning. The foreach's block args are [inputs...,
-  // outputs..., index] and `map.iter.foreach.body` wants [index, captures...],
-  // so only the index moves. The index is the last argument; deriving its
-  // position from the result count is wrong when a result is a chain, which
-  // has no block arg.
-  body.getBody().takeBody(foreachOp.getBody());
-  Block &movedBody = body.getBody().front();
-  unsigned oldIndexPos = movedBody.getNumArguments() - 1;
-  BlockArgument oldIndexArg = movedBody.getArgument(oldIndexPos);
+  // Move the body without cloning. The loop's block args are [inputs...,
+  // outputs..., index] and the closure wants [index, captures...], so only
+  // the index moves.
+  BlockArgument oldIndexArg = loop.getIndexArg();
+  Region &region = body.getBody();
+  region.takeBody(loop->getRegion(0));
+  Block &movedBody = region.front();
   BlockArgument newIndexArg =
       movedBody.insertArgument(0u, oldIndexArg.getType(), loc);
   oldIndexArg.replaceAllUsesWith(newIndexArg);
-  movedBody.eraseArgument(oldIndexPos + 1);
+  movedBody.eraseArgument(movedBody.getNumArguments() - 1);
 
-  foreachOp.replaceAllUsesWith(opaque.getResults());
-  foreachOp.erase();
+  loop->replaceAllUsesWith(opaque.getResults());
+  loop->erase();
 }
 
 struct OutlineStructuredKernelBodiesPass
@@ -88,14 +88,14 @@ struct OutlineStructuredKernelBodiesPass
   using Base::Base;
 
   void runOnOperation() override {
-    SmallVector<IterForeachOp> worklist;
-    getOperation()->walk([&](IterForeachOp op) {
+    SmallVector<StructuredIterOpInterface> worklist;
+    getOperation()->walk([&](StructuredIterOpInterface op) {
       worklist.push_back(op);
       return WalkResult::skip();
     });
 
-    for (IterForeachOp op : worklist)
-      outlineForeach(op);
+    for (StructuredIterOpInterface op : worklist)
+      outline(op);
   }
 };
 

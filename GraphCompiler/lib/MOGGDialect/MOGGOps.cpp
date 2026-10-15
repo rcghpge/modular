@@ -674,8 +674,7 @@ LogicalResult RoutineOp::verify() {
   // One kernel, one call -- counting the `mogg.call` outlining leaves.
   size_t numCalls = 0;
   for (Operation &bodyOp : getBody().front())
-    if (isa<CallOpaqueOp, CallForeachOp, CallElementwiseOp, CallShapeOp,
-            CallOp>(bodyOp))
+    if (bodyOp.hasTrait<RoutineCall>())
       ++numCalls;
   if (numCalls != 1)
     return emitOpError() << "expected exactly one call in the body, got "
@@ -2730,6 +2729,116 @@ void CallForeachOp::getAsmBlockArgumentNames(Region &region,
   size_t numCaptures = getCapturing().size();
   nameArgs(args.take_front(numCaptures), "cap", setNameFn);
   nameLeadingArgs(args.drop_front(numCaptures), {"idx"}, setNameFn);
+}
+
+ParseResult CallRowwiseOp::parse(OpAsmParser &parser, OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  OpAsmParser::UnresolvedOperand shape, context;
+  int64_t axis;
+  SmallVector<OpAsmParser::Argument> leadingArgs, entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  if (parser.parseKeyword("shape") || parser.parseLParen() ||
+      parser.parseOperand(shape) || parser.parseRParen() ||
+      parser.parseKeyword("axis") || parser.parseLParen() ||
+      parser.parseInteger(axis) || parser.parseRParen() ||
+      parser.parseKeyword("context") || parser.parseLParen() ||
+      parser.parseOperand(context) || parser.parseRParen() ||
+      parseLeadingArgs(parser, leadingArgs) ||
+      parseBindings(parser, "capturing", entryArgs, captures, captureTypes,
+                    /*impliedType=*/Type(), /*required=*/false))
+    return failure();
+  StringAttr device;
+  if (parser.parseKeyword("device") || parser.parseEqual() ||
+      parser.parseAttribute(device) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+  result.addAttribute(getAxisAttrName(result.name),
+                      parser.getBuilder().getI64IntegerAttr(axis));
+  result.addAttribute(getDeviceAttrName(result.name), device);
+  entryArgs.append(leadingArgs.begin(), leadingArgs.end());
+
+  if (parser.resolveOperand(shape, ShapeType::get(ctx), result.operands) ||
+      parser.resolveOperand(context, ContextType::get(ctx), result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void CallRowwiseOp::print(OpAsmPrinter &p) {
+  p << " shape(" << getShape() << ") axis(" << getAxis() << ") context("
+    << getContext() << ") ";
+  auto args = getBody().front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  printLeadingArgs(p, args.drop_front(numCaptures));
+  if (numCaptures) {
+    p << " ";
+    printBindings(p, "capturing", getCapturing(), args.take_front(numCaptures),
+                  /*impliedType=*/Type(),
+                  /*required=*/false);
+  }
+  p << " device = ";
+  p.printAttribute(getDeviceAttr());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getAxisAttrName().getValue(), getDeviceAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void CallRowwiseOp::getAsmBlockArgumentNames(Region &region,
+                                             OpAsmSetValueNameFn setNameFn) {
+  if (region.empty())
+    return;
+  auto args = region.front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  nameArgs(args.take_front(numCaptures), "cap", setNameFn);
+  nameLeadingArgs(args.drop_front(numCaptures), {"row"}, setNameFn);
+}
+
+ParseResult RowwiseReduceOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
+  FlatSymbolRefAttr monoid;
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  if (parser.parseAttribute(monoid, getMonoidAttrName(result.name),
+                            result.attributes) ||
+      parseLeadingArgs(parser, entryArgs) ||
+      parser.parseOptionalArrowTypeList(result.types) ||
+      parser.parseRegion(*result.addRegion(), entryArgs))
+    return failure();
+  return parser.parseOptionalAttrDict(result.attributes);
+}
+
+void RowwiseReduceOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getMonoidAttr());
+  p << " ";
+  printLeadingArgs(p, getBody().front().getArguments());
+  p.printArrowTypeList(getResultTypes());
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getMonoidAttrName().getValue()});
+}
+
+void RowwiseReduceOp::getAsmBlockArgumentNames(Region &region,
+                                               OpAsmSetValueNameFn setNameFn) {
+  if (region.empty())
+    return;
+  nameLeadingArgs(region.front().getArguments(), {"i"}, setNameFn);
+}
+
+LogicalResult RowwiseReduceOp::verify() {
+  if (getNumResults() == 0)
+    return emitOpError("must have at least one result");
+  Block &body = getBody().front();
+  if (body.getNumArguments() != 1)
+    return emitOpError("body takes exactly one argument, the index");
+  auto yield = body.empty() ? YieldOp() : dyn_cast<YieldOp>(body.back());
+  if (!yield || yield.getNumOperands() == 0)
+    return emitOpError("body must yield at least one contribution");
+  return success();
 }
 
 LogicalResult TensorCreateEpilogueOp::verify() {

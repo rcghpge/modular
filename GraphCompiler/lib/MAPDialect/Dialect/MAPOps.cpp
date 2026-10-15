@@ -788,6 +788,12 @@ Block::BlockArgListType IterForeachOp::getOutputBlockArgs() {
   return getBody().front().getArguments().slice(getInputs().size(), numOutputs);
 }
 
+CapturingFusionClosure IterForeachOp::createBodyClosure(OpBuilder &builder,
+                                                        Location loc,
+                                                        ValueRange captures) {
+  return IterForeachBodyOp::create(builder, loc, getShape(), captures);
+}
+
 void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
   ASSERT_STREAM(idx <= getInputs().size(),
                 << "idx (" << idx << ") must stay within the inputs ("
@@ -1115,6 +1121,13 @@ Block::BlockArgListType IterRowwiseOp::getInputBlockArgs() {
 Block::BlockArgListType IterRowwiseOp::getOutputBlockArgs() {
   unsigned numOutputs = getNumResults() - (getOutputChain() ? 1 : 0);
   return getBody().front().getArguments().slice(getInputs().size(), numOutputs);
+}
+
+CapturingFusionClosure IterRowwiseOp::createBodyClosure(OpBuilder &builder,
+                                                        Location loc,
+                                                        ValueRange captures) {
+  return IterRowwiseBodyOp::create(builder, loc, getShape(), getAxisAttr(),
+                                   captures);
 }
 
 BlockArgument IterRowwiseOp::getRowArg() {

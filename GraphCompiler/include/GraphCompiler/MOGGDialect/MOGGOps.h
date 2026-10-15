@@ -42,6 +42,12 @@ class ParamDeclareRegionOp;
 // unqualified name.
 using M::KGEN::LIT::FnTypeGeneratorType;
 
+namespace M::MOGG {
+template <typename ConcreteType>
+class RoutineCall : public mlir::OpTrait::TraitBase<ConcreteType, RoutineCall> {
+};
+} // namespace M::MOGG
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//

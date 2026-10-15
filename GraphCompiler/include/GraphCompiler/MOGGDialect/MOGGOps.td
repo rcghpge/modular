@@ -52,6 +52,11 @@ include "MLRT/GraphRT/MEFDialect/MEFTypes.td"
 class MOGG_Op<string mnemonic, list<Trait> traits = []> :
   Op<MOGGDialect, mnemonic, traits>;
 
+// The call a `mogg.routine` body holds exactly one of.
+def MOGG_RoutineCall : NativeOpTrait<"RoutineCall"> {
+  let cppNamespace = "::M::MOGG";
+}
+
 class MOGG_LowerableOp<string mnemonic, list<Trait> traits = []> :
   MOGG_Op<mnemonic, traits # [
     DeclareOpInterfaceMethods<LowerableToMGPInterface, ["lower"]>,
@@ -179,6 +184,7 @@ def MOGG_OutputOp : MOGG_Op<"output", [
 //===----------------------------------------------------------------------===//
 
 def MOGG_CallOp : MOGG_Op<"call", [
+  MOGG_RoutineCall,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
   MOGG_FuncCallOpInterface,
@@ -699,16 +705,17 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp",
-               "MOGG::TensorCreateEpilogueOp", "MOGG::WithTraceOp"]>,
+               "MOGG::TensorCreateEpilogueOp", "MOGG::WithTraceOp",
+               "MOGG::RowwiseReduceOp"]>,
   ReturnLike,
   Terminator,
 ]> {
   let summary = "MOGG yield operation";
   let description = [{
     Yields the results of a mogg.try / except, the value a
-    `mogg.tensor.create.prologue` body returns to the reading kernel, or the
+    `mogg.tensor.create.prologue` body returns to the reading kernel, the
     value a compute `mogg.tensor.create.epilogue` body returns for the kernel
-    to store.
+    to store, or an element's contribution to a `mogg.rowwise.reduce`.
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
@@ -1235,6 +1242,7 @@ def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
 }
 
 def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
+  MOGG_RoutineCall,
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
 ]> {
@@ -1417,6 +1425,7 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 }
 
 def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
+  MOGG_RoutineCall,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
@@ -1443,7 +1452,64 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
   let hasCustomAssemblyFormat = 1;
 }
 
+def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
+  MOGG_RoutineCall,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  NoTerminator,
+]> {
+  let summary = "Run a fused reduction body once per row.";
+  let description = [{
+    Runs its body once per row of `$shape` along `$axis`. The body holds the
+    row's folds (`mogg.rowwise.reduce`), row-level ops and stores. Its
+    arguments are one per `$capturing` tensor, then the row index, which has
+    the `$axis` coordinate pinned to 0. Lowered from a `map.iter.opaque`
+    wrapping a `map.iter.rowwise.body`.
+
+    Example:
+    ```mlir
+    mogg.call.rowwise shape(%shape) axis(1) context(%ctx) (%row : !map.index<2>)
+        capturing {%x = %X : !mogg.tensor, %out = %OUT : !mogg.tensor}
+        device = "cpu" {
+      %acc = mogg.rowwise.reduce @builtin_kernels.monoids.ReduceSum
+          (%i : !map.index<2>) -> f32 {
+        %v = mogg.tensor.load %x[%i] : !mogg.tensor, !map.index<2> -> f32
+        mogg.yield %v : f32
+      }
+      mogg.tensor.store %out[%row] = %acc : !mogg.tensor, !map.index<2>, f32
+    }
+    ```
+  }];
+  let arguments = (ins
+    MOGG_Shape:$shape,
+    I64Attr:$axis,
+    MOGG_Context:$context,
+    Variadic<MOGG_TensorLike>:$capturing,
+    StrAttr:$device
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let hasCustomAssemblyFormat = 1;
+}
+
+def MOGG_RowwiseReduceOp : MOGG_Op<"rowwise.reduce", [
+  HasParent<"MOGG::CallRowwiseOp">,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  SingleBlock,
+]> {
+  let summary = "Fold the current row with a monoid.";
+  let description = [{
+    Folds every element of the enclosing row with `$monoid`. The body runs
+    once per element, at the index in its argument, and yields the
+    element's contribution. The results are the monoid's output fields.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$monoid);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$body);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
 def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
+  MOGG_RoutineCall,
   DeclareOpInterfaceMethods<EmitsMojoInterface, ["isThrows"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
 ]> {
@@ -1466,6 +1532,7 @@ def MOGG_CallShapeOp : MOGG_Op<"call.shape", [
 }
 
 def MOGG_CallElementwiseOp : MOGG_Op<"call.elementwise", [
+  MOGG_RoutineCall,
   AttrSizedOperandSegments,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   DeclareOpInterfaceMethods<MOGG_KernelCallInterface>,

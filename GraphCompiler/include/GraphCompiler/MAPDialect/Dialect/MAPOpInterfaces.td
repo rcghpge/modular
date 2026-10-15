@@ -183,6 +183,35 @@ def MAP_IterOpInterface : OpInterface<"IterOpInterface"> {
   }];
 }
 
+def MAP_StructuredIterOpInterface : OpInterface<"StructuredIterOpInterface"> {
+  let description = [{
+    A MAP kernel that runs its body over a shape: `map.iter.foreach` or
+    `map.iter.rowwise`. Its last body block argument is the index.
+  }];
+
+  let cppNamespace = "::M::MAP";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the shape the body runs over.",
+      "::M::MOSH::ShapeAttr", "getShape", (ins),
+      "return $_op.getShape();"
+    >,
+    InterfaceMethod<
+      "Returns the index block argument.",
+      "::mlir::BlockArgument", "getIndexArg", (ins), [{}],
+      "return $_op.getBody().front().getArguments().back();"
+    >,
+    InterfaceMethod<
+      "Creates the closure that holds this kernel's body once outlined, with "
+      "`captures` as its captures and an empty body.",
+      "::M::MAP::CapturingFusionClosure", "createBodyClosure",
+      (ins "::mlir::OpBuilder &":$builder, "::mlir::Location":$loc,
+           "::mlir::ValueRange":$captures)
+    >,
+  ];
+}
+
 def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
   let description = [{
     Common interface for ops that project a structured loop's own index into

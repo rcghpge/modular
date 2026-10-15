@@ -313,6 +313,7 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
   AttrSizedOperandSegments,
   IsolatedFromAbove,
   MAP_IterOpInterface,
+  DeclareOpInterfaceMethods<MAP_StructuredIterOpInterface>,
   SingleBlock,
   NoTerminator,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
@@ -437,6 +438,7 @@ def MAP_IterRowwiseOp : MAP_Op<"iter.rowwise", [
   AttrSizedOperandSegments,
   IsolatedFromAbove,
   MAP_IterOpInterface,
+  DeclareOpInterfaceMethods<MAP_StructuredIterOpInterface>,
   SingleBlock,
   NoTerminator,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
@@ -523,6 +525,7 @@ def MAP_IterRowwiseBodyOp : MAP_Op<"iter.rowwise.body", [
   SingleBlock,
   NoTerminator,
   MAP_CapturingFusionClosure,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "The per-row body of a map.iter.rowwise, wrapped for outlining.";
   let description = [{
@@ -572,6 +575,7 @@ def MAP_IterReduceOp : MAP_Op<"iter.reduce", [
   RecursiveMemoryEffects,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
   DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+  DeclareOpInterfaceMethods<LowerableToMOGGInterface>,
 ]> {
   let summary = "A fold over the current row with a monoid";
   let description = [{
