@@ -2070,12 +2070,24 @@ def test_conversation_turn(
     assert _conversation_turn(messages) == expected
 
 
-def test_record_request_end_labels_input_tokens_with_the_turn() -> None:
+def test_record_request_end_labels_token_counts_with_the_turn() -> None:
     with patch("max.serve.router.openai_routes.METRICS") as metrics_mock:
         record_request_end("/v1/chat/completions", 1.0, 3, 10, "later")
 
     metrics_mock.input_tokens.assert_called_once_with(10)
     metrics_mock.input_tokens_per_request.assert_called_once_with(10, "later")
+    metrics_mock.output_tokens.assert_called_once_with(3)
+    metrics_mock.output_tokens_per_request.assert_called_once_with(3, "later")
+
+
+def test_record_request_end_without_a_turn_leaves_token_counts_unlabelled() -> (
+    None
+):
+    with patch("max.serve.router.openai_routes.METRICS") as metrics_mock:
+        record_request_end("/v1/completions", 1.0, 3, 10)
+
+    metrics_mock.input_tokens_per_request.assert_called_once_with(10, None)
+    metrics_mock.output_tokens_per_request.assert_called_once_with(3, None)
 
 
 @pytest.mark.asyncio

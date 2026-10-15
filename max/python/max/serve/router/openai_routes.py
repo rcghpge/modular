@@ -398,7 +398,7 @@ def record_request_end(
     METRICS.request_time(elapsed_ms, request_path)
     if output_tokens is not None:
         METRICS.output_tokens(output_tokens)
-        METRICS.output_tokens_per_request(output_tokens)
+        METRICS.output_tokens_per_request(output_tokens, turn)
     if input_tokens is not None:
         METRICS.input_tokens(input_tokens)
         METRICS.input_tokens_per_request(input_tokens, turn)

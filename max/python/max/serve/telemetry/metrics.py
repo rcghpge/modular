@@ -17,7 +17,7 @@ import abc
 import functools
 import logging
 import time
-from collections.abc import AsyncGenerator, Callable, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator, Mapping
 from contextlib import (
     AbstractAsyncContextManager,
     AbstractContextManager,
@@ -58,8 +58,8 @@ _meter = get_meter_provider().get_meter("modular")
 
 
 NumberType = float | int
-OtelAttributes = dict[str, str] | None
-# The ``turn`` label on ``maxserve.input_tokens_per_request``.
+OtelAttributes = Mapping[str, str] | None
+# The ``turn`` label on the per-request input and output token histograms.
 ConversationTurn = Literal["first", "later"]
 
 # API_PROXIES the "types" of measurements we make from a meter
@@ -363,7 +363,9 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
     "maxserve.output_tokens_per_request": _meter.create_histogram(
         "maxserve.output_tokens_per_request",
         unit="tokens",
-        description="Distribution of output tokens per request.",
+        description=(
+            "Distribution of output tokens per request. Chat requests carry a `turn` label: `first` when the conversation has no assistant message yet, `later` when it resends earlier turns. Completion requests carry none."
+        ),
     ),  # type: ignore
     "maxserve.dkv.nixl_read_latency": _meter.create_histogram(
         "maxserve.dkv.nixl_read_latency",
@@ -1742,26 +1744,31 @@ class _AsyncMetrics:
             ),
         )
 
+    def _with_turn(self, turn: ConversationTurn | None) -> Mapping[str, str]:
+        """Returns the extra attributes, plus ``turn`` when it is known."""
+        if turn is None:
+            return self.extra_attributes
+        return {**self.extra_attributes, "turn": turn}
+
     def input_tokens_per_request(
         self, value: int, turn: ConversationTurn | None = None
     ) -> None:
-        attributes = self.extra_attributes
-        if turn is not None:
-            attributes = {**attributes, "turn": turn}
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.input_tokens_per_request",
                 value,
-                attributes,
+                self._with_turn(turn),
             ),
         )
 
-    def output_tokens_per_request(self, value: int) -> None:
+    def output_tokens_per_request(
+        self, value: int, turn: ConversationTurn | None = None
+    ) -> None:
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.output_tokens_per_request",
                 value,
-                self.extra_attributes,
+                self._with_turn(turn),
             ),
         )
 
