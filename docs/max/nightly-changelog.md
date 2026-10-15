@@ -660,6 +660,11 @@ This version is still a work in progress.
   `InferenceSession`, matching the methods of the same names on
   `max.experimental.nn.Module`. Pass `module=` to `trace()` to compile
   several modules' graphs into one artifact.
+- `max.experimental.nn.Module.compile()`,
+  `max.experimental.compilation.compile()`, and `CompiledCallable` take a
+  `session` to compile in, so a compile uses that session's precompiled or
+  exported MEFs and kernel options rather than the process-wide session's.
+  `Module.trace()` and `Module.compile()` also take a graph `name`.
 - Added `max.experimental.custom.declare`, which declares a custom op's
   input and output signature once, as an immutable `custom.CustomOp`, and
   runs eagerly or inside a `Graph`. Output dims may be symbolic,

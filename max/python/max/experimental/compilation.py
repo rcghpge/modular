@@ -71,7 +71,7 @@ from typing import Any, Generic, ParamSpec, TypeVar
 
 from max import _validation_hooks, tree
 from max.driver import Accelerator, Buffer, Device, DLPackArray
-from max.engine import CompiledModel, Model
+from max.engine import CompiledModel, InferenceSession, Model
 from max.experimental.realization_context import (
     GraphRealizationContext,
     _cached_signal_buffers,
@@ -378,6 +378,9 @@ class CompiledCallable(Generic[_P, _R]):
         weights: The weight registry: a mapping from the name of each weight
             the graph declares to its data, with one entry per shard for a
             distributed weight.
+        session: The session that compiles and initializes the graph,
+            including its precompiled or exported MEFs and its kernel
+            options. Defaults to a session shared by the whole process.
     """
 
     #: See :attr:`StagedGraph.in_layouts`.
@@ -399,16 +402,19 @@ class CompiledCallable(Generic[_P, _R]):
         self,
         staged: StagedGraph[_P, _R],
         weights: Mapping[str, DLPackArray] | None = None,
+        *,
+        session: InferenceSession | None = None,
     ) -> None:
         self.in_layouts, self.in_tree = staged.in_layouts, staged.in_tree
         self.out_layouts, self.out_tree = staged.out_layouts, staged.out_tree
         self._signal_device_ids = staged._signal_device_ids
+        session = _session() if session is None else session
         # Use the session's MEF cache. Plain ``compile`` bypasses it.
-        self._artifact = _session().compile_reusing_mefs(staged.graph)
+        self._artifact = session.compile_reusing_mefs(staged.graph)
         self._weights = dict(weights or {})
         # Bind the weights and allocate the signal buffers now rather than on
         # the first call, so that the first call is not slower than the rest.
-        self._engine_model = _session().init(
+        self._engine_model = session.init(
             self._artifact, weights_registry=dict(self._weights)
         )
         ids = self._signal_device_ids
@@ -647,6 +653,7 @@ def compile(
     allow_subgraphs: bool = True,
     signal_devices: Iterable[Device] = (),
     is_device_graph: bool = False,
+    session: InferenceSession | None = None,
 ) -> Callable[..., CompiledCallable[_P, _R]]:
     """Traces and compiles a function.
 
@@ -701,6 +708,8 @@ def compile(
             for, beyond the devices of the input types and of the tensors
             held by ``fn``.
         is_device_graph: Whether to build a device graph.
+        session: The session that compiles and initializes the graph.
+            Defaults to a session shared by the whole process.
 
     Returns:
         A function that takes one input type per tensor argument of ``fn``
@@ -718,7 +727,7 @@ def compile(
             signal_devices=signal_devices,
             is_device_graph=is_device_graph,
         )(*args, **kwargs)
-        return CompiledCallable(staged, weights)
+        return CompiledCallable(staged, weights, session=session)
 
     return stage_and_compile
 
