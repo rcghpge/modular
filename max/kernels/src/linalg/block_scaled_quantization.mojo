@@ -351,26 +351,28 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
 
                         var group_max = thread_max.cast[.float32]()
 
-                        # get the scale factor for these 16/32 elements by dividing it by the maximum value of fp4-e2m1/fp8-e4m3
-                        var scale_factor: Float32
-                        scale_factor = tensor_sf * (
-                            group_max * recip(Float32(6.0))
-                        ) if out_dtype == .uint8 else (
-                            group_max * recip(Float32(448.0))
-                        )
-
-                        # NOTE: NVFP4 uses FP8-UE4M3 format for the scale factor but we know that scale_factor is always positive, so we can use E4M3 instead of UE4M3.
-                        var fp8_scale_factor = scale_factor.cast[scales_dtype]()
-
-                        # find the quantization scale factor for these 16 elements (scale_factor = scale_factor / tensor_sf)
-                        # we divide input by this scale factor which is same as multiplying by the reciprocal of the scale factor
+                        var fp8_scale_factor: Scalar[scales_dtype]
                         var output_scale = Float32(0.0)
-                        if group_max != 0:
-                            output_scale = recip(
-                                fp8_scale_factor.cast[.float32]()
-                                * recip(tensor_sf)
-                            ) if out_dtype == .uint8 else (
-                                recip(fp8_scale_factor.cast[.float32]())
+                        var block_is_dead = False
+                        comptime if out_dtype == .uint8:
+                            # get the scale factor for these 16 elements by dividing it by the maximum value of fp4-e2m1
+                            # NOTE: NVFP4 uses FP8-UE4M3 format for the scale factor but we know that scale_factor is always positive, so we can use E4M3 instead of UE4M3.
+                            fp8_scale_factor = (
+                                tensor_sf * (group_max * recip(Float32(6.0)))
+                            ).cast[scales_dtype]()
+
+                            # find the quantization scale factor for these 16 elements (scale_factor = scale_factor / tensor_sf)
+                            # we divide input by this scale factor which is same as multiplying by the reciprocal of the scale factor
+                            if group_max != 0:
+                                output_scale = recip(
+                                    fp8_scale_factor.cast[.float32]()
+                                    * recip(tensor_sf)
+                                )
+                        else:
+                            fp8_scale_factor, output_scale, block_is_dead = (
+                                compute_mxfp8_block_scale[scales_dtype](
+                                    group_max
+                                )
                             )
 
                         # write back the scale factor
@@ -382,9 +384,12 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                                 fp8_scale_factor,
                             )
 
-                        var input_f32 = (
-                            input_vector.cast[.float32]() * output_scale
-                        )
+                        # A dead MXFP8 block's multiplier is 0; zeroing avoids
+                        # storing `inf * 0.0 = NaN`.
+                        var data = type_of(input_vector)(
+                            0
+                        ) if block_is_dead else input_vector
+                        var input_f32 = data.cast[.float32]() * output_scale
 
                         var output_vector: SIMD[out_dtype, OUTPUT_WIDTH]
 
