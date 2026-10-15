@@ -316,7 +316,7 @@ def test_eplb_placement_from_skewed_snapshot_logs_improvement(
     snap = EplbStatsSnapshot.from_array(md, h)
     with caplog.at_level("INFO", logger="max.serve"):
         EplbPlacement.from_snapshot(snap, ep_size=4, n_nodes=1, n_groups=1)
-    assert "EPLB: per-GPU load max/min" in caplog.text
+    assert "EPLB: per-GPU load max/mean across 1 MoE layers" in caplog.text
 
 
 def _two_layer_skewed_snapshot() -> EplbStatsSnapshot:
