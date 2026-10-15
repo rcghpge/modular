@@ -7,6 +7,10 @@ inside the MAX framework, then read on.
 
 ## Table of contents
 
+- [contributing/](contributing/README.md)—**MAX contributor handbook**: Which
+areas of MAX accept contributions, how to get a change reviewed and merged,
+and what we expect from contributors.
+
 - [development.md](development.md)—**MAX framework developer guide**: The
 getting started guide for development in the MAX framework codebase,
 introducing the Bazel build system.
