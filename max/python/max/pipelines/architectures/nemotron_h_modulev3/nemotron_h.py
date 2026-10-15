@@ -410,9 +410,6 @@ class NemotronH(Module[..., ModuleV3Outputs]):
             offsets = row_offsets
         elif self.return_logits == ReturnLogits.VARIABLE:
             assert count is not None, "variable logits need a host count"
-            last = self._logits(
-                F.gather(h, input_row_offsets[1:] - 1, axis=0)
-            ).local_shards[0]
             distance = F.range(
                 count,
                 0,
@@ -425,6 +422,13 @@ class NemotronH(Module[..., ModuleV3Outputs]):
                 (-1,)
             )
             logits = self._logits(F.gather(h, indices, axis=0)).local_shards[0]
+            # The last token of each request is the final row of its window
+            # (`distance` ends at 1), so the head need not run on it again.
+            # Only `verify` reaches this branch and it reads only `logits`, so
+            # `next_token_logits` aliases the whole window: its shape here is
+            # `[B * count, V]`, not `[B, V]`. A reader that needs the last rows
+            # takes rows `count - 1, 2 * count - 1, ...` of `logits`.
+            last = logits
             offsets = F.range(
                 0,
                 indices.shape[0] + count,
