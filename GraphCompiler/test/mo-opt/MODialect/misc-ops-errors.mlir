@@ -728,6 +728,15 @@ mo.graph @reshape_incompatible_shapes(%input: !mo.tensor<[6], f32>) -> !mo.tenso
 
 // -----
 
+mo.graph @reshape_neg_one_constant_shape(%input: !mo.tensor<[6], f32>) -> !mo.tensor<[2, 3], f32> {
+  %shape = mo.constant <#M.dense_array<2, -1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
+  // expected-error@+1 {{'mo.reshape' op -1 size unsupported in requested shape}}
+  %res = mo.reshape(%input, %shape) : (!mo.tensor<[6], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
+  mo.output %res : !mo.tensor<[2, 3], f32>
+}
+
+// -----
+
 mo.graph @scatter_nd_rank_mismatch(
   %input: !mo.tensor<[?, ?, ?], f32>,
   %updates: !mo.tensor<[9, 2, 1, 3], f32>,

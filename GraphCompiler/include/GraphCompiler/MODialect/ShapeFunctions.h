@@ -397,16 +397,11 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShape,
                                               TypedAttr axis);
 
-/// Materialize the shape logic for `MO::ReshapeOp`. A `-1` target dim is
-/// inferred as mul(input_dims) / mul(target_dims), excluding constant zero
-/// target dims from the denominator.
+/// Materialize the shape logic for `MO::ReshapeOp`.
 ///
-/// Example:
-///   inputShape = [3, D4]
-///   targetShape = [D0, -1, 42]
-///   returns [D0, RS0, 42]
-/// with the following operation accumulated in `b`
-///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
+/// Returns `targetShapeAttr` as the output shape and accumulates an assertion
+/// that `inputShapeAttr` and `targetShapeAttr` have the same number of
+/// elements.
 ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr);

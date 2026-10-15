@@ -132,8 +132,6 @@ OpFoldResult foldSliceHelper(SliceTy slice, AdaptorTy adaptor) {
 
 ArrayElementsAttr foldReshape(ArrayRef<int64_t> outIntDims,
                               ArrayElementsAttr inputArr) {
-  if (llvm::is_contained(outIntDims, -1))
-    return {};
   auto outTy = RankedTensorType::get(outIntDims, inputArr.getElementType());
   return ArrayElementsAttr::get(inputArr.getRawData(), outTy);
 }
@@ -1295,16 +1293,13 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     return {};
 
   int64_t shapeNumElems = 1;
-  for (llvm::APInt dim : shapeArr.getValues()) {
-    if (dim == -1)
-      return {};
+  for (llvm::APInt dim : shapeArr.getValues())
     shapeNumElems *= dim.getSExtValue();
-  }
 
   int64_t outputNumElems = 1;
   SmallVector<int64_t> outIntDims = outputShapeAttr.getIntDims();
   for (int64_t intDim : outIntDims) {
-    if (mlir::ShapedType::isDynamic(intDim) || intDim == -1)
+    if (mlir::ShapedType::isDynamic(intDim))
       return {};
     outputNumElems *= intDim;
   }

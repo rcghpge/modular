@@ -1180,14 +1180,11 @@ ShapeMaterializeResult materializeScatterNdShape(GraphOp graphOp, Location loc,
   return ShapeMaterializeResult::success(std::move(paramBindings), inputShape);
 }
 
-/// Materialize the shape logic for `MO::ReshapeOp`. A `-1` target dim is
-/// mul(input_dims) / mul(target_dims), with constant zero dims excluded from
-/// the denominator to avoid division by zero. Example:
-///   inputShape = [3, D4]
-///   targetShape = [D0, -1, 42]
-///   returns [D0, RS0, 42]
-/// with the following operation accumulated in `b`
-///   kgen.param.declare RS0 = <div(mul(3, D4), mul(D0, 42)>
+/// Materialize the shape logic for `MO::ReshapeOp`.
+///
+/// Returns `targetShapeAttr` as the output shape and accumulates an assertion
+/// that `inputShapeAttr` and `targetShapeAttr` have the same number of
+/// elements.
 ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
                                                TypedAttr inputShapeAttr,
                                                TypedAttr targetShapeAttr) {
@@ -1199,69 +1196,14 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
   if (!inputShape || !targetShape)
     return ShapeMaterializeResult::nonMaterializable();
 
-  SmallVector<TypedAttr> targetNonNegOneDims;
-  SmallVector<TypedAttr> inputNonZeroDims;
-  std::optional<size_t> maybeTargetNegOneDimIdx = std::nullopt;
-
-  ArrayRef<TypedAttr> inputDims = inputShape.getValues();
-  for (auto inputDim : inputDims) {
-    std::optional<int64_t> inputIntDim = tryGetConstantInt(inputDim);
-
-    if (!inputIntDim || *inputIntDim != 0)
-      inputNonZeroDims.push_back(inputDim);
-  }
-
-  ArrayRef<TypedAttr> targetDims = targetShape.getValues();
-  for (auto [idx, targetDim] : llvm::enumerate(targetDims)) {
-    std::optional<int64_t> targetIntDim = tryGetConstantInt(targetDim);
-
-    if (targetIntDim && *targetIntDim == -1) {
-      if (maybeTargetNegOneDimIdx.has_value()) {
-        return ShapeMaterializeResult::error(
-            "[reshape] multiple -1 detected in target shape");
-      }
-
-      maybeTargetNegOneDimIdx = idx;
-    } else {
-      // TODO: This assumes non-integer dims (e.g. `D0`, `mul(D0, D1)`) are
-      // non-negative; making it safe needs range analysis.
-      if (!targetIntDim || *targetIntDim != 0)
-        targetNonNegOneDims.push_back(targetDim);
-    }
-  }
-
-  auto calculateResolvedDim = [&]() -> Var {
-    // Scalar input.
-    if (inputDims.empty())
-      return b.createVar(1);
-
-    // Input is just [0].
-    if (inputNonZeroDims.empty())
-      return b.createVar(0);
-
-    Var numerator = b.createVar(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, inputNonZeroDims));
-
-    // A trailing 1 keeps the product valid when no dims remain.
-    auto mulDims = targetNonNegOneDims;
-    mulDims.emplace_back(
-        ShapeAttr::getDim(numerator.getAttr().getContext(), 1));
-    Var denominator = b.createVar(
-        KGEN::ParamOperatorAttr::get(KGEN::POC::MulNoWrap, mulDims));
-
-    return numerator / denominator;
-  };
-
-  ShapeAttr outputShape = targetShape;
-  if (maybeTargetNegOneDimIdx.has_value()) {
-    Var resolvedDim = calculateResolvedDim();
-    SmallVector<TypedAttr> resolvedDims(targetDims.begin(), targetDims.end());
-    resolvedDims[maybeTargetNegOneDimIdx.value()] = resolvedDim.getAttr();
-    outputShape = b.getShapeAttr(resolvedDims);
-  }
+  if (llvm::any_of(targetShape.getValues(), [](TypedAttr dim) {
+        return ShapeAttr::getStaticDim(dim) == -1;
+      }))
+    return ShapeMaterializeResult::error(
+        "[reshape] -1 size unsupported in target shape");
 
   Var inputNumElems = b.createVar(inputShape.getSymbolicNumElements());
-  Var outputNumElems = b.createVar(outputShape.getSymbolicNumElements());
+  Var outputNumElems = b.createVar(targetShape.getSymbolicNumElements());
   b.createAssert(
       inputNumElems == outputNumElems,
       llvm::formatv(
@@ -1274,9 +1216,9 @@ ShapeMaterializeResult materializeReshapeShape(GraphOp graphOp, Location loc,
           "    x = x.rebind([(n // 4) * 4, m])\n"
           "    x.reshape([n // 4, 4, m])\n"
           "```",
-          inputShape, outputShape)
+          inputShape, targetShape)
           .str());
-  return ShapeMaterializeResult::success(std::move(paramBindings), outputShape);
+  return ShapeMaterializeResult::success(std::move(paramBindings), targetShape);
 }
 
 ShapeMaterializeResult materializeRoiAlignShape(GraphOp graphOp, Location loc,

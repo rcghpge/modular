@@ -318,7 +318,7 @@ mo.graph @reshape_scalar_tensor<() -> D2, D3, D4>(
   %input: !mo.tensor<[], f32>
 ) -> !mo.tensor<[D2, D3, D4], f32> {
 
-  %param_shape = mosh.param.to_value: !mosh.ape = <[1, 1, -1]>
+  %param_shape = mosh.param.to_value: !mosh.ape = <[1, 1, 1]>
   %target_shape = mo.shape.to_tensor(%param_shape) -> !mo.tensor<[3], si32>
   %res = mo.reshape<() -> D5, D6, D7>(%input, %target_shape) : (
     !mo.tensor<[], f32>, !mo.tensor<[3], si32>
@@ -350,21 +350,21 @@ mo.graph @select_fold_during_staticization<seq_len, batch_size -> O1, O2>(
   %input: !mo.tensor<[seq_len, batch_size], si32>
 ) -> !mo.tensor<[O1, O2], si32> {
 
-  %neg_one = mo.constant <#M.dense_array<-1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
+  %zero = mo.constant <#M.dense_array<0> : tensor<1xsi64>> : !mo.tensor<[1], si64>
   %zeros = mo.constant <#M.dense_array<0, 0> : !M.array<2xsi64>> : !mo.tensor<[2], si64>
   %one = mo.constant <#M.dense_array<1> : tensor<1xsi64>> : !mo.tensor<[1], si64>
 
   // Essentially constructing `%target_shape` to represent
-  //   `[-1 == 0 ? seq_len : -1,  batch_size == 0 ? batch_size : batch_size]
+  //   `[0 == 0 ? seq_len : 0,  batch_size == 0 ? batch_size : batch_size]
   // which folds to
-  //   `[-1, batch_size]`
+  //   `[seq_len, batch_size]`
   %input_shape = mo.shape_of(%input) : (!mo.tensor<[seq_len, batch_size], si32>) -> !mo.tensor<[2], si64>
   %batch_size = mo.gather(%input_shape, %one) [axis = 0] : (!mo.tensor<[2], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[1], si64>
-  %neg_one_and_batch_size = mo.concat[0] (%neg_one, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
-  %cond = mo.equal(%neg_one_and_batch_size, %zeros) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
-  %target_shape = mo.select(%cond, %input_shape, %neg_one_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
+  %zero_and_batch_size = mo.concat[0] (%zero, %batch_size) : (!mo.tensor<[1], si64>, !mo.tensor<[1], si64>) -> !mo.tensor<[2], si64>
+  %cond = mo.equal(%zero_and_batch_size, %zeros) : (!mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], bool>
+  %target_shape = mo.select(%cond, %input_shape, %zero_and_batch_size) : (!mo.tensor<[2], bool>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[2], si64>
 
-  // reshape(%input, [-1, batch_size]) == %input
+  // reshape(%input, [seq_len, batch_size]) == %input
   %res = mo.reshape<() -> D1, D2>(%input, %target_shape) : (
     !mo.tensor<[seq_len, batch_size], si32>, !mo.tensor<[2], si64>
   ) -> !mo.tensor<[D1, D2], si32>

@@ -3041,25 +3041,23 @@ LogicalResult ReshapeOp::verify() {
     return success();
 
   int64_t requestedElements = 1;
-  bool requestShapeHasNegOne = false;
   for (int64_t dim : dimIntegers.value()) {
     if (dim == -1)
-      requestShapeHasNegOne = true;
+      return emitOpError("-1 size unsupported in requested shape");
     requestedElements *= dim;
   }
 
   std::optional<int64_t> resultElements =
       getResult().getType().getNumElements();
   if (resultElements.has_value() &&
-      resultElements.value() != requestedElements && !requestShapeHasNegOne) {
+      resultElements.value() != requestedElements) {
     return emitOpError("Expected requested shape and output shape to have the "
                        "same number of elements requested ")
            << requestedElements << " but expected " << resultElements.value();
   }
 
   std::optional<int64_t> inputElements = getInput().getType().getNumElements();
-  if (inputElements.has_value() && inputElements.value() != requestedElements &&
-      !requestShapeHasNegOne) {
+  if (inputElements.has_value() && inputElements.value() != requestedElements) {
     return emitOpError("Expected requested shape and input shape to have the "
                        "same number of elements requested ")
            << requestedElements << " but expected " << inputElements.value();
@@ -3144,21 +3142,7 @@ LogicalResult SqueezeShapeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult Static::ReshapeOp::verify() {
-  LogicalResult typesCompatible = checkReshapeInOutTypesCompatible(*this);
-  if (typesCompatible.failed()) {
-    return typesCompatible;
-  }
-
-  TensorType resultTy = getResult().getType();
-  if (resultTy.hasRank()) {
-    for (auto curResDim : resultTy.getShape().getValues()) {
-      if (auto intCurResDim = tryGetConstantInt(curResDim);
-          intCurResDim && *intCurResDim == -1)
-        return emitOpError("static reshape can not have inferred dimensions");
-    }
-  }
-
-  return success();
+  return checkReshapeInOutTypesCompatible(*this);
 }
 
 //===----------------------------------------------------------------------===//
