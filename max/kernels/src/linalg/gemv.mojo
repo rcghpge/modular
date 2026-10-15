@@ -13,7 +13,6 @@
 
 """Provides general matrix-vector (GEMV) and general vector-matrix (GEVM) kernels for CPU and GPU."""
 
-from std.collections import Optional
 from std.math import align_down, align_up, ceildiv
 from std.math.uutils import ufloordiv
 from std.sys import is_amd_gpu, llvm_intrinsic, simd_width_of
@@ -77,7 +76,6 @@ from .utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     GemmShape,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -2967,7 +2965,6 @@ def _gemv_gpu_impl[
 @inline(.always)
 def gemv[
     parallelize: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c_buf: TileTensor[mut=True, ...],
     a_buf: TileTensor[mut=False, ...],
@@ -2980,13 +2977,33 @@ def gemv[
 
     Parameters:
         parallelize: When True, the reduction runs in parallel across output rows.
-        elementwise_lambda_fn: Optional epilogue applied to each output element.
 
     Args:
         c_buf: Output TileTensor of length M.
         a_buf: Input matrix TileTensor of shape (M, K).
         b_buf: Input vector TileTensor of length K.
     """
+    _gemv_cpu[
+        parallelize=parallelize, has_epilogue_fn=False, has_compute_fn=False
+    ](c_buf, a_buf, b_buf, no_epilogue_fn, no_compute_fn)
+
+
+@inline(.always)
+def _gemv_cpu[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    parallelize: Bool,
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
+](
+    c_buf: TileTensor[mut=True, ...],
+    a_buf: TileTensor[mut=False, ...],
+    b_buf: TileTensor[mut=False, ...],
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
+) raises:
     comptime c_type = c_buf.dtype
     comptime simd_width = simd_width_of[c_type]()
 
@@ -3006,11 +3023,19 @@ def gemv[
     def output_fn[
         out_type: DType, width: SIMDLength
     ](idx: Coord, value: SIMD[out_type, width]):
-        comptime if case .Some(func) = elementwise_lambda_fn:
+        comptime if has_epilogue_fn:
             var m = Int(idx[0].value())
 
             comptime for i in range(width):
-                func[out_type, 1]((m + i, 0), value[i])
+                epilogue_fn[out_type, 1, alignment=1]((m + i, 0), value[i])
+        elif has_compute_fn:
+            var m = Int(idx[0].value())
+
+            comptime for i in range(width):
+                var out = compute_fn[out_type, 1, alignment=1](
+                    (m + i, 0), value[i]
+                )
+                c_buf.store[width=1]((m + i,), out.cast[c_type]())
         else:
             c_buf.store[width=width]((idx[0],), value.cast[c_type]())
 

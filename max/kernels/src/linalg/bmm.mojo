@@ -251,6 +251,47 @@ def _batched_matmul_cpu[
     b_tile: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
+    comptime if case .Some(epilogue) = elementwise_epilogue_fn:
+
+        def epilogue_fn[
+            dtype: DType, width: SIMDLength, *, alignment: Int
+        ](idx: Coord, val: SIMD[dtype, width]):
+            epilogue[dtype, width, alignment=alignment](idx, val)
+
+        _batched_matmul_cpu_impl[
+            rank,
+            transpose_b=transpose_b,
+            has_epilogue_fn=True,
+            saturated_vnni=saturated_vnni,
+        ](c_tile, a_tile, b_tile, epilogue_fn, ctx)
+    else:
+        _batched_matmul_cpu_impl[
+            rank,
+            transpose_b=transpose_b,
+            has_epilogue_fn=False,
+            saturated_vnni=saturated_vnni,
+        ](c_tile, a_tile, b_tile, no_epilogue_fn, ctx)
+
+
+@inline(.always)
+def _batched_matmul_cpu_impl[
+    a_type: DType,
+    b_type: DType,
+    c_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    rank: Int,
+    *,
+    transpose_b: Bool,
+    has_epilogue_fn: Bool,
+    saturated_vnni: Bool,
+](
+    c_tile: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a_tile: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b_tile: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: Optional[DeviceContext.CPU],
+) raises:
     comptime assert rank < 5, "max rank for batched matmul is currently 4"
 
     # Extract shape as IndexList for downstream functions.
@@ -261,11 +302,14 @@ def _batched_matmul_cpu[
     # Batched matmul calls for MacOS >= 13.0.0 and a, b, c of type Float32 are
     # directed to the special Apple-specific implementation.
     comptime if use_apple_accelerate_lib[c_type, a_type, b_type]():
-        apple_batched_matmul[
-            rank,
-            transpose_b=transpose_b,
-            elementwise_epilogue_fn=elementwise_epilogue_fn,
-        ](c_tile, a_tile, b_tile, c_shape)
+        comptime if has_epilogue_fn:
+            apple_batched_matmul[transpose_b=transpose_b](
+                c_tile, a_tile, b_tile, c_shape, epilogue_fn
+            )
+        else:
+            apple_batched_matmul[transpose_b=transpose_b](
+                c_tile, a_tile, b_tile, c_shape
+            )
         return
 
     # Flatten to 3D TileTensor by collapsing batch dimensions.
@@ -389,21 +433,26 @@ def _batched_matmul_cpu[
                 batch, c_shape
             )
 
-            @__parameter
-            def elementwise_lambda_2d[
-                c_type: DType, width: SIMDLength, *, alignment: Int = 1
-            ](out_coords: Coord, out_val: SIMD[c_type, width]):
+            @inline(.always)
+            def epilogue_2d[
+                c_type: DType, width: SIMDLength, *, alignment: Int
+            ](out_coords: Coord, out_val: SIMD[c_type, width]) {
+                var batch_coords,
+                var epilogue_fn,
+            }:
                 comptime assert (
                     out_coords.rank == 2
                 ), "the matmul epilogue contract is rank 2"
                 # the caller provided the elementwise epilogue def over the original
                 # buffer rank, not the collapsed buffer rank
                 # so un-collapse the batch dims here
-                comptime if case .Some(func) = elementwise_epilogue_fn:
-                    batch_coords[rank - 1] = Int(out_coords[1].value())
-                    batch_coords[rank - 2] = Int(out_coords[0].value())
+                var nd_coords = batch_coords
+                nd_coords[rank - 1] = Int(out_coords[1].value())
+                nd_coords[rank - 2] = Int(out_coords[0].value())
 
-                    func[c_type, width](Coord(batch_coords), out_val)
+                epilogue_fn[c_type, width, alignment=alignment](
+                    Coord(nd_coords), out_val
+                )
 
             var sub_matmul_config = get_partitioned_matmul[
                 a_type, b_type, c_type, config.kernel_rows, config.kernel_cols
@@ -432,11 +481,7 @@ def _batched_matmul_cpu[
                     config,
                     transpose_b,
                     b_packed=False,
-                    elementwise_lambda_fn=Optional[
-                        matmul_elementwise_epilogue_type
-                    ](
-                        elementwise_lambda_2d
-                    ) if elementwise_epilogue_fn else None,
+                    has_epilogue_fn=has_epilogue_fn,
                     saturated_vnni=saturated_vnni,
                 ](
                     c_view,
@@ -444,6 +489,7 @@ def _batched_matmul_cpu[
                     b_view,
                     GemmShape(sub_matmul_config.shape),
                     GemmShape(sub_matmul_config.offset),
+                    epilogue_2d,
                 )
                 dealloc(a_packed_alloc^)
             else:
@@ -451,11 +497,7 @@ def _batched_matmul_cpu[
                     config,
                     transpose_b,
                     b_packed=False,
-                    elementwise_lambda_fn=Optional[
-                        matmul_elementwise_epilogue_type
-                    ](
-                        elementwise_lambda_2d
-                    ) if elementwise_epilogue_fn else None,
+                    has_epilogue_fn=has_epilogue_fn,
                     saturated_vnni=saturated_vnni,
                 ](
                     c_view,
@@ -463,8 +505,8 @@ def _batched_matmul_cpu[
                     b_view,
                     GemmShape(sub_matmul_config.shape),
                     GemmShape(sub_matmul_config.offset),
+                    epilogue_2d,
                 )
-            _ = batch_coords
 
     sync_parallelize(task_func, num_tasks, ctx)
 

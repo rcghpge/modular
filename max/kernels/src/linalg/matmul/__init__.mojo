@@ -182,35 +182,41 @@ def matmul[
                 a.static_shape[0] if a.static_shape[0] > -1 else 0
             )
 
-            # The CPU version of matmul doesn't support compute lambda.
-            # Wrap it around an epilogue lambda instead.
-            @__parameter
-            @inline(.always)
-            def compute_lambda_wrapper[
-                _type: DType, _width: SIMDLength, *, alignment: Int = 1
-            ](coords: Coord, val: SIMD[_type, _width]):
-                comptime assert (
-                    coords.rank == 2
-                ), "the matmul epilogue contract is rank 2"
-                comptime if case .Some(compute) = elementwise_compute_lambda_fn:
-                    comptime compute_lambda = elementwise_compute_lambda_fn.value()
-                    var output = compute_lambda(coords, val)
-                    c.store[alignment=alignment](
-                        coords,
-                        rebind[SIMD[c.dtype, _width]](output),
-                    )
-
-            comptime elementwise_lambda_wrapper = Optional[
-                elementwise_epilogue_type
-            ](
-                compute_lambda_wrapper
-            ) if elementwise_compute_lambda_fn else elementwise_lambda_fn
-
             var cpu_ctx = DeviceContext._map_assert_cpu_target(ctx)
 
-            cpu.matmul[
-                transpose_b=transpose_b,
-                b_packed=b_packed,
-                elementwise_lambda_fn=elementwise_lambda_wrapper,
-                saturated_vnni=saturated_vnni,
-            ](c, a, b, kernel_type_m, ctx=cpu_ctx)
+            comptime if case .Some(
+                compute_lambda
+            ) = elementwise_compute_lambda_fn:
+
+                @inline(.always)
+                def compute_fn[
+                    dtype: DType, width: SIMDLength, *, alignment: Int
+                ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+                    return compute_lambda[dtype, width, alignment=alignment](
+                        idx, val
+                    )
+
+                cpu.matmul[
+                    transpose_b=transpose_b,
+                    b_packed=b_packed,
+                    saturated_vnni=saturated_vnni,
+                ](c, a, b, compute_fn, kernel_type_m, ctx=cpu_ctx)
+            elif case .Some(store_lambda) = elementwise_lambda_fn:
+
+                @inline(.always)
+                def epilogue_fn[
+                    dtype: DType, width: SIMDLength, *, alignment: Int
+                ](idx: Coord, val: SIMD[dtype, width]):
+                    store_lambda[dtype, width, alignment=alignment](idx, val)
+
+                cpu.matmul[
+                    transpose_b=transpose_b,
+                    b_packed=b_packed,
+                    saturated_vnni=saturated_vnni,
+                ](c, a, b, epilogue_fn, kernel_type_m, ctx=cpu_ctx)
+            else:
+                cpu.matmul[
+                    transpose_b=transpose_b,
+                    b_packed=b_packed,
+                    saturated_vnni=saturated_vnni,
+                ](c, a, b, kernel_type_m, ctx=cpu_ctx)

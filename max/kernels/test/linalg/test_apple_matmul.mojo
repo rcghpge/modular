@@ -168,18 +168,22 @@ def test_matmul[
                 pack_transposed_b_ndbuffer[a_type, c_type](b, bp)
 
     @inline(.always)
+    def add_constant_compute_fn[
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        return val + some_constant
+
+    @inline(.always)
     def bench_fn_matmul() raises {var}:
         if kernel_type_m != 0:
-            _matmul_cpu[
-                transpose_b=transpose_b,
-                b_packed=b_packed,
-                elementwise_lambda_fn=epilogue_fn,
-            ](
-                c,
-                a,
-                bp,
-                kernel_type_m,
-            )
+            comptime if epilogue_fn:
+                _matmul_cpu[transpose_b=transpose_b, b_packed=b_packed](
+                    c, a, bp, add_constant_compute_fn, kernel_type_m
+                )
+            else:
+                _matmul_cpu[transpose_b=transpose_b, b_packed=b_packed](
+                    c, a, bp, kernel_type_m
+                )
         else:
             matmul[
                 transpose_b=transpose_b,
