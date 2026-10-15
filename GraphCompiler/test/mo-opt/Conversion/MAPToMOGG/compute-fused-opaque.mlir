@@ -1,9 +1,9 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg | FileCheck %s
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg="enable-compute-lambdas=false" | FileCheck %s --check-prefix=NOCOMPUTE
 
-// Matmul declares its output as `_FusedComputeOutputTensor`, so an epilogue
-// fused into it can be a COMPUTE lambda: the body yields the value the store
-// would have written and the kernel performs the one store itself. The
+// The GPU matmul declares its output as `_FusedComputeOutputTensor`, so an
+// epilogue fused into it can be a COMPUTE lambda: the body yields the value the
+// store would have written and the kernel performs the one store itself. The
 // store-target capture (`%[[COUT]]`) survives unused -- emit still binds the
 // functor onto its slice.
 // CHECK-LABEL: mo.graph @matmul_add
@@ -21,13 +21,13 @@
 // NOCOMPUTE-NEXT:    %[[SUM:.*]] = mogg.call.elementwise
 // NOCOMPUTE-NEXT:    mogg.tensor.store %[[COUT]][%[[IDX]]] = %[[SUM]]
 mo.graph @matmul_add(
-  %a: !mo.tensor<[8, 8], f32>,
-  %b: !mo.tensor<[8, 8], f32>,
-  %z: !mo.tensor<[8, 8], f32>
-) -> !mo.tensor<[8, 8], f32> {
-  %mm = mo.matmul(%a, %b) : (!mo.tensor<[8, 8], f32>, !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 8], f32>
-  %out = mo.add(%mm, %z) : !mo.tensor<[8, 8], f32>
-  mo.output %out : !mo.tensor<[8, 8], f32>
+  %a: !mo.tensor<[8, 8], f32, gpu:0>,
+  %b: !mo.tensor<[8, 8], f32, gpu:0>,
+  %z: !mo.tensor<[8, 8], f32, gpu:0>
+) -> !mo.tensor<[8, 8], f32, gpu:0> {
+  %mm = mo.matmul(%a, %b) : (!mo.tensor<[8, 8], f32, gpu:0>, !mo.tensor<[8, 8], f32, gpu:0>) -> !mo.tensor<[8, 8], f32, gpu:0>
+  %out = mo.add(%mm, %z) : !mo.tensor<[8, 8], f32, gpu:0>
+  mo.output %out : !mo.tensor<[8, 8], f32, gpu:0>
 }
 
 // A dtype-changing epilogue keeps a store lambda even though the kernel could

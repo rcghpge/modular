@@ -8,7 +8,7 @@
 // they are only reachable by constant-folding the operands.
 
 // CHECK-LABEL: mo.graph @convStaticStrides
-// CHECK: map.call.opaque @{{.*}}Conv[
+// CHECK: map.call.opaque @{{.*}}ConvCPU[
 // CHECK-SAME: static_dilations = [1, 1]
 // CHECK-SAME: static_padding = [0, 0, 0, 0]
 // CHECK-SAME: static_strides = [2, 2]
@@ -27,7 +27,7 @@ mo.graph @convStaticStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo.
 // sentinel rather than being dropped.
 
 // CHECK-LABEL: mo.graph @convDynamicStrides
-// CHECK: map.call.opaque @{{.*}}Conv[
+// CHECK: map.call.opaque @{{.*}}ConvCPU[
 // CHECK-SAME: static_strides = [-9223372036854775808, -9223372036854775808]
 mo.graph @convDynamicStrides(%input: !mo.tensor<[1, 5, 5, 3], f32>, %filter: !mo.tensor<[3, 3, 3, 1], f32, {layout = #mo.layout<RSCF>}>, %st: !mo.tensor<[2], si64>) -> !mo.tensor<[1, 2, 2, 1], f32> {
   %di = "mo.constant"() {value = #M.dense_array<1, 1> : tensor<2xsi64>} : () -> !mo.tensor<[2], si64>

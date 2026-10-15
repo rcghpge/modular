@@ -49,7 +49,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 // CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[8, 8]> : !mosh.ape, outShape = #mosh<ape[4, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>> : !map.index<2> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<2>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
-// CHECK:       mogg.call.opaque @{{.*}}.Matmul{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
+// CHECK:       mogg.call.opaque @{{.*}}.MatmulCPU{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
 mo.graph @matmul_slice_step(
   %a: !mo.tensor<[8, 4], f32>,
   %b: !mo.tensor<[4, 8], f32>
@@ -67,7 +67,7 @@ mo.graph @matmul_slice_step(
 // CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[2, 16, 16]> : !mosh.ape, outShape = #mosh<ape[2, 4, 16]> : !mosh.ape, staticStart = array<i64: 0, 12, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
-// CHECK:       mogg.call.opaque @{{.*}}.BatchMatmul{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
+// CHECK:       mogg.call.opaque @{{.*}}.BatchMatmulCPU{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
 mo.graph @bmm_window(
   %a: !mo.tensor<[2, 16, 8], f32>,
   %b: !mo.tensor<[2, 8, 16], f32>
@@ -87,7 +87,7 @@ mo.graph @bmm_window(
 // CHECK:       mogg.index.slice.select(%{{[a-z0-9]+}}) <inShape = #mosh<ape[2, 3, 3, 4]> : !mosh.ape, outShape = #mosh<ape[2, 2, 3, 4]> : !mosh.ape, staticStart = array<i64: 0, 1, 0, 0>, staticStep = array<i64: 1, 1, 1, 1>> : !map.index<4> {
 // CHECK-NEXT:  ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<4>):
 // CHECK-NEXT:    mogg.tensor.store %{{[a-z0-9]+}}[%[[IOUT]]]
-// CHECK:       mogg.call.opaque @{{.*}}.Conv{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
+// CHECK:       mogg.call.opaque @{{.*}}.ConvCPU{{(\[.*\])?}} inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) {{.*}}hasEpilogueFusion = true
 mo.graph @conv_window(
   %input: !mo.tensor<[2, 5, 5, 3], f32>,
   %filter: !mo.tensor<[3, 3, 3, 4], f32, {layout = #mo.layout<RSCF>}>
@@ -134,7 +134,7 @@ mo.graph @concat_window_dynamic_in<S, T>(
 // CHECK:       mogg.tensor.create.epilogue %{{.*}} (%{{[a-z0-9]+}} : {{[^,]+}}, %[[IDX:[a-z0-9]+]] : !map.index<2>) capturing {{[{][^}]*[}]}} shapes {%[[IN:[a-z0-9]+]] = %{{[0-9]+}}, %[[OUT:[a-z0-9]+]] = %{{[0-9]+}}}
 // CHECK-NEXT:    mogg.tensor.store
 // CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[M, 8]> : !mosh.ape, outShape = #mosh<ape[H, 8]> : !mosh.ape, staticStart = array<i64: 1, 0>, staticStep = array<i64: 2, 1>>
-// CHECK:       mogg.call.opaque @{{.*}}.Matmul{{(\[.*\])?}} inputs({{.*}}) outputs({{.*}}) {{.*}}hasEpilogueFusion = true
+// CHECK:       mogg.call.opaque @{{.*}}.MatmulCPU{{(\[.*\])?}} inputs({{.*}}) outputs({{.*}}) {{.*}}hasEpilogueFusion = true
 mo.graph @matmul_slice_step_dynamic<M, H>(
   %a: !mo.tensor<[M, 4], f32>,
   %b: !mo.tensor<[4, 8], f32>,
