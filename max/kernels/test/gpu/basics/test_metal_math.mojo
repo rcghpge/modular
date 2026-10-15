@@ -99,8 +99,51 @@ def _check_all[
     _check[func, name, .bfloat16, input](ctx)
 
 
+def _comptime_kernel[
+    func: _UnaryFn, dtype: DType
+](
+    output: MutPointer[Scalar[dtype], MutAnyOrigin]
+) where dtype.is_floating_point():
+    # The compile-time interpreter evaluates `func`, and it cannot run the
+    # `air.*` intrinsics that the Metal hooks lower to.
+    comptime result = func(Scalar[dtype](2))
+    output[0] = result
+
+
+def _check_comptime[
+    func: _UnaryFn, name: StaticString, dtype: DType
+](ctx: DeviceContext) raises where dtype.is_floating_point():
+    var out_device = ctx.enqueue_create_buffer[dtype](1)
+    ctx.enqueue_function[_comptime_kernel[func, dtype]](
+        out_device, grid_dim=1, block_dim=1
+    )
+    with out_device.map_to_host() as out_host:
+        assert_almost_equal(
+            out_host[0].cast[.float32](),
+            func(Scalar[dtype](2)).cast[.float32](),
+            msg=String("comptime ", name, " for ", dtype),
+            atol=0,
+            rtol=1e-6 if dtype == .float32 else 1e-2,
+        )
+
+
+def _check_comptime_all[
+    func: _UnaryFn, name: StaticString
+](ctx: DeviceContext) raises:
+    _check_comptime[func, name, .float32](ctx)
+    _check_comptime[func, name, .float16](ctx)
+    _check_comptime[func, name, .bfloat16](ctx)
+
+
 def main() raises:
     with DeviceContext() as ctx:
+        # TODO(MSTDL-3288): Use `_check_comptime_all` for `sqrt` and `rsqrt`
+        # once the interpreter can evaluate them for 16-bit floats.
+        _check_comptime[sqrt, "sqrt", .float32](ctx)
+        _check_comptime[rsqrt, "rsqrt", .float32](ctx)
+        _check_comptime_all[exp2, "exp2"](ctx)
+        _check_comptime_all[sin, "sin"](ctx)
+        _check_comptime_all[cos, "cos"](ctx)
         _check_all[sqrt, "sqrt"](ctx)
         _check_all[rsqrt, "rsqrt"](ctx)
         _check_all[exp2, "exp2"](ctx)

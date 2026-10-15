@@ -243,7 +243,8 @@ def sqrt[
 
     comptime hook = CurrentPlugin.unary_math_fn["sqrt", dtype, width]
     comptime if hook:
-        return comptime (hook.value())(x)
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
@@ -299,7 +300,8 @@ def rsqrt[
 
     comptime hook = CurrentPlugin.unary_math_fn["rsqrt", dtype, width]
     comptime if hook:
-        return comptime (hook.value())(x)
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
@@ -398,7 +400,8 @@ def exp2[
 
     comptime hook = CurrentPlugin.unary_math_fn["exp2", dtype, width]
     comptime if hook:
-        return comptime (hook.value())(x)
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype == .float16:
@@ -629,7 +632,8 @@ def exp[
 
     comptime hook = CurrentPlugin.unary_math_fn["exp", dtype, width]
     comptime if hook:
-        return comptime (hook.value())(x)
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
 
     comptime if is_gpu():
         comptime if dtype in (DType.float16, DType.float32):
@@ -1172,7 +1176,8 @@ def tanh[
 
     comptime hook = CurrentPlugin.unary_math_fn["tanh", dtype, width]
     comptime if hook:
-        return comptime (hook.value())(x)
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime instruction = "tanh.approx.f32"
@@ -1918,15 +1923,16 @@ def cos[
         The `cos` of the input.
     """
 
+    comptime hook = CurrentPlugin.unary_math_fn["cos", dtype, width]
+    comptime if hook:
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
+
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return cos(x.cast[.float32]()).cast[dtype]()
 
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.cos"](x)
-
-    comptime hook = CurrentPlugin.unary_math_fn["cos", dtype, width]
-    comptime if hook:
-        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[
@@ -1963,15 +1969,16 @@ def sin[
         The `sin` of the input.
     """
 
+    comptime hook = CurrentPlugin.unary_math_fn["sin", dtype, width]
+    comptime if hook:
+        if not __is_run_in_comptime_interpreter:
+            return comptime (hook.value())(x)
+
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return sin(x.cast[.float32]()).cast[dtype]()
 
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.sin"](x)
-
-    comptime hook = CurrentPlugin.unary_math_fn["sin", dtype, width]
-    comptime if hook:
-        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[
