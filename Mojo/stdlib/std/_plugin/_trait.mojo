@@ -134,6 +134,17 @@ trait PluginHooks:
         Elementwise `name(x)` computed on the vendor backend.
     """
 
+    comptime flushes_subnormals[dtype: DType]: Bool = False
+    """Whether the target flushes `dtype` subnormals to zero.
+
+    A target that does reads subnormal operands as zero and flushes subnormal
+    results of arithmetic and conversions. `std.math` then rebuilds those
+    values from their bits so subnormal results are not lost.
+
+    Parameters:
+        dtype: The floating-point `dtype` being queried.
+    """
+
     comptime reduce_generator_fn: OptionalReg[
         _ReduceGeneratorPluginHookFnType
     ] = None

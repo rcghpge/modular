@@ -77,3 +77,5 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     ]: OptionalReg[_UnaryMathPluginHookFnType] = (
         _air_unary_math[name=name] if _has_air_op[name, dtype]() else None
     )
+
+    comptime flushes_subnormals[dtype: DType]: Bool = dtype == DType.float32
