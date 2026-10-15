@@ -49,11 +49,13 @@ from eval_common import (
     GenParams,
     append_github_env,
     build_chat_kwargs,
+    dump_config,
     dump_jsonl,
     dump_score,
     finish_stats,
     judge,
     make_client,
+    response_fields,
     run_parallel,
     select_rows,
     strip_think,
@@ -195,6 +197,7 @@ def infer(
         "verdict": parse_verdict(raw_verdict),
         "finish_reason": resp.choices[0].finish_reason,
         "completion_tokens": answer_tokens,
+        **response_fields(resp.choices[0].message),
     }
 
 
@@ -263,9 +266,10 @@ def run_eval(
     def on_error(
         item: tuple[int, dict[str, Any]], exc: Exception
     ) -> dict[str, Any]:
-        prompt_index, _sample = item
+        prompt_index, sample = item
         return {
             "prompt_index": prompt_index,
+            "reference": sample["answer"],
             "verdict": "ERROR",
             "error": str(exc),
         }
@@ -336,22 +340,25 @@ def main(
 ) -> None:
     """Runs AA-Omniscience against a running OpenAI-compatible server and scores it."""
     client = make_client(base_url)
-    indexed_dataset = select_rows(
-        list(
-            load_dataset(
-                "ArtificialAnalysis/AA-Omniscience-Public",
-                data_files="AA-Omniscience_dataset_public.csv",
-                split="train",
-            )
-        ),
-        sample_size,
-        row_ids,
+    dataset = list(
+        load_dataset(
+            "ArtificialAnalysis/AA-Omniscience-Public",
+            data_files="AA-Omniscience_dataset_public.csv",
+            split="train",
+        )
     )
+    indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
     )
+    dump_config(out_dir, base_url, params, indexed_dataset, dataset)
     results, summary = run_eval(
-        client, indexed_dataset, model, workers, params, out_dir=out_dir
+        client,
+        indexed_dataset,
+        model,
+        workers,
+        params,
+        out_dir=out_dir,
     )
     dump_jsonl(out_dir, results)
     dump_score(out_dir, summary)

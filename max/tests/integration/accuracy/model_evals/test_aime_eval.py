@@ -209,6 +209,7 @@ def _run_main(args: list[str]) -> tuple[str, str]:
     with (
         patch.object(aime_eval, "make_client"),
         patch.object(aime_eval, "load_aime_dataset", return_value=[]),
+        patch.object(aime_eval, "dump_config"),
         patch.object(aime_eval, "run_eval", return_value=([], {})),
         patch.object(aime_eval, "write_outputs", fake_write_outputs),
     ):

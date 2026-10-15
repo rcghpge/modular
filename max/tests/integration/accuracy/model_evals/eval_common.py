@@ -26,12 +26,14 @@ without a server or network.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
 import re
 import statistics
-from collections.abc import Callable, Mapping, Sequence
+import sys
+from collections.abc import Callable, Mapping, Sequence, Sized
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -139,6 +141,66 @@ def build_chat_kwargs(
     if params.seed is not None:
         kwargs["seed"] = params.seed
     return kwargs
+
+
+def reasoning_text(message: Any) -> str | None:
+    """Reads the reasoning a server returns beside ``content``, if any.
+
+    MAX names the field ``reasoning`` and other OpenAI-compatible servers
+    ``reasoning_content``. Returns ``None`` when the reasoning is inline in
+    ``content`` (inside ``<think>``) or absent.
+    """
+    return getattr(message, "reasoning", None) or getattr(
+        message, "reasoning_content", None
+    )
+
+
+def response_fields(message: Any) -> dict[str, str | None]:
+    """Returns a message's full text as row fields.
+
+    ``response`` is the raw ``content`` (any inline ``<think>`` span kept) and
+    ``reasoning`` the separately returned reasoning, if any.
+    """
+    return {"response": message.content, "reasoning": reasoning_text(message)}
+
+
+def dump_config(
+    out_dir: str,
+    base_url: str,
+    params: GenParams,
+    selected: Sized,
+    dataset: Sized,
+    *,
+    system_prompt: str | None = None,
+    root_preamble: str | None = None,
+) -> None:
+    """Writes ``config.json``: the endpoint and request parameters of a run.
+
+    The results uploader reads it for the run's provenance. Written before
+    the first request, so a run that dies midway still has it.
+
+    Args:
+        out_dir: The eval's output directory.
+        base_url: Server base URL the eval sends requests to.
+        params: Generation parameters every request is sent with.
+        selected: The questions evaluated, from :func:`select_rows`.
+        dataset: The full dataset they were selected from.
+        system_prompt: System turn sent with every request, if any.
+        root_preamble: Root turn sent with every request, if any.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    config = {
+        "argv": sys.argv[1:],
+        "base_url": base_url,
+        **dataclasses.asdict(params),
+        "system_prompt": system_prompt or None,
+        "root_preamble": root_preamble or None,
+        "sample_size": (
+            len(selected) if len(selected) != len(dataset) else None
+        ),
+    }
+    with open(os.path.join(out_dir, "config.json"), "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def subsample(

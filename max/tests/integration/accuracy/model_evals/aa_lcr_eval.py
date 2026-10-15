@@ -54,9 +54,11 @@ from eval_common import (
     ChatClient,
     GenParams,
     build_chat_kwargs,
+    dump_config,
     exact_match_score,
     expand_repeats,
     make_client,
+    response_fields,
     run_parallel,
     select_rows,
     self_judge,
@@ -215,6 +217,7 @@ def infer(
         "missing_docs": missing,
         "finish_reason": choice.finish_reason,
         "completion_tokens": answer_tokens,
+        **response_fields(choice.message),
     }
 
 
@@ -257,6 +260,7 @@ def run_eval(
             "prompt_index": qi,
             "document_set_id": q["document_set_id"],
             "question": q["question"][:200],
+            "reference": str(q["answer"]).strip(),
             "error": str(exc),
             "correct": False,
         }
@@ -332,13 +336,18 @@ def main(
     """Runs AA-LCR against a running OpenAI-compatible server and scores it."""
     client = make_client(base_url)
     doc_text = build_doc_index(download_context_zip())
-    indexed_dataset = select_rows(
-        list(load_dataset("ArtificialAnalysis/AA-LCR", split="test")),
-        sample_size,
-        row_ids,
-    )
+    dataset = list(load_dataset("ArtificialAnalysis/AA-LCR", split="test"))
+    indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
+    )
+    dump_config(
+        out_dir,
+        base_url,
+        params,
+        indexed_dataset,
+        dataset,
+        system_prompt=system_prompt,
     )
     results, summary = run_eval(
         client,

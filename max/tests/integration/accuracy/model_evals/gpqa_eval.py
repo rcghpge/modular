@@ -51,11 +51,13 @@ from eval_common import (
     ChatClient,
     GenParams,
     build_chat_kwargs,
+    dump_config,
     exact_match_score,
     expand_repeats,
     load_gated,
     make_client,
     parse_mcq_letter,
+    response_fields,
     run_parallel,
     select_rows,
     stable_seed,
@@ -124,18 +126,6 @@ def build_messages(
     return messages
 
 
-def reasoning_text(message: Any) -> str | None:
-    """Reads the reasoning a server returns beside ``content``, if any.
-
-    MAX names the field ``reasoning`` and other OpenAI-compatible servers
-    ``reasoning_content``. Returns ``None`` when the reasoning is inline in
-    ``content`` (inside ``<think>``) or absent.
-    """
-    return getattr(message, "reasoning", None) or getattr(
-        message, "reasoning_content", None
-    )
-
-
 def infer(
     client: ChatClient,
     model: str,
@@ -143,13 +133,8 @@ def infer(
     params: GenParams,
     root_preamble: str,
     system_prompt: str,
-    save_responses: bool = False,
 ) -> dict[str, Any]:
-    """Runs and grades a single (repeat, question) sample.
-
-    With ``save_responses``, the row also carries the response text as
-    ``response`` and any separately returned reasoning as ``reasoning``.
-    """
+    """Runs and grades a single (repeat, question) sample."""
     repeat_index, prompt_index, sample = item
     question = sample["Question"]
     options, correct_letter = prepare_options(sample, params.seed)
@@ -163,7 +148,7 @@ def infer(
     )
     choice = resp.choices[0]
     correct, predicted = grade(choice.message.content, correct_letter)
-    row = {
+    return {
         "prompt_index": prompt_index,
         "repeat_index": repeat_index,
         "question": question[:120],
@@ -174,11 +159,8 @@ def infer(
         "completion_tokens": (
             resp.usage.completion_tokens if resp.usage else 0
         ),
+        **response_fields(choice.message),
     }
-    if save_responses:
-        row["response"] = choice.message.content
-        row["reasoning"] = reasoning_text(choice.message)
-    return row
 
 
 def load_gpqa_dataset() -> list[dict[str, Any]]:
@@ -202,16 +184,13 @@ def run_eval(
     root_preamble: str,
     system_prompt: str,
     out_dir: str | None = None,
-    save_responses: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Runs GPQA-diamond over ``indexed_dataset`` with ``repeats``.
 
     Each ``(repeat, question)`` pair is submitted independently. A failed/
     timed-out request is recorded as an incorrect row, never dropped. When
     ``out_dir`` is set, results stream to ``results.jsonl`` as they complete,
-    so a crash mid-run doesn't lose already-finished samples. With
-    ``save_responses``, each row also carries the full response text (see
-    :func:`infer`).
+    so a crash mid-run doesn't lose already-finished samples.
 
     Returns:
         A ``(results, score)`` tuple.
@@ -230,7 +209,6 @@ def run_eval(
             params,
             root_preamble,
             system_prompt,
-            save_responses,
         )
 
     def on_error(
@@ -241,6 +219,7 @@ def run_eval(
             "prompt_index": qi,
             "repeat_index": rep,
             "question": q["Question"][:120],
+            "correct_letter": prepare_options(q, params.seed)[1],
             "error": str(exc),
             "correct": False,
         }
@@ -302,12 +281,6 @@ def run_eval(
     default="GPQA",
     help="Prefix for the GITHUB_ENV metric keys the job summary reads.",
 )
-@click.option(
-    "--save-responses",
-    is_flag=True,
-    help="Also record each response's full text, reasoning included, in "
-    "results.jsonl. Off by default: a reasoning trace can run to --max-tokens.",
-)
 def main(
     base_url: str,
     model: str,
@@ -323,13 +296,22 @@ def main(
     root_preamble: str,
     system_prompt: str,
     metric_prefix: str,
-    save_responses: bool,
 ) -> None:
     """Runs GPQA-diamond against a running OpenAI-compatible server and scores it."""
     client = make_client(base_url)
-    indexed_dataset = select_rows(load_gpqa_dataset(), sample_size, row_ids)
+    dataset = load_gpqa_dataset()
+    indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
+    )
+    dump_config(
+        out_dir,
+        base_url,
+        params,
+        indexed_dataset,
+        dataset,
+        system_prompt=system_prompt,
+        root_preamble=root_preamble,
     )
     results, summary = run_eval(
         client,
@@ -341,7 +323,6 @@ def main(
         root_preamble,
         system_prompt,
         out_dir=out_dir,
-        save_responses=save_responses,
     )
     write_outputs(
         out_dir, results, summary, metric_prefix, label="GPQA-diamond"

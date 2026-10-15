@@ -59,9 +59,11 @@ from eval_common import (
     ChatClient,
     GenParams,
     build_chat_kwargs,
+    dump_config,
     exact_match_score,
     expand_repeats,
     make_client,
+    response_fields,
     run_parallel,
     select_rows,
     strip_think,
@@ -267,6 +269,7 @@ def infer(
         "completion_tokens": (
             resp.usage.completion_tokens if resp.usage else 0
         ),
+        **response_fields(choice.message),
     }
 
 
@@ -324,6 +327,7 @@ def run_eval(
             "prompt_index": pi,
             "repeat_index": rep,
             "problem": p["problem"][:120],
+            "expected": str(p["answer"]).strip(),
             "error": str(exc),
             "correct": False,
         }
@@ -429,11 +433,19 @@ def main(
     metric_prefix = metric_prefix or default_prefix
     out_dir = out_dir or default_out_dir
     client = make_client(base_url)
-    indexed_dataset = select_rows(
-        load_aime_dataset(dataset_id), sample_size, row_ids
-    )
+    dataset = load_aime_dataset(dataset_id)
+    indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
+    )
+    dump_config(
+        out_dir,
+        base_url,
+        params,
+        indexed_dataset,
+        dataset,
+        system_prompt=system_prompt,
+        root_preamble=root_preamble,
     )
     results, summary = run_eval(
         client,

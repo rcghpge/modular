@@ -50,11 +50,13 @@ from eval_common import (
     GenParams,
     append_github_env,
     build_chat_kwargs,
+    dump_config,
     dump_jsonl,
     dump_score,
     finish_stats,
     load_gated,
     make_client,
+    response_fields,
     run_parallel,
     select_rows,
     self_judge,
@@ -145,6 +147,7 @@ def infer(
             if resp.usage and resp.usage.completion_tokens_details
             else None
         ),
+        **response_fields(resp.choices[0].message),
     }
 
 
@@ -212,6 +215,7 @@ def run_eval(
         return {
             "prompt_index": prompt_index,
             "question": sample["question"][:120],
+            "reference": sample["answer"].strip(),
             "error": str(exc),
             "correct": False,
         }
@@ -285,9 +289,19 @@ def main(
 ) -> None:
     """Runs HLE against a running OpenAI-compatible server and scores it."""
     client = make_client(base_url)
-    indexed_dataset = select_rows(load_hle_dataset(), sample_size, row_ids)
+    dataset = load_hle_dataset()
+    indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
+    )
+    dump_config(
+        out_dir,
+        base_url,
+        params,
+        indexed_dataset,
+        dataset,
+        system_prompt=system_prompt,
+        root_preamble=root_preamble,
     )
     results, summary = run_eval(
         client,
