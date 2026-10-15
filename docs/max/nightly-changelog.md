@@ -1110,10 +1110,8 @@ This version is still a work in progress.
   applies the floor correction for the promoted signed dtype, so `7 // -2`
   returns `-4` instead of `-3`.
 
-- Fixed the MAX server's default metrics and OTLP log exports sending the
-  headers in `OTEL_EXPORTER_OTLP_HEADERS`, or its signal-specific forms, to
-  Modular's telemetry collector. MAX's runtime telemetry still sends them, so
-  put trace collector credentials only in `OTEL_EXPORTER_OTLP_TRACES_HEADERS`.
+- Fixed MAX sending the headers in `OTEL_EXPORTER_OTLP_HEADERS`, or its
+  signal-specific forms, to Modular's telemetry collector.
 
 - Fixed `max serve` with `MAX_SERVE_KERNEL_TRACE_LEVEL=kernel` never writing
   its libkineto kernel trace. The trace is now written when the server stops,

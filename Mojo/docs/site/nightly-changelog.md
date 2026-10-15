@@ -631,3 +631,5 @@ This version is still a work in progress.
   `[sqrt(2)/2, sqrt(2))`, where it was off by up to about 7e9 ulp.
 - `SIMD.insert()` now compiles when the inserted value is a `Scalar`, and on
   Apple GPUs.
+- Fixed Mojo tools sending the headers in `OTEL_EXPORTER_OTLP_HEADERS`, or
+  its signal-specific forms, to Modular's telemetry collector.

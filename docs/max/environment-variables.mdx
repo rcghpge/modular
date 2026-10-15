@@ -164,9 +164,7 @@ telemetry is disabled. Either way logs go to Modular:
 The generic `OTEL_EXPORTER_OTLP_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TIMEOUT` and
 `OTEL_EXPORTER_OTLP_COMPRESSION` settings are read by every exporter the MAX
 server builds. The server's exports to Modular's collector ignore
-`OTEL_EXPORTER_OTLP_HEADERS` and its signal-specific forms, but MAX's runtime
-telemetry reads all of them except `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so put
-credentials for your own trace collector only there.
+`OTEL_EXPORTER_OTLP_HEADERS` and its signal-specific forms.
 
 ## Debugging
 
