@@ -1896,7 +1896,6 @@ def naive_blockwise_scaled_fp8_grouped_matmul[
     BLOCK_DIM_M: Int = 16,
     transpose_b: Bool = True,
     scales_granularity_mnk: Optional[IndexList[3]] = None,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[mut=True, c_type, c_layout, ...],
     a: TileTensor[mut=False, a_type, a_layout, ...],
@@ -1972,7 +1971,6 @@ def naive_blockwise_scaled_fp8_grouped_matmul[
         accum_type,
         transpose_b,
         scales_granularity_mnk,
-        elementwise_lambda_fn,
     ]
 
     ctx.enqueue_function[kernel](
@@ -2010,7 +2008,6 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
     accum_type: DType,
     transpose_b: Bool = True,
     scales_granularity_mnk: Optional[IndexList[3]] = None,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[c_type, c_layout, MutAnyOrigin],
     a: TileTensor[a_type, a_layout, ImmutAnyOrigin],
@@ -2112,11 +2109,8 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
             ).cast[accum_type]()
             accum += a_val * b_val * a_scale * b_scale
 
-    comptime if case .Some(ep) = elementwise_lambda_fn:
-        ep[c_type, 1]((a_start_row + m_local, n), accum.cast[c_type]())
-    else:
-        var c_ptr = c.ptr + a_start_row * N
-        c_ptr[m_local * N + n] = accum.cast[c_type]()
+    var c_ptr = c.ptr + a_start_row * N
+    c_ptr[m_local * N + n] = accum.cast[c_type]()
 
 
 ########################################################
