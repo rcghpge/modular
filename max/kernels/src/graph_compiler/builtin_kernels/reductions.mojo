@@ -1668,6 +1668,10 @@ struct ReduceRMSNormFusedResidualAdd:
                 dtype,
                 rank,
                 target=target,
+                epsilon1=epsilon1,
+                weight_offset1=weight_offset1,
+                epsilon2=epsilon2,
+                weight_offset2=weight_offset2,
                 multiply_before_cast=multiply_before_cast,
             ](
                 input_fn,
@@ -1677,11 +1681,7 @@ struct ReduceRMSNormFusedResidualAdd:
                 input.shape_coord(),
                 ComptimeInt[cols](),
                 gamma1.to_tile_tensor[.int64](),
-                epsilon1.cast[dtype](),
-                weight_offset1.cast[dtype](),
                 gamma2.to_tile_tensor[.int64](),
-                epsilon2.cast[dtype](),
-                weight_offset2.cast[dtype](),
                 ctx,
             )
         else:
@@ -1689,6 +1689,10 @@ struct ReduceRMSNormFusedResidualAdd:
                 dtype,
                 rank,
                 target=target,
+                epsilon1=epsilon1,
+                weight_offset1=weight_offset1,
+                epsilon2=epsilon2,
+                weight_offset2=weight_offset2,
                 multiply_before_cast=multiply_before_cast,
             ](
                 input_fn,
@@ -1698,11 +1702,7 @@ struct ReduceRMSNormFusedResidualAdd:
                 input.shape_coord(),
                 Int(Int(input.shape()[rank - 1])),
                 gamma1.to_tile_tensor[.int64](),
-                epsilon1.cast[dtype](),
-                weight_offset1.cast[dtype](),
                 gamma2.to_tile_tensor[.int64](),
-                epsilon2.cast[dtype](),
-                weight_offset2.cast[dtype](),
                 ctx,
             )
 

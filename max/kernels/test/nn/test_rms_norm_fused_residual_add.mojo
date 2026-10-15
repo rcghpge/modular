@@ -79,10 +79,10 @@ def run_rms_norm_fused_residual_add_gpu[
     var result_unfused_buf = result_unfused_h
     var unfused_intermediate_buf = unfused_intermediate_h
     var residual_fused_output_buf = residual_fused_output_h
-    var epsilon1 = Float32(0.001)
-    var epsilon2 = Float32(0.002)
-    var weight_offset1 = Scalar[dtype](0.0)
-    var weight_offset2 = Scalar[dtype](0.0)
+    comptime epsilon1 = Float32(0.001)
+    comptime epsilon2 = Float32(0.002)
+    comptime weight_offset1 = Float32(0.0)
+    comptime weight_offset2 = Float32(0.0)
 
     # Test fused operation
     @inline(.always)
@@ -122,6 +122,10 @@ def run_rms_norm_fused_residual_add_gpu[
         dtype,
         rank,
         target="cpu",
+        epsilon1=epsilon1,
+        weight_offset1=weight_offset1,
+        epsilon2=epsilon2,
+        weight_offset2=weight_offset2,
         multiply_before_cast=True,
     ](
         input_fn,
@@ -131,11 +135,7 @@ def run_rms_norm_fused_residual_add_gpu[
         Coord(shape),
         Int(cols),
         gamma1,
-        epsilon1.cast[dtype](),
-        weight_offset1,
         gamma2,
-        epsilon2.cast[dtype](),
-        weight_offset2,
     )
 
     # Test unfused operations for comparison
@@ -164,7 +164,7 @@ def run_rms_norm_fused_residual_add_gpu[
         Coord(shape),
         gamma1,
         epsilon1,
-        weight_offset1,
+        weight_offset1.cast[dtype](),
     )
 
     @inline(.always)
@@ -210,7 +210,7 @@ def run_rms_norm_fused_residual_add_gpu[
         Coord(shape),
         gamma2,
         epsilon2,
-        weight_offset2,
+        weight_offset2.cast[dtype](),
     )
 
     var flattened_size = rows * cols
