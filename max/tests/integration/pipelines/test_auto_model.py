@@ -44,19 +44,24 @@ from max.pipelines.lib import (
 from max.pipelines.modeling.types import PipelineTask
 
 REPO_ID = "modularai/SmolLM-135M-Instruct-FP32"
+EMBEDDINGS_REPO_ID = "sentence-transformers/all-mpnet-base-v2"
 NUM_NEW_TOKENS = 8
 PROMPTS = [[1, 2, 3, 4], [5, 6, 7]]
 MASKS = [[1, 1, 1, 1], [1, 1, 1]]
 TEXT = "The capital of France is"
 
 
-@pytest.fixture(scope="module")
-def model_path() -> str:
+def _local_or_repo(repo_id: str) -> str:
     # A cached snapshot skips the Hub probe, which CI runs without network.
     try:
-        return generate_local_model_path(REPO_ID)
+        return generate_local_model_path(repo_id)
     except FileNotFoundError:
-        return REPO_ID
+        return repo_id
+
+
+@pytest.fixture(scope="module")
+def model_path() -> str:
+    return _local_or_repo(REPO_ID)
 
 
 def _load_cpu(
@@ -106,10 +111,12 @@ def test_generate_then_reload_matches(model_path: str) -> None:
         assert _greedy(second) == sequences
 
 
-def test_batch_steps_synchronously_like_generate(model_path: str) -> None:
+def test_generate_iter_steps_synchronously_like_generate(
+    model_path: str,
+) -> None:
     with _load_cpu(model_path, max_batch_size=len(PROMPTS)) as model:
         expected = _greedy(model)
-        with model.batch(
+        with model.generate_iter(
             PROMPTS,
             max_new_tokens=NUM_NEW_TOKENS,
             temperature=0.0,
@@ -480,6 +487,17 @@ def test_rejects_lora(
     assert built_configs == []
 
 
+def test_rejects_an_embeddings_model(
+    built_configs: list[PipelineConfig],
+) -> None:
+    with pytest.raises(ValueError) as error:
+        AutoModel(_local_or_repo(EMBEDDINGS_REPO_ID), devices="cpu")
+    message = str(error.value)
+    assert "AutoModel runs text generation models only" in message
+    assert "MPNetForMaskedLM for embeddings generation" in message
+    assert built_configs == []
+
+
 class _Cyclic:
     def __init__(self) -> None:
         self.self = self
@@ -527,7 +545,7 @@ def test_close_shuts_down_once_and_releases(
     with pytest.raises(RuntimeError, match="closed"):
         model.generate(PROMPTS, max_new_tokens=1)
     with pytest.raises(RuntimeError, match="closed"):
-        model.batch(PROMPTS, max_new_tokens=1)
+        model.generate_iter(PROMPTS, max_new_tokens=1)
     assert model.pipeline_config.runtime.max_batch_size == 1
 
 
@@ -565,7 +583,7 @@ def _stub_overlap_pipeline(events: list[str]) -> MagicMock:
     return pipeline
 
 
-def test_generate_and_batch_pass_every_argument(
+def test_generate_and_generate_iter_pass_every_argument(
     model_path: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pipeline = MagicMock(spec=TextGenerationPipeline)
@@ -576,7 +594,7 @@ def test_generate_and_batch_pass_every_argument(
         calls.append((args, kwargs))
 
     monkeypatch.setattr(auto_model, "generate", record)
-    monkeypatch.setattr(auto_model, "Batch", record)
+    monkeypatch.setattr(auto_model, "GenerateIterator", record)
     with _load_cpu(model_path) as model:
         model.generate(
             PROMPTS,
@@ -596,7 +614,7 @@ def test_generate_and_batch_pass_every_argument(
             output_logits=True,
             output_logprobs=2,
         )
-        model.batch(
+        model.generate_iter(
             PROMPTS,
             MASKS,
             max_new_tokens=3,
@@ -631,6 +649,28 @@ def test_generate_and_batch_pass_every_argument(
         "output_logprobs": 2,
     }
     assert calls == [((pipeline, PROMPTS, MASKS), expected_kwargs)] * 2
+
+
+def test_rejects_a_pipeline_that_does_not_generate_text(
+    model_path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipeline_refs: list[weakref.ref[_Cyclic]] = []
+
+    def retrieve(pipeline_config: PipelineConfig) -> tuple[None, _Cyclic]:
+        # A cycle, so only a collection frees it.
+        pipeline = _Cyclic()
+        pipeline_refs.append(weakref.ref(pipeline))
+        return None, pipeline
+
+    monkeypatch.setattr(PIPELINE_REGISTRY, "retrieve", retrieve)
+    with pytest.raises(ValueError) as error:
+        _load_cpu(model_path)
+    assert str(error.value) == (
+        f"AutoModel runs text generation models only, and {model_path} "
+        "loads as _Cyclic."
+    )
+    [pipeline_ref] = pipeline_refs
+    assert pipeline_ref() is None
 
 
 def test_graph_capture_warms_up_once_after_a_synchronous_build(

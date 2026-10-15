@@ -35,7 +35,12 @@ from transformers import AutoTokenizer as _HFAutoTokenizer
 from transformers import BatchEncoding, PreTrainedTokenizerBase
 
 from .config import PipelineArgs, PipelineConfig
-from .generate import Batch, GenerateResult, _check_supported, generate
+from .generate import (
+    GenerateIterator,
+    GenerateResult,
+    _check_supported,
+    generate,
+)
 from .pipeline_variants.overlap_text_generation import (
     OverlapTextGenerationPipeline,
 )
@@ -132,6 +137,16 @@ def _build_config(
         PipelineArgs.from_flat_kwargs(model_path=model_path, **flat)
     )
     _check_supported(pipeline_config, "AutoModel")
+    # The registry falls back to an architecture of another task, such as
+    # embeddings, and fails partway through building it.
+    arch = PIPELINE_REGISTRY.architecture_for_config(
+        pipeline_config, task=PipelineTask.TEXT_GENERATION
+    )
+    if arch is not None and arch.task != PipelineTask.TEXT_GENERATION:
+        raise ValueError(
+            f"AutoModel runs text generation models only, and {model_path} "
+            f"loads {arch.name} for {arch.task.value.replace('_', ' ')}."
+        )
     if (
         not pipeline_config.runtime.enable_overlap_scheduler
         or device_graph_capture
@@ -141,9 +156,6 @@ def _build_config(
         return pipeline_config
     # Only force keeps an architecture's overlap auto-enable off, and force
     # also skips the architecture's required arguments.
-    arch = PIPELINE_REGISTRY.architecture_for_config(
-        pipeline_config, task=PipelineTask.TEXT_GENERATION
-    )
     required = _config_fields(
         pipeline_config, arch.required_arguments if arch is not None else {}
     )
@@ -250,8 +262,8 @@ class AutoModel:
     required arguments win over flat overrides.
 
     References to the pipeline, its KV cache manager, an open
-    :class:`~max.pipelines.lib.generate.Batch`, or a live traceback from
-    inside the pipeline keep device memory alive past :meth:`close`.
+    :class:`~max.pipelines.lib.generate.GenerateIterator`, or a live traceback
+    from inside the pipeline keep device memory alive past :meth:`close`.
 
     Args:
         model_path: A Hugging Face repo ID or a local model directory.
@@ -318,9 +330,15 @@ class AutoModel:
             model_path, max_batch_size, device_graph_capture, config_overrides
         )
         _, pipeline = PIPELINE_REGISTRY.retrieve(self._pipeline_config)
-        assert isinstance(pipeline, TextGenerationPipelineInterface), (
-            f"{model_path} does not load as a text generation pipeline"
-        )
+        if not isinstance(pipeline, TextGenerationPipelineInterface):
+            pipeline_class = type(pipeline).__name__
+            # The traceback's frame would hold the pipeline's device memory.
+            del pipeline
+            gc.collect()
+            raise ValueError(
+                f"AutoModel runs text generation models only, and {model_path} "
+                f"loads as {pipeline_class}."
+            )
         self._pipeline: TextGenerationPipelineInterface[TextContext] | None = (
             pipeline
         )
@@ -416,7 +434,7 @@ class AutoModel:
             output_logprobs=output_logprobs,
         )
 
-    def batch(
+    def generate_iter(
         self,
         input_ids: Iterable[Sequence[int]],
         attention_mask: Iterable[Sequence[int]] | None = None,
@@ -435,21 +453,21 @@ class AutoModel:
         seed: int = 0,
         output_logits: bool = False,
         output_logprobs: int = 0,
-    ) -> Batch:
-        """Opens a :class:`~max.pipelines.lib.generate.Batch` on :attr:`pipeline`.
+    ) -> GenerateIterator:
+        """Opens a :class:`~max.pipelines.lib.generate.GenerateIterator` on :attr:`pipeline`.
 
-        Takes the same keyword arguments. Use the batch as a context manager
-        so its rows are released.
+        Takes the same keyword arguments. Use it as a context manager so its
+        rows are released.
 
         Raises:
             TypeError: As described for
-                :class:`~max.pipelines.lib.generate.Batch`.
+                :class:`~max.pipelines.lib.generate.GenerateIterator`.
             ValueError: As described for
-                :class:`~max.pipelines.lib.generate.Batch`.
+                :class:`~max.pipelines.lib.generate.GenerateIterator`.
             RuntimeError: If the model has been closed, or as described for
-                :class:`~max.pipelines.lib.generate.Batch`.
+                :class:`~max.pipelines.lib.generate.GenerateIterator`.
         """
-        return Batch(
+        return GenerateIterator(
             self.pipeline,
             input_ids,
             attention_mask,

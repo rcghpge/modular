@@ -86,6 +86,7 @@ In-process generation
    :template: autosummary/class.rst
 
    AutoModel
+   AutoPipeline
    AutoTokenizer
 
 Pipelines

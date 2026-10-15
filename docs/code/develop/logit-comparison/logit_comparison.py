@@ -30,7 +30,7 @@ from max.pipelines.context import (
     SamplingParams,
     TextContext,
 )
-from max.pipelines.lib.generate import Batch
+from max.pipelines.lib.generate import GenerateIterator
 from max.pipelines.modeling.types import RequestID, TextGenerationRequest
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -101,7 +101,7 @@ def max_logits_for(
         ),
     )
     context = asyncio.run(pipeline.tokenizer.new_context(request))
-    with Batch.from_contexts(pipeline, [context]) as batch:
+    with GenerateIterator.from_contexts(pipeline, [context]) as batch:
         while not batch.done:
             batch.step()
     return np.stack(capture.captured[request.request_id]).astype(np.float64)

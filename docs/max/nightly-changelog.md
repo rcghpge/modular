@@ -733,10 +733,13 @@ This version is still a work in progress.
   with a model in-process.
   `model.generate(**tokenizer(prompts), max_new_tokens=16)` runs exactly the
   batch you pass, takes the same sampling arguments as `max generate`, and can
-  return each token's logits and log probabilities. `model.batch()` returns a
-  `Batch` from `max.pipelines.lib.generate` that runs one forward pass per
-  step. Asking for a feature that only serving supports raises an error with
-  the matching `max serve` command.
+  return each token's logits and log probabilities. `model.generate_iter()`
+  returns a `GenerateIterator` from `max.pipelines.lib.generate` that runs one
+  forward pass per step. Asking for a feature that only serving supports raises
+  an error with the matching `max serve` command.
+- Added `AutoPipeline` to `max.pipelines`, which uses `AutoModel` and
+  `AutoTokenizer` to take text and return text. Each output starts with its
+  prompt, and the prompt runs without the chat template.
 - `OverlapTextGenerationPipeline` has a new `graph_capture_ready` property.
 
 - Added `max.nn.Module.named_modules()`, which yields every module in the
@@ -971,7 +974,7 @@ This version is still a work in progress.
 - Removed `max.pipelines.GenerateMixin` and the `generate()` and
   `generate_async()` methods it gave text generation pipelines. Build
   contexts with `pipeline.tokenizer.new_context()` and run them with
-  `Batch.from_contexts()`, or pass token ids to
+  `GenerateIterator.from_contexts()`, or pass token ids to
   `max.pipelines.lib.generate.generate()`. `TextGenerationPipelineInterface`
   now declares `pipeline_config` and `tokenizer` as abstract properties, so
   custom subclasses must implement them.
