@@ -300,22 +300,22 @@ private:
 ErrorOr<llvm::SmallVector<std::string>>
 resolveBuiltInKernelPackagePaths(LITModuleResolver &resolver) {
   llvm::SmallVector<std::string> paths;
-  for (llvm::StringRef moduleName :
-       {kMoggKernelsModuleName, kMoggPrimitivesModuleName}) {
+  for (llvm::StringRef moduleName : kMoggRequiredKernelModuleNames) {
     auto pathOr = resolver.resolveBinaryPackagePath(moduleName);
     if (pathOr.isError())
       return pathOr.takeError();
     paths.push_back(*pathOr);
   }
 
-  // Optional, per `kMoggInternalKernelsModuleName`: a tree without it still
-  // has a complete registry of the open-source kernels, and a graph that uses
-  // one of its ops fails later with that op unresolved rather than here with
-  // every op unresolved.
-  auto internalPathOr =
-      resolver.resolveBinaryPackagePath(kMoggInternalKernelsModuleName);
-  if (!internalPathOr.isError())
-    paths.push_back(*internalPathOr);
+  // Skipped rather than fatal: a tree without these still has a complete
+  // registry of the open-source kernels, and a graph that uses one of their
+  // ops fails later with that op unresolved rather than here with every op
+  // unresolved.
+  for (llvm::StringRef moduleName : kMoggOptionalKernelModuleNames) {
+    auto pathOr = resolver.resolveBinaryPackagePath(moduleName);
+    if (!pathOr.isError())
+      paths.push_back(*pathOr);
+  }
 
   return paths;
 }

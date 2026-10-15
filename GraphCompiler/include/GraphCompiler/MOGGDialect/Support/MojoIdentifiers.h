@@ -147,16 +147,27 @@ constexpr llvm::StringLiteral kReduceOpTraitRoot = "algorithm";
 constexpr llvm::StringLiteral kReduceOpTraitLeaf = "ReduceOp";
 constexpr llvm::StringLiteral kReduceOpWidthAlias = "width";
 
-/// Mojo module names that the MojoRegistry imports unconditionally.
-constexpr llvm::StringLiteral kMoggKernelsModuleName = "builtin_kernels";
-constexpr llvm::StringLiteral kMoggPrimitivesModuleName = "builtin_primitives";
+/// Mojo module names the MojoRegistry builds its registry from. These are
+/// required: every build has them, and one that fails to resolve leaves no
+/// registry to compile a graph against, so it is fatal.
+///
+/// Order is not precedence. A registration these packages share is an error
+/// rather than an override (see `emitDecls` in ImportPackages.cpp); only a
+/// user-supplied package can override a built-in one.
+constexpr llvm::StringLiteral kMoggRequiredKernelModuleNames[] = {
+    "builtin_kernels",
+    "builtin_primitives",
+};
 
-/// The closed-source half of the built-in kernel registrations, holding the
-/// wrappers for the kernels under `//Kernels/lib`. Unlike the two above it is
-/// optional: it is absent from a tree built without `//Kernels`, and from any
-/// install that ships only the open-source kernel packages. Missing it costs
-/// the ops it registers, not the whole registry.
-constexpr llvm::StringLiteral kMoggInternalKernelsModuleName = "graph_compiler";
+/// Mojo module names holding the registrations for the closed-source kernels
+/// under `//Kernels/lib`. These are optional, which is why they are not in the
+/// list above: an open-source checkout has neither the kernels nor their
+/// registrations, and so does any install shipping only the open-source kernel
+/// packages. Failing to resolve one costs the ops it registers rather than the
+/// whole registry.
+constexpr llvm::StringLiteral kMoggOptionalKernelModuleNames[] = {
+    "graph_compiler",
+};
 
 /// Prefixes an async error with its region name. Called from
 /// `AsyncErrorOp::emitMojo` besides the op's own primitive, so it can't come
