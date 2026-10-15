@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.bit import log2_floor
 from std.math import align_up
 from std.math.uutils import umod, ufloordiv, udivmod, uceildiv
 from std.sys import (
@@ -64,11 +63,8 @@ from layout.swizzle import Swizzle, make_ldmatrix_swizzle, make_swizzle
 from layout.tile_iterator import TileTensorIter
 from layout.tile_layout import Layout as TileLayout
 from layout.tile_tensor import lt_to_tt, stack_allocation
-from layout.tile_io import (
-    copy_dram_to_sram as tile_io_copy_dram_to_sram,
-    copy_dram_to_sram_async as tile_io_copy_dram_to_sram_async,
-    copy_local_to_shared as tile_io_copy_local_to_shared,
-)
+from layout.tile_async_copy import copy_dram_to_sram_async_ldmatrix
+from layout.tile_io import copy_local_to_shared as tile_io_copy_local_to_shared
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
 
 from std.utils import StaticTuple
@@ -866,42 +862,13 @@ def multistage_mma[
         src: TileTensor,
         num_valid_rows: Int,
     ):
-        comptime if is_nvidia_gpu():
-            comptime row_size = dst.static_stride[0]
-            # See make_ldmatrix_swizzle in swizzle.mojo for `conflict_ways`.
-            comptime bytes_32_banks = 128
-            comptime conflict_ways = min(
-                8 * row_size * size_of[dst.dtype]() // bytes_32_banks, 8
-            )
-            comptime assert (
-                swizzle and (conflict_ways in (4, 8))
-            ) or not swizzle, "Only support swizzle for 4 or 8 ways conflict."
-            comptime assert (
-                swizzle and row_size in (16, 32, 64, 128, 256, 512)
-            ) or not swizzle, (
-                "Only support 2^4-2^9 elements per row in shared memory tile"
-                " for async copy with swizzling."
-            )
-            comptime swizzle_option = Optional[Swizzle](
-                make_ldmatrix_swizzle[
-                    dst.dtype, row_size, log2_floor(simd_size)
-                ]()
-            ) if swizzle else Optional[Swizzle]()
-            tile_io_copy_dram_to_sram_async[
-                thread_layout=thread_layout,
-                swizzle=swizzle_option,
-                masked=masked,
-                num_threads=num_threads,
-            ](
-                dst.vectorize[1, simd_size](),
-                src.address_space_cast[.GENERIC]().vectorize[1, simd_size](),
-                num_valid_rows,
-            )
-        else:
-            tile_io_copy_dram_to_sram[thread_layout=thread_layout](
-                dst.vectorize[1, simd_size](),
-                src.address_space_cast[.GENERIC]().vectorize[1, simd_size](),
-            )
+        copy_dram_to_sram_async_ldmatrix[
+            thread_layout,
+            simd_size=simd_size,
+            swizzle=swizzle,
+            masked=masked,
+            num_threads=num_threads,
+        ](dst, src, num_valid_rows)
 
     # Rows of the B tile to copy: the iterator's own count unless the caller
     # bounds B globally, in which case the bound shrinks with the k tile.
