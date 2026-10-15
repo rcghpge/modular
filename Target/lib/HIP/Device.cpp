@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #include "Device.h"
@@ -102,6 +109,23 @@ M_driver_status_t M_driver_device::destroy(M_driver_device_t device) {
     return hipErrorStatus(&device->getDriver(), r, "hipDeviceReset");
 
   delete device;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_device::canAccessPeer(const M_driver_device &peer,
+                                                 bool *out_can_access) {
+  if (out_can_access == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (deviceId == peer.deviceId) {
+    *out_can_access = false;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  int canAccess = 0;
+  if (hipError_t r = driver.hip().hipDeviceCanAccessPeer(&canAccess, deviceId,
+                                                         peer.deviceId);
+      r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipDeviceCanAccessPeer");
+  *out_can_access = canAccess == 1;
   return M_DRIVER_STATUS_SUCCESS;
 }
 

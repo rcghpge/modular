@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
@@ -228,6 +235,38 @@ M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
     return cudaErrorStatus(&device.driver, r, "cuMemGetInfo");
   *free = freeBytes;
   *total = totalBytes;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::enablePeerAccess(M_driver_context &peer) {
+  M::Target::CUDA::CUDALoader &cuda = device.driver.rawCuda;
+  bool canAccess = false;
+  if (M_driver_status_t s = device.canAccessPeer(peer.device, &canAccess);
+      s != M_DRIVER_STATUS_SUCCESS)
+    return s;
+  if (!canAccess)
+    return M_DRIVER_STATUS_INCOMPATIBLE;
+
+  // cuCtxEnablePeerAccess acts on the current context.
+  ScopedContext scope(primaryCtx, cuda);
+  if (scope.status != M_DRIVER_STATUS_SUCCESS)
+    return scope.status;
+  CUresult r = cuda.cuCtxEnablePeerAccess(peer.primaryCtx, /*flags=*/0);
+  if (r != CUDA_SUCCESS && r != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED)
+    return cudaErrorStatus(&device.driver, r, "cuCtxEnablePeerAccess");
+
+  // cuCtxEnablePeerAccess does not cover the peer's stream-ordered pool.
+  CUmemoryPool pool;
+  if (CUresult r2 = cuda.cuDeviceGetMemPool(&pool, peer.device.deviceId);
+      r2 != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r2, "cuDeviceGetMemPool");
+  CUmemAccessDesc desc{};
+  desc.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  desc.location.id = device.deviceId;
+  desc.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  if (CUresult r3 = cuda.cuMemPoolSetAccess(pool, &desc, /*count=*/1);
+      r3 != CUDA_SUCCESS)
+    return cudaErrorStatus(&device.driver, r3, "cuMemPoolSetAccess");
   return M_DRIVER_STATUS_SUCCESS;
 }
 

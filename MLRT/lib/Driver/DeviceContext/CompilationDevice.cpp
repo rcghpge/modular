@@ -21,7 +21,7 @@
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
 #include "Support/ErrorOr.h"
 #include "Support/SymbolExport.h"
-#include "Target/max_license/DriverPlugin.h"
+#include "Target/DriverPlugin.h"
 
 namespace M::Driver {
 

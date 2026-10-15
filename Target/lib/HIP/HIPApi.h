@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 //
 // Wraps the HIP C API as loaded through `dlopen`.
@@ -57,6 +64,11 @@
   HIP_FN(hipMemcpyPeerAsync)                                                   \
   HIP_FN(hipMemcpy)                                                            \
   HIP_FN(hipMemcpyPeer)                                                        \
+  HIP_FN(hipDeviceCanAccessPeer)                                               \
+  HIP_FN(hipDeviceEnablePeerAccess)                                            \
+  HIP_FN(hipDeviceGetDefaultMemPool)                                           \
+  HIP_FN(hipMemPoolSetAccess)                                                  \
+  HIP_FN(hipGetLastError)                                                      \
   HIP_FN(hipMemsetAsync)                                                       \
   HIP_FN(hipMemsetD16Async)                                                    \
   HIP_FN(hipMemsetD32Async)                                                    \

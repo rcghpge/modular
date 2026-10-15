@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #ifndef TARGET_LIB_HIP_CONTEXT_H
@@ -44,6 +51,7 @@ public:
   M_driver_status_t
   setCurrentDriverContext(M_driver_native_handle_t driver_context);
   M_driver_status_t memoryInfo(uint64_t *free, uint64_t *total);
+  M_driver_status_t enablePeerAccess(M_driver_context &peer);
   M_driver_status_t freePinned(M_driver_memory_t memory);
   M_driver_status_t freeSync(M_driver_memory_t memory);
 

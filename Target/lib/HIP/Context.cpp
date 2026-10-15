@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #include "Context.h"
@@ -251,6 +258,51 @@ M_driver_status_t M_driver_context::memoryInfo(uint64_t *free,
   *free = freeBytes;
   *total = totalBytes;
   return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_context::enablePeerAccess(M_driver_context &peer) {
+  M_driver_driver &driver = device.getDriver();
+  HIPApi &hip = driver.hip();
+  bool canAccess = false;
+  if (M_driver_status_t s = device.canAccessPeer(peer.getDevice(), &canAccess);
+      s != M_DRIVER_STATUS_SUCCESS)
+    return s;
+  if (!canAccess)
+    return M_DRIVER_STATUS_INCOMPATIBLE;
+
+  int prevId = -1;
+  if (hipError_t r = hip.hipGetDevice(&prevId); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipGetDevice");
+  if (hipError_t r = hip.hipSetDevice(device.id()); r != hipSuccess)
+    return hipErrorStatus(&driver, r, "hipSetDevice");
+
+  M_driver_status_t status = M_DRIVER_STATUS_SUCCESS;
+  hipError_t r = hip.hipDeviceEnablePeerAccess(peer.getDevice().id(), 0);
+  if (r == hipErrorPeerAccessAlreadyEnabled) {
+    // Clear the sticky last error, which other HIP users (torch) would raise.
+    (void)hip.hipGetLastError();
+  } else if (r != hipSuccess) {
+    status = hipErrorStatus(&driver, r, "hipDeviceEnablePeerAccess");
+  }
+  if (status == M_DRIVER_STATUS_SUCCESS) {
+    hipMemPool_t pool;
+    if (hipError_t r2 =
+            hip.hipDeviceGetDefaultMemPool(&pool, peer.getDevice().id());
+        r2 != hipSuccess) {
+      status = hipErrorStatus(&driver, r2, "hipDeviceGetDefaultMemPool");
+    } else {
+      hipMemAccessDesc desc{};
+      desc.location.type = hipMemLocationTypeDevice;
+      desc.location.id = device.id();
+      desc.flags = hipMemAccessFlagsProtReadWrite;
+      if (hipError_t r3 = hip.hipMemPoolSetAccess(pool, &desc, 1);
+          r3 != hipSuccess)
+        status = hipErrorStatus(&driver, r3, "hipMemPoolSetAccess");
+    }
+  }
+  if (prevId >= 0)
+    (void)hip.hipSetDevice(prevId);
+  return status;
 }
 
 M_driver_status_t

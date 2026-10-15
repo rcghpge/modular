@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 
 #ifndef TARGET_LIB_CUDA_CONTEXT_H
@@ -42,6 +49,7 @@ struct M_driver_context {
   M_driver_status_t
   setCurrentDriverContext(M_driver_native_handle_t driver_context);
   M_driver_status_t memoryInfo(uint64_t *free, uint64_t *total);
+  M_driver_status_t enablePeerAccess(M_driver_context &peer);
   M_driver_status_t
   tensorMapEncodeTiled(void *tensor_map, int32_t data_type, uint32_t rank,
                        uint64_t global_device_address,

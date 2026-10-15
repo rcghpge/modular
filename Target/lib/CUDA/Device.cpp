@@ -1,7 +1,14 @@
 //===----------------------------------------------------------------------===//
+// Copyright (c) 2026, Modular Inc. All rights reserved.
 //
-// This file is Modular Inc proprietary.
+// Licensed under the MAX License:
+// https://modular.com/legal/max-license
 //
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 //===----------------------------------------------------------------------===//
 //
 #include "Device.h"
@@ -35,6 +42,29 @@ DriverResult<M_driver_device_t> M_driver_device::create(M_driver_driver &driver,
 
 M_driver_status_t M_driver_device::destroy(M_driver_device_t device) {
   delete device;
+  return M_DRIVER_STATUS_SUCCESS;
+}
+
+M_driver_status_t M_driver_device::canAccessPeer(const M_driver_device &peer,
+                                                 bool *out_can_access) const {
+  if (out_can_access == nullptr)
+    return M_DRIVER_STATUS_INVALID_ARG;
+  if (deviceId == peer.deviceId) {
+    *out_can_access = false;
+    return M_DRIVER_STATUS_SUCCESS;
+  }
+  int canAccess = 0;
+  if (CUresult r = driver.rawCuda.cuDeviceCanAccessPeer(&canAccess, deviceId,
+                                                        peer.deviceId);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&driver, r, "cuDeviceCanAccessPeer");
+  int nativeAtomics = 0;
+  if (CUresult r = driver.rawCuda.cuDeviceGetP2PAttribute(
+          &nativeAtomics, CU_DEVICE_P2P_ATTRIBUTE_NATIVE_ATOMIC_SUPPORTED,
+          deviceId, peer.deviceId);
+      r != CUDA_SUCCESS)
+    return cudaErrorStatus(&driver, r, "cuDeviceGetP2PAttribute");
+  *out_can_access = canAccess != 0 && nativeAtomics != 0;
   return M_DRIVER_STATUS_SUCCESS;
 }
 
