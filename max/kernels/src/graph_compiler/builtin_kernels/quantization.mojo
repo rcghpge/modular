@@ -1492,7 +1492,7 @@ struct QuantizeDynamicScaledFloat8:
         //,
         group_size_or_per_token: Int,
         target: StaticString,
-        amax_floor: StaticString = "0",
+        amax_floor: Float32 = 0,
     ](
         output: OutputTensor[dtype=output_type, rank=2, ...],
         scales: OutputTensor[dtype=scales_type, rank=2, ...],
@@ -1502,10 +1502,7 @@ struct QuantizeDynamicScaledFloat8:
     ) raises:
         comptime assert is_gpu[target](), "only valid on GPUs"
 
-        # `ops.custom`'s extensibility bridge only accepts bool/int/str/DType
-        # parameters (no float), so `amax_floor` -- a host-known constant at
-        # every call site -- arrives string-encoded; `atof` is prelude.
-        var amax_floor_f32 = Float32(atof(amax_floor))
+        # The `0` default leaves the dynamic-scale floor unset.
 
         @inline(.always)
         def input_fn[
@@ -1526,7 +1523,7 @@ struct QuantizeDynamicScaledFloat8:
             scale_ub,
             ctx,
             num_rows=input.dim_size(0),
-            amax_floor=amax_floor_f32,
+            amax_floor=amax_floor,
         )
 
 

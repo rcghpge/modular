@@ -15,8 +15,8 @@
 from __future__ import annotations
 
 import math
-from collections.abc import MutableMapping, MutableSequence
-from typing import Any
+from collections.abc import Mapping, MutableMapping, MutableSequence
+from typing import Any, cast
 
 import numpy as np
 from max._core.dialects import builtin, kgen, mo
@@ -7675,6 +7675,12 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
         scales_rows = hidden_states.shape[0]
 
     MXFP8_SF_VECTOR_SIZE = 32
+    parameters: Mapping[str, bool | int | float | str | DType] = {
+        # MXFP8 is one element per byte, so a lane always covers 32 bytes.
+        "lane_bytes": 32,
+        "scales_max_padded_m": out_scales_max_padded_m,
+        **(activation or GatedActivation()).kernel_parameters(),
+    }
     outputs = ops.custom(
         "mo.grouped.matmul.block.scaled.amd.swiglu.quant",
         device=hidden_states.device,
@@ -7706,12 +7712,7 @@ def grouped_dynamic_block_scaled_matmul_amd_swiglu_quant(
                 device=hidden_states.device,
             ),
         ],
-        parameters={
-            # MXFP8 is one element per byte, so a lane always covers 32 bytes.
-            "lane_bytes": 32,
-            "scales_max_padded_m": out_scales_max_padded_m,
-            **(activation or GatedActivation()).kernel_parameters(),
-        },
+        parameters=parameters,
     )
     return outputs[0].tensor, outputs[1].tensor
 
@@ -8648,12 +8649,13 @@ def grouped_matmul_blocked_swiglu(
             f"{hidden_k}] but got {weight.shape}"
         )
 
-    activation_parameters = (
-        activation or GatedActivation()
-    ).kernel_parameters()
-    activation_name = activation_parameters["activation"]
-    swiglu_alpha = activation_parameters["swiglu_alpha"]
-    swiglu_limit = activation_parameters["swiglu_limit"]
+    activation_params = (activation or GatedActivation()).kernel_parameters()
+    activation_name = activation_params["activation"]
+    swiglu_alpha = activation_params["swiglu_alpha"]
+    swiglu_limit = activation_params["swiglu_limit"]
+    activation_name = cast(str, activation_name)
+    swiglu_alpha = cast(float, swiglu_alpha)
+    swiglu_limit = cast(float, swiglu_limit)
 
     # N = 2D, so weight.shape[1] must be even and D = N // 2.
     n_dim = weight.shape[1]
@@ -8693,9 +8695,7 @@ def grouped_matmul_blocked_swiglu(
     # `mo.composite.grouped_matmul_swiglu_nvfp4` kernel) so the MegaFFN fusion
     # can match a typed op rather than a string-keyed `mo.custom`. The
     # activation name rides as a string attribute; its constants ride as
-    # rank-0 f32 scalars (see `MO_F32ScalarAttr`). They still arrive here
-    # string-encoded (`kernel_parameters`); `float()` parses them back until
-    # the emitters switch to passing floats.
+    # rank-0 f32 scalars (see `MO_F32ScalarAttr`).
     results = Graph.current._add_op_generated(
         mo.CompositeGroupedMatmulSwigluNvfp4Op,
         c_packed_type,
@@ -8717,8 +8717,8 @@ def grouped_matmul_blocked_swiglu(
         expert_usage_stats_host[1],
         has_a_row_scales=builtin.BoolAttr(a_row_scales is not None),
         activation=builtin.StringAttr(activation_name),
-        swiglu_alpha=_float32_attr(float(swiglu_alpha)),
-        swiglu_limit=_float32_attr(float(swiglu_limit)),
+        swiglu_alpha=_float32_attr(swiglu_alpha),
+        swiglu_limit=_float32_attr(swiglu_limit),
     )
 
     return results[0].tensor, results[1].tensor
@@ -9364,14 +9364,13 @@ def quantize_dynamic_scaled_float8(
         op_name += ".row_bounded"
         values.append(row_offsets)
 
-    # The kernel takes the floor string-encoded (the extensibility bridge has no
-    # float parameter), and the RMS-norm fusion pattern only matches a quantize
-    # op carrying exactly one parameter, so leave it off at the default.
-    parameters: dict[str, bool | int | str | DType] = {
+    # The RMS-norm fusion pattern only matches a quantize op carrying exactly
+    # one parameter, so leave `amax_floor` off at its default.
+    parameters: dict[str, bool | int | float | str | DType] = {
         "group_size_or_per_token": group_size,
     }
     if amax_floor > 0.0:
-        parameters["amax_floor"] = repr(amax_floor)
+        parameters["amax_floor"] = amax_floor
 
     result = ops.custom(
         op_name,

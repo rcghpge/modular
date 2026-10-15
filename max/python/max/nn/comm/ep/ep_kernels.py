@@ -18,6 +18,7 @@ This file contains the kernels for Expert Parallelism (EP) communication.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Final
 
 from max.driver import accelerator_api
@@ -254,7 +255,7 @@ def _ep_dispatch_output_types(
 
 def _ep_common_parameters(
     config: EPConfig,
-) -> dict[str, bool | int | str | DType]:
+) -> dict[str, bool | int | float | str | DType]:
     """Returns the common parameters for the EP kernels."""
     if config.use_allreduce:
         # When using allreduce as communication backend, the EP kernels are only
@@ -280,7 +281,7 @@ def _ep_common_parameters(
 
 def _block_scaled_nv_format_parameters(
     nvfp4: bool,
-) -> dict[str, bool | int | str | DType]:
+) -> dict[str, bool | int | float | str | DType]:
     """Returns the ``BLOCK_SCALED_NV`` dispatch format parameters: NVFP4
     (packed E2M1, E4M3 scales) or MXFP8 (E4M3, E8M0 scales)."""
     return {
@@ -294,9 +295,9 @@ def _block_scaled_nv_format_parameters(
 
 def _ep_dispatch_format_parameters(
     config: EPConfig,
-) -> dict[str, bool | int | str | DType]:
+) -> dict[str, bool | int | float | str | DType]:
     """Returns the dispatch token format parameters ``ep.init`` sizes for."""
-    parameters: dict[str, bool | int | str | DType] = {
+    parameters: dict[str, bool | int | float | str | DType] = {
         "dispatch_dtype": config.dispatch_dtype
     }
     if config.dispatch_quant_config is not None:
@@ -755,9 +756,11 @@ def _call_mega_ffn_ep_combine_send(
     """
     _validate_ffn_combine_send_config(config)
 
-    parameters = _ep_common_parameters(config)
-    parameters["combine_dtype"] = config.combine_dtype
-    parameters.update((activation or GatedActivation()).kernel_parameters())
+    parameters = {
+        **_ep_common_parameters(config),
+        "combine_dtype": config.combine_dtype,
+        **(activation or GatedActivation()).kernel_parameters(),
+    }
 
     ops.inplace_custom(
         "mega_ffn.ep_combine_send",
@@ -806,7 +809,7 @@ def _fused_moe_answer_types() -> list[TensorType]:
 
 def _fused_moe_parameters(
     config: EPConfig,
-) -> dict[str, bool | int | str | DType]:
+) -> dict[str, bool | int | float | str | DType]:
     """Returns the parameters of the fused MoE init and plan ops: what
     ``ep.init`` gets, the experts' FFN width, and the EP features the backend
     checks."""
@@ -820,7 +823,7 @@ def _fused_moe_parameters(
 
 def _fused_moe_bound_parameters(
     config: EPConfig, dispatch_dtype: DType
-) -> dict[str, bool | int | str | DType]:
+) -> dict[str, bool | int | float | str | DType]:
     """Returns the plan op's parameters for an upper bound: ``config``'s EP
     geometry and the dispatch element type alone. The backend then ignores
     the format fields and answers for the one format it serves with that
@@ -832,7 +835,7 @@ def _fused_moe_bound_parameters(
 
 
 def _call_mega_ffn_ep_fused_plan(
-    parameters: dict[str, bool | int | str | DType],
+    parameters: dict[str, bool | int | float | str | DType],
 ) -> tuple[TensorValue, TensorValue]:
     """Asks the backend, without allocating, what the fused MoE init does for
     ``parameters`` (:func:`_fused_moe_parameters`).
@@ -945,6 +948,10 @@ def _call_mega_ffn_ep_fused(
             "EP init did not set up the one-launch fused MoE for this"
             " configuration"
         )
+    parameters: Mapping[str, bool | int | float | str | DType] = {
+        **_ep_common_parameters(config),
+        **(activation or GatedActivation()).kernel_parameters(),
+    }
     results = ops.inplace_custom(
         "mega_ffn.ep_fused",
         device=input_tokens.device,
@@ -970,10 +977,7 @@ def _call_mega_ffn_ep_fused(
                 device=input_tokens.device,
             )
         ],
-        parameters={
-            **_ep_common_parameters(config),
-            **(activation or GatedActivation()).kernel_parameters(),
-        },
+        parameters=parameters,
     )
     return results[0].tensor
 
@@ -1585,8 +1589,10 @@ def fused_silu(
 
     hidden_size = input.shape[1] // 2
 
-    parameters: dict[str, bool | int | str] = {"interleaved": interleaved}
-    parameters.update((activation or GatedActivation()).kernel_parameters())
+    parameters: dict[str, bool | int | float | str] = {
+        "interleaved": interleaved,
+        **(activation or GatedActivation()).kernel_parameters(),
+    }
     return ops.custom(
         "ep.fused_silu",
         device=input.device,
@@ -1700,8 +1706,9 @@ def fused_silu_quantized(
             f"Unsupported quantization format: {quant_config.format}"
         )
 
-    parameters: dict[str, bool | int | str] = {}
-    parameters.update((activation or GatedActivation()).kernel_parameters())
+    parameters: dict[str, bool | int | float | str] = {
+        **(activation or GatedActivation()).kernel_parameters(),
+    }
     if quant_config.is_mx:
         if max_padded_M <= 0 or max_padded_M % 32:
             raise ValueError(

@@ -82,7 +82,7 @@ from linalg.matmul.gpu.sm100_structured.grouped_block_scaled_1d1d import (
 from linalg.matmul.gpu.sm100_structured.structured_kernels.row_scales import (
     RealRowScales,
 )
-from linalg.swiglu_activation import comptime_atof, get_swiglu_activation
+from linalg.swiglu_activation import get_swiglu_activation
 from linalg.matmul.gpu.sm100_structured.default.dispatch_fused_bias_residual import (
     fused_bias_residual_matmul_dispatch_sm100,
 )
@@ -1200,8 +1200,8 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
         //,
         target: StaticString,
         activation: StaticString = "silu",
-        swiglu_alpha: StaticString = "0.0",
-        swiglu_limit: StaticString = "0.0",
+        swiglu_alpha: Float32 = 0.0,
+        swiglu_limit: Float32 = 0.0,
     ](
         c: OutputTensor[dtype=.float8_e4m3fn, rank=2, ...],
         c_scales: OutputTensor[dtype=.float8_e8m0fnu, rank=2, ...],
@@ -1225,9 +1225,7 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
             b_type: The weight dtype (one byte wide).
             target: The target GPU device.
             activation: The gated activation the epilogue applies, built at
-                compile time with `swiglu_alpha` and `swiglu_limit`; the
-                constants are decimal strings because kernel parameters
-                cannot be floats.
+                compile time with `swiglu_alpha` and `swiglu_limit`.
             swiglu_alpha: The activation's alpha.
             swiglu_limit: The activation's clamp limit.
 
@@ -1262,8 +1260,8 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
             return
         comptime act = get_swiglu_activation[
             activation,
-            comptime_atof[swiglu_alpha](),
-            comptime_atof[swiglu_limit](),
+            swiglu_alpha,
+            swiglu_limit,
         ]
         block_scaled_grouped_matmul_amd_preb[
             lane_bytes=Self.lane_bytes,

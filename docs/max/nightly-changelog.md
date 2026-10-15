@@ -75,6 +75,15 @@ This version is still a work in progress.
 
 ## MAX framework
 
+- `ops.custom()` and `ops.inplace_custom()` now accept `float` values in
+  their `parameters` dictionaries, lowering to a rank-0 f32 attribute that
+  a kernel declares as a `Float32` parameter. Previously a custom op could
+  take a scalar constant only as a runtime host tensor operand, or as a
+  string the kernel parsed back. The `attn_res_mix`, `qsa_block_score`,
+  `qsa.compress_keys.paged`, `ep.fused_silu*`, grouped-SwiGLU matmul,
+  dynamic FP8 quantize, and MegaFFN kernels' scalar constants
+  (`eps`, `score_scale`, `amax_floor`, `swiglu_alpha`, `swiglu_limit`)
+  now ride as `Float32` parameters instead of strings.
 - `mo.non_maximum_suppression` now executes on GPU devices in compiled
   graphs. Boxes and scores stay on the device through a single-CTA
   greedy kernel (shared-memory bitonic order by score descending, box
