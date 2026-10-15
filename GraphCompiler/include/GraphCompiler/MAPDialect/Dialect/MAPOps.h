@@ -55,13 +55,6 @@ StoreOp getUniqueStore(mlir::Block &body);
 /// Asserts there is at least one.
 llvm::SmallVector<StoreOp> getOutputStores(mlir::Block &body);
 
-/// Merges a MAP kernel's duplicate input operands (a `map.iter.foreach` or
-/// `map.iter.opaque`) onto the first occurrence's shadowed block argument and
-/// drops the extras, returning whether anything changed. Shared by the
-/// `Dedupe*Inputs` canonicalizations and by input/output fusion, which runs it
-/// on just the kernel it fused into rather than canonicalizing the whole graph.
-bool dedupeKernelInputs(mlir::Operation *kernel, mlir::RewriterBase &rewriter);
-
 } // namespace M::MAP
 
 #endif // GENERICML_GRAPHCOMPILER_MAPDIALECT_MAPOPS_H

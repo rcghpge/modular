@@ -373,7 +373,7 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
     dst->setLoc(
         mlir::FusedLoc::get(dst.getContext(), {src->getLoc(), dst->getLoc()}));
     src->erase();
-    dedupeKernelInputs(dst, rewriter);
+    IterOpInterface(dst).dedupeInputs(rewriter);
     return true;
   }
   return false;

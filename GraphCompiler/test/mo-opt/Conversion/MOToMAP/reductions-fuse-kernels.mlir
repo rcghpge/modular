@@ -1,16 +1,19 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
 
-// Kernel fusion leaves `map.iter.rowwise` alone: producers, consumers,
-// sibling reductions, a reduction of a reduction and views of a result stay
-// outside it.
+// Checks that kernel fusion fuses every reduction pattern we care about. It
+// grows as fusion gains features: what does not fuse yet is checked as
+// unfused, and moves over once it does.
+//
+// Today the `mul` fuses into the sum's fold. The rest stays outside: sibling
+// reductions, a reduction of a reduction, a full-row consumer and a view of a
+// result.
 
 // CHECK-LABEL: mo.graph @aroundReductions
 // CHECK-SAME:  (%[[X:.*]]: !mo.tensor<[8, 128], f32>)
-// CHECK:       %[[SQ:.*]] = map.iter.foreach<[8, 128]>
-// CHECK:       map.call.elementwise @builtin_kernels.elementwise.Mul
 // CHECK:       %[[S:.*]] = map.iter.rowwise<[8, 128], axis = 1>
-// CHECK-NEXT:  inputs  (%[[SQ]]: !mo.tensor<[8, 128], f32>)
+// CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8, 128], f32>)
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceSum
+// CHECK:       map.call.elementwise @builtin_kernels.elementwise.Mul
 // CHECK:       %[[M:.*]] = map.iter.rowwise<[8, 128], axis = 1>
 // CHECK-NEXT:  inputs  (%[[X]]: !mo.tensor<[8, 128], f32>)
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceMax

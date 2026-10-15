@@ -477,7 +477,7 @@ unsigned fuseInput(MO::GraphOp graphOp, const InputFusionConfig &config) {
         }
         // Uniquing inputs re-exposes a shared producer as single-use, so this
         // drain fuses it once instead of duplicating or dropping it.
-        dedupeKernelInputs(op, rewriter);
+        cast<IterOpInterface>(op).dedupeInputs(rewriter);
         fusedIntoConsumer += duplicates;
         ++numFused;
       }

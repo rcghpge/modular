@@ -26,26 +26,17 @@ using namespace M::MAP;
 
 namespace {
 
-// Canonicalization wrappers over `dedupeKernelInputs`.
-struct DedupeIterOpaqueInputs : OpRewritePattern<IterOpaqueOp> {
-  using OpRewritePattern::OpRewritePattern;
+template <typename OpTy>
+struct DedupeIterInputs : OpRewritePattern<OpTy> {
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(IterOpaqueOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    return success(dedupeKernelInputs(op, rewriter));
+    return success(IterOpInterface(op).dedupeInputs(rewriter));
   }
 };
 
-struct DedupeIterForeachInputs : OpRewritePattern<IterForeachOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(IterForeachOp op,
-                                PatternRewriter &rewriter) const override {
-    return success(dedupeKernelInputs(op, rewriter));
-  }
-};
-
-// `DedupeIterOpaqueInputs` for a capturing closure's captures.
+// `DedupeIterInputs` for a capturing closure's captures.
 // `LoopInvariantViewMotion` relies on it to fold duplicates from `addCapture`.
 struct DedupeCapturingClosureCaptures
     : OpInterfaceRewritePattern<CapturingFusionClosure> {
@@ -302,48 +293,34 @@ struct InlineConstantScalarLoad : OpRewritePattern<LoadOp> {
 // Fusion can bind the same value several times in `inputs`, which becomes the
 // lowered kernel's parameter list. Uniquing also lets CSE collapse redundant
 // loads and re-exposes a shared producer as single-use.
-bool M::MAP::dedupeKernelInputs(Operation *kernel, RewriterBase &rewriter) {
-  auto dedupe = [&](auto op,
-                    llvm::function_ref<BlockArgument(unsigned)> inputArg) {
-    llvm::DenseMap<Value, BlockArgument> seen;
-    llvm::SmallVector<unsigned> duplicates;
-    for (auto [idx, input] : llvm::enumerate(op.getInputs()))
-      if (!seen.insert({input, inputArg(idx)}).second)
-        duplicates.push_back(idx);
-    if (duplicates.empty())
-      return false;
+bool IterOpInterface::dedupeInputs(RewriterBase &rewriter) {
+  Block::BlockArgListType inputArgs = getInputBlockArgs();
+  llvm::DenseMap<Value, BlockArgument> seen;
+  llvm::SmallVector<unsigned> duplicates;
+  for (auto [idx, input] : llvm::enumerate(getInputs()))
+    if (!seen.insert({input, inputArgs[idx]}).second)
+      duplicates.push_back(idx);
+  if (duplicates.empty())
+    return false;
 
-    for (unsigned idx : duplicates)
-      rewriter.replaceAllUsesWith(inputArg(idx),
-                                  seen.lookup(op.getInputs()[idx]));
-    rewriter.modifyOpInPlace(op, [&] {
-      for (unsigned idx : llvm::reverse(duplicates))
-        op.eraseInputsAt(idx);
-    });
-    return true;
-  };
-
-  if (auto foreachOp = dyn_cast<IterForeachOp>(kernel)) {
-    Block &body = foreachOp.getBody().front();
-    return dedupe(foreachOp,
-                  [&](unsigned idx) { return body.getArgument(idx); });
-  }
-  if (auto opaqueOp = dyn_cast<IterOpaqueOp>(kernel))
-    return dedupe(opaqueOp, [&](unsigned idx) {
-      return opaqueOp.getInputBlockArgs()[idx];
-    });
-  return false;
+  for (unsigned idx : duplicates)
+    rewriter.replaceAllUsesWith(inputArgs[idx], seen.lookup(getInputs()[idx]));
+  rewriter.modifyOpInPlace(getOperation(), [&] {
+    for (unsigned idx : llvm::reverse(duplicates))
+      eraseInputsAt(idx, 1);
+  });
+  return true;
 }
 
 void IterOpaqueOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                MLIRContext *context) {
-  results.add<DedupeIterOpaqueInputs, DropDeadIterOpaqueInputs,
+  results.add<DedupeIterInputs<IterOpaqueOp>, DropDeadIterOpaqueInputs,
               FuseConstantIterOpaqueInputs>(context);
 }
 
 void IterForeachOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.add<DedupeIterForeachInputs>(context);
+  results.add<DedupeIterInputs<IterForeachOp>>(context);
 }
 
 void LoadOp::getCanonicalizationPatterns(RewritePatternSet &results,

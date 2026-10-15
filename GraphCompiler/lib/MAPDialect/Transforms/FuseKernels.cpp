@@ -47,6 +47,7 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
     fusePm.addPass(createFuseElementwise());
     fusePm.addPass(createFuseViews());
     fusePm.addPass(createFusePrologue());
+    fusePm.addPass(createFuseReductions());
     fusePm.addPass(createFuseEpilogue());
     fusePm.addPass(createFuseReshapeEpilogue());
     // Last, so siblings merge only once the producer-consumer fusers have
@@ -61,8 +62,10 @@ struct FuseKernelsPass : public MAP::impl::FuseKernelsBase<FuseKernelsPass> {
 
     auto kernelCount = [&] {
       unsigned n = 0;
-      graphOp.getBody().walk(
-          [&](Operation *op) { n += isa<IterForeachOp, IterOpaqueOp>(op); });
+      graphOp.getBody().walk([&](IterOpInterface) {
+        ++n;
+        return WalkResult::skip();
+      });
       return n;
     };
 

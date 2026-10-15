@@ -50,6 +50,7 @@ def MAP_AnyIndex : Type<
 def MAP_IterOpaqueOp : MAP_Op<"iter.opaque", [
     AttrSizedOperandSegments,
     IsolatedFromAbove,
+    MAP_IterOpInterface,
     SingleBlock,
     NoTerminator,
     MO_ExplicitDevice,
@@ -311,6 +312,7 @@ def MAP_CallOpaqueOp : MAP_Op<"call.opaque", [
 def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
   AttrSizedOperandSegments,
   IsolatedFromAbove,
+  MAP_IterOpInterface,
   SingleBlock,
   NoTerminator,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
@@ -365,6 +367,9 @@ def MAP_IterForeachOp : MAP_Op<"iter.foreach", [
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
+    ::mlir::Block::BlockArgListType getInputBlockArgs();
+    ::mlir::Block::BlockArgListType getOutputBlockArgs();
+
     // Inserts/erases inputs along with their body block arguments.
     void insertInputsAt(unsigned idx, ValueRange vals);
     void eraseInputsAt(unsigned idx, size_t len = 1);
@@ -431,6 +436,7 @@ def MAP_IterForeachBodyOp : MAP_Op<"iter.foreach.body", [
 def MAP_IterRowwiseOp : MAP_Op<"iter.rowwise", [
   AttrSizedOperandSegments,
   IsolatedFromAbove,
+  MAP_IterOpInterface,
   SingleBlock,
   NoTerminator,
   DeclareOpInterfaceMethods<MO_HasDeviceInterface>,
@@ -494,6 +500,10 @@ def MAP_IterRowwiseOp : MAP_Op<"iter.rowwise", [
     ::mlir::Block::BlockArgListType getInputBlockArgs();
     ::mlir::Block::BlockArgListType getOutputBlockArgs();
     ::mlir::BlockArgument getRowArg();
+
+    // Inserts/erases inputs along with their body block arguments.
+    void insertInputsAt(unsigned idx, ::mlir::ValueRange vals);
+    void eraseInputsAt(unsigned idx, size_t len = 1);
 
     ::mlir::Value getInputChain() { return getChain(); }
     // Null if the last result isn't a chain.

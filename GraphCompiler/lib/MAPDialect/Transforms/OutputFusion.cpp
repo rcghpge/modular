@@ -434,7 +434,7 @@ unsigned fuseOutput(MO::GraphOp graphOp, const OutputFusionConfig &config) {
                                         {edge->src->getLoc(), dst->getLoc()}));
         erased.insert(edge->src);
         edge->src->erase();
-        dedupeKernelInputs(dst, rewriter);
+        IterOpInterface(dst).dedupeInputs(rewriter);
         ++numFused;
       }
     }

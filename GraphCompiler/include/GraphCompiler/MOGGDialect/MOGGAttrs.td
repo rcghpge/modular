@@ -324,6 +324,16 @@ def MOGG_FusionMutableLoadAttr : MOGGFusionGroupAttr<"FusionMutableLoad", "fusio
   let assemblyFormat = "`<` `[` $children `]` `>`";
 }
 
+def MOGG_FusionRowwiseAttr : MOGGFusionGroupAttr<"FusionRowwise", "fusion_rowwise", "Rowwise"> {
+  let summary = "Rowwise (reduction) fusion info.";
+  let description = [{
+    Kernels fused into a `map.iter.rowwise`.
+  }];
+
+  let parameters = (ins ArrayRefParameter<"mlir::Attribute">:$children);
+  let assemblyFormat = "`<` `[` $children `]` `>`";
+}
+
 //===----------------------------------------------------------------------===//
 // FusionInfoAttr - the root in the fusion tree info stored on ops
 //===----------------------------------------------------------------------===//

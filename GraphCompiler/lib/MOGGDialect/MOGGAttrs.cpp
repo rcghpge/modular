@@ -42,7 +42,7 @@ FusionInfoAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                        Attribute root) {
   if (!isa<FusionLeafAttr, FusionSequenceAttr, FusionHorizontalAttr,
            FusionElementwiseAttr, FusionEpilogueAttr, FusionPrologueAttr,
-           FusionViewAttr, FusionMutableLoadAttr>(root))
+           FusionViewAttr, FusionMutableLoadAttr, FusionRowwiseAttr>(root))
     return emitError() << "root must be a valid fusion info attribute";
   return success();
 }
@@ -81,14 +81,15 @@ void nodeToString(Attribute node, llvm::raw_string_ostream &os,
               os << ':' << fileLoc.getLine();
       })
       .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
-            FusionViewAttr, FusionMutableLoadAttr>([&](auto attr) {
-        os << decltype(attr)::getFusionName() << '(';
-        llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
-          nodeToString(child, os, includeLineNumbers, quote,
-                       stripDialectPrefixes);
-        });
-        os << ')';
-      })
+            FusionViewAttr, FusionMutableLoadAttr, FusionRowwiseAttr>(
+          [&](auto attr) {
+            os << decltype(attr)::getFusionName() << '(';
+            llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
+              nodeToString(child, os, includeLineNumbers, quote,
+                           stripDialectPrefixes);
+            });
+            os << ')';
+          })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         os << decltype(attr)::getFusionName() << '(';
         llvm::interleaveComma(attr.getChildren(), os, [&](Attribute child) {
@@ -156,7 +157,7 @@ void nodeToPrettyTree(Attribute node, llvm::raw_string_ostream &os,
         os << '\n';
       })
       .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
-            FusionViewAttr, FusionMutableLoadAttr>(
+            FusionViewAttr, FusionMutableLoadAttr, FusionRowwiseAttr>(
           [&](auto attr) { emitChildren(attr, attr.getChildren()); })
       .Case<FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         emitChildren(attr, attr.getChildren(), attr.getOperandIndices());
@@ -203,8 +204,8 @@ static void collectLeafNames(Attribute node,
             stripNestedDialectPrefixes(leaf.getOpName().getValue()));
       })
       .Case<FusionSequenceAttr, FusionHorizontalAttr, FusionElementwiseAttr,
-            FusionViewAttr, FusionMutableLoadAttr, FusionEpilogueAttr,
-            FusionPrologueAttr>([&](auto attr) {
+            FusionViewAttr, FusionMutableLoadAttr, FusionRowwiseAttr,
+            FusionEpilogueAttr, FusionPrologueAttr>([&](auto attr) {
         for (Attribute child : attr.getChildren())
           collectLeafNames(child, names);
       });

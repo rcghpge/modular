@@ -108,6 +108,81 @@ def MAP_CapturingFusionClosure : OpInterface<"CapturingFusionClosure"> {
   ];
 }
 
+def MAP_IterOpInterface : OpInterface<"IterOpInterface"> {
+  let description = [{
+    A MAP kernel: `map.iter.foreach`, `map.iter.rowwise` or `map.iter.opaque`.
+    Its body is isolated from above and starts with one block argument per
+    input, followed by one per output.
+  }];
+
+  let cppNamespace = "::M::MAP";
+
+  let methods = [
+    InterfaceMethod<
+      "Returns the non-chain inputs.",
+      "::mlir::OperandRange", "getInputs", (ins),
+      "return $_op.getInputs();"
+    >,
+    InterfaceMethod<
+      "Returns the body block arguments shadowing getInputs(), one to one.",
+      "::mlir::Block::BlockArgListType", "getInputBlockArgs", (ins),
+      "return $_op.getInputBlockArgs();"
+    >,
+    InterfaceMethod<
+      "Returns the body block arguments of the outputs.",
+      "::mlir::Block::BlockArgListType", "getOutputBlockArgs", (ins),
+      "return $_op.getOutputBlockArgs();"
+    >,
+    InterfaceMethod<
+      "Inserts `vals` as inputs at `idx`, with their block arguments.",
+      "void", "insertInputsAt",
+      (ins "unsigned":$idx, "::mlir::ValueRange":$vals),
+      "$_op.insertInputsAt(idx, vals);"
+    >,
+    InterfaceMethod<
+      "Erases the inputs in `[idx, idx + len)`, with their block arguments.",
+      "void", "eraseInputsAt", (ins "unsigned":$idx, "size_t":$len),
+      "$_op.eraseInputsAt(idx, len);"
+    >,
+    InterfaceMethod<
+      "Returns the input chain, or null.",
+      "::mlir::Value", "getInputChain", (ins),
+      "return $_op.getInputChain();"
+    >,
+    InterfaceMethod<
+      "Returns the output chain, or null.",
+      "::mlir::Value", "getOutputChain", (ins),
+      "return $_op.getOutputChain();"
+    >,
+    InterfaceMethod<
+      "Returns the fusion provenance, or null.",
+      "::mlir::Attribute", "getFusionInfoAttr", (ins),
+      "return $_op.getFusionInfoAttr();"
+    >,
+    InterfaceMethod<
+      "Returns whether the kernel reads memory.",
+      "bool", "getHasReadEffect", (ins),
+      "return $_op.getHasReadEffect();"
+    >,
+    InterfaceMethod<
+      "Returns whether the kernel writes memory.",
+      "bool", "getHasWriteEffect", (ins),
+      "return $_op.getHasWriteEffect();"
+    >,
+    InterfaceMethod<
+      "Returns how the runtime schedules the kernel.",
+      "::M::MOGG::DispatchKind", "getDispatch", (ins),
+      "return $_op.getDispatch();"
+    >,
+  ];
+
+  let extraClassDeclaration = [{
+    /// Merges duplicate inputs onto the first one's block argument and drops
+    /// the rest. Returns whether anything changed.
+    bool dedupeInputs(::mlir::RewriterBase &rewriter);
+  }];
+}
+
 def MAP_IndexTransformOpInterface : OpInterface<"IndexTransformOpInterface"> {
   let description = [{
     Common interface for ops that project a structured loop's own index into

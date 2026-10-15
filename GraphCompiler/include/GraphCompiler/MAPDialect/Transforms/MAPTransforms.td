@@ -143,6 +143,25 @@ def FusePrologue : Pass<"map-fuse-prologue", "MO::GraphOp"> {
   ];
 }
 
+def FuseReductions : Pass<"map-fuse-reductions", "MO::GraphOp"> {
+  let summary = "Fuse MAP kernels into rowwise reductions. For testing only.";
+  let description = [{
+    Runs the reduction fuser alone. A producer only a `map.iter.rowwise`
+    reads is cloned at each load of its result. A consumer over the per-row
+    shape that reads a per-row result at its own index becomes row-level
+    ops, and its result a rowwise output.
+  }];
+
+  let dependentDialects = [
+    "M::MAP::MAPDialect",
+    "M::MOGG::MOGGDialect",
+  ];
+
+  let statistics = [
+    Statistic<"numKernelsFused", "num-kernels-fused", "Number of kernels fused">
+  ];
+}
+
 def FuseInput : Pass<"map-fuse-input", "MO::GraphOp"> {
   let summary = "Unconstrained generic input fusion. For testing only.";
   let description = [{

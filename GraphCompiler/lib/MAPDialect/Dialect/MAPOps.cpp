@@ -779,6 +779,15 @@ llvm::SmallVector<M::DeviceRefAttr> IterForeachOp::getExecutionDevices() {
   return getFirstExecutionDevice(getResults(), getInputs());
 }
 
+Block::BlockArgListType IterForeachOp::getInputBlockArgs() {
+  return getBody().front().getArguments().take_front(getInputs().size());
+}
+
+Block::BlockArgListType IterForeachOp::getOutputBlockArgs() {
+  unsigned numOutputs = getNumResults() - (getOutputChain() ? 1 : 0);
+  return getBody().front().getArguments().slice(getInputs().size(), numOutputs);
+}
+
 void IterForeachOp::insertInputsAt(unsigned idx, ValueRange vals) {
   ASSERT_STREAM(idx <= getInputs().size(),
                 << "idx (" << idx << ") must stay within the inputs ("
@@ -1110,6 +1119,29 @@ Block::BlockArgListType IterRowwiseOp::getOutputBlockArgs() {
 
 BlockArgument IterRowwiseOp::getRowArg() {
   return getBody().front().getArguments().back();
+}
+
+void IterRowwiseOp::insertInputsAt(unsigned idx, ValueRange vals) {
+  ASSERT_STREAM(idx <= getInputs().size(),
+                << "idx (" << idx << ") must stay within the inputs ("
+                << getInputs().size() << "), before outputs/row block args");
+  SmallVector<Value> ops(getInputs());
+  ops.insert(ops.begin() + idx, vals.begin(), vals.end());
+  getInputsMutable().assign(ops);
+
+  for (auto v : llvm::reverse(vals))
+    getBody().insertArgument(idx, v.getType(), v.getLoc());
+}
+
+void IterRowwiseOp::eraseInputsAt(unsigned idx, size_t len) {
+  ASSERT_STREAM(idx + len <= getInputs().size(),
+                << "[idx, idx + len) = [" << idx << ", " << (idx + len)
+                << ") must stay within the inputs (" << getInputs().size()
+                << "), before outputs/row block args");
+  getInputsMutable().erase(idx, len);
+
+  for (unsigned i = 0; i < len; ++i)
+    getBody().eraseArgument(idx);
 }
 
 llvm::SmallVector<M::DeviceRefAttr> IterRowwiseOp::getExecutionDevices() {
