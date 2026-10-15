@@ -11,6 +11,13 @@ This version is still a work in progress.
 - Added a [chat templates](/serve/chat-templates) guide that covers information
   about the `--chat-template` flag for the `max serve` CLI command.
 
+- Added a [prefill-decode disaggregation](/serve/prefill-decode-disaggregation)
+  guide that describes how to run prefill and decode on separate workers.
+
+- Added a [decisions](/serve/decisions) guide that describes how to use the
+  `/v1/decisions` endpoint to answer typed questions about an input with a
+  probability for every option, such as to classify text or route tickets.
+
 ## MAX models
 
 - Added the MiMo-V2.6-Flash architecture (`MiMoV2ForCausalLM`) for Xiaomi's
@@ -32,6 +39,25 @@ This version is still a work in progress.
   tokens, and manifold-constrained hyper-connections in place of a plain
   residual add. Only the blockwise-FP8 checkpoint
   (`zai-org/GLM-5.3-Flash`) is supported.
+
+- GLM-5.3 FP8 (`zai-org/GLM-5.3`) now runs on 8x AMD MI355X GPUs, with a new
+  serving recipe.
+
+- Added the DeepSeek-V4-Flash architecture (`DeepseekV4ForCausalLM`) for
+  `deepseek-ai/DeepSeek-V4-Flash-0731`. It runs the checkpoint's FP8 linears
+  and FP4 routed experts natively with tensor parallelism across two B200
+  GPUs, and includes a DeepSeek-V4 chat template and `deepseekv4` reasoning
+  and tool-call parsers.
+
+- DeepSeek-V4-Flash now supports DSpark speculative decoding
+  (`UnifiedDSparkDeepseekV4ForCausalLM`) with the draft stages that ship in
+  the target checkpoint. Enable it with `--speculative-method dspark`.
+
+- Added the Muse Glimmer architecture
+  (`MuseGlimmerForConditionalGeneration_ModuleV3`) for
+  `meta-models/Muse-Glimmer-30B`, with text and image inputs, reasoning and
+  tool-call parsing, decode graph capture, and a serving recipe for one B200
+  GPU.
 
 - The fused Qwen3.5 speculative-decoding graph
   (`qwen3_5_with_mtp_graph`) now accepts M-RoPE positions, so speculative
@@ -55,6 +81,26 @@ This version is still a work in progress.
   `videos` with a `video` content part in `messages`. An OpenAI-compatible
   request may instead carry a `video_url` part, which the server resolves and
   rewrites into that form.
+
+- Qwen3.5-family and Inkling models now support prefix caching. Their
+  recurrent and convolution state is checkpointed in the KV cache at block
+  boundaries, so a prefix hit resumes from the saved state instead of
+  recomputing the prompt, including with the overlap scheduler and device
+  graph capture.
+
+- Qwen3.5-family models now support serving with DFlash2 speculative
+  decoding (`unified_dflash2_qwen3_5`), with a Qwen3.8-27B NVFP4 recipe
+  (`qwen38_27b_nvfp4_dflash2.yaml`).
+
+- Added a ModuleV3 implementation of the Nemotron-H architecture
+  (`NemotronHForCausalLM`), selected with `--prefer-module-v3`. It serves
+  Nemotron-3.5-Lightning-30B-A3B in BF16 and NVFP4, with prefix caching and
+  tensor parallelism.
+
+- The ModuleV3 Nemotron-H architecture now supports DSpark speculative
+  decoding: the BF16 Nemotron-3.5-Lightning-30B-A3B checkpoint can serve with
+  the NVFP4 DSpark draft (`--speculative-method dspark`) on one or two B200
+  GPUs.
 
 - The ModuleV3 Nemotron-H architecture (`NemotronHForCausalLM` with
   `prefer_module_v3`) no longer expands the quantized modules of an NVFP4
@@ -190,7 +236,10 @@ This version is still a work in progress.
   `--remote-cpu-workers` / `--remote-gpu-workers` map onto `ContextConfig`.
   `--host` is now exposed for both paths and defaults `max serve --cascade` to
   `0.0.0.0`, matching `max serve`, instead of the Cascade entrypoint's
-  `localhost` default.
+  `localhost` default. The deployment flags now carry a `cascade-` prefix:
+  `--cascade-transport`, `--cascade-local-cpu-workers`,
+  `--cascade-local-gpu-workers`, `--cascade-remote-cpu-workers`, and
+  `--cascade-remote-gpu-workers`.
 
 - `max.experimental.sharding.PlacementMapping` and
   `DeviceMapping.to_placements()` are removed; use `DeviceMapping` and its
@@ -204,6 +253,9 @@ This version is still a work in progress.
   resharding. It replaces `mode()`, `isolated_solver()`, `Solver`,
   `ReshardBehavior`, `GreedyReshard`, `NoReshard` and `PartialsOnly`; for
   example, `mode(NoReshard())` becomes `auto_reshard(mode="raise")`.
+  Automatic resharding now raises by default instead of silently inserting
+  collectives when an op can't accept its inputs' placements; use
+  `auto_reshard(mode="silent")` or `mode="warn"` to allow it.
 
 - `max.experimental.tensor.default_device()` accepts a `DeviceMesh` and
   replaces `max.experimental.sharding.mesh_context()`, which is removed.
@@ -270,6 +322,10 @@ This version is still a work in progress.
 - Added the public `Tree` type alias in `max.tree` for nested pytree values.
   Layer subgraph inputs are annotated with `Tree[Any]` instead of the
   removed `SubgraphInput` alias.
+- Added the `max.tree.dataclass` decorator, which registers a dataclass as a
+  pytree node so `max.tree` functions such as `tree.map()` and
+  `tree.flatten()` walk its fields. Fields that are `None` are dropped on
+  flatten and restored on unflatten.
 - Every unified speculative-decoding architecture now passes its full
   `[batch_size]` per-row seed tensor to acceptance sampling, instead of only
   the architectures that opted in. Both verdicts consume it per row: the argmax
@@ -604,6 +660,15 @@ This version is still a work in progress.
   without a schedule is unchanged. A draft built with
   `--draft-proposal sampled` skips as well.
 
+- The Jenga KV cache is now the default for every model, including custom
+  architecture names and local model paths. Set
+  `MODULAR_USE_LEGACY_KV_CACHE=1` to opt out.
+
+- Added the `return_token_ids` request parameter to `/v1/chat/completions` and
+  `/v1/completions`. When it's set, each choice includes `token_ids` for the
+  generated tokens and `prompt_token_ids` for the templated prompt, and each
+  streamed chunk includes the token IDs it adds.
+
 ### Server metrics
 
 - Added counters for how much traffic uses tool calling and structured
@@ -666,6 +731,11 @@ This version is still a work in progress.
   matmul fallback, as `max serve` does when it captures device graphs, so they
   compile the same matmul kernels. Pass `--no-disable-vendor-blas-fallback` or
   `disable_vendor_blas_fallback=False` to keep the fallback.
+
+- Added the `--eplb-planner` option to choose how expert-parallel load
+  balancing (EPLB) places experts. The new default, `per_layer`, balances each
+  MoE layer against its own load, while `aggregated` keeps the previous
+  behavior of one placement shared by every layer.
 
 ### Python API
 
@@ -959,7 +1029,64 @@ This version is still a work in progress.
   (13.4.92), bringing the latest bug fixes and performance improvements from
   NVIDIA's PTX compiler.
 
+- Added `TileTensorIter` in `layout.tile_iterator`, the `TileTensor`
+  counterpart of `LayoutTensorIter`. It steps a fixed tile layout through
+  memory, dereferences to a `TileTensor` view of the current tile, supports
+  circular multi-stage shared-memory buffers, and can carry a runtime
+  valid-row count for masked global-memory tiles.
+
+- Added `DeviceContext.CPU`, a `DeviceContext` type whose `target` is the host
+  CPU, along with the `DeviceContext.cpu()` factory and
+  `DeviceContext.assert_cpu_target()`. `parallelize()`, `sync_parallelize()`,
+  and `parallelism_level()` in `max.algorithm` now take an
+  `Optional[DeviceContext.CPU]` instead of an `Optional[DeviceContext]`.
+
+- `DeviceContext.stream()` now works on Apple GPUs, where each stream maps to
+  a new Metal command queue, so stream-based event recording
+  (`record_event()`, `enqueue_wait_for()`) behaves the same as on CUDA and
+  HIP.
+
 ## Breaking changes
+
+- Deprecated `LayoutTensor` and `LayoutTensorIter` in the `layout` package.
+  Use `TileTensor` and `TileTensorIter` instead.
+
+- Removed the `LayoutTensor` overloads of `sum()` and `max()` from
+  `layout.math` and of `create_tensor_tile()` from `layout.tma_async`. Use the
+  `TileTensor` overloads instead.
+
+- `TMATensorTile`, `TMATensorTileArray`, `TMATensorTileIm2col`, and
+  `SplitLastDimTMATensorTile` now take their shapes as flat `Coord` values
+  instead of `IndexList[rank]`, and no longer take a separate `rank`
+  parameter.
+
+- The `rms_norm` functions and GPU kernels in `nn.normalization`, the KV cache
+  `rms_norm` ops, and `gemv_and_partial_norm` now take `epsilon` and
+  `weight_offset` as `Float32` compile-time parameters instead of runtime
+  arguments.
+
+- Removed the `extensibility.foreach[func, target=...](output, ctx)` overloads
+  that took a `capturing` closure as a compile-time parameter. Pass the body
+  as a closure in the first runtime argument instead:
+  `foreach[target=target](body, output, ctx)`.
+
+- Removed the `--rejection-sampling-strategy` flag, the `SpeculativeConfig`
+  field it set, and the `RejectionSamplingStrategy` type. The flag had no
+  effect, because each architecture's acceptance sampler chooses the
+  acceptance rule.
+
+- Renamed the `--eplb-replicas-per-gpu` option to
+  `--eplb-redundant-experts-per-gpu` (`eplb_redundant_experts_per_gpu` in
+  config files). The value and its effect are unchanged.
+
+- Removed the `mojo_tiered` KV connector type. Use `rust_tiered` instead. A
+  `--kv-connector-config` that sets `mojo_tiered` now fails with an error.
+
+- The legacy KV cache manager (`MODULAR_USE_LEGACY_KV_CACHE=1`) no longer
+  supports KV connectors or disaggregated inference, and requesting either
+  now fails at startup. Disaggregated inference with a cache that has
+  non-full-attention layers also fails instead of falling back to the legacy
+  manager.
 
 - `max benchmark` no longer strips a leading `@` from a file path, whether it
   is passed to `--response-format`, `--tools`, `--extra-body` or
@@ -1322,3 +1449,6 @@ This version is still a work in progress.
   excluded unless requested explicitly through `subfolder`.
 
 ## Mojo language
+
+For all the updates to the Mojo language, standard library, and tools,
+see the [Mojo release notes](https://mojolang.org/releases/).
