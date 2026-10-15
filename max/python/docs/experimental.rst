@@ -17,7 +17,6 @@ Modules
 .. autosummary::
    :nosignatures:
 
-   max.experimental.cascade
    max.experimental.compilation
    max.experimental.custom
    max.experimental.executor
@@ -39,7 +38,6 @@ Modules
    :maxdepth: 1
    :hidden:
 
-   experimental.cascade
    experimental.compilation
    experimental.custom
    experimental.executor

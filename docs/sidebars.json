@@ -237,17 +237,6 @@
             "id": "api/python/engine"
           },
           "items": [
-            {
-              "type": "category",
-              "label": "mlrt",
-              "link": {
-                "type": "doc",
-                "id": "api/python/engine.mlrt"
-              },
-              "items": [
-                "__AUTOGEN:max.engine.mlrt__"
-              ]
-            },
             "__AUTOGEN:max.engine__"
           ]
         },
@@ -260,17 +249,6 @@
             "id": "api/python/experimental"
           },
           "items": [
-            {
-              "type": "category",
-              "label": "cascade",
-              "link": {
-                "type": "doc",
-                "id": "api/python/experimental.cascade"
-              },
-              "items": [
-                "__AUTOGEN:max.experimental.cascade__"
-              ]
-            },
             {
               "type": "category",
               "label": "compilation",
@@ -483,17 +461,6 @@
               ]
             },
             "__AUTOGEN:max.graph__"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "max.mlir",
-          "link": {
-            "type": "doc",
-            "id": "api/python/mlir"
-          },
-          "items": [
-            "__AUTOGEN:max.mlir__"
           ]
         },
         {

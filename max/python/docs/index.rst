@@ -33,7 +33,6 @@ Modules
    engine
    experimental
    graph
-   mlir
    nn
    pipelines
    profiler
