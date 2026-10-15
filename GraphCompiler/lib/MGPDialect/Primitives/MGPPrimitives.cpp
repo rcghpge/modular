@@ -413,18 +413,30 @@ static void mgp_device_graph_collective_execute(RemainingArguments operands,
   size_t outputIdx = 0;
 
   for (M::Driver::DeviceGraph *graph : graphs) {
-    size_t numGraphInputs = graph->getInputs().size();
-    if (inputOffset + numGraphInputs > remainingInputs.size())
-      return fail("device graph collective execute: input operand count does "
-                  "not match graph signatures");
+    // The operand list carries every value the graph's region captured, so
+    // non-input values (`!mgp.context`, scalars) ride along between the data
+    // operands. The graph's stable-slot count only counts data operands, so
+    // grow this graph's window until it holds that many, carrying the riders
+    // for `copyDeviceGraphInputs` to skip.
+    size_t numStableInputs = graph->getInputs().size();
+    size_t numDataInputs = 0;
+    size_t windowEnd = inputOffset;
+    while (numDataInputs < numStableInputs) {
+      if (windowEnd == remainingInputs.size())
+        return fail("device graph collective execute: input operand count "
+                    "does not match graph signatures");
+      if (graphInputData(remainingInputs[windowEnd]))
+        ++numDataInputs;
+      ++windowEnd;
+    }
 
     ArrayRef<AnyAsyncValueRef> graphInputs =
-        remainingInputs.slice(inputOffset, numGraphInputs);
+        remainingInputs.slice(inputOffset, windowEnd - inputOffset);
 
     if (M::ErrorOrSuccess err = copyDeviceGraphInputs(*graph, graphInputs))
       return fail(err.takeError());
 
-    inputOffset += numGraphInputs;
+    inputOffset = windowEnd;
 
     if (ErrorOrSuccess err = graph->replay())
       return fail(err.takeError());
