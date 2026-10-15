@@ -194,6 +194,7 @@ modular_py_test(
         "//max/python/max/pipelines",
         "//max/python/max/pipelines/architectures/eagle_llama3",
         "//max/python/max/pipelines/architectures/llama3",
+        "//max/python/max/pipelines/architectures/llama3_modulev3",
         "//max/python/max/pipelines/architectures/mpnet",
         "//max/python/max/pipelines/lib",
         "//max/python/max/pipelines/modeling",
@@ -206,8 +207,9 @@ modular_py_test(
     size = "large",
     srcs = ["test_auto_pipeline.py"],
     ignore_extra_deps = [
-        # Resolves SmolLM by name at runtime.
+        # Resolves SmolLM and its ModuleV3 version by name at runtime.
         "//max/python/max/pipelines/architectures/llama3",
+        "//max/python/max/pipelines/architectures/llama3_modulev3",
     ],
     tags = [
         "no-sandbox",
@@ -216,6 +218,7 @@ modular_py_test(
     deps = [
         "//max/python/max/pipelines",
         "//max/python/max/pipelines/architectures/llama3",
+        "//max/python/max/pipelines/architectures/llama3_modulev3",
         "//max/python/max/pipelines/lib",
     ],
 )
