@@ -241,10 +241,12 @@ def sqrt[
             res[i] = Scalar[dtype](_sqrt_int(Int(x[i])))
         return res
 
+    if __is_run_in_comptime_interpreter:
+        return _llvm_unary_fn["llvm.sqrt"](x)
+
     comptime hook = CurrentPlugin.unary_math_fn["sqrt", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
@@ -298,10 +300,12 @@ def rsqrt[
         dtype.is_floating_point()
     ), "rsqrt requires floating point type"
 
+    if __is_run_in_comptime_interpreter:
+        return 1.0 / sqrt(x)
+
     comptime hook = CurrentPlugin.unary_math_fn["rsqrt", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
@@ -358,6 +362,9 @@ def recip[
         dtype.is_floating_point()
     ), "recip requires floating point type"
 
+    if __is_run_in_comptime_interpreter:
+        return 1.0 / x
+
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
             return _recip_nvvm(x.cast[.float32]()).cast[dtype]()
@@ -398,10 +405,12 @@ def exp2[
         the input SIMD vector.
     """
 
+    if __is_run_in_comptime_interpreter:
+        return _exp2_impl(x)
+
     comptime hook = CurrentPlugin.unary_math_fn["exp2", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime if dtype == .float16:
@@ -433,6 +442,13 @@ def exp2[
             String("llvm.amdgcn.exp2.", _get_amdgcn_type_suffix[dtype]())
         ](x)
 
+    return _exp2_impl(x)
+
+
+@inline(.always)
+def _exp2_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
     comptime if dtype == .float32:
         return _exp2_float32(x._refine[.float32]())._refine[dtype]()
     elif dtype == .float64:
@@ -628,16 +644,25 @@ def exp[
         element in the input SIMD vector.
     """
 
-    comptime neg_ln2 = -0.69314718055966295651160180568695068359375
+    if __is_run_in_comptime_interpreter:
+        return _exp_impl(x)
 
     comptime hook = CurrentPlugin.unary_math_fn["exp", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if is_gpu():
         comptime if dtype in (DType.float16, DType.float32):
             return exp2(x * log2e)
+
+    return _exp_impl(x)
+
+
+@inline(.always)
+def _exp_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
+    comptime neg_ln2 = -0.69314718055966295651160180568695068359375
 
     comptime if dtype not in (DType.float32, DType.float64):
         return exp(x.cast[.float32]()).cast[dtype]()
@@ -1174,10 +1199,12 @@ def tanh[
         The result of the elementwise tanh operation.
     """
 
+    if __is_run_in_comptime_interpreter:
+        return _tanh_impl(x)
+
     comptime hook = CurrentPlugin.unary_math_fn["tanh", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime instruction = "tanh.approx.f32"
@@ -1208,6 +1235,13 @@ def tanh[
                 instruction="tanh.approx.f32", constraints="=f,f"
             ](x)
 
+    return _tanh_impl(x)
+
+
+@inline(.always)
+def _tanh_impl[
+    dtype: DType, width: SIMDLength, //
+](x: SIMD[dtype, width]) -> SIMD[dtype, width] where dtype.is_floating_point():
     comptime if dtype == .float64 and not is_gpu():
         # For float64 on CPU, use the expm1-based identity for full accuracy:
         #   tanh(x) = -expm1(-2|x|) / (expm1(-2|x|) + 2)
@@ -1923,16 +1957,15 @@ def cos[
         The `cos` of the input.
     """
 
+    if __is_run_in_comptime_interpreter:
+        return _llvm_unary_fn["llvm.cos"](x)
+
     comptime hook = CurrentPlugin.unary_math_fn["cos", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return cos(x.cast[.float32]()).cast[dtype]()
-
-    if __is_run_in_comptime_interpreter:
-        return _llvm_unary_fn["llvm.cos"](x)
 
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[
@@ -1969,16 +2002,15 @@ def sin[
         The `sin` of the input.
     """
 
+    if __is_run_in_comptime_interpreter:
+        return _llvm_unary_fn["llvm.sin"](x)
+
     comptime hook = CurrentPlugin.unary_math_fn["sin", dtype, width]
     comptime if hook:
-        if not __is_run_in_comptime_interpreter:
-            return comptime (hook.value())(x)
+        return comptime (hook.value())(x)
 
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return sin(x.cast[.float32]()).cast[dtype]()
-
-    if __is_run_in_comptime_interpreter:
-        return _llvm_unary_fn["llvm.sin"](x)
 
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[

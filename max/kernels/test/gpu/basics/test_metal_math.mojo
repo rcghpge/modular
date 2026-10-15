@@ -137,10 +137,8 @@ def _check_comptime_all[
 
 def main() raises:
     with DeviceContext() as ctx:
-        # TODO(MSTDL-3288): Use `_check_comptime_all` for `sqrt` and `rsqrt`
-        # once the interpreter can evaluate them for 16-bit floats.
-        _check_comptime[sqrt, "sqrt", .float32](ctx)
-        _check_comptime[rsqrt, "rsqrt", .float32](ctx)
+        _check_comptime_all[sqrt, "sqrt"](ctx)
+        _check_comptime_all[rsqrt, "rsqrt"](ctx)
         _check_comptime_all[exp2, "exp2"](ctx)
         _check_comptime_all[sin, "sin"](ctx)
         _check_comptime_all[cos, "cos"](ctx)
