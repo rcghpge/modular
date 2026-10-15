@@ -24,8 +24,6 @@ Submodules
    :hidden:
 
    pipelines.kv_cache.paged_kv_cache
-   pipelines.kv_cache.paged_kv_cache.kv_group_coordinator
-   pipelines.kv_cache.paged_kv_cache.recurrent_coordinator
 
 Memory planning
 ---------------

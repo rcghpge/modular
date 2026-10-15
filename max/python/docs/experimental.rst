@@ -28,7 +28,6 @@ Modules
    max.experimental.realization_context
    max.experimental.sharding
    max.experimental.sharding.per_shard_dim
-   max.experimental.support
    max.experimental.tensor
    max.experimental.testing
    max.experimental.torch
@@ -49,7 +48,6 @@ Modules
    experimental.realization_context
    experimental.sharding
    experimental.sharding.per_shard_dim
-   experimental.support
    experimental.tensor
    experimental.testing
    experimental.torch

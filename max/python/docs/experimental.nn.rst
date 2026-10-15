@@ -17,7 +17,6 @@ Submodules
 .. autosummary::
    :nosignatures:
 
-   max.experimental.nn.common_layers.functional_kernels
    max.experimental.nn.norm
    max.experimental.nn.rope
 
@@ -25,7 +24,6 @@ Submodules
    :maxdepth: 1
    :hidden:
 
-   experimental.nn.common_layers.functional_kernels
    experimental.nn.norm
    experimental.nn.rope
 

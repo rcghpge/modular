@@ -27,8 +27,6 @@ Submodules
    max.pipelines.lib.interfaces
    max.pipelines.lib.log_probabilities
    max.pipelines.lib.registry
-   max.pipelines.lib.request_text
-   max.pipelines.logging_utils
    max.pipelines.modeling.base
    max.pipelines.modeling.dataprocessing
    max.pipelines.modeling.types
@@ -53,8 +51,6 @@ Submodules
    pipelines.lib.interfaces
    pipelines.lib.log_probabilities
    pipelines.lib.registry
-   pipelines.lib.request_text
-   pipelines.logging_utils
    pipelines.modeling.base
    pipelines.modeling.dataprocessing
    pipelines.modeling.types

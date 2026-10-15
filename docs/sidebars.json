@@ -296,17 +296,6 @@
             },
             {
               "type": "category",
-              "label": "nn.functional_kernels",
-              "link": {
-                "type": "doc",
-                "id": "api/python/experimental.nn.common_layers.functional_kernels"
-              },
-              "items": [
-                "__AUTOGEN:max.experimental.nn.common_layers.functional_kernels__"
-              ]
-            },
-            {
-              "type": "category",
               "label": "nn.norm",
               "link": {
                 "type": "doc",
@@ -369,17 +358,6 @@
               },
               "items": [
                 "__AUTOGEN:max.experimental.sharding.per_shard_dim__"
-              ]
-            },
-            {
-              "type": "category",
-              "label": "support",
-              "link": {
-                "type": "doc",
-                "id": "api/python/experimental.support"
-              },
-              "items": [
-                "__AUTOGEN:max.experimental.support__"
               ]
             },
             {
@@ -711,43 +689,10 @@
                     "id": "api/python/pipelines.kv_cache.paged_kv_cache"
                   },
                   "items": [
-                    {
-                      "type": "category",
-                      "label": "kv_group_coordinator",
-                      "link": {
-                        "type": "doc",
-                        "id": "api/python/pipelines.kv_cache.paged_kv_cache.kv_group_coordinator"
-                      },
-                      "items": [
-                        "__AUTOGEN:max.pipelines.kv_cache.paged_kv_cache.kv_group_coordinator__"
-                      ]
-                    },
-                    {
-                      "type": "category",
-                      "label": "recurrent_coordinator",
-                      "link": {
-                        "type": "doc",
-                        "id": "api/python/pipelines.kv_cache.paged_kv_cache.recurrent_coordinator"
-                      },
-                      "items": [
-                        "__AUTOGEN:max.pipelines.kv_cache.paged_kv_cache.recurrent_coordinator__"
-                      ]
-                    },
                     "__AUTOGEN:max.pipelines.kv_cache.paged_kv_cache__"
                   ]
                 },
                 "__AUTOGEN:max.pipelines.kv_cache__"
-              ]
-            },
-            {
-              "type": "category",
-              "label": "logging_utils",
-              "link": {
-                "type": "doc",
-                "id": "api/python/pipelines.logging_utils"
-              },
-              "items": [
-                "__AUTOGEN:max.pipelines.logging_utils__"
               ]
             },
             {
@@ -833,17 +778,6 @@
                   },
                   "items": [
                     "__AUTOGEN:max.pipelines.lib.registry__"
-                  ]
-                },
-                {
-                  "type": "category",
-                  "label": "request_text",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.lib.request_text"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.lib.request_text__"
                   ]
                 },
                 {
@@ -951,61 +885,6 @@
                 "id": "api/python/pipelines.speculative"
               },
               "items": [
-                {
-                  "type": "category",
-                  "label": "adaptive_width",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.speculative.adaptive_width"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.speculative.adaptive_width__"
-                  ]
-                },
-                {
-                  "type": "category",
-                  "label": "block_driver",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.speculative.block_driver"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.speculative.block_driver__"
-                  ]
-                },
-                {
-                  "type": "category",
-                  "label": "depth_schedule",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.speculative.depth_schedule"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.speculative.depth_schedule__"
-                  ]
-                },
-                {
-                  "type": "category",
-                  "label": "driver",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.speculative.driver"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.speculative.driver__"
-                  ]
-                },
-                {
-                  "type": "category",
-                  "label": "spec_target",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.speculative.spec_target"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.speculative.spec_target__"
-                  ]
-                },
                 "__AUTOGEN:max.pipelines.speculative__"
               ]
             },
@@ -1040,17 +919,6 @@
               },
               "items": [
                 "__AUTOGEN:max.profiler.gpu__"
-              ]
-            },
-            {
-              "type": "category",
-              "label": "oneshot",
-              "link": {
-                "type": "doc",
-                "id": "api/python/profiler.oneshot"
-              },
-              "items": [
-                "__AUTOGEN:max.profiler.oneshot__"
               ]
             },
             "__AUTOGEN:max.profiler__"
