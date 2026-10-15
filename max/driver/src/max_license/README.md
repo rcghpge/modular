@@ -26,6 +26,21 @@ The code lives in these places:
 > move to it. Code samples marked **proposed** show the intended design, not
 > the API as it exists today.
 
+## Status
+
+NeoDriver is the driver API MAX is moving to, but it isn't the production path
+yet:
+
+- MAX runs on the legacy `DeviceContext` by default. The CUDA, HIP, Metal, and
+  CPU plugins implement the NeoDriver C interface, and MAX runs on them through
+  the `DeviceContext` compat layer when built with
+  `--config=hal-device-context`.
+- The `M_driver_*` C interface is at version 0.1.0 and changes without notice.
+  Its launch configuration for accelerators other than GPUs is provisional.
+- We're bringing accelerators that aren't GPUs onto NeoDriver, and their
+  plugins aren't part of this repository yet. Where this page mentions such
+  devices, it describes the design, not supported hardware.
+
 ## Why replace `DeviceContext`
 
 `DeviceContext` is one C++ object per device, subclassed per vendor. It
@@ -201,9 +216,9 @@ one context can hand out several. Two choices shape the design:
   buffer, or as a device graph, and overlap independent work.
 
 A *command buffer* records a batch of work and submits it all at once; it's
-native on Metal and Vulkan, and Trainium and Qualcomm accelerators work in a
-similar way. A *device graph* records work and its dependencies once, then
-replays it cheaply many times; CUDA Graphs is the familiar example.
+native on Metal and Vulkan, and many NPUs work in a similar way. A *device
+graph* records work and its dependencies once, then replays it cheaply many
+times; CUDA Graphs is the familiar example.
 
 The queue abstraction is still incubating. While it settles, `Stream` sits on
 top of it and inserts synchronization where a backend that isn't a stream needs
@@ -238,8 +253,7 @@ var config: ctx.ExecutionConfigType
 # No vendor appears here; a new GPU-like backend can just work.
 comptime if conforms_to(ctx.ExecutionConfigType, GridBlockExecutionConfig):
     config = ctx.ExecutionConfigType(grid_dim=(4, 1, 1), block_dim=(1024, 1, 1))
-# Asking only for cores covers CPUs and accelerators such as Qualcomm,
-# Trainium, and TPU.
+# Asking only for cores covers CPUs and NPUs.
 elif conforms_to(ctx.ExecutionConfigType, CoresExecutionConfig):
     config = ctx.ExecutionConfigType(num_cores=num_cores)
 else:
@@ -268,7 +282,7 @@ flowchart TD
     API["NeoDriver client API<br/><i>portable, common feature set</i>"]
     CAPI["M_driver_* C API"]
     Clients --> API --> CAPI
-    CAPI -. "loaded at run time" .-> CPU & CUDA & HIP & Metal & Qualcomm
+    CAPI -. "loaded at run time" .-> CPU & CUDA & HIP & Metal
 ```
 
 ### HAL plugins
@@ -321,12 +335,11 @@ defines and implements an interface, and the only requirement is that kernels
 that want to use it can import the trait.
 
 Extensions are also a path for prototyping and promotion. Features such as
-`MTLTensor` on Metal, the Tensor Memory Accelerator (TMA) on CUDA, and
-`nrt_tensor_handle_t` on Trainium don't map well onto a shared API today. As
-extensions, they can ship without forcing a shared API on backends that don't
-fit it, and a common tensor type can graduate into the HAL later if enough
-backends converge. Backends come up quickly this way, while the shared API
-stays stable.
+`MTLTensor` on Metal and the Tensor Memory Accelerator (TMA) on CUDA don't map
+well onto a shared API today. As extensions, they can ship without forcing a
+shared API on backends that don't fit it, and a common tensor type can
+graduate into the HAL later if enough backends converge. Backends come up
+quickly this way, while the shared API stays stable.
 
 #### Example: graph capture (proposed)
 
