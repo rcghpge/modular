@@ -23,8 +23,10 @@ contributing documentation, examples, or code.
    before you open a pull request. The owning team marks the issue `accepted`
    once it's ready for a PR.
 
-3. Keep each pull request to one change, in one contribution area, ideally
-   under 100 lines.
+3. Read our [issue and PR etiquette](./issue-pr-etiquette.md). It sets out
+   what we expect from you when engaging with the
+   [modular/modular](https://github.com/modular/modular) repository, including
+   our rules on AI-assisted contributions and on keeping pull requests small.
 
 4. Read the [Code of Conduct on
    GitHub](https://github.com/modular/modular/blob/main/CODE_OF_CONDUCT.md).

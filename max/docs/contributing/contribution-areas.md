@@ -15,7 +15,8 @@ Many parts of the codebase are under active development. Contributions to
 these components may receive closer review or be superseded by internal work,
 so opening an issue to discuss first is strongly recommended.
 
-Keep each pull request inside a single area.
+Keep each pull request inside a single area. See
+[keep pull requests small](issue-pr-etiquette.md#keep-pull-requests-small).
 
 ## GPU programming
 
