@@ -41,6 +41,7 @@ from max.graph import (
 )
 from max.graph.ops import assert_same_device
 from max.graph.ops.quantized import repack_gguf_quantized_weights
+from max.graph.ops.rms_norm import _float32_attr
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
 from max.nn.quant_config import InputScaleSpec, QuantConfig, WeightScaleSpec
 
@@ -8650,6 +8651,9 @@ def grouped_matmul_blocked_swiglu(
     activation_parameters = (
         activation or GatedActivation()
     ).kernel_parameters()
+    activation_name = activation_parameters["activation"]
+    swiglu_alpha = activation_parameters["swiglu_alpha"]
+    swiglu_limit = activation_parameters["swiglu_limit"]
 
     # N = 2D, so weight.shape[1] must be even and D = N // 2.
     n_dim = weight.shape[1]
@@ -8688,7 +8692,10 @@ def grouped_matmul_blocked_swiglu(
     # Emitted as a first-class composite op (lowers 1:1 to the
     # `mo.composite.grouped_matmul_swiglu_nvfp4` kernel) so the MegaFFN fusion
     # can match a typed op rather than a string-keyed `mo.custom`. The
-    # activation rides as string attributes, one per kernel parameter.
+    # activation name rides as a string attribute; its constants ride as
+    # rank-0 f32 scalars (see `MO_F32ScalarAttr`). They still arrive here
+    # string-encoded (`kernel_parameters`); `float()` parses them back until
+    # the emitters switch to passing floats.
     results = Graph.current._add_op_generated(
         mo.CompositeGroupedMatmulSwigluNvfp4Op,
         c_packed_type,
@@ -8709,10 +8716,9 @@ def grouped_matmul_blocked_swiglu(
         else expert_usage_stats_host[0],
         expert_usage_stats_host[1],
         has_a_row_scales=builtin.BoolAttr(a_row_scales is not None),
-        **{
-            name: builtin.StringAttr(value)
-            for name, value in activation_parameters.items()
-        },
+        activation=builtin.StringAttr(activation_name),
+        swiglu_alpha=_float32_attr(float(swiglu_alpha)),
+        swiglu_limit=_float32_attr(float(swiglu_limit)),
     )
 
     return results[0].tensor, results[1].tensor

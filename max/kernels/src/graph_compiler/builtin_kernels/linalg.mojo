@@ -685,8 +685,8 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
         row_scales_type: DType,
         //,
         activation: StaticString,
-        swiglu_alpha: StaticString,
-        swiglu_limit: StaticString,
+        swiglu_alpha: Float32,
+        swiglu_limit: Float32,
         has_a_row_scales: Bool,
         target: StaticString,
     ](
@@ -724,9 +724,8 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
                 Constraints: Must be `bfloat16` when `has_a_row_scales`.
             activation: Activation name, bound from the op's same-named
                 attribute; the activation is built at compile time.
-            swiglu_alpha: Activation constant as a decimal string (graph ops
-                cannot carry float parameters).
-            swiglu_limit: Activation constant as a decimal string.
+            swiglu_alpha: The activation's alpha constant.
+            swiglu_limit: The activation's clamp limit.
             has_a_row_scales: Whether `a_row_scales` holds per-row input
                 scales.
             target: The target GPU device.
@@ -757,8 +756,8 @@ struct Struct_grouped_matmul_swiglu_nvfp4:
             return
         comptime act = get_swiglu_activation[
             activation,
-            comptime_atof[swiglu_alpha](),
-            comptime_atof[swiglu_limit](),
+            swiglu_alpha,
+            swiglu_limit,
         ]
         comptime if has_a_row_scales:
             comptime assert (
