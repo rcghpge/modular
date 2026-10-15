@@ -133,6 +133,7 @@ MODELS: Mapping[str, set[str]] = {
     "thinkingmachines/Inkling-Small-NVFP4": NIGHTLY | _2xB200,
     "thinkingmachines/Inkling-Small-NVFP4__mtp": NIGHTLY | VARIANT | _2xB200,
     "zai-org/GLM-5.3-Flash__tpep": NIGHTLY | VARIANT | _8xB200,
+    "zai-org/GLM-5.3-Flash__tpep_mi355": NIGHTLY | VARIANT | _2xMI355,
     "zai-org/GLM-5.3__fp8_tpep_mi355": NIGHTLY | VARIANT | _8xMI355,
 }
 # fmt: on
