@@ -368,7 +368,9 @@ class Module(Layer, ABC):
 
         The graph passes one input per entry of ``input_types`` to
         ``__call__`` positionally, and ``__call__`` returns the graph's
-        outputs: one value, a sequence of values, or ``None``. Weights keep
+        outputs: one value, a sequence of values, or ``None``. A subclass
+        whose ``__call__`` takes structured arguments overrides this method
+        to adapt the flat graph inputs to them. Weights keep
         the names they have when tracing starts. :meth:`load_state_dict` and
         :meth:`state_dict` name each weight by its attribute path, so call one
         of them first when the graph's weights registry comes from
