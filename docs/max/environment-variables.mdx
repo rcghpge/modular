@@ -161,12 +161,12 @@ telemetry is disabled. Either way logs go to Modular:
 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` has no effect, and
 `OTEL_EXPORTER_OTLP_PROTOCOL` is not read.
 
-The generic `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_CERTIFICATE`,
-`OTEL_EXPORTER_OTLP_TIMEOUT` and `OTEL_EXPORTER_OTLP_COMPRESSION` settings are
-read by every exporter that gets built, and any signal still pointed at
-Modular's collector carries them. If you set headers to authenticate against
-your own collector but redirect only traces, your metrics reach Modular with
-those headers attached.
+The generic `OTEL_EXPORTER_OTLP_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TIMEOUT` and
+`OTEL_EXPORTER_OTLP_COMPRESSION` settings are read by every exporter the MAX
+server builds. The server's exports to Modular's collector ignore
+`OTEL_EXPORTER_OTLP_HEADERS` and its signal-specific forms, but MAX's runtime
+telemetry reads all of them except `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, so put
+credentials for your own trace collector only there.
 
 ## Debugging
 

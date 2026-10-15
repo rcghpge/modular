@@ -91,19 +91,33 @@ def clear_otel_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         ),
     ],
 )
+@pytest.mark.parametrize(
+    "headers_var",
+    [
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "OTEL_EXPORTER_OTLP_METRICS_HEADERS",
+        "OTEL_EXPORTER_OTLP_LOGS_HEADERS",
+    ],
+)
 def test_exporter_endpoint_precedence(
     monkeypatch: pytest.MonkeyPatch,
     build: Callable[[], OTLPMetricExporter],
     signal_var: str,
     path: str,
+    headers_var: str,
 ) -> None:
-    """The last two assertions are the ones that matter: reading either
+    """The last two endpoint assertions are the ones that matter: reading either
     variable's value and passing it as ``endpoint=`` would let the generic one
     win, inverting the precedence the OTel spec requires."""
+    monkeypatch.setenv(headers_var, "dd-api-key=secret")
     assert build()._endpoint == common.otelBaseUrl + path
+    assert "dd-api-key" not in build()._session.headers
+    assert "dd-api-key" not in common._log_exporter()._session.headers
 
     monkeypatch.setenv(GENERIC, "http://agent:4318")
     assert build()._endpoint == "http://agent:4318" + path
+    if "LOGS" not in headers_var:
+        assert "dd-api-key" in build()._session.headers
 
     monkeypatch.setenv(signal_var, "http://specific:4318/sink")
     assert build()._endpoint == "http://specific:4318/sink"

@@ -95,6 +95,9 @@ if TYPE_CHECKING:
 
 otelBaseUrl = "https://telemetry.modular.com:443"
 
+# Non-empty so the SDK skips OTEL_EXPORTER_OTLP_*HEADERS; it sends this anyway.
+_MODULAR_OTLP_HEADERS = {"Content-Type": "application/x-protobuf"}
+
 
 def _operator_set_endpoint(signal_var: str) -> bool:
     """Whether the operator set ``signal_var`` or the generic endpoint variable.
@@ -462,6 +465,12 @@ class _RequestIdJsonFormatter(jsonlogger.JsonFormatter):
             log_record["request_id"] = request_id
 
 
+def _log_exporter() -> OTLPLogExporter:
+    return OTLPLogExporter(
+        endpoint=otelBaseUrl + "/v1/logs", headers=_MODULAR_OTLP_HEADERS
+    )
+
+
 # Configure logging to console and OTEL.  This should be called before any
 # 3rd party imports whose logging you wish to capture.
 # Note that the color is not propagated to subprocesses. eg: ModelWorker
@@ -582,7 +591,7 @@ def configure_logging(
         # Create an OTEL handler
         logger_provider = LoggerProvider(logs_resource)
         set_logger_provider(logger_provider)
-        exporter = OTLPLogExporter(endpoint=otelBaseUrl + "/v1/logs")
+        exporter = _log_exporter()
         logger_provider.add_log_record_processor(
             BatchLogRecordProcessor(exporter)
         )
@@ -711,7 +720,9 @@ def _metric_exporter() -> OTLPMetricExporter:
     """Builds the metric exporter, falling back to Modular's collector."""
     if _operator_set_endpoint("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"):
         return OTLPMetricExporter()
-    return OTLPMetricExporter(endpoint=otelBaseUrl + "/v1/metrics")
+    return OTLPMetricExporter(
+        endpoint=otelBaseUrl + "/v1/metrics", headers=_MODULAR_OTLP_HEADERS
+    )
 
 
 def configure_metrics(settings: Settings) -> None:
