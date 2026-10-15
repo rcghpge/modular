@@ -168,12 +168,20 @@ slots still consume hardware resources. For this reason, you generally
 should make thread block sizes a multiple of the warp size to optimize resource
 usage.
 
-Each thread in a warp executes the same instruction at the same time on
-different data, following the *single instruction, multiple threads* (SIMT)
-execution model. If threads within a warp take different execution paths (called
-*warp divergence*), the warp serially executes each branch path taken, disabling
-threads that are not on that path. This means that optimal performance is
-achieved when all threads in a warp follow the same execution path.
+A warp executes one common instruction at a time across its threads, with each
+thread operating on different data. This is the *single instruction, multiple
+threads* (SIMT) execution model. A warp runs most efficiently when all of its
+threads take the same path through the code.
+
+When threads in a warp take different branches (called *warp divergence*), the
+warp executes each path in turn and masks off the threads that aren't on it, so
+divergent code runs slower. On NVIDIA GPUs since Volta, each thread also has its
+own program counter and call stack (*independent thread scheduling*). Threads in
+a warp can then make progress independently and reconverge in groups smaller
+than the full warp. AMD and Apple GPUs instead disable the threads that aren't
+on the current path and re-enable them at a reconvergence point. For how this
+affects synchronization within a warp, see
+[Warp-level synchronization](/gpu/block-and-warp#warp-level-synchronization).
 
 An SM can actively manage multiple warps from different thread blocks
 simultaneously, helping keep execution units busy. For example, the warp
@@ -186,8 +194,11 @@ Warps deliver several key performance advantages:
   reducing scheduling overhead.
 - Threads in a warp can access contiguous memory locations efficiently through
   memory coalescing.
-- The hardware automatically synchronizes threads within a warp, eliminating the
-  need for explicit synchronization.
+- The hardware schedules and issues a warp's threads as a unit, so warp-level
+  operations such as shuffles, reductions, and votes have low latency. With
+  independent thread scheduling, threads in a warp can be at different points in
+  the code. Synchronize them explicitly before they exchange data through shared
+  memory.
 - The warp scheduler can hide memory latency by switching between warps,
   maximizing compute resource utilization.
 
