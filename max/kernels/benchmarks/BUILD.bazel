@@ -24,6 +24,8 @@ _EXTRA_DEPS = {
 }
 
 _EXTRA_CONSTRAINTS = {
+    # MXFP4 packing uses the SM100 conversion instructions.
+    "gpu/nn/bench_indexer_k_store.mojo": ["//:b200_gpu"],
     "algorithm/parallelize_overhead.mojo": select({
         "//:asan": ["@platforms//:incompatible"],
         "//conditions:default": [],
