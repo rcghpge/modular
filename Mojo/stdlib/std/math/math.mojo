@@ -600,12 +600,6 @@ def _exp_taylor[
     ](x)
 
 
-comptime _ExpPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
-    SIMD[dtype, width]
-) thin -> SIMD[dtype, width]
-"""Plugin-hook signature for `PluginHooks.exp_fn`; keep in sync with `exp`."""
-
-
 @inline(.always)
 def exp[
     dtype: DType, width: SIMDLength, //
@@ -633,8 +627,9 @@ def exp[
 
     comptime neg_ln2 = -0.69314718055966295651160180568695068359375
 
-    comptime if CurrentPlugin.exp_fn:
-        return comptime (CurrentPlugin.exp_fn.value())(x)
+    comptime hook = CurrentPlugin.unary_math_fn["exp", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
 
     comptime if is_gpu():
         comptime if dtype in (DType.float16, DType.float32):
@@ -1158,12 +1153,6 @@ def erf[
 # ===----------------------------------------------------------------------=== #
 
 
-comptime _TanhPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
-    SIMD[dtype, width]
-) thin -> SIMD[dtype, width]
-"""Plugin-hook signature for `PluginHooks.tanh_fn`; keep in sync with `tanh`."""
-
-
 @inline(.always)
 def tanh[
     dtype: DType, width: SIMDLength, //
@@ -1181,8 +1170,9 @@ def tanh[
         The result of the elementwise tanh operation.
     """
 
-    comptime if CurrentPlugin.tanh_fn[dtype, width]:
-        return comptime (CurrentPlugin.tanh_fn[dtype, width].value())(x)
+    comptime hook = CurrentPlugin.unary_math_fn["tanh", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
 
     comptime if is_nvidia_gpu():
         comptime instruction = "tanh.approx.f32"

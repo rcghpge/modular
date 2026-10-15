@@ -16,11 +16,7 @@ from std.reflection.location import SourceLocation
 
 from std.utils.coord import Coord
 from std.utils.index import IndexList
-from std.math.math import (
-    _ExpPluginHookFnType,
-    _TanhPluginHookFnType,
-    _UnaryMathPluginHookFnType,
-)
+from std.math.math import _UnaryMathPluginHookFnType
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
@@ -83,44 +79,14 @@ trait PluginHooks:
     # Math & Algorithm Operations
     # ===------------------------------------------------------------------=== #
 
-    comptime exp_fn: OptionalReg[_ExpPluginHookFnType] = None
-    """Elementwise exponential override.
-
-    Parameters:
-        dtype: The `dtype` of the input and output SIMD vector.
-        width: The width of the input and output SIMD vector.
-
-    Args:
-        x: The input SIMD vector.
-
-    Returns:
-        Elementwise `exp(x)` computed on the vendor backend.
-    """
-
-    comptime tanh_fn[dtype: DType, width: Int]: OptionalReg[
-        _TanhPluginHookFnType
-    ] = None
-    """Elementwise hyperbolic tangent override.
-
-    Parameters:
-        dtype: The `dtype` of the input and output SIMD vector.
-        width: The width of the input and output SIMD vector.
-
-    Args:
-        x: The input SIMD vector.
-
-    Returns:
-        Elementwise `tanh(x)` computed on the vendor backend.
-    """
-
     comptime unary_math_fn[
         name: StaticString, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = None
     """Elementwise override for the `std.math` function called `name`.
 
-    Consulted by `sqrt`, `rsqrt`, `exp2`, `sin`, and `cos` for
-    floating-point inputs. Returning `None` for a `name`, `dtype`, and `width`
-    keeps the stdlib's own lowering for that case.
+    Consulted by `exp`, `exp2`, `sqrt`, `rsqrt`, `sin`, `cos`, and `tanh`
+    for floating-point inputs. Returning `None` for a `name`, `dtype`, and
+    `width` keeps the stdlib's own lowering for that case.
 
     Parameters:
         name: The `std.math` function being lowered, such as `"sqrt"`.
