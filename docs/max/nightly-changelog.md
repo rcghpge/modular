@@ -730,6 +730,10 @@ This version is still a work in progress.
   the matching `max serve` command.
 - `OverlapTextGenerationPipeline` has a new `graph_capture_ready` property.
 
+- Added `max.nn.Module.named_modules()`, which yields every module in the
+  tree with the prefix its weights carry in `raw_state_dict()`, so code can
+  find modules by type and address their weights without parsing names.
+
 ### C API
 
 ## Kernels and GPU programming

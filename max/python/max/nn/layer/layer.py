@@ -650,6 +650,55 @@ class Module(Layer, ABC):
             name: weight for name, weight, _layer in self._iter_named_weights()
         }
 
+    def named_modules(self) -> Iterable[tuple[str, Module]]:
+        """Yields ``(weight prefix, module)`` for every module in the tree.
+
+        The walk is bfs from self and visits each module once,
+        even when it is reachable through several attribute paths. The prefix
+        is the string `raw_state_dict` prepends to the module's own
+        weight names: empty for ``self``, otherwise the attribute path with a
+        trailing ``.`` (e.g. ``layers.3.mlp.``). A sublayer whose
+        :attr:`_omit_module_attr_name` is ``True`` shares its parent's prefix.
+
+        Returns:
+            An iterable of ``(prefix, module)`` pairs.
+        """
+        for _display_name, prefix, module in self._iter_named_modules():
+            yield prefix, module
+
+    def _iter_named_modules(self) -> Iterable[tuple[str, str, Module]]:
+        """Yields ``(display name, weight prefix, module)`` triples.
+
+        ``display_name`` always includes every attribute name on the path,
+        even for name-omitting modules, so error messages can point at the
+        attribute path used in the source.
+        """
+        # We carry the weight prefix explicitly through the walk rather
+        # than re-deriving it from each child's display name; otherwise a
+        # name-omitting child's dropped attribute name would be silently
+        # reintroduced when descending past it.
+        queue: deque[tuple[str, str, Module]] = deque()
+        queue.append(("", "", self))
+        visited = IdentitySet[Module]()
+
+        while queue:
+            display_name, weight_prefix, layer = queue.popleft()
+            if layer in visited:
+                continue
+            visited.add(layer)
+            yield display_name, weight_prefix, layer
+
+            for local_name, child in layer.sublayers.items():
+                if child._omit_module_attr_name:
+                    child_weight_prefix = weight_prefix
+                else:
+                    child_weight_prefix = f"{weight_prefix}{local_name}."
+                if display_name:
+                    child_display = f"{display_name}.{local_name}"
+                else:
+                    child_display = local_name
+                queue.append((child_display, child_weight_prefix, child))
+
     def _iter_named_weights(
         self,
     ) -> Iterable[tuple[str, Weight, Module]]:
@@ -668,24 +717,8 @@ class Module(Layer, ABC):
                 the parent's namespace and a sibling already claims that
                 name.
         """
-        # We carry the weight prefix explicitly through the walk rather
-        # than re-deriving it from each child's display name; otherwise a
-        # name-omitting child's dropped attribute name would be silently
-        # reintroduced when descending past it.
         seen: dict[str, str] = {}
-        # Queue entries are ``(display_name, weight_prefix, layer)``.
-        # ``weight_prefix`` already accounts for any name-omitting ancestors
-        # above ``layer``; ``display_name`` is only used in error messages.
-        queue: deque[tuple[str, str, Module]] = deque()
-        queue.append(("", "", self))
-        visited = IdentitySet[Module]()
-
-        while queue:
-            display_name, weight_prefix, layer = queue.popleft()
-            if layer in visited:
-                continue
-            visited.add(layer)
-
+        for display_name, weight_prefix, layer in self._iter_named_modules():
             for weight_name, weight in layer.layer_weights.items():
                 if weight_name in layer._shared_weights:
                     continue
@@ -715,23 +748,6 @@ class Module(Layer, ABC):
                     )
                 seen[full_name] = display_name or "<root>"
                 yield full_name, weight, layer
-
-            # Enqueue children. A child with ``_omit_module_attr_name``
-            # contributes nothing to the weight prefix; otherwise the
-            # child appends its own attribute name.
-            for local_name, child in layer.sublayers.items():
-                if child._omit_module_attr_name:
-                    child_weight_prefix = weight_prefix
-                else:
-                    child_weight_prefix = f"{weight_prefix}{local_name}."
-                # display_name still includes the attribute name even for
-                # a name-omitting child, so error messages can point at
-                # the actual attribute path used in the source.
-                if display_name:
-                    child_display = f"{display_name}.{local_name}"
-                else:
-                    child_display = local_name
-                queue.append((child_display, child_weight_prefix, child))
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
