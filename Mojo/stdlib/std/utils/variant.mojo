@@ -18,7 +18,7 @@ from std.format._utils import (
     TypeNames,
 )
 from std.memory import MaybeUninit
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.reflection import call_location
 from std.traits import (
     IsTriviallyCopyable,

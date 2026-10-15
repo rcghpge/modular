@@ -14,7 +14,7 @@
 from std.sys.info import size_of
 
 from std.compile import compile_info
-from std.hashlib import hash
+from std.hash import hash
 from std.memory import MaybeUninit
 from std.traits import (
     IsTriviallyCopyable,

@@ -38,10 +38,6 @@ trait Hasher:
     data, and finalize the hash computation.
     """
 
-    def __init__(out self):
-        """Initialize a new hasher instance."""
-        ...
-
     def _update_with_simd(mut self, value: SIMD[_, _]):
         ...
 
@@ -53,7 +49,7 @@ trait Hasher:
         """
         ...
 
-    def finish(var self) -> UInt64:
+    def finish(self) -> UInt64:
         """Finalize the hash computation and return the hash value.
 
         Returns:

@@ -11,9 +11,9 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.hashlib import Hasher
-from std.hashlib._ahash import AHasher
-from std.hashlib._fnv1a import Fnv1a
+from std.hash import Hasher
+from std.hash._ahash import AHasher
+from std.hash._fnv1a import Fnv1a
 
 from std.benchmark import Bench, BenchConfig, Bencher, BenchId, keep
 
@@ -363,12 +363,12 @@ widziałem, stanie, powiem, imię, wy, żebyś, nadzieję, twojej, panu, spokój
 znam, pierwszy, koniec, chciałbym, we, nami, jakie, posłuchaj, problem, przecież, dobre, nasz, dziecko, drzwi,
 nasze, miło, czuję, mógł, żyje, jeżeli, człowiek, powiedziałem, gdyby, roku, dom, sama, potrzebuję,
 wszystkim, zostać, wciąż, dokładnie, mama, którzy, mówić, zamknij, mów, twoją, chwilę, zrobił, samo, idziemy,
-nadal, jesteście, zabić, były, sobą, kogo, lub, lubię, the, podoba, minut, bym, chciał, bądź, czegoś, gdzieś,
+nadal, jesteście, zabić, były, sobą, kogo, lub, lubię, the, podoba, minute, bym, chciał, bądź, czegoś, gdzieś,
 mówiłem, chodźmy, znaleźć, poza, spokojnie, wcześniej, został, rozumiesz, mogą, prawie, wydaje, miała, mały,
 byłeś, facet, zrobię, macie, żadnych, razy, noc, ciągle, broń, moich, twojego, końcu, pomocy, czekaj, znasz,
 oczy, weź, idę, halo, dość, innego, pomysł, jakby, trzymaj, jedno, ojca, porozmawiać, pamiętasz, lata,
 powinieneś, którą, powodu, takim, niczego, powinniśmy, oto, napisy, jednak, świat, pokoju, żebym, sprawy,
-dwie, samochód, swój, wystarczy, pewien, źle, pozwól, numer, jedną, miejscu, you, drogi, byłam, dokąd, miłość,
+dwie, samochód, swój, wystarczy, pewien, źle, pozwól, number, jedną, miejscu, you, drogi, byłam, dokąd, miłość,
 panowie, pieniędzy, którego, matka, rano, dwóch, całe, patrz, rzecz, nowy, idzie, wyglądasz, bóg, byś, życiu,
 nimi, nikogo, całą, swojego, świecie, sprawa, dziewczyna, prawo, byli, zostaw, wiedziałem, jedna, widzieć,
 swoim, kobiety, uważaj, najpierw, właściwie, dam, również, diabła, chcą, którym, zrób, da, jednego, dać,
@@ -582,7 +582,9 @@ def gen_word_pairs[words: String = words_en]() -> List[String]:
 # ===-----------------------------------------------------------------------===#
 # Benchmarks
 # ===-----------------------------------------------------------------------===#
-def bench_small_keys[s: String, HasherType: Hasher](mut b: Bencher) raises:
+def bench_small_keys[
+    s: String, HasherType: Hasher & Deinitable & Defaultable
+](mut b: Bencher) raises:
     var words = gen_word_pairs[s]()
 
     @inline(.always)
@@ -594,7 +596,9 @@ def bench_small_keys[s: String, HasherType: Hasher](mut b: Bencher) raises:
     b.iter(call_fn)
 
 
-def bench_long_key[s: String, HasherType: Hasher](mut b: Bencher) raises:
+def bench_long_key[
+    s: String, HasherType: Hasher & Deinitable & Defaultable
+](mut b: Bencher) raises:
     @inline(.always)
     def call_fn() {imm}:
         var h = hash[HasherType](s)

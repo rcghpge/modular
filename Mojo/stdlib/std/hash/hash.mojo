@@ -107,7 +107,9 @@ trait Hashable:
 
 
 def hash[
-    T: Hashable, //, HasherType: Hasher = default_hasher
+    T: Hashable,
+    //,
+    HasherType: Hasher & Defaultable & Deinitable = default_hasher,
 ](hashable: T) -> UInt64:
     """Hash a Hashable type using its underlying hash implementation.
 
@@ -123,12 +125,12 @@ def hash[
     """
     var hasher = HasherType()
     hashable.__hash__(hasher)
-    var value = hasher^.finish()
+    var value = hasher.finish()
     return value
 
 
 def hash_bytes[
-    HasherType: Hasher = default_hasher
+    HasherType: Hasher & Defaultable & Deinitable = default_hasher
 ](bytes: ImmSpan[Byte, _]) -> UInt64:
     """Hash a sequence of bytes using the specified hasher.
 
@@ -148,13 +150,13 @@ def hash_bytes[
     """
     var hasher = HasherType()
     hasher.update(bytes)
-    var value = hasher^.finish()
+    var value = hasher.finish()
     return value
 
 
 @deprecated("Use `hash_bytes()` instead")
 def hash[
-    HasherType: Hasher = default_hasher
+    HasherType: Hasher & Defaultable & Deinitable = default_hasher
 ](bytes: ImmPointer[UInt8, _], n: Int) -> UInt64:
     """Hash a sequence of bytes using the specified hasher.
 

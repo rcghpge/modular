@@ -48,7 +48,7 @@ from std.collections.string.string import (
     _calc_initial_buffer_size_int64,
     _calc_initial_buffer_size,
 )
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.math import Ceilable, CeilDivable, Floorable, Truncable
 from std.math.math import _call_ptx_intrinsic, trunc
 from std.sys import (

@@ -41,7 +41,7 @@ from std.builtin.rebind import downcast
 from std.collections import check_bounds, check_slice_bounds
 import std.format._utils as fmt
 from std.reflection import reflect
-from std.hashlib.hasher import Hasher
+from std.hash.hasher import Hasher
 from std.sys import size_of
 from std.memory import (
     MaybeUninit,

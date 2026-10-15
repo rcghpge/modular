@@ -65,7 +65,7 @@ struct Fnv1a(Defaultable, Hasher):
                 self._value ^= (v >> type_of(v)(r * 64)).cast[.uint64]()
                 self._value *= 0x100000001B3
 
-    def finish(var self) -> UInt64:
+    def finish(self) -> UInt64:
         """Computes the hash value based on all the previously provided data.
 
         Returns:

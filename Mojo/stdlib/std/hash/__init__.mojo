@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Cryptographic and non-cryptographic hashing with customizable algorithms.
 
-The `hashlib` package provides hashing functionality for computing hash values
+The `hash` package provides hashing functionality for computing hash values
 of data. It defines the core hashing infrastructure through the `Hasher` trait
 for implementing hash algorithms and the `Hashable` trait for types that can be
 hashed. The package supports both compile-time and runtime hashing with

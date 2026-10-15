@@ -272,6 +272,14 @@ This version is still a work in progress.
   `hash()` keeps its `Hashable` meaning, so `hash(my_list)` still hashes a list
   element-by-element while `hash_bytes(my_list)` hashes its bytes.
 
+- `std.hashlib` was renamed to `std.hash`
+
+- `Hasher.finish` no longer takes its argument by movable convention
+
+- `Hasher` no longer requires an `__init__` method. Some usages will need to
+  be updated to require `Defaultable`. No changes have (yet) been made to how
+  collection hashers are seeded.
+
 - `Coord.product()` has a new parameterized overload, `product[T: DType]()`,
   which accumulates and returns the product at `T` rather than at
   `Coord.DTYPE`:

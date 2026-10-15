@@ -223,7 +223,7 @@ struct AHasher[key: U256](Defaultable, Hasher):
                     self._large_update(U128(u64_1, u64_2))
 
     @inline(.always)
-    def finish(var self) -> UInt64:
+    def finish(self) -> UInt64:
         """Computes the hash value based on all the previously provided data.
 
         Returns:
@@ -250,7 +250,7 @@ def hash_seeded_bytes(data: ImmSpan[Byte, _], seed: U256) -> UInt64:
     """
     var hasher = AHasher[U256(0)](seed)
     hasher.update(data)
-    var value = hasher^.finish()
+    var value = hasher.finish()
     return value
 
 
@@ -292,5 +292,5 @@ def hash_seeded[T: Hashable](value: T, seed: U256) -> UInt64:
     """
     var hasher = AHasher[U256(0)](seed)
     value.__hash__(hasher)
-    var result = hasher^.finish()
+    var result = hasher.finish()
     return result
