@@ -33,6 +33,7 @@ from max.experimental.nn.common_layers.quant_tensor import (
     FP8BlockTensor,
     NVFP4Activation,
     NVFP4Tensor,
+    NVFP4TensorQuantizer,
 )
 from max.experimental.tensor import Tensor
 from max.nn.comm.ep import EPConfig
@@ -67,6 +68,18 @@ def test_predicates_separate_fp8_from_nvfp4(
     assert quant_ops.is_nvfp4_quantized(nvfp4_quant_config)
     assert not quant_ops.is_nvfp4_quantized(fp8_quant_config)
     assert not quant_ops.is_nvfp4_quantized(None)
+
+
+def test_fake_quant_is_not_checkpoint_nvfp4(
+    nvfp4_quant_config: QuantConfig, nvfp4_fake_quant_config: QuantConfig
+) -> None:
+    """Runtime NVFP4 quantization is a separate format from packed checkpoints."""
+    assert quant_ops.is_nvfp4_fake_quantized(nvfp4_fake_quant_config)
+    assert not quant_ops.is_nvfp4_fake_quantized(nvfp4_quant_config)
+    assert not quant_ops.is_nvfp4_fake_quantized(None)
+
+    assert not quant_ops.is_nvfp4_quantized(nvfp4_fake_quant_config)
+    assert quant_ops.is_nvfp4_quantized(nvfp4_quant_config)
 
 
 def test_only_nvfp4_needs_dispatch_scales_and_offsets(
@@ -118,6 +131,21 @@ def test_quantized_weight_dispatch_by_format(
             ),
             NVFP4Tensor,
         )
+
+
+def test_quantized_weight_nvfp4_fake(
+    nvfp4_fake_quant_config: QuantConfig,
+) -> None:
+    """Fake-quant NVFP4 wraps the logical bf16 weight instead of packed leaves."""
+    with F.lazy():
+        weight = quant_ops.quantized_weight(
+            _MOE_DIM, _HIDDEN_DIM, nvfp4_fake_quant_config
+        )
+
+        assert isinstance(weight, NVFP4TensorQuantizer)
+        assert weight.block_size == (1, 16)
+        assert list(weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
+        assert weight._tensor.dtype == DType.float32
 
 
 def test_quantized_weight_rejects_unsupported_format(
