@@ -6,6 +6,6 @@
 // CHECK-DAG: @register(imposter_add)
 // CHECK-DAG: @register(imposter_add_lhs)
 // CHECK-DAG: @register(imposter_add_elementwise)
-// CHECK-DAG: @primitive(mogg.elemwise_for_each)
+// CHECK-DAG: @primitive(mogg.call.foreach)
 
 module {}

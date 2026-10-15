@@ -45,8 +45,6 @@ public:
   /// Asserts that the primitive exists.
   PrimitiveDeclOp lookupPrimitive(llvm::StringRef name) const;
 
-  PrimitiveDeclOp lookupPrimitiveBySymName(llvm::StringRef symName) const;
-
   bool containsPrimitive(llvm::StringRef name) const;
 
   /// Returns a null op if none exists.
@@ -75,7 +73,6 @@ private:
   llvm::StringMap<llvm::SmallVector<KernelDeclOp>> kernelByName;
   llvm::StringMap<KernelDeclOp> kernelBySymName;
   llvm::StringMap<PrimitiveDeclOp> primitiveByName;
-  llvm::StringMap<PrimitiveDeclOp> primitiveBySymName;
   llvm::StringMap<ShapeFunctionDeclOp> shapeFuncByName;
   llvm::StringMap<ShapeFunctionDeclOp> shapeFuncBySymName;
 };

@@ -679,16 +679,6 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
   let description = [{
     Dynamic output dimensions come from `dynamic_dims`. Represents the reshape
     before a kernel call whose fused output lambda applies an affine op.
-
-    Example:
-    ```
-    %lambda = mogg.bind (%output) output_lambda (%arg8: f32, %arg9: !pop.array<2, index>) {
-      %17 = mogg.call "split_dim_indices"(%arg9, %8) {axis = 0 : index} : !pop.array<2, index>, !mo.scalar<si64> -> !pop.array<3, index>
-      mogg.output %arg8, %17 : f32, !pop.array<3, index>
-    }: (!mo.tensor<[2, 2, 1], f32, {io = #mo.io<Output>}>) -> !mo.tensor<[4, 1], f32>
-    %reshaped = mogg.tensor.reshape(%output) : !mo.tensor<[2, 2, 1], f32, {io = #mo.io<Output>}> -> !mo.tensor<[4, 1], f32>
-    %fused = mogg.materialize_fused_tensor(%lambda, %reshaped) : (!mo.tensor<[4, 1], f32>, !mo.tensor<[4, 1], f32>) -> !mo.tensor<[4, 1], f32>
-    ```
   }];
 
   let arguments = (ins
@@ -978,8 +968,8 @@ def MOGG_PrimitiveDeclOp
   let summary = "Declares a primitive Mojo function inline in the module";
   let description = [{
     Records the signature of a standalone `@register_internal` Mojo function
-    (e.g. the `foreach` driver). `sym_name` is its fully-qualified name and
-    `registration` its intrinsic string (e.g. `"mogg.elemwise_for_each"`). A
+    (e.g. the `_foreach` driver). `sym_name` is its fully-qualified name and
+    `registration` its intrinsic string (e.g. `"mogg.call.foreach"`). A
     primitive must have exactly one registration, since the symbol table
     rejects a duplicate `sym_name`. `result_params` is not populated.
   }];

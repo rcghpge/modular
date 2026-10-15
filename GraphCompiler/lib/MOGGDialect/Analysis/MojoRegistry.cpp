@@ -50,10 +50,8 @@ MojoRegistry::MojoRegistry(mlir::ModuleOp module) : deviceInfoMapping(module) {
   }
   for (auto decl : module.getOps<PrimitiveDeclOp>()) {
     llvm::StringRef reg = decl.getRegistration();
-    if (!primitiveByName.contains(reg)) {
+    if (!primitiveByName.contains(reg))
       primitiveByName[reg] = decl;
-      primitiveBySymName[decl.getSymName()] = decl;
-    }
   }
   for (auto decl : module.getOps<ShapeFunctionDeclOp>()) {
     shapeFuncByName[decl.getRegistration()] = decl;
@@ -89,14 +87,6 @@ PrimitiveDeclOp MojoRegistry::lookupPrimitive(llvm::StringRef name) const {
   auto it = primitiveByName.find(name);
   ASSERT_STREAM(it != primitiveByName.end(),
                 "no primitive registered for '" << name << "'");
-  return it->second;
-}
-
-PrimitiveDeclOp
-MojoRegistry::lookupPrimitiveBySymName(llvm::StringRef symName) const {
-  auto it = primitiveBySymName.find(symName);
-  ASSERT_STREAM(it != primitiveBySymName.end(),
-                "no primitive registered for '" << symName << "'");
   return it->second;
 }
 

@@ -71,11 +71,9 @@ static inline bool canFuseOp(Operation *op) {
   if (isa<MGP::BufferAllocOp, MGP::BufferConstantExternalOp>(*op))
     return false;
 
-  // "testfuse." ops are for testing.
   return isa_and_nonnull<MGPDialect, KGEN::POP::POPDialect,
                          mlir::index::IndexDialect>(op->getDialect()) ||
-         isa<KGEN::ParamConstantOp>(op) ||
-         op->getName().getIdentifier().strref().starts_with("testfuse.");
+         isa<KGEN::ParamConstantOp>(op);
 }
 
 static inline MOGG::DispatchKind getDispatch(Operation *op) {
@@ -85,9 +83,6 @@ static inline MOGG::DispatchKind getDispatch(Operation *op) {
 }
 
 static inline bool canDuplicate(Operation *op) {
-  if (op->getName().getIdentifier().strref().starts_with("testfuse."))
-    return true;
-
   if (isa<MGP::BufferSliceOp, MGP::BufferConstantOp, MGP::TensorSpecGetDimOp,
           MGP::BufferConstantExternalOp, MGP::BufferGetCachedOp,
           MGP::TensorSpecCreateOp, MGP::TensorExtractBufferOp,
