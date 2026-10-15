@@ -16,9 +16,7 @@ Implements FA2 and FA3 flash-attention for NVIDIA and AMD GPUs, a naive
 two-BMM reference path, split-K decode partitioning, and the host-side
 dispatch layer (`flash_attention_dispatch`) that selects among them based
 on dtype, head depth, and target architecture. Dispatch, register tiles,
-and softmax/MMA fragments are `TileTensor`-native; the residual
-`LayoutTensor` use is the output epilogue (the masked shared-to-global
-store and the fp32 global store), which has no TileTensor equivalent yet.
+softmax/MMA fragments, and the output epilogues are `TileTensor`-native.
 """
 
 from std.math import ceildiv, recip
@@ -71,11 +69,7 @@ from kv_cache.types import KVCacheT
 from layout import (
     Coord,
     Idx,
-    IntTuple,
     Layout,
-    LayoutTensor,
-    RuntimeLayout,
-    RuntimeTuple,
     TensorLayout,
     TileTensor,
     UNKNOWN_VALUE,
@@ -84,14 +78,13 @@ from layout import (
 )
 from layout.layout import *
 from layout.tile_async_copy import copy_dram_to_sram_async_ldmatrix
-from layout.tile_io import copy_local_to_dram as copy_local_to_dram_native
-from layout.tile_iterator import TileTensorIter
-from layout.tile_layout import Layout as TileLayout
-from layout.layout_tensor import (
+from layout.tile_io import (
     copy_local_to_dram,
     copy_local_to_shared,
     copy_sram_to_dram,
 )
+from layout.tile_iterator import TileTensorIter
+from layout.tile_layout import Layout as TileLayout
 from layout.swizzle import make_swizzle
 from layout.tile_tensor import stack_allocation
 from layout.tensor_core import get_fragment_size, get_mma_shape
@@ -2279,10 +2272,9 @@ def _flash_attention_dense[
         seq_len == 1 or fold_seq_len_ok
     ) and num_keys > seq_len
 
-    # Build the row-major K/V TileTensors directly (no throwaway LayoutTensor
-    # round-trip). BSHD layout: batch/seq are runtime, head/depth static, so
-    # mirror `k`'s static pattern with `Idx` for the known dims. The operand
-    # infers `buffer_layout` from the passed TileTensor.
+    # BSHD layout: batch/seq are runtime, head/depth static, so mirror `k`'s
+    # static pattern with `Idx` for the known dims. The operand infers
+    # `buffer_layout` from the passed TileTensor.
     var k_operand = TileTensorMHAOperand(
         TileTensor(
             k.unsafe_ptr(),
@@ -3437,32 +3429,18 @@ def mha_single_batch[
                     n_mma * num_m_mmas + m_mma, i + p_frag_size // 2
                 ] *= rowsum_inv1
 
-    comptime output_gmem_layout = Layout(
-        IntTuple(BM, depth), IntTuple(num_heads * depth, 1)
+    # The tile keeps its static BM-row shape so the copies distribute threads
+    # the same way as the shared-memory source; `q_tile_num_rows` bounds the
+    # rows actually stored.
+    comptime output_gmem_layout = TileLayout(
+        Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
-    var output_gmem_tile = LayoutTensor[
-        output_type,
-        output_gmem_layout,
-        layout_int_type=.int32,
-        linear_idx_type=.int32,
-        masked=True,
-    ](
-        output_ptr + Int(q_offset),
-        RuntimeLayout[element_type=.int32, linear_idx_type=.int32](
-            RuntimeTuple[output_gmem_layout.shape, element_type=.int32](
-                Int(q_tile_num_rows), depth
-            ),
-            RuntimeTuple[output_gmem_layout.stride, element_type=.int32](
-                num_heads * depth, 1
-            ),
-        ),
+    var output_gmem_tile = TileTensor[linear_idx_type=.int32](
+        output_ptr + Int(q_offset), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
-        Int(warp_y), Int(warp_x)
+        Coord(Int(warp_y), Int(warp_x))
     )
-
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
 
     # Write to global memory.
     comptime if output_type.is_half_float():
@@ -3470,20 +3448,17 @@ def mha_single_batch[
             num_rows=MMA_M // 2, row_size=WN, access_size=MMA_N
         ]()
         # Reuse a_smem for c tile in smem
-        var accum_smem_tile = LayoutTensor[
-            output_type,
-            Layout.row_major(BM, depth),
-            address_space=.SHARED,
-        ](q_smem.bitcast[Scalar[output_type]]())
+        comptime accum_smem_layout = row_major[BM, depth]()
+        var accum_smem_tile = TileTensor(
+            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+        )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN](
-            Int(warp_y), Int(warp_x)
+            Coord(Int(warp_y), Int(warp_x))
         )
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
@@ -3493,69 +3468,20 @@ def mha_single_batch[
         # are cast to 2 BF16 so that 2 4xFP32 vectors are merged into 1 8xBF16
         # vector and stored using 16B store instruction.
         copy_sram_to_dram[
-            thread_layout=Layout.row_major(
-                num_threads * simd_size // depth,
-                depth // simd_size,
-            ),
+            row_major[num_threads * simd_size // depth, depth // simd_size](),
             swizzle=swizzle,
+            masked=True,
         ](
             output_gmem_tile.vectorize[1, simd_size](),
             accum_smem_tile.vectorize[1, simd_size](),
+            Int(q_tile_num_rows),
         )
     else:
-        var native_output_written = False
-        comptime if (
-            is_nvidia_gpu()
-            and q_type == .float32
-            and output_type == .float32
-            and accum_type == .float32
-            and MMA_M == 16
-            and MMA_N == 8
-            and p_frag_size == 4
-            and BM > 0
-            and WM > 0
-            and WN > 0
-            and depth > 0
-            and num_heads > 0
-            and WM % 16 == 0
-            and WN % 8 == 0
-            and depth % 2 == 0
-            and BM == num_warps_m * WM
-            and depth == num_warps_n * WN
-            and num_heads * depth <= 2147483647 // (BM + 1)
-        ):
-            var warp_row = Int(warp_y) * WM
-            var warp_col = Int(warp_x) * WN
-            # Keep the original vector-alignment admission contract.
-            if Int(output_ptr) % align_of[SIMD[output_type, 2]]() == 0:
-                var output_native_layout = TileLayout(
-                    Coord(Idx[WM], Idx[WN]),
-                    Coord(Int32(num_heads * depth), Idx[1]),
-                )
-                var output_native_tile = TileTensor[
-                    output_type,
-                    type_of(output_native_layout),
-                    MutAnyOrigin,
-                    linear_idx_type=.int32,
-                ](
-                    output_ptr
-                    + Int(q_offset)
-                    + warp_row * (num_heads * depth)
-                    + warp_col,
-                    output_native_layout,
-                )
-                copy_local_to_dram_native[row_major[8, 4]()](
-                    output_native_tile.vectorize[1, 2](),
-                    output_reg_tile.vectorize[1, 2]().transpose(),
-                    Int(q_tile_num_rows) - warp_row,
-                )
-                native_output_written = True
-
-        if not native_output_written:
-            copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
-                output_gmem_warp_tile.vectorize[1, 2](),
-                output_reg_tile_legacy.vectorize[1, 2]().transpose(),
-            )
+        copy_local_to_dram[row_major[8, 4]()](
+            output_gmem_warp_tile.vectorize[1, 2](),
+            output_reg_tile.vectorize[1, 2]().transpose(),
+            Int(q_tile_num_rows) - Int(warp_y) * WM,
+        )
 
 
 @__llvm_metadata(
@@ -4152,64 +4078,47 @@ def mha_single_batch_pipelined[
                     n_mma * num_m_mmas + m_mma, i + p_frag_size // 2
                 ] *= rowsum_inv1
 
-    comptime output_gmem_layout = Layout(
-        IntTuple(BM, depth), IntTuple(num_heads * depth, 1)
+    # The tile keeps its static BM-row shape so the copies distribute threads
+    # the same way as the shared-memory source; `q_tile_num_rows` bounds the
+    # rows actually stored.
+    comptime output_gmem_layout = TileLayout(
+        Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
-    var output_gmem_tile = LayoutTensor[
-        output_type,
-        output_gmem_layout,
-        layout_int_type=.int32,
-        linear_idx_type=.int32,
-        masked=True,
-    ](
-        output_ptr + Int(q_offset),
-        RuntimeLayout[element_type=.int32, linear_idx_type=.int32](
-            RuntimeTuple[output_gmem_layout.shape, element_type=.int32](
-                Int(q_tile_num_rows), depth
-            ),
-            RuntimeTuple[output_gmem_layout.stride, element_type=.int32](
-                num_heads * depth, 1
-            ),
-        ),
+    var output_gmem_tile = TileTensor[linear_idx_type=.int32](
+        output_ptr + Int(q_offset), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
-        Int(warp_y), Int(warp_x)
+        Coord(Int(warp_y), Int(warp_x))
     )
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
 
     # Write to global memory.
     comptime if output_type.is_half_float():
         # Reuse a_smem for c tile in smem
-        var accum_smem_tile = LayoutTensor[
-            output_type,
-            Layout.row_major(BM, depth),
-            address_space=.SHARED,
-        ](q_smem.bitcast[Scalar[output_type]]())
+        comptime accum_smem_layout = row_major[BM, depth]()
+        var accum_smem_tile = TileTensor(
+            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+        )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN](
-            Int(warp_y), Int(warp_x)
+            Coord(Int(warp_y), Int(warp_x))
         )
 
         comptime swizzle = make_swizzle[
             num_rows=MMA_M // 2, row_size=WN, access_size=MMA_N
         ]()
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
         barrier()
         copy_sram_to_dram[
-            thread_layout=Layout.row_major(
-                num_threads * simd_size // depth,
-                depth // simd_size,
-            ),
+            row_major[num_threads * simd_size // depth, depth // simd_size](),
             swizzle=swizzle,
+            masked=True,
         ](
             output_gmem_tile.vectorize[1, simd_size](),
             accum_smem_tile.vectorize[1, simd_size](),
+            Int(q_tile_num_rows),
         )
 
         # Guard writing to shared memory.
@@ -4221,9 +4130,10 @@ def mha_single_batch_pipelined[
         # vector and stored using 16B store instruction.
 
     else:
-        copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
+        copy_local_to_dram[row_major[8, 4]()](
             output_gmem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
+            Int(q_tile_num_rows) - Int(warp_y) * WM,
         )
 
 
@@ -5290,61 +5200,49 @@ def mha_decoding_single_batch[
             ),
             size_of[output_type](),
         )
-    var accum_smem_warp_tile = LayoutTensor[
-        output_type,
-        Layout.row_major(WM, WN),
-        address_space=.SHARED,
-    ](accum_smem_warp_ptr)
+    comptime accum_smem_layout = row_major[WM, WN]()
+    var accum_smem_warp_tile = TileTensor(
+        accum_smem_warp_ptr, accum_smem_layout
+    )
 
     comptime swizzle = make_swizzle[
         num_rows=MMA_M // 2, row_size=WN, access_size=MMA_N
     ]()
 
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
-
     comptime if decoding_warp_split_k:
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.tile[num_output_rows, p_frag_size](0, 0)
+            output_reg_tile.tile[num_output_rows, p_frag_size](Coord(0, 0))
             .vectorize[1, 2]()
             .transpose(),
         )
     else:
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
 
     # Guard writing to shared memory.
     barrier()
 
-    # FIXME: Using RuntimeLayout to override the layout of the output tensor.
-    comptime output_gmem_layout = Layout.row_major(BM, depth)
-    var output_gmem_runtime_layout = RuntimeLayout[
-        output_gmem_layout
-    ].row_major(Index(group, depth))
-    var output_gmem_tile = LayoutTensor[
-        output_type,
-        output_gmem_layout,
-        layout_int_type=.int32,
-        linear_idx_type=.int32,
-        masked=True,
-    ](output_ptr + q_offset, output_gmem_runtime_layout)
-    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](warp_y, warp_x)
+    # The tile keeps its static BM-row shape; only the first `group` rows are
+    # real query heads, so the copy is bounded to the rows this warp owns.
+    comptime output_gmem_layout = row_major[BM, depth]()
+    var output_gmem_tile = TileTensor[linear_idx_type=.int32](
+        output_ptr + q_offset, output_gmem_layout
+    )
+    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
+        Coord(warp_y, warp_x)
+    )
 
     copy_sram_to_dram[
-        thread_layout=Layout.row_major(
-            WARP_SIZE * simd_size // WN, WN // simd_size
-        ),
+        row_major[WARP_SIZE * simd_size // WN, WN // simd_size](),
         swizzle=swizzle,
+        masked=True,
     ](
         output_gmem_warp_tile.vectorize[1, simd_size](),
         accum_smem_warp_tile.vectorize[1, simd_size](),
+        group - warp_y * WM,
     )
 
 
@@ -5776,48 +5674,38 @@ def mha_decoding_single_batch_pipelined[
             qk_max_ptr[q_head_idx] = row_max
 
     # Pack results in shared memory for wider simd width.
-    var accum_smem_warp_tile = LayoutTensor[
-        output_type,
-        Layout.row_major(WM, WN),
-        address_space=.SHARED,
-    ](q_smem.bitcast[Scalar[output_type]]() + warp_id * WM * WN)
+    comptime accum_smem_layout = row_major[WM, WN]()
+    var accum_smem_warp_tile = TileTensor(
+        q_smem.bitcast[Scalar[output_type]]() + warp_id * WM * WN,
+        accum_smem_layout,
+    )
 
     comptime swizzle = make_swizzle[
         num_rows=MMA_M // 2, row_size=WN, access_size=MMA_N
     ]()
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
-    copy_local_to_shared[thread_layout=Layout.row_major(8, 4), swizzle=swizzle](
+    copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
         accum_smem_warp_tile.vectorize[1, 2](),
-        output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+        output_reg_tile.vectorize[1, 2]().transpose(),
     )
     # Guard writing to shared memory.
     barrier()
-    comptime output_gmem_layout = Layout.row_major(BM, depth)
-    var output_gmem_runtime_layout = RuntimeLayout[
-        element_type=.int32, linear_idx_type=.int32
-    ](
-        RuntimeTuple[output_gmem_layout.shape, element_type=.int32](
-            group, depth
-        ),
-        RuntimeTuple[output_gmem_layout.stride, element_type=.int32](depth, 1),
+    # The tile keeps its static BM-row shape; only the first `group` rows are
+    # real query heads, so the copy is bounded to the rows this warp owns.
+    comptime output_gmem_layout = row_major[BM, depth]()
+    var output_gmem_tile = TileTensor[linear_idx_type=.int32](
+        output_ptr + q_offset, output_gmem_layout
     )
-    var output_gmem_tile = LayoutTensor[
-        output_type,
-        Layout.row_major(BM, depth),
-        layout_int_type=.int32,
-        linear_idx_type=.int32,
-        masked=True,
-    ](output_ptr + q_offset, output_gmem_runtime_layout)
-    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](warp_y, warp_x)
+    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
+        Coord(warp_y, warp_x)
+    )
     copy_sram_to_dram[
-        thread_layout=Layout.row_major(
-            WARP_SIZE * simd_size // WN, WN // simd_size
-        ),
+        row_major[WARP_SIZE * simd_size // WN, WN // simd_size](),
         swizzle=swizzle,
+        masked=True,
     ](
         output_gmem_warp_tile.vectorize[1, simd_size](),
         accum_smem_warp_tile.vectorize[1, simd_size](),
+        group - warp_y * WM,
     )
 
 
