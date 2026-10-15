@@ -886,8 +886,17 @@ def grouped_matmul(
     )
 
 
-def _interleave_grouped_scales(scales: Tensor) -> Tensor:
-    """Interleave per-expert block scales into the rank-6 TCGEN layout."""
+def interleave_grouped_scales(scales: Tensor) -> Tensor:
+    """Interleaves each expert's NVFP4 block scales into the TCGEN layout.
+
+    Args:
+        scales: The ``[experts, M, K // 16]`` block scales, maybe sharded on
+            ``M`` or ``K``, in which case each device interleaves its share.
+
+    Returns:
+        The ``[experts, ceildiv(M, 128), ceildiv(K // 16, 4), 32, 4, 4]``
+        scales.
+    """
     num_experts = int(scales.shape[0])
     m = scales.shape[1]
     k = scales.shape[2]
@@ -916,7 +925,7 @@ def _nvfp4_grouped_matmul(
     out_type: DType = DType.bfloat16,
 ) -> Tensor:
     """Block-scaled NVFP4 grouped matmul on already-quantized activations."""
-    b_scales = _interleave_grouped_scales(weight.weight_scale)
+    b_scales = interleave_grouped_scales(weight.weight_scale)
     num_active = int(expert_ids.shape[0])
     usage_stats_host = F.constant(
         [8192, num_active], dtype=DType.uint32, device=CPU()
@@ -980,7 +989,7 @@ def grouped_matmul_swiglu_nvfp4_ep(
     estimated_total_m: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Fused NVFP4 gate/up grouped matmul + SwiGLU + re-quantize (EP path)."""
-    b_scales = _interleave_grouped_scales(weight.weight_scale)
+    b_scales = interleave_grouped_scales(weight.weight_scale)
     num_active = int(expert_ids.shape[0])
     usage_stats_host = F.constant(
         [8192, num_active], dtype=DType.uint32, device=CPU()

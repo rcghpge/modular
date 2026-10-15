@@ -121,7 +121,7 @@ def _replicated_bytes(config: NemotronHConfig) -> int:
 
 
 def _repeated_kv_bytes(config: NemotronHConfig) -> int:
-    """Returns the BF16 bytes the repeated KV heads add to the checkpoint."""
+    """Returns the BF16 bytes the repeated KV heads add on the devices."""
     extra_heads = config.sharded_kv_heads - config.num_key_value_heads
     num_attention = config.layer_kinds.count(LayerKind.ATTENTION)
     # Two bytes per element, in both the k and v projections.

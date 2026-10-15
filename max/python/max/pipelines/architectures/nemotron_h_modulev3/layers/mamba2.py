@@ -14,14 +14,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Generic, TypeVar
 
 from max import tree
+from max.driver import CPU
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn import Module
 from max.experimental.nn.common_layers.mesh_axis import TP
-from max.experimental.sharding import NamedMapping
+from max.experimental.sharding import DeviceMesh, NamedMapping
 from max.experimental.tensor import Tensor
 from max.graph import BufferValue, TensorValue
 from max.nn.state_space import (
@@ -32,7 +34,7 @@ from max.nn.state_space import (
 
 from ..model_config import NemotronHConfig
 from .quantized import quantized_linear
-from .sharding import shard_axis
+from .sharding import shard_axis, shard_segments
 
 
 def _layer_rows(rows: Tensor, layer: Tensor) -> TensorValue:
@@ -166,11 +168,40 @@ class MambaReplayRows(Generic[_ReplayTensor]):
 class CausalConv1d(
     Module[[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]
 ):
-    """A depthwise causal conv with SiLU whose window lives in a state pool."""
+    """A depthwise causal conv with SiLU whose window lives in a state pool.
 
-    def __init__(self, dim: int, kernel_size: int) -> None:
-        self.weight = Tensor.zeros([dim, kernel_size])
-        self.bias = Tensor.zeros([dim])
+    Each device convolves its own channels.
+    """
+
+    def __init__(
+        self, dim: int, kernel_size: int, segments: Sequence[int] = ()
+    ) -> None:
+        """Initializes the conv.
+
+        Args:
+            dim: The number of channels.
+            kernel_size: The window.
+            segments: The sizes of the parts the channels stack, each split
+                across devices, or none to split the channels as one part.
+        """
+        self.segments = tuple(segments)
+        if self.segments:
+            # A plain split would give a device whole parts. The weights
+            # stay on the host, for the graph to cut each device's share.
+            self.weight = Tensor.zeros([dim, kernel_size], device=CPU())
+            self.bias = Tensor.zeros([dim], device=CPU())
+        else:
+            self.weight = shard_axis(Tensor.zeros([dim, kernel_size]))
+            self.bias = shard_axis(Tensor.zeros([dim]))
+
+    def placed(self, mesh: DeviceMesh) -> tuple[Tensor, Tensor]:
+        """Returns the weight and bias, each device holding its channels."""
+        if not self.segments:
+            return self.weight, self.bias
+        return (
+            shard_segments(self.weight, self.segments, mesh),
+            shard_segments(self.bias, self.segments, mesh),
+        )
 
     def forward(
         self,
@@ -182,10 +213,11 @@ class CausalConv1d(
         has_initial_state: Tensor,
         update_state: Tensor,
     ) -> Tensor:
+        weight, bias = self.placed(x.mesh)
         return causal_conv1d(
             x,
-            self.weight,
-            self.bias,
+            weight,
+            bias,
             pool,
             rows,
             layer,
@@ -243,13 +275,20 @@ class NemotronHMamba2Mixer(
         self.intermediate = config.mamba_intermediate_size
         self.conv_dim = config.conv_dim
 
-        # Each device runs its own heads and their groups.
-        # permute_mamba_for_tp lays out the fused in_proj and conv rows so
-        # that each device's share is one contiguous block.
-        self.in_proj = quantized_linear(config, f"{name}.in_proj")
-        self.conv1d = CausalConv1d(self.conv_dim, config.conv_kernel)
-        self.conv1d.weight = shard_axis(self.conv1d.weight)
-        self.conv1d.bias = shard_axis(self.conv1d.bias)
+        # Each device runs its own heads and their groups, so it takes its
+        # share of every part the fused in_proj and conv rows stack.
+        group_dim = self.n_groups * self.state_size
+        conv_parts = (self.intermediate, group_dim, group_dim)
+        self.in_proj = quantized_linear(
+            config,
+            f"{name}.in_proj",
+            row_segments=(self.intermediate, *conv_parts, self.num_heads),
+        )
+        self.conv1d = CausalConv1d(
+            self.conv_dim,
+            config.conv_kernel,
+            conv_parts if len(config.devices) > 1 else (),
+        )
         self.A_log = shard_axis(Tensor.zeros([self.num_heads]))
         self.D = shard_axis(Tensor.zeros([self.num_heads]))
         self.dt_bias = shard_axis(Tensor.zeros([self.num_heads]))
@@ -295,13 +334,8 @@ class NemotronHMamba2Mixer(
             kernels read them.
         """
         A = self._decay(dtype)
-        return (
-            self.conv1d.weight,
-            self.conv1d.bias,
-            A,
-            self.D,
-            self.dt_bias,
-        )
+        conv_weight, conv_bias = self.conv1d.placed(self.A_log.mesh)
+        return conv_weight, conv_bias, A, self.D, self.dt_bias
 
     def forward_with_replay(
         self,
