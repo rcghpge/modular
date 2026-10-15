@@ -47,6 +47,7 @@ from max.nn.kv_cache import (
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
 )
+from max.nn.moe import apply_eplb_placement
 from max.nn.quant_config import (
     InputScaleSpec,
     QuantConfig,
@@ -556,6 +557,10 @@ class KimiK2_5Model(
         )
         self.model_config = kimik2_5_config
         self.nn_model = KimiK2_5(self.model_config)
+        if plan is not None:
+            state_dict = apply_eplb_placement(
+                self.nn_model, state_dict, plan.phy2log
+            )
         self.nn_model.load_state_dict(
             state_dict, weight_alignment=1, strict=True
         )
