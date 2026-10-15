@@ -428,6 +428,11 @@ def register_all_models() -> None:
             "unified_mtp_gemma4_arch",
         ),
         _LazyArch(
+            "UnifiedMTPGemma4ForCausalLM_ModuleV3",
+            ".unified_mtp_gemma4_modulev3",
+            "unified_mtp_gemma4_modulev3_arch",
+        ),
+        _LazyArch(
             "UnifiedMTPGlmMoeDsaForCausalLM",
             ".unified_mtp_glm5_2",
             "unified_mtp_glm5_2_arch",
