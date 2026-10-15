@@ -223,6 +223,53 @@ def OutlineRoutines
   ];
 }
 
+def LegalizeRowwiseKernels
+    : Pass<"mogg-legalize-rowwise-kernels", "ModuleOp"> {
+  let summary = "Fill in what each rowwise kernel needs to print as Mojo.";
+  let description = [{
+    Runs `mogg-rowwise-select-primary-input`, `mogg-rowwise-bind-monoids` and
+    `mogg-rowwise-group-row-stores`, in that order, on every
+    `mogg.call.rowwise`.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+def RowwiseSelectPrimaryInput
+    : Pass<"mogg-rowwise-select-primary-input", "ModuleOp"> {
+  let summary = "Pick the input each rowwise kernel reads element by element. "
+                "For testing only.";
+  let description = [{
+    Sets `primary` on each `mogg.call.rowwise` to the capture its first fold
+    loads at the element index, and turns those loads, in every fold, into
+    `mogg.rowwise.primary`. Also sets `dtype` (the primary input's element
+    type) and `is_cached` (whether more than one fold reads it).
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+def RowwiseBindMonoids: Pass<"mogg-rowwise-bind-monoids", "ModuleOp"> {
+  let summary = "Bind each fold's monoid. For testing only.";
+  let description = [{
+    Sets each fold's `params` (dtype parameters bound from its result types)
+    and `fields` (its monoid's output field names), checks fixed field
+    dtypes, and sets `accum`, the widest contribution type, on the kernel.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+def RowwiseGroupRowStores: Pass<"mogg-rowwise-group-row-stores", "ModuleOp"> {
+  let summary = "Move per-row stores into one emit. For testing only.";
+  let description = [{
+    Moves the stores at the row index of each `mogg.call.rowwise` into one
+    `mogg.rowwise.emit` at the end of its body.
+  }];
+
+  let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
 def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {
   let summary = "Drop symbolic dim names from every kernel stub's signature.";
   let description = [{

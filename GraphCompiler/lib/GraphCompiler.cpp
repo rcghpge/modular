@@ -369,6 +369,7 @@ void M::MO::buildMapPipeline(mlir::OpPassManager &pm,
 
 void M::MO::buildMoggPipeline(mlir::OpPassManager &pm,
                               const MoggPipelineOptions &) {
+  pm.addPass(MOGG::createLegalizeRowwiseKernels());
   pm.addPass(MOGG::createConformCallOperands());
   pm.addPass(MOGG::createOutlineRoutines());
   pm.addPass(MOGG::createWrapFuncsWithTrace());

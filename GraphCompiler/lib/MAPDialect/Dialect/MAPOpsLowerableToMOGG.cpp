@@ -893,7 +893,9 @@ LogicalResult IterRowwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 
   auto callRowwise = MOGG::CallRowwiseOp::create(
       state.builder, loc, rowShape, getAxisAttr(), state.contextArgs.front(),
-      capturing, state.builder.getStringAttr(state.device.getLabel()));
+      capturing, state.builder.getStringAttr(state.device.getLabel()),
+      /*primary=*/nullptr, /*dtype=*/nullptr, /*accum=*/nullptr,
+      /*is_cached=*/nullptr);
 
   // One arg per capture, then the row index.
   Block *rowwiseBlock = state.builder.createBlock(&callRowwise.getBody());
@@ -915,7 +917,8 @@ LogicalResult IterRowwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 LogicalResult IterReduceOp::lowerToMOGG(MAPToMOGGState &state) {
   Location loc = getLoc();
   auto reduce = MOGG::RowwiseReduceOp::create(
-      state.builder, loc, getResultTypes(), getMonoidAttr());
+      state.builder, loc, getResultTypes(), getMonoidAttr(),
+      /*params=*/nullptr, /*fields=*/nullptr);
 
   Block *reduceBlock = state.builder.createBlock(&reduce.getBody());
   state.mapping.map(getIndexArg(),

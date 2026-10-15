@@ -1465,6 +1465,10 @@ def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
     the `$axis` coordinate pinned to 0. Lowered from a `map.iter.opaque`
     wrapping a `map.iter.rowwise.body`.
 
+    `$primary` is the capture the folds read element by element, `$dtype`
+    its element type, `$accum` the widest contribution type, and
+    `$is_cached` whether more than one fold reads the row.
+
     Example:
     ```mlir
     mogg.call.rowwise shape(%shape) axis(1) context(%ctx) (%row : !map.index<2>)
@@ -1484,10 +1488,40 @@ def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
     I64Attr:$axis,
     MOGG_Context:$context,
     Variadic<MOGG_TensorLike>:$capturing,
-    StrAttr:$device
+    StrAttr:$device,
+    OptionalAttr<I64Attr>:$primary,
+    OptionalAttr<TypeAttr>:$dtype,
+    OptionalAttr<TypeAttr>:$accum,
+    OptionalAttr<BoolAttr>:$is_cached
   );
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
+}
+
+def MOGG_RowwisePrimaryOp : MOGG_Op<"rowwise.primary", [
+  HasParent<"MOGG::RowwiseReduceOp">,
+  Pure,
+]> {
+  let summary = "The primary input's value at the current element.";
+  let description = [{
+    Stands for a load of the `primary` capture at the fold's own index. The
+    row is loaded once and handed to each fold.
+  }];
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+def MOGG_RowwiseEmitOp : MOGG_Op<"rowwise.emit", [
+  HasParent<"MOGG::CallRowwiseOp">,
+  NoTerminator,
+  SingleBlock,
+]> {
+  let summary = "The per-row stores of a rowwise kernel.";
+  let description = [{
+    Holds the stores at the row index. Only one participant of a row writes.
+  }];
+  let regions = (region SizedRegion<1>:$body);
+  let assemblyFormat = "attr-dict-with-keyword $body";
 }
 
 def MOGG_RowwiseReduceOp : MOGG_Op<"rowwise.reduce", [
@@ -1500,8 +1534,15 @@ def MOGG_RowwiseReduceOp : MOGG_Op<"rowwise.reduce", [
     Folds every element of the enclosing row with `$monoid`. The body runs
     once per element, at the index in its argument, and yields the
     element's contribution. The results are the monoid's output fields.
+
+    `$params` binds the monoid's dtype parameters and `$fields` names the
+    output field behind each result.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$monoid);
+  let arguments = (ins
+    FlatSymbolRefAttr:$monoid,
+    OptionalAttr<DictionaryAttr>:$params,
+    OptionalAttr<StrArrayAttr>:$fields
+  );
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
