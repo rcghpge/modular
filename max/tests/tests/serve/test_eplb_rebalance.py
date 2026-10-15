@@ -339,7 +339,7 @@ def test_per_layer_planner_balances_each_layer() -> None:
         ep_size=4,
         n_nodes=1,
         n_groups=1,
-        eplb_replicas_per_gpu=1,
+        eplb_redundant_experts_per_gpu=1,
         planner=PerLayerEplbPlanner(),
     )
     assert p.phy2log.shape == (2, 20)
@@ -355,7 +355,7 @@ def test_aggregated_planner_repeats_one_plan() -> None:
         ep_size=4,
         n_nodes=1,
         n_groups=1,
-        eplb_replicas_per_gpu=1,
+        eplb_redundant_experts_per_gpu=1,
         planner=AggregatedEplbPlanner(),
     )
     np.testing.assert_array_equal(p.phy2log[0], p.phy2log[1])
@@ -365,14 +365,14 @@ def test_aggregated_planner_repeats_one_plan() -> None:
 def test_default_planner_is_per_layer() -> None:
     snap = _two_layer_skewed_snapshot()
     default = EplbPlacement.from_snapshot(
-        snap, ep_size=4, n_nodes=1, n_groups=1, eplb_replicas_per_gpu=1
+        snap, ep_size=4, n_nodes=1, n_groups=1, eplb_redundant_experts_per_gpu=1
     )
     per_layer = EplbPlacement.from_snapshot(
         snap,
         ep_size=4,
         n_nodes=1,
         n_groups=1,
-        eplb_replicas_per_gpu=1,
+        eplb_redundant_experts_per_gpu=1,
         planner=eplb_planner_for("per_layer"),
     )
     np.testing.assert_array_equal(default.phy2log, per_layer.phy2log)

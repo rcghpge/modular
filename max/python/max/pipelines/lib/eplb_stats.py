@@ -470,7 +470,7 @@ class EplbPlacement:
         ep_size: int,
         n_nodes: int,
         n_groups: int,
-        eplb_replicas_per_gpu: int = 0,
+        eplb_redundant_experts_per_gpu: int = 0,
         planner: EplbPlanner | None = None,
     ) -> EplbPlacement:
         """Plans a placement from a routing-histogram snapshot.
@@ -480,7 +480,7 @@ class EplbPlacement:
             ep_size: Number of expert-parallel ranks.
             n_nodes: Number of nodes the ranks span.
             n_groups: Number of expert groups the router selects from.
-            eplb_replicas_per_gpu: Redundant expert slots to add per rank.
+            eplb_redundant_experts_per_gpu: Redundant expert slots to add per rank.
             planner: The balancing policy. Defaults to
                 :class:`PerLayerEplbPlanner`.
 
@@ -492,7 +492,7 @@ class EplbPlacement:
             ep_size=ep_size,
             n_nodes=n_nodes,
             n_groups=n_groups,
-            replicas_per_gpu=eplb_replicas_per_gpu,
+            redundant_experts_per_gpu=eplb_redundant_experts_per_gpu,
         )
         topology.validate(num_logical=weight_per_layer.shape[1])
         placement = (planner or PerLayerEplbPlanner()).plan(
@@ -583,12 +583,12 @@ class EplbTopology:
     n_groups: int
     """Number of expert groups the router selects from."""
 
-    replicas_per_gpu: int = 0
+    redundant_experts_per_gpu: int = 0
     """Redundant expert slots added per rank."""
 
     def num_physical(self, num_logical: int) -> int:
         """Returns the physical slot count for ``num_logical`` experts."""
-        return num_logical + self.replicas_per_gpu * self.ep_size
+        return num_logical + self.redundant_experts_per_gpu * self.ep_size
 
     def validate(self, num_logical: int) -> None:
         """Raises ``ValueError`` if ``num_logical`` experts cannot fit."""
@@ -597,10 +597,10 @@ class EplbTopology:
                 f"num_logical={num_logical} must be divisible by "
                 f"ep_size={self.ep_size} and n_groups={self.n_groups}"
             )
-        if self.replicas_per_gpu < 0:
+        if self.redundant_experts_per_gpu < 0:
             raise ValueError(
-                "eplb_replicas_per_gpu must be >= 0, got "
-                f"{self.replicas_per_gpu}"
+                "eplb_redundant_experts_per_gpu must be >= 0, got "
+                f"{self.redundant_experts_per_gpu}"
             )
 
 

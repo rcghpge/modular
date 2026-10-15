@@ -86,7 +86,9 @@ def test_snapshot_installs_per_layer_placement(
         EPLB_STATS_ENV, str(_write_snapshot(tmp_path / "snap.json"))
     )
     runtime = EplbRuntime(
-        PipelineRuntimeConfig(eplb_replicas_per_gpu=1), _METADATA, devices=[]
+        PipelineRuntimeConfig(eplb_redundant_experts_per_gpu=1),
+        _METADATA,
+        devices=[],
     )
     config = _ep_config()
 

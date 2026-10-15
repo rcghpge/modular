@@ -125,7 +125,7 @@ class EplbRuntime:
             ep_size=ep_config.n_gpus_per_node * ep_config.n_nodes,
             n_nodes=ep_config.n_nodes,
             n_groups=n_groups,
-            eplb_replicas_per_gpu=self._runtime.eplb_replicas_per_gpu,
+            eplb_redundant_experts_per_gpu=self._runtime.eplb_redundant_experts_per_gpu,
             planner=eplb_planner_for(self._runtime.eplb_planner),
         )
         ep_config.eplb_enabled = True
