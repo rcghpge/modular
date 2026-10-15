@@ -30,6 +30,7 @@ modular_py_test(
         "//conditions:default": [],
     }),
     precompile_mefs = True,
+    precompile_shards = 4,
     tags = ["gpu"],
     deps = [
         "//max/python/max/driver",
