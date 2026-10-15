@@ -290,9 +290,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Resolve all of the declarations that are defined within or referenced by
-  /// the given container `decl`. If `eraseUnparsedDecls` is true, decls that
-  /// were not referenced at all during parsing are erased.
-  void resolveAllReferencedFrom(ASTDecl &decl, bool eraseUnparsedDecls = true);
+  /// the given container `decl`. Erases any from-import placeholders the
+  /// resolution superseded with a real ImportOp.
+  void resolveAllReferencedFrom(ASTDecl &decl);
+
+  /// Erase placeholder ops for decls left unparsed (never referenced).
+  void eraseUnparsedDecls();
 
   /// Resolve the pending wildcard imports in the scope.
   LogicalResult resolveAllWildcardImports(ASTDecl &scope);
@@ -418,6 +421,11 @@ private:
   /// main container (typically stdlib/library declarations). Called by
   /// resolveAllReferencedFrom when no errors have been emitted.
   void resolveReferencedDecls();
+
+  /// Erase from-import placeholders superseded by a real ImportOp. Runs at
+  /// the end of every resolveAllReferencedFrom: the superseding gate is what
+  /// name lookup uses, so the placeholders are dead in every parsing mode.
+  void eraseDeadImportPlaceholders();
 
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);

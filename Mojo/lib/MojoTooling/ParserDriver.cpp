@@ -237,8 +237,9 @@ MojoASTDeclRef MojoParserContext::parseFile(unsigned fileId,
   std::filesystem::path filepath(filepathStr.str());
 
   ASTDecl *moduleDecl = buildModuleDecl(filepath, sourceBuf, impl->sharedState);
-  impl->sharedState.declResolver->resolveAllReferencedFrom(*moduleDecl,
-                                                           eraseUnparsedDecls);
+  impl->sharedState.declResolver->resolveAllReferencedFrom(*moduleDecl);
+  if (eraseUnparsedDecls)
+    impl->sharedState.declResolver->eraseUnparsedDecls();
 
   return MojoASTDeclRef(moduleDecl);
 }
@@ -356,6 +357,7 @@ MojoParserContext::parseFileOrPackage(const std::filesystem::path &path) {
   if (!moduleDecl)
     return nullptr;
   impl->sharedState.declResolver->resolveAllReferencedFrom(*moduleDecl);
+  impl->sharedState.declResolver->eraseUnparsedDecls();
 
   return MojoASTDeclRef(moduleDecl);
 }

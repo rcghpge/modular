@@ -1719,8 +1719,7 @@ void DeclResolver::resolveReferencedDecls() {
   } while (parsedDeclIt != parsedDeclList.size());
 }
 
-void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
-                                            bool eraseUnparsedDecls) {
+void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl) {
   CompilerTimeTraceScope traceScope("resolveAllReferencedFrom", [&] {
     return decl.getUserNameIfOperation().value_or("").str();
   });
@@ -1768,54 +1767,57 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl,
   if (!shared.diags.isErrorEmitted())
     resolveReferencedDecls();
 
-  // Erase unresolved operations from source.
-  if (eraseUnparsedDecls) {
-    // Several decls can share one operation, so collect before erasing:
-    // erasing inside the walk leaves the aliases dangling.
-    llvm::SmallPtrSet<Operation *, 8> opsToErase;
-    for (ASTDecl *decl : parsedDeclList) {
-      // Trait-body decls alias their parent trait's FnOps. Such a decl must not
-      // drive the erase, but is still removed below.
-      if (decl->getCursor().isInvalid())
-        continue;
-      if (decl->resolvedness == DeclResolvedness::unparsed &&
-          !decl->loadedFromBytecode) {
-        if (Operation *op = decl->getIfOperation()) {
-          if (!isa<UnresolvedImportOp>(op))
-            opsToErase.insert(op);
-        }
+  eraseDeadImportPlaceholders();
+}
+
+void DeclResolver::eraseUnparsedDecls() {
+  // Several decls can share one operation, so collect before erasing:
+  // erasing inside the walk leaves the aliases dangling.
+  llvm::SmallPtrSet<Operation *, 8> opsToErase;
+  for (ASTDecl *decl : parsedDeclList) {
+    // Trait-body decls alias their parent trait's FnOps. Such a decl must not
+    // drive the erase, but is still removed below.
+    if (decl->getCursor().isInvalid())
+      continue;
+    if (decl->resolvedness == DeclResolvedness::unparsed &&
+        !decl->loadedFromBytecode) {
+      if (Operation *op = decl->getIfOperation()) {
+        if (!isa<UnresolvedImportOp>(op))
+          opsToErase.insert(op);
       }
     }
-
-    SmallVector<ASTDecl *> declsToErase;
-    for (ASTDecl *decl : parsedDeclList)
-      if (opsToErase.contains(decl->getIfOperation()))
-        declsToErase.push_back(decl);
-    for (ASTDecl *decl : declsToErase)
-      if (llvm::is_contained(parsedDeclList, decl))
-        eraseDecl(*decl);
-
-    for (Operation *op : opsToErase)
-      op->erase();
-
-    // Erase from-import placeholders that resolved to a submodule and were
-    // superseded by an ImportOp (see importDeclFromModule). This runs
-    // after all resolution, so any sibling decl surfaced over the same op has
-    // already been re-pointed at its own gate; remove any decl that still
-    // references one before erasing it.
-    if (!deadImportPlaceholders.empty()) {
-      SmallVector<ASTDecl *> placeholderDecls;
-      for (ASTDecl *decl : parsedDeclList)
-        if (deadImportPlaceholders.contains(decl->getIfOperation()))
-          placeholderDecls.push_back(decl);
-      for (ASTDecl *decl : placeholderDecls)
-        if (llvm::is_contained(parsedDeclList, decl))
-          eraseDecl(*decl);
-      for (Operation *op : deadImportPlaceholders)
-        op->erase();
-      deadImportPlaceholders.clear();
-    }
   }
+
+  SmallVector<ASTDecl *> declsToErase;
+  for (ASTDecl *decl : parsedDeclList)
+    if (opsToErase.contains(decl->getIfOperation()))
+      declsToErase.push_back(decl);
+  for (ASTDecl *decl : declsToErase)
+    if (llvm::is_contained(parsedDeclList, decl))
+      eraseDecl(*decl);
+
+  for (Operation *op : opsToErase)
+    op->erase();
+}
+
+void DeclResolver::eraseDeadImportPlaceholders() {
+  // Erase from-import placeholders that resolved to a submodule and were
+  // superseded by an ImportOp (see importDeclFromModule). This runs
+  // after all resolution, so any sibling decl surfaced over the same op has
+  // already been re-pointed at its own gate; remove any decl that still
+  // references one before erasing it.
+  if (deadImportPlaceholders.empty())
+    return;
+  SmallVector<ASTDecl *> placeholderDecls;
+  for (ASTDecl *decl : parsedDeclList)
+    if (deadImportPlaceholders.contains(decl->getIfOperation()))
+      placeholderDecls.push_back(decl);
+  for (ASTDecl *decl : placeholderDecls)
+    if (llvm::is_contained(parsedDeclList, decl))
+      eraseDecl(*decl);
+  for (Operation *op : deadImportPlaceholders)
+    op->erase();
+  deadImportPlaceholders.clear();
 }
 
 void DeclResolver::expandWildcardsForName(ASTDecl &scope, StringAttr name,

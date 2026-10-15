@@ -316,6 +316,7 @@ importMojoImpl(ContextRef context, StringRef moduleIdentifier,
 
   // Resolve everything within the main input module.
   sharedState.declResolver->resolveAllReferencedFrom(moduleDecl);
+  sharedState.declResolver->eraseUnparsedDecls();
 
   // Finalize the imported bytecode now that we've resolved everything. This
   // will drop bytecode operations that never got referenced.

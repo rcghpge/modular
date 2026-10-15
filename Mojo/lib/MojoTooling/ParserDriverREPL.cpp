@@ -810,8 +810,7 @@ static ASTDecl &buildAndResolveREPLModule(
       resolveSignaturesForLSP(*sharedState.declResolver);
   } else {
     // Keep unparsed decls alive — later cells may reference them.
-    sharedState.declResolver->resolveAllReferencedFrom(
-        moduleDecl, /*eraseUnparsedDecls=*/false);
+    sharedState.declResolver->resolveAllReferencedFrom(moduleDecl);
   }
 
   // Resolve any imported wildcard decls, this ensures those decls will be
