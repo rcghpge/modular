@@ -892,7 +892,7 @@ def _load_standalone_quant_config(
 
 def resolve_hf_quant_config(
     huggingface_config: AutoConfig,
-    state_dict: Mapping[str, WeightData],
+    state_dict: Mapping[str, Any],
 ) -> dict[str, Any] | None:
     """Resolves a checkpoint's Hugging Face quantization config.
 
