@@ -655,6 +655,11 @@ This version is still a work in progress.
 
 ### Python API
 
+- Added `max.nn.Module.trace()` and `max.nn.Module.compile()`, which trace a
+  module's `__call__` into a graph and compile it in a given
+  `InferenceSession`, matching the methods of the same names on
+  `max.experimental.nn.Module`. Pass `module=` to `trace()` to compile
+  several modules' graphs into one artifact.
 - Added `max.experimental.custom.declare`, which declares a custom op's
   input and output signature once, as an immutable `custom.CustomOp`, and
   runs eagerly or inside a `Graph`. Output dims may be symbolic,
