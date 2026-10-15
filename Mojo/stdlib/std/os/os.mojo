@@ -648,6 +648,8 @@ def isatty(fd: Int) -> Bool:
         ```
     """
 
+    if fd < 0:
+        return False
     return RawFileDescriptor(c_int(fd)).isatty()
 
 
