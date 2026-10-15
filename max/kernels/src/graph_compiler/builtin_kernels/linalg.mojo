@@ -180,13 +180,13 @@ struct MatmulFusedPartialRMSNorm:
             a_type=dtype,
             transpose_b=transpose_b,
             fused=True,
+            eps=epsilon,
         ](
             normed_output.to_tile_tensor[.int64](),
             unnormed_output.to_tile_tensor[.int64](),
             input.to_tile_tensor[.int64](),
             weight.to_tile_tensor[.int64](),
             gamma.to_tile_tensor[.int64](),
-            epsilon,
             ctx,
         )
 

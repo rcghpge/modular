@@ -158,13 +158,15 @@ def run_rms_norm_fused_residual_add_gpu[
         return data_buf.raw_load[width=width](idx)
 
     # Step 1: First RMS norm
-    rms_norm_cpu[multiply_before_cast=True](
+    rms_norm_cpu[
+        epsilon=epsilon1,
+        weight_offset=weight_offset1,
+        multiply_before_cast=True,
+    ](
         rms_input_fn,
         unfused_output_fn,
         Coord(shape),
         gamma1,
-        epsilon1,
-        weight_offset1.cast[dtype](),
     )
 
     @inline(.always)
@@ -204,13 +206,15 @@ def run_rms_norm_fused_residual_add_gpu[
         var idx = result_unfused_buf.layout(coords)
         result_unfused_buf.raw_store[width=width, alignment=alignment](idx, val)
 
-    rms_norm_cpu[multiply_before_cast=True](
+    rms_norm_cpu[
+        epsilon=epsilon2,
+        weight_offset=weight_offset2,
+        multiply_before_cast=True,
+    ](
         unfused_input2_fn,
         unfused_output2_fn,
         Coord(shape),
         gamma2,
-        epsilon2,
-        weight_offset2.cast[dtype](),
     )
 
     var flattened_size = rows * cols

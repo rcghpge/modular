@@ -73,13 +73,13 @@ def _gathered_value[in_dtype: DType](row: Int, col: Int) -> Scalar[in_dtype]:
 def _launch_norm_full[
     in_dtype: DType,
     num_cols: Int,
+    epsilon: Float32,
+    weight_offset: Float32,
 ](
     in_ptr: MutPointer[Scalar[in_dtype], MutAnyOrigin],
     out_ptr: MutPointer[Scalar[in_dtype], MutAnyOrigin],
     gamma_ptr: ImmPointer[Scalar[in_dtype], ImmutAnyOrigin],
     rows: Int,
-    epsilon: Float32,
-    weight_offset: Scalar[in_dtype],
     ctx: DeviceContext,
 ) raises:
     """Standalone RMSNorm over the full `[rows, num_cols]` tensor (M3
@@ -105,9 +105,14 @@ def _launch_norm_full[
             out_buf.layout(coords), val
         )
 
-    rms_norm_gpu[2, input_fn, output_fn, multiply_before_cast=True](
-        Coord(Index(rows, num_cols)), gamma, epsilon, weight_offset, ctx
-    )
+    rms_norm_gpu[
+        2,
+        input_fn,
+        output_fn,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
+        multiply_before_cast=True,
+    ](Coord(Index(rows, num_cols)), gamma, ctx)
 
 
 def _verify_results[
@@ -381,8 +386,9 @@ def bench_allgather_rmsnorm[
             in_dtype
         ]()
     list_of_ctx[0].enqueue_copy(gamma_dev, gamma_host)
-    var epsilon = Float32(1e-6)
-    var weight_offset = Scalar[in_dtype](1.0)  # M3 Gemma-style
+    comptime epsilon = Float32(1e-6)
+    comptime weight_offset_f32 = Float32(1.0)
+    var weight_offset = weight_offset_f32.cast[in_dtype]()  # M3 Gemma-style
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
 
@@ -525,13 +531,13 @@ def bench_allgather_rmsnorm[
         @inline(.always)
         def call_fn(ctx_inner: DeviceContext, cache_iter: Int) raises {imm}:
             if num_rows > 0:
-                _launch_norm_full[in_dtype, num_cols](
+                _launch_norm_full[
+                    in_dtype, num_cols, epsilon, weight_offset_f32
+                ](
                     cold_ptrs[ctx_idx],
                     normed_ptrs[ctx_idx],
                     gamma_ptr,
                     num_rows,
-                    epsilon,
-                    weight_offset,
                     ctx_inner,
                 )
 
@@ -572,13 +578,13 @@ def bench_allgather_rmsnorm[
                 )
             allgather(in_shards, world_out_views, rank_sigs, ctx_inner, ctx_idx)
             if num_rows > 0:
-                _launch_norm_full[in_dtype, num_cols](
+                _launch_norm_full[
+                    in_dtype, num_cols, epsilon, weight_offset_f32
+                ](
                     ag_ptrs[ctx_idx],
                     normed_ptrs[ctx_idx],
                     gamma_ptr,
                     num_rows,
-                    epsilon,
-                    weight_offset,
                     ctx_inner,
                 )
 
@@ -655,15 +661,15 @@ def bench_allgather_rmsnorm[
                     in_shards, world_out_views, rank_sigs, ctx_inner, ctx_idx
                 )
                 if num_rows > 0:
-                    _launch_norm_full[in_dtype, num_cols](
+                    _launch_norm_full[
+                        in_dtype, num_cols, epsilon, weight_offset_f32
+                    ](
                         rebind[MutPointer[Scalar[in_dtype], MutAnyOrigin]](
                             sum_full[ctx_idx].unsafe_ptr()
                         ),
                         normed_ptrs[ctx_idx],
                         gamma_ptr,
                         num_rows,
-                        epsilon,
-                        weight_offset,
                         ctx_inner,
                     )
 

@@ -190,8 +190,13 @@ def run_rms_norm_fused_residual_add_gpu[
 
     # Step 1: First RMS norm
     rms_norm_gpu[
-        rank, rms_input_fn_coord, unfused_output_fn, multiply_before_cast=True
-    ](Coord(shape), gamma1, epsilon1, weight_offset1.cast[dtype](), ctx)
+        rank,
+        rms_input_fn_coord,
+        unfused_output_fn,
+        epsilon=epsilon1,
+        weight_offset=weight_offset1,
+        multiply_before_cast=True,
+    ](Coord(shape), gamma1, ctx)
 
     @inline(.always)
     def sum_fn[width: Int, alignment: Int = 1](coords: Coord) {var}:
@@ -232,8 +237,10 @@ def run_rms_norm_fused_residual_add_gpu[
         rank,
         unfused_input2_fn,
         unfused_output2_fn,
+        epsilon=epsilon2,
+        weight_offset=weight_offset2,
         multiply_before_cast=True,
-    ](Coord(shape), gamma2, epsilon2, weight_offset2.cast[dtype](), ctx)
+    ](Coord(shape), gamma2, ctx)
 
     ctx.synchronize()
 

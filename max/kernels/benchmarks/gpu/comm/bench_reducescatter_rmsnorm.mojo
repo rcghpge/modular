@@ -65,13 +65,13 @@ from std.utils.index import Index
 def _launch_norm[
     in_dtype: DType,
     num_cols: Int,
+    epsilon: Float32,
+    weight_offset: Float32,
 ](
     in_ptr: MutPointer[Scalar[in_dtype], MutAnyOrigin],
     out_ptr: MutPointer[Scalar[in_dtype], MutAnyOrigin],
     gamma_ptr: ImmPointer[Scalar[in_dtype], ImmutAnyOrigin],
     local_rows: Int,
-    epsilon: Float32,
-    weight_offset: Scalar[in_dtype],
     ctx: DeviceContext,
 ) raises:
     """Launch a standalone RMSNorm over `[local_rows, num_cols]`.
@@ -107,14 +107,18 @@ def _launch_norm[
         2,
         input_fn,
         output_fn,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
         multiply_before_cast=True,
-    ](Coord(Index(local_rows, num_cols)), gamma, epsilon, weight_offset, ctx)
+    ](Coord(Index(local_rows, num_cols)), gamma, ctx)
 
 
 def _verify_results[
     in_dtype: DType,
     ngpus: Int,
     num_cols: Int,
+    epsilon: Float32,
+    weight_offset_f32: Float32,
 ](
     num_rows: Int,
     list_of_ctx: List[DeviceContext],
@@ -124,8 +128,6 @@ def _verify_results[
     gamma_dev: DeviceBuffer[in_dtype],
     gamma_host: List[Scalar[in_dtype]],
     host_bufs: List[List[Scalar[in_dtype]]],
-    epsilon: Float32,
-    weight_offset: Scalar[in_dtype],
     config: ReduceScatterConfig[in_dtype, ngpus],
 ) raises:
     """Run both GPU paths into fresh buffers and compare each rank's normed shard
@@ -137,6 +139,7 @@ def _verify_results[
     ref (the mid-way bf16 rounding). Both refs use the full-H divisor and fold
     gamma in f32 before the final bf16 cast.
     """
+    var weight_offset = weight_offset_f32.cast[in_dtype]()
     # Fresh buffers for both runs (>= 1 row so 0-row ranks aren't zero-size).
     # `v_rs_shard` doubles as the standalone RS shard `sum_out` is checked against.
     var v_rs_shard = List[DeviceBuffer[in_dtype]](capacity=ngpus)
@@ -202,15 +205,13 @@ def _verify_results[
     for i in range(ngpus):
         var local_rows = config.rank_units(i)
         if local_rows > 0:
-            _launch_norm[in_dtype, num_cols](
+            _launch_norm[in_dtype, num_cols, epsilon, weight_offset_f32](
                 v_rs_shard[i].unsafe_ptr().as_unsafe_any_origin(),
                 v_normed[i].unsafe_ptr().as_unsafe_any_origin(),
                 rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](
                     gamma_dev.unsafe_ptr().as_unsafe_any_origin()
                 ),
                 local_rows,
-                epsilon,
-                weight_offset,
                 list_of_ctx[i],
             )
     for i in range(ngpus):
@@ -597,8 +598,9 @@ def bench_reducescatter_rmsnorm[
             in_dtype
         ]()
     list_of_ctx[0].enqueue_copy(gamma_dev, gamma_host)
-    var epsilon = Float32(1e-6)
-    var weight_offset = Scalar[in_dtype](0.0)
+    comptime epsilon = Float32(1e-6)
+    comptime weight_offset_f32 = Float32(0.0)
+    var weight_offset = weight_offset_f32.cast[in_dtype]()
 
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
@@ -732,13 +734,11 @@ def bench_reducescatter_rmsnorm[
         @inline(.always)
         def call_fn(ctx_inner: DeviceContext, cache_iter: Int) raises {imm}:
             if local_rows > 0:
-                _launch_norm[in_dtype, num_cols](
+                _launch_norm[in_dtype, num_cols, epsilon, weight_offset_f32](
                     cold_ptrs[ctx_idx],
                     normed_ptrs[ctx_idx],
                     gamma_ptr,
                     local_rows,
-                    epsilon,
-                    weight_offset,
                     ctx_inner,
                 )
 
@@ -774,13 +774,11 @@ def bench_reducescatter_rmsnorm[
                 in_bufs, out_shards, rank_sigs, ctx_inner, my_rank=ctx_idx
             )
             if local_rows > 0:
-                _launch_norm[in_dtype, num_cols](
+                _launch_norm[in_dtype, num_cols, epsilon, weight_offset_f32](
                     rs_out_ptrs[ctx_idx],
                     normed_ptrs[ctx_idx],
                     gamma_ptr,
                     local_rows,
-                    epsilon,
-                    weight_offset,
                     ctx_inner,
                 )
 
@@ -862,13 +860,13 @@ def bench_reducescatter_rmsnorm[
                     in_bufs, out_shards, rank_sigs, ctx_inner, my_rank=ctx_idx
                 )
                 if local_rows > 0:
-                    _launch_norm[in_dtype, num_cols](
+                    _launch_norm[
+                        in_dtype, num_cols, epsilon, weight_offset_f32
+                    ](
                         rs_out_ptrs[ctx_idx],
                         normed_ptrs[ctx_idx],
                         gamma_ptr,
                         local_rows,
-                        epsilon,
-                        weight_offset,
                         ctx_inner,
                     )
 
@@ -897,7 +895,7 @@ def bench_reducescatter_rmsnorm[
     b.dump_report()
 
     comptime if verify:
-        _verify_results[in_dtype, ngpus, num_cols](
+        _verify_results[in_dtype, ngpus, num_cols, epsilon, weight_offset_f32](
             num_rows,
             list_of_ctx,
             signal_buffers,
@@ -906,8 +904,6 @@ def bench_reducescatter_rmsnorm[
             gamma_dev,
             gamma_host,
             host_bufs,
-            epsilon,
-            weight_offset,
             config,
         )
 

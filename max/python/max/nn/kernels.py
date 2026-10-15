@@ -6215,9 +6215,11 @@ def rms_norm_key_cache(
             f" {kv_params.dtype}"
         )
 
-    parameters: dict[str, int | str | DType | bool] = {
+    parameters: dict[str, int | float | str | DType | bool] = {
         "multiply_before_cast": multiply_before_cast,
         "per_head_norm": per_head_norm,
+        "epsilon": float(epsilon),
+        "weight_offset": float(weight_offset),
     }
     assert kv_params.page_size is not None
 
@@ -6227,11 +6229,9 @@ def rms_norm_key_cache(
         values=[
             *kv_collection.flatten_without_attention_dispatch_metadata(),
             gamma,
-            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.cast(TensorValue(total_seq_len), DType.uint32),
             input_row_offsets,
-            ops.constant(weight_offset, gamma.dtype, device=DeviceRef.CPU()),
         ],
         parameters=parameters,
     )
@@ -6281,9 +6281,11 @@ def rms_norm_value_cache(
             f"expected gamma dtype {gamma.dtype} to match KV dtype"
             f" {kv_params.dtype}"
         )
-    parameters: dict[str, int | str | DType | bool] = {
+    parameters: dict[str, int | float | str | DType | bool] = {
         "multiply_before_cast": multiply_before_cast,
         "per_head_norm": per_head_norm,
+        "epsilon": float(epsilon),
+        "weight_offset": float(weight_offset),
     }
     assert kv_params.page_size is not None
     ops.inplace_custom(
@@ -6292,11 +6294,9 @@ def rms_norm_value_cache(
         values=[
             *kv_collection.flatten_without_attention_dispatch_metadata(),
             gamma,
-            ops.constant(epsilon, DType.float32, device=DeviceRef.CPU()),
             layer_idx,
             ops.cast(TensorValue(total_seq_len), DType.uint32),
             input_row_offsets,
-            ops.constant(weight_offset, gamma.dtype, device=DeviceRef.CPU()),
         ],
         parameters=parameters,
     )

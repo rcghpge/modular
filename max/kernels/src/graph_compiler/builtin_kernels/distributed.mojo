@@ -1132,12 +1132,12 @@ struct DistributedReduceScatterRMSNorm:
                     rank,
                     norm_input_fn,
                     norm_output_fn,
+                    epsilon=epsilon,
+                    weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
-                    epsilon,
-                    weight_offset.cast[dtype](),
                     dev_ctxs_input[index],
                 )
 
@@ -1387,12 +1387,12 @@ struct DistributedAllGatherRMSNorm:
                     rank,
                     norm_input_fn,
                     norm_output_fn,
+                    epsilon=epsilon,
+                    weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
-                    epsilon,
-                    weight_offset.cast[dtype](),
                     dev_ctxs_input[index],
                 )
 
@@ -1697,12 +1697,12 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                     rank,
                     norm_input_fn,
                     norm_output_fn,
+                    epsilon=epsilon,
+                    weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
-                    epsilon,
-                    weight_offset.cast[dtype](),
                     dev_ctxs_input[index],
                 )
 
@@ -2028,12 +2028,12 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     rank,
                     norm_input_fn,
                     norm_output_fn,
+                    epsilon=epsilon,
+                    weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
-                    epsilon,
-                    weight_offset.cast[dtype](),
                     dev_ctxs_input[index],
                 )
 
