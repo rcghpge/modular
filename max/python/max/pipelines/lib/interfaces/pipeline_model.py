@@ -48,6 +48,7 @@ from max.pipelines.kv_cache.config import (
 from max.pipelines.lib.config.model_config import (
     _select_quantization_encoding,
 )
+from max.pipelines.lib.graph_specs import CompiledArtifacts
 from max.pipelines.lib.utils import (
     CompilationTimer,
     parse_state_dict_from_weights,
@@ -413,6 +414,10 @@ class PipelineModel(
     #: The ModuleV3 LoRA target projections this arch wraps. Read by the base
     #: to construct ``LoRAManagerV3``; empty for non-ModuleV3-LoRA archs.
     lora_targets: ClassVar[tuple[LoRATargetModule, ...]] = ()
+    #: The graphs this model compiled, by role. Empty for a model that
+    #: compiles its graphs without registering them (see
+    #: :func:`~max.pipelines.lib.graph_specs.compile_graphs`).
+    compiled_artifacts: CompiledArtifacts = CompiledArtifacts()
 
     def __init__(
         self,

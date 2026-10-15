@@ -169,7 +169,11 @@ from max.profiler import Tracer, traced
 from ..memory_estimation import MemoryPlan
 from ._label_scoring import BatchLabelScorer
 from .structured_output_overlap import StructuredOutputOverlapState
-from .text_generation import TextGenerationPipelineInterface, load_kv_manager
+from .text_generation import (
+    TextGenerationPipelineInterface,
+    load_kv_manager,
+    load_sampler_graphs,
+)
 from .unified_spec_decode_model import _UnifiedSpecDecodeModelMixin
 from .utils import (
     CommittedSpanSnapshot,
@@ -188,10 +192,10 @@ from max.pipelines.sampling import (
     apply_logits_processors,
     batch_max_k,
     request_row_seed,
-    token_sampler,
 )
 
 from ..graph_capture import ServeGraphCaptureRunner
+from ..graph_specs import GraphRole
 from ..interfaces import (
     ModelInputs,
     ModelOutputs,
@@ -1990,32 +1994,18 @@ class OverlapTextGenerationPipeline(
 
         self._sampler_with_bitmask: Model | None = None
         self._sampler_without_bitmask: Model | None = None
+        self.compiled_artifacts = self._pipeline_model.compiled_artifacts
         if not is_spec_decode:
-            with_bitmask_graph = None
-            with CompilationTimer("sampler") as sampler_timer:
-                if pipeline_config.needs_bitmask_constraints:
-                    with_bitmask_graph = token_sampler(
-                        pipeline_config.sampling,
-                        device=sampler_device_ref,
-                        needs_bitmask_input=True,
-                        custom_extensions=sampler_extensions,
-                        unpadded_vocab_size=self.vocab_size,
-                    )
-                without_bitmask_graph = token_sampler(
-                    pipeline_config.sampling,
-                    device=sampler_device_ref,
-                    needs_bitmask_input=False,
-                    custom_extensions=sampler_extensions,
-                    unpadded_vocab_size=self.vocab_size,
-                )
-                sampler_timer.mark_build_complete()
-                if with_bitmask_graph is not None:
-                    self._sampler_with_bitmask = session.load(
-                        with_bitmask_graph
-                    )
-                self._sampler_without_bitmask = session.load(
-                    without_bitmask_graph
-                )
+            sampler_artifacts, samplers = load_sampler_graphs(
+                session,
+                pipeline_config,
+                sampler_device_ref,
+                self.vocab_size,
+                custom_extensions=sampler_extensions,
+            )
+            self._sampler_with_bitmask = samplers.get(GraphRole.SAMPLER_BITMASK)
+            self._sampler_without_bitmask = samplers[GraphRole.SAMPLER]
+            self.compiled_artifacts |= sampler_artifacts
 
         # Pre-allocate pinned buffer for D2H token copies only when the
         # bitmask path is wired in. This buffer is used for async token

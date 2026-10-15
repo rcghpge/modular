@@ -15,6 +15,7 @@ modular_py_test(
             "test_bounded_cache.py",
             "test_chat_encoder.py",
             "test_reasoning.py",
+            "test_graph_specs.py",
             "test_structured_output_backend.py",
         ],
     ),
@@ -78,6 +79,20 @@ modular_py_test(
         "//max/python/max/pipelines/lib",
         requirement("huggingface-hub"),
         requirement("typing-extensions"),
+    ],
+)
+
+modular_py_test(
+    name = "test_graph_specs",
+    srcs = ["test_graph_specs.py"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/lib",
+        requirement("numpy"),
     ],
 )
 
