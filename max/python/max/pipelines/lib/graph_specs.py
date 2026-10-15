@@ -14,7 +14,7 @@
 
 A pipeline describes each graph it runs as a :class:`GraphSpec` under a role
 key, such as ``"decoder"`` or ``"sampler"``. The keys are whatever the
-pipeline's task defines; :class:`GraphRole` holds text generation's.
+pipeline's task defines; :class:`GraphRole` holds MAX's built-in ones.
 :func:`compile_graphs` compiles the graphs into :class:`CompiledArtifacts`,
 which stay available after initialization, and :func:`init_graphs`
 initializes them for execution.
@@ -36,7 +36,7 @@ from max.nn import Module
 
 
 class GraphRole(str, Enum):
-    """The roles of a text-generation pipeline's graphs."""
+    """The roles of the graphs MAX's pipelines run."""
 
     DECODER = "decoder"
     """The forward pass: tokens and KV cache to logits."""
@@ -49,6 +49,10 @@ class GraphRole(str, Enum):
 
     VISION = "vision"
     """The vision encoder: image patches to soft-token embeddings."""
+
+    ENCODER = "encoder"
+    """The single forward pass of a model without a KV cache, such as an
+    embedding model: inputs to embeddings or hidden states."""
 
     EP_INIT = "ep_init"
     """The one-time expert-parallel setup graph run at engine startup."""

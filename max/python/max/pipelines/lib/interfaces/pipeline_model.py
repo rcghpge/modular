@@ -747,6 +747,54 @@ class PipelineModel(
             "or set batch_processor_cls."
         )
 
+    def _load_state_dict(self) -> dict[str, Any]:
+        """Loads the weights, through the weight adapter if there is one."""
+        if self.adapter:
+            return self.adapter(dict(self.weights.items()))
+        return {key: value.data() for key, value in self.weights.items()}
+
+    def _create_model_config(self, state_dict: dict[str, Any]) -> _ModelConfigT:
+        """Builds the model config from ``state_dict``."""
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `_create_model_config`."
+        )
+
+    def graph_specs(
+        self, model_config: _ModelConfigT
+    ) -> Mapping[str, GraphSpec]:
+        """Returns the graphs this model runs, keyed by role.
+
+        Implement this to load the model with :meth:`load_graphs`.
+
+        Args:
+            model_config: The config :meth:`_create_model_config` returned.
+        """
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `graph_specs`."
+        )
+
+    @traced
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Compiles and initializes the graphs :meth:`graph_specs` returns.
+
+        Keeps the compiled artifacts as :attr:`compiled_artifacts`.
+
+        Args:
+            session: The session that compiles and initializes the graphs.
+
+        Returns:
+            The initialized models, keyed by role.
+        """
+        state_dict = self._load_state_dict()
+        model_config = self._create_model_config(state_dict)
+        with CompilationTimer("model") as timer:
+            specs = self.graph_specs(model_config)
+            timer.mark_build_complete()
+            self.compiled_artifacts = compile_graphs(session, specs)
+            models = init_graphs(session, self.compiled_artifacts, specs)
+        self._maybe_release_host_weights(*models.values())
+        return models
+
     def _wire_batch_processor(
         self, model: _CompiledModelT, model_config: _ModelConfigT
     ) -> None:
@@ -1027,31 +1075,8 @@ class PipelineModelWithKVCache(
         if bind_ep is not None:
             bind_ep(getattr(self, "ep_comm_initializer", None))
 
-    def _create_model_config(self, state_dict: dict[str, Any]) -> _ModelConfigT:
-        """Builds the model config from ``state_dict``."""
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `_create_model_config`."
-        )
-
-    def graph_specs(
-        self, model_config: _ModelConfigT
-    ) -> Mapping[str, GraphSpec]:
-        """Returns the graphs this model runs, keyed by role.
-
-        Implement this to load the model with :meth:`load_graphs`.
-
-        Args:
-            model_config: The config :meth:`_create_model_config` returned.
-        """
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `graph_specs`."
-        )
-
-    @traced
     def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
-        """Compiles and initializes the graphs :meth:`graph_specs` returns.
-
-        Keeps the compiled artifacts as :attr:`compiled_artifacts`.
+        """Loads the graphs, then binds the EP comm initializer.
 
         Args:
             session: The session that compiles and initializes the graphs.
@@ -1059,14 +1084,7 @@ class PipelineModelWithKVCache(
         Returns:
             The initialized models, keyed by role.
         """
-        state_dict = self._load_state_dict()
-        model_config = self._create_model_config(state_dict)
-        with CompilationTimer("model") as timer:
-            specs = self.graph_specs(model_config)
-            timer.mark_build_complete()
-            self.compiled_artifacts = compile_graphs(session, specs)
-            models = init_graphs(session, self.compiled_artifacts, specs)
-        self._maybe_release_host_weights(*models.values())
+        models = super().load_graphs(session)
         self._bind_ep_comm_initializer()
         return models
 
