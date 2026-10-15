@@ -721,21 +721,6 @@ class OpenAIChatResponseGenerator(
     async def stream(
         self, request: TextGenerationRequest
     ) -> AsyncGenerator[str | JSONResponse, None]:
-        # Submit the request before returning the response stream. Awaiting
-        # next_token_chunk tokenizes and hands the request off to the model
-        # worker, so a failed submission (e.g. a dead worker) raises here —
-        # before the SSE 200 headers are sent — and the route maps it to an
-        # HTTP error status.
-        token_generator = await self.pipeline.next_token_chunk(request)
-        return self._stream(request, token_generator)
-
-    async def _stream(
-        self,
-        request: TextGenerationRequest,
-        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
-    ) -> AsyncGenerator[str | JSONResponse, None]:
-        self.logger.debug("Streaming: Start: %s", request)
-        record_request_start()
         request_span = _tracer.start_span(
             "max.request",
             context=request_trace_ctx.get(),
@@ -744,6 +729,27 @@ class OpenAIChatResponseGenerator(
                 "max.request_id": str(request.request_id),
             },
         )
+        set_phase_parent(request_span)
+        # Submit the request before returning the response stream. Awaiting
+        # next_token_chunk tokenizes and hands the request off to the model
+        # worker, so a failed submission (e.g. a dead worker) raises here —
+        # before the SSE 200 headers are sent — and the route maps it to an
+        # HTTP error status.
+        try:
+            token_generator = await self.pipeline.next_token_chunk(request)
+        except BaseException:
+            request_span.end()
+            raise
+        return self._stream(request, token_generator, request_span)
+
+    async def _stream(
+        self,
+        request: TextGenerationRequest,
+        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
+        request_span: otel_trace.Span,
+    ) -> AsyncGenerator[str | JSONResponse, None]:
+        self.logger.debug("Streaming: Start: %s", request)
+        record_request_start()
         request_timer = StopWatch(start_ns=request.timestamp_ns)
         n_reasoning_tokens = 0
         n_tokens = 0
@@ -3210,23 +3216,6 @@ class OpenAICompletionResponseGenerator(
     async def stream(
         self, request: TextGenerationRequest
     ) -> AsyncGenerator[str | JSONResponse, None]:
-        # Submit the request before returning the response stream. Awaiting
-        # next_token_chunk tokenizes and hands the request off to the model
-        # worker, so a failed submission (e.g. a dead worker) raises here —
-        # before the SSE 200 headers are sent — and the route maps it to an
-        # HTTP error status.
-        token_generator = await self.pipeline.next_token_chunk(
-            request, parse_reasoning=self.parse_reasoning
-        )
-        return self._stream(request, token_generator)
-
-    async def _stream(
-        self,
-        request: TextGenerationRequest,
-        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
-    ) -> AsyncGenerator[str | JSONResponse, None]:
-        logger.debug("Streaming: Start: %s", request)
-        record_request_start()
         request_span = _tracer.start_span(
             "max.request",
             context=request_trace_ctx.get(),
@@ -3235,6 +3224,29 @@ class OpenAICompletionResponseGenerator(
                 "max.request_id": str(request.request_id),
             },
         )
+        set_phase_parent(request_span)
+        # Submit the request before returning the response stream. Awaiting
+        # next_token_chunk tokenizes and hands the request off to the model
+        # worker, so a failed submission (e.g. a dead worker) raises here —
+        # before the SSE 200 headers are sent — and the route maps it to an
+        # HTTP error status.
+        try:
+            token_generator = await self.pipeline.next_token_chunk(
+                request, parse_reasoning=self.parse_reasoning
+            )
+        except BaseException:
+            request_span.end()
+            raise
+        return self._stream(request, token_generator, request_span)
+
+    async def _stream(
+        self,
+        request: TextGenerationRequest,
+        token_generator: AsyncGenerator[TokenGeneratorOutput, None],
+        request_span: otel_trace.Span,
+    ) -> AsyncGenerator[str | JSONResponse, None]:
+        logger.debug("Streaming: Start: %s", request)
+        record_request_start()
         request_timer = StopWatch(start_ns=request.timestamp_ns)
         n_reasoning_tokens = 0
         n_tokens = 0

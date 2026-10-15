@@ -519,7 +519,7 @@ This version is still a work in progress.
   logs still export over HTTP.
 
 - The scheduler's `max.phase.prefill` and `max.phase.decode` spans now nest
-  under the request's `max.request` span on non-streaming chat and completions
+  under the request's `max.request` span on chat and completions
   requests, instead of beside it or, without a `traceparent`, in a trace of
   their own.
 
