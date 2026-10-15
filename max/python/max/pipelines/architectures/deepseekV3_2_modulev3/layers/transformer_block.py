@@ -214,6 +214,7 @@ class DeepseekV3_2TransformerBlock(Module[..., tuple[Tensor, Tensor]]):
         comm_buffers: EPCommBuffers | None = None,
         prev_topk_indices: Tensor | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         residual = x
         norm_x = self.input_layernorm(x)
@@ -227,6 +228,7 @@ class DeepseekV3_2TransformerBlock(Module[..., tuple[Tensor, Tensor]]):
             mla_prefill_metadata,
             prev_topk_indices,
             reuse_prev_topk,
+            indexer_layer_idx,
         )
 
         hidden_states = post_attention(

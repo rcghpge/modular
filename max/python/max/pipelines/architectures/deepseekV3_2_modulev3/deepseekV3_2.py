@@ -54,7 +54,7 @@ from ..deepseekV3_modulev3.deepseekV3 import (
 )
 from .layers.rms_norm import MultiplyBeforeCastRMSNorm
 from .layers.transformer_block import DeepseekV3_2TransformerBlock
-from .model_config import DeepseekV3_2Config
+from .model_config import DeepseekV3_2Config, indexer_cache_layer_map
 
 
 def mask_padded_tail(
@@ -257,8 +257,14 @@ class DeepseekV3_2TextModel(
         # call sites reuse a body, and the cache key does not otherwise see
         # the difference.
         topk_indices: Tensor | None = None
+        indexer_slots = indexer_cache_layer_map(
+            self.config.indexer_types, len(self.layers)
+        )
         for idx, layer in enumerate(self.layers):
             layer_idx_tensor = F.constant(idx, DType.uint32, device=CPU())
+            indexer_slot_tensor = F.constant(
+                indexer_slots[idx], DType.uint32, device=CPU()
+            )
             call: Callable[..., tuple[Tensor, Tensor]] = layer
             if isinstance(layer.mlp, QuantizedMoE):
                 group = "shared" if layer.self_attn.skip_topk else "full"
@@ -274,6 +280,7 @@ class DeepseekV3_2TextModel(
                 comm_buffers,
                 topk_indices,
                 False,
+                indexer_slot_tensor,
             )
 
         self._check_output_modes()

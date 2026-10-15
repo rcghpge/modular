@@ -408,6 +408,7 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
         mla_prefill_metadata: MLAPrefillMetadata | None = None,
         prev_topk_indices: Tensor | None = None,
         reuse_prev_topk: bool = False,
+        indexer_layer_idx: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         q_lora_rank = self.q_lora_rank
         assert q_lora_rank is not None  # enforced in __init__
@@ -430,7 +431,9 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
                 freqs_cis,
                 input_row_offsets,
                 indexer_kv_collection,
-                layer_idx,
+                # The indexer cache holds only ``full`` layers, so its slot
+                # is this layer's rank among them, not ``layer_idx``.
+                layer_idx if indexer_layer_idx is None else indexer_layer_idx,
                 kv_collection,
                 MHAMaskVariant.CAUSAL_MASK,
             )
