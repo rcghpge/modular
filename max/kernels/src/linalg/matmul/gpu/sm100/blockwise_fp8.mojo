@@ -14,7 +14,6 @@
 Implements blockwise scaled FP8 matrix multiplication kernels targeting the
 NVIDIA SM100 (Blackwell) architecture using 1D A-scales and 2D B-scales.
 """
-from std.collections import Optional
 from std.math import ceildiv, gcd
 from std.math.uutils import umod, ufloordiv
 from std.sys import align_of, size_of
@@ -50,7 +49,6 @@ from ....arch.sm100 import MmaOpSM100_SS
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -87,9 +85,6 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     num_threads: Int = 128,
-    # TODO(MOCO-4720): Remove once `bmm_sm100_blockwise_scaled_fp8` passes
-    # `epilogue_fn` instead.
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     # B-scale N-direction block size; defaults to 128 to match the
     # original DeepSeek-style (n_g=k_g=128) callers. Set to a smaller
     # value (e.g. 64) when N-direction scale granularity is finer than
@@ -475,8 +470,6 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
                             c_gmem_frag[m_vec, n_vec] = compute_fn[
                                 c_type, 2, alignment=alignment
                             ]((Int(m), Int(n)), c_mn)
-                        elif case .Some(ep) = elementwise_lambda_fn:
-                            ep[alignment=alignment]((Int(m), Int(n)), c_mn)
                         else:
                             c_gmem_frag[m_vec, n_vec] = c_mn
 
