@@ -1690,6 +1690,102 @@ async def test_non_streaming_cancels_behind_middleware(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        pytest.param(
+            "/v1/chat/completions",
+            json.dumps(
+                simple_openai_request(model_name="echo", content="test data")
+                | {"stream": True}
+            ).encode(),
+            id="chat",
+        ),
+        pytest.param(
+            "/v1/completions",
+            json.dumps(
+                {"model": "echo", "prompt": "test data", "stream": True}
+            ).encode(),
+            id="completions",
+        ),
+    ],
+)
+async def test_streaming_cancels_pending_request_behind_middleware(
+    mock_pipeline_config: PipelineConfig,
+    patch_openai_metrics: None,
+    path: str,
+    body: bytes,
+) -> None:
+    """A streaming request whose client leaves before its first token is
+    cancelled. The worker never answers, as for a request still queued
+    behind full batches, so the SSE response never starts and cannot be the
+    one to notice the disconnect."""
+    pipeline, request_queue, cancel_queue = _echo_pipeline()
+    app = FastAPI()
+    app.state.pipeline = pipeline
+    app.state.pipeline_config = mock_pipeline_config
+    app.state.settings = Settings(
+        api_types=[APIType.OPENAI], use_heartbeat=False
+    )
+    register_request(app)
+    app.add_api_route(
+        "/v1/chat/completions",
+        openai_create_chat_completion,
+        methods=["POST"],
+        response_model=None,
+    )
+    app.add_api_route(
+        "/v1/completions",
+        openai_create_completion,
+        methods=["POST"],
+        response_model=None,
+    )
+
+    client_gone = asyncio.Event()
+    messages: list[Message] = [
+        {"type": "http.request", "body": body, "more_body": False}
+    ]
+
+    async def receive() -> Message:
+        if messages:
+            return messages.pop(0)
+        await client_gone.wait()
+        return {"type": "http.disconnect"}
+
+    sent: list[Message] = []
+
+    async def send(message: Message) -> None:
+        sent.append(message)
+
+    scope: Scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"content-type", b"application/json")],
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 8000),
+        "app": app,
+    }
+    call = asyncio.create_task(app(scope, receive, send))
+    req = await asyncio.wait_for(request_queue.get(), timeout=5.0)
+    client_gone.set()
+
+    try:
+        cancel = await asyncio.wait_for(cancel_queue.get(), timeout=1.0)
+        assert cancel == [req.request_id]
+        await asyncio.wait_for(call, timeout=1.0)
+    finally:
+        call.cancel()
+    assert sent[0]["status"] == 499
+
+
+@pytest.mark.asyncio
 async def test_openai_chat_completion_non_streaming_maps_errors(
     mock_pipeline_config: PipelineConfig,
     patch_openai_metrics: None,

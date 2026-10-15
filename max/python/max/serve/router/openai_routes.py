@@ -2571,10 +2571,14 @@ async def openai_create_chat_completion(
 
         if completion_request.stream:
             # Resolve the submit and first chunk before the SSE headers go
-            # out, so a failed handoff is an HTTP error.
-            error, token_stream = await _start_stream(
-                await response_generator.stream(token_request)
-            )
+            # out, so a failed handoff is an HTTP error. The SSE response
+            # watches for a disconnect only once it starts, so watch here
+            # while the request waits in the queue for its first token.
+            async with CancelGroup() as group:
+                group.create_task(raise_on_disconnect(request))
+                error, token_stream = await _start_stream(
+                    await response_generator.stream(token_request)
+                )
             if error is not None:
                 return error
             # We set a large timeout for ping otherwise benchmarking scripts
@@ -3712,10 +3716,14 @@ async def openai_create_completion(
                     "Streaming responses for multiple prompts is not supported"
                 )
             # Resolve the submit and first chunk before the SSE headers go
-            # out, so a failed handoff is an HTTP error.
-            error, token_stream = await _start_stream(
-                await response_generator.stream(token_requests[0])
-            )
+            # out, so a failed handoff is an HTTP error. The SSE response
+            # watches for a disconnect only once it starts, so watch here
+            # while the request waits in the queue for its first token.
+            async with CancelGroup() as group:
+                group.create_task(raise_on_disconnect(request))
+                error, token_stream = await _start_stream(
+                    await response_generator.stream(token_requests[0])
+                )
             if error is not None:
                 return error
             # We set a large timeout for ping otherwise benchmarking scripts
