@@ -206,6 +206,12 @@ def _sqrt_nvvm(x: SIMD, out res: type_of(x)):
         res[i] = _llvm_unary_fn["llvm.nvvm.sqrt.approx.ftz.f"](x[i])
 
 
+comptime _UnaryMathPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
+    SIMD[dtype, width]
+) thin -> SIMD[dtype, width]
+"""Plugin-hook signature for `PluginHooks.unary_math_fn`."""
+
+
 @inline(.always)
 def sqrt[
     dtype: DType, width: SIMDLength, //
@@ -234,7 +240,12 @@ def sqrt[
         comptime for i in range(width):
             res[i] = Scalar[dtype](_sqrt_int(Int(x[i])))
         return res
-    elif is_nvidia_gpu():
+
+    comptime hook = CurrentPlugin.unary_math_fn["sqrt", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
+    comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
             return _sqrt_nvvm(x.cast[.float32]()).cast[dtype]()
         comptime if dtype == .float64:
@@ -243,15 +254,6 @@ def sqrt[
             # generic intrinsic, which lowers to `sqrt.rn.f64`.
             return _llvm_unary_fn["llvm.sqrt"](x)
         return _sqrt_nvvm(x)
-    elif is_apple_gpu():
-        # AIR has no bf16 overload of `air.sqrt`; Metal rejects it outright,
-        # so round-trip through f32. The other `air.*` math intrinsics in this
-        # file need the same treatment for the same reason.
-        comptime if dtype == .bfloat16:
-            return _llvm_unary_fn["llvm.air.sqrt"](x.cast[.float32]()).cast[
-                dtype
-            ]()
-        return _llvm_unary_fn["llvm.air.sqrt"](x)
 
     return _llvm_unary_fn["llvm.sqrt"](x)
 
@@ -295,6 +297,10 @@ def rsqrt[
         dtype.is_floating_point()
     ), "rsqrt requires floating point type"
 
+    comptime hook = CurrentPlugin.unary_math_fn["rsqrt", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
     comptime if is_nvidia_gpu():
         comptime if dtype in (DType.float16, DType.bfloat16):
             return _rsqrt_nvvm(x.cast[.float32]()).cast[dtype]()
@@ -307,12 +313,6 @@ def rsqrt[
             ](x)
 
         return rsqrt(x.cast[.float32]()).cast[dtype]()
-    elif is_apple_gpu():
-        comptime if dtype == .bfloat16:
-            return _llvm_unary_fn["llvm.air.rsqrt"](x.cast[.float32]()).cast[
-                dtype
-            ]()
-        return _llvm_unary_fn["llvm.air.rsqrt"](x)
 
     return 1.0 / sqrt(x)
 
@@ -396,6 +396,10 @@ def exp2[
         the input SIMD vector.
     """
 
+    comptime hook = CurrentPlugin.unary_math_fn["exp2", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
     comptime if is_nvidia_gpu():
         comptime if dtype == .float16:
             comptime if _is_sm_9x_or_newer():
@@ -425,9 +429,6 @@ def exp2[
         return _call_amdgcn_intrinsic[
             String("llvm.amdgcn.exp2.", _get_amdgcn_type_suffix[dtype]())
         ](x)
-
-    comptime if is_apple_gpu() and dtype in (DType.float16, DType.float32):
-        return _llvm_unary_fn["llvm.air.exp2"](x)
 
     comptime if dtype == .float32:
         return _exp2_float32(x._refine[.float32]())._refine[dtype]()
@@ -1933,16 +1934,14 @@ def cos[
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.cos"](x)
 
+    comptime hook = CurrentPlugin.unary_math_fn["cos", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[
             instruction="cos.approx.ftz.f32", constraints="=f,f"
         ](x)
-    elif is_apple_gpu():
-        comptime if dtype == .bfloat16:
-            return _llvm_unary_fn["llvm.air.cos"](x.cast[.float32]()).cast[
-                dtype
-            ]()
-        return _llvm_unary_fn["llvm.air.cos"](x)
     else:
         comptime assert (
             not is_nvidia_gpu() or dtype != .float64
@@ -1980,16 +1979,14 @@ def sin[
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.sin"](x)
 
+    comptime hook = CurrentPlugin.unary_math_fn["sin", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
     comptime if is_nvidia_gpu() and dtype == .float32:
         return _call_ptx_intrinsic[
             instruction="sin.approx.ftz.f32", constraints="=f,f"
         ](x)
-    elif is_apple_gpu():
-        comptime if dtype == .bfloat16:
-            return _llvm_unary_fn["llvm.air.sin"](x.cast[.float32]()).cast[
-                dtype
-            ]()
-        return _llvm_unary_fn["llvm.air.sin"](x)
     else:
         comptime assert (
             not is_nvidia_gpu() or dtype != .float64
