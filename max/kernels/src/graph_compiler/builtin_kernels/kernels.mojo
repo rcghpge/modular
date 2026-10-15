@@ -4729,14 +4729,21 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     block_dim=(BLOCK_SIZE, 1, 1),
                 )
             else:
-                # DSTATE_SPLIT threads cooperate on each channel, CH_PER_BLOCK
-                # channels per 128-thread block. Decode-shape sweep on B200
+                # DSTATE_SPLIT threads cooperate on each channel, and each
+                # thread carries CH_PER_THREAD channels so every B/C vector it
+                # reads feeds several channels. Decode-shape sweep on B200
                 # (bf16, dstate=128), us per launch at batch 1: split1=46.8,
-                # split4=22.5, split8=16.6; split8 also wins at batch 16 and
-                # 32. On MI355X split8 is within 20% of the best split for
-                # batch-64 decode and 8 x 512 prefill.
-                comptime DSTATE_SPLIT = 8
-                comptime CH_PER_BLOCK = 128 // DSTATE_SPLIT
+                # split4=22.5, split8=16.6. For dstate 128 on B200, split 16
+                # with 4 channels per thread cut the batch-64 speculative
+                # verify (8 rows per sequence) from 68.6 to 44.0 us and the
+                # replay (5 rows) from 56.4 to 42.0 us. On MI355X split8 is
+                # within 20% of the best split for batch-64 decode and
+                # 8 x 512 prefill; the wider tile is not tuned there.
+                comptime WIDE = DSTATE == 128 and ctx.target.is_nvidia_gpu()
+                comptime DSTATE_SPLIT = 16 if WIDE else 8
+                comptime CH_PER_THREAD = 4 if WIDE else 1
+                comptime ROWS = 128 // DSTATE_SPLIT
+                comptime CH_PER_BLOCK = ROWS * CH_PER_THREAD
                 # The staged long-sequence path costs decode registers and
                 # shared memory, so only a launch with a multi-token sequence
                 # uses it.
@@ -4764,6 +4771,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                         type_of(slot_fn),
                         Self.dt_softplus,
                         prefill,
+                        CH_PER_THREAD=CH_PER_THREAD,
                     ]
                     if has_prefill == prefill:
                         ctx.enqueue_function[kernel](
@@ -4786,7 +4794,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                                 nheads,
                                 batch,
                             ),
-                            block_dim=(DSTATE_SPLIT, CH_PER_BLOCK, 1),
+                            block_dim=(DSTATE_SPLIT, ROWS, 1),
                         )
 
         var dstate = B.dim_size(2)
