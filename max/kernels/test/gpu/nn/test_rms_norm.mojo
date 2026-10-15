@@ -293,8 +293,7 @@ def run_rms_norm_row_based[
     var data_buf = TileTensor(data_d, row_major(Coord(shape)))
     var out_buf = TileTensor(out_d, row_major(Coord(shape)))
     var gamma = TileTensor(gamma_d, row_major(Coord(param_shape)))
-    var epsilon = eps_f32.cast[dtype]()
-    var weight_offset = Scalar[dtype](0.0)
+    comptime weight_offset = Float32(0.0)
 
     ctx.enqueue_copy(data_d, data_h)
     ctx.enqueue_copy(gamma_d, gamma_h)
@@ -320,15 +319,18 @@ def run_rms_norm_row_based[
         )
 
     rms_norm[
-        dtype, rank, target="gpu", multiply_before_cast=multiply_before_cast
+        dtype,
+        rank,
+        target="gpu",
+        epsilon=eps_f32,
+        weight_offset=weight_offset,
+        multiply_before_cast=multiply_before_cast,
     ](
         input_fn,
         output_fn,
         Coord(shape),
         Scalar[DType.int](cols),
         gamma,
-        epsilon,
-        weight_offset,
         ctx,
     )
     ctx.enqueue_copy(res, out_d)
@@ -342,7 +344,9 @@ def run_rms_norm_row_based[
         var rms_ref = compute_rms(vec, cols, eps_f32)
         for c in range(cols):
             var idx = r * cols + c
-            var val = (data_h[idx] / rms_ref) * (gamma_h[c] + weight_offset)
+            var val = (data_h[idx] / rms_ref) * (
+                gamma_h[c] + weight_offset.cast[dtype]()
+            )
             assert_almost_equal(val, res[idx], rtol=rtol)
 
     _ = data_d

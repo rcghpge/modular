@@ -1035,6 +1035,8 @@ struct ReduceRMSNorm:
                 dtype,
                 rank,
                 target=target,
+                epsilon=epsilon,
+                weight_offset=weight_offset,
                 multiply_before_cast=multiply_before_cast,
             ](
                 input_fn,
@@ -1042,8 +1044,6 @@ struct ReduceRMSNorm:
                 input.shape_coord(),
                 ComptimeInt[rms_cols](),
                 gamma.to_tile_tensor[.int64](),
-                epsilon.cast[dtype](),
-                weight_offset.cast[dtype](),
                 ctx,
             )
         else:
@@ -1051,6 +1051,8 @@ struct ReduceRMSNorm:
                 dtype,
                 rank,
                 target=target,
+                epsilon=epsilon,
+                weight_offset=weight_offset,
                 multiply_before_cast=multiply_before_cast,
             ](
                 input_fn,
@@ -1058,8 +1060,6 @@ struct ReduceRMSNorm:
                 input.shape_coord(),
                 Int(Int(input.shape()[rank - 1])),
                 gamma.to_tile_tensor[.int64](),
-                epsilon.cast[dtype](),
-                weight_offset.cast[dtype](),
                 ctx,
             )
 

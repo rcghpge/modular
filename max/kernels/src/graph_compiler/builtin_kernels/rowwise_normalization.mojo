@@ -61,6 +61,8 @@ def rms_norm[
     AxisSizeT: CoordLike,
     /,
     target: StaticString,
+    epsilon: Float32,
+    weight_offset: Float32,
     multiply_before_cast: Bool = True,
     reduce_dim: Int = rank - 1,
 ](
@@ -69,8 +71,6 @@ def rms_norm[
     shape: Coord,
     axis_size: AxisSizeT,
     gamma: TileTensor[mut=False, dtype, ...],
-    epsilon: Scalar[dtype],
-    weight_offset: Scalar[dtype],
     context: Optional[DeviceContext] = None,
 ) raises:
     comptime accum = get_accum_type[dtype]()
@@ -88,8 +88,6 @@ def rms_norm[
     ](row_coords: Coord, mut ctx_p: rowwise.Context[params]) {
         var axis_size,
         var gamma,
-        var epsilon,
-        var weight_offset,
         var axis_size_accum,
         var input_fn,
         var output_fn,
@@ -123,7 +121,9 @@ def rms_norm[
         var ssq = row.reduce[ReduceSum[accum, params.simd_width]](
             square, load
         ).acc
-        var inv_rms = rsqrt(ssq / axis_size_accum + epsilon.cast[accum]())
+        var inv_rms = rsqrt(
+            ssq / axis_size_accum + comptime (epsilon.cast[accum]())
+        )
 
         # gamma indexed by the reduced axis. Its inner (lane) stride is 1 when
         # the reduced axis is inner (lanes are consecutive reduced positions),
@@ -138,7 +138,6 @@ def rms_norm[
         ](tile: SIMD[dtype, width], idx: RowCoord[row_rank]) {
             var gamma,
             var inv_rms,
-            var weight_offset,
             var output_fn,
             var ctx_p,
         }:
@@ -153,17 +152,19 @@ def rms_norm[
             # `accum` then casts; False casts the normed value first, then
             # multiplies gamma in the input dtype.
             comptime if multiply_before_cast:
-                var gamma_with_offset = (
-                    g_raw.cast[accum]() + weight_offset.cast[accum]()
+                var gamma_with_offset = g_raw.cast[accum]() + comptime (
+                    weight_offset.cast[accum]()
                 )
                 var result = (normed * gamma_with_offset).cast[dtype]()
                 output_fn[width, alignment](idx.coord, result)
             else:
-                var gamma_with_offset = g_raw + weight_offset
+                var gamma_with_offset = g_raw + comptime (
+                    weight_offset.cast[dtype]()
+                )
                 var result = normed.cast[dtype]() * gamma_with_offset
                 output_fn[width, alignment](idx.coord, result)
 
-        # `gamma`/`inv_rms`/`weight_offset`/`output_fn` ride into `elementwise`.
+        # `gamma`/`inv_rms`/`output_fn` ride into `elementwise`.
         row.elementwise(write, load)
 
     rowwise.launch[
