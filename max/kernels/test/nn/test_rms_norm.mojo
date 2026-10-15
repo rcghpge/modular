@@ -60,17 +60,17 @@ def run_rms_norm_cpu[
     var epsilon = Float32(0.0001)
     var weight_offset = Scalar[dtype](0.0)
 
-    @__copy_capture(input_buf)
     @inline(.always)
-    def input_fn[width: Int](coords: Coord) {imm} -> SIMD[dtype, width]:
+    def input_fn[
+        width: Int
+    ](coords: Coord) {var input_buf} -> SIMD[dtype, width]:
         var idx = input_buf.layout(coords)
         return input_buf.raw_load[width=width](idx)
 
     @inline(.always)
-    @__copy_capture(output_buf)
     def identity_output_fn[
         width: SIMDLength, alignment: Int
-    ](coords: Coord, val: SIMD[dtype, width]) {imm} -> None:
+    ](coords: Coord, val: SIMD[dtype, width]) {var output_buf} -> None:
         var idx = output_buf.layout(coords)
         output_buf.raw_store[width=width, alignment=alignment](idx, val)
 

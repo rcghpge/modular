@@ -1545,7 +1545,6 @@ struct QuantizeDynamicScaledFloat8RowBounded:
     op by its two-operand signature.
     """
 
-    @__parameter
     @inline(.always)
     @staticmethod
     def execute[

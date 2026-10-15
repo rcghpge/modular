@@ -35,7 +35,6 @@ from nn.conv.conv_transpose import (
     conv_transposed_cpu,
     conv_transposed_gpu,
 )
-from nn.conv.conv_utils import elementwise_simd_epilogue_type
 from nn.pad import pad_constant, pad_reflect, pad_repeat, pad_shape
 from nn.pad_gpu import (
     pad_constant as pad_constant_gpu,
@@ -493,6 +492,15 @@ struct Conv:
             comptime assert (
                 not filter_is_fcrs
             ), "Filter layout FCRS is not supported on CPU"
+
+            @inline(.always)
+            def cpu_output_fn[
+                _dtype: DType, _width: SIMDLength, _alignment: Int = 1
+            ](coords: Coord, val: SIMD[_dtype, _width]) {var output}:
+                output._lambda_store[
+                    width=_width, element_alignment=_alignment
+                ](coords, rebind[SIMD[output.dtype, _width]](val))
+
             conv_nhwc_direct[
                 input.dtype,
                 filter.dtype,
@@ -500,7 +508,6 @@ struct Conv:
                 filter_packed,
                 conv_attr,
                 has_epilogue_fusion,
-                output_fn,
             ](
                 input_tt,
                 filter_tt,
@@ -511,6 +518,7 @@ struct Conv:
                 pad_h_tuple,
                 pad_w_tuple,
                 Int(num_groups),
+                cpu_output_fn,
                 Optional(ctx.assert_cpu_target()),
             )
         else:
@@ -739,11 +747,10 @@ struct ConvTranspose:
             pad_h = Index(paddings[2], paddings[3])
             pad_w = Index(paddings[4], paddings[5])
 
-        @__parameter
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]):
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var output}:
             output._lambda_store[width=_width, element_alignment=_alignment](
                 coords, rebind[SIMD[output.dtype, _width]](val)
             )
@@ -756,7 +763,6 @@ struct ConvTranspose:
                 filter_packed,
                 filter_is_cfrs,
                 has_epilogue_fusion,
-                output_fn,
             ](
                 output.to_tile_tensor[.int64](),
                 input.to_tile_tensor[.int64](),
@@ -766,6 +772,7 @@ struct ConvTranspose:
                 pad_d,
                 pad_h,
                 pad_w,
+                output_fn,
                 Optional(ctx.assert_cpu_target()),
             )
         else:
@@ -788,11 +795,7 @@ struct ConvTranspose:
                 input.dtype,
                 filter.dtype,
                 output.dtype,
-                elementwise_epilogue=Optional[elementwise_simd_epilogue_type](
-                    output_fn
-                ) if has_epilogue_fusion else Optional[
-                    elementwise_simd_epilogue_type
-                ](),
+                has_epilogue_fusion,
             ](
                 output.to_tile_tensor[.int64](),
                 input.to_tile_tensor[.int64](),
@@ -800,6 +803,7 @@ struct ConvTranspose:
                 stride_tuple,
                 dilation_tuple,
                 pad_tuple,
+                output_fn,
                 ctx,
             )
 

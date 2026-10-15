@@ -140,18 +140,16 @@ def run_rms_norm_fused_residual_add_gpu[
 
     # Test unfused operations for comparison
     @inline(.always)
-    @__copy_capture(unfused_intermediate_buf)
     def unfused_output_fn[
         width: SIMDLength, alignment: Int
-    ](coords: Coord, val: SIMD[dtype, width]) {imm} -> None:
+    ](coords: Coord, val: SIMD[dtype, width]) {
+        var unfused_intermediate_buf
+    } -> None:
         var idx = unfused_intermediate_buf.layout(coords)
         unfused_intermediate_buf.raw_store[width=width, alignment=alignment](
             idx, val
         )
 
-    # Legacy `rms_norm_cpu` still takes a comptime `capturing` closure, so the
-    # unfused reference uses its own comptime input loader (the fused kernel's
-    # `input_fn` is now a value closure and cannot bind a comptime parameter).
     @inline(.always)
     def rms_input_fn[
         width: Int
@@ -200,10 +198,9 @@ def run_rms_norm_fused_residual_add_gpu[
 
     # Test unfused operations for comparison
     @inline(.always)
-    @__copy_capture(result_unfused_buf)
     def unfused_output2_fn[
         width: SIMDLength, alignment: Int
-    ](coords: Coord, val: SIMD[dtype, width]) {imm} -> None:
+    ](coords: Coord, val: SIMD[dtype, width]) {var result_unfused_buf} -> None:
         var idx = result_unfused_buf.layout(coords)
         result_unfused_buf.raw_store[width=width, alignment=alignment](idx, val)
 
