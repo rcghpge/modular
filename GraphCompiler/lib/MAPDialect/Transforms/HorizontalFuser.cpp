@@ -137,7 +137,7 @@ bool fusible(IterForeachOp a, IterForeachOp b) {
 }
 
 // Whether a slice leaves a strided window of its input that no view can
-// express -- the only kind worth a select in the producer's epilogue. A
+// express -- the only kind worth a select in the producer's kernel. A
 // contiguous slice (every step 1, and at most one sliced dim ahead of the
 // first non-unit one) is an offset view, better left to view fusion than paid
 // for with a second store.
@@ -157,18 +157,21 @@ bool isStridedWindow(SliceSpecAttr spec) {
   return false;
 }
 
-// The slice through which a consumer reads the fused operand, if that is how
-// it reads it: one load, through one `map.index.slice` of the loop index, in a
-// body with one store at the loop index. The body then moves into a select,
-// where the loop index is the slice's output index -- the consumer's own -- so
-// elementwise work between the load and the store keeps its meaning there.
-// Null when the read is not such a slice.
+// The slice through which a consumer reads the fused operand, when a select
+// at `selectIdx` can invert it: one load, through one `map.index.slice` of the
+// loop index, in a body with one store at the loop index; a strided window no
+// view expresses; and within the select's rules at that index. The body then
+// moves into the select, where the loop index is the slice's output index --
+// the consumer's own -- so elementwise work between the load and the store
+// keeps its meaning there. Null otherwise.
 // TODO(slariau): also take loads of the consumer's other inputs at the loop
 // index, which the select keeps in bounds; today they decline the merge.
-SliceIndexOp matchSliceRead(BlockArgument fusionArg, BlockArgument loopIdx,
-                            StoreOp store) {
-  if (!fusionArg.hasOneUse())
+SliceIndexOp matchSelectableSlice(BlockArgument fusionArg,
+                                  BlockArgument loopIdx,
+                                  ArrayRef<StoreOp> stores, Value selectIdx) {
+  if (stores.size() != 1 || !fusionArg.hasOneUse())
     return nullptr;
+  StoreOp store = stores.front();
   auto load = dyn_cast<LoadOp>(*fusionArg.getUsers().begin());
   if (!load)
     return nullptr;
@@ -181,6 +184,9 @@ SliceIndexOp matchSliceRead(BlockArgument fusionArg, BlockArgument loopIdx,
         return user != slice.getOperation() && user != store.getOperation() &&
                !isa<CallElementwiseOp>(user);
       }))
+    return nullptr;
+  if (!isStridedWindow(slice.getSpec()) ||
+      failed(SliceSelectOp::verifySpecAt(slice.getSpec(), selectIdx)))
     return nullptr;
   return slice;
 }
@@ -235,6 +241,14 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
     SmallVector<StoreOp> srcStores = getOutputStores(srcBody);
     if (epilogueStores.size() != 1 || srcStores.size() != src.getNumResults())
       continue;
+    // A select in the consumer moves into the epilogue whole, so it must hold
+    // at the epilogue's store index.
+    if (llvm::any_of(
+            srcBody.getOps<SliceSelectOp>(), [&](SliceSelectOp select) {
+              return failed(SliceSelectOp::verifySpecAt(
+                  select.getSpec(), epilogueStores.front().getIndex()));
+            }))
+      continue;
 
     // The consumer must read the fused operand at its own loop index -- the
     // epilogue hands over one element, with no way to honor a transform --
@@ -251,21 +265,17 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
           return !load || load.getIndex() != srcLoopIdx;
         })) {
       StoreOp epilogueStore = epilogueStores.front();
-      if (srcStores.size() != 1 ||
-          !isa<MO::TensorType>(epilogueStore.getTensor().getType()))
+      if (!isa<MO::TensorType>(epilogueStore.getTensor().getType()))
         continue;
       // The select would sit at the epilogue store's index, so the merge
       // checks the select's rules there. They reject a transformed index,
       // such as a fused reshape's, which can carry one stored vector across
       // rows of the slice's input.
-      slice = matchSliceRead(fusionArg, srcLoopIdx, srcStores.front());
+      slice = matchSelectableSlice(fusionArg, srcLoopIdx, srcStores,
+                                   epilogueStore.getIndex());
       if (!slice)
         continue;
       sliceSpec = slice.getSpec();
-      if (failed(SliceSelectOp::verifySpecAt(sliceSpec,
-                                             epilogueStore.getIndex())) ||
-          !isStridedWindow(sliceSpec))
-        continue;
     }
     // Another operand reaching back through `dst` would make the merge a cycle.
     if (llvm::any_of(src->getOperands(), [&](Value other) {
@@ -319,11 +329,18 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
       caps.push_back(body.addArgument(outArg.getType(), outArg.getLoc()));
     }
 
-    SmallVector<Value> storedVals;
-    for (StoreOp store : getOutputStores(srcBody))
-      storedVals.push_back(store.getValue());
-    for (StoreOp store : getOutputStores(srcBody))
+    // A store in a select keeps its place and its index, the select's
+    // argument; only its destination moves to the new capture. The whole
+    // stores are rebuilt at the consumer's index below.
+    SmallVector<std::pair<Value, Value>> wholeStores;
+    for (auto [store, cap] : llvm::zip_equal(getOutputStores(srcBody), caps)) {
+      if (store->getBlock() != &srcBody) {
+        store.getTensorMutable().assign(cap);
+        continue;
+      }
+      wholeStores.push_back({cap, store.getValue()});
       store.erase();
+    }
 
     // The producer's own store stays: it is what the escaping reader is owed.
     // Through a slice, the consumer's body moves into a select, which runs it
@@ -342,7 +359,7 @@ bool fuseEscapingReader(IterOpaqueOp &dst) {
     srcBody.eraseArguments(0, srcBody.getNumArguments());
     rewriter.inlineBlockBefore(&srcBody, consumerBody, consumerBody->end());
     rewriter.setInsertionPointToEnd(consumerBody);
-    for (auto [cap, storedVal] : llvm::zip_equal(caps, storedVals))
+    for (auto [cap, storedVal] : wholeStores)
       StoreOp::create(rewriter, loc, cap, consumerIdx, storedVal);
 
     SmallVector<Value> replacements;
@@ -377,14 +394,25 @@ BlockArgument inputArgFor(IterForeachOp op, Value in) {
 //
 // The merged kernel takes no input for `%x`: `b`'s loads of it become the
 // value `a` stores to it, and `a`'s store stays for the other readers.
-void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {}) {
+//
+// `slice`, when set, is how `b` reads `%x`, `%y = mo.relu(%x[:, 1::2])`: `b`'s
+// body then runs in a `map.index.slice.select` at `a`'s index, where the slice
+// selects the element, and stores at the slice's index.
+void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
+          SliceIndexOp slice = {}) {
+  assert((!slice || forwarded) && "a slice is how `b` reads `forwarded`");
   // Merged inputs: `a`'s, then the ones only `b` carries. A shared operand
   // keeps `a`'s slot, which is what collapses the duplicate load.
   SmallVector<Value> inputs(a.getInputs());
   SmallVector<unsigned> slotForBInput;
-  for (Value in : b.getInputs()) {
-    if (in == forwarded) {
-      // No slot: its loads are replaced below, so the arg is never read.
+  for (auto [i, in] : llvm::enumerate(b.getInputs())) {
+    // No slot for the forwarded result, whose loads are replaced below, nor
+    // for the slice's bounds, which the select carries statically.
+    BlockArgument arg = b.getBody().front().getArgument(i);
+    if (in == forwarded || (slice && !arg.use_empty() &&
+                            llvm::all_of(arg.getUsers(), [&](Operation *user) {
+                              return user == slice.getOperation();
+                            }))) {
       slotForBInput.push_back(0);
       continue;
     }
@@ -437,7 +465,8 @@ void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {}) {
   BlockArgument forwardedArg = forwarded ? inputArgFor(b, forwarded) : nullptr;
   Value forwardedValue;
   auto cloneBody = [&](IterForeachOp src, ArrayRef<unsigned> inputSlots,
-                       unsigned firstOutput) {
+                       unsigned firstOutput, OpBuilder &builder,
+                       Value srcIndex) {
     // Body args are [inputs..., outputs..., index], as MOToMAP builds them.
     Block &srcBody = src.getBody().front();
     unsigned numInputs = src.getInputs().size();
@@ -446,7 +475,7 @@ void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {}) {
     for (unsigned i = 0, e = src->getNumResults(); i < e; ++i)
       map.map(srcBody.getArgument(numInputs + i),
               body->getArgument(outputBase + firstOutput + i));
-    map.map(srcBody.getArguments().back(), index);
+    map.map(srcBody.getArguments().back(), srcIndex);
     for (Operation &op : srcBody) {
       // A load of the forwarded result is the value `a` just stored.
       auto load = dyn_cast<LoadOp>(op);
@@ -454,13 +483,15 @@ void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {}) {
         map.map(load.getResult(), forwardedValue);
         continue;
       }
-      bodyBuilder.clone(op, map);
+      if (slice && &op == slice.getOperation())
+        continue;
+      builder.clone(op, map);
     }
   };
 
   SmallVector<unsigned> aSlots(
       llvm::to_vector(llvm::seq<unsigned>(0, a.getInputs().size())));
-  cloneBody(a, aSlots, 0);
+  cloneBody(a, aSlots, 0, bodyBuilder, index);
   if (forwarded) {
     // `a` stores the result once, at its loop index (see
     // `fuseEscapingConsumer`); `b` loads it only at its own.
@@ -471,7 +502,17 @@ void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {}) {
                            .begin());
     forwardedValue = map.lookup(store.getValue());
   }
-  cloneBody(b, slotForBInput, a->getNumResults());
+  if (slice) {
+    auto select =
+        SliceSelectOp::create(bodyBuilder, loc, slice.getSpec(), index);
+    Block *selectBody = bodyBuilder.createBlock(
+        &select.getBody(), select.getBody().end(), {index.getType()}, {loc});
+    OpBuilder selectBuilder = OpBuilder::atBlockEnd(selectBody);
+    cloneBody(b, slotForBInput, a->getNumResults(), selectBuilder,
+              selectBody->getArgument(0));
+  } else {
+    cloneBody(b, slotForBInput, a->getNumResults(), bodyBuilder, index);
+  }
 
   unsigned split = a->getNumResults();
   a.replaceAllUsesWith(fused.getResults().take_front(split));
@@ -552,10 +593,9 @@ bool fuseEscapingConsumer(IterForeachOp dstKernel) {
     if (!srcKernel)
       continue;
 
-    // Both kernels run over the same indices on the same device, and
-    // `srcKernel` has no chain or memory effect and isn't a view chain.
-    if (dstKernel.getShapeAttr() != srcKernel.getShapeAttr() ||
-        MO::getDeviceOrDefault(dstKernel) !=
+    // Both kernels run on the same device, and `srcKernel` has no chain or
+    // memory effect and isn't a view chain.
+    if (MO::getDeviceOrDefault(dstKernel) !=
             MO::getDeviceOrDefault(srcKernel) ||
         srcKernel.getChain() || srcKernel.getHasReadEffect() ||
         srcKernel.getHasWriteEffect() || isRaisableViewChain(srcKernel))
@@ -566,16 +606,28 @@ bool fuseEscapingConsumer(IterForeachOp dstKernel) {
           return in.getDefiningOp() == dstKernel.getOperation();
         }) != 1)
       continue;
-    // It reads that input only as `x[i]` at its own loop index: the element
-    // iteration i of the merged kernel holds.
+    // It reads that input only as `x[i]` at its own loop index, over the same
+    // indices: the element iteration i of the merged kernel holds. Or through
+    // one strided slice, `x[slice(i)]`, which a select inverts at
+    // `dstKernel`'s index.
     Block &srcBody = srcKernel.getBody().front();
-    if (llvm::any_of(inputArgFor(srcKernel, result).getUsers(),
-                     [&](Operation *user) {
-                       auto load = dyn_cast<LoadOp>(user);
-                       return !load || load->getBlock() != &srcBody ||
-                              load.getIndex() != srcBody.getArguments().back();
-                     }))
+    BlockArgument srcIdx = srcBody.getArguments().back();
+    BlockArgument fusionArg = inputArgFor(srcKernel, result);
+    bool readsAtOwnIndex =
+        llvm::all_of(fusionArg.getUsers(), [&](Operation *user) {
+          auto load = dyn_cast<LoadOp>(user);
+          return load && load->getBlock() == &srcBody &&
+                 load.getIndex() == srcIdx;
+        });
+    SliceIndexOp slice;
+    if (!readsAtOwnIndex) {
+      slice = matchSelectableSlice(fusionArg, srcIdx, getOutputStores(srcBody),
+                                   dstBody.getArguments().back());
+      if (!slice)
+        continue;
+    } else if (dstKernel.getShapeAttr() != srcKernel.getShapeAttr()) {
       continue;
+    }
     // `dstKernel` writes the result once, `x[i] = v` at its own loop index;
     // `v` is the value forwarded.
     BlockArgument out = dstBody.getArgument(dstKernel.getInputs().size() + k);
@@ -593,7 +645,7 @@ bool fuseEscapingConsumer(IterForeachOp dstKernel) {
           return other != result && dataflowGraphDependsOn(other, dstKernel);
         }))
       continue;
-    fuse(dstKernel, srcKernel, result);
+    fuse(dstKernel, srcKernel, result, slice);
     return true;
   }
   return false;

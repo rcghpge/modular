@@ -1667,7 +1667,8 @@ LogicalResult IndexSliceSelectOp::emitMojo(EmitMojoState &state) {
   // this follows: statements go through the functor's own builder, and the
   // static bounds and shapes ride as comptime `IntTuple`s so the primitive
   // folds every unsliced dim. Runtime shapes, when either shape is dynamic,
-  // are the functor's shape-capture fields. The body is emitted where the
+  // are the functor's shape-capture fields, or in a foreach the kernel-scope
+  // shapes its closure captures. The body is emitted where the
   // primitive's in-slice bit is set, with its argument bound to the output
   // index.
   auto primDecl =
@@ -1690,8 +1691,15 @@ LogicalResult IndexSliceSelectOp::emitMojo(EmitMojoState &state) {
       MojoValue(kFnCoordToIndexList)({}, {state.getMojoValueFor(getIndex())})
           .rebind(MojoValue(kStructIndexList)[rank]));
   SmallVector<MojoValue> args = {idxList};
-  for (Value shape : getDynamicShapes())
-    args.push_back(state.getMojoValueFor(shape));
+  // A functor's shape capture is already an `IndexList` field; a kernel-scope
+  // `!mogg.shape` is still a `Coord`.
+  for (Value shape : getDynamicShapes()) {
+    MojoValue value = state.getMojoValueFor(shape);
+    args.push_back(
+        isa<BlockArgument>(shape)
+            ? value
+            : builder.var(MojoValue(kFnCoordToIndexList)({}, {value})));
+  }
 
   auto comptimeTuple = [&](ArrayRef<int64_t> values) {
     return builder.comptime(EmitMojoState::getAsIntTupleMojoValue(values));

@@ -3,7 +3,7 @@
 // map.index.slice.select's verifier: the limits of the vectorized store its
 // body runs in (static, positive steps; unsliced inner dim; an untransformed
 // index), agreement with its spec on both sides of the slice, the one index
-// its body takes, and epilogue-only placement.
+// its body takes, and the kernels it may sit in.
 
 // A runtime start has nowhere to come from: the select takes no bounds
 // operands.
@@ -93,7 +93,7 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[32, 4], f32>, !mo.ten
     %epi = map.iter.epilogue (%val : f32, %idx : !map.index<2>) capturing {%capf = %full : !mo.tensor<[32, 4], f32>, %caps = %slice : !mo.tensor<[16, 4], f32>} {
       %ridx = map.index.reshape<#map.index.reshape.spec<[32, 4] -> [8, 16]>> (%idx) : !map.index<2> -> !map.index<2>
       map.store %capf[%ridx] = %val : !mo.tensor<[32, 4], f32>
-      // expected-error @below{{index must be its epilogue's index or an enclosing select's argument}}
+      // expected-error @below{{index must be its kernel's loop index or an enclosing select's argument}}
       map.index.slice.select<#map.index.slice.spec<[32, 4] -> [16, 4], starts = [0, 0], stops = [32, 4], steps = [2, 1]>> (%ridx) -> (%iout) : !map.index<2> {
         map.store %caps[%iout] = %val : !mo.tensor<[16, 4], f32>
       }
@@ -204,16 +204,34 @@ func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.ten
 
 // -----
 
-// Only an epilogue holds one: outside the merge that places it beside the
-// producer's own store, its partial stores would reach fusers that assume
-// every store is whole.
-func.func @f(%X: !mo.tensor<[8, 16], f32>) -> !mo.tensor<[4, 16], f32> {
-  %y = map.iter.foreach<[8, 16]> inputs (%X: !mo.tensor<[8, 16], f32>) outputs (%out: !mo.tensor<[4, 16], f32>) index (%idx: !map.index<2>) -> !mo.tensor<[4, 16], f32> {
+// In a foreach, the spec must slice the foreach's loop shape.
+func.func @f(%X: !mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
+  %y:2 = map.iter.foreach<[8, 16]> inputs (%X: !mo.tensor<[8, 16], f32>) outputs (%full: !mo.tensor<[8, 16], f32>, %out: !mo.tensor<[4, 16], f32>) index (%idx: !map.index<2>) -> (!mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>) {
     %v = map.load %X[%idx] : !mo.tensor<[8, 16], f32>
-    // expected-error @below{{expects parent op to be one of 'map.iter.epilogue, map.index.slice.select'}}
-    map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
+    map.store %full[%idx] = %v : !mo.tensor<[8, 16], f32>
+    // expected-error @below{{spec's in-shape #mosh<ape[9, 16]> : !mosh.ape does not match the shape #mosh<ape[8, 16]> : !mosh.ape its index addresses}}
+    map.index.slice.select<#map.index.slice.spec<[9, 16] -> [4, 16], starts = [1, 0], stops = [9, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
       map.store %out[%iout] = %v : !mo.tensor<[4, 16], f32>
     }
   }
-  return %y : !mo.tensor<[4, 16], f32>
+  return %y#0, %y#1 : !mo.tensor<[8, 16], f32>, !mo.tensor<[4, 16], f32>
+}
+
+// -----
+
+// A prologue's loads may be recomputed anywhere, so it holds no select.
+mogg.kernel.decl @kernels.relu registration = "kernels.relu" device_info = <"", "", "", ""> struct_params = [] is_user_defined = false
+func.func @f(%X: !mo.tensor<[8, 16], f32>) -> !mo.tensor<[8, 16], f32> {
+  %y = map.iter.opaque inputs (%X : !mo.tensor<[8, 16], f32>) outputs (%full : !mo.tensor<[8, 16], f32>) {
+    %pro = map.iter.prologue (%idx : !map.index<2>) capturing {%cap = %X : !mo.tensor<[8, 16], f32>} {
+      %v = map.load %cap[%idx] : !mo.tensor<[8, 16], f32>
+      // expected-error @below{{expects parent op to be one of 'map.iter.epilogue, map.iter.foreach, map.iter.foreach.body, map.index.slice.select'}}
+      map.index.slice.select<#map.index.slice.spec<[8, 16] -> [4, 16], starts = [1, 0], stops = [8, 16], steps = [2, 1]>> (%idx) -> (%iout) : !map.index<2> {
+      }
+      map.yield %v : f32
+    } : !mo.tensor<[8, 16], f32>
+    map.call.opaque @kernels.relu[] inputs (%pro) outputs (%full) kernelName = "kernels.relu" : (!mo.tensor<[8, 16], f32>) -> (!mo.tensor<[8, 16], f32>)
+    map.yield %full : !mo.tensor<[8, 16], f32>
+  } {device = #M.device_ref<"cpu", 0>}
+  return %y : !mo.tensor<[8, 16], f32>
 }

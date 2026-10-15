@@ -776,7 +776,8 @@ def MAP_SliceIndexOp : MAP_Op<"index.slice", [
 //===----------------------------------------------------------------------===//
 
 def MAP_SliceSelectOp : MAP_Op<"index.slice.select", [
-  ParentOneOf<["IterEpilogueOp", "SliceSelectOp"]>,
+  ParentOneOf<["IterEpilogueOp", "IterForeachOp", "IterForeachBodyOp",
+               "SliceSelectOp"]>,
   SingleBlock,
   NoTerminator,
   RecursiveMemoryEffects,
@@ -804,13 +805,12 @@ def MAP_SliceSelectOp : MAP_Op<"index.slice.select", [
     Starts and steps must be static and steps positive. The innermost
     dimension must be unsliced: the body runs once per stored vector, which
     spans that dimension. For the same reason `index` must be one the vector
-    runs along, the epilogue's own index or an enclosing select's argument,
-    never a transformed one. The spec's in-shape is the shape that index
-    addresses (the epilogue's, or the enclosing select's out-shape), and a
-    load or store at the body's argument addresses a tensor of the
-    out-shape. A slice of a slice is two nested selects.
-
-    Only valid in a `map.iter.epilogue` for now.
+    runs along: an epilogue's or a foreach's own index, or an enclosing
+    select's argument, never a transformed one. The spec's in-shape is the
+    shape that index addresses (the epilogue's, the foreach's loop shape, or
+    the enclosing select's out-shape), and a load or store at the body's
+    argument addresses a tensor of the out-shape. A slice of a slice is two
+    nested selects.
 
     Example:
     ```mlir

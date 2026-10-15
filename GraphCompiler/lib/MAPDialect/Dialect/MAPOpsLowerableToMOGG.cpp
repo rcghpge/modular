@@ -248,7 +248,7 @@ LogicalResult SliceSelectOp::lowerToMOGG(MAPToMOGGState &state) {
     auto it = state.indexShapeArgs.find(getOperation());
     if (it == state.indexShapeArgs.end())
       return emitOpError("MAPToMOGG: a dynamic slice select has no shape "
-                         "captures; its epilogue did not thread them in");
+                         "captures; its kernel did not thread them in");
     dynamicShapes = ValueRange(it->second);
   }
   auto select = MOGG::IndexSliceSelectOp::create(
@@ -448,6 +448,14 @@ struct IndexShapeCaptures {
     for (const Use &use : uses)
       state.indexShapeArgs[use.op] =
           SmallVector<Value>(ArrayRef(args).slice(use.start, use.count));
+  }
+
+  // Records each op's shapes as built, for a body that sees the kernel scope:
+  // a foreach's closure captures it whole, so it needs no shape captures.
+  void bindInScope(MAPToMOGGState &state) const {
+    for (const Use &use : uses)
+      state.indexShapeArgs[use.op] =
+          SmallVector<Value>(ArrayRef(shapes).slice(use.start, use.count));
   }
 };
 } // namespace
@@ -829,6 +837,10 @@ LogicalResult IterForeachBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 
   MOGG::PrimitiveDeclOp foreachPrim =
       state.registry.lookupPrimitive(MOGG::CallForeachOp::getOperationName());
+
+  // A dynamic index op (a select) reads its runtime shapes, built here in the
+  // kernel scope, which the foreach's closure captures.
+  IndexShapeCaptures::build(getBody(), loc, state).bindInScope(state);
 
   // Every capture (kernel I/O or hoisted view) is defined, and so lowered,
   // earlier in the block.

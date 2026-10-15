@@ -193,6 +193,20 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
         continue;
     }
 
+    // A `map.index.slice.select` in `src` moves into the epilogue whole (see
+    // `fuseOutputOnce`), so it must hold at the epilogue's store index, which
+    // a reshaped read would transform. The first store, rebuilt on `dst`'s own
+    // result, must be a whole one.
+    auto epilogueStore = getUniqueStore(epilogueOp.getBody().front());
+    if (llvm::any_of(srcBody.getOps<SliceSelectOp>(),
+                     [&](SliceSelectOp select) {
+                       return reshape ||
+                              failed(SliceSelectOp::verifySpecAt(
+                                  select.getSpec(), epilogueStore.getIndex()));
+                     }) ||
+        getOutputStores(srcBody).front()->getBlock() != &srcBody)
+      continue;
+
     // Reject if another operand transitively depends on `dst`: fusing would
     // create a cycle.
     if (llvm::any_of(src->getOperands(), [&](Value other) {
@@ -200,7 +214,6 @@ findFusibleEdge(IterOpaqueOp dst, const OutputFusionConfig &config) {
         }))
       continue;
 
-    auto epilogueStore = getUniqueStore(epilogueOp.getBody().front());
     if (config.shouldFuse(epilogueStore, firstLoadOf(fusionArg)))
       return OutputFusionEdge{dst, resultIdx, epilogueOp, src, reshape};
   }
@@ -323,16 +336,25 @@ IterOpaqueOp fuseOutputOnce(const OutputFusionEdge &edge,
   SmallVector<StoreOp> srcStores = getOutputStores(srcBody);
   StoreOp srcStore = srcStores.front();
   Value finalVal = srcStore.getValue();
-  SmallVector<Value> extraVals;
-  for (StoreOp store : ArrayRef(srcStores).drop_front())
-    extraVals.push_back(store.getValue());
+  // A store in a select keeps its place and its index, the select's argument;
+  // only its destination moves to the new capture. The whole stores are
+  // rebuilt at the store index below.
+  SmallVector<std::pair<Value, Value>> extraStores;
+  for (auto [store, extraCap] :
+       llvm::zip_equal(llvm::drop_begin(srcStores), extraCaps)) {
+    if (store->getBlock() != &srcBody)
+      store.getTensorMutable().assign(extraCap);
+    else
+      extraStores.push_back({extraCap, store.getValue()});
+  }
   // A `mo.mutable.store` consumer's buffer input is already an epilogue
   // capture; the store is rebuilt on it.
   Value storeTargetBuffer;
   if (isa<MO::ChainType>(src.getResult(0).getType()))
     storeTargetBuffer = srcStore.getTensor();
   for (StoreOp store : srcStores)
-    store.erase();
+    if (store->getBlock() == &srcBody)
+      store.erase();
   srcBody.getArguments().back().replaceAllUsesWith(storeTransform);
   srcBody.eraseArguments(0, srcBody.getNumArguments());
 
@@ -357,7 +379,7 @@ IterOpaqueOp fuseOutputOnce(const OutputFusionEdge &edge,
   rewriter.inlineBlockBefore(&srcBody, &epilogueBody, epilogueBody.end());
   rewriter.setInsertionPointToEnd(&epilogueBody);
   StoreOp::create(rewriter, storeLoc, cap, storeTransform, finalVal);
-  for (auto [extraCap, extraVal] : llvm::zip_equal(extraCaps, extraVals))
+  for (auto [extraCap, extraVal] : extraStores)
     StoreOp::create(rewriter, storeLoc, extraCap, storeTransform, extraVal);
 
   // A `mo.mutable.store` consumer yields only an unused chain.

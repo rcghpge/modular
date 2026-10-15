@@ -1442,8 +1442,9 @@ Value SliceIndexOp::createStridedView(OpBuilder &builder, Value tensor,
 //===----------------------------------------------------------------------===//
 
 // The shape `index` addresses, where that is known locally: at an epilogue's
-// own index, the tensor the kernel hands the epilogue; at a select body's
-// argument, that select's out-shape. Null elsewhere.
+// own index, the tensor the kernel hands the epilogue; at a foreach's loop
+// index (the last argument, or the first once outlined), its loop shape; at a
+// select body's argument, that select's out-shape. Null elsewhere.
 static MOSH::ShapeAttr getIndexedShape(Value index) {
   auto arg = llvm::dyn_cast<BlockArgument>(index);
   if (!arg)
@@ -1451,6 +1452,11 @@ static MOSH::ShapeAttr getIndexedShape(Value index) {
   Operation *owner = arg.getOwner()->getParentOp();
   if (auto select = llvm::dyn_cast<SliceSelectOp>(owner))
     return select.getSpec().getSignature().getOut();
+  if (auto foreach = llvm::dyn_cast<IterForeachOp>(owner))
+    return arg == arg.getOwner()->getArguments().back() ? foreach.getShape()
+                                                        : MOSH::ShapeAttr();
+  if (auto body = llvm::dyn_cast<IterForeachBodyOp>(owner))
+    return arg.getArgNumber() == 0 ? body.getShape() : MOSH::ShapeAttr();
   auto epilogue = llvm::dyn_cast<IterEpilogueOp>(owner);
   if (!epilogue || arg.getArgNumber() != 1)
     return {};
@@ -1496,7 +1502,7 @@ SliceSelectOp::verifySpecAt(SliceSpecAttr spec, Value index,
   // such as a reshape's, can carry one vector across rows of the in-shape.
   MOSH::ShapeAttr indexed = getIndexedShape(index);
   if (!indexed)
-    return reject("index must be its epilogue's index or an enclosing "
+    return reject("index must be its kernel's loop index or an enclosing "
                   "select's argument");
   if (indexed != signature.getIn())
     return reject("spec's in-shape ", signature.getIn(),
