@@ -27,6 +27,7 @@ from max.driver import DeviceSpec
 from max.experimental.cascade import (
     ChatMessage,
     GenAIRequest,
+    GenAITextChunk,
     LocalRuntime,
     TextGenOptions,
 )
@@ -96,9 +97,7 @@ async def test_decode_streams_requested_token_count(model_path: str) -> None:
 
         # One deploy (one model-worker subprocess), several decode requests.
         for num_tokens in (4, 8):
-            req = TextGenOptions.new_message(
-                numTokens=num_tokens, ignoreEos=True
-            )
+            req = TextGenOptions(num_tokens=num_tokens, ignore_eos=True)
             chunks = [chunk async for chunk in await proxy.decode(req, prompt)]
             generated = (
                 np.concatenate(chunks)
@@ -116,7 +115,7 @@ async def test_decode_stops_on_eos(model_path: str) -> None:
 
     async with LocalRuntime() as rt, _pipeline_method_scope():
         proxy = await rt.deploy(pipeline.model)
-        req = TextGenOptions.new_message(numTokens=16, ignoreEos=False)
+        req = TextGenOptions(num_tokens=16, ignore_eos=False)
         chunks = [chunk async for chunk in await proxy.decode(req, prompt)]
         generated = (
             np.concatenate(chunks) if chunks else np.array([], dtype=np.int32)
@@ -132,11 +131,7 @@ async def test_greedy_decode_answers_capital_of_france(model_path: str) -> None:
     # ``MAXTokenizer`` worker applies the chat template, the ``MAXModelWorker``
     # greedily decodes (temperature 0), and the tokenizer worker decodes the
     # generated ids back to text. Confirm the model answers "Paris".
-    messages = [
-        ChatMessage.new_message(
-            role="user", content=[{"text": "What is the capital of France?"}]
-        )
-    ]
+    messages = [ChatMessage.text("user", "What is the capital of France?")]
     pipeline = await _text_pipeline(model_path)
 
     async with LocalRuntime() as rt, _pipeline_method_scope():
@@ -144,7 +139,7 @@ async def test_greedy_decode_answers_capital_of_france(model_path: str) -> None:
         model = await rt.deploy(pipeline.model)
 
         prompt = await (await tokenizer.encode(messages))
-        req = TextGenOptions.new_message(numTokens=20, temperature=0.0)
+        req = TextGenOptions(num_tokens=20, temperature=0.0)
         chunks = [chunk async for chunk in await model.decode(req, prompt)]
         generated = (
             np.concatenate(chunks) if chunks else np.array([], dtype=np.int32)
@@ -161,24 +156,20 @@ async def test_pipeline_answers_capital_of_france(model_path: str) -> None:
     # path, so tokenization and detokenization run as pipeline workers rather
     # than being driven by the test.
     pipeline = await _text_pipeline(model_path)
-    messages = [
-        ChatMessage.new_message(
-            role="user", content=[{"text": "What is the capital of France?"}]
-        )
-    ]
+    messages = [ChatMessage.text("user", "What is the capital of France?")]
 
     async with LocalRuntime() as rt:
         await pipeline.deploy(rt)
 
-        req = GenAIRequest.new_message(
+        req = GenAIRequest(
             messages=messages,
-            text=TextGenOptions.new_message(numTokens=20, temperature=0.0),
+            text=TextGenOptions(num_tokens=20, temperature=0.0),
         )
         answer = "".join(
             [
                 chunk.text
                 async for chunk in pipeline.generate(req)
-                if chunk.which() == "text"
+                if isinstance(chunk, GenAITextChunk)
             ]
         )
 

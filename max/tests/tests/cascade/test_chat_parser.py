@@ -23,7 +23,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from max.experimental.cascade.interfaces.gen_ai_capnp import GenAIChunk
+from max.experimental.cascade.interfaces.gen_ai import (
+    GenAIChunk,
+    GenAIReasoningChunk,
+    GenAITextChunk,
+    GenAIToolCall,
+)
 from max.experimental.cascade.pipelines.chat_parser import (
     ChatChunkParser,
     ChatParserConfig,
@@ -56,25 +61,24 @@ def _parse(
 
 
 def _text(chunks: list[GenAIChunk]) -> str:
-    return "".join(c.text for c in chunks if c.which() == "text")
+    return "".join(c.text for c in chunks if isinstance(c, GenAITextChunk))
 
 
 def _reasoning(chunks: list[GenAIChunk]) -> str:
-    return "".join(c.reasoning for c in chunks if c.which() == "reasoning")
+    return "".join(c.text for c in chunks if isinstance(c, GenAIReasoningChunk))
 
 
 def _tool_calls(chunks: list[GenAIChunk]) -> dict[int, dict[str, str]]:
     """Reassemble streamed tool-call fragments into ``{index: {name, args}}``."""
     calls: dict[int, dict[str, str]] = {}
     for chunk in chunks:
-        if chunk.which() != "toolCall":
+        if not isinstance(chunk, GenAIToolCall):
             continue
-        tool_call = chunk.toolCall
-        call = calls.setdefault(tool_call.index, {"name": "", "arguments": ""})
-        if tool_call.name:
-            call["name"] = tool_call.name
-        if tool_call.arguments:
-            call["arguments"] += tool_call.arguments
+        call = calls.setdefault(chunk.index, {"name": "", "arguments": ""})
+        if chunk.name:
+            call["name"] = chunk.name
+        if chunk.arguments:
+            call["arguments"] += chunk.arguments
     return calls
 
 
@@ -140,12 +144,12 @@ def test_tool_call_opener_carries_id_once() -> None:
     chunks = _parse(
         '<tool_call>fn\n{"a": 1}</tool_call>', TOOL_CONFIG, chunk_size=1
     )
-    tool_chunks = [c.toolCall for c in chunks if c.which() == "toolCall"]
-    ids = [c.id for c in tool_chunks if c.id]
+    tool_chunks = [c for c in chunks if isinstance(c, GenAIToolCall)]
+    ids = [c.id for c in tool_chunks if c.id is not None]
     assert len(ids) == 1
     assert ids[0].startswith("call_")
     # Only the opener names the tool; the rest are argument fragments.
-    assert [c.name for c in tool_chunks if c.name] == ["fn"]
+    assert [c.name for c in tool_chunks if c.name is not None] == ["fn"]
 
 
 @pytest.mark.parametrize("chunk_size", CHUNK_SIZES)
@@ -229,7 +233,7 @@ def test_trailing_delta_with_no_chunk_is_still_counted() -> None:
     chunks.extend(parser.feed("", 1))
     chunks.extend(parser.finish())
 
-    assert [chunk.to_dict() for chunk in chunks] == [
-        {"reasoning": "reason", "numTokens": 4},
-        {"text": "", "numTokens": 2},
+    assert chunks == [
+        GenAIReasoningChunk(text="reason", num_tokens=4),
+        GenAITextChunk(text="", num_tokens=2),
     ]

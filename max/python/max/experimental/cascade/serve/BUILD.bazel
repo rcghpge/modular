@@ -21,7 +21,6 @@ modular_py_library(
         requirement("uvicorn"),
         "//max/python/max/experimental/cascade/core",
         "//max/python/max/experimental/cascade/interfaces",
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
         "//max/python/max/experimental/cascade/telemetry",
         "//max/python/max/pipelines/lib",
         "//max/python/max/pipelines/request",

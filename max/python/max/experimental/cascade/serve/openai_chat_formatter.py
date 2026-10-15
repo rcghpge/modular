@@ -24,8 +24,10 @@ from collections.abc import AsyncIterable, AsyncIterator
 from typing import Literal
 
 from max.experimental.cascade.core import Worker, worker_method
-from max.experimental.cascade.interfaces.gen_ai_capnp import (
+from max.experimental.cascade.interfaces.gen_ai import (
     GenAIChunk,
+    GenAIReasoningChunk,
+    GenAITextChunk,
     GenAIToolCall,
 )
 from max.serve.schemas.openai import (
@@ -99,16 +101,15 @@ def _tool_call_delta(call: GenAIToolCall) -> ChoiceDeltaToolCall:
     The opener carries ``id`` + ``type`` + ``function.name``; later fragments
     carry only the ``function.arguments`` diff at the same index.
     """
-    # Unset text fields read as "": a fragment without an id or name.
     function = None
-    if call.name or call.arguments:
+    if call.name is not None or call.arguments is not None:
         function = ChoiceDeltaToolCallFunction(
-            name=call.name or None, arguments=call.arguments or None
+            name=call.name, arguments=call.arguments
         )
     return ChoiceDeltaToolCall(
         index=call.index,
-        id=call.id or None,
-        type="function" if call.id else None,
+        id=call.id,
+        type="function" if call.id is not None else None,
         function=function,
     )
 
@@ -121,18 +122,17 @@ def chunk_to_delta(
     Raises:
         ValueError: If the chunk is of a kind OpenAI chat cannot represent.
     """
-    match chunk.which():
-        case "text":
-            return ChatCompletionStreamResponseDelta(content=chunk.text)
-        case "reasoning":
-            return _reasoning_delta(chunk.reasoning, emit_reasoning_content)
-        case "toolCall":
-            return ChatCompletionStreamResponseDelta(
-                tool_calls=[_tool_call_delta(chunk.toolCall)]
-            )
+    if isinstance(chunk, GenAITextChunk):
+        return ChatCompletionStreamResponseDelta(content=chunk.text)
+    if isinstance(chunk, GenAIReasoningChunk):
+        return _reasoning_delta(chunk.text, emit_reasoning_content)
+    if isinstance(chunk, GenAIToolCall):
+        return ChatCompletionStreamResponseDelta(
+            tool_calls=[_tool_call_delta(chunk)]
+        )
     raise ValueError(
-        f"OpenAI chat completions cannot represent a {chunk.which()!r} chunk;"
-        " use a route whose schema supports it."
+        f"OpenAI chat completions cannot represent a {chunk.type!r} chunk; "
+        "use a route whose schema supports it."
     )
 
 
@@ -146,18 +146,17 @@ class _ChatAccumulator:
         self._calls: dict[int, ChatCompletionMessageToolCall] = {}
 
     def add(self, chunk: GenAIChunk) -> None:
-        match chunk.which():
-            case "text":
-                self.text += chunk.text
-            case "reasoning":
-                self.reasoning += chunk.reasoning
-            case "toolCall":
-                self._add_tool_call(chunk.toolCall)
-            case other:
-                raise ValueError(
-                    f"OpenAI chat completions cannot represent a {other!r}"
-                    " chunk; use a route whose schema supports it."
-                )
+        if isinstance(chunk, GenAITextChunk):
+            self.text += chunk.text
+        elif isinstance(chunk, GenAIReasoningChunk):
+            self.reasoning += chunk.text
+        elif isinstance(chunk, GenAIToolCall):
+            self._add_tool_call(chunk)
+        else:
+            raise ValueError(
+                f"OpenAI chat completions cannot represent a {chunk.type!r} "
+                "chunk; use a route whose schema supports it."
+            )
 
     def _add_tool_call(self, chunk: GenAIToolCall) -> None:
         call = self._calls.get(chunk.index)
@@ -170,11 +169,12 @@ class _ChatAccumulator:
                 ),
             )
             self._calls[chunk.index] = call
-        if chunk.id:
+        if chunk.id is not None:
             call.id = chunk.id
-        if chunk.name:
+        if chunk.name is not None:
             call.function.name = chunk.name
-        call.function.arguments += chunk.arguments
+        if chunk.arguments is not None:
+            call.function.arguments += chunk.arguments
 
     @property
     def tool_calls(self) -> list[ChatCompletionMessageToolCallUnion]:
@@ -233,11 +233,13 @@ class OpenAIChatFormatter(Worker):
         """Forward a chunk stream as OpenAI SSE frame bytes."""
         saw_tool_call = False
         async for chunk in chunk_iter:
-            kind = chunk.which()
-            saw_tool_call |= kind == "toolCall"
+            saw_tool_call |= isinstance(chunk, GenAIToolCall)
             # A text-free chunk carries only a token count, which usage reads
             # off the chunk stream; there is no delta to send for it.
-            if kind in ("text", "reasoning") and not getattr(chunk, kind):
+            if (
+                isinstance(chunk, (GenAITextChunk, GenAIReasoningChunk))
+                and not chunk.text
+            ):
                 continue
             yield _frame(
                 chunk_to_delta(chunk, self.emit_reasoning_content),

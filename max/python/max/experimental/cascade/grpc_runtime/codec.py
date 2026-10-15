@@ -24,13 +24,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast, get_args, get_origin
+from typing import Any, cast
 
-import capnp
 import numpy as np
 from max.experimental.cascade.core import Result, ResultIter, Runtime
 from max.experimental.cascade.core.type_hints import async_elem_type
-from max.experimental.cascade.interfaces import gen_ai_capnp
 from pydantic import BaseModel, TypeAdapter
 
 from . import cascade_runtime_v1_pb2 as pb
@@ -78,16 +76,6 @@ def encode_value_slot(value: Any) -> pb.ValueSlot:
                 result_id=value.result_id,
             )
         )
-    if isinstance(value, _CAPNP_STRUCTS):
-        return pb.ValueSlot(capnp=_encode_structs([value], is_list=False))
-    if isinstance(value, _CAPNP_LISTS):
-        value = list(value)
-    if (
-        isinstance(value, list)
-        and value
-        and all(isinstance(item, _CAPNP_STRUCTS) for item in value)
-    ):
-        return pb.ValueSlot(capnp=_encode_structs(value, is_list=True))
     if isinstance(value, np.ndarray):
         return pb.ValueSlot(ndarray=_encode_ndarray(value))
     if isinstance(value, memoryview):
@@ -129,10 +117,6 @@ async def decode_value_slot(
     if kind == "json_string":
         if type_hint is None:
             return json.loads(slot.json_string)
-        # An empty list carries no structs to tag, so it travels as JSON, and
-        # only the receiver's hint says it is a list of structs.
-        if _is_struct_list(type_hint) and json.loads(slot.json_string) == []:
-            return []
         return TypeAdapter(type_hint).validate_json(slot.json_string)
     if kind == "ndarray":
         return _decode_ndarray(slot.ndarray)
@@ -150,8 +134,6 @@ async def decode_value_slot(
         )
     if kind == "bytes_value":
         return bytes(slot.bytes_value)
-    if kind == "capnp":
-        return _decode_structs(slot.capnp)
     raise TypeError(f"Unsupported ValueSlot kind {kind!r}")
 
 
@@ -240,62 +222,6 @@ def decode_error(envelope: pb.ErrorEnvelope) -> BaseException:
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
-
-
-_CAPNP_STRUCTS = (capnp._DynamicStructBuilder, capnp._DynamicStructReader)
-_CAPNP_LISTS = (capnp._DynamicListBuilder, capnp._DynamicListReader)
-
-# Each gen_ai struct class, keyed by schema id, to read a `CapnpStructs` slot.
-_STRUCT_CLASSES = {
-    struct.schema.node.id: struct
-    for struct in vars(gen_ai_capnp).values()
-    if isinstance(struct, capnp._StructModule)
-}
-
-
-def _is_struct_list(type_hint: object) -> bool:
-    if get_origin(type_hint) is not list:
-        return False
-    (item,) = get_args(type_hint)
-    return isinstance(item, capnp._StructModule)
-
-
-def _encode_structs(structs: Sequence[Any], is_list: bool) -> pb.CapnpStructs:
-    """Encode Cap'n Proto structs of one type, each as its own message."""
-    type_id = structs[0].schema.node.id
-    if any(struct.schema.node.id != type_id for struct in structs):
-        raise TypeError("a list of Cap'n Proto structs must share one type")
-    return pb.CapnpStructs(
-        type_id=type_id,
-        messages=[_message_bytes(struct) for struct in structs],
-        is_list=is_list,
-    )
-
-
-def _message_bytes(
-    struct: capnp._DynamicStructBuilder | capnp._DynamicStructReader,
-) -> bytes:
-    """Serialize ``struct`` as a message of its own.
-
-    Only a message's root builder serializes, so a reader or a struct nested in
-    a larger message (a list element, a field) is copied into a new message.
-    """
-    if isinstance(struct, capnp._DynamicStructReader):
-        struct = struct.as_builder()
-    elif not struct.is_root:
-        struct = struct.copy()
-    return struct.to_bytes()
-
-
-def _decode_structs(slot: pb.CapnpStructs) -> Any:
-    """Read a ``CapnpStructs`` slot as readers over its messages."""
-    struct = _STRUCT_CLASSES[slot.type_id]
-    readers = []
-    for message in slot.messages:
-        # Readers keep their message alive after the context closes.
-        with struct.from_bytes(message) as reader:
-            readers.append(reader)
-    return readers if slot.is_list else readers[0]
 
 
 def _encode_ndarray(value: np.ndarray) -> pb.NDArray:

@@ -2,36 +2,15 @@ load("//bazel:api.bzl", "modular_py_library", "requirement")
 
 package(default_visibility = ["//max:consumers"])
 
-exports_files(["gen_ai.capnp"])
-
 # Cascade pipeline abstractions: the CascadePipeline base, the text/image-gen
 # interfaces, and their request DTOs. Sits below workers and the concrete
 # pipelines so neither workers nor serve has to depend on concrete pipeline
 # implementations.
 modular_py_library(
     name = "interfaces",
-    srcs = glob(
-        ["*.py"],
-        exclude = ["gen_ai_capnp.py"],
-    ),
+    srcs = glob(["*.py"]),
     deps = [
-        ":gen_ai_capnp",
+        requirement("pydantic"),
         "//max/python/max/experimental/cascade/core",
-    ],
-)
-
-# The request and chunk types, generated from `gen_ai.capnp` when imported.
-# There is no Python source for mypy to check; consumers see the types as Any.
-modular_py_library(
-    name = "gen_ai_capnp",
-    srcs = ["gen_ai_capnp.py"],
-    data = ["gen_ai.capnp"],
-    # `gen_ai.capnp` imports `cascade.capnp`, which `cascade_capnp` ships. The
-    # dependency is on that schema file, so no Python import names it.
-    ignore_extra_deps = ["//max/python/max/experimental/cascade/core:cascade_capnp"],
-    tags = ["no-mypy"],
-    deps = [
-        requirement("pycapnp"),
-        "//max/python/max/experimental/cascade/core:cascade_capnp",
     ],
 )

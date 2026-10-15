@@ -20,7 +20,6 @@ modular_py_library(
     deps = [
         "//max/python/max/experimental/cascade/core",
         "//max/python/max/experimental/cascade/interfaces",
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
         "//max/python/max/experimental/cascade/pipelines",
         "//max/python/max/experimental/cascade/pipelines:all_pipelines",
         "//max/python/max/experimental/cascade/serve",

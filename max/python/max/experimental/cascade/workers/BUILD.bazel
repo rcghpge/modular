@@ -14,7 +14,6 @@ modular_py_library(
         requirement("transformers"),
         "//max/python/max/experimental/cascade/core",
         "//max/python/max/experimental/cascade/interfaces",
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
         "//max/python/max/pipelines/architectures",
         "//max/python/max/pipelines/context",
         "//max/python/max/pipelines/lib",

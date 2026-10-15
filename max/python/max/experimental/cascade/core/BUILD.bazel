@@ -2,28 +2,13 @@ load("//bazel:api.bzl", "modular_py_library", "requirement")
 
 package(default_visibility = ["//max:consumers"])
 
-exports_files(["cascade.capnp"])
-
 # Core cascade API: workers, results, proxies, runtime ABC.
 modular_py_library(
     name = "core",
-    srcs = glob(
-        ["*.py"],
-        exclude = ["cascade_capnp.py"],
-    ),
+    srcs = glob(["*.py"]),
     deps = [
         "//max/python/max/support:taskgroups",
         requirement("numpy"),
         requirement("pydantic"),
     ],
-)
-
-# The core schema types, generated from `cascade.capnp` when imported. There is
-# no Python source for mypy to check; consumers see the types as Any.
-modular_py_library(
-    name = "cascade_capnp",
-    srcs = ["cascade_capnp.py"],
-    data = ["cascade.capnp"],
-    tags = ["no-mypy"],
-    deps = [requirement("pycapnp")],
 )

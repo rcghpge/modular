@@ -24,11 +24,11 @@ from max.experimental.cascade import (
     GenAIChunk,
     GenAIInterface,
     GenAIRequest,
+    GenAITextChunk,
     LocalRuntime,
     Modality,
     TextGenOptions,
 )
-from max.experimental.cascade.interfaces.gen_ai import optional
 from max.experimental.cascade.pipelines.dummy_textgen import (
     build_dummy_textgen_pipeline,
 )
@@ -196,8 +196,8 @@ class _SpyPipeline(GenAIInterface):
         self.last_request = req
 
         async def _stream() -> AsyncIterator[GenAIChunk]:
-            for _ in range(req.text.numTokens):
-                yield GenAIChunk.new_message(text="A")
+            for _ in range(req.text.num_tokens):
+                yield GenAITextChunk(text="A")
 
         return _stream()
 
@@ -248,20 +248,20 @@ async def test_forwards_all_sampling_fields(
     assert resp.status_code == 200
     assert spy.last_request is not None
     req = spy.last_request.text
-    assert req.numTokens == 4
-    assert req.minNewTokens == 2
-    assert req.ignoreEos is True
+    assert req.num_tokens == 4
+    assert req.min_new_tokens == 2
+    assert req.ignore_eos is True
     assert req.temperature == 0.5
-    assert optional(req.topK) == 7
-    assert optional(req.topP) == 0.9
-    assert optional(req.minP) == 0.1
-    assert optional(req.thinkingTemperature) == 0.3
-    assert optional(req.seed) == 1234
-    assert optional(req.frequencyPenalty) == 0.25
-    assert optional(req.presencePenalty) == -0.5
-    assert optional(req.repetitionPenalty) == 1.1
-    assert list(req.stop) == ["END", "STOP"]
-    assert list(req.stopTokenIds) == [1, 2, 3]
+    assert req.top_k == 7
+    assert req.top_p == 0.9
+    assert req.min_p == 0.1
+    assert req.thinking_temperature == 0.3
+    assert req.seed == 1234
+    assert req.frequency_penalty == 0.25
+    assert req.presence_penalty == -0.5
+    assert req.repetition_penalty == 1.1
+    assert req.stop == ["END", "STOP"]
+    assert req.stop_token_ids == [1, 2, 3]
 
 
 @pytest.mark.asyncio
@@ -279,7 +279,7 @@ async def test_max_completion_tokens_supersedes_max_tokens(
     )
     assert resp.status_code == 200
     assert spy.last_request is not None
-    assert spy.last_request.text.numTokens == 6
+    assert spy.last_request.text.num_tokens == 6
 
 
 @pytest.mark.asyncio
@@ -297,7 +297,7 @@ async def test_stop_string_is_normalized_to_list(
     )
     assert resp.status_code == 200
     assert spy.last_request is not None
-    assert list(spy.last_request.text.stop) == ["END"]
+    assert spy.last_request.text.stop == ["END"]
 
 
 @pytest.mark.asyncio
@@ -315,17 +315,17 @@ async def test_defaults_when_fields_absent(
     assert spy.last_request is not None
     req = spy.last_request.text
     # Unset sampling fields fall back to "use the model / server default".
-    assert req.numTokens == TextGenOptions.new_message().numTokens
+    assert req.num_tokens == TextGenOptions.model_fields["num_tokens"].default
     assert req.temperature == 1.0
-    assert optional(req.topK) is None
-    assert optional(req.topP) is None
-    assert optional(req.minP) is None
-    assert optional(req.seed) is None
-    assert optional(req.frequencyPenalty) is None
-    assert optional(req.presencePenalty) is None
-    assert optional(req.repetitionPenalty) is None
-    assert len(req.stop) == 0
-    assert len(req.stopTokenIds) == 0
+    assert req.top_k is None
+    assert req.top_p is None
+    assert req.min_p is None
+    assert req.seed is None
+    assert req.frequency_penalty is None
+    assert req.presence_penalty is None
+    assert req.repetition_penalty is None
+    assert req.stop is None
+    assert req.stop_token_ids is None
 
 
 async def _sse_frames(
@@ -352,8 +352,8 @@ async def test_text_free_chunks_are_not_framed() -> None:
     """A chunk carrying only a token count produces no SSE delta."""
     frames = await _sse_frames(
         [
-            GenAIChunk.new_message(text="hi", numTokens=1),
-            GenAIChunk.new_message(text="", numTokens=1),
+            GenAITextChunk(text="hi", num_tokens=1),
+            GenAITextChunk(text="", num_tokens=1),
         ]
     )
 
@@ -366,7 +366,7 @@ async def test_text_free_chunks_are_not_framed() -> None:
 @pytest.mark.asyncio
 async def test_text_free_chunk_alone_still_terminates_the_stream() -> None:
     """A response whose only chunk is text-free still closes cleanly."""
-    frames = await _sse_frames([GenAIChunk.new_message(text="", numTokens=1)])
+    frames = await _sse_frames([GenAITextChunk(text="", num_tokens=1)])
 
     assert not any(b'"content":""' in frame for frame in frames)
     assert frames[-1] == DONE_SSE

@@ -91,7 +91,6 @@ modular_py_test(
     tags = ["skip-ci-macos"],
     deps = [
         "//max/python/max/experimental/cascade",
-        "//max/python/max/experimental/cascade/interfaces",
         "//max/python/max/experimental/cascade/pipelines",
         "//max/python/max/experimental/cascade/serve",
         requirement("fastapi"),
@@ -105,7 +104,7 @@ modular_py_test(
     size = "medium",
     srcs = ["test_chat_parser.py"],
     deps = [
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
+        "//max/python/max/experimental/cascade/interfaces",
         "//max/python/max/experimental/cascade/pipelines",
     ],
 )
@@ -120,7 +119,7 @@ modular_py_test(
     # However we can't disable this on mac-os because mac-os is our primary developer platform for this code.
     # TODO - find a different way to fix the BB macOS runner
     deps = [
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
+        "//max/python/max/experimental/cascade/interfaces",
         "//max/python/max/experimental/cascade/pipelines",
         "//max/python/max/pipelines/architectures/kimik2_5",
         "//max/python/max/pipelines/architectures/laguna",
@@ -195,18 +194,6 @@ modular_py_test(
 )
 
 modular_py_test(
-    name = "test_grpc_codec",
-    size = "small",
-    srcs = ["test_grpc_codec.py"],
-    deps = [
-        "//max/python/max/experimental/cascade/core",
-        "//max/python/max/experimental/cascade/grpc_runtime",
-        "//max/python/max/experimental/cascade/interfaces",
-        requirement("pytest-asyncio"),
-    ],
-)
-
-modular_py_test(
     name = "test_context_config",
     size = "small",
     srcs = ["test_context_config.py"],
@@ -269,7 +256,7 @@ modular_py_test(
     size = "small",
     srcs = ["test_max_tokenizer_decode_stream.py"],
     deps = [
-        "//max/python/max/experimental/cascade/interfaces:gen_ai_capnp",
+        "//max/python/max/experimental/cascade/interfaces",
         "//max/python/max/experimental/cascade/workers",
         requirement("numpy"),
         requirement("pytest-asyncio"),

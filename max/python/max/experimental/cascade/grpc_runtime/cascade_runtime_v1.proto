@@ -52,22 +52,11 @@ message ResultStreamReference {
   string result_id = 2;
 }
 
-// Cap'n Proto structs (see ``interfaces/gen_ai.capnp``), each serialized as
-// its own message. ``type_id`` is the struct's schema id, so the receiver can
-// read them without a type hint; ``is_list`` distinguishes a one-element list
-// from a single struct.
-message CapnpStructs {
-  uint64 type_id = 1;
-  repeated bytes messages = 2;
-  bool is_list = 3;
-}
-
 // One top-level argument, kwarg, or return value.
 //
 // Composite/structured values (lists, dicts, pydantic models, primitives)
 // travel as JSON-encoded UTF-8 in ``json_string``. Binary leaves get their
-// own slots so they don't have to be base64-wrapped through JSON, and Cap'n
-// Proto structs travel as their own serialized messages.
+// own slots so they don't have to be base64-wrapped through JSON.
 message ValueSlot {
   oneof kind {
     bytes bytes_value = 1;
@@ -75,7 +64,6 @@ message ValueSlot {
     NDArray ndarray = 3;
     ResultReference result_ref = 4;
     ResultStreamReference stream_ref = 5;
-    CapnpStructs capnp = 6;
   }
 }
 

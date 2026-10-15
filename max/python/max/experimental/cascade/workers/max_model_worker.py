@@ -30,8 +30,7 @@ from collections.abc import AsyncIterator
 import numpy as np
 import numpy.typing as npt
 from max.experimental.cascade.core import Worker, worker_method
-from max.experimental.cascade.interfaces.gen_ai import optional
-from max.experimental.cascade.interfaces.gen_ai_capnp import TextGenOptions
+from max.experimental.cascade.interfaces.gen_ai import TextGenOptions
 from max.pipelines.architectures import register_all_models
 from max.pipelines.context import (
     EOSTracker,
@@ -59,20 +58,20 @@ def _sampling_params_input(req: TextGenOptions) -> SamplingParamsInput:
     ``GenerationConfig`` defaults (then the ``SamplingParams`` class defaults).
     """
     return SamplingParamsInput(
-        max_new_tokens=req.numTokens,
-        min_new_tokens=req.minNewTokens,
-        ignore_eos=req.ignoreEos,
+        max_new_tokens=req.num_tokens,
+        min_new_tokens=req.min_new_tokens,
+        ignore_eos=req.ignore_eos,
         temperature=req.temperature,
-        top_k=optional(req.topK),
-        top_p=optional(req.topP),
-        min_p=optional(req.minP),
-        thinking_temperature=optional(req.thinkingTemperature),
-        seed=optional(req.seed),
-        frequency_penalty=optional(req.frequencyPenalty),
-        presence_penalty=optional(req.presencePenalty),
-        repetition_penalty=optional(req.repetitionPenalty),
-        stop=list(req.stop) or None,
-        stop_token_ids=list(req.stopTokenIds) or None,
+        top_k=req.top_k,
+        top_p=req.top_p,
+        min_p=req.min_p,
+        thinking_temperature=req.thinking_temperature,
+        seed=req.seed,
+        frequency_penalty=req.frequency_penalty,
+        presence_penalty=req.presence_penalty,
+        repetition_penalty=req.repetition_penalty,
+        stop=req.stop,
+        stop_token_ids=req.stop_token_ids,
     )
 
 
@@ -222,7 +221,7 @@ class MAXModelWorker(Worker):
             sampling_params_defaults=self.pipeline_config.model.sampling_params_defaults,
         )
         request_max_length = min(
-            self.max_length, int(prompt_tokens.shape[0]) + req.numTokens
+            self.max_length, int(prompt_tokens.shape[0]) + req.num_tokens
         )
         # Mirror max-serve's tokenizer behaviour: when ignore_eos is set,
         # strip the EOS triggers entirely. The scheduler terminates a request
@@ -230,7 +229,7 @@ class MAXModelWorker(Worker):
         # ``sampling_params.ignore_eos`` -- so leaving the default EOS set
         # populated would silently cap generation early.
         ctx_eos_token_ids: set[int] = (
-            set() if req.ignoreEos else set(self._eos_token_ids)
+            set() if req.ignore_eos else set(self._eos_token_ids)
         )
         ctx = self._context_type(
             request_id=request_id,

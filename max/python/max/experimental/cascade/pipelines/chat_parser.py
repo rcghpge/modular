@@ -46,8 +46,12 @@ from enum import Enum
 from typing import Annotated
 
 from max.experimental.cascade.core import Worker, worker_method
-from max.experimental.cascade.interfaces.gen_ai_capnp import (
+from max.experimental.cascade.interfaces.gen_ai import (
     GenAIChunk,
+    GenAIImageChunk,
+    GenAIReasoningChunk,
+    GenAITextChunk,
+    GenAIToolCall,
     RawTextChunk,
 )
 
@@ -253,9 +257,7 @@ class ChatChunkParser:
         # delimiter -- have nothing left to ride on but an empty one.
         if self._pending_num_tokens:
             chunks.append(
-                GenAIChunk.new_message(
-                    text="", numTokens=self._pending_num_tokens
-                )
+                GenAITextChunk(text="", num_tokens=self._pending_num_tokens)
             )
             self._pending_num_tokens = 0
         return chunks
@@ -313,7 +315,10 @@ class ChatChunkParser:
         """Put the pending token count on the first chunk of this flush."""
         if chunks:
             first = chunks[0]
-            first.numTokens = self._pending_num_tokens
+            # The parser turns generated text into text, reasoning and
+            # tool-call chunks; images reach a response by another route.
+            assert not isinstance(first, GenAIImageChunk)
+            first.num_tokens = self._pending_num_tokens
             self._pending_num_tokens = 0
         return chunks
 
@@ -322,14 +327,14 @@ class ChatChunkParser:
         if not text:
             return
         if self._span is _Span.REASONING:
-            chunks.append(GenAIChunk.new_message(reasoning=text))
+            chunks.append(GenAIReasoningChunk(text=text))
         elif self._span is _Span.TOOL:
             self._emit_tool(text, chunks)
         else:
             self._emit_content(text, chunks)
 
     def _emit_text(self, text: str, chunks: list[GenAIChunk]) -> None:
-        chunks.append(GenAIChunk.new_message(text=text))
+        chunks.append(GenAITextChunk(text=text))
 
     def _emit_tool(self, text: str, chunks: list[GenAIChunk]) -> None:
         """Stream one piece of a tool region through the model's tool parser."""
@@ -337,26 +342,21 @@ class ChatChunkParser:
         tool_deltas = self._tool_parser.parse_delta(text)
         if tool_deltas is None:
             # Plain text: pass through.
-            chunks.append(GenAIChunk.new_message(text=text))
+            chunks.append(GenAITextChunk(text=text))
             return
         # A non-None result means the parser owns this chunk: [] suppresses the
         # raw text (buffering inside/around a marker); otherwise each delta is
         # either pre-tool content or a tool-call fragment.
         for tool_delta in tool_deltas:
             if tool_delta.content is not None:
-                chunks.append(GenAIChunk.new_message(text=tool_delta.content))
+                chunks.append(GenAITextChunk(text=tool_delta.content))
             else:
-                # Unset text fields read as "", so a fragment's missing id or
-                # name is left out rather than set to None.
-                fields = {
-                    "id": tool_delta.id,
-                    "name": tool_delta.name,
-                    "arguments": tool_delta.arguments,
-                }
-                call = {k: v for k, v in fields.items() if v is not None}
                 chunks.append(
-                    GenAIChunk.new_message(
-                        toolCall={"index": tool_delta.index, **call}
+                    GenAIToolCall(
+                        index=tool_delta.index,
+                        id=tool_delta.id,
+                        name=tool_delta.name,
+                        arguments=tool_delta.arguments,
                     )
                 )
 
@@ -384,7 +384,7 @@ class ChatParserWorker(Worker):
         """Split a detokenizer's raw text deltas into structured chunks."""
         parser = ChatChunkParser(self.config, tool_schemas, tools_enabled)
         async for delta in text_iter:
-            for chunk in parser.feed(delta.text, delta.numTokens):
+            for chunk in parser.feed(delta.text, delta.num_tokens):
                 yield chunk
         for chunk in parser.finish():
             yield chunk

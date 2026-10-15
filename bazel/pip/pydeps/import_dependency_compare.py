@@ -69,7 +69,6 @@ _THIRD_PARTY_IMPORTS = {
     "opentelemetry_proto": ["opentelemetry.proto"],
     "opentelemetry_sdk": ["opentelemetry.sdk"],
     "pillow": ["PIL"],
-    "pycapnp": ["capnp"],
     "python_json_logger": ["pythonjsonlogger"],
     "ruamel_yaml": ["ruamel.yaml"],
     "pytest": ["pytest", "_pytest"],

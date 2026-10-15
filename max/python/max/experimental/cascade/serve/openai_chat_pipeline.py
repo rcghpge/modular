@@ -27,15 +27,17 @@ pool instead of the API event loop, and never round-trips the orchestrator.
 
 from __future__ import annotations
 
-import json
 import time
 from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from typing import Any
 
 from max.experimental.cascade.core import pipeline_method
-from max.experimental.cascade.interfaces.gen_ai import GenAIInterface
-from max.experimental.cascade.interfaces.gen_ai_capnp import (
+from max.experimental.cascade.interfaces.gen_ai import (
+    ChatMessage,
+    GenAIInterface,
     GenAIRequest,
+    GenAITextChunk,
+    GenAITool,
     TextGenOptions,
 )
 from max.experimental.cascade.interfaces.pipeline import CascadePipeline
@@ -85,62 +87,51 @@ def _message_text(content: str | Sequence[Mapping[str, Any]]) -> str:
     return "".join(text_parts)
 
 
-def _fill_tools(
-    req: GenAIRequest, request: CreateChatCompletionRequest
-) -> None:
-    """Write the request's tool definitions into ``req.tools``.
+def _convert_tools(request: CreateChatCompletionRequest) -> list[GenAITool]:
+    """Convert the request's tool definitions into their generic form.
 
     Tools without a resolvable name are dropped, matching the MAX Serve route.
     """
-    named = [
-        (name, tool)
-        for tool in request.tools or []
-        if (name := maybe_name_from_tool(tool))
-    ]
-    for target, (name, tool) in zip(
-        req.init("tools", len(named)), named, strict=True
-    ):
-        target.name = name
-        function = tool.get("function")
-        if not isinstance(function, dict):
+    tools: list[GenAITool] = []
+    for tool in request.tools or []:
+        name = maybe_name_from_tool(tool)
+        if not name:
             continue
-        if isinstance(function.get("parameters"), dict):
-            target.parametersJson = json.dumps(function["parameters"])
-        if isinstance(function.get("description"), str):
-            target.description = function["description"]
+        function = tool.get("function")
+        parameters = None
+        description = None
+        if isinstance(function, dict):
+            if isinstance(function.get("parameters"), dict):
+                parameters = function["parameters"]
+            if isinstance(function.get("description"), str):
+                description = function["description"]
+        tools.append(
+            GenAITool(name=name, description=description, parameters=parameters)
+        )
+    return tools
 
 
-# Optional sampling fields forwarded verbatim; unset ones stay on the model
-# default.
-_OPTIONAL_SAMPLING_FIELDS = (
-    ("topK", "top_k"),
-    ("topP", "top_p"),
-    ("minP", "min_p"),
-    ("thinkingTemperature", "thinking_temperature"),
-    ("seed", "seed"),
-    ("frequencyPenalty", "frequency_penalty"),
-    ("presencePenalty", "presence_penalty"),
-    ("repetitionPenalty", "repetition_penalty"),
-)
+def _text_gen_options(request: CreateChatCompletionRequest) -> TextGenOptions:
+    """Map the request's sampling fields onto :class:`TextGenOptions`.
 
-
-def _fill_text_options(
-    options: TextGenOptions, request: CreateChatCompletionRequest
-) -> None:
-    """Write the request's sampling fields into *options*.
-
-    Fields the client did not supply keep the schema defaults.
+    Passthrough fields share ``TextGenOptions``'s ``None`` defaults, so
+    forwarding them verbatim leaves unset ones on the model default. Fields
+    whose default differs from "unset" are only overridden when the client
+    supplied a value.
     """
-    for field, request_field in _OPTIONAL_SAMPLING_FIELDS:
-        value = getattr(request, request_field)
-        if value is not None:
-            getattr(options, field).value = value
-    if request.ignore_eos is not None:
-        options.ignoreEos = request.ignore_eos
-    if stop := _convert_stop(request.stop):
-        options.stop = stop
-    if request.stop_token_ids:
-        options.stopTokenIds = request.stop_token_ids
+    options = TextGenOptions(
+        ignore_eos=request.ignore_eos,
+        top_k=request.top_k,
+        top_p=request.top_p,
+        min_p=request.min_p,
+        thinking_temperature=request.thinking_temperature,
+        seed=request.seed,
+        frequency_penalty=request.frequency_penalty,
+        presence_penalty=request.presence_penalty,
+        repetition_penalty=request.repetition_penalty,
+        stop=_convert_stop(request.stop),
+        stop_token_ids=request.stop_token_ids,
+    )
     # ``max_completion_tokens`` supersedes the legacy ``max_tokens``.
     max_new_tokens = (
         request.max_completion_tokens
@@ -148,11 +139,12 @@ def _fill_text_options(
         else request.max_tokens
     )
     if max_new_tokens is not None:
-        options.numTokens = max_new_tokens
+        options.num_tokens = max_new_tokens
     if request.min_tokens is not None:
-        options.minNewTokens = request.min_tokens
+        options.min_new_tokens = request.min_tokens
     if request.temperature is not None:
         options.temperature = request.temperature
+    return options
 
 
 def to_gen_ai_request(request: CreateChatCompletionRequest) -> GenAIRequest:
@@ -161,17 +153,25 @@ def to_gen_ai_request(request: CreateChatCompletionRequest) -> GenAIRequest:
     Raises:
         ValueError: If the request carries content this schema cannot express.
     """
-    req = GenAIRequest.new_message()
-    messages = req.init("messages", len(request.messages))
-    for target, message in zip(messages, request.messages, strict=True):
-        target.role = message.get("role", "")
-        content = _message_text(message.get("content") or "")
-        target.init("content", 1)[0].text = content
-    _fill_tools(req, request)
+    tool_choice = "auto"
     if request.tool_choice in ("none", "required"):
-        req.toolChoice = request.tool_choice
-    _fill_text_options(req.text, request)
-    return req
+        tool_choice = request.tool_choice
+    return GenAIRequest(
+        messages=[
+            ChatMessage(
+                role=message.get("role", ""),
+                content=[
+                    GenAITextChunk(
+                        text=_message_text(message.get("content") or "")
+                    )
+                ],
+            )
+            for message in request.messages
+        ],
+        tools=_convert_tools(request),
+        tool_choice=tool_choice,  # type: ignore[arg-type]
+        text=_text_gen_options(request),
+    )
 
 
 class OpenAIChatCompletionPipeline(CascadePipeline):
