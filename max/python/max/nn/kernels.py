@@ -10684,6 +10684,118 @@ def grouped_quantize_dynamic_block_scaled(
     return result[0].tensor, result[1].tensor
 
 
+def grouped_quantize_nvfp4_row_scaled(
+    input: TensorValue,
+    row_offsets: TensorValue,
+    scales_offsets: TensorValue,
+    indices: TensorValue | None = None,
+    indices_divisor: int = 1,
+    relu2: bool = False,
+) -> tuple[TensorValue, TensorValue, TensorValue]:
+    """Quantizes grouped rows to NVFP4, each row with its own global scale.
+
+    Fuses the row amax into the quantize kernel. The result is bit-identical
+    to this chain of ops, which it replaces::
+
+        amax = ops.max(ops.abs(ops.cast(x, float32)), axis=-1)
+        row_scales = ops.cast(ops.max(amax / (6 * 448), 1e-30), bfloat16)
+        scaled = ops.cast(
+            ops.cast(x, float32) * (1.0 / ops.cast(row_scales, float32)),
+            bfloat16,
+        )
+        x_fp4, scales = grouped_quantize_dynamic_block_scaled(
+            scaled, ..., sf_tensor=ones, indices=indices
+        )
+
+    ``row_scales`` is the ``a_row_scales`` of
+    :func:`grouped_matmul_block_scaled`. SM100 only.
+
+    Args:
+        input: The BF16 rows, ``[source rows, K]``.
+        row_offsets: Cumulative row offsets per expert, ``[num_experts +
+            1]``, dtype ``uint32``.
+        scales_offsets: Per-expert scale tile offset corrections,
+            ``[num_experts]``, dtype ``uint32``.
+        indices: Optional source row indices per output row, ``[rows]``,
+            dtype ``int32`` or ``uint32``. Output row ``i`` quantizes input
+            row ``indices[i] // indices_divisor``, with its own scale. The
+            output has ``indices.shape[0]`` rows instead of
+            ``input.shape[0]``.
+        indices_divisor: The divisor applied to each entry of ``indices``.
+        relu2: Whether to quantize ``relu(x) * relu(x)``, rounded to BF16,
+            in place of ``x``.
+
+    Returns:
+        The packed FP4 rows ``[rows, K // 2]``, the E4M3 block scales in the
+        rank-5 interleaved layout ``[total_m_tiles, K_tiles, 32, 4, 4]``, and
+        the BF16 row scales ``[rows]``.
+    """
+    if input.rank != 2:
+        raise ValueError("input tensor must be rank 2")
+    if input.dtype != DType.bfloat16:
+        raise ValueError("input tensor dtype must be bfloat16")
+    if int(input.shape[1]) % 8:
+        raise ValueError("input columns must be a multiple of 8")
+    if indices is not None:
+        if indices.dtype not in (DType.int32, DType.uint32):
+            raise ValueError("indices dtype must be int32 or uint32")
+        if indices_divisor < 1:
+            raise ValueError("indices_divisor must be positive")
+
+    SF_ATOM_M = [32, 4]
+    SF_ATOM_K = 4
+    SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
+    SF_K_GROUP_SIZE = SF_ATOM_K * 16
+
+    num_rows = indices.shape[0] if indices is not None else input.shape[0]
+    # The same tile bound as grouped_quantize_dynamic_block_scaled: a row
+    # belongs to one expert, so at most min(experts, rows) tiles are partial.
+    total_m_tiles = ceildiv(num_rows, Dim(SF_MN_GROUP_SIZE))
+    total_m_tiles += AlgebraicDim.apply(
+        kgen.POC.min, scales_offsets.shape[0], num_rows
+    )
+
+    op_name = "mo.grouped.quantize.nvfp4.row_scaled"
+    values = [input, row_offsets, scales_offsets]
+    parameters: dict[str, int] = {"apply_relu2": int(relu2)}
+    if indices is not None:
+        op_name += ".with_row_indices"
+        values.append(indices)
+        parameters["row_index_divisor"] = indices_divisor
+
+    result = ops.custom(
+        op_name,
+        device=input.device,
+        values=values,
+        parameters=parameters,
+        out_types=[
+            TensorType(
+                dtype=DType.uint8,
+                shape=[num_rows, input.shape[1] // 2],
+                device=input.device,
+            ),
+            TensorType(
+                dtype=DType.float8_e4m3fn,
+                shape=[
+                    total_m_tiles,
+                    ceildiv(input.shape[1], Dim(SF_K_GROUP_SIZE)),
+                    SF_ATOM_M[0],
+                    SF_ATOM_M[1],
+                    SF_ATOM_K,
+                ],
+                device=input.device,
+            ),
+            TensorType(
+                dtype=DType.bfloat16,
+                shape=[num_rows],
+                device=input.device,
+            ),
+        ],
+    )
+
+    return result[0].tensor, result[1].tensor, result[2].tensor
+
+
 def quantize_dynamic_block_scaled_mxfp4(
     input: TensorValue,
     scales_type: DType = DType.float8_e8m0fnu,

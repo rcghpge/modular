@@ -36,6 +36,7 @@ from layout import (
     coord_to_index_list,
     row_major,
 )
+from nn.activations import relu
 from nn.normalization import rms_norm_quantize_dynamic_scaled_fp8
 from .rowwise_normalization import rms_norm_fused_quantize_dynamic_scaled_fp8
 from std.utils.coord import ComptimeInt
@@ -47,6 +48,7 @@ from linalg.fp8_quantization import (
 from linalg.block_scaled_quantization import (
     quantize_dynamic_block_scaled,
     grouped_quantize_dynamic_scaled_fp4_async,
+    grouped_quantize_nvfp4_row_amax,
     block_scales_interleave,
     quantize_dynamic_block_scaled_mxfp4,
 )
@@ -1041,6 +1043,129 @@ struct Struct_grouped_quantize_dynamic_block_scaled_with_row_indices:
             scales_offsets.to_tile_tensor[.int64](),
             expert_ids.to_tile_tensor[.int64](),
             sf_tensor.to_tile_tensor[.int64](),
+            context,
+            row_indices.to_tile_tensor[.int64]()
+            .as_unsafe_any_origin()
+            .as_imm(),
+        )
+
+
+@extensibility.register("mo.grouped.quantize.nvfp4.row_scaled")
+struct Struct_grouped_quantize_nvfp4_row_scaled:
+    """Registers the `mo.grouped.quantize.nvfp4.row_scaled` graph op with the graph compiler.
+
+    Quantizes grouped BF16 rows to NVFP4 with a global scale per row, taken
+    from the row's amax inside the kernel, and returns the scales for the
+    grouped matmul's `a_row_scales`. The result is bit-identical to the
+    chain of a row amax, two BF16 roundings and
+    `mo.grouped.quantize.dynamic.block.scaled` with a tensor-wise scale of 1.
+    `apply_relu2` quantizes `relu(x) * relu(x)` in place of `x`, with
+    `relu` from `nn.activations`.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        out_dtype: DType,
+        scales_type: DType,
+        in_dtype: DType,
+        //,
+        scales_rank: Int,
+        apply_relu2: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=out_dtype, rank=2, ...],
+        scales: OutputTensor[dtype=scales_type, rank=scales_rank, ...],
+        row_scales: OutputTensor[dtype=.bfloat16, rank=1, ...],
+        input: InputTensor[dtype=in_dtype, rank=2, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[
+            target
+        ](), "grouped quantize nvfp4 row scaled only supports GPUs"
+
+        @__parameter
+        @inline(.always)
+        def input_fn[
+            dtype: DType, width: SIMDLength
+        ](v: SIMD[dtype, width]) capturing -> SIMD[dtype, width]:
+            comptime if apply_relu2 != 0:
+                var r = relu(v)
+                return r * r
+            else:
+                return v
+
+        grouped_quantize_nvfp4_row_amax[input_fn=input_fn](
+            output.to_tile_tensor[.int64](),
+            scales.to_tile_tensor[.int64](),
+            row_scales.to_tile_tensor[.int64](),
+            input.to_tile_tensor[.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            scales_offsets.to_tile_tensor[.int64](),
+            context,
+        )
+
+
+@extensibility.register("mo.grouped.quantize.nvfp4.row_scaled.with_row_indices")
+struct Struct_grouped_quantize_nvfp4_row_scaled_with_row_indices:
+    """Registers the `mo.grouped.quantize.nvfp4.row_scaled.with_row_indices` graph op with the graph compiler.
+
+    The row-gather variant of `mo.grouped.quantize.nvfp4.row_scaled`: output
+    row `i` quantizes input row `row_indices[i] // row_index_divisor`, with
+    that row's own scale. A separate op carries the extra operand because
+    graph ops have no optional inputs.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        out_dtype: DType,
+        scales_type: DType,
+        in_dtype: DType,
+        row_indices_dtype: DType,
+        //,
+        scales_rank: Int,
+        apply_relu2: Int,
+        row_index_divisor: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=out_dtype, rank=2, ...],
+        scales: OutputTensor[dtype=scales_type, rank=scales_rank, ...],
+        row_scales: OutputTensor[dtype=.bfloat16, rank=1, ...],
+        input: InputTensor[dtype=in_dtype, rank=2, ...],
+        row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        scales_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        row_indices: InputTensor[dtype=row_indices_dtype, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[
+            target
+        ](), "grouped quantize nvfp4 row scaled only supports GPUs"
+
+        @__parameter
+        @inline(.always)
+        def input_fn[
+            dtype: DType, width: SIMDLength
+        ](v: SIMD[dtype, width]) capturing -> SIMD[dtype, width]:
+            comptime if apply_relu2 != 0:
+                var r = relu(v)
+                return r * r
+            else:
+                return v
+
+        grouped_quantize_nvfp4_row_amax[
+            input_fn=input_fn,
+            row_indices_dtype=row_indices_dtype,
+            row_index_divisor=row_index_divisor,
+        ](
+            output.to_tile_tensor[.int64](),
+            scales.to_tile_tensor[.int64](),
+            row_scales.to_tile_tensor[.int64](),
+            input.to_tile_tensor[.int64](),
+            row_offsets.to_tile_tensor[.int64](),
+            scales_offsets.to_tile_tensor[.int64](),
             context,
             row_indices.to_tile_tensor[.int64]()
             .as_unsafe_any_origin()

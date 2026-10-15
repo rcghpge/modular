@@ -122,13 +122,14 @@ def _routed_experts(
             token_rows,
         )
         down_out = nvfp4_grouped_matmul(
-            _relu2_value(up_out),
+            up_out,
             down_weight,
             down_block_scale,
             down_scale,
             expert_start_indices,
             scales_offsets[0],
             expert_ids,
+            relu2=True,
         )
     else:
         permuted = ops.gather(x, token_rows, axis=0)

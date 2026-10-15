@@ -53,6 +53,13 @@ from .sharding import shard_segments
 # amax / _NVFP4_RANGE has its largest block scale at the E4M3 maximum.
 _NVFP4_RANGE = 6.0 * 448.0
 
+# Whether to quantize activations with the fused row-amax kernel
+# (`kernels.grouped_quantize_nvfp4_row_scaled`), whose output is
+# bit-identical to the op chain in `nvfp4_grouped_matmul`. The fused kernel
+# makes the B=64 decode step about 8% faster (SERVOPT-1732); the chain stays
+# as the reference path.
+_FUSED_NVFP4_ROW_QUANT = True
+
 
 def nvfp4_grouped_matmul(
     x: TensorValue,
@@ -63,11 +70,15 @@ def nvfp4_grouped_matmul(
     scales_offsets: TensorValue,
     expert_ids: TensorValue,
     rows: TensorValue | None = None,
+    relu2: bool = False,
 ) -> TensorValue:
     """Quantizes ``x`` to NVFP4 per row and runs the W4A4 grouped matmul.
 
     The checkpoint has no activation scale, so each row gets its own global
-    scale from its amax, which the matmul epilogue multiplies back in.
+    scale from its amax, which the matmul epilogue multiplies back in. With
+    ``_FUSED_NVFP4_ROW_QUANT``, one kernel takes the amax, rounds the scales,
+    quantizes and applies relu2; otherwise a chain of ops does the same, with
+    the same bits out.
 
     Args:
         x: BF16 activations, ``[tokens, K]``.
@@ -79,42 +90,58 @@ def nvfp4_grouped_matmul(
         expert_ids: The expert of each group.
         rows: The ``x`` row of each routed row, when ``x`` is not already in
             routed order.
+        relu2: Whether to multiply with ``relu(x) ** 2`` in place of ``x``.
 
     Returns:
         The BF16 output, ``[routed rows, N]``.
     """
-    amax = ops.max(ops.abs(ops.cast(x, DType.float32)), axis=-1)
-    # A row of zeros would otherwise divide by zero.
-    row_scales = ops.cast(
-        ops.max(
-            amax / _NVFP4_RANGE, ops.constant(1e-30, DType.float32, x.device)
-        ),
-        DType.bfloat16,
-    )
-    # Float32 division is slow when the numerator is zero, and relu2 makes
-    # about half of these zero, so multiply by the reciprocal instead.
-    scaled = ops.cast(
-        ops.cast(x, DType.float32)
-        * (1.0 / ops.cast(row_scales, DType.float32)),
-        DType.bfloat16,
-    )
-    row_scales = ops.reshape(row_scales, [-1])
-    if rows is not None:
-        row_scales = ops.gather(row_scales, rows, axis=0)
     num_experts = int(weight.shape[0])
-    x_fp4, x_block_scales = kernels.grouped_quantize_dynamic_block_scaled(
-        scaled,
-        row_offsets=expert_start_indices,
-        scales_offsets=scales_offsets,
-        expert_ids=expert_ids,
-        sf_tensor=ops.broadcast_to(
-            ops.constant(1.0, DType.float32, x.device), [num_experts]
-        ),
-        sf_vector_size=NVFP4_GROUP_SIZE,
-        scales_type=DType.float8_e4m3fn,
-        out_type=DType.uint8,
-        indices=rows,
-    )
+    if _FUSED_NVFP4_ROW_QUANT:
+        x_fp4, x_block_scales, row_scales = (
+            kernels.grouped_quantize_nvfp4_row_scaled(
+                x,
+                row_offsets=expert_start_indices,
+                scales_offsets=scales_offsets,
+                indices=rows,
+                relu2=relu2,
+            )
+        )
+    else:
+        if relu2:
+            r = ops.relu(x)
+            x = r * r
+        amax = ops.max(ops.abs(ops.cast(x, DType.float32)), axis=-1)
+        # A row of zeros would otherwise divide by zero.
+        row_scales = ops.cast(
+            ops.max(
+                amax / _NVFP4_RANGE,
+                ops.constant(1e-30, DType.float32, x.device),
+            ),
+            DType.bfloat16,
+        )
+        # Float32 division is slow when the numerator is zero, and relu2
+        # makes about half of these zero, so multiply by the reciprocal.
+        scaled = ops.cast(
+            ops.cast(x, DType.float32)
+            * (1.0 / ops.cast(row_scales, DType.float32)),
+            DType.bfloat16,
+        )
+        row_scales = ops.reshape(row_scales, [-1])
+        if rows is not None:
+            row_scales = ops.gather(row_scales, rows, axis=0)
+        x_fp4, x_block_scales = kernels.grouped_quantize_dynamic_block_scaled(
+            scaled,
+            row_offsets=expert_start_indices,
+            scales_offsets=scales_offsets,
+            expert_ids=expert_ids,
+            sf_tensor=ops.broadcast_to(
+                ops.constant(1.0, DType.float32, x.device), [num_experts]
+            ),
+            sf_vector_size=NVFP4_GROUP_SIZE,
+            scales_type=DType.float8_e4m3fn,
+            out_type=DType.uint8,
+            indices=rows,
+        )
     # The kernel picks its tiling from the average rows per expert.
     routed_rows = ops.cast(
         ops.shape_to_tensor([x_fp4.shape[0]])[0], DType.uint32
