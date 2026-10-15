@@ -46,11 +46,14 @@ from collections.abc import AsyncIterable, AsyncIterator
 
 from max.experimental.cascade.core import Worker, worker_method
 from max.experimental.cascade.interfaces.gen_ai import (
+    Modality,
+    tool_schemas,
+    tools_enabled,
+)
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     ChatMessage,
     GenAIChunk,
     GenAIRequest,
-    GenAITextChunk,
-    Modality,
     RawTextChunk,
 )
 from max.experimental.cascade.interfaces.pipeline import GenAIPipeline
@@ -69,9 +72,7 @@ def _prompt_text(messages: list[ChatMessage]) -> str:
     if not messages:
         return ""
     return "".join(
-        part.text
-        for part in messages[-1].content
-        if isinstance(part, GenAITextChunk)
+        part.text for part in messages[-1].content if part.which() == "text"
     )
 
 
@@ -95,7 +96,7 @@ class TextEchoWorker(Worker):
     async def replay(self, text: str) -> AsyncIterator[RawTextChunk]:
         """Stream ``text`` back one character at a time."""
         for char in text:
-            yield RawTextChunk(text=char, num_tokens=1)
+            yield RawTextChunk.new_message(text=char, numTokens=1)
 
 
 class TextEchoPipeline(GenAIPipeline):
@@ -130,5 +131,5 @@ class TextEchoPipeline(GenAIPipeline):
         """Replay the prompt's scripted output and parse it into chunks."""
         text = await self.transformer.replay(_prompt_text(req.messages))
         return await self.parser.parse_stream(
-            text, req.tools_enabled, req.tool_schemas()
+            text, tools_enabled(req), tool_schemas(req)
         )

@@ -33,10 +33,9 @@ from contextlib import (
 )
 from dataclasses import dataclass, field
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Concatenate,
     Generic,
-    ParamSpec,
     TypeVar,
     cast,
 )
@@ -49,8 +48,6 @@ from max.experimental.cascade.core.type_hints import (
 )
 
 T = TypeVar("T")
-R = TypeVar("R")
-P = ParamSpec("P")
 
 
 @dataclass
@@ -117,7 +114,20 @@ class Runtime(AsyncExitStack, ABC):
         worker_id = await asyncio.wait_for(
             self.deploy_worker(worker), timeout=worker.deploy_timeout
         )
-        return cast(WorkerType, Proxy(self, worker_id, worker))
+        return cast(WorkerType, Proxy.of_worker(self, worker_id, worker))
+
+    async def deploy_interface(
+        self, interface: object, config: Mapping[str, object] | None = None
+    ) -> Proxy[Any]:
+        """Deploy the runtime's own implementation of a schema interface.
+
+        The proxy's methods are read from the interface, so there is no
+        worker class to write. ``config`` fills the worker's constructor
+        config struct.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot deploy schema interfaces"
+        )
 
     @abstractmethod
     def call_method(
@@ -186,75 +196,80 @@ class Runtime(AsyncExitStack, ABC):
         ...
 
 
-class Proxy(Generic[T]):
-    """Client-side handle to a deployed :py:class:`Worker`.
+@dataclass(frozen=True)
+class ProxyMethod:
+    """What a :py:class:`Proxy` needs to know to bind one worker method."""
 
-    Inspects ``type(worker)`` at construction time and attaches one bound
-    method per non-underscore worker method. Each generated method picks a
-    fresh ``result_id``, hands it to ``runtime.call_method`` for binding,
-    and returns it wrapped in a :py:class:`Result` (or :py:class:`ResultIter`
-    for async-generator methods).
+    stream: bool
+    # Expected type of the resolved value, or of each streamed item.
+    type_hint: object | None = None
+    # The worker method this stands in for, whose metadata the proxy copies.
+    impl: Callable[..., object] | None = None
+
+
+class Proxy(Generic[T]):
+    """Client-side handle to a deployed worker.
+
+    Attaches one bound method per entry of ``methods``. Each method picks a
+    fresh ``result_id``, hands it to ``runtime.call_method`` for binding, and
+    returns it wrapped in a :py:class:`Result` (or :py:class:`ResultIter` for
+    a streaming method). The methods come from a :py:class:`Worker` class
+    (:py:meth:`of_worker`) or, for a worker the runtime implements, from its
+    schema interface.
     """
 
     runtime: Runtime
     worker_id: str
 
     def __init__(
-        self, runtime: Runtime, worker_id: str, worker: Worker
+        self,
+        runtime: Runtime,
+        worker_id: str,
+        methods: Mapping[str, ProxyMethod],
     ) -> None:
         self.runtime = runtime
         self.worker_id = worker_id
+        for name, method in methods.items():
+            setattr(self, name, self._bind(name, method))
+
+    if TYPE_CHECKING:
+
+        def __getattr__(self, name: str) -> Callable[..., Awaitable[Any]]:
+            """Methods are attached from the worker's schema or class."""
+            ...
+
+    @classmethod
+    def of_worker(
+        cls, runtime: Runtime, worker_id: str, worker: Worker
+    ) -> Proxy[Any]:
+        """A proxy with one method per public method of ``type(worker)``."""
+        methods: dict[str, ProxyMethod] = {}
         worker_class = type(worker)
-        self._cls_name = worker_class.__name__
         for name in dir(worker_class):
-            if name.startswith("_"):
-                continue
             method = getattr(worker_class, name, None)
-            if not callable(method):
+            if name.startswith("_") or not callable(method):
                 continue
             if inspect.isasyncgenfunction(method):
-                setattr(self, name, self._bind_stream(name, method))
+                methods[name] = ProxyMethod(
+                    True, stream_elem_type(method), method
+                )
             else:
-                setattr(self, name, self._bind_call(name, method))
+                methods[name] = ProxyMethod(False, return_type(method), method)
+        return cls(runtime, worker_id, methods)
 
-    def _bind_call(
-        self,
-        name: str,
-        method: Callable[Concatenate[WorkerType, P], Coroutine[Any, Any, R]],
-    ) -> Callable[P, Coroutine[Any, Any, Result[R]]]:
-        """Build a wrapper for a coroutine worker method."""
+    def _bind(
+        self, name: str, method: ProxyMethod
+    ) -> Callable[..., Coroutine[Any, Any, Any]]:
         runtime = self.runtime
         worker_id = self.worker_id
-        ret_type = return_type(method)
 
-        @functools.wraps(method)
-        async def call(*args: P.args, **kwargs: P.kwargs) -> Result[R]:
+        async def call(*args: object, **kwargs: object) -> object:
             context = _get_pipeline_context()
             result_id = await context.enter_async_context(
                 runtime.call_method(worker_id, name, args, kwargs)
             )
-            return runtime.make_result(result_id, ret_type)
+            if method.stream:
+                return runtime.make_result_iter(result_id, method.type_hint)
+            return runtime.make_result(result_id, method.type_hint)
 
-        return call
-
-    def _bind_stream(
-        self,
-        name: str,
-        method: Callable[Concatenate[WorkerType, P], AsyncIterator[R]],
-    ) -> Callable[P, Coroutine[Any, Any, ResultIter[R]]]:
-        """Build a wrapper for an async-generator worker method."""
-        runtime = self.runtime
-        worker_id = self.worker_id
-        elem_type = stream_elem_type(method)
-
-        @functools.wraps(method)
-        async def call_stream(
-            *args: P.args, **kwargs: P.kwargs
-        ) -> ResultIter[R]:
-            context = _get_pipeline_context()
-            result_id = await context.enter_async_context(
-                runtime.call_method(worker_id, name, args, kwargs)
-            )
-            return runtime.make_result_iter(result_id, elem_type)
-
-        return call_stream
+        return functools.wraps(method.impl)(call) if method.impl else call

@@ -22,9 +22,8 @@ from contextlib import asynccontextmanager
 import numpy as np
 import numpy.typing as npt
 from max.experimental.cascade.core import worker_method
-from max.experimental.cascade.interfaces.gen_ai import (
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     ChatMessage,
-    GenAITextChunk,
     RawTextChunk,
 )
 from max.experimental.cascade.workers.tokenizer_worker import (
@@ -100,9 +99,10 @@ def flatten_message(message: ChatMessage) -> dict[str, str]:
     """
     text_parts: list[str] = []
     for part in message.content:
-        if not isinstance(part, GenAITextChunk):
+        if part.which() != "text":
             raise ValueError(
-                f"This tokenizer accepts text content only, got {part.type!r}"
+                "This tokenizer accepts text content only, got"
+                f" {part.which()!r}"
             )
         text_parts.append(part.text)
     return {"role": message.role, "content": "".join(text_parts)}

@@ -25,9 +25,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterable
 
 from max.experimental.cascade.interfaces.gen_ai import (
+    Modality,
+    tool_schemas,
+    tools_enabled,
+)
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     GenAIChunk,
     GenAIRequest,
-    Modality,
 )
 from max.experimental.cascade.interfaces.pipeline import GenAIPipeline
 from max.experimental.cascade.pipelines.chat_parser import (
@@ -134,5 +138,5 @@ class CommonTextGenPipeline(GenAIPipeline):
         gen_tokens = await self.model.decode(req.text, tokens)
         text = await self.tokenizer.decode_stream(gen_tokens, True)
         return await self.parser.parse_stream(
-            text, req.tools_enabled, req.tool_schemas()
+            text, tools_enabled(req), tool_schemas(req)
         )

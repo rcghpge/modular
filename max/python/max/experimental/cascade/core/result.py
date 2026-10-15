@@ -43,6 +43,11 @@ class Result(Generic[T]):
     # Expected type of the resolved value; local only, never sent on the wire.
     type_hint: object | None = None
 
+    def __reduce__(self) -> tuple[type[Result[T]], tuple[str, Runtime]]:
+        # The hint is local only, and need not be picklable (a capnp struct is
+        # not), so it stays behind; the receiver derives its own.
+        return (type(self), (self.result_id, self.runtime))
+
     def _decode(self, value: object) -> T:
         # We can either get a fully formed value (i.e. from LocalRuntime),
         # a primitive type, or a CascadeValue, which is a Python view of
@@ -74,6 +79,10 @@ class ResultIter(Generic[T]):
     runtime: Runtime
     # Expected element type; local only, never sent on the wire.
     type_hint: object | None = None
+
+    def __reduce__(self) -> tuple[type[ResultIter[T]], tuple[str, Runtime]]:
+        # See :py:meth:`Result.__reduce__`.
+        return (type(self), (self.result_id, self.runtime))
 
     def _decode(self, item: object) -> T:
         # See :py:meth:`Result._decode`: only raw JSON composites get rebuilt.

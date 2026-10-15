@@ -34,12 +34,7 @@ import pytest
 
 # Importing each architecture's tool_parser module runs its @register, exactly
 # as register_all_models() does in a running server.
-from max.experimental.cascade.interfaces.gen_ai import (
-    GenAIChunk,
-    GenAIReasoningChunk,
-    GenAITextChunk,
-    GenAIToolCall,
-)
+from max.experimental.cascade.interfaces.gen_ai_capnp import GenAIChunk
 from max.experimental.cascade.pipelines.chat_parser import (
     ChatChunkParser,
     ChatParserConfig,
@@ -111,11 +106,11 @@ def _parse(
 
 
 def _reasoning(chunks: list[GenAIChunk]) -> str:
-    return "".join(c.text for c in chunks if isinstance(c, GenAIReasoningChunk))
+    return "".join(c.reasoning for c in chunks if c.which() == "reasoning")
 
 
 def _text(chunks: list[GenAIChunk]) -> str:
-    return "".join(c.text for c in chunks if isinstance(c, GenAITextChunk))
+    return "".join(c.text for c in chunks if c.which() == "text")
 
 
 def _transcript(chunks: list[GenAIChunk]) -> list[tuple[str, str]]:
@@ -130,13 +125,16 @@ def _transcript(chunks: list[GenAIChunk]) -> list[tuple[str, str]]:
     """
     runs: list[list[str]] = []
     for chunk in chunks:
-        if isinstance(chunk, GenAIReasoningChunk):
-            kind, text = "reasoning", chunk.text
-        elif isinstance(chunk, GenAITextChunk):
-            kind, text = "text", chunk.text
-        else:
-            assert isinstance(chunk, GenAIToolCall)
-            kind, text = f"tool:{chunk.index}", chunk.name or ""
+        match chunk.which():
+            case "reasoning":
+                kind, text = "reasoning", chunk.reasoning
+            case "text":
+                kind, text = "text", chunk.text
+            case "toolCall":
+                kind = f"tool:{chunk.toolCall.index}"
+                text = chunk.toolCall.name
+            case other:
+                raise AssertionError(f"unexpected chunk kind: {other}")
         if runs and runs[-1][0] == kind:
             runs[-1][1] += text
         else:
@@ -147,13 +145,14 @@ def _transcript(chunks: list[GenAIChunk]) -> list[tuple[str, str]]:
 def _tool_calls(chunks: list[GenAIChunk]) -> dict[int, dict[str, str]]:
     calls: dict[int, dict[str, str]] = {}
     for chunk in chunks:
-        if not isinstance(chunk, GenAIToolCall):
+        if chunk.which() != "toolCall":
             continue
-        call = calls.setdefault(chunk.index, {"name": "", "arguments": ""})
-        if chunk.name:
-            call["name"] = chunk.name
-        if chunk.arguments:
-            call["arguments"] += chunk.arguments
+        tool_call = chunk.toolCall
+        call = calls.setdefault(tool_call.index, {"name": "", "arguments": ""})
+        if tool_call.name:
+            call["name"] = tool_call.name
+        if tool_call.arguments:
+            call["arguments"] += tool_call.arguments
     return calls
 
 
@@ -409,9 +408,9 @@ def test_kimi_empty_spans_emit_nothing(chunk_size: int) -> None:
     )
     assert _transcript(chunks) == [("text", "Hi.Bye.")]
     assert all(
-        chunk.text
+        getattr(chunk, chunk.which())
         for chunk in chunks
-        if isinstance(chunk, (GenAITextChunk, GenAIReasoningChunk))
+        if chunk.which() in ("text", "reasoning")
     )
 
 

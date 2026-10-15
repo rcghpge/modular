@@ -27,6 +27,7 @@ on the leaves and are never invoked on the router itself.
 from __future__ import annotations
 
 import asyncio
+from abc import abstractmethod
 from collections.abc import (
     AsyncIterator,
     Awaitable,
@@ -34,9 +35,11 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import AbstractAsyncContextManager
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
-from max.experimental.cascade.core import Runtime, Worker, WorkerType
+from max.experimental.cascade.core import Proxy, Runtime, Worker, WorkerType
+
+_T = TypeVar("_T")
 
 
 class RoundRobinProxy:
@@ -80,6 +83,37 @@ class _RoutingRuntime(Runtime):
             f"{type(self).__name__} deploys via deploy(), not deploy_worker()"
         )
 
+    @abstractmethod
+    def _targets(self, worker: Worker) -> Sequence[Runtime]:
+        """The child runtimes ``worker`` deploys to."""
+
+    @abstractmethod
+    def _interface_targets(self) -> Sequence[Runtime]:
+        """The child runtimes a schema interface deploys to."""
+
+    @abstractmethod
+    def _join(self, proxies: Sequence[_T]) -> _T:
+        """Combine the per-child proxies into the one ``deploy`` returns."""
+
+    async def deploy(self, worker: WorkerType) -> WorkerType:
+        """Deploy to the target child runtimes and return a routing proxy."""
+        proxies = await asyncio.gather(
+            *(runtime.deploy(worker) for runtime in self._targets(worker))
+        )
+        return self._join(proxies)
+
+    async def deploy_interface(
+        self, interface: object, config: Mapping[str, object] | None = None
+    ) -> Proxy[Any]:
+        """Deploy a schema interface to the target child runtimes."""
+        proxies = await asyncio.gather(
+            *(
+                runtime.deploy_interface(interface, config)
+                for runtime in self._interface_targets()
+            )
+        )
+        return self._join(proxies)
+
     def call_method(
         self,
         worker_id: str,
@@ -120,12 +154,14 @@ class RoundRobinPool(_RoutingRuntime):
         ]
         return self
 
-    async def deploy(self, worker: WorkerType) -> WorkerType:
-        """Deploy to all child runtimes and return a round-robin proxy."""
-        proxies = await asyncio.gather(
-            *(runtime.deploy(worker) for runtime in self._runtimes)
-        )
-        return cast(WorkerType, RoundRobinProxy(list(proxies)))
+    def _targets(self, worker: Worker) -> Sequence[Runtime]:
+        return self._runtimes
+
+    def _interface_targets(self) -> Sequence[Runtime]:
+        return self._runtimes
+
+    def _join(self, proxies: Sequence[_T]) -> _T:
+        return cast(_T, RoundRobinProxy(proxies))
 
     async def get_metrics(self) -> str:
         """Aggregate Prometheus text across all child runtimes."""
@@ -166,9 +202,17 @@ class HybridRuntime(_RoutingRuntime):
             f"{worker.deploy_hints!r}. Configured pools: {known}"
         )
 
-    async def deploy(self, worker: WorkerType) -> WorkerType:
-        """Deploy the worker to the child runtime its hints select."""
-        return await self._runtimes[self._select(worker)].deploy(worker)
+    def _targets(self, worker: Worker) -> Sequence[Runtime]:
+        return [self._runtimes[self._select(worker)]]
+
+    def _interface_targets(self) -> Sequence[Runtime]:
+        raise TypeError(
+            "HybridRuntime routes by Worker.deploy_hints, which a schema"
+            " interface does not have; deploy it to a child runtime"
+        )
+
+    def _join(self, proxies: Sequence[_T]) -> _T:
+        return proxies[0]
 
     async def get_metrics(self) -> str:
         """Aggregate Prometheus text across all child runtimes."""

@@ -24,13 +24,10 @@ import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter
-from max.experimental.cascade.interfaces.gen_ai import (
-    ChatMessage,
+from max.experimental.cascade.interfaces.gen_ai import GenAIInterface
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     GenAIChunk,
-    GenAIImageChunk,
-    GenAIInterface,
     GenAIRequest,
-    ImageGenOptions,
 )
 from max.experimental.cascade.telemetry import measured
 from max.pipelines.request.open_responses import (
@@ -94,26 +91,25 @@ def _extract_prompt(body: _CascadeRequestBody) -> str:
 def _to_gen_ai_request(body: _CascadeRequestBody) -> GenAIRequest:
     """Build a :class:`GenAIRequest` from the OpenResponses request body."""
     image_options = body.provider_options.image or ImageProviderOptions()
-    defaults = ImageGenOptions()
-    return GenAIRequest(
-        messages=[ChatMessage.text("user", _extract_prompt(body))],
-        image=ImageGenOptions(
-            height=image_options.height or defaults.height,
-            width=image_options.width or defaults.width,
-            num_steps=(
-                image_options.steps
-                if image_options.steps is not None
-                else defaults.num_steps
-            ),
-            guidance_scale=(
-                image_options.guidance_scale
-                if image_options.guidance_scale is not None
-                else defaults.guidance_scale
-            ),
-            seed=body.seed if body.seed is not None else defaults.seed,
-            output_format=image_options.output_format.upper(),
-        ),
+    req = GenAIRequest.new_message(
+        messages=[
+            {"role": "user", "content": [{"text": _extract_prompt(body)}]}
+        ]
     )
+    # Fields the client left unset keep the schema defaults.
+    image = req.image
+    if image_options.height:
+        image.height = image_options.height
+    if image_options.width:
+        image.width = image_options.width
+    if image_options.steps is not None:
+        image.numSteps = image_options.steps
+    if image_options.guidance_scale is not None:
+        image.guidanceScale = image_options.guidance_scale
+    if body.seed is not None:
+        image.seed = body.seed
+    image.outputFormat = image_options.output_format.upper()
+    return req
 
 
 async def _image_bytes(
@@ -127,8 +123,8 @@ async def _image_bytes(
     and has nothing to fetch with.
     """
     async for chunk in chunk_iter:
-        if isinstance(chunk, GenAIImageChunk) and chunk.data is not None:
-            yield chunk.data
+        if chunk.which() == "image" and chunk.image.source.which() == "data":
+            yield chunk.image.source.data
 
 
 def _build_response(

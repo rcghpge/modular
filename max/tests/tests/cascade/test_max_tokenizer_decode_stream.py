@@ -25,7 +25,7 @@ from typing import cast
 
 import numpy as np
 import pytest
-from max.experimental.cascade.interfaces.gen_ai import RawTextChunk
+from max.experimental.cascade.interfaces.gen_ai_capnp import RawTextChunk
 from max.experimental.cascade.workers.max_tokenizer import MAXTokenizer
 from max.experimental.cascade.workers.tokenizer_worker import (
     _REPLACEMENT_CHAR,
@@ -125,7 +125,7 @@ async def test_decode_stream_counts_trailing_token_with_no_text() -> None:
     pieces = await _decode_stream(tok, [[1], [2], [5]])
 
     assert "".join(delta.text for delta in pieces) == "abc"
-    assert sum(delta.num_tokens for delta in pieces) == 3
+    assert sum(delta.numTokens for delta in pieces) == 3
 
 
 @pytest.mark.asyncio
@@ -143,4 +143,4 @@ async def test_decode_stream_counts_trailing_token_after_deferred_tail() -> (
     pieces = await _decode_stream(tok, [[1], [2, 3], [5]])
 
     assert "".join(delta.text for delta in pieces) == "abc" + _REPLACEMENT_CHAR
-    assert sum(delta.num_tokens for delta in pieces) == 4
+    assert sum(delta.numTokens for delta in pieces) == 4

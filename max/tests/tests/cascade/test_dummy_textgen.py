@@ -18,11 +18,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 from max.experimental.cascade import (
-    ChatMessage,
     GenAIRequest,
-    GenAITextChunk,
     LocalRuntime,
-    TextGenOptions,
 )
 from max.experimental.cascade.pipelines.dummy_textgen import (
     build_dummy_textgen_pipeline,
@@ -36,9 +33,9 @@ async def runtime() -> AsyncIterator[LocalRuntime]:
 
 
 def _request(prompt: str, num_tokens: int) -> GenAIRequest:
-    return GenAIRequest(
-        messages=[ChatMessage.text("user", prompt)],
-        text=TextGenOptions(num_tokens=num_tokens),
+    return GenAIRequest.new_message(
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        text={"numTokens": num_tokens},
     )
 
 
@@ -54,7 +51,7 @@ async def test_textgen_pipeline(runtime: LocalRuntime) -> None:
     assert len(chunks) == 5
     # One token per character in the dummy pipeline, carried end to end.
     assert all(
-        chunk == GenAITextChunk(text="A", num_tokens=1) for chunk in chunks
+        chunk.to_dict() == {"text": "A", "numTokens": 1} for chunk in chunks
     )
 
 

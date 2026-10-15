@@ -199,6 +199,17 @@ follow_imports = "skip"
 module = "cyclopts.*"
 ignore_missing_imports = true
 
+# pycapnp ships no stubs (its API lives in a compiled extension), and
+# the `*_capnp` modules are generated from Cap'n Proto schemas at import time.
+[[tool.mypy.overrides]]
+module = [
+  "capnp",
+  "capnp.*",
+  "max.experimental.cascade.core.cascade_capnp",
+  "max.experimental.cascade.interfaces.gen_ai_capnp",
+]
+follow_imports = "skip"
+
 # Allow missing imports in `_validation_hooks` to avoid circular dependencies.
 # This file to add eager validation hooks in various parts of MAX.
 [[tool.mypy.overrides]]

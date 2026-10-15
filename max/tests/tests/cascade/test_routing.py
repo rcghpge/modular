@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
+from typing import Any, cast
 
 import pytest
 from max.experimental.cascade import (
@@ -30,6 +31,7 @@ from max.experimental.cascade import (
     Worker,
     worker_method,
 )
+from max.experimental.cascade.core import Proxy
 from max.experimental.cascade.core.pipeline_method import (
     _pipeline_method_scope,
 )
@@ -86,6 +88,25 @@ async def test_pool_runs_calls_over_children() -> None:
             assert await (await echo.add(10, 4)) == 14
 
 
+@pytest.mark.asyncio
+async def test_pool_forwards_an_interface_and_config_to_every_child() -> None:
+    """A schema interface deploys to each child with its config."""
+    children = [_RecordingRuntime(), _RecordingRuntime()]
+    async with RoundRobinPool(children) as pool:
+        await pool.deploy_interface(object, {"model": "m"})
+    assert [child.interfaces for child in children] == [
+        [(object, {"model": "m"})]
+    ] * 2
+
+
+@pytest.mark.asyncio
+async def test_hybrid_rejects_an_interface_it_cannot_route() -> None:
+    """An interface has no deploy_hints, so there is no pool to pick."""
+    async with HybridRuntime({"cpu": _RecordingRuntime()}) as hybrid:
+        with pytest.raises(TypeError, match="deploy_hints"):
+            await hybrid.deploy_interface(object)
+
+
 def test_pool_requires_a_runtime() -> None:
     """An empty pool is rejected."""
     with pytest.raises(ValueError, match="at least one"):
@@ -98,10 +119,17 @@ class _RecordingRuntime(Runtime):
     def __init__(self) -> None:
         super().__init__()
         self.deployed: list[Worker] = []
+        self.interfaces: list[tuple[object, Mapping[str, object] | None]] = []
 
     async def deploy_worker(self, worker: Worker) -> str:
         self.deployed.append(worker)
         return f"{type(worker).__name__}-{len(self.deployed)}"
+
+    async def deploy_interface(
+        self, interface: object, config: Mapping[str, object] | None = None
+    ) -> Proxy[Any]:
+        self.interfaces.append((interface, config))
+        return cast(Proxy[Any], interface)
 
     def call_method(
         self,

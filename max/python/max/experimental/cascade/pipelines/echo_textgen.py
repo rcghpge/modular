@@ -29,9 +29,13 @@ import numpy as np
 import numpy.typing as npt
 from max.experimental.cascade.core import Worker, worker_method
 from max.experimental.cascade.interfaces.gen_ai import (
+    Modality,
+    tool_schemas,
+    tools_enabled,
+)
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     GenAIChunk,
     GenAIRequest,
-    Modality,
     TextGenOptions,
 )
 from max.experimental.cascade.interfaces.pipeline import GenAIPipeline
@@ -72,7 +76,7 @@ class EchoTransformer(Worker):
         prompt = np.asarray(tokens, dtype=np.int32).reshape(-1)
         if prompt.size == 0:
             return
-        for i in range(int(req.num_tokens)):
+        for i in range(int(req.numTokens)):
             yield np.array([prompt[i % prompt.size]], dtype=np.int32)
 
 
@@ -121,5 +125,5 @@ class EchoTextGenPipeline(GenAIPipeline):
         gen_tokens = await self.transformer.decode(req.text, tokens)
         text = await self.tokenizer.decode_stream(gen_tokens, True)
         return await self.parser.parse_stream(
-            text, req.tools_enabled, req.tool_schemas()
+            text, tools_enabled(req), tool_schemas(req)
         )

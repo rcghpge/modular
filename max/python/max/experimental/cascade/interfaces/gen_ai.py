@@ -10,23 +10,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Request and response types for cascade generative-AI pipelines.
+"""Helpers and the pipeline interface for cascade generative-AI types.
 
-One interface covers every modality. A pipeline declares which modalities it
-accepts and produces, takes a :class:`GenAIRequest`, and streams
-:data:`GenAIChunk` values that are *already structured* -- assistant text,
-reasoning, tool calls, and images are distinct chunk types rather than regions a
-consumer has to recover from a flat character stream. Splitting a model's raw
-output into those regions is the pipeline's job, because the pipeline is what
-knows the model's format; the serving layer only maps chunks onto the schema its
-route speaks.
+The request and chunk types themselves -- :class:`GenAIRequest`,
+:class:`ChatMessage`, :class:`GenAIChunk`, ... -- are defined once in
+``gen_ai.capnp`` and imported from the pycapnp-generated
+``max.experimental.cascade.interfaces.gen_ai_capnp`` module. Build them with
+``new_message`` (nested dicts initialize nested structs and lists in place)
+and dispatch on a chunk's ``which()``::
 
-The same chunk types double as message content, so a conversation turn and a
-generated response share one vocabulary: a prior assistant turn's tool call is a
-:class:`GenAIToolCall`, an input image is a :class:`GenAIImageChunk`. The only
-difference is completeness -- in a message every chunk is whole, while in a
-stream successive chunks are fragments to concatenate (see :class:`GenAIToolCall`
-for the one case where that distinction needs care).
+    GenAIRequest.new_message(
+        messages=[{"role": "user", "content": [{"text": "Hello"}]}],
+        text={"numTokens": 64},
+    )
+
+Splitting a model's raw output into chunks is the pipeline's job, because the
+pipeline is what knows the model's format; the serving layer only maps chunks
+onto the schema its route speaks.
 
 Kept in ``interfaces`` (below both ``workers`` and the concrete ``pipelines``)
 so workers can consume the request types and ``serve`` can route on the
@@ -35,13 +35,17 @@ interface without either depending on concrete pipeline implementations.
 
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterable, AsyncIterator
 from enum import Enum
-from typing import Annotated, Literal, TypeAlias, Union
+from typing import Protocol, TypeVar
 
 from max.experimental.cascade.core import pipeline_method
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
+    GenAIChunk,
+    GenAIRequest,
+)
 
 
 class Modality(str, Enum):
@@ -51,302 +55,34 @@ class Modality(str, Enum):
     IMAGE = "image"
 
 
-class RawTextChunk(BaseModel):
-    """What a detokenizer emits: decoded text plus the tokens it came from.
+_T = TypeVar("_T")
 
-    Different from :class:`GenAITextChunk` in that the text has not been parsed
-    and may still hold the reasoning delimiters and tool-call markers.
-    """
 
-    text: str
-    """The decoded text."""
+class _Optional(Protocol[_T]):
+    """An optional scalar: a union of ``unset`` and ``value``."""
 
-    num_tokens: int = 0
-    """Generated tokens this chunk accounts for.
+    value: _T
 
-    Not one per chunk: a token whose piece is held back mid-character
-    contributes to whichever chunk completes it. The sum over a stream is
-    therefore the exact generated total, which is what usage and the rate
-    metrics need.
-    """
+    def which(self) -> str: ...
 
 
-# --- content chunks -------------------------------------------------------
-#
-# Every chunk carries a literal ``type`` tag. The tag is what makes the union
-# discriminable, which matters because chunks cross worker process boundaries as
-# JSON and are rebuilt by ``TypeAdapter(GenAIChunk).validate_json(...)``.
+def optional(field: _Optional[_T]) -> _T | None:
+    """Reads an optional scalar as its value, or ``None`` when unset."""
+    return field.value if field.which() == "value" else None
 
 
-class GenAITextChunk(BaseModel):
-    """Assistant-visible text."""
+def tools_enabled(req: GenAIRequest) -> bool:
+    """Whether tool calls are possible for this request."""
+    return len(req.tools) > 0 and req.toolChoice != "none"
 
-    type: Literal["text"] = "text"
 
-    text: str
-    """The text itself. A fragment when streamed, the whole run in a message."""
-
-    num_tokens: int = 0
-    """Generated tokens this chunk accounts for, 0 when unknown.
-
-    Attributed by the parser, which buffers across deltas: the tokens consumed
-    since its last emission land on the first chunk of the next flush, and
-    later chunks in that flush carry 0. Individual values are therefore lumpy;
-    the sum over a stream is exact, which is what usage and the rate metrics
-    need.
-    """
-
-
-class GenAIReasoningChunk(BaseModel):
-    """Model chain-of-thought, kept separate from assistant-visible text.
-
-    Reasoning models wrap their thinking in delimiters that the pipeline strips;
-    what reaches here is the thinking text alone, never the markers.
-    """
-
-    type: Literal["reasoning"] = "reasoning"
-
-    text: str
-    """The reasoning text. A fragment when streamed, the whole run in a message."""
-
-    num_tokens: int = 0
-    """Generated tokens this chunk accounts for, 0 when unknown.
-
-    Attributed by the parser, which buffers across deltas: the tokens consumed
-    since its last emission land on the first chunk of the next flush, and
-    later chunks in that flush carry 0. Individual values are therefore lumpy;
-    the sum over a stream is exact, which is what usage and the rate metrics
-    need.
-    """
-
-
-class GenAIToolCall(BaseModel):
-    """A request from the model to invoke a tool.
-
-    Streaming a tool call is not the same as streaming text: arguments arrive as
-    a JSON fragment at a time and only the first chunk of a given call carries
-    its ``id`` and ``name``. ``index`` is what ties the fragments together --
-    consecutive chunks sharing an index are one call, and their ``arguments``
-    concatenate into the final JSON object.
-
-    In a message (a prior assistant turn being replayed as history) a tool call
-    is complete: ``id``, ``name``, and the full ``arguments`` JSON are all set.
-    """
-
-    type: Literal["tool_call"] = "tool_call"
-
-    index: int = 0
-    """Position of this call in the response, and the key that groups fragments."""
-
-    id: str | None = None
-    """Unique call id. Set on the first fragment of a call, ``None`` after."""
-
-    name: str | None = None
-    """Tool being invoked. Set on the first fragment of a call, ``None`` after."""
-
-    arguments: str | None = None
-    """Arguments as JSON. A fragment when streamed, the whole object in a message."""
-
-    num_tokens: int = 0
-    """Generated tokens this chunk accounts for, 0 when unknown.
-
-    Attributed by the parser, which buffers across deltas: the tokens consumed
-    since its last emission land on the first chunk of the next flush, and
-    later chunks in that flush carry 0. Individual values are therefore lumpy;
-    the sum over a stream is exact, which is what usage and the rate metrics
-    need.
-    """
-
-
-class GenAIImageChunk(BaseModel):
-    """An image, either generated by the model or supplied with a prompt.
-
-    Generated images always arrive as ``data``. An image supplied by a client may
-    arrive either way, since chat APIs accept both inline data URIs and remote
-    URLs; a pipeline that cannot fetch a URL should reject ``url`` inputs rather
-    than silently ignoring them.
-    """
-
-    # Base64 in JSON, raw bytes in Python. The codec's raw-binary slot only
-    # applies to a top-level ``bytes`` value, so image bytes nested in a chunk
-    # would otherwise be handed to a UTF-8 JSON encoder that cannot represent
-    # them.
-    model_config = ConfigDict(ser_json_bytes="base64", val_json_bytes="base64")
-
-    type: Literal["image"] = "image"
-
-    format: str = "PNG"
-    """Image encoding (``"PNG"``, ``"JPEG"``, ...)."""
-
-    data: bytes | None = None
-    """Raw image bytes."""
-
-    url: str | None = None
-    """Location of the image, when it was passed by reference rather than value."""
-
-    @model_validator(mode="after")
-    def _exactly_one_source(self) -> GenAIImageChunk:
-        if (self.data is None) == (self.url is None):
-            raise ValueError("GenAIImageChunk needs exactly one of data or url")
-        return self
-
-
-GenAIChunk: TypeAlias = Annotated[
-    Union[  # noqa: UP007
-        GenAITextChunk,
-        GenAIReasoningChunk,
-        GenAIToolCall,
-        GenAIImageChunk,
-    ],
-    Field(discriminator="type"),
-]
-"""One increment of generated content, or one part of a message."""
-
-
-# --- requests -------------------------------------------------------------
-
-
-class ChatMessage(BaseModel):
-    """One turn of a conversation."""
-
-    role: str
-    """Speaker: ``"system"``, ``"user"``, ``"assistant"``, or ``"tool"``."""
-
-    content: list[GenAIChunk] = Field(default_factory=list)
-    """The turn's content parts, in order."""
-
-    tool_call_id: str | None = None
-    """For a ``"tool"`` turn, the id of the call this message answers."""
-
-    @classmethod
-    def text(cls, role: str, text: str) -> ChatMessage:
-        """Build a single-part text message, the overwhelmingly common case."""
-        return cls(role=role, content=[GenAITextChunk(text=text)])
-
-
-class GenAITool(BaseModel):
-    """A tool the model may call, described independently of any wire format."""
-
-    name: str
-
-    description: str | None = None
-
-    parameters: dict[str, object] | None = None
-    """JSON Schema for the tool's arguments.
-
-    Parsers for models whose tool grammar loses argument types (bare-text XML,
-    say) use this to re-type scalars, and schema-driven streaming parsers use it
-    to emit typed argument bytes.
-    """
-
-
-class TextGenOptions(BaseModel):
-    """Generation parameters for the text output of a single request.
-
-    Mirrors the request-configurable sampling fields that MAX Serve accepts on
-    its OpenAI text-generation routes, so a route adapter can forward everything
-    a client sends straight through to the model worker. Every field except
-    ``num_tokens``, ``min_new_tokens`` and ``ignore_eos`` defaults to ``None``
-    meaning "use the model / server default", matching how
-    ``SamplingParamsInput`` is layered on top of a model's ``GenerationConfig``.
-    """
-
-    # Generation-length control.
-    num_tokens: int = 10
-    """Maximum number of new tokens to generate (maps to ``max_new_tokens``)."""
-
-    min_new_tokens: int = 0
-    """Minimum number of new tokens to generate before stopping."""
-
-    ignore_eos: bool = False
-    """If ``True``, keep generating past the EOS token until the token budget
-    (or a stop condition) is hit."""
-
-    # Core sampling controls.
-    temperature: float = 1.0
-    """Sampling temperature. Set to ``0.0`` for greedy (deterministic) decoding."""
-
-    top_k: int | None = None
-    """Keep only the ``top_k`` most probable tokens when sampling."""
-
-    top_p: float | None = None
-    """Nucleus-sampling cumulative-probability threshold."""
-
-    min_p: float | None = None
-    """Minimum token probability relative to the most likely token."""
-
-    thinking_temperature: float | None = None
-    """Temperature override for tokens inside a reasoning region."""
-
-    seed: int | None = None
-    """Random seed for reproducible sampling. ``None`` picks a random seed."""
-
-    # Penalties.
-    frequency_penalty: float | None = None
-    """Penalty applied proportionally to a token's frequency so far."""
-
-    presence_penalty: float | None = None
-    """Flat penalty applied to tokens that have already appeared."""
-
-    repetition_penalty: float | None = None
-    """Factor by which logits of repeated tokens are divided."""
-
-    # Stopping criteria.
-    stop: list[str] | None = None
-    """Strings that terminate generation when produced."""
-
-    stop_token_ids: list[int] | None = None
-    """Token ids that terminate generation when produced."""
-
-
-class ImageGenOptions(BaseModel):
-    """Generation parameters for the image output of a single request."""
-
-    height: int = 1024
-    width: int = 1024
-    num_steps: int = 28
-    guidance_scale: float = 3.5
-    seed: int = 42
-    output_format: str = "PNG"
-
-
-class GenAIRequest(BaseModel):
-    """A single generation request, whatever its modalities.
-
-    Options are grouped per output modality rather than flattened, so a pipeline
-    that generates both text and images reads each group independently and a
-    pipeline that generates one ignores the other's defaults.
-    """
-
-    messages: list[ChatMessage] = Field(default_factory=list)
-
-    tools: list[GenAITool] = Field(default_factory=list)
-    """Tools the model may call. Empty means the model must not emit tool calls.
-
-    A pipeline uses this to decide whether to run its tool parser at all: with no
-    tools on offer, a stray marker in ordinary prose would otherwise be misread
-    as a call.
-    """
-
-    tool_choice: Literal["auto", "none", "required"] = "auto"
-    """Whether the model may, must not, or must call a tool."""
-
-    text: TextGenOptions = Field(default_factory=TextGenOptions)
-
-    image: ImageGenOptions = Field(default_factory=ImageGenOptions)
-
-    @property
-    def tools_enabled(self) -> bool:
-        """Whether tool calls are possible for this request."""
-        return bool(self.tools) and self.tool_choice != "none"
-
-    def tool_schemas(self) -> dict[str, dict[str, object]]:
-        """Map each offered tool's name to its parameter JSON Schema."""
-        return {
-            tool.name: tool.parameters
-            for tool in self.tools
-            if tool.parameters is not None
-        }
+def tool_schemas(req: GenAIRequest) -> dict[str, dict[str, object]]:
+    """Map each offered tool's name to its parameter JSON Schema."""
+    return {
+        tool.name: json.loads(tool.parametersJson)
+        for tool in req.tools
+        if tool.parametersJson
+    }
 
 
 class GenAIInterface(ABC):

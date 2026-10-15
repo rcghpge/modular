@@ -25,7 +25,7 @@ from max.experimental.cascade.core import (
     ResultIter,
     Worker,
 )
-from max.experimental.cascade.interfaces.gen_ai import (
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     ChatMessage,
     RawTextChunk,
 )
@@ -110,8 +110,8 @@ async def stream_incremental_text(
         ):
             prefix_offset = read_offset
             read_offset = len(all_ids)
-            yield RawTextChunk(
-                text=new_text[len(prefix_text) :], num_tokens=pending
+            yield RawTextChunk.new_message(
+                text=new_text[len(prefix_text) :], numTokens=pending
             )
             pending = 0
 
@@ -123,12 +123,12 @@ async def stream_incremental_text(
         final_text = decode(all_ids[prefix_offset:])
         prefix_text = decode(all_ids[prefix_offset:read_offset])
         if len(final_text) > len(prefix_text):
-            yield RawTextChunk(
-                text=final_text[len(prefix_text) :], num_tokens=pending
+            yield RawTextChunk.new_message(
+                text=final_text[len(prefix_text) :], numTokens=pending
             )
             pending = 0
 
     # A trailing token can decode to nothing -- the EOS, under
     # ``skip_special_tokens`` -- and still has to be counted.
     if pending:
-        yield RawTextChunk(text="", num_tokens=pending)
+        yield RawTextChunk.new_message(text="", numTokens=pending)

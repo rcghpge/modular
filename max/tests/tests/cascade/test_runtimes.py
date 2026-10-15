@@ -39,13 +39,10 @@ from collections.abc import AsyncIterator, Callable
 import pytest
 import pytest_asyncio
 from max.experimental.cascade import (
-    ChatMessage,
     GenAIRequest,
-    GenAITextChunk,
     LocalRuntime,
     Result,
     Runtime,
-    TextGenOptions,
     Worker,
     worker_method,
 )
@@ -347,9 +344,9 @@ async def test_textgen_pipeline(runtime: Runtime) -> None:
     pipeline = await build_dummy_textgen_pipeline()
     await pipeline.deploy(runtime)
 
-    req = GenAIRequest(
-        messages=[ChatMessage.text("user", "hello, ")],
-        text=TextGenOptions(num_tokens=5),
+    req = GenAIRequest.new_message(
+        messages=[{"role": "user", "content": [{"text": "hello, "}]}],
+        text={"numTokens": 5},
     )
     # ``generate`` is decorated with ``@pipeline_method`` so it owns
     # its own scope; the test doesn't need one here.
@@ -357,7 +354,7 @@ async def test_textgen_pipeline(runtime: Runtime) -> None:
 
     assert len(tokens) == 5
     assert all(
-        token == GenAITextChunk(text="A", num_tokens=1) for token in tokens
+        token.to_dict() == {"text": "A", "numTokens": 1} for token in tokens
     )
 
 
@@ -368,9 +365,9 @@ async def test_textgen_different_lengths(runtime: Runtime) -> None:
     await pipeline.deploy(runtime)
 
     for num_tokens in [1, 3, 10]:
-        request = GenAIRequest(
-            messages=[ChatMessage.text("user", "test")],
-            text=TextGenOptions(num_tokens=num_tokens),
+        request = GenAIRequest.new_message(
+            messages=[{"role": "user", "content": [{"text": "test"}]}],
+            text={"numTokens": num_tokens},
         )
         tokens = [token async for token in pipeline.generate(request)]
         assert len(tokens) == num_tokens

@@ -24,17 +24,17 @@ from max.experimental.cascade.core import (
 )
 from max.experimental.cascade.core.local_runtime import LocalRuntime
 from max.experimental.cascade.interfaces.gen_ai import (
+    GenAIInterface,
+    Modality,
+)
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     ChatMessage,
     GenAIChunk,
-    GenAIImageChunk,
-    GenAIInterface,
-    GenAIReasoningChunk,
+    GenAIImage,
     GenAIRequest,
-    GenAITextChunk,
     GenAITool,
     GenAIToolCall,
     ImageGenOptions,
-    Modality,
     TextGenOptions,
 )
 from max.experimental.cascade.interfaces.pipeline import (
@@ -46,12 +46,10 @@ __all__ = [
     "CascadePipeline",
     "ChatMessage",
     "GenAIChunk",
-    "GenAIImageChunk",
+    "GenAIImage",
     "GenAIInterface",
     "GenAIPipeline",
-    "GenAIReasoningChunk",
     "GenAIRequest",
-    "GenAITextChunk",
     "GenAITool",
     "GenAIToolCall",
     "ImageGenOptions",

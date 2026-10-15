@@ -18,13 +18,7 @@ import io
 from collections.abc import AsyncIterator
 
 import pytest
-from max.experimental.cascade import (
-    ChatMessage,
-    GenAIImageChunk,
-    GenAIRequest,
-    ImageGenOptions,
-    LocalRuntime,
-)
+from max.experimental.cascade import GenAIRequest, LocalRuntime
 from max.experimental.cascade.pipelines.dummy_imgen import (
     build_dummy_imgen_pipeline,
 )
@@ -38,11 +32,14 @@ async def runtime() -> AsyncIterator[LocalRuntime]:
 
 
 def _request(prompt: str, num_steps: int) -> GenAIRequest:
-    return GenAIRequest(
-        messages=[ChatMessage.text("user", prompt)],
-        image=ImageGenOptions(
-            width=64, height=64, num_steps=num_steps, output_format="JPEG"
-        ),
+    return GenAIRequest.new_message(
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        image={
+            "width": 64,
+            "height": 64,
+            "numSteps": num_steps,
+            "outputFormat": "JPEG",
+        },
     )
 
 
@@ -57,10 +54,10 @@ async def test_imgen_pipeline(runtime: LocalRuntime) -> None:
     ]
 
     final = chunks[-1]
-    assert isinstance(final, GenAIImageChunk)
-    assert final.format == "JPEG"
-    assert final.data is not None
-    image = Image.open(io.BytesIO(final.data))
+    assert final.which() == "image"
+    assert final.image.format == "JPEG"
+    assert final.image.source.which() == "data"
+    image = Image.open(io.BytesIO(final.image.source.data))
     assert image.size[0] > 0
     assert image.size[1] > 0
 
@@ -78,7 +75,6 @@ async def test_imgen_pipeline_streaming(runtime: LocalRuntime) -> None:
     # streaming workers forward the stream verbatim.
     assert len(chunks) == num_steps
     for chunk in chunks:
-        assert isinstance(chunk, GenAIImageChunk)
-        assert chunk.data is not None
-        image = Image.open(io.BytesIO(chunk.data))
+        assert chunk.which() == "image"
+        image = Image.open(io.BytesIO(chunk.image.source.data))
         assert image.size == (64, 64)

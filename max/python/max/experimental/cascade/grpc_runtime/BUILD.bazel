@@ -65,9 +65,11 @@ modular_py_library(
         requirement("cyclopts"),
         requirement("grpcio"),
         requirement("numpy"),
+        requirement("pycapnp"),
         requirement("pydantic"),
         requirement("prometheus-client"),
         "//max/python/max/experimental/cascade/core",
+        "//max/python/max/experimental/cascade/interfaces",
         "//max/python/max/serve:process_control",
     ],
 )

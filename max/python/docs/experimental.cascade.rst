@@ -86,9 +86,7 @@ Chunks
    :template: autosummary/class.rst
 
    GenAIChunk
-   GenAIImageChunk
-   GenAIReasoningChunk
-   GenAITextChunk
+   GenAIImage
    GenAITool
    GenAIToolCall
 

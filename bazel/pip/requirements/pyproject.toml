@@ -62,6 +62,7 @@ dependencies = [
   "protobuf==6.33.5 ", # Must match bazel protobuf version
   "psutil>=5.9.0", # needed for setting `--timeout` for llvm-lit
   "pyarrow",
+  "pycapnp==2.2.4", # Cap'n Proto wire format for cascade values.
   "pydantic",
   "pydantic_core",
   "pydantic-settings>=2.5.2", # >=2.5.2 required by mcp>=1.19

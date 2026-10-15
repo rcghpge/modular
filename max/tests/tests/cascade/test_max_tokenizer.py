@@ -21,19 +21,18 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from max.experimental.cascade import (
-    ChatMessage,
-    GenAIImageChunk,
-    GenAITextChunk,
-    LocalRuntime,
-)
+from max.experimental.cascade import ChatMessage, LocalRuntime
 from max.experimental.cascade.core.pipeline_method import _pipeline_method_scope
 from max.experimental.cascade.workers.max_tokenizer import MAXTokenizer
 from max.pipelines.lib import generate_local_model_path
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 REPO_ID = "HuggingFaceTB/SmolLM2-135M-Instruct"
-MESSAGES = [ChatMessage.text("user", "What is the capital of France?")]
+MESSAGES = [
+    ChatMessage.new_message(
+        role="user", content=[{"text": "What is the capital of France?"}]
+    )
+]
 
 
 def _model_path() -> str:
@@ -85,12 +84,9 @@ async def test_encode_chat_messages_matches_reference(model_path: str) -> None:
 async def test_encode_joins_multipart_text(model_path: str) -> None:
     reference = AutoTokenizer.from_pretrained(model_path)
     split = [
-        ChatMessage(
+        ChatMessage.new_message(
             role="user",
-            content=[
-                GenAITextChunk(text="What is the capital "),
-                GenAITextChunk(text="of France?"),
-            ],
+            content=[{"text": "What is the capital "}, {"text": "of France?"}],
         )
     ]
     async with LocalRuntime() as rt, _pipeline_method_scope():
@@ -117,8 +113,9 @@ async def test_decode_roundtrip(model_path: str) -> None:
 @pytest.mark.asyncio
 async def test_encode_rejects_non_text_content(model_path: str) -> None:
     images = [
-        ChatMessage(
-            role="user", content=[GenAIImageChunk(url="http://example/x.png")]
+        ChatMessage.new_message(
+            role="user",
+            content=[{"image": {"source": {"url": "http://example/x.png"}}}],
         )
     ]
     async with LocalRuntime() as rt, _pipeline_method_scope():

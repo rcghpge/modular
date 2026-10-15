@@ -34,7 +34,7 @@ async def test_echo_transformer_replays_prompt() -> None:
     prompt = np.array([10, 20, 30], dtype=np.int32)
     async with LocalRuntime() as rt, _pipeline_method_scope():
         transformer = await rt.deploy(EchoTransformer())
-        req = TextGenOptions(num_tokens=3)
+        req = TextGenOptions.new_message(numTokens=3)
         chunks = [c async for c in await transformer.decode(req, prompt)]
 
     # One token per chunk, replaying the prompt in order.
@@ -50,7 +50,7 @@ async def test_echo_transformer_cycles_and_matches_num_tokens() -> None:
     prompt = np.array([1, 2], dtype=np.int32)
     async with LocalRuntime() as rt, _pipeline_method_scope():
         transformer = await rt.deploy(EchoTransformer())
-        req = TextGenOptions(num_tokens=5)
+        req = TextGenOptions.new_message(numTokens=5)
         tokens = [
             int(np.asarray(c).reshape(-1)[0])
             async for c in await transformer.decode(req, prompt)
@@ -65,7 +65,7 @@ async def test_echo_transformer_empty_prompt() -> None:
     prompt = np.array([], dtype=np.int32)
     async with LocalRuntime() as rt, _pipeline_method_scope():
         transformer = await rt.deploy(EchoTransformer())
-        req = TextGenOptions(num_tokens=4)
+        req = TextGenOptions.new_message(numTokens=4)
         chunks = [c async for c in await transformer.decode(req, prompt)]
 
     assert chunks == []

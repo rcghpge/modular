@@ -118,6 +118,7 @@ PINS = {
     "psutil": "psutil@7.0.0",
     "pyarrow": "pyarrow@22.0.0",
     "pybind11": "pybind11@3.0.3",
+    "pycapnp": "pycapnp@2.2.4",
     "pydantic": "pydantic@2.12.5",
     "pydantic-core": "pydantic-core@2.41.5",
     "pydantic-settings": "pydantic-settings@2.14.2",
@@ -12576,6 +12577,41 @@ def targets():
         name = "pybind11@3.0.3",
         wheel = ":_wheel_pybind11@3.0.3",
         testonly = "pybind11" in _TESTONLY_DEPS,
+    )
+
+    _pycapnp_2_2_4_deps = [
+        ":jinja2@3.1.6",
+    ]
+
+    native.alias(
+        name = "_wheel_pycapnp@2.2.4",
+        actual = select({
+            ":_env_python_3.10_aarch64-apple-darwin": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_macosx_11_0_arm64//file",
+            ":_env_python_3.10_aarch64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_manylinux_2_28_aarch64//file",
+            ":_env_python_3.10_x86_64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_manylinux_2_28_x86_64//file",
+            ":_env_python_3.11_aarch64-apple-darwin": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_macosx_11_0_arm64//file",
+            ":_env_python_3.11_aarch64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_manylinux_2_28_aarch64//file",
+            ":_env_python_3.11_x86_64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_manylinux_2_28_x86_64//file",
+            ":_env_python_3.12_aarch64-apple-darwin": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_macosx_11_0_arm64//file",
+            ":_env_python_3.12_aarch64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_manylinux_2_28_aarch64//file",
+            ":_env_python_3.12_x86_64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_manylinux_2_28_x86_64//file",
+            ":_env_python_3.13_aarch64-apple-darwin": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_macosx_11_0_arm64//file",
+            ":_env_python_3.13_aarch64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_manylinux_2_28_aarch64//file",
+            ":_env_python_3.13_x86_64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_manylinux_2_28_x86_64//file",
+            ":_env_python_3.14_aarch64-apple-darwin": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_macosx_11_0_arm64//file",
+            ":_env_python_3.14_aarch64-apple-darwin-freethreaded": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_macosx_11_0_arm64//file",
+            ":_env_python_3.14_aarch64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_manylinux_2_28_aarch64//file",
+            ":_env_python_3.14_aarch64-unknown-linux-gnu-freethreaded": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_manylinux_2_28_aarch64//file",
+            ":_env_python_3.14_x86_64-unknown-linux-gnu": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_manylinux_2_28_x86_64//file",
+            ":_env_python_3.14_x86_64-unknown-linux-gnu-freethreaded": "@pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_manylinux_2_28_x86_64//file",
+        }),
+    )
+
+    pycross_wheel_library(
+        name = "pycapnp@2.2.4",
+        deps = _pycapnp_2_2_4_deps,
+        wheel = ":_wheel_pycapnp@2.2.4",
+        testonly = "pycapnp" in _TESTONLY_DEPS,
     )
 
     native.alias(
@@ -33556,6 +33592,186 @@ def repositories():
         ],
         sha256 = "fb5f8e4a64946b4dcc0451c83a8c384f803bc0a62dd1ba02f199e97dbc9aad4c",
         downloaded_file_path = "pybind11-3.0.3-py3-none-any.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/07/cc/2744f4ff7ec7441bafac11d3d825fcf7e6cebf4f041015a57b2d983260da/pycapnp-2.2.4-cp310-cp310-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "d0cb4ba94a9ac544f7db1b066402c0f00adbf77d047d19ba6a451e9f8b4dfd33",
+        downloaded_file_path = "pycapnp-2.2.4-cp310-cp310-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/08/1c/e9c6d19fc949f85fee42f0a2f45df61b1f6dca4311d78b106cc95545ba70/pycapnp-2.2.4-cp310-cp310-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "4da9b6f9739fda6ab15200970597e6d7703534aa828d68660406a15801be5aa4",
+        downloaded_file_path = "pycapnp-2.2.4-cp310-cp310-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp310_cp310_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/dd/c4/2d896c47aab7f725b372df9764258cce663dbcf359c5c8039d65b4941211/pycapnp-2.2.4-cp310-cp310-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "d59c387782a61af813ef8fef0e74f75b38a3bce5be54bfacd266d88667b1b07c",
+        downloaded_file_path = "pycapnp-2.2.4-cp310-cp310-manylinux_2_28_x86_64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/a9/0b/3a0f90aa2d73b7c722b25fad551d4b2981f4c73446ced9b0d4762718e43c/pycapnp-2.2.4-cp311-cp311-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "7d7df5d9a3c0ef0cbd4ca98453ea497a621fd362e6114299dd494193b26c8733",
+        downloaded_file_path = "pycapnp-2.2.4-cp311-cp311-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/45/fd/29715275e5953e94a506929de3c187de41d9e505960b9885c26c866a9582/pycapnp-2.2.4-cp311-cp311-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "780cd9207ac5eb1baad5013d4bc0e4ba67235cdc054e01ec4d6ba395de42ce6a",
+        downloaded_file_path = "pycapnp-2.2.4-cp311-cp311-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp311_cp311_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/f9/01/67dfc72dc783bf4c08f6b3efdca52718dd2b5bb72260c3bfe839f8ba66a3/pycapnp-2.2.4-cp311-cp311-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "7055771afef9fdfabedcabcde0c11938c016779cd512d93e3bc04d6ac6dd65d2",
+        downloaded_file_path = "pycapnp-2.2.4-cp311-cp311-manylinux_2_28_x86_64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/09/e4/69d8bb4bf0c45b9ab9c11866b26567d456c5a6a1def98feb96b4c4681721/pycapnp-2.2.4-cp312-cp312-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "e54b87f5e2ecae92a6288fd0c25efff3bf3655c65cda710045bf02dd0226975d",
+        downloaded_file_path = "pycapnp-2.2.4-cp312-cp312-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/df/62/dfb4fa3cc6b246a1b0a0166e50b2b5b3c5217d82b7ca84dc8dbc3d57b4eb/pycapnp-2.2.4-cp312-cp312-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "ef67d39da054f0b2ff4b69a4c6e20e993246a33c57f45f2b2f323df2ea4c7d5a",
+        downloaded_file_path = "pycapnp-2.2.4-cp312-cp312-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp312_cp312_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/7d/b7/d4386d6b47add50d659a5f8b331b8f3a13f8de4fa8c2d67b88d5ea5163e1/pycapnp-2.2.4-cp312-cp312-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "80e12e4713dca8683188aae7dd883b25d9175c1b41455af2b5d5a35dd0d3c42a",
+        downloaded_file_path = "pycapnp-2.2.4-cp312-cp312-manylinux_2_28_x86_64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/a7/2c/4349dbce7e7068b1ccb297ef9a645cff08f213a3e30a6d397a8f6326e12e/pycapnp-2.2.4-cp313-cp313-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "b513e7ba63b8d2a4832d3dc1d683bfbb28df1e34d79eabbbbaf08ba058fb9afb",
+        downloaded_file_path = "pycapnp-2.2.4-cp313-cp313-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/95/5c/601967f085c26f3cc5293841c2b2755ef51782a8cbc6ec72cb5a2cf92d71/pycapnp-2.2.4-cp313-cp313-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "27db8ec75f252337612db30af95a0e12a0a20afdb9ae4f51c7086dea1e626f77",
+        downloaded_file_path = "pycapnp-2.2.4-cp313-cp313-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp313_cp313_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/6f/20/0745b69c093e8d315bc72443c13e46b47838f8a0d8bf05f7453273b74e5d/pycapnp-2.2.4-cp313-cp313-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "3d5444575a2f9c2f1cf50c99ef08d9a76dde47a3a13fdf02909fe6c6e1b69901",
+        downloaded_file_path = "pycapnp-2.2.4-cp313-cp313-manylinux_2_28_x86_64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/29/da/415b4b051194ccabf7a23484aff6ff79a6a9841d779455e03bcaa1d86de5/pycapnp-2.2.4-cp314-cp314-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "986ec18eeeff3ede2a0d82a4b77ba18c318a26514f49d705491d4342b0d04d3d",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/5e/f2/e1a7f1e234d429318f5fa82c4367d6890db21a55bd646f5e072c55de12a8/pycapnp-2.2.4-cp314-cp314-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "35d9ac936938783cc4723c1e0a7fa2bdbe5d76803f2f2ba167d1bb070108830c",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/29/02/85440be2c931dba83231f01ca13c28a6d1b94ac5a1de3c56c47e4e4cef3f/pycapnp-2.2.4-cp314-cp314-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "45bd2a2eba74f94c96a532af1f8b944fafc5ab74483ed66c2d88bf6606e5a126",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314-manylinux_2_28_x86_64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_macosx_11_0_arm64",
+        urls = [
+            "https://files.pythonhosted.org/packages/d1/c6/ce98c5a4842f3ffe6cdd560145001a060721315c07f4201d2bd739e90647/pycapnp-2.2.4-cp314-cp314t-macosx_11_0_arm64.whl",
+        ],
+        sha256 = "13297222f4a71ef776a5897c9c84881fd1f16d8cb864e9673e05562cae67166d",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314t-macosx_11_0_arm64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_manylinux_2_28_aarch64",
+        urls = [
+            "https://files.pythonhosted.org/packages/fa/9a/e961cb2c2bf47ec2baff471ae75cc505345668bf08d0afcba271a3753035/pycapnp-2.2.4-cp314-cp314t-manylinux_2_28_aarch64.whl",
+        ],
+        sha256 = "03ff197e3e6e737dbf3748d4d735e4ae778cf4fd16f80ef0bf4f63007903e13a",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314t-manylinux_2_28_aarch64.whl",
+    )
+
+    maybe(
+        http_file,
+        name = "pycross_lock_file_wheel_pycapnp_2.2.4_cp314_cp314t_manylinux_2_28_x86_64",
+        urls = [
+            "https://files.pythonhosted.org/packages/64/a7/e954b0364523ae491a880f3354beaf111dd7aa986b0f498b4a7c4d164e9d/pycapnp-2.2.4-cp314-cp314t-manylinux_2_28_x86_64.whl",
+        ],
+        sha256 = "b5e635e356c68b91381561753c46cf23c59388d13f784e5588685def16ab99ba",
+        downloaded_file_path = "pycapnp-2.2.4-cp314-cp314t-manylinux_2_28_x86_64.whl",
     )
 
     maybe(

@@ -21,13 +21,11 @@ from typing import Any, cast
 import numpy as np
 import numpy.typing as npt
 from max.experimental.cascade.core import Worker, worker_method
-from max.experimental.cascade.interfaces.gen_ai import (
+from max.experimental.cascade.interfaces.gen_ai import Modality
+from max.experimental.cascade.interfaces.gen_ai_capnp import (
     ChatMessage,
     GenAIChunk,
-    GenAIImageChunk,
     GenAIRequest,
-    GenAITextChunk,
-    Modality,
 )
 from max.experimental.cascade.interfaces.pipeline import GenAIPipeline
 from PIL import Image
@@ -147,12 +145,12 @@ class DummyImageSerializer(Worker):
         self,
         img_iter: AsyncIterable[UInt8Array],
         output_format: str,
-    ) -> AsyncIterator[GenAIImageChunk]:
+    ) -> AsyncIterator[GenAIChunk]:
         """Forward a stream of image arrays into a stream of image chunks."""
         async for img in img_iter:
-            yield GenAIImageChunk(
-                format=output_format,
-                data=_serialize_image(img, output_format),
+            data = _serialize_image(img, output_format)
+            yield GenAIChunk.new_message(
+                image={"format": output_format, "source": {"data": data}}
             )
 
 
@@ -186,7 +184,7 @@ def _prompt_text(messages: list[ChatMessage]) -> str:
         part.text
         for message in messages
         for part in message.content
-        if isinstance(part, GenAITextChunk)
+        if part.which() == "text"
     )
 
 
@@ -222,7 +220,7 @@ class DummyImageGenPipeline(GenAIPipeline):
         options = req.image
         tokens = await self.tokenizer.encode(_prompt_text(req.messages))
         sigmas = await self.tokenizer.prepare_sigmas(
-            options.height, options.width, options.num_steps
+            options.height, options.width, options.numSteps
         )
         latents = await self.tokenizer.prepare_latents(
             options.height, options.width, options.seed
@@ -237,13 +235,13 @@ class DummyImageGenPipeline(GenAIPipeline):
             latents,
             latent_image_ids,
             sigmas,
-            options.guidance_scale,
+            options.guidanceScale,
         )
         image_stream = await self.vae_decoder.decode_streaming(
             denoised_stream, options.height, options.width
         )
         return await self.image_serializer.serialize_streaming(
-            image_stream, options.output_format
+            image_stream, options.outputFormat
         )
 
 

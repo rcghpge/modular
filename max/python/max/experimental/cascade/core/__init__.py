@@ -14,6 +14,7 @@
 
 from max.experimental.cascade.core.interfaces import (
     Proxy,
+    ProxyMethod,
     Result,
     ResultIter,
     Runtime,
@@ -29,6 +30,7 @@ from max.experimental.cascade.core.worker_method import (
 __all__ = [
     "MaybeAsync",
     "Proxy",
+    "ProxyMethod",
     "Result",
     "ResultIter",
     "Runtime",
