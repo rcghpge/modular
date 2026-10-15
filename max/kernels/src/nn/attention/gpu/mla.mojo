@@ -76,18 +76,14 @@ from kv_cache.types import KVCacheT
 from layout import (
     Coord,
     Idx,
-    IntTuple,
-    LayoutTensor,
     RowMajorLayout,
-    RuntimeLayout,
-    RuntimeTuple,
     TensorLayout,
     TileTensor,
     coord_to_index_list,
     row_major,
 )
 from layout.layout import *
-from layout.layout_tensor import (
+from layout.tile_io import (
     copy_local_to_dram,
     copy_local_to_shared,
     copy_sram_to_dram,
@@ -2654,16 +2650,11 @@ def mla_decoding_single_batch[
 
     var o_offset = nope_dim * BM * q_head_group
 
-    comptime output_gmem_layout = Layout(
-        IntTuple(BM, nope_dim), IntTuple(nope_dim, 1)
+    comptime output_gmem_layout = row_major[BM, nope_dim]()
+    var output_gmem_tile = TileTensor(output_ptr + o_offset, output_gmem_layout)
+    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](
+        Coord(warp_y, warp_x)
     )
-    var output_gmem_tile = LayoutTensor[output_type, output_gmem_layout](
-        output_ptr + o_offset,
-    )
-    var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](warp_y, warp_x)
-
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
 
     # Write to global memory.
     comptime if output_type.is_half_float():
@@ -2671,21 +2662,18 @@ def mla_decoding_single_batch[
             num_rows=MMA_M // 2, row_size=nope_dim, access_size=MMA_N
         ]()
         # Reuse a_smem for c tile in smem
-        var accum_smem_tile = LayoutTensor[
-            output_type,
-            Layout.row_major(BM, nope_dim),
-            address_space=.SHARED,
-        ](q_smem.bitcast[Scalar[output_type]]())
-
-        var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN_O](
-            warp_y, warp_x
+        comptime accum_smem_layout = row_major[BM, nope_dim]()
+        var accum_smem_tile = TileTensor(
+            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
         )
 
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN_O](
+            Coord(warp_y, warp_x)
+        )
+
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
@@ -2695,9 +2683,7 @@ def mla_decoding_single_batch[
         # are cast to 2 BF16 so that 2 4xFP32 vectors are merged into 1 8xBF16
         # vector and stored using 16B store instruction.
         copy_sram_to_dram[
-            thread_layout=Layout.row_major(
-                WARP_SIZE * simd_size // WN_O, WN_O // simd_size
-            ),
+            row_major[WARP_SIZE * simd_size // WN_O, WN_O // simd_size](),
             swizzle=swizzle,
         ](
             output_gmem_warp_tile.vectorize[1, simd_size](),
@@ -2705,9 +2691,9 @@ def mla_decoding_single_batch[
         )
 
     else:
-        copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
+        copy_local_to_dram[row_major[8, 4]()](
             output_gmem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
 
 
@@ -4449,35 +4435,20 @@ def mla_prefill_single_batch[
 
     tile_and_unswitch[[BN]](0, num_keys, loop_over_kvcache)
 
-    comptime output_gmem_layout = Layout(
-        IntTuple(BM, depth), IntTuple(num_heads * depth, 1)
-    )
-
     var output_offset = UInt32(depth) * (
         head_idx + UInt32(num_heads) * q_tile_idx * UInt32(BM)
     )
-    var output_gemm_runtime_layout = RuntimeLayout[
-        element_type=.int32, linear_idx_type=.int32
-    ](
-        RuntimeTuple[output_gmem_layout.shape, element_type=.int32](
-            Int(q_tile_num_rows), depth
-        ),
-        RuntimeTuple[output_gmem_layout.stride, element_type=.int32](
-            num_heads * depth, 1
-        ),
+    # The tile keeps its static BM-row shape so the copies distribute threads
+    # the same way as the shared-memory source; `q_tile_num_rows` bounds the
+    # rows actually stored.
+    comptime output_gmem_layout = TileLayout(
+        Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
-    var output_gmem_tile = LayoutTensor[
-        output_type,
-        output_gmem_layout,
-        layout_int_type=.int32,
-        linear_idx_type=.int32,
-        masked=True,
-    ](
-        output_ptr + Int(output_offset),
-        output_gemm_runtime_layout,
+    var output_gmem_tile = TileTensor[linear_idx_type=.int32](
+        output_ptr + Int(output_offset), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](
-        Int(warp_y), Int(warp_x)
+        Coord(Int(warp_y), Int(warp_x))
     )
 
     # Apply softmax denumerator.
@@ -4492,29 +4463,23 @@ def mla_prefill_single_batch[
                     n_mma * num_m_mmas + m_mma, i + p_frag_size // 2
                 ] *= rowsum_inv1
 
-    # The FP32 -> half downcast copy still lives on the legacy path.
-    var output_reg_tile_legacy = output_reg_tile.to_layout_tensor()
-
     # Write to global memory.
     comptime if output_type.is_half_float():
         comptime swizzle = make_swizzle[
             num_rows=MMA_M // 2, row_size=depth, access_size=MMA_N
         ]()
         # Reuse a_smem for c tile in smem
-        var accum_smem_tile = LayoutTensor[
-            output_type,
-            Layout.row_major(BM, depth),
-            address_space=.SHARED,
-        ](q_smem.bitcast[Scalar[output_type]]())
+        comptime accum_smem_layout = row_major[BM, depth]()
+        var accum_smem_tile = TileTensor(
+            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+        )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, depth](
-            Int(warp_y), Int(warp_x)
+            Coord(Int(warp_y), Int(warp_x))
         )
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4), swizzle=swizzle
-        ](
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
@@ -4524,19 +4489,19 @@ def mla_prefill_single_batch[
         # are cast to 2 BF16 so that 2 4xFP32 vectors are merged into 1 8xBF16
         # vector and stored using 16B store instruction.
         copy_sram_to_dram[
-            thread_layout=Layout.row_major(
-                num_threads * simd_size // depth,
-                depth // simd_size,
-            ),
+            row_major[num_threads * simd_size // depth, depth // simd_size](),
             swizzle=swizzle,
+            masked=True,
         ](
             output_gmem_tile.vectorize[1, simd_size](),
             accum_smem_tile.vectorize[1, simd_size](),
+            Int(q_tile_num_rows),
         )
     else:
-        copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
+        copy_local_to_dram[row_major[8, 4]()](
             output_gmem_warp_tile.vectorize[1, 2](),
-            output_reg_tile_legacy.vectorize[1, 2]().transpose(),
+            output_reg_tile.vectorize[1, 2]().transpose(),
+            Int(q_tile_num_rows) - Int(warp_y) * WM,
         )
 
 
