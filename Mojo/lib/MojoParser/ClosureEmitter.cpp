@@ -1139,6 +1139,7 @@ DefASTDecl *ClosureEmitter::promoteClosure(
     }
   }
   function.setFuncTypeGenerator(promotedSignature);
+  function.removeResolvedFullSignatureAttr();
   function.setFunctionType(promotedFunctionType);
   if (!newParams.empty())
     function.setParamsAttr(ParamDeclArrayAttr::get(ctx, newParams));

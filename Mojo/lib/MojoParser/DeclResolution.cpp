@@ -1914,6 +1914,14 @@ finalizeResolvedFnOp(SharedState &shared, FnOp funcOp, ASTDecl &decl,
       tcSignature.implicitOriginDecls);
   attrs.set(funcOp.getFuncTypeGeneratorAttrName(), TypeAttr::get(signature));
 
+  // Computing the full signature is costly and it is requested for every
+  // overload evaluation of a call, so keep it on the op.
+  FnTypeGeneratorType fullSignature =
+      LIT::getFullSignature(funcOp->getParentOp(), signature);
+  if (fullSignature != signature)
+    attrs.set(funcOp.getResolvedFullSignatureAttrName(),
+              TypeAttr::get(fullSignature));
+
   // Set the symbol to the mangled name and check for redefinition.
   attrs.set(funcOp.getSymNameAttrName(),
             shared.declResolver->getMangledName(baseName, *decl.getParentDecl(),
@@ -2524,6 +2532,7 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
             OriginSetAttr::get(getContext(), origins)),
         signature.getBody().getArgListAttrs()));
     funcOp.setFuncTypeGenerator(signature);
+    funcOp.removeResolvedFullSignatureAttr();
 
     funcOp.setParamDeclAttr(
         ParamDeclAttr::get(funcOp.getSymNameAttr(), signature));
