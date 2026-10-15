@@ -49,6 +49,7 @@ def _scan_cpu[
     ssm_pool: TileTensor[mut=True, state_dtype, ...],
     query_start_loc: TileTensor[mut=False, .int32, ...],
     has_initial_state: TileTensor[mut=False, .bool, ...],
+    update_state: TileTensor[mut=False, .bool, ...],
     cache_indices: TileTensor[mut=False, .uint32, ...],
 ):
     """Runs the CPU scan with operand functions that read these tensors."""
@@ -88,6 +89,7 @@ def _scan_cpu[
         ssm_pool,
         query_start_loc,
         has_initial_state,
+        update_state,
         x_fn,
         dt_fn,
         b_fn,
@@ -209,6 +211,9 @@ def run_mamba2_ssd[
     init_state: Bool = False,
     has_D: Bool = True,
     has_dt_bias: Bool = True,
+    # Clears update_state on every odd sequence: its slot must keep its initial
+    # state while the outputs still match the reference.
+    update_flags: Bool = False,
 ](
     nheads: Int,
     head_dim: Int,
@@ -246,6 +251,7 @@ def run_mamba2_ssd[
     var D_h = alloc[Scalar[dtype]](nheads)
     var dt_bias_h = alloc[Scalar[dtype]](nheads)
     var his_h = alloc[Scalar[.bool]](batch)
+    var us_h = alloc[Scalar[.bool]](batch)
     var qsl_h = alloc[Int32](batch + 1)
     var slot_h = alloc[UInt32](batch)
     var is_h = alloc[Float32](batch * state_size)
@@ -272,6 +278,9 @@ def run_mamba2_ssd[
         is_h.store(i, is_h.load(i).cast[state_dtype]().cast[.float32]())
     for i in range(batch):
         his_h.store(i, Scalar[.bool](init_state))
+        us_h.store(i, Scalar[.bool](not update_flags or i % 2 == 0))
+    # An empty update_state writes every sequence.
+    var us_size = batch if update_flags else 0
     # Sequence b uses slot b + 1, so slot 0 must stay untouched.
     for i in range(batch):
         slot_h.store(i, UInt32(i + 1))
@@ -315,6 +324,19 @@ def run_mamba2_ssd[
                 is_h.load(b * state_size + i).cast[state_dtype](),
             )
 
+    comptime if update_flags:
+        # A sequence that does not update leaves its slot as it was seeded.
+        for b in range(batch):
+            if b % 2 == 1:
+                var slot = Int(slot_h.load(b))
+                for i in range(state_size):
+                    fs_ref_h.store(
+                        b * state_size + i,
+                        pool_init_h.load(slot * state_size + i).cast[
+                            .float32
+                        ](),
+                    )
+
     var x_layout = MixedLayout(
         (total_len, nheads, head_dim), (x_row, head_dim, 1)
     )
@@ -340,6 +362,7 @@ def run_mamba2_ssd[
         TileTensor(pool_cpu_h, row_major(max_slots, nheads, head_dim, dstate)),
         TileTensor(qsl_h, row_major(batch + 1)),
         TileTensor(his_h, row_major(his_size)),
+        TileTensor(us_h, row_major(us_size)),
         TileTensor(slot_h, row_major(batch)),
     )
     _check_outputs(
@@ -365,6 +388,7 @@ def run_mamba2_ssd[
     var dt_bias_d = ctx.enqueue_create_buffer[dtype](nheads)
     var qsl_d = ctx.enqueue_create_buffer[.int32](batch + 1)
     var his_d = ctx.enqueue_create_buffer[.bool](batch)
+    var us_d = ctx.enqueue_create_buffer[.bool](batch)
     var slot_d = ctx.enqueue_create_buffer[.uint32](batch)
     var y_d = ctx.enqueue_create_buffer[dtype](y_size)
     var pool_d = ctx.enqueue_create_buffer[state_dtype](pool_size)
@@ -377,6 +401,7 @@ def run_mamba2_ssd[
     ctx.enqueue_copy(dt_bias_d, dt_bias_h)
     ctx.enqueue_copy(qsl_d, qsl_h)
     ctx.enqueue_copy(his_d, his_h)
+    ctx.enqueue_copy(us_d, us_h)
     ctx.enqueue_copy(slot_d, slot_h)
     ctx.enqueue_copy(pool_d, pool_init_h)
 
@@ -389,6 +414,7 @@ def run_mamba2_ssd[
     var dt_bias_g = TileTensor(dt_bias_d, row_major(dt_bias_size))
     var qsl_g = TileTensor(qsl_d, row_major(batch + 1))
     var his_g = TileTensor(his_d, row_major(his_size))
+    var us_g = TileTensor(us_d, row_major(us_size))
     var slot_g = TileTensor(slot_d, row_major(batch))
     var y_g = TileTensor(y_d, row_major(total_len, nheads, head_dim))
     var pool_g = TileTensor(
@@ -437,6 +463,7 @@ def run_mamba2_ssd[
             pool_g.LayoutType,
             qsl_g.LayoutType,
             his_g.LayoutType,
+            us_g.LayoutType,
             y_g.Engine,
             type_of(x_fn),
             type_of(dt_fn),
@@ -453,6 +480,7 @@ def run_mamba2_ssd[
             pool_g,
             qsl_g,
             his_g,
+            us_g,
             host_arg=x_fn,
             host_arg2=dt_fn,
             host_arg3=b_fn,
@@ -478,6 +506,7 @@ def run_mamba2_ssd[
             pool_g.LayoutType,
             qsl_g.LayoutType,
             his_g.LayoutType,
+            us_g.LayoutType,
             y_g.Engine,
             type_of(x_fn),
             type_of(dt_fn),
@@ -494,6 +523,7 @@ def run_mamba2_ssd[
             pool_g,
             qsl_g,
             his_g,
+            us_g,
             host_arg=x_fn,
             host_arg2=dt_fn,
             host_arg3=b_fn,
@@ -531,6 +561,7 @@ def run_mamba2_ssd[
     D_h.free()
     dt_bias_h.free()
     his_h.free()
+    us_h.free()
     qsl_h.free()
     slot_h.free()
     is_h.free()
@@ -579,6 +610,7 @@ def test_mamba2_ssd_varlen_no_cross_sequence_bleed() raises:
     var D_tt = TileTensor(D_h, row_major(nheads))
     var dt_bias_tt = TileTensor(dt_bias_h, row_major(nheads))
     var his_tt = TileTensor(his_h, row_major(0))
+    var us_tt = TileTensor(his_h, row_major(0))
 
     # Packed run: sequence b writes pool slot b.
     var y_packed = alloc[Scalar[dtype]](total_len * nheads * head_dim)
@@ -603,6 +635,7 @@ def test_mamba2_ssd_varlen_no_cross_sequence_bleed() raises:
         TileTensor(pool_packed, row_major(batch, nheads, head_dim, dstate)),
         TileTensor(qsl_h, row_major(batch + 1)),
         his_tt,
+        us_tt,
         TileTensor(slot_h, row_major(batch)),
     )
 
@@ -642,6 +675,7 @@ def test_mamba2_ssd_varlen_no_cross_sequence_bleed() raises:
             ),
             TileTensor(qsl_s_h, row_major(2)),
             his_tt,
+            us_tt,
             TileTensor(slot_s_h, row_major(1)),
         )
         off += slen
@@ -879,6 +913,45 @@ def test_mamba2_ssd_bf16_state() raises:
                 ngroups=2,
                 max_slots=4,
                 seq_lengths=Index(64, 1),
+                ctx=ctx,
+            )
+
+
+def test_mamba2_ssd_update_state_flag() raises:
+    """A cleared `update_state` flag leaves that sequence's slot untouched.
+
+    Odd sequences keep their seeded state while even ones advance it, on the
+    CPU kernel, the Apple kernel and (on CUDA/HIP) the cooperative split, for
+    a decode batch and a prefill long enough to take the staged path.
+    """
+    with DeviceContext() as ctx:
+        run_mamba2_ssd[.bfloat16, 128, init_state=True, update_flags=True](
+            nheads=8,
+            head_dim=16,
+            ngroups=2,
+            max_slots=6,
+            seq_lengths=Index(1, 1, 3, 1, 2),
+            ctx=ctx,
+        )
+        comptime if ctx.target.is_nvidia_gpu() or ctx.target.is_amd_gpu():
+            run_mamba2_ssd[
+                .bfloat16, 128, 8, init_state=True, update_flags=True
+            ](
+                nheads=8,
+                head_dim=16,
+                ngroups=2,
+                max_slots=6,
+                seq_lengths=Index(1, 1, 3, 1, 2),
+                ctx=ctx,
+            )
+            run_mamba2_ssd[
+                .bfloat16, 128, 8, init_state=True, update_flags=True
+            ](
+                nheads=8,
+                head_dim=16,
+                ngroups=2,
+                max_slots=5,
+                seq_lengths=Index(17, 9, 24, 1),
                 ctx=ctx,
             )
 

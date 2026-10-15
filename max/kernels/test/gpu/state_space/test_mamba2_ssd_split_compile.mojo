@@ -75,6 +75,7 @@ def compile_split[
             Pool.LayoutType,
             Qsl.LayoutType,
             His.LayoutType,
+            His.LayoutType,
             T3.Engine,
             type_of(x_fn),
             type_of(dt_fn),

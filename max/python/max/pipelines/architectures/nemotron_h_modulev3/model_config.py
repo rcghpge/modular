@@ -18,7 +18,7 @@ import enum
 import logging
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from max.driver import DeviceSpec, load_devices
@@ -62,8 +62,6 @@ ATTN_CACHE_KEY = "attn"
 STATE_CACHE_KEY = "state"
 CONV_LEAF_ID = "mamba/conv"
 SSM_LEAF_ID = "mamba/ssm"
-CONV_SCRATCH_LEAF_ID = "mamba/conv_scratch"
-SSM_SCRATCH_LEAF_ID = "mamba/ssm_scratch"
 
 MOE_TP_CHANNEL_ALIGNMENT = 64
 """The multiple each device's share of a routed expert's channels is padded
@@ -395,7 +393,6 @@ class NemotronHConfig(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
         cache_dtype: DType,
         *,
         allow_kv_head_replication: bool = False,
-        verify_scratch: bool = False,
         speculative_method: SpeculativeMethod | None = None,
         num_draft_tokens: int = 0,
     ) -> MultiKVCacheParams:
@@ -405,11 +402,6 @@ class NemotronHConfig(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
         the Mamba layers do the same in the state leaves.
 
         Args:
-            verify_scratch: Whether the state also declares one scratch leaf
-                per live leaf, drawn once per request and never published. A
-                speculative verify advances the scratch rows, leaving the live
-                rows at the pre-verify state until the accepted prefix is
-                known.
             speculative_method: The speculative method, which sizes the
                 attention cache's dispatch for the verify width.
             num_draft_tokens: How many drafts a step verifies, which the
@@ -464,19 +456,6 @@ class NemotronHConfig(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
                 dtype=DType.float32,
             ),
         ]
-        if verify_scratch:
-            regions += [
-                replace(
-                    region,
-                    leaf_id=scratch_id,
-                    scratch=True,
-                )
-                for region, scratch_id in zip(
-                    regions,
-                    (CONV_SCRATCH_LEAF_ID, SSM_SCRATCH_LEAF_ID),
-                    strict=True,
-                )
-            ]
         state = RecurrentStateParams(
             regions=tuple(regions),
             devices=attn.devices,

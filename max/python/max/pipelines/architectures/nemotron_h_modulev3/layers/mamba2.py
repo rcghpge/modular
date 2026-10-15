@@ -55,6 +55,7 @@ def _causal_conv1d(
     layer: Tensor,
     query_start_loc: Tensor,
     has_initial_state: Tensor,
+    update_state: Tensor,
 ) -> TensorValue:
     return causal_conv1d_varlen_fwd(
         x=TensorValue(x),
@@ -66,6 +67,7 @@ def _causal_conv1d(
         has_initial_state=TensorValue(has_initial_state),
         activation="silu",
         channels_last=True,
+        update_state=TensorValue(update_state),
     )
 
 
@@ -82,6 +84,7 @@ def _ssd_scan(
     layer: Tensor,
     query_start_loc: Tensor,
     has_initial_state: Tensor,
+    update_state: Tensor,
 ) -> TensorValue:
     return mamba2_ssd_chunk_scan_varlen_fwd_inplace(
         x=TensorValue(x),
@@ -95,6 +98,7 @@ def _ssd_scan(
         query_start_loc=TensorValue(query_start_loc),
         has_initial_state=TensorValue(has_initial_state),
         cache_indices=_layer_rows(rows, layer),
+        update_state=TensorValue(update_state),
     )
 
 
@@ -160,7 +164,7 @@ class MambaReplayRows(Generic[_ReplayTensor]):
 
 
 class CausalConv1d(
-    Module[[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]
+    Module[[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]
 ):
     """A depthwise causal conv with SiLU whose window lives in a state pool."""
 
@@ -176,6 +180,7 @@ class CausalConv1d(
         layer: Tensor,
         query_start_loc: Tensor,
         has_initial_state: Tensor,
+        update_state: Tensor,
     ) -> Tensor:
         return causal_conv1d(
             x,
@@ -186,6 +191,7 @@ class CausalConv1d(
             layer,
             query_start_loc,
             has_initial_state,
+            update_state,
         )
 
 
@@ -211,13 +217,15 @@ class GatedGroupRMSNorm(Module[[Tensor, Tensor], Tensor]):
 
 
 class NemotronHMamba2Mixer(
-    Module[[Tensor, MambaStateAccess, Tensor, Tensor], Tensor]
+    Module[[Tensor, MambaStateAccess, Tensor, Tensor, Tensor], Tensor]
 ):
     """Mamba-2 selective state-space mixer.
 
     Both kernels read a request's state from its pool rows and write the new
     state back in place, so prefill, chunked prefill and decode are the same
-    graph.
+    graph. A request whose ``update_state`` flag is false only reads its rows,
+    which lets a speculative verify run on the live state and leave it as it
+    was.
     """
 
     def __init__(self, config: NemotronHConfig, name: str) -> None:
@@ -259,9 +267,10 @@ class NemotronHMamba2Mixer(
         state: MambaStateAccess,
         query_start_loc: Tensor,
         has_initial_state: Tensor,
+        update_state: Tensor,
     ) -> Tensor:
         output, _ = self.forward_with_replay(
-            x, state, query_start_loc, has_initial_state
+            x, state, query_start_loc, has_initial_state, update_state
         )
         return output
 
@@ -300,6 +309,7 @@ class NemotronHMamba2Mixer(
         state: MambaStateAccess,
         query_start_loc: Tensor,
         has_initial_state: Tensor,
+        update_state: Tensor,
         capture_rows: Tensor | None = None,
     ) -> tuple[Tensor, MambaReplayRows[Tensor] | None]:
         """Returns the mixer output and the inputs needed to replay its state.
@@ -309,6 +319,8 @@ class NemotronHMamba2Mixer(
             state: This layer's view of the state pools.
             query_start_loc: The ragged offsets of the sequences.
             has_initial_state: Whether each sequence resumes from its rows.
+            update_state: Whether each sequence writes its new state back to
+                its rows.
             capture_rows: The ``[captured]`` token rows to return the replay
                 inputs of, or ``None`` to return none.
         """
@@ -325,6 +337,7 @@ class NemotronHMamba2Mixer(
             state.layer,
             query_start_loc,
             has_initial_state,
+            update_state,
         )
         # The conv, scan and norm kernels have no sharding rules. Each
         # device runs them on its own heads, so their outputs stay split on
@@ -352,6 +365,7 @@ class NemotronHMamba2Mixer(
             state.layer,
             query_start_loc,
             has_initial_state,
+            update_state,
         )
         y = y.rebind_mapping(NamedMapping(y.mesh, (None, TP, None)))
         y = self.norm(y.reshape([-1, self.intermediate]), gate)

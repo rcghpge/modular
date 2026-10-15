@@ -4563,6 +4563,9 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         - has_initial_state: (batch,) bool optional/empty
         - cache_indices: (batch,) or (1, batch) uint32, slot indices into
           ssm_pool
+        - update_state: (batch,) bool optional/empty. A clear flag leaves
+          that sequence's `ssm_pool` slot untouched (a read-only scan);
+          empty writes every sequence's final state.
     """
 
     @staticmethod
@@ -4584,6 +4587,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         query_start_loc: InputTensor[dtype=.int32, rank=1, ...],
         has_initial_state: InputTensor[dtype=.bool, rank=1, ...],
         cache_indices: FusedInputTensor[dtype=.uint32, ...],
+        update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
         comptime if cache_indices.rank == 2:
@@ -4618,6 +4622,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         var ssm_pool_tt = ssm_pool.to_tile_tensor()
         var query_start_loc_tt = query_start_loc.to_tile_tensor()
         var has_initial_state_tt = has_initial_state.to_tile_tensor()
+        var update_state_tt = update_state.to_tile_tensor()
 
         # x, dt, B, C and the slot indices are fused inputs: a slice feeding
         # one is folded into its loads instead of being copied.
@@ -4672,6 +4677,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     x_fn,
                     dt_fn,
                     b_fn,
@@ -4695,6 +4701,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt.LayoutType,
                     query_start_loc_tt.LayoutType,
                     has_initial_state_tt.LayoutType,
+                    update_state_tt.LayoutType,
                     y_tt.Engine,
                     type_of(x_fn),
                     type_of(dt_fn),
@@ -4712,6 +4719,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     host_arg=x_fn,
                     host_arg2=dt_fn,
                     host_arg3=b_fn,
@@ -4747,6 +4755,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                         ssm_pool_tt.LayoutType,
                         query_start_loc_tt.LayoutType,
                         has_initial_state_tt.LayoutType,
+                        update_state_tt.LayoutType,
                         y_tt.Engine,
                         type_of(x_fn),
                         type_of(dt_fn),
@@ -4766,6 +4775,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                             ssm_pool_tt,
                             query_start_loc_tt,
                             has_initial_state_tt,
+                            update_state_tt,
                             host_arg=x_fn,
                             host_arg2=dt_fn,
                             host_arg3=b_fn,
@@ -4812,6 +4822,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
     query_start_loc: Some[Tensor],
     has_initial_state: Some[Tensor],
     cache_indices: Some[Tensor],
+    update_state: Some[Tensor],
 ) -> IndexList[3]:
     """Computes the output shape for the `mamba2_ssd_chunk_scan_varlen_fwd_inplace` graph op.
 
@@ -4842,6 +4853,9 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
         cache_indices: Per-sequence slot indices of shape
             `(batch,)` or `(1, batch)` in `uint32` selecting where in
             `ssm_pool` the final states are written.
+        update_state: Per-sequence flag of shape `(batch,)` in `bool`
+            selecting whether the final state is written back; may be empty
+            to write every sequence's.
     """
     comptime assert type_of(x).rank == 3, "x must be rank 3"
     comptime assert type_of(dt).rank == 2, "dt must be rank 2"
@@ -4869,6 +4883,12 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
     comptime assert (
         type_of(cache_indices).dtype == .uint32
     ), "cache_indices dtype must be uint32"
+    comptime assert (
+        type_of(update_state).rank == 1
+    ), "update_state must be rank 1"
+    comptime assert (
+        type_of(update_state).dtype == .bool
+    ), "update_state dtype must be bool"
     comptime assert (
         type_of(dt).dtype == type_of(x).dtype
         and type_of(A).dtype == type_of(x).dtype
@@ -4914,6 +4934,8 @@ struct CausalConv1DVarlenFwd[
         - cache_indices: (batch,) or (1, batch) - Indices into conv_states
           (optional)
         - has_initial_state: (batch,) - Whether to use initial state (optional)
+        - update_state: (batch,) - Whether to write the new window back to
+          `conv_states` (optional; empty writes every sequence's)
         - conv_states: (batch, dim, width - 1) - Conv states (optional, in/out)
     """
 
@@ -4932,6 +4954,7 @@ struct CausalConv1DVarlenFwd[
         query_start_loc: InputTensor[dtype=.int32, rank=1, ...],
         cache_indices: FusedInputTensor[dtype=.uint32, ...],
         has_initial_state: InputTensor[dtype=.bool, rank=1, ...],
+        update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
         comptime if cache_indices.rank == 2:
@@ -4948,6 +4971,7 @@ struct CausalConv1DVarlenFwd[
         var bias_tt = bias.to_tile_tensor()
         var query_start_loc_tt = query_start_loc.to_tile_tensor()
         var has_initial_state_tt = has_initial_state.to_tile_tensor()
+        var update_state_tt = update_state.to_tile_tensor()
         var conv_states_tt = conv_states.to_tile_tensor()
 
         # x and the slot indices are fused inputs: a slice feeding one is
@@ -4997,6 +5021,7 @@ struct CausalConv1DVarlenFwd[
                 bias_tt,
                 query_start_loc_tt,
                 has_initial_state_tt,
+                update_state_tt,
                 conv_states_tt,
                 output_tt,
                 x_fn,
@@ -5020,6 +5045,7 @@ struct CausalConv1DVarlenFwd[
                     bias_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     conv_states_tt,
                     output_tt,
                     0,
@@ -5059,6 +5085,7 @@ def causal_conv1d_varlen_fwd_shape(
     query_start_loc: Some[Tensor],
     cache_indices: Some[Tensor],
     has_initial_state: Some[Tensor],
+    update_state: Some[Tensor],
 ) -> IndexList[2]:
     """Computes the output shape for the `causal_conv1d_varlen_fwd` graph op.
 
@@ -5074,6 +5101,8 @@ def causal_conv1d_varlen_fwd_shape(
         cache_indices: Indices into the conv_states pool with shape (batch,).
         has_initial_state: Whether each sequence has an initial state with
             shape (batch,).
+        update_state: Whether each sequence writes its new window back to
+            `conv_states`, shape (batch,); may be empty to write all.
     """
     comptime assert type_of(x).rank == 2, "x must be rank 2"
     comptime assert type_of(weight).rank == 2, "weight must be rank 2"
@@ -5101,6 +5130,12 @@ def causal_conv1d_varlen_fwd_shape(
     comptime assert (
         type_of(has_initial_state).dtype == .bool
     ), "has_initial_state dtype must be bool"
+    comptime assert (
+        type_of(update_state).rank == 1
+    ), "update_state must be rank 1"
+    comptime assert (
+        type_of(update_state).dtype == .bool
+    ), "update_state dtype must be bool"
     return rebind[IndexList[2]](coord_to_index_list(x.shape().tuple()))
 
 

@@ -41,6 +41,10 @@ Each sequence starts from zero, or from its pool slot when
 `D`, `dt_bias` and `has_initial_state` may be empty to drop that term. The
 dstate axis of `ssm_pool` must be contiguous.
 
+`update_state[b]` (empty means all true) says whether sequence `b`'s final
+state is written back. With it clear the scan only reads the pool, which lets a
+speculative verify run on the live state and leave it as it was.
+
 `x`, `dt`, `B`, `C` and the slot indices are read through operand functions,
 so a graph op can fold a slice of a larger tensor into its loads instead of
 copying it first.
@@ -142,6 +146,20 @@ def _use_initial_state(
 
 
 @inline(.always)
+def _write_final_state(
+    update_state: TileTensor[DType.bool, ...], b: Int
+) -> Bool:
+    """Whether sequence `b` writes its final state back to the pool.
+
+    An empty `update_state` means every sequence does. Unlike an empty
+    `has_initial_state`, which means none loads a state.
+    """
+    return Int(update_state.dim[0]()) == 0 or Bool(
+        update_state.load[width=1]((b,))
+    )
+
+
+@inline(.always)
 def _scatter_sum[n: Int](v: SIMD[.float32, n], lane: Int) -> Float32:
     """Sums `v` across an `n`-lane group so that lane `i` ends with element `i`.
 
@@ -195,6 +213,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
     ssm_pool_LT: TensorLayout,
     query_start_loc_LT: TensorLayout,
     has_initial_state_LT: TensorLayout,
+    update_state_LT: TensorLayout,
     # All operands come from one source (graph tensors in production, device
     # buffers in the tests), so a single engine binds every tile argument.
     Engine: TensorEngine,
@@ -238,6 +257,9 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
     has_initial_state: TileTensor[
         .bool, has_initial_state_LT, ImmUntrackedOrigin, Engine=Engine
     ],
+    update_state: TileTensor[
+        .bool, update_state_LT, ImmUntrackedOrigin, Engine=Engine
+    ],
     x_fn: XFn,
     dt_fn: DtFn,
     b_fn: BFn,
@@ -277,6 +299,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
         ssm_pool_LT: Tensor layout of `ssm_pool`.
         query_start_loc_LT: Tensor layout of `query_start_loc`.
         has_initial_state_LT: Tensor layout of `has_initial_state`.
+        update_state_LT: Tensor layout of `update_state`.
         Engine: Engine shared by all tile operands.
         XFn: Reads `x`. Each operand function loads `width` logically
             consecutive elements of the last index, claiming `alignment`
@@ -302,6 +325,10 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
         query_start_loc: Cumulative sequence offsets of shape `(batch + 1,)`.
         has_initial_state: Per-sequence flag of shape `(batch,)` selecting
             whether to load the initial state from the pool, or empty.
+        update_state: Per-sequence flag of shape `(batch,)` selecting whether
+            the final state is written back to the pool, or empty to write
+            every sequence's. A sequence with the flag clear leaves its slot
+            untouched, so the scan reads the pool without advancing it.
         x_fn: Reads `x` of shape `(total_len, nheads, head_dim)`.
         dt_fn: Reads `dt` of shape `(total_len, nheads)`.
         b_fn: Reads `B` of shape `(total_len, ngroups, dstate)`.
@@ -340,6 +367,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
     # Read the flag outside the `active` guard so its load issues alongside
     # the others; behind the guard it serialized and slowed decode by 14%.
     var use_initial_state = _use_initial_state(has_initial_state, b)
+    var write_state = _write_final_state(update_state, b)
     var state = SIMD[.float32, L](0)
     if active and use_initial_state:
         state = ssm_pool.load[width=L, alignment=pool_align](
@@ -476,7 +504,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
             )
         gt += 1
 
-    if active:
+    if active and write_state:
         ssm_pool.store[width=L, alignment=pool_align](
             (slot, h, p, n_base), state.cast[state_dtype]()
         )
@@ -493,6 +521,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
     ssm_pool_LT: TensorLayout,
     query_start_loc_LT: TensorLayout,
     has_initial_state_LT: TensorLayout,
+    update_state_LT: TensorLayout,
     Engine: TensorEngine,
     XFn: ImplicitlyCopyable
     & RegisterPassable
@@ -536,6 +565,9 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
     has_initial_state: TileTensor[
         .bool, has_initial_state_LT, ImmUntrackedOrigin, Engine=Engine
     ],
+    update_state: TileTensor[
+        .bool, update_state_LT, ImmUntrackedOrigin, Engine=Engine
+    ],
     x_fn: XFn,
     dt_fn: DtFn,
     b_fn: BFn,
@@ -569,6 +601,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
         ssm_pool_LT: Tensor layout of `ssm_pool`.
         query_start_loc_LT: Tensor layout of `query_start_loc`.
         has_initial_state_LT: Tensor layout of `has_initial_state`.
+        update_state_LT: Tensor layout of `update_state`.
         Engine: Engine shared by all tile operands.
         XFn: Reads `x`. Each operand function loads `width` logically
             consecutive elements of the last index, claiming `alignment`
@@ -592,6 +625,10 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
         query_start_loc: Cumulative sequence offsets of shape `(batch + 1,)`.
         has_initial_state: Per-sequence flag of shape `(batch,)` selecting
             whether to load the initial state from the pool, or empty.
+        update_state: Per-sequence flag of shape `(batch,)` selecting whether
+            the final state is written back to the pool, or empty to write
+            every sequence's. A sequence with the flag clear leaves its slot
+            untouched, so the scan reads the pool without advancing it.
         x_fn: Reads `x` of shape `(total_len, nheads, head_dim)`.
         dt_fn: Reads `dt` of shape `(total_len, nheads)`.
         b_fn: Reads `B` of shape `(total_len, ngroups, dstate)`.
@@ -644,10 +681,11 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple[
             (y_acc.reduce_add() + head.D * x_val).cast[kernel_dtype](),
         )
 
-    comptime for c in range(NCHUNK):
-        ssm_pool.store[width=VEC, alignment=pool_align](
-            (slot, h, p, c * VEC), state[c].cast[state_dtype]()
-        )
+    if _write_final_state(update_state, b):
+        comptime for c in range(NCHUNK):
+            ssm_pool.store[width=VEC, alignment=pool_align](
+                (slot, h, p, c * VEC), state[c].cast[state_dtype]()
+            )
 
 
 def mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[
@@ -686,6 +724,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[
     ssm_pool: TileTensor[mut=True, state_dtype, ...],
     query_start_loc: TileTensor[mut=False, .int32, ...],
     has_initial_state: TileTensor[mut=False, .bool, ...],
+    update_state: TileTensor[mut=False, .bool, ...],
     x_fn: XFn,
     dt_fn: DtFn,
     b_fn: BFn,
@@ -724,6 +763,10 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[
         query_start_loc: Cumulative sequence offsets of shape `(batch + 1,)`.
         has_initial_state: Per-sequence flag of shape `(batch,)` selecting
             whether to load the initial state from the pool, or empty.
+        update_state: Per-sequence flag of shape `(batch,)` selecting whether
+            the final state is written back to the pool, or empty to write
+            every sequence's. A sequence with the flag clear leaves its slot
+            untouched, so the scan reads the pool without advancing it.
         x_fn: Reads `x` of shape `(total_len, nheads, head_dim)`.
         dt_fn: Reads `dt` of shape `(total_len, nheads)`.
         b_fn: Reads `B` of shape `(total_len, ngroups, dstate)`.
@@ -766,6 +809,9 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu[
             var y_val = (state * C_vals).reduce_add() + head.D * x_val
             y.store[width=1]((gt, h, p), y_val.cast[kernel_dtype]())
 
-        ssm_pool.store[width=DSTATE]((slot, h, p, 0), state.cast[state_dtype]())
+        if _write_final_state(update_state, b):
+            ssm_pool.store[width=DSTATE](
+                (slot, h, p, 0), state.cast[state_dtype]()
+            )
 
     sync_parallelize(worker, batch * nheads * head_dim, ctx)

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import cast
 
+import numpy as np
+from max.dtype import DType
 from max.graph import BufferValue, TensorType, TensorValue, ops
 
 
@@ -36,6 +38,7 @@ def causal_conv1d_varlen_fwd(
     activation: str = "silu",
     channels_last: bool = False,
     use_residual: bool = False,
+    update_state: TensorValue | None = None,
 ) -> TensorValue:
     """Applies a slot-indexed varlen causal depthwise conv1d for prefill
     and decode.
@@ -44,7 +47,7 @@ def causal_conv1d_varlen_fwd(
     ``cache_indices[batch_item]`` — the Qwen3.5 GatedDeltaNet conv
     pattern. The builtin registers ``conv_states`` as a
     ``MutableInputTensor`` at operand position 4 (after ``output, x,
-    weight, bias``).
+    weight, bias``). ``update_state`` is the last operand.
 
     Args:
         x: The ``[dim, total_seqlen]`` input (channels-first, model
@@ -68,6 +71,11 @@ def causal_conv1d_varlen_fwd(
             forces on a tokens-major caller.
         use_residual: If true, adds ``x`` to the convolution sum at each
             output position, before ``activation``.
+        update_state: The ``[batch]`` bool, whether each sequence writes its
+            new window back to its ``conv_states`` slot. ``None`` writes every
+            sequence's, as before the flag existed. A sequence with the flag
+            false leaves its slot untouched, so the op reads the pool without
+            advancing it. The output does not depend on the flag.
 
     Returns:
         The conv output with the same shape/layout as ``x``.
@@ -189,11 +197,16 @@ def causal_conv1d_varlen_fwd(
     device = x.device
 
     out_type = TensorType(x.dtype, x.shape, device)
+    if update_state is None:
+        # An empty flag tensor means every sequence writes.
+        update_state = ops.constant(
+            np.zeros(0, dtype=np.bool_), DType.bool, device=device
+        )
 
     # Operand order matches the builtin registration
     # ``CausalConv1DVarlenFwd.execute``: after the ``output`` operand,
     # ``x, weight, bias, conv_states (MutableInput), query_start_loc,
-    # cache_indices, has_initial_state``.
+    # cache_indices, has_initial_state, update_state``.
     results = ops.inplace_custom(
         "causal_conv1d_varlen_fwd",
         device,
@@ -205,6 +218,7 @@ def causal_conv1d_varlen_fwd(
             query_start_loc,
             cache_indices,
             has_initial_state,
+            update_state,
         ],
         [out_type],
         parameters={
