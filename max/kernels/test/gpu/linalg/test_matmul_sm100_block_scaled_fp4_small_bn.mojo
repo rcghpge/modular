@@ -268,7 +268,7 @@ def run_matmul_sm100_block_scaled_fp4_small_bn_suite[
         test_small_bn[16384, 6656]()  # MLP.DownProj
         test_small_bn[7168, 16384]()  # Deepseek
 
-        # Epilogue fusion tests: verify TileWriter's elementwise_lambda_fn path.
+        # Epilogue fusion tests: verify TileWriter's epilogue path.
         print("\n--- Epilogue fusion tests ---")
         comptime for mma_n in [8, 16, 24, 32, 48, 64, 96]:
             comptime epi_block_tile = Index(128, mma_n, BK)
@@ -287,7 +287,7 @@ def run_matmul_sm100_block_scaled_fp4_small_bn_suite[
                 block_swizzle_size=8,
                 SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                 is_small_bn=True,
-                normal_epilogue=True,
+                value_epilogue=True,
             ](
                 ctx,
                 Int(16),
@@ -338,7 +338,7 @@ def run_matmul_sm100_block_scaled_fp4_small_bn_suite[
             swapAB=True,
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             is_small_bn=True,
-            normal_epilogue=True,
+            value_epilogue=True,
         ](
             ctx,
             Int(16),

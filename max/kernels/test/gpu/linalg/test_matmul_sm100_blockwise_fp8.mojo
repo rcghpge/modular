@@ -11,8 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import Optional
-from std.sys import align_of, size_of
+from std.sys import size_of
 from std.math import ceildiv
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
@@ -29,7 +28,7 @@ from linalg.fp8_quantization import naive_blockwise_scaled_fp8_matmul
 from linalg.matmul.gpu.sm100.blockwise_fp8 import (
     matmul_sm100_blockwise_scaled_fp8,
 )
-from linalg.utils import _as_compute_fn, elementwise_epilogue_type
+from linalg.utils import _as_compute_fn
 
 from std.utils.index import Index, IndexList
 
@@ -45,7 +44,6 @@ def test_matmul_sm100_blockwise_scaled_fp8[
     umma_shape: IndexList[3],
     swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     transpose_b: Bool = True,
-    use_epilogue: Bool = False,
     value_epilogue: Bool = False,
     value_compute: Bool = False,
 ](ctx: DeviceContext, m: MType, n: NType, k: KType,) raises:
@@ -139,22 +137,6 @@ def test_matmul_sm100_blockwise_scaled_fp8[
 
     var c_tensor = c_device_nd
 
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c_tensor)
-    def epilogue_fn[
-        _dtype: DType,
-        width: SIMDLength,
-        *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
-        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        comptime assert c_tensor.flat_rank >= 2
-        c_tensor.store[alignment=alignment](
-            idx,
-            rebind[SIMD[c_type, width]](val),
-        )
-
     def store_doubled[
         _dtype: DType, width: SIMDLength, *, alignment: Int
     ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
@@ -226,9 +208,6 @@ def test_matmul_sm100_blockwise_scaled_fp8[
             block_tile_shape=block_tile_shape,
             a_swizzle=swizzle,
             b_swizzle=swizzle,
-            elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                epilogue_fn
-            ) if use_epilogue else None,
         ](
             c_device_nd,
             a_device_nd,
@@ -309,21 +288,6 @@ def main() raises:
             Idx[24576],
             Idx[1536],
         )
-        test_matmul_sm100_blockwise_scaled_fp8[
-            .float8_e4m3fn,
-            .float8_e4m3fn,
-            .bfloat16,
-            umma_shape=Index(64, 64, 32),
-            swizzle=TensorMapSwizzle.SWIZZLE_128B,
-            transpose_b=True,
-            use_epilogue=True,
-        ](
-            ctx,
-            Int(128),
-            Idx[576],
-            Idx[7168],
-        )
-
         test_matmul_sm100_blockwise_scaled_fp8[
             .float8_e4m3fn,
             .float8_e4m3fn,

@@ -65,12 +65,9 @@ from .fp4_utils import (
 )
 from max.gpu.host.info import B200, MI355X, _is_sm10x_gpu, _is_sm12x_gpu
 from std.utils import StaticTuple
-from std.collections import Optional
 from linalg.utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_epilogue_type,
-    elementwise_compute_lambda_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -88,7 +85,7 @@ from layout.tma_async import (
 )
 from max.gpu.memory import external_memory, fence_async_view_proxy
 from max.gpu.sync import barrier
-from std.sys import size_of, align_of, simd_width_of, get_defined_int
+from std.sys import size_of, align_of, get_defined_int
 from layout.swizzle import make_swizzle
 from max.algorithm import elementwise
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
@@ -547,7 +544,6 @@ def naive_block_scaled_matmul[
     SF_VECTOR_SIZE: Int,
     accum_type: DType = .float32,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     BLOCK_DIM: Int = 16,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
@@ -579,8 +575,6 @@ def naive_block_scaled_matmul[
             `DType.float32`).
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result (defaults to `None`).
         BLOCK_DIM: Thread block tile dimension in rows and columns
             (defaults to 16).
     Args:
@@ -706,7 +700,6 @@ def naive_block_scaled_matmul[
         scaling_kind=scaling_kind,
         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
     ]
 
     ctx.enqueue_function[kernel](
@@ -737,7 +730,6 @@ def naive_block_scaled_matmul_kernel[
     scaling_kind: UMMAKind,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
     a: TileTensor[a_type, a_layout, ImmutAnyOrigin],
@@ -750,8 +742,7 @@ def naive_block_scaled_matmul_kernel[
 
     Both A and B must be in K-major format with 5D TCGEN scale-factor
     layouts. Each thread accumulates one output element by iterating over
-    K, applying per-block scale factors, and optionally invoking an
-    elementwise epilogue lambda.
+    K and applying per-block scale factors.
 
     Parameters:
         c_type: Element type of the output matrix `c`.
@@ -775,8 +766,6 @@ def naive_block_scaled_matmul_kernel[
             factor.
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result (defaults to `None`).
     Args:
         c: Output matrix of shape `[M, N]`.
         a: LHS input matrix of shape `[M, K]` for FP8 or `[M, K//2]`
@@ -854,10 +843,7 @@ def naive_block_scaled_matmul_kernel[
 
     accum *= alpha.cast[accum_type]()
 
-    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
-        elementwise_lambda[c_type, 1]((row_idx, col_idx), accum.cast[c_type]())
-    else:
-        c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
+    c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
 
 
 @__llvm_arg_metadata(input_tma_op, `nvvm.grid_constant`)
@@ -2560,7 +2546,6 @@ def block_scaled_matmul_with_epilogue[
     *,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
 ](
@@ -2577,9 +2562,9 @@ def block_scaled_matmul_with_epilogue[
     """Our sm100 block scaled matmul kernel still does not support fusion of elementwise
     operations. This is a temporary implementation that uses our sm100 block scaled matmul
     kernel and dispatch a separate epilogue kernel to apply the elementwise
-    operations. Callers must allocate `c`; when an `elementwise_lambda_fn`
-    is supplied the matmul result is written into `c` and then read back
-    by the lambda.
+    operations. Callers must allocate `c`; with `has_epilogue_fn` or
+    `has_compute_fn` the matmul result is written into `c` and then read
+    back by the closure.
 
     Parameters:
         c_type: Element type of the output matrix (inferred).
@@ -2592,8 +2577,6 @@ def block_scaled_matmul_with_epilogue[
         SF_VECTOR_SIZE: Number of elements covered by each block scale
             factor: 16 for NVFP4 or 32 for MXFP8.
         transpose_b: Whether `b` is stored transposed (defaults to `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result after it is written to `c` (defaults to `None`).
         has_epilogue_fn: Whether `epilogue_fn` receives the matmul result
             after it is written to `c`.
         has_compute_fn: Whether `compute_fn` transforms the matmul result
@@ -2622,15 +2605,9 @@ def block_scaled_matmul_with_epilogue[
 
     comptime assert transpose_b, "Only support transposed B"
 
-    comptime assert (
-        Int(has_epilogue_fn)
-        + Int(has_compute_fn)
-        + Int(elementwise_lambda_fn is not None)
-        <= 1
-    ), (
-        "pass at most one of the epilogue lambda, epilogue closure, or compute"
-        " closure"
-    )
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "pass at most one of the epilogue closure or compute closure"
 
     # The vendor (cuBLASLt) block-scaled backend supports both NVFP4
     # (float8_e4m3fn scales, 16-vector) and MXFP8 (float8_e8m0fnu scales,
@@ -2728,31 +2705,6 @@ def block_scaled_matmul_with_epilogue[
             elementwise[simd_size, target="gpu"](
                 value_epilogue_wrapper, (m, n), ctx
             )
-        elif case .Some(epilogue) = elementwise_lambda_fn:
-            # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
-            comptime use_32b_simd = True
-            comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
-                simd_width_of[c_type, target=ctx.target]()
-            )
-
-            def epilogue_wrapper[
-                simd_width: Int, alignment: Int = 1
-            ](idx: Coord) {var}:
-                var c_val = c.load[width=simd_width](idx)
-                epilogue[c_type, simd_width, alignment=alignment](idx, c_val)
-
-            matmul[scales_type=scales_dtype](
-                ctx,
-                c,
-                a,
-                b,
-                a_scales=a_scales,
-                b_scales=b_scales,
-                alpha=tensor_sf,
-                transpose_b=True,
-                c_row_major=True,
-            )
-            elementwise[simd_size, target="gpu"](epilogue_wrapper, (m, n), ctx)
         else:
             matmul[scales_type=scales_dtype](
                 ctx,
@@ -2785,10 +2737,6 @@ def block_scaled_matmul[
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
     transpose_a: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
     pdl_level: PDLLevel = PDLLevel.OFF,
@@ -2829,12 +2777,6 @@ def block_scaled_matmul[
             to `True`).
         transpose_a: Whether `a_device` is stored transposed (defaults
             to `False`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result after it is written to `c_device` (defaults
-            to `None`).
-        elementwise_compute_lambda_fn: Optional compute lambda that
-            transforms the matmul result in-flight before storage
-            (defaults to `None`).
         has_epilogue_fn: Whether `epilogue_fn` stores the output instead
             of the kernel writing `c_device`.
         has_compute_fn: Whether `compute_fn` maps each output value before
@@ -2939,37 +2881,9 @@ def block_scaled_matmul[
         "]",
     )
 
-    comptime assert (
-        Int(has_epilogue_fn)
-        + Int(has_compute_fn)
-        + Int(elementwise_lambda_fn is not None)
-        + Int(elementwise_compute_lambda_fn is not None)
-        <= 1
-    ), "pass at most one epilogue or compute lambda or closure"
-
-    # vendor block scaled matmul kernels don't support compute lambda, so we wrap it around an epilogue lambda instead.
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c)
-    def compute_lambda_wrapper[
-        _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](coords: Coord, val: SIMD[_dtype, _width]):
-        comptime assert (
-            coords.rank == 2
-        ), "the matmul epilogue contract is rank 2"
-        comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
-            var output = compute_lambda(coords, val)
-            comptime assert (
-                output.dtype == c_type
-            ), "compute epilogue lambda output and c type mismatch"
-            c.store[alignment=alignment * size_of[c_type]()](
-                coords,
-                rebind[SIMD[c_type, _width]](output),
-            )
-
-    comptime elementwise_lambda_wrapper = Optional[elementwise_epilogue_type](
-        compute_lambda_wrapper
-    ) if elementwise_compute_lambda_fn else elementwise_lambda_fn
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "pass at most one of the epilogue closure or compute closure"
 
     comptime static_N = c_device.static_shape[1]
     comptime static_K = a_device.static_shape[1] * (
@@ -3033,8 +2947,6 @@ def block_scaled_matmul[
         var status = _heuristic_and_outliers_dispatch_any_epilogue[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
             pdl_level=pdl_level,
@@ -3103,8 +3015,6 @@ def block_scaled_matmul[
                 var status = _heuristic_and_outliers_dispatch_any_epilogue[
                     SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                     transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
                     has_epilogue_fn=has_epilogue_fn,
                     has_compute_fn=has_compute_fn,
                     pdl_level=pdl_level,
@@ -3127,40 +3037,22 @@ def block_scaled_matmul[
         # NVFP4 large-M shapes as well as MXFP8 shapes the heuristic config
         # table does not enumerate (e.g. the 30k-token prefill in KERN-3024,
         # whose M exceeds the table's M<=8192 build range).
-        #
-        # vendor matmul only supports epilogue lambda, so we wrap it around an
-        # epilogue lambda instead.
-        comptime if has_epilogue_fn or has_compute_fn:
-            block_scaled_matmul_with_epilogue[
-                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                transpose_b=transpose_b,
-                has_epilogue_fn=has_epilogue_fn,
-                has_compute_fn=has_compute_fn,
-            ](
-                c,
-                a,
-                b,
-                a_scales,
-                b_scales,
-                tensor_sf,
-                ctx,
-                epilogue_fn,
-                compute_fn,
-            )
-        else:
-            block_scaled_matmul_with_epilogue[
-                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                transpose_b=transpose_b,
-                elementwise_lambda_fn=elementwise_lambda_wrapper,
-            ](
-                c,
-                a,
-                b,
-                a_scales,
-                b_scales,
-                tensor_sf,
-                ctx,
-            )
+        block_scaled_matmul_with_epilogue[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
+        ](
+            c,
+            a,
+            b,
+            a_scales,
+            b_scales,
+            tensor_sf,
+            ctx,
+            epilogue_fn,
+            compute_fn,
+        )
 
 
 @inline(.always)
@@ -3175,8 +3067,6 @@ def _heuristic_and_outliers_dispatch_any_epilogue[
     *,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
-    elementwise_compute_lambda_fn: Optional[elementwise_compute_lambda_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
     pdl_level: PDLLevel,
@@ -3207,8 +3097,6 @@ def _heuristic_and_outliers_dispatch_any_epilogue[
         return heuristic_and_outliers_dispatch[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             pdl_level=pdl_level,
         ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
 

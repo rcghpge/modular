@@ -87,6 +87,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     num_threads: Int = 128,
+    # TODO(MOCO-4720): Remove once `bmm_sm100_blockwise_scaled_fp8` passes
+    # `epilogue_fn` instead.
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     # B-scale N-direction block size; defaults to 128 to match the
     # original DeepSeek-style (n_g=k_g=128) callers. Set to a smaller
@@ -509,7 +511,6 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     num_threads: Int = 128,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     b_scaling_block_n: Int = 128,
     *,
     EpilogueFnType: ElementwiseEpilogueFn,
@@ -557,7 +558,6 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         a_swizzle=a_swizzle,
         b_swizzle=b_swizzle,
         num_threads=num_threads,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         b_scaling_block_n=b_scaling_block_n,
         has_epilogue_fn=has_epilogue_fn,
         has_compute_fn=has_compute_fn,
@@ -580,7 +580,6 @@ def matmul_sm100_blockwise_scaled_fp8[
     block_tile_shape: IndexList[3],
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor,
     a: TileTensor,
@@ -610,9 +609,6 @@ def matmul_sm100_blockwise_scaled_fp8[
             (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
         b_swizzle: TMA swizzle mode applied to B shared memory loads
             (defaults to `TensorMapSwizzle.SWIZZLE_128B`).
-        elementwise_lambda_fn: Optional elementwise epilogue lambda applied
-            to each output element of `c` in place of a direct store
-            (defaults to `None`).
 
     Args:
         c: Rank-2 output `TileTensor` accumulating the scaled GEMM result.
@@ -630,7 +626,6 @@ def matmul_sm100_blockwise_scaled_fp8[
         block_tile_shape=block_tile_shape,
         a_swizzle=a_swizzle,
         b_swizzle=b_swizzle,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
     ](c, a, b, a_scales, b_scales, no_epilogue_fn, no_compute_fn, ctx)
@@ -745,7 +740,6 @@ def _matmul_sm100_blockwise_scaled_fp8_impl[
     block_tile_shape: IndexList[3],
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -903,7 +897,6 @@ def _matmul_sm100_blockwise_scaled_fp8_impl[
         a_swizzle=a_swizzle,
         b_swizzle=b_swizzle,
         num_threads=block_dim,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         EpilogueFnType=EpilogueFnType,
         ComputeFnType=ComputeFnType,
         has_epilogue_fn=has_epilogue_fn,

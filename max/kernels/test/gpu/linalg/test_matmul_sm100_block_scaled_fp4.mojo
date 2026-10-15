@@ -30,7 +30,7 @@ from linalg.matmul.gpu.sm100.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
-from linalg.utils import _as_compute_fn, elementwise_epilogue_type
+from linalg.utils import _as_compute_fn
 from std.math import ceildiv, align_up
 from std.utils.index import Index, IndexList
 from std.utils.static_tuple import StaticTuple
@@ -81,7 +81,6 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
     num_accum_pipeline_stages: Int = 0,
     num_clc_pipeline_stages: Int = 2,
     scaling_kind: UMMAKind = UMMAKind.KIND_MXF4NVF4,
-    normal_epilogue: Bool = False,
     value_epilogue: Bool = False,
     value_compute: Bool = False,
 ](
@@ -243,26 +242,6 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
         num_clc_pipeline_stages=num_clc_pipeline_stages,
     )
 
-    # Epilogue multiplies output by 2 so we can verify the lambda is actually
-    # invoked — if TileWriter skips the lambda the result will be 1x, not 2x,
-    # and the comparison against 2x reference will fail.
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c_tensor)
-    def epilogue_fn[
-        _dtype: DType,
-        width: SIMDLength,
-        *,
-        alignment: Int = 1,
-    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
-        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var scaled = rebind[SIMD[c_type, width]](val) * Scalar[c_type](2)
-        c_tensor.store[alignment=alignment * size_of[c_type](),](idx, scaled)
-
-    comptime epi = Optional[elementwise_epilogue_type](
-        epilogue_fn
-    ) if normal_epilogue else None
-
     def store_doubled[
         _dtype: DType, width: SIMDLength, *, alignment: Int
     ](idx: Coord, val: SIMD[_dtype, width]) {var c_tensor}:
@@ -310,7 +289,6 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
             transpose_b=transpose_b,
             K=K_phys,
             config=matmul_config,
-            elementwise_lambda_fn=epi,
         ](
             c_tensor,
             a_tensor,
@@ -356,7 +334,7 @@ def _test_blackwell_block_scaled_matmul_tma_umma_warp_specialized_impl[
     ctx.synchronize()
 
     # When epilogue multiplies by 2, scale reference to match.
-    comptime if normal_epilogue or value_epilogue or value_compute:
+    comptime if value_epilogue or value_compute:
         for i in range(c_host_ref.num_elements()):
             c_host_ref._storage[i] = c_host_ref._storage[i] * Scalar[c_type](2)
 
@@ -419,7 +397,6 @@ def run_matmul_sm100_block_scaled_fp4_suite[
             SF_VECTOR_SIZE: Int = NVFP4_SF_VECTOR_SIZE,
             num_accum_pipeline_stages: Int = 0,
             num_clc_pipeline_stages: Int = 2,
-            normal_epilogue: Bool = False,
             value_epilogue: Bool = False,
             value_compute: Bool = False,
         ](
@@ -450,7 +427,6 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                 num_accum_pipeline_stages=num_accum_pipeline_stages,
                 num_clc_pipeline_stages=num_clc_pipeline_stages,
                 scaling_kind=suite_scaling_kind,
-                normal_epilogue=normal_epilogue,
                 value_epilogue=value_epilogue,
                 value_compute=value_compute,
             ](ctx, m, n, k, alpha)
@@ -672,10 +648,11 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                 Idx[k_val],
             )
 
-        # Epilogue fusion tests: verify TileWriter's elementwise_lambda_fn path.
+        # Epilogue fusion tests at MMA_N=64; the value-closure tests below
+        # cover MMA_N=128.
         print("\n--- Epilogue fusion tests ---")
         comptime for cta_group in [1, 2]:
-            comptime for mma_n in [64, 128]:
+            comptime for mma_n in [64]:
                 comptime epi_block_tile = Index(128, mma_n // cta_group, BK)
                 comptime epi_umma = Index(cta_group * 128, mma_n, MMA_K)
 
@@ -692,7 +669,7 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                     b_swizzle=swizzle,
                     block_swizzle_size=8,
                     SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                    normal_epilogue=True,
+                    value_epilogue=True,
                 ](
                     ctx,
                     Int(16),
@@ -746,30 +723,6 @@ def run_matmul_sm100_block_scaled_fp4_suite[
                 Idx[1024],
                 Idx[1024 + 32],
             )
-
-        # swapAB + epilogue fusion
-        comptime epi_swap_bt = Index(128, 64, BK)
-        comptime epi_swap_mma = Index(128, 64, MMA_K)
-        test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
-            dtype,
-            dtype,
-            out_dtype,
-            scales_dtype,
-            epi_swap_bt,
-            epi_swap_mma,
-            cluster_shape=StaticTuple[Int32, 3](1, 1, 1),
-            cta_group=1,
-            a_swizzle=swizzle,
-            b_swizzle=swizzle,
-            swapAB=True,
-            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-            normal_epilogue=True,
-        ](
-            ctx,
-            Int(16),
-            Idx[1024],
-            Idx[1024 + 32],
-        )
 
 
 def main() raises:
