@@ -28,6 +28,9 @@ extra_pipelines_args=(
   --draft-model-path=nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
   --speculative-method=dspark
   --num-speculative-tokens=7
+  # Unscaled FP8 target KV cache, as in the lightning_nvfp4_dspark recipe.
+  # The DSpark draft cache stays BF16.
+  --kv-cache-format=float8_e4m3fn
 )
 model_profile=nemotron
 scenarios=
