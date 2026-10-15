@@ -265,16 +265,16 @@ class DeepseekV4Indexer(Module):
         n = int(index_score.shape[1])
 
         # Rule 1: an entry that had not closed by the query cannot be selected.
+        # Neither can a NaN score, which the top-k does not accept.
         index_score = ops.where(
-            valid,
+            valid & ~ops.is_nan(index_score),
             index_score,
             float("-inf"),
         )
 
         k = min(self.index_topk, n)
         # Until more than ``k`` entries have closed a query selects all of
-        # them, so it asks for no more picks than it has candidates: the
-        # same picks in the same order, without the kernel's padding rounds.
+        # them, so it asks for no more picks than it has candidates.
         live = ops.squeeze(
             ops.sum(ops.cast(valid, DType.int64), axis=-1), axis=-1
         )

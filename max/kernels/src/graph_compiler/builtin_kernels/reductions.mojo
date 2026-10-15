@@ -53,6 +53,7 @@ from .rowwise_normalization import (
 )
 from .rowwise_softmax import softmax
 from nn.topk import _top_k_cpu, top_k, top_k_shape_impl, topk_gpu
+from nn.topk_per_row import TOPK_PER_ROW_MAX_K, topk_per_row_gpu
 from state_space.rms_norm_fused_residual import (
     _rms_norm_fused_residual_cpu_entry,
     rms_norm_fused_residual,
@@ -2079,9 +2080,12 @@ struct TopKPerRow:
 
     `mo.top_k` over the last axis of a `[rows, n]` input, with a count per
     row: row `r` keeps the first `k[r]` picks `mo.top_k` with `max_k` makes
-    for it, in the same order, and pads the rest of its `max_k` slots with
-    the dead value and index `-1`. The kernel stops after `k[r]` picks, so
-    its cost follows the counts rather than `max_k`.
+    for it, in descending order, and pads the rest of its `max_k` slots with
+    the dead value and index `-1`. Equal values may come out in any order,
+    and which of them fill the last slots is unspecified. The input must
+    not contain NaN. On GPU, float32 and bfloat16 rows with
+    `max_k <= 2048` run the block-wide top-k in `topk_per_row`, which
+    selects all picks without one serial reduction per pick.
     """
 
     @staticmethod
@@ -2128,6 +2132,21 @@ struct TopKPerRow:
                 sorted=True,
                 ctx=Optional(ctx.assert_cpu_target()),
                 k=k_tt,
+            )
+        elif (
+            dtype in (DType.float32, DType.bfloat16)
+            and 0 < max_k <= TOPK_PER_ROW_MAX_K
+            and not ctx.target.is_apple_gpu()
+        ):
+            topk_per_row_gpu(
+                ctx,
+                input.unsafe_ptr().as_unsafe_any_origin().as_imm(),
+                k.unsafe_ptr().as_unsafe_any_origin().as_imm(),
+                values.unsafe_ptr().as_unsafe_any_origin(),
+                indices.unsafe_ptr().as_unsafe_any_origin(),
+                input.shape()[0],
+                input.shape()[1],
+                max_k,
             )
         else:
             topk_gpu[sampling=False, largest=True](

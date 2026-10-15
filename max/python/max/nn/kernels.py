@@ -11745,9 +11745,11 @@ def top_k_per_row(
     """:func:`~max.graph.ops.top_k` over the last axis, with a count per row.
 
     Row ``r`` gets the first ``k[r]`` picks ``ops.top_k(input, max_k)`` makes
-    for it, in the same order; the rest of its ``max_k`` slots hold the lowest
-    value of the dtype (``-inf`` for floats) and index ``-1``. The kernel stops
-    after a row's count, so its cost follows the counts rather than ``max_k``.
+    for it, in descending order; the rest of its ``max_k`` slots hold the
+    lowest value of the dtype (``-inf`` for floats) and index ``-1``. Equal
+    values may come out in any order, and which of them fill the last slots
+    is unspecified. ``input`` must not contain NaN; mask it to ``-inf``
+    first if it may.
 
     Args:
         input: ``[rows, n]`` values to select from.
