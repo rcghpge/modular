@@ -46,24 +46,33 @@ no Sinkhorn step and keeps the checkpoint's flat ``hc_head_*`` names.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    Graph,
     ShardingStrategy,
     TensorValue,
+    Type,
+    Value,
     Weight,
     ops,
 )
+from max.graph import Module as GraphModule
 from max.nn.embedding import Embedding
 from max.nn.hyper_connection import HyperConnection
 from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
 from max.nn.transformer import forward_sequential_layers, logits_postprocess
+from max.pipelines.lib.interfaces.batch_processor import (
+    ragged_kv_symbolic_input_tree,
+)
 from max.tree import Tree
 
 from .layers import (
@@ -754,6 +763,102 @@ class DeepseekV4(Module):
         return (
             ops.reshape(logits, [batch, seq_len, self.config.vocab_size]),
             ops.reshape(main_hidden, [batch, seq_len, main_hidden.shape[2]]),
+        )
+
+    def input_tree(self) -> OrderedDict[str, object]:
+        """Names the serving graph's inputs; its leaves are its inputs.
+
+        A single device takes no signal buffers.
+        """
+        devices = list(self.config.devices)
+        return ragged_kv_symbolic_input_tree(
+            kv_params=self.config.kv_params,
+            device_refs=devices,
+            include_signal_buffers=len(devices) > 1,
+        )
+
+    def trace(
+        self,
+        *input_types: Type[Any],
+        name: str | None = None,
+        module: GraphModule | None = None,
+        custom_extensions: Iterable[Path] = (),
+        is_device_graph: bool = False,
+    ) -> Graph:
+        """Traces the serving graph, whose inputs are :meth:`input_tree`'s
+        leaves.
+
+        The graph runs :meth:`serve` on a single device and
+        :meth:`serve_tensor_parallel` over :meth:`tensor_parallel_replicas`
+        on several, so a multi-device trace shards this model's weights.
+
+        Args:
+            *input_types: The graph's input types, the leaves of
+                :meth:`input_tree`.
+            name: The name of the graph. Defaults to the class's qualified
+                name.
+            module: The MLIR module to add the graph to. Defaults to a new
+                module.
+            custom_extensions: Paths to custom kernel libraries the graph
+                uses.
+            is_device_graph: Whether to build a device graph.
+
+        Returns:
+            The traced :class:`~max.graph.Graph`.
+        """
+        config = self.config
+        devices = list(config.devices)
+        n_dev = len(devices)
+
+        def forward(
+            tokens: Value[Any],
+            input_row_offsets: Value[Any],
+            return_n_logits: Value[Any],
+            *variadic_args: Value[Any],
+        ) -> tuple[TensorValue, ...]:
+            if n_dev == 1:
+                cache = DeepseekV4Cache.from_groups(
+                    config,
+                    config.kv_params.unflatten_basic_kv_tree(
+                        iter(variadic_args)
+                    ),
+                )
+                return self.serve(
+                    tokens.tensor,
+                    input_row_offsets.tensor,
+                    return_n_logits.tensor,
+                    cache,
+                )
+            signal_buffers = [v.buffer for v in variadic_args[:n_dev]]
+            groups = config.kv_params.unflatten_basic_kv_tree(
+                iter(variadic_args[n_dev:])
+            )
+            caches = [
+                DeepseekV4Cache.from_groups(config, groups, device_idx=i)
+                for i in range(n_dev)
+            ]
+            tokens_per_dev = ops.distributed_broadcast(
+                tokens.tensor, signal_buffers
+            )
+            offsets_per_dev = ops.distributed_broadcast(
+                input_row_offsets.tensor, signal_buffers
+            )
+            return DeepseekV4.serve_tensor_parallel(
+                self.tensor_parallel_replicas(devices),
+                tokens_per_dev,
+                offsets_per_dev,
+                return_n_logits.tensor,
+                caches,
+                signal_buffers,
+            )
+
+        return Graph(
+            type(self).__qualname__ if name is None else name,
+            forward,
+            input_types=input_types,
+            custom_extensions=list(custom_extensions),
+            module=module,
+            is_device_graph=is_device_graph,
         )
 
     def serve(

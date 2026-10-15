@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from max.engine import InferenceSession
+from max.engine import InferenceSession, Model
 from max.graph import Graph
 from max.nn.kv_cache import MultiKVCacheParams
 from max.nn.transformer import ReturnLogits
+from max.pipelines.lib.graph_specs import GraphRole
 from max.pipelines.lib.interfaces.batch_processor import BatchProcessor
 from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
     _UnifiedSpecDecodeModelMixin,
@@ -54,6 +55,15 @@ class UnifiedDSparkDeepseekV4Model(
         # The accept reads the target's logits at every merged position.
         kwargs["return_logits"] = ReturnLogits.VARIABLE
         super().__init__(*args, **kwargs)
+
+    @override
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Loads the fused graph as the decoder.
+
+        The base registers DeepSeek-V4's own graph through graph specs; this
+        graph still builds through :meth:`load_model`.
+        """
+        return {GraphRole.DECODER: self.load_model(session)}
 
     @override
     def _create_model_config(
