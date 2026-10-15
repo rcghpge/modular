@@ -32,6 +32,7 @@ from std.net._sys.linux import (
     sockaddr_in6,
     sockaddr_storage,
     sockaddr_un,
+    socklen_t,
 )
 
 comptime CABI_INCLUDES: List[StaticString] = [
@@ -54,6 +55,7 @@ comptime CABI_STRUCTS = TypeList.of[
 comptime CABI_TYPEDEFS = TypeList.of[
     Trait=AbiTypedefLike,
     AbiTypedef["sa_family_t", sa_family_t],
+    AbiTypedef["socklen_t", socklen_t],
 ]()
 """The type aliases to check."""
 

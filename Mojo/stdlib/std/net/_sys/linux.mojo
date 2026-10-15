@@ -16,13 +16,17 @@ The layouts and values are transcribed from `<sys/socket.h>`,
 `<netinet/in.h>`, and `<sys/un.h>` on x86-64 and aarch64 Linux.
 """
 
-from std.ffi import c_char, c_int, c_ulong, c_ushort
+from std.ffi import c_char, c_int, c_uint, c_ulong, c_ushort, external_call
 from std.sys import size_of
+from std.sys.info import CompilationTarget
 
 from .inet import SockaddrIn, SockaddrIn6, in6_addr, in_addr, in_port_t
 
 comptime sa_family_t = c_ushort
 """C `sa_family_t`: the address family (`AF_*`) of a socket address."""
+
+comptime socklen_t = c_uint
+"""C `socklen_t`: the size of a socket address or option value, in bytes."""
 
 comptime AF_INET: c_int = 2
 """IPv4 internet protocols."""
@@ -174,3 +178,16 @@ struct sockaddr_storage(Copyable, Writable):
     """The address family of the stored address (`AF_*`)."""
     var __ss_padding: Array[c_char, _SS_PADSIZE]
     var __ss_align: __ss_aligntype
+
+
+def accept4(
+    sockfd: c_int,
+    addr: OptionalMutPointer[sockaddr, _],
+    addrlen: OptionalMutPointer[socklen_t, _],
+    flags: c_int,
+) -> c_int:
+    """C `accept4(2)`: `accept` that applies `SOCK_*` flags atomically."""
+    comptime assert (
+        CompilationTarget.is_linux()
+    ), "`accept4` is only available on Linux"
+    return external_call["accept4", c_int](sockfd, addr, addrlen, flags)
