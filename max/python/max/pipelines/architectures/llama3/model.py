@@ -27,13 +27,19 @@ from max.nn.kv_cache import KVCacheInputs
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import TextContext
 from max.pipelines.lib import (
+    CompilationTimer,
     GraphPipelineModelWithKVCache,
     KVCacheConfig,
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
 )
-from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
+from max.pipelines.lib.graph_specs import (
+    GraphRole,
+    GraphSpec,
+    compile_graphs,
+    init_graphs,
+)
 from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.profiler import traced
@@ -223,6 +229,32 @@ class LlamaModelBase(
         ):
             return super().load_model(session)
         return self.load_graphs(session)[GraphRole.DECODER]
+
+    @traced
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Compiles and initializes the graphs :meth:`graph_specs` returns.
+
+        Sets up the distributed runtime with ``_init_distributed_runtime``
+        first, since the graphs depend on it, and wires the batch processor
+        with ``_wire_batch_processor`` after.
+
+        Args:
+            session: The session that compiles and initializes the graphs.
+
+        Returns:
+            The initialized models, keyed by role.
+        """
+        state_dict = self._load_state_dict()
+        model_config = self._create_model_config(state_dict)
+        self._init_distributed_runtime(session, model_config)
+        with CompilationTimer("model") as timer:
+            specs = self.graph_specs(model_config)
+            timer.mark_build_complete()
+            self.compiled_artifacts = compile_graphs(session, specs)
+            models = init_graphs(session, self.compiled_artifacts, specs)
+        self._maybe_release_host_weights(*models.values())
+        self._wire_batch_processor(models[GraphRole.DECODER], model_config)
+        return models
 
     def _load_state_dict(self) -> dict[str, Any]:
         self.state_dict = super()._load_state_dict()
