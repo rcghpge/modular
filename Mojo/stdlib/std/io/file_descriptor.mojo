@@ -120,19 +120,11 @@ struct RawFileDescriptor(
         Args:
             bytes: The byte span to write to this file.
         """
-        var written: c_ssize_t
-        if __is_run_in_comptime_interpreter:
-            written = external_call["write", c_ssize_t](
-                self._value.__mlir_index__(),
-                bytes.unsafe_ptr(),
-                len(bytes).__mlir_index__(),
-            )
-        else:
-            written = external_call["write", c_ssize_t](
-                self._value,
-                bytes.unsafe_ptr(),
-                len(bytes).__mlir_index__(),
-            )
+        var written = external_call["write", c_ssize_t](
+            self._value,
+            bytes.unsafe_ptr(),
+            len(bytes).__mlir_index__(),
+        )
         assert written == len(bytes), "expected amount of bytes not written"
 
     def write_string(mut self, string: StringSlice):
