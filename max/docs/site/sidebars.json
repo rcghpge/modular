@@ -1009,7 +1009,7 @@
           ]
         },
         {
-          "label": "Layouts and LayoutTensor",
+          "label": "Layouts and LayoutTensor (deprecated)",
           "type": "category",
           "collapsed": true,
           "items": [
