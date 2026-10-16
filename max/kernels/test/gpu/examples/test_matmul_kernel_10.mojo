@@ -306,15 +306,6 @@ def bench_matmuls(mut m: Bench, ctx: DeviceContext) raises:
     # TODO: Find best for target GPU.
     #       For A100 see below (based on siboehm repo).
     #       For MI300X we need to further autotune (below is a working version).
-    # alias K10_NUM_THREADS = 256 if ctx.target.is_amd_gpu() else 128
-    # alias K10_BN = 128
-    # alias K10_BM = 64
-    # alias K10_BK = 16
-    # alias K10_WN = 64
-    # alias K10_WM = 32
-    # alias K10_WNITER = 1
-    # alias K10_TN = 4
-    # alias K10_TM = 4
     # Settings for A6000
     comptime K10_NUM_THREADS = 256 if ctx.target.is_amd_gpu() else 128
     comptime K10_BN = 128
