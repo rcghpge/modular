@@ -211,6 +211,11 @@ comptime _UnaryMathPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
 ) thin -> SIMD[dtype, width]
 """Plugin-hook signature for `PluginHooks.unary_math_fn`."""
 
+comptime _BinaryMathPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
+    SIMD[dtype, width], SIMD[dtype, width]
+) thin -> SIMD[dtype, width]
+"""Plugin-hook signature for `PluginHooks.binary_math_fn`."""
+
 
 @inline(.always)
 def sqrt[

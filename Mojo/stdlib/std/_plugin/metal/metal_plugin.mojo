@@ -14,6 +14,7 @@
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
+    _BinaryMathPluginHookFnType,
     _PrintEmitPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
@@ -60,6 +61,24 @@ def _air_unary_math[
     ](x)
 
 
+def _air_binary_math[
+    dtype: DType, width: SIMDLength, //, name: StaticString
+](x: SIMD[dtype, width], y: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    """Lowers the two-argument function `name` to its `air.*` intrinsic.
+
+    As in `_air_unary_math`, bf16 inputs round-trip through f32.
+    """
+    comptime if dtype == .bfloat16:
+        return _air_binary_math[name=name](
+            x.cast[.float32](), y.cast[.float32]()
+        ).cast[dtype]()
+    return llvm_intrinsic[
+        get_static_string["llvm.air.", name](),
+        type_of(x),
+        has_side_effect=False,
+    ](x, y)
+
+
 struct MetalPlugin(StdPlugin):
     """`PluginHooks` implementation for Apple Metal backends."""
 
@@ -76,6 +95,12 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
         name: StaticString, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = (
         _air_unary_math[name=name] if _has_air_op[name, dtype]() else None
+    )
+
+    comptime binary_math_fn[
+        name: StaticString, dtype: DType, width: Int
+    ]: OptionalReg[_BinaryMathPluginHookFnType] = (
+        _air_binary_math[name=name] if name == "pow" else None
     )
 
     comptime flushes_subnormals[dtype: DType]: Bool = dtype == DType.float32

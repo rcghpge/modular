@@ -16,7 +16,10 @@ from std.reflection.location import SourceLocation
 
 from std.utils.coord import Coord
 from std.utils.index import IndexList
-from std.math.math import _UnaryMathPluginHookFnType
+from std.math.math import (
+    _BinaryMathPluginHookFnType,
+    _UnaryMathPluginHookFnType,
+)
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
@@ -101,6 +104,28 @@ trait PluginHooks:
 
     Returns:
         Elementwise `name(x)` computed on the vendor backend.
+    """
+
+    comptime binary_math_fn[
+        name: StaticString, dtype: DType, width: Int
+    ]: OptionalReg[_BinaryMathPluginHookFnType] = None
+    """Elementwise override for the two-argument function called `name`.
+
+    Consulted by `pow` when both arguments are floating point, under the same
+    rules as `unary_math_fn`: the hook sees the caller's `dtype`, `None` keeps
+    the stdlib's own lowering, and compile-time evaluation skips the hook.
+
+    Parameters:
+        name: The function being lowered, such as `"pow"`.
+        dtype: The `dtype` of the inputs and output SIMD vectors.
+        width: The width of the inputs and output SIMD vectors.
+
+    Args:
+        x: The first input SIMD vector.
+        y: The second input SIMD vector.
+
+    Returns:
+        Elementwise `name(x, y)` computed on the vendor backend.
     """
 
     comptime flushes_subnormals[dtype: DType]: Bool = False

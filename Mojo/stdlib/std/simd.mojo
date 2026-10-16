@@ -51,6 +51,7 @@ from std.collections.string.string import (
 from std.hash.hasher import Hasher
 from std.math import Ceilable, CeilDivable, Floorable, Truncable
 from std.math.math import _call_ptx_intrinsic, trunc
+from std._plugin import CurrentPlugin
 from std.sys import (
     CompilationTarget,
     Endian,
@@ -3759,22 +3760,13 @@ def _pow[
     """
 
     comptime if exp.dtype.is_floating_point() and base.dtype == exp.dtype:
-        comptime if is_apple_gpu():
-            # AIR has no bf16 overload of `air.pow`; Metal rejects it, so
-            # evaluate in f32 and narrow the result back.
-            comptime if base.dtype == .bfloat16:
-                return _pow(base.cast[.float32](), exp.cast[.float32]()).cast[
-                    base.dtype
-                ]()
-            return llvm_intrinsic[
-                "llvm.air.pow",
-                type_of(base),
-                type_of(base),
-                type_of(exp),
-                has_side_effect=False,
-            ](base, exp)
-        else:
+        if __is_run_in_comptime_interpreter:
             return _powf(base, exp)
+
+        comptime hook = CurrentPlugin.binary_math_fn["pow", base.dtype, width]
+        comptime if hook:
+            return comptime (hook.value())(base, rebind[type_of(base)](exp))
+        return _powf(base, exp)
     elif exp.dtype.is_integral():
         # Common cases
         if all(exp.eq(2)):
