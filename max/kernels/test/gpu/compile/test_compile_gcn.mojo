@@ -190,7 +190,7 @@ def test_cast_fp32_bf16_compile() raises:
     # CHECK: tail call i32 asm "v_cndmask_b32 $0, $1, $2, $3"
     print(
         _compile_code[
-            kernel_cast[.float32, DType.bfloat16],
+            kernel_cast[.float32, .bfloat16],
             target=MI300X_TARGET,
             emission_kind="llvm-opt",
         ]()
