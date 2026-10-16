@@ -18,7 +18,6 @@ from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from linalg.packing import PackMatrixCols
 from std.testing import assert_equal
 
-from std.utils.index import Index
 
 comptime type = DType.float32
 comptime simd_size: Int = simd_width_of[DType.float32]()
@@ -53,9 +52,9 @@ def test_pack_b() raises:
     ].run(
         packed_b,
         b,
-        Index(0, 0),
-        Index(kc, width),
-        Index(K, N),
+        (0, 0),
+        (kc, width),
+        (K, N),
     )
 
     assert_equal(packed_b[0, 0, 0], 1.0)
