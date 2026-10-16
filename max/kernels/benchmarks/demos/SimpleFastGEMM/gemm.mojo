@@ -36,10 +36,6 @@ comptime kernel_shape = get_matmul_kernel_shape[dtype, dtype, dtype, False]()
 comptime MR = kernel_shape.simd_rows
 comptime NR = kernel_shape.simd_cols * simd_size
 
-# AVX512 values
-# alias MR = 6
-# alias NR = 64
-
 comptime prefetch_distance = get_matmul_prefetch_b_distance_k()
 
 
@@ -188,11 +184,7 @@ def main() raises:
         print("n must be a multiple of 64")
         return
 
-    print(m, end="")
-    print("x", end="")
-    print(n, end="")
-    print("x", end="")
-    print(k)
+    print(t"{m}x{n}x{k}")
 
     var a_alloc = alloc(
         AllocLayout[Scalar[dtype], alignment=.of_bytes[alignment]()](
@@ -247,10 +239,7 @@ def main() raises:
     for i in range(m * n):
         if c[i] != c2[i]:
             errors += 1
-    print(errors, end="")
-    print("/", end="")
-    print(m * n, end="")
-    print(" errors")
+    print(t"{errors}/{m * n} errors")
 
     def bench_gemm() {var}:
         gemm(a.ptr, b2.ptr, c2.ptr, m, n, k, mc, nc, kc)
@@ -258,15 +247,12 @@ def main() raises:
     var num_warmup: Int = 1
     var time = std.benchmark.run(bench_gemm, num_warmup).mean()
     var flops = 2.0 * Float64(m) * Float64(n) * Float64(k) / time / 1e9
-    print(time, end="")
-    print(" seconds")
-    print(flops, end="")
-    print(" GFLOPS")
+    print(t"{time} seconds")
+    print(t"{flops} GFLOPS")
 
     # assume turbo is disabled and the frequency set to 2.9 GHz
     var rpeak = flops / (2.9 * 64)
-    print(rpeak, end="")
-    print(" measured/peak FLOPS assuming 2.9 GHz")
+    print(t"{rpeak} measured/peak FLOPS assuming 2.9 GHz")
 
     dealloc(a_alloc^)
     dealloc(b_alloc^)
