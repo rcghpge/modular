@@ -444,6 +444,12 @@ def register_all_models() -> None:
             "unified_mtp_glm5_2_modulev3_arch",
         ),
         _LazyArch(
+            "UnifiedMTPHYV4ForCausalLM",
+            ".unified_mtp_hy_v4",
+            "unified_mtp_hy_v4_speculator",
+            speculates_on="HYV4ForCausalLM",
+        ),
+        _LazyArch(
             "UnifiedMTPQwen3_5ForConditionalGeneration",
             ".unified_mtp_qwen3_5",
             "unified_mtp_qwen3_5_arch",

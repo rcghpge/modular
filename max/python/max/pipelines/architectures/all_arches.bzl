@@ -100,6 +100,7 @@ ALL_ARCHITECTURES = [
     "//max/python/max/pipelines/architectures/unified_mtp_gemma4_modulev3",
     "//max/python/max/pipelines/architectures/unified_mtp_glm5_2",
     "//max/python/max/pipelines/architectures/unified_mtp_glm5_2_modulev3",
+    "//max/python/max/pipelines/architectures/unified_mtp_hy_v4",
     "//max/python/max/pipelines/architectures/unified_mtp_inkling",
     "//max/python/max/pipelines/architectures/unified_mtp_qwen3_5",
     "//max/python/max/pipelines/architectures/wan",
