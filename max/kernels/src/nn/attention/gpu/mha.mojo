@@ -519,6 +519,7 @@ def depth_supported_by_gpu[
     mask_t: MHAMask,
     config: MHAConfig,
     info: GPUInfo,
+    target: CompilationTarget,
 ]() -> Bool:
     """Return `True` if the given head depth is supported for flash attention on this GPU.
 
@@ -532,12 +533,12 @@ def depth_supported_by_gpu[
         mask_t: Mask type; some depths require `mask_safe_out_of_bounds`.
         config: MHA tile configuration, used to check the algorithm variant.
         info: GPU architecture descriptor.
+        target: GPU target.
 
     Returns:
         `True` when the optimised flash-attention kernel supports `depth`
         on the given GPU.
     """
-    comptime target = CompilationTarget.from[info]()
 
     comptime is_sm100 = _is_sm10x_gpu(info)
     comptime is_sm90or100 = is_sm100 or (info == H100)
@@ -670,7 +671,7 @@ def _flash_attention_kv_cache[
         comptime head_depth_known = q.static_shape[q.rank - 2] != -1 and q.static_shape[q.rank - 1] != -1
         comptime depth = q.static_shape[q.rank-1]
         comptime gpu_info = ctx.default_device_info
-        comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info]()
+        comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info, ctx.target]()
         comptime flash_attention_applicable = flash_attention_hw_supported[dtype]() and head_depth_known and head_depth_supported and not naive_kernel
         # fmt: on
         comptime kv_num_heads = cache_t.kv_params.num_heads
@@ -2240,7 +2241,7 @@ def _flash_attention_dense[
     comptime head_depth_known = q.static_shape[2] != -1 and q.static_shape[3] != -1 and k.static_shape[2] != -1
     comptime depth = q.static_shape[q.rank-1]
     comptime gpu_info = ctx.default_device_info
-    comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info]()
+    comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info, ctx.target]()
     comptime flash_attention_applicable = flash_attention_hw_supported[dtype]() and head_depth_known and head_depth_supported and not naive_kernel
 
     comptime q_half_float = q.dtype in (DType.float16, DType.bfloat16)
@@ -2508,7 +2509,7 @@ def flash_attention_ragged[
     comptime head_depth_known = q.static_shape[1] != UNKNOWN_VALUE and q.static_shape[2] != UNKNOWN_VALUE and k.static_shape[1] != UNKNOWN_VALUE
     comptime depth = q.static_shape[q.rank - 1]
     comptime gpu_info = ctx.default_device_info
-    comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info]()
+    comptime head_depth_supported = depth_supported_by_gpu[depth, mask_t, config, gpu_info, ctx.target]()
     comptime flash_attention_applicable = flash_attention_hw_supported[type]() and head_depth_known and head_depth_supported and not naive_kernel
     comptime kv_num_heads = k.static_shape[1]
     # fmt: on

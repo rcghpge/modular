@@ -26,7 +26,7 @@ from std.builtin.variadics import _MLIR
 from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
 
-from std._gpu.host.info import GPUInfo, get_gpu_target, TargetAccelerator
+from std._gpu.host.info import get_gpu_target
 
 from std._plugin.selector import TargetPluginSelector
 from std._plugin import StdPlugin, DefaultPlugin, PluginHooks
@@ -210,24 +210,6 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
         Returns:
             A value representing the current accelerator target.
         """
-        return {}
-
-    @doc_hidden
-    @staticmethod
-    @inline(.nodebug)
-    def from[
-        info: GPUInfo
-    ]() -> CompilationTarget[
-        _mlir_value=TargetAccelerator.from_gpu_name[info.name].mlir_target
-    ]:
-        return {}
-
-    @doc_hidden
-    @staticmethod
-    @inline(.nodebug)
-    def from_gpu_arch[
-        target_arch: StaticString
-    ]() -> type_of(get_gpu_target[target_arch]()):
         return {}
 
     # ===-------------------------------------------------------------------===#

@@ -43,9 +43,11 @@ the cursor rather than removed is what it is calibrated against.
 """
 
 from std.compile import compile_info
-from std._gpu import block_dim, thread_idx
 from std.testing import assert_equal, assert_false, assert_true
 from std.sys import CompilationTarget
+
+from max.gpu import block_dim, thread_idx
+from max.gpu.host.info import get_gpu_target
 
 # What a strided forward loop costs while it still tests for the wrap each trip:
 # the 7 an affine cursor compiles to, plus the test and the flag it sets. The
@@ -235,9 +237,7 @@ def test_amd_register_pressure() raises:
     exec-mask bookkeeping moves under scheduling, so counting its instructions
     needs a parser that can tell that apart from the loop's own arithmetic.
     """
-    var asm = compile_info[
-        grid_stride, target=CompilationTarget.from_gpu_arch["mi355x"]()
-    ]().asm
+    var asm = compile_info[grid_stride, target=get_gpu_target["mi355x"]()]().asm
     assert_true(
         _amd_directive(asm, ".vgpr_count") <= 7,
         String("grid_stride: too many VGPRs\n", asm),
@@ -247,12 +247,8 @@ def test_amd_register_pressure() raises:
 
 
 def main() raises:
-    test_loops_stay_tight[CompilationTarget.from_gpu_arch["sm_90"]()]()
-    test_loops_stay_tight[CompilationTarget.from_gpu_arch["sm_100a"]()]()
-    test_signed_ranges_never_divide[
-        CompilationTarget.from_gpu_arch["sm_90"]()
-    ]()
-    test_signed_ranges_never_divide[
-        CompilationTarget.from_gpu_arch["sm_100a"]()
-    ]()
+    test_loops_stay_tight[get_gpu_target["sm_90"]()]()
+    test_loops_stay_tight[get_gpu_target["sm_100a"]()]()
+    test_signed_ranges_never_divide[get_gpu_target["sm_90"]()]()
+    test_signed_ranges_never_divide[get_gpu_target["sm_100a"]()]()
     test_amd_register_pressure()
