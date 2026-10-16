@@ -169,8 +169,10 @@ def _softmax_seed_sink(
 def _softmax_row_max[
     num_n_mmas: Int
 ](
-    scores: MmaOpApple[.float32, DType.float32, 1, num_n_mmas].AccumType,
-) -> Array[Float32, _SOFTMAX_FRAG_ROWS]:
+    scores: MmaOpApple[.float32, .float32, 1, num_n_mmas].AccumType,
+) -> Array[
+    Float32, _SOFTMAX_FRAG_ROWS
+]:
     """Full-row max over the single score row-block (across all `ni` cols).
 
     Returns `[rb_max, rb8_max]` for the two rows this lane owns. The per-fragment
@@ -198,12 +200,8 @@ def _softmax_update[
 ](
     mut sm_m: Array[Float32, _SOFTMAX_FRAG_ROWS],
     mut sm_l: Array[Float32, _SOFTMAX_FRAG_ROWS],
-    mut scores: MmaOpApple[
-        DType.float32, DType.float32, 1, num_n_mmas
-    ].AccumType,
-    mut output: MmaOpApple[
-        DType.float32, DType.float32, 1, out_num_n_mmas
-    ].AccumType,
+    mut scores: MmaOpApple[.float32, .float32, 1, num_n_mmas].AccumType,
+    mut output: MmaOpApple[.float32, .float32, 1, out_num_n_mmas].AccumType,
 ):
     """One online-softmax step over the masked score tile `scores`.
 
@@ -265,9 +263,7 @@ def _softmax_normalize[
     out_num_n_mmas: Int
 ](
     sm_l: Array[Float32, _SOFTMAX_FRAG_ROWS],
-    mut output: MmaOpApple[
-        DType.float32, DType.float32, 1, out_num_n_mmas
-    ].AccumType,
+    mut output: MmaOpApple[.float32, .float32, 1, out_num_n_mmas].AccumType,
 ):
     """Final epilogue: divide each output row by its running denominator `l`.
 
@@ -417,7 +413,6 @@ def fa_prefill_apple_core[
         so a 16-key sub-tile never crosses a page boundary. Other page sizes are
         gated to `mha_gpu_naive` by the dispatcher.
     """
-    var _batch_size = Int(batch_size)
     var _max_prompt_len = Int(max_prompt_len)
     var _max_cache_size = Int(max_cache_size)
     var _num_heads = Int(num_heads)
@@ -444,9 +439,7 @@ def fa_prefill_apple_core[
     var kv_head = head_id // _group
     var sg = Int(warp_id())  # this simdgroup's slot in the threadgroup
     var lane = Int(lane_id())
-    var rb_cb = _apple_frag_layout(lane)
-    var rb = rb_cb[0]
-    var cb = rb_cb[1]
+    var rb, cb = _apple_frag_layout(lane)
 
     # Offset math — mirror `_bmm0_bs` / `_bmm1_bs` (mha.mojo).
     var seq_start: Int
@@ -543,7 +536,7 @@ def fa_prefill_apple_core[
     # ScoreMma loads K in its native dtype; q and k share the model dtype in
     # attention, so `k_t.dtype == q_type` in practice.
     comptime ScoreMma = MmaOpApple[
-        DType.float32,
+        .float32,
         q_type,
         1,
         1,
@@ -553,7 +546,7 @@ def fa_prefill_apple_core[
     # Full Sk-wide score storage (NumNMmas col-blocks), filled one page-resolved
     # 16-key column-block at a time.
     comptime ScoreAccum = MmaOpApple[
-        DType.float32,
+        .float32,
         q_type,
         1,
         NumNMmas,
@@ -725,9 +718,9 @@ def fa_prefill_apple_core[
                 comptime for ni in range(NumNMmas):
                     var kbase = kv0 + ni * 16 + cb
                     # Per-key in-bounds mask for the 4 consecutive keys.
-                    var keys = SIMD[.int32, 4](Int32(kbase)) + SIMD[
-                        DType.int32, 4
-                    ](0, 1, 2, 3)
+                    var keys = SIMD[.int32, 4](Int32(kbase)) + SIMD[.int32, 4](
+                        0, 1, 2, 3
+                    )
                     var k_ok = keys.lt(Int32(cur_cache_len))
                     var neg = SIMD[.float32, 4](NEG_INF)
                     var lrow_lo = rb

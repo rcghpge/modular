@@ -261,7 +261,6 @@ def naive_fa_decode_apple_core[
     Constraints:
         `Depth % WARP_SIZE == 0`: the head dim must split evenly across lanes.
     """
-    var _batch_size = Int(batch_size)
     var _max_prompt_len = Int(max_prompt_len)
     var _max_cache_size = Int(max_cache_size)
     var _num_heads = Int(num_heads)
@@ -338,7 +337,7 @@ def naive_fa_decode_apple_core[
     # head-dim chunk [lane*EPL, lane*EPL+EPL) at `q_offset`. Vectorized load
     # through the tile (no raw pointer arithmetic).
     var q_frag = q.load[width=EPL](Coord(q_offset + lane * EPL)).cast[
-        DType.float32
+        .float32
     ]()
 
     # KV sub-tile layout: a 1D (_depth,) contiguous view of one token's K/V for
@@ -366,7 +365,7 @@ def naive_fa_decode_apple_core[
             # (NOT a dangling pointer -- KB `unsafepointer-is-non-nullable`).
             # The deref is comptime-gated on `sink`, so None is never reached.
             m = rebind[Scalar[q_type]](sink_weights.value()[head_id]).cast[
-                DType.float32
+                .float32
             ]()
             l = Float32(1.0)
 
@@ -383,7 +382,7 @@ def naive_fa_decode_apple_core[
                     kv_token_layout,
                 )
                 var kvec = k_tile.load[width=EPL](Coord(lane * EPL)).cast[
-                    DType.float32
+                    .float32
                 ]()
                 partials[kk] = (q_frag * kvec).reduce_add()
 
@@ -418,7 +417,7 @@ def naive_fa_decode_apple_core[
                     kv_token_layout,
                 )
                 var vvec = v_tile.load[width=EPL](Coord(lane * EPL)).cast[
-                    DType.float32
+                    .float32
                 ]()
                 o_frag = o_frag + p[kk] * vvec
 
