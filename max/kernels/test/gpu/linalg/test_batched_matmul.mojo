@@ -116,25 +116,23 @@ def run_bmm_and_check_result[
     ctx.enqueue_copy(b_device_buffer, b_host._storage)
 
     # Run BMM
-    @__parameter
+    comptime c_rank = c_device.rank
+
     @inline(.always)
-    @__copy_capture(c_device)
-    def epilogue_fn[
+    def compute_fn[
         dtype: DType,
         width: SIMDLength,
         *,
-        alignment: Int = 1,
-    ](coord: Coord, val: SIMD[dtype, width],) capturing -> None:
-        comptime assert coord.rank == c_device.rank
+        alignment: Int,
+    ](coord: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+        comptime assert coord.rank == c_rank
         comptime func = lambda_fn.value()
-        var update_val = func(val)
-        c_device.store(coord, update_val.cast[c_device.dtype]())
+        return func(val)
 
     comptime if lambda_fn:
-        _batched_matmul_gpu[
-            transpose_b=transpose_b,
-            elementwise_epilogue_fn=epilogue_fn,
-        ](c_device, a_device, b_device, ctx)
+        _batched_matmul_gpu[transpose_b=transpose_b](
+            c_device, a_device, b_device, compute_fn, ctx
+        )
     else:
         _batched_matmul_gpu[transpose_b=transpose_b](
             c_device, a_device, b_device, ctx

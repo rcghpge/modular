@@ -520,17 +520,15 @@ def test_batched_matmul[
                 c[batch, i, j] = 0
                 golden[batch, i, j] = 0
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(c)
-    def epilogue_fn[
+    def compute_fn[
         _type: DType,
         width: SIMDLength,
         *,
-        alignment: Int = 1,
-    ](coords: Coord, val: SIMD[_type, width],) -> None:
+        alignment: Int,
+    ](coords: Coord, val: SIMD[_type, width]) -> SIMD[_type, width]:
         comptime assert coords.rank == 3
-        c.store(coords, rebind[SIMD[c.dtype, width]](val + some_constant))
+        return val + some_constant
 
     @inline(.always)
     def bench_fn_batched_matmul() raises {var}:
@@ -538,8 +536,7 @@ def test_batched_matmul[
             batched_matmul[
                 transpose_a=False,
                 transpose_b=False,
-                elementwise_epilogue_fn=epilogue_fn,
-            ](c, a, b)
+            ](c, a, b, compute_fn)
         else:
             batched_matmul[
                 transpose_a=False,

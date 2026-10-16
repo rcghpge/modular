@@ -1131,11 +1131,13 @@ def _submatmul_sequential_sync[
 
 def _submatmul_sequential_sync[
     EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
     //,
     config: KernelConfig,
     transpose_b: Bool,
     b_packed: Bool,
     has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
     saturated_vnni: Bool,
 ](
     c: TileTensor[mut=True, address_space=.GENERIC, ...],
@@ -1144,6 +1146,7 @@ def _submatmul_sequential_sync[
     sub_matrix_shape: GemmShape,
     sub_matrix_offset: GemmShape,
     epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
 ):
     comptime kernel_id = select_inner_kernel[a.dtype, b.dtype, c.dtype]()
 
@@ -1154,7 +1157,7 @@ def _submatmul_sequential_sync[
                 transpose_b,
                 b_packed,
                 has_epilogue_fn,
-                False,
+                has_compute_fn,
                 kernel_id,
             ](
                 Inner_matmul_default(),
@@ -1164,7 +1167,7 @@ def _submatmul_sequential_sync[
                 sub_matrix_shape,
                 sub_matrix_offset,
                 epilogue_fn,
-                no_compute_fn,
+                compute_fn,
             )
         case .VNNI:
             _submatmul_sequential_sync[
@@ -1172,7 +1175,7 @@ def _submatmul_sequential_sync[
                 transpose_b,
                 b_packed,
                 has_epilogue_fn,
-                False,
+                has_compute_fn,
                 kernel_id,
             ](
                 Inner_matmul_vnni[saturated_vnni](),
@@ -1182,7 +1185,7 @@ def _submatmul_sequential_sync[
                 sub_matrix_shape,
                 sub_matrix_offset,
                 epilogue_fn,
-                no_compute_fn,
+                compute_fn,
             )
         case .NEON:
             _submatmul_sequential_sync[
@@ -1190,7 +1193,7 @@ def _submatmul_sequential_sync[
                 transpose_b,
                 b_packed,
                 has_epilogue_fn,
-                False,
+                has_compute_fn,
                 kernel_id,
             ](
                 Inner_matmul_neon(),
@@ -1200,7 +1203,7 @@ def _submatmul_sequential_sync[
                 sub_matrix_shape,
                 sub_matrix_offset,
                 epilogue_fn,
-                no_compute_fn,
+                compute_fn,
             )
         case .I8MM:
             _submatmul_sequential_sync[
@@ -1208,7 +1211,7 @@ def _submatmul_sequential_sync[
                 transpose_b,
                 b_packed,
                 has_epilogue_fn,
-                False,
+                has_compute_fn,
                 kernel_id,
             ](
                 Inner_matmul_i8mm(),
@@ -1218,7 +1221,7 @@ def _submatmul_sequential_sync[
                 sub_matrix_shape,
                 sub_matrix_offset,
                 epilogue_fn,
-                no_compute_fn,
+                compute_fn,
             )
         case _:
             comptime assert False, "no _run_inner_loop implementation"

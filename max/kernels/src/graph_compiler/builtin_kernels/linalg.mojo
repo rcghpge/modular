@@ -45,9 +45,6 @@ from layout import (
     row_major,
 )
 from linalg.bmm import batched_matmul, batched_matmul_shape
-from linalg.bmm import (
-    elementwise_epilogue_type as batched_matmul_elementwise_epilogue_type,
-)
 from linalg.fp8_quantization import matmul_dynamic_scaled_fp8
 from linalg.block_scaled_quantization import block_scaled_matmul
 from linalg.arch.amd.block_scaled_mma import CDNA4F8F6F4MatrixFormat
@@ -368,11 +365,10 @@ struct BatchMatmulCPU:
         b: InputTensor[rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
         def output_fn[
-            _type: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: Coord, val: SIMD[_type, _width]):
+            _type: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: Coord, val: SIMD[_type, _width]) {var c}:
             # TODO(GEX-4375): `batched_matmul` only takes a store epilogue, so
             # take a plain `FusedOutputTensor` and drop this compute branch.
             comptime has_compute_lambda = type_of(c)._has_compute_fusion
@@ -387,19 +383,25 @@ struct BatchMatmulCPU:
                     coords, rebind[SIMD[c.dtype, _width]](val)
                 )
 
-        batched_matmul[
-            transpose_a=False,
-            transpose_b=transpose_b,
-            elementwise_epilogue_fn=Optional[
-                batched_matmul_elementwise_epilogue_type
-            ](output_fn) if has_epilogue_fusion else None,
-            target=target,
-        ](
-            c.to_tile_tensor[.int64](),
-            a.to_tile_tensor[.int64](),
-            b.to_tile_tensor[.int64](),
-            context=ctx,
-        )
+        comptime if has_epilogue_fusion:
+            batched_matmul[
+                transpose_a=False, transpose_b=transpose_b, target=target
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                output_fn,
+                context=ctx,
+            )
+        else:
+            batched_matmul[
+                transpose_a=False, transpose_b=transpose_b, target=target
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                context=ctx,
+            )
 
 
 @extensibility.register("mo.batch_matmul", type="gpu")
@@ -418,11 +420,10 @@ struct BatchMatmulGPU:
         b: InputTensor[rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
         def output_fn[
-            _type: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: Coord, val: SIMD[_type, _width]):
+            _type: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: Coord, val: SIMD[_type, _width]) {var c}:
             # TODO(GEX-4375): `batched_matmul` only takes a store epilogue, so
             # take a plain `FusedOutputTensor` and drop this compute branch.
             comptime has_compute_lambda = type_of(c)._has_compute_fusion
@@ -437,19 +438,25 @@ struct BatchMatmulGPU:
                     coords, rebind[SIMD[c.dtype, _width]](val)
                 )
 
-        batched_matmul[
-            transpose_a=False,
-            transpose_b=transpose_b,
-            elementwise_epilogue_fn=Optional[
-                batched_matmul_elementwise_epilogue_type
-            ](output_fn) if has_epilogue_fusion else None,
-            target=target,
-        ](
-            c.to_tile_tensor[.int64](),
-            a.to_tile_tensor[.int64](),
-            b.to_tile_tensor[.int64](),
-            context=ctx,
-        )
+        comptime if has_epilogue_fusion:
+            batched_matmul[
+                transpose_a=False, transpose_b=transpose_b, target=target
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                output_fn,
+                context=ctx,
+            )
+        else:
+            batched_matmul[
+                transpose_a=False, transpose_b=transpose_b, target=target
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                context=ctx,
+            )
 
 
 @extensibility.register_shape_function("mo.batch_matmul")

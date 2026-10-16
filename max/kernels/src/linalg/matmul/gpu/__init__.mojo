@@ -76,7 +76,7 @@ from ...utils_gpu import (
     select_config,
     _vendor_blas_fallback_disabled,
 )
-from ..vendor.matmul import apply_compute_fn_in_place, matmul as matmul_vendor
+from ..vendor.matmul import matmul as matmul_vendor
 from ._multistage_gemm_gpu import (
     multistage_gemm_kernel,
     multistage_gemm_kernel_compute_fn,
@@ -705,13 +705,6 @@ def _amdgpu_matmul_build_block_shape_list[N: Int]() -> List[IndexList[2]]:
     return block_shape_list^
 
 
-# TODO(MOCO-4720): the Apple kernels take only the legacy epilogue lambda;
-# `_matmul_gpu_impl` must not hand them a bare value.
-comptime _matmul_gpu_needs_legacy_epilogue = (
-    DeviceContext.target.is_apple_gpu()
-)
-
-
 @inline(.always)
 def _matmul_gpu[
     *,
@@ -737,8 +730,6 @@ def _matmul_gpu[
     only, and only for shapes the fp32 split-K GEMV supports (compile-time
     error otherwise).
     """
-    # Kernels that take epilogue values get the lambda forwarded through a
-    # value; the lambda itself still reaches the Apple ones.
     comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
 
         def compute_fn[
@@ -787,6 +778,51 @@ def _matmul_gpu[
 
 
 def _matmul_gpu[
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    *,
+    use_tensor_core: Bool = False,
+    transpose_b: Bool = False,
+    use_tf32: Bool = True,
+    pdl_level: PDLLevel = PDLLevel(),
+](
+    c: TileTensor[mut=True, ...],
+    a: TileTensor[mut=False, ...],
+    b: TileTensor[mut=False, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    """GPU matmul dispatch that stores the output through `epilogue_fn`.
+
+    Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        use_tensor_core: Whether to use tensor cores where available.
+        transpose_b: Whether `b` is stored as `(N, K)`.
+        use_tf32: Whether fp32 inputs may use TF32 tensor cores.
+        pdl_level: Programmatic dependent launch level.
+
+    Args:
+        c: Rank-2 tensor of shape `(M, N)`. Some dispatch paths use it as
+            scratch for the product.
+        a: Rank-2 input tensor of shape `(M, K)`.
+        b: Rank-2 input tensor of shape `(K, N)`, or `(N, K)` when
+            `transpose_b` is set.
+        epilogue_fn: Stores each output index and chunk.
+        ctx: Device context used to launch the kernels.
+    """
+    _matmul_gpu_impl[
+        use_tensor_core=use_tensor_core,
+        transpose_b=transpose_b,
+        use_tf32=use_tf32,
+        elementwise_lambda_fn=None,
+        elementwise_compute_lambda_fn=None,
+        pdl_level=pdl_level,
+        has_epilogue_fn=True,
+        has_compute_fn=False,
+    ](c, a, b, epilogue_fn, no_compute_fn, ctx)
+
+
+def _matmul_gpu[
     ComputeFnType: ElementwiseComputeFn,
     //,
     *,
@@ -803,10 +839,6 @@ def _matmul_gpu[
 ) raises:
     """GPU matmul dispatch that stores `compute_fn(idx, a @ b)` into `c`.
 
-    The kernels apply `compute_fn` in their epilogue, except on Apple GPUs:
-    those run the matmul into `c` and then apply `compute_fn` in place in a
-    separate elementwise pass.
-
     Parameters:
         ComputeFnType: Type of `compute_fn` (inferred).
         use_tensor_core: Whether to use tensor cores where available.
@@ -822,27 +854,16 @@ def _matmul_gpu[
         compute_fn: Maps each output index and value to the value to store.
         ctx: Device context used to launch the kernels.
     """
-    comptime if _matmul_gpu_needs_legacy_epilogue:
-        # TODO(MOCO-4720): the extra pass re-reads and re-writes `c`. Pass
-        # `compute_fn` to the Apple kernels once they take epilogue values.
-        _matmul_gpu[
-            use_tensor_core=use_tensor_core,
-            transpose_b=transpose_b,
-            use_tf32=use_tf32,
-            pdl_level=pdl_level,
-        ](c, a, b, ctx)
-        apply_compute_fn_in_place(c, compute_fn, ctx)
-    else:
-        _matmul_gpu_impl[
-            use_tensor_core=use_tensor_core,
-            transpose_b=transpose_b,
-            use_tf32=use_tf32,
-            elementwise_lambda_fn=None,
-            elementwise_compute_lambda_fn=None,
-            pdl_level=pdl_level,
-            has_epilogue_fn=False,
-            has_compute_fn=True,
-        ](c, a, b, no_epilogue_fn, compute_fn, ctx)
+    _matmul_gpu_impl[
+        use_tensor_core=use_tensor_core,
+        transpose_b=transpose_b,
+        use_tf32=use_tf32,
+        elementwise_lambda_fn=None,
+        elementwise_compute_lambda_fn=None,
+        pdl_level=pdl_level,
+        has_epilogue_fn=False,
+        has_compute_fn=True,
+    ](c, a, b, no_epilogue_fn, compute_fn, ctx)
 
 
 def _matmul_gpu_impl[
@@ -872,11 +893,6 @@ def _matmul_gpu_impl[
     comptime assert not has_legacy_epilogue or (
         has_epilogue_fn or has_compute_fn
     ), "a legacy epilogue lambda must come with the value that forwards it"
-    comptime assert (
-        has_legacy_epilogue
-        or not (has_epilogue_fn or has_compute_fn)
-        or not _matmul_gpu_needs_legacy_epilogue
-    ), "the Apple matmuls take only legacy epilogue lambdas"
     comptime assert not (
         has_epilogue_fn and has_compute_fn
     ), "pass either epilogue_fn or compute_fn, not both"

@@ -152,18 +152,15 @@ def bench_bmm[
     init_vector_launch[a_type](a_device_buffer, a_size, init_type, ctx)
     init_vector_launch[a_type](b_device_buffer, b_size, init_type, ctx)
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(c_device)
-    def epilogue_fn[
+    def compute_fn[
         dtype: DType,
         width: SIMDLength,
         *,
-        alignment: Int = 1,
-    ](idx: Coord, val: SIMD[dtype, width]) capturing -> None:
+        alignment: Int,
+    ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
         comptime func = lambda_fn.value()
-        var update_val = func(val)
-        c_device.store(idx, update_val.cast[c_device.dtype]())
+        return func(val)
 
     comptime pack_size = simd_width_of[c_type, target=ctx.target]()
 
@@ -255,13 +252,11 @@ def bench_bmm[
                     )
             else:
                 comptime if lambda_fn:
-                    _batched_matmul_gpu[
-                        transpose_b=transpose_b,
-                        elementwise_epilogue_fn=epilogue_fn,
-                    ](
+                    _batched_matmul_gpu[transpose_b=transpose_b](
                         c_device,
                         a_device,
                         b_device,
+                        compute_fn,
                         ctx,
                     )
                 else:

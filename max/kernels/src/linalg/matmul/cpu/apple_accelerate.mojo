@@ -620,9 +620,9 @@ def apple_batched_matmul[
         b: Input B batched tensor tile.
         c_shape_idx: Shape of the output tensor used to compute batch strides.
     """
-    _apple_batched_matmul_impl[transpose_b=transpose_b, has_epilogue_fn=False](
-        c, a, b, c_shape_idx, no_epilogue_fn
-    )
+    _apple_batched_matmul_impl[
+        transpose_b=transpose_b, has_epilogue_fn=False, has_compute_fn=False
+    ](c, a, b, c_shape_idx, no_epilogue_fn, no_compute_fn)
 
 
 @inline(.always)
@@ -657,25 +657,65 @@ def apple_batched_matmul[
         c_shape_idx: Shape of the output tensor used to compute batch strides.
         epilogue_fn: Epilogue applied element-wise to the output.
     """
-    _apple_batched_matmul_impl[transpose_b=transpose_b, has_epilogue_fn=True](
-        c, a, b, c_shape_idx, epilogue_fn
-    )
+    _apple_batched_matmul_impl[
+        transpose_b=transpose_b, has_epilogue_fn=True, has_compute_fn=False
+    ](c, a, b, c_shape_idx, epilogue_fn, no_compute_fn)
+
+
+@inline(.always)
+def apple_batched_matmul[
+    rank: Int,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    transpose_b: Bool = False,
+](
+    c: TileTensor[mut=True, ...],
+    a: TileTensor[mut=False, ...],
+    b: TileTensor[mut=False, ...],
+    c_shape_idx: IndexList[rank],
+    compute_fn: ComputeFnType,
+) raises:
+    """Performs a batched single-precision matmul via the Apple Accelerate
+    library, storing `compute_fn(idx, value)` into `c`.
+
+    `compute_fn` receives rank-`rank` coordinates in the original
+    (uncollapsed) output shape.
+
+    Parameters:
+        rank: The rank of the output tensor (must be >= 3).
+        ComputeFnType: Type of `compute_fn` (inferred).
+        transpose_b: Whether to treat B as transposed.
+
+    Args:
+        c: Output batched tensor tile.
+        a: Input A batched tensor tile.
+        b: Input B batched tensor tile.
+        c_shape_idx: Shape of the output tensor used to compute batch strides.
+        compute_fn: Maps each output index and value to the value to store.
+    """
+    _apple_batched_matmul_impl[
+        transpose_b=transpose_b, has_epilogue_fn=False, has_compute_fn=True
+    ](c, a, b, c_shape_idx, no_epilogue_fn, compute_fn)
 
 
 @inline(.always)
 def _apple_batched_matmul_impl[
     rank: Int,
     EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
     //,
     *,
     transpose_b: Bool,
     has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
 ](
     c: TileTensor[mut=True, ...],
     a: TileTensor[mut=False, ...],
     b: TileTensor[mut=False, ...],
     c_shape_idx: IndexList[rank],
     epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
 ) raises:
     comptime assert rank >= 3, "expecting at least rank-3 TileTensor"
 
@@ -729,8 +769,26 @@ def _apple_batched_matmul_impl[
                 Coord(local_batch_coords), out_val
             )
 
+        @inline(.always)
+        def compute_2d[
+            c_type: DType, width: SIMDLength, *, alignment: Int
+        ](out_coords: Coord, out_val: SIMD[c_type, width]) {
+            var batch_coords,
+            var compute_fn,
+        } -> SIMD[c_type, width]:
+            comptime assert (
+                out_coords.rank == 2
+            ), "the matmul epilogue contract is rank 2"
+            var local_batch_coords = batch_coords
+            local_batch_coords[rank - 1] = Int(out_coords[1].value())
+            local_batch_coords[rank - 2] = Int(out_coords[0].value())
+
+            return compute_fn[c_type, width, alignment=alignment](
+                Coord(local_batch_coords), out_val
+            )
+
         apple_matmul[
             transpose_b=transpose_b,
             has_epilogue_fn=has_epilogue_fn,
-            has_compute_fn=False,
-        ](cblas_gemm, c2, a2, b2, epilogue_2d, no_compute_fn)
+            has_compute_fn=has_compute_fn,
+        ](cblas_gemm, c2, a2, b2, epilogue_2d, compute_2d)
