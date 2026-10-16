@@ -367,8 +367,8 @@ def qk_mma_kernel[
     for i in range(num_iters):
         if elect_one_thread:
             tma_mbar[0].expect_bytes(Int32(expected_bytes))
-            var m = Int(block_idx.y) * BM
-            var n = Int(block_idx.x) * BN
+            var m = block_idx.y * BM
+            var n = block_idx.x * BN
             var k = i * BK
             # A=Q k-major : (k, m).   B=K k-major (transpose_b=True) : (k, n).
             q_tma_op.async_copy(q_smem_tile, tma_mbar[0], (k, m))
@@ -427,7 +427,7 @@ def qk_mma_kernel[
     comptime num_warps = num_threads // WARP_SIZE
     var warp_id = get_warp_id()
 
-    var ctile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
+    var ctile = c.tile[BM, BN](block_idx.y, block_idx.x)
 
     comptime for m_mma in range(num_m_mmas):
         comptime for n_mma in range(num_n_mmas):
@@ -614,7 +614,7 @@ def run_qk_spike[
                     o_host_ref[m, n],
                     atol=0.05,
                     rtol=0.05,
-                    msg=String(m) + "," + String(n),
+                    msg=String(t"{m},{n}"),
                 )
             except e:
                 if mismatches < 8:
@@ -632,7 +632,7 @@ def run_qk_spike[
     if mismatches == 0:
         print("  PASS")
     else:
-        print("  FAIL: " + String(mismatches) + " mismatches")
+        print(t"  FAIL: {mismatches} mismatches")
         raise Error(
             "qk_kmajor_spike (native="
             + String(use_native)

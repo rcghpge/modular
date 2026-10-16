@@ -412,7 +412,7 @@ def run_qk_consumer[
                     o_host_ref[m, n],
                     atol=0.05,
                     rtol=0.05,
-                    msg=String(m) + "," + String(n),
+                    msg=String(t"{m},{n}"),
                 )
             except e:
                 if mismatches < 8:
@@ -430,7 +430,7 @@ def run_qk_consumer[
     if mismatches == 0:
         print("  PASS")
     else:
-        print("  FAIL: " + String(mismatches) + " mismatches")
+        print(t"  FAIL: {mismatches} mismatches")
         raise Error(
             "qk_kmajor_consumer (pagedense="
             + String(use_pagedense)
