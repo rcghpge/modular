@@ -38,6 +38,15 @@ is "any B200 pair" and draws EFA hosts, where the IB row's
 `UCX_TLS=rc` dies opening `ud_verbs` on an EFA device instead of
 falling back.
 
+The InfiniBand rows run under `numactl` on the GPU's own NUMA node. The
+runner container spans both sockets while the pod's GPUs and rails sit on
+one of them, and rc stages through host memory, so an unbound row measures
+anywhere from 48 down to 19 GiB/s depending on where the kernel puts the
+staging buffer. That spread, not a transport regression, is what used to
+redden the 256 KiB row. If a bandwidth row ever looks bimodal again, the
+row logs carry a placement dump and UCX's protocol-selection table, which
+name the CPUs, the NUMA node and the rail it actually used.
+
 ## The aggregate gate
 
 The `validateNIXLSync` is the one CI run that validates a NIXL
