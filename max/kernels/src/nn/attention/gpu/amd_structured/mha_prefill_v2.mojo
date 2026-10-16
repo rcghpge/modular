@@ -1557,10 +1557,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         # `NullMask` keeps the full iteration count and `status` always
         # returns `NO_MASK`, so per-tile mask work is comptime-elided.
         comptime if mask_t == CausalMask:
-            max_num_tiles_local = (
-                max_num_tiles_calc if max_num_tiles_calc
-                < num_tiles else num_tiles
-            )
+            max_num_tiles_local = min(max_num_tiles_calc, num_tiles)
         elif mask_t == NullMask:
             # #87603: the software pipeline processes K tiles in even
             # pairs (main loop advances `j` by 2; epilogue drains 4). An
