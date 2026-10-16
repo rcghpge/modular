@@ -1211,16 +1211,10 @@ struct ManagedTensorSlice[
 
     @staticmethod
     def get_type_name() -> String:
-        return (
-            "ManagedTensorSlice[mut = "
-            + String(Self.mut)
-            + ", dtype = "
-            + String(Self.dtype)
-            + ", rank = "
-            + String(Self.rank)
-            + ", static_spec (as Layout) = "
-            + String(Self.static_spec.to_layout())
-            + "]"
+        return String(
+            t"ManagedTensorSlice[mut = {Self.mut}, dtype = {Self.dtype},"
+            t" rank = {Self.rank}, static_spec (as Layout) ="
+            t" {Self.static_spec.to_layout()}]"
         )
 
     comptime address_space = Self.static_spec.address_space
@@ -1824,9 +1818,9 @@ struct ManagedTensorSlice[
             AddressSpace.LOCAL,
             AddressSpace.CONSTANT,
         ):
-            return Int(crd2idx[out_type=DType.int32](index, shape, strides))
+            return Int(crd2idx[out_type=.int32](index, shape, strides))
 
-        return Int(crd2idx[out_type=DType.int](index, shape, strides))
+        return Int(crd2idx[out_type=.int](index, shape, strides))
 
     @__allow_legacy_custom_self_type
     @inline(.always)
