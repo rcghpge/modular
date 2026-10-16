@@ -1949,9 +1949,9 @@ def blockwise_scaled_fp8_matmul_amd_batched_kernel[
     comptime assert a_scales.flat_rank == 3
     comptime assert b_scales.flat_rank == 3
 
-    var batch = Int(block_idx.z)
-    var m_block = Int(block_idx.y)
-    var n_block = Int(block_idx.x)
+    var batch = block_idx.z
+    var m_block = block_idx.y
+    var n_block = block_idx.x
 
     # M is uniform across batches in a batched GEMM; read once. Runtime
     # trailing extents are host-asserted == the comptime N/K that tiling uses.

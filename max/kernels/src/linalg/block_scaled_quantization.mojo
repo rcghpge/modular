@@ -284,7 +284,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
         2,
         4,
     ), "NUM_THREADS_PER_SF must be 2 or 4"
-    comptime OUTPUT_WIDTH = 4 if out_dtype == DType.uint8 else 8
+    comptime OUTPUT_WIDTH = 4 if out_dtype == .uint8 else 8
 
     comptime assert (
         input_layout.static_shape[1] % ELEMENTS_PER_THREAD == 0
@@ -1582,7 +1582,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
 
     comptime ELEMENTS_PER_THREAD = 8
     comptime NUM_THREADS_PER_SF = SF_VECTOR_SIZE // ELEMENTS_PER_THREAD
-    comptime OUTPUT_WIDTH = 4 if output_dtype == DType.uint8 else 8
+    comptime OUTPUT_WIDTH = 4 if output_dtype == .uint8 else 8
     comptime num_threads_per_row = SF_K_GROUP_SIZE // ELEMENTS_PER_THREAD
 
     # Threads span the block's column tiles as well as its rows. A row is
@@ -2119,7 +2119,7 @@ def grouped_quantize_nvfp4_row_amax_kernel[
     comptime assert row_scales.flat_rank == 1, "row_scales must be rank 1"
     comptime assert scales_tensor.flat_rank == 5, "scales_tensor must be rank 5"
     comptime assert scales_dtype == NVFP4_SF_DTYPE
-    comptime assert output_dtype == DType.uint8
+    comptime assert output_dtype == .uint8
     comptime assert OutputEngine.element_size == 1
     comptime assert ScalesEngine.element_size == 1
     comptime assert RowScalesEngine.element_size == 1
@@ -2144,16 +2144,16 @@ def grouped_quantize_nvfp4_row_amax_kernel[
     var padded_cols = num_k_tiles * SF_K_GROUP_SIZE
     var num_rows = Int(output_tensor.dim(0))
     var num_row_blocks = uceildiv(num_rows, rows_per_block)
-    var warp_id = Int(thread_idx.x // WARP_SIZE)
-    var lane = Int(thread_idx.x % WARP_SIZE)
+    var warp_id = thread_idx.x // WARP_SIZE
+    var lane = thread_idx.x % WARP_SIZE
 
     # The expert offsets can come from the kernel this one overlaps under
     # PDL, so they are read after the wait.
     with PDL():
-        if Int(block_idx.x) >= num_row_blocks:
+        if block_idx.x >= num_row_blocks:
             # A tile block: clear the scale slots of the tile's padding rows,
             # which must be zero.
-            var scale_tile_idx = Int(block_idx.x) - num_row_blocks
+            var scale_tile_idx = block_idx.x - num_row_blocks
             var expert_idx = _scale_tile_expert[num_experts](
                 row_offsets, scales_offsets, scale_tile_idx
             )
@@ -2192,7 +2192,7 @@ def grouped_quantize_nvfp4_row_amax_kernel[
                             SIMD[scales_dtype, SF_ATOM_K](0),
                         )
         else:
-            var row = Int(block_idx.x) * rows_per_block + warp_id
+            var row = block_idx.x * rows_per_block + warp_id
             # The row's expert is the last one whose rows start at or
             # before it. Each lane reads the offsets of a few experts, so
             # the warp finds it in one round of loads.
@@ -2652,7 +2652,7 @@ def block_scaled_matmul_with_epilogue[
 
     var m = Int(c.dim[0]())
     var n = Int(c.dim[1]())
-    var _k = Int(a.dim[1]()) * 2 if a_type == DType.uint8 else Int(a.dim[1]())
+    var _k = Int(a.dim[1]()) * 2 if a_type == .uint8 else Int(a.dim[1]())
     if m == 0 or n == 0:
         return
 
@@ -2867,7 +2867,7 @@ def block_scaled_matmul[
 
     var m = Int(c.dim[0]())
     var n = Int(c.dim[1]())
-    var k = Int(a.dim[1]()) * 2 if a_type == DType.uint8 else Int(a.dim[1]())
+    var k = Int(a.dim[1]()) * 2 if a_type == .uint8 else Int(a.dim[1]())
 
     if m == 0 or n == 0:
         return
@@ -3198,9 +3198,9 @@ def quantize_dynamic_block_scaled[
 
     comptime static_input_N = input_tensor.static_shape[1]
     comptime static_output_N = output_tensor.static_shape[1]
-    comptime is_nvfp4 = out_dtype == DType.uint8 and scales_dtype == NVFP4_SF_DTYPE and SF_VECTOR_SIZE == NVFP4_SF_VECTOR_SIZE
-    comptime is_mxfp4 = out_dtype == DType.uint8 and scales_dtype == MXFP4_SF_DTYPE and SF_VECTOR_SIZE == MXFP4_SF_VECTOR_SIZE
-    comptime is_fp8 = out_dtype == DType.float8_e4m3fn and scales_dtype == MXFP8_SF_DTYPE and SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE
+    comptime is_nvfp4 = out_dtype == .uint8 and scales_dtype == NVFP4_SF_DTYPE and SF_VECTOR_SIZE == NVFP4_SF_VECTOR_SIZE
+    comptime is_mxfp4 = out_dtype == .uint8 and scales_dtype == MXFP4_SF_DTYPE and SF_VECTOR_SIZE == MXFP4_SF_VECTOR_SIZE
+    comptime is_fp8 = out_dtype == .float8_e4m3fn and scales_dtype == MXFP8_SF_DTYPE and SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE
     comptime assert is_nvfp4 or is_mxfp4 or is_fp8, "invalid scaling kind"
 
     comptime is_packed_fp4 = is_nvfp4 or is_mxfp4
@@ -3442,7 +3442,7 @@ def _quantize_mx_amd_kernel[
     element. Only the scale derivation and the store width differ.
     """
     # 2 for MXFP4 (nibble-packed), 1 for MXFP8 (one byte per element).
-    comptime elems_per_byte = 2 if out_dtype == DType.uint8 else 1
+    comptime elems_per_byte = 2 if out_dtype == .uint8 else 1
     var _num_rows = Int(num_rows)
     var _num_cols = Int(num_cols)
     comptime NUM_THREADS_PER_SF = SF_VECTOR_SIZE // ELEMENTS_PER_THREAD

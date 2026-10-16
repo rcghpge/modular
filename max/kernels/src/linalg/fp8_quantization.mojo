@@ -735,7 +735,7 @@ struct _QuantizeFp8Kernel[
         # Both bounds are block-uniform, so every thread runs the same trip
         # count and the `block.max` barrier below stays convergent. Unbounded
         # launches keep one row per block, exactly as before.
-        var row_start = Int(block_idx.x)
+        var row_start = block_idx.x
         var row_end: Int
         var row_step: Int
         comptime if Self.row_bounded:
@@ -743,7 +743,7 @@ struct _QuantizeFp8Kernel[
             # trust it: a malformed prefix sum would otherwise write past the
             # end of both output buffers.
             row_end = min(Int(self.row_limit.value()[]), Int(output.dim[0]()))
-            row_step = Int(grid_dim.x)
+            row_step = grid_dim.x
         else:
             row_end = row_start + 1
             row_step = 1
@@ -920,7 +920,7 @@ struct _ReducePerTensorScaleFp8Kernel[
         """
         var scales = TileTensor(self.scales.ptr, self.scales.layout)
         var num_rows = Int(self.num_rows_dev)
-        var tid = Int(thread_idx.x)
+        var tid = thread_idx.x
 
         with PDL():
             var thread_max = Scalar[Self.scales_type](0)
