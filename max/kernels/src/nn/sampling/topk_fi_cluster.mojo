@@ -404,7 +404,7 @@ def TopKTopPMaskedProbsClusterKernel[
     var thread_max = Float32.MIN
     for i in range(vec_begin + tx, vec_end, block_size):
         var v = logits_row.load[width=vec_size]((Idx[0], i * vec_size)).cast[
-            DType.float32
+            .float32
         ]()
         thread_max = max(thread_max, v.reduce_max())
 
@@ -416,7 +416,7 @@ def TopKTopPMaskedProbsClusterKernel[
     @inline(.always)
     def load_e(offset: Int) {imm} -> SIMD[.float32, vec_size]:
         var v = logits_row.load[width=vec_size]((Idx[0], offset)).cast[
-            DType.float32
+            .float32
         ]()
         return exp((v - m) * inv_temp)
 
@@ -1119,7 +1119,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
     var thread_max = Float32.MIN
     for i in range(vec_begin + tx, vec_end, block_size):
         var v = probs_row.load[width=vec_size]((Idx[0], i * vec_size)).cast[
-            DType.float32
+            .float32
         ]()
         thread_max = max(thread_max, v.reduce_max())
 
@@ -1138,7 +1138,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
     var thread_masked_sum = Float32(0)
     for i in range(vec_begin + tx, vec_end, block_size):
         var v = probs_row.load[width=vec_size]((Idx[0], i * vec_size)).cast[
-            DType.float32
+            .float32
         ]()
         var e = exp((v - row_max) * inv_temp)
         thread_sum += e.reduce_add()

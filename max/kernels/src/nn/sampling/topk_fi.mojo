@@ -1953,8 +1953,7 @@ def TopKTopPSamplingFromProbKernel[
         coop_size == 1 or from_logits
     ), "the cooperative split needs the fused softmax"
     var n_vec = _d // vec_size
-    var rank = block_idx.x % coop_size
-    var bx = block_idx.x // coop_size
+    var bx, rank = divmod(block_idx.x, coop_size)
     var tx = thread_idx.x
 
     # Contiguous slices make block-rank order match token order.
@@ -3375,8 +3374,7 @@ def TopKTopPMaskedProbsKernel[
     ), "TopKTopPMaskedProbsKernel is not supported on Apple GPUs"
     var _d = Int(d)
     var n_vec = _d // vec_size
-    var rank = block_idx.x % coop_size
-    var bx = block_idx.x // coop_size
+    var bx, rank = divmod(block_idx.x, coop_size)
     var tx = thread_idx.x
 
     # Contiguous slices make block-rank order match token order.
