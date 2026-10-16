@@ -1019,19 +1019,15 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
     RETURN_ERROR("Failed to create Metal function: " + functionName.str());
   }
 
-  // Create a compute pipeline state with reflection to get argument info
   NS::SharedPtr<MTL::ComputePipelineDescriptor> pipelineDesc =
       NS::TransferPtr(MTL::ComputePipelineDescriptor::alloc()->init());
   pipelineDesc->setComputeFunction(function.get());
   pipelineDesc->setThreadGroupSizeIsMultipleOfThreadExecutionWidth(true);
 
-  // Create pipeline with reflection to get argument count
-  MTL::ComputePipelineReflection *reflection = nullptr;
   NS::Error *error = nullptr;
   NS::SharedPtr<MTL::ComputePipelineState> pipelineState =
       NS::TransferPtr(mtlDevice->newComputePipelineState(
-          pipelineDesc.get(), MTL::PipelineOptionArgumentInfo, &reflection,
-          &error));
+          pipelineDesc.get(), MTL::PipelineOptionNone, nullptr, &error));
 
   if (error) {
     RETURN_ERROR(
@@ -1043,18 +1039,11 @@ MetalDeviceContext::loadFunction(StringRef moduleName, StringRef functionName,
   if (!pipelineState)
     RETURN_ERROR("Failed to create compute pipeline state (no error returned)");
 
-  if (!reflection)
-    RETURN_ERROR("Failed to extract pipeline argument information");
-
-  // Extract argument count from reflection, defaulting to 0 if unavailable
-  NS::Array *arguments = reflection->arguments();
-  size_t argCount = arguments ? arguments->count() : 0;
-
   // Allocate the module function outside any lock region (the cache takes its
   // own lock). If this key was registered concurrently, insertInFunctionCache
   // returns the existing entry and this ref is released before returning.
   MetalModuleFunctionRef moduleFunc = MetalModuleFunctionRef::create(
-      std::string(functionName), std::move(pipelineState), argCount);
+      std::string(functionName), std::move(pipelineState));
   entry = device().insertInFunctionCache(key, *moduleFunc);
   return MetalDeviceFunctionRef::create(
       *this,
@@ -1245,11 +1234,6 @@ ErrorOrSuccess MetalDeviceStream::enqueueFunctionExecDirect(
 
 ErrorOrSuccess MetalDeviceStream::eventRecord(const DeviceEvent &event) const {
   return metalCtx_.enqueueEvent(event);
-}
-
-ErrorOrSuccess MetalDeviceStream::waitEvent(const DeviceEvent &event,
-                                            unsigned int /*flags*/) const {
-  return enqueueWaitForEvent(event);
 }
 
 ErrorOrSuccess
@@ -1963,10 +1947,9 @@ const MetalDeviceTimer &MetalDeviceTimer::cast(const DeviceTimer &timer) {
 //
 // ===== MetalModuleFunction ===== //
 MetalModuleFunction::MetalModuleFunction(
-    std::string name, NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
-    size_t argumentCount)
+    std::string name, NS::SharedPtr<MTL::ComputePipelineState> pipelineState)
     : DeviceFunctionCacheEntry(std::move(name)),
-      pipelineState_(std::move(pipelineState)), argumentCount_(argumentCount) {}
+      pipelineState_(std::move(pipelineState)) {}
 
 const MetalModuleFunction *
 MetalModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
@@ -1979,10 +1962,6 @@ MetalModuleFunction::cast(const DeviceFunctionCacheEntry *entry) {
 MetalDeviceFunction::MetalDeviceFunction(MetalDeviceContext &context,
                                          MetalModuleFunctionRef modFunc)
     : DeviceFunction(context), moduleFunction_(std::move(modFunc)) {}
-
-size_t MetalDeviceFunction::argumentCount() const {
-  return moduleFunction_->argumentCount();
-}
 
 const std::string &MetalDeviceFunction::name() const {
   return moduleFunction_->name();

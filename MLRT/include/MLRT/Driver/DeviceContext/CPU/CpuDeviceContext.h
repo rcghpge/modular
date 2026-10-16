@@ -94,8 +94,6 @@ public:
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
   ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
-  ErrorOrSuccess waitEvent(const DeviceEvent &event,
-                           unsigned int flags) const override;
 
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 

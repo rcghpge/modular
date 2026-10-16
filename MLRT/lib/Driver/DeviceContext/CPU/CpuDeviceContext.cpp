@@ -200,11 +200,6 @@ ErrorOrSuccess CpuDeviceStream::eventRecord(const DeviceEvent &event) const {
   RETURN_ERROR("Unimplemented");
 }
 
-ErrorOrSuccess CpuDeviceStream::waitEvent(const DeviceEvent &event,
-                                          unsigned int flags) const {
-  RETURN_ERROR("Unimplemented");
-}
-
 ErrorOrSuccess CpuDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,

@@ -1068,10 +1068,6 @@ CUDADeviceMulticastBuffer::unicastBufferFor(DeviceContext &ctx) const {
   RETURN_ERROR("device is not part of this DeviceMulticastBuffer");
 }
 
-size_t CUDADeviceMulticastBuffer::numberOfDevices() const {
-  return unicastBuffers_.size();
-}
-
 ErrorOr<DeviceMulticastBufferRef>
 CUDADeviceMulticastBuffer::allocate(const std::vector<const Device *> &devices,
                                     size_t byteSize) {
@@ -1428,16 +1424,6 @@ ErrorOrSuccess CUDADeviceStream::eventRecord(const DeviceEvent &event) const {
   CUDA_WITH_DEV_ERR(cudaDevice);
   CUDA_CHECK_ERR(
       cudaDevice.cudaDriver().cuEventRecord(cudaEvent.cudaEvent(), stream_));
-  return success();
-}
-
-ErrorOrSuccess CUDADeviceStream::waitEvent(const DeviceEvent &event,
-                                           unsigned int flags) const {
-  const auto &cudaEvent = CUDADeviceEvent::cast(event);
-  const auto &cudaDevice = CUDADevice::cast(this->device());
-  CUDA_WITH_DEV_ERR(cudaDevice);
-  CUDA_CHECK_ERR(cudaDevice.cudaDriver().cuStreamWaitEvent(
-      stream_, cudaEvent.cudaEvent(), flags));
   return success();
 }
 

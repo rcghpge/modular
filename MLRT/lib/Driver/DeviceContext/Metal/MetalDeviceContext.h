@@ -335,9 +335,6 @@ public:
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
       uint32_t argCount = 0, const size_t *argSizes = nullptr) const override;
   ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
-  ErrorOrSuccess waitEvent(const DeviceEvent &event,
-                           unsigned int flags) const override;
-
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 
   // The MTLCommandQueue.
@@ -388,26 +385,23 @@ private:
 };
 
 // Cacheable half of a loaded Metal function: owns the compiled compute
-// pipeline state (immutable once created, safe to reuse across launches) and
-// the reflected argument count. Lives in the Device function cache. It holds no
-// DeviceContext reference so the cache does not create a reference cycle with
-// the Device (mirrors CUDAModuleFunction / HIPModuleFunction).
+// pipeline state (immutable once created, safe to reuse across launches).
+// Lives in the Device function cache. It holds no DeviceContext reference so
+// the cache does not create a reference cycle with the Device (mirrors
+// CUDAModuleFunction / HIPModuleFunction).
 class MetalModuleFunction : public DeviceFunctionCacheEntry {
 public:
   MetalModuleFunction(std::string name,
-                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState,
-                      size_t argumentCount);
+                      NS::SharedPtr<MTL::ComputePipelineState> pipelineState);
 
   MTL::ComputePipelineState *getPipelineState() const {
     return pipelineState_.get();
   }
-  size_t argumentCount() const { return argumentCount_; }
 
   static const MetalModuleFunction *cast(const DeviceFunctionCacheEntry *entry);
 
 private:
   NS::SharedPtr<MTL::ComputePipelineState> pipelineState_;
-  size_t argumentCount_;
 };
 
 class MetalDeviceFunction : public DeviceFunction {
@@ -421,8 +415,6 @@ public:
                                      size_t byteSize) override;
 
   ErrorOr<int32_t> getAttribute(int32_t code) override;
-
-  size_t argumentCount() const override;
 
   MTL::ComputePipelineState *getPipelineState() const {
     return moduleFunction_->getPipelineState();

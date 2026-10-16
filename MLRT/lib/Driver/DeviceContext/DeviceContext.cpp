@@ -1252,12 +1252,6 @@ DeviceContext &DeviceFunction::context() { return *context_; }
 
 const DeviceContext &DeviceFunction::context() const { return *context_; }
 
-size_t DeviceFunction::argumentCount() const {
-  // Default implementation returns 0 (unknown argument count).
-  // Device-specific implementations may override this.
-  return 0;
-}
-
 //
 // ===== DeviceTimer ===== //
 //

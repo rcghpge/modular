@@ -432,12 +432,6 @@ AsyncRT_DeviceContext_eventCreate(DeviceEvent **result, DeviceContext *ctx,
       result, ctx->eventCreate(/*enableTiming=*/(flags & kDisableTiming) == 0));
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_waitForEvent(DeviceContext *ctx, DeviceEvent *event) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_waitForEvent", TRACY_COLOR_GRAY);
-  return checkSuccess(ctx->enqueueWaitFor(*event));
-}
-
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_HtoD_async(DeviceContext *ctx,
                                                             DeviceBuffer *dst,
                                                             const void *src) {
@@ -669,12 +663,6 @@ AsyncRT_DeviceContext_setMetalPrintEnabled(DeviceContext *ctx, bool enabled) {
 #else
   return raiseError("Not a MetalContext");
 #endif
-}
-
-MODULAR_EXPORT void AsyncRT_DeviceTimer_retain(DeviceTimer *timer) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceTimer_retain", TRACY_COLOR_GRAY);
-  // Increment the low-level reference count.
-  DeviceTimerRef::lowLevelAddRef(timer);
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceTimer_release(DeviceTimer *timer) {
@@ -1081,12 +1069,6 @@ AsyncRT_DeviceContext_reseedRecording(DeviceContext *ctx, int32_t seedNodeId) {
     return raiseError("reseed target is not a recording device context");
   rc->reseed(DeviceGraphNode{seedNodeId});
   return nullptr;
-}
-
-MODULAR_EXPORT void
-AsyncRT_DeviceGraphBuilder_retain(DeviceGraphBuilder *builder) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceGraphBuilder_retain", TRACY_COLOR_GRAY);
-  DeviceGraphBuilderRef::lowLevelAddRef(builder);
 }
 
 MODULAR_EXPORT void

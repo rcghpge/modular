@@ -137,12 +137,6 @@ VirtualDeviceStream::eventRecord(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOrSuccess VirtualDeviceStream::waitEvent(const DeviceEvent &event,
-                                              unsigned int flags) const {
-  // No-op for virtual devices
-  return success();
-}
-
 ErrorOrSuccess
 VirtualDeviceStream::enqueueWaitForEvent(const DeviceEvent &event) const {
   // No-op for virtual devices

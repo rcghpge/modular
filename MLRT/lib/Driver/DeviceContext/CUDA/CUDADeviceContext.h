@@ -222,8 +222,6 @@ public:
   ErrorOr<DeviceBufferRef> multicastBuffer(DeviceContext &ctx) const override;
   ErrorOr<DeviceBufferRef> unicastBufferFor(DeviceContext &ctx) const override;
 
-  size_t numberOfDevices() const override;
-
   static ErrorOr<DeviceMulticastBufferRef>
   allocate(const std::vector<const Device *> &devices, size_t byteSize);
 
@@ -292,8 +290,6 @@ public:
   ErrorOr<DeviceEventRef> enqueueEvent() const override;
 
   ErrorOrSuccess eventRecord(const DeviceEvent &event) const override;
-  ErrorOrSuccess waitEvent(const DeviceEvent &event,
-                           unsigned int flags) const override;
 
   ErrorOrSuccess enqueueWaitForEvent(const DeviceEvent &event) const override;
 

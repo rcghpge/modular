@@ -527,8 +527,6 @@ public:
 
   MODULAR_CXX_EXPORT size_t byteSize() const;
 
-  virtual size_t numberOfDevices() const = 0;
-
   static ErrorOr<DeviceMulticastBufferRef>
   allocate(const std::vector<DeviceContextRef> &contexts, size_t byteSize);
 
@@ -819,8 +817,6 @@ public:
       uint32_t sharedMemBytes, void *attrs, uint32_t numAttrs, void **args,
       uint32_t argCount = 0, const size_t *argSizes = nullptr) const = 0;
   virtual ErrorOrSuccess eventRecord(const DeviceEvent &event) const = 0;
-  virtual ErrorOrSuccess waitEvent(const DeviceEvent &event,
-                                   unsigned int flags) const = 0;
 
   virtual ErrorOrSuccess
   enqueueWaitForEvent(const DeviceEvent &event) const = 0;
@@ -892,10 +888,6 @@ public:
 
   virtual ErrorOr<int32_t> getAttribute(int32_t code) = 0;
 
-  // Returns the number of arguments for this function. Default implementation
-  // returns 0 (unknown). Device-specific implementations may override this.
-  virtual size_t argumentCount() const;
-
 protected:
   explicit DeviceFunction(DeviceContext &context);
 
@@ -947,8 +939,6 @@ public:
 
   /// Acquire load of the current flag value.
   uint64_t load() const;
-
-  const DeviceContext &context() const { return *context_; }
 
 private:
   DeviceContextRef context_;

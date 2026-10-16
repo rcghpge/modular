@@ -1231,16 +1231,6 @@ ErrorOrSuccess HIPDeviceStream::eventRecord(const DeviceEvent &event) const {
   return success();
 }
 
-ErrorOrSuccess HIPDeviceStream::waitEvent(const DeviceEvent &event,
-                                          unsigned int flags) const {
-  const auto &hipEvent = HIPDeviceEvent::cast(event);
-  const auto &hipDevice = HIPDevice::cast(this->device());
-  HIP_WITH_DEV_ERR(hipDevice);
-  HIP_CHECK_ERR(hipDevice.hipDriver().hipStreamWaitEvent(
-      stream_, hipEvent.hipEvent(), flags));
-  return success();
-}
-
 ErrorOrSuccess HIPDeviceStream::enqueueFunctionExecDirect(
     const DeviceFunction &func, uint32_t gridX, uint32_t gridY, uint32_t gridZ,
     uint32_t blockX, uint32_t blockY, uint32_t blockZ, uint32_t sharedMemBytes,
