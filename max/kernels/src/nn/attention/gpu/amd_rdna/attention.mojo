@@ -340,9 +340,7 @@ struct AttentionRDNA[
 
     # Online-softmax cross-warp scratch; reuses K SMEM (writes happen
     # at iter boundaries, after K is consumed).
-    comptime _warp_scratch_layout = row_major[
-        2 * Int(Self.num_warps_n), Int(Self.BM)
-    ]()
+    comptime _warp_scratch_layout = row_major[2 * Self.num_warps_n, Self.BM]()
 
     var out_reg_buffer: Self.OutputRegisterBufferType
     var p_reg_buffer: Self.PRegisterBufferType
@@ -451,7 +449,7 @@ struct AttentionRDNA[
         ImmutAnyOrigin,
         Engine=operand_t.Engine,
     ]:
-        return operand.block_paged_tile[Int(Self.BN)](
+        return operand.block_paged_tile[Self.BN](
             batch_idx,
             start_tok_idx,
             head_idx,
