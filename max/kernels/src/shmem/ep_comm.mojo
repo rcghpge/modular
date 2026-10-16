@@ -1844,11 +1844,12 @@ struct NVBlockScaledTokenFormat[
             var r = Int(dst_expert_local_idx) * Self.sf_rows_per_expert + Int(
                 final_row
             )
-            var u = r % SF_MN_GROUP_SIZE
+            var group, u = divmod(r, SF_MN_GROUP_SIZE)
+            var u_hi, u_lo = divmod(u, SF_ATOM_M[0])
             var base = (
-                (r // SF_MN_GROUP_SIZE) * (Self.sf_kxg * SF_ATOM_ELEMS_LOCAL)
-                + (u % SF_ATOM_M[0]) * SF_ROW_STRIDE_LOCAL
-                + (u // SF_ATOM_M[0]) * SF_ATOM_K
+                group * (Self.sf_kxg * SF_ATOM_ELEMS_LOCAL)
+                + u_lo * SF_ROW_STRIDE_LOCAL
+                + u_hi * SF_ATOM_K
             )
             var dst = recv_base + Self.sf_arena_rows * Self.msg_size()
             var src = send_buf_p + Self.scales_offset()
