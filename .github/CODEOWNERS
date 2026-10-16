@@ -160,7 +160,7 @@
 /max/python/max/mlir/ @modular/max-sdk
 /max/python/max/nn/ @modular/max-sdk
 /max/python/max/pipelines/ @modular/max-sdk @modular/max-serve
-/max/python/max/pipelines/architectures/ @modular/max-serve
+/max/python/max/pipelines/architectures/ @modular/max-serve @copilot-pull-request-reviewer
 /max/python/max/pipelines/modeling/ @modular/max-sdk
 /max/python/max/pipelines/request/ @modular/max-sdk
 /max/python/max/serve/ @modular/max-serve
@@ -169,7 +169,7 @@
 /max/tests/BUILD.bazel @modular/sdlc
 /max/tests/docstring_examples/ @modular/mojo-docs
 /max/tests/integration/accuracy/ @modular/max-serve
-/max/tests/integration/architectures/ @modular/max-serve
+/max/tests/integration/architectures/ @modular/max-serve @copilot-pull-request-reviewer
 /max/tests/integration/pipelines/ @modular/max-sdk
 /max/tests/integration/c/ @modular/max-sdk @modular/GraphExecution
 /max/tests/integration/cli/ @modular/max-serve
