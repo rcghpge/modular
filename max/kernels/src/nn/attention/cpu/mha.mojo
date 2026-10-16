@@ -1580,7 +1580,7 @@ def flash_attention_kv_cache[
     ) {imm} -> SIMD[dtype, simd_width]:
         # Shift the mask index from local->global space.
         return mask.mask(
-            Index(idx[0], idx[1], idx[2] + kv_cache_len, idx[3]), score_vec
+            (idx[0], idx[1], idx[2] + kv_cache_len, idx[3]), score_vec
         )
 
     _flash_attention_kv_cache[4](mask_fn, q, k, v, scale, output, sink_weights)
@@ -1653,7 +1653,7 @@ def flash_attention_kv_cache[
     ) {imm} -> SIMD[dtype, simd_width]:
         # Shift the mask index from local->global space.
         return mask.mask(
-            Index(idx[0], idx[1], idx[2] + kv_cache_len, idx[3]), score_vec
+            (idx[0], idx[1], idx[2] + kv_cache_len, idx[3]), score_vec
         )
 
     @inline(.always)
