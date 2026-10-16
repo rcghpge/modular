@@ -16,7 +16,7 @@ Provides types and helpers for describing individual computational
 devices to be used within the Mojo metaprogramm.
 """
 
-from std._gpu.host.info import GPUInfo, TargetAccelerator
+from max.gpu.host.info import GPUInfo, TargetAccelerator
 from std.sys.info import _TargetType, CompilationTarget
 
 

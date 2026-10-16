@@ -21,7 +21,7 @@ interconnects, etc), and associated data and metadata.
 from . import DeviceSpec
 from .device import DeviceRef
 from std.sys.info import _accelerator_arch
-from std._gpu.host.info import GPUInfo
+from max.gpu.host.info import GPUInfo
 
 
 struct MachineDefinition:

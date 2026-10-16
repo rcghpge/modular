@@ -15,7 +15,7 @@
 # This prints the _all_target_accelerators() values accepted by max.gpu.host.info so
 # they can be compared against the C++ implementation's output.
 
-from std._gpu.host.info import _all_target_accelerators
+from max.gpu.host.info import _all_target_accelerators
 
 
 def main():

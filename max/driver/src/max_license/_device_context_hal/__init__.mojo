@@ -52,7 +52,6 @@ from std.os import abort, getenv
 from std.reflection import call_location, reflect, SourceLocation
 from std.sys import bit_width_of, size_of, CompilationTarget
 from std.sys.info import is_gpu
-from std._gpu.host.info import TargetAccelerator
 from max.gpu.host.info import _device_type_encoder_target, is_cpu
 from std.time import monotonic
 from max.gpu.host._hal import (

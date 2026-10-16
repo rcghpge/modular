@@ -15,7 +15,7 @@
 # are in sync and don't drift apart:
 #
 # 1. C++ implementation of `--print-supported-accelerators`
-# 2. Mojo `_all_target_accelerators()` list in `std._gpu.host.info`
+# 2. Mojo `_all_target_accelerators()` list in `max.gpu.host.info`
 #
 # Both should produce a list of the same target accelerator values.
 #

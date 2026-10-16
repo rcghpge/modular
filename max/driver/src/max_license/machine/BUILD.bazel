@@ -10,6 +10,7 @@ mojo_library(
     name = "machine",
     srcs = glob(["**/*.mojo"]),
     deps = [
+        "//max:max_mojo",
         "@mojo//:std",
     ],
 )
