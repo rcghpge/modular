@@ -76,19 +76,14 @@ def _im2col_nhwc_kernel[
     if tid >= total:
         return
 
-    var m = tid // K
-    var k_idx = tid - m * K
+    var m, k_idx = divmod(tid, K)
 
-    var batch = m // HW_out
-    var spatial = m - batch * HW_out
-    var h_out = spatial // _W_out
-    var w_out = spatial - h_out * _W_out
+    var batch, spatial = divmod(m, HW_out)
+    var h_out, w_out = divmod(spatial, _W_out)
 
     var SC = _S * _C
-    var r = k_idx // SC
-    var sc = k_idx - r * SC
-    var s = sc // _C
-    var c = sc - s * _C
+    var r, sc = divmod(k_idx, SC)
+    var s, c = divmod(sc, _C)
 
     var h_in = h_out - _pad_h + r
     var w_in = w_out - _pad_w + s
@@ -122,8 +117,7 @@ def _transpose_rscf_to_nk[
     var tid = global_idx.x
     if tid >= total:
         return
-    var f = tid // K
-    var k = tid - f * K
+    var f, k = divmod(tid, K)
     dst_ptr.store(tid, src_ptr.load(k * _F + f))
 
 
@@ -148,12 +142,9 @@ def _transpose_fcrs_to_nk[
     var tid = global_idx.x
     if tid >= total:
         return
-    var f = tid // K
-    var k = tid - f * K
-    var r = k // (_S * _C)
-    var sc = k - r * (_S * _C)
-    var s = sc // _C
-    var c = sc - s * _C
+    var f, k = divmod(tid, K)
+    var r, sc = divmod(k, _S * _C)
+    var s, c = divmod(sc, _C)
     dst_ptr.store(
         tid, src_ptr.load(f * _C * _R * _S + c * _R * _S + r * _S + s)
     )

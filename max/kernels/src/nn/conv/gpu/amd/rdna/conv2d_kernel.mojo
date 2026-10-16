@@ -106,18 +106,14 @@ def _load_im2col_a_tile[
 
             if global_m < M:
                 # Decompose m -> (batch, h_out, w_out)
-                var batch = global_m // HW_out
-                var spatial = global_m - batch * HW_out
-                var h_out = spatial // W_out
-                var w_out = spatial - h_out * W_out
+                var batch, spatial = divmod(global_m, HW_out)
+                var h_out, w_out = divmod(spatial, W_out)
 
                 # Decompose k -> (r, s, c)
                 # Since C_in % BLOCK_K == 0 and col < BLOCK_K,
                 # all VECTOR_WIDTH elements share the same (r, s).
-                var r = global_k // SC
-                var sc_val = global_k - r * SC
-                var s_val = sc_val // C_in
-                var c = sc_val - s_val * C_in
+                var r, sc_val = divmod(global_k, SC)
+                var s_val, c = divmod(sc_val, C_in)
 
                 var h_src = h_out - pad_h + r
                 var w_src = w_out - pad_w + s_val
