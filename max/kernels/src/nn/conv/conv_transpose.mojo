@@ -794,7 +794,6 @@ struct ConvTransposedPacked[
             + self.conv_shape.pad_w_lower()
             - self.conv_shape.s() * self.conv_shape.dilation_at[w_axis]()
         ) // self.conv_shape.stride_at[w_axis]() + 1
-        # print("pad effect", left_pad_impact_end, right_pad_impact_start)
 
         comptime if Self.InputLayoutType.rank == 4:
             self.input_space_loop_2d[

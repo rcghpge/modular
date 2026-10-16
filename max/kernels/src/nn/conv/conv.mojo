@@ -765,7 +765,6 @@ struct ConvDirectNHWC[
             )
         # C is not partitioned, fuse epilogue in the last C tile.
         else:
-            # for g in range(self.conv_shape.num_groups):
             var c_start = g * self.conv_shape.c_per_group()
             var c_round_by_tile = align_down(
                 (self.conv_shape.c_per_group() - 1), tile_size
@@ -2571,17 +2570,17 @@ def conv2d_update_wo_tile[
         effected_by_padding,
     ](
         c_tile_size,
-        Index(conv_shape.r(), conv_shape.s()),
+        (conv_shape.r(), conv_shape.s()),
         acc,
         input,
         conv_shape.c * conv_shape.stride_at[1](),
-        Index(input_stride_by_r, input_stride_by_s),
+        (input_stride_by_r, input_stride_by_s),
         filter,
         filter_stride,
-        Index(filter_stride_by_r, filter_stride_by_s),
+        (filter_stride_by_r, filter_stride_by_s),
         conv_shape.f % simd_size,
         hw,
-        Index(conv_shape.h(), conv_shape.w()),
+        (conv_shape.h(), conv_shape.w()),
         coord_to_index_list(conv_shape.dilation),
     )
 
@@ -2592,8 +2591,7 @@ def conv2d_update_wo_tile[
         conv_shape.f_per_group() % simd_size,
     )
 
-    # Apply elmentwise epilogue to the
-    # if elementwise_epilogue_enabled and last_c_tile:
+    # Apply the elementwise epilogue to the last C tile.
     comptime if has_epilogue and last_c_tile:
         # If has residual, the tile size has been extended to a simd_size.
         # Here needs to use the real bound F.

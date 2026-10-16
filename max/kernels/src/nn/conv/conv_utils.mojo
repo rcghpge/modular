@@ -917,12 +917,8 @@ def get_conv_num_partitions[
     )
     comptime min_c_per_task = min_c_per_task_avx512 if CompilationTarget.has_avx512f() else 1024
 
-    # alias min_rows_per_task = (196 // micro_kernel_w) * micro_kernel_w
-    # alias min_c_per_task = 64
-
     var matmul_M = conv_shape.matmul_M()
     var matmul_N = conv_shape.matmul_N()
-    # var matmul_K = conv_shape.matmul_K()
 
     # Accessing A is more expensive in im2col than accessing B.
     # Time a factor to M to var the heuristic bias on partitioning M.
