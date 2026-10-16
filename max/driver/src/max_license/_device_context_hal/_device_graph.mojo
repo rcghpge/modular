@@ -206,3 +206,24 @@ struct DeviceGraphNode:
     """Unsupported: the HAL DeviceContext has no device-graph support."""
 
     pass
+
+
+@doc_hidden
+struct DeviceGraphInputKind(Equatable, TrivialRegisterPassable):
+    """How a tensor participates as a device graph input.
+
+    Mirrors the real type value for value: the graph-compiler primitives
+    select their `add_input` behavior by matching on the kind at compile
+    time, so the same cases must exist here even though no graph is ever
+    recorded on the HAL backend.
+    """
+
+    var value: Int
+
+    comptime data = DeviceGraphInputKind(0)
+    comptime mutable = DeviceGraphInputKind(1)
+    comptime host = DeviceGraphInputKind(2)
+    comptime shape_only = DeviceGraphInputKind(3)
+
+    def __init__(out self, value: Int):
+        self.value = value

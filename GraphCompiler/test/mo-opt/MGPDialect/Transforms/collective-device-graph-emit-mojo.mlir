@@ -109,3 +109,38 @@ mgp.model @dg_collective_stable device_graph : mof devices [#M.device_ref<"gpu",
   mef.output %ch0, %c0, %c1
       : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 0>, stable>
 }
+
+// -----
+
+// gpu:1's graph reads gpu:0's tensor only for its shape, so instead of a
+// stable copy it adds the tensor rebound to the `shape_only` kind: recorded in
+// place, keyed on shape alone. Its own tensor still gets an ordinary
+// `add_input`.
+// CHECK: var [[SHAPE_ONLY:var[_0-9]+]] = {{var[_0-9]+}}.with_kind[max.gpu.host.device_graph.DeviceGraphInputKind.shape_only]()
+// CHECK-NEXT: builder.add_input([[SHAPE_ONLY]])
+// CHECK-NEXT: builder.add_input({{var[_0-9]+}})
+
+mgp.model @dg_collective_shape_only device_graph : mof devices [#M.device_ref<"gpu", 0>, #M.device_ref<"gpu", 1>]
+  init (%weights: !mgp.opaque<"weights_registry">, %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>) {
+  %ch0 = grt.chain.create ()
+  %ctx = mgp.context.create 1
+  mef.output %ch0, %ctx, %weights, %gpu0, %gpu1
+      : !mef.chain, !mgp.context, !mgp.opaque<"weights_registry">,
+        !mgp.device_context<<"gpu", 0>>, !mgp.device_context<<"gpu", 1>>
+} execute (%ch0: !mef.chain, %ctx: !mgp.context, %weights: !mgp.opaque<"weights_registry">,
+           %gpu0: !mgp.device_context<<"gpu", 0>>, %gpu1: !mgp.device_context<<"gpu", 1>>,
+           %in0: !mgp.tensor<2x3xf32, <"gpu", 0>>, %in1: !mgp.tensor<2x3xf32, <"gpu", 1>>)
+    -> (!mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>) {
+  %c0, %c1 = mgp.device_graph.collective builder(%b) stable() <"gpu", 0> {
+    mgp.device_graph.collective.yield %in0 : !mgp.tensor<2x3xf32, <"gpu", 0>>
+  }, <"gpu", 1> {
+    // By finalization the dependency pass has inlined the host bookkeeping:
+    // gpu:0's tensor is read only for its shape, gpu:1's for its buffer.
+    %spec = mgp.tensor.extract.tensor_spec %in0 : <2x3xf32, <"gpu", 0>>
+    %ch = mogg.chain.dummy()
+    %buf = mgp.tensor.extract.buffer %in1 : <2x3xf32, <"gpu", 1>>
+    %r = mgp.tensor.create %ch, %buf, %spec : !mgp.tensor<2x3xf32, <"gpu", 1>>
+    mgp.device_graph.collective.yield %r : !mgp.tensor<2x3xf32, <"gpu", 1>>
+  } : !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+  mef.output %ch0, %c0, %c1 : !mef.chain, !mgp.tensor<2x3xf32, <"gpu", 0>>, !mgp.tensor<2x3xf32, <"gpu", 1>>
+}

@@ -873,12 +873,19 @@ LogicalResult DeviceGraphStableCreateOp::inferReturnTypes(
 LogicalResult DeviceGraphStableCreateOp::verify() {
   if (getTensor().getType().getStable())
     return emitOpError("input tensor is already marked `stable`");
+
+  size_t numDynamicDims =
+      getTensor().getType().getTensorSpec().getNumDynamicDims();
+  if (getRuntimeDims().size() != numDynamicDims)
+    return emitOpError("expected ")
+           << numDynamicDims << " runtime dimension(s), one per dynamic "
+           << "dimension of the tensor, but got " << getRuntimeDims().size();
   return success();
 }
 
 bool DeviceGraphStableCreateOp::mayAlias(size_t operandIndex,
                                          size_t resultIndex) {
-  return true;
+  return operandIndex == getTensorMutable().getOperandNumber();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1235,10 +1242,17 @@ LogicalResult DeviceGraphStableTensorOp::emitMojo(MOGG::EmitMojoState &state) {
 
   SmallVector<MojoValue> params = {tensorRankParam, bufferRankParam,
                                    dtypeParam};
+  // `kind` names how the tensor participates as a device graph input; the
+  // Mojo default (`data`) is left implicit.
   if (tensorType.getMut())
-    params.push_back(MojoValue(kParameterMut).equal(MojoValue(true)));
-  if (M::isHostPlaced(tensorType.getDevice()))
-    params.push_back(MojoValue(kParameterHost).equal(MojoValue(true)));
+    params.push_back(
+        MojoValue(kParameterKind)
+            .equal(
+                MojoValue(kStructDeviceGraphInputKind).get(kInputKindMutable)));
+  else if (M::isHostPlaced(tensorType.getDevice()))
+    params.push_back(
+        MojoValue(kParameterKind)
+            .equal(MojoValue(kStructDeviceGraphInputKind).get(kInputKindHost)));
 
   state.setMojoValueFor(getResult(),
                         state.builder.var(function(
@@ -1438,6 +1452,18 @@ void DeviceGraphCollectiveCreateOp::getAsmBlockArgumentNames(
 }
 
 LogicalResult DeviceGraphCollectiveCreateOp::verify() {
+  if (std::optional<ArrayRef<int64_t>> shapeOnly = getShapeOnlyInputs()) {
+    for (int64_t index : *shapeOnly) {
+      if (index < 0 || static_cast<size_t>(index) >= getInputs().size())
+        return emitOpError("`shapeOnlyInputs` names input #")
+               << index << ", but the op has " << getInputs().size()
+               << " inputs";
+      if (!graphInputDevice(getInputs()[index]))
+        return emitOpError("`shapeOnlyInputs` names input #")
+               << index << ", which is not a tensor or buffer";
+    }
+  }
+
   if (getGraphs().size() != getDeviceContexts().size())
     return emitOpError("`deviceContexts` has ")
            << getDeviceContexts().size() << " operands, but the op has "
@@ -1578,7 +1604,8 @@ void DeviceGraphCollectiveCreateOp::build(
   }
 
   build(builder, result, graphTypes, theContext, deviceContexts, cache, inputs,
-        /*stableTypes=*/StableAddressArrayAttr(), /*graphsCount=*/0);
+        /*stableTypes=*/StableAddressArrayAttr(),
+        /*shapeOnlyInputs=*/mlir::DenseI64ArrayAttr(), /*graphsCount=*/0);
 }
 
 /// Emits the build closure, shared by the cached and uncached paths, that
@@ -1594,6 +1621,8 @@ emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
   builderParam.argConvention = "mut";
 
   MojoValue sharedContext = state.getMojoValueFor(op.getTheContext());
+
+  llvm::SmallBitVector shapeOnlyInputs = op.shapeOnlyInputs();
 
   bool errOccurred = false;
   MojoValue buildFor = state.builder.lambda(
@@ -1623,14 +1652,24 @@ emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
 
           auto regionBody = [&] {
             DeviceGraphBuilderRef builderValue(builderArgMojo);
-            for (auto [arg, operand] :
-                 llvm::zip_equal(blockInputs, regionInputs)) {
+            for (auto [i, arg, operand] :
+                 llvm::enumerate(blockInputs, regionInputs)) {
               if (!isDeviceGraphInput(operand)) {
                 state.setMojoValueFor(arg, state.getMojoValueFor(operand));
                 continue;
               }
-              MojoValue stable = state.builder.var(
-                  builderValue.addInput(state.getMojoValueFor(operand)));
+              MojoValue input = state.getMojoValueFor(operand);
+              // The tensor was unpacked once with the kind its type implies;
+              // a region that reads only its shape rebinds it so `add_input`
+              // records it in place instead of copying it.
+              if (shapeOnlyInputs.test(inputOffset + i)) {
+                MojoValue kind = MojoValue(kStructDeviceGraphInputKind)
+                                     .get(kInputKindShapeOnly);
+                input = state.builder.var(input.get(kFnWithKind)(
+                    /*parameters=*/{kind}, /*operands=*/{}));
+              }
+              MojoValue stable =
+                  state.builder.var(builderValue.addInput(input));
               state.setMojoValueFor(arg, stable);
             }
 
@@ -1715,6 +1754,17 @@ emitCollectiveKeyForClosure(MOGG::EmitMojoState &state,
               "key\")");
         });
       });
+}
+
+llvm::SmallBitVector DeviceGraphCollectiveCreateOp::shapeOnlyInputs() {
+  llvm::SmallBitVector result(getInputs().size());
+
+  if (std::optional<ArrayRef<int64_t>> attr = getShapeOnlyInputs()) {
+    for (int64_t idx : attr.value())
+      result.set(idx);
+  }
+
+  return result;
 }
 
 LogicalResult

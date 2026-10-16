@@ -4049,10 +4049,17 @@ LogicalResult AsyncUnpackOp::emitMojo(EmitMojoState &state) {
 
     SmallVector<MojoValue> params = {bufferRank, tensorRank,
                                      state.mlirDTypeToMojoType(*maybeDType)};
+    // `kind` names how the tensor participates as a device graph input; the
+    // Mojo default (`data`) is left implicit.
     if (tensorType.getMut())
-      params.push_back(MojoValue(kParameterMut).equal(MojoValue(true)));
-    if (M::isHostPlaced(tensorType.getDevice()))
-      params.push_back(MojoValue(kParameterHost).equal(MojoValue(true)));
+      params.push_back(MojoValue(kParameterKind)
+                           .equal(MojoValue(kStructDeviceGraphInputKind)
+                                      .get(kInputKindMutable)));
+    else if (M::isHostPlaced(tensorType.getDevice()))
+      params.push_back(
+          MojoValue(kParameterKind)
+              .equal(
+                  MojoValue(kStructDeviceGraphInputKind).get(kInputKindHost)));
     unpackedValue = asyncUnpackFunc(params, state.getMojoValueFor(input));
 
   } else if (isa<MGP::DeviceBufferType>(inputType)) {

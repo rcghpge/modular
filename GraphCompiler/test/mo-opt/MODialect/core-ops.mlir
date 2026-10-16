@@ -473,3 +473,15 @@ mo.graph @transfer_cast_no_rotate_2(%arg0 : !mo.tensor<[4096], f32, gpu:0>) -> !
     }
   }
 #-}
+
+//===----------------------------------------------------------------------===//
+// StableCreateOp
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: mo.graph @stable_create
+mo.graph @stable_create(%arg0: !mo.tensor<[3, 2], f32, gpu:1>) -> !mo.tensor<[3, 2], f32, gpu:1, {stable}> {
+  // CHECK: %[[S:.*]] = mo.stable.create %{{.*}} : !mo.tensor<[3, 2], f32, gpu:1, {stable}>
+  // CHECK: mo.output %[[S]] : !mo.tensor<[3, 2], f32, gpu:1, {stable}>
+  %0 = mo.stable.create %arg0 : !mo.tensor<[3, 2], f32, gpu:1, {stable}>
+  mo.output %0 : !mo.tensor<[3, 2], f32, gpu:1, {stable}>
+}

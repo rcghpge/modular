@@ -267,9 +267,13 @@ public:
           mlirDTypeToMojoType(tensorSpec.getOptDType().value()),
           MojoValue(bufferRank)};
       if (deviceTensorType.getMut())
-        params.push_back(MojoValue(kParameterMut).equal(true));
-      if (M::isHostPlaced(deviceTensorType.getDevice()))
-        params.push_back(MojoValue(kParameterHost).equal(true));
+        params.push_back(MojoValue(kParameterKind)
+                             .equal(MojoValue(kStructDeviceGraphInputKind)
+                                        .get(kInputKindMutable)));
+      else if (M::isHostPlaced(deviceTensorType.getDevice()))
+        params.push_back(MojoValue(kParameterKind)
+                             .equal(MojoValue(kStructDeviceGraphInputKind)
+                                        .get(kInputKindHost)));
       return MojoValue(kStructOwnedTensor)[params];
     } else if (isa<MEF::ChainType>(mlirType)) {
       return kComptimeOpaquePointer;

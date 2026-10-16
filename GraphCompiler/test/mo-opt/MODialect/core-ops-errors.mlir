@@ -231,6 +231,28 @@ mo.graph @while_op_type_mismatch_body(%arg0: !mo.tensor<[2], f32>, %arg1: !mo.te
 // -----
 
 //===----------------------------------------------------------------------===//
+// StableCreateOp
+//===----------------------------------------------------------------------===//
+
+// The input must be the result minus the stable marker, so an already-stable
+// input can only be written in the generic form and fails the type constraint.
+mo.graph @stable_create_twice(%arg0 : !mo.tensor<[3, 2], f32, gpu:0, {stable}>) -> !mo.tensor<[3, 2], f32, gpu:0, {stable}> {
+  // expected-error @below {{failed to verify that input is the result without the stable marker}}
+  %0 = "mo.stable.create"(%arg0) : (!mo.tensor<[3, 2], f32, gpu:0, {stable}>) -> !mo.tensor<[3, 2], f32, gpu:0, {stable}>
+  mo.output %0 : !mo.tensor<[3, 2], f32, gpu:0, {stable}>
+}
+
+// -----
+
+mo.graph @stable_create_result_not_stable(%arg0 : !mo.tensor<[3, 2], f32, gpu:0>) -> !mo.tensor<[3, 2], f32, gpu:0> {
+  // expected-error @below {{result must be marked `stable`}}
+  %0 = "mo.stable.create"(%arg0) : (!mo.tensor<[3, 2], f32, gpu:0>) -> !mo.tensor<[3, 2], f32, gpu:0>
+  mo.output %0 : !mo.tensor<[3, 2], f32, gpu:0>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // TransferOp
 //===----------------------------------------------------------------------===//
 

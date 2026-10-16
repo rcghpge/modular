@@ -755,10 +755,16 @@ LogicalResult TensorCreateOp::emitMojo(MOGG::EmitMojoState &state) {
 
   SmallVector<MojoValue> params = {tensorRankParam, bufferRankParam,
                                    tensorDtypeParam};
-  if (getMut())
-    params.push_back(MojoValue(MOGG::kParameterMut).equal(MojoValue(true)));
-  if (M::isHostPlaced(tensorType.getDevice()))
-    params.push_back(MojoValue(MOGG::kParameterHost).equal(MojoValue(true)));
+  // `kind` names how the tensor participates as a device graph input; the
+  // Mojo default (`data`) is left implicit.
+  if (tensorType.getMut())
+    params.push_back(MojoValue(MOGG::kParameterKind)
+                         .equal(MojoValue(MOGG::kStructDeviceGraphInputKind)
+                                    .get(MOGG::kInputKindMutable)));
+  else if (M::isHostPlaced(tensorType.getDevice()))
+    params.push_back(MojoValue(MOGG::kParameterKind)
+                         .equal(MojoValue(MOGG::kStructDeviceGraphInputKind)
+                                    .get(MOGG::kInputKindHost)));
 
   MojoValue result = state.builder.var(
       function(params, state.getMojoValuesFor(getOperands().drop_front())));

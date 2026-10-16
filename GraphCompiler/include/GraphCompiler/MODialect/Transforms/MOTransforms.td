@@ -448,4 +448,19 @@ def MergeAdjacentParallels :
   }];
 }
 
+def MarkStableTensorsPass : Pass<"mo-mark-stable-tensors", "GraphOp"> {
+  let summary = "Route operands that a kernel's build_graph declares stable "
+                "through mo.stable.create.";
+  let description = [{
+    In a `mo.graph` carrying the `isDeviceGraph` attribute, resolves every
+    kernel-backed op to its `mogg.kernel.decl` and maps the op's operands onto
+    the kernel's `build_graph` signature. Each operand that lands on a
+    `StableTensor` / `StableVariadicTensors` argument is rewritten to go
+    through `mo.stable.create`, so the operand type carries the `stable` bit
+    that kernel-stub setup and emission key off.
+
+    Graphs without the `isDeviceGraph` attribute are no-ops.
+  }];
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MODIALECT_MOTRANSFORMS_TD

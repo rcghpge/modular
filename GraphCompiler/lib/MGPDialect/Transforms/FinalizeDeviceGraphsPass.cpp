@@ -149,13 +149,27 @@ static FailureOr<MOGG::AsyncRoutineOp> wrapDeviceGraphBuildRegion(
 /// outside of it. Chain values (dead pass-throughs) are left to later work.
 /// Stable address slots are not values: the regions name them by index
 /// through the builder, so nothing here has to carry them.
-static LogicalResult collectRegionInputs(Region &region,
-                                         SmallVectorImpl<Value> &inputs) {
+static SmallVector<Value> collectRegionInputs(Region &region) {
   llvm::SetVector<Value> captured;
   mlir::getUsedValuesDefinedAbove(region, captured);
+  return nonChainValues(captured.getArrayRef());
+}
 
-  inputs = nonChainValues(captured.getArrayRef());
-  return mlir::success();
+/// Whether `region` reads `value` only for its shape: every use inside it, at
+/// any depth, is an `mgp.tensor.extract.tensor_spec`. By finalization the
+/// dependency pass has inlined the host bookkeeping, so the uses are direct.
+/// Such an input needs no stable copy in that region's graph; only its shape
+/// enters the cache key.
+static bool isShapeOnlyInRegion(Value value, Region &region) {
+  bool used = false;
+  for (OpOperand &use : value.getUses()) {
+    if (!region.isAncestor(use.getOwner()->getParentRegion()))
+      continue;
+    used = true;
+    if (!isa<TensorExtractTensorSpecOp>(use.getOwner()))
+      return false;
+  }
+  return used;
 }
 
 /// The captures and non-chain yields of a `mgp.device_graph.collective` region.
@@ -173,8 +187,7 @@ createRegionInterfaces(DeviceGraphCollectiveOp collectiveOp,
   for (auto graph : collectiveOp.graphs()) {
     RegionInterface iface;
     iface.region = graph.bodyBlock->getParent();
-    if (failed(collectRegionInputs(*iface.region, iface.inputs)))
-      return mlir::failure();
+    iface.inputs = collectRegionInputs(*iface.region);
 
     auto yieldOp =
         cast<DeviceGraphCollectiveYieldOp>(graph.bodyBlock->getTerminator());
@@ -236,10 +249,16 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
 
   SmallVector<Value> allInputs;
   SmallVector<unsigned> inputCounts;
+  SmallVector<int64_t> shapeOnlyInputs;
   inputCounts.reserve(regionInterfaces.size());
   for (RegionInterface &info : regionInterfaces) {
     inputCounts.push_back(info.inputs.size());
-    llvm::append_range(allInputs, info.inputs);
+    for (Value input : info.inputs) {
+      if (isa<DeviceTensorType, DeviceBufferType>(input.getType()) &&
+          isShapeOnlyInRegion(input, *info.region))
+        shapeOnlyInputs.push_back(allInputs.size());
+      allInputs.push_back(input);
+    }
   }
 
   auto graphTypes =
@@ -304,6 +323,10 @@ LogicalResult finalizeCollectiveOp(DeviceGraphCollectiveOp collectiveOp,
                 collectiveOp.getStableTypesAttr();
             !stableTypes.getValue().empty())
           createOp.setStableTypesAttr(stableTypes);
+
+        if (!shapeOnlyInputs.empty())
+          createOp.setShapeOnlyInputsAttr(
+              mlir::DenseI64ArrayAttr::get(ctx, shapeOnlyInputs));
 
         for (Region &createRegion : createOp.getGraphs())
           if (failed(resolveBuilderCasts(createRegion)))

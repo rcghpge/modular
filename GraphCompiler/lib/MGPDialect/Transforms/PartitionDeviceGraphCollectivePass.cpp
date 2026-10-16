@@ -47,10 +47,12 @@ struct StableAddrState {
 
   /// The stable tensor standing in for `operand` in this region, or null when
   /// `operand` is not a `stable.create` result. A region that did not publish
-  /// the slot reads it with `stable.get`. Fails if the tensor has dynamic
-  /// dimensions: the slot holds only a data pointer, and the source tensor
-  /// that knows the runtime shape lives in another region.
-  FailureOr<Value> get(OpBuilder &builder, Location loc, Value operand) {
+  /// the slot reads it with `stable.get` and rebuilds the tensor spec from the
+  /// create's runtime dims, resolved through `mapper`: the slot holds only a
+  /// data pointer, and the source tensor that knows the shape lives in another
+  /// region. Fails when a runtime dim is not available in this region.
+  FailureOr<Value> get(OpBuilder &builder, Location loc, Value operand,
+                       const IRMapping &mapper) {
     auto stable = operand.getDefiningOp<DeviceGraphStableCreateOp>();
     if (!stable)
       return Value();
@@ -59,16 +61,23 @@ struct StableAddrState {
     if (tensor)
       return tensor;
 
-    TensorSpecType specType = stable.getTensor().getType().getTensorSpec();
-    if (specType.getNumDynamicDims() != 0)
-      return stable.emitOpError(
-          "stable tensor with dynamic dimensions is consumed on another "
-          "device; only its data pointer crosses devices, so its shape cannot "
-          "be recovered there");
+    SmallVector<Value> runtimeDims;
+    for (auto [dim, value] : llvm::enumerate(stable.getRuntimeDims())) {
+      Value mapped = mapper.lookupOrNull(value);
+      if (!mapped)
+        return stable.emitOpError("runtime dimension ")
+               << dim
+               << " is produced in another device's region; a slot carries "
+                  "only the data pointer, so a consumer's shape must come "
+                  "from values every region can see";
+      runtimeDims.push_back(mapped);
+    }
 
+    TensorSpecType specType = stable.getTensor().getType().getTensorSpec();
     Value slot = DeviceGraphStableGetOp::create(
         builder, loc, stable.getStableType(), builderArg, index(stable));
-    Value spec = TensorSpecCreateOp::create(builder, loc, specType);
+    Value spec =
+        TensorSpecCreateOp::create(builder, loc, specType, runtimeDims);
     tensor = DeviceGraphStableTensorOp::create(builder, loc, slot, spec);
     return tensor;
   }
@@ -173,6 +182,10 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
       [&](DeviceGraphStableCreateOp stable) { return stable.getStableType(); });
 
   // Staging yield operand -> result index in the collective.
+  // The collective's results are every region's yields in region order,
+  // so `resultCounter` advances once per region yield.
+  // Host work is cloned into every region, so a host value can
+  // be yielded more than once; the staging result maps to its first copy.
   llvm::SmallDenseMap<Value, unsigned> resultMapping;
   unsigned resultCounter = 0;
 
@@ -219,15 +232,41 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
           auto opDev = getDevice(compiledRegion);
           bool isHostOp = M::MO::isOnHost(compiledRegion);
 
-          // Host work is duplicated into every accelerator region; device
-          // work is placed only on its own region.
+          // Device work is placed only on its own region. Host work goes
+          // wherever its operands are: bookkeeping that wraps one device's
+          // buffers (tensor.create, extract.buffer) belongs to that device's
+          // region alone, while host work over staging inputs lands in every
+          // region. Cloning it elsewhere would leave operands pointing into
+          // the staging body, which is erased once the collective is built.
           if (opDev != device && !isHostOp)
             continue;
+
+          // An operand is available here when it is a staging input (mapped
+          // up front), a result already cloned into this region, or a stable
+          // create the slot machinery resolves below.
+          MutableArrayRef<OpOperand> opOperands =
+              compiledRegion->getOpOperands();
+          auto *unavailable =
+              llvm::find_if_not(opOperands, [&](OpOperand &operand) {
+                Value value = operand.get();
+                return mapper.contains(value) ||
+                       value.getDefiningOp<DeviceGraphStableCreateOp>();
+              });
+          if (unavailable != opOperands.end()) {
+            if (isHostOp)
+              continue;
+            bodyStatus = compiledRegion.emitOpError("operand ")
+                         << unavailable->getOperandNumber()
+                         << " is produced in another device's region and "
+                            "does not go through a stable address slot";
+            return;
+          }
 
           // Resolve the stable values this region consumes to their
           // per-region stable tensors before cloning against them.
           for (Value operand : compiledRegion.getOperands()) {
-            FailureOr<Value> resolved = stableState.get(builder, loc, operand);
+            FailureOr<Value> resolved =
+                stableState.get(builder, loc, operand, mapper);
             if (failed(resolved)) {
               bodyStatus = failure();
               return;
@@ -257,11 +296,8 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
             continue;
 
           regionYields.push_back(cloned);
-          {
-            auto emplaced = resultMapping.try_emplace(origYield, resultCounter);
-            if (emplaced.second)
-              ++resultCounter;
-          }
+          resultMapping.try_emplace(origYield, resultCounter);
+          ++resultCounter;
         }
 
         DeviceGraphCollectiveYieldOp::create(builder, loc, regionYields);
@@ -270,6 +306,16 @@ LogicalResult partitionStagingOp(DeviceGraphStagingOp stagingOp,
   if (failed(bodyStatus)) {
     rewriter.eraseOp(collective);
     return failure();
+  }
+
+  // Host work only lands where its operands are, so a yield can end up with
+  // no region producing it.
+  for (Value yielded : stagingOp.getYieldOp().getOperands()) {
+    if (resultMapping.contains(yielded))
+      continue;
+    rewriter.eraseOp(collective);
+    return stagingOp.getYieldOp().emitOpError(
+        "staging yield value was not materialized in any device region");
   }
 
   for (auto [yielded, result] : llvm::zip(stagingOp.getYieldOp().getOperands(),

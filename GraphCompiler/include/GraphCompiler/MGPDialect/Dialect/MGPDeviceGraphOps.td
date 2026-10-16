@@ -482,18 +482,30 @@ def DeviceGraphStableCreateOp : MGP_DeviceGraphOp<"stable.create", [
     The result aliases `$tensor`: the slot holds its data pointer, and every
     device region of the partitioned graph may read through it.
 
+    `$runtimeDims` carries one `index` value per dynamic dimension of
+    `$tensor`, in dimension order. The slot holds only a data pointer, and the
+    tensor that knows its runtime shape may live in another device's region
+    of the partitioned graph, so a consumer rebuilds the shape from these
+    values instead. The MO lowering populates them from the graph's symbolic
+    dimension parameters, which every region can see.
+
     Example:
     ```mlir
       %shared = mgp.device_graph.stable.create %t
           : !mgp.tensor<4xf32, <"gpu", 0>>
+      %dynamic = mgp.device_graph.stable.create %u[%n]
+          : !mgp.tensor<?x3xf32, <"gpu", 0>>
     ```
   }];
 
-  let arguments = (ins MGP_DeviceTensorType:$tensor);
+  let arguments = (ins
+    MGP_DeviceTensorType:$tensor,
+    Variadic<Index>:$runtimeDims
+  );
   let results = (outs MGP_DeviceTensorType:$result);
 
   let assemblyFormat = [{
-    $tensor attr-dict `:` qualified(type($tensor))
+    $tensor (`[` $runtimeDims^ `]`)? attr-dict `:` qualified(type($tensor))
   }];
 
   let extraClassDeclaration = [{
@@ -856,7 +868,11 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
     // The stable address slots the regions index into, copied from the
     // `mgp.device_graph.collective` this op was finalized from. Emission
     // allocates one slot per entry on the device its type names.
-    OptionalAttr<MGP_StableAddressArrayAttr>:$stableTypes
+    OptionalAttr<MGP_StableAddressArrayAttr>:$stableTypes,
+    // Positions in `$inputs` of tensors a region reads only for their shape,
+    // such as a peer device's tensor whose dimensions size this device's
+    // work.
+    OptionalAttr<DenseI64ArrayAttr>:$shapeOnlyInputs
   );
 
   let results = (outs Variadic<MGP_DeviceGraphType>:$outGraphs);
@@ -874,6 +890,11 @@ def DeviceGraphCollectiveCreateOp : MGP_DeviceGraphOp<"collective.create", [
       "llvm::ArrayRef<unsigned>":$inputCounts,
       CArg<"llvm::function_ref<void(::mlir::OpBuilder &, ::mlir::Location, unsigned, ::mlir::Value, ::mlir::Value, ::mlir::ValueRange)>", "nullptr">:$bodyBuilder)>
   ];
+
+  let extraClassDeclaration = [{
+    // Queryable accessor for the shape only operands to the device graph.
+    llvm::SmallBitVector shapeOnlyInputs();
+  }];
 }
 
 //===----------------------------------------------------------------------===//

@@ -18,6 +18,7 @@
 #include "GraphCompiler/Conversion/MOGGToMGP/MOGGToMGP.h"
 #include "AsyncRT/CompilerSupport/Context.h"
 #include "GraphCompiler/Interfaces/LowerableToMGPInterface.h"
+#include "GraphCompiler/MGPDialect/Dialect/MGPOps.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPTypes.h"
 #include "GraphCompiler/MGPDialect/Dialect/MGPUtils.h"
 #include "GraphCompiler/MGPDialect/Transforms/FixupIsolatedFromAbove.h"
@@ -178,6 +179,7 @@ public:
   LogicalResult lower(MO::DebugPrintOp op);
   LogicalResult lower(MO::DebugTensorPrintOp op);
   LogicalResult lower(MO::TransferOp op);
+  LogicalResult lower(MO::StableCreateOp op);
   LogicalResult lower(MO::IfOp op);
   LogicalResult lower(MO::WhileOp op);
   LogicalResult lower(MO::GuardOp op);
@@ -1120,6 +1122,29 @@ LogicalResult MOGraphLowering::lower(MO::TransferOp transferOp) {
   return success();
 }
 
+LogicalResult MOGraphLowering::lower(MO::StableCreateOp stableOp) {
+  MGP::MOOpLoweringState opLoweringState(loweringState, stableOp);
+
+  MO::TensorValue input = stableOp.getInput();
+  Value loweredInput = loweringState.lookupExecuteLoweredValue(input);
+  ASSERT_STREAM(loweredInput, << "stable.create input not lowered before use");
+
+  // The MGP operation takes the dynamic dimensions as inputs. Extract them from
+  // the lowered shape attribute.
+  ErrorOr<SmallVector<Value>> runtimeDimsOr =
+      loweringState.lowerShapeAttrDynDims(stableOp->getParentRegion(),
+                                          input.getType().getShape(),
+                                          stableOp.getLoc());
+  if (runtimeDimsOr.isError())
+    return stableOp.emitOpError(runtimeDimsOr.getError());
+
+  auto stable = opLoweringState.create<MGP::DeviceGraphStableCreateOp>(
+      loweredInput, *runtimeDimsOr);
+
+  loweringState.emplaceExecuteLoweredValue(stableOp.getResult(), stable);
+  return success();
+}
+
 LogicalResult MOGraphLowering::lower(MO::BufferTransferOp transferOp) {
   MGP::MOOpLoweringState opLoweringState(loweringState, transferOp);
 
@@ -1714,12 +1739,13 @@ LogicalResult MOGraphLowering::lowerOp(Operation &op, Region *parentRegion) {
       .Case<MO::IndexToTensorOp, MO::Shape::ToTensorOp,
             MO::Shape::FromTensorOp, MO::RebindOp, MO::ConstantOp,
             MO::ConstantExternalOp, MO::ConstantScalarOp, MO::DebugPrintOp,
-            MO::DebugTensorPrintOp, MO::TransferOp, MO::OutputOp, MO::IfOp,
-            MO::WhileOp, MO::TensorBundleOp, MO::TensorUnbundleOp,
-            MO::ParallelOp, MO::SequenceOp, MO::YieldOp, MO::WhileConditionOp,
-            MO::GuardOp, MO::ChainCreateOp, MO::MutableStoreOp,
-            MO::MutableLoadOp, MO::BufferCreateOp, MO::BufferTransferOp,
-            MO::CallOp>([this](auto op) { return lower(op); })
+            MO::DebugTensorPrintOp, MO::TransferOp, MO::StableCreateOp,
+            MO::OutputOp, MO::IfOp, MO::WhileOp, MO::TensorBundleOp,
+            MO::TensorUnbundleOp, MO::ParallelOp, MO::SequenceOp, MO::YieldOp,
+            MO::WhileConditionOp, MO::GuardOp, MO::ChainCreateOp,
+            MO::MutableStoreOp, MO::MutableLoadOp, MO::BufferCreateOp,
+            MO::BufferTransferOp, MO::CallOp>(
+          [this](auto op) { return lower(op); })
       // Externally-defined ops, e.g. `mogg.routine`.
       .Case<MGP::LowerableToMGPInterface>(
           [this](auto op) { return lowerInterface(op); })

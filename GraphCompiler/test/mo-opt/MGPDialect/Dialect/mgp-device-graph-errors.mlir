@@ -147,6 +147,18 @@ func.func @stable_create_already_stable(%t: !mgp.tensor<4xf32, stable>) -> !mgp.
 // -----
 
 //
+// mgp.device_graph.stable.create: one runtime dim per dynamic dimension.
+//
+
+func.func @stable_create_missing_runtime_dim(%t: !mgp.tensor<?x3xf32, <"gpu", 0>>) -> !mgp.tensor<?x3xf32, <"gpu", 0>, stable> {
+  // expected-error@+1 {{'mgp.device_graph.stable.create' op expected 1 runtime dimension(s), one per dynamic dimension of the tensor, but got 0}}
+  %s = mgp.device_graph.stable.create %t : !mgp.tensor<?x3xf32, <"gpu", 0>>
+  return %s : !mgp.tensor<?x3xf32, <"gpu", 0>, stable>
+}
+
+// -----
+
+//
 // mgp.device_graph.stable.tensor: the spec must be the slot element type's.
 // The spec's type is derived from the slot, so a mismatch is a type error at
 // the use rather than a verifier diagnostic.

@@ -136,8 +136,7 @@ def MOGG_TensorArgContractAttr : MOGGAttr<"TensorArgContract", "tensor_arg"> {
   // `stable` at their defaults, so every pre-existing contract keeps its
   // spelling; it also parses the keys in any order.
   let assemblyFormat = [{
-    `<` `{` struct($role, $fused, $access, $capabilities, $bound, $stable)
-    `}` `>`
+    `<` `{` struct(params) `}` `>`
   }];
 
   let extraClassDeclaration = [{

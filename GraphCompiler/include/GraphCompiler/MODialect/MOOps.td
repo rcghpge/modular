@@ -165,6 +165,46 @@ def MO_TransferOp : MO_DeviceAgnosticTensorOp<"transfer", [
 }
 
 //===----------------------------------------------------------------------===//
+// StableCreateOp
+//===----------------------------------------------------------------------===//
+
+def MO_StableCreateOp : MO_DeviceAgnosticTensorOp<"stable.create", [
+  MO_PreservedDuringKernelLowering,
+  Pure,
+  TypesMatchWith<"input is the result without the stable marker",
+                 "result", "input",
+                 "::llvm::cast<TensorType>($_self).cloneWithStable(false)">,
+]> {
+  let summary = "Marks a tensor as read through a stable address slot.";
+  let description = [{
+    This op annotates a tensor value as a stable tensor. Stable tensors are
+    backed by storage slots associated with a device graph region. This
+    operation encodes the assignment of a tensor to a stable storage slot
+    before lowering to MOGG/MGP obscures the kernel signature.
+
+    Example:
+
+    ```mlir
+      %arg : !mo.tensor<[N, 8], f32, gpu:1>
+      %stable = mo.stable.create %arg : !mo.tensor<[N, 8], f32, gpu:1, {stable}>
+    ```
+  }];
+
+  let arguments = (ins MO_Tensor:$input);
+  let results = (outs MO_Tensor:$result);
+
+  let assemblyFormat = "$input attr-dict `:` qualified(type($result))";
+
+  let builders = [
+    OpBuilder<(ins "TensorValue":$input), [{
+      build($_builder, $_state, input.getType().cloneWithStable(), input);
+    }]>,
+  ];
+
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // GraphOp
 //===----------------------------------------------------------------------===//
 

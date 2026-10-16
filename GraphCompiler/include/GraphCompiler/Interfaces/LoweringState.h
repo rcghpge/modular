@@ -62,7 +62,8 @@ public:
     typeConverter.addConversion(
         [this](MO::TensorType type) -> std::optional<Type> {
           return getTypeBuilder(MO::getDeviceOrDefault(type))
-              .tensorType(MGP::createTensorSpecType(type));
+              .tensorType(MGP::createTensorSpecType(type), /*mut=*/false,
+                          type.isStable());
         });
     typeConverter.addConversion(
         [this](MO::BufferType bufferType) -> std::optional<Type> {

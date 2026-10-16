@@ -77,15 +77,22 @@ MojoValue createTypedVar(const MojoValue &name, const MojoValue &type) {
 
 class MojoBuilderScopeGuard {
 public:
-  MojoBuilderScopeGuard(MojoBuilder *e, bool deferExceptCounters = false)
-      : emitter(e), posBeforeBody(0) {
+  /// `freshCounters` marks a function-like scope (def, lambda, struct), whose
+  /// identifiers restart at zero. Statement blocks pass false and continue the
+  /// numbering of the previous sibling block; see `pushBlockCounters`.
+  MojoBuilderScopeGuard(MojoBuilder *e, bool deferExceptCounters = false,
+                        bool freshCounters = true)
+      : emitter(e), posBeforeBody(0), freshCounters(freshCounters) {
     if (!deferExceptCounters) {
       emitter->increaseIndentation();
       emitter->pushCache();
       // Record position after indentation setup for empty body detection.
       posBeforeBody = emitter->str().size();
     }
-    emitter->pushCounters();
+    if (freshCounters)
+      emitter->pushCounters();
+    else
+      emitter->pushBlockCounters();
   }
   MojoBuilderScopeGuard() = delete;
   MojoBuilderScopeGuard(const MojoBuilderScopeGuard &other) = delete;
@@ -96,10 +103,14 @@ public:
     emitter->decreaseIndentation();
     emitter->newline();
     emitter->popCache();
-    emitter->popCounters();
+    if (freshCounters)
+      emitter->popCounters();
+    else
+      emitter->popBlockCounters();
   }
   MojoBuilder *emitter;
   size_t posBeforeBody;
+  bool freshCounters;
 
   void doDeferredActions() {
     emitter->increaseIndentation();
@@ -233,7 +244,8 @@ MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
 
 MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {
   statement("try:");
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   tryBlock();
 
   return *this;
@@ -242,7 +254,8 @@ MojoBuilder &MojoBuilder::try_(std::function<void()> &&tryBlock) {
 void MojoBuilder::except(std::function<void(const MojoValue &)> &&exceptBlock) {
   auto e = newVar("e");
   statement("except ", e, ":");
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   exceptBlock(e);
 }
 
@@ -253,7 +266,8 @@ MojoBuilder &MojoBuilder::if_(const MojoValue &cond,
   else
     statement("if ", cond, ":");
 
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   ifBlock();
   return *this;
 }
@@ -261,7 +275,8 @@ MojoBuilder &MojoBuilder::if_(const MojoValue &cond,
 MojoBuilder &MojoBuilder::with_(const MojoValue &contextExpr,
                                 std::function<void()> &&body) {
   statement("with ", contextExpr, ":");
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   body();
   return *this;
 }
@@ -269,14 +284,16 @@ MojoBuilder &MojoBuilder::with_(const MojoValue &contextExpr,
 MojoBuilder &MojoBuilder::elif_(const MojoValue &cond,
                                 std::function<void()> &&elifBlock) {
   statement("elif ", cond, ":");
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   elifBlock();
   return *this;
 }
 
 void MojoBuilder::else_(std::function<void()> &&elseBlock) {
   statement("else:");
-  MojoBuilderScopeGuard guard(this);
+  MojoBuilderScopeGuard guard(this, /*deferExceptCounters=*/false,
+                              /*freshCounters=*/false);
   elseBlock();
 }
 

@@ -593,10 +593,7 @@ def MO_BundledCollectiveInterface
   let cppNamespace = "::M::MO";
 }
 
-def MO_BundledCollective : TraitList<[
-  MO_BundledCollectiveInterface,
-  ParentOneOf<["ParallelOp"]>,
-]>;
+def MO_BundledCollective : TraitList<[MO_BundledCollectiveInterface]>;
 
 def MO_ViewLike : OpInterface<"ViewLike"> {
   let description = [{

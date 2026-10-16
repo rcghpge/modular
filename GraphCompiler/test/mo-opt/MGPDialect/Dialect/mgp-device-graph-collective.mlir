@@ -131,6 +131,13 @@ func.func @device_graph_stable_create(%val: !mgp.tensor<4xf32, <"gpu", 0>, mut>)
   return %shared : !mgp.tensor<4xf32, <"gpu", 0>, mut, stable>
 }
 
+// CHECK-LABEL: func.func @device_graph_stable_create_dynamic
+func.func @device_graph_stable_create_dynamic(%val: !mgp.tensor<?x3xf32, <"gpu", 0>>, %n: index) -> !mgp.tensor<?x3xf32, <"gpu", 0>, stable> {
+  // CHECK: %{{[a-zA-Z0-9_]+}} = mgp.device_graph.stable.create %{{[a-zA-Z0-9_]+}}[%{{[a-zA-Z0-9_]+}}] : !mgp.tensor<?x3xf32, <"gpu", 0>>
+  %shared = mgp.device_graph.stable.create %val[%n] : !mgp.tensor<?x3xf32, <"gpu", 0>>
+  return %shared : !mgp.tensor<?x3xf32, <"gpu", 0>, stable>
+}
+
 // -----
 
 // CHECK-LABEL: func.func @device_graph_stable_create_default_device

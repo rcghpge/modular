@@ -113,11 +113,14 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
                                  bool allowMutToImmut) {
   static const char *argumentKind = matchOperands ? "input" : "output";
 
-  auto skipContextType =
+  // Launch arguments (the `execute` device context, the `build_graph` graph
+  // builder) have no MO operand; skipping them by kind lets one mapping serve
+  // every function variant of a kernel.
+  auto skipLaunchArgument =
       [](const llvm::SmallVector<KernelDeclOperandAdaptor> &operands,
          uint64_t &idx) -> std::optional<KernelDeclOperandAdaptor> {
     while (idx < operands.size()) {
-      if (!operands[idx].isContextType())
+      if (!operands[idx].isLaunchArgument())
         return operands[idx];
       ++idx;
     }
@@ -150,7 +153,7 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
   }
 
   while (true) {
-    auto kernelType = skipContextType(kernelOperands, kernelIndex);
+    auto kernelType = skipLaunchArgument(kernelOperands, kernelIndex);
     if (!kernelType.has_value())
       break;
     if (kernelType->isVariadicTensorType())
@@ -191,7 +194,7 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
 
   while (true) {
     auto moType = skipChainType(values.getTypes(), moOpIndex);
-    auto kernelType = skipContextType(kernelOperands, kernelIndex);
+    auto kernelType = skipLaunchArgument(kernelOperands, kernelIndex);
 
     if (!moType.has_value() || !kernelType.has_value())
       break;
@@ -230,7 +233,7 @@ matchOperandsOrResultsKernelDecl(ValueRange values,
   }
 
   if (matchingVariadicTensor)
-    skipContextType(kernelOperands, ++kernelIndex);
+    skipLaunchArgument(kernelOperands, ++kernelIndex);
 
   bool moOpEnd = moOpIndex == values.size();
   bool kernelEnd = kernelIndex == kernelOperands.size();

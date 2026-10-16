@@ -250,6 +250,15 @@ constexpr llvm::StringLiteral kStructDeviceGraph =
     "max.gpu.host.device_graph.DeviceGraph";
 constexpr llvm::StringLiteral kStructDeviceGraphBuilder =
     "max.gpu.host.device_graph.DeviceGraphBuilder";
+/// `DeviceGraphInputKind`: how an `OwnedTensor` participates as a device graph
+/// input. The `data` member is the Mojo default and is never spelled out.
+constexpr llvm::StringLiteral kStructDeviceGraphInputKind =
+    "max.gpu.host.device_graph.DeviceGraphInputKind";
+constexpr llvm::StringLiteral kInputKindMutable = "mutable";
+constexpr llvm::StringLiteral kInputKindHost = "host";
+constexpr llvm::StringLiteral kInputKindShapeOnly = "shape_only";
+/// `OwnedTensor.with_kind[kind]()`: the same tensor under another input kind.
+constexpr llvm::StringLiteral kFnWithKind = "with_kind";
 constexpr llvm::StringLiteral kStructDeviceGraphNode =
     "max.gpu.host.device_graph.DeviceGraphNode";
 constexpr llvm::StringLiteral kStructDeviceGraphCache =
@@ -478,7 +487,7 @@ constexpr llvm::StringLiteral kComptimeDTypeNoneType = "NoneType";
 //===----------------------------------------------------------------------===//
 
 constexpr llvm::StringLiteral kParameterMut = "mut";
-constexpr llvm::StringLiteral kParameterHost = "host";
+constexpr llvm::StringLiteral kParameterKind = "kind";
 constexpr llvm::StringLiteral kParameterInput = "input";
 constexpr llvm::StringLiteral kParameterDType = "dtype";
 constexpr llvm::StringLiteral kParameterRank = "rank";

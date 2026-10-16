@@ -573,7 +573,14 @@ static void gcPipelineImpl(mlir::OpPassManager &pm,
 
   buildStage([&](auto &p) { buildMoPipeline(p, moOpts); }, "mo-pre-map");
 
-  buildStage([&](auto &p) { p.addPass(MO::createMOToMAP()); }, "mo-to-map");
+  // Stable-tensor marking must see MO ops, so it runs as the last MO-level
+  // pass before the dialect is lowered away.
+  buildStage(
+      [&](auto &p) {
+        p.addPass(MO::createMarkStableTensorsPass());
+        p.addPass(MO::createMOToMAP());
+      },
+      "mo-to-map");
 
   buildStage(
       [&](auto &p) {

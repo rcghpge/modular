@@ -19,7 +19,6 @@
 #define GENERICML_GRAPHCOMPILER_SUPPORT_MOJOEMITTER_H
 
 #include "Mojo/KGENDialect/KGENUtils.h"
-#include "Support/ADT/SmartVariant.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
@@ -389,9 +388,33 @@ public:
     return resolveIdentifier(name).str();
   }
 
-  void pushCounters() { variableCounters.push({0}); }
+  /// Opens a function-like scope (def, lambda, struct): identifiers restart at
+  /// zero, and so do the block scopes nested in it.
+  void pushCounters() {
+    variableCounters.push({0});
+    blockSeeds.resize(std::max(blockSeeds.size(), variableCounters.size() + 2));
+    std::fill(blockSeeds.begin() + variableCounters.size() + 1,
+              blockSeeds.end(), 0);
+  }
 
   void popCounters() { variableCounters.pop(); }
+
+  /// Opens a statement block (if/elif/else, try/except, with). The block keeps
+  /// its own depth prefix but continues the numbering where the previous block
+  /// at this depth of the enclosing function left off: Mojo hoists a nested
+  /// `def` to function scope, so sibling blocks that restarted at zero would
+  /// redefine each other's closures.
+  void pushBlockCounters() {
+    size_t depth = variableCounters.size() + 1;
+    if (blockSeeds.size() <= depth)
+      blockSeeds.resize(depth + 1, 0);
+    variableCounters.push(blockSeeds[depth]);
+  }
+
+  void popBlockCounters() {
+    blockSeeds[variableCounters.size()] = variableCounters.top();
+    variableCounters.pop();
+  }
 
   void pushCache() {
     varCache.push({});
@@ -432,6 +455,10 @@ private:
   std::string indentation;
 
   std::stack<uint32_t> variableCounters;
+
+  /// Per depth, the counter the next statement block at that depth resumes
+  /// from; see `pushBlockCounters`.
+  llvm::SmallVector<uint32_t> blockSeeds;
 
   // Partial CSE for Mojo text: some EmitsMojoInterface ops emit many variables
   // not represented in the IR. One entry per scope (if, function, lambda).

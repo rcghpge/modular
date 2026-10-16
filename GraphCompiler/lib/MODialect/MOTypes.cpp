@@ -527,6 +527,18 @@ TensorType TensorType::cloneWithMut(BoolAttr isMutable) const {
   return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
 }
 
+TensorType TensorType::cloneWithStable(bool isStable) const {
+  NamedAttrList namedAttrs(getMetadata());
+
+  if (isStable)
+    namedAttrs.set(kIsStableMetadataName, UnitAttr::get(getContext()));
+  else
+    namedAttrs.erase(kIsStableMetadataName);
+
+  DictionaryAttr newMetadata = namedAttrs.getDictionary(getContext());
+  return TensorType::get(getShape(), getDtype(), getDeviceRef(), newMetadata);
+}
+
 bool TensorType::isStable() const {
   return getMetadata().contains(kIsStableMetadataName);
 }
