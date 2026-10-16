@@ -70,7 +70,7 @@ def blur_kernel(
 
 
 def cpu_blur(
-    h_in: UnsafePointer[UInt8, MutUntrackedOrigin],
+    h_in: ImmPointer[UInt8, _],
     h_ref: UnsafePointer[UInt8, MutUntrackedOrigin],
     n: Int,
     m: Int,

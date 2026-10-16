@@ -115,7 +115,7 @@ def color_to_grayscale(
 
 
 def color_to_grayscale_cpu(
-    input: UnsafePointer[UInt8, MutUntrackedOrigin],
+    input: ImmPointer[UInt8, _],
     output: UnsafePointer[UInt8, MutUntrackedOrigin],
     width: Int,
     height: Int,
@@ -160,8 +160,8 @@ def initialize_image(
 
 
 def verify_results(
-    cpu_output: UnsafePointer[UInt8, MutUntrackedOrigin],
-    gpu_output: UnsafePointer[UInt8, MutUntrackedOrigin],
+    cpu_output: ImmPointer[UInt8, _],
+    gpu_output: ImmPointer[UInt8, _],
     width: Int,
     height: Int,
 ) -> Bool:
