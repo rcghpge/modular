@@ -156,6 +156,16 @@ trait PluginHooks:
     # Memory Operations
     # ===------------------------------------------------------------------=== #
 
+    comptime has_generic_address_space: Bool = True
+    """Whether a `GENERIC` pointer can reach memory in every address space.
+
+    NVIDIA and AMD GPUs resolve a generic pointer's address space at run time.
+    A target without a generic address space, such as Metal, cannot: a pointer
+    rebuilt from an integer address does not reach threadgroup memory. Where
+    this is `False`, the stdlib keeps the typed pointer instead of
+    round-tripping it through an integer.
+    """
+
     comptime stack_allocation_fn[address_space: AddressSpace]: OptionalReg[
         _StackAllocationPluginHookFnType[address_space]
     ] = None

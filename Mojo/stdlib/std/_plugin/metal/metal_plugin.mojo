@@ -106,3 +106,5 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime supports_float64: Bool = False
 
     comptime flushes_subnormals[dtype: DType]: Bool = dtype == DType.float32
+
+    comptime has_generic_address_space: Bool = False
