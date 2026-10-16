@@ -15,15 +15,15 @@ too.
 
 ## Lanes
 
-| Lane                                | What it checks                                                                                                                     | Where it runs                                        | Cadence                | Gates?             |
-|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|------------------------|--------------------|
-| Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                                           | remote execution, no GPU                             | pre-submit             | Yes                |
-| GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv                          | `validateNIXLSync`                                   | nightly                | Yes                |
-| Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                                                      | `nightlyMultiGPUTest` on B200 and MI355              | nightly                | Yes                |
-| Single-node perf smoke              | NVIDIA UCX + EFA loopback, NVIDIA UCX rc (IB loopback) and AMD UCCL bandwidth floors — catches transport-selection regressions     | `modrunner-b200-efa-2x` + `-b200-2x` + `-mi355-2x`   | nightly                | Yes                |
-| Shared-pool                         | 4-row cross-node EFA KV smoke + the nightly's `nixl-validation-1p1d-*` Mammoth benchmarks                                          | shared B200 and MI355 pod pools                      | dispatched by the gate | No (informational) |
-| Shared-pool (AMD)                   | 4-row cross-node RoCE KV smoke on AMD, UCCL backend                                                                                | shared AMD (MI355) pod pool                          | dispatched by the gate | No (informational) |
-| Client-driven                       | Same DI bring-up + benchmark as the shared-pool lane, via `run_dist_from_local.py`; substitute when the shared pool is unavailable | personal Coder workspace(s), cross-node or intranode | on demand              | No (informational) |
+| Lane                                | What it checks                                                                                                                     | Where it runs                                         | Cadence                | Gates?             |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------|------------------------|--------------------|
+| Basic NIXL behaviors                | real NIXL send/recv/read over host DRAM (CPU UCX plugin)                                                                           | remote execution, no GPU                              | pre-submit             | Yes                |
+| GPU unit, bindings, transfer engine | MLRT Core/UCX unit tests; `max._core.nixl` agent/memory/transfer; `KVTransferEngine` single-GPU send/recv                          | `validateNIXLSync`                                    | nightly                | Yes                |
+| Multi-GPU transfer engine           | multi-GPU send/recv, DP/TP, heterogeneous MLA, plugin preload                                                                      | `nightlyMultiGPUTest` on B200 and MI355               | nightly                | Yes                |
+| Single-node perf smoke              | NVIDIA UCX + EFA loopback, NVIDIA UCX rc (IB loopback) and AMD UCCL bandwidth floors — catches transport-selection regressions     | `modrunner-b200-efa-2x` + `-b200-ib-2x` + `-mi355-2x` | nightly                | Yes                |
+| Shared-pool                         | 4-row cross-node EFA KV smoke + the nightly's `nixl-validation-1p1d-*` Mammoth benchmarks                                          | shared B200 and MI355 pod pools                       | dispatched by the gate | No (informational) |
+| Shared-pool (AMD)                   | 4-row cross-node RoCE KV smoke on AMD, UCCL backend                                                                                | shared AMD (MI355) pod pool                           | dispatched by the gate | No (informational) |
+| Client-driven                       | Same DI bring-up + benchmark as the shared-pool lane, via `run_dist_from_local.py`; substitute when the shared pool is unavailable | personal Coder workspace(s), cross-node or intranode  | on demand              | No (informational) |
 
 The perf smoke carries one NVIDIA row per B200 fabric CI has, and both
 are load-bearing: libfabric (EFA) and cuda-verbs (InfiniBand) are
@@ -32,7 +32,11 @@ nodes left the fleet in early September 2026 and came back mid-month,
 with the Hydra InfiniBand nodes arriving in the same shuffle; the EFA row
 was off in between (GEX-4168), which left libfabric with no gating
 coverage. If a pool leaves again, drop its row rather than letting it
-queue — a job-level `if:` cannot read the `matrix` context.
+queue — a job-level `if:` cannot read the `matrix` context. Each row's
+label must name its fabric (`-efa`, `-ib`): the bare `modrunner-b200-2x`
+is "any B200 pair" and draws EFA hosts, where the IB row's
+`UCX_TLS=rc` dies opening `ud_verbs` on an EFA device instead of
+falling back.
 
 ## The aggregate gate
 
