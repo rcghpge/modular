@@ -25,13 +25,23 @@ from std.math import ceildiv, exp, log1p
 from max.gpu.host import DeviceContext
 from layout import MixedLayout, TileTensor, row_major
 from std.random import rand
+from state_space.mamba2_ssd_chunked import (
+    mamba2_ssd_chunked_fwd_inplace_gpu,
+    use_chunked_ssd,
+)
 from state_space.mamba2_ssd_scan import (
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu,
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_apple,
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split,
 )
 from std.sys import size_of
-from std.testing import TestSuite, assert_almost_equal
+from std.sys.info import _has_sm_8x_or_newer
+from std.testing import (
+    TestSuite,
+    assert_almost_equal,
+    assert_false,
+    assert_true,
+)
 from std.utils.index import Index, IndexList
 
 
@@ -170,12 +180,25 @@ def _check_outputs[
     pool: MutPointer[Scalar[pool_dtype], MutUntrackedOrigin],
     rtol: Float64,
     label: String,
+    atol_frac: Float64 = 0.0,
 ) raises:
+    # `atol_frac` adds an absolute tolerance of that fraction of the largest
+    # reference magnitude, so signed data that cancels near zero stays
+    # meaningful.
+    var y_max = Float32(0)
+    for i in range(y_size):
+        y_max = max(y_max, abs(y_ref.load(i)))
+    var s_max = Float32(0)
+    for i in range(batch * state_size):
+        s_max = max(s_max, abs(fs_ref.load(i)))
+    var y_atol = atol_frac * Float64(y_max)
+    var s_atol = atol_frac * Float64(s_max)
     for i in range(y_size):
         assert_almost_equal(
             y_ref.load(i),
             Float32(y.load(i)),
             rtol=rtol,
+            atol=y_atol,
             msg=label + " y mismatch at index " + String(i),
         )
     for i in range(state_size):
@@ -191,6 +214,7 @@ def _check_outputs[
                 fs_ref.load(b * state_size + i),
                 Float32(pool.load(slot * state_size + i)),
                 rtol=rtol,
+                atol=s_atol,
                 msg=label
                 + " final state mismatch at batch="
                 + String(b)
@@ -364,7 +388,29 @@ def _run_gpu[
     ](b: Int) {var slot_g} -> SIMD[.uint32, width]:
         return slot_g.load[width=width]((b,))
 
-    comptime if DSTATE_SPLIT > 0:
+    comptime if DSTATE_SPLIT < 0:
+        # The chunked kernel is NVIDIA-only (it needs `m16n8k16` bf16 MMAs).
+        comptime if ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer():
+            mamba2_ssd_chunked_fwd_inplace_gpu[DSTATE, dt_softplus=True](
+                ctx,
+                total_len,
+                batch,
+                ngroups,
+                A_g,
+                D_g,
+                dt_bias_g,
+                y_g,
+                pool_g,
+                qsl_g,
+                his_g,
+                us_g,
+                x_fn,
+                dt_fn,
+                b_fn,
+                c_fn,
+                slot_fn,
+            )
+    elif DSTATE_SPLIT > 0:
         # Mirrors the production launch in kernels.mojo.
         comptime ROWS = 128 // DSTATE_SPLIT
         comptime CH_PER_BLOCK = ROWS * CH_PER_THREAD
@@ -480,6 +526,13 @@ def run_mamba2_ssd[
     # same inputs and initial pool, and requires bit-identical final states
     # and outputs within one bf16 ulp of it.
     check_parity: Bool = False,
+    # Scale of the random decay rate: A = -(u * A_scale + 0.1), u in [0, 1).
+    A_scale: Float32 = 1.0,
+    # Draws x, B, C and the initial states from [-1, 1) instead of [0, 1).
+    signed: Bool = False,
+    # Offset added to the random dt before softplus: -9 gives dt ~ 1e-4, which
+    # leaves most of the state alive across chunk boundaries.
+    dt_offset: Float32 = -0.5,
 ](
     nheads: Int,
     head_dim: Int,
@@ -489,6 +542,7 @@ def run_mamba2_ssd[
     ctx: DeviceContext,
     rtol: Float64 = 0.02,
     row_pad: Int = 0,
+    atol_frac: Float64 = 0.0,
 ) raises:
     """Run the CPU and one GPU kernel and compare both against the reference.
 
@@ -532,12 +586,20 @@ def run_mamba2_ssd[
     rand(D_h, nheads)
     rand(dt_bias_h, nheads)
     rand(is_h, batch * state_size)
+    comptime if signed:
+        for i in range(total_len * x_row):
+            x_h.store(i, Scalar[dtype](Float32(x_h.load(i)) * 2 - 1))
+        for i in range(total_len * bc_row):
+            B_h.store(i, Scalar[dtype](Float32(B_h.load(i)) * 2 - 1))
+            C_h.store(i, Scalar[dtype](Float32(C_h.load(i)) * 2 - 1))
+        for i in range(batch * state_size):
+            is_h.store(i, is_h.load(i) * 2 - 1)
     # A = -exp(A_log) is negative; keep it in a range where the recurrence
     # stays bounded over the sequence.
     for i in range(nheads):
-        A_h.store(i, Scalar[dtype](Float32(A_h.load(i)) * -1.0 - 0.1))
+        A_h.store(i, Scalar[dtype](Float32(A_h.load(i)) * -A_scale - 0.1))
     for i in range(total_len * nheads):
-        dt_h.store(i, Scalar[dtype](Float32(dt_h.load(i)) - 0.5))
+        dt_h.store(i, Scalar[dtype](Float32(dt_h.load(i)) + dt_offset))
     # Pre-round the initial states to state_dtype so the fp32 reference and a
     # bf16 pool start from identical states.
     for i in range(batch * state_size):
@@ -642,6 +704,7 @@ def run_mamba2_ssd[
         pool_cpu_h,
         rtol,
         "CPU",
+        atol_frac,
     )
 
     # ---- GPU kernel ----
@@ -690,7 +753,118 @@ def run_mamba2_ssd[
         pool_gpu_h,
         rtol,
         "GPU",
+        atol_frac,
     )
+
+    comptime if DSTATE_SPLIT < 0:
+        # The chunked scan rounds its matmul operands (decayed scores, chunk
+        # states) to bf16, so it is compared with the serial split kernel
+        # (split 16, 4 channels per thread, the production decode tile) at a
+        # bf16-sized tolerance relative to the largest output and state.
+        var y_ser_h = alloc[Scalar[dtype]](y_size)
+        var pool_ser_h = alloc[Scalar[state_dtype]](pool_size)
+        for i in range(pool_size):
+            pool_ser_h.store(i, pool_init_h.load(i))
+        _run_gpu[DSTATE, 16, 4, True](
+            ctx,
+            nheads,
+            head_dim,
+            ngroups,
+            max_slots,
+            batch,
+            total_len,
+            x_row,
+            bc_row,
+            D_size,
+            dt_bias_size,
+            his_size,
+            us_size,
+            x_h,
+            dt_h,
+            A_h,
+            B_h,
+            C_h,
+            D_h,
+            dt_bias_h,
+            qsl_h,
+            his_h,
+            us_h,
+            slot_h,
+            y_ser_h,
+            pool_ser_h,
+        )
+        var y_max = Float32(0)
+        for i in range(y_size):
+            y_max = max(y_max, abs(Float32(y_ser_h.load(i))))
+        for i in range(y_size):
+            assert_almost_equal(
+                Float32(y_ser_h.load(i)),
+                Float32(y_gpu_h.load(i)),
+                rtol=0.03,
+                atol=Float64(0.01 * y_max),
+                msg="chunked vs serial y mismatch at index " + String(i),
+            )
+        var s_max = Float32(0)
+        for i in range(pool_size):
+            s_max = max(s_max, abs(Float32(pool_ser_h.load(i))))
+        for i in range(pool_size):
+            assert_almost_equal(
+                Float32(pool_ser_h.load(i)),
+                Float32(pool_gpu_h.load(i)),
+                rtol=0.03,
+                atol=Float64(0.01 * s_max),
+                msg="chunked vs serial state mismatch at pool index "
+                + String(i),
+            )
+        # Determinism: no atomics, so a second launch on the same inputs and
+        # initial pool must match the first bit for bit.
+        var y_rep_h = alloc[Scalar[dtype]](y_size)
+        var pool_rep_h = alloc[Scalar[state_dtype]](pool_size)
+        for i in range(pool_size):
+            pool_rep_h.store(i, pool_init_h.load(i))
+        _run_gpu[DSTATE, DSTATE_SPLIT, CH_PER_THREAD, prefill](
+            ctx,
+            nheads,
+            head_dim,
+            ngroups,
+            max_slots,
+            batch,
+            total_len,
+            x_row,
+            bc_row,
+            D_size,
+            dt_bias_size,
+            his_size,
+            us_size,
+            x_h,
+            dt_h,
+            A_h,
+            B_h,
+            C_h,
+            D_h,
+            dt_bias_h,
+            qsl_h,
+            his_h,
+            us_h,
+            slot_h,
+            y_rep_h,
+            pool_rep_h,
+        )
+        for i in range(y_size):
+            if y_rep_h.load(i) != y_gpu_h.load(i):
+                raise Error(
+                    "chunked y is not deterministic at index " + String(i)
+                )
+        for i in range(pool_size):
+            if pool_rep_h.load(i) != pool_gpu_h.load(i):
+                raise Error(
+                    "chunked state is not deterministic at pool index "
+                    + String(i)
+                )
+        y_rep_h.free()
+        pool_rep_h.free()
+        y_ser_h.free()
+        pool_ser_h.free()
 
     comptime if check_parity:
         comptime assert DSTATE_SPLIT > 0, "parity compares split tiles"
@@ -1240,6 +1414,225 @@ def test_mamba2_ssd_update_state_flag() raises:
                 seq_lengths=Index(17, 9, 24, 1),
                 ctx=ctx,
             )
+
+
+def test_mamba2_ssd_chunked() raises:
+    """The chunked prefill scan matches the fp32 reference.
+
+    Lengths are not multiples of the 256-token chunk, a one-token sequence and
+    a sub-chunk sequence share the batch with multi-chunk ones, and the pool
+    seeds nonzero initial states.
+    """
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        # One sequence, 2 full chunks + a 188-token tail, nonzero state.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            8, 64, 2, 2, Index(700), ctx
+        )
+        # Varlen batch, fresh state.
+        run_mamba2_ssd[DType.bfloat16, 128, -1](
+            8, 64, 2, 6, Index(300, 1, 513, 256, 77), ctx
+        )
+        # A long sequence: 16 full chunks plus a tail, so the state passes
+        # through many chunk boundaries, next to a short one.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            4, 64, 2, 3, Index(4133, 300), ctx
+        )
+        # Varlen batch, initial states, strided inputs, no write-back for odd
+        # sequences.
+        run_mamba2_ssd[
+            DType.bfloat16, 128, -1, init_state=True, update_flags=True
+        ](8, 64, 4, 6, Index(257, 5, 1000, 64, 256), ctx, row_pad=8)
+
+
+def test_mamba2_ssd_chunked_boundaries() raises:
+    """Sequence lengths around the 256-token chunk size, one launch each.
+
+    Tolerances: the chunked scan rounds the decayed score matrix and the carry
+    state to bf16 before the matmuls (relative error 2^-9 per operand, fp32
+    accumulation), so y is checked against the fp32 reference at rtol 0.02 and
+    against the serial kernel at 1% of the largest output.
+    """
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        # 1, 255, 256, 257 (chunk -1/0/+1), 511, 512, 513 (two chunks -1/0/+1),
+        # fresh and seeded states.
+        run_mamba2_ssd[DType.bfloat16, 128, -1](
+            4, 64, 2, 8, Index(1, 255, 256, 257, 511, 512, 513), ctx
+        )
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            4, 64, 2, 8, Index(1, 255, 256, 257, 511, 512, 513), ctx
+        )
+        # A single exact multiple of the chunk, and a sub-chunk sequence next
+        # to a multi-chunk one.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            4, 64, 2, 2, Index(1024), ctx
+        )
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            4, 64, 2, 3, Index(5, 1300), ctx
+        )
+
+
+def test_mamba2_ssd_chunked_many_sequences() raises:
+    """Many sequences in one launch, mixing 1-token and multi-chunk rows."""
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            4,
+            64,
+            2,
+            35,
+            Index(
+                1,
+                300,
+                2,
+                257,
+                64,
+                1,
+                512,
+                3,
+                128,
+                255,
+                1,
+                600,
+                7,
+                256,
+                90,
+                1,
+                33,
+                1,
+                513,
+                20,
+                1,
+                1,
+                400,
+                2,
+                17,
+                255,
+                256,
+                1,
+                100,
+                1,
+                129,
+                3,
+                2,
+                70,
+            ),
+            ctx,
+        )
+
+
+def test_mamba2_ssd_chunked_shapes() raises:
+    """Head layouts the Nemotron configs use, and optional inputs."""
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        # One group shared by every head; 8 heads per group; 2 heads per group
+        # with head_dim 128 (two head tiles).
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            32, 64, 1, 3, Index(300, 513), ctx
+        )
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            32, 64, 4, 3, Index(300, 513), ctx
+        )
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
+            8, 128, 4, 3, Index(300, 513), ctx
+        )
+        # No D skip and no dt_bias.
+        run_mamba2_ssd[
+            DType.bfloat16,
+            128,
+            -1,
+            init_state=True,
+            has_D=False,
+            has_dt_bias=False,
+        ](8, 64, 2, 3, Index(300, 513), ctx)
+        # bf16 state pool: one extra rounding at the write-back.
+        run_mamba2_ssd[
+            DType.bfloat16, 128, -1, state_dtype=.bfloat16, init_state=True
+        ](8, 64, 2, 3, Index(300, 513), ctx)
+        # Seeded states with a cleared update_state on odd sequences, strided
+        # inputs and non-contiguous pool slots (slot b + 1, slot 0 untouched).
+        run_mamba2_ssd[
+            DType.bfloat16, 128, -1, init_state=True, update_flags=True
+        ](8, 64, 2, 7, Index(1, 256, 257, 300, 2, 700), ctx, row_pad=8)
+
+
+def test_mamba2_ssd_chunked_decay_range() raises:
+    """Very strong and very weak decay stay finite and match the reference."""
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        # Strong decay: exp2 of the cumulative log decay underflows to 0 within
+        # a chunk; the carry and the masked scores must not produce NaN or inf.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True, A_scale=40.0](
+            4, 64, 2, 3, Index(600, 300), ctx
+        )
+        # Weak decay: the state integrates over the whole sequence.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True, A_scale=0.005](
+            4, 64, 2, 3, Index(1100, 300), ctx
+        )
+
+
+def test_mamba2_ssd_chunked_signed_slow_decay() raises:
+    """Signed inputs, slow decay across many chunks, and a second head tile.
+
+    Slow decay (dt ~ 1e-4, A in [-1.1, -0.1]) keeps most of the incoming state
+    alive across each 256-token chunk, so the state-passing recurrence and the
+    carry-in term are exercised over many boundaries, with a nonzero initial
+    state. Signed x, B, C and states cancel inside the bf16-rounded score and
+    state products; the comparison against the fp32 reference then adds an
+    absolute tolerance of 2% of the largest value to the 2% relative one.
+    """
+    with DeviceContext() as ctx:
+        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+            return
+        run_mamba2_ssd[
+            DType.bfloat16, 128, -1, init_state=True, dt_offset=-9.0
+        ](4, 64, 2, 3, Index(1800, 600), ctx)
+        run_mamba2_ssd[
+            DType.bfloat16,
+            128,
+            -1,
+            init_state=True,
+            dt_offset=-9.0,
+            signed=True,
+        ](4, 64, 2, 3, Index(1800, 600), ctx, atol_frac=0.02)
+        # Signed, head_dim 128 (two channel tiles), varlen with tails.
+        run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True, signed=True](
+            8, 128, 4, 4, Index(300, 513, 1), ctx, atol_frac=0.02
+        )
+        # Signed with update flags and strided inputs.
+        run_mamba2_ssd[
+            DType.bfloat16,
+            128,
+            -1,
+            init_state=True,
+            update_flags=True,
+            signed=True,
+        ](8, 64, 2, 5, Index(257, 1, 700, 256), ctx, row_pad=8, atol_frac=0.02)
+
+
+def test_mamba2_ssd_chunked_dispatch() raises:
+    """The launch-shape rule behind the op: token and average-length edges."""
+    comptime MIN = 512
+    # Token threshold at batch 1 (average length equals the total).
+    assert_false(use_chunked_ssd(511, 1, 64, MIN))
+    assert_true(use_chunked_ssd(512, 1, 64, MIN))
+    # Average sequence length 127 vs 128 with the token threshold met.
+    assert_false(use_chunked_ssd(127 * 8, 8, 64, MIN))
+    assert_true(use_chunked_ssd(128 * 8, 8, 64, MIN))
+    assert_false(use_chunked_ssd(128 * 8 - 1, 8, 64, MIN))
+    # A decode or verify batch (64 rows of 8 tokens) stays serial.
+    assert_false(use_chunked_ssd(512, 64, 64, MIN))
+    # head_dim must tile by 64.
+    assert_false(use_chunked_ssd(4096, 1, 80, MIN))
+    assert_true(use_chunked_ssd(4096, 1, 128, MIN))
+    # A huge threshold pins the serial kernel.
+    assert_false(use_chunked_ssd(70000, 1, 64, 1000000000))
 
 
 def main() raises:

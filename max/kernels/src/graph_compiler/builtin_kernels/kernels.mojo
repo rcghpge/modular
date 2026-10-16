@@ -19,8 +19,9 @@
 
 from std.collections import OptionalReg
 from std.math import align_up, ceildiv, iota
+from std.os import getenv
 from std.random import seed
-from std.sys.info import size_of
+from std.sys.info import _has_sm_8x_or_newer, size_of
 import extensibility
 
 # ===-----------------------------------------------------------------------===#
@@ -134,6 +135,10 @@ from state_space.gated_delta import (
 from state_space.gated_group_rmsnorm import (
     gated_group_rmsnorm_cpu,
     gated_group_rmsnorm_gpu,
+)
+from state_space.mamba2_ssd_chunked import (
+    mamba2_ssd_chunked_fwd_inplace_gpu,
+    use_chunked_ssd,
 )
 from state_space.mamba2_ssd_scan import (
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_cpu,
@@ -4563,6 +4568,21 @@ struct GatedDeltaStateFold:
             )
 
 
+def _ssd_chunked_min_tokens() -> Int:
+    """Returns the prefill token count from which the chunked SSD scan runs.
+
+    `MODULAR_SSD_CHUNKED_MIN_TOKENS` overrides the default of 512 tokens; a
+    huge value pins the serial scan.
+    """
+    var v = getenv("MODULAR_SSD_CHUNKED_MIN_TOKENS")
+    if v.byte_length() > 0:
+        try:
+            return Int(v)
+        except:
+            pass
+    return 512
+
+
 @extensibility.register("mamba2_ssd_chunk_scan_varlen_fwd_inplace")
 struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
     """Varlen Mamba-2 SSD chunked scan with an in-place SSM state pool.
@@ -4575,7 +4595,11 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
     Each sequence starts from `ssm_pool[cache_indices[b]]` when
     `has_initial_state[b]` is set, and its final state is written back to the
     same slot, so the graph never round-trips the pool. The kernel math lives
-    in `state_space.mamba2_ssd_scan`.
+    in `state_space.mamba2_ssd_scan` (token-serial scan, used for decode,
+    verify and short launches) and `state_space.mamba2_ssd_chunked` (chunked
+    state-space-duality scan on tensor cores). On NVIDIA GPUs with bf16 and
+    dstate 128, a launch with at least 512 tokens and an average sequence of at
+    least 128 tokens takes the chunked path.
 
     Parameters:
         dt_softplus: If True (default), apply softplus to `dt + dt_bias`.
@@ -4780,6 +4804,43 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                 # shared memory, so only a launch with a multi-token sequence
                 # uses it.
                 var has_prefill = x.dim_size(0) > batch
+                # A long prefill takes the chunked algorithm, which turns the
+                # token-serial recurrence into matmuls; see
+                # `state_space.mamba2_ssd_chunked`.
+                comptime if (
+                    DSTATE == 128
+                    and dtype == .bfloat16
+                    and ctx.target.is_nvidia_gpu()
+                    and _has_sm_8x_or_newer()
+                ):
+                    if use_chunked_ssd(
+                        x.dim_size(0),
+                        batch,
+                        head_dim,
+                        _ssd_chunked_min_tokens(),
+                    ):
+                        mamba2_ssd_chunked_fwd_inplace_gpu[
+                            DSTATE, dt_softplus=Self.dt_softplus
+                        ](
+                            ctx,
+                            x.dim_size(0),
+                            batch,
+                            ngroups,
+                            A_tt,
+                            D_tt,
+                            dt_bias_tt,
+                            y_tt,
+                            ssm_pool_tt,
+                            query_start_loc_tt,
+                            has_initial_state_tt,
+                            update_state_tt,
+                            x_fn,
+                            dt_fn,
+                            b_fn,
+                            c_fn,
+                            slot_fn,
+                        )
+                        return
                 comptime for mode in range(2):
                     comptime prefill = mode == 1
                     comptime kernel = mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
