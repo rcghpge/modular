@@ -44,32 +44,21 @@ from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.info import is_gpu
 from max.gpu.memory import (
-    async_copy,
     async_copy_commit_group,
     async_copy_wait_group,
     external_memory,
 )
-from layout import (
-    Coord,
-    TileTensor,
-    TensorLayout,
-    lt_to_tt,
-    lt_to_tt_idx,
-    row_major,
-)
+from layout import Coord, Idx, TileTensor, TensorLayout, row_major
+from layout.tile_iterator import TileTensorIter
 from layout.tile_tensor import stack_allocation
-from layout.layout import *
-from layout.layout_tensor import (
-    LayoutTensorIter,
-    ThreadScope,
-    copy_local_to_dram,
-    copy_local_to_shared,
-    copy_sram_to_dram,
-)
 from layout.swizzle import Swizzle, make_ldmatrix_swizzle, make_swizzle
 from layout.tile_io import (
     GenericToSharedAsyncTileCopier,
-    copy_dram_to_sram as tile_copy_dram_to_sram,
+    ThreadScope,
+    copy_dram_to_sram,
+    copy_local_to_dram,
+    copy_local_to_shared,
+    copy_sram_to_dram,
 )
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
 from linalg.matmul.gpu._multistage_gemm_gpu import warp_split_k_reduction
@@ -85,7 +74,7 @@ from std.utils.numerics import get_accum_type
 @inline(.always)
 @doc_hidden
 def _quantized_scale_stage(stage: Int, ahead: Int, count: Int) -> Int:
-    """Returns a stage using the legacy iterator's single-subtraction wrap."""
+    """Returns a ring stage advanced by `ahead`, wrapping once at `count`."""
     var next_stage = stage + ahead
     return next_stage - count if next_stage >= count else next_stage
 
@@ -160,6 +149,8 @@ def args_to_tuple[swap: Bool](arg_0: Int, arg_1: Int) -> Tuple[Int, Int]:
 
 @inline(.always)
 @doc_hidden
+@inline(.always)
+@doc_hidden
 def multistage_mma_q[
     BM: Int,
     BN: Int,
@@ -174,61 +165,56 @@ def multistage_mma_q[
     c_type: DType,
     c_layout: TensorLayout,
     a_type: DType,
-    a_layout: Layout,
-    a_smem_layout: Layout,
+    a_layout: TensorLayout,
+    a_smem_layout: TensorLayout,
     b_type: DType,
-    b_layout: Layout,
-    b_smem_layout: Layout,
+    b_layout: TensorLayout,
+    b_smem_layout: TensorLayout,
     scales_type: DType,
-    scales_layout: Layout,
-    scales_smem_layout: Layout,
-    # Hack:
+    scales_layout: TensorLayout,
+    scales_smem_layout: TensorLayout,
     /,
     *,
     swizzle_a: Bool = True,
-    static_num_iters: Int = UNKNOWN_VALUE,
     prefetch_init: Bool = True,
-    continue_prefetch_b: Bool = False,
-    transpose_b_next: Bool = False,
-    b_next_gmem_layout: Layout = Layout(),
-    b_next_smem_layout: Layout = Layout(),
-    next_op_b_iter_alignment: Int = align_of[b_type](),
     native_scale_stream: Bool = False,
 ](
-    # The prefetch pipeline still runs on legacy `LayoutTensorIter`s: no
-    # native TileTensor iterator exists yet.
     c: TileTensor[mut=True, c_type, c_layout, address_space=.LOCAL, ...],
-    a_iter_arg: LayoutTensorIter[_, a_layout, ...],
-    b_iter_arg: LayoutTensorIter[b_type, b_layout, ...],
-    a_smem_iter_arg: LayoutTensorIter[
+    a_iter_arg: TileTensorIter[
+        a_type, a_layout, _, address_space=.GENERIC, ...
+    ],
+    b_iter_arg: TileTensorIter[
+        b_type, b_layout, _, address_space=.GENERIC, ...
+    ],
+    a_smem_iter_arg: TileTensorIter[
         mut=True,
         a_type,
         a_smem_layout,
         address_space=.SHARED,
         ...,
     ],
-    mut b_smem_iter: LayoutTensorIter[
+    mut b_smem_iter: TileTensorIter[
         mut=True,
         b_type,
         b_smem_layout,
         address_space=.SHARED,
         ...,
     ],
-    scales_smem_iter_arg: LayoutTensorIter[
+    scales_smem_iter_arg: TileTensorIter[
+        mut=True,
         scales_type,
         scales_smem_layout,
         address_space=.SHARED,
         ...,
     ],
-    scales_iter_arg: LayoutTensorIter[scales_type, scales_layout, ...],
+    scales_iter_arg: TileTensorIter[
+        scales_type, scales_layout, _, address_space=.GENERIC, ...
+    ],
     scales_native_src: TileTensor[scales_type, address_space=.GENERIC, ...],
     scales_native_ring: TileTensor[
         mut=True, scales_type, address_space=.SHARED, ...
     ],
     num_iters: Int,
-    /,
-    *,
-    num_b_rows: Optional[Int] = None,
 ):
     """Performs the multi-stage tensor-core MMA loop for a quantized matrix multiplication tile.
 
@@ -252,21 +238,16 @@ def multistage_mma_q[
         a_type: The dtype of the A matrix elements.
         a_layout: The layout of the A matrix in global memory.
         a_smem_layout: The layout of the A tile in shared memory.
-        b_type: The dtype of the unpacked B matrix elements.
+        b_type: The dtype of the packed B matrix elements.
         b_layout: The layout of the B matrix in global memory.
         b_smem_layout: The layout of the B tile in shared memory.
-        scales_type: The dtype of the per-group scales.
+        scales_type: The dtype of the quantization scales.
         scales_layout: The layout of the scales in global memory.
         scales_smem_layout: The layout of the scales tile in shared memory.
-        swizzle_a: Whether to apply an ldmatrix swizzle to the A-tile copy.
-        static_num_iters: The compile-time-known iteration count, if known.
-        prefetch_init: Whether to issue the initial prefetch of leading stages.
-        continue_prefetch_b: Whether to continue prefetching B tiles across iterations.
-        transpose_b_next: Whether the next op's B matrix is stored transposed.
-        b_next_gmem_layout: The global-memory layout of the next op's B matrix.
-        b_next_smem_layout: The shared-memory layout of the next op's B matrix.
-        next_op_b_iter_alignment: The required alignment for the next op's B iterator.
-        native_scale_stream: Whether to use native scale views for complete groups.
+        swizzle_a: Whether to apply a swizzle pattern to the A-tile copy.
+        prefetch_init: Whether to prefetch the initial pipeline stages.
+        native_scale_stream: Whether the scale pipeline uses the native ring
+            instead of the global iterator.
 
     Args:
         c: The local accumulator tile receiving the MMA results.
@@ -279,7 +260,6 @@ def multistage_mma_q[
         scales_native_src: The first native global scale tile, retaining row stride.
         scales_native_ring: The native shared-memory scale ring for this partition.
         num_iters: The number of K-tile iterations to execute.
-        num_b_rows: The runtime row count of the B matrix, if known.
     """
     comptime assert c.rank == c.flat_rank == 2
     comptime assert c.element_size == 1
@@ -304,91 +284,38 @@ def multistage_mma_q[
     var scales_smem_iter = scales_smem_iter_arg
     var native_scale_stage = 0
     var native_scale_group = 0
-    # work around mut argument can't have default value.
-    comptime async_copy_a_layout = Layout.row_major(
-        num_threads * simd_size // BK, BK // simd_size
-    )
 
-    comptime async_copy_b_layout = Layout.row_major(
-        ceildiv(num_threads * simd_b_size, b_smem_layout.stride[0].value()),
-        num_threads
-        // ceildiv(num_threads * simd_b_size, b_smem_layout.stride[0].value()),
-    )
-    comptime swizzle_b = transpose_b or b_type.is_half_float()
-
-    comptime async_copy_scales_layout = Layout.row_major(1, WARP_SIZE)
-    comptime async_copy_scales_veclen = BN // WARP_SIZE
-
-    comptime smem_reg_scales_layout = Layout.row_major(8, 4)
-
-    # Trait-based (`tile_layout.Layout`) thread layouts for the
-    # `tile_io` async copier. These mirror `async_copy_a_layout` and
-    # `async_copy_b_layout` above, but use `row_major[*Int]()` so the
-    # resulting type unifies with `GenericToSharedAsyncTileCopier`'s
-    # `thread_layout: Layout[shape_types, stride_types]` parameter
-    # (the legacy `Layout.row_major(...)` builder produces a different
-    # type that fails to unify).
-    # TODO: Once the remaining sync `copy_*` callsites in this kernel
-    # also migrate to `tile_io`, the legacy `async_copy_a_layout` /
-    # `async_copy_b_layout` declarations above can be removed and these
-    # become the single source of truth.
-    comptime async_copy_a_layout_tt = row_major[
+    comptime async_copy_a_layout = row_major[
         num_threads * simd_size // BK, BK // simd_size
     ]()
-    comptime async_copy_b_layout_tt = row_major[
-        ceildiv(num_threads * simd_b_size, b_smem_layout.stride[0].value()),
-        num_threads
-        // ceildiv(num_threads * simd_b_size, b_smem_layout.stride[0].value()),
+    comptime b_smem_row_stride = b_smem_layout.static_stride[0]
+    comptime async_copy_b_layout = row_major[
+        ceildiv(num_threads * simd_b_size, b_smem_row_stride),
+        num_threads // ceildiv(num_threads * simd_b_size, b_smem_row_stride),
     ]()
 
-    # Swizzle the async A-tile copy if requested. `make_ldmatrix_swizzle`
-    # mirrors the ldmatrix-friendly swizzle the legacy
-    # `copy_dram_to_sram_async[swizzle=True]` free function constructs
-    # internally (see layout_tensor.mojo); reproducing it here keeps the
-    # destination addressing identical across the migration. The
-    # destination's leading-dim stride is `BK`.
+    # The ldmatrix-friendly swizzle for the A tile, whose leading-dim stride
+    # is `BK`; `load_a` reads the tile back with the same pattern.
     comptime async_swizzle_a = Optional[Swizzle](
         make_ldmatrix_swizzle[a_type, BK, log2_floor(simd_size)]()
     ) if swizzle_a else Optional[Swizzle]()
 
-    # `a_iter_arg` / `b_iter_arg` have an inferred dtype, so call sites must
-    # `.bitcast[a_type | b_type, target_address_space=.GENERIC]()`
-    # the iterator's dereferenced tile before passing it in. The helpers
-    # require concrete `a_type` / `b_type` arguments so the body can reference
-    # `simd_size` / `simd_b_size` and the captured swizzle without
-    # additional type unification.
-    #
-    # Both `dst` (SMEM) and `src` (DRAM) are converted with the same
-    # `linear_idx_type` -- the parent DRAM tile's
-    # `linear_idx_type`. Mixing `int32` SMEM offsets with `int64` DRAM
-    # offsets in a single cp.async-driven distribute() emits cross-width
-    # conversions (cvt.u64.u32 + mul.wide.u32 in the index computation)
-    # that measurably degrade performance on B200. Picking the parent
-    # tensor's index type for both sides gives uniform-width arithmetic
-    # and matches the pre-migration codegen pattern (bfe.u64/shl.b64
-    # when the parent has a runtime dim, bfe.u32/shl.b32 when the parent
-    # is fully static and small).
-    comptime a_idx_t = a_iter_arg.linear_idx_type
-    comptime b_idx_t = b_iter_arg.linear_idx_type
-
+    # Both `dst` (SMEM) and `src` (DRAM) must share a `linear_idx_type`.
+    # Mixing `int32` SMEM offsets with `int64` DRAM offsets in a single
+    # cp.async-driven distribute() emits cross-width conversions
+    # (cvt.u64.u32 + mul.wide.u32 in the index computation) that measurably
+    # degrade performance on B200.
     @inline(.always)
     def _async_copy_a_tile(
-        dst: TileTensor[
-            mut=True,
-            a_type,
-            address_space=.SHARED,
-            linear_idx_type=a_idx_t,
-            ...,
-        ],
-        src: TileTensor[
-            a_type, address_space=.GENERIC, linear_idx_type=a_idx_t, ...
-        ],
+        dst: TileTensor[mut=True, a_type, address_space=.SHARED, ...],
+        src: TileTensor[a_type, address_space=.GENERIC, ...],
     ):
+        comptime assert dst.linear_idx_type == src.linear_idx_type
         comptime assert dst.rank == dst.flat_rank == 2
         comptime assert src.rank == src.flat_rank == 2
         comptime assert dst.element_size == src.element_size == 1
         GenericToSharedAsyncTileCopier[
-            async_copy_a_layout_tt,
+            async_copy_a_layout,
             swizzle=async_swizzle_a,
         ]().copy(
             dst.vectorize[1, simd_size](),
@@ -397,21 +324,14 @@ def multistage_mma_q[
 
     @inline(.always)
     def _async_copy_b_tile(
-        dst: TileTensor[
-            mut=True,
-            b_type,
-            address_space=.SHARED,
-            linear_idx_type=b_idx_t,
-            ...,
-        ],
-        src: TileTensor[
-            b_type, address_space=.GENERIC, linear_idx_type=b_idx_t, ...
-        ],
+        dst: TileTensor[mut=True, b_type, address_space=.SHARED, ...],
+        src: TileTensor[b_type, address_space=.GENERIC, ...],
     ):
+        comptime assert dst.linear_idx_type == src.linear_idx_type
         comptime assert dst.rank == dst.flat_rank == 2
         comptime assert src.rank == src.flat_rank == 2
         comptime assert dst.element_size == src.element_size == 1
-        GenericToSharedAsyncTileCopier[async_copy_b_layout_tt]().copy(
+        GenericToSharedAsyncTileCopier[async_copy_b_layout]().copy(
             dst.vectorize[1, simd_b_size](),
             src.vectorize[1, simd_b_size](),
         )
@@ -419,87 +339,38 @@ def multistage_mma_q[
     # Prefetch (num_pipeline_stages - 1) stages.
     comptime if prefetch_init:
         comptime for stage in range(num_pipeline_stages - 1):
-            comptime if a_iter.address_space == .GENERIC:
-                var a_smem_tile = a_smem_iter.next_unsafe(
-                    a_smem_iter.linear_uint_type(stage)
-                )[]
+            _async_copy_a_tile(a_smem_iter.next_unsafe(stage)[], a_iter[])
+            a_iter._incr()
 
-                _async_copy_a_tile(
-                    lt_to_tt_idx[linear_idx_type=a_idx_t](a_smem_tile),
-                    lt_to_tt_idx[linear_idx_type=a_idx_t](
-                        a_iter[].bitcast[
-                            a_type, target_address_space=.GENERIC
-                        ]()
-                    ),
-                )
-
-                a_iter._incr()
-
-            comptime if b_iter.address_space == .GENERIC:
-                var b_smem_tile = b_smem_iter.next_unsafe(
-                    b_smem_iter.linear_uint_type(stage)
-                )[]
-
-                _async_copy_b_tile(
-                    lt_to_tt_idx[linear_idx_type=b_idx_t](b_smem_tile),
-                    lt_to_tt_idx[linear_idx_type=b_idx_t](
-                        b_iter[].bitcast[
-                            b_type, target_address_space=.GENERIC
-                        ]()
-                    ),
-                )
-
-                b_iter._incr()
+            _async_copy_b_tile(b_smem_iter.next_unsafe(stage)[], b_iter[])
+            b_iter._incr()
 
             # Every group_size rows share a scale
             # Only load scales when necessary
-            comptime if scales_iter.address_space == .GENERIC:
-                if stage % (group_size // BK) == 0:
-                    comptime scales_stage = stage // (group_size // BK)
-                    var scales_smem_tile = scales_smem_iter.next_unsafe(
-                        scales_smem_iter.linear_uint_type(scales_stage)
-                    )[]
+            if stage % (group_size // BK) == 0:
+                comptime scales_stage = stage // (group_size // BK)
 
-                    comptime if native_scale_stream:
-                        if tid < UInt32(WARP_SIZE):
-                            var dst = scales_native_ring.tile[1, BN](
-                                (scales_stage, 0)
-                            )
-                            # Row `native_scale_group` of the [1, BN] tile:
-                            # tiling past the one-row tile with the parent's
-                            # stride, same offset the pointer form computed.
-                            var src = scales_native_src.tile[1, BN](
-                                (native_scale_group, 0)
-                            )
-                            _copy_quantized_scale_tile(dst, src)
-                        native_scale_group += 1
-                    else:
-                        # We only need one warp for copying scales...
-                        if tid < UInt32(WARP_SIZE):
-                            var src_fragments = (
-                                scales_iter[]
-                                .bitcast[
-                                    scales_type,
-                                    target_address_space=.GENERIC,
-                                ]()
-                                .vectorize[1, async_copy_scales_veclen]()
-                                .distribute[async_copy_scales_layout](Int(tid))
-                            )
-                            var dst_fragments = scales_smem_tile.vectorize[
-                                1, async_copy_scales_veclen
-                            ]().distribute[async_copy_scales_layout](Int(tid))
-
-                            comptime element_size_bytes = size_of[
-                                scales_type
-                            ]() * async_copy_scales_veclen
-                            async_copy[element_size_bytes](
-                                src_fragments.ptr.address_space_cast[.GLOBAL](),
-                                dst_fragments.ptr.address_space_cast[
-                                    .SHARED
-                                ]().unsafe_mut_cast[True](),
-                            )
-
-                        scales_iter._incr()
+                comptime if native_scale_stream:
+                    if tid < UInt32(WARP_SIZE):
+                        var dst = scales_native_ring.tile[1, BN](
+                            (scales_stage, 0)
+                        )
+                        # Row `native_scale_group` of the [1, BN] tile:
+                        # tiling past the one-row tile with the parent's
+                        # stride, same offset the pointer form computed.
+                        var src = scales_native_src.tile[1, BN](
+                            (native_scale_group, 0)
+                        )
+                        _copy_quantized_scale_tile(dst, src)
+                    native_scale_group += 1
+                else:
+                    # We only need one warp for copying scales...
+                    if tid < UInt32(WARP_SIZE):
+                        _copy_quantized_scale_tile(
+                            scales_smem_iter.next_unsafe(scales_stage)[],
+                            scales_iter[],
+                        )
+                    scales_iter._incr()
 
             async_copy_commit_group()
 
@@ -523,8 +394,6 @@ def multistage_mma_q[
     comptime assert c.static_shape[0] == num_m_mmas * num_n_mmas
     comptime assert c.static_shape[1] == c_frag_size
 
-    # A loads and fallback B/scale paths retain legacy views of these native
-    # register tiles.
     var a_reg_buffer = stack_allocation[a_type, address_space=.LOCAL](
         row_major[2 * num_m_mmas, a_frag_size]()
     )
@@ -535,7 +404,7 @@ def multistage_mma_q[
         row_major[num_n_mmas, 1]()
     )
 
-    var a_warp_tile = a_smem_iter[].tile[WM, BK](Int(warp_y), 0)
+    var a_warp_tile = a_smem_iter[].tile[WM, BK]((Int(warp_y), 0))
 
     comptime b_wtile_dim0 = WN // repack_tile[0] if transpose_b else (
         (BK * repack_tile[0]) // pack_factor
@@ -546,23 +415,20 @@ def multistage_mma_q[
     var b_wtile_coord0 = Int(warp_x) if transpose_b else 0
     var b_wtile_coord1 = 0 if transpose_b else Int(warp_x)
     var b_warp_tile = b_smem_iter[].tile[b_wtile_dim0, b_wtile_dim1](
-        b_wtile_coord0, b_wtile_coord1
+        (b_wtile_coord0, b_wtile_coord1)
     )
     var scales_warp_tile = scales_smem_iter[].tile[ceildiv(BK, group_size), WN](
-        0, Int(warp_x)
+        (0, Int(warp_x))
     )
 
     var mma_op = TensorCore[accum_type, a_type, mma_shape, transpose_b]()
 
     comptime swizzle_a_pattern = make_ldmatrix_swizzle[
-        a_type, a_warp_tile.stride[0]()
+        a_type, type_of(a_warp_tile).static_stride[0]
     ]() if swizzle_a else Optional[Swizzle]()
 
     mma_op.load_a[swizzle_a_pattern](
-        a_warp_tile,
-        a_reg_buffer.tile[num_m_mmas, a_frag_size]((0, 0))
-        .to_layout_tensor()
-        .vectorize[1, a_frag_size](),
+        a_warp_tile, a_reg_buffer.tile[num_m_mmas, a_frag_size]((0, 0))
     )
 
     comptime if native_scale_stream:
@@ -573,48 +439,23 @@ def multistage_mma_q[
             scales_reg_tiles, native_warp_scales, Int(lane_id)
         )
     else:
-        # load scales into regs
-        # for thread 0-3, scales for col 0, 8, 16, ..., 56 are stored locally
-        # thread 4-7 stores scales for col 1, 9, 17, ..., 57
-        scales_reg_tiles.to_layout_tensor().vectorize[simd_size, 1]().copy_from(
-            scales_warp_tile.vectorize[1, simd_size]().distribute[
-                smem_reg_scales_layout, axis=0
-            ](Int(lane_id))
-        )
-    comptime native_quantized_b = (
-        is_nvidia_gpu()
-        and a_type == .bfloat16
-        and b_type in (DType.int32, DType.uint32)
-        and scales_type == .bfloat16
-        and b_warp_tile.stride[1]() == 1
-        and num_n_mmas in (2, 4, 6, 8)
-        and b_wtile_dim0 > 0
-        and b_wtile_dim1 >= 128 * num_k_mmas
-    )
-    comptime if native_quantized_b:
-        mma_op.load_b(
-            lt_to_tt(b_warp_tile),
-            b_reg_buffer.tile[num_n_mmas, b_frag_size]((0, 0)).bitcast[
-                DType.bfloat16
-            ](),
-            scales_reg_tiles.bitcast[DType.bfloat16](),
-            0,
-        )
-    else:
-        mma_op.load_b(
-            b_warp_tile,
-            b_reg_buffer.tile[num_n_mmas, b_frag_size]((0, 0))
-            .to_layout_tensor()
-            .vectorize[1, b_frag_size](),
-            scales_reg_tiles.to_layout_tensor(),
-            0,
+        _load_quantized_scale_registers(
+            scales_reg_tiles, scales_warp_tile, Int(lane_id)
         )
 
+    mma_op.load_b(
+        b_warp_tile,
+        b_reg_buffer.tile[num_n_mmas, b_frag_size]((0, 0)).bitcast[
+            DType.bfloat16
+        ](),
+        scales_reg_tiles.bitcast[DType.bfloat16](),
+        0,
+    )
+
     for k_tile_id in range(num_iters):
-        var a_warp_tile = a_smem_iter[].tile[WM, BK](Int(warp_y), 0)
+        var a_warp_tile = a_smem_iter[].tile[WM, BK]((Int(warp_y), 0))
         var b_warp_tile = b_smem_iter[].tile[b_wtile_dim0, b_wtile_dim1](
-            b_wtile_coord0,
-            b_wtile_coord1,
+            (b_wtile_coord0, b_wtile_coord1)
         )
 
         # Perform prefetch registers and mma until current shared memory tile's
@@ -627,9 +468,9 @@ def multistage_mma_q[
                 a_smem_iter._incr()
                 b_smem_iter._incr()
 
-                a_warp_tile = a_smem_iter[].tile[WM, BK](Int(warp_y), 0)
+                a_warp_tile = a_smem_iter[].tile[WM, BK]((Int(warp_y), 0))
                 b_warp_tile = b_smem_iter[].tile[b_wtile_dim0, b_wtile_dim1](
-                    b_wtile_coord0, b_wtile_coord1
+                    (b_wtile_coord0, b_wtile_coord1)
                 )
 
                 # prefetch scales into regs every (group_size) rows
@@ -637,7 +478,7 @@ def multistage_mma_q[
                     scales_smem_iter._incr()
                     scales_warp_tile = scales_smem_iter[].tile[
                         ceildiv(BK, group_size), WN
-                    ](0, Int(warp_x))
+                    ]((0, Int(warp_x)))
                     comptime if native_scale_stream:
                         native_scale_stage = _quantized_scale_stage(
                             native_scale_stage, 1, num_scales_stages
@@ -649,41 +490,23 @@ def multistage_mma_q[
                             scales_reg_tiles, native_warp_scales, Int(lane_id)
                         )
                     else:
-                        scales_reg_tiles.to_layout_tensor().vectorize[
-                            simd_size, 1
-                        ]().copy_from(
-                            scales_warp_tile.vectorize[
-                                1, simd_size
-                            ]().distribute[smem_reg_scales_layout, axis=0](
-                                Int(lane_id)
-                            )
+                        _load_quantized_scale_registers(
+                            scales_reg_tiles, scales_warp_tile, Int(lane_id)
                         )
 
             mma_op.load_a[swizzle_a_pattern](
                 a_warp_tile,
-                a_reg_buffer.tile[num_m_mmas, a_frag_size]((next, 0))
-                .to_layout_tensor()
-                .vectorize[1, a_frag_size](),
+                a_reg_buffer.tile[num_m_mmas, a_frag_size]((next, 0)),
                 (k_mma + 1) % num_k_mmas,
             )
-            comptime if native_quantized_b:
-                mma_op.load_b(
-                    lt_to_tt(b_warp_tile),
-                    b_reg_buffer.tile[num_n_mmas, b_frag_size](
-                        (next, 0)
-                    ).bitcast[DType.bfloat16](),
-                    scales_reg_tiles.bitcast[DType.bfloat16](),
-                    (k_mma + 1) % num_k_mmas,
-                )
-            else:
-                mma_op.load_b(
-                    b_warp_tile,
-                    b_reg_buffer.tile[num_n_mmas, b_frag_size]((next, 0))
-                    .to_layout_tensor()
-                    .vectorize[1, b_frag_size](),
-                    scales_reg_tiles.to_layout_tensor(),
-                    (k_mma + 1) % num_k_mmas,
-                )
+            mma_op.load_b(
+                b_warp_tile,
+                b_reg_buffer.tile[num_n_mmas, b_frag_size]((next, 0)).bitcast[
+                    DType.bfloat16
+                ](),
+                scales_reg_tiles.bitcast[DType.bfloat16](),
+                (k_mma + 1) % num_k_mmas,
+            )
 
             mma_op.mma(
                 a_reg_buffer.tile[num_m_mmas, a_frag_size](
@@ -701,116 +524,52 @@ def multistage_mma_q[
                 # Prefetch one k tile (if valid) from global memory to current
                 # shared memory buffer.
                 if prefetch_tile_id < num_iters:
-                    comptime if a_iter.address_space == .GENERIC:
-                        var a_smem_prefetch_tile = a_smem_iter.next_unsafe(
-                            a_smem_iter.linear_uint_type(
-                                num_pipeline_stages - 1
-                            )
-                        )[]
+                    _async_copy_a_tile(
+                        a_smem_iter.next_unsafe(num_pipeline_stages - 1)[],
+                        a_iter[],
+                    )
+                    a_iter._incr()
 
-                        _async_copy_a_tile(
-                            lt_to_tt_idx[linear_idx_type=a_idx_t](
-                                a_smem_prefetch_tile
-                            ),
-                            lt_to_tt_idx[linear_idx_type=a_idx_t](
-                                a_iter[].bitcast[
-                                    a_type, target_address_space=.GENERIC
-                                ]()
-                            ),
-                        )
+                    _async_copy_b_tile(
+                        b_smem_iter.next_unsafe(num_pipeline_stages - 1)[],
+                        b_iter[],
+                    )
+                    b_iter._incr()
 
-                        a_iter._incr()
-
-                    comptime if b_iter.address_space == .GENERIC:
-                        var b_smem_prefetch_tile = b_smem_iter.next_unsafe(
-                            b_smem_iter.linear_uint_type(
-                                num_pipeline_stages - 1
-                            )
-                        )[]
-
-                        _async_copy_b_tile(
-                            lt_to_tt_idx[linear_idx_type=b_idx_t](
-                                b_smem_prefetch_tile
-                            ),
-                            lt_to_tt_idx[linear_idx_type=b_idx_t](
-                                b_iter[].bitcast[
-                                    b_type, target_address_space=.GENERIC
-                                ]()
-                            ),
-                        )
-
-                        b_iter._incr()
-
-                    comptime if scales_iter.address_space == .GENERIC:
-                        # Every group_size rows share a scale
-                        # Only load scales when necessary
-                        if (k_tile_id + num_pipeline_stages - 1) % (
-                            group_size // BK
-                        ) == 0:
-                            var scales_smem_tile = scales_smem_iter.next_unsafe(
-                                scales_smem_iter.linear_uint_type(
-                                    num_scales_stages - 1
+                    # Every group_size rows share a scale
+                    # Only load scales when necessary
+                    if (k_tile_id + num_pipeline_stages - 1) % (
+                        group_size // BK
+                    ) == 0:
+                        comptime if native_scale_stream:
+                            if tid < UInt32(WARP_SIZE):
+                                var stage = _quantized_scale_stage(
+                                    native_scale_stage,
+                                    num_scales_stages - 1,
+                                    num_scales_stages,
                                 )
-                            )[]
-
-                            comptime if native_scale_stream:
-                                if tid < UInt32(WARP_SIZE):
-                                    var stage = _quantized_scale_stage(
-                                        native_scale_stage,
-                                        num_scales_stages - 1,
-                                        num_scales_stages,
-                                    )
-                                    var dst = scales_native_ring.tile[1, BN](
-                                        (stage, 0)
-                                    )
-                                    # Row `native_scale_group` of the [1, BN]
-                                    # tile: tiling past the one-row tile with
-                                    # the parent's stride, same offset the
-                                    # pointer form computed.
-                                    var src = scales_native_src.tile[1, BN](
-                                        (native_scale_group, 0)
-                                    )
-                                    _copy_quantized_scale_tile(dst, src)
-                                native_scale_group += 1
-                            else:
-                                # We only need one warp for copying scales...
-                                if tid < UInt32(WARP_SIZE):
-                                    var src_fragments = (
-                                        scales_iter[]
-                                        .bitcast[
-                                            scales_type,
-                                            target_address_space=.GENERIC,
-                                        ]()
-                                        .vectorize[
-                                            1, async_copy_scales_veclen
-                                        ]()
-                                        .distribute[async_copy_scales_layout](
-                                            Int(tid)
-                                        )
-                                    )
-                                    var dst_fragments = (
-                                        scales_smem_tile.vectorize[
-                                            1, async_copy_scales_veclen
-                                        ]().distribute[
-                                            async_copy_scales_layout
-                                        ](
-                                            Int(tid)
-                                        )
-                                    )
-
-                                    comptime element_size_bytes = size_of[
-                                        scales_type
-                                    ]() * async_copy_scales_veclen
-                                    async_copy[element_size_bytes](
-                                        src_fragments.ptr.address_space_cast[
-                                            .GLOBAL
-                                        ](),
-                                        dst_fragments.ptr.address_space_cast[
-                                            .SHARED
-                                        ]().unsafe_mut_cast[True](),
-                                    )
-
-                                scales_iter._incr()
+                                var dst = scales_native_ring.tile[1, BN](
+                                    (stage, 0)
+                                )
+                                # Row `native_scale_group` of the [1, BN]
+                                # tile: tiling past the one-row tile with
+                                # the parent's stride, same offset the
+                                # pointer form computed.
+                                var src = scales_native_src.tile[1, BN](
+                                    (native_scale_group, 0)
+                                )
+                                _copy_quantized_scale_tile(dst, src)
+                            native_scale_group += 1
+                        else:
+                            # We only need one warp for copying scales...
+                            if tid < UInt32(WARP_SIZE):
+                                _copy_quantized_scale_tile(
+                                    scales_smem_iter.next_unsafe(
+                                        num_scales_stages - 1
+                                    )[],
+                                    scales_iter[],
+                                )
+                            scales_iter._incr()
 
                 async_copy_commit_group()
 
@@ -876,15 +635,10 @@ def multistage_qgemm_kernel[
     ), "Quantized gemm only supports NVIDIA hardwares for now."
     comptime simd_size = simd_width_of[c_type]()
 
-    # The prefetch pipeline and the epilogue's fragment arithmetic still
-    # consume legacy views; no native TileTensor iterator exists yet.
-    var c = c_tt.to_layout_tensor()
-    var a = a_tt.to_layout_tensor()
-
     comptime repack_tile = (64, 16)
     comptime group_bytes = group_size // 2 + 2
 
-    var M = Int(c.dim[0]())
+    var M = Int(c_tt.dim[0]())
     comptime N = b_layout.static_shape[0]
     comptime K = b_layout.static_shape[1] // group_bytes * group_size
 
@@ -945,17 +699,21 @@ def multistage_qgemm_kernel[
     ]()
     comptime a_smem_size = num_pipeline_stages * BM * BK
 
-    comptime IteratorTypeA = LayoutTensorIter[
+    # The shared-memory iterators take the global tensors' index types so
+    # the cp.async address arithmetic stays uniform-width (see
+    # `multistage_mma_q`).
+    comptime a_smem_layout = row_major[BM, BK]()
+    var a_smem_iter = TileTensorIter[
         a_type,
-        Layout.row_major(BM, BK),
+        type_of(a_smem_layout),
         _,
         address_space=.SHARED,
-        alignment=alignment,
         circular=True,
-    ]
-    var a_smem_iter = IteratorTypeA(
+        linear_idx_type=a_tt.linear_idx_type,
+    ](
         a_smem + warp_k_part_id * a_smem_size,
-        IteratorTypeA.linear_uint_type(a_smem_size),
+        a_smem_layout,
+        bound=a_smem_size,
     )
 
     # There is one pre-allocated shared buffer. Explicitly offset B after at A's end.
@@ -965,18 +723,19 @@ def multistage_qgemm_kernel[
     comptime b_smem_size = num_pipeline_stages * BK * BN // pack_factor
     comptime BD_0 = BN // repack_tile[0]
     comptime BD_1 = (BK * repack_tile[0]) // pack_factor
-    comptime b_smem_layout = Layout.row_major(BD_0, BD_1)
+    comptime b_smem_layout = row_major[BD_0, BD_1]()
 
-    comptime IteratorTypeB = LayoutTensorIter[
+    var b_smem_iter = TileTensorIter[
         b_type,
-        b_smem_layout,
+        type_of(b_smem_layout),
         _,
         address_space=.SHARED,
         circular=True,
-    ]
-    var b_smem_iter = IteratorTypeB(
+        linear_idx_type=b.linear_idx_type,
+    ](
         b_smem + warp_k_part_id * b_smem_size,
-        IteratorTypeB.linear_uint_type(b_smem_size),
+        b_smem_layout,
+        bound=b_smem_size,
     )
 
     # multiple stages may share the same scales
@@ -987,18 +746,19 @@ def multistage_qgemm_kernel[
         Scalar[scales_type]
     ]()
     comptime scales_smem_size = num_scales_stages * BN * ceildiv(BK, group_size)
-    comptime scales_smem_layout = Layout.row_major(ceildiv(BK, group_size), BN)
+    comptime scales_smem_layout = row_major[ceildiv(BK, group_size), BN]()
 
-    comptime IteratorTypeScales = LayoutTensorIter[
+    var scales_smem_iter = TileTensorIter[
         scales_type,
-        scales_smem_layout,
+        type_of(scales_smem_layout),
         _,
         address_space=.SHARED,
         circular=True,
-    ]
-    var scales_smem_iter = IteratorTypeScales(
+        linear_idx_type=scales.linear_idx_type,
+    ](
         scales_smem + warp_k_part_id * scales_smem_size,
-        IteratorTypeScales.linear_uint_type(scales_smem_size),
+        scales_smem_layout,
+        bound=scales_smem_size,
     )
 
     var scales_native_ring = TileTensor[
@@ -1008,25 +768,54 @@ def multistage_qgemm_kernel[
         row_major[num_scales_stages * ceildiv(BK, group_size), BN](),
     )
 
-    # global memory iterator
+    # Global memory iterators: each starts at this partition's first K tile
+    # and steps one tile along K.
     var bk_start: Int = (K // BK // num_warp_k_partitions) * warp_k_part_id
-    var a_gmem_iter = a.tiled_iterator[BM, BK, axis=1](block_idx[1], bk_start)
+    var a_gmem_tile = a_tt.tile[BM, BK]((block_idx[1], bk_start))
+    var a_gmem_iter = TileTensorIter[
+        a_type,
+        type_of(a_gmem_tile).LayoutType,
+        _,
+        linear_idx_type=a_tt.linear_idx_type,
+    ](a_gmem_tile.unsafe_ptr(), a_gmem_tile.layout, bound=K, stride=BK)
+
     var b_tile_coords = args_to_tuple[transpose_b](bk_start, block_idx[0])
     comptime b_tile_axis = 1 if transpose_b else 0
-    var b_gmem_iter = b.to_layout_tensor().tiled_iterator[
-        BD_0, BD_1, axis=b_tile_axis
-    ](b_tile_coords[0], b_tile_coords[1])
+    comptime b_tile_extent = BD_1 if transpose_b else BD_0
+    comptime b_axis_stride = type_of(b).static_stride[b_tile_axis]
+    var b_gmem_tile = b.tile[BD_0, BD_1]((b_tile_coords[0], b_tile_coords[1]))
+    var b_gmem_iter = TileTensorIter[
+        b_type,
+        type_of(b_gmem_tile).LayoutType,
+        _,
+        linear_idx_type=b.linear_idx_type,
+    ](
+        b_gmem_tile.unsafe_ptr(),
+        b_gmem_tile.layout,
+        bound=type_of(b).static_shape[b_tile_axis] * b_axis_stride,
+        stride=b_tile_extent * b_axis_stride,
+    )
+
     comptime groups_per_iter = ceildiv(BK, group_size)
     var bk_scales_start: Int = (
         K // (groups_per_iter * group_size) // num_warp_k_partitions
     ) * warp_k_part_id
-    var scales_gmem_iter = scales.to_layout_tensor().tiled_iterator[
-        ceildiv(BK, group_size), BN, axis=0
-    ](bk_scales_start, block_idx[0])
-
-    var scales_native_src = scales.tile[ceildiv(BK, group_size), BN](
+    var scales_gmem_tile = scales.tile[groups_per_iter, BN](
         (bk_scales_start, Int(block_idx[0]))
-    ).address_space_cast[.GENERIC]()
+    )
+    var scales_gmem_iter = TileTensorIter[
+        scales_type,
+        type_of(scales_gmem_tile).LayoutType,
+        _,
+        linear_idx_type=scales.linear_idx_type,
+    ](
+        scales_gmem_tile.unsafe_ptr(),
+        scales_gmem_tile.layout,
+        bound=(K // group_size) * N,
+        stride=groups_per_iter * N,
+    )
+
+    var scales_native_src = scales_gmem_tile.address_space_cast[.GENERIC]()
     # The native stream handles complete aligned scale groups. Keep the
     # original iterator path for tails and other group geometries.
     comptime native_scale_stream = (
@@ -1055,11 +844,9 @@ def multistage_qgemm_kernel[
     comptime frag_size = get_fragment_size[mma_shape]()
     comptime c_frag_size = frag_size[2]
 
-    var c_reg_tile_native = stack_allocation[accum_type, address_space=.LOCAL](
+    var c_reg_tile = stack_allocation[accum_type, address_space=.LOCAL](
         row_major[num_m_mmas * num_n_mmas, c_frag_size]()
     ).fill(0)
-    # Reduction and epilogue helpers still consume the legacy scalar view.
-    var c_reg_tile = c_reg_tile_native.to_layout_tensor()
 
     multistage_mma_q[
         BM,
@@ -1074,7 +861,7 @@ def multistage_qgemm_kernel[
         pack_factor,
         native_scale_stream=native_scale_stream,
     ](
-        c_reg_tile_native,
+        c_reg_tile,
         a_gmem_iter,
         b_gmem_iter,
         a_smem_iter,
@@ -1095,14 +882,21 @@ def multistage_qgemm_kernel[
             num_warp_k_partitions,
         ](
             warp_k_part_id,
-            c_reg_tile_native,
+            c_reg_tile,
         )
         if warp_k_part_id > 0:
             return
 
-    # Map global memory tile down to thread.
-    var c_gmem_tile = c.tile[BM, BN](block_idx[1], block_idx[0])
-    var c_gmem_warp_tile = c_gmem_tile.tile[WM, WN](warp_y, warp_x)
+    # Map global memory tile down to thread. The tiles keep static shapes;
+    # their linear offsets from `c_tt` recover each element's (m, n), and
+    # `c_rows_left` bounds the stores of a partial M tile.
+    var c_gmem_tile, _, c_tile_offset = c_tt.tile_with_offset[BM, BN](
+        Coord(block_idx[1], block_idx[0])
+    )
+    var c_gmem_warp_tile, _, c_warp_offset = c_gmem_tile.tile_with_offset[
+        WM, WN
+    ](Coord(Int(warp_y), Int(warp_x)))
+    var c_rows_left = M - block_idx[1] * BM - Int(warp_y) * WM
 
     @inline(.always)
     def apply_epilogue() {imm}:
@@ -1110,53 +904,29 @@ def multistage_qgemm_kernel[
         # but putting this in a lambda function leads to test failures
         # TODO: Refactor to remove code duplication
         comptime assert has_epilogue_fn, "epilogue_fn is not valid"
-        comptime thread_layout = Layout.row_major(
-            8, 4
-        ) if is_nvidia_gpu() else Layout.row_major(4, 16)
-        comptime dst_simd_width_x = 1 if is_nvidia_gpu() else 4
-        comptime dst_simd_width_y = 2 if is_nvidia_gpu() else 1
-        comptime src_simd_width_x = 1 if is_nvidia_gpu() else 1
-        comptime src_simd_width_y = 2 if is_nvidia_gpu() else 4
-        var c_gmem_frag = c_gmem_warp_tile.vectorize[
-            dst_simd_width_x, dst_simd_width_y
-        ]().distribute[thread_layout](ln_id)
-        var c_reg_frag = c_reg_tile.vectorize[
-            src_simd_width_x, src_simd_width_y
-        ]().transpose()
-        var thread_offset = c_gmem_frag.distance(c.ptr)
+        var c_gmem_frag, _, c_frag_offset = c_gmem_warp_tile.vectorize[
+            1, 2
+        ]().distribute_with_offset[row_major[8, 4]()](Int(ln_id))
+        var c_reg_frag = c_reg_tile.vectorize[1, 2]().transpose()
+        var thread_offset = c_tile_offset + c_warp_offset + c_frag_offset
 
-        comptime for i in range(type_of(c_gmem_frag).layout.size()):
-            comptime src_idx = c_reg_frag.layout(i)
-            comptime dst_static_idx = type_of(c_gmem_frag).layout(i)
-            var dst_idx: Int
-
-            comptime if c_gmem_frag.layout.all_dims_known():
-                dst_idx = dst_static_idx
-            else:
-                dst_idx = Int(c_gmem_frag.runtime_layout(i))
-            comptime alignment = align_of[SIMD[c_type, src_simd_width_y]]()
-            var m, n = divmod((Int(thread_offset) + dst_idx), N)
+        comptime for i in range(type_of(c_gmem_frag).LayoutType.static_product):
+            var src_idx = Int(c_reg_frag.layout(Idx[i]))
+            var dst_idx = Int(c_gmem_frag.layout(Idx[i]))
+            comptime alignment = align_of[SIMD[c_type, 2]]()
+            var m, n = divmod(thread_offset + dst_idx, N)
             if m < M and n < N:
-                var vec = (c_reg_frag.ptr + src_idx).load[
-                    width=src_simd_width_y,
-                    alignment=align_of[SIMD[c_type, src_simd_width_y]](),
-                ]()
-
-                comptime if dst_simd_width_x == 1:
-                    epilogue_fn[alignment=alignment]((m, n), vec)
-                else:
-                    comptime for j in range(dst_simd_width_x):
-                        if m + j < M:
-                            epilogue_fn[alignment=alignment](
-                                (m + j, n), vec[j].cast[c_type]()
-                            )
+                var vec = c_reg_frag.raw_load[width=2, alignment=alignment](
+                    src_idx
+                )
+                epilogue_fn[alignment=alignment]((m, n), vec)
 
     # Store FP32 mma results to half precision buffer in global memory.
     # Each thread's fragment has 2x2 fp32 values. Casting to half float and
     # directly storing to global memory results in 2 4B writes. Following cutlass,
     # we stage the fragments in shared memory so that each thread can store 16B.
 
-    comptime if c_type.is_half_float() and is_nvidia_gpu():
+    comptime if c_type.is_half_float():
         comptime swizzle = make_swizzle[
             num_rows=MMA_M // 2, row_size=WN, access_size=MMA_N
         ]()
@@ -1166,112 +936,69 @@ def multistage_qgemm_kernel[
             row_major[WM, WN](),
         )
 
-        copy_local_to_shared[
-            thread_layout=Layout.row_major(8, 4),
-            swizzle=swizzle,
-        ](
-            accum_smem_warp_tile.to_layout_tensor().vectorize[1, 2](),
+        copy_local_to_shared[row_major[8, 4](), swizzle=swizzle](
+            accum_smem_warp_tile.vectorize[1, 2](),
             c_reg_tile.vectorize[1, 2]().transpose(),
         )
 
         # Guard writing to shared memory.
         barrier()
 
+        comptime warp_layout = row_major[
+            WARP_SIZE * simd_size // WN, WN // simd_size
+        ]()
+
         # The local-to-shared copy has already cast the accumulators to half
         # precision. Read the staged values in vectors for 16-byte global stores.
         comptime if has_epilogue_fn:
-            comptime warp_layout = Layout.row_major(
-                WARP_SIZE * simd_size // WN, WN // simd_size
-            )
-            var c_gmem_frag = c_gmem_warp_tile.vectorize[
+            var c_gmem_frag, _, c_frag_offset = c_gmem_warp_tile.vectorize[
                 1, simd_size
-            ]().distribute[warp_layout](thread_idx.x)
-            var c_smem_frag = (
-                accum_smem_warp_tile.to_layout_tensor()
-                .vectorize[1, simd_size]()
-                .distribute[warp_layout](thread_idx.x)
+            ]().distribute_with_offset[warp_layout](Int(thread_idx.x))
+            var c_smem_frag, _, c_smem_frag_offset = (
+                accum_smem_warp_tile.vectorize[
+                    1, simd_size
+                ]().distribute_with_offset[warp_layout](Int(thread_idx.x))
             )
-            var thread_offset = c_gmem_frag.distance(c.ptr)
-            comptime num_stores_per_thread = type_of(c_gmem_frag).layout.size()
-
-            var c_smem_frag_offset = c_smem_frag.distance(
-                accum_smem_warp_tile.unsafe_ptr()
-            )
+            var thread_offset = c_tile_offset + c_warp_offset + c_frag_offset
+            comptime num_stores_per_thread = type_of(
+                c_gmem_frag
+            ).LayoutType.static_product
 
             comptime for i in range(num_stores_per_thread):
-                comptime src_idx = type_of(c_smem_frag).layout(i)
-                comptime src_idx_base = src_idx % swizzle.size()
-                comptime src_idx_diff = src_idx - src_idx_base
-                var swizzled_idx = swizzle(
-                    c_smem_frag_offset
-                    + type_of(c_smem_frag_offset)(src_idx_base)
-                ) + type_of(c_smem_frag_offset)(src_idx_diff)
+                var src_idx = Int(c_smem_frag.layout(Idx[i]))
+                var src_idx_base = src_idx % swizzle.size()
+                var src_idx_diff = src_idx - src_idx_base
+                var swizzled_idx = (
+                    swizzle(c_smem_frag_offset + src_idx_base) + src_idx_diff
+                )
 
-                comptime dst_static_idx = type_of(c_gmem_frag).layout(i)
-                var dst_idx: Int
-
-                comptime if c_gmem_frag.layout.all_dims_known():
-                    dst_idx = dst_static_idx
-                else:
-                    dst_idx = Int(c_gmem_frag.runtime_layout(i))
-
-                var m, n = divmod((Int(thread_offset) + dst_idx), N)
+                var dst_idx = Int(c_gmem_frag.layout(Idx[i]))
+                var m, n = divmod(thread_offset + dst_idx, N)
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
                 if m < M and n < N:
                     epilogue_fn[alignment=alignment](
                         (m, n),
-                        accum_smem_warp_tile.unsafe_ptr()
-                        .load[width=simd_size, alignment=alignment](
-                            swizzled_idx
-                        )
-                        .cast[c_type](),
+                        accum_smem_warp_tile.raw_load[
+                            width=simd_size, alignment=alignment
+                        ](swizzled_idx).cast[c_type](),
                     )
         else:
-            copy_sram_to_dram[
-                thread_layout=Layout.row_major(
-                    WARP_SIZE * simd_size // WN, WN // simd_size
-                ),
-                swizzle=swizzle,
-            ](
+            copy_sram_to_dram[warp_layout, swizzle=swizzle, masked=True](
                 c_gmem_warp_tile.vectorize[1, simd_size](),
-                accum_smem_warp_tile.to_layout_tensor().vectorize[
-                    1, simd_size
-                ](),
+                accum_smem_warp_tile.vectorize[1, simd_size](),
+                c_rows_left,
             )
 
-    elif c_type.is_half_float() and not is_nvidia_gpu():
-        comptime if has_epilogue_fn:
-            apply_epilogue()
-
-        else:
-            var c_reg_tile_out_native = stack_allocation[
-                c_type, address_space=.LOCAL
-            ](row_major[num_m_mmas * num_n_mmas, c_frag_size]())
-            # The legacy register-to-DRAM copier still consumes a legacy view.
-            var c_reg_tile_out = c_reg_tile_out_native.to_layout_tensor()
-
-            comptime for i in range(c_reg_tile.shape[0]()):
-                comptime for j in range(c_reg_tile.shape[1]()):
-                    c_reg_tile_out[i, j] = c_reg_tile[i, j].cast[c_type]()
-            copy_local_to_dram[dst_thread_layout=Layout.row_major(4, 16)](
-                c_gmem_warp_tile.vectorize[4, 1](),
-                c_reg_tile_out.vectorize[1, 4](),
-            )
     # Store FP32 results to FP32 buffer in global memory.
     else:
         comptime if has_epilogue_fn:
             apply_epilogue()
         else:
-            comptime if is_nvidia_gpu():
-                copy_local_to_dram[dst_thread_layout=Layout.row_major(8, 4)](
-                    c_gmem_warp_tile.vectorize[1, 2](),
-                    c_reg_tile.vectorize[1, 2]().transpose(),
-                )
-            else:
-                copy_local_to_dram[dst_thread_layout=Layout.row_major(4, 16)](
-                    c_gmem_warp_tile.vectorize[4, 1](),
-                    c_reg_tile.vectorize[1, 4](),
-                )
+            copy_local_to_dram[row_major[8, 4]()](
+                c_gmem_warp_tile.vectorize[1, 2](),
+                c_reg_tile.vectorize[1, 2]().transpose(),
+                c_rows_left,
+            )
 
 
 # For a 4-bit weight matrix of shape (64 * TN, 16 * TK), we first
@@ -1448,7 +1175,7 @@ def repack_Q4_0_for_sm8x[
         var q_gmem_tile = q_weight.tile[BN, 2 * group_bytes](
             block_idx[0], block_idx[1] * (BK_groups // 2) + i
         )
-        tile_copy_dram_to_sram[thread_layout=row_major[128, 1]()](
+        copy_dram_to_sram[thread_layout=row_major[128, 1]()](
             qb_smem.vectorize[1, 4](), q_gmem_tile.vectorize[1, 4]()
         )
         barrier()
@@ -1617,7 +1344,7 @@ def repack_GPTQ_for_sm8x[
             var raw_weights_gmem_tile = raw_weights.tile[
                 BN, 2 * group_size // pack_factor
             ](block_idx[0], block_idx[1] * (BK_groups // 2) + i)
-            tile_copy_dram_to_sram[thread_layout=row_major[128, 1]()](
+            copy_dram_to_sram[thread_layout=row_major[128, 1]()](
                 weights_smem_uint4, raw_weights_gmem_tile
             )
             barrier()
