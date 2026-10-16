@@ -2074,17 +2074,15 @@ def group_norm_gpu_warp_tiling[
         if idx + simd_width <= group_size:
             var g = umod(row, _num_groups)
             var c_base = g * _channels_per_group
-            var norm_val = SIMD[accum_type, simd_width]()
-            for i in range(simd_width):
-                var offset = (idx + i) // _spatial
-                var c = c_base + offset
-                var gamma_val = gamma_fn[1](Coord(c))
-                var beta_val = beta_fn[1](Coord(c))
-                norm_val[i] = (
-                    vec_data[i] - row_mean
-                ) * norm_factor * gamma_val.cast[accum_type]() + beta_val.cast[
-                    accum_type
-                ]()
+            var gamma_vec = SIMD[accum_type, simd_width]()
+            var beta_vec = SIMD[accum_type, simd_width]()
+            comptime for i in range(simd_width):
+                var c = c_base + (idx + i) // _spatial
+                gamma_vec[i] = gamma_fn[1](Coord(c))[0].cast[accum_type]()
+                beta_vec[i] = beta_fn[1](Coord(c))[0].cast[accum_type]()
+            var norm_val = (
+                vec_data - row_mean
+            ) * norm_factor * gamma_vec + beta_vec
 
             var output_idx = output.layout(Coord(row, idx))
             output.raw_store[alignment=align](
@@ -2177,19 +2175,15 @@ def group_norm_gpu_block[
                 var g = umod(row, _num_groups)
                 var c_base = g * _channels_per_group
 
-                var norm_val = SIMD[accum_type, simd_width]()
-                for i in range(simd_width):
-                    var offset_c = (offset + i) // _spatial
-                    var c = c_base + offset_c
-                    var gamma_val = gamma_fn[1](Coord(c))
-                    var beta_val = beta_fn[1](Coord(c))
-                    norm_val[i] = (
-                        vec_data[i] - row_mean
-                    ) * norm_factor * gamma_val.cast[
-                        accum_type
-                    ]() + beta_val.cast[
-                        accum_type
-                    ]()
+                var gamma_vec = SIMD[accum_type, simd_width]()
+                var beta_vec = SIMD[accum_type, simd_width]()
+                comptime for i in range(simd_width):
+                    var c = c_base + (offset + i) // _spatial
+                    gamma_vec[i] = gamma_fn[1](Coord(c))[0].cast[accum_type]()
+                    beta_vec[i] = beta_fn[1](Coord(c))[0].cast[accum_type]()
+                var norm_val = (
+                    vec_data - row_mean
+                ) * norm_factor * gamma_vec + beta_vec
 
                 var output_row_offset = output.layout(Coord(row, offset))
                 output.raw_store[alignment=align](
@@ -2372,7 +2366,7 @@ def group_norm_gpu_multi_block_norm[
                     accum_type
                 ]()
 
-                var norm_val = SIMD[accum_type, simd_width]()
+                var norm_val: SIMD[accum_type, simd_width]
 
                 # Vectorized gamma/beta: when all SIMD elements share the
                 # same channel (common case for large _spatial dims), load
@@ -2388,17 +2382,17 @@ def group_norm_gpu_multi_block_norm[
                         vec_data - row_mean
                     ) * norm_factor * gamma_val + beta_val
                 else:
-                    for i in range(simd_width):
+                    var gamma_vec = SIMD[accum_type, simd_width]()
+                    var beta_vec = SIMD[accum_type, simd_width]()
+                    comptime for i in range(simd_width):
                         var c = c_base + (offset + i) // _spatial
-                        var gamma_val = gamma_fn[1](Coord(c))
-                        var beta_val = beta_fn[1](Coord(c))
-                        norm_val[i] = (
-                            vec_data[i] - row_mean
-                        ) * norm_factor * gamma_val.cast[
-                            accum_type
-                        ]() + beta_val.cast[
+                        gamma_vec[i] = gamma_fn[1](Coord(c))[0].cast[
                             accum_type
                         ]()
+                        beta_vec[i] = beta_fn[1](Coord(c))[0].cast[accum_type]()
+                    norm_val = (
+                        vec_data - row_mean
+                    ) * norm_factor * gamma_vec + beta_vec
 
                 var output_row_offset = output.layout(Coord(row, offset))
                 output.raw_store[alignment=align](

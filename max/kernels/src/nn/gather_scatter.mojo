@@ -34,7 +34,7 @@ from std.sys.info import (
 from std.utils.numerics import neg_inf
 
 from max.algorithm import elementwise, sync_parallelize, unsafe_parallel_memcpy
-from std.algorithm.functional import tile
+from std.algorithm.functional import tile, vectorize
 from std.atomic import Atomic
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu, is_gpu
@@ -1295,10 +1295,23 @@ def scatter_nd_generator[
                     )
 
             else:
-                for i in range(count_copy):
-                    output_flat[output_offset + i] = updates_flat[
-                        updates_offset + i
-                    ]
+
+                def copy_chunk[
+                    width: Int
+                ](i: Int) {
+                    imm output_flat,
+                    imm updates_flat,
+                    output_offset,
+                    updates_offset,
+                }:
+                    output_flat.store(
+                        Coord(output_offset + i),
+                        updates_flat.load[width=width](
+                            Coord(updates_offset + i)
+                        ),
+                    )
+
+                vectorize[simd_width_of[output_type]()](count_copy, copy_chunk)
 
         @inline(.always)
         def update_element_func[
