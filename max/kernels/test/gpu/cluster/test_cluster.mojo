@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.sys import size_of
+from std.math import ceildiv
 from std.math.uutils import ufloordiv
 
 from max.gpu import block_dim, block_idx, thread_idx
@@ -206,7 +207,7 @@ def test_cluster_launch_control(ctx: DeviceContext) raises:
     ctx.enqueue_function[kernel](
         data,
         Int32(n),
-        grid_dim=((n + 1023) // 1024),
+        grid_dim=ceildiv(n, 1024),
         block_dim=(1024),
     )
 
