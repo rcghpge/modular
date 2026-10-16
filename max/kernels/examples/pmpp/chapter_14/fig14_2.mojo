@@ -15,6 +15,7 @@
 
 from max.gpu import block_idx, thread_idx
 from max.gpu.host import DeviceContext
+from std.math import ceildiv
 from std.random import random_ui64
 
 
@@ -126,7 +127,7 @@ def main() raises:
 
     # Launch configuration
     var threads_per_block = 256
-    var num_blocks = (N // 2 + threads_per_block - 1) // threads_per_block
+    var num_blocks = ceildiv(N // 2, threads_per_block)
 
     print("\nLaunching odd-even sort kernel (Fig 14.2)")
     print("Array size:", N, "elements")
