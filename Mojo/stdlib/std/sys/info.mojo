@@ -745,6 +745,24 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
 
     # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
     @inline(.nodebug)
+    def is_cpu(self) -> Bool:
+        """Returns True if the target is a recognized general-purpose CPU
+        architecture (x86, ARM, or RISC-V), and False otherwise.
+
+        This is a closed list rather than `not self.is_accelerator()` to avoid
+        accidentally classifying unknown non-accelerator targets as CPUs.
+        Targets with an unlisted architecture are neither a CPU nor an
+        accelerator.
+
+        Returns:
+            True if the target is a known CPU target, and False otherwise.
+        """
+        # FIXME(MSTDL-3279): Add other host architectures here if they become
+        # supported platforms.
+        return self.is_x86() or self.is_arm() or self.is_riscv()
+
+    # TODO(MOCO-5022): Make these @staticmethod's once side effect bug is fixed
+    @inline(.nodebug)
     def is_accelerator(self) -> Bool:
         """Returns True if the target triple is an accelerator, and False
         otherwise.

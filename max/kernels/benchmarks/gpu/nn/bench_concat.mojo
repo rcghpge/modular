@@ -180,7 +180,7 @@ def bench_concat[
             ):
                 abort(String("mismatch at coords ", out_coords))
 
-        elementwise[1](check, Coord(input_shape), ctx)
+        elementwise[1](check, Coord(input_shape), DeviceContext(api="cpu"))
         offset += input_shape[axis]
 
     _ = input0_device_buffer

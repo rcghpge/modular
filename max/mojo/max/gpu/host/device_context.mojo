@@ -75,7 +75,7 @@ from std.utils._serialize import _serialize_elements
 from std.utils.static_tuple import StaticTuple
 
 from std._gpu.host import get_gpu_target
-from .info import _device_type_encoder_target
+from .info import _device_type_encoder_target, is_cpu
 from std._gpu.host.info import GPUInfo
 
 from max._plugin._overlay import max_default_accelerator
@@ -4736,6 +4736,62 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
     # ===-------------------------------------------------------------------===#
     # TODO(MSTDL-3208): Temporary target parameterization helpers
     # ===-------------------------------------------------------------------===#
+
+    # TODO(MSTDL-3265): Remove `target: StaticString` parameters from all
+    #   callers of this method after verifying all callers instead indicate
+    #   target device via `DeviceContext.target`.
+    @inline(.always)
+    def _comptime_assert_matches_target_is_cpu[
+        target_name: StaticString
+    ](self,):
+        comptime assert Self.target.is_cpu() == is_cpu[target_name](), String(
+            "`target` parameter '",
+            target_name,
+            "' does not match the DeviceContext target, which is ",
+            "a CPU" if Self.target.is_cpu() else "not a CPU",
+            " (triple: ",
+            StaticString(Self.target.__triple()),
+            ", arch: ",
+            Self.target._arch(),
+            ")",
+        )
+
+    @inline(.always)
+    def cast_if_cpu[
+        target_str: StaticString
+    ](
+        var self,
+        out result: DeviceContextBase[
+            CompilationTarget[
+                _mlir_value=(
+                    CompilationTarget.current()._mlir_value if target_str
+                    == "cpu" else Self.target._mlir_value
+                )
+            ]()
+        ],
+    ):
+        """Temporary function to cast this DeviceContext to the CPU target if
+        the device label is "cpu".
+
+        Parameters:
+            target_str: The device label to cast to. Typically "cpu" or "gpu".
+
+        Returns:
+            A DeviceContext with a target parameter matching the provided device
+            label.
+        """
+        # Assert that this is only called on `ctx: DeviceContext` concrete /
+        # default accelerator instances for the time being.
+        var _ = self.assert_default_target()
+        comptime if target_str == "cpu":
+            # Defensive sanity check, since we make this assumption in the
+            # result type.
+            comptime assert CompilationTarget.current().is_cpu()
+
+            var self_cpu = self.assert_cpu_target()
+            return rebind_var[type_of(result)](self_cpu^)
+        else:
+            return rebind_var[type_of(result)](self^)
 
     @inline(.always)
     def assert_cpu_target(var self) -> DeviceContext.CPU:
