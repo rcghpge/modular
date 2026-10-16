@@ -127,13 +127,14 @@ def bench_matmul[
 
     @inline(.always)
     def bench_fn() raises {var a, var b, var c, var bp}:
-        comptime bench_matmul = matmul[
-            transpose_b=False, b_packed=b_packed, saturated_vnni=False
-        ]
         if b_packed:
-            bench_matmul(c, a, bp)
+            matmul[transpose_b=False, b_packed=True, saturated_vnni=False](
+                c, a, bp
+            )
         else:
-            bench_matmul(c, a, b)
+            matmul[transpose_b=False, b_packed=False, saturated_vnni=False](
+                c, a, b
+            )
         keep(c.ptr)
 
     bencher.iter(bench_fn)

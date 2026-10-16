@@ -34,7 +34,6 @@ from max.gpu.host import DeviceContext
 from layout import Coord, TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
 from std.utils.index import IndexList
-from linalg.utils import elementwise_epilogue_type
 from nn.conv.conv_utils import elementwise_simd_epilogue_type
 
 
@@ -153,15 +152,15 @@ def dispatch_1x1x1_matmul_conv3d[
 
     comptime if case .Some(epilogue_5d) = maybe_epilogue_func:
 
-        @__parameter
         @inline(.always)
-        @__copy_capture(DHW_out, HW_out, H_out, W_out)
         def _gemm_epilogue[
             _dtype: DType,
             _width: SIMDLength,
             *,
-            alignment: Int = 1,
-        ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+            alignment: Int,
+        ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+            var DHW_out, var HW_out, var W_out
+        }:
             comptime assert (
                 coords_2d.rank == 2
             ), "the matmul epilogue contract is rank 2"
@@ -179,24 +178,16 @@ def dispatch_1x1x1_matmul_conv3d[
             # FCQRS [F, C, 1, 1, 1] -> [F, C] view. _matmul_gpu wants
             # B as [N, K] row-major when transpose_b=True.
             var b_tt = filter.reshape(row_major(N, K))
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=True,
-                elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                    _gemm_epilogue
-                ),
-            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=True](
+                c_tt, a_tt.as_imm(), b_tt.as_imm(), _gemm_epilogue, ctx
+            )
         else:
             # QRSCF [1, 1, 1, C, F] -> [C, F] view. _matmul_gpu wants
             # B as [K, N] row-major when transpose_b=False.
             var b_tt = filter.reshape(row_major(K, N))
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=False,
-                elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                    _gemm_epilogue
-                ),
-            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=False](
+                c_tt, a_tt.as_imm(), b_tt.as_imm(), _gemm_epilogue, ctx
+            )
     else:
         comptime if filter_is_fcrs:
             var b_tt = filter.reshape(row_major(N, K))

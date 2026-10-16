@@ -32,7 +32,6 @@ from linalg.packing import (
     pack_matmul_b_shape_func,
     pack_transposed_b_ndbuffer,
 )
-from linalg.utils import elementwise_epilogue_type
 from std.testing import assert_almost_equal, assert_true
 
 from std.utils.index import IndexList
@@ -105,7 +104,7 @@ def test_matmul[
     c_type: DType,
     transpose_b: Bool,
     b_packed: Bool,
-    epilogue_fn: Optional[elementwise_epilogue_type],
+    has_epilogue: Bool,
 ](
     c: TileTensor[
         mut=True,
@@ -176,7 +175,7 @@ def test_matmul[
     @inline(.always)
     def bench_fn_matmul() raises {var}:
         if kernel_type_m != 0:
-            comptime if epilogue_fn:
+            comptime if has_epilogue:
                 _matmul_cpu[transpose_b=transpose_b, b_packed=b_packed](
                     c, a, bp, add_constant_compute_fn, kernel_type_m
                 )
@@ -185,11 +184,12 @@ def test_matmul[
                     c, a, bp, kernel_type_m
                 )
         else:
-            matmul[
-                transpose_b=transpose_b,
-                b_packed=b_packed,
-                elementwise_lambda_fn=epilogue_fn,
-            ](c, a, bp)
+            comptime if has_epilogue:
+                matmul[transpose_b=transpose_b, b_packed=b_packed](
+                    c, a, bp, add_constant_compute_fn
+                )
+            else:
+                matmul[transpose_b=transpose_b, b_packed=b_packed](c, a, bp)
 
     bench_fn_matmul()
 
@@ -205,7 +205,7 @@ def test_matmul[
             1e-9 * (Float64((2 * m * k * n)) / matmul_perf.mean()),
         )
 
-    comptime if epilogue_fn:
+    comptime if has_epilogue:
         gemm_naive_elementwise[transpose_b](
             a, b, golden, m, n, k, some_constant
         )
@@ -304,51 +304,23 @@ def test_matmul[
         for j in range(n):
             c[i, j] = 0
 
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c)
-    def epilogue_fn[
-        _type: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: Coord, val: SIMD[_type, width]) -> None:
-        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        c.store(idx, rebind[SIMD[c_type, width]](val + some_constant))
-
-    comptime if has_epilogue_fusion:
-        errors = test_matmul[
-            a_type,
-            b_type,
-            c_type,
-            transpose_b,  # transpose_b
-            b_packed,  # b_packed
-            epilogue_fn,
-        ](
-            c,
-            a,
-            b,
-            bp,
-            m,
-            n,
-            k,
-            m if mixed_kernels else 0,
-        )
-    else:
-        errors = test_matmul[
-            a_type,
-            b_type,
-            c_type,
-            transpose_b,  # transpose_b
-            b_packed,  # b_packed
-            None,
-        ](
-            c,
-            a,
-            b,
-            bp,
-            m,
-            n,
-            k,
-            m if mixed_kernels else 0,
-        )
+    errors = test_matmul[
+        a_type,
+        b_type,
+        c_type,
+        transpose_b,  # transpose_b
+        b_packed,  # b_packed
+        has_epilogue_fusion,
+    ](
+        c,
+        a,
+        b,
+        bp,
+        m,
+        n,
+        k,
+        m if mixed_kernels else 0,
+    )
     if errors > 0:
         return
     print("Success")

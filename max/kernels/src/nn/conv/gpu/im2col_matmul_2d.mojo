@@ -34,7 +34,6 @@ from layout import Coord, TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
 from linalg.matmul.gpu.apple import ConvIm2colParams, enqueue_apple_conv2d
 from std.utils.index import IndexList
-from linalg.utils import elementwise_epilogue_type
 from nn.conv.conv_utils import elementwise_simd_epilogue_type
 
 
@@ -368,15 +367,15 @@ def dispatch_im2col_matmul_conv2d[
 
         comptime if case .Some(epilogue_4d) = maybe_epilogue_func:
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(HW_out, _W_out, m_offset)
             def _gemm_epilogue[
                 _dtype: DType,
                 _width: SIMDLength,
                 *,
-                alignment: Int = 1,
-            ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                alignment: Int,
+            ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                var HW_out, var _W_out, var m_offset
+            }:
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -389,13 +388,9 @@ def dispatch_im2col_matmul_conv2d[
                     rebind[SIMD[output_type, _width]](val),
                 )
 
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=True,
-                elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                    _gemm_epilogue
-                ),
-            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=True](
+                c_tt, a_tt.as_imm(), b_tt.as_imm(), _gemm_epilogue, ctx
+            )
         else:
             _matmul_gpu[
                 use_tensor_core=True,

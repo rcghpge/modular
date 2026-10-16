@@ -46,7 +46,8 @@ from linalg.fp4_utils import (
     nvfp4_kv_group_scale,
     nvfp4_kv_quantize_x8,
 )
-from linalg.matmul import elementwise_epilogue_type, matmul
+from linalg.matmul import matmul
+from linalg.utils import ElementwiseEpilogueFn
 from nn._ragged_utils import get_batch_and_token_idx_from_row_offsets
 from nn.attention.cpu.mha import (
     flash_attention_kv_cache as flash_attention_kv_cache_cpu,
@@ -262,12 +263,18 @@ def _fused_qkv_matmul_kv_cache_impl[
     var k_cache = kv_collection.get_key_cache(Int(layer_idx))
     var v_cache = kv_collection.get_value_cache(Int(layer_idx))
 
-    @__parameter
-    @__copy_capture(q_dim, qk_offset, SEQ_LEN, k_cache, v_cache, valid_lengths)
     @inline(.always)
     def write_to_cache[
-        dtype_: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: Coord, val: SIMD[dtype_, width]):
+        dtype_: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[dtype_, width]) {
+        var q_dim,
+        var qk_offset,
+        var SEQ_LEN,
+        var k_cache,
+        var v_cache,
+        var valid_lengths,
+        var output,
+    }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var col = Int(idx[1].value())
         var b_idx, t_idx = udivmod(Int(idx[0].value()), SEQ_LEN)
@@ -304,21 +311,20 @@ def _fused_qkv_matmul_kv_cache_impl[
             rebind[SIMD[cache_dtype, width]](output_val),
         )
 
-    _matmul_common[target=target, elementwise_lambda_fn=write_to_cache](
-        hidden_state, weight, context
-    )
+    _matmul_common[target=target](hidden_state, weight, write_to_cache, context)
 
 
 @inline(.always)
 def _matmul_common[
     dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
     //,
     *,
     target: StaticString,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     hidden_state: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
     weight: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
+    epilogue_fn: EpilogueFnType,
     context: Optional[DeviceContext],
 ) raises:
     comptime assert hidden_state.rank == hidden_state.flat_rank == 3
@@ -344,11 +350,9 @@ def _matmul_common[
         ] = c_alloc.unsafe_ptr()
         var c_nd = TileTensor(c_ptr, row_major(BS * SEQ_LEN, Idx[N]))
 
-        matmul[
-            transpose_b=True,
-            target=target,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-        ](c_nd, hidden_state_2d, weight, context)
+        matmul[transpose_b=True, target=target](
+            c_nd, hidden_state_2d, weight, epilogue_fn, context
+        )
 
         dealloc(c_alloc^)
     else:
@@ -360,11 +364,9 @@ def _matmul_common[
         )
         var c_nd = TileTensor(c_device_buffer, row_major(BS * SEQ_LEN, Idx[N]))
 
-        matmul[
-            transpose_b=True,
-            target=target,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-        ](c_nd, hidden_state_2d, weight, context)
+        matmul[transpose_b=True, target=target](
+            c_nd, hidden_state_2d, weight, epilogue_fn, context
+        )
 
 
 # ===-----------------------------------------------------------------------===#

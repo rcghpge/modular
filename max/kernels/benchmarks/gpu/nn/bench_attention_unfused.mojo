@@ -21,7 +21,6 @@ matmul kernel with a compute epilogue that fuses the scale multiply in-register
 from std.collections import Optional
 from std.math import rsqrt
 from std.sys import (
-    align_of,
     get_defined_bool,
     get_defined_dtype,
     get_defined_int,
@@ -41,7 +40,6 @@ from internal_utils import CacheBustingBuffer, arg_parse
 from internal_utils._utils import InitializationType
 from layout import Coord, Idx, TileTensor, row_major
 from linalg.matmul import matmul
-from linalg.utils import elementwise_compute_lambda_type
 from nn.attention.gpu.mha import flash_attention, mha_gpu_naive
 from nn.attention.mha_mask import NullMask
 from nn.softmax import softmax_inline
@@ -387,21 +385,15 @@ def bench_manual[
     )
 
     # In-register compute lambda: multiply by scale, kernel does the store.
-    @__parameter
     @inline(.always)
-    @__copy_capture(scale)
     def scale_compute_lambda[
         _dtype: DType,
         width: SIMDLength,
         *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[_dtype, width]:
+        alignment: Int,
+    ](idx: Coord, val: SIMD[_dtype, width]) {var scale} -> SIMD[_dtype, width]:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         return val * scale.cast[_dtype]()
-
-    comptime scale_fn = Optional[elementwise_compute_lambda_type](
-        scale_compute_lambda
-    )
 
     def _run_manual(
         q_base: ImmPointer[Scalar[qkv_type], _],
@@ -426,11 +418,9 @@ def bench_manual[
                 s_base + h * seq_len * num_keys,
                 row_major((seq_len, num_keys)),
             )
-            matmul[
-                transpose_b=True,
-                elementwise_compute_lambda_fn=scale_fn,
-                target="gpu",
-            ](s_2d, q_2d, k_2d, ctx)
+            matmul[transpose_b=True, target="gpu"](
+                s_2d, q_2d, k_2d, scale_compute_lambda, ctx
+            )
 
         # Step 2: softmax over the last axis (num_keys).
         var score_3d = TileTensor(

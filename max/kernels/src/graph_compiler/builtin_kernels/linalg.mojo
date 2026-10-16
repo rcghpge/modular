@@ -96,12 +96,6 @@ from linalg.matmul import matmul
 from linalg.matmul.gpu import _matmul_gpu
 from linalg.matrix_band_part import matrix_band_part
 from linalg.packing import _pack_b_ndbuffer_impl, pack_matmul_b_shape_func
-from linalg.utils import (
-    elementwise_compute_lambda_type as matmul_elementwise_compute_lambda_type,
-)
-from linalg.utils import (
-    elementwise_epilogue_type as matmul_elementwise_epilogue_type,
-)
 from nn._ragged_utils import merge_ragged_tensors
 from nn.gemv_partial_norm import gemv_and_partial_norm
 from extensibility import InputTensor, OutputTensor
@@ -244,11 +238,10 @@ struct MatmulCPU:
             " pre-packing transposes B"
         )
 
-        @__parameter
         @inline(.always)
         def epilogue_fn[
-            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var c}:
             comptime assert (
                 coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
@@ -257,21 +250,33 @@ struct MatmulCPU:
                 rebind[SIMD[c.dtype, _width]](val),
             )
 
-        matmul[
-            transpose_a=False,
-            transpose_b=transpose_b,
-            b_packed=packed_b,
-            elementwise_lambda_fn=Optional[matmul_elementwise_epilogue_type](
-                epilogue_fn
-            ) if has_epilogue_fusion else None,
-            _trace_description=_trace_name,
-            target=target,
-        ](
-            c.to_tile_tensor[.int64](),
-            a.to_tile_tensor[.int64](),
-            b.to_tile_tensor[.int64](),
-            ctx,
-        )
+        comptime if has_epilogue_fusion:
+            matmul[
+                transpose_a=False,
+                transpose_b=transpose_b,
+                b_packed=packed_b,
+                _trace_description=_trace_name,
+                target=target,
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                epilogue_fn,
+                ctx,
+            )
+        else:
+            matmul[
+                transpose_a=False,
+                transpose_b=transpose_b,
+                b_packed=packed_b,
+                _trace_description=_trace_name,
+                target=target,
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                ctx,
+            )
 
 
 @extensibility.register("mo.matmul", type="gpu")
@@ -293,11 +298,10 @@ struct MatmulGPU:
     ) capturing raises:
         comptime assert not packed_b, "packed B is only supported on CPU"
 
-        @__parameter
         @inline(.always)
         def epilogue_fn[
-            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]):
+            _dtype: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var c}:
             comptime assert (
                 coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
@@ -306,11 +310,12 @@ struct MatmulGPU:
                 rebind[SIMD[c.dtype, _width]](val),
             )
 
-        @__parameter
         @inline(.always)
         def output_compute_fn[
-            _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> SIMD[_dtype, _width]:
+            _dtype: DType, _width: SIMDLength, *, alignment: Int
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var c} -> SIMD[
+            _dtype, _width
+        ]:
             comptime assert (
                 coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
@@ -322,31 +327,44 @@ struct MatmulGPU:
 
         comptime has_compute_lambda = type_of(c)._has_compute_fusion
 
-        comptime elementwise_lambda = Optional[
-            matmul_elementwise_epilogue_type
-        ](
-            epilogue_fn
-        ) if has_epilogue_fusion and not has_compute_lambda else None
-
-        comptime compute_lambda = Optional[
-            matmul_elementwise_compute_lambda_type
-        ](
-            output_compute_fn
-        ) if has_epilogue_fusion and has_compute_lambda else None
-
-        matmul[
-            transpose_a=False,
-            transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda,
-            elementwise_compute_lambda_fn=compute_lambda,
-            _trace_description=_trace_name,
-            target=target,
-        ](
-            c.to_tile_tensor[.int64](),
-            a.to_tile_tensor[.int64](),
-            b.to_tile_tensor[.int64](),
-            ctx,
-        )
+        comptime if has_epilogue_fusion and has_compute_lambda:
+            matmul[
+                transpose_a=False,
+                transpose_b=transpose_b,
+                _trace_description=_trace_name,
+                target=target,
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                output_compute_fn,
+                ctx,
+            )
+        elif has_epilogue_fusion:
+            matmul[
+                transpose_a=False,
+                transpose_b=transpose_b,
+                _trace_description=_trace_name,
+                target=target,
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                epilogue_fn,
+                ctx,
+            )
+        else:
+            matmul[
+                transpose_a=False,
+                transpose_b=transpose_b,
+                _trace_description=_trace_name,
+                target=target,
+            ](
+                c.to_tile_tensor[.int64](),
+                a.to_tile_tensor[.int64](),
+                b.to_tile_tensor[.int64](),
+                ctx,
+            )
 
 
 @extensibility.register("mo.batch_matmul", type="cpu")
@@ -2111,17 +2129,15 @@ struct MatmulStaticScaledFloat8:
             # all m>1. The compute lambda returns the value already cast to the
             # output dtype, as required by `_matmul_gpu`'s compute-lambda
             # wrapper (output.dtype must equal c_type).
-            @__parameter
-            @__copy_capture(input_scale, weight_scale)
             @inline(.always)
             def scaled_compute_fn[
                 dtype: DType,
                 width: SIMDLength,
                 *,
-                alignment: Int = align_of[SIMD[dtype, width]](),
-            ](idx: Coord, val: SIMD[dtype, width]) capturing -> SIMD[
-                dtype, width
-            ]:
+                alignment: Int,
+            ](idx: Coord, val: SIMD[dtype, width]) {
+                var input_scale, var weight_scale
+            } -> SIMD[dtype, width]:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -2131,24 +2147,21 @@ struct MatmulStaticScaledFloat8:
                 var scaled_val = val.cast[.float32]() * scale
                 return scaled_val.cast[dtype]()
 
-            matmul[
-                target=target,
-                transpose_b=True,
-                elementwise_compute_lambda_fn=scaled_compute_fn,
-            ](
+            matmul[target=target, transpose_b=True](
                 output_tt,
                 input_tt,
                 weight_tt,
+                scaled_compute_fn,
                 Optional(ctx),
             )
         else:
 
-            @__parameter
-            @__copy_capture(output_tt, input_scale, weight_scale)
             @inline(.always)
             def scaled_output_fn[
-                dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: Coord, val: SIMD[dtype, width]):
+                dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: Coord, val: SIMD[dtype, width]) {
+                var output_tt, var input_scale, var weight_scale
+            }:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -2176,14 +2189,11 @@ struct MatmulStaticScaledFloat8:
                 row_major(Int64(M), Idx[N]),
             )
 
-            matmul[
-                target=target,
-                transpose_b=True,
-                elementwise_lambda_fn=scaled_output_fn,
-            ](
+            matmul[target=target, transpose_b=True](
                 output_scratch,
                 input_tt,
                 weight_tt,
+                scaled_output_fn,
                 Optional(device_ctx),
             )
 

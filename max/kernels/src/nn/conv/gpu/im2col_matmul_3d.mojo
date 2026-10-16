@@ -36,7 +36,6 @@ from layout import (
 )
 from linalg.matmul.gpu import _matmul_gpu
 from std.utils import IndexList
-from linalg.utils import elementwise_epilogue_type
 from nn.conv.conv_utils import elementwise_simd_epilogue_type
 
 
@@ -452,15 +451,15 @@ def dispatch_im2col_matmul_conv3d[
 
         comptime if case .Some(epilogue_5d) = maybe_epilogue_func:
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(DHW_out, HW_out, H_out, W_out, _m_offset)
             def _gemm_epilogue[
                 _dtype: DType,
                 _width: SIMDLength,
                 *,
-                alignment: Int = 1,
-            ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                alignment: Int,
+            ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                var DHW_out, var HW_out, var W_out, var _m_offset
+            }:
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -474,13 +473,9 @@ def dispatch_im2col_matmul_conv3d[
                     rebind[SIMD[output_type, _width]](val),
                 )
 
-            _matmul_gpu[
-                use_tensor_core=True,
-                transpose_b=True,
-                elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                    _gemm_epilogue
-                ),
-            ](c_tt, a_tt.as_imm(), b_tt.as_imm(), ctx)
+            _matmul_gpu[use_tensor_core=True, transpose_b=True](
+                c_tt, a_tt.as_imm(), b_tt.as_imm(), _gemm_epilogue, ctx
+            )
         else:
             _matmul_gpu[
                 use_tensor_core=True,

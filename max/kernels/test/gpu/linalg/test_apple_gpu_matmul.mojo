@@ -77,7 +77,6 @@ def _launch[
 
 
 from linalg.utils import (
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -2571,8 +2570,7 @@ def _run_gemv_dispatch_case[
 ](ctx: DeviceContext, m: Int, name: String) raises:
     """Runs `_matmul_gpu[transpose_b=True]` at `[m, N, K]` and checks it.
 
-    With `bias`, the output is written by an elementwise epilogue that adds a
-    per-column bias, which checks the `(row, col)` coordinates the kernel
+    With `bias`, a compute epilogue adds a per-column bias to the output, which checks the `(row, col)` coordinates the kernel
     hands the epilogue. With `sampled`, the weight gets the hash fill and the
     host reference checks every 1021st column plus the last 256.
     """
@@ -2606,26 +2604,17 @@ def _run_gemv_dispatch_case[
     var bias_tt = TileTensor(bias_d, row_major(Idx[N])).as_imm()
 
     @inline(.always)
-    @__copy_capture(c_tt, bias_tt)
-    def bias_epilogue[
-        dt: DType, w: SIMDLength, *, alignment: Int = 1
-    ](coords: Coord, val: SIMD[dt, w]) capturing -> None:
+    def bias_compute[
+        dt: DType, w: SIMDLength, *, alignment: Int
+    ](coords: Coord, val: SIMD[dt, w]) {var bias_tt} -> SIMD[dt, w]:
         comptime assert (
             coords.rank == 2
         ), "the matmul epilogue contract is rank 2"
         var b = bias_tt.load[width=w, alignment=alignment]((coords[1],))
-        c_tt.store[alignment=alignment](
-            coords,
-            (val.cast[.float32]() + b).cast[c_type](),
-        )
+        return (val.cast[.float32]() + b).cast[dt]()
 
     comptime if bias:
-        _matmul_gpu[
-            transpose_b=True,
-            elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                bias_epilogue
-            ),
-        ](c_tt, a_tt, w_tt, ctx)
+        _matmul_gpu[transpose_b=True](c_tt, a_tt, w_tt, bias_compute, ctx)
     else:
         _matmul_gpu[transpose_b=True](c_tt, a_tt, w_tt, ctx)
     ctx.enqueue_copy(c_h, c_d)

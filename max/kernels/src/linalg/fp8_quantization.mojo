@@ -60,7 +60,6 @@ from .matmul.gpu.sm100_structured.blockwise_fp8.blockwise_fp8_matmul import (
 )
 from .utils import (
     ElementwiseEpilogueFn,
-    elementwise_epilogue_type,
     no_epilogue_fn,
 )
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
@@ -1389,17 +1388,15 @@ def _matmul_dynamic_scaled_fp8_impl[
 
         comptime if _is_sm10x_gpu(ctx.default_device_info):
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(a_scales, b_scales)
             def scale_compute_lambda_fn[
                 _dtype: DType,
                 width: SIMDLength,
                 *,
-                alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
-                _dtype, width
-            ]:
+                alignment: Int,
+            ](idx: Coord, val: SIMD[_dtype, width]) {
+                var a_scales, var b_scales
+            } -> SIMD[_dtype, width]:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -1420,17 +1417,15 @@ def _matmul_dynamic_scaled_fp8_impl[
                 var scaled_val = val.cast[.float32]() * a_scale * b_scale
                 return scaled_val.cast[_dtype]()
 
-            @__parameter
             @inline(.always)
-            @__copy_capture(a_scales, b_scales)
             def scale_compute_lambda_fn_tensor[
                 _dtype: DType,
                 width: SIMDLength,
                 *,
-                alignment: Int = align_of[SIMD[_dtype, width]](),
-            ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
-                _dtype, width
-            ]:
+                alignment: Int,
+            ](idx: Coord, val: SIMD[_dtype, width]) {
+                var a_scales, var b_scales
+            } -> SIMD[_dtype, width]:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -1447,27 +1442,37 @@ def _matmul_dynamic_scaled_fp8_impl[
                 matmul[
                     target=target,
                     transpose_b=transpose_b,
-                    elementwise_compute_lambda_fn=scale_compute_lambda_fn_tensor,
                     _trace_description=_trace_string,
-                ](c, a, b, Optional[DeviceContext](ctx))
+                ](
+                    c,
+                    a,
+                    b,
+                    scale_compute_lambda_fn_tensor,
+                    Optional[DeviceContext](ctx),
+                )
             else:
                 matmul[
                     target=target,
                     transpose_b=transpose_b,
-                    elementwise_compute_lambda_fn=scale_compute_lambda_fn,
                     _trace_description=_trace_string,
-                ](c, a, b, Optional[DeviceContext](ctx))
+                ](
+                    c,
+                    a,
+                    b,
+                    scale_compute_lambda_fn,
+                    Optional[DeviceContext](ctx),
+                )
 
         else:
             # create a dummy TileTensor to instruct the matmul kernel to
             # output values in the correct dtype.
 
-            @__parameter
-            @__copy_capture(c, a_scales, b_scales)
             @inline(.always)
             def scaled_output_fn[
-                dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: Coord, val: SIMD[dtype, width]):
+                dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: Coord, val: SIMD[dtype, width]) {
+                var c, var a_scales, var b_scales
+            }:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -1491,12 +1496,12 @@ def _matmul_dynamic_scaled_fp8_impl[
                     idx, scaled_val.cast[c_type]()
                 )
 
-            @__parameter
-            @__copy_capture(c, a_scales, b_scales)
             @inline(.always)
             def scaled_output_fn_tensor[
-                dtype: DType, width: SIMDLength, *, alignment: Int = 1
-            ](idx: Coord, val: SIMD[dtype, width]):
+                dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: Coord, val: SIMD[dtype, width]) {
+                var c, var a_scales, var b_scales
+            }:
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
@@ -1531,16 +1536,26 @@ def _matmul_dynamic_scaled_fp8_impl[
                     matmul[
                         target=target,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=scaled_output_fn_tensor,
                         _trace_description=_trace_string,
-                    ](c_scratch, a, b, Optional[DeviceContext](ctx))
+                    ](
+                        c_scratch,
+                        a,
+                        b,
+                        scaled_output_fn_tensor,
+                        Optional[DeviceContext](ctx),
+                    )
                 else:
                     matmul[
                         target=target,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=scaled_output_fn,
                         _trace_description=_trace_string,
-                    ](c_scratch, a, b, Optional[DeviceContext](ctx))
+                    ](
+                        c_scratch,
+                        a,
+                        b,
+                        scaled_output_fn,
+                        Optional[DeviceContext](ctx),
+                    )
             else:
                 var N_rt = Int(b.dim[b_row_axis]())
                 var scratch_buffer = ctx.enqueue_create_buffer[.float32](
@@ -1555,16 +1570,26 @@ def _matmul_dynamic_scaled_fp8_impl[
                     matmul[
                         target=target,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=scaled_output_fn_tensor,
                         _trace_description=_trace_string,
-                    ](c_scratch, a, b, Optional[DeviceContext](ctx))
+                    ](
+                        c_scratch,
+                        a,
+                        b,
+                        scaled_output_fn_tensor,
+                        Optional[DeviceContext](ctx),
+                    )
                 else:
                     matmul[
                         target=target,
                         transpose_b=transpose_b,
-                        elementwise_lambda_fn=scaled_output_fn,
                         _trace_description=_trace_string,
-                    ](c_scratch, a, b, Optional[DeviceContext](ctx))
+                    ](
+                        c_scratch,
+                        a,
+                        b,
+                        scaled_output_fn,
+                        Optional[DeviceContext](ctx),
+                    )
 
     elif (
         input_scale_granularity == "block"
