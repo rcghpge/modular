@@ -62,7 +62,6 @@ from ...utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     GemmShape,
-    apply_elementwise_epilogue,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
     no_compute_fn,
@@ -741,8 +740,6 @@ def _matmul_gpu[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
             use_tf32=use_tf32,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
             pdl_level=pdl_level,
             has_epilogue_fn=False,
             has_compute_fn=True,
@@ -758,8 +755,6 @@ def _matmul_gpu[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
             use_tf32=use_tf32,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=None,
             pdl_level=pdl_level,
             has_epilogue_fn=True,
             has_compute_fn=False,
@@ -769,8 +764,6 @@ def _matmul_gpu[
             use_tensor_core=use_tensor_core,
             transpose_b=transpose_b,
             use_tf32=use_tf32,
-            elementwise_lambda_fn=None,
-            elementwise_compute_lambda_fn=None,
             pdl_level=pdl_level,
             has_epilogue_fn=False,
             has_compute_fn=False,
@@ -814,8 +807,6 @@ def _matmul_gpu[
         use_tensor_core=use_tensor_core,
         transpose_b=transpose_b,
         use_tf32=use_tf32,
-        elementwise_lambda_fn=None,
-        elementwise_compute_lambda_fn=None,
         pdl_level=pdl_level,
         has_epilogue_fn=True,
         has_compute_fn=False,
@@ -858,8 +849,6 @@ def _matmul_gpu[
         use_tensor_core=use_tensor_core,
         transpose_b=transpose_b,
         use_tf32=use_tf32,
-        elementwise_lambda_fn=None,
-        elementwise_compute_lambda_fn=None,
         pdl_level=pdl_level,
         has_epilogue_fn=False,
         has_compute_fn=True,
@@ -874,8 +863,6 @@ def _matmul_gpu_impl[
     use_tensor_core: Bool,
     transpose_b: Bool,
     use_tf32: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
-    elementwise_compute_lambda_fn: Optional[elementwise_compute_lambda_type],
     pdl_level: PDLLevel,
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
@@ -887,12 +874,6 @@ def _matmul_gpu_impl[
     compute_fn: ComputeFnType,
     ctx: DeviceContext,
 ) raises:
-    comptime has_legacy_epilogue = Bool(elementwise_lambda_fn) or Bool(
-        elementwise_compute_lambda_fn
-    )
-    comptime assert not has_legacy_epilogue or (
-        has_epilogue_fn or has_compute_fn
-    ), "a legacy epilogue lambda must come with the value that forwards it"
     comptime assert not (
         has_epilogue_fn and has_compute_fn
     ), "pass either epilogue_fn or compute_fn, not both"
@@ -954,35 +935,6 @@ def _matmul_gpu_impl[
     )
 
     comptime matmul_supported_format = matmul_supported_format_amd if ctx.target.is_amd_gpu() else matmul_supported_format_nvidia
-
-    # Capture the raw pointer: `@__copy_capture` byte-copies, so a
-    # `DeviceBuffer`-backed tile would reach the device as a host reference.
-    var c_epilogue = c.reshape(c.layout)
-
-    # The legacy-only kernels take a store lambda, so a compute lambda is
-    # wrapped into one that stores its result.
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c_epilogue)
-    def compute_lambda_wrapper[
-        _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](coords: Coord, val: SIMD[_dtype, _width]):
-        comptime assert (
-            coords.rank == 2
-        ), "the matmul epilogue contract is rank 2"
-        comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
-            var output = compute_lambda(coords, val)
-            comptime assert (
-                output.dtype == c_type
-            ), "compute epilogue lambda output and c type mismatch"
-            c_epilogue.store[alignment=alignment * size_of[c_type]()](
-                coords,
-                rebind[SIMD[c_type, _width]](output),
-            )
-
-    comptime elementwise_lambda_wrapper = Optional[elementwise_epilogue_type](
-        compute_lambda_wrapper
-    ) if elementwise_compute_lambda_fn else elementwise_lambda_fn
 
     # Helper for gemv_gpu dispatch — passes TileTensor directly.
     @inline(.always)

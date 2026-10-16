@@ -44,8 +44,6 @@ from layout.tile_layout import row_major
 from linalg.utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    apply_elementwise_epilogue,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -62,7 +60,6 @@ from .amd_4wave_matmul import AMD4WaveMatmul, KernelConfig
 def _split_k_reduce_kernel[
     num_splits: Int,
     c_type: DType,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     scratch: UnsafePointer[Float32, MutAnyOrigin],
     c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
@@ -76,17 +73,9 @@ def _split_k_reduce_kernel[
     so split `s`'s element `(m, n)` lives at
     `scratch[s * M*N + m*N + n] = scratch[s * elems_per_split + tid]`
     when threads walk the flat M*N index space.
-
-    When `elementwise_lambda_fn` is set, the reduced f32 value at
-    flat index `tid` is delivered to the lambda with global
-    coords `(tid // N, tid % N)` instead of being stored to `c_ptr`.
-    The lambda fires exactly once per output cell (on the reduced
-    sum, not on each partial), which is the correct epilogue semantics
-    for split-K.
     """
     _split_k_reduce_impl[
         num_splits,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
     ](
@@ -118,7 +107,6 @@ def _split_k_reduce_kernel_epilogue_fn[
     """
     _split_k_reduce_impl[
         num_splits,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
     ](
@@ -150,7 +138,6 @@ def _split_k_reduce_kernel_compute_fn[
     """
     _split_k_reduce_impl[
         num_splits,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
     ](
@@ -172,7 +159,6 @@ def _split_k_reduce_impl[
     //,
     num_splits: Int,
     *,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -193,15 +179,11 @@ def _split_k_reduce_impl[
         var acc = Float32(0.0)
         comptime for s in range(num_splits):
             acc += scratch[s * _elems_per_split + tid]
-        comptime if Bool(elementwise_lambda_fn) or has_epilogue_fn:
+        comptime if has_epilogue_fn:
             var m = tid // _n_dim
             var n = tid - m * _n_dim
-            apply_elementwise_epilogue[
-                elementwise_lambda_fn, alignment=align_of[Scalar[c_type]]()
-            ](
-                epilogue_fn,
-                (m, n),
-                SIMD[c_type, 1](acc.cast[c_type]()),
+            epilogue_fn[c_type, 1, alignment=align_of[Scalar[c_type]]()](
+                (m, n), SIMD[c_type, 1](acc.cast[c_type]())
             )
         else:
             var out = acc.cast[c_type]()

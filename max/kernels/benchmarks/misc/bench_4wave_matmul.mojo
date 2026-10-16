@@ -15,7 +15,6 @@ from std.sys import (
     get_defined_bool,
     get_defined_dtype,
     get_defined_int,
-    align_of,
 )
 
 import linalg.matmul.vendor.blas as vendor_blas
@@ -46,10 +45,6 @@ from layout import (
     row_major,
 )
 from linalg.matmul.gpu.amd.amd_4wave_matmul import structured_4wave_matmul
-from linalg.utils import (
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
-)
 
 
 def _verify_buffers_gpu[
@@ -432,43 +427,6 @@ def bench_matmul[
             cb_c.offset_ptr(iteration), row_major(shape_c)
         )
         comptime assert tensor_c.flat_rank >= 2
-
-        @__parameter
-        @inline(.always)
-        @__copy_capture(tensor_c)
-        def test_lambda_add_coords_prod[
-            _dtype: DType,
-            width: Int,
-            *,
-            alignment: Int = align_of[SIMD[_dtype, width]](),
-        ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
-            _dtype, width
-        ]:
-            comptime assert (
-                idx.rank == 2
-            ), "the matmul epilogue contract is rank 2"
-            var x = tensor_c.load[width=width](idx).cast[_dtype]()
-            var y = val * x
-            return y
-
-        comptime optional_compute_lambda_fn = Optional[
-            elementwise_compute_lambda_type
-        ](test_lambda_add_coords_prod) if enable_compute_epilogue else None
-
-        @inline(.always)
-        @__parameter
-        @__copy_capture(tensor_c)
-        def normal_elementwise_epilogue[
-            dtype: DType, width: Int, *, alignment: Int = 1
-        ](idx: Coord, val: SIMD[dtype, width]) capturing -> None:
-            comptime assert (
-                idx.rank == 2
-            ), "the matmul epilogue contract is rank 2"
-            tensor_c.store[width=width](idx, val.cast[c_type]())
-
-        comptime optional_normal_lambda_fn = Optional[
-            elementwise_epilogue_type
-        ](normal_elementwise_epilogue) if enable_normal_epilogue else None
 
         comptime if use_vendor_blas:
             run_vendor_blas(ctx, tensor_a, tensor_b, tensor_c)

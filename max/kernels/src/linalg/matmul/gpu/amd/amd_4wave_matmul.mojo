@@ -69,7 +69,6 @@ from structured_kernels.amd_tile_io_conv import TileLoaderLDSIm2col
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -409,7 +408,6 @@ struct AMD4WaveMatmul[
     config: MatmulKernelConfig,
     /,
     enable_swizzle: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ]:
     """Hand-written 4-warp 2x2 inline-MMA matmul for AMD MI355X.
 
@@ -424,7 +422,6 @@ struct AMD4WaveMatmul[
         c_type: Output C element type.
         config: MatmulKernelConfig with block/warp/mma shapes.
         enable_swizzle: Enable LDS bank conflict avoidance.
-        elementwise_lambda_fn: Optional epilogue.
     """
 
     comptime BM = Self.config.block_shape[0]
@@ -842,8 +839,7 @@ struct AMD4WaveMatmul[
         """Same as `run` without split-K, storing the output through
         `epilogue_fn`.
 
-        Launch with `host_arg=epilogue_fn`. Requires
-        `elementwise_lambda_fn` to be unset.
+        Launch with `host_arg=epilogue_fn`.
 
         Parameters:
             a_layout: Logical layout of `a`.
@@ -891,8 +887,7 @@ struct AMD4WaveMatmul[
         """Same as `run` without split-K, storing `compute_fn(idx, value)`
         into `c`.
 
-        Launch with `host_arg=compute_fn`. Requires
-        `elementwise_lambda_fn` to be unset.
+        Launch with `host_arg=compute_fn`.
 
         Parameters:
             a_layout: Logical layout of `a`.
@@ -1291,23 +1286,19 @@ struct AMD4WaveMatmul[
         # the matmul kernel writes f32 partials to a stacked workspace
         # at row `split_id * M + pid_m * BM + m_global_base` while the
         # in-bounds gate uses the LOGICAL row `m + m_global_base` — the
-        # two coincide for non-split-K. Lambda mode requires the lambda
-        # to fire on the FINAL value, so split-K + lambda is rejected
-        # at comptime; the reduce kernel applies the lambda there.
+        # two coincide for non-split-K. An output closure must fire on
+        # the FINAL value, so split-K + closure is rejected at comptime;
+        # the reduce kernel applies the closure there.
         comptime quad_m_mmas = Self.quadrant_m_mmas
         comptime quad_n_mmas = Self.quadrant_n_mmas
 
-        comptime if Bool(Self.elementwise_lambda_fn):
+        comptime if has_epilogue_fn or has_compute_fn:
             comptime assert num_splits == 1, (
-                "elementwise epilogue is not supported with split-K"
+                "an output closure is not supported with split-K"
                 " (would fire on each partial, not the reduced output)"
             )
 
-        var c_writer = RegTileEpilogue[
-            Self.c_type,
-            c_frag_size,
-            elementwise_lambda_fn=Self.elementwise_lambda_fn,
-        ](c)
+        var c_writer = RegTileEpilogue[Self.c_type, c_frag_size](c)
 
         if m < M and n < N:
             var c_reg = mma_op.accum_tile()
@@ -1419,8 +1410,7 @@ struct AMD4WaveMatmul[
                 unused and the epilogue is identical to the no-residual
                 kernel (dead-code-eliminated by the compiler).
             has_epilogue_fn: Whether `epilogue_fn` stores each output
-                chunk instead of the kernel. Requires the struct-level
-                `elementwise_lambda_fn` to be unset.
+                chunk instead of the kernel.
             has_compute_fn: Whether `compute_fn` transforms each output
                 chunk before the residual add.
 
@@ -1442,9 +1432,6 @@ struct AMD4WaveMatmul[
                 / GELU) applied to the post-cast `c_type` MMA output.
                 Used when `has_compute_fn` is set.
         """
-        comptime assert not (
-            has_epilogue_fn and Bool(Self.elementwise_lambda_fn)
-        ), "pass the epilogue as a value or a struct parameter, not both"
         Self.validate_config()
         var _source_row_stride = Int(source_row_stride)
 
@@ -1891,17 +1878,11 @@ struct AMD4WaveMatmul[
         # the matmul kernel writes f32 partials to a stacked workspace
         # at row `split_id * M + pid_m * BM + m_global_base` while the
         # in-bounds gate uses the LOGICAL row `m + m_global_base` — the
-        # two coincide for non-split-K. Lambda mode requires the lambda
-        # to fire on the FINAL value, so split-K + lambda is rejected
-        # at comptime; the reduce kernel applies the lambda there.
+        # two coincide for non-split-K. An output closure must fire on
+        # the FINAL value, so split-K + closure is rejected at comptime;
+        # the reduce kernel applies the closure there.
         comptime quad_m_mmas = Self.quadrant_m_mmas
         comptime quad_n_mmas = Self.quadrant_n_mmas
-
-        comptime if Bool(Self.elementwise_lambda_fn):
-            comptime assert num_splits == 1, (
-                "elementwise epilogue is not supported with split-K"
-                " (would fire on each partial, not the reduced output)"
-            )
 
         # Residual prefetch: when `has_residual`, bulk-issue per-lane
         # `buffer_load_*` for source[m_logical, n_global] into a VGPR
@@ -1968,11 +1949,7 @@ struct AMD4WaveMatmul[
 
         _emit_framework_body()
 
-        var c_writer = RegTileEpilogue[
-            Self.c_type,
-            c_frag_size,
-            elementwise_lambda_fn=Self.elementwise_lambda_fn,
-        ](c)
+        var c_writer = RegTileEpilogue[Self.c_type, c_frag_size](c)
 
         # Drain prefetched loads before the first `v_pk_fma_f32` reads
         # the prefetched array. By now the main loop's MMAs have given

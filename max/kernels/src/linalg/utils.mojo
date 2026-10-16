@@ -211,41 +211,6 @@ the output directly."""
 
 
 @inline(.always)
-def apply_elementwise_epilogue[
-    EpilogueFnType: ElementwiseEpilogueFn,
-    dtype: DType,
-    width: SIMDLength,
-    //,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
-    *,
-    alignment: Int = 1,
-](epilogue_fn: EpilogueFnType, idx: Coord, val: SIMD[dtype, width],):
-    """Applies the legacy epilogue lambda if set, otherwise `epilogue_fn`.
-
-    Kernels that accept both epilogue forms call this under
-    `comptime if elementwise_lambda_fn or has_epilogue_fn`.
-
-    Parameters:
-        EpilogueFnType: Type of `epilogue_fn` (inferred).
-        dtype: Element dtype of `val` (inferred).
-        width: SIMD width of `val` (inferred).
-        elementwise_lambda_fn: Legacy epilogue lambda; takes precedence
-            when set.
-        alignment: Alignment of `val` in elements.
-
-    Args:
-        epilogue_fn: Value epilogue, used when `elementwise_lambda_fn` is
-            unset.
-        idx: Output coordinates.
-        val: Output value.
-    """
-    comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
-        elementwise_lambda[dtype, width, alignment=alignment](idx, val)
-    else:
-        epilogue_fn[dtype, width, alignment=alignment](idx, val)
-
-
-@inline(.always)
 def identity_compute_fn[
     dtype: DType, width: SIMDLength, *, alignment: Int
 ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:

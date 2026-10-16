@@ -66,8 +66,6 @@ from std.utils.numerics import get_accum_type
 from ...utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    apply_elementwise_epilogue,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -722,7 +720,6 @@ def multistage_gemm_kernel[
     a_engine: TensorEngine,
     b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c_tt: TileTensor[
         c_type,
@@ -761,7 +758,6 @@ def multistage_gemm_kernel[
         a_engine,
         b_engine,
         config=config,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
     ](c_tt, a_tt, b_tt, no_epilogue_fn, no_compute_fn)
@@ -837,7 +833,7 @@ def multistage_gemm_kernel_epilogue_fn[
         b_tt: Input matrix of shape `(K, N)`, or `(N, K)` when
             `transpose_b` is set.
         epilogue_fn: Stores each output vector. Its `alignment` is in
-            bytes, as for `elementwise_lambda_fn`.
+            bytes.
     """
     _multistage_gemm_kernel_impl[
         c_type,
@@ -854,7 +850,6 @@ def multistage_gemm_kernel_epilogue_fn[
         a_engine,
         b_engine,
         config=config,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
     ](c_tt, a_tt, b_tt, epilogue_fn, no_compute_fn)
@@ -945,7 +940,6 @@ def multistage_gemm_kernel_compute_fn[
         a_engine,
         b_engine,
         config=config,
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
     ](c_tt, a_tt, b_tt, no_epilogue_fn, compute_fn)
@@ -970,7 +964,6 @@ def _multistage_gemm_kernel_impl[
     a_engine: TensorEngine,
     b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -1215,9 +1208,7 @@ def _multistage_gemm_kernel_impl[
         warp_row + WM <= M and warp_col + WN <= N and M % store_vec_rows == 0
     )
 
-    comptime has_output_fn = (
-        has_epilogue_fn or has_compute_fn or Bool(elementwise_lambda_fn)
-    )
+    comptime has_output_fn = has_epilogue_fn or has_compute_fn
 
     # Stores `vec` at `(m, n)` through the output closure. `alignment` is in
     # bytes.
@@ -1231,9 +1222,7 @@ def _multistage_gemm_kernel_impl[
             ]((m, n), vec.cast[c_type]())
             c_tt.store_linear[alignment=alignment](Index(m, n), out)
         else:
-            apply_elementwise_epilogue[
-                elementwise_lambda_fn, alignment=alignment
-            ](epilogue_fn, (m, n), vec)
+            epilogue_fn[dtype, width, alignment=alignment]((m, n), vec)
 
     @inline(.always)
     def store_c_frags[in_range: Bool]() {imm}:
