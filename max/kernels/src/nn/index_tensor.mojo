@@ -255,12 +255,12 @@ def _index_tensor_1d[
                 var data_coord = IndexList[reshaped_data_rank]()
                 data_coord[0] = i
                 for k in range(last_index_dim):
-                    data_coord[k + 1] = Int(indices.load[width=1](Coord(j, k)))
+                    data_coord[k + 1] = Int(indices.load(Coord(j, k)))
 
                 var rd_coord = Coord(data_coord)
                 output.raw_store(
                     i * Int(indices.dim(0)) + j,
-                    reshaped_data.load[width=1](rd_coord),
+                    reshaped_data.load(rd_coord),
                 )
 
     sync_parallelize(calc_batch_dim, num_tasks, ctx)
@@ -306,7 +306,7 @@ def _index_tensor_impl[
         for i in range(indices_last_dim):
             indices_idx[indices.rank - 1] = i
             var coord = Coord(indices_idx)
-            data_idx[batch_dims + i] = Int(indices.load[width=1](coord))
+            data_idx[batch_dims + i] = Int(indices.load(coord))
 
         # fill in the last slices in the input
         var num_tail_elems = data.rank - batch_dims - indices_last_dim

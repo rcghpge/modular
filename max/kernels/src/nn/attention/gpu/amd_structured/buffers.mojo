@@ -927,7 +927,7 @@ struct PRegisterBuffer[
             var block_base = smem_base + byte_offset
             var elem_off = mma_tile_off + lane_off_in_mma
             var swizzled = swizzle(elem_off // frag_w) * frag_w
-            (block_base + swizzled).store[width=frag_w](reg_val)
+            (block_base + swizzled).store(reg_val)
         else:
             dst_frag.raw_store[width=frag_w](0, reg_val)
 
@@ -1021,7 +1021,7 @@ struct PRegisterBuffer[
                     ) * Int(warp_stride)
                     (
                         block_base + warp_off + Int(lid) * Self.output_frag_size
-                    ).store[width=Self.output_frag_size](reg16)
+                    ).store(reg16)
             return
 
         comptime if Self.WN < Self.BK:
@@ -1069,7 +1069,7 @@ struct PRegisterBuffer[
                             + c * frag_w
                             + n_mma * (simd_w // Self.num_n_mmas)
                         )
-                        (block_base + elem_off).store[width=frag_w](reg_val)
+                        (block_base + elem_off).store(reg_val)
             else:
                 comptime for m_mma in range(Self.num_m_mmas):
                     comptime for n_mma in range(Self.num_n_mmas):

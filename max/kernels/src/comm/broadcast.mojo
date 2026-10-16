@@ -416,7 +416,7 @@ def broadcast_pull_2stage_kernel[
                 for i in range(last_aligned_size, last_chunk_size):
                     var data = last_payload.address_space_cast[
                         _target_address_space
-                    ]().load[width=1](i)
+                    ]().load(i)
                     result_ptr.store(last_chunk_start + i, data)
 
         # Root: copy all elements from input to result (after Stage 2)

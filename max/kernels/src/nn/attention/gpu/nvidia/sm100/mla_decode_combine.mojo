@@ -800,9 +800,7 @@ def mla_combine_kernel_split_parallel[
 
     comptime for i in range(elems_per_thread):
         var elem_offset = lane_idx * vec_size + i * (WARP_SIZE * vec_size)
-        smem_result.store[width=vec_size](
-            smem_warp_base + elem_offset, result[i]
-        )
+        smem_result.store(smem_warp_base + elem_offset, result[i])
 
     if lane_idx == 0:
         smem_m[warp_idx] = warp_m
@@ -861,9 +859,7 @@ def mla_combine_kernel_split_parallel[
                 var merged = (
                     my_rescale * my_data + partner_rescale * partner_data
                 )
-                smem_result.store[width=vec_size](
-                    smem_my_base + elem_offset, merged
-                )
+                smem_result.store(smem_my_base + elem_offset, merged)
 
             # Update merged (m, l).
             if lane_idx == 0:

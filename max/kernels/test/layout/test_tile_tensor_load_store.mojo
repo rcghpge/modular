@@ -92,15 +92,15 @@ def vectorized_load_store_kernel(
 ):
     """Width-4 load/store should produce vectorized (v4) instructions."""
     var val = tensor.load[width=4](coord[0, 0])
-    tensor.store[width=4](coord[1, 0], val)
+    tensor.store(coord[1, 0], val)
 
 
 def host_scalar_kernel(
     tensor: TileTensor[mut=True, DType.float16, _4x4, MutAnyOrigin],
 ):
     """Scalar access taking whatever alignment the off-GPU default promises."""
-    var val = tensor.load[width=1](coord[0, 0])
-    tensor.store[width=1](coord[1, 0], val)
+    var val = tensor.load(coord[0, 0])
+    tensor.store(coord[1, 0], val)
 
 
 def host_scalar_byte_aligned_kernel(

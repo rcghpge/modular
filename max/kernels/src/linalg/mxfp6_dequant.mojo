@@ -122,7 +122,7 @@ def _dequant_mxfp6_kernel[
                 )
                 var scale_f32 = scale_e8m0.cast[.float32]()
 
-                output.store[width=ELEMENTS_PER_THREAD](
+                output.store(
                     Coord(global_row_idx, global_col_idx),
                     (f32_values * scale_f32).cast[out_dtype](),
                 )

@@ -78,7 +78,7 @@ def run_causal_conv1d[
     var bias_buf = bias_h
     comptime if not with_bias:
         for c in range(dim):
-            bias_h.store[width=1]((c,), Scalar[dtype](0))
+            bias_h.store((c,), Scalar[dtype](0))
     var result_unfused_buf = result_unfused_h
 
     # Strides for channel-first layout (B, C, L)

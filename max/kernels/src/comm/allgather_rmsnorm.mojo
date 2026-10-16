@@ -167,7 +167,7 @@ def _allgather_rmsnorm_kernel[
                     src_elem
                 )
             )
-            sum_out.store[width=simd_width](Coord(grow, col_idx), gathered)
+            sum_out.store(Coord(grow, col_idx), gathered)
 
         var reduced_f = gathered.cast[accum_type]()
         # Divide by `cols` FIRST, add epsilon after (eps outside the division).
@@ -184,7 +184,7 @@ def _allgather_rmsnorm_kernel[
         var normalized = (reduced_f * norm_factor) * gamma_vec
         var normed = normalized.cast[in_dtype]()
         if is_valid:
-            normed_out.store[width=simd_width](Coord(grow, col_idx), normed)
+            normed_out.store(Coord(grow, col_idx), normed)
         # Same bf16 a standalone quantize would read back from `normed_out`, so
         # folding one in is byte-identical.
         comptime if case .Some(epilogue) = quant_epilogue:

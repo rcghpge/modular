@@ -78,7 +78,7 @@ def test_concat() raises:
         c_type: DType, width: SIMDLength, *, alignment: Int
     ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
-        output.store[width=width](
+        output.store(
             coord,
             rebind[SIMD[dtype, width]](val + 1),
         )
@@ -148,7 +148,7 @@ def test_concat_parallel() raises:
         c_type: DType, width: SIMDLength, *, alignment: Int
     ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
-        output.store[width=width](
+        output.store(
             coord,
             rebind[SIMD[dtype, width]](val + 1),
         )
@@ -221,7 +221,7 @@ def test_concat_inner() raises:
         c_type: DType, width: SIMDLength, *, alignment: Int
     ](coord: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coord.flat_rank
-        output.store[width=width](
+        output.store(
             coord,
             rebind[SIMD[dtype, width]](val + 1),
         )

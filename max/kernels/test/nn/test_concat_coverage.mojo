@@ -261,7 +261,7 @@ def test_fused_concat_cpu() raises:
         c_type: DType, width: SIMDLength, *, alignment: Int
     ](coords: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coords.flat_rank
-        output.store[width=width](coords, rebind[SIMD[dtype, width]](val * 2))
+        output.store(coords, rebind[SIMD[dtype, width]](val * 2))
 
     var output_dyn = output.make_dynamic[.int64]()
 
@@ -370,7 +370,7 @@ def test_concat_with_epilogue() raises:
         c_type: DType, width: SIMDLength, *, alignment: Int
     ](coords: Coord, val: SIMD[c_type, width]) {var output}:
         comptime assert output.flat_rank >= coords.flat_rank
-        output.store[width=width](coords, rebind[SIMD[dtype, width]](val + 10))
+        output.store(coords, rebind[SIMD[dtype, width]](val + 10))
 
     concat[dtype](
         output.make_dynamic[.int64]().as_unsafe_any_origin(),

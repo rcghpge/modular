@@ -471,7 +471,7 @@ def TopKTopPMaskedProbsClusterKernel[
     var thread_pos: Int32 = 0
     for i in range(vec_begin + tx, vec_end, block_size):
         var e = load_e(i * vec_size)
-        smem.store[width=vec_size]((i - vec_begin) * vec_size, e)
+        smem.store((i - vec_begin) * vec_size, e)
         thread_sum += e.reduce_add()
         comptime for j in range(vec_size):
             if e[j] > 0:
@@ -517,7 +517,7 @@ def TopKTopPMaskedProbsClusterKernel[
     for i in range(vec_begin + tx, vec_end, block_size):
         var e = smem.load[width=vec_size]((i - vec_begin) * vec_size)
         var masked = (e.gt(cut)).select(e / mass_s, SIMD[.float32, vec_size](0))
-        probs_row.store[width=vec_size]((Idx[0], i * vec_size), masked)
+        probs_row.store((Idx[0], i * vec_size), masked)
 
     # Terminal keep-alive. Peers read this CTA's shared memory through `mapa`,
     # so it may not retire until every CTA of the cluster is done reading --
@@ -1191,7 +1191,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
                 if e[j] < min_p_thresh:
                     e[j] = 0
             thread_masked_sum += e.reduce_add()
-        smem.store[width=vec_size]((i - vec_begin) * vec_size, e)
+        smem.store((i - vec_begin) * vec_size, e)
 
     var z = cluster_allreduce[_sum, cluster_size, need_tail_sync=False](
         cluster_slot + _CLUSTER_SLOT_FLOATS,
@@ -1267,9 +1267,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
         var masked = (e.gt(cutoff)).select(
             e / kept_mass, SIMD[.float32, vec_size](0)
         )
-        dist_row.store[width=vec_size](
-            (Idx[0], i * vec_size), masked.cast[dist_dtype]()
-        )
+        dist_row.store((Idx[0], i * vec_size), masked.cast[dist_dtype]())
 
     if rank == 0 and tx == 0:
         output[bx] = Scalar[out_idx_type](sampled_id)

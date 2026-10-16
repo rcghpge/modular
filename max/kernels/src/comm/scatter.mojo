@@ -94,7 +94,7 @@ def scatter_pull_kernel[
         # Grid-strided vectorized copy.
         for idx in range(global_tid, num_simd_vectors, stride):
             var elem_idx = idx * simd_width
-            output_ptr.store[width=simd_width](
+            output_ptr.store(
                 elem_idx,
                 data_ptr.load[width=simd_width](elem_idx),
             )
@@ -103,9 +103,9 @@ def scatter_pull_kernel[
         var tail_start = num_simd_vectors * simd_width
         var tail_idx = tail_start + global_tid
         if tail_idx < num_elems:
-            output_ptr.store[width=1](
+            output_ptr.store(
                 tail_idx,
-                data_ptr.load[width=1](tail_idx),
+                data_ptr.load(tail_idx),
             )
 
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)

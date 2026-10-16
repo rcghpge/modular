@@ -251,14 +251,14 @@ def compress_windows_ragged_paged[
     }:
         var w = block_idx.x
         var batch = Int(window_offsets.dim[0]()) - 1
-        if w >= Int(window_offsets.load[width=1]((batch,))):
+        if w >= Int(window_offsets.load((batch,))):
             return
         var b = get_batch_from_row_offsets(window_offsets, w)
-        var first_row = Int(input_row_offsets.load[width=1]((b,)))
-        var last_row = Int(input_row_offsets.load[width=1]((b + 1,))) - 1
-        var cached = Int(starts.load[width=1]((b,)))
+        var first_row = Int(input_row_offsets.load((b,)))
+        var last_row = Int(input_row_offsets.load((b + 1,))) - 1
+        var cached = Int(starts.load((b,)))
         var start = align_down(cached, ratio) + ratio * (
-            w - Int(window_offsets.load[width=1]((b,)))
+            w - Int(window_offsets.load((b,)))
         )
         var c = thread_idx.x * vec
 
@@ -335,6 +335,6 @@ def compress_windows_ragged_paged[
             var q = _fake_quantize[group, fp4=False](y)
             if c < rope_start:
                 y = q
-        output.store[width=vec]((w, c), y.cast[dtype]())
+        output.store((w, c), y.cast[dtype]())
 
     ctx.enqueue_function(kernel, grid_dim=rows, block_dim=threads)

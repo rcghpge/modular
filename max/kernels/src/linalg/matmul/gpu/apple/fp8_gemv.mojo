@@ -230,7 +230,7 @@ def fp8_gemv_kernel[
     var kt = ktail0 + lid
     while kt < k:
         var wv = loader.load_col_chunk[1](n_idx, kt)
-        var xv = a.load[width=1](Coord(0, kt)).cast[.float32]()
+        var xv = a.load(Coord(0, kt)).cast[.float32]()
         acc[0] += (xv * wv).reduce_add()
         kt += WARP_SIZE
 

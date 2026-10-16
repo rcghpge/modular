@@ -2306,7 +2306,7 @@ struct MaterializedMask[
                     )
                 ):
                     adjusted_coord[rank - 1] = coord[3] + i
-                    retval[i] = self.mask_tensor.load[width=1](
+                    retval[i] = self.mask_tensor.load(
                         Coord(adjusted_coord)
                     ).cast[dtype]()
 

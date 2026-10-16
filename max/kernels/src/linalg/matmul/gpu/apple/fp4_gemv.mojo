@@ -161,7 +161,7 @@ def fp4_gemv_kernel[
 
     var dot = warp.sum(acc)
     if lid == 0:
-        c.store[width=1](Coord(0, n_idx), dot.cast[c_type]())
+        c.store(Coord(0, n_idx), dot.cast[c_type]())
 
 
 @inline(.always)

@@ -167,9 +167,7 @@ def tpool_patch_merger_kernel[
             var row = in_offset + t_i * (h * w) + spatial_flat
             acc += x_tile.load[width=vec_width](Coord(row, d_start))
         acc /= Scalar[dtype](t)
-        out_tile.store[width=vec_width](
-            Coord(out_offset + pat_idx, d_start), acc
-        )
+        out_tile.store(Coord(out_offset + pat_idx, d_start), acc)
 
 
 # ------------------------------------------------------------------------------

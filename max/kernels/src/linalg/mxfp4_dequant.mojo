@@ -123,7 +123,7 @@ def _dequant_mxfp4_to_fp8_kernel[
                 var out_values = scaled_values.cast[out_dtype]()
 
                 # Store output
-                output.store[width=ELEMENTS_PER_THREAD](
+                output.store(
                     Coord(global_row_idx, global_col_idx),
                     out_values,
                 )
@@ -259,7 +259,7 @@ def _cast_bf16_to_fp8(
     @inline(.always)
     def cast_fn[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert idx.rank == 2, "cast_fn only supports rank-2 tensors"
-        out_tt.store[width=width](
+        out_tt.store(
             idx,
             in_tt.load[width=width](idx).cast[out_tt.dtype](),
         )

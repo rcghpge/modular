@@ -390,12 +390,12 @@ def apple_gemv[
             comptime if has_epilogue_fn:
                 epilogue_fn[c.dtype, 1, alignment=1]((0, n), val)
             elif has_compute_fn:
-                c.store[width=1](
+                c.store(
                     Coord(Idx[0], n),
                     compute_fn[c.dtype, 1, alignment=1]((0, n), val),
                 )
             else:
-                c.store[width=1](Coord(Idx[0], n), val)
+                c.store(Coord(Idx[0], n), val)
 
     # TODO: Experiment with this.
     comptime parallelism_grain_size = 16
@@ -495,7 +495,7 @@ def apple_matmul[
         ](idx: Coord) {var}:
             var c_val = c.load[width=simd_width](idx)
             comptime if has_compute_fn:
-                c.store[width=simd_width](
+                c.store(
                     idx,
                     compute_fn[c.dtype, simd_width, alignment=1](idx, c_val),
                 )

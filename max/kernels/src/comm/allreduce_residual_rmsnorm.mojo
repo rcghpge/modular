@@ -252,7 +252,7 @@ def _allreduce_rmsnorm_fp8_kernel_warp_tiling[
                     .cast[accum_type]()
                 )
                 # Write bf16 pre-normalization sum for the residual stream.
-                residual_output[].store[width=simd_width](
+                residual_output[].store(
                     Coord(row, idx), vec_data.cast[in_dtype]()
                 )
 
@@ -666,9 +666,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                             invariant=True,
                         ](local_elem)
                     )
-                    residual_output[].store[width=simd_width](
-                        Coord(row, col_idx), bf16_val
-                    )
+                    residual_output[].store(Coord(row, col_idx), bf16_val)
 
     # No end barrier. Every block waited at the mid barrier for its peer
     # blocks to finish Stage 1, so all P2P reads of the inputs are done by
@@ -735,7 +733,7 @@ def _allreduce_rmsnorm_fp8_launch[
     def output_fn[
         width: SIMDLength
     ](row: Int, col: Int, val: SIMD[out_dtype, width]) {var output}:
-        output.store[width=width](Coord(row, col), val)
+        output.store(Coord(row, col), val)
 
     comptime kernel = _allreduce_rmsnorm_fp8_kernel_warp_tiling[
         mut=gamma.mut,
@@ -893,7 +891,7 @@ def _allreduce_rmsnorm_fp8_launch_2stage[
     def output_fn[
         width: SIMDLength
     ](row: Int, col: Int, val: SIMD[out_dtype, width]) {var output}:
-        output.store[width=width](Coord(row, col), val)
+        output.store(Coord(row, col), val)
 
     comptime kernel = _allreduce_rmsnorm_fp8_kernel_2stage[
         mut=gamma.mut,

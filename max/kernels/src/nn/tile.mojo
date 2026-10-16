@@ -285,7 +285,7 @@ def _tile_gpu[
             var in_coord = out_coord
             comptime for axis in range(rank):
                 in_coord[axis] = out_coord[axis] % Int(in_dims_t[axis])
-            output.store[width=simd_width](
+            output.store(
                 Coord(out_coord),
                 input.load[width=simd_width](Coord(in_coord)),
             )

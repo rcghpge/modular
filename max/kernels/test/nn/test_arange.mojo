@@ -65,7 +65,7 @@ def test_arange[
         var range_val = arange[dtype, simd_width](start, stop, step, index)
         # Extract first element only: idx may have rank > 1 from elementwise,
         # but out_tensor is 1D so we need a single-element coordinate.
-        out_tensor.store[width=simd_width](Coord(idx[0]), range_val)
+        out_tensor.store(Coord(idx[0]), range_val)
 
     elementwise[1](
         arange_lambda,

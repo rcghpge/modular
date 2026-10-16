@@ -1891,7 +1891,7 @@ struct BlockScaledMatmulAMD_PreB[
                             q[j] = (acts[n_mma * OUT_PER_FRAG + j] * mult).cast[
                                 out_dtype
                             ]()
-                        c.store[width=OUT_PER_FRAG]((m_global, n_out), q)
+                        c.store((m_global, n_out), q)
 
                     # The warp's output columns are exactly one block when
                     # WARPS_PER_BLOCK == 1; otherwise the block's first warp

@@ -533,7 +533,7 @@ struct Fp4WeightLoader[
             self.scales[n_abs, (k0 + col0) // Self.SF][0].cast[.float32]()
         )
         var dec = (decode_e2m1_to_f32(nib) * scale_abs).cast[Self.in_type]()
-        b_view.store[width=cols_per_thread](Coord(n_local, col0), dec)
+        b_view.store(Coord(n_local, col0), dec)
 
 
 struct Matmul2dFp4[
@@ -733,7 +733,7 @@ struct Matmul2dFp4[
                     var gm = trow0 + c_rc[i][0]
                     var gn = tcol0 + c_rc[i][1]
                     if gm < M and gn < N:
-                        c.store[width=1](
+                        c.store(
                             Coord(gm, gn),
                             SIMD[Self.c_type, 1](cv[i].cast[Self.c_type]()),
                         )
@@ -940,7 +940,7 @@ struct Matmul2dFp4[
                     var gm = trow0 + c_rc[i][0]
                     var gn = tcol0 + c_rc[i][1]
                     if gm < M and gn < N:
-                        c.store[width=1](
+                        c.store(
                             Coord(gm, gn),
                             SIMD[Self.c_type, 1](cv[i].cast[Self.c_type]()),
                         )

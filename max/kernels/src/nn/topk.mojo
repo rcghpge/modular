@@ -2526,9 +2526,7 @@ def apply_gumbel_noise_kernel[
                         i * simd_width, noised_logits.cast[dtype]()
                     )
                 else:
-                    st_ptr.store[width=simd_width](
-                        i * simd_width, noised_logits.cast[dtype]()
-                    )
+                    st_ptr.store(i * simd_width, noised_logits.cast[dtype]())
 
             # If N is not divisible by simd_width, handle remaining elements
             if N % simd_width != 0:

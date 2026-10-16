@@ -131,7 +131,7 @@ def merge_ragged_tensors[
         else:
             val = b.load[width=width](Coord(src_idx))
 
-        c.store[width=width](Coord(dst_idx), val)
+        c.store(Coord(dst_idx), val)
 
         # Update the row offsets if this is the first element of the batch
         var is_first_element = is_tensor_a and src_idx[0] == Int(
@@ -193,12 +193,12 @@ def eagle_prefill_shift_tokens[
 
         if i < end - 1:
             # Not the last position: copy from next position
-            output.store(Coord(i), tokens.load[width=1](Coord(i + 1)))
+            output.store(Coord(i), tokens.load(Coord(i + 1)))
         else:
             # Last position in batch: append shift_next_tokens
             output.store(
                 Coord(i),
-                shift_next_tokens.load[width=1](Coord(batch_id)),
+                shift_next_tokens.load(Coord(batch_id)),
             )
 
     var shape = Coord(Int(output.dim[0]()))

@@ -1218,7 +1218,7 @@ def load_lds_fragment[
                     full_offset = swizzle_fn(full_offset)
 
                 comptime frag_idx = m_idx * k_splits + k_idx
-                reg_ptr.store[width=lds_frag_width](
+                reg_ptr.store(
                     frag_idx * _reg_stride,
                     rebind[FragElement](
                         _load_from_lds[width=lds_frag_width](
@@ -1234,7 +1234,7 @@ def load_lds_fragment[
             comptime if case .Some(swizzle_fn) = swizzle:
                 full_offset = swizzle_fn(full_offset)
 
-            reg_ptr.store[width=lds_frag_width](
+            reg_ptr.store(
                 i * _reg_stride,
                 rebind[FragElement](
                     _load_from_lds[width=lds_frag_width](smem_ptr + full_offset)

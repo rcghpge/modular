@@ -231,7 +231,7 @@ def _reducescatter_rmsnorm_kernel[
         var reduced_f = reduced.cast[accum_type]()
         if is_valid:
             # `reduced` == the standalone reduce-scatter shard (residual stream).
-            sum_out.store[width=simd_width](Coord(local_row, col_idx), reduced)
+            sum_out.store(Coord(local_row, col_idx), reduced)
 
         # Mean-square over the full row. Divide by `cols` (full H) FIRST, add
         # epsilon SECOND (not the shard count; epsilon outside the division).
@@ -246,7 +246,7 @@ def _reducescatter_rmsnorm_kernel[
         if is_valid:
             # (x * norm) * gamma in f32, cast to in_dtype last: mbc=True.
             var normalized = (reduced_f * norm_factor) * gamma_vec
-            normed_out.store[width=simd_width](
+            normed_out.store(
                 Coord(local_row, col_idx), normalized.cast[in_dtype]()
             )
 

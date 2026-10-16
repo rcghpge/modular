@@ -1257,7 +1257,7 @@ def scatter_nd_generator[
                 indices_index[indices.rank - 1] = dim
 
                 var indices_coord = Coord(indices_index)
-                var idx_on_axis = indices.load[width=1](indices_coord)
+                var idx_on_axis = indices.load(indices_coord)
 
                 comptime if oob_index_strategy == ScatterOobIndexStrategy.SKIP:
                     # Quit if the index falls outside of [-input_ax_dim, input_ax_dim)
@@ -1291,7 +1291,7 @@ def scatter_nd_generator[
                 for i in range(count_copy):
                     atomic_update(
                         output_flat.ptr.unsafe_offset(output_offset + i),
-                        updates_flat.load[width=1](Coord(updates_offset + i)),
+                        updates_flat.load(Coord(updates_offset + i)),
                     )
 
             else:
@@ -1347,7 +1347,7 @@ def scatter_nd_generator[
                 # Used to compare to index on this dimension (idx_on_axis).
                 var input_ax_dim = data_shape[dim]
                 indices_index[indices.rank - 1] = dim
-                var idx_on_axis = indices.load[width=1](Coord(indices_index))
+                var idx_on_axis = indices.load(Coord(indices_index))
 
                 comptime if oob_index_strategy == ScatterOobIndexStrategy.SKIP:
                     # Quit if the index falls outside of [-input_ax_dim, input_ax_dim)
@@ -1842,14 +1842,14 @@ def gather_elements[
     ](output_coords: Coord) {var}:
         comptime assert indices.flat_rank >= output_coords.flat_rank
         comptime assert output.flat_rank >= output_coords.flat_rank
-        var idx_on_axis = indices.load[width=1](output_coords)
+        var idx_on_axis = indices.load(output_coords)
         var input_idx = coord_to_index_list(output_coords)
         input_idx[axis] = Int(
             _unsafe_normalize_neg_index(idx_on_axis, input_ax_dim)
         )
         var input_coords = Coord(input_idx)
         comptime assert input.flat_rank >= input_coords.flat_rank
-        output.store(output_coords, input.load[width=1](input_coords))
+        output.store(output_coords, input.load(input_coords))
 
     # cannot use simd_width > 1 here because consecutive updates are not contiguous
     elementwise[1](gather_func, output.layout.shape_coord(), ctx)
@@ -1989,7 +1989,7 @@ def gather_nd[
         for i in range(indices_last_dim):
             indices_idx[indices.rank - 1] = i
             var indices_coord = Coord(indices_idx)
-            data_idx[batch_dims + i] = Int(indices.load[width=1](indices_coord))
+            data_idx[batch_dims + i] = Int(indices.load(indices_coord))
 
         # fill in the last slices in the input
         var num_tail_elems = data.rank - batch_dims - indices_last_dim

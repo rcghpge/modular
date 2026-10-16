@@ -392,7 +392,7 @@ struct AppleM5Fp4MatMul[
                 # OOB N-row, or this thread's whole col-run is past the K tail:
                 # zero-fill (the MMA must read a clean zero, not stale SMEM).
                 if n_abs >= n or col0 >= kv:
-                    b_smem_view.store[width=COLS_PER_THREAD](
+                    b_smem_view.store(
                         Coord(buf, nrow, col0),
                         SIMD[Self.in_type, COLS_PER_THREAD](0),
                     )
@@ -404,7 +404,7 @@ struct AppleM5Fp4MatMul[
                 )
                 if col0 + COLS_PER_THREAD <= kv:
                     # Whole run in-bounds: the interior fast path (below).
-                    b_smem_view.store[width=COLS_PER_THREAD](
+                    b_smem_view.store(
                         Coord(buf, nrow, col0),
                         _decode_run(
                             n_abs, Int(k0), col0, col_in_row, scale_abs
@@ -429,9 +429,7 @@ struct AppleM5Fp4MatMul[
                             vals[i] = (dec.cast[.float32]() * scale_abs).cast[
                                 Self.in_type
                             ]()
-                    b_smem_view.store[width=COLS_PER_THREAD](
-                        Coord(buf, nrow, col0), vals
-                    )
+                    b_smem_view.store(Coord(buf, nrow, col0), vals)
             else:
                 # Interior: no bounds branch. One wide contiguous packed load ->
                 # nibble expand -> decode -> one hoisted scale. The scale comes
@@ -439,7 +437,7 @@ struct AppleM5Fp4MatMul[
                 # per-thread scattered load.
                 comptime if Self.coalesce_scales:
                     var scale_abs = s_smem_view[buf, nrow, col0 // SF][0]
-                    b_smem_view.store[width=COLS_PER_THREAD](
+                    b_smem_view.store(
                         Coord(buf, nrow, col0),
                         _decode_run(
                             n_abs, Int(k0), col0, col_in_row, scale_abs
@@ -451,7 +449,7 @@ struct AppleM5Fp4MatMul[
                             DType.float32
                         ]()
                     )
-                    b_smem_view.store[width=COLS_PER_THREAD](
+                    b_smem_view.store(
                         Coord(buf, nrow, col0),
                         _decode_run(
                             n_abs, Int(k0), col0, col_in_row, scale_abs
@@ -469,7 +467,7 @@ struct AppleM5Fp4MatMul[
             var t = Int(tid)
             if t < NSCALE:
                 var srow, sblk = divmod(t, NBLK)
-                s_smem_view.store[width=1](
+                s_smem_view.store(
                     Coord(buf, srow, sblk),
                     Float32(
                         abs(

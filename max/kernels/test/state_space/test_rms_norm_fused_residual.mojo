@@ -116,13 +116,13 @@ def _run_rms_norm_fused_residual_cpu_impl[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {output_tensor} -> None:
-        output_tensor.store[width=width](coords, val)
+        output_tensor.store(coords, val)
 
     @inline(.always)
     def residual_output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {residual_output_tensor} -> None:
-        residual_output_tensor.store[width=width](coords, val)
+        residual_output_tensor.store(coords, val)
 
     # Read back the (input + residual) buffer the kernel wrote in its first pass.
     # This reader and the writable `residual_output_fn` alias it; as runtime args

@@ -618,7 +618,7 @@ def set_scale_factor[
     ), "width must be less than or equal to SF_ATOM_K"
     comptime assert scales_tensor.flat_rank >= 5, "scales_tensor must be 5D"
 
-    scales_tensor.store[width=width](
+    scales_tensor.store(
         (
             row_idx // SF_MN_GROUP_SIZE,
             col_idx // (SF_VECTOR_SIZE * SF_ATOM_K),
@@ -805,7 +805,7 @@ def convert_ref_scales_to_mxfp8_format[
     # initialize a_scales_tensor and b_scales_tensor based on reference scales
     for m in range(M):
         for k in range(K):
-            a_scales.store[width=1](
+            a_scales.store(
                 Coord(
                     m // SF_MN_GROUP_SIZE,
                     k // (SF_VECTOR_SIZE * SF_ATOM_K),
@@ -814,13 +814,13 @@ def convert_ref_scales_to_mxfp8_format[
                     k % SF_ATOM_K,
                 ),
                 _convert_f32_to_float8_ue8m0[scales_type](
-                    ref_a_scales.load[width=1](Coord(k // REF_BLOCK_SIZE, m))
+                    ref_a_scales.load(Coord(k // REF_BLOCK_SIZE, m))
                 ),
             )
 
     for n in range(N):
         for k in range(K):
-            b_scales.store[width=1](
+            b_scales.store(
                 Coord(
                     n // SF_MN_GROUP_SIZE,
                     k // (SF_VECTOR_SIZE * SF_ATOM_K),
@@ -829,7 +829,7 @@ def convert_ref_scales_to_mxfp8_format[
                     k % SF_ATOM_K,
                 ),
                 _convert_f32_to_float8_ue8m0[scales_type](
-                    ref_b_scales.load[width=1](
+                    ref_b_scales.load(
                         Coord(n // REF_BLOCK_SIZE, k // REF_BLOCK_SIZE)
                     )
                 ),

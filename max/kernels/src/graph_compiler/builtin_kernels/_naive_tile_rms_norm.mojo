@@ -96,16 +96,12 @@ struct _NaiveRMSNormTileAdapter[
 
         var sum_sq = Float32(0)
         for k in range(self.n_dim):
-            var v = self.input.load[width=1](Coord(row, k)).cast[
-                DType.float32
-            ]()
+            var v = self.input.load(Coord(row, k)).cast[DType.float32]()
             sum_sq += v * v
         var inv_rms = 1.0 / sqrt(sum_sq / Float32(self.n_dim) + self.epsilon)
 
-        var x_val = self.input.load[width=1](Coord(row, col)).cast[
-            DType.float32
-        ]()
-        var g_val = self.gamma.load[width=1](Coord(col)).cast[.float32]()
+        var x_val = self.input.load(Coord(row, col)).cast[DType.float32]()
+        var g_val = self.gamma.load(Coord(col)).cast[.float32]()
         var w_off = self.weight_offset.cast[.float32]()
         var y = (x_val * inv_rms) * (g_val + w_off)
 
@@ -120,7 +116,7 @@ struct _NaiveRMSNormTileAdapter[
             ]().unsafe_origin_cast[MutAnyOrigin](),
             row_major[1, 1](),
         )
-        dst.store[width=1](Coord(0, 0), y.cast[Self.dtype]())
+        dst.store(Coord(0, 0), y.cast[Self.dtype]())
 
         var consumer = self.tile_consumer
         consumer(

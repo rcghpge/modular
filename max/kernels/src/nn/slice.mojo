@@ -240,9 +240,7 @@ def copy_to_slice[
 
     @inline(.always)
     def copy[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:
-        buffer_slice_view.store[width=simd_width](
-            idx, in_slice.load[width=simd_width](idx)
-        )
+        buffer_slice_view.store(idx, in_slice.load[width=simd_width](idx))
 
     elementwise[1, target=target, _trace_description="slice_copy"](
         copy,
@@ -289,7 +287,7 @@ def slice_as_copy[
     # Copy lambda sliced view into output buffer.
     @inline(.always)
     def copy[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:
-        output.store[width=simd_width](idx, sliced.load[width=simd_width](idx))
+        output.store(idx, sliced.load[width=simd_width](idx))
 
     # Invoke copy.
     elementwise[1](copy, output.layout.shape_coord(), ctx)

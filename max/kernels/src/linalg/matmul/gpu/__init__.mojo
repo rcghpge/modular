@@ -2151,7 +2151,7 @@ def _split_k_reduce_impl[
                     c_coord,
                     out,
                 )
-            c.store[width=simd_width]((c_coord[0], c_coord[1]), out)
+            c.store((c_coord[0], c_coord[1]), out)
 
     elementwise[simd_width, target="gpu"](_reduce, (M, N), ctx)
 

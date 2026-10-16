@@ -111,7 +111,7 @@ struct _Accumulator[
     def _partial_set[
         partial_width: SIMDLength
     ](mut self, offset: Int, value: SIMD[Self.dtype, partial_width]):
-        self._storage.store[width=partial_width](offset, value)
+        self._storage.store(offset, value)
 
     @inline(.always)
     def _partial_get[

@@ -361,7 +361,7 @@ struct RowMeanOfSquares:
         ](coords: Coord, val: SIMD[output.dtype, width]) {var output}:
             # `output` is `[M, 1]`, so `width` adjacent rows (tiled tier) at
             # column 0 sit contiguously -- one vector store, no lane splitting.
-            output.store[width=width](Index(Int(coords[0].value()), 0), val)
+            output.store(Index(Int(coords[0].value()), 0), val)
 
         row_mean_of_squares[input.dtype, output.dtype, 2, target=target](
             input_fn, output_fn, input.shape_coord(), ctx
