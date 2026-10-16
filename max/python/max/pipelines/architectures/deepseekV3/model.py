@@ -29,8 +29,7 @@ from max.pipelines.lib import (
     GraphSpec,
     ModelInputs,
     ModelOutputs,
-    compile_graphs,
-    init_graphs,
+    compile_and_init_graphs,
 )
 from max.pipelines.weights.quant import parse_quant_config
 from typing_extensions import override
@@ -277,7 +276,7 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
         """Sets up expert parallelism for ``ep_config``.
 
         Compiles the one-time EP init graph under :attr:`GraphRole.EP_INIT`,
-        keeps it in :attr:`compiled_artifacts`, and runs it.
+        keeps it in :attr:`compiled_modules`, and runs it.
 
         Args:
             session: The session that compiles and runs the EP init graph.
@@ -291,11 +290,9 @@ class DeepseekV3Model(AlwaysSignalBuffersMixin, DeepseekV2Model):
         specs: dict[str, GraphSpec] = {
             GraphRole.EP_INIT: GraphSpec(init, "ep_init", init.input_types())
         }
-        artifacts = compile_graphs(session, specs)
-        ep_comm_initializer.run_init(
-            init_graphs(session, artifacts, specs)[GraphRole.EP_INIT]
-        )
-        self.compiled_artifacts |= artifacts
+        modules = compile_and_init_graphs(session, specs)
+        ep_comm_initializer.run_init(modules[GraphRole.EP_INIT].engine_model)
+        self.compiled_modules = {**self.compiled_modules, **modules}
         return ep_comm_initializer
 
     @override

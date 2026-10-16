@@ -34,8 +34,7 @@ from max.pipelines.lib import (
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
-    compile_graphs,
-    init_graphs,
+    compile_and_init_graphs,
 )
 from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
@@ -198,7 +197,7 @@ class DeepseekV2Model(
 
         Sets up the distributed runtime with :meth:`_init_distributed_runtime`
         first, since the graphs it builds depend on it, and keeps any graph
-        it registers in :attr:`compiled_artifacts` too.
+        it registers in :attr:`compiled_modules` too.
 
         Args:
             session: The session that compiles and initializes the graphs.
@@ -213,8 +212,13 @@ class DeepseekV2Model(
             specs = self.graph_specs(model_config)
             timer.mark_build_complete()
             # `_init_distributed_runtime` may have registered a graph already.
-            self.compiled_artifacts |= compile_graphs(session, specs)
-            models = init_graphs(session, self.compiled_artifacts, specs)
+            self.compiled_modules = {
+                **self.compiled_modules,
+                **compile_and_init_graphs(session, specs),
+            }
+        models = {
+            role: self.compiled_modules[role].engine_model for role in specs
+        }
         self._weights_dict = {}
         self._maybe_release_host_weights(*models.values())
         self._bind_ep_comm_initializer()
