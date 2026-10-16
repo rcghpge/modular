@@ -37,7 +37,12 @@ from std.memory import unsafe_stack_allocation
 from std.utils import IndexList
 from std.utils.numerics import get_accum_type
 
-from linalg.utils import elementwise_epilogue_type
+from linalg.utils import (
+    ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
+    no_compute_fn,
+    no_epilogue_fn,
+)
 from linalg.utils_gpu import block_swizzle
 
 # WMMA hardware constants
@@ -191,7 +196,10 @@ def conv2d_kernel_rdna[
     filter_nk_layout: TensorLayout,
     out_engine: TensorEngine,
     filter_nk_engine: TensorEngine,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
     s_type: DType = get_accum_type[out_type](),
     BLOCK_K: Int = 32,
     BLOCK_M: Int = 128,
@@ -220,6 +228,8 @@ def conv2d_kernel_rdna[
     S: Int32,
     pad_h: Int32,
     pad_w: Int32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
 ):
     """Conv2D implicit GEMM kernel for RDNA 3+ GPUs.
 
@@ -246,8 +256,12 @@ def conv2d_kernel_rdna[
         out_engine: `TensorEngine` of the output `TileTensor`.
         filter_nk_engine: `TensorEngine` of the pre-transposed [N, K] filter
             `TileTensor`.
-        elementwise_lambda_fn: Optional fused epilogue lambda applied per
-            output element (defaults to `None`).
+        EpilogueFnType: Type of `epilogue_fn`.
+        ComputeFnType: Type of `compute_fn`.
+        has_epilogue_fn: Whether `epilogue_fn` stores each output element
+            instead of the kernel (defaults to `False`).
+        has_compute_fn: Whether the kernel stores `compute_fn(idx, val)`
+            instead of `val` (defaults to `False`).
         s_type: `DType` used for the accumulator (defaults to the accumulator
             type for `out_type`).
         BLOCK_K: Tile size along the K reduction dimension (defaults to 32).
@@ -277,6 +291,10 @@ def conv2d_kernel_rdna[
         S: Filter width.
         pad_h: Zero padding applied to the input height.
         pad_w: Zero padding applied to the input width.
+        epilogue_fn: Stores each output element when `has_epilogue_fn` is
+            set.
+        compute_fn: Maps each output index and element to the value to
+            store when `has_compute_fn` is set.
     """
     var _M = Int(M)
     var _N = Int(N)
@@ -479,15 +497,14 @@ def conv2d_kernel_rdna[
                 )
 
                 if global_row < _M and global_col < _N:
-                    comptime if case .Some(epilogue) = elementwise_lambda_fn:
-                        comptime elementwise_lambda = (
-                            elementwise_lambda_fn.value()
+                    var val = c_accum[c_idx][v].cast[out_type]()
+                    comptime if has_epilogue_fn:
+                        epilogue_fn[out_type, 1, alignment=1](
+                            (global_row, global_col), val
                         )
-                        elementwise_lambda[out_type, 1](
-                            (global_row, global_col),
-                            c_accum[c_idx][v].cast[out_type](),
-                        )
+                    elif has_compute_fn:
+                        output[global_row, global_col] = compute_fn[
+                            out_type, 1, alignment=1
+                        ]((global_row, global_col), val)
                     else:
-                        output[global_row, global_col] = c_accum[c_idx][v].cast[
-                            out_type
-                        ]()
+                        output[global_row, global_col] = val
