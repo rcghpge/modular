@@ -428,14 +428,13 @@ def bench_manual[
             row_major((total_heads, seq_len, num_keys)),
         )
 
-        @__parameter
-        @__copy_capture(score_3d)
         def input_fn[
             _simd_width: Int
-        ](coords: Coord) -> SIMD[qkv_type, _simd_width]:
+        ](coords: Coord) {var score_3d} -> SIMD[qkv_type, _simd_width]:
             return score_3d.load[width=_simd_width, alignment=1](coords)
 
-        softmax_inline[qkv_type, 1, 3, input_fn, target="gpu"](
+        softmax_inline[qkv_type, 1, 3, target="gpu"](
+            input_fn,
             Coord(total_heads, seq_len, num_keys),
             score_3d,
             2,

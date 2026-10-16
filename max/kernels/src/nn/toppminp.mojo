@@ -183,17 +183,14 @@ def _topp_minp_sampling[
                 batch_offset + i, input_logits.raw_load(batch_offset + i)
             )
 
-    @__parameter
-    @__copy_capture(input_logits)
     def apply_temperature[
         _simd_width: Int
-    ](coords: Coord) -> SIMD[dtype, _simd_width]:
+    ](coords: Coord) {var input_logits, imm} -> SIMD[dtype, _simd_width]:
         var val = input_logits.load[width=_simd_width](coords)
         return val / temperature
 
-    softmax_inline[
-        simd_width=1, rank=input_logits.rank, input_fn=apply_temperature
-    ](
+    softmax_inline[simd_width=1, rank=input_logits.rank](
+        apply_temperature,
         input_logits.layout.shape_coord(),
         sorted_probs,
         axis=input_logits.rank - 1,

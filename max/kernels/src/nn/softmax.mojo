@@ -631,12 +631,13 @@ def logsoftmax_inline[
     dtype: DType,
     simd_width: Int,
     rank: Int,
-    input_fn: def[_simd_width: Int](Coord) capturing[_] -> SIMD[
-        dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Coord) -> SIMD[dtype, _simd_width],
     target: StaticString = "cpu",
     has_prologue_fusion: Bool = True,
 ](
+    input_fn: InputFnType,
     shape: Coord,
     output: TileTensor[mut=True, dtype, ...],
     axis: Int,
@@ -651,11 +652,13 @@ def logsoftmax_inline[
         dtype: The dtype of the input and output buffers.
         simd_width: The simd_width to use in vectorization.
         rank: The rank of the input and output tensors.
-        input_fn: The elementwise input lambda.
+        InputFnType: The type of `input_fn` (inferred).
         target: The target device ("cpu" or "gpu").
         has_prologue_fusion: Whether the input lambda supports prologue fusion.
 
     Args:
+        input_fn: The elementwise input lambda. On GPU it runs on the device,
+            so it must copy what it captures.
         shape: The shape of the output tensor.
         output: The output buffer in which to store the log-softmax values.
         axis: The axis along which to compute the log-softmax.
@@ -665,11 +668,10 @@ def logsoftmax_inline[
         dtype,
         simd_width,
         rank,
-        input_fn,
-        target,
+        target=target,
         logsoftmax=True,
         has_prologue_fusion=has_prologue_fusion,
-    ](shape, output, axis, context)
+    ](input_fn, shape, output, axis, context)
 
 
 def logsoftmax_inline[
@@ -701,12 +703,14 @@ def logsoftmax_inline[
         context: Optional device context for GPU execution.
     """
 
-    @__parameter
     @inline(.always)
-    def input_fn[_simd_width: Int](coords: Coord) -> SIMD[dtype, _simd_width]:
+    def input_fn[
+        _simd_width: Int
+    ](coords: Coord) {var input} -> SIMD[dtype, _simd_width]:
         return input.load[width=_simd_width, alignment=1](coords)
 
-    softmax_inline[dtype, simd_width, rank, input_fn, target, logsoftmax=True](
+    softmax_inline[dtype, simd_width, rank, target=target, logsoftmax=True](
+        input_fn,
         input.layout.shape_coord(),
         output,
         axis,
@@ -781,32 +785,6 @@ def _softmax_cpu[
     sync_parallelize(task_func, num_workers, ctx)
 
 
-def _softmax_cpu[
-    dtype: DType,
-    simd_width: Int,
-    rank: Int,
-    origins: OriginSet,
-    input_fn: def[_simd_width: Int](Coord) capturing[origins] -> SIMD[
-        dtype, _simd_width
-    ],
-    logsoftmax: Bool = False,
-](
-    shape: Coord,
-    output: TileTensor[mut=True, dtype, ...],
-    axis: Int,
-    ctx: Optional[DeviceContext.CPU] = None,
-) raises:
-    @inline(.always)
-    def input_fn_value[
-        _simd_width: Int
-    ](coords: Coord) -> SIMD[dtype, _simd_width]:
-        return input_fn[_simd_width](coords)
-
-    _softmax_cpu[dtype, simd_width, rank, logsoftmax=logsoftmax](
-        input_fn_value, shape, output, axis, ctx
-    )
-
-
 # Softmax (no input lambda)
 def softmax_inline[
     dtype: DType,
@@ -833,12 +811,14 @@ def softmax_inline[
         axis: The axis along which to compute the softmax.
     """
 
-    @__parameter
     @inline(.always)
-    def input_fn[_simd_width: Int](coords: Coord) -> SIMD[dtype, _simd_width]:
+    def input_fn[
+        _simd_width: Int
+    ](coords: Coord) {var input} -> SIMD[dtype, _simd_width]:
         return input.load[width=_simd_width, alignment=1](coords)
 
-    softmax_inline[dtype, simd_width, rank, input_fn](
+    softmax_inline[dtype, simd_width, rank](
+        input_fn,
         input.layout.shape_coord(),
         output,
         axis,
@@ -848,9 +828,9 @@ def softmax_inline[
 @__name(t"softmax_kernel_{dtype}_{sink}_{logsoftmax}")
 def softmax_kernel[
     BLOCK_SIZE: Int,
-    input_fn: def[_dtype: DType, _simd_width: Int](Coord) capturing[_] -> SIMD[
-        _dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_dtype: DType, _simd_width: Int](Coord) -> SIMD[_dtype, _simd_width],
     dtype: DType,
     sink_type: DType,
     rank: Int,
@@ -868,6 +848,7 @@ def softmax_kernel[
         dtype, OutputLayoutType, output_origin, Engine=OutputEngine
     ],
     sink_weights: TileTensor[sink_type, SinkWeightsLayoutType, ImmutAnyOrigin],
+    input_fn: InputFnType,
 ):
     """GPU kernel implementing the three-pass softmax with optional sink-attention and logsoftmax variants.
 
@@ -877,7 +858,7 @@ def softmax_kernel[
 
     Parameters:
         BLOCK_SIZE: The number of threads per block.
-        input_fn: The elementwise input lambda.
+        InputFnType: The type of `input_fn`.
         dtype: The dtype of the input and output buffers.
         sink_type: The dtype of the sink weights.
         rank: The rank of the input and output tensors.
@@ -893,6 +874,7 @@ def softmax_kernel[
         shape: The shape of the tensor as an IndexList.
         output: The output buffer in which to store the softmax values.
         sink_weights: Per-head sink weights used when `sink` is True.
+        input_fn: The elementwise input lambda.
     """
     comptime assert dtype.is_floating_point(), "dtype must be floating point"
     comptime assert (
@@ -957,13 +939,11 @@ def softmax_kernel[
 
             var row_max = row_reduce[
                 BLOCK_SIZE,
-                input_fn,
-                _max,
                 dtype,
                 1,
                 accum_type=accum_type,
                 axis=axis,
-            ](row_coords, Scalar[dtype].MIN, row_size)
+            ](row_coords, Scalar[dtype].MIN, row_size, input_fn, _max)
 
             comptime if sink:
                 row_max = max(row_max, sink_val)
@@ -1026,9 +1006,9 @@ comptime _SinkWeightsTTLayout = InternalLayout[
 def _softmax_warp_kernel[
     WARP_ROWS: Int,
     has_prologue_fusion: Bool,
-    input_fn: def[_dtype: DType, _simd_width: Int](Coord) capturing[_] -> SIMD[
-        _dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_dtype: DType, _simd_width: Int](Coord) -> SIMD[_dtype, _simd_width],
     dtype: DType,
     rank: Int,
     OutputLayoutType: TensorLayout,
@@ -1039,6 +1019,7 @@ def _softmax_warp_kernel[
     output: TileTensor[
         mut=True, dtype, OutputLayoutType, output_origin, Engine=OutputEngine
     ],
+    input_fn: InputFnType,
 ):
     """Warp-local softmax for short inner axes (no shared memory).
 
@@ -1100,19 +1081,23 @@ def _softmax_warp_kernel[
                 output.store[width=1](coords, SIMD[dtype, 1](out_val))
 
 
+# Attention runs softmax in place: `input_fn` may read the buffer passed as
+# `output`. Each row is fully read into the reduction before it is written.
+@__unsafe_nested_origins_read_only
 def _softmax_gpu[
     dtype: DType,
     simd_width: Int,
     rank: Int,
-    input_fn: def[_simd_width: Int](Coord) capturing[_] -> SIMD[
-        dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Coord) -> SIMD[dtype, _simd_width],
     *,
     sink: Bool = False,
     sink_type: DType = dtype,
     logsoftmax: Bool = False,
     has_prologue_fusion: Bool = True,
 ](
+    input_fn: InputFnType,
     shape: Coord,
     output: TileTensor[mut=True, dtype, ...],
     axis: Int,
@@ -1127,7 +1112,7 @@ def _softmax_gpu[
     @inline(.always)
     def input_fn_wrapper[
         _dtype: DType, width: Int
-    ](idx: Coord) -> SIMD[_dtype, width]:
+    ](idx: Coord) {var input_fn} -> SIMD[_dtype, width]:
         return rebind[SIMD[_dtype, width]](input_fn[width](idx))
 
     var shape_il = rebind[IndexList[rank]](coord_to_index_list(shape))
@@ -1156,7 +1141,7 @@ def _softmax_gpu[
                 comptime warp_kernel = _softmax_warp_kernel[
                     WARP_ROWS,
                     has_prologue_fusion,
-                    input_fn_wrapper,
+                    type_of(input_fn_wrapper),
                     dtype,
                     rank,
                     output.LayoutType,
@@ -1165,6 +1150,7 @@ def _softmax_gpu[
                 ]
                 ctx.enqueue_function[warp_kernel](
                     output,
+                    host_arg=input_fn_wrapper,
                     grid_dim=warp_num_blocks,
                     block_dim=WARP_BLOCK_SIZE,
                     attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -1227,7 +1213,7 @@ def _softmax_gpu[
                         comptime partial_kernel = _softmax_split_partial_kernel[
                             BLOCK_SIZE,
                             kernel_simd_width,
-                            input_fn_wrapper,
+                            type_of(input_fn_wrapper),
                             dtype,
                             DType.float32,
                             rank,
@@ -1239,6 +1225,7 @@ def _softmax_gpu[
                             Int32(num_splits),
                             partial_max,
                             partial_sum,
+                            host_arg=input_fn_wrapper,
                             grid_dim=num_pairs,
                             block_dim=BLOCK_SIZE,
                         )
@@ -1246,7 +1233,7 @@ def _softmax_gpu[
                         comptime combine_kernel = _softmax_split_combine_kernel[
                             BLOCK_SIZE,
                             kernel_simd_width,
-                            input_fn_wrapper,
+                            type_of(input_fn_wrapper),
                             dtype,
                             DType.float32,
                             rank,
@@ -1262,6 +1249,7 @@ def _softmax_gpu[
                             Int32(num_splits),
                             partial_max,
                             partial_sum,
+                            host_arg=input_fn_wrapper,
                             grid_dim=num_pairs,
                             block_dim=BLOCK_SIZE,
                         )
@@ -1272,7 +1260,7 @@ def _softmax_gpu[
                     comptime kernel = _softmax_temperature_kernel[
                         BLOCK_SIZE,
                         kernel_simd_width,
-                        input_fn_wrapper,
+                        type_of(input_fn_wrapper),
                         dtype,
                         DType.float32,
                         rank,
@@ -1285,6 +1273,7 @@ def _softmax_gpu[
                         output,
                         Float32(1),
                         null_temp_arr,
+                        host_arg=input_fn_wrapper,
                         grid_dim=num_blocks,
                         block_dim=BLOCK_SIZE,
                         attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -1305,7 +1294,7 @@ def _softmax_gpu[
         var num_blocks = min(num_rows, sm_overprovision_factor * sm_count)
         comptime kernel = softmax_kernel[
             BLOCK_SIZE,
-            input_fn_wrapper,
+            type_of(input_fn_wrapper),
             dtype,
             sink_type,
             rank,
@@ -1320,23 +1309,28 @@ def _softmax_gpu[
             shape_il,
             output,
             sink_weights.unsafe_value(),
+            host_arg=input_fn_wrapper,
             grid_dim=num_blocks,
             block_dim=BLOCK_SIZE,
             attributes=pdl_launch_attributes(PDLLevel.ON),
         )
 
 
+# Callers may run softmax in place: `input_fn` may read the buffer passed
+# as `output`. Each row is fully read into the reduction before it is written.
+@__unsafe_nested_origins_read_only
 def softmax_inline[
     dtype: DType,
     simd_width: Int,
     rank: Int,
-    input_fn: def[_simd_width: Int](Coord) capturing[_] -> SIMD[
-        dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Coord) -> SIMD[dtype, _simd_width],
     target: StaticString = "cpu",
     logsoftmax: Bool = False,
     has_prologue_fusion: Bool = True,
 ](
+    input_fn: InputFnType,
     shape: Coord,
     output: TileTensor[mut=True, dtype, ...],
     axis: Int,
@@ -1351,12 +1345,14 @@ def softmax_inline[
         dtype: The dtype of the input and output buffers.
         simd_width: The simd_width to use in vectorization.
         rank: The rank of the input and output tensors.
-        input_fn: The elementwise input lambda.
+        InputFnType: The type of `input_fn` (inferred).
         target: The target device ("cpu" or "gpu").
         logsoftmax: Enable to apply elementwise log() to outputs after softmax.
         has_prologue_fusion: Whether the input lambda supports prologue fusion.
 
     Args:
+        input_fn: The elementwise input lambda. On GPU it runs on the device,
+            so it must copy what it captures.
         shape: The shape of the output tensor.
         output: The output buffer in which to store the softmax values.
         axis: The axis along which to compute the softmax.
@@ -1376,23 +1372,18 @@ def softmax_inline[
             return
         comptime if is_cpu[target]():
             var cpu_ctx = DeviceContext._map_assert_cpu_target(context)
-            _softmax_cpu[
-                dtype,
-                simd_width,
-                rank,
-                origin_of()._mlir_origin,
-                input_fn,
-                logsoftmax=logsoftmax,
-            ](shape, output, axis, cpu_ctx)
+            _softmax_cpu[dtype, simd_width, rank, logsoftmax=logsoftmax](
+                input_fn, shape, output, axis, cpu_ctx
+            )
         elif is_gpu[target]():
             _softmax_gpu[
                 dtype,
                 simd_width,
                 rank,
-                input_fn,
                 logsoftmax=logsoftmax,
                 has_prologue_fusion=has_prologue_fusion,
             ](
+                input_fn,
                 shape,
                 output,
                 axis,
@@ -1411,9 +1402,9 @@ def softmax_inline[
 def _softmax_temperature_kernel[
     BLOCK_SIZE: Int,
     simd_width: Int,
-    input_fn: def[_dtype: DType, _simd_width: Int](Coord) capturing[_] -> SIMD[
-        _dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_dtype: DType, _simd_width: Int](Coord) -> SIMD[_dtype, _simd_width],
     dtype: DType,
     temp_dtype: DType,
     rank: Int,
@@ -1430,6 +1421,7 @@ def _softmax_temperature_kernel[
     temperature_arr: Optional[
         UnsafePointer[Scalar[temp_dtype], ImmutAnyOrigin]
     ],
+    input_fn: InputFnType,
 ):
     """Computes `softmax(logits / T)` over the inner axis. T is resolved per
     row from `temperature_arr` (if non-null) or the scalar `temperature`
@@ -1487,7 +1479,7 @@ def _softmax_temperature_kernel[
                     @inline(.always)
                     def online_max_sum[
                         width: Int
-                    ](offset: Int) {row_coords, lane_base, mut}:
+                    ](offset: Int) {row_coords, lane_base, input_fn, mut}:
                         var coords = row_coords
                         coords.replace_dynamic[axis](lane_base + offset)
                         var v = input_fn[dtype, width](coords).cast[
@@ -1526,7 +1518,9 @@ def _softmax_temperature_kernel[
                     @inline(.always)
                     def normalize[
                         width: Int
-                    ](offset: Int) {row_coords, lane_base, output, mut}:
+                    ](offset: Int) {
+                        row_coords, lane_base, output, input_fn, mut
+                    }:
                         var coords = row_coords
                         coords.replace_dynamic[axis](lane_base + offset)
                         var logit = input_fn[dtype, width](coords).cast[
@@ -1557,9 +1551,9 @@ def _softmax_temperature_kernel[
 def _softmax_split_partial_kernel[
     BLOCK_SIZE: Int,
     simd_width: Int,
-    input_fn: def[_dtype: DType, _simd_width: Int](Coord) capturing[_] -> SIMD[
-        _dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_dtype: DType, _simd_width: Int](Coord) -> SIMD[_dtype, _simd_width],
     dtype: DType,
     temp_dtype: DType,
     rank: Int,
@@ -1573,6 +1567,7 @@ def _softmax_split_partial_kernel[
     num_splits_dev: Int32,
     partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
     partial_sum: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    input_fn: InputFnType,
 ):
     """Stage 1 of split-K softmax: reduce one contiguous column chunk of one
     row to a partial `(max, sum)`.
@@ -1626,7 +1621,7 @@ def _softmax_split_partial_kernel[
                 @inline(.always)
                 def online_max_sum[
                     width: Int
-                ](offset: Int) {row_coords, lane_base, mut}:
+                ](offset: Int) {row_coords, lane_base, input_fn, mut}:
                     var coords = row_coords
                     coords.replace_dynamic[axis](lane_base + offset)
                     var v = input_fn[dtype, width](coords).cast[accum_type]()
@@ -1658,9 +1653,9 @@ def _softmax_split_partial_kernel[
 def _softmax_split_combine_kernel[
     BLOCK_SIZE: Int,
     simd_width: Int,
-    input_fn: def[_dtype: DType, _simd_width: Int](Coord) capturing[_] -> SIMD[
-        _dtype, _simd_width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_dtype: DType, _simd_width: Int](Coord) -> SIMD[_dtype, _simd_width],
     dtype: DType,
     temp_dtype: DType,
     rank: Int,
@@ -1680,6 +1675,7 @@ def _softmax_split_combine_kernel[
     num_splits_dev: Int32,
     partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
     partial_sum: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    input_fn: InputFnType,
 ):
     """Stage 2 of split-K softmax: combine the row's partials into
     `(global_max, global_sum)`, then normalize this block's column chunk.
@@ -1738,7 +1734,7 @@ def _softmax_split_combine_kernel[
                 @inline(.always)
                 def normalize[
                     width: Int
-                ](offset: Int) {row_coords, lane_base, output, mut}:
+                ](offset: Int) {row_coords, lane_base, output, input_fn, mut}:
                     var coords = row_coords
                     coords.replace_dynamic[axis](lane_base + offset)
                     var logit = input_fn[dtype, width](coords).cast[
@@ -1813,18 +1809,16 @@ def softmax_with_temperature[
     var input_immut = input.as_imm()
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(input_immut)
     def input_load_fn[
         _dtype: DType, width: Int
-    ](idx: Coord) -> SIMD[_dtype, width]:
+    ](idx: Coord) {var input_immut} -> SIMD[_dtype, width]:
         comptime assert idx.rank == 2
         return rebind[SIMD[_dtype, width]](input_immut.load[width=width](idx))
 
     comptime kernel = _softmax_temperature_kernel[
         BLOCK_SIZE,
         simd_width,
-        input_load_fn,
+        type_of(input_load_fn),
         dtype,
         temp_dtype,
         2,
@@ -1837,6 +1831,7 @@ def softmax_with_temperature[
         output,
         temperature.cast[.float32](),
         temp_ptr,
+        host_arg=input_load_fn,
         grid_dim=num_blocks,
         block_dim=BLOCK_SIZE,
         attributes=pdl_launch_attributes(PDLLevel.ON),

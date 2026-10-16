@@ -6028,15 +6028,14 @@ def mha_gpu_naive[
         block_dim=_NAIVE_BMM_BLOCK_DIM,
     )
 
-    @__parameter
-    @__copy_capture(p_buffer)
     def input_fn_device[
         _simd_width: Int
-    ](coords: Coord) -> SIMD[p_type, _simd_width]:
+    ](coords: Coord) {var p_buffer} -> SIMD[p_type, _simd_width]:
         comptime assert p_buffer.flat_rank >= coords.flat_rank
         return p_buffer.load[width=_simd_width](coords)
 
-    _softmax_gpu[p_type, 1, 3, input_fn_device, sink=sink](
+    _softmax_gpu[p_type, 1, 3, sink=sink](
+        input_fn_device,
         Coord(batch_size * num_heads, max_prompt_len, num_keys),
         p_buffer,
         2,

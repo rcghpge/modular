@@ -788,11 +788,11 @@ def _topp_minp_sampling_gpu[
     var batch_size = input_shape[0]
     var vocab_size = input_shape[1]
 
-    @__parameter
-    @__copy_capture(input_logits)
     def apply_temperature[
         _simd_width: Int
-    ](coords: Coord) -> SIMD[dtype, _simd_width]:
+    ](coords: Coord) {var input_logits, var temperature} -> SIMD[
+        dtype, _simd_width
+    ]:
         var val = input_logits.load[width=_simd_width](coords)
         return val / temperature
 
@@ -804,12 +804,13 @@ def _topp_minp_sampling_gpu[
         row_major(batch_size, vocab_size),
     )
 
-    _softmax_gpu[
-        dtype,
-        1,
-        input_logits.rank,
+    _softmax_gpu[dtype, 1, input_logits.rank](
         apply_temperature,
-    ](Coord(input_shape), input_probs, input_logits.rank - 1, ctx)
+        Coord(input_shape),
+        input_probs,
+        input_logits.rank - 1,
+        ctx,
+    )
 
     # Step 2: Do a Top K=1 search on each vocab_size row of the
     #   probabilities tensor. This is to check if the most probable

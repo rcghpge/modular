@@ -381,15 +381,14 @@ def mha_cross_gpu_naive[
         block_dim=(32, 16, 1),
     )
 
-    @__parameter
-    @__copy_capture(p_buffer)
     def input_fn_device[
         _simd_width: Int
-    ](coords: Coord) -> SIMD[p_type, _simd_width]:
+    ](coords: Coord) {var p_buffer} -> SIMD[p_type, _simd_width]:
         comptime assert p_buffer.flat_rank >= coords.flat_rank
         return p_buffer.load[width=_simd_width](coords)
 
-    _softmax_gpu[p_type, 1, 3, input_fn_device](
+    _softmax_gpu[p_type, 1, 3](
+        input_fn_device,
         Coord(batch_size * num_heads, q_max_seq_len, num_keys),
         p_buffer,
         2,
