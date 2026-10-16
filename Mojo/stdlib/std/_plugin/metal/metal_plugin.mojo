@@ -103,4 +103,6 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
         _air_binary_math[name=name] if name == "pow" else None
     )
 
+    comptime supports_float64: Bool = False
+
     comptime flushes_subnormals[dtype: DType]: Bool = dtype == DType.float32

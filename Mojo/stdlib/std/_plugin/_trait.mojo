@@ -128,6 +128,15 @@ trait PluginHooks:
         Elementwise `name(x, y)` computed on the vendor backend.
     """
 
+    comptime supports_float64: Bool = True
+    """Whether the target supports float64 arithmetic.
+
+    Where it is `False`, `std.math` functions that compute float64 results in
+    software, such as `log` and `atan2`, reject float64 inputs with a
+    compile-time error instead of emitting float64 code the backend cannot
+    lower.
+    """
+
     comptime flushes_subnormals[dtype: DType]: Bool = False
     """Whether the target flushes `dtype` subnormals to zero.
 

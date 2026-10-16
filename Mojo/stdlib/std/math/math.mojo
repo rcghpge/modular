@@ -23,7 +23,6 @@ from std.sys import (
     CompilationTarget,
     bit_width_of,
     is_amd_gpu,
-    is_apple_gpu,
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
@@ -3985,8 +3984,8 @@ comptime _BESSEL_ASYMPTOTIC_MIN = 2.0
 
 @inline(.always)
 def _assert_float64_supported[dtype: DType, name: StaticString]():
-    comptime assert dtype != .float64 or not is_apple_gpu(), (
-        "`" + name + "` does not support float64 on Apple GPU"
+    comptime assert dtype != .float64 or CurrentPlugin.supports_float64, (
+        "`" + name + "` does not support float64 on this target"
     )
 
 
