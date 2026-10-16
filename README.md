@@ -74,20 +74,8 @@ downloaded.
 
 ## Community & Events
 
-Get help from community members, tune in for a community meeting, or join a
-local meetup.
-
-| Channel               | Link                                            |
-|-----------------------|-------------------------------------------------|
-| 💬 Discord            | [discord.gg/modular][discord]                   |
-| 💬 Forum              | [forum.modular.com][forum]                      |
-| 📅 Meetup Group       | [meetup.com/modular-meetup-group][meetup-group] |
-| 🎦 Community Meetings | [Upcoming community calls][public-com-meet-doc] |
-| 📺 YouTube            | [youtube.com/@modularinc][youtube]              |
-
-**Upcoming events** will be posted on our [Meetup page][meetup-group] and
-[Discord][discord]. Community meeting recordings will be posted on our
-[YouTube][youtube].
+There are a lot of great ways to get involved! Check out the
+[Mojo community page][mojo-community] for details.
 
 ## Thanks to our contributors
 
@@ -104,8 +92,4 @@ local meetup.
 [Mojo docs]: https://mojolang.org/docs/
 
 <!-- Community & Events links -->
-[discord]: https://discord.gg/modular
-[forum]: https://forum.modular.com/
-[meetup-group]: https://www.meetup.com/modular-meetup-group/
-[youtube]: https://www.youtube.com/@modularinc
-[public-com-meet-doc]: https://modul.ar/community-meeting-doc
+[mojo-community]: https://mojolang.org/community/
