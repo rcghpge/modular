@@ -1851,7 +1851,7 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         BK: Int,
         padded_depth: Int,
     ](self, ctx: DeviceContext) raises -> SplitLastDimTMATensorTile[
-        DType.bfloat16,
+        .bfloat16,
         coord[BN, 1, BK],
         swizzle_mode,
     ]:
@@ -1934,7 +1934,7 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_NONE,
         l2_promotion: TensorMapL2Promotion = TensorMapL2Promotion.NONE,
     ](self, ctx: DeviceContext) raises -> TMATensorTile[
-        DType.bfloat16,
+        .bfloat16,
         tile_shape=coord[
             tile_height,
             _gather4_box_width[.bfloat16, tile_width, swizzle_mode](),
@@ -2541,7 +2541,7 @@ struct ContinuousBatchingKVCache[
         self,
         ctx: DeviceContext,
         out tma: SplitLastDimTMATensorTile[
-            DType.bfloat16,
+            .bfloat16,
             coord[BN, 1, BK],
             swizzle_mode,
         ],
@@ -2570,7 +2570,7 @@ struct ContinuousBatchingKVCache[
         swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_NONE,
         l2_promotion: TensorMapL2Promotion = TensorMapL2Promotion.NONE,
     ](self, ctx: DeviceContext) raises -> TMATensorTile[
-        DType.bfloat16,
+        .bfloat16,
         tile_shape=coord[
             tile_height,
             _gather4_box_width[.bfloat16, tile_width, swizzle_mode](),
@@ -3618,7 +3618,7 @@ struct PagedKVCache[
         self,
         ctx: DeviceContext,
         out tma: SplitLastDimTMATensorTile[
-            DType.bfloat16,
+            .bfloat16,
             coord[BN, 1, BK],
             swizzle_mode,
         ],
@@ -3668,7 +3668,7 @@ struct PagedKVCache[
         swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_NONE,
         l2_promotion: TensorMapL2Promotion = TensorMapL2Promotion.NONE,
     ](self, ctx: DeviceContext) raises -> TMATensorTile[
-        DType.bfloat16,
+        .bfloat16,
         tile_shape=coord[
             tile_height,
             _gather4_box_width[.bfloat16, tile_width, swizzle_mode](),
@@ -3692,7 +3692,7 @@ struct PagedKVCache[
         """
         var rope_ptr = (self.blocks.ptr + padded_depth).bitcast[BFloat16]()
         return create_tma_tile_gather4[
-            DType.bfloat16,
+            .bfloat16,
             tile_height=tile_height,
             tile_width=tile_width,
             swizzle_mode=swizzle_mode,
@@ -4493,9 +4493,7 @@ struct PagedKVCacheCollection[
         else:
             self.scales = None
             self.kv_cache_scales_dynamic_shape = DynamicCoord[.int64, 4]()
-            self.kv_cache_scales_dynamic_strides = DynamicCoord[
-                DType.int64, 4
-            ]()
+            self.kv_cache_scales_dynamic_strides = DynamicCoord[.int64, 4]()
 
     def __init__[
         scales_dtype: DType = Self.scale_dtype
