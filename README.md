@@ -43,18 +43,12 @@ The main components include:
 
 ## Contribute
 
-We accept contributions to the [Mojo standard library](/Mojo/stdlib), [MAX
-accelerator library](./max/kernels), [MAX model
-architectures](/max/python/max/pipelines/architectures), code examples, Mojo
-docs, and more. We aren't accepting contributions to the Mojo compiler yet.
-
-First, please read the [Contribution Guide](./CONTRIBUTING.md), and then refer
-to the following documentation about how to develop in the repo:
-
-- [`/max/docs`](/max/docs): Docs for developers working in the MAX framework
-  codebase.
-- [`/Mojo/docs/stdlib`](/Mojo/docs/stdlib): Docs for developers working in the
-  Mojo standard library.
+We accept contributions to both Mojo
+([Mojo contributor guide](https://mojolang.org/community/contributing/)) and MAX
+([MAX contributor guide](/max/docs/contributing/README.md)). For information
+about what changes we accept in different areas, see the
+[Mojo contribution areas](https://mojolang.org/community/contributing/contribution-areas/)
+and [MAX contribution areas](/max/docs/contributing/contribution-areas.md).
 
 We also welcome your bug reports. If you have a bug, please [file an issue
 here](https://github.com/modular/modular/issues/new/choose).
