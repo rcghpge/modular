@@ -3460,7 +3460,7 @@ struct Grouped1D1DMatmulKernel[
                 num_output_warps, stageN, SfVectorSize // 4, 4
             ]()
             var tok_rows = TileTensor[
-                DType.float32,
+                .float32,
                 type_of(tok_rows_layout),
                 MutAnyOrigin,
                 address_space=AddressSpace.SHARED,
@@ -3880,9 +3880,7 @@ struct Grouped1D1DMatmulKernel[
 
                         comptime if is_mxfp8:
                             # 16 fp32 -> 16 fp8 bytes -> 4 word stores.
-                            var packed16_ip = p_scaled.cast[
-                                DType.float8_e4m3fn
-                            ]()
+                            var packed16_ip = p_scaled.cast[.float8_e4m3fn]()
                             var byte_base = (
                                 Int(n_abs) // 2 + Int(warp_row_offset) // 2
                             )
