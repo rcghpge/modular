@@ -602,7 +602,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             comptime if Self.has_attn_sink:
                 # The softmax row this thread owns; lane_id() would fold rows
                 # 32-63 onto 0-31 and give them the wrong heads' sinks.
-                var row = Int(thread_idx.x) & 0x3F
+                var row = thread_idx.x & 0x3F
                 var head_idx_local = block_idx.x * Self.config.BM + row
                 if head_idx_local < Self.config.num_q_heads:
                     attn_sink_log2 = attn_sink_ptr.value()[head_idx_local].cast[

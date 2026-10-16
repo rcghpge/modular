@@ -214,7 +214,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         comptime tail_elems = (Self.NumQKBlocks - tail_block0) * Self.BlockElems
         comptime tail_off = tail_block0 * Self.BlockElems
 
-        var tid = Int(thread_idx.x)
+        var tid = thread_idx.x
         for i in range(tid, tail_elems, Self.num_threads):
             q_smem[tail_off + i] = Scalar[Self.q_type](0)
         comptime for stage in range(Self.config.num_kv_stages):
@@ -543,7 +543,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             comptime if Self.has_attn_sink:
                 # The softmax row this thread owns; lane_id() would fold rows
                 # 32-63 onto 0-31 and give them the wrong heads' sinks.
-                var row = Int(thread_idx.x) & 0x3F
+                var row = thread_idx.x & 0x3F
                 var head_idx_local = block_idx.x * Self.config.BM + row
                 if head_idx_local < Self.config.num_q_heads:
                     attn_sink_log2 = attn_sink_ptr.value()[head_idx_local].cast[

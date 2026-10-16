@@ -308,7 +308,7 @@ def fa4_load[
             comptime nblk = config.BK0 // gran
             comptime chunk = 16 // size_of[qkv_type]()
             comptime chunks_per_blk = q_pad_rows * gran // chunk
-            var lane = Int(thread_idx.x) % 32
+            var lane = thread_idx.x % 32
             for c in range(lane, nblk * chunks_per_blk, 32):
                 var off = (
                     (c // chunks_per_blk) * BM * gran
