@@ -1462,8 +1462,10 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
           R"nbdoc(
         Returns a new buffer with the given type and shape that shares the underlying memory.
 
-        If the shape is not given, it is deduced if possible, otherwise a
-        ``ValueError`` is raised.
+        If ``shape`` is not given, it is deduced by resizing the last axis to fit
+        the new dtype. A rank-0 buffer has no axis to resize, so it keeps shape
+        ``()`` and only accepts a dtype of the same size. A ``ValueError`` is raised
+        when no shape can be deduced.
       )nbdoc")
       .def_static(
           "zeros",
