@@ -27,7 +27,7 @@ from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import TileTensor, row_major
 from std.utils.index import IndexList
-from linalg.utils import elementwise_epilogue_type
+from linalg.utils import ElementwiseEpilogueFn, no_epilogue_fn
 
 
 # =========================================================================
@@ -125,10 +125,11 @@ def dispatch_sm100_conv2d[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     filter_is_fcrs: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     has_residual: Bool = False,
+    has_epilogue_fn: Bool = False,
 ](
     input: TileTensor[mut=True, input_type, address_space=.GENERIC, ...],
     filter: TileTensor[filter_type, ...],
@@ -139,6 +140,7 @@ def dispatch_sm100_conv2d[
         UnsafePointer[Scalar[output_type], MutAnyOrigin]
     ] = None,
     beta: Float32 = 0.0,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises:
     """Dispatch to SM100 structured conv2d with filter transpose.
 
@@ -149,10 +151,10 @@ def dispatch_sm100_conv2d[
         input_type: Data type of the input activation tensor.
         filter_type: Data type of the filter weights tensor.
         output_type: Data type of the output tensor.
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         filter_is_fcrs: If True, filter is FCRS layout; otherwise RSCF.
-        elementwise_lambda_fn: Optional void epilogue lambda applied after
-            output write. Signature: `def(Coord, SIMD) -> None`.
         has_residual: If True, fuse residual add D = Conv(A,B) + beta*C.
+        has_epilogue_fn: Whether `epilogue_fn` stores the output.
 
     Args:
         input: Input activation tensor in NHWC layout.
@@ -163,6 +165,9 @@ def dispatch_sm100_conv2d[
         source_ptr: Pointer to residual source tensor C (NHWC, same shape
             as output). Only used when has_residual is True.
         beta: Residual scale factor. D = Conv(A,B) + beta*C.
+        epilogue_fn: Elementwise epilogue that stores each output value,
+            with coordinates in the [M, N] GEMM view of the output; ignored
+            unless `has_epilogue_fn` is True.
 
     Raises:
         Error if kernel launch fails.
@@ -279,14 +284,26 @@ def dispatch_sm100_conv2d[
                 )
                 conv2d_fprop_with_residual[
                     config=config,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
                     has_residual=True,
-                ](out_tt, act_tt, filter_tt, src_tt, beta, problem, ctx)
+                    has_epilogue_fn=has_epilogue_fn,
+                ](
+                    out_tt,
+                    act_tt,
+                    filter_tt,
+                    src_tt,
+                    beta,
+                    problem,
+                    ctx,
+                    epilogue_fn,
+                )
+            elif has_epilogue_fn:
+                conv2d_fprop[config=config](
+                    out_tt, act_tt, filter_tt, problem, epilogue_fn, ctx
+                )
             else:
-                conv2d_fprop[
-                    config=config,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                ](out_tt, act_tt, filter_tt, problem, ctx)
+                conv2d_fprop[config=config](
+                    out_tt, act_tt, filter_tt, problem, ctx
+                )
 
         if in_c_bytes % 128 == 0:
             _launch[TensorMapSwizzle.SWIZZLE_128B]()

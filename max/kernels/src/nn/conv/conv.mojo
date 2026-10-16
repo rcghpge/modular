@@ -5053,7 +5053,6 @@ def conv_gpu[
                 dispatch_sm100_conv2d,
                 test_alignment_sm100_conv2d,
             )
-            from linalg.utils import elementwise_epilogue_type
 
             # SM100 dispatch: stride=1, dilation=1, groups=1, and inner
             # C-row is 64B-aligned (TMA swizzle alignment). The dispatch
@@ -5082,43 +5081,24 @@ def conv_gpu[
                     in_c, out_c
                 )
             ):
-
-                @inline(.always)
-                def _sm100_dispatch[
-                    _epilogue: Optional[elementwise_epilogue_type] = None,
-                ]() raises {imm}:
-                    dispatch_sm100_conv2d[
-                        filter_is_fcrs,
-                        elementwise_lambda_fn=_epilogue,
-                        has_residual=has_residual,
-                    ](
-                        input,
-                        filter,
-                        output,
-                        rebind[IndexList[2]](symmetric_padding),
-                        ctx,
-                        source_ptr,
-                        beta,
-                    )
-
                 comptime if case .Some(epilogue) = maybe_epilogue_func:
                     # Wrap the 4D NHWC epilogue into a 2D GEMM-space
-                    # void epilogue for the SM100 kernel. The kernel
+                    # store epilogue for the SM100 kernel. The kernel
                     # calls this with (m, n) coords where
                     # m = batch*H_out*W_out + h*W_out + w, n = channel.
                     var out_h = Int(output.dim[1]())
                     var out_w = Int(output.dim[2]())
                     var hw = out_h * out_w
 
-                    @__parameter
                     @inline(.always)
-                    @__copy_capture(hw, out_w)
-                    def sm100_void_epilogue[
+                    def sm100_epilogue[
                         _dtype: DType,
                         _width: SIMDLength,
                         *,
-                        alignment: Int = 1,
-                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        alignment: Int,
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                        var hw, var out_w
+                    }:
                         comptime assert (
                             coords_2d.rank == 2
                         ), "the matmul epilogue contract is rank 2"
@@ -5135,11 +5115,33 @@ def conv_gpu[
                             rebind[SIMD[output_type, _width]](val),
                         )
 
-                    _sm100_dispatch[
-                        Optional[elementwise_epilogue_type](sm100_void_epilogue)
-                    ]()
+                    dispatch_sm100_conv2d[
+                        filter_is_fcrs,
+                        has_residual=has_residual,
+                        has_epilogue_fn=True,
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[2]](symmetric_padding),
+                        ctx,
+                        source_ptr,
+                        beta,
+                        sm100_epilogue,
+                    )
                 else:
-                    _sm100_dispatch[]()
+                    dispatch_sm100_conv2d[
+                        filter_is_fcrs,
+                        has_residual=has_residual,
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[2]](symmetric_padding),
+                        ctx,
+                        source_ptr,
+                        beta,
+                    )
                 return
 
         # SM100 im2col+matmul: route non-128-aligned channels through

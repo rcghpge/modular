@@ -92,7 +92,6 @@ from linalg.arch.sm100 import MmaOpSM100_SS
 from linalg.utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_epilogue_type,
     identity_compute_fn,
     no_epilogue_fn,
 )
@@ -360,7 +359,6 @@ struct BlackwellMatmulSM100Kernel[
     # Cluster shape (must match config, needed for LLVM metadata)
     cluster_shape: StaticTuple[Int32, 3] = StaticTuple[Int32, 3](1),
     # Optional features
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     pdl_level: PDLLevel = PDLLevel(),
     max_profiled_tiles_per_SM: UInt32 = 0,
     # Injected output-writer policy (see structured_kernels/output_writer_trait).
@@ -397,8 +395,6 @@ struct BlackwellMatmulSM100Kernel[
             tile shape, pipeline stage counts, and swizzle modes.
         cluster_shape: Thread block cluster dimensions, must match
             `config.cluster_shape` (defaults to `(1, 1, 1)`).
-        elementwise_lambda_fn: Optional epilogue function applied to output
-            elements after MMA (defaults to `None`).
         pdl_level: Programmatic Dependent Launch level for inter-grid
             dependency ordering (defaults to `PDLLevel()`, off).
         max_profiled_tiles_per_SM: Maximum number of tiles to profile per SM
@@ -758,7 +754,6 @@ struct BlackwellMatmulSM100Kernel[
         c_smem_dim1=Self.SmemType.OutputN,
         num_output_stages=Self.SmemType.num_output_stages,
         num_output_warps=Self.num_output_warps,
-        elementwise_lambda_fn=Self.elementwise_lambda_fn,
         register_based_epilogue=Self.register_based_epilogue,
         batched=True,
     ]
@@ -776,7 +771,6 @@ struct BlackwellMatmulSM100Kernel[
         c_smem_dim1=Self.SmemType.OutputN,
         num_output_stages=Self.SmemType.num_output_stages,
         num_output_warps=Self.num_output_warps,
-        elementwise_lambda_fn=Self.elementwise_lambda_fn,
         register_based_epilogue=Self.register_based_epilogue,
         batched=False,
     ]
@@ -848,7 +842,6 @@ struct BlackwellMatmulSM100Kernel[
             Self.SmemType.OutputN,
             Self.SmemType.num_output_stages,
             Self.num_output_warps,
-            Self.elementwise_lambda_fn,
             has_epilogue_fn,
             has_compute_fn,
             Self.register_based_epilogue,
@@ -1701,12 +1694,7 @@ struct BlackwellMatmulSM100Kernel[
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(c_tma_ops, `nvvm.grid_constant`)
     @__llvm_arg_metadata(epilogue_load_tma_op, `nvvm.grid_constant`)
-    @__name(
-        StaticString(Self.config.get_kernel_name())
-        + StaticString(
-            "_fused_epi" if Self.elementwise_lambda_fn is not None else ""
-        ),
-    )
+    @__name(StaticString(Self.config.get_kernel_name()))
     def run(
         a_tma_op: Self.ATmaOp,
         b_tma_op: Self.BTmaOp,
@@ -2459,12 +2447,7 @@ struct BlackwellMatmulSM100Kernel[
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
-    @__name(
-        StaticString(Self.config.get_kernel_name())
-        + StaticString(
-            "_fused_epi" if Self.elementwise_lambda_fn is not None else ""
-        ),
-    )
+    @__name(StaticString(Self.config.get_kernel_name()))
     def run_splitk[
         reduction_layout: TensorLayout,
         reduction_engine: TensorEngine,
@@ -2819,7 +2802,6 @@ struct BlackwellMatmulSM100FallbackKernel[
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     num_threads: Int = 128,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ]:
     """Simple fallback matmul kernel for SM100 (B200).
 
@@ -2853,8 +2835,6 @@ struct BlackwellMatmulSM100FallbackKernel[
             `TensorMapSwizzle.SWIZZLE_128B`).
         num_threads: Number of threads per CTA; must be 128 or 256 (defaults
             to 128).
-        elementwise_lambda_fn: Optional epilogue function applied to output
-            elements (defaults to `None`).
     """
 
     # ========== Derived Constants ==========
@@ -2956,6 +2936,60 @@ struct BlackwellMatmulSM100FallbackKernel[
             c: Output tensor C (TileTensor, direct global memory writes).
             num_iters: Number of K-dimension iterations.
         """
+        Self._run_impl[has_compute_fn=False](
+            a_tma_op, b_tma_op, c, num_iters, identity_compute_fn
+        )
+
+    @staticmethod
+    @inline(.always)
+    @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
+    @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
+    @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
+    def run_with_compute_fn[
+        ComputeFnType: ElementwiseComputeFn
+    ](
+        a_tma_op: Self.ATmaOp,
+        b_tma_op: Self.BTmaOp,
+        c: TileTensor[
+            Self.c_type, Self.c_layout, MutAnyOrigin, Engine=Self.c_engine
+        ],
+        num_iters: Int32,
+        compute_fn: ComputeFnType,
+    ):
+        """Run the fallback matmul kernel with a compute epilogue value.
+
+        Parameters:
+            ComputeFnType: Type of the compute epilogue closure.
+
+        Args:
+            a_tma_op: TMA descriptor for matrix A.
+            b_tma_op: TMA descriptor for matrix B.
+            c: Output tensor C (TileTensor, direct global memory writes).
+            num_iters: Number of K-dimension iterations.
+            compute_fn: Element-wise epilogue applied to each output value
+                before it is stored to `c`.
+        """
+        Self._run_impl[has_compute_fn=True](
+            a_tma_op, b_tma_op, c, num_iters, compute_fn
+        )
+
+    @staticmethod
+    @inline(.always)
+    def _run_impl[
+        ComputeFnType: ElementwiseComputeFn,
+        //,
+        has_compute_fn: Bool,
+    ](
+        a_tma_op: Self.ATmaOp,
+        b_tma_op: Self.BTmaOp,
+        c: TileTensor[
+            Self.c_type, Self.c_layout, MutAnyOrigin, Engine=Self.c_engine
+        ],
+        num_iters: Int32,
+        compute_fn: ComputeFnType,
+    ):
+        """Shared body of `run` and `run_with_compute_fn`; `compute_fn` is
+        ignored unless `has_compute_fn` is True."""
         var _num_iters = Int(num_iters)
         Self.validate_constraints()
 
@@ -3130,16 +3164,13 @@ struct BlackwellMatmulSM100FallbackKernel[
                                 c_frag[2 * i_vec], c_frag[2 * i_vec + 1]
                             ).cast[Self.c_type]()
 
-                            comptime if case .Some(
-                                epilogue
-                            ) = Self.elementwise_lambda_fn:
+                            comptime if has_compute_fn:
                                 comptime alignment = align_of[
                                     SIMD[Self.c_type, 2]
                                 ]()
-                                epilogue[alignment=alignment](
-                                    (Int(m), Int(n)), c_mn
+                                c_mn = compute_fn[alignment=alignment](
+                                    Coord(Int(m), Int(n)), c_mn
                                 )
-                            else:
-                                frag[m_vec, n_vec] = rebind[
-                                    type_of(frag).ElementType
-                                ](c_mn)
+                            frag[m_vec, n_vec] = rebind[
+                                type_of(frag).ElementType
+                            ](c_mn)
