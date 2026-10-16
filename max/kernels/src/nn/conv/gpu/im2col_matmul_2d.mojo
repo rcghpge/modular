@@ -25,7 +25,7 @@ Gate: bf16, groups=1, dilation=1, kernel > 1×1 (the vectorized naive
 kernel wins on 1×1), K >= 16 (below MMA_K).
 """
 
-from std.math import ceildiv
+from std.math import ceildiv, divmod
 from std.math.uutils import udivmod
 from std.sys.info import size_of
 from max.gpu import block_dim, block_idx, global_idx, thread_idx
@@ -319,9 +319,7 @@ def dispatch_im2col_matmul_conv2d[
     # tile that would under-use the matmul.
     var bytes_per_row = K * size_of[input_type]()
     var m_tile_by_budget = m_tile_byte_budget // bytes_per_row
-    var m_tile_cap = (
-        m_tile_by_budget if m_tile_by_budget > _MIN_M_TILE else _MIN_M_TILE
-    )
+    var m_tile_cap = max(m_tile_by_budget, _MIN_M_TILE)
     var m_tile: Int
     if full_M <= m_tile_cap:
         m_tile = full_M
@@ -384,10 +382,8 @@ def dispatch_im2col_matmul_conv2d[
                 ), "the matmul epilogue contract is rank 2"
                 var full_m = m_offset + Int(coords_2d[0].value())
                 var n_idx = Int(coords_2d[1].value())
-                var batch_idx = full_m // HW_out
-                var sp = full_m - batch_idx * HW_out
-                var h_idx = sp // _W_out
-                var w_idx = sp - h_idx * _W_out
+                var batch_idx, sp = divmod(full_m, HW_out)
+                var h_idx, w_idx = divmod(sp, _W_out)
                 epilogue_4d(
                     (batch_idx, h_idx, w_idx, n_idx),
                     rebind[SIMD[output_type, _width]](val),
@@ -607,10 +603,8 @@ def dispatch_fused_im2col_conv2d_apple[
             ), "the matmul epilogue contract is rank 2"
             var full_m = Int(coords_2d[0].value())
             var n_idx = Int(coords_2d[1].value())
-            var batch_idx = full_m // HW_out
-            var sp = full_m - batch_idx * HW_out
-            var h_idx = sp // _W_out
-            var w_idx = sp - h_idx * _W_out
+            var batch_idx, sp = divmod(full_m, HW_out)
+            var h_idx, w_idx = divmod(sp, _W_out)
             epilogue_4d(
                 (batch_idx, h_idx, w_idx, n_idx),
                 rebind[SIMD[output_type, _width]](val),

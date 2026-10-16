@@ -29,6 +29,7 @@ Covers every 1x1x1 case in the WAN VAE (`post_quant_conv`, per-block
 the QRSCF dispatch chain, before `dispatch_im2col_matmul_conv3d`.
 """
 
+from std.math import divmod
 from max.gpu.host import DeviceContext
 from layout import Coord, TileTensor, row_major
 from linalg.matmul.gpu import _matmul_gpu
@@ -166,12 +167,9 @@ def dispatch_1x1x1_matmul_conv3d[
             ), "the matmul epilogue contract is rank 2"
             var m_idx = Int(coords_2d[0].value())
             var n_idx = Int(coords_2d[1].value())
-            var batch_idx = m_idx // DHW_out
-            var sp = m_idx - batch_idx * DHW_out
-            var d_idx = sp // HW_out
-            var rem = sp - d_idx * HW_out
-            var h_idx = rem // W_out
-            var w_idx = rem - h_idx * W_out
+            var batch_idx, sp = divmod(m_idx, DHW_out)
+            var d_idx, rem = divmod(sp, HW_out)
+            var h_idx, w_idx = divmod(rem, W_out)
             epilogue_5d(
                 (batch_idx, d_idx, h_idx, w_idx, n_idx),
                 rebind[SIMD[output_type, _width]](val),

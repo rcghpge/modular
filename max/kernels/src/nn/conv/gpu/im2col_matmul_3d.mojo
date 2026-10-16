@@ -22,7 +22,7 @@ bf16, so this path gives the native 3D conv access to tensor cores
 without touching the TMA im2col descriptor layer.
 """
 
-from std.math import ceildiv, gcd
+from std.math import ceildiv, divmod, gcd
 from std.math.uutils import udivmod
 from std.sys import simd_width_of, size_of
 from max.gpu import block_dim, block_idx, global_idx, thread_idx
@@ -393,9 +393,7 @@ def dispatch_im2col_matmul_conv3d[
     # avoid a tiny ragged tail tile that under-uses the matmul.
     var bytes_per_row = K * size_of[input_type]()
     var m_tile_by_budget = m_tile_byte_budget // bytes_per_row
-    var m_tile_cap = (
-        m_tile_by_budget if m_tile_by_budget > _MIN_M_TILE else _MIN_M_TILE
-    )
+    var m_tile_cap = max(m_tile_by_budget, _MIN_M_TILE)
     var m_tile: Int
     if full_M <= m_tile_cap:
         m_tile = full_M
@@ -412,7 +410,7 @@ def dispatch_im2col_matmul_conv3d[
     var _m_offset = 0
     while _m_offset < full_M:
         var remaining = full_M - _m_offset
-        var _m_count = m_tile if remaining > m_tile else remaining
+        var _m_count = min(m_tile, remaining)
 
         # Block-per-row: one block per output voxel, threads cooperate on K.
         comptime im2col_block = 256
@@ -468,12 +466,9 @@ def dispatch_im2col_matmul_conv3d[
                 ), "the matmul epilogue contract is rank 2"
                 var full_m = _m_offset + Int(coords_2d[0].value())
                 var n_idx = Int(coords_2d[1].value())
-                var batch_idx = full_m // DHW_out
-                var sp = full_m - batch_idx * DHW_out
-                var d_idx = sp // HW_out
-                var rem2 = sp - d_idx * HW_out
-                var h_idx = rem2 // W_out
-                var w_idx = rem2 - h_idx * W_out
+                var batch_idx, sp = divmod(full_m, DHW_out)
+                var d_idx, rem2 = divmod(sp, HW_out)
+                var h_idx, w_idx = divmod(rem2, W_out)
                 epilogue_5d(
                     (batch_idx, d_idx, h_idx, w_idx, n_idx),
                     rebind[SIMD[output_type, _width]](val),
