@@ -96,7 +96,12 @@ from linalg.matmul.gpu.sm100.block_scaled_dispatch import (
 )
 from max.gpu.primitives.grid_controls import PDLLevel
 from linalg.matmul.gpu.sm100_structured.default.dispatch import DISPATCH_HIT
-from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
+from max.gpu.primitives.grid_controls import (
+    PDL,
+    launch_dependent_grids,
+    pdl_launch_attributes,
+    wait_on_dependent_grids,
+)
 from max.runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
 from std.collections.string.string_span import get_static_string
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
@@ -1535,6 +1540,9 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     comptime SF_K_GROUP_SIZE = SF_VECTOR_SIZE * SF_ATOM_K
 
     var scale_tile_idx = block_idx.x
+
+    wait_on_dependent_grids()
+
     var expert_idx = _scale_tile_expert[num_experts](
         row_offsets, scales_offsets, scale_tile_idx
     )
@@ -1549,7 +1557,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     var expert_num_tiles = uceildiv(
         curr_expert_end - curr_expert_start, SF_MN_GROUP_SIZE
     )
-    # Padded tiles have no payload, so they exit above the PDL wait.
+    # Padded tiles have no payload, so they exit without releasing dependents.
     if scale_tile_idx >= expert_tiles_start + expert_num_tiles:
         return
 
@@ -1572,166 +1580,163 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         address_space=.SHARED,
     ]()
 
-    with PDL():
-        comptime ELEMENTS_PER_THREAD = 8
-        comptime NUM_THREADS_PER_SF = SF_VECTOR_SIZE // ELEMENTS_PER_THREAD
-        comptime OUTPUT_WIDTH = 4 if output_dtype == DType.uint8 else 8
-        comptime num_threads_per_row = SF_K_GROUP_SIZE // ELEMENTS_PER_THREAD
+    comptime ELEMENTS_PER_THREAD = 8
+    comptime NUM_THREADS_PER_SF = SF_VECTOR_SIZE // ELEMENTS_PER_THREAD
+    comptime OUTPUT_WIDTH = 4 if output_dtype == DType.uint8 else 8
+    comptime num_threads_per_row = SF_K_GROUP_SIZE // ELEMENTS_PER_THREAD
 
-        # Threads span the block's column tiles as well as its rows. A row is
-        # num_threads_per_row threads wide, so a decode tile holding one routed
-        # row occupies eight threads of the 128 on its own.
-        comptime slots_per_iter = num_threads // num_threads_per_row
-        comptime rows_per_iter = slots_per_iter // k_tiles_per_block
-        comptime num_iters = SF_MN_GROUP_SIZE // rows_per_iter
-        # Both divisions truncate. A block covering a non-integral number of
-        # rows per pass leaves the remainder of every tile at its stale scale
-        # factor, with no runtime failure.
-        comptime assert (
-            slots_per_iter % k_tiles_per_block == 0
-            and rows_per_iter >= 1
-            and SF_MN_GROUP_SIZE % rows_per_iter == 0
-        ), (
-            "block threads, column tiles per block and the 128-row scale tile"
-            " must divide evenly, or rows are left unquantized"
-        )
+    # Threads span the block's column tiles as well as its rows. A row is
+    # num_threads_per_row threads wide, so a decode tile holding one routed
+    # row occupies eight threads of the 128 on its own.
+    comptime slots_per_iter = num_threads // num_threads_per_row
+    comptime rows_per_iter = slots_per_iter // k_tiles_per_block
+    comptime num_iters = SF_MN_GROUP_SIZE // rows_per_iter
+    # Both divisions truncate. A block covering a non-integral number of
+    # rows per pass leaves the remainder of every tile at its stale scale
+    # factor, with no runtime failure.
+    comptime assert (
+        slots_per_iter % k_tiles_per_block == 0
+        and rows_per_iter >= 1
+        and SF_MN_GROUP_SIZE % rows_per_iter == 0
+    ), (
+        "block threads, column tiles per block and the 128-row scale tile"
+        " must divide evenly, or rows are left unquantized"
+    )
 
-        # The shuffle masks below reach only bits within col_thread_idx, so a
-        # lane and its partner share a slot, and with it a column tile and a
-        # row. The reduction therefore stays inside one scale group.
-        var slot, col_thread_idx = udivmod(thread_idx.x, num_threads_per_row)
-        # This divisor order gives a warp one row and all its column tiles,
-        # so its global accesses cover one contiguous 512B span. The tiles sit
-        # a multiple of the bank count apart, so the scale store at the bottom
-        # of the loop serializes 4 ways, a few cycles against that load.
-        var row_in_iter, kt_local = udivmod(Int(slot), k_tiles_per_block)
+    # The shuffle masks below reach only bits within col_thread_idx, so a
+    # lane and its partner share a slot, and with it a column tile and a
+    # row. The reduction therefore stays inside one scale group.
+    var slot, col_thread_idx = udivmod(thread_idx.x, num_threads_per_row)
+    # This divisor order gives a warp one row and all its column tiles,
+    # so its global accesses cover one contiguous 512B span. The tiles sit
+    # a multiple of the bank count apart, so the scale store at the bottom
+    # of the loop serializes 4 ways, a few cycles against that load.
+    var row_in_iter, kt_local = udivmod(Int(slot), k_tiles_per_block)
 
-        var num_cols = input_tensor.dim(1)
-        var num_k_tiles = uceildiv(Int(num_cols), SF_K_GROUP_SIZE)
-        var k_idx = block_idx.y * k_tiles_per_block + kt_local
+    var num_cols = input_tensor.dim(1)
+    var num_k_tiles = uceildiv(Int(num_cols), SF_K_GROUP_SIZE)
+    var k_idx = block_idx.y * k_tiles_per_block + kt_local
 
-        var scales_smem = TileTensor(
-            smem_ptr.unsafe_offset(kt_local * scales_smem_tile_size),
-            row_major(scales_tile_shape),
-        )
-        var input_col = (
-            k_idx * SF_K_GROUP_SIZE + col_thread_idx * ELEMENTS_PER_THREAD
-        )
-        var output_col = (
-            ufloordiv(input_col, 2) if output_dtype == .uint8 else input_col
-        )
-        # A column tile beyond num_k_tiles starts at or after num_cols, so
-        # this single test also excludes tiles the input does not have. An
-        # invalid lane contributes a zero group max and skips its stores,
-        # leaving its scale slot at the zero written below.
-        var col_is_valid = Int(input_col) < Int(num_cols)
+    var scales_smem = TileTensor(
+        smem_ptr.unsafe_offset(kt_local * scales_smem_tile_size),
+        row_major(scales_tile_shape),
+    )
+    var input_col = (
+        k_idx * SF_K_GROUP_SIZE + col_thread_idx * ELEMENTS_PER_THREAD
+    )
+    var output_col = (
+        ufloordiv(input_col, 2) if output_dtype == .uint8 else input_col
+    )
+    # A column tile beyond num_k_tiles starts at or after num_cols, so
+    # this single test also excludes tiles the input does not have. An
+    # invalid lane contributes a zero group max and skips its stores,
+    # leaving its scale slot at the zero written below.
+    var col_is_valid = Int(input_col) < Int(num_cols)
 
-        # Padding rows must carry a zero scale factor, or the tensor cores
-        # read garbage from them. At decode nearly every row of a tile is
-        # padding, so the block clears every tile it owns in one contiguous
-        # pass over the whole region.
-        comptime assert (
-            scales_smem_tile_size * k_tiles_per_block
-        ) % num_threads == 0, (
-            "scale tile elements must divide evenly across the block, or the"
-            " tail of the region keeps stale scale factors"
-        )
-        comptime zeros_per_thread = (
-            scales_smem_tile_size * k_tiles_per_block
-        ) // num_threads
-        comptime assert (
-            zeros_per_thread & (zeros_per_thread - 1) == 0
-        ), "zero-fill store width must be a power of two"
-        smem_ptr.store(
-            thread_idx.x * zeros_per_thread,
-            SIMD[scales_dtype, zeros_per_thread](0),
-        )
-        barrier()
+    # Padding rows must carry a zero scale factor, or the tensor cores
+    # read garbage from them. At decode nearly every row of a tile is
+    # padding, so the block clears every tile it owns in one contiguous
+    # pass over the whole region.
+    comptime assert (
+        scales_smem_tile_size * k_tiles_per_block
+    ) % num_threads == 0, (
+        "scale tile elements must divide evenly across the block, or the"
+        " tail of the region keeps stale scale factors"
+    )
+    comptime zeros_per_thread = (
+        scales_smem_tile_size * k_tiles_per_block
+    ) // num_threads
+    comptime assert (
+        zeros_per_thread & (zeros_per_thread - 1) == 0
+    ), "zero-fill store width must be a power of two"
+    smem_ptr.store(
+        thread_idx.x * zeros_per_thread,
+        SIMD[scales_dtype, zeros_per_thread](0),
+    )
+    barrier()
 
-        # num_tokens is uniform across the block, so the trip count is uniform
-        # and the shuffle reduction below keeps the full participation its
-        # member mask claims. At decode a tile holds one routed token and 127
-        # padding rows, so one iteration of num_iters runs.
-        var active_iters = min(num_iters, uceildiv(num_tokens, rows_per_iter))
-        for iter_idx in range(active_iters):
-            var local_row = iter_idx * rows_per_iter + row_in_iter
-            var is_valid = local_row < num_tokens and col_is_valid
+    # num_tokens is uniform across the block, so the trip count is uniform
+    # and the shuffle reduction below keeps the full participation its
+    # member mask claims. At decode a tile holds one routed token and 127
+    # padding rows, so one iteration of num_iters runs.
+    var active_iters = min(num_iters, uceildiv(num_tokens, rows_per_iter))
+    for iter_idx in range(active_iters):
+        var local_row = iter_idx * rows_per_iter + row_in_iter
+        var is_valid = local_row < num_tokens and col_is_valid
 
-            var input_vector = SIMD[input_dtype, ELEMENTS_PER_THREAD](0)
-            if is_valid:
-                var source_row = token_start + local_row
-                if case .Some(row_indices) = row_indices:
-                    source_row = (
-                        Int(row_indices[source_row]) // row_index_divisor
-                    )
-                input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
-                    (source_row, input_col)
-                )
+        var input_vector = SIMD[input_dtype, ELEMENTS_PER_THREAD](0)
+        if is_valid:
+            var source_row = token_start + local_row
+            if case .Some(row_indices) = row_indices:
+                source_row = Int(row_indices[source_row]) // row_index_divisor
+            input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
+                (source_row, input_col)
+            )
 
-            var thread_max = abs(input_vector).reduce_max()
-            thread_max = max(shuffle_xor(thread_max, 1), thread_max)
-            comptime if NUM_THREADS_PER_SF == 4:
-                thread_max = max(shuffle_xor(thread_max, 2), thread_max)
-            var group_max = thread_max.cast[.float32]()
+        var thread_max = abs(input_vector).reduce_max()
+        thread_max = max(shuffle_xor(thread_max, 1), thread_max)
+        comptime if NUM_THREADS_PER_SF == 4:
+            thread_max = max(shuffle_xor(thread_max, 2), thread_max)
+        var group_max = thread_max.cast[.float32]()
 
-            var scale_factor: Float32
+        var scale_factor: Float32
+        comptime if output_dtype == .uint8:
+            scale_factor = input_sf * group_max * recip(Float32(6.0))
+        else:
+            scale_factor = group_max * recip(Float32(448.0))
+        var fp8_scale_factor = scale_factor.cast[scales_dtype]()
+
+        var output_scale = Float32(0.0)
+        if group_max != 0:
             comptime if output_dtype == .uint8:
-                scale_factor = input_sf * group_max * recip(Float32(6.0))
+                output_scale = recip(
+                    fp8_scale_factor.cast[.float32]() * recip(input_sf)
+                )
             else:
-                scale_factor = group_max * recip(Float32(448.0))
-            var fp8_scale_factor = scale_factor.cast[scales_dtype]()
+                output_scale = recip(fp8_scale_factor.cast[.float32]())
 
-            var output_scale = Float32(0.0)
-            if group_max != 0:
-                comptime if output_dtype == .uint8:
-                    output_scale = recip(
-                        fp8_scale_factor.cast[.float32]() * recip(input_sf)
-                    )
-                else:
-                    output_scale = recip(fp8_scale_factor.cast[.float32]())
-
-            if is_valid:
-                var global_row = token_start + local_row
-                var input_f32 = input_vector.cast[.float32]() * output_scale
-                var output_vector: SIMD[output_dtype, OUTPUT_WIDTH]
-                comptime if output_dtype == .uint8:
-                    output_vector = bitcast[output_dtype, OUTPUT_WIDTH](
-                        cast_fp32_to_fp4e2m1(input_f32)
-                    )
-                else:
-                    output_vector = rebind[SIMD[output_dtype, OUTPUT_WIDTH]](
-                        input_f32.cast[output_dtype]()
-                    )
-                output_tensor.store((global_row, output_col), output_vector)
-
-            if col_thread_idx % NUM_THREADS_PER_SF == 0:
-                var sf_group = col_thread_idx // NUM_THREADS_PER_SF
-                var smem_idx = (
-                    (local_row % 32) * 16
-                    + (local_row // 32) * SF_ATOM_K
-                    + sf_group
+        if is_valid:
+            var global_row = token_start + local_row
+            var input_f32 = input_vector.cast[.float32]() * output_scale
+            var output_vector: SIMD[output_dtype, OUTPUT_WIDTH]
+            comptime if output_dtype == .uint8:
+                output_vector = bitcast[output_dtype, OUTPUT_WIDTH](
+                    cast_fp32_to_fp4e2m1(input_f32)
                 )
-                scales_smem.ptr.store(smem_idx, fp8_scale_factor)
-
-        barrier()
-
-        # Every tile this block owns is in shared memory, so their stores go
-        # out as one group under a single wait.
-        if thread_idx.x == 0:
-            fence_async_view_proxy()
-            for kt in range(k_tiles_per_block):
-                var store_k_idx = block_idx.y * k_tiles_per_block + kt
-                if store_k_idx >= num_k_tiles:
-                    break
-                scales_tma_op.async_store_4d(
-                    TileTensor(
-                        smem_ptr.unsafe_offset(kt * scales_smem_tile_size),
-                        row_major(scales_tile_shape),
-                    ),
-                    (0, 0, store_k_idx, scale_tile_idx),
+            else:
+                output_vector = rebind[SIMD[output_dtype, OUTPUT_WIDTH]](
+                    input_f32.cast[output_dtype]()
                 )
-            scales_tma_op.commit_group()
-            scales_tma_op.wait_group[0]()
+            output_tensor.store((global_row, output_col), output_vector)
+
+        if col_thread_idx % NUM_THREADS_PER_SF == 0:
+            var sf_group = col_thread_idx // NUM_THREADS_PER_SF
+            var smem_idx = (
+                (local_row % 32) * 16 + (local_row // 32) * SF_ATOM_K + sf_group
+            )
+            scales_smem.ptr.store(smem_idx, fp8_scale_factor)
+
+    barrier()
+
+    # Every tile this block owns is in shared memory, so their stores go
+    # out as one group under a single wait.
+    if thread_idx.x == 0:
+        fence_async_view_proxy()
+        for kt in range(k_tiles_per_block):
+            var store_k_idx = block_idx.y * k_tiles_per_block + kt
+            if store_k_idx >= num_k_tiles:
+                break
+            scales_tma_op.async_store_4d(
+                TileTensor(
+                    smem_ptr.unsafe_offset(kt * scales_smem_tile_size),
+                    row_major(scales_tile_shape),
+                ),
+                (0, 0, store_k_idx, scale_tile_idx),
+            )
+        scales_tma_op.commit_group()
+        scales_tma_op.wait_group[0]()
+
+    launch_dependent_grids()
 
 
 def grouped_quantize_dynamic_scaled_fp4_async[
