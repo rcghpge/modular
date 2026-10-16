@@ -38,6 +38,7 @@ from .batch_processor import InklingBatchProcessor, InklingInputs
 from .inkling import Inkling
 from .layers.vision import InklingVisionModel
 from .model_config import InklingConfig
+from .processor import load_processor_config
 from .weight_adapters import VISION_PREFIX
 
 
@@ -128,11 +129,17 @@ class InklingModel(
         state_dict: dict[str, Any],
         module: Module,
     ) -> tuple[Graph, dict[str, Any]]:
+        image_processor = load_processor_config(
+            self.pipeline_config.model.model_path,
+            self.pipeline_config.model.huggingface_model_revision,
+        )["image_processor"]
         # The tower is small and runs once per image, so it stays on one device.
         vision_model = InklingVisionModel(
             model_config.vision_config,
             model_config.dtype,
             model_config.devices[0],
+            image_mean=image_processor["image_mean"],
+            image_std=image_processor["image_std"],
         )
         vision_model.load_state_dict(state_dict, weight_alignment=1)
         with Graph(
