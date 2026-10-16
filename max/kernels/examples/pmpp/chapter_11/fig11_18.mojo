@@ -190,10 +190,10 @@ def scan_kernel(
     # Scan thread subsegment using registers
     var thread_segment = thread_idx.x * COARSE_FACTOR
     var buffer_r = StaticTuple[Float32, COARSE_FACTOR]()
-    buffer_r[0] = Float32(buffer_s[thread_segment])
+    buffer_r[0] = buffer_s[thread_segment]
 
     comptime for c in range(1, COARSE_FACTOR):
-        buffer_r[c] = Float32(buffer_s[thread_segment + c]) + buffer_r[c - 1]
+        buffer_r[c] = buffer_s[thread_segment + c] + buffer_r[c - 1]
 
     # Block-wide scan of thread sums
     var thread_sum = buffer_r[COARSE_FACTOR - 1]
@@ -234,7 +234,7 @@ def scan_kernel(
     for c in range(COARSE_FACTOR):
         var idx = block_segment + c * BLOCK_DIM + thread_idx.x
         if idx < Int(N):
-            output[idx] = Float32(buffer_s[c * BLOCK_DIM + thread_idx.x])
+            output[idx] = buffer_s[c * BLOCK_DIM + thread_idx.x]
 
 
 # ========================== TEST CODE ==========================

@@ -51,7 +51,7 @@ def scan_kernel(
     var idx = block_idx.x * SEG_SIZE + tx
 
     # Read input into first buffer
-    bufferA[tx] = Float32(input[idx])
+    bufferA[tx] = input[idx]
 
     # Ping-pong between buffers
     var in_buffer = bufferA
@@ -62,9 +62,9 @@ def scan_kernel(
         barrier()
         var addend = Float32(0.0)
         if tx >= stride:
-            addend = Float32(in_buffer[tx - stride])
+            addend = in_buffer[tx - stride]
         # Add it to output buffer position
-        out_buffer[tx] = Float32(addend + Float32(in_buffer[tx]))
+        out_buffer[tx] = addend + in_buffer[tx]
 
         # Swap buffers
         var tmp = in_buffer
@@ -72,7 +72,7 @@ def scan_kernel(
         out_buffer = tmp
         stride *= 2
 
-    output[idx] = Float32(in_buffer[tx])
+    output[idx] = in_buffer[tx]
 
 
 # ========================== TEST CODE ==========================

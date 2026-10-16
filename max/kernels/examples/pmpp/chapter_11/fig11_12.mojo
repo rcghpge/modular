@@ -82,7 +82,7 @@ def scan_kernel(
     ]()
 
     # Load data to shared memory
-    for c in range(COARSE_FACTOR):
+    comptime for c in range(COARSE_FACTOR):
         buffer_s[c * BLOCK_DIM + thread_idx.x] = input[
             block_segment + c * BLOCK_DIM + thread_idx.x
         ]
@@ -91,7 +91,7 @@ def scan_kernel(
 
     # Scan thread subsegment
     var thread_segment = thread_idx.x * COARSE_FACTOR
-    for c in range(1, COARSE_FACTOR):
+    comptime for c in range(1, COARSE_FACTOR):
         buffer_s[thread_segment + c] += buffer_s[thread_segment + c - 1]
 
     # Block-wide scan of thread sums using warp primitives
@@ -129,13 +129,13 @@ def scan_kernel(
     # Add previous thread's partial sums
     if thread_idx.x > 0:
         var prev_partial_sum = thread_sums[thread_idx.x - 1]
-        for c in range(COARSE_FACTOR):
+        comptime for c in range(COARSE_FACTOR):
             buffer_s[thread_segment + c] += prev_partial_sum
 
     barrier()
 
     # Write output
-    for c in range(COARSE_FACTOR):
+    comptime for c in range(COARSE_FACTOR):
         output[block_segment + c * BLOCK_DIM + thread_idx.x] = buffer_s[
             c * BLOCK_DIM + thread_idx.x
         ]

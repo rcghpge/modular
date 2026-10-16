@@ -46,25 +46,23 @@ def scan_kernel(
     var idx = block_idx.x * SEG_SIZE + tx
 
     # Read everything into shared buffer
-    buffer_s[tx] = Float32(input[idx])
+    buffer_s[tx] = input[idx]
     barrier()
 
     # Kogge-Stone scan
     var stride = 1
     while stride < Int(N):
         # Read current input from shared memory
-        var curr = Float32(buffer_s[tx])
+        var curr = buffer_s[tx]
         barrier()
 
         if tx + stride < SEG_SIZE:
             # Add it to buffer position
-            buffer_s[tx + stride] = Float32(
-                Float32(buffer_s[tx + stride]) + curr
-            )
+            buffer_s[tx + stride] = Float32(buffer_s[tx + stride] + curr)
         barrier()
         stride *= 2
 
-    output[idx] = Float32(buffer_s[tx])
+    output[idx] = buffer_s[tx]
 
 
 # ========================== TEST CODE ==========================

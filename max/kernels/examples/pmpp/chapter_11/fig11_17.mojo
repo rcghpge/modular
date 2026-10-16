@@ -107,22 +107,22 @@ def test_interblock_scan(
 
     # Inter-block scan - all threads call but only last thread does the work
     if thread_idx.x == BLOCK_DIM - 1:
-        var bid = UInt32(block_idx.x)
+        var bid = block_idx.x
         if bid > 0:
             # Wait for previous block to pass partial sum
-            while Atomic.load(flags + Int(bid - 1)) == 0:
+            while Atomic.load(flags + (bid - 1)) == 0:
                 pass
 
             # Read previous block's partial sum
-            prev_block_sum_ptr[0] = partial_sums[Int(bid - 1)]
+            prev_block_sum_ptr[0] = partial_sums[bid - 1]
         else:
             prev_block_sum_ptr[0] = 0.0
 
         # Write this block's partial sum
-        partial_sums[Int(bid)] = prev_block_sum_ptr[0] + result
+        partial_sums[bid] = prev_block_sum_ptr[0] + result
 
         # Set this block's flag
-        _ = Atomic.fetch_add(flags + Int(bid), UInt32(1))
+        _ = Atomic.fetch_add(flags + bid, UInt32(1))
 
     barrier()
 
