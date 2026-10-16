@@ -55,6 +55,9 @@ Activation Support:
     - SiLU: Sigmoid Linear Unit activation (x * sigmoid(x))
 """
 
+from std.algorithm import vectorize
+from std.sys import simd_width_of
+
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
 from max.gpu import (
@@ -269,6 +272,39 @@ def causal_conv1d_channel_first_fwd_cpu_no_bias[
     sync_parallelize(process_bc, total_bc, ctx)
 
 
+@inline(.always)
+def _load_channels[
+    dtype: DType, //, width: Int
+](t: TileTensor[dtype, ...], c: Int) -> SIMD[dtype, width]:
+    """Loads `t[c:c + width]`, honoring a non-unit stride of the 1-D `t`."""
+    var vals = SIMD[dtype, width]()
+    comptime for i in range(width):
+        vals[i] = t.load[width=1]((c + i,))[0]
+    return vals
+
+
+@inline(.always)
+def _load_weight_taps[
+    dtype: DType, //, width: Int
+](t: TileTensor[dtype, ...], c: Int, w: Int) -> SIMD[dtype, width]:
+    """Loads tap `w` of channels `c:c + width` from a (C, W) weight."""
+    var vals = SIMD[dtype, width]()
+    comptime for i in range(width):
+        vals[i] = t.load[width=1]((c + i, w))[0]
+    return vals
+
+
+@inline(.always)
+def _apply_silu[
+    dtype: DType, width: Int
+](v: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    """Applies SiLU, computing in float32 for non-floating-point dtypes."""
+    comptime if dtype.is_floating_point():
+        return silu(v)
+    else:
+        return silu(v.cast[.float32]()).cast[dtype]()
+
+
 def causal_conv1d_channel_last_fwd_cpu[
     x_dtype: DType,
     weight_dtype: DType,
@@ -288,40 +324,51 @@ def causal_conv1d_channel_last_fwd_cpu[
     """
     Optimized CPU implementation of causal conv1d for channel-last layout with bias.
 
-    Structured for potential SIMD optimizations. Currently similar to naive but
-    organized for future vectorization improvements.
+    Vectorizes across channels, which are contiguous in memory.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-last kernels require unit channel stride",
+    )
     var width_minus_1: Int = width - 1
 
     for b in range(batch):
         for l in range(seqlen):
-            for c in range(dim):
-                var conv_sum: Scalar[output_dtype] = Scalar[output_dtype](
-                    bias.load[width=1]((c,))
-                )
 
+            def conv_chunk[
+                simd_width: Int
+            ](c: Int) {
+                imm x,
+                imm weight,
+                imm bias,
+                imm output,
+                b,
+                l,
+                width,
+                width_minus_1,
+                silu_activation,
+                mut,
+            }:
+                var conv_sum = _load_channels[simd_width](bias, c).cast[
+                    output_dtype
+                ]()
                 for w in range(width):
                     var input_l: Int = l - (width_minus_1 - w)
                     if input_l >= 0:
-                        var input_val: Scalar[x.dtype] = x.load[width=1](
+                        var input_val = x.load[width=simd_width](
                             (b, input_l, c)
                         )
-                        var weight_val: Scalar[weight.dtype] = weight.load[
-                            width=1
-                        ]((c, w))
-                        conv_sum = conv_sum + Scalar[output_dtype](
-                            input_val * Scalar[x.dtype](weight_val)
+                        var weight_val = _load_weight_taps[simd_width](
+                            weight, c, w
                         )
-
-                var out_val: Scalar[output_dtype] = conv_sum
+                        conv_sum += (
+                            input_val * weight_val.cast[x_dtype]()
+                        ).cast[output_dtype]()
                 if silu_activation:
-                    comptime if output_dtype.is_floating_point():
-                        out_val = silu(out_val)
-                    else:
-                        out_val = silu(out_val.cast[.float32]()).cast[
-                            output_dtype
-                        ]()
-                output.store[width=1]((b, l, c), out_val)
+                    conv_sum = _apply_silu(conv_sum)
+                output.store[width=simd_width]((b, l, c), conv_sum)
+
+            vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
 
 def causal_conv1d_channel_last_fwd_cpu_no_bias[
@@ -341,38 +388,45 @@ def causal_conv1d_channel_last_fwd_cpu_no_bias[
     """
     Optimized CPU implementation of causal conv1d for channel-last layout without bias.
 
-    Structured for potential SIMD optimizations. Currently similar to naive but
-    organized for future vectorization improvements.
+    Vectorizes across channels, which are contiguous in memory.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-last kernels require unit channel stride",
+    )
     var width_minus_1: Int = width - 1
 
     for b in range(batch):
         for l in range(seqlen):
-            for c in range(dim):
-                var conv_sum: Scalar[output_dtype] = 0.0
 
+            def conv_chunk[
+                simd_width: Int
+            ](c: Int) {
+                imm x,
+                imm weight,
+                imm output,
+                b,
+                l,
+                width,
+                width_minus_1,
+                silu_activation,
+                mut,
+            }:
+                var conv_sum = SIMD[output_dtype, simd_width](0)
                 for w in range(width):
                     var input_l: Int = l - (width_minus_1 - w)
-                    if input_l >= 0:
-                        var input_val: Scalar[x.dtype] = x.load[width=1](
-                            (b, input_l, c)
-                        )
-                        var weight_val: Scalar[weight.dtype] = weight.load[
-                            width=1
-                        ]((c, w))
-                        conv_sum = conv_sum + Scalar[output_dtype](
-                            input_val * Scalar[x.dtype](weight_val)
-                        )
-
-                var out_val: Scalar[output_dtype] = conv_sum
+                    if input_l < 0:
+                        continue
+                    var input_val = x.load[width=simd_width]((b, input_l, c))
+                    var weight_val = _load_weight_taps[simd_width](weight, c, w)
+                    conv_sum += (input_val * weight_val.cast[x_dtype]()).cast[
+                        output_dtype
+                    ]()
                 if silu_activation:
-                    comptime if output_dtype.is_floating_point():
-                        out_val = silu(out_val)
-                    else:
-                        out_val = silu(out_val.cast[.float32]()).cast[
-                            output_dtype
-                        ]()
-                output.store[width=1]((b, l, c), out_val)
+                    conv_sum = _apply_silu(conv_sum)
+                output.store[width=simd_width]((b, l, c), conv_sum)
+
+            vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
 
 def causal_conv1d_channel_last_fwd_cpu_with_seq_idx[
@@ -395,49 +449,54 @@ def causal_conv1d_channel_last_fwd_cpu_with_seq_idx[
 ):
     """Optimized implementation of causal conv1d for channel last data layout with seq_idx.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-last kernels require unit channel stride",
+    )
     var width_minus_1: Int = width - 1
 
     for b in range(batch):
         for l in range(seqlen):
-            var cur_seq_idx_val = seq_idx.load[width=1]((b, l))
-            var cur_seq_idx: Int32 = Int32(cur_seq_idx_val)
+            var cur_seq_idx = Int32(seq_idx.load[width=1]((b, l)))
 
-            for c in range(dim):
-                var conv_sum: Scalar[output_dtype] = Scalar[output_dtype](
-                    bias.load[width=1]((c,))
-                )
-
+            def conv_chunk[
+                simd_width: Int
+            ](c: Int) {
+                imm x,
+                imm weight,
+                imm bias,
+                imm output,
+                imm seq_idx,
+                b,
+                l,
+                cur_seq_idx,
+                width,
+                width_minus_1,
+                silu_activation,
+                mut,
+            }:
+                var conv_sum = _load_channels[simd_width](bias, c).cast[
+                    output_dtype
+                ]()
                 for w in range(width):
                     var input_l: Int = l - (width_minus_1 - w)
-                    var valid_seq: Bool = True
-                    if input_l >= 0:
-                        var input_seq_idx_val = seq_idx.load[width=1](
-                            (b, input_l)
-                        )
-                        var input_seq_idx: Int32 = Int32(input_seq_idx_val)
-                        if input_seq_idx != cur_seq_idx:
-                            valid_seq = False
-
-                    if valid_seq and input_l >= 0:
-                        var input_val: Scalar[x_dtype] = x.load[width=1](
-                            (b, input_l, c)
-                        )
-                        var weight_val: Scalar[weight_dtype] = weight.load[
-                            width=1
-                        ]((c, w))
-                        conv_sum = conv_sum + Scalar[output_dtype](
-                            input_val * Scalar[x_dtype](weight_val)
-                        )
-
-                var out_val: Scalar[output_dtype] = conv_sum
+                    if input_l < 0:
+                        continue
+                    var input_seq_idx = Int32(
+                        seq_idx.load[width=1]((b, input_l))
+                    )
+                    if input_seq_idx != cur_seq_idx:
+                        continue
+                    var input_val = x.load[width=simd_width]((b, input_l, c))
+                    var weight_val = _load_weight_taps[simd_width](weight, c, w)
+                    conv_sum += (input_val * weight_val.cast[x_dtype]()).cast[
+                        output_dtype
+                    ]()
                 if silu_activation:
-                    comptime if output_dtype.is_floating_point():
-                        out_val = silu(out_val)
-                    else:
-                        out_val = silu(out_val.cast[.float32]()).cast[
-                            output_dtype
-                        ]()
-                output.store[width=1]((b, l, c), out_val)
+                    conv_sum = _apply_silu(conv_sum)
+                output.store[width=simd_width]((b, l, c), conv_sum)
+
+            vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
 
 def causal_conv1d_channel_last_fwd_cpu_no_bias_with_seq_idx[
@@ -458,47 +517,51 @@ def causal_conv1d_channel_last_fwd_cpu_no_bias_with_seq_idx[
 ):
     """Optimized implementation of causal conv1d for channel last data layout without bias but with seq_idx.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-last kernels require unit channel stride",
+    )
     var width_minus_1: Int = width - 1
 
     for b in range(batch):
         for l in range(seqlen):
-            var cur_seq_idx_val = seq_idx.load[width=1]((b, l))
-            var cur_seq_idx: Int32 = Int32(cur_seq_idx_val)
+            var cur_seq_idx = Int32(seq_idx.load[width=1]((b, l)))
 
-            for c in range(dim):
-                var conv_sum: Scalar[output_dtype] = 0.0
-
+            def conv_chunk[
+                simd_width: Int
+            ](c: Int) {
+                imm x,
+                imm weight,
+                imm output,
+                imm seq_idx,
+                b,
+                l,
+                cur_seq_idx,
+                width,
+                width_minus_1,
+                silu_activation,
+                mut,
+            }:
+                var conv_sum = SIMD[output_dtype, simd_width](0)
                 for w in range(width):
                     var input_l: Int = l - (width_minus_1 - w)
-                    var valid_seq: Bool = True
-                    if input_l >= 0:
-                        var input_seq_idx_val = seq_idx.load[width=1](
-                            (b, input_l)
-                        )
-                        var input_seq_idx: Int32 = Int32(input_seq_idx_val)
-                        if input_seq_idx != cur_seq_idx:
-                            valid_seq = False
-
-                    if valid_seq and input_l >= 0:
-                        var input_val: Scalar[x_dtype] = x.load[width=1](
-                            (b, input_l, c)
-                        )
-                        var weight_val: Scalar[weight_dtype] = weight.load[
-                            width=1
-                        ]((c, w))
-                        conv_sum = conv_sum + Scalar[output_dtype](
-                            input_val * Scalar[x_dtype](weight_val)
-                        )
-
-                var out_val: Scalar[output_dtype] = conv_sum
+                    if input_l < 0:
+                        continue
+                    var input_seq_idx = Int32(
+                        seq_idx.load[width=1]((b, input_l))
+                    )
+                    if input_seq_idx != cur_seq_idx:
+                        continue
+                    var input_val = x.load[width=simd_width]((b, input_l, c))
+                    var weight_val = _load_weight_taps[simd_width](weight, c, w)
+                    conv_sum += (input_val * weight_val.cast[x_dtype]()).cast[
+                        output_dtype
+                    ]()
                 if silu_activation:
-                    comptime if output_dtype.is_floating_point():
-                        out_val = silu(out_val)
-                    else:
-                        out_val = silu(out_val.cast[.float32]()).cast[
-                            output_dtype
-                        ]()
-                output.store[width=1]((b, l, c), out_val)
+                    conv_sum = _apply_silu(conv_sum)
+                output.store[width=simd_width]((b, l, c), conv_sum)
+
+            vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
 
 # ===----------------------------------------------------------------------=== #
