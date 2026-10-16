@@ -53,7 +53,7 @@ from max.gpu.host.info import MI355X
 from max.gpu.intrinsics import AMDBufferResource
 from max.gpu.sync import schedule_barrier, s_waitcnt
 
-from layout import TensorLayout, TensorEngine, TileTensor
+from layout import Coord, TensorLayout, TensorEngine, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major
 from layout.tile_tensor import stack_allocation
@@ -62,7 +62,6 @@ from pipeline.config import ScheduleConfig, SchedulingStrategy
 from pipeline.geometry import KernelGeometry
 from pipeline.pipeline_dsl import ScheduleEntry
 from pipeline.program_builder import derive_safe_max_globals
-from pipeline.types import _Ops
 
 from structured_kernels.amd_tile_io import RegTileEpilogue, TileLoaderLDS
 from structured_kernels.amd_tile_io_conv import TileLoaderLDSIm2col
@@ -77,11 +76,7 @@ from ....utils import (
 )
 from .amd_target import mi355x_target
 from .amd_4wave_schedule import (
-    LOAD_A,
-    LOAD_B,
-    MMA_LOAD_A,
-    MMA_LOAD_B,
-    MMA,
+    FourWaveOps,
     build_schedule,
 )
 from .matmul_mma import QuadrantMmaOp
@@ -1122,8 +1117,7 @@ struct AMD4WaveMatmul[
         )
 
         @inline(.always)
-        @__parameter
-        def load_a[stage: Int, which: Int](k: Int):
+        def load_a[stage: Int, which: Int](k: Int) {imm}:
             a_loader.load_tile(
                 a_load_tiles[stage][which],
                 m_offset=which * half_BM,
@@ -1131,8 +1125,7 @@ struct AMD4WaveMatmul[
             )
 
         @inline(.always)
-        @__parameter
-        def load_b[stage: Int, which: Int](k: Int):
+        def load_b[stage: Int, which: Int](k: Int) {imm}:
             b_loader.load_tile(
                 b_load_tiles[stage][which],
                 m_offset=which * half_BN,
@@ -1152,9 +1145,8 @@ struct AMD4WaveMatmul[
         # ====================================================
         # Body: framework-driven via Pipeline4Wave.
         # ====================================================
-        @__parameter
         @inline(.always)
-        def _emit_framework_body():
+        def _emit_framework_body() {imm}:
             # `Pipeline4Wave.__init__` forces IDENTITY +
             # minimal_barriers + omit_mma_set_prio; the ScheduleConfig
             # we pass here only contributes `sched_barrier_mask` and
@@ -1211,41 +1203,42 @@ struct AMD4WaveMatmul[
                 sched_config, target
             )
 
-            @__parameter
             @inline(.always)
-            def _bind[entry: ScheduleEntry](k_base: Int):
+            def _bind[entry: ScheduleEntry](k_base: Int) {imm}:
                 # Framework-level infrastructure tags (BARRIER / WAIT_* /
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /
                 # MMA_LOAD_* / MMA) call the kernel's own loaders.
-                comptime if entry.op.tag == _Ops.BARRIER.value:
-                    llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-                elif entry.op.tag == _Ops.WAIT_VM.value:
-                    s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.WAIT_LGKM.value:
-                    s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.SET_PRIO.value:
-                    llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
-                        Int16(entry.op.wait_value)
-                    )
-                elif entry.op.tag == _Ops.SCHEDULE_BARRIER.value:
-                    schedule_barrier()
-                else:
-                    comptime k_off = entry.op.k_offset.signed_bk_multiple()
-                    var k = k_base + k_off * BK
-                    comptime if entry.op.tag == LOAD_A:
+                # `FourWaveOps` names both sets, so one match covers them.
+                comptime k_off = entry.op.k_offset.signed_bk_multiple()
+                var k = k_base + k_off * BK
+                comptime op = FourWaveOps(entry.op.tag)
+                comptime match op:
+                    case .BARRIER:
+                        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+                    case .WAIT_VM:
+                        s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
+                    case .WAIT_LGKM:
+                        s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
+                    case .SET_PRIO:
+                        llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
+                            Int16(entry.op.wait_value)
+                        )
+                    case .SCHEDULE_BARRIER:
+                        schedule_barrier()
+                    case .LOAD_A:
                         load_a[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == LOAD_B:
+                    case .LOAD_B:
                         load_b[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == MMA_LOAD_A:
+                    case .MMA_LOAD_A:
                         mma_op.load_a_quadrant[entry.op.subtile](
                             a_mma_tiles[entry.op.stage][entry.op.subtile]
                         )
-                    elif entry.op.tag == MMA_LOAD_B:
+                    case .MMA_LOAD_B:
                         mma_op.load_b_quadrant[entry.op.subtile](
                             b_mma_tiles[entry.op.stage][entry.op.subtile]
                         )
-                    elif entry.op.tag == MMA:
+                    case .MMA:
                         mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
 
             # Prologue. The schedule overrides `warp_stagger=none()`
@@ -1266,23 +1259,13 @@ struct AMD4WaveMatmul[
                 comptime for i in range(len(schedule.kernel)):
                     _bind[schedule.kernel[i]](k)
 
-            # The schedule leaves several buffer_load_lds prefetches in flight
-            # into the LDS double-buffer at the main-loop-to-epilogue boundary,
-            # counting on MMA-cycle latency to hide them before the epilogue's
-            # ds_read. Two cases erase that cushion: split-K launches
-            # grid_dim.z = num_splits extra workgroups so occupancy is high and
-            # per-workgroup latency hiding collapses, and K_per_split == 2*BK
-            # leaves no main loop so the prologue's partial drain runs straight
-            # into the epilogue with prefetches still in flight. Either way the
-            # epilogue can read LDS slots before the writes land, corrupting a
-            # few ULPs as run-to-run non-determinism. Drain VMEM and LDS once
-            # here; the num_splits == 1 loop case keeps the cushion and compiles
-            # this away.
-            comptime _num_K_iters_static = K_per_split // (2 * BK)
-            comptime if _num_K_iters_static == 1 or num_splits > 1:
-                s_waitcnt[vmcnt=UInt32(0)]()
-                s_waitcnt[lgkmcnt=UInt32(0)]()
-                s_barrier()
+            # All 4 warps write the LDS tiles that the epilogue reads. The
+            # schedule puts a barrier after the epilogue reads, not before.
+            # Drain VMEM and LDS and sync all warps here, so that all writes
+            # are complete before a warp reads a tile.
+            s_waitcnt[vmcnt=UInt32(0)]()
+            s_waitcnt[lgkmcnt=UInt32(0)]()
+            s_barrier()
 
             # Epilogue.
             comptime for i in range(len(schedule.epilogue)):
@@ -1389,7 +1372,7 @@ struct AMD4WaveMatmul[
         # Pre-residual fused compute lambda (SM100 reference:
         # `D = lambda(Conv(A,B)) + beta * C`). Fires on the post-cast
         # `c_type` MMA output, BEFORE the residual FMA. Signature
-        # `(IndexList[2], SIMD) capturing -> SIMD`. Use for bias / ReLU /
+        # `(Coord, SIMD) capturing -> SIMD`. Use for bias / ReLU /
         # SiLU / GELU fusion. The post-residual store-site lambda is
         # the existing struct-level `Self.elementwise_lambda_fn` and
         # fires after the residual FMA (or directly on the MMA output
@@ -1444,7 +1427,7 @@ struct AMD4WaveMatmul[
                 output BEFORE the residual FMA, matching the SM100
                 `D = lambda(Conv(A,B)) + beta * C` ordering. Use for
                 bias / ReLU / SiLU / GELU fusion. Signature
-                `(IndexList[2], SIMD) capturing -> SIMD`. When unset,
+                `(Coord, SIMD) capturing -> SIMD`. When unset,
                 the comptime branch dead-code-eliminates.
 
         Args:
@@ -1746,8 +1729,7 @@ struct AMD4WaveMatmul[
         )
 
         @inline(.always)
-        @__parameter
-        def load_a[stage: Int, which: Int](k: Int):
+        def load_a[stage: Int, which: Int](k: Int) {imm}:
             # `m_anchor=pid_m*BM` baked into the loader at construction;
             # callsite only carries the within-block `which*half_BM`
             # offset — same shape as the matmul's load_a / load_b.
@@ -1758,8 +1740,7 @@ struct AMD4WaveMatmul[
             )
 
         @inline(.always)
-        @__parameter
-        def load_b[stage: Int, which: Int](k: Int):
+        def load_b[stage: Int, which: Int](k: Int) {imm}:
             b_loader.load_tile(
                 b_load_tiles[stage][which],
                 m_offset=which * half_BN,
@@ -1779,9 +1760,8 @@ struct AMD4WaveMatmul[
         # ====================================================
         # Body: framework-driven via Pipeline4Wave.
         # ====================================================
-        @__parameter
         @inline(.always)
-        def _emit_framework_body():
+        def _emit_framework_body() {imm}:
             # `Pipeline4Wave.__init__` forces IDENTITY +
             # minimal_barriers + omit_mma_set_prio; the ScheduleConfig
             # we pass here only contributes `sched_barrier_mask` and
@@ -1824,41 +1804,42 @@ struct AMD4WaveMatmul[
                 sched_config, target
             )
 
-            @__parameter
             @inline(.always)
-            def _bind[entry: ScheduleEntry](k_base: Int):
+            def _bind[entry: ScheduleEntry](k_base: Int) {imm}:
                 # Framework-level infrastructure tags (BARRIER / WAIT_* /
                 # SET_PRIO / SCHEDULE_BARRIER) emit AMD intrinsics
                 # directly; kernel-specific data tags (LOAD_A / LOAD_B /
                 # MMA_LOAD_* / MMA) call the kernel's own loaders.
-                comptime if entry.op.tag == _Ops.BARRIER.value:
-                    llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
-                elif entry.op.tag == _Ops.WAIT_VM.value:
-                    s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.WAIT_LGKM.value:
-                    s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
-                elif entry.op.tag == _Ops.SET_PRIO.value:
-                    llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
-                        Int16(entry.op.wait_value)
-                    )
-                elif entry.op.tag == _Ops.SCHEDULE_BARRIER.value:
-                    schedule_barrier()
-                else:
-                    comptime k_off = entry.op.k_offset.signed_bk_multiple()
-                    var k = k_base + k_off * BK
-                    comptime if entry.op.tag == LOAD_A:
+                # `FourWaveOps` names both sets, so one match covers them.
+                comptime k_off = entry.op.k_offset.signed_bk_multiple()
+                var k = k_base + k_off * BK
+                comptime op = FourWaveOps(entry.op.tag)
+                comptime match op:
+                    case .BARRIER:
+                        llvm_intrinsic["llvm.amdgcn.s.barrier", NoneType]()
+                    case .WAIT_VM:
+                        s_waitcnt[vmcnt=UInt32(entry.op.wait_value)]()
+                    case .WAIT_LGKM:
+                        s_waitcnt[lgkmcnt=UInt32(entry.op.wait_value)]()
+                    case .SET_PRIO:
+                        llvm_intrinsic["llvm.amdgcn.s.setprio", NoneType](
+                            Int16(entry.op.wait_value)
+                        )
+                    case .SCHEDULE_BARRIER:
+                        schedule_barrier()
+                    case .LOAD_A:
                         load_a[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == LOAD_B:
+                    case .LOAD_B:
                         load_b[entry.op.stage, entry.op.subtile](k)
-                    elif entry.op.tag == MMA_LOAD_A:
+                    case .MMA_LOAD_A:
                         mma_op.load_a_quadrant[entry.op.subtile](
                             a_mma_tiles[entry.op.stage][entry.op.subtile]
                         )
-                    elif entry.op.tag == MMA_LOAD_B:
+                    case .MMA_LOAD_B:
                         mma_op.load_b_quadrant[entry.op.subtile](
                             b_mma_tiles[entry.op.stage][entry.op.subtile]
                         )
-                    elif entry.op.tag == MMA:
+                    case .MMA:
                         mma_op.mma_quadrant[entry.op.stage, entry.op.subtile]()
 
             # Prologue. The schedule overrides `warp_stagger=none()`
@@ -1873,27 +1854,16 @@ struct AMD4WaveMatmul[
             comptime for i in range(len(schedule.prologue)):
                 _bind[schedule.prologue[i]](0)
 
-            # See the matching block in `run()` for the full rationale.
-            # When `K_per_split == 2*BK` the main loop runs zero times
-            # and the framework epilogue starts immediately after the
-            # prologue's `partial_prologue_drain`, with 6 prefetches
-            # still in flight. The first epilogue block's `ds_read`
-            # races with those `buffer_load_lds → LDS` writes (which
-            # the per-block `wait_vm[0]` only drains AFTER the
-            # frag-load issues). Mirror the handwritten body's
-            # top-of-iter sync to drain everything before the
-            # epilogue's first `ds_read` fires.
-            comptime _num_K_iters_static = K_per_split // (2 * BK)
-            comptime if _num_K_iters_static == 1:
-                s_waitcnt[vmcnt=UInt32(0)]()
-                s_waitcnt[lgkmcnt=UInt32(0)]()
-                s_barrier()
-
             # Main loop: step 2*BK because each schedule iter unrolls 2
             # source K-iters (matches ping-pong's stepping).
             for k in range(BK * 2, K_per_split, BK * 2):
                 comptime for i in range(len(schedule.kernel)):
                     _bind[schedule.kernel[i]](k)
+
+            # See the matching drain in run().
+            s_waitcnt[vmcnt=UInt32(0)]()
+            s_waitcnt[lgkmcnt=UInt32(0)]()
+            s_barrier()
 
             # Epilogue.
             comptime for i in range(len(schedule.epilogue)):
@@ -2042,10 +2012,9 @@ struct AMD4WaveMatmul[
                         # semantics. Fires on the post-cast `c_type`
                         # MMA output (use cases: bias / ReLU / SiLU /
                         # GELU before the skip add).
-                        comptime if elementwise_compute_lambda_fn:
-                            comptime _compute_fn = (
-                                elementwise_compute_lambda_fn.value()
-                            )
+                        comptime if case .Some(
+                            _compute_fn
+                        ) = elementwise_compute_lambda_fn:
                             v = _compute_fn[
                                 alignment=align_of[
                                     SIMD[Self.c_type, c_frag_size]
@@ -2071,7 +2040,6 @@ def structured_4wave_matmul[
     block_n_override: Int = 0,
     block_k_override: Int = 0,
     dump_asm_path: StaticString = "",
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     a: TileTensor[mut=False, a_type, ...],
     b: TileTensor[mut=False, b_type, ...],
@@ -2108,8 +2076,8 @@ def structured_4wave_matmul[
 
     These were chosen on raw matmul throughput. The dispatcher may
     legitimately route through 4-wave even when raw matmul is a bit
-    slower than a non-fusable vendor BLAS, because
-    `elementwise_lambda_fn` can fuse epilogues (bias, GELU, scale,
+    slower than a non-fusable vendor BLAS, because the `epilogue_fn`
+    and `compute_fn` overloads can fuse epilogues (bias, GELU, scale,
     residual) and save a separate elementwise kernel launch.
 
     FP8 keeps the original auto-pick (BM=64 for M ≤ 512, BM=128
@@ -2132,10 +2100,6 @@ def structured_4wave_matmul[
         dump_asm_path: If non-empty, dumps the compiled GCN assembly
             to the given file path. Only used for ASM-level
             diff-debugging.
-        elementwise_lambda_fn: Optional fused epilogue. When set, the
-            kernel's output store calls the lambda with global
-            `(m_global, n_global)` coords and a SIMD-of-`c_frag_size`
-            instead of writing to `c` directly.
 
     Args:
         a: Input tile-tensor for A.
@@ -2152,7 +2116,6 @@ def structured_4wave_matmul[
         block_n_override=block_n_override,
         block_k_override=block_k_override,
         dump_asm_path=dump_asm_path,
-        elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
         has_compute_fn=False,
     ](a, b, c, no_epilogue_fn, no_compute_fn, ctx)
@@ -2205,7 +2168,6 @@ def structured_4wave_matmul[
         block_n_override=block_n_override,
         block_k_override=block_k_override,
         dump_asm_path="",
-        elementwise_lambda_fn=None,
         has_epilogue_fn=True,
         has_compute_fn=False,
     ](a, b, c, epilogue_fn, no_compute_fn, ctx)
@@ -2258,7 +2220,6 @@ def structured_4wave_matmul[
         block_n_override=block_n_override,
         block_k_override=block_k_override,
         dump_asm_path="",
-        elementwise_lambda_fn=None,
         has_epilogue_fn=False,
         has_compute_fn=True,
     ](a, b, c, no_epilogue_fn, compute_fn, ctx)
@@ -2278,7 +2239,6 @@ def _structured_4wave_matmul_impl[
     block_n_override: Int,
     block_k_override: Int,
     dump_asm_path: StaticString,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
@@ -2327,7 +2287,6 @@ def _structured_4wave_matmul_impl[
             c_type,
             config,
             enable_swizzle,
-            elementwise_lambda_fn=elementwise_lambda_fn,
         ]
         comptime kernel = kernel_type.run[
             type_of(a).LayoutType,

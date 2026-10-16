@@ -18,7 +18,7 @@ These APIs are imported automatically, just like builtins.
 
 from std.builtin.rebind import downcast
 import std.format._utils as fmt
-from std.hashlib import Hasher
+from std.hash import Hasher
 from std.reflection import reflect
 from std.collections import check_bounds, check_slice_bounds
 from std.collections._asan_annotations import (
@@ -1302,11 +1302,11 @@ struct List[T: AnyType, /](
         var start_normalized = start
 
         var stop_normalized: Int
-        if stop is None:
+        if case .Some(stop_value) = stop:
+            stop_normalized = stop_value
+        else:
             # Default end
             stop_normalized = len(self)
-        else:
-            stop_normalized = stop.value()
 
         if start_normalized < 0:
             start_normalized += len(self)

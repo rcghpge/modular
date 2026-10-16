@@ -38,7 +38,11 @@ Buffers
    Buffer
    DLPackArray
    HostHazardError
+   SymmetricPool
    Usage
+
+Buffer operations
+-----------------
 
 .. autosummary::
    :nosignatures:
@@ -46,6 +50,7 @@ Buffers
    :template: autosummary/function.rst
 
    batch_inplace_copy
+   copy_pinned_to_destinations
    load_max_buffer
 
 Device discovery
@@ -73,6 +78,9 @@ Launch tracing
    :template: autosummary/class.rst
 
    LaunchTraceEntry
+
+Launch tracing functions
+------------------------
 
 .. autosummary::
    :nosignatures:

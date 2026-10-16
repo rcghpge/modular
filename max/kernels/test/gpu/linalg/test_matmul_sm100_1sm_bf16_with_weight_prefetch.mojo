@@ -24,7 +24,6 @@ import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.primitives.grid_controls import PDLLevel
-from linalg.utils import elementwise_epilogue_type
 
 from internal_utils import assert_almost_equal
 from std.random import rand
@@ -254,8 +253,8 @@ def test_rmsnorm_then_matmul[
     ctx.enqueue_copy(b_device, b_host_ptr)
     ctx.enqueue_copy(gamma_device, gamma_host_ptr)
 
-    var epsilon = Float32(0.001)
-    var weight_offset = Scalar[a_type](0.0)
+    comptime epsilon = Float32(0.001)
+    comptime weight_offset = Float32(0.0)
     var norm_shape = Index(M, K)
 
     @inline(.always)
@@ -274,9 +273,14 @@ def test_rmsnorm_then_matmul[
             a_normed_vendor_tensor.layout(coords), val
         )
 
-    rms_norm_gpu[2, input_fn, output_fn_vendor, multiply_before_cast=True](
-        Coord(norm_shape), gamma_tensor, epsilon, weight_offset, ctx
-    )
+    rms_norm_gpu[
+        2,
+        input_fn,
+        output_fn_vendor,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
+        multiply_before_cast=True,
+    ](Coord(norm_shape), gamma_tensor, ctx)
 
     vendor_blas.matmul(
         ctx,
@@ -297,9 +301,14 @@ def test_rmsnorm_then_matmul[
             a_normed_ours_tensor.layout(coords), val
         )
 
-    rms_norm_gpu[2, input_fn, output_fn_ours, multiply_before_cast=True](
-        Coord(norm_shape), gamma_tensor, epsilon, weight_offset, ctx
-    )
+    rms_norm_gpu[
+        2,
+        input_fn,
+        output_fn_ours,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
+        multiply_before_cast=True,
+    ](Coord(norm_shape), gamma_tensor, ctx)
 
     comptime matmul_config = MatmulConfig[a_type, b_type, c_type, transpose_b](
         cluster_shape=Index(
@@ -313,30 +322,27 @@ def test_rmsnorm_then_matmul[
         prefetch_tiles_n=prefetch_tiles_n,
     )
 
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c_ours_tensor)
+    var out_shape = IndexList[2](
+        Int(c_ours_tensor.dim[0]()), Int(c_ours_tensor.dim[1]())
+    )
+
     def epilogue_fn[
-        _dtype: DType,
-        width: SIMDLength,
-        *,
-        alignment: Int = 1,
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
+        _dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_ours_tensor}:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         c_ours_tensor.raw_store[
             width=width, alignment=alignment * size_of[c_type]()
-        ](c_ours_tensor.layout(Coord(idx)), rebind[SIMD[c_type, width]](val))
-
-    comptime epi = Optional[elementwise_epilogue_type](epilogue_fn)
+        ](c_ours_tensor.layout(idx), rebind[SIMD[c_type, width]](val))
 
     blackwell_matmul_tma_umma_warp_specialized[
         transpose_b=transpose_b,
         config=matmul_config,
-        elementwise_lambda_fn=epi,
         pdl_level=pdl_level,
     ](
-        c_ours_tensor,
+        out_shape,
         a_normed_ours_tensor,
         b_tensor,
+        epilogue_fn,
         ctx,
     )
 

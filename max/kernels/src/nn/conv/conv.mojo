@@ -103,13 +103,12 @@ from linalg.utils import (
     partial_simd_store,
 )
 from max.gpu import block_dim, block_idx, thread_idx
-from max.gpu.host import get_gpu_target, DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
 from max.gpu.host.info import _is_sm10x_gpu
 from layout import (
     Coord,
-    Idx,
     IntTuple,
     TensorEngine,
     TensorLayout,
@@ -131,11 +130,13 @@ from std.utils.numerics import get_accum_type
 
 
 from .conv_utils import (
+    ConvEpilogueFn,
     ConvInfoStatic,
     ConvPartition,
     ConvShape,
+    ConvSimdEpilogueFn,
+    NoConvEpilogue,
     align_down_residual,
-    elementwise_epilogue_type,
     elementwise_simd_epilogue_type,
     get_conv_num_partitions,
     get_conv_shape,
@@ -379,9 +380,10 @@ def _m_to_n_ho_wo_nhwc(m: Int, HO: Int, WO: Int) -> IndexList[3]:
 @inline(.always)
 def _reduce_output[
     dtype: DType,
+    EpilogueFnType: ConvEpilogueFn,
     //,
     simd_size: Int,
-    elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
+    has_epilogue: Bool = False,
 ](
     scratch: UnsafePointer[mut=False, Scalar[dtype], _],
     output: UnsafePointer[mut=True, Scalar[dtype], _],
@@ -390,7 +392,8 @@ def _reduce_output[
     F: Int,
     num_partitions: Int,
     num_threads: Int,
-    ctx: Optional[DeviceContext] = None,
+    epilogue_fn: EpilogueFnType,
+    ctx: Optional[DeviceContext.CPU] = None,
 ):
     var num_rows = N * output_space_dims.flattened_length()
     var buf_size = num_rows * F
@@ -418,13 +421,12 @@ def _reduce_output[
 
         vectorize[simd_size, unroll_factor=4](reduce_range[1] * F, sum)
 
-        comptime if elementwise_epilogue:
-            comptime epilogue = elementwise_epilogue.value()
+        comptime if has_epilogue:
             for m in range(reduce_range[0], reduce_range[0] + reduce_range[1]):
                 var nhowo = _m_to_n_ho_wo_nhwc(
                     m, output_space_dims[0], output_space_dims[1]
                 )
-                epilogue(Index(nhowo[0], nhowo[1], nhowo[2], 0), F)
+                epilogue_fn((nhowo[0], nhowo[1], nhowo[2], 0), F)
 
     # NOTE: _synchronous, so use of locally allocated output_ptr is safe.
     sync_parallelize(reduce_task, num_threads, ctx)
@@ -459,7 +461,8 @@ struct ConvDirectNHWC[
     output_type: DType,
     filter_packed: Bool,
     conv_attr: ConvInfoStatic[conv_attr_rank],
-    elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
+    has_epilogue: Bool = False,
+    EpilogueFnType: ConvEpilogueFn = NoConvEpilogue,
 ](ImplicitlyCopyable):
     """Implement the outer loops for direct convolution.
     Collapse N, HO, WO into one dimension n_ho_wo. Tile n_ho_wo, C, and F.
@@ -487,8 +490,10 @@ struct ConvDirectNHWC[
             convolution.
         conv_attr: Statically known convolution attributes including
             padding, stride, dilation, and group count.
-        elementwise_epilogue: Optional elementwise function applied to
-            the output after the last channel tile (defaults to `None`).
+        has_epilogue: True when `epilogue_fn` is applied to the output after
+            the last channel tile (defaults to `False`).
+        EpilogueFnType: Type of the epilogue function (defaults to
+            `NoConvEpilogue`).
     """
 
     var output: TileTensor[
@@ -507,6 +512,8 @@ struct ConvDirectNHWC[
     var partition: ConvPartition
 
     var cf_tile_size: DynamicCoord[.int64, 2]
+
+    var epilogue_fn: Self.EpilogueFnType
 
     # If shapes and attributes are known at compile time
     comptime packed_and_fully_static = (
@@ -529,7 +536,39 @@ struct ConvDirectNHWC[
             Self.filter_type, Self.filter_layout, Self.filter_origin
         ],
         conv_shape: ConvShape[Self.conv_attr_rank],
-        ctx: Optional[DeviceContext] = None,
+        ctx: Optional[DeviceContext.CPU] = None,
+    ) raises:
+        comptime assert (
+            not Self.has_epilogue
+        ), "pass the epilogue function to `run`"
+        ConvDirectNHWC[
+            Self.input_layout,
+            Self.filter_layout,
+            Self.output_layout,
+            Self.input_type,
+            Self.filter_type,
+            Self.output_type,
+            Self.filter_packed,
+            Self.conv_attr,
+        ].run(output, input, filter, conv_shape, NoConvEpilogue(), ctx)
+
+    # `epilogue_fn` reads back the rows of `output` that `run` writes, which
+    # is safe: each row is read only after it has been fully written.
+    @staticmethod
+    @__unsafe_nested_origins_read_only
+    def run(
+        output: TileTensor[
+            Self.output_type, Self.output_layout, Self.output_origin
+        ],
+        input: TileTensor[
+            Self.input_type, Self.input_layout, Self.input_origin
+        ],
+        filter: TileTensor[
+            Self.filter_type, Self.filter_layout, Self.filter_origin
+        ],
+        conv_shape: ConvShape[Self.conv_attr_rank],
+        epilogue_fn: Self.EpilogueFnType,
+        ctx: Optional[DeviceContext.CPU] = None,
     ) raises:
         comptime assert Self.conv_attr_rank == Self.input_layout.flat_rank - 2
         comptime simd_size = simd_width_of[Self.output_type]()
@@ -634,7 +673,8 @@ struct ConvDirectNHWC[
                 Self.output_type,
                 Self.filter_packed,
                 Self.conv_attr,
-                Self.elementwise_epilogue,
+                Self.has_epilogue,
+                Self.EpilogueFnType,
             ](
                 task_output,
                 input,
@@ -642,6 +682,7 @@ struct ConvDirectNHWC[
                 conv_shape,
                 partition,
                 Coord(task_tile_size),
+                epilogue_fn,
             )
             instance._batch_group_loop()
 
@@ -652,8 +693,7 @@ struct ConvDirectNHWC[
             _reduce_output[
                 simd_size,
                 # Only support channel partition for 2D shapes (ResNet).
-                elementwise_epilogue=Self.elementwise_epilogue if input.rank
-                == 4 else None,
+                has_epilogue=Self.has_epilogue and input.rank == 4,
             ](
                 output_scratch.ptr,
                 output.ptr,
@@ -662,6 +702,7 @@ struct ConvDirectNHWC[
                 conv_shape.f,
                 num_partitions[1],
                 num_threads,
+                epilogue_fn,
                 ctx,
             )
             dealloc(
@@ -974,9 +1015,7 @@ struct ConvDirectNHWC[
             self.conv_shape.f_per_group() % simd_size,
         )
 
-        comptime if Self.elementwise_epilogue.__bool__() and last_c_tile.__bool__():
-            comptime epilogue = Self.elementwise_epilogue.value()
-
+        comptime if Self.has_epilogue and last_c_tile:
             # If has residual, the tile size has been extended to a simd_size.
             # Here needs to use the real bound F.
             var f_tile_size_bounded: Int
@@ -995,8 +1034,8 @@ struct ConvDirectNHWC[
                 # The micro tile may cover points in different rows/images.
                 # Convert the 1D index back to (n, ho, wo).
                 var ho, wo = divmod(m, self.conv_shape.wo())
-                epilogue(
-                    Index(
+                self.epilogue_fn(
+                    (
                         n,
                         ho,
                         wo,
@@ -1332,63 +1371,66 @@ struct ConvDirectNHWC[
             - self.conv_shape.s() * self.conv_shape.dilation_at[w_axis]()
         ) // self.conv_shape.stride_at[w_axis]() + 1
 
-        comptime if Self.input_layout.rank == 3:
-            self.output_space_loop_1d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
-        elif Self.input_layout.rank == 4:
-            self.output_space_loop_2d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
-        elif Self.input_layout.rank == 5:
-            self.output_space_loop_3d[
-                micro_kernel_height,
-                micro_kernel_width,
-                has_residual,
-                last_c_tile,
-            ](
-                # Safety: turn off mutable aliasing pointer check
-                output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
-                input_ptr,
-                filter_ptr,
-                n,
-                self.is_new_c_accum(c_tile_offset),
-                c_tile_size,
-                f_tile_offset,
-                f_tile_size,
-                left_pad_impact_end,
-                right_pad_impact_start,
-            )
+        comptime match Self.input_layout.rank:
+            case 3:
+                self.output_space_loop_1d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
+
+            case 4:
+                self.output_space_loop_2d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
+
+            case 5:
+                self.output_space_loop_3d[
+                    micro_kernel_height,
+                    micro_kernel_width,
+                    has_residual,
+                    last_c_tile,
+                ](
+                    # Safety: turn off mutable aliasing pointer check
+                    output_ptr.unsafe_origin_cast[AnyOrigin[mut=True]](),
+                    input_ptr,
+                    filter_ptr,
+                    n,
+                    self.is_new_c_accum(c_tile_offset),
+                    c_tile_size,
+                    f_tile_offset,
+                    f_tile_size,
+                    left_pad_impact_end,
+                    right_pad_impact_start,
+                )
 
     def output_space_loop_1d[
         micro_kernel_height: Int,
@@ -1435,7 +1477,7 @@ struct ConvDirectNHWC[
                 effected_by_padding,
                 has_residual,
                 last_c_tile,
-                elementwise_epilogue=Self.elementwise_epilogue,
+                has_epilogue=Self.has_epilogue,
             ](
                 output_base + wo * self.conv_shape.f,
                 input_base
@@ -1448,6 +1490,7 @@ struct ConvDirectNHWC[
                 rebind[ConvShape[1]](self.conv_shape),
                 n,
                 wo,
+                self.epilogue_fn,
             )
 
         tile_middle_unswitch_boundaries[[micro_kernel_height, 5, 4, 3, 2, 1]](
@@ -1519,7 +1562,7 @@ struct ConvDirectNHWC[
                     effected_by_padding,
                     has_residual,
                     last_c_tile,
-                    elementwise_epilogue=Self.elementwise_epilogue,
+                    has_epilogue=Self.has_epilogue,
                 ](
                     output_base + wo * self.conv_shape.f,
                     input_base
@@ -1532,6 +1575,7 @@ struct ConvDirectNHWC[
                     rebind[ConvShape[2]](self.conv_shape),
                     n,
                     Index(ho, wo),
+                    self.epilogue_fn,
                 )
 
             tile_middle_unswitch_boundaries[
@@ -1599,6 +1643,7 @@ struct ConvDirectNHWC[
                     * (ho + self.conv_shape.ho() * do)
                 )
                 var conv_shape = self.conv_shape
+                var epilogue_fn = self.epilogue_fn
 
                 # The bases can't be captured mutably, so derive the per-tile
                 # pointers from wo instead of incrementing across calls.
@@ -1617,6 +1662,7 @@ struct ConvDirectNHWC[
                     var n,
                     var do,
                     var ho,
+                    var epilogue_fn,
                 }:
                     conv3d_update_wo_tile[
                         height,
@@ -1626,7 +1672,7 @@ struct ConvDirectNHWC[
                         effected_by_padding,
                         has_residual,
                         last_c_tile,
-                        elementwise_epilogue=Self.elementwise_epilogue,
+                        has_epilogue=Self.has_epilogue,
                     ](
                         output_base + wo * conv_shape.f,
                         input_base
@@ -1639,6 +1685,7 @@ struct ConvDirectNHWC[
                         rebind[ConvShape[3]](conv_shape),
                         n,
                         Index(do, ho, wo),
+                        epilogue_fn,
                     )
 
                 tile_middle_unswitch_boundaries[
@@ -2046,16 +2093,15 @@ struct ConvDirectNHWC[
         # Apply elmentwise epilogue to the
         comptime F = Self.output_layout.static_shape[3]  # NHWC
 
-        comptime if Self.elementwise_epilogue.__bool__() and last_c_tile.__bool__():
-            comptime epilogue = Self.elementwise_epilogue.value()
+        comptime if Self.has_epilogue and last_c_tile:
             # If has residual, the tile size has been extended to a simd_size.
             # Here needs to use the real bound F.
             var f_tile_size_bounded = (
                 F - f_tile_offset if has_residual else f_tile_size
             )
             for wo_idx in range(wo, wo + micro_kernel_height):
-                epilogue(
-                    Index(n, ho, wo_idx, f_tile_offset), f_tile_size_bounded
+                self.epilogue_fn(
+                    (n, ho, wo_idx, f_tile_offset), f_tile_size_bounded
                 )
 
         return
@@ -2146,6 +2192,8 @@ def accumulate_wo_tile_1d[
 
 
 def conv1d_update_wo_tile[
+    EpilogueFnType: ConvEpilogueFn,
+    //,
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2156,7 +2204,7 @@ def conv1d_update_wo_tile[
     output_dt: DType,
     input_dt: DType,
     filter_dt: DType,
-    elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
+    has_epilogue: Bool = False,
 ](
     output: UnsafePointer[mut=True, Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
@@ -2168,12 +2216,14 @@ def conv1d_update_wo_tile[
     conv_shape: ConvShape,
     n: Int,
     wo: Int,
+    epilogue_fn: EpilogueFnType,
 ):
     """Updates one micro tile of the 1D convolution output for a given
     (c, f) tile, accumulating over the S filter window and optionally
     applying an elementwise epilogue on the last C tile.
 
     Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         micro_kernel_height: Number of output points along WO covered by
             the micro tile in register tiling.
         micro_kernel_width: Number of SIMD registers assigned to the F
@@ -2190,8 +2240,8 @@ def conv1d_update_wo_tile[
         output_dt: Element type of the output tensor.
         input_dt: Element type of the input tensor.
         filter_dt: Element type of the filter tensor.
-        elementwise_epilogue: Optional elementwise function applied to
-            the output on the last C tile (defaults to `None`).
+        has_epilogue: True when `epilogue_fn` is applied to the output on
+            the last C tile (defaults to `False`).
 
     Args:
         output: Pointer to the first element of the WO micro tile in the
@@ -2208,6 +2258,8 @@ def conv1d_update_wo_tile[
             extents, padding, stride, dilation, and channel counts.
         n: Batch index of the input image being convolved.
         wo: Starting output width index of the micro tile.
+        epilogue_fn: Epilogue applied to each output row of the tile on
+            the last C tile when `has_epilogue` is set.
     """
     comptime micro_kernel_f_size = micro_kernel_width * simd_size
 
@@ -2273,8 +2325,7 @@ def conv1d_update_wo_tile[
     )
 
     # Apply elementwise epilogue if necessary
-    comptime if elementwise_epilogue.__bool__() and last_c_tile.__bool__():
-        comptime epilogue = elementwise_epilogue.value()
+    comptime if has_epilogue and last_c_tile:
         # If has residual, the tile size has been extended to a simd_size.
         # Here needs to use the real bound F.
         var f_tile_size_bounded: Int
@@ -2287,7 +2338,7 @@ def conv1d_update_wo_tile[
             f_tile_size_bounded = f_tile_size
 
         for wo_idx in range(wo, wo + micro_kernel_height):
-            epilogue(Index(n, wo_idx, f_tile_offset), f_tile_size_bounded)
+            epilogue_fn((n, wo_idx, f_tile_offset), f_tile_size_bounded)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2394,6 +2445,8 @@ def accumulate_wo_tile_2d[
 
 
 def conv2d_update_wo_tile[
+    EpilogueFnType: ConvEpilogueFn,
+    //,
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2404,7 +2457,7 @@ def conv2d_update_wo_tile[
     output_dt: DType,
     input_dt: DType,
     filter_dt: DType,
-    elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
+    has_epilogue: Bool = False,
 ](
     output: UnsafePointer[mut=True, Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
@@ -2416,12 +2469,14 @@ def conv2d_update_wo_tile[
     conv_shape: ConvShape[2],
     n: Int,
     howo: IndexList[2],
+    epilogue_fn: EpilogueFnType,
 ):
     """Updates one micro tile of the 2D convolution output for a given
     (c, f) tile, accumulating over the R x S filter window and optionally
     applying an elementwise epilogue on the last C tile.
 
     Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         micro_kernel_height: Number of output points along the WO
             dimension covered by the micro tile in register tiling.
         micro_kernel_width: Number of SIMD registers assigned to the F
@@ -2439,9 +2494,8 @@ def conv2d_update_wo_tile[
         output_dt: Element type of the output tensor.
         input_dt: Element type of the input tensor.
         filter_dt: Element type of the filter tensor.
-        elementwise_epilogue: Optional elementwise function applied to
-            the output after the last channel tile (defaults to
-            `None`).
+        has_epilogue: True when `epilogue_fn` is applied to the output on
+            the last C tile (defaults to `False`).
 
     Args:
         output: Pointer to the start of the output micro tile at
@@ -2464,6 +2518,8 @@ def conv2d_update_wo_tile[
             first output point, with the micro tile spanning
             `micro_kernel_height` consecutive `wo` values starting at
             `howo[1]`.
+        epilogue_fn: Epilogue applied to each output row of the tile on
+            the last C tile when `has_epilogue` is set.
     """
     comptime micro_kernel_f_size = micro_kernel_width * simd_size
 
@@ -2538,9 +2594,7 @@ def conv2d_update_wo_tile[
 
     # Apply elmentwise epilogue to the
     # if elementwise_epilogue_enabled and last_c_tile:
-    comptime if elementwise_epilogue.__bool__() and last_c_tile.__bool__():
-        comptime epilogue = elementwise_epilogue.value()
-
+    comptime if has_epilogue and last_c_tile:
         # If has residual, the tile size has been extended to a simd_size.
         # Here needs to use the real bound F.
         var f_tile_size_bounded: Int
@@ -2554,8 +2608,8 @@ def conv2d_update_wo_tile[
 
         for wo_idx in range(howo[1], howo[1] + micro_kernel_height):
             # elementwise_epilogue_fn[4](
-            epilogue(
-                Index(n, howo[0], wo_idx, f_tile_offset), f_tile_size_bounded
+            epilogue_fn(
+                (n, howo[0], wo_idx, f_tile_offset), f_tile_size_bounded
             )
 
 
@@ -2665,6 +2719,8 @@ def accumulate_wo_tile_3d[
 
 
 def conv3d_update_wo_tile[
+    EpilogueFnType: ConvEpilogueFn,
+    //,
     micro_kernel_height: Int,
     micro_kernel_width: Int,
     simd_size: Int,
@@ -2675,7 +2731,7 @@ def conv3d_update_wo_tile[
     output_dt: DType,
     input_dt: DType,
     filter_dt: DType,
-    elementwise_epilogue: Optional[elementwise_epilogue_type] = None,
+    has_epilogue: Bool = False,
 ](
     output: UnsafePointer[mut=True, Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
@@ -2687,12 +2743,14 @@ def conv3d_update_wo_tile[
     conv_shape: ConvShape[3],
     n: Int,
     dohowo: IndexList[3],
+    epilogue_fn: EpilogueFnType,
 ):
     """Updates one micro tile of the 3D convolution output for a given
     (c, f) tile, accumulating over the Q x R x S filter window and
     optionally applying an elementwise epilogue on the last C tile.
 
     Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         micro_kernel_height: Number of output WO positions processed
             per micro tile along the WO dimension.
         micro_kernel_width: Number of SIMD vectors along the F
@@ -2709,8 +2767,8 @@ def conv3d_update_wo_tile[
         output_dt: Element type of the output tensor (inferred).
         input_dt: Element type of the input tensor (inferred).
         filter_dt: Element type of the filter tensor (inferred).
-        elementwise_epilogue: Optional elementwise function applied to
-            the output on the last C tile (defaults to `None`).
+        has_epilogue: True when `epilogue_fn` is applied to the output on
+            the last C tile (defaults to `False`).
 
     Args:
         output: Pointer to the start of the output micro tile.
@@ -2729,6 +2787,8 @@ def conv3d_update_wo_tile[
         n: Batch index of the current sample.
         dohowo: Output spatial coordinates `(do, ho, wo)` of the
             micro tile origin.
+        epilogue_fn: Epilogue applied to each output row of the tile on
+            the last C tile when `has_epilogue` is set.
     """
     comptime micro_kernel_f_size = micro_kernel_width * simd_size
 
@@ -2805,9 +2865,7 @@ def conv3d_update_wo_tile[
     )
 
     # Apply elmentwise epilogue to the
-    comptime if elementwise_epilogue.__bool__() and last_c_tile.__bool__():
-        comptime epilogue = elementwise_epilogue.value()
-
+    comptime if has_epilogue and last_c_tile:
         # If has residual, the tile size has been extended to a simd_size.
         # Here needs to use the real bound F.
         var f_tile_size_bounded: Int
@@ -2820,8 +2878,8 @@ def conv3d_update_wo_tile[
             f_tile_size_bounded = f_tile_size
 
         for wo_idx in range(dohowo[2], dohowo[2] + micro_kernel_height):
-            epilogue(
-                Index(n, dohowo[0], dohowo[1], wo_idx, f_tile_offset),
+            epilogue_fn(
+                (n, dohowo[0], dohowo[1], wo_idx, f_tile_offset),
                 f_tile_size_bounded,
             )
 
@@ -3414,8 +3472,12 @@ def conv_shape[
     return output_shape
 
 
+# `elementwise_lambda` may read and write `output`, which is safe: it is
+# applied to each output row only after that row has been fully written.
+@__unsafe_nested_origins_read_only
 def conv_nhwc_direct[
     conv_info_rank: Int,
+    EpilogueFnType: ConvSimdEpilogueFn,
     //,
     input_type: DType,
     filter_type: DType,
@@ -3423,7 +3485,6 @@ def conv_nhwc_direct[
     filter_packed: Bool,
     conv_info_static: ConvInfoStatic[conv_info_rank],
     has_epilogue_fusion: Bool,
-    elementwise_lambda: elementwise_simd_epilogue_type,
 ](
     input: TileTensor[mut=False, input_type, address_space=.GENERIC, ...],
     filter: TileTensor[mut=False, filter_type, address_space=.GENERIC, ...],
@@ -3434,7 +3495,8 @@ def conv_nhwc_direct[
     pad_h: IndexList[2],
     pad_w: IndexList[2],
     num_groups: Int,
-    ctx: Optional[DeviceContext] = None,
+    elementwise_lambda: EpilogueFnType,
+    ctx: Optional[DeviceContext.CPU] = None,
 ) raises:
     """Runs a direct (register-tiled) NHWC convolution on CPU, dispatching to
     `ConvDirectNHWC.run` with optional elementwise epilogue fusion.
@@ -3442,6 +3504,7 @@ def conv_nhwc_direct[
     Parameters:
         conv_info_rank: Number of spatial dimensions in the convolution (1,
             2, or 3) (inferred).
+        EpilogueFnType: Type of `elementwise_lambda` (inferred).
         input_type: Element type of the input tensor.
         filter_type: Element type of the filter tensor.
         output_type: Element type of the output tensor.
@@ -3451,8 +3514,6 @@ def conv_nhwc_direct[
             padding, stride, dilation, and group count.
         has_epilogue_fusion: True when an elementwise epilogue is fused into
             the convolution.
-        elementwise_lambda: Elementwise SIMD function applied to each output
-            vector after the convolution.
 
     Args:
         input: Input activation TileTensor in NHWC or NDHWC layout.
@@ -3467,6 +3528,8 @@ def conv_nhwc_direct[
         pad_w: Padding before and after the width dimension, stored as
             `(before, after)`.
         num_groups: Number of convolution groups for grouped convolution.
+        elementwise_lambda: Elementwise SIMD function applied to each output
+            vector after the convolution when `has_epilogue_fusion` is set.
         ctx: Optional device context for parallel kernel launch (defaults to
             `None`).
     """
@@ -3522,23 +3585,22 @@ def conv_nhwc_direct[
 
         # The closure updates a row segment of the output.
         @inline(.always)
-        @__parameter
-        def elementwise_epilogue[
-            rank: Int
-        ](coords: IndexList[rank], f_size: Int):
+        def elementwise_epilogue(coords: Coord, f_size: Int) {imm}:
             comptime simd_size = simd_width_of[output_type]()
 
             @inline(.always)
             def body[width: Int](idx: Int) {coords, output, imm}:
-                # Coordinates of the current index.
-                var curr_coords = rebind[IndexList[input.rank]](coords)
-                curr_coords[input.rank - 1] += idx
+                comptime last = input.rank - 1
+                var curr_coords = coords
+                curr_coords.replace_dynamic[last](
+                    Int(coords[last].value()) + idx
+                )
 
                 # Read through the parameter, not the local `output_tt`
                 # view: this closure outlives the last explicit use of the
                 # locals in this frame, and the parameter is alive for the
                 # whole call.
-                var vec = output.load[width=width](Coord(curr_coords))
+                var vec = output.load[width=width](curr_coords)
                 elementwise_lambda(curr_coords, vec)
 
             vectorize[simd_size](f_size, body)
@@ -3552,10 +3614,16 @@ def conv_nhwc_direct[
             output_type,
             filter_packed,
             conv_info_static,
-            Optional[elementwise_epilogue_type](
-                elementwise_epilogue
-            ) if has_epilogue_fusion else None,
-        ].run(output_tt, input_tt, filter_tt, conv_shape, ctx)
+            has_epilogue_fusion,
+            type_of(elementwise_epilogue),
+        ].run(
+            output_tt,
+            input_tt,
+            filter_tt,
+            conv_shape,
+            elementwise_epilogue,
+            ctx,
+        )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3672,10 +3740,9 @@ def conv2d_gpu_naive_nhwc_rscf[
                             ]()
                         )
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_func = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
             epilogue_func(
-                IndexList[4](n, h, w, co),
+                (n, h, w, co),
                 value.cast[output_type](),
             )
         else:
@@ -3800,8 +3867,8 @@ def _get_cudnn_meta(
 
     # Get or create the per-device cache dictionary.
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[CuDNNConvMeta]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CuDNNConvMeta]()
         check_cudnn_error(cudnnSetStream(ptr[].ptr_handle, CUDA(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -3828,7 +3895,7 @@ def get_cudnn_dtype[dtype: DType]() raises -> cudnnDataType_t:
         If the dtype is not supported by cuDNN.
     """
 
-    comptime __match dtype:
+    comptime match dtype:
         case .float32:
             return cudnnDataType_t.CUDNN_DATA_FLOAT
         case .float16:
@@ -3930,10 +3997,8 @@ def _get_cached_cudnn_meta_nhwc_full(
     var cache_key = "CUDA_CUDNN_CACHED_META_NHWC_FULL_" + String(ctx.id())
 
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
-            CachedCuDNNMetaNHWCFull
-        ]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CachedCuDNNMetaNHWCFull]()
         check_cudnn_error(cudnnSetStream(ptr[].ptr_handle, CUDA(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -4022,10 +4087,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_input_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[input_type](),
-                Int16(in_[0]),
-                Int16(in_[3]),
-                Int16(in_[1]),
-                Int16(in_[2]),
+                Int32(in_[0]),
+                Int32(in_[3]),
+                Int32(in_[1]),
+                Int32(in_[2]),
             )
         )
 
@@ -4035,10 +4100,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_filter_desc,
                 get_cudnn_dtype[filter_type](),
                 cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-                Int16(filt[0]),
-                Int16(filt[1]),
-                Int16(filt[2]),
-                Int16(filt[3]),
+                Int32(filt[0]),
+                Int32(filt[1]),
+                Int32(filt[2]),
+                Int32(filt[3]),
             )
         )
 
@@ -4046,12 +4111,12 @@ def _conv_cudnn[
         check_cudnn_error(
             cudnnSetConvolution2dDescriptor(
                 ptr_meta[].ptr_conv_desc,
-                Int16(pad[0]),
-                Int16(pad[1]),
-                Int16(stride[0]),
-                Int16(stride[1]),
-                Int16(dil[0]),
-                Int16(dil[1]),
+                Int32(pad[0]),
+                Int32(pad[1]),
+                Int32(stride[0]),
+                Int32(stride[1]),
+                Int32(dil[0]),
+                Int32(dil[1]),
                 cudnnConvolutionMode_t.CUDNN_CROSS_CORRELATION,
                 cudnnDataType_t.CUDNN_DATA_FLOAT,
             )
@@ -4059,7 +4124,7 @@ def _conv_cudnn[
 
         check_cudnn_error(
             cudnnSetConvolutionGroupCount(
-                ptr_meta[].ptr_conv_desc, Int16(num_groups)
+                ptr_meta[].ptr_conv_desc, Int32(num_groups)
             )
         )
 
@@ -4069,10 +4134,10 @@ def _conv_cudnn[
                 ptr_meta[].ptr_output_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[output_type](),
-                Int16(out[0]),
-                Int16(out[3]),
-                Int16(out[1]),
-                Int16(out[2]),
+                Int32(out[0]),
+                Int32(out[3]),
+                Int32(out[1]),
+                Int32(out[2]),
             )
         )
 
@@ -4090,14 +4155,11 @@ def _conv_cudnn[
         )
 
         # Algorithm Autotuning.
-        # The Mojo binding cudnnConvolutionFwdAlgoPerfStruct has incorrect
-        # layout (Int8 enums vs C's 4-byte int enums). We bypass it by
-        # allocating a raw 48-byte buffer matching the C ABI layout and
-        # reading the algo Int32 at offset 0.
-        var perf_buf_alloc = alloc[UInt8]({count = 48}).into_managed()
-        var perf_buf = UnsafePointer(perf_buf_alloc.unsafe_ptr())
-        var requested_count: Int16 = 1
-        var returned_count: Int16 = 0
+        var perf_alloc = alloc[cudnnConvolutionFwdAlgoPerf_t](
+            {count = 1}
+        ).into_managed()
+        var perf = perf_alloc.unsafe_ptr()
+        var returned_count: Int32 = 0
 
         check_cudnn_error(
             cudnnGetConvolutionForwardAlgorithm_v7(
@@ -4106,16 +4168,14 @@ def _conv_cudnn[
                 ptr_meta[].ptr_filter_desc,
                 ptr_meta[].ptr_conv_desc,
                 ptr_meta[].ptr_output_desc,
-                requested_count,
+                1,
                 UnsafePointer(to=returned_count),
-                perf_buf.bitcast[cudnnConvolutionFwdAlgoPerf_t](),
+                perf,
             )
         )
 
         if returned_count > 0:
-            # Read algo enum (C int32) at byte offset 0
-            var algo_val = perf_buf.bitcast[Int32]()[]
-            ptr_meta[].best_algo = cudnnConvolutionFwdAlgo_t(Int(algo_val))
+            ptr_meta[].best_algo = perf[].algo
         else:
             ptr_meta[].best_algo = (
                 cudnnConvolutionFwdAlgo_t.CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
@@ -4309,10 +4369,8 @@ def _get_cached_miopen_meta[
     )
 
     var ptr_meta = _get_global_or_null(cache_key)
-    if ptr_meta:
-        var ptr = ptr_meta.unsafe_value().unsafe_bitcast[
-            CachedMIOpenMeta[conv_rank]
-        ]()
+    if case .Some(ptr_meta) = ptr_meta:
+        var ptr = ptr_meta.unsafe_bitcast[CachedMIOpenMeta[conv_rank]]()
         check_miopen_error(miopenSetStream(ptr[].handle, HIP(ctx.stream())))
         return ptr.as_unsafe_any_origin()
 
@@ -4699,10 +4757,9 @@ def _conv_miopen[
     num_groups: Int,
     ctx: DeviceContext,
 ) raises:
-    comptime if maybe_epilogue_func:
+    comptime if case .Some(epilogue) = maybe_epilogue_func:
         # MIOpen doesn't support epilogues. Compute to temp buffer,
         # then apply epilogue.
-        comptime epilogue = maybe_epilogue_func.value()
         var output_tmp_data = ctx.enqueue_create_buffer[output_type](
             output.num_elements()
         )
@@ -4725,12 +4782,12 @@ def _conv_miopen[
             _width: Int, alignment: Int = 1
         ](coords: Coord) {var output_tmp}:
             epilogue(
-                coord_to_index_list(coords),
+                coords,
                 output_tmp.load[width=_width](coords),
             )
 
         elementwise[
-            simd_width_of[output_type, target=get_gpu_target()](),
+            simd_width_of[output_type, target=ctx.target](),
             target="gpu",
         ](
             miopen_epilogue,
@@ -5044,12 +5101,11 @@ def conv_gpu[
                         beta,
                     )
 
-                comptime if maybe_epilogue_func:
+                comptime if case .Some(epilogue) = maybe_epilogue_func:
                     # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                     # void epilogue for the SM100 kernel. The kernel
                     # calls this with (m, n) coords where
                     # m = batch*H_out*W_out + h*W_out + w, n = channel.
-                    comptime epilogue = maybe_epilogue_func.value()
                     var out_h = Int(output.dim[1]())
                     var out_w = Int(output.dim[2]())
                     var hw = out_h * out_w
@@ -5062,9 +5118,12 @@ def conv_gpu[
                         _width: SIMDLength,
                         *,
                         alignment: Int = 1,
-                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
-                        var m = coords_2d[0]
-                        var n = coords_2d[1]
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0].value())
+                        var n = Int(coords_2d[1].value())
                         var batch_idx: Int
                         var rem: Int
                         var h_idx: Int
@@ -5072,7 +5131,7 @@ def conv_gpu[
                         batch_idx, rem = divmod(m, hw)
                         h_idx, w_idx = divmod(rem, out_w)
                         epilogue(
-                            IndexList[4](batch_idx, h_idx, w_idx, n),
+                            (batch_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
 
@@ -5241,9 +5300,8 @@ def conv_gpu[
             # residual path and the 4-wave kernel does the residual add
             # in-kernel. We pull `source_ptr`'s contents to host along
             # with the other two buffers and combine them in the loop.
-            @__parameter
             @inline(.always)
-            def _audit_amd_4wave_vs_miopen() raises:
+            def _audit_amd_4wave_vs_miopen() raises {imm}:
                 if getenv("MODULAR_CONV_AUDIT_MIOPEN", "0") != "1":
                     return
 
@@ -5290,9 +5348,9 @@ def conv_gpu[
                 ctx.enqueue_copy(host_mio, output_view)
 
                 comptime if has_residual:
-                    if source_ptr:
+                    if case .Some(source_ptr) = source_ptr:
                         var source_view = DeviceBuffer[output_type](
-                            ctx, source_ptr.value(), n_elements, owning=False
+                            ctx, source_ptr, n_elements, owning=False
                         )
                         ctx.enqueue_copy(host_src, source_view)
                 ctx.synchronize()
@@ -5380,13 +5438,12 @@ def conv_gpu[
                 _ = host_mio^
                 _ = host_src^
 
-            comptime if maybe_epilogue_func:
+            comptime if case .Some(_amd_4wave_epi) = maybe_epilogue_func:
                 # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                 # epilogue for the AMD 4-wave kernel. The kernel calls
                 # this with (m, n) coords where
                 # `m = batch*H_out*W_out + h*W_out + w` and `n = channel`.
                 # Mirrors the SM100 wrapper just above.
-                comptime _amd_4wave_epi = maybe_epilogue_func.value()
                 var _amd_4wave_out_h = Int(output.dim[1]())
                 var _amd_4wave_out_w = Int(output.dim[2]())
                 var _amd_4wave_hw = _amd_4wave_out_h * _amd_4wave_out_w
@@ -5399,9 +5456,12 @@ def conv_gpu[
                     _width: SIMDLength,
                     *,
                     alignment: Int = 1,
-                ](coords_2d: IndexList[2], val: SIMD[_dtype, _width]):
-                    var m = coords_2d[0]
-                    var n = coords_2d[1]
+                ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                    comptime assert (
+                        coords_2d.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
+                    var m = Int(coords_2d[0].value())
+                    var n = Int(coords_2d[1].value())
                     var batch_idx: Int
                     var rem: Int
                     var h_idx: Int
@@ -5409,7 +5469,7 @@ def conv_gpu[
                     batch_idx, rem = divmod(m, _amd_4wave_hw)
                     h_idx, w_idx = divmod(rem, _amd_4wave_out_w)
                     _amd_4wave_epi(
-                        IndexList[4](batch_idx, h_idx, w_idx, n),
+                        (batch_idx, h_idx, w_idx, n),
                         rebind[SIMD[output_type, _width]](val),
                     )
 
@@ -5477,8 +5537,7 @@ def conv_gpu[
                 )
             )
 
-            comptime if maybe_epilogue_func:
-                comptime epilogue = maybe_epilogue_func.value()
+            comptime if case .Some(epilogue) = maybe_epilogue_func:
                 var output_tmp_data = ctx.enqueue_create_buffer[output_type](
                     output.num_elements()
                 )
@@ -5503,11 +5562,10 @@ def conv_gpu[
                 def epilogue_wrapper[
                     _width: Int, alignment: Int = 1
                 ](coords: Coord) {var output_tmp}:
-                    var idx = rebind[IndexList[4]](coord_to_index_list(coords))
                     var vec = output_tmp.load[
                         width=_width, alignment=align_of[output_type]()
                     ](coords)
-                    epilogue(idx, vec)
+                    epilogue(coords, vec)
 
                 elementwise[simd_width_of[output_type](), target="gpu"](
                     epilogue_wrapper,
@@ -5631,8 +5689,7 @@ def conv_gpu[
                 # void epilogue for the 4-wave kernel. The kernel
                 # calls this with (m, n) coords where m flattens
                 # batch*d*h*w and n is the channel.
-                comptime if maybe_epilogue_func:
-                    comptime _amd_3d_epi_5d = maybe_epilogue_func.value()
+                comptime if case .Some(_amd_3d_epi_5d) = maybe_epilogue_func:
                     var _amd_3d_D_out = Int(output.dim[1]())
                     var _amd_3d_H_out = Int(output.dim[2]())
                     var _amd_3d_W_out = Int(output.dim[3]())
@@ -5647,9 +5704,12 @@ def conv_gpu[
                         _width: SIMDLength,
                         *,
                         alignment: Int = 1,
-                    ](coords_2d: IndexList[2], val: SIMD[_dtype, _width],):
-                        var m = coords_2d[0]
-                        var n = coords_2d[1]
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0].value())
+                        var n = Int(coords_2d[1].value())
                         var batch_idx: Int
                         var rem: Int
                         var d_idx: Int
@@ -5660,7 +5720,7 @@ def conv_gpu[
                         d_idx, rem2 = divmod(rem, _amd_3d_HW)
                         h_idx, w_idx = divmod(rem2, _amd_3d_W_out)
                         _amd_3d_epi_5d(
-                            IndexList[5](batch_idx, d_idx, h_idx, w_idx, n),
+                            (batch_idx, d_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
 
@@ -5895,10 +5955,9 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 
         var value = simd_value.reduce_add() + scalar_value
 
-        comptime if maybe_epilogue_func:
-            comptime epilogue_func = maybe_epilogue_func.value()
+        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
             epilogue_func(
-                IndexList[5](n, d_out_idx, h_out_idx, w_out_idx, co),
+                (n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )
         else:
@@ -5917,11 +5976,8 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 struct _Conv3dAlgoCacheEntry(Copyable, Movable):
     """Cached cuDNN algorithm selection result for a conv3d shape."""
 
-    var algo_value: Int8
+    var algo: cudnnConvolutionFwdAlgo_t
     var workspace_size: Int
-
-    def algo(self) -> cudnnConvolutionFwdAlgo_t:
-        return rebind[cudnnConvolutionFwdAlgo_t](self.algo_value)
 
 
 def _conv3d_cudnn_depth_tiled[
@@ -6014,7 +6070,7 @@ def _conv3d_cudnn_depth_tiled[
             ptr_meta[].ptr_filter_desc,
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-            Int16(5),
+            Int32(5),
             filter_dims.bitcast[NoneType](),
         )
     )
@@ -6080,7 +6136,7 @@ def _conv3d_cudnn_depth_tiled[
                 ptr_meta[].ptr_input_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[input_type](),
-                Int16(5),
+                Int32(5),
                 input_dims.bitcast[NoneType](),
             )
         )
@@ -6097,7 +6153,7 @@ def _conv3d_cudnn_depth_tiled[
                 ptr_meta[].ptr_output_desc,
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[output_type](),
-                Int16(5),
+                Int32(5),
                 output_dims.bitcast[NoneType](),
             )
         )
@@ -6110,7 +6166,7 @@ def _conv3d_cudnn_depth_tiled[
         check_cudnn_error(
             cudnnSetConvolutionNdDescriptor(
                 ptr_meta[].ptr_conv_desc,
-                Int16(3),
+                Int32(3),
                 pad_a.bitcast[NoneType](),
                 stride_a.bitcast[NoneType](),
                 dilation_a.bitcast[NoneType](),
@@ -6120,7 +6176,7 @@ def _conv3d_cudnn_depth_tiled[
         )
         check_cudnn_error(
             cudnnSetConvolutionGroupCount(
-                ptr_meta[].ptr_conv_desc, Int16(num_groups)
+                ptr_meta[].ptr_conv_desc, Int32(num_groups)
             )
         )
         check_cudnn_error(
@@ -6267,7 +6323,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_input_desc,
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[input_type](),
-            Int16(5),
+            Int32(5),
             input_dims.bitcast[NoneType](),
         )
     )
@@ -6286,7 +6342,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_filter_desc,
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
-            Int16(5),
+            Int32(5),
             filter_dims.bitcast[NoneType](),
         )
     )
@@ -6313,7 +6369,7 @@ def _conv3d_cudnn[
     check_cudnn_error(
         cudnnSetConvolutionNdDescriptor(
             ptr_meta[].ptr_conv_desc,
-            Int16(3),
+            Int32(3),
             pad_a.bitcast[NoneType](),
             stride_a.bitcast[NoneType](),
             dilation_a.bitcast[NoneType](),
@@ -6324,7 +6380,7 @@ def _conv3d_cudnn[
 
     check_cudnn_error(
         cudnnSetConvolutionGroupCount(
-            ptr_meta[].ptr_conv_desc, Int16(num_groups)
+            ptr_meta[].ptr_conv_desc, Int32(num_groups)
         )
     )
 
@@ -6342,7 +6398,7 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_output_desc,
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[output_type](),
-            Int16(5),
+            Int32(5),
             output_dims.bitcast[NoneType](),
         )
     )
@@ -6406,33 +6462,21 @@ def _conv3d_cudnn[
     var workspace_size_var: Int
 
     var ptr_cached = _get_global_or_null(cache_key)
-    if ptr_cached:
+    if case .Some(ptr_cached) = ptr_cached:
         # Cache hit — reuse previously selected algorithm.
-        var entry = ptr_cached.unsafe_value().unsafe_bitcast[
-            _Conv3dAlgoCacheEntry
-        ]()
-        algo = entry[].algo()
+        var entry = ptr_cached.unsafe_bitcast[_Conv3dAlgoCacheEntry]()
+        algo = entry[].algo
         workspace_size_var = entry[].workspace_size
     else:
         # Cache miss — run FindEx to find the fastest algorithm.
         var find_ws = ctx.enqueue_create_buffer[.uint8](FIND_WS_CAP)
 
-        # CRITICAL: The Mojo cudnnConvolutionFwdAlgoPerfStruct uses Int8 for
-        # enum fields, but the C struct uses int (4 bytes). This causes a
-        # size mismatch: Mojo struct = ~32 bytes, C struct = 48 bytes.
-        # Allocating with the Mojo struct size would cause a buffer overflow
-        # when cuDNN writes 8 * 48 = 384 bytes. We allocate raw bytes with
-        # the correct C struct size and read fields at proper offsets.
-        comptime C_PERF_STRUCT_SIZE = 48  # sizeof(cudnnConvolutionFwdAlgoPerf_t)
         comptime MAX_ALGOS = 8
-        var perf_bytes_alloc = alloc[UInt8](
-            {count = MAX_ALGOS * C_PERF_STRUCT_SIZE}
+        var perf_alloc = alloc[cudnnConvolutionFwdAlgoPerfStruct](
+            {count = MAX_ALGOS}
         ).into_managed()
-        var perf_bytes = perf_bytes_alloc.unsafe_ptr()
-
-        # returned_algo_count is int* in C (4 bytes), not Int16*.
-        # Use Int32 and bitcast the pointer.
-        var returned_count_i32 = Int32(0)
+        var perf = perf_alloc.unsafe_ptr()
+        var returned_count: Int32 = 0
 
         var find_status = cudnnFindConvolutionForwardAlgorithmEx(
             ptr_meta[].ptr_handle,
@@ -6443,47 +6487,34 @@ def _conv3d_cudnn[
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].ptr_output_desc,
             output.ptr.bitcast[NoneType](),
-            Int16(MAX_ALGOS),
-            UnsafePointer(to=returned_count_i32).bitcast[Int16](),
-            perf_bytes.unsafe_bitcast[cudnnConvolutionFwdAlgoPerfStruct](),
+            MAX_ALGOS,
+            Pointer(to=returned_count),
+            perf,
             find_ws.unsafe_ptr().bitcast[NoneType](),
             FIND_WS_CAP,
         )
         _ = find_ws^
 
-        # Read the returned count (C int at offset 0 of returned_count_i32).
-        var returned_count = Int(returned_count_i32)
-
         # Pick the fastest successful algorithm within workspace cap.
-        # Read fields from raw bytes at correct C struct offsets:
-        #   offset  0: algo (int32)
-        #   offset  4: status (int32)
-        #   offset  8: time (float32)
-        #   offset 16: memory (size_t / int64)
         algo = (
             cudnnConvolutionFwdAlgo_t.CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM
         )
         workspace_size_var = 0
 
-        var find_status_val = rebind[Int32](find_status)
-        if find_status_val == 0:  # CUDNN_STATUS_SUCCESS
-            for i in range(returned_count):
-                var base = perf_bytes.unsafe_offset(i * C_PERF_STRUCT_SIZE)
-                var algo_val = base.unsafe_bitcast[Int32]()[]  # offset 0
-                var status_val = base.unsafe_offset(4).unsafe_bitcast[
-                    Int32
-                ]()[]  # offset 4
-                var memory_val = base.unsafe_offset(16).unsafe_bitcast[
-                    Int
-                ]()[]  # offset 16
-                if status_val == 0 and memory_val <= FIND_WS_CAP:
-                    algo = rebind[cudnnConvolutionFwdAlgo_t](Int8(algo_val))
-                    workspace_size_var = memory_val
+        if find_status == .CUDNN_STATUS_SUCCESS:
+            for i in range(Int(returned_count)):
+                ref result = perf.unsafe_offset(i)[]
+                if (
+                    result.status == .CUDNN_STATUS_SUCCESS
+                    and result.memory <= FIND_WS_CAP
+                ):
+                    algo = result.algo
+                    workspace_size_var = result.memory
                     break
         else:
             print(
                 "conv3d FindEx FAILED: status=",
-                Int(find_status_val),
+                find_status,
                 " input=[N=",
                 input.dim[0](),
                 " C=",
@@ -6527,7 +6558,7 @@ def _conv3d_cudnn[
         var ptr_entry = alloc[_Conv3dAlgoCacheEntry]({count = 1}).unsafe_leak()
         ptr_entry.unsafe_write(
             _Conv3dAlgoCacheEntry(
-                algo_value=rebind[Int8](algo),
+                algo=algo,
                 workspace_size=workspace_size_var,
             )
         )
@@ -6571,9 +6602,8 @@ def _conv3d_cudnn[
     )
     if (
         fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_V9
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_DEVICE_MEMORY
-        or fwd_status == cudnnStatus_t.CUDNN_STATUS_ALLOC_FAILED_HOST_MEMORY
+        or fwd_status
+        == cudnnStatus_t.CUDNN_STATUS_INTERNAL_ERROR_DEVICE_ALLOCATION_FAILED
     ) and algo != IMPLICIT_GEMM:
         ctx.synchronize()  # Flush pending work and reclaim held memory.
         algo = IMPLICIT_GEMM
@@ -6606,7 +6636,7 @@ def _conv3d_cudnn[
             ).unsafe_leak()
             retry_entry.unsafe_write(
                 _Conv3dAlgoCacheEntry(
-                    algo_value=rebind[Int8](algo),
+                    algo=algo,
                     workspace_size=0,
                 )
             )

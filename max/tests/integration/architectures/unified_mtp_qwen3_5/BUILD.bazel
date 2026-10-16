@@ -35,6 +35,7 @@ modular_py_test(
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2411
+    precompile_mefs = True,
     tags = ["gpu"],
     deps = [
         "//max/python/max/driver",
@@ -57,6 +58,8 @@ modular_py_test(
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2411
+    precompile_mefs = True,
+    precompile_shards = 4,
     tags = ["gpu"],
     deps = [
         "//max/python/max/driver",
@@ -77,12 +80,13 @@ modular_py_test(
     # The 280 MB signal buffer is a single allocation, so the default
     # per-test GPU budget cannot serve it whatever the model size.
     exec_properties = {
-        "test.resources:gpu-memory": "8",
+        "test.resources:gpu-memory": "3",
     },
     gpu_constraints = ["//:has_gpu"] + select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: MOCO-2411
+    precompile_mefs = True,
     tags = ["gpu"],
     deps = [
         "//max/python/max/driver",

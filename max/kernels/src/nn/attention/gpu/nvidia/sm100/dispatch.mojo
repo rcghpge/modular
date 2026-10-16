@@ -27,10 +27,12 @@ from max.gpu.host import (
     Dim,
     FuncAttribute,
 )
+from nn.attention.gpu.nvidia.sm100.attention_utils import (
+    assert_sm_exclusive_smem,
+)
 from nn.attention.gpu.nvidia.common import ImmutTileTensor1D
 from layout import Coord, TensorEngine
 from layout.tma_async import RaggedTMA3DTile, TMATensorTile
-from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.logger import Logger
 from nn.attention.gpu.nvidia.sm100.attention import FA4Config, MHA_PDL_LEVEL
 from nn.attention.gpu.nvidia.common import (
@@ -132,7 +134,9 @@ comptime WS_SWEEP_MAX_RAW_GRID: UInt32 = 24
 
 
 @inline(.always)
-def ws_p_ceiling[sm_count: Int](raw_grid: UInt32) -> UInt32:
+def ws_p_ceiling[
+    sm_count: Int, oversubscribe: Bool
+](raw_grid: UInt32) -> UInt32:
     """Capture-invariant partition-count ceiling for the split-K crossover:
     follows one GPC wave's SM-fill, holds the plateau through
     `WS_SWEEP_MAX_RAW_GRID`, then decays toward one partition.
@@ -146,11 +150,24 @@ def ws_p_ceiling[sm_count: Int](raw_grid: UInt32) -> UInt32:
     leaves small grids untouched while lifting a small one-wave toward the
     plateau. Beyond the sweep, the inverse target keeps the split grid near a
     fixed wave budget rather than growing with `raw_grid`.
+
+    `oversubscribe` targets `oversub` CTAs per SM rather than one. The factor
+    comes from the ragged (roughly exponential) cache-length distributions the
+    constants were swept on, where most CTAs early-return with no work and
+    over-splitting is what fills the SMs. A sliding-window mask caps the cache
+    length, so its distribution is near-uniform, every CTA gets work, and the
+    ceiling should target `sm_count` directly -- pass `False` there. Measured
+    2026-10-07 and 2026-10-09 on B200 (`sm_count` 148) over eleven shapes of a
+    12-head sliding-window-4096 model, the best `P x raw_grid` is about
+    `sm_count`: `raw_grid` 24 wants 6, 48 wants 2 to 3, and 96 and above want
+    1.
     """
     comptime assert (
         WS_SWEEP_MAX_RAW_GRID % WS_RAW_GRID_CLAMP == 0
     ), "WS_RAW_GRID_CLAMP must divide WS_SWEEP_MAX_RAW_GRID exactly"
-    comptime oversub = WS_SWEEP_MAX_RAW_GRID // WS_RAW_GRID_CLAMP
+    comptime oversub = (
+        WS_SWEEP_MAX_RAW_GRID // WS_RAW_GRID_CLAMP if oversubscribe else 1
+    )
     var g = max(raw_grid, 1)
     return clamp(
         UInt32(sm_count) * oversub // g,
@@ -160,7 +177,9 @@ def ws_p_ceiling[sm_count: Int](raw_grid: UInt32) -> UInt32:
 
 
 @inline(.always)
-def _ws_g_p_ceiling[sm_count: Int](raw_grid: UInt32) -> UInt32:
+def _ws_g_p_ceiling[
+    sm_count: Int, oversubscribe: Bool
+](raw_grid: UInt32) -> UInt32:
     """Partition-count ceiling for the WS-G decode route.
 
     Past the one-wave sweep a split only helps while the split grid still fits
@@ -168,8 +187,10 @@ def _ws_g_p_ceiling[sm_count: Int](raw_grid: UInt32) -> UInt32:
     cost, so the ceiling follows sm_count // raw_grid there. The decode graph of
     a batch that fills the GPU is captured at the longest cache, so this ceiling
     is the only bound that also holds for the short caches replayed on it.
+
+    `oversubscribe` passes straight through to `ws_p_ceiling`.
     """
-    var p = ws_p_ceiling[sm_count](raw_grid)
+    var p = ws_p_ceiling[sm_count, oversubscribe](raw_grid)
     if raw_grid > WS_SWEEP_MAX_RAW_GRID:
         p = clamp(p, UInt32(1), UInt32(sm_count) // raw_grid)
     return p
@@ -474,6 +495,10 @@ def mha_sm100_dispatch[
     comptime if not deep_ws_shared_key:
         comptime assert fa4_config_2q.supported(), fa4_config_2q.description()
 
+    # A windowed mask caps the cache length, so the distribution is not the
+    # ragged one `ws_p_ceiling`'s over-subscription was tuned for.
+    comptime splitk_oversubscribe = MaskType.sliding_window_size() == 0
+
     var q = q_arg.bitcast[Scalar[KVType.dtype]]().unsafe_origin_cast[
         q_arg.origin
     ]()
@@ -481,7 +506,6 @@ def mha_sm100_dispatch[
     var max_cache_valid_length: UInt32 = UInt32(max_cache_valid_length_arg)
     var batch_size: UInt32 = UInt32(batch_size_arg)
 
-    @__parameter
     @inline(.always)
     def with_fa4_config[
         NumPartitionsType: OptionallyStaticInt,
@@ -498,7 +522,7 @@ def mha_sm100_dispatch[
         # and a separate combine kernel merges it into `output`. Every other
         # launch omits it and infers the null conformer from this default.
         o_workspace_ptr: OWorkspaceType = NullPointer[output_type](),
-    ) raises:
+    ) raises {imm}:
         # `num_partitions` is ALWAYS static: the 2Q config (and its in-kernel 1Q
         # switch) carry a static 1, and each num_q==1 split-K config is compiled
         # once per static partition count `P` (cluster size `P`) — the dispatch
@@ -699,19 +723,18 @@ def mha_sm100_dispatch[
                 num_qk_stages=fa4_config.num_qk_stages,
             ](ctx, q, num_rows_q)
 
-            @__parameter
             @inline(.always)
-            def with_sink[SinkType: OptionalPointer](sink_ptr: SinkType) raises:
-                @__parameter
+            def with_sink[
+                SinkType: OptionalPointer
+            ](sink_ptr: SinkType) raises {imm}:
                 @inline(.always)
                 def with_kv_offsets[
                     KVRowOffsetsType: OptionalPointer
-                ](kv_row_offsets: KVRowOffsetsType) raises:
-                    @__parameter
+                ](kv_row_offsets: KVRowOffsetsType) raises {imm}:
                     @inline(.always)
                     def with_valid_length[
                         ValidLengthType: OptionalPointer
-                    ](valid_len: ValidLengthType) raises:
+                    ](valid_len: ValidLengthType) raises {imm}:
                         # the pack contains all possibly 0-sized objects
                         comptime PackType = Pack[
                             MaskType,
@@ -813,6 +836,7 @@ def mha_sm100_dispatch[
                             fa4_config.num_kv_heads,
                             ".",
                         )
+                        assert_sm_exclusive_smem[smem_use]()
                         ctx.enqueue_function[kernel](
                             q_tma_op,
                             k_tma_op,
@@ -851,9 +875,9 @@ def mha_sm100_dispatch[
                         with_valid_length[NullPointer[.uint32]]({})
 
                 # --- kv_input_row_offsets dispatch ---
-                if kv_input_row_offsets:
+                if case .Some(kv_input_row_offsets) = kv_input_row_offsets:
                     with_kv_offsets[NonNullPointer[.uint32]](
-                        {kv_input_row_offsets.value().ptr}
+                        {kv_input_row_offsets.ptr}
                     )
                 else:
                     with_kv_offsets[NullPointer[.uint32]]({})
@@ -878,21 +902,18 @@ def mha_sm100_dispatch[
                 num_qk_stages=fa4_config.num_qk_stages,
             ](ctx, q, num_rows_q)
 
-            @__parameter
             @inline(.always)
             def with_sink_q[
                 SinkType: OptionalPointer
-            ](sink_ptr: SinkType) raises:
-                @__parameter
+            ](sink_ptr: SinkType) raises {imm}:
                 @inline(.always)
                 def with_kv_offsets[
                     KVRowOffsetsType: OptionalPointer
-                ](kv_row_offsets: KVRowOffsetsType) raises:
-                    @__parameter
+                ](kv_row_offsets: KVRowOffsetsType) raises {imm}:
                     @inline(.always)
                     def with_valid_length[
                         ValidLengthType: OptionalPointer
-                    ](valid_len: ValidLengthType) raises:
+                    ](valid_len: ValidLengthType) raises {imm}:
                         # the pack contains all possibly 0-sized objects
                         comptime PackType = Pack[
                             MaskType,
@@ -994,6 +1015,7 @@ def mha_sm100_dispatch[
                             fa4_config.num_kv_heads,
                             ".",
                         )
+                        assert_sm_exclusive_smem[smem_use]()
                         ctx.enqueue_function[kernel](
                             q_tma_op,
                             k_tma_op,
@@ -1032,9 +1054,9 @@ def mha_sm100_dispatch[
                         with_valid_length[NullPointer[.uint32]]({})
 
                 # --- kv_input_row_offsets dispatch ---
-                if kv_input_row_offsets:
+                if case .Some(kv_input_row_offsets) = kv_input_row_offsets:
                     with_kv_offsets[NonNullPointer[.uint32]](
-                        {kv_input_row_offsets.value().ptr}
+                        {kv_input_row_offsets.ptr}
                     )
                 else:
                     with_kv_offsets[NullPointer[.uint32]]({})
@@ -1051,9 +1073,10 @@ def mha_sm100_dispatch[
             else:
                 with_sink_q[NullPointer[KVType.dtype]]({})
 
-    @__parameter
     @inline(.always)
-    def launch_workspace[fa4_config: FA4Config[KVType.dtype]](p: UInt32) raises:
+    def launch_workspace[
+        fa4_config: FA4Config[KVType.dtype]
+    ](p: UInt32) raises {imm}:
         """Traditional (unfused / workspace) split-K launch: run the plain 1Q
         config over an over-launched grid that writes each partition's
         locally-normalized `O_p/l_p` + fused per-row LSE to a transient
@@ -1353,7 +1376,8 @@ def mha_sm100_dispatch[
                             512 * config.depth // 128
                         )
                         var p_ceiling_ws: UInt32 = _ws_g_p_ceiling[
-                            ctx.default_device_info.sm_count
+                            ctx.default_device_info.sm_count,
+                            splitk_oversubscribe,
                         ](raw_grid_ws)
                         # `_bucket_ws` buckets UP then caps at the ceiling,
                         # so handing it `by_cache` directly is identical to
@@ -1434,9 +1458,10 @@ def mha_sm100_dispatch[
                             512 * config.depth // 128
                         )
                         var p_ceiling_ws_e: UInt32 = min(
-                            ws_p_ceiling[ctx.default_device_info.sm_count](
-                                raw_grid_ws_e
-                            ),
+                            ws_p_ceiling[
+                                ctx.default_device_info.sm_count,
+                                splitk_oversubscribe,
+                            ](raw_grid_ws_e),
                             ws_e_p_cap,
                         )
                         p_bucket_ws_e = UInt32(
@@ -1579,7 +1604,8 @@ def mha_sm100_dispatch[
                         KVType.page_size,
                     ](mask, max_cache_valid_length) // UInt32(one_q_min_kpp)
                     var p_ceiling: UInt32 = ws_p_ceiling[
-                        ctx.default_device_info.sm_count
+                        ctx.default_device_info.sm_count,
+                        splitk_oversubscribe,
                     ](raw_grid_1q)
                     p_bucket = UInt32(
                         _bucket_ws[ctx.default_device_info.sm_count](

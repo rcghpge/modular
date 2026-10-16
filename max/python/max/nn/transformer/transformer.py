@@ -85,6 +85,7 @@ def forward_sequential_layers(
         f"transformer_block_{i}"
     ),
     weight_prefix_for_layer: Callable[[int], str] | None = None,
+    layer_ids: Sequence[int] | None = None,
 ) -> list[TensorValue]:
     """Forward pass through sequential layers with optional subgraph groups.
 
@@ -116,15 +117,19 @@ def forward_sequential_layers(
         weight_prefix_for_layer: A callable that takes the layer index and
             returns the weight prefix string for that layer. Required when using
             subgraphs.
+        layer_ids: The index of each of ``layers`` that the callbacks receive
+            and ``subgraph_layer_groups`` lists, such as its index in the whole
+            model when ``layers`` are one pipeline stage's. Defaults to each
+            layer's position in ``layers``.
 
     Returns:
         The output hidden states of the last layer.
     """
-
+    ids = range(len(layers)) if layer_ids is None else layer_ids
     h = initial_hidden_states
 
     if subgraph_layer_groups is None:
-        for layer_idx, layer in enumerate(layers):
+        for layer_idx, layer in zip(ids, layers, strict=True):
             values = inputs_for_layer(layer_idx, h)
             h = _call_layer_directly(layer, values)
             if on_layer_output is not None:
@@ -138,13 +143,13 @@ def forward_sequential_layers(
     layer_idx_to_group_idx: dict[int, int] = {}
     for group_idx, layer_group in enumerate(subgraph_layer_groups):
         for layer_idx in layer_group:
-            assert layer_idx < len(layers), (
-                f"Layer index {layer_idx} is out of range for {len(layers)} layers"
+            assert layer_idx in ids, (
+                f"Layer index {layer_idx} is not among the layer ids {ids}"
             )
             layer_idx_to_group_idx[layer_idx] = group_idx
 
     group_idx_to_subgraph: dict[int, Graph] = {}
-    for layer_idx, layer in enumerate(layers):
+    for layer_idx, layer in zip(ids, layers, strict=True):
         values = inputs_for_layer(layer_idx, h)
         if layer_idx not in layer_idx_to_group_idx:
             h = _call_layer_directly(layer, values)
@@ -299,22 +304,53 @@ class TransformerBlock(Module):
 
 
 class ReturnLogits(str, Enum):
+    """Which logits a transformer model returns per sequence.
+
+    ``LAST_TOKEN`` returns only the final position's logits, ``VARIABLE``
+    returns ``return_n_logits`` trailing positions, and ``ALL`` returns
+    every position.
+    """
+
     LAST_TOKEN = "last_token"
+    """Return only the final token's logits."""
+
     VARIABLE = "variable"
+    """Return ``return_n_logits`` trailing positions' logits."""
+
     ALL = "all"
+    """Return every token's logits."""
 
 
 class ReturnHiddenStates(str, Enum):
+    """Which hidden states a transformer model returns per sequence.
+
+    ``NONE`` returns none, ``LAST`` returns the final token's hidden
+    states, and ``ALL`` returns every token's. See each member's
+    description for the other modes.
+    """
+
     NONE = "none"
+    """Return no hidden states."""
+
     LAST = "last"
+    """Return the final token's hidden states."""
+
     # Like LAST but returns the post-allgather per-device tensors rather
     # than collapsing to a single copy. Lets callers consume the data that
     # was already placed on every device by the allgather, avoiding a
     # redundant broadcast.
     LAST_PER_DEVICE = "last_per_device"
+    """Return the final token's hidden states as per-device tensors,
+    one per device, without collapsing identical replicas."""
+
     ALL_NORMALIZED = "all_normalized"
+    """Return every token's hidden states after the model's final norm."""
+
     ALL = "all"
+    """Return every token's hidden states."""
+
     SELECTED_LAYERS = "selected_layers"
+    """Return hidden states captured at specific layer indices."""
 
 
 def logits_postprocess(

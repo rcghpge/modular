@@ -14,9 +14,10 @@
 
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceContext
-from layout import Coord, TileTensor, coord_to_index_list, row_major
+from layout import Coord, TileTensor, row_major
 from layout._fillers import random
 from nn.normalization import *
+from builtin_kernels.rowwise_normalization import rms_norm_fused_residual_add
 from std.sys import align_of
 from std.testing import assert_almost_equal
 
@@ -106,10 +107,10 @@ def run_rms_norm_fused_residual_add_gpu[
         residual_fused_output_device, runtime_layout
     )
 
-    var epsilon1 = Float32(0.001)
-    var epsilon2 = Float32(0.002)
-    var weight_offset1 = Scalar[dtype](0.0)
-    var weight_offset2 = Scalar[dtype](0.0)
+    comptime epsilon1 = Float32(0.001)
+    comptime epsilon2 = Float32(0.002)
+    comptime weight_offset1 = Float32(0.0)
+    comptime weight_offset2 = Float32(0.0)
 
     # Test fused operation
     @inline(.always)
@@ -151,6 +152,10 @@ def run_rms_norm_fused_residual_add_gpu[
         dtype,
         rank,
         target="gpu",
+        epsilon1=epsilon1,
+        weight_offset1=weight_offset1,
+        epsilon2=epsilon2,
+        weight_offset2=weight_offset2,
         multiply_before_cast=True,
     ](
         input_fn,
@@ -160,11 +165,7 @@ def run_rms_norm_fused_residual_add_gpu[
         Coord(shape),
         Int(cols),
         gamma1,
-        epsilon1.cast[dtype](),
-        weight_offset1,
         gamma2,
-        epsilon2.cast[dtype](),
-        weight_offset2,
         ctx,
     )
 
@@ -189,8 +190,13 @@ def run_rms_norm_fused_residual_add_gpu[
 
     # Step 1: First RMS norm
     rms_norm_gpu[
-        rank, rms_input_fn_coord, unfused_output_fn, multiply_before_cast=True
-    ](Coord(shape), gamma1, epsilon1, weight_offset1, ctx)
+        rank,
+        rms_input_fn_coord,
+        unfused_output_fn,
+        epsilon=epsilon1,
+        weight_offset=weight_offset1,
+        multiply_before_cast=True,
+    ](Coord(shape), gamma1, ctx)
 
     @inline(.always)
     def sum_fn[width: Int, alignment: Int = 1](coords: Coord) {var}:
@@ -231,8 +237,10 @@ def run_rms_norm_fused_residual_add_gpu[
         rank,
         unfused_input2_fn,
         unfused_output2_fn,
+        epsilon=epsilon2,
+        weight_offset=weight_offset2,
         multiply_before_cast=True,
-    ](Coord(shape), gamma2, epsilon2, weight_offset2, ctx)
+    ](Coord(shape), gamma2, ctx)
 
     ctx.synchronize()
 

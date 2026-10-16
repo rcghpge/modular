@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Generic
 
 from max import tree
 from max.driver import CPU, Device, DLPackArray
+from max.engine import InferenceSession
 from max.experimental import compilation
 from max.experimental.nn._compilation_timer import CompilationTimer
 from max.experimental.nn._weight_utils import (
@@ -215,7 +216,7 @@ class Module(Generic[_P, _R]):
         assert isinstance(encoder.device, CPU)
         assert isinstance(decoder.device, CPU)
 
-    For graph-level tensor routing *inside* ``forward()`` (e.g., pulling an
+    For graph-level tensor routing *inside* ``forward()`` (such as pulling an
     activation back to CPU at the end of the graph), use
     :func:`~max.graph.ops.transfer_to` or :meth:`~max.graph.TensorValue.to`
     instead; those insert transfer nodes into the compiled graph and are
@@ -236,7 +237,7 @@ class Module(Generic[_P, _R]):
          - Activation tensors within the compiled graph
        * - ``Tensor.to(device)``
          - Eager runtime (outside a graph)
-         - Concrete eager tensors (e.g., staging inputs)
+         - Concrete eager tensors (such as staging inputs)
     """
 
     #: Whether this module's own name is dropped from its descendants' paths.
@@ -328,7 +329,7 @@ class Module(Generic[_P, _R]):
 
         This property performs a depth-first traversal of the module hierarchy,
         yielding each parameter tensor with its qualified name. The qualified name
-        uses dot-notation to represent the module tree structure (e.g.,
+        uses dot-notation to represent the module tree structure (such as
         ``encoder.layer1.weight``).
 
         Parameters are yielded in depth-first order: first the current module's
@@ -425,7 +426,7 @@ class Module(Generic[_P, _R]):
         ``bfloat16``) are automatically cast to the parameter's dtype when
         shapes match, and a single summary message is logged at ``WARNING``
         level per call describing how many parameters were cast. Narrowing
-        casts (e.g. ``float32`` -> ``bfloat16``) are flagged in the log
+        casts (such as ``float32`` -> ``bfloat16``) are flagged in the log
         message as ``(precision loss)``. Dtype mismatches outside the
         safe-cast set still raise regardless of ``auto_cast``.
 
@@ -438,7 +439,7 @@ class Module(Generic[_P, _R]):
                 set above. Values may be on a different device; in that case the
                 tensor is copied to the existing parameter's device.
             strict: If :obj:`True` (default), verify that all keys in ``state``
-                are used (i.e., match actual parameters). If :obj:`False`, silently
+                are used (that is, match actual parameters). If :obj:`False`, silently
                 ignore extra keys that don't match any parameters.
             auto_cast: If :obj:`True`, permit safe dtype auto-casting between
                 ``float32`` and ``bfloat16`` when shapes match. Defaults to
@@ -546,9 +547,11 @@ class Module(Generic[_P, _R]):
     def trace(
         self,
         *input_types: InputType,
+        name: str | None = None,
         custom_extensions: Iterable[Path] = (),
         allow_subgraphs: bool = True,
         is_device_graph: bool = False,
+        signal_buffer_index: int | None = None,
     ) -> compilation.StagedGraph[..., Any]:
         """Traces ``forward`` into a graph without compiling it.
 
@@ -580,11 +583,15 @@ class Module(Generic[_P, _R]):
             *input_types: The type of each tensor argument of ``forward``, as
                 a :class:`~max.graph.TensorType` or a
                 :class:`~max.experimental.sharding.TensorLayout`.
+            name: The name of the graph. Defaults to the class's qualified
+                name.
             custom_extensions: Paths to custom Mojo kernel libraries.
             allow_subgraphs: Whether calls made through
                 :func:`~max.experimental.compilation.as_subgraph` are traced
                 as subgraphs. If ``False``, they are inlined.
             is_device_graph: Whether to build a device graph.
+            signal_buffer_index: The graph input position of the signal
+                buffers. See :func:`~max.experimental.compilation.stage`.
 
         Returns:
             The :class:`~max.experimental.compilation.StagedGraph`. Print it
@@ -596,20 +603,24 @@ class Module(Generic[_P, _R]):
         name_weights(declared)
         return compilation.stage(
             declared,
-            name=type(self).__qualname__,
+            name=type(self).__qualname__ if name is None else name,
             custom_extensions=custom_extensions,
             allow_subgraphs=allow_subgraphs,
             is_device_graph=is_device_graph,
+            signal_buffer_index=signal_buffer_index,
         )(*input_types)
 
     def compile(
         self,
         *input_types: InputType,
         weights: Mapping[str, DLPackArray] | None = None,
+        session: InferenceSession | None = None,
+        name: str | None = None,
         custom_extensions: Iterable[Path] = (),
         auto_cast: bool = False,
         allow_subgraphs: bool = True,
         is_device_graph: bool = False,
+        signal_buffer_index: int | None = None,
     ) -> compilation.CompiledCallable[_P, _R]:
         """Traces ``forward`` and compiles it into a callable.
 
@@ -653,6 +664,11 @@ class Module(Generic[_P, _R]):
             weights: The values of the parameters, keyed by the names that
                 :attr:`parameters` yields. Defaults to the values currently
                 held by this module.
+            session: The session that compiles and initializes the graph,
+                including its precompiled or exported MEFs and its kernel
+                options. Defaults to a session shared by the whole process.
+            name: The name of the graph. Defaults to the class's qualified
+                name.
             custom_extensions: Paths to custom Mojo kernel libraries, required
                 when ``forward`` calls
                 :func:`~max.experimental.functional.custom`.
@@ -662,6 +678,8 @@ class Module(Generic[_P, _R]):
                 :func:`~max.experimental.compilation.as_subgraph` are traced
                 as subgraphs. If ``False``, they are inlined.
             is_device_graph: Whether to build a device graph.
+            signal_buffer_index: The graph input position of the signal
+                buffers. See :func:`~max.experimental.compilation.stage`.
 
         Returns:
             A :class:`~max.experimental.compilation.CompiledCallable` with
@@ -674,8 +692,11 @@ class Module(Generic[_P, _R]):
                 into.
             KeyError: If ``weights`` has no entry for a parameter.
         """
-        name = type(self).__name__
-        with Tracer(f"Module.compile({name})"), CompilationTimer(name) as timer:
+        class_name = type(self).__name__
+        with (
+            Tracer(f"Module.compile({class_name})"),
+            CompilationTimer(class_name) as timer,
+        ):
             declared: Module[_P, _R] = tree.map(
                 _ExternalWeight.like, self, leaf=Tensor, shared=True
             )
@@ -689,13 +710,16 @@ class Module(Generic[_P, _R]):
             )
             staged = compilation.stage(
                 declared,
-                name=type(self).__qualname__,
+                name=type(self).__qualname__ if name is None else name,
                 custom_extensions=custom_extensions,
                 allow_subgraphs=allow_subgraphs,
                 is_device_graph=is_device_graph,
+                signal_buffer_index=signal_buffer_index,
             )(*input_types)
             timer.mark_build_complete()
-            return compilation.CompiledCallable(staged, registry)
+            return compilation.CompiledCallable(
+                staged, registry, session=session
+            )
 
     def __rich_repr__(self):
         yield from self.children
@@ -797,7 +821,7 @@ def module_dataclass(  # noqa: ANN201
         repr: If :obj:`True`, use dataclass's default ``__repr__`` instead of
             :class:`Module`'s rich representation. Defaults to :obj:`False`.
         **kwargs: Additional keyword arguments forwarded to Python's
-            ``@dataclass`` decorator (e.g., ``frozen``, ``eq``).
+            ``@dataclass`` decorator (such as ``frozen``, ``eq``).
 
     Returns:
         The decorated class as a :class:`Module` subclass with automatic parameter

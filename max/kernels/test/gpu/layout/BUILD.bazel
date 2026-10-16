@@ -49,6 +49,9 @@ _EXTRA_CONSTRAINTS = {
 } | {
     # Experimental SWIZZLE_NONE uint32 TMA store, validated on B200.
     "test_tma_swizzle_none_uint32_store.mojo": ["//:b200_gpu"],
+    # Packed FP4 (`16U4_ALIGN16B`) TMA loads for the W4A8 block-scaled matmul.
+    "test_tma_packed_fp4_async_copy.mojo": ["//:b200_gpu"],
+    "test_tma_packed_fp4_3d_async_copy.mojo": ["//:b200_gpu"],
     # TMA load from a TileTensor source; runs wherever TMA is supported.
     "test_tma_async_tile_tensor.mojo": select({
         "//:h100_gpu": [],
@@ -151,6 +154,7 @@ _FILECHECK_EXTRA_DEPS = {
             "test_layout_mma.mojo",  # Dedicated minimal-deps target below
             "test_tensor_core_bulk_tile.mojo",
             "test_tensor_core_quantized_b_tile.mojo",
+            "test_local_to_shared_numeric_conversion.mojo",
             # Depend only on `layout` + `std`; given dedicated minimal-deps
             # targets below so they are not coupled to `nn`/`linalg`.
             "test_device_pointer_tile_storage_kernel.mojo",
@@ -277,6 +281,23 @@ mojo_test(
     target_compatible_with = [
         "//:has_gpu",
         "//:nvidia_gpu",
+    ],
+    deps = [
+        "//max:layout",
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)
+
+mojo_test(
+    name = "test_local_to_shared_numeric_conversion.mojo.test",
+    size = "large",
+    srcs = ["test_local_to_shared_numeric_conversion.mojo"],
+    copts = IGNORED_POINTER_DEPRECATIONS_COPTS,
+    tags = ["gpu"],
+    target_compatible_with = [
+        "//:has_gpu",
+        "//:b200_gpu",
     ],
     deps = [
         "//max:layout",

@@ -103,8 +103,6 @@ def _fake_pipeline_model(cls: type[KimiK2_5Model], n_devices: int) -> Any:
 
     model._eplb_stats_accumulator = None
     model.ep_comm_initializer = None
-    model._eplb_log2phy_buffers = []
-    model._eplb_logcnt_buffers = []
 
     batch_processor = MagicMock()
     batch_processor.prepare_initial_token_inputs.return_value = (
@@ -123,11 +121,11 @@ def _language_graph_input_types(n_devices: int) -> tuple[Any, ...]:
         devices=[DeviceRef("gpu", i) for i in range(n_devices)],
         hidden_size=_HIDDEN_SIZE,
         data_parallel_degree=n_devices,
+        ep_config=None,
         eplb_profile_enabled=False,
     )
-    decoder.ep_manager = None
     kv_params = MagicMock()
-    kv_params.flattened_kv_inputs.return_value = []
+    kv_params.get_symbolic_inputs.return_value = []
     return decoder.input_types(kv_params)
 
 

@@ -52,6 +52,7 @@ from max.serve.pipelines.preprocess_cache_stats import (
 from max.serve.telemetry._trace_context import inject_trace_carrier
 from max.serve.telemetry.metrics import METRICS
 from max.serve.telemetry.stopwatch import StopWatch, record_ms
+from max.serve.telemetry.ttft_join import log_ttft_join
 from max.serve.worker_interface import ModelWorkerProxy
 from max.serve.worker_interface.lora_queue import LoRAQueue
 
@@ -79,7 +80,9 @@ class TokenGeneratorOutput:
     token_count: int = 1
     # TODO: (MODELS-1118) determine whether to include logprobs for reasoning tokens in the response delta
     token_log_probabilities: list[float] | None = None
-    top_log_probabilities: list[dict[str, float]] | None = None
+    top_log_probabilities: list[dict[int, tuple[str, float]]] | None = None
+    """Per position, token id to its decoded string and logprob. Keyed by id
+    because distinct ids can decode to the same string."""
     sampled_tokens: list[str] | None = None
     """Decoded sampled token at each ``token_log_probabilities`` position."""
     prompt_token_count: int | None = None
@@ -297,18 +300,21 @@ class TokenGeneratorPipeline(
         self,
         log_prob: LogProbabilities,
         skip_special_tokens: bool,
-    ) -> list[dict[str, float]]:
+    ) -> list[dict[int, tuple[str, float]]]:
+        # A nested comprehension with ``await`` is a SyntaxError before 3.11.
         top_log_probabilities = []
         for top_token_log_probs in log_prob.top_log_probabilities:
-            decoded_log_probs = {}
-            for token_id, value in top_token_log_probs.items():
-                decoded_log_probs[
-                    await self.tokenizer.decode(
-                        token_id, skip_special_tokens=skip_special_tokens
+            top_log_probabilities.append(
+                {
+                    token_id: (
+                        await self.tokenizer.decode(
+                            token_id, skip_special_tokens=skip_special_tokens
+                        ),
+                        value,
                     )
-                ] = value
-            top_log_probabilities.append(decoded_log_probs)
-
+                    for token_id, value in top_token_log_probs.items()
+                }
+            )
         return top_log_probabilities
 
     async def next_token_chunk(
@@ -317,7 +323,7 @@ class TokenGeneratorPipeline(
         """Tokenizes and submits ``request``, returning a token-chunk generator.
 
         Awaiting this coroutine tokenizes the request and hands it off to the
-        model worker. A failure during that submission (e.g. a tokenization
+        model worker. A failure during that submission (such as a tokenization
         error or a dead worker) raises here, before the generator is returned,
         so the caller can surface it as an error response before any streaming
         headers are sent.
@@ -354,8 +360,12 @@ class TokenGeneratorPipeline(
         # Track whether we've yielded the first chunk (for TTFT metric)
         first_chunk_yielded = False
         # Ids of chunks the reasoning parser reduced to nothing visible,
-        # carried onto the next emitted chunk so token_ids stays complete.
+        # carried onto the next emitted chunk so token_ids and usage stay
+        # complete.
         skipped_token_ids: list[int] = []
+        # Prefill often stamps hops on a delimiter-only first output that
+        # this loop skips. Keep the last stamp until METRICS.ttft.
+        ttft_join_hops: dict[str, float] | None = None
 
         # For reasoning models, we assume that there is always a reasoning span at the very start
         # We do not support multiple reasoning spans per response
@@ -369,9 +379,18 @@ class TokenGeneratorPipeline(
             reasoning_parser.reset()
         is_still_reasoning = reasoning_parser is not None
 
+        ipt_ms = 0.0
+        api_pre_tokenize_ms = 0.0
+        api_submit_ms = 0.0
         async with _awaiting_admission(self.model_worker):
-            with record_ms(METRICS.input_time):
+            if request.timestamp_ns:
+                api_pre_tokenize_ms = StopWatch(
+                    start_ns=request.timestamp_ns
+                ).elapsed_ms
+                METRICS.di_api_pre_tokenize(api_pre_tokenize_ms)
+            with record_ms(METRICS.input_time) as ipt_sw:
                 context = await self.tokenizer.new_context(request)
+            ipt_ms = ipt_sw.elapsed_ms
             # Read after tokenization, which is what moved the cache's
             # counters. Nothing is published for a text-only request.
             self._preprocess_cache_stats.record(
@@ -446,16 +465,22 @@ class TokenGeneratorPipeline(
             # example a dead worker — raises before the generator is returned,
             # letting the caller respond with an HTTP error before streaming
             # headers are sent.
+            submit_sw = StopWatch()
             response_stream = await self.model_worker.stream(
                 context.request_id, context
             )
+            api_submit_ms = submit_sw.elapsed_ms
+            METRICS.di_api_submit(api_submit_ms)
 
         async def _generate() -> AsyncGenerator[TokenGeneratorOutput, None]:
             nonlocal \
                 decode_elapsed_ms, \
                 num_generated_tokens, \
                 first_chunk_yielded, \
-                is_still_reasoning
+                is_still_reasoning, \
+                ttft_join_hops
+            first_worker_recv_ms: float | None = None
+            skipped_n = 0
             try:
                 with record_ms(METRICS.output_time):
                     async for responses, batch_id in response_stream:
@@ -463,6 +488,10 @@ class TokenGeneratorPipeline(
                         assert len(responses) > 0
                         assert isinstance(responses[0], TextGenerationOutput)
                         response = TextGenerationOutput.merge(responses)
+                        if first_worker_recv_ms is None:
+                            first_worker_recv_ms = ttft_sw.elapsed_ms
+                        if response.ttft_join_hops_ms:
+                            ttft_join_hops = response.ttft_join_hops_ms
 
                         num_generated_tokens += len(response.tokens)
 
@@ -535,9 +564,8 @@ class TokenGeneratorPipeline(
                                 yield TokenGeneratorOutput(
                                     status=response.final_status,
                                     token_count=0,
-                                    reasoning_token_count=len(response.tokens)
-                                    if response.tokens
-                                    else 0,
+                                    reasoning_token_count=len(skipped_token_ids)
+                                    + len(response.tokens),
                                     prompt_token_count=context.tokens.prompt_length,
                                     cached_token_count=response.num_cached_tokens
                                     if not first_chunk_yielded
@@ -554,6 +582,8 @@ class TokenGeneratorPipeline(
                                 )
                             else:
                                 skipped_token_ids.extend(response.tokens)
+                            if not first_chunk_yielded:
+                                skipped_n += 1
                             continue
 
                         token_count = len(tokens) if tokens is not None else 0
@@ -607,7 +637,7 @@ class TokenGeneratorPipeline(
                         # per-token). Does not consider reasoning tokens.
                         token_log_prob_values: list[float] | None = None
                         top_token_log_prob_values: (
-                            list[dict[str, float]] | None
+                            list[dict[int, tuple[str, float]]] | None
                         ) = None
                         sampled_token_values: list[str] | None = None
                         if token_log_probs is not None:
@@ -635,7 +665,26 @@ class TokenGeneratorPipeline(
                         # Record metrics - one TTFT/ITL per chunk
                         is_first_chunk = not first_chunk_yielded
                         if is_first_chunk:
-                            METRICS.ttft(ttft_sw.elapsed_ms)
+                            server_ttft_ms = ttft_sw.elapsed_ms
+                            METRICS.ttft(server_ttft_ms)
+                            hops = (
+                                dict(ttft_join_hops) if ttft_join_hops else {}
+                            )
+                            hops["api_pre_tokenize_ms"] = api_pre_tokenize_ms
+                            hops["api_submit_ms"] = api_submit_ms
+                            yield_gap_ms = (
+                                server_ttft_ms - first_worker_recv_ms
+                                if first_worker_recv_ms is not None
+                                else 0.0
+                            )
+                            log_ttft_join(
+                                request_id=request.request_id,
+                                server_ttft_ms=server_ttft_ms,
+                                ipt_ms=ipt_ms,
+                                hops=hops,
+                                skipped_n=skipped_n,
+                                yield_gap_ms=yield_gap_ms,
+                            )
                             decode_sw.reset()
                             first_chunk_yielded = True
                         else:
@@ -655,7 +704,12 @@ class TokenGeneratorPipeline(
                             cached_token_count=response.num_cached_tokens
                             if is_first_chunk
                             else None,
-                            reasoning_token_count=reasoning_token_count,
+                            # Delimiters stripped from this chunk and earlier
+                            # fully stripped chunks are billed here, by the
+                            # same rule as the terminal case above.
+                            reasoning_token_count=len(skipped_token_ids)
+                            + len(response.tokens)
+                            - token_count,
                             stop_sequence=stop_sequence_match,
                             batch_id=batch_id,
                             token_ids=skipped_token_ids + list(response.tokens),

@@ -254,13 +254,6 @@ def _ep_forward(
         and not batch_mgr.config.nvfp4_dyn_global_scales
     )
 
-    # Decide the MXFP4 EP A-scale preshuffle fold before dispatch because the
-    # dispatch scales output shape depends on it. All dispatch paths now thread
-    # the fusion parameters. `MoE` handles this as a no-op; `MoEQuantized`
-    # enables the fold when applicable.
-    for shard in moe_shards:
-        shard.configure_ep_scale_fusion(dispatch_supports_fold=True)
-
     # One-launch fused EP MoE, once EP init set it up (``fused_moe_ready``).
     # Replaces dispatch, the local FFN and the combine with ONE launch per
     # device that returns the token-indexed routed output. All-or-nothing per
@@ -507,7 +500,7 @@ def forward_moe_sharded_layers(
     :func:`forward_sharded_layers`.
 
     Args:
-        shards: Per-device shard callables (MoE, MLP, etc.).
+        shards: Per-device shard callables (MoE, MLP and so on).
         xs: Input tensors, one per shard.
 
     Returns:

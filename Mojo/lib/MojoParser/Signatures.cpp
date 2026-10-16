@@ -59,12 +59,11 @@ TypedAttr ASTType::extractStructField(TypedAttr value, StringRef fieldName,
   auto lookupResult = lookup.getIfSuccess()[0];
   if (!lookupResult)
     return {};
-  auto fieldOp =
-      dyn_cast_or_null<StructFieldOp>(lookupResult->getIfOperation());
-  if (!fieldOp)
+  auto *fieldDecl = dyn_cast<StructFieldASTDecl>(lookupResult);
+  if (!fieldDecl)
     return {};
 
-  return LIT::StructExtractAttr::get(value, fieldOp);
+  return LIT::StructExtractAttr::get(value, fieldDecl->getOp());
 }
 
 /// Given an expression that can be used in `origin_of` or a ref expression,
@@ -887,6 +886,17 @@ static ASTType addImplicitTypeParams(StringAttr argName, ASTType type,
     }
   };
 
+  auto isDeclaredParam = [](ASTDecl *scope, ParamDeclRefAttr paramRef) -> bool {
+    auto userName = StringAttr::get(
+        scope->getContext(), KGEN::demangleParameterName(paramRef.getName()));
+    if (ArrayRef<ASTDecl *> decls = scope->lookup(userName); !decls.empty()) {
+      for (auto decl : decls)
+        if (CValue cv = decl->getIfIRValue())
+          return cv.getIfPValue() && isEqualCanon(cv.getIfPValue(), paramRef);
+    }
+    return false;
+  };
+
   // This functor adds a single parameter to the parameter list.
   auto declareAndAddParam = [&](Type type, StringRef name) {
     auto boundParamType = evaluator.getReboundType(type);
@@ -923,9 +933,14 @@ static ASTType addImplicitTypeParams(StringAttr argName, ASTType type,
         }
         // If we didn't find it, check to see if it is on the enclosing struct.
         if (!passingKind.has_value()) {
-          auto [curDecl, paramDecls, paramIdx] =
-              paramList.declScope.lookupParamReference(paramUse);
-          if (curDecl) // Any parameters from it are fine.
+          // We can not reuse ASTDecl::lookupParamReference here, as the parent
+          // decl might not have been fully resolved yet. E.g.,
+          // def [T : AnyType, F : def [Param[T, _]]() ]()
+          // when auto parameterized `[Param[T, _]`, `T` has not been put into
+          // the parameter list of the holding function yet.
+          //
+          // Any parameters from it are fine.
+          if (isDeclaredParam(&paramList.declScope, paramUse))
             passingKind = PassingKind::Inferred;
         }
 
@@ -1082,8 +1097,8 @@ static ASTType typeCheckVariadicParams(ASTType elementType, ParsedArgument &arg,
     emitter.emitError(arg.loc, "malformed ParameterList");
     return {};
   }
-  auto structDeclOp =
-      dyn_cast_if_present<StructDeclOp>(*listDecl->getIfOperation());
+  auto *structDecl = dyn_cast<StructASTDecl>(listDecl);
+  StructDeclOp structDeclOp = structDecl ? structDecl->getOp() : nullptr;
   if (!structDeclOp || structDeclOp.getParams().size() != 2) {
     emitter.emitError(arg.loc, "malformed ParameterList");
     return {};
@@ -1830,8 +1845,8 @@ static ASTType typeCheckVariadicPack(ParsedArgument &arg, size_t argIdx,
     emitter.emitError(arg.loc, "malformed VariadicPack");
     return {};
   }
-  auto packStruct =
-      dyn_cast_if_present<StructDeclOp>(*packDecl->getIfOperation());
+  auto *packStructDecl = dyn_cast<StructASTDecl>(packDecl);
+  StructDeclOp packStruct = packStructDecl ? packStructDecl->getOp() : nullptr;
   if (!packStruct || packStruct.getParams().size() != 7) {
     emitter.emitError(arg.loc, "malformed VariadicPack");
     return {};
@@ -1893,8 +1908,8 @@ static ASTType typeCheckVariadicList(ParsedArgument &arg, IREmitter &emitter,
     emitter.emitError(arg.loc, "malformed VariadicList");
     return {};
   }
-  auto structDeclOp =
-      dyn_cast_if_present<StructDeclOp>(*listDecl->getIfOperation());
+  auto *structDecl = dyn_cast<StructASTDecl>(listDecl);
+  StructDeclOp structDeclOp = structDecl ? structDecl->getOp() : nullptr;
   if (!structDeclOp || structDeclOp.getParams().size() != 5) {
     emitter.emitError(arg.loc, "malformed VariadicList");
     return {};
@@ -1926,7 +1941,7 @@ static ASTType typeCheckVariadicList(ParsedArgument &arg, IREmitter &emitter,
 /// their type+default value expressions as PValues, so we need to ensure that
 /// they are emitted and have declarations registered in the scope so that later
 /// lookups can find them.
-static void typeCheckOneArgument(size_t idx, ASTDecl *fnDecl,
+static void typeCheckOneArgument(size_t idx, DefASTDecl *fnDecl,
                                  TypeCheckedFnSignature &tcSignature) {
   ParsedArgument &arg = tcSignature.argList.parsedArgs[idx];
 
@@ -1937,7 +1952,7 @@ static void typeCheckOneArgument(size_t idx, ASTDecl *fnDecl,
 
   FnOp fnOp; // Null if type checking a function type.
   if (fnDecl)
-    fnOp = cast<FnOp>(*fnDecl->getIfOperation());
+    fnOp = fnDecl->getOp();
 
   // True if this is a static method.
   // FIXME: This is completely wrong, @static_method decorator hasn't been
@@ -2254,7 +2269,7 @@ static void typeCheckOneArgument(size_t idx, ASTDecl *fnDecl,
 /// Type check the result type for the function.  `resultTypeExpr` will be
 /// non-null if explicitly specified in source code, and the `resultLoc` will
 /// always be valid point for end of the argument list.
-static void typeCheckResult(ParsedArgument resultArg, ASTDecl *fnDecl,
+static void typeCheckResult(ParsedArgument resultArg, DefASTDecl *fnDecl,
                             TypeCheckedFnSignature &tcSignature) {
   ASTDecl &declScope = tcSignature.paramList.declScope;
   SharedState &shared = tcSignature.paramList.shared;
@@ -2455,7 +2470,7 @@ static void typeCheckResult(ParsedArgument resultArg, ASTDecl *fnDecl,
     // If this is for a lit.fn declaration (as opposed to a function type),
     // add a block argument for this.
     if (fnDecl) {
-      Block &body = *cast<FnOp>(*fnDecl->getIfOperation()).getBody();
+      Block &body = *fnDecl->getOp().getBody();
       (void)body.addArgument(refType, shared.translateLocation(resultArg.loc));
     }
 
@@ -2507,7 +2522,7 @@ static void typeCheckResult(ParsedArgument resultArg, ASTDecl *fnDecl,
     // though, we don't want it to conflict with user identifiers, and it is
     // never looked up directly.
     if (fnDecl) {
-      Block &body = *cast<FnOp>(*fnDecl->getIfOperation()).getBody();
+      Block &body = *fnDecl->getOp().getBody();
       auto bbArg =
           body.addArgument(refType, shared.translateLocation(resultArg.loc));
 
@@ -2532,7 +2547,7 @@ static void typeCheckResult(ParsedArgument resultArg, ASTDecl *fnDecl,
 TypeCheckedFnSignature::TypeCheckedFnSignature(TypeCheckedParamList &paramList,
                                                ParsedArgumentList &argList,
                                                const ExprNode *originExpr,
-                                               ASTDecl *fnDecl,
+                                               DefASTDecl *fnDecl,
                                                StringAttr baseName)
     : paramList(paramList), argList(argList) {
 
@@ -2556,11 +2571,11 @@ TypeCheckedFnSignature::TypeCheckedFnSignature(TypeCheckedParamList &paramList,
 
   // If this definition is a struct/class member, compute the self type.
   if (fnDecl) {
-    if (ASTDecl *parent = fnDecl->tryGetMethodParentDecl()) {
+    if (TypeScopeASTDecl *parent = fnDecl->tryGetMethodParentDecl()) {
       // The parent decl must be fully resolved in order to resolve any of its
       // members.
       assert(parent->resolvedness == DeclResolvedness::body);
-      selfType = parent->getTypeDeclSelf();
+      selfType = parent->getSelfType();
     }
   }
 
@@ -2629,7 +2644,7 @@ TypeCheckedFnSignature::TypeCheckedFnSignature(TypeCheckedParamList &paramList,
 
   // __new__ and __init__ are implicitly static.
   if (fnInfo.flags & SpecialFunctionInfo::kImplicitlyStaticMethod)
-    cast<FnOp>(*fnDecl->getIfOperation()).setIsStatic(true);
+    fnDecl->getOp().setIsStatic(true);
 
   if (fnInfo.isInstMethod() && !selfType) {
     shared.emitError(fnDecl->getLoc())
@@ -2684,9 +2699,9 @@ TypeCheckedFnSignature::TypeCheckedFnSignature(TypeCheckedParamList &paramList,
 ///
 /// If this function detects a problem, it marks the decl as erroneous and
 /// resets fnInfo.
-void TypeCheckedFnSignature::verifyFunctionNameBinding(ASTDecl &decl,
+void TypeCheckedFnSignature::verifyFunctionNameBinding(DefASTDecl &decl,
                                                        StringAttr &name) {
-  FnOp funcOp = cast<FnOp>(*decl.getIfOperation());
+  FnOp funcOp = decl.getOp();
 
   MutableArrayRef<ParsedArgument> parsedArgs = argList.parsedArgs;
   ArrayRef<Type> argTypes = this->argTypes;
@@ -2730,12 +2745,11 @@ void TypeCheckedFnSignature::verifyFunctionNameBinding(ASTDecl &decl,
   ASTType selfType;
   constexpr size_t kSelfArgNo = 0;
   if (ASTDecl *parent = decl.getParentDecl();
-      parent &&
-      isa_and_nonnull<StructDeclOp, TraitDeclOp>(parent->getIfOperation())) {
+      parent && isa<TypeASTDecl>(parent)) {
     // The parent decl must be fully resolved in order to resolve any of its
     // members.
     assert(parent->resolvedness == DeclResolvedness::body);
-    selfType = parent->getTypeDeclSelf();
+    selfType = cast<TypeASTDecl>(parent)->getSelfType();
   }
 
   // Check any special function information.
@@ -2909,8 +2923,7 @@ void TypeCheckedFnSignature::checkSelfArgument(ASTDecl &decl,
     // the explicit self type is very hard to specify in mojo, so we
     // suggest to use 'Self' instead.
     auto diag = emitErrorLoc(selfArg.loc) << "'self' argument must have type ";
-    if (decl.getParentDecl() &&
-        isa_and_nonnull<TraitDeclOp>(decl.getParentDecl()->getIfOperation()))
+    if (decl.getParentDecl() && isa<TraitASTDecl>(decl.getParentDecl()))
       diag << "'Self' in trait method declaration";
     else
       diag << selfType;

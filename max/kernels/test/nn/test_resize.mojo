@@ -15,6 +15,7 @@ from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceContext
 from nn.resize import (
     CoordinateTransformationMode,
+    _AxisTaps,
     RoundMode,
     resize_cubic,
     resize_linear,
@@ -24,6 +25,8 @@ from std.testing import assert_almost_equal, assert_equal
 from std.utils import IndexList
 
 
+# FileCheck requires one directive; every assertion below is assert_equal.
+# CHECK: == test_upsample_sizes_nearest_1
 def _pattern(n: Int) -> List[Float32]:
     var values = List[Float32](capacity=n)
     for i in range(n):
@@ -206,6 +209,51 @@ def _check_cubic_uint8_matches_float32(
             assert_equal(got[i], as_f32[i])
 
 
+def _naive_cubic(
+    src: List[Float32], in_shape: IndexList[4], out_shape: IndexList[4]
+) -> List[Float32]:
+    """Resizes W, then H, of src with one scalar FMA per tap in tap order.
+    This is the rounding every fast path in resize_cubic must reproduce bit
+    for bit."""
+    var data = src.copy()
+    var shape = in_shape
+    for d in range(2, 0, -1):
+        var n_in = shape[d]
+        var n_out = out_shape[d]
+        var taps = _AxisTaps(n_in, n_out)
+        var outer = 1
+        for e in range(d):
+            outer *= shape[e]
+        var inner = 1
+        for e in range(d + 1, 4):
+            inner *= shape[e]
+        var next = List[Float32](length=outer * n_out * inner, fill=0)
+        for o in range(outer):
+            for i in range(n_out):
+                var weights = taps.weights(i)
+                for c in range(inner):
+                    var acc = Float32(0)
+                    for k in range(len(weights)):
+                        var j = taps.start_of(i) + k
+                        acc = data[(o * n_in + j) * inner + c].fma(
+                            weights[k], acc
+                        )
+                    next[(o * n_out + i) * inner + c] = acc
+        data = next^
+        shape[d] = n_out
+    return data^
+
+
+def _check_cubic_matches_naive(
+    in_shape: IndexList[4], out_shape: IndexList[4]
+) raises:
+    var src = _pattern(in_shape.flattened_length())
+    var got = _resize_cubic_f32(src, in_shape, out_shape)
+    var want = _naive_cubic(src, in_shape, out_shape)
+    for i in range(len(want)):
+        assert_equal(got[i], want[i])
+
+
 def main() raises:
     var ctx = DeviceContext(api="cpu")
 
@@ -221,12 +269,35 @@ def main() raises:
             CoordinateTransformationMode.HalfPixel, RoundMode.HalfDown
         ](input, output, ctx)
 
+        var want: Array[Float32, 24] = [
+            Float32(1),
+            1,
+            1,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            3,
+            3,
+            3,
+            4,
+            4,
+            4,
+            3,
+            3,
+            3,
+            4,
+            4,
+            4,
+        ]
         for i in range(24):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_upsample_sizes_nearest_1
-    # CHECK: 1.0,1.0,1.0,2.0,2.0,2.0,1.0,1.0,1.0,2.0,2.0,2.0,3.0,3.0,3.0,4.0,4.0,4.0,3.0,3.0,3.0,4.0,4.0,4.0,
     test_upsample_sizes_nearest_1(ctx)
 
     def test_downsample_sizes_nearest(ctx: DeviceContext) raises:
@@ -250,13 +321,66 @@ def main() raises:
             CoordinateTransformationMode.HalfPixel, RoundMode.HalfDown
         ](input, output, ctx)
 
+        var want: Array[Float32, 2] = [Float32(1), 3]
         for i in range(2):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_downsample_sizes_nearest
-    # CHECK: 1.0,3.0,
     test_downsample_sizes_nearest(ctx)
+
+    def test_upsample_2x_nearest_asymmetric_floor_fastpath(
+        ctx: DeviceContext,
+    ) raises:
+        print("== test_upsample_2x_nearest_asymmetric_floor_fastpath")
+        # The mode combination the model 2x upsample helpers migrated to:
+        # asymmetric + floor reduces to out // 2, the kernel's integer-scale
+        # fast path.
+        var input_stack: Array[Float32, 6] = [
+            Float32(1),
+            2,
+            3,
+            4,
+            5,
+            6,
+        ]
+        var input = TileTensor(input_stack, row_major[1, 1, 2, 3]())
+
+        var output_stack = Array[Float32, 24](fill={})
+        var output = TileTensor(output_stack, row_major[1, 1, 4, 6]())
+
+        resize_nearest_neighbor[
+            CoordinateTransformationMode.Asymmetric, RoundMode.Floor
+        ](input, output, ctx)
+
+        var want: Array[Float32, 24] = [
+            Float32(1),
+            1,
+            2,
+            2,
+            3,
+            3,
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            4,
+            4,
+            5,
+            5,
+            6,
+            6,
+            4,
+            4,
+            5,
+            5,
+            6,
+            6,
+        ]
+        for i in range(24):
+            assert_equal(output_stack[i], want[i])
+
+    test_upsample_2x_nearest_asymmetric_floor_fastpath(ctx)
 
     def test_downsample_sizes_nearest_half_pixel_1D(
         ctx: DeviceContext,
@@ -289,12 +413,10 @@ def main() raises:
             CoordinateTransformationMode.HalfPixel1D, RoundMode.HalfDown
         ](input, output, ctx)
 
+        var want: Array[Float32, 2] = [Float32(0), 2]
         for i in range(2):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_downsample_sizes_nearest_half_pixel_1D
-    # CHECK: 0.0,2.0,
     test_downsample_sizes_nearest_half_pixel_1D(ctx)
 
     def test_upsample_sizes_nearest_2(ctx: DeviceContext) raises:
@@ -309,12 +431,69 @@ def main() raises:
             CoordinateTransformationMode.HalfPixel, RoundMode.HalfDown
         ](input, output, ctx)
 
+        # 2x2 input tiled asymmetric-style across a 7x8 output: row blocks
+        # of 4, then the odd 7th row repeats the last sampled row.
+        var want: Array[Float32, 56] = [
+            Float32(1),
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
+            3,
+            3,
+            3,
+            3,
+            4,
+            4,
+            4,
+            4,
+            3,
+            3,
+            3,
+            3,
+            4,
+            4,
+            4,
+            4,
+            3,
+            3,
+            3,
+            3,
+            4,
+            4,
+            4,
+            4,
+        ]
         for i in range(56):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_upsample_sizes_nearest_2
-    # CHECK: 1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,1.0,1.0,1.0,1.0,2.0,2.0,2.0,2.0,3.0,3.0,3.0,3.0,4.0,4.0,4.0,4.0,3.0,3.0,3.0,3.0,4.0,4.0,4.0,4.0,3.0,3.0,3.0,3.0,4.0,4.0,4.0,4.0,
     test_upsample_sizes_nearest_2(ctx)
 
     def test_upsample_sizes_nearest_floor_align_corners(
@@ -348,12 +527,77 @@ def main() raises:
             CoordinateTransformationMode.AlignCorners, RoundMode.Floor
         ](input, output, ctx)
 
+        # align_corners + floor: output row j samples input row round(
+        # j * 3 / 7), column likewise; the 8x8 output from a 4x4 grid.
+        var want: Array[Float32, 64] = [
+            Float32(1),
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            4,
+            1,
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            4,
+            1,
+            1,
+            1,
+            2,
+            2,
+            3,
+            3,
+            4,
+            5,
+            5,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            5,
+            5,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            9,
+            9,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            9,
+            9,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            13,
+            13,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+        ]
         for i in range(64):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_upsample_sizes_nearest_floor_align_corners
-    # CHECK: 1.0,1.0,1.0,2.0,2.0,3.0,3.0,4.0,1.0,1.0,1.0,2.0,2.0,3.0,3.0,4.0,1.0,1.0,1.0,2.0,2.0,3.0,3.0,4.0,5.0,5.0,5.0,6.0,6.0,7.0,7.0,8.0,5.0,5.0,5.0,6.0,6.0,7.0,7.0,8.0,9.0,9.0,9.0,10.0,10.0,11.0,11.0,12.0,9.0,9.0,9.0,10.0,10.0,11.0,11.0,12.0,13.0,13.0,13.0,14.0,14.0,15.0,15.0,16.0,
     test_upsample_sizes_nearest_floor_align_corners(ctx)
 
     def test_upsample_sizes_nearest_round_half_up_asymmetric(
@@ -387,12 +631,75 @@ def main() raises:
             CoordinateTransformationMode.Asymmetric, RoundMode.HalfUp
         ](input, output, ctx)
 
+        var want: Array[Float32, 64] = [
+            Float32(1),
+            2,
+            2,
+            3,
+            3,
+            4,
+            4,
+            4,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            8,
+            8,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            8,
+            8,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            12,
+            12,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            12,
+            12,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+        ]
         for i in range(64):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_upsample_sizes_nearest_round_half_up_asymmetric
-    # CHECK: 1.0,2.0,2.0,3.0,3.0,4.0,4.0,4.0,5.0,6.0,6.0,7.0,7.0,8.0,8.0,8.0,5.0,6.0,6.0,7.0,7.0,8.0,8.0,8.0,9.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,9.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,
     test_upsample_sizes_nearest_round_half_up_asymmetric(ctx)
 
     def test_upsample_sizes_nearest_ceil_half_pixel(ctx: DeviceContext) raises:
@@ -424,12 +731,75 @@ def main() raises:
             CoordinateTransformationMode.HalfPixel, RoundMode.Ceil
         ](input, output, ctx)
 
+        var want: Array[Float32, 64] = [
+            Float32(1),
+            2,
+            2,
+            3,
+            3,
+            4,
+            4,
+            4,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            8,
+            8,
+            5,
+            6,
+            6,
+            7,
+            7,
+            8,
+            8,
+            8,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            12,
+            12,
+            9,
+            10,
+            10,
+            11,
+            11,
+            12,
+            12,
+            12,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+            13,
+            14,
+            14,
+            15,
+            15,
+            16,
+            16,
+            16,
+        ]
         for i in range(64):
-            print(output_stack[i], end=",")
-        print("")
+            assert_equal(output_stack[i], want[i])
 
-    # CHECK-LABEL: test_upsample_sizes_nearest_ceil_half_pixel
-    # CHECK: 1.0,2.0,2.0,3.0,3.0,4.0,4.0,4.0,5.0,6.0,6.0,7.0,7.0,8.0,8.0,8.0,5.0,6.0,6.0,7.0,7.0,8.0,8.0,8.0,9.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,9.0,10.0,10.0,11.0,11.0,12.0,12.0,12.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,13.0,14.0,14.0,15.0,15.0,16.0,16.0,16.0,
     test_upsample_sizes_nearest_ceil_half_pixel(ctx)
 
     def test_upsample_sizes_linear(ctx: DeviceContext) raises:
@@ -473,8 +843,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_upsample_sizes_linear
-    # CHECK-NOT: ASSERT ERROR
     test_upsample_sizes_linear(ctx)
 
     def test_upsample_sizes_linear_align_corners(ctx: DeviceContext) raises:
@@ -518,8 +886,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_upsample_sizes_linear_align_corners
-    # CHECK-NOT: ASSERT ERROR
     test_upsample_sizes_linear_align_corners(ctx)
 
     def test_downsample_sizes_linear(ctx: DeviceContext) raises:
@@ -556,8 +922,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_downsample_sizes_linear
-    # CHECK-NOT: ASSERT ERROR
     test_downsample_sizes_linear(ctx)
 
     def test_downsample_sizes_linear_align_corners(ctx: DeviceContext) raises:
@@ -593,8 +957,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_downsample_sizes_linear_align_corners
-    # CHECK-NOT: ASSERT ERROR
     test_downsample_sizes_linear_align_corners(ctx)
 
     def test_upsample_sizes_trilinear(ctx: DeviceContext) raises:
@@ -656,8 +1018,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_upsample_sizes_trilinear
-    # CHECK-NOT: ASSERT ERROR
     test_upsample_sizes_trilinear(ctx)
 
     def test_downsample_sizes_linear_antialias(ctx: DeviceContext) raises:
@@ -707,8 +1067,6 @@ def main() raises:
                 output_stack[i], reference_stack[i], atol=1e-5, rtol=1e-4
             )
 
-    # CHECK-LABEL: test_downsample_sizes_linear_antialias
-    # CHECK-NOT: ASSERT ERROR
     test_downsample_sizes_linear_antialias(ctx)
 
     def test_no_resize(ctx: DeviceContext) raises:
@@ -875,3 +1233,38 @@ def main() raises:
         )
 
     test_cubic_uint8_matches_float32()
+
+    def test_cubic_fast_paths_match_naive() raises:
+        print("== test_cubic_fast_paths_match_naive")
+        # Each channel count takes a different unrolled transposed pass, the
+        # one channel at a time fallback, or the slab pass once it fills a
+        # vector.
+        var channels: List[Int] = [1, 2, 3, 4, 7, 16, 17]
+        for c in channels:
+            _check_cubic_matches_naive(
+                IndexList[4](2, 37, 53, c), IndexList[4](2, 19, 70, c)
+            )
+        # A width pass over many narrow slabs, with no height pass.
+        _check_cubic_matches_naive(
+            IndexList[4](1, 20, 9, 7), IndexList[4](1, 20, 5, 7)
+        )
+        # Channels first, so the width pass has one element per slab.
+        _check_cubic_matches_naive(
+            IndexList[4](3, 40, 61, 1), IndexList[4](3, 17, 29, 1)
+        )
+        # A long axis over enough slabs for the transposed pass, so it needs
+        # many windows.
+        _check_cubic_matches_naive(
+            IndexList[4](1, 16, 3840, 3), IndexList[4](1, 16, 448, 3)
+        )
+        # Fewer columns than a vector, so they move one at a time.
+        _check_cubic_matches_naive(
+            IndexList[4](1, 20, 7, 1), IndexList[4](1, 20, 5, 1)
+        )
+        # 387 columns end 3 past a multiple of the ring size, for 8- and
+        # 16-lane vectors, so the last vector would wrap the ring.
+        _check_cubic_matches_naive(
+            IndexList[4](1, 16, 129, 3), IndexList[4](1, 16, 100, 3)
+        )
+
+    test_cubic_fast_paths_match_naive()

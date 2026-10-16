@@ -51,6 +51,19 @@ var counts: Dict[String, Int] = {"a": 1, "b": 2}
 counts["c"] = 3
 ```
 
+Mojo collections don't support negative indexes. Count from the end
+explicitly:
+
+```mojo
+var readings: List[Int] = [12, 80, 45]
+print(readings[len(readings) - 1])   # 45
+print(readings[len(readings) - 2:])  # [80, 45]
+```
+
+A literal negative index, such as `readings[-1]`, is a compile-time error.
+A negative index computed at run time aborts with an out-of-bounds error.
+Slices follow the same rule, so `readings[-2:]` aborts too.
+
 If a collection needs a known set of different types, use `Variant` as its
 element or value type.
 
@@ -192,8 +205,8 @@ one-element `SIMD` values. Use `SIMD` directly for fixed-size vectors.
 
 ### Watch division types
 
-Division depends on the operands. In current Mojo, dividing two `Int` values
-with `/` produces an `Int`:
+Division depends on the operands. Dividing two `Int` values with `/` produces
+an `Int`:
 
 ```mojo
 var a: Int = 7
@@ -227,11 +240,11 @@ struct Point:
 The `out self` convention gives the initializer an uninitialized result value
 that it must initialize before returning.
 
+Use `@fieldwise_init` to have Mojo synthesize the initializer instead.
+
 Don't translate `class` to `struct` mechanically. Identify what the type
 guarantees, then express those guarantees through its fields, methods, and
 traits.
-
-Use `@fieldwise_init` to have Mojo synthesize the initializer instead.
 
 ## Traits make interfaces explicit
 

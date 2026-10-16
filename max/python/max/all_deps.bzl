@@ -6,7 +6,6 @@ ALL_MAX_PYTHON_DEPS = ALL_ARCHITECTURES + [
     "//max/python/max:_core",
     "//max/python/max:_kv_core",
     "//max/python/max:tensor",
-    "//max/python/max/_core_mojo",
     "//max/python/max/_entrypoints",
     "//max/python/max/_entrypoints:_pipelines",
     "//max/python/max/_entrypoints:gpu-query",
@@ -37,7 +36,6 @@ ALL_MAX_PYTHON_DEPS = ALL_ARCHITECTURES + [
     "//max/python/max/pipelines/modeling",
     "//max/python/max/profiler",
     "//max/python/max/serve",
-    "//max/python/max/serve:debug",
     "//max/python/max/serve/mocks",
     "//max/python/max/support",
 ]

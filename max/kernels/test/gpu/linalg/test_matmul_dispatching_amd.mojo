@@ -32,7 +32,6 @@ from layout._fillers import random
 from linalg.matmul.gpu import _matmul_gpu
 
 from std.testing import assert_true
-from std.utils.index import IndexList
 
 
 def test_dispatch_dynamic_m[
@@ -178,10 +177,9 @@ def test_dispatch_compute_fn[
 
     def scale_odd_rows_negated[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var scale} -> SIMD[
-        dtype, width
-    ]:
-        var row_scale = -scale if idx[0] % 2 == 1 else scale
+    ](idx: Coord, val: SIMD[dtype, width]) {var scale} -> SIMD[dtype, width]:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row_scale = -scale if Int(idx[0].value()) % 2 == 1 else scale
         return val * SIMD[dtype, width](row_scale)
 
     _matmul_gpu[use_tensor_core=True, transpose_b=True](
@@ -490,11 +488,11 @@ def test_oob_epilogue[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
-        var coord = Coord(idx)
-        comptime assert coord.flat_rank == out_tensor.flat_rank
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        comptime assert idx.flat_rank == out_tensor.flat_rank
         out_tensor.store[width=width, alignment=alignment](
-            coord, rebind[SIMD[c_type, width]](val)
+            idx, rebind[SIMD[c_type, width]](val)
         )
 
     _matmul_gpu[
@@ -688,11 +686,11 @@ def test_oob_epilogue_dynamic_m[
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> None:
-        var coord = Coord(idx)
-        comptime assert coord.flat_rank == out_tensor.flat_rank
+    ](idx: Coord, val: SIMD[_dtype, width]) capturing -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        comptime assert idx.flat_rank == out_tensor.flat_rank
         out_tensor.store[width=width, alignment=alignment](
-            coord, rebind[SIMD[c_type, width]](val)
+            idx, rebind[SIMD[c_type, width]](val)
         )
 
     _matmul_gpu[
@@ -873,6 +871,17 @@ def main() raises:
         # ============================================================
         print("\nFP8 - Various M values (N=2048, K=2048):")
         test_dispatch_dynamic_m[.float8_e4m3fn, .float32, 2048, 2048](ctx, 2048)
+
+        # ============================================================
+        # FP8 N=7168 K=1024 (attention out proj, TP=8 shard)
+        # ============================================================
+        # M=17..32 picks a block_n=64 config whose BK=1024 exceeds K / 2.
+        print("\nFP8 - Various M values (N=7168, K=1024):")
+        var fp8_7168_m: List[Int] = [16, 17, 24, 32, 33]
+        for i in range(len(fp8_7168_m)):
+            test_dispatch_dynamic_m[.float8_e4m3fn, .float32, 7168, 1024](
+                ctx, fp8_7168_m[i]
+            )
 
         # ============================================================
         # OOB diagnostic: detect reads/writes past M

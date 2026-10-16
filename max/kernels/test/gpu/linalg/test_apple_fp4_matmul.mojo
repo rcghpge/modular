@@ -64,7 +64,6 @@ from linalg.matmul.gpu.apple import enqueue_apple_matmul
 from linalg.matmul.gpu.apple.fp4_dequant import enqueue_fp4_materialize
 from std.math import ceildiv
 from linalg.matmul.gpu.apple.fp4_matmul import (
-    _enqueue_apple_fp4_materialize_dense,
     _launch_apple_fp4_matmul,
     enqueue_apple_fp4_matmul,
 )
@@ -473,7 +472,6 @@ def _run_stage4_dispatch_paths(
     var out_fused_tt = TileTensor(out_fused_dev, row_major(M, N))
     _launch_apple_fp4_matmul[
         c_type=.float32,
-        elementwise_lambda_fn=None,
         BM=128,
         BK=64,
         coalesce_scales=True,

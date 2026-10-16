@@ -19,13 +19,17 @@
 # reference.
 # ===----------------------------------------------------------------------=== #
 
-from std.math import rsqrt, sqrt
-from std.memory import alloc
+from std.math import sqrt
 from std.random import rand
 
 import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
-from layout import TileTensor, Coord, CoordLike, Idx, row_major
+from layout import (
+    TileTensor,
+    CoordLike,
+    Idx,
+    row_major,
+)
 
 from internal_utils import assert_almost_equal
 from nn.gemv_partial_norm import gemv_and_partial_norm
@@ -130,7 +134,7 @@ def test_gemv_partial_norm[
     ctx.enqueue_copy(b_dev, b_host_ptr)
     ctx.enqueue_copy(gamma_dev, gamma_host_ptr)
 
-    var eps = Float32(0.001)
+    comptime eps = Float32(0.001)
 
     vendor_blas.matmul(
         ctx,
@@ -144,13 +148,13 @@ def test_gemv_partial_norm[
     gemv_and_partial_norm[
         transpose_b=transpose_b,
         fused=fused,
+        eps=eps,
     ](
         normed_tensor,
         unnormed_tensor,
         a_tensor,
         b_tensor,
         gamma_tensor,
-        eps,
         ctx,
     )
 

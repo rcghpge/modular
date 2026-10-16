@@ -70,6 +70,10 @@ __all__ = [
 PipelineModelType: TypeAlias = type[
     PipelineModel[Any] | PipelineExecutor[Any, Any, Any] | Module[Any, Any]
 ]
+"""The class of a model implementation that an architecture registers. A
+:class:`PipelineModel`, a :class:`PipelineExecutor`, or a
+:class:`~max.experimental.nn.Module`.
+"""
 
 
 @dataclass(frozen=False)
@@ -84,48 +88,49 @@ class SupportedArchitecture:
     New architectures should be registered into the :obj:`PipelineRegistry`
     using the :obj:`~PipelineRegistry.register()` method.
 
-    Example:
-        .. code-block:: python
+    For example, define the components of a custom architecture:
 
-            from max.graph.weights import WeightsFormat
-            from max.pipelines.context import TextContext
-            from max.pipelines.lib.interfaces.pipeline_model import (
-                ModelOutputs,
-                PipelineModel,
-            )
-            from max.pipelines.lib.registry import SupportedArchitecture
-            from max.pipelines.lib.tokenizer import TextTokenizer
-            from max.pipelines.modeling.types import PipelineTask
+    .. code-block:: python
 
-            # A concrete PipelineModel subclass. Registration stores the class
-            # itself, so it is never instantiated here.
-            class MyModel(PipelineModel[TextContext]):
-                def execute(self, model_inputs) -> ModelOutputs:
-                    raise NotImplementedError
+        from max.graph.weights import WeightsFormat
+        from max.pipelines.context import TextContext
+        from max.pipelines.lib.interfaces.pipeline_model import (
+            ModelOutputs,
+            PipelineModel,
+        )
+        from max.pipelines.lib.registry import SupportedArchitecture
+        from max.pipelines.lib.tokenizer import TextTokenizer
+        from max.pipelines.modeling.types import PipelineTask
 
-            class MyModelConfig:
-                pass
+        # A concrete PipelineModel subclass. Registration stores the class
+        # itself, so it is never instantiated here.
+        class MyModel(PipelineModel[TextContext]):
+            def execute(self, model_inputs) -> ModelOutputs:
+                raise NotImplementedError
 
-            my_architecture = SupportedArchitecture(
-                name="MyModelForCausalLM",  # Must match your Hugging Face model class name
-                example_repo_ids=[
-                    "your-org/your-model-name",  # Add example model repository IDs
-                ],
-                default_encoding="q4_k",
-                supported_encodings={
-                    "q4_k",
-                    "bfloat16",
-                    # Add other encodings your model supports
-                },
-                pipeline_model=MyModel,
-                tokenizer=TextTokenizer,
-                context_type=TextContext,
-                config=MyModelConfig,  # Architecture-specific config class
-                default_weights_format=WeightsFormat.safetensors,
-                multi_gpu_supported=True,  # Set based on your implementation capabilities
-                required_arguments={"some_arg": True},
-                task=PipelineTask.TEXT_GENERATION,
-            )
+        class MyModelConfig:
+            pass
+
+        my_architecture = SupportedArchitecture(
+            name="MyModelForCausalLM",  # Must match your Hugging Face model class name
+            example_repo_ids=[
+                "your-org/your-model-name",  # Add example model repository IDs
+            ],
+            default_encoding="q4_k",
+            supported_encodings={
+                "q4_k",
+                "bfloat16",
+                # Add other encodings your model supports
+            },
+            pipeline_model=MyModel,
+            tokenizer=TextTokenizer,
+            context_type=TextContext,
+            config=MyModelConfig,  # Architecture-specific config class
+            default_weights_format=WeightsFormat.safetensors,
+            multi_gpu_supported=True,  # Set based on your implementation capabilities
+            required_arguments={"some_arg": True},
+            task=PipelineTask.TEXT_GENERATION,
+        )
     """
 
     name: str
@@ -193,7 +198,7 @@ class SupportedArchitecture:
     """The set of input modalities this architecture accepts.
 
     Defaults to text-only. Multimodal architectures should declare all
-    supported input types explicitly, e.g.
+    supported input types explicitly, such as
     ``{InputModality.TEXT, InputModality.IMAGE}`` for vision-language models.
     """
 
@@ -318,7 +323,7 @@ class SupportedArchitecture:
     :func:`max.pipelines.lib.reasoning.register`. When set, the pipeline
     config will fall back to this value for ``runtime.reasoning_parser`` if
     the user did not explicitly configure one. Different model architectures
-    emit reasoning content in different formats (e.g., Kimi K2.5 wraps
+    emit reasoning content in different formats (for example, Kimi K2.5 wraps
     reasoning in ``<think>...</think>``), so the appropriate default is
     architecture-specific.
 
@@ -329,7 +334,7 @@ class SupportedArchitecture:
     default_structured_output_backend: str | None = None
     """Optional default structured output backend for this architecture.
 
-    When set (e.g., ``"xgrammar"``), the pipeline config
+    When set to ``"xgrammar"``, the pipeline config
     will use this value for ``sampling.structured_output_backend`` if the
     user did not explicitly configure one. This allows architectures that
     work better with a specific backend to override the global default.
@@ -365,8 +370,8 @@ class SupportedArchitecture:
     """Whether this architecture supports auto-enabling the overlap scheduler.
 
     When ``False``, the overlap scheduler is not auto-enabled for this
-    architecture even when otherwise eligible. Users can still force-enable
-    via ``--enable-overlap-scheduler --force``.
+    architecture even when otherwise eligible. Users can still enable it
+    via ``--enable-overlap-scheduler``.
     """
 
     supports_nvfp4_kv_cache: bool = False
@@ -480,8 +485,9 @@ class Speculator:
 
     A speculator is a bounded delta on its :attr:`base`, not a separate
     architecture: :meth:`derive` copies only the fields below, and everything
-    else -- tokenizer, config class, encodings, memory planner, tool and
-    reasoning parsers, structured-output defaults are inherited.
+    else -- tokenizer, encodings, tool and reasoning parsers, structured-output
+    defaults are inherited. The config class and memory planner are inherited
+    unless the drafter adds KV cache or weights of its own.
     Declared in the speculator's own package, which already depends on the base.
 
     A speculator is not registered as an architecture. It is indexed against
@@ -542,6 +548,31 @@ class Speculator:
     does not carry over.
     """
 
+    config: type[ArchConfig] | None = None
+    """Replace the base's config class; ``None`` inherits.
+
+    Set it when the drafter keeps a KV cache of its own: the config's KV
+    params are what memory planning and cache allocation size, so a drafter
+    group missing from them is never budgeted.
+    """
+
+    memory_planner: type[MemoryPlanner] | None = None
+    """Replace the base's memory planner; ``None`` inherits.
+
+    Set it when the fused graph loads drafter weights the base planner does
+    not count.
+    """
+
+    checkpoint_draft_width: (
+        Callable[[SpeculativeConfig, Any, Any], int] | None
+    ) = None
+    """Returns the draft width the drafter was trained for; ``None`` inherits.
+    """
+
+    supports_spec_decode_mixed_batches: bool | None = None
+    """Override whether the fused graph is per-row correct on mixed
+    prefill+decode verify batches; ``None`` inherits."""
+
     def derive(self) -> SupportedArchitecture:
         """Returns the fused architecture for this speculator.
 
@@ -549,22 +580,30 @@ class Speculator:
         field not named here is inherited, which is what keeps a speculator
         from drifting away from its target.
         """
+        inherited_unless_set = {
+            "batching": self.batching,
+            "example_repo_ids": self.example_repo_ids,
+            "supports_device_graph_capture": self.supports_device_graph_capture,
+            "config": self.config,
+            "memory_planner": self.memory_planner,
+            "checkpoint_draft_width": self.checkpoint_draft_width,
+            "supports_spec_decode_mixed_batches": (
+                self.supports_spec_decode_mixed_batches
+            ),
+        }
         changes: dict[str, Any] = {
             "name": self.name,
             "pipeline_model": self.pipeline_model,
+            **{
+                name: value
+                for name, value in inherited_unless_set.items()
+                if value is not None
+            },
         }
-        if self.batching is not None:
-            changes["batching"] = self.batching
         if self.weight_adapters:
             changes["weight_adapters"] = dict(self.weight_adapters)
         if self.opt_out_cascade:
             changes["cascade_pipeline_factory"] = None
-        if self.example_repo_ids is not None:
-            changes["example_repo_ids"] = self.example_repo_ids
-        if self.supports_device_graph_capture is not None:
-            changes["supports_device_graph_capture"] = (
-                self.supports_device_graph_capture
-            )
         return replace(self.base, **changes)
 
 
@@ -760,10 +799,22 @@ class ArchLookup:
         Declaration order is preserved, so it is also the tie-break when two
         speculators would accept the same draft.
         """
-        for module, symbol, package in self._lazy_speculators.pop(target, []):
-            imported = importlib.import_module(module, package)
-            self.register(getattr(imported, symbol))
-        return list(self._speculators.get(target, []))
+        names = [target]
+        if (
+            target not in self.architectures
+            and target not in self._lazy_architectures
+        ):
+            # Speculators are filed under their base's registered name, which
+            # for a ModuleV3-only target is "<target>_ModuleV3". Matched by
+            # name so that resolving it never imports the target.
+            names.append(f"{target}_ModuleV3")
+        for name in names:
+            for module, symbol, package in self._lazy_speculators.pop(name, []):
+                imported = importlib.import_module(module, package)
+                self.register(getattr(imported, symbol))
+            if speculators := self._speculators.get(name):
+                return list(speculators)
+        return []
 
     def import_custom_architectures(
         self, custom_architectures: list[str]
@@ -906,7 +957,7 @@ def find_architecture(
 
     Args:
         name: The architecture class name to look up
-            (e.g. ``"LlamaForCausalLM"`` or ``"FluxPipeline"``).
+            (such as ``"LlamaForCausalLM"`` or ``"FluxPipeline"``).
         prefer_module_v3: Whether to use the ModuleV3 architecture variant.
             When ``False`` (default), uses the standard graph API architecture name.
             When ``True``, appends the ``_ModuleV3`` suffix to look up the

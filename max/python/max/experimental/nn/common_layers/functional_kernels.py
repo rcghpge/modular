@@ -28,6 +28,7 @@ from max.experimental.sharding.cost import P, R
 from max.experimental.sharding.types import TensorLayout
 from max.experimental.tensor import Tensor
 from max.graph import TensorValue, ops
+from max.nn.activation import GatedActivation
 from max.nn.comm.ep.ep_kernels import (
     fused_silu as _fused_silu,
 )
@@ -59,6 +60,12 @@ from max.nn.kernels import (
     mla_decode_graph as _mla_decode_graph,
 )
 from max.nn.kernels import (
+    mla_fp8_index_top_k as _mla_fp8_index_top_k,
+)
+from max.nn.kernels import (
+    mla_fp8_index_top_k_physical as _mla_fp8_index_top_k_physical,
+)
+from max.nn.kernels import (
     mla_prefill_decode_graph as _mla_prefill_decode_graph,
 )
 from max.nn.kernels import (
@@ -74,10 +81,25 @@ from max.nn.kernels import (
     moe_router_group_limited as _moe_router_group_limited,
 )
 from max.nn.kernels import (
+    mtp_eh_norm as _mtp_eh_norm,
+)
+from max.nn.kernels import (
+    quantize_dynamic_scaled_float8 as _quantize_dynamic_scaled_float8,
+)
+from max.nn.kernels import (
     rms_norm_key_cache as _rms_norm_key_cache,
 )
 from max.nn.kernels import (
+    rope_ragged as _rope_ragged,
+)
+from max.nn.kernels import (
     rope_split_store_ragged as _rope_split_store_ragged,
+)
+from max.nn.kernels import (
+    store_k_cache_ragged as _store_k_cache_ragged,
+)
+from max.nn.kernels import (
+    store_k_scale_cache_ragged as _store_k_scale_cache_ragged,
 )
 
 
@@ -176,15 +198,25 @@ mla_prefill_graph = F.functional(_mla_prefill_graph)
 mla_decode_graph = F.functional(_mla_decode_graph)
 mla_prefill_decode_graph = F.functional(_mla_prefill_decode_graph)
 hyper_connection_gates = F.functional(_hyper_connection_gates)
+mla_fp8_index_top_k = F.functional(_mla_fp8_index_top_k)
+mla_fp8_index_top_k_physical = F.functional(_mla_fp8_index_top_k_physical)
+rope_ragged = F.functional(_rope_ragged)
+quantize_dynamic_scaled_float8 = F.functional(_quantize_dynamic_scaled_float8)
+store_k_cache_ragged = F.functional(_store_k_cache_ragged)
+store_k_scale_cache_ragged = F.functional(_store_k_scale_cache_ragged)
 
 
 def fused_silu_rule(
-    x: TensorLayout, row_offsets: TensorLayout
+    x: TensorLayout,
+    row_offsets: TensorLayout,
+    activation: GatedActivation | None = None,
+    interleaved: bool = False,
 ) -> list[AxisAssignment]:
     """Strategies for ``fused_silu``: preserves every input axis (nonlinear).
 
     ``row_offsets`` is the small per-call expert boundary tensor; it is
-    always ``Replicated``. No ``Partial`` row: SiLU is nonlinear.
+    always ``Replicated``. No ``Partial`` row: the gated activation is
+    nonlinear, whichever one ``activation`` selects.
     """
     rows = [AxisAssignment((R, R), (R,))]
     rows += [
@@ -202,6 +234,7 @@ fused_silu_quantized = F.functional(_fused_silu_quantized)
 # Routing decisions must match the placement of the (replicated) router
 # scores so every device agrees on expert assignment under TP/EP.
 moe_router_group_limited = F.functional(_moe_router_group_limited)
+mtp_eh_norm = F.functional(_mtp_eh_norm)
 
 
 def _moe_sigmoid_gemv_router_rule(
@@ -239,11 +272,18 @@ __all__ = [
     "fused_silu",
     "grouped_matmul_ragged",
     "hyper_connection_gates",
+    "mla_fp8_index_top_k",
+    "mla_fp8_index_top_k_physical",
     "moe_create_indices",
     "moe_finalize",
     "moe_router_group_limited",
     "moe_sigmoid_gemv_router",
+    "mtp_eh_norm",
+    "quantize_dynamic_scaled_float8",
     "rms_norm_key_cache",
+    "rope_ragged",
     "rope_split_store_ragged",
     "stack_device_shards",
+    "store_k_cache_ragged",
+    "store_k_scale_cache_ragged",
 ]

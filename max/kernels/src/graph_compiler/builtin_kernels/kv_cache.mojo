@@ -26,7 +26,7 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 from max.algorithm import elementwise
 
-from max.gpu.host import DeviceContext, get_gpu_target
+from max.gpu.host import DeviceContext
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu
 from kv_cache.types import KVCacheStaticParams, KVCollectionT
@@ -40,7 +40,6 @@ from layout import (
 from internal_utils.fp8_utils import cast_saturating
 from nn._ragged_utils import get_batch_from_row_offsets
 from nn.kv_cache import (
-    copy_kv_pages_d2h,
     fused_dual_qk_rms_norm_rope_nvfp4_ragged_paged,
     fused_dual_qk_rms_norm_rope_ragged_paged,
     fused_qk_rms_norm_ragged_paged,
@@ -297,7 +296,7 @@ struct Struct_kv_cache_store_k_scales_paged:
             )
 
         comptime simd_width = (
-            simd_width_of[scale_dtype, target=get_gpu_target()]() if is_gpu[
+            simd_width_of[scale_dtype, target=context.target]() if is_gpu[
                 target
             ]() else simd_width_of[
                 scale_dtype, target=CompilationTarget.current()
@@ -350,12 +349,11 @@ struct Struct_kv_cache_store_padded:
         @inline(.always)
         def input_fn[
             width: Int, alignment: Int
-        ](idx: IndexList[4]) capturing -> SIMD[dtype, width]:
+        ](idx: Coord) capturing -> SIMD[dtype, width]:
+            comptime assert idx.rank == 4
             return inputs._lambda_load[
                 width=width, element_alignment=alignment
-            ](
-                idx,
-            )
+            ](idx)
 
         kv_cache_store_padded[input_fn=input_fn, target=target](
             cache,
@@ -379,6 +377,8 @@ struct Struct_rms_norm_kv_cache_ragged_paged:
         cache_dtype: DType,
         //,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
     ](
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
         page_stride: InputTensor[dtype=.int64, rank=1, ...],
@@ -387,11 +387,9 @@ struct Struct_rms_norm_kv_cache_ragged_paged:
         max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
         max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
         layer_idx: UInt32,
         total_seq_len: UInt32,
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
-        weight_offset: Scalar[dtype=dtype],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
@@ -406,11 +404,11 @@ struct Struct_rms_norm_kv_cache_ragged_paged:
             target=target,
             multiply_before_cast=multiply_before_cast,
             per_head_norm=per_head_norm,
+            epsilon=epsilon,
+            weight_offset=weight_offset,
         ](
             kv_collection,
             gamma.to_tile_tensor[.int64](),
-            epsilon,
-            weight_offset,
             layer_idx,
             total_seq_len,
             input_row_offsets.to_tile_tensor[.int64](),
@@ -1090,6 +1088,8 @@ struct Struct_rms_norm_value_cache_ragged_paged:
         cache_dtype: DType,
         //,
         target: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
     ](
         kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
         page_stride: InputTensor[dtype=.int64, rank=1, ...],
@@ -1098,11 +1098,9 @@ struct Struct_rms_norm_value_cache_ragged_paged:
         max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
         max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: Float32,
         layer_idx: UInt32,
         total_seq_len: UInt32,
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
-        weight_offset: Scalar[dtype=dtype],
         context: DeviceContext,
     ) raises:
         var kv_collection = generic_get_paged_cache(
@@ -1117,11 +1115,11 @@ struct Struct_rms_norm_value_cache_ragged_paged:
             target=target,
             multiply_before_cast=multiply_before_cast,
             per_head_norm=per_head_norm,
+            epsilon=epsilon,
+            weight_offset=weight_offset,
         ](
             kv_collection,
             gamma.to_tile_tensor[.int64](),
-            epsilon,
-            weight_offset,
             layer_idx,
             total_seq_len,
             input_row_offsets.to_tile_tensor[.int64](),
@@ -1424,34 +1422,4 @@ struct Struct_kv_cache_ragged_paged_2m_iadd:
             batch_seq_len.to_tile_tensor(),
             layer_idx,
             context,
-        )
-
-
-@extensibility.register("mo.kv_cache.copy_pages_d2h")
-struct KVCacheCopyPagesD2H:
-    """Registers the `mo.kv_cache.copy_pages_d2h` graph op with the graph compiler.
-    """
-
-    @staticmethod
-    def execute[
-        dtype: DType,
-        //,
-        target: StaticString,
-    ](
-        device_kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        host_kv_blocks: MutableInputTensor[dtype=dtype, rank=6, ...],
-        src_page_ids: InputTensor[dtype=.int64, rank=1, ...],
-        dst_page_ids: InputTensor[dtype=.int64, rank=1, ...],
-        layer_idx: UInt32,
-        ctx: DeviceContext,
-    ) raises:
-        var gpu_ctx = ctx
-
-        copy_kv_pages_d2h(
-            device_kv_blocks.to_tile_tensor(),
-            host_kv_blocks.to_tile_tensor(),
-            src_page_ids.to_tile_tensor(),
-            dst_page_ids.to_tile_tensor(),
-            Int(layer_idx),
-            gpu_ctx,
         )

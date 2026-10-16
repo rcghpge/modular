@@ -92,10 +92,10 @@ FnTypeGeneratorType LIT::substituteTraitAliasesIntoSignature(
       declResolver.shared.getParameterEvaluator();
   for (auto &[name, decls] : traitDecl.getDeclsInScope()) {
     for (ASTDecl *decl : decls) {
-      AliasDeclOp traitAlias =
-          dyn_cast_or_null<LIT::AliasDeclOp>(decl->getIfOperation());
-      if (!traitAlias)
+      auto *traitAliasDecl = dyn_cast<AliasASTDecl>(decl);
+      if (!traitAliasDecl)
         continue;
+      AliasDeclOp traitAlias = traitAliasDecl->getOp();
       StringAttr nameStringAttr =
           StringAttr::get(traitDecl.getContext(), name.str());
       TypedAttr aliasRef =
@@ -121,8 +121,6 @@ void ParamBindings::operator=(ParamBindings &&other) {
   parameters = std::move(other.parameters);
   additionalConstraints = std::move(other.additionalConstraints);
   ctadPogs = std::move(other.ctadPogs);
-  numKwOnlyCtadParams = other.numKwOnlyCtadParams;
-  numPosCtadParams = other.numPosCtadParams;
   bindingKind = other.bindingKind;
 }
 
@@ -141,24 +139,14 @@ ParamBindings ParamBindings::getForDeclaredType(ASTDecl &declScope,
   // TypeSignatureType, as the latter won't contain the full defaults list if
   // any have been bound already (when `type` is partially specified).
   ASTDecl *decl = type.getDecl(declScope.getShared());
-  if (decl) {
-    if (auto structDecl =
-            dyn_cast_or_null<StructDeclOp>(decl->getIfOperation())) {
-      llvm::append_range(
-          paramBindings.ctadPogs,
-          structDecl.getSignature().getParamListAttrs().getPogs());
-      for (auto pog : paramBindings.ctadPogs) {
-        if (pog.getPassingKind() == PassingKind::KwOnly)
-          paramBindings.numKwOnlyCtadParams++;
-        else
-          paramBindings.numPosCtadParams++;
-      }
-    }
-  }
+  if (auto *structDecl = dyn_cast_if_present<StructASTDecl>(decl))
+    llvm::append_range(
+        paramBindings.ctadPogs,
+        structDecl->getOp().getSignature().getParamListAttrs().getPogs());
 
   auto traitSelfName = StringAttr::get(decl->getContext(), "_Self");
   // When binding a trait function, add the self type bindings.
-  if (decl && isa_and_nonnull<TraitDeclOp>(decl->getIfOperation())) {
+  if (isa_and_nonnull<TraitASTDecl>(decl)) {
     auto typeAttr = PValue(type).get();
 
     // The source value be something of trait type like Movable, or it may be
@@ -234,7 +222,8 @@ void ParamBindings::add(const ExprNode *expr, AnyValue value, StringAttr name) {
 }
 
 static bool isReferenceFromOwnFnBody(ASTDecl &fnDecl, ASTDecl &useScope) {
-  auto funcOp = dyn_cast_or_null<FnOp>(fnDecl.getIfOperation());
+  auto *defDecl = dyn_cast<DefASTDecl>(&fnDecl);
+  FnOp funcOp = defDecl ? defDecl->getOp() : nullptr;
   if (!funcOp || !isa_and_nonnull<FnOp>(funcOp->getParentOp()))
     return false;
 
@@ -251,8 +240,9 @@ static bool isReferenceFromOwnFnBody(ASTDecl &fnDecl, ASTDecl &useScope) {
 TypedAttr LIT::getBoundConstAttrForFn(ASTDecl &fnDecl, SharedState &shared,
                                       const VerifiedParamBindings &verified,
                                       ASTDecl &useScope, SMLoc useLoc) {
-  auto funcOp = dyn_cast_or_null<FnOp>(fnDecl.getIfOperation());
-  if (funcOp) {
+  if (auto *defDecl = dyn_cast<DefASTDecl>(&fnDecl);
+      defDecl && defDecl->getOp()) {
+    FnOp funcOp = defDecl->getOp();
     if (isReferenceFromOwnFnBody(fnDecl, useScope)) {
       StringRef name = funcOp.getDeclName().getValue();
       auto diag = shared.emitError(
@@ -270,7 +260,7 @@ TypedAttr LIT::getBoundConstAttrForFn(ASTDecl &fnDecl, SharedState &shared,
         verified.getDischargedBodyConstraints());
   }
 
-  auto witnessEntry = fnDecl.getIfWitness();
+  auto *witnessEntry = dyn_cast<WitnessASTDecl>(&fnDecl);
   assert(witnessEntry);
 
   ArrayRef<TypedAttr> verifiedValues = verified.getValues();

@@ -23,6 +23,7 @@ from max.config import ConfigFileModel
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache.cache_params import (
+    HostStagingAlloc,
     KVCacheParams,
     KVCacheQuantizationConfig,
     KVConnectorType,
@@ -34,7 +35,7 @@ from max.nn.kv_cache.cache_params import (
 from max.pipelines.kv_cache.paged_kv_cache._seed_helpers import (
     resolve_kv_hash_seed,
 )
-from pydantic import ConfigDict, Field, PrivateAttr
+from pydantic import ConfigDict, Field, PrivateAttr, field_validator
 
 if TYPE_CHECKING:
     from max.pipelines.modeling.config_enums import SupportedEncoding
@@ -147,16 +148,63 @@ class KVConnectorConfig(ConfigFileModel):
     )
     """Type of KV cache connector to use."""
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _resolve_type(cls, value: object) -> object:
+        # Pydantic's enum validator never calls `KVConnectorType._missing_`,
+        # so raise the removed-type error here. Every other value passes
+        # through, so pydantic's own enum error lists the valid choices.
+        if value == "mojo_tiered":
+            KVConnectorType(value)
+        return value
+
     host_offload_max_gb: float | None = Field(
         default=None,
         description=(
             "Maximum host memory (GiB) for KV cache offloading, used by the "
-            "tiered connectors. When unset, sized to hold 1.5 times the device "
+            "tiered connector. When unset, sized to hold 1.5 times the device "
             "page pool."
         ),
     )
     """Maximum host memory in GiB for KV cache offloading. ``None`` sizes it to
     1.5 times the device page pool."""
+
+    host_staging_alloc: HostStagingAlloc = Field(
+        default="registered",
+        description=(
+            "How the tiered connector allocates its pinned host staging "
+            "region. ``registered`` maps ordinary host memory and registers it "
+            "with the GPU. ``driver`` allocates it from the GPU driver in "
+            "chunks, so kernel memory compaction cannot migrate it; on AMD "
+            "this also needs ``HSA_USERPTR_FOR_PAGED_MEM=0`` in the "
+            "environment."
+        ),
+    )
+    """How the tiered connector allocates its pinned host staging region.
+
+    ``registered`` (the default) maps ordinary anonymous host memory and
+    registers it with the GPU. Those pages stay movable, so when the kernel
+    compacts memory it can migrate them, and on AMD each migration evicts the
+    process's GPU queues until the registration is revalidated.
+
+    ``driver`` allocates the region as pinned host memory from the GPU driver,
+    in chunks of whole huge blocks. On AMD the HIP runtime still backs such
+    allocations with movable user pages unless ``HSA_USERPTR_FOR_PAGED_MEM=0``
+    is set before it initializes; with it set they are driver-owned and count
+    against the driver's system memory limit, which every process on the node
+    shares. Only the tiered connector (``rust_tiered``) reads this.
+    """
+
+    host_staging_mlock: bool = Field(
+        default=False,
+        description=(
+            "``mlock`` the registered host staging region. Only protects it "
+            "from compaction when the node sets "
+            "vm.compact_unevictable_allowed=0. Not allowed with "
+            "host_staging_alloc='driver'."
+        ),
+    )
+    """Whether the registered host staging region is locked with ``mlock``."""
 
     disk_offload_dir: str | None = Field(
         default=None,
@@ -194,7 +242,31 @@ class KVConnectorConfig(ConfigFileModel):
             "queue faster under load; returns diminish past ~32."
         ),
     )
-    """Number of disk I/O worker threads for the tiered connectors."""
+    """Number of disk I/O worker threads for the tiered connector."""
+
+    num_h2d_onload_lanes: int = Field(
+        default=1,
+        gt=0,
+        description=(
+            "Number of concurrent host-to-device KV onload copies for the "
+            "rust_tiered connector. Each lane owns an H2D aux stream and "
+            "does one memcpy+sync at a time. 1 is the historical single-copy "
+            "FIFO. 2 overlaps two host-hit onloads so they do not queue on "
+            "one copy."
+        ),
+    )
+    """Concurrent H2D onload lanes for the rust_tiered connector."""
+    use_disk_direct_io: bool = Field(
+        default=False,
+        description=(
+            "Open the disk cache files with O_DIRECT so offload bypasses the "
+            "page cache. There is no buffered fallback: startup fails if "
+            "direct I/O does not work. Requires 4096-byte-aligned leaf "
+            "blocks and is incompatible with host_staging_alloc='driver' on "
+            "AMD."
+        ),
+    )
+    """Whether the disk tier's reads and writes bypass the page cache (O_DIRECT)."""
 
     block_store_endpoint: str | None = Field(
         default=None,

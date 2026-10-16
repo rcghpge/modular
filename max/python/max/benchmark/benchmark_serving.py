@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
-import json
 import logging
 import os
 import random
@@ -35,13 +33,12 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Literal
 from urllib.parse import urlparse
 from uuid import uuid4
 
 import numpy as np
 import psutil
-import yaml
 from cyclopts import App, Parameter
 from cyclopts.config import Env
 from transformers import PreTrainedTokenizerBase
@@ -79,9 +76,19 @@ from max.benchmark.benchmark_shared.datasets.types import (
     RequestSamples,
     Samples,
 )
+from max.benchmark.benchmark_shared.gpu_metrics_prometheus import (
+    PrometheusGPURecorder,
+)
 from max.benchmark.benchmark_shared.gpu_metrics_scraper import (
     DCGMBackgroundRecorder,
     GPUStatsSnapshot,
+)
+from max.benchmark.benchmark_shared.iteration import (
+    report_and_validate,
+    resolve_seed,
+    resolve_skip_counts,
+    retain_result,
+    seed_for_concurrency,
 )
 from max.benchmark.benchmark_shared.lora_benchmark_manager import (
     LoRABenchmarkManager,
@@ -114,11 +121,9 @@ from max.benchmark.benchmark_shared.serving_metrics import (
     compute_output_len,
 )
 from max.benchmark.benchmark_shared.serving_result_output import (
-    print_benchmark_summary,
+    BenchmarkRunResultLabels,
     print_input_prompts,
     print_workload_stats,
-    save_output_lengths,
-    save_result_json,
 )
 from max.benchmark.benchmark_shared.single_turn import (
     prime_shared_contexts,
@@ -129,7 +134,6 @@ from max.benchmark.benchmark_shared.utils import (
     argmedian,
     fetch_server_max_model_len,
     get_tokenizer,
-    is_castable_to_int,
     openai_bearer_auth_headers,
     print_section,
     resolve_revision,
@@ -140,15 +144,21 @@ from max.benchmark.benchmark_shared.warmup import (
     log_warmup_sampling_report,
     pick_warmup_population,
 )
+from max.benchmark.benchmark_shared.workload import (
+    apply_workload,
+    load_workload_file,
+)
+from max.benchmark.benchmark_shared.workload_stats import (
+    WorkloadStats,
+    compute_workload_stats,
+    write_workload_stats,
+)
 from max.profiler.cpu import (
     CPUMetrics,
     CPUMetricsCollector,
     collect_pids_for_port,
 )
 from max.profiler.gpu import GPUDiagContext, GpuStatsRecorder
-from openai.types.chat import ChatCompletionToolParam
-from openai.types.chat.completion_create_params import ResponseFormat
-from pydantic import TypeAdapter, ValidationError
 
 BENCHMARK_SERVING_ARGPARSER_DESCRIPTION = (
     "This command runs comprehensive benchmark tests on a model server to"
@@ -180,27 +190,43 @@ def _expand_pids(pids: list[int]) -> list[int]:
 
 
 def _make_gpu_recorder(
-    *, collect_gpu_stats: bool, gpu_metrics_host: str
+    *,
+    collect_gpu_stats: bool,
+    gpu_metrics_host: str,
+    gpu_metrics_prometheus_url: str = "",
+    gpu_metrics_selector: str = "",
 ) -> GpuStatsRecorder | None:
     """Choose the GPU-stats recorder for this run, or None to disable it.
 
-    ``gpu_metrics_host`` is a source selector, not an additive toggle: a
-    non-empty value means the load generator runs off the accelerator node (a
-    disaggregated Mammoth bench pod) with no local engine GPUs, so stats must
-    come from the engine nodes' DCGM exporter(s) rather than local NVML.
-    Running both would double-count and destabilize the device set
-    :func:`_aggregate_gpu_stats` aggregates over. Returned un-entered; the
+    The remote sources are source selectors, not additive toggles: either one
+    means the load generator runs off the accelerator node (a disaggregated
+    Mammoth bench pod) with no local engine GPUs, so stats must come from the
+    engine nodes rather than local NVML. Prometheus wins over a direct DCGM
+    scrape because its pod labels narrow the device set to the engine's own
+    GPUs. Running more than one would double-count and destabilize the device
+    set :func:`_aggregate_gpu_stats` aggregates over. Returned un-entered; the
     caller is responsible for entering it as a context manager.
 
     Args:
         collect_gpu_stats: Whether GPU-stats collection is enabled at all.
         gpu_metrics_host: Remote DCGM endpoint(s); empty selects local NVML.
+        gpu_metrics_prometheus_url: Prometheus that scrapes the engine's DCGM
+            exporter; takes precedence over ``gpu_metrics_host``.
+        gpu_metrics_selector: Label matchers for the engine's GPUs in that
+            Prometheus.
 
     Returns:
         A recorder to sample GPU stats, or None when disabled/unavailable.
+
+    Raises:
+        ValueError: If a Prometheus URL is given without a selector.
     """
     if not collect_gpu_stats:
         return None
+    if gpu_metrics_prometheus_url:
+        return PrometheusGPURecorder(
+            gpu_metrics_prometheus_url, gpu_metrics_selector
+        )
     if gpu_metrics_host:
         return DCGMBackgroundRecorder(gpu_metrics_host)
     try:
@@ -211,73 +237,6 @@ def _make_gpu_recorder(
         )
         return None
     return BackgroundRecorder()
-
-
-def parse_response_format(arg: str) -> ResponseFormat:
-    """Parse response format from CLI arg (inline JSON or @filepath).
-
-    Args:
-        arg: Either a JSON string or '@path/to/schema.json' to load from file.
-
-    Returns:
-        Validated ResponseFormat.
-
-    Raises:
-        ValueError: If the JSON is invalid, the file cannot be read, or the
-            value does not match a recognised OpenAI response format.
-    """
-    if arg.startswith("@"):
-        # Load from file
-        file_path = Path(arg[1:])
-        try:
-            raw = file_path.read_text()
-        except FileNotFoundError as e:
-            raise ValueError(
-                f"Response format file not found: {file_path}"
-            ) from e
-        try:
-            return TypeAdapter(ResponseFormat).validate_json(raw)
-        except (json.JSONDecodeError, ValidationError) as e:
-            raise ValueError(
-                f"Invalid response format in file {file_path}: {e}"
-            ) from e
-
-    # Parse inline JSON
-    try:
-        return TypeAdapter(ResponseFormat).validate_json(arg)
-    except (json.JSONDecodeError, ValidationError) as e:
-        raise ValueError(f"Invalid response format: {e}") from e
-
-
-def parse_tools(arg: str) -> list[Mapping[str, Any]]:
-    """Parses tool definitions from a CLI arg (inline JSON or @filepath).
-
-    Args:
-        arg: Either a JSON list or '@path/to/tools.json' to load from file.
-
-    Returns:
-        The tool definitions, validated against the OpenAI tool shape.
-
-    Raises:
-        ValueError: If the JSON is invalid, the file cannot be read, or the
-            value is not a non-empty list of OpenAI tool definitions.
-    """
-    source = "tools"
-    raw = arg
-    if arg.startswith("@"):
-        file_path = Path(arg[1:])
-        source = f"tools file {file_path}"
-        try:
-            raw = file_path.read_text()
-        except FileNotFoundError as e:
-            raise ValueError(f"Tools file not found: {file_path}") from e
-    try:
-        tools = TypeAdapter(list[ChatCompletionToolParam]).validate_json(raw)
-    except (json.JSONDecodeError, ValidationError) as e:
-        raise ValueError(f"Invalid {source}: {e}") from e
-    if not tools:
-        raise ValueError(f"Invalid {source}: the list is empty")
-    return [dict(tool) for tool in tools]
 
 
 def get_default_trace_path() -> str:
@@ -331,70 +290,6 @@ def _benchmark_request_total(samples: Samples) -> int:
     return sum(session.num_turns for session in samples.chat_sessions)
 
 
-def _resolve_skip_counts(
-    orig_skip_first: int | None,
-    orig_skip_last: int | None,
-    request_rate: float,
-    max_concurrency: int | None,
-    ignore_first_turn_stats: bool,
-    warmup_to_steady_state: bool,
-) -> tuple[int, int]:
-    """Resolve effective skip_first / skip_last from user-supplied and auto-derived values.
-
-    Returns:
-        ``(skip_first, skip_last)`` request counts to exclude from stats.
-    """
-    skip_first = orig_skip_first
-    skip_last = orig_skip_last
-
-    if request_rate != float("inf"):
-        # Finite rate → steady drip with no ramp-up / ramp-down artifacts,
-        # so skip nothing (PERF-878).
-        if skip_first is None:
-            skip_first = 0
-        if skip_last is None:
-            skip_last = 0
-    elif max_concurrency is not None and max_concurrency > 1:
-        if skip_first is None:
-            skip_first = max_concurrency
-            logger.info(
-                f"Auto-setting skip_first_n_requests={skip_first}"
-                f" (max_concurrency={max_concurrency})"
-            )
-        if skip_last is None:
-            skip_last = max_concurrency
-            logger.info(
-                f"Auto-setting skip_last_n_requests={skip_last}"
-                f" (max_concurrency={max_concurrency})"
-            )
-    # max_concurrency=1 → sequential requests, no ramp-up to trim.
-    # max_concurrency=None → no cap; default to 0.
-    # Both leave auto values unset → fall through to 0 below.
-    if skip_first is None:
-        skip_first = 0
-    if skip_last is None:
-        skip_last = 0
-
-    if ignore_first_turn_stats and skip_first and not warmup_to_steady_state:
-        # Without --warmup-to-steady-state, sessions all start at turn 0,
-        # so --ignore-first-turn-stats already drops the same head requests
-        # that --skip-first-n-requests would target. Combining them just
-        # trims deeper into the run than the user asked for.
-        # With --warmup-to-steady-state, sessions begin at randomized turn
-        # offsets, so the two features filter different requests and we
-        # want them to compose.
-        logger.warning(
-            "--ignore-first-turn-stats and --skip-first-n-requests both set"
-            " without --warmup-to-steady-state. --ignore-first-turn-stats"
-            " already drops every session's first turn, so"
-            " --skip-first-n-requests would trim deeper than expected."
-            " Ignoring --skip-first-n-requests."
-        )
-        skip_first = 0
-
-    return skip_first, skip_last
-
-
 async def benchmark(
     args: ServingBenchmarkConfig,
     session: BenchmarkSession,
@@ -408,7 +303,7 @@ async def benchmark(
     """
     backend: Backend = args.backend
 
-    skip_first, skip_last = _resolve_skip_counts(
+    skip_first, skip_last = resolve_skip_counts(
         orig_skip_first=session.orig_skip_first,
         orig_skip_last=session.orig_skip_last,
         request_rate=request_rate,
@@ -622,6 +517,8 @@ async def benchmark(
         gpu_recorder = _make_gpu_recorder(
             collect_gpu_stats=args.collect_gpu_stats,
             gpu_metrics_host=args.gpu_metrics_host,
+            gpu_metrics_prometheus_url=args.gpu_metrics_prometheus_url,
+            gpu_metrics_selector=args.gpu_metrics_selector,
         )
         if gpu_recorder is not None:
             gpu_recorder = benchmark_stack.enter_context(gpu_recorder)
@@ -853,8 +750,11 @@ async def benchmark(
         )
 
     gpu_metrics: list[GPUStatsSnapshot] | None = None
+    gpu_device_groups: dict[str, str] = {}
     if args.collect_gpu_stats and gpu_recorder is not None:
         gpu_metrics = gpu_recorder.stats
+        if isinstance(gpu_recorder, PrometheusGPURecorder):
+            gpu_device_groups = gpu_recorder.device_groups
 
     cpu_metrics_result: CPUMetrics | None = None
     if cpu_collector is not None:
@@ -874,8 +774,6 @@ async def benchmark(
         except Exception as e:
             logger.warning(f"Failed to collect server metrics: {e}")
 
-    achieved_request_rate = 0.0
-
     result: BenchmarkResult
     if session.benchmark_task in PIXEL_GENERATION_TASKS:
         result = build_pixel_generation_result(
@@ -886,9 +784,10 @@ async def benchmark(
             max_concurrency=max_concurrency,
             collect_gpu_stats=args.collect_gpu_stats,
             metrics_by_endpoint=endpoint_metrics,
+            gpu_device_groups=gpu_device_groups,
         )
     else:
-        text_result = build_text_generation_result(
+        result = build_text_generation_result(
             outputs=all_outputs,
             benchmark_duration=benchmark_duration,
             tokenizer=session.tokenizer,
@@ -903,43 +802,21 @@ async def benchmark(
             spec_decode_stats=spec_decode_stats,
             kv_block_size=args.kv_block_size,
             record_request_text=args.record_request_text,
+            gpu_device_groups=gpu_device_groups,
+            outputs_by_session=outputs_by_session,
         )
-        if outputs_by_session is not None:
-            text_result.session_server_stats = {
-                sid: [out.server_token_stats for out in outs]
-                for sid, outs in sorted(
-                    outputs_by_session.items(),
-                    key=lambda kv: _session_sort_key(kv[0]),
-                )
-            }
-        else:
-            text_result.aggregate_server_stats = [
-                out.server_token_stats
-                for out in all_outputs
-                if isinstance(out, RequestFuncOutput)
-            ]
-        result = text_result
     if session.lora_manager is not None:
         result.lora_metrics = session.lora_manager.metrics
 
-    print_benchmark_summary(
-        metrics=result,
+    ok = report_and_validate(
+        result,
         request_rate=request_rate,
         max_concurrency=max_concurrency,
-        achieved_request_rate=achieved_request_rate,
         collect_gpu_stats=args.collect_gpu_stats,
         collect_cpu_stats=args.collect_cpu_stats,
         lora_manager=session.lora_manager,
     )
-
-    ok, validation_errors = result.validate_metrics()
-    if not ok:
-        for err in validation_errors:
-            logger.error(f"Benchmark result validation failed: {err}")
-        logger.info("finished benchmark run: Failed.")
-        return result, False
-    logger.info("finished benchmark run: Success.")
-    return result, True
+    return result, ok
 
 
 def validate_task_and_endpoint(
@@ -973,45 +850,6 @@ def validate_task_and_endpoint(
             )
 
 
-def _apply_workload_to_config(
-    config: ServingBenchmarkConfig, workload: Mapping[str, object]
-) -> None:
-    """Set workload YAML values as fields on *config*.
-
-    Keys are converted from kebab-case to snake_case.  Path objects are
-    stringified and env vars in string values are expanded.
-
-    Fields already in `config.model_fields_set` (i.e. explicitly provided
-    by the caller, whether via CLI args or direct construction) are left
-    unchanged so that CLI values always take precedence over workload YAML.
-    """
-    for k, v in workload.items():
-        field_name = k.replace("-", "_")
-        if field_name not in ServingBenchmarkConfig.model_fields:
-            logger.warning(f"Ignoring unknown workload key: {k}")
-            continue
-        if field_name in config.model_fields_set:
-            logger.info(
-                f"CLI flag --{k} takes precedence over workload YAML"
-                f" (CLI: {getattr(config, field_name)!r},"
-                f" workload: {v!r})"
-            )
-            continue
-        if isinstance(v, Path):
-            v = str(v)
-        elif isinstance(v, str):
-            v = os.path.expandvars(v)
-        # 'request-rate' from YAML can be a bare number; stringify so the
-        # config before-validator (comma-split strings) runs. 'max-concurrency'
-        # is handled in _load_workload_yaml instead.
-        # TODO(MXTOOLS-166): This should be handled through workload YAML being
-        # a Pydantic model instead, eventually.
-        if field_name == "request_rate" and isinstance(v, (int, float)):
-            v = str(v)
-        logger.info(f"Applying workload YAML value: --{k}={v!r}")
-        setattr(config, field_name, v)
-
-
 def flush_prefix_cache(
     backend: Backend,
     host: str,
@@ -1021,7 +859,7 @@ def flush_prefix_cache(
 ) -> None:
     """Flush the serving engine's prefix cache via HTTP POST.
 
-    When ``base_url`` is set (a remote endpoint, e.g. ``--base-url``), it
+    When ``base_url`` is set (a remote endpoint, for example, ``--base-url``), it
     replaces the ``http://<host>:<port>`` prefix and the request carries an
     ``Authorization: Bearer $OPENAI_API_KEY`` header, matching the auth the
     benchmark requests themselves send.
@@ -1082,18 +920,24 @@ def flush_prefix_cache(
         )
 
 
+BenchmarkStatus = Literal["pass", "fail"]
+"""The outcome of one benchmark configuration's validation."""
+
+
 @dataclass
 class BenchmarkRunResult:
-    """Result of one (max_concurrency, request_rate) benchmark configuration.
-
-    Yielded by :func:`main_with_parsed_args` — one entry per (mc, rr) combo
-    after median selection across ``num_iters`` iterations.
-    """
+    """Result of one (max_concurrency, request_rate) benchmark configuration."""
 
     max_concurrency: int | None
     request_rate: float
     num_prompts: int
+    labels: BenchmarkRunResultLabels
+    """The benchmark configuration :attr:`result` was produced with, for its
+    result JSON."""
+
     result: BenchmarkResult | None = None
+    status: BenchmarkStatus = "pass"
+    """Whether the result passed or failed validation."""
 
 
 @dataclass
@@ -1119,71 +963,13 @@ class BenchmarkSession:
     orig_skip_last: int | None
 
 
-def _session_sort_key(sid: str) -> tuple[int, int, str]:
-    """Sort numeric session ids first by integer value, then anonymous ids."""
-    try:
-        return (0, int(sid), "")
-    except ValueError:
-        return (1, 0, sid)
-
-
-_PATH_SUPPORTING_WORKLOAD_KEYS = (
-    "dataset-path",
-    "output-lengths",
-    "extra-body",
-    "agentic-tool-profiles",
-)
-"""Workload keys whose value may name a file rather than hold content."""
-
-
 def _load_workload_yaml(args: ServingBenchmarkConfig) -> None:
     if not args.workload_config:
         return
-    with open(args.workload_config) as workload_file:
-        workload = yaml.safe_load(workload_file)
-    # Resolve relative paths against the YAML's directory.
-    for key in _PATH_SUPPORTING_WORKLOAD_KEYS:
-        value = workload.get(key)
-        # A key may hold the value itself -- a mapping, or inline JSON --
-        # rather than a path to it.
-        if (
-            not isinstance(value, str)
-            or value.lstrip().startswith("{")
-            or is_castable_to_int(value)
-        ):
-            continue
-        path = Path(os.path.expandvars(value))
-        if not path.is_absolute():
-            path = Path(args.workload_config).parent / path
-        workload[key] = path
-    # Resolve max_concurrency: CLI > YAML.
-    yaml_max_concurrency = workload.pop("max-concurrency", None)
-    if (
-        yaml_max_concurrency is not None
-        and "max_concurrency" not in args.model_fields_set
-    ):
-        # TODO(MXTOOLS-166): validate_assignment=True makes it so that this
-        # goes through Pydantic's validator, which converts as needed.
-        # Workload should itself be parsed with Pydantic so we don't need to
-        # defer validation like so.
-        args.max_concurrency = yaml_max_concurrency
-    # --num-prompts and --num-prompts-multiplier both set the request count,
-    # so either one on the CLI overrides both in the YAML.
-    yaml_num_prompts = workload.pop("num-prompts", None)
-    yaml_multiplier = workload.pop("num-prompts-multiplier", None)
-    if args.num_prompts is None and args.num_prompts_multiplier is None:
-        if yaml_num_prompts is not None:
-            args.num_prompts = int(yaml_num_prompts)
-        if yaml_multiplier is not None:
-            # Assign the raw value so validation rejects a fractional
-            # multiplier instead of int() truncating it.
-            args.num_prompts_multiplier = yaml_multiplier
-    # Resolve max_benchmark_duration_s: CLI > YAML.
-    w_duration = workload.pop("max-benchmark-duration-s", None)
-    if w_duration is not None and args.max_benchmark_duration_s is None:
-        args.max_benchmark_duration_s = int(w_duration)
-    _apply_workload_to_config(args, workload)
-    args.skip_test_prompt = True
+    workload_path = Path(args.workload_config)
+    apply_workload(
+        args, load_workload_file(workload_path), base_dir=workload_path.parent
+    )
 
 
 _DEFAULT_NUM_PROMPTS = 1000
@@ -1259,33 +1045,6 @@ def _resolve_end_condition(
     )
 
 
-def _resolve_seed(args: ServingBenchmarkConfig) -> None:
-    """Draw and record a random seed when one was not pinned.
-
-    ``args.seed`` defaults to a fixed value so scheduled and repeated runs are
-    reproducible. A caller can opt into a fresh draw with ``--seed none`` (which
-    sets ``args.seed`` to ``None``); this resolves that draw to a concrete value
-    *before* the workload is sampled, so the run stays reproducible from the
-    recorded seed.
-    """
-    if args.seed is None:
-        args.seed = int(np.random.default_rng().integers(0, 10000))
-        logger.info("Drew a fresh random seed=%d", args.seed)
-    else:
-        logger.info("Using pinned seed=%d", args.seed)
-
-
-def _seed_for_concurrency(seed: int | None, max_concurrency: int | None) -> int:
-    """Derive a per-concurrency-level seed from the base seed.
-
-    Each concurrency level gets its own request sample instead of replaying
-    the same requests as every other level, while staying reproducible from
-    the single base seed.
-    """
-    digest = hashlib.sha256(f"{seed}:{max_concurrency}".encode()).digest()
-    return int.from_bytes(digest[:4], "big")
-
-
 def _run_prefix_len(
     args: ServingBenchmarkConfig,
     benchmark_task: BenchmarkTask,
@@ -1328,7 +1087,7 @@ def _sample_for_seed(
     if args.tools is not None:
         augment_samples_with_tools(
             samples,
-            tools=parse_tools(args.tools),
+            tools=args.tools,
             fraction=args.tools_fraction,
             tokenizer=tokenizer,
             seed=seed,
@@ -1354,10 +1113,11 @@ def _sample_for_seed(
 
     # After images, which can cut sessions: a constraint on a cut turn
     # would never be sent.
-    if args.response_format is not None:
+    response_format = args.openai_response_format
+    if response_format is not None:
         augment_samples_with_response_format(
             samples,
-            response_format=parse_response_format(args.response_format),
+            response_format=response_format,
             fraction=args.response_format_fraction,
             turn=args.response_format_turn,
             seed=seed,
@@ -1493,15 +1253,48 @@ def _build_session(args: ServingBenchmarkConfig) -> BenchmarkSession:
     )
 
 
+def _compute_session_stats(
+    args: ServingBenchmarkConfig, session: BenchmarkSession
+) -> WorkloadStats:
+    """Stats of the requests this run would send.
+
+    Multi-turn sessions end at the tokenizer's context limit, so the stats
+    cut them at the same one, and ``--force-unique-runs`` prepends its
+    prefix to every request, so the stats count it.
+    """
+    return compute_workload_stats(
+        session.samples,
+        context_limit=session.tokenizer.model_max_length
+        if session.tokenizer
+        else None,
+        run_prefix_len=_run_prefix_len(
+            args, session.benchmark_task, session.tokenizer
+        ),
+    )
+
+
+def _emit_workload_stats(
+    args: ServingBenchmarkConfig,
+    session: BenchmarkSession,
+    stats: WorkloadStats,
+) -> None:
+    if args.workload_stats_json is not None:
+        write_workload_stats(stats, args.workload_stats_json)
+        logger.info("Wrote workload stats to %s", args.workload_stats_json)
+    if args.print_workload_stats:
+        print_workload_stats(session.samples, stats)
+
+
 def _run_dry_run_sweep(
     args: ServingBenchmarkConfig,
     session: BenchmarkSession,
     end_condition: EndCondition,
     concurrency_range: Sequence[int | None],
     request_rate_range: Sequence[float],
+    stats: WorkloadStats,
 ) -> Iterator[BenchmarkRunResult]:
     if not args.print_workload_stats:
-        print_workload_stats(session.samples)
+        print_workload_stats(session.samples, stats)
     if isinstance(session.samples, ChatSamples) and args.warmup_to_steady_state:
         rng = np.random.default_rng(args.seed or 0)
         for mc in concurrency_range:
@@ -1544,6 +1337,12 @@ def _run_dry_run_sweep(
                 max_concurrency=mc,
                 request_rate=rr,
                 num_prompts=num_prompts,
+                labels=BenchmarkRunResultLabels.from_config(
+                    args,
+                    benchmark_task=session.benchmark_task,
+                    model_id=session.model_id,
+                    tokenizer_id=session.tokenizer_id,
+                ),
             )
 
 
@@ -1552,6 +1351,7 @@ def _run_benchmark_sweep(
     session: BenchmarkSession,
     end_condition: EndCondition,
 ) -> Iterator[BenchmarkRunResult]:
+    assert args.seed is not None, "resolve_seed must run first"
     # ---- Sweep loop ----
     for mc in args.max_concurrency:
         num_prompts = end_condition.num_prompts_for(mc)
@@ -1567,7 +1367,7 @@ def _run_benchmark_sweep(
         # Each concurrency level draws its own sample, derived from the base
         # seed, so levels are reproducible individually without replaying
         # the exact same requests at every level.
-        mc_seed = _seed_for_concurrency(args.seed, mc)
+        mc_seed = seed_for_concurrency(args.seed, mc)
         session.samples = _sample_for_seed(
             args,
             session.benchmark_task,
@@ -1610,41 +1410,47 @@ def _run_benchmark_sweep(
                 idx = 0
             best_result = iteration_results[idx]
 
-            save = validation_passed or args.always_save_result
-            if save:
-                save_result_json(
-                    args.result_filename,
-                    args,
+            yield BenchmarkRunResult(
+                max_concurrency=mc,
+                request_rate=rr,
+                num_prompts=num_prompts,
+                result=retain_result(
                     best_result,
+                    passed=validation_passed,
+                    always_save_result=args.always_save_result,
+                ),
+                labels=BenchmarkRunResultLabels.from_config(
+                    args,
                     benchmark_task=session.benchmark_task,
                     model_id=session.model_id,
                     tokenizer_id=session.tokenizer_id,
-                    request_rate=rr,
-                    record_max_concurrency=mc,
-                )
-                save_output_lengths(
-                    args,
-                    best_result,
-                    session.benchmark_task,
-                    iteration_config=(mc, rr),
-                )
-
-            yield BenchmarkRunResult(
-                mc,
-                rr,
-                num_prompts,
-                result=best_result if save else None,
+                ),
+                status="pass" if validation_passed else "fail",
             )
-
-            if not validation_passed:
-                sys.exit(1)
 
 
 def main_with_parsed_args(
     args: ServingBenchmarkConfig,
     *,
     server_liveness: Callable[[], bool] | None = None,
-) -> Iterator[BenchmarkRunResult]:
+) -> Generator[BenchmarkRunResult, None, None]:
+    """Runs a serving benchmark sweep.
+
+    Yields one :class:`BenchmarkRunResult` per (concurrency, request rate)
+    combination.
+
+    Args:
+        args: The benchmark configuration.
+        server_liveness: A predicate that reports whether the server process
+            is alive, so the server-ready wait aborts promptly on a crashed
+            bring-up, or ``None`` to wait until the timeout.
+
+    Yields:
+        Each combination's result, as soon as it completes.
+
+    Raises:
+        ValueError: If ``args.model`` is not set.
+    """
     logging.basicConfig(
         format="%(asctime)s.%(msecs)03d %(levelname)s: %(name)s: %(message)s",
         datefmt="%H:%M:%S",
@@ -1657,7 +1463,7 @@ def main_with_parsed_args(
         raise ValueError("--model is required when running benchmark")
 
     _load_workload_yaml(args)
-    _resolve_seed(args)
+    resolve_seed(args)
 
     end_condition = _resolve_end_condition(
         args=args, concurrency_range=args.max_concurrency
@@ -1671,18 +1477,20 @@ def main_with_parsed_args(
 
     session = _build_session(args)
 
-    if args.print_workload_stats:
-        print_workload_stats(session.samples)
-    if args.print_inputs_and_outputs:
-        print_input_prompts(session.samples)
-
     if args.dry_run:
+        # Dry-run exits before the server-ready clamp below, so the
+        # tokenizer's limit is the tightest bound it can apply.
+        stats = _compute_session_stats(args, session)
+        _emit_workload_stats(args, session, stats)
+        if args.print_inputs_and_outputs:
+            print_input_prompts(session.samples)
         yield from _run_dry_run_sweep(
             args=args,
             session=session,
             end_condition=end_condition,
             concurrency_range=args.max_concurrency,
             request_rate_range=args.request_rate,
+            stats=stats,
         )
         return
 
@@ -1714,6 +1522,16 @@ def main_with_parsed_args(
                 max_model_len,
             )
             session.tokenizer.model_max_length = max_model_len
+
+    # After the clamp above, which may have just tightened the limit the
+    # stats cut multi-turn sessions at, and still before any request is
+    # sent: the stats must describe what this run will actually send.
+    if args.print_workload_stats or args.workload_stats_json:
+        _emit_workload_stats(
+            args, session, _compute_session_stats(args, session)
+        )
+    if args.print_inputs_and_outputs:
+        print_input_prompts(session.samples)
 
     yield from _run_benchmark_sweep(
         args=args, session=session, end_condition=end_condition

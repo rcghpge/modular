@@ -8,8 +8,8 @@ The sections below describe the contributions we accept today. Before you start
 work, check that the part of the codebase you want to improve is covered here,
 then follow the [contribution process](contribution-process.md).
 
-Keep each pull request inside a single area. See [keep each pull request to one
-contribution](issue-pr-etiquette.md#keep-each-pull-request-to-one-contribution).
+Keep each pull request inside a single area. See
+[keep pull requests small](issue-pr-etiquette.md#keep-pull-requests-small).
 
 ## Compiler
 
@@ -32,6 +32,9 @@ In either case, a change *should not*:
 - Alter the intended Mojo language semantics.
 - Alter the intended IR semantics for our MLIR dialects.
 - Alter the compilation pipeline.
+
+To find a place to start, see the
+[open good first compiler issues](https://github.com/modular/modular/issues?q=is%3Aissue+state%3Aopen+label%3A%22good+first+issue%22+label%3A%22help+wanted%22+label%3A%22Team%3A+Mojo+Compiler%22).
 
 For technical details on working in the compiler codebase, see the
 [compiler contributor docs](compiler/README.md).

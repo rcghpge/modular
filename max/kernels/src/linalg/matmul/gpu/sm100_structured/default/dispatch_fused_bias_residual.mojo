@@ -33,9 +33,9 @@ from std.sys import size_of
 from internal_utils import Table
 from layout import Coord, RowMajorLayout, TensorEngine, TileTensor
 from std.logger import Logger
-from std.utils.index import Index, IndexList
+from std.utils.index import Index
 
-from .....utils import identity_compute_fn
+from .....utils import identity_compute_fn, no_epilogue_fn
 from .dispatch import (
     matmul_dispatch_sm100,
     sm100_heuristic_and_outliers_dispatch,
@@ -128,10 +128,11 @@ def fused_bias_residual_matmul_dispatch_sm100[
     @inline(.always)
     def bias_residual_compute_fn[
         dtype: DType, width: SIMDLength, *, alignment: Int
-    ](idx: IndexList[2], val: SIMD[dtype, width]) {var epilogue_tensor} -> SIMD[
+    ](idx: Coord, val: SIMD[dtype, width]) {var epilogue_tensor} -> SIMD[
         dtype, width
     ]:
-        var row = 0 if epilogue_is_1d else idx[0]
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        var row = 0 if epilogue_is_1d else Int(idx[0].value())
         return val + rebind[SIMD[dtype, width]](
             epilogue_tensor.load[
                 width=width, alignment=alignment * size_of[c_type]()
@@ -153,10 +154,10 @@ def fused_bias_residual_matmul_dispatch_sm100[
                 logger.info("Dispatching to small_MN_gemms: ", config)
                 _small_MN_gemms_impl[
                     config=config,
-                    elementwise_lambda_fn=None,
+                    has_epilogue_fn=False,
                     has_compute_fn=True,
                     pdl_level=pdl_level,
-                ](c, a, b, bias_residual_compute_fn, ctx)
+                ](c, a, b, no_epilogue_fn, bias_residual_compute_fn, ctx)
                 return
 
     comptime low_perf_shapes = [
@@ -168,7 +169,7 @@ def fused_bias_residual_matmul_dispatch_sm100[
         _vendor_blas_matmul_sm100[
             transpose_b=transpose_b,
             has_compute_fn=True,
-        ](c, a, b, bias_residual_compute_fn, ctx)
+        ](c, a, b, no_epilogue_fn, bias_residual_compute_fn, ctx)
         return
 
     comptime has_static_NK = static_N > 0 and static_K > 0
@@ -191,6 +192,7 @@ def fused_bias_residual_matmul_dispatch_sm100[
                 c,
                 a,
                 b,
+                no_epilogue_fn,
                 identity_compute_fn,
                 ctx,
                 epilogue_tensor=OptionalReg(epilogue_tensor),

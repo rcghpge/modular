@@ -24,7 +24,18 @@
 #include <memory>
 #include <optional>
 
+namespace M {
+namespace KGEN {
+namespace DepGraph {
+class GraphOp;
+}
+} // namespace KGEN
+} // namespace M
+
 namespace M::KGEN::LIT {
+
+class PackageASTDecl;
+class ModuleASTDecl;
 
 /// The binding a module name is about to make: which entity it names, where
 /// that lands, and whether some other name already binds it.
@@ -151,7 +162,8 @@ public:
   /// a valid decl, even if a corresponding module or package could not be
   /// found.
   ASTDecl &importModule(const SharedState::ImportPath &path,
-                        PackageOp currentPackage, llvm::SMLoc loc);
+                        PackageOp currentPackage, llvm::SMLoc loc,
+                        ASTDecl *importer);
 
   /// Import the specified module or package, returning the module state.
   /// Always returns a valid module state, even if the module could not be
@@ -169,7 +181,8 @@ public:
 
   /// Try to import a direct submodule with the given name, returning the
   /// submodule's decl, or null if no such submodule exists.
-  ASTDecl *tryImportSubModule(ASTDecl &parent, StringRef name, llvm::SMLoc loc);
+  ASTDecl *tryImportSubModule(ModuleASTDecl &parent, StringRef name,
+                              llvm::SMLoc loc);
 
   /// Return true if the package has a nested module with the given name in the
   /// module-state cache. The package body must be resolved before calling this
@@ -186,7 +199,7 @@ public:
   /// file and a (already-deferred) `PackageOp` for each sub-package. The
   /// children are unlisted (in the module-state cache + package IR, never the
   /// package's importable scope) and their bodies/files are opened lazily.
-  void registerSourcePackageChildren(ASTDecl &packageDecl);
+  void registerSourcePackageChildren(PackageASTDecl &packageDecl);
 
   //===--------------------------------------------------------------------===//
   // Loading
@@ -233,6 +246,15 @@ public:
                                       bool unlisted = false,
                                       const Twine &note = {});
 
+  //===--------------------------------------------------------------------===//
+  // Module Dependency Graph
+  //===--------------------------------------------------------------------===//
+
+  /// Record a dep edge `importer` -> `imported`, attributed to each end's
+  /// nearest enclosing file module or package. No-ops if either end has no
+  /// module state or is erroneous.
+  void recordDepEdge(ASTDecl *importer, ASTDecl *imported);
+
 private:
   /// The state this package op was imported as, or null. Distinct from
   /// `lookupState` only because one op can be reached through several decls.
@@ -264,6 +286,16 @@ private:
   /// the module could not be found.
   ModuleState &importRelativeModuleState(const SharedState::ImportPath &path,
                                          ASTDecl *parentDecl, llvm::SMLoc loc);
+
+  /// Record dep edges for a dotted `import a.b.c`: to the leaf `module` and
+  /// each ancestor package, since editing an ancestor `__init__.mojo` can
+  /// affect it.
+  void recordModuleImportDepEdges(ASTDecl *importer, ASTDecl &module);
+
+  /// Build the module import dependency graph from parse-time data (call after
+  /// all decls resolve). Sets the graph `root` if `rootDecl` is the main
+  /// module.
+  mlir::OwningOpRef<DepGraph::GraphOp> buildDepGraph(const ASTDecl *rootDecl);
 
   /// The directories searched before the working directory and the source
   /// manager's include directories: configured search paths, or the defaults

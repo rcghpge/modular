@@ -230,6 +230,31 @@ def test_setting_mef_dirs_is_undone_on_scope_exit(tmp_path: Path) -> None:
     assert after == recorded
 
 
+def test_module_compiles_in_the_given_session(tmp_path: Path) -> None:
+    # A pipeline configures its own session's MEF directories, not the
+    # process-wide ones, so the store must come from the session passed in.
+    exporting = InferenceSession(devices=[CPU()], export_mefs=tmp_path)
+    exported = _linear().compile(
+        _module_input_type(), session=exporting, name="linear"
+    )
+    expected = exported(_module_input()).to_numpy()
+
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    assert [entry["name"] for entry in manifest["graphs"]] == ["linear"]
+
+    reusing = InferenceSession(devices=[CPU()], precompiled_mefs=tmp_path)
+    reused = _linear().compile(
+        _module_input_type(), session=reusing, name="linear"
+    )
+    np.testing.assert_allclose(reused(_module_input()).to_numpy(), expected)
+
+
+def test_module_trace_takes_a_name() -> None:
+    assert _linear().trace(_module_input_type(), name="linear").graph.name == (
+        "linear"
+    )
+
+
 def _graph_adding(name: str, addend: float, *, width: int = 4) -> Graph:
     """A graph whose name and signature say nothing about what it computes."""
     dtype = TensorType(DType.float32, [width], device=DeviceRef.CPU())
@@ -500,3 +525,57 @@ def _exported(directory: Path) -> Path:
     """Returns ``directory``, holding one recorded artifact of ``_graph()``."""
     InferenceSession(devices=[CPU()], export_mefs=directory).load(_graph())
     return directory
+
+
+def _export_named(directory: Path, name: str) -> None:
+    """Exports ``_graph()`` into ``directory`` as an artifact called ``name``."""
+    store = MefStore.for_export(directory)
+    compiled = InferenceSession(devices=[CPU()]).compile(_graph())
+    compiled.export_mef(store.claim_export_artifact(name))
+    store.write_manifest()
+
+
+def test_a_named_artifact_is_found_by_its_name(tmp_path: Path) -> None:
+    # What a module compiled as one artifact needs: no graph claims it, so the
+    # caller's name is how the reader finds it again.
+    _export_named(tmp_path, "sweep_cpu.mef")
+
+    path = MefStore.for_import(tmp_path).artifact("sweep_cpu.mef")
+    model = InferenceSession(devices=[CPU()]).load(path)
+    np.testing.assert_allclose(_execute(model), np.ones(4))
+
+
+def test_a_named_artifact_nobody_recorded_raises(tmp_path: Path) -> None:
+    _export_named(tmp_path, "sweep_cpu.mef")
+
+    with pytest.raises(MissingArtifactError, match=r"'sweep_gpu_0\.mef'"):
+        MefStore.for_import(tmp_path).artifact("sweep_gpu_0.mef")
+
+
+def test_named_artifacts_are_found_across_directories(tmp_path: Path) -> None:
+    first, second = tmp_path / "a", tmp_path / "b"
+    _export_named(first, "first.mef")
+    _export_named(second, "second.mef")
+
+    store = MefStore.for_import([first, second])
+    assert store.artifact("first.mef") == first / "first.mef"
+    assert store.artifact("second.mef") == second / "second.mef"
+
+
+def test_one_name_in_two_directories_raises(tmp_path: Path) -> None:
+    # Unlike a graph's artifact, nothing records what a named one holds, so a
+    # name both directories claim cannot be resolved by comparing them.
+    first, second = tmp_path / "a", tmp_path / "b"
+    _export_named(first, "sweep_cpu.mef")
+    _export_named(second, "sweep_cpu.mef")
+
+    with pytest.raises(RuntimeError, match="both recorded as"):
+        MefStore.for_import([first, second])
+
+
+def test_a_name_cannot_also_be_a_graphs_artifact(tmp_path: Path) -> None:
+    store = MefStore.for_export(tmp_path)
+    taken = store.claim_export(_graph()).name
+
+    with pytest.raises(ValueError, match="already a graph's artifact"):
+        store.claim_export_artifact(taken)

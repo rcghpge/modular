@@ -909,7 +909,8 @@ VerifiedParamBindings ParamInf::inferForStruct() {
 
   auto attachNoteOnError = llvm::scope_exit([&]() {
     if (diag.hasErrorEmitted() && declIfKnown) {
-      if (llvm::isa_and_nonnull<FnOp>(declIfKnown->getIfOperation())) {
+      auto *defDecl = llvm::dyn_cast<DefASTDecl>(declIfKnown);
+      if (defDecl && defDecl->getOp()) {
         diag.attachNote(*declIfKnown) << "function declared here";
       } else {
         diag.attachNote(*declIfKnown)
@@ -1275,8 +1276,7 @@ LogicalResult ParamInf::finalizeWithUnbound() {
 
   auto emitInferenceFailure = [&](size_t paramIdx) {
     MojoInflightDiag &diag = getMojoDiag(paramBindings.getExprLoc());
-    if (declIfKnown &&
-        isa_and_nonnull<StructDeclOp>(declIfKnown->getIfOperation()))
+    if (isa_and_nonnull<StructASTDecl>(declIfKnown))
       diag << "'" << *declIfKnown->getUserNameIfOperation() << "' ";
 
     {
@@ -1289,9 +1289,10 @@ LogicalResult ParamInf::finalizeWithUnbound() {
 
     // If this is a method on a struct and we couldn't infer something from
     // its self parameters, complain about the struct.
-    if (declIfKnown && isa_and_nonnull<FnOp>(declIfKnown->getIfOperation())) {
-      if (auto structOp = dyn_cast<StructDeclOp>(
-              cast<FnOp>(declIfKnown->getIfOperation())->getParentOp())) {
+    if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown);
+        fnDecl && fnDecl->getOp()) {
+      if (auto structOp =
+              dyn_cast<StructDeclOp>(fnDecl->getOp()->getParentOp())) {
         auto structSig = structOp.getSignature();
         if (paramIdx < structSig.getNumParams()) {
           diag << " of parent struct '" << structOp.getDeclName().getValue()
@@ -1793,22 +1794,20 @@ LogicalResult CallParamInf::inferCTADParams() {
 
   // Get the ASTDecl for the declared self type.  This will give us the struct
   // that we are referring to without bound parameters.
-  ASTDecl *decl = declaredSelfType.getDecl(getShared());
+  auto *decl =
+      cast_or_null<StructASTDecl>(declaredSelfType.getDecl(getShared()));
   if (!decl)
     return success();
 
   // Get the Self type, with parameters bound to the structs CTAD parameters.
-  ASTType selfType = decl->getTypeDeclSelf();
+  ASTType selfType = decl->getSelfType();
   if (!selfType)
     return success();
 
   // We need to convert named parameters like "T", which are ParamDeclRefAttr
   // into ParamIndexRefAttr(0) style of representation.
-  if (auto structDecl =
-          dyn_cast_or_null<StructDeclOp>(decl->getIfOperation())) {
-    IndexRefRemapper remapper(structDecl.getParams(), /*resultParams*/ {});
-    selfType = remapper.replace(selfType.mlirType);
-  }
+  IndexRefRemapper remapper(decl->getOp().getParams(), /*resultParams*/ {});
+  selfType = remapper.replace(selfType.mlirType);
 
   // If passing self by reference, wrap the Self type with the RefType
   // paraphernalia like origins.
@@ -1837,13 +1836,10 @@ LogicalResult CallParamInf::inferOptionalLiteralSize() {
   for (auto [idx, pog] : llvm::enumerate(declaredParamPogs.getPogs())) {
     if (pog.getName().strref() == "__literal_size__") {
       IREmitter emitter(getDeclScope(), ExprContext::EC_ParameterList);
-      SyntheticNode dummyNode(callOperands.getExprLoc());
-      auto size = IntegerAttr::get(IndexType::get(getShared().getContext()),
-                                   callOperands.values.size() - 1);
       PValue literalSize =
           emitter
-              .emitInt({ASTExprAnd<AnyValue>(size, &dummyNode)},
-                       ExprContext::EC_ParameterList)
+              .emitInt(callOperands.values.size() - 1,
+                       callOperands.getExprLoc(), ExprContext::EC_ParameterList)
               .getIfPValue();
       if (!literalSize) {
         getMojoDiag(callOperands.getExprLoc())
@@ -2382,10 +2378,9 @@ VerifiedParamBindings CallParamInf::inferForCall() {
   //         pass
   // All of the arguments have been resolved here so all parameters must be
   // inferred (or not able to).
-  if (declIfKnown && declIfKnown->getIfOperation()) {
-    if (cast<FnOp>(declIfKnown->getIfOperation())
-            .getSpecialFunctionInfo()
-            .hasSelfResult())
+  if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown);
+      fnDecl && fnDecl->getOp()) {
+    if (fnDecl->getOp().getSpecialFunctionInfo().hasSelfResult())
       if (failed(inferSelfFromInitResult()))
         return {};
   }
@@ -2408,8 +2403,8 @@ VerifiedParamBindings CallParamInf::inferForCall() {
   // that doesn't have us shadowing parameters like this!
   // A trait member's enclosing declaration is a trait rather than a struct, so
   // the struct-shaped CTAD inference never applies to one.
-  if (declIfKnown && !declIfKnown->getIfWitness()) {
-    auto fnOp = cast<FnOp>(declIfKnown->getIfOperation());
+  if (auto *fnDecl = dyn_cast_if_present<DefASTDecl>(declIfKnown)) {
+    auto fnOp = fnDecl->getOp();
     if (!fnOp.getIsStatic() && isa<StructDeclOp>(fnOp->getParentOp())) {
       if (failed(inferCTADParams()))
         return {};

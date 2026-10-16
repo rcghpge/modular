@@ -161,7 +161,7 @@ def _handle_import_error(
 
     Args:
         e: The raised error
-        subcommand: The subcommand that was run (i.e. "serve" for `max serve`)
+        subcommand: The subcommand that was run (that is, "serve" for `max serve`)
         suggestion: Which package to install, first item is when using conda, second is for wheels.
     """
 
@@ -681,6 +681,16 @@ def cli_pipeline(
     # Load tokenizer & pipeline.
     from max.pipelines import PipelineArgs
     from max.pipelines.lib import MAXModelConfig
+
+    # Leaves the field unset unless the user passed the flag, so the AMD
+    # default in _with_debug_defaults can apply.
+    if (
+        click.get_current_context().get_parameter_source(
+            "disable_vendor_blas_fallback"
+        )
+        is click.core.ParameterSource.DEFAULT
+    ):
+        config_kwargs.pop("disable_vendor_blas_fallback", None)
 
     pipeline_args = PipelineArgs.from_flat_kwargs(**config_kwargs)
     model_config = MAXModelConfig.from_pipeline_args(pipeline_args)

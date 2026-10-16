@@ -29,7 +29,6 @@
 
 namespace M::KGEN {
 class ParamDeclAttr;
-class ConformanceOp;
 class StructGeneratorOp;
 enum class PassingKind : uint32_t;
 } // namespace M::KGEN
@@ -44,6 +43,7 @@ class ParserBase;
 class SharedState;
 class UnresolvedImportOp;
 class ImportOp;
+class EnumCaseOp;
 class StructDeclOp;
 class StructFieldOp;
 class TraitDeclOp;
@@ -71,6 +71,17 @@ public:
   ASTDecl &addDecl(DeclIRValue irValue, llvm::SMLoc loc, StringAttr baseName,
                    ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
+  TopLevelModuleASTDecl &addDecl(ModuleOp op, llvm::SMLoc loc,
+                                 StringAttr baseName, ASTDecl *parentDecl,
+                                 LexerCursor cursor, LexerCursor endCursor,
+                                 ssize_t indentation);
+  ImportASTDecl &addDecl(ImportOp op, llvm::SMLoc loc, StringAttr baseName,
+                         ASTDecl *parentDecl, LexerCursor cursor,
+                         LexerCursor endCursor, ssize_t indentation);
+  ImportASTDecl &addDecl(UnresolvedImportOp op, llvm::SMLoc loc,
+                         StringAttr baseName, ASTDecl *parentDecl,
+                         LexerCursor cursor, LexerCursor endCursor,
+                         ssize_t indentation);
 
   /// Add a declaration that was loaded from bytecode.
   ASTDecl &addBytecodeDecl(Operation *op, StringAttr baseName,
@@ -100,10 +111,27 @@ public:
   ASTDecl &createUnlistedDecl(Operation *decl, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
+  FileModuleASTDecl &createUnlistedDecl(FileModuleOp op, llvm::SMLoc loc,
+                                        ASTDecl *parentDecl, LexerCursor cursor,
+                                        LexerCursor endCursor,
+                                        ssize_t indentation);
+  PackageASTDecl &createUnlistedDecl(PackageOp op, llvm::SMLoc loc,
+                                     ASTDecl *parentDecl, LexerCursor cursor,
+                                     LexerCursor endCursor,
+                                     ssize_t indentation);
+
+  /// Create a witness declaration and install it in the trait's scope.
+  WitnessASTDecl &
+  createWitnessDecl(WitnessASTDecl::UnresolvedDecls unresolvedDecls,
+                    TraitSymbolAttr traitSymbol, llvm::SMLoc loc,
+                    ASTDecl &traitDecl, StringAttr name);
 
   /// Attach a declaration to its parent's name table.  For use with
   /// `makeUnlistedDecl`.
   void attachDeclToParentNameTable(ASTDecl *decl, StringAttr name);
+
+  /// Remove an unreachable declaration and its owned children.
+  void eraseDecl(ASTDecl &decl);
 
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the
@@ -184,16 +212,9 @@ private:
 public:
   /// Create a resolved ImportOp in \p dest's scope. Only nested ImportOps in
   /// the region gate access to child modules of \p modulePath.
-  ASTDecl &createImportOp(ASTDecl &dest, mlir::OpBuilder &builder,
-                          StringAttr name, ImportPathAttr modulePath,
-                          mlir::Location loc);
-
-  /// Return the absolute module path of a resolved module/package decl
-  /// (e.g. `a.b.c`), derived from its fully-resolved symbol. Used as a
-  /// gate's `modulePath` for imports whose syntactic path is relative
-  /// (`import .foo as z`, `from . import sub`), where there is no absolute name
-  /// to copy from the source. Returns {} if \p moduleDecl has no symbol.
-  ImportPathAttr getAbsoluteModuleName(ASTDecl &moduleDecl);
+  ImportASTDecl &createImportOp(ASTDecl &dest, mlir::OpBuilder &builder,
+                                StringAttr name, ImportPathAttr modulePath,
+                                mlir::Location loc);
 
   /// Import the provided decl from the given module decl, into the provided
   /// destination.
@@ -225,11 +246,6 @@ public:
   LogicalResult resolveBody(ASTDecl &decl, llvm::SMLoc loc) {
     return resolve(decl, DeclResolvedness::body, loc);
   }
-
-  /// For a given package, find the __init__ module, resolve its body, and
-  /// return it. Returns nullptr if the package is not a package or has no
-  /// __init__. Returns failure() if body resolution fails.
-  FailureOr<ASTDecl *> bodyResolvePackageInit(ASTDecl &package, SMLoc loc);
 
   /// Body-resolve the specified declaration and all declarations contained
   /// within it.
@@ -274,9 +290,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Resolve all of the declarations that are defined within or referenced by
-  /// the given container `decl`. If `eraseUnparsedDecls` is true, decls that
-  /// were not referenced at all during parsing are erased.
-  void resolveAllReferencedFrom(ASTDecl &decl, bool eraseUnparsedDecls = true);
+  /// the given container `decl`. Erases any from-import placeholders the
+  /// resolution superseded with a real ImportOp.
+  void resolveAllReferencedFrom(ASTDecl &decl);
+
+  /// Erase placeholder ops for decls left unparsed (never referenced).
+  void eraseUnparsedDecls();
 
   /// Resolve the pending wildcard imports in the scope.
   LogicalResult resolveAllWildcardImports(ASTDecl &scope);
@@ -308,23 +327,23 @@ public:
   /// it.  This doesn't allow null symbols, so it always succeeds.
   ASTDecl &getDeclForTypeSymbol(SymbolRefAttr symbol) const;
   ASTDecl *getDeclForTypeSymbolIfExists(SymbolRefAttr symbol) const;
-  ASTDecl *getDeclForFuncSymbol(SymbolRefAttr attr) const;
+  DefASTDecl *getDeclForFuncSymbol(SymbolRefAttr attr) const;
 
   /// This registers the finalized function with the DeclResolver after its
   /// signature has been resolved and its mangled name is available.  This
   /// returns an existing function if there is a redefinition problem.
-  Operation *finalizeFuncSignature(FnOp funcOp, ASTDecl &decl);
+  Operation *finalizeFuncSignature(FnOp funcOp, DefASTDecl &decl);
 
-  /// Return the trait composition decl for the given trait type. If no decl
-  /// exists for this trait composition, null is returned.
-  ASTDecl *getTraitDecl(TraitType trait);
+  /// Return the synthetic declaration for the given canonical trait
+  /// composition, creating it if needed.
+  ASTDecl *getTraitCompositionDecl(TraitType trait);
 
   //===--------------------------------------------------------------------===//
   // Export Handling
   //===--------------------------------------------------------------------===//
 
   void registerAndCheckExport(StringRef aliasName, SMLoc loc);
-  void exportMain(ASTDecl &funcDecl);
+  void exportMain(DefASTDecl &funcDecl);
 
   //===--------------------------------------------------------------------===//
   // Decl Helpers
@@ -363,7 +382,7 @@ public:
   ///
   /// trait @vanilla<?, *"_Self`": !lit.trait<@vanilla>>(!lit.trait<@AnyType,
   /// @Movable>) attributes {immediateParents = #M<symbols[@AnyType]>}
-  LogicalResult addSelfTypeToTrait(TraitDeclOp traitOp, ASTDecl &decl,
+  LogicalResult addSelfTypeToTrait(TraitDeclOp traitOp, TraitASTDecl &decl,
                                    SmallVector<TraitSymbolAttr> &parentTraits,
                                    DenseSet<TraitSymbolAttr> &immediateParents,
                                    ArrayRef<ParamDeclAttr> parameters = {},
@@ -389,47 +408,27 @@ public:
   };
 
 private:
+  friend class ASTDecl;
+  friend class AliasASTDecl;
+  friend class DefASTDecl;
+  friend class ExtensionASTDecl;
+  friend class StructASTDecl;
+  friend class StructFieldASTDecl;
+  friend class TraitASTDecl;
+  friend class WitnessASTDecl;
+
   /// Iteratively resolve all parsed decls that were referenced outside the
   /// main container (typically stdlib/library declarations). Called by
   /// resolveAllReferencedFrom when no errors have been emitted.
   void resolveReferencedDecls();
 
-  /// The resolveSignature methods are invoked on an operation to parse and type
-  /// check the signature for the operation.  On parse failure, these should
-  /// return a failure, which will cause the driver to mark the decl as invalid
-  /// for further references.
-  LogicalResult resolveSignature(FnOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(FnOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSyntheticBody(FnOp op, ASTDecl &decl);
-  LogicalResult resolveSyntheticSignature(FnOp op, ASTDecl &decl);
-  LogicalResult resolveSyntheticSignature(AliasDeclOp op, ASTDecl &decl);
-
-  ParseResult resolveBody(LIT::FileModuleOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(PackageOp op, ASTDecl &decl);
-
-  /// resolveTarget determines whether we also resolve the decl the
-  /// UnresolvedImportOp is referring to.
-  ParseResult resolveSignature(LIT::UnresolvedImportOp op, ASTDecl &decl,
-                               bool resolveTarget = true);
-
-  LogicalResult resolveSignature(StructDeclOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(StructDeclOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(StructFieldOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(TraitDeclOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(TraitDeclOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(AliasDeclOp op, Lexer &lexer, ASTDecl &decl);
-  ParseResult resolveBody(AliasDeclOp op, Lexer &lexer, ASTDecl &decl);
-  LogicalResult resolveSignature(ExtensionDeclOp op, Lexer &lexer,
-                                 ASTDecl &decl);
-  ParseResult resolveBody(ExtensionDeclOp op, Lexer &lexer, ASTDecl &decl);
+  /// Erase from-import placeholders superseded by a real ImportOp. Runs at
+  /// the end of every resolveAllReferencedFrom: the superseding gate is what
+  /// name lookup uses, so the placeholders are dead in every parsing mode.
+  void eraseDeadImportPlaceholders();
 
   ParseResult resolveSignature(TraitType traitType, ASTDecl &decl);
   ParseResult resolveBody(TraitType traitType, ASTDecl &decl);
-  ParseResult resolveSignature(WitnessDecl *witness, ASTDecl &decl);
-  ParseResult resolveBody(WitnessDecl *witness, ASTDecl &decl);
-
-  ParseResult resolveBody(ConformanceOp op, ASTDecl &decl);
 
   /// This map tracks the ASTDecl for every MLIR type declaration with a symbol.
   /// This does not include functions, only things that may be referred to by a
@@ -439,7 +438,7 @@ private:
   /// This map tracks the ASTDecl for every FnOp, allowing clients to map
   /// from MLIR symbol references to their body and AST information.  This is
   /// populated during signature resolution, since the symbol will be mangled.
-  DenseMap<SymbolRefAttr, ASTDecl *> declForFuncSymbol;
+  DenseMap<SymbolRefAttr, DefASTDecl *> declForFuncSymbol;
 
   /// This map tracks the synthetic, unlisted ASTDecls for trait compositions.
   /// Their IRValue is the canonical trait type-value. For details, see STCASTD.
@@ -456,6 +455,10 @@ private:
 
   /// This array holds all of the parsed declarations in a deterministic order.
   std::vector<ASTDecl *> parsedDeclList;
+
+  /// Removed declarations retained until the resolver is destroyed so active
+  /// resolution frames can unwind safely.
+  std::vector<ASTDecl *> retiredDeclList;
 
   /// From-import placeholders (`from a.b import c`) that resolved to a
   /// submodule and were superseded by an ImportOp.

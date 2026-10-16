@@ -225,7 +225,7 @@ If all fields conform, you inherit both methods through reflection.
 | `write[*Ts: Writable](mut self, *args: *Ts)` | provided |
 
 Use for loggers, network streams, string builders, etc.
-`String`, `FileHandle`, `FileDescriptor` conform to `Writer`.
+`String`, `FileHandle`, `RawFileDescriptor` conform to `Writer`.
 
 </Panel>
 
@@ -278,7 +278,7 @@ Implement `__lt__()` unless it's expensive. If so, override all four.
 
 </Panel>
 
-<Panel title="Hashable" summary="a type that can be hashed" source="hashlib/hash.mojo" table="requires">
+<Panel title="Hashable" summary="a type that can be hashed" source="hash/hash.mojo" table="requires">
 
 KeyElement = Hashable + Equatable + Movable
 
@@ -290,7 +290,7 @@ Needed for Dict keys and Set elements.
 
 </Panel>
 
-<Panel title="Hasher" summary="implements a hash algorithm" source="hashlib/hasher.mojo" table="requires">
+<Panel title="Hasher" summary="implements a hash algorithm" source="hash/hasher.mojo" table="requires">
 
 | Signature                                       | Remark |
 |-------------------------------------------------|--------|

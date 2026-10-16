@@ -41,14 +41,13 @@ from std.benchmark import (
     BenchMetric,
     ThroughputMeasure,
 )
-from std.memory import alloc
 from std.sys import get_defined_bool, get_defined_int, size_of
 
 from internal_utils import assert_almost_equal
 import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from std.math import sqrt
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 
 from internal_utils._cache_busting import CacheBustingBuffer
 from internal_utils._utils import InitializationType
@@ -192,7 +191,7 @@ def main() raises:
         var a_iter0 = TileTensor(cb_a.offset_ptr(0), a_shape)
         var b_iter0 = TileTensor(cb_b.offset_ptr(0), b_shape)
 
-        var eps = Float32(0.001)
+        comptime eps = Float32(0.001)
 
         # Kernel-internal scratch: reused across iters by design.
         var counter_buf = ctx.enqueue_create_buffer[.int32](1)
@@ -252,12 +251,13 @@ def main() raises:
                     ctx,
                 )
             else:
-                gemv_and_partial_norm_unfused_with_scratch[transpose_b=True](
+                gemv_and_partial_norm_unfused_with_scratch[
+                    transpose_b=True, eps=eps
+                ](
                     normed_tensor,
                     a_tensor,
                     b_tensor,
                     gamma_tensor,
-                    eps,
                     cb_y.offset_ptr(iteration).as_unsafe_any_origin(),
                     ctx,
                 )

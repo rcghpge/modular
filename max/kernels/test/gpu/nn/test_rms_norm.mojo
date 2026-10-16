@@ -12,11 +12,13 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import sqrt
+from std.sys import align_of
 from std.random import rand
 
 from max.gpu.host import DeviceContext
 from layout import Coord, Idx, TileTensor, row_major
 from nn.normalization import *
+from builtin_kernels.rowwise_normalization import rms_norm
 from std.testing import assert_almost_equal
 
 from std.utils.index import Index, IndexList
@@ -68,8 +70,8 @@ def run_rms_norm_gpu[
 
     var data_buf = TileTensor(data_d, row_major(Coord(shape)))
     var gamma = TileTensor(gamma_d, row_major(Coord(param_shape)))
-    var epsilon = Float32(0.001)
-    var weight_offset = Scalar[dtype](0.0)
+    comptime epsilon = Float32(0.001)
+    comptime weight_offset = Float32(0.0)
 
     ctx.enqueue_copy(data_d, data_h)
     ctx.enqueue_copy(gamma_d, gamma_h)
@@ -96,8 +98,10 @@ def run_rms_norm_gpu[
         rank,
         input_fn,
         identity_output_fn,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
         multiply_before_cast=multiply_before_cast,
-    ](Coord(shape), gamma, epsilon, weight_offset, ctx)
+    ](Coord(shape), gamma, ctx)
     ctx.enqueue_copy(res, data_d)
     ctx.synchronize()
 
@@ -109,7 +113,9 @@ def run_rms_norm_gpu[
         var rms_ref = compute_rms(vec, cols, epsilon)
         for c in range(cols):
             var idx = r * cols + c
-            var val = (data_h[idx] / rms_ref) * (gamma_h[c] + weight_offset)
+            var val = (data_h[idx] / rms_ref) * (
+                gamma_h[c] + weight_offset.cast[dtype]()
+            )
             assert_almost_equal(val, res[idx], rtol=rtol)
 
     _ = data_d
@@ -150,8 +156,8 @@ def run_rms_norm_gpu_static_dims[
 
     var data_buf = TileTensor(data_d, row_major(shape))
     var gamma = TileTensor(gamma_d, row_major(Coord(Index(cols))))
-    var epsilon = Float32(0.001)
-    var weight_offset = Scalar[dtype](0.0)
+    comptime epsilon = Float32(0.001)
+    comptime weight_offset = Float32(0.0)
 
     ctx.enqueue_copy(data_d, data_h)
     ctx.enqueue_copy(gamma_d, gamma_h)
@@ -176,8 +182,10 @@ def run_rms_norm_gpu_static_dims[
         rank,
         input_fn,
         identity_output_fn,
+        epsilon=epsilon,
+        weight_offset=weight_offset,
         multiply_before_cast=multiply_before_cast,
-    ](shape, gamma, epsilon, weight_offset, ctx)
+    ](shape, gamma, ctx)
     ctx.enqueue_copy(res, data_d)
     ctx.synchronize()
 
@@ -189,7 +197,9 @@ def run_rms_norm_gpu_static_dims[
         var rms_ref = compute_rms(vec, cols, epsilon)
         for c in range(cols):
             var idx = r * cols + c
-            var val = (data_h[idx] / rms_ref) * (gamma_h[c] + weight_offset)
+            var val = (data_h[idx] / rms_ref) * (
+                gamma_h[c] + weight_offset.cast[dtype]()
+            )
             assert_almost_equal(val, res[idx], rtol=rtol)
 
     _ = data_d
@@ -236,13 +246,14 @@ def run_rms_norm_gpu_zero_rows[dtype: DType](ctx: DeviceContext) raises:
             data_buf.layout(coords), val
         )
 
-    rms_norm_gpu[2, input_fn, identity_output_fn, multiply_before_cast=True](
-        Coord(Index(0, cols)),
-        gamma,
-        Float32(0.001),
-        Scalar[dtype](0.0),
-        ctx,
-    )
+    rms_norm_gpu[
+        2,
+        input_fn,
+        identity_output_fn,
+        epsilon=Float32(0.001),
+        weight_offset=Float32(0.0),
+        multiply_before_cast=True,
+    ](Coord(Index(0, cols)), gamma, ctx)
     var res = ctx.enqueue_create_host_buffer[dtype](cols)
     ctx.enqueue_copy(res, data_d)
     ctx.synchronize()
@@ -291,8 +302,7 @@ def run_rms_norm_row_based[
     var data_buf = TileTensor(data_d, row_major(Coord(shape)))
     var out_buf = TileTensor(out_d, row_major(Coord(shape)))
     var gamma = TileTensor(gamma_d, row_major(Coord(param_shape)))
-    var epsilon = eps_f32.cast[dtype]()
-    var weight_offset = Scalar[dtype](0.0)
+    comptime weight_offset = Float32(0.0)
 
     ctx.enqueue_copy(data_d, data_h)
     ctx.enqueue_copy(gamma_d, gamma_h)
@@ -302,27 +312,34 @@ def run_rms_norm_row_based[
         width: Int, alignment: Int
     ](coords: Coord) {var data_buf} -> SIMD[dtype, width]:
         var idx = data_buf.layout(coords)
-        return data_buf.raw_load[width=width, alignment=alignment](idx)
+        # The closure's `alignment` counts elements, as the graph compiler's
+        # closures read it; `raw_load` / `raw_store` take bytes.
+        return data_buf.raw_load[
+            width=width, alignment=alignment * align_of[dtype]()
+        ](idx)
 
     @inline(.always)
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
         var idx = out_buf.layout(coords)
-        out_buf.raw_store[width=width, alignment=alignment](
+        out_buf.raw_store[width=width, alignment=alignment * align_of[dtype]()](
             idx, rebind[SIMD[dtype, width]](val)
         )
 
     rms_norm[
-        dtype, rank, target="gpu", multiply_before_cast=multiply_before_cast
+        dtype,
+        rank,
+        target="gpu",
+        epsilon=eps_f32,
+        weight_offset=weight_offset,
+        multiply_before_cast=multiply_before_cast,
     ](
         input_fn,
         output_fn,
         Coord(shape),
         Scalar[DType.int](cols),
         gamma,
-        epsilon,
-        weight_offset,
         ctx,
     )
     ctx.enqueue_copy(res, out_d)
@@ -336,7 +353,9 @@ def run_rms_norm_row_based[
         var rms_ref = compute_rms(vec, cols, eps_f32)
         for c in range(cols):
             var idx = r * cols + c
-            var val = (data_h[idx] / rms_ref) * (gamma_h[c] + weight_offset)
+            var val = (data_h[idx] / rms_ref) * (
+                gamma_h[c] + weight_offset.cast[dtype]()
+            )
             assert_almost_equal(val, res[idx], rtol=rtol)
 
     _ = data_d
@@ -473,4 +492,16 @@ def main() raises:
         )
         run_rms_norm_row_based[DType.bfloat16, multiply_before_cast=False](
             ctx, Index(4, 4096), rtol=2e-2
+        )
+
+        # Few rows of at least `_SPLITK_MIN_ROW_BYTES` take the phase-aware
+        # split-K tier: one row, the 16-row cap, an odd width, and both
+        # `multiply_before_cast` branches.
+        run_rms_norm_row_based[DType.float32](ctx, Index(1, 65536))
+        run_rms_norm_row_based[DType.float32](ctx, Index(3, 100003))
+        run_rms_norm_row_based[DType.bfloat16](
+            ctx, Index(16, 262144), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.bfloat16, multiply_before_cast=False](
+            ctx, Index(2, 1048576), rtol=2e-2
         )

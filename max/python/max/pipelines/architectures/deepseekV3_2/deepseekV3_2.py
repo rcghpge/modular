@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import functools
 import os
+from collections import OrderedDict
 from collections.abc import Sequence
 from typing import Any, cast
 
+from max import tree
 from max._core.driver import is_virtual_device_mode
 from max.dtype import DType
 from max.graph import (
@@ -32,7 +34,6 @@ from max.graph import (
     ops,
 )
 from max.nn.attention.multi_latent_attention import MLAPrefillMetadata
-from max.nn.comm import Signals
 from max.nn.comm.ep import EPBatchManager
 from max.nn.data_parallelism import split_batch_replicated
 from max.nn.embedding import VocabParallelEmbedding
@@ -57,7 +58,10 @@ from max.nn.transformer.distributed_transformer import (
 )
 from max.tree import Tree
 
-from ..deepseekV3.deepseekV3 import deepseek_logits_postprocess
+from ..deepseekV3.deepseekV3 import (
+    deepseek_logits_postprocess,
+    deepseekV3_input_tree,
+)
 from .layers import DeepseekV3_2MLP, DeepseekV3_2MoE, DeepseekV3_2TopKRouter
 from .layers.sparse_mla import (
     DataParallelSparseLatentAttentionWithRope,
@@ -65,7 +69,7 @@ from .layers.sparse_mla import (
     TensorParallelSparseLatentAttentionWithRope,
     TensorParallelSparseLatentAttentionWithRopeFp8,
 )
-from .model_config import DeepseekV3_2Config
+from .model_config import DeepseekV3_2Config, indexer_cache_layer_map
 
 # Opt-in dual-carry + fused AG+RMSNorm. Default (unset / any other value) is
 # the baseline path: consumer-side ``input_layernorm``, plain post-MLP
@@ -395,6 +399,7 @@ class DeepseekV3_2DecoderLayer(Module):
     def __call__(
         self,
         layer_idx: TensorValue,
+        indexer_layer_idx: TensorValue,
         xs_raw: list[TensorValue],
         xs_norm: list[TensorValue],
         signal_buffers: list[BufferValue],
@@ -410,6 +415,9 @@ class DeepseekV3_2DecoderLayer(Module):
         next_input_gamma: list[TensorValue] | None = None,
         # Note: this is only used for MTP iterations after step 0.
         reuse_prev_topk: bool = False,
+        # Positions between the token the reused selection was computed for
+        # and this step's token.
+        selection_lag: int = 0,
     ) -> list[TensorValue]:
         # Dual-carry Pre-LN: attention uses ``xs_norm``; residuals use ``xs_raw``.
         apply_next = bool(next_input_gamma)
@@ -440,6 +448,8 @@ class DeepseekV3_2DecoderLayer(Module):
             mla_prefill_metadata=mla_prefill_metadata,
             prev_topk_indices=prev_topk,
             reuse_prev_topk=reuse_prev_topk,
+            selection_lag=selection_lag,
+            indexer_layer_idx=indexer_layer_idx,
         )
 
         ep_config = self.config.ep_config
@@ -787,6 +797,10 @@ class DeepseekV3_2(Module):
                 ]
             )
 
+        indexer_cache_layers = indexer_cache_layer_map(
+            self.config.indexer_types, len(self.layers)
+        )
+
         def inputs_for_layer(idx: int, h: list[TensorValue]) -> list[Tree[Any]]:
             # Layout of ``h``:
             # - carry_next_input_norm, idx==0: residual only (embeddings);
@@ -836,6 +850,11 @@ class DeepseekV3_2(Module):
                 )
             values: list[Tree[Any]] = [
                 ops.constant(idx, DType.uint32, device=DeviceRef.CPU()),
+                ops.constant(
+                    indexer_cache_layers[idx],
+                    DType.uint32,
+                    device=DeviceRef.CPU(),
+                ),
                 hidden_raw,
                 hidden_norm,
                 signal_buffers,
@@ -883,61 +902,18 @@ class DeepseekV3_2(Module):
             vocab_size=self.config.vocab_size,
         )
 
+    def input_tree(
+        self, kv_params: KVCacheParamInterface
+    ) -> OrderedDict[str, object]:
+        """Names the graph's inputs; its leaves are the graph's inputs."""
+        return deepseekV3_input_tree(
+            kv_params=kv_params,
+            device_refs=list(self.config.devices),
+            data_parallel_degree=self.config.data_parallel_degree,
+            ep_config=self.config.ep_config,
+        )
+
     def input_types(
         self, kv_params: KVCacheParamInterface
     ) -> tuple[TensorType | BufferType, ...]:
-        # TODO: Move input symbol computation from the manager classes.
-        # It should be possible to compute the input symbols from the model
-        # config.
-        device_ref = self.config.devices[0]
-
-        # Construct Graph Inputs
-        tokens_type = TensorType(
-            DType.int64, shape=["total_seq_len"], device=device_ref
-        )
-        device_input_row_offsets_type = TensorType(
-            DType.uint32,
-            shape=["input_row_offsets_len"],
-            device=device_ref,
-        )
-
-        # Add host input row offsets type, this is used to split the
-        # concatenated DP inputs.
-        host_input_row_offsets_type = TensorType(
-            DType.uint32,
-            shape=["input_row_offsets_len"],
-            device=DeviceRef.CPU(),
-        )
-        return_n_logits_type = TensorType(
-            DType.int64, shape=["return_n_logits"], device=DeviceRef.CPU()
-        )
-        data_parallel_splits_type = TensorType(
-            DType.int64,
-            shape=[self.config.data_parallel_degree + 1],
-            device=DeviceRef.CPU(),
-        )
-
-        signals = Signals(devices=self.config.devices)
-        signal_buffer_types: list[BufferType] = signals.input_types()
-
-        all_input_types: list[TensorType | BufferType] = [
-            tokens_type,
-            device_input_row_offsets_type,
-            host_input_row_offsets_type,
-            return_n_logits_type,
-            data_parallel_splits_type,
-        ]
-        all_input_types.extend(signal_buffer_types)
-        all_input_types.extend(kv_params.flattened_kv_inputs())
-
-        # Add batch context lengths
-        batch_context_length_type = TensorType(
-            DType.int32, shape=[1], device=DeviceRef.CPU()
-        )
-        all_input_types.extend(
-            [batch_context_length_type for _ in range(len(self.config.devices))]
-        )
-
-        if self.ep_manager is not None:
-            all_input_types.extend(self.ep_manager.input_types())
-        return tuple(all_input_types)
+        return tuple(tree.leaves(self.input_tree(kv_params)))

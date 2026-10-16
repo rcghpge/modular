@@ -20,7 +20,6 @@ from std.collections.string.string_span import get_static_string
 from std.format._utils import _FixedWriteBuffer, _FlushingWriteBuffer
 from std.sys import _libc as libc
 from std.ffi import (
-    c_char,
     c_size_t,
     c_ssize_t,
     external_call,
@@ -47,13 +46,13 @@ from std.sys.info import CompilationTarget
 
 from std.memory import bitcast
 
-from .file_descriptor import FileDescriptor
+from .file_descriptor import RawFileDescriptor
 
 
 # FIXME(MOCO-3871): Alias is to workaround function type comparison bug.
 comptime _PrintEmitPluginHookFnType = def[O: Origin](
     cstr: CStringSpan[O],
-    file_value: FileDescriptor,
+    file_value: RawFileDescriptor,
 ) thin -> None
 """Plugin-hook signature for `PluginHooks.print_emit_fn`; keep in sync with the `print` emit path."""
 
@@ -67,7 +66,7 @@ comptime _PrintEmitPluginHookFnType = def[O: Origin](
 struct _fdopen[mode: StaticString = "a"](ImplicitlyCopyable, RegisterPassable):
     var handle: FILE_ptr
 
-    def __init__(out self, stream_id: FileDescriptor):
+    def __init__(out self, stream_id: RawFileDescriptor):
         """Creates a file handle to the stdout/stderr stream.
 
         Args:
@@ -75,7 +74,7 @@ struct _fdopen[mode: StaticString = "a"](ImplicitlyCopyable, RegisterPassable):
         """
 
         self.handle = fdopen(
-            dup(Int32(stream_id.value)),
+            dup(stream_id.value),
             Self.mode.as_c_string_span(),
         )
 
@@ -181,7 +180,7 @@ struct _fdopen[mode: StaticString = "a"](ImplicitlyCopyable, RegisterPassable):
 
 
 @inline(.never)
-def _flush(file: FileDescriptor = stdout):
+def _flush(file: RawFileDescriptor = stdout):
     with _fdopen(file) as fd:
         _ = fflush(fd.handle)
 
@@ -193,7 +192,7 @@ def _flush(file: FileDescriptor = stdout):
 
 def _printf_cpu[
     fmt: StaticString, *types: AnyType
-](*args: *types, file: FileDescriptor = stdout):
+](*args: *types, file: RawFileDescriptor = stdout):
     with _fdopen(file) as fd:
         # int fprintf(FILE *restrict stream, const char *restrict fmt, ...);
         # The pack is loaded so the variadic arguments are the values
@@ -208,7 +207,7 @@ def _printf_cpu[
 @inline(.never)
 def _printf[
     fmt: StaticString, *types: AnyType
-](*args: *types, file: FileDescriptor = stdout):
+](*args: *types, file: RawFileDescriptor = stdout):
     if __is_run_in_comptime_interpreter:
         _printf_cpu[fmt](*args, file=file)
         return
@@ -364,7 +363,7 @@ def print[
     sep: StringSlice = " ",
     end: StringSlice = "\n",
     flush: Bool = False,
-    var file: FileDescriptor = stdout,
+    var file: RawFileDescriptor = stdout,
 ):
     """Prints elements to the text stream. Each element is separated by `sep`
     and followed by `end`.
@@ -419,13 +418,11 @@ def print[
 
         return
 
-    comptime if CurrentPlugin.print_emit_fn:
+    comptime if case .Some(_emit) = CurrentPlugin.print_emit_fn:
         var buffer = _FixedWriteBuffer()
         values._write_to(buffer, sep=sep, end=end)
 
         var cstr = buffer.nul_terminate()
-
-        comptime _emit = CurrentPlugin.print_emit_fn.unsafe_value()
 
         # FIXME: The origin param of `_emit` should be inferred from `cstr`.
         _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)
@@ -441,10 +438,6 @@ def print[
             var msg = printf_begin()
             _ = printf_append_string_n(
                 msg, cstr.as_bytes_with_nul(), is_last=True
-            )
-        elif is_apple_gpu():
-            _metal_print_write(
-                StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul())
             )
         else:
             CompilationTarget.unsupported_target_error[

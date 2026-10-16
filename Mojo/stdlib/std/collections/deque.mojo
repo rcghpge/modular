@@ -25,7 +25,7 @@ from std.collections import Deque
 from std.bit import next_power_of_two
 from std.builtin.rebind import downcast
 import std.format._utils as fmt
-from std.hashlib import Hasher
+from std.hash import Hasher
 from std.collections import check_bounds
 from std.memory.alloc import alloc, dealloc, ThinAllocation, Layout
 
@@ -780,7 +780,7 @@ struct Deque[ElementType: Movable](
         """
         var start_normalized = start
 
-        var stop_normalized = len(self) if stop is None else stop.value()
+        var stop_normalized = stop.or_else(len(self))
 
         if start_normalized < 0:
             start_normalized += len(self)

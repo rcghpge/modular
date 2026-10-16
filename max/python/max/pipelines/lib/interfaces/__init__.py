@@ -19,9 +19,14 @@ from max.pipelines.lib.interfaces.batch_processor import (
     RaggedBatchProcessor,
     SingleReplicaRaggedBatchProcessor,
     build_single_replica_ragged_token_arrays,
+    modulev3_ragged_kv_symbolic_input_tree,
     process_ragged_kv_outputs,
+    ragged_batch_inputs,
+    ragged_kv_symbolic_input_tree,
     ragged_kv_symbolic_inputs,
+    signal_inputs,
     single_replica_context_batch,
+    vision_merge_inputs,
 )
 
 from .arch_config import (
@@ -35,7 +40,6 @@ from .arch_config import (
     ArchVLConfigWithTextSubconfig,
     arch_has_vision_tower,
 )
-from .generate import GenerateMixin
 from .pipeline_model import (
     AlwaysSignalBuffersMixin,
     GraphPipelineModel,
@@ -65,7 +69,6 @@ __all__ = [
     "ArchVLConfigWithTextSubconfig",
     "BatchProcessor",
     "BatchProcessorRuntime",
-    "GenerateMixin",
     "GraphPipelineModel",
     "GraphPipelineModelWithKVCache",
     "ModelInputs",
@@ -84,7 +87,12 @@ __all__ = [
     "UnifiedSpecDecodeInputs",
     "arch_has_vision_tower",
     "build_single_replica_ragged_token_arrays",
+    "modulev3_ragged_kv_symbolic_input_tree",
     "process_ragged_kv_outputs",
+    "ragged_batch_inputs",
+    "ragged_kv_symbolic_input_tree",
     "ragged_kv_symbolic_inputs",
+    "signal_inputs",
     "single_replica_context_batch",
+    "vision_merge_inputs",
 ]

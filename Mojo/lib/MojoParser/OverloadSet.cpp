@@ -157,10 +157,6 @@ static bool filterForBestCandidates(
     if (!isValidOrFnInconclusive(eval) || bestFitness->isBetter(eval))
       continue;
 
-    // Ignore any functions explicitly marked as disabled.
-    if (candidate->isDisabled())
-      continue;
-
     // If we found a strictly better candidate, clear the list and update.
     if (eval.isBetter(*bestFitness)) {
       bestCandidates.clear();
@@ -587,7 +583,8 @@ static LogicalResult emitOperandsNeedingOriginsToMemory(
 }
 
 bool LIT::isNeverCallableSynthesizedCandidate(ASTDecl *candidate) {
-  auto func = cast_or_null<FnOp>(candidate->getIfOperation());
+  auto *defDecl = dyn_cast<DefASTDecl>(candidate);
+  FnOp func = defDecl ? defDecl->getOp() : nullptr;
   if (!func || !func.isSynthetic())
     return false;
   for (ConstraintAttr constraint :
@@ -639,9 +636,6 @@ CalleeResult OverloadSet::filterOverloadSet(
   DenseSet<Type> seenWitness;
   ASTType selfTrait;
   for (ASTDecl *candidate : fnDecls) {
-    if (candidate->isDisabled())
-      continue;
-
     // If we are dealing with a static method, we check if the operands include
     // a self operand and remove it, otherwise the signature might not match.
     if (operands.hasSelfOperand && candidate->isStaticMethodDecl()) {
@@ -651,7 +645,7 @@ CalleeResult OverloadSet::filterOverloadSet(
     }
 
     FnTypeGeneratorType desiredSignature = candidate->getDeclFullSignature();
-    if (candidate->getIfWitness()) {
+    if (isa<WitnessASTDecl>(candidate)) {
       auto sig = cast<FnTypeGeneratorType>(getCanonicalType(desiredSignature));
       ArrayRef<Type> inputParamTypes = sig.getInputParamTypes();
       if (inputParamTypes.empty() || !isa<TraitType>(inputParamTypes[0]))
@@ -1021,13 +1015,10 @@ CalleeAndDeclResult OverloadSet::filterOverloadSetForValueType(
               kOverloadEvaluationsInlineSize>
       inconclusiveEvaluations;
   for (ASTDecl *candidate : fnDecls) {
-    // Skip functions explicitly marked as 'disabled'.
-    if (candidate->isDisabled())
-      continue;
-
     // A trait member reached through a composition has no `FnOp` to form a
     // function literal from, so it cannot be referenced as a function value.
-    auto candidateFn = dyn_cast_or_null<FnOp>(candidate->getIfOperation());
+    auto *candidateFnDecl = dyn_cast<DefASTDecl>(candidate);
+    FnOp candidateFn = candidateFnDecl ? candidateFnDecl->getOp() : nullptr;
     if (!candidateFn)
       continue;
     Type candidateType =
@@ -1232,10 +1223,7 @@ OverloadSet OverloadSet::lookup(ASTDecl &declScope, ASTType type,
       assert(!resultDecls.empty() && "We know this succeeded");
       assert(result.fnDecls.empty() && "Already have entries");
 
-      // Filter out disabled functions to avoid multiple definition conflicts
       for (ASTDecl *decl : resultDecls) {
-        if (decl->isDisabled())
-          continue;
         // If we find a vardecl or any other thing, then fail to find anything
         // because it cannot be called.
         if (!decl->isCallableDecl()) {
@@ -1264,10 +1252,7 @@ OverloadSet OverloadSet::lookup(ASTDecl &declScope, ASTType type,
         ArrayRef<ASTDecl *> resultDecls = lookupResult.getIfSuccess();
         assert(!resultDecls.empty() && "We know this succeeded");
 
-        // Filter out disabled functions to avoid multiple definition conflicts
         for (ASTDecl *decl : resultDecls) {
-          if (decl->isDisabled())
-            continue;
           // If we find a vardecl or any other thing, then fail to find anything
           // because it cannot be called.
           if (!decl->isCallableDecl()) {

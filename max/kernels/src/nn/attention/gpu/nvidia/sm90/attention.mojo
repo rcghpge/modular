@@ -34,12 +34,12 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
     IntTuple,
-    Layout,
-    LayoutTensor,
+    TensorLayout,
     TileTensor,
     row_major,
 )
-from layout.layout_tensor import copy_local_to_shared
+from layout.tensor_engine import DefaultEngine
+from layout.tile_io import copy_local_to_shared
 from layout.swizzle import Swizzle
 from layout.tensor_core_async import tile_layout_k_major
 from layout.tma_async import (
@@ -52,7 +52,6 @@ from nn.attention.mha_operand import (
     MHAOperand,
     PagedRowIndices,
     kv_sub_tile_rows,
-    kv_num_sub_tiles,
 )
 from nn.attention.gpu.nvidia.mha_tile_scheduler import (
     MHASchedulerSynchronization,
@@ -62,7 +61,6 @@ from nn.attention.gpu.nvidia.mha_tile_scheduler import (
     SeqInfo,
 )
 from nn.attention.mha_utils import (
-    MHAConfig,
     MHAPartitionScheme,
     OptionallyStaticInt,
     _is_decoding,
@@ -86,7 +84,6 @@ from nn.attention.gpu.nvidia.common import (
     NullPointer,
     OptionalPointer,
     Pack,
-    QTMATilePrefill,
     QTMATileFused,
     _LocalTT,
     _SharedMemTT,
@@ -243,10 +240,10 @@ def _apply_mask[
     decoding: Bool,
     accum_type: DType,
     mask_t: MHAMask,
-    reg_tile_layout: Layout,
-    element_layout: Layout,
+    PLayoutType: TensorLayout,
     //,
     # last_iter: Bool,
+    p_element_size: Int,
     WM: Int,
     WN: Int,
     num_m_mmas: Int,
@@ -262,16 +259,16 @@ def _apply_mask[
     kv_tile_start_row: UInt32,
     mask: mask_t,
     mask_status: TileMaskStatus,
-    # Legacy scalar view: TileTensor has no `element_layout` equivalent for
-    # the per-fragment indexing below.
-    p_reg_tile: LayoutTensor[
+    p_reg_tile: TileTensor[
+        mut=True,
         accum_type,
-        reg_tile_layout,
+        PLayoutType,
         MutAnyOrigin,
         address_space=.LOCAL,
-        element_layout=element_layout,
+        Engine=DefaultEngine[element_width=p_element_size],
     ],
 ):
+    comptime assert p_reg_tile.flat_rank == 4
     comptime num_groups_per_thread = min(
         2, ceildiv(group, 8)
     ) if decoding else 2
@@ -288,7 +285,7 @@ def _apply_mask[
     else:
         batch_cache_valid_length = 0
 
-    comptime p_frag_simdwidth = element_layout.size()
+    comptime p_frag_simdwidth = p_element_size
     # Vectorize by 2.
     var fragment_row: UInt32 = lane // 4
     var fragment_col: UInt32 = (
@@ -572,11 +569,10 @@ def produce[
     var tile_state = tile_state_arg
     var position = initial_position
 
-    @__parameter
     @inline(.nodebug)
     def q_producer(
         q_idx: UInt32, offset: UInt32 = 0
-    ) -> TileTensor[
+    ) {imm} -> TileTensor[
         qkv_type,
         type_of(row_major(q_tile_shape)),
         type_of(q_smem).origin,
@@ -617,7 +613,6 @@ def produce[
         BM, BN, page_size
     ]()
 
-    @__parameter
     @inline(.nodebug)
     def _num_valid_pages(end_row: UInt32, current_kv_row: UInt32) -> UInt32:
         return min(
@@ -625,7 +620,6 @@ def produce[
             UInt32(KVPagedRows.num_pages),
         )
 
-    @__parameter
     @inline(.nodebug)
     def produce_kv[
         is_k_side: Bool,
@@ -636,7 +630,7 @@ def produce[
         prompt_idx: UInt32,
         kv_tile_row: UInt32,
         kv_head_idx: UInt32,
-    ):
+    ) {imm}:
         var write_idx: UInt32 = state.index()
         var write_phase: UInt32 = state.phase()
 
@@ -674,7 +668,6 @@ def produce[
             )
         state.step()
 
-    @__parameter
     @inline(.nodebug)
     def produce_kv_partial[
         is_k_side: Bool,
@@ -686,7 +679,7 @@ def produce[
         kv_tile_row: UInt32,
         kv_head_idx: UInt32,
         num_valid_pages: UInt32,
-    ):
+    ) {imm}:
         """Like `produce_kv` but with runtime-bounded page loops.
 
         Uses `populate` + `tma_copy_{k,v}[needs_partial=True]` so the
@@ -730,9 +723,8 @@ def produce[
             )
         state.step()
 
-    @__parameter
     @inline(.always)
-    def get_position(seq_info: SeqInfo) -> PositionType:
+    def get_position(seq_info: SeqInfo) {imm} -> PositionType:
         return _get_position[
             BM,
             BN,
@@ -1026,12 +1018,9 @@ def produce[
 
 
 @inline(.always)
-@inline(.always)
 def output_reg_to_smem[
     output_type: DType,
     accum_type: DType,
-    num_m_mmas: Int,
-    o_frag_size: Int,
     //,
     BM: Int,
     BN: Int,
@@ -1045,23 +1034,13 @@ def output_reg_to_smem[
     q_smem: UnsafePointer[
         Scalar[output_type], MutAnyOrigin, address_space=.SHARED
     ],
-    # Legacy register view: consumed by the register-A WGMMA/stmatrix path
-    # (`output_reg_to_smem_st_matrix` bridges via `_LocalTT`/`_SharedMemTT`)
-    # and by `copy_local_to_shared`'s fp32->half downcast, which has no
-    # TileTensor-native equivalent yet.
-    output_reg_tile: LayoutTensor[
-        accum_type,
-        Layout.row_major(num_m_mmas, o_frag_size),
-        MutAnyOrigin,
-        address_space=.LOCAL,
+    output_reg_tile: TileTensor[
+        mut=True, dtype=accum_type, address_space=.LOCAL, ...
     ],
-    # Returned legacy smem view feeds the masked-dst `copy_sram_to_dram`,
-    # whose TileTensor counterpart does not support masking or downcast.
-) -> LayoutTensor[
+) -> _SharedMemTT[
     output_type,
-    Layout.row_major(BM, padded_depth),
-    MutAnyOrigin,
-    address_space=.SHARED,
+    row_major[BM, padded_depth](),
+    Engine=DefaultEngine[element_width=1],
 ]:
     """Stores the output accumulator registers from local memory into shared memory.
 
@@ -1072,9 +1051,6 @@ def output_reg_to_smem[
     Parameters:
         output_type: DType of the values written to shared memory.
         accum_type: DType of the accumulator values held in registers.
-        num_m_mmas: Number of MMA tiles in the M dimension of the output
-            register tile.
-        o_frag_size: Number of elements per output fragment per MMA tile.
         BM: Block size in the query-row (M) dimension of the output tile.
         BN: Block size in the key/value (N) dimension of the output warp tile.
         padded_depth: Head dimension padded to the MMA alignment boundary.
@@ -1092,38 +1068,39 @@ def output_reg_to_smem[
             BM-row output block.
         q_smem: Base pointer to shared memory where the output tile is stored.
         output_reg_tile: Local register tile holding the accumulator output
-            fragments.
+            fragments, shaped `num_m_mmas x o_frag_size`.
+
+    Returns:
+        The `BM x padded_depth` shared-memory view the output was stored to.
     """
-    # Legacy smem view: bridges to `_LocalTT`/`_SharedMemTT` stmatrix call and
-    # is returned to the caller's masked `copy_sram_to_dram` (no TileTensor
-    # equivalents for those paths yet).
-    var accum_smem_tile = LayoutTensor[
-        output_type,
-        Layout.row_major(BM, padded_depth),
-        address_space=.SHARED,
-    ](q_smem)
+    comptime num_m_mmas = output_reg_tile.LayoutType.static_shape[0]
+    comptime o_frag_size = output_reg_tile.LayoutType.static_shape[1]
+    comptime reg_layout = row_major[num_m_mmas, o_frag_size]()
+    comptime smem_layout = row_major[BM, padded_depth]()
+    var accum_smem_tile = _SharedMemTT[
+        output_type, smem_layout, Engine=DefaultEngine[element_width=1]
+    ](q_smem, smem_layout)
     comptime use_stmatrix = accum_type == DType.float32 and padded_depth % 16 == 0 and size_of[
         output_type
     ]() == 2 and o_frag_size % 8 == 0
 
     comptime if use_stmatrix:
         var warp_group_thread_idx = tid % UInt32(WARPGROUP_SIZE)
-        comptime reg_layout = row_major[num_m_mmas, o_frag_size]()
-        comptime smem_layout = row_major[BM, padded_depth]()
         output_reg_to_smem_st_matrix[BM, swizzle, num_consumer](
             warp_group_thread_idx,
             local_warp_group_idx,
-            _LocalTT[accum_type, reg_layout](output_reg_tile.ptr, reg_layout),
-            _SharedMemTT[output_type, smem_layout](
-                accum_smem_tile.ptr, smem_layout
+            _LocalTT[accum_type, reg_layout](
+                output_reg_tile.ptr.unsafe_origin_cast[MutAnyOrigin](),
+                reg_layout,
             ),
+            accum_smem_tile,
         )
     else:
-        comptime mma_thread_layout = Layout.row_major(8, 4)
+        comptime mma_thread_layout = row_major[8, 4]()
         var accum_smem_warp_tile = accum_smem_tile.tile[16, BN](
-            Int(warp_y), Int(0)
+            (Int(warp_y), 0)
         )
-        copy_local_to_shared[thread_layout=mma_thread_layout, swizzle=swizzle](
+        copy_local_to_shared[mma_thread_layout, swizzle=swizzle](
             accum_smem_warp_tile.vectorize[1, 2](),
             output_reg_tile.vectorize[1, 2]().transpose(),
         )

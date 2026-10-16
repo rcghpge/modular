@@ -87,10 +87,10 @@ def _compute_distribute_layout[
     """
     var thread_tile = LayoutList()
 
-    comptime if axis:
+    comptime if case .Some(axis_idx) = axis:
         return zipped_divide(
             materialize[data_layout](),
-            Layout(threads_layout.shape[axis.value()]),
+            Layout(threads_layout.shape[axis_idx]),
         )
 
     else:
@@ -249,6 +249,7 @@ def _distribute_is_masked[
     return False
 
 
+@deprecated("Use TileTensor instead")
 struct LayoutTensor[
     mut: Bool,
     //,
@@ -1170,8 +1171,8 @@ struct LayoutTensor[
 
     @inline(.always)
     def _elementwise_unary[
-        func: def(Self.element_type) capturing -> (Self.element_type),
-    ](self) -> Self:
+        FuncType: def(Self.element_type) -> Self.element_type,
+    ](self, func: FuncType) -> Self:
         """Apply an elementwise unary operation to all elements in the tensor.
 
         This is an internal method that applies the provided function to each
@@ -1179,6 +1180,9 @@ struct LayoutTensor[
         for the tensor's memory layout.
 
         Parameters:
+            FuncType: The type of `func`.
+
+        Args:
             func: A function that takes a single element and returns a
                 transformed element. The function should be pure with no side
                 effects for predictable results.
@@ -1343,11 +1347,10 @@ struct LayoutTensor[
             operator).
         """
 
-        @__parameter
-        def add_val(val: Self.element_type) -> Self.element_type:
+        def add_val(val: Self.element_type) {imm} -> Self.element_type:
             return Self.element_type(other) + val
 
-        return self._stack_copy()._elementwise_unary[add_val]()
+        return self._stack_copy()._elementwise_unary(add_val)
 
     @inline(.always)
     def __iadd__(self, other: Scalar[Self.dtype]):
@@ -1364,11 +1367,10 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @__parameter
-        def add_val(val: Self.element_type) -> Self.element_type:
+        def add_val(val: Self.element_type) {imm} -> Self.element_type:
             return Self.element_type(other) + val
 
-        _ = self._elementwise_unary[add_val]()
+        _ = self._elementwise_unary(add_val)
 
     @inline(.always)
     def __add__[
@@ -1485,11 +1487,10 @@ struct LayoutTensor[
             (`*=` operator).
         """
 
-        @__parameter
-        def mul_val(val: Self.element_type) -> Self.element_type:
+        def mul_val(val: Self.element_type) {imm} -> Self.element_type:
             return Self.element_type(other) * val
 
-        return self._stack_copy()._elementwise_unary[mul_val]()
+        return self._stack_copy()._elementwise_unary(mul_val)
 
     @inline(.always)
     def __mul__[
@@ -1560,11 +1561,10 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @__parameter
-        def mul_val(val: Self.element_type) -> Self.element_type:
+        def mul_val(val: Self.element_type) {imm} -> Self.element_type:
             return Self.element_type(other) * val
 
-        _ = self._elementwise_unary[mul_val]()
+        _ = self._elementwise_unary(mul_val)
 
     @inline(.always)
     def __imul__[
@@ -1634,11 +1634,10 @@ struct LayoutTensor[
             operator).
         """
 
-        @__parameter
-        def sub_val(val: Self.element_type) -> Self.element_type:
+        def sub_val(val: Self.element_type) {imm} -> Self.element_type:
             return val - Self.element_type(other)
 
-        return self._stack_copy()._elementwise_unary[sub_val]()
+        return self._stack_copy()._elementwise_unary(sub_val)
 
     @inline(.always)
     def __sub__[
@@ -1705,11 +1704,10 @@ struct LayoutTensor[
         - This operation modifies the tensor directly without creating a copy.
         """
 
-        @__parameter
-        def sub_val(val: Self.element_type) -> Self.element_type:
+        def sub_val(val: Self.element_type) {imm} -> Self.element_type:
             return val - Self.element_type(other)
 
-        _ = self._elementwise_unary[sub_val]()
+        _ = self._elementwise_unary(sub_val)
 
     @inline(.always)
     def __isub__[
@@ -1782,11 +1780,10 @@ struct LayoutTensor[
         - For integer dtypes, this performs integer division.
         """
 
-        @__parameter
-        def div_val(val: Self.element_type) -> Self.element_type:
+        def div_val(val: Self.element_type) {imm} -> Self.element_type:
             return val / Self.element_type(other)
 
-        return self._stack_copy()._elementwise_unary[div_val]()
+        return self._stack_copy()._elementwise_unary(div_val)
 
     @inline(.always)
     def __truediv__[
@@ -1861,11 +1858,10 @@ struct LayoutTensor[
         - For integer dtypes, this performs integer division.
         """
 
-        @__parameter
-        def div_val(val: Self.element_type) -> Self.element_type:
+        def div_val(val: Self.element_type) {imm} -> Self.element_type:
             return val / Self.element_type(other)
 
-        _ = self._elementwise_unary[div_val]()
+        _ = self._elementwise_unary(div_val)
 
     @inline(.always)
     def __itruediv__[
@@ -1932,7 +1928,7 @@ struct LayoutTensor[
 
         return {
             self._stack_copy()
-            ._elementwise_unary[exp_func]()
+            ._elementwise_unary(exp_func)
             .ptr.unsafe_mut_cast[Self.mut]()
             .unsafe_origin_cast[Self.origin](),
             self.runtime_layout,
@@ -4083,8 +4079,7 @@ struct LayoutTensor[
             # the former is the unit in distribution.
             var swizzled_offset = offset
 
-            comptime if swizzle:
-                comptime swizzle_fn = swizzle.value()
+            comptime if case .Some(swizzle_fn) = swizzle:
                 swizzled_offset = swizzle_fn(
                     offset // Scalar[Self.linear_idx_type](self.element_size)
                 ) * Scalar[Self.linear_idx_type](self.element_size)
@@ -4144,8 +4139,7 @@ struct LayoutTensor[
             # the former is the unit in distribution.
             var swizzled_offset = offset
 
-            comptime if swizzle:
-                comptime swizzle_fn = swizzle.value()
+            comptime if case .Some(swizzle_fn) = swizzle:
                 swizzled_offset = swizzle_fn(
                     offset // Scalar[Self.linear_idx_type](self.element_size)
                 ) * Scalar[Self.linear_idx_type](self.element_size)
@@ -4252,8 +4246,7 @@ struct LayoutTensor[
             # the former is the unit in distribution.
             var swizzled_offset = offset
 
-            comptime if swizzle:
-                comptime swizzle_fn = swizzle.value()
+            comptime if case .Some(swizzle_fn) = swizzle:
                 swizzled_offset = swizzle_fn(
                     offset // Scalar[Self.linear_idx_type](self.element_size)
                 ) * Scalar[Self.linear_idx_type](self.element_size)
@@ -4322,8 +4315,7 @@ struct LayoutTensor[
             # the former is the unit in distribution.
             var swizzled_offset = offset
 
-            comptime if swizzle:
-                comptime swizzle_fn = swizzle.value()
+            comptime if case .Some(swizzle_fn) = swizzle:
                 swizzled_offset = swizzle_fn(
                     offset // Scalar[Self.linear_idx_type](self.element_size)
                 ) * Scalar[Self.linear_idx_type](self.element_size)
@@ -5670,8 +5662,7 @@ struct LayoutTensor[
                 comptime dst_idx = Self.layout(i)
                 var swizzled_idx: Scalar[self.linear_idx_type]
 
-                comptime if swizzle:
-                    comptime swizzle_fn = swizzle.value()
+                comptime if case .Some(swizzle_fn) = swizzle:
                     comptime dst_idx_base = dst_idx % swizzle_fn.size()
                     comptime dst_idx_diff = dst_idx - dst_idx_base
                     swizzled_idx = (
@@ -6159,16 +6150,17 @@ def _get_worker_idx[
     )
 
     comptime if thread_scope == ThreadScope.BLOCK:
-        comptime if block_dim_count == 1:
-            return thread_idx.x
-        elif block_dim_count == 2:
-            return thread_idx.y * block_dim.x + thread_idx.x
-        else:
-            return (
-                thread_idx.z * block_dim.y * block_dim.x
-                + thread_idx.y * block_dim.x
-                + thread_idx.x
-            )
+        comptime match block_dim_count:
+            case 1:
+                return thread_idx.x
+            case 2:
+                return thread_idx.y * block_dim.x + thread_idx.x
+            case _:
+                return (
+                    thread_idx.z * block_dim.y * block_dim.x
+                    + thread_idx.y * block_dim.x
+                    + thread_idx.x
+                )
     else:
         return lane_id()
 
@@ -6787,8 +6779,7 @@ def copy_sram_to_dram[
                     src.linear_idx_type
                 ](src_idx)
 
-                comptime if swizzle:
-                    comptime swizzle_fn = swizzle.value()
+                comptime if case .Some(swizzle_fn) = swizzle:
                     comptime src_idx_base = src_idx % swizzle_fn.size()
                     comptime src_idx_diff = src_idx - src_idx_base
                     # `src_frag_offset + src_idx_base` should be a value already seen
@@ -6803,8 +6794,7 @@ def copy_sram_to_dram[
                     width=simd_size, alignment=src_align
                 ](swizzled_idx).cast[dst.dtype]()
 
-                comptime if binary_op:
-                    comptime binop = binary_op.value()
+                comptime if case .Some(binop) = binary_op:
                     var dst_vec = dst_fragments.ptr.load[
                         width=simd_size, alignment=dst_align
                     ](dst_idx)
@@ -6843,8 +6833,7 @@ def copy_sram_to_dram[
                     src.linear_idx_type
                 ](src_idx)
 
-                comptime if swizzle:
-                    comptime swizzle_fn = swizzle.value()
+                comptime if case .Some(swizzle_fn) = swizzle:
                     comptime src_idx_base = src_idx % swizzle_fn.size()
                     comptime src_idx_diff = src_idx - src_idx_base
                     # `src_frag_offset + src_idx_base` should be a value already seen
@@ -6864,8 +6853,7 @@ def copy_sram_to_dram[
                         .cast[dst.dtype]()
                     )
 
-                    comptime if binary_op:
-                        comptime binop = binary_op.value()
+                    comptime if case .Some(binop) = binary_op:
                         var dst_vec = dst_fragments.ptr.load[
                             width=simd_size, alignment=dst_align
                         ](dst_idx)
@@ -7201,8 +7189,8 @@ def _copy_dram_to_local[
                     )
                 )
 
-    if offset:
-        offset_helper(offset.value())
+    if case .Some(offset) = offset:
+        offset_helper(offset)
     else:
         var base_ptr = buffer.get_base_ptr()
         offset_helper(ufloordiv(Int(src.ptr) - base_ptr, size_of[src.dtype]()))
@@ -7371,8 +7359,7 @@ def copy_local_to_shared[
     comptime if not row_major:
         var dst_frag = dst.distribute[thread_layout](worker_idx)
 
-        comptime if swizzle:
-            comptime swizzle_fn = swizzle.value()
+        comptime if case .Some(swizzle_fn) = swizzle:
             comptime num_vecs = src.layout.size()
             comptime align_src = align_of[SIMD[src.dtype, src.element_size]]()
             comptime align_dst = align_of[SIMD[dst.dtype, dst.element_size]]()
@@ -7559,6 +7546,7 @@ def copy_local_to_local(dst: LayoutTensor[mut=True, ...], src: LayoutTensor):
 # ===-----------------------------------------------------------------------===#
 
 
+@deprecated("Use TileTensor instead")
 struct LayoutTensorIter[
     mut: Bool,
     //,

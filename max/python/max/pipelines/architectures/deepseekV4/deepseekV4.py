@@ -32,6 +32,12 @@ trunk states :meth:`DeepseekV4.trunk` collects, and
 :meth:`DeepseekV4.dspark_block` / :meth:`DeepseekV4.dspark_head` draft a block
 per request (``layers/dspark.py``).
 
+With ``config.use_subgraphs``, trunk blocks that share a compress ratio and a
+routing kind share one subgraph body (:func:`subgraph_layer_groups`), called
+once per layer with that layer's weights and its place in the cache leaves
+(:class:`~.layers.LayerIndex`). Only the cached forward does; the cache-less
+gates' path stays inline.
+
 The block's two mHC sites are :class:`~max.nn.HyperConnection` submodules
 (``hc_attn.hc_fn``), which the checkpoint stores flat on the block
 (``hc_attn_fn``); the weight adapter renames them. The head's contraction has
@@ -40,24 +46,34 @@ no Sinkhorn step and keeps the checkpoint's flat ``hc_head_*`` names.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
+from typing import Any
 
 from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
-    Dim,
+    Graph,
     ShardingStrategy,
     TensorValue,
+    Type,
+    Value,
     Weight,
     ops,
 )
+from max.graph import Module as GraphModule
 from max.nn.embedding import Embedding
 from max.nn.hyper_connection import HyperConnection
 from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
-from max.nn.transformer import logits_postprocess
+from max.nn.transformer import forward_sequential_layers, logits_postprocess
+from max.pipelines.lib.interfaces.batch_processor import (
+    ragged_kv_symbolic_input_tree,
+)
+from max.tree import Tree
 
 from .layers import (
     DeepseekV4Attention,
@@ -66,6 +82,7 @@ from .layers import (
     DeepseekV4MoE,
     DSparkAttention,
     DSparkMarkovHead,
+    LayerIndex,
     RaggedRows,
     expand_copies,
     hc_head,
@@ -138,6 +155,24 @@ def _hc_pre(
     )
 
 
+def subgraph_layer_groups(config: DeepseekV4Config) -> list[list[int]]:
+    """The trunk layers that can share one subgraph body, in layer order.
+
+    A body is fixed by its operand types and its weights. Both follow from
+    the layer's compress ratio -- which leaves it touches, whether it has a
+    compressor and an indexer, its rotary schedule -- and from whether its
+    gate is hash-routed (``tid2eid`` in place of ``bias``).
+    """
+    groups: dict[tuple[int, bool], list[int]] = {}
+    for layer_idx in range(config.num_hidden_layers):
+        key = (
+            config.layer_compress_ratio(layer_idx),
+            config.layer_is_hash_routed(layer_idx),
+        )
+        groups.setdefault(key, []).append(layer_idx)
+    return list(groups.values())
+
+
 class DeepseekV4Block(Module):
     """One decoder block: mHC-wrapped attention then mHC-wrapped MoE."""
 
@@ -176,6 +211,7 @@ class DeepseekV4Block(Module):
         token_ids: Sequence[TensorValue],
         caches: Sequence[DeepseekV4Cache],
         signal_buffers: Sequence[BufferValue],
+        indices: Sequence[LayerIndex | None] | None = None,
     ) -> list[TensorValue]:
         """:meth:`__call__` on every device; ``blocks`` holds a replica each.
 
@@ -185,15 +221,19 @@ class DeepseekV4Block(Module):
         heads are split the same way, so its scores are all-reduced before the
         top-k. The MoE splits its routed experts across the devices and
         all-reduces their sum (:meth:`DeepseekV4MoE.tensor_parallel`).
+        ``indices`` is the layer's place in each device's leaves, ``None``
+        for constants.
         """
+        if indices is None:
+            indices = [None] * len(blocks)
         contracted = [
             _hc_pre(x, block.hc_attn)
             for block, x in zip(blocks, xs, strict=True)
         ]
         states = [
-            block.attn.begin(block.attn_norm(h), row, cache)
-            for block, (h, _, _), row, cache in zip(
-                blocks, contracted, rows, caches, strict=True
+            block.attn.begin(block.attn_norm(h), row, cache, index)
+            for block, (h, _, _), row, cache, index in zip(
+                blocks, contracted, rows, caches, indices, strict=True
             )
         ]
         if blocks[0].attn.indexer is not None:
@@ -248,16 +288,18 @@ class DeepseekV4Block(Module):
         rows: RaggedRows,
         token_ids: TensorValue,
         cache: DeepseekV4Cache | None = None,
+        index: LayerIndex | None = None,
     ) -> TensorValue:
         """``[1, T, hc, d]`` in, ``[1, T, hc, d]`` out.
 
         Two identical wrappings. Each reads ``post`` and ``comb`` off the state
         *before* its sublayer runs, so the mixing weights describe the incoming
-        stream, not the outgoing one.
+        stream, not the outgoing one. ``index`` is the block's place in the
+        leaves, ``None`` for constants.
         """
         residual = x
         h, post, comb = _hc_pre(x, self.hc_attn)
-        h = self.attn(self.attn_norm(h), rows, cache)
+        h = self.attn(self.attn_norm(h), rows, cache, index)
         x = hc_post(h, residual, post, comb)
 
         residual = x
@@ -501,6 +543,40 @@ class DSparkBlock(DeepseekV4Block):
         return ops.stack(out_ids, axis=1), ops.stack(biased, axis=1)
 
 
+class _TensorParallelBlock(Module):
+    """One trunk layer on every device, as one call.
+
+    ``source`` is the block the replicas' weights are shards of. A shard is
+    sliced in the graph out of its source weight, so the source's weights are
+    the ones a shared subgraph body must take as placeholders.
+    """
+
+    def __init__(
+        self, source: DeepseekV4Block, blocks: Sequence[DeepseekV4Block]
+    ) -> None:
+        super().__init__()
+        self.source = source
+        self.blocks = LayerList(list(blocks))
+        self.replicas = tuple(blocks)
+
+    def layer_indices(self) -> list[LayerIndex]:
+        """Each replica's place in its device's leaves, as constants."""
+        return [block.attn.layer_index() for block in self.replicas]
+
+    def __call__(
+        self,
+        xs: list[TensorValue],
+        rows: list[RaggedRows],
+        token_ids: list[TensorValue],
+        caches: list[DeepseekV4Cache],
+        signal_buffers: list[BufferValue],
+        indices: list[LayerIndex],
+    ) -> list[TensorValue]:
+        return DeepseekV4Block.tensor_parallel(
+            self.replicas, xs, rows, token_ids, caches, signal_buffers, indices
+        )
+
+
 class DeepseekV4(Module):
     """The DeepSeek-V4-Flash language model."""
 
@@ -561,6 +637,13 @@ class DeepseekV4(Module):
             if config.dspark_stages
             else []
         )
+        # On a tensor-parallel replica, each trunk layer across every replica
+        # (:meth:`tensor_parallel_replicas`). A tuple, so they do not register
+        # as this model's sublayers.
+        self.tp_blocks: tuple[_TensorParallelBlock, ...] = ()
+        self.subgraph_groups = (
+            subgraph_layer_groups(config) if config.use_subgraphs else None
+        )
 
     @staticmethod
     def collect_main_hidden(hiddens: list[TensorValue]) -> TensorValue:
@@ -614,10 +697,30 @@ class DeepseekV4(Module):
         h = expand_copies(self.embed(tokens), self.config.hc_mult)
         targets = set(self.config.dspark_target_layer_ids)
         collected: list[TensorValue] = []
-        for layer_idx, layer in enumerate(self.layers):
-            h = layer(h, rows, tokens, cache)
+
+        def collect(layer_idx: int, out: list[TensorValue]) -> None:
             if layer_idx in targets:
-                collected.append(h)
+                collected.append(out[0])
+
+        def inputs_for_layer(
+            layer_idx: int, hs: list[TensorValue]
+        ) -> list[Tree[Any]]:
+            block = self.layers[layer_idx]
+            assert isinstance(block, DeepseekV4Block)
+            index = block.attn.layer_index()
+            return [hs[0], rows, tokens, cache, index]
+
+        (h,) = forward_sequential_layers(
+            list(self.layers),
+            inputs_for_layer=inputs_for_layer,
+            initial_hidden_states=[h],
+            on_layer_output=collect,
+            subgraph_layer_groups=(
+                self.subgraph_groups if cache is not None else None
+            ),
+            name_for_subgraph=lambda g: f"dsv4_block_{g}",
+            weight_prefix_for_layer=lambda i: f"layers.{i}.",
+        )
         return self.contract_head(h), self.collect_main_hidden(collected)
 
     def __call__(
@@ -662,12 +765,107 @@ class DeepseekV4(Module):
             ops.reshape(main_hidden, [batch, seq_len, main_hidden.shape[2]]),
         )
 
+    def input_tree(self) -> OrderedDict[str, object]:
+        """Names the serving graph's inputs; its leaves are its inputs.
+
+        A single device takes no signal buffers.
+        """
+        devices = list(self.config.devices)
+        return ragged_kv_symbolic_input_tree(
+            kv_params=self.config.kv_params,
+            device_refs=devices,
+            include_signal_buffers=len(devices) > 1,
+        )
+
+    def trace(
+        self,
+        *input_types: Type[Any],
+        name: str | None = None,
+        module: GraphModule | None = None,
+        custom_extensions: Iterable[Path] = (),
+        is_device_graph: bool = False,
+    ) -> Graph:
+        """Traces the serving graph, whose inputs are :meth:`input_tree`'s
+        leaves.
+
+        The graph runs :meth:`serve` on a single device and
+        :meth:`serve_tensor_parallel` over :meth:`tensor_parallel_replicas`
+        on several, so a multi-device trace shards this model's weights.
+
+        Args:
+            *input_types: The graph's input types, the leaves of
+                :meth:`input_tree`.
+            name: The name of the graph. Defaults to the class's qualified
+                name.
+            module: The MLIR module to add the graph to. Defaults to a new
+                module.
+            custom_extensions: Paths to custom kernel libraries the graph
+                uses.
+            is_device_graph: Whether to build a device graph.
+
+        Returns:
+            The traced :class:`~max.graph.Graph`.
+        """
+        config = self.config
+        devices = list(config.devices)
+        n_dev = len(devices)
+
+        def forward(
+            tokens: Value[Any],
+            input_row_offsets: Value[Any],
+            return_n_logits: Value[Any],
+            *variadic_args: Value[Any],
+        ) -> tuple[TensorValue, ...]:
+            if n_dev == 1:
+                cache = DeepseekV4Cache.from_groups(
+                    config,
+                    config.kv_params.unflatten_basic_kv_tree(
+                        iter(variadic_args)
+                    ),
+                )
+                return self.serve(
+                    tokens.tensor,
+                    input_row_offsets.tensor,
+                    return_n_logits.tensor,
+                    cache,
+                )
+            signal_buffers = [v.buffer for v in variadic_args[:n_dev]]
+            groups = config.kv_params.unflatten_basic_kv_tree(
+                iter(variadic_args[n_dev:])
+            )
+            caches = [
+                DeepseekV4Cache.from_groups(config, groups, device_idx=i)
+                for i in range(n_dev)
+            ]
+            tokens_per_dev = ops.distributed_broadcast(
+                tokens.tensor, signal_buffers
+            )
+            offsets_per_dev = ops.distributed_broadcast(
+                input_row_offsets.tensor, signal_buffers
+            )
+            return DeepseekV4.serve_tensor_parallel(
+                self.tensor_parallel_replicas(devices),
+                tokens_per_dev,
+                offsets_per_dev,
+                return_n_logits.tensor,
+                caches,
+                signal_buffers,
+            )
+
+        return Graph(
+            type(self).__qualname__ if name is None else name,
+            forward,
+            input_types=input_types,
+            custom_extensions=list(custom_extensions),
+            module=module,
+            is_device_graph=is_device_graph,
+        )
+
     def serve(
         self,
         tokens: TensorValue,
         input_row_offsets: TensorValue,
         return_n_logits: TensorValue,
-        windows: Mapping[int, Dim],
         cache: DeepseekV4Cache,
     ) -> tuple[TensorValue, ...]:
         """The serving graph body: ragged tokens in, the pipeline's logits out.
@@ -676,8 +874,6 @@ class DeepseekV4(Module):
             tokens: ``[T]`` token ids of the whole batch.
             input_row_offsets: ``[batch + 1]`` uint32 row offsets.
             return_n_logits: ``[1]`` int64, trailing logits per request.
-            windows: Per compression ratio, the batch's window count
-                (:func:`~.layers.ragged.window_count`).
             cache: The paged leaves.
 
         Returns:
@@ -686,7 +882,10 @@ class DeepseekV4(Module):
         """
         t = tokens.shape[0]
         rows = RaggedRows.from_offsets(
-            input_row_offsets, t, cache.cache_lengths, windows
+            input_row_offsets,
+            t,
+            cache.cache_lengths,
+            dict.fromkeys(self.config.window_ratios),
         )
         x, _ = self.trunk(ops.reshape(tokens, [1, t]), rows, cache)
         return logits_postprocess(
@@ -723,6 +922,17 @@ class DeepseekV4(Module):
             layer.ffn.shard_experts(n)
         replicas = [DeepseekV4(self.config, device) for device in devices]
         _adopt_shards(self, replicas, list(devices))
+        tp_blocks = []
+        for i, source in enumerate(self.layers):
+            assert isinstance(source, DeepseekV4Block)
+            blocks = []
+            for replica in replicas:
+                block = replica.layers[i]
+                assert isinstance(block, DeepseekV4Block)
+                blocks.append(block)
+            tp_blocks.append(_TensorParallelBlock(source, blocks))
+        for replica in replicas:
+            replica.tp_blocks = tuple(tp_blocks)
         for rank, replica in enumerate(replicas):
             for layer in [*replica.layers, *replica.mtp]:
                 assert isinstance(layer, DeepseekV4Block)
@@ -736,7 +946,6 @@ class DeepseekV4(Module):
         tokens: Sequence[TensorValue],
         input_row_offsets: Sequence[TensorValue],
         return_n_logits: TensorValue,
-        windows: Mapping[int, Dim],
         caches: Sequence[DeepseekV4Cache],
         signal_buffers: Sequence[BufferValue],
     ) -> tuple[TensorValue, ...]:
@@ -747,6 +956,7 @@ class DeepseekV4(Module):
         """
         lead = replicas[0]
         t = tokens[0].shape[0]
+        windows = dict.fromkeys(lead.config.window_ratios)
         rows = [
             RaggedRows.from_offsets(offsets, t, cache.cache_lengths, windows)
             for offsets, cache in zip(input_row_offsets, caches, strict=True)
@@ -801,18 +1011,38 @@ class DeepseekV4(Module):
             for replica, tok in zip(replicas, tokens, strict=True)
         ]
         collected: list[list[TensorValue]] = [[] for _ in replicas]
-        for layer_idx in range(len(lead.layers)):
-            blocks = []
-            for replica in replicas:
-                block = replica.layers[layer_idx]
-                assert isinstance(block, DeepseekV4Block)
-                blocks.append(block)
-            hs = DeepseekV4Block.tensor_parallel(
-                blocks, hs, rows, tokens, caches, signal_buffers
-            )
+
+        def collect(layer_idx: int, out: list[TensorValue]) -> None:
             if collect_main_hidden and layer_idx in targets:
-                for per_dev, h in zip(collected, hs, strict=True):
+                for per_dev, h in zip(collected, out, strict=True):
                     per_dev.append(h)
+
+        if len(lead.tp_blocks) != len(lead.layers):
+            raise ValueError(
+                "replicas must come from DeepseekV4.tensor_parallel_replicas"
+            )
+
+        def inputs_for_layer(
+            layer_idx: int, xs: list[TensorValue]
+        ) -> list[Tree[Any]]:
+            return [
+                xs,
+                list(rows),
+                list(tokens),
+                list(caches),
+                list(signal_buffers),
+                lead.tp_blocks[layer_idx].layer_indices(),
+            ]
+
+        hs = forward_sequential_layers(
+            list(lead.tp_blocks),
+            inputs_for_layer=inputs_for_layer,
+            initial_hidden_states=hs,
+            on_layer_output=collect,
+            subgraph_layer_groups=lead.subgraph_groups,
+            name_for_subgraph=lambda g: f"dsv4_block_tp_{g}",
+            weight_prefix_for_layer=lambda i: f"layers.{i}.",
+        )
         main_hidden = (
             [lead.collect_main_hidden(per_dev) for per_dev in collected]
             if collect_main_hidden

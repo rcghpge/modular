@@ -22,6 +22,7 @@ from __future__ import annotations
 import functools
 import logging
 import os
+from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from typing import Any, TypeVar, overload
 
@@ -53,6 +54,7 @@ from max.support.human_readable_formatter import to_human_readable_bytes
 from max.support.math import ceildiv
 from numpy.typing import NDArray
 
+from ...activation import GatedActivation
 from .ep_config import (
     _EP_LOCAL_SYNC_RESERVED_WORDS,
     NUM_GROUPS,
@@ -407,84 +409,68 @@ class EPBatchManager:
             )
         return self._atomic_counters
 
-    def _atomic_counters_input_types(self) -> list[BufferType]:
-        """Generate input types for atomic counter buffers.
+    def input_tree(
+        self,
+    ) -> OrderedDict[str, tuple[TensorType | BufferType, ...]]:
+        """Names the EP graph inputs, in the order the graph declares them.
 
-        Returns:
-            list[BufferType]: List of buffer types for atomic counters.
+        ``atomic_counters`` is group-major (``[NUM_GROUPS][n_gpus_per_node]``);
+        the three pointer fields hold one host tensor per group. The EPLB
+        fields are present only when EPLB is enabled, one buffer per GPU.
         """
-        return [
+        n_gpus = self.config.n_gpus_per_node
+        counters = tuple(
             BufferType(
                 DType.int32,
                 [
                     _ep_counter_words(
                         self.config.n_experts,
-                        self.config.n_gpus_per_node,
+                        n_gpus,
                         self.config.use_allreduce,
                         self.config.moe_dim,
                     )
                 ],
-                device=DeviceRef.GPU(i % self.config.n_gpus_per_node),
+                device=DeviceRef.GPU(i % n_gpus),
             )
-            for i in range(NUM_GROUPS * self.config.n_gpus_per_node)
-        ]
-
-    def _dev_ptrs_input_types(self) -> list[TensorType]:
-        """Generate input types for device pointer tensors.
-
-        Returns:
-            list[TensorType]: List of tensor types for device pointers.
-        """
-        return (
-            [
-                TensorType(
-                    DType.uint64,
-                    [self.config.n_gpus_per_node],
-                    device=DeviceRef.CPU(),
-                ),
-            ]
-            * 3  # 3 buffer types: send, recv, recv_count
-            * NUM_GROUPS  # For double buffering
+            for i in range(NUM_GROUPS * n_gpus)
         )
+
+        def ptrs() -> tuple[TensorType, ...]:
+            return tuple(
+                TensorType(DType.uint64, [n_gpus], device=DeviceRef.CPU())
+                for _ in range(NUM_GROUPS)
+            )
+
+        inputs: OrderedDict[str, tuple[TensorType | BufferType, ...]] = (
+            OrderedDict(
+                atomic_counters=counters,
+                send_buf_ptrs=ptrs(),
+                recv_buf_ptrs=ptrs(),
+                recv_count_ptrs=ptrs(),
+            )
+        )
+        if self.config.eplb_enabled:
+            shape = [
+                self.config.num_moe_layers,
+                self.config.num_logical_experts,
+            ]
+            inputs["eplb_log2phy"] = tuple(
+                BufferType(
+                    DType.int32,
+                    [*shape, self.config.max_replicas],
+                    device=DeviceRef.GPU(i),
+                )
+                for i in range(n_gpus)
+            )
+            inputs["eplb_logcnt"] = tuple(
+                BufferType(DType.int32, shape, device=DeviceRef.GPU(i))
+                for i in range(n_gpus)
+            )
+        return inputs
 
     def input_types(self) -> list[TensorType | BufferType]:
-        """Get the input types for the MoE graph.
-
-        Returns:
-            list[TensorType | BufferType]: List of input types for atomic
-                                          counters and device pointers.
-        """
-        types: list[TensorType | BufferType] = (
-            self._atomic_counters_input_types() + self._dev_ptrs_input_types()
-        )
-
-        if self.config.eplb_enabled:
-            types += self._eplb_input_types()
-        return types
-
-    def _eplb_input_types(self) -> list[TensorType | BufferType]:
-        """Per-device log2phy + logcnt buffer types."""
-        num_moe_layers = self.config.num_moe_layers
-        num_experts_per_layer = self.config.num_logical_experts
-        max_replicas = self.config.max_replicas
-        n_gpus = self.config.n_gpus_per_node
-        log2phy: list[TensorType | BufferType] = [
-            BufferType(
-                DType.int32,
-                [num_moe_layers, num_experts_per_layer, max_replicas],
-                device=DeviceRef.GPU(i),
-            )
-            for i in range(n_gpus)
-        ]
-        logcnt: list[TensorType | BufferType] = [
-            BufferType(
-                DType.int32,
-                [num_moe_layers, num_experts_per_layer],
-                device=DeviceRef.GPU(i),
-            )
-            for i in range(n_gpus)
-        ]
-        return log2phy + logcnt
+        """Get the input types for the MoE graph."""
+        return tree.leaves(self.input_tree())
 
     def fetch_buffers(self, _input_vals: Iterable[Value[Any]]) -> None:
         """Extract and organize communication buffers from graph input values.
@@ -541,17 +527,22 @@ class EPBatchManager:
             }
             start_idx += n_gpus
 
-    def comm_buffers(self, input_vals: Iterable[Value[Any]]) -> EPCommBuffers:
+    def comm_buffers(
+        self, input_vals: Iterable[Value[Any] | Tensor]
+    ) -> EPCommBuffers:
         """Fetches the EP buffers and wraps them as an :class:`EPCommBuffers`.
 
         Args:
-            input_vals: Graph input values containing all buffer references,
-                in the same order as :meth:`input_types`.
+            input_vals: The inputs declared by :meth:`input_types`, in order,
+                as graph values or single-device tensors.
 
         Returns:
             Dataclass containing the EP comm tensors.
         """
-        self.fetch_buffers(input_vals)
+        self.fetch_buffers(
+            v.graph_values[0] if isinstance(v, Tensor) else v
+            for v in input_vals
+        )
         eplb_log2phy: dict[int, Tensor] | None = None
         eplb_logcnt: dict[int, Tensor] | None = None
         if self.config.eplb_enabled:
@@ -585,7 +576,7 @@ class EPBatchManager:
         """Rebinds the buffer fields from a threaded :class:`EPCommBuffers`.
 
         Called at the top of the EP MoE forward so the kernel-dispatch helpers,
-        which read ``self._send_buf_ptrs`` etc., see the (subgraph-rebound)
+        which read ``self._send_buf_ptrs`` and so on, see the (subgraph-rebound)
         buffer values passed in as a forward argument.
         """
         self._atomic_counters = [
@@ -742,7 +733,7 @@ class EPBatchManager:
         c_input_scales: TensorValue,
         estimated_total_m: TensorValue,
         num_active_experts: TensorValue,
-        clamp_activation: bool = False,
+        activation: GatedActivation | None = None,
     ) -> None:
         """Runs the MoE FFN with the combine send fused into its epilogue.
 
@@ -770,7 +761,8 @@ class EPBatchManager:
             c_input_scales: Per-expert input scale for the re-quant.
             estimated_total_m: Estimated total non-padded tokens.
             num_active_experts: Active expert slots.
-            clamp_activation: Select the clamped (``swigluoai``) activation.
+            activation: The gated activation the kernel fuses; see
+                :func:`~max.nn.comm.ep.ep_kernels.fused_silu`.
         """
         COMBINE_GROUP = 1
 
@@ -835,7 +827,7 @@ class EPBatchManager:
             estimated_total_m,
             num_active_experts,
             self.config,
-            clamp_activation=clamp_activation,
+            activation=activation,
         )
 
         # Reset so a stale routing table cannot be reused for the next
@@ -858,6 +850,7 @@ class EPBatchManager:
         gate_up_expert_scales: TensorValue,
         down_expert_scales: TensorValue,
         c_input_scales: TensorValue,
+        activation: GatedActivation | None = None,
     ) -> TensorValue:
         """One-launch fused EP MoE: dispatch -> MegaFFN -> weighted combine.
 
@@ -882,6 +875,8 @@ class EPBatchManager:
             gate_up_expert_scales: Per-local-expert L1 alpha.
             down_expert_scales: Per-local-expert L2 alpha.
             c_input_scales: Per-local-expert L1->L2 requant scale.
+            activation: The gated activation the kernel fuses; see
+                :func:`~max.nn.comm.ep.ep_kernels.fused_silu`.
 
         Returns:
             The routed-expert MoE output ``(T, hidden)`` BF16.
@@ -901,6 +896,7 @@ class EPBatchManager:
             c_input_scales,
             self.recv_count_ptrs[0],
             self.config,
+            activation=activation,
         )
 
     def ep_combine_wait(
@@ -1248,6 +1244,8 @@ class EPCommInitializer:
             config: EP configuration.
         """
         self.config = config
+        self._eplb_log2phy: list[Buffer] = []
+        self._eplb_logcnt: list[Buffer] = []
         # Allocated based on the EPLocalSyncCounters struct in ep_comm.mojo
         self.atomic_counter_size = _ep_counter_words(
             config.n_experts,
@@ -1471,15 +1469,52 @@ class EPCommInitializer:
             f" {token_block}"
         )
 
+    def set_eplb_placement(
+        self, log2phy: Sequence[Buffer], logcnt: Sequence[Buffer]
+    ) -> None:
+        """Supplies the per-device EPLB tables :meth:`model_inputs` returns.
+
+        Args:
+            log2phy: One ``[num_moe_layers, num_logical, max_replicas]``
+                buffer per local GPU.
+            logcnt: One ``[num_moe_layers, num_logical]`` buffer per local
+                GPU.
+
+        Raises:
+            ValueError: If EPLB is disabled in the config or a list does not
+                have one buffer per local GPU.
+        """
+        if not self.config.eplb_enabled:
+            raise ValueError("EPLB placement given but eplb_enabled is False")
+        n_gpus = self.config.n_gpus_per_node
+        if len(log2phy) != n_gpus or len(logcnt) != n_gpus:
+            raise ValueError(
+                f"EPLB placement needs {n_gpus} buffers per table, got "
+                f"{len(log2phy)} log2phy and {len(logcnt)} logcnt"
+            )
+        self._eplb_log2phy = list(log2phy)
+        self._eplb_logcnt = list(logcnt)
+
     def model_inputs(self) -> list[Buffer]:
         """Get the model inputs for the MoE model.
 
         Returns:
-            list[Buffer]: List of all tensors needed as model inputs.
+            list[Buffer]: List of all tensors needed as model inputs, in the
+            order of :meth:`EPBatchManager.input_types`.
+
+        Raises:
+            ValueError: If EPLB is enabled but no placement was supplied.
         """
-        return (
+        inputs = (
             self.atomic_counters
             + self.send_buf_ptrs
             + self.recv_buf_ptrs
             + self.recv_count_ptrs
         )
+        if self.config.eplb_enabled:
+            if not self._eplb_log2phy:
+                raise ValueError(
+                    "eplb_enabled is True but set_eplb_placement was not called"
+                )
+            inputs += self._eplb_log2phy + self._eplb_logcnt
+        return inputs

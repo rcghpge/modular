@@ -19,7 +19,6 @@ GEMM kernel output. Verifies that:
 3. Both register-based and SMEM-based epilogues work correctly
 """
 
-from std.collections import Optional
 from std.math import ceildiv
 from std.random import rand, random_float64, seed
 from std.sys import align_of
@@ -27,7 +26,6 @@ from std.sys import align_of
 import linalg.matmul.vendor.blas as vendor_blas
 from max.gpu.host import DeviceContext
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
-from std.memory import alloc
 from internal_utils import assert_almost_equal
 from layout import (
     TileTensor,
@@ -46,7 +44,6 @@ from linalg.fp4_utils import (
     SF_ATOM_K,
     MXFP8_SF_VECTOR_SIZE,
 )
-from linalg.utils import elementwise_compute_lambda_type
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
     BlockScaledMatmulConfig,
     GEMMKind,
@@ -128,7 +125,6 @@ def test_grouped_gemm_epilogue[
     var b_device = ctx.enqueue_create_buffer[b_type](b_size)
     var b_tensor = TileTensor(b_device, b_shape)
     var c_device = ctx.enqueue_create_buffer[c_type](c_size)
-    var c_tensor = TileTensor(c_device, c_shape)
     var c_device_ref = ctx.enqueue_create_buffer[c_type](c_size)
     var c_ref_tensor = TileTensor(c_device_ref, c_shape)
 
@@ -165,19 +161,19 @@ def test_grouped_gemm_epilogue[
         sfb_host_ptr[i] = scale_one
 
     # Define epilogue lambda that adds original C value to matmul result
-    @__parameter
     @inline(.always)
-    @__copy_capture(c_tensor)
     def epilogue_add_c[
         _dtype: DType,
         width: SIMDLength,
         *,
-        alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+        alignment: Int,
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_host_original} -> SIMD[
         _dtype, width
     ]:
-        # C' = matmul(A, B) + C_original
-        return val + c_tensor.load[width=width](Coord(idx)).cast[_dtype]()
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        # C' = matmul(A, B) + C_original. Reads the pinned host copy because
+        # the kernel writes `c_device`.
+        return val + c_host_original.load[width=width](idx).cast[_dtype]()
 
     # Initialize random data
     seed(42)
@@ -266,11 +262,6 @@ def test_grouped_gemm_epilogue[
     comptime BN = mma_shape[1]
     var total_tiles = ceildiv(Int(m.value()), BM) * ceildiv(Int(n.value()), BN)
 
-    # Create epilogue lambda optional
-    comptime optional_lambda = Optional[elementwise_compute_lambda_type](
-        epilogue_add_c
-    )
-
     # Template tensors - 3D TileTensors with batch=1
     var a_3d_shape = row_major(Idx[1], m, k)
     var b_3d_shape = row_major(
@@ -305,7 +296,6 @@ def test_grouped_gemm_epilogue[
     grouped_block_scaled_matmul[
         config=config,
         max_groups=max_groups,
-        elementwise_compute_lambda_fn=optional_lambda,
     ](
         a_ptrs_tensor,
         b_ptrs_tensor,
@@ -320,6 +310,7 @@ def test_grouped_gemm_epilogue[
         c_template,
         a_scales_5d,
         b_scales_5d,
+        epilogue_add_c,
         ctx,
     )
 
@@ -342,26 +333,23 @@ def test_grouped_gemm_epilogue[
 
     # Apply epilogue lambda on CPU to reference
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(c_host_original)
     def epilogue_add_c_host[
         _dtype: DType,
         width: SIMDLength,
         *,
         alignment: Int = align_of[SIMD[_dtype, width]](),
-    ](idx: IndexList[2], val: SIMD[_dtype, width]) capturing -> SIMD[
+    ](idx: Coord, val: SIMD[_dtype, width]) {var c_host_original} -> SIMD[
         _dtype, width
     ]:
-        return (
-            val + c_host_original.load[width=width](Coord(idx)).cast[_dtype]()
-        )
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
+        return val + c_host_original.load[width=width](idx).cast[_dtype]()
 
     for i in range(Int(m.value())):
         for j in range(Int(n.value())):
             comptime assert c_host_ref.flat_rank >= 2
             c_host_ref[Coord(i, j)] = epilogue_add_c_host(
-                IndexList[2](i, j),
+                Coord(i, j),
                 c_host_ref[i, j],
             )
 

@@ -34,7 +34,12 @@ from comm.allreduce_residual_rmsnorm import allreduce_residual_rmsnorm
 from comm.device_collective import _launch_device_collective
 from comm import Signal
 from extensibility import StaticTensorSpec
-from max.gpu.host import CompletionFlag, DeviceContext, DeviceContextArray
+from max.gpu.host import (
+    CompletionFlag,
+    DeviceContext,
+    DeviceContextArray,
+    DeviceGraphBuilder,
+)
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_cpu, is_gpu, is_valid_target
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
@@ -101,6 +106,7 @@ from nn.rand_normal import random_normal
 from nn.rand_uniform import keyed_uniform, random_uniform
 from nn.repeat_interleave import repeat_interleave, repeat_interleave_shape
 from nn.roi_align import roi_align_nhwc
+from nn.roi_align_gpu import roi_align_gpu
 from nn.rope import rope_ragged
 from nn.sampling import (
     apply_masked_penalties_to_logits,
@@ -110,6 +116,7 @@ from nn.sampling import (
 from nn.split import split
 from nn.topk import fused_token_sampling_cpu as _fused_token_sampling_cpu
 from nn.topk import fused_token_sampling_gpu as _fused_token_sampling_gpu
+from nn.argmaxmin_gpu import argmax_with_bias_gpu
 from nn.topk import gumbel_sampling_fused_gpu
 from nn.sampling import topk_topp_masked_probs, topk_topp_sampling_from_prob
 from nn.toppminp import min_p_sampling as min_p_sampling_cpu
@@ -141,12 +148,12 @@ from max.runtime.tracing import trace_arg
 from extensibility import (
     InputTensor,
     InputVariadicTensors,
-    IOSpec,
     ManagedTensorSlice,
     OutputTensor,
+    StableInputVariadicTensors,
     Tensor,
+    TensorTuple,
     TileTensorable,
-    VariadicTensors,
     simd_load_from_managed_tensor_slice,
     simd_store_into_managed_tensor_slice,
 )
@@ -319,16 +326,15 @@ struct Copy:
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
     ) capturing raises:
-        @__parameter
         @inline(.always)
         def func[
             width: Int, element_alignment: Int
-        ](idx: IndexList[rank]) -> SIMD[dtype, width]:
+        ](idx: IndexList[rank]) {var} -> SIMD[dtype, width]:
             return input._fused_load[
                 width, element_alignment=element_alignment
             ](idx)
 
-        foreach[func](output, ctx)
+        foreach(func, output, ctx)
 
 
 @extensibility.register("nan_check_count")
@@ -606,7 +612,8 @@ struct NonMaximumSuppression:
 
     @staticmethod
     def execute[
-        dtype: DType
+        dtype: DType,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=.int64, rank=2, ...],
         boxes: InputTensor[dtype=dtype, rank=3, ...],
@@ -614,18 +621,20 @@ struct NonMaximumSuppression:
         max_output_boxes_per_class: Int64,
         iou_threshold: Float32,
         score_threshold: Float32,
-    ):
+        ctx: DeviceContext,
+    ) raises:
         var max_output_boxes_int = Int(max_output_boxes_per_class)
         var iou_threshold_float = iou_threshold
         var score_threshold_float = score_threshold
 
-        non_max_suppression(
-            boxes.to_tile_tensor[.int64](),
-            scores.to_tile_tensor[.int64](),
+        non_max_suppression[target=target,](
+            boxes.to_tile_tensor[.int64]().as_imm(),
+            scores.to_tile_tensor[.int64]().as_imm(),
             output.to_tile_tensor[.int64](),
             max_output_boxes_int,
             iou_threshold_float,
             score_threshold_float,
+            ctx,
         )
 
 
@@ -687,6 +696,7 @@ struct ROIAlign:
         aligned: Bool,
         mode: StaticString,
         dtype: DType,
+        target: StaticString,
     ](
         output: OutputTensor[dtype=dtype, rank=4, ...],
         input: InputTensor[dtype=dtype, rank=4, ...],
@@ -695,16 +705,35 @@ struct ROIAlign:
         output_width: Int64,
         spatial_scale: Scalar,
         sampling_ratio: Scalar,
-    ):
-        roi_align_nhwc[aligned, mode](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            rois.to_tile_tensor[.int64](),
-            Int(output_height),
-            Int(output_width),
-            spatial_scale,
-            sampling_ratio,
-        )
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            roi_align_nhwc[aligned, mode](
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                rois.to_tile_tensor[.int64](),
+                Int(output_height),
+                Int(output_width),
+                spatial_scale,
+                sampling_ratio,
+            )
+        elif is_gpu[target]():
+            roi_align_gpu[
+                dtype,
+                aligned,
+                mode,
+            ](
+                output.to_tile_tensor[.int64](),
+                input.to_tile_tensor[.int64](),
+                rois.to_tile_tensor[.int64](),
+                Int(output_height),
+                Int(output_width),
+                spatial_scale,
+                sampling_ratio,
+                ctx,
+            )
+        else:
+            comptime assert False, "Unknown target " + target
 
 
 @extensibility.register_shape_function("mo.roi_align")
@@ -760,7 +789,9 @@ struct RepeatInterleave:
     """Registers the `repeat_interleave` graph op with the graph compiler."""
 
     @staticmethod
-    def execute(
+    def execute[
+        target: StaticString,
+    ](
         output: OutputTensor,
         input: InputTensor[dtype=output.dtype, rank=output.rank, ...],
         repeats: InputTensor[rank=1, ...],
@@ -771,7 +802,7 @@ struct RepeatInterleave:
             axis.dtype.is_integral()
         ), "axis value must be integer type"
 
-        repeat_interleave(
+        repeat_interleave[target=target](
             input.to_tile_tensor[.int64](),
             repeats.to_tile_tensor[.int64](),
             Int(normalize_neg_index(axis, input.rank)),
@@ -832,12 +863,10 @@ struct RandomNormal:
     ) capturing raises:
         @inline(.always)
         def output_fn[
-            _width: SIMDLength,
-            _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {imm output}:
+            _width: SIMDLength
+        ](coords: Coord, val: SIMD[dtype, _width]) {imm output}:
             output._lambda_store[width=_width](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         random_normal[target=target](
@@ -909,12 +938,10 @@ struct RandomUniform:
     ) capturing raises:
         @inline(.always)
         def output_fn[
-            _width: SIMDLength,
-            _rank: Int,
-        ](coords: IndexList[_rank], val: SIMD[dtype, _width]) {imm output}:
+            _width: SIMDLength
+        ](coords: Coord, val: SIMD[dtype, _width]) {imm output}:
             output._lambda_store[width=_width](
-                rebind[IndexList[output.rank]](coords),
-                rebind[SIMD[output.dtype, _width]](val),
+                coords, rebind[SIMD[output.dtype, _width]](val)
             )
 
         random_uniform[target=target](
@@ -976,29 +1003,24 @@ def random_uniform_shape[
 
 
 def concat_shape_impl[
-    dtype: DType, rank: Int, size: Int, io_spec: IOSpec
-](
-    axis0: Int,
-    inputs: VariadicTensors[dtype=dtype, rank=rank, size, io_spec=io_spec, ...],
-) raises -> IndexList[rank]:
+    Ins: TypeList[Trait=Tensor, ...], //
+](axis0: Int, inputs: TensorTuple[*Ins]) raises -> IndexList[Ins[0].rank]:
     """Computes the concatenated output shape from the input tensor shapes.
 
     Parameters:
-        dtype: Element type of the input tensors.
-        rank: Number of dimensions in each input tensor.
-        size: Number of variadic input tensors.
-        io_spec: Input/output specification for the variadic tensors.
+        Ins: Types of the input tensors, which must share a rank.
 
     Args:
         axis0: Axis along which to concatenate; negative values index
             from the last dimension.
-        inputs: Variadic input tensors to concatenate, all matching in
-            shape except along the concat axis.
+        inputs: Input tensors to concatenate, all matching in shape except
+            along the concat axis.
 
     Returns:
         The output shape with the concat axis dimension summed across
         all inputs.
     """
+    comptime rank = Ins[0].rank
     var axis = normalize_neg_index(axis0, rank)
 
     @inline(.always)
@@ -1011,19 +1033,22 @@ def concat_shape_impl[
         return True
 
     var concat_axis_dim_sum = 0
+    var output_shape = rebind[IndexList[rank]](
+        coord_to_index_list(inputs[0].shape().tuple())
+    )
 
-    comptime for i in range(inputs.size):
-        concat_axis_dim_sum += inputs[i].dim_size(axis)
-        if not shape_equal_ignore_axis(
-            inputs[0].shape(),
-            inputs[i].shape(),
-        ):
+    comptime for i in range(len(Ins)):
+        comptime assert Ins[i].rank == rank, "inputs must share a rank"
+        var input_shape = rebind[IndexList[rank]](
+            coord_to_index_list(inputs[i].shape().tuple())
+        )
+        concat_axis_dim_sum += input_shape[axis]
+        if not shape_equal_ignore_axis(output_shape, input_shape):
             raise Error(
                 "[concat] input shapes must match except at concat axis"
             )
 
     # compute and return the output shape
-    var output_shape = inputs[0].shape()
     output_shape[axis] = concat_axis_dim_sum
     return output_shape
 
@@ -2069,7 +2094,10 @@ struct Struct_moe_router_group_limited:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         router_group_limited[
@@ -2079,15 +2107,11 @@ struct Struct_moe_router_group_limited:
             topk_group,
             norm_weights,
             target=target,
-            scores_input_fn=OptionalReg[
-                def[
-                    width: Int
-                ](IndexList[2]) capturing -> SIMD[scores_type, width]
-            ](scores_input_fn),
+            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
-            expert_scores.to_tile_tensor[.int64]().as_imm(),
+            expert_scores.runtime_layout(),
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             routed_scaling_factor,
             context,
@@ -2159,7 +2183,10 @@ struct Struct_moe_single_group_router_eplb:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         single_group_router_eplb[
@@ -2170,16 +2197,12 @@ struct Struct_moe_single_group_router_eplb:
             max_replicas=max_replicas,
             hash_decorrelate=hash_decorrelate,
             target=target,
-            scores_input_fn=OptionalReg[
-                def[
-                    width: Int
-                ](IndexList[2]) capturing -> SIMD[scores_type, width]
-            ](scores_input_fn),
+            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_indices_log.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
-            expert_scores.to_tile_tensor[.int64]().as_imm(),
+            expert_scores.runtime_layout(),
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             logcnt.to_tile_tensor[.int64]().as_imm(),
             log2phy.to_tile_tensor[.int64]().as_imm(),
@@ -2216,7 +2239,10 @@ struct Struct_moe_single_group_router:
         @inline(.always)
         def scores_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[scores_type, width]:
+        ](coords: Coord) -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
             return expert_scores._lambda_load[width=width](coords)
 
         single_group_router[
@@ -2224,15 +2250,11 @@ struct Struct_moe_single_group_router:
             n_experts_per_tok,
             norm_weights=norm_weights,
             target=target,
-            scores_input_fn=OptionalReg[
-                def[
-                    width: Int
-                ](IndexList[2]) capturing -> SIMD[scores_type, width]
-            ](scores_input_fn),
+            scores_input_fn=scores_input_fn,
         ](
             expert_indices.to_tile_tensor[.int64](),
             expert_weights.to_tile_tensor[.int64](),
-            expert_scores.to_tile_tensor[.int64]().as_imm(),
+            expert_scores.runtime_layout(),
             expert_bias.to_tile_tensor[.int64]().as_imm(),
             routed_scaling_factor,
             context,
@@ -2661,7 +2683,7 @@ struct Struct_fused_token_sampling:
                     input.to_tile_tensor[.int64](),
                     rank - 1,
                     out_idxs.to_tile_tensor[.int64](),
-                    Optional[DeviceContext](ctx),
+                    Optional(ctx.assert_cpu_target()),
                 )
                 return
             _fused_token_sampling_cpu(
@@ -2834,6 +2856,40 @@ struct Struct_gumbel_argmax_from_probs:
             probs.to_tile_tensor[.int64](),
             out_tokens.to_tile_tensor[.int64](),
             seed=seed.to_tile_tensor[.int64]().as_unsafe_any_origin().as_imm(),
+        )
+
+
+@extensibility.register("sampler.argmax_with_bias")
+struct Struct_argmax_with_bias:
+    """Registers the `sampler.argmax_with_bias` graph op.
+
+    Takes, per row, the argmax of `logits[:, position, :] + bias`, with both
+    inputs upcast and added in float32 in registers: the same index as an
+    argmax of the materialized float32 sum. The DSpark Markov head runs it
+    once per draft position and reads the draft logits in place.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        dtype: DType,
+        bias_dtype: DType,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        out_tokens: OutputTensor[dtype=.int64, rank=1, ...],
+        position: Scalar,
+        logits: InputTensor[dtype=dtype, rank=3, ...],
+        bias: InputTensor[dtype=bias_dtype, rank=2, ...],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[target](), "sampler.argmax_with_bias is GPU-only"
+        argmax_with_bias_gpu(
+            ctx,
+            logits.to_tile_tensor[.int64](),
+            bias.to_tile_tensor[.int64](),
+            Int(position),
+            out_tokens.to_tile_tensor[.int64](),
         )
 
 
@@ -3061,47 +3117,26 @@ struct BundledAllReduceSum:
     """
 
     @staticmethod
-    def execute[
+    def _launch[
         dtype: DType,
         rank: Int,
-        target: StaticString,
-        _trace_name: StaticString,
+        num_devices: Int,
+        in_layout: TensorLayout,
+        in_origin: Origin,
+        in_engine: TensorEngine,
+        //,
     ](
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
-        inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
+        in_tensors: Array[
+            TileTensor[dtype, in_layout, in_origin, Engine=in_engine],
+            num_devices,
+        ],
+        input_size: Int,
         signal_buffers: MutableInputVariadicTensors[
             dtype=DType.uint8, rank=1, ...
         ],
         ctx: DeviceContext,
     ) capturing raises:
-        """Per-device allreduce sum, for use with mo.parallel dispatch.
-
-        Unlike DistributedAllReduceSum which dispatches to all GPUs internally,
-        this kernel handles a single GPU. The mo.parallel framework is
-        responsible for launching one instance per device and passing all N
-        input buffers to each launch.
-
-        Because `mo.parallel` owns the fan-out, this path does not take the
-        kernel-load gate that `_launch_device_collective` claims for a
-        distributed op's per-device enqueues. A first-time kernel load on
-        another thread can therefore interleave with these launches and
-        deadlock against the device-side barrier (MXSERV-441); the lowering
-        emits N independent async stubs, with no single point to claim the
-        gate from or release it at.
-
-        Parameters:
-            dtype: Element type of the input and output tensors.
-            rank: Number of dimensions in the input and output tensors.
-            target: Target device identifier for code generation.
-            _trace_name: Trace name used for profiling and debugging.
-
-        Args:
-            output: Output tensor for THIS GPU.
-            inputs: Input tensors from ALL participating GPUs.
-            signal_buffers: Signal buffers for ALL participating GPUs.
-            ctx: Device context for THIS GPU.
-        """
-        comptime num_devices = inputs.size
         comptime assert signal_buffers.size == num_devices, (
             "expected allreduce inputs and signal buffers to have"
             " the same number of elements"
@@ -3110,26 +3145,21 @@ struct BundledAllReduceSum:
         # allreduce 2-stage uses size/ngpus scratch space
         var scratch_buffer_size_bytes = _partitioned_scratch_requirement[
             num_devices, dtype
-        ](inputs[0].size())
+        ](input_size)
         _check_signal_buffer_size(
             signal_buffers[0].size(), scratch_buffer_size_bytes
         )
 
-        comptime InputTensorType = type_of(
-            inputs[0].to_tile_tensor[.int64]().as_imm()
-        )
-        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
-        var out_buf = output.to_tile_tensor[.int64]()
+        var out_layout = output.runtime_layout()
         var rank_sigs = Array[_, num_devices](
             fill_with_unrolled=lambda [i: Int]() -> Pointer[
                 Signal, MutAnyOrigin
-            ]: (signal_buffers[i]._ptr.bitcast[Signal]().as_unsafe_any_origin())
-        )
-
-        comptime for i in range(num_devices):
-            in_tensors[i] = rebind[InputTensorType](
-                inputs[i].to_tile_tensor[.int64]().as_imm()
+            ]: (
+                signal_buffers[i]
+                ._ptr.unsafe_bitcast[Signal]()
+                .as_unsafe_any_origin()
             )
+        )
 
         @inline(.always)
         @__parameter
@@ -3149,9 +3179,98 @@ struct BundledAllReduceSum:
             output_lambda=output_lambda,
         ](
             in_tensors,
-            out_buf,
+            out_layout,
             rank_sigs,
             ctx,
+        )
+
+    @staticmethod
+    def execute[
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        inputs: InputVariadicTensors[dtype=dtype, rank=rank, ...],
+        signal_buffers: MutableInputVariadicTensors[
+            dtype=DType.uint8, rank=1, ...
+        ],
+        ctx: DeviceContext,
+    ) capturing raises:
+        """Per-device allreduce sum, for use with mo.parallel dispatch.
+
+        This path does not take the kernel-load gate: `mo.parallel` emits N
+        independent async stubs, with no single point to claim or release it,
+        so a first-time kernel load can still interleave with these launches.
+
+        Parameters:
+            dtype: Element type of the input and output tensors.
+            rank: Number of dimensions in the input and output tensors.
+            target: Target device identifier for code generation.
+            _trace_name: Trace name used for profiling and debugging.
+
+        Args:
+            output: Output tensor for THIS GPU.
+            inputs: Input tensors from ALL participating GPUs.
+            signal_buffers: Signal buffers for ALL participating GPUs.
+            ctx: Device context for THIS GPU.
+        """
+        comptime num_devices = inputs.size
+        comptime InputTensorType = type_of(
+            inputs[0].to_tile_tensor[.int64]().as_imm()
+        )
+        var in_tensors = Array[InputTensorType, num_devices](uninitialized=True)
+
+        comptime for i in range(num_devices):
+            in_tensors[i] = rebind[InputTensorType](
+                inputs[i].to_tile_tensor[.int64]().as_imm()
+            )
+
+        Self._launch(output, in_tensors, inputs[0].size(), signal_buffers, ctx)
+
+    @staticmethod
+    def build_graph[
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
+        _trace_name: StaticString,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        inputs: StableInputVariadicTensors[dtype=dtype, rank=rank, ...],
+        signal_buffers: MutableInputVariadicTensors[
+            dtype=DType.uint8, rank=1, ...
+        ],
+        builder: DeviceGraphBuilder,
+    ) capturing raises:
+        """Records the per-device allreduce sum into a device graph.
+
+        The peers arrive as stable address slots: the recorded kernels read
+        each peer's data pointer out of its slot at replay time, so the graph
+        does not bake in the peer buffers themselves.
+
+        Parameters:
+            dtype: Element type of the input and output tensors.
+            rank: Number of dimensions in the input and output tensors.
+            target: Target device identifier for code generation.
+            _trace_name: Trace name used for profiling and debugging.
+
+        Args:
+            output: Output tensor for THIS GPU.
+            inputs: Slot-backed input tensors from ALL participating GPUs.
+            signal_buffers: Signal buffers for ALL participating GPUs.
+            builder: Device graph builder for THIS GPU.
+        """
+        var in_tensors = inputs.to_tile_tensor()
+
+        # The recording context reports the builder's backing device id, so
+        # the rank resolves exactly as it does under `execute`.
+        Self._launch(
+            output,
+            in_tensors,
+            inputs[0].size(),
+            signal_buffers,
+            builder.recording_context(),
         )
 
 
@@ -3168,6 +3287,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         rank: Int,
         target: StaticString,
         _trace_name: StaticString,
+        epsilon: Float32,
+        weight_offset: Float32,
     ](
         output: OutputTensor[dtype=output_type, rank=rank, ...],
         out_scale: OutputTensor[dtype=scales_type, rank=rank, ...],
@@ -3178,8 +3299,6 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         ],
         residual: InputTensor[dtype=dtype, rank=rank, ...],
         gamma: InputTensor[dtype=dtype, rank=1, ...],
-        epsilon: InputTensor[dtype=DType.float32, ...],
-        weight_offset: InputTensor[dtype=dtype, ...],
         scale_ub: InputTensor[dtype=DType.float32, ...],
         ctx: DeviceContext,
     ) capturing raises:
@@ -3198,6 +3317,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             rank: Number of dimensions in the input and output tensors.
             target: Target device identifier for code generation.
             _trace_name: Trace name used for profiling and debugging.
+            epsilon: RMSNorm epsilon scalar.
+            weight_offset: RMSNorm weight offset scalar.
 
         Args:
             output: FP8 quantized output tensor for THIS GPU.
@@ -3207,8 +3328,6 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             signal_buffers: Signal buffers for ALL participating GPUs.
             residual: Residual tensor for THIS GPU.
             gamma: RMSNorm weight for THIS GPU.
-            epsilon: RMSNorm epsilon scalar (host).
-            weight_offset: RMSNorm weight offset scalar (host).
             scale_ub: Quantization scale upper bound scalar (host).
             ctx: Device context for THIS GPU.
         """
@@ -3266,8 +3385,8 @@ struct BundledAllReduceAddRMSNormQuantFP8:
             output.to_tile_tensor[.int64](),
             out_residual.to_tile_tensor[.int64](),
             gamma.to_tile_tensor[.int64](),
-            epsilon.unsafe_ptr()[],
-            weight_offset.unsafe_ptr()[],
+            epsilon,
+            weight_offset.cast[dtype](),
             scale_ub.unsafe_ptr()[],
             out_scale.to_tile_tensor[.int64](),
             rank_sigs,
@@ -4479,6 +4598,9 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         - has_initial_state: (batch,) bool optional/empty
         - cache_indices: (batch,) or (1, batch) uint32, slot indices into
           ssm_pool
+        - update_state: (batch,) bool optional/empty. A clear flag leaves
+          that sequence's `ssm_pool` slot untouched (a read-only scan);
+          empty writes every sequence's final state.
     """
 
     @staticmethod
@@ -4500,6 +4622,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         query_start_loc: InputTensor[dtype=.int32, rank=1, ...],
         has_initial_state: InputTensor[dtype=.bool, rank=1, ...],
         cache_indices: FusedInputTensor[dtype=.uint32, ...],
+        update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
         comptime if cache_indices.rank == 2:
@@ -4534,6 +4657,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         var ssm_pool_tt = ssm_pool.to_tile_tensor()
         var query_start_loc_tt = query_start_loc.to_tile_tensor()
         var has_initial_state_tt = has_initial_state.to_tile_tensor()
+        var update_state_tt = update_state.to_tile_tensor()
 
         # x, dt, B, C and the slot indices are fused inputs: a slice feeding
         # one is folded into its loads instead of being copied.
@@ -4588,12 +4712,13 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     x_fn,
                     dt_fn,
                     b_fn,
                     c_fn,
                     slot_fn,
-                    Optional[DeviceContext](ctx),
+                    Optional(ctx.assert_cpu_target()),
                 )
             elif not is_gpu[target]():
                 raise Error("Unsupported target device")
@@ -4611,6 +4736,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt.LayoutType,
                     query_start_loc_tt.LayoutType,
                     has_initial_state_tt.LayoutType,
+                    update_state_tt.LayoutType,
                     y_tt.Engine,
                     type_of(x_fn),
                     type_of(dt_fn),
@@ -4628,6 +4754,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     ssm_pool_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     host_arg=x_fn,
                     host_arg2=dt_fn,
                     host_arg3=b_fn,
@@ -4637,14 +4764,21 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                     block_dim=(BLOCK_SIZE, 1, 1),
                 )
             else:
-                # DSTATE_SPLIT threads cooperate on each channel, CH_PER_BLOCK
-                # channels per 128-thread block. Decode-shape sweep on B200
+                # DSTATE_SPLIT threads cooperate on each channel, and each
+                # thread carries CH_PER_THREAD channels so every B/C vector it
+                # reads feeds several channels. Decode-shape sweep on B200
                 # (bf16, dstate=128), us per launch at batch 1: split1=46.8,
-                # split4=22.5, split8=16.6; split8 also wins at batch 16 and
-                # 32. On MI355X split8 is within 20% of the best split for
-                # batch-64 decode and 8 x 512 prefill.
-                comptime DSTATE_SPLIT = 8
-                comptime CH_PER_BLOCK = 128 // DSTATE_SPLIT
+                # split4=22.5, split8=16.6. For dstate 128 on B200, split 16
+                # with 4 channels per thread cut the batch-64 speculative
+                # verify (8 rows per sequence) from 68.6 to 44.0 us and the
+                # replay (5 rows) from 56.4 to 42.0 us. On MI355X split8 is
+                # within 20% of the best split for batch-64 decode and
+                # 8 x 512 prefill; the wider tile is not tuned there.
+                comptime WIDE = DSTATE == 128 and ctx.target.is_nvidia_gpu()
+                comptime DSTATE_SPLIT = 16 if WIDE else 8
+                comptime CH_PER_THREAD = 4 if WIDE else 1
+                comptime ROWS = 128 // DSTATE_SPLIT
+                comptime CH_PER_BLOCK = ROWS * CH_PER_THREAD
                 # The staged long-sequence path costs decode registers and
                 # shared memory, so only a launch with a multi-token sequence
                 # uses it.
@@ -4663,6 +4797,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                         ssm_pool_tt.LayoutType,
                         query_start_loc_tt.LayoutType,
                         has_initial_state_tt.LayoutType,
+                        update_state_tt.LayoutType,
                         y_tt.Engine,
                         type_of(x_fn),
                         type_of(dt_fn),
@@ -4671,6 +4806,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                         type_of(slot_fn),
                         Self.dt_softplus,
                         prefill,
+                        CH_PER_THREAD=CH_PER_THREAD,
                     ]
                     if has_prefill == prefill:
                         ctx.enqueue_function[kernel](
@@ -4682,6 +4818,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                             ssm_pool_tt,
                             query_start_loc_tt,
                             has_initial_state_tt,
+                            update_state_tt,
                             host_arg=x_fn,
                             host_arg2=dt_fn,
                             host_arg3=b_fn,
@@ -4692,11 +4829,11 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                                 nheads,
                                 batch,
                             ),
-                            block_dim=(DSTATE_SPLIT, CH_PER_BLOCK, 1),
+                            block_dim=(DSTATE_SPLIT, ROWS, 1),
                         )
 
         var dstate = B.dim_size(2)
-        __match dstate:
+        match dstate:
             case 16:
                 launch[16]()
             case 64:
@@ -4728,6 +4865,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
     query_start_loc: Some[Tensor],
     has_initial_state: Some[Tensor],
     cache_indices: Some[Tensor],
+    update_state: Some[Tensor],
 ) -> IndexList[3]:
     """Computes the output shape for the `mamba2_ssd_chunk_scan_varlen_fwd_inplace` graph op.
 
@@ -4758,6 +4896,9 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
         cache_indices: Per-sequence slot indices of shape
             `(batch,)` or `(1, batch)` in `uint32` selecting where in
             `ssm_pool` the final states are written.
+        update_state: Per-sequence flag of shape `(batch,)` in `bool`
+            selecting whether the final state is written back; may be empty
+            to write every sequence's.
     """
     comptime assert type_of(x).rank == 3, "x must be rank 3"
     comptime assert type_of(dt).rank == 2, "dt must be rank 2"
@@ -4785,6 +4926,12 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
     comptime assert (
         type_of(cache_indices).dtype == .uint32
     ), "cache_indices dtype must be uint32"
+    comptime assert (
+        type_of(update_state).rank == 1
+    ), "update_state must be rank 1"
+    comptime assert (
+        type_of(update_state).dtype == .bool
+    ), "update_state dtype must be bool"
     comptime assert (
         type_of(dt).dtype == type_of(x).dtype
         and type_of(A).dtype == type_of(x).dtype
@@ -4830,6 +4977,8 @@ struct CausalConv1DVarlenFwd[
         - cache_indices: (batch,) or (1, batch) - Indices into conv_states
           (optional)
         - has_initial_state: (batch,) - Whether to use initial state (optional)
+        - update_state: (batch,) - Whether to write the new window back to
+          `conv_states` (optional; empty writes every sequence's)
         - conv_states: (batch, dim, width - 1) - Conv states (optional, in/out)
     """
 
@@ -4848,6 +4997,7 @@ struct CausalConv1DVarlenFwd[
         query_start_loc: InputTensor[dtype=.int32, rank=1, ...],
         cache_indices: FusedInputTensor[dtype=.uint32, ...],
         has_initial_state: InputTensor[dtype=.bool, rank=1, ...],
+        update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
         comptime if cache_indices.rank == 2:
@@ -4864,6 +5014,7 @@ struct CausalConv1DVarlenFwd[
         var bias_tt = bias.to_tile_tensor()
         var query_start_loc_tt = query_start_loc.to_tile_tensor()
         var has_initial_state_tt = has_initial_state.to_tile_tensor()
+        var update_state_tt = update_state.to_tile_tensor()
         var conv_states_tt = conv_states.to_tile_tensor()
 
         # x and the slot indices are fused inputs: a slice feeding one is
@@ -4913,6 +5064,7 @@ struct CausalConv1DVarlenFwd[
                 bias_tt,
                 query_start_loc_tt,
                 has_initial_state_tt,
+                update_state_tt,
                 conv_states_tt,
                 output_tt,
                 x_fn,
@@ -4936,6 +5088,7 @@ struct CausalConv1DVarlenFwd[
                     bias_tt,
                     query_start_loc_tt,
                     has_initial_state_tt,
+                    update_state_tt,
                     conv_states_tt,
                     output_tt,
                     0,
@@ -4946,7 +5099,7 @@ struct CausalConv1DVarlenFwd[
                     x_vector_loads=False,
                 )
 
-            __match weight.dim_size(1):
+            match weight.dim_size(1):
                 case 1:
                     launch_gpu[1]()
                 case 2:
@@ -4975,6 +5128,7 @@ def causal_conv1d_varlen_fwd_shape(
     query_start_loc: Some[Tensor],
     cache_indices: Some[Tensor],
     has_initial_state: Some[Tensor],
+    update_state: Some[Tensor],
 ) -> IndexList[2]:
     """Computes the output shape for the `causal_conv1d_varlen_fwd` graph op.
 
@@ -4990,6 +5144,8 @@ def causal_conv1d_varlen_fwd_shape(
         cache_indices: Indices into the conv_states pool with shape (batch,).
         has_initial_state: Whether each sequence has an initial state with
             shape (batch,).
+        update_state: Whether each sequence writes its new window back to
+            `conv_states`, shape (batch,); may be empty to write all.
     """
     comptime assert type_of(x).rank == 2, "x must be rank 2"
     comptime assert type_of(weight).rank == 2, "weight must be rank 2"
@@ -5017,6 +5173,12 @@ def causal_conv1d_varlen_fwd_shape(
     comptime assert (
         type_of(has_initial_state).dtype == .bool
     ), "has_initial_state dtype must be bool"
+    comptime assert (
+        type_of(update_state).rank == 1
+    ), "update_state must be rank 1"
+    comptime assert (
+        type_of(update_state).dtype == .bool
+    ), "update_state dtype must be bool"
     return rebind[IndexList[2]](coord_to_index_list(x.shape().tuple()))
 
 
@@ -5179,6 +5341,81 @@ struct Sleep:
 # ===-----------------------------------------------------------------------===#
 # In-place memcpy kernel
 # ===-----------------------------------------------------------------------===#
+
+
+@extensibility.register("state_space_copy_rows")
+struct StateSpaceCopyRows:
+    """Copies selected state rows into a separately addressed scratch pool.
+
+    Only the active batch's rows move; the pool may be much larger. Both
+    operands are mutable to order this snapshot with the verify and replay.
+    """
+
+    @staticmethod
+    def execute[
+        dtype: DType, rank: Int, target: StaticString
+    ](
+        dst: MutableInputTensor[dtype=dtype, rank=rank, ...],
+        src: MutableInputTensor[dtype=dtype, rank=rank, ...],
+        dst_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        src_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        ctx: DeviceContext,
+    ) raises:
+        from max.gpu import global_idx
+
+        if dst_rows.dim_size(0) != src_rows.dim_size(0) or (
+            dst_rows.dim_size(1) != src_rows.dim_size(1)
+        ):
+            raise Error("state_space_copy_rows: row tables must match")
+        var row_size = 1
+        comptime for axis in range(1, rank):
+            if dst.dim_size(axis) != src.dim_size(axis):
+                raise Error("state_space_copy_rows: row shapes must match")
+            row_size *= src.dim_size(axis)
+        var rows = src_rows.size()
+        if rows == 0:
+            return
+
+        @__name("state_space_copy_rows")
+        def copy_rows_kernel(
+            dst_ptr: Pointer[Scalar[dtype], MutAnyOrigin],
+            src_ptr: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+            dst_ids: Pointer[UInt32, ImmutAnyOrigin],
+            src_ids: Pointer[UInt32, ImmutAnyOrigin],
+            count: Int64,
+            width: Int64,
+        ):
+            var index = global_idx.x
+            var row_width = Int(width)
+            if index < Int(count) * row_width:
+                var row, col = divmod(index, row_width)
+                dst_ptr[Int(dst_ids[row]) * row_width + col] = src_ptr[
+                    Int(src_ids[row]) * row_width + col
+                ]
+
+        comptime if is_gpu[target]():
+            ctx.enqueue_function[copy_rows_kernel](
+                dst.unsafe_ptr(),
+                # `src` is only read. Its tensor stays mutable to order the
+                # snapshot in the graph.
+                rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
+                    src.unsafe_ptr()
+                ),
+                dst_rows.unsafe_ptr(),
+                src_rows.unsafe_ptr(),
+                Int64(rows),
+                Int64(row_size),
+                grid_dim=(ceildiv(rows * row_size, 256),),
+                block_dim=(256,),
+            )
+        else:
+            for row in range(rows):
+                var dst_row = Int(dst_rows.unsafe_ptr()[row])
+                var src_row = Int(src_rows.unsafe_ptr()[row])
+                for col in range(row_size):
+                    dst.unsafe_ptr()[
+                        dst_row * row_size + col
+                    ] = src.unsafe_ptr()[src_row * row_size + col]
 
 
 @extensibility.register("mo.inplace_memcpy")

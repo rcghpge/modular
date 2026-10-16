@@ -41,15 +41,14 @@ See the `Dict` docs for more details.
 """
 
 from std.builtin.rebind import downcast
-from std.hashlib import Hasher, default_comp_time_hasher, default_hasher
+from std.hash import Hasher, default_comp_time_hasher, default_hasher
 import std.format._utils as fmt
 
-from std.memory import alloc, dealloc, ThinAllocation, unsafe_memset
+from std.memory import alloc, dealloc, unsafe_memset
 from std.memory.alloc import Layout
 
 from ._swisstable import (
     CTRL_DELETED,
-    CTRL_EMPTY,
     INITIAL_CAPACITY,
     SwissTable,
     SwissTableEntry,
@@ -144,7 +143,7 @@ struct _DictEntryIter[
     //,
     K: KeyElement & Copyable,
     V: Copyable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
     origin: Origin[mut=mut],
     forward: Bool = True,
 ](ImplicitlyCopyable, Iterable, Iterator):
@@ -220,7 +219,7 @@ struct _DictEntryIter[
 struct _TakeDictEntryIter[
     K: KeyElement & Deinitable,
     V: Movable & Deinitable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
     origin: MutOrigin,
 ](Copyable, Iterable, Iterator):
     """Iterator over mutable DictEntry references that moves entries out of the dictionary.
@@ -277,7 +276,7 @@ struct _TakeDictEntryIter[
 struct _DictEntryIterOwned[
     K: KeyElement & Deinitable,
     V: Movable & Deinitable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
 ](IterableOwned, Iterator, Movable):
     """An owning iterator over DictEntry values that consumes the dictionary.
 
@@ -331,7 +330,7 @@ struct _DictEntryIterOwned[
 struct _DictKeyIterOwned[
     K: KeyElement & Deinitable,
     V: Movable & Deinitable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
 ](IterableOwned, Iterator, Movable):
     """An owning iterator over Dict keys that consumes the dictionary.
 
@@ -365,7 +364,7 @@ struct _DictKeyIter[
     //,
     K: KeyElement & Copyable,
     V: Copyable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
     origin: Origin[mut=mut],
     forward: Bool = True,
 ](ImplicitlyCopyable, Iterable, Iterator):
@@ -411,7 +410,7 @@ struct _DictValueIter[
     //,
     K: KeyElement & Copyable,
     V: Copyable,
-    H: Hasher,
+    H: Hasher & Defaultable & Deinitable,
     origin: Origin[mut=mut],
     forward: Bool = True,
 ](ImplicitlyCopyable, Iterable, Iterator):
@@ -471,7 +470,7 @@ struct _DictValueIter[
 struct Dict[
     K: KeyElement,
     V: Movable,
-    H: Hasher = default_hasher,
+    H: Hasher & Defaultable & Deinitable = default_hasher,
 ](
     Boolable,
     Copyable where conforms_to(K, Copyable) and conforms_to(V, Copyable),
@@ -1138,10 +1137,10 @@ struct Dict[
         # entries with similar hashes don't cancel under XOR.
         var combined = UInt64(0)
         for entry in self.items():
-            var entry_hasher = H2()
+            var entry_hasher = Self.H()
             entry.key.__hash__(entry_hasher)
             entry.value.__hash__(entry_hasher)
-            var h = entry_hasher^.finish()
+            var h = entry_hasher.finish()
             h = ((h ^ 89869747) ^ (h << 16)) * 3644798167
             combined ^= h
         hasher._update_with_simd(combined)
@@ -1954,10 +1953,10 @@ struct Dict[
         # Build old_slot -> new_slot mapping and a set of relocated old slots
         # so we can filter stale _order entries (DELETED slots won't appear
         # in relocations since resize only moves occupied entries).
-        var slot_map = alloc(Layout[Int32](count=old_capacity)).unsafe_leak()
-        var relocated_set = alloc(
-            Layout[UInt8](count=old_capacity)
-        ).unsafe_leak()
+        var slot_map_alloc = alloc(Layout[Int32](count=old_capacity))
+        var slot_map = slot_map_alloc.unsafe_ptr()
+        var relocated_set_alloc = alloc(Layout[UInt8](count=old_capacity))
+        var relocated_set = relocated_set_alloc.unsafe_ptr()
         unsafe_memset(relocated_set, 0, old_capacity)
         for i in range(len(relocations)):
             slot_map.unsafe_store(relocations[i][0], Int32(relocations[i][1]))
@@ -1974,16 +1973,8 @@ struct Dict[
             len(self._order) == self._table._len
         ), "order length doesn't match _len after resize"
 
-        dealloc(
-            ThinAllocation(unsafe_owned_ptr=slot_map).unsafe_with_layout(
-                {count = old_capacity}
-            )
-        )
-        dealloc(
-            ThinAllocation(unsafe_owned_ptr=relocated_set).unsafe_with_layout(
-                {count = old_capacity}
-            )
-        )
+        dealloc(slot_map_alloc^)
+        dealloc(relocated_set_alloc^)
 
     @inline(.never)
     def _rehash_in_place(mut self):
@@ -1998,7 +1989,8 @@ struct Dict[
         self._order = compacted^
 
         # Delegate the actual rehash to the table, get slot mapping back
-        var slot_map = self._table.rehash_in_place()
+        var slot_map_alloc = self._table.rehash_in_place()
+        var slot_map = slot_map_alloc.unsafe_ptr()
 
         # Update _order with new slot indices
         for j in range(len(self._order)):
@@ -2008,11 +2000,7 @@ struct Dict[
             len(self._order) == self._table._len
         ), "order length doesn't match _len after in-place rehash"
 
-        dealloc(
-            ThinAllocation(unsafe_owned_ptr=slot_map).unsafe_with_layout(
-                {count = self._table._capacity}
-            )
-        )
+        dealloc(slot_map_alloc^)
 
     def _maybe_compact_order(mut self):
         """Compact the order array if it has too many stale entries."""

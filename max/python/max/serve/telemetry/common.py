@@ -14,13 +14,14 @@
 from __future__ import annotations
 
 import atexit
-import dataclasses
+import collections
 import json
 import logging
-import math
+import logging.handlers
 import os
 import platform
 import signal
+import threading
 import uuid
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -30,13 +31,18 @@ from types import FrameType
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-import numpy as np
 import requests
 from max.profiler import set_gpu_profiling_state
 from max.serve.config import KernelTraceLevel, Settings
 from max.serve.telemetry.metrics import (
     HISTOGRAM_SHADOW_SUFFIX,
     configure_histogram_shadow_emission,
+)
+from max.support._telemetry import (
+    LATENCY_BUCKETS_MS,
+    SkipExponentialHistogramsPrometheusReader,
+    drop_metrics_matching,
+    log_spaced_buckets,
 )
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
@@ -48,7 +54,6 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter,
 )
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import set_meter_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -56,10 +61,6 @@ from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
 from opentelemetry.sdk.metrics._internal.aggregation import (
     ExplicitBucketHistogramAggregation,
     ExponentialBucketHistogramAggregation,
-)
-from opentelemetry.sdk.metrics._internal.point import (
-    ExponentialHistogram,
-    Metric,
 )
 from opentelemetry.sdk.metrics._internal.point import (
     Histogram as ExplicitHistogramData,
@@ -72,9 +73,19 @@ from opentelemetry.sdk.metrics.export import (
 )
 from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import SpanLimits, TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
+from opentelemetry.sdk.trace import (
+    ReadableSpan,
+    SpanLimits,
+    TracerProvider,
+    sampling,
+)
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
 from opentelemetry.trace import set_tracer_provider
+from opentelemetry.util.types import Attributes
 from pythonjsonlogger import jsonlogger
 
 if TYPE_CHECKING:
@@ -83,6 +94,9 @@ if TYPE_CHECKING:
     from max.pipelines.request import RequestID
 
 otelBaseUrl = "https://telemetry.modular.com:443"
+
+# Non-empty so the SDK skips OTEL_EXPORTER_OTLP_*HEADERS; it sends this anyway.
+_MODULAR_OTLP_HEADERS = {"Content-Type": "application/x-protobuf"}
 
 
 def _operator_set_endpoint(signal_var: str) -> bool:
@@ -215,24 +229,7 @@ _METRICS_RESOURCE_ATTRS = {
 metrics_resource = Resource.create(_METRICS_RESOURCE_ATTRS)
 
 
-def _log_spaced_buckets(
-    start: float, stop: float, max_ratio: float
-) -> tuple[float, ...]:
-    """Builds a 0 boundary plus geometrically spaced boundaries up to ``stop``."""
-    steps = math.ceil(math.log(stop / start) / math.log(max_ratio))
-    return (0.0,) + tuple(
-        float(f"{bound:.3g}")
-        for bound in np.exp(
-            np.linspace(math.log(start), math.log(stop), steps + 1)
-        )
-    )
-
-
-# Latency metrics (milliseconds). Log-spaced from 1ms out to 8 hours, which
-# covers slow ops (request time, model load, compile) and long agentic requests.
-HISTOGRAM_LATENCY_BUCKETS_MS: tuple[float, ...] = _log_spaced_buckets(
-    1.0, 8 * 60 * 60 * 1000.0, 1.5
-)
+HISTOGRAM_LATENCY_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
 
 # Percentages / utilization ratios (0-100). Linear rather than geometric, since
 # utilization is only actionable near saturation: 5% steps through the bulk,
@@ -246,13 +243,13 @@ HISTOGRAM_PERCENT_BUCKETS: tuple[float, ...] = tuple(
 
 # Token counts per request/batch and other unbounded counts. Log-spaced from 1
 # up to 100M, so batch-level token totals over very long contexts stay on scale.
-HISTOGRAM_COUNT_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_COUNT_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     1.0, 100_000_000.0, 1.5
 )
 
 # Batch size (number of requests in a batch), from a single request up to the
 # largest batch the scheduler forms.
-HISTOGRAM_BATCH_SIZE_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_BATCH_SIZE_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     1.0, 512.0, 1.5
 )
 
@@ -265,13 +262,13 @@ HISTOGRAM_ACCEPTANCE_LENGTH_BUCKETS: tuple[float, ...] = tuple(
 
 # Throughput in tokens/second, from a slow single request to a large prefill
 # batch.
-HISTOGRAM_THROUGHPUT_TOKENS_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_THROUGHPUT_TOKENS_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     10.0, 1_000_000.0, 1.5
 )
 
 # Transfer throughput in GiB/s (e.g. NIXL over fast fabric). Coarser steps than
 # the other ladders: this spans four decades and only feeds transfer dashboards.
-HISTOGRAM_GIB_PER_S_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_GIB_PER_S_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     0.1, 800.0, 2.0
 )
 
@@ -279,14 +276,14 @@ HISTOGRAM_GIB_PER_S_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
 # boundaries): the per-request media budget defaults to 100 MiB and a single
 # item can use all of it, and the limit is disableable (Settings.max_media_bytes
 # is ``ge=0``), so the ladder clears the default with headroom.
-HISTOGRAM_BYTES_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_BYTES_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     1024.0, 1024.0**3, 2.0
 )
 
 # Image pixel counts (width * height), pre-resize. 19 boundaries, 1 K to 100 M:
 # 1 K covers a 32x32 thumbnail, 100 M a 10000x10000 image, above which the
 # decoded-size estimate rejects it against the default budget anyway.
-HISTOGRAM_PIXELS_BUCKETS: tuple[float, ...] = _log_spaced_buckets(
+HISTOGRAM_PIXELS_BUCKETS: tuple[float, ...] = log_spaced_buckets(
     1024.0, 1.0e8, 2.0
 )
 
@@ -310,12 +307,16 @@ HISTOGRAM_BUCKETS_BY_METRIC: dict[str, tuple[float, ...]] = {
     "maxserve.time_per_output_token": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.batch_execution_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.batch_creation_time": HISTOGRAM_LATENCY_BUCKETS_MS,
+    "maxserve.di.api_pre_tokenize": HISTOGRAM_LATENCY_BUCKETS_MS,
+    "maxserve.di.api_submit": HISTOGRAM_LATENCY_BUCKETS_MS,
+    "maxserve.di.mw_queue_wait": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.decode_admission_queue_wait_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.decode_send_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.dispatch_rtt": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.prefill_span": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.reply_rtt": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.prefill_queue_wait_time": HISTOGRAM_LATENCY_BUCKETS_MS,
+    "maxserve.ce_pool_wait_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.decode_postprocess_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.early_sync_time": HISTOGRAM_LATENCY_BUCKETS_MS,
     "maxserve.di.handoff_to_first_token_time": HISTOGRAM_LATENCY_BUCKETS_MS,
@@ -464,6 +465,12 @@ class _RequestIdJsonFormatter(jsonlogger.JsonFormatter):
             log_record["request_id"] = request_id
 
 
+def _log_exporter() -> OTLPLogExporter:
+    return OTLPLogExporter(
+        endpoint=otelBaseUrl + "/v1/logs", headers=_MODULAR_OTLP_HEADERS
+    )
+
+
 # Configure logging to console and OTEL.  This should be called before any
 # 3rd party imports whose logging you wish to capture.
 # Note that the color is not propagated to subprocesses. eg: ModelWorker
@@ -584,7 +591,7 @@ def configure_logging(
         # Create an OTEL handler
         logger_provider = LoggerProvider(logs_resource)
         set_logger_provider(logger_provider)
-        exporter = OTLPLogExporter(endpoint=otelBaseUrl + "/v1/logs")
+        exporter = _log_exporter()
         logger_provider.add_log_record_processor(
             BatchLogRecordProcessor(exporter)
         )
@@ -623,72 +630,12 @@ def configure_logging(
         )
 
 
-def _drop_metrics_matching(
-    metrics_data: MetricsData | None,
-    should_drop: Callable[[Metric], bool],
-) -> MetricsData | None:
-    """Rebuilds the MetricsData tree without metrics matching ``should_drop``.
-
-    MetricsData/ResourceMetrics/ScopeMetrics are frozen dataclasses, so this
-    reconstructs the tree rather than mutating it in place.
-    """
-    if metrics_data is None:
-        return None
-    return dataclasses.replace(
-        metrics_data,
-        resource_metrics=[
-            dataclasses.replace(
-                resource_metrics,
-                scope_metrics=[
-                    dataclasses.replace(
-                        scope_metrics,
-                        metrics=[
-                            m
-                            for m in scope_metrics.metrics
-                            if not should_drop(m)
-                        ],
-                    )
-                    for scope_metrics in resource_metrics.scope_metrics
-                ],
-            )
-            for resource_metrics in metrics_data.resource_metrics
-        ],
-    )
-
-
-class _SkipExponentialHistogramsPrometheusReader(PrometheusMetricReader):
-    """Drops exponential-histogram data points instead of crashing on them.
-
-    The classic Prometheus text exposition format (and this exporter) only
-    knows how to render explicit-bucket histograms:
-    ``_translate_to_prometheus`` assumes every non-``HistogramDataPoint`` has
-    a ``.value`` attribute, which ``ExponentialHistogramDataPoint`` doesn't
-    have, so it would raise ``AttributeError`` and 500 the whole ``/metrics``
-    scrape. The exponential-histogram shadow metrics
-    (metrics.HISTOGRAM_SHADOW_SUFFIX) only exist when
-    ``MAX_SERVE_OTLP_METRICS_ENDPOINT`` is set, and are meant for that
-    endpoint only (see _ExponentialShadowOnlyReader below) — this keeps
-    Prometheus showing exactly the explicit-bucket histograms it always has,
-    unaffected either way.
-    """
-
-    def _receive_metrics(
-        self,
-        metrics_data: MetricsData,
-        timeout_millis: float = 10_000,
-        **kwargs: object,
-    ) -> None:
-        filtered = _drop_metrics_matching(
-            metrics_data, lambda m: isinstance(m.data, ExponentialHistogram)
-        )
-        if filtered is not None:
-            super()._receive_metrics(filtered, timeout_millis, **kwargs)
-
-
 class _ExponentialShadowOnlyReader(PeriodicExportingMetricReader):
     """Drops explicit-bucket histogram data points; keeps everything else.
 
-    The complement of _SkipExponentialHistogramsPrometheusReader: the
+    The complement of
+    ``max.support._telemetry.SkipExponentialHistogramsPrometheusReader``:
+    the
     explicit-bucket histograms already reach Prometheus unchanged (above),
     so this reader — used only for the opt-in
     ``MAX_SERVE_OTLP_METRICS_ENDPOINT`` — carries just the exponential
@@ -706,7 +653,7 @@ class _ExponentialShadowOnlyReader(PeriodicExportingMetricReader):
         timeout_millis: float = 10_000,
         **kwargs: object,
     ) -> None:
-        filtered = _drop_metrics_matching(
+        filtered = drop_metrics_matching(
             metrics_data, lambda m: isinstance(m.data, ExplicitHistogramData)
         )
         if filtered is not None:
@@ -773,7 +720,9 @@ def _metric_exporter() -> OTLPMetricExporter:
     """Builds the metric exporter, falling back to Modular's collector."""
     if _operator_set_endpoint("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"):
         return OTLPMetricExporter()
-    return OTLPMetricExporter(endpoint=otelBaseUrl + "/v1/metrics")
+    return OTLPMetricExporter(
+        endpoint=otelBaseUrl + "/v1/metrics", headers=_MODULAR_OTLP_HEADERS
+    )
 
 
 def configure_metrics(settings: Settings) -> None:
@@ -781,7 +730,7 @@ def configure_metrics(settings: Settings) -> None:
     configure_histogram_shadow_emission(bool(settings.otlp_metrics_endpoint))
 
     meter_readers: list[MetricReader] = [
-        _SkipExponentialHistogramsPrometheusReader(True)
+        SkipExponentialHistogramsPrometheusReader(True)
     ]
     if egress_enabled:
         meter_readers.append(PeriodicExportingMetricReader(_metric_exporter()))
@@ -882,6 +831,7 @@ def _grpc_span_exporter() -> SpanExporter:
     logger = logging.getLogger(__name__)
     endpoint = _tls_by_omission()
     if endpoint is not None:
+        endpoint = _without_credentials(endpoint)[0]
         logger.warning(
             "OTLP traces endpoint %r has no http:// or https:// scheme, so "
             "spans will be exported over TLS. Write it as http://%s for a "
@@ -913,6 +863,184 @@ def _span_exporter() -> SpanExporter:
     return OTLPSpanExporter()
 
 
+def _without_credentials(endpoint: str) -> tuple[str, list[str]]:
+    """Returns the endpoint as logs show it, and the parts it leaves out.
+
+    Userinfo or a query can carry a credential. A gRPC endpoint may have no
+    scheme, so one without ``://`` is read as an authority.
+    """
+    url = urlparse(endpoint if "://" in endpoint else "//" + endpoint)
+    userinfo, _, host = url.netloc.rpartition("@")
+    shown = url._replace(netloc=host, query="").geturl().removeprefix("//")
+    return shown, [s for s in (userinfo, url.query) if s]
+
+
+# An exporter that returns a failure code logs why only here. MAX sends only
+# spans over gRPC, whose signals share one logger.
+_EXPORT_ERROR_LOGGERS = (
+    "opentelemetry.exporter.otlp.proto.http.trace_exporter",
+    "opentelemetry.exporter.otlp.proto.grpc.exporter",
+)
+
+
+class _CountingQueue(collections.deque[ReadableSpan]):
+    """The SDK's span queue, counting the spans it drops to make room.
+
+    The SDK drops a full queue's oldest span without a word. The fullness
+    check and the append share a lock with the worker's pops, so each drop
+    is counted once.
+    """
+
+    def __init__(self, maxlen: int) -> None:
+        super().__init__([], maxlen)
+        self.dropped = 0
+        self._lock = threading.Lock()
+
+    def appendleft(self, span: ReadableSpan) -> None:
+        with self._lock:
+            if len(self) == self.maxlen:
+                self.dropped += 1
+            super().appendleft(span)
+
+    def pop(self, *args: int) -> ReadableSpan:
+        with self._lock:
+            return super().pop(*args)
+
+    def clear(self) -> None:
+        # The SDK clears the queue in a forked child, where a thread that no
+        # longer exists may hold the lock.
+        self._lock = threading.Lock()
+        super().clear()
+
+
+class _ReportingSpanExporter(SpanExporter):
+    """Warns through a ``max.serve`` logger when span export starts failing,
+    when it recovers, and once when a full queue has dropped spans.
+
+    ``configure_logging()`` drops the SDK's own ``opentelemetry.*`` records,
+    and admitting them would print a metrics-export traceback every interval
+    wherever Modular's collector is unreachable.
+    """
+
+    def __init__(
+        self,
+        exporter: SpanExporter,
+        what: str = "spans",
+        queue_size: int | None = None,
+        size_setting: str = "OTEL_BSP_MAX_QUEUE_SIZE",
+    ) -> None:
+        self._exporter = exporter
+        self._what = what
+        self._size_setting = size_setting
+        self._endpoint, self._secrets = _without_credentials(
+            os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"]
+        )
+        self._failing = False
+        self._warned_of_drops = False
+        # The replay's exporter logs to the same loggers from its own thread.
+        self._thread = threading.local()
+        self.queue_size = (
+            queue_size or BatchSpanProcessor._default_max_queue_size()
+        )
+        self.queue = _CountingQueue(self.queue_size)
+        for name in _EXPORT_ERROR_LOGGERS:
+            logging.getLogger(name).addFilter(self._keep_error)
+
+    def _keep_error(self, record: logging.LogRecord) -> bool:
+        self._thread.error = record.getMessage()
+        return True
+
+    def _redact(self, text: str | None) -> str | None:
+        for secret in self._secrets:
+            text = text and text.replace(secret, "<redacted>")
+        return text
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        self._thread.error = None
+        try:
+            result = self._exporter.export(spans)
+        except Exception as e:
+            self._thread.error = f"{type(e).__name__}: {e}"
+            result = SpanExportResult.FAILURE
+        logger = logging.getLogger(__name__)
+        if result is SpanExportResult.SUCCESS:
+            if self._failing:
+                self._failing = False
+                logger.warning(
+                    "Exporting %s to %s recovered.", self._what, self._endpoint
+                )
+        else:
+            if not self._failing:
+                self._failing = True
+                logger.warning(
+                    "Exporting %s to %s failed, and spans are lost until an"
+                    " export succeeds. Error: %s",
+                    self._what,
+                    self._endpoint,
+                    self._redact(self._thread.error),
+                )
+        if self.queue.dropped and not self._warned_of_drops:
+            self._warned_of_drops = True
+            logger.warning(
+                "The queue of %s for %s is full and has dropped %d so far;"
+                " raise %s (%d) or check that the collector keeps up.",
+                self._what,
+                self._endpoint,
+                self.queue.dropped,
+                self._size_setting,
+                self.queue_size,
+            )
+        return result
+
+    def shutdown(self) -> None:
+        for name in _EXPORT_ERROR_LOGGERS:
+            logging.getLogger(name).removeFilter(self._keep_error)
+        self._exporter.shutdown()
+
+
+class _CountingSpanProcessor(BatchSpanProcessor):
+    """Queues spans in :class:`_ReportingSpanExporter`'s counting queue."""
+
+    def __init__(self, exporter: _ReportingSpanExporter) -> None:
+        super().__init__(exporter, max_queue_size=exporter.queue_size)
+        self._batch_processor._queue = exporter.queue
+
+
+class _LinkedRootSampler(sampling.Sampler):
+    """Samples a root span with a sampled link, such as ``max.batch``, so a
+    pass follows its requests, and leaves every other span to ``fallback``.
+
+    Args:
+        fallback: The sampler the SDK builds from ``OTEL_TRACES_SAMPLER``.
+    """
+
+    def __init__(self, fallback: sampling.Sampler) -> None:
+        self._fallback = fallback
+
+    def should_sample(
+        self,
+        parent_context: OtelContext | None,
+        trace_id: int,
+        name: str,
+        kind: trace.SpanKind | None = None,
+        attributes: Attributes = None,
+        links: Sequence[trace.Link] | None = None,
+        trace_state: trace.TraceState | None = None,
+    ) -> sampling.SamplingResult:
+        if links and any(link.context.trace_flags.sampled for link in links):
+            parent = trace.get_current_span(parent_context).get_span_context()
+            if not parent.is_valid:
+                return sampling.SamplingResult(
+                    sampling.Decision.RECORD_AND_SAMPLE, attributes
+                )
+        return self._fallback.should_sample(
+            parent_context, trace_id, name, kind, attributes, links, trace_state
+        )
+
+    def get_description(self) -> str:
+        return f"LinkedRootSampler{{{self._fallback.get_description()}}}"
+
+
 def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
     """Installs the process's tracer provider if it is to export spans.
 
@@ -930,6 +1058,7 @@ def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
     )
     if export_spans:
         provider = TracerProvider(
+            sampler=_LinkedRootSampler(sampling._get_from_env_or_default()),
             resource=logs_resource,
             span_limits=(
                 SpanLimits(max_links=max_links)
@@ -937,8 +1066,8 @@ def configure_tracing(settings: Settings, max_links: int | None = None) -> None:
                 else None
             ),
         )
-        exporter = _span_exporter()
-        provider.add_span_processor(BatchSpanProcessor(exporter))
+        exporter = _ReportingSpanExporter(_span_exporter())
+        provider.add_span_processor(_CountingSpanProcessor(exporter))
         set_tracer_provider(provider)
         _trace_level_header_enabled = settings.kernel_trace_headers
 
@@ -964,7 +1093,7 @@ _kernel_trace_level = KernelTraceLevel.OFF
 
 
 def batch_spans_enabled() -> bool:
-    """Returns whether ``max.batch`` spans should be emitted, i.e. the model
+    """Returns whether ``max.batch`` spans should be emitted; that is, the model
     worker was configured with ``kernel_trace_level`` at ``batch`` or above."""
     return _kernel_trace_level >= KernelTraceLevel.BATCH
 

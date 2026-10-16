@@ -72,7 +72,9 @@ def log_pipeline_info(
     for line in _format_config_entries(arch_entries):
         _logger.info(line)
 
-    pipeline_config.models.log_model_info()
+    pipeline_config.models.log_model_info(
+        uses_kv_cache=arch.task == PipelineTask.TEXT_GENERATION
+    )
     pipeline_entries: list[tuple[str, Any]] = []
     if "main" in pipeline_config.models:
         pipeline_entries.append(("max_seq_len", memory_plan.planned_max_length))
@@ -188,16 +190,6 @@ def log_basic_config(
         )
         config_entries.append(
             ("use_greedy_acceptance", spec.use_greedy_acceptance)
-        )
-        # Nothing reads rejection_sampling_strategy. Print the request and
-        # its inertness together, so an A/B over the flag is not credited to
-        # an acceptance-rule change that never happened.
-        config_entries.append(
-            (
-                "rejection_sampling_strategy",
-                f"{spec.rejection_sampling_strategy or 'unset'} (inert:"
-                " the architecture's AcceptanceSampler decides)",
-            )
         )
         if spec.use_relaxed_acceptance_for_thinking:
             config_entries.append(("relaxed_topk", spec.relaxed_topk))

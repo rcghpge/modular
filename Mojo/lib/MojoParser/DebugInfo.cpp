@@ -35,9 +35,9 @@ void SourceNames::processDecorators(Operation *op,
       ASTDecl *decoratorDecl =
           shared.declResolver->getDeclForFuncSymbol(sym.getSymbol());
       if (decoratorDecl)
-        if (auto decoratorFunc =
-                dyn_cast_or_null<FnOp>(decoratorDecl->getIfOperation()))
-          return getSourceName(decoratorFunc);
+        if (auto *decoratorFunc = dyn_cast<DefASTDecl>(decoratorDecl))
+          if (decoratorFunc->getOp())
+            return getSourceName(decoratorFunc->getOp());
     }
     return {};
   };
@@ -126,7 +126,7 @@ SourceNameAttr SourceNames::getSourceName(Type type) {
   if (auto declRef = dyn_cast<StructType>(type)) {
     ASTDecl &decl =
         shared.declResolver->getDeclForTypeSymbol(declRef.getSymbol());
-    StructDeclOp op = cast<StructDeclOp>(decl.getIfOperation());
+    StructDeclOp op = cast<StructASTDecl>(decl).getOp();
     SourceNameAttr name = getSourceName(op);
     // Add the parameter values.
     SmallVector<StringAttr> paramValues;

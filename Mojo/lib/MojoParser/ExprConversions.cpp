@@ -414,9 +414,8 @@ static FnOp generateConversionThunk(Attribute key, ASTDecl &moduleDecl,
           MBValue(thunk.getArgument(thunkVariadicArgIndex));
 
       // Emit: the_pack[index]
-      auto indexAttr = IntegerAttr::get(IndexType::get(ctx), indexInVariadic);
-      CValue indexCValue = emitter.emitInt(
-          ASTExprAnd<PValue>{PValue(indexAttr), &node}, EC_ConversionThunk);
+      CValue indexCValue =
+          emitter.emitInt(indexInVariadic, useLoc, EC_ConversionThunk);
       SyntheticNode indexSynthNode(useLoc, indexCValue);
       SyntheticNode packSynthNode(useLoc, packRefMBValue);
       Operand subscriptOperand(&indexSynthNode, useLoc,
@@ -1156,26 +1155,22 @@ canZeroCostConvertImpl(ASTType sugaredFromType, ASTType sugaredToType,
   // Check for struct types that differ only in their parameter bindings.
   auto fromDecl = fromType.getDecl(shared);
   auto toDecl = toType.getDecl(shared);
-  if (fromDecl && toDecl) {
-    auto fromDeclOp =
-        dyn_cast_or_null<StructDeclOp>(fromDecl->getIfOperation());
-    auto toDeclOp = dyn_cast_or_null<StructDeclOp>(toDecl->getIfOperation());
-    if (fromDeclOp && toDeclOp) {
-      // If both types reference the same struct declaration (e.g.
-      // `Iter[X]` vs `Iter[Y]`), the conversion is zero-cost as long as each
-      // pair of parameter bindings is zero-cost convertible. We conservatively
-      // require both sides to be `StructType` here, though in principle this
-      // just needs both sides to be some metatype of struct types at the same
-      // type-universe level.
-      if (fromDecl == toDecl && sugarIsa<LIT::StructType>(fromType) &&
-          sugarIsa<LIT::StructType>(toType)) {
-        CastRemover remover;
-        if (remover.replace(fromType.mlirType) ==
-            remover.replace(toType.mlirType))
-          return TriBool::yes();
-      }
-      return TriBool::no();
+  if (isa_and_nonnull<StructASTDecl>(fromDecl) &&
+      isa_and_nonnull<StructASTDecl>(toDecl)) {
+    // If both types reference the same struct declaration (e.g.
+    // `Iter[X]` vs `Iter[Y]`), the conversion is zero-cost as long as each
+    // pair of parameter bindings is zero-cost convertible. We conservatively
+    // require both sides to be `StructType` here, though in principle this
+    // just needs both sides to be some metatype of struct types at the same
+    // type-universe level.
+    if (fromDecl == toDecl && sugarIsa<LIT::StructType>(fromType) &&
+        sugarIsa<LIT::StructType>(toType)) {
+      CastRemover remover;
+      if (remover.replace(fromType.mlirType) ==
+          remover.replace(toType.mlirType))
+        return TriBool::yes();
     }
+    return TriBool::no();
   }
 
   // Check origin downcasting.  The safe conversions are:
@@ -1670,9 +1665,9 @@ PValue IREmitter::bindNonStructTypeToTrait(ASTExprAnd<CValue> value,
 
   // Use a special wrapper decl in the builtins as stubs.
   ASTType wrapperType = shared.getBuiltinStubsMLIRType(loc);
-  ASTDecl *wrapperDecl = wrapperType.getDecl(shared);
-  if (!wrapperDecl ||
-      !isa_and_nonnull<StructDeclOp>(wrapperDecl->getIfOperation())) {
+  auto *wrapperDecl =
+      dyn_cast_if_present<StructASTDecl>(wrapperType.getDecl(shared));
+  if (!wrapperDecl) {
     shared.emitError(loc, "malformed builtin._stubs.__MLIRType");
     return {};
   }
@@ -1694,8 +1689,7 @@ PValue IREmitter::bindNonStructTypeToTrait(ASTExprAnd<CValue> value,
 
   // Otherwise, create a new type value whose witness table is provided by the
   // wrapper stub.
-  ASTType boundWrapper = cast<StructDeclOp>(wrapperDecl->getIfOperation())
-                             .bindReference({typeValue});
+  ASTType boundWrapper = wrapperDecl->getOp().bindReference({typeValue});
   return TypeParamAttr::get(boundWrapper, mlirType, trait);
 }
 
@@ -2448,7 +2442,7 @@ TypedAttr IREmitter::emitStringExprAsDataToStr(CValue val, ExprNode *expr,
   // If the value is a t-string, convert it to String first. TString cannot be
   // implicitly converted to StringSpan, but String has an explicit constructor
   // that accepts TString.
-  if (isa<TStringExprNode>(expr)) {
+  if (isa<TStringExprNode>(expr->getWithoutParens())) {
     auto stringType = shared.lookupBuiltinType("String", declScope, loc)
                           .getWithoutParameters(shared);
     if (val.getType().getDecl(shared) != stringType.getDecl(shared)) {

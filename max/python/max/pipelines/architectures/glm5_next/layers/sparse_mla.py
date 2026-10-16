@@ -81,11 +81,6 @@ __all__ = [
     "nope_pad_rotary",
 ]
 
-# Attention sink the sparse decode kernel adds for slots a query does not
-# select. Matches DeepSeek-V3.2's value; -1e38 is float32's most negative
-# normal power of ten, so `exp` of it is exactly zero.
-_SPARSE_ATTN_SINK = -1.0e38
-
 
 class _FlatSparseMLA(SparseLatentAttentionWithRopeFp8):
     """The shared sparse-MLA block, holding its checkpoint weight names.
@@ -412,7 +407,7 @@ class Glm5NextSparseMLASublayer(Module):
         """
         if inputs.prev_selection is not None:
             return inputs.prev_selection.to(x.device)
-        return self.indexer_shards[device_idx](
+        selection, _ = self.indexer_shards[device_idx](
             x,
             q_a_normed,
             # NoPE: `qk_rope_head_dim` is 0, so the indexer skips the rotary
@@ -423,7 +418,10 @@ class Glm5NextSparseMLASublayer(Module):
             inputs.layer_idx,
             tail=inputs.tail_pools[device_idx],
             slot_idx=inputs.tail_row_ids[device_idx],
+            write_logical=True,
         )
+        assert selection is not None
+        return selection
 
     def _attend(
         self,
@@ -502,6 +500,7 @@ class Glm5NextSparseMLASublayer(Module):
             scalar_args=kv_collection.attention_dispatch_metadata,
             num_partitions_scalar=kv_collection.mla_num_partitions,
             sparse_indices=selection,
+            physical_indices=False,
             sparse_topk_lengths=ops.broadcast_to(
                 ops.constant(
                     self.indexer.selection_width,
@@ -510,13 +509,21 @@ class Glm5NextSparseMLASublayer(Module):
                 ),
                 (xq.shape[0],),
             ),
-            sparse_attn_sink=ops.broadcast_to(
-                ops.constant(
-                    _SPARSE_ATTN_SINK, dtype=DType.float32, device=xq.device
-                ),
-                (shard.n_heads,),
-            ),
+            # No `sparse_attn_sink`: the checkpoint has none, and the -1e38
+            # constant passed before added exp(-1e38) == 0 to the softmax
+            # denominator, so it never changed the output. The BF16 AMD
+            # sparse arm also rejects any sink operand.
             sparse_indices_stride=self.indexer.selection_width,
+            # A k-pool row holds fewer valid entries than its 2051 slots
+            # once every pool is selected; the kernel masks the `-1` padding
+            # from this layout instead of scoring it as zero keys.
+            index_kpool=self.indexer.index_kpool,
+            index_pool_topk=self.indexer.pools_selected,
+            index_kpool_select_tail=self.indexer.always_select_tail,
+            # TODO(GLM53-MTP): a draft step that reuses an earlier token's
+            # selection must pass its lag here. It cannot ride in
+            # `SparseMLASublayerInputs`: every field there becomes a subgraph
+            # input, which a Python int is not.
         ).reshape((-1, shard.n_heads * shard.v_head_dim))
         return shard.o_proj(attn_out)
 

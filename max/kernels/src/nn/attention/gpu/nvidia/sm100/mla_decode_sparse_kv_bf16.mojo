@@ -35,7 +35,7 @@ from max.gpu import (
     thread_idx,
     warp_id,
 )
-from max.gpu.sync import barrier
+from max.gpu.sync import barrier, syncwarp
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.primitives.grid_controls import launch_dependent_grids
 from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
@@ -47,10 +47,7 @@ from max.gpu.memory import (
 )
 from max.gpu.sync import named_barrier
 from max.gpu.compute.arch.tcgen05 import (
-    tcgen05_alloc,
-    tcgen05_dealloc,
     tcgen05_fence_before,
-    tcgen05_release_allocation_lock,
 )
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout.tma_async import (
@@ -60,7 +57,6 @@ from layout.tma_async import (
 )
 from layout import (
     ComptimeInt,
-    CoordLike,
     DefaultEngine,
     RowMajorLayout,
     TensorEngine,
@@ -77,6 +73,7 @@ from std.utils.numerics import get_accum_type, min_or_neg_inf
 from std.utils.static_tuple import StaticTuple
 
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
+    attn_tmem_addr,
     elect,
     expect_bytes_pred,
     SharedMemPointer,
@@ -84,9 +81,11 @@ from nn.attention.gpu.nvidia.sm100.attention_utils import (
 )
 
 from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
+    SparseRowLayout,
     MLA_SM100_Decode_Config,
     MLA_SM100_Decode_Common,
     QOTMATile,
+    sparse_kv_row,
     ORaggedTMATile,
     MLA_Decode_Pack,
     OffsetPosition,
@@ -127,6 +126,10 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
     AttnSinkPtrType: OptionalPointer = NullPointer[DType.float32],
     has_extra_kv: Bool = False,
     TopkLengthsPtrType: OptionalPointer = NullPointer[DType.int32],
+    # Whether `d_indices` holds paged physical rows rather than token
+    # positions (decoded through the cache's lookup table); see `sparse_kv_row`.
+    physical_indices: Bool = True,
+    sparse_row: SparseRowLayout = SparseRowLayout(),
     Engine: TensorEngine = DefaultEngine[element_width=1],
 ](TrivialRegisterPassable):
     # Presence of the optional operands is carried by their pointer types.
@@ -293,6 +296,9 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             MutAnyOrigin,
             Engine=Self.Engine,
         ],
+        # Positions between the token each sparse row was computed for and
+        # the token that reads it.
+        selection_lag_dev: Int32,
     ):
         # The upstream dispatcher monomorphizes the kernel struct for both
         # `decoding_warp_split_k=True` and `False`; the split-K branch is
@@ -323,6 +329,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         comptime num_reg_gather = 80
         comptime num_reg_mma_store = 80
         var batch_size = Int(scalar_args.raw_load(0))
+        var selection_lag = Int(selection_lag_dev)
         var q_max_seq_len = Int(scalar_args.raw_load(1))
         var num_partitions = Int(mla_decode_pack.num_partitions)
         var mask = mla_decode_pack.mask
@@ -494,12 +501,10 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         ](mbar_base)
         mbar_base += out_pipeline.num_mbars()
 
-        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
-
         # Double-buffered idx SMEM (2 * BN_QK Int32 rows), indexed by the
         # KV stage: the gather WG stages tile N+1's indices while tile N's
         # gather4s are still in flight.
-        var idx_smem_base = (ptr_tmem_addr + 1).bitcast[Int32]()
+        var idx_smem_base = mbar_base.bitcast[Int32]()
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
         var is_leader = elect() != 0
@@ -518,10 +523,6 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 o_tma.prefetch_descriptor()
                 comptime if Self.has_extra_kv:
                     extra_k_tma.prefetch_descriptor()
-        elif warp_idx == 9:
-            tcgen05_alloc[Self.config.cta_group](
-                ptr_tmem_addr, Self.config.sm100_tmem_cols
-            )
         # The fence publishes the generic-proxy zero stores to the async proxy
         # the MMAs read through.
         comptime if Self.config.input_q_depth < Self.config.padded_q_depth:
@@ -549,8 +550,15 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                         DType.float32
                     ]() * Float32(log2e)
 
-            Self.Common_MLA_Op.Softmax[has_attn_sink=Self.has_attn_sink,](
-                ptr_tmem_addr[0],
+            comptime if Self.MaskType.get_type_name() == "CausalMask":
+                offset_position.assert_row_packed[Self.sparse_row](
+                    d_indices, _indices_stride, selection_lag
+                )
+            Self.Common_MLA_Op.Softmax[
+                has_attn_sink=Self.has_attn_sink,
+                sparse_row=Self.sparse_row,
+            ](
+                attn_tmem_addr[cluster_size=1](),
                 s_bars,
                 p_bars,
                 kv_smem.bitcast[Scalar[Self.q_type]]().as_unsafe_any_origin(),
@@ -567,11 +575,12 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 lse_accum_split_ptr=lse_accum_split_ptr,
                 batch_size=batch_size,
                 attn_sink_log2=attn_sink_log2,
+                selection_lag=selection_lag,
             )
         elif warp_idx >= 4 and warp_idx < 8:  # correction warpgroup
             warpgroup_reg_alloc[num_reg_correction]()
             Self.Common_MLA_Op.Correction(
-                ptr_tmem_addr[0],
+                attn_tmem_addr[cluster_size=1](),
                 o_bars,
                 c_bars,
                 corr_done_bars,
@@ -608,7 +617,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             warpgroup_reg_dealloc[num_reg_mma_store]()
             if warp_idx == 12:
                 Self.mmaQK(
-                    ptr_tmem_addr[0],
+                    attn_tmem_addr[cluster_size=1](),
                     q_smem.as_unsafe_any_origin(),
                     (kv_smem)
                     .bitcast[Scalar[Self.q_type]]()
@@ -620,7 +629,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 )
             elif warp_idx == 13:
                 Self.mmaPV(
-                    ptr_tmem_addr[0],
+                    attn_tmem_addr[cluster_size=1](),
                     (kv_smem)
                     .bitcast[Scalar[Self.q_type]]()
                     .as_unsafe_any_origin(),
@@ -636,19 +645,12 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                     o_tma,
                     offset_position,
                 )
-        barrier()
+        syncwarp()
 
-        # PDL: signal that this CTA is done so the combine kernel can
-        # start.  Must be called by all threads in the CTA after all work
-        # is complete.
+        # PDL: the combine kernel can launch once every thread of the CTA has
+        # signaled (or exited), so each thread signals after its own work.
         comptime if Self.config.decoding_warp_split_k:
             launch_dependent_grids()
-
-        if warp_idx == 9:
-            tcgen05_release_allocation_lock[Self.config.cta_group]()
-            tcgen05_dealloc[Self.config.cta_group](
-                ptr_tmem_addr[0], Self.config.sm100_tmem_cols
-            )
 
     # --------------------------------------------------------------------------
     # One KV tile: cooperative idx decode + round-robin gather4 across the
@@ -671,6 +673,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         cur_topk: UInt32,
         idx_smem_base: SharedMemPointer[Int32],
         indices_base: Int,
+        batch_idx: UInt32,
     ):
         # Byte count must match what the gather4 issues write per tile:
         # BN_QK * box_w * num_col_groups * sizeof(bf16), the row as stored.
@@ -687,18 +690,16 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             qk_stage=0
         ]() * UInt32(Self.config.BN_QK)
 
-        # Cooperative idx decode: thread t stages row t (t < BN_QK).
-        # d_indices encodes physical_block * page_size + offset;
-        # get_tma_row() maps it to a TMA row, -1 (zero-fill) preserved.
+        # Cooperative idx decode: thread t stages row t (t < BN_QK) as a
+        # TMA row, -1 (zero-fill) for an unused slot.
         if coop_tid < Self.config.BN_QK:
             var max_idx = max(cur_topk, UInt32(1)) - 1
             var idx_pos = UInt32(indices_base + coop_tid)
             var clamped_pos = min(idx_pos, max_idx)
             var raw_index = cur_d_indices.unsafe_value()[Int(clamped_pos)]
-            var tma_row = cur_kv_lut.get_tma_row(raw_index)
-            if raw_index == -1:
-                tma_row = -1
-            idx_smem[coop_tid] = tma_row
+            idx_smem[coop_tid] = sparse_kv_row[Self.physical_indices](
+                cur_kv_lut, batch_idx, raw_index
+            )
 
         # One expect_bytes per tile (warp 8's elected lane): the mbar tx
         # counter absorbs all 4 warps' gather4 bytes.
@@ -803,6 +804,11 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
         extra_topk: Int,
     ):
+        # The extra stream's caller (latent sparse attention) passes flat
+        # physical rows, so it cannot share a logical selection's decoding.
+        comptime assert not (
+            not Self.physical_indices and Self.has_extra_kv
+        ), "logical sparse indices do not support an extra KV stream"
         var num_k_tiles = ceildiv(
             offset_position.num_keys_this_split, Self.config.BN_QK
         )
@@ -843,6 +849,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
 
         var orig_topk_u32 = UInt32(offset_position.sparse_topk)
         var orig_indices_base = Int(offset_position.kv_start_row)
+        var batch_idx = UInt32(offset_position.batch_idx)
 
         # Original-cache tiles.  The very first tile overall skips the
         # pipeline acquire (starts ready).
@@ -861,6 +868,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 orig_topk_u32,
                 idx_smem_base,
                 orig_indices_base,
+                batch_idx,
             )
             orig_indices_base += Self.config.BN_QK
             t += 1
@@ -887,6 +895,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                     extra_topk_u32,
                     idx_smem_base,
                     extra_indices_base,
+                    batch_idx,
                 )
                 extra_indices_base += Self.config.BN_QK
                 te += 1

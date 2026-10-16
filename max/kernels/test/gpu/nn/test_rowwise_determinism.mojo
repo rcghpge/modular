@@ -50,7 +50,8 @@ from std.sys import align_of, size_of
 from max.gpu.host import DeviceContext, HostBuffer
 from layout import Coord, TileTensor, row_major
 from nn.normalization import *
-from nn.softmax import softmax
+from builtin_kernels.rowwise_normalization import layer_norm, rms_norm
+from builtin_kernels.rowwise_softmax import softmax
 from std.utils.coord import ComptimeInt
 from std.utils.index import Index
 
@@ -202,7 +203,7 @@ def _probe_rms_norm[
     var in_buf = TileTensor(in_d, row_major(Coord(shape)))
     var out_buf = TileTensor(out_d, row_major(Coord(shape)))
     var gamma = TileTensor(gamma_d, row_major(Coord(Index(cols))))
-    var epsilon = Scalar[dtype](1e-5)
+    comptime epsilon = Float32(1e-5)
 
     @inline(.always)
     def input_fn[
@@ -226,14 +227,14 @@ def _probe_rms_norm[
     var nans = 0
     for _run in range(_NUM_RUNS):
         ctx.enqueue_memset(out_d, Scalar[dtype](0))
-        rms_norm[dtype, 2, target="gpu"](
+        rms_norm[
+            dtype, 2, target="gpu", epsilon=epsilon, weight_offset=Float32(0)
+        ](
             input_fn,
             output_fn,
             Coord(shape),
             ComptimeInt[cols](),
             gamma,
-            epsilon,
-            Scalar[dtype](0),
             ctx,
         )
         ctx.enqueue_copy(out_h, out_d)

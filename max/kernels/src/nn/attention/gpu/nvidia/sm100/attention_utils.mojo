@@ -13,7 +13,7 @@
 """Shared SM100 attention primitives used by both MHA and MLA kernels.
 
 This module contains generic SM100 (Blackwell) GPU primitives including:
-- TMEM access helpers (TMemTile, STMatrixLayout)
+- TMEM access helpers (TMemTile)
 - Pipeline synchronization (StagedPipeline, RolePipeline, etc.)
 - FTZ arithmetic (add_ftz, sub_ftz, mul_ftz, etc.)
 - Barrier helpers (FA4MiscMBars)
@@ -24,10 +24,10 @@ This module contains generic SM100 (Blackwell) GPU primitives including:
 from std.builtin.dtype import _unsigned_integral_type_of
 from std.math import ceildiv, exp2, align_up, iota
 from std.math.constants import log2e
-from std.sys import size_of, _RegisterPackType, get_defined_bool
+from std.sys import size_of, _RegisterPackType
 from std.sys._assembly import inlined_assembly
 from std.sys.intrinsics import llvm_intrinsic
-from std.bit import prev_power_of_two, pop_count
+from std.bit import log2_ceil, prev_power_of_two, pop_count
 from max.gpu import block_idx
 from max.gpu.globals import WARP_SIZE
 from max.gpu.primitives.id import cluster_dim
@@ -39,10 +39,10 @@ from max.gpu.compute.arch.mma_nvidia_sm100 import (
     MMASmemDescriptorPair,
 )
 from max.gpu.compute.arch.tcgen05 import tcgen05_ld, tcgen05_st
+from max.gpu.host.info import B200
 from layout import (
     IntTuple,
     Layout,
-    LayoutTensor,
     TensorEngine,
     TileTensor,
     row_major,
@@ -58,7 +58,10 @@ from layout.tile_layout import (
 from layout.swizzle import make_swizzle
 from layout.tma_async import PipelineState, SharedMemBarrier
 from std.memory import bitcast
-from nn.attention.gpu.nvidia.sm100.attention import FA4Config
+from nn.attention.gpu.nvidia.sm100.attention import (
+    FA4Config,
+    SM100_RESERVED_SMEM_BYTES,
+)
 
 # `elect` is defined in the shared NVIDIA module so SM90 and SM100 can both use
 # it without a cross-architecture import. Re-exported here for the many SM100
@@ -66,7 +69,6 @@ from nn.attention.gpu.nvidia.sm100.attention import FA4Config
 from nn.attention.gpu.nvidia.common import elect
 from nn.attention.mha_mask import MHAMask, MASK_VALUE, MaskStrategy
 from nn.attention.mha_operand import (
-    MHAOperand,
     PagedRowIndices,
     kv_sub_tile_rows,
     kv_num_sub_tiles,
@@ -114,20 +116,65 @@ comptime SharedMemTensor[
     address_space=.SHARED,
 ]
 
-# Legacy LayoutTensor aliases for TMA/MMA API boundaries
-comptime LocalLT[
-    dtype: DType, layout: Layout, element_layout: Layout = Layout(1, 1)
-] = LayoutTensor[
-    dtype,
-    layout,
-    MutAnyOrigin,
-    address_space=.LOCAL,
-    element_layout=element_layout,
-]
 comptime SharedMemPointer[type: AnyType] = Pointer[
     type, MutAnyOrigin, address_space=.SHARED
 ]
 comptime MBarType = SharedMemPointer[SharedMemBarrier]
+
+# SM100 attention kernels do not allocate TMEM. Each kernel's shared-memory
+# footprint (checked by `assert_sm_exclusive_smem`) leaves room for one CTA per
+# SM, so the TMEM allocator has nothing to arbitrate and every kernel uses TMEM
+# from address 0.
+
+
+@inline(.always)
+def attn_tmem_addr[cluster_size: Int]() -> UInt32:
+    """Returns the TMEM base, 0, as a value ptxas cannot fold.
+
+    A literal 0 makes ptxas rebuild every TMEM operand per `tcgen05.mma` (an
+    `IMAD.MOV` plus an `R2UR` per use) instead of keeping one uniform
+    register; inline asm cannot hide it, since ptxas folds the PTX immediate.
+    A CTA's cluster rank is below `cluster_size`, so shifting it right by
+    `log2_ceil(cluster_size)` is a run-time 0 that costs an `S2R` and a shift.
+    Inline asm hides the rank from LLVM, which folds `cluster.ctarank` to 0
+    under `nvvm.cluster_dim` = (1, 1, 1), and ptxas folds neither the rank
+    nor the shift. `%cluster_ctaid.y` is also 0 in these 1-D clusters, but
+    ptxas computes it as `%ctaid.y` modulo the cluster shape: three
+    constant-bank loads and a reciprocal division.
+
+    Parameters:
+        cluster_size: CTAs per cluster, or 1 when launched without a cluster.
+    """
+    comptime assert cluster_size >= 1, "cluster_size must be positive"
+    comptime shift = log2_ceil(cluster_size)
+    comptime if shift == 0:
+        return inlined_assembly[
+            "mov.u32 $0, %cluster_ctarank;",
+            UInt32,
+            constraints="=r",
+            has_side_effect=False,
+        ]()
+    else:
+        return inlined_assembly[
+            String(
+                "{ .reg .b32 %rank; mov.u32 %rank, %cluster_ctarank;",
+                t" shr.u32 $0, %rank, {shift}; }}",
+            ),
+            UInt32,
+            constraints="=r",
+            has_side_effect=False,
+        ]()
+
+
+@inline(.always)
+def assert_sm_exclusive_smem[smem_bytes: Int]():
+    """Asserts that a second CTA of this kernel cannot be co-resident on the
+    SM: with less than half the SM's shared memory, two CTAs would share the
+    unallocated TMEM at address 0."""
+    comptime assert (
+        2 * (smem_bytes + SM100_RESERVED_SMEM_BYTES)
+        > B200.shared_memory_per_multiprocessor
+    ), "SM100 attention uses TMEM unallocated, so needs > half the SM's smem"
 
 
 # PagedRowIndices, kv_sub_tile_rows, kv_num_sub_tiles are now defined in
@@ -192,137 +239,6 @@ def break_into_powers_of_two[
                 func[pow_two, coffset]()
     # final call for possible pipeline cleanup
     func[0, N]()
-
-
-struct STMatrixLayout[
-    BM: Int,
-    BN: Int,
-    *,
-    num_threads: Int,
-    accum_dtype_size: Int,
-](TrivialRegisterPassable):
-    """
-    Layout for using `st_matrix` for writing the final accumulator to smem.
-
-    Parameters:
-        BM: Number of rows in the `BM` x `BN` output tile written via
-            `st_matrix`.
-        BN: Number of columns in the `BM` x `BN` output tile written via
-            `st_matrix`.
-        num_threads: Number of threads participating in the `st_matrix`
-            store, used to derive the warp-group count.
-        accum_dtype_size: Size in bytes of the accumulator element dtype,
-            used to compute the per-store bit width.
-    """
-
-    # We have a BM x BN tile
-    #
-    # The st_matrix layout wants to map it to threads in 16x8 blocks
-    # shape  (2,8), (2,4)
-    # stride (0,4), (0,1)
-    # Layout = ((2,8),(2,4)):((0,4),(0,1))
-    # Where `0` stride indicates that the same thread is repeated across these.
-    # We also need a layout for this local memory, which we define here.
-
-    # look at figure 108 https://docs.nvidia.com/cuda/parallel-thread-execution/#mma-stmatrix-fragments
-
-    # That first `2` is
-    comptime num_row_blocks_per_mma = 2
-    # The second `2` is
-    comptime frag_simdwidth: Int = 2
-
-    comptime thread_cols = 4
-    # When using tcgen05 ld/st we must repeat across all columns:
-    comptime repeat = Self.BN // (Self.thread_cols * Self.frag_simdwidth)
-
-    comptime num_warpgroups = ceildiv(Self.num_threads, 128)
-    # 2 = 32 // 16, i.e. we need to load 2 sets of 16
-    comptime num_m_tiles_total = ceildiv(2 * Self.BM, 128)
-    comptime num_m_tiles = Self.num_m_tiles_total // Self.num_warpgroups
-
-    comptime frag_size = Self.BN * Self.num_row_blocks_per_mma // Self.thread_cols
-
-    comptime elements_per_repeat = Self.frag_simdwidth * Self.num_row_blocks_per_mma
-
-    comptime vec_local_layout: Layout = Layout(
-        IntTuple(
-            IntTuple(Self.num_row_blocks_per_mma, Self.num_m_tiles),
-            IntTuple(Self.repeat),
-        ),
-        IntTuple(
-            IntTuple(
-                Self.frag_simdwidth, Self.frag_size
-            ),  # distance between vertical m tiles and local fragments
-            IntTuple(
-                Self.num_row_blocks_per_mma * Self.frag_simdwidth
-            ),  # distance between bn repeats
-        ),
-    )
-    comptime element_layout: Layout = Layout.row_major(1, Self.frag_simdwidth)
-    comptime TensorType[dtype: DType] = LocalLT[
-        dtype, Self.vec_local_layout, Self.element_layout
-    ]
-    comptime row_of_frags_layout: Layout = Layout.row_major(
-        Self.num_m_tiles, Self.frag_size
-    )
-
-    comptime bits_per_byte = 8
-    comptime bits = Self.bits_per_byte * Self.frag_simdwidth * Self.thread_cols * Self.accum_dtype_size
-
-    @inline(.always)
-    def __init__(out self):
-        pass
-
-
-struct STMatrixOffsets[
-    BM: Int,
-    BN: Int,
-    *,
-    num_threads: Int,
-    accum_dtype_size: Int,
-    curr_repeat: Int,
-    cumulative_repeat: Int,
-    m_mma: Int,
-](TrivialRegisterPassable):
-    """Precomputed TMEM and local-fragment offsets for one `st_matrix` repeat column.
-
-    Parameters:
-        BM: Number of rows in the `BM` x `BN` output tile (forwarded to
-            `STMatrixLayout`).
-        BN: Number of columns in the `BM` x `BN` output tile (forwarded to
-            `STMatrixLayout`).
-        num_threads: Number of threads participating in the `st_matrix` store
-            (forwarded to `STMatrixLayout`).
-        accum_dtype_size: Size in bytes of the accumulator element dtype
-            (forwarded to `STMatrixLayout`).
-        curr_repeat: Number of repeat columns in this power-of-two chunk of
-            the `st_matrix` store.
-        cumulative_repeat: Number of repeat columns already stored before
-            this chunk, used as the TMEM column and local-fragment base
-            offset.
-        m_mma: M-tile index of the `st_matrix` store within the `BM`-row
-            tile, selecting the 16-row TMEM quadrant.
-    """
-
-    comptime STLayout = STMatrixLayout[
-        Self.BM,
-        Self.BN,
-        num_threads=Self.num_threads,
-        accum_dtype_size=Self.accum_dtype_size,
-    ]
-
-    comptime tmem_col_offset = Self.cumulative_repeat * Self.STLayout.frag_simdwidth * Self.STLayout.thread_cols
-    comptime tmem_row_offset = 16 * Self.m_mma
-    comptime tmem_offset = (Self.tmem_row_offset << 16) + Self.tmem_col_offset
-    comptime b32_per_repeat = Self.STLayout.elements_per_repeat * Self.accum_dtype_size // 4
-    comptime local_frag_size_b32 = Self.curr_repeat * Self.b32_per_repeat
-    comptime ptr_offset = Self.b32_per_repeat * (
-        Self.STLayout.repeat * Self.m_mma + Self.cumulative_repeat
-    )
-
-    @inline(.always)
-    def __init__(out self):
-        pass
 
 
 @inline(.always)
@@ -527,7 +443,7 @@ def blasst_vote_unanimous(
     # One aligned 32-bit read replaces 4 byte reads + a short-circuit AND
     # chain (which serializes the loads behind 3 branches). Legal because a
     # `(wg, phase)` group's 4 slots are consecutive bytes at a 4-byte-aligned
-    # address (`blasst_vote_byte_offset` follows the UInt32 `tmem_addr`, and
+    # address (`blasst_vote_byte_offset` follows the 8-byte mbarriers, and
     # `base` is a multiple of 4) and every slot only ever holds 0 or 1
     # (`kernel.mojo` zero-inits the region; `blasst_observe` writes 0/1), so
     # "all four nonzero" == "the word is 0x01010101".
@@ -756,7 +672,8 @@ struct TMemTile[
 
     @inline(.always)
     def __getitem__(self, i: UInt32) -> Self:
-        return {self.tmem_addr + i * UInt32(Self.BN)}
+        # TMEM columns are 32-bit words; `BN` counts elements.
+        return {self.tmem_addr + i * UInt32(Self.BN * Self.dtype_size // 4)}
 
     @inline(.always)
     def offset[m_mma: Int, n_mma: Int](self) -> UInt32:
@@ -769,194 +686,24 @@ struct TMemTile[
 
             return self.tmem_addr + UInt32(linear)
 
-    @staticmethod
-    @inline(.always)
-    def allocate_register_tile[
-        *, num_threads: Int
-    ](
-        out res: STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ].TensorType[Self.dtype],
-    ):
-        res = type_of(res).stack_allocation()
-
-    @inline(.always)
-    def store_async[
-        *, num_threads: Int
-    ](
-        self,
-        src: STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ].TensorType[Self.dtype],
-    ):
-        comptime assert Self.dtype_size <= 4
-        var ptr = src.ptr.unsafe_bitcast[UInt32]()
-        comptime st_mat_layout = STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ]
-        comptime assert st_mat_layout.bits == 128 or st_mat_layout.bits == 256
-
-        @inline(.always)
-        def store_fn[pow_two: Int, offset: Int]() {var}:
-            # pow_two is current repeat, offset total so far
-            comptime if pow_two > 0:
-                comptime for m_mma in range(st_mat_layout.num_m_tiles):
-                    comptime offsets = STMatrixOffsets[
-                        Self.BM,
-                        Self.BN,
-                        num_threads=num_threads,
-                        accum_dtype_size=Self.dtype_size,
-                        curr_repeat=pow_two,
-                        cumulative_repeat=offset,
-                        m_mma=m_mma,
-                    ]()
-                    var tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
-                    var frag = Array[_, offsets.local_frag_size_b32](
-                        fill_with_unrolled=lambda [i: Int]() -> UInt32: (
-                            ptr.unsafe_load(offsets.ptr_offset + i)
-                        )
-                    )
-                    # 16 x 256b results in repeated 8x4 matrix of <1,2> vector pattern
-                    tcgen05_st[
-                        datapaths=16,  # first dimension of the shape
-                        bits=st_mat_layout.bits,  # second dimension of the shape
-                        repeat=pow_two,
-                        pack=False,
-                    ](tmem, frag)
-
-        comptime max_value = 64 if st_mat_layout.bits == 128 else 32
-        break_into_powers_of_two[N=st_mat_layout.repeat, max_value=max_value](
-            store_fn
-        )
-
-    @inline(.always)
-    def load_async_with_st_matrix_layout[
-        *, num_threads: Int
-    ](
-        self,
-        out dst: STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ].TensorType[Self.dtype],
-    ):
-        comptime assert (
-            Self.dtype_size <= 4
-        ), "Loading for st matrix requires elements to be <= 4 bytes."
-        comptime st_mat_layout = STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ]()
-        comptime assert (st_mat_layout.num_m_tiles == 1) or (
-            st_mat_layout.num_m_tiles == 2
-        ), (
-            "Only 1 or 2 m tiles are supported, but"
-            " st_mat_layout.num_m_tiles == "
-            + String(st_mat_layout.num_m_tiles)
-        )
-
-        dst = type_of(dst).stack_allocation()
-        self.load_st_matrix_chunk[
-            num_threads=num_threads,
-            start_repeat=0,
-            num_repeats=st_mat_layout.repeat,
-        ](dst)
-
-    @inline(.always)
-    def load_st_matrix_chunk[
-        *, num_threads: Int, start_repeat: Int, num_repeats: Int
-    ](
-        self,
-        dst: STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ].TensorType[Self.dtype],
-    ):
-        """Load a range of repeat columns from tmem into a pre-allocated
-        tensor.
-
-        Parameters:
-            num_threads: Number of threads in the warp group.
-            start_repeat: First repeat index to load (0-based).
-            num_repeats: Number of repeats to load.
-
-        Args:
-            dst: Pre-allocated register tensor.
-        """
-        comptime st_mat_layout = STMatrixLayout[
-            Self.BM,
-            Self.BN,
-            num_threads=num_threads,
-            accum_dtype_size=Self.dtype_size,
-        ]()
-        comptime load_dtype = DType.uint32
-        var ptr = rebind[
-            Pointer[Scalar[load_dtype], MutAnyOrigin, address_space=.LOCAL]
-        ](dst.ptr)
-
-        @inline(.always)
-        def load_fn[pow_two: Int, local_offset: Int]() {var}:
-            comptime assert pow_two + local_offset <= num_repeats
-            comptime if pow_two > 0:
-                comptime for m_mma in range(st_mat_layout.num_m_tiles):
-                    comptime offsets = STMatrixOffsets[
-                        Self.BM,
-                        Self.BN,
-                        num_threads=num_threads,
-                        accum_dtype_size=Self.dtype_size,
-                        curr_repeat=pow_two,
-                        cumulative_repeat=start_repeat + local_offset,
-                        m_mma=m_mma,
-                    ]()
-                    var tmem = self.tmem_addr + UInt32(offsets.tmem_offset)
-                    var frag = tcgen05_ld[
-                        datapaths=16,
-                        bits=st_mat_layout.bits,
-                        repeat=pow_two,
-                        dtype=load_dtype,
-                        pack=False,
-                        width=offsets.local_frag_size_b32,
-                    ](tmem)
-
-                    comptime for _i in range(offsets.local_frag_size_b32):
-                        ptr.unsafe_store(offsets.ptr_offset + _i, frag[_i])
-
-        comptime max_value = 64 if st_mat_layout.bits == 128 else 32
-        break_into_powers_of_two[N=num_repeats, max_value=max_value](load_fn)
-
     @inline(.always)
     def load_async(
         self,
         out dst: Array[Scalar[Self.dtype], Self.BN],
     ):
         dst = Array[Scalar[Self.dtype], Self.BN](uninitialized=True)
-        # The uint32 bitcast path below assumes dtype_size == 4.
-        # Sub-32-bit types (bf16, f16) pack multiple elements per uint32
-        # and would need unpacking logic not yet implemented.
-        comptime assert (
-            Self.dtype_size == 4
-        ), "load_async only supports 32-bit dtypes"
-        comptime repeat = Self.dtype_size * Self.BN // 4
-        comptime dtype = Self.dtype if Self.dtype_size == 4 else DType.uint32
+        comptime assert 4 % Self.dtype_size == 0
+        # Each 32-bit TMEM word holds `per_word` elements, lowest element in
+        # the low bits -- the order `store_async` packs them in.
+        comptime per_word = 4 // Self.dtype_size
+        comptime assert Self.BN % per_word == 0
+        comptime repeat = Self.BN // per_word
 
+        # `pow_two` and `offset` count words, not elements.
         @inline(.always)
         def load_fn[pow_two: Int, offset: Int]() {var, mut dst}:
             comptime if pow_two > 0:
-                comptime if dtype == Self.dtype:
+                comptime if per_word == 1:
                     var frag0 = tcgen05_ld[
                         datapaths=32,  # first dimension of the shape
                         bits=32,  # second dimension of the shape
@@ -979,7 +726,9 @@ struct TMemTile[
                     ](self.tmem_addr + UInt32(offset))
 
                     comptime for _i in range(pow_two):
-                        dst[offset + _i] = bitcast[Self.dtype](frag1[_i])
+                        var elems = bitcast[Self.dtype, per_word](frag1[_i])
+                        comptime for _j in range(per_word):
+                            dst[(offset + _i) * per_word + _j] = elems[_j]
 
         break_into_powers_of_two[N=repeat, max_value=128](load_fn)
 
@@ -1053,7 +802,7 @@ struct TMemTile[
                 comptime frag_width = pow_two * Self.dtype_size // 4
                 var frag = Array[UInt32, frag_width](uninitialized=True)
 
-                comptime if src_type == Self.dtype:
+                comptime if src_type == Self.dtype and Self.dtype_size == 4:
                     comptime for _i in range(frag_width):
                         frag[_i] = bitcast[.uint32](
                             src[src_offset + offset + _i]
@@ -4093,16 +3842,17 @@ def clusters_per_wave[cluster_size: Int, sm_count: Int]() -> Int:
     the `else` branch is a comptime error on any other chip.
     """
     comptime C = cluster_size
-    comptime if sm_count == 148:
-        # B200: irregular 11-GPC layout -- three 20s, four 18s, one 10, three 2s.
-        return 3 * (20 // C) + 4 * (18 // C) + (10 // C) + 3 * (2 // C)
-    elif sm_count == 160:
-        # B300 / Blackwell Ultra: uniform 8 GPCs x 20 SMs.
-        return 8 * (20 // C)
-    else:
-        comptime assert (
-            False
-        ), "clusters_per_wave: only B200 (148) / B300 (160) modeled"
+    comptime match sm_count:
+        case 148:
+            # B200: irregular 11-GPC layout -- three 20s, four 18s, one 10, three 2s.
+            return 3 * (20 // C) + 4 * (18 // C) + (10 // C) + 3 * (2 // C)
+        case 160:
+            # B300 / Blackwell Ultra: uniform 8 GPCs x 20 SMs.
+            return 8 * (20 // C)
+        case _:
+            comptime assert (
+                False
+            ), "clusters_per_wave: only B200 (148) / B300 (160) modeled"
 
 
 @inline(.always)
@@ -4230,10 +3980,14 @@ def splitk_window(
 @inline(.always)
 def peel_mask[
     num_sets: Int,
+    LoadFnType: def[mask_strategy: MaskStrategy](UInt32) -> Float32,
     //,
     mask_strategies: StaticTuple[MaskStrategy, num_sets],
-    load_fn: def[mask_strategy: MaskStrategy](UInt32) capturing -> Float32,
-](mut mask_iters: StaticTuple[UInt32, num_sets], kv_row: UInt32,) -> Float32:
+](
+    load_fn: LoadFnType,
+    mut mask_iters: StaticTuple[UInt32, num_sets],
+    kv_row: UInt32,
+) -> Float32:
     """Determine which mask strategy applies to the peeled first iteration.
 
     Walks through mask sets to find the first with remaining iterations,
@@ -4243,39 +3997,41 @@ def peel_mask[
 
     Parameters:
         num_sets: Number of mask sets to walk through (inferred).
+        LoadFnType: Type of `load_fn` (inferred).
         mask_strategies: `MaskStrategy` per set, in evaluation order;
             the first set with remaining iterations supplies the
             strategy.
+
+    Args:
         load_fn: Callback invoked as
             `load_fn[strategy](kv_row)` to load the mask value for the
             selected strategy.
-
-    Args:
         mask_iters: Remaining iteration count per set; the selected
             set's count is decremented in place.
         kv_row: KV row index forwarded to `load_fn`.
     """
     comptime assert num_sets in (1, 2, 3)
-    comptime if num_sets == 1:
-        mask_iters[0] -= 1
-        return load_fn[mask_strategies[0]](kv_row)
-    elif num_sets == 2:
-        if mask_iters[0] > 0:
+    comptime match num_sets:
+        case 1:
             mask_iters[0] -= 1
             return load_fn[mask_strategies[0]](kv_row)
-        else:
-            mask_iters[1] -= 1
-            return load_fn[mask_strategies[1]](kv_row)
-    else:
-        if mask_iters[0] > 0:
-            mask_iters[0] -= 1
-            return load_fn[mask_strategies[0]](kv_row)
-        elif mask_iters[1] > 0:
-            mask_iters[1] -= 1
-            return load_fn[mask_strategies[1]](kv_row)
-        else:
-            mask_iters[2] -= 1
-            return load_fn[mask_strategies[2]](kv_row)
+        case 2:
+            if mask_iters[0] > 0:
+                mask_iters[0] -= 1
+                return load_fn[mask_strategies[0]](kv_row)
+            else:
+                mask_iters[1] -= 1
+                return load_fn[mask_strategies[1]](kv_row)
+        case _:
+            if mask_iters[0] > 0:
+                mask_iters[0] -= 1
+                return load_fn[mask_strategies[0]](kv_row)
+            elif mask_iters[1] > 0:
+                mask_iters[1] -= 1
+                return load_fn[mask_strategies[1]](kv_row)
+            else:
+                mask_iters[2] -= 1
+                return load_fn[mask_strategies[2]](kv_row)
 
 
 struct FA4MiscMBars[

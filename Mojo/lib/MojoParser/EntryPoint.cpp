@@ -29,7 +29,10 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Support/Timing.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/SourceMgr.h"
+
+#define DEBUG_TYPE "mojo-parser"
 
 using namespace M;
 using namespace KGEN;
@@ -313,6 +316,7 @@ importMojoImpl(ContextRef context, StringRef moduleIdentifier,
 
   // Resolve everything within the main input module.
   sharedState.declResolver->resolveAllReferencedFrom(moduleDecl);
+  sharedState.declResolver->eraseUnparsedDecls();
 
   // Finalize the imported bytecode now that we've resolved everything. This
   // will drop bytecode operations that never got referenced.
@@ -362,7 +366,7 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
 
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        ASTDecl &topLevelDecl = sharedState.declResolver->addDecl(
+        auto &topLevelDecl = sharedState.declResolver->addDecl(
             module, startSMLoc, StringAttr(), /*parentDecl=*/nullptr,
             lexer.getCursor(), LexerCursor::getEOF(sourceBuf), -1);
         sharedState.initialize(topLevelDecl);
@@ -406,7 +410,7 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
       sharedState, ts, includedFiles, [&](ModuleOp module) -> ASTDecl & {
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        ASTDecl &topLevelDecl = sharedState.declResolver->addDecl(
+        auto &topLevelDecl = sharedState.declResolver->addDecl(
             module, SMLoc(), StringAttr(), /*parentDecl=*/nullptr,
             LexerCursor(), LexerCursor(), /*indentation=*/-1);
         sharedState.initialize(topLevelDecl);
@@ -417,10 +421,16 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
         // Build the package.
         return sharedState.createPackage(path, packageName);
       });
+  LLVM_DEBUG(
+      llvm::dbgs()
+      << "Parser allocators for package '" << packageName
+      << "': persistent=" << sharedState.persistentAllocator.getTotalMemory()
+      << " bytes in " << sharedState.persistentAllocator.getNumSlabs()
+      << " slabs, statements=" << sharedState.stmtAllocator.getTotalMemory()
+      << " bytes in " << sharedState.stmtAllocator.getNumSlabs() << " slabs\n");
   if (!module)
     return {};
-  return {std::move(module),
-          cast_or_null<PackageOp>(packageDecl->getIfOperation())};
+  return {std::move(module), cast<PackageASTDecl>(packageDecl)->getOp()};
 }
 
 OwningOpRef<mlir::ModuleOp>
@@ -505,3 +515,6 @@ void ParserListener::onCall(ArrayRef<ASTDecl *> decls, llvm::SMLoc rparenLoc,
 void ParserListener::onParameterBinding(ArrayRef<ASTDecl *> decls,
                                         llvm::SMLoc rsquareLoc,
                                         ArrayRef<ExprNode *> parameters) {}
+void ParserListener::onMatchMissingCases(llvm::SMRange matchRange,
+                                         llvm::SMLoc insertLoc,
+                                         StringRef arms) {}

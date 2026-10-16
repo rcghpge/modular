@@ -14,8 +14,9 @@
 from std.collections import OptionalReg
 from std.reflection.location import SourceLocation
 
+from std.utils.coord import Coord
 from std.utils.index import IndexList
-from std.math.math import _ExpPluginHookFnType, _TanhPluginHookFnType
+from std.math.math import _UnaryMathPluginHookFnType
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
@@ -25,6 +26,7 @@ from std.collections.string.string_span import (
 from std.utils import StaticTuple
 
 from .selector import Plugin
+from std.sys.info import CompilationTarget
 
 comptime _ReduceGeneratorPluginHookFnType = (
     def[
@@ -32,13 +34,11 @@ comptime _ReduceGeneratorPluginHookFnType = (
         init_type: DType,
         InputFnType: ImplicitlyCopyable
         & RegisterPassable
-        & def[dtype: DType, width: Int, rank: Int](IndexList[rank]) -> SIMD[
-            dtype, width
-        ],
+        & def[dtype: DType, width: Int](Coord) -> SIMD[dtype, width],
         OutputFnType: ImplicitlyCopyable
         & RegisterPassable
-        & def[dtype: DType, width: SIMDLength, rank: Int](
-            IndexList[rank], StaticTuple[SIMD[dtype, width], num_reductions]
+        & def[dtype: DType, width: SIMDLength](
+            Coord, StaticTuple[SIMD[dtype, width], num_reductions]
         ) -> None,
         ReduceFnType: ImplicitlyCopyable
         & RegisterPassable
@@ -57,7 +57,11 @@ comptime _ReduceGeneratorPluginHookFnType = (
 """Plugin-hook signature for `PluginHooks.reduce_generator_fn`; keep in sync with `_reduce_generator`."""
 
 
-trait PluginHooks(Plugin):
+trait StdPlugin(Plugin):
+    comptime HookFor[target: CompilationTarget]: PluginHooks
+
+
+trait PluginHooks:
     """Compile-time hook interface for pluggable stdlib behavior.
 
     Most hooks are `comptime OptionalReg[Callable]` fields; call sites invoke
@@ -71,17 +75,24 @@ trait PluginHooks(Plugin):
     `debug_assert` and deadlock comptime instantiation.
     """
 
-    comptime name: __mlir_type.`!kgen.string`
-    """Stable plugin identifier used by the selector to select this backend."""
-
     # ===------------------------------------------------------------------=== #
     # Math & Algorithm Operations
     # ===------------------------------------------------------------------=== #
 
-    comptime exp_fn: OptionalReg[_ExpPluginHookFnType] = None
-    """Elementwise exponential override.
+    comptime unary_math_fn[
+        name: StaticString, dtype: DType, width: Int
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = None
+    """Elementwise override for the `std.math` function called `name`.
+
+    Consulted by `exp`, `exp2`, `sqrt`, `rsqrt`, `sin`, `cos`, and `tanh`
+    for floating-point inputs, before the stdlib converts the input to another
+    `dtype`, so the hook sees the caller's `dtype`. Returning `None` for a
+    `name`, `dtype`, and `width` keeps the stdlib's own lowering for that
+    case. The hook is not called when the function is evaluated at compile
+    time, because the compile-time interpreter cannot run backend intrinsics.
 
     Parameters:
+        name: The `std.math` function being lowered, such as `"sqrt"`.
         dtype: The `dtype` of the input and output SIMD vector.
         width: The width of the input and output SIMD vector.
 
@@ -89,23 +100,18 @@ trait PluginHooks(Plugin):
         x: The input SIMD vector.
 
     Returns:
-        Elementwise `exp(x)` computed on the vendor backend.
+        Elementwise `name(x)` computed on the vendor backend.
     """
 
-    comptime tanh_fn[dtype: DType, width: Int]: OptionalReg[
-        _TanhPluginHookFnType
-    ] = None
-    """Elementwise hyperbolic tangent override.
+    comptime flushes_subnormals[dtype: DType]: Bool = False
+    """Whether the target flushes `dtype` subnormals to zero.
+
+    A target that does reads subnormal operands as zero and flushes subnormal
+    results of arithmetic and conversions. `std.math` then rebuilds those
+    values from their bits so subnormal results are not lost.
 
     Parameters:
-        dtype: The `dtype` of the input and output SIMD vector.
-        width: The width of the input and output SIMD vector.
-
-    Args:
-        x: The input SIMD vector.
-
-    Returns:
-        Elementwise `tanh(x)` computed on the vendor backend.
+        dtype: The floating-point `dtype` being queried.
     """
 
     comptime reduce_generator_fn: OptionalReg[
@@ -203,7 +209,7 @@ trait PluginHooks(Plugin):
 # ===-----------------------------------------------------------------------===#
 
 
-struct DefaultPlugin(PluginHooks):
+struct DefaultPlugin(StdPlugin):
     """Default `PluginHooks` implementation used when no plugin is active.
 
     Every hook is left at its `PluginHooks` default, so the built-in stdlib
@@ -211,3 +217,8 @@ struct DefaultPlugin(PluginHooks):
     """
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["default"]()
+    comptime HookFor[target: CompilationTarget] = DefaultPluginHooks[target]
+
+
+struct DefaultPluginHooks[target: CompilationTarget](PluginHooks):
+    pass

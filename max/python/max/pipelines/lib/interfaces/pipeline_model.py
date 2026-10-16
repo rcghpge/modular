@@ -17,7 +17,8 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -46,6 +47,12 @@ from max.pipelines.kv_cache.config import (
 )
 from max.pipelines.lib.config.model_config import (
     _select_quantization_encoding,
+)
+from max.pipelines.lib.graph_specs import (
+    CompiledArtifacts,
+    GraphSpec,
+    compile_graphs,
+    init_graphs,
 )
 from max.pipelines.lib.utils import (
     CompilationTimer,
@@ -93,6 +100,9 @@ class AlwaysSignalBuffersMixin:
     devices: list[Device]
     """Device list that must be provided by the model class."""
 
+    pipeline_config: PipelineConfig
+    """Pipeline config that must be provided by the model class."""
+
     @cached_property
     def signal_buffers(self) -> list[Buffer]:
         """Override to always create signal buffers.
@@ -109,10 +119,15 @@ class AlwaysSignalBuffersMixin:
             in compile-only mode.
         """
         # Import here to avoid circular dependency
-        from max.nn.comm import Signals
+        from max.nn.comm import MulticastPool, Signals
 
         # Signals.allocate initializes the signal buffers and enables p2p access
-        return Signals.allocate(self.devices)
+        buffers = Signals.allocate(self.devices)
+        # The memory estimate charges the pool for these models too.
+        MulticastPool.allocate(
+            self.devices, self.pipeline_config.multicast_pool_bytes()
+        )
+        return buffers
 
 
 @dataclass
@@ -404,6 +419,10 @@ class PipelineModel(
     #: The ModuleV3 LoRA target projections this arch wraps. Read by the base
     #: to construct ``LoRAManagerV3``; empty for non-ModuleV3-LoRA archs.
     lora_targets: ClassVar[tuple[LoRATargetModule, ...]] = ()
+    #: The graphs this model compiled, by role. Empty for a model that
+    #: compiles its graphs without registering them (see
+    #: :func:`~max.pipelines.lib.graph_specs.compile_graphs`).
+    compiled_artifacts: CompiledArtifacts = CompiledArtifacts()
 
     def __init__(
         self,
@@ -510,6 +529,21 @@ class PipelineModel(
         """Returns the batch processor when configured."""
         return self._batch_processor
 
+    def _bind_graph_inputs(
+        self, input_tree: OrderedDict[str, object]
+    ) -> tuple[Any, ...]:
+        """Binds a graph's named inputs to the batch processor.
+
+        Args:
+            input_tree: The named inputs the graph is about to be built from.
+
+        Returns:
+            The tree's leaves, the graph's input types in declaration order.
+        """
+        if self._batch_processor is not None:
+            self._batch_processor.bind_input_tree(input_tree)
+        return tuple(tree.leaves(input_tree))
+
     def arch_config_as(self, cls: type[ArchConfigT]) -> ArchConfigT:
         """Returns the built-once arch config, narrowed to ``cls``."""
         assert isinstance(self.arch_config, cls), (
@@ -571,7 +605,7 @@ class PipelineModel(
     def huggingface_config(self) -> AutoConfig:
         """Returns the HuggingFace config from pipeline config.
 
-        For multimodal models (e.g., Pixtral, Gemma3 multimodal), this
+        For multimodal models (such as Pixtral, Gemma3 multimodal), this
         returns the top-level config which contains both text_config and
         vision_config. Models should explicitly access .text_config or
         .vision_config as needed.
@@ -611,10 +645,16 @@ class PipelineModel(
             return []
 
         # Import here to avoid circular dependency
-        from max.nn.comm import Signals
+        from max.nn.comm import MulticastPool, Signals
 
         # Signals.allocate initializes the signal buffers and enables p2p access
-        return Signals.allocate(self.devices)
+        buffers = Signals.allocate(self.devices)
+        # The allreduce kernel finds the pool through the driver registry, so
+        # registering it here is the whole wiring.
+        MulticastPool.allocate(
+            self.devices, self.pipeline_config.multicast_pool_bytes()
+        )
+        return buffers
 
     @property
     def _resolved_encoding(self) -> SupportedEncoding:
@@ -706,6 +746,54 @@ class PipelineModel(
             f"{type(self).__qualname__} must implement prepare_initial_token_inputs "
             "or set batch_processor_cls."
         )
+
+    def _load_state_dict(self) -> dict[str, Any]:
+        """Loads the weights, through the weight adapter if there is one."""
+        if self.adapter:
+            return self.adapter(dict(self.weights.items()))
+        return {key: value.data() for key, value in self.weights.items()}
+
+    def _create_model_config(self, state_dict: dict[str, Any]) -> _ModelConfigT:
+        """Builds the model config from ``state_dict``."""
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `_create_model_config`."
+        )
+
+    def graph_specs(
+        self, model_config: _ModelConfigT
+    ) -> Mapping[str, GraphSpec]:
+        """Returns the graphs this model runs, keyed by role.
+
+        Implement this to load the model with :meth:`load_graphs`.
+
+        Args:
+            model_config: The config :meth:`_create_model_config` returned.
+        """
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `graph_specs`."
+        )
+
+    @traced
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Compiles and initializes the graphs :meth:`graph_specs` returns.
+
+        Keeps the compiled artifacts as :attr:`compiled_artifacts`.
+
+        Args:
+            session: The session that compiles and initializes the graphs.
+
+        Returns:
+            The initialized models, keyed by role.
+        """
+        state_dict = self._load_state_dict()
+        model_config = self._create_model_config(state_dict)
+        with CompilationTimer("model") as timer:
+            specs = self.graph_specs(model_config)
+            timer.mark_build_complete()
+            self.compiled_artifacts = compile_graphs(session, specs)
+            models = init_graphs(session, self.compiled_artifacts, specs)
+        self._maybe_release_host_weights(*models.values())
+        return models
 
     def _wire_batch_processor(
         self, model: _CompiledModelT, model_config: _ModelConfigT
@@ -975,14 +1063,30 @@ class PipelineModelWithKVCache(
     def _wire_batch_processor(
         self, model: _CompiledModelT, model_config: _ModelConfigT
     ) -> None:
-        """Post-compile wiring into the batch processor (EP bind, vision, etc.)."""
+        """Post-compile wiring into the batch processor (EP bind, vision and so on)."""
         del model, model_config
+        self._bind_ep_comm_initializer()
+
+    def _bind_ep_comm_initializer(self) -> None:
         batch_processor = self.batch_processor
         if batch_processor is None:
             return
         bind_ep = getattr(batch_processor, "bind_ep_comm_initializer", None)
         if bind_ep is not None:
             bind_ep(getattr(self, "ep_comm_initializer", None))
+
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Loads the graphs, then binds the EP comm initializer.
+
+        Args:
+            session: The session that compiles and initializes the graphs.
+
+        Returns:
+            The initialized models, keyed by role.
+        """
+        models = super().load_graphs(session)
+        self._bind_ep_comm_initializer()
+        return models
 
 
 class GraphPipelineModelWithKVCache(
@@ -1060,7 +1164,7 @@ class MultiGraphPipelineModelWithKVCache(
     ``model_config``.
 
     Override :meth:`load_model` when graph capture or weight loading does not
-    fit this flow (e.g. Qwen2.5VL, Kimi-K2.5).
+    fit this flow (such as Qwen2.5VL, Kimi-K2.5).
     """
 
     _vision_weights_dict: dict[str, Any]

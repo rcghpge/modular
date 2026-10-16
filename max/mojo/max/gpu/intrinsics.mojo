@@ -51,15 +51,11 @@ from std.sys.info import (
 from std.sys.intrinsics import llvm_intrinsic, readfirstlane
 from std.math.uutils import ufloordiv, umod
 
-from std._gpu._utils import to_i32
 from std._gpu import lane_id
 
 from std.memory.unsafe import bitcast
 
-
-@__doc_inline
-from std._gpu.intrinsics import mulhi, mulwide
-
+from max.gpu._utils import to_i32
 
 # ===-----------------------------------------------------------------------===#
 # CacheOperation
@@ -346,7 +342,7 @@ def _byte_permute_inst() -> StaticString:
 
 
 # ===-----------------------------------------------------------------------===#
-# mulwide
+# get_ib_sts
 # ===-----------------------------------------------------------------------===#
 
 
@@ -928,7 +924,7 @@ def _raw_ptr_buffer_load_lds[
 
 
 def _get_buffer_intrinsic_simd_dtype[bytes: Int]() -> DType:
-    comptime __match bytes:
+    comptime match bytes:
         case 1:
             return DType.uint8
         case 2:

@@ -10,9 +10,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import TypeVar
 
 from typing_extensions import Self
+
+_N = TypeVar("_N", int, float)
+
+
+def _add_by_key(a: Mapping[str, _N], b: Mapping[str, _N]) -> dict[str, _N]:
+    """Sums two per-label counter maps, keeping labels either one carries."""
+    total = dict(a)
+    for key, value in b.items():
+        total[key] = total.get(key, 0) + value
+    return total
 
 
 def dkv_tier_degraded(connected_clients: int, total_clients: int) -> bool:
@@ -169,8 +181,38 @@ class KVCacheMetrics:
     dead peer charges roughly one failure per window however many requests it
     affects.
     """
+    dkv_peer_transfer_failures: int = 0
+    """Hint-routed peer leases whose NIXL read failed to build or post.
+
+    Charged to the peer, which is skipped for the failure memo window and
+    marked stale for a metadata refresh, rather than degrading the connector.
+    """
+    dkv_peer_metadata_refreshes: int = 0
+    """Stale peers whose NIXL metadata the connector reloaded in place."""
+    dkv_peer_metadata_refresh_failures: int = 0
+    """In-place peer metadata reloads that NIXL refused.
+
+    Each strands its peer: the connector never routes to or dials it again for
+    the life of the process.
+    """
     dkv_hints_rejected: int = 0
     """Cache hints that were present but the connector could not use."""
+    dkv_hints_rejected_by_reason: dict[str, int] = field(default_factory=dict)
+    """``dkv_hints_rejected`` split by why each hint went unused."""
+
+    # Per-call dKV client counters, per-window deltas keyed by RPC (or, for the
+    # lock waits, by connector entry point). Time over calls is the per-call
+    # mean, which the per-batch latency means above cannot give.
+    dkv_rpc_calls: dict[str, int] = field(default_factory=dict)
+    """dKV RPCs issued, by operation."""
+    dkv_rpc_time_ms: dict[str, float] = field(default_factory=dict)
+    """Wall time of those RPCs in milliseconds, socket wait included."""
+    dkv_rpc_socket_wait_ms: dict[str, float] = field(default_factory=dict)
+    """Milliseconds those RPCs queued for their client's one REQ socket."""
+    dkv_lock_waits: dict[str, int] = field(default_factory=dict)
+    """Times each connector entry point took the connector lock."""
+    dkv_lock_wait_ms: dict[str, float] = field(default_factory=dict)
+    """Milliseconds each entry point waited for the connector lock."""
 
     @property
     def prompt_tokens(self) -> int:
@@ -323,6 +365,29 @@ class KVCacheMetrics:
             dkv_peer_loads=self.dkv_peer_loads + other.dkv_peer_loads,
             dkv_peer_load_failures=self.dkv_peer_load_failures
             + other.dkv_peer_load_failures,
+            dkv_peer_transfer_failures=self.dkv_peer_transfer_failures
+            + other.dkv_peer_transfer_failures,
+            dkv_peer_metadata_refreshes=self.dkv_peer_metadata_refreshes
+            + other.dkv_peer_metadata_refreshes,
+            dkv_peer_metadata_refresh_failures=self.dkv_peer_metadata_refresh_failures
+            + other.dkv_peer_metadata_refresh_failures,
             dkv_hints_rejected=self.dkv_hints_rejected
             + other.dkv_hints_rejected,
+            dkv_hints_rejected_by_reason=_add_by_key(
+                self.dkv_hints_rejected_by_reason,
+                other.dkv_hints_rejected_by_reason,
+            ),
+            dkv_rpc_calls=_add_by_key(self.dkv_rpc_calls, other.dkv_rpc_calls),
+            dkv_rpc_time_ms=_add_by_key(
+                self.dkv_rpc_time_ms, other.dkv_rpc_time_ms
+            ),
+            dkv_rpc_socket_wait_ms=_add_by_key(
+                self.dkv_rpc_socket_wait_ms, other.dkv_rpc_socket_wait_ms
+            ),
+            dkv_lock_waits=_add_by_key(
+                self.dkv_lock_waits, other.dkv_lock_waits
+            ),
+            dkv_lock_wait_ms=_add_by_key(
+                self.dkv_lock_wait_ms, other.dkv_lock_wait_ms
+            ),
         )

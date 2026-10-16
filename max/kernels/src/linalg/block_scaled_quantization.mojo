@@ -26,23 +26,23 @@ from max.gpu import (
     WARP_SIZE,
     MAX_THREADS_PER_BLOCK_METADATA,
 )
-from max.gpu.host import DeviceContext, FuncAttribute, get_gpu_target
+from max.gpu.host import DeviceContext, FuncAttribute
 from layout import (
     coord,
     Coord,
     Idx,
     RowMajorLayout,
     DefaultEngine,
+    ImmTileTensor,
     TensorEngine,
     TileTensor,
     row_major,
-    coord_to_index_list,
 )
 from layout.tile_layout import TensorLayout
 from std.collections import OptionalReg
 from std.logger import Logger
 from max.gpu.primitives import warp
-from max.gpu.primitives.warp import lane_group_max, shuffle_xor
+from max.gpu.primitives.warp import lane_group_max, shuffle_down, shuffle_xor
 from std.math import recip
 from .block_scaled_utils import compute_mxfp8_block_scale
 from .fp4_utils import (
@@ -65,10 +65,11 @@ from .fp4_utils import (
 )
 from max.gpu.host.info import B200, MI355X, _is_sm10x_gpu, _is_sm12x_gpu
 from std.utils import StaticTuple
-from std.collections import Optional
 from linalg.utils import (
-    elementwise_epilogue_type,
-    elementwise_compute_lambda_type,
+    ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
+    no_compute_fn,
+    no_epilogue_fn,
 )
 from std.utils.index import Index, IndexList
 from linalg.matmul.vendor.blas import matmul
@@ -84,7 +85,7 @@ from layout.tma_async import (
 )
 from max.gpu.memory import external_memory, fence_async_view_proxy
 from max.gpu.sync import barrier
-from std.sys import size_of, align_of, simd_width_of, get_defined_int
+from std.sys import size_of, align_of, get_defined_int
 from layout.swizzle import make_swizzle
 from max.algorithm import elementwise
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
@@ -98,7 +99,7 @@ from linalg.matmul.gpu.sm100_structured.default.dispatch import DISPATCH_HIT
 from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from max.runtime.tracing import Trace, TraceLevel, trace_arg, get_safe_task_id
 from std.collections.string.string_span import get_static_string
-from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig, GEMMKind
+from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
 from linalg.matmul.gpu.sm100.tile_scheduler import RasterOrder
 from linalg.matmul.gpu.sm100.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
@@ -543,7 +544,6 @@ def naive_block_scaled_matmul[
     SF_VECTOR_SIZE: Int,
     accum_type: DType = .float32,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     BLOCK_DIM: Int = 16,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
@@ -575,8 +575,6 @@ def naive_block_scaled_matmul[
             `DType.float32`).
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result (defaults to `None`).
         BLOCK_DIM: Thread block tile dimension in rows and columns
             (defaults to 16).
     Args:
@@ -702,7 +700,6 @@ def naive_block_scaled_matmul[
         scaling_kind=scaling_kind,
         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
         transpose_b=transpose_b,
-        elementwise_lambda_fn=elementwise_lambda_fn,
     ]
 
     ctx.enqueue_function[kernel](
@@ -733,7 +730,6 @@ def naive_block_scaled_matmul_kernel[
     scaling_kind: UMMAKind,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
     a: TileTensor[a_type, a_layout, ImmutAnyOrigin],
@@ -746,8 +742,7 @@ def naive_block_scaled_matmul_kernel[
 
     Both A and B must be in K-major format with 5D TCGEN scale-factor
     layouts. Each thread accumulates one output element by iterating over
-    K, applying per-block scale factors, and optionally invoking an
-    elementwise epilogue lambda.
+    K and applying per-block scale factors.
 
     Parameters:
         c_type: Element type of the output matrix `c`.
@@ -771,8 +766,6 @@ def naive_block_scaled_matmul_kernel[
             factor.
         transpose_b: Whether `b` is stored transposed (defaults to
             `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result (defaults to `None`).
     Args:
         c: Output matrix of shape `[M, N]`.
         a: LHS input matrix of shape `[M, K]` for FP8 or `[M, K//2]`
@@ -850,13 +843,7 @@ def naive_block_scaled_matmul_kernel[
 
     accum *= alpha.cast[accum_type]()
 
-    comptime if elementwise_lambda_fn:
-        comptime elementwise_lambda = elementwise_lambda_fn.value()
-        elementwise_lambda[c_type, 1](
-            Index(row_idx, col_idx), accum.cast[c_type]()
-        )
-    else:
-        c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
+    c[Coord(row_idx, col_idx)] = accum.cast[c_type]()
 
 
 @__llvm_arg_metadata(input_tma_op, `nvvm.grid_constant`)
@@ -1293,6 +1280,99 @@ def quantize_dynamic_scaled_fp4_async[
     )
 
 
+@inline(.always)
+def _scale_tile_expert[
+    num_experts: Int
+](
+    row_offsets: ImmTileTensor[.uint32, ...],
+    scales_offsets: ImmTileTensor[.uint32, ...],
+    scale_tile_idx: Int,
+) -> Int:
+    """Returns the last expert whose scale tiles start at or before
+    `scale_tile_idx`.
+
+    The tiles of expert `e` start at
+    `row_offsets[e] // SF_MN_GROUP_SIZE + scales_offsets[e]`, and these
+    starts never decrease. A padding tile, between two experts' tiles or
+    past the last expert's, has no owner: this returns the expert before
+    it. Callers must check that the tile falls inside the returned expert's
+    `ceildiv(row_offsets[e + 1] - row_offsets[e], SF_MN_GROUP_SIZE)` tiles
+    before using it.
+
+    One warp does the search in two rounds and puts the result in shared
+    memory. Call this from all threads of the block, because it contains a
+    barrier.
+
+    Parameters:
+        num_experts: Number of experts in `scales_offsets`.
+
+    Args:
+        row_offsets: Row boundaries per expert, `[num_experts + 1]`.
+        scales_offsets: Per-expert offset into the scales tiles.
+        scale_tile_idx: The scale tile to find the expert of.
+
+    Returns:
+        The index of that expert.
+
+    Constraints:
+        `row_offsets` and `scales_offsets` must be rank 1, and
+        `ceildiv(num_experts, WARP_SIZE)` must not exceed `WARP_SIZE`.
+    """
+    comptime assert row_offsets.flat_rank == 1, "row_offsets must be rank 1"
+    comptime assert (
+        scales_offsets.flat_rank == 1
+    ), "scales_offsets must be rank 1"
+    comptime probe_stride = uceildiv(num_experts, WARP_SIZE)
+    # The second round gives one lane to each expert in a stride. A wider
+    # stride skips experts and returns the wrong one.
+    comptime assert probe_stride <= WARP_SIZE, (
+        "expert count exceeds what a two-round warp search covers; add a"
+        " round or widen the stride handling"
+    )
+    # Keep this slot in its own 16 bytes. No barrier separates its read from
+    # the next shared-memory write of the caller.
+    var search_smem = unsafe_stack_allocation[
+        1, Int32, alignment=16, address_space=.SHARED
+    ]()
+    if thread_idx.x < WARP_SIZE:
+        var lane = thread_idx.x
+        var target = scale_tile_idx
+
+        var coarse = lane * probe_stride
+        # Expert 0 always qualifies. This keeps the span at zero or more when
+        # the offsets do not start at zero.
+        var best = 0 if lane == 0 else -1
+        if coarse < num_experts:
+            if (
+                ufloordiv(
+                    Int(row_offsets.load[width=1]((coarse,))),
+                    SF_MN_GROUP_SIZE,
+                )
+                + Int(scales_offsets.load[width=1]((coarse,)))
+            ) <= target:
+                best = coarse
+        var span = Int(lane_group_max[WARP_SIZE](Int32(best)))
+
+        comptime if probe_stride > 1:
+            var fine = span + lane
+            var refined = span
+            if lane < probe_stride and fine < num_experts:
+                if (
+                    ufloordiv(
+                        Int(row_offsets.load[width=1]((fine,))),
+                        SF_MN_GROUP_SIZE,
+                    )
+                    + Int(scales_offsets.load[width=1]((fine,)))
+                ) <= target:
+                    refined = fine
+            span = Int(lane_group_max[WARP_SIZE](Int32(refined)))
+
+        if thread_idx.x == 0:
+            search_smem.store(0, Int32(span))
+    barrier()
+    return Int(search_smem.load(0))
+
+
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
 )
@@ -1321,6 +1401,8 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         *Coord[Int64].element_types
     ],
     RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
     num_threads: Int = 128,
     k_tiles_per_block: Int = 1,
 ](
@@ -1350,7 +1432,10 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     ],  # tensor-wise scale factor
     row_indices: OptionalReg[
         TileTensor[
-            .int32, row_indices_layout, ImmutAnyOrigin, Engine=RowIndicesEngine
+            row_indices_dtype,
+            row_indices_layout,
+            ImmutAnyOrigin,
+            Engine=RowIndicesEngine,
         ]
     ] = None,
 ):
@@ -1395,6 +1480,9 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_indices_layout: TileTensor layout of the optional source row
             indices tensor.
         RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of the `row_indices` tensor.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
         num_threads: Number of threads per block in the launch grid
             (defaults to 128).
         k_tiles_per_block: Column tiles handled by one block. Batching them
@@ -1409,12 +1497,12 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_offsets: Contiguous row boundaries per expert of shape
             `[num_experts + 1]` as `uint32`, where range `i` spans
             rows `row_offsets[i]` through `row_offsets[i + 1]`.
-        row_indices: Optional source row indices of shape `[padded_rows]` as
-            `int32`. When present, permuted output row `i` reads input row
-            `row_indices[i]`, fusing the MoE expert permutation gather into
-            the quantize loads. The output layout and scale tiles are
-            unchanged; absent means the input is already in permuted row
-            order.
+        row_indices: Optional source row indices of shape `[padded_rows]`.
+            When present, permuted output row `i` reads input row
+            `row_indices[i] // row_index_divisor`, fusing the MoE expert
+            permutation gather into the quantize loads. The output layout and
+            scale tiles are unchanged; absent means the input is already in
+            permuted row order.
         scales_offsets: Per-expert offset into the scales tensor of
             shape `[num_experts]` as `uint32`.
         expert_ids: Expert ID for each active range of shape
@@ -1442,72 +1530,9 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     comptime SF_K_GROUP_SIZE = SF_VECTOR_SIZE * SF_ATOM_K
 
     var scale_tile_idx = block_idx.x
-
-    # Finds the expert id for the current block.
-    # row_offsets is of size num_experts + 1, scales_offsets is of size num_experts
-    # For a given expert_idx, it's corresponding scales tiles start at:
-    # row_offsets[expert_idx] // SF_MN_GROUP_SIZE + scales_offsets[expert_idx]
-    # and there will be ceildiv(row_offsets[expert_idx + 1] -
-    # row_offsets[expert_idx], SF_MN_GROUP_SIZE) scales tiles for this expert.
-    #
-    # The result is the same for every thread in the block, so one warp
-    # computes it and the rest read it from shared memory. The warp probes 32
-    # evenly spaced entries at once, then refines within the chosen span. Tile
-    # starts are non-decreasing, so the answer is the largest probed expert
-    # whose first tile is at or before this one.
-    comptime probe_stride = uceildiv(num_experts, WARP_SIZE)
-    # Refinement gives one lane to each entry of a probe stride. A stride
-    # wider than the warp leaves part of every span unsearched and returns a
-    # too-small expert, whose tile is then never written.
-    comptime assert probe_stride <= WARP_SIZE, (
-        "expert count exceeds what a two-round warp search covers; add a"
-        " round or widen the stride handling"
+    var expert_idx = _scale_tile_expert[num_experts](
+        row_offsets, scales_offsets, scale_tile_idx
     )
-    # A separate allocation from the scale tiles below, and given its own
-    # alignment so the two cannot share a 16-byte region. The read of this
-    # slot is not barrier-separated from the scale-tile zero-fill, so an
-    # overlap would hand a late-arriving thread a zeroed expert index.
-    var search_smem = unsafe_stack_allocation[
-        1, Int32, alignment=16, address_space=.SHARED
-    ]()
-    if thread_idx.x < WARP_SIZE:
-        var lane = thread_idx.x
-        var target = Int(scale_tile_idx)
-
-        var coarse = lane * probe_stride
-        # Expert 0 always qualifies. Seeding lane 0 with it keeps the span
-        # non-negative for an offset table that does not start at zero; a
-        # negative span would index the offset arrays out of bounds.
-        var best = 0 if lane == 0 else -1
-        if coarse < num_experts:
-            if (
-                ufloordiv(
-                    Int(row_offsets.load[width=1](Coord(coarse))[0]),
-                    SF_MN_GROUP_SIZE,
-                )
-                + Int(scales_offsets.load[width=1](Coord(coarse))[0])
-            ) <= target:
-                best = coarse
-        var span = Int(lane_group_max[WARP_SIZE](Int32(best)))
-
-        comptime if probe_stride > 1:
-            var fine = span + lane
-            var refined = span
-            if lane < probe_stride and fine < num_experts:
-                if (
-                    ufloordiv(
-                        Int(row_offsets.load[width=1](Coord(fine))[0]),
-                        SF_MN_GROUP_SIZE,
-                    )
-                    + Int(scales_offsets.load[width=1](Coord(fine))[0])
-                ) <= target:
-                    refined = fine
-            span = Int(lane_group_max[WARP_SIZE](Int32(refined)))
-
-        if thread_idx.x == 0:
-            search_smem.store(0, Int32(span))
-    barrier()
-    var expert_idx = Int(search_smem.load(0))
 
     var curr_expert_start = Int(row_offsets.load[width=1](Coord(expert_idx))[0])
     var curr_expert_end = Int(
@@ -1630,8 +1655,10 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             var input_vector = SIMD[input_dtype, ELEMENTS_PER_THREAD](0)
             if is_valid:
                 var source_row = token_start + local_row
-                if row_indices:
-                    source_row = Int(row_indices.value()[source_row])
+                if case .Some(row_indices) = row_indices:
+                    source_row = (
+                        Int(row_indices[source_row]) // row_index_divisor
+                    )
                 input_vector = input_tensor.load[width=ELEMENTS_PER_THREAD](
                     (source_row, input_col)
                 )
@@ -1696,7 +1723,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
                         smem_ptr.unsafe_offset(kt * scales_smem_tile_size),
                         row_major(scales_tile_shape),
                     ),
-                    (0, 0, store_k_idx, Int(scale_tile_idx)),
+                    (0, 0, store_k_idx, scale_tile_idx),
                 )
             scales_tma_op.commit_group()
             scales_tma_op.wait_group[0]()
@@ -1718,6 +1745,8 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         *Coord[Int64].element_types
     ],
     RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
 ](
     output_tensor: TileTensor[
         mut=True, output_dtype, address_space=.GENERIC, ..., Engine=OutputEngine
@@ -1752,7 +1781,7 @@ def grouped_quantize_dynamic_scaled_fp4_async[
     row_indices: OptionalReg[
         TileTensor[
             mut=False,
-            .int32,
+            row_indices_dtype,
             RowIndicesLayoutType,
             ImmutAnyOrigin,
             Engine=RowIndicesEngine,
@@ -1781,6 +1810,9 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         SfEngine: Engine policy of the `sf_tensor`.
         RowIndicesLayoutType: Layout of the optional `row_indices` tensor.
         RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of the `row_indices` tensor.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
     Args:
         output_tensor: Output quantized tensor of packed FP4 `uint8`
             or `float8_e4m3fn` for MXFP8.
@@ -1797,11 +1829,17 @@ def grouped_quantize_dynamic_scaled_fp4_async[
         sf_tensor: Per-expert tensor-wise scale factor of shape
             `[num_experts]` as `float32`.
         ctx: Device context used to enqueue the kernel.
-        row_indices: Optional source row indices of shape `[padded_rows]`
-            as `int32`. When present, permuted output row `i` reads input row
-            `row_indices[i]`, fusing the MoE expert permutation gather into
-            the quantize loads; the output stays in permuted row order.
+        row_indices: Optional source row indices of shape `[padded_rows]`.
+            When present, permuted output row `i` reads input row
+            `row_indices[i] // row_index_divisor`, fusing the MoE expert
+            permutation gather into the quantize loads; the output stays in
+            permuted row order.
     """
+    comptime assert (
+        row_indices_dtype.is_integral()
+    ), "row_indices must hold integers"
+    comptime assert row_index_divisor > 0, "row_index_divisor must be positive"
+
     # The kernel masks columns at 8-element lane granularity, so a column
     # count that is not a multiple of 8 would still load and store partially
     # out of bounds within the straddling lane.
@@ -1887,6 +1925,8 @@ def grouped_quantize_dynamic_scaled_fp4_async[
             SfEngine,
             RowIndicesLayoutType,
             RowIndicesEngine,
+            row_indices_dtype,
+            row_index_divisor,
             num_threads=BLOCK_THREADS,
             k_tiles_per_block=k_tiles_per_block,
         ]
@@ -1916,6 +1956,576 @@ def grouped_quantize_dynamic_scaled_fp4_async[
 
 
 ########################################################
+# Per-row-scaled NVFP4 quantization with the row amax in the kernel
+########################################################
+
+# A warp quantizes one row, and a block holds this many consecutive rows.
+# Small blocks spread decode's few hundred rows over many SMs.
+comptime _ROW_AMAX_ROWS_PER_BLOCK = 4
+# A lane loads 8 columns per chunk, so rows of up to 12 x 256 = 3072 columns
+# stay in registers between the amax and the quantize.
+comptime _ROW_AMAX_CACHED_CHUNKS = 12
+# The largest E2M1 value times the largest E4M3 value.
+comptime _NVFP4_ROW_RANGE = Float32(6.0 * 448.0)
+
+
+comptime nvfp4_row_input_fn_type = def[dtype: DType, width: SIMDLength](
+    SIMD[dtype, width]
+) capturing -> SIMD[dtype, width]
+"""Elementwise transform applied to each input vector before quantizing.
+
+`grouped_quantize_nvfp4_row_amax` quantizes `input_fn(x)` in place of `x`,
+for both the row amax and the payload; the result is rounded to the input
+dtype, as the graph op it replaces would round it. The graph op passes the
+Nemotron-H `relu(x) * relu(x)` built from `nn.activations.relu`.
+"""
+
+
+@__llvm_metadata(
+    MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](
+        Int32(rows_per_block * WARP_SIZE)
+    )
+)
+@__name("grouped_quantize_nvfp4_row_amax_kernel")
+def grouped_quantize_nvfp4_row_amax_kernel[
+    output_dtype: DType,
+    scales_dtype: DType,
+    input_dtype: DType,
+    output_layout: TensorLayout,
+    scales_layout: TensorLayout,
+    row_scales_layout: TensorLayout,
+    input_layout: TensorLayout,
+    row_offsets_layout: TensorLayout,
+    scales_offsets_layout: TensorLayout,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    RowScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ScalesOffsetsEngine: TensorEngine,
+    input_fn: Optional[nvfp4_row_input_fn_type],
+    row_indices_layout: TensorLayout = RowMajorLayout[
+        *Coord[Int64].element_types
+    ],
+    RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
+    rows_per_block: Int = _ROW_AMAX_ROWS_PER_BLOCK,
+](
+    output_tensor: TileTensor[
+        output_dtype, output_layout, MutAnyOrigin, Engine=OutputEngine
+    ],
+    scales_tensor: TileTensor[
+        scales_dtype, scales_layout, MutAnyOrigin, Engine=ScalesEngine
+    ],
+    row_scales: TileTensor[
+        .bfloat16, row_scales_layout, MutAnyOrigin, Engine=RowScalesEngine
+    ],
+    input_tensor: TileTensor[
+        input_dtype, input_layout, ImmutAnyOrigin, Engine=InputEngine
+    ],
+    row_offsets: TileTensor[
+        .uint32, row_offsets_layout, ImmutAnyOrigin, Engine=RowOffsetsEngine
+    ],
+    scales_offsets: TileTensor[
+        .uint32,
+        scales_offsets_layout,
+        ImmutAnyOrigin,
+        Engine=ScalesOffsetsEngine,
+    ],
+    row_indices: OptionalReg[
+        TileTensor[
+            row_indices_dtype,
+            row_indices_layout,
+            ImmutAnyOrigin,
+            Engine=RowIndicesEngine,
+        ]
+    ] = None,
+):
+    """Quantizes BF16 rows to NVFP4, each with its own global scale.
+
+    This is the fusion of the graph-op chain
+
+    ```
+    amax = max(abs(f32(x)), axis=-1)
+    row_scale = bf16(max(amax / 2688, 1e-30))
+    scaled = bf16(f32(x) * (1 / f32(row_scale)))
+    grouped_quantize_dynamic_scaled_fp4(scaled, sf_tensor=1)
+    ```
+
+    with each rounding to BF16 kept, so that the payload and the block scales
+    match the chain bit for bit. A warp owns a row: it loads the row into
+    registers with 16-byte loads, reduces the row's amax, derives
+    `row_scale`, and quantizes the row in 16-element blocks from those
+    registers, so the row is read from memory once. Rows wider than the
+    register cache are read a second time for the quantize.
+
+    The grid scales with the rows rather than the scale tiles: the first
+    `ceildiv(rows, rows_per_block)` blocks give a warp to each output row,
+    which finds its expert, and so its scale tile, from the expert offsets
+    in one round of loads. One more block per allocated scale tile clears
+    the scale slots of that tile's padding rows, which must be zero. No two
+    warps write the same byte, and the scale stores go through
+    `scales_layout`.
+
+    Parameters:
+        output_dtype: Element type of the packed output (`uint8`).
+        scales_dtype: Element type of the block scales (`float8_e4m3fn`).
+        input_dtype: Element type of the input (`bfloat16`).
+        output_layout: Layout of `output_tensor`.
+        scales_layout: Layout of `scales_tensor`.
+        row_scales_layout: Layout of `row_scales`.
+        input_layout: Layout of `input_tensor`.
+        row_offsets_layout: Layout of `row_offsets`.
+        scales_offsets_layout: Layout of `scales_offsets`.
+        OutputEngine: Engine policy of the `output_tensor`.
+        ScalesEngine: Engine policy of the `scales_tensor`.
+        RowScalesEngine: Engine policy of `row_scales`.
+        InputEngine: Engine policy of the `input_tensor`.
+        RowOffsetsEngine: Engine policy of the `row_offsets` tensor.
+        ScalesOffsetsEngine: Engine policy of the `scales_offsets` tensor.
+        input_fn: Optional transform quantized in place of each input
+            vector, such as relu2.
+        row_indices_layout: Layout of the optional `row_indices`.
+        RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of `row_indices`.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
+        rows_per_block: Rows (one per warp) each block quantizes.
+
+    Args:
+        output_tensor: Packed FP4 output, `[rows, K / 2]`.
+        scales_tensor: Block scales in the 5D tcgen interleaved layout.
+        row_scales: Each output row's BF16 global scale, `[rows]`.
+        input_tensor: BF16 input, `[source rows, K]`.
+        row_offsets: Row boundaries per expert, `[num_experts + 1]`.
+        scales_offsets: Per-expert offset into the scale tiles.
+        row_indices: Optional source row of each output row.
+    """
+    comptime assert row_offsets.flat_rank == 1, "row_offsets must be rank 1"
+    comptime assert (
+        scales_offsets.flat_rank == 1
+    ), "scales_offsets must be rank 1"
+    comptime assert row_scales.flat_rank == 1, "row_scales must be rank 1"
+    comptime assert scales_tensor.flat_rank == 5, "scales_tensor must be rank 5"
+    comptime assert scales_dtype == NVFP4_SF_DTYPE
+    comptime assert output_dtype == DType.uint8
+    comptime assert OutputEngine.element_size == 1
+    comptime assert ScalesEngine.element_size == 1
+    comptime assert RowScalesEngine.element_size == 1
+    comptime assert InputEngine.element_size == 1
+    comptime assert RowOffsetsEngine.element_size == 1
+    comptime assert ScalesOffsetsEngine.element_size == 1
+    comptime assert RowIndicesEngine.element_size == 1
+    comptime assert scales_offsets_layout.all_dims_known
+    comptime num_experts = scales_offsets_layout.static_shape[0]
+
+    comptime assert rows_per_block > 0, "rows_per_block must be positive"
+
+    comptime SF_VECTOR_SIZE = NVFP4_SF_VECTOR_SIZE
+    comptime SF_K_GROUP_SIZE = SF_VECTOR_SIZE * SF_ATOM_K
+    comptime ELEMENTS_PER_THREAD = 8
+    comptime COLS_PER_PASS = WARP_SIZE * ELEMENTS_PER_THREAD
+    comptime CACHED_CHUNKS = _ROW_AMAX_CACHED_CHUNKS
+    comptime InVec = SIMD[input_dtype, ELEMENTS_PER_THREAD]
+
+    var num_cols = Int(input_tensor.dim(1))
+    var num_k_tiles = uceildiv(num_cols, SF_K_GROUP_SIZE)
+    var padded_cols = num_k_tiles * SF_K_GROUP_SIZE
+    var num_rows = Int(output_tensor.dim(0))
+    var num_row_blocks = uceildiv(num_rows, rows_per_block)
+    var warp_id = Int(thread_idx.x // WARP_SIZE)
+    var lane = Int(thread_idx.x % WARP_SIZE)
+
+    # The expert offsets can come from the kernel this one overlaps under
+    # PDL, so they are read after the wait.
+    with PDL():
+        if Int(block_idx.x) >= num_row_blocks:
+            # A tile block: clear the scale slots of the tile's padding rows,
+            # which must be zero.
+            var scale_tile_idx = Int(block_idx.x) - num_row_blocks
+            var expert_idx = _scale_tile_expert[num_experts](
+                row_offsets, scales_offsets, scale_tile_idx
+            )
+            var expert_start = Int(
+                row_offsets.load[width=1](Coord(expert_idx))[0]
+            )
+            var expert_end = Int(
+                row_offsets.load[width=1](Coord(expert_idx + 1))[0]
+            )
+            var tile_in_expert = scale_tile_idx - (
+                ufloordiv(expert_start, SF_MN_GROUP_SIZE)
+                + Int(scales_offsets.load[width=1](Coord(expert_idx))[0])
+            )
+            # Tiles past the expert's last are never read by the matmul.
+            if tile_in_expert < uceildiv(
+                expert_end - expert_start, SF_MN_GROUP_SIZE
+            ):
+                var num_tokens = min(
+                    expert_end
+                    - expert_start
+                    - tile_in_expert * SF_MN_GROUP_SIZE,
+                    SF_MN_GROUP_SIZE,
+                )
+                # Atom row `lane` holds tile rows `lane + 32 * c` for the 4
+                # atom columns `c`; the first `valid_cols` carry tokens.
+                var valid_cols = min(
+                    SF_ATOM_M[1],
+                    ceildiv(max(num_tokens - lane, 0), SF_ATOM_M[0]),
+                )
+                # The scale stores go through `scales_layout`, so a strided
+                # view is honored.
+                for k_tile in range(warp_id, num_k_tiles, rows_per_block):
+                    for atom_col in range(valid_cols, SF_ATOM_M[1]):
+                        scales_tensor.store(
+                            (scale_tile_idx, k_tile, lane, atom_col, 0),
+                            SIMD[scales_dtype, SF_ATOM_K](0),
+                        )
+        else:
+            var row = Int(block_idx.x) * rows_per_block + warp_id
+            # The row's expert is the last one whose rows start at or
+            # before it. Each lane reads the offsets of a few experts, so
+            # the warp finds it in one round of loads.
+            comptime EXPERTS_PER_LANE = ceildiv(num_experts, WARP_SIZE)
+            var lane_expert = Int32(-1)
+            var lane_start = Int32(0)
+            var lane_scales_offset = Int32(0)
+            comptime for j in range(EXPERTS_PER_LANE):
+                var e = lane * EXPERTS_PER_LANE + j
+                if e < num_experts:
+                    var start = Int32(row_offsets.load[width=1](Coord(e))[0])
+                    var offset = Int32(
+                        scales_offsets.load[width=1](Coord(e))[0]
+                    )
+                    if Int(start) <= row:
+                        lane_expert = Int32(e)
+                        lane_start = start
+                        lane_scales_offset = offset
+            var expert_idx = Int(
+                lane_group_max[num_lanes=WARP_SIZE](lane_expert)
+            )
+            var owner = lane_expert == Int32(expert_idx)
+            var expert_start = Int(
+                lane_group_max[num_lanes=WARP_SIZE](
+                    lane_start if owner else Int32(-1)
+                )
+            )
+            var expert_scales_offset = Int(
+                lane_group_max[num_lanes=WARP_SIZE](
+                    lane_scales_offset if owner else Int32(-1)
+                )
+            )
+            var rows_end = Int(row_offsets.load[width=1](Coord(num_experts))[0])
+            if row < num_rows and row < rows_end and expert_idx >= 0:
+                var row_in_expert = row - expert_start
+                var scale_tile_idx = (
+                    ufloordiv(expert_start, SF_MN_GROUP_SIZE)
+                    + expert_scales_offset
+                    + ufloordiv(row_in_expert, SF_MN_GROUP_SIZE)
+                )
+                var row_in_tile = row_in_expert % SF_MN_GROUP_SIZE
+                # Tile row `r` sits at atom row `r % 32`, atom column
+                # `r // 32` of each k-tile's 32 x 4 x 4 scale atom.
+                var atom_row = row_in_tile % SF_ATOM_M[0]
+                var atom_col = row_in_tile // SF_ATOM_M[0]
+                var global_row = row
+                var source_row = global_row
+                if case .Some(row_indices) = row_indices:
+                    source_row = (
+                        Int(row_indices[global_row]) // row_index_divisor
+                    )
+
+                # Quantizes the 8 columns from `col` with the row's inverse
+                # scale. Called by the whole warp for a warp-uniform `col - 8 *
+                # lane`, with zeros past the end of the row, so that the scale
+                # columns the last k-tile does not fill are written as zero.
+                @always_inline
+                def quantize_chunk(
+                    v: InVec, col: Int, inv_row_scale: Float32
+                ) {imm}:
+                    var scaled = (v.cast[.float32]() * inv_row_scale).cast[
+                        input_dtype
+                    ]()
+                    var thread_max = abs(scaled).reduce_max()
+                    thread_max = max(shuffle_xor(thread_max, 1), thread_max)
+                    var group_max = thread_max.cast[.float32]()
+                    # The graph chain passes sf_tensor == 1, which these
+                    # multiplications and reciprocals leave exact.
+                    var scale_factor = group_max * recip(Float32(6.0))
+                    var fp8_scale_factor = scale_factor.cast[scales_dtype]()
+                    var output_scale = Float32(0.0)
+                    if group_max != 0:
+                        output_scale = recip(
+                            fp8_scale_factor.cast[.float32]()
+                            * recip(Float32(1.0))
+                        )
+
+                    if col < num_cols:
+                        var scaled_f32 = scaled.cast[.float32]() * output_scale
+                        output_tensor.store(
+                            (global_row, col // 2),
+                            bitcast[output_dtype, 4](
+                                cast_fp32_to_fp4e2m1(scaled_f32)
+                            ),
+                        )
+                    # Lanes 8j..8j+7 cover the four 16-column blocks of one
+                    # k-tile; lane 8j gathers their four scale bytes, which are
+                    # contiguous in the atom, into one 4-byte store.
+                    var sf_byte = UInt32(
+                        bitcast[DType.uint8, 1](fp8_scale_factor)
+                    )
+                    var sf_word = (
+                        sf_byte
+                        | (shuffle_down(sf_byte, 2) << 8)
+                        | (shuffle_down(sf_byte, 4) << 16)
+                        | (shuffle_down(sf_byte, 6) << 24)
+                    )
+                    if col < padded_cols and lane % 8 == 0:
+                        scales_tensor.store(
+                            (
+                                scale_tile_idx,
+                                ufloordiv(col, SF_K_GROUP_SIZE),
+                                atom_row,
+                                atom_col,
+                                0,
+                            ),
+                            bitcast[scales_dtype, SF_ATOM_K](sf_word),
+                        )
+
+                var amax = Float32(0)
+                if num_cols <= CACHED_CHUNKS * COLS_PER_PASS:
+                    # Load the whole row first so that all loads are in flight
+                    # together, then quantize from registers.
+                    var chunks = Array[InVec, CACHED_CHUNKS](fill=InVec(0))
+                    comptime for c in range(CACHED_CHUNKS):
+                        var col = c * COLS_PER_PASS + lane * ELEMENTS_PER_THREAD
+                        if col < num_cols:
+                            var v = input_tensor.load[
+                                width=ELEMENTS_PER_THREAD
+                            ]((source_row, col))
+                            comptime if input_fn:
+                                comptime transform = input_fn.value()
+                                v = transform(v)
+                            chunks[c] = v
+                    comptime for c in range(CACHED_CHUNKS):
+                        amax = max(
+                            amax, abs(chunks[c]).reduce_max().cast[.float32]()
+                        )
+                    amax = lane_group_max[num_lanes=WARP_SIZE](amax)
+
+                    # The two BF16 roundings the graph chain makes: the row
+                    # scale, and the input divided by it. The reciprocal is a
+                    # true division so that it rounds as the chain's does.
+                    var row_scale = max(
+                        amax / _NVFP4_ROW_RANGE, Float32(1e-30)
+                    ).cast[.bfloat16]()
+                    var inv_row_scale = (
+                        Float32(1.0) / row_scale.cast[.float32]()
+                    )
+                    if lane == 0:
+                        row_scales[Coord(global_row)] = row_scale
+
+                    comptime for c in range(CACHED_CHUNKS):
+                        if c * COLS_PER_PASS < padded_cols:
+                            quantize_chunk(
+                                chunks[c],
+                                c * COLS_PER_PASS + lane * ELEMENTS_PER_THREAD,
+                                inv_row_scale,
+                            )
+                else:
+                    # A row too wide for the registers: read it twice.
+                    for col0 in range(0, num_cols, COLS_PER_PASS):
+                        var col = col0 + lane * ELEMENTS_PER_THREAD
+                        if col < num_cols:
+                            var v = input_tensor.load[
+                                width=ELEMENTS_PER_THREAD
+                            ]((source_row, col))
+                            comptime if input_fn:
+                                comptime transform = input_fn.value()
+                                v = transform(v)
+                            amax = max(
+                                amax, abs(v).reduce_max().cast[.float32]()
+                            )
+                    amax = lane_group_max[num_lanes=WARP_SIZE](amax)
+
+                    var row_scale = max(
+                        amax / _NVFP4_ROW_RANGE, Float32(1e-30)
+                    ).cast[.bfloat16]()
+                    var inv_row_scale = (
+                        Float32(1.0) / row_scale.cast[.float32]()
+                    )
+                    if lane == 0:
+                        row_scales[Coord(global_row)] = row_scale
+
+                    for col0 in range(0, padded_cols, COLS_PER_PASS):
+                        var col = col0 + lane * ELEMENTS_PER_THREAD
+                        var v = InVec(0)
+                        if col < num_cols:
+                            v = input_tensor.load[width=ELEMENTS_PER_THREAD](
+                                (source_row, col)
+                            )
+                            comptime if input_fn:
+                                comptime transform = input_fn.value()
+                                v = transform(v)
+                        quantize_chunk(v, col, inv_row_scale)
+
+
+def grouped_quantize_nvfp4_row_amax[
+    input_dtype: DType,
+    output_dtype: DType,
+    scales_dtype: DType,
+    //,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    RowScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ScalesOffsetsEngine: TensorEngine,
+    *,
+    input_fn: Optional[nvfp4_row_input_fn_type] = None,
+    RowIndicesLayoutType: TensorLayout = RowMajorLayout[
+        *Coord[Int64].element_types
+    ],
+    RowIndicesEngine: TensorEngine = DefaultEngine[element_width=1],
+    row_indices_dtype: DType = .uint32,
+    row_index_divisor: Int = 1,
+    rows_per_block: Int = _ROW_AMAX_ROWS_PER_BLOCK,
+](
+    output_tensor: TileTensor[
+        mut=True, output_dtype, address_space=.GENERIC, ..., Engine=OutputEngine
+    ],
+    scales_tensor: TileTensor[
+        mut=True,
+        scales_dtype,
+        address_space=.GENERIC,
+        ...,
+        Engine=ScalesEngine,
+    ],
+    row_scales: TileTensor[
+        mut=True, .bfloat16, address_space=.GENERIC, ..., Engine=RowScalesEngine
+    ],
+    input_tensor: TileTensor[
+        mut=False, input_dtype, address_space=.GENERIC, ..., Engine=InputEngine
+    ],
+    row_offsets: TileTensor[
+        mut=False, .uint32, address_space=.GENERIC, ..., Engine=RowOffsetsEngine
+    ],
+    scales_offsets: TileTensor[
+        mut=False,
+        .uint32,
+        address_space=.GENERIC,
+        ...,
+        Engine=ScalesOffsetsEngine,
+    ],
+    ctx: DeviceContext,
+    row_indices: OptionalReg[
+        TileTensor[
+            mut=False,
+            row_indices_dtype,
+            RowIndicesLayoutType,
+            ImmutAnyOrigin,
+            Engine=RowIndicesEngine,
+        ]
+    ] = None,
+) raises:
+    """Quantizes grouped BF16 rows to NVFP4, each row with its own scale.
+
+    Equal to a chain of a row amax, `row_scale = bf16(max(amax / 2688,
+    1e-30))`, `bf16(x * (1 / row_scale))` and
+    `grouped_quantize_dynamic_scaled_fp4_async` with a tensor-wise scale of 1,
+    but in one kernel with the same bits out. `row_scales` is the matmul's
+    `a_row_scales`. SM100 only.
+
+    Parameters:
+        input_dtype: Element type of the input (inferred, `bfloat16`).
+        output_dtype: Element type of the packed output (inferred).
+        scales_dtype: Element type of the block scales (inferred).
+        OutputEngine: Engine policy of the `output_tensor`.
+        ScalesEngine: Engine policy of the `scales_tensor`.
+        RowScalesEngine: Engine policy of `row_scales`.
+        InputEngine: Engine policy of the `input_tensor`.
+        RowOffsetsEngine: Engine policy of the `row_offsets` tensor.
+        ScalesOffsetsEngine: Engine policy of the `scales_offsets` tensor.
+        input_fn: Optional elementwise transform quantized in place of the
+            input, such as relu2 (see `nvfp4_row_input_fn_type`).
+        RowIndicesLayoutType: Layout of the optional `row_indices` tensor.
+        RowIndicesEngine: Engine policy of the `row_indices` tensor.
+        row_indices_dtype: Integer element type of the `row_indices` tensor.
+        row_index_divisor: Divisor applied to each `row_indices` entry to get
+            the source row.
+        rows_per_block: Rows (one per warp) each block quantizes.
+
+    Args:
+        output_tensor: Packed FP4 output, `[rows, K / 2]`.
+        scales_tensor: Block scales, `[tiles, ceil(K / 64), 32, 4, 4]`.
+        row_scales: Each row's BF16 global scale, `[rows]`; may be strided.
+        input_tensor: BF16 input, `[source rows, K]`.
+        row_offsets: Row boundaries per expert, `[num_experts + 1]`.
+        scales_offsets: Per-expert offset into `scales_tensor`.
+        ctx: Device context used to enqueue the kernel.
+        row_indices: Optional source row of each output row; output row `i`
+            reads input row `row_indices[i] // row_index_divisor`.
+    """
+    comptime assert (
+        row_indices_dtype.is_integral()
+    ), "row_indices must hold integers"
+    comptime assert row_index_divisor > 0, "row_index_divisor must be positive"
+    debug_assert(
+        Int(input_tensor.dim(1)) % 8 == 0,
+        "num_cols must be a multiple of 8",
+    )
+    debug_assert(
+        Int(scales_tensor.dim[1]())
+        == uceildiv(Int(input_tensor.dim(1)), NVFP4_SF_VECTOR_SIZE * SF_ATOM_K),
+        "scales column-tile count must match the column count",
+    )
+
+    comptime kernel = grouped_quantize_nvfp4_row_amax_kernel[
+        output_dtype,
+        scales_dtype,
+        input_dtype,
+        output_tensor.LayoutType,
+        scales_tensor.LayoutType,
+        row_scales.LayoutType,
+        input_tensor.LayoutType,
+        row_offsets.LayoutType,
+        scales_offsets.LayoutType,
+        OutputEngine,
+        ScalesEngine,
+        RowScalesEngine,
+        InputEngine,
+        RowOffsetsEngine,
+        ScalesOffsetsEngine,
+        input_fn,
+        RowIndicesLayoutType,
+        RowIndicesEngine,
+        row_indices_dtype,
+        row_index_divisor,
+        rows_per_block,
+    ]
+    # Row blocks, one warp per output row, then one block per scale tile for
+    # its padding rows. An empty batch (no rows, so no tiles) has nothing to
+    # write, and a zero-sized grid would fail to launch.
+    var num_blocks = uceildiv(Int(output_tensor.dim(0)), rows_per_block) + Int(
+        scales_tensor.dim[0]()
+    )
+    if num_blocks == 0:
+        return
+    ctx.enqueue_function[kernel](
+        output_tensor,
+        scales_tensor,
+        row_scales,
+        input_tensor,
+        row_offsets,
+        scales_offsets,
+        row_indices,
+        grid_dim=(num_blocks, 1, 1),
+        block_dim=(rows_per_block * WARP_SIZE,),
+        attributes=pdl_launch_attributes(PDLLevel.ON),
+    )
+
+
+########################################################
 # SM100 Block Scaled matmul kernel dispatch
 ########################################################
 
@@ -1930,11 +2540,14 @@ def block_scaled_matmul_with_epilogue[
     a_type: DType,
     b_type: DType,
     scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[mut=False, a_type, ...],
@@ -1943,13 +2556,15 @@ def block_scaled_matmul_with_epilogue[
     b_scales: TileTensor[mut=False, scales_dtype, ...],
     tensor_sf: Float32,
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
+    compute_fn: ComputeFnType = no_compute_fn,
 ) raises:
     """Our sm100 block scaled matmul kernel still does not support fusion of elementwise
     operations. This is a temporary implementation that uses our sm100 block scaled matmul
     kernel and dispatch a separate epilogue kernel to apply the elementwise
-    operations. Callers must allocate `c`; when an `elementwise_lambda_fn`
-    is supplied the matmul result is written into `c` and then read back
-    by the lambda.
+    operations. Callers must allocate `c`; with `has_epilogue_fn` or
+    `has_compute_fn` the matmul result is written into `c` and then read
+    back by the closure.
 
     Parameters:
         c_type: Element type of the output matrix (inferred).
@@ -1957,11 +2572,15 @@ def block_scaled_matmul_with_epilogue[
         b_type: Element type of the RHS input matrix (inferred).
         scales_dtype: Element type of the block scale-factor tensors
             (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
         SF_VECTOR_SIZE: Number of elements covered by each block scale
             factor: 16 for NVFP4 or 32 for MXFP8.
         transpose_b: Whether `b` is stored transposed (defaults to `True`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result after it is written to `c` (defaults to `None`).
+        has_epilogue_fn: Whether `epilogue_fn` receives the matmul result
+            after it is written to `c`.
+        has_compute_fn: Whether `compute_fn` transforms the matmul result
+            in `c`.
     Args:
         c: Output matrix of shape `[M, N]`.
         a: LHS input matrix of shape `[M, K]` for FP8 or `[M, K//2]` for
@@ -1974,6 +2593,10 @@ def block_scaled_matmul_with_epilogue[
             layout.
         tensor_sf: Scalar multiplier applied to the matmul result.
         ctx: Device context used to enqueue kernels.
+        epilogue_fn: With `has_epilogue_fn`, receives each output value
+            at its `(m, n)`.
+        compute_fn: With `has_compute_fn`, maps each output value before it
+            is stored back into `c`.
     """
 
     comptime assert _is_sm10x_gpu(ctx.default_device_info) or _is_sm12x_gpu(
@@ -1981,6 +2604,10 @@ def block_scaled_matmul_with_epilogue[
     ), "This kernel is only supported on SM100 or SM120"
 
     comptime assert transpose_b, "Only support transposed B"
+
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "pass at most one of the epilogue closure or compute closure"
 
     # The vendor (cuBLASLt) block-scaled backend supports both NVFP4
     # (float8_e4m3fn scales, 16-vector) and MXFP8 (float8_e8m0fnu scales,
@@ -2044,7 +2671,26 @@ def block_scaled_matmul_with_epilogue[
         Trace[TraceLevel.OP]._get_detail_str(description_fn),
         task_id=get_safe_task_id(ctx),
     ):
-        comptime if not elementwise_lambda_fn:
+        comptime if has_epilogue_fn or has_compute_fn:
+            # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
+            comptime simd_size = 32 // size_of[c_type]()
+
+            def value_epilogue_wrapper[
+                simd_width: Int, alignment: Int = 1
+            ](idx: Coord) {var c, var epilogue_fn, var compute_fn}:
+                var c_val = c.load[width=simd_width](idx)
+                comptime if has_epilogue_fn:
+                    epilogue_fn[c_type, simd_width, alignment=alignment](
+                        idx, c_val
+                    )
+                else:
+                    c.store[alignment=alignment * size_of[c_type]()](
+                        idx,
+                        compute_fn[c_type, simd_width, alignment=alignment](
+                            idx, c_val
+                        ),
+                    )
+
             matmul[scales_type=scales_dtype](
                 ctx,
                 c,
@@ -2052,26 +2698,14 @@ def block_scaled_matmul_with_epilogue[
                 b,
                 a_scales=a_scales,
                 b_scales=b_scales,
+                alpha=tensor_sf,
                 transpose_b=True,
                 c_row_major=True,
-                alpha=tensor_sf,
+            )
+            elementwise[simd_size, target="gpu"](
+                value_epilogue_wrapper, (m, n), ctx
             )
         else:
-            comptime epilogue = elementwise_lambda_fn.value()
-            # Nvidia GPUs >= sm_100 arch support 32B load/store to global memory.
-            comptime use_32b_simd = True
-            comptime simd_size = 32 // size_of[c_type]() if use_32b_simd else (
-                simd_width_of[c_type, target=get_gpu_target()]()
-            )
-
-            def epilogue_wrapper[
-                simd_width: Int, alignment: Int = 1
-            ](idx: Coord) {var}:
-                var c_val = c.load[width=simd_width](idx)
-                epilogue[c_type, simd_width, alignment=alignment](
-                    Index(idx[0].value(), idx[1].value()), c_val
-                )
-
             matmul[scales_type=scales_dtype](
                 ctx,
                 c,
@@ -2079,11 +2713,10 @@ def block_scaled_matmul_with_epilogue[
                 b,
                 a_scales=a_scales,
                 b_scales=b_scales,
-                alpha=tensor_sf,
                 transpose_b=True,
                 c_row_major=True,
+                alpha=tensor_sf,
             )
-            elementwise[simd_size, target="gpu"](epilogue_wrapper, (m, n), ctx)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2097,15 +2730,15 @@ def block_scaled_matmul[
     a_type: DType,
     b_type: DType,
     scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    ComputeFnType: ElementwiseComputeFn = type_of(no_compute_fn),
     //,
     *,
     SF_VECTOR_SIZE: Int,
     transpose_b: Bool = True,
     transpose_a: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
+    has_epilogue_fn: Bool = False,
+    has_compute_fn: Bool = False,
     pdl_level: PDLLevel = PDLLevel.OFF,
     _trace_description: StaticString = "",
     target: StaticString = "cpu",
@@ -2121,6 +2754,8 @@ def block_scaled_matmul[
     ],
     tensor_sf: Float32,
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
+    compute_fn: ComputeFnType = no_compute_fn,
 ) raises:
     """Dispatches the SM100 block-scaled matmul for NVFP4 or MXFP8, selecting between the Mojo heuristic kernel and the vendor fallback.
 
@@ -2134,18 +2769,18 @@ def block_scaled_matmul[
         b_type: Element type of the RHS input matrix (inferred).
         scales_dtype: Element type of the block scale-factor tensors
             (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
         SF_VECTOR_SIZE: Number of elements covered by each block scale
             factor: 16 for NVFP4 or 32 for MXFP8.
         transpose_b: Whether `b_device` is stored transposed (defaults
             to `True`).
         transpose_a: Whether `a_device` is stored transposed (defaults
             to `False`).
-        elementwise_lambda_fn: Optional epilogue lambda applied to the
-            matmul result after it is written to `c_device` (defaults
-            to `None`).
-        elementwise_compute_lambda_fn: Optional compute lambda that
-            transforms the matmul result in-flight before storage
-            (defaults to `None`).
+        has_epilogue_fn: Whether `epilogue_fn` stores the output instead
+            of the kernel writing `c_device`.
+        has_compute_fn: Whether `compute_fn` maps each output value before
+            it is stored.
         pdl_level: Programmatic dependency launch level for the
             heuristic dispatch kernel (defaults to `PDLLevel.OFF`).
         _trace_description: Extra label appended to the trace event
@@ -2164,6 +2799,10 @@ def block_scaled_matmul[
             TCGEN interleaved layout.
         tensor_sf: Scalar multiplier applied to the matmul result.
         ctx: Device context used to enqueue kernels.
+        epilogue_fn: With `has_epilogue_fn`, stores each output value at
+            its `(m, n)`. `c_device` still backs the vendor fallback.
+        compute_fn: With `has_compute_fn`, maps each output value before it
+            is stored into `c_device`.
     """
     comptime assert c_device.rank == 2 and c_device.flat_rank == 2
     comptime assert a_device.rank == 2 and a_device.flat_rank == 2
@@ -2242,30 +2881,9 @@ def block_scaled_matmul[
         "]",
     )
 
-    comptime assert (
-        elementwise_lambda_fn is None or elementwise_compute_lambda_fn is None
-    ), "Either the epilogue lambda or the compute lambda can be used"
-
-    # vendor block scaled matmul kernels don't support compute lambda, so we wrap it around an epilogue lambda instead.
-    @__parameter
-    @inline(.always)
-    @__copy_capture(c)
-    def compute_lambda_wrapper[
-        _dtype: DType, _width: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[2], val: SIMD[_dtype, _width]):
-        comptime if elementwise_compute_lambda_fn:
-            comptime compute_lambda = elementwise_compute_lambda_fn.value()
-            var output = compute_lambda(coords, val)
-            comptime assert (
-                output.dtype == c_type
-            ), "compute epilogue lambda output and c type mismatch"
-            c.store_linear[alignment=alignment * size_of[c_type]()](
-                coords, rebind[SIMD[c_type, _width]](output)
-            )
-
-    comptime elementwise_lambda_wrapper = Optional[elementwise_epilogue_type](
-        compute_lambda_wrapper
-    ) if elementwise_compute_lambda_fn else elementwise_lambda_fn
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "pass at most one of the epilogue closure or compute closure"
 
     comptime static_N = c_device.static_shape[1]
     comptime static_K = a_device.static_shape[1] * (
@@ -2293,6 +2911,11 @@ def block_scaled_matmul[
         comptime CTA_GROUP = get_defined_int["TUNE_CTA_GROUP", 2]()
         comptime K_GROUP_SIZE = get_defined_int["TUNE_K_GROUP_SIZE", 1]()
         comptime AB_SWAPPED = get_defined_bool["TUNE_AB_SWAPPED", False]()
+        # Two stages of an MMA_N = 256 accumulator fill all 512 TMEM columns
+        # before the scale factors, so N = 256 tiles need 1.
+        comptime NUM_ACCUM_STAGES = get_defined_int[
+            "TUNE_NUM_ACCUM_STAGES", 2
+        ]()
 
         comptime umma_shape = Index(BM * CTA_GROUP, BN * CTA_GROUP, MMA_K)
 
@@ -2309,6 +2932,7 @@ def block_scaled_matmul[
             cta_group=CTA_GROUP,
             AB_swapped=AB_SWAPPED,
             k_group_size=K_GROUP_SIZE,
+            num_accum_pipeline_stages=NUM_ACCUM_STAGES,
         )
 
         return blackwell_block_scaled_matmul_tma_umma_warp_specialized[
@@ -2320,13 +2944,23 @@ def block_scaled_matmul[
     comptime if get_defined_bool[
         "ENABLE_EXPERIMENTAL_SM100_BLOCK_SCALED_MATMUL", False
     ]():
-        var status = heuristic_and_outliers_dispatch[
+        var status = _heuristic_and_outliers_dispatch_any_epilogue[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_fn,
-            elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
             pdl_level=pdl_level,
-        ](c_device, a_device, b_device, a_scales, b_scales, tensor_sf, ctx)
+        ](
+            c_device,
+            a_device,
+            b_device,
+            a_scales,
+            b_scales,
+            tensor_sf,
+            epilogue_fn,
+            compute_fn,
+            ctx,
+        )
 
         if status == DISPATCH_HIT:
             logger.info("Executing SM100 Block Scaled matmul kernel")
@@ -2378,11 +3012,11 @@ def block_scaled_matmul[
         # compile time and control falls straight to the vendor fallback below.
         comptime if _is_sm10x_gpu(ctx.default_device_info):
             if m <= mojo_m_cap or is_mxfp8_scaling:
-                var status = heuristic_and_outliers_dispatch[
+                var status = _heuristic_and_outliers_dispatch_any_epilogue[
                     SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                     transpose_b=transpose_b,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
+                    has_epilogue_fn=has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
                     pdl_level=pdl_level,
                 ](
                     c_device,
@@ -2391,6 +3025,8 @@ def block_scaled_matmul[
                     a_scales,
                     b_scales,
                     tensor_sf,
+                    epilogue_fn,
+                    compute_fn,
                     ctx,
                 )
                 if status == DISPATCH_HIT:
@@ -2401,13 +3037,11 @@ def block_scaled_matmul[
         # NVFP4 large-M shapes as well as MXFP8 shapes the heuristic config
         # table does not enumerate (e.g. the 30k-token prefill in KERN-3024,
         # whose M exceeds the table's M<=8192 build range).
-        #
-        # vendor matmul only supports epilogue lambda, so we wrap it around an
-        # epilogue lambda instead.
         block_scaled_matmul_with_epilogue[
             SF_VECTOR_SIZE=SF_VECTOR_SIZE,
             transpose_b=transpose_b,
-            elementwise_lambda_fn=elementwise_lambda_wrapper,
+            has_epilogue_fn=has_epilogue_fn,
+            has_compute_fn=has_compute_fn,
         ](
             c,
             a,
@@ -2416,7 +3050,55 @@ def block_scaled_matmul[
             b_scales,
             tensor_sf,
             ctx,
+            epilogue_fn,
+            compute_fn,
         )
+
+
+@inline(.always)
+def _heuristic_and_outliers_dispatch_any_epilogue[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    ComputeFnType: ElementwiseComputeFn,
+    //,
+    *,
+    SF_VECTOR_SIZE: Int,
+    transpose_b: Bool,
+    has_epilogue_fn: Bool,
+    has_compute_fn: Bool,
+    pdl_level: PDLLevel,
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    epilogue_fn: EpilogueFnType,
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises -> Int:
+    comptime if has_epilogue_fn:
+        return heuristic_and_outliers_dispatch[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, epilogue_fn, ctx)
+    elif has_compute_fn:
+        return heuristic_and_outliers_dispatch[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, compute_fn, ctx)
+    else:
+        return heuristic_and_outliers_dispatch[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            transpose_b=transpose_b,
+            pdl_level=pdl_level,
+        ](c, a, b, a_scales, b_scales, tensor_sf, ctx)
 
 
 @inline(.always)

@@ -19,6 +19,7 @@
 #ifndef KGEN_MOJOPARSER_SHAREDSTATE_H
 #define KGEN_MOJOPARSER_SHAREDSTATE_H
 
+#include "Mojo/KGENDialect/CompilerCaches.h"
 #include "Mojo/KGENDialect/ParameterEvaluator.h"
 #include "Mojo/LITDialect/OriginTrackable.h"
 #include "Mojo/MojoParser/IRValues.h"
@@ -26,6 +27,7 @@
 #include "Mojo/MojoParser/MojoDiags.h"
 #include "Mojo/Support/TriBool.h"
 
+#include "Support/BumpAllocator.h"
 #include "Support/DebugInfoDialect/IR/DIBuilder.h"
 #include "Support/ErrorOr.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -52,6 +54,7 @@ class ASTType;
 class ClosureEmitter;
 class DeclResolver;
 class ModuleLoader;
+class ModuleASTDecl;
 class ExprNode;
 struct ModuleOrigin;
 struct ModuleState;
@@ -67,6 +70,8 @@ class LookupAllResult;
 class PackageOp;
 class ParserListener;
 class StructDeclOp;
+class TopLevelModuleASTDecl;
+class TraitASTDecl;
 class TraitType;
 class CallOperands;
 class ParserEvaluationContext;
@@ -161,6 +166,10 @@ public:
   /// This is used to efficiently walk MLIR types to find embedded origins.
   CachedOriginFinder cachedOriginFinder;
 
+  /// Caches for the parameter helpers, shared with every other state on this
+  /// context.
+  std::shared_ptr<KGEN::CompilerCaches> compilerCaches;
+
   /// Find all ParamDeclRefAttr's in side the type at the current scope.
   void collectParamRefsInType(Type type,
                               SmallVectorImpl<ParamDeclRefAttr> &uses);
@@ -182,11 +191,11 @@ public:
   StringRef getDocsBasePath() const { return docsBasePath; }
 
   /// Initialize the shared state for the given top-level decl.
-  void initialize(ASTDecl &topLevelDecl);
+  void initialize(TopLevelModuleASTDecl &topLevelDecl);
 
   /// Return the top-level decl where modules can created in. This can only be
   /// used after the SharedState has been initialized.
-  ASTDecl &getTopLevelDecl();
+  TopLevelModuleASTDecl &getTopLevelDecl();
 
   /// This is the AST type that corresponds to TypeCheckErrorType.
   ASTType getTypeCheckErrorType() const;
@@ -211,34 +220,13 @@ public:
   FileLineColLoc createLocation(StringRef filename, unsigned line,
                                 unsigned column);
 
-  /// Allocate an expression node into the persistent bump pointer allocator.
-  template <typename T, typename... Args>
-  T *allocPersistent(Args &&...args) {
-    void *node = persistentAllocator.Allocate(sizeof(T), llvm::Align::Of<T>());
-    return new (node) T(std::forward<Args>(args)...);
-  }
+  /// Stores memory that lives as long as the global parser.
+  BumpAllocator persistentAllocator;
 
-  /// memcpy the specified ArrayRef into the persistent allocator and return a
-  /// pointer to the new data.  This cannot be used with things that have
-  /// non-trivial copyctors/dtors because the expression allocator does run
-  /// destructors.
-  template <typename T>
-  ArrayRef<T> getPersistentCopy(ArrayRef<T> elements) {
-    if (elements.empty())
-      return elements;
-
-    size_t dataSize = sizeof(T) * elements.size();
-    T *result = static_cast<T *>(
-        persistentAllocator.Allocate(dataSize, llvm::Align::Of<T>()));
-    memcpy((void *)result, elements.data(), dataSize);
-    return ArrayRef<T>(result, elements.size());
-  }
-
-  /// memcpy the specified string data into the persistent allocator.
-  StringRef getPersistentCopy(StringRef str) {
-    auto result = getPersistentCopy(ArrayRef<char>(str.data(), str.size()));
-    return StringRef(result.data(), result.size());
-  }
+  /// Stores expression trees and other statement-scoped parser data. Do not
+  /// allocate anything into this that would outlive the current statement being
+  /// parsed.
+  BumpAllocator stmtAllocator;
 
   /// Lookup an operation inside the symbol table of the container decl.
   Operation *lookupSymbolIn(ASTDecl *container, StringAttr name);
@@ -256,10 +244,6 @@ public:
   /// torn down.  This can be used to allocate BlockArgument's that may or may
   /// not get used in the future.
   Block &getArgumentOwningBlock();
-
-  /// Delete this decl and the operation associated with it. Handles all the
-  /// related bookkeeping.
-  void deleteDecl(ASTDecl &decl);
 
   //===--------------------------------------------------------------------===//
   // Name Lookup
@@ -354,8 +338,10 @@ public:
   /// Import the specified module or package, returning the decl. Always returns
   /// a valid decl, even if a corresponding module or package could not be
   /// found.
+  ///
+  /// Non-null \p importer records dep edges to the module and its ancestors.
   ASTDecl &importModule(const ImportPath &path, PackageOp currentPackage,
-                        llvm::SMLoc loc);
+                        llvm::SMLoc loc, ASTDecl *importer = nullptr);
 
   /// Return true if the package has a nested module with the given name in the
   /// module-state cache. The package body must be resolved before calling this
@@ -364,7 +350,8 @@ public:
 
   /// Try to import a direct submodule with the given name, returning the
   /// submodule's decl, or null if no such submodule exists.
-  ASTDecl *tryImportSubModule(ASTDecl &parent, StringRef name, llvm::SMLoc loc);
+  ASTDecl *tryImportSubModule(ModuleASTDecl &parent, StringRef name,
+                              llvm::SMLoc loc);
 
   /// Return the decls of every nested module/package currently materialized in
   /// the package's module-state cache. These are navigable but unlisted (not
@@ -389,7 +376,7 @@ public:
 
   /// Return the source path for the given module decl, or nullopt if the decl
   /// doesn't have a source path.
-  std::optional<std::string> getModuleSourcePath(ASTDecl &module);
+  std::optional<std::string> getModuleSourcePath(ModuleASTDecl &module);
 
   /// Resolve a declaration that originated from bytecode to the given
   /// resolvedness.
@@ -425,6 +412,18 @@ public:
   /// decls have been resolved, as this will erase bytecode operations attached
   /// to decls that have not been resolved.
   LogicalResult finalizeImportedBytecodeModules();
+
+  //===--------------------------------------------------------------------===//
+  // Module Dependency Graph
+
+  /// Whether experimental incremental parsing is enabled. Dep edges are only
+  /// recorded, and the dep graph only built, when it is.
+  bool isIncrParsingEnabled() const { return incrParsingEnabled; }
+
+  /// Record a dep edge `importer` -> `imported`, attributed to each end's
+  /// nearest enclosing file module or package. No-ops if either end has no
+  /// module state or is erroneous.
+  void recordDepEdge(ASTDecl *importer, ASTDecl *imported);
 
   /// Get the list of files included while processing all modules.
   ArrayRef<std::string> getIncludedFiles() const;
@@ -532,6 +531,11 @@ public:
                                         llvm::SMLoc rsquareLoc,
                                         ArrayRef<Operand> operands);
 
+  /// Notify the parser listener, if present, that a `match` statement leaves
+  /// values uncovered, and of the arms that would cover them.
+  void notifyListenerOnMatchMissingCases(llvm::SMRange matchRange,
+                                         SMLoc insertLoc, StringRef arms);
+
   //===--------------------------------------------------------------------===//
   // Builtin Module
 
@@ -540,7 +544,7 @@ public:
 
   /// Lookup a builtin trait like `AnyType`, `Copyable`, `Movable` etc.  On
   /// error this returns null but does not print an error.
-  ASTDecl *lookupBuiltinTrait(StringRef traitName, SMLoc loc);
+  TraitASTDecl *lookupBuiltinTrait(StringRef traitName, SMLoc loc);
 
   /// A handy version of lookupBuiltinTrait, which returns the trait type.
   TraitType lookupBuiltinTraitType(StringRef traitName, SMLoc loc);
@@ -560,7 +564,7 @@ public:
   /// Get a builtin type, or emit an error and return TypeCheckErrorType if
   /// invalid. These never return null.
   ASTDecl *getBuiltinCoroutineType(llvm::SMLoc loc);
-  ASTDecl *getBuiltinDevicePassableTrait(llvm::SMLoc loc);
+  TraitASTDecl *getBuiltinDevicePassableTrait(llvm::SMLoc loc);
   ASTDecl *getBuiltinRaisingCoroutineType(llvm::SMLoc loc);
   ASTType getStandardCollectionType(llvm::SMLoc loc, StringRef name);
   ASTType getBuiltinSliceType(llvm::SMLoc loc, StringRef name);
@@ -584,7 +588,7 @@ public:
 
   /// Get or create the universal closure trait, we don't care about the
   /// signatures and we can adapt the trait to any signature.
-  ASTDecl *getUniversalParametricClosureTrait();
+  TraitASTDecl *getUniversalParametricClosureTrait();
 
   FnTypeGeneratorType getClosureFnSig(TraitSymbolAttr closureInst);
   // Get the closure fn sig without self, this is the signature that we used to
@@ -593,9 +597,7 @@ public:
   FnTypeGeneratorType getClosureFnSigWithoutSelf(TraitSymbolAttr closureInst);
 
   bool isUniversalParametricClosureTrait(TraitSymbolAttr symbol);
-  bool isUniversalParametricClosureTrait(ASTDecl *trait) {
-    return trait == getUniversalParametricClosureTrait();
-  }
+  bool isUniversalParametricClosureTrait(ASTDecl *trait);
 
   /// Function used to create a thunk. This API is limited intentionally to
   /// ensure that the creation is transaction. This is important to retain
@@ -693,12 +695,14 @@ private:
   /// registered under it and this one is a redundant copy.
   bool tryRegisterConversionThunk(Attribute key, FnOp thunk);
 
-  /// This is used for memory that lives as long as the global parser does.
-  llvm::BumpPtrAllocator persistentAllocator;
-
   /// A flag indicating if prebuilt packages should not be considered during
   /// parsing.
   bool disablePrebuiltPackages = false;
+
+  /// Whether experimental incremental parsing is enabled. Currently always
+  /// false; a follow-up wires it to a parser-config option and tool flag
+  /// alongside the incremental parsing cache.
+  bool incrParsingEnabled = false;
 
   /// If true, auto-import the builtin package.
   bool useBuiltinModule = true;

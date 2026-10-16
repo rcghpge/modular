@@ -43,7 +43,6 @@ from std.time import global_perf_counter_ns
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
-    Idx,
     IntTuple,
     Layout,
     RuntimeTuple,
@@ -61,6 +60,7 @@ from layout.tma_async import TMATensorTile
 from max.gpu.compute.mma import ld_matrix
 from linalg.utils import (
     ElementwiseComputeFn,
+    ElementwiseEpilogueFn,
     elementwise_compute_lambda_type,
     elementwise_epilogue_type,
     identity_compute_fn,
@@ -76,7 +76,7 @@ from structured_kernels.kernel_common import WarpRole1D1D
 from .config import OutputPipelineConfig
 from .tile_pipeline import OutputStage
 from .output_writer_trait import OutputWriter
-from .tile_scheduler_splitk import TileScheduler, WorkInfo
+from .tile_scheduler_splitk import SplitKTileCounters, TileScheduler, WorkInfo
 from .epilogue_components import (
     AccumBarrier,
     AccumTile,
@@ -774,6 +774,49 @@ struct TileWriter[
         )
 
     @inline(.always)
+    def write_batched[
+        EpilogueFnType: ElementwiseEpilogueFn
+    ](
+        self,
+        c_tiles: Self.CTileArray,
+        stage: Self.Stage,
+        tile_coord: Tuple[UInt32, UInt32, UInt32],
+        shape: Tuple[UInt32, UInt32],
+        epilogue_fn: EpilogueFnType,
+        alpha: Float32 = Float32(1.0),
+    ):
+        """Write accumulated results to global memory (3D batched coords)
+        through `epilogue_fn`.
+
+        Takes the elementwise epilogue as a runtime closure instead of the
+        `elementwise_lambda_fn` parameter, which must be unset.
+
+        Parameters:
+            EpilogueFnType: Type of the elementwise epilogue closure.
+
+        Args:
+            c_tiles: TileTensor-based SMEM tile array for C output.
+            stage: OutputStage with pipeline, index, and TMEM handle.
+            tile_coord: (m_tile, n_tile, batch) coordinates.
+            shape: (M, N) problem dimensions.
+            epilogue_fn: Stores each output value to global memory.
+            alpha: Tensor scale factor (scalar).
+        """
+        comptime assert (
+            not Self.elementwise_compute_lambda_fn
+            and not Self.elementwise_lambda_fn
+        ), "pass the elementwise epilogue either as a parameter or as a value"
+        self._copy_to_gmem_with_elementwise_epilogue_impl(
+            c_tiles,
+            stage,
+            (tile_coord[0], tile_coord[1]),
+            shape,
+            epilogue_fn,
+            alpha,
+            tile_coord[2],
+        )
+
+    @inline(.always)
     def write_splitk[
         reduction_layout: TensorLayout,
         reduction_engine: TensorEngine,
@@ -809,6 +852,56 @@ struct TileWriter[
             return
 
         self._copy_to_gmem(c_tiles, stage, (work_info.m, work_info.n), shape)
+
+    @inline(.always)
+    def write_splitk_parallel[
+        pieces_per_batch: Int
+    ](
+        self,
+        stage: Self.Stage,
+        scheduler: TileScheduler,
+        workspace: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
+        counters: SplitKTileCounters,
+        c: UnsafePointer[Scalar[Self.c_type], MutAnyOrigin],
+        c_row_stride: Int,
+        work_info: WorkInfo,
+        shape: Tuple[UInt32, UInt32],
+    ):
+        """Writes a split-K tile with the parallel reduction: this split's
+        partial goes to its own workspace slot, the TMEM stage is released,
+        then every split of the tile reduces its slice of all the slots and
+        stores it to C (see `TileScheduler.reduce_slice_to_output`).
+
+        Parameters:
+            pieces_per_batch: Pieces per thread whose slot loads are in
+                flight together.
+
+        Args:
+            stage: The accumulator stage holding this split's partial.
+            scheduler: The split-K tile scheduler.
+            workspace: Base of the fp32 workspace, one slot per split.
+            counters: The kernel's tile counters.
+            c: Base of the row-major output.
+            c_row_stride: Elements between consecutive rows of the output.
+            work_info: The split's work tile.
+            shape: The output's (rows, columns).
+        """
+        var epilogue_thread_idx = thread_idx.x
+        scheduler.store_partial_slot(
+            stage.tmem.address(), workspace, epilogue_thread_idx, work_info
+        )
+        AccumBarrier[Self.cta_group].arrive(stage.pipeline, stage.index)
+        scheduler.reduce_slice_to_output[
+            transpose_c=Self.transpose_c, pieces_per_batch=pieces_per_batch
+        ](
+            workspace,
+            counters,
+            c,
+            c_row_stride,
+            epilogue_thread_idx,
+            work_info,
+            shape,
+        )
 
     @inline(.always)
     def write_absolute_with_bounds_check[
@@ -891,9 +984,15 @@ struct TileWriter[
         c_shape: Tuple[UInt32, UInt32],
     ):
         """TMEM → Registers → SMEM → GMEM pipeline (2D coords)."""
-        comptime if Self.elementwise_lambda_fn:
+        comptime if case .Some(elementwise_lambda) = Self.elementwise_lambda_fn:
+
+            def forward[
+                dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: Coord, val: SIMD[dtype, width]):
+                elementwise_lambda[dtype, width, alignment=alignment](idx, val)
+
             self._copy_to_gmem_with_elementwise_epilogue_impl(
-                c_tiles, output_stage, c_coord, c_shape
+                c_tiles, output_stage, c_coord, c_shape, forward
             )
         else:
             self._copy_to_gmem_impl(c_tiles, output_stage, c_coord, c_shape)
@@ -913,12 +1012,19 @@ struct TileWriter[
         If elementwise epilogue function is provided, it will be used to write the results to global memory.
         Otherwise, the results will be written to global memory using the standard TMA based pipeline.
         """
-        comptime if Self.elementwise_lambda_fn:
+        comptime if case .Some(elementwise_lambda) = Self.elementwise_lambda_fn:
+
+            def forward[
+                dtype: DType, width: SIMDLength, *, alignment: Int
+            ](idx: Coord, val: SIMD[dtype, width]):
+                elementwise_lambda[dtype, width, alignment=alignment](idx, val)
+
             self._copy_to_gmem_with_elementwise_epilogue_impl(
                 c_tiles,
                 output_stage,
                 (c_coord[0], c_coord[1]),
                 c_shape,
+                forward,
                 alpha,
                 c_coord[2],
             )
@@ -933,12 +1039,15 @@ struct TileWriter[
             )
 
     @inline(.always)
-    def _copy_to_gmem_with_elementwise_epilogue_impl(
+    def _copy_to_gmem_with_elementwise_epilogue_impl[
+        EpilogueFnType: ElementwiseEpilogueFn
+    ](
         self,
         c_tiles: Self.CTileArray,
         output_stage: Self.Stage,
         c_coord: Tuple[UInt32, UInt32],
         c_shape: Tuple[UInt32, UInt32],
+        epilogue_fn: EpilogueFnType,
         alpha: Float32 = Float32(1.0),
         batch_idx: UInt32 = 0,
     ):
@@ -952,11 +1061,6 @@ struct TileWriter[
         This is because elementwise epilogue writes directly to global memory, not registers.
         Therefore, we need to cast the input to c_type to match the output type.
         """
-
-        comptime assert (
-            Self.elementwise_lambda_fn is not None
-        ), "Elementwise epilogue function is not provided"
-
         var accum_tiles = Self.AccumTmemArray(output_stage.tmem.offset())
 
         comptime simd_size = simd_width_of[Self.c_type]()
@@ -1053,7 +1157,6 @@ struct TileWriter[
                 epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
                     Self.c_type,
                     Self.rep_frag_size,
-                    Self.elementwise_lambda_fn.value(),
                     Self.is_lower_frag_required,
                     is_in_bounds=True,
                 ](
@@ -1062,12 +1165,12 @@ struct TileWriter[
                     UInt32(stage),
                     c_row,
                     c_col,
+                    epilogue_fn,
                 )
             else:
                 epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
                     Self.c_type,
                     Self.rep_frag_size,
-                    Self.elementwise_lambda_fn.value(),
                     Self.is_lower_frag_required,
                     is_in_bounds=False,
                 ](
@@ -1076,6 +1179,7 @@ struct TileWriter[
                     UInt32(stage),
                     c_row,
                     c_col,
+                    epilogue_fn,
                 )
 
             WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()
@@ -1204,17 +1308,12 @@ struct TileWriter[
         batch_idx: UInt32 = 0,
     ):
         """Run the unified pipeline with `elementwise_compute_lambda_fn`."""
-        comptime if Self.elementwise_compute_lambda_fn:
-            comptime compute_lambda_fn = (
-                Self.elementwise_compute_lambda_fn.value()
-            )
+        comptime if case .Some(compute_fn) = Self.elementwise_compute_lambda_fn:
 
             def forward[
                 dtype: DType, width: SIMDLength, *, alignment: Int
-            ](idx: IndexList[2], val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-                return compute_lambda_fn[dtype, width, alignment=alignment](
-                    idx, val
-                )
+            ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
+                return compute_fn[dtype, width, alignment=alignment](idx, val)
 
             self._copy_to_gmem_impl[has_compute_fn=True](
                 c_tiles,
@@ -2639,7 +2738,7 @@ struct TileWriter[
             # lambda owns the GMEM write (post-residual contract — see
             # `nn/conv/gpu/amd/amd_4wave_conv_residual.mojo` for the matching
             # AMD path); otherwise stage to SMEM and TMA-store.
-            comptime if Self.elementwise_lambda_fn:
+            comptime if case .Some(epilogue) = Self.elementwise_lambda_fn:
                 # Cast fragments from epilogue_dtype to c_type. Chunked by
                 # 4 bytes to match the hardware cvt instruction width.
                 comptime cast_width = 4 // size_of[Scalar[Self.c_type]]()
@@ -2659,10 +2758,14 @@ struct TileWriter[
                         upper_simd[offset + _j] = dst_u[_j]
                         lower_simd[offset + _j] = dst_l[_j]
 
+                def forward[
+                    dtype: DType, width: SIMDLength, *, alignment: Int
+                ](idx: Coord, val: SIMD[dtype, width]):
+                    epilogue[dtype, width, alignment=alignment](idx, val)
+
                 epilogue_applier.apply_elementwise_epilogue_to_both_fragments[
                     Self.c_type,
                     Self.rep_frag_size,
-                    Self.elementwise_lambda_fn.value(),
                     Self.is_lower_frag_required,
                 ](
                     upper_simd,
@@ -2670,6 +2773,7 @@ struct TileWriter[
                     UInt32(stage),
                     c_row,
                     c_col,
+                    forward,
                 )
 
                 WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()
@@ -3385,6 +3489,7 @@ struct StandardOutputWriter(OutputWriter):
     @staticmethod
     @inline(.always)
     def write_batched[
+        EpilogueFnType: ElementwiseEpilogueFn,
         ComputeFnType: ElementwiseComputeFn,
         //,
         tma_origin: ImmOrigin,
@@ -3403,6 +3508,7 @@ struct StandardOutputWriter(OutputWriter):
         num_output_stages: Int,
         num_output_warps: Int,
         elementwise_lambda_fn: Optional[elementwise_epilogue_type],
+        has_epilogue_fn: Bool,
         has_compute_fn: Bool,
         register_based_epilogue: Bool,
     ](
@@ -3419,12 +3525,14 @@ struct StandardOutputWriter(OutputWriter):
         stage: OutputStage[opc],
         tile_coord: Tuple[UInt32, UInt32, UInt32],
         shape: Tuple[UInt32, UInt32],
+        epilogue_fn: EpilogueFnType,
         compute_fn: ComputeFnType,
         alpha: Float32 = Float32(1.0),
     ):
         """Local TMA store of one batched output tile (uses descriptor [0]).
 
         Parameters:
+            EpilogueFnType: Type of the elementwise epilogue closure.
             ComputeFnType: Type of the compute epilogue closure.
             tma_origin: Memory origin of the TMA descriptor pointer
                 (inferred).
@@ -3446,6 +3554,8 @@ struct StandardOutputWriter(OutputWriter):
                 pipeline.
             elementwise_lambda_fn: Optional elementwise epilogue applied
                 to fragments before the store.
+            has_epilogue_fn: Whether `epilogue_fn` stores the output
+                instead of the TMA store.
             has_compute_fn: Whether `compute_fn` is applied before the
                 store.
             register_based_epilogue: Whether the compute epilogue runs
@@ -3458,6 +3568,8 @@ struct StandardOutputWriter(OutputWriter):
             stage: OutputStage with pipeline, index, and TMEM handle.
             tile_coord: (m_tile, n_tile, batch) tile coordinates.
             shape: (M, N) problem dimensions.
+            epilogue_fn: Stores each output value; ignored unless
+                `has_epilogue_fn` is True.
             compute_fn: Element-wise epilogue applied to each output
                 value; ignored unless `has_compute_fn` is True.
             alpha: Scalar applied to fragments before the store
@@ -3482,7 +3594,11 @@ struct StandardOutputWriter(OutputWriter):
             batched=True,
             num_peers=1,
         ](c_tma_ops)
-        comptime if has_compute_fn:
+        comptime if has_epilogue_fn:
+            writer.write_batched(
+                c_tiles, stage, tile_coord, shape, epilogue_fn, alpha
+            )
+        elif has_compute_fn:
             writer.write_batched(
                 c_tiles, stage, tile_coord, shape, compute_fn, alpha
             )

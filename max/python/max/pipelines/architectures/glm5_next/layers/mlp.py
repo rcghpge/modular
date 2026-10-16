@@ -16,30 +16,25 @@ Layers 0-2 are dense at ``intermediate_size`` (12288); layers 3 onward, the MTP
 draft layer included, are MoE at ``moe_intermediate_size`` (2048) with one
 shared expert and eight of 288 routed. Both use GLM's clamped SwiGLU.
 
-**Every clamped-SwiGLU path already in MAX computes something else**, which is
-why the dense MLP below calls :func:`clamped_swiglu` directly rather than
-passing a ``limit`` to one of them:
+GLM needs ``silu(min(gate, limit)) * clamp(up, -limit, limit)``: the clamp
+bounds the activation's *input*. Clamping after the activation agrees below
+the limit and diverges above it, so random weights never show the difference
+and a real checkpoint does.
 
-* ``max/python/max/nn/moe/moe.py`` -- ``_swigluoai_activation`` adds GPT-OSS's
+The MoE below gets this order from the fused ``"silu"`` activation with a
+``limit``. The dense MLP calls :func:`clamped_swiglu` directly, because the
+other clamped-SwiGLU paths in MAX compute something else:
+
+* ``max/python/max/nn/activation.py`` -- ``swigluoai`` adds GPT-OSS's
   ``+1`` bias on ``up`` and an ``alpha`` inside the sigmoid.
 * ``max/python/max/nn/moe/moe.py`` -- ``make_concatenated_gated_activation_fn``
   with a ``limit`` applies the activation and *then* clamps.
 * ``max/python/max/nn/linear.py`` -- the ``swiglu_limit`` branch does the same.
-
-GLM needs ``silu(min(gate, limit)) * clamp(up, -limit, limit)``: the clamp
-bounds the activation's *input*. The two orders agree below the limit and
-diverge above it, so random weights never show it and a real checkpoint does.
-
-The MoE below selects :class:`~max.nn.moe.moe.ClampedSwiGLU`, the one
-custom activation the EP quantized path's fused grouped-matmul kernel
-implements natively (see ``max/python/max/nn/moe/moe_fp8.py``); every other
-custom ``gated_activation_fn`` is still rejected there because the kernel
-needs to know the activation shape at build time.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 from max import tree
@@ -52,10 +47,10 @@ from max.graph import (
     Value,
 )
 from max.nn import MLP
+from max.nn.activation import GatedActivation
 from max.nn.comm.ep import EPBatchManager
 from max.nn.layer import Module
 from max.nn.moe.expert_parallel import forward_moe_sharded_layers
-from max.nn.moe.moe import ClampedSwiGLU
 from max.pipelines.architectures.deepseekV3_2.layers.moe import DeepseekV3_2MoE
 
 from ..model_config import Glm5NextConfig, token_shard_degree
@@ -96,6 +91,40 @@ class Glm5NextMLP(MLP):
         hidden = clamped_swiglu(gate_out, up_out, self.swiglu_limit)
         return self.down_proj(hidden.cast(x.dtype))
 
+    def shard(self, devices: Iterable[DeviceRef]) -> Sequence[Glm5NextMLP]:
+        """Creates :class:`Glm5NextMLP` shards across multiple devices.
+
+        :meth:`MLP.shard` builds stock :class:`MLP` shards, which activate
+        before clamping and skip the float32 accumulation. The model only runs
+        the dense MLP and the shared expert through their shards, so every
+        shard has to keep this class's ``__call__``.
+
+        Args:
+            devices: Iterable of devices to place the shards on.
+
+        Returns:
+            Sharded :class:`Glm5NextMLP` instances, one per device.
+        """
+        shards = []
+        for base in super().shard(devices):
+            shard = Glm5NextMLP(
+                dtype=self.gate_proj.weight.dtype,
+                quantization_encoding=self.quantization_encoding,
+                hidden_dim=self.hidden_dim,
+                feed_forward_length=self.feed_forward_length,
+                devices=base.devices,
+                has_bias=self.gate_proj.bias is not None,
+                quant_config=self.quant_config,
+                swiglu_limit=self.swiglu_limit,
+                is_sharding=True,
+            )
+            shard.gate_proj = base.gate_proj
+            shard.down_proj = base.down_proj
+            shard.up_proj = base.up_proj
+            shard._parent_layer = self
+            shards.append(shard)
+        return shards
+
 
 class Glm5NextMoE(DeepseekV3_2MoE):
     """The MoE block on layers 3 onward.
@@ -110,10 +139,16 @@ class Glm5NextMoE(DeepseekV3_2MoE):
     DeepSeek-V3's node-limited routing.
     """
 
-    def __init__(self, *args, swiglu_limit: float, **kwargs) -> None:
-        kwargs["gated_activation_fn"] = ClampedSwiGLU(swiglu_limit)
+    def __init__(
+        self, *args, swiglu_limit: float | None = None, **kwargs
+    ) -> None:
+        # `MoE.shard()` rebuilds each shard through `self.__class__`, passing
+        # the parent's `activation` rather than `swiglu_limit`.
+        if swiglu_limit is not None:
+            kwargs["activation"] = GatedActivation("silu", limit=swiglu_limit)
+        elif kwargs.get("activation") is None:
+            raise ValueError("Glm5NextMoE needs swiglu_limit or activation")
         super().__init__(*args, **kwargs)
-        self.swiglu_limit = swiglu_limit
 
 
 @tree.dataclass(frozen=True, kw_only=True)

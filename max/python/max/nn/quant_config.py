@@ -277,7 +277,7 @@ class QuantConfig:
     """Weight storage dtype for MoE shared-expert MLPs when they differ from routed experts.
 
     When ``None``, shared experts use the same dtype and quantization as routed experts.
-    When set (e.g. :class:`~max.dtype.DType.bfloat16` for mixed Kimi K2.6 NVFP4
+    When set (such as :class:`~max.dtype.DType.bfloat16` for mixed Kimi K2.6 NVFP4
     checkpoints), shared-expert linears omit ``quant_config`` while routed experts
     remain quantized.
     """
@@ -305,16 +305,6 @@ class QuantConfig:
     _mxfp6_element_format: str = "e2m3"
     """Which OCP FP6 encoding an MXFP6 checkpoint holds. Read through
     :attr:`mxfp6_format`, which rejects the question for non-MXFP6 configs."""
-
-    block_scaled_preshuffled_b: bool = False
-    """Whether MXFP4 weight ``B`` is preshuffled into the 5D layout that the
-    AMD preb kernel reads (produced by ``Shuffler.preshuffle_b_5d``). When
-    True, ``MoEQuantized`` dispatches the grouped matmul to the
-    ``block_scaled_grouped_matmul_amd_preb`` kernel variant; when False (default)
-    it dispatches to the dense row-major ``block_scaled_grouped_matmul_amd``
-    kernel. Must be set in lockstep with the weight loader actually
-    applying the preshuffle (e.g. Kimi K2.5's
-    ``weight_adapters.py:_shuffle_group``)."""
 
     @classmethod
     def blockscaled_fp8(

@@ -21,7 +21,6 @@ from std.sys import (
     size_of,
 )
 
-import linalg.matmul.vendor.blas as vendor_blas
 from max.benchmark import bencher_iter_custom
 from std.benchmark import (
     Bench,
@@ -51,10 +50,8 @@ from linalg.grouped_matmul_sm100_blockwise_fp8 import (
     grouped_matmul_sm100_blockwise_scaled_fp8_persistent,
 )
 from layout import Coord, Idx, TileTensor, row_major
-from linalg.utils import elementwise_epilogue_type
 
 from std.utils import Index, IndexList
-from std.collections import Optional
 
 from linalg.fp4_utils import (
     SF_MN_GROUP_SIZE,
@@ -319,17 +316,18 @@ def bench_grouped_matmul[
     ctx.enqueue_copy(expert_ids_dev_buffer, expert_ids_host_ptr)
 
     @inline(.always)
-    @__copy_capture(c_dev)
-    @__parameter
-    def epilogue_fn[
-        dtype: DType, width: SIMDLength, *, alignment: Int = 1
-    ](idx: IndexList[2], val: SIMD[dtype, width]) -> None:
+    def epilogue_value_fn[
+        dtype: DType, width: SIMDLength, *, alignment: Int
+    ](idx: Coord, val: SIMD[dtype, width]) {var c_dev} -> None:
+        comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var new_val = val
 
         comptime for i in range(width):
-            new_val[i] = test_epilogue(idx[0], idx[1] + i, val[i])
+            new_val[i] = test_epilogue(
+                Int(idx[0].value()), Int(idx[1].value()) + i, val[i]
+            )
 
-        c_dev.store_linear[width=width, alignment=alignment](
+        c_dev.store[width=width, alignment=alignment](
             idx, new_val.cast[out_type]()
         )
 
@@ -794,10 +792,7 @@ def bench_grouped_matmul[
                         k_group_size=1,
                     )
                     grouped_matmul_sm100_blockwise_scaled_fp8_persistent[
-                        config=config,
-                        elementwise_lambda_fn=Optional[
-                            elementwise_epilogue_type
-                        ](epilogue_fn) if has_epilogue else None,
+                        config=config
                     ](
                         c_dev,
                         a_dev,
@@ -859,11 +854,7 @@ def bench_grouped_matmul[
                     pass
 
                 else:
-                    grouped_matmul[
-                        elementwise_lambda_fn=Optional[
-                            elementwise_epilogue_type
-                        ](epilogue_fn) if has_epilogue else None,
-                    ](
+                    grouped_matmul[has_epilogue_fn=has_epilogue](
                         c_dev,
                         a_dev,
                         b_dev,
@@ -872,6 +863,7 @@ def bench_grouped_matmul[
                         max_num_tokens_by_expert,
                         num_active_experts,
                         ctx,
+                        epilogue_fn=epilogue_value_fn,
                     )
 
             bencher_iter_custom(bench, kernel_launch, ctx)

@@ -42,7 +42,6 @@ from .device_context import (
     _DeviceFunctionPtr,
     _DeviceContextPtr,
     _FunctionEnqueuer,
-    _is_apple_gpu,
     _max_dynamic_shared_bytes_for_load,
 )
 
@@ -159,7 +158,8 @@ __extension DeviceFunction:
             link_options=Self.link_options,
         ]()
         self._capture_sizes = Self._snapshot_capture_sizes(self._func_impl)
-        var debug_level = String(DebugLevel)
+
+        comptime debug_level = DebugLevel.level
         _checked(
             external_call[
                 "AsyncRT_DeviceContext_loadFunction",
@@ -171,7 +171,7 @@ __extension DeviceFunction:
                 CStringSpan[ImmStaticOrigin],
                 c_size_t,
                 Int32,
-                CStringSpan[origin_of(debug_level)],
+                CStringSpan[ImmStaticOrigin],
                 Int32,
             ](
                 Pointer(to=result),
@@ -239,10 +239,8 @@ __extension DeviceExternalFunction:
                 .as_unsafe_any_origin()
             )
 
-        if cluster_dim:
-            attributes.append(
-                LaunchAttribute.from_cluster_dim(cluster_dim.value())
-            )
+        if case .Some(cluster_dim) = cluster_dim:
+            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
 
         if constant_memory:
             for i in range(len(constant_memory)):
@@ -252,7 +250,7 @@ __extension DeviceExternalFunction:
         # sizes are passed to the enqueuer (matching the previous direct call).
         var no_arg_sizes = OptionalPointer[UInt64, MutAnyOrigin](None)
 
-        comptime if _is_apple_gpu[Self.target]():
+        comptime if Self.target.is_apple_gpu():
             # Metal takes the launch payload via `args[0]`; see
             # `MetalDeviceContext::enqueueFunctionExecDirect`.
             var dense_args_sizes = Array[UInt64, num_args](fill=0)

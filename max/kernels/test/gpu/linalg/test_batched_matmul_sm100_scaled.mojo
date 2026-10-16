@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import Optional
 from std.math import ceildiv
 from std.sys import size_of
 
@@ -29,7 +28,6 @@ from layout._host_device_tile_tensor import HostDeviceTileTensor
 from linalg.bmm import (
     bmm_sm100_blockwise_scaled_fp8,
     batched_matmul_dynamic_scaled_fp8_naive,
-    elementwise_epilogue_type,
 )
 
 from std.utils.index import Index, IndexList
@@ -153,19 +151,17 @@ def test_batched_matmul_sm100_blockwise_scaled_fp8[
 
     var c_tensor = c_device_nd
 
-    @__parameter
     @inline(.always)
-    @__copy_capture(c_tensor, M, N)
     def epilogue_fn[
         dtype: DType,
         width: SIMDLength,
-        rank: Int,
         *,
-        alignment: Int = 1,
-    ](idx: IndexList[rank], val: SIMD[dtype, width],) capturing -> None:
+        alignment: Int,
+    ](coords: Coord, val: SIMD[dtype, width],) {var c_tensor}:
+        comptime assert coords.rank == 3
         comptime assert c_tensor.flat_rank >= 3
         c_tensor.store[alignment=alignment](
-            Coord(idx[0], idx[1], idx[2]),
+            coords,
             rebind[SIMD[c_type, width]](val),
         )
 
@@ -185,27 +181,43 @@ def test_batched_matmul_sm100_blockwise_scaled_fp8[
     ctx.enqueue_copy(a_scales_device, a_scales_host_ptr)
     ctx.enqueue_copy(b_scales_device, b_scales_host_ptr)
 
-    bmm_sm100_blockwise_scaled_fp8[
-        transpose_b=transpose_b,
-        umma_shape=umma_shape,
-        block_tile_shape=block_tile_shape,
-        a_swizzle=swizzle,
-        b_swizzle=swizzle,
-        elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-            epilogue_fn
-        ) if use_epilogue else None,
-    ](
-        c_device_nd,
-        a_device_nd,
-        b_device_nd,
-        a_scales_device_nd,
-        b_scales_device_nd,
-        ctx,
-    )
+    comptime if use_epilogue:
+        # `epilogue_fn` owns `c_tensor`, so `c_device_ref_nd` (written later
+        # by the reference) carries the output shape.
+        bmm_sm100_blockwise_scaled_fp8[
+            transpose_b=transpose_b,
+            umma_shape=umma_shape,
+            block_tile_shape=block_tile_shape,
+            a_swizzle=swizzle,
+            b_swizzle=swizzle,
+        ](
+            c_device_ref_nd,
+            a_device_nd,
+            b_device_nd,
+            a_scales_device_nd,
+            b_scales_device_nd,
+            epilogue_fn,
+            ctx,
+        )
+    else:
+        bmm_sm100_blockwise_scaled_fp8[
+            transpose_b=transpose_b,
+            umma_shape=umma_shape,
+            block_tile_shape=block_tile_shape,
+            a_swizzle=swizzle,
+            b_swizzle=swizzle,
+        ](
+            c_device_nd,
+            a_device_nd,
+            b_device_nd,
+            a_scales_device_nd,
+            b_scales_device_nd,
+            ctx,
+        )
 
     ctx.synchronize()
 
-    batched_matmul_dynamic_scaled_fp8_naive[
+    _ = batched_matmul_dynamic_scaled_fp8_naive[
         scales_granularity_mnk=Index(1, BLOCK_SCALE_K, BLOCK_SCALE_K),
         transpose_b=transpose_b,
     ](
@@ -379,7 +391,7 @@ def test_batched_matmul_sm100_blockwise_scaled_fp8_non_row_major_c[
 
     ctx.synchronize()
 
-    batched_matmul_dynamic_scaled_fp8_naive[
+    _ = batched_matmul_dynamic_scaled_fp8_naive[
         scales_granularity_mnk=Index(1, BLOCK_SCALE_K, BLOCK_SCALE_K),
         transpose_b=transpose_b,
     ](

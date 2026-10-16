@@ -45,6 +45,11 @@ struct ProbeNested:
     var inner: Probe
 
 
+struct ProbeWide:
+    var seconds: Int64
+    var flags: UInt64
+
+
 def test_preamble() raises:
     var out = preamble(["<errno.h>", "<netinet/in.h>"])
     assert_true(out.startswith("// Generated ABI reference; do not edit."))
@@ -54,6 +59,10 @@ def test_preamble() raises:
     assert_true("#include <stdint.h>\n" in out)
     assert_true("#define MOJO_CHECK_CABI_LAYOUT(name, type)" in out)
     assert_true("#define MOJO_CHECK_CABI_FIELD(name, type, field)" in out)
+    assert_true("#define MOJO_CHECK_CABI_FIELD_INT64(name, type, field)" in out)
+    assert_true(
+        "#define MOJO_CHECK_CABI_FIELD_UINT64(name, type, field)" in out
+    )
     assert_true("#define MOJO_CHECK_CABI_CONST(name)" in out)
     assert_true(
         "#define MOJO_CHECK_CABI_IS_SIGNED(e) ((__typeof__(e))-1 < 0)" in out
@@ -95,15 +104,29 @@ def test_struct_checks_nested_struct_field() raises:
     )
 
 
+def test_struct_checks_64_bit_fields() raises:
+    assert_equal(
+        struct_checks[ProbeWide](),
+        (
+            "MOJO_CHECK_CABI_LAYOUT(ProbeWide, struct ProbeWide)\n"
+            "MOJO_CHECK_CABI_FIELD(ProbeWide, struct ProbeWide, seconds)\n"
+            "MOJO_CHECK_CABI_FIELD_INT64(ProbeWide, struct ProbeWide,"
+            " seconds)\n"
+            "MOJO_CHECK_CABI_FIELD(ProbeWide, struct ProbeWide, flags)\n"
+            "MOJO_CHECK_CABI_FIELD_UINT64(ProbeWide, struct ProbeWide, flags)"
+        ),
+    )
+
+
 def test_c_scalar_name() raises:
-    assert_equal(_c_scalar_name[Int8]().value(), "int8_t")
-    assert_equal(_c_scalar_name[UInt8]().value(), "uint8_t")
-    assert_equal(_c_scalar_name[Int16]().value(), "int16_t")
-    assert_equal(_c_scalar_name[UInt16]().value(), "uint16_t")
-    assert_equal(_c_scalar_name[Int32]().value(), "int32_t")
-    assert_equal(_c_scalar_name[UInt32]().value(), "uint32_t")
-    assert_equal(_c_scalar_name[Int64]().value(), "int64_t")
-    assert_equal(_c_scalar_name[UInt64]().value(), "uint64_t")
+    assert_equal(_c_scalar_name[Int8](), Optional[StaticString]("int8_t"))
+    assert_equal(_c_scalar_name[UInt8](), Optional[StaticString]("uint8_t"))
+    assert_equal(_c_scalar_name[Int16](), Optional[StaticString]("int16_t"))
+    assert_equal(_c_scalar_name[UInt16](), Optional[StaticString]("uint16_t"))
+    assert_equal(_c_scalar_name[Int32](), Optional[StaticString]("int32_t"))
+    assert_equal(_c_scalar_name[UInt32](), Optional[StaticString]("uint32_t"))
+    assert_equal(_c_scalar_name[Int64](), Optional[StaticString]("int64_t"))
+    assert_equal(_c_scalar_name[UInt64](), Optional[StaticString]("uint64_t"))
 
 
 def test_c_scalar_name_not_a_fixed_width_scalar() raises:
@@ -113,18 +136,19 @@ def test_c_scalar_name_not_a_fixed_width_scalar() raises:
 
 
 def test_c_field_decl_scalar() raises:
-    assert_equal(_c_field_decl[Int32]().value(), "int32_t *ptr")
-    assert_equal(_c_field_decl[UInt16]().value(), "uint16_t *ptr")
+    assert_equal(_c_field_decl[Int32](), Optional[String]("int32_t *ptr"))
+    assert_equal(_c_field_decl[UInt16](), Optional[String]("uint16_t *ptr"))
 
 
 def test_c_field_decl_array() raises:
     assert_equal(
-        _c_field_decl[Array[UInt16, 16]]().value(), "uint16_t (*ptr)[16]"
+        _c_field_decl[Array[UInt16, 16]](),
+        Optional[String]("uint16_t (*ptr)[16]"),
     )
 
 
 def test_c_field_decl_struct() raises:
-    assert_equal(_c_field_decl[Probe]().value(), "struct Probe *ptr")
+    assert_equal(_c_field_decl[Probe](), Optional[String]("struct Probe *ptr"))
 
 
 def test_c_field_decl_skips_bytes() raises:

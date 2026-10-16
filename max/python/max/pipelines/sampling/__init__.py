@@ -11,12 +11,17 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+"""Token sampling for MAX pipelines: samplers, logits processors, and the
+acceptance runners used in speculative decoding.
+"""
+
 from .label_scoring import LabelScorer
 from .logits_processor import apply_logits_processors
 from .sampling import (
     RejectionRunner,
     SyntheticRunner,
     TokenSampler,
+    TopKSampler,
     build_greedy_acceptance_sampler_graph,
     build_stochastic_acceptance_sampler_graph,
     build_synthetic_acceptance_sampler_graph,
@@ -53,6 +58,7 @@ __all__ = [
     "SyntheticRunner",
     "TokenSampler",
     "ToolCallPolicy",
+    "TopKSampler",
     "apply_logits_processors",
     "batch_max_k",
     "build_greedy_acceptance_sampler_graph",

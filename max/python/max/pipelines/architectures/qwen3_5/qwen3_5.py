@@ -15,7 +15,9 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 from max import tree
@@ -24,16 +26,21 @@ from max.graph import (
     BufferType,
     BufferValue,
     DeviceRef,
+    Graph,
     ShardingStrategy,
     TensorType,
     TensorValue,
     TensorValueLike,
+    Type,
+    Value,
     ops,
 )
+from max.graph import Module as GraphModule
 from max.graph.quantization import QuantizationEncoding
-from max.nn.comm import Allreduce, Signals
+from max.nn.comm import Allreduce
 from max.nn.embedding import VocabParallelEmbedding
 from max.nn.kv_cache import (
+    KVCacheInputsPerDevice,
     KVCacheParamInterface,
     PagedCacheValues,
     RecurrentStateInputsPerDevice,
@@ -49,16 +56,26 @@ from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
 from max.nn.transformer.transformer import forward_sharded_layers
+from max.pipelines.lib.interfaces.batch_processor import (
+    ragged_batch_inputs,
+    signal_inputs,
+    vision_merge_inputs,
+)
 from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
 from max.tree import Tree
 
 from .layers.attention import Qwen3_5Attention
 from .layers.gated_deltanet import GatedDeltaNet, GatedDeltaReplayInputs
 from .layers.text_rotary import Qwen3_5TextRotaryEmbedding
-from .layers.visual_transformer import VisionTransformer
+from .layers.visual_transformer import Qwen3_5VisionTransformer
 from .model_config import Qwen3_5Config
 from .quantization import storage_dtype
-from .state_cache import GatedDeltaStateAccess, layer_state_access
+from .state_cache import (
+    ATTN_CACHE_KEY,
+    STATE_CACHE_KEY,
+    GatedDeltaStateAccess,
+    layer_state_access,
+)
 
 
 def _shard_mlp_and_norms(
@@ -478,8 +495,8 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         self.return_logits = config.return_logits
 
         # Vision encoder (only present in multimodal checkpoints)
-        self.vision_encoder: VisionTransformer | None = (
-            VisionTransformer(config=config.vision_config)
+        self.vision_encoder: Qwen3_5VisionTransformer | None = (
+            Qwen3_5VisionTransformer(config=config.vision_config)
             if config.vision_config is not None
             else None
         )
@@ -686,70 +703,112 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         )
         return tuple(logits)
 
+    def input_tree(
+        self, kv_params: KVCacheParamInterface
+    ) -> OrderedDict[str, object]:
+        """Names the graph's inputs; its leaves are the graph's inputs.
+
+        The recurrent state sits inside ``kv`` beside the attention cache.
+        Vision and M-RoPE positions follow it, each present only when the graph
+        takes them.
+        """
+        device_refs = list(self.devices)
+        inputs: OrderedDict[str, object] = OrderedDict(
+            batch=ragged_batch_inputs(device_refs[0]),
+            signals=signal_inputs(device_refs),
+            kv=kv_params.get_symbolic_inputs(),
+        )
+        if self.vision_encoder is not None:
+            # The hidden state is replicated across devices, so the merge runs
+            # per replica against a per-device copy of the same embeddings.
+            inputs["vision"] = vision_merge_inputs(
+                device_refs,
+                self.config.compute_dtype,
+                self.config.hidden_size,
+                rows_dim="vision_merged_seq_len",
+            )
+        if self.mrope_enabled:
+            # One shared table drives every full-attention layer, so the
+            # positions arrive once rather than per device.
+            inputs["mrope"] = OrderedDict(
+                position_ids=TensorType(
+                    DType.int64,
+                    shape=[3, "total_seq_len"],
+                    device=device_refs[0],
+                )
+            )
+        return inputs
+
     def input_types(
         self, kv_params: KVCacheParamInterface
     ) -> tuple[TensorType | BufferType, ...]:
         """Get input types for graph construction."""
-        device_ref = self.devices[0]
+        return tuple(tree.leaves(self.input_tree(kv_params)))
 
-        tokens_type = TensorType(
-            DType.int64, shape=["total_seq_len"], device=device_ref
-        )
-        input_row_offsets_type = TensorType(
-            DType.uint32, shape=["input_row_offsets_len"], device=device_ref
-        )
-        return_n_logits_type = TensorType(
-            DType.int64, shape=["return_n_logits"], device=DeviceRef.CPU()
-        )
+    def trace(
+        self,
+        *input_types: Type[Any],
+        name: str | None = None,
+        module: GraphModule | None = None,
+        custom_extensions: Iterable[Path] = (),
+        is_device_graph: bool = False,
+    ) -> Graph:
+        """Traces the language graph, whose inputs are the leaves of
+        :meth:`input_tree` for :attr:`kv_params`.
 
-        kv_inputs = kv_params.get_symbolic_inputs()
+        Adapts the flat graph inputs to :meth:`__call__`: splits the cache
+        into its attention collections and recurrent state, and passes the
+        vision and M-RoPE inputs when the graph takes them.
 
-        base_inputs: list[TensorType | BufferType] = [
-            tokens_type,
-            input_row_offsets_type,
-            return_n_logits_type,
-        ]
+        Args:
+            *input_types: The graph's input types.
+            name: The name of the graph. Defaults to the class's qualified
+                name.
+            module: The MLIR module to add the graph to. Defaults to a new
+                module.
+            custom_extensions: Paths to custom kernel libraries the graph
+                uses.
+            is_device_graph: Whether to build a device graph.
 
-        # Signal buffer types
-        signals = Signals(devices=self.devices)
-        signal_buffer_types = signals.input_types()
+        Returns:
+            The traced :class:`~max.graph.Graph`.
+        """
+        treedef = tree.flatten(self.input_tree(self.kv_params))[1]
 
-        # Flatten KV types for all devices
-        flattened_kv_types = tree.leaves(kv_inputs)
-
-        # The hidden state is replicated across devices, so the merge runs per
-        # replica against a per-device copy of the same embeddings.
-        vision_types: list[TensorType | BufferType] = []
-        if self.vision_encoder is not None:
-            vision_types.extend(
-                TensorType(
-                    self.config.compute_dtype,
-                    shape=["vision_merged_seq_len", self.config.hidden_size],
-                    device=device,
-                )
-                for device in self.devices
+        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+            named = tree.unflatten(treedef, iter(inputs))
+            assert isinstance(named, OrderedDict)
+            batch, kv = named["batch"], named["kv"]
+            state = tree.leaves(
+                kv[STATE_CACHE_KEY], leaf=RecurrentStateInputsPerDevice
             )
-            vision_types.extend(
-                TensorType(
-                    DType.int32, shape=["total_image_tokens"], device=device
-                )
-                for device in self.devices
+            assert state, (
+                "Qwen3.5 graph requires linear attention layers; the cache"
+                " declared no recurrent state child"
+            )
+            vision = named.get("vision")
+            mrope = named.get("mrope")
+            return self(
+                batch["tokens"].tensor,
+                tree.leaves(kv[ATTN_CACHE_KEY], leaf=KVCacheInputsPerDevice),
+                batch["return_n_logits"].tensor,
+                batch["row_offsets"].tensor,
+                [v.buffer for v in named["signals"]["signal"]],
+                list(state),
+                None
+                if vision is None
+                else [v.tensor for v in vision["image_embeddings"]],
+                None
+                if vision is None
+                else [v.tensor for v in vision["image_token_indices"]],
+                None if mrope is None else mrope["position_ids"].tensor,
             )
 
-        # One shared table drives every full-attention layer, so the M-RoPE
-        # positions arrive once rather than per device.
-        position_ids_types: list[TensorType | BufferType] = []
-        if self.mrope_enabled:
-            position_ids_types.append(
-                TensorType(
-                    DType.int64, shape=[3, "total_seq_len"], device=device_ref
-                )
-            )
-
-        return tuple(
-            base_inputs
-            + signal_buffer_types
-            + flattened_kv_types
-            + vision_types
-            + position_ids_types
+        return Graph(
+            type(self).__qualname__ if name is None else name,
+            forward,
+            input_types=input_types,
+            custom_extensions=list(custom_extensions),
+            module=module,
+            is_device_graph=is_device_graph,
         )

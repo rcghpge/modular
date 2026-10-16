@@ -24,7 +24,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import huggingface_hub
-from max.driver import accelerator_api
+from max.driver import (
+    accelerator_api,
+    accelerator_architecture_name,
+    accelerator_count,
+)
 from max.dtype import DType
 from max.graph.quantization import QuantizationConfig
 from max.graph.weights import WeightData
@@ -814,7 +818,7 @@ def _load_standalone_quant_config(
 ) -> dict[str, Any] | None:
     """Try to load quantization config from a standalone hf_quant_config.json file.
 
-    Some models (e.g., nvidia/Llama-3.1-405B-Instruct-NVFP4) store their quantization
+    Some models (such as nvidia/Llama-3.1-405B-Instruct-NVFP4) store their quantization
     config in a separate hf_quant_config.json file rather than in the main config.json.
 
     The standalone file has a different structure:
@@ -1339,7 +1343,7 @@ def parse_quant_config(
     Args:
         huggingface_config: HuggingFace model configuration.
         state_dict: Weight state dict to inspect for scales.
-        dtype: Target dtype (e.g. float8_e4m3fn or packed fp4).
+        dtype: Target dtype (such as float8_e4m3fn or packed fp4).
         state_dict_name_prefix: Optional prefix for state dict keys.
         ignored_modules_prefix: Prefix of modules to ignore when parsing.
 
@@ -1444,13 +1448,18 @@ def apply_fused_kernel_flags(
     # checkpoint on a CPU-only host yields a different weight layout. The
     # assumption is build-host == inference-target; fixing it properly
     # means threading the target device spec in here.
-    # MXFP8 is cuda-only here: the fused kernel is SM100, and on AMD the
-    # MoE gate/up SwiGLU is fused by `fused_silu_mx_kernel` off the
-    # chained path instead (as MXFP4 already does). Gating the flag rather
-    # than the call site keeps the sigma-permutation and the kernel choice
-    # consistent.
+    # The flag means "gate_up is sigma-permuted on N", not "use the SM100
+    # kernel", so every consumer of that layout keys off it. Widen the gfx950
+    # term only once another AMD arch grows an interleaved gate/up reader.
+    # `accelerator_architecture_name()` raises on a GPU-less host and this runs
+    # during checkpoint parsing, so the count check comes first.
+    on_gfx950 = (
+        accelerator_count() > 0 and accelerator_architecture_name() == "gfx950"
+    )
     config.can_use_fused_swiglu = (
-        config.is_nvfp4 or (config.is_mxfp8 and accelerator_api() == "cuda")
+        config.is_nvfp4
+        or (config.is_mxfp8 and accelerator_api() == "cuda")
+        or (config.is_mxfp8 and on_gfx950)
     ) and (os.environ.get("MAX_DISABLE_FUSED_SWIGLU_NVFP4") != "1")
 
     return config

@@ -55,7 +55,7 @@ class KernelTraceLevel(Enum):
     """Controls GPU kernel-trace capture depth.
 
     Members are declared in increasing capture depth and compare in that
-    order, so gates can be written as e.g. ``level >= BATCH``. Each level
+    order, so gates can be written as, for example, ``level >= BATCH``. Each level
     includes everything at the levels below it. All levels above ``off`` add
     overhead to the model worker process. Use the minimum level that
     satisfies your observability needs.
@@ -356,7 +356,8 @@ class Settings(BaseSettings):
             "plugin, and is refused when kernel_trace_level is 'kernel'. "
             "Passes run while another capture, such as a Dynolog trace, "
             "holds the profiler are not captured. Ignored while tracing is "
-            "off. Off by default: the header is then never read."
+            "off, and for a request whose span is unsampled. Off by default: "
+            "the header is then never read."
         ),
         alias="MAX_SERVE_KERNEL_TRACE_HEADERS",
     )
