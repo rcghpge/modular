@@ -57,7 +57,9 @@ from eval_common import (
     load_gated,
     make_client,
     parse_mcq_letter,
+    prepare_out_dir,
     response_fields,
+    resumable_config,
     run_parallel,
     select_rows,
     stable_seed,
@@ -184,6 +186,7 @@ def run_eval(
     root_preamble: str,
     system_prompt: str,
     out_dir: str | None = None,
+    resume: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Runs GPQA-diamond over ``indexed_dataset`` with ``repeats``.
 
@@ -225,7 +228,13 @@ def run_eval(
         }
 
     results, errors = run_parallel(
-        samples, fn, on_error, workers, "GPQA-diamond", out_dir=out_dir
+        samples,
+        fn,
+        on_error,
+        workers,
+        "GPQA-diamond",
+        out_dir=out_dir,
+        resume=resume,
     )
     return results, exact_match_score(results, len(samples), errors)
 
@@ -281,6 +290,12 @@ def run_eval(
     default="GPQA",
     help="Prefix for the GITHUB_ENV metric keys the job summary reads.",
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Keep the finished rows already in --out-dir and run only the rest. "
+    "Refuses when they were produced with different options.",
+)
 def main(
     base_url: str,
     model: str,
@@ -296,8 +311,14 @@ def main(
     root_preamble: str,
     system_prompt: str,
     metric_prefix: str,
+    resume: bool,
 ) -> None:
     """Runs GPQA-diamond against a running OpenAI-compatible server and scores it."""
+    prepare_out_dir(
+        out_dir,
+        resumable_config(click.get_current_context().params),
+        resume,
+    )
     client = make_client(base_url)
     dataset = load_gpqa_dataset()
     indexed_dataset = select_rows(dataset, sample_size, row_ids)
@@ -323,6 +344,7 @@ def main(
         root_preamble,
         system_prompt,
         out_dir=out_dir,
+        resume=resume,
     )
     write_outputs(
         out_dir, results, summary, metric_prefix, label="GPQA-diamond"

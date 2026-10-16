@@ -58,7 +58,9 @@ from eval_common import (
     exact_match_score,
     expand_repeats,
     make_client,
+    prepare_out_dir,
     response_fields,
+    resumable_config,
     run_parallel,
     select_rows,
     self_judge,
@@ -231,6 +233,7 @@ def run_eval(
     system_prompt: str,
     doc_text: dict[tuple[str, str], str],
     out_dir: str | None = None,
+    resume: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Runs AA-LCR over ``indexed_dataset`` with ``repeats``.
 
@@ -266,7 +269,7 @@ def run_eval(
         }
 
     results, errors = run_parallel(
-        samples, fn, on_error, workers, "AA-LCR", out_dir=out_dir
+        samples, fn, on_error, workers, "AA-LCR", out_dir=out_dir, resume=resume
     )
     return results, exact_match_score(results, len(samples), errors)
 
@@ -318,6 +321,12 @@ def run_eval(
     default="AA_LCR",
     help="Prefix for the GITHUB_ENV metric keys the job summary reads.",
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Keep the finished rows already in --out-dir and run only the rest. "
+    "Refuses when they were produced with different options.",
+)
 def main(
     base_url: str,
     model: str,
@@ -332,8 +341,14 @@ def main(
     top_p: float,
     system_prompt: str,
     metric_prefix: str,
+    resume: bool,
 ) -> None:
     """Runs AA-LCR against a running OpenAI-compatible server and scores it."""
+    prepare_out_dir(
+        out_dir,
+        resumable_config(click.get_current_context().params),
+        resume,
+    )
     client = make_client(base_url)
     doc_text = build_doc_index(download_context_zip())
     dataset = list(load_dataset("ArtificialAnalysis/AA-LCR", split="test"))
@@ -359,6 +374,7 @@ def main(
         system_prompt,
         doc_text,
         out_dir=out_dir,
+        resume=resume,
     )
     write_outputs(out_dir, results, summary, metric_prefix, label="AA-LCR")
 

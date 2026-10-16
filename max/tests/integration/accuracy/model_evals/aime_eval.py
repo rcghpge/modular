@@ -63,7 +63,9 @@ from eval_common import (
     exact_match_score,
     expand_repeats,
     make_client,
+    prepare_out_dir,
     response_fields,
+    resumable_config,
     run_parallel,
     select_rows,
     strip_think,
@@ -283,6 +285,7 @@ def run_eval(
     root_preamble: str,
     system_prompt: str,
     out_dir: str | None = None,
+    resume: bool = False,
     label: str = "AIME",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Runs AIME over ``indexed_dataset`` with ``repeats``.
@@ -304,6 +307,8 @@ def run_eval(
         root_preamble: MiniMax root turn (empty to omit).
         system_prompt: System turn content.
         out_dir: When set, stream results to ``<out_dir>/results.jsonl``.
+        resume: Keep the finished rows already in ``out_dir`` and run only
+            the rest (see :func:`eval_common.run_parallel`).
         label: Human-readable eval name used in the progress bar and the
             opening log line, e.g. ``"AIME25"`` or ``"AIME26"``.
 
@@ -333,7 +338,7 @@ def run_eval(
         }
 
     results, errors = run_parallel(
-        samples, fn, on_error, workers, label, out_dir=out_dir
+        samples, fn, on_error, workers, label, out_dir=out_dir, resume=resume
     )
     score = exact_match_score(results, len(samples), errors)
     score["unextracted"] = sum(
@@ -411,6 +416,12 @@ def run_eval(
         "and grader, so one binary serves both years."
     ),
 )
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Keep the finished rows already in --out-dir and run only the rest. "
+    "Refuses when they were produced with different options.",
+)
 def main(
     base_url: str,
     model: str,
@@ -427,11 +438,17 @@ def main(
     system_prompt: str,
     metric_prefix: str | None,
     dataset_id: str,
+    resume: bool,
 ) -> None:
     """Runs AIME against a running OpenAI-compatible server and scores it."""
     default_prefix, default_out_dir = dataset_defaults(dataset_id)
     metric_prefix = metric_prefix or default_prefix
     out_dir = out_dir or default_out_dir
+    prepare_out_dir(
+        out_dir,
+        resumable_config(click.get_current_context().params),
+        resume,
+    )
     client = make_client(base_url)
     dataset = load_aime_dataset(dataset_id)
     indexed_dataset = select_rows(dataset, sample_size, row_ids)
@@ -457,6 +474,7 @@ def main(
         root_preamble,
         system_prompt,
         out_dir=out_dir,
+        resume=resume,
         label=metric_prefix,
     )
     write_outputs(out_dir, results, summary, metric_prefix)
