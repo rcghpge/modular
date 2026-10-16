@@ -30,7 +30,7 @@ import os
 from collections.abc import Mapping, Sequence
 from typing import TypeVar
 
-from max.driver import Buffer, Device
+from max.driver import Buffer, Device, is_virtual_device_mode
 from max.nn.comm.ep import EPCommInitializer, EPConfig
 from max.nn.layer import Module
 from max.nn.moe import apply_eplb_placement
@@ -72,9 +72,13 @@ class EplbRuntime:
         self._devices = list(devices)
         self.metadata = metadata
         self.placement: EplbPlacement | None = None
+        # Virtual exports stage devices that cannot service histogram
+        # buffers. The graph's histogram inputs are still exported, so a
+        # boot with the same env compiles the same graph; the serving
+        # process constructs its own accumulator from real devices.
         self.accumulator: EplbStatsAccumulator | None = (
             EplbStatsAccumulator(metadata=metadata, devices=self._devices)
-            if runtime.eplb_profile
+            if runtime.eplb_profile and not is_virtual_device_mode()
             else None
         )
 
