@@ -147,7 +147,7 @@ def _hc_pre(
     they are read off the state *before* the sublayer, not after it.
     """
     b, s = x.shape[0], x.shape[1]
-    post, comb, y = hc(ops.reshape(x, [-1, hc.hc_mult, hc.hidden_size]))
+    post, comb, y, _ = hc(ops.reshape(x, [-1, hc.hc_mult, hc.hidden_size]))
     return (
         ops.reshape(y, [b, s, hc.hidden_size]),
         ops.reshape(post, [b, s, hc.hc_mult]),
