@@ -1351,8 +1351,10 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
 
     var workspace: Span[UInt64, MutAnyOrigin]
 
+    # The kernel indexes the workspace and locks over the launch grid, which
+    # is built from the swapped dims when AB_swapped; size them the same way.
     var output_tiles = get_num_tiles(
-        Index(M, N, K),
+        Index(M_maybe_swapped, N_maybe_swapped, K),
         Index(BM, MMA_N, BK),
         Index(cluster_shape[0], cluster_shape[1]),
     )
@@ -1360,7 +1362,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     var lock_buffer_size_bytes = get_required_locks_buffer_size_bytes[
         config.accum_type
     ](
-        Index(M, N, K),
+        Index(M_maybe_swapped, N_maybe_swapped, K),
         Index(BM, MMA_N, BK),
         Index(cluster_shape[0], cluster_shape[1]),
     )
