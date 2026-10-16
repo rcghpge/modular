@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.random import random_float64, seed
-from std.collections import List
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 

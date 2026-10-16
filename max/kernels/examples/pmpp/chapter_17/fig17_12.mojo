@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import List
 from spmv_utils import ELLMatrix, generate_sparse_matrix, spmv_cpu, verify
 from max.gpu import block_idx, thread_idx, block_dim
 from max.gpu.host import DeviceContext
@@ -65,10 +64,8 @@ def main() raises:
         nnz_per_row[Int(r_idx)] += 1
 
     var max_nnz = 0
-    for i in range(len(nnz_per_row)):
-        var c = nnz_per_row[i]
-        if c > max_nnz:
-            max_nnz = c
+    for c in nnz_per_row:
+        max_nnz = max(max_nnz, c)
 
     print("ELL Matrix: ", rows, "x", cols, ", Max NNZ/Row: ", max_nnz)
 
