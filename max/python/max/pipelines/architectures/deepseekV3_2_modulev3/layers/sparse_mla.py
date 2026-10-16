@@ -316,6 +316,7 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
         *,
         sparse_indices: Tensor | None = None,
         sparse_indices_stride: int | None = None,
+        selection_lag: int = 0,
     ) -> Tensor:
         attn_kwargs: dict[str, Any] = {
             "q": xq,
@@ -382,6 +383,7 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
                 "sparse_indices": sparse_indices,
                 "physical_indices": True,
                 "sparse_indices_stride": sparse_indices_stride,
+                "selection_lag": selection_lag,
                 # The op always passes a no-op sink; the AMD sparse arms
                 # reject one unless it is declared inert.
                 "sparse_attn_sink_inert": True,
@@ -409,7 +411,18 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
         prev_topk_indices: Tensor | None = None,
         reuse_prev_topk: bool = False,
         indexer_layer_idx: Tensor | None = None,
+        selection_lag: int = 0,
     ) -> tuple[Tensor, Tensor]:
+        """Returns the attention output and the top-k selection it used.
+
+        ``selection_lag`` is the number of positions between the token a
+        reused selection was computed for and this call's token.
+        """
+        if selection_lag != 0 and not reuse_prev_topk:
+            raise ValueError(
+                f"selection_lag={selection_lag} describes a reused selection,"
+                " but reuse_prev_topk is False."
+            )
         q_lora_rank = self.q_lora_rank
         assert q_lora_rank is not None  # enforced in __init__
         qkv = quant_ops.matmul(x, self.wqkv)
@@ -460,6 +473,7 @@ class QuantizedSparseLatentAttentionWithRope(QuantizedLatentAttention):
             mla_prefill_metadata,
             sparse_indices=topk_indices,
             sparse_indices_stride=self.index_topk,
+            selection_lag=selection_lag,
         )
 
         return self.o_proj(attn_out), topk_indices

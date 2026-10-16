@@ -804,3 +804,71 @@ def test_mla_nvfp4_tensor_parallel(
     assert out.dtype == DType.bfloat16
     assert out.mapping.mesh == mesh
     assert out.mapping.placements == (Partial(),)
+
+
+# --------------------------------------------------------------------------- #
+# Reused sparse selections
+# --------------------------------------------------------------------------- #
+
+
+def test_sparse_mla_forwards_selection_lag_to_attention(
+    mock_accelerator: MagicMock,
+    fp8_quant_config: QuantConfig,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reused selection's lag reaches the sparse attention kernel call.
+
+    MTP draft steps after the first reuse step 0's selection, made for an
+    earlier token; the kernel needs the lag to mask the keys that selection
+    could not have seen.
+    """
+    device = mock_accelerator()
+    seen: dict[str, object] = {}
+
+    def record(*args: object, **kwargs: object) -> Tensor:
+        seen.update(kwargs)
+        return Tensor.zeros(
+            [4, _SPARSE_N_HEADS * _SPARSE_V_HEAD_DIM],
+            dtype=DType.bfloat16,
+            device=device,
+        )
+
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = _make_sparse_layer([device], fp8_quant_config).to(device)
+        monkeypatch.setattr(layer, "_mla_impl", record)
+        x = Tensor.zeros([4, _HIDDEN_SIZE], dtype=DType.bfloat16, device=device)
+        freqs_cis = Tensor.zeros([4, _QK_ROPE_HEAD_DIM], device=device)
+        topk = Tensor.zeros([4, 64], dtype=DType.int32, device=device)
+        layer(
+            x,
+            MagicMock(),
+            MagicMock(),
+            freqs_cis,
+            F.constant(0, DType.uint32, device=CPU()),
+            Tensor.zeros([2], dtype=DType.uint32),
+            None,
+            topk,
+            True,
+            None,
+            2,
+        )
+
+    assert seen["selection_lag"] == 2
+
+
+def test_sparse_mla_rejects_selection_lag_without_reuse(
+    mock_accelerator: MagicMock, fp8_quant_config: QuantConfig
+) -> None:
+    device = mock_accelerator()
+    with F.lazy(), default_dtype(DType.bfloat16):
+        layer = _make_sparse_layer([device], fp8_quant_config).to(device)
+        with pytest.raises(ValueError, match="selection_lag"):
+            layer(
+                Tensor.zeros([4, _HIDDEN_SIZE], device=device),
+                MagicMock(),
+                MagicMock(),
+                Tensor.zeros([4, _QK_ROPE_HEAD_DIM], device=device),
+                F.constant(0, DType.uint32, device=CPU()),
+                Tensor.zeros([2], dtype=DType.uint32),
+                selection_lag=1,
+            )
