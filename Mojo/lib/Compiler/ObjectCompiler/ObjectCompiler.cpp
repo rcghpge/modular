@@ -342,7 +342,8 @@ runLlcPasses(llvm::Module &module, CompilationOptions &options,
   }
 
   const_cast<TargetLoweringObjectFile *>(llvmTargetMachine.getObjFileLowering())
-      ->Initialize(machineModInfoPass->getMMI().getContext(), targetMachine);
+      ->initialize(machineModInfoPass->getMMI().getContext(), targetMachine,
+                   module);
 
   passMgr.run(module);
 
