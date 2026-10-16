@@ -87,9 +87,9 @@ def _indexer_score_gpu_kernel[
     w_stride0: Int32,
     out_stride0: Int32,
 ):
-    var t = Int(block_idx.x)
-    var tid = Int(thread_idx.x)
-    var c0 = Int(block_idx.y) * block_size
+    var t = block_idx.x
+    var tid = thread_idx.x
+    var c0 = block_idx.y * block_size
     var n = Int(num_cand)
     var cap = n // 2
 
@@ -121,7 +121,7 @@ def _indexer_score_gpu_kernel[
             i,
             q_ptr[
                 unsafe_offset=t * Int(q_stride0) + h * Int(q_stride1) + d
-            ].cast[DType.float32](),
+            ].cast[.float32](),
         )
     for h in range(tid, num_heads, block_size):
         sw.unsafe_store(h, w_ptr[unsafe_offset=t * Int(w_stride0) + h])
@@ -142,9 +142,7 @@ def _indexer_score_gpu_kernel[
     if live:
         var acc = Array[Float32, num_heads](fill=Float32(0))
         for d0 in range(0, head_dim, chunk):
-            var k = cache.load[width=chunk, output_dtype=DType.float32](
-                b, 0, e, d0
-            )
+            var k = cache.load[width=chunk, output_dtype=.float32](b, 0, e, d0)
             comptime for h in range(num_heads):
                 var qv = sq.unsafe_load[width=chunk](h * head_dim + d0)
                 acc[h] += (qv * k).reduce_add()
@@ -195,17 +193,17 @@ def _indexer_score_cpu[
                 for h in range(num_heads):
                     var acc = Float32(0)
                     for d0 in range(0, head_dim, chunk):
-                        var k = cache.load[
-                            width=chunk, output_dtype=DType.float32
-                        ](b, 0, e, d0)
-                        var qv = SIMD[DType.float32, chunk](0)
+                        var k = cache.load[width=chunk, output_dtype=.float32](
+                            b, 0, e, d0
+                        )
+                        var qv = SIMD[.float32, chunk](0)
                         comptime for i in range(chunk):
                             qv[i] = q_ptr[
                                 unsafe_offset=t * q_stride0
                                 + h * q_stride1
                                 + d0
                                 + i
-                            ].cast[DType.float32]()
+                            ].cast[.float32]()
                         acc += (qv * k).reduce_add()
                     score += (
                         max(acc, Float32(0))
