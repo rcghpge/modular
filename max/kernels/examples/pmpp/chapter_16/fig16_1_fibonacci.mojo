@@ -26,23 +26,23 @@ def fibonacci_bottomup(n: Int) -> Int:
     Returns:
         The nth Fibonacci number.
     """
-    if n != 0 and n != 1:
-        # Allocate table
-        var table = alloc[Int](n + 1)
-
-        # Initialize table
-        table[0] = 0
-        table[1] = 1
-
-        # Fill table using bottom-up approach
-        for i in range(2, n + 1):
-            table[i] = table[i - 1] + table[i - 2]
-
-        var result = table[n]
-        table.free()
-        return result
-    else:
+    if n == 0 or n == 1:
         return n
+
+    # Allocate table
+    var table = alloc[Int](n + 1)
+
+    # Initialize table
+    table[0] = 0
+    table[1] = 1
+
+    # Fill table using bottom-up approach
+    for i in range(2, n + 1):
+        table[i] = table[i - 1] + table[i - 2]
+
+    var result = table[n]
+    table.free()
+    return result
 
 
 def fibonacci_topdown_helper(
@@ -141,13 +141,7 @@ def test_fibonacci() raises:
             print("Expected:", expected_result, "Got:", result_bottomup)
             raise Error("Bottom-up test failed")
 
-        print(
-            "fib("
-            + String(n)
-            + ") = "
-            + String(result_topdown)
-            + " (top-down: ✓, bottom-up: ✓)"
-        )
+        print(t"fib({n}) = {result_topdown} (top-down: ✓, bottom-up: ✓)")
 
     print("\nAll tests passed! ✓")
 

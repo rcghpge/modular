@@ -59,12 +59,12 @@ def floyd_warshall_kernel(
 
     # Thread 0 loads A[i][k] into shared memory once for the whole block
     if thread_idx.x == 0:
-        k_row_shared[0] = Float32(A[i * num_vertices + curr_k])
+        k_row_shared[0] = A[i * num_vertices + curr_k]
 
     barrier()
 
     # Get k_row from shared memory
-    var k_row = Float32(k_row_shared[0])
+    var k_row = k_row_shared[0]
 
     # Early exit if no path through curr_k from row i
     if k_row == INF_DIST:
@@ -141,13 +141,7 @@ def print_dist(dist: UnsafePointer[Float32, _], V: Int, title: String):
                 row_str += String(d) + " "
         print(row_str)
     if V > 10:
-        print(
-            "... (showing first 10x10 of "
-            + String(V)
-            + "x"
-            + String(V)
-            + " matrix)"
-        )
+        print(t"... (showing first 10x10 of {V}x{V} matrix)")
     print("")
 
 
