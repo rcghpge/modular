@@ -89,9 +89,7 @@ def convolution_tiled_2D_const_mem_kernel(
                     var tile_idx = (tileRow + fRow) * IN_TILE_DIM + (
                         tileCol + fCol
                     )
-                    Pvalue += F[fRow * FILTER_WIDTH + fCol] * Float32(
-                        N_s[tile_idx]
-                    )
+                    Pvalue += F[fRow * FILTER_WIDTH + fCol] * N_s[tile_idx]
 
             P[row * width + col] = Pvalue
 

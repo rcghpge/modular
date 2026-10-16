@@ -87,8 +87,9 @@ def convolution_cached_tiled_2D_const_mem_kernel(
                     and sCol < TILE_DIM
                 ):
                     # Data is in shared memory - use it (fast!)
-                    Pvalue += F[fRow * FILTER_WIDTH + fCol] * Float32(
-                        N_s[sRow * TILE_DIM + sCol]
+                    Pvalue += (
+                        F[fRow * FILTER_WIDTH + fCol]
+                        * N_s[sRow * TILE_DIM + sCol]
                     )
                 else:
                     # Data is NOT in shared memory - fetch from global memory
