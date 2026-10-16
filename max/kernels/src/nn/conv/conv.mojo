@@ -99,6 +99,8 @@ from max.algorithm import (
     sync_parallelize,
 )
 from linalg.utils import (
+    ElementwiseEpilogueFn,
+    no_epilogue_fn,
     partial_simd_load,
     partial_simd_store,
 )
@@ -5250,19 +5252,20 @@ def conv_gpu[
         # fused residual path (`amd_4wave_conv[has_residual=True]`).
         comptime if ctx.target.is_amd_gpu():
             from nn.conv.gpu.amd.dispatch import dispatch_amd_4wave_conv2d
-            from linalg.utils import elementwise_epilogue_type as _ew_2d_t
 
             @inline(.always)
             def _amd_4wave_dispatch[
-                _epilogue_2d: Optional[_ew_2d_t] = None,
-            ]() raises {imm} -> Bool:
+                EpilogueFnType: ElementwiseEpilogueFn,
+                //,
+                has_epilogue_fn: Bool,
+            ](epilogue_fn: EpilogueFnType) raises {imm} -> Bool:
                 return dispatch_amd_4wave_conv2d[
                     input_type,
                     filter_type,
                     output_type,
                     filter_is_fcrs,
                     has_residual=has_residual,
-                    elementwise_lambda_fn=_epilogue_2d,
+                    has_epilogue_fn=has_epilogue_fn,
                 ](
                     input,
                     filter,
@@ -5274,6 +5277,7 @@ def conv_gpu[
                     ctx,
                     source_ptr=source_ptr,
                     beta=beta,
+                    epilogue_fn=epilogue_fn,
                 )
 
             # MIOpen-oracle audit. Gated on `MODULAR_CONV_AUDIT_MIOPEN=1`;
@@ -5446,15 +5450,15 @@ def conv_gpu[
                 var _amd_4wave_out_w = Int(output.dim[2]())
                 var _amd_4wave_hw = _amd_4wave_out_h * _amd_4wave_out_w
 
-                @__parameter
                 @inline(.always)
-                @__copy_capture(_amd_4wave_hw, _amd_4wave_out_w)
                 def _amd_4wave_void_epilogue[
                     _dtype: DType,
                     _width: SIMDLength,
                     *,
-                    alignment: Int = 1,
-                ](coords_2d: Coord, val: SIMD[_dtype, _width]):
+                    alignment: Int,
+                ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                    var _amd_4wave_hw, var _amd_4wave_out_w
+                }:
                     comptime assert (
                         coords_2d.rank == 2
                     ), "the matmul epilogue contract is rank 2"
@@ -5471,13 +5475,13 @@ def conv_gpu[
                         rebind[SIMD[output_type, _width]](val),
                     )
 
-                if _amd_4wave_dispatch[
-                    Optional[_ew_2d_t](_amd_4wave_void_epilogue)
-                ]():
+                if _amd_4wave_dispatch[has_epilogue_fn=True](
+                    _amd_4wave_void_epilogue
+                ):
                     _audit_amd_4wave_vs_miopen()
                     return
             else:
-                if _amd_4wave_dispatch[]():
+                if _amd_4wave_dispatch[has_epilogue_fn=False](no_epilogue_fn):
                     _audit_amd_4wave_vs_miopen()
                     return
 
@@ -5679,10 +5683,6 @@ def conv_gpu[
             # grouped, dilated); caller then falls through to the
             # im2col path below.
             comptime if ctx.target.is_amd_gpu():
-                from linalg.utils import (
-                    elementwise_epilogue_type as _ew_3d_t,
-                )
-
                 # Wrap the 5D NDHWC epilogue into a 2D GEMM-space
                 # void epilogue for the 4-wave kernel. The kernel
                 # calls this with (m, n) coords where m flattens
@@ -5694,15 +5694,18 @@ def conv_gpu[
                     var _amd_3d_HW = _amd_3d_H_out * _amd_3d_W_out
                     var _amd_3d_DHW = _amd_3d_D_out * _amd_3d_HW
 
-                    @__parameter
                     @inline(.always)
-                    @__copy_capture(_amd_3d_DHW, _amd_3d_HW, _amd_3d_W_out)
                     def amd_3d_void_epilogue[
                         _dtype: DType,
                         _width: SIMDLength,
                         *,
-                        alignment: Int = 1,
-                    ](coords_2d: Coord, val: SIMD[_dtype, _width],):
+                        alignment: Int,
+                    ](
+                        coords_2d: Coord,
+                        val: SIMD[_dtype, _width],
+                    ) {
+                        var _amd_3d_DHW, var _amd_3d_HW, var _amd_3d_W_out
+                    }:
                         comptime assert (
                             coords_2d.rank == 2
                         ), "the matmul epilogue contract is rank 2"
@@ -5727,9 +5730,7 @@ def conv_gpu[
                         filter_type,
                         output_type,
                         filter_is_fcqrs=filter_is_fcrs,
-                        elementwise_lambda_fn=Optional[_ew_3d_t](
-                            amd_3d_void_epilogue
-                        ),
+                        has_epilogue_fn=True,
                     ](
                         input,
                         filter,
@@ -5739,6 +5740,7 @@ def conv_gpu[
                         rebind[IndexList[3]](symmetric_padding),
                         num_groups,
                         ctx,
+                        amd_3d_void_epilogue,
                     ):
                         return
                 else:

@@ -49,7 +49,7 @@ from std.utils import IndexList
 
 from layout import Coord, TileTensor, row_major
 
-from linalg.utils import elementwise_epilogue_type
+from linalg.utils import ElementwiseEpilogueFn, no_epilogue_fn
 
 from nn.conv.gpu.amd.amd_4wave_conv import amd_4wave_conv
 
@@ -150,6 +150,7 @@ def _launch_amd_4wave_conv2d_runtime[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
     //,
     C_in: Int,
     C_out: Int,
@@ -157,7 +158,7 @@ def _launch_amd_4wave_conv2d_runtime[
     S: Int,
     K_padded: Int,
     has_residual: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
 ](
     input: TileTensor[input_type, ...],
     filter_frsc_tt: TileTensor[filter_type, ...],
@@ -169,6 +170,7 @@ def _launch_amd_4wave_conv2d_runtime[
         Scalar[output_type], ImmutAnyOrigin
     ] = UnsafePointer[Scalar[output_type], ImmutAnyOrigin].unsafe_dangling(),
     beta: Float32 = 0.0,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises -> Bool:
     """Runtime-HW launch for the 4-wave conv dispatcher.
 
@@ -197,7 +199,7 @@ def _launch_amd_4wave_conv2d_runtime[
         var _dyn_out_layout = row_major(Coord(_rt_M_total, C_out))
         var output_2d_tt = output.reshape(_dyn_out_layout)
         amd_4wave_conv[
-            elementwise_lambda_fn=elementwise_lambda_fn,
+            has_epilogue_fn=has_epilogue_fn,
             R=R,
             S=S,
             stride_h=stride_v,
@@ -215,6 +217,7 @@ def _launch_amd_4wave_conv2d_runtime[
             source_ptr=source_ptr,
             source_row_stride=C_out,
             beta=beta,
+            epilogue_fn=epilogue_fn,
         )
 
     match (stride, pad):
@@ -241,17 +244,14 @@ def _launch_amd_4wave_conv2d_runtime[
 
 
 def dispatch_amd_4wave_conv2d[
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
+    //,
     input_type: DType,
     filter_type: DType,
     output_type: DType,
     filter_is_fcrs: Bool,
     has_residual: Bool = False,
-    # Optional fused 2D-coord epilogue lambda. The caller is expected
-    # to have wrapped any 4D NHWC `elementwise_simd_epilogue_type` into
-    # this 2D-coord form (m=b*H_out*W_out+h*W_out+w, n=channel). See
-    # the SM100 dispatch site in `nn/conv/conv.mojo` for the wrapper
-    # template. When None, no epilogue fuses; pure conv (+ residual).
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
 ](
     input: TileTensor[input_type, ...],
     filter: TileTensor[filter_type, ...],
@@ -265,6 +265,7 @@ def dispatch_amd_4wave_conv2d[
         UnsafePointer[Scalar[output_type], MutAnyOrigin]
     ] = None,
     beta: Float32 = 0.0,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises -> Bool:
     """Try to dispatch a Conv2D to `amd_4wave_conv` on MI355X.
 
@@ -281,6 +282,7 @@ def dispatch_amd_4wave_conv2d[
     the launch packet's 16 bytes (DCE'd source_ptr / stride / beta).
 
     Parameters:
+        EpilogueFnType: Type of `epilogue_fn`.
         input_type: `DType` of the input activation tensor; must be
             `float8_e4m3fn`, `bfloat16`, or `float16`.
         filter_type: `DType` of the filter tensor; must equal
@@ -291,9 +293,9 @@ def dispatch_amd_4wave_conv2d[
             for RSCF. Selects the transpose path and the R/S dim indices.
         has_residual: `True` to fuse `D = Conv + beta * source` in-kernel
             via `source_ptr` (defaults to `False`).
-        elementwise_lambda_fn: Optional fused 2D-coord epilogue lambda
-            wrapping a 4D NHWC `elementwise_simd_epilogue_type`; `None`
-            fuses no epilogue (defaults to `None`).
+        has_epilogue_fn: `True` to store each output chunk through
+            `epilogue_fn` instead of writing `output` (defaults to
+            `False`).
 
     Args:
         input: Input activation `TileTensor`, rank-4 NHWC with static
@@ -314,6 +316,9 @@ def dispatch_amd_4wave_conv2d[
             when `has_residual=True` (defaults to `None`).
         beta: Scale factor for the residual term in
             `D = Conv + beta * source` (defaults to `0.0`).
+        epilogue_fn: Stores each output chunk at a 2D coordinate
+            `(m, n)`, where `m = b*H_out*W_out + h*W_out + w` and `n` is
+            the output channel. Used when `has_epilogue_fn` is set.
     """
     comptime assert input.flat_rank == 4, "input must be rank 4 (NHWC)"
     comptime assert filter.flat_rank == 4, "filter must be rank 4"
@@ -497,7 +502,7 @@ def dispatch_amd_4wave_conv2d[
                 var input_nhwc_tt = input.reshape(_nhwc_in_layout)
                 var output_2d_tt = output.reshape(_output_2d_layout)
                 amd_4wave_conv[
-                    elementwise_lambda_fn=elementwise_lambda_fn,
+                    has_epilogue_fn=has_epilogue_fn,
                     H=_H_static,
                     W=_W_static,
                     H_out=_H_out_v,
@@ -518,6 +523,7 @@ def dispatch_amd_4wave_conv2d[
                     source_ptr=_src_ptr_for_kernel,
                     source_row_stride=_C_out,
                     beta=beta,
+                    epilogue_fn=epilogue_fn,
                 )
                 return True
 
@@ -550,7 +556,7 @@ def dispatch_amd_4wave_conv2d[
                 S=_S,
                 K_padded=_K_padded,
                 has_residual=has_residual,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 input,
                 filter_frsc_tt,
@@ -560,6 +566,7 @@ def dispatch_amd_4wave_conv2d[
                 ctx,
                 source_ptr=_src_ptr_for_kernel,
                 beta=beta,
+                epilogue_fn=epilogue_fn,
             ):
                 return False
         return True

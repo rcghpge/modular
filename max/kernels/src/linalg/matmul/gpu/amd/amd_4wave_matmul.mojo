@@ -69,7 +69,6 @@ from structured_kernels.amd_tile_io_conv import TileLoaderLDSIm2col
 from ....utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
-    elementwise_compute_lambda_type,
     elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
@@ -1368,18 +1367,11 @@ struct AMD4WaveMatmul[
         a_engine: TensorEngine,
         b_engine: TensorEngine,
         c_engine: TensorEngine,
+        EpilogueFnType: ElementwiseEpilogueFn,
+        ComputeFnType: ElementwiseComputeFn,
         has_residual: Bool = False,
-        # Pre-residual fused compute lambda (SM100 reference:
-        # `D = lambda(Conv(A,B)) + beta * C`). Fires on the post-cast
-        # `c_type` MMA output, BEFORE the residual FMA. Signature
-        # `(Coord, SIMD) capturing -> SIMD`. Use for bias / ReLU /
-        # SiLU / GELU fusion. The post-residual store-site lambda is
-        # the existing struct-level `Self.elementwise_lambda_fn` and
-        # fires after the residual FMA (or directly on the MMA output
-        # when `has_residual=False`).
-        elementwise_compute_lambda_fn: Optional[
-            elementwise_compute_lambda_type
-        ] = None,
+        has_epilogue_fn: Bool = False,
+        has_compute_fn: Bool = False,
     ](
         a: TileTensor[Self.a_type, a_layout, ImmutAnyOrigin, Engine=a_engine],
         b: TileTensor[Self.b_type, b_layout, ImmutAnyOrigin, Engine=b_engine],
@@ -1387,6 +1379,8 @@ struct AMD4WaveMatmul[
         source_ptr: UnsafePointer[Scalar[Self.c_type], ImmutAnyOrigin],
         source_row_stride: Int32,
         beta: Float32,
+        epilogue_fn: EpilogueFnType,
+        compute_fn: ComputeFnType,
     ):
         """Runs the 4-wave kernel as a 2D convolution via implicit-GEMM.
 
@@ -1418,17 +1412,17 @@ struct AMD4WaveMatmul[
             a_engine: `TensorEngine` of `a`.
             b_engine: `TensorEngine` of `b`.
             c_engine: `TensorEngine` of `c`.
+            EpilogueFnType: Type of `epilogue_fn`.
+            ComputeFnType: Type of `compute_fn`.
             has_residual: When True, prefetch + FMA in `source * beta`
                 during the epilogue. When False, the residual args are
                 unused and the epilogue is identical to the no-residual
                 kernel (dead-code-eliminated by the compiler).
-            elementwise_compute_lambda_fn: Optional pre-residual fused
-                compute lambda. Fires on the post-cast `c_type` MMA
-                output BEFORE the residual FMA, matching the SM100
-                `D = lambda(Conv(A,B)) + beta * C` ordering. Use for
-                bias / ReLU / SiLU / GELU fusion. Signature
-                `(Coord, SIMD) capturing -> SIMD`. When unset,
-                the comptime branch dead-code-eliminates.
+            has_epilogue_fn: Whether `epilogue_fn` stores each output
+                chunk instead of the kernel. Requires the struct-level
+                `elementwise_lambda_fn` to be unset.
+            has_compute_fn: Whether `compute_fn` transforms each output
+                chunk before the residual add.
 
         Args:
             a: Input tile-tensor for A (NHWC activations).
@@ -1441,7 +1435,16 @@ struct AMD4WaveMatmul[
             source_row_stride: Element stride of the residual's row
                 dimension. Unused when `has_residual=False`.
             beta: Residual scale. Unused when `has_residual=False`.
+            epilogue_fn: Post-residual epilogue that stores each output
+                chunk, matching the SM100 `D = lambda(Conv(A,B)) + beta * C`
+                ordering. Used when `has_epilogue_fn` is set.
+            compute_fn: Pre-residual compute epilogue (bias / ReLU / SiLU
+                / GELU) applied to the post-cast `c_type` MMA output.
+                Used when `has_compute_fn` is set.
         """
+        comptime assert not (
+            has_epilogue_fn and Bool(Self.elementwise_lambda_fn)
+        ), "pass the epilogue as a value or a struct parameter, not both"
         Self.validate_config()
         var _source_row_stride = Int(source_row_stride)
 
@@ -2007,15 +2010,13 @@ struct AMD4WaveMatmul[
                             .raw_load[width=c_frag_size](0)
                             .cast[Self.c_type]()
                         )
-                        # Pre-residual fused compute lambda — matches
+                        # Pre-residual fused compute closure — matches
                         # SM100 `D = lambda(Conv(A,B)) + beta * C`
                         # semantics. Fires on the post-cast `c_type`
                         # MMA output (use cases: bias / ReLU / SiLU /
                         # GELU before the skip add).
-                        comptime if case .Some(
-                            _compute_fn
-                        ) = elementwise_compute_lambda_fn:
-                            v = _compute_fn[
+                        comptime if has_compute_fn:
+                            v = compute_fn[
                                 alignment=align_of[
                                     SIMD[Self.c_type, c_frag_size]
                                 ]()
@@ -2026,7 +2027,12 @@ struct AMD4WaveMatmul[
                             ].cast[.float32]()
                             var fused_f32 = v.cast[.float32]() + beta * skip
                             v = fused_f32.cast[Self.c_type]()
-                        c_writer.store(v, m=m_dram, n=n_global)
+                        comptime if has_epilogue_fn:
+                            c_writer.store_with_epilogue_fn(
+                                epilogue_fn, v, m=m_dram, n=n_global
+                            )
+                        else:
+                            c_writer.store(v, m=m_dram, n=n_global)
 
 
 @inline(.always)
