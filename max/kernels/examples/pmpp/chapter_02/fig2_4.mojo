@@ -41,7 +41,7 @@ def vec_add(
 
 def main() raises:
     # Memory allocation for arrays A, B, and C
-    var n = 10
+    comptime n = 10
     var a = alloc[Float32](n)
     var b = alloc[Float32](n)
     var c = alloc[Float32](n)

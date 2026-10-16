@@ -70,7 +70,7 @@ def vec_add(
     ctx.enqueue_copy(b_d, b)
 
     # Calculate launch configuration
-    var block_dim = 256
+    comptime block_dim = 256
     var grid_dim = ceildiv(n, block_dim)
 
     # Launch kernel
@@ -94,7 +94,7 @@ def vec_add(
 
 
 def main() raises:
-    var n = 512
+    comptime n = 512
 
     # Allocate host memory
     var a = alloc[Float32](n)
