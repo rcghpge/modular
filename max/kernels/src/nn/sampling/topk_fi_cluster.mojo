@@ -1532,13 +1532,13 @@ def topk_topp_sampling_from_prob_cluster[
         # the narrowest cluster whose slice fits the staging budget, exactly
         # as in the masked-probs launcher; a row too wide for four slices
         # keeps the single-block kernel with no staging.
+        var stage_budget = _stage_smem_budget(ctx)
         var cluster_size = 0
         comptime if emit_dist and from_logits:
             comptime for c in [1, 2, _MAX_CUTOFF_CLUSTER]:
                 if (
                     cluster_size == 0
-                    and _stage_smem_bytes(d, vec_size, c)
-                    <= _MAX_STAGE_SMEM_BYTES
+                    and _stage_smem_bytes(d, vec_size, c) <= stage_budget
                 ):
                     cluster_size = c
 
@@ -1581,7 +1581,7 @@ def topk_topp_sampling_from_prob_cluster[
                     cluster_dim=Dim(cluster_size, 1, 1),
                     shared_mem_bytes=smem_bytes,
                     func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                        UInt32(smem_bytes)
+                        UInt32(stage_budget)
                     ),
                     attributes=pdl_launch_attributes(PDLLevel.ON),
                 )
