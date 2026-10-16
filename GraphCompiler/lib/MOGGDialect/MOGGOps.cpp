@@ -434,7 +434,7 @@ static LogicalResult verifySymbolUsesForKernelDeclCall(
 }
 
 //===----------------------------------------------------------------------===//
-// CallMaterializeOp
+// RoutineOp
 //===----------------------------------------------------------------------===//
 
 ParseResult RoutineOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -2822,6 +2822,72 @@ void CallForeachOp::getAsmBlockArgumentNames(Region &region,
   nameLeadingArgs(args.drop_front(numCaptures), {"idx"}, setNameFn);
 }
 
+// Same layout as `call.foreach`.
+ParseResult CallForeachTileOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  FlatSymbolRefAttr callee;
+  OpAsmParser::UnresolvedOperand shape, context;
+  SmallVector<OpAsmParser::Argument> leadingArgs, entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures;
+  SmallVector<Type> captureTypes;
+  StringAttr device;
+  if (parser.parseAttribute(callee, getCalleeAttrName(result.name),
+                            result.attributes) ||
+      parser.parseKeyword("shape") || parser.parseLParen() ||
+      parser.parseOperand(shape) || parser.parseRParen() ||
+      parser.parseKeyword("context") || parser.parseLParen() ||
+      parser.parseOperand(context) || parser.parseRParen() ||
+      parseLeadingArgs(parser, leadingArgs) ||
+      parseBindings(parser, "capturing", entryArgs, captures, captureTypes,
+                    /*impliedType=*/Type(), /*required=*/false) ||
+      parser.parseKeyword("device") || parser.parseEqual() ||
+      parser.parseAttribute(device) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+  result.addAttribute(getDeviceAttrName(result.name), device);
+  entryArgs.append(leadingArgs.begin(), leadingArgs.end());
+
+  if (parser.resolveOperand(shape, ShapeType::get(ctx), result.operands) ||
+      parser.resolveOperand(context, ContextType::get(ctx), result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands))
+    return failure();
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void CallForeachTileOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printAttributeWithoutType(getCalleeAttr());
+  p << " shape(" << getShape() << ") context(" << getContext() << ") ";
+  auto args = getBody().front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  printLeadingArgs(p, args.drop_front(numCaptures));
+  if (numCaptures) {
+    p << " ";
+    printBindings(p, "capturing", getCapturing(), args.take_front(numCaptures),
+                  /*impliedType=*/Type(),
+                  /*required=*/false);
+  }
+  p << " device = ";
+  p.printAttribute(getDeviceAttr());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getCalleeAttrName().getValue(), getDeviceAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void CallForeachTileOp::getAsmBlockArgumentNames(
+    Region &region, OpAsmSetValueNameFn setNameFn) {
+  if (region.empty())
+    return;
+  auto args = region.front().getArguments();
+  size_t numCaptures = getCapturing().size();
+  nameArgs(args.take_front(numCaptures), "cap", setNameFn);
+  nameLeadingArgs(args.drop_front(numCaptures), {"idx"}, setNameFn);
+}
+
 ParseResult CallRowwiseOp::parse(OpAsmParser &parser, OperationState &result) {
   MLIRContext *ctx = parser.getContext();
   OpAsmParser::UnresolvedOperand shape, context;
@@ -3044,6 +3110,31 @@ LogicalResult TileCreateEpilogueOp::verify() {
   if (!store || store.getTensor() != storeTarget || store.getIndex() != index)
     return emitOpError("a store lane ends in a store to the store-target "
                        "capture at the loop index");
+  return success();
+}
+
+LogicalResult CallForeachTileOp::verify() {
+  Block &body = getBody().front();
+  size_t numCaptures = getCapturing().size();
+  if (body.getNumArguments() != numCaptures + 1)
+    return emitOpError("body takes one arg per capture, then the index");
+  if (numCaptures < 2)
+    return emitOpError(
+        "requires an output capture and at least one input capture");
+  Value index = body.getArguments().back();
+  if (failed(
+          verifyTileBodyLoads(body, /*firstCapture=*/0, index, "tile foreach")))
+    return failure();
+  unsigned numStores = 0;
+  for (auto store : body.getOps<TensorStoreOp>()) {
+    ++numStores;
+    if (!isCaptureArgOf(body, /*firstCapture=*/0, store.getTensor()) ||
+        store.getIndex() != index)
+      return store.emitOpError(
+          "in a tile foreach must write a capture at the loop index");
+  }
+  if (numStores != 1)
+    return emitOpError("body stores exactly once, got ") << numStores;
   return success();
 }
 

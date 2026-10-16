@@ -514,7 +514,7 @@ constexpr llvm::StringLiteral kParameterForeachTensor = "tensor";
 constexpr llvm::StringLiteral kParameterForeachElem = "elem";
 constexpr llvm::StringLiteral kParameterForeachCtx = "ctx";
 constexpr llvm::StringLiteral kMoggForeachTileRegistration =
-    "mogg.call.foreach_tile";
+    "mogg.call.foreach.tile";
 constexpr llvm::StringLiteral kParameterSelf = "self";
 constexpr llvm::StringLiteral kParameterIdx = "idx";
 constexpr llvm::StringLiteral kParameterVal = "val";

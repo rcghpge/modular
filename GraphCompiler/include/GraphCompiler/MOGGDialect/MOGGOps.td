@@ -1536,6 +1536,72 @@ def MOGG_CallForeachOp : MOGG_Op<"call.foreach", [
   let hasCustomAssemblyFormat = 1;
 }
 
+def MOGG_CallForeachTileOp : MOGG_Op<"call.foreach.tile", [
+  MOGG_RoutineCall,
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  NoTerminator,
+]> {
+  let summary = "Drive a tile foreach loop over a fused elementwise body.";
+  let description = [{
+    The tile counterpart of `mogg.call.foreach`: `$callee`, the tile foreach
+    driver, runs the body once per tile of `$shape`. The body's arguments are
+    one per `$capturing` tensor, then the tile index; it loads whole tiles of
+    its input captures at the index, computes, and stores exactly once into
+    its output capture.
+
+    Example:
+    ```mlir
+    mogg.call.foreach.tile @builtin_primitives.primitives.foreach_fusion_tile
+        shape(%s) context(%ctx) (%idx : !map.index<2>)
+        capturing {%co = %out : !mogg.tensor, %cx = %x : !mogg.tensor}
+        device = "gpu" {
+      %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> f32
+      mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+    }
+    ```
+  }];
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    MOGG_Shape:$shape,
+    MOGG_Context:$context,
+    Variadic<MOGG_TensorLike>:$capturing,
+    StrAttr:$device
+  );
+  let regions = (region SizedRegion<1>:$body);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def MOGG_CallViewCopyOp : MOGG_Op<"call.view_copy", [
+  MOGG_RoutineCall,
+]> {
+  let summary = "Copy a view into a tensor through the registered view-copy primitive.";
+  let description = [{
+    Materializes `$input`, a view (broadcast, transpose, slice, reshape) that
+    the device cannot read in place, into `$output` by calling `$callee`, the
+    `view_copy_impl` primitive. The primitive reads the view through the
+    source slice's own strides, so it needs no loop body of its own, unlike
+    the load/store body a `mogg.call.foreach` would run for the same copy.
+
+    Example:
+    ```mlir
+    mogg.call.view_copy @builtin_primitives.primitives.view_copy_impl
+        (%out, %bcast : !mogg.tensor, !mogg.tensor) context(%ctx) device = "gpu"
+    ```
+  }];
+  let arguments = (ins
+    FlatSymbolRefAttr:$callee,
+    MOGG_TensorLike:$output,
+    MOGG_TensorLike:$input,
+    MOGG_Context:$context,
+    StrAttr:$device
+  );
+  let assemblyFormat = [{
+    $callee `(` $output `,` $input `:` type($output) `,` type($input) `)`
+    `context` `(` $context `)` `device` `=` $device attr-dict
+  }];
+}
+
 def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
   MOGG_RoutineCall,
   DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,

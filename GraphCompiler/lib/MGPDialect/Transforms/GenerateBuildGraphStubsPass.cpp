@@ -44,6 +44,12 @@ ProducerDispatch matchProducerDispatch(Operation *op) {
   if (auto foreachRegion = dyn_cast<CallForeachOp>(op))
     return {op, foreachRegion.getContext()};
 
+  if (auto foreachTile = dyn_cast<CallForeachTileOp>(op))
+    return {op, foreachTile.getContext()};
+
+  if (auto viewCopy = dyn_cast<CallViewCopyOp>(op))
+    return {op, viewCopy.getContext()};
+
   return {};
 }
 
@@ -100,7 +106,7 @@ struct RecordingStub {
 ///     the dispatch becomes a `mogg.call.build_graph` recording into the
 ///     builder directly (the `mogg.with_trace` is dropped).
 ///   - An execute-only kernel (`mogg.call.execute` with no `build_graph`) or a
-///     `mogg.call.materialize` view copy: the producer is kept, but its launch
+///     `mogg.call.view_copy` view copy: the producer is kept, but its launch
 ///     context is repointed to a recording device context viewed off the
 ///     builder via `mgp.device_graph.recording_context`, so the ordinary
 ///     dispatch records into the graph.

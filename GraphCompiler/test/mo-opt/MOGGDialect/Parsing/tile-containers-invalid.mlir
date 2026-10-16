@@ -101,3 +101,59 @@ func.func @shape_captures(%ptr: !mogg.pointer) {
   }
   return
 }
+
+// -----
+
+func.func @foreach_arg_count(%ptr: !mogg.pointer, %ctx: !mogg.context) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %x = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Input, mut = false, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  // expected-error @+1 {{body takes one arg per capture, then the index}}
+  mogg.call.foreach.tile @builtin_primitives.primitives.foreach_fusion_tile shape(%s) context(%ctx) (%idx : !map.index<2>, %extra : !map.index<2>) capturing {%co = %out : !mogg.tensor, %cx = %x : !mogg.tensor} device = "gpu" {
+    %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> f32
+    mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+  }
+  return
+}
+
+// -----
+
+func.func @foreach_no_input(%ptr: !mogg.pointer, %ctx: !mogg.context) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  // expected-error @+1 {{requires an output capture and at least one input capture}}
+  mogg.call.foreach.tile @builtin_primitives.primitives.foreach_fusion_tile shape(%s) context(%ctx) (%idx : !map.index<2>) capturing {%co = %out : !mogg.tensor} device = "gpu" {
+    %c = mogg.constant.scalar 1.000000e+00 : f32 : f32
+    mogg.tensor.store %co[%idx] = %c : !mogg.tensor, !map.index<2>, f32
+  }
+  return
+}
+
+// -----
+
+func.func @foreach_two_stores(%ptr: !mogg.pointer, %ctx: !mogg.context) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %x = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Input, mut = false, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  // expected-error @+1 {{body stores exactly once, got 2}}
+  mogg.call.foreach.tile @builtin_primitives.primitives.foreach_fusion_tile shape(%s) context(%ctx) (%idx : !map.index<2>) capturing {%co = %out : !mogg.tensor, %cx = %x : !mogg.tensor} device = "gpu" {
+    %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> f32
+    mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+    mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+  }
+  return
+}
+
+// -----
+
+func.func @foreach_store_off_index(%ptr: !mogg.pointer, %ctx: !mogg.context) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %x = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Input, mut = false, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  mogg.call.foreach.tile @builtin_primitives.primitives.foreach_fusion_tile shape(%s) context(%ctx) (%idx : !map.index<2>) capturing {%co = %out : !mogg.tensor, %cx = %x : !mogg.tensor} device = "gpu" {
+    %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> f32
+    // expected-error @+1 {{in a tile foreach must write a capture at the loop index}}
+    mogg.tensor.store %x[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+  }
+  return
+}

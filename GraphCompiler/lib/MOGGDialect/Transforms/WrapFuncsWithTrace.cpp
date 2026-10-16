@@ -50,8 +50,7 @@ struct WrapFuncsWithTrace
     for (Operation &op : body) {
       if (&op == terminator || isa<MOGG::WithTraceOp>(op))
         continue;
-      seenCall |=
-          isa<MOGG::CallOpaqueOp, MOGG::CallForeachOp, MOGG::CallShapeOp>(op);
+      seenCall |= op.hasTrait<MOGG::RoutineCall>();
       if (seenCall)
         traced.push_back(&op);
     }
