@@ -547,10 +547,14 @@ def topk_topp_masked_probs_cluster[
     TopKArrEngine: TensorEngine = DefaultEngine[element_width=1],
     TopPArrEngine: TensorEngine = DefaultEngine[element_width=1],
     TemperatureEngine: TensorEngine = DefaultEngine[element_width=1],
+    *,
+    ProbsEngine: TensorEngine,
 ](
     ctx: DeviceContext,
     logits: TileTensor[mut=False, dtype, ...],
-    probs: TileTensor[.float32, ProbsLayoutType, MutAnyOrigin],
+    probs: TileTensor[
+        .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
+    ],
     top_k_val: Int,
     top_p_val: Float32 = 1.0,
     top_k_arr: Optional[
@@ -589,6 +593,7 @@ def topk_topp_masked_probs_cluster[
         TopKArrEngine: Engine policy of `top_k_arr`.
         TopPArrEngine: Engine policy of `top_p_arr`.
         TemperatureEngine: Engine policy of `temperature`.
+        ProbsEngine: Engine policy of `probs`.
 
     Args:
         ctx: Device context.
@@ -700,6 +705,7 @@ def topk_topp_masked_probs_cluster[
                 dtype,
                 logits.LayoutType,
                 ImmOrigin(logits.origin),
+                LogitsEngine=logits.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
@@ -1314,6 +1320,9 @@ def topk_topp_sampling_from_prob_cluster[
     SeedEngine: TensorEngine = DefaultEngine[element_width=1],
     TemperatureEngine: TensorEngine = DefaultEngine[element_width=1],
     MinPEngine: TensorEngine = DefaultEngine[element_width=1],
+    # Defaulted because `out_dist` is optional: when it is None there is no
+    # tile argument for the engine to be inferred from.
+    OutDistEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     ctx: DeviceContext,
     probs: TileTensor[mut=False, dtype, ...],
@@ -1361,7 +1370,9 @@ def topk_topp_sampling_from_prob_cluster[
         TileTensor[.float32, MinPLayoutType, ImmutAnyOrigin, Engine=MinPEngine]
     ] = None,
     out_dist: Optional[
-        TileTensor[dist_dtype, DistLayoutType, MutAnyOrigin]
+        TileTensor[
+            dist_dtype, DistLayoutType, MutAnyOrigin, Engine=OutDistEngine
+        ]
     ] = None,
 ) raises:
     """Joint top-k + top-p sampling from probability distribution.
@@ -1407,6 +1418,7 @@ def topk_topp_sampling_from_prob_cluster[
         TemperatureEngine: Engine of the optional `temperature`
             tensor.
         MinPEngine: Engine of the optional `min_p` tensor.
+        OutDistEngine: Engine of the optional `out_dist` tensor.
 
     Args:
         ctx: Device context for kernel execution.

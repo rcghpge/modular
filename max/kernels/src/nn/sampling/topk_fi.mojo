@@ -253,10 +253,18 @@ def TopKMaskLogitsKernel[
     logits_origin: ImmOrigin,
     MaskedLogitsLayoutType: TensorLayout,
     masked_logits_origin: MutOrigin,
+    *,
+    LogitsEngine: TensorEngine,
+    MaskedLogitsEngine: TensorEngine,
 ](
-    logits: TileTensor[dtype, LogitsLayoutType, logits_origin],
+    logits: TileTensor[
+        dtype, LogitsLayoutType, logits_origin, Engine=LogitsEngine
+    ],
     masked_logits: TileTensor[
-        dtype, MaskedLogitsLayoutType, masked_logits_origin
+        dtype,
+        MaskedLogitsLayoutType,
+        masked_logits_origin,
+        Engine=MaskedLogitsEngine,
     ],
     top_k_arr: Optional[
         UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
@@ -482,6 +490,8 @@ def topk_mask_logits[
                 logits_origin=ImmOrigin(logits.origin),
                 MaskedLogitsLayoutType=masked_logits.LayoutType,
                 masked_logits_origin=masked_logits.origin,
+                LogitsEngine=logits.Engine,
+                MaskedLogitsEngine=masked_logits.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
@@ -778,9 +788,14 @@ def TopKSamplingFromProbKernel[
     dtype: DType,
     out_idx_type: DType,
     deterministic: Bool,
+    *,
+    ProbsEngine: TensorEngine,
+    OutputEngine: TensorEngine,
 ](
-    probs: TileTensor[dtype, ProbsLayoutType, probs_origin],
-    output: TileTensor[out_idx_type, OutputLayoutType, output_origin],
+    probs: TileTensor[dtype, ProbsLayoutType, probs_origin, Engine=ProbsEngine],
+    output: TileTensor[
+        out_idx_type, OutputLayoutType, output_origin, Engine=OutputEngine
+    ],
     indices: Optional[UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]],
     top_k_arr: Optional[
         UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
@@ -808,6 +823,8 @@ def TopKSamplingFromProbKernel[
         dtype: Element type of the `probs` tensor.
         out_idx_type: Index type used for the sampled output indices.
         deterministic: If True, use deterministic sampling.
+        ProbsEngine: Storage engine backing the `probs` tile.
+        OutputEngine: Storage engine backing the `output` tile.
 
     Args:
         probs: Input probability distribution [batch_size, _d].
@@ -1240,6 +1257,8 @@ def topk_sampling_from_prob[
                 dtype,
                 out_idx_type,
                 deterministic,
+                ProbsEngine=probs.Engine,
+                OutputEngine=output.Engine,
             ]
             ctx.enqueue_function[kernel](
                 probs.as_imm(),
@@ -2627,6 +2646,9 @@ def topk_topp_sampling_from_prob[
     SeedEngine: TensorEngine = DefaultEngine[element_width=1],
     TemperatureEngine: TensorEngine = DefaultEngine[element_width=1],
     MinPEngine: TensorEngine = DefaultEngine[element_width=1],
+    # Defaulted because `out_dist` is optional: when it is None there is no
+    # tile argument for the engine to be inferred from.
+    OutDistEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     ctx: DeviceContext,
     probs: TileTensor[mut=False, dtype, ...],
@@ -2674,7 +2696,9 @@ def topk_topp_sampling_from_prob[
         TileTensor[.float32, MinPLayoutType, ImmutAnyOrigin, Engine=MinPEngine]
     ] = None,
     out_dist: Optional[
-        TileTensor[dist_dtype, DistLayoutType, MutAnyOrigin]
+        TileTensor[
+            dist_dtype, DistLayoutType, MutAnyOrigin, Engine=OutDistEngine
+        ]
     ] = None,
 ) raises:
     """Joint top-k + top-p sampling from probability distribution.
@@ -2716,6 +2740,7 @@ def topk_topp_sampling_from_prob[
         TemperatureEngine: Engine of the optional `temperature`
             tensor.
         MinPEngine: Engine of the optional `min_p` tensor.
+        OutDistEngine: Engine of the optional `out_dist` tensor.
 
     Args:
         ctx: Device context for kernel execution.
@@ -2908,10 +2933,15 @@ def topk_softmax_sample_kernel[
     logits_origin: ImmOrigin,
     SampledLayoutType: TensorLayout,
     sampled_origin: MutOrigin,
+    *,
+    LogitsEngine: TensorEngine,
+    SampledEngine: TensorEngine,
 ](
-    logits: TileTensor[dtype, LogitsLayoutType, logits_origin],
+    logits: TileTensor[
+        dtype, LogitsLayoutType, logits_origin, Engine=LogitsEngine
+    ],
     sampled_indices: TileTensor[
-        out_idx_type, SampledLayoutType, sampled_origin
+        out_idx_type, SampledLayoutType, sampled_origin, Engine=SampledEngine
     ],
     top_k_arr: Optional[
         UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
@@ -3297,6 +3327,8 @@ def topk_softmax_sample[
                 logits_origin=ImmOrigin(logits.origin),
                 SampledLayoutType=sampled_indices.LayoutType,
                 sampled_origin=sampled_indices.origin,
+                LogitsEngine=logits.Engine,
+                SampledEngine=sampled_indices.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
@@ -3331,8 +3363,12 @@ def TopKTopPMaskedProbsKernel[
     LogitsLayoutType: TensorLayout,
     logits_origin: ImmOrigin,
     coop_size: Int = 1,
+    *,
+    LogitsEngine: TensorEngine,
 ](
-    logits: TileTensor[dtype, LogitsLayoutType, logits_origin],
+    logits: TileTensor[
+        dtype, LogitsLayoutType, logits_origin, Engine=LogitsEngine
+    ],
     probs_ptr: UnsafePointer[Float32, MutAnyOrigin],
     top_k_arr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     top_k_val: Int32,
@@ -3356,6 +3392,7 @@ def TopKTopPMaskedProbsKernel[
         logits_origin: Origin tag for the immutable `logits` tile.
         coop_size: Blocks sharing each row; 1 keeps the whole row in one
             block and compiles the cross-block traffic away.
+        LogitsEngine: Storage engine backing the `logits` tile.
 
     Args:
         logits: Input logits [batch_size, d].
@@ -3552,10 +3589,14 @@ def topk_topp_masked_probs[
     TopKArrEngine: TensorEngine = DefaultEngine[element_width=1],
     TopPArrEngine: TensorEngine = DefaultEngine[element_width=1],
     TemperatureEngine: TensorEngine = DefaultEngine[element_width=1],
+    *,
+    ProbsEngine: TensorEngine,
 ](
     ctx: DeviceContext,
     logits: TileTensor[mut=False, dtype, ...],
-    probs: TileTensor[.float32, ProbsLayoutType, MutAnyOrigin],
+    probs: TileTensor[
+        .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
+    ],
     top_k_val: Int,
     top_p_val: Float32 = 1.0,
     top_k_arr: Optional[
@@ -3591,6 +3632,7 @@ def topk_topp_masked_probs[
         TopKArrEngine: Engine policy of `top_k_arr`.
         TopPArrEngine: Engine policy of `top_p_arr`.
         TemperatureEngine: Engine policy of `temperature`.
+        ProbsEngine: Engine policy of `probs`.
 
     Args:
         ctx: Device context.
@@ -3672,6 +3714,7 @@ def topk_topp_masked_probs[
                 logits.LayoutType,
                 ImmOrigin(logits.origin),
                 coop_size,
+                LogitsEngine=logits.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),

@@ -45,6 +45,7 @@ from max.gpu.host.info import is_gpu
 from layout import (
     Coord,
     Idx,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     row_major,
@@ -100,21 +101,52 @@ def moe_create_indices_kernel[
     TopkIdsLayoutType: TensorLayout,
     block_threads: Int = _BLOCK_THREADS,
     _scale_alignment: UInt32 = 128,
+    *,
+    TokenExpertOrderEngine: TensorEngine,
+    ExpertStartIndicesEngine: TensorEngine,
+    RestoreTokenOrderEngine: TensorEngine,
+    ExpertIdsEngine: TensorEngine,
+    ExpertUsageStatsEngine: TensorEngine,
+    TopkIdsEngine: TensorEngine,
 ](
     token_expert_order: TileTensor[
-        mut=True, .uint32, TokenExpertOrderLayoutType, MutAnyOrigin
+        mut=True,
+        .uint32,
+        TokenExpertOrderLayoutType,
+        MutAnyOrigin,
+        Engine=TokenExpertOrderEngine,
     ],
     expert_start_indices: TileTensor[
-        mut=True, .uint32, ExpertStartIndicesLayoutType, MutAnyOrigin
+        mut=True,
+        .uint32,
+        ExpertStartIndicesLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertStartIndicesEngine,
     ],
     restore_token_order: TileTensor[
-        mut=True, .uint32, RestoreTokenOrderLayoutType, MutAnyOrigin
+        mut=True,
+        .uint32,
+        RestoreTokenOrderLayoutType,
+        MutAnyOrigin,
+        Engine=RestoreTokenOrderEngine,
     ],
-    expert_ids: TileTensor[mut=True, .int32, ExpertIdsLayoutType, MutAnyOrigin],
+    expert_ids: TileTensor[
+        mut=True,
+        .int32,
+        ExpertIdsLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertIdsEngine,
+    ],
     expert_usage_stats: TileTensor[
-        mut=True, .uint32, ExpertUsageStatsLayoutType, MutAnyOrigin
+        mut=True,
+        .uint32,
+        ExpertUsageStatsLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertUsageStatsEngine,
     ],
-    topk_ids: TileTensor[input_type, TopkIdsLayoutType, ImmutAnyOrigin],
+    topk_ids: TileTensor[
+        input_type, TopkIdsLayoutType, ImmutAnyOrigin, Engine=TopkIdsEngine
+    ],
     scales_offset_p: Optional[UnsafePointer[UInt32, MutAnyOrigin]],
 ):
     """Builds MoE routing indices in one CTA using a block-wide scan.
@@ -311,6 +343,12 @@ def moe_create_indices[
             expert_usage_stats.LayoutType,
             topk_ids.LayoutType,
             block_threads,
+            TokenExpertOrderEngine=token_expert_order.Engine,
+            ExpertStartIndicesEngine=expert_start_indices.Engine,
+            RestoreTokenOrderEngine=restore_token_order.Engine,
+            ExpertIdsEngine=expert_ids.Engine,
+            ExpertUsageStatsEngine=expert_usage_stats.Engine,
+            TopkIdsEngine=topk_ids.Engine,
         ]
 
         context.enqueue_function[kernel](
@@ -483,14 +521,28 @@ def group_limited_router_kernel[
     ScoresInputFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[width: Int](Coord) -> SIMD[scores_type, width],
+    *,
+    ExpertIndicesEngine: TensorEngine,
+    ExpertWeightsEngine: TensorEngine,
+    ExpertBiasEngine: TensorEngine,
 ](
     expert_indices: TileTensor[
-        mut=True, .int32, ExpertIndicesLayoutType, MutAnyOrigin
+        mut=True,
+        .int32,
+        ExpertIndicesLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertIndicesEngine,
     ],
     expert_weights: TileTensor[
-        mut=True, scores_type, ExpertWeightsLayoutType, MutAnyOrigin
+        mut=True,
+        scores_type,
+        ExpertWeightsLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertWeightsEngine,
     ],
-    expert_bias: TileTensor[bias_type, ExpertBiasLayoutType, ImmutAnyOrigin],
+    expert_bias: TileTensor[
+        bias_type, ExpertBiasLayoutType, ImmutAnyOrigin, Engine=ExpertBiasEngine
+    ],
     routed_scaling_factor: Float32,
     scores_input_fn: ScoresInputFnType,
 ):
@@ -527,6 +579,9 @@ def group_limited_router_kernel[
             each thread scores one expert.
         ScoresInputFnType: Type of the closure that loads the routing
             scores.
+        ExpertIndicesEngine: Storage engine backing the `expert_indices` tile.
+        ExpertWeightsEngine: Storage engine backing the `expert_weights` tile.
+        ExpertBiasEngine: Storage engine backing the `expert_bias` tile.
 
     Args:
         expert_indices: Output tensor holding the selected expert index per
@@ -840,6 +895,9 @@ def router_group_limited[
             norm_weights,
             num_threads,
             ScoresInputFnType=ScoresInputFnType,
+            ExpertIndicesEngine=expert_indices.Engine,
+            ExpertWeightsEngine=expert_weights.Engine,
+            ExpertBiasEngine=expert_bias.Engine,
         ]
 
         gpu_ctx.enqueue_function[kernel](
@@ -1004,14 +1062,28 @@ def single_group_router_kernel[
     ScoresInputFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[width: Int](Coord) -> SIMD[scores_type, width],
+    *,
+    ExpertIndicesEngine: TensorEngine,
+    ExpertWeightsEngine: TensorEngine,
+    ExpertBiasEngine: TensorEngine,
 ](
     expert_indices: TileTensor[
-        mut=True, .int32, ExpertIndicesLayoutType, MutAnyOrigin
+        mut=True,
+        .int32,
+        ExpertIndicesLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertIndicesEngine,
     ],
     expert_weights: TileTensor[
-        mut=True, scores_type, ExpertWeightsLayoutType, MutAnyOrigin
+        mut=True,
+        scores_type,
+        ExpertWeightsLayoutType,
+        MutAnyOrigin,
+        Engine=ExpertWeightsEngine,
     ],
-    expert_bias: TileTensor[bias_type, ExpertBiasLayoutType, ImmutAnyOrigin],
+    expert_bias: TileTensor[
+        bias_type, ExpertBiasLayoutType, ImmutAnyOrigin, Engine=ExpertBiasEngine
+    ],
     routed_scaling_factor: Float32,
     scores_input_fn: ScoresInputFnType,
 ):
@@ -1419,6 +1491,9 @@ def single_group_router[
             norm_weights,
             num_threads,
             ScoresInputFnType=ScoresInputFnType,
+            ExpertIndicesEngine=expert_indices.Engine,
+            ExpertWeightsEngine=expert_weight.Engine,
+            ExpertBiasEngine=expert_bias.Engine,
         ]
 
         # launch the kernle using gpu_ctx
