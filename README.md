@@ -26,19 +26,24 @@ To get started with the Mojo language, see
 
 ## About the repo
 
-We're constantly open-sourcing more of the Modular Platform and you can find
-all of it in here.
+We're actively open-sourcing more of the Modular Platform over time.
 
-The main components include:
+The main components for which source is available today include:
 
-- Mojo compiler: [/Mojo](/Mojo)
-- Mojo standard library: [/Mojo/stdlib](/Mojo/stdlib)
-- MAX accelerator library: [/max/kernels](/max/kernels)
-- MAX inference server: [/max/python/max/serve](/max/python/max/serve)
-  (OpenAI-compatible endpoint)
+- Mojo compiler: [/Mojo](/Mojo) (since August 2026)
+- Mojo standard library: [/Mojo/stdlib](/Mojo/stdlib) (since March
+  2024)
+- MAX GPU programming abstractions: [/max/mojo/max/gpu](/max/mojo/max/gpu)
+  (GPU programming in Mojo, since May 2025)
+- MAX accelerator library: [/max/kernels](/max/kernels) (Mojo compute kernels,
+  since May 2025)
+- MAX AI framework: [/max/python/max](/max/python/max) (model authoring in
+  Python, since November 2025)
 - MAX model pipelines: [/max/python/max/pipelines](/max/python/max/pipelines)
-  (Python-based graphs)
-- Code examples: [/max/examples](/max/examples) +
+  (models built on the framework, since May 2025)
+- MAX inference server: [/max/python/max/serve](/max/python/max/serve)
+  (OpenAI-compatible endpoint, since May 2025)
+- Code examples: [/max/examples](/max/examples) and
   [/Mojo/examples](/Mojo/examples)
 
 ## Contribute
