@@ -657,7 +657,7 @@ def reduce[
         var blocks_per_row = Int(ctx._blocks_per_row)
         var block_in_row = Int(ctx._block_in_row)
         var tid = thread_idx.x
-        var row_tid = block_in_row * ctx.BLOCK_SIZE + Int(tid)
+        var row_tid = block_in_row * ctx.BLOCK_SIZE + tid
         var row_total_threads = blocks_per_row * ctx.BLOCK_SIZE
 
         # `sw > 1` is dispatched only when `sw` divides the row, so the stripe
@@ -752,7 +752,7 @@ def reduce[
         var blocks_per_row = Int(ctx._blocks_per_row) if fits else 1
         var block_in_row = Int(ctx._block_in_row)
         var tid = thread_idx.x
-        var row_tid = block_in_row * ctx.BLOCK_SIZE + Int(tid)
+        var row_tid = block_in_row * ctx.BLOCK_SIZE + tid
         var row_total_threads = blocks_per_row * ctx.BLOCK_SIZE
 
         if fits or block_in_row == 0:
@@ -889,8 +889,8 @@ def pjoin[
                 # the identity, so the lowest per-block index won the
                 # tie-break instead of the row's argmax.
                 var local = State.Single()
-                if Int(tid_) < blocks_per_row_:
-                    local = ctx.row_partial[State.Single](Int(tid_))[0]
+                if tid_ < blocks_per_row_:
+                    local = ctx.row_partial[State.Single](tid_)[0]
                 local.join_parallel(BlockReducer[ctx.BLOCK_SIZE]())
                 state = State(local)
     else:
