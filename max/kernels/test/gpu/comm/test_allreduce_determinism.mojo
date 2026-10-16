@@ -175,9 +175,7 @@ def allreduce_determinism_test[
     ]
     var in_tensors = Array[_, ngpus](
         fill_with=lambda (i: Int) -> InTensorType: TileTensor(
-            rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
-                in_dev[i].unsafe_ptr()
-            ),
+            in_dev[i].unsafe_ptr(),
             row_major(length),
         )
     )
