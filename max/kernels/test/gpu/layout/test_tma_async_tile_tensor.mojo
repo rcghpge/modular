@@ -25,9 +25,9 @@ result against the host values:
   tensor's strides
 - bfloat16 with a padded row stride
 
-Store tests compare native immutable and legacy flat/nested shared views across
-ranks 2–5, direct and rank-dispatched APIs, both descriptor box orders, and
-nonzero global coordinates. Rank-4/5 tiles contain multiple descriptor boxes.
+Store tests cover a flat shared-memory source across ranks 2–5, direct and
+rank-dispatched APIs, both descriptor box orders, and nonzero global
+coordinates. Rank-4/5 tiles contain multiple descriptor boxes.
 """
 
 from std.math import align_up
@@ -46,9 +46,6 @@ from layout import (
     Coord,
     Idx,
     MixedLayout,
-    Layout,
-    LayoutTensor,
-    IntTuple,
     coord,
     RowMajorLayout,
     TileTensor,
@@ -190,7 +187,6 @@ def tma_store_rank_kernel[
     tile_shape: Coord,
     desc_shape: Coord,
     k_major: Bool,
-    legacy: Int,
     generic: Bool,
 ](tma_tile: TMATensorTile[.float32, tile_shape, desc_shape, k_major]):
     comptime rank = tile_shape.rank
@@ -204,65 +200,20 @@ def tma_store_rank_kernel[
     fence_async_view_proxy()
 
     if thread_idx.x == 0:
-        comptime if legacy == 1:
-            # A rank-one source verifies that TMA does not use logical strides
-            # to address the descriptor's higher-rank physical boxes.
-            var src = LayoutTensor[
-                .float32,
-                Layout.row_major(size),
-                address_space=.SHARED,
-                alignment=128,
-            ](ptr)
-            comptime if generic:
-                var coords = StaticTuple[UInt32, rank]()
-                comptime for i in range(rank):
-                    coords[i] = UInt32(4 if i == 0 else 1)
-                tma_tile.async_store(src, coords)
-            elif rank == 2:
-                tma_tile.async_store(src, (4, 1))
-            elif rank == 3:
-                tma_tile.async_store_3d(src, (4, 1, 1))
-            elif rank == 4:
-                tma_tile.async_store_4d(src, (4, 1, 1, 1))
-            else:
-                tma_tile.async_store_5d(src, (4, 1, 1, 1, 1))
-        elif legacy == 2:
-            var src = LayoutTensor[
-                .float32,
-                Layout.row_major(IntTuple(IntTuple(2, size // 4), 2)),
-                address_space=.SHARED,
-                alignment=128,
-            ](ptr)
-            comptime if generic:
-                var coords = StaticTuple[UInt32, rank]()
-                comptime for i in range(rank):
-                    coords[i] = UInt32(4 if i == 0 else 1)
-                tma_tile.async_store(src, coords)
-            elif rank == 2:
-                tma_tile.async_store(src, (4, 1))
-            elif rank == 3:
-                tma_tile.async_store_3d(src, (4, 1, 1))
-            elif rank == 4:
-                tma_tile.async_store_4d(src, (4, 1, 1, 1))
-            else:
-                tma_tile.async_store_5d(src, (4, 1, 1, 1, 1))
+        var src = TileTensor(ptr.unsafe_mut_cast[False](), row_major[size]())
+        comptime if generic:
+            var coords = StaticTuple[UInt32, rank]()
+            comptime for i in range(rank):
+                coords[i] = UInt32(4 if i == 0 else 1)
+            tma_tile.async_store(src, coords)
+        elif rank == 2:
+            tma_tile.async_store(src, (4, 1))
+        elif rank == 3:
+            tma_tile.async_store_3d(src, (4, 1, 1))
+        elif rank == 4:
+            tma_tile.async_store_4d(src, (4, 1, 1, 1))
         else:
-            var src = TileTensor(
-                ptr.unsafe_mut_cast[False](), row_major[size]()
-            )
-            comptime if generic:
-                var coords = StaticTuple[UInt32, rank]()
-                comptime for i in range(rank):
-                    coords[i] = UInt32(4 if i == 0 else 1)
-                tma_tile.async_store(src, coords)
-            elif rank == 2:
-                tma_tile.async_store(src, (4, 1))
-            elif rank == 3:
-                tma_tile.async_store_3d(src, (4, 1, 1))
-            elif rank == 4:
-                tma_tile.async_store_4d(src, (4, 1, 1, 1))
-            else:
-                tma_tile.async_store_5d(src, (4, 1, 1, 1, 1))
+            tma_tile.async_store_5d(src, (4, 1, 1, 1, 1))
 
         cp_async_bulk_commit_group()
         cp_async_bulk_wait_group[0]()
@@ -273,7 +224,6 @@ def test_tma_store_rank[
     desc_shape: Coord,
     global_shape: Coord,
     k_major: Bool,
-    legacy: Int,
     generic: Bool,
 ](ctx: DeviceContext) raises:
     comptime rank = tile_shape.rank
@@ -290,7 +240,7 @@ def test_tma_store_rank[
         __desc_shape=desc_shape,
     ](ctx, dst.device_tensor())
     ctx.enqueue_function[
-        tma_store_rank_kernel[tile_shape, desc_shape, k_major, legacy, generic]
+        tma_store_rank_kernel[tile_shape, desc_shape, k_major, generic]
     ](tma, grid_dim=1, block_dim=32)
     dst.to_host()
     var host = dst.host_tensor()
@@ -332,51 +282,44 @@ def test_tma_store_rank[
         rank,
         " k_major=",
         k_major,
-        " source_mode=",
-        legacy,
         " generic=",
         generic,
     )
 
 
 def test_tma_store_ranks(ctx: DeviceContext) raises:
-    comptime for legacy in range(3):
-        comptime for api in range(2):
-            comptime generic = api == 1
-            comptime for major in range(2):
-                comptime k_major = major == 1
-                test_tma_store_rank[
-                    coord[8, 8],
-                    coord[8, 8],
-                    coord[12, 16],
-                    k_major,
-                    legacy,
-                    generic,
-                ](ctx)
-                test_tma_store_rank[
-                    coord[2, 2, 8],
-                    coord[2, 2, 8],
-                    coord[4, 4, 16],
-                    k_major,
-                    legacy,
-                    generic,
-                ](ctx)
-                test_tma_store_rank[
-                    coord[2, 2, 2, 8],
-                    coord[1, 2, 2, 8],
-                    coord[4, 4, 4, 16],
-                    k_major,
-                    legacy,
-                    generic,
-                ](ctx)
-                test_tma_store_rank[
-                    coord[2, 2, 2, 2, 8],
-                    coord[1, 1, 2, 2, 8],
-                    coord[4, 4, 4, 4, 16],
-                    k_major,
-                    legacy,
-                    generic,
-                ](ctx)
+    comptime for api in range(2):
+        comptime generic = api == 1
+        comptime for major in range(2):
+            comptime k_major = major == 1
+            test_tma_store_rank[
+                coord[8, 8],
+                coord[8, 8],
+                coord[12, 16],
+                k_major,
+                generic,
+            ](ctx)
+            test_tma_store_rank[
+                coord[2, 2, 8],
+                coord[2, 2, 8],
+                coord[4, 4, 16],
+                k_major,
+                generic,
+            ](ctx)
+            test_tma_store_rank[
+                coord[2, 2, 2, 8],
+                coord[1, 2, 2, 8],
+                coord[4, 4, 4, 16],
+                k_major,
+                generic,
+            ](ctx)
+            test_tma_store_rank[
+                coord[2, 2, 2, 2, 8],
+                coord[1, 1, 2, 2, 8],
+                coord[4, 4, 4, 4, 16],
+                k_major,
+                generic,
+            ](ctx)
 
 
 def main() raises:
