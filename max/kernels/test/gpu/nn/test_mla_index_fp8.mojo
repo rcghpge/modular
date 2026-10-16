@@ -1187,9 +1187,7 @@ def test_mla_index_frozen_metadata_equivalence[
 
     # One shared LUT, wide enough for the frozen metadata; the reference run only
     # dereferences the real-page prefix. Tail slots point at block 0.
-    var real_pages_per_seq = (max_cache_len + max_seq_len + page_size - 1) // (
-        page_size
-    )
+    var real_pages_per_seq = ceildiv(max_cache_len + max_seq_len, page_size)
     var lut_pages_per_seq = (
         frozen_cache_len + max_seq_len + page_size - 1
     ) // page_size
@@ -1488,9 +1486,7 @@ def test_mla_index_chunked_equivalence[
     )
     comptime num_layers = 1
 
-    var pages_per_seq = (max_cache_len + max_seq_len + page_size - 1) // (
-        page_size
-    )
+    var pages_per_seq = ceildiv(max_cache_len + max_seq_len, page_size)
     var num_blocks = batch_size * pages_per_seq + 1
 
     var q_size = total_seq_len * num_heads * depth

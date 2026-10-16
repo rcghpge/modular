@@ -48,7 +48,7 @@ def _scatter[dtype: DType](output: UnsafePointer[Scalar[dtype], MutAnyOrigin]):
     comptime mma = get_mma_shape[dtype, .float32]()
     comptime assert mma[0] == MMA_M and mma[1] == MMA_N
     comptime assert get_fragment_size[mma]()[2] == FRAGMENT
-    var lane = Int(thread_idx.x)
+    var lane = thread_idx.x
     var storage = stack_allocation[dtype, address_space=.SHARED](
         row_major[RING_SIZE + 2 * GUARD]()
     )

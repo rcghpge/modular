@@ -53,7 +53,7 @@ def _scatter[
     comptime assert mma[0] == MMA_M and mma[1] == MMA_N
     comptime assert get_fragment_size[mma]()[2] == FRAGMENT
     comptime assert simd_width_of[dtype]() == (4 if dtype == .float32 else 8)
-    var lane = Int(thread_idx.x)
+    var lane = thread_idx.x
     var storage = stack_allocation[dtype, address_space=.SHARED, alignment=16](
         row_major[RING_SIZE + 2 * GUARD]()
     )
