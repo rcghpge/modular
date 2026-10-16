@@ -708,3 +708,94 @@ AutoConfig.register("muse_glimmer", MuseGlimmerHFConfig, exist_ok=True)
 AutoConfig.register(
     "muse_glimmer_text", _MuseGlimmerTextHFConfig, exist_ok=True
 )
+
+
+# TODO: drop this shim once bazel pins transformers >= 5.16, which
+# ships native hy_v4 (huggingface/transformers#48473).
+class HYV4HFConfig(PretrainedConfig):
+    """Local config class for Hy4 (``model_type: hy_v4``).
+
+    Defaults and derivations follow transformers 5.17.0's ``HYV4Config``, except
+    that ``num_key_value_heads`` stays as published: MLA expands the latent to
+    one KV head per query head, and :class:`HYV4Config` derives that on the
+    MAX side.
+    """
+
+    model_type = "hy_v4"
+    keys_to_ignore_at_inference = ["past_key_values"]
+    attribute_map = {"num_local_experts": "n_routed_experts"}
+    _defaults: ClassVar[dict[str, Any]] = {
+        "vocab_size": 120832,
+        "hidden_size": 2816,
+        "intermediate_size": 6912,
+        "moe_intermediate_size": 768,
+        "num_hidden_layers": 34,
+        "num_attention_heads": 32,
+        "num_key_value_heads": 32,
+        "head_dim": 256,
+        "hidden_act": "silu",
+        "max_position_embeddings": 262144,
+        "initializer_range": 0.006,
+        "rms_norm_eps": 1e-5,
+        "use_cache": True,
+        "pad_token_id": 120002,
+        "bos_token_id": 120000,
+        "eos_token_id": 120025,
+        "tie_word_embeddings": False,
+        "attention_bias": False,
+        "attention_dropout": 0.0,
+        "n_routed_experts": 256,
+        "n_shared_experts": 1,
+        "num_experts_per_tok": 8,
+        "routed_scaling_factor": 2.827,
+        "norm_topk_prob": True,
+        "n_group": 1,
+        "topk_group": 1,
+        "q_lora_rank": 1536,
+        "kv_lora_rank": 512,
+        "qk_nope_head_dim": 192,
+        "qk_rope_head_dim": 64,
+        "v_head_dim": 256,
+        "mlp_layer_types": None,
+        "layer_types": None,
+        "index_topk": 2048,
+        "index_head_dim": 128,
+        "index_n_heads": 16,
+        "indexer_types": None,
+        "hc_mult": 4,
+        "hc_magnitude": 2.0,
+        "hc_eps": 1e-6,
+        "learnable_sink_init": 0.0,
+        "swiglu_limit": 10.0,
+        "rope_parameters": None,
+    }
+
+    def __init__(self, **kwargs: Any) -> None:
+        kwargs = {**copy.deepcopy(self._defaults), **kwargs}
+        n = kwargs["num_hidden_layers"]
+        # transformers >= 5.18 writes DSA layers as "indexed_attention"
+        # (huggingface/transformers#48974), which 5.12's layer-type
+        # validation rejects.
+        kwargs["layer_types"] = [
+            "deepseek_sparse_attention" if t == "indexed_attention" else t
+            for t in kwargs["layer_types"] or ["deepseek_sparse_attention"] * n
+        ]
+        if kwargs["mlp_layer_types"] is None:
+            kwargs["mlp_layer_types"] = ["dense"] * min(1, n) + [
+                "sparse"
+            ] * max(n - 1, 0)
+        if kwargs["indexer_types"] is None:
+            kwargs["indexer_types"] = [
+                "full" if i == 0 or (i - 1) % 4 == 0 else "shared"
+                for i in range(n)
+            ]
+        kwargs["qk_head_dim"] = (
+            kwargs["qk_nope_head_dim"] + kwargs["qk_rope_head_dim"]
+        )
+        kwargs["head_dim"] = kwargs["qk_rope_head_dim"]
+        super().__init__(**kwargs)
+        # The base init pops generation parameters; the reference declares it.
+        self.use_cache = kwargs["use_cache"]
+
+
+AutoConfig.register("hy_v4", HYV4HFConfig, exist_ok=True)

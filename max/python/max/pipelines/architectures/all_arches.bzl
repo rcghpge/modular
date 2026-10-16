@@ -39,6 +39,7 @@ ALL_ARCHITECTURES = [
     "//max/python/max/pipelines/architectures/granite",
     "//max/python/max/pipelines/architectures/granite_modulev3",
     "//max/python/max/pipelines/architectures/hy_v3",
+    "//max/python/max/pipelines/architectures/hy_v4",
     "//max/python/max/pipelines/architectures/idefics3",
     "//max/python/max/pipelines/architectures/idefics3_modulev3",
     "//max/python/max/pipelines/architectures/ideogram4",
