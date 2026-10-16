@@ -61,9 +61,9 @@ def loadTile(
         row += subtile * num_rows_per_tile
 
         if row < maxRow and col < maxCol:
-            T_s[row * ldas + col] = Float32(T[row * lda + col])
+            T_s[row * ldas + col] = T[row * lda + col]
         else:
-            T_s[row * ldas + col] = Float32(0.0)
+            T_s[row * ldas + col] = 0.0
 
 
 def mm_tiled_kernel(
@@ -133,9 +133,7 @@ def mm_tiled_kernel(
                 for k in range(bK):
                     var a_idx = (tRow + row) * bK + k
                     var b_idx = k * bN + (tCol + col)
-                    Cr[row * tN + col] += Float32(A_s[a_idx]) * Float32(
-                        B_s[b_idx]
-                    )
+                    Cr[row * tN + col] += A_s[a_idx] * B_s[b_idx]
 
         barrier()
 
