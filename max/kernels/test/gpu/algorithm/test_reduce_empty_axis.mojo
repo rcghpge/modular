@@ -70,7 +70,6 @@ from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceContext
 from std.math import isnan
 from std.testing import TestSuite, assert_equal, assert_true
-from std.utils.index import Index
 from std.utils.numerics import min_finite
 
 
@@ -93,9 +92,7 @@ def _test_reduce_sum_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         var out_d = ctx.enqueue_create_buffer[dtype](num_rows)
         ctx.enqueue_copy(in_d, in_h)
 
-        var in_buf = TileTensor(
-            in_d, row_major(Coord(Index(num_rows, real_axis_size)))
-        )
+        var in_buf = TileTensor(in_d, row_major((num_rows, real_axis_size)))
         var out_ptr = out_d.unsafe_ptr()
 
         @inline(.always)
@@ -126,7 +123,7 @@ def _test_reduce_sum_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
 
         # Run 1: real data (all 2s) over a real axis. Sum = 2 * 4 = 8/row.
         reduce_sum[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, real_axis_size)), ctx
+            input_fn, output_fn, Coord(num_rows, real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -138,7 +135,7 @@ def _test_reduce_sum_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         # a trap), the `num_rows == 0` arm read that as "no rows", and it
         # returned before writing — `out_d` would still read back `8`.
         reduce_sum[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, 0)), ctx
+            input_fn, output_fn, Coord(num_rows, 0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -170,9 +167,7 @@ def _test_reduce_max_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         var out_d = ctx.enqueue_create_buffer[dtype](num_rows)
         ctx.enqueue_copy(in_d, in_h)
 
-        var in_buf = TileTensor(
-            in_d, row_major(Coord(Index(num_rows, real_axis_size)))
-        )
+        var in_buf = TileTensor(in_d, row_major((num_rows, real_axis_size)))
         var out_ptr = out_d.unsafe_ptr()
 
         @inline(.always)
@@ -195,7 +190,7 @@ def _test_reduce_max_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
 
         # Run 1: real max = real_axis_size (4).
         reduce_max[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, real_axis_size)), ctx
+            input_fn, output_fn, Coord(num_rows, real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -205,7 +200,7 @@ def _test_reduce_max_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         # Run 2: SAME `out_d`, empty axis. Must become the identity, not
         # the stale `4` from run 1.
         reduce_max[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, 0)), ctx
+            input_fn, output_fn, Coord(num_rows, 0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -244,9 +239,7 @@ def _test_reduce_argmax_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         var out_d = ctx.enqueue_create_buffer[out_dtype](num_rows)
         ctx.enqueue_copy(in_d, in_h)
 
-        var in_buf = TileTensor(
-            in_d, row_major(Coord(Index(num_rows, real_axis_size)))
-        )
+        var in_buf = TileTensor(in_d, row_major((num_rows, real_axis_size)))
         var out_ptr = out_d.unsafe_ptr()
 
         @inline(.always)
@@ -269,7 +262,7 @@ def _test_reduce_argmax_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
 
         # Run 1: real winner at `winner_idx`.
         reduce_argmax[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, real_axis_size)), ctx
+            input_fn, output_fn, Coord(num_rows, real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -279,7 +272,7 @@ def _test_reduce_argmax_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         # Run 2: SAME `out_d`, empty axis. Must become `0` (the
         # `_in_range_index`-clamped identity), not the stale `winner_idx`.
         reduce_argmax[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, 0)), ctx
+            input_fn, output_fn, Coord(num_rows, 0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -326,7 +319,7 @@ def _max_non_inner_real_then_empty[
             out_ptr.unsafe_store[width=width](Int(coords[1].value()), val)
 
         reduce_max[dtype, target="gpu", reduce_dim=0](
-            input_fn, output_fn, Coord(Index(real_axis_size, num_cols)), ctx
+            input_fn, output_fn, Coord(real_axis_size, num_cols), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -334,7 +327,7 @@ def _max_non_inner_real_then_empty[
             assert_equal(out_h[i], real_value, String("real col ", i))
 
         reduce_max[dtype, target="gpu", reduce_dim=0](
-            input_fn, output_fn, Coord(Index(0, num_cols)), ctx
+            input_fn, output_fn, Coord(0, num_cols), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -386,14 +379,14 @@ def _test_reduce_sum_rank1_stale_buffer_gpu[
             out_ptr.unsafe_store[width=width](0, val)
 
         reduce_sum[dtype, target="gpu", reduce_dim=0](
-            input_fn, output_fn, Coord(Index(real_axis_size)), ctx
+            input_fn, output_fn, Coord(real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
         assert_equal(out_h[0], real_value * real_axis_size)
 
         reduce_sum[dtype, target="gpu", reduce_dim=0](
-            input_fn, output_fn, Coord(Index(0)), ctx
+            input_fn, output_fn, Coord(0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -435,7 +428,7 @@ def _test_reduce_mean_int_empty_axis_gpu[dtype: DType = DType.int32]() raises:
         # Run 1: mean of four 2s is 2, so the stale value is not the
         # identity the empty run must produce.
         reduce_mean[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, real_axis_size)), ctx
+            input_fn, output_fn, Coord(num_rows, real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -443,7 +436,7 @@ def _test_reduce_mean_int_empty_axis_gpu[dtype: DType = DType.int32]() raises:
         assert_equal(out_h[1], real_value)
 
         reduce_mean[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, 0)), ctx
+            input_fn, output_fn, Coord(num_rows, 0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -484,7 +477,7 @@ def _test_reduce_mean_float_empty_axis_gpu[
             out_ptr.unsafe_store[width=width](Int(coords[0].value()), val)
 
         reduce_mean[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, real_axis_size)), ctx
+            input_fn, output_fn, Coord(num_rows, real_axis_size), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
@@ -492,7 +485,7 @@ def _test_reduce_mean_float_empty_axis_gpu[
         assert_equal(out_h[1], real_value)
 
         reduce_mean[dtype, target="gpu", reduce_dim=1](
-            input_fn, output_fn, Coord(Index(num_rows, 0)), ctx
+            input_fn, output_fn, Coord(num_rows, 0), ctx
         )
         ctx.enqueue_copy(out_h, out_d)
         ctx.synchronize()
