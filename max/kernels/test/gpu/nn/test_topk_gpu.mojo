@@ -37,6 +37,9 @@ from nn.topk import (
     _top_k_cpu,
     _topk_dead_val,
     _topk_gpu,
+    _TOPK_MAX_BLOCKS_PER_INPUT,
+    _topk_stage2_smem_budget,
+    _topk_stage2_smem_bytes,
     gumbel_sampling_fused_gpu,
     gumbel_sampling_gpu,
     topk_gpu,
@@ -1272,6 +1275,30 @@ def main() raises:
         ](input_shape=IndexList[2](2, 4096), K=2048, num_blocks_per_input=8)
         print_test_case(test_case_large_k_nb)
         test_case_multi_rank[dtype](ctx, test_case_large_k_nb, fill_iota)
+
+        # The largest K whose stage-2 request at the full partition count fits
+        # the device budget, and the first K past it, which the clamp must
+        # reduce by one partition. Both launch with the budget as the stage-2
+        # ceiling and must match the CPU reference.
+        var budget = _topk_stage2_smem_budget(ctx)
+        var k_edge = 1
+        while (
+            _topk_stage2_smem_bytes[dtype](
+                k_edge + 1, _TOPK_MAX_BLOCKS_PER_INPUT
+            )
+            <= budget
+        ):
+            k_edge += 1
+        var test_case_budget_edge = TestCaseMultiRank[
+            _sampling=False, rank=2, _largest=True
+        ](input_shape=(2, 16384), K=k_edge)
+        print_test_case(test_case_budget_edge)
+        test_case_multi_rank[dtype](ctx, test_case_budget_edge, fill_iota)
+        var test_case_budget_round = TestCaseMultiRank[
+            _sampling=False, rank=2, _largest=True
+        ](input_shape=(2, 16384), K=k_edge + 1)
+        print_test_case(test_case_budget_round)
+        test_case_multi_rank[dtype](ctx, test_case_budget_round, fill_iota)
 
         # Run multi-rank tests
         test_multi_rank[dtype, False](ctx)

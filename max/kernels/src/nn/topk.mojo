@@ -18,6 +18,7 @@ from std.math.uutils import ufloordiv, udivmod
 from std.memory import alloc, dealloc
 from std.memory.alloc import Layout as AllocLayout
 from std.sys import align_of, simd_width_of, size_of
+from std.collections import OptionalReg
 
 import max.gpu.primitives.warp as warp
 from max.algorithm.functional import parallelize_over_rows
@@ -33,7 +34,7 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceAttribute, DeviceContext, FuncAttribute
 from max.gpu.host.info import is_cpu
 from max.gpu.memory import external_memory
 from std.sys.info import current_accelerator, is_apple_gpu
@@ -78,6 +79,61 @@ comptime _APPLE_STATIC_SHMEM_RESERVE_BYTES = 2 * 1024
 comptime _APPLE_STATIC_SHMEM_USABLE_COUNT[T: AnyType] = (
     _APPLE_STATIC_SHMEM_MAX_BYTES - _APPLE_STATIC_SHMEM_RESERVE_BYTES
 ) // size_of[T]()
+
+# Headroom the two-stage top-k keeps below the device's shared-memory limit.
+# `topk_gpu` sizes stage 2 against the budget below, and `_topk_gpu` passes
+# that same budget as the stage-2 launch's `MAX_DYNAMIC_SHARED_SIZE_BYTES`
+# ceiling, so one compiled variant costs one CUDA function-cache key however
+# `max_k` and `num_blocks_per_input` vary. It covers the kernel's static
+# shared memory, which CUDA counts against the same limit.
+comptime _TOPK_STAGE2_SMEM_HEADROOM_BYTES = 8192
+
+# The most stage-1 partitions `topk_gpu` gives one input; stage 2 reduces
+# their candidates in one block.
+comptime _TOPK_MAX_BLOCKS_PER_INPUT = 8
+
+
+@inline(.always)
+def _topk_stage2_smem_budget(ctx: DeviceContext) raises -> Int:
+    """The most dynamic shared memory stage 2 may request on `ctx`'s device.
+
+    On NVIDIA, 8 KiB under the per-block opt-in limit
+    (`MAX_SHARED_MEMORY_PER_BLOCK_OPTIN`), the figure `cuFuncSetAttribute`
+    enforces. It is not a fixed offset from the SM's capacity: 48 KiB on
+    `sm_52` to `sm_61` whatever the SM holds, the whole SM on `sm_70` and
+    `sm_75`, and 1 KiB under it from `sm_80` on. Other targets pass no
+    ceiling and keep 8 KiB under the SM figure.
+    """
+    comptime if ctx.target.is_nvidia_gpu():
+        return (
+            ctx.get_attribute(DeviceAttribute.MAX_SHARED_MEMORY_PER_BLOCK_OPTIN)
+            - _TOPK_STAGE2_SMEM_HEADROOM_BYTES
+        )
+    else:
+        return (
+            Int(ctx.default_device_info.shared_memory_per_multiprocessor)
+            - _TOPK_STAGE2_SMEM_HEADROOM_BYTES
+        )
+
+
+@inline(.always)
+def _topk_stage2_smem_bytes[
+    dtype: DType
+](max_k: Int, num_blocks_per_input: Int) -> Int:
+    """Dynamic shared memory stage 2 requests to reduce its candidates.
+
+    A value and an `Int` index for each of the `num_blocks_per_input * max_k`
+    candidates, rounded up to whole warps, plus a value and two indices per
+    sample-cache slot, rounded up to `WARP_SIZE` bytes.
+    """
+    var num_elem_reduced = align_up(num_blocks_per_input * max_k, WARP_SIZE)
+    var candidate_bytes = num_elem_reduced * (
+        size_of[Scalar[dtype]]() + size_of[DType.int]()
+    )
+    var sample_cache_bytes = max_k * (
+        size_of[Scalar[dtype]]() + 2 * size_of[DType.int]()
+    )
+    return align_up(candidate_bytes + sample_cache_bytes, WARP_SIZE)
 
 
 @inline(.always)
@@ -1782,16 +1838,9 @@ def _topk_gpu[
     )
     _ = input_buf_tmp^
 
-    var num_elem_reduced = align_up(num_blocks_per_input_ * max_k, WARP_SIZE)
-    var num_bytes_sample_cache = max_k * (
-        size_of[Scalar[dtype]]() + 2 * size_of[DType.int]()
+    var shared_mem_bytes_2 = _topk_stage2_smem_bytes[dtype](
+        max_k, num_blocks_per_input_
     )
-    var shared_mem_bytes_2 = (
-        num_elem_reduced * (size_of[Scalar[dtype]]() + size_of[DType.int]())
-        + num_bytes_sample_cache
-    )
-    # align to warp size
-    shared_mem_bytes_2 = align_up(shared_mem_bytes_2, WARP_SIZE)
     comptime if ctx.target.is_apple_gpu():
         if shared_mem_bytes_2 > _APPLE_STATIC_SHMEM_MAX_BYTES:
             raise Error(
@@ -1829,6 +1878,23 @@ def _topk_gpu[
     if case .Some(seed) = seed:
         seed_ptr = seed.ptr
 
+    # The stage-2 launch's function ceiling (`MAX_DYNAMIC_SHARED_SIZE_BYTES`)
+    # is the device budget `topk_gpu` sizes the request against, not the
+    # request itself. The ceiling is part of the CUDA function-cache key and
+    # the request is not, so a ceiling that tracks `max_k` and
+    # `num_blocks_per_input` loads one compiled variant once per distinct
+    # request, while the budget is one value per device and costs one key
+    # per variant. The allocation stays exact: that is what sets occupancy.
+    # `topk_gpu` keeps every request within the budget; a direct caller of
+    # this function may not, and `max` then keeps today's exact ceiling for
+    # it. Only CUDA keys on the attribute, so other targets are left as they
+    # were.
+    var stage2_func_attribute = OptionalReg[FuncAttribute]()
+    comptime if ctx.target.is_nvidia_gpu():
+        stage2_func_attribute = FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
+            UInt32(max(_topk_stage2_smem_budget(ctx), shared_mem_bytes_2))
+        )
+
     # Enqueue the second kernel (stage 2)
     comptime kernel_2 = _topk_stage2[dtype, out_idx_type, sampling, largest]
     ctx.enqueue_function[kernel_2](
@@ -1847,6 +1913,7 @@ def _topk_gpu[
         grid_dim=grid_dim_stage2,
         block_dim=block_dim_stage2,
         shared_mem_bytes=shared_mem_bytes_2,
+        func_attribute=stage2_func_attribute,
         attributes=pdl_launch_attributes(PDLLevel.ON),
     )
 
@@ -2110,36 +2177,23 @@ def topk_gpu[
 
         # Calculate the number of blocks per input
         var num_blocks_per_input_ = num_blocks_per_input.or_else(
-            min(ceildiv(N, block_size_), 8)
+            min(ceildiv(N, block_size_), _TOPK_MAX_BLOCKS_PER_INPUT)
         )
 
-        # Bound stage-2 shared memory: `_topk_stage2` reduces
-        # `num_blocks_per_input * max_k` candidates inside a SINGLE block's
-        # dynamic shared memory. For large `max_k` (e.g. the MLA indexer's
-        # top_k=2048) the default of 8 blocks makes that request exceed the
-        # device per-block shared-memory limit, so the launch fails with
-        # CUDA_ERROR_INVALID_VALUE. Reduce `num_blocks_per_input` until the
-        # stage-2 request fits a conservative device budget. This runs BEFORE
-        # the cache buffers are sized below, so the buffers, the stage-1 grid
-        # and the stage-2 shared memory all stay consistent. It is a no-op for
-        # the common small-`max_k` case (8 blocks already fit).
-        var _topk_val_idx_bytes = (
-            size_of[Scalar[dtype]]() + size_of[DType.int]()
-        )
-        var _topk_cache_bytes = (
-            size_of[Scalar[dtype]]() + 2 * size_of[DType.int]()
-        )
-        var _topk_smem_budget = (
-            Int(ctx.default_device_info.shared_memory_per_multiprocessor) - 8192
-        )
-        if bound_max_k > 0 and num_blocks_per_input_ > 1:
-            var _topk_max_nb = (
-                _topk_smem_budget - bound_max_k * _topk_cache_bytes
-            ) // (bound_max_k * _topk_val_idx_bytes)
-            if _topk_max_nb < 1:
-                _topk_max_nb = 1
-            if num_blocks_per_input_ > _topk_max_nb:
-                num_blocks_per_input_ = _topk_max_nb
+        # Stage 2 reduces `num_blocks_per_input * max_k` candidates in one
+        # block's dynamic shared memory, so shrink the partition count until
+        # the launch's own request formula fits the budget `_topk_gpu` passes
+        # as the stage-2 ceiling. This must precede the cache sizing below,
+        # which the partition count also sets.
+        var _topk_smem_budget = _topk_stage2_smem_budget(ctx)
+        while (
+            num_blocks_per_input_ > 1
+            and _topk_stage2_smem_bytes[dtype](
+                bound_max_k, num_blocks_per_input_
+            )
+            > _topk_smem_budget
+        ):
+            num_blocks_per_input_ -= 1
 
         # Define shape for the kernel's internal cache buffers
         var internal_cache_shape = IndexList[2](
