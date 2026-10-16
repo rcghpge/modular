@@ -23,7 +23,6 @@ from max.gpu.primitives.grid_controls import PDLLevel
 from layout import Idx, TileTensor, row_major
 from std.collections import OptionalReg
 
-from std.utils.index import Index
 
 from internal_utils import Table
 
@@ -213,8 +212,8 @@ def matmul_swiglu_dispatch_sm100_bf16[
 
     # Last-resort hardcoded config if heuristic set is exhausted (e.g. M > 8192).
     comptime default_config = swiglu_matmul_config[dtype, dtype, dtype, True](
-        mma_shape=Index(256, 224, 16),
-        cluster_shape=Index(2, 1, 1),
+        mma_shape=(256, 224, 16),
+        cluster_shape=(2, 1, 1),
         block_swizzle_size=0,
         cta_group=2,
         AB_swapped=False,
