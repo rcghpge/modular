@@ -860,7 +860,8 @@ def grouped_matmul(
                 row_offsets=expert_start_indices,
                 scales_offsets=scales_offset,
                 expert_ids=expert_ids,
-                sf_tensor=1.0 / weight.input_scale,
+                # NVFP4Tensor keeps its scalars on the host.
+                sf_tensor=(1.0 / weight.input_scale).to(x.mesh),
                 sf_vector_size=_NVFP4_SF_VECTOR_SIZE,
                 scales_type=DType.float8_e4m3fn,
                 out_type=DType.uint8,
