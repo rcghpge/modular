@@ -265,7 +265,11 @@ modular_py_test(
     exec_properties = {
         "test.resources:gpu-memory": "2",
     },
-    gpu_constraints = ["//:b200_gpu"],
+    gpu_constraints = select({
+        "//:b200_gpu": [],
+        "//:mi355_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     precompile_mefs = True,
     tags = [
         "gpu",

@@ -14,7 +14,7 @@
 """Provides low-level FP4 encode/decode utilities and scale-factor helpers."""
 
 from std.sys._assembly import inlined_assembly
-from std.sys import is_nvidia_gpu, bit_width_of, llvm_intrinsic
+from std.sys import is_amd_gpu, is_nvidia_gpu, bit_width_of, llvm_intrinsic
 from std.sys.info import _is_sm_100x_or_newer, _cdna_4_or_newer
 from std.utils.numerics import FPUtils
 from std.memory import bitcast
@@ -478,7 +478,9 @@ def nvfp4_kv_quantize_x8(x: SIMD[.float32, 8], scale: Float32) -> UInt32:
 
     Each value is divided by `scale` (true division), then rounded by the
     hardware convert, which rounds half to even and saturates at 6. A
-    magnitude that rounds to zero is stored as +0, never -0.
+    magnitude that rounds to zero is stored as +0, never -0. On AMD the
+    convert's own scale is 1: it applies only a power-of-two exponent, so the
+    E4M3 scale is divided out first, as on NVIDIA.
 
     Args:
         x: Eight values, element 0 in the lowest nibble of the result.
@@ -488,9 +490,13 @@ def nvfp4_kv_quantize_x8(x: SIMD[.float32, 8], scale: Float32) -> UInt32:
         The eight E2M1 codes packed into one word.
 
     Constraints:
-        Requires NVIDIA GPU with SM100 or newer.
+        Requires NVIDIA GPU with SM100 or newer, or AMD CDNA4 or newer.
     """
-    var packed = cast_fp32_to_fp4e2m1(x / scale)
+    var packed: UInt32
+    comptime if is_amd_gpu():
+        packed = cast_float_to_fp4e2m1_amd(x / scale, Float32(1.0))
+    else:
+        packed = cast_fp32_to_fp4e2m1(x / scale)
     var mag = packed & 0x77777777
     var nonzero = (mag | (mag >> 1) | (mag >> 2)) & 0x11111111
     return mag | (packed & (nonzero << 3))

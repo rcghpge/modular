@@ -73,9 +73,10 @@ _EXTRA_CONSTRAINTS = {
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
-    # NVFP4 quantization uses the SM100 e2m1 convert.
+    # NVFP4 quantization uses the SM100 or CDNA4 e2m1 convert.
     "test_fused_dual_qk_rms_norm_rope_nvfp4.mojo": select({
         "//:b200_gpu": [],
+        "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     # No SM100/B200-specific code; runs on any GPU. Apple is excluded because

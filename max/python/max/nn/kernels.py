@@ -3980,18 +3980,20 @@ def msa_sparse_attention_ragged_mxfp8(
     it feeds :func:`dynamic_block_scaled_matmul_amd` directly and the
     separate quantize dispatch is skipped. Bit-identical to that unfused
     pair; on split-K decode shapes the quantize fuses into the reduce and
-    saves a dispatch.
+    saves a dispatch. An NVFP4 main cache runs
+    ``mo.msa.attention.ragged.paged.nvfp4.mxfp8``.
 
     Args:
         kv_params: Key-value cache parameters for the main KV cache.
         input: Query tensor ``[total_q, n_heads, head_dim]`` (prefill) or
             ``[batch, n_heads, head_dim]`` (decode); dtype matches the KV
-            cache (BF16 or FP8 e4m3).
+            cache (BF16 or FP8 e4m3), or is FP8 e4m3 for NVFP4.
         input_row_offsets: Ragged query offsets ``[batch + 1]`` uint32.
         cache_row_offsets: Ragged valid-cache offsets ``[batch + 1]`` uint32.
         total_context_length: Total padded cache length for the batch, CPU
             scalar ``[1]`` uint32.
-        kv_collection: Main paged KV cache (BF16 or FP8 e4m3, no scales).
+        kv_collection: Main paged KV cache: BF16 or FP8 e4m3 without
+            scales, or NVFP4 with its E4M3 scales.
         layer_idx: Layer index, uint32, on CPU.
         block_indices: Selected block ids. Prefill: ``[n_kv_heads, total_q,
             topk]``; decode: ``[n_kv_heads, batch, topk]``. int32.
@@ -4029,7 +4031,9 @@ def msa_sparse_attention_ragged_mxfp8(
         )
 
     results = ops.inplace_custom(
-        "mo.msa.attention.ragged.paged.mxfp8",
+        "mo.msa.attention.ragged.paged.nvfp4.mxfp8"
+        if kv_params.is_nvfp4_kv_cache
+        else "mo.msa.attention.ragged.paged.mxfp8",
         device=input.device,
         values=values,
         out_types=[
