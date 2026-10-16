@@ -14,7 +14,7 @@
 from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.random import rand, randint, random_float64
-from std.sys import align_of, argv
+from std.sys import argv
 
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -34,7 +34,6 @@ from layout import (
     row_major,
 )
 from linalg.matmul.gpu import multistage_gemm
-from linalg.utils import elementwise_epilogue_type
 from linalg.utils_gpu import MatmulKernels
 from nn.kv_cache_ragged import _qmatmul_common
 from std.memory.unsafe import bitcast
@@ -465,31 +464,24 @@ def test_quantized[
     comptime if use_ragged_epilogue:
         comptime assert dtype == .uint8
 
-        @__parameter
         @inline(.always)
-        @__copy_capture(c_dev_tt)
         def epilogue_fn[
             value_type: DType,
             width: SIMDLength,
             *,
-            alignment: Int = align_of[SIMD[value_type, width]](),
-        ](idx: Coord, value: SIMD[value_type, width]) capturing -> None:
+            alignment: Int,
+        ](idx: Coord, value: SIMD[value_type, width]) {var c_dev_tt}:
             comptime assert (
                 idx.rank == 2
             ), "the matmul epilogue contract is rank 2"
             c_dev_tt.store[alignment=alignment](idx, value.cast[a_type]())
 
         # The helper supplies a null output view; only the epilogue may write.
-        _qmatmul_common[
-            group_size=group_size,
-            target="gpu",
-            elementwise_lambda_fn=Optional[elementwise_epilogue_type](
-                epilogue_fn
-            ),
-        ](
+        _qmatmul_common[group_size=group_size, target="gpu"](
             a_dev_tt.as_imm(),
             b_dev_tt.bitcast[.uint8]().as_imm(),
             ctx,
+            epilogue_fn,
         )
     elif use_dispatch:
         comptime assert dtype == .uint8

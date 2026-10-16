@@ -28,8 +28,11 @@ from linalg.arch.cpu.vnni_intrinsics import (
     dot_i8_to_i32_saturated_x86,
     dot_i16_to_i32_x86,
 )
-from linalg.matmul import elementwise_epilogue_type
-from linalg.utils import partition_work
+from linalg.utils import (
+    ElementwiseEpilogueFn,
+    no_epilogue_fn,
+    partition_work,
+)
 from std.memory import (
     alloc,
     bitcast,
@@ -938,7 +941,9 @@ def _accumulate_and_store[
     tile_m: Int,
     tile_n: Int,
     simd_width: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    has_epilogue_fn: Bool,
 ](
     c_ptr: UnsafePointer[mut=True, Float32, _],
     N: Int,
@@ -947,6 +952,7 @@ def _accumulate_and_store[
     m: Int,
     n: Int,
     is_last_k_iter: Bool,
+    epilogue_fn: EpilogueFnType,
 ):
     if accumulate:
         var c_existing = _Accumulator[.float32, tile_m, tile_n, simd_width]()
@@ -959,14 +965,12 @@ def _accumulate_and_store[
 
     c_float.store(c_ptr, N)
 
-    comptime if case .Some(func) = elementwise_lambda_fn:
+    comptime if has_epilogue_fn:
         if is_last_k_iter:
             comptime for mm in range(tile_m):
                 comptime for nn in range(tile_n):
                     var val = c_float[mm, nn]
-                    func[.float32, simd_width](
-                        (m + mm, n + nn * simd_width), val
-                    )
+                    epilogue_fn[alignment=1]((m + mm, n + nn * simd_width), val)
 
 
 @inline(.always)
@@ -1008,8 +1012,9 @@ def _matmul_Q4_K_tile[
     tile_m: Int,
     tile_n: Int,
     simd_width: Int,
+    EpilogueFnType: ElementwiseEpilogueFn,
     //,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool,
 ](
     a_ptr: UnsafePointer[_block_Q8_K_packed[_block_Q4_K.group_size], _],
     b_ptr: UnsafePointer[_block_Q4_K_packed[], _],
@@ -1020,6 +1025,7 @@ def _matmul_Q4_K_tile[
     m: Int,
     n: Int,
     is_last_k_iter: Bool,
+    epilogue_fn: EpilogueFnType,
     matmul_group_fn: Some[
         # The pointer origin is concrete because a `_` wildcard becomes a
         # distinct anonymous parameter on each side and fails to unify.
@@ -1087,15 +1093,16 @@ def _matmul_Q4_K_tile[
 
     _apply_a_scales(a_tile_ptr[].scales.unsafe_ptr(), c_float)
 
-    _accumulate_and_store[elementwise_lambda_fn=elementwise_lambda_fn](
-        c_ptr, N, accumulate, c_float, m, n, is_last_k_iter
+    _accumulate_and_store[has_epilogue_fn](
+        c_ptr, N, accumulate, c_float, m, n, is_last_k_iter, epilogue_fn
     )
 
 
 def _matmul_Q4_K_columns[
     tile_n: Int,
     simd_width: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    has_epilogue_fn: Bool,
 ](
     var a_ptr: UnsafePointer[
         mut=True, _block_Q8_K_packed[_block_Q4_K.group_size], _
@@ -1107,6 +1114,7 @@ def _matmul_Q4_K_columns[
     accumulate: Bool,
     n: Int,
     is_last_k_iter: Bool,
+    epilogue_fn: EpilogueFnType,
 ):
     comptime group_size = _block_Q4_K.group_size
     comptime group_count = _block_Q4_K.group_count
@@ -1140,7 +1148,7 @@ def _matmul_Q4_K_columns[
         ) {mut b_q_bits_ptr, imm}:
             _matmul_group_packed_Q4_K(a_q_bits_ptr, b_q_bits_ptr, c_int32_group)
 
-        _matmul_Q4_K_tile[elementwise_lambda_fn=elementwise_lambda_fn,](
+        _matmul_Q4_K_tile[has_epilogue_fn](
             a_ptr,
             b_ptr,
             b_q_scales_and_mins_buf,
@@ -1150,6 +1158,7 @@ def _matmul_Q4_K_columns[
             0,
             n,
             is_last_k_iter,
+            epilogue_fn,
             matmul_group_packed,
         )
         _ = b_q_bits_ptr
@@ -1182,7 +1191,7 @@ def _matmul_Q4_K_columns[
                 a_ptr, b_q_bits_ptr, c_int32_group
             )
 
-        _matmul_Q4_K_tile[elementwise_lambda_fn=elementwise_lambda_fn,](
+        _matmul_Q4_K_tile[has_epilogue_fn](
             a_ptr,
             b_ptr,
             b_q_scales_and_mins_buf,
@@ -1192,6 +1201,7 @@ def _matmul_Q4_K_columns[
             m,
             n,
             is_last_k_iter,
+            epilogue_fn,
             matmul_group_unpacked,
         )
         _ = b_q_bits_ptr
@@ -1249,8 +1259,9 @@ def _matmul_Q6_K_tile[
     tile_m: Int,
     tile_n: Int,
     simd_width: Int,
+    EpilogueFnType: ElementwiseEpilogueFn,
     //,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool,
 ](
     a_ptr: UnsafePointer[
         mut=False, _block_Q8_K_packed[_block_Q6_K.group_size], _
@@ -1262,6 +1273,7 @@ def _matmul_Q6_K_tile[
     m: Int,
     n: Int,
     is_last_k_iter: Bool,
+    epilogue_fn: EpilogueFnType,
     matmul_group_fn: Some[
         # See `_matmul_Q4_K_tile` for why the origin is concrete.
         def(
@@ -1335,15 +1347,16 @@ def _matmul_Q6_K_tile[
 
     _apply_a_scales(a_tile_ptr[].scales.unsafe_ptr(), c_float)
 
-    _accumulate_and_store[elementwise_lambda_fn=elementwise_lambda_fn](
-        c_ptr, N, accumulate, c_float, m, n, is_last_k_iter
+    _accumulate_and_store[has_epilogue_fn](
+        c_ptr, N, accumulate, c_float, m, n, is_last_k_iter, epilogue_fn
     )
 
 
 def _matmul_Q6_K_columns[
     tile_n: Int,
     simd_width: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    has_epilogue_fn: Bool,
 ](
     var a_ptr: UnsafePointer[
         mut=True, _block_Q8_K_packed[_block_Q6_K.group_size], _
@@ -1355,6 +1368,7 @@ def _matmul_Q6_K_columns[
     accumulate: Bool,
     n: Int,
     is_last_k_iter: Bool,
+    epilogue_fn: EpilogueFnType,
 ):
     comptime group_size = _block_Q6_K.group_size
     comptime group_count = _block_Q6_K.group_count
@@ -1386,7 +1400,7 @@ def _matmul_Q6_K_columns[
                 a_q_bits_ptr, b_q_bits_ptr, c_int32_group
             )
 
-        _matmul_Q6_K_tile[elementwise_lambda_fn=elementwise_lambda_fn,](
+        _matmul_Q6_K_tile[has_epilogue_fn](
             a_ptr,
             b_ptr,
             c_ptr,
@@ -1395,6 +1409,7 @@ def _matmul_Q6_K_columns[
             0,
             n,
             is_last_k_iter,
+            epilogue_fn,
             matmul_group_packed,
         )
         _ = b_q_bits_ptr
@@ -1421,7 +1436,7 @@ def _matmul_Q6_K_columns[
                 a_ptr, b_q_bits_ptr, c_int32_group
             )
 
-        _matmul_Q6_K_tile[elementwise_lambda_fn=elementwise_lambda_fn,](
+        _matmul_Q6_K_tile[has_epilogue_fn](
             a_ptr,
             b_ptr,
             c_ptr,
@@ -1430,6 +1445,7 @@ def _matmul_Q6_K_columns[
             m,
             n,
             is_last_k_iter,
+            epilogue_fn,
             matmul_group_unpacked,
         )
         _ = b_q_bits_ptr
@@ -1444,11 +1460,13 @@ def _matmul_Q6_K_columns[
 def _matmul_Qb_K[
     group_size: Int,
     b_type: AnyType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     columns_fn: def[
         tile_n: Int,
         simd_width: Int,
-        elementwise_lambda_fn: Optional[elementwise_epilogue_type],
+        EpilogueFnType: ElementwiseEpilogueFn,
+        has_epilogue_fn: Bool,
     ](
         var a_ptr: UnsafePointer[mut=True, _block_Q8_K_packed[group_size], _],
         b_ptr: UnsafePointer[b_type, _],
@@ -1458,15 +1476,17 @@ def _matmul_Qb_K[
         accumulate: Bool,
         n: Int,
         is_last_k_iter: Bool,
+        epilogue_fn: EpilogueFnType,
     ) capturing -> None,
     *,
     interleave_group_sums: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
 ](
     a: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext.CPU] = None,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ):
     comptime assert a.rank == 2
     comptime assert b.rank == 2
@@ -1524,11 +1544,7 @@ def _matmul_Qb_K[
             ](n_idx: Int) {
                 mut a_packed_ptr, mut bn_packed_ptr, mut cn_ptr, imm
             }:
-                columns_fn[
-                    tile_n,
-                    simd_width,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                ](
+                columns_fn[tile_n, simd_width, EpilogueFnType, has_epilogue_fn](
                     a_packed_ptr,
                     bn_packed_ptr,
                     cn_ptr,
@@ -1537,6 +1553,7 @@ def _matmul_Qb_K[
                     accumulate,
                     task_n_start + n_idx * simd_width,
                     is_last_k_iter,
+                    epilogue_fn,
                 )
 
                 bn_packed_ptr += tile_n * simd_width
@@ -1557,9 +1574,7 @@ def _matmul_Qb_K[
     dealloc(a_packed_base_alloc^)
 
 
-def matmul_Q4_K[
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None
-](
+def matmul_Q4_K(
     a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
@@ -1569,9 +1584,6 @@ def matmul_Q4_K[
 
     Dispatches to an x86 or ARM NEON implementation at compile time; other
     targets fail to compile.
-
-    Parameters:
-        elementwise_lambda_fn: Optional epilogue applied to each output element.
 
     Args:
         a_tt: Left-hand operand tensor in float32.
@@ -1588,13 +1600,47 @@ def matmul_Q4_K[
         b_type=_block_Q4_K_packed[],
         columns_fn=_matmul_Q4_K_columns,
         interleave_group_sums=True,
-        elementwise_lambda_fn=elementwise_lambda_fn,
     ](a_tt, b_tt, c_tt, ctx)
 
 
-def matmul_Q6_K[
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None
+def matmul_Q4_K[
+    EpilogueFnType: ElementwiseEpilogueFn
 ](
+    a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
+    c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: Optional[DeviceContext.CPU] = None,
+):
+    """Same as the plain overload, also passing each output element to
+    `epilogue_fn`.
+
+    The kernel uses `c_tt` as its accumulator, so it is written either way.
+
+    Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+
+    Args:
+        a_tt: Left-hand operand tensor in float32.
+        b_tt: Right-hand operand tensor holding Q4_K quantized uint8 weights.
+        c_tt: Output tensor in float32.
+        epilogue_fn: Epilogue called with each final output element.
+        ctx: Optional device context for parallel execution.
+    """
+    comptime assert a_tt.rank == 2
+    comptime assert b_tt.rank == 2
+    comptime assert c_tt.rank == 2
+
+    _matmul_Qb_K[
+        group_size=_block_Q4_K.group_size,
+        b_type=_block_Q4_K_packed[],
+        columns_fn=_matmul_Q4_K_columns,
+        interleave_group_sums=True,
+        has_epilogue_fn=True,
+    ](a_tt, b_tt, c_tt, ctx, epilogue_fn)
+
+
+def matmul_Q6_K(
     a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
@@ -1604,9 +1650,6 @@ def matmul_Q6_K[
 
     Dispatches to an x86 or ARM NEON implementation at compile time; other
     targets fail to compile.
-
-    Parameters:
-        elementwise_lambda_fn: Optional epilogue applied to each output element.
 
     Args:
         a_tt: Left-hand operand tensor in float32.
@@ -1622,5 +1665,40 @@ def matmul_Q6_K[
         group_size=_block_Q6_K.group_size,
         b_type=_block_Q6_K_packed[],
         columns_fn=_matmul_Q6_K_columns,
-        elementwise_lambda_fn=elementwise_lambda_fn,
     ](a_tt, b_tt, c_tt, ctx)
+
+
+def matmul_Q6_K[
+    EpilogueFnType: ElementwiseEpilogueFn
+](
+    a_tt: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
+    c_tt: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: Optional[DeviceContext.CPU] = None,
+):
+    """Same as the plain overload, also passing each output element to
+    `epilogue_fn`.
+
+    The kernel uses `c_tt` as its accumulator, so it is written either way.
+
+    Parameters:
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+
+    Args:
+        a_tt: Left-hand operand tensor in float32.
+        b_tt: Right-hand operand tensor holding Q6_K quantized uint8 weights.
+        c_tt: Output tensor in float32.
+        epilogue_fn: Epilogue called with each final output element.
+        ctx: Optional device context for parallel execution.
+    """
+    comptime assert a_tt.rank == 2
+    comptime assert b_tt.rank == 2
+    comptime assert c_tt.rank == 2
+
+    _matmul_Qb_K[
+        group_size=_block_Q6_K.group_size,
+        b_type=_block_Q6_K_packed[],
+        columns_fn=_matmul_Q6_K_columns,
+        has_epilogue_fn=True,
+    ](a_tt, b_tt, c_tt, ctx, epilogue_fn)

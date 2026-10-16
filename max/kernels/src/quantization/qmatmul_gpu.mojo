@@ -73,7 +73,7 @@ from layout.tile_io import (
 )
 from layout.tensor_core import TensorCore, get_fragment_size, get_mma_shape
 from linalg.matmul.gpu._multistage_gemm_gpu import warp_split_k_reduction
-from linalg.utils import GemmShape, elementwise_epilogue_type
+from linalg.utils import ElementwiseEpilogueFn, GemmShape, no_epilogue_fn
 from linalg.utils_gpu import MatmulConfig, block_swizzle
 from std.memory.unsafe import bitcast
 
@@ -834,11 +834,13 @@ def multistage_qgemm_kernel[
     pack_factor: Int,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_packed_type, c_type, transpose_b],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    has_epilogue_fn: Bool,
 ](
     c_tt: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
     a_tt: TileTensor[mut=False, a_type, a_layout, ImmutAnyOrigin],
     b_packed: TileTensor[mut=False, b_packed_type, b_layout, ImmutAnyOrigin],
+    epilogue_fn: EpilogueFnType,
 ):
     """Implements the GPU kernel for a multi-stage quantized GEMM with per-group scales.
 
@@ -858,12 +860,16 @@ def multistage_qgemm_kernel[
         pack_factor: The number of 4-bit elements packed into one `uint32`.
         transpose_b: Whether the B matrix is stored transposed.
         config: The matmul configuration describing tile and warp shapes.
-        elementwise_lambda_fn: An optional elementwise epilogue applied per output element.
+        EpilogueFnType: Type of `epilogue_fn`.
+        has_epilogue_fn: Whether `epilogue_fn` stores the output instead of
+            the kernel.
 
     Args:
         c_tt: The output accumulator matrix in global memory.
         a_tt: The left-hand (activation) matrix in global memory.
         b_packed: The packed quantized weight buffer in global memory.
+        epilogue_fn: Epilogue that stores each output element when
+            `has_epilogue_fn` is set.
     """
     comptime assert (
         is_nvidia_gpu()
@@ -1103,9 +1109,7 @@ def multistage_qgemm_kernel[
         # This block is identical to the one used for f32 case
         # but putting this in a lambda function leads to test failures
         # TODO: Refactor to remove code duplication
-        comptime assert (
-            elementwise_lambda_fn is not None
-        ), "elementwise_lambda_fn is not valid"
+        comptime assert has_epilogue_fn, "epilogue_fn is not valid"
         comptime thread_layout = Layout.row_major(
             8, 4
         ) if is_nvidia_gpu() else Layout.row_major(4, 16)
@@ -1113,7 +1117,6 @@ def multistage_qgemm_kernel[
         comptime dst_simd_width_y = 2 if is_nvidia_gpu() else 1
         comptime src_simd_width_x = 1 if is_nvidia_gpu() else 1
         comptime src_simd_width_y = 2 if is_nvidia_gpu() else 4
-        comptime epilogue = elementwise_lambda_fn.value()
         var c_gmem_frag = c_gmem_warp_tile.vectorize[
             dst_simd_width_x, dst_simd_width_y
         ]().distribute[thread_layout](ln_id)
@@ -1140,11 +1143,11 @@ def multistage_qgemm_kernel[
                 ]()
 
                 comptime if dst_simd_width_x == 1:
-                    epilogue[alignment=alignment]((m, n), vec)
+                    epilogue_fn[alignment=alignment]((m, n), vec)
                 else:
                     comptime for j in range(dst_simd_width_x):
                         if m + j < M:
-                            epilogue[alignment=alignment](
+                            epilogue_fn[alignment=alignment](
                                 (m + j, n), vec[j].cast[c_type]()
                             )
 
@@ -1176,7 +1179,7 @@ def multistage_qgemm_kernel[
 
         # The local-to-shared copy has already cast the accumulators to half
         # precision. Read the staged values in vectors for 16-byte global stores.
-        comptime if case .Some(epilogue) = elementwise_lambda_fn:
+        comptime if has_epilogue_fn:
             comptime warp_layout = Layout.row_major(
                 WARP_SIZE * simd_size // WN, WN // simd_size
             )
@@ -1215,7 +1218,7 @@ def multistage_qgemm_kernel[
                 var m, n = divmod((Int(thread_offset) + dst_idx), N)
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
                 if m < M and n < N:
-                    epilogue[alignment=alignment](
+                    epilogue_fn[alignment=alignment](
                         (m, n),
                         accum_smem_warp_tile.unsafe_ptr()
                         .load[width=simd_size, alignment=alignment](
@@ -1237,7 +1240,7 @@ def multistage_qgemm_kernel[
             )
 
     elif c_type.is_half_float() and not is_nvidia_gpu():
-        comptime if elementwise_lambda_fn:
+        comptime if has_epilogue_fn:
             apply_epilogue()
 
         else:
@@ -1256,7 +1259,7 @@ def multistage_qgemm_kernel[
             )
     # Store FP32 results to FP32 buffer in global memory.
     else:
-        comptime if elementwise_lambda_fn:
+        comptime if has_epilogue_fn:
             apply_epilogue()
         else:
             comptime if is_nvidia_gpu():
@@ -1737,18 +1740,20 @@ def multistage_gemm_q[
     c_type: DType,
     a_type: DType,
     b_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     *,
     group_size: Int,
     pack_factor: Int,
     config: MatmulConfig[a_type, b_type, c_type, True],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, b_type, address_space=.GENERIC, ...],
     runtime_config: MatmulConfig[a_type, b_type, c_type, True],
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises:
     """Enqueues the multi-stage quantized GEMM kernel, reducing pipeline stages or warp partitions when the shared memory budget is exceeded.
 
@@ -1756,10 +1761,12 @@ def multistage_gemm_q[
         c_type: The dtype of the output matrix.
         a_type: The dtype of the A matrix elements.
         b_type: The dtype of the packed B weight buffer.
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         group_size: The number of K elements sharing a single scale.
         pack_factor: The number of 4-bit elements packed into one `uint32`.
         config: The matmul configuration describing tile and warp shapes.
-        elementwise_lambda_fn: An optional elementwise epilogue applied per output element.
+        has_epilogue_fn: Whether `epilogue_fn` stores the output instead of
+            the kernel.
 
     Args:
         c: The output matrix in global memory.
@@ -1767,6 +1774,8 @@ def multistage_gemm_q[
         b: The packed quantized weight buffer in global memory.
         runtime_config: The runtime matmul configuration used for grid and block dimensions.
         ctx: The device context used to enqueue the kernel.
+        epilogue_fn: Epilogue that stores each output element when
+            `has_epilogue_fn` is set.
 
     Raises:
         An error if the input tensors are not rank-2.
@@ -1818,13 +1827,15 @@ def multistage_gemm_q[
                         pack_factor,
                         True,
                         adjusted_config,
-                        elementwise_lambda_fn,
+                        EpilogueFnType,
+                        has_epilogue_fn,
                     ]
 
                     ctx.enqueue_function[gemm_kernel_type](
                         c,
                         a,
                         b,
+                        host_arg=epilogue_fn,
                         grid_dim=adjusted_config.grid_dim(M, N),
                         block_dim=adjusted_config.block_dim(),
                         shared_mem_bytes=adjusted_smem,
@@ -1846,13 +1857,15 @@ def multistage_gemm_q[
         pack_factor,
         True,
         config,
-        elementwise_lambda_fn,
+        EpilogueFnType,
+        has_epilogue_fn,
     ]
 
     ctx.enqueue_function[gemm_kernel_type](
         c,
         a,
         b,
+        host_arg=epilogue_fn,
         grid_dim=runtime_config.grid_dim(M, N),
         block_dim=runtime_config.block_dim(),
         shared_mem_bytes=smem_usage,
@@ -1869,7 +1882,6 @@ def matmul_gpu_qint4[
     //,
     group_size: Int,
     target: StaticString,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c_tt: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a_tt: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
@@ -1883,7 +1895,6 @@ def matmul_gpu_qint4[
         a_type: The dtype of the A matrix elements.
         group_size: The number of K elements sharing a single scale.
         target: The target platform string, which must identify a GPU.
-        elementwise_lambda_fn: An optional elementwise epilogue applied per output element.
 
     Args:
         c_tt: The output tile tensor in global memory.
@@ -1904,8 +1915,55 @@ def matmul_gpu_qint4[
     comptime assert is_gpu[target](), "unsupported target"
     var cuda_ctx = ctx.value()
 
-    matmul_gpu_qint4_impl[group_size, target, elementwise_lambda_fn](
-        c_tt, a_tt, b_tt, cuda_ctx
+    matmul_gpu_qint4_impl[group_size, target](c_tt, a_tt, b_tt, cuda_ctx)
+
+
+@inline(.always)
+def matmul_gpu_qint4[
+    c_type: DType,
+    a_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn,
+    //,
+    group_size: Int,
+    target: StaticString,
+](
+    c_tt: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
+    a_tt: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
+    b_tt: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
+    epilogue_fn: EpilogueFnType,
+    ctx: Optional[DeviceContext] = None,
+) raises:
+    """Same as the plain overload, storing the output through `epilogue_fn`.
+
+    Parameters:
+        c_type: The dtype of the output matrix.
+        a_type: The dtype of the A matrix elements.
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        group_size: The number of K elements sharing a single scale.
+        target: The target platform string, which must identify a GPU.
+
+    Args:
+        c_tt: The output tile tensor; the kernel does not write it.
+        a_tt: The left-hand (activation) tile tensor in global memory.
+        b_tt: The packed quantized weight tile tensor in global memory.
+        epilogue_fn: Epilogue that stores each output element.
+        ctx: The device context used to enqueue the kernel.
+
+    Raises:
+        An error if the input tensors are not rank-2 or the target is not a GPU.
+
+    Constraints:
+        Requires an NVIDIA GPU target. `a_type` and `c_type` must both be
+        `bfloat16`.
+    """
+    comptime assert c_tt.rank == 2
+    comptime assert a_tt.rank == 2
+    comptime assert b_tt.rank == 2
+    comptime assert is_gpu[target](), "unsupported target"
+    var cuda_ctx = ctx.value()
+
+    matmul_gpu_qint4_impl[group_size, target, has_epilogue_fn=True](
+        c_tt, a_tt, b_tt, cuda_ctx, epilogue_fn
     )
 
 
@@ -1913,15 +1971,18 @@ def matmul_gpu_qint4[
 def matmul_gpu_qint4_impl[
     c_type: DType,
     a_type: DType,
+    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
     //,
     group_size: Int,
     target: StaticString,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
+    *,
+    has_epilogue_fn: Bool = False,
 ](
     c: TileTensor[mut=True, c_type, address_space=.GENERIC, ...],
     a: TileTensor[mut=False, a_type, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     ctx: Optional[DeviceContext],
+    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises:
     """Dispatches a GPU int4 quantized matrix multiplication to the tuned kernel configuration for the runtime M dimension.
 
@@ -1931,15 +1992,19 @@ def matmul_gpu_qint4_impl[
     Parameters:
         c_type: The dtype of the output matrix.
         a_type: The dtype of the A matrix elements.
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
         group_size: The number of K elements sharing a single scale.
         target: The target platform string, which must identify a GPU.
-        elementwise_lambda_fn: An optional elementwise epilogue applied per output element.
+        has_epilogue_fn: Whether `epilogue_fn` stores the output instead of
+            the kernel.
 
     Args:
         c: The output matrix in global memory.
         a: The left-hand (activation) matrix in global memory.
         b: The packed quantized weight buffer in global memory.
         ctx: The device context used to enqueue the kernel.
+        epilogue_fn: Epilogue that stores each output element when
+            `has_epilogue_fn` is set.
 
     Raises:
         An error if the input tensors are not rank-2.
@@ -1973,13 +2038,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M16_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M16_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 16 < m <= 32:
@@ -1996,13 +2062,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M32_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M32_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 32 < m <= 64:
@@ -2019,13 +2086,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M64_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M64_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 64 < m <= 128:
@@ -2042,13 +2110,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M128_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M128_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 128 < m <= 512:
@@ -2065,13 +2134,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M512_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M512_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
 
@@ -2090,13 +2160,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M16_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M16_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 16 < m <= 32:
@@ -2113,13 +2184,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M32_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M32_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 32 < m <= 64:
@@ -2136,13 +2208,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M64_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M64_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 64 < m <= 128:
@@ -2159,13 +2232,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M128_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M128_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 128 < m <= 256:
@@ -2182,13 +2256,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M256_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M256_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
 
@@ -2207,13 +2282,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M16_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M16_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 16 < m <= 32:
@@ -2230,13 +2306,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M32_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M32_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 32 < m <= 64:
@@ -2253,13 +2330,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M64_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M64_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 64 < m <= 256:
@@ -2276,13 +2354,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M128_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M128_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
 
@@ -2301,13 +2380,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M16_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M16_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 16 < m <= 32:
@@ -2324,13 +2404,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M32_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M32_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 32 < m <= 64:
@@ -2347,13 +2428,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M64_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M64_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 64 < m <= 128:
@@ -2370,13 +2452,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M128_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M128_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
         if 128 < m <= 512:
@@ -2393,13 +2476,14 @@ def matmul_gpu_qint4_impl[
                 group_size=group_size,
                 pack_factor=pack_factor,
                 config=M512_config,
-                elementwise_lambda_fn=elementwise_lambda_fn,
+                has_epilogue_fn=has_epilogue_fn,
             ](
                 c,
                 a,
                 b,
                 M512_config,
                 cuda_ctx,
+                epilogue_fn,
             )
             return
 
@@ -2415,13 +2499,14 @@ def matmul_gpu_qint4_impl[
         group_size=group_size,
         pack_factor=pack_factor,
         config=default_config,
-        elementwise_lambda_fn=elementwise_lambda_fn,
+        has_epilogue_fn=has_epilogue_fn,
     ](
         c,
         a,
         b,
         default_config,
         cuda_ctx,
+        epilogue_fn,
     )
 
 
