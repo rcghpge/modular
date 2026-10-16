@@ -516,9 +516,9 @@ struct SM100MHADepth512[
     ) -> TileMaskStatus:
         return mask.status(
             seq_id,
-            Index[dtype=DType.int32](
+            Index[dtype=.int32](
                 Int(score_row),
                 Int(kv_row),
             ),
-            Index[dtype=DType.int32](Self.PairBM_mask, Self.BN),
+            Index[dtype=.int32](Self.PairBM_mask, Self.BN),
         )

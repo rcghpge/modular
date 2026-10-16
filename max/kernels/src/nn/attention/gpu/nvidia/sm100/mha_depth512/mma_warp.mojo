@@ -408,8 +408,8 @@ def depth512_mma[
             if (
                 mask.status(
                     seq_id,
-                    Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                    Index[dtype=DType.int32](PairBM_mask, BN),
+                    Index[dtype=.int32](Int(score_row), Int(kv_row)),
+                    Index[dtype=.int32](PairBM_mask, BN),
                 )
                 == TileMaskStatus.FULL_MASK
             ):

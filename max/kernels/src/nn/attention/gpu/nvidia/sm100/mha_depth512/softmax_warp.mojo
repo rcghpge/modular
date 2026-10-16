@@ -876,8 +876,8 @@ def depth512_softmax[
                 break
             var cur_mask_status = mask.status(
                 seq_id,
-                Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                Index[dtype=DType.int32](PairBM_mask, BN),
+                Index[dtype=.int32](Int(score_row), Int(kv_row)),
+                Index[dtype=.int32](PairBM_mask, BN),
             )
             if cur_mask_status == TileMaskStatus.FULL_MASK:
                 continue

@@ -611,8 +611,8 @@ def depth512_load[
             if (
                 mask.status(
                     seq_info.prompt_idx,
-                    Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                    Index[dtype=DType.int32](PairBM_mask, BN),
+                    Index[dtype=.int32](Int(score_row), Int(kv_row)),
+                    Index[dtype=.int32](PairBM_mask, BN),
                 )
                 == TileMaskStatus.FULL_MASK
             ):
@@ -670,8 +670,8 @@ def depth512_load[
                 if (
                     mask.status(
                         seq_info.prompt_idx,
-                        Index[dtype=DType.int32](Int(score_row), Int(kv_row)),
-                        Index[dtype=DType.int32](PairBM_mask, BN),
+                        Index[dtype=.int32](Int(score_row), Int(kv_row)),
+                        Index[dtype=.int32](PairBM_mask, BN),
                     )
                     == TileMaskStatus.FULL_MASK
                 ):
