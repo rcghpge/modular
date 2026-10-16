@@ -1163,10 +1163,10 @@ def _amd_sparse_mla_gather_kv_rows[
     ), "AMD sparse MLA gather vector lanes must tile k_cache_dim exactly."
 
     var indices_stride_i = Int(indices_stride)
-    var batch_idx = Int(block_idx.y)
-    var col = Int(block_idx.x) * rows_per_block + Int(thread_idx.y)
+    var batch_idx = block_idx.y
+    var col = block_idx.x * rows_per_block + thread_idx.y
     if col < indices_stride_i:
-        var vec_off = Int(thread_idx.x) * _AMD_SPARSE_MLA_GATHER_VEC
+        var vec_off = thread_idx.x * _AMD_SPARSE_MLA_GATHER_VEC
         var slot = batch_idx * indices_stride_i + col
         var dst = scratch + slot * k_cache_dim + vec_off
 
@@ -1214,15 +1214,15 @@ def _amd_sparse_mla_row_valid_lengths[
     every slot past a token's valid length, which saves a separate fill
     launch per layer.
     """
-    var row = Int(block_idx.x)
+    var row = block_idx.x
     if row == 0:
-        for i in range(Int(thread_idx.x), Int(zero_row_bytes), BLOCK_SIZE):
+        for i in range(thread_idx.x, Int(zero_row_bytes), BLOCK_SIZE):
             zero_row[i] = 0
     var base = row * Int(indices_stride)
 
     # Strided scan: thread `t` examines columns `t, t+BLK, t+2*BLK, ...`
     # and keeps the first negative it sees (or `indices_stride` if none).
-    var tid = Int(thread_idx.x)
+    var tid = thread_idx.x
     var stride = Int(indices_stride)
     var local_length = stride
     for col in range(tid, stride, BLOCK_SIZE):
@@ -1267,10 +1267,10 @@ def _amd_sparse_mla_compact_indices[
     Only the first `topk_lengths[row]` slots are read, so the count never
     exceeds the columns the gather fills.
     """
-    var row = Int(block_idx.x)
+    var row = block_idx.x
     var stride = Int(indices_stride)
     var base = row * stride
-    var tid = Int(thread_idx.x)
+    var tid = thread_idx.x
     var scan_len = min(max(Int(topk_lengths[row]), 0), stride)
 
     var written = Int32(0)

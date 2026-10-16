@@ -763,7 +763,7 @@ def kpool_expand_topk_kernel[
     comptime pools_per_thread = ceildiv(pool_topk, KPOOL_EXPAND_BLOCK_SIZE)
 
     debug_assert(
-        Int(block_dim.x) == KPOOL_EXPAND_BLOCK_SIZE,
+        block_dim.x == KPOOL_EXPAND_BLOCK_SIZE,
         "kpool_expand_topk_kernel needs KPOOL_EXPAND_BLOCK_SIZE threads",
     )
     # Uniform across the block, so returning before the block scans is safe.
@@ -789,7 +789,7 @@ def kpool_expand_topk_kernel[
     # per-thread counts gives every selected pool its packed rank in selection
     # order, and the last thread's inclusive sum is the row's total.
     var row = token_idx * pool_topk
-    var first_slot = Int(thread_idx.x) * pools_per_thread
+    var first_slot = thread_idx.x * pools_per_thread
     var pids = Array[Int32, pools_per_thread](fill=-1)
     var num_selected = 0
     for i in range(pools_per_thread):
@@ -819,7 +819,7 @@ def kpool_expand_topk_kernel[
             rank += 1
 
     var packed = total_selected * kpool
-    var col = packed + Int(thread_idx.x)
+    var col = packed + thread_idx.x
     while col < out_width:
         var tail_idx = col - packed
         out_indices.raw_store(
