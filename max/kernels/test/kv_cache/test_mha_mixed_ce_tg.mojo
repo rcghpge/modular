@@ -222,7 +222,7 @@ def execute_ragged_flash_attention() raises:
     for bs in range(batch_size):
         var seq_len = true_ce_cache_lens[bs] + true_ce_prompt_lens[bs]
 
-        for block_idx in range(0, ceildiv(seq_len, page_size)):
+        for block_idx in range(ceildiv(seq_len, page_size)):
             var randval = Int(random_ui64(0, num_paged_blocks - 1))
             while randval in paged_lut_set:
                 randval = Int(random_ui64(0, num_paged_blocks - 1))
