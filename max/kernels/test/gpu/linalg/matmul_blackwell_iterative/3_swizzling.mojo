@@ -277,7 +277,7 @@ def kernel_3[
 
     comptime num_warps = num_threads // WARP_SIZE
 
-    var ctile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
+    var ctile = c.tile[BM, BN](block_idx.y, block_idx.x)
 
     comptime for m_mma in range(num_m_mmas):
         comptime for n_mma in range(num_n_mmas):
