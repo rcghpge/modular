@@ -15,12 +15,7 @@
 
 from max.gpu import block_idx, thread_idx
 from max.gpu.host import DeviceContext
-from std.math import min, max
-
-
-def ceildiv(a: Int, b: Int) -> Int:
-    """Ceiling division."""
-    return (a + b - 1) // b
+from std.math import ceildiv, min, max
 
 
 def co_rank(
