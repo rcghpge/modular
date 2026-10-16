@@ -11,8 +11,43 @@ to make that change.
 version of this document was in
 [Notion](https://www.notion.so/modularai/Graph-compiler-architecture-specification-32f1044d37bb8029aef9d15543f7421c?source=copy_link).
 
+## Requirement status
+
+The compiler still has architecture-specific fusion rules and emits runtime
+scheduling decisions. Other requirements, such as compile-time budgets, need
+measurements before we can say they're met. Use these labels to distinguish
+current contracts from work we still need to do.
+
+- Enforced today: the implementation or architectural boundary supports this
+  contract today. Preserve it when changing code. This label doesn't certify
+  every test or deployment configuration.
+- Existing exception (do not expand): current code departs from the stated
+  requirement. Keep necessary fixes scoped to that exception; don't use it as
+  a precedent for new architecture. Broader changes need an explicit design
+  decision.
+- Migration target: the full capability or contract isn't established yet.
+  Move toward it when the task calls for that work. Don't assume it's already
+  available or turn an unrelated change into a migration.
+- Measurement required: implementation or tests alone don't establish the
+  stated guarantee. Collect the specified measurements, coverage, or review
+  evidence before claiming compliance. This label doesn't mean the requirement
+  has failed.
+
+Each numbered principle, quality attribute, constraint, and ADR has one label.
+The accompanying note explains partial support and any remaining evidence.
+For mixed requirements, a concrete implementation exception takes precedence
+over missing measurements. An unfinished capability is a migration target.
+
+These labels record implementation status, not permission to weaken the
+requirements. Update the label and its evidence when the implementation changes.
+The labels reflect a source review, with cited exceptions checked on
+October 15, 2026, against revision
+[`ceaf9aea9ed8`][review-revision].
+Performance targets remain unverified by this source review.
+
 ## Table of contents
 
+- [Requirement status](#requirement-status)
 - [1. Introduction and goals](#1-introduction-and-goals)
 - [2. Guiding principles](#2-guiding-principles)
 - [3. Quality attributes](#3-quality-attributes)
@@ -71,44 +106,98 @@ resolve it or make the trade-off explicit.
    (dependencies, resource requirements, lifetimes), not prescriptive or
    imperative. The graph compiler will refine these requires based on the
    target hardware. But execution strategy is the runtime's job.
+
+   Status: Existing exception (do not expand). The compiler still emits task
+   launches, joins, and allocation ordering. See [QA-CR1](#qa-cr1).
+
 2. **Every decision has exactly one owner.** For any decision category
    (memory, ordering, synchronization), one component is authoritative. If
    you need to read both compiler and runtime code to understand a single
    behavior, ownership is split.
+
+   Status: Existing exception (do not expand). Execution policy spans
+   generated code and runtime components. See QA-CR4.
+
 3. **Device-specific logic does not enter the compiler.** Passes, analyses,
    and pipeline structure are device-agnostic. All device-specific logic
    lives in kernels or in the runtime/driver layer.
+
+   Status: Existing exception (do not expand). Compiler fusion patterns still
+   select NVIDIA `sm_100a` implementations. See [QA-P3](#qa-p3).
+
 4. **A new backend must not require compiler changes.** A new backend within
    an existing device class integrates through kernels, driver, and runtime.
    If compiler changes are needed, treat it as a failure signal.
+
+   Status: Measurement required. Check a same-class backend bring-up diff and
+   its test results. Existing architecture gates make this a requirement to
+   verify, not an established guarantee.
+
 5. **Custom ops and builtin ops follow the same rules.** The compiler does
    not distinguish between custom and builtin ops for any structural
    decision (fusion eligibility, memory planning, optimization).
+
+   Status: Existing exception (do not expand). Shared kernel interfaces
+   coexist with builtin-specific lowering and fusion. See [QA-E3](#qa-e3).
+
 6. **Resist special-casing; generalize or push up.** Before adding a
    pattern-specific pass, ask whether the optimization can be expressed as a
    general structural transformation, or whether the pattern can be exposed
    through the graph API or kernel contract for the author to mark
    explicitly.
+
+   Status: Existing exception (do not expand). `PatternFusionPass` still
+   recognizes named composite patterns. Use structural fusion for new work;
+   see [C8](#c8).
+
 7. **Passes are independent units with documented invariants.** Each pass
    has a defined input and output contract. Cross-pass dependencies through
    implicit shared state or undocumented ordering are forbidden.
+
+   Status: Existing exception (do not expand). `SimpleBufferReusePass`
+   preserves a partially invalid analysis based on what the next pass queries.
+   See [the preservation assumption][analysis-preservation].
+
 8. **Compilation cost scales with graph structure, not content.** Compile
    time scales near-linearly with structural complexity. Repeated structures
    (decoder layers) use caching; the cost of N identical layers is
    approximately N times the cost of one layer.
+
+   Status: Existing exception (do not expand). Memory planning builds an
+   allocation-pair matrix with quadratic space and work. See [the
+   planner][memory-planning]; QA-S4 still needs end-to-end measurements.
+
 9. **Do not bind what the runtime should decide later.** If a decision
    depends on information available only at runtime, or if binding it at
    compile time forces unnecessary recompilation, keep it dynamic.
+
+   Status: Existing exception (do not expand). Execution policy and some KV
+   cache parameters are fixed in generated code. See [QA-CR1](#qa-cr1) and
+   ADR-4.
+
 10. **The graph author states intent; the compiler derives mechanism.** The
     graph API captures intent (sharding, logical computation), not mechanism
     (communication ops, memory layout). The compiler derives mechanism from
     intent.
+
+    Status: Migration target. Experimental MAX sharding provides layouts and
+    resharding policy, but the full input-IR contract remains a target. See
+    [QA-D5](#qa-d5).
+
 11. **If fusion behavior is not predictable, it is not useful.** Fusion
     patterns are documented and testable. Adding or removing an op in a
     fusable sequence causes smooth performance changes, not cliffs.
+
+    Status: Measurement required. Fusion tests establish transformations, not
+    smooth performance changes. See [QA-D3](#qa-d3).
+
 12. **Errors are synchronous, specific, and traceable.** Errors surface at
     compile time with a message that identifies the offending operation,
     explains the cause, and maps back to user source code.
+
+    Status: Measurement required. Source traces and static validation exist.
+    Check diagnostic coverage separately from runtime-dependent shape errors;
+    see QA-C1 and QA-C2.
 
 ## 3. Quality attributes
 
@@ -121,6 +210,10 @@ ensure it is verifiable. Requirements are derived from stakeholder Q&A sessions.
 **QA-P1. Single graph, multiple device types.** The same graph compiles
 and executes correctly on any supported device type without source-level
 changes.
+
+Status: Measurement required. Verify the same graph against reference outputs
+on each supported device type. Source inspection alone doesn't establish
+numerical portability.
 
 - *Stimulus*: a graph targeting 1 NVIDIA GPU is recompiled for 1 AMD GPU.
 - *Response*: compilation succeeds; output matches reference within numerical
@@ -139,6 +232,10 @@ the graph compiler; all integration work is confined to the Driver level.
 Isolated bug fixes that correct latent assumptions exposed by the new backend
 are acceptable.
 
+Status: Measurement required. This needs the backend bring-up diff and full
+test results. Compiler architecture gates remain an obstacle; see
+[QA-P3](#qa-p3).
+
 - *Stimulus*: a new backend within an existing device class is integrated.
 - *Response*: the graph compiler passes its full test suite without
   architectural modification.
@@ -149,6 +246,10 @@ are acceptable.
 <a id="qa-p3"></a>**QA-P3. Kernel signature portability.** From the graph
 compiler's perspective, kernels are portable by signature. The graph compiler
 does not depend on kernel implementation details that are device-specific.
+
+Status: Existing exception (do not expand). `MatmulAddPattern` and
+`MegaFFNNvfp4Pattern` check `sm_100a` inside the compiler. See [the device
+gates][device-gates].
 
 - *Stimulus*: a kernel with a given signature is used in a graph compiled for
   two different device types.
@@ -163,6 +264,10 @@ does not depend on kernel implementation details that are device-specific.
 kernel definitions compose with all execution modes (compiled and eager) through
 a unified interface.
 
+Status: Enforced today. The shared custom-op interface supports eager
+execution and graph staging, with [representative tests][custom-op-tests].
+Preserve both paths when changing the interface.
+
 - *Stimulus*: a user registers a custom op using the documented API.
 - *Response*: the custom op executes correctly in both eager mode and compiled
   mode.
@@ -172,6 +277,10 @@ a unified interface.
 **QA-E2. Dynamic shape support.** The graph compiler supports dynamic shapes
 for all ops, including custom ops, without requiring shape specialization at
 the graph level.
+
+Status: Measurement required. Custom-op tests check reuse across concrete
+shapes with one compilation. That evidence doesn't establish the stated
+guarantee for every op; see [the reuse test][shape-reuse].
 
 - *Stimulus*: a graph containing ops with symbolic (dynamic) shape dimensions
   is compiled.
@@ -187,6 +296,10 @@ determined entirely by kernel structure (for example, elementwise access pattern
 or prologue/epilogue interfaces), not by op identity or any per-op compiler
 logic. Adding a new op whose kernel conforms to this contract requires zero
 compiler changes; the existing fusion infrastructure handles it automatically.
+
+Status: Existing exception (do not expand). MAP provides structural fusion,
+but named patterns and builtin-specific lowering remain. See [pattern
+fusion][pattern-fusion] and [MO-to-MAP lowering][mo-to-map].
 
 - *Stimulus*: a kernel using the correct Mojo tensor types is placed adjacent
   to fusion-eligible ops.
@@ -205,6 +318,10 @@ contract (kernel API, MEF surface) evolves under a best-effort compatibility
 policy, with a trajectory toward a formal deprecation policy with tooling
 support.
 
+Status: Measurement required. Best-effort compatibility is the policy. Verify
+prior-version kernels, actionable errors, and release-note coverage before
+claiming this requirement is met.
+
 - *Stimulus*: a kernel authored against a previous API version is compiled with
   the current compiler.
 - *Response*: the kernel either compiles successfully or produces a clear,
@@ -218,6 +335,9 @@ support.
 Llama 3.1 405B-class models does not regress beyond the current baseline (~3
 minutes for the compilation portion of ~5 minutes total cold start on a CPU
 comparable to those used on common cloud machines hosting multiple GPUs).
+
+Status: Measurement required. Attach cold-start measurements and evidence of
+the 30% regression alert for the stated model and hardware class.
 
 - *Stimulus*: a Llama 3.1 405B model is compiled from scratch (no cache) on a
   supported device.
@@ -233,6 +353,10 @@ comparable to those used on common cloud machines hosting multiple GPUs).
 **QA-S2. Warm-start avoids recompilation.** When a valid MEF cache entry exists
 for the current compilation target, serving startup skips compilation entirely.
 
+Status: Enforced today. A valid MEF cache hit returns the artifact before
+graph compilation. Preserve [the cache-hit path][mef-cache]; cache lookup and
+key construction still do work.
+
 - *Stimulus*: a serving container starts with a warm MEF cache.
 - *Response*: startup proceeds directly to initialization; no compilation
   passes execute.
@@ -245,6 +369,9 @@ comparable to those used on common cloud machines hosting multiple GPUs to
 avoid blocking developer iteration when a new system version requires
 recompilation.
 
+Status: Measurement required. Verify cold-start compile times and warning
+coverage for the standard model set.
+
 - *Stimulus*: a developer deploys a new version of the graph compiler and
   recompiles the standard model set.
 - *Response*: all models in the standard set compile within 10 minutes each.
@@ -255,6 +382,10 @@ recompilation.
 time for models with repeated layer structure scales near-linearly with
 layer count. The target growth exponent is 1.0 (linear); the warning
 threshold is 1.2 and the hard ceiling is 1.5.
+
+Status: Measurement required. Measure the growth exponent across layer counts.
+The [quadratic allocation planner][memory-planning] is a known risk, not proof
+that the end-to-end ceiling is exceeded.
 
 - *Stimulus*: a decoder-only transformer is compiled at three or more layer
   counts (for example, N, 2N, 4N) with the same per-layer structure and
@@ -285,6 +416,9 @@ scheduling, memory management), time of driver operations like loading kernels,
 executing kernels, memory allocations and copies excluded, does not exceed 1% of
 total execution time on supported hardware.
 
+Status: Measurement required. Verify the overhead fraction with serving
+profiles and the exclusions stated below.
+
 - *Stimulus*: a compiled model executes under a representative workload.
 - *Response*: profiling shows >=99% of wall-clock time is spent in kernel
   execution.
@@ -303,6 +437,9 @@ total execution time on supported hardware.
 designated model set outperforms eager execution of the same models by a
 statistically significant and practically meaningful margin.
 
+Status: Measurement required. Define the model set and useful margin, then
+compare eager and compiled execution with confidence intervals.
+
 - *Stimulus*: a model from the designated set runs in both eager and compiled
   modes on the same hardware.
 - *Response*: compiled mode achieves higher throughput or lower latency.
@@ -317,6 +454,9 @@ statistically significant and practically meaningful margin.
 **QA-R3. Parallel dispatch of independent operations.** Independent operations
 within a compiled graph execute in parallel; each operation dispatches as soon
 as its inputs are ready.
+
+Status: Measurement required. Async dispatch exists, but launch machinery
+doesn't prove overlap. Verify independent subgraphs with device traces.
 
 - *Stimulus*: a graph containing independent subgraphs is compiled and
   executed.
@@ -355,6 +495,10 @@ compositions of primitives whose kernels conform to the fusable kernel contract
 ([QA-E3](#qa-e3)), eliminating the need for hand-written glue kernels for
 structurally simple compositions.
 
+Status: Existing exception (do not expand). Structural MAP fusion exists
+alongside op-specific composite fusion. Preserve the structural path; the
+speed-of-light target also needs a defined threshold and measurements.
+
 - *Stimulus*: a model author expresses a chain of elementwise ops, or an
   elementwise op adjacent to a matmul with prologue/epilogue fusion enabled,
   as composed primitives instead of a single hand-written kernel.
@@ -374,6 +518,10 @@ structurally simple compositions.
 that exceed the fusable contract (multi-op patterns with non-trivial access
 patterns, novel architectures), the graph compiler supports fast integration
 of custom kernels that compose cleanly with the rest of the graph.
+
+Status: Measurement required. Custom-kernel integration exists. The one-day
+target and the full portability and fusion claims still need representative
+validation.
 
 - *Stimulus*: a researcher invents a novel subgraph pattern (for example, a
   new attention variant or gating mechanism) that cannot be expressed as a
@@ -398,6 +546,9 @@ of custom kernels that compose cleanly with the rest of the graph.
 behavior is predictable for documented fusion patterns: no optimization causes
 an unexpected performance cliff relative to unfused execution.
 
+Status: Measurement required. Verify performance changes for documented
+patterns. Transformation tests alone don't establish performance monotonicity.
+
 - *Stimulus*: a graph author adds or removes an op in a documented fusable
   sequence.
 - *Response*: performance degrades or improves smoothly according to the
@@ -417,6 +568,10 @@ The documentation (or a compiler report mode) also serves as guidance for
 graph authors on how to structure code for effective fusion and on when to
 write a custom kernel instead.
 
+Status: Migration target. The extensibility guide describes tensor interfaces
+and fused access. Complete pattern coverage, authoring guidance, and links to
+coverage tests remain to be established.
+
 - *Stimulus*: a developer or model author consults the fusion coverage
   documentation to determine whether a given op sequence fuses or whether a
   custom kernel is the appropriate path.
@@ -430,9 +585,10 @@ write a custom kernel instead.
   fusion decisions.
 
 > [!NOTE]
-> Fusion coverage documentation, measurement, and authoring guidance do not
-> exist yet. The form this takes (static documentation, compiler hints,
-> report mode, or IDE integration) is an open design question.
+> The [extensibility guide](ExtensibilityUserGuide.md) describes tensor
+> interfaces and fused access. Complete fusion coverage, measurement, and
+> authoring guidance remain to be established. Static documentation, compiler
+> hints, report mode, and IDE integration are possible forms.
 
 <a id="qa-d5"></a>**QA-D5. Distributed graph authoring with compiler-derived communication.**
 A model author expresses a distributed computation using sharding annotations on
@@ -440,6 +596,11 @@ tensors. The graph compiler derives the necessary communication operations from
 the annotations. When the derived communication is insufficient or suboptimal,
 the author can override it by inserting explicit communication ops for
 fine-grained control.
+
+Status: Migration target. MAX now has [experimental tensor
+layouts][sharding-types] and [resharding policy][resharding-policy]. The
+complete annotation, propagation, ambiguity, and override contract described
+here is not established by that implementation.
 
 - *Stimulus*: a model author writes a graph with tensors annotated for
   distribution across N devices (for example, `shard(dim=0, axis="tp")`),
@@ -456,12 +617,12 @@ fine-grained control.
 > [!NOTE]
 > See [C7](#c7) for the constraint on explicit communication ops.
 >
-> This capability does not exist yet. The current model requires the graph
-> author to manually insert communication ops (`mo.transfer`, collective
-> operations). The design direction is a two-tier model: compiler-derived
-> communication from sharding annotations as the default, with explicit
-> communication ops as an escape hatch for performance tuning. See
-> [ADR-8](#adr-8-explicit-sharding-annotations-with-compiler-derived-communication)
+> Experimental MAX sharding now provides tensor layouts, placement rules, and
+> resharding policy above the compiler input. The full contract here remains
+> a migration target. Direct graph authors still insert communication ops
+> (`mo.transfer`, collective operations). The design direction is derived
+> communication by default, with explicit ops for performance tuning. See
+> [ADR-8][sharding-adr]
 > for rationale and trade-offs.
 
 ### 3.6 Correctness and debuggability
@@ -469,6 +630,10 @@ fine-grained control.
 **QA-C1. Python stack traces for graph ops.** The graph compiler emits metadata
 that enables accurate Python stack traces mapping compiled graph ops back to
 their source graph-construction call site.
+
+Status: Enforced today. The compiler materializes Python source locations and
+attaches traces to assertions. Preserve [trace propagation][source-traces]
+through lowering and fusion.
 
 - *Stimulus*: a compiled graph op produces an error at runtime.
 - *Response*: the error includes a Python stack trace pointing to the line in
@@ -480,6 +645,10 @@ their source graph-construction call site.
 mismatches, and shape violations are surfaced synchronously at the SDK boundary
 with actionable diagnostics, never deferred to runtime as silent failures.
 
+Status: Measurement required. Static kernel validation and error tests exist.
+Verify the stated SDK diagnostics; errors that depend on runtime values cannot
+all be diagnosed at compilation.
+
 - *Stimulus*: a user constructs a graph with an unsupported op or invalid
   dtype.
 - *Response*: the graph compiler raises an error at compile time with a message
@@ -490,6 +659,9 @@ with actionable diagnostics, never deferred to runtime as silent failures.
 **QA-C3. Standalone Mojo output** (optional, stretch goal). The graph compiler
 can optionally emit standalone Mojo source that reproduces the compiled
 computation for debugging purposes.
+
+Status: Migration target. Dumping generated Mojo is available. A
+self-contained program reproducing the whole graph remains an optional target.
 
 - *Stimulus*: a developer requests standalone Mojo output for a compiled graph.
 - *Response*: if supported, the output is a self-contained Mojo program
@@ -507,6 +679,10 @@ artifact encodes its compilation target explicitly (CPU architecture + GPU
 architecture + MAX/Mojo version) and executes without recompilation when the
 deployment target matches. When loaded on a mismatched target, the mismatch
 is detected and reported.
+
+Status: Migration target. MEF caching exists, but it doesn't establish the
+explicit target manifest and load-time mismatch contract. Complete that
+contract before treating artifacts as validated for deployment.
 
 - *Stimulus*: a MEF artifact compiled for a specific target is deployed on a
   machine matching that target, and separately on a mismatched target.
@@ -527,6 +703,9 @@ is detected and reported.
 numerical results that match reference outputs within defined tolerance,
 verified through end-to-end logit verification tests.
 
+Status: Measurement required. Logit-verification infrastructure exists. Check
+passing results, model coverage, and tolerances for the designated set.
+
 - *Stimulus*: a compiled model runs inference on a reference input set.
 - *Response*: output logits match the reference within tolerance.
 - *Measure*: logit verification tests pass in CI for all models in the
@@ -545,6 +724,11 @@ to support device-native features like graph capture.
 artifact expresses computation dependencies and resource requirements without
 prescribing a specific runtime execution strategy (CPU dataflow, GPU stream
 submission, device graph replay, or future execution models).
+
+Status: Existing exception (do not expand). Generated Mojo contains async task
+creation and worker-affinity policy. See [async call
+emission][async-emission]; these are executable decisions, not overridable
+hints.
 
 - *Stimulus*: a new runtime execution backend is implemented (for example, a
   GPU stream-based backend after the existing CPU dataflow backend).
@@ -570,6 +754,10 @@ submission, device graph replay, or future execution models).
 computation is GPU-resident, the runtime dispatch path from compiled artifact
 to device kernel launch does not introduce per-kernel CPU overhead beyond a
 defined budget.
+
+Status: Measurement required. Measure CPU dispatch time on representative
+hardware. The dispatch implementation alone doesn't establish the provisional
+5-microsecond budget.
 
 - *Stimulus*: a compiled model with N sequential GPU kernel launches is
   executed.
@@ -601,6 +789,11 @@ Device graph capture (for example, CUDA graphs) is implementable as a
 self-contained capability of a single runtime component, without requiring
 coordination across multiple system layers.
 
+Status: Existing exception (do not expand). Capture still spans compiler
+passes, model execution, Python orchestration, and the driver. The [compiler
+pipeline][compiler-pipeline] stages device graphs and generates recording
+stubs.
+
 - *Stimulus*: device graph capture support is added or modified for a
   supported device type.
 - *Response*: all changes are confined to a single runtime component (the
@@ -630,6 +823,11 @@ synchronization mechanism, device context management) has a single
 architectural owner -- either the compiler or the runtime -- with no split
 ownership or cross-layer negotiation.
 
+Status: Existing exception (do not expand). The compiler chooses task
+boundaries and allocation dependencies while runtime components execute them.
+Define the policy boundary before claiming single ownership; see
+[QA-CR1](#qa-cr1) and QA-CR3.
+
 - *Stimulus*: a developer traces the implementation of a specific execution
   policy decision (for example, "when is buffer X allocated?" or "what
   determines the execution order of kernels K1 and K2?").
@@ -654,24 +852,48 @@ renegotiated with stakeholders.
 - **C1. MAX as sole IR producer.** The graph compiler accepts input graph
   exclusively from MAX. No external IR producers (for example, ONNX importers,
   TorchScript converters) are in scope.
+
+  Status: Enforced today. Keep MAX as the supported producer boundary.
+  Internal IR tools and tests don't extend the public producer contract.
+
 - <a id="c2"></a>**C2. Graph compiler to GraphRT boundary.** The graph compiler
   produces MEF artifacts consumed by GraphRT. The runtime starts at GraphRT; the
   graph compiler and runtime are viewed as a continuum, but MEF is the contract
   boundary.
 
+  Status: Enforced today. Compilation produces MEF for GraphRT. The boundary
+  exists even though execution-policy independence remains an exception under
+  [QA-CR1](#qa-cr1).
+
 ### 4.2 Technical constraints
 
 - **C3. Kernel language = Mojo.** Graph execution is supplied by a set of
   user-written and generated Mojo kernels.
+
+  Status: Enforced today. Kernel generation and custom-kernel integration use
+  Mojo. This doesn't prohibit runtime primitives implemented in C++.
+
 - **C4. Buffer non-aliasing assumption.** The compiler assumes that two
   different `mo.buffer` values do not alias. All optimization passes
   (fusion, memory planning, elision) rely on this invariant.
+
+  Status: Enforced today. This is a compiler precondition, not a claim that
+  every caller's buffers are checked for aliasing. Preserve it when
+  constructing or rewriting buffer values.
+
 - **C5. Graph encodes device count explicitly.** The input graph encodes the
   number of target devices explicitly. The graph compiler does not perform
   automatic device-count scaling or partitioning.
+
+  Status: Enforced today. Device references and graph structure specify the
+  device set. Changing device count requires an appropriate graph.
+
 - **C6. One MEF per graph.** The graph compiler produces one MEF file per
   graph. A model may define multiple graphs (for example, separate prefill and
   decode graphs), each compiled into its own MEF.
+
+  Status: Enforced today. Keep one artifact per top-level graph. Internal
+  subgraphs and callables can live inside that artifact.
 
 ### 4.3 Integration constraints
 
@@ -683,22 +905,30 @@ renegotiated with stakeholders.
   compiler does not pattern-match communication primitives from other op
   sequences.
 
-  > [!NOTE] > Today, all communication ops are manually authored. The trajectory
-  is > toward compiler-derived communication from sharding annotations (see >
-  [ADR-8](#adr-8-explicit-sharding-annotations-with-compiler-derived-communication)),
-  with author-inserted ops as an override mechanism. Under both > models,
-  communication ops appear as explicit ops in the IR after > lowering,
-  preserving the invariants of downstream passes.
+  Status: Enforced today. Communication reaches downstream compiler passes as
+  explicit operations. Compiler-derived communication under [QA-D5](#qa-d5)
+  remains a separate migration target.
+
+  > [!NOTE]
+  > Communication remains explicit at the compiler boundary. Experimental MAX
+  > sharding can express distribution above that boundary; the full contract in
+  > [ADR-8](#adr-8-explicit-sharding-annotations-with-compiler-derived-communication)
+  > remains a migration target. Both paths must preserve explicit communication
+  > ops for downstream passes.
 
 - <a id="c8"></a>**C8. Fusion is a function of kernel structure.** See
   [QA-E3](#qa-e3) for the testable requirement. Fusion eligibility is determined
   by kernel structure, not by op identity; the graph compiler does not have
   op-identity-based fusion rules.
 
-  > [!NOTE] > Some ad-hoc kernel fusion patterns (for example, complex multi-op
-  > patterns) are defined within the graph compiler's pass infrastructure >
-  today. These should be migrated to the structure-based contract defined > in
-  [QA-E3](#qa-e3).
+  Status: Existing exception (do not expand). Named composite patterns still
+  exist in [PatternFusionPass][pattern-fusion]. They aren't precedents for
+  adding new op-identity fusion rules.
+
+  > [!NOTE]
+  > Some ad-hoc kernel fusion patterns remain in the compiler. Migrate them
+  > toward the structure-based contract in [QA-E3](#qa-e3); don't expand them
+  > without an explicit architecture decision.
 
 ## 5. Design decisions
 
@@ -706,6 +936,11 @@ This section records important, expensive, or risky architecture decisions
 for the graph compiler in ADR (architecture decision record) format.
 
 ### ADR-1: AOT compilation as primary execution mode
+
+Status: Existing exception (do not expand). AOT remains the primary mode, but
+eager custom-op execution can use compiled bindings. Preserve the primary-mode
+decision without assuming eager execution never invokes compilation; see [the
+binding tests][shape-reuse].
 
 - **Context**: the graph compiler must balance compilation cost against runtime
   performance. Users have different latency requirements for interactive
@@ -729,6 +964,9 @@ for the graph compiler in ADR (architecture decision record) format.
 
 ### ADR-2: Kernel portability at signature level
 
+Status: Existing exception (do not expand). Kernel interfaces coexist with
+architecture-specific compiler fusion gates. See [QA-P3](#qa-p3).
+
 - **Context**: the graph compiler needs to handle kernels across multiple
   device types. Full kernel implementation portability is impractical because
   kernels make device-specific decisions internally.
@@ -750,6 +988,10 @@ for the graph compiler in ADR (architecture decision record) format.
 
 ### ADR-3: Device graph APIs over megakernels for runtime overhead
 
+Status: Enforced today. Device graph capture and replay are implemented. This
+preference doesn't establish either the overhead budget or the
+single-component boundary; see [QA-R1](#qa-r1) and QA-CR3.
+
 - **Context**: runtime overhead from kernel launch latency can be reduced
   either by writing larger megakernels (fewer launches) or by using device
   graph APIs (for example, CUDA graphs) that amortize launch cost.
@@ -767,6 +1009,11 @@ for the graph compiler in ADR (architecture decision record) format.
   - (-) Not all workloads benefit equally from graph capture.
 
 ### ADR-4: KV cache as runtime concern, not compiler concern
+
+Status: Existing exception (do not expand). KV cache dtype is passed as a
+custom-op parameter. Enumerate which settings can change without recompilation
+instead of assuming every configuration is dynamic; see [KV kernel
+parameters][kv-parameters].
 
 - **Context**: KV cache management (allocation, sizing, paging, eviction) is a
   critical component of LLM serving performance. It could be handled by the
@@ -788,6 +1035,10 @@ for the graph compiler in ADR (architecture decision record) format.
 
 ### ADR-5: Best-effort extensibility contract
 
+Status: Enforced today. Best-effort compatibility remains the policy. Formal
+deprecation tooling is a future goal; QA-E4 separately requires evidence of
+compatibility and migration guidance.
+
 - **Context**: the graph compiler's extensibility interfaces (kernel API, MEF
   format, fusion contract) are used by internal and external kernel authors.
   Strict versioning requires significant infrastructure investment.
@@ -805,6 +1056,10 @@ for the graph compiler in ADR (architecture decision record) format.
   - (-) Must be resolved before broad external adoption.
 
 ### ADR-6: Communication primitives as first-class ops
+
+Status: Enforced today. Explicit communication ops remain the downstream
+contract. Read the manual-authoring description with ADR-8 and the
+experimental MAX sharding work noted in [QA-D5](#qa-d5).
 
 - **Context**: distributed workloads require communication primitives
   (all-reduce, scatter, gather). These could be pattern-matched from
@@ -833,6 +1088,10 @@ for the graph compiler in ADR (architecture decision record) format.
 
 ### ADR-7: Graph-level device annotation
 
+Status: Enforced today. Device placement is explicit in the compiler input.
+Higher-level APIs can derive that input without giving the compiler automatic
+device-count scaling.
+
 - **Context**: the graph compiler needs to know which devices ops target. This
   information could be inferred, defaulted, or explicitly annotated.
 - **Decision**: devices are explicitly annotated on the graph by the graph
@@ -850,6 +1109,10 @@ for the graph compiler in ADR (architecture decision record) format.
   - (-) Separate graphs are needed for different device counts.
 
 ### ADR-8: Explicit sharding annotations with compiler-derived communication
+
+Status: Migration target. Experimental MAX sharding supplies part of the
+machinery. The input-IR representation, propagation coverage, ambiguity rules,
+and lowering ownership still need the contract described here.
 
 - **Context**: distributed model authoring currently requires graph authors
   to manually insert communication ops (`mo.transfer`, all-reduce, etc.) and
@@ -936,3 +1199,21 @@ for the graph compiler in ADR (architecture decision record) format.
 > - Sharding annotation may have significant runtime overhead in eager mode.
 >
 > Requires alignment with MAX on input types.
+
+[device-gates]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MODialect/Patterns/Fusion.cpp#L4425
+[pattern-fusion]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MODialect/Transforms/PatternFusion.cpp#L49
+[analysis-preservation]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MGPDialect/Transforms/SimpleBufferReusePass.cpp#L101
+[memory-planning]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MGPDialect/Transforms/DynamicMemoryPlanningPass.cpp#L172
+[async-emission]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MOGGDialect/MOGGOps.cpp#L4558
+[compiler-pipeline]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/GraphCompiler.cpp#L417
+[mef-cache]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/FrameworkFrontend/FrameworkFrontend.cpp#L431
+[source-traces]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/MGPDialect/Transforms/AttachPythonStackTraces.cpp#L44
+[custom-op-tests]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/max/tests/integration/tensor/test_custom_op_def.py#L249
+[shape-reuse]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/max/tests/integration/tensor/test_custom_op_def.py#L415
+[sharding-types]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/max/python/max/experimental/sharding/types.py
+[resharding-policy]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/max/python/max/experimental/sharding/_auto_reshard.py
+[kv-parameters]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/max/python/max/nn/kernels.py#L710
+[mo-to-map]: https://github.com/modularml/modular/blob/ceaf9aea9ed803119df09686e567a9edf3cb9f05/GraphCompiler/lib/Conversion/MOToMAP/MOToMAP.cpp#L744
+
+[review-revision]: https://github.com/modularml/modular/commit/ceaf9aea9ed803119df09686e567a9edf3cb9f05
+[sharding-adr]: #adr-8-explicit-sharding-annotations-with-compiler-derived-communication
