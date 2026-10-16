@@ -31,6 +31,7 @@ The g2s issued in steady state overlaps with the mbar_wait + s2g of a
 different slot, hiding g2s latency behind S-1 iterations of work.
 """
 
+from std.math import ceildiv
 from std.sys import get_defined_bool, get_defined_int, size_of
 
 from max.benchmark import bencher_iter_custom
@@ -112,7 +113,7 @@ def bulk_memcpy_kernel[
 
     var first = block_idx.x * NUM_WARPS + w
     var stride = Int(gpu_grid_dim.x) * NUM_WARPS
-    var my_total = max(0, (Int(total_chunks) - first + stride - 1) // stride)
+    var my_total = max(0, ceildiv(Int(total_chunks) - first, stride))
 
     if not is_leader:
         return

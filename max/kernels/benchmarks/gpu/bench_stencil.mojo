@@ -834,36 +834,37 @@ def main() raises:
 
     var m = Bench()
     with DeviceContext() as ctx:
-        comptime if method == "avg_pool":
-            bench_stencil_avg_pool[
-                dtype,
-                batch_size,
-                input_height,
-                input_width,
-                pool_window_h,
-                pool_window_w,
-                num_channels,
-            ](ctx, m)
-        elif method == "max_pool":
-            bench_stencil_max_pool[
-                dtype,
-                batch_size,
-                input_height,
-                input_width,
-                pool_window_h,
-                pool_window_w,
-                num_channels,
-            ](ctx, m)
-        elif method == "avg_pool_padded":
-            bench_stencil_avg_pool_padded[
-                dtype,
-                batch_size,
-                input_height,
-                input_width,
-                pool_window_h,
-                pool_window_w,
-                pad_h,
-                pad_w,
-            ](ctx, m)
+        comptime match method:
+            case "avg_pool":
+                bench_stencil_avg_pool[
+                    dtype,
+                    batch_size,
+                    input_height,
+                    input_width,
+                    pool_window_h,
+                    pool_window_w,
+                    num_channels,
+                ](ctx, m)
+            case "max_pool":
+                bench_stencil_max_pool[
+                    dtype,
+                    batch_size,
+                    input_height,
+                    input_width,
+                    pool_window_h,
+                    pool_window_w,
+                    num_channels,
+                ](ctx, m)
+            case "avg_pool_padded":
+                bench_stencil_avg_pool_padded[
+                    dtype,
+                    batch_size,
+                    input_height,
+                    input_width,
+                    pool_window_h,
+                    pool_window_w,
+                    pad_h,
+                    pad_w,
+                ](ctx, m)
 
     m.dump_report()
