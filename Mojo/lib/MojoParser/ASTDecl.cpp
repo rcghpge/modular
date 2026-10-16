@@ -45,6 +45,7 @@ ASTDecl::ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
   hasBodyDecorators = false;
   loadedFromBytecode = false;
   isExplicitParamScope = false;
+  retired = false;
 }
 
 ASTDecl::~ASTDecl() = default;

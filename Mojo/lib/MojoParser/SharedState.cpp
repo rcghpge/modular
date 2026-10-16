@@ -1719,9 +1719,7 @@ LogicalResult SharedState::finalizeImportedBytecodeModules() {
         materializedUnparsedOps.push_back(op);
     }
   }
-  for (ASTDecl *decl : unparsedBytecodeDecls)
-    if (llvm::is_contained(declResolver->parsedDeclList, decl))
-      declResolver->eraseDecl(*decl);
+  declResolver->eraseDecls(unparsedBytecodeDecls);
 
   for (auto &origin : getModuleLoader().getOrigins()) {
     if (!origin->bytecodeReader)

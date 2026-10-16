@@ -133,6 +133,10 @@ public:
   /// Remove an unreachable declaration and its owned children.
   void eraseDecl(ASTDecl &decl);
 
+  /// Remove a set of unreachable declarations and their owned children. O(N)
+  /// for an N-decl module, regardless of how many decls are removed.
+  void eraseDecls(llvm::ArrayRef<ASTDecl *> decls);
+
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the
   /// decl to be found via ModuleType::getDecl() but not via name lookup.

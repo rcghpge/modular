@@ -251,6 +251,9 @@ public:
   /// Whether this decl was loaded from bytecode.
   bool isLoadedFromBytecode() const { return loadedFromBytecode; }
 
+  /// Whether this decl has been erased from the module and retired.
+  bool isRetired() const { return retired; }
+
   //===--------------------------------------------------------------------===//
   // Name lookup
   //===--------------------------------------------------------------------===//
@@ -435,6 +438,11 @@ private:
   /// scope by `mangleParamName` even though its IR value isn't a
   /// `DeclInterface` op
   bool isExplicitParamScope : 1;
+
+  /// True once this decl has been erased from the module and moved to
+  /// retiredDeclList. Set by DeclResolver so a liveness check is O(1) instead
+  /// of scanning parsedDeclList.
+  bool retired : 1;
 
   /// The counter to allow the generation of unique IDs for this ASTDecl.
   unsigned counter = 0;

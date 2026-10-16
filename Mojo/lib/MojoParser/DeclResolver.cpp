@@ -473,29 +473,53 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
 }
 
 void DeclResolver::eraseDecl(ASTDecl &decl) {
-  assert(llvm::is_contained(parsedDeclList, &decl) &&
-         "declaration has already been erased");
+  assert(!decl.retired && "declaration has already been erased");
+  eraseDecls({&decl});
+}
 
-  SmallVector<ASTDecl *> ownedChildren;
-  for (auto &[_, children] : decl.getDeclsInScope())
-    for (ASTDecl *child : children)
-      if (child->getParentDecl() == &decl)
-        ownedChildren.push_back(child);
-  for (ASTDecl *child : ownedChildren)
-    if (llvm::is_contained(parsedDeclList, child))
-      eraseDecl(*child);
+void DeclResolver::eraseDecls(llvm::ArrayRef<ASTDecl *> seeds) {
+  // Expand the seeds to the full set of decls to remove: each seed plus the
+  // tree of owned children rooted at it. A child is only reachable through its
+  // parent's name table, so it is removed with its parent and never needs to
+  // be a seed on its own.
+  //
+  // Only live seeds are expanded: a seed may already have been erased by an
+  // earlier call (e.g. the two eraseDecls calls in resolveAllReferencedFrom),
+  // and re-erasing a retired decl would push it to retiredDeclList twice and
+  // double-free it in the destructor. The retired flag makes this liveness
+  // test O(1) per decl instead of scanning parsedDeclList.
+  llvm::DenseSet<ASTDecl *> toErase;
+  SmallVector<ASTDecl *> worklist;
+  for (ASTDecl *seed : seeds)
+    if (!seed->retired && toErase.insert(seed).second)
+      worklist.push_back(seed);
+  while (!worklist.empty()) {
+    ASTDecl *decl = worklist.pop_back_val();
+    for (auto &[_, children] : decl->getDeclsInScope())
+      for (ASTDecl *child : children)
+        if (child->getParentDecl() == decl && toErase.insert(child).second)
+          worklist.push_back(child);
+  }
+  if (toErase.empty())
+    return;
 
-  shared.getModuleLoader().eraseState(&decl);
+  for (ASTDecl *decl : toErase)
+    shared.getModuleLoader().eraseState(decl);
+
+  // A decl can be aliased into several scopes (see aliasDeclsImpl), so remove
+  // it from every name table rather than just its parent's. One pass over all
+  // scopes for the whole set, instead of one per decl.
   for (ASTDecl *scope : parsedDeclList) {
     if (!scope->declsInScope)
       continue;
     for (auto &[_, entries] : *scope->declsInScope)
-      llvm::erase(entries, &decl);
+      llvm::erase_if(entries,
+                     [&](ASTDecl *decl) { return toErase.contains(decl); });
   }
   auto eraseMappings = [&](auto &map) {
     for (auto it = map.begin(); it != map.end();) {
       auto current = it++;
-      if (current->second == &decl)
+      if (toErase.contains(current->second))
         map.erase(current);
     }
   };
@@ -503,8 +527,12 @@ void DeclResolver::eraseDecl(ASTDecl &decl) {
   eraseMappings(declForFuncSymbol);
   eraseMappings(canonicalTraitCompositionDecls);
 
-  llvm::erase(parsedDeclList, &decl);
-  retiredDeclList.push_back(&decl);
+  llvm::erase_if(parsedDeclList,
+                 [&](ASTDecl *decl) { return toErase.contains(decl); });
+  for (ASTDecl *decl : toErase) {
+    decl->retired = true;
+    retiredDeclList.push_back(decl);
+  }
 }
 
 void DeclResolver::registerDeclSymbol(ASTDecl *decl) {
@@ -1785,9 +1813,7 @@ void DeclResolver::eraseUnparsedDecls() {
   for (ASTDecl *decl : parsedDeclList)
     if (opsToErase.contains(decl->getIfOperation()))
       declsToErase.push_back(decl);
-  for (ASTDecl *decl : declsToErase)
-    if (llvm::is_contained(parsedDeclList, decl))
-      eraseDecl(*decl);
+  eraseDecls(declsToErase);
 
   for (Operation *op : opsToErase)
     op->erase();
@@ -1805,9 +1831,7 @@ void DeclResolver::eraseDeadImportPlaceholders() {
   for (ASTDecl *decl : parsedDeclList)
     if (deadImportPlaceholders.contains(decl->getIfOperation()))
       placeholderDecls.push_back(decl);
-  for (ASTDecl *decl : placeholderDecls)
-    if (llvm::is_contained(parsedDeclList, decl))
-      eraseDecl(*decl);
+  eraseDecls(placeholderDecls);
   for (Operation *op : deadImportPlaceholders)
     op->erase();
   deadImportPlaceholders.clear();
