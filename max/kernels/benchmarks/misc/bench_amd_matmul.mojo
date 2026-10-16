@@ -81,7 +81,6 @@ from max.gpu.host import DeviceContext
 from internal_utils import arg_parse, CacheBustingBuffer
 from internal_utils._utils import InitializationType
 from layout import CoordLike, Coord, Idx, TileTensor, row_major
-from std.utils import Index
 from linalg.matmul.gpu import _amdgpu_matmul_config_from_block_shape
 from linalg.matmul.gpu.amd.amd_matmul import AMDMatmul
 from linalg.matmul.gpu.amd.amd_ping_pong_matmul import (
@@ -136,7 +135,7 @@ def _launch_default[
         dtype,
         transpose_b=True,
         K=K,
-    ](Index(256, 256))
+    ]((256, 256))
     comptime k = AMDMatmul[
         dtype,
         dtype,
