@@ -90,7 +90,7 @@ def softmax_kernel(
     var S_row = S + (row * N)
     var P_row = P_ptr + (row * N)
 
-    var neg_inf = Float32(-3.40282e38)
+    comptime neg_inf = Float32(-3.40282e38)
     var max_val_thread = neg_inf
 
     var col = tid
@@ -148,7 +148,7 @@ def cpu_softmax(
     N: Int,
 ):
     var P_ptr = h_P
-    var neg_inf = Float32(-3.40282e38)
+    comptime neg_inf = Float32(-3.40282e38)
     for i in range(N):
         var max_val = neg_inf
         for j in range(N):
