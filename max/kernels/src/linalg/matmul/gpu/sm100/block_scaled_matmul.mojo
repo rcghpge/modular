@@ -1070,7 +1070,7 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
     )
     comptime TileWriterType = TileWriter[
         a_type=a_type,
-        accum_type=DType.float32,
+        accum_type=.float32,
         block_tile_shape=config.block_tile_shape,
         mma_shape=config.mma_shape,
         opc=opc,
@@ -2114,11 +2114,11 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     # element. The FP4-only kinds want exactly that dense layout.
     comptime assert config.scaling_kind != UMMAKind.KIND_MXF8F6F4 or (
         (
-            config.a_type != DType.uint8
+            config.a_type != .uint8
             or _is_packed_fp4[config.a_type, config.b_type]()
         )
         and (
-            config.b_type != DType.uint8
+            config.b_type != .uint8
             or _is_packed_fp4[config.b_type, config.a_type]()
         )
     ), String(
