@@ -123,7 +123,7 @@ def fp4_gemv_kernel[
     comptime SF = NVFP4_SF_VECTOR_SIZE  # 16 nibbles / scale block
     comptime BYTES = SF // 2  # 8 packed bytes / block
 
-    var n_idx = Int(global_idx.x) // WARP_SIZE
+    var n_idx = global_idx.x // WARP_SIZE
     if n_idx >= n:
         return
     var lid = Int(lane_id())

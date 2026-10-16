@@ -136,15 +136,15 @@ def grouped_gemv_kernel[
     comptime A_ALIGN = align_of[Scalar[a_type]]() * (VW if K % VW == 0 else 1)
     comptime B_ALIGN = align_of[Scalar[b_type]]() * (VW if K % VW == 0 else 1)
 
-    var group = Int(block_idx.z)
+    var group = block_idx.z
     var a_start = Int(a_offsets[group])
     var m = Int(a_offsets[group + 1]) - a_start
     if m <= 0:
         return
 
-    var sg = Int(thread_idx.x) // WARP_SIZE
+    var sg = thread_idx.x // WARP_SIZE
     var lid = Int(lane_id())
-    var n0 = (Int(block_idx.x) * num_sg + sg) * rows_per_sg
+    var n0 = (block_idx.x * num_sg + sg) * rows_per_sg
     if n0 >= N:
         return
 
@@ -280,7 +280,7 @@ def grouped_matmul_mma_kernel[
     """
     comptime MM = _GroupedMma[a_type, b_type, c_type, linear_idx_type]
 
-    var group = Int(first_group) + Int(block_idx.z)
+    var group = Int(first_group) + block_idx.z
     var a_start = Int(a_offsets[group])
     var m = Int(a_offsets[group + 1]) - a_start
     if m <= 0:

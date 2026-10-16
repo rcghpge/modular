@@ -37,7 +37,6 @@ from std.math import ceildiv, min
 from max.gpu import WARP_SIZE, global_idx, lane_id
 from max.gpu.host import DeviceContext
 import max.gpu.primitives.warp as warp
-from std.utils import IndexList
 
 from layout import Coord, TensorEngine, TensorLayout, TileTensor
 
@@ -122,7 +121,7 @@ def apple_gemv_kernel[
     var n = Int(n_arg)
     var k = Int(k_arg)
 
-    var n0 = (Int(global_idx.x) // WARP_SIZE) * rows_per_warp
+    var n0 = (global_idx.x // WARP_SIZE) * rows_per_warp
     if n0 >= n:
         return
     var lid = Int(lane_id())
@@ -172,14 +171,10 @@ def apple_gemv_kernel[
                 comptime if has_compute_fn:
                     c.store(
                         Coord(mi, col),
-                        compute_fn[c_type, 1, alignment=1](
-                            Coord(IndexList[2](mi, col)), y
-                        ),
+                        compute_fn[c_type, 1, alignment=1](Coord(mi, col), y),
                     )
                 elif has_epilogue_fn:
-                    epilogue_fn[c_type, 1, alignment=1](
-                        Coord(IndexList[2](mi, col)), y
-                    )
+                    epilogue_fn[c_type, 1, alignment=1](Coord(mi, col), y)
                 else:
                     c.store(Coord(mi, col), y)
 

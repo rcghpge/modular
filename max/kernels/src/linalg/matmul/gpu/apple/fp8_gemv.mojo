@@ -162,7 +162,7 @@ struct Fp8WeightLoader[
         # `[N, K]` contract lives in the docstring; a `self.weight.flat_rank`
         # comptime assert is illegal anyway (dynamic-value read through `self`).
         return self.weight.load[width=width, alignment=1](Coord(n, k0)).cast[
-            DType.float32
+            .float32
         ]()
 
 
@@ -203,7 +203,7 @@ def fp8_gemv_kernel[
     # subscripts), so no N-D-index evidence is required, matching `fp4_gemv`.
     comptime TILE_K = _FP8_GEMV_TILE_K
 
-    var n_idx = Int(global_idx.x) // WARP_SIZE
+    var n_idx = global_idx.x // WARP_SIZE
     if n_idx >= n:
         return
     var lid = Int(lane_id())
@@ -327,8 +327,8 @@ def fp8_materialize_kernel[
     var N = Int(out_w.dim[0]())
     var K = Int(out_w.dim[1]())
 
-    var n = Int(global_idx.y)
-    var k = Int(global_idx.x)
+    var n = global_idx.y
+    var k = global_idx.x
     if n >= N or k >= K:
         return
 
