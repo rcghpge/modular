@@ -585,9 +585,9 @@ def dot_at_b(
         c.dtype == .float32 or c.dtype == .float16
     ), "the buffer dtype must be float32 or float16"
 
-    var a_pointer = a.ptr
-    var b_pointer = b.ptr
-    var c_pointer = c.ptr
+    var a_pointer = a.unsafe_ptr()
+    var b_pointer = b.unsafe_ptr()
+    var c_pointer = c.unsafe_ptr()
 
     comptime assert c.flat_rank == 2, "expected rank 2 tile"
     comptime assert (
@@ -615,34 +615,35 @@ def dot_at_b(
 
     comptime dim0 = c.static_shape[0]
 
-    comptime if c.dtype == .float32:
-        comptime assert (
-            c.static_shape[0] == 16 and c.static_shape[1] == 16
-        ), "f32 AMX matmul requires 16x16 tiles"
-        comptime for j in range(2):
-            comptime for i in range(8):
-                ldx((i << 56) | Int(b_buffer + (j * 8 + i) * dim0))
-                ldy((i << 56) | Int(a_buffer + (j * 8 + i) * dim0))
+    comptime match c.dtype:
+        case .float32:
+            comptime assert (
+                c.static_shape[0] == 16 and c.static_shape[1] == 16
+            ), "f32 AMX matmul requires 16x16 tiles"
+            comptime for j in range(2):
+                comptime for i in range(8):
+                    ldx((i << 56) | Int(b_buffer + (j * 8 + i) * dim0))
+                    ldy((i << 56) | Int(a_buffer + (j * 8 + i) * dim0))
 
-            comptime for i in range(8):
-                fma32((i << 6 << 10) | (i << 6))
+                comptime for i in range(8):
+                    fma32((i << 6 << 10) | (i << 6))
 
-        comptime for i in range(0, 64, 4):
-            stz((i << 56) | Int(c_buffer + (i >> 2) * dim0))
-    elif c.dtype == .float16:
-        comptime assert (
-            c.static_shape[0] == 32 and c.static_shape[1] == 32
-        ), "f16 AMX matmul requires 32x32 tiles"
-        comptime for j in range(4):
-            comptime for i in range(8):
-                ldx((i << 56) | Int(b_buffer + (j * 8 + i) * dim0))
-                ldy((i << 56) | Int(a_buffer + (j * 8 + i) * dim0))
+            comptime for i in range(0, 64, 4):
+                stz((i << 56) | Int(c_buffer + (i >> 2) * dim0))
+        case _:
+            comptime assert (
+                c.static_shape[0] == 32 and c.static_shape[1] == 32
+            ), "f16 AMX matmul requires 32x32 tiles"
+            comptime for j in range(4):
+                comptime for i in range(8):
+                    ldx((i << 56) | Int(b_buffer + (j * 8 + i) * dim0))
+                    ldy((i << 56) | Int(a_buffer + (j * 8 + i) * dim0))
 
-            comptime for i in range(8):
-                fma16((i << 6 << 10) | (i << 6))
+                comptime for i in range(8):
+                    fma16((i << 6 << 10) | (i << 6))
 
-        comptime for i in range(0, 64, 2):
-            stz((i << 56) | Int(c_buffer + (i >> 1) * dim0))
+            comptime for i in range(0, 64, 2):
+                stz((i << 56) | Int(c_buffer + (i >> 1) * dim0))
 
     _clr()
 
