@@ -57,6 +57,9 @@ from extensibility import (
     _MutableInputTensor as MutableInputTensor,
 )
 from extensibility import (
+    _TileProjection as TileProjection,
+)
+from extensibility import (
     StableAddrEngine,
     StableInputTensor,
     StableInputVariadicTensors,
@@ -74,7 +77,6 @@ from extensibility import (
     Storable,
     Tensor,
     TensorTuple,
-    TileProjection,
     TileTensorable,
     TransformAccess,
     Transformable,
@@ -942,6 +944,7 @@ struct TraitFusedLoadNegate:
 # `AnyType` in the body, so it is rebound to its `TileProjection`, mutable for
 # an output and immutable for an input. The element types are `TypeList`
 # parameters because a signature takes one list per tuple.
+# TODO(GEX-4386): Type element `k` without the `TileProjection` rebind.
 def _gpu_tensor_tuple_add_kernel[
     Outs: TypeList[Trait=Output & DenseTensor, ...],
     Ins: TypeList[Trait=Input & DenseTensor, ...],
