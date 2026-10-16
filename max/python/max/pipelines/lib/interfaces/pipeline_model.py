@@ -50,7 +50,11 @@ from max.pipelines.kv_cache.config import (
 from max.pipelines.lib.config.model_config import (
     _select_quantization_encoding,
 )
-from max.pipelines.lib.graph_specs import GraphSpec, compile_and_init_graphs
+from max.pipelines.lib.graph_specs import (
+    GraphRole,
+    GraphSpec,
+    compile_and_init_graphs,
+)
 from max.pipelines.lib.utils import (
     CompilationTimer,
     parse_state_dict_from_weights,
@@ -1271,21 +1275,20 @@ class ModuleV3PipelineModelWithKVCache(
 
     A subclass implements ``_create_model_config()``, which builds the
     architecture's config, and ``_instantiate_module()``, which constructs the
-    root module and places it on a device or device mesh. :meth:`load_model`
-    loads and adapts the checkpoint weights, builds the module under
-    ``F.lazy()``, and compiles it with those weights. A subclass can also
-    override ``_prepare_state_dict()``, ``_init_distributed_runtime()``,
+    root module and places it on a device or device mesh. :meth:`graph_specs`
+    builds the module under ``F.lazy()`` and registers it, with the adapted
+    checkpoint weights, as the decoder. A subclass can also override
+    ``_prepare_state_dict()``, ``_init_distributed_runtime()``,
     ``_module_default_dtype()``, or ``_get_compile_input_types()``.
 
     An encoder model without a KV cache subclasses
     :class:`ModuleV3PipelineModel`, and a vision-language model that compiles
     several modules subclasses
     :class:`ModuleV3MultiGraphPipelineModelWithKVCache`.
-    Component models and unified speculative-decoding pipelines override
-    :meth:`load_model`.
 
-    The constructor compiles the model into :attr:`model`, and the default
-    :meth:`execute` passes it ``model_inputs.buffers``.
+    The constructor compiles the decoder through :meth:`load_graphs` on the
+    pipeline's session into :attr:`model`, and the default :meth:`execute`
+    passes it ``model_inputs.buffers``.
 
     Args:
         pipeline_config: The pipeline configuration, including the model path
@@ -1313,6 +1316,7 @@ class ModuleV3PipelineModelWithKVCache(
 
     model: Callable[..., ModuleV3Outputs]
     _modulev3_extra_input_types: list[Any]
+    _checkpoint: dict[str, Any]
 
     def __init__(
         self,
@@ -1340,7 +1344,7 @@ class ModuleV3PipelineModelWithKVCache(
             max_batch_size=max_batch_size,
             memory_plan=memory_plan,
         )
-        self.model = self.load_model()
+        self.model = self._load_decoder(session)
 
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
         """Runs :attr:`model` on ``model_inputs.buffers``.
@@ -1373,12 +1377,17 @@ class ModuleV3PipelineModelWithKVCache(
             hidden_states=_driver_buffer(outputs.hidden_states),
         )
 
-    @traced
-    def load_model(self) -> Callable[..., ModuleV3Outputs]:
-        """Build and compile the ModuleV3 callable."""
-        state_dict = self._load_state_dict()
-        model_config = self._create_model_config(state_dict)
-        state_dict = self._prepare_state_dict(state_dict, model_config)
+    def graph_specs(self, model_config: _ModelConfigT) -> dict[str, GraphSpec]:
+        """Returns the decoder, built from the checkpoint weights.
+
+        Prepares the weights, initializes the distributed runtime, and
+        constructs the root module under ``F.lazy()``, wrapping it for LoRA
+        when serving adapters.
+
+        Args:
+            model_config: The config :meth:`_create_model_config` returned.
+        """
+        state_dict = self._prepare_state_dict(self._checkpoint, model_config)
         self._init_distributed_runtime(model_config)
         module_default_dtype = self._module_default_dtype(
             state_dict, model_config
@@ -1390,9 +1399,29 @@ class ModuleV3PipelineModelWithKVCache(
                 self._modulev3_extra_input_types = (
                     self._lora_manager.symbolic_inputs(self.device_refs[0])
                 )
-        compile_input_types = self._get_compile_input_types(model_config)
-        self._wire_batch_processor(nn_model, model_config)
-        return nn_model.compile(*compile_input_types, weights=state_dict)
+        return {
+            GraphRole.DECODER: GraphSpec(
+                nn_model,
+                type(nn_model).__qualname__,
+                self._get_compile_input_types(model_config),
+                weights=state_dict,
+            )
+        }
+
+    def _load_decoder(
+        self, session: InferenceSession
+    ) -> Callable[..., ModuleV3Outputs]:
+        """Compiles the decoder through :meth:`load_graphs`."""
+        self.load_graphs(session)
+        # The callable keeps the weight registry; drop the other reference
+        # to the checkpoint.
+        del self._checkpoint
+        return self.compiled_modules[GraphRole.DECODER]
+
+    def _load_state_dict(self) -> dict[str, Any]:
+        """Loads the checkpoint, and keeps it for :meth:`graph_specs`."""
+        self._checkpoint = super()._load_state_dict()
+        return self._checkpoint
 
     def _create_model_config(self, state_dict: dict[str, Any]) -> _ModelConfigT:
         """Builds model config from ``state_dict``."""

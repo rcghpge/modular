@@ -27,15 +27,18 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
 from max import tree
 from max.driver import DLPackArray
 from max.engine import CompiledModel, InferenceSession, Model
-from max.experimental.compilation import CompiledCallable
+from max.experimental.compilation import CompiledCallable, StagedGraph
+from max.experimental.nn import Module as ModuleV3
 from max.experimental.sharding import TensorLayout
 from max.experimental.sharding.types import as_layout
+from max.experimental.tensor import Tensor
 from max.graph import Graph, Type
 from max.graph import Module as GraphModule
 from max.nn import Module
@@ -73,20 +76,26 @@ class GraphRole(str, Enum):
 class GraphSpec:
     """A graph a pipeline compiles, as the module that traces it.
 
+    A :class:`~max.experimental.nn.Module` (ModuleV3) graph traces its
+    ``forward`` through :meth:`~max.experimental.nn.Module.stage` and
+    compiles on its own.
+
     Args:
-        module: The module whose ``__call__`` the graph traces.
+        module: The module whose ``__call__`` (``forward`` for a ModuleV3
+            module) the graph traces.
         name: The graph's name. Graphs in one group need distinct names.
         input_types: The type of each graph input.
         weights: The weight values, keyed by name. Defaults to the module's
-            :meth:`~max.nn.Module.state_dict` once traced.
+            :meth:`~max.nn.Module.state_dict` once traced, or a ModuleV3
+            module's own parameters.
         group: Roles with the same group compile into one model, which
             holds each role's graph as a named submodel. ``None`` compiles
-            the role on its own.
+            the role on its own. A ModuleV3 graph takes no group.
         custom_extensions: Paths to custom kernel libraries the graph uses.
         is_device_graph: Whether to build a device graph.
     """
 
-    module: Module
+    module: Module | ModuleV3[..., Any]
     name: str
     input_types: Sequence[Type[Any]]
     weights: Mapping[str, DLPackArray] | None = None
@@ -95,7 +104,18 @@ class GraphSpec:
     is_device_graph: bool = False
 
     def trace(self, module: GraphModule | None = None) -> Graph:
-        """Traces the graph, into ``module`` if given."""
+        """Traces the graph, into ``module`` if given.
+
+        Raises:
+            ValueError: If ``module`` is given for a ModuleV3 graph.
+        """
+        if isinstance(self.module, ModuleV3):
+            if module is not None:
+                raise ValueError(
+                    f"ModuleV3 graph {self.name!r} cannot trace into a shared"
+                    " module; give its spec no group"
+                )
+            return self._staged[0].graph
         return self.module.trace(
             *self.input_types,
             name=self.name,
@@ -106,9 +126,24 @@ class GraphSpec:
 
     def weights_registry(self) -> Mapping[str, DLPackArray]:
         """Returns the weight values the graph binds, keyed by name."""
+        if isinstance(self.module, ModuleV3):
+            return self._staged[1]
         if self.weights is not None:
             return self.weights
         return self.module.state_dict()
+
+    @cached_property
+    def _staged(self) -> tuple[StagedGraph[..., Any], dict[str, Tensor]]:
+        # A ModuleV3 graph and its registry come from one trace, which
+        # records the layout each checkpoint entry arrives in.
+        assert isinstance(self.module, ModuleV3)
+        return self.module.stage(
+            *self.input_types,
+            weights=self.weights,
+            name=self.name,
+            custom_extensions=self.custom_extensions,
+            is_device_graph=self.is_device_graph,
+        )
 
 
 # A context variable rather than a config field: only the export entry point
@@ -150,7 +185,10 @@ def compile_and_init_graphs(
 
     Each callable is called with one argument per input type, positionally,
     and returns a tuple of the graph's outputs. It keeps no weight registry,
-    so the host weights can be released after initialization.
+    so the host weights can be released after initialization. A ModuleV3
+    role's callable instead takes and returns what the module's ``forward``
+    does, adds the signal buffers a multi-device graph takes, and keeps its
+    weight registry.
 
     Args:
         session: The session that compiles and initializes the graphs.
@@ -221,9 +259,18 @@ def compile_and_init_graphs(
                 (model,) = by_name.values()
             else:
                 model = by_name[specs[role].name]
-            callables[role] = _callable(
-                compiled, model, specs[role].input_types, output_types[role]
-            )
+            spec = specs[role]
+            if isinstance(spec.module, ModuleV3):
+                # The trace's own signature, so the callable takes and
+                # returns what ``forward`` does and adds any signal buffers.
+                staged, registry = spec._staged
+                callables[role] = CompiledCallable.from_engine_model(
+                    staged, compiled, model, registry
+                )
+            else:
+                callables[role] = _callable(
+                    compiled, model, spec.input_types, output_types[role]
+                )
     return callables
 
 

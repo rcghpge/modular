@@ -424,19 +424,58 @@ class CompiledCallable(Generic[_P, _R]):
         *,
         session: InferenceSession | None = None,
     ) -> None:
+        session = _session() if session is None else session
+        # Use the session's MEF cache. Plain ``compile`` bypasses it.
+        artifact = session.compile_reusing_mefs(staged.graph)
+        # Bind the weights now rather than on the first call, so that the
+        # first call is not slower than the rest.
+        engine_model = session.init(
+            artifact, weights_registry=dict(weights or {})
+        )
+        self._bind(staged, artifact, engine_model, weights)
+
+    @classmethod
+    def from_engine_model(
+        cls,
+        staged: StagedGraph[_P, _R],
+        artifact: CompiledModel,
+        engine_model: Model,
+        weights: Mapping[str, DLPackArray] | None = None,
+    ) -> CompiledCallable[_P, _R]:
+        """Wraps a graph that was compiled and initialized elsewhere.
+
+        Use this when the caller compiles and initializes ``staged.graph``
+        itself, for example together with other graphs.
+
+        Args:
+            staged: The traced graph that ``artifact`` was compiled from.
+            artifact: The compiled artifact.
+            engine_model: The model initialized from ``artifact``.
+            weights: The weight registry ``engine_model`` was initialized
+                with.
+
+        Returns:
+            The callable that runs ``engine_model``.
+        """
+        compiled = cls.__new__(cls)
+        compiled._bind(staged, artifact, engine_model, weights)
+        return compiled
+
+    def _bind(
+        self,
+        staged: StagedGraph[_P, _R],
+        artifact: CompiledModel,
+        engine_model: Model,
+        weights: Mapping[str, DLPackArray] | None,
+    ) -> None:
         self.in_layouts, self.in_tree = staged.in_layouts, staged.in_tree
         self.out_layouts, self.out_tree = staged.out_layouts, staged.out_tree
         self._signal_device_ids = staged._signal_device_ids
         self._signal_buffer_index = staged._signal_buffer_index
-        session = _session() if session is None else session
-        # Use the session's MEF cache. Plain ``compile`` bypasses it.
-        self._artifact = session.compile_reusing_mefs(staged.graph)
+        self._artifact = artifact
         self._weights = dict(weights or {})
-        # Bind the weights and allocate the signal buffers now rather than on
-        # the first call, so that the first call is not slower than the rest.
-        self._engine_model = session.init(
-            self._artifact, weights_registry=dict(self._weights)
-        )
+        self._engine_model = engine_model
+        # Allocate the signal buffers now rather than on the first call.
         ids = self._signal_device_ids
         self._signal_buffers = _cached_signal_buffers(ids)[0] if ids else []
 

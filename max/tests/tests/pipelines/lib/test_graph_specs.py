@@ -22,6 +22,8 @@ from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.experimental.compilation import CompiledCallable
+from max.experimental.nn import Module as ModuleV3
+from max.experimental.nn import module_dataclass
 from max.experimental.sharding.types import as_layout
 from max.experimental.tensor import Tensor
 from max.graph import DeviceRef, TensorType, TensorValue, Weight
@@ -40,6 +42,26 @@ class Scale(Module):
 
     def __call__(self, x: TensorValue) -> TensorValue:
         return x * self.weight
+
+
+@module_dataclass
+class ScaleV3(ModuleV3[[Tensor], Tensor]):
+    """Multiplies its input by a weight, as a ModuleV3 module."""
+
+    weight: Tensor
+
+    def forward(self, x: Tensor) -> Tensor:
+        return x * self.weight
+
+
+def _v3_spec(name: str, value: float, group: str | None = None) -> GraphSpec:
+    return GraphSpec(
+        ScaleV3(Tensor.zeros([2], dtype=DType.float32, device=CPU())),
+        name,
+        [X],
+        weights={"weight": np.full(2, value, dtype=np.float32)},
+        group=group,
+    )
 
 
 def _spec(name: str, value: float, group: str | None = None) -> GraphSpec:
@@ -153,3 +175,28 @@ def test_identical_graphs_with_different_names_each_init(
     graphs = compile_and_init_graphs(session, specs)
     assert _run(graphs["first"].engine_model) == [4.0, 4.0]
     assert _run(graphs["second"].engine_model) == [4.0, 4.0]
+
+
+def test_a_modulev3_graph_runs_as_its_forward(
+    session: InferenceSession,
+) -> None:
+    graphs = compile_and_init_graphs(
+        session, {GraphRole.DECODER: _v3_spec("scale_v3", 7.0)}
+    )
+    run = graphs[GraphRole.DECODER]
+    assert _run(run.engine_model) == [7.0, 7.0]
+    # ``forward`` returns one tensor, not a tuple of the graph's outputs.
+    out = run(Buffer.from_numpy(np.ones(2, dtype=np.float32)))
+    assert out.to_numpy().tolist() == [7.0, 7.0]
+    assert set(run.weights) == {"weight"}
+
+
+def test_a_modulev3_graph_takes_no_group(session: InferenceSession) -> None:
+    with pytest.raises(ValueError, match="no group"):
+        compile_and_init_graphs(
+            session,
+            {
+                "a": _v3_spec("a", 1.0, group="g"),
+                "b": _spec("b", 1.0, group="g"),
+            },
+        )
