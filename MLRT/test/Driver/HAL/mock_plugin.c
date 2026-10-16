@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // ---------------------------------------------------------------------------
 // Sentinel objects used as opaque handles.
@@ -43,6 +44,45 @@ static int g_event_sentinel;
 static int g_bundle_sentinel;
 static int g_function_sentinel;
 
+// ---------------------------------------------------------------------------
+// Adversarial stall
+//
+// NVIDIA documents that any driver call may block on internal resources, and
+// that which calls do is subject to change, so a runtime must not depend on
+// knowing which ones. MOCK_STALL_CALL names one entry point to make block and
+// MOCK_STALL_MS says for how long.
+//
+// A test arms the thread it wants blocked, rather than the stall applying to
+// every caller: a collective's own launches go through these same entry
+// points, so stalling all of them would wedge the thing under test instead of
+// probing it. One arm, one stall.
+// ---------------------------------------------------------------------------
+
+static _Thread_local bool g_stall_armed = false;
+
+static long mock_stall_ms(void) {
+  const char *env = getenv("MOCK_STALL_MS");
+  return env != NULL ? atol(env) : 5000;
+}
+
+static void mock_maybe_stall(const char *name) {
+  if (!g_stall_armed)
+    return;
+  const char *target = getenv("MOCK_STALL_CALL");
+  if (target == NULL || strcmp(target, name) != 0)
+    return;
+  g_stall_armed = false;
+  long ms = mock_stall_ms();
+  struct timespec request = {.tv_sec = ms / 1000,
+                             .tv_nsec = (ms % 1000) * 1000000L};
+  nanosleep(&request, NULL);
+}
+
+/// Makes this thread's next call to MOCK_STALL_CALL block. Exported for tests
+/// to resolve out of this plugin; the runtime never calls it.
+M_DRIVER_API_EXPORT
+void M_driver_mock_arm_stall(void) { g_stall_armed = true; }
+
 static int64_t mock_device_count(void) {
   const char *env = getenv("MOCK_DEVICE_COUNT");
   return (env && strcmp(env, "1") == 0) ? 1 : MOCK_MAX_DEVICE_COUNT;
@@ -56,6 +96,7 @@ M_driver_status_t M_driver_status_message(M_driver_driver_t driver,
                                           M_driver_status_t status,
                                           char *message_buffer,
                                           int64_t message_buffer_size) {
+  mock_maybe_stall(__func__);
   (void)driver;
   if (!message_buffer || message_buffer_size <= 0)
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
@@ -131,6 +172,7 @@ M_driver_status_t M_driver_status_message(M_driver_driver_t driver,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_create(M_driver_version *version,
                                   M_driver_driver_t *driver) {
+  mock_maybe_stall(__func__);
   if (!version || !driver)
     return M_DRIVER_STATUS_INVALID_ARG;
 
@@ -148,6 +190,7 @@ M_driver_status_t M_driver_create(M_driver_version *version,
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_destroy(M_driver_driver_t driver) {
+  mock_maybe_stall(__func__);
   (void)driver;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -155,6 +198,7 @@ M_driver_status_t M_driver_destroy(M_driver_driver_t driver) {
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_property(M_driver_driver_t handle,
                                     const char *property_name, void *value) {
+  mock_maybe_stall(__func__);
   if (!property_name || !value)
     return M_DRIVER_STATUS_INVALID_ARG;
 
@@ -180,6 +224,7 @@ M_driver_status_t M_driver_property(M_driver_driver_t handle,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
+  mock_maybe_stall(__func__);
   (void)driver;
   if (!count)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -191,6 +236,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_device_get(M_driver_driver_t driver,
                                       int64_t device_id,
                                       M_driver_device_t *device) {
+  mock_maybe_stall(__func__);
   (void)driver;
   if (!device)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -204,6 +250,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_device_property(M_driver_device_t device,
                                            const char *property_name,
                                            void *value) {
+  mock_maybe_stall(__func__);
   (void)device;
   if (!property_name || !value)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -217,6 +264,7 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_device_attribute(M_driver_device_t device,
                                             int32_t attribute, int32_t *value) {
+  mock_maybe_stall(__func__);
   // Mock returns a stable dummy value so introspection-style tests that
   // touch `get_attribute` against the mock plugin don't fail.
   (void)device;
@@ -232,6 +280,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_device_can_access_peer(M_driver_device_t device,
                                                   M_driver_device_t peer,
                                                   bool *out_can_access) {
+  mock_maybe_stall(__func__);
   if (!device || !peer)
     return M_DRIVER_STATUS_BAD_DEVICE;
   if (!out_can_access)
@@ -246,6 +295,7 @@ M_driver_status_t M_driver_device_can_access_peer(M_driver_device_t device,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_create(M_driver_device_t device,
                                           M_driver_context_t *context) {
+  mock_maybe_stall(__func__);
   (void)device;
   if (!context)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -255,6 +305,7 @@ M_driver_status_t M_driver_context_create(M_driver_device_t device,
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_destroy(M_driver_context_t context) {
+  mock_maybe_stall(__func__);
   (void)context;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -263,6 +314,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t
 M_driver_context_enable_peer_access(M_driver_context_t context,
                                     M_driver_context_t peer) {
+  mock_maybe_stall(__func__);
   if (!context || !peer)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   return M_DRIVER_STATUS_INCOMPATIBLE;
@@ -274,6 +326,7 @@ static M_driver_native_handle_t g_mock_current_driver_ctx = 0;
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_set_current(M_driver_context_t context) {
+  mock_maybe_stall(__func__);
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   g_mock_current_driver_ctx = (M_driver_native_handle_t)context;
@@ -283,6 +336,7 @@ M_driver_status_t M_driver_context_set_current(M_driver_context_t context) {
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_get_current_driver_context(
     M_driver_context_t context, M_driver_native_handle_t *driver_context) {
+  mock_maybe_stall(__func__);
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!driver_context)
@@ -294,6 +348,7 @@ M_driver_status_t M_driver_context_get_current_driver_context(
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_set_current_driver_context(
     M_driver_context_t context, M_driver_native_handle_t driver_context) {
+  mock_maybe_stall(__func__);
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   g_mock_current_driver_ctx = driver_context;
@@ -308,6 +363,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_context_memory_info(M_driver_context_t context,
                                                uint64_t *free,
                                                uint64_t *total) {
+  mock_maybe_stall(__func__);
   if (!context)
     return M_DRIVER_STATUS_BAD_CONTEXT;
   if (!free || !total)
@@ -367,6 +423,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_pinned(M_driver_context_t context,
                                                uint64_t size,
                                                M_driver_memory_t *memory) {
+  mock_maybe_stall(__func__);
   (void)context;
   return mock_alloc(size, /*host_accessible=*/true, memory);
 }
@@ -376,6 +433,7 @@ M_driver_status_t
 M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
                                     M_driver_memory_t *memory, void **host_ptr,
                                     uint64_t *device_address) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!host_ptr || !device_address)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -391,6 +449,7 @@ M_driver_memory_alloc_pinned_mapped(M_driver_context_t context, uint64_t size,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_pinned(M_driver_context_t context,
                                               M_driver_memory_t memory) {
+  mock_maybe_stall(__func__);
   (void)context;
   return mock_free(memory);
 }
@@ -399,6 +458,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
                                              uint64_t size,
                                              M_driver_memory_t *memory) {
+  mock_maybe_stall(__func__);
   (void)context;
   return mock_alloc(size, /*host_accessible=*/false, memory);
 }
@@ -406,6 +466,7 @@ M_driver_status_t M_driver_memory_alloc_sync(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_sync(M_driver_context_t context,
                                             M_driver_memory_t memory) {
+  mock_maybe_stall(__func__);
   (void)context;
   return mock_free(memory);
 }
@@ -414,6 +475,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_wrap(M_driver_context_t context,
                                        uint64_t address, uint64_t size,
                                        bool owning, M_driver_memory_t *memory) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)size;
   if (!memory || address == 0)
@@ -433,6 +495,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_unwrap(M_driver_context_t context,
                                          M_driver_memory_t memory,
                                          uint64_t *address) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!memory || !address)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -445,6 +508,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
                                               uint64_t size,
                                               M_driver_memory_t *memory) {
+  mock_maybe_stall(__func__);
   (void)queue;
   return mock_alloc(size, /*host_accessible=*/false, memory);
 }
@@ -452,6 +516,7 @@ M_driver_status_t M_driver_memory_alloc_async(M_driver_queue_t queue,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_free_async(M_driver_queue_t queue,
                                              M_driver_memory_t memory) {
+  mock_maybe_stall(__func__);
   (void)queue;
   return mock_free(memory);
 }
@@ -460,6 +525,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
                                            const char *property_name,
                                            void *value) {
+  mock_maybe_stall(__func__);
   if (!property_name || !value)
     return M_DRIVER_STATUS_INVALID_ARG;
 
@@ -485,6 +551,7 @@ M_driver_status_t M_driver_memory_property(M_driver_memory_t memory,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_create(M_driver_context_t context,
                                         M_driver_queue_t *queue) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!queue)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -495,6 +562,7 @@ M_driver_status_t M_driver_queue_create(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_destroy(M_driver_context_t context,
                                          M_driver_queue_t queue) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)queue;
   return M_DRIVER_STATUS_SUCCESS;
@@ -504,6 +572,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_property(M_driver_queue_t queue,
                                           const char *property_name,
                                           void *value) {
+  mock_maybe_stall(__func__);
   if (!queue)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (!property_name || !value)
@@ -519,6 +588,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_to_device(M_driver_queue_t queue,
                                                 M_driver_memory_view_t dst,
                                                 const void *src) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (dst && dst->memory && src && dst->size > 0)
     memcpy((char *)dst->memory->ptr + dst->offset, src, (size_t)dst->size);
@@ -529,6 +599,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_from_device(M_driver_queue_t queue,
                                                   void *dst,
                                                   M_driver_memory_view_t src) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (dst && src && src->memory && src->size > 0)
     memcpy(dst, (char *)src->memory->ptr + src->offset, (size_t)src->size);
@@ -539,6 +610,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_intra_device(M_driver_queue_t queue,
                                                    M_driver_memory_view_t dst,
                                                    M_driver_memory_view_t src) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
     memcpy((char *)dst->memory->ptr + dst->offset,
@@ -550,6 +622,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_copy_inter_device(
     M_driver_queue_t queue, M_driver_memory_view_t dst,
     M_driver_memory_view_t src, M_driver_context_t src_context) {
+  mock_maybe_stall(__func__);
   (void)queue;
   (void)src_context;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
@@ -562,6 +635,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_copy_to_device_sync(M_driver_context_t context,
                                                M_driver_memory_view_t dst,
                                                const void *src) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (dst && dst->memory && src && dst->size > 0)
     memcpy((char *)dst->memory->ptr + dst->offset, src, (size_t)dst->size);
@@ -572,6 +646,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_copy_from_device_sync(M_driver_context_t context,
                                                  void *dst,
                                                  M_driver_memory_view_t src) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (dst && src && src->memory && src->size > 0)
     memcpy(dst, (char *)src->memory->ptr + src->offset, (size_t)src->size);
@@ -582,6 +657,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_copy_intra_device_sync(M_driver_context_t context,
                                                   M_driver_memory_view_t dst,
                                                   M_driver_memory_view_t src) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
     memcpy((char *)dst->memory->ptr + dst->offset,
@@ -593,6 +669,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_copy_inter_device_sync(
     M_driver_context_t context, M_driver_memory_view_t dst,
     M_driver_memory_view_t src, M_driver_context_t src_context) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)src_context;
   if (dst && dst->memory && src && src->memory && dst->size > 0)
@@ -605,6 +682,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_set_memory_sync(M_driver_context_t context,
                                            M_driver_memory_view_t dst,
                                            uint8_t value) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
@@ -617,6 +695,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_fill_sync(M_driver_context_t context,
                                      M_driver_memory_view_t dst, uint64_t value,
                                      uint64_t value_size) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
@@ -634,6 +713,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_set_memory(M_driver_queue_t queue,
                                             M_driver_memory_view_t dst,
                                             uint8_t value) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
@@ -646,6 +726,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_fill(M_driver_queue_t queue,
                                       M_driver_memory_view_t dst,
                                       uint64_t value, uint64_t value_size) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (!dst || !dst->memory || dst->size == 0)
     return M_DRIVER_STATUS_SUCCESS;
@@ -664,6 +745,7 @@ M_driver_status_t
 M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
                        M_driver_queue_execute_config_t *config, void **args,
                        uint64_t *arg_sizes, uint32_t num_args) {
+  mock_maybe_stall(__func__);
   (void)queue;
   (void)function;
   (void)config;
@@ -676,6 +758,7 @@ M_driver_queue_execute(M_driver_queue_t queue, M_driver_function_t function,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_record_event(M_driver_queue_t queue,
                                               M_driver_event_t event) {
+  mock_maybe_stall(__func__);
   (void)queue;
   (void)event;
   return M_DRIVER_STATUS_SUCCESS;
@@ -685,6 +768,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_wait_for_events(M_driver_queue_t queue,
                                                  M_driver_event_t *events,
                                                  uint32_t num_events) {
+  mock_maybe_stall(__func__);
   (void)queue;
   for (uint32_t i = 0; i < num_events; ++i)
     (void)events[i];
@@ -693,6 +777,7 @@ M_driver_status_t M_driver_queue_wait_for_events(M_driver_queue_t queue,
 
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
+  mock_maybe_stall(__func__);
   (void)queue;
   return M_DRIVER_STATUS_SUCCESS;
 }
@@ -700,6 +785,7 @@ M_driver_status_t M_driver_queue_synchronize(M_driver_queue_t queue) {
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_is_stream(M_driver_queue_t queue,
                                            bool *is_stream) {
+  mock_maybe_stall(__func__);
   (void)queue;
   if (!is_stream)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -711,6 +797,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_launch_host_func(M_driver_queue_t queue,
                                                   void (*fn)(void *),
                                                   void *user_data) {
+  mock_maybe_stall(__func__);
   if (!queue)
     return M_DRIVER_STATUS_BAD_QUEUE;
   if (!fn)
@@ -724,6 +811,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_queue_wait_value64(M_driver_queue_t queue,
                                               uint64_t device_address,
                                               uint64_t value) {
+  mock_maybe_stall(__func__);
   if (!queue)
     return M_DRIVER_STATUS_BAD_QUEUE;
   // The mock queue is synchronous, so the wait cannot be satisfied later:
@@ -740,6 +828,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_event_create(M_driver_context_t context,
                                         M_driver_event_flags_t flags,
                                         M_driver_event_t *event) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (flags & ~M_DRIVER_EVENT_FLAGS_ALL)
     return M_DRIVER_STATUS_INVALID_ARG;
@@ -752,6 +841,7 @@ M_driver_status_t M_driver_event_create(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_event_destroy(M_driver_context_t context,
                                          M_driver_event_t event) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)event;
   return M_DRIVER_STATUS_SUCCESS;
@@ -760,6 +850,7 @@ M_driver_status_t M_driver_event_destroy(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_event_synchronize(M_driver_context_t context,
                                              M_driver_event_t event) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)event;
   return M_DRIVER_STATUS_SUCCESS;
@@ -769,6 +860,7 @@ M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_is_event_ready(M_driver_context_t context,
                                           M_driver_event_t event,
                                           bool *is_ready) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)event;
   if (!is_ready)
@@ -786,6 +878,7 @@ M_driver_bundle_load(M_driver_context_t context,
                      M_driver_static_bundle_t bundle,
                      M_driver_bundle_compilation_options_t opts,
                      M_driver_runtime_bundle_t *runtime_bundle) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)bundle;
   (void)opts;
@@ -798,6 +891,7 @@ M_driver_bundle_load(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_bundle_unload(M_driver_context_t context,
                                          M_driver_runtime_bundle_t bundle) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)bundle;
   return M_DRIVER_STATUS_SUCCESS;
@@ -809,6 +903,7 @@ M_driver_status_t M_driver_function_load(M_driver_context_t context,
                                          const char *function_name,
                                          uint64_t function_name_len,
                                          M_driver_function_t *function) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)bundle;
   (void)function_name;
@@ -822,6 +917,7 @@ M_driver_status_t M_driver_function_load(M_driver_context_t context,
 M_DRIVER_API_EXPORT
 M_driver_status_t M_driver_function_unload(M_driver_context_t context,
                                            M_driver_function_t function) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)function;
   return M_DRIVER_STATUS_SUCCESS;
@@ -832,6 +928,7 @@ M_driver_status_t M_driver_function_property(M_driver_context_t context,
                                              M_driver_function_t function,
                                              const char *property_name,
                                              void *value) {
+  mock_maybe_stall(__func__);
   (void)context;
   if (!function)
     return M_DRIVER_STATUS_BAD_FUNCTION;
@@ -850,6 +947,7 @@ M_driver_status_t M_driver_function_set_attribute(M_driver_context_t context,
                                                   M_driver_function_t function,
                                                   int32_t attribute,
                                                   int32_t value) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)attribute;
   (void)value;
@@ -866,6 +964,7 @@ M_driver_status_t M_driver_function_occupancy_max_active_blocks(
     M_driver_context_t context, M_driver_function_t function,
     int32_t block_size, uint64_t dynamic_shared_memory_bytes,
     int32_t *num_blocks) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)block_size;
   (void)dynamic_shared_memory_bytes;
@@ -885,6 +984,7 @@ M_driver_status_t M_driver_tensor_map_encode_tiled(
     const uint64_t *global_strides, const uint32_t *box_dim,
     const uint32_t *element_strides, int32_t interleave, int32_t swizzle,
     int32_t l2_promotion, int32_t oob_fill) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)tensor_map;
   (void)data_type;
@@ -910,6 +1010,7 @@ M_driver_status_t M_driver_tensor_map_encode_im2col(
     int32_t pixels_per_column, const uint32_t *element_strides,
     int32_t interleave, int32_t swizzle, int32_t l2_promotion,
     int32_t oob_fill) {
+  mock_maybe_stall(__func__);
   (void)context;
   (void)tensor_map;
   (void)data_type;

@@ -583,6 +583,27 @@ modular_cc_library(
 # (//Mojo:CompilerRT, the mojo toolchain implicit deps) drop this target under
 # --config=hal-device-context: the HAL arm reaches @mojo//:std, which would
 # cycle back into the toolchain.
+# Mojo bindings for the kernel-load gate. Its own target because both
+# DeviceContext implementations need it: the gate's entry points tolerate a
+# context without one, so a collective links on any backend, whereas each
+# backend's own bindings are linked only under its configuration.
+modular_cc_library(
+    name = "Driver/KernelLoadGateBindings",
+    srcs = ["lib/Driver/DeviceContext/KernelLoadGateBindings.cpp"],
+    deps = [
+        ":Driver/DeviceContextAPI",
+        ":Driver/KernelLoadGate",
+        "//AsyncRT:Runtime",
+        "//Support:Base",
+        "//Support:Profiling",
+        "//Support:SymbolExport",
+        "@llvm-project//llvm:Support",
+    ],
+    # Nothing in C++ references these exports (they exist for Mojo
+    # external_call), so without alwayslink the linker drops the object.
+    alwayslink = True,  # keep
+)
+
 modular_shared_library(
     name = "Driver/DeviceContext",
     srcs = [],
@@ -595,6 +616,7 @@ modular_shared_library(
     output_name = "AsyncRTMojoBindings",
     deps = [
         ":Driver/DeviceContextAPI",
+        ":Driver/KernelLoadGateBindings",
         ":Driver/MojoRuntimeBindingsImpl",
         "//AsyncRT:Runtime",
         "//Support:Base",
@@ -710,7 +732,15 @@ modular_shared_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     visibility = ["//visibility:public"],
-    deps = [":Driver/MojoRuntimeBindingsImpl"],
+    deps = [
+        # The gate's bindings ride along here rather than in
+        # MojoRuntimeBindingsImpl: that one is linked under both
+        # configurations, including into the Mojo toolchain's runtime, where
+        # pulling in the DeviceContext API would drag packages the open-source
+        # export excludes.
+        ":Driver/KernelLoadGateBindings",
+        ":Driver/MojoRuntimeBindingsImpl",
+    ],
 )
 
 # The launch-trace registry the device backends record into, and that

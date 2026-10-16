@@ -20,7 +20,6 @@
 #include "AsyncRT/Runtime/CPUDevice.h"
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "MLRT/Driver/DeviceContext/DeviceContext.h"
-#include "MLRT/Driver/DeviceContext/KernelLoadGate.h"
 
 // See the static_assert in DeviceContext.cpp.
 static_assert(
@@ -531,63 +530,6 @@ MODULAR_EXPORT const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
                               moduleName, functionName,
                               StringRef(data, dataLen), maxDynamicSharedBytes,
                               debugLevel, optimizationLevel, debugName));
-}
-
-// Exposes KernelLoadGate to a Mojo collective, through the context's driver.
-//
-// Returns true if the collective owns the gate now, which is always the case
-// on a backend without one. Otherwise constructs the grant to dispatch from
-// into `grantOut`, which the caller owns and destroys. Takes the CPUDevice
-// from the current thread, since the collective's fan-out is a TaskGroup.
-MODULAR_EXPORT bool AsyncRT_KernelLoadGate_tryAcquireCollective(
-    DeviceContext *ctx, AsyncRT::AsyncValueRef<AsyncRT::Chain> *grantOut) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_KernelLoadGate_tryAcquireCollective",
-                       TRACY_COLOR_GRAY);
-  KernelLoadGate *gate = ctx->kernelLoadGate();
-  if (gate == nullptr)
-    return true;
-
-  // Reporting success here without a claim would let the matching release
-  // end some other collective's claim.
-  AsyncRT::CPUDevice *cpuDevice =
-      AsyncRT::CPUDevice::getCurrentCPUDeviceOrNull();
-  if (cpuDevice == nullptr)
-    llvm::report_fatal_error(
-        "a collective launch must run under an AsyncRT runtime");
-
-  AsyncRT::AsyncValueRef<AsyncRT::Chain> grant;
-  if (gate->tryAcquireCollective(*cpuDevice, grant))
-    return true;
-  new (grantOut) AsyncRT::AsyncValueRef<AsyncRT::Chain>(std::move(grant));
-  return false;
-}
-
-MODULAR_EXPORT void
-AsyncRT_KernelLoadGate_releaseCollective(DeviceContext *ctx) {
-  if (KernelLoadGate *gate = ctx->kernelLoadGate())
-    gate->releaseCollective();
-}
-
-// For vendor library calls, which can block on a busy device but never reach
-// `loadFunction`.
-MODULAR_EXPORT void AsyncRT_KernelLoadGate_beginLoad(DeviceContext *ctx) {
-  if (KernelLoadGate *gate = ctx->kernelLoadGate())
-    gate->openLoad();
-}
-
-MODULAR_EXPORT void AsyncRT_KernelLoadGate_endLoad(DeviceContext *ctx) {
-  if (KernelLoadGate *gate = ctx->kernelLoadGate())
-    gate->closeLoad();
-}
-
-MODULAR_EXPORT void AsyncRT_KernelLoadGate_beginEnqueue(DeviceContext *ctx) {
-  if (KernelLoadGate *gate = ctx->kernelLoadGate())
-    gate->beginEnqueue();
-}
-
-MODULAR_EXPORT void AsyncRT_KernelLoadGate_endEnqueue(DeviceContext *ctx) {
-  if (KernelLoadGate *gate = ctx->kernelLoadGate())
-    gate->endEnqueue();
 }
 
 MODULAR_EXPORT void AsyncRT_DeviceFunction_retain(DeviceFunction *func) {
