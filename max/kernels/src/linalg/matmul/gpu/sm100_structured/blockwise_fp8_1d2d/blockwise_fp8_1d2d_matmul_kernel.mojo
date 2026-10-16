@@ -785,9 +785,7 @@ struct BlockwiseFP8_1D2DMatmulKernel[
             elect_one_cta: True if this CTA is the elected CTA in a two-CTA
                 cluster; gates `expect_bytes` setup.
         """
-        var peer_rank_n = peer_cta_coord[0]
-        var peer_rank_m = peer_cta_coord[1]
-        var peer_m_rank = peer_cta_coord[2]
+        var peer_rank_n, peer_rank_m, peer_m_rank = peer_cta_coord
 
         # M coordinate in contiguous token space
         var m_coord = work_ctx.m()
