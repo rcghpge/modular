@@ -288,7 +288,7 @@ def multistage_mma_q[
     comptime num_scales_stages = ceildiv(
         (num_pipeline_stages - 1) * BK, group_size
     ) + 1
-    comptime repack_tile = Index(64, 16)
+    comptime repack_tile = (64, 16)
 
     var tid = UInt32(umod(thread_idx.x, num_threads))
     var warp_id, lane_id = divmod(tid, UInt32(WARP_SIZE))
@@ -881,7 +881,7 @@ def multistage_qgemm_kernel[
     var c = c_tt.to_layout_tensor()
     var a = a_tt.to_layout_tensor()
 
-    comptime repack_tile = Index(64, 16)
+    comptime repack_tile = (64, 16)
     comptime group_bytes = group_size // 2 + 2
 
     var M = Int(c.dim[0]())
@@ -1390,7 +1390,7 @@ def repack_Q4_0_for_sm8x[
     comptime group_size = 32
     comptime group_bytes = size_of[DType.float16]() + (group_size // 2)
     comptime pack_factor = 8
-    comptime repack_tile = Index(64, 16)
+    comptime repack_tile = (64, 16)
     comptime WARP_SIZE = 32
     comptime BN = 128
     comptime BK = 1024
@@ -1547,7 +1547,7 @@ def repack_GPTQ_for_sm8x[
     comptime weights_bytes_per_group = group_size // 2
     comptime group_bytes = size_of[DType.float16]() + weights_bytes_per_group
     comptime pack_factor = 8
-    comptime repack_tile = Index(64, 16)
+    comptime repack_tile = (64, 16)
     comptime BN = 128
     comptime BK = 1024
 
@@ -2028,8 +2028,8 @@ def matmul_gpu_qint4_impl[
             comptime M16_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 128),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 128),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2052,8 +2052,8 @@ def matmul_gpu_qint4_impl[
             comptime M32_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(32, 64, 128),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(32, 64, 128),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2076,8 +2076,8 @@ def matmul_gpu_qint4_impl[
             comptime M64_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 64, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 64, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=5,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2100,8 +2100,8 @@ def matmul_gpu_qint4_impl[
             comptime M128_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 128, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 128, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2124,8 +2124,8 @@ def matmul_gpu_qint4_impl[
             comptime M512_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 64, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 64, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2150,8 +2150,8 @@ def matmul_gpu_qint4_impl[
             comptime M16_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 128),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 128),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2174,8 +2174,8 @@ def matmul_gpu_qint4_impl[
             comptime M32_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(32, 64, 128),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(32, 64, 128),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2198,8 +2198,8 @@ def matmul_gpu_qint4_impl[
             comptime M64_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 64, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 64, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=5,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2222,8 +2222,8 @@ def matmul_gpu_qint4_impl[
             comptime M128_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 128, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 128, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2246,8 +2246,8 @@ def matmul_gpu_qint4_impl[
             comptime M256_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(128, 128, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(128, 128, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=2,
@@ -2272,8 +2272,8 @@ def matmul_gpu_qint4_impl[
             comptime M16_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 32),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 32),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=5,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2296,8 +2296,8 @@ def matmul_gpu_qint4_impl[
             comptime M32_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 32),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 32),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=5,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2320,8 +2320,8 @@ def matmul_gpu_qint4_impl[
             comptime M64_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(32, 64, 32),
-                warp_tile_shape=Index(32, 64, 32),
+                block_tile_shape=(32, 64, 32),
+                warp_tile_shape=(32, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2344,8 +2344,8 @@ def matmul_gpu_qint4_impl[
             comptime M128_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 64, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 64, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2370,8 +2370,8 @@ def matmul_gpu_qint4_impl[
             comptime M16_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 32),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 32),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=8,
@@ -2394,8 +2394,8 @@ def matmul_gpu_qint4_impl[
             comptime M32_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(16, 64, 32),
-                warp_tile_shape=Index(16, 64, 32),
+                block_tile_shape=(16, 64, 32),
+                warp_tile_shape=(16, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2418,8 +2418,8 @@ def matmul_gpu_qint4_impl[
             comptime M64_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(32, 64, 32),
-                warp_tile_shape=Index(32, 64, 32),
+                block_tile_shape=(32, 64, 32),
+                warp_tile_shape=(32, 64, 32),
                 num_pipeline_stages=4,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2442,8 +2442,8 @@ def matmul_gpu_qint4_impl[
             comptime M128_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(32, 64, 32),
-                warp_tile_shape=Index(32, 64, 32),
+                block_tile_shape=(32, 64, 32),
+                warp_tile_shape=(32, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2466,8 +2466,8 @@ def matmul_gpu_qint4_impl[
             comptime M512_config = MatmulConfig[
                 a_type, DType.uint8, c_type, True
             ](
-                block_tile_shape=Index(64, 64, 32),
-                warp_tile_shape=Index(64, 64, 32),
+                block_tile_shape=(64, 64, 32),
+                warp_tile_shape=(64, 64, 32),
                 num_pipeline_stages=3,
                 num_k_partitions=1,
                 num_warp_k_partitions=4,
@@ -2488,8 +2488,8 @@ def matmul_gpu_qint4_impl[
             return
 
     comptime default_config = MatmulConfig[a_type, .uint8, c_type, True](
-        block_tile_shape=Index(128, 128, 32),
-        warp_tile_shape=Index(64, 64, 32),
+        block_tile_shape=(128, 128, 32),
+        warp_tile_shape=(64, 64, 32),
         num_pipeline_stages=5,
         num_k_partitions=1,
         num_warp_k_partitions=1,
