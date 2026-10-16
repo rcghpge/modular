@@ -42,7 +42,7 @@ Mirrors the structure of `nn.conv.gpu.amd.rdna.dispatch` and
 
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
-from std.math import ceildiv
+from std.math import align_up, ceildiv
 from std.sys import simd_width_of
 from std.sys.info import _accelerator_arch
 from std.utils import IndexList
@@ -194,8 +194,7 @@ def _launch_amd_4wave_conv2d_runtime[
         var _rt_W_out = (_rt_W + 2 * pad_v - _eff_S) // stride_v + 1
         var _rt_M_total = _rt_N * _rt_H_out * _rt_W_out
         # Dynamic 2D `[M_total, C_out]` output view.
-        var _output_dims = IndexList[2](_rt_M_total, C_out)
-        var _dyn_out_layout = row_major(Coord(_output_dims))
+        var _dyn_out_layout = row_major(Coord(_rt_M_total, C_out))
         var output_2d_tt = output.reshape(_dyn_out_layout)
         amd_4wave_conv[
             elementwise_lambda_fn=elementwise_lambda_fn,
@@ -399,7 +398,7 @@ def dispatch_amd_4wave_conv2d[
 
         # -------- Filter repack: caller layout -> FRSC, K-padded -----
         comptime _K_real = _R * _S * _C_in
-        comptime _K_padded = ((_K_real + 255) // 256) * 256
+        comptime _K_padded = align_up(_K_real, 256)
         var filter_frsc_buf = ctx.enqueue_create_buffer[filter_type](
             _C_out * _K_padded
         )

@@ -50,7 +50,7 @@ Mirrors the structure of `nn.conv.gpu.amd.dispatch`.
 
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
-from std.math import ceildiv
+from std.math import align_up, ceildiv
 from std.sys import simd_width_of
 from std.sys.info import _accelerator_arch
 from std.utils import IndexList
@@ -330,9 +330,9 @@ def dispatch_amd_4wave_conv3d[
         #   WAN_time_conv (C_in=192): BK=64 → 522 vs 449 = 116%
         #   WAN_upsampled_res (C_in=192): BK=64 → 559 vs 613 = 91%
         comptime _K_real = _Q * _R * _S * _C_in
-        comptime _K_padded_bk128 = ((_K_real + 255) // 256) * 256
-        comptime _K_padded_bk64 = ((_K_real + 127) // 128) * 128
-        comptime _K_padded_bk32 = ((_K_real + 63) // 64) * 64
+        comptime _K_padded_bk128 = align_up(_K_real, 256)
+        comptime _K_padded_bk64 = align_up(_K_real, 128)
+        comptime _K_padded_bk32 = align_up(_K_real, 64)
         comptime _BK_heuristic = 32 if (_C_in % 64) != 0 else 64
         # Honor the kbench-sweep override when non-zero.
         comptime _BK_chosen = (
@@ -584,8 +584,7 @@ def dispatch_amd_4wave_conv3d[
                 var _rt_H_out = (_rt_H + 2 * pad_hw_c - _eff_R) // stride_v + 1
                 var _rt_W_out = (_rt_W + 2 * pad_hw_c - _eff_S) // stride_v + 1
                 var _rt_M_total = _rt_N * _rt_D_out * _rt_H_out * _rt_W_out
-                var _output_dims = IndexList[2](_rt_M_total, _C_out)
-                var _dyn_out_layout = row_major(Coord(_output_dims))
+                var _dyn_out_layout = row_major(Coord(_rt_M_total, _C_out))
                 var output_2d_tt = output.reshape(_dyn_out_layout)
                 # Runtime-HW shape isn't known at comptime; leave
                 # BM/BN at the launcher default (128/128 for bf16) and

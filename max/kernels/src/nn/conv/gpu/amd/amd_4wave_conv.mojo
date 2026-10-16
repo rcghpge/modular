@@ -58,7 +58,6 @@ end-to-end correctness coverage.
 """
 
 from std.math import ceildiv
-from std.utils import Index
 
 from max.gpu.host import DeviceContext
 
@@ -431,9 +430,9 @@ def amd_4wave_conv[
             BN_o >= BM_o
         ), "block_n_override must be >= block_m_override (BN < BM is broken)"
         comptime config_override = MatmulKernelConfig(
-            block_shape=Index(BM_o, BN_o, _bk),
-            warp_shape=Index(BM_o // 2, BN_o // 2, _bk),
-            mma_shape=Index(16, 16, _mma_k),
+            block_shape=(BM_o, BN_o, _bk),
+            warp_shape=(BM_o // 2, BN_o // 2, _bk),
+            mma_shape=(16, 16, _mma_k),
         )
         run_kernel[config_override]()
         return
@@ -444,14 +443,14 @@ def amd_4wave_conv[
     # default for the prefill regime — production dispatchers should
     # pin tile shape via the overrides).
     comptime config_64 = MatmulKernelConfig(
-        block_shape=Index(64, 64, _bk),
-        warp_shape=Index(32, 32, _bk),
-        mma_shape=Index(16, 16, _mma_k),
+        block_shape=(64, 64, _bk),
+        warp_shape=(32, 32, _bk),
+        mma_shape=(16, 16, _mma_k),
     )
     comptime config_128 = MatmulKernelConfig(
-        block_shape=Index(128, 128, _bk),
-        warp_shape=Index(64, 64, _bk),
-        mma_shape=Index(16, 16, _mma_k),
+        block_shape=(128, 128, _bk),
+        warp_shape=(64, 64, _bk),
+        mma_shape=(16, 16, _mma_k),
     )
 
     comptime if _is_fp8:

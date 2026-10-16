@@ -36,7 +36,7 @@ store-site lambda) fires after with the fused value.
 
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
-from std.math import ceildiv
+from std.math import align_up, ceildiv
 from std.sys import align_of
 
 from layout import Coord, Idx, TileTensor, row_major
@@ -202,7 +202,7 @@ def amd_4wave_conv_fprop_with_residual[
     # K-pad to a multiple of `2*BK = 256`. The kernel asserts on this
     # alignment internally; when `K_real` already meets it we skip
     # the alloc + zero-pad entirely.
-    comptime K_padded = ((K_real + 255) // 256) * 256
+    comptime K_padded = align_up(K_real, 256)
     comptime _needs_kpad = K_padded != K_real
     var output_2d = output.reshape(row_major(M, Idx[_C_out]))
 
@@ -375,7 +375,7 @@ def _launch_plain_conv[
     comptime _S = filter.static_shape[2]
     comptime _C_in = filter.static_shape[3]
     comptime K_real = _R * _S * _C_in
-    comptime K_padded = ((K_real + 255) // 256) * 256
+    comptime K_padded = align_up(K_real, 256)
     comptime _needs_kpad = K_padded != K_real
     var output_2d = output.reshape(row_major(M, Idx[_C_out]))
 
