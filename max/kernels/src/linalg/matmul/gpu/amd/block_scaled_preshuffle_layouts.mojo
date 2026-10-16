@@ -330,14 +330,6 @@ struct Shuffler[E: Int]:
             K_SCALES=K_SCALES, packed_mode=packed_mode
         ](mn, k_scale)
 
-    # ---- Wrapped TileTensor types — what the preshuffle functions return ----
-    comptime BTileTensor[N: Int, K_BYTES: Int] = TileTensor[
-        mut=True,
-        .uint8,
-        type_of(Self.b_5d_grouped_layout[N=N, K_BYTES=K_BYTES]),
-        MutAnyOrigin,
-    ]
-
     # Scale-buffer callers use a plain `TileTensor[.uint8, ...]` or a
     # raw `HostBuffer[DType.uint8]` — the byte layout is fully expressed by
     # `scale_4d_byte_off`, no type-system marker needed.
@@ -391,6 +383,12 @@ struct Shuffler[E: Int]:
         across the wave) and writes coalesced into `dst`'s column-major
         tile.
         """
+        # The offset and strides below are byte counts; a vectorized engine
+        # would scale them by its element size.
+        comptime assert (
+            RawEngine.element_size == 1 and DstEngine.element_size == 1
+        ), "preshuffle_b_5d: requires scalar engines"
+
         var tid = thread_idx.x
         var e = block_idx.z
         var n0 = block_idx.y
@@ -409,16 +407,15 @@ struct Shuffler[E: Int]:
         # 16-byte atom into element_size, giving a clean rank-3 [16, 4,
         # 1] col-major-in-atoms tile that .distribute can consume.
         comptime TILE_BYTES = Self.MFMA_MN_LANES * Self.MFMA_K_BYTES
-        var dst_tile_base = dst.ptr + (
+        var dst_tile_offset = (
             e * N * K_BYTES  # skip to current expert
             + n0
             * K_BYTES
             * Self.MFMA_MN_LANES  # skip past N rows in current expert in units of N_Tile length
             + k0 * TILE_BYTES  # go to the Kth tile of this row
         )
-
-        var dst_tile = TileTensor[mut=True](
-            dst_tile_base,
+        var dst_tile = TileTensor(
+            dst._offset_storage(dst_tile_offset),
             Layout(
                 Coord(
                     Idx[Self.MFMA_MN_LANES],

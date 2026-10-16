@@ -60,6 +60,9 @@ def test_epilogue_owners[
         c_linear_idx_type=c.linear_idx_type,
         a_linear_idx_type=a.linear_idx_type,
         b_linear_idx_type=b.linear_idx_type,
+        c_engine=c.Engine,
+        a_engine=a.Engine,
+        b_engine=b.Engine,
         config=config,
     ]
     ctx.enqueue_function[kernel](

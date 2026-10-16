@@ -21,9 +21,11 @@ from layout import (
     Coord,
     Idx,
     RowMajorLayout,
+    TensorEngine,
     TileTensor,
     row_major,
 )
+from layout.tensor_engine import DefaultEngine, DevicePointerEngine
 from linalg.matmul.gpu import matmul_kernel_naive, multistage_gemm
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_gemm_kernel
 from linalg.utils_gpu import MatmulKernels
@@ -37,6 +39,9 @@ def multistage_gemm_simple[
     b_type: DType = .bfloat16,
     c_type: DType = .bfloat16,
     transpose_b: Bool = False,
+    # Defaulted because this helper only compiles the kernel: there is no tile
+    # argument the engine could be inferred from.
+    engine: TensorEngine = DefaultEngine[element_width=1],
 ](ctx: DeviceContext,) raises:
     comptime kernels = MatmulKernels[a_type, b_type, c_type, transpose_b]()
     comptime config = kernels.ampere_128x128_4
@@ -64,6 +69,9 @@ def multistage_gemm_simple[
         c_linear_idx_type=.int64,
         a_linear_idx_type=.int64,
         b_linear_idx_type=.int64,
+        c_engine=engine,
+        a_engine=engine,
+        b_engine=engine,
         config=config,
     ]
 
@@ -207,6 +215,18 @@ def main() raises:
 
         multistage_gemm_simple[
             550, 2048, 8, .float32, .float32, .float32, False
+        ](ctx)
+
+        # The same kernel instantiated with device-pointer tiles.
+        multistage_gemm_simple[
+            1024,
+            1024,
+            1024,
+            .bfloat16,
+            .bfloat16,
+            .bfloat16,
+            False,
+            engine=DevicePointerEngine[element_width=1],
         ](ctx)
 
         # fp32 C shapes the vectorized store cannot take: an odd N misaligns

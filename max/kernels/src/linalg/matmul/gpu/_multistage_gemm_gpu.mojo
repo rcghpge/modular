@@ -46,6 +46,7 @@ from layout import (
     LayoutTensor,
     RuntimeLayout,
     RuntimeTuple,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     row_major,
@@ -1262,17 +1263,32 @@ def multistage_gemm_kernel[
     c_linear_idx_type: DType,
     a_linear_idx_type: DType,
     b_linear_idx_type: DType,
+    c_engine: TensorEngine,
+    a_engine: TensorEngine,
+    b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
     elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     c_tt: TileTensor[
-        c_type, CLT, MutAnyOrigin, linear_idx_type=c_linear_idx_type
+        c_type,
+        CLT,
+        MutAnyOrigin,
+        Engine=c_engine,
+        linear_idx_type=c_linear_idx_type,
     ],
     a_tt: TileTensor[
-        a_type, ALT, ImmutAnyOrigin, linear_idx_type=a_linear_idx_type
+        a_type,
+        ALT,
+        ImmutAnyOrigin,
+        Engine=a_engine,
+        linear_idx_type=a_linear_idx_type,
     ],
     b_tt: TileTensor[
-        b_type, BLT, ImmutAnyOrigin, linear_idx_type=b_linear_idx_type
+        b_type,
+        BLT,
+        ImmutAnyOrigin,
+        Engine=b_engine,
+        linear_idx_type=b_linear_idx_type,
     ],
 ):
     _multistage_gemm_kernel_impl[
@@ -1286,6 +1302,9 @@ def multistage_gemm_kernel[
         c_linear_idx_type,
         a_linear_idx_type,
         b_linear_idx_type,
+        c_engine,
+        a_engine,
+        b_engine,
         config=config,
         elementwise_lambda_fn=elementwise_lambda_fn,
         has_epilogue_fn=False,
@@ -1307,17 +1326,32 @@ def multistage_gemm_kernel_epilogue_fn[
     c_linear_idx_type: DType,
     a_linear_idx_type: DType,
     b_linear_idx_type: DType,
+    c_engine: TensorEngine,
+    a_engine: TensorEngine,
+    b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
     EpilogueFnType: ElementwiseEpilogueFn,
 ](
     c_tt: TileTensor[
-        c_type, CLT, MutAnyOrigin, linear_idx_type=c_linear_idx_type
+        c_type,
+        CLT,
+        MutAnyOrigin,
+        Engine=c_engine,
+        linear_idx_type=c_linear_idx_type,
     ],
     a_tt: TileTensor[
-        a_type, ALT, ImmutAnyOrigin, linear_idx_type=a_linear_idx_type
+        a_type,
+        ALT,
+        ImmutAnyOrigin,
+        Engine=a_engine,
+        linear_idx_type=a_linear_idx_type,
     ],
     b_tt: TileTensor[
-        b_type, BLT, ImmutAnyOrigin, linear_idx_type=b_linear_idx_type
+        b_type,
+        BLT,
+        ImmutAnyOrigin,
+        Engine=b_engine,
+        linear_idx_type=b_linear_idx_type,
     ],
     epilogue_fn: EpilogueFnType,
 ):
@@ -1335,6 +1369,9 @@ def multistage_gemm_kernel_epilogue_fn[
         c_linear_idx_type: Linear index type of `c`.
         a_linear_idx_type: Linear index type of `a`.
         b_linear_idx_type: Linear index type of `b`.
+        c_engine: Engine of `c`.
+        a_engine: Engine of `a`.
+        b_engine: Engine of `b`.
         config: Tile, warp, MMA, and pipeline configuration.
         EpilogueFnType: Type of `epilogue_fn`.
 
@@ -1358,6 +1395,9 @@ def multistage_gemm_kernel_epilogue_fn[
         c_linear_idx_type,
         a_linear_idx_type,
         b_linear_idx_type,
+        c_engine,
+        a_engine,
+        b_engine,
         config=config,
         elementwise_lambda_fn=None,
         has_epilogue_fn=True,
@@ -1379,17 +1419,32 @@ def multistage_gemm_kernel_compute_fn[
     c_linear_idx_type: DType,
     a_linear_idx_type: DType,
     b_linear_idx_type: DType,
+    c_engine: TensorEngine,
+    a_engine: TensorEngine,
+    b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
     ComputeFnType: ElementwiseComputeFn,
 ](
     c_tt: TileTensor[
-        c_type, CLT, MutAnyOrigin, linear_idx_type=c_linear_idx_type
+        c_type,
+        CLT,
+        MutAnyOrigin,
+        Engine=c_engine,
+        linear_idx_type=c_linear_idx_type,
     ],
     a_tt: TileTensor[
-        a_type, ALT, ImmutAnyOrigin, linear_idx_type=a_linear_idx_type
+        a_type,
+        ALT,
+        ImmutAnyOrigin,
+        Engine=a_engine,
+        linear_idx_type=a_linear_idx_type,
     ],
     b_tt: TileTensor[
-        b_type, BLT, ImmutAnyOrigin, linear_idx_type=b_linear_idx_type
+        b_type,
+        BLT,
+        ImmutAnyOrigin,
+        Engine=b_engine,
+        linear_idx_type=b_linear_idx_type,
     ],
     compute_fn: ComputeFnType,
 ):
@@ -1407,6 +1462,9 @@ def multistage_gemm_kernel_compute_fn[
         c_linear_idx_type: Linear index type of `c`.
         a_linear_idx_type: Linear index type of `a`.
         b_linear_idx_type: Linear index type of `b`.
+        c_engine: Engine of `c`.
+        a_engine: Engine of `a`.
+        b_engine: Engine of `b`.
         config: Tile, warp, MMA, and pipeline configuration.
         ComputeFnType: Type of `compute_fn`.
 
@@ -1428,6 +1486,9 @@ def multistage_gemm_kernel_compute_fn[
         c_linear_idx_type,
         a_linear_idx_type,
         b_linear_idx_type,
+        c_engine,
+        a_engine,
+        b_engine,
         config=config,
         elementwise_lambda_fn=None,
         has_epilogue_fn=False,
@@ -1450,19 +1511,34 @@ def _multistage_gemm_kernel_impl[
     c_linear_idx_type: DType,
     a_linear_idx_type: DType,
     b_linear_idx_type: DType,
+    c_engine: TensorEngine,
+    a_engine: TensorEngine,
+    b_engine: TensorEngine,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b, ...],
     elementwise_lambda_fn: Optional[elementwise_epilogue_type],
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
     c_tt: TileTensor[
-        c_type, CLT, MutAnyOrigin, linear_idx_type=c_linear_idx_type
+        c_type,
+        CLT,
+        MutAnyOrigin,
+        Engine=c_engine,
+        linear_idx_type=c_linear_idx_type,
     ],
     a_tt: TileTensor[
-        a_type, ALT, ImmutAnyOrigin, linear_idx_type=a_linear_idx_type
+        a_type,
+        ALT,
+        ImmutAnyOrigin,
+        Engine=a_engine,
+        linear_idx_type=a_linear_idx_type,
     ],
     b_tt: TileTensor[
-        b_type, BLT, ImmutAnyOrigin, linear_idx_type=b_linear_idx_type
+        b_type,
+        BLT,
+        ImmutAnyOrigin,
+        Engine=b_engine,
+        linear_idx_type=b_linear_idx_type,
     ],
     epilogue_fn: EpilogueFnType,
     compute_fn: ComputeFnType,

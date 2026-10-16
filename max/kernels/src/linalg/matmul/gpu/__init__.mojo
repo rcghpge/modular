@@ -2468,6 +2468,9 @@ def multistage_gemm[
             c_linear_idx_type=c.linear_idx_type,
             a_linear_idx_type=a.linear_idx_type,
             b_linear_idx_type=b.linear_idx_type,
+            c_engine=c.Engine,
+            a_engine=a.Engine,
+            b_engine=b.Engine,
             config=config,
         ]
         ctx.enqueue_function[gemm_kernel_type](
@@ -2542,6 +2545,9 @@ def multistage_gemm[
             c_linear_idx_type=c.linear_idx_type,
             a_linear_idx_type=a.linear_idx_type,
             b_linear_idx_type=b.linear_idx_type,
+            c_engine=c.Engine,
+            a_engine=a.Engine,
+            b_engine=b.Engine,
             config=config,
             EpilogueFnType=EpilogueFnType,
         ]
@@ -2619,6 +2625,9 @@ def multistage_gemm[
             c_linear_idx_type=c.linear_idx_type,
             a_linear_idx_type=a.linear_idx_type,
             b_linear_idx_type=b.linear_idx_type,
+            c_engine=c.Engine,
+            a_engine=a.Engine,
+            b_engine=b.Engine,
             config=config,
             ComputeFnType=ComputeFnType,
         ]
@@ -2896,6 +2905,9 @@ def _multistage_gemm_runtime_impl[
                 c_linear_idx_type=c.linear_idx_type,
                 a_linear_idx_type=a.linear_idx_type,
                 b_linear_idx_type=b.linear_idx_type,
+                c_engine=c.Engine,
+                a_engine=a.Engine,
+                b_engine=b.Engine,
                 config=config,
                 EpilogueFnType=EpilogueFnType,
             ]
@@ -2919,6 +2931,9 @@ def _multistage_gemm_runtime_impl[
                 c_linear_idx_type=c.linear_idx_type,
                 a_linear_idx_type=a.linear_idx_type,
                 b_linear_idx_type=b.linear_idx_type,
+                c_engine=c.Engine,
+                a_engine=a.Engine,
+                b_engine=b.Engine,
                 config=config,
                 ComputeFnType=ComputeFnType,
             ]
@@ -2942,6 +2957,9 @@ def _multistage_gemm_runtime_impl[
                 c_linear_idx_type=c.linear_idx_type,
                 a_linear_idx_type=a.linear_idx_type,
                 b_linear_idx_type=b.linear_idx_type,
+                c_engine=c.Engine,
+                a_engine=a.Engine,
+                b_engine=b.Engine,
                 config=config,
             ]
             ctx.enqueue_function[gemm_kernel_type](
