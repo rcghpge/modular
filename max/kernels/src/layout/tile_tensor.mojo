@@ -4804,15 +4804,14 @@ def _get_index_type[
     comptime if LayoutType.all_dims_known and Int64(
         LayoutType.static_cosize
     ) >> 31 == 0:
-        return DType.int32
+        return .int32
 
     if address_space in (
         AddressSpace.SHARED,
         AddressSpace.CONSTANT,
     ):
-        return DType.int32
-    else:
-        return DType.int64
+        return .int32
+    return .int64
 
 
 comptime _ToRuntimeMapper[

@@ -75,35 +75,32 @@ def _get_index_type(address_space: AddressSpace) -> DType:
         AddressSpace.SHARED,
         AddressSpace.CONSTANT,
     ):
-        return DType.int32
-    else:
-        return DType.int64
+        return .int32
+    return .int64
 
 
 def _get_index_type(layout: Layout) -> DType:
     """Returns int32 if layout size fits in int32 range, int64 otherwise."""
     if layout.cosize() <= Int(max_finite[.int32]()):
-        return DType.int32
+        return .int32
 
-    return DType.int64
+    return .int64
 
 
 def _get_index_type(layout: Layout, address_space: AddressSpace) -> DType:
     """Selects index type based on layout and address space."""
     if layout.all_dims_known():
         return _get_index_type(layout)
-    else:
-        return _get_index_type(address_space)
+    return _get_index_type(address_space)
 
 
 def _get_unsigned_type(layout: Layout, address_space: AddressSpace) -> DType:
     """Returns int32 if layout fits in int32 range or index type is int32, otherwise index.
     """
     if layout.all_dims_known() and layout.cosize() < Int(max_finite[.int32]()):
-        return DType.int32
-    else:
-        var dtype = _get_index_type(address_space)
-        return DType.int32 if dtype == .int32 else DType.int64
+        return .int32
+    var dtype = _get_index_type(address_space)
+    return .int32 if dtype == .int32 else .int64
 
 
 def _get_layout_type(layout: Layout, address_space: AddressSpace) -> DType:
@@ -115,11 +112,10 @@ def _get_layout_type(layout: Layout, address_space: AddressSpace) -> DType:
 
         for i in range(len(shape)):
             if shape[i].value() > Int(max_finite[.int32]()):
-                return DType.int64
+                return .int64
 
-        return DType.int32
-    else:
-        return _get_index_type(address_space)
+        return .int32
+    return _get_index_type(address_space)
 
 
 struct IntArray(ImplicitlyCopyable, RegisterPassable):
