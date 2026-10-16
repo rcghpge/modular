@@ -474,7 +474,7 @@ struct RowCoord[rank: Int](
         rank: The coordinate's rank.
     """
 
-    var coord: DynamicCoord[DType.int64, Self.rank]
+    var coord: DynamicCoord[.int64, Self.rank]
     """The wrapped coordinates."""
 
     @inline(.always)
@@ -485,8 +485,8 @@ struct RowCoord[rank: Int](
         Args:
             row_coords: The row's coords, static dims permitted.
         """
-        self.coord = rebind[DynamicCoord[DType.int64, Self.rank]](
-            row_coords.make_dynamic[DType.int64]()
+        self.coord = rebind[DynamicCoord[.int64, Self.rank]](
+            row_coords.make_dynamic[.int64]()
         )
 
     @inline(.always)
@@ -500,7 +500,7 @@ struct RowCoord[rank: Int](
             pos: The column position along the reduce axis.
         """
         Pointer(to=self.coord[axis]).write(
-            rebind[type_of(self.coord[axis])](Scalar[DType.int64](pos))
+            rebind[type_of(self.coord[axis])](Scalar[.int64](pos))
         )
 
     @inline(.always)
