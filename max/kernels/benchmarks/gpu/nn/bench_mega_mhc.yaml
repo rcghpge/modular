@@ -1,0 +1,41 @@
+##===----------------------------------------------------------------------===##
+# Copyright (c) 2026, Modular Inc. All rights reserved.
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+##===----------------------------------------------------------------------===##
+
+name: bench_mega_mhc
+file: $KERNEL_BENCHMARKS_ROOT/gpu/nn/bench_mega_mhc.mojo
+
+params:
+# Decode batches, bracketing the mid-T cutovers: H=5120 switches at 17 tokens,
+# shifted H=4096 at 65 (normal H=4096 stays on decode through 128).
+- hidden: 5120
+  shifted: [0, 1]
+  tokens: [1, 16, 17, 64]
+
+- hidden: 4096
+  shifted: [0, 1]
+  tokens: [1, 64, 65, 128]
+
+# Either side of the large-T kernel's cutover at 129 tokens.
+- hidden: [4096, 5120]
+  shifted: [0, 1]
+  tokens: [128, 256]
+
+# Prefill.
+- hidden: [4096, 5120]
+  shifted: [0, 1]
+  tokens: [1024, 4096]
+
+# Fallback kernels: a hidden size the fused kernels don't cover.
+- hidden: 2048
+  shifted: [0, 1]
+  tokens: [1, 1024]
