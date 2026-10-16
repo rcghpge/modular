@@ -64,19 +64,17 @@ def matrix_mul_tiled_kernel(
     # Go through tiles
     for ph in range(Width // TILE_WIDTH):
         # Load tiles into shared memory
-        sA[s_row * TILE_WIDTH + s_col] = Float32(
-            M[g_row * Width + (ph * TILE_WIDTH + s_col)]
-        )
-        sB[s_row * TILE_WIDTH + s_col] = Float32(
-            N[(s_row + ph * TILE_WIDTH) * Width + g_col]
-        )
+        sA[s_row * TILE_WIDTH + s_col] = M[
+            g_row * Width + (ph * TILE_WIDTH + s_col)
+        ]
+        sB[s_row * TILE_WIDTH + s_col] = N[
+            (s_row + ph * TILE_WIDTH) * Width + g_col
+        ]
         barrier()
 
         # Compute matrix multiplication for this tile
         for k in range(TILE_WIDTH):
-            tmp += Float32(sA[s_row * TILE_WIDTH + k]) * Float32(
-                sB[k * TILE_WIDTH + s_col]
-            )
+            tmp += sA[s_row * TILE_WIDTH + k] * sB[k * TILE_WIDTH + s_col]
         barrier()
 
     # Write result to global memory

@@ -67,25 +67,19 @@ def matrixMulKernel(
     for ph in range(ceildiv(Width, tile_width)):
         # Collaborative loading of M and N tiles into shared memory
         if (Row < Width) and (ph * tile_width + tx) < Width:
-            Mds[ty * tile_width + tx] = Float32(
-                M[Row * Width + ph * tile_width + tx]
-            )
+            Mds[ty * tile_width + tx] = M[Row * Width + ph * tile_width + tx]
         else:
-            Mds[ty * tile_width + tx] = Float32(0.0)
+            Mds[ty * tile_width + tx] = 0.0
 
         if (ph * tile_width + ty) < Width and Col < Width:
-            Nds[ty * tile_width + tx] = Float32(
-                N[(ph * tile_width + ty) * Width + Col]
-            )
+            Nds[ty * tile_width + tx] = N[(ph * tile_width + ty) * Width + Col]
         else:
-            Nds[ty * tile_width + tx] = Float32(0.0)
+            Nds[ty * tile_width + tx] = 0.0
 
         barrier()
 
         for k in range(tile_width):
-            Pvalue += Float32(Mds[ty * tile_width + k]) * Float32(
-                Nds[k * tile_width + tx]
-            )
+            Pvalue += Mds[ty * tile_width + k] * Nds[k * tile_width + tx]
 
         barrier()
 

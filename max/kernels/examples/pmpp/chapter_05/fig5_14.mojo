@@ -68,26 +68,20 @@ def matrix_mul_tiled_boundary_kernel(
     for ph in range(num_phases):
         # Collaborative loading of M and N tiles into shared memory with boundary checks
         if Row < Width and (ph * TILE_WIDTH + tx) < Width:
-            Mds[ty * TILE_WIDTH + tx] = Float32(
-                M[Row * Width + ph * TILE_WIDTH + tx]
-            )
+            Mds[ty * TILE_WIDTH + tx] = M[Row * Width + ph * TILE_WIDTH + tx]
         else:
-            Mds[ty * TILE_WIDTH + tx] = Float32(0.0)
+            Mds[ty * TILE_WIDTH + tx] = 0.0
 
         if (ph * TILE_WIDTH + ty) < Width and Col < Width:
-            Nds[ty * TILE_WIDTH + tx] = Float32(
-                N[(ph * TILE_WIDTH + ty) * Width + Col]
-            )
+            Nds[ty * TILE_WIDTH + tx] = N[(ph * TILE_WIDTH + ty) * Width + Col]
         else:
-            Nds[ty * TILE_WIDTH + tx] = Float32(0.0)
+            Nds[ty * TILE_WIDTH + tx] = 0.0
 
         barrier()
 
         # Compute partial dot product
         for k in range(TILE_WIDTH):
-            Pvalue += Float32(Mds[ty * TILE_WIDTH + k]) * Float32(
-                Nds[k * TILE_WIDTH + tx]
-            )
+            Pvalue += Mds[ty * TILE_WIDTH + k] * Nds[k * TILE_WIDTH + tx]
 
         barrier()
 
