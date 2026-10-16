@@ -55,8 +55,8 @@ def scale_stream_kernel[
     comptime GROUPS = 16
     comptime ITERS = GROUPS * CADENCE
     comptime RING = (STAGES - 1 + CADENCE - 1) // CADENCE + 1
-    var lane = Int(thread_idx.x % WARP_SIZE)
-    var partition = Int(thread_idx.x // WARP_SIZE)
+    var lane = thread_idx.x % WARP_SIZE
+    var partition = thread_idx.x // WARP_SIZE
     # The BF16 suffix is reached through a byte pointer, as in packed weights.
     var suffix = source.unsafe_ptr().bitcast[UInt8]() + 16
     var global_scales = TileTensor(

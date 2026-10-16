@@ -155,12 +155,12 @@ def test_packed_fp4_load_3d[
     )
 
     comptime num_bytes = batch * rows * k_bytes
-    var src_host = ctx.enqueue_create_host_buffer[DType.uint8](num_bytes)
+    var src_host = ctx.enqueue_create_host_buffer[.uint8](num_bytes)
     for b in range(batch):
         for r in range(rows):
             for c in range(k_bytes):
                 src_host[(b * rows + r) * k_bytes + c] = _src_byte(b, r, c)
-    var src_device = ctx.enqueue_create_buffer[DType.uint8](num_bytes)
+    var src_device = ctx.enqueue_create_buffer[.uint8](num_bytes)
     ctx.enqueue_copy(src_device, src_host)
 
     var src_tensor = TileTensor(
@@ -179,7 +179,7 @@ def test_packed_fp4_load_3d[
     ](ctx, src_tensor)
 
     comptime dst_size = dst_layout.size()
-    var dst_device = ctx.enqueue_create_buffer[DType.uint8](dst_size)
+    var dst_device = ctx.enqueue_create_buffer[.uint8](dst_size)
 
     comptime kernel = packed_fp4_load_3d_kernel[
         dst_layout,
@@ -197,7 +197,7 @@ def test_packed_fp4_load_3d[
         block_dim=(128),
     )
 
-    var dst_host_buffer = ctx.enqueue_create_host_buffer[DType.uint8](dst_size)
+    var dst_host_buffer = ctx.enqueue_create_host_buffer[.uint8](dst_size)
     ctx.enqueue_copy(dst_host_buffer, dst_device)
     ctx.synchronize()
     var dst_host = LayoutTensor[DType.uint8, dst_layout, MutAnyOrigin](

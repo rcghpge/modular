@@ -112,8 +112,8 @@ def tma_tile_tensor_load_kernel[
     mbar[0].wait()
 
     # One thread per tile element, so each thread copies its own element.
-    var row, col = divmod(Int(thread_idx.x), tileN)
-    var dst_tile = dst.tile[tileM, tileN](Int(block_idx.y), Int(block_idx.x))
+    var row, col = divmod(thread_idx.x, tileN)
+    var dst_tile = dst.tile[tileM, tileN](block_idx.y, block_idx.x)
     dst_tile[row, col] = tile[row, col]
 
 

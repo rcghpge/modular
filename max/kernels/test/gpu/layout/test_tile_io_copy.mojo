@@ -228,8 +228,8 @@ def swizzled_vectorized_local_to_shared_kernel(
             smem.ptr[i] = -1.0
     barrier()
 
-    var row = Int(thread_idx.x) // threads_per_row
-    var col = (Int(thread_idx.x) % threads_per_row) * _V_WIDTH
+    var row = thread_idx.x // threads_per_row
+    var col = (thread_idx.x % threads_per_row) * _V_WIDTH
     for j in range(_V_WIDTH):
         local.ptr[j] = src_ptr[row * _V_COLS + col + j]
     copy_local_to_shared[thread_layout, swizzle=swizzle](
@@ -360,7 +360,7 @@ def _bounded_local_to_dram_kernel[
     row_stride: Int32,
 ):
     comptime thread_layout = row_major[8, 4]()
-    var worker = Int(thread_idx.x)
+    var worker = thread_idx.x
     var warp = worker // 32
     var lane = worker % 32
     var owner = stack_allocation[.float32, address_space=.LOCAL, alignment=16](
