@@ -11,13 +11,16 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.atomic import Atomic
 from std.memory import unsafe_stack_allocation
 from std.sys.intrinsics import strided_load, strided_store
 from std.testing import assert_equal
 
+from max.gpu import thread_idx
 from max.gpu.host import DeviceContext
 
 comptime _N = 8
+comptime _THREADS = 64
 
 
 def _kernel(output: MutPointer[Float32, MutAnyOrigin]):
@@ -46,8 +49,23 @@ def _kernel(output: MutPointer[Float32, MutAnyOrigin]):
         )
 
 
+def _atomic_kernel(counters: MutPointer[Int32, MutAnyOrigin]):
+    # Default orderings; Metal rejects sequentially consistent ones.
+    _ = Atomic[Int32].fetch_add(counters, Int32(1))
+    Atomic[Int32].max(counters.unsafe_offset(1), Int32(thread_idx.x))
+
+
 def main() raises:
     with DeviceContext() as ctx:
+        var counters = ctx.enqueue_create_buffer[DType.int32](2)
+        counters.enqueue_fill(0)
+        ctx.enqueue_function[_atomic_kernel](
+            counters, grid_dim=1, block_dim=_THREADS
+        )
+        with counters.map_to_host() as host:
+            assert_equal(host[0], Int32(_THREADS), msg="fetch_add")
+            assert_equal(host[1], Int32(_THREADS - 1), msg="max")
+
         var out_device = ctx.enqueue_create_buffer[.float32](16)
         ctx.enqueue_function[_kernel](out_device, grid_dim=1, block_dim=1)
         # One row of 4 per operation, in the order `_kernel` writes them.

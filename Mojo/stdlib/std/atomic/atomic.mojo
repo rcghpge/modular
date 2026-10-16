@@ -22,7 +22,8 @@ from std.atomic import Atomic
 from std.collections.string.string_span import _get_kgen_string
 from std.memory._poison import _check_not_poison
 from std.os import abort
-from std.sys.info import is_nvidia_gpu, is_apple_gpu
+from std.sys.info import is_nvidia_gpu
+from std._plugin import CurrentPlugin
 
 from std.builtin.dtype import _integral_type_of, _unsigned_integral_type_of
 from std.memory import bitcast
@@ -31,7 +32,7 @@ from std.memory import bitcast
 # Ordering
 # ===-----------------------------------------------------------------------===#
 
-comptime _DEFAULT_ARITHMETIC_ORDERING = Ordering.RELAXED if is_apple_gpu() else Ordering.SEQUENTIAL
+comptime _DEFAULT_ARITHMETIC_ORDERING = CurrentPlugin.default_atomic_ordering
 comptime _DEFAULT_COMPARISON_ORDERING = _DEFAULT_ARITHMETIC_ORDERING
 comptime _DEFAULT_MEMORY_ORDERING = Ordering.SEQUENTIAL
 

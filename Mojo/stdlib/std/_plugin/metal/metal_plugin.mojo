@@ -18,6 +18,7 @@ from std._plugin._trait import (
     _PrintEmitPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
+from std.atomic import Ordering
 from std.collections import OptionalReg
 from std.sys.info import CompilationTarget
 from std.collections.string.string_span import (
@@ -110,3 +111,4 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime lowers_subvector_intrinsics: Bool = False
 
     comptime has_generic_address_space: Bool = False
+    comptime default_atomic_ordering: Ordering = Ordering.RELAXED

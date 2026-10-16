@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.atomic import Ordering
 from std.collections import OptionalReg
 from std.reflection.location import SourceLocation
 
@@ -178,6 +179,15 @@ trait PluginHooks:
     rebuilt from an integer address does not reach threadgroup memory. Where
     this is `False`, the stdlib keeps the typed pointer instead of
     round-tripping it through an integer.
+    """
+
+    comptime default_atomic_ordering: Ordering = Ordering.SEQUENTIAL
+    """The ordering `Atomic` read-modify-write and compare-exchange
+    operations use when the caller does not name one.
+
+    A target whose backend rejects sequentially consistent atomics, such as
+    Metal, sets this to the strongest ordering it lowers. Loads, stores, and
+    fences default to `Ordering.SEQUENTIAL` regardless.
     """
 
     comptime stack_allocation_fn[address_space: AddressSpace]: OptionalReg[
