@@ -818,7 +818,7 @@ logit_verification_pipelines:
     encoding: float8_e4m3fn
     tags: [manual]
     pregenerated_torch_goldens:
-      tar_file: "s3://modular-bazel-artifacts-public/artifacts/minimax_m3_dense_only_golden/1/916ae32aad3b2c036783d3451e9c897512734de1f4d71c95d0afdaaaa2aeddd4/minimax_m3_dense_only_golden.tar.gz"
+      tar_file: "s3://modular-ci-prod-artifact-bucket/artifacts/minimax_m3_dense_only_golden/1/916ae32aad3b2c036783d3451e9c897512734de1f4d71c95d0afdaaaa2aeddd4/minimax_m3_dense_only_golden.tar.gz"
       json_file: "torch_minimax_m3_dense_only_golden.json"
     # Placeholder tolerances (headroom over measured); re-tune via the Action.
     cos_dist_threshold: 5.0e-04
@@ -841,7 +841,7 @@ logit_verification_pipelines:
     # into the runfiles the generate_llm_logits child inherits.
     verify_target: //max_private/minimax_m3:verify_minimax_m3
     pregenerated_torch_goldens:
-      tar_file: "s3://modular-bazel-artifacts-public/artifacts/MiniMaxAI_MiniMax-M3-MXFP8_golden/1/f6c729e886f1750f1c569f5d68bfcd300f5e5eca24507047fd11830dadfd9cae/MiniMaxAI_MiniMax-M3-MXFP8_golden.tar.gz"
+      tar_file: "s3://modular-ci-prod-artifact-bucket/artifacts/MiniMaxAI_MiniMax-M3-MXFP8_golden/1/f6c729e886f1750f1c569f5d68bfcd300f5e5eca24507047fd11830dadfd9cae/MiniMaxAI_MiniMax-M3-MXFP8_golden.tar.gz"
       json_file: "sglang_MiniMaxAI_MiniMax-M3-MXFP8_float8_e4m3fn_golden.json"
     # Matches the 405B 8xb200 entry above. The MCloud deploy runs this entry
     # with no precompile pass -- the only precompiler can't register a private
