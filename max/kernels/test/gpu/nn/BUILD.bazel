@@ -61,12 +61,6 @@ _EXTRA_CONSTRAINTS = {
     # Bounded masked DRAM->SRAM copy proof; the masked `cp.async` zero-fill
     # is NVIDIA-specific and verified on B200 only.
     "scout_tt_bounded_copy.mojo": ["//:nvidia_gpu"],
-    # B200 runs the fused kernels; on MI355 every call takes the fallback.
-    "test_mega_mhc.mojo": select({
-        "//:b200_gpu": [],
-        "//:mi355_gpu": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     "test_mma_ws_ts.mojo": select({
         "//:b200_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -594,9 +588,6 @@ _GPU_MEMORY = {
     "test_mha_mask.mojo": "4",
     "test_mha_operand_tma.mojo": "3",
     "test_mha_p_fragment_scatter_amd.mojo": "4",
-    # The 16384-token canary holds ~1.4 GiB of streams plus the 256 MiB-page
-    # allocator's rounding.
-    "test_mega_mhc.mojo": "4",
     "test_miopen_conv.mojo": "4",
     "test_mla.mojo": "4",
     "test_mla_decode_blockwise_fp8.mojo": "3",
