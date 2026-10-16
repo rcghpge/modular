@@ -42,7 +42,9 @@ from max.pipelines.lib.pipeline_parallel import (
     partition_spec,
     pipeline_stages,
     split_layers,
+    stage_graph,
     stage_layers,
+    stage_outputs,
     stage_pipeline_config,
 )
 
@@ -149,7 +151,7 @@ class ToyModel(PipelinedModel[TextContext]):
     def build(self) -> tuple[Graph, dict[str, Any]]:
         stage = self.pipeline_config.model.pipeline_stage
         index = stage.index if stage else 0
-        with self.stage_graph(f"toy_{index}", INPUT_TYPES) as (
+        with stage_graph(stage, f"toy_{index}", INPUT_TYPES) as (
             graph,
             inputs,
             boundary_inputs,
@@ -158,7 +160,7 @@ class ToyModel(PipelinedModel[TextContext]):
             outputs = self.decoder(
                 tokens, scale, bias, boundary_inputs=boundary_inputs
             )
-            graph.output(*self.stage_outputs(outputs))
+            graph.output(*stage_outputs(stage, outputs))
         return graph, dict(self.decoder.state_dict())
 
 
@@ -353,9 +355,9 @@ def test_a_later_stage_needs_boundary_types() -> None:
 
 
 def test_an_algebraic_dim_cannot_cross_a_cut() -> None:
-    model = ToyModel(0, 2, trace_only=True)
+    stage = replace(pipeline_stages([2, 2])[0], trace_only=True)
     with Graph("cut", input_types=INPUT_TYPES[:1]) as graph:
         tokens = graph.inputs[0].tensor
         doubled = ops.concat([tokens, tokens])
         with pytest.raises(ValueError, match="algebraic dim"):
-            model.stage_outputs(doubled)
+            stage_outputs(stage, doubled)

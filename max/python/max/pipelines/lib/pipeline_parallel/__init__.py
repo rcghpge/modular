@@ -13,7 +13,14 @@
 
 """Pipeline parallelism: a decoder cut into stages of contiguous layers."""
 
-from .contract import PipelinedModel, StageTraced
+from .contract import (
+    PipelinedModel,
+    StageTraced,
+    raise_stage_traced,
+    stage_graph,
+    stage_input_types,
+    stage_outputs,
+)
 from .partition import (
     PartitionSpec,
     PipelineStage,
@@ -31,7 +38,11 @@ __all__ = [
     "StageTraced",
     "partition_spec",
     "pipeline_stages",
+    "raise_stage_traced",
     "split_layers",
+    "stage_graph",
+    "stage_input_types",
     "stage_layers",
+    "stage_outputs",
     "stage_pipeline_config",
 ]
