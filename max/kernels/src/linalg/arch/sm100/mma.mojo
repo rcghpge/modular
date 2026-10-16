@@ -384,9 +384,7 @@ struct MmaOpSM100_SS[
                 (k % sw_K_b) + (k // sw_K_b) * BN * sw_K_b
             ) * size_of[Self.b_type]()
 
-            var c_scale: UInt32 = UInt32(0) if (init_c and k == 0) else UInt32(
-                1
-            )
+            var c_scale: UInt32 = 0 if (init_c and k == 0) else 1
 
             mma[Self.cta_group](
                 a_desc + a_offset,
@@ -415,9 +413,9 @@ struct MmaOpSM100_SS[
         comptime match dtype:
             case .float32:
                 return UMMAKind.KIND_TF32
-            case .float16 | DType.bfloat16:
+            case .float16 | .bfloat16:
                 return UMMAKind.KIND_F16
-            case .float8_e4m3fn | DType.float8_e5m2:
+            case .float8_e4m3fn | .float8_e5m2:
                 return UMMAKind.KIND_F8F6F4
             case _:
                 comptime assert False, String(
@@ -557,9 +555,7 @@ struct MmaOpSM100_BlockScaled_SS[
         sfa_tmem: UInt32,
         sfb_tmem: UInt32,
         init_c: Bool,
-        sfb_tmem_adj: UInt32 = UInt32(
-            0
-        ),  # TMEM col offset for MMA_N < SF_MN_GROUP_SIZE
+        sfb_tmem_adj: UInt32 = 0,  # TMEM col offset for MMA_N < SF_MN_GROUP_SIZE
     ):
         """TileTensor overload for block-scaled MMA input tiles.
 
@@ -636,9 +632,7 @@ struct MmaOpSM100_BlockScaled_SS[
             comptime a_offset = k * size_of[Self.a_type]()
             comptime b_offset = k * size_of[Self.b_type]()
 
-            var c_scale: UInt32 = UInt32(0) if (init_c and k == 0) else UInt32(
-                1
-            )
+            var c_scale: UInt32 = 0 if (init_c and k == 0) else 1
 
             comptime sf_idx = k // Self.mma_shape[2]
 
