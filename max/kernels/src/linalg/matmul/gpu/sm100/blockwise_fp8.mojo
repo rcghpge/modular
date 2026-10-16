@@ -28,6 +28,7 @@ from max.gpu.memory import external_memory
 from max.gpu.compute.arch.mma_nvidia_sm100 import *
 from max.gpu.compute.arch.tcgen05 import *
 from layout import Coord, TensorLayout, TileTensor, coord, row_major
+from layout.tensor_engine import TensorEngine
 from layout.tensor_core_async import (
     tile_layout_k_major_typed,
 )
@@ -72,6 +73,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     c_layout: TensorLayout,
     a_scales_layout: TensorLayout,
     b_scales_layout: TensorLayout,
+    c_engine: TensorEngine,
+    b_scales_engine: TensorEngine,
     a_tile_shape: Coord,
     a_desc_shape: Coord,
     b_tile_shape: Coord,
@@ -95,11 +98,13 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
 ](
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
-    c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
+    c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     a_scales_tma_op: TMATensorTile[
         a_scales_type, a_scales_tile_shape, a_scales_desc_shape
     ],
-    b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
+    b_scales: TileTensor[
+        b_scales_type, b_scales_layout, ImmutAnyOrigin, Engine=b_scales_engine
+    ],
     num_iters: Int32,
     epilogue_fn: EpilogueFnType,
     compute_fn: ComputeFnType,
@@ -491,6 +496,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
     c_layout: TensorLayout,
     a_scales_layout: TensorLayout,
     b_scales_layout: TensorLayout,
+    c_engine: TensorEngine,
+    b_scales_engine: TensorEngine,
     a_tile_shape: Coord,
     a_desc_shape: Coord,
     b_tile_shape: Coord,
@@ -513,11 +520,13 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
 ](
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
-    c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin],
+    c: TileTensor[mut=True, c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     a_scales_tma_op: TMATensorTile[
         a_scales_type, a_scales_tile_shape, a_scales_desc_shape
     ],
-    b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
+    b_scales: TileTensor[
+        b_scales_type, b_scales_layout, ImmutAnyOrigin, Engine=b_scales_engine
+    ],
     num_iters: Int32,
     epilogue_fn: EpilogueFnType,
     compute_fn: ComputeFnType,
@@ -539,6 +548,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_wrapper[
         c_layout,
         a_scales_layout,
         b_scales_layout,
+        c_engine,
+        b_scales_engine,
         a_tile_shape,
         a_desc_shape,
         b_tile_shape,
@@ -878,6 +889,8 @@ def _matmul_sm100_blockwise_scaled_fp8_impl[
         type_of(c_kernel).LayoutType,
         type_of(a_scales_3D).LayoutType,
         type_of(b_scales_kernel).LayoutType,
+        type_of(c_kernel).Engine,
+        type_of(b_scales_kernel).Engine,
         type_of(a_tma_op).tile_shape,
         type_of(a_tma_op).desc_shape,
         type_of(b_tma_op).tile_shape,

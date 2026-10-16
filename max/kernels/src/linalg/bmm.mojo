@@ -1551,6 +1551,8 @@ def _bmm_sm100_blockwise_scaled_fp8_kernel[
         type_of(c_tt).LayoutType,
         a_scales_layout,
         type_of(b_scales_tt).LayoutType,
+        type_of(c_tt).Engine,
+        type_of(b_scales_tt).Engine,
         type_of(a_tma_op).tile_shape,
         type_of(a_tma_op).desc_shape,
         type_of(b_tma_op).tile_shape,

@@ -39,6 +39,7 @@ from max.gpu.sync import (
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
     Coord,
+    DefaultEngine,
     IntTuple,
     Idx,
     Layout,
@@ -211,7 +212,14 @@ def f32_frag_to_smem[
     DstLayout: TensorLayout,
 ](
     vec: Array[Scalar[vec_dtype], vec_size],
-    dst: TileTensor[_, DstLayout, MutAnyOrigin, address_space=.SHARED],
+    dst: TileTensor[
+        _,
+        DstLayout,
+        MutAnyOrigin,
+        # Shared memory is raw-pointer addressed so pin DefaultEngine.
+        Engine=DefaultEngine[element_width=1],
+        address_space=.SHARED,
+    ],
 ):
     """Writes an FP32 TCGEN05 accumulator fragment to a swizzled shared-memory tile.
 
@@ -268,7 +276,14 @@ def stsm_helper[
     swizzle_mode: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
 ](
     vec: Array[Scalar[vec_dtype], vec_size],
-    dst: TileTensor[_, DstLayout, MutAnyOrigin, address_space=.SHARED],
+    dst: TileTensor[
+        _,
+        DstLayout,
+        MutAnyOrigin,
+        # Shared memory is raw-pointer addressed so pin DefaultEngine.
+        Engine=DefaultEngine[element_width=1],
+        address_space=.SHARED,
+    ],
     warp_offset: UInt32 = 0,
 ):
     """Stores a TCGEN05 accumulator fragment to shared memory using st.matrix or scalar stores.
