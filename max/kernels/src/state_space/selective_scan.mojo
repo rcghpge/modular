@@ -324,7 +324,7 @@ def selective_scan_fwd_gpu[
     # Tail loop (scalar)
     while t < _seqlen:
         t_in_chunk += 1
-        var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+        var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
         var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
         if has_delta_bias:
             delta_val += delta_bias_val
@@ -350,7 +350,7 @@ def selective_scan_fwd_gpu[
             output_val.cast[kernel_dtype](),
         )
         if has_z:
-            var z_val = z.load[width=1]((b, d, t)).cast[DType.float32]()
+            var z_val = z.load[width=1]((b, d, t)).cast[.float32]()
             var out_z_val = output_val * silu(z_val)
             if has_out_z:
                 out_z.store[width=1](
@@ -483,7 +483,7 @@ def selective_scan_fwd_gpu_minimal[
     for t in range(_seqlen):
         t_in_chunk += 1
 
-        var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+        var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
         var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
         if delta_softplus_bool:
             delta_val = softplus(delta_val)
@@ -658,12 +658,12 @@ def selective_scan_update_gpu[
     var group_id = d // _group_size
 
     # Load dt value
-    var dt_val = dt.load[width=1]((b, d)).cast[DType.float32]()
+    var dt_val = dt.load[width=1]((b, d)).cast[.float32]()
 
     # Apply dt_bias if present
     var has_dt_bias = Int(dt_bias.dim[0]()) > 0
     if has_dt_bias:
-        var bias_val = dt_bias.load[width=1]((d,)).cast[DType.float32]()
+        var bias_val = dt_bias.load[width=1]((d,)).cast[.float32]()
         dt_val += bias_val
 
     # Apply softplus if requested
@@ -687,7 +687,7 @@ def selective_scan_update_gpu[
     var B_vals = SIMD[.float32, MAX_DSTATE](0.0)
 
     comptime for n in range(DSTATE):
-        B_vals[n] = B.load[width=1]((b, group_id, n)).cast[DType.float32]()
+        B_vals[n] = B.load[width=1]((b, group_id, n)).cast[.float32]()
 
     # Compute dB = B * dt
     var dB = B_vals * dt_val
@@ -711,7 +711,7 @@ def selective_scan_update_gpu[
     var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
 
     comptime for n in range(DSTATE):
-        C_vals[n] = C.load[width=1]((b, group_id, n)).cast[DType.float32]()
+        C_vals[n] = C.load[width=1]((b, group_id, n)).cast[.float32]()
 
     # Compute output: out = sum(state * C, axis=-1)
     var out_val = (state_vals * C_vals).reduce_add()
@@ -719,13 +719,13 @@ def selective_scan_update_gpu[
     # Add skip connection if D is present
     var has_D = Int(D.dim[0]()) > 0
     if has_D:
-        var D_val = D.load[width=1]((d,)).cast[DType.float32]()
+        var D_val = D.load[width=1]((d,)).cast[.float32]()
         out_val += x_val * D_val
 
     # Apply gating if z is present
     var has_z = Int(z.dim[0]()) > 0
     if has_z:
-        var z_val = z.load[width=1]((b, d)).cast[DType.float32]()
+        var z_val = z.load[width=1]((b, d)).cast[.float32]()
         out_val *= z_val * sigmoid(
             z_val
         )  # z * sigmoid(z) = silu(z) but formulated differently
@@ -808,7 +808,7 @@ def selective_scan_update_cpu[
         var group_id = d // group_size
 
         # Load dt value
-        var dt_val = dt.load[width=1]((b, d)).cast[DType.float32]()
+        var dt_val = dt.load[width=1]((b, d)).cast[.float32]()
 
         # Apply dt_bias if present
         if has_dt_bias:
@@ -820,7 +820,7 @@ def selective_scan_update_cpu[
             dt_val = softplus(dt_val)
 
         # Load x value
-        var x_val = x.load[width=1]((b, d)).cast[DType.float32]()
+        var x_val = x.load[width=1]((b, d)).cast[.float32]()
 
         # Load A values and pre-multiply by LOG2E
         var A_vals = SIMD[.float32, MAX_DSTATE](0.0)
@@ -835,7 +835,7 @@ def selective_scan_update_cpu[
         var B_vals = SIMD[.float32, MAX_DSTATE](0.0)
 
         comptime for n in range(DSTATE):
-            B_vals[n] = B.load[width=1]((b, group_id, n)).cast[DType.float32]()
+            B_vals[n] = B.load[width=1]((b, group_id, n)).cast[.float32]()
 
         # Compute dB
         var dB = B_vals * dt_val
@@ -860,18 +860,18 @@ def selective_scan_update_cpu[
         var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
 
         comptime for n in range(DSTATE):
-            C_vals[n] = C.load[width=1]((b, group_id, n)).cast[DType.float32]()
+            C_vals[n] = C.load[width=1]((b, group_id, n)).cast[.float32]()
         # Compute output
         var out_val = (state_vals * C_vals).reduce_add()
 
         # Add skip connection
         if has_D:
-            var D_val = D.load[width=1]((d,)).cast[DType.float32]()
+            var D_val = D.load[width=1]((d,)).cast[.float32]()
             out_val += x_val * D_val
 
         # Apply gating
         if has_z:
-            var z_val = z.load[width=1]((b, d)).cast[DType.float32]()
+            var z_val = z.load[width=1]((b, d)).cast[.float32]()
             out_val *= z_val * sigmoid(z_val)
 
         # Store output
@@ -928,7 +928,7 @@ def selective_scan_fwd_cpu[
         var has_D = Int(D.dim[0]()) > 0
         var D_val = Float32(0.0)
         if has_D:
-            D_val = D.load[width=1]((d,)).cast[DType.float32]()
+            D_val = D.load[width=1]((d,)).cast[.float32]()
 
         var delta_softplus_bool = Bool(Int(delta_softplus) != 0)
         var has_z = Int(z.dim[0]()) > 0
@@ -1047,7 +1047,7 @@ def selective_scan_fwd_cpu[
 
         while t < seqlen:
             t_in_chunk += 1
-            var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+            var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
             var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
             if has_delta_bias:
                 delta_val += delta_bias_val
@@ -1179,7 +1179,7 @@ def selective_scan_fwd_cpu_minimal[
         for t in range(seqlen):
             t_in_chunk += 1
 
-            var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+            var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
             var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
             if delta_softplus_bool:
                 delta_val = softplus(delta_val)
@@ -1395,7 +1395,7 @@ def ssd_combined_gpu[
         A_vals[n] = A.load[width=1]((d, n)).cast[.float32]() * LOG2E
 
     # Load gamma value for normalization
-    var gamma_val = gamma.load[width=1]((d,)).cast[DType.float32]()
+    var gamma_val = gamma.load[width=1]((d,)).cast[.float32]()
     var epsilon_val = epsilon.cast[.float32]()
     var weight_offset_val = weight_offset.cast[.float32]()
 
@@ -1534,7 +1534,7 @@ def ssd_combined_gpu[
     # Handle remaining timesteps
     while t < _seqlen:
         t_in_chunk += 1
-        var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+        var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
         var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
         var residual_val = residual.load[width=1]((b, d, t)).cast[.float32]()
 
@@ -1567,7 +1567,7 @@ def ssd_combined_gpu[
         var normalized = combined * (gamma_val + weight_offset_val)
 
         if has_z:
-            var z_val = z.load[width=1]((b, d, t)).cast[DType.float32]()
+            var z_val = z.load[width=1]((b, d, t)).cast[.float32]()
             var out_z_val = normalized * silu(z_val)
             if has_out_z:
                 out_z.store[width=1](
@@ -1731,7 +1731,7 @@ def ssd_combined_cpu[
         var has_D = D.dim(0) > 0
         var D_val = Float32(0.0)
         if has_D:
-            D_val = D.load[width=1]((d,)).cast[DType.float32]()
+            D_val = D.load[width=1]((d,)).cast[.float32]()
 
         var delta_softplus_bool = Bool(Int(delta_softplus) != 0)
         var has_z = z.dim(0) > 0
@@ -1740,7 +1740,7 @@ def ssd_combined_cpu[
         comptime for n in range(DSTATE):
             A_vals[n] = A.load[width=1]((d, n)).cast[.float32]() * LOG2E
 
-        var gamma_val = gamma.load[width=1]((d,)).cast[DType.float32]()
+        var gamma_val = gamma.load[width=1]((d,)).cast[.float32]()
         var epsilon_val = epsilon.cast[.float32]()
         var weight_offset_val = weight_offset.cast[.float32]()
 
@@ -1871,7 +1871,7 @@ def ssd_combined_cpu[
 
         while t < seqlen:
             t_in_chunk += 1
-            var u_val = u.load[width=1]((b, d, t)).cast[DType.float32]()
+            var u_val = u.load[width=1]((b, d, t)).cast[.float32]()
             var delta_val = delta.load[width=1]((b, d, t)).cast[.float32]()
             var residual_val = residual.load[width=1]((b, d, t)).cast[
                 .float32
@@ -2083,9 +2083,9 @@ def mamba_split_conv1d_scan_combined_cpu[
             # D is (nheads, headdim), or (nheads, 0) with head stride 0 when
             # headdim == 1; then the head index runs along the last axis.
             if D.dim(1) > 0:
-                D_val = D.load[width=1]((h, p)).cast[DType.float32]()
+                D_val = D.load[width=1]((h, p)).cast[.float32]()
             else:
-                D_val = D.load[width=1]((0, h)).cast[DType.float32]()
+                D_val = D.load[width=1]((0, h)).cast[.float32]()
 
         var has_dt_bias = dt_bias.dim(0) > 0
         var dt_bias_val = Float32(0.0)
@@ -2423,14 +2423,14 @@ def mamba_split_conv1d_scan_combined_gpu[
         # D is (nheads, headdim), or (nheads, 0) with head stride 0 when
         # headdim == 1; then the head index runs along the last axis.
         if D.dim(1) > 0:
-            D_val = D.load[width=1]((h, p)).cast[DType.float32]()
+            D_val = D.load[width=1]((h, p)).cast[.float32]()
         else:
-            D_val = D.load[width=1]((0, h)).cast[DType.float32]()
+            D_val = D.load[width=1]((0, h)).cast[.float32]()
 
     var has_dt_bias = dt_bias.dim(0) > 0
     var dt_bias_val = Float32(0.0)
     if has_dt_bias:
-        dt_bias_val = dt_bias.load[width=1]((h,)).cast[DType.float32]()
+        dt_bias_val = dt_bias.load[width=1]((h,)).cast[.float32]()
 
     var chunk_idx = 0
     var t_in_chunk = 0

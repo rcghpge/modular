@@ -119,7 +119,7 @@ def gated_group_rmsnorm_kernel[
     # One warp owns one (row, group). All 32 lanes share `group_flat` (it is
     # `global_idx.x // WARP_SIZE`, constant within a simdgroup), so the early
     # return is warp-uniform -- safe before the `warp.sum` collective below.
-    var group_flat = Int(global_idx.x) // WARP_SIZE
+    var group_flat = global_idx.x // WARP_SIZE
     if group_flat >= n_rows * num_groups:
         return
     var n = group_flat // num_groups
