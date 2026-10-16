@@ -43,6 +43,7 @@ from .device_context import (
     _DeviceContextPtr,
     _FunctionEnqueuer,
     _max_dynamic_shared_bytes_for_load,
+    _snapshot_capture_sizes,
 )
 
 
@@ -120,6 +121,69 @@ __extension DeviceBuffer:
         )
 
 
+# const char *AsyncRT_DeviceContext_loadFunction(
+#     const DeviceFunction **result, const DeviceContext *ctx,
+#     const char *moduleName, const char *functionName, const char *data,
+#     size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
+#     int32_t optimizationLevel)
+@inline(.never)
+def _load_function(
+    ctx: _DeviceContextPtr[mut=True],
+    *,
+    module_name: StaticString,
+    function_name: StaticString,
+    asm: StaticString,
+    max_dynamic_shared_size_bytes: Int32,
+) raises -> _DeviceFunctionPtr[mut=True]:
+    """Loads a compiled kernel into the context and returns its handle.
+
+    Shared by every kernel, so the call and its error path are emitted once
+    instead of inlined into each launch site.
+
+    Args:
+        ctx: The device context to load the kernel into.
+        module_name: The compiled module's name.
+        function_name: The kernel's linkage name within the module.
+        asm: The compiled module contents.
+        max_dynamic_shared_size_bytes: The dynamic shared memory the kernel
+            may request, or -1 for the default.
+
+    Returns:
+        The loaded function's handle, retained for the caller.
+
+    Raises:
+        If the runtime fails to load the kernel.
+    """
+    comptime debug_level = DebugLevel.level
+    var result: _DeviceFunctionPtr[mut=True] = {}
+    _checked(
+        external_call[
+            "AsyncRT_DeviceContext_loadFunction",
+            _CString[],
+            Pointer[_DeviceFunctionPtr[mut=True], origin_of(result)],
+            _DeviceContextPtr[mut=True],
+            CStringSpan[ImmStaticOrigin],
+            CStringSpan[ImmStaticOrigin],
+            CStringSpan[ImmStaticOrigin],
+            c_size_t,
+            Int32,
+            CStringSpan[ImmStaticOrigin],
+            Int32,
+        ](
+            Pointer(to=result),
+            ctx,
+            module_name.as_c_string_span(),
+            function_name.as_c_string_span(),
+            asm.as_c_string_span(),
+            c_size_t(asm.byte_length()),
+            max_dynamic_shared_size_bytes,
+            debug_level.as_c_string_span(),
+            Int32(Int(OptimizationLevel)),
+        ),
+    )
+    return result
+
+
 __extension DeviceFunction:
     @doc_hidden
     @inline(.always)
@@ -144,12 +208,6 @@ __extension DeviceFunction:
             Self.target
         ](func_attribute)
 
-        # const char *AsyncRT_DeviceContext_loadFunction(
-        #     const DeviceFunction **result, const DeviceContext *ctx,
-        #     const char *moduleName, const char *functionName, const char *data,
-        #     size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
-        #     int32_t optimizationLevel)
-        var result: _DeviceFunctionPtr[mut=True] = {}
         self._func_impl = _compile_code[
             Self.func,
             emission_kind=self._emission_kind,
@@ -157,35 +215,16 @@ __extension DeviceFunction:
             compile_options=Self.compile_options,
             link_options=Self.link_options,
         ]()
-        self._capture_sizes = Self._snapshot_capture_sizes(self._func_impl)
-
-        comptime debug_level = DebugLevel.level
-        _checked(
-            external_call[
-                "AsyncRT_DeviceContext_loadFunction",
-                _CString[],
-                Pointer[_DeviceFunctionPtr[mut=True], origin_of(result)],
-                _DeviceContextPtr[mut=True],
-                CStringSpan[ImmStaticOrigin],
-                CStringSpan[ImmStaticOrigin],
-                CStringSpan[ImmStaticOrigin],
-                c_size_t,
-                Int32,
-                CStringSpan[ImmStaticOrigin],
-                Int32,
-            ](
-                Pointer(to=result),
-                ctx._handle,
-                self._func_impl.module_name.as_c_string_span(),
-                self._func_impl.function_name.as_c_string_span(),
-                self._func_impl.asm.as_c_string_span(),
-                c_size_t(self._func_impl.asm.byte_length()),
-                max_dynamic_shared_size_bytes,
-                debug_level.as_c_string_span(),
-                Int32(Int(OptimizationLevel)),
-            ),
+        self._capture_sizes = _snapshot_capture_sizes(
+            self._func_impl.num_captures, self._func_impl.capture_sizes
         )
-        self._handle = result
+        self._handle = _load_function(
+            ctx._handle,
+            module_name=self._func_impl.module_name,
+            function_name=self._func_impl.function_name,
+            asm=self._func_impl.asm,
+            max_dynamic_shared_size_bytes=max_dynamic_shared_size_bytes,
+        )
 
 
 __extension DeviceExternalFunction:

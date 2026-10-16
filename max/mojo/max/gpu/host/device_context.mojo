@@ -3018,6 +3018,43 @@ def _is_path_like(ss: StringSlice) -> Bool:
     return ss.startswith("/") or ss.startswith("~") or ss.startswith("./")
 
 
+comptime _MAX_KERNEL_CAPTURES = 16
+
+
+@inline(.never)
+def _snapshot_capture_sizes(
+    num_captures: Int, capture_sizes: Pointer[UInt64, ImmUntrackedOrigin]
+) raises -> Array[UInt64, _MAX_KERNEL_CAPTURES]:
+    """Copies the compiler's capture sizes into owned storage.
+
+    Shared by every kernel, so the copy loop and its error path are emitted
+    once instead of inlined into each launch site.
+
+    Args:
+        num_captures: The number of values the kernel captures.
+        capture_sizes: The compiler's per-capture byte sizes.
+
+    Returns:
+        The capture sizes, zero past `num_captures`.
+
+    Raises:
+        If the function captures more values than the snapshot holds.
+    """
+    var count = max(0, num_captures)
+    if count > _MAX_KERNEL_CAPTURES:
+        raise Error(
+            "kernel captures ",
+            count,
+            " values; at most ",
+            _MAX_KERNEL_CAPTURES,
+            " are supported",
+        )
+    var sizes = Array[UInt64, _MAX_KERNEL_CAPTURES](fill=0)
+    for i in range(count):
+        sizes[i] = capture_sizes[unsafe_offset=i]
+    return sizes^
+
+
 struct DeviceFunction[
     func_type: TrivialRegisterPassable,
     //,
@@ -3067,7 +3104,7 @@ struct DeviceFunction[
         _cross_compilation() and Self.target.is_nvidia_gpu()
     ) else "object"
 
-    comptime _max_captures = 16
+    comptime _max_captures = _MAX_KERNEL_CAPTURES
 
     # ===-------------------------------------------------------------------===#
     # Fields
@@ -3129,36 +3166,6 @@ struct DeviceFunction[
     # ===-------------------------------------------------------------------===#
     # Methods
     # ===-------------------------------------------------------------------===#
-
-    @staticmethod
-    @inline(.always)
-    def _snapshot_capture_sizes(
-        info: CompiledFunctionInfo[Self.func_type, Self.func, Self.target]
-    ) raises -> Array[UInt64, Self._max_captures]:
-        """Copies the compiler's capture sizes into owned storage.
-
-        Args:
-            info: The compilation result whose capture sizes to copy.
-
-        Returns:
-            The capture sizes, zero past `info.num_captures`.
-
-        Raises:
-            If the function captures more values than the snapshot holds.
-        """
-        var num_captures = max(0, info.num_captures)
-        if num_captures > Self._max_captures:
-            raise Error(
-                "kernel captures ",
-                num_captures,
-                " values; at most ",
-                Self._max_captures,
-                " are supported",
-            )
-        var sizes = Array[UInt64, Self._max_captures](fill=0)
-        for i in range(num_captures):
-            sizes[i] = info.capture_sizes[unsafe_offset=i]
-        return sizes^
 
     @inline(.always)
     def _capture_sizes_ptr(self) -> Pointer[UInt64, ImmUntrackedOrigin]:
