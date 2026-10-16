@@ -484,10 +484,9 @@ def bench_shape[
         # does, so the unfused path pays for those paged-store launches on top
         # of its band GEMMs.
         @inline(.always)
-        @__copy_capture(kv_out_ptr)
         def k_in[
             width: Int, alignment: Int
-        ](idx: Coord) capturing -> SIMD[OUT_DTYPE, width]:
+        ](idx: Coord) {var kv_out_ptr} -> SIMD[OUT_DTYPE, width]:
             return (
                 _any(kv_out_ptr)
                 + Int(idx[0].value()) * kv_dim
@@ -495,10 +494,9 @@ def bench_shape[
             ).load[width=width]()
 
         @inline(.always)
-        @__copy_capture(kv_out_ptr, total_seq)
         def v_in[
             width: Int, alignment: Int
-        ](idx: Coord) capturing -> SIMD[OUT_DTYPE, width]:
+        ](idx: Coord) {var kv_out_ptr, var total_seq} -> SIMD[OUT_DTYPE, width]:
             return (
                 _any(kv_out_ptr)
                 + total_seq * kv_dim
@@ -507,10 +505,9 @@ def bench_shape[
             ).load[width=width]()
 
         @inline(.always)
-        @__copy_capture(kv_out_ptr, total_seq)
         def ik_in[
             width: Int, alignment: Int
-        ](idx: Coord) capturing -> SIMD[OUT_DTYPE, width]:
+        ](idx: Coord) {var kv_out_ptr, var total_seq} -> SIMD[OUT_DTYPE, width]:
             return (
                 _any(kv_out_ptr)
                 + 2 * total_seq * kv_dim
@@ -518,23 +515,26 @@ def bench_shape[
                 + Int(idx[2].value())
             ).load[width=width]()
 
-        kv_cache_store_ragged[target="gpu", input_fn=k_in](
+        kv_cache_store_ragged[target="gpu"](
             main_collection.get_key_cache(layer_idx),
             (total_seq, MAIN_KV_HEADS, HEAD_SIZE),
             iro_tt,
+            k_in,
             ctx,
         )
-        kv_cache_store_ragged[target="gpu", input_fn=v_in](
+        kv_cache_store_ragged[target="gpu"](
             main_collection.get_value_cache(layer_idx),
             (total_seq, MAIN_KV_HEADS, HEAD_SIZE),
             iro_tt,
+            v_in,
             ctx,
         )
         comptime if HAS_INDEXER:
-            kv_cache_store_ragged[target="gpu", input_fn=ik_in](
+            kv_cache_store_ragged[target="gpu"](
                 index_collection.get_key_cache(layer_idx),
                 (total_seq, 1, HEAD_SIZE),
                 iro_tt,
+                ik_in,
                 ctx,
             )
 

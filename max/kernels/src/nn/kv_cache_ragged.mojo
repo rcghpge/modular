@@ -5413,15 +5413,16 @@ def kv_cache_store_ragged[
     cache_t: KVCacheT,
     //,
     target: StaticString,
-    input_fn: def[width: Int, alignment: Int](idx: Coord) capturing -> SIMD[
-        cache_t.dtype, width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, alignment: Int](Coord) -> SIMD[cache_t.dtype, width],
 ](
     cache: cache_t,
     input_shape: Coord,
     input_row_offsets: TileTensor[
         mut=False, .uint32, address_space=.GENERIC, ...
     ],
+    input_fn: InputFnType,
     context: DeviceContext,
 ) raises:
     """Stores ragged input values into a paged KV cache via an elementwise kernel.
@@ -5435,8 +5436,7 @@ def kv_cache_store_ragged[
             (inferred).
         target: Compilation target string used to dispatch GPU versus CPU
             paths.
-        input_fn: Compile-time callback that loads a SIMD vector of
-            cache-typed elements at the given 3D index.
+        InputFnType: Type of `input_fn` (inferred).
 
     Args:
         cache: The KVCache object to write key or value entries into.
@@ -5444,6 +5444,8 @@ def kv_cache_store_ragged[
             head_size).
         input_row_offsets: Tensor with shape (batch_size + 1,) denoting the
             start of each sequence along the ragged sequence dimension.
+        input_fn: Callback that loads a SIMD vector of cache-typed elements
+            at the given 3D index.
         context: The call context pointer, passed by the graph compiler.
     """
     comptime assert input_row_offsets.flat_rank == 1, (
@@ -5451,10 +5453,6 @@ def kv_cache_store_ragged[
         " + 1,)`"
     )
 
-    # TODO: This elementwise body captures a KV cache view (`CacheType`), which
-    # fails codegen when stored into a unified closure ('pop.store' pointer
-    # element-type verification). Keep using the deprecated parameter-closure
-    # overload until cache captures in unified closures are supported.
     def write_to_cache[
         width: Int,
         alignment: Int = 1,
@@ -5502,13 +5500,14 @@ def kv_cache_store_padded[
     cache_t: KVCacheT,
     //,
     target: StaticString,
-    input_fn: def[width: Int, alignment: Int](idx: Coord) capturing -> SIMD[
-        cache_t.dtype, width
-    ],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, alignment: Int](Coord) -> SIMD[cache_t.dtype, width],
 ](
     cache: cache_t,
     input_shape: IndexList[4],
     valid_lengths: TileTensor[mut=False, .uint32, address_space=.GENERIC, ...],
+    input_fn: InputFnType,
     context: DeviceContext,
 ) raises:
     """Stores padded input values into a paged KV cache via an elementwise kernel.
@@ -5522,8 +5521,7 @@ def kv_cache_store_padded[
             (inferred).
         target: Compilation target string used to dispatch GPU versus CPU
             paths.
-        input_fn: Compile-time callback that loads a SIMD vector of
-            cache-typed elements at the given 4D index.
+        InputFnType: Type of `input_fn` (inferred).
 
     Args:
         cache: The KVCache object to write key or value entries into.
@@ -5531,16 +5529,14 @@ def kv_cache_store_padded[
             heads, head_size).
         valid_lengths: Tensor with shape (batch_size,) giving the number of
             valid tokens per batch; rows beyond this are skipped.
+        input_fn: Callback that loads a SIMD vector of cache-typed elements
+            at the given 4D index.
         context: The call context pointer, passed by the graph compiler.
     """
     comptime assert (
         valid_lengths.flat_rank == 1
     ), "Expected valid_lengths to be a 1D tensor of shape `(batch_size,)`"
 
-    # TODO: This elementwise body captures a KV cache view (`CacheType`), which
-    # fails codegen when stored into a unified closure ('pop.store' pointer
-    # element-type verification). Keep using the deprecated parameter-closure
-    # overload until cache captures in unified closures are supported.
     @inline(.always)
     def write_to_cache[width: Int, alignment: Int = 1](idx: Coord) {var}:
         var batch_idx = Int(idx[0].value())
