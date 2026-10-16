@@ -203,6 +203,10 @@ the traits they need. Legacy aliases such as `InputTensor` and
 `InputVariadicTensors` are not accepted on shape functions; `execute()` can
 still use them.
 
+For an op on a GPU, each tensor input not bound to `Some[Tensor]` is copied to
+the host before the shape function runs, and the host waits for the copy. Use
+`Some[Tensor]` for inputs whose elements the shape function doesn't read.
+
 ### Add the custom op to a Python graph
 
 Let's now look at the corresponding
