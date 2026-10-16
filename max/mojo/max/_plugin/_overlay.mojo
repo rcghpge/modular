@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.sys import CompilationTarget
+
 from std._plugin.selector import PluginSelector
 
 from ._trait import DefaultMaxPlugin
@@ -25,3 +27,5 @@ comptime MAX_PLUGINS = PluginSelector[
     CudaMaxPlugin,
     HipMaxPlugin,
 ]
+
+comptime max_default_accelerator = CompilationTarget.default_accelerator

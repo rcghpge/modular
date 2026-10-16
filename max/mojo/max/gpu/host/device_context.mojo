@@ -78,6 +78,8 @@ from std._gpu.host import get_gpu_target
 from .info import _device_type_encoder_target
 from std._gpu.host.info import GPUInfo
 
+from max._plugin._overlay import max_default_accelerator
+
 from .compile import (
     _compile_code,
     _cross_compilation,
@@ -3042,7 +3044,7 @@ struct DeviceFunction[
     func: func_type,
     declared_arg_types: TypeList[Trait=AnyType, ...],
     *,
-    target: CompilationTarget = CompilationTarget.default_accelerator(),
+    target: CompilationTarget = max_default_accelerator(),
     compile_options: StaticString = target.default_compile_options(),
     link_options: StaticString = "",
     _ptxas_info_verbose: Bool = False,
@@ -4522,9 +4524,9 @@ See `DeviceContextBase` for additional documentation.
 """
 
 
-struct DeviceContextBase[
-    target: CompilationTarget = CompilationTarget.default_accelerator()
-](ImplicitlyCopyable, RegisterPassable, _FunctionEnqueuer):
+struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
+    ImplicitlyCopyable, RegisterPassable, _FunctionEnqueuer
+):
     """Represents a single stream of execution on a particular accelerator
     (GPU).
 
@@ -4787,7 +4789,7 @@ struct DeviceContextBase[
             This device context cast to the default target.
         """
         comptime assert Self.target._eq_triple_and_arch[
-            CompilationTarget.default_accelerator()
+            max_default_accelerator()
         ](), String(
             t"using DeviceContext with non-default target is not supported fro"
             t"m: {call_location()}"
