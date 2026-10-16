@@ -43,7 +43,12 @@ from max.gpu.sync import (
     cp_async_bulk_wait_group,
     umma_arrive_leader_cta,
 )
-from max.gpu.compute.arch.tcgen05 import tcgen05_fence_after, tcgen05_ld
+from max.gpu.compute.arch.tcgen05 import (
+    tcgen05_dealloc,
+    tcgen05_fence_after,
+    tcgen05_ld,
+    tcgen05_release_allocation_lock,
+)
 from max.gpu.primitives.cluster import block_rank_in_cluster
 from linalg.matmul.gpu.sm100_structured.structured_kernels.tmem import (
     TmemAddress,
@@ -148,6 +153,9 @@ def depth512_scale_write_output[
     comptime batch_size = 16
     comptime num_batches = o_cols_per_phase // batch_size
     comptime assert o_cols_per_phase % batch_size == 0
+
+    # `tmem_addr` passed in by register (read once post-`cluster_sync` in the
+    # kernel prologue); do NOT re-read `smem.tmem_addr_ptr()` here.
 
     # Output SMEM base (reuses Q buffer).
     var o_smem = smem.o_smem[output_type]()
@@ -309,7 +317,8 @@ def depth512_softmax[
 
     Args:
         smem: Shared-memory allocator holding S/P/O buffers and barriers.
-        tmem_addr: Base TMEM address for S and O tiles.
+        tmem_addr: Base TMEM address for S and O tiles (read once post
+            cluster_sync).
         seq_id: Sequence index for mask evaluation.
         score_row: Row offset of the query tile within the sequence.
         num_keys: Number of valid key columns for masking.
@@ -376,6 +385,8 @@ def depth512_softmax[
         sink_raw = sink_weights.value()[q_head_idx].cast[accum_dtype]() / scale
 
     # ---- TMEM addresses --------------------------------------------------
+    # `tmem_addr` passed in by register (read once post-`cluster_sync` in the
+    # kernel prologue); do NOT re-read `smem.tmem_addr_ptr()` here.
     var s_even_tmem = tmem_addr + UInt32(config.TMEM_S_even)
     var s_odd_tmem = tmem_addr + UInt32(config.TMEM_S_odd)
 
@@ -918,4 +929,12 @@ def depth512_softmax[
             num_output_rows,
             out_head_idx,
             out_row_idx,
+        )
+
+    # TMEM deallocation: all other warps (correction, MMA, load) are done
+    # with TMEM by this point. Only warp 0 needs to deallocate.
+    if tid // UInt32(WARP_SIZE) == 0:
+        tcgen05_release_allocation_lock[Int32(config.cta_group)]()
+        tcgen05_dealloc[Int32(config.cta_group)](
+            tmem_addr, UInt32(config.sm100_tmem_cols)
         )

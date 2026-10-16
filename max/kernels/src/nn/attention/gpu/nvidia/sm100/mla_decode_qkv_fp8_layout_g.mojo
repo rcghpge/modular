@@ -39,7 +39,7 @@ from max.gpu import (
     thread_idx,
     warp_id,
 )
-from max.gpu.sync import barrier, syncwarp
+from max.gpu.sync import barrier
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.primitives.grid_controls import launch_dependent_grids
 from max.gpu.primitives.warp import _vote_nvidia_helper
@@ -48,10 +48,13 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from max.gpu.memory import external_memory, fence_async_view_proxy
 from max.gpu.sync import named_barrier
 from max.gpu.compute.arch.tcgen05 import (
+    tcgen05_alloc,
+    tcgen05_dealloc,
     tcgen05_fence_after,
     tcgen05_fence_before,
     tcgen05_ld,
     tcgen05_load_wait,
+    tcgen05_release_allocation_lock,
     tcgen05_st,
     tcgen05_store_wait,
 )
@@ -78,7 +81,6 @@ from std.utils.numerics import get_accum_type, min_or_neg_inf
 from std.utils.static_tuple import StaticTuple
 
 from nn.attention.gpu.nvidia.sm100.attention_utils import (
-    attn_tmem_addr,
     elect,
     SharedMemPointer,
     MBarType,
@@ -1293,8 +1295,10 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         #   CORR_SCALE  = 448
         #   CORR_LI     = 449
         var warp_idx = UInt32(warp_id[broadcast=True]())
+        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
         var is_leader = elect() != 0
 
+        # Init: warp 8 inits barriers, warp 9 allocates TMEM.
         if warp_idx == 8:
             if is_leader:
                 mbar_q[].init(1)
@@ -1308,6 +1312,10 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 q_tma.prefetch_descriptor()
                 k_tma.prefetch_descriptor()
                 o_tma.prefetch_descriptor()
+        elif warp_idx == 9:
+            tcgen05_alloc[Self.config.cta_group](
+                ptr_tmem_addr, Self.config.sm100_tmem_cols
+            )
         barrier()
 
         # Warpgroup dispatch (3-WG layout, same as Layout E):
@@ -1320,7 +1328,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         if warp_idx < 4:
             warpgroup_reg_alloc[num_reg_softmax]()
             Self.Softmax_Layout_G[num_sp_stages=Self.num_stages,](
-                attn_tmem_addr[cluster_size=1](),
+                ptr_tmem_addr[0],
                 s_bars,
                 p_bars,
                 p_smem.as_unsafe_any_origin(),
@@ -1340,7 +1348,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         elif warp_idx >= 4 and warp_idx < 8:
             warpgroup_reg_alloc[num_reg_correction]()
             Self.Correction_Layout_G(
-                attn_tmem_addr[cluster_size=1](),
+                ptr_tmem_addr[0],
                 o_bars,
                 c_bars,
                 corr_done_bars,
@@ -1361,7 +1369,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 )
             elif warp_idx == 9:
                 Self.mmaQK(
-                    attn_tmem_addr[cluster_size=1](),
+                    ptr_tmem_addr[0],
                     q_smem.as_unsafe_any_origin(),
                     kv_smem.as_unsafe_any_origin(),
                     mbar_q,
@@ -1371,7 +1379,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 )
             elif warp_idx == 10:
                 Self.mmaPV(
-                    attn_tmem_addr[cluster_size=1](),
+                    ptr_tmem_addr[0],
                     kv_smem.as_unsafe_any_origin(),
                     p_smem.as_unsafe_any_origin(),
                     p_bars,
@@ -1386,12 +1394,17 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                     o_tma,
                     offset_position,
                 )
-        syncwarp()
+        barrier()
 
-        # PDL: the combine kernel can launch once every thread of the CTA has
-        # signaled (or exited), so each thread signals after its own work.
+        # PDL: Signal that this CTA is done
         comptime if Self.config.decoding_warp_split_k:
             launch_dependent_grids()
+
+        if warp_idx == 9:
+            tcgen05_release_allocation_lock[Self.config.cta_group]()
+            tcgen05_dealloc[Self.config.cta_group](
+                ptr_tmem_addr[0], Self.config.sm100_tmem_cols
+            )
 
     # Load: TMA Q (FP8) and TMA KV (FP8). Cloned from the Layout E sibling;
     # TMA descriptors are config-driven so the BM=32 shapes flow through.

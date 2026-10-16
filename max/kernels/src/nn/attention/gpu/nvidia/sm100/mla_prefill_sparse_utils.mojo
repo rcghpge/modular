@@ -105,6 +105,7 @@ struct MLASparseConfig[
     comptime num_mbars = Self.num_mbars_
     comptime qkv_dtype_size: Int = size_of[Self.qkv_dtype]()
     comptime num_threads: Int = 512
+    comptime sm100_tmem_cols = 512
 
     comptime q_swizzle_mode = TensorMapSwizzle.SWIZZLE_128B
     comptime k_swizzle_mode = TensorMapSwizzle.SWIZZLE_128B
@@ -219,6 +220,7 @@ struct MLASparseSharedMemory[config: MLASparseConfig]:
     comptime NUM_KV_VALID_LANES = Self.MASK_BYTES_PER_BUF
     comptime INDICES_PER_LANE = 8
     var is_k_valid: Array[UInt8, Self.num_mbars * Self.MASK_BYTES_PER_BUF]
+    var tmem_addr: Array[UInt32, 1]
 
     # store rowwise max and sum for each threads in a warp group
     var rowwise_max: Array[Float32, WARPGROUP_SIZE]
