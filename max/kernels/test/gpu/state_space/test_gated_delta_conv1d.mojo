@@ -538,7 +538,7 @@ def run_slot_indexed_gpu[
 def test_slot_indexed_single_sequence_targets_chosen_slot() raises:
     """One-sequence smoke test: writes only to the slot named in slot_idx."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.float32, 4](
+    run_slot_indexed_gpu[.float32, .float32, 4](
         batch_size=1,
         total_seq_len=5,
         conv_dim=8,
@@ -552,7 +552,7 @@ def test_slot_indexed_single_sequence_targets_chosen_slot() raises:
 def test_slot_indexed_two_sequences_disjoint_slots() raises:
     """Two sequences hitting non-adjacent slots; bf16 pool, fp32 work."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4](
         batch_size=2,
         total_seq_len=7,
         conv_dim=8,
@@ -568,7 +568,7 @@ def test_slot_indexed_short_sequence_carries_state_forward() raises:
     """When seq_len < K-1: window must carry forward from existing pool entry.
     """
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.float32, 4](
+    run_slot_indexed_gpu[.float32, .float32, 4](
         batch_size=1,
         total_seq_len=2,
         conv_dim=8,
@@ -582,7 +582,7 @@ def test_slot_indexed_short_sequence_carries_state_forward() raises:
 def test_suppressing_the_window_write_leaves_the_pool_alone() raises:
     """Checks ``WRITE_STATE = False`` leaves the pool unchanged."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4, WRITE_STATE=False](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4, WRITE_STATE=False](
         batch_size=2,
         total_seq_len=7,
         conv_dim=8,
@@ -597,7 +597,7 @@ def test_suppressing_the_window_write_leaves_the_pool_alone() raises:
 def test_suppressing_the_window_write_spares_a_carry_forward_row() raises:
     """Checks the same for a row shorter than the window."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.float32, 4, WRITE_STATE=False](
+    run_slot_indexed_gpu[.float32, .float32, 4, WRITE_STATE=False](
         batch_size=1,
         total_seq_len=2,
         conv_dim=8,
@@ -612,12 +612,12 @@ def _launch_conv[
     WRITE_STATE: Bool
 ](
     ctx: DeviceContext,
-    qkv: DeviceBuffer[DType.float32],
-    weight: DeviceBuffer[DType.float32],
-    pool: DeviceBuffer[DType.float32],
-    slot: DeviceBuffer[DType.uint32],
-    offsets: DeviceBuffer[DType.uint32],
-    conv_out: DeviceBuffer[DType.float32],
+    qkv: DeviceBuffer[.float32],
+    weight: DeviceBuffer[.float32],
+    pool: DeviceBuffer[.float32],
+    slot: DeviceBuffer[.uint32],
+    offsets: DeviceBuffer[.uint32],
+    conv_out: DeviceBuffer[.float32],
     seq_len: Int,
 ) raises:
     """Runs one kernel-size-4 conv launch over one row of `seq_len` tokens."""
@@ -685,33 +685,31 @@ def run_deferred_window_write(accepted: Int) raises:
     comptime POOL_ELEMS = 2 * CONV_DIM * (KERNEL_SIZE - 1)
     var ctx = DeviceContext()
 
-    var qkv_h = ctx.enqueue_create_host_buffer[DType.float32](WINDOW * CONV_DIM)
-    rand[DType.float32](qkv_h.unsafe_ptr(), WINDOW * CONV_DIM)
-    var weight_h = ctx.enqueue_create_host_buffer[DType.float32](
+    var qkv_h = ctx.enqueue_create_host_buffer[.float32](WINDOW * CONV_DIM)
+    rand[.float32](qkv_h.unsafe_ptr(), WINDOW * CONV_DIM)
+    var weight_h = ctx.enqueue_create_host_buffer[.float32](
         CONV_DIM * KERNEL_SIZE
     )
-    rand[DType.float32](weight_h.unsafe_ptr(), CONV_DIM * KERNEL_SIZE)
-    var pool_h = ctx.enqueue_create_host_buffer[DType.float32](POOL_ELEMS)
-    rand[DType.float32](pool_h.unsafe_ptr(), POOL_ELEMS)
-    var slot_h = ctx.enqueue_create_host_buffer[DType.uint32](1)
+    rand[.float32](weight_h.unsafe_ptr(), CONV_DIM * KERNEL_SIZE)
+    var pool_h = ctx.enqueue_create_host_buffer[.float32](POOL_ELEMS)
+    rand[.float32](pool_h.unsafe_ptr(), POOL_ELEMS)
+    var slot_h = ctx.enqueue_create_host_buffer[.uint32](1)
     slot_h[0] = 1
-    var window_offsets_h = ctx.enqueue_create_host_buffer[DType.uint32](2)
+    var window_offsets_h = ctx.enqueue_create_host_buffer[.uint32](2)
     window_offsets_h[0] = 0
     window_offsets_h[1] = UInt32(WINDOW)
-    var accepted_offsets_h = ctx.enqueue_create_host_buffer[DType.uint32](2)
+    var accepted_offsets_h = ctx.enqueue_create_host_buffer[.uint32](2)
     accepted_offsets_h[0] = 0
     accepted_offsets_h[1] = UInt32(accepted)
 
-    var qkv = ctx.enqueue_create_buffer[DType.float32](WINDOW * CONV_DIM)
-    var weight = ctx.enqueue_create_buffer[DType.float32](
-        CONV_DIM * KERNEL_SIZE
-    )
-    var pool = ctx.enqueue_create_buffer[DType.float32](POOL_ELEMS)
-    var reference_pool = ctx.enqueue_create_buffer[DType.float32](POOL_ELEMS)
-    var slot = ctx.enqueue_create_buffer[DType.uint32](1)
-    var window_offsets = ctx.enqueue_create_buffer[DType.uint32](2)
-    var accepted_offsets = ctx.enqueue_create_buffer[DType.uint32](2)
-    var conv_out = ctx.enqueue_create_buffer[DType.float32](WINDOW * CONV_DIM)
+    var qkv = ctx.enqueue_create_buffer[.float32](WINDOW * CONV_DIM)
+    var weight = ctx.enqueue_create_buffer[.float32](CONV_DIM * KERNEL_SIZE)
+    var pool = ctx.enqueue_create_buffer[.float32](POOL_ELEMS)
+    var reference_pool = ctx.enqueue_create_buffer[.float32](POOL_ELEMS)
+    var slot = ctx.enqueue_create_buffer[.uint32](1)
+    var window_offsets = ctx.enqueue_create_buffer[.uint32](2)
+    var accepted_offsets = ctx.enqueue_create_buffer[.uint32](2)
+    var conv_out = ctx.enqueue_create_buffer[.float32](WINDOW * CONV_DIM)
     ctx.enqueue_copy(qkv, qkv_h)
     ctx.enqueue_copy(weight, weight_h)
     ctx.enqueue_copy(pool, pool_h)
@@ -738,10 +736,8 @@ def run_deferred_window_write(accepted: Int) raises:
         WINDOW,
     )
 
-    var pool_after = ctx.enqueue_create_host_buffer[DType.float32](POOL_ELEMS)
-    var reference_after = ctx.enqueue_create_host_buffer[DType.float32](
-        POOL_ELEMS
-    )
+    var pool_after = ctx.enqueue_create_host_buffer[.float32](POOL_ELEMS)
+    var reference_after = ctx.enqueue_create_host_buffer[.float32](POOL_ELEMS)
     ctx.enqueue_copy(pool_after, pool)
     ctx.enqueue_copy(reference_after, reference_pool)
     ctx.synchronize()
@@ -931,7 +927,7 @@ def test_slot_indexed_ragged_short_sequences() raises:
     """Ragged batch of 5 sequences with lengths 1..5 (the K-1 boundary cases);
     bf16 work and state; conv_dim not a multiple of the block size."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.bfloat16, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.bfloat16, .bfloat16, 4](
         batch_size=5,
         total_seq_len=15,
         conv_dim=264,
@@ -946,7 +942,7 @@ def test_slot_indexed_seq4_seq5_boundary() raises:
     """Lengths equal to K and K+1: every head-thread output plus the first
     fast-path output at position K-1."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.bfloat16, DType.float32, 4](
+    run_slot_indexed_gpu[.bfloat16, .float32, 4](
         batch_size=3,
         total_seq_len=13,
         conv_dim=130,
@@ -962,7 +958,7 @@ def test_slot_indexed_ragged_mixed_lengths() raises:
     """Ragged batch of 8 sequences mixing decode-length rows with a 2048-token
     prefill row, out-of-order slots."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4](
         batch_size=8,
         total_seq_len=2188,
         conv_dim=512,
@@ -990,7 +986,7 @@ def test_slot_indexed_ragged_40_rows_binary_search() raises:
         slots[b] = (b * 7) % BATCH
         total += length
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4](
         batch_size=BATCH,
         total_seq_len=total,
         conv_dim=264,
@@ -1005,7 +1001,7 @@ def test_slot_indexed_production_prefill_2048() raises:
     """Single 2048-token prefill chunk at the production TP2 shard width
     (conv_dim = (key_dim*2 + value_dim)/2 = 5120 for Qwen3.8-27B)."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4](
         batch_size=1,
         total_seq_len=2048,
         conv_dim=5120,
@@ -1021,7 +1017,7 @@ def test_slot_indexed_production_prefill_16384() raises:
     """16384-token sequence with conv_dim 10200 (not a multiple of the block
     size); exercises the 32-bit flat-offset arithmetic at scale."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.float32, 4](
+    run_slot_indexed_gpu[.float32, .float32, 4](
         batch_size=1,
         total_seq_len=16384,
         conv_dim=10200,
@@ -1036,7 +1032,7 @@ def test_slot_indexed_production_prefill_16384() raises:
 def test_slot_indexed_decode_20_rows() raises:
     """Decode shape: 20 rows x 1 token, every thread is a head thread."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.bfloat16, DType.float32, 4](
+    run_slot_indexed_gpu[.bfloat16, .float32, 4](
         batch_size=20,
         total_seq_len=20,
         conv_dim=5120,
@@ -1075,7 +1071,7 @@ def test_slot_indexed_spec_decode_20_rows() raises:
     """Spec-decode shape: 20 rows x 4 tokens (== K) at the unsharded
     conv_dim 10240, a multiple of the block size."""
     var ctx = DeviceContext()
-    run_slot_indexed_gpu[.float32, DType.bfloat16, 4](
+    run_slot_indexed_gpu[.float32, .bfloat16, 4](
         batch_size=20,
         total_seq_len=80,
         conv_dim=10240,
