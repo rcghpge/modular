@@ -78,6 +78,43 @@ comptime _MAX_CUTOFF_CLUSTER = 4
 # the publish slots.
 comptime _MAX_STAGE_SMEM_BYTES = 216 * 1024
 
+# Headroom the staging budget leaves below the SM's shared memory: the
+# driver's per-block reserve, the static shared memory these kernels declare
+# (the cluster publish slots and the sampled-id slot), and scratch. It is the
+# margin `_MAX_STAGE_SMEM_BYTES` already leaves on a 228 KiB part, so on
+# Hopper and datacenter Blackwell the budget below is unchanged.
+comptime _STAGE_SMEM_HEADROOM_BYTES = 12 * 1024
+
+
+def _stage_smem_budget(ctx: DeviceContext) -> Int:
+    """The staging budget for one CTA on the target this launch compiles for.
+
+    `_MAX_STAGE_SMEM_BYTES` alone is not a safe bound. The sampling package
+    dispatches these kernels on `_has_sm_9x_or_newer`, which also admits
+    consumer Blackwell (`NvidiaBlackwellConsumerFamily`: `sm_120a` and
+    `sm_121`), whose SMs carry 100 KiB rather than 228 KiB. Taking the
+    target's own figure keeps the request inside its per-block opt-in limit.
+
+    On every `sm_90` and newer part that limit is 1 KiB under the SM figure,
+    and CUDA requires a kernel's static shared memory plus its
+    `MAX_DYNAMIC_SHARED_SIZE_BYTES` ceiling to fit under it, so the headroom
+    must exceed that 1 KiB: a 1 KiB reserve alone fails every launch on a
+    100 KiB part.
+
+    `ctx.default_device_info` is a comptime value of the compile target, so
+    the budget is one constant per compiled variant, and one compiled variant
+    takes one function-cache key however `d` varies. `flash_attention_dispatch`
+    in `nn/attention/gpu/mha.mojo` sizes its ceiling from the same figure.
+    """
+    comptime assert (
+        _MAX_STAGE_SMEM_BYTES == 228 * 1024 - _STAGE_SMEM_HEADROOM_BYTES
+    ), "_MAX_STAGE_SMEM_BYTES must encode the same headroom on a 228 KiB SM"
+    return min(
+        _MAX_STAGE_SMEM_BYTES,
+        Int(ctx.default_device_info.shared_memory_per_multiprocessor)
+        - _STAGE_SMEM_HEADROOM_BYTES,
+    )
+
 
 def _stage_smem_bytes(d: Int, vec_size: Int, cluster_size: Int) -> Int:
     """Bytes one CTA needs to stage its contiguous slice of the row."""
@@ -617,11 +654,12 @@ def topk_topp_masked_probs_cluster[
         # traffic), two when the row must split, four for the widest. A row
         # too wide for four slices takes the single-block kernel with no
         # staging.
+        var stage_budget = _stage_smem_budget(ctx)
         var cluster_size = 0
         comptime for c in [1, 2, _MAX_CUTOFF_CLUSTER]:
             if (
                 cluster_size == 0
-                and _stage_smem_bytes(d, vec_size, c) <= _MAX_STAGE_SMEM_BYTES
+                and _stage_smem_bytes(d, vec_size, c) <= stage_budget
             ):
                 cluster_size = c
 
@@ -650,7 +688,7 @@ def topk_topp_masked_probs_cluster[
                 cluster_dim=Dim(cluster_size, 1, 1),
                 shared_mem_bytes=smem_bytes,
                 func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(
-                    UInt32(smem_bytes)
+                    UInt32(stage_budget)
                 ),
                 attributes=pdl_launch_attributes(PDLLevel.ON),
             )
