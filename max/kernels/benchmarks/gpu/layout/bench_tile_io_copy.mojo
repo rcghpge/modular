@@ -23,6 +23,7 @@ from std.benchmark import (
 from max.gpu import thread_idx
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
+from std.math import divmod
 from std.memory import bitcast
 from std.sys import (
     align_of,
@@ -59,9 +60,8 @@ struct _CopyDirection(Equatable, TrivialRegisterPassable):
 def _thread_offset[
     N: Int, thread_cols: Int, simd_size: Int
 ](worker_idx: Int) -> Int:
-    return (worker_idx // thread_cols) * N + (
-        worker_idx % thread_cols
-    ) * simd_size
+    var row, col = divmod(worker_idx, thread_cols)
+    return row * N + col * simd_size
 
 
 @inline(.always)
