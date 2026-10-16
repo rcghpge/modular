@@ -999,8 +999,28 @@ def choose_config[
         select_mma_mn(N, M, True)
 
     # For small mmas, we group multiple tiles per tma-mma synchronization.
+    # Prefetch depth counts groups, so grouping doubles what each group
+    # prefetches; the two only coexist on blocks small enough for both.
+    # Prefetch also needs this grid to leave SMs free for the dependent
+    # kernel's prologue, so it stays off for second-wave shapes and inside
+    # the grouping zone, and turns on for one-wave shapes whose blocks are
+    # too large to group.
+    # Only a plain GEMM's B is a static weight; a batched matmul's operands
+    # are activations a predecessor may still be writing.
+    var prefetch_weights = gemm_kind == GEMMKind.GEMM and M < 128
     var output_block_size = (mma_mn[0] // cta_group) * mma_mn[1]
-    if output_block_size <= 64 * 96 and ceildiv(K, BK) % 2 == 0:
+    if (
+        gemm_kind == GEMMKind.GEMM
+        and not prefetch_weights
+        and min_num_waves == 1
+        and M <= 1024
+        and output_block_size > 64 * 160
+    ):
+        prefetch_weights = True
+    var max_k_group_2_block = 64 * 96
+    if mma_mn[0] // cta_group == 64 and not prefetch_weights:
+        max_k_group_2_block = 64 * 160
+    if output_block_size <= max_k_group_2_block and ceildiv(K, BK) % 2 == 0:
         k_group_size = 2
     # For very small mmas we can group more aggressively.
     if output_block_size <= 64 * 16 and ceildiv(K, BK) % 4 == 0:
@@ -1060,7 +1080,7 @@ def choose_config[
     # resident while the producer still runs and can spend that window on
     # weights. It stops paying once M fills the device. The depth is capped by
     # the ring: a deeper prefetch would fill it before any barrier can fire.
-    if M < 128:
+    if prefetch_weights:
         config.prefetch_tiles_n = min(
             4, config.num_pipeline_stages // config.k_group_size
         )

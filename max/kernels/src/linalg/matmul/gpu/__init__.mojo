@@ -1146,19 +1146,19 @@ def _matmul_gpu_impl[
             return matmul_dispatch_sm100[
                 transpose_b=transpose_b,
                 use_tf32=use_tf32,
-                pdl_level=PDLLevel.ON,
+                pdl_level=PDLLevel.OVERLAP_AT_BEGINNING,
             ](c, a, b, epilogue_fn, ctx)
         elif has_compute_fn:
             return matmul_dispatch_sm100[
                 transpose_b=transpose_b,
                 use_tf32=use_tf32,
-                pdl_level=PDLLevel.ON,
+                pdl_level=PDLLevel.OVERLAP_AT_BEGINNING,
             ](c, a, b, compute_fn, ctx)
         else:
             return matmul_dispatch_sm100[
                 transpose_b=transpose_b,
                 use_tf32=use_tf32,
-                pdl_level=PDLLevel.ON,
+                pdl_level=PDLLevel.OVERLAP_AT_BEGINNING,
             ](c, a, b, ctx)
 
     comptime if ctx.default_device_info == H100:

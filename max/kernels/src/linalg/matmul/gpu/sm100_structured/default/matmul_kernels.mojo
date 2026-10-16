@@ -1567,6 +1567,9 @@ struct BlackwellMatmulSM100Kernel[
             mnk: Problem dimensions `(M, N, K)`; `N` bounds the bias extent for
                 OOB zero-fill.
         """
+        # The epilogue tensor may be the previous kernel's output.
+        comptime if Self.pdl_level > PDLLevel.OFF:
+            wait_on_dependent_grids()
 
         comptime if Self.config.epilogue_is_1d:
             # 1D bias: warp-wide cp.async GMEM->SMEM with zero-fill
@@ -1997,6 +2000,12 @@ struct BlackwellMatmulSM100Kernel[
 
         var num_iters: UInt32 = ceildiv(mnk[2], UInt32(Self.BK))
 
+        # Let the next kernel launch now: its CTAs run their prologue and
+        # weight prefetch on SMs this grid leaves free, and its own
+        # wait_on_dependent_grids still orders every read of our output.
+        comptime if Self.pdl_level == PDLLevel.OVERLAP_AT_BEGINNING:
+            launch_dependent_grids()
+
         comptime MatmulProfilerType[warp_role: UInt32] = MatmulProfileWarp[
             warp_role, Self.max_profiled_tiles_per_SM
         ]
@@ -2266,7 +2275,10 @@ struct BlackwellMatmulSM100Kernel[
                         if not ctx.elect_one_cta:
                             mma_ctx.output_pipeline.pipeline.wait_producer()
 
-                comptime if Self.pdl_level > PDLLevel.OFF:
+                comptime if (
+                    Self.pdl_level > PDLLevel.OFF
+                    and Self.pdl_level != PDLLevel.OVERLAP_AT_BEGINNING
+                ):
                     launch_dependent_grids()
 
         comptime if not Self.config.use_tma_epilogue_load:
