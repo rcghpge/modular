@@ -86,7 +86,7 @@ def two_stage_warp_level_sum_reduction_kernel(
 
 # ========================== TEST CODE ==========================
 def cpu_sum(
-    input: UnsafePointer[mut=False, Float32, _],
+    input: ImmPointer[Float32, _],
     output: MutPointer[Float32, _],
     N: Int,
 ):

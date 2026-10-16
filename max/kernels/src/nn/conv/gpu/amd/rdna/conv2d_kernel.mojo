@@ -70,7 +70,7 @@ def _load_im2col_a_tile[
     NUM_THREADS: Int,
 ](
     smem: MutPointer[Scalar[dtype], _, address_space=.SHARED],
-    input_ptr: UnsafePointer[mut=False, Scalar[dtype], _],
+    input_ptr: ImmPointer[Scalar[dtype], _],
     block_m_offset: Int,
     k_offset: Int,
     M: Int,

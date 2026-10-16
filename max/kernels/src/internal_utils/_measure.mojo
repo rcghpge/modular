@@ -55,8 +55,8 @@ def kl_div[
     dtype: DType, //
 ](
     output: MutPointer[Scalar[dtype], _],
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
-    y: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
+    y: ImmPointer[Scalar[dtype], _],
     len: Int,
     ctx: DeviceContext,
 ) raises where dtype.is_floating_point():
@@ -77,8 +77,8 @@ def kl_div[
 def kl_div[
     dtype: DType, //, out_type: DType = .float64
 ](
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
-    y: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
+    y: ImmPointer[Scalar[dtype], _],
     len: Int,
 ) -> Scalar[
     out_type
@@ -112,8 +112,8 @@ def kl_div[
 def correlation[
     dtype: DType, //, out_type: DType = dtype
 ](
-    u: UnsafePointer[mut=False, Scalar[dtype], _],
-    v: UnsafePointer[mut=False, Scalar[dtype], _],
+    u: ImmPointer[Scalar[dtype], _],
+    v: ImmPointer[Scalar[dtype], _],
     len: Int,
     ctx: DeviceContext,
     *,
@@ -199,8 +199,8 @@ def correlation[
 def uncentered_unweighted_correlation[
     dtype: DType, //, out_type: DType = dtype
 ](
-    u: UnsafePointer[mut=False, Scalar[dtype], _],
-    v: UnsafePointer[mut=False, Scalar[dtype], _],
+    u: ImmPointer[Scalar[dtype], _],
+    v: ImmPointer[Scalar[dtype], _],
     len: Int,
 ) -> Scalar[out_type]:
     """Compute the uncentered and unweighted correlation
@@ -234,8 +234,8 @@ def cosine[
     dtype: DType,
     //,
 ](
-    u: UnsafePointer[mut=False, Scalar[dtype], _],
-    v: UnsafePointer[mut=False, Scalar[dtype], _],
+    u: ImmPointer[Scalar[dtype], _],
+    v: ImmPointer[Scalar[dtype], _],
     len: Int,
 ) -> Float64:
     """Compute the Cosine distance between 1-D arrays.
@@ -258,8 +258,8 @@ def relative_difference[
     dtype: DType,
     //,
 ](
-    output: UnsafePointer[mut=False, Scalar[dtype], _],
-    ref_out: UnsafePointer[mut=False, Scalar[dtype], _],
+    output: ImmPointer[Scalar[dtype], _],
+    ref_out: ImmPointer[Scalar[dtype], _],
     len: Int,
 ) -> Float64:
     var sum_abs_diff: Float64 = 0.0
@@ -290,7 +290,7 @@ def _sqrt[
     dtype: DType, //
 ](
     output: MutPointer[Scalar[dtype], _],
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
     len: Int,
     ctx: DeviceContext,
 ) raises:
@@ -309,8 +309,8 @@ def _mul[
     dtype: DType, //
 ](
     output: MutPointer[Scalar[dtype], _],
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
-    y: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
+    y: ImmPointer[Scalar[dtype], _],
     len: Int,
     ctx: DeviceContext,
 ) raises:
@@ -330,7 +330,7 @@ def _div[
     dtype: DType, //
 ](
     output: MutPointer[Scalar[dtype], _],
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
     c: Scalar[dtype],
     len: Int,
     ctx: DeviceContext,
@@ -349,25 +349,21 @@ def _div[
 
 def _sum[
     dtype: DType, //
-](src: UnsafePointer[mut=False, Scalar[dtype], _], len: Int) raises -> Scalar[
-    dtype
-]:
+](src: ImmPointer[Scalar[dtype], _], len: Int) raises -> Scalar[dtype]:
     return sum(Span[Scalar[dtype]](unsafe_ptr=src, length=len))
 
 
 def _mean[
     dtype: DType, //
-](src: UnsafePointer[mut=False, Scalar[dtype], _], len: Int) raises -> Scalar[
-    dtype
-]:
+](src: ImmPointer[Scalar[dtype], _], len: Int) raises -> Scalar[dtype]:
     return mean(Span[Scalar[dtype]](unsafe_ptr=src, length=len))
 
 
 def _dot[
     dtype: DType, //, out_type: DType = dtype
 ](
-    x: UnsafePointer[mut=False, Scalar[dtype], _],
-    y: UnsafePointer[mut=False, Scalar[dtype], _],
+    x: ImmPointer[Scalar[dtype], _],
+    y: ImmPointer[Scalar[dtype], _],
     len: Int,
 ) -> Scalar[out_type]:
     # loads are the expensive part, so we use the (probably) smaller

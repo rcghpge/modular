@@ -30,7 +30,7 @@ def cenergy_cpu_unoptimized(
     grid: GridDim,
     gridspacing: Float32,
     z: Float32,
-    atoms: UnsafePointer[mut=False, Float32, _],
+    atoms: ImmPointer[Float32, _],
     numatoms: Int,
 ):
     """Unoptimized CPU implementation of DCS energy calculation.

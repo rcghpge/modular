@@ -210,7 +210,7 @@ def generate_sparse_matrix(
 
 def verify(
     y_ref: List[Float32],
-    d_y: UnsafePointer[mut=False, Float32, _],
+    d_y: ImmPointer[Float32, _],
     rows: Int,
 ) -> Bool:
     var correct = True

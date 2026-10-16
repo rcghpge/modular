@@ -195,8 +195,8 @@ def _cblas_f32[
     alpha: Float32,
     beta: Float32,
     c_ptr: MutPointer[Float32, ...],
-    a_ptr: UnsafePointer[mut=False, Float32, ...],
-    b_ptr: UnsafePointer[mut=False, Float32, ...],
+    a_ptr: ImmPointer[Float32, ...],
+    b_ptr: ImmPointer[Float32, ...],
 ):
     cblas_gemm_fn(
         _CBLASOrder.ROW_MAJOR,
@@ -232,8 +232,8 @@ def _cblas_f32[
     alpha: Float32,
     beta: Float32,
     c_ptr: MutPointer[Float32, ...],
-    a_ptr: UnsafePointer[mut=False, Float32, ...],
-    b_ptr: UnsafePointer[mut=False, Float32, ...],
+    a_ptr: ImmPointer[Float32, ...],
+    b_ptr: ImmPointer[Float32, ...],
 ) raises:
     var cblas_gemm = get_cblas_f32_function()
 

@@ -168,7 +168,7 @@ def load_AB[
     cta_group: Int = 1,
     a_plane_splits: IndexList[2] = Index(0, 0),
 ](
-    expert_ids: UnsafePointer[mut=False, Int32, _],
+    expert_ids: ImmPointer[Int32, _],
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
     a_smem_tiles: SMemTileArray2D[
@@ -364,7 +364,7 @@ def load_AB_cuda_core[
 ](
     a_gmem: TileTensor[a_type, a_gmem_layout, ImmutAnyOrigin],
     b_gmem: TileTensor[b_type, b_gmem_layout, ImmutAnyOrigin],
-    expert_ids: UnsafePointer[mut=False, Int32, _],
+    expert_ids: ImmPointer[Int32, _],
     a_smem_tiles: SMemTileArray2D[
         a_type, a_dim0, a_dim1, a_num_tiles, a_swizzle_bytes
     ],

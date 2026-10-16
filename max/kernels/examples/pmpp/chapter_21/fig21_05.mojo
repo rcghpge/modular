@@ -93,7 +93,7 @@ def cenergy_cpu_reference(
     grid: GridDim,
     gridspacing: Float32,
     z: Float32,
-    atoms: UnsafePointer[mut=False, Float32, _],
+    atoms: ImmPointer[Float32, _],
     numatoms: Int,
 ):
     """CPU reference implementation for verification."""

@@ -360,7 +360,7 @@ def strided_load[
     alignment: Int = align_of[Scalar[dtype]](),
     invariant: Bool = True,
 ](
-    addr: UnsafePointer[mut=False, Scalar[dtype], ...],
+    addr: ImmPointer[Scalar[dtype], ...],
     mask: SIMD[.bool, simd_width] = SIMD[.bool, simd_width](fill=True),
 ) -> SIMD[dtype, simd_width]:
     """Loads `simd_width` values from `addr` with a compile-time `stride`.

@@ -29,8 +29,8 @@ def conv_layer_forward(
     H: Int,
     W: Int,
     K: Int,
-    X: UnsafePointer[mut=False, Float32, _],
-    F: UnsafePointer[mut=False, Float32, _],
+    X: ImmPointer[Float32, _],
+    F: ImmPointer[Float32, _],
     Y: MutPointer[Float32, _],
 ):
     """Single image convolution (Figure 19.3).

@@ -31,7 +31,7 @@ from std.reflection import reflect
 def partial_simd_load[
     dtype: DType, //, width: Int
 ](
-    storage: UnsafePointer[mut=False, Scalar[dtype], ...],
+    storage: ImmPointer[Scalar[dtype], ...],
     lbound: Int,
     rbound: Int,
     pad_value: Scalar[dtype],
@@ -1270,7 +1270,7 @@ def packA_i8mm[
     t0: Int,
     t1: Int,
     k: Int,
-    a_ptr: UnsafePointer[mut=False, Scalar[a_type], ...],
+    a_ptr: ImmPointer[Scalar[a_type], ...],
     a_packed_ptr: MutPointer[Scalar[a_type], ...],
 ):
     """Packs a range of rows of matrix A for the i8mm kernel layout.

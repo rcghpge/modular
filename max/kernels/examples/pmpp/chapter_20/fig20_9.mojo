@@ -227,9 +227,9 @@ def flashattention_forward_kernel(
 
 
 def cpu_attention(
-    h_Q: UnsafePointer[mut=False, Float32, _],
-    h_K: UnsafePointer[mut=False, Float32, _],
-    h_V: UnsafePointer[mut=False, Float32, _],
+    h_Q: ImmPointer[Float32, _],
+    h_K: ImmPointer[Float32, _],
+    h_V: ImmPointer[Float32, _],
     h_O: MutPointer[Float32, _],
     N: Int,
     D: Int,

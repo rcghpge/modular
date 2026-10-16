@@ -371,9 +371,9 @@ def _permute_data[
     size: Int,
     dtype: DType,
 ](
-    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input: ImmPointer[Scalar[dtype], _],
     output: MutPointer[Scalar[dtype], _],
-    perms: UnsafePointer[mut=False, Int, _],
+    perms: ImmPointer[Int, _],
 ):
     """
     Ensures that output[i] = input[perms[i]] for i ∈ [0, size)
@@ -525,7 +525,7 @@ def _simplify_transpose_perms[
 @inline(.always)
 def _convert_transpose_perms_to_static_int_tuple[
     rank: Int
-](perms: UnsafePointer[mut=False, Int, _]) -> IndexList[rank]:
+](perms: ImmPointer[Int, _]) -> IndexList[rank]:
     var simplified_perms = IndexList[rank]()
     # TODO: unroll
     for j in range(rank):
@@ -1001,9 +1001,9 @@ def _copy_with_strides[
     output_ptr: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     output_bytecount: Int,
-    input_ptr: UnsafePointer[mut=False, Scalar[dtype], _],
-    input_strides: UnsafePointer[mut=False, Int, _],
-    output_strides: UnsafePointer[mut=False, Int, _],
+    input_ptr: ImmPointer[Scalar[dtype], _],
+    input_strides: ImmPointer[Int, _],
+    output_strides: ImmPointer[Int, _],
     input_offset: Int,
     output_offset: Int,
     ctx: Optional[DeviceContext.CPU] = None,

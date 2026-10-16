@@ -52,8 +52,8 @@ def matrix_mul_kernel(
 
 
 def matmul_cpu(
-    A_host: UnsafePointer[mut=False, Float32, _],
-    B_host: UnsafePointer[mut=False, Float32, _],
+    A_host: ImmPointer[Float32, _],
+    B_host: ImmPointer[Float32, _],
     C_ref: MutPointer[Float32, _],
     Width: Int,
 ):

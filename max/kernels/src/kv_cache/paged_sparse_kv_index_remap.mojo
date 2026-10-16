@@ -55,7 +55,7 @@ from extensibility import (
 def _remap_one(
     log_t: Int32,
     batch_u32: UInt32,
-    lut: UnsafePointer[mut=False, UInt32, _],
+    lut: ImmPointer[UInt32, _],
     lut_cols: Int,
     lut_rows: Int,
     page_size: Int,
@@ -270,7 +270,7 @@ struct PagedKVRemap[page_size: Int](SparseIndexRemap):
 @inline(.always)
 def _find_batch_for_row(
     r: Int,
-    row_offsets: UnsafePointer[mut=False, UInt32, _],
+    row_offsets: ImmPointer[UInt32, _],
     num_batches: Int,
 ) -> UInt32:
     """Map ragged row ``r`` to batch ``b`` with ``row_offsets[b] <= r < row_offsets[b+1]``.
@@ -329,9 +329,9 @@ def paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
     page_size: Int,
 ](
     physical_out: MutPointer[Int32, _],
-    logical: UnsafePointer[mut=False, Int32, _],
-    input_row_offsets: UnsafePointer[mut=False, UInt32, _],
-    lut: UnsafePointer[mut=False, UInt32, _],
+    logical: ImmPointer[Int32, _],
+    input_row_offsets: ImmPointer[UInt32, _],
+    lut: ImmPointer[UInt32, _],
     num_indices: Int,
     lut_cols: Int,
     lut_rows: Int,

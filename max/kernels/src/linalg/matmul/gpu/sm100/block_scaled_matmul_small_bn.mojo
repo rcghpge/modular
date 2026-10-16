@@ -983,7 +983,7 @@ def _sfb_cpasync_produce_tile[
     sfb_smem_base_ptr: UnsafePointer[
         mut=True, Scalar[sfb_dtype], _, address_space=.SHARED
     ],
-    sfb_global_ptr: UnsafePointer[mut=False, Scalar[sfb_dtype], _],
+    sfb_global_ptr: ImmPointer[Scalar[sfb_dtype], _],
     sfb_batch_stride: Int,
     sfb_n_stride: Int,
     sfb_k_tiles: Int,
@@ -1129,7 +1129,7 @@ def _sfb_cpasync_produce_tile_warpwide[
     sfb_smem_base_ptr: UnsafePointer[
         mut=True, Scalar[sfb_dtype], _, address_space=.SHARED
     ],
-    sfb_global_ptr: UnsafePointer[mut=False, Scalar[sfb_dtype], _],
+    sfb_global_ptr: ImmPointer[Scalar[sfb_dtype], _],
     sfb_batch_stride: Int,
     sfb_n_stride: Int,
     sfb_k_tiles: Int,

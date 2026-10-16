@@ -403,7 +403,7 @@ def _copy_column_q_bits_to_block[
 def _pack_block_Q4_K[
     block_n: Int,
 ](
-    var src_ptr: UnsafePointer[mut=False, _block_Q4_K, _],
+    var src_ptr: ImmPointer[_block_Q4_K, _],
     stride: Int,
     dst_ptr: MutPointer[_block_Q4_K_packed[block_n], _],
 ):
@@ -522,7 +522,7 @@ def _pack_block_Q4_K[
 def _pack_block_Q6_K[
     block_n: Int,
 ](
-    var src_ptr: UnsafePointer[mut=False, _block_Q6_K, _],
+    var src_ptr: ImmPointer[_block_Q6_K, _],
     stride: Int,
     dst_ptr: MutPointer[_block_Q6_K_packed[block_n], _],
 ):
@@ -760,7 +760,7 @@ def _matmul_group_unpacked[
     //,
     group_size: Int,
 ](
-    a_q_bits_ptr: UnsafePointer[mut=False, Int8, _],
+    a_q_bits_ptr: ImmPointer[Int8, _],
     mut b_q_bits_ptr: MutPointer[UInt8, _],
     mut c_int32_group: _Accumulator[.int32, tile_m, tile_n, simd_width],
 ):
@@ -1257,7 +1257,7 @@ def _matmul_Q6_K_tile[
     a_ptr: UnsafePointer[
         mut=False, _block_Q8_K_packed[_block_Q6_K.group_size], _
     ],
-    b_ptr: UnsafePointer[mut=False, _block_Q6_K_packed[], _],
+    b_ptr: ImmPointer[_block_Q6_K_packed[], _],
     c_ptr: MutPointer[Float32, _],
     N: Int,
     accumulate: Bool,

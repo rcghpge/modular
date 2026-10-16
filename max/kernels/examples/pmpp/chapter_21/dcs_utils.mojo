@@ -74,8 +74,8 @@ def init_atoms(
 
 
 def verify_grid(
-    grid_ref: UnsafePointer[mut=False, Float32, _],
-    grid_test: UnsafePointer[mut=False, Float32, _],
+    grid_ref: ImmPointer[Float32, _],
+    grid_test: ImmPointer[Float32, _],
     size: Int,
 ) -> Bool:
     """Verify computed energy grid against reference.
@@ -116,7 +116,7 @@ def verify_grid(
 
 
 def compute_total_energy(
-    energygrid: UnsafePointer[mut=False, Float32, _], size: Int
+    energygrid: ImmPointer[Float32, _], size: Int
 ) -> Float64:
     """Compute total energy by summing all grid points.
 

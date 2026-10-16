@@ -267,7 +267,7 @@ def block_memcpy[
     src_invariant: Bool = True,
 ](
     dst_p: MutPointer[UInt8, _, address_space=dst_addr_space],
-    src_p: UnsafePointer[mut=False, UInt8, _, address_space=src_addr_space],
+    src_p: ImmPointer[UInt8, _, address_space=src_addr_space],
     thread_idx: Int,
 ) -> None:
     """
@@ -825,7 +825,7 @@ trait TokenFormat(Deinitable, DevicePassable):
         thread_base: Int = 0,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
         """Copies the token to the send buffer, called by all comm threads.
@@ -870,7 +870,7 @@ trait TokenFormat(Deinitable, DevicePassable):
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         self,
-        buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
+        buf_p: ImmPointer[UInt8, _, address_space=buf_addr_space],
         token_index: Int,
         expert_slot: Int = 0,
         expert_start: Int = 0,
@@ -1030,7 +1030,7 @@ struct BF16TokenFormat[
         thread_base: Int = 0,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
         block_memcpy[Self.hid_dim * size_of[BFloat16](), block_size](
@@ -1044,7 +1044,7 @@ struct BF16TokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         self,
-        buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
+        buf_p: ImmPointer[UInt8, _, address_space=buf_addr_space],
         token_index: Int,
         expert_slot: Int = 0,
         expert_start: Int = 0,
@@ -1232,7 +1232,7 @@ struct BlockwiseFP8TokenFormat[
         thread_base: Int = 0,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
         comptime src_width = simd_width_of[src_type]()
@@ -1281,7 +1281,7 @@ struct BlockwiseFP8TokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         self,
-        buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
+        buf_p: ImmPointer[UInt8, _, address_space=buf_addr_space],
         token_index: Int,
         expert_slot: Int = 0,
         expert_start: Int = 0,
@@ -1709,7 +1709,7 @@ struct NVBlockScaledTokenFormat[
         thread_base: Int = 0,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
         # PREFILL QUANTIZE WIDTH. Reads the per-instantiation parameter, whose
@@ -1879,7 +1879,7 @@ struct NVBlockScaledTokenFormat[
         buf_addr_space: AddressSpace = AddressSpace.GENERIC,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
         i: Int,
     ) -> None:
@@ -2033,7 +2033,7 @@ struct NVBlockScaledTokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         self,
-        buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
+        buf_p: ImmPointer[UInt8, _, address_space=buf_addr_space],
         token_index: Int,
         expert_slot: Int = 0,
         expert_start: Int = 0,
@@ -2409,7 +2409,7 @@ struct MXTokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
     ) -> None:
         """Quantizes one token to packed MXFP6, one MX block per thread.
 
@@ -2474,7 +2474,7 @@ struct MXTokenFormat[
         thread_base: Int = 0,
     ](
         buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
-        src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
+        src_p: ImmPointer[Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
         comptime if Self.is_fp6:
@@ -2555,7 +2555,7 @@ struct MXTokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
     ](
         self,
-        buf_p: UnsafePointer[mut=False, UInt8, _, address_space=buf_addr_space],
+        buf_p: ImmPointer[UInt8, _, address_space=buf_addr_space],
         token_index: Int,
         expert_slot: Int = 0,
         expert_start: Int = 0,

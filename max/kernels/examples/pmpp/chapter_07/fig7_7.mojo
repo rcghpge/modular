@@ -68,8 +68,8 @@ def convolution_2D_basic_kernel(
 
 
 def convolution_2d_basic(
-    h_in: UnsafePointer[mut=False, Float32, _],
-    h_filter: UnsafePointer[mut=False, Float32, _],
+    h_in: ImmPointer[Float32, _],
+    h_filter: ImmPointer[Float32, _],
     h_out: MutPointer[Float32, _],
     r: Int,
     width: Int,
@@ -128,8 +128,8 @@ def convolution_2d_basic(
 
 
 def cpu_2d_conv(
-    inarr: UnsafePointer[mut=False, Float32, _],
-    filter: UnsafePointer[mut=False, Float32, _],
+    inarr: ImmPointer[Float32, _],
+    filter: ImmPointer[Float32, _],
     outarr: MutPointer[Float32, _],
     r: Int,
     width: Int,

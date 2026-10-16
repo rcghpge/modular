@@ -50,7 +50,7 @@ def _vectorized_copy_row[
     dtype: DType,
     simd_width: Int,
 ](
-    input_ptr: UnsafePointer[mut=False, Scalar[dtype], _],
+    input_ptr: ImmPointer[Scalar[dtype], _],
     output_ptr: MutPointer[Scalar[dtype], _],
     row_length: Int,
     threads_per_row: Int,
@@ -223,9 +223,9 @@ def pad_constant[
 ](
     output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
-    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input: ImmPointer[Scalar[dtype], _],
     input_shape: IndexList[rank],
-    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    paddings: ImmPointer[Scalar[padding_type], _],
     constant: Scalar[dtype],
     ctx: DeviceContext,
 ) raises:
@@ -414,9 +414,9 @@ def _pad_index_mode_impl[
 ](
     output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
-    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input: ImmPointer[Scalar[dtype], _],
     input_shape: IndexList[rank],
-    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    paddings: ImmPointer[Scalar[padding_type], _],
     ctx: DeviceContext,
 ) raises:
     """Launch `padded_index_mode_kernel` for the given pad `mode`.
@@ -497,9 +497,9 @@ def pad_reflect[
 ](
     output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
-    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input: ImmPointer[Scalar[dtype], _],
     input_shape: IndexList[rank],
-    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    paddings: ImmPointer[Scalar[padding_type], _],
     ctx: DeviceContext,
 ) raises:
     """
@@ -540,9 +540,9 @@ def pad_repeat[
 ](
     output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
-    input: UnsafePointer[mut=False, Scalar[dtype], _],
+    input: ImmPointer[Scalar[dtype], _],
     input_shape: IndexList[rank],
-    paddings: UnsafePointer[mut=False, Scalar[padding_type], _],
+    paddings: ImmPointer[Scalar[padding_type], _],
     ctx: DeviceContext,
 ) raises:
     """

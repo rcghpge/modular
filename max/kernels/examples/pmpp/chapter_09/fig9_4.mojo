@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 # ========================== KERNEL CODE ==========================
 def histogram_sequential(
-    input: UnsafePointer[mut=False, Float32, _],
+    input: ImmPointer[Float32, _],
     output: MutPointer[Float32, _],
     w: Int,
     h: Int,
