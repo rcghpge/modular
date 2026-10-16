@@ -63,6 +63,10 @@ ARCH_LABEL_OVERRIDES: dict[str, list[str]] = {
     "WanImageToVideoPipeline": ["image-to-video"],
 }
 
+# Registered architectures kept out of the public docs until they are ready
+# to announce, by module directory.
+UNLISTED_MODULES: frozenset[str] = frozenset({"hy_v4", "unified_mtp_hy_v4"})
+
 # Speculative-decoding variants that arch resolution rewrites a base
 # architecture into when the checkpoint has speculative heads. The user
 # never selects them, so the table folds each variant into its base
@@ -597,7 +601,8 @@ def filter_architectures(archs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         # stay registered and importable, but their internal module-v3
         # variants (directories suffixed ``_modulev3``) are not surfaced in
         # the supported-models catalog, even when no base counterpart exists.
-        if arch.get("module_name", "").endswith("_modulev3"):
+        module_name = arch.get("module_name", "")
+        if module_name.endswith("_modulev3") or module_name in UNLISTED_MODULES:
             continue
 
         filtered.append(arch)

@@ -12,6 +12,20 @@
 # ===----------------------------------------------------------------------=== #
 """Hy4 (Tencent Hy4-preview) mixture-of-experts architecture."""
 
+from .arch import hy_v4_arch
+from .inputs import HYV4Inputs
+from .model import HYV4Model
 from .model_config import HYV4Config
+from .reasoning import HYV4ReasoningParser
+from .tokenizer import HYV4Tokenizer
+from .tool_parser import HYV4ToolParser
 
-__all__ = ["HYV4Config"]
+__all__ = [
+    "HYV4Config",
+    "HYV4Inputs",
+    "HYV4Model",
+    "HYV4ReasoningParser",
+    "HYV4Tokenizer",
+    "HYV4ToolParser",
+    "hy_v4_arch",
+]
