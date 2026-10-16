@@ -622,6 +622,7 @@ modular_cc_library(
         ":MOTarget",
         ":MOToMAP",
         ":MOTransformsIncGen",
+        ":OperandInference",
         ":RMODialect",
         ":RMOSupport",
         "//MLRT:Driver/DeviceContext",

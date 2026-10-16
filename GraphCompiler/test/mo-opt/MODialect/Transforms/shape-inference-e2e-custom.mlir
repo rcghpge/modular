@@ -13,7 +13,7 @@ mo.graph @custom_op<D0, D1 -> O0, O1>(
   // side-effecting print statement.
   // TODO: consider inlining some commonly known side-effecting ops like print.
   // CHECK-NEXT: mo.invoke_shape_func["test_custom_op"]<() -> [[D2:.*]], [[D3:.*]]>(%[[INPUT]])
-  // CHECK-SAME:   [kgenParams = {output_idx = 0 : index}, dataDeptTensors = [0 : i32]] : (!mo.tensor<[[[D0]], [[D1]]], f32>)
+  // CHECK-SAME:   [kgenParams = {output_idx = 0 : index}, dataDeptTensors = []] : (!mo.tensor<[[[D0]], [[D1]]], f32>)
 
   // CHECK-NEXT:  %[[RES:.*]] = mo.custom [symbol = "test_custom_op"](%[[INPUT]]) :
   // CHECK-SAME:    (!mo.tensor<[[[D0]], [[D1]]], f32>) -> !mo.tensor<[[[D2]], [[D3]]], f32>

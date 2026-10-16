@@ -14,6 +14,7 @@
 #include "GraphCompiler/MOGGDialect/Support/FusionUtils.h"
 #include "mlir/Dialect/Index/IR/IndexOps.h"
 
+#include "GraphCompiler/Conversion/OperandInference.h"
 #include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MODialect/MOOps.h"
 #include "GraphCompiler/MODialect/Transforms/MOTransforms.h"
@@ -24,7 +25,6 @@
 #include "Mojo/KGENDialect/KGENOps.h"
 #include "Support/AssertStream.h"
 #include "llvm/ADT/StringSet.h"
-#include <numeric>
 
 #define DEBUG_TYPE "add-fallback-shape-funcs"
 
@@ -124,6 +124,7 @@ HAS_FALLBACK(MO::TileOp)
 template <>
 struct Fallback<MO::CustomOp> {
   ErrorOrSuccess build(GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
+                       MOGG::ShapeFunctionDeclOp shapeDecl,
                        StringSet<> &inputParamsNeeded);
 };
 
@@ -244,13 +245,13 @@ struct AddFallbackShapeFunctions
         // Forward custom-op attributes matching the shape fn's own params,
         // which may differ from execute's (e.g. no `target`/`_trace_name`).
         StringSet<> inputParams;
-        auto shapeFn =
-            registry.lookupShapeFunction(asOp.getSymbol()).getFunction();
-        for (mlir::Attribute attr : shapeFn.getParams())
+        MOGG::ShapeFunctionDeclOp shapeDecl =
+            registry.lookupShapeFunction(asOp.getSymbol());
+        for (mlir::Attribute attr : shapeDecl.getFunction().getParams())
           inputParams.insert(mlir::cast<KGEN::ParamDeclAttr>(attr).getName());
 
-        auto result =
-            Fallback<MO::CustomOp>{}.build(graph, builder, asOp, inputParams);
+        auto result = Fallback<MO::CustomOp>{}.build(graph, builder, asOp,
+                                                     shapeDecl, inputParams);
         if (result.isError()) {
           asOp.emitError() << "Failed to fallback shape function with error: "
                            << result.takeError();
@@ -509,9 +510,31 @@ ErrorOrSuccess Fallback<MO::ConvTransposeOp>::build(GraphOp &graph,
   return success();
 }
 
-ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
-                                             MO::CustomOp op,
-                                             StringSet<> &inputParamsNeeded) {
+// A shape-function argument bound to a bare `Tensor` can't read element
+// values (see `_MoggShapeTensorArg`), so only other operands need the host
+// copy. Operands map to arguments as ConformCallOperands maps the shape call.
+static ErrorOr<SmallVector<int32_t>> getCustomOpDataDepInputIdxs(
+    MO::CustomOp op, MOGG::ShapeFunctionDeclOp shapeDecl, ValueRange operands) {
+  MOGG::KernelDeclFunctionAdaptor shapeFn(shapeDecl);
+  auto mapping = MOGG::mapToKernelImplementation(
+      operands, /*results=*/{}, shapeFn, op.getSymbol(),
+      /*hasSameVariadicOperandSize=*/false,
+      /*hasExtraOutputShapeArgument=*/false, /*resultLeavesByValue=*/true);
+  if (mapping.isError())
+    return mapping.takeError();
+
+  SmallVector<int32_t> dataDepInputIdxs;
+  for (const auto &[idx, arg] : mapping->operandMapping) {
+    std::optional<MOGG::TensorArgContract> contract = arg.getTraitContract();
+    if (!contract || contract->bound != MOGG::TensorArgBound::tensor)
+      dataDepInputIdxs.push_back(static_cast<int32_t>(idx));
+  }
+  return dataDepInputIdxs;
+}
+
+ErrorOrSuccess Fallback<MO::CustomOp>::build(
+    GraphOp &graph, OpBuilder &builder, MO::CustomOp op,
+    MOGG::ShapeFunctionDeclOp shapeDecl, StringSet<> &inputParamsNeeded) {
   SmallVector<Value> operands{op.getOperands().begin(), op.getOperands().end()};
 
   // Buffer operands are loaded, threading the chain.
@@ -536,11 +559,10 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     currentChain = bufferLoadOp.getOutChain();
   }
 
-  // TODO(GEX-4093): Conservatively marks every operand data-dependent. Once
-  // the shape function moves onto trait-bound tensor args, derive this from
-  // their bounds (a bare `Tensor` bound can't read element values).
-  SmallVector<int32_t> dataDepInputIdxs(operands.size());
-  std::iota(dataDepInputIdxs.begin(), dataDepInputIdxs.end(), 0);
+  ErrorOr<SmallVector<int32_t>> dataDepInputIdxs =
+      getCustomOpDataDepInputIdxs(op, shapeDecl, operands);
+  if (dataDepInputIdxs.isError())
+    return dataDepInputIdxs.takeError();
 
   for (auto [idx, res] : llvm::enumerate(op.getResults())) {
     SmallVector<std::pair<StringRef, Attribute>> kgenParams;
@@ -556,7 +578,7 @@ ErrorOrSuccess Fallback<MO::CustomOp>::build(GraphOp &graph, OpBuilder &builder,
     buildForOpResult(graph, builder, cast<TensorValue>(res), op.getSymbol(),
                      operands, op.getOutputParamDecls(),
                      /*kgenParams=*/kgenParams,
-                     /*dataDepInputIdxs=*/dataDepInputIdxs);
+                     /*dataDepInputIdxs=*/*dataDepInputIdxs);
   }
 
   // The custom op consumes the chain after all buffer loads.

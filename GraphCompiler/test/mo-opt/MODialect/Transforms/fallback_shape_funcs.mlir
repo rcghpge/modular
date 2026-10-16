@@ -846,3 +846,26 @@ mo.graph @custom_shape_func<() -> O1, O2, O3, O4, O5>(%arg0: !mo.tensor<[5, 5, 5
   %0 = mo.custom<() -> A, B, C, D, E> [symbol = "custom_op_with_custom_parameter_shape_func", device = #M.device_ref<"cpu", 0>, parameters = {test_flag = 0 : index}](%arg0) : (!mo.tensor<[5, 5, 5, 5, 5], f32>) -> !mo.tensor<[A, B, C, D, E], f32>
   mo.output<A, B, C, D, E> %0 : !mo.tensor<[A, B, C, D, E], f32>
 }
+
+// Only the `Some[TileTensorable]` operand is copied to the host.
+// CHECK-LABEL: @custom_shape_func_mixed_bounds
+// CHECK: (%[[X:.*]]: !mo.tensor<[{{.*}}, 8], f32, dev:0>, %[[Y:.*]]: !mo.tensor<[{{.*}}], f32, dev:0>, %[[N:.*]]: !mo.tensor<[], si32>)
+// CHECK: %[[CHAIN:.*]] = mo.chain.create()
+// CHECK: %[[Y_HOST:.*]], %{{.*}} = mo.transfer[%[[CHAIN]]] %[[Y]] : !mo.tensor<[{{.*}}], f32, dev:0> to <"cpu", 0>
+// CHECK-NOT: mo.transfer
+// CHECK: mo.invoke_shape_func["custom_op_with_mixed_bound_shape_func"]<() -> {{.*}}>(%[[X]], %[[Y_HOST]], %[[N]]) [kgenParams = {output_idx = 0 : index}, dataDeptTensors = [1 : i32, 2 : i32]]
+// CHECK: mo.custom{{.*}}[symbol = "custom_op_with_mixed_bound_shape_func"{{.*}}](%[[X]], %[[Y]], %[[N]])
+mo.graph @custom_shape_func_mixed_bounds<D0, D1 -> D2>(%x: !mo.tensor<[D0, 8], f32, dev:0>, %y: !mo.tensor<[D1], f32, dev:0>, %n: !mo.tensor<[], si32>) -> !mo.tensor<[D2, 8], f32, dev:0> {
+  %0 = mo.custom<() -> R> [symbol = "custom_op_with_mixed_bound_shape_func", device = #M.device_ref<"dev", 0>](%x, %y, %n) : (!mo.tensor<[D0, 8], f32, dev:0>, !mo.tensor<[D1], f32, dev:0>, !mo.tensor<[], si32>) -> !mo.tensor<[R, 8], f32, dev:0>
+  mo.output<R> %0 : !mo.tensor<[R, 8], f32, dev:0>
+}
+
+// A `Tensor`-bound `TensorTuple` stays on the device.
+// CHECK-LABEL: @custom_shape_func_tensor_tuple
+// CHECK: (%[[X:.*]]: !mo.tensor<[{{.*}}], f32, dev:0>)
+// CHECK-NOT: mo.transfer
+// CHECK: mo.invoke_shape_func["trait_tensor_tuple_shape_op"]<() -> {{.*}}>(%[[X]], %[[X]]) [kgenParams = {output_idx = 0 : index}, dataDeptTensors = []]
+mo.graph @custom_shape_func_tensor_tuple<D0, D1 -> D2, D3>(%x: !mo.tensor<[D0, D1], f32, dev:0>) -> !mo.tensor<[D2, D3], f32, dev:0> {
+  %0 = mo.custom<() -> R0, R1> [symbol = "trait_tensor_tuple_shape_op", device = #M.device_ref<"dev", 0>](%x, %x) : (!mo.tensor<[D0, D1], f32, dev:0>, !mo.tensor<[D0, D1], f32, dev:0>) -> !mo.tensor<[R0, R1], f32, dev:0>
+  mo.output<R0, R1> %0 : !mo.tensor<[R0, R1], f32, dev:0>
+}

@@ -2885,6 +2885,32 @@ def custom_op_with_custom_parameter_shape_func_shape[
     )
 
 
+@extensibility.register("custom_op_with_mixed_bound_shape_func")
+struct CustomOpWithMixedBoundShapeFunc:
+    @staticmethod
+    def execute[
+        target: StaticString
+    ](
+        output: OutputTensor[rank=2, ...],
+        metadata_only: InputTensor[rank=2, ...],
+        value_read: InputTensor[rank=1, ...],
+        num_rows: Int32,
+        ctx: DeviceContext,
+    ) raises:
+        raise "This should not run!"
+
+
+@extensibility.register_shape_function("custom_op_with_mixed_bound_shape_func")
+def custom_op_with_mixed_bound_shape_func_shape(
+    metadata_only: Some[Tensor],
+    value_read: Some[TileTensorable],
+    num_rows: Int32,
+) -> IndexList[2]:
+    _ = value_read.to_tile_tensor()
+    var cols = coord_to_index_list(metadata_only.shape().tuple())
+    return IndexList[2](Int(num_rows), cols[1])
+
+
 @extensibility.register("custom_op_with_static_string_params")
 struct CustomOpWithStaticStringParams:
     @staticmethod

@@ -4210,9 +4210,8 @@ struct _MoggShapeTensorArg[
     Movable,
     Tensor,
     # `_data_visible` gates `DenseTensor`/`TileTensorable` off for a bare
-    # `Tensor` bound, so such an argument cannot reach element values.
-    # TODO(GEX-4093): derive per-input data-dependence from the written
-    # bound instead of materializing a data pointer for `Tensor`-tier args.
+    # `Tensor` bound, so such an argument cannot reach element values and
+    # AddFallbackShapeFuncs leaves it on its device.
     DenseTensor where _data_visible,
     TileTensorable where _data_visible,
 ):

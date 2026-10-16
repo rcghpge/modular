@@ -145,10 +145,6 @@ struct TensorArgContract {
 /// on the host, so data access is safe), recorded in `bound`. io-role markers,
 /// `Fused`, and the fusion access traits are errors. Otherwise exactly one
 /// io-role is required.
-///
-/// TODO(GEX-4093): derive per-input data-dependence of shape functions from
-/// the written bound (a bare `Tensor` bound cannot read element values, so
-/// such inputs are not data-dependent).
 mlir::FailureOr<TensorArgContract> distillTensorArgContract(
     llvm::ArrayRef<M::KGEN::TraitSymbolAttr> writtenSymbols,
     llvm::function_ref<void(const llvm::Twine &)> emitError,
