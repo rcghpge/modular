@@ -474,7 +474,7 @@ def run_selective_scan_update[
 def test_selective_scan_fwd_basic() raises:
     """Test basic selective scan forward."""
     run_selective_scan_fwd[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=True,
@@ -486,7 +486,7 @@ def test_selective_scan_fwd_basic() raises:
 def test_selective_scan_fwd_without_D() raises:
     """Test selective scan forward without D tensor."""
     run_selective_scan_fwd[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=False,
         has_z=True,
@@ -498,7 +498,7 @@ def test_selective_scan_fwd_without_D() raises:
 def test_selective_scan_fwd_without_z() raises:
     """Test selective scan forward without z tensor."""
     run_selective_scan_fwd[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=False,
@@ -510,7 +510,7 @@ def test_selective_scan_fwd_without_z() raises:
 def test_selective_scan_fwd_with_delta_softplus() raises:
     """Test selective scan forward with delta softplus activation."""
     run_selective_scan_fwd[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=True,
@@ -522,7 +522,7 @@ def test_selective_scan_fwd_with_delta_softplus() raises:
 def test_selective_scan_fwd_longer_sequence() raises:
     """Test selective scan forward with longer sequence."""
     run_selective_scan_fwd[
-        DType.float32,
+        .float32,
         4,  # DSTATE
         has_D=True,
         has_z=True,
@@ -539,7 +539,7 @@ def test_selective_scan_fwd_longer_sequence() raises:
 def test_selective_scan_update_basic() raises:
     """Test basic selective scan update."""
     run_selective_scan_update[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=True,
@@ -551,7 +551,7 @@ def test_selective_scan_update_basic() raises:
 def test_selective_scan_update_without_D() raises:
     """Test selective scan update without D tensor."""
     run_selective_scan_update[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=False,
         has_z=True,
@@ -563,7 +563,7 @@ def test_selective_scan_update_without_D() raises:
 def test_selective_scan_update_without_z() raises:
     """Test selective scan update without z tensor."""
     run_selective_scan_update[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=False,
@@ -575,7 +575,7 @@ def test_selective_scan_update_without_z() raises:
 def test_selective_scan_update_with_delta_softplus() raises:
     """Test selective scan update with delta softplus activation."""
     run_selective_scan_update[
-        DType.float32,
+        .float32,
         2,  # DSTATE
         has_D=True,
         has_z=True,
@@ -587,7 +587,7 @@ def test_selective_scan_update_with_delta_softplus() raises:
 def test_selective_scan_update_larger_dimensions() raises:
     """Test selective scan update with larger dimensions."""
     run_selective_scan_update[
-        DType.float32,
+        .float32,
         4,  # DSTATE
         has_D=True,
         has_z=True,

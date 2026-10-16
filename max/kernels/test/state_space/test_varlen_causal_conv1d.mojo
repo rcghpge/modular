@@ -387,8 +387,8 @@ def run_varlen_causal_conv1d_update[
         dtype,
         dtype,
         dtype,
-        DType.int32,
-        DType.int32,
+        .int32,
+        .int32,
     ](
         batch,
         dim,
@@ -578,7 +578,7 @@ def run_varlen_causal_conv1d_states[
     # Test kernel
     causal_conv1d_varlen_states_cpu[
         dtype,
-        DType.int32,
+        .int32,
         dtype,
     ](
         total_tokens,

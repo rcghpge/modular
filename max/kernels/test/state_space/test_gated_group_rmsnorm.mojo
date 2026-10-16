@@ -102,9 +102,9 @@ def run_cpu[
 
 
 def test_cpu_contiguous_gate() raises:
-    run_cpu[.bfloat16, DType.float32](3, 4, 100, 400)
+    run_cpu[.bfloat16, .float32](3, 4, 100, 400)
 
 
 def test_cpu_strided_bf16_gate() raises:
     """The gate is a column slice of a wider tensor, at an odd row stride."""
-    run_cpu[.bfloat16, DType.bfloat16](3, 4, 100, 517)
+    run_cpu[.bfloat16, .bfloat16](3, 4, 100, 517)
