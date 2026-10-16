@@ -592,7 +592,7 @@ def test_iterator():
     var iter = LayoutTensorIter[
         DType.float32,
         layout1,
-        layout_int_type=DType.int32,
+        layout_int_type=.int32,
         linear_idx_type=.int32,
         circular=True,
     ](ptr.unsafe_ptr(), 64, dynamic_layout1)

@@ -35,12 +35,8 @@ def test_runtime_layout_const() raises:
 
     comptime layout = Layout(shape, stride)
 
-    var shape_runtime = RuntimeTuple[layout.shape, element_type=DType.uint32](
-        16, 8
-    )
-    var stride_runtime = RuntimeTuple[
-        layout.stride, element_type=DType.uint32
-    ]()
+    var shape_runtime = RuntimeTuple[layout.shape, element_type=.uint32](16, 8)
+    var stride_runtime = RuntimeTuple[layout.stride, element_type=.uint32]()
 
     var layout_r = RuntimeLayout[
         layout, element_type=.uint32, linear_idx_type=.uint32

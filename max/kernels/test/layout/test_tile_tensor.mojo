@@ -1010,11 +1010,11 @@ def test_linear_idx_type_recomputed_after_tile() raises:
     var stack = Array[Int32, 256](fill=0)
     var tensor = TileTensor(stack, row_major[16, 16]())
     # Original: cosize=256, int32
-    assert_equal(type_of(tensor).linear_idx_type, DType.int32)
+    assert_equal(type_of(tensor).linear_idx_type, .int32)
 
     # After tiling: new layout has smaller cosize, still int32
     var tiled = tensor.tile[4, 4]((Idx[0], Idx[0]))
-    assert_equal(type_of(tiled).linear_idx_type, DType.int32)
+    assert_equal(type_of(tiled).linear_idx_type, .int32)
     _ = tiled
 
 
@@ -1022,12 +1022,12 @@ def test_linear_idx_type_recomputed_after_distribute() raises:
     """After distribute(), linear_idx_type is recomputed from the new layout."""
     var stack = Array[Int32, 16](fill=0)
     var tensor = TileTensor(stack, row_major[4, 4]())
-    assert_equal(type_of(tensor).linear_idx_type, DType.int32)
+    assert_equal(type_of(tensor).linear_idx_type, .int32)
 
     comptime thread_layout = row_major(Idx[2], Idx[2])
     var frag = tensor.distribute[thread_layout=thread_layout](0)
     # Distributed fragment: shape [2,2], strides [8,2] -> cosize = (2-1)*8 + (2-1)*2 + 1 = 11
-    assert_equal(type_of(frag).linear_idx_type, DType.int32)
+    assert_equal(type_of(frag).linear_idx_type, .int32)
     _ = frag
 
 
@@ -1035,11 +1035,11 @@ def test_linear_idx_type_recomputed_after_vectorize() raises:
     """After vectorize(), linear_idx_type is recomputed from the new layout."""
     var stack = Array[Int32, 256](fill=0)
     var tensor = TileTensor(stack, row_major[16, 16]())
-    assert_equal(type_of(tensor).linear_idx_type, DType.int32)
+    assert_equal(type_of(tensor).linear_idx_type, .int32)
 
     var vectorized = tensor.vectorize[4, 4]()
     # Vectorized: shape [4,4], strides [64,4] -> cosize = (4-1)*64 + (4-1)*4 + 1 = 205
-    assert_equal(type_of(vectorized).linear_idx_type, DType.int32)
+    assert_equal(type_of(vectorized).linear_idx_type, .int32)
     _ = vectorized
 
 
