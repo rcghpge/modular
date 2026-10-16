@@ -375,7 +375,9 @@ def softmax_2_pass[
 
 def _softmax_3_pass_step_2[
     dtype: DType,
-    InputFn1DType: def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
+    InputFn1DType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
     //,
     simd_width: Int,
     unroll_factor: Int,
@@ -461,7 +463,9 @@ def _softmax_3_pass_step_3[
 
 def _softmax_3_pass_base[
     dtype: DType,
-    InputFn1DType: def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
+    InputFn1DType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
     //,
     simd_width: Int,
     step2_pre_update_func: def[dtype: DType, width: SIMDLength](
@@ -512,30 +516,27 @@ def _softmax_3_pass_base[
     @inline(.always)
     def input_fn[
         _dtype: DType, _width: Int
-    ](coords: Coord) capturing -> SIMD[_dtype, _width]:
+    ](coords: Coord) {imm} -> SIMD[_dtype, _width]:
         comptime assert coords.rank == 1
         return rebind[SIMD[_dtype, _width]](
             input_fn_1d[_width](Int(coords[0].value()))
         )
 
     # Output function
-    @__parameter
     @inline(.always)
     def output_fn[
         _dtype: DType, _width: SIMDLength
-    ](coords: Coord, val: SIMD[_dtype, _width]):
+    ](coords: Coord, val: SIMD[_dtype, _width]) {imm}:
         comptime assert coords.rank == 1
         max_buff[0] = val.reduce_max().cast[dtype]()
 
     # Generate fused input-reduction
-    _reduce_generator[
+    _reduce_generator[reduce_dim=0](
+        Coord((output.num_elements(),)),
+        Scalar[dtype].MIN,
         input_fn,
         output_fn,
         reduce_impl,
-        reduce_dim=0,
-    ](
-        Coord((output.num_elements(),)),
-        init=Scalar[dtype].MIN,
     )
 
     var max_val = max_buff[0]
@@ -561,7 +562,9 @@ def _softmax_3_pass_base[
 
 def softmax_3_pass[
     dtype: DType,
-    InputFn1DType: def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
+    InputFn1DType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width],
     //,
     simd_width: Int,
     logsoftmax: Bool = False,
@@ -720,7 +723,9 @@ def _softmax_cpu[
     dtype: DType,
     simd_width: Int,
     rank: Int,
-    InputFnType: def[_simd_width: Int](Coord) -> SIMD[dtype, _simd_width],
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[_simd_width: Int](Coord) -> SIMD[dtype, _simd_width],
     logsoftmax: Bool = False,
 ](
     input_fn: InputFnType,
@@ -985,7 +990,7 @@ def softmax_kernel[
                 output.store(row_coords, val.cast[dtype]())
                 exp_sum += val
 
-            var block_exp_sum = block_reduce[BLOCK_SIZE, _sum](exp_sum, 0)
+            var block_exp_sum = block_reduce[BLOCK_SIZE](exp_sum, 0, _sum)
 
             comptime if sink:
                 block_exp_sum += exp(sink_val - row_max)
