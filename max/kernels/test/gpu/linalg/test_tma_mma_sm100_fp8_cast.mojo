@@ -286,7 +286,7 @@ def tma_umma_kernel_sgs[
         comptime simd_size = 8
         comptime assert elems_per_thread % simd_size == 0
 
-        var tid = Int(thread_idx.x)
+        var tid = thread_idx.x
         comptime swizzle = make_swizzle[b_smem_type, b_swizzle]()
 
         comptime for elem in range(elems_per_thread // simd_size):
@@ -303,7 +303,7 @@ def tma_umma_kernel_sgs[
                 k_local, n_local = divmod(local_idx, BN)
 
             # Global coordinates
-            var gmem_n = Int(block_idx.x) * BN + n_local
+            var gmem_n = block_idx.x * BN + n_local
             var gmem_k = i * BK + k_local
 
             var fp8_val: SIMD[b_gmem_type, simd_size]
@@ -379,7 +379,7 @@ def tma_umma_kernel_sgs[
         tcgen05_release_allocation_lock[1]()
         tcgen05_dealloc[1](tmem_addr, max_tmem_cols)
 
-    var ctile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
+    var ctile = c.tile[BM, BN](block_idx.y, block_idx.x)
 
     comptime for m_mma in range(num_m_mmas):
         comptime for n_mma in range(num_n_mmas):

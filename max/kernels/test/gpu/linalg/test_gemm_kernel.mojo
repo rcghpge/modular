@@ -124,12 +124,10 @@ def gemm_kernel[
             # Project the warp layout's row index onto A and its column index
             # onto B; `distribute` wraps the thread id modulo the layout size.
             a_reg.copy_from(
-                a_smem_warp_col.distribute[row_major[8]()](
-                    Int(thread_idx.x) // 4
-                )
+                a_smem_warp_col.distribute[row_major[8]()](thread_idx.x // 4)
             )
             b_reg.copy_from(
-                b_smem_warp_row.distribute[row_major[4]()](Int(thread_idx.x))
+                b_smem_warp_row.distribute[row_major[4]()](thread_idx.x)
             )
             outer_product_acc(c_reg, a_reg, b_reg)
 

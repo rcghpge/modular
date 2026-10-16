@@ -79,8 +79,7 @@ def _dump(
     out_ptr: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
 ):
     var base = (
-        (Int(block_idx.y) * (N // BN) + Int(block_idx.x)) * num_threads
-        + Int(thread_idx.x)
+        (block_idx.y * (N // BN) + block_idx.x) * num_threads + thread_idx.x
     ) * c_regs
     comptime for i in range(num_m_mmas * num_n_mmas):
         comptime for j in range(frag[2]):
@@ -110,10 +109,10 @@ def global_pipeline_kernel[
     ]()
     var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
 
-    var a_rows = min(BM, M - Int(block_idx.y) * BM)
-    var a_block = a_ptr + Int(block_idx.y) * BM * K
+    var a_rows = min(BM, M - block_idx.y * BM)
+    var a_block = a_ptr + block_idx.y * BM * K
     var b_block = b_ptr + (
-        Int(block_idx.x) * BN * K if transpose_b else Int(block_idx.x) * BN
+        block_idx.x * BN * K if transpose_b else block_idx.x * BN
     )
 
     var c = stack_allocation[
@@ -243,9 +242,9 @@ def smem_pipeline_kernel[
         alignment=16,
     ]()
     var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
-    for i in range(Int(thread_idx.x), a_smem_size, num_threads):
+    for i in range(thread_idx.x, a_smem_size, num_threads):
         a_smem[i] = Scalar[dtype](Float32((i * 7 + 3) % 29) / 8 - 1.5)
-    for i in range(Int(thread_idx.x), b_smem_size, num_threads):
+    for i in range(thread_idx.x, b_smem_size, num_threads):
         b_smem[i] = Scalar[dtype](Float32((i * 5 + 1) % 31) / 8 - 1.75)
     barrier()
 
@@ -331,7 +330,7 @@ def local_a_kernel[
         alignment=16,
     ]()
     var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
-    for i in range(Int(thread_idx.x), b_smem_size, local_threads):
+    for i in range(thread_idx.x, b_smem_size, local_threads):
         b_smem[i] = Scalar[dtype](Float32((i * 5 + 1) % 31) / 8 - 1.75)
     barrier()
 
@@ -341,10 +340,7 @@ def local_a_kernel[
     comptime for i in range(p_rows):
         comptime for j in range(frag[2]):
             p[i, j] = (
-                Scalar[accum_type](
-                    (Int(thread_idx.x) * 13 + i * 5 + j * 3) % 37
-                )
-                / 7
+                Scalar[accum_type]((thread_idx.x * 13 + i * 5 + j * 3) % 37) / 7
                 - 2.3
             )
 
@@ -423,7 +419,7 @@ def local_a_kernel[
             static_num_iters=BN // BK,
         ](c, p_iter, b_iter, a_smem_iter, b_iter, BN // BK)
 
-    var base = Int(thread_idx.x) * local_c_regs
+    var base = thread_idx.x * local_c_regs
     comptime for i in range(p_rows):
         comptime for j in range(frag[2]):
             out_ptr[base + i * frag[2] + j] = c[i, j][0]

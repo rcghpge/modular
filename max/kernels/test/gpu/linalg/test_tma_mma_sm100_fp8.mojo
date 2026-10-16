@@ -329,7 +329,7 @@ def tma_umma_kernel_ss[
         var warp_id_q, warp_id_r = udivmod(warp_id, 4)
         warp_id = 2 * warp_id_r + warp_id_q
 
-    var ctile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
+    var ctile = c.tile[BM, BN](block_idx.y, block_idx.x)
 
     comptime for m_mma in range(num_m_mmas):
         comptime for n_mma in range(num_n_mmas):
@@ -499,7 +499,7 @@ def tma_umma_kernel_ts_fp8[
 
     for i in range(num_iters):
         # Load A from global memory to registers.
-        var a_gmem_tile = a.tile[BM, BK](Int(block_idx.y), i)
+        var a_gmem_tile = a.tile[BM, BK](block_idx.y, i)
         var a_gmem_warp_tile = a_gmem_tile.tile[BM // num_warps, BK](
             Int(warp_id), 0
         )
@@ -598,7 +598,7 @@ def tma_umma_kernel_ts_fp8[
         tcgen05_release_allocation_lock[1]()
         tcgen05_dealloc[1](tmem_addr, max_tmem_cols)
 
-    var ctile = c.tile[BM, BN](Int(block_idx.y), Int(block_idx.x))
+    var ctile = c.tile[BM, BN](block_idx.y, block_idx.x)
 
     comptime for m_mma in range(num_m_mmas):
         comptime for n_mma in range(num_n_mmas):
