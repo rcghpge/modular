@@ -77,9 +77,7 @@ def run_layer_norm_cpu[
         epsilon,
     )
 
-    var input_ptr_ptr: MutPointer[
-        input_ptr.T, origin_of(input_ptr)
-    ] = input_ptr.unsafe_ptr()
+    var input_ptr_ptr = input_ptr.unsafe_ptr()
     for r, c in product(range(rows), range(cols)):
         var vec = TileTensor(
             input_ptr_ptr + r * cols,

@@ -158,7 +158,7 @@ def correlation[
     var uu_simd = SIMD[out_type, simd_width]()
     var vv_simd = SIMD[out_type, simd_width]()
 
-    var w_val: UnsafePointer[w_list.T, origin_of(w_list)] = w_list.unsafe_ptr()
+    var w_val = w_list.unsafe_ptr()
 
     def accumulate[weighted: Bool]() {u, v, len, mut}:
         def apply_wfn[simd_width: Int](idx: Int) {u, v, mut}:

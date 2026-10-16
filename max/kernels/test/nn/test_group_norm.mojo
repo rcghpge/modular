@@ -106,9 +106,7 @@ def run_group_norm_cpu[
         num_groups,
     )
 
-    var data_ptr_ptr: MutPointer[
-        data_ptr.T, origin_of(data_ptr)
-    ] = data_ptr.unsafe_ptr()
+    var data_ptr_ptr = data_ptr.unsafe_ptr()
     for r in range(rows):
         var vec = TileTensor(
             data_ptr_ptr + r * cols,
