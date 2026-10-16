@@ -118,7 +118,7 @@ def corrupt_src_info_kernel(
     """
     # `Int` is not device-passable; widen the fixed-width arg.
     var n_rows = Int(n_rows_dev)
-    var gid = Int(global_idx.x)
+    var gid = global_idx.x
     if gid < n_rows:
         src_info[gid * 2] = bad_src_idx
         src_info[gid * 2 + 1] = bad_topk_idx
