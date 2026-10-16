@@ -368,16 +368,12 @@ struct Timer:
         var current = Float64(std.time.perf_counter_ns())
         var elapsed = current - self.current
         self.current = current
-        self.report.append("[" + msg + "] " + String(elapsed / 1e6) + " (ms)")
+        self.report.append(String(t"[{msg}] {elapsed / 1e6} (ms)"))
 
     def print(self) raises:
         for i in range(len(self.report)):
             print(self.report[i])
-        print(
-            "[total-elapsed] "
-            + String((self.current - self.start) / 1e6)
-            + " (ms)"
-        )
+        print(t"[total-elapsed] {(self.current - self.start) / 1e6} (ms)")
         print(
             "-----------------------------------------------------------------------"
         )
@@ -536,9 +532,9 @@ def human_readable_size(size: Int) -> String:
     comptime GB = MB * KB
 
     if size >= GB:
-        return _pretty_print_float(Float64(size) / GB) + "GB"
+        return String(t"{_pretty_print_float(Float64(size) / GB)}GB")
     if size >= MB:
-        return _pretty_print_float(Float64(size) / MB) + "MB"
+        return String(t"{_pretty_print_float(Float64(size) / MB)}MB")
     if size >= KB:
-        return _pretty_print_float(Float64(size) / KB) + "KB"
-    return String(size) + "B"
+        return String(t"{_pretty_print_float(Float64(size) / KB)}KB")
+    return String(t"{size}B")
