@@ -56,30 +56,33 @@ def _fill_row(
     for c in range(n):
         var u = _next_random(state) * 2.0 - 1.0
         var v = u
-        if kind == 1:
-            v = 0.0
-        elif kind == 2:
-            # One huge outlier among small values.
-            v = u * 1e-3
-            if c == (n // 3):
-                v = 3.0e4
-        elif kind == 3:
-            # A tiny row whose amax / 2688 falls below the 1e-30 floor.
-            v = u * 1e-33
-        elif kind == 4:
-            # A single non-zero element.
-            v = 0.0
-            if c == n - 1:
-                v = u + 2.0
-        elif kind == 5:
-            # Every value at a quantization tie and the largest scale.
-            v = 1.25 if c % 2 == 0 else -1.5
-        elif kind == 6:
-            # Wide dynamic range across 16-element blocks.
-            v = u * Float32(10.0) ** Float32(((c // 16) % 9) - 4)
-        elif kind == 7:
-            # Mostly negative: relu2 zeros most of it.
-            v = u - 0.8
+        match kind:
+            case 1:
+                v = 0.0
+            case 2:
+                # One huge outlier among small values.
+                v = u * 1e-3
+                if c == (n // 3):
+                    v = 3.0e4
+            case 3:
+                # A tiny row whose amax / 2688 falls below the 1e-30 floor.
+                v = u * 1e-33
+            case 4:
+                # A single non-zero element.
+                v = 0.0
+                if c == n - 1:
+                    v = u + 2.0
+            case 5:
+                # Every value at a quantization tie and the largest scale.
+                v = 1.25 if c % 2 == 0 else -1.5
+            case 6:
+                # Wide dynamic range across 16-element blocks.
+                v = u * Float32(10.0) ** Float32(((c // 16) % 9) - 4)
+            case 7:
+                # Mostly negative: relu2 zeros most of it.
+                v = u - 0.8
+            case _:
+                pass
         row[c] = v.cast[DType.bfloat16]()
 
 
