@@ -2474,7 +2474,7 @@ parseFusedTensorAttrs(OpAsmParser &parser, OperationState &result,
       return failure();
     result.addAttribute(computeOutputArgName, computeOutputArg);
   }
-  if (succeeded(parser.parseOptionalKeyword("contract"))) {
+  if (contractName && succeeded(parser.parseOptionalKeyword("contract"))) {
     TensorArgContractAttr contract;
     if (parser.parseEqual() ||
         parser.parseCustomAttributeWithFallback(contract))
@@ -2639,6 +2639,66 @@ void TensorCreateEpilogueOp::getAsmBlockArgumentNames(
   if (!region.empty())
     nameFusedBodyArgs(region.front(), getCaptures().size(),
                       getShapeCaptures().size(), {"val", "idx"}, setNameFn);
+}
+
+ParseResult TileCreateEpilogueOp::parse(OpAsmParser &parser,
+                                        OperationState &result) {
+  MLIRContext *ctx = parser.getContext();
+  OpAsmParser::UnresolvedOperand shape, outputPtr;
+  SmallVector<OpAsmParser::Argument> entryArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand> captures, shapes;
+  SmallVector<Type> captureTypes;
+  TileFusionLaneAttr lane;
+  llvm::SMLoc argsLoc = parser.getCurrentLocation();
+  if (parser.parseOperand(shape) ||
+      parseFusedBodyArgs(parser, entryArgs, captures, captureTypes, shapes))
+    return failure();
+  // A tile body moves whole tiles at the kernel's index, so it has no
+  // index-transforming op to thread runtime shapes into.
+  if (!shapes.empty())
+    return parser.emitError(argsLoc, "a tile epilogue takes no shape captures");
+  if (parser.parseKeyword("ptr") || parser.parseOperand(outputPtr) ||
+      parseTileFusionLane(parser, lane) || parser.parseComma() ||
+      parseFusedTensorAttrs(
+          parser, result, /*computeOutputArgName=*/{}, /*contractName=*/{},
+          getDeviceAttrName(result.name), getElementTypeAttrName(result.name),
+          getIoAttrName(result.name), getMutAttrName(result.name)) ||
+      parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+  result.addAttribute(getLaneAttrName(result.name), lane);
+
+  if (parser.resolveOperand(shape, ShapeType::get(ctx), result.operands) ||
+      parser.resolveOperands(captures, captureTypes, parser.getNameLoc(),
+                             result.operands) ||
+      parser.resolveOperand(outputPtr, PointerType::get(ctx), result.operands))
+    return failure();
+  result.addTypes(TensorType::get(ctx));
+  return parser.parseRegion(*result.addRegion(), entryArgs);
+}
+
+void TileCreateEpilogueOp::print(OpAsmPrinter &p) {
+  p << " " << getShape();
+  printFusedBodyArgs(p, getBody().front(), getCaptures(), /*shapes=*/{});
+  p << " ptr " << getOutputPtr() << " ";
+  printTileFusionLane(p, getLaneAttr());
+  p << ",";
+  printFusedTensorAttrs(p, /*computeOutputArg=*/false, /*contract=*/{},
+                        getDeviceAttr(), getElementType(), getIoAttr(),
+                        getMut());
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      {getLaneAttrName().getValue(), getDeviceAttrName().getValue(),
+       getElementTypeAttrName().getValue(), getIoAttrName().getValue(),
+       getMutAttrName().getValue()});
+  p << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
+}
+
+void TileCreateEpilogueOp::getAsmBlockArgumentNames(
+    Region &region, OpAsmSetValueNameFn setNameFn) {
+  if (!region.empty())
+    nameFusedBodyArgs(region.front(), getCaptures().size(), /*numShapes=*/0,
+                      {"val", "idx"}, setNameFn);
 }
 
 ParseResult TensorCreatePrologueOp::parse(OpAsmParser &parser,
@@ -2898,6 +2958,92 @@ LogicalResult TensorCreateEpilogueOp::verify() {
       yieldOp.getOperand(0).getType() != body.getArgument(0).getType())
     return emitOpError("a compute-lambda epilogue must yield exactly the "
                        "value type it was handed");
+  return success();
+}
+
+/// Whether an epilogue body does nothing but hand the kernel's value back
+/// (compute) or store it untouched at the kernel's index into the store
+/// target (store): the pass-through epilogue `MOToMAP` gives every output.
+/// Body args: the kernel's value, its index, then the captures, the first of
+/// which is the store target.
+static bool isPassThroughEpilogueBody(Block &body) {
+  constexpr unsigned kValueArg = 0;
+  constexpr unsigned kIndexArg = 1;
+  constexpr unsigned kStoreTargetArg = 2;
+  if (!llvm::hasSingleElement(body))
+    return false;
+  Value value = body.getArgument(kValueArg);
+  if (auto yield = dyn_cast<YieldOp>(body.front()))
+    return yield.getNumOperands() == 1 && yield.getOperand(0) == value;
+  auto store = dyn_cast<TensorStoreOp>(body.front());
+  return store && store.getValue() == value &&
+         store.getIndex() == body.getArgument(kIndexArg) &&
+         store.getTensor() == body.getArgument(kStoreTargetArg);
+}
+
+bool TensorCreateEpilogueOp::recomputesValue() {
+  return !isPassThroughEpilogueBody(getBody().front());
+}
+
+bool TileCreateEpilogueOp::recomputesValue() {
+  return !isPassThroughEpilogueBody(getBody().front());
+}
+
+/// Whether `value` is one of `body`'s capture arguments, which start at
+/// `firstCapture`.
+static bool isCaptureArgOf(Block &body, unsigned firstCapture, Value value) {
+  auto arg = dyn_cast<BlockArgument>(value);
+  return arg && arg.getOwner() == &body && arg.getArgNumber() >= firstCapture;
+}
+
+/// A tile body addresses whole tiles at its own index, so every load reads a
+/// capture at `index`, and there is no index transform to read through.
+/// Interim: bodies are scalar-typed (`tensor.load` / `tensor.store`) until the
+/// tile vocabulary lands.
+static LogicalResult verifyTileBodyLoads(Block &body, unsigned firstCapture,
+                                         Value index, StringRef container) {
+  for (Operation &op : body) {
+    if (auto load = dyn_cast<TensorLoadOp>(op)) {
+      if (!isCaptureArgOf(body, firstCapture, load.getTensor()) ||
+          load.getIndex() != index)
+        return load.emitOpError() << "in a " << container
+                                  << " must read a capture at the loop index";
+    } else if (isa<IndexReshapeOp, IndexSliceSelectOp>(op)) {
+      return op.emitOpError()
+             << "cannot transform the index of a " << container;
+    }
+  }
+  return success();
+}
+
+LogicalResult TileCreateEpilogueOp::verify() {
+  Block &body = getBody().front();
+  if (body.empty())
+    return emitOpError("requires a non-empty body");
+  if (getCaptures().empty())
+    return emitOpError("requires at least one (store-target) capture");
+  if (body.getNumArguments() != 2 + getCaptures().size())
+    return emitOpError("body takes a value, an index, and one arg per capture");
+  constexpr unsigned kFirstCapture = 2;
+  Value index = body.getArgument(1);
+  Value storeTarget = body.getArgument(kFirstCapture);
+  if (failed(verifyTileBodyLoads(body, kFirstCapture, index, "tile epilogue")))
+    return failure();
+
+  // The lane fixes the body shape, so the two are cross-checked.
+  Operation &last = body.back();
+  if (getLane() == TileFusionLane::Compute) {
+    auto yield = dyn_cast<YieldOp>(last);
+    if (!yield || yield.getNumOperands() != 1)
+      return emitOpError("a compute lane ends in a yield of one value");
+    return success();
+  }
+  if (!body.getOps<YieldOp>().empty())
+    return emitOpError("a store lane does not yield");
+  auto store = dyn_cast<TensorStoreOp>(last);
+  if (!store || store.getTensor() != storeTarget || store.getIndex() != index)
+    return emitOpError("a store lane ends in a store to the store-target "
+                       "capture at the loop index");
   return success();
 }
 
@@ -4971,8 +5117,7 @@ LogicalResult OutputOp::emitMojo(EmitMojoState &state) {
 LogicalResult YieldOp::emitMojo(EmitMojoState &state) {
   // Routes a region's produced value to one of the parent's results:
   // `mogg.try` forwarding a branch's, or `mogg.with_trace` forwarding a traced
-  // dispatch's. The op's other legal parents, guaranteed by its `ParentOneOf`,
-  // carry nothing out this way.
+  // dispatch's. Its other parents carry nothing out this way.
   Operation *parent = getOperation()->getParentOp();
   if (!isa<MOGG::TryOp, MOGG::WithTraceOp>(parent))
     return success();

@@ -82,6 +82,15 @@ def MOGG_DispatchKindAttr
 }
 
 //===----------------------------------------------------------------------===//
+// TileFusionLaneAttr -- the tile epilogue's lane
+//===----------------------------------------------------------------------===//
+
+def MOGG_TileFusionLaneAttr
+    : EnumAttr<MOGGDialect, MOGG_TileFusionLane, "tile_lane"> {
+  let summary = "Compute or store lane of a tile epilogue (see MOGG_TileFusionLane)";
+}
+
+//===----------------------------------------------------------------------===//
 // TensorArgContractAttr -- the trait-lane tensor-argument contract
 //===----------------------------------------------------------------------===//
 

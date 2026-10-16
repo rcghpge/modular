@@ -1,0 +1,36 @@
+// RUN: mo-opt %s | FileCheck %s
+// RUN: mo-opt %s | mo-opt
+
+// Round-trip the tile fusion container ops. The bodies are the interim scalar
+// shape (`tensor.load` / `tensor.store`); they switch to the tile vocabulary
+// once it lands.
+
+// CHECK-LABEL: func.func @compute_epilogue
+func.func @compute_epilogue(%ptr: !mogg.pointer) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %z = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Input, mut = false, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %optr = mogg.tensor.get_ptr(%out) : !mogg.tensor
+  // CHECK: mogg.tile.create.epilogue %{{.*}} (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing {%[[COUT:.*]] = %{{.*}} : !mogg.tensor, %[[CZ:.*]] = %{{.*}} : !mogg.tensor} ptr %{{.*}} lane = compute, device = "gpu", elementType = f32, io = Output, mut = true {
+  // CHECK-NEXT:   %[[ZV:.*]] = mogg.tensor.load %[[CZ]][%[[IDX]]]
+  // CHECK-NEXT:   mogg.yield %[[ZV]] : f32
+  %epi = mogg.tile.create.epilogue %s (%val : f32, %idx : !map.index<2>) capturing {%cout = %out : !mogg.tensor, %cz = %z : !mogg.tensor} ptr %optr lane = compute, device = "gpu", elementType = f32, io = Output, mut = true {
+    %zv = mogg.tensor.load %cz[%idx] : !mogg.tensor, !map.index<2> -> f32
+    mogg.yield %zv : f32
+  }
+  return
+}
+
+// A store lane owns the store into capture 0.
+// CHECK-LABEL: func.func @store_epilogue
+func.func @store_epilogue(%ptr: !mogg.pointer) {
+  %s = mogg.shape.create() <shape = #mosh<ape[16, 8]> : !mosh.ape>
+  %out = mogg.tensor.create(%ptr, %s) <device = "gpu", elementType = f32, io = Output, mut = true, shapeAttr = #mosh<ape[16, 8]> : !mosh.ape> : !mogg.tensor
+  %optr = mogg.tensor.get_ptr(%out) : !mogg.tensor
+  // CHECK: mogg.tile.create.epilogue %{{.*}} (%[[VAL:.*]] : f32, %[[IDX:.*]] : !map.index<2>) capturing {%[[COUT:.*]] = %{{.*}} : !mogg.tensor} ptr %{{.*}} lane = store, device = "gpu", elementType = f32, io = Output, mut = true {
+  // CHECK-NEXT:   mogg.tensor.store %[[COUT]][%[[IDX]]] = %[[VAL]]
+  %epi = mogg.tile.create.epilogue %s (%val : f32, %idx : !map.index<2>) capturing {%cout = %out : !mogg.tensor} ptr %optr lane = store, device = "gpu", elementType = f32, io = Output, mut = true {
+    mogg.tensor.store %cout[%idx] = %val : !mogg.tensor, !map.index<2>, f32
+  }
+  return
+}

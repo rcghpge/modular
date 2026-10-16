@@ -117,6 +117,25 @@ def MOGG_TensorCreateInterface : OpInterface<"TensorCreateInterface"> {
   }];
 }
 
+def MOGG_FusedEpilogueInterface : OpInterface<"FusedEpilogueInterface"> {
+  let description = [{
+    A fused-output tensor whose body runs as its kernel's epilogue
+    (`mogg.tensor.create.epilogue`, `mogg.tile.create.epilogue`).
+  }];
+
+  let cppNamespace = "::M::MOGG";
+
+  let methods = [
+    InterfaceMethod<[{
+      Whether the body does work beyond the kernel's own write, which is what
+      `has_epilogue_fusion` asks. `MOToMAP` gives every output a store
+      epilogue, so an unfused one is a pass-through: a single store of the
+      untouched value at the kernel's index, or the yield of it a compute
+      lane leaves. Anything else is work the kernel would otherwise skip.
+    }], "bool", "recomputesValue", (ins)>,
+  ];
+}
+
 def MOGG_KernelTerminator : OpInterface<"KernelTerminator"> {
   let description = [{
     A terminator for `mogg.routine` operation.

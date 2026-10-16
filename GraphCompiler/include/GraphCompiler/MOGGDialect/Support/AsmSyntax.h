@@ -80,6 +80,11 @@ mlir::ParseResult parseOptionalDispatch(mlir::OpAsmParser &parser,
 bool printOptionalDispatch(mlir::OpAsmPrinter &p, DispatchKindAttr kind,
                            DispatchKind defaultKind);
 
+/// Parses `lane = compute|store` into `lane`.
+mlir::ParseResult parseTileFusionLane(mlir::OpAsmParser &parser,
+                                      TileFusionLaneAttr &lane);
+void printTileFusionLane(mlir::OpAsmPrinter &p, TileFusionLaneAttr lane);
+
 /// `custom<ImmediateDispatch>` for declarative formats whose default is
 /// `immediate`.
 mlir::ParseResult parseImmediateDispatch(mlir::OpAsmParser &parser,

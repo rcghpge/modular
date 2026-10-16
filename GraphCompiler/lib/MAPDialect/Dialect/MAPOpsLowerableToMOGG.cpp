@@ -636,31 +636,6 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-/// Whether an epilogue does anything beyond the kernel's own write, which is
-/// what `has_epilogue_fusion` asks. Presence is not enough: `MOToMAP` gives
-/// every output a store epilogue, so an unfused one is a single store of the
-/// untouched value at the kernel's index, or the yield of it a compute lambda
-/// leaves. Anything else (a derived value, a second store, a select) is work
-/// the kernel would skip, so the pass-through is matched exactly.
-static bool epilogueRecomputesValue(MOGG::TensorCreateEpilogueOp epilogue) {
-  mlir::Block &body = epilogue.getBody().front();
-  // Epilogue body args: the kernel's value, its index, then the captures,
-  // the first of which is the store target.
-  constexpr unsigned kValueArg = 0;
-  constexpr unsigned kIndexArg = 1;
-  constexpr unsigned kStoreTargetArg = 2;
-  // A pass-through is one op (the store or the yield); anything more is work.
-  if (!llvm::hasSingleElement(body))
-    return true;
-  Value value = body.getArgument(kValueArg);
-  if (auto yield = dyn_cast<MOGG::YieldOp>(body.front()))
-    return yield.getNumOperands() != 1 || yield.getOperand(0) != value;
-  auto store = dyn_cast<MOGG::TensorStoreOp>(body.front());
-  return !store || store.getValue() != value ||
-         store.getIndex() != body.getArgument(kIndexArg) ||
-         store.getTensor() != body.getArgument(kStoreTargetArg);
-}
-
 /// Whether a prologue computes the value the kernel reads, rather than merely
 /// loading it; every fusible input gets a load prologue.
 static bool prologueRecomputesValue(MOGG::TensorCreatePrologueOp prologue) {
@@ -691,8 +666,8 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
 
   // Baked in so emit never inspects an operand's producer.
   bool hasEpilogueFusion = llvm::any_of(callOutputs, [](Value out) {
-    auto epilogue = out.getDefiningOp<MOGG::TensorCreateEpilogueOp>();
-    return epilogue && epilogueRecomputesValue(epilogue);
+    auto epilogue = out.getDefiningOp<MOGG::FusedEpilogueInterface>();
+    return epilogue && epilogue.recomputesValue();
   });
   bool hasPrologueFusion = llvm::any_of(callInputs, [](Value in) {
     auto prologue = in.getDefiningOp<MOGG::TensorCreatePrologueOp>();

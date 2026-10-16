@@ -121,4 +121,18 @@ def MOGG_TensorArgBound
   let cppNamespace = "::M::MOGG";
 }
 
+// Which tile fusion trait a `mogg.tile.create.epilogue` body implements. The
+// kernel's declared output kind fixes it: a `_FusedComputeOutputTileTensor`
+// takes a compute lane, which yields the tile for the kernel to store, and a
+// `_FusedOutputTileTensor` takes a store lane, which owns the store.
+def MOGG_TileFusionLane
+    : I32EnumAttr<"TileFusionLane", "tile fusion lane", [
+  I32EnumAttrCase<"Compute", 0, "compute">,
+  I32EnumAttrCase<"Store", 1, "store">,
+]> {
+  let cppNamespace = "::M::MOGG";
+  // Use `MOGG_TileFusionLaneAttr` (MOGGAttrs.td) rather than a bare `i32`.
+  let genSpecializedAttr = 0;
+}
+
 #endif // GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGENUMS_TD

@@ -694,9 +694,6 @@ def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
 
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  ParentOneOf<["MOGG::TryOp", "MOGG::TensorCreatePrologueOp",
-               "MOGG::TensorCreateEpilogueOp", "MOGG::WithTraceOp",
-               "MOGG::RowwiseReduceOp"]>,
   ReturnLike,
   Terminator,
 ]> {
@@ -1131,6 +1128,7 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   AttrSizedOperandSegments,
   NoTerminator,
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
+  DeclareOpInterfaceMethods<MOGG_FusedEpilogueInterface>,
 ]> {
   let summary = "A fused-output tensor bound to its own epilogue body.";
   let description = [{
@@ -1163,6 +1161,54 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
     // emit wraps the functor in the trait tensor instead of a
     // `ManagedTensorSlice`. Set at MAP lowering, where the call edge is known.
     OptionalAttr<MOGG_TensorArgContractAttr>:$contract
+  );
+  let results = (outs MOGG_Tensor:$tensor);
+  let regions = (region SizedRegion<1>:$body);
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+}
+
+def MOGG_TileCreateEpilogueOp : MOGG_Op<"tile.create.epilogue", [
+  DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmBlockArgumentNames"]>,
+  NoTerminator,
+  DeclareOpInterfaceMethods<MOGG_FusedEpilogueInterface>,
+]> {
+  let summary = "A tile fused-output tensor bound to its own epilogue body.";
+  let description = [{
+    The tile counterpart of `mogg.tensor.create.epilogue`: a `!mogg.tensor`
+    whose epilogue runs once per tile the kernel produces, not once per
+    element. The body's leading arguments are the kernel's tile and the tile
+    index; one argument per capture follows, the first being the store
+    target. A load in the body reads a whole tile of a capture at the index.
+
+    `$lane` follows the kernel's declared output kind. A compute lane ends in
+    `mogg.yield` of the transformed tile, which the kernel stores; a store
+    lane ends in a store into the store-target capture and owns the write.
+    Unlike the SIMD epilogue the two never decouple: a tile epilogue cannot
+    change dtype or transform its index, so there is no fallback lane.
+
+    Example:
+    ```mlir
+    %epi = mogg.tile.create.epilogue %shape (%val : f32, %idx : !map.index<2>)
+             capturing {%cout = %out : !mogg.tensor, %cz = %z : !mogg.tensor}
+             ptr %ptr lane = compute, device = "gpu", elementType = f32,
+             io = Output, mut = true {
+      %zv = mogg.tensor.load %cz[%idx] : !mogg.tensor, !map.index<2> -> f32
+      %sum = mogg.call.elementwise @builtin_kernels.elementwise.Add(%val, %zv)
+               moOpName = "mo.add" : f32, f32 -> f32
+      mogg.yield %sum : f32
+    }
+    ```
+  }];
+  let arguments = (ins
+    MOGG_Shape:$shape,
+    Variadic<MOGG_TensorLike>:$captures,
+    MOGG_Pointer:$outputPtr,
+    MOGG_TileFusionLaneAttr:$lane,
+    StrAttr:$device,
+    TypeAttr:$elementType,
+    BoolAttr:$mut,
+    MO_IOKind:$io
   );
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);

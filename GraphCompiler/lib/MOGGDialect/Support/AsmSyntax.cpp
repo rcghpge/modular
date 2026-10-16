@@ -144,6 +144,25 @@ bool M::MOGG::printOptionalDispatch(OpAsmPrinter &p, DispatchKindAttr kind,
   return true;
 }
 
+ParseResult M::MOGG::parseTileFusionLane(OpAsmParser &parser,
+                                         TileFusionLaneAttr &lane) {
+  StringRef keyword;
+  if (parser.parseKeyword("lane") || parser.parseEqual())
+    return failure();
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseKeyword(&keyword))
+    return failure();
+  std::optional<TileFusionLane> value = symbolizeTileFusionLane(keyword);
+  if (!value)
+    return parser.emitError(loc, "expected 'compute' or 'store'");
+  lane = TileFusionLaneAttr::get(parser.getContext(), *value);
+  return success();
+}
+
+void M::MOGG::printTileFusionLane(OpAsmPrinter &p, TileFusionLaneAttr lane) {
+  p << "lane = " << stringifyTileFusionLane(lane.getValue());
+}
+
 ParseResult M::MOGG::parseImmediateDispatch(OpAsmParser &parser,
                                             DispatchKindAttr &kind) {
   return parseOptionalDispatch(parser, kind);
