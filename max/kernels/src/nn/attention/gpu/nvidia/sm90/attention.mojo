@@ -1080,7 +1080,7 @@ def output_reg_to_smem[
     var accum_smem_tile = _SharedMemTT[
         output_type, smem_layout, Engine=DefaultEngine[element_width=1]
     ](q_smem, smem_layout)
-    comptime use_stmatrix = accum_type == DType.float32 and padded_depth % 16 == 0 and size_of[
+    comptime use_stmatrix = accum_type == .float32 and padded_depth % 16 == 0 and size_of[
         output_type
     ]() == 2 and o_frag_size % 8 == 0
 

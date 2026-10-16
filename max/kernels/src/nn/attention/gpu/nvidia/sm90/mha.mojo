@@ -110,7 +110,6 @@ from nn.softmax import (
     _rowsum,
 )
 
-from std.utils.index import Index
 from std.utils.numerics import get_accum_type, min_or_neg_inf
 from std.utils.static_tuple import StaticTuple
 
@@ -1175,19 +1174,19 @@ def _mha_sm90[
     var warp_y: UInt32 = warp_id  # // num_warps_n
 
     comptime q_smem_layout_consumer = tile_layout_k_major_typed[
-        DType.bfloat16,
+        .bfloat16,
         BM,
         config.padded_depth,
         swizzle_mode=swizzle_mode,
     ]
     comptime k_smem_layout = tile_layout_k_major_typed[
-        DType.bfloat16,
+        .bfloat16,
         BN,
         config.padded_depth,
         swizzle_mode=swizzle_mode,
     ]
     comptime v_smem_layout = tile_layout_mn_major_typed[
-        DType.bfloat16,
+        .bfloat16,
         config.padded_depth,
         BN,
         swizzle_mode=swizzle_mode,
@@ -1246,7 +1245,7 @@ def _mha_sm90[
         accum_type,
         kv_type,
         kv_type,
-        Index(4 * MMA_M, MMA_N0, 16),
+        (4 * MMA_M, MMA_N0, 16),
         a_swizzle=swizzle_mode,
         b_swizzle=swizzle_mode,
         transpose_b=True,
@@ -1256,7 +1255,7 @@ def _mha_sm90[
         accum_type,
         kv_type,
         kv_type,
-        Index(4 * MMA_M, MMA_N1, 16),
+        (4 * MMA_M, MMA_N1, 16),
         a_swizzle=TensorMapSwizzle.SWIZZLE_NONE,
         b_swizzle=swizzle_mode,
         transpose_b=False,
