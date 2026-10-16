@@ -644,9 +644,9 @@ struct TileWriter[
         if (Self.a_type == Self.c_type == .bfloat16) or (
             Self.a_type == .uint8 and Self.c_type == .bfloat16
         ):
-            return DType.bfloat16
+            return .bfloat16
         else:
-            return DType.float32
+            return .float32
 
     # ========== Public Write Methods ==========
 
@@ -1923,7 +1923,7 @@ struct TileWriter[
                         var p3_cnt_off = Int(p3_expert_id) * p3_cfg.n_ranks + rk
                         var p3_packed = p3_cfg.atomic_counter.load[
                             width=2,
-                            alignment=align_of[SIMD[DType.int32, 2]](),
+                            alignment=align_of[SIMD[.int32, 2]](),
                         ](2 * p3_cnt_off)
                         # EP_DATA_READY_FLAG = 1 << 10 (`shmem/ep_comm.mojo:
                         # 110`), copied as a literal for the same reason as
@@ -2002,7 +2002,7 @@ struct TileWriter[
                                 )
                                 var p3_st = p3_cfg.src_info_ptr.load[
                                     width=2,
-                                    alignment=align_of[SIMD[DType.int32, 2]](),
+                                    alignment=align_of[SIMD[.int32, 2]](),
                                 ](p3_abs_row * 2)
                                 var p3_src_idx = p3_st[0]
                                 var p3_src_topk = p3_st[1]
