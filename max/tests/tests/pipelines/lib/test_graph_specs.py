@@ -130,6 +130,23 @@ def test_separate_artifacts_may_share_graph_names(
     assert _run(models["b"]) == [1.0, 1.0]
 
 
+def test_identical_graphs_with_different_names_each_init(
+    session: InferenceSession,
+) -> None:
+    specs = {
+        name: GraphSpec(
+            Scale("shared_weight"),
+            name,
+            [X],
+            weights={"shared_weight": np.full(2, 4.0, dtype=np.float32)},
+        )
+        for name in ("first", "second")
+    }
+    models = init_graphs(session, compile_graphs(session, specs), specs)
+    assert _run(models["first"]) == [4.0, 4.0]
+    assert _run(models["second"]) == [4.0, 4.0]
+
+
 def test_merging_rejects_a_role_registered_twice(
     artifacts: CompiledArtifacts,
 ) -> None:

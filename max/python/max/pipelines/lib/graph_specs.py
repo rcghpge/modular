@@ -247,6 +247,14 @@ def init_graphs(
         by_name = session.init_all(
             artifacts.compiled[index], weights_registry=weights
         )
+        if len(by_name) == 1:
+            # The session can hand back a cached MEF compiled from an
+            # identical graph under another name, so don't look it up by
+            # this spec's name.
+            (model,) = by_name.values()
+            for role in roles:
+                models[role] = model
+            continue
         for role in roles:
             models[role] = by_name[specs[role].name]
     return models
