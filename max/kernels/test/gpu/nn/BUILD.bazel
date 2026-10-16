@@ -688,6 +688,10 @@ _FILECHECK_TESTS = [
             "test_mla_prefill_amd_gather_sentinel_guard.mojo",
             "test_mla_prefill_plan_chunk_overflow.mojo",
             "_paged_prefill_test_utils.mojo",
+            # MXFP4 indexer and its selection grader; declared explicitly
+            # below.
+            "_index_select_grade.mojo",
+            "test_mla_index_mxfp4.mojo",
             # SM100 FA4 1Q split-K combine test: fully covered by the explicit
             # b200-gated (mask, depth, P) registrations below. Exclude the default
             # catch-all target, which would otherwise be gated only by //:has_gpu
@@ -1795,3 +1799,54 @@ mojo_test(
         "@mojo//:std",
     ],
 )
+
+# MXFP4 lightning indexer on the SM100 scorer. The f32-fold
+# builds check every score to f32 precision; the default build checks the
+# production bf16 fold. B200 only.
+[
+    mojo_test(
+        name = name + ".mojo.test",
+        size = "large",
+        srcs = [
+            "_index_select_grade.mojo",
+            "test_mla_index_mxfp4.mojo",
+        ],
+        copts = IGNORED_POINTER_DEPRECATIONS_COPTS + defines,
+        exec_properties = {
+            "test.resources:gpu-memory": "3",
+        },
+        main = "test_mla_index_mxfp4.mojo",
+        tags = ["gpu"],
+        target_compatible_with = ["//:has_gpu"] + select({
+            "//:b200_gpu": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        deps = [
+            "//max:internal_utils",
+            "//max:kv_cache",
+            "//max:linalg",
+            "//max:nn",
+            "@mojo//:std",
+        ],
+    )
+    for name, defines in [
+        ("test_mla_index_mxfp4", []),
+        (
+            "test_mla_index_mxfp4_f32_fold",
+            [
+                "-D",
+                "FP8_INDEX_FOLD_DTYPE=float32",
+            ],
+        ),
+        # The token-major Q order, the other scale-factor permutation.
+        (
+            "test_mla_index_mxfp4_token_major",
+            [
+                "-D",
+                "FP8_INDEX_FOLD_DTYPE=float32",
+                "-D",
+                "FP8_INDEX_Q_INTERLEAVE=0",
+            ],
+        ),
+    ]
+]
