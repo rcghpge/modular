@@ -103,7 +103,6 @@ from std.logger import Logger
 comptime logger = Logger()
 
 from std.utils import IndexList
-from std.utils.index import Index
 
 # ===-----------------------------------------------------------------------===#
 from .kernels import *
@@ -263,7 +262,7 @@ struct RMSNormQuantizeDynamicScaledFloat8:
             width: Int, alignment: Int
         ](row: Int, col: Int) {var input} -> SIMD[input_type, width]:
             return input._lambda_load[width=width, element_alignment=alignment](
-                Index(row, col)
+                (row, col)
             )
 
         rms_norm_quantize_dynamic_scaled_fp8[
@@ -1586,7 +1585,7 @@ struct QuantizeTensorDynamicScaledFloat8:
             width: Int, alignment: Int
         ](row: Int, col: Int) {var input} -> SIMD[input_type, width]:
             return input._lambda_load[width=width, element_alignment=alignment](
-                Index(row, col)
+                (row, col)
             )
 
         quantize_tensor_dynamic_scaled_fp8[
@@ -1634,7 +1633,7 @@ struct QuantizeDynamicScaledFloat8:
             width: Int, alignment: Int
         ](row: Int, col: Int) {var input} -> SIMD[input_type, width]:
             return input._lambda_load[width=width, element_alignment=alignment](
-                Index(row, col)
+                (row, col)
             )
 
         quantize_dynamic_scaled_fp8[
@@ -1691,7 +1690,7 @@ struct QuantizeDynamicScaledFloat8RowBounded:
             width: Int, alignment: Int
         ](row: Int, col: Int) {var input} -> SIMD[input_type, width]:
             return input._lambda_load[width=width, element_alignment=alignment](
-                Index(row, col)
+                (row, col)
             )
 
         # `row_offsets` is the grouped-matmul prefix sum, so its last entry is

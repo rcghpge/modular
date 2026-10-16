@@ -3376,7 +3376,7 @@ def _sparse_gather_indices[
 
     The caller keeps `scratch` alive until its kernels are enqueued.
     """
-    var buf = ctx.enqueue_create_buffer[DType.int32](sparse_indices.size())
+    var buf = ctx.enqueue_create_buffer[.int32](sparse_indices.size())
     var ptr = buf.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin]()
     paged_sparse_kv_index_remap[target, page_size, indices_stride, cache_dtype](
         ptr,

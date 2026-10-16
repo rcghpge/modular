@@ -71,8 +71,6 @@ from std.logger import Logger
 
 comptime logger = Logger()
 
-from std.utils import IndexList
-
 # ===-----------------------------------------------------------------------===#
 from .kernels import *
 
@@ -528,7 +526,7 @@ struct Struct_fused_qk_rms_norm_rope_ragged_paged[interleaved: Bool]:
             width: Int, alignment: Int
         ](token: Int, head: Int, col: Int) {var q_proj} -> SIMD[dtype, width]:
             return q_proj._fused_load[width=width, element_alignment=alignment](
-                IndexList[3](token, head, col)
+                (token, head, col)
             )
 
         fused_qk_rms_norm_rope_ragged_paged[
@@ -697,7 +695,7 @@ def load_staged_row[
         The `width` elements starting at `[token, head, col]`.
     """
     return proj._fused_load[width=width, element_alignment=alignment](
-        IndexList[3](token, head, col)
+        (token, head, col)
     )
 
 
