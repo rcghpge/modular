@@ -17,6 +17,7 @@ from layout import TileTensor, row_major
 from layout._fillers import random
 from state_space.causal_conv1d import (
     causal_conv1d_channel_first_fwd_cpu,
+    causal_conv1d_channel_first_fwd_cpu_no_bias,
 )
 from std.testing import TestSuite, assert_almost_equal
 
@@ -39,6 +40,7 @@ def silu_ref[dtype: DType](x: Scalar[dtype]) -> Scalar[dtype]:
 def run_causal_conv1d[
     dtype: DType,
     activation: StaticString,
+    with_bias: Bool = True,
 ](batch: Int, dim: Int, seqlen: Int, width: Int, rtol: Float64 = 0.01,) raises:
     """Test causal conv1d kernel against reference implementation."""
     # Allocate host memory
@@ -74,6 +76,9 @@ def run_causal_conv1d[
     var input_buf = input_h
     var weight_buf = weight_h
     var bias_buf = bias_h
+    comptime if not with_bias:
+        for c in range(dim):
+            bias_h.store[width=1]((c,), Scalar[dtype](0))
     var result_unfused_buf = result_unfused_h
 
     # Strides for channel-first layout (B, C, L)
@@ -89,22 +94,29 @@ def run_causal_conv1d[
     var silu_activation = activation == "silu"
 
     # Test kernel
-    causal_conv1d_channel_first_fwd_cpu[
-        dtype,
-        dtype,
-        dtype,
-        dtype,
-    ](
-        batch,
-        dim,
-        seqlen,
-        width,
-        input_h,
-        weight_h,
-        result_fused_h,
-        bias_h,
-        silu_activation,
-    )
+    comptime if with_bias:
+        causal_conv1d_channel_first_fwd_cpu[dtype, dtype, dtype, dtype](
+            batch,
+            dim,
+            seqlen,
+            width,
+            input_h,
+            weight_h,
+            result_fused_h,
+            bias_h,
+            silu_activation,
+        )
+    else:
+        causal_conv1d_channel_first_fwd_cpu_no_bias[dtype, dtype, dtype](
+            batch,
+            dim,
+            seqlen,
+            width,
+            input_h,
+            weight_h,
+            result_fused_h,
+            silu_activation,
+        )
 
     # Reference implementation
     var width_minus_1: Int = width - 1
@@ -183,3 +195,24 @@ def test_causal_conv1d_various_widths() raises:
 def test_causal_conv1d_large_sequence() raises:
     """Test causal conv1d with larger sequence length."""
     run_causal_conv1d[.float32, "none"](2, 16, 128, 3)
+
+
+def test_causal_conv1d_no_bias() raises:
+    """Test the no-bias channel-first kernel, including SIMD tails."""
+    run_causal_conv1d[.float32, "none", False](2, 4, 8, 3)
+    run_causal_conv1d[.float32, "silu", False](2, 5, 37, 4)
+    run_causal_conv1d[.float32, "none", False](1, 3, 130, 2)
+
+
+def test_causal_conv1d_odd_sequence_lengths() raises:
+    """Test sequence lengths that straddle the vector width."""
+    run_causal_conv1d[.float32, "none"](2, 3, 5, 4)
+    run_causal_conv1d[.float32, "silu"](1, 3, 33, 4)
+    run_causal_conv1d[.float32, "none"](1, 2, 1, 3)
+
+
+def test_causal_conv1d_wide_filters() raises:
+    """Filters wider than four taps and wider than a SIMD vector."""
+    run_causal_conv1d[.float32, "none"](1, 3, 37, 5)
+    run_causal_conv1d[.float32, "silu"](1, 2, 40, 20)
+    run_causal_conv1d[.float32, "none", False](1, 2, 40, 7)

@@ -74,6 +74,17 @@ from nn.activations import silu
 # ===----------------------------------------------------------------------=== #
 
 
+@inline(.always)
+def _silu_cast[
+    dtype: DType, width: Int
+](v: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    """Applies SiLU, computing in float32 for non-floating-point dtypes."""
+    comptime if dtype.is_floating_point():
+        return silu(v)
+    else:
+        return silu(v.cast[.float32]()).cast[dtype]()
+
+
 def causal_conv1d_channel_first_fwd_cpu[
     x_dtype: DType,
     weight_dtype: DType,
@@ -115,6 +126,10 @@ def causal_conv1d_channel_first_fwd_cpu[
         silu_activation: Whether to apply SiLU activation.
         ctx: The context to execute the work on.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-first kernels require unit sequence stride",
+    )
     var width_minus_1: Int = width - 1
     var total_bc = batch * dim
 
@@ -138,47 +153,51 @@ def causal_conv1d_channel_first_fwd_cpu[
             bias.load[width=1]((c,))
         )
 
-        # Pre-load weights for this channel to reduce memory access
-        var w0: Scalar[weight_dtype] = 0
-        var w1: Scalar[weight_dtype] = 0
-        var w2: Scalar[weight_dtype] = 0
-        var w3: Scalar[weight_dtype] = 0
-        if width >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c, 0)))
-        if width >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c, 1)))
-        if width >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c, 2)))
-        if width >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c, 3)))
-
-        # Process all sequence positions
-        for l in range(seqlen):
-            var conv_sum: Scalar[output_dtype] = cur_bias
-
-            for w in range(width):
-                var input_l: Int = l - (width_minus_1 - w)
-                if input_l >= 0:
-                    var input_val: Scalar[x_dtype] = x.load[width=1](
-                        (b, c, input_l)
+        def conv_chunk[
+            simd_width: Int
+        ](l: Int) {
+            imm x,
+            imm weight,
+            imm output,
+            cur_bias,
+            b,
+            c,
+            width,
+            width_minus_1,
+            silu_activation,
+            mut,
+        }:
+            var conv_sum = SIMD[output_dtype, simd_width](cur_bias)
+            if l >= width_minus_1:
+                for w in range(width):
+                    var input_val = x.load[width=simd_width](
+                        (b, c, l - (width_minus_1 - w))
                     )
-                    # Select weight based on position
-                    var weight_val: Scalar[weight_dtype] = w0 if w == 0 else (
-                        w1 if w == 1 else (w2 if w == 2 else w3)
+                    var weight_val = Scalar[x_dtype](
+                        weight.load[width=1]((c, w))
                     )
-                    conv_sum = conv_sum + Scalar[output_dtype](
-                        input_val * Scalar[x_dtype](weight_val)
-                    )
-
-            var out_val: Scalar[output_dtype] = conv_sum
+                    conv_sum += (input_val * weight_val).cast[output_dtype]()
+            else:
+                # The first window reaches before the sequence start, so
+                # those taps are zero per lane.
+                comptime for i in range(simd_width):
+                    var lane_sum: Scalar[output_dtype] = cur_bias
+                    for w in range(width):
+                        var input_l: Int = l + i - (width_minus_1 - w)
+                        if input_l >= 0:
+                            var input_val = x.load[width=1]((b, c, input_l))
+                            var weight_val = Scalar[x_dtype](
+                                weight.load[width=1]((c, w))
+                            )
+                            lane_sum += Scalar[output_dtype](
+                                input_val * weight_val
+                            )
+                    conv_sum[i] = lane_sum
             if silu_activation:
-                comptime if output_dtype.is_floating_point():
-                    out_val = silu(out_val)
-                else:
-                    out_val = silu(out_val.cast[.float32]()).cast[
-                        output_dtype
-                    ]()
-            output.store[width=1]((b, c, l), out_val)
+                conv_sum = _silu_cast(conv_sum)
+            output.store[width=simd_width]((b, c, l), conv_sum)
+
+        vectorize[simd_width_of[output_dtype]()](seqlen, conv_chunk)
 
     sync_parallelize(process_bc, total_bc, ctx)
 
@@ -220,6 +239,10 @@ def causal_conv1d_channel_first_fwd_cpu_no_bias[
         silu_activation: Whether to apply SiLU activation.
         ctx: The context to execute the work on.
     """
+    debug_assert(
+        x.dynamic_stride(2) == 1 and output.dynamic_stride(2) == 1,
+        "channel-first kernels require unit sequence stride",
+    )
     var width_minus_1: Int = width - 1
     var total_bc = batch * dim
 
@@ -227,47 +250,52 @@ def causal_conv1d_channel_first_fwd_cpu_no_bias[
     def process_bc(bc_idx: Int) {imm}:
         var b, c = divmod(bc_idx, dim)
 
-        # Pre-load weights for this channel to reduce memory access
-        var w0: Scalar[weight_dtype] = 0
-        var w1: Scalar[weight_dtype] = 0
-        var w2: Scalar[weight_dtype] = 0
-        var w3: Scalar[weight_dtype] = 0
-        if width >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c, 0)))
-        if width >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c, 1)))
-        if width >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c, 2)))
-        if width >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c, 3)))
-
-        # Process all sequence positions
-        for l in range(seqlen):
-            var conv_sum: Scalar[output_dtype] = 0.0
-
-            for w in range(width):
-                var input_l: Int = l - (width_minus_1 - w)
-                if input_l >= 0:
-                    var input_val: Scalar[x_dtype] = x.load[width=1](
-                        (b, c, input_l)
+        def conv_chunk[
+            simd_width: Int
+        ](l: Int) {
+            imm x,
+            imm weight,
+            imm output,
+            b,
+            c,
+            width,
+            width_minus_1,
+            silu_activation,
+            mut,
+        }:
+            var conv_sum = SIMD[output_dtype, simd_width](
+                Scalar[output_dtype](0)
+            )
+            if l >= width_minus_1:
+                for w in range(width):
+                    var input_val = x.load[width=simd_width](
+                        (b, c, l - (width_minus_1 - w))
                     )
-                    # Select weight based on position
-                    var weight_val: Scalar[weight_dtype] = w0 if w == 0 else (
-                        w1 if w == 1 else (w2 if w == 2 else w3)
+                    var weight_val = Scalar[x_dtype](
+                        weight.load[width=1]((c, w))
                     )
-                    conv_sum = conv_sum + Scalar[output_dtype](
-                        input_val * Scalar[x_dtype](weight_val)
-                    )
-
-            var out_val: Scalar[output_dtype] = conv_sum
+                    conv_sum += (input_val * weight_val).cast[output_dtype]()
+            else:
+                # The first window reaches before the sequence start, so
+                # those taps are zero per lane.
+                comptime for i in range(simd_width):
+                    var lane_sum: Scalar[output_dtype] = Scalar[output_dtype](0)
+                    for w in range(width):
+                        var input_l: Int = l + i - (width_minus_1 - w)
+                        if input_l >= 0:
+                            var input_val = x.load[width=1]((b, c, input_l))
+                            var weight_val = Scalar[x_dtype](
+                                weight.load[width=1]((c, w))
+                            )
+                            lane_sum += Scalar[output_dtype](
+                                input_val * weight_val
+                            )
+                    conv_sum[i] = lane_sum
             if silu_activation:
-                comptime if output_dtype.is_floating_point():
-                    out_val = silu(out_val)
-                else:
-                    out_val = silu(out_val.cast[.float32]()).cast[
-                        output_dtype
-                    ]()
-            output.store[width=1]((b, c, l), out_val)
+                conv_sum = _silu_cast(conv_sum)
+            output.store[width=simd_width]((b, c, l), conv_sum)
+
+        vectorize[simd_width_of[output_dtype]()](seqlen, conv_chunk)
 
     sync_parallelize(process_bc, total_bc, ctx)
 

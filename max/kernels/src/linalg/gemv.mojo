@@ -3061,29 +3061,35 @@ def naive_gemv(
     a_buf: TileTensor[mut=False, ...],
     b_buf: TileTensor[mut=False, ...],
 ):
-    """Computes a reference matrix-vector product C = A * b using a scalar nested loop.
+    """Computes a reference matrix-vector product C = A * b.
 
-    Iterates over K then M, accumulating each A[m, k] * b[k] into c[m]. Intended for
+    Computes each C[m] as a SIMD dot product of row m of A with b. Intended for
     correctness testing rather than performance-critical paths.
 
     Args:
-        c_buf: Output TileTensor of length M, zero-filled on entry.
+        c_buf: Output TileTensor of length M.
         a_buf: Input matrix TileTensor of shape (M, K).
         b_buf: Input vector TileTensor of length K.
     """
     comptime c_type = c_buf.dtype
+    comptime width = simd_width_of[c_type]()
     var M = Int(a_buf.dim[0]())
     var K = Int(a_buf.dim[1]())
-    var c_ptr = c_buf.ptr
-    var a_ptr = a_buf.ptr
-    var b_ptr = b_buf.ptr
+    var vector_end = align_down(K, width)
 
-    _ = c_buf.fill(0)
-    for k in range(K):
-        var b_val = b_ptr[k].cast[c_type]()
-        for m in range(M):
-            var a_val = a_ptr[m * K + k].cast[c_type]()
-            c_ptr[m] += a_val * b_val
+    for m in range(M):
+        var acc = SIMD[c_type, width](0)
+        for k in range(0, vector_end, width):
+            var a_vec = a_buf.load[width=width]((m, k))
+            var b_vec = b_buf.load[width=width]((k,))
+            acc += a_vec.cast[c_type]() * b_vec.cast[c_type]()
+        var dot = acc.reduce_add()
+        for k in range(vector_end, K):
+            dot += (
+                a_buf.load[width=1]((m, k)).cast[c_type]()
+                * b_buf.load[width=1]((k,)).cast[c_type]()
+            )[0]
+        c_buf.store[width=1]((m,), SIMD[c_type, 1](dot))
 
 
 struct _MmaCpAsyncGmemLoaderA[

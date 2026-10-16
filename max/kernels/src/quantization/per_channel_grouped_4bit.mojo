@@ -15,7 +15,7 @@
 from std.math import ceil, ceildiv
 from std.sys.info import size_of
 
-from layout import TileTensor
+from layout import TileTensor, row_major
 from std.memory import UnsafePointer, bitcast, unsafe_memcpy
 from std.utils import IndexList, StaticTuple
 
@@ -495,11 +495,19 @@ def q4_k_dequantize_impl(
     comptime block_nbytes = size_of[block_Q4_K]()
 
     var num_blocks = input_tt.num_elements() // block_nbytes
+    # The q_bits array is the last field of the block.
+    comptime q_bits_offset = block_nbytes - block_QK_K.quantized_k // 2
     var input_q4_k_ptr = input_tt.ptr.bitcast[block_Q4_K]()
-    var output_ptr = output_tt.ptr.bitcast[Float32]()
+    var input_flat = TileTensor(
+        input_tt.ptr, row_major(input_tt.num_elements())
+    )
+    var output_flat = TileTensor(
+        output_tt.ptr, row_major(output_tt.num_elements())
+    )
     for block_idx in range(num_blocks):
         var src_ptr = input_q4_k_ptr + block_idx
-        var dst_ptr = output_ptr + (block_idx * block_nelems)
+        var src_base = block_idx * block_nbytes + q_bits_offset
+        var dst_base = block_idx * block_nelems
 
         # d
         var b_scale = src_ptr[].base_scale.cast[.float32]()
@@ -524,25 +532,18 @@ def q4_k_dequantize_impl(
             var q_bits_idx = group_idx * group_nbytes
             var dst_idx = group_idx * group_nelems
 
-            # Dequantize 1st group bits.
-            comptime for elem_idx in range(group_nelems):
-                dst_ptr[dst_idx + elem_idx] = (
-                    d1
-                    * (src_ptr[].q_bits[q_bits_idx + elem_idx] & 0xF).cast[
-                        DType.float32
-                    ]()
-                    - m1
-                )
-
-            # Dequantize 2nd group bits.
-            comptime for elem_idx in range(group_nelems):
-                dst_ptr[dst_idx + group_nelems + elem_idx] = (
-                    d2
-                    * (src_ptr[].q_bits[q_bits_idx + elem_idx] >> 4).cast[
-                        DType.float32
-                    ]()
-                    - m2
-                )
+            var q_bytes = input_flat.load[width=group_nelems](
+                (src_base + q_bits_idx,)
+            )
+            # The low nibbles are group_idx and the high nibbles group_idx + 1.
+            output_flat.store(
+                (dst_base + dst_idx,),
+                d1 * (q_bytes & 0xF).cast[.float32]() - m1,
+            )
+            output_flat.store(
+                (dst_base + dst_idx + group_nelems,),
+                d2 * (q_bytes >> 4).cast[.float32]() - m2,
+            )
 
 
 ######
@@ -594,56 +595,55 @@ def q6_k_dequantize_impl[
     comptime block_nbytes = size_of[block_Q6_K]()
 
     var num_blocks = (output_shape[0] * output_shape[1]) // block_nelems
+    # Block layout: low 4 bits, then high 2 bits, then scales and the base.
+    comptime qh_offset = block_QK_K.quantized_k // 2
     var input_q6_k_ptr = input_tt.ptr.bitcast[block_Q6_K]()
-    var dst_ptr = output_tt.ptr.bitcast[Float32]()
-    var dst_idx = 0
+    var input_flat = TileTensor(
+        input_tt.ptr, row_major(input_tt.num_elements())
+    )
+    var output_flat = TileTensor(
+        output_tt.ptr, row_major(output_tt.num_elements())
+    )
     for block_idx in range(num_blocks):
         var src_ptr = input_q6_k_ptr + block_idx
+        var src_base = block_idx * block_nbytes
+        var dst_base = block_idx * block_nelems
 
         var d = src_ptr[].base_scale.cast[.float32]()
 
-        var ql: UnsafePointer[
-            UInt8, origin_of(src_ptr[].q_bits_lo)
-        ] = src_ptr[].q_bits_lo.unsafe_ptr()
-        var qh: UnsafePointer[
-            UInt8, origin_of(src_ptr[].q_bits_hi)
-        ] = src_ptr[].q_bits_hi.unsafe_ptr()
-        var sc: UnsafePointer[
-            Int8, origin_of(src_ptr[].q_scales)
-        ] = src_ptr[].q_scales.unsafe_ptr()
-
         # Process 8 groups at a time.
-        comptime for _ in range(0, block_Q6_K.group_count, 8):
-            comptime for l in range(32):
-                var sc_idx = l // 16
-                var q1 = ((ql[l + 0] & 0xF) | (((qh[l] >> 0) & 3) << 4)).cast[
-                    DType.int8
-                ]() - 32
-                var q2 = ((ql[l + 32] & 0xF) | (((qh[l] >> 2) & 3) << 4)).cast[
-                    DType.int8
-                ]() - 32
-                var q3 = ((ql[l + 0] >> 4) | (((qh[l] >> 4) & 3) << 4)).cast[
-                    DType.int8
-                ]() - 32
-                var q4 = ((ql[l + 32] >> 4) | (((qh[l] >> 6) & 3) << 4)).cast[
-                    DType.int8
-                ]() - 32
+        comptime for half in range(block_Q6_K.group_count // 8):
+            var ql_idx = src_base + half * 64
+            var qh_idx = src_base + qh_offset + half * 32
+            var ql_lo = input_flat.load[width=32]((ql_idx,))
+            var ql_hi = input_flat.load[width=32]((ql_idx + 32,))
+            var qh_vec = input_flat.load[width=32]((qh_idx,))
+            var q1 = ((ql_lo & 0xF) | ((qh_vec & 3) << 4)).cast[.int8]() - 32
+            var q2 = ((ql_hi & 0xF) | (((qh_vec >> 2) & 3) << 4)).cast[
+                .int8
+            ]() - 32
+            var q3 = ((ql_lo >> 4) | (((qh_vec >> 4) & 3) << 4)).cast[
+                .int8
+            ]() - 32
+            var q4 = ((ql_hi >> 4) | (((qh_vec >> 6) & 3) << 4)).cast[
+                .int8
+            ]() - 32
 
-                dst_ptr[l + 0] = (
-                    d * sc[sc_idx + 0].cast[.float32]() * q1.cast[.float32]()
+            # Each pair of scales covers the 16 lanes of the low and high half.
+            comptime for k in range(4):
+                var scale_pair = SIMD[.float32, 16](
+                    src_ptr[].q_scales[half * 8 + 2 * k].cast[.float32]()
+                ).join(
+                    SIMD[.float32, 16](
+                        src_ptr[]
+                        .q_scales[half * 8 + 2 * k + 1]
+                        .cast[.float32]()
+                    )
                 )
-                dst_ptr[l + 32] = (
-                    d * sc[sc_idx + 2].cast[.float32]() * q2.cast[.float32]()
+                var q = q1 if k == 0 else (
+                    q2 if k == 1 else (q3 if k == 2 else q4)
                 )
-                dst_ptr[l + 64] = (
-                    d * sc[sc_idx + 4].cast[.float32]() * q3.cast[.float32]()
+                output_flat.store(
+                    (dst_base + half * 128 + 32 * k,),
+                    d * scale_pair * q.cast[.float32](),
                 )
-                dst_ptr[l + 96] = (
-                    d * sc[sc_idx + 6].cast[.float32]() * q4.cast[.float32]()
-                )
-
-            dst_ptr += 128
-            dst_idx += 128
-            ql += 64
-            qh += 32
-            sc += 8

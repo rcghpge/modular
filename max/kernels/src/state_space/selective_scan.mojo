@@ -46,6 +46,34 @@ def _is_unit_stride[axis: Int](t: TileTensor[...]) -> Bool:
     return Int(t.layout.stride[axis]().value()) == 1
 
 
+@always_inline
+def _load_dstate_2[
+    DSTATE: Int
+](t: TileTensor[...], i0: Int) -> SIMD[.float32, MAX_DSTATE]:
+    """Loads `t[i0, 0:DSTATE]` as float32, zero-padded to `MAX_DSTATE`."""
+    comptime if DSTATE == MAX_DSTATE:
+        if _is_unit_stride[1](t):
+            return t.load[width=MAX_DSTATE]((i0, 0)).cast[.float32]()
+    var vals = SIMD[.float32, MAX_DSTATE](0.0)
+    comptime for n in range(DSTATE):
+        vals[n] = t.load[width=1]((i0, n)).cast[.float32]()[0]
+    return vals
+
+
+@always_inline
+def _load_dstate_3[
+    DSTATE: Int
+](t: TileTensor[...], i0: Int, i1: Int) -> SIMD[.float32, MAX_DSTATE]:
+    """Loads `t[i0, i1, 0:DSTATE]` as float32, zero-padded to `MAX_DSTATE`."""
+    comptime if DSTATE == MAX_DSTATE:
+        if _is_unit_stride[2](t):
+            return t.load[width=MAX_DSTATE]((i0, i1, 0)).cast[.float32]()
+    var vals = SIMD[.float32, MAX_DSTATE](0.0)
+    comptime for n in range(DSTATE):
+        vals[n] = t.load[width=1]((i0, i1, n)).cast[.float32]()[0]
+    return vals
+
+
 # ===----------------------------------------------------------------------=== #
 # Activation Functions
 # ===----------------------------------------------------------------------=== #
@@ -823,28 +851,19 @@ def selective_scan_update_cpu[
         var x_val = x.load[width=1]((b, d)).cast[.float32]()
 
         # Load A values and pre-multiply by LOG2E
-        var A_vals = SIMD[.float32, MAX_DSTATE](0.0)
-
-        comptime for n in range(DSTATE):
-            A_vals[n] = A.load[width=1]((d, n)).cast[.float32]() * LOG2E
+        var A_vals = _load_dstate_2[DSTATE](A, d) * LOG2E
 
         # Compute dA
         var dA = exp2(A_vals * dt_val)
 
         # Load B values using group_id
-        var B_vals = SIMD[.float32, MAX_DSTATE](0.0)
-
-        comptime for n in range(DSTATE):
-            B_vals[n] = B.load[width=1]((b, group_id, n)).cast[.float32]()
+        var B_vals = _load_dstate_3[DSTATE](B, b, group_id)
 
         # Compute dB
         var dB = B_vals * dt_val
 
         # Load current state from state_in
-        var state_vals = SIMD[.float32, MAX_DSTATE](0.0)
-
-        comptime for n in range(DSTATE):
-            state_vals[n] = state_in.load[width=1]((b, d, n)).cast[.float32]()
+        var state_vals = _load_dstate_3[DSTATE](state_in, b, d)
 
         # Update state
         state_vals = state_vals * dA + dB * x_val
@@ -857,10 +876,7 @@ def selective_scan_update_cpu[
             )
 
         # Load C values using group_id
-        var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
-
-        comptime for n in range(DSTATE):
-            C_vals[n] = C.load[width=1]((b, group_id, n)).cast[.float32]()
+        var C_vals = _load_dstate_3[DSTATE](C, b, group_id)
         # Compute output
         var out_val = (state_vals * C_vals).reduce_add()
 
