@@ -13,6 +13,13 @@
 
 """Hy4 layer modules."""
 
+from .attention import HYV4Attention
 from .hyper_connection import HYV4HyperConnection, HYV4HyperHead
+from .indexer import HYV4Indexer
 
-__all__ = ["HYV4HyperConnection", "HYV4HyperHead"]
+__all__ = [
+    "HYV4Attention",
+    "HYV4HyperConnection",
+    "HYV4HyperHead",
+    "HYV4Indexer",
+]
