@@ -546,7 +546,7 @@ def blockwise_scaled_fp8_matmul_amd_kernel[
     """
     # K-band id from grid.z, split mode only: `num_splits == 1` must not read
     # block_idx.z (this kernel may run as a device fn under a different grid.z).
-    var split_id = Int(block_idx.z) if num_splits > 1 else 0
+    var split_id = block_idx.z if num_splits > 1 else 0
     # `c` is the stacked (num_splits*M, N) workspace when splitting, so the
     # true row count comes from `a`.
     var M = Int(a.dim[0]())
@@ -584,8 +584,8 @@ def blockwise_scaled_fp8_matmul_amd_kernel[
         b,
         a_scales,
         b_scales,
-        Int(block_idx.y),
-        Int(block_idx.x),
+        block_idx.y,
+        block_idx.x,
         0,
         M,
         split_id,
