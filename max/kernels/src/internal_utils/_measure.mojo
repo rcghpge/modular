@@ -54,7 +54,7 @@ def kl_div(
 def kl_div[
     dtype: DType, //
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     x: UnsafePointer[mut=False, Scalar[dtype], _],
     y: UnsafePointer[mut=False, Scalar[dtype], _],
     len: Int,
@@ -289,7 +289,7 @@ def relative_difference[
 def _sqrt[
     dtype: DType, //
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     x: UnsafePointer[mut=False, Scalar[dtype], _],
     len: Int,
     ctx: DeviceContext,
@@ -308,7 +308,7 @@ def _sqrt[
 def _mul[
     dtype: DType, //
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     x: UnsafePointer[mut=False, Scalar[dtype], _],
     y: UnsafePointer[mut=False, Scalar[dtype], _],
     len: Int,
@@ -329,7 +329,7 @@ def _mul[
 def _div[
     dtype: DType, //
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     x: UnsafePointer[mut=False, Scalar[dtype], _],
     c: Scalar[dtype],
     len: Int,

@@ -194,7 +194,7 @@ struct PagedKVRemap[page_size: Int](SparseIndexRemap):
     @inline(.always)
     def __init__(
         out self,
-        physical_out: UnsafePointer[mut=True, Int32, _],
+        physical_out: MutPointer[Int32, _],
         lut: UnsafePointer[UInt32, _],
         lut_cols: Int,
         lut_rows: Int,
@@ -328,7 +328,7 @@ def paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
     target: StaticString,
     page_size: Int,
 ](
-    physical_out: UnsafePointer[mut=True, Int32, _],
+    physical_out: MutPointer[Int32, _],
     logical: UnsafePointer[mut=False, Int32, _],
     input_row_offsets: UnsafePointer[mut=False, UInt32, _],
     lut: UnsafePointer[mut=False, UInt32, _],
@@ -419,7 +419,7 @@ def paged_sparse_kv_index_remap[
     indices_stride: Int,
     cache_dtype: DType,
 ](
-    physical_out: UnsafePointer[mut=True, Int32, _],
+    physical_out: MutPointer[Int32, _],
     sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
     input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
     kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],

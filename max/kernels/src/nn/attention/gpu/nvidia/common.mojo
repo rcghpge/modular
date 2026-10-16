@@ -353,7 +353,7 @@ struct MHAPosition[
     @inline(.always)
     def q_out_gmem_tensor[
         dtype: DType
-    ](self, ptr: UnsafePointer[mut=True, Scalar[dtype], _]) -> TileTensor[
+    ](self, ptr: MutPointer[Scalar[dtype], _]) -> TileTensor[
         dtype, Self.q_output_gmem_layout, type_of(ptr).origin
     ]:
         """Views this tile's `BM x depth` output block in global memory.

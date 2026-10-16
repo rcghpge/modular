@@ -734,7 +734,7 @@ struct SplitKTileScheduler[
     @staticmethod
     @inline(.always)
     def wait_eq(
-        lock_ptr: UnsafePointer[mut=True, Int32, _],
+        lock_ptr: MutPointer[Int32, _],
         barrier_id: Int32,
         barrier_group_thread_idx: Int,
         lock_idx: UInt32,
@@ -748,7 +748,7 @@ struct SplitKTileScheduler[
     @staticmethod
     @inline(.always)
     def wait_lt(
-        lock_ptr: UnsafePointer[mut=True, Int32, _],
+        lock_ptr: MutPointer[Int32, _],
         barrier_id: Int32,
         barrier_group_thread_idx: Int,
         lock_idx: UInt32,
@@ -762,7 +762,7 @@ struct SplitKTileScheduler[
     @staticmethod
     @inline(.always)
     def arrive_set(
-        lock_ptr: UnsafePointer[mut=True, Int32, _],
+        lock_ptr: MutPointer[Int32, _],
         barrier_id: Int32,
         barrier_group_thread_idx: Int,
         lock_idx: UInt32,

@@ -128,7 +128,7 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
             src_ptr += Self._packed_stride
 
     @inline(.always)
-    def _unpack_int4(self, var dst_ptr: UnsafePointer[mut=True, UInt8, _]):
+    def _unpack_int4(self, var dst_ptr: MutPointer[UInt8, _]):
         comptime assert Self.bit_width == 4
         comptime assert (Self.block_m % (2 * Self._tuple_width)) == 0
 
@@ -190,7 +190,7 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
     @inline(.always)
     def _unpack_int6[
         zero_point: UInt8
-    ](self, var dst_ptr: UnsafePointer[mut=True, UInt8, _]):
+    ](self, var dst_ptr: MutPointer[UInt8, _]):
         comptime assert Self.bit_width == 6
         comptime assert (Self.block_m % (4 * Self._tuple_width)) == 0
 
@@ -238,7 +238,7 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
     @inline(.always)
     def unpack[
         *, zero_point: UInt8 = 0
-    ](self, var dst_ptr: UnsafePointer[mut=True, UInt8, _]):
+    ](self, var dst_ptr: MutPointer[UInt8, _]):
         """Unpacks the local storage to the supplied external buffer."""
         comptime assert (Self._packed_stride % Self._simd_width) == 0
 
@@ -359,10 +359,7 @@ def _quantize_a_Q8_K[
 
 def _expand_q_bits_lo[
     *, width: Int
-](
-    var src_ptr: UnsafePointer[UInt8, ...],
-    var dst_ptr: UnsafePointer[mut=True, UInt8, ...],
-):
+](var src_ptr: UnsafePointer[UInt8, ...], var dst_ptr: MutPointer[UInt8, ...],):
     for _k in range(0, _block_QK_K.quantized_k // 2, width):
         var src_q_bits = src_ptr.load[width=width]()
         src_ptr += width
@@ -374,10 +371,7 @@ def _expand_q_bits_lo[
 
 def _expand_and_merge_q_bits_hi[
     *, width: Int, bit_count: Int
-](
-    var src_ptr: UnsafePointer[UInt8, ...],
-    var dst_ptr: UnsafePointer[mut=True, UInt8, ...],
-):
+](var src_ptr: UnsafePointer[UInt8, ...], var dst_ptr: MutPointer[UInt8, ...],):
     comptime values_per_byte = 8 // bit_count
     comptime bit_mask = (1 << bit_count) - 1
 
@@ -396,10 +390,7 @@ def _expand_and_merge_q_bits_hi[
 
 def _copy_column_q_bits_to_block[
     block_n: Int
-](
-    var src_ptr: UnsafePointer[UInt8, _],
-    var dst_ptr: UnsafePointer[mut=True, UInt8, _],
-):
+](var src_ptr: UnsafePointer[UInt8, _], var dst_ptr: MutPointer[UInt8, _],):
     """Interleaves the linear source buffer to the blocked destination
     buffer.
     """
@@ -414,7 +405,7 @@ def _pack_block_Q4_K[
 ](
     var src_ptr: UnsafePointer[mut=False, _block_Q4_K, _],
     stride: Int,
-    dst_ptr: UnsafePointer[mut=True, _block_Q4_K_packed[block_n], _],
+    dst_ptr: MutPointer[_block_Q4_K_packed[block_n], _],
 ):
     comptime group_size = _block_Q4_K.group_size
     comptime group_count = _block_Q4_K.group_count
@@ -533,7 +524,7 @@ def _pack_block_Q6_K[
 ](
     var src_ptr: UnsafePointer[mut=False, _block_Q6_K, _],
     stride: Int,
-    dst_ptr: UnsafePointer[mut=True, _block_Q6_K_packed[block_n], _],
+    dst_ptr: MutPointer[_block_Q6_K_packed[block_n], _],
 ):
     comptime group_count = _block_Q6_K.group_count
 
@@ -770,7 +761,7 @@ def _matmul_group_unpacked[
     group_size: Int,
 ](
     a_q_bits_ptr: UnsafePointer[mut=False, Int8, _],
-    mut b_q_bits_ptr: UnsafePointer[mut=True, UInt8, _],
+    mut b_q_bits_ptr: MutPointer[UInt8, _],
     mut c_int32_group: _Accumulator[.int32, tile_m, tile_n, simd_width],
 ):
     """Streaming matrix multiplication where the B matrix has been unpacked to
@@ -945,7 +936,7 @@ def _accumulate_and_store[
     //,
     has_epilogue_fn: Bool,
 ](
-    c_ptr: UnsafePointer[mut=True, Float32, _],
+    c_ptr: MutPointer[Float32, _],
     N: Int,
     accumulate: Bool,
     mut c_float: _Accumulator[.float32, tile_m, tile_n, simd_width],
@@ -1019,7 +1010,7 @@ def _matmul_Q4_K_tile[
     a_ptr: UnsafePointer[_block_Q8_K_packed[_block_Q4_K.group_size], _],
     b_ptr: UnsafePointer[_block_Q4_K_packed[], _],
     b_q_scales_and_mins_buf: UnsafePointer[UInt8, _],
-    c_ptr: UnsafePointer[mut=True, Float32, _],
+    c_ptr: MutPointer[Float32, _],
     N: Int,
     accumulate: Bool,
     m: Int,
@@ -1108,7 +1099,7 @@ def _matmul_Q4_K_columns[
         mut=True, _block_Q8_K_packed[_block_Q4_K.group_size], _
     ],
     b_ptr: UnsafePointer[_block_Q4_K_packed[], _],
-    var c_ptr: UnsafePointer[mut=True, Float32, _],
+    var c_ptr: MutPointer[Float32, _],
     M: Int,
     N: Int,
     accumulate: Bool,
@@ -1267,7 +1258,7 @@ def _matmul_Q6_K_tile[
         mut=False, _block_Q8_K_packed[_block_Q6_K.group_size], _
     ],
     b_ptr: UnsafePointer[mut=False, _block_Q6_K_packed[], _],
-    c_ptr: UnsafePointer[mut=True, Float32, _],
+    c_ptr: MutPointer[Float32, _],
     N: Int,
     accumulate: Bool,
     m: Int,
@@ -1362,7 +1353,7 @@ def _matmul_Q6_K_columns[
         mut=True, _block_Q8_K_packed[_block_Q6_K.group_size], _
     ],
     b_ptr: UnsafePointer[_block_Q6_K_packed[], _],
-    var c_ptr: UnsafePointer[mut=True, Float32, _],
+    var c_ptr: MutPointer[Float32, _],
     M: Int,
     N: Int,
     accumulate: Bool,
@@ -1468,9 +1459,9 @@ def _matmul_Qb_K[
         EpilogueFnType: ElementwiseEpilogueFn,
         has_epilogue_fn: Bool,
     ](
-        var a_ptr: UnsafePointer[mut=True, _block_Q8_K_packed[group_size], _],
+        var a_ptr: MutPointer[_block_Q8_K_packed[group_size], _],
         b_ptr: UnsafePointer[b_type, _],
-        var c_ptr: UnsafePointer[mut=True, Float32, _],
+        var c_ptr: MutPointer[Float32, _],
         M: Int,
         N: Int,
         accumulate: Bool,

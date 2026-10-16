@@ -51,7 +51,7 @@ def _vectorized_copy_row[
     simd_width: Int,
 ](
     input_ptr: UnsafePointer[mut=False, Scalar[dtype], _],
-    output_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    output_ptr: MutPointer[Scalar[dtype], _],
     row_length: Int,
     threads_per_row: Int,
 ):
@@ -221,7 +221,7 @@ def _pad_constant_impl[
 def pad_constant[
     rank: Int, dtype: DType, padding_type: DType
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     input: UnsafePointer[mut=False, Scalar[dtype], _],
     input_shape: IndexList[rank],
@@ -412,7 +412,7 @@ def _pad_index_mode_impl[
     max_threads: Int = 256,
     threads_per_row: Int = 16,
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     input: UnsafePointer[mut=False, Scalar[dtype], _],
     input_shape: IndexList[rank],
@@ -495,7 +495,7 @@ def _pad_index_mode_impl[
 def pad_reflect[
     rank: Int, dtype: DType, padding_type: DType
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     input: UnsafePointer[mut=False, Scalar[dtype], _],
     input_shape: IndexList[rank],
@@ -538,7 +538,7 @@ def pad_reflect[
 def pad_repeat[
     rank: Int, dtype: DType, padding_type: DType
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     input: UnsafePointer[mut=False, Scalar[dtype], _],
     input_shape: IndexList[rank],

@@ -152,7 +152,7 @@ struct TileScheduler[
     @inline(.always)
     @staticmethod
     def work_info_from_clc_response(
-        result: UnsafePointer[mut=True, UInt128, _, address_space=.SHARED],
+        result: MutPointer[UInt128, _, address_space=.SHARED],
     ) -> WorkInfo:
         comptime asm = """{
             .reg .pred p1;

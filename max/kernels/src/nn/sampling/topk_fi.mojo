@@ -523,7 +523,7 @@ def device_sampling_from_prob[
     u: Float32,
     prob_vec: SIMD[.float32, vec_size],
     aggregate: Float32,
-    sampled_id_sram: UnsafePointer[mut=True, Int, _, address_space=.SHARED],
+    sampled_id_sram: MutPointer[Int, _, address_space=.SHARED],
 ) -> Tuple[Float32, Int]:
     """Device-level sampling from probability distribution with atomic operations.
 
@@ -1489,7 +1489,7 @@ def _sampling_rejection_loop_coop[
     mut generator: Random,
     mut coop: CoopRow[coop_size],
     coop_ws: UnsafePointer[Int32, MutAnyOrigin],
-    coop_table: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+    coop_table: MutPointer[Float32, _, address_space=.SHARED],
     vec_begin: Int,
     vec_end: Int,
     load_vec: LoadVecFn,
@@ -1674,7 +1674,7 @@ def _topk_topp_cutoff_search[
     mass_above_low_init: Float32,
     mut coop: CoopRow[coop_size],
     coop_ws: Optional[UnsafePointer[Int32, MutAnyOrigin]],
-    coop_table: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+    coop_table: MutPointer[Float32, _, address_space=.SHARED],
     vec_begin: Int,
     vec_end: Int,
     load_dist: LoadFn,

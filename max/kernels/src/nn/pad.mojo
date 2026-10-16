@@ -37,11 +37,7 @@ from std.utils import IndexList, StaticTuple
 @inline(.always)
 def _fill[
     dtype: DType
-](
-    dst: UnsafePointer[mut=True, Scalar[dtype], _],
-    value: Scalar[dtype],
-    count: Int,
-):
+](dst: MutPointer[Scalar[dtype], _], value: Scalar[dtype], count: Int,):
     _ = TileTensor(dst, row_major(count)).fill(value)
 
 
@@ -172,7 +168,7 @@ def pad_constant[
         input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
         paddings: UnsafePointer[Scalar[paddings_type], _],
         output_shape: IndexList[output_rank],
-        output_strides: UnsafePointer[mut=True, Int, _],
+        output_strides: MutPointer[Int, _],
         input_strides: UnsafePointer[Int, _],
     ) {var constant_cast}:
         return _pad_constant_impl[output_rank, dtype, paddings_type](
@@ -235,7 +231,7 @@ def pad_reflect[
         input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
         paddings: UnsafePointer[Scalar[paddings_type], _],
         output_shape: IndexList[output_rank],
-        output_strides: UnsafePointer[mut=True, Int, _],
+        output_strides: MutPointer[Int, _],
         input_strides: UnsafePointer[Int, _],
     ) {}:
         return _pad_reflect_impl[output_rank, dtype, paddings_type](
@@ -300,11 +296,11 @@ def _do_pad[
     paddings_type: DType,
     PadImplFn: ImplicitlyCopyable
     & def(
-        UnsafePointer[mut=True, Scalar[dtype], address_space=.GENERIC, ...],
+        MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
         UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
         UnsafePointer[Scalar[paddings_type], _],
         IndexList[OutputLayoutType.rank],
-        UnsafePointer[mut=True, Int, _],
+        MutPointer[Int, _],
         UnsafePointer[Int, _],
     ) -> None,
 ](
@@ -524,7 +520,7 @@ struct _AxisParams[rank: Int, dtype: DType, paddings_type: DType](
     @inline(.always)
     def base(
         mut self,
-        output: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        output: MutPointer[Scalar[Self.dtype], _],
         input: UnsafePointer[Scalar[Self.dtype], _],
         constant: Scalar[Self.dtype],
         axis_dim: Int,
@@ -551,7 +547,7 @@ struct _AxisParams[rank: Int, dtype: DType, paddings_type: DType](
 def _pad_constant_axis[
     rank: Int, dtype: DType, paddings_type: DType, axis: Int
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     input: UnsafePointer[Scalar[dtype], _],
     constant: Scalar[dtype],
     output_shape: IndexList[rank],
@@ -588,7 +584,7 @@ def _pad_constant_axis[
 def _pad_constant_impl[
     rank: Int, dtype: DType, paddings_type: DType
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     input: UnsafePointer[Scalar[dtype], _],
     paddings: UnsafePointer[Scalar[paddings_type], _],
     constant: Scalar[dtype],
@@ -644,7 +640,7 @@ def _memcpy_regions_fast[
     post_pad: Int,
     non_pad: Int,
     output_axis_stride: Int,
-    pre_pad_start_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    pre_pad_start_ptr: MutPointer[Scalar[dtype], _],
 ):
     @inline(.always)
     def _copy_reflected_rows[pre_copy: Bool]() {var}:
@@ -757,7 +753,7 @@ struct _AxisParamsReflect[rank: Int, dtype: DType, paddings_type: DType](
         mut self,
         output_axis_stride: Int,
         output_offset: Int,
-        output: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        output: MutPointer[Scalar[Self.dtype], _],
     ):
         var pre_pad_start_ptr = output + output_offset
 
@@ -777,7 +773,7 @@ def _pad_reflect_axis[
     paddings_type: DType,
     axis: Int,
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], address_space=.GENERIC, ...],
+    output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
     input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
     output_strides: UnsafePointer[Int, _],
     input_strides: UnsafePointer[Int, _],
@@ -831,11 +827,11 @@ def _pad_reflect_impl[
     dtype: DType,
     paddings_type: DType,
 ](
-    output: UnsafePointer[mut=True, Scalar[dtype], address_space=.GENERIC, ...],
+    output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
     input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
     paddings: UnsafePointer[Scalar[paddings_type], _],
     output_shape: IndexList[rank],
-    output_strides: UnsafePointer[mut=True, Int, _],
+    output_strides: MutPointer[Int, _],
     input_strides: UnsafePointer[Int, _],
 ):
     """

@@ -66,7 +66,7 @@ def _rand_mxfp4_value() -> Scalar[MXFP4_SF_DTYPE]:
 
 def _rand_mxfp4[
     scales_dtype: DType
-](ptr: UnsafePointer[mut=True, Scalar[scales_dtype], ...], size: Int):
+](ptr: MutPointer[Scalar[scales_dtype], ...], size: Int):
     comptime assert (
         scales_dtype == MXFP4_SF_DTYPE
     ), "_rand_mxfp4 only supports MXFP4 scales dtype"

@@ -76,7 +76,7 @@ def cenergy_gather_kernel(
 
 
 def cenergy_cpu_reference(
-    energygrid: UnsafePointer[mut=True, Float32, _],
+    energygrid: MutPointer[Float32, _],
     grid: GridDim,
     gridspacing: Float32,
     z: Float32,

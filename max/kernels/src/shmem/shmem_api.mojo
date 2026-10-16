@@ -885,7 +885,7 @@ def shmem_barrier_all():
 
 
 def shmem_signal_wait_until(
-    sig_addr: UnsafePointer[mut=True, UInt64, _], cmp: c_int, cmp_value: UInt64
+    sig_addr: MutPointer[UInt64, _], cmp: c_int, cmp_value: UInt64
 ):
     """Wait for a variable on the local PE to change from a signaling operation.
 
@@ -957,7 +957,7 @@ def shmem_fence():
 
 
 def shmem_signal_op(
-    sig_addr: UnsafePointer[mut=True, UInt64, _],
+    sig_addr: MutPointer[UInt64, _],
     signal: UInt64,
     sig_op: c_int,
     pe: c_int,

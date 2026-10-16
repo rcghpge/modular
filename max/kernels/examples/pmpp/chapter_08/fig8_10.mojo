@@ -157,7 +157,7 @@ def stencil_kernel(
 # ========================== TEST CODE ==========================
 def cpu_3d_stencil(
     h_in: UnsafePointer[mut=False, Float32, _],
-    h_out: UnsafePointer[mut=True, Float32, _],
+    h_out: MutPointer[Float32, _],
     N: Int,
     coeffs: UnsafePointer[mut=False, Float32, _],
 ):

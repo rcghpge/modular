@@ -219,7 +219,7 @@ def mm_tiled_kernel_double_buffer(
 def cpu_mm(
     A: UnsafePointer[Float32, _],
     B: UnsafePointer[Float32, _],
-    C: UnsafePointer[mut=True, Float32, _],
+    C: MutPointer[Float32, _],
     M: Int,
     N: Int,
     K: Int,

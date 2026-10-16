@@ -194,7 +194,7 @@ def _cblas_f32[
     ldc: Int32,
     alpha: Float32,
     beta: Float32,
-    c_ptr: UnsafePointer[mut=True, Float32, ...],
+    c_ptr: MutPointer[Float32, ...],
     a_ptr: UnsafePointer[mut=False, Float32, ...],
     b_ptr: UnsafePointer[mut=False, Float32, ...],
 ):
@@ -231,7 +231,7 @@ def _cblas_f32[
     ldc: Int32,
     alpha: Float32,
     beta: Float32,
-    c_ptr: UnsafePointer[mut=True, Float32, ...],
+    c_ptr: MutPointer[Float32, ...],
     a_ptr: UnsafePointer[mut=False, Float32, ...],
     b_ptr: UnsafePointer[mut=False, Float32, ...],
 ) raises:

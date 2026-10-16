@@ -528,7 +528,7 @@ def st_shared_v4_b32[
     dtype: DType,
     //,
 ](
-    dst: UnsafePointer[mut=True, Scalar[dtype], _, address_space=.SHARED],
+    dst: MutPointer[Scalar[dtype], _, address_space=.SHARED],
     elem_off: Int,
     packed: SIMD[.uint32, 4],
 ):
@@ -2660,7 +2660,7 @@ def store_global_pred[
     address_space: AddressSpace,
     //,
 ](
-    ptr: UnsafePointer[mut=True, Scalar[dtype], _, address_space=address_space],
+    ptr: MutPointer[Scalar[dtype], _, address_space=address_space],
     value: Scalar[dtype],
     pred: Int32,
 ):

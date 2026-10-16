@@ -415,7 +415,7 @@ def _load_tile_to_smem[
     SMEM_STRIDE: Int,
     NUM_THREADS: Int,
 ](
-    smem: UnsafePointer[mut=True, Scalar[dtype], _, address_space=.SHARED],
+    smem: MutPointer[Scalar[dtype], _, address_space=.SHARED],
     tile: TileTensor[dtype, tile_layout, ImmutAnyOrigin, Engine=tile_engine],
     block_row_offset: Int,
     k_offset: Int,
@@ -540,7 +540,7 @@ def _store_tile_regs[
     VECS_PER_THREAD: Int,
     VECTOR_WIDTH: Int,
 ](
-    smem: UnsafePointer[mut=True, Scalar[dtype], _, address_space=.SHARED],
+    smem: MutPointer[Scalar[dtype], _, address_space=.SHARED],
     regs: Array[SIMD[dtype, VECTOR_WIDTH], VECS_PER_THREAD],
     tid: Int,
 ):
@@ -564,8 +564,8 @@ def _compute_ktile[
     WARP_TILE_M: Int,
     WARP_TILE_N: Int,
 ](
-    a_smem: UnsafePointer[mut=True, Scalar[a_type], _, address_space=.SHARED],
-    b_smem: UnsafePointer[mut=True, Scalar[b_type], _, address_space=.SHARED],
+    a_smem: MutPointer[Scalar[a_type], _, address_space=.SHARED],
+    b_smem: MutPointer[Scalar[b_type], _, address_space=.SHARED],
     mut c_accum: Array[SIMD[s_type, CD_FRAG_SIZE], WARP_TILE_M * WARP_TILE_N],
     warp_m: Int,
     warp_n: Int,

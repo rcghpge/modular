@@ -431,7 +431,7 @@ def produce[
         BN=kv_sub_tile_rows(BN, KVLUTType.page_size),
         BK=padded_depth,
     ],
-    q_smem: UnsafePointer[mut=True, Scalar[qkv_type], _, address_space=.SHARED],
+    q_smem: MutPointer[Scalar[qkv_type], _, address_space=.SHARED],
     kv_smem: UnsafePointer[
         mut=True, Scalar[qkv_type], _, address_space=.SHARED
     ],

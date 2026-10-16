@@ -390,7 +390,7 @@ def store_z[
 @inline(.always)
 def read_x[
     row_count: Int, dtype: DType
-](src: UnsafePointer[mut=True, Scalar[dtype], _], start_index: Int):
+](src: MutPointer[Scalar[dtype], _], start_index: Int):
     """Stores row_count rows from AMX X registers starting at start_index to memory at src.
 
     Parameters:
@@ -407,7 +407,7 @@ def read_x[
 @inline(.always)
 def read_y[
     row_count: Int, dtype: DType
-](src: UnsafePointer[mut=True, Scalar[dtype], _], start_index: Int):
+](src: MutPointer[Scalar[dtype], _], start_index: Int):
     """Stores row_count rows from AMX Y registers starting at start_index to memory at src.
 
     Parameters:
@@ -424,7 +424,7 @@ def read_y[
 @inline(.always)
 def load_z[
     row_count: Int, dtype: DType
-](src: UnsafePointer[mut=True, Scalar[dtype], _], start_index: Int):
+](src: MutPointer[Scalar[dtype], _], start_index: Int):
     """Stores row_count rows from AMX Z accumulator registers starting at start_index to memory at src.
 
     Parameters:

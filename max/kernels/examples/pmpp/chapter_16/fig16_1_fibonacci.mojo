@@ -45,9 +45,7 @@ def fibonacci_bottomup(n: Int) -> Int:
     return result
 
 
-def fibonacci_topdown_helper(
-    n: Int, hash_table: UnsafePointer[mut=True, Int, _]
-) -> Int:
+def fibonacci_topdown_helper(n: Int, hash_table: MutPointer[Int, _]) -> Int:
     """Helper for top-down Fibonacci with memoization.
 
     Args:

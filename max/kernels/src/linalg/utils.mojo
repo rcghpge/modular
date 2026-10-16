@@ -72,7 +72,7 @@ def partial_simd_load[
 def partial_simd_store[
     dtype: DType, //, width: SIMDLength
 ](
-    storage: UnsafePointer[mut=True, Scalar[dtype], ...],
+    storage: MutPointer[Scalar[dtype], ...],
     lbound: Int,
     rbound: Int,
     data: SIMD[dtype, width],
@@ -1271,7 +1271,7 @@ def packA_i8mm[
     t1: Int,
     k: Int,
     a_ptr: UnsafePointer[mut=False, Scalar[a_type], ...],
-    a_packed_ptr: UnsafePointer[mut=True, Scalar[a_type], ...],
+    a_packed_ptr: MutPointer[Scalar[a_type], ...],
 ):
     """Packs a range of rows of matrix A for the i8mm kernel layout.
 

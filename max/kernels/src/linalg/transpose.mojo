@@ -372,7 +372,7 @@ def _permute_data[
     dtype: DType,
 ](
     input: UnsafePointer[mut=False, Scalar[dtype], _],
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     perms: UnsafePointer[mut=False, Int, _],
 ):
     """
@@ -544,7 +544,7 @@ def _process_tile[
     n: Int,
     M: Int,
     N: Int,
-    out_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    out_ptr: MutPointer[Scalar[dtype], _],
     in_ptr: UnsafePointer[Scalar[dtype], _],
 ):
     var input_tile_offset = M * n + m
@@ -753,7 +753,7 @@ def transpose_2d[
 def _transpose_4d_swap_middle_helper[
     dtype: DType, //
 ](
-    dst_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    dst_ptr: MutPointer[Scalar[dtype], _],
     src_ptr: UnsafePointer[Scalar[dtype], _],
     L: Int,
     M: Int,
@@ -998,7 +998,7 @@ def _copy_with_strides[
     rank: Int, dtype: DType, //
 ](
     axis: Int,
-    output_ptr: UnsafePointer[mut=True, Scalar[dtype], _],
+    output_ptr: MutPointer[Scalar[dtype], _],
     output_shape: IndexList[rank],
     output_bytecount: Int,
     input_ptr: UnsafePointer[mut=False, Scalar[dtype], _],

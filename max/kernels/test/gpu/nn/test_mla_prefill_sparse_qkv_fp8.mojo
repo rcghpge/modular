@@ -102,7 +102,7 @@ def host_reference[
 ](
     q_ptr: UnsafePointer[Scalar[q_type], _],
     kv_sparse_ptr: UnsafePointer[Scalar[q_type], _],
-    output_ptr: UnsafePointer[mut=True, Scalar[q_type], _],
+    output_ptr: MutPointer[Scalar[q_type], _],
     batch_size: Int,
     seq_len: Int,
     num_heads: Int,

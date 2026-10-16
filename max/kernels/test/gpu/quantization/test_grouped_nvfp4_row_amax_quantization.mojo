@@ -47,7 +47,7 @@ def _next_random(mut state: UInt64) -> Float32:
 
 
 def _fill_row(
-    row: UnsafePointer[mut=True, Scalar[DType.bfloat16], _],
+    row: MutPointer[Scalar[DType.bfloat16], _],
     n: Int,
     kind: Int,
     mut state: UInt64,

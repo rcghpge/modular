@@ -39,7 +39,7 @@ struct GridDim(TrivialRegisterPassable):
 
 
 def init_atoms(
-    atoms: UnsafePointer[mut=True, Float32, _],
+    atoms: MutPointer[Float32, _],
     num_atoms: Int,
     grid_spacing: Float32,
     grid_x: Int,

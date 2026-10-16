@@ -196,7 +196,7 @@ struct _Accumulator[
     @inline(.always)
     def store(
         mut self,
-        c_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        c_ptr: MutPointer[Scalar[Self.dtype], _],
         c_stride: Int,
         tile_n_idx: Int,
         c_bound: IndexList[2],
@@ -391,7 +391,7 @@ struct _Accumulator[
     @inline(.always)
     def store(
         mut self,
-        base_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        base_ptr: MutPointer[Scalar[Self.dtype], _],
         stride: Int,
     ):
         @inline(.always)
@@ -463,7 +463,7 @@ struct _Accumulator[
         partial_store: Bool = False,
     ](
         mut self,
-        output: UnsafePointer[mut=True, Scalar[dt], ...],
+        output: MutPointer[Scalar[dt], ...],
         output_stride: Int,
         partial_store_size: Optional[Int] = None,
     ):
@@ -977,7 +977,7 @@ def _simd_load_maybe_partial[
 def _simd_store_maybe_partial[
     dt: DType, //, simd_width: SIMDLength, partial_store: Bool
 ](
-    ptr: UnsafePointer[mut=True, Scalar[dt], ...],
+    ptr: MutPointer[Scalar[dt], ...],
     offset: Int,
     vec: SIMD[dt, simd_width],
     partial_store_size: Optional[Int] = None,

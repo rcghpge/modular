@@ -77,7 +77,7 @@ def stencil_kernel(
 
 def stencil_3d(
     h_in: UnsafePointer[mut=False, Float32, _],
-    h_out: UnsafePointer[mut=True, Float32, _],
+    h_out: MutPointer[Float32, _],
     N: Int,
     c0: Float32,
     c1: Float32,
@@ -146,7 +146,7 @@ def stencil_3d(
 
 def cpu_3d_stencil(
     in_ptr: UnsafePointer[mut=False, Float32, _],
-    out_ptr: UnsafePointer[mut=True, Float32, _],
+    out_ptr: MutPointer[Float32, _],
     N: Int,
     c0: Float32,
     c1: Float32,

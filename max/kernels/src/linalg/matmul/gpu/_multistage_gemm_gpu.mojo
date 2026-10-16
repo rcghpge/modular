@@ -118,7 +118,7 @@ def warp_split_k_reduction[
     c_reg_tile: TileTensor[
         mut=True, c_type, c_layout, address_space=.LOCAL, ...
     ],
-    smem: UnsafePointer[mut=True, Scalar[c_type], _, address_space=.SHARED],
+    smem: MutPointer[Scalar[c_type], _, address_space=.SHARED],
 ) where (c_reg_tile.rank == 2) & (c_reg_tile.flat_rank == 2):
     comptime assert c_reg_tile.rank == c_reg_tile.flat_rank == 2
     comptime assert c_reg_tile.element_size == 1

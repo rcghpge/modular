@@ -94,7 +94,7 @@ struct SHMEMBuffer[dtype: DType](DevicePassable, Sized):
         return self._data.as_unsafe_any_origin()
 
     def enqueue_copy_to(
-        self, dst_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _]
+        self, dst_ptr: MutPointer[Scalar[Self.dtype], _]
     ) raises:
         """Enqueues an asynchronous copy from this buffer to host memory.
 
@@ -147,7 +147,7 @@ struct SHMEMBuffer[dtype: DType](DevicePassable, Sized):
         )
 
     def enqueue_copy_from(
-        self, src_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _]
+        self, src_ptr: MutPointer[Scalar[Self.dtype], _]
     ) raises:
         """Enqueues an asynchronous copy from host memory to this buffer.
 

@@ -54,7 +54,7 @@ def matrix_mul_kernel(
 def matmul_cpu(
     A_host: UnsafePointer[mut=False, Float32, _],
     B_host: UnsafePointer[mut=False, Float32, _],
-    C_ref: UnsafePointer[mut=True, Float32, _],
+    C_ref: MutPointer[Float32, _],
     Width: Int,
 ):
     """CPU reference implementation for matrix multiplication.

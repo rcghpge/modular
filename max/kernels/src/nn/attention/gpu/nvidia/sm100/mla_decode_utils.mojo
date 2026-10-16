@@ -3442,7 +3442,7 @@ def st_shared_v4_b32_at_fp8_elem_off[
 
 @inline(.always)
 def ld_shared_v4_u32(
-    src_u8: UnsafePointer[mut=True, UInt8, _, address_space=.SHARED],
+    src_u8: MutPointer[UInt8, _, address_space=.SHARED],
     byte_off: Int,
 ) -> SIMD[.uint32, 4]:
     """Loads four contiguous uint32 values from shared memory at a byte offset.

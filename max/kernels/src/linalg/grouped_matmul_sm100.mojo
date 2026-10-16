@@ -827,7 +827,7 @@ def multi_stage_store_C[
         mut=True, Scalar[c_type], _, address_space=.SHARED
     ],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
-    c_ptr: UnsafePointer[mut=True, Scalar[c_type], _],
+    c_ptr: MutPointer[Scalar[c_type], _],
     accum_pipeline_consumer_state: PipelineState[num_accum_pipeline_stages],
     accum_full_mbar: UnsafePointer[
         mut=True, SharedMemBarrier, _, address_space=.SHARED

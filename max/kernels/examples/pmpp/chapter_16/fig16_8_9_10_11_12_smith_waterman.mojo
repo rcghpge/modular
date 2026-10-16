@@ -179,7 +179,7 @@ def max4_host(a: Int, b: Int, c: Int, d: Int) -> Int:
 
 
 def cpu_smith_waterman(
-    sw: UnsafePointer[mut=True, Int32, _],
+    sw: MutPointer[Int32, _],
     rea: UnsafePointer[UInt8, _],
     ref_seq: UnsafePointer[UInt8, _],
     L: Int,
@@ -221,7 +221,7 @@ def cpu_smith_waterman(
 
 
 def generate_random_sequence(
-    seq: UnsafePointer[mut=True, UInt8, _],
+    seq: MutPointer[UInt8, _],
     length: Int,
     mut seed: UInt32,
 ) -> UInt32:

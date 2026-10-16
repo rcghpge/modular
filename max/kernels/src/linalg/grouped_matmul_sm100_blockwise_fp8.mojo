@@ -1389,7 +1389,7 @@ def multi_stage_reg_epilogue[
         Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
-    c_ptr: UnsafePointer[mut=True, Scalar[c_type], _],
+    c_ptr: MutPointer[Scalar[c_type], _],
     c_coord: Tuple[Int, Int],
     elect_one_warp: Bool,
     group_end_idx: UInt32,

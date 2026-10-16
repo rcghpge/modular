@@ -386,7 +386,7 @@ def _reduce_output[
     has_epilogue: Bool = False,
 ](
     scratch: UnsafePointer[mut=False, Scalar[dtype], _],
-    output: UnsafePointer[mut=True, Scalar[dtype], _],
+    output: MutPointer[Scalar[dtype], _],
     N: Int,
     output_space_dims: IndexList,
     F: Int,
@@ -1123,7 +1123,7 @@ struct ConvDirectNHWC[
     ](
         self,
         output_micro_tile: TileTensor[mut=True, Self.output_type, ...],
-        output_base: UnsafePointer[mut=True, Scalar[Self.output_type], ...],
+        output_base: MutPointer[Scalar[Self.output_type], ...],
     ):
         """Store a micro tile from the output buffer.
         Parameters:
@@ -1441,7 +1441,7 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        output: MutPointer[Scalar[output_dt], ...],
         input: UnsafePointer[mut=False, Scalar[input_dt], ...],
         filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
@@ -1510,7 +1510,7 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        output: MutPointer[Scalar[output_dt], ...],
         input: UnsafePointer[mut=False, Scalar[input_dt], ...],
         filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
@@ -1597,7 +1597,7 @@ struct ConvDirectNHWC[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+        output: MutPointer[Scalar[output_dt], ...],
         input: UnsafePointer[mut=False, Scalar[input_dt], ...],
         filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
         n: Int,
@@ -2205,7 +2205,7 @@ def conv1d_update_wo_tile[
     filter_dt: DType,
     has_epilogue: Bool = False,
 ](
-    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    output: MutPointer[Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
     filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
     first_c_tile: Bool,
@@ -2458,7 +2458,7 @@ def conv2d_update_wo_tile[
     filter_dt: DType,
     has_epilogue: Bool = False,
 ](
-    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    output: MutPointer[Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
     filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
     first_c_tile: Bool,
@@ -2731,7 +2731,7 @@ def conv3d_update_wo_tile[
     filter_dt: DType,
     has_epilogue: Bool = False,
 ](
-    output: UnsafePointer[mut=True, Scalar[output_dt], ...],
+    output: MutPointer[Scalar[output_dt], ...],
     input: UnsafePointer[mut=False, Scalar[input_dt], ...],
     filter: UnsafePointer[mut=False, Scalar[filter_dt], ...],
     first_c_tile: Bool,

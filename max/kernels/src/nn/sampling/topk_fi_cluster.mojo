@@ -185,7 +185,7 @@ def _cluster_cutoff_search[
     low_init: Float32,
     high_init: Float32,
     mass_above_low_init: Float32,
-    staged: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+    staged: MutPointer[Float32, _, address_space=.SHARED],
     vec_begin: Int,
     vec_end: Int,
 ) -> Tuple[Float32, Float32]:
@@ -765,7 +765,7 @@ def _sampling_rejection_loop_cluster[
     p_eff: Float32,
     z: Float32,
     mut generator: Random,
-    smem: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+    smem: MutPointer[Float32, _, address_space=.SHARED],
     rank: Int,
     vec_begin: Int,
     vec_end: Int,

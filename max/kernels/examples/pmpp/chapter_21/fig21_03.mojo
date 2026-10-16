@@ -26,7 +26,7 @@ from dcs_utils import GridDim, init_atoms, compute_total_energy
 
 
 def cenergy_cpu_unoptimized(
-    energygrid: UnsafePointer[mut=True, Float32, _],
+    energygrid: MutPointer[Float32, _],
     grid: GridDim,
     gridspacing: Float32,
     z: Float32,

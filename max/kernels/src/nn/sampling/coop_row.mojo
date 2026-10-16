@@ -174,7 +174,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
     ](
         mut self,
         workspace: UnsafePointer[Int32, MutAnyOrigin],
-        table: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+        table: MutPointer[Float32, _, address_space=.SHARED],
         vals: SIMD[.float32, width],
     ):
         """Publishes `vals` and copies each rank's slot into shared memory.
@@ -209,7 +209,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
     ](
         mut self,
         workspace: UnsafePointer[Int32, MutAnyOrigin],
-        table: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+        table: MutPointer[Float32, _, address_space=.SHARED],
         vals: SIMD[.float32, width],
     ) -> SIMD[.float32, width]:
         """Combines block-reduced vectors in rank order.

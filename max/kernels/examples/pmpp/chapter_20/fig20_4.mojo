@@ -144,7 +144,7 @@ def softmax_kernel(
 
 def cpu_softmax(
     h_S: UnsafePointer[mut=False, Float32, _],
-    h_P: UnsafePointer[mut=True, Float32, _],
+    h_P: MutPointer[Float32, _],
     N: Int,
 ):
     var P_ptr = h_P

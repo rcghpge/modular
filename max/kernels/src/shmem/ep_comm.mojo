@@ -266,7 +266,7 @@ def block_memcpy[
     unroll: Int = 1,
     src_invariant: Bool = True,
 ](
-    dst_p: UnsafePointer[mut=True, UInt8, _, address_space=dst_addr_space],
+    dst_p: MutPointer[UInt8, _, address_space=dst_addr_space],
     src_p: UnsafePointer[mut=False, UInt8, _, address_space=src_addr_space],
     thread_idx: Int,
 ) -> None:
@@ -810,7 +810,7 @@ trait TokenFormat(Deinitable, DevicePassable):
     @inline(.always)
     def pad_expert_offsets[
         n_groups: Int
-    ](self, row_offsets: UnsafePointer[mut=True, UInt32, ...]) -> None:
+    ](self, row_offsets: MutPointer[UInt32, ...]) -> None:
         """
         Pad the offsets to satisfy the grouped matmul alignment requirement.
         """
@@ -824,7 +824,7 @@ trait TokenFormat(Deinitable, DevicePassable):
         buf_addr_space: AddressSpace = .GENERIC,
         thread_base: Int = 0,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
@@ -1029,7 +1029,7 @@ struct BF16TokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
         thread_base: Int = 0,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
@@ -1200,7 +1200,7 @@ struct BlockwiseFP8TokenFormat[
     @inline(.always)
     def pad_expert_offsets[
         n_groups: Int
-    ](self, row_offsets: UnsafePointer[mut=True, UInt32, ...]) -> None:
+    ](self, row_offsets: MutPointer[UInt32, ...]) -> None:
         """
         The mojo blockwise FP8 grouped matmul requires each group's m to be
         aligned to the expert_m_padding. This function updates the row_offsets
@@ -1231,7 +1231,7 @@ struct BlockwiseFP8TokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
         thread_base: Int = 0,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
@@ -1646,7 +1646,7 @@ struct NVBlockScaledTokenFormat[
     @inline(.always)
     def pad_expert_offsets[
         n_groups: Int
-    ](self, row_offsets: UnsafePointer[mut=True, UInt32, ...]) -> None:
+    ](self, row_offsets: MutPointer[UInt32, ...]) -> None:
         """
         The mojo NVFP4 grouped matmul doesn't require padding for each group's
         FP4 quants. However, it requires each group's scales to be aligned to
@@ -1708,7 +1708,7 @@ struct NVBlockScaledTokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
         thread_base: Int = 0,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
@@ -1878,7 +1878,7 @@ struct NVBlockScaledTokenFormat[
         src_type: DType,
         buf_addr_space: AddressSpace = AddressSpace.GENERIC,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
         i: Int,
@@ -2408,7 +2408,7 @@ struct MXTokenFormat[
         block_size: Int,
         buf_addr_space: AddressSpace = .GENERIC,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
     ) -> None:
         """Quantizes one token to packed MXFP6, one MX block per thread.
@@ -2473,7 +2473,7 @@ struct MXTokenFormat[
         buf_addr_space: AddressSpace = .GENERIC,
         thread_base: Int = 0,
     ](
-        buf_p: UnsafePointer[mut=True, UInt8, _, address_space=buf_addr_space],
+        buf_p: MutPointer[UInt8, _, address_space=buf_addr_space],
         src_p: UnsafePointer[mut=False, Scalar[src_type], ...],
         input_scale: Float32,
     ) -> None:
@@ -2652,7 +2652,7 @@ struct EPLocalSyncCounters[n_experts: Int](
     comptime device_type: AnyType = Self
 
     @inline(.always)
-    def __init__(out self, ptr: UnsafePointer[mut=True, Int32, ...]):
+    def __init__(out self, ptr: MutPointer[Int32, ...]):
         self.ptr = ptr.unsafe_origin_cast[
             MutUntrackedOrigin
         ]().address_space_cast[.GENERIC]()

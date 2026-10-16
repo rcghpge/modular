@@ -200,7 +200,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
         b_ptr: UnsafePointer[Scalar[Self.dtype], _],
-        c_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        c_ptr: MutPointer[Scalar[Self.dtype], _],
         c_stride: Int,
         accumulate: Bool = False,
     ):
@@ -259,7 +259,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         InputBFnType: Self._input_fn_type, //, static_k: Int
     ](
         input_b_fn: InputBFnType,
-        packed_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        packed_ptr: MutPointer[Scalar[Self.dtype], _],
         N: Int,
         dynamic_k: Int,
     ):
@@ -327,7 +327,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         InputBFnType: Self._input_fn_type
     ](
         input_b_fn: InputBFnType,
-        packed_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        packed_ptr: MutPointer[Scalar[Self.dtype], _],
         N: Int,
         K: Int,
     ):
@@ -358,7 +358,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         N: Int,
         dynamic_k: Int,
         a_ptr: UnsafePointer[Scalar[Self.dtype], _],
-        c_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        c_ptr: MutPointer[Scalar[Self.dtype], _],
     ):
         var K = static_k if static_k != UNKNOWN_VALUE else dynamic_k
         var cn_ptr = c_ptr
@@ -429,7 +429,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         N: Int,
         K: Int,
         a_ptr: UnsafePointer[Scalar[Self.dtype], _],
-        c_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        c_ptr: MutPointer[Scalar[Self.dtype], _],
         accumulate: Bool = False,
     ):
         var cn_ptr = c_ptr
@@ -467,8 +467,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         K: Int,
         a_ptr: UnsafePointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        packed_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
-        c_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        packed_ptr: MutPointer[Scalar[Self.dtype], _],
+        c_ptr: MutPointer[Scalar[Self.dtype], _],
         c_stride: Int,
         accumulate: Bool = False,
     ) raises:
@@ -578,10 +578,10 @@ struct _FlashAttention[
         ) -> SIMD[Self.dtype, simd_width],
     ](
         mask_fn: MaskFnType,
-        qk_block_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
-        o_block_ptr: UnsafePointer[mut=True, Scalar[Self.dtype], _],
-        max_vals: UnsafePointer[mut=True, Scalar[Self.dtype], _],
-        sum_vals: UnsafePointer[mut=True, Scalar[Self.dtype], _],
+        qk_block_ptr: MutPointer[Scalar[Self.dtype], _],
+        o_block_ptr: MutPointer[Scalar[Self.dtype], _],
+        max_vals: MutPointer[Scalar[Self.dtype], _],
+        sum_vals: MutPointer[Scalar[Self.dtype], _],
         count_m: Int,
         count_n: Int,
         kv_seq_cnt: Int,

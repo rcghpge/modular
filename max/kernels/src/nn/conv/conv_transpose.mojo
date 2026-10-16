@@ -846,7 +846,7 @@ struct ConvTransposedPacked[
         last_c_tile: Bool,
     ](
         self,
-        output: UnsafePointer[mut=True, Scalar[output_dt], _],
+        output: MutPointer[Scalar[output_dt], _],
         input: UnsafePointer[Scalar[input_dt], _],
         filter: UnsafePointer[Scalar[filter_dt], _],
         n: Int,
@@ -934,7 +934,7 @@ struct ConvTransposedPacked[
         filter_dt: DType,
     ](
         self,
-        output: UnsafePointer[mut=True, Scalar[output_dt], _],
+        output: MutPointer[Scalar[output_dt], _],
         input: UnsafePointer[Scalar[input_dt], _],
         filter: UnsafePointer[Scalar[filter_dt], _],
         n: Int,
@@ -1072,7 +1072,7 @@ def update_w_tile_2d[
     input_dt: DType,
     filter_dt: DType,
 ](
-    output: UnsafePointer[mut=True, Scalar[output_dt], _],
+    output: MutPointer[Scalar[output_dt], _],
     input: UnsafePointer[mut=False, Scalar[input_dt], _],
     filter: UnsafePointer[mut=False, Scalar[filter_dt], _],
     _init_output: Bool,
@@ -1188,7 +1188,7 @@ def update_w_tile_3d[
     input_dt: DType,
     filter_dt: DType,
 ](
-    output: UnsafePointer[mut=True, Scalar[output_dt], _],
+    output: MutPointer[Scalar[output_dt], _],
     input: UnsafePointer[Scalar[input_dt], _],
     filter: UnsafePointer[Scalar[filter_dt], _],
     _init_output: Bool,
@@ -1311,7 +1311,7 @@ def accumulate_wo_tile[
     filter_dt: DType,
 ](
     c_tile_size: Int,
-    output: UnsafePointer[mut=True, Scalar[output_dt], _],
+    output: MutPointer[Scalar[output_dt], _],
     output_stride: Int,
     input: UnsafePointer[mut=False, Scalar[input_dt], _],
     input_stride: Int,

@@ -34,7 +34,7 @@ def loadTile(
     lda: Int,
     maxRow: Int,
     maxCol: Int,
-    T_s: UnsafePointer[mut=True, Float32, _, address_space=.SHARED],
+    T_s: MutPointer[Float32, _, address_space=.SHARED],
     ldas: Int,
     height: Int,
     width: Int,
@@ -218,7 +218,7 @@ def mm_tiled_kernel_double_buffer(
 def cpu_mm(
     A: UnsafePointer[Float32, _],
     B: UnsafePointer[Float32, _],
-    C: UnsafePointer[mut=True, Float32, _],
+    C: MutPointer[Float32, _],
     M: Int,
     N: Int,
     K: Int,

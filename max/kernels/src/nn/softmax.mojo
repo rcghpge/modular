@@ -1858,8 +1858,8 @@ def _online_softmax_iter_for_mma_output[
     output_reg_tile: TileTensor[mut=True, dtype, ...],
     score_reg_tile: TileTensor[mut=True, dtype, ...],
     warp_scratch: TileTensor[mut=True, dtype, ...],
-    rowmax: UnsafePointer[mut=True, Scalar[dtype], _],
-    rowsum: UnsafePointer[mut=True, Scalar[dtype], _],
+    rowmax: MutPointer[Scalar[dtype], _],
+    rowsum: MutPointer[Scalar[dtype], _],
 ) where (warp_scratch.flat_rank == 2):
     comptime assert output_reg_tile.rank == output_reg_tile.flat_rank == 2
     comptime assert score_reg_tile.rank == score_reg_tile.flat_rank == 2

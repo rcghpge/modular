@@ -75,7 +75,7 @@ def histogram_kernel(
 # ========================== TEST CODE ==========================
 def cpu_histogram(
     image: UnsafePointer[mut=False, UInt8, _],
-    bins: UnsafePointer[mut=True, UInt32, _],
+    bins: MutPointer[UInt32, _],
     width: UInt32,
     height: UInt32,
 ):

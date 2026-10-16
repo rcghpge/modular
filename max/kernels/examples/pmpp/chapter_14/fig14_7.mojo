@@ -19,7 +19,7 @@ from std.random import random_ui64
 from std.math import ceildiv
 
 
-def grid_exclusive_scan(bits: UnsafePointer[mut=True, UInt32, _], N: Int):
+def grid_exclusive_scan(bits: MutPointer[UInt32, _], N: Int):
     """CPU-based exclusive scan for simplicity.
 
     Args:
@@ -100,9 +100,7 @@ def radix_scatter(
         output[dst] = key
 
 
-def cpu_radix_sort(
-    data: UnsafePointer[mut=True, UInt32, _], N: Int, num_bits: Int
-):
+def cpu_radix_sort(data: MutPointer[UInt32, _], N: Int, num_bits: Int):
     """CPU radix sort for verification.
 
     Args:

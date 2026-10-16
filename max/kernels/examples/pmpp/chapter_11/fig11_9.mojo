@@ -113,7 +113,7 @@ def test_block_scan(
 
 def cpu_scan(
     input: UnsafePointer[mut=False, Float32, _],
-    output: UnsafePointer[mut=True, Float32, _],
+    output: MutPointer[Float32, _],
     N: UInt32,
 ):
     """CPU reference scan implementation.

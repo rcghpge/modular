@@ -51,7 +51,7 @@ def convergent_sum_reduction_kernel(
 # ========================== TEST CODE ==========================
 def cpu_sum(
     input: UnsafePointer[mut=False, Float32, _],
-    output: UnsafePointer[mut=True, Float32, _],
+    output: MutPointer[Float32, _],
     N: Int,
 ):
     """CPU reference sum implementation.

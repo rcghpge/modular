@@ -111,7 +111,7 @@ def convolution_cached_tiled_2D_const_mem_kernel(
 def convolution_cached_tiled_2d_const_mem(
     h_in: UnsafePointer[mut=False, Float32, _],
     h_filter: UnsafePointer[mut=False, Float32, _],
-    h_out: UnsafePointer[mut=True, Float32, _],
+    h_out: MutPointer[Float32, _],
     width: Int,
     height: Int,
     ctx: DeviceContext,
@@ -168,7 +168,7 @@ def convolution_cached_tiled_2d_const_mem(
 
 def cpu_2d_conv(
     inarr: UnsafePointer[mut=False, Float32, _],
-    outarr: UnsafePointer[mut=True, Float32, _],
+    outarr: MutPointer[Float32, _],
     width: Int,
     height: Int,
     h_filter: UnsafePointer[mut=False, Float32, _],

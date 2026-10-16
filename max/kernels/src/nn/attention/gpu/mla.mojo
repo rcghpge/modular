@@ -3788,11 +3788,11 @@ def mla_prefill_single_batch[
     q_depth: Int = 192,
     cache_depth: Int = 576,
 ](
-    q_ptr: UnsafePointer[mut=True, Scalar[q_type], _],
+    q_ptr: MutPointer[Scalar[q_type], _],
     k: k_t,
     v: v_t,
     k_rope: k_rope_t,
-    output_ptr: UnsafePointer[mut=True, Scalar[output_type], _],
+    output_ptr: MutPointer[Scalar[output_type], _],
     scale: Float32,
     seq_len: Int,  # valid sequence length i.e. w/o padding.
     max_seq_len: Int,  # sequence length after padding.

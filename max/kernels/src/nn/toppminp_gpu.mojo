@@ -276,7 +276,7 @@ def radix_sort_pairs_kernel[
     input_keys_: UnsafePointer[
         Scalar[dtype], MutUntrackedOrigin
     ],  # modifies input
-    output_keys_: UnsafePointer[mut=True, Scalar[dtype], MutUntrackedOrigin],
+    output_keys_: MutPointer[Scalar[dtype], MutUntrackedOrigin],
     input_key_ids_: UnsafePointer[
         Scalar[out_idx_type], MutUntrackedOrigin
     ],  # modifies input
@@ -555,7 +555,7 @@ def run_radix_sort_pairs_gpu[
     ctx: DeviceContext,
     mut keys: DoubleBuffer[dtype, ...],
     mut key_ids: DoubleBuffer[out_idx_type, ...],
-    skip_sort: UnsafePointer[mut=True, Scalar[.bool], _],
+    skip_sort: MutPointer[Scalar[.bool], _],
     in_shape: IndexList,
 ) raises:
     """

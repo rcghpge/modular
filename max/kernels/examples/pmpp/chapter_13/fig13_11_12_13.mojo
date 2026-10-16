@@ -321,7 +321,7 @@ def cpu_merge(
     m: Int,
     B: UnsafePointer[Int32, _],
     n: Int,
-    C: UnsafePointer[mut=True, Int32, _],
+    C: MutPointer[Int32, _],
 ):
     """CPU reference implementation of merge.
 

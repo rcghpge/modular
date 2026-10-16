@@ -431,10 +431,10 @@ struct GroupedTensormapManager(TrivialRegisterPassable):
         if lane_id() == 0:
             var g = Int(group_idx)
 
-            var a_ptr = UnsafePointer[mut=True, Scalar[a_dtype], MutAnyOrigin](
+            var a_ptr = MutPointer[Scalar[a_dtype], MutAnyOrigin](
                 unsafe_from_address=Int(group_a_ptrs[g, 0])
             )
-            var b_ptr = UnsafePointer[mut=True, Scalar[b_dtype], MutAnyOrigin](
+            var b_ptr = MutPointer[Scalar[b_dtype], MutAnyOrigin](
                 unsafe_from_address=Int(group_b_ptrs[g, 0])
             )
             var sfa_ptr = UnsafePointer[
@@ -511,7 +511,7 @@ struct GroupedTensormapManager(TrivialRegisterPassable):
         # Step 2: Update SMEM descriptor (lane 0 only)
         if lane_id() == 0:
             var g = Int(group_idx)
-            var c_ptr = UnsafePointer[mut=True, Scalar[c_dtype], MutAnyOrigin](
+            var c_ptr = MutPointer[Scalar[c_dtype], MutAnyOrigin](
                 unsafe_from_address=Int(group_c_ptrs[g, 0])
             )
 
