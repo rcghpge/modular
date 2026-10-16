@@ -39,6 +39,7 @@ from .device_graph import (
     DeviceGraphBuilder,
     DeviceGraphCache,
     DeviceGraphInput,
+    DeviceGraphInputKind,
     DeviceGraphNode,
     StableAddr,
 )
