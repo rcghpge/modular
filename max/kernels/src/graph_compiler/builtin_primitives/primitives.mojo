@@ -2857,7 +2857,7 @@ struct _ElementwiseFusionTileAdapter[
         LocalToGenericTileCopier[Self.thread_layout]().copy(out_tile, res_local)
 
 
-@register_internal("mogg.call.foreach_tile")
+@register_internal("mogg.call.foreach.tile")
 @inline(.never)
 def foreach_fusion_tile[
     dtype: DType,
