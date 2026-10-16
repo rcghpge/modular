@@ -66,6 +66,7 @@ from max.graph import BufferType as GBufferType
 from max.graph import DeviceRef, Graph, TensorType
 from max.graph import Type as GType
 from max.graph import ops as graph_ops
+from max.graph.ops import CoordinateTransformMode, RoundMode
 
 
 @pytest.fixture(autouse=True)
@@ -4618,10 +4619,18 @@ class TestResizeNearestGPU:
     @pytest.mark.parametrize(
         "coordinate_transform_mode, round_mode",
         # half_pixel with floor reads below index 0 without the kernel clamp.
-        [(0, 0), (0, 2), (1, 1), (2, 3)],
+        [
+            (CoordinateTransformMode.HALF_PIXEL, RoundMode.HALF_DOWN),
+            (CoordinateTransformMode.HALF_PIXEL, RoundMode.FLOOR),
+            (CoordinateTransformMode.ALIGN_CORNERS, RoundMode.HALF_UP),
+            (CoordinateTransformMode.ASYMMETRIC, RoundMode.CEIL),
+        ],
     )
     def test_matches_cpu(
-        self, dtype: DType, coordinate_transform_mode: int, round_mode: int
+        self,
+        dtype: DType,
+        coordinate_transform_mode: CoordinateTransformMode,
+        round_mode: RoundMode,
     ) -> None:
         # Distinct small integers are exact in float16 and bfloat16, so a wrong
         # source index changes the output.

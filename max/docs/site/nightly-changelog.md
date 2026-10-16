@@ -20,6 +20,12 @@ This version is still a work in progress.
 
 ### Python API
 
+- Added the `ops.CoordinateTransformMode` and `ops.RoundMode` enums.
+  `ops.resize_linear`, `ops.resize_nearest`, and their `max.experimental`
+  functional counterparts take them for `coordinate_transform_mode` and
+  `round_mode` in place of the integer codes 0-3. The integer codes still
+  work.
+
 ### C API
 
 ## Kernels and GPU programming

@@ -78,6 +78,7 @@ from max.experimental.sharding import (
 )
 from max.experimental.tensor import Tensor, realization_context
 from max.graph import BufferType, DeviceRef, Graph, Module, TensorType
+from max.graph.ops import CoordinateTransformMode, RoundMode
 
 
 @pytest.fixture(autouse=True)
@@ -8993,7 +8994,11 @@ class TestResizeLinearOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_linear(x, out_shape, coordinate_transform_mode=0)
+            out = F.resize_linear(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+            )
 
         ref = self._resize_linear_ref(
             x_np, out_shape, coordinate_transform_mode=0
@@ -9013,7 +9018,11 @@ class TestResizeLinearOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_linear(x, out_shape, coordinate_transform_mode=0)
+            out = F.resize_linear(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+            )
 
         ref = self._resize_linear_ref(
             x_np, out_shape, coordinate_transform_mode=0
@@ -9033,7 +9042,11 @@ class TestResizeLinearOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_linear(x, out_shape, coordinate_transform_mode=1)
+            out = F.resize_linear(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.ALIGN_CORNERS,
+            )
 
         ref = self._resize_linear_ref(
             x_np, out_shape, coordinate_transform_mode=1
@@ -9054,7 +9067,10 @@ class TestResizeLinearOp:
             realization_context(ctx),
         ):
             out = F.resize_linear(
-                x, out_shape, coordinate_transform_mode=0, antialias=True
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+                antialias=True,
             )
 
         out_np = np.from_dlpack(out)
@@ -9247,7 +9263,11 @@ class TestResizeNearestOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_nearest(x, out_shape, coordinate_transform_mode=0)
+            out = F.resize_nearest(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+            )
 
         ref = self._resize_nearest_ref(
             x_np, out_shape, coordinate_transform_mode=0
@@ -9265,7 +9285,11 @@ class TestResizeNearestOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_nearest(x, out_shape, coordinate_transform_mode=0)
+            out = F.resize_nearest(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+            )
 
         ref = self._resize_nearest_ref(
             x_np, out_shape, coordinate_transform_mode=0
@@ -9288,7 +9312,10 @@ class TestResizeNearestOp:
             realization_context(ctx),
         ):
             out = F.resize_nearest(
-                x, out_shape, coordinate_transform_mode=2, round_mode=2
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.ASYMMETRIC,
+                round_mode=RoundMode.FLOOR,
             )
 
         ref = self._resize_nearest_ref(
@@ -9307,7 +9334,11 @@ class TestResizeNearestOp:
             rc.EagerRealizationContext() as ctx,
             realization_context(ctx),
         ):
-            out = F.resize_nearest(x, out_shape, coordinate_transform_mode=1)
+            out = F.resize_nearest(
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.ALIGN_CORNERS,
+            )
 
         ref = self._resize_nearest_ref(
             x_np, out_shape, coordinate_transform_mode=1
@@ -9391,7 +9422,10 @@ class TestResizeNearestOp:
             realization_context(ctx),
         ):
             out = F.resize_nearest(
-                x, out_shape, coordinate_transform_mode=0, round_mode=0
+                x,
+                out_shape,
+                coordinate_transform_mode=CoordinateTransformMode.HALF_PIXEL,
+                round_mode=RoundMode.HALF_DOWN,
             )
 
         assert out.storage is not None
