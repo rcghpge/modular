@@ -30,7 +30,7 @@ from typing import Any, ClassVar
 
 from max import tree
 from max.dtype import DType
-from max.engine import InferenceSession
+from max.engine import InferenceSession, Model
 from max.graph import Graph
 from max.graph.weights import WeightData
 from max.nn.kv_cache import (
@@ -42,6 +42,7 @@ from max.pipelines.architectures.deepseekV3_2.model import DeepseekV3_2Model
 from max.pipelines.architectures.deepseekV3_2.model_config import (
     DeepseekV3_2Config,
 )
+from max.pipelines.lib.graph_specs import GraphRole
 
 from .glm5_next import Glm5Next
 from .model_config import SPARSE_ATTENTION, Glm5NextConfig
@@ -139,6 +140,11 @@ class Glm5NextModel(DeepseekV3_2Model):
     #: class keeps it as a local, and the state pools are allocated after the
     #: graph is built, so it has to be held somewhere.
     _glm_config: Glm5NextConfig | None = None
+
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Loads the decoder graph through :meth:`load_model`."""
+        # TODO(kathywu): Build this graph through `graph_specs`.
+        return {GraphRole.DECODER: self.load_model(session)}
 
     def _build_graph_for_compile(
         self,
