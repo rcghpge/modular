@@ -403,7 +403,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
 
     var epi_load_2d = TileTensor(
         epi_load_tma_ptr,
-        tt_row_major(Coord(IndexList[2](epi_load_tma_rows, epi_load_tma_cols))),
+        tt_row_major(Coord(epi_load_tma_rows, epi_load_tma_cols)),
     )
     var epi_load_tma_op = create_tma_tile[
         KernelType.EpilogueLoadTileLayout,
