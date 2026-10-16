@@ -1261,8 +1261,8 @@ def mgp_debug_print[
 ](ctx: StateContext) raises:
     var prefix = String()
     if bLabel:
-        prefix = "[" + bLabel + "] "
-    print(prefix + aDebugString)
+        prefix = String(t"[{bLabel}] ")
+    print(t"{prefix}{aDebugString}")
 
 
 @register_internal("mgp.debug.print.int")
@@ -1272,8 +1272,8 @@ def mgp_debug_print_int[
 ](ctx: StateContext, value: Int):
     var prefix = String()
     if aLabel:
-        prefix = "[" + aLabel + "] "
-    print(prefix + String(value))
+        prefix = String(t"[{aLabel}] ")
+    print(t"{prefix}{value}")
 
 
 @register_internal("mgp.debug.tensor.print")
@@ -1675,7 +1675,7 @@ def mogg_async_error_value(
     """Returns a fresh error `AsyncValue`."""
     var error_message = String(err)
     if source_notes:
-        error_message = "\n" + source_notes + "\n\n" + error_message
+        error_message = String(t"\n{source_notes}\n\n{error_message}")
     var handle = external_call[
         "MGP_RT_AsyncRT_CreateAsync_Error", _AsyncValuePtr[mut=True]
     ](
@@ -1798,9 +1798,9 @@ def mogg_format_kernel_error(
         + String(error)
     )
     if fusion_info:
-        msg += "\n\nFusion info:\n" + fusion_info
+        msg += String(t"\n\nFusion info:\n{fusion_info}")
     if traceback:
-        msg += "\n\nSource Traceback:\n" + traceback
+        msg += String(t"\n\nSource Traceback:\n{traceback}")
     return Error(msg)
 
 
