@@ -12,3 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 """Hy4 layer modules."""
+
+from .hyper_connection import HYV4HyperConnection, HYV4HyperHead
+
+__all__ = ["HYV4HyperConnection", "HYV4HyperHead"]
