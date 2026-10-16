@@ -167,7 +167,7 @@ def matmul_tiled_layout(mut C: Matrix, A: Matrix, B: Matrix):
     comptime tile_n = 64
     comptime tile_k = 4
 
-    comptime assert M % tile_m == 0, "N must be a multiple of tile_m"
+    comptime assert M % tile_m == 0, "M must be a multiple of tile_m"
     comptime assert N % tile_n == 0, "N must be a multiple of tile_n"
     comptime assert K % tile_k == 0, "K must be a multiple of tile_k"
 
@@ -231,7 +231,7 @@ def matmul_tiled_layout_cache(mut C: Matrix, A: Matrix, B: Matrix):
     comptime tile_n = 64
     comptime tile_k = 4
 
-    comptime assert M % tile_m == 0, "N must be a multiple of tile_m"
+    comptime assert M % tile_m == 0, "M must be a multiple of tile_m"
     comptime assert N % tile_n == 0, "N must be a multiple of tile_n"
     comptime assert K % tile_k == 0, "K must be a multiple of tile_k"
 
@@ -303,7 +303,7 @@ def matmul_layout_transposed(mut C: Matrix, A: Matrix, B: Matrix):
     comptime tile_n = 16
     comptime tile_k = 128
 
-    comptime assert M % tile_m == 0, "N must be a multiple of tile_m"
+    comptime assert M % tile_m == 0, "M must be a multiple of tile_m"
     comptime assert N % tile_n == 0, "N must be a multiple of tile_n"
     comptime assert K % tile_k == 0, "K must be a multiple of tile_k"
 
@@ -392,7 +392,6 @@ def test_matrix_equal[
     _ = func(result, A, B)
     for i in range(C.rows):
         for j in range(C.cols):
-            # if C[i, j] != result[i, j]:
             if abs(C[i, j] - result[i, j]) > 1e-3:
                 return False
     return True

@@ -191,39 +191,39 @@ def main() raises:
 
     comptime packed_float32 = MatmulSpecStatic(
         b_packed=True,
-        a_type=DType.float32,
-        b_type=DType.float32,
-        c_type=DType.float32,
+        a_type=.float32,
+        b_type=.float32,
+        c_type=.float32,
     )
     comptime unpacked_float32 = MatmulSpecStatic(
         b_packed=False,
-        a_type=DType.float32,
-        b_type=DType.float32,
-        c_type=DType.float32,
+        a_type=.float32,
+        b_type=.float32,
+        c_type=.float32,
     )
     comptime unpacked_f16_f16 = MatmulSpecStatic(
         b_packed=False,
-        a_type=DType.float16,
-        b_type=DType.float16,
-        c_type=DType.float16,
+        a_type=.float16,
+        b_type=.float16,
+        c_type=.float16,
     )
     comptime unpacked_f16_f32 = MatmulSpecStatic(
         b_packed=False,
-        a_type=DType.float16,
-        b_type=DType.float16,
-        c_type=DType.float32,
+        a_type=.float16,
+        b_type=.float16,
+        c_type=.float32,
     )
     comptime unpacked_bf16_bf16 = MatmulSpecStatic(
         b_packed=False,
-        a_type=DType.bfloat16,
-        b_type=DType.bfloat16,
-        c_type=DType.bfloat16,
+        a_type=.bfloat16,
+        b_type=.bfloat16,
+        c_type=.bfloat16,
     )
     comptime unpacked_bf16_f32 = MatmulSpecStatic(
         b_packed=False,
-        a_type=DType.bfloat16,
-        b_type=DType.bfloat16,
-        c_type=DType.float32,
+        a_type=.bfloat16,
+        b_type=.bfloat16,
+        c_type=.float32,
     )
     bench_matmul_spec(m, MatmulSpec[packed_float32](m=256, n=256, k=256))
     bench_matmul_spec(m, MatmulSpec[packed_float32](m=512, n=512, k=512))
