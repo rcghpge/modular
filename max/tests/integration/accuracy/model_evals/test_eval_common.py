@@ -517,3 +517,26 @@ def test_resumable_config_ignores_operational_options() -> None:
     }
 
     assert eval_common.resumable_config(params) == CONFIG
+
+
+def test_build_chat_kwargs_omits_chat_template_kwargs_by_default() -> None:
+    """Unset ``chat_template_kwargs`` must not add an empty ``extra_body``."""
+    kwargs = eval_common.build_chat_kwargs(
+        "m", [{"role": "user", "content": "hi"}], eval_common.GenParams()
+    )
+    assert "extra_body" not in kwargs
+
+
+def test_build_chat_kwargs_forwards_chat_template_kwargs_via_extra_body() -> (
+    None
+):
+    """``chat_template_kwargs`` rides ``extra_body``"""
+    params = eval_common.GenParams(
+        chat_template_kwargs={"reasoning_effort": "low"}
+    )
+    kwargs = eval_common.build_chat_kwargs(
+        "m", [{"role": "user", "content": "hi"}], params
+    )
+    assert kwargs["extra_body"] == {
+        "chat_template_kwargs": {"reasoning_effort": "low"}
+    }

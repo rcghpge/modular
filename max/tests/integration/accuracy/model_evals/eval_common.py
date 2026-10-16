@@ -74,14 +74,16 @@ class ChatClient(Protocol):
 class GenParams:
     """Generation and sampling parameters for a single request.
 
-    ``top_p`` and ``seed`` are ``Optional``: ``None`` omits the field entirely
-    (server default). Judges pass ``top_p=None`` since they send no ``top_p``.
+    ``top_p``, ``seed``, and ``chat_template_kwargs`` are ``Optional``: ``None``
+    omits the field entirely (server default). Judges pass ``top_p=None`` since
+    they send no ``top_p``.
     """
 
     max_tokens: int = 98304
     temperature: float = 1.0
     top_p: float | None = 0.95
     seed: int | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
 
 
 def make_client(base_url: str, api_key: str | None = None) -> OpenAI:
@@ -141,6 +143,10 @@ def build_chat_kwargs(
         kwargs["top_p"] = params.top_p
     if params.seed is not None:
         kwargs["seed"] = params.seed
+    if params.chat_template_kwargs is not None:
+        kwargs["extra_body"] = {
+            "chat_template_kwargs": params.chat_template_kwargs
+        }
     return kwargs
 
 

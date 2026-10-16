@@ -40,6 +40,7 @@ killed/crashed run keeps everything already finished. To debug specific rows
 
 from __future__ import annotations
 
+import json
 import random
 from typing import Any
 
@@ -277,6 +278,7 @@ def run_eval(
 @click.option("--max-tokens", type=int, default=98304, show_default=True)
 @click.option("--temperature", type=float, default=1.0, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
+@click.option("--chat-template-kwargs", default=None)
 @click.option(
     "--root-preamble",
     default=DEFAULT_ROOT_PREAMBLE,
@@ -308,6 +310,7 @@ def main(
     max_tokens: int,
     temperature: float,
     top_p: float,
+    chat_template_kwargs: str | None,
     root_preamble: str,
     system_prompt: str,
     metric_prefix: str,
@@ -323,7 +326,13 @@ def main(
     dataset = load_gpqa_dataset()
     indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
-        max_tokens=max_tokens, temperature=temperature, top_p=top_p, seed=seed
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        seed=seed,
+        chat_template_kwargs=(
+            json.loads(chat_template_kwargs) if chat_template_kwargs else None
+        ),
     )
     dump_config(
         out_dir,
