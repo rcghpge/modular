@@ -324,7 +324,7 @@ struct Inner_matmul_i8mm(InnerMatmulKernel, Movable):
                     b_packed,
                     acc.output_tile,
                     global_offset,
-                    Index(idx_n, idx_k),
+                    (idx_n, idx_k),
                 )
             acc._store_c_tile(
                 c_ptr,

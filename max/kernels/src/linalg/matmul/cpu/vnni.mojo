@@ -167,7 +167,6 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
                 )
 
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
-                # var c_idx = Index(idx0, idx1 * simd_size)
                 var c_val = c_local[idx0, idx1]
                 var b_val = (b_ptr + idx1 * simd_size).load[
                     width=simd_size, alignment=alignment
@@ -264,7 +263,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
                     b_packed,
                     acc,
                     global_offset,
-                    Index(idx_n, idx_k),
+                    (idx_n, idx_k),
                     tile_n_k,
                 )
             if kl != tile_n_k[1]:
@@ -273,7 +272,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
                     b_packed,
                     acc,
                     global_offset,
-                    Index(idx_n, kl),
+                    (idx_n, kl),
                     tile_n_k,
                 )
             acc.store(

@@ -186,7 +186,7 @@ struct Inner_matmul_neon(InnerMatmulKernel, Movable):
                     b_packed,
                     acc,
                     global_offset,
-                    Index(idx_n, idx_k0),
+                    (idx_n, idx_k0),
                 )
 
             for idx_k1 in range(partition_end, tile_n_k[1]):
@@ -196,7 +196,7 @@ struct Inner_matmul_neon(InnerMatmulKernel, Movable):
                     b_packed,
                     acc,
                     global_offset,
-                    Index(idx_n, idx_k1),
+                    (idx_n, idx_k1),
                 )
             acc.store(
                 rebind[UnsafePointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),

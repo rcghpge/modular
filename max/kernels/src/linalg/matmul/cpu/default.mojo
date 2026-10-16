@@ -182,7 +182,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
                     b_packed,
                     acc,
                     global_offset,
-                    Index(idx_n, idx_k),
+                    (idx_n, idx_k),
                 )
             acc.store(
                 rebind[UnsafePointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),
