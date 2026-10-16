@@ -63,9 +63,9 @@ def warp_level_sum_reduction_kernel(
         address_space=.SHARED,
     ]()
 
-    var t = UInt32(thread_idx.x)
+    var t = thread_idx.x
     # Load data into shared memory with initial reduction
-    input_s[Int(t)] = input[Int(t)] + input[Int(t + BLOCK_DIM)]
+    input_s[t] = input[t] + input[t + BLOCK_DIM]
 
     # Unrolled reduction in shared memory until we reach warp level
     comptime LOG2_BLOCK_DIM = log2_floor(BLOCK_DIM)
@@ -75,15 +75,15 @@ def warp_level_sum_reduction_kernel(
     comptime for s in range(NUM_SHARED_ITERATIONS):
         comptime stride = BLOCK_DIM >> (s + 1)
         barrier()
-        if UInt32(thread_idx.x) < UInt32(stride):
-            input_s[Int(t)] += input_s[Int(t + UInt32(stride))]
+        if thread_idx.x < stride:
+            input_s[t] += input_s[t + stride]
 
     barrier()
 
     # Warp 0 does the final reduction using shuffle
     var warp_idx = warp_id()
     if warp_idx == 0:
-        var partial_sum = input_s[Int(t)]
+        var partial_sum = input_s[t]
         partial_sum = warp_reduce(partial_sum)
         if thread_idx.x == 0:
             output[0] = partial_sum

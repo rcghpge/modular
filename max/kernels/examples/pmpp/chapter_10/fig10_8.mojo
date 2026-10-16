@@ -33,15 +33,15 @@ def convergent_sum_reduction_kernel(
         input: Input array (in global memory, modified in-place).
         output: Output scalar for the sum result.
     """
-    var i = UInt32(thread_idx.x)
+    var i = thread_idx.x
 
     # Unrolled reduction: strides 256, 128, 64, 32, 16, 8, 4, 2, 1
     comptime NUM_ITERATIONS = log2_floor(BLOCK_DIM) + 1
 
     comptime for s in range(NUM_ITERATIONS):
         comptime stride = BLOCK_DIM >> s
-        if UInt32(thread_idx.x) < UInt32(stride):
-            input[Int(i)] += input[Int(i + UInt32(stride))]
+        if thread_idx.x < stride:
+            input[i] += input[i + stride]
         barrier()
 
     if thread_idx.x == 0:

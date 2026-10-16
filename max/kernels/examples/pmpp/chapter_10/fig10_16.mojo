@@ -56,10 +56,10 @@ def two_stage_warp_level_sum_reduction_kernel(
         input: Input array (in global memory).
         output: Output scalar for the sum result.
     """
-    var t = UInt32(thread_idx.x)
+    var t = thread_idx.x
 
     # Stage 1: Each thread loads and does initial reduction
-    var partial_sum = input[Int(t)] + input[Int(t + BLOCK_DIM)]
+    var partial_sum = input[t] + input[t + BLOCK_DIM]
     partial_sum = warp_reduce(partial_sum)
 
     # Allocate shared memory for partial sums from each warp
@@ -78,7 +78,7 @@ def two_stage_warp_level_sum_reduction_kernel(
     # Stage 2: First warp reduces the partial sums
     var warp_idx = warp_id()
     if warp_idx == 0:
-        partial_sum = partial_sums_s[Int(t)]
+        partial_sum = partial_sums_s[t]
         partial_sum = warp_reduce(partial_sum)
         if thread_idx.x == 0:
             output[0] = partial_sum

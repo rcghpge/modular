@@ -61,13 +61,13 @@ def coarsened_sum_reduction_kernel(
         input: Input array (in global memory).
         output: Output scalar for the sum result.
     """
-    var segment = COARSE_FACTOR * 2 * UInt32(block_dim.x) * UInt32(block_idx.x)
-    var i = segment + UInt32(thread_idx.x)
+    var segment = COARSE_FACTOR * 2 * block_dim.x * block_idx.x
+    var i = segment + thread_idx.x
 
     # Thread coarsening: each thread sums COARSE_FACTOR * 2 elements
-    var partial_sum = input[Int(i)]
+    var partial_sum = input[i]
     for c in range(1, COARSE_FACTOR * 2):
-        partial_sum += input[Int(i + UInt32(c) * BLOCK_DIM)]
+        partial_sum += input[i + c * BLOCK_DIM]
 
     # Warp-level reduction
     partial_sum = warp_reduce(partial_sum)

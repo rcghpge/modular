@@ -63,11 +63,11 @@ def reduce_kernel(
         output: Output scalar for the sum result.
         N: Total number of elements.
     """
-    var segment = 2 * UInt32(block_dim.x) * UInt32(block_idx.x)
-    var i = segment + UInt32(thread_idx.x)
+    var segment = 2 * block_dim.x * block_idx.x
+    var i = segment + thread_idx.x
 
     # Each thread loads and does initial reduction
-    var partial_sum = input[Int(i)] + input[Int(i + BLOCK_DIM)]
+    var partial_sum = input[i] + input[i + BLOCK_DIM]
     partial_sum = warp_reduce(partial_sum)
 
     # Allocate shared memory for partial sums from each warp
@@ -84,7 +84,7 @@ def reduce_kernel(
     barrier()
 
     # First warp reduces and atomically adds to output
-    if UInt32(thread_idx.x) < UInt32(WARP_SIZE):
+    if thread_idx.x < WARP_SIZE:
         partial_sum = partial_sums_s[thread_idx.x]
         partial_sum = warp_reduce(partial_sum)
         if thread_idx.x == 0:
