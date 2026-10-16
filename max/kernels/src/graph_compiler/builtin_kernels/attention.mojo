@@ -3150,11 +3150,10 @@ struct Struct_mla_prefill_graph_paged:
             target
         ](), "mo.mla.graph.prefill.paged.fp8 is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         mla_prefill_branch_fp8[
@@ -3162,7 +3161,6 @@ struct Struct_mla_prefill_graph_paged:
             n_scale_granularity=n_scale_granularity,
             k_scale_granularity=k_scale_granularity,
             mask_str=mask_str,
-            kv_input_fn=kv_input_fn,
             target=target,
         ](
             output.to_tile_tensor[.int64](),
@@ -3181,6 +3179,7 @@ struct Struct_mla_prefill_graph_paged:
             w_k_scale.to_tile_tensor[.int64](),
             w_uv.to_tile_tensor[.int64](),
             w_uv_scale.to_tile_tensor[.int64](),
+            kv_input_fn,
             context,
         )
 
@@ -3298,11 +3297,10 @@ struct Struct_mla_decode_graph_paged_fp8:
             target
         ](), "mo.mla.graph.decode.paged.fp8 is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -3316,7 +3314,6 @@ struct Struct_mla_decode_graph_paged_fp8:
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output.to_tile_tensor[.int64](),
@@ -3333,6 +3330,7 @@ struct Struct_mla_decode_graph_paged_fp8:
                 w_uv.to_tile_tensor[.int64](),
                 w_uv_scale.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -3565,11 +3563,10 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
             " needs logical sparse_indices"
         )
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var topk_lengths_ptr = maybe_null_pointer[has_topk_lengths](
@@ -3608,7 +3605,6 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
                 sparse_mla=True,
                 fold_shared_index=index_share,
@@ -3634,6 +3630,7 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
                 w_uv.to_tile_tensor[.int64](),
                 w_uv_scale.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 gather_indices,
                 indices_stride,
@@ -3698,16 +3695,14 @@ struct Struct_mla_prefill_graph_bf16_paged:
             target
         ](), "mo.mla.graph.prefill.paged is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         mla_prefill_branch_bf16[
             mask_str=mask_str,
-            kv_input_fn=kv_input_fn,
             target=target,
         ](
             output.to_tile_tensor[.int64](),
@@ -3724,6 +3719,7 @@ struct Struct_mla_prefill_graph_bf16_paged:
             Int(buffer_length),
             w_k.to_tile_tensor[.int64](),
             w_uv.to_tile_tensor[.int64](),
+            kv_input_fn,
             context,
         )
 
@@ -3777,11 +3773,10 @@ struct Struct_mla_decode_graph_bf16_paged:
             target
         ](), "mo.mla.graph.decode.paged is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -3792,7 +3787,6 @@ struct Struct_mla_decode_graph_bf16_paged:
         ):
             mla_decode_branch_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output.to_tile_tensor[.int64](),
@@ -3807,6 +3801,7 @@ struct Struct_mla_decode_graph_bf16_paged:
                 w_uk.to_tile_tensor[.int64](),
                 w_uv.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -3881,11 +3876,10 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
             target
         ](), "mo.mla.graph.decode.paged.sparse is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var topk_lengths_ptr = maybe_null_pointer[has_topk_lengths](
@@ -3919,7 +3913,6 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
             )
             mla_decode_branch_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
                 sparse_mla=True,
                 physical_indices=_sparse_decode_physical[physical_indices](),
@@ -3941,6 +3934,7 @@ struct Struct_mla_decode_graph_bf16_paged_sparse:
                 w_uk.to_tile_tensor[.int64](),
                 w_uv.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 gather_indices,
                 indices_stride,
@@ -4014,11 +4008,10 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
             target
         ](), "mo.mla.graph.prefill.decode.paged.fp8 is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -4032,7 +4025,6 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output.to_tile_tensor[.int64](),
@@ -4055,6 +4047,7 @@ struct Struct_mla_prefill_graph_decode_paged_fp8:
                 w_uv.to_tile_tensor[.int64](),
                 w_uv_scale.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -4147,11 +4140,10 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
             " on GPU"
         )
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -4193,7 +4185,6 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
                 sparse_mla=True,
                 sparse_indices_stride=indices_stride,
@@ -4227,6 +4218,7 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
                 w_uv.to_tile_tensor[.int64](),
                 w_uv_scale.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 decode_indices,
                 indices_stride,
@@ -4513,11 +4505,10 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
             target
         ](), "mo.mla.graph.prefill.decode.paged is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -4528,7 +4519,6 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
         ):
             mla_prefill_decode_graph_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output.to_tile_tensor[.int64](),
@@ -4548,6 +4538,7 @@ struct Struct_mla_prefill_graph_decode_bf16_paged:
                 w_uk.to_tile_tensor[.int64](),
                 w_uv.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 num_partitions_in=num_partitions_proj,
             )
@@ -4624,11 +4615,10 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
             target
         ](), "mo.mla.graph.prefill.decode.paged.sparse is only supported on GPU"
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         comptime mla_page_size = Int(kv_blocks.static_spec.shape_tuple[3])
@@ -4683,7 +4673,6 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
             var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
             mla_prefill_decode_graph_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
                 sparse_mla=True,
                 sparse_indices_stride=indices_stride,
@@ -4711,6 +4700,7 @@ struct Struct_mla_prefill_graph_decode_paged_sparse:
                 w_uk.to_tile_tensor[.int64](),
                 w_uv.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 decode_indices,
                 indices_stride,
@@ -4781,11 +4771,10 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
             " on GPU"
         )
 
-        @__parameter
         @inline(.always)
         def kv_input_fn[
             width: Int
-        ](coords: IndexList[2]) -> SIMD[.bfloat16, width]:
+        ](coords: IndexList[2]) {var kv} -> SIMD[.bfloat16, width]:
             return kv._lambda_load[width=width, element_alignment=width](coords)
 
         var num_partitions_proj = Int(num_partitions_scalar.unsafe_ptr()[0])
@@ -4796,7 +4785,6 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
         ):
             mla_prefill_decode_graph_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output.to_tile_tensor[.int64](),
@@ -4816,6 +4804,7 @@ struct Struct_mla_prefill_graph_decode_bf16_paged_quantized:
                 w_uk.to_tile_tensor[.int64](),
                 w_uv.to_tile_tensor[.int64](),
                 scalar_args.to_tile_tensor[.int64](),
+                kv_input_fn,
                 context,
                 num_partitions_in=num_partitions_proj,
             )

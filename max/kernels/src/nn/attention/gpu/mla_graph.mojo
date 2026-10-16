@@ -304,9 +304,9 @@ def fused_rope_rmsnorm_quantization_kernel[
     n_rope_blocks: Int,
     n_rms_blocks: Int,
     out_rope_dtype: DType,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
 ](
     q_rope_output: TileTensor[
         mut=True, out_rope_dtype, QRopeOutputLayoutType, MutUntrackedOrigin
@@ -319,6 +319,7 @@ def fused_rope_rmsnorm_quantization_kernel[
     gamma: TileTensor[gamma_dtype, GammaLayoutType, ImmUntrackedOrigin],
     k_cache: cache_t,
     epsilon: Float32,
+    kv_input_fn: KVInputFnType,
 ) -> None:
     """Fused GPU kernel that applies RoPE to query projections and RMSNorm to KV
     cache, reading the inputs from a KV buffer and quantizing the final results
@@ -344,9 +345,7 @@ def fused_rope_rmsnorm_quantization_kernel[
         n_rope_blocks: Number of blocks allocated for RoPE computation.
         n_rms_blocks: Number of blocks allocated for RMSNorm computation.
         out_rope_dtype: Data type of the RoPE output.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
+        KVInputFnType: Type of the closure that loads the KV latent values.
 
     Args:
         q_rope_output: Output tensor for RoPE-applied query projections.
@@ -358,6 +357,9 @@ def fused_rope_rmsnorm_quantization_kernel[
         gamma: RMSNorm gamma weights. Shape: [kv_norm_dim].
         k_cache: Key cache to apply RoPE and RMSNorm to.
         epsilon: Small constant for numerical stability in RMSNorm.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim.
     """
     comptime assert (
         cache_t.kv_params.num_heads == 1
@@ -488,10 +490,10 @@ def mla_fused_rope_rmsnorm_quantization[
     gamma_dtype: DType,
     collection_t: KVCollectionT,
     out_rope_dtype: DType,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
 ](
     q_rope_output: TileTensor[mut=True, out_rope_dtype, ...],
     q_rope: TileTensor[mut=False, dtype, ...],
@@ -501,6 +503,7 @@ def mla_fused_rope_rmsnorm_quantization[
     kv_collection: collection_t,
     layer_idx: UInt32,
     epsilon: Float32,
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
 ) raises:
     """Launches the fused RoPE and RMSNorm kernel for MLA attention.
@@ -516,9 +519,8 @@ def mla_fused_rope_rmsnorm_quantization[
         gamma_dtype: Data type of RMSNorm gamma weights.
         collection_t: Type of the KV cache collection.
         out_rope_dtype: Data type of the RoPE output values.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
+        KVInputFnType: Type of the closure that loads the KV latent values
+            (inferred).
 
     Args:
         q_rope_output: Output tensor for RoPE-applied query projections.
@@ -531,6 +533,10 @@ def mla_fused_rope_rmsnorm_quantization[
         kv_collection: Paged KV cache collection.
         layer_idx: Index of the current transformer layer.
         epsilon: Small constant for numerical stability in RMSNorm.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context for kernel execution.
     """
     comptime hw_info = ctx.default_device_info
@@ -588,7 +594,7 @@ def mla_fused_rope_rmsnorm_quantization[
         n_rope_blocks,
         n_rms_blocks,
         out_rope_dtype,
-        kv_input_fn,
+        KVInputFnType=KVInputFnType,
     ]
 
     ctx.enqueue_function[kernel](
@@ -599,6 +605,7 @@ def mla_fused_rope_rmsnorm_quantization[
         gamma.as_imm(),
         k_cache,
         epsilon,
+        host_arg=kv_input_fn,
         grid_dim=(n_rope_blocks + n_rms_blocks, num_workers, 1),
         block_dim=block_size,
         attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -615,14 +622,14 @@ def mla_prefill_branch_fp8[
     fp8_dtype: DType,
     fp8_scale_dtype: DType,
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     m_scale_granularity: Int,
     n_scale_granularity: Int,
     k_scale_granularity: Int,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
@@ -641,6 +648,7 @@ def mla_prefill_branch_fp8[
     w_k_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
     w_uv: TileTensor[fp8_dtype, address_space=.GENERIC, ...],
     w_uv_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
 ) raises:
     """
@@ -657,6 +665,8 @@ def mla_prefill_branch_fp8[
         fp8_dtype: Data type of the fp8 input and output tensors.
         fp8_scale_dtype: Data type of the fp8 scale input and output tensors.
         collection_t: Type of the KV collection.
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         m_scale_granularity: Granularity of the scale for M dimension of the
             matrix multiplication.
         n_scale_granularity: Granularity of the scale for N dimension of the
@@ -664,9 +674,6 @@ def mla_prefill_branch_fp8[
         k_scale_granularity: Granularity of the scale for K dimension of the
             matrix multiplication.
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device.
 
     Args:
@@ -696,6 +703,10 @@ def mla_prefill_branch_fp8[
         w_uv: Weight tensor for projecting latent values to V. Shape:
             [num_heads, v_head_dim, kv_latent_dim].
         w_uv_scale: Scale tensor for `w_uv`.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
     """
     comptime kv_params = collection_t.kv_params
@@ -765,7 +776,7 @@ def mla_prefill_branch_fp8[
         q_rope.layout,
     )
 
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         q_rope_mut,
         q_rope.as_unsafe_any_origin(),  # hack aliasing.
         input_row_offsets,
@@ -774,6 +785,7 @@ def mla_prefill_branch_fp8[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -1301,14 +1313,14 @@ def mla_decode_branch_fp8[
     fp8_dtype: DType,
     fp8_scale_dtype: DType,
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     m_scale_granularity: Int,
     n_scale_granularity: Int,
     k_scale_granularity: Int,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     # Read-once shared-index MTP fold; threaded to flare_mla_decoding (fp8-KV
@@ -1343,6 +1355,7 @@ def mla_decode_branch_fp8[
     w_uv: TileTensor[fp8_dtype, address_space=.GENERIC, ...],
     w_uv_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
@@ -1380,6 +1393,8 @@ def mla_decode_branch_fp8[
         fp8_dtype: Data type of the fp8 input and output tensors.
         fp8_scale_dtype: Data type of the fp8 scale input and output tensors.
         collection_t: Type of the KV collection.
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         m_scale_granularity: Granularity of the scale for M dimension of the
             matrix multiplication.
         n_scale_granularity: Granularity of the scale for N dimension of the
@@ -1387,9 +1402,6 @@ def mla_decode_branch_fp8[
         k_scale_granularity: Granularity of the scale for K dimension of the
             matrix multiplication.
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device.
         sparse_mla: Whether to use sparse MLA.
         fold_shared_index: Whether to enable the default-off read-once
@@ -1439,6 +1451,10 @@ def mla_decode_branch_fp8[
             depending on the FP8 block-scaling granularity used for weight
             quantization.
         scalar_args_buf: Packed MLA dispatch metadata buffer.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
         d_indices: Sparse decode packed indices (null when dense).
         indices_stride: Row stride in ``d_indices``.
@@ -1625,7 +1641,7 @@ def mla_decode_branch_fp8[
         )
     )
 
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         mla_decode_input_rope,
         q_rope,
         input_row_offsets,
@@ -1634,6 +1650,7 @@ def mla_decode_branch_fp8[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -1836,13 +1853,13 @@ def mla_prefill_branch_sparse_fp8[
     fp8_dtype: DType,
     fp8_scale_dtype: DType,
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     m_scale_granularity: Int,
     n_scale_granularity: Int,
     k_scale_granularity: Int,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     indices_stride: Int,
     target: StaticString = "cpu",
     # See `mla_decode_branch_fp8`; this path does not read the sink either.
@@ -1862,6 +1879,7 @@ def mla_prefill_branch_sparse_fp8[
     w_uv: TileTensor[fp8_dtype, address_space=.GENERIC, ...],
     w_uv_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: UnsafePointer[Int32, MutAnyOrigin],
     topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
@@ -1971,7 +1989,7 @@ def mla_prefill_branch_sparse_fp8[
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
         )
     )
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         mla_decode_input_rope,
         q_rope,
         input_row_offsets,
@@ -1980,6 +1998,7 @@ def mla_prefill_branch_sparse_fp8[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -2259,14 +2278,14 @@ def mla_prefill_decode_graph_fp8[
     fp8_dtype: DType,
     fp8_scale_dtype: DType,
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     m_scale_granularity: Int,
     n_scale_granularity: Int,
     k_scale_granularity: Int,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     sparse_indices_stride: Int = 0,
@@ -2308,6 +2327,7 @@ def mla_prefill_decode_graph_fp8[
     w_uv: TileTensor[fp8_dtype, address_space=.GENERIC, ...],
     w_uv_scale: TileTensor[fp8_scale_dtype, address_space=.GENERIC, ...],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
@@ -2335,6 +2355,8 @@ def mla_prefill_decode_graph_fp8[
         fp8_scale_dtype: Data type of the fp8 scale input and output tensors
             (inferred).
         collection_t: Type of the KV collection (inferred).
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         m_scale_granularity: Granularity of the scale for M dimension of the
             matrix multiplication.
         n_scale_granularity: Granularity of the scale for N dimension of the
@@ -2342,9 +2364,6 @@ def mla_prefill_decode_graph_fp8[
         k_scale_granularity: Granularity of the scale for K dimension of the
             matrix multiplication.
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device (defaults to "cpu").
         sparse_mla: Whether to use sparse MLA (defaults to False).
         sparse_indices_stride: Row stride of the sparse decode index buffer
@@ -2404,6 +2423,10 @@ def mla_prefill_decode_graph_fp8[
             [num_heads, v_head_dim, kv_latent_dim].
         w_uv_scale: Scale tensor for `w_uv`.
         scalar_args_buf: Packed MLA dispatch metadata buffer.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
         d_indices: Sparse decode packed indices (null when dense, defaults to
             None).
@@ -2444,7 +2467,6 @@ def mla_prefill_decode_graph_fp8[
             n_scale_granularity=n_scale_granularity,
             k_scale_granularity=k_scale_granularity,
             mask_str=mask_str,
-            kv_input_fn=kv_input_fn,
             target=target,
             sparse_mla=sparse_mla,
             fold_shared_index=fold_shared_index,
@@ -2468,6 +2490,7 @@ def mla_prefill_decode_graph_fp8[
             w_uv,
             w_uv_scale,
             scalar_args_buf,
+            kv_input_fn,
             ctx,
             d_indices,
             indices_stride,
@@ -2528,7 +2551,6 @@ def mla_prefill_decode_graph_fp8[
                 m_scale_granularity=m_scale_granularity,
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
-                kv_input_fn=kv_input_fn,
                 indices_stride=sparse_indices_stride,
                 target=target,
                 attn_sink_inert=attn_sink_inert,
@@ -2547,6 +2569,7 @@ def mla_prefill_decode_graph_fp8[
                 w_uv,
                 w_uv_scale,
                 scalar_args_buf,
+                kv_input_fn,
                 ctx,
                 _sparse_prefill_rows[physical_indices](
                     d_indices, prefill_d_indices
@@ -2563,7 +2586,6 @@ def mla_prefill_decode_graph_fp8[
                 n_scale_granularity=n_scale_granularity,
                 k_scale_granularity=k_scale_granularity,
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output,
@@ -2582,6 +2604,7 @@ def mla_prefill_decode_graph_fp8[
                 w_k_scale,
                 w_uv,
                 w_uv_scale,
+                kv_input_fn,
                 ctx,
             )
 
@@ -2660,11 +2683,11 @@ def convert_bf16_to_fp8_e4m3fn(
 
 def mla_prefill_branch_bf16[
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
 ](
     output: TileTensor[mut=True, .bfloat16, address_space=.GENERIC, ...],
@@ -2681,6 +2704,7 @@ def mla_prefill_branch_bf16[
     buffer_length: Int,
     w_k: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     w_uv: TileTensor[.bfloat16, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
 ) raises:
     """BF16 MLA prefill path.
@@ -2690,10 +2714,9 @@ def mla_prefill_branch_bf16[
 
     Parameters:
         collection_t: Type of the KV collection (inferred).
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device (defaults to "cpu").
 
     Args:
@@ -2721,6 +2744,10 @@ def mla_prefill_branch_bf16[
             [num_heads * qk_nope_head_dim, kv_latent_dim].
         w_uv: Weight tensor for projecting latent values to V. Shape:
             [num_heads, v_head_dim, kv_latent_dim].
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
     """
     comptime kv_params = collection_t.kv_params
@@ -2780,7 +2807,7 @@ def mla_prefill_branch_bf16[
         q_rope.layout,
     )
 
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         q_rope_mut,
         q_rope.as_unsafe_any_origin(),  # hack aliasing.
         input_row_offsets,
@@ -2789,6 +2816,7 @@ def mla_prefill_branch_bf16[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -2963,11 +2991,11 @@ def mla_prefill_branch_bf16[
 
 def mla_decode_branch_bf16[
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     physical_indices: Bool = True,
@@ -2990,6 +3018,7 @@ def mla_decode_branch_bf16[
     w_uk: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     w_uv: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
@@ -3007,10 +3036,9 @@ def mla_decode_branch_bf16[
 
     Parameters:
         collection_t: Type of the KV collection (inferred).
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device (defaults to "cpu").
         sparse_mla: Whether to use sparse MLA (defaults to False).
         physical_indices: Whether `d_indices` holds paged physical rows rather
@@ -3043,6 +3071,10 @@ def mla_decode_branch_bf16[
             each head's original space. Shape: [num_heads, v_head_dim,
             kv_latent_dim].
         scalar_args_buf: Packed MLA dispatch metadata buffer.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
         d_indices: Sparse decode packed indices (null when dense).
         indices_stride: Row stride in `d_indices` (defaults to 0).
@@ -3133,7 +3165,7 @@ def mla_decode_branch_bf16[
         )
     )
 
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         mla_decode_input_rope,
         q_rope,
         input_row_offsets,
@@ -3142,6 +3174,7 @@ def mla_decode_branch_bf16[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -3372,10 +3405,10 @@ def mla_decode_branch_bf16[
 @inline(.always)
 def mla_prefill_branch_sparse_bf16[
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     indices_stride: Int,
     target: StaticString = "cpu",
 ](
@@ -3390,6 +3423,7 @@ def mla_prefill_branch_sparse_bf16[
     epsilon: Float32,
     w_uk: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     w_uv: TileTensor[.bfloat16, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: UnsafePointer[Int32, MutAnyOrigin],
     topk_lengths: UnsafePointer[Int32, MutAnyOrigin],
@@ -3485,7 +3519,7 @@ def mla_prefill_branch_sparse_bf16[
             (Idx[num_heads * k_cache_dim], Idx[k_cache_dim], Idx[1]),
         )
     )
-    mla_fused_rope_rmsnorm_quantization[kv_input_fn=kv_input_fn](
+    mla_fused_rope_rmsnorm_quantization(
         mla_decode_input_rope,
         q_rope,
         input_row_offsets,
@@ -3494,6 +3528,7 @@ def mla_prefill_branch_sparse_bf16[
         kv_collection,
         layer_idx,
         epsilon,
+        kv_input_fn,
         ctx,
     )
 
@@ -3631,11 +3666,11 @@ def mla_prefill_branch_sparse_bf16[
 @inline(.always)
 def mla_prefill_decode_graph_bf16[
     collection_t: KVCollectionT,
+    KVInputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
     //,
     mask_str: StaticString,
-    kv_input_fn: def[width: Int](IndexList[2]) capturing -> SIMD[
-        DType.bfloat16, width
-    ],
     target: StaticString = "cpu",
     sparse_mla: Bool = False,
     sparse_indices_stride: Int = 0,
@@ -3668,6 +3703,7 @@ def mla_prefill_decode_graph_bf16[
     w_uk: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     w_uv: TileTensor[.bfloat16, address_space=.GENERIC, ...],
     scalar_args_buf: TileTensor[.int64, address_space=.GENERIC, ...],
+    kv_input_fn: KVInputFnType,
     ctx: DeviceContext,
     d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
@@ -3684,10 +3720,9 @@ def mla_prefill_decode_graph_bf16[
 
     Parameters:
         collection_t: Type of the KV collection (inferred).
+        KVInputFnType: Type of the closure that loads the KV latent
+            values (inferred).
         mask_str: Mask variant.
-        kv_input_fn: Input lambda function to load the KV latent values. Shape:
-            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
-            + qk_rope_head_dim.
         target: Target device (defaults to "cpu").
         sparse_mla: Whether to use sparse MLA (defaults to False).
         sparse_indices_stride: Row stride of the sparse decode index buffer
@@ -3735,6 +3770,10 @@ def mla_prefill_decode_graph_bf16[
             each head's original space. Shape: [num_heads, v_head_dim,
             kv_latent_dim].
         scalar_args_buf: Packed MLA dispatch metadata buffer.
+        kv_input_fn: Closure that loads the KV latent values. Shape:
+            [tot_seq_len, cache_head_dim]. Where cache_head_dim = kv_lora_rank
+            + qk_rope_head_dim. It runs on the device, so it must copy what
+            it captures.
         ctx: Device context.
         d_indices: Optional device pointer to packed int32 physical KV row
             indices for sparse decode (defaults to None).
@@ -3772,7 +3811,6 @@ def mla_prefill_decode_graph_bf16[
     ](max_seq_len):
         mla_decode_branch_bf16[
             mask_str=mask_str,
-            kv_input_fn=kv_input_fn,
             target=target,
             sparse_mla=sparse_mla,
             physical_indices=physical_indices,
@@ -3790,6 +3828,7 @@ def mla_prefill_decode_graph_bf16[
             w_uk,
             w_uv,
             scalar_args_buf,
+            kv_input_fn,
             ctx,
             d_indices,
             indices_stride,
@@ -3835,7 +3874,6 @@ def mla_prefill_decode_graph_bf16[
             # mla_sm100_prefill_sparse). Replaces the dense FP8-cache fallback
             # that previously ran here.
             mla_prefill_branch_sparse_bf16[
-                kv_input_fn=kv_input_fn,
                 indices_stride=sparse_indices_stride,
                 target=target,
             ](
@@ -3850,6 +3888,7 @@ def mla_prefill_decode_graph_bf16[
                 epsilon,
                 w_uk,
                 w_uv,
+                kv_input_fn,
                 ctx,
                 _sparse_prefill_rows[physical_indices](
                     d_indices, prefill_d_indices
@@ -3863,7 +3902,6 @@ def mla_prefill_decode_graph_bf16[
             # fp8 caches) is handled by the sparse branch above.
             mla_prefill_branch_bf16[
                 mask_str=mask_str,
-                kv_input_fn=kv_input_fn,
                 target=target,
             ](
                 output,
@@ -3880,5 +3918,6 @@ def mla_prefill_decode_graph_bf16[
                 buffer_length,
                 w_k,
                 w_uv,
+                kv_input_fn,
                 ctx,
             )

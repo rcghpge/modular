@@ -833,9 +833,10 @@ def _check_s_gt_1_guard(ctx: DeviceContext) raises:
         scalar_args_dev.unsafe_ptr(), row_major[3]()
     )
 
-    @__parameter
     @always_inline
-    def kv_input_fn[width: Int](coords: IndexList[2]) -> SIMD[dtype, width]:
+    def kv_input_fn[
+        width: Int
+    ](coords: IndexList[2]) {var kv_in_tt} -> SIMD[dtype, width]:
         comptime assert type_of(kv_in_tt).flat_rank == 2
         return kv_in_tt.load[width=width](Coord(coords))
 
@@ -845,7 +846,6 @@ def _check_s_gt_1_guard(ctx: DeviceContext) raises:
             n_scale_granularity=n_scale_gran,
             k_scale_granularity=k_scale_gran,
             mask_str="causal",
-            kv_input_fn=kv_input_fn,
             target="gpu",
             sparse_mla=True,
             fp8_q=True,
@@ -864,6 +864,7 @@ def _check_s_gt_1_guard(ctx: DeviceContext) raises:
             w_uv_tt,
             w_uv_scale_tt,
             scalar_args_buf_tt,
+            kv_input_fn,
             ctx,
             d_indices=d_indices_device.unsafe_ptr().as_unsafe_any_origin(),
             indices_stride=indices_stride,
