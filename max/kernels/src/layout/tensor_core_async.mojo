@@ -1672,19 +1672,111 @@ struct TensorCoreAsync[
     ):
         """Performs Hopper WGMMA with A in registers and B in shared memory.
 
-        This is the `TileTensor` counterpart of the register-A `LayoutTensor`
-        overload and lowers to it, so the emitted instructions are identical.
+        Row `m_mma + k_mma * num_m_mmas` of `a_frag_tile` holds the A
+        fragment for that MMA, and row `n_mma * num_m_mmas + m_mma` of
+        `c_reg_tile` holds the accumulator, both as contiguous row-major
+        scalar register storage.
 
         Args:
             a_frag_tile: Matrix A in register memory, one row per A fragment.
             b_smem_tile: Matrix B in shared memory.
             c_reg_tile: Output matrix C in register memory, one row per MMA.
         """
-        Self.wgmma(
-            a_frag_tile.to_layout_tensor(),
-            b_smem_tile.to_layout_tensor(),
-            c_reg_tile.to_layout_tensor(),
+        comptime assert a_frag_tile.element_size == 1
+        comptime assert b_smem_tile.element_size == 1
+        comptime assert b_smem_tile.all_dims_known
+        comptime assert _layout_row_major[type_of(a_frag_tile).LayoutType]()
+        comptime assert _layout_row_major[type_of(c_reg_tile).LayoutType]()
+        comptime b_smem_layout = Layout(
+            coord_to_int_tuple[*type_of(b_smem_tile).LayoutType._shape_types](),
+            coord_to_int_tuple[
+                *type_of(b_smem_tile).LayoutType._stride_types
+            ](),
         )
+        comptime BN = b_smem_layout[0].size()
+        comptime BK = b_smem_layout[1].size()
+        comptime b_canonical_K = Self.b_swizzle.bytes() // size_of[
+            Self.b_type
+        ]() if Self.b_swizzle != TensorMapSwizzle.SWIZZLE_NONE else BK
+        comptime b_canonical_layout_flat = tile_layout_k_major[
+            Self.b_type, BN, b_canonical_K, Self.b_swizzle
+        ]() if Self.transpose_b else b_smem_layout
+        comptime b_canonical_layout = tile_to_descriptor[
+            Self.b_type, b_canonical_layout_flat, Self.transpose_b
+        ]()
+
+        # Layout modes are always (MN, K) transpose or not.
+        # Note that shape00 may not equal core matrix dim for MN-major layouts.
+        comptime b_shape00 = b_canonical_layout[0].shape[0].value()
+        comptime b_stride01 = b_canonical_layout[0].stride[1].value()
+        comptime b_stride11 = b_canonical_layout[1].stride[1].value()
+        comptime assert Self.mma_shape[1] % b_shape00 == 0, (
+            "b_shape00 = "
+            + String(b_shape00)
+            + ", mma_shape[1] = "
+            + String(Self.mma_shape[1])
+        )
+        # fmt: off
+        comptime b_n_stride = b_stride01 * (Self.mma_shape[1] // b_shape00) * size_of[Self.b_type]()
+        # K dim is stepped by 2 core matrices.
+        comptime b_k_stride = b_stride11 * 2 * size_of[Self.b_type]()
+        comptime assert b_k_stride > 0
+
+        comptime num_n_mmas = BN // Self.mma_shape[1]
+        comptime num_k_mmas = BK // Self.mma_shape[2]
+        comptime num_m_mmas = a_frag_tile.static_shape[0] // num_k_mmas
+
+        comptime b_num_k_mmas_per_tile = b_canonical_K // Self.mma_shape[2] if Self.transpose_b else num_k_mmas
+        # fmt: on
+
+        comptime assert b_n_stride > 0 or (
+            b_n_stride == 0 and num_n_mmas == 1
+        ), "b_smem_layout = " + String(b_smem_layout)
+
+        # Vectorize each wgmma's fragment size.
+        comptime a_frag_size = Self.mma_shape[0] * Self.mma_shape[2] // 128
+        comptime c_frag_size = Self.mma_shape[0] * Self.mma_shape[1] // 128
+        comptime assert a_frag_tile.static_shape[1] == a_frag_size
+        comptime assert c_reg_tile.static_shape[0] == num_m_mmas * num_n_mmas
+        comptime assert c_reg_tile.static_shape[1] == c_frag_size
+        var a_frags = a_frag_tile.vectorize[1, a_frag_size]()
+        var c_frags = c_reg_tile.vectorize[1, c_frag_size]()
+
+        var b_desc = _wgmma_descriptor[
+            b_canonical_layout, Self.transpose_b, Self.b_swizzle
+        ](b_smem_tile.ptr)
+        comptime layout_b = "col" if Self.transpose_b else "row"
+
+        comptime for k_mma in range(num_k_mmas):
+            comptime b_offset_bytes = (
+                k_mma // b_num_k_mmas_per_tile
+            ) * b_canonical_layout.size() * size_of[
+                Self.b_type
+            ]() if Self.transpose_b else 0
+            comptime b_k_mma_offset = (
+                k_mma % b_num_k_mmas_per_tile
+            ) * b_k_stride
+
+            comptime for m_mma in range(num_m_mmas):
+                var a_frag = a_frags[m_mma + k_mma * num_m_mmas, 0]
+
+                comptime for n_mma in range(num_n_mmas):
+                    comptime mma_id = n_mma * num_m_mmas + m_mma
+                    comptime offset = n_mma * b_n_stride + b_k_mma_offset + b_offset_bytes
+                    var b_desc_n = b_desc + offset
+
+                    c_frags[mma_id, 0] = wgmma_async[
+                        Self.mma_shape[0],
+                        Self.mma_shape[1],
+                        Self.mma_shape[2],
+                        a_type=Self.a_type,
+                        b_type=Self.b_type,
+                        layout_b=layout_b,
+                    ](
+                        a_frag,
+                        b_desc_n,
+                        c_frags[mma_id, 0],
+                    )
 
     @staticmethod
     @inline(.always)

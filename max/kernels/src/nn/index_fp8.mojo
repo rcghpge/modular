@@ -45,7 +45,6 @@ from nn.attention.gpu.sparse_index_fp8_sm100 import (
     SPEC_DECODE_N_TOKENS_ALT,
     fp8_index_score_sm100,
 )
-from std.utils.index import Index
 
 
 struct IndexSmemStorage[
@@ -445,17 +444,17 @@ def _fp8_index_score_amd_kernel[
         dtype == .float8_e4m3fn
     ), "the AMD MFMA index scorer is validated for float8_e4m3fn only"
 
-    var output = output_tt.to_layout_tensor()
-    var q = q_tt.to_layout_tensor()
-    var q_s = q_s_tt.to_layout_tensor()
-    var valid_length = valid_length_tt.to_layout_tensor()
+    comptime assert q_tt.flat_rank == 3
+    comptime assert q_s_tt.flat_rank == 2
+    comptime assert output_tt.flat_rank == 2
+    comptime assert valid_length_tt.flat_rank == 1
 
     var b = block_idx.x
     var seq = block_idx.y
     var key_start = block_idx.z * _AMD_BN_KEY
 
-    var start_of_seq = valid_length[b][0]
-    var end_of_seq = valid_length[b + 1][0]
+    var start_of_seq = valid_length_tt[b]
+    var end_of_seq = valid_length_tt[b + 1]
     var seq_len = end_of_seq - start_of_seq
     if seq >= Int(seq_len):
         return
@@ -479,10 +478,10 @@ def _fp8_index_score_amd_kernel[
     # fault or read the next entry's data into a live path; the store guard drops these.
     var key_clamped = min(key, num_rows - 1)
 
-    var q_ptr = q.ptr_at_offset(Index(start_of_seq + UInt32(seq), 0, 0))
-    var qs_ptr = q_s.ptr_at_offset(Index(start_of_seq + UInt32(seq), 0))
-    var o_ptr = output.ptr_at_offset(
-        Index(start_of_seq + UInt32(seq), UInt32(key_start))
+    var q_ptr = q_tt.ptr_at_offset(Coord(start_of_seq + UInt32(seq), 0, 0))
+    var qs_ptr = q_s_tt.ptr_at_offset(Coord(start_of_seq + UInt32(seq), 0))
+    var o_ptr = output_tt.ptr_at_offset(
+        Coord(start_of_seq + UInt32(seq), UInt32(key_start))
     )
     # A pooled key's `depth` values sit contiguously from its first row:
     # pages hold a whole number of pools, so the rows never straddle a page.
