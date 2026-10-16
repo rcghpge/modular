@@ -20,7 +20,7 @@ The gather pattern provides better parallelism (one thread per grid point)
 and avoids atomic operations since each grid point is written by only one thread.
 """
 
-from std.math import sqrt
+from std.math import ceildiv, sqrt
 from max.gpu import block_idx, thread_idx, block_dim
 from max.gpu.host import DeviceContext
 from std.itertools import product
@@ -139,8 +139,8 @@ def main() raises:
     # Launch config: one thread per grid point (2D grid)
     comptime BLOCK_DIM_X = 16
     comptime BLOCK_DIM_Y = 16
-    var grid_dim_x = (vol_dim.x + BLOCK_DIM_X - 1) // BLOCK_DIM_X
-    var grid_dim_y = (vol_dim.y + BLOCK_DIM_Y - 1) // BLOCK_DIM_Y
+    var grid_dim_x = ceildiv(vol_dim.x, BLOCK_DIM_X)
+    var grid_dim_y = ceildiv(vol_dim.y, BLOCK_DIM_Y)
 
     ctx.enqueue_function[cenergy_gather_kernel](
         d_energygrid,
