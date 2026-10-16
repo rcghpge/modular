@@ -49,15 +49,16 @@ def extend_shape_5d[
     out_shape[0] = first
     out_shape[4] = last
 
-    comptime if rank == 1:
-        out_shape[3] = in_shape[0]
-    elif rank == 2:
-        out_shape[2] = in_shape[0]
-        out_shape[3] = in_shape[1]
-    elif rank == 3:
-        out_shape[1] = in_shape[0]
-        out_shape[2] = in_shape[1]
-        out_shape[3] = in_shape[2]
+    comptime match rank:
+        case 1:
+            out_shape[3] = in_shape[0]
+        case 2:
+            out_shape[2] = in_shape[0]
+            out_shape[3] = in_shape[1]
+        case 3:
+            out_shape[1] = in_shape[0]
+            out_shape[2] = in_shape[1]
+            out_shape[3] = in_shape[2]
 
     return out_shape
 
@@ -80,15 +81,16 @@ def append_shape_5d[
     out_shape[3] = last2nd
     out_shape[4] = last
 
-    comptime if rank == 1:
-        out_shape[2] = in_shape[0]
-    elif rank == 2:
-        out_shape[1] = in_shape[0]
-        out_shape[2] = in_shape[1]
-    elif rank == 3:
-        out_shape[0] = in_shape[0]
-        out_shape[1] = in_shape[1]
-        out_shape[2] = in_shape[2]
+    comptime match rank:
+        case 1:
+            out_shape[2] = in_shape[0]
+        case 2:
+            out_shape[1] = in_shape[0]
+            out_shape[2] = in_shape[1]
+        case 3:
+            out_shape[0] = in_shape[0]
+            out_shape[1] = in_shape[1]
+            out_shape[2] = in_shape[2]
 
     return out_shape
 
@@ -123,15 +125,16 @@ def test_conv_transposed[
     var pad_h = IndexList[2](0)
     var pad_w = IndexList[2](0)
 
-    comptime if rank == 1:
-        pad_w = Index(pad[0], pad[1])
-    elif rank == 2:
-        pad_h = Index(pad[0], pad[1])
-        pad_w = Index(pad[2], pad[3])
-    elif rank == 3:
-        pad_d = Index(pad[0], pad[1])
-        pad_h = Index(pad[2], pad[3])
-        pad_w = Index(pad[4], pad[5])
+    comptime match rank:
+        case 1:
+            pad_w = Index(pad[0], pad[1])
+        case 2:
+            pad_h = Index(pad[0], pad[1])
+            pad_w = Index(pad[2], pad[3])
+        case 3:
+            pad_d = Index(pad[0], pad[1])
+            pad_h = Index(pad[2], pad[3])
+            pad_w = Index(pad[4], pad[5])
 
     var conv_shape = ConvShape[rank](
         n=N,

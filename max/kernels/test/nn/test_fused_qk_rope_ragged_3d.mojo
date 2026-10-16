@@ -208,14 +208,8 @@ def test_fused_qk_rope[
     # Create and init rotary matrix (frequencies as cos(x) + i*sin(x)).
     var freqs_cis_table_buffer = freqs_cis_table_input[dtype]()
     assert len(freqs_cis_table_buffer) == 2 * max_seq_len * head_dim, (
-        "invalid freqs_cis_table init"
-        + String(len(freqs_cis_table_buffer))
-        + " != "
-        + String(2)
-        + " * "
-        + String(max_seq_len)
-        + " * "
-        + String(head_dim)
+        t"invalid freqs_cis_table init{len(freqs_cis_table_buffer)} != 2 *"
+        t" {max_seq_len} * {head_dim}"
     )
     # Create a TileTensor view into freqs_cis that only includes the roped dimensions.
     # Offset to last rope_dim elements.
