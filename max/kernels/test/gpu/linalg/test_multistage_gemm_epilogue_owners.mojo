@@ -22,6 +22,7 @@ from std.utils.index import Index
 def test_epilogue_owners[
     dtype: DType, PARTITIONS: Int
 ](ctx: DeviceContext,) raises:
+    print("epilogue owners:", dtype, "warp k partitions:", PARTITIONS)
     comptime M = 32
     comptime N = 32
     comptime K = 512

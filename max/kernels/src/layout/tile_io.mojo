@@ -739,7 +739,7 @@ struct GenericToSharedAsyncTileCopier[
             # the way the legacy `LayoutTensor` iterator did).
             var src_num_rows = src_num_valid_rows.or_else(Int(src.dim[0]()))
             src_idx_bound = Scalar[idx_type](
-                src_num_rows * Int(src.LayoutType.static_stride[0])
+                src_num_rows * Int(src.layout.stride[0]().value())
             ) - Scalar[idx_type](src_fragments._distance(src))
 
         # When swizzling, `copy_from_async` computes the destination address in

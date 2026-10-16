@@ -25,7 +25,6 @@ from std.sys import align_of, simd_width_of
 
 from .._multistage_gemm_gpu import (
     warp_split_k_reduction,
-    WarpSplitKReductionSMem,
 )
 
 from max.gpu import (
@@ -533,9 +532,9 @@ struct AMDMatmul[
         var c_reg = mma_op.accum_tile()
 
         comptime if Self.num_warps_k > 1:
-            var reduction_smem = WarpSplitKReductionSMem[
-                Self.accum_type, BM, BN, Self.num_warps_k
-            ].stack_allocation()
+            var reduction_smem = stack_allocation[
+                dtype=Self.accum_type, address_space=.SHARED
+            ](row_major[1, BM * BN * (Self.num_warps_k // 2)]())
             warp_split_k_reduction[
                 BM, BN, num_threads // Self.num_warps_k, Self.num_warps_k
             ](warp_k, c_reg, reduction_smem.ptr)
