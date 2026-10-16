@@ -262,7 +262,7 @@ def _repeat_interleave_emit_kernel[
     var outer = Int(outer_arg)
     var inner = Int(inner_arg)
     var tid = thread_idx.x
-    var flat = Int(block_idx.x) * BLOCK_SIZE + tid
+    var flat = block_idx.x * BLOCK_SIZE + tid
     if flat >= outer * out_axis * inner:
         return
     var inner_idx = flat % inner

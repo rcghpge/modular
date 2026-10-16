@@ -907,7 +907,7 @@ def _fused_qk_rms_norm_rope_process_row[
 
     comptime if interleaved:
         var freq_val = freqs_cis.load[width=simd_width](
-            Coord(Index(post_seq_idx, idx))
+            Coord((post_seq_idx, idx))
         )
         var val = s_norm.load[width=simd_width](Coord(idx))
         var res = rope_value(val, freq_val.cast[accum_type]()).cast[dtype]()
@@ -952,7 +952,7 @@ def _fused_qk_rms_norm_rope_process_row[
 
         comptime split_size = rope_dim if has_nope_prefix else head_dim
         var freq_val = freqs_cis.load[width=simd_width](
-            Coord(Index(post_seq_idx, idx))
+            Coord((post_seq_idx, idx))
         )
 
         var h_re, h_im = get_safetensors_idx(idx, split_size)
@@ -1824,7 +1824,7 @@ def nvfp4_kv_write_row[
     comptime accum_type = get_accum_type[dtype]()
     comptime vec_align = align_of[SIMD[dtype, simd_width]]()
 
-    var idx = Int(thread_idx.x) * simd_width
+    var idx = thread_idx.x * simd_width
     var active = idx < head_dim
     var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
         input_row_offsets, global_token_idx
@@ -1870,7 +1870,7 @@ def nvfp4_kv_write_row[
         if active:
             comptime if interleaved:
                 var freq_val = freqs_cis.load[width=simd_width](
-                    Coord(Index(post_seq_idx, idx))
+                    Coord((post_seq_idx, idx))
                 )
                 var val = s_norm.load[width=simd_width](Coord(idx))
                 s_row.store[width=simd_width](
@@ -1887,7 +1887,7 @@ def nvfp4_kv_write_row[
                     )
                     comptime width_2 = simd_width // 2
                     var freq_val = freqs_cis.load[width=simd_width](
-                        Coord(Index(post_seq_idx, idx))
+                        Coord((post_seq_idx, idx))
                     )
                     var h_re, h_im = get_safetensors_idx(idx, split_size)
                     var val = rebind[SIMD[accum_type, simd_width]](
@@ -2139,7 +2139,7 @@ def fused_dual_qk_rms_norm_rope_nvfp4_ragged_paged_gpu[
     `total_seq_len * heads` rows of one block each. A band is a function of
     `block_idx` alone, so every barrier in the row helpers is block-uniform.
     """
-    var row = Int(block_idx.x)
+    var row = block_idx.x
     var tsl = Int(total_seq_len)
     var w_off = Scalar[dtype](weight_offset)
     comptime k_main_heads = main_cache_t.kv_params.num_heads

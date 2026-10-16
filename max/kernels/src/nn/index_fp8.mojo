@@ -451,8 +451,8 @@ def _fp8_index_score_amd_kernel[
     var valid_length = valid_length_tt.to_layout_tensor()
 
     var b = block_idx.x
-    var seq = Int(block_idx.y)
-    var key_start = Int(block_idx.z) * _AMD_BN_KEY
+    var seq = block_idx.y
+    var key_start = block_idx.z * _AMD_BN_KEY
 
     var start_of_seq = valid_length[b][0]
     var end_of_seq = valid_length[b + 1][0]
@@ -470,7 +470,7 @@ def _fp8_index_score_amd_kernel[
         return
 
     var lid = Int(lane_id())
-    var wave = Int(thread_idx.x) // WARP_SIZE
+    var wave = thread_idx.x // WARP_SIZE
     var half = lid // 32
     var col = lid % 32
     var key_local = wave * 32 + col

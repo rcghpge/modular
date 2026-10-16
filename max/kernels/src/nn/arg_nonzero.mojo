@@ -228,7 +228,7 @@ def _arg_nonzero_emit_kernel[
     var num_elements = Int(num_elements_arg)
     var tid = thread_idx.x
     var tile_start = tile_len * block_idx.x
-    var base = Int(offsets[Int(block_idx.x)])
+    var base = Int(offsets[block_idx.x])
     for chunk in range(0, tile_len, BLOCK_SIZE):
         var selected: Int32 = 0
         if chunk + tid < tile_len and tile_start + chunk + tid < num_elements:

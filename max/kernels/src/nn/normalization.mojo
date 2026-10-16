@@ -1842,24 +1842,20 @@ def apply_qk_rms_norm_cpu[
     comptime assert q.flat_rank == 2, "q must have rank 2"
     comptime assert k.flat_rank == 2, "k must have rank 2"
     for r in range(rows):
-        var rs_q = rsqrt(qk_var.load[width=1](Coord(Index(r, 0))) + epsilon)
+        var rs_q = rsqrt(qk_var.load[width=1](Coord((r, 0))) + epsilon)
         for c in range(q_cols):
-            var xf = q.load[width=1](Coord(Index(r, c)))[0].cast[
-                DType.float32
-            ]()
+            var xf = q.load[width=1](Coord((r, c)))[0].cast[DType.float32]()
             var g = gamma_q.load[width=1](Coord(c))
             q_out.store[width=1](
-                Coord(Index(r, c)), ((xf * rs_q) * g).cast[out_dtype]()
+                Coord((r, c)), ((xf * rs_q) * g).cast[out_dtype]()
             )
 
-        var rs_k = rsqrt(qk_var.load[width=1](Coord(Index(r, 1))) + epsilon)
+        var rs_k = rsqrt(qk_var.load[width=1](Coord((r, 1))) + epsilon)
         for c in range(k_cols):
-            var xf = k.load[width=1](Coord(Index(r, c)))[0].cast[
-                DType.float32
-            ]()
+            var xf = k.load[width=1](Coord((r, c)))[0].cast[DType.float32]()
             var g = gamma_k.load[width=1](Coord(c))
             k_out.store[width=1](
-                Coord(Index(r, c)), ((xf * rs_k) * g).cast[out_dtype]()
+                Coord((r, c)), ((xf * rs_k) * g).cast[out_dtype]()
             )
 
 
@@ -3038,8 +3034,8 @@ struct _RMSNormQuantizeFp8GroupKernel[
         var scales = TileTensor(self.scales.ptr, self.scales.layout)
         var gamma = TileTensor(self.gamma.ptr, self.gamma.layout)
 
-        var tid = Int(thread_idx.x)
-        var row = Int(block_idx.x)
+        var tid = thread_idx.x
+        var row = block_idx.x
         var col = tid * Self.simd_width
         var group_idx = tid // Self.lanes_per_group
         var lane_in_group = tid % Self.lanes_per_group
