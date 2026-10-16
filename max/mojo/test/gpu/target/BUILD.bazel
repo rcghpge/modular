@@ -1,6 +1,6 @@
 load("//bazel:api.bzl", "lit_tests", "mojo_test")
 
-package(default_visibility = ["//visibility:private"])
+package(default_visibility = ["//max:consumers"])
 
 _LIT_TESTS = [
     "test_gpu_target_folding.mojo",
@@ -13,7 +13,10 @@ _LIT_TESTS = [
     mojo_test(
         name = src + ".test",
         srcs = [src],
-        deps = ["@mojo//:std"],
+        deps = [
+            "//max:max_mojo",
+            "@mojo//:std",
+        ],
     )
     for src in glob(
         ["*.mojo"],
@@ -25,6 +28,7 @@ lit_tests(
     name = "lit_tests",
     srcs = _LIT_TESTS,
     mojo_deps = [
+        "//max:max_mojo",
         "@mojo//:std",
     ],
     target_compatible_with = select({

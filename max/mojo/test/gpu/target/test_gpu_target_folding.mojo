@@ -23,7 +23,7 @@
 # RUN: %mojo-build --emit object --target-accelerator gfx950 %s -o %t
 
 from std.sys.info import CompilationTarget
-from std._gpu.host.info import get_gpu_target
+from max.gpu.host.info import get_gpu_target
 from std.reflection import get_linkage_name
 
 

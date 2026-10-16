@@ -71,7 +71,7 @@
 from std.compile import compile_info
 from std.sys import get_defined_string
 from std.sys.info import current_accelerator, default_accelerator
-from std._gpu.host.info import GPUInfo, TargetAccelerator, get_gpu_target
+from max.gpu.host.info import GPUInfo, TargetAccelerator, get_gpu_target
 
 
 def main() raises:

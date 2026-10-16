@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._gpu.host.info import GPUInfo
+from max.gpu.host.info import GPUInfo
 from std.testing import TestSuite, assert_equal
 
 

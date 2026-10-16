@@ -26,6 +26,7 @@ from std._gpu.host.info import (
     AcceleratorArchitectureFamily,
     GPUInfo,
     NoGPU,
+    TargetAccelerator,
     get_gpu_target,
     is_accelerator,
     is_cpu,
@@ -104,6 +105,7 @@ from std._plugin.metal.metal_targets import (
 )
 
 from std._gpu.host.info import (
+    _all_target_accelerators,
     _encode_device_types_with_host_layout,
 )
 
