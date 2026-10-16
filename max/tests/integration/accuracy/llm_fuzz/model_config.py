@@ -105,6 +105,12 @@ class ModelProfile:
 
 
 MODEL_PROFILES: dict[str, ModelProfile] = {
+    "hy_v4": ModelProfile(
+        name="hy_v4",
+        default_port=8800,
+        tags=["model:hy_v4"],
+        description="Hy4 model-specific tests",
+    ),
     "kimi-k2.5": ModelProfile(
         name="kimi-k2.5",
         default_port=8200,
