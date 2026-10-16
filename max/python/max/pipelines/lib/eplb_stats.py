@@ -459,8 +459,12 @@ class EplbPlacement:
 
     @property
     def max_replicas(self) -> int:
-        """Largest replica count across all (layer, logical) cells."""
-        return int(self.logcnt.max())
+        """Width of each ``log2phy`` row, at least the largest replica count.
+
+        Rows are padded with ``-1`` to a width the fused router kernels can
+        load as one vector, so this may exceed ``logcnt.max()``.
+        """
+        return int(self.log2phy.shape[-1])
 
     @classmethod
     def from_snapshot(
@@ -517,7 +521,7 @@ class EplbPlacement:
         )
         return cls(
             phy2log=phy2log,
-            log2phy=log2phy.astype(np.int32),
+            log2phy=_pad_replicas(log2phy).astype(np.int32),
             logcnt=logcnt.astype(np.int32),
         )
 
@@ -576,6 +580,31 @@ class EplbPlacement:
             float(b.max()),
             float(a.max()),
         )
+
+
+_REPLICA_WIDTHS = (1, 2, 4, 8, 16)
+"""``log2phy`` row widths the fused router kernels load as one SIMD vector."""
+
+
+def _pad_replicas(log2phy: NDArray[np.int64]) -> NDArray[np.int64]:
+    """Pads ``log2phy``'s replica axis with ``-1`` to a supported width.
+
+    Raises:
+        ValueError: If some expert has more replicas than the widest width.
+    """
+    width = log2phy.shape[-1]
+    padded = next((w for w in _REPLICA_WIDTHS if w >= width), None)
+    if padded is None:
+        raise ValueError(
+            f"EPLB placement gives an expert {width} replicas; at most "
+            f"{_REPLICA_WIDTHS[-1]} are supported. Lower "
+            "eplb_redundant_experts_per_gpu."
+        )
+    return np.pad(
+        log2phy,
+        ((0, 0), (0, 0), (0, padded - width)),
+        constant_values=-1,
+    )
 
 
 @dataclass(frozen=True)
