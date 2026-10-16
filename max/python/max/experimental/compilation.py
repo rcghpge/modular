@@ -58,6 +58,7 @@ from __future__ import annotations
 import functools
 import itertools
 import re
+import shutil
 from collections.abc import (
     Callable,
     Iterable,
@@ -70,6 +71,13 @@ from types import MappingProxyType
 from typing import Any, Generic, ParamSpec, TypeVar
 
 from max import _validation_hooks, tree
+from max._artifact.value_types import (
+    ArtifactFile,
+    ArtifactType,
+    decode_field,
+    treedef_from_json,
+    treedef_to_json,
+)
 from max.driver import Accelerator, Buffer, Device, DLPackArray
 from max.engine import CompiledModel, InferenceSession, Model
 from max.experimental.realization_context import (
@@ -93,6 +101,10 @@ from max.experimental.tensor import (
     current_realization_context,
     realization_context,
 )
+from max.experimental.tensor_spec_serialization import (
+    layout_to_json,
+    layouts_from_json,
+)
 from max.graph import (
     BufferType,
     BufferValue,
@@ -104,6 +116,7 @@ from max.graph import (
     Value,
     ops,
 )
+from typing_extensions import Self
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -397,9 +410,11 @@ class CompiledCallable(Generic[_P, _R]):
     out_tree: tree.TreeDef
 
     _weights: dict[str, DLPackArray]
-    _artifact: CompiledModel
+    # A deserialized callable holds the path of its MEF instead.
+    _artifact: CompiledModel | Path
     _signal_device_ids: tuple[int, ...]
-    _engine_model: Model
+    # ``None`` for a callable built without an initialized model.
+    _engine_model: Model | None
     _signal_buffers: list[Buffer]
 
     def __init__(
@@ -425,6 +440,48 @@ class CompiledCallable(Generic[_P, _R]):
         ids = self._signal_device_ids
         self._signal_buffers = _cached_signal_buffers(ids)[0] if ids else []
 
+    @classmethod
+    def from_compiled(
+        cls,
+        artifact: CompiledModel,
+        engine_model: Model | None,
+        in_layouts: Sequence[TensorLayout],
+        in_tree: tree.TreeDef,
+        out_layouts: Sequence[TensorLayout],
+        out_tree: tree.TreeDef,
+        weights: Mapping[str, DLPackArray] | None = None,
+    ) -> CompiledCallable[..., Any]:
+        """Wraps a graph compiled elsewhere, given its signature.
+
+        Use this for a graph that was traced without :func:`stage`, such as
+        a :class:`~max.nn.Module` graph. Any signal buffers are among its
+        inputs.
+
+        Args:
+            artifact: The compiled artifact, holding the one graph.
+            engine_model: The model initialized from ``artifact``, or
+                ``None`` if the callable only describes the graph.
+            in_layouts: The layout of each tensor argument, in graph order.
+            in_tree: The tree structure of the arguments.
+            out_layouts: The layout of each tensor result, in graph order.
+            out_tree: The tree structure of the return value.
+            weights: The weight registry ``engine_model`` was initialized
+                with.
+
+        Returns:
+            The callable that runs ``engine_model``.
+        """
+        compiled = cls.__new__(cls)
+        compiled.in_layouts, compiled.in_tree = list(in_layouts), in_tree
+        compiled.out_layouts, compiled.out_tree = list(out_layouts), out_tree
+        compiled._signal_device_ids = ()
+        compiled._signal_buffer_index = None
+        compiled._artifact = artifact
+        compiled._weights = dict(weights or {})
+        compiled._engine_model = engine_model
+        compiled._signal_buffers = []
+        return compiled
+
     @property
     def weights(self) -> Mapping[str, DLPackArray]:
         """Returns the weight registry this callable was compiled with.
@@ -446,7 +503,15 @@ class CompiledCallable(Generic[_P, _R]):
 
             run.engine_model.capture(key, *buffers, *run.signal_buffers)
             run.engine_model.replay(key, *buffers, *run.signal_buffers)
+
+        Raises:
+            RuntimeError: If the callable has no initialized model, as a
+                deserialized one does not.
         """
+        if self._engine_model is None:
+            raise RuntimeError(
+                "the compiled graph is not initialized, so it cannot run"
+            )
         return self._engine_model
 
     @property
@@ -527,7 +592,69 @@ class CompiledCallable(Generic[_P, _R]):
         Args:
             path: The path of the file to write.
         """
-        self._artifact.export_mef(path)
+        if isinstance(self._artifact, Path):
+            shutil.copyfile(self._artifact, path)
+        else:
+            self._artifact.export_mef(path)
+
+    def __serialize__(self) -> Mapping[str, ArtifactType]:
+        """Returns the MEF, stored as ``model.mef``, and the call's layouts.
+
+        The layouts and tree structures of the call rebuild the callable.
+
+        Raises:
+            ArtifactError: If a layout has a dimension built from an operator
+                other than ``+``, ``*`` and ``//``, or a tree structure cannot
+                be encoded as JSON.
+        """
+        return {
+            "mef": ArtifactFile(
+                "model.mef",
+                self._artifact
+                if isinstance(self._artifact, Path)
+                else self._artifact.export_mef,
+            ),
+            "in_layouts": [layout_to_json(t) for t in self.in_layouts],
+            "in_tree": treedef_to_json(self.in_tree),
+            "out_layouts": [layout_to_json(t) for t in self.out_layouts],
+            "out_tree": treedef_to_json(self.out_tree),
+        }
+
+    @classmethod
+    def __deserialize__(cls, value: Mapping[str, ArtifactType]) -> Self:
+        """Rebuilds a callable from the output of :meth:`__serialize__`.
+
+        The callable describes its graph, with its MEF at the file inside the
+        artifact, but has no initialized model to run it.
+
+        Raises:
+            ArtifactError: If a field is malformed.
+        """
+        mef = decode_field(value, "mef", _mef_path)
+        compiled = cls.__new__(cls)
+        compiled.in_layouts = layouts_from_json(
+            value.get("in_layouts"), "in_layouts"
+        )
+        compiled.in_tree = decode_field(value, "in_tree", treedef_from_json)
+        compiled.out_layouts = layouts_from_json(
+            value.get("out_layouts"), "out_layouts"
+        )
+        compiled.out_tree = decode_field(value, "out_tree", treedef_from_json)
+        compiled._signal_device_ids = ()
+        compiled._signal_buffer_index = None
+        compiled._artifact = mef
+        compiled._weights = {}
+        compiled._engine_model = None
+        compiled._signal_buffers = []
+        return compiled
+
+
+def _mef_path(value: ArtifactType) -> Path:
+    if not isinstance(value, ArtifactFile) or not isinstance(
+        value.content, Path
+    ):
+        raise TypeError(f"expected an artifact file, got {value!r}")
+    return value.content
 
 
 def _argument_tensor(

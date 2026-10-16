@@ -248,6 +248,22 @@ modular_py_library(
 )
 
 modular_py_library(
+    name = "pipeline_model_dummy_graph_specs",
+    testonly = True,
+    srcs = ["pipeline_model_dummy_graph_specs.py"],
+    imports = [".."],
+    deps = [
+        ":pipeline_model_dummy",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines",
+        "//max/python/max/pipelines/lib",
+    ],
+)
+
+modular_py_library(
     name = "pipeline_model_dummy",
     testonly = True,
     srcs = ["pipeline_model_dummy.py"],

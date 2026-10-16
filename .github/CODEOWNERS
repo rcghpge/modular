@@ -136,6 +136,7 @@
 /max/python/max/_core/ @modular/max-sdk @modular/runtime
 /max/python/max/_core/driver.pyi @modular/driver
 /max/python/max/_core_types/ @modular/runtime
+/max/python/max/_artifact/ @modular/max-sdk @modular/max-serve
 /max/python/max/_eager_policy.py @modular/max-sdk
 /max/python/max/tree.py @modular/max-sdk
 /max/python/max/_interpreter.py @modular/max-sdk
@@ -202,6 +203,7 @@
 /max/tests/tests/test_compile_pool.py @modular/max-sdk
 /max/tests/tests/test_compile_pool_gpu.py @modular/max-sdk
 /max/tests/tests/test_compile_serialization.py @modular/max-sdk
+/max/tests/tests/test_compiled_callable.py @modular/max-sdk
 /max/tests/tests/test_dim_substitute.py @modular/max-sdk
 /max/tests/tests/test_eager_cold_start_policy.py @modular/max-sdk
 /max/tests/tests/test_eager_usage_validator.py @modular/max-sdk

@@ -749,17 +749,6 @@
                 },
                 {
                   "type": "category",
-                  "label": "artifact",
-                  "link": {
-                    "type": "doc",
-                    "id": "api/python/pipelines.lib.artifact"
-                  },
-                  "items": [
-                    "__AUTOGEN:max.pipelines.lib.artifact__"
-                  ]
-                },
-                {
-                  "type": "category",
                   "label": "generate",
                   "link": {
                     "type": "doc",

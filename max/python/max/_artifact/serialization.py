@@ -19,7 +19,7 @@ import logging
 import os
 import platform
 import shutil
-import tempfile
+import uuid
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,12 +27,11 @@ from typing import TypeVar, overload
 
 import huggingface_hub
 from max import _core
-from pydantic import JsonValue
 
 from .codec import collect_hf_refs, decode, encode, merge_files
 from .metadata import ARTIFACT_VERSION, ArtifactMetadata
 from .model_artifact import ModelArtifact
-from .types import (
+from .value_types import (
     ARTIFACT_FILE_NAME,
     ARTIFACT_SUFFIX,
     METADATA_FILE_NAME,
@@ -41,6 +40,7 @@ from .types import (
     ArtifactFile,
     ArtifactType,
     HuggingFaceRef,
+    JsonValue,
     sha256_file,
 )
 
@@ -86,7 +86,11 @@ def serialize(
         files = merge_files(files, section_files)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+    # Not tempfile.mkdtemp: it creates the directory 0700 whatever the umask,
+    # and the rename below keeps that mode, so no one else could read the
+    # artifact.
+    tmp = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.tmp")
+    tmp.mkdir()
     try:
         for file in files.values():
             _write_file(tmp, file)
@@ -208,7 +212,7 @@ def deserialize(
                 f"{root}: failed to deserialize component {slot!r}. {stale_hint}"
             ) from e
 
-    return artifact_type(**components)
+    return artifact_type.from_components(components)
 
 
 def _check_hf_cached(root: Path, refs: Iterable[HuggingFaceRef]) -> None:
@@ -244,12 +248,7 @@ def _check_hf_cached(root: Path, refs: Iterable[HuggingFaceRef]) -> None:
 def _write_file(root: Path, file: ArtifactFile) -> None:
     dest = root / file.name
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if isinstance(file.content, Path):
-        shutil.copyfile(file.content, dest)
-    elif isinstance(file.content, bytes):
-        dest.write_bytes(file.content)
-    else:
-        dest.write_text(file.content, encoding="utf-8")
+    file.write_to(dest)
 
 
 def _read_json(path: Path) -> JsonValue:

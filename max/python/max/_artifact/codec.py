@@ -22,9 +22,13 @@ import math
 from collections.abc import Collection, Iterable, Iterator, Mapping
 from pathlib import Path, PurePosixPath
 
-from pydantic import JsonValue
-
-from .types import ArtifactError, ArtifactFile, ArtifactType, HuggingFaceRef
+from .value_types import (
+    ArtifactError,
+    ArtifactFile,
+    ArtifactType,
+    HuggingFaceRef,
+    JsonValue,
+)
 
 FILE_TAG = "$file"  # Key used to reference ArtifactFile object
 HF_TAG = "$hf"  # Key used to reference HuggingFaceRef object
@@ -83,6 +87,26 @@ def encode(
             files = merge_files(files, item_files)
         return items, files
     raise ArtifactError(f"{label}: unsupported type {type(value).__name__}")
+
+
+def prefix_files(value: ArtifactType, prefix: str) -> ArtifactType:
+    """Returns ``value`` with every file it references moved under
+    ``prefix``.
+
+    Use this to store several components' values side by side, each under
+    its own directory, when their file names may coincide.
+
+    Args:
+        value: A serialized value.
+        prefix: The directory, a relative POSIX path, to move the files into.
+    """
+    if isinstance(value, ArtifactFile):
+        return ArtifactFile(f"{prefix}/{value.name}", value.content)
+    if isinstance(value, Mapping):
+        return {key: prefix_files(item, prefix) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [prefix_files(item, prefix) for item in value]
+    return value
 
 
 def merge_files(

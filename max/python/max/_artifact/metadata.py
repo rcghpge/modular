@@ -17,10 +17,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from pydantic import JsonValue
-
 from .codec import ref_from_dict, ref_to_dict
-from .types import ArtifactError, HuggingFaceRef
+from .value_types import ArtifactError, HuggingFaceRef, JsonValue
 
 ARTIFACT_VERSION = 0
 """The artifact format version written at export. Not checked at load time yet.

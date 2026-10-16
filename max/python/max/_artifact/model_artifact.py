@@ -16,17 +16,21 @@ from __future__ import annotations
 
 import types
 import typing
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 
+from typing_extensions import Self
+
 from .codec import collect_hf_refs
-from .types import ArtifactComponent, ArtifactError, HuggingFaceRef
+from .pipeline_modules import PipelineModules
+from .value_types import ArtifactComponent, ArtifactError, HuggingFaceRef
 
 
 @dataclass(frozen=True)
 class ModelArtifact:
     """Serializable serve-able pipeline."""
 
-    model: ArtifactComponent | None = None
+    model: PipelineModules | None = None
     tokenizer: ArtifactComponent | None = None
     format_spec: ArtifactComponent | None = None
     engine_config: ArtifactComponent | None = None
@@ -79,6 +83,31 @@ class ModelArtifact:
                     " ArtifactComponent"
                 )
         return result
+
+    @classmethod
+    def from_components(
+        cls, components: Mapping[str, ArtifactComponent]
+    ) -> Self:
+        """Builds an artifact from components keyed by slot name.
+
+        Raises:
+            ArtifactError: If a key is not a slot, or a component is not an
+                instance of its slot's type.
+        """
+        component_types = cls.component_types()
+        artifact = cls()
+        for slot, component in components.items():
+            if slot not in component_types:
+                raise ArtifactError(f"{cls.__name__} has no slot {slot!r}")
+            expected = component_types[slot]
+            if expected is not None and not isinstance(component, expected):
+                raise ArtifactError(
+                    f"{cls.__name__}.{slot} expects {expected.__name__}, got"
+                    f" {type(component).__name__}"
+                )
+            # The dataclass is frozen; this is construction, not mutation.
+            object.__setattr__(artifact, slot, component)
+        return artifact
 
     def components(self) -> dict[str, ArtifactComponent]:
         """Returns the set component slots, keyed by slot name."""

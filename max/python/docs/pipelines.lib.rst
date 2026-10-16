@@ -18,7 +18,6 @@ Submodules
    :nosignatures:
 
    max.pipelines.lib.arch_lookup
-   max.pipelines.lib.artifact
    max.pipelines.lib.interfaces
    max.pipelines.lib.log_probabilities
    max.pipelines.lib.pipeline_parallel
@@ -28,7 +27,6 @@ Submodules
    :hidden:
 
    pipelines.lib.arch_lookup
-   pipelines.lib.artifact
    pipelines.lib.generate
    pipelines.lib.interfaces
    pipelines.lib.log_probabilities

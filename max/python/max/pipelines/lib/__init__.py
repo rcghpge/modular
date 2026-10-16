@@ -65,13 +65,7 @@ from .config import (
     supported_encoding_supported_on,
 )
 from .embeddings_pipeline import EmbeddingsPipeline, EmbeddingsPipelineType
-from .graph_specs import (
-    CompiledArtifacts,
-    GraphRole,
-    GraphSpec,
-    compile_graphs,
-    init_graphs,
-)
+from .graph_specs import GraphRole, GraphSpec, compile_and_init_graphs
 from .interfaces import (
     AlwaysSignalBuffersMixin,
     BatchProcessor,
@@ -127,7 +121,6 @@ __all__ = [
     "BatchProcessor",
     "BatchProcessorRuntime",
     "CompilationTimer",
-    "CompiledArtifacts",
     "DenoisingCacheConfig",
     "DenoisingCacheSettings",
     "EmbeddingsPipeline",
@@ -183,7 +176,7 @@ __all__ = [
     "VisionPreprocessCache",
     "WeightPathParser",
     "build_eos_tracker_for_request",
-    "compile_graphs",
+    "compile_and_init_graphs",
     "convert_max_config_value",
     "deep_merge_max_configs",
     "download_weight_files",
@@ -191,7 +184,6 @@ __all__ = [
     "float32_to_bfloat16_as_uint16",
     "generate_local_model_path",
     "get_default_max_config_file_section_name",
-    "init_graphs",
     "is_float4_encoding",
     "max_tokens_to_generate",
     "parse_quant_config",

@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, cast
 
 from max import tree
@@ -29,6 +30,7 @@ from max.driver import Buffer, Device
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.experimental import functional as F
+from max.experimental.compilation import CompiledCallable
 from max.experimental.nn.module import Module as _ModuleV3
 from max.experimental.tensor import Tensor, default_dtype
 from max.graph import DeviceRef, Graph, Module, Value
@@ -48,12 +50,7 @@ from max.pipelines.kv_cache.config import (
 from max.pipelines.lib.config.model_config import (
     _select_quantization_encoding,
 )
-from max.pipelines.lib.graph_specs import (
-    CompiledArtifacts,
-    GraphSpec,
-    compile_graphs,
-    init_graphs,
-)
+from max.pipelines.lib.graph_specs import GraphSpec, compile_and_init_graphs
 from max.pipelines.lib.utils import (
     CompilationTimer,
     parse_state_dict_from_weights,
@@ -421,8 +418,10 @@ class PipelineModel(
     lora_targets: ClassVar[tuple[LoRATargetModule, ...]] = ()
     #: The graphs this model compiled, by role. Empty for a model that
     #: compiles its graphs without registering them (see
-    #: :func:`~max.pipelines.lib.graph_specs.compile_graphs`).
-    compiled_artifacts: CompiledArtifacts = CompiledArtifacts()
+    #: :func:`~max.pipelines.lib.graph_specs.compile_and_init_graphs`).
+    compiled_modules: Mapping[str, CompiledCallable[..., Any]] = (
+        MappingProxyType({})
+    )
 
     def __init__(
         self,
@@ -777,7 +776,7 @@ class PipelineModel(
     def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
         """Compiles and initializes the graphs :meth:`graph_specs` returns.
 
-        Keeps the compiled artifacts as :attr:`compiled_artifacts`.
+        Keeps each role's compiled graph as :attr:`compiled_modules`.
 
         Args:
             session: The session that compiles and initializes the graphs.
@@ -790,8 +789,11 @@ class PipelineModel(
         with CompilationTimer("model") as timer:
             specs = self.graph_specs(model_config)
             timer.mark_build_complete()
-            self.compiled_artifacts = compile_graphs(session, specs)
-            models = init_graphs(session, self.compiled_artifacts, specs)
+            self.compiled_modules = compile_and_init_graphs(session, specs)
+        models = {
+            role: compiled.engine_model
+            for role, compiled in self.compiled_modules.items()
+        }
         self._maybe_release_host_weights(*models.values())
         return models
 

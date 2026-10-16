@@ -21,6 +21,7 @@ import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, TypeVar
 
 import click
@@ -920,6 +921,37 @@ def cli_warm_cache(target: str | None, **config_kwargs) -> None:
         # `pre-jit` asked for the emitted Mojo and nothing more; the
         # pipeline has nothing left to warm.
         logging.info(str(stopped))
+
+
+@main.command(name="export", cls=WithLazyPipelineOptions)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    required=True,
+    help=(
+        "Where to write the pipeline artifact directory. ``.m`` is appended"
+        " if missing. The path must not exist."
+    ),
+)
+def cli_export(output: Path, **config_kwargs: Any) -> None:
+    """Build the pipeline and export it as a ``.m`` pipeline artifact.
+
+    Takes the same pipeline options as ``serve`` and ``generate`` and builds
+    the pipeline the same way, so the artifact holds the graphs a served
+    pipeline compiles, keyed by role.
+    """
+    from max._artifact import ArtifactError
+    from max._artifact.export import export_pipeline
+    from max.pipelines import PipelineArgs, PipelineConfig
+
+    pipeline_config = PipelineConfig.from_args(
+        PipelineArgs.from_flat_kwargs(**config_kwargs)
+    )
+    try:
+        dest = export_pipeline(pipeline_config, output)
+    except ArtifactError as e:
+        raise click.ClickException(str(e)) from e
+    click.echo(f"Exported pipeline artifact to {dest}")
 
 
 def _render_warm_progress(
