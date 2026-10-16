@@ -1267,7 +1267,8 @@ static SmallVector<Type> getEnumCasePayload(EnumCaseOp caseOp) {
 }
 
 LogicalResult StructEmitter::synthesizeEnumCaseConstructor(
-    StringRef caseName, ArrayRef<Type> payload, SMLoc caseLoc) {
+    StringRef caseName, ArrayRef<Type> payload, SMLoc caseLoc,
+    DocStringAttr docString) {
   MLIRContext *ctx = getContext();
   SMLoc loc = structDecl.getLoc();
   ASTType selfType = structDecl.getSelfType();
@@ -1307,6 +1308,7 @@ LogicalResult StructEmitter::synthesizeEnumCaseConstructor(
            << "internal error: could not synthesize enum case '" << caseName
            << "'";
   fn.setIsStatic(true);
+  fn.setDocStringAttr(docString);
   fnDecl->resolvedness = DeclResolvedness::signature;
   auto atEnd = OpBuilder::atBlockEnd(fn.getBody());
   EndFnOp::create(atEnd, fn.getLoc(), /*unresolved=*/true);
@@ -1473,6 +1475,8 @@ LogicalResult StructEmitter::synthesizeEnumMembers() {
     return failure();
   auto [caseNames, caseTypes] = *lists;
   synthesizeEnumCaseListsAndStorage(enumStorageDeclOp, caseNames, caseTypes);
+  // The case op is unlisted, so its doc string reaches doc validation and doc
+  // generation only through the member synthesized for it.
   for (auto [caseOp, caseLoc] : llvm::zip_equal(cases, caseLocs)) {
     StringRef caseName = caseOp.getName();
     SmallVector<Type> payload = getEnumCasePayload(caseOp);
@@ -1484,9 +1488,11 @@ LogicalResult StructEmitter::synthesizeEnumMembers() {
       aliasDecl->setLoc(caseLoc);
       AliasDeclOp aliasOp = aliasDecl->getOp();
       aliasOp->setLoc(caseOp.getLoc());
+      aliasOp.setDocStringAttr(caseOp.getDocStringAttr());
       continue;
     }
-    if (failed(synthesizeEnumCaseConstructor(caseName, payload, caseLoc)))
+    if (failed(synthesizeEnumCaseConstructor(caseName, payload, caseLoc,
+                                             caseOp.getDocStringAttr())))
       return failure();
   }
   return success();
