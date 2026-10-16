@@ -365,17 +365,6 @@ struct StreamPriorityRange(TrivialRegisterPassable, Writable):
         )
 
 
-@fieldwise_init
-struct _DeviceBufferMode(TrivialRegisterPassable):
-    var _mode: Int
-
-    comptime _SYNC = _DeviceBufferMode(0)
-    comptime _ASYNC = _DeviceBufferMode(1)
-
-    def __eq__(self, other: Self) -> Bool:
-        return self._mode == other._mode
-
-
 struct HostBuffer[dtype: DType](ImplicitlyCopyable, Sized, Writable):
     """Represents a block of host-resident storage. For GPU devices, a host
     buffer is allocated in the host's global memory.
@@ -1508,7 +1497,6 @@ struct DeviceBuffer[dtype: DType](
         out self,
         ctx: DeviceContext,
         size: Int,
-        mode: _DeviceBufferMode,
     ) raises:
         """This init takes in a constructed `DeviceContext` and schedules an
         owned buffer allocation using the stream in the device context.
@@ -1518,31 +1506,23 @@ struct DeviceBuffer[dtype: DType](
         var cpp_handle: _DeviceBufferPtr[mut=True] = {}
         var device_ptr: Optional[Self._DevicePtr] = {}
 
-        # TODO: Remove this if statement.
-        # As of GEX-3005, Driver only supports async allocation. For
-        # sync allocation, we need to explicitly synchronize after this step.
-        # See DeviceContext.create_buffer_sync() for example.
-        if mode == _DeviceBufferMode._ASYNC:
-            # const char *AsyncRT_DeviceContext_createBuffer_async(const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx, size_t len, size_t elem_size)
-            _checked(
-                external_call[
-                    "AsyncRT_DeviceContext_createBuffer_async",
-                    _CString[],
-                ](
-                    Pointer(to=cpp_handle),
-                    Pointer(to=device_ptr),
-                    ctx._handle,
-                    c_size_t(size),
-                    c_size_t(elem_size),
-                ),
-                location=call_location(),
-            )
-        else:
-            raise Error(
-                "DeviceBuffer.__init__: Unsupported _DeviceBufferMode(",
-                mode._mode,
-                ")",
-            )
+        # Allocation is always stream-ordered: the driver dropped synchronous
+        # allocation (GEX-3005), so `DeviceContext.create_buffer_sync()`
+        # synchronizes afterwards instead.
+        # const char *AsyncRT_DeviceContext_createBuffer_async(const DeviceBuffer **result, void **device_ptr, const DeviceContext *ctx, size_t len, size_t elem_size)
+        _checked(
+            external_call[
+                "AsyncRT_DeviceContext_createBuffer_async",
+                _CString[],
+            ](
+                Pointer(to=cpp_handle),
+                Pointer(to=device_ptr),
+                ctx._handle,
+                c_size_t(size),
+                c_size_t(elem_size),
+            ),
+            location=call_location(),
+        )
 
         self._device_ptr = device_ptr.value()
         self._handle = cpp_handle
@@ -5081,9 +5061,7 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
         Raises:
             If the operation fails.
         """
-        return DeviceBuffer[dtype](
-            self.assert_default_target(), size, _DeviceBufferMode._ASYNC
-        )
+        return DeviceBuffer[dtype](self.assert_default_target(), size)
 
     def create_buffer_sync[
         dtype: DType
@@ -5102,9 +5080,7 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
         Raises:
             If the operation fails.
         """
-        var result = DeviceBuffer[dtype](
-            self.assert_default_target(), size, _DeviceBufferMode._ASYNC
-        )
+        var result = DeviceBuffer[dtype](self.assert_default_target(), size)
         self.synchronize()
         return result
 
