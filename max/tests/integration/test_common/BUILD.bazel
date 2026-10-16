@@ -328,6 +328,12 @@ modular_py_library(
         "test_common.vllm_hook_core",
     ],
     imports = [".."],
+    visibility = [
+        "//:__pkg__",
+        "//Kernels/benchmarks/csa:__pkg__",
+        "//max/tests:__subpackages__",
+        "//oss/modular/max/tests:__subpackages__",
+    ],
     deps = [
         # the normal one pulled from rules_pycross transitively.
         ":storage",

@@ -12,30 +12,23 @@
 # ===----------------------------------------------------------------------=== #
 """Normalize, rotate and store projected index keys in a paged quantized cache."""
 
-from std.math import ceildiv, clamp, fma, rsqrt
+from std.math import ceildiv, rsqrt
 from std.memory import bitcast
 from std.utils.index import StaticTuple
 from layout import TileTensor
 from max.gpu import MAX_THREADS_PER_BLOCK_METADATA, block_idx, thread_idx
 from max.gpu.host import DeviceContext
 import max.gpu.primitives.warp as warp
-from linalg.fp4_utils import cast_fp32_to_fp4e2m1
-
-
-@inline(.always)
-def _raw[
-    dtype: DType
-](t: TileTensor[dtype, ...]) -> UnsafePointer[
-    Scalar[dtype], MutUntrackedOrigin
-]:
-    # The kernel below indexes the pointer as dense row-major, so a strided
-    # layout would read and write the wrong addresses.
-    comptime assert t.is_row_major, "indexer_k_store tensors must be row-major"
-    return (
-        t.ptr.unsafe_mut_cast[True]()
-        .unsafe_origin_cast[MutUntrackedOrigin]()
-        .address_space_cast[.GENERIC]()
-    )
+from nn.paged_store_utils import (
+    dense_pointer,
+    gptj_rotate,
+    load_frequencies,
+    mxfp4_quantize,
+    mxfp8_quantize,
+    paged_record,
+    raw_pointer,
+    row_stride,
+)
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](128))
@@ -69,65 +62,54 @@ def _indexer_k_store[
         return
     var lane = thread_idx.x % 16
     var channel = lane * 8
-    var values = keys.unsafe_load[width=8](row * key_stride + channel).cast[
-        .float32
-    ]()
+    var values = keys.unsafe_load[width=8, alignment=16](
+        row * key_stride + channel
+    ).cast[.float32]()
     var norm = rsqrt(
         warp.lane_group_sum[num_lanes=16]((values * values).reduce_add())
         / 128.0
         + epsilon
     )
     values = (
-        (values * norm * weight.unsafe_load[width=8](channel).cast[.float32]())
+        (
+            values
+            * norm
+            * weight.unsafe_load[width=8, alignment=16](channel).cast[
+                .float32
+            ]()
+        )
         .cast[.bfloat16]()
         .cast[.float32]()
     )
     if channel >= 64:
-        var base = (position // ratio * ratio) * frequency_stride
-        comptime for pair in range(4):
-            var local_pair = (channel - 64) // 2 + pair
-            var cosine = frequencies[unsafe_offset=base + local_pair]
-            var sine = frequencies[unsafe_offset=base + 32 + local_pair]
-            var even = values[2 * pair]
-            var odd = values[2 * pair + 1]
-            # Preserve the reference's contraction before rounding to BF16.
-            values[2 * pair] = fma(even, cosine, -(odd * sine))
-            values[2 * pair + 1] = fma(odd, cosine, even * sine)
+        var frequency = load_frequencies[4](
+            frequencies,
+            position // ratio * ratio * frequency_stride,
+            (channel - 64) // 2,
+        )
+        values = gptj_rotate[4](values, frequency[0], frequency[1])
     # Both rounding points are part of the caller's BF16 contract.
     values = values.cast[.bfloat16]().cast[.float32]()
     comptime value_bytes = 64 if fp4 else 128
-    var page = cache.unsafe_offset((slot // page_size) * page_stride)
-    var offset = slot % page_size
-    var scales = page.unsafe_offset(page_size * value_bytes + offset * 4)
+    var data, scales = paged_record[value_bytes, 4](
+        cache, slot, page_size, page_stride
+    )
     comptime if fp4:
-        var peak = warp.lane_group_max[num_lanes=4](abs(values).reduce_max())
-        # 6 * 2^-126, represented exactly before upward scale rounding.
-        peak = max(peak, Float32(7.052966104933725e-38))
-        var scale = (peak * (1.0 / 6.0)).cast[.float8_e8m0fnu]()
-        var packed = cast_fp32_to_fp4e2m1(
-            values * (1.0 / scale.cast[.float32]())
-        )
-        page.unsafe_offset(offset * 64 + lane * 4).unsafe_bitcast[UInt32]()[
+        var packed, scale = mxfp4_quantize[lanes=4](values)
+        data.unsafe_offset(lane * 4).unsafe_bitcast[UInt32]()[
             unsafe_offset=0
-        ] = packed
+        ] = packed[0]
         if lane % 4 == 0:
             scales[unsafe_offset=lane // 4] = bitcast[.uint8](scale)
     else:
-        var peak = max(
-            warp.lane_group_max[num_lanes=16](abs(values).reduce_max()),
-            Float32(1e-4),
-        )
-        var scale = (
-            (peak * (1.0 / 448.0)).cast[.float8_e8m0fnu]().cast[.float32]()
-        )
-        var quantized = clamp(values * (1.0 / scale), -448.0, 448.0).cast[
-            .float8_e4m3fn
-        ]()
-        page.unsafe_offset(offset * 128).unsafe_store[width=8](
+        var quantized, scale = mxfp8_quantize[lanes=16](values)
+        data.unsafe_store[width=8, alignment=4](
             lane * 8, bitcast[.uint8, 8](quantized)
         )
         if lane == 0:
-            scales.unsafe_bitcast[Float32]()[unsafe_offset=0] = scale
+            scales.unsafe_bitcast[Float32]()[unsafe_offset=0] = scale.cast[
+                .float32
+            ]()
 
 
 def indexer_k_norm_rope_store[
@@ -150,20 +132,24 @@ def indexer_k_norm_rope_store[
         ratio: Compression group size, either 1 or 2.
 
     Args:
-        keys: BF16 projected keys, with 128 contiguous channels per row.
-            Shape: `[count, key_stride]`, row-major.
+        keys: BF16 projected keys. Shape: `[count, >= 128]`, contiguous rows
+            that start at 16-byte boundaries.
         positions: Nonnegative token positions. Shape: `[count]`.
         frequencies: FP32 cosine then sine values, 32 each per position.
-            Shape: `[rows, frequency_stride]` with 64 used per row,
-            row-major.
-        weight: 128 BF16 RMSNorm weights. Shape: `[128]`.
+            Shape: `[rows, >= 64]`, contiguous rows that start at 16-byte
+            boundaries.
+        weight: 128 BF16 RMSNorm weights, 16-byte aligned. Shape: `[128]`.
         slots: Unique destination slots; negative entries skip the row.
             Shape: `[count]`.
         cache: Byte cache pages, each page's values preceding its scales.
-            Shape: `[pages, page_stride]`, row-major.
+            Shape: `[pages, page_bytes]`, contiguous rows that start at
+            4-byte boundaries.
         page_size: Number of slots in a cache page.
         epsilon: RMSNorm epsilon.
         ctx: The device context.
+
+    Raises:
+        If a row of keys, frequencies, or cache is not contiguous and aligned.
 
     Constraints:
         The FP4 path requires SM100 or newer. Each page contains at least
@@ -177,24 +163,25 @@ def indexer_k_norm_rope_store[
     ), "frequencies must be [rows, frequency_stride]"
     comptime assert cache.rank == 2, "cache must be [pages, page_stride]"
     var count = Int(keys.dim[0]())
-    var key_stride = Int(keys.dim[1]())
-    var frequency_stride = Int(frequencies.dim[1]())
-    var page_stride = Int(cache.dim[1]())
-    debug_assert(count >= 0 and key_stride >= 128 and frequency_stride >= 64)
+    var key_stride = row_stride[alignment=16](keys, "keys")
+    var frequency_stride = row_stride[alignment=16](frequencies, "frequencies")
+    var page_stride = row_stride[alignment=4](cache, "cache")
+    debug_assert(count >= 0 and Int(keys.dim[1]()) >= 128)
+    debug_assert(Int(frequencies.dim[1]()) >= 64)
     debug_assert(positions.num_elements() >= count)
     debug_assert(slots.num_elements() >= count)
-    debug_assert(weight.num_elements() >= 128)
-    debug_assert(page_size > 0 and page_stride % 4 == 0)
-    debug_assert(page_stride >= page_size * (68 if fp4 else 132))
+    debug_assert(weight.num_elements() >= 128 and Int(weight.ptr) % 16 == 0)
+    debug_assert(page_size > 0)
+    debug_assert(Int(cache.dim[1]()) >= page_size * (68 if fp4 else 132))
     if count == 0:
         return
     ctx.enqueue_function[_indexer_k_store[fp4, ratio]](
-        _raw(keys).as_imm().as_unsafe_any_origin(),
-        _raw(positions).as_imm().as_unsafe_any_origin(),
-        _raw(frequencies).as_imm().as_unsafe_any_origin(),
-        _raw(weight).as_imm().as_unsafe_any_origin(),
-        _raw(slots).as_imm().as_unsafe_any_origin(),
-        _raw(cache).as_unsafe_any_origin(),
+        raw_pointer(keys).as_imm().as_unsafe_any_origin(),
+        dense_pointer(positions).as_imm().as_unsafe_any_origin(),
+        raw_pointer(frequencies).as_imm().as_unsafe_any_origin(),
+        dense_pointer(weight).as_imm().as_unsafe_any_origin(),
+        dense_pointer(slots).as_imm().as_unsafe_any_origin(),
+        raw_pointer(cache).as_unsafe_any_origin(),
         Int32(count),
         Int32(key_stride),
         Int32(frequency_stride),
