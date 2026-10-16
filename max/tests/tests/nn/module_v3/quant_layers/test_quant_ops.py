@@ -35,7 +35,7 @@ from max.experimental.nn.common_layers.quant_tensor import (
     NVFP4Tensor,
     NVFP4TensorQuantizer,
 )
-from max.experimental.tensor import Tensor
+from max.experimental.tensor import Tensor, default_dtype
 from max.nn.comm.ep import EPConfig
 from max.nn.quant_config import QuantConfig, QuantFormat
 
@@ -137,7 +137,9 @@ def test_quantized_weight_nvfp4_fake(
     nvfp4_fake_quant_config: QuantConfig,
 ) -> None:
     """Fake-quant NVFP4 wraps the logical bf16 weight instead of packed leaves."""
-    with F.lazy():
+    # The default dtype is float32 on a CPU host and bfloat16 on a GPU one;
+    # models build under bfloat16.
+    with F.lazy(), default_dtype(DType.bfloat16):
         weight = quant_ops.quantized_weight(
             _MOE_DIM, _HIDDEN_DIM, nvfp4_fake_quant_config
         )
@@ -145,7 +147,7 @@ def test_quantized_weight_nvfp4_fake(
         assert isinstance(weight, NVFP4TensorQuantizer)
         assert weight.block_size == (1, 16)
         assert list(weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
-        assert weight._tensor.dtype == DType.float32
+        assert weight._tensor.dtype == DType.bfloat16
 
 
 def test_quantized_weight_rejects_unsupported_format(
