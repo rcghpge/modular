@@ -47,6 +47,7 @@ _MAX_PACKAGES = {
 # that build standalone.
 INTERNAL_PACKAGES = [
     "//Kernels/lib/attn_res",
+    "//Kernels/lib/engram",
     "//Kernels/lib/kda",
     "//Kernels/lib/matmul_rs",
     "//Kernels/lib/mega_ffn",
