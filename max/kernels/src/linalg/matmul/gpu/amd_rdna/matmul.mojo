@@ -521,10 +521,11 @@ def _load_tile_regs[
         var vec_idx = i * NUM_THREADS + tid
         if vec_idx < total_vectors:
             var elem_idx = vec_idx * VECTOR_WIDTH
-            var global_row = block_row_offset + elem_idx // BLOCK_K
+            var row, col = divmod(elem_idx, BLOCK_K)
+            var global_row = block_row_offset + row
             if global_row < max_rows:
                 regs[i] = tile.load_linear[width=VECTOR_WIDTH](
-                    IndexList[2](global_row, k_offset + elem_idx % BLOCK_K)
+                    IndexList[2](global_row, k_offset + col)
                 )
     return regs^
 
