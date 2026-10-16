@@ -59,7 +59,6 @@ from std.sys import (
     align_of,
     bit_width_of,
     is_amd_gpu,
-    is_apple_gpu,
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
@@ -304,14 +303,13 @@ def _has_native_f8_support() -> Bool:
     return _is_sm_9x_or_newer() or is_nvidia_gpu["sm_89"]() or is_amd_gpu()
 
 
-# Apple's Metal AIR backend has no `llvm.vector.splice` lowering;
-# `SIMD.{rotate,shift}_{left,right}` use `shufflevector` masks instead.
+# Shuffle masks for `SIMD.{rotate,shift}_{left,right}` on backends that do
+# not lower `llvm.vector.splice`.
 
 
 @inline(.nodebug)
-def _apple_rotate_mask[size: Int, shift: Int]() -> IndexList[size]:
-    """Mask for `SIMD.rotate_left[shift]()` on Apple GPU; any sign of `shift`.
-    """
+def _rotate_mask[size: Int, shift: Int]() -> IndexList[size]:
+    """Mask for `SIMD.rotate_left[shift]()`; any sign of `shift`."""
     var res = IndexList[size]()
     comptime for i in range(size):
         res[i] = (i + shift + size) % size
@@ -319,8 +317,8 @@ def _apple_rotate_mask[size: Int, shift: Int]() -> IndexList[size]:
 
 
 @inline(.nodebug)
-def _apple_shift_mask[size: Int, shift: Int]() -> IndexList[size]:
-    """Mask for `SIMD.shift_{left,right}[shift]()` on Apple GPU.
+def _shift_mask[size: Int, shift: Int]() -> IndexList[size]:
+    """Mask for `SIMD.shift_{left,right}[shift]()`.
 
     Sign of `shift` selects direction (positive=left, negative=right);
     out-of-range lanes index `other`, which callers pass as zero.
@@ -2955,7 +2953,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         if __is_run_in_comptime_interpreter:
             return slice_body()
 
-        comptime if is_apple_gpu():
+        comptime if not CurrentPlugin.lowers_subvector_intrinsics:
             return slice_body()
 
         return llvm_intrinsic[
@@ -2996,9 +2994,10 @@ struct SIMD[dtype: DType, length: SIMDLength](
             return value[0]
 
         # `llvm.vector.insert` needs a vector as its subvector operand, but a
-        # width-1 `SIMD` lowers to a scalar. The Metal backend does not
-        # support the intrinsic at all.
-        comptime if input_width == 1 or is_apple_gpu():
+        # width-1 `SIMD` lowers to a scalar.
+        comptime if (
+            input_width == 1 or not CurrentPlugin.lowers_subvector_intrinsics
+        ):
             var result = self
             comptime for i in range(input_width):
                 result[offset + i] = value[i]
@@ -3485,8 +3484,8 @@ struct SIMD[dtype: DType, length: SIMDLength](
             comptime assert shift == 0, "for scalars the shift must be 0"
             return self
 
-        comptime if is_apple_gpu():
-            return self.shuffle[mask=_apple_rotate_mask[Self.length, shift]()]()
+        comptime if not CurrentPlugin.lowers_subvector_intrinsics:
+            return self.shuffle[mask=_rotate_mask[Self.length, shift]()]()
 
         comptime if shift >= 0:
             return llvm_intrinsic[
@@ -3554,10 +3553,8 @@ struct SIMD[dtype: DType, length: SIMDLength](
         elif shift == Self.length:
             return 0
 
-        comptime if is_apple_gpu():
-            return self.shuffle[mask=_apple_shift_mask[Self.length, shift]()](
-                Self()
-            )
+        comptime if not CurrentPlugin.lowers_subvector_intrinsics:
+            return self.shuffle[mask=_shift_mask[Self.length, shift]()](Self())
 
         return llvm_intrinsic[
             "llvm.vector.splice.left", Self, has_side_effect=False
@@ -3593,10 +3590,8 @@ struct SIMD[dtype: DType, length: SIMDLength](
         elif shift == Self.length:
             return 0
 
-        comptime if is_apple_gpu():
-            return self.shuffle[mask=_apple_shift_mask[Self.length, -shift]()](
-                Self()
-            )
+        comptime if not CurrentPlugin.lowers_subvector_intrinsics:
+            return self.shuffle[mask=_shift_mask[Self.length, -shift]()](Self())
 
         return llvm_intrinsic[
             "llvm.vector.splice.right", Self, has_side_effect=False

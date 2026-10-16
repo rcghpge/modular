@@ -153,6 +153,20 @@ trait PluginHooks:
     ] = None
 
     # ===------------------------------------------------------------------=== #
+    # SIMD Operations
+    # ===------------------------------------------------------------------=== #
+
+    comptime lowers_subvector_intrinsics: Bool = True
+    """Whether the backend lowers LLVM's subvector intrinsics.
+
+    These are `llvm.vector.extract`, `llvm.vector.insert`, and
+    `llvm.vector.splice.{left,right}`, which `SIMD.slice`, `SIMD.insert`,
+    `SIMD.rotate_{left,right}`, and `SIMD.shift_{left,right}` use. Where this
+    is `False`, those methods build the result from element accesses and
+    `shuffle` instead.
+    """
+
+    # ===------------------------------------------------------------------=== #
     # Memory Operations
     # ===------------------------------------------------------------------=== #
 

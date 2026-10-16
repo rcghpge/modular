@@ -107,4 +107,6 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime flushes_subnormals[dtype: DType]: Bool = dtype == DType.float32
 
+    comptime lowers_subvector_intrinsics: Bool = False
+
     comptime has_generic_address_space: Bool = False
