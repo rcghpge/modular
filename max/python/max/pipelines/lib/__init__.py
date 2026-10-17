@@ -20,6 +20,10 @@ from max.config import (
     get_default_max_config_file_section_name,
     resolve_max_config_inheritance,
 )
+from max.driver import (
+    float32_array_to_buffer,
+    float32_to_bfloat16_as_uint16,
+)
 from max.pipelines.sampling import (
     SamplingConfig,
     rejection_sampler,
@@ -37,10 +41,6 @@ from max.pipelines.weights.quant import parse_quant_config
 from max.pipelines.weights.weight_path_parser import WeightPathParser
 
 from .audio_tokenizer import AudioGenerationTokenizer
-from .bfloat16_utils import (
-    float32_array_to_buffer,
-    float32_to_bfloat16_as_uint16,
-)
 from .config import (
     DenoisingCacheConfig,
     DenoisingCacheSettings,

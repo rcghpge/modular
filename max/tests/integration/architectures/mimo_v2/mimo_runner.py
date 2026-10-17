@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import ml_dtypes
 import numpy as np
 import numpy.typing as npt
 from max import tree
@@ -145,8 +146,10 @@ class Runner:
             for name in state:
                 if name.endswith("e_score_correction_bias"):
                     bias = np.from_dlpack(state[name].data).astype(np.float32)
-                    rounded = (bf16_bits(bias).astype(np.uint32) << 16).view(
-                        np.float32
+                    rounded = (
+                        bf16_bits(bias)
+                        .view(ml_dtypes.bfloat16)
+                        .astype(np.float32)
                     )
                     state[name] = dataclasses.replace(
                         state[name], data=Buffer.from_numpy(rounded)
@@ -372,14 +375,21 @@ def bf16_to_f32(buffer: Any) -> npt.NDArray[np.float32]:
     host = buffer.to(CPU())
     if host.dtype == DType.float32:
         return host.to_numpy()
-    bits = host.view(DType.uint16).to_numpy().astype(np.uint32) << 16
-    return bits.view(np.float32)
+    return (
+        host.view(DType.uint16)
+        .to_numpy()
+        .view(ml_dtypes.bfloat16)
+        .astype(np.float32)
+    )
 
 
 def bf16_bits(x: npt.NDArray[np.float32]) -> npt.NDArray[np.uint16]:
     """Rounds to nearest even, as a float32 -> bfloat16 cast does."""
-    bits = np.ascontiguousarray(x, dtype=np.float32).view(np.uint32)
-    return ((bits + 0x7FFF + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
+    return (
+        np.asarray(x, dtype=np.float32)
+        .astype(ml_dtypes.bfloat16)
+        .view(np.uint16)
+    )
 
 
 def f32_to_bf16(x: npt.NDArray[np.float32]) -> Buffer:

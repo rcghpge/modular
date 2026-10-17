@@ -4343,10 +4343,15 @@ def flash_attention_gpu(
 
     .. invisible-code-block: python
 
+        from max.driver import (
+            bfloat16_as_uint16_to_float32,
+            float32_to_bfloat16_as_uint16,
+        )
+
         def round_to_bf16(x):
-            bits = x.view(np.uint32)
-            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
-            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+            return bfloat16_as_uint16_to_float32(
+                float32_to_bfloat16_as_uint16(x.astype(np.float32))
+            )
 
         assert output.dtype == DType.bfloat16
         assert result.shape == (batch, seq_len, num_heads, head_dim)
@@ -4812,10 +4817,15 @@ def flash_attention_ragged_gpu(
 
     .. invisible-code-block: python
 
+        from max.driver import (
+            bfloat16_as_uint16_to_float32,
+            float32_to_bfloat16_as_uint16,
+        )
+
         def round_to_bf16(x):
-            bits = x.view(np.uint32)
-            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
-            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+            return bfloat16_as_uint16_to_float32(
+                float32_to_bfloat16_as_uint16(x.astype(np.float32))
+            )
 
         assert output.dtype == DType.bfloat16
         assert result.shape == (total_seq_len, num_heads, head_dim)
@@ -7471,10 +7481,15 @@ def grouped_matmul_ragged(
 
     .. invisible-code-block: python
 
+        from max.driver import (
+            bfloat16_as_uint16_to_float32,
+            float32_to_bfloat16_as_uint16,
+        )
+
         def round_to_bf16(x):
-            bits = x.view(np.uint32)
-            bits = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
-            return (bits & np.uint32(0xFFFF0000)).view(np.float32)
+            return bfloat16_as_uint16_to_float32(
+                float32_to_bfloat16_as_uint16(x.astype(np.float32))
+            )
 
         assert output.dtype == DType.bfloat16
         assert result.shape == (total_tokens, out_features)
