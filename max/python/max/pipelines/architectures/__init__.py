@@ -97,6 +97,7 @@ def register_all_models() -> None:
             "DeepseekV32ForCausalLM", ".deepseekV3_2", "deepseekV3_2_arch"
         ),
         _LazyArch("DeepseekV4ForCausalLM", ".deepseekV4", "deepseekV4_arch"),
+        _LazyArch("DeepseekV41ForCausalLM", ".deepseekV41", "deepseekV41_arch"),
         _LazyArch(
             "DeepseekV32ForCausalLM_ModuleV3",
             ".deepseekV3_2_modulev3",
@@ -396,6 +397,12 @@ def register_all_models() -> None:
             ".unified_dspark_deepseekV4",
             "unified_dspark_deepseekV4_speculator",
             speculates_on="DeepseekV4ForCausalLM",
+        ),
+        _LazyArch(
+            "UnifiedDSparkDeepseekV41ForCausalLM",
+            ".unified_dspark_deepseekV41",
+            "unified_dspark_deepseekV41_speculator",
+            speculates_on="DeepseekV41ForCausalLM",
         ),
         _LazyArch(
             "UnifiedDSparkGemma4_12BForCausalLM",

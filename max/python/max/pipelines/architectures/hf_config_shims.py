@@ -241,6 +241,81 @@ class DeepseekV4HFConfig(PretrainedConfig):
 AutoConfig.register("deepseek_v4", DeepseekV4HFConfig, exist_ok=True)
 
 
+class _DeepseekV41TextHFConfig(PretrainedConfig):
+    """The ``text_config`` half of a DeepSeek-V4.1-Flash config, verbatim.
+
+    transformers >= 5.12 standardizes RoPE params in ``__post_init__`` and,
+    for a scaling RoPE type such as ``yarn``, eagerly reads
+    ``self.max_position_embeddings``. That field (and ``rope_scaling``) lives
+    on ``text_config``, so it is bound here before the base initializer runs.
+    """
+
+    model_type = "deepseek_v41_text"
+
+    def __init__(
+        self, max_position_embeddings: int = 1048576, **kwargs: Any
+    ) -> None:
+        self.max_position_embeddings = max_position_embeddings
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+
+class _DeepseekV41VisionHFConfig(PretrainedConfig):
+    """The ``vision_config`` half of a DeepSeek-V4.1-Flash config, verbatim."""
+
+    model_type = "deepseek_v41_vision"
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+
+class DeepseekV41HFConfig(PretrainedConfig):
+    """HuggingFace configuration class for DeepSeek-V4.1-Flash models.
+
+    ``deepseek_v41`` is not registered in transformers and the repo ships no
+    ``auto_map``, so ``AutoConfig.from_pretrained`` cannot resolve it
+    without this class. Every model field is nested under ``text_config``
+    and ``vision_config``; both become config objects rather than dicts, so
+    their fields read as attributes (``config.text_config.<field>``).
+    """
+
+    model_type = "deepseek_v41"
+    sub_configs = {
+        "text_config": _DeepseekV41TextHFConfig,
+        "vision_config": _DeepseekV41VisionHFConfig,
+    }
+
+    def __init__(
+        self,
+        text_config: dict[str, Any] | _DeepseekV41TextHFConfig | None = None,
+        vision_config: dict[str, Any]
+        | _DeepseekV41VisionHFConfig
+        | None = None,
+        **kwargs: Any,
+    ) -> None:
+        if isinstance(text_config, dict) or text_config is None:
+            text_config = _DeepseekV41TextHFConfig(**(text_config or {}))
+        if isinstance(vision_config, dict) or vision_config is None:
+            vision_config = _DeepseekV41VisionHFConfig(**(vision_config or {}))
+        self.text_config = text_config
+        self.vision_config = vision_config
+        super().__init__(**kwargs)
+        for key, value in kwargs.items():
+            if not hasattr(self, key):
+                setattr(self, key, value)
+
+
+try:
+    AutoConfig.register("deepseek_v41", DeepseekV41HFConfig)
+except ValueError:
+    pass
+
+
 class LagunaHFConfig(PretrainedConfig):
     """Local config class for poolside's Laguna models (``model_type: laguna``).
 
