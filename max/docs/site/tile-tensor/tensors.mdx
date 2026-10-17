@@ -59,22 +59,6 @@ of values. This is reflected by the tensor's `element_size`, which is derived
 from its `Engine` parameter (`DefaultEngine[element_width=N]`). For more
 information, see [Vectorizing tensors](#vectorizing-tensors).
 
-:::note TileTensor and LayoutTensor
-
-`TileTensor` replaces
-[`LayoutTensor`](/api/mojo/layout/layout_tensor/LayoutTensor/), which is
-deprecated as of MAX 26.7. `TileTensor` is more memory-efficient and makes it
-much easier to mix compile-time and runtime dimensions. A few `LayoutTensor`
-operations, such as `simd_tile()`, don't have `TileTensor` equivalents yet. If
-you need one, you can create a `LayoutTensor` from a `TileTensor` using
-[`to_layout_tensor()`](/api/mojo/layout/tile_tensor/TileTensor/#to_layout_tensor),
-though the result is itself a deprecated type. This method requires
-non-vectorized `DefaultEngine` or `DevicePointerEngine` storage. The resulting
-view borrows the same memory; it doesn't allocate or extend the lifetime of the
-backing storage.
-
-:::
-
 Code snippets that show individual operations are context-dependent fragments:
 they assume an existing tensor, coordinates, and the relevant imports. The GPU
 examples define functions to call from a program with an available accelerator.
@@ -706,9 +690,8 @@ The `tile()` method doesn't clip a tile at the edge of its parent tensor: the
 tile always has the shape you request. When a tensor's dimensions aren't
 multiples of the tile size, the last tile along each axis extends past the
 tensor's data, and accessing those positions reads or writes memory outside the
-tensor. (The deprecated `LayoutTensor` type supports masked tiles that shrink at
-the boundary. `TileTensor` has no equivalent, and a masked `TileTensorIter`
-carries a valid-row count without clipping the tile.)
+tensor. (A masked `TileTensorIter` carries a valid-row count without clipping
+the tile.)
 
 To process an incomplete edge tile, compare each position's coordinates in the
 parent tensor against the parent's dimensions before you access it:
@@ -800,8 +783,7 @@ scalar units, not vector elements.
 and the values in a vector must be contiguous in memory. For example, in
 a 2D row-major tensor, you can vectorize adjacent columns using a shape like
 `[1, 2]` or `[1, 4]`. For a column-major tensor, you can vectorize adjacent
-rows using a shape like `[4, 1]`. `LayoutTensor` supports vectorizing using
-a 2D vector shape.
+rows using a shape like `[4, 1]`.
 
 :::
 

@@ -16,25 +16,9 @@ from std.sys.intrinsics import readfirstlane
 
 from max.gpu.intrinsics import AMDBufferResource
 from layout import *
-from layout.layout_tensor import LayoutTensor
 from layout.tile_layout import Layout as TileLayout
 
 from std.utils import IndexList
-
-from .int_tuple import product
-
-
-def load_to_simd(
-    tensor: LayoutTensor,
-    out res: SIMD[tensor.dtype, product(tensor.layout.shape)],
-):
-    comptime assert (
-        tensor.layout.all_dims_known()
-    ), "load_to_simd is supported only for tensors with known layout"
-    comptime size = type_of(res).length
-    return rebind[type_of(res)](
-        tensor.reshape[Layout(Int(size))]().vectorize[size]()[0]
-    )
 
 
 @inline(.always)
@@ -59,42 +43,6 @@ def load_to_simd(
         var packed = tensor.vectorize[size, 1]()
         comptime assert packed.flat_rank == 2
         return packed.load[alignment=align_of[tensor.dtype]()]((0, 0))
-
-
-@inline(.always)
-def _get_bounds(tensor: LayoutTensor) -> Int:
-    comptime assert (
-        tensor.element_layout.all_dims_known()
-    ), "Element layout must be known for _get_bounds"
-    comptime assert (
-        tensor.element_layout.size() == 1
-    ), "Element layout must be a scalar"
-
-    comptime assert tensor.rank == 2 or tensor.num_strides == 2
-
-    var strides = tensor.runtime_layout.stride.value
-    # Masked views use runtime extents even when their layout shape is static.
-    var native_layout = TileLayout(
-        Coord(tensor.dim[0](), tensor.dim[1]()),
-        Coord(strides[0], strides[1]),
-    )
-    var native = TileTensor[
-        tensor.dtype,
-        type_of(native_layout),
-        tensor.origin,
-        address_space=tensor.address_space,
-        linear_idx_type=.int64,
-    ](tensor.ptr, native_layout)
-    return _get_bounds_impl[tensor.linear_idx_type, True](native)
-
-
-@inline(.always)
-def make_amd_buffer_resource(
-    tensor: LayoutTensor,
-) -> AMDBufferResource:
-    var ptr = tensor.ptr
-    var size = _get_bounds(tensor)
-    return AMDBufferResource(readfirstlane(ptr), readfirstlane(size))
 
 
 @inline(.always)

@@ -1011,7 +1011,7 @@
           ]
         },
         {
-          "label": "Layouts and LayoutTensor (deprecated)",
+          "label": "IntTuple-based layouts",
           "type": "category",
           "collapsed": true,
           "items": [

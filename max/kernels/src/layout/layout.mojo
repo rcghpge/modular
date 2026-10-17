@@ -40,6 +40,7 @@ Common use cases:
 Example:
 
 ```mojo
+from std.collections import Optional
 from layout import Layout, IntTuple
 from layout.layout import blocked_product
 
@@ -1997,3 +1998,36 @@ def is_contiguous_dim(layout: Layout, dim: Int) -> Bool:
     return layout.stride[dim] == 1 or (
         layout.stride[dim] == 0 and layout.shape[dim] == 1
     )
+
+
+def _compute_distribute_layout[
+    data_layout: Layout,
+    threads_layout: Layout,
+    axis: Optional[Int] = None,
+]() -> Layout:
+    """Computes a layout for distributing threads across data.
+
+    Distributes thread_layout into data_layout. If axis is provided, distributes
+    into threads_layout projected into this axis.
+
+    Parameters:
+        data_layout: The layout of the data to be distributed.
+        threads_layout: The layout of the threads.
+        axis: Optional axis for projection-based distribution.
+
+    Returns:
+        A layout representing the distribution of threads across data.
+    """
+    var thread_tile = LayoutList()
+
+    comptime if case .Some(axis_idx) = axis:
+        return zipped_divide(
+            materialize[data_layout](),
+            Layout(threads_layout.shape[axis_idx]),
+        )
+
+    else:
+        for dim in threads_layout.shape:
+            thread_tile.append(Layout(dim))
+
+        return zipped_divide(materialize[data_layout](), thread_tile)

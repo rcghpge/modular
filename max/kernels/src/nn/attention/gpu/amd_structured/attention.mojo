@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 """Attention struct for gfx950 MHA/MLA kernels (prefill + decode).
 
-TileTensor-only API: no LayoutTensor in struct fields, constructor
-parameters, method signatures, or internal bridges. Mask application is
+TileTensor-only API in struct fields, constructor parameters, and
+method signatures. Mask application is
 delegated to `MaskTileOp` (see `mask_op.mojo`), which uses
 TileTensor.vectorize with local SIMD read/modify/write for per-element edits.
 

@@ -4,7 +4,6 @@ load("//max/kernels/src:deprecations.bzl", "IGNORED_POINTER_DEPRECATIONS_COPTS")
 package(default_visibility = ["//max:consumers"])
 
 _EXTRA_CONSTRAINTS = {
-    "test_sm90_output_store_parity.mojo": ["//:nvidia_gpu"],
     # MXFP4 packing uses SM100 conversion instructions.
     "test_indexer_k_store.mojo": select({
         "//:b200_gpu": [],

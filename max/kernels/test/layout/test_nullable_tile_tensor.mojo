@@ -135,18 +135,3 @@ def test_layout_field_accessible() raises:
     assert_equal(nullable.layout.shape[1]().value(), 3)
     assert_equal(nullable.layout.stride[0]().value(), 3)
     assert_equal(nullable.layout.stride[1]().value(), 1)
-
-
-def test_to_layout_tensor() raises:
-    """To_layout_tensor() gives a LayoutTensor with matching shape."""
-    var data = Array[Float32, 6](
-        fill_with=lambda (i: Int) -> Float32: Float32(i)
-    )
-
-    var nullable = NullableTileTensor(TileTensor(data, row_major[2, 3]()))
-    var lt = nullable.to_layout_tensor()
-
-    assert_equal(lt.dim[0](), 2)
-    assert_equal(lt.dim[1](), 3)
-    assert_equal(lt[0, 0], Float32(0))
-    assert_equal(lt[1, 2], Float32(5))

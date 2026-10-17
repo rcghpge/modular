@@ -32,6 +32,11 @@ This version is still a work in progress.
 
 ## Breaking changes
 
+- The deprecated `LayoutTensor` and `LayoutTensorIter` types have been removed
+  from the `layout` package, along with the `to_layout_tensor()` and
+  `lt_to_tt()` conversions. Use `TileTensor` and `TileTensorIter` instead.
+  `ThreadScope` now lives in `layout.tile_io`.
+
 ## Fixes
 
 ## Mojo language

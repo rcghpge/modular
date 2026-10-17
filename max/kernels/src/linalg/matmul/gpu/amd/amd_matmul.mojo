@@ -82,7 +82,7 @@ struct AMDMatmul[
     """Pure TileTensor structured matmul for AMD GPUs.
 
     Schedule-driven single-buffer pipeline. All data movement uses
-    TileTensor: no LayoutTensor anywhere.
+    TileTensor.
 
     Parameters:
         a_type: Element type of the A input matrix.

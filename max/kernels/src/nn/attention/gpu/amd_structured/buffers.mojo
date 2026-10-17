@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Q, P, and Output register buffers for gfx950 attention kernels.
 
-TileTensor-only: no LayoutTensor imports, aliases, or return types.
+TileTensor-only imports, aliases, and return types.
 """
 
 from std.math import ceildiv, recip

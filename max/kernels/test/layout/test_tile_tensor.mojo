@@ -782,44 +782,6 @@ def test_indexing() raises:
     assert_equal(tensor[Int(1), Int64(0)], 3)
 
 
-def test_to_layout_tensor_square() raises:
-    var stack: Array[UInt8, 4] = [1, 2, 3, 4]
-    var tensor = TileTensor(stack, row_major[2, 2]()).to_layout_tensor()
-    assert_equal(materialize[tensor.layout](), Layout.row_major(2, 2))
-    assert_equal(tensor.rank, 2)
-    assert_equal(
-        rebind[IndexList[2]](tensor.runtime_layout.shape.value.canonicalize()),
-        IndexList[2](2, 2),
-    )
-
-
-def test_to_layout_tensor_3d() raises:
-    var stack = Array[UInt8, 64 * 8 * 4](fill=0)
-    var tensor = TileTensor(stack, row_major[64, 8, 4]())
-    var lt = tensor.to_layout_tensor()
-    assert_equal(materialize[lt.layout](), Layout.row_major(64, 8, 4))
-    assert_equal(lt.rank, 3)
-    assert_equal(
-        rebind[IndexList[3]](lt.runtime_layout.shape.value.canonicalize()),
-        IndexList[3](64, 8, 4),
-    )
-
-
-def test_to_layout_tensor_3d_dynamic() raises:
-    var stack = Array[UInt8, 64 * 8 * 4](fill=0)
-    var tensor = TileTensor(stack, row_major(Idx[64], Idx[8], Int(4)))
-    var lt = tensor.to_layout_tensor()
-    assert_equal(
-        materialize[lt.layout](),
-        Layout.row_major(64, 8, UNKNOWN_VALUE),
-    )
-    assert_equal(lt.rank, 3)
-    assert_equal(
-        rebind[IndexList[3]](lt.runtime_layout.shape.value.canonicalize()),
-        IndexList[3](64, 8, 4),
-    )
-
-
 def test_coalesce_2d() raises:
     """Test coalescing a 2D tensor to rank-1."""
     # Initialize with sequential values

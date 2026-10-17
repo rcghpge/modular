@@ -27,7 +27,6 @@ from std.memory.unsafe_pointer import unsafe_cast
 from max.gpu.host import DeviceBuffer, DeviceContext, DevicePointer, HostBuffer
 from max.gpu.memory import CacheEviction, Fill, async_copy
 from layout._fillers import BATCH_SIZE
-from layout.layout_tensor import LayoutTensor
 from std.sys import prefetch
 from std.sys.intrinsics import PrefetchOptions
 from std.utils import IndexList, StaticTuple
@@ -465,17 +464,12 @@ struct TileTensor[
     indexing.
 
     `TileTensor` provides a flexible abstraction for multi-dimensional data with
-    layouts expressed via the `TensorLayout` trait. Unlike `LayoutTensor` which
-    uses a concrete `Layout` type, `TileTensor` accepts any type implementing
-    `TensorLayout`, enabling more flexible compile-time layout composition.
+    layouts expressed via the `TensorLayout` trait, so any type implementing
+    `TensorLayout` can describe the tensor's memory arrangement.
 
-    Use `TileTensor` for new code. `LayoutTensor` is deprecated as of 26.7
-    and will be removed in a future release. To step through a buffer of
-    equally shaped tiles, such as a multi-stage shared-memory buffer, use
-    `TileTensorIter`. To walk the tiles of a multi-dimensional tensor, loop
-    over tile coordinates and call `tile()`. For an operation that only
-    `LayoutTensor` provides, such as `simd_tile()`, call `to_layout_tensor()`
-    at that call site; the result is a deprecated `LayoutTensor`.
+    To step through a buffer of equally shaped tiles, such as a multi-stage
+    shared-memory buffer, use `TileTensorIter`. To walk the tiles of a
+    multi-dimensional tensor, loop over tile coordinates and call `tile()`.
 
     Parameters:
         mut: The inferred mutability of the underlying pointer.
@@ -1799,7 +1793,7 @@ struct TileTensor[
         [`async_copy_wait_group()`](/api/mojo/max/gpu/memory/memory/async_copy_wait_group/)
         to ensure the copy has completed before using the data.
 
-        Unlike `LayoutTensor`, a `TileTensor`'s logical element is always a
+        A `TileTensor`'s logical element is always a
         contiguous run of `element_size` scalars (the engine's
         `element_width`), so there is no non-vectorizable element layout to
         fall back on: every copy issues one `cp.async` per logical element.
@@ -3301,58 +3295,6 @@ struct TileTensor[
             ).make_dynamic[dyn_dtype](),
         )
 
-    # TODO(GPUA-6): Remove this method, along with its `DevicePointerEngine`
-    # pointer-recovery workaround, when `LayoutTensor` is removed.
-    @inline(.nodebug)
-    def to_layout_tensor(
-        self,
-        out result: LayoutTensor[
-            Self.dtype,
-            _LegacyLayout(
-                coord_to_int_tuple[*Self.LayoutType._shape_types](),
-                coord_to_int_tuple[*Self.LayoutType._stride_types](),
-            ),
-            Self.origin,
-            address_space=Self.address_space,
-        ],
-    ):
-        """Return a LayoutTensor with the same shape, stride, and address space
-        of this tensor.
-
-        This is a utility to help with porting LayoutTensor methods to this type.
-
-        Supports `DefaultEngine` and `DevicePointerEngine`-backed tiles. For a
-        `DevicePointerEngine`-backed tile the raw device pointer is recovered
-        from the handle (via `Engine.unsafe_ptr`), so the resulting
-        `LayoutTensor` no longer carries the owning `DevicePointer`. This is a
-        temporary workaround until `LayoutTensor` is removed.
-
-        Returns:
-            A LayoutTensor with the same shape, stride, and address space of
-            this tensor.
-        """
-        comptime assert (
-            Self.Engine == DefaultEngine[element_width=1]
-            or Self.Engine == DevicePointerEngine[element_width=1]
-        ), (
-            "TileTensor.to_layout_tensor requires DefaultEngine or"
-            " DevicePointerEngine"
-        )
-        return {
-            self.ptr,
-            type_of(result.runtime_layout)(
-                # A `RuntimeTuple` stores one entry per leaf, so a nested mode
-                # has to be flattened to supply them in the order it expects.
-                # `flatten()` is the identity on a flat `Coord`.
-                coord_to_index_list(self.layout.shape_coord().flatten()).cast[
-                    result.layout_int_type
-                ](),
-                coord_to_index_list(self.layout.stride_coord().flatten()).cast[
-                    result.linear_idx_type
-                ](),
-            ),
-        }
-
     comptime Immut = Self.OriginCastType[ImmOrigin(Self.origin)]
     """Type alias for an immutably-casted tensor."""
 
@@ -4014,47 +3956,6 @@ struct NullableTileTensor[
         """
         return self.layout.product()
 
-    @inline(.nodebug)
-    def to_layout_tensor(
-        self,
-        out result: LayoutTensor[
-            Self.dtype,
-            _LegacyLayout(
-                coord_to_int_tuple[*Self.LayoutType._shape_types](),
-                coord_to_int_tuple[*Self.LayoutType._stride_types](),
-            ),
-            Self.origin,
-            address_space=Self.address_space,
-        ],
-    ):
-        """Return a LayoutTensor with the same shape, stride, and address space
-        of this tensor.
-
-        This is a utility to help with porting LayoutTensor methods to this type.
-
-        Returns:
-            A LayoutTensor with the same shape, stride, and address space of
-            this tensor.
-        """
-        return {
-            # This is totally a hack casting nullable pointer to non-nullable,
-            # however this works as they have the same size/layout
-            # and this is much simpler than moving LayoutTensor over to
-            # nullable pointers since TileTensor is the preferred alternative now.
-            Pointer(to=self.ptr).unsafe_bitcast[type_of(result.ptr)]()[],
-            type_of(result.runtime_layout)(
-                # A `RuntimeTuple` stores one entry per leaf, so a nested mode
-                # has to be flattened to supply them in the order it expects.
-                # `flatten()` is the identity on a flat `Coord`.
-                coord_to_index_list(self.layout.shape_coord().flatten()).cast[
-                    result.layout_int_type
-                ](),
-                coord_to_index_list(self.layout.stride_coord().flatten()).cast[
-                    result.linear_idx_type
-                ](),
-            ),
-        }
-
 
 comptime _ComptimeConditionalTileTensor[
     mut: Bool,
@@ -4184,7 +4085,7 @@ def _distribute[
         ],
     ],
 ]:
-    """A simplified implementation of LayoutTensor.distribute on TileTensor.
+    """Distributes a tensor across a thread layout.
 
     Parameters:
         thread_layout: Defines the logical arrangement of threads.
@@ -5094,12 +4995,11 @@ def flatten_leading[
 
 
 # ============================================================================
-# lt_to_tt -- Convert a LayoutTensor to a TileTensor
+# LTToTTLayout -- Derive a TileTensor layout type from a legacy Layout
 # ============================================================================
 
 from .int_tuple import product_each as _product_each
 from .layout import Layout as _LegacyLayout
-from .layout_tensor import LayoutTensor as _LayoutTensor
 
 
 comptime LTToTTLayout[lt_layout: _LegacyLayout] = Layout[
@@ -5119,154 +5019,3 @@ collapsed via ``product_each`` so each mode becomes a single value.
 Parameters:
     lt_layout: The legacy Layout to convert.
 """
-
-
-@inline(.always)
-def lt_to_tt[
-    dtype: DType,
-    lt_layout: _LegacyLayout,
-    //,
-    ResultLayout: TensorLayout = LTToTTLayout[lt_layout],
-](lt: _LayoutTensor[dtype, lt_layout, ...]) -> TileTensor[
-    dtype,
-    Layout[
-        shape_types=ResultLayout._shape_types,
-        stride_types=ResultLayout._stride_types,
-    ],
-    lt.origin,
-    address_space=lt.address_space,
-]:
-    """Convert a LayoutTensor to a TileTensor.
-
-    Static dimensions (known at compile time) are preserved as ComptimeInt.
-    Dynamic dimensions (UNKNOWN_VALUE) become Scalar, filled from the
-    LayoutTensor's runtime layout.  The address space is preserved from the
-    source LayoutTensor.  Works for any flat rank.
-
-    By default the TileTensor layout is derived automatically from the
-    LayoutTensor's legacy layout.  Pass an explicit ``ResultLayout`` to
-    override which dimensions are static vs runtime.
-
-    The result's `linear_idx_type` is the `TileTensor` default
-    (`int32` for SHARED/CONSTANT or small static cosize, `int64`
-    otherwise). This may differ from `lt.linear_idx_type` -- in
-    particular, when the parent `LayoutTensor` has a runtime dimension
-    in GENERIC space, the parent uses `int64` but the converted tile
-    (with all dims static after tiling) defaults to `int32`. To force
-    the result to match `lt.linear_idx_type`, use `lt_to_tt_idx`.
-
-    Parameters:
-        dtype: Element type of the tensor.
-        lt_layout: The legacy Layout of the LayoutTensor.
-        ResultLayout: The target TileTensor layout type.  Defaults to
-            ``LTToTTLayout[lt_layout]``.
-
-    Args:
-        lt: The LayoutTensor to convert.
-
-    Returns:
-        A TileTensor with the same data, equivalent layout, and matching
-        address space.
-    """
-    comptime ConcLayout = Layout[
-        shape_types=ResultLayout._shape_types,
-        stride_types=ResultLayout._stride_types,
-    ]
-    comptime rank = ConcLayout.rank
-    var shape_c = Coord[*ConcLayout.shape_types]()
-    var stride_c = Coord[*ConcLayout.stride_types]()
-
-    comptime for i in range(rank):
-        comptime if not shape_c.element_types[i].is_static_value:
-            shape_c[i] = rebind[shape_c.element_types[i]](
-                Int64(lt.runtime_layout.shape.value[i])
-            )
-
-        comptime if not stride_c.element_types[i].is_static_value:
-            stride_c[i] = rebind[stride_c.element_types[i]](
-                Int64(lt.runtime_layout.stride.value[i])
-            )
-
-    var ptr = lt.ptr
-    return TileTensor[
-        dtype, ConcLayout, lt.origin, address_space=lt.address_space
-    ](
-        ptr=ptr,
-        layout=ConcLayout(shape_c, stride_c),
-    )
-
-
-@inline(.always)
-def lt_to_tt_idx[
-    dtype: DType,
-    lt_layout: _LegacyLayout,
-    //,
-    ResultLayout: TensorLayout = LTToTTLayout[lt_layout],
-    linear_idx_type: DType = .int64,
-](lt: _LayoutTensor[dtype, lt_layout, ...]) -> TileTensor[
-    dtype,
-    Layout[
-        shape_types=ResultLayout._shape_types,
-        stride_types=ResultLayout._stride_types,
-    ],
-    lt.origin,
-    address_space=lt.address_space,
-    linear_idx_type=linear_idx_type,
-]:
-    """Like `lt_to_tt` but with an explicit `linear_idx_type` override.
-
-    Use this variant when the default `TileTensor` index-type heuristic
-    (`int32` for SHARED/CONSTANT or small static cosize, `int64`
-    otherwise) does not match what callers downstream want. The most
-    common reason is preserving `int64` indexing for DRAM tiles derived
-    from a tensor with runtime dimensions: the parent `LayoutTensor`
-    uses `int64` for its address arithmetic, but a tile coming out of
-    `lt_to_tt` (whose own layout is fully static post-tiling) defaults
-    to `int32` -- forcing `_distribute()` to do narrow-then-widen index
-    arithmetic for every offset, which is measurable in tight inner
-    loops.
-
-    Parameters:
-        dtype: Element type of the tensor.
-        lt_layout: The legacy Layout of the LayoutTensor.
-        ResultLayout: The target TileTensor layout type.
-        linear_idx_type: Integer type used for the result's offset
-            arithmetic. Defaults to `DType.int64`.
-
-    Args:
-        lt: The LayoutTensor to convert.
-
-    Returns:
-        A TileTensor with the same data and the requested
-        `linear_idx_type`.
-    """
-    comptime ConcLayout = Layout[
-        shape_types=ResultLayout._shape_types,
-        stride_types=ResultLayout._stride_types,
-    ]
-    comptime rank = ConcLayout.rank
-    var shape_c = Coord[*ConcLayout.shape_types]()
-    var stride_c = Coord[*ConcLayout.stride_types]()
-
-    comptime for i in range(rank):
-        comptime if not shape_c.element_types[i].is_static_value:
-            shape_c[i] = rebind[shape_c.element_types[i]](
-                Int64(lt.runtime_layout.shape.value[i])
-            )
-
-        comptime if not stride_c.element_types[i].is_static_value:
-            stride_c[i] = rebind[stride_c.element_types[i]](
-                Int64(lt.runtime_layout.stride.value[i])
-            )
-
-    var ptr = lt.ptr
-    return TileTensor[
-        dtype,
-        ConcLayout,
-        lt.origin,
-        address_space=lt.address_space,
-        linear_idx_type=linear_idx_type,
-    ](
-        ptr=ptr,
-        layout=ConcLayout(shape_c, stride_c),
-    )

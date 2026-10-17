@@ -255,8 +255,7 @@ def test_tile_tensor_reshape_is_view() raises:
 
 
 def test_tile_tensor_tile_with_int_coords() raises:
-    """Test tile method with variadic Int coordinates (LayoutTensor compatible).
-    """
+    """Test tile method with variadic Int coordinates."""
     var storage = Array[Float32, 16](fill={})
     var tensor = TileTensor(storage, row_major[4, 4]())
 

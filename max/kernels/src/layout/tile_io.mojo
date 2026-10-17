@@ -17,13 +17,139 @@ from max.gpu import block_dim, lane_id, thread_idx
 from max.gpu.memory import CacheEviction, Fill
 from std.math.uutils import umod
 from std.sys import align_of
+from std.os import abort
 
 from layout import Coord, Idx
-from .layout_tensor import ThreadScope
 from .swizzle import Swizzle
 from .tile_layout import Layout
 from .tile_tensor import TileTensor
 from .tensor_engine import DefaultEngine
+
+
+struct ThreadScope(EnumLike, TrivialRegisterPassable, Writable):
+    """Represents the scope of thread operations in GPU programming.
+
+    This struct defines the scope at which thread operations are performed,
+    particularly for operations like tensor distribution and synchronization.
+    It provides two main scopes: `BLOCK` and `WARP`, which correspond to
+    different levels of thread grouping in GPU programming models.
+
+    Example:
+
+    ```mojo
+    from layout.tile_io import copy_dram_to_sram, ThreadScope
+
+    # Distribute tensor at block level (all threads in block participate)
+    copy_dram_to_sram[layout, thread_scope=ThreadScope.BLOCK](dst, src)
+
+    # Distribute tensor at warp level (only threads in same warp participate)
+    copy_dram_to_sram[layout, thread_scope=ThreadScope.WARP](dst, src)
+    ```
+
+    Performance:
+
+    - WARP scope operations typically have lower synchronization overhead
+        than BLOCK scope operations.
+    - BLOCK scope operations allow coordination across all threads in a block,
+        which is necessary for certain algorithms.
+    - The choice of scope can significantly impact performance and correctness
+        of parallel algorithms.
+
+    Notes:
+
+    - The appropriate scope depends on the specific algorithm and hardware.
+    - WARP scope operations may be more efficient for operations that only
+        require coordination within a warp.
+    - BLOCK scope operations are necessary when threads from different warps
+        need to coordinate.
+    - The actual size of a warp or block is hardware-dependent.
+    """
+
+    var _value: Int32
+    """The internal integer value representing the thread scope."""
+
+    comptime BLOCK = Self(0)
+    """Represents operations at the thread block level, where all threads in a
+    block participate."""
+
+    comptime WARP = Self(1)
+    """Represents operations at the warp level, where only threads within the
+    same warp participate."""
+
+    comptime _enum_case_names = ParameterList.of[
+        "BLOCK".value,
+        "WARP".value,
+    ].values
+
+    comptime _enum_case_types = TypeList.splat[
+        ParameterList[Self._enum_case_names].size, NoneType
+    ].values
+
+    @inline(.always)
+    def _get_enum_discriminant(self) -> Int:
+        return Int(self._value)
+
+    @inline(.always)
+    def _unsafe_get_enum_payload[
+        id: Int
+    ](ref self) -> ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[
+        id
+    ]:
+        comptime assert False, "ThreadScope has no payload"
+
+    def __init__(out self, value: Int):
+        """Initialize a `ThreadScope` with the given integer value.
+
+        Args:
+            value: An integer representing the thread scope (0 for `BLOCK`,
+                1 for `WARP`).
+        """
+        self._value = Int32(value)
+
+    def __eq__(self, other: Self) -> Bool:
+        """Compare two `ThreadScope` objects for equality.
+
+        Args:
+            other: Another `ThreadScope` object to compare with.
+
+        Returns:
+            True if the thread scopes are equal, False otherwise.
+        """
+        return self._value == other._value
+
+    def __ne__(self, other: Self) -> Bool:
+        """Compare two `ThreadScope` objects for inequality.
+
+        Args:
+            other: Another `ThreadScope` object to compare with.
+
+        Returns:
+            True if the thread scopes are not equal, False otherwise.
+        """
+        return not (self == other)
+
+    def write_to(self, mut writer: Some[Writer]):
+        """Write the `ThreadScope` as a human-readable string representation.
+
+        Args:
+            writer: The writer to write the string representation to.
+
+        Aborts:
+            If the thread scope has an invalid value.
+        """
+        if self == Self.BLOCK:
+            return writer.write("BLOCK")
+        if self == Self.WARP:
+            return writer.write("WARP")
+        abort("invalid ThreadScope entry")
+
+    def __int__(self) -> Int:
+        """Convert the `ThreadScope` to an integer value.
+
+        Returns:
+            The integer value of the thread scope (0 for BLOCK, 1 for WARP).
+        """
+        return Int(self._value)
 
 
 @inline(.nodebug)
@@ -736,7 +862,7 @@ struct GenericToSharedAsyncTileCopier[
             # it is `src.dim[0]()` (legacy behavior). A caller may override it
             # with an explicit runtime value when `src`'s own dim0 is static
             # (e.g. a `.tile[...]` sub-view, which does not runtime-clip dim0
-            # the way the legacy `LayoutTensor` iterator did).
+            # the way the legacy iterator did).
             var src_num_rows = src_num_valid_rows.or_else(Int(src.dim[0]()))
             src_idx_bound = Scalar[idx_type](
                 src_num_rows * Int(src.layout.stride[0]().value())

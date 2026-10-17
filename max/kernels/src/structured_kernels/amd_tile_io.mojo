@@ -2549,10 +2549,9 @@ struct RegTileWriter[
     to DRAM via the pre-built descriptor; OOB lanes (past the recorded
     byte bound) are silently dropped by the hardware clamp.
 
-    Pure TileTensor implementation: uses TileTensor distribute_with_offset
-    directly (no LayoutTensor conversion). The distribute operation divides
-    shape by thread_shape and multiplies strides by thread_shape, producing
-    identical offsets to LayoutTensor's zipped_divide for flat 2D layouts.
+    Uses TileTensor distribute_with_offset directly. The distribute
+    operation divides shape by thread_shape and multiplies strides by
+    thread_shape, which matches `zipped_divide` for flat 2D layouts.
 
     A single `store[mfma32: Bool = False]` method handles both:
     - mfma32=False: Generic path using the src tile's own layout indexing

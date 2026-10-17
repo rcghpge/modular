@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """A `TileTensor` iterator that walks a buffer one tile at a time.
 
-`TileTensorIter` is the `TileTensor` counterpart of `LayoutTensorIter`. It
+`TileTensorIter` steps through a buffer of equally shaped tiles. It
 holds a pointer, a fixed tile layout and a step between consecutive tiles, and
 dereferences to a `TileTensor` view of the current tile. It supports the
 circular multi-stage shared-memory buffers used by software-pipelined kernels

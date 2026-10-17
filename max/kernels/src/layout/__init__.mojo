@@ -19,13 +19,9 @@ multidimensional data.
   threads to tiles of data.
 
 - The [`TileTensor`](/api/mojo/layout/tile_tensor/TileTensor) type is the
-  tensor with explicit memory layout via a `Layout`; new code should use it.
-
-- The [`LayoutTensor`](/api/mojo/layout/layout_tensor/LayoutTensor) type is the
-  legacy equivalent. It's deprecated as of 26.7 and will be removed in a future
-  release. Use `TileTensor` instead, and
-  [`TileTensorIter`](/api/mojo/layout/tile_iterator/TileTensorIter) in place of
-  `LayoutTensorIter`.
+  tensor with explicit memory layout, and
+  [`TileTensorIter`](/api/mojo/layout/tile_iterator/TileTensorIter) steps
+  through a buffer of equally shaped tiles.
 """
 from .coord import (
     _CoordReplaceAt,
@@ -43,7 +39,6 @@ from .int_tuple import (
     to_index_list,
 )
 from .layout import Layout, LayoutList, composition, print_layout
-from .layout_tensor import LayoutTensor, stack_allocation_like
 from .tile_layout import (
     TensorLayout,
     Layout as MixedLayout,
@@ -57,13 +52,11 @@ from .runtime_tuple import RuntimeTuple
 from .numpy import from_numpy, to_numpy
 from .tile_tensor import (
     ImmTileTensor,
+    LTToTTLayout,
     MutTileTensor,
     TileTensor,
     flatten_leading,
     stack_allocation,
-    lt_to_tt,
-    lt_to_tt_idx,
-    LTToTTLayout,
 )
 from .tensor_engine import (
     TensorEngine,

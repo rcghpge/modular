@@ -2328,9 +2328,8 @@ def multistage_gemm[
     ctx: DeviceContext,
 ) raises:
     """TileTensor overload of `multistage_gemm`. Dispatches to a GEMM kernel
-    over the native TileTensor operands; the device-side pipeline bridges to
-    legacy `LayoutTensorIter` views internally (the multistage pipeline is
-    iterator-driven and has no TileTensor equivalent yet).
+    over the native TileTensor operands; the device-side pipeline is driven
+    by `TileTensorIter` views.
 
     Parameters:
         c_type: DType of the output tile `c` elements (inferred).

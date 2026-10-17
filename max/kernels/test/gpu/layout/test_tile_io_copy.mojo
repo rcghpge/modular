@@ -45,7 +45,7 @@ from max.gpu.memory import (
 )
 
 from layout import Coord, Idx, TileTensor, row_major
-from layout.layout_tensor import ThreadScope
+from layout.tile_io import ThreadScope
 from layout.tile_layout import Layout as TileLayout
 from layout.swizzle import Swizzle
 from layout.tile_io import (

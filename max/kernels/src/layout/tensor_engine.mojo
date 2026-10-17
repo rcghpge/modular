@@ -3476,8 +3476,7 @@ struct DevicePointerEngine[*, element_width: Int = 1](TensorOps):
         On device the owning `DeviceBuffer` is unavailable, so this reinterprets
         the encoded device address out of the handle (`_device_leaf_ptr`); on
         host it recovers the raw (offset-adjusted) address through the owning
-        `DeviceBuffer`. Stopgap for the in-progress `LayoutTensor` migration,
-        see GPUA-6.
+        `DeviceBuffer`. See GPUA-6.
 
         Parameters:
             mut: The mutability of the borrowed storage, inferred from `origin`.

@@ -67,7 +67,6 @@ from layout import (
     TMEM_NUM_COLS,
     TMEM_NUM_LANES,
     UNKNOWN_VALUE,
-    lt_to_tt,
     row_major,
     stack_allocation,
     tmem_cell,
@@ -76,7 +75,7 @@ from layout import (
 )
 from layout.layout import zipped_divide
 from layout.tile_layout import Layout as TileLayout
-from layout.layout_tensor import upcast
+from layout.layout import upcast
 from layout.tile_tensor import LTToTTLayout
 from layout.swizzle import make_swizzle
 from layout.runtime_tuple import idx2crd
