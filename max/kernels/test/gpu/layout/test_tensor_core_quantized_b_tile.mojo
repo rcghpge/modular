@@ -46,12 +46,8 @@ def scale_value(row: Int, lane: Int) -> BFloat16:
 
 def quantized_b_kernel[
     packed_dtype: DType, NF: Int, output_layout: TensorLayout
-](
-    output: TileTensor[.bfloat16, output_layout, MutAnyOrigin],
-    legacy_output: TileTensor[.bfloat16, output_layout, MutAnyOrigin],
-):
+](output: TileTensor[.bfloat16, output_layout, MutAnyOrigin],):
     comptime assert output.rank == output.flat_rank == 4
-    comptime assert legacy_output.rank == legacy_output.flat_rank == 4
     var source = stack_allocation[packed_dtype, address_space=.SHARED](
         row_major[1, 388]()
     )
@@ -77,9 +73,6 @@ def quantized_b_kernel[
     var scales = TileTensor(
         scale_storage.unsafe_ptr() + 1, Layout(coord[NF, 1], coord[3, 1])
     )
-    var previous = stack_allocation[.bfloat16, address_space=.LOCAL](
-        row_major[NF, 4]()
-    )
     var tc = TensorCore[.float32, .bfloat16, (16, 8, 16)]()
     comptime for row in range(NF):
         scale_storage[row, 0] = -29
@@ -90,16 +83,9 @@ def quantized_b_kernel[
             comptime for reg in range(5):
                 storage[row, reg] = -31
         tc.load_b(warp_tile, registers, scales, kg)
-        tc.load_b(
-            warp_tile.to_layout_tensor(),
-            previous.to_layout_tensor().vectorize[1, 4](),
-            scales.to_layout_tensor(),
-            kg,
-        )
         comptime for row in range(NF):
             comptime for reg in range(4):
                 output[kg, row, thread_idx.x, reg] = registers[row, reg]
-                legacy_output[kg, row, thread_idx.x, reg] = previous[row, reg]
             output[kg, row, thread_idx.x, 4] = storage[row, 4]
             output[kg, row, thread_idx.x, 5] = scale_storage[row, 0]
             output[kg, row, thread_idx.x, 6] = scales[row, 0]
@@ -109,21 +95,15 @@ def quantized_b_kernel[
 def test_quantized_b[packed_dtype: DType, NF: Int](ctx: DeviceContext) raises:
     comptime layout = row_major[3, NF, WARP_SIZE, 8]()
     var output = HostDeviceTileTensor[.bfloat16](layout, ctx)
-    var previous = HostDeviceTileTensor[.bfloat16](layout, ctx)
     _ = output.host_tensor().fill(-32)
-    _ = previous.host_tensor().fill(-32)
     output.to_device()
-    previous.to_device()
     ctx.enqueue_function[quantized_b_kernel[packed_dtype, NF, type_of(layout)]](
         output.device_tensor().as_unsafe_any_origin(),
-        previous.device_tensor().as_unsafe_any_origin(),
         grid_dim=1,
         block_dim=WARP_SIZE,
     )
     output.to_host()
-    previous.to_host()
     var actual = output.host_tensor()
-    var legacy = previous.host_tensor()
     for kg in range(3):
         for row in range(NF):
             for lane in range(WARP_SIZE):
@@ -137,7 +117,6 @@ def test_quantized_b[packed_dtype: DType, NF: Int](ctx: DeviceContext) raises:
                         Float32(value) * scale.cast[.float32]()
                     ).cast[.bfloat16]()
                     assert_equal(actual[kg, row, lane, reg], expected)
-                    assert_equal(legacy[kg, row, lane, reg], expected)
                 assert_equal(actual[kg, row, lane, 4], BFloat16(-31))
                 assert_equal(actual[kg, row, lane, 5], BFloat16(-29))
                 assert_equal(actual[kg, row, lane, 6], scale)

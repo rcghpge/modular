@@ -37,7 +37,7 @@ from layout import (
     stack_allocation,
 )
 from layout._utils import make_amd_buffer_resource
-from layout.int_tuple import coord_to_int_tuple
+from layout.int_tuple import IntTuple, coord_to_int_tuple
 from layout.element import Element
 from layout.layout_tensor import (
     LayoutTensor,
@@ -46,7 +46,9 @@ from layout.layout_tensor import (
     copy_local_to_shared,
 )
 from layout.swizzle import Swizzle
-from layout.tensor_core import TiledTensorCore
+from layout.tensor_core import TiledTensorCore, num_matrix_reg
+from max.gpu import WARP_SIZE, lane_id
+from max.gpu.compute.mma import mma as gpu_mma
 
 from std.utils.index import IndexList
 
@@ -212,6 +214,117 @@ def copy_local_to_dram_32_32_8[
                     )
 
 
+# The shared-memory tiles below use a swizzled, nested `blocked_product`
+# layout that only the legacy `LayoutTensor` loaders understand, so this
+# example keeps its own copies of the AMD fragment loaders and the K-grouped
+# MMA loop that `TensorCore` used to provide for `LayoutTensor` operands.
+
+
+@inline(.always)
+def _load_a_fragments_amd[
+    swizzle: Swizzle, shape: IndexList[3]
+](
+    warp_tile: LayoutTensor,
+    fragments: LayoutTensor[mut=True, ...],
+    mma_tile_coord_k: Int,
+):
+    """Loads one lane's A vectors for every MMA row of `warp_tile`."""
+    comptime M = shape[0]
+    comptime K = shape[2]
+    comptime width = fragments.element_layout.size()
+    comptime k_group_size = width // num_matrix_reg[M, K]()
+    comptime frag_type = fragments.element_type
+    comptime for i in range(fragments.shape[0]()):
+        var frags = (
+            warp_tile.tile[M, K * k_group_size](i, mma_tile_coord_k)
+            .vectorize[1, width]()
+            .distribute[Layout.col_major(M, WARP_SIZE // M), swizzle=swizzle](
+                lane_id()
+            )
+        )
+        fragments[i, 0] = rebind[frag_type](frags[0, 0])
+
+
+@inline(.always)
+def _load_b_fragments_amd[
+    swizzle: Swizzle, shape: IndexList[3], transpose_b: Bool
+](
+    warp_tile: LayoutTensor,
+    fragments: LayoutTensor[mut=True, ...],
+    mma_tile_coord_k: Int,
+):
+    """Loads one lane's B vectors for every MMA column of `warp_tile`."""
+    comptime N = shape[1]
+    comptime K = shape[2]
+    comptime width = fragments.element_layout.size()
+    comptime k_group_size = width // num_matrix_reg[N, K]()
+    comptime frag_type = fragments.element_type
+    comptime for i in range(fragments.shape[0]()):
+        comptime if transpose_b:
+            var frags = (
+                warp_tile.tile[N, K * k_group_size](i, mma_tile_coord_k)
+                .vectorize[1, width]()
+                .distribute[
+                    Layout.col_major(N, WARP_SIZE // N), swizzle=swizzle
+                ](lane_id())
+            )
+            fragments[i, 0] = rebind[frag_type](frags[0, 0])
+        else:
+            var frags = (
+                warp_tile.tile[K * k_group_size, N](mma_tile_coord_k, i)
+                .vectorize[width, 1]()
+                .distribute[
+                    Layout.row_major(WARP_SIZE // N, N), swizzle=swizzle
+                ](lane_id())
+            )
+            fragments[i, 0] = rebind[frag_type](frags[0, 0])
+
+
+@inline(.always)
+def _mma_k_grouped[
+    swap_a_b: Bool,
+    group_size: Int,
+    a_frag_size: Int,
+    b_frag_size: Int,
+    c_frag_size: Int,
+](
+    a_reg_tile: LayoutTensor,
+    b_reg_tile: LayoutTensor,
+    c_reg_tile: LayoutTensor[mut=True, ...],
+):
+    """Runs `group_size` MMAs along K, accumulating into `c_reg_tile`.
+
+    The B fragment feeds the hardware A operand and vice versa, which is the
+    AMD operand order; `swap_a_b` only changes where each product lands in
+    `c_reg_tile`.
+    """
+    comptime num_m_mmas = a_reg_tile.shape[0]()
+    comptime num_n_mmas = b_reg_tile.shape[0]()
+    comptime assert c_reg_tile.shape[1]() == c_frag_size
+    comptime assert a_reg_tile.shape[1]() == group_size * a_frag_size
+    comptime assert b_reg_tile.shape[1]() == group_size * b_frag_size
+    comptime c_linear_map = Layout.row_major(
+        num_n_mmas, num_m_mmas
+    ) if swap_a_b else Layout.col_major(num_m_mmas, num_n_mmas)
+    var c_frags = c_reg_tile.vectorize[1, c_frag_size]()
+    comptime for k in range(group_size):
+        var a_frags = a_reg_tile.tile[num_m_mmas, a_frag_size](0, k).vectorize[
+            1, a_frag_size
+        ]()
+        var b_frags = b_reg_tile.tile[num_n_mmas, b_frag_size](0, k).vectorize[
+            1, b_frag_size
+        ]()
+        comptime for n_mma in range(num_n_mmas):
+            comptime for m_mma in range(num_m_mmas):
+                comptime c_idx = c_linear_map(IntTuple(n_mma, m_mma))
+                gpu_mma(
+                    c_frags[c_idx, 0],
+                    b_frags[n_mma, 0],
+                    a_frags[m_mma, 0],
+                    c_frags[c_idx, 0],
+                )
+
+
 struct AMD_MMA[
     out_type: DType,
     in_type: DType,
@@ -236,7 +349,7 @@ struct AMD_MMA[
     ]()
 
     # The flat register tiles are stored as `TileTensor` and bridged to
-    # `LayoutTensor` only at the irreducible AMD-DMA / `TiledTensorCore.mma`
+    # `LayoutTensor` only at the irreducible AMD-DMA / K-grouped MMA
     # boundaries (see `MMATileBuffers`); the shared-memory tile stays
     # `LayoutTensor` (swizzled in-place loaders + AMD `row_major` DMA path),
     # so its type lives on `MMATileBuffers`, not here. `stack_allocation`
@@ -283,7 +396,14 @@ def mma[
     var a_reg_tile = a_tiles.get_reg_tile[k_tile_idx]()
     var b_reg_tile = b_tiles.get_reg_tile[k_tile_idx]()
 
-    a_tiles.mma_type.tensor_core_mma.mma[swap_a_b=swap_a_b](
+    comptime mma_op = type_of(a_tiles.mma_type.tensor_core_mma).mma_op
+    _mma_k_grouped[
+        swap_a_b,
+        MMAType.k_group_size,
+        type_of(mma_op).a_reg_type.length,
+        type_of(mma_op).b_reg_type.length,
+        type_of(mma_op).c_reg_type.length,
+    ](
         a_reg_tile.to_layout_tensor(),
         b_reg_tile.to_layout_tensor(),
         c_reg_tile.to_layout_tensor(),
@@ -352,7 +472,7 @@ struct MMATileBuffers[
 
     # Tile view optimized for matrix multiplication acceleration (MMA)
     # operations. Stays `LayoutTensor` -- it feeds the `LayoutTensor`-only
-    # swizzled in-place `TensorCore` `load_a` / `load_b` (via `.mma_op`).
+    # swizzled in-place fragment loaders above.
     @__allow_legacy_any_origin_fields
     var shared_mem_warp_tile: Self.SharedMemTileType.TileType[
         Self.warp_rows, Self.mma_type.WK
@@ -483,9 +603,7 @@ struct MMATileBuffers[
         # register view; the shared-memory loader still requires a legacy view.
         var reg_k_tile = self.get_reg_tile[k_tile_idx]().to_layout_tensor()
         comptime if is_a:
-            Self.mma_type.tensor_core_mma.mma_op.load_a[
-                swizzle=Self.mma_type.swizzle
-            ](
+            _load_a_fragments_amd[Self.mma_type.swizzle, Self.mma_type.shape](
                 self.shared_mem_warp_tile,
                 reg_k_tile.tile[Self.num_mmas, Self.mma_type.simd_width](
                     k_tile_idx, 0
@@ -493,8 +611,10 @@ struct MMATileBuffers[
                 k_tile_idx,
             )
         else:
-            Self.mma_type.tensor_core_mma.mma_op.load_b[
-                swizzle=Self.mma_type.swizzle
+            _load_b_fragments_amd[
+                Self.mma_type.swizzle,
+                Self.mma_type.shape,
+                Self.mma_type.transpose_b,
             ](
                 self.shared_mem_warp_tile,
                 reg_k_tile.tile[Self.num_mmas, Self.mma_type.simd_width](
