@@ -43,9 +43,9 @@ def stencil1d(
     if 0 < tid < arr_size - 1:
         b.store(
             (tid,),
-            Float32(coeff0) * a.load[width=1]((tid - 1,))
-            + Float32(coeff1) * a.load[width=1]((tid,))
-            + Float32(coeff2) * a.load[width=1]((tid + 1,)),
+            Float32(coeff0) * a[tid - 1]
+            + Float32(coeff1) * a[tid]
+            + Float32(coeff2) * a[tid + 1],
         )
 
 
@@ -72,16 +72,12 @@ def stencil1d_smem(
         BLOCK_DIM + 2, DType.float32, address_space=.SHARED
     ]()
 
-    a_shared[lindex] = a.load[width=1]((tid,))
+    a_shared[lindex] = a[tid]
     if thread_idx.x == 0:
-        a_shared[lindex - 1] = (
-            a.load[width=1]((tid - 1,)) if 0 <= tid - 1 < arr_size else 0
-        )
+        a_shared[lindex - 1] = a[tid - 1] if 0 <= tid - 1 < arr_size else 0
 
         var idx = tid + Int(BLOCK_DIM)
-        a_shared[lindex + BLOCK_DIM] = (
-            a.load[width=1]((idx,)) if idx < arr_size else 0
-        )
+        a_shared[lindex + BLOCK_DIM] = a[idx] if idx < arr_size else 0
 
     barrier()
 

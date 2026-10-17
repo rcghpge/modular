@@ -951,14 +951,14 @@ def _matmul_cpu_dispatch[
                     coord, cast_val
                 )
             elif has_compute_fn:
-                c.store[width=width, alignment=alignment](
+                c.store[alignment=alignment](
                     coord,
                     compute_fn[c.dtype, width, alignment=alignment](
                         coord, cast_val
                     ),
                 )
             else:
-                c.store[width=width, alignment=alignment](coord, cast_val)
+                c.store[alignment=alignment](coord, cast_val)
 
         _matmul_cpu_dispatch[
             transpose_b=transpose_b,

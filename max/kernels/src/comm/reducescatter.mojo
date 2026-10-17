@@ -1061,16 +1061,14 @@ def _reducescatter_p2p[
         comptime if has_residual:
             var local_flat = Int(output_buffer.layout(coords))
             var res = res_ptr_local.load[width=_width](local_flat + res_base)
-            output_buffer.store[width=_width, alignment=_alignment](
+            output_buffer.store[alignment=_alignment](
                 coords,
                 (val.cast[_accum_type]() + res.cast[_accum_type]()).cast[
                     dtype
                 ](),
             )
         else:
-            output_buffer.store[width=_width, alignment=_alignment](
-                coords, val.cast[dtype]()
-            )
+            output_buffer.store[alignment=_alignment](coords, val.cast[dtype]())
 
     _reducescatter_launch[
         dtype,

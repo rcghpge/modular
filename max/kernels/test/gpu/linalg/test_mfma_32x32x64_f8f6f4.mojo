@@ -97,8 +97,8 @@ def _mfma_32x32x64_kernel[
         CDNA4F8F6F4MatrixFormat.FLOAT4_E2M1,
     ](scaled_acc, a_frag, b_frag, two, one)
 
-    baseline_out.store[width=16]((lane, Idx[0]), baseline_acc)
-    scaled_out.store[width=16]((lane, Idx[0]), scaled_acc)
+    baseline_out.store((lane, Idx[0]), baseline_acc)
+    scaled_out.store((lane, Idx[0]), scaled_acc)
 
 
 def _run_mfma_32x32x64_smoke(ctx: DeviceContext) raises:

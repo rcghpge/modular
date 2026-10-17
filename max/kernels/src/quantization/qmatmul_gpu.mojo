@@ -120,10 +120,10 @@ def _load_quantized_scale_registers[
     # Repacking interleaves scale pairs: four lanes share eight contiguous
     # packed scales, rather than eight naturally strided matrix columns.
     comptime for i in range(dst.static_shape[0]):
-        var value = src.load[width=1, alignment=align_of[dtype]()](
-            Coord(0, 8 * (lane // 4) + i)
+        var value = src.load[alignment=align_of[dtype]()](
+            (0, 8 * (lane // 4) + i)
         )
-        dst.store[width=1, alignment=align_of[dtype]()](Coord(i, 0), value)
+        dst.store[alignment=align_of[dtype]()]((i, 0), value)
 
 
 @inline(.always)
@@ -1212,10 +1212,8 @@ def repack_Q4_0_for_sm8x[
                 block_idx[0] * (BN // 64) + warp_x,
                 block_idx[1] * BK_groups + 2 * i + warp_y,
             )
-            repack_warp_tile.store[4]((0, 4 * lane_id), pack_Q_tile(frag_0))
-            repack_warp_tile.store[4](
-                (0, 128 + 4 * lane_id), pack_Q_tile(frag_1)
-            )
+            repack_warp_tile.store((0, 4 * lane_id), pack_Q_tile(frag_0))
+            repack_warp_tile.store((0, 128 + 4 * lane_id), pack_Q_tile(frag_1))
 
             # Reorder scales to match the lanes consuming packed weights.
             var lane_group, lane_offset = divmod(lane_id, 4)
@@ -1410,12 +1408,12 @@ def repack_GPTQ_for_sm8x[
                     var thread_tile = raw_Q_tile.distribute[thd_layout](lane_id)
 
                     comptime for i_e in range(16):
-                        tmp[i_e] = thread_tile.load[1]((i_e // 2, i_e % 2))
+                        tmp[i_e] = thread_tile[i_e // 2, i_e % 2]
 
                 var repacked_Q_tile = repacked_warp_tile.tile[1, 128](
                     0, i_Q_tile
                 )
-                repacked_Q_tile.store[4]((0, 4 * lane_id), pack_Q_tile(tmp))
+                repacked_Q_tile.store((0, 4 * lane_id), pack_Q_tile(tmp))
 
             var group = block_idx[1] * BK_groups + i * 2 + warp_y
             var row_tile = block_idx[0] * (BN // 64) + warp_x

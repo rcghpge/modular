@@ -158,7 +158,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
         def output_fn[
             width: SIMDLength, alignment: Int
         ](coords: Coord, val: SIMD[output_dtype, width]) {var out_t}:
-            out_t.store[width=width, alignment=alignment](coords, val)
+            out_t.store[alignment=alignment](coords, val)
 
         @inline(.always)
         def scale_fn(

@@ -1382,7 +1382,7 @@ def _run_asymmetric_fuse_gate_case[
                 SF_VECTOR_SIZE=MXFP8_SF_VECTOR_SIZE,
             ](val)
             if col < num_cols:
-                quant_view.store[width=width]((row, col), quantized)
+                quant_view.store((row, col), quantized)
                 if col % MXFP8_SF_VECTOR_SIZE == 0:
                     scale_view.store((row, col // MXFP8_SF_VECTOR_SIZE), e8m0)
 

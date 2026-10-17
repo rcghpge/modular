@@ -324,7 +324,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                         col_idx >= num_col_threads
                         and col_idx < num_padded_col_threads
                     ):
-                        output.store[width=OUTPUT_WIDTH](
+                        output.store(
                             (Int(global_row_idx), col_idx * OUTPUT_WIDTH),
                             SIMD[out_dtype, OUTPUT_WIDTH](0),
                         )
@@ -407,7 +407,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                                 SIMD[out_dtype, OUTPUT_WIDTH]
                             ](input_f32.cast[out_dtype]())
 
-                        output.store[width=OUTPUT_WIDTH](
+                        output.store(
                             (Int(global_row_idx), col_idx * OUTPUT_WIDTH),
                             output_vector,
                         )
@@ -1558,11 +1558,11 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
         row_offsets, scales_offsets, scale_tile_idx
     )
 
-    var curr_expert_start = Int(row_offsets.load[width=1]((expert_idx,))[0])
-    var curr_expert_end = Int(row_offsets.load[width=1]((expert_idx + 1,))[0])
+    var curr_expert_start = Int(row_offsets[expert_idx][0])
+    var curr_expert_end = Int(row_offsets[expert_idx + 1][0])
     var expert_tiles_start = ufloordiv(
         curr_expert_start, SF_MN_GROUP_SIZE
-    ) + Int(scales_offsets.load[width=1]((expert_idx,))[0])
+    ) + Int(scales_offsets[expert_idx][0])
     var expert_num_tiles = uceildiv(
         curr_expert_end - curr_expert_start, SF_MN_GROUP_SIZE
     )
@@ -1570,8 +1570,8 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
     if scale_tile_idx >= expert_tiles_start + expert_num_tiles:
         return
 
-    var expert_id = expert_ids.load[width=1]((expert_idx,))[0]
-    var input_sf = sf_tensor.load[width=1](Coord(expert_id))[0]
+    var expert_id = expert_ids[expert_idx][0]
+    var input_sf = sf_tensor[expert_id][0]
 
     var token_start = (
         curr_expert_start
@@ -2168,13 +2168,11 @@ def grouped_quantize_nvfp4_row_amax_kernel[
             var expert_idx = _scale_tile_expert[num_experts](
                 row_offsets, scales_offsets, scale_tile_idx
             )
-            var expert_start = Int(row_offsets.load[width=1]((expert_idx,))[0])
-            var expert_end = Int(
-                row_offsets.load[width=1]((expert_idx + 1,))[0]
-            )
+            var expert_start = Int(row_offsets[expert_idx][0])
+            var expert_end = Int(row_offsets[expert_idx + 1][0])
             var tile_in_expert = scale_tile_idx - (
                 ufloordiv(expert_start, SF_MN_GROUP_SIZE)
-                + Int(scales_offsets.load[width=1]((expert_idx,))[0])
+                + Int(scales_offsets[expert_idx][0])
             )
             # Tiles past the expert's last are never read by the matmul.
             if tile_in_expert < uceildiv(
@@ -2212,8 +2210,8 @@ def grouped_quantize_nvfp4_row_amax_kernel[
             comptime for j in range(EXPERTS_PER_LANE):
                 var e = lane * EXPERTS_PER_LANE + j
                 if e < num_experts:
-                    var start = Int32(row_offsets.load[width=1]((e,))[0])
-                    var offset = Int32(scales_offsets.load[width=1]((e,))[0])
+                    var start = Int32(row_offsets[e][0])
+                    var offset = Int32(scales_offsets[e][0])
                     if Int(start) <= row:
                         lane_expert = Int32(e)
                         lane_start = start
@@ -2232,7 +2230,7 @@ def grouped_quantize_nvfp4_row_amax_kernel[
                     lane_scales_offset if owner else Int32(-1)
                 )
             )
-            var rows_end = Int(row_offsets.load[width=1]((num_experts,))[0])
+            var rows_end = Int(row_offsets[num_experts][0])
             if row < num_rows and row < rows_end and expert_idx >= 0:
                 var row_in_expert = row - expert_start
                 var scale_tile_idx = (
@@ -3483,9 +3481,7 @@ def _quantize_mx_amd_kernel[
                     DType.float8_e8m0fnu,
                     SF_VECTOR_SIZE=SF_VECTOR_SIZE,
                 ](input_vector)
-                output.store[width=ELEMENTS_PER_THREAD](
-                    (global_row_idx, global_col_idx), quantized
-                )
+                output.store((global_row_idx, global_col_idx), quantized)
             else:
                 var thread_max = lane_group_max[num_lanes=NUM_THREADS_PER_SF](
                     abs(input_vector).reduce_max()
@@ -3495,7 +3491,7 @@ def _quantize_mx_amd_kernel[
                 var packed = cast_float_to_fp4e2m1_amd(
                     input_vector, e8m0_scale.cast[.float32]()
                 )
-                output.store[width=4](
+                output.store(
                     (global_row_idx, col_thread_idx * 4),
                     bitcast[out_dtype, 4](packed),
                 )

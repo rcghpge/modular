@@ -2373,7 +2373,7 @@ struct TileWriter[
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
                         ]()
-                        c_tensor.store[width=simd_size, alignment=alignment](
+                        c_tensor.store[alignment=alignment](
                             (Int(global_i), Int(global_j)),
                             src,
                         )
@@ -2382,7 +2382,7 @@ struct TileWriter[
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
                         ]()
-                        c_tensor.store[width=simd_size, alignment=alignment](
+                        c_tensor.store[alignment=alignment](
                             (Int(global_i), Int(global_j)),
                             src,
                         )
@@ -2463,7 +2463,7 @@ struct TileWriter[
                 chunk_idx * UInt32(vec_chunkM) + vec_chunkM_idx
             ) * UInt32(simd_size)
             if global_token < m_end and global_weight < UInt32(cN):
-                c_tensor.store[width=simd_size, alignment=smem_alignment](
+                c_tensor.store[alignment=smem_alignment](
                     (Int(global_token), Int(global_weight)),
                     val_vec,
                 )

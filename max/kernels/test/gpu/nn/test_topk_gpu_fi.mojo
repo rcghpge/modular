@@ -138,7 +138,7 @@ def validate_sampling_results[
     comptime assert mask.flat_rank == 2, "expected rank-2 TileTensor"
     comptime assert sampled_idxs.flat_rank >= 1
     for b in range(batch_size):
-        var idx = Int(sampled_idxs.load[width=1]((b,)))
+        var idx = Int(sampled_idxs[b])
 
         # Check 1: Index is within valid range.
         if idx < 0 or idx >= N:
@@ -249,7 +249,7 @@ def validate_topk_topp_sampling_results[
     comptime assert topp_mask.flat_rank == 2, "expected rank-2 TileTensor"
     comptime assert sampled_idxs.flat_rank >= 1
     for b in range(batch_size):
-        var idx = Int(sampled_idxs.load[width=1]((b,)))
+        var idx = Int(sampled_idxs[b])
 
         if idx < 0 or idx >= N:
             raise Error(
@@ -479,9 +479,9 @@ def test_topk_topp_rng_offset_batch_invariant[
 
     with device_output.map_to_host() as output_host:
         var output_host_tensor = TileTensor(output_host, output_runtime_layout)
-        var expected = Int(output_host_tensor.load[width=1]((0,)))
+        var expected = Int(output_host_tensor[0])
         for b in range(1, batch_size):
-            var got = Int(output_host_tensor.load[width=1]((b,)))
+            var got = Int(output_host_tensor[b])
             if got != expected:
                 raise Error(
                     "RNG offset is not batch-invariant: slot 0 sampled token "

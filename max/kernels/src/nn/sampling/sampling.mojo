@@ -307,9 +307,7 @@ def update_frequency_data_kernel[
 
         comptime for i in range(simd_width):
             if tok_idx + i < tok_end:
-                val[i] = compressed_frequency_data.load[width=1](
-                    (tok_idx + i, 0)
-                )[0]
+                val[i] = compressed_frequency_data[tok_idx + i, 0][0]
             else:
                 val[i] = Int32.MAX_FINITE
 
@@ -338,7 +336,7 @@ def update_frequency_data_kernel[
             # we don't find the target token, but we found a padding token
             if tid == 0:
                 var tidx = Int(padding_token_idx)
-                compressed_frequency_data.store[width=1](
+                compressed_frequency_data.store(
                     (tidx, 0), SIMD[new_token.dtype, 1](new_token)
                 )
                 compressed_frequency_data[Int(padding_token_idx), 1] = 1
@@ -419,22 +417,16 @@ def update_frequency_data[
                 idx.rank == 1
             ), "update_frequency_data_fn: rank must be 1"
 
-            var tok_start = Int(frequency_offsets.load[width=1](idx)[0])
-            var tok_end = Int(
-                frequency_offsets.load[width=1]((idx[0].value() + 1,))[0]
-            )
+            var tok_start = Int(frequency_offsets[idx][0])
+            var tok_end = Int(frequency_offsets[idx[0].value() + 1][0])
 
-            var new_token = new_tokens.load[width=1](idx)[0].cast[.int32]()
+            var new_token = new_tokens[idx][0].cast[.int32]()
 
             for tok_id in range(tok_start, tok_end):
-                var cur_tok = compressed_frequency_data.load[width=1](
-                    (tok_id, 0)
-                )[0]
+                var cur_tok = compressed_frequency_data[tok_id, 0][0]
                 if cur_tok == new_token:
-                    var cur_count = compressed_frequency_data.load[width=1](
-                        (tok_id, 1)
-                    )[0]
-                    compressed_frequency_data.store[width=1](
+                    var cur_count = compressed_frequency_data[tok_id, 1][0]
+                    compressed_frequency_data.store(
                         (tok_id, 1),
                         SIMD[.int32, 1](Int32(cur_count) + 1),
                     )
@@ -443,10 +435,10 @@ def update_frequency_data[
                 # if we encounter a padding token, add the new token to the
                 # occurrences tensor
                 elif cur_tok == Int32(-1):
-                    compressed_frequency_data.store[width=1](
+                    compressed_frequency_data.store(
                         (tok_id, 0), SIMD[.int32, 1](new_token)
                     )
-                    compressed_frequency_data.store[width=1](
+                    compressed_frequency_data.store(
                         (tok_id, 1), SIMD[.int32, 1](Int32(1))
                     )
                     break

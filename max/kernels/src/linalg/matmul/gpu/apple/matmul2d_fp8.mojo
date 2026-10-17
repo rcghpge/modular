@@ -315,9 +315,8 @@ struct Matmul2dFp8[
                         c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
                     else:
                         for e in range(min(4, N - acol)):
-                            c_sub.store[width=1, alignment=elem_align](
-                                (lrow, lcol + e),
-                                SIMD[Self.c_type, 1](y[e]),
+                            c_sub.store[alignment=elem_align](
+                                (lrow, lcol + e), y[e]
                             )
                 else:
                     c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)

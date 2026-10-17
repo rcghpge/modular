@@ -93,7 +93,7 @@ def kv_cache_gather_rows_ragged[
         var slot = Int(slots[r, j])
         # `dtype == cache_t.dtype` is asserted above; the two are still
         # distinct symbols to the type checker.
-        output.store[width=width, alignment=alignment](
+        output.store[alignment=alignment](
             (r, j, d),
             rebind[SIMD[dtype, width]](cache.load[width=width](b, 0, slot, d)),
         )

@@ -814,7 +814,7 @@ struct SplitKTileScheduler[
 
         comptime for mma_id in range(num_mma):
             comptime for i in range(c_frag_size):
-                work_space_tile_reshaped.store[width=1](
+                work_space_tile_reshaped.store(
                     (mma_id * c_frag_size + i, Int(warp_group_thread_idx)),
                     rebind[Scalar[accum_type]](c_reg_tile[mma_id, i]),
                 )
@@ -879,7 +879,7 @@ struct SplitKTileScheduler[
                             rebind[Scalar[accum_type]](c_reg_tile[mma_id, i]),
                         )
                     else:
-                        work_space_tile_reshaped.store[width=1](
+                        work_space_tile_reshaped.store(
                             (
                                 mma_id * c_frag_size + i,
                                 Int(warp_group_thread_idx),

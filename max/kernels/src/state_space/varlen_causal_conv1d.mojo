@@ -402,7 +402,7 @@ def causal_conv1d_varlen_states_cpu[
     for b in range(batch):
         for d in range(dim):
             for s in range(state_len):
-                states.store[width=1]((b, d, s), Scalar[states_dtype](0))
+                states.store((b, d, s), Scalar[states_dtype](0))
 
     # Extract states for each sequence
     for b in range(batch):
@@ -419,9 +419,7 @@ def causal_conv1d_varlen_states_cpu[
 
             for d in range(dim):
                 var val = x.load[width=1]((x_seq_idx, d))
-                states.store[width=1](
-                    (b, d, states_seq_idx), Scalar[states_dtype](val)
-                )
+                states.store((b, d, states_seq_idx), Scalar[states_dtype](val))
 
 
 def causal_conv1d_varlen_fwd_cpu[
@@ -670,7 +668,7 @@ def causal_conv1d_varlen_update_cpu[
                 )
 
                 # Store output
-                output.store[width=1]((b, d, l), out_val)
+                output.store((b, d, l), out_val)
 
             # Update state with new x values
             for l in range(seqlen):
@@ -689,12 +687,10 @@ def causal_conv1d_varlen_update_cpu[
                             var val = conv_state.load[width=1](
                                 (state_batch_idx, d, s + seqlen)
                             )
-                            conv_state.store[width=1](
-                                (state_batch_idx, d, s), val
-                            )
+                            conv_state.store((state_batch_idx, d, s), val)
                     state_pos = state_len - seqlen + l
 
-                conv_state.store[width=1](
+                conv_state.store(
                     (state_batch_idx, d, state_pos),
                     Scalar[conv_state_dtype](x_val),
                 )
@@ -789,7 +785,7 @@ def causal_conv1d_varlen_states_gpu[
 
     # Store to states if in valid range
     if states_row >= 0 and col < _dim:
-        states.store[width=1]((batch_idx, col, states_row), val)
+        states.store((batch_idx, col, states_row), val)
 
 
 # Tuned on B200, untuned elsewhere. Without the register cap the compiler keeps
@@ -1372,7 +1368,7 @@ def causal_conv1d_varlen_update_gpu[
         var out_val = _apply_silu[output_dtype](conv_sum, silu_activation != 0)
 
         # Store output
-        output.store[width=1]((batch_idx, d, l), out_val)
+        output.store((batch_idx, d, l), out_val)
 
         # Update state
         var x_val = x.load[width=1]((batch_idx, d, l))
@@ -1383,7 +1379,7 @@ def causal_conv1d_varlen_update_gpu[
         else:
             state_pos = _state_len - _seqlen + l
 
-        conv_state.store[width=1](
+        conv_state.store(
             (state_batch_idx, d, state_pos),
             Scalar[conv_state_dtype](x_val),
         )

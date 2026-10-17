@@ -896,7 +896,7 @@ def _store_fused_qkv_element[
 
     var col = Int(idx[1].value())
     if col < q_dim:
-        output.store[width=width, alignment=align_of[dtype]()](
+        output.store[alignment=align_of[dtype]()](
             idx,
             rebind[SIMD[dtype, width]](output_val),
         )
@@ -1290,7 +1290,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             ](Coord(col))
 
         if col < q_dim:
-            output.store[width=width, alignment=align_of[output_dtype]()](
+            output.store[alignment=align_of[output_dtype]()](
                 idx,
                 output_val_out,
             )
@@ -1371,7 +1371,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
                 ](Coord(col))
 
             if col < q_dim:
-                output.store[width=width, alignment=align_of[output_dtype]()](
+                output.store[alignment=align_of[output_dtype]()](
                     idx,
                     output_val_out,
                 )
@@ -1528,7 +1528,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
         var col = Int(idx[1].value())
 
         if col < q_dim:
-            output.store[width=width, alignment=align_of[output_dtype]()](
+            output.store[alignment=align_of[output_dtype]()](
                 idx,
                 output_val_out,
             )
@@ -1980,7 +1980,7 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
 
         # Q band -> q_output[:, col].
         if col < q_end:
-            q_output.store[width=width, alignment=align_of[output_dtype]()](
+            q_output.store[alignment=align_of[output_dtype]()](
                 idx, output_val_out
             )
             return
@@ -1989,7 +1989,7 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
         # scatters so the branch order matches the column layout
         # (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
-            iq_output.store[width=width, alignment=align_of[output_dtype]()](
+            iq_output.store[alignment=align_of[output_dtype]()](
                 Coord(Int(idx[0].value()), col - v_end),
                 output_val_out,
             )
@@ -2347,16 +2347,14 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl[
 
         # Q band -> output[:, col].
         if col < q_end:
-            output.store[width=width, alignment=align_of[dtype]()](
-                idx, output_val_out
-            )
+            output.store[alignment=align_of[dtype]()](idx, output_val_out)
             return
 
         # IndexQ band -> output[:, q_dim + (col - v_end)]. Packed right after Q
         # in the combined output. Checked before the cache scatters so the
         # branch order matches the column layout (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
-            output.store[width=width, alignment=align_of[dtype]()](
+            output.store[alignment=align_of[dtype]()](
                 Coord(Int(idx[0].value()), q_dim + (col - v_end)),
                 output_val_out,
             )

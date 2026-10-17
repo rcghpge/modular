@@ -79,9 +79,7 @@ def _round_kernel[
         )
     else:
         for i in range(offset, min(offset + width, size)):
-            output.store[width=1](
-                (i,), cast_fp_to_fp4e2m1(input.load[width=1]((i,)))
-            )
+            output.store((i,), cast_fp_to_fp4e2m1(input[i]))
 
 
 def _run[dtype: DType, width: Int](ctx: DeviceContext) raises:

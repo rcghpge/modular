@@ -1078,7 +1078,7 @@ def _softmax_warp_kernel[
                 coords.replace_dynamic[axis](lane)
                 # Do not reuse `local_sum` to avoid perf regressions.
                 var out_val = (exp(val - row_max) * recip).cast[dtype]()
-                output.store[width=1](coords, SIMD[dtype, 1](out_val))
+                output.store(coords, out_val)
 
 
 # Attention runs softmax in place: `input_fn` may read the buffer passed as
@@ -1541,7 +1541,7 @@ def _softmax_temperature_kernel[
                             logit - SIMD[accum_type, width](global_max)
                         ) * SIMD[accum_type, width](inv_temp)
                         var val = exp(diff) * SIMD[accum_type, width](recip)
-                        output.store[width=width](coords, val.cast[dtype]())
+                        output.store(coords, val.cast[dtype]())
 
                     vectorize[simd_width](lane_count, normalize)
 
@@ -1767,7 +1767,7 @@ def _softmax_split_combine_kernel[
                         logit - SIMD[accum_type, width](global_max)
                     ) * SIMD[accum_type, width](inv_temp)
                     var val = exp(diff) * SIMD[accum_type, width](recip)
-                    output.store[width=width](coords, val.cast[dtype]())
+                    output.store(coords, val.cast[dtype]())
 
                 vectorize[simd_width](lane_count, normalize)
 
@@ -2776,7 +2776,5 @@ def _online_softmax_correction[
     comptime for col_tile in range(num_colwise_tiles):
         var sfr = score_frag_rowmax.load[width=1]((col_tile,))
         var previous = rowmax_tensor.load[width=1]((col_tile,))
-        score_frag_rowmax.store[width=1](
-            (col_tile,), exp_function(previous - sfr)
-        )
-        rowmax_tensor.store[width=1]((col_tile,), sfr)
+        score_frag_rowmax.store((col_tile,), exp_function(previous - sfr))
+        rowmax_tensor.store((col_tile,), sfr)

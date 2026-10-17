@@ -1077,9 +1077,8 @@ def _concat_gpu_elementwise[
                         input.load[width=simd_width](in_coord),
                     )
                 else:
-                    output.store[width=simd_width](
-                        out_index,
-                        input.load[width=simd_width](in_coord),
+                    output.store(
+                        out_index, input.load[width=simd_width](in_coord)
                     )
                 return
 

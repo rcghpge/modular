@@ -489,7 +489,7 @@ def test_oob_epilogue[
     ](idx: Coord, val: SIMD[_dtype, width]) {var out_tensor}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert idx.flat_rank == out_tensor.flat_rank
-        out_tensor.store[width=width, alignment=alignment](
+        out_tensor.store[alignment=alignment](
             idx, rebind[SIMD[c_type, width]](val)
         )
 
@@ -683,7 +683,7 @@ def test_oob_epilogue_dynamic_m[
     ](idx: Coord, val: SIMD[_dtype, width]) {var out_tensor}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert idx.flat_rank == out_tensor.flat_rank
-        out_tensor.store[width=width, alignment=alignment](
+        out_tensor.store[alignment=alignment](
             idx, rebind[SIMD[c_type, width]](val)
         )
 

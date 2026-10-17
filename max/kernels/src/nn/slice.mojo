@@ -411,7 +411,7 @@ def sliced_add[
             var b_val = b.load[width](idx)
             out_val = a_val + b_val
 
-        c.store[width](idx, out_val)
+        c.store(idx, out_val)
 
     comptime if target == "gpu":
         comptime compile_target = ctx.target

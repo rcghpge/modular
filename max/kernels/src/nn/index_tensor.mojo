@@ -318,7 +318,7 @@ def _index_tensor_impl[
 
         var data_coord = Coord(data_idx)
         var out_coord = Coord(output_idx)
-        output.store[width=simd_width, alignment=1](
+        output.store[alignment=1](
             out_coord, data.load[width=simd_width, alignment=1](data_coord)
         )
 
@@ -523,7 +523,7 @@ def advanced_indexing_getitem[
                     indices_fn[index_tensor_offset](Coord(index_tensor_indices))
                 )
 
-        out_tensor.store[width=width, alignment=1](
+        out_tensor.store[alignment=1](
             output_index,
             input_tensor_fn[input_type, width=width](Coord(input_index)),
         )
@@ -744,7 +744,7 @@ def advanced_indexing_setitem_inplace[
                 )
 
         var input_tensor_coord = Coord(input_tensor_indices)
-        input_tensor.store[width=width, alignment=1](
+        input_tensor.store[alignment=1](
             input_tensor_coord,
             updates_tensor_fn[input_type, width=width](iteration_indices),
         )

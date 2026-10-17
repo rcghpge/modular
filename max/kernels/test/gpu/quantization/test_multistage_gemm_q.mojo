@@ -161,27 +161,27 @@ def create_ref_b[
         var q_int = vec[i // 2]
 
         var v1 = int4tobf16(q_int, bitcast[.bfloat16, 1](scales_reg_tiles[i]))
-        warp_out_tile.store[2](
-            Coord((i) * 8 + lane_row, 0 * 8 + lane_col * 2),
+        warp_out_tile.store(
+            ((i) * 8 + lane_row, 0 * 8 + lane_col * 2),
             v1.cast[type_b](),
         )
         q_int >>= 4
         var v2 = int4tobf16(q_int, bitcast[.bfloat16, 1](scales_reg_tiles[i]))
-        warp_out_tile.store[2](
-            Coord((i) * 8 + lane_row, 1 * 8 + lane_col * 2),
+        warp_out_tile.store(
+            ((i) * 8 + lane_row, 1 * 8 + lane_col * 2),
             v2.cast[type_b](),
         )
         q_int >>= 4
 
         v1 = int4tobf16(q_int, bitcast[.bfloat16, 1](scales_reg_tiles[i + 1]))
-        warp_out_tile.store[2](
-            Coord((i + 1) * 8 + lane_row, 0 * 8 + lane_col * 2),
+        warp_out_tile.store(
+            ((i + 1) * 8 + lane_row, 0 * 8 + lane_col * 2),
             v1.cast[type_b](),
         )
         q_int >>= 4
         v2 = int4tobf16(q_int, bitcast[.bfloat16, 1](scales_reg_tiles[i + 1]))
-        warp_out_tile.store[2](
-            Coord((i + 1) * 8 + lane_row, 1 * 8 + lane_col * 2),
+        warp_out_tile.store(
+            ((i + 1) * 8 + lane_row, 1 * 8 + lane_col * 2),
             v2.cast[type_b](),
         )
 

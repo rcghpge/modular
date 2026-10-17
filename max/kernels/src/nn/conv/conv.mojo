@@ -1064,7 +1064,7 @@ struct ConvDirectNHWC[
 
         comptime for idx0 in range(micro_kernel_height):
             comptime for idx1 in range(micro_kernel_width):
-                output_micro_tile.store[width=simd_size](
+                output_micro_tile.store(
                     (idx0, idx1 * simd_size),
                     SIMD[Self.output_type, simd_size](0.0),
                 )
@@ -1097,14 +1097,14 @@ struct ConvDirectNHWC[
                     var residual = align_down_residual(
                         self.conv_shape.f_per_group(), simd_size
                     )
-                    output_micro_tile.store[width=simd_size](
+                    output_micro_tile.store(
                         (i, j * simd_size),
                         partial_simd_load[simd_size](
                             output_ptr + j * simd_size, 0, residual, 0.0
                         ),
                     )
                 else:
-                    output_micro_tile.store[width=simd_size](
+                    output_micro_tile.store(
                         (i, j * simd_size),
                         (output_ptr + j * simd_size).load[width=simd_size](),
                     )
@@ -3720,12 +3720,12 @@ def conv2d_gpu_naive_nhwc_rscf[
                 if 0 <= h_in < H and 0 <= w_in < W:
                     for ci in range(C_per_group):
                         value += (
-                            input.load[width=1](
-                                (n, h_in, w_in, ci_base + ci)
+                            rebind[Scalar[input_type]](
+                                input[n, h_in, w_in, ci_base + ci]
                             ).cast[accum_type]()
-                            * filter.load[width=1]((r, s, ci, co)).cast[
-                                accum_type
-                            ]()
+                            * rebind[Scalar[filter_type]](
+                                filter[r, s, ci, co]
+                            ).cast[accum_type]()
                         )
 
         comptime if case .Some(epilogue_func) = maybe_epilogue_func:
@@ -5926,19 +5926,17 @@ def conv3d_gpu_naive_ndhwc_qrscf[
                             var flt_vec = SIMD[accum_type, vec_w](0)
 
                             comptime for k in range(vec_w):
-                                flt_vec[k] = filter.load[width=1](
-                                    (q, r, s, ci + k, co)
-                                )[0].cast[accum_type]()
+                                flt_vec[k] = filter[q, r, s, ci + k, co][
+                                    0
+                                ].cast[accum_type]()
                             simd_value = simd_value + in_vec * flt_vec
                             ci += vec_w
                         while ci < C_per_group:
                             scalar_value += (
-                                input.load[width=1](
-                                    (n, d_in, h_in, w_in, ci_base + ci)
-                                )[0].cast[accum_type]()
-                                * filter.load[width=1]((q, r, s, ci, co))[
+                                input[n, d_in, h_in, w_in, ci_base + ci][
                                     0
                                 ].cast[accum_type]()
+                                * filter[q, r, s, ci, co][0].cast[accum_type]()
                             )
                             ci += 1
 

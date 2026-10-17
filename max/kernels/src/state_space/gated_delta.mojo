@@ -340,7 +340,7 @@ def gated_delta_recurrence_fwd_gpu[
 
     # Read the pool slot for this batch item exactly once. The caller
     # (`GatedDeltaNetStateCache.claim`) guarantees `slot < max_slots`.
-    var slot = Int(slot_idx.load[width=1]((batch_item_idx,)))
+    var slot = Int(slot_idx[batch_item_idx])
 
     var q_raw_s = unsafe_stack_allocation[
         KEY_HEAD_DIM, Float32, address_space=.SHARED
@@ -363,12 +363,8 @@ def gated_delta_recurrence_fwd_gpu[
             recurrent_state.load[width=1]((slot, value_head_idx, kd, tid))
         )
 
-    var sequence_start_flat_idx = Int(
-        input_row_offsets.load[width=1]((batch_item_idx,))
-    )
-    var sequence_end_flat_idx = Int(
-        input_row_offsets.load[width=1]((batch_item_idx + 1,))
-    )
+    var sequence_start_flat_idx = Int(input_row_offsets[batch_item_idx])
+    var sequence_end_flat_idx = Int(input_row_offsets[batch_item_idx + 1])
 
     var query_channel = key_head_idx * KEY_HEAD_DIM + tid
     var key_channel = _key_dim + key_head_idx * KEY_HEAD_DIM + tid
@@ -407,7 +403,7 @@ def gated_delta_recurrence_fwd_gpu[
     # ── Write final state column back into pool[slot, ...] ──────────────────
     # Reread the slot, so the compiler cannot reuse the load-time address of
     # each state row and keep all KEY_HEAD_DIM of them live across the loop.
-    var final_slot = Int(slot_idx.load[width=1]((batch_item_idx,)))
+    var final_slot = Int(slot_idx[batch_item_idx])
     comptime for kd in range(KEY_HEAD_DIM):
         recurrent_state.store(
             (final_slot, value_head_idx, kd, tid),
@@ -591,8 +587,8 @@ def gated_delta_recurrence_verify_ring_gpu[
     # One value head per GQA group writes the shared raw key.
     var writes_ring_key = group_head == 0
 
-    var slot = Int(slot_idx.load[width=1]((batch_item_idx,)))
-    var ring_row = Int(ring_slot_idx.load[width=1]((batch_item_idx,)))
+    var slot = Int(slot_idx[batch_item_idx])
+    var ring_row = Int(ring_slot_idx[batch_item_idx])
 
     var q_raw_s = unsafe_stack_allocation[
         KEY_HEAD_DIM, Float32, address_space=.SHARED
@@ -621,12 +617,9 @@ def gated_delta_recurrence_verify_ring_gpu[
         group_size, group_head
     )
 
-    var sequence_start_flat_idx = Int(
-        input_row_offsets.load[width=1]((batch_item_idx,))
-    )
+    var sequence_start_flat_idx = Int(input_row_offsets[batch_item_idx])
     var sequence_length = (
-        Int(input_row_offsets.load[width=1]((batch_item_idx + 1,)))
-        - sequence_start_flat_idx
+        Int(input_row_offsets[batch_item_idx + 1]) - sequence_start_flat_idx
     )
     # Block-uniform, since a CTA covers one batch item.
     var records = sequence_length <= RING_LEN
@@ -691,7 +684,7 @@ def gated_delta_recurrence_verify_ring_gpu[
     # separate kernel, which needs the host row offsets as an operand.
     if not records:
         # Reread the slot; see `gated_delta_recurrence_fwd_gpu`.
-        var final_slot = Int(slot_idx.load[width=1]((batch_item_idx,)))
+        var final_slot = Int(slot_idx[batch_item_idx])
         comptime for kd in range(KEY_HEAD_DIM):
             recurrent_state.store(
                 (final_slot, value_head_idx, kd, tid),
@@ -790,7 +783,7 @@ def gated_delta_state_fold_gpu[
     if batch_item_idx >= _batch_size:
         return
 
-    var accepted = Int(num_accepted.load[width=1]((batch_item_idx,)))
+    var accepted = Int(num_accepted[batch_item_idx])
     if accepted <= 0 or accepted > RING_LEN:
         return
 
@@ -798,8 +791,8 @@ def gated_delta_state_fold_gpu[
     var key_head_idx = value_head_idx // group_size
     var group_head = value_head_idx % group_size
 
-    var slot = Int(row_ids.load[width=1]((layer_idx, batch_item_idx)))
-    var ring_row = Int(ring_row_ids.load[width=1]((layer_idx, batch_item_idx)))
+    var slot = Int(row_ids[layer_idx, batch_item_idx])
+    var ring_row = Int(ring_row_ids[layer_idx, batch_item_idx])
     var ring_delta_offset = (
         _ring_delta_offset[KEY_HEAD_DIM, VALUE_HEAD_DIM](group_head) + tid
     )

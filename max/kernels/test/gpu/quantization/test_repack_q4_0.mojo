@@ -41,7 +41,7 @@ def test_repack_q4_0[N: Int, K: Int](ctx: DeviceContext) raises:
     for row in range(N):
         for group in range(groups):
             var scale = Float32((row % 31) - 15) * Float32(group % 7 + 1) / 128
-            input_tensor.store[2](
+            input_tensor.store(
                 (row, group * group_bytes),
                 bitcast[.uint8, 2](bitcast[.uint16, 1](scale.cast[.float16]())),
             )

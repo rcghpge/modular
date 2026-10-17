@@ -298,7 +298,7 @@ def gather_reduce[
                     )[0]
 
                 var out_idx = Coord(i, k)
-                output.store[width=simd_width, alignment=1](out_idx, accum)
+                output.store[alignment=1](out_idx, accum)
 
             tile[k_tile_sizes,](0, row_size, gather_k_tile)
             # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -530,9 +530,9 @@ def gather[
         width: SIMDLength, element_alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var output}:
         comptime assert output.flat_rank >= coords.flat_rank
-        output.store[
-            width=width, alignment=element_alignment * align_of[dtype]()
-        ](coords, rebind[SIMD[dtype, width]](val))
+        output.store[alignment=element_alignment * align_of[dtype]()](
+            coords, rebind[SIMD[dtype, width]](val)
+        )
 
     _gather_impl[
         dtype,
@@ -2000,7 +2000,7 @@ def gather_nd[
 
         var data_coord = Coord(data_idx)
         var output_coord = Coord(output_idx)
-        output.store[width=simd_width, alignment=1](
+        output.store[alignment=1](
             output_coord, data.load[width=simd_width, alignment=1](data_coord)
         )
 

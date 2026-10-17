@@ -874,11 +874,8 @@ def _allreduce_2stage_kernel[
             _alignment: Int,
         ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
             tmp_buff.address_space_cast[_target_address_space]().store[
-                width=_width, alignment=_alignment
-            ](
-                coords,
-                val.cast[dtype](),
-            )
+                alignment=_alignment
+            ](coords, val.cast[dtype]())
 
         # Slice input tiles to this rank's partition for reduce-scatter. The
         # slice goes through the engine, so a slot-backed input keeps
@@ -1831,9 +1828,7 @@ def allreduce[
         *,
         _alignment: Int,
     ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        output_tensor.store[width=_width, alignment=_alignment](
-            coords, val.cast[dtype]()
-        )
+        output_tensor.store[alignment=_alignment](coords, val.cast[dtype]())
 
     allreduce[
         ngpus=ngpus,

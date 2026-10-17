@@ -264,7 +264,7 @@ def test_aligned_load() raises:
 
     for column in range(0, 16, 4):
         var expected = SIMD[.float32, 4](Float32(column // 4 + 1))
-        tensor.store[width=4, alignment=16]((0, column), expected)
+        tensor.store[alignment=16]((0, column), expected)
         var value = tensor.load[width=4, alignment=16]((0, column))
         var linear_value = tensor.load_linear[width=4, alignment=16](
             IndexList[2](0, column)

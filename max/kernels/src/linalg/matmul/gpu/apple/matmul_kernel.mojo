@@ -988,7 +988,7 @@ struct AppleM5MatMul[
                         c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
                     else:
                         for e in range(min(4, n - acol)):
-                            c_sub.store[width=1, alignment=elem_align](
+                            c_sub.store[alignment=elem_align](
                                 (lrow, lcol + e),
                                 SIMD[Self.c_type, 1](y[e]),
                             )
@@ -1051,9 +1051,7 @@ struct AppleM5MatMul[
                                         )
                                     else:
                                         for e in range(min(4, n - acol)):
-                                            c_sub.store[
-                                                width=1, alignment=elem_align
-                                            ](
+                                            c_sub.store[alignment=elem_align](
                                                 (srow, lcol + e),
                                                 compute_fn[
                                                     Self.c_type, 1, alignment=1

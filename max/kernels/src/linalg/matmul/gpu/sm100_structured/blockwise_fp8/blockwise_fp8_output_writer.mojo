@@ -558,14 +558,10 @@ struct BlockwiseFP8TileWriter[
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
                         ]()
-                        c_tensor.store[width=simd_size, alignment=alignment](
-                            dst_crd, src
-                        )
+                        c_tensor.store[alignment=alignment](dst_crd, src)
                     else:
                         var src_ptr = c_smem_split._storage + linear_idx
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
                         ]()
-                        c_tensor.store[width=simd_size, alignment=alignment](
-                            dst_crd, src
-                        )
+                        c_tensor.store[alignment=alignment](dst_crd, src)

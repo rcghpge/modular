@@ -717,16 +717,20 @@ def layer_norm_rope_ragged[
                     var self_val = nc.cast[freq_dtype]()
                     var x_re = self_val if is_re else partner
                     var x_im = partner if is_re else self_val
-                    var f_re = freqs_cis.load[width=1, alignment=1](
-                        (
-                            Scalar[freqs_cis.linear_idx_type](position_idx),
-                            Scalar[freqs_cis.linear_idx_type](pair_base),
+                    var f_re = rebind[Scalar[freq_dtype]](
+                        freqs_cis.load[alignment=1](
+                            (
+                                Scalar[freqs_cis.linear_idx_type](position_idx),
+                                Scalar[freqs_cis.linear_idx_type](pair_base),
+                            )
                         )
                     )
-                    var f_im = freqs_cis.load[width=1, alignment=1](
-                        (
-                            Scalar[freqs_cis.linear_idx_type](position_idx),
-                            Scalar[freqs_cis.linear_idx_type](im_c),
+                    var f_im = rebind[Scalar[freq_dtype]](
+                        freqs_cis.load[alignment=1](
+                            (
+                                Scalar[freqs_cis.linear_idx_type](position_idx),
+                                Scalar[freqs_cis.linear_idx_type](im_c),
+                            )
                         )
                     )
                     var result_re = x_re * f_re - x_im * f_im

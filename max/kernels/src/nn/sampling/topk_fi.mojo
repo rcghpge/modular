@@ -393,7 +393,7 @@ def TopKMaskLogitsKernel[
             logits_vec = (logits_vec.gt(pivot)).select(logits_vec, Float32.MIN)
 
             if (i * block_size + tx) * vec_size < _d:
-                masked_logits_row.store[width=vec_size](
+                masked_logits_row.store(
                     (
                         Idx[0],
                         i * block_size * vec_size + tx * vec_size,
@@ -933,7 +933,9 @@ def TopKSamplingFromProbKernel[
                     var search_id = _d
                     var last_valid_id = 0
                     for j in range(_d):
-                        var pv = Float32(probs_row.load[width=1]((Idx[0], j)))
+                        var pv = Float32(
+                            rebind[Scalar[dtype]](probs_row[Idx[0], j])
+                        )
                         if pv > low:
                             last_valid_id = j
                             cum += pv
@@ -943,7 +945,7 @@ def TopKSamplingFromProbKernel[
                         search_id = last_valid_id
 
                     var pivot_0 = Float32(
-                        probs_row.load[width=1]((Idx[0], search_id))
+                        rebind[Scalar[dtype]](probs_row[Idx[0], search_id])
                     )
                     var pivot_1 = (pivot_0 + high) / 2.0
 
@@ -953,7 +955,9 @@ def TopKSamplingFromProbKernel[
                     var count_1: Int = 0
                     var value_1: Float32 = 0.0
                     for j in range(_d):
-                        var pv = Float32(probs_row.load[width=1]((Idx[0], j)))
+                        var pv = Float32(
+                            rebind[Scalar[dtype]](probs_row[Idx[0], j])
+                        )
                         if pv > pivot_0:
                             count_0 += 1
                             value_0 += pv
@@ -1064,7 +1068,7 @@ def TopKSamplingFromProbKernel[
                     break
 
                 var pivot_0 = Float32(
-                    probs_row.load[width=1]((Idx[0], sampled_id))
+                    rebind[Scalar[dtype]](probs_row[Idx[0], sampled_id])
                 )
                 var pivot_1 = (pivot_0 + high) / 2.0
 
@@ -2131,9 +2135,7 @@ def TopKTopPSamplingFromProbKernel[
                         out_dist.unsafe_value() + bx * _d,
                         row_major(Idx[1], _d),
                     )
-                    dist_row.store[width=vec_size](
-                        (Idx[0], i * vec_size), e.cast[dist_dtype]()
-                    )
+                    dist_row.store((Idx[0], i * vec_size), e.cast[dist_dtype]())
                 thread_sum += e.reduce_add()
                 comptime if emit_dist:
                     if min_p_thresh > 0:
@@ -2558,7 +2560,7 @@ def TopKTopPSamplingFromProbKernel[
                     var masked = (e.gt(cutoff)).select(
                         e / kept_mass, SIMD[.float32, vec_size](0)
                     )
-                    dist_row.store[width=vec_size](
+                    dist_row.store(
                         (Idx[0], i * vec_size), masked.cast[dist_dtype]()
                     )
 
@@ -2569,10 +2571,10 @@ def TopKTopPSamplingFromProbKernel[
         if k == 1:
             comptime if is_apple_gpu():
                 if tx == 0:
-                    var best = probs_row.load[width=1]((Idx[0], 0))
+                    var best = probs_row[Idx[0], 0]
                     sampled_id = 0
                     for j in range(1, _d):
-                        var v = probs_row.load[width=1]((Idx[0], j))
+                        var v = probs_row[Idx[0], j]
                         if v > best:
                             best = v
                             sampled_id = j
@@ -3131,7 +3133,9 @@ def topk_softmax_sample_kernel[
 
         # Each thread processes elements and atomically writes to shared memory.
         for i in range(tx, _d, block_size):
-            var logit = logits_row.load[width=1]((Idx[0], i)).cast[.float32]()
+            var logit = rebind[Scalar[dtype]](logits_row[Idx[0], i]).cast[
+                .float32
+            ]()
             if logit > pivot:
                 var exp_val = exp((logit - max_logit) / temp_val)
 
@@ -3489,7 +3493,7 @@ def TopKTopPMaskedProbsKernel[
         # Repeated exponentiation costs more than the wider cache traffic on
         # AMD; each thread reuses its own output slice until the final write.
         comptime if is_amd_gpu():
-            probs_row.store[width=vec_size]((Idx[0], i * vec_size), e)
+            probs_row.store((Idx[0], i * vec_size), e)
         thread_sum += e.reduce_add()
         if k < _d:
             comptime for j in range(vec_size):
@@ -3571,7 +3575,7 @@ def TopKTopPMaskedProbsKernel[
     for i in range(vec_begin + Int(tx), vec_end, block_size):
         var e = load_e(i * vec_size)
         var masked = (e.gt(cut)).select(e / mass_s, SIMD[.float32, vec_size](0))
-        probs_row.store[width=vec_size]((Idx[0], i * vec_size), masked)
+        probs_row.store((Idx[0], i * vec_size), masked)
 
 
 def topk_topp_masked_probs[

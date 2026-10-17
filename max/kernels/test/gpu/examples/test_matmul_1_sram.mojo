@@ -105,26 +105,22 @@ def matmul_sram(
         var a_val: Float32
 
         comptime if not full_tile:
-            a_val = a.load[width=1]((row, offset + localCol)) if (
+            a_val = a[row, offset + localCol] if (
                 row < M and offset + localCol < K
             ) else 0.0
         else:
-            a_val = (
-                a.load[width=1]((row, offset + localCol)) if row < M else 0.0
-            )
+            a_val = a[row, offset + localCol] if row < M else 0.0
         a_shared[localRow * tile_size + localCol] = a_val
 
         # Load B tile into shared memory.
         var b_val: Float32
 
         comptime if not full_tile:
-            b_val = b.load[width=1]((offset + localRow, col)) if (
+            b_val = b[offset + localRow, col] if (
                 col < N and offset + localRow < K
             ) else 0.0
         else:
-            b_val = (
-                b.load[width=1]((offset + localRow, col)) if col < N else 0.0
-            )
+            b_val = b[offset + localRow, col] if col < N else 0.0
         b_shared[localRow * tile_size + localCol] = b_val
 
         barrier()
@@ -187,7 +183,7 @@ def run_matmul(ctx: DeviceContext) raises:
     var failed = False
     for i in range(M - 10, M):
         for j in range(N - 10, N):
-            var val = c_host.load[width=1]((i, j))
+            var val = c_host[i, j]
             if val != Float32(K):
                 print(
                     "Fail at index = [",

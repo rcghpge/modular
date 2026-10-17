@@ -195,7 +195,7 @@ def causal_conv1d_channel_first_fwd_cpu[
                     conv_sum[i] = lane_sum
             if silu_activation:
                 conv_sum = _silu_cast(conv_sum)
-            output.store[width=simd_width]((b, c, l), conv_sum)
+            output.store((b, c, l), conv_sum)
 
         vectorize[simd_width_of[output_dtype]()](seqlen, conv_chunk)
 
@@ -293,7 +293,7 @@ def causal_conv1d_channel_first_fwd_cpu_no_bias[
                     conv_sum[i] = lane_sum
             if silu_activation:
                 conv_sum = _silu_cast(conv_sum)
-            output.store[width=simd_width]((b, c, l), conv_sum)
+            output.store((b, c, l), conv_sum)
 
         vectorize[simd_width_of[output_dtype]()](seqlen, conv_chunk)
 
@@ -394,7 +394,7 @@ def causal_conv1d_channel_last_fwd_cpu[
                         ).cast[output_dtype]()
                 if silu_activation:
                     conv_sum = _apply_silu(conv_sum)
-                output.store[width=simd_width]((b, l, c), conv_sum)
+                output.store((b, l, c), conv_sum)
 
             vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
@@ -452,7 +452,7 @@ def causal_conv1d_channel_last_fwd_cpu_no_bias[
                     ]()
                 if silu_activation:
                     conv_sum = _apply_silu(conv_sum)
-                output.store[width=simd_width]((b, l, c), conv_sum)
+                output.store((b, l, c), conv_sum)
 
             vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
@@ -522,7 +522,7 @@ def causal_conv1d_channel_last_fwd_cpu_with_seq_idx[
                     ]()
                 if silu_activation:
                     conv_sum = _apply_silu(conv_sum)
-                output.store[width=simd_width]((b, l, c), conv_sum)
+                output.store((b, l, c), conv_sum)
 
             vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
@@ -587,7 +587,7 @@ def causal_conv1d_channel_last_fwd_cpu_no_bias_with_seq_idx[
                     ]()
                 if silu_activation:
                     conv_sum = _apply_silu(conv_sum)
-                output.store[width=simd_width]((b, l, c), conv_sum)
+                output.store((b, l, c), conv_sum)
 
             vectorize[simd_width_of[output_dtype]()](dim, conv_chunk)
 
@@ -808,7 +808,7 @@ def causal_conv1d_channel_first_fwd_gpu[
         var seq_idx: Int = seq_start + i
         if seq_idx >= seq_end:
             break
-        output.store[width=1](
+        output.store(
             (batch_id, channel_id, seq_idx), Scalar[output_dtype](out_vals[i])
         )
 
@@ -1005,7 +1005,7 @@ def causal_conv1d_channel_first_fwd_gpu_no_bias[
         var seq_idx: Int = seq_start + i
         if seq_idx >= seq_end:
             break
-        output.store[width=1](
+        output.store(
             (batch_id, channel_id, seq_idx), Scalar[output_dtype](out_vals[i])
         )
 
@@ -1148,9 +1148,7 @@ def causal_conv1d_channel_last_fwd_gpu[
             var seq_idx: Int = seq_start + i
             if seq_idx >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, seq_idx, c_idx), out_vals_channel[i]
-            )
+            output.store((batch_id, seq_idx, c_idx), out_vals_channel[i])
 
 
 # Optimized GPU version without bias for channel last
@@ -1270,9 +1268,7 @@ def causal_conv1d_channel_last_fwd_gpu_no_bias[
             var seq_idx: Int = seq_start + i
             if seq_idx >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, seq_idx, c_idx), out_vals_channel[i]
-            )
+            output.store((batch_id, seq_idx, c_idx), out_vals_channel[i])
 
 
 # ============================================================================
@@ -1591,9 +1587,7 @@ def causal_conv1d_channel_last_fwd_gpu_with_seq_idx[
             var seq_pos: Int = seq_start + i
             if seq_pos >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, seq_pos, c_idx), out_vals_channel[i]
-            )
+            output.store((batch_id, seq_pos, c_idx), out_vals_channel[i])
 
 
 # Optimized GPU implementation for channel-last without bias but with seq_idx as TileTensor
@@ -1849,9 +1843,7 @@ def causal_conv1d_channel_last_fwd_gpu_no_bias_with_seq_idx[
             var seq_pos: Int = seq_start + i
             if seq_pos >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, seq_pos, c_idx), out_vals_channel[i]
-            )
+            output.store((batch_id, seq_pos, c_idx), out_vals_channel[i])
 
 
 # ============================================================================
@@ -2123,9 +2115,7 @@ def causal_conv1d_channel_first_fwd_gpu_with_seq_idx[
             var seq_pos: Int = seq_start + i
             if seq_pos >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, c_idx, seq_pos), out_vals_channel[i]
-            )
+            output.store((batch_id, c_idx, seq_pos), out_vals_channel[i])
 
 
 # Optimized GPU implementation for channel-first without bias but with seq_idx as TileTensor
@@ -2373,9 +2363,7 @@ def causal_conv1d_channel_first_fwd_gpu_no_bias_with_seq_idx[
             var seq_pos: Int = seq_start + i
             if seq_pos >= seq_end:
                 break
-            output.store[width=1](
-                (batch_id, c_idx, seq_pos), out_vals_channel[i]
-            )
+            output.store((batch_id, c_idx, seq_pos), out_vals_channel[i])
 
 
 # ============================================================================
@@ -2483,7 +2471,7 @@ def causal_conv1d_update_cpu[
                         out_val = silu(out_val.cast[.float32]()).cast[
                             output_dtype
                         ]()
-                output.store[width=1]((b, c, l), out_val)
+                output.store((b, c, l), out_val)
 
             # Update conv_state: shift old values and add new x values
             if seqlen >= state_len:
@@ -2491,19 +2479,17 @@ def causal_conv1d_update_cpu[
                 for s in range(state_len):
                     var x_l_pos = seqlen - state_len + s
                     var x_val = x.load[width=1]((b, c, x_l_pos))
-                    conv_state.store[width=1](
-                        (b, c, s), Scalar[conv_state_dtype](x_val)
-                    )
+                    conv_state.store((b, c, s), Scalar[conv_state_dtype](x_val))
             else:
                 # Shift conv_state left by seqlen positions, then append x
                 for s in range(state_len - seqlen):
                     var val = conv_state.load[width=1]((b, c, (s + seqlen)))
-                    conv_state.store[width=1]((b, c, s), val)
+                    conv_state.store((b, c, s), val)
 
                 # Copy x values to the end
                 for l in range(seqlen):
                     var x_val = x.load[width=1]((b, c, l))
-                    conv_state.store[width=1](
+                    conv_state.store(
                         (b, c, (state_len - seqlen + l)),
                         Scalar[conv_state_dtype](x_val),
                     )
@@ -2591,24 +2577,22 @@ def causal_conv1d_update_cpu_no_bias[
                         out_val = silu(out_val.cast[.float32]()).cast[
                             output_dtype
                         ]()
-                output.store[width=1]((b, c, l), out_val)
+                output.store((b, c, l), out_val)
 
             # Update conv_state
             if seqlen >= state_len:
                 for s in range(state_len):
                     var x_l_pos = seqlen - state_len + s
                     var x_val = x.load[width=1]((b, c, x_l_pos))
-                    conv_state.store[width=1](
-                        (b, c, s), Scalar[conv_state_dtype](x_val)
-                    )
+                    conv_state.store((b, c, s), Scalar[conv_state_dtype](x_val))
             else:
                 for s in range(state_len - seqlen):
                     var val = conv_state.load[width=1]((b, c, (s + seqlen)))
-                    conv_state.store[width=1]((b, c, s), val)
+                    conv_state.store((b, c, s), val)
 
                 for l in range(seqlen):
                     var x_val = x.load[width=1]((b, c, l))
-                    conv_state.store[width=1](
+                    conv_state.store(
                         (b, c, (state_len - seqlen + l)),
                         Scalar[conv_state_dtype](x_val),
                     )
@@ -2741,24 +2725,22 @@ def causal_conv1d_update_gpu[
                 out_val = silu(out_val)
             else:
                 out_val = silu(out_val.cast[.float32]()).cast[output_dtype]()
-        output.store[width=1]((b, c, l), out_val)
+        output.store((b, c, l), out_val)
 
     # Update conv_state
     if _seqlen >= _state_len:
         for s in range(_state_len):
             var x_l_pos = _seqlen - _state_len + s
             var x_val = x.load[width=1]((b, c, x_l_pos))
-            conv_state.store[width=1](
-                (b, c, s), Scalar[conv_state_dtype](x_val)
-            )
+            conv_state.store((b, c, s), Scalar[conv_state_dtype](x_val))
     else:
         for s in range(_state_len - _seqlen):
             var val = conv_state.load[width=1]((b, c, (s + _seqlen)))
-            conv_state.store[width=1]((b, c, s), val)
+            conv_state.store((b, c, s), val)
 
         for l in range(_seqlen):
             var x_val = x.load[width=1]((b, c, l))
-            conv_state.store[width=1](
+            conv_state.store(
                 (b, c, (_state_len - _seqlen + l)),
                 Scalar[conv_state_dtype](x_val),
             )
@@ -2878,23 +2860,21 @@ def causal_conv1d_update_gpu_no_bias[
                 out_val = silu(out_val)
             else:
                 out_val = silu(out_val.cast[.float32]()).cast[output_dtype]()
-        output.store[width=1]((b, c, l), out_val)
+        output.store((b, c, l), out_val)
 
     if _seqlen >= _state_len:
         for s in range(_state_len):
             var x_l_pos = _seqlen - _state_len + s
             var x_val = x.load[width=1]((b, c, x_l_pos))
-            conv_state.store[width=1](
-                (b, c, s), Scalar[conv_state_dtype](x_val)
-            )
+            conv_state.store((b, c, s), Scalar[conv_state_dtype](x_val))
     else:
         for s in range(_state_len - _seqlen):
             var val = conv_state.load[width=1]((b, c, (s + _seqlen)))
-            conv_state.store[width=1]((b, c, s), val)
+            conv_state.store((b, c, s), val)
 
         for l in range(_seqlen):
             var x_val = x.load[width=1]((b, c, l))
-            conv_state.store[width=1](
+            conv_state.store(
                 (b, c, (_state_len - _seqlen + l)),
                 Scalar[conv_state_dtype](x_val),
             )

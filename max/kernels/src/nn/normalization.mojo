@@ -1659,8 +1659,8 @@ def apply_qk_rms_norm_gpu_block[
                     var g = gamma_k.load[width=simd_width, alignment=align](
                         (offset,)
                     )
-                    k_out.store[width=simd_width](
-                        Coord(Index(Int(row), offset)),
+                    k_out.store(
+                        (Int(row), offset),
                         ((xf * rs) * g).cast[out_dtype](),
                     )
                 else:
@@ -1670,8 +1670,8 @@ def apply_qk_rms_norm_gpu_block[
                     var g = gamma_q.load[width=simd_width, alignment=align](
                         (offset,)
                     )
-                    q_out.store[width=simd_width](
-                        Coord(Index(Int(row), offset)),
+                    q_out.store(
+                        (Int(row), offset),
                         ((xf * rs) * g).cast[out_dtype](),
                     )
 
@@ -2358,9 +2358,9 @@ def group_norm_gpu_multi_block_norm[
         for s in range(_num_splits):
             var base_idx = stats_row_base + s * 3
             welford_combine(
-                stats.load[width=1]((base_idx,)),
-                stats.load[width=1]((base_idx + 1,)),
-                stats.load[width=1]((base_idx + 2,)),
+                stats[base_idx],
+                stats[base_idx + 1],
+                stats[base_idx + 2],
                 row_mean,
                 row_m2,
                 row_count,

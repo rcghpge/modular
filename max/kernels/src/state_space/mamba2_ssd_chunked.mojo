@@ -138,19 +138,19 @@ def ssd_chunk_map[
         return
     var next = 0
     for b in range(batch):
-        var s = Int(query_start_loc.load[width=1]((b,)))
-        var e = Int(query_start_loc.load[width=1]((b + 1,)))
+        var s = Int(query_start_loc[b])
+        var e = Int(query_start_loc[b + 1])
         var n = ceildiv(max(e - s, 0), CHUNK)
-        info.store[width=1]((3 * slots + b,), Int32(next))
-        info.store[width=1]((3 * slots + batch + b,), Int32(n))
+        info.store((3 * slots + b,), Int32(next))
+        info.store((3 * slots + batch + b,), Int32(n))
         for c in range(n):
             var start = s + c * CHUNK
-            info.store[width=1]((next,), Int32(start))
-            info.store[width=1]((slots + next,), Int32(min(CHUNK, e - start)))
-            info.store[width=1]((2 * slots + next,), Int32(b))
+            info.store((next,), Int32(start))
+            info.store((slots + next,), Int32(min(CHUNK, e - start)))
+            info.store((2 * slots + next,), Int32(b))
             next += 1
     for k in range(next, slots):
-        info.store[width=1]((slots + k,), Int32(0))
+        info.store((slots + k,), Int32(0))
 
 
 def ssd_chunk_cumsum[
@@ -185,10 +185,10 @@ def ssd_chunk_cumsum[
     var slot = Int(block_idx.x)
     var h = Int(block_idx.y)
     var i = Int(thread_idx.x)
-    var length = Int(info.load[width=1]((slots + slot,)))
+    var length = Int(info[slots + slot])
     if length == 0:
         return
-    var start = Int(info.load[width=1]((slot,)))
+    var start = Int(info[slot])
     var head = _HeadScalars.load(A, D, dt_bias, h)
 
     var scan = unsafe_stack_allocation[
@@ -214,8 +214,8 @@ def ssd_chunk_cumsum[
         barrier()
         off *= 2
     var base = (h * slots + slot) * CHUNK + i
-    cs.store[width=1]((base,), scan[i])
-    delta_out.store[width=1]((base,), delta)
+    cs.store((base,), scan[i])
+    delta_out.store((base,), delta)
 
 
 def ssd_chunk_state[
@@ -270,10 +270,10 @@ def ssd_chunk_state[
     var lane = tid % WARP_SIZE
     var g = lane // QUAD
     var t4 = lane % QUAD
-    var length = Int(info.load[width=1]((slots + slot,)))
+    var length = Int(info[slots + slot])
     if length == 0:
         return
-    var start = Int(info.load[width=1]((slot,)))
+    var start = Int(info[slot])
     var group_id = h // (nheads // ngroups)
     var sbase = (h * slots + slot) * CHUNK
     var cs_last = cs.load[width=1]((sbase + length - 1,))
@@ -350,7 +350,7 @@ def ssd_chunk_state[
     comptime for nt in range(NT):
         comptime for half in range(2):
             var p = p_base + warp * MMA_M + g + half * HALF
-            states.store[width=2, alignment=8](
+            states.store[alignment=8](
                 (
                     ((slot * nheads + h) * head_dim + p) * DSTATE
                     + nt * MMA_N
@@ -409,10 +409,10 @@ def ssd_state_passing[
     var tid = Int(thread_idx.x)
     var e = (Int(block_idx.x) * NUM_THREADS + tid) * F32_VEC
     var active = e < head_dim * DSTATE
-    var nch = Int(info.load[width=1]((3 * slots + batch + b,)))
+    var nch = Int(info[3 * slots + batch + b])
     if nch == 0:
         return
-    var first = Int(info.load[width=1]((3 * slots + b,)))
+    var first = Int(info[3 * slots + b])
     var p = e // DSTATE
     var n = e % DSTATE
     var pool_slot = Int(slot_fn[1, 1](b))
@@ -432,7 +432,7 @@ def ssd_state_passing[
         var n_here = min(NUM_THREADS, nch - c0)
         if tid < n_here:
             var slot = first + c0 + tid
-            var length = Int(info.load[width=1]((slots + slot,)))
+            var length = Int(info[slots + slot])
             decay_s[tid] = exp2(
                 cs.load[width=1](((h * slots + slot) * CHUNK + length - 1,))
             )
@@ -448,7 +448,7 @@ def ssd_state_passing[
             comptime for u in range(U):
                 if c + u < n_here:
                     if active:
-                        states.store[width=4, alignment=16](
+                        states.store[alignment=16](
                             ((first + c0 + c + u) * slot_stride + base,), state
                         )
                     state = fma(
@@ -456,7 +456,7 @@ def ssd_state_passing[
                     )
         barrier()
     if active and _write_final_state(update_state, b):
-        ssm_pool.store[width=4, alignment=pool_align](
+        ssm_pool.store[alignment=pool_align](
             (pool_slot, h, p, n), state.cast[state_dtype]()
         )
 
@@ -567,11 +567,11 @@ def ssd_chunk_output[
     var lane = tid % WARP_SIZE
     var g = lane // QUAD
     var t4 = lane % QUAD
-    var length = Int(info.load[width=1]((slots + slot,)))
+    var length = Int(info[slots + slot])
     var i0 = rt * TILE
     if i0 >= length:
         return
-    var start = Int(info.load[width=1]((slot,)))
+    var start = Int(info[slot])
     var group_id = h // (nheads // ngroups)
     var sbase = (h * slots + slot) * CHUNK
     var D_val = Float32(0)

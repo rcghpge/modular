@@ -3035,9 +3035,9 @@ def _gemv_cpu[
                 var out = compute_fn[out_type, 1, alignment=1](
                     (m + i, 0), value[i]
                 )
-                c_buf.store[width=1]((m + i,), out.cast[c_type]())
+                c_buf.store((m + i,), out.cast[c_type]())
         else:
-            c_buf.store[width=width]((idx[0],), value.cast[c_type]())
+            c_buf.store((idx[0],), value.cast[c_type]())
 
     @inline(.always)
     def reduce_impl[
@@ -3086,10 +3086,10 @@ def naive_gemv(
         var dot = acc.reduce_add()
         for k in range(vector_end, K):
             dot += (
-                a_buf.load[width=1]((m, k)).cast[c_type]()
-                * b_buf.load[width=1]((k,)).cast[c_type]()
-            )[0]
-        c_buf.store[width=1]((m,), SIMD[c_type, 1](dot))
+                rebind[Scalar[a_buf.dtype]](a_buf[m, k]).cast[c_type]()
+                * rebind[Scalar[b_buf.dtype]](b_buf[k]).cast[c_type]()
+            )
+        c_buf.store((m,), dot)
 
 
 struct _MmaCpAsyncGmemLoaderA[

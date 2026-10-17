@@ -184,7 +184,7 @@ struct Int8DequantWriter[
         comptime for half in range(2):
             var r = tile_r0 + rb + half * 8
             if r < self.M:
-                var asc = self.a_scale.load[width=1]((r,))
+                var asc = rebind[Float32](self.a_scale[r])
                 var col0 = tile_c0 + cb
                 var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
                 if col0 + 3 < self.N:
@@ -196,7 +196,7 @@ struct Int8DequantWriter[
                         y4 = y4 + self.bias.load[
                             width=4, alignment=align_of[Self.c_type]()
                         ](Coord(col0))
-                    self.c.store[width=4]((r, col0), y4)
+                    self.c.store((r, col0), y4)
                 else:
                     comptime for cc in range(4):
                         var col = col0 + cc
@@ -204,14 +204,14 @@ struct Int8DequantWriter[
                             var v = (
                                 Float32(fv[cc])
                                 * asc
-                                * self.b_scale.load[width=1]((col,))
+                                * rebind[Float32](self.b_scale[col])
                             )
                             var y = v.cast[Self.c_type]()
                             comptime if Self.has_bias:
-                                y = y + self.bias.load[width=1]((col,))
-                            self.c.store[width=1](
-                                (r, col), SIMD[Self.c_type, 1](y)
-                            )
+                                y = y + rebind[Scalar[Self.c_type]](
+                                    self.bias[col]
+                                )
+                            self.c.store((r, col), y)
 
     @inline(.always)
     def write_frag_full(
@@ -230,7 +230,7 @@ struct Int8DequantWriter[
         """
         comptime for half in range(2):
             var r = tile_r0 + rb + half * 8
-            var asc = self.a_scale.load[width=1]((r,))
+            var asc = rebind[Float32](self.a_scale[r])
             var col0 = tile_c0 + cb
             var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
             var bs = self.b_scale.load[
@@ -241,7 +241,7 @@ struct Int8DequantWriter[
                 y4 = y4 + self.bias.load[
                     width=4, alignment=align_of[Self.c_type]()
                 ](Coord(col0))
-            self.c.store[width=4]((r, col0), y4)
+            self.c.store((r, col0), y4)
 
 
 struct AppleM5Int8MatMul[
@@ -1067,7 +1067,9 @@ struct AppleInt8ActQuant[in_type: DType = .bfloat16, *, THREADS: Int = 64]:
         var local_max = Float32(0)
         var j = tid
         while j < K:
-            var v = abs(a.load[width=1]((row, j)).cast[DType.float32]())
+            var v = abs(
+                rebind[Scalar[Self.in_type]](a[row, j]).cast[DType.float32]()
+            )
             if v > local_max:
                 local_max = v
             j += Self.THREADS
@@ -1077,15 +1079,18 @@ struct AppleInt8ActQuant[in_type: DType = .bfloat16, *, THREADS: Int = 64]:
         var scale = row_max / 127.0 if row_max != 0.0 else Float32(0)
         var mult = 127.0 / row_max if row_max != 0.0 else Float32(0)
         if tid == 0:
-            a_scale.store[width=1]((row,), Float32(scale))
+            a_scale.store((row,), Float32(scale))
 
         # Pass 2: quantize.
         j = tid
         while j < K:
             var qi = Int(
-                round(a.load[width=1]((row, j)).cast[.float32]() * mult)
+                round(
+                    rebind[Scalar[Self.in_type]](a[row, j]).cast[.float32]()
+                    * mult
+                )
             )
-            q.store[width=1]((row, j), Int8(qi))
+            q.store((row, j), Int8(qi))
             j += Self.THREADS
 
 

@@ -218,7 +218,7 @@ def apply_compute_fn_in_place[
         # Load and store take alignment in bytes, compute_fn takes elements.
         comptime byte_alignment = alignment * size_of[c_type]()
         var c_val = c_tt.load[width=simd_width, alignment=byte_alignment](idx)
-        c_tt.store[width=simd_width, alignment=byte_alignment](
+        c_tt.store[alignment=byte_alignment](
             idx,
             compute_fn[c_type, simd_width, alignment=alignment](idx, c_val),
         )

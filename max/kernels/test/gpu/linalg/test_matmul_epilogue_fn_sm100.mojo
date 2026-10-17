@@ -97,7 +97,7 @@ def test_epilogue_fn[
     ](idx: Coord, val: SIMD[_dtype, width]) {var d}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
-        d.store[width=width](
+        d.store(
             idx,
             (val * SIMD[_dtype, width](row_scale)).cast[dtype](),
         )

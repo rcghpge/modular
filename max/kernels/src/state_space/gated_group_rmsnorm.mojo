@@ -244,9 +244,7 @@ def gated_group_rmsnorm_vec_kernel[
         var col = base + (lane + k * WARP_SIZE) * width
         var t_in = (gated[k] * nf).cast[dtype]()
         var prod = w[k] * t_in.cast[accum_type]()
-        output.store[width=width, alignment=y_align](
-            (n, col), prod.cast[dtype]()
-        )
+        output.store[alignment=y_align]((n, col), prod.cast[dtype]())
 
 
 @inline(.always)

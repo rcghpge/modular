@@ -640,7 +640,7 @@ def moe_finalize[
                 .float32
             ]()
             acc += down.load[width=width]((row, col)).cast[.float32]() * weight
-        output.store[width=width]((token, col), acc.cast[out_type]())
+        output.store((token, col), acc.cast[out_type]())
 
     comptime simd_width = simd_width_of[down_type, target=context.target]()
     var shape = output.layout.shape_coord()
@@ -1489,10 +1489,8 @@ def single_group_router_eplb_kernel[
     var l_id = lane_id()
 
     with PDL():
-        var Lidx = Int(layer_idx.load[width=1]((Idx[0],))[0])
-        var thread_expert_bias = expert_bias.load[width=1]((tid,)).cast[
-            scores_type
-        ]()
+        var Lidx = Int(layer_idx[Idx[0]][0])
+        var thread_expert_bias = expert_bias[tid].cast[scores_type]()
 
         var thread_expert_score = scores_input_fn[width=1]((token_idx, tid))
         var biased_score = thread_expert_score + thread_expert_bias
@@ -1533,7 +1531,7 @@ def single_group_router_eplb_kernel[
 
                 # Burst load #3 — cnt (only when mr > 1).
                 comptime if max_replicas > 1:
-                    cnt = Int(logcnt.load[width=1]((Lidx, log))[0])
+                    cnt = Int(logcnt[Lidx, log][0])
 
             # ---------- Weight reduction (loads above are in flight) ----
             var weights_sum = warp.lane_group_sum[num_lanes=n_experts_per_tok](
@@ -2643,7 +2641,7 @@ def eplb_remap_kernel[
     with PDL():
         # Broadcast scalar layer index. Every thread reads the same address →
         # one HBM transaction, hot in L1 for the rest of the block.
-        var Lidx = Int(layer_idx.load[width=1]((Idx[0],))[0])
+        var Lidx = Int(layer_idx[Idx[0]][0])
 
         # Cooperative SMEM load of (logcnt, log2phy) slice for layer Lidx.
         # BLOCK_THREADS threads cover num_log entries; unrolled at comptime.
@@ -2652,10 +2650,10 @@ def eplb_remap_kernel[
             if i < num_log:
                 # logcnt only matters for the round-robin path.
                 comptime if max_replicas > 1:
-                    smem_cnt[i] = Int32(logcnt.load[width=1]((Lidx, i))[0])
+                    smem_cnt[i] = Int32(logcnt[Lidx, i][0])
                 comptime for r in range(max_replicas):
                     smem_phy[i * max_replicas + r] = Int32(
-                        log2phy.load[width=1]((Lidx, i, r))[0]
+                        log2phy[Lidx, i, r][0]
                     )
         barrier()
 
@@ -2665,7 +2663,7 @@ def eplb_remap_kernel[
         var N = Int(phy_idx.dim(0))
 
         if n < N:
-            var log = Int(router_idx.load[width=1]((n, k))[0])
+            var log = Int(router_idx[n, k][0])
 
             comptime if max_replicas == 1:
                 # Pure permutation: cnt is always 1, r is always 0.

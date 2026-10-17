@@ -1492,9 +1492,7 @@ def _matmul_dynamic_scaled_fp8_impl[
 
                 var scaled_val = val * a_scale * b_scale
 
-                c.store[width=width, alignment=alignment](
-                    idx, scaled_val.cast[c_type]()
-                )
+                c.store[alignment=alignment](idx, scaled_val.cast[c_type]())
 
             @inline(.always)
             def scaled_output_fn_tensor[
@@ -1513,9 +1511,7 @@ def _matmul_dynamic_scaled_fp8_impl[
                 ]()
                 var scaled_val = val * a_scale * b_scale
 
-                c.store[width=width, alignment=alignment](
-                    idx, scaled_val.cast[c_type]()
-                )
+                c.store[alignment=alignment](idx, scaled_val.cast[c_type]())
 
             # Allocate an fp32 scratch buffer for the matmul accumulator;
             # the epilogue lambda reads from it, applies scaling, and

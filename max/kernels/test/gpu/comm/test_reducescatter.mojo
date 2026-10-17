@@ -252,7 +252,7 @@ def reducescatter_test[
         _alignment: Int,
     ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
         var out_buf = out_bufs[input_index]
-        out_buf.store[width=_width, alignment=_alignment](
+        out_buf.store[alignment=_alignment](
             coords,
             rebind[SIMD[dtype, _width]](-val),
         )

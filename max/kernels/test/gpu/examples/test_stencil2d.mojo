@@ -53,12 +53,11 @@ def stencil2d(
         var idx = tidy * num_cols + tidx
         b.store(
             (idx,),
-            Float32(coeff0) * a.load[width=1]((idx - 1,))
-            + Float32(coeff1) * a.load[width=1]((idx,))
-            + Float32(coeff2) * a.load[width=1]((idx + 1,))
-            + Float32(coeff3) * a.load[width=1](((tidy - 1) * num_cols + tidx,))
-            + Float32(coeff4)
-            * a.load[width=1](((tidy + 1) * num_cols + tidx,)),
+            Float32(coeff0) * a[idx - 1]
+            + Float32(coeff1) * a[idx]
+            + Float32(coeff2) * a[idx + 1]
+            + Float32(coeff3) * a[(tidy - 1) * num_cols + tidx]
+            + Float32(coeff4) * a[(tidy + 1) * num_cols + tidx],
         )
 
 
@@ -103,7 +102,7 @@ def stencil2d_smem(
     # Each element is loaded in shared memory.
     a_shared.store(
         (lindex_y, lindex_x),
-        a.load[width=1]((tidy * num_cols + tidx,)),
+        a[tidy * num_cols + tidx],
     )
 
     # First column also loads elements left and right to the block.
@@ -111,13 +110,13 @@ def stencil2d_smem(
         var idx = tidy * num_cols + (tidx - 1)
         a_shared.store(
             (lindex_y, Idx[0]),
-            a.load[width=1]((idx,)) if 0 <= idx < arr_size else 0,
+            a[idx] if 0 <= idx < arr_size else 0,
         )
 
         idx = tidy * num_cols + tidx + BLOCK_DIM
         a_shared.store(
             (lindex_y, BLOCK_DIM + 1),
-            a.load[width=1]((idx,)) if 0 <= idx < arr_size else 0,
+            a[idx] if 0 <= idx < arr_size else 0,
         )
 
     # First row also loads elements above and below the block.
@@ -125,13 +124,13 @@ def stencil2d_smem(
         var idx = (tidy - 1) * num_cols + tidx
         a_shared.store(
             (Idx[0], lindex_x),
-            a.load[width=1]((idx,)) if 0 < idx < arr_size else 0,
+            a[idx] if 0 < idx < arr_size else 0,
         )
 
         idx = (tidy + BLOCK_DIM) * num_cols + tidx
         a_shared.store(
             (BLOCK_DIM + 1, lindex_x),
-            a.load[width=1]((idx,)) if 0 <= idx < arr_size else 0,
+            a[idx] if 0 <= idx < arr_size else 0,
         )
 
     barrier()
@@ -139,12 +138,11 @@ def stencil2d_smem(
     if tidy > 0 and tidx > 0 and tidy < num_rows - 1 and tidx < num_cols - 1:
         b.store(
             (tidy * num_cols + tidx,),
-            Float32(coeff0) * a_shared.load[width=1]((lindex_y, lindex_x - 1))
-            + Float32(coeff1) * a_shared.load[width=1]((lindex_y, lindex_x))
-            + Float32(coeff2) * a_shared.load[width=1]((lindex_y, lindex_x + 1))
-            + Float32(coeff3) * a_shared.load[width=1]((lindex_y - 1, lindex_x))
-            + Float32(coeff4)
-            * a_shared.load[width=1]((lindex_y + 1, lindex_x)),
+            Float32(coeff0) * a_shared[lindex_y, lindex_x - 1]
+            + Float32(coeff1) * a_shared[lindex_y, lindex_x]
+            + Float32(coeff2) * a_shared[lindex_y, lindex_x + 1]
+            + Float32(coeff3) * a_shared[lindex_y - 1, lindex_x]
+            + Float32(coeff4) * a_shared[lindex_y + 1, lindex_x],
         )
 
 

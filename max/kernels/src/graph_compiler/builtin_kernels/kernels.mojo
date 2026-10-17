@@ -920,7 +920,7 @@ def random_normal_shape[
     var shape_tt = shape.to_tile_tensor()
     var unrolled_shape = IndexList[output_rank]()
     for i in range(output_rank):
-        unrolled_shape[i] = Int(shape_tt.load[1]((i,)))
+        unrolled_shape[i] = Int(shape_tt[i])
 
     return unrolled_shape
 
@@ -997,7 +997,7 @@ def random_uniform_shape[
 
     var unrolled_shape = IndexList[output_rank]()
     for i in range(output_rank):
-        unrolled_shape[i] = Int(shape_tt.load[1]((i,)))
+        unrolled_shape[i] = Int(shape_tt[i])
 
     return unrolled_shape
 
@@ -1219,12 +1219,12 @@ def fold_kernel_shape[
     var output_size_tt = output_size.to_tile_tensor()
     var kernel_size_tt = kernel_size.to_tile_tensor()
     var output_size_tuple = Index(
-        Int(output_size_tt.load[1]((0,))),
-        Int(output_size_tt.load[1]((1,))),
+        Int(output_size_tt[0]),
+        Int(output_size_tt[1]),
     )
     var kernel_size_tuple = Index(
-        Int(kernel_size_tt.load[1]((0,))),
-        Int(kernel_size_tt.load[1]((1,))),
+        Int(kernel_size_tt[0]),
+        Int(kernel_size_tt[1]),
     )
     return fold_shape(
         input.to_tile_tensor(),

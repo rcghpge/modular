@@ -157,7 +157,7 @@ def _run_case[
         _dtype: DType, width: SIMDLength, *, alignment: Int
     ](idx: Coord, val: SIMD[_dtype, width]) {var out_tt}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        out_tt.store[width=width](idx, rebind[SIMD[DType.float32, width]](val))
+        out_tt.store(idx, rebind[SIMD[DType.float32, width]](val))
 
     var direct_h = ctx.enqueue_create_host_buffer[.float32](M_static * N_static)
     var out_host = ctx.enqueue_create_host_buffer[.float32](M_static * N_static)

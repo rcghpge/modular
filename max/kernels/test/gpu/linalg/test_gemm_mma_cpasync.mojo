@@ -317,7 +317,7 @@ def run_gemm_mma_cpasync_epilogue_fn[
     ](idx: Coord, val: SIMD[dtype, width]) {var out_tensor}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         var row_scale = -2 if Int(idx[0].value()) % 2 == 1 else 2
-        out_tensor.store[width=width](
+        out_tensor.store(
             idx,
             (val * SIMD[dtype, width](row_scale)).cast[out_tensor.dtype](),
         )

@@ -581,9 +581,8 @@ struct AppleM5Fp4MatMul[
                     c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
                 else:
                     for e in range(min(4, n - acol)):
-                        c_sub.store[width=1, alignment=elem_align](
-                            (lrow, lcol + e),
-                            SIMD[Self.c_type, 1](y[e]),
+                        c_sub.store[alignment=elem_align](
+                            (lrow, lcol + e), y[e]
                         )
 
             comptime for mi in range(Mma.num_m_mmas):

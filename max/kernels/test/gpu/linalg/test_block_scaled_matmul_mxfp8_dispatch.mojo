@@ -232,7 +232,7 @@ def test_mxfp8_dispatch[
             comptime assert (
                 idx.rank == 2
             ), "the matmul epilogue contract is rank 2"
-            c.store[width=width](idx, rebind[SIMD[output_type, width]](val))
+            c.store(idx, rebind[SIMD[output_type, width]](val))
 
         def identity_fn[
             _dtype: DType, width: SIMDLength, *, alignment: Int

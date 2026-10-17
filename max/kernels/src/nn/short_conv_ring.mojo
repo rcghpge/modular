@@ -70,7 +70,7 @@ def _ring_slot(
 ) -> Int:
     """Returns the ring slot `batch_idx` occupies in row `layer_row` of
     `conv_rows`."""
-    return Int(conv_rows.load[width=1]((Int(layer_row), batch_idx))[0])
+    return Int(conv_rows[Int(layer_row), batch_idx][0])
 
 
 @inline(.always)
@@ -121,9 +121,7 @@ def _short_conv_ring_step[
     else:
         comptime for w in range(width):
             comptime for i in range(simd_width):
-                taps[w][i] = weight.load[width=1]((channel + i, w)).cast[
-                    accum_dtype
-                ]()[0]
+                taps[w][i] = weight[channel + i, w].cast[accum_dtype]()[0]
 
     var x_cur = x.load[width=simd_width]((token_idx, col)).cast[accum_dtype]()
     var acc = x_cur + x_cur * taps[width - 1]
@@ -168,8 +166,8 @@ def _commit_sequence_tail[
     comptime assert ring_len != -1, "the conv ring needs a static length"
 
     for token_idx in range(max(first_token, end - ring_len), end):
-        var position = Int(positions.load[width=1]((token_idx,))[0])
-        ring.store[width=simd_width](
+        var position = Int(positions[token_idx][0])
+        ring.store(
             (slot, position % ring_len, channel),
             x.load[width=simd_width]((token_idx, col)).cast[ring.dtype](),
         )
@@ -242,7 +240,7 @@ def short_conv_ring[
             input_row_offsets, token_idx
         )
         var slot = _ring_slot(conv_rows, layer_row, batch_idx)
-        var end = Int(input_row_offsets.load[width=1]((batch_idx + 1,))[0])
+        var end = Int(input_row_offsets[batch_idx + 1][0])
         var steps = 1
         comptime if commit:
             # Tokens 1 .. width - 2 read entries the commit overwrites, so
@@ -253,7 +251,7 @@ def short_conv_ring[
                 steps = max(1, min(end - token_idx, width - 1))
         for step in range(steps):
             var token = token_idx + step
-            var position = Int(positions.load[width=1]((token,))[0])
+            var position = Int(positions[token][0])
             var value = _short_conv_ring_step[width, accum_dtype, vec](
                 x,
                 weight,
@@ -265,7 +263,7 @@ def short_conv_ring[
                 position,
                 position - (idx_in_seq + step),
             )
-            output.store[width=vec]((token, channel), value.cast[dtype]())
+            output.store((token, channel), value.cast[dtype]())
         comptime if commit:
             if idx_in_seq == 0:
                 _commit_sequence_tail[vec](
@@ -390,7 +388,7 @@ def _launch_fused_qk_rms_norm_short_conv[
             batch_idx, tok_in_seq = get_batch_and_token_idx_from_row_offsets(
                 input_row_offsets, token_idx
             )
-            end = Int(input_row_offsets.load[width=1]((batch_idx + 1,))[0])
+            end = Int(input_row_offsets[batch_idx + 1][0])
             slot = _ring_slot(
                 k_conv_rows, k_layer_row, batch_idx
             ) if is_k else (_ring_slot(v_conv_rows, v_layer_row, batch_idx))
@@ -414,7 +412,7 @@ def _launch_fused_qk_rms_norm_short_conv[
                     ).cast[accum_dtype]()
                     gamma_val = q_gamma.load[width=vec]((idx,))
             else:
-                var position = Int(positions.load[width=1]((token,))[0])
+                var position = Int(positions[token][0])
                 var chunk_start = position - token_in_seq
                 # Distinct operands never share a TileTensor type, so no
                 # select.
@@ -471,7 +469,7 @@ def _launch_fused_qk_rms_norm_short_conv[
                     out_val = (out_val.cast[DType.float32]() * factor).cast[
                         dtype
                     ]()
-                q_output.store[width=vec]((token, head_idx, idx), out_val)
+                q_output.store((token, head_idx, idx), out_val)
             else:
                 var cache = k_cache if is_k else v_cache
                 cache.store(

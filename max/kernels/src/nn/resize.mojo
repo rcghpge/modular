@@ -1166,9 +1166,9 @@ def _move_columns[
         while j < end:
             comptime for s in range(_WIDTH):
                 comptime if to_tile:
-                    dst.store((j % ring, s), src.load[width=1]((s, j)))
+                    dst.store((j % ring, s), src[s, j])
                 else:
-                    dst.store((s, j), src.load[width=1]((j % ring, s)))
+                    dst.store((s, j), src[j % ring, s])
             j += 1
     return j
 

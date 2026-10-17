@@ -279,8 +279,8 @@ def _fused_qkv_matmul_kv_cache_impl[
         var col = Int(idx[1].value())
         var b_idx, t_idx = udivmod(Int(idx[0].value()), SEQ_LEN)
         if col < q_dim:
-            output.store[width=width, alignment=align_of[dtype]()](
-                Coord(b_idx, t_idx, col),
+            output.store[alignment=align_of[dtype]()](
+                (b_idx, t_idx, col),
                 rebind[SIMD[dtype, width]](val),
             )
             return
@@ -615,9 +615,7 @@ def _fused_qk_rms_norm_ragged_paged_gpu[
                 val=norm_val.cast[cache_t.dtype](),
             )
         else:
-            q_output.store[width=simd_width](
-                Coord(Index(global_token_idx, head_idx, idx)), norm_val
-            )
+            q_output.store((global_token_idx, head_idx, idx), norm_val)
 
 
 def fused_qk_rms_norm_ragged_paged[
@@ -894,7 +892,7 @@ def _fused_qk_rms_norm_rope_process_row[
         alignment=smem_align,
     ](row_major[head_dim]())
     if idx < num_cols:
-        s_norm.store[width=simd_width]((idx,), norm_val.cast[accum_type]())
+        s_norm.store((idx,), norm_val.cast[accum_type]())
     barrier()
 
     if idx >= num_cols:
@@ -923,9 +921,8 @@ def _fused_qk_rms_norm_rope_process_row[
                     val=cast_saturating[cache_t.dtype](res),
                 )
         else:
-            q_output.store[width=simd_width](
-                Coord(Index(global_token_idx, head_idx, idx)),
-                res.cast[q_out_dtype](),
+            q_output.store(
+                (global_token_idx, head_idx, idx), res.cast[q_out_dtype]()
             )
     else:
         # Non-interleaved (safetensors). With has_nope_prefix the roped region
@@ -946,8 +943,8 @@ def _fused_qk_rms_norm_rope_process_row[
                             val=cast_saturating[cache_t.dtype](passthrough),
                         )
                 else:
-                    q_output.store[width=simd_width](
-                        Coord(Index(global_token_idx, head_idx, idx)),
+                    q_output.store(
+                        (global_token_idx, head_idx, idx),
                         passthrough.cast[q_out_dtype](),
                     )
                 return
@@ -1858,7 +1855,7 @@ def nvfp4_kv_write_row[
             alignment=align_of[SIMD[accum_type, simd_width]](),
         ](row_major[head_dim]())
         if active:
-            s_norm.store[width=simd_width]((idx,), norm_val.cast[accum_type]())
+            s_norm.store((idx,), norm_val.cast[accum_type]())
         barrier()
 
         # Non-interleaved RoPE writes each output pair to its partner columns,
@@ -1873,7 +1870,7 @@ def nvfp4_kv_write_row[
                     Coord((post_seq_idx, idx))
                 )
                 var val = s_norm.load[width=simd_width]((idx,))
-                s_row.store[width=simd_width](
+                s_row.store(
                     (idx,),
                     rope_value(val, freq_val.cast[accum_type]()).cast[dtype](),
                 )
@@ -1902,7 +1899,7 @@ def nvfp4_kv_write_row[
                     s_row.store(Coord(h_re), output_re)
                     s_row.store(Coord(h_im), output_im)
                 else:
-                    s_row.store[width=simd_width](
+                    s_row.store(
                         (idx,),
                         s_norm.load[width=simd_width]((idx,)).cast[dtype](),
                     )

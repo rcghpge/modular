@@ -2170,7 +2170,7 @@ struct MatmulStaticScaledFloat8:
                 )
                 var scaled_val = val * scale
 
-                output_tt.store[width=width, alignment=alignment](
+                output_tt.store[alignment=alignment](
                     idx,
                     scaled_val.cast[output_type](),
                 )

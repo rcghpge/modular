@@ -445,7 +445,7 @@ def gemv_partial_norm_kernel[
             if idx < _n_normed:
                 var gamma_accum = gamma_val.cast[accum_type]()
                 var out = (vec_data * norm_factor * gamma_accum).cast[c_type]()
-                normed_output.store[simd_width]((Idx[0], idx), out)
+                normed_output.store((Idx[0], idx), out)
 
             comptime if enable_trace:
                 if tid == 0:
