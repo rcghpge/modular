@@ -974,9 +974,7 @@ def _gpu_tensor_tuple_add_kernel[
     var i = Int32(global_idx.x)
     if i >= n_dev:
         return
-    var b = rebind[Scalar[bias_dtype]](
-        bias.reshape(row_major(bias.num_elements()))[0]
-    )
+    var b = bias.reshape(row_major(bias.num_elements()))[0]
     comptime for k in range(len(Ins)):
         if i >= offsets[k] and i < offsets[k + 1]:
             comptime out_dtype = Outs[k].dtype
@@ -984,9 +982,7 @@ def _gpu_tensor_tuple_add_kernel[
             var x = rebind[TileProjection[False, Ins[k]]](inputs[k])
             var j = Int(i - offsets[k])
             var n = Int(offsets[k + 1] - offsets[k])
-            var v = rebind[Scalar[Ins[k].dtype]](
-                x.reshape(row_major(n)).load((j,))
-            )
+            var v = x.reshape(row_major(n)).load[width=1]((j,))
             z.reshape(row_major(n)).store(
                 (j,), v.cast[out_dtype]() + b.cast[out_dtype]()
             )
@@ -1022,14 +1018,16 @@ struct TraitTensorTupleAdd:
                 var zt = to_tile_tensor(outputs[i])
                 var xt = to_tile_tensor(inputs[i])
                 comptime OutT = SIMD[type_of(zt).dtype, 1]
-                var b = rebind[SIMD[type_of(bt).dtype, 1]](
-                    bt.reshape(row_major(bt.num_elements())).load((0,))
-                ).cast[type_of(zt).dtype]()
+                var b = (
+                    bt.reshape(row_major(bt.num_elements()))
+                    .load[width=1]((0,))
+                    .cast[type_of(zt).dtype]()
+                )
                 var n = Int(inputs[i].shape().product())
                 var zf = zt.reshape(row_major(n))
                 var xf = xt.reshape(row_major(n))
                 for j in range(n):
-                    var v = rebind[SIMD[type_of(xt).dtype, 1]](xf.load((j,)))
+                    var v = xf.load[width=1]((j,))
                     zf.store(
                         (j,), rebind[OutT](v.cast[type_of(zt).dtype]() + b)
                     )
@@ -1080,15 +1078,13 @@ def _gpu_array_tuple_add_kernel[
     var i = Int(global_idx.x)
     if i >= Int(n_dev):
         return
-    var b = rebind[Scalar[bias_dtype]](
-        bias.reshape(row_major(bias.num_elements()))[0]
-    ).cast[out_dtype]()
+    var b = bias.reshape(row_major(bias.num_elements()))[0].cast[out_dtype]()
     var offset = 0
     comptime for k in range(size):
         var n = inputs[k].num_elements()
         if i < offset + n:
             var j = i - offset
-            var v = rebind[Scalar[in_dtype]](inputs[k][j])
+            var v = inputs[k][j]
             outputs[k][j] = v.cast[out_dtype]() + b
             return
         offset += n
@@ -1288,7 +1284,7 @@ def _gpu_fused_tuple_split_kernel[
     var i = Int32(global_idx.x)
     if i >= n_dev:
         return
-    var v = rebind[Scalar[dtype]](input.reshape(row_major(Int(n_dev)))[Int(i)])
+    var v = input.reshape(row_major(Int(n_dev)))[Int(i)]
     comptime for k in range(len(Outs)):
         if i >= offsets[k] and i < offsets[k + 1]:
             comptime assert conforms_to(type_of(outputs[k]), Storable)
@@ -1323,9 +1319,7 @@ struct TraitTensorTupleFusedStoreSplit:
                 comptime assert conforms_to(type_of(outputs[k]), Storable)
                 var n = Int(outputs[k].shape().product())
                 for j in range(n):
-                    var v = rebind[Scalar[type_of(xt).dtype]](
-                        xf.load((offset + j,))
-                    )
+                    var v = xf.load[width=1]((offset + j,))
                     outputs[k].store[1](
                         (j,), v.cast[type_of(outputs[k]).dtype]()
                     )
@@ -1625,9 +1619,7 @@ def _gpu_fused_transform_bias_kernel[
     if i >= n:
         return
     var coord = Coord(i)
-    var raw = rebind[SIMD[type_of(z).dtype, 1]](
-        rebind[SIMD[dtype, 1]](x.reshape(row_major(n))[i]) + 1
-    )
+    var raw = rebind[SIMD[type_of(z).dtype, 1]](x.reshape(row_major(n))[i] + 1)
     var t = z.transform[1](coord, raw)
     var zt = z.to_tile_tensor()
     # An Output edge is always writable; gives `TileTensor.store` its evidence.
@@ -1702,9 +1694,7 @@ def _gpu_fused_transform_bias_unified_closure_kernel[
     if i >= n:
         return
     var coord = Coord(i)
-    var raw = rebind[SIMD[type_of(z).dtype, 1]](
-        rebind[SIMD[dtype, 1]](x.reshape(row_major(n))[i]) + 1
-    )
+    var raw = rebind[SIMD[type_of(z).dtype, 1]](x.reshape(row_major(n))[i] + 1)
     comptime assert type_of(z).mut
 
     @inline(.always)
@@ -3573,7 +3563,7 @@ struct TraitMixedLegacyOutAdd:
         var xf = xt.reshape(row_major(n))
         var yf = yt.reshape(row_major(n))
         for i in range(n):
-            var xv = rebind[SIMD[type_of(xt).dtype, 1]](xf.load((i,)))
+            var xv = xf.load[width=1]((i,))
             var yv = rebind[SIMD[type_of(xt).dtype, 1]](yf.load((i,)))
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
 
@@ -3601,7 +3591,7 @@ struct TraitDualLaneAdd:
         var n = y.size()
         var xf = xt.reshape(row_major(n))
         for i in range(n):
-            var xv = rebind[SIMD[type_of(xt).dtype, 1]](xf.load((i,)))
+            var xv = xf.load[width=1]((i,))
             var yv = rebind[SIMD[type_of(xt).dtype, 1]](y[i])
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
 
