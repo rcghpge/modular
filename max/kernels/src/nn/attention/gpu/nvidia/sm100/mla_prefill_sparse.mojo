@@ -312,7 +312,7 @@ struct MLAPrefillSparse[
         var warp_idx = warp_id()
         var lane_idx = lane_id()
         var warpgroup_idx = warp.broadcast(thread_idx.x // WARPGROUP_SIZE)
-        var top_k_length = topk_lengths.load[width=1](Coord(seq_idx))
+        var top_k_length = topk_lengths.load[width=1]((seq_idx,))
         var num_k_blocks = max(
             ceildiv(top_k_length, UInt32(Self.config.B_TOPK)), 1
         )
@@ -1105,11 +1105,11 @@ struct MLAPrefillSparse[
             var token_idx_v4 = Self.Common._raw_indices_to_tma_rows(
                 kv_lut,
                 indices.load[width=4](
-                    Coord(
+                    (
                         indices_base
                         + k * UInt32(Self.config.B_TOPK)
                         + (UInt32(local_row) * UInt32(num_warps) + warp_idx)
-                        * UInt32(4)
+                        * UInt32(4),
                     )
                 ).cast[.int32](),
             )

@@ -144,10 +144,10 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
         for m in range(Int(m.value())):
             for k in range(Int(k.value())):
                 comptime assert a_host.flat_rank >= 2
-                a_host[Coord(m, k)] = Float32(k).cast[a_type]()
+                a_host[m, k] = Float32(k).cast[a_type]()
         for n in range(Int(n.value())):
             for k in range(Int(k.value())):
-                b_host[Coord(n, k)] = Float32(1 if n == k else 0).cast[b_type]()
+                b_host[n, k] = Float32(1 if n == k else 0).cast[b_type]()
     else:
         rand(a_host.as_span())
         rand(b_host.as_span())

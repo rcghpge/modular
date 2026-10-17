@@ -54,7 +54,6 @@ from std.utils.index import Index
 from std.utils.numerics import get_accum_type
 
 from layout import TensorEngine, TileTensor
-from layout.coord import Coord
 from layout.tile_layout import (
     TensorLayout,
     row_major,
@@ -336,9 +335,7 @@ def naive_fa_decode_apple_core[
     # Q is a flat 1D TileTensor over the whole buffer; this lane owns the
     # head-dim chunk [lane*EPL, lane*EPL+EPL) at `q_offset`. Vectorized load
     # through the tile (no raw pointer arithmetic).
-    var q_frag = q.load[width=EPL](Coord(q_offset + lane * EPL)).cast[
-        .float32
-    ]()
+    var q_frag = q.load[width=EPL]((q_offset + lane * EPL,)).cast[.float32]()
 
     # KV sub-tile layout: a 1D (_depth,) contiguous view of one token's K/V for
     # `kv_head`, reused for every key in this split. `block_paged_tile` infers
@@ -381,7 +378,7 @@ def naive_fa_decode_apple_core[
                     UInt32(kv_head),
                     kv_token_layout,
                 )
-                var kvec = k_tile.load[width=EPL](Coord(lane * EPL)).cast[
+                var kvec = k_tile.load[width=EPL]((lane * EPL,)).cast[
                     .float32
                 ]()
                 partials[kk] = (q_frag * kvec).reduce_add()
@@ -416,7 +413,7 @@ def naive_fa_decode_apple_core[
                     UInt32(kv_head),
                     kv_token_layout,
                 )
-                var vvec = v_tile.load[width=EPL](Coord(lane * EPL)).cast[
+                var vvec = v_tile.load[width=EPL]((lane * EPL,)).cast[
                     .float32
                 ]()
                 o_frag = o_frag + p[kk] * vvec

@@ -407,9 +407,7 @@ def rms_norm_gpu_warp_tiling_128[
         if row < _num_rows and idx < _num_cols:
             vec_data = input_fn[simd_width](row, idx).cast[accum_type]()
             # Prefetch gamma before reduction to overlap load with compute.
-            gamma_val = gamma.load[width=simd_width, alignment=align](
-                Coord(idx)
-            )
+            gamma_val = gamma.load[width=simd_width, alignment=align]((idx,))
 
         var norm_val = _rms_norm_warp_tiling_subkernel[
             warps_per_block, multiply_before_cast, rows_per_warp=2
@@ -514,7 +512,7 @@ def rms_norm_gpu_warp_per_row[
                     var col = Int(lane) * simd_width + c * stride
                     var gamma_val = gamma.load[
                         width=simd_width, alignment=align
-                    ](Coord(col))
+                    ]((col,))
                     var norm_val: SIMD[dtype, simd_width]
                     comptime if multiply_before_cast:
                         var gamma_accum = (
@@ -552,7 +550,7 @@ def rms_norm_gpu_warp_per_row[
                     var v = input_fn[simd_width](row, col).cast[accum_type]()
                     var gamma_val = gamma.load[
                         width=simd_width, alignment=align
-                    ](Coord(col))
+                    ]((col,))
                     var norm_val: SIMD[dtype, simd_width]
                     comptime if multiply_before_cast:
                         var gamma_accum = (
@@ -698,7 +696,7 @@ def rms_norm_gpu_warp_tiling[
                     accum_type
                 ]()
                 gamma_val[c] = gamma.load[width=simd_width, alignment=align](
-                    Coord(col)
+                    (col,)
                 )
                 thread_m2 += (vec_data[c] ** 2).reduce_add()
             else:
@@ -709,7 +707,7 @@ def rms_norm_gpu_warp_tiling[
                     ]()
                     gamma_val[c] = gamma.load[
                         width=simd_width, alignment=align
-                    ](Coord(col))
+                    ]((col,))
                     thread_m2 += (vec_data[c] ** 2).reduce_add()
 
         var row_m2 = block_reduce[max_warps_per_block=max_warps_per_block](
@@ -798,7 +796,7 @@ def _rms_norm_gpu_block_subkernel[
             var vec_data = input_fn[simd_width](row, offset).cast[accum_type]()
             var norm_val: SIMD[dtype, simd_width]
             var gamma_val = gamma.load[width=simd_width, alignment=align](
-                Coord(offset)
+                (offset,)
             )
 
             if multiply_before_cast:
@@ -1328,9 +1326,7 @@ def rms_norm_cpu[
             var input_val = input_fn[simd_width](row, col).cast[
                 intermediate_type
             ]()
-            var gamma_val = gamma.load[width=simd_width, alignment=1](
-                Coord(col)
-            )
+            var gamma_val = gamma.load[width=simd_width, alignment=1]((col,))
             var norm_val: SIMD[dtype, simd_width]
 
             if multiply_before_cast:
@@ -1661,7 +1657,7 @@ def apply_qk_rms_norm_gpu_block[
                         Coord(Index(Int(row), offset))
                     ).cast[.float32]()
                     var g = gamma_k.load[width=simd_width, alignment=align](
-                        Coord(offset)
+                        (offset,)
                     )
                     k_out.store[width=simd_width](
                         Coord(Index(Int(row), offset)),
@@ -1672,7 +1668,7 @@ def apply_qk_rms_norm_gpu_block[
                         Coord(Index(Int(row), offset))
                     ).cast[.float32]()
                     var g = gamma_q.load[width=simd_width, alignment=align](
-                        Coord(offset)
+                        (offset,)
                     )
                     q_out.store[width=simd_width](
                         Coord(Index(Int(row), offset)),
@@ -2107,9 +2103,7 @@ def group_norm_gpu_warp_tiling[
                 vec_data - row_mean
             ) * norm_factor * gamma_vec + beta_vec
 
-            output.store[alignment=align](
-                Coord(row, idx), norm_val.cast[dtype]()
-            )
+            output.store[alignment=align]((row, idx), norm_val.cast[dtype]())
 
 
 @__name(t"group_norm_gpu_block_{dtype}")
@@ -2208,7 +2202,7 @@ def group_norm_gpu_block[
                 ) * norm_factor * gamma_vec + beta_vec
 
                 output.store[alignment=align](
-                    Coord(row, offset), norm_val.cast[dtype]()
+                    (row, offset), norm_val.cast[dtype]()
                 )
 
 
@@ -2289,9 +2283,9 @@ def group_norm_gpu_multi_block_stats[
         # Thread 0 writes partial stats to the global stats buffer.
         if tid == 0:
             var base_idx = block_id * 3
-            stats.store(Coord(base_idx), row_mean)
-            stats.store(Coord(base_idx + 1), row_m2)
-            stats.store(Coord(base_idx + 2), row_count)
+            stats.store((base_idx,), row_mean)
+            stats.store((base_idx + 1,), row_m2)
+            stats.store((base_idx + 2,), row_count)
 
 
 @__name(t"group_norm_gpu_multi_block_norm_{dtype}")
@@ -2364,9 +2358,9 @@ def group_norm_gpu_multi_block_norm[
         for s in range(_num_splits):
             var base_idx = stats_row_base + s * 3
             welford_combine(
-                stats.load[width=1](Coord(base_idx)),
-                stats.load[width=1](Coord(base_idx + 1)),
-                stats.load[width=1](Coord(base_idx + 2)),
+                stats.load[width=1]((base_idx,)),
+                stats.load[width=1]((base_idx + 1,)),
+                stats.load[width=1]((base_idx + 2,)),
                 row_mean,
                 row_m2,
                 row_count,
@@ -2416,7 +2410,7 @@ def group_norm_gpu_multi_block_norm[
                     ) * norm_factor * gamma_vec + beta_vec
 
                 output.store[alignment=align](
-                    Coord(row, offset), norm_val.cast[dtype]()
+                    (row, offset), norm_val.cast[dtype]()
                 )
 
 
@@ -3065,7 +3059,7 @@ struct _RMSNormQuantizeFp8GroupKernel[
                 ssq / Scalar[accum](Self.num_cols) + self.epsilon.cast[accum]()
             )
             var gamma_val = gamma.load[width=Self.simd_width, alignment=align](
-                Coord(col)
+                (col,)
             )
             # The pair quantizes the bf16 row `rms_norm` wrote, so round the
             # normalized value to `in_dtype` exactly where `rms_norm` does.

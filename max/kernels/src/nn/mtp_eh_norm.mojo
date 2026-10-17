@@ -31,9 +31,9 @@ order changes the low bits, so the kernel would no longer match
 `ops.rms_norm`.
 
 Every tensor must be contiguous and row-major with a last dimension of exactly
-`hidden_size`. The kernel addresses elements by linear offset through
-`raw_load` and `raw_store`, which bypass the layout, so a transposed or strided
-view would read the wrong elements.
+`hidden_size`. The kernel addresses elements by linear offset through flat
+views of the storage, which bypass the layout, so a transposed or strided view
+would read the wrong elements.
 
 Callers own position handling. MAX shifts a draft's token stream left per
 request and appends a bonus token (`eagle_prefill_shift_tokens`), so every row

@@ -28,7 +28,7 @@ from extensibility.stable_addr_engine import (
     StableTileTensor,
     stable_tile_tensor,
 )
-from layout import Coord, TensorLayout, row_major
+from layout import TensorLayout, row_major
 
 from max.gpu import global_idx
 from max.gpu.host import DeviceBuffer, DeviceContext, StableAddr
@@ -65,7 +65,7 @@ def fill_tile_through_slot_kernel[
     var cols = Int(tile.dim[1]())
     for r in range(rows):
         for c in range(cols):
-            tile.store(Coord(r, c), _value(r, c))
+            tile.store((r, c), _value(r, c))
 
 
 def _slot_over(mut slot: DeviceBuffer[.uint64]) -> StableAddr:

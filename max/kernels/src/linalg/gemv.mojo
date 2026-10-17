@@ -1245,12 +1245,12 @@ def _gemv_split_k_impl[
             comptime if is_amd_gpu():
                 var b_vec = weight_tile.load[
                     simd_width, non_temporal=weight_non_temporal
-                ](Coord(i, thread_idx.x * simd_width))
-                tile_w.store(Coord(i, Idx[0]), b_vec)
+                ]((i, thread_idx.x * simd_width))
+                tile_w.store((i, Idx[0]), b_vec)
             else:
                 var vec_weight_tile = weight_tile.vectorize[1, simd_width]()
                 var b_vec = vec_weight_tile[i, thread_idx.x]
-                tile_w.store(Coord(i, Idx[0]), b_vec)
+                tile_w.store((i, Idx[0]), b_vec)
 
         # Load activations and accumulate dot products.
         comptime for i in range(tile_m):

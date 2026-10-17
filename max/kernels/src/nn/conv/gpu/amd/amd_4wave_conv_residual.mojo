@@ -36,7 +36,7 @@ from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from std.math import align_up, ceildiv
 
-from layout import Coord, Idx, TensorEngine, TensorLayout, TileTensor, row_major
+from layout import Idx, TensorEngine, TensorLayout, TileTensor, row_major
 
 from linalg.utils import (
     ElementwiseComputeFn,
@@ -86,9 +86,7 @@ def _kpad_filter_frsc[
         return
     dst_ptr.store(
         tid,
-        rebind[Scalar[dtype]](
-            src.reshape(row_major(_F, _K_real)).load(Coord(f, k))
-        ),
+        rebind[Scalar[dtype]](src.reshape(row_major(_F, _K_real)).load((f, k))),
     )
 
 

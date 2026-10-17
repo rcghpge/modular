@@ -904,7 +904,7 @@ def row_mean_of_squares_qk[
         width: SIMDLength
     ](oc: Coord, val: SIMD[out_dtype, width]) {var output}:
         comptime for i in range(width):
-            output.store(Coord(Int(oc[0].value()) + i, 0), val[i])
+            output.store((Int(oc[0].value()) + i, 0), val[i])
 
     row_mean_of_squares[in_dtype, out_dtype, 2, target=target](
         q_in, q_out, Coord(rows, q_cols), ctx
@@ -919,7 +919,7 @@ def row_mean_of_squares_qk[
         width: SIMDLength
     ](oc: Coord, val: SIMD[out_dtype, width]) {var output}:
         comptime for i in range(width):
-            output.store(Coord(Int(oc[0].value()) + i, 1), val[i])
+            output.store((Int(oc[0].value()) + i, 1), val[i])
 
     row_mean_of_squares[in_dtype, out_dtype, 2, target=target](
         k_in, k_out, Coord(rows, k_cols), ctx

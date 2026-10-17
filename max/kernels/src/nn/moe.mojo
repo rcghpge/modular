@@ -231,7 +231,7 @@ def moe_create_indices_kernel[
         var chunk_experts = min(block_threads, num_experts - base)
         var expert = base + tid
 
-        counts[Coord(tid)] = 0
+        counts[tid] = 0
         barrier()
 
         # Counts commute, so increment order does not matter.
@@ -255,7 +255,7 @@ def moe_create_indices_kernel[
             ](counts.ptr + e, UInt32(1))
         barrier()
 
-        var count_val = counts[Coord(tid)]
+        var count_val = counts[tid]
         var aligned_val = align_up(count_val, _scale_alignment)
 
         # These collectives do not leave the block synchronized, so each needs
@@ -280,8 +280,8 @@ def moe_create_indices_kernel[
         )
 
         if expert < num_experts:
-            expert_ids[Coord(expert)] = Int32(expert)
-            expert_start_indices[Coord(expert)] = g_offset
+            expert_ids[expert] = Int32(expert)
+            expert_start_indices[expert] = g_offset
             if case .Some(scales_offset) = scales_offset_p:
                 scales_offset[expert] = (
                     aligned_g_offset // _scale_alignment
@@ -291,11 +291,9 @@ def moe_create_indices_kernel[
         if expert == num_experts - 1:
             # Last expert's exclusive prefix plus its own count is the grand
             # total: the final `expert_start_indices` entry.
-            expert_start_indices[Coord(num_experts)] = g_offset + count_val
+            expert_start_indices[num_experts] = g_offset + count_val
             comptime if slot_layout:
-                group_aligned[Coord(block_threads)] = (
-                    aligned_g_offset + aligned_val
-                )
+                group_aligned[block_threads] = aligned_g_offset + aligned_val
 
         # The last thread's exclusive prefix plus its own count is the chunk
         # total. Only another chunk needs it, so a single chunk pays nothing.
@@ -315,10 +313,10 @@ def moe_create_indices_kernel[
 
         # Reuse `counts` as the scatter cursor: seed each slot with its own
         # start offset, then atomically claim positions from it.
-        counts[Coord(tid)] = g_offset
+        counts[tid] = g_offset
         comptime if slot_layout:
-            group_start[Coord(tid)] = g_offset
-            group_aligned[Coord(tid)] = aligned_g_offset
+            group_start[tid] = g_offset
+            group_aligned[tid] = aligned_g_offset
         barrier()
 
         for i in range(tid, total_tokens, block_threads):
@@ -333,8 +331,8 @@ def moe_create_indices_kernel[
             var pos = Atomic[UInt32, scope=atomic_scope].fetch_add[
                 ordering=Ordering.RELAXED
             ](counts.ptr + e, UInt32(1))
-            token_expert_order[Coord(pos)] = UInt32(i)
-            restore_token_order[Coord(i)] = pos.cast[restore_type]()
+            token_expert_order[pos] = UInt32(i)
+            restore_token_order[i] = pos.cast[restore_type]()
             comptime if slot_layout:
                 slot_token_p.unsafe_value()[pos] = Int32(i // slot_stride)
                 slot_weight_p.unsafe_value()[
@@ -351,9 +349,9 @@ def moe_create_indices_kernel[
             comptime warps = block_threads // WARP_SIZE
             var lane = lane_id()
             for g in range(warp_id(), chunk_experts, warps):
-                var start = group_start[Coord(g)]
-                var count = counts[Coord(g)] - start
-                var first = Int(group_aligned[Coord(g)])
+                var start = group_start[g]
+                var count = counts[g] - start
+                var first = Int(group_aligned[g])
                 var rows = Int(align_up(count, _scale_alignment))
                 for r in range(lane, rows, WARP_SIZE):
                     scale_slot_p.unsafe_value()[first + r] = (
@@ -365,15 +363,15 @@ def moe_create_indices_kernel[
     comptime if slot_layout:
         # Rows past the last group's tiles are in no group.
         for r in range(
-            Int(group_aligned[Coord(block_threads)]) + tid,
+            Int(group_aligned[block_threads]) + tid,
             Int(scale_rows),
             block_threads,
         ):
             scale_slot_p.unsafe_value()[r] = 0
 
     if tid == 0:
-        expert_usage_stats[Coord(0)] = max_count
-        expert_usage_stats[Coord(1)] = UInt32(num_experts)
+        expert_usage_stats[0] = max_count
+        expert_usage_stats[1] = UInt32(num_experts)
 
 
 @inline(.always)
@@ -637,17 +635,12 @@ def moe_finalize[
         var col = Int(idx[1].value())
         var acc = SIMD[.float32, width](0)
         for k in range(num_experts_per_token):
-            var row = Int(
-                restore_order[Coord(token * num_experts_per_token + k)]
-            )
-            var weight = router_weight.load[width=1](Coord(token, k)).cast[
+            var row = Int(restore_order[token * num_experts_per_token + k])
+            var weight = router_weight.load[width=1]((token, k)).cast[
                 .float32
             ]()
-            acc += (
-                down.load[width=width](Coord(row, col)).cast[.float32]()
-                * weight
-            )
-        output.store[width=width](Coord(token, col), acc.cast[out_type]())
+            acc += down.load[width=width]((row, col)).cast[.float32]() * weight
+        output.store[width=width]((token, col), acc.cast[out_type]())
 
     comptime simd_width = simd_width_of[down_type, target=context.target]()
     var shape = output.layout.shape_coord()
@@ -872,7 +865,7 @@ def group_limited_router_kernel[
     ]()
     var thread_group_id, tid_in_group = divmod(tid, group_size)
 
-    var thread_expert_bias = expert_bias.load[width=1](Coord(tid)).cast[
+    var thread_expert_bias = expert_bias.load[width=1]((tid,)).cast[
         scores_type
     ]()
 
@@ -1361,7 +1354,7 @@ def single_group_router_kernel[
         # Padding threads carry the dead value, so they never rank.
         var biased_score = TopK_2[scores_type]().u
         if tid < n_routed_experts:
-            var thread_expert_bias = expert_bias.load[width=1](Coord(tid)).cast[
+            var thread_expert_bias = expert_bias.load[width=1]((tid,)).cast[
                 scores_type
             ]()
 
@@ -1496,8 +1489,8 @@ def single_group_router_eplb_kernel[
     var l_id = lane_id()
 
     with PDL():
-        var Lidx = Int(layer_idx.load[width=1](Coord(Idx[0]))[0])
-        var thread_expert_bias = expert_bias.load[width=1](Coord(tid)).cast[
+        var Lidx = Int(layer_idx.load[width=1]((Idx[0],))[0])
+        var thread_expert_bias = expert_bias.load[width=1]((tid,)).cast[
             scores_type
         ]()
 
@@ -2650,7 +2643,7 @@ def eplb_remap_kernel[
     with PDL():
         # Broadcast scalar layer index. Every thread reads the same address →
         # one HBM transaction, hot in L1 for the rest of the block.
-        var Lidx = Int(layer_idx.load[width=1](Coord(Idx[0]))[0])
+        var Lidx = Int(layer_idx.load[width=1]((Idx[0],))[0])
 
         # Cooperative SMEM load of (logcnt, log2phy) slice for layer Lidx.
         # BLOCK_THREADS threads cover num_log entries; unrolled at comptime.

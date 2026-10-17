@@ -384,7 +384,7 @@ struct MLAPrefillSparseFP8[
         var i = tid
         while i < UInt32(K_SCALES_SIZE):
             var row, block = divmod(i, UInt32(scales_per_token))
-            var raw = indices.load[width=1](Coord(topk_base + row)).cast[
+            var raw = indices.load[width=1]((topk_base + row,)).cast[
                 DType.int32
             ]()
             var ok = raw >= Int32(0) and raw < num_kv_rows
@@ -661,7 +661,7 @@ struct MLAPrefillSparseFP8[
         var i = tid
         while i < UInt32(V_SCALES_SIZE):
             var row, block = divmod(i, UInt32(scales_per_token))
-            var raw = indices.load[width=1](Coord(topk_base + row)).cast[
+            var raw = indices.load[width=1]((topk_base + row,)).cast[
                 DType.int32
             ]()
             var ok = raw >= Int32(0) and raw < num_kv_rows
@@ -903,7 +903,7 @@ struct MLAPrefillSparseFP8[
         var warp_idx = warp_id()
         var lane_idx = lane_id()
         var warpgroup_idx = warp.broadcast(thread_idx.x // WARPGROUP_SIZE)
-        var top_k_length = topk_lengths.load[width=1](Coord(seq_idx))
+        var top_k_length = topk_lengths.load[width=1]((seq_idx,))
         var num_k_blocks = max(
             ceildiv(top_k_length, UInt32(Self.config.B_TOPK)), 1
         )

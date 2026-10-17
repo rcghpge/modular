@@ -19,7 +19,7 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.memory import alloc
 from internal_utils import assert_almost_equal
 from std.random import rand
-from layout import TileTensor, Coord, CoordLike, row_major, Idx
+from layout import TileTensor, CoordLike, row_major, Idx
 from linalg.matmul.gpu.sm100_structured.default.matmul import (
     blackwell_matmul_tma_umma_warp_specialized,
 )
@@ -158,7 +158,7 @@ def test_blackwell_matmul_with_epilogue_tensor[
     # Add epilogue tensor to reference on host: C_ref[m, n] += epilogue[m, n]
     for i in range(M):
         for j in range(N):
-            c_host_ref[Coord(i, j)] += epilogue_host[Coord(i, j)]
+            c_host_ref[i, j] += epilogue_host[i, j]
 
     comptime rtol = 1e-2
     assert_almost_equal(

@@ -360,14 +360,12 @@ def apple_gemv[
 
             @inline(.always)
             def accumulate[width: Int](k: Int) {a, b, c, transposed_b, mut}:
-                var a_val = a.load[width=width](Coord(Idx[0], k)).cast[
-                    c.dtype
-                ]()
+                var a_val = a.load[width=width]((Idx[0], k)).cast[c.dtype]()
                 var b_val = (
-                    b.load[width=width](Coord(n, k)).cast[c.dtype]() if b_packed
+                    b.load[width=width]((n, k)).cast[c.dtype]() if b_packed
                     or (not b_packed and transpose_b) else transposed_b.load[
                         width=width
-                    ](Coord(n, k)).cast[c.dtype]()
+                    ]((n, k)).cast[c.dtype]()
                 )
 
                 comptime if width == 1:
@@ -391,11 +389,11 @@ def apple_gemv[
                 epilogue_fn[c.dtype, 1, alignment=1]((0, n), val)
             elif has_compute_fn:
                 c.store(
-                    Coord(Idx[0], n),
+                    (Idx[0], n),
                     compute_fn[c.dtype, 1, alignment=1]((0, n), val),
                 )
             else:
-                c.store(Coord(Idx[0], n), val)
+                c.store((Idx[0], n), val)
 
     # TODO: Experiment with this.
     comptime parallelism_grain_size = 16

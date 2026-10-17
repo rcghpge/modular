@@ -582,12 +582,12 @@ def _fused_qk_rms_norm_ragged_paged_gpu[
                 head_idx=head_idx,
                 head_dim_idx=idx,
             ).cast[accum_type]()
-            gamma_val = k_gamma.load[width=simd_width](Coord(idx))
+            gamma_val = k_gamma.load[width=simd_width]((idx,))
         else:
             vec_data = q_proj.load[width=simd_width](
                 Coord(Index(global_token_idx, head_idx, idx))
             ).cast[accum_type]()
-            gamma_val = q_gamma.load[width=simd_width](Coord(idx))
+            gamma_val = q_gamma.load[width=simd_width]((idx,))
 
     var norm_val = _rms_norm_warp_tiling_subkernel[
         warps_per_block, multiply_before_cast
@@ -863,12 +863,12 @@ def _fused_qk_rms_norm_rope_process_row[
                     head_idx=head_idx,
                     head_dim_idx=idx,
                 ).cast[accum_type]()
-                gamma_val = k_gamma.load[width=simd_width](Coord(idx))
+                gamma_val = k_gamma.load[width=simd_width]((idx,))
         else:
             vec_data = q_input_fn[
                 simd_width, align_of[SIMD[dtype, simd_width]]()
             ](global_token_idx, head_idx, idx).cast[accum_type]()
-            gamma_val = q_gamma.load[width=simd_width](Coord(idx))
+            gamma_val = q_gamma.load[width=simd_width]((idx,))
 
     var norm_val = _rms_norm_warp_tiling_subkernel[
         warps_per_block, multiply_before_cast
@@ -894,7 +894,7 @@ def _fused_qk_rms_norm_rope_process_row[
         alignment=smem_align,
     ](row_major[head_dim]())
     if idx < num_cols:
-        s_norm.store[width=simd_width](Coord(idx), norm_val.cast[accum_type]())
+        s_norm.store[width=simd_width]((idx,), norm_val.cast[accum_type]())
     barrier()
 
     if idx >= num_cols:
@@ -911,7 +911,7 @@ def _fused_qk_rms_norm_rope_process_row[
         var freq_val = freqs_cis.load[width=simd_width](
             Coord((post_seq_idx, idx))
         )
-        var val = s_norm.load[width=simd_width](Coord(idx))
+        var val = s_norm.load[width=simd_width]((idx,))
         var res = rope_value(val, freq_val.cast[accum_type]()).cast[dtype]()
         if is_k:
             comptime if not q_only:
@@ -933,9 +933,9 @@ def _fused_qk_rms_norm_rope_process_row[
         # un-roped (only normed). Without it, the whole head is roped.
         comptime if has_nope_prefix:
             if idx >= rope_dim:
-                var passthrough = s_norm.load[width=simd_width](
-                    Coord(idx)
-                ).cast[dtype]()
+                var passthrough = s_norm.load[width=simd_width]((idx,)).cast[
+                    dtype
+                ]()
                 if is_k:
                     comptime if not q_only:
                         k_cache.store(
@@ -1840,7 +1840,7 @@ def nvfp4_kv_write_row[
     if norm_rope:
         var gamma_val = SIMD[dtype, simd_width](0)
         if active:
-            gamma_val = gamma.load[width=simd_width](Coord(idx))
+            gamma_val = gamma.load[width=simd_width]((idx,))
         var norm_val = _rms_norm_warp_tiling_subkernel[
             warps_per_block, multiply_before_cast
         ](
@@ -1858,9 +1858,7 @@ def nvfp4_kv_write_row[
             alignment=align_of[SIMD[accum_type, simd_width]](),
         ](row_major[head_dim]())
         if active:
-            s_norm.store[width=simd_width](
-                Coord(idx), norm_val.cast[accum_type]()
-            )
+            s_norm.store[width=simd_width]((idx,), norm_val.cast[accum_type]())
         barrier()
 
         # Non-interleaved RoPE writes each output pair to its partner columns,
@@ -1874,9 +1872,9 @@ def nvfp4_kv_write_row[
                 var freq_val = freqs_cis.load[width=simd_width](
                     Coord((post_seq_idx, idx))
                 )
-                var val = s_norm.load[width=simd_width](Coord(idx))
+                var val = s_norm.load[width=simd_width]((idx,))
                 s_row.store[width=simd_width](
-                    Coord(idx),
+                    (idx,),
                     rope_value(val, freq_val.cast[accum_type]()).cast[dtype](),
                 )
             else:
@@ -1905,12 +1903,12 @@ def nvfp4_kv_write_row[
                     s_row.store(Coord(h_im), output_im)
                 else:
                     s_row.store[width=simd_width](
-                        Coord(idx),
-                        s_norm.load[width=simd_width](Coord(idx)).cast[dtype](),
+                        (idx,),
+                        s_norm.load[width=simd_width]((idx,)).cast[dtype](),
                     )
         barrier()
         if active:
-            row = s_row.load[width=simd_width](Coord(idx))
+            row = s_row.load[width=simd_width]((idx,))
 
     comptime if cache_t.dtype == DType.uint8:
         comptime group = NVFP4_SF_VECTOR_SIZE

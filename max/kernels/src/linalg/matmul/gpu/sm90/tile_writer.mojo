@@ -945,7 +945,7 @@ struct RegisterToGMemWriter[
             var reg_val = value_compute_fn[
                 Self.c_type, type_of(frag_val).length, alignment=value_alignment
             ]((m, n), frag_val)
-            gmem_frag.store(Coord(Idx[frag_idx], Idx[0]), reg_val)
+            gmem_frag.store((Idx[frag_idx], Idx[0]), reg_val)
 
     @inline(.always)
     def _write_with_runtime_bounds[

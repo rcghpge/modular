@@ -714,7 +714,7 @@ def test_block_scaled_mxfp8[
 
     for i in range(ceildiv(N, REF_BLOCK_SCALE)):
         for j in range(ceildiv(K, REF_BLOCK_SCALE)):
-            b_scales_host_ref[Coord(i, j)] = (1 << random_ui64(0, 3)).cast[
+            b_scales_host_ref[i, j] = (1 << random_ui64(0, 3)).cast[
                 ref_scales_type
             ]()
 

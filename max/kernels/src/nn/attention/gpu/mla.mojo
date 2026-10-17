@@ -1827,12 +1827,7 @@ def mla_splitk_reduce[
             var p_safe = min(p, np_last_s2)
             scales_local[k] = scales_tt[p]
             xs[k] = intermediate_tt.load[width=elems_per_lane](
-                Coord(
-                    p_safe,
-                    batch_idx,
-                    row_idx,
-                    depth_global,
-                )
+                (p_safe, batch_idx, row_idx, depth_global)
             ).cast[accum_type]()
         comptime for k in range(parts_per_warp):
             var scale_k = scales_local[k]
@@ -1844,21 +1839,21 @@ def mla_splitk_reduce[
     # Step 3: cross-warp reduction and output store (`out_row` set above).
     comptime if W_PARTS == 1:
         output_tt.store(
-            Coord(out_row, depth_global),
+            (out_row, depth_global),
             acc.cast[output_type](),
         )
     else:
-        warp_partial_tt.store(Coord(warp_idx, depth_in_tile), acc)
+        warp_partial_tt.store((warp_idx, depth_in_tile), acc)
         barrier()
 
         if warp_idx == 0:
             var final_acc = SIMD[accum_type, elems_per_lane](0)
             comptime for w in range(W_PARTS):
                 final_acc += warp_partial_tt.load[width=elems_per_lane](
-                    Coord(Idx[w], depth_in_tile)
+                    (Idx[w], depth_in_tile)
                 )
             output_tt.store(
-                Coord(out_row, depth_global),
+                (out_row, depth_global),
                 final_acc.cast[output_type](),
             )
 

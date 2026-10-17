@@ -243,12 +243,12 @@ struct MatmulTileWriter[
             var col = UInt32(col_coord + col_offset)
 
             if row < max_row and col < max_col:
-                var shared_value = shared_fragment.load(Coord(Idx[i], Idx[0]))
+                var shared_value = shared_fragment.load((Idx[i], Idx[0]))
                 epilogue[
                     dtype=type_of(shared_value).dtype,
                     width=type_of(shared_value).length,
                 ](Coord(Int(row), Int(col)), shared_value)
-                shared_fragment.store(Coord(Idx[i], Idx[0]), shared_value)
+                shared_fragment.store((Idx[i], Idx[0]), shared_value)
 
     @inline(.always)
     def _write_tile_to_gmem[

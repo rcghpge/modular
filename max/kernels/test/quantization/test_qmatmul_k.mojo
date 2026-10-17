@@ -471,7 +471,7 @@ def reference_gemm[
             for k in range(0, K, qgemm.k_group_size()):
                 result += qgemm.dot_product(a, b, m, n, k)
 
-            c.store(Coord(m, n), result)
+            c.store((m, n), result)
 
     sync_parallelize(task_func, num_workers)
 

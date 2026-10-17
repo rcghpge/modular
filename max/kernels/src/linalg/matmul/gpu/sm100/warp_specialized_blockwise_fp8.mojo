@@ -397,12 +397,8 @@ def multi_stage_reg_epilogue[
     var warp_id = get_warp_id()
 
     comptime for stage in range(num_stages):
-        var upper_frag = c_upper_main_tile.load[fragments_per_stage](
-            Coord(stage, 0)
-        )
-        var lower_frag = c_lower_main_tile.load[fragments_per_stage](
-            Coord(stage, 0)
-        )
+        var upper_frag = c_upper_main_tile.load[fragments_per_stage]((stage, 0))
+        var lower_frag = c_lower_main_tile.load[fragments_per_stage]((stage, 0))
 
         # Assume double-buffer for shared memory packing
         var c_smem_tile = c_tiles[stage % 2]
@@ -842,15 +838,15 @@ def promote_accumulators[
                 var upper_scale = upper_a_scale * b_scale
                 var lower_scale = lower_a_scale * b_scale
 
-                c_upper_main_tile[Coord(stage, offset)] = c_upper_main_tile[
-                    Coord(stage, offset)
+                c_upper_main_tile[stage, offset] = c_upper_main_tile[
+                    stage, offset
                 ] + rebind[Scalar[accum_type]](upper_frag[offset]) * rebind[
                     Scalar[accum_type]
                 ](
                     upper_scale
                 )
-                c_upper_main_tile[Coord(stage, offset + 1)] = c_upper_main_tile[
-                    Coord(stage, offset + 1)
+                c_upper_main_tile[stage, offset + 1] = c_upper_main_tile[
+                    stage, offset + 1
                 ] + rebind[Scalar[accum_type]](upper_frag[offset + 1]) * rebind[
                     Scalar[accum_type]
                 ](
@@ -858,18 +854,16 @@ def promote_accumulators[
                 )
 
                 comptime if is_lower_frag_required:
-                    c_lower_main_tile[Coord(stage, offset)] = c_lower_main_tile[
-                        Coord(stage, offset)
+                    c_lower_main_tile[stage, offset] = c_lower_main_tile[
+                        stage, offset
                     ] + rebind[Scalar[accum_type]](lower_frag[offset]) * rebind[
                         Scalar[accum_type]
                     ](
                         lower_scale
                     )
-                    c_lower_main_tile[
-                        Coord(stage, offset + 1)
-                    ] = c_lower_main_tile[Coord(stage, offset + 1)] + rebind[
-                        Scalar[accum_type]
-                    ](
+                    c_lower_main_tile[stage, offset + 1] = c_lower_main_tile[
+                        stage, offset + 1
+                    ] + rebind[Scalar[accum_type]](
                         lower_frag[offset + 1]
                     ) * rebind[
                         Scalar[accum_type]

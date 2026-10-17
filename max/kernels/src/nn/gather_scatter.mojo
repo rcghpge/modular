@@ -264,7 +264,7 @@ def gather_reduce[
                 ) {imm} -> StaticTuple[SIMD[dtype, simd_width], unroll_factor]:
                     var out = accums
                     var idxs = _unsafe_normalize_neg_index(
-                        indices.load[width=unroll_factor](Coord(i, j)),
+                        indices.load[width=unroll_factor]((i, j)),
                         gather_axis_size,
                     )
 
@@ -403,7 +403,7 @@ def gather_sum[
                 if idx < 0:
                     idx += table_size
                 # Trap in safe builds if normalization still leaves the
-                # index out of bounds: raw_load would silently read
+                # index out of bounds: the load would silently read
                 # garbage on GPU (the gather path above validates the
                 # same).
                 debug_assert[assert_mode="safe"](
@@ -1283,7 +1283,7 @@ def scatter_nd_generator[
                 for i in range(count_copy):
                     atomic_update(
                         output_flat.ptr.unsafe_offset(output_offset + i),
-                        updates_flat.load(Coord(updates_offset + i)),
+                        updates_flat.load((updates_offset + i,)),
                     )
 
             else:
@@ -1297,10 +1297,8 @@ def scatter_nd_generator[
                     updates_offset,
                 }:
                     output_flat.store(
-                        Coord(output_offset + i),
-                        updates_flat.load[width=width](
-                            Coord(updates_offset + i)
-                        ),
+                        (output_offset + i,),
+                        updates_flat.load[width=width]((updates_offset + i,)),
                     )
 
                 vectorize[simd_width_of[output_type]()](count_copy, copy_chunk)
@@ -1371,7 +1369,7 @@ def scatter_nd_generator[
             ]()
             var update_vec = updates_flat.load[
                 width=simd_width, alignment=access_alignment
-            ](Coord(updates_base + elem))
+            ]((updates_base + elem,))
 
             comptime if case .Some(atomic_update) = atomic_update_fn:
                 comptime for lane in range(simd_width):
@@ -1383,7 +1381,7 @@ def scatter_nd_generator[
                     )
             else:
                 output_flat.store[alignment=access_alignment](
-                    Coord(output_base + elem), update_vec
+                    (output_base + elem,), update_vec
                 )
 
         comptime trace_description_str = get_static_string[

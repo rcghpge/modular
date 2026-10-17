@@ -23,7 +23,7 @@ operations).
 """
 from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.host import DeviceContext, DeviceAttribute
-from layout import Coord, TensorEngine, TensorLayout, TileTensor
+from layout import TensorEngine, TensorLayout, TileTensor
 from std.math import ceil, ceildiv
 from std.utils.numerics import min_or_neg_inf
 
@@ -168,22 +168,16 @@ def roi_align_kernel[
                     var w4 = ly * lx
 
                     var v1 = rebind[Scalar[dtype]](
-                        input_tensor.load(Coord(roi_batch_idx, y_low, x_low, c))
+                        input_tensor.load((roi_batch_idx, y_low, x_low, c))
                     )
                     var v2 = rebind[Scalar[dtype]](
-                        input_tensor.load(
-                            Coord(roi_batch_idx, y_low, x_high, c)
-                        )
+                        input_tensor.load((roi_batch_idx, y_low, x_high, c))
                     )
                     var v3 = rebind[Scalar[dtype]](
-                        input_tensor.load(
-                            Coord(roi_batch_idx, y_high, x_low, c)
-                        )
+                        input_tensor.load((roi_batch_idx, y_high, x_low, c))
                     )
                     var v4 = rebind[Scalar[dtype]](
-                        input_tensor.load(
-                            Coord(roi_batch_idx, y_high, x_high, c)
-                        )
+                        input_tensor.load((roi_batch_idx, y_high, x_high, c))
                     )
 
                     comptime if mode == "AVG":
@@ -208,7 +202,7 @@ def roi_align_kernel[
 
             comptime if mode == "AVG":
                 pool_val = pool_val / Scalar[dtype](pool_elemn_num)
-            output_tensor.store(Coord(ri, ph, pw, c), pool_val)
+            output_tensor.store((ri, ph, pw, c), pool_val)
 
 
 def _roi_align_impl[

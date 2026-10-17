@@ -20,7 +20,6 @@ from internal_utils import assert_almost_equal
 from std.random import rand
 from layout import (
     TileTensor,
-    Coord,
     CoordLike,
     row_major,
     Idx,
@@ -155,11 +154,11 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         for m in range(Int(m.value())):
             for k in range(Int(k.value())):
                 comptime assert a_host.flat_rank >= 2
-                a_host[Coord(m, k)] = random_ui64(0, 1).cast[a_type]()
+                a_host[m, k] = random_ui64(0, 1).cast[a_type]()
         for n in range(Int(n.value())):
             for k in range(Int(k.value())):
                 comptime assert b_host.flat_rank >= 2
-                b_host[Coord(n, k)] = random_ui64(0, 1).cast[b_type]()
+                b_host[n, k] = random_ui64(0, 1).cast[b_type]()
     else:
         rand(a_host.as_span())
         rand(b_host.as_span())

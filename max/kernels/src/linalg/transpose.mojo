@@ -26,7 +26,7 @@ from max.algorithm import (
     unsafe_parallel_memcpy,
 )
 from max.gpu.host import DeviceContext
-from layout import Coord, TileTensor
+from layout import TileTensor
 from std.memory import unsafe_memcpy
 from max.runtime.asyncrt import parallelism_level
 
@@ -43,10 +43,10 @@ def _transpose_inplace_4x4[
     comptime assert bufloat0.flat_rank == 2
 
     # Contiguous row-major 4x4: row i starts at offset i * 4.
-    var row0 = bufloat0.load[width=4](Coord(0, 0))
-    var row1 = bufloat0.load[width=4](Coord(1, 0))
-    var row2 = bufloat0.load[width=4](Coord(2, 0))
-    var row3 = bufloat0.load[width=4](Coord(3, 0))
+    var row0 = bufloat0.load[width=4]((0, 0))
+    var row1 = bufloat0.load[width=4]((1, 0))
+    var row2 = bufloat0.load[width=4]((2, 0))
+    var row3 = bufloat0.load[width=4]((3, 0))
 
     var tmp0 = row0.shuffle[0, 1, 4, 5](row1)
     var tmp1 = row2.shuffle[0, 1, 4, 5](row3)
@@ -58,10 +58,10 @@ def _transpose_inplace_4x4[
     var r2 = tmp2.shuffle[0, 2, 4, 6](tmp3)
     var r3 = tmp2.shuffle[1, 3, 5, 7](tmp3)
 
-    bufloat0.store(Coord(0, 0), r0)
-    bufloat0.store(Coord(1, 0), r1)
-    bufloat0.store(Coord(2, 0), r2)
-    bufloat0.store(Coord(3, 0), r3)
+    bufloat0.store((0, 0), r0)
+    bufloat0.store((1, 0), r1)
+    bufloat0.store((2, 0), r2)
+    bufloat0.store((3, 0), r3)
 
 
 def _transpose_inplace_8x8[
@@ -74,14 +74,14 @@ def _transpose_inplace_8x8[
     comptime assert bufloat0.flat_rank == 2
 
     # Contiguous row-major 8x8: row i starts at offset i * 8.
-    var row0 = bufloat0.load[width=8](Coord(0, 0))
-    var row1 = bufloat0.load[width=8](Coord(1, 0))
-    var row2 = bufloat0.load[width=8](Coord(2, 0))
-    var row3 = bufloat0.load[width=8](Coord(3, 0))
-    var row4 = bufloat0.load[width=8](Coord(4, 0))
-    var row5 = bufloat0.load[width=8](Coord(5, 0))
-    var row6 = bufloat0.load[width=8](Coord(6, 0))
-    var row7 = bufloat0.load[width=8](Coord(7, 0))
+    var row0 = bufloat0.load[width=8]((0, 0))
+    var row1 = bufloat0.load[width=8]((1, 0))
+    var row2 = bufloat0.load[width=8]((2, 0))
+    var row3 = bufloat0.load[width=8]((3, 0))
+    var row4 = bufloat0.load[width=8]((4, 0))
+    var row5 = bufloat0.load[width=8]((5, 0))
+    var row6 = bufloat0.load[width=8]((6, 0))
+    var row7 = bufloat0.load[width=8]((7, 0))
 
     def _apply_permute_0(
         vec: SIMD[dtype, 8], other: SIMD[dtype, 8]
@@ -140,14 +140,14 @@ def _transpose_inplace_8x8[
     var r6 = _apply_permute_5(k130, k570)
     var r7 = _apply_permute_5(k131, k571)
 
-    bufloat0.store(Coord(0, 0), r0)
-    bufloat0.store(Coord(1, 0), r1)
-    bufloat0.store(Coord(2, 0), r2)
-    bufloat0.store(Coord(3, 0), r3)
-    bufloat0.store(Coord(4, 0), r4)
-    bufloat0.store(Coord(5, 0), r5)
-    bufloat0.store(Coord(6, 0), r6)
-    bufloat0.store(Coord(7, 0), r7)
+    bufloat0.store((0, 0), r0)
+    bufloat0.store((1, 0), r1)
+    bufloat0.store((2, 0), r2)
+    bufloat0.store((3, 0), r3)
+    bufloat0.store((4, 0), r4)
+    bufloat0.store((5, 0), r5)
+    bufloat0.store((6, 0), r6)
+    bufloat0.store((7, 0), r7)
 
 
 def _transpose_inplace_16x16[
@@ -216,22 +216,22 @@ def _transpose_inplace_16x16[
         ](other)
 
     # Contiguous row-major 16x16: row i starts at offset i * 16.
-    var row00 = bufloat0.load[width=16](Coord(0, 0))
-    var row01 = bufloat0.load[width=16](Coord(1, 0))
-    var row02 = bufloat0.load[width=16](Coord(2, 0))
-    var row03 = bufloat0.load[width=16](Coord(3, 0))
-    var row04 = bufloat0.load[width=16](Coord(4, 0))
-    var row05 = bufloat0.load[width=16](Coord(5, 0))
-    var row06 = bufloat0.load[width=16](Coord(6, 0))
-    var row07 = bufloat0.load[width=16](Coord(7, 0))
-    var row08 = bufloat0.load[width=16](Coord(8, 0))
-    var row09 = bufloat0.load[width=16](Coord(9, 0))
-    var row10 = bufloat0.load[width=16](Coord(10, 0))
-    var row11 = bufloat0.load[width=16](Coord(11, 0))
-    var row12 = bufloat0.load[width=16](Coord(12, 0))
-    var row13 = bufloat0.load[width=16](Coord(13, 0))
-    var row14 = bufloat0.load[width=16](Coord(14, 0))
-    var row15 = bufloat0.load[width=16](Coord(15, 0))
+    var row00 = bufloat0.load[width=16]((0, 0))
+    var row01 = bufloat0.load[width=16]((1, 0))
+    var row02 = bufloat0.load[width=16]((2, 0))
+    var row03 = bufloat0.load[width=16]((3, 0))
+    var row04 = bufloat0.load[width=16]((4, 0))
+    var row05 = bufloat0.load[width=16]((5, 0))
+    var row06 = bufloat0.load[width=16]((6, 0))
+    var row07 = bufloat0.load[width=16]((7, 0))
+    var row08 = bufloat0.load[width=16]((8, 0))
+    var row09 = bufloat0.load[width=16]((9, 0))
+    var row10 = bufloat0.load[width=16]((10, 0))
+    var row11 = bufloat0.load[width=16]((11, 0))
+    var row12 = bufloat0.load[width=16]((12, 0))
+    var row13 = bufloat0.load[width=16]((13, 0))
+    var row14 = bufloat0.load[width=16]((14, 0))
+    var row15 = bufloat0.load[width=16]((15, 0))
 
     var k00 = _apply_permute_0(row00, row01)
     var k01 = _apply_permute_1(row00, row01)
@@ -301,22 +301,22 @@ def _transpose_inplace_16x16[
     var r14 = _apply_permute_7(t06, t14)
     var r15 = _apply_permute_7(t07, t15)
 
-    bufloat0.store(Coord(0, 0), r00)
-    bufloat0.store(Coord(1, 0), r01)
-    bufloat0.store(Coord(2, 0), r02)
-    bufloat0.store(Coord(3, 0), r03)
-    bufloat0.store(Coord(4, 0), r04)
-    bufloat0.store(Coord(5, 0), r05)
-    bufloat0.store(Coord(6, 0), r06)
-    bufloat0.store(Coord(7, 0), r07)
-    bufloat0.store(Coord(8, 0), r08)
-    bufloat0.store(Coord(9, 0), r09)
-    bufloat0.store(Coord(10, 0), r10)
-    bufloat0.store(Coord(11, 0), r11)
-    bufloat0.store(Coord(12, 0), r12)
-    bufloat0.store(Coord(13, 0), r13)
-    bufloat0.store(Coord(14, 0), r14)
-    bufloat0.store(Coord(15, 0), r15)
+    bufloat0.store((0, 0), r00)
+    bufloat0.store((1, 0), r01)
+    bufloat0.store((2, 0), r02)
+    bufloat0.store((3, 0), r03)
+    bufloat0.store((4, 0), r04)
+    bufloat0.store((5, 0), r05)
+    bufloat0.store((6, 0), r06)
+    bufloat0.store((7, 0), r07)
+    bufloat0.store((8, 0), r08)
+    bufloat0.store((9, 0), r09)
+    bufloat0.store((10, 0), r10)
+    bufloat0.store((11, 0), r11)
+    bufloat0.store((12, 0), r12)
+    bufloat0.store((13, 0), r13)
+    bufloat0.store((14, 0), r14)
+    bufloat0.store((15, 0), r15)
 
 
 def _transpose_inplace_naive[

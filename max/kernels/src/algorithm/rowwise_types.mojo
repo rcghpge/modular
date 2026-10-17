@@ -281,8 +281,8 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
             `align_of[dtype]()` to get the byte alignment passed to the
             backend. Named to match that convention explicitly, since a
             caller that instead hands this straight to a raw byte-level
-            primitive (e.g. `TileTensor.raw_load`/`raw_store`, which
-            wants bytes) without that multiplication under-claims
+            primitive (e.g. the `alignment` of `TileTensor.load`/`store`,
+            which wants bytes) without that multiplication under-claims
             alignment -- silently harmless for 4-byte-and-wider dtypes,
             a real miscompilation risk for narrower ones.
         """

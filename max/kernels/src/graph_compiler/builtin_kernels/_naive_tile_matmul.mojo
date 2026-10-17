@@ -186,8 +186,8 @@ struct _NaiveMatmulTileAdapter[
         var acc = Scalar[Self.c_dtype](0)
         for k in range(self.k_dim):
             acc += (
-                self.a.load(Coord(row, k)).cast[Self.c_dtype]()
-                * self.b.load(Coord(k, col)).cast[Self.c_dtype]()
+                self.a.load((row, k)).cast[Self.c_dtype]()
+                * self.b.load((k, col)).cast[Self.c_dtype]()
             )
 
         # Driver-owned per-thread output fragment, allocated in LOCAL (so the
@@ -212,7 +212,7 @@ struct _NaiveMatmulTileAdapter[
             ]().unsafe_origin_cast[MutAnyOrigin](),
             row_major[1, 1](),
         )
-        dst.store(Coord(0, 0), acc)
+        dst.store((0, 0), acc)
 
         # Non-terminal `TileOperation` transform (matmul+add, case 5), if bound,
         # telling it the thread layout this call runs over (so it can build its

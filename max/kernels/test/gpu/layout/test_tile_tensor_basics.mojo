@@ -264,8 +264,8 @@ def test_aligned_load() raises:
 
     for column in range(0, 16, 4):
         var expected = SIMD[.float32, 4](Float32(column // 4 + 1))
-        tensor.store[width=4, alignment=16](Coord(0, column), expected)
-        var value = tensor.load[width=4, alignment=16](Coord(0, column))
+        tensor.store[width=4, alignment=16]((0, column), expected)
+        var value = tensor.load[width=4, alignment=16]((0, column))
         var linear_value = tensor.load_linear[width=4, alignment=16](
             IndexList[2](0, column)
         )
@@ -285,7 +285,7 @@ def test_unaligned_load() raises:
             var expected = SIMD[.float32, 4]()
             comptime for lane in range(4):
                 expected[lane] = Float32(row * 16 + column + lane)
-            var value = tensor.load[width=4, alignment=4](Coord(row, column))
+            var value = tensor.load[width=4, alignment=4]((row, column))
             var linear_value = tensor.load_linear[width=4, alignment=4](
                 IndexList[2](row, column)
             )

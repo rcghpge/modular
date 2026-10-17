@@ -178,9 +178,7 @@ def _argn[
             var idx = Scalar[output.dtype](0)
             var found_min: Bool = False
             for j in range(last_simd_index, axis_size, 1):
-                var elem = rebind[Scalar[input.dtype]](
-                    input_rows.load(Coord(i, j))
-                )
+                var elem = rebind[Scalar[input.dtype]](input_rows.load((i, j)))
                 if cmp(global_val, elem):
                     global_val = elem
                     idx = Scalar[output.dtype](j)
@@ -193,7 +191,7 @@ def _argn[
                     global_indices, Scalar[output.dtype].MAX
                 )
                 idx = min_indices.reduce_min()
-            output_rows.store(Coord(i), idx)
+            output_rows.store((i,), idx)
 
     sync_parallelize(task_func, parallel_size, ctx)
 

@@ -1065,7 +1065,7 @@ struct ConvDirectNHWC[
         comptime for idx0 in range(micro_kernel_height):
             comptime for idx1 in range(micro_kernel_width):
                 output_micro_tile.store[width=simd_size](
-                    Coord(idx0, idx1 * simd_size),
+                    (idx0, idx1 * simd_size),
                     SIMD[Self.output_type, simd_size](0.0),
                 )
 
@@ -1098,14 +1098,14 @@ struct ConvDirectNHWC[
                         self.conv_shape.f_per_group(), simd_size
                     )
                     output_micro_tile.store[width=simd_size](
-                        Coord(i, j * simd_size),
+                        (i, j * simd_size),
                         partial_simd_load[simd_size](
                             output_ptr + j * simd_size, 0, residual, 0.0
                         ),
                     )
                 else:
                     output_micro_tile.store[width=simd_size](
-                        Coord(i, j * simd_size),
+                        (i, j * simd_size),
                         (output_ptr + j * simd_size).load[width=simd_size](),
                     )
 
@@ -1145,7 +1145,7 @@ struct ConvDirectNHWC[
         comptime for i in range(micro_kernel_height):
             comptime for j in range(micro_kernel_width):
                 var output_vec = output_micro_tile.load[width=simd_size](
-                    Coord(i, j * simd_size)
+                    (i, j * simd_size)
                 )
 
                 comptime if has_residual:
@@ -3721,9 +3721,9 @@ def conv2d_gpu_naive_nhwc_rscf[
                     for ci in range(C_per_group):
                         value += (
                             input.load[width=1](
-                                Coord(n, h_in, w_in, ci_base + ci)
+                                (n, h_in, w_in, ci_base + ci)
                             ).cast[accum_type]()
-                            * filter.load[width=1](Coord(r, s, ci, co)).cast[
+                            * filter.load[width=1]((r, s, ci, co)).cast[
                                 accum_type
                             ]()
                         )
@@ -3735,7 +3735,7 @@ def conv2d_gpu_naive_nhwc_rscf[
             )
         else:
             output.store(
-                Coord(n, h, w, co),
+                (n, h, w, co),
                 value.cast[output_type](),
             )
 
@@ -5927,16 +5927,16 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 
                             comptime for k in range(vec_w):
                                 flt_vec[k] = filter.load[width=1](
-                                    Coord(q, r, s, ci + k, co)
+                                    (q, r, s, ci + k, co)
                                 )[0].cast[accum_type]()
                             simd_value = simd_value + in_vec * flt_vec
                             ci += vec_w
                         while ci < C_per_group:
                             scalar_value += (
                                 input.load[width=1](
-                                    Coord(n, d_in, h_in, w_in, ci_base + ci)
+                                    (n, d_in, h_in, w_in, ci_base + ci)
                                 )[0].cast[accum_type]()
-                                * filter.load[width=1](Coord(q, r, s, ci, co))[
+                                * filter.load[width=1]((q, r, s, ci, co))[
                                     0
                                 ].cast[accum_type]()
                             )
@@ -5951,7 +5951,7 @@ def conv3d_gpu_naive_ndhwc_qrscf[
             )
         else:
             output.store(
-                Coord(n, d_out_idx, h_out_idx, w_out_idx, co),
+                (n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )
 

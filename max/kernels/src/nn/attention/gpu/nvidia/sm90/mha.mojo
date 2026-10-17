@@ -1767,12 +1767,12 @@ def _mha_sm90[
             # otherwise, the branch requires synchronization
             comptime for row in range(num_rows_per_warp):
                 var c = SIMD[accum_type, frag_simdwidth](
-                    rebind[Scalar[accum_type]](correction[Coord(Idx[row])])
+                    rebind[Scalar[accum_type]](correction[Idx[row]])
                 )
 
                 comptime for col in range(num_cols_output):
                     vout[Coord(Idx[row], Idx[col])] = (
-                        vout[Coord(Idx[row], Idx[col])] * c
+                        vout[Idx[row], Idx[col]] * c
                     )
 
         @inline(.always)
@@ -1781,8 +1781,8 @@ def _mha_sm90[
         ):
             # new_rowsum, old_rowsum = 1/old_rowsum, new_rowsum
             comptime for row in range(num_rows_per_warp):
-                var old = old_rowsum[Coord(Idx[row])]
-                var new = new_rowsum[Coord(Idx[row])]
+                var old = old_rowsum[Idx[row]]
+                var new = new_rowsum[Idx[row]]
                 new_rowsum[Coord(Idx[row])] = recip(old)[0]
                 old_rowsum[Coord(Idx[row])] = new
 
@@ -1797,12 +1797,12 @@ def _mha_sm90[
             # Apply softmax denumerator.
             comptime for row in range(num_rows_per_warp):
                 var rs_inv = SIMD[accum_type, frag_simdwidth](
-                    rowsum_inv[Coord(Idx[row])][0]
+                    rowsum_inv[Idx[row]][0]
                 )
 
                 comptime for col in range(num_cols_output):
                     vout[Coord(Idx[row], Idx[col])] = (
-                        vout[Coord(Idx[row], Idx[col])] * rs_inv
+                        vout[Idx[row], Idx[col]] * rs_inv
                     )
 
             var output_ptr: UnsafePointer[
@@ -1957,21 +1957,17 @@ def _mha_sm90[
 
             comptime if decoding:
                 comptime for i in range(q_head_indices.size):
-                    var sink_contribution = exp2(
-                        sink_weight - rowmax[Coord(Idx[i])]
-                    )
+                    var sink_contribution = exp2(sink_weight - rowmax[Idx[i]])
                     attention_rowsum[Coord(Idx[i])] = (
-                        attention_rowsum[Coord(Idx[i])] + sink_contribution[0]
+                        attention_rowsum[Idx[i]] + sink_contribution[0]
                     )
 
             else:
                 comptime for i in range(num_rows_per_warp):
                     # Compute exp2((sink_weight - rowmax[j]) * log2e)
-                    var sink_contribution = exp2(
-                        sink_weight - rowmax[Coord(Idx[i])]
-                    )
+                    var sink_contribution = exp2(sink_weight - rowmax[Idx[i]])
                     attention_rowsum[Coord(Idx[i])] = (
-                        attention_rowsum[Coord(Idx[i])] + sink_contribution[0]
+                        attention_rowsum[Idx[i]] + sink_contribution[0]
                     )
 
         rowsum.copy_from(attention_rowsum)
@@ -2052,10 +2048,10 @@ def _mha_sm90[
                                 var q_head_idx = q_heads[i]
                                 exp_sum_ptr[q_head_idx] = rebind[
                                     Scalar[PartitionType.accum_dtype]
-                                ](rowsum[Coord(Idx[i])])
+                                ](rowsum[Idx[i]])
                                 qk_max_ptr[q_head_idx] = rebind[
                                     Scalar[PartitionType.accum_dtype]
-                                ](rowmax[Coord(Idx[i])])
+                                ](rowmax[Idx[i]])
                     var score_frag_rowsum = _rowsum[
                         type_of(rowsum_buffer.layout),
                         frag_simdwidth,
@@ -2117,9 +2113,8 @@ def _mha_sm90[
 
                     comptime for i in range(num_rows_per_warp):
                         rowsum[Coord(Idx[i])] = (
-                            rowsum[Coord(Idx[i])]
-                            * score_frag_rowmax[Coord(Idx[i])]
-                            + score_frag_rowsum[Coord(Idx[i])]
+                            rowsum[Idx[i]] * score_frag_rowmax[Idx[i]]
+                            + score_frag_rowsum[Idx[i]]
                         )
 
                     wait_for_p_mul_v(read_idx_v)  # can rw output and pfrag
@@ -2168,13 +2163,13 @@ def _mha_sm90[
                     var q_head_idx = q_heads[i]
                     exp_sum_ptr[q_head_idx] = rebind[
                         Scalar[PartitionType.accum_dtype]
-                    ](rowsum[Coord(Idx[i])])
+                    ](rowsum[Idx[i]])
                     qk_max_ptr[q_head_idx] = rebind[
                         Scalar[PartitionType.accum_dtype]
-                    ](rowmax[Coord(Idx[i])])
+                    ](rowmax[Idx[i]])
 
         comptime for row in range(num_rows_per_warp):
-            rowsum[Coord(Idx[row])] = recip(rowsum[Coord(Idx[row])])[0]
+            rowsum[Coord(Idx[row])] = recip(rowsum[Idx[row]])[0]
         wgmma_1.wait_group()
         write_output(position, q_pipeline_state.index(), rowsum)
         # don't arrive

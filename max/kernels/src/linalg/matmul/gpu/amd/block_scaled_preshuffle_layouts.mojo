@@ -652,9 +652,7 @@ struct Shuffler[E: Int]:
                     # ElementType is `SIMD[.uint8, SrcEngine.element_size]`,
                     # but only scalar engines are accepted (asserted above),
                     # so a width-1 load yields a `UInt8` scalar.
-                    dst[byte_off] = UInt8(
-                        src.load[width=1](Coord(e, mn, k_scale))
-                    )
+                    dst[byte_off] = UInt8(src.load[width=1]((e, mn, k_scale)))
 
             for mn in range(MN, MN_padded):
                 for k_scale in range(K_SCALES):
@@ -740,10 +738,9 @@ struct Shuffler[E: Int]:
         var current_tile = 0
 
         for expert_slot in range(_num_active_experts):
-            var token_start = Int(a_offsets.load[width=1](Coord(expert_slot)))
+            var token_start = Int(a_offsets.load[width=1]((expert_slot,)))
             var num_tokens = (
-                Int(a_offsets.load[width=1](Coord(expert_slot + 1)))
-                - token_start
+                Int(a_offsets.load[width=1]((expert_slot + 1,))) - token_start
             )
 
             # Empty slot — contributes zero tiles to the global counter,
@@ -791,7 +788,7 @@ struct Shuffler[E: Int]:
                             cell_bytes[
                                 k_pack * Self.S_MN_PACK + mn_pack
                             ] = sfa_raw.load[width=1](
-                                Coord((token_start + src_mn), src_k)
+                                ((token_start + src_mn), src_k)
                             )
 
                 var cell_byte_off = Self.scale_4d_slot_byte_off[

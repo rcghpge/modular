@@ -18,7 +18,7 @@ from max.gpu.host import DeviceContext
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from internal_utils import assert_almost_equal
 from std.random import rand
-from layout import TileTensor, Coord, CoordLike, row_major, Idx
+from layout import TileTensor, CoordLike, row_major, Idx
 from linalg.matmul.gpu.sm100_structured.default.matmul import (
     blackwell_matmul_tma_umma_warp_specialized,
 )
@@ -118,9 +118,7 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
         for m_idx in range(M):
             for k_idx in range(K):
                 comptime assert a_host.flat_rank >= 2
-                a_host[Coord(m_idx, k_idx)] = Float32(m_idx + k_idx).cast[
-                    a_type
-                ]()
+                a_host[m_idx, k_idx] = Float32(m_idx + k_idx).cast[a_type]()
         for n_idx in range(N):
             for k_idx in range(K):
                 b_host[n_idx, k_idx] = Float32(n_idx + k_idx).cast[b_type]()

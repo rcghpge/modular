@@ -185,11 +185,11 @@ def grouped_gemv_kernel[
                 var x = Array[SIMD[.float32, VW], tokens_per_pass](fill=0)
                 comptime for t in range(tokens_per_pass):
                     x[t] = a_pass.load[width=VW, alignment=A_ALIGN](
-                        Coord(t_rows[t], k0)
+                        (t_rows[t], k0)
                     ).cast[.float32]()
                 comptime for r in range(rows_per_sg):
                     var w = b_e.load[width=VW, alignment=B_ALIGN](
-                        Coord(w_rows[r], k0)
+                        (w_rows[r], k0)
                     ).cast[.float32]()
                     comptime for t in range(tokens_per_pass):
                         acc[r * tokens_per_pass + t] += (w * x[t]).reduce_add[
@@ -200,13 +200,13 @@ def grouped_gemv_kernel[
                 var kt = K_VEC + lid
                 while kt < K:
                     comptime for r in range(rows_per_sg):
-                        var w = b_e.load[width=1](Coord(w_rows[r], kt)).cast[
+                        var w = b_e.load[width=1]((w_rows[r], kt)).cast[
                             .float32
                         ]()
                         comptime for t in range(tokens_per_pass):
-                            var xv = a_pass.load[width=1](
-                                Coord(t_rows[t], kt)
-                            ).cast[.float32]()
+                            var xv = a_pass.load[width=1]((t_rows[t], kt)).cast[
+                                .float32
+                            ]()
                             acc[r * tokens_per_pass + t][0] += (w * xv)[0]
                     kt += WARP_SIZE
 
@@ -224,7 +224,7 @@ def grouped_gemv_kernel[
                 else:
                     comptime if has_compute_fn:
                         out = compute_fn[c_type, 1, alignment=1](idx, out)
-                    c_pass.store(Coord(t, n0 + lid), out)
+                    c_pass.store((t, n0 + lid), out)
         t0 += tokens_per_pass
 
 

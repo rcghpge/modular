@@ -68,7 +68,7 @@ def cpu_matmul_naive[
                 acc += rebind[Float32](
                     A.load(a_coord).cast[.float32]()
                 ) * rebind[Float32](B.load(b_coord).cast[.float32]())
-            C.store(Coord(m, n), acc.cast[C.dtype]())
+            C.store((m, n), acc.cast[C.dtype]())
 
 
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)

@@ -189,7 +189,7 @@ def test_blackwell_matmul_with_epilogue_tensor[
     # Add epilogue tensor to reference on host: C_ref[m, n] += epilogue[m, n]
     for i in range(M):
         for j in range(N):
-            c_host_ref[Coord(i, j)] += epilogue_host[Coord(i, j)]
+            c_host_ref[i, j] += epilogue_host[i, j]
 
     # print("c_ref(blas+epilogue):", end=" ")
     # for i in range(M):

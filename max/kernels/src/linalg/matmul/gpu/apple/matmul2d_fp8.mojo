@@ -312,17 +312,15 @@ struct Matmul2dFp8[
                     return
                 comptime if bounded:
                     if acol + 3 < N:
-                        c_vec.store[alignment=elem_align](
-                            Coord(lrow, lcol // 4), y
-                        )
+                        c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
                     else:
                         for e in range(min(4, N - acol)):
                             c_sub.store[width=1, alignment=elem_align](
-                                Coord(lrow, lcol + e),
+                                (lrow, lcol + e),
                                 SIMD[Self.c_type, 1](y[e]),
                             )
                 else:
-                    c_vec.store[alignment=elem_align](Coord(lrow, lcol // 4), y)
+                    c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
 
             comptime for mi in range(Self.NUM_MMA_M):
                 comptime for ni in range(Self.NUM_MMA_N):

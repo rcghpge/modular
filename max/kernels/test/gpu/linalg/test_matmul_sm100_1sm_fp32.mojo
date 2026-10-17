@@ -127,9 +127,7 @@ def test_blackwell_matmul_tma_umma_warp_specialized[
         for m_idx in range(M):
             for k_idx in range(K):
                 comptime assert a_host.flat_rank >= 2
-                a_host[Coord(m_idx, k_idx)] = Float32(m_idx + k_idx).cast[
-                    a_type
-                ]()
+                a_host[m_idx, k_idx] = Float32(m_idx + k_idx).cast[a_type]()
         for n_idx in range(N):
             for k_idx in range(K):
                 b_host[n_idx, k_idx] = Float32(n_idx + k_idx).cast[b_type]()

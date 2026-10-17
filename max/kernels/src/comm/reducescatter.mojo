@@ -113,7 +113,7 @@ def _load_reduce[
         var accum = (
             in_tiles[0]
             .address_space_cast[_target_address_space]()
-            .load[width=simd_width, alignment=alignment](Coord(elem_idx))
+            .load[width=simd_width, alignment=alignment]((elem_idx,))
             .cast[accum_type]()
         )
 
@@ -121,7 +121,7 @@ def _load_reduce[
             accum += (
                 in_tiles[gpu_idx]
                 .address_space_cast[_target_address_space]()
-                .load[width=simd_width, alignment=alignment](Coord(elem_idx))
+                .load[width=simd_width, alignment=alignment]((elem_idx,))
                 .cast[accum_type]()
             )
         return accum.cast[dtype]()

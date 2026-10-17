@@ -985,17 +985,15 @@ struct AppleM5MatMul[
                 var y = v_fp32.cast[Self.c_type]()
                 comptime if bounded:
                     if acol + 3 < n:
-                        c_vec.store[alignment=elem_align](
-                            Coord(lrow, lcol // 4), y
-                        )
+                        c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
                     else:
                         for e in range(min(4, n - acol)):
                             c_sub.store[width=1, alignment=elem_align](
-                                Coord(lrow, lcol + e),
+                                (lrow, lcol + e),
                                 SIMD[Self.c_type, 1](y[e]),
                             )
                 else:
-                    c_vec.store[alignment=elem_align](Coord(lrow, lcol // 4), y)
+                    c_vec.store[alignment=elem_align]((lrow, lcol // 4), y)
 
             comptime for mi in range(Mma.num_m_mmas):
                 comptime for ni in range(Mma.num_n_mmas):
@@ -1044,7 +1042,7 @@ struct AppleM5MatMul[
                                 if row < m:
                                     if acol + 3 < n:
                                         c_vec.store[alignment=elem_align](
-                                            Coord(srow, lcol // 4),
+                                            (srow, lcol // 4),
                                             compute_fn[
                                                 Self.c_type,
                                                 4,
@@ -1056,7 +1054,7 @@ struct AppleM5MatMul[
                                             c_sub.store[
                                                 width=1, alignment=elem_align
                                             ](
-                                                Coord(srow, lcol + e),
+                                                (srow, lcol + e),
                                                 compute_fn[
                                                     Self.c_type, 1, alignment=1
                                                 ](
@@ -1066,7 +1064,7 @@ struct AppleM5MatMul[
                                             )
                             else:
                                 c_vec.store[alignment=elem_align](
-                                    Coord(srow, lcol // 4),
+                                    (srow, lcol // 4),
                                     compute_fn[
                                         Self.c_type, 4, alignment=elem_align
                                     ]((row, acol), y),
