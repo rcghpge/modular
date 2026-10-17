@@ -113,10 +113,8 @@ def test_is_sorted_descending[
         for batch_id in range(start_batch, end_batch):
             var offset = batch_id * vocab_size
             for i in range(vocab_size - 1):
-                var cur = rebind[Scalar[dtype]](buf_flat.load((offset + i,)))
-                var nxt = rebind[Scalar[dtype]](
-                    buf_flat.load((offset + i + 1,))
-                )
+                var cur = buf_flat.load[width=1]((offset + i,))
+                var nxt = buf_flat.load[width=1]((offset + i + 1,))
                 if cur < nxt:
                     print(
                         "[",

@@ -1644,18 +1644,16 @@ def apply_qk_rms_norm_gpu_block[
 
     with PDL():
         # rsqrt of the (already cross-rank reduced) per-row mean of squares.
-        var rs = rsqrt(
-            qk_var.load[width=1](Coord(Index(Int(row), block_idx.y))) + epsilon
-        )
+        var rs = rsqrt(qk_var.load[width=1]((row, block_idx.y)) + epsilon)
 
         # Each block owns a single (row, operand); threads grid-stride the cols.
         for x in range(ceildiv(ceildiv(num_cols, simd_width), block_dim.x)):
             var offset = x * block_dim.x * simd_width + tid * simd_width
             if offset < num_cols:
                 if is_k:
-                    var xf = k.load[width=simd_width](
-                        Coord(Index(Int(row), offset))
-                    ).cast[.float32]()
+                    var xf = k.load[width=simd_width]((row, offset)).cast[
+                        .float32
+                    ]()
                     var g = gamma_k.load[width=simd_width, alignment=align](
                         (offset,)
                     )
@@ -1664,9 +1662,9 @@ def apply_qk_rms_norm_gpu_block[
                         ((xf * rs) * g).cast[out_dtype](),
                     )
                 else:
-                    var xf = q.load[width=simd_width](
-                        Coord(Index(Int(row), offset))
-                    ).cast[.float32]()
+                    var xf = q.load[width=simd_width]((row, offset)).cast[
+                        .float32
+                    ]()
                     var g = gamma_q.load[width=simd_width, alignment=align](
                         (offset,)
                     )

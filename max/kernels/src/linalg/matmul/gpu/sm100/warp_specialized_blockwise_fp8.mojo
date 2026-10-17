@@ -679,22 +679,20 @@ def promote_accumulators[
         #                                                           next_n(128)
 
         # prefetch b scales
-        b_scale_0 = rebind[Scalar[accum_type]](
-            b_scales[b_scale_idx0, k_iter].cast[accum_type]()
-        )
+        b_scale_0 = b_scales.load[width=1]((b_scale_idx0, k_iter)).cast[
+            accum_type
+        ]()
         # this mean in this block we have two scale_b
         if b_scale_next_n < MMA_N:
-            b_scale_1 = rebind[Scalar[accum_type]](
-                b_scales[b_scale_idx0 + 1, k_iter].cast[accum_type]()
-            )
+            b_scale_1 = b_scales.load[width=1]((b_scale_idx0 + 1, k_iter)).cast[
+                accum_type
+            ]()
         else:
             b_scale_1 = 0.0
 
     else:
         # when MMA_N == BK == 128 we only have one scale_b per block
-        b_scale_0 = rebind[Scalar[accum_type]](
-            b_scales[bn, k_iter].cast[accum_type]()
-        )
+        b_scale_0 = b_scales.load[width=1]((bn, k_iter)).cast[accum_type]()
         b_scale_1 = 0.0
 
     var warp_id = get_warp_id()
@@ -758,16 +756,12 @@ def promote_accumulators[
     var lower_sfa1_smem = Scalar[accum_type]()
 
     comptime if is_lower_frag_required:
-        lower_sfa0_smem = rebind[Scalar[accum_type]](
-            a_scales_smem[
-                0, UInt32(staged_c_row) + top_frag_lower_coord[0]
-            ].cast[accum_type]()
-        )
-        lower_sfa1_smem = rebind[Scalar[accum_type]](
-            a_scales_smem[
-                0, UInt32(staged_c_row) + bottom_frag_lower_coord[0]
-            ].cast[accum_type]()
-        )
+        lower_sfa0_smem = a_scales_smem[
+            0, UInt32(staged_c_row) + top_frag_lower_coord[0]
+        ].cast[accum_type]()
+        lower_sfa1_smem = a_scales_smem[
+            0, UInt32(staged_c_row) + bottom_frag_lower_coord[0]
+        ].cast[accum_type]()
 
     syncwarp()
     if lane_id() < Int(CLUSTER_SIZE):

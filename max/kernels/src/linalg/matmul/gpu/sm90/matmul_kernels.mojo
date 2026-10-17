@@ -1717,9 +1717,7 @@ struct HopperMatmulSM90Kernel[
         # Add tensor core results to higher-precision accumulator
         comptime for mma_id in range(num_mma):
             comptime for i in range(c_frag_size):
-                final_c_reg_tile[mma_id, i] = rebind[Scalar[Self.accum_type]](
-                    final_c_reg_tile[mma_id, i]
-                ) + rebind[Scalar[Self.accum_type]](c_reg_tile[mma_id, i])
+                final_c_reg_tile[mma_id, i] += c_reg_tile[mma_id, i]
 
     @inline(.always)
     @staticmethod

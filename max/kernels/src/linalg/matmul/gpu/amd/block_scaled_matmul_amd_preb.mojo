@@ -493,7 +493,7 @@ struct BlockScaledMmaOp_PreB[
                         rebind[SIMD[.uint8, 8]](
                             a_smem_flat.load[
                                 width=8, alignment=align_of[DType.uint8]()
-                            ](Coord(off))
+                            ]((off,))
                         )
                     )
                 a_reg_fp6[mma_k_idx, i, 0] = frag
@@ -511,7 +511,7 @@ struct BlockScaledMmaOp_PreB[
                     a_reg_v[mma_k_idx, i, h] = a_smem_flat.load[
                         width=Self.FRAG_HALF_BYTES,
                         alignment=align_of[DType.uint8](),
-                    ](Coord(off))
+                    ]((off,))
 
     @inline(.always)
     def load_b_frag_preshuffled[
@@ -767,7 +767,7 @@ struct BlockScaledMmaOp_PreB[
         )
         comptime for p in range(Self.scale_packs):
             scale_flat.store[alignment=align_of[DType.uint8]()](
-                Coord(base + p * PACK_STRIDE),
+                (base + p * PACK_STRIDE,),
                 rebind[SIMD[.uint8, G * 4]](group_v[p, 0]),
             )
 
@@ -810,13 +810,13 @@ struct BlockScaledMmaOp_PreB[
         comptime for p in range(Self.a_scale_packs):
             self._a_scale_packed[slot, p, 0] = bitcast[.int32, 1](
                 scale_flat.load[width=4, alignment=align_of[DType.uint8]()](
-                    Coord(p * PACK_STRIDE + off)
+                    (p * PACK_STRIDE + off,)
                 )
             )[0]
         comptime for q in range(Self.b_scale_packs):
             self._b_scale_packed[slot, q, 0] = bitcast[.int32, 1](
                 scale_flat.load[width=4, alignment=align_of[DType.uint8]()](
-                    Coord((Self.a_scale_packs + q) * PACK_STRIDE + off)
+                    ((Self.a_scale_packs + q) * PACK_STRIDE + off,)
                 )
             )[0]
 
@@ -861,9 +861,9 @@ struct BlockScaledMmaOp_PreB[
             var b_frag = b_reg_v[slot, mma_k_idx, n, 0]
 
             comptime b_byte = (mma_k_idx % 2) * 2 + (n % 2)
-            var b_scale = rebind[Int32](
-                self._b_scale_packed[scale_slot, n // 2, mma_k_idx // 2]
-            )
+            var b_scale = self._b_scale_packed[
+                scale_slot, n // 2, mma_k_idx // 2
+            ]
             comptime if Self.warp_tile[1] == 16:
                 b_scale = Int32(UInt32(b_scale) >> self._b_scale_shift)
 
@@ -873,9 +873,9 @@ struct BlockScaledMmaOp_PreB[
                 var c_frag = c_reg_v[m, n]
 
                 comptime a_byte = (mma_k_idx % 2) * 2 + (m % 2)
-                var a_scale = rebind[Int32](
-                    self._a_scale_packed[scale_slot, m // 2, mma_k_idx // 2]
-                )
+                var a_scale = self._a_scale_packed[
+                    scale_slot, m // 2, mma_k_idx // 2
+                ]
                 comptime if Self.warp_tile[0] == 16:
                     a_scale = Int32(UInt32(a_scale) >> self._a_scale_shift)
 
@@ -1534,11 +1534,11 @@ struct BlockScaledMatmulAMD_PreB[
                                 + row_off
                             )
                         a_smem_dst.store[alignment=align_of[DType.uint8]()](
-                            Coord(off),
+                            (off,),
                             a_load_reg.load[
                                 width=Self.simd_width,
                                 alignment=align_of[DType.uint8](),
-                            ](Coord(reg_slot, v * Self.simd_width)),
+                            ]((reg_slot, v * Self.simd_width)),
                         )
 
         @inline(.always)
@@ -1850,7 +1850,7 @@ struct BlockScaledMatmulAMD_PreB[
                     var v = c_reg.tile[1, Self.c_frag_size](m_mma, n_mma).load[
                         width=Self.c_frag_size,
                         alignment=align_of[DType.float32](),
-                    ](Coord(0, 0))
+                    ]((0, 0))
                     # Do not remove: the 3-kernel path rounds gemm1's output
                     # to bf16 before the activation, so skipping this makes
                     # the fusion numerically live -- 0.2% divergence at
@@ -1948,7 +1948,7 @@ struct BlockScaledMatmulAMD_PreB[
                             .load[
                                 width=Self.c_frag_size,
                                 alignment=align_of[DType.float32](),
-                            ](Coord(0, 0))
+                            ]((0, 0))
                             .cast[out_dtype]()
                         )
                         var n_global = (

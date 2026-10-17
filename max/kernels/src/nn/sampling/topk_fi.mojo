@@ -233,7 +233,7 @@ def get_min_max_value[
             var col = i * block_size * vec_size + tx * vec_size
             in_data_vec = in_data.load[
                 width=vec_size, alignment=align_of[dtype](), invariant=False
-            ](Coord(row_idx, col)).cast[.float32]()
+            ]((row_idx, col)).cast[.float32]()
 
         thread_max = max(thread_max, in_data_vec.reduce_max())
         thread_min = min(thread_min, in_data_vec.reduce_min())
@@ -933,9 +933,7 @@ def TopKSamplingFromProbKernel[
                     var search_id = _d
                     var last_valid_id = 0
                     for j in range(_d):
-                        var pv = Float32(
-                            rebind[Scalar[dtype]](probs_row[Idx[0], j])
-                        )
+                        var pv = Float32(probs_row.load[width=1]((Idx[0], j)))
                         if pv > low:
                             last_valid_id = j
                             cum += pv
@@ -945,7 +943,7 @@ def TopKSamplingFromProbKernel[
                         search_id = last_valid_id
 
                     var pivot_0 = Float32(
-                        rebind[Scalar[dtype]](probs_row[Idx[0], search_id])
+                        probs_row.load[width=1]((Idx[0], search_id))
                     )
                     var pivot_1 = (pivot_0 + high) / 2.0
 
@@ -955,9 +953,7 @@ def TopKSamplingFromProbKernel[
                     var count_1: Int = 0
                     var value_1: Float32 = 0.0
                     for j in range(_d):
-                        var pv = Float32(
-                            rebind[Scalar[dtype]](probs_row[Idx[0], j])
-                        )
+                        var pv = Float32(probs_row.load[width=1]((Idx[0], j)))
                         if pv > pivot_0:
                             count_0 += 1
                             value_0 += pv
@@ -1068,7 +1064,7 @@ def TopKSamplingFromProbKernel[
                     break
 
                 var pivot_0 = Float32(
-                    rebind[Scalar[dtype]](probs_row[Idx[0], sampled_id])
+                    probs_row.load[width=1]((Idx[0], sampled_id))
                 )
                 var pivot_1 = (pivot_0 + high) / 2.0
 
@@ -3133,9 +3129,7 @@ def topk_softmax_sample_kernel[
 
         # Each thread processes elements and atomically writes to shared memory.
         for i in range(tx, _d, block_size):
-            var logit = rebind[Scalar[dtype]](logits_row[Idx[0], i]).cast[
-                .float32
-            ]()
+            var logit = logits_row.load[width=1]((Idx[0], i)).cast[.float32]()
             if logit > pivot:
                 var exp_val = exp((logit - max_logit) / temp_val)
 

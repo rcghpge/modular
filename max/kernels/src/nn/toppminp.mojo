@@ -181,8 +181,8 @@ def _topp_minp_sampling[
         # Copy input_logits to sorted_probs
         for i in range(vocab_size):
             var batch_offset = batch_id * vocab_size
-            sorted_probs[batch_id, i] = rebind[Scalar[dtype]](
-                logits_flat.load((batch_offset + i,))
+            sorted_probs[batch_id, i] = logits_flat.load[width=1](
+                (batch_offset + i,)
             )
 
     def apply_temperature[
@@ -229,7 +229,7 @@ def _topp_minp_sampling[
             )
             var num_filtered_tokens = 0
             for i in range(vocab_size):
-                if sorted_probs[batch, i][0] >= p_threshold[0]:
+                if sorted_probs[batch, i] >= p_threshold[0]:
                     sum_filtered_probs += sorted_probs[batch, i]
                     num_filtered_tokens += 1
                 else:
@@ -366,11 +366,11 @@ def merge[
 
     # Copy data to temporary arrays
     for i in range(left_size):
-        left_keys_data[i] = rebind[Scalar[dtype]](keys.load((start + i,)))
-        left_ids_data[i] = rebind[Scalar[out_idx_type]](ids.load((start + i,)))
+        left_keys_data[i] = keys.load[width=1]((start + i,))
+        left_ids_data[i] = ids.load[width=1]((start + i,))
     for i in range(right_size):
-        right_keys_data[i] = rebind[Scalar[dtype]](keys.load((mid + i,)))
-        right_ids_data[i] = rebind[Scalar[out_idx_type]](ids.load((mid + i,)))
+        right_keys_data[i] = keys.load[width=1]((mid + i,))
+        right_ids_data[i] = ids.load[width=1]((mid + i,))
 
     # Merge back into original array
     var i = 0  # Index for left subarray
@@ -381,25 +381,25 @@ def merge[
         if (
             left_keys_data[i] >= right_keys_data[j]
         ):  # Use >= for descending order
-            keys.store(Coord(k), left_keys_data[i])
-            ids.store(Coord(k), left_ids_data[i])
+            keys.store((k,), left_keys_data[i])
+            ids.store((k,), left_ids_data[i])
             i += 1
         else:
-            keys.store(Coord(k), right_keys_data[j])
-            ids.store(Coord(k), right_ids_data[j])
+            keys.store((k,), right_keys_data[j])
+            ids.store((k,), right_ids_data[j])
             j += 1
         k += 1
 
     # Copy remaining elements if any
     while i < left_size:
-        keys.store(Coord(k), left_keys_data[i])
-        ids.store(Coord(k), left_ids_data[i])
+        keys.store((k,), left_keys_data[i])
+        ids.store((k,), left_ids_data[i])
         i += 1
         k += 1
 
     while j < right_size:
-        keys.store(Coord(k), right_keys_data[j])
-        ids.store(Coord(k), right_ids_data[j])
+        keys.store((k,), right_keys_data[j])
+        ids.store((k,), right_ids_data[j])
         j += 1
         k += 1
 

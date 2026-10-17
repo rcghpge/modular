@@ -307,7 +307,7 @@ def _load_channels[
     """Loads `t[c:c + width]`, honoring a non-unit stride of the 1-D `t`."""
     var vals = SIMD[dtype, width]()
     comptime for i in range(width):
-        vals[i] = t.load[width=1]((c + i,))[0]
+        vals[i] = t.load[width=1]((c + i,))
     return vals
 
 
@@ -318,7 +318,7 @@ def _load_weight_taps[
     """Loads tap `w` of channels `c:c + width` from a (C, W) weight."""
     var vals = SIMD[dtype, width]()
     comptime for i in range(width):
-        vals[i] = t.load[width=1]((c + i, w))[0]
+        vals[i] = t.load[width=1]((c + i, w))
     return vals
 
 
@@ -808,9 +808,7 @@ def causal_conv1d_channel_first_fwd_gpu[
         var seq_idx: Int = seq_start + i
         if seq_idx >= seq_end:
             break
-        output.store(
-            (batch_id, channel_id, seq_idx), Scalar[output_dtype](out_vals[i])
-        )
+        output.store((batch_id, channel_id, seq_idx), out_vals[i])
 
 
 # Optimized GPU version without bias
@@ -1108,7 +1106,7 @@ def causal_conv1d_channel_last_fwd_gpu[
         var W = SIMD[weight_dtype, kWidth](0)
 
         comptime for tap in range(kWidth):
-            W[tap] = weight.load[width=1]((c_idx, tap))[0]
+            W[tap] = weight.load[width=1]((c_idx, tap))
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
 
@@ -1228,7 +1226,7 @@ def causal_conv1d_channel_last_fwd_gpu_no_bias[
         var W = SIMD[weight_dtype, kWidth](0)
 
         comptime for tap in range(kWidth):
-            W[tap] = weight.load[width=1]((c_idx, tap))[0]
+            W[tap] = weight.load[width=1]((c_idx, tap))
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
 
@@ -1423,16 +1421,16 @@ def causal_conv1d_channel_last_fwd_gpu_with_seq_idx[
         var w3: Scalar[weight_dtype] = 0
 
         comptime if kWidth >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 0)))
+            w0 = weight.load[width=1]((c_idx, 0))
 
         comptime if kWidth >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 1)))
+            w1 = weight.load[width=1]((c_idx, 1))
 
         comptime if kWidth >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 2)))
+            w2 = weight.load[width=1]((c_idx, 2))
 
         comptime if kWidth >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 3)))
+            w3 = weight.load[width=1]((c_idx, 3))
 
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
@@ -1679,16 +1677,16 @@ def causal_conv1d_channel_last_fwd_gpu_no_bias_with_seq_idx[
         var w3: Scalar[weight_dtype] = 0
 
         comptime if kWidth >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 0)))
+            w0 = weight.load[width=1]((c_idx, 0))
 
         comptime if kWidth >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 1)))
+            w1 = weight.load[width=1]((c_idx, 1))
 
         comptime if kWidth >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 2)))
+            w2 = weight.load[width=1]((c_idx, 2))
 
         comptime if kWidth >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 3)))
+            w3 = weight.load[width=1]((c_idx, 3))
 
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
@@ -1952,16 +1950,16 @@ def causal_conv1d_channel_first_fwd_gpu_with_seq_idx[
         var w3: Scalar[weight_dtype] = 0
 
         comptime if kWidth >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 0)))
+            w0 = weight.load[width=1]((c_idx, 0))
 
         comptime if kWidth >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 1)))
+            w1 = weight.load[width=1]((c_idx, 1))
 
         comptime if kWidth >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 2)))
+            w2 = weight.load[width=1]((c_idx, 2))
 
         comptime if kWidth >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 3)))
+            w3 = weight.load[width=1]((c_idx, 3))
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
 
@@ -2200,16 +2198,16 @@ def causal_conv1d_channel_first_fwd_gpu_no_bias_with_seq_idx[
         var w3: Scalar[weight_dtype] = 0
 
         comptime if kWidth >= 1:
-            w0 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 0)))
+            w0 = weight.load[width=1]((c_idx, 0))
 
         comptime if kWidth >= 2:
-            w1 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 1)))
+            w1 = weight.load[width=1]((c_idx, 1))
 
         comptime if kWidth >= 3:
-            w2 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 2)))
+            w2 = weight.load[width=1]((c_idx, 2))
 
         comptime if kWidth >= 4:
-            w3 = Scalar[weight_dtype](weight.load[width=1]((c_idx, 3)))
+            w3 = weight.load[width=1]((c_idx, 3))
         var out_vals_channel: SIMD[output_dtype, kNElts] = 0
         var silu_active = Bool(Int(silu_activation) != 0)
 

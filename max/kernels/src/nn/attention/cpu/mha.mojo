@@ -616,7 +616,7 @@ struct _FlashAttention[
                 _dtype: DType, width: SIMDLength, rank: Int
             ](idx: Int, val: SIMD[_dtype, width]) {imm}:
                 qk_row.store[alignment=align_of[Self.dtype]()](
-                    Coord(idx), rebind[SIMD[Self.dtype, width]](val)
+                    (idx,), rebind[SIMD[Self.dtype, width]](val)
                 )
 
             # Update the row with the scale and mask. Find the maximum value
@@ -629,7 +629,7 @@ struct _FlashAttention[
                 _simd_max_elementwise,
                 output_fn,
                 qk_row.num_elements(),
-                rebind[Scalar[Self.dtype]](max_vals.load((m,))),
+                max_vals.load[width=1]((m,)),
             )
 
             if do_sink:
@@ -657,16 +657,13 @@ struct _FlashAttention[
             if do_sink:
                 accum_val += exp(sink_logit - max_val)
 
-            var fixup_val = exp(
-                rebind[Scalar[Self.dtype]](max_vals.load((m,))) - max_val
-            )
+            var fixup_val = exp(max_vals.load[width=1]((m,)) - max_val)
 
             # Update the running maximum and sum for the row.
             max_vals.store((m,), max_val)
             sum_vals.store(
                 (m,),
-                rebind[Scalar[Self.dtype]](sum_vals.load((m,))) * fixup_val
-                + accum_val,
+                sum_vals.load[width=1]((m,)) * fixup_val + accum_val,
             )
 
             @inline(.always)
@@ -901,7 +898,7 @@ struct _FlashAttention[
 
                     var sink_weight: Optional[Scalar[Self.dtype]] = None
                     if case .Some(sink_weights) = sink_weights:
-                        sink_weight = sink_weights[head][0]
+                        sink_weight = sink_weights[head]
 
                     Self._online_softmax(
                         mask_2d_fn,
@@ -946,7 +943,7 @@ struct _FlashAttention[
                 var oz_ptr = o_block_ptr
 
                 for m in range(count_m):
-                    var reciprocal = 1 / sum_vals[m][0]
+                    var reciprocal = 1 / sum_vals[m]
 
                     @inline(.always)
                     def do_final[

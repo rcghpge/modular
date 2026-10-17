@@ -269,9 +269,7 @@ def _repeat_interleave_emit_kernel[
     var src_flat = outer_idx * in_axis * inner + src_axis * inner + inner_idx
     var input_flat = input_buffer.reshape(row_major(outer * in_axis * inner))
     var output_flat = output_buffer.reshape(row_major(outer * out_axis * inner))
-    output_flat.store(
-        (flat,), rebind[Scalar[dtype]](input_flat.load((src_flat,)))
-    )
+    output_flat.store((flat,), input_flat.load[width=1]((src_flat,)))
 
 
 def _repeat_interleave_gpu[

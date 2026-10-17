@@ -154,7 +154,7 @@ def scatter_nd[
     var output_flat = output.reshape(row_major(output.num_elements()))
     var data_flat = data.reshape(row_major(data.num_elements()))
     for _i in range(output.num_elements()):
-        output_flat.store((_i,), rebind[Scalar[dtype]](data_flat.load((_i,))))
+        output_flat.store((_i,), data_flat.load[width=1]((_i,)))
 
     # Depending on r_minus_m = data_rank - last_shape_of_indices,
     # we will be copying:

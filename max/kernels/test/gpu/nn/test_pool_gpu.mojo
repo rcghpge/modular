@@ -442,8 +442,8 @@ def assert_allclose[
     try:
         for i in range(h_output_ref.layout.product()):
             assert_almost_equal(
-                rebind[Scalar[dtype]](ref_flat.load((i,))),
-                rebind[Scalar[dtype]](gpu_flat.load((i,))),
+                ref_flat.load[width=1]((i,)),
+                gpu_flat.load[width=1]((i,)),
             )
     except e:
         print(e)

@@ -2185,7 +2185,6 @@ struct ContinuousBatchingKVCache[
         var idx = self._get_idx_tuple(
             Int(block_idx), head_idx, tok_idx, head_dim_idx
         )
-        # Bypass TileTensor.load's `where` constraint by using ptr directly.
         return self.blocks.load[width=width](idx).cast[output_dtype]()
 
     @inline(.always)
@@ -2202,7 +2201,6 @@ struct ContinuousBatchingKVCache[
         var idx = self._get_idx_tuple(
             Int(block_idx), head_idx, tok_idx, head_dim_idx
         )
-        # Bypass TileTensor.store's `where` constraint by using ptr directly.
         self.blocks.store(idx, val)
 
     @inline(.always)
@@ -3787,7 +3785,6 @@ struct PagedKVCache[
 
         var idx = self._get_idx(bs, head_idx, tok_idx, head_dim_idx)
 
-        # Bypass TileTensor.load's `where` constraint by using ptr directly.
         comptime if Self.quantization_enabled:
             var quantized_val = self.blocks.load[width=width](idx)
             var scale = self.load_scale[width=1](
@@ -3841,9 +3838,9 @@ struct PagedKVCache[
         assert tok_in_block_idx < Int(
             self.blocks.dim[1]()
         ), "KVCache tok_idx out of range"
-        var idx = Coord((block_idx, tok_in_block_idx, head_idx, head_dim_idx))
-        # Bypass TileTensor.store's `where` constraint by using ptr directly.
-        self.blocks.store(idx, val)
+        self.blocks.store(
+            (block_idx, tok_in_block_idx, head_idx, head_dim_idx), val
+        )
 
     @inline(.always)
     def load_scale[
@@ -3880,7 +3877,6 @@ struct PagedKVCache[
             self.scales is not None
         ), "Scales missing, yet KVCache quantization enabled"
         var idx = self._get_scale_idx(bs, head_idx, tok_idx, head_dim_idx)
-        # Bypass TileTensor.load's `where` constraint by using ptr directly.
         return self.scales.value().load[width=width](idx)
 
     @inline(.always)
@@ -3916,17 +3912,9 @@ struct PagedKVCache[
             ")",
         )
         var scale_block_idx = head_dim_idx // Self.quantization_granularity
-        var scale_idx = Coord(
-            (
-                block_idx,
-                tok_in_block_idx,
-                head_idx,
-                scale_block_idx,
-            )
-        )
-        # Bypass TileTensor.store's `where` constraint by using ptr directly.
         self.scales.value().store(
-            scale_idx, rebind[SIMD[Self.scale_dtype, width]](scales)
+            (block_idx, tok_in_block_idx, head_idx, scale_block_idx),
+            rebind[SIMD[Self.scale_dtype, width]](scales),
         )
 
     @inline(.always)
@@ -3947,7 +3935,6 @@ struct PagedKVCache[
             " disabled"
         )
         var idx = self._get_idx(bs, head_idx, tok_idx, head_dim_idx)
-        # Bypass TileTensor.load's `where` constraint by using ptr directly.
         return self.blocks.load[width=width](idx)
 
     def empty_cache(self) -> Bool:

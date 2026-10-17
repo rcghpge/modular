@@ -54,7 +54,6 @@ from std.memory import unsafe_stack_allocation
 from std.utils import IndexList
 
 from layout import TensorEngine, TileTensor, row_major
-from layout.coord import Coord
 from layout.tile_layout import TensorLayout
 
 from linalg.arch.apple.mma import MmaOpApple
@@ -184,18 +183,18 @@ struct Int8DequantWriter[
         comptime for half in range(2):
             var r = tile_r0 + rb + half * 8
             if r < self.M:
-                var asc = rebind[Float32](self.a_scale[r])
+                var asc = self.a_scale.load[width=1]((r,))
                 var col0 = tile_c0 + cb
                 var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
                 if col0 + 3 < self.N:
                     var bs = self.b_scale.load[
                         width=4, alignment=align_of[DType.float32]()
-                    ](Coord(col0))
+                    ]((col0,))
                     var y4 = (fv * asc * bs).cast[Self.c_type]()
                     comptime if Self.has_bias:
                         y4 = y4 + self.bias.load[
                             width=4, alignment=align_of[Self.c_type]()
-                        ](Coord(col0))
+                        ]((col0,))
                     self.c.store((r, col0), y4)
                 else:
                     comptime for cc in range(4):
@@ -204,13 +203,11 @@ struct Int8DequantWriter[
                             var v = (
                                 Float32(fv[cc])
                                 * asc
-                                * rebind[Float32](self.b_scale[col])
+                                * self.b_scale.load[width=1]((col,))
                             )
                             var y = v.cast[Self.c_type]()
                             comptime if Self.has_bias:
-                                y = y + rebind[Scalar[Self.c_type]](
-                                    self.bias[col]
-                                )
+                                y = y + self.bias.load[width=1]((col,))
                             self.c.store((r, col), y)
 
     @inline(.always)
@@ -230,17 +227,17 @@ struct Int8DequantWriter[
         """
         comptime for half in range(2):
             var r = tile_r0 + rb + half * 8
-            var asc = rebind[Float32](self.a_scale[r])
+            var asc = self.a_scale.load[width=1]((r,))
             var col0 = tile_c0 + cb
             var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
             var bs = self.b_scale.load[
                 width=4, alignment=align_of[DType.float32]()
-            ](Coord(col0))
+            ]((col0,))
             var y4 = (fv * asc * bs).cast[Self.c_type]()
             comptime if Self.has_bias:
                 y4 = y4 + self.bias.load[
                     width=4, alignment=align_of[Self.c_type]()
-                ](Coord(col0))
+                ]((col0,))
             self.c.store((r, col0), y4)
 
 
@@ -1067,9 +1064,7 @@ struct AppleInt8ActQuant[in_type: DType = .bfloat16, *, THREADS: Int = 64]:
         var local_max = Float32(0)
         var j = tid
         while j < K:
-            var v = abs(
-                rebind[Scalar[Self.in_type]](a[row, j]).cast[DType.float32]()
-            )
+            var v = abs(a.load[width=1]((row, j)).cast[DType.float32]())
             if v > local_max:
                 local_max = v
             j += Self.THREADS
@@ -1085,10 +1080,7 @@ struct AppleInt8ActQuant[in_type: DType = .bfloat16, *, THREADS: Int = 64]:
         j = tid
         while j < K:
             var qi = Int(
-                round(
-                    rebind[Scalar[Self.in_type]](a[row, j]).cast[.float32]()
-                    * mult
-                )
+                round(a.load[width=1]((row, j)).cast[.float32]() * mult)
             )
             q.store((row, j), Int8(qi))
             j += Self.THREADS

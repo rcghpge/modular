@@ -40,7 +40,6 @@ from max.gpu.compute.arch.mma_nvidia_sm100 import (
 )
 from max.gpu.compute.arch.tcgen05 import tcgen05_ld, tcgen05_st
 from layout import (
-    Coord,
     Idx,
     IntTuple,
     Layout,
@@ -687,8 +686,8 @@ struct TMemTile[
 
                 comptime if src_type == Self.dtype:
                     comptime for _i in range(frag_width):
-                        frag[_i] = rebind[UInt32](
-                            src.bitcast[.uint32]().load((Idx[offset + _i],))
+                        frag[_i] = src.bitcast[.uint32]().load[width=1](
+                            (Idx[offset + _i],)
                         )
                 elif pow_two > 1:
                     comptime size_ratio = size_of[src_type]() // Self.dtype_size
@@ -705,7 +704,7 @@ struct TMemTile[
                             var src_vec = src.load[
                                 width=cast_width,
                                 alignment=align_of[src_type](),
-                            ](Coord(Idx[offset + _i * cast_width]))
+                            ]((Idx[offset + _i * cast_width],))
                             var dst_vec = src_vec.cast[Self.dtype]()
                             var packed_chunk = bitcast[
                                 DType.uint32, u32_per_cast
@@ -716,15 +715,13 @@ struct TMemTile[
                         var packed = bitcast[.uint32, frag_width](
                             src.load[
                                 width=pow_two, alignment=align_of[src_type]()
-                            ](Coord(Idx[offset])).cast[Self.dtype]()
+                            ]((Idx[offset],)).cast[Self.dtype]()
                         )
                         comptime for _i in range(frag_width):
                             frag[_i] = packed[_i]
                 else:
                     frag[0] = bitcast[.uint32](
-                        rebind[Scalar[src_type]](src.load((Idx[0],))).cast[
-                            Self.dtype
-                        ]()
+                        src.load[width=1]((Idx[0],)).cast[Self.dtype]()
                     )
 
                 tcgen05_st[

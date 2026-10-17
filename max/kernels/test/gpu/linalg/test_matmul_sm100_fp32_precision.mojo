@@ -83,8 +83,8 @@ def _stats_vs_ref(
     var max_abs = Float64(0.0)
     for mm in range(rows):
         for nn in range(N):
-            var g = Float64(rebind[Scalar[f32]](got.load((mm, nn))))
-            var r = rebind[Scalar[f64]](reference.load((mm, nn)))
+            var g = Float64(got.load[width=1]((mm, nn)))
+            var r = reference.load[width=1]((mm, nn))
             var ad = abs(g - r)
             var denom = abs(r)
             if denom < 1e-30:

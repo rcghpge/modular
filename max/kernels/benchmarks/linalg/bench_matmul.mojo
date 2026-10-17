@@ -42,11 +42,9 @@ def gemm_naive(a: TileTensor, b: TileTensor, c: TileTensor[mut=True, ...]):
 
     for i in range(m):
         for p in range(k):
-            var a_val = rebind[Scalar[a.dtype]](a.load((i, p))).cast[acc_type]()
+            var a_val = a.load[width=1]((i, p)).cast[acc_type]()
             for j in range(n):
-                var b_val = rebind[Scalar[b.dtype]](b.load((p, j))).cast[
-                    acc_type
-                ]()
+                var b_val = b.load[width=1]((p, j)).cast[acc_type]()
                 accum[i * n + j] += a_val * b_val
 
     for i in range(m):
@@ -66,7 +64,7 @@ def verify(a: TileTensor, b: TileTensor, c: TileTensor):
         for j in range(n):
             try:
                 assert_almost_equal(
-                    rebind[Scalar[c.dtype]](c.load((i, j))),
+                    c.load[width=1]((i, j)),
                     c_ref[i, j],
                 )
             except e:

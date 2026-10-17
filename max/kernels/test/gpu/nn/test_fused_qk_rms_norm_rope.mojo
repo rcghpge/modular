@@ -32,7 +32,6 @@ from std.random import random_ui64
 from max.gpu.host import DeviceContext
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (
-    Coord,
     Idx,
     TileTensor,
     row_major,
@@ -315,7 +314,7 @@ def run_fused_qk_rms_norm_rope[
     def q_input_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var q_in_tt} -> SIMD[dtype, width]:
-        return q_in_tt.load[width=width](Coord(Index(token, head, col)))
+        return q_in_tt.load[width=width]((token, head, col))
 
     fused_qk_rms_norm_rope_ragged_paged[
         target="gpu",
@@ -761,7 +760,7 @@ def run_fused_dual_qk_rms_norm_rope[
     def main_q_input_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var q_main_in_tt} -> SIMD[dtype, width]:
-        return q_main_in_tt.load[width=width](Coord(Index(token, head, col)))
+        return q_main_in_tt.load[width=width]((token, head, col))
 
     @inline(.always)
     def index_q_input_fn[
@@ -769,7 +768,7 @@ def run_fused_dual_qk_rms_norm_rope[
     ](token: Int, head: Int, col: Int) {var q_index_in_tt} -> SIMD[
         dtype, width
     ]:
-        return q_index_in_tt.load[width=width](Coord(Index(token, head, col)))
+        return q_index_in_tt.load[width=width]((token, head, col))
 
     # Reference: two separate single-kernel launches.
     fused_qk_rms_norm_rope_ragged_paged[

@@ -1766,9 +1766,7 @@ def _mha_sm90[
             # if we specialize and unswitch on `first_iter`
             # otherwise, the branch requires synchronization
             comptime for row in range(num_rows_per_warp):
-                var c = SIMD[accum_type, frag_simdwidth](
-                    rebind[Scalar[accum_type]](correction[Idx[row]])
-                )
+                var c = SIMD[accum_type, frag_simdwidth](correction[Idx[row]])
 
                 comptime for col in range(num_cols_output):
                     vout[Coord(Idx[row], Idx[col])] = (
@@ -1797,7 +1795,7 @@ def _mha_sm90[
             # Apply softmax denumerator.
             comptime for row in range(num_rows_per_warp):
                 var rs_inv = SIMD[accum_type, frag_simdwidth](
-                    rowsum_inv[Idx[row]][0]
+                    rowsum_inv[Idx[row]]
                 )
 
                 comptime for col in range(num_cols_output):

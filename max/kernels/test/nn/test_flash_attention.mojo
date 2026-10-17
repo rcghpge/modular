@@ -389,8 +389,8 @@ def verify_output[
     for i in range(output.num_elements()):
         var crd = output.layout.idx2crd(i)
         var idx = Int(output.layout(crd))
-        var actual = rebind[Scalar[dtype]](output.load(crd))
-        var expected = rebind[Scalar[dtype]](ref_output.load(crd))
+        var actual = output.load[width=1](crd)
+        var expected = ref_output.load[width=1](crd)
         if not isclose(
             actual,
             expected,
@@ -652,7 +652,7 @@ def test_case_split_kv[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) {imm} -> SIMD[dtype, simd_width]:
         return k.load[width=simd_width, alignment=align_of[dtype]()](
-            Coord(idx[0], idx[1] + cfg.prev_seq_len(), idx[2], idx[3])
+            (idx[0], idx[1] + cfg.prev_seq_len(), idx[2], idx[3])
         )
 
     @inline(.always)
@@ -660,7 +660,7 @@ def test_case_split_kv[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) {imm} -> SIMD[dtype, simd_width]:
         return v.load[width=simd_width, alignment=align_of[dtype]()](
-            Coord(idx[0], idx[1] + cfg.prev_seq_len(), idx[2], idx[3])
+            (idx[0], idx[1] + cfg.prev_seq_len(), idx[2], idx[3])
         )
 
     @inline(.always)
@@ -668,7 +668,7 @@ def test_case_split_kv[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) {imm} -> SIMD[dtype, simd_width]:
         return k.load[width=simd_width, alignment=align_of[dtype]()](
-            Coord(idx[1], idx[3], idx[2], idx[4])
+            (idx[1], idx[3], idx[2], idx[4])
         )
 
     @inline(.always)
@@ -676,7 +676,7 @@ def test_case_split_kv[
         simd_width: Int, _rank: Int
     ](idx: IndexList[_rank]) {imm} -> SIMD[dtype, simd_width]:
         return v.load[width=simd_width, alignment=align_of[dtype]()](
-            Coord(idx[1], idx[3], idx[2], idx[4])
+            (idx[1], idx[3], idx[2], idx[4])
         )
 
     @inline(.always)

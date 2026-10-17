@@ -414,7 +414,7 @@ def _top_k_cpu[
 
             for i in range(k_val):
                 indices[axis] = Int(idxs[i])
-                var val = rebind[Scalar[dtype]](input.load(Coord(indices)))
+                var val = input.load[width=1](Coord(indices))
                 indices[axis] = i
                 out_vals.store(Coord(indices), val)
                 out_idxs[Coord(indices)] = rebind[Scalar[out_idx_type]](idxs[i])

@@ -33,7 +33,7 @@ def compute_rms[
     comptime accum_type = get_accum_type[dtype]()
     var sum_of_squares = Scalar[accum_type]()
     for i in range(size):
-        var val = data[i][0].cast[accum_type]()
+        var val = data.load[width=1]((i,)).cast[accum_type]()
         sum_of_squares += val * val
     var result = sqrt(
         (sum_of_squares / Scalar[accum_type](data.num_elements()))
@@ -315,9 +315,7 @@ def run_rms_norm_row_based[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
-        out_buf.store[alignment=alignment * align_of[dtype]()](
-            coords, rebind[SIMD[dtype, width]](val)
-        )
+        out_buf.store[alignment=alignment * align_of[dtype]()](coords, val)
 
     rms_norm[
         dtype,

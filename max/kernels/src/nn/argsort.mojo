@@ -160,12 +160,8 @@ def _bitonic_local_sort_kernel[
     ]()
 
     if gid < _n_arg:
-        shared_vals.unsafe_store(
-            tid, rebind[Scalar[input_dtype]](input_arg.load((gid,)))
-        )
-        shared_idxs.unsafe_store(
-            tid, rebind[Scalar[indices_dtype]](indices_arg.load((gid,)))
-        )
+        shared_vals.unsafe_store(tid, input_arg.load[width=1]((gid,)))
+        shared_idxs.unsafe_store(tid, indices_arg.load[width=1]((gid,)))
     else:
         shared_vals.unsafe_store(tid, _sentinel_val[input_dtype, ascending]())
         shared_idxs.unsafe_store(tid, Scalar[indices_dtype](-1))
@@ -256,12 +252,8 @@ def _bitonic_merge_local_kernel[
         address_space=.SHARED,
     ]()
 
-    shared_vals.unsafe_store(
-        tid, rebind[Scalar[input_dtype]](input_arg.load((gid,)))
-    )
-    shared_idxs.unsafe_store(
-        tid, rebind[Scalar[indices_dtype]](indices_arg.load((gid,)))
-    )
+    shared_vals.unsafe_store(tid, input_arg.load[width=1]((gid,)))
+    shared_idxs.unsafe_store(tid, indices_arg.load[width=1]((gid,)))
 
     var j = BLOCK_SIZE >> 1
     while j > 0:
@@ -474,13 +466,13 @@ def _argsort_gpu[
             var i = offset[0].value()
 
             indices_flat.store[alignment=align_of[indices.dtype]()](
-                Coord(i),
+                (i,),
                 iota[indices.dtype, width](Scalar[indices.dtype](i)),
             )
             input_copy.store[alignment=simd_width_of[input_copy.dtype]()](
-                Coord(i),
+                (i,),
                 input_flat.load[width=width, alignment=align_of[input.dtype]()](
-                    Coord(i)
+                    (i,)
                 ),
             )
 
@@ -519,13 +511,13 @@ def _argsort_gpu[
         var i = Int(offset[0].value())
         if i < n:
             padded_indices.store[alignment=align_of[padded_indices.dtype]()](
-                Coord(i),
+                (i,),
                 iota[padded_indices.dtype, width](Scalar[indices.dtype](i)),
             )
             padded_input.store[alignment=simd_width_of[padded_input.dtype]()](
-                Coord(i),
+                (i,),
                 input_flat.load[width=width, alignment=align_of[input.dtype]()](
-                    Coord(i)
+                    (i,)
                 ),
             )
             return
@@ -533,10 +525,10 @@ def _argsort_gpu[
         # otherwise we pad with a sentinel value and the max/min value for the type.
         comptime UNKNOWN_VALUE = -1
         padded_indices.store[alignment=align_of[padded_indices.dtype]()](
-            Coord(i), SIMD[padded_indices.dtype, width](UNKNOWN_VALUE)
+            (i,), SIMD[padded_indices.dtype, width](UNKNOWN_VALUE)
         )
         padded_input.store[alignment=align_of[padded_input.dtype]()](
-            Coord(i),
+            (i,),
             SIMD[padded_input.dtype, width](
                 _sentinel_val[padded_input.dtype, ascending]()
             ),

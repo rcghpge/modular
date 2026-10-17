@@ -2846,7 +2846,7 @@ struct RegTileEpilogue[
                         Self.c_type,
                         1,
                         alignment=align_of[Scalar[Self.c_type]](),
-                    ](Coord(m, col), SIMD[Self.c_type, 1](v[e]))
+                    ](Coord(m, col), v[e])
 
     @inline(.always)
     def store_with_compute_fn[
@@ -2969,7 +2969,7 @@ def _buffer_load_impl[
     comptime for i in range(M):
         comptime for j in range(N):
             dst_flat.store[alignment=align_of[dst.dtype]()](
-                Coord((i * dst_s0 + j * dst_s1) * elem_size),
+                ((i * dst_s0 + j * dst_s1) * elem_size,),
                 bc.load[dst.dtype, elem_size](
                     base_offset,
                     scalar_offset=Int32(i * src_s0 + j * src_s1),
@@ -3063,7 +3063,7 @@ struct RegTileWriterLDS[
                     comptime src_idx = i * R1 + j
                     comptime dst_off = i * s0 + j * s1
                     dst_flat.store[alignment=dst_align](
-                        Coord(dst_off),
+                        (dst_off,),
                         rebind[DstVec](
                             src_flat.load[width=elem_size, alignment=src_align](
                                 (src_idx * elem_size,)
@@ -3083,7 +3083,7 @@ struct RegTileWriterLDS[
                         comptime src_idx = i * R1 * R2 + j * R2 + k
                         comptime dst_off = i * s0 + j * s1 + k * s2
                         dst_flat.store[alignment=dst_align](
-                            Coord(dst_off),
+                            (dst_off,),
                             rebind[DstVec](
                                 src_flat.load[
                                     width=elem_size, alignment=src_align

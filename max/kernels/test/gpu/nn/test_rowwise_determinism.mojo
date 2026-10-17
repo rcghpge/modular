@@ -140,9 +140,7 @@ def _probe_layer_norm[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
-        out_buf.store[alignment=alignment * align_of[dtype]()](
-            coords, rebind[SIMD[dtype, width]](val)
-        )
+        out_buf.store[alignment=alignment * align_of[dtype]()](coords, val)
 
     var hashes = List[UInt64]()
     var nans = 0
@@ -215,9 +213,7 @@ def _probe_rms_norm[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
-        out_buf.store[alignment=alignment * align_of[dtype]()](
-            coords, rebind[SIMD[dtype, width]](val)
-        )
+        out_buf.store[alignment=alignment * align_of[dtype]()](coords, val)
 
     var hashes = List[UInt64]()
     var nans = 0

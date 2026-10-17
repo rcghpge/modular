@@ -46,8 +46,8 @@ def assert_allclose[
     var gpu_flat = h_output_gpu.reshape(row_major(n))
     for i in range(n):
         assert_almost_equal(
-            rebind[Scalar[dtype]](ref_flat[i]),
-            rebind[Scalar[dtype]](gpu_flat[i]),
+            ref_flat.load[width=1]((i,)),
+            gpu_flat.load[width=1]((i,)),
         )
 
 

@@ -63,7 +63,7 @@ from nn.normalization import _rms_norm_impl, _rms_norm_warp_tiling_subkernel
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id, trace_arg
 from std.utils.numerics import get_accum_type
 
-from std.utils import Index, IndexList
+from std.utils import IndexList
 from extensibility import InputTensor
 from extensibility import (
     _MutableInputTensor as MutableInputTensor,
@@ -585,7 +585,7 @@ def _fused_qk_rms_norm_ragged_paged_gpu[
             gamma_val = k_gamma.load[width=simd_width]((idx,))
         else:
             vec_data = q_proj.load[width=simd_width](
-                Coord(Index(global_token_idx, head_idx, idx))
+                (global_token_idx, head_idx, idx)
             ).cast[accum_type]()
             gamma_val = q_gamma.load[width=simd_width]((idx,))
 
@@ -906,9 +906,7 @@ def _fused_qk_rms_norm_rope_process_row[
     comptime width_2 = simd_width // 2
 
     comptime if interleaved:
-        var freq_val = freqs_cis.load[width=simd_width](
-            Coord((post_seq_idx, idx))
-        )
+        var freq_val = freqs_cis.load[width=simd_width]((post_seq_idx, idx))
         var val = s_norm.load[width=simd_width]((idx,))
         var res = rope_value(val, freq_val.cast[accum_type]()).cast[dtype]()
         if is_k:
@@ -950,15 +948,13 @@ def _fused_qk_rms_norm_rope_process_row[
                 return
 
         comptime split_size = rope_dim if has_nope_prefix else head_dim
-        var freq_val = freqs_cis.load[width=simd_width](
-            Coord((post_seq_idx, idx))
-        )
+        var freq_val = freqs_cis.load[width=simd_width]((post_seq_idx, idx))
 
         var h_re, h_im = get_safetensors_idx(idx, split_size)
 
         var val = rebind[SIMD[accum_type, simd_width]](
-            s_norm.load[width=width_2](Coord(h_re)).interleave(
-                s_norm.load[width=width_2](Coord(h_im))
+            s_norm.load[width=width_2]((h_re,)).interleave(
+                s_norm.load[width=width_2]((h_im,))
             )
         )
         var res = rope_value(val, freq_val.cast[accum_type]()).cast[dtype]()
@@ -986,11 +982,11 @@ def _fused_qk_rms_norm_rope_process_row[
                 )
         else:
             q_output.store(
-                Coord(Index(global_token_idx, head_idx, h_re)),
+                (global_token_idx, head_idx, h_re),
                 output_re.cast[q_out_dtype](),
             )
             q_output.store(
-                Coord(Index(global_token_idx, head_idx, h_im)),
+                (global_token_idx, head_idx, h_im),
                 output_im.cast[q_out_dtype](),
             )
 
@@ -1867,7 +1863,7 @@ def nvfp4_kv_write_row[
         if active:
             comptime if interleaved:
                 var freq_val = freqs_cis.load[width=simd_width](
-                    Coord((post_seq_idx, idx))
+                    (post_seq_idx, idx)
                 )
                 var val = s_norm.load[width=simd_width]((idx,))
                 s_row.store(
@@ -1884,20 +1880,20 @@ def nvfp4_kv_write_row[
                     )
                     comptime width_2 = simd_width // 2
                     var freq_val = freqs_cis.load[width=simd_width](
-                        Coord((post_seq_idx, idx))
+                        (post_seq_idx, idx)
                     )
                     var h_re, h_im = get_safetensors_idx(idx, split_size)
                     var val = rebind[SIMD[accum_type, simd_width]](
-                        s_norm.load[width=width_2](Coord(h_re)).interleave(
-                            s_norm.load[width=width_2](Coord(h_im))
+                        s_norm.load[width=width_2]((h_re,)).interleave(
+                            s_norm.load[width=width_2]((h_im,))
                         )
                     )
                     var res = rope_value(val, freq_val.cast[accum_type]()).cast[
                         dtype
                     ]()
                     var output_re, output_im = res.deinterleave()
-                    s_row.store(Coord(h_re), output_re)
-                    s_row.store(Coord(h_im), output_im)
+                    s_row.store((h_re,), output_re)
+                    s_row.store((h_im,), output_im)
                 else:
                     s_row.store(
                         (idx,),

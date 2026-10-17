@@ -380,13 +380,13 @@ struct TensorCore[
                     + 4 * width * ((register // width) // row_groups)
                     + register % width
                 )
-                fragment[0, register] = rebind[Scalar[Self.in_type]](a[row, k])
+                fragment[0, register] = a.load[width=1]((row, k))
         else:
             var row = lane_id() % Self.shape[0]
             var k_base = (lane_id() // Self.shape[0]) * registers
             comptime for register in range(registers):
-                fragment[0, register] = rebind[Scalar[Self.in_type]](
-                    a[row, k_base + register]
+                fragment[0, register] = a.load[width=1](
+                    (row, k_base + register)
                 )
         return fragment
 
@@ -462,24 +462,20 @@ struct TensorCore[
                     + register % width
                 )
                 comptime if Self.transpose_b:
-                    fragment[register, 0] = rebind[Scalar[Self.in_type]](
-                        b[col, k]
-                    )
+                    fragment[register, 0] = b.load[width=1]((col, k))
                 else:
-                    fragment[register, 0] = rebind[Scalar[Self.in_type]](
-                        b[k, col]
-                    )
+                    fragment[register, 0] = b.load[width=1]((k, col))
         else:
             var col = lane_id() % Self.shape[1]
             var k_base = (lane_id() // Self.shape[1]) * registers
             comptime for register in range(registers):
                 comptime if Self.transpose_b:
-                    fragment[register, 0] = rebind[Scalar[Self.in_type]](
-                        b[col, k_base + register]
+                    fragment[register, 0] = b.load[width=1](
+                        (col, k_base + register)
                     )
                 else:
-                    fragment[register, 0] = rebind[Scalar[Self.in_type]](
-                        b[k_base + register, col]
+                    fragment[register, 0] = b.load[width=1](
+                        (k_base + register, col)
                     )
         return fragment
 
@@ -542,7 +538,7 @@ struct TensorCore[
         comptime assert fragment.flat_rank == 2
         comptime for register in range(registers):
             var row, col = Self._c_fragment_coord[register](lane_id())
-            fragment[0, register] = rebind[Scalar[Self.out_type]](c[row, col])
+            fragment[0, register] = c.load[width=1]((row, col))
         return fragment
 
     @inline(.always)
@@ -720,10 +716,8 @@ struct TensorCore[
             var b_flat = b.reshape(row_major[b.LayoutType.static_cosize]())
             var result = SIMD[Self.in_type, width]()
             comptime for r in range(width):
-                result[r] = rebind[Scalar[Self.in_type]](
-                    b_flat.load[invariant=False](
-                        (frag_offset + r * row_stride,)
-                    )
+                result[r] = b_flat.load[width=1, invariant=False](
+                    (frag_offset + r * row_stride,)
                 )
             return result
 
@@ -921,11 +915,11 @@ struct TensorCore[
                             fragments.store[alignment=alignment](
                                 (i, 0),
                                 SIMD[Self.in_type, 2](
-                                    rebind[Scalar[Self.in_type]](
-                                        mma_tile[lane % 4, lane // 4]
+                                    mma_tile.load[width=1](
+                                        (lane % 4, lane // 4)
                                     ),
-                                    rebind[Scalar[Self.in_type]](
-                                        mma_tile[lane % 4 + 4, lane // 4]
+                                    mma_tile.load[width=1](
+                                        (lane % 4 + 4, lane // 4)
                                     ),
                                 ),
                             )
@@ -941,11 +935,11 @@ struct TensorCore[
                             )
                             var frag = SIMD[Self.in_type, 8]()
                             comptime for r in range(4):
-                                frag[r] = rebind[Scalar[Self.in_type]](
-                                    mma_tile[(lane % 4) * 4 + r, lane // 4]
+                                frag[r] = mma_tile.load[width=1](
+                                    ((lane % 4) * 4 + r, lane // 4)
                                 )
-                                frag[4 + r] = rebind[Scalar[Self.in_type]](
-                                    mma_tile[16 + (lane % 4) * 4 + r, lane // 4]
+                                frag[4 + r] = mma_tile.load[width=1](
+                                    (16 + (lane % 4) * 4 + r, lane // 4)
                                 )
                             fragments.store[alignment=alignment]((i, 0), frag)
                     case _:
@@ -1086,13 +1080,13 @@ struct TensorCore[
         )
         comptime for i in range(0, num_frags, 2):
             var q_int = vec[i // 2]
-            var scale = rebind[BFloat16](scales[i, 0])
+            var scale = scales.load[width=1]((i, 0))
             var v1 = _int4_to_bf16(q_int, scale)
             q_int >>= 4
             var v2 = _int4_to_bf16(q_int, scale)
             fragments.store[alignment=align_of[BFloat16]()]((i, 0), v1.join(v2))
             q_int >>= 4
-            scale = rebind[BFloat16](scales[i + 1, 0])
+            scale = scales.load[width=1]((i + 1, 0))
             v1 = _int4_to_bf16(q_int, scale)
             q_int >>= 4
             v2 = _int4_to_bf16(q_int, scale)

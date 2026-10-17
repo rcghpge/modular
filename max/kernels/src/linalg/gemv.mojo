@@ -1268,7 +1268,7 @@ def _gemv_split_k_impl[
                 var weight_native = rebind[SIMD[b_type, simd_width]](
                     tile_w.vectorize[1, simd_width]()[j, 0]
                 )
-                var local_accum = rebind[Scalar[accum_type]](acc[i, j])
+                var local_accum = acc[i, j]
                 local_accum = _dot_accum(act_native, weight_native, local_accum)
                 acc[i, j] = local_accum
 
@@ -3086,8 +3086,8 @@ def naive_gemv(
         var dot = acc.reduce_add()
         for k in range(vector_end, K):
             dot += (
-                rebind[Scalar[a_buf.dtype]](a_buf[m, k]).cast[c_type]()
-                * rebind[Scalar[b_buf.dtype]](b_buf[k]).cast[c_type]()
+                a_buf.load[width=1]((m, k)).cast[c_type]()
+                * b_buf.load[width=1]((k,)).cast[c_type]()
             )
         c_buf.store((m,), dot)
 

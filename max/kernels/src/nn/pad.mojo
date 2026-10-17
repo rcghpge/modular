@@ -932,7 +932,7 @@ def pad_repeat[
         var output_idx = input_idx + pre_pads
         output.store(
             Coord(output_idx),
-            rebind[Scalar[dtype]](input.load(Coord(input_idx))),
+            input.load[width=1](Coord(input_idx)),
         )
 
     for axis in reversed(range(comptime (output.rank))):

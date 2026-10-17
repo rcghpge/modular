@@ -43,7 +43,7 @@ here as well would blank a correct row.
 
 from std.math import rsqrt
 from max.gpu import WARP_SIZE, block_dim, block_idx, thread_idx
-from layout import Coord, TensorEngine, TensorLayout, TileTensor, row_major
+from layout import TensorEngine, TensorLayout, TileTensor, row_major
 
 from nn.normalization import block_reduce_dual_sum
 
@@ -143,12 +143,8 @@ def mtp_eh_norm_kernel[
     var acc_h = Float32(0)
     var col = tid
     while col < hidden_size:
-        var e = rebind[Scalar[dtype]](embed_flat.load((row + col,))).cast[
-            .float32
-        ]()
-        var p = rebind[Scalar[dtype]](prev_flat.load((row + col,))).cast[
-            .float32
-        ]()
+        var e = embed_flat.load[width=1]((row + col,)).cast[.float32]()
+        var p = prev_flat.load[width=1]((row + col,)).cast[.float32]()
         acc_e += e * e
         acc_h += p * p
         col += stride
@@ -166,24 +162,14 @@ def mtp_eh_norm_kernel[
     col = tid
     while col < hidden_size:
         # Cast before the multiply: `multiply_before_cast=False`.
-        var e = (
-            rebind[Scalar[dtype]](embed_flat.load((row + col,))).cast[
-                .float32
-            ]()
-            * rrms_e
-        )
-        var p = (
-            rebind[Scalar[dtype]](prev_flat.load((row + col,))).cast[.float32]()
-            * rrms_h
-        )
+        var e = embed_flat.load[width=1]((row + col,)).cast[.float32]() * rrms_e
+        var p = prev_flat.load[width=1]((row + col,)).cast[.float32]() * rrms_h
         out_flat.store(
             (out_row + col,),
-            e.cast[dtype]()
-            * rebind[Scalar[dtype]](enorm_flat.load(Coord(col))),
+            e.cast[dtype]() * enorm_flat.load[width=1]((col,)),
         )
         out_flat.store(
             (out_row + hidden_size + col,),
-            p.cast[dtype]()
-            * rebind[Scalar[dtype]](hnorm_flat.load(Coord(col))),
+            p.cast[dtype]() * hnorm_flat.load[width=1]((col,)),
         )
         col += stride

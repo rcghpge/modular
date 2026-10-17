@@ -530,9 +530,7 @@ def block_scales_interleave_fp4_kernel[
         for col_idx in range(thread_idx.x, num_col_padded, block_dim.x):
             var scale_factor = Scalar[scales_dtype](0.0)
             if row_idx < num_rows and col_idx < num_cols:
-                scale_factor = rebind[Scalar[scales_dtype]](
-                    input_scales[Int(row_idx), Int(col_idx)]
-                )
+                scale_factor = input_scales[Int(row_idx), Int(col_idx)]
 
             set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
                 output_scales,
@@ -837,12 +835,8 @@ def naive_block_scaled_matmul_kernel[
                 accum += a_val * b_val * a_scale_val * b_scale_val
         else:
             # MXFP8: one float8 value per byte.
-            var a_val = rebind[Scalar[a_type]](a[row_idx, k // K_STEPS]).cast[
-                accum_type
-            ]()
-            var b_val = rebind[Scalar[b_type]](b[col_idx, k // K_STEPS]).cast[
-                accum_type
-            ]()
+            var a_val = a[row_idx, k // K_STEPS].cast[accum_type]()
+            var b_val = b[col_idx, k // K_STEPS].cast[accum_type]()
             var a_scale_val = abs(
                 rebind[Scalar[accum_type]](a_scale.cast[accum_type]())
             )
@@ -1046,7 +1040,7 @@ def quantize_dynamic_scaled_async_fp4_kernel[
                         var temp = smem_tile_flat.load[
                             width=8,
                             alignment=align_of[SIMD[input_dtype, 8]](),
-                        ](Coord(swizzle_idx))
+                        ]((swizzle_idx,))
 
                         group_elements = group_elements.insert[
                             offset=col_idx * 8
@@ -1096,16 +1090,16 @@ def quantize_dynamic_scaled_async_fp4_kernel[
                     output_smem_flat.store[
                         alignment=align_of[SIMD[output_dtype, SF_VECTOR_SIZE]]()
                     ](
-                        Coord(output_swizzle_idx),
+                        (output_swizzle_idx,),
                         bitcast[output_dtype, SF_VECTOR_SIZE](slice_elements),
                     )
 
                 scales_smem_flat.store[
                     alignment=align_of[SIMD[scales_dtype, SF_ATOM_K]]()
                 ](
-                    Coord(
+                    (
                         (local_row_idx % 32) * 16
-                        + (local_row_idx // 32) * SF_ATOM_K
+                        + (local_row_idx // 32) * SF_ATOM_K,
                     ),
                     scale_factors,
                 )
@@ -1726,7 +1720,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             var smem_idx = (
                 (local_row % 32) * 16 + (local_row // 32) * SF_ATOM_K + sf_group
             )
-            scales_smem_flat.store(Coord(smem_idx), fp8_scale_factor)
+            scales_smem_flat.store((smem_idx,), fp8_scale_factor)
 
     barrier()
 
@@ -3655,7 +3649,7 @@ def quantize_dynamic_block_scaled_mxfp4_kernel[
 
     var loaded_vec = input.reshape(row_major(input.num_elements())).load[
         width=8, alignment=align_of[in_dtype](), invariant=False
-    ](Coord(n))
+    ]((n,))
     var thread_max = abs(loaded_vec).reduce_max().cast[.float32]()
     var group_max = warp.lane_group_max[num_lanes=threads_per_group](thread_max)
 
@@ -3780,16 +3774,16 @@ def _mxfp4_dotprod[
     var accum = SIMD[.float32, BLOCK_N](0)
 
     for ko in range(k_groups):
-        var a_scale = rebind[Scalar[.float8_e8m0fnu]](
-            a_scales_flat.load[invariant=False]((a_scales_offset + ko,))
+        var a_scale = (
+            a_scales_flat.load[width=1, invariant=False](
+                (a_scales_offset + ko,)
+            )
         ).cast[.float32]()
         var b_scale = Array[_, BLOCK_N](
             fill_with_unrolled=lambda [bn: Int]() {
                 imm b_scales_flat, imm b_scales_offset, imm k_groups, imm ko
-            } -> Float32: rebind[Scalar[.float8_e8m0fnu]](
-                b_scales_flat.load[invariant=False](
-                    (b_scales_offset + bn * k_groups + ko,)
-                )
+            } -> Float32: b_scales_flat.load[width=1, invariant=False](
+                (b_scales_offset + bn * k_groups + ko,)
             ).cast[
                 .float32
             ]()
@@ -3799,7 +3793,7 @@ def _mxfp4_dotprod[
             var a_data = bitcast[.int32, 1](
                 a_flat.load[
                     width=4, alignment=align_of[DType.uint8](), invariant=False
-                ](Coord(a_local_offset + ki))
+                ]((a_local_offset + ki,))
             )
             var b_data = Array[_, BLOCK_N](
                 fill_with_unrolled=lambda [bn: Int]() {
@@ -3809,7 +3803,7 @@ def _mxfp4_dotprod[
                         width=4,
                         alignment=align_of[DType.uint8](),
                         invariant=False,
-                    ](Coord(b_local_offset + bn * (K // 2) + ki))
+                    ]((b_local_offset + bn * (K // 2) + ki,))
                 )
             )
 
@@ -3832,7 +3826,7 @@ def _mxfp4_dotprod[
 
     c.reshape(row_major(c.num_elements())).store[
         alignment=align_of[out_dtype]()
-    ](Coord(c_offset), accum.cast[out_dtype]())
+    ]((c_offset,), accum.cast[out_dtype]())
 
 
 @inline(.always)
@@ -4039,7 +4033,7 @@ def grouped_matmul_block_scaled_amd_kernel[
     if expert_id == -1:
         c.reshape(row_major(c.num_elements())).store[
             alignment=align_of[out_dtype]()
-        ](Coord(m * _N + n), SIMD[out_dtype, BLOCK_N](0))
+        ]((m * _N + n,), SIMD[out_dtype, BLOCK_N](0))
         return
 
     var k_groups = _K // MXFP4_SF_VECTOR_SIZE

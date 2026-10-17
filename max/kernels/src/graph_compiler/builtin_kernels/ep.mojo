@@ -514,7 +514,7 @@ struct Struct_ep_dispatch_async_block_scaled_nv:
         @__copy_capture(input_scales_tensor)
         def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
             # Currently only use one global input scale for all experts
-            return rebind[Scalar[dtype]](input_scales_tensor[0].cast[dtype]())
+            return input_scales_tensor[0].cast[dtype]()
 
         comptime token_fmt_type = NVBlockScaledTokenFormat[
             quant_dtype=dispatch_dtype,
@@ -1217,7 +1217,7 @@ struct Struct_ep_dispatch_block_scaled_nv:
         @__copy_capture(input_scales_tensor)
         def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
             # Currently only use one global input scale for all experts
-            return rebind[Scalar[dtype]](input_scales_tensor[0].cast[dtype]())
+            return input_scales_tensor[0].cast[dtype]()
 
         var format_handler = NVBlockScaledTokenFormat[hidden_size, top_k](
             output_tokens_tensor,
@@ -1625,7 +1625,7 @@ struct DistributedEPDispatchBlockScaledNV:
             @inline(.always)
             @__copy_capture(in_scales)
             def input_scales_fn[dtype: DType](expert_id: Int) -> Scalar[dtype]:
-                return rebind[Scalar[dtype]](in_scales[0].cast[dtype]())
+                return in_scales[0].cast[dtype]()
 
             var format_handler = NVBlockScaledTokenFormat[hidden_size, top_k](
                 out_tokens,

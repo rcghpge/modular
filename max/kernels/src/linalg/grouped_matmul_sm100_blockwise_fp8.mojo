@@ -417,18 +417,18 @@ def matmul_sm100_grouped_blockwise_scaled_fp8_1d2d_kernel[
                 var next_n = begin_n if begin_n < end_n else BN
 
                 if ld_iter < (next_n // 8):
-                    b_scale = rebind[Scalar[b_scales_type]](
-                        b_scales_2d[b_scale_m_offset + idx0, k_iter]
-                    ).cast[accum_type]()
+                    b_scale = b_scales_2d[b_scale_m_offset + idx0, k_iter].cast[
+                        accum_type
+                    ]()
                 else:
-                    b_scale = rebind[Scalar[b_scales_type]](
-                        b_scales_2d[b_scale_m_offset + idx0 + 1, k_iter]
-                    ).cast[accum_type]()
+                    b_scale = b_scales_2d[
+                        b_scale_m_offset + idx0 + 1, k_iter
+                    ].cast[accum_type]()
 
             else:
-                b_scale = rebind[Scalar[b_scales_type]](
-                    b_scales_2d[b_scale_m_offset + block_idx.x, k_iter]
-                ).cast[accum_type]()
+                b_scale = b_scales_2d[
+                    b_scale_m_offset + block_idx.x, k_iter
+                ].cast[accum_type]()
 
             comptime for i in range(2):
                 var local_m = _accum_row[mma_shape, 1](
@@ -441,7 +441,7 @@ def matmul_sm100_grouped_blockwise_scaled_fp8_1d2d_kernel[
                         accum_type
                     ]()
 
-                var scale = rebind[Scalar[accum_type]](a_scale * b_scale)
+                var scale = a_scale * b_scale
                 var scale_pair = SIMD[accum_type, 2](scale)
 
                 comptime idx = ld_iter * type_of(
@@ -977,10 +977,10 @@ def _copy_partial_a_tile_blockwise_from_gmem[
         var av = zero_vec
         if g_row < expert_end_row:
             av = a_gmem.load[width=VEC, alignment=align_of[a_type]()](
-                Coord(g_row, iter_idx * BK + k0)
+                (g_row, iter_idx * BK + k0)
             )
         a_smem_flat.store[alignment=align_of[a_type]()](
-            Coord(Int(a_sw(Int32(row * BK + k0)))), av
+            (Int(a_sw(Int32(row * BK + k0))),), av
         )
 
     # a_scales: BM scalars total; each lane writes one row per outer iteration.
@@ -989,7 +989,7 @@ def _copy_partial_a_tile_blockwise_from_gmem[
         var g_row = m_tile_global_start + row
         var sv = Scalar[a_scales_type](0)
         if g_row < expert_end_row:
-            sv = rebind[Scalar[a_scales_type]](a_scales_gmem[iter_idx, g_row])
+            sv = a_scales_gmem[iter_idx, g_row]
         a_scales_smem_tile[0, row] = sv
 
 
@@ -1601,9 +1601,9 @@ def multi_stage_reg_epilogue[
                         var src = c_smem_split_flat.load[
                             width=simd_size, alignment=alignment
                         ](
-                            Coord(
+                            (
                                 linear_idx if size_of[c_type]()
-                                != 2 else swizzle(linear_idx)
+                                != 2 else swizzle(linear_idx),
                             )
                         )
                         c.store[alignment=alignment]((global_i, global_j), src)
@@ -1828,34 +1828,25 @@ def promote_accumulators[
         #                                                           next_n(128)
 
         # prefetch b scales
-        b_scale_0 = rebind[Scalar[accum_type]](
-            b_scales[
-                b_scale_m_offset + type_of(b_scale_m_offset)(b_scale_idx0),
-                k_iter,
-            ].cast[accum_type]()
-        )
+        b_scale_0 = b_scales[
+            b_scale_m_offset + type_of(b_scale_m_offset)(b_scale_idx0),
+            k_iter,
+        ].cast[accum_type]()
         # this mean in this block we have two scale_b
         if b_scale_next_n < MMA_N:
-            b_scale_1 = rebind[Scalar[accum_type]](
-                b_scales[
-                    b_scale_m_offset
-                    + type_of(b_scale_m_offset)(b_scale_idx0)
-                    + 1,
-                    k_iter,
-                ].cast[accum_type]()
-            )
+            b_scale_1 = b_scales[
+                b_scale_m_offset + type_of(b_scale_m_offset)(b_scale_idx0) + 1,
+                k_iter,
+            ].cast[accum_type]()
         else:
             b_scale_1 = 0.0
 
     else:
         # when MMA_N == BK == 128 we only have one scale_b per block
-        b_scale_0 = rebind[Scalar[accum_type]](
-            b_scales[
-                b_scale_m_offset
-                + type_of(b_scale_m_offset)(ufloordiv(bn, MMA_N)),
-                k_iter,
-            ].cast[accum_type]()
-        )
+        b_scale_0 = b_scales[
+            b_scale_m_offset + type_of(b_scale_m_offset)(ufloordiv(bn, MMA_N)),
+            k_iter,
+        ].cast[accum_type]()
         b_scale_1 = 0.0
 
     var warp_id = get_warp_id()

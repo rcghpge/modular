@@ -27,7 +27,6 @@ from std.random import random_float64, random_ui64, seed
 from max.gpu.host import DeviceBuffer, DeviceContext, HostBuffer
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (
-    Coord,
     Idx,
     RowMajorLayout,
     TileTensor,
@@ -39,7 +38,6 @@ from nn.kv_cache import (
     fused_dual_qk_rms_norm_rope_ragged_paged,
 )
 from std.testing import assert_equal, assert_true
-from std.utils import Index
 from std.utils.numerics import inf, nan
 
 comptime dtype = DType.bfloat16
@@ -537,31 +535,31 @@ def run_nvfp4_dual[
     def q_main_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var q_main_tt} -> SIMD[dtype, width]:
-        return q_main_tt.load[width=width](Coord(Index(token, head, col)))
+        return q_main_tt.load[width=width]((token, head, col))
 
     @inline(.always)
     def k_main_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var k_main_tt} -> SIMD[dtype, width]:
-        return k_main_tt.load[width=width](Coord(Index(token, head, col)))
+        return k_main_tt.load[width=width]((token, head, col))
 
     @inline(.always)
     def v_main_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var v_main_tt} -> SIMD[dtype, width]:
-        return v_main_tt.load[width=width](Coord(Index(token, head, col)))
+        return v_main_tt.load[width=width]((token, head, col))
 
     @inline(.always)
     def q_index_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var q_index_tt} -> SIMD[dtype, width]:
-        return q_index_tt.load[width=width](Coord(Index(token, head, col)))
+        return q_index_tt.load[width=width]((token, head, col))
 
     @inline(.always)
     def k_index_fn[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var k_index_tt} -> SIMD[dtype, width]:
-        return k_index_tt.load[width=width](Coord(Index(token, head, col)))
+        return k_index_tt.load[width=width]((token, head, col))
 
     var main_epsilon = Float32(1e-6)
     var index_epsilon = Float32(1e-5)
@@ -1008,31 +1006,31 @@ def run_nvfp4_dual_empty(ctx: DeviceContext) raises:
     def f0[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var s0} -> SIMD[dtype, width]:
-        return s0.load[width=width](Coord(Index(token, head, col)))
+        return s0.load[width=width]((token, head, col))
 
     @inline(.always)
     def f1[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var s1} -> SIMD[dtype, width]:
-        return s1.load[width=width](Coord(Index(token, head, col)))
+        return s1.load[width=width]((token, head, col))
 
     @inline(.always)
     def f2[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var s2} -> SIMD[dtype, width]:
-        return s2.load[width=width](Coord(Index(token, head, col)))
+        return s2.load[width=width]((token, head, col))
 
     @inline(.always)
     def f3[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var s3} -> SIMD[dtype, width]:
-        return s3.load[width=width](Coord(Index(token, head, col)))
+        return s3.load[width=width]((token, head, col))
 
     @inline(.always)
     def f4[
         width: Int, alignment: Int
     ](token: Int, head: Int, col: Int) {var s4} -> SIMD[dtype, width]:
-        return s4.load[width=width](Coord(Index(token, head, col)))
+        return s4.load[width=width]((token, head, col))
 
     fused_dual_qk_rms_norm_rope_nvfp4_ragged_paged[
         target="gpu", multiply_before_cast=True, interleaved=False

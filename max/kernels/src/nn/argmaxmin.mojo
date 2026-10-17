@@ -153,7 +153,7 @@ def _argn[
             else:
                 global_values = input_rows.load[
                     width=simd_width, alignment=align_of[input.dtype]()
-                ](Coord(i, 0))
+                ]((i, 0))
 
             # iterate over values evenly divisible by simd_width
             var indices = iota[output.dtype, simd_width]()
@@ -162,7 +162,7 @@ def _argn[
             for j in range(simd_width, last_simd_index, simd_width):
                 var curr_values = input_rows.load[
                     width=simd_width, alignment=align_of[input.dtype]()
-                ](Coord(i, j))
+                ]((i, j))
                 indices += Scalar[output.dtype](simd_width)
 
                 var mask = cmpeq(curr_values, global_values)
@@ -178,7 +178,7 @@ def _argn[
             var idx = Scalar[output.dtype](0)
             var found_min: Bool = False
             for j in range(last_simd_index, axis_size, 1):
-                var elem = rebind[Scalar[input.dtype]](input_rows.load((i, j)))
+                var elem = input_rows.load[width=1]((i, j))
                 if cmp(global_val, elem):
                     global_val = elem
                     idx = Scalar[output.dtype](j)

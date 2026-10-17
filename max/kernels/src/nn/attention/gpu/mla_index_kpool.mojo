@@ -195,12 +195,12 @@ def kpool_compress_kernel[
     var logits = Array[Float32, kpool]()
     var vals = Array[Float32, kpool]()
     for m in range(kpool):
-        logits[m] = rebind[Scalar[dtype]](
-            gate_flat.load(((first_row + m) * head_dim + c,))
-        ).cast[.float32]() + rebind[Float32](ape_flat.load((m * head_dim + c,)))
-        vals[m] = rebind[Scalar[dtype]](
-            k_flat.load(((first_row + m) * head_dim + c,))
-        ).cast[.float32]()
+        logits[m] = gate_flat.load[width=1](
+            ((first_row + m) * head_dim + c,)
+        ).cast[.float32]() + ape_flat.load[width=1]((m * head_dim + c,))
+        vals[m] = k_flat.load[width=1](((first_row + m) * head_dim + c,)).cast[
+            .float32
+        ]()
 
     pooled.reshape(row_major(pooled.num_elements())).store(
         (pool_row * head_dim + c,),
@@ -348,7 +348,7 @@ def kpool_tail_update_kernel[
     # tokens stashed in this same call. No barrier is needed, because each
     # stash is read back by the same thread.
     for t in range(next_n):
-        var pos = Int(rebind[Int32](positions_flat.load((r * next_n + t,))))
+        var pos = Int(positions_flat.load[width=1]((r * next_n + t,)))
         # A padded entry in a speculative batch.
         if pos < 0:
             continue
@@ -356,15 +356,11 @@ def kpool_tail_update_kernel[
         var slot = pos % kpool
         tail_flat.store(
             (tail_base + slot * head_dim + c,),
-            rebind[Scalar[dtype]](
-                k_flat.load(((r * next_n + t) * head_dim + c,))
-            ),
+            k_flat.load[width=1](((r * next_n + t) * head_dim + c,)),
         )
         tail_flat.store(
             (tail_base + (kpool + slot) * head_dim + c,),
-            rebind[Scalar[dtype]](
-                gate_flat.load(((r * next_n + t) * head_dim + c,))
-            ),
+            gate_flat.load[width=1](((r * next_n + t) * head_dim + c,)),
         )
 
         if slot != kpool - 1:
@@ -375,13 +371,11 @@ def kpool_tail_update_kernel[
         var logits = Array[Float32, kpool]()
         var vals = Array[Float32, kpool]()
         for m in range(kpool):
-            logits[m] = rebind[Scalar[dtype]](
-                tail_flat.load((tail_base + (kpool + m) * head_dim + c,))
-            ).cast[.float32]() + rebind[Float32](
-                ape_flat.load((m * head_dim + c,))
-            )
-            vals[m] = rebind[Scalar[dtype]](
-                tail_flat.load((tail_base + m * head_dim + c,))
+            logits[m] = tail_flat.load[width=1](
+                (tail_base + (kpool + m) * head_dim + c,)
+            ).cast[.float32]() + ape_flat.load[width=1]((m * head_dim + c,))
+            vals[m] = tail_flat.load[width=1](
+                (tail_base + m * head_dim + c,)
             ).cast[.float32]()
 
         pooled_flat.store(
@@ -506,11 +500,11 @@ def kpool_seed_tail_kernel[
         var row = row_start + (pos - cache_len)
         tail_flat.store(
             (tail_base + slot * head_dim + c,),
-            rebind[Scalar[dtype]](k_flat.load((row * head_dim + c,))),
+            k_flat.load[width=1]((row * head_dim + c,)),
         )
         tail_flat.store(
             (tail_base + (kpool + slot) * head_dim + c,),
-            rebind[Scalar[dtype]](gate_flat.load((row * head_dim + c,))),
+            gate_flat.load[width=1]((row * head_dim + c,)),
         )
 
 
@@ -682,28 +676,28 @@ def kpool_ring_close_kernel[
     var logits = Array[Float32, kpool]()
     var vals = Array[Float32, kpool]()
     for m in range(kpool):
-        var ape_m = rebind[Float32](ape_flat.load((m * head_dim + c,)))
+        var ape_m = ape_flat.load[width=1]((m * head_dim + c,))
         if m < ring_members:
             logits[m] = (
-                rebind[Scalar[dtype]](
-                    tail_flat.load((ring_base + (kpool + m) * head_dim + c,))
+                tail_flat.load[width=1](
+                    (ring_base + (kpool + m) * head_dim + c,)
                 ).cast[.float32]()
                 + ape_m
             )
-            vals[m] = rebind[Scalar[dtype]](
-                tail_flat.load((ring_base + m * head_dim + c,))
+            vals[m] = tail_flat.load[width=1](
+                (ring_base + m * head_dim + c,)
             ).cast[.float32]()
         else:
             var new_row = row_start + (m - ring_members)
             logits[m] = (
-                rebind[Scalar[dtype]](
-                    gate_flat.load((new_row * head_dim + c,))
-                ).cast[.float32]()
+                gate_flat.load[width=1]((new_row * head_dim + c,)).cast[
+                    .float32
+                ]()
                 + ape_m
             )
-            vals[m] = rebind[Scalar[dtype]](
-                k_flat.load((new_row * head_dim + c,))
-            ).cast[.float32]()
+            vals[m] = k_flat.load[width=1]((new_row * head_dim + c,)).cast[
+                .float32
+            ]()
 
     pooled.reshape(row_major(pooled.num_elements())).store(
         (r * head_dim + c,), pool_channel[kpool](logits, vals).cast[dtype]()
@@ -832,7 +826,7 @@ def kpool_expand_topk_kernel[
     for i in range(pools_per_thread):
         var j = first_slot + i
         if j < pool_topk:
-            pids[i] = rebind[Int32](pool_ids_flat.load((row + j,)))
+            pids[i] = pool_ids_flat.load[width=1]((row + j,))
             if pids[i] >= 0:
                 num_selected += 1
     var inclusive = block.prefix_sum[block_size=KPOOL_EXPAND_BLOCK_SIZE](

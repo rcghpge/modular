@@ -816,7 +816,7 @@ struct SplitKTileScheduler[
             comptime for i in range(c_frag_size):
                 work_space_tile_reshaped.store(
                     (mma_id * c_frag_size + i, Int(warp_group_thread_idx)),
-                    rebind[Scalar[accum_type]](c_reg_tile[mma_id, i]),
+                    c_reg_tile.load[width=1]((mma_id, i)),
                 )
 
     @inline(.always)
@@ -866,7 +866,7 @@ struct SplitKTileScheduler[
             comptime for i in range(c_frag_size):
                 var sum_val = work_space_tile_reshaped.load[width=1](
                     (mma_id * c_frag_size + i, Int(warp_group_thread_idx))
-                ) + rebind[Scalar[accum_type]](c_reg_tile[mma_id, i])
+                ) + c_reg_tile.load[width=1]((mma_id, i))
 
                 comptime if write_back:
                     comptime if Self.reduction_mode == ReductionMode.Nondeterministic:
@@ -876,7 +876,7 @@ struct SplitKTileScheduler[
                         )
                         _ = Atomic.fetch_add(
                             work_space_tile_reshaped.ptr + offset,
-                            rebind[Scalar[accum_type]](c_reg_tile[mma_id, i]),
+                            c_reg_tile.load[width=1]((mma_id, i)),
                         )
                     else:
                         work_space_tile_reshaped.store(

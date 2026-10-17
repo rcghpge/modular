@@ -561,9 +561,10 @@ def matmul_naive(
     for m in range(M):
         for k in range(K):
             for n in range(N):
-                C[m, n] += rebind[Scalar[C.dtype]](
-                    A[m, k].cast[C.dtype]()
-                ) * rebind[Scalar[C.dtype]](B[k, n].cast[C.dtype]())
+                C[m, n] += (
+                    A.load[width=1]((m, k)).cast[C.dtype]()
+                    * B.load[width=1]((k, n)).cast[C.dtype]()
+                )
 
 
 def test_b2b_matmul(ctx: DeviceContext) raises:
