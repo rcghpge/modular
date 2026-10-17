@@ -55,10 +55,7 @@ from layout import (
     Coord,
     Idx,
     ImmTileTensor,
-    IntTuple,
     Layout,
-    RuntimeLayout,
-    RuntimeTuple,
     TensorLayout,
     TileTensor,
     TMemEngine,
@@ -66,19 +63,15 @@ from layout import (
     TMemStorage,
     TMEM_NUM_COLS,
     TMEM_NUM_LANES,
-    UNKNOWN_VALUE,
     row_major,
     stack_allocation,
     tmem_cell,
     tmem_copy_async,
     tmem_16x256b,
 )
-from layout.layout import zipped_divide
-from layout.tile_layout import Layout as TileLayout
-from layout.layout import upcast
+from layout.tile_layout import Layout as TileLayout, upcast, zipped_divide
 from layout.tile_tensor import LTToTTLayout
 from layout.swizzle import make_swizzle
-from layout.runtime_tuple import idx2crd
 from layout.tensor_core_async import (
     tile_layout_k_major_typed,
     tile_layout_mn_major_typed,
@@ -861,7 +854,7 @@ def _grouped_matmul_sm100_blockwise_scaled_fp8_impl[
 @inline(.always)
 def _get_accumulator_size[
     *,
-    c_smem_layout: Layout,
+    c_smem_layout: TensorLayout,
     block_tile_shape: IndexList[3],
     mma_shape: IndexList[3],
     cta_group: Int,
@@ -878,7 +871,7 @@ def _get_accumulator_size[
 
     comptime assert num_m_mmas == 1 and num_n_mmas == 1
 
-    comptime stageN = c_smem_layout.shape[1].value()
+    comptime stageN = c_smem_layout.static_shape[1]
     comptime cg2_num_stages = MMA_N // stageN if MMA_M == 256 else MMA_N // stageN // 2
     comptime cg1_num_stages = MMA_N // stageN
     comptime num_stages = cg2_num_stages if cta_group == 2 else cg1_num_stages
@@ -1372,7 +1365,7 @@ def multi_stage_reg_epilogue[
     accum_type: DType,
     /,
     *,
-    c_smem_layout: Layout,
+    c_smem_layout: TensorLayout,
     c_type: DType,
     c_static_N: Int,
     block_tile_shape: IndexList[3],
@@ -1467,11 +1460,13 @@ def multi_stage_reg_epilogue[
         ](coord[stage, 0])
 
         # Assume double-buffer for shared memory packing
-        comptime c_smem_tile_size = c_smem_layout.size()
+        comptime c_smem_tile_size = c_smem_layout.static_product
         # 128B alignment comes from external_memory and aligned buffer offsets.
         var c_smem_tile = TileTensor(
             c_smem_base + (stage % 2) * c_smem_tile_size,
-            LTToTTLayout[c_smem_layout](),
+            TileLayout[
+                c_smem_layout._shape_types, c_smem_layout._stride_types
+            ](),
         )
         comptime c_smem_tile_m = 32 if cta_group == 2 else BM // num_output_warps
         var c_smem_warp_tt = c_smem_tile.tile[c_smem_tile_m, stageN](warp_id, 0)
@@ -1522,10 +1517,10 @@ def multi_stage_reg_epilogue[
 
         var lane = lane_id()
 
-        comptime CG2_TMA_BM = c_smem_layout.shape[
+        comptime CG2_TMA_BM = c_smem_layout.static_shape[
             0
-        ].value() if MMA_M == 256 else BM
-        comptime CG1_TMA_BM = c_smem_layout.shape[0].value()
+        ] if MMA_M == 256 else BM
+        comptime CG1_TMA_BM = c_smem_layout.static_shape[0]
         comptime TMA_BM = CG2_TMA_BM if cta_group == 2 else CG1_TMA_BM
 
         var cg2_elect_one_warp = (
@@ -1556,12 +1551,7 @@ def multi_stage_reg_epilogue[
             or UInt32(coord_m) + UInt32(TMA_BM) > group_end_idx
         ):
             comptime output_threads = num_output_warps * WARP_SIZE
-            comptime c_smem_M = c_smem_layout.shape[0].value()
-            comptime RLayout32Bits[layout: Layout] = RuntimeLayout[
-                layout,
-                element_type=.uint32,
-                linear_idx_type=.uint32,
-            ]
+            comptime c_smem_M = c_smem_layout.static_shape[0]
             comptime simd_size = simd_width_of[c_type]()
             comptime alignment = align_of[SIMD[c_type, simd_size]]()
             comptime thread_n = stageN // simd_size
@@ -1571,36 +1561,34 @@ def multi_stage_reg_epilogue[
             comptime assert (
                 output_threads % thread_n == 0
             ), "output_threads must be divisible by thread_n"
-            comptime thread_layout = Layout.row_major(
-                output_threads // thread_n, thread_n
-            )
+            comptime thread_shape = coord[output_threads // thread_n, thread_n]
 
             comptime for i in range(c_smem_M // TMA_BM):
                 var c_smem_split = c_smem_tile.tile[TMA_BM, stageN](i, 0)
                 # Dim-0 tiles retain the row-major parent's (stageN, 1) strides.
-                comptime split_layout = Layout(
-                    IntTuple(TMA_BM, stageN), c_smem_layout.stride
+                comptime split_layout = TileLayout(
+                    Coord(Idx[TMA_BM], Idx[stageN]),
+                    Coord(
+                        Idx[c_smem_layout.static_stride[0]],
+                        Idx[c_smem_layout.static_stride[1]],
+                    ),
                 )
-                var split_rt = RLayout32Bits[split_layout]()
-                comptime zipped = zipped_divide(
-                    upcast(split_layout, simd_size), thread_layout
+                comptime zipped = zipped_divide[thread_shape](
+                    upcast[factor=simd_size](split_layout)
                 )
-                var zipped_rt = RLayout32Bits[zipped]()
+                # Rows each thread covers: the outer mode of the zipped
+                # layout, whose column extent is 1 by construction.
+                comptime rows_per_thread = zipped.static_shape[2]
 
-                # zipped.shape[1][1] == 1 by construction
-                comptime for j in range(zipped.shape[1][0].value()):
-                    var input_crd = RuntimeTuple[
-                        IntTuple(UNKNOWN_VALUE, j), element_type=.uint32
-                    ](thread_idx.x, j)
-                    var linear_idx = zipped_rt(input_crd) * UInt32(simd_size)
-                    var linear_tup = RuntimeTuple[
-                        IntTuple(UNKNOWN_VALUE), element_type=.uint32
-                    ](Int(linear_idx))
-                    var cmem_crd = idx2crd(
-                        linear_tup, split_rt.shape, split_rt.stride
+                comptime for j in range(rows_per_thread):
+                    var linear_idx = zipped.__call__[linear_idx_type=.uint32](
+                        Coord(thread_idx.x, Idx[j])
+                    ) * UInt32(simd_size)
+                    var cmem_crd = split_layout.idx2crd[out_dtype=.uint32](
+                        Int(linear_idx)
                     )
-                    var local_i = Int(cmem_crd[0].get_int())
-                    var local_j = Int(cmem_crd[1].get_int())
+                    var local_i = Int(cmem_crd[0].value())
+                    var local_j = Int(cmem_crd[1].value())
                     var global_i: Int = coord_m + local_i
                     var global_j: Int = coord_n + local_j
                     if global_i < Int(group_end_idx):
@@ -2118,8 +2106,6 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
     comptime b_tma_load_size = _idx_product[b_desc_shape]()
     comptime a_tma_rows = a_desc_shape.element_types[0].static_value
     comptime b_tma_rows = b_desc_shape.element_types[0].static_value
-    comptime c_smem_layout = Layout.row_major(BM, MMA_N)
-
     # keep the physical SMEM buffer BM x MMA_N
     # Use typed layouts as source of truth; bridge to legacy Layout for
     # MMA descriptor pipeline.
@@ -2508,8 +2494,10 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
 
             # TODO: zero output
 
-            comptime c_smem_layout = Layout.row_major(
-                config.output_tile_shape[0], config.output_tile_shape[1]
+            comptime c_smem_layout = type_of(
+                row_major[
+                    config.output_tile_shape[0], config.output_tile_shape[1]
+                ]()
             )
             comptime reg_info = _get_accumulator_size[
                 c_smem_layout=c_smem_layout,

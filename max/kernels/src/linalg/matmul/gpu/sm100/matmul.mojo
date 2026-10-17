@@ -36,15 +36,14 @@ from max.gpu.sync import (
 )
 from max.gpu.compute.arch.tcgen05 import *
 from layout import (
+    Coord,
     DefaultEngine,
-    IntTuple,
-    Layout,
-    RuntimeLayout,
+    Idx,
     TileTensor,
     row_major,
 )
 from layout.swizzle import Swizzle
-from layout.tile_layout import TensorLayout
+from layout.tile_layout import Layout as TileLayout, TensorLayout
 from structured_kernels.tile_types import SMemTileArray2D
 
 from std.utils.index import Index, IndexList
@@ -191,11 +190,6 @@ def consumer_main_loop[
         mma_op.commit(load_mma_pipeline.consumer_mbar(stage))
 
 
-comptime RLayout32Bits[layout: Layout] = RuntimeLayout[
-    layout, element_type=.uint32, linear_idx_type=.uint32
-]
-
-
 @inline(.always)
 def f32_frag_to_smem[
     swizzle_mode: TensorMapSwizzle,
@@ -328,8 +322,9 @@ def stsm_helper[
     # the layout looks like
     # https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-matrix-fragments-shape-16256b
     # but transposed and coalesced by 8 elements.
-    comptime trans_st_matrix_layout = Layout(
-        IntTuple(8, 2, 2), IntTuple(stride0, 8 * stride1, 8 * stride0)
+    comptime trans_st_matrix_layout = TileLayout(
+        Coord(Idx[8], Idx[2], Idx[2]),
+        Coord(Idx[stride0], Idx[8 * stride1], Idx[8 * stride0]),
     )
     comptime stsmx_tile_offset = (
         stride0 if transpose_c else stride1
@@ -338,7 +333,11 @@ def stsm_helper[
     var lane = lane_id()
     var stsm_lane_offset = UInt32(
         (lane & 15) * stride0 + (lane >> 4) * 8
-    ) if not transpose_c else RLayout32Bits[trans_st_matrix_layout]()(lane)
+    ) if not transpose_c else trans_st_matrix_layout.__call__[
+        linear_idx_type=.uint32
+    ](
+        Coord(lane)
+    )
 
     # Assume the dst tile has 16 rows and only use stsm in N dim.
     comptime for i in range(shape0 // stsmx_row_size):

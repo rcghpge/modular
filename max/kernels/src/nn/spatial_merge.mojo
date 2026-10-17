@@ -129,7 +129,7 @@ def spatial_merge_kernel[
     var W_out = W // Int64(_merge_size)
     var C_out = _hidden_size * _merge_size * _merge_size
 
-    # Create a RuntimeLayout for the patch space [T, H_out, W_out]
+    # Create a layout for the patch space [T, H_out, W_out]
     # to convert linear patch_local_idx to (t, ho, wo) coordinates.
     var patch_space_rt_layout = row_major(T, H_out, W_out)
 

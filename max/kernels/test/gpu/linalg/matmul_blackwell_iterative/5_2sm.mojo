@@ -35,11 +35,7 @@ from internal_utils import assert_almost_equal
 from layout import (
     Coord,
     Idx,
-    IntTuple,
-    RuntimeLayout,
-    RuntimeTuple,
     TileTensor,
-    UNKNOWN_VALUE,
     coord,
     row_major,
 )
@@ -320,11 +316,9 @@ def kernel_5[
     ](tmem_addr | UInt32((warp_id() * 32 + 16) << 16))
     tcgen05_load_wait()
 
-    var st_matrix_rt_layout = RuntimeLayout[
-        st_matrix_n_layout[c_type, TMA_BN, num_m_mmas, 1](),
-        element_type=.int32,
-        linear_idx_type=.int32,
-    ]()
+    comptime st_matrix_layout = st_matrix_n_layout[
+        c_type, TMA_BN, num_m_mmas, 1
+    ]
 
     comptime st_matrix_swizzle = make_swizzle[c_type, c_swizzle]()
     comptime NUM_TMA_TILES = MMA_N // TMA_BN
@@ -371,29 +365,20 @@ def kernel_5[
                 d_reg_lower[2 * _ei] = lower_casted[0]
                 d_reg_lower[2 * _ei + 1] = lower_casted[1]
 
-            var st_matrix_args = RuntimeTuple[
-                IntTuple(
-                    UNKNOWN_VALUE,
-                    IntTuple(
-                        i,
-                        0,
-                        UNKNOWN_VALUE,
-                    ),
+            var st_matrix_offset = st_matrix_swizzle(
+                st_matrix_layout.__call__[linear_idx_type=.int32](
+                    Coord(Int(lane_id()), Coord(Idx[i], Idx[0], Idx[0]))
                 )
-            ](lane_id(), i, 0, 0)
+            )
 
             var d_reg_upper_packed = bitcast[.float32, 4](d_reg_upper)
             var d_reg_lower_packed = bitcast[.float32, 4](d_reg_lower)
 
             st_matrix[simd_width=4](
-                upper.unsafe_ptr()
-                + st_matrix_swizzle(st_matrix_rt_layout(st_matrix_args)),
-                d_reg_upper_packed,
+                upper.unsafe_ptr() + st_matrix_offset, d_reg_upper_packed
             )
             st_matrix[simd_width=4](
-                lower.unsafe_ptr()
-                + st_matrix_swizzle(st_matrix_rt_layout(st_matrix_args)),
-                d_reg_lower_packed,
+                lower.unsafe_ptr() + st_matrix_offset, d_reg_lower_packed
             )
 
     barrier()

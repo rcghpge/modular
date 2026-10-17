@@ -33,7 +33,6 @@ from kv_cache.types import KVCacheStaticParams, KVCollectionT
 from layout import (
     Coord,
     Layout,
-    RuntimeLayout,
     UNKNOWN_VALUE,
     row_major,
 )

@@ -30,10 +30,6 @@ from internal_utils import assert_almost_equal
 from layout import (
     Coord,
     Idx,
-    IntTuple,
-    RuntimeLayout,
-    RuntimeTuple,
-    UNKNOWN_VALUE,
     TileTensor,
     coord,
     row_major,
@@ -283,11 +279,9 @@ def kernel_4[
 
     # store from tensor memory to smem using the swizzling pattern
 
-    var st_matrix_rt_layout = RuntimeLayout[
-        st_matrix_n_layout[c_type, TMA_BN, num_m_mmas, 1](),
-        element_type=.int32,
-        linear_idx_type=.int32,
-    ]()
+    comptime st_matrix_layout = st_matrix_n_layout[
+        c_type, TMA_BN, num_m_mmas, 1
+    ]
 
     comptime st_matrix_swizzle = make_swizzle[c_type, c_swizzle]()
 
@@ -308,19 +302,16 @@ def kernel_4[
                     d_reg[2 * _ei] = casted[0]
                     d_reg[2 * _ei + 1] = casted[1]
 
-                var st_matrix_args = RuntimeTuple[
-                    IntTuple(
-                        UNKNOWN_VALUE,
-                        IntTuple(
-                            i,
-                            m_mma,
-                            UNKNOWN_VALUE,
-                        ),
-                    )
-                ](thread_idx.x, i, m_mma, 0)
+                var st_matrix_args = Coord(
+                    Int(thread_idx.x), Coord(Idx[i], Idx[m_mma], Idx[0])
+                )
                 var offset = (
                     c_smem_tile.unsafe_ptr()
-                    + st_matrix_swizzle(st_matrix_rt_layout(st_matrix_args))
+                    + st_matrix_swizzle(
+                        st_matrix_layout.__call__[linear_idx_type=.int32](
+                            st_matrix_args
+                        )
+                    )
                     + BM * TMA_BN * tma_n
                 )
 

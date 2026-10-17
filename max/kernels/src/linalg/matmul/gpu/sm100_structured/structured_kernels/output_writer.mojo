@@ -43,18 +43,15 @@ from std.time import global_perf_counter_ns
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,
-    IntTuple,
+    Idx,
     Layout,
-    RuntimeTuple,
+    coord,
     TensorEngine,
     TensorLayout,
     TileTensor,
-    UNKNOWN_VALUE,
     row_major,
 )
-from layout.layout import zipped_divide
-from layout.layout import upcast
-from layout.runtime_tuple import crd2idx as rt_crd2idx
+from layout.tile_layout import Layout as TileLayout, upcast, zipped_divide
 from layout.swizzle import make_swizzle
 from layout.tma_async import TMATensorTile
 from max.gpu.compute.mma import ld_matrix
@@ -2313,13 +2310,12 @@ struct TileWriter[
         comptime simd_size = min(max_simd, max(1, max_allowed_simd))
         comptime alignment = align_of[SIMD[Self.c_type, simd_size]]()
         comptime thread_n = Self.stageN // simd_size
-        comptime thread_layout = Layout.row_major(
-            output_threads // thread_n, thread_n
-        )
+        comptime thread_shape = coord[output_threads // thread_n, thread_n]
 
         # Precompute the split layout from known dimensions
-        comptime split_layout = Layout(
-            IntTuple(TMA_BM, Self.stageN), IntTuple(Self.c_smem_dim1, 1)
+        comptime split_layout = TileLayout(
+            Coord(Idx[TMA_BM], Idx[Self.stageN]),
+            Coord(Idx[Self.c_smem_dim1], Idx[1]),
         )
 
         # Swizzle function
@@ -2335,29 +2331,18 @@ struct TileWriter[
         # Iterate over SMEM chunks
         comptime for i in range(c_smem_M // TMA_BM):
             var c_smem_split = c_smem_tile.tile[TMA_BM, Self.stageN](i, 0)
-            comptime zipped = zipped_divide(
-                upcast(split_layout, simd_size), thread_layout
+            comptime zipped = zipped_divide[thread_shape](
+                upcast[factor=simd_size](split_layout)
             )
+            # Rows each thread covers: the outer mode of the zipped layout.
+            comptime rows_per_thread = zipped.static_shape[2]
             # Use new Layout for idx2crd
             comptime split_layout_new = row_major[TMA_BM, Self.stageN]()
 
-            comptime for j in range(zipped.shape[1][0].value()):
-                var input_crd = RuntimeTuple[
-                    IntTuple(UNKNOWN_VALUE, j),
-                    element_type=.uint32,
-                ](thread_idx.x, j)
-                var linear_idx = rt_crd2idx[
-                    IntTuple(UNKNOWN_VALUE, j),
-                    zipped.shape,
-                    zipped.stride,
-                    DType.uint32,
-                ](
-                    input_crd,
-                    RuntimeTuple[zipped.shape](),
-                    RuntimeTuple[zipped.stride](),
-                ) * UInt32(
-                    simd_size
-                )
+            comptime for j in range(rows_per_thread):
+                var linear_idx = zipped.__call__[linear_idx_type=.uint32](
+                    Coord(thread_idx.x, Idx[j])
+                ) * UInt32(simd_size)
                 var cmem_crd = split_layout_new.idx2crd[out_dtype=DType.uint32](
                     Int(linear_idx)
                 )

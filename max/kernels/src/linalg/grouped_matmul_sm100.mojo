@@ -57,14 +57,13 @@ from layout import (
     IntTuple,
     Layout,
     TensorLayout,
-    RuntimeLayout,
     row_major,
 )
 from layout.tile_tensor import TileTensor, LTToTTLayout
 
 from .utils import partial_simd_load
 from layout.swizzle import Swizzle, make_swizzle
-from layout.tile_layout import col_major as tl_col_major
+from layout.tile_layout import Layout as TileLayout, col_major as tl_col_major
 from layout.tensor_core_async import tile_layout_k_major_typed
 from structured_kernels.tile_types import (
     SMemTileArray2D,
@@ -745,20 +744,22 @@ def stsm_helper[
     # the layout looks like
     # https://docs.nvidia.com/cuda/parallel-thread-execution/#tcgen05-matrix-fragments-shape-16256b
     # but transposed and coalesced by 8 elements.
-    comptime trans_st_matrix_layout = Layout(
-        IntTuple(8, 2, 2), IntTuple(stride0, 8 * stride1, 8 * stride0)
+    comptime trans_st_matrix_layout = TileLayout(
+        Coord(Idx[8], Idx[2], Idx[2]),
+        Coord(Idx[stride0], Idx[8 * stride1], Idx[8 * stride0]),
     )
     comptime stsmx4_tile_offset = (
         stride0 if transpose_c else stride1
     ) * stsmx4_row_size
 
     var lane = lane_id()
-    comptime RLayout32Bits[layout: Layout] = RuntimeLayout[
-        layout, element_type=.uint32, linear_idx_type=.uint32
-    ]
     var stsm_lane_offset = UInt32(
         (lane & 15) * stride0 + (lane >> 4)
-    ) * 8 if not transpose_c else RLayout32Bits[trans_st_matrix_layout]()(lane)
+    ) * 8 if not transpose_c else trans_st_matrix_layout.__call__[
+        linear_idx_type=.uint32
+    ](
+        Coord(lane)
+    )
 
     # Assume the dst tile has 16 rows and only use stsm in N dim.
     comptime for i in range(shape0 // stsmx4_row_size):
@@ -1187,7 +1188,6 @@ def multi_stage_store_C[
             comptime for v in range(value_shape):
                 comptime thread_offset = v * thread_num
                 var thread_index = UInt32(thread_idx.x) + UInt32(thread_offset)
-                # idx2crd but RuntimeTuple.idx2crd is too hard to use
                 var vec_chunkM_idx = thread_index % UInt32(vec_chunkM)
                 var rest = thread_index // UInt32(vec_chunkM)
                 var n_idx = rest % UInt32(stageN)

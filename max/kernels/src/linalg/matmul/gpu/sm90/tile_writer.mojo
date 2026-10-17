@@ -34,15 +34,10 @@ from layout.tma_async import TMATensorTile
 from layout import (
     Coord,
     Idx,
-    IntTuple,
-    Layout,
     MixedLayout,
     DefaultEngine,
-    RuntimeLayout,
-    RuntimeTuple,
     TensorLayout,
     TileTensor,
-    UNKNOWN_VALUE,
     row_major,
 )
 from layout.tensor_engine import TensorEngine
@@ -461,16 +456,10 @@ struct FragmentToSMemWriter[
 
     comptime st_matrix_layout_regular = st_matrix_n_layout[
         Self.c_type, Self.tile_n_size, Self.num_m_mmas, Self.num_consumer
-    ]()
+    ]
 
     comptime st_matrix_layout_transpose = st_matrix_m_layout[
         Self.c_type, Self.tile_n_size, Self.num_m_mmas, Self.num_consumer
-    ]()
-
-    comptime st_matrix_rt_layout_type = RuntimeLayout[
-        Self.st_matrix_layout_regular if not Self.swapAB else Self.st_matrix_layout_transpose,
-        element_type=.int32,
-        linear_idx_type=.int32,
     ]
 
     comptime st_matrix_tile_layout_regular = row_major[
@@ -490,7 +479,6 @@ struct FragmentToSMemWriter[
     ]
     var warp_group_thread_idx: Int
     var local_warp_group_idx: Int
-    var st_matrix_rt_layout: Self.st_matrix_rt_layout_type
 
     @inline(.always)
     def __init__(
@@ -515,7 +503,6 @@ struct FragmentToSMemWriter[
         self.c_tile = c_tile
         self.warp_group_thread_idx = warp_group_thread_idx
         self.local_warp_group_idx = local_warp_group_idx
-        self.st_matrix_rt_layout = Self.st_matrix_rt_layout_type()
 
     @inline(.always)
     def _compute_swizzled_offset[n_frag: Int, m_frag: Int](self) -> Int32:
@@ -528,18 +515,19 @@ struct FragmentToSMemWriter[
         Returns:
             Swizzled offset for st.matrix instruction.
         """
-        var layout_coords = RuntimeTuple[
-            IntTuple(
-                UNKNOWN_VALUE,
-                IntTuple(n_frag, m_frag, UNKNOWN_VALUE),
-            )
-        ](
+        var layout_coords = Coord(
             self.warp_group_thread_idx,
-            n_frag,
-            m_frag,
-            self.local_warp_group_idx,
+            Coord(Idx[n_frag], Idx[m_frag], self.local_warp_group_idx),
         )
-        var linear_idx = self.st_matrix_rt_layout(layout_coords)
+        var linear_idx: Int32
+        comptime if Self.swapAB:
+            linear_idx = Self.st_matrix_layout_transpose.__call__[
+                linear_idx_type=.int32
+            ](layout_coords)
+        else:
+            linear_idx = Self.st_matrix_layout_regular.__call__[
+                linear_idx_type=.int32
+            ](layout_coords)
         return self.st_matrix_swizzle(linear_idx)
 
     @inline(.always)

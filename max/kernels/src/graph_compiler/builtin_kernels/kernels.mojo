@@ -51,7 +51,6 @@ from layout import (
     DefaultEngine,
     IntTuple,
     RowMajorLayout,
-    RuntimeLayout,
     TensorEngine,
     TensorLayout,
     TileTensor,

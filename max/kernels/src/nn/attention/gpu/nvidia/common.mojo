@@ -36,8 +36,6 @@ from layout import (
     Idx,
     IntTuple,
     DefaultEngine,
-    RuntimeLayout,
-    RuntimeTuple,
     TensorEngine,
     TileTensor,
     UNKNOWN_VALUE,
@@ -1080,25 +1078,21 @@ def output_reg_to_smem_st_matrix[
         size_of[output_type]() == 2
     ), "output_reg_to_smem_st_matrix only supports bf16/f16 output_type"
 
-    comptime st_matrix_rt_layout = RuntimeLayout[
-        st_matrix_n_layout[
-            output_type, padded_depth, num_m_mmas, num_consumer
-        ](),
-        element_type=.int32,
-        linear_idx_type=.int32,
-    ]()
+    comptime st_matrix_layout = st_matrix_n_layout[
+        output_type, padded_depth, num_m_mmas, num_consumer
+    ]
 
     comptime for m_mma in range(num_m_mmas):
         comptime for i in range(padded_depth // 16):
-            var st_matrix_args = RuntimeTuple[
-                IntTuple(UNKNOWN_VALUE, IntTuple(i, m_mma, UNKNOWN_VALUE))
-            ](
+            var st_matrix_args = Coord(
                 Int(warp_group_thread_idx),
-                i,
-                m_mma,
-                Int(local_warp_group_idx),
+                Coord(Idx[i], Idx[m_mma], Int(local_warp_group_idx)),
             )
-            var accum_smem_idx = swizzle(st_matrix_rt_layout(st_matrix_args))
+            var accum_smem_idx = swizzle(
+                st_matrix_layout.__call__[linear_idx_type=.int32](
+                    st_matrix_args
+                )
+            )
             var offset = accum_smem_tile.ptr + accum_smem_idx
             var output_frag = output_reg_tile.raw_load[width=8](
                 m_mma * o_frag_size + i * 8

@@ -853,7 +853,6 @@ def _crd2idx_flat[
     return result
 
 
-# Implementation based off runtime_tuple.mojo's crd2idx.
 def crd2idx[
     Index: CoordLike,
     Shape: CoordLike,
