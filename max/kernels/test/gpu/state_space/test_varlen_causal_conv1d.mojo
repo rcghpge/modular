@@ -202,8 +202,11 @@ def run_varlen_causal_conv1d_fwd_gpu[
         conv_states_heap,
         row_major(batch, dim, state_len),
     )
+    var conv_states_flat = conv_states_h.reshape(
+        row_major(batch * dim * state_len)
+    )
     for i in range(batch * dim * state_len):
-        conv_states_h.raw_store(i, Scalar[dtype](0))
+        conv_states_flat[i] = Scalar[dtype](0)
     if nonzero_initial_state:
         # Non-zero seed so the "read initial conv_states" gather path (both
         # kernels) is actually exercised, not just the all-zero default.
@@ -216,7 +219,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
         length=batch * dim * state_len, fill=Scalar[dtype](0)
     )
     for i in range(batch * dim * state_len):
-        conv_states_seed_heap[i] = conv_states_h.raw_load(i)
+        conv_states_seed_heap[i] = conv_states_flat[i]
 
     # output: (dim, total_seqlen)
     var output_gpu_heap = List(length=dim * total_seqlen, fill=Scalar[dtype](0))

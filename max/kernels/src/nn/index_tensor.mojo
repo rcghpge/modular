@@ -20,7 +20,7 @@ from nn.reshape import reshape
 from max.algorithm import elementwise, sync_parallelize
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu
-from layout import Coord, TileTensor, coord_to_index_list
+from layout import Coord, TileTensor, coord_to_index_list, row_major
 from max.runtime.asyncrt import parallelism_level
 
 from std.utils import IndexList
@@ -249,6 +249,7 @@ def _index_tensor_1d[
         # each thread gets a chunk of output embedding vectors to avoid inter-thread reduction
         var work_start = task_id * work_per_thread
         var work_end = min((task_id + 1) * work_per_thread, batch_volume)
+        var output_flat = output.reshape(row_major(output.num_elements()))
 
         for i in range(work_start, work_end):
             for j in range(Int(indices.dim(0))):
@@ -258,8 +259,8 @@ def _index_tensor_1d[
                     data_coord[k + 1] = Int(indices.load(Coord(j, k)))
 
                 var rd_coord = Coord(data_coord)
-                output.raw_store(
-                    i * Int(indices.dim(0)) + j,
+                output_flat.store(
+                    Coord(i * Int(indices.dim(0)) + j),
                     reshaped_data.load(rd_coord),
                 )
 

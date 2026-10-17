@@ -133,13 +133,14 @@ def _arg_nonzero_count_kernel[
     var num_elements = Int(num_elements_arg)
     var tile_start = tile_len * block_idx.x
     var local: Int32 = 0
+    var input_flat = input_buffer.reshape(row_major(num_elements))
     for chunk in range(0, tile_len, BLOCK_SIZE):
         var flat_index = tile_start + chunk + thread_idx.x
         if chunk + thread_idx.x < tile_len and flat_index < num_elements:
             # 32-bit lanes: warp shuffles move 32- and 64-bit lanes only,
             # and the 32-bit path is the one every other scan in this tree
             # exercises.
-            if input_buffer.raw_load(flat_index) != 0:
+            if input_flat[flat_index] != 0:
                 local += 1
     var count = block.sum[block_size=BLOCK_SIZE](local)
     if thread_idx.x == 0:
@@ -229,10 +230,11 @@ def _arg_nonzero_emit_kernel[
     var tid = thread_idx.x
     var tile_start = tile_len * block_idx.x
     var base = Int(offsets[block_idx.x])
+    var input_flat = input_buffer.reshape(row_major(num_elements))
     for chunk in range(0, tile_len, BLOCK_SIZE):
         var selected: Int32 = 0
         if chunk + tid < tile_len and tile_start + chunk + tid < num_elements:
-            if input_buffer.raw_load(tile_start + chunk + tid) != 0:
+            if input_flat[tile_start + chunk + tid] != 0:
                 selected = 1
 
         var local_row = block.prefix_sum[block_size=BLOCK_SIZE, exclusive=True](
@@ -290,7 +292,7 @@ def _arg_nonzero_gpu[
             stride *= Int(dims[later])
         strides_tuple[axis] = Int64(stride)
 
-    # The kernels below walk memory linearly (`raw_load(flat_index)`) and
+    # The kernels below walk memory linearly (a flat `row_major` view) and
     # decode coordinates from row-major strides, so both hold only for a
     # row-major input. The graph compiler guarantees this: strided views
     # (slice/broadcast/reshape) never reach a non-fused kernel argument;
@@ -430,8 +432,7 @@ def arg_nonzero_shape[
 
     var j: Int = 0
     for i in range(numel):
-        var offset = input_buffer.layout(i)
-        if input_buffer.raw_load(offset) != 0:
+        if input_buffer[i] != 0:
             j += 1
 
     shape[0] = j

@@ -173,14 +173,16 @@ def _topp_minp_sampling[
     comptime assert sorted_probs.element_size == out_token_ids.element_size
     comptime assert out_token_ids.element_size == 1
 
+    var logits_flat = input_logits.reshape(row_major(batch_size * vocab_size))
+
     # Initialize sorted_ids with iota values
     for batch_id in range(batch_size):
         iota(sorted_ids[batch_id : batch_id + 1, :].as_span())
         # Copy input_logits to sorted_probs
         for i in range(vocab_size):
             var batch_offset = batch_id * vocab_size
-            sorted_probs.raw_store(
-                batch_offset + i, input_logits.raw_load(batch_offset + i)
+            sorted_probs[batch_id, i] = rebind[Scalar[dtype]](
+                logits_flat.load(Coord(batch_offset + i))
             )
 
     def apply_temperature[
@@ -200,8 +202,11 @@ def _topp_minp_sampling[
 
     # Copy sorted probs back to input_logits if testing
     comptime if _test_sort:
+        var sorted_probs_flat = sorted_probs.reshape(
+            row_major(batch_size * vocab_size)
+        )
         for i in range(batch_size * vocab_size):
-            input_logits.raw_store(i, sorted_probs.raw_load(i))
+            logits_flat.store(Coord(i), sorted_probs_flat[i])
 
     # Process each batch
     for batch in range(batch_size):
@@ -356,13 +361,20 @@ def merge[
         Scalar[out_idx_type], origin_of(right_ids_ptr._alloc)
     ] = right_ids_ptr.unsafe_ptr()
 
+    var keys = buf_keys.reshape(row_major(buf_keys.num_elements()))
+    var ids = buf_ids.reshape(row_major(buf_ids.num_elements()))
+
     # Copy data to temporary arrays
     for i in range(left_size):
-        left_keys_data[i] = buf_keys.raw_load(start + i)
-        left_ids_data[i] = buf_ids.raw_load(start + i)
+        left_keys_data[i] = rebind[Scalar[dtype]](keys.load(Coord(start + i)))
+        left_ids_data[i] = rebind[Scalar[out_idx_type]](
+            ids.load(Coord(start + i))
+        )
     for i in range(right_size):
-        right_keys_data[i] = buf_keys.raw_load(mid + i)
-        right_ids_data[i] = buf_ids.raw_load(mid + i)
+        right_keys_data[i] = rebind[Scalar[dtype]](keys.load(Coord(mid + i)))
+        right_ids_data[i] = rebind[Scalar[out_idx_type]](
+            ids.load(Coord(mid + i))
+        )
 
     # Merge back into original array
     var i = 0  # Index for left subarray
@@ -373,25 +385,25 @@ def merge[
         if (
             left_keys_data[i] >= right_keys_data[j]
         ):  # Use >= for descending order
-            buf_keys.raw_store(k, left_keys_data[i])
-            buf_ids.raw_store(k, left_ids_data[i])
+            keys.store(Coord(k), left_keys_data[i])
+            ids.store(Coord(k), left_ids_data[i])
             i += 1
         else:
-            buf_keys.raw_store(k, right_keys_data[j])
-            buf_ids.raw_store(k, right_ids_data[j])
+            keys.store(Coord(k), right_keys_data[j])
+            ids.store(Coord(k), right_ids_data[j])
             j += 1
         k += 1
 
     # Copy remaining elements if any
     while i < left_size:
-        buf_keys.raw_store(k, left_keys_data[i])
-        buf_ids.raw_store(k, left_ids_data[i])
+        keys.store(Coord(k), left_keys_data[i])
+        ids.store(Coord(k), left_ids_data[i])
         i += 1
         k += 1
 
     while j < right_size:
-        buf_keys.raw_store(k, right_keys_data[j])
-        buf_ids.raw_store(k, right_ids_data[j])
+        keys.store(Coord(k), right_keys_data[j])
+        ids.store(Coord(k), right_ids_data[j])
         j += 1
         k += 1
 

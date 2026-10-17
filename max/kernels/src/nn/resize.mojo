@@ -366,8 +366,8 @@ def resize_nearest_neighbor[
                         in_coords[last] = (out_last + lane) >> shift_scales[
                             last
                         ]
-                        values[lane] = input.raw_load(
-                            input.layout(Coord(in_coords))
+                        values[lane] = rebind[Scalar[dtype]](
+                            input.load(Coord(in_coords))
                         )
 
                     output.store[alignment=alignment](out_coords, values)
@@ -391,8 +391,8 @@ def resize_nearest_neighbor[
                     var values = SIMD[dtype, simd_width]()
                     comptime for lane in range(simd_width):
                         in_coords[last] = (out_last + lane) // int_scales[last]
-                        values[lane] = input.raw_load(
-                            input.layout(Coord(in_coords))
+                        values[lane] = rebind[Scalar[dtype]](
+                            input.load(Coord(in_coords))
                         )
 
                     output.store[alignment=alignment](out_coords, values)
@@ -466,7 +466,7 @@ def resize_nearest_neighbor[
                 Int(output.dim(last)),
                 scales[last],
             )
-            values[lane] = input.raw_load(input.layout(Coord(in_coords)))
+            values[lane] = rebind[Scalar[dtype]](input.load(Coord(in_coords)))
 
         output.store[alignment=alignment](out_coords, values)
 
@@ -574,14 +574,17 @@ def interpolate_point_1d[
             (Float32(k + xmin) + Float32(0.5)) - center
         ) * ss
         var filter_coeff = linear_filter(dist_from_center).cast[acc_dtype]()
-        var in_idx = input.layout(Coord(in_coords))
-        acc += input.raw_load(in_idx).cast[acc_dtype]() * filter_coeff
+        acc += (
+            rebind[Scalar[dtype]](input.load(Coord(in_coords))).cast[
+                acc_dtype
+            ]()
+            * filter_coeff
+        )
         sum += filter_coeff
 
     # normalize to handle cases near image boundary where only 1 point is used
     # for interpolation
-    var out_idx = output.layout(Coord(out_coords))
-    output.raw_store(out_idx, (acc / sum).cast[dtype]())
+    output.store(Coord(out_coords), (acc / sum).cast[dtype]())
 
 
 def resize_linear[
@@ -735,9 +738,7 @@ def resize_linear_gpu[
     if len(resize_dims) == 0:
 
         def copy[simd_width: Int, alignment: Int = 1](coords: Coord) {var}:
-            output.raw_store(
-                output.layout(coords), input.raw_load(input.layout(coords))
-            )
+            output.store(coords, rebind[Scalar[dtype]](input.load(coords)))
 
         elementwise[1, target="gpu"](copy, output.layout.shape_coord(), ctx)
         return

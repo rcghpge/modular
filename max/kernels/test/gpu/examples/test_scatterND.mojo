@@ -15,7 +15,7 @@ from std.math import ceildiv
 
 from max.gpu import block_dim, global_idx
 from max.gpu.host import DeviceContext
-from layout import TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from layout.tile_tensor import stack_allocation
 from std.testing import assert_false
 
@@ -151,8 +151,12 @@ def scatter_nd[
 
     # Copy input data to output (appropriate elements will be updated as needed
     # by the end of scatternd kernel).
+    var output_flat = output.reshape(row_major(output.num_elements()))
+    var data_flat = data.reshape(row_major(data.num_elements()))
     for _i in range(output.num_elements()):
-        output.raw_store(_i, data.raw_load(_i))
+        output_flat.store(
+            Coord(_i), rebind[Scalar[dtype]](data_flat.load(Coord(_i)))
+        )
 
     # Depending on r_minus_m = data_rank - last_shape_of_indices,
     # we will be copying:
@@ -258,8 +262,9 @@ def linear_fill[
 ](buf: TileTensor[mut=True, dtype, ...], elems: Span[Scalar[dtype], _]):
     assert buf.num_elements() == len(elems), "must fill all elements of tensor"
 
+    var buf_flat = buf.reshape(row_major(buf.num_elements()))
     for i in range(buf.num_elements()):
-        buf.raw_store(i, elems[i])
+        buf_flat.store(Coord(i), elems[i])
 
 
 def test_case[
@@ -298,8 +303,10 @@ def test_case[
     var output_ref = stack_allocation[dtype=dtype](row_major[d0, d1, d2]())
     linear_fill(output_ref, output_ref_vals)
 
+    var output_ref_flat = output_ref.reshape(row_major[d0 * d1 * d2]())
+    var output_flat = output.reshape(row_major[d0 * d1 * d2]())
     for i in range(output.num_elements()):
-        if output_ref.raw_load(i) != output.raw_load(i):
+        if output_ref_flat[i] != output_flat[i]:
             print("FAILURE: Mismatch at idx: ", end="")
             print(i)
             assert_false(True)

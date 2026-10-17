@@ -50,10 +50,9 @@ from max.gpu.sync import barrier
 from std.math import ceildiv, exp2, fma
 from std.memory import UnsafePointer, unsafe_stack_allocation
 from std.sys.info import align_of
-from layout import TensorLayout, TensorEngine, TileTensor, row_major
+from layout import Coord, TensorLayout, TensorEngine, TileTensor, row_major
 from state_space.mamba2_ssd_scan import (
     _HeadScalars,
-    _strides,
     _use_initial_state,
     _write_final_state,
 )
@@ -703,7 +702,6 @@ def ssd_chunk_output[
                     mma(acc[nt], m, bf, acc[nt])
         barrier()
 
-    var y_strides = _strides[3](y)
     comptime for half in range(2):
         var i = i0 + r0 + g + half * HALF
         if i < length:
@@ -714,13 +712,8 @@ def ssd_chunk_output[
                     acc[nt][half * 2], acc[nt][half * 2 + 1]
                 )
                 out = fma(SIMD[.float32, 2](D_val), xv, out)
-                y.raw_store(
-                    UInt32(
-                        (start + i) * y_strides[0]
-                        + h * y_strides[1]
-                        + p * y_strides[2]
-                    ),
-                    out.cast[kernel_dtype](),
+                y.store[alignment=align_of[kernel_dtype]()](
+                    Coord(start + i, h, p), out.cast[kernel_dtype]()
                 )
 
 

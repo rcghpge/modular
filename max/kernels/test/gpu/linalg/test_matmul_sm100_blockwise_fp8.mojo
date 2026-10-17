@@ -239,8 +239,11 @@ def test_matmul_sm100_blockwise_scaled_fp8[
     ctx.synchronize()
 
     comptime if value_epilogue or value_compute:
+        var c_host_ref_flat = c_host_ref.reshape(
+            row_major(c_host_ref.num_elements())
+        )
         for i in range(c_host_ref.num_elements()):
-            c_host_ref.raw_store(i, c_host_ref.raw_load(i) * Scalar[c_type](2))
+            c_host_ref_flat[i] = c_host_ref_flat[i] * Scalar[c_type](2)
 
     assert_with_measure[relative_difference](
         c_host._storage,

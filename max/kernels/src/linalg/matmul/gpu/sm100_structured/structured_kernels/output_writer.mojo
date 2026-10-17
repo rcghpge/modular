@@ -1826,6 +1826,11 @@ struct TileWriter[
                         - Int32(loop_stage * Self.stageN)
                     )
 
+                    var p3_smem_flat = c_smem_tile.reshape(
+                        row_major[
+                            type_of(c_smem_tile).LayoutType.static_product
+                        ]()
+                    )
                     comptime for v in range(p3_value_shape):
                         comptime p3_thread_offset = v * p3_output_threads
                         var p3_tidx = UInt32(thread_idx.x) + UInt32(
@@ -1841,10 +1846,10 @@ struct TileWriter[
                             continue
                         var p3_src_idx = UInt32(p3_simd_size) * p3_tidx
                         var p3_smem_idx = p3_swizzle(p3_src_idx)
-                        var p3_val_vec = c_smem_tile.raw_load[
+                        var p3_val_vec = p3_smem_flat.load[
                             width=p3_simd_size,
                             alignment=p3_smem_alignment,
-                        ](p3_smem_idx)
+                        ](Coord(Int(p3_smem_idx)))
                         var p3_chunk_idx = p3_rest // UInt32(Self.stageN)
                         var p3_local_col = (
                             p3_chunk_idx * UInt32(p3_vec_chunkM)

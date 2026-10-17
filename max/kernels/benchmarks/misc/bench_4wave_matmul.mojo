@@ -159,10 +159,12 @@ def verify_matmul[
                 rand(a_host.as_span())
                 rand(b_host.as_span())
             elif init_type == InitializationType.arange:
-                for i in range(a_host.num_elements()):
-                    a_host.raw_store(i, Scalar[a_type](i))
-                for i in range(b_host.num_elements()):
-                    b_host.raw_store(i, Scalar[a_type](i))
+                var a_flat = a_host.reshape(row_major(a_host.num_elements()))
+                var b_flat = b_host.reshape(row_major(b_host.num_elements()))
+                for i in range(a_flat.num_elements()):
+                    a_flat[i] = Scalar[a_type](i)
+                for i in range(b_flat.num_elements()):
+                    b_flat[i] = Scalar[a_type](i)
         # Move operands to the Device
         ctx.enqueue_copy(a_device, a_host_ptr)
         ctx.enqueue_copy(b_device, b_host_ptr)

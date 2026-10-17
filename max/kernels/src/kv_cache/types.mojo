@@ -3323,11 +3323,10 @@ struct PagedKVCache[
                     " in `_padded_lut_cols`."
                 ),
             )
-            var lut_row_offset = Int(batch_idx * row_stride + first_lut_idx)
             comptime for c in range(num_chunks):
-                var simd = self.lookup_table.raw_load[
+                var simd = self.lookup_table.load[
                     width=chunk, alignment=4 * chunk
-                ](lut_row_offset + c * chunk)
+                ](Coord(Int(batch_idx), Int(first_lut_idx) + c * chunk))
                 var rows_simd = simd * SIMD[.uint32, chunk](stride)
                 comptime for i in range(chunk):
                     result.rows[c * chunk + i] = rows_simd[i]

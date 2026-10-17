@@ -569,7 +569,7 @@ def test_topk_sampling[
             else:
                 print("Sample logits (first batch, first 10):")
             for i in range(min(10, N)):
-                print("  Token", i, ":", input_host_tensor.raw_load(i))
+                print("  Token", i, ":", input_host_tensor[0, i])
 
         # STEP 1: Compute ground truth mask (while we have input on host).
         with mask_buffer.map_to_host() as mask_host:
@@ -581,20 +581,20 @@ def test_topk_sampling[
             comptime if PRINT_OUTPUT:
                 print("  Valid top-K indices for first batch:")
                 for i in range(N):
-                    if mask_host_tensor.raw_load(i):
+                    if mask_host_tensor[0, i]:
                         comptime if sampling_from_prob:
                             print(
                                 "    Token",
                                 i,
                                 "with prob",
-                                input_host_tensor.raw_load(i),
+                                input_host_tensor[0, i],
                             )
                         else:
                             print(
                                 "    Token",
                                 i,
                                 "with logit",
-                                input_host_tensor.raw_load(i),
+                                input_host_tensor[0, i],
                             )
 
     # STEP 2: Run sampling validation.
@@ -845,8 +845,11 @@ def test_case_batched[
 
         comptime if PRINT_OUTPUT:
             print("Masked logits (first 10):")
+            var masked_logits_flat = masked_logits_host_tensor.reshape(
+                row_major(input_shape.flattened_length())
+            )
             for i in range(min(10, input_shape.flattened_length())):
-                print("  ", i, ":", masked_logits_host_tensor.raw_load(i))
+                print("  ", i, ":", masked_logits_flat[i])
 
         with topk_vals_extracted_buf.map_to_host() as topk_vals_host:
             with topk_idxs_extracted_buf.map_to_host() as topk_idxs_host:
@@ -865,12 +868,18 @@ def test_case_batched[
                 )
 
                 comptime if PRINT_OUTPUT:
+                    var topk_vals_flat = topk_vals_tensor.reshape(
+                        row_major(topk_shape.flattened_length())
+                    )
+                    var topk_idxs_flat = topk_idxs_tensor.reshape(
+                        row_major(topk_shape.flattened_length())
+                    )
                     print("Extracted top-K values (first 10):")
                     for i in range(min(10, topk_shape.flattened_length())):
-                        print("  ", i, ":", topk_vals_tensor.raw_load(i))
+                        print("  ", i, ":", topk_vals_flat[i])
                     print("Extracted top-K indices (first 10):")
                     for i in range(min(10, topk_shape.flattened_length())):
-                        print("  ", i, ":", topk_idxs_tensor.raw_load(i))
+                        print("  ", i, ":", topk_idxs_flat[i])
 
     # Run CPU reference.
     with device_in.map_to_host() as in_host:
@@ -917,12 +926,18 @@ def test_case_batched[
                 )
 
                 comptime if PRINT_OUTPUT:
+                    var topk_vals_cpu_flat = topk_vals_cpu_tensor.reshape(
+                        row_major(topk_shape.flattened_length())
+                    )
+                    var topk_idxs_cpu_flat = topk_idxs_cpu_tensor.reshape(
+                        row_major(topk_shape.flattened_length())
+                    )
                     print("CPU top-K values (first 10):")
                     for i in range(min(10, topk_shape.flattened_length())):
-                        print("  ", i, ":", topk_vals_cpu_tensor.raw_load(i))
+                        print("  ", i, ":", topk_vals_cpu_flat[i])
                     print("CPU top-K indices (first 10):")
                     for i in range(min(10, topk_shape.flattened_length())):
-                        print("  ", i, ":", topk_idxs_cpu_tensor.raw_load(i))
+                        print("  ", i, ":", topk_idxs_cpu_flat[i])
 
     # Compare extracted values with CPU reference.
     with topk_vals_extracted_buf.map_to_host() as topk_vals_ext_host:
@@ -933,11 +948,16 @@ def test_case_batched[
             var topk_vals_cpu_tensor = TileTensor(
                 topk_vals_cpu_host, topk_runtime_layout
             )
-
+            var topk_vals_ext_flat = topk_vals_ext_tensor.reshape(
+                row_major(topk_shape.flattened_length())
+            )
+            var topk_vals_cpu_flat = topk_vals_cpu_tensor.reshape(
+                row_major(topk_shape.flattened_length())
+            )
             for i in range(topk_shape.flattened_length()):
                 assert_almost_equal(
-                    topk_vals_ext_tensor.raw_load(i),
-                    topk_vals_cpu_tensor.raw_load(i),
+                    topk_vals_ext_flat[i],
+                    topk_vals_cpu_flat[i],
                     msg="Top-K values mismatch at index " + String(i),
                 )
 
@@ -978,9 +998,10 @@ def fill_random[
     comptime min_val = -1e9
     comptime max_val = 1e9
     var total_elements = buffer.num_elements()
+    var flat = buffer.reshape(row_major(total_elements))
     for i in range(total_elements):
         var random_value = random_float64(min_val, max_val)
-        buffer.raw_store(i, random_value.cast[dtype]())
+        flat.store(Coord(i), random_value.cast[dtype]())
 
 
 struct TestCase[_sampling: Bool, _largest: Bool = True, _block_size: Int = 256](

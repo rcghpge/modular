@@ -867,11 +867,15 @@ def _concat_gpu_flat_kernel[
             var in_offset = (
                 outer_idx * input_concat_dim + local_concat
             ) * _inner_size + inner_idx
-            output.raw_store[alignment=vec_width](
-                vec_idx,
-                inputs[i].raw_load[
+            var output_flat = output.reshape(row_major(output.num_elements()))
+            var input_flat = inputs[i].reshape(
+                row_major(inputs[i].num_elements())
+            )
+            output_flat.store[alignment=vec_width](
+                Coord(vec_idx),
+                input_flat.load[
                     width=vec_width, alignment=vec_width, invariant=True
-                ](in_offset),
+                ](Coord(in_offset)),
             )
             return
         acc += input_concat_dim

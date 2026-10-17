@@ -14,7 +14,7 @@
 """Implements the SM100 MLA decode kernel variant that loads KV cache in FP8 and converts to BF16 in shared memory before MMA."""
 
 from std.math import ceildiv
-from std.sys import size_of
+from std.sys import align_of, size_of
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     thread_idx,
@@ -40,6 +40,8 @@ from layout.tma_async import (
 from std.memory import bitcast
 from layout import (
     ComptimeInt,
+    Coord,
+    Idx,
     RowMajorLayout,
     TensorEngine,
     TileTensor,
@@ -949,16 +951,16 @@ struct MLA_SM100_Decode_KV_FP8[
             # and improve the performance (18 barriers vs 1 barrier here).
             var p0a_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, NumBlocks]())
+            ](row_major[NumBlocks, 4]())
             var p0b_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, NumBlocks]())
+            ](row_major[NumBlocks, 4]())
             var p1a_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, NumBlocks]())
+            ](row_major[NumBlocks, 4]())
             var p1b_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, NumBlocks]())
+            ](row_major[NumBlocks, 4]())
 
             comptime for b in range(NumBlocks):
                 var src_block_u8 = src_u8 + b * BlockElems
@@ -1004,10 +1006,18 @@ struct MLA_SM100_Decode_KV_FP8[
                     p1a = hmul2_bf16x8_by_scalar[Self.q_type](p1a, scale_bf16)
                     p1b = hmul2_bf16x8_by_scalar[Self.q_type](p1b, scale_bf16)
 
-                p0a_all.raw_store(b * 4, p0a)
-                p0b_all.raw_store(b * 4, p0b)
-                p1a_all.raw_store(b * 4, p1a)
-                p1b_all.raw_store(b * 4, p1b)
+                p0a_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[b], Idx[0]), p0a
+                )
+                p0b_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[b], Idx[0]), p0b
+                )
+                p1a_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[b], Idx[0]), p1a
+                )
+                p1b_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[b], Idx[0]), p1b
+                )
 
             # Single barrier. All 128 threads finish ALL reads before ANY writes
             named_barrier[Int32(WARPGROUP_SIZE)](3)
@@ -1019,22 +1029,30 @@ struct MLA_SM100_Decode_KV_FP8[
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     phys_bf16_0a,
-                    p0a_all.raw_load[width=4](b * 4),
+                    p0a_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[b], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     phys_bf16_0b,
-                    p0b_all.raw_load[width=4](b * 4),
+                    p0b_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[b], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     phys_bf16_1a,
-                    p1a_all.raw_load[width=4](b * 4),
+                    p1a_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[b], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     phys_bf16_1b,
-                    p1b_all.raw_load[width=4](b * 4),
+                    p1b_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[b], Idx[0])
+                    ),
                 )
 
             fence_async_view_proxy()

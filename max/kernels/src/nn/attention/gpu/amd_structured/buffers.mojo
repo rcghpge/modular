@@ -17,12 +17,12 @@ TileTensor-only imports, aliases, and return types.
 
 from std.math import ceildiv, recip
 from std.math.uutils import umod, ufloordiv
-from std.sys import simd_width_of, size_of
+from std.sys import align_of, simd_width_of, size_of
 
 from max.gpu import lane_id, WARP_SIZE
 from max.gpu.intrinsics import cvt_pk_fp8_f32_raw
 from layout import TensorEngine, TensorLayout, TileTensor
-from layout.coord import Coord, ComptimeInt
+from layout.coord import Coord, ComptimeInt, Idx
 from layout.swizzle import Swizzle
 from layout.tile_layout import (
     Layout as TileLayout,
@@ -915,9 +915,10 @@ struct PRegisterBuffer[
             1, Self.output_frag_size
         ]()
         var p_reg_tile = p_reg_vec.tile[1, 1](reg_idx, 0)
-        comptime frag_size = p_reg_tile.element_size
         var reg_val = Self._scale_p(
-            p_reg_tile.raw_load[width=frag_size](0)
+            p_reg_tile.load[alignment=align_of[p_reg_tile.dtype]()](
+                Coord(Idx[0], Idx[0])
+            )
         ).cast[Self.dtype]()
 
         # Apply swizzle to spread rows across different LDS banks.
@@ -929,7 +930,9 @@ struct PRegisterBuffer[
             var swizzled = swizzle(elem_off // frag_w) * frag_w
             (block_base + swizzled).store(reg_val)
         else:
-            dst_frag.raw_store[width=frag_w](0, reg_val)
+            dst_frag.store[alignment=align_of[Self.dtype]()](
+                Coord(Idx[0], Idx[0], Idx[0]), reg_val
+            )
 
     @inline(.always)
     def copy_to_shared(self):
@@ -1059,9 +1062,9 @@ struct PRegisterBuffer[
                         comptime reg_idx = n_mma * Self.num_m_mmas + m_mma
                         var p_reg_tile = p_reg_vec.tile[1, 1](reg_idx, 0)
                         var reg_val = Self._scale_p(
-                            p_reg_tile.raw_load[width=p_reg_tile.element_size](
-                                0
-                            )
+                            p_reg_tile.load[
+                                alignment=align_of[p_reg_tile.dtype]()
+                            ](Coord(Idx[0], Idx[0]))
                         ).cast[Self.dtype]()
 
                         var elem_off = (
@@ -1107,14 +1110,16 @@ struct PRegisterBuffer[
                             1 + i * num_n_mmas_per_bk
                         ) * Self.num_m_mmas + m_mma
                         var lo = Self._scale_p(
-                            p_reg_vec.tile[1, 1](lo_idx, 0).raw_load[
-                                width=frag_w
-                            ](0)
+                            p_reg_vec.tile[1, 1](lo_idx, 0).load[
+                                width=frag_w,
+                                alignment=align_of[p_reg_vec.dtype](),
+                            ](Coord(Idx[0], Idx[0]))
                         ).cast[Self.dtype]()
                         var hi = Self._scale_p(
-                            p_reg_vec.tile[1, 1](hi_idx, 0).raw_load[
-                                width=frag_w
-                            ](0)
+                            p_reg_vec.tile[1, 1](hi_idx, 0).load[
+                                width=frag_w,
+                                alignment=align_of[p_reg_vec.dtype](),
+                            ](Coord(Idx[0], Idx[0]))
                         ).cast[Self.dtype]()
                         var joined = lo.join(hi)
 

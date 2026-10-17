@@ -968,6 +968,7 @@ def _copy_partial_a_tile_blockwise_from_gmem[
     var lane = lane_id()
     var zero_vec = SIMD[a_type, VEC](0)
 
+    var a_smem_flat = a_smem_tile.reshape(row_major[BM * BK]())
     comptime for i in range(CHUNKS_PER_LANE):
         var chunk = i * WARP_SIZE + lane
         var row = chunk // CHUNKS_PER_ROW
@@ -978,7 +979,9 @@ def _copy_partial_a_tile_blockwise_from_gmem[
             av = a_gmem.load[width=VEC, alignment=align_of[a_type]()](
                 Coord(g_row, iter_idx * BK + k0)
             )
-        a_smem_tile.raw_store(Int(a_sw(Int32(row * BK + k0))), av)
+        a_smem_flat.store[alignment=align_of[a_type]()](
+            Coord(Int(a_sw(Int32(row * BK + k0)))), av
+        )
 
     # a_scales: BM scalars total; each lane writes one row per outer iteration.
     comptime for i in range(BM // WARP_SIZE):
@@ -1565,6 +1568,9 @@ def multi_stage_reg_epilogue[
 
             comptime for i in range(c_smem_M // TMA_BM):
                 var c_smem_split = c_smem_tile.tile[TMA_BM, stageN](i, 0)
+                var c_smem_split_flat = c_smem_split.reshape(
+                    row_major[TMA_BM * stageN]()
+                )
                 # Dim-0 tiles retain the row-major parent's (stageN, 1) strides.
                 comptime split_layout = TileLayout(
                     Coord(Idx[TMA_BM], Idx[stageN]),
@@ -1592,11 +1598,13 @@ def multi_stage_reg_epilogue[
                     var global_i: Int = coord_m + local_i
                     var global_j: Int = coord_n + local_j
                     if global_i < Int(group_end_idx):
-                        var src = c_smem_split.raw_load[
+                        var src = c_smem_split_flat.load[
                             width=simd_size, alignment=alignment
                         ](
-                            linear_idx if size_of[c_type]()
-                            != 2 else swizzle(linear_idx)
+                            Coord(
+                                linear_idx if size_of[c_type]()
+                                != 2 else swizzle(linear_idx)
+                            )
                         )
                         c.store[alignment=alignment]((global_i, global_j), src)
         else:

@@ -42,6 +42,7 @@ from std.random import random_float64, seed
 from max.gpu.host import DeviceContext
 from std.testing import assert_true
 from layout import (
+    Coord,
     TileTensor,
     Idx,
     DefaultEngine,
@@ -83,8 +84,8 @@ def _stats_vs_ref(
     var max_abs = Float64(0.0)
     for mm in range(rows):
         for nn in range(N):
-            var g = Float64(got.raw_load(mm * N + nn))
-            var r = reference.raw_load(mm * N + nn)
+            var g = Float64(rebind[Scalar[f32]](got.load(Coord(mm, nn))))
+            var r = rebind[Scalar[f64]](reference.load(Coord(mm, nn)))
             var ad = abs(g - r)
             var denom = abs(r)
             if denom < 1e-30:
@@ -145,9 +146,9 @@ def main() raises:
         var b_host_buf = ctx.enqueue_create_host_buffer[f32](N * K)
         var b_host = TileTensor(b_host_buf, row_major(Idx[N], Idx[K]))
         for i in range(a_host.num_elements()):
-            a_host.raw_store(i, Float32(random_float64(-1.0, 1.0)))
+            a_host[i // K, i % K] = Float32(random_float64(-1.0, 1.0))
         for i in range(b_host.num_elements()):
-            b_host.raw_store(i, Float32(random_float64(-1.0, 1.0)))
+            b_host[i // K, i % K] = Float32(random_float64(-1.0, 1.0))
 
         var b_dev_buf = ctx.enqueue_create_buffer[f32](N * K)
         var b_dev = TileTensor(b_dev_buf, row_major(Idx[N], Idx[K]))
@@ -191,8 +192,9 @@ def main() raises:
                 String("m=", m, " max_abs above the fp32-exact bound"),
             )
             if m == 64:
-                for i in range(REF_ROWS * N):
-                    c64.raw_store(i, c.raw_load(i))
+                for mm in range(REF_ROWS):
+                    for nn in range(N):
+                        c64[mm, nn] = c[mm, nn]
 
         print("[phase 2] use_tf32=True, m > 64: TF32 UMMA tile GEMM")
         var ms_large = [65, 128, 512]
@@ -218,15 +220,16 @@ def main() raises:
                 String("m=", m, " mean_rel above the TF32 band"),
             )
             if m == 128:
-                for i in range(REF_ROWS * N):
-                    c128_tf32.raw_store(i, c.raw_load(i))
+                for mm in range(REF_ROWS):
+                    for nn in range(N):
+                        c128_tf32[mm, nn] = c[mm, nn]
 
         # The dispatch cliff: the same 64 input rows produce different
         # outputs at m=64 (split-K GEMV) vs m=128 (TF32 tile GEMM).
         var sum_rel_diff = Float64(0.0)
         for i in range(REF_ROWS * N):
-            var g64 = Float64(c64.raw_load(i))
-            var g128 = Float64(c128_tf32.raw_load(i))
+            var g64 = Float64(c64[i // N, i % N])
+            var g128 = Float64(c128_tf32[i // N, i % N])
             var denom = abs(g64)
             if denom < 1e-30:
                 denom = 1e-30
@@ -275,7 +278,7 @@ def main() raises:
             if m == 64 or m == 128:
                 var mismatches = 0
                 for i in range(REF_ROWS * N):
-                    if c.raw_load(i) != c64.raw_load(i):
+                    if c[i // N, i % N] != c64[i // N, i % N]:
                         mismatches += 1
                 print(t"  bit-exact vs default m=64: {mismatches} diffs")
                 assert_true(

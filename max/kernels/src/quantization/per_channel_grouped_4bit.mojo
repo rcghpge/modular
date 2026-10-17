@@ -13,9 +13,9 @@
 """Provides per-channel grouped 4-bit quantization and K-quant dequantization kernels."""
 
 from std.math import ceil, ceildiv
-from std.sys.info import size_of
+from std.sys.info import align_of, size_of
 
-from layout import TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from std.memory import UnsafePointer, bitcast, unsafe_memcpy
 from std.utils import IndexList, StaticTuple
 
@@ -323,15 +323,17 @@ struct Q4sym[
             Int(input_tt.dim[input_rank - 1]()), Self.group_size
         )
 
+        var input_2d = input_tt.reshape(
+            row_major(outer_stride, input_inner_stride)
+        )
+
         # TODO: vectorize parallelize, blah blah blah
         for i in range(outer_stride):
             for j in range(output_inner_stride):
-                var flat_index_input = (
-                    input_inner_stride * i + j * Self.group_size
-                )
-                var loaded_group = input_tt.raw_load[width=Self.group_size](
-                    flat_index_input
-                )
+                var loaded_group = input_2d.load[
+                    width=Self.group_size,
+                    alignment=align_of[Self.float_dtype](),
+                ](Coord(i, j * Self.group_size))
 
                 var flat_index_output = output_inner_stride * i + j
                 var output_ptr = base_block_ptr + flat_index_output
@@ -398,6 +400,10 @@ struct Q4sym[
         # Note: this is calculated assuming a pointer of Q4Sym's
         var input_inner_dim = ceildiv(output_inner_dim, Self.group_size)
 
+        var output_2d = output_tt.reshape(
+            row_major(outer_dim, output_inner_dim)
+        )
+
         # TODO: vectorize parallelize, blah blah blah
         for i in range(outer_dim):
             for j in range(input_inner_dim):
@@ -409,12 +415,8 @@ struct Q4sym[
                     count=1,
                 )
 
-                var flat_index_output = (
-                    output_inner_dim * i + j * Self.group_size
-                )
-                output_tt.raw_store(
-                    flat_index_output,
-                    encoded.decode_fully(),
+                output_2d.store[alignment=align_of[Self.float_dtype]()](
+                    Coord(i, j * Self.group_size), encoded.decode_fully()
                 )
 
 

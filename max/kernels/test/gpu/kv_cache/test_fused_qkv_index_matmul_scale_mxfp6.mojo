@@ -97,9 +97,9 @@ def _fill_random_u8(t: TileTensor[mut=True, ...], n: Int, lo: Int, hi: Int):
     Writes through a byte view so the same helper serves the packed-FP6 uint8
     operands and the E8M0 scales, whose dtype has no integer conversion.
     """
-    var bytes = t.bitcast[.uint8]()
+    var bytes = t.bitcast[.uint8]().reshape(row_major(n))
     for i in range(n):
-        bytes.raw_store(i, UInt8(Int(random_ui64(UInt64(lo), UInt64(hi)))))
+        bytes.store(Coord(i), UInt8(Int(random_ui64(UInt64(lo), UInt64(hi)))))
 
 
 def execute_dual_cache_fused_mxfp6[

@@ -1324,11 +1324,10 @@ struct AMD4WaveMatmul[
                             + n_within * MMA_N
                             + lane_group * c_frag_size
                         )
-                        var v = (
-                            c_reg.tile[1, c_frag_size](m_mma, n_mma)
-                            .raw_load[width=c_frag_size](0)
-                            .cast[Self.c_type]()
-                        )
+                        var v = c_reg.load[
+                            width=c_frag_size,
+                            alignment=align_of[Self.accum_dtype](),
+                        ](Coord(m_mma, n_mma * c_frag_size)).cast[Self.c_type]()
                         comptime if has_epilogue_fn:
                             c_writer.store_with_epilogue_fn(
                                 epilogue_fn, v, m=m_dram, n=n_global
@@ -1982,11 +1981,10 @@ struct AMD4WaveMatmul[
                             + n_within * MMA_N
                             + lane_group * c_frag_size
                         )
-                        var v = (
-                            c_reg.tile[1, c_frag_size](m_mma, n_mma)
-                            .raw_load[width=c_frag_size](0)
-                            .cast[Self.c_type]()
-                        )
+                        var v = c_reg.load[
+                            width=c_frag_size,
+                            alignment=align_of[Self.accum_dtype](),
+                        ](Coord(m_mma, n_mma * c_frag_size)).cast[Self.c_type]()
                         # Pre-residual fused compute closure — matches
                         # SM100 `D = lambda(Conv(A,B)) + beta * C`
                         # semantics. Fires on the post-cast `c_type`

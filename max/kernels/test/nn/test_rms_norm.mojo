@@ -28,7 +28,7 @@ def compute_rms[
     comptime assert data.rank == 1, "data.rank must be 1"
     var sum_of_squares = Float32()
     for i in range(size):
-        var d = data.raw_load(i).cast[.float32]()
+        var d = rebind[Scalar[dtype]](data.load(Coord(i))).cast[.float32]()
         sum_of_squares += d * d
     return sqrt((sum_of_squares / Float32(data.num_elements())) + eps)
 

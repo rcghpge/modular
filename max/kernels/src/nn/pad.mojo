@@ -930,9 +930,10 @@ def pad_repeat[
 
     for input_idx in non_pad_iter:
         var output_idx = input_idx + pre_pads
-        var in_idx = Int(input.layout(Coord(input_idx)))
-        var out_idx = Int(output.layout(Coord(output_idx)))
-        output.raw_store(out_idx, input.raw_load(in_idx))
+        output.store(
+            Coord(output_idx),
+            rebind[Scalar[dtype]](input.load(Coord(input_idx))),
+        )
 
     for axis in reversed(range(comptime (output.rank))):
         for i in range(axis):

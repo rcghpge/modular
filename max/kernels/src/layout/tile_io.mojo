@@ -21,7 +21,7 @@ from std.os import abort
 
 from layout import Coord, Idx
 from .swizzle import Swizzle
-from .tile_layout import Layout
+from .tile_layout import Layout, row_major
 from .tile_tensor import TileTensor
 from .tensor_engine import DefaultEngine
 
@@ -423,6 +423,18 @@ struct SharedToGenericTileCopier[
                     dst_num_rows * Int(dst.layout.stride[0]().value())
                 ) - Scalar[dst.linear_idx_type](dst_fragments._distance(dst))
 
+            var src_flat = src.reshape(
+                row_major(Int(src.layout(src.layout.product() - 1)) + 1)
+            )
+            var dst_frag_flat = dst_fragments.reshape(
+                row_major(
+                    Int(
+                        dst_fragments.layout(dst_fragments.layout.product() - 1)
+                    )
+                    + 1
+                )
+            )
+
             comptime for i in range(num_stores_per_thread):
                 var src_idx = src_fragments.layout[
                     linear_idx_type=src.linear_idx_type
@@ -447,11 +459,11 @@ struct SharedToGenericTileCopier[
                 comptime if Self.masked:
                     in_bounds = dst_idx < dst_idx_bound
                 if in_bounds:
-                    var src_vec = src.raw_load[
-                        width=simd_size, alignment=src_align
-                    ](src_idx).cast[dst.dtype]()
-                    dst_fragments.raw_store[alignment=dst_align](
-                        dst_idx, src_vec
+                    var src_vec = src_flat.load[alignment=src_align](
+                        Coord(src_idx)
+                    ).cast[dst.dtype]()
+                    dst_frag_flat.store[alignment=dst_align](
+                        Coord(dst_idx), src_vec
                     )
         else:
             comptime if case .Some(swizzle_fn) = Self.swizzle:
@@ -464,6 +476,19 @@ struct SharedToGenericTileCopier[
                 )
                 comptime num_stores_per_thread = (
                     src_fragments.LayoutType.static_product
+                )
+                var src_flat = src.reshape(
+                    row_major(Int(src.layout(src.layout.product() - 1)) + 1)
+                )
+                var dst_frag_flat = dst_fragments.reshape(
+                    row_major(
+                        Int(
+                            dst_fragments.layout(
+                                dst_fragments.layout.product() - 1
+                            )
+                        )
+                        + 1
+                    )
                 )
 
                 comptime for i in range(num_stores_per_thread):
@@ -480,11 +505,11 @@ struct SharedToGenericTileCopier[
                         src_frag_offset + src_idx_base
                     ) + Scalar[src.linear_idx_type](src_idx_diff)
 
-                    var src_vec = src.raw_load[
-                        width=simd_size, alignment=src_align
-                    ](swizzled_idx).cast[dst.dtype]()
-                    dst_fragments.raw_store[alignment=dst_align](
-                        dst_idx, src_vec
+                    var src_vec = src_flat.load[alignment=src_align](
+                        Coord(swizzled_idx)
+                    ).cast[dst.dtype]()
+                    dst_frag_flat.store[alignment=dst_align](
+                        Coord(dst_idx), src_vec
                     )
             else:
                 dst_fragments.copy_from(
@@ -717,8 +742,11 @@ struct LocalToSharedTileCopier[
             )
             comptime num_vecs = src.LayoutType.static_product
 
+            var dst_flat = dst.reshape(
+                row_major(Int(dst.layout(dst.layout.product() - 1)) + 1)
+            )
+
             comptime for i in range(num_vecs):
-                var src_idx = src.layout(Idx[i])
                 var dst_idx = dst_fragments.layout[
                     linear_idx_type=dst.linear_idx_type
                 ](Idx[i])
@@ -730,10 +758,12 @@ struct LocalToSharedTileCopier[
                 var swizzled_idx = swizzle_fn(
                     dst_frag_offset + dst_idx_base
                 ) + Scalar[dst.linear_idx_type](dst_idx_diff)
-                var src_vec = src.raw_load[
-                    width=simd_size, alignment=src_align
-                ](src_idx).cast[dst.dtype]()
-                dst.raw_store[alignment=dst_align](swizzled_idx, src_vec)
+                var src_vec = src.load[alignment=src_align](Coord(Idx[i])).cast[
+                    dst.dtype
+                ]()
+                dst_flat.store[alignment=dst_align](
+                    Coord(swizzled_idx), src_vec
+                )
         else:
             comptime if src.dtype == dst.dtype:
                 dst_fragments.copy_from(src.bitcast[dst_fragments.dtype]())

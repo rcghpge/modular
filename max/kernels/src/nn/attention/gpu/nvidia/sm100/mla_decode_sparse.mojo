@@ -22,7 +22,7 @@ UMMA consumption.
 from std.collections import OptionalReg
 from std.math import ceildiv, clamp
 from std.math.constants import log2e
-from std.sys import size_of
+from std.sys import align_of, size_of
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     thread_idx,
@@ -56,6 +56,8 @@ from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from std.memory import bitcast
 from layout import (
     ComptimeInt,
+    Coord,
+    Idx,
     DefaultEngine,
     RowMajorLayout,
     TensorEngine,
@@ -1703,16 +1705,16 @@ struct MLA_SM100_Decode_Sparse[
             # = 32 converted values of 4 uint32 each = 128 uint32.
             var p0a_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, COLS_PER_GROUP]())
+            ](row_major[COLS_PER_GROUP, 4]())
             var p0b_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, COLS_PER_GROUP]())
+            ](row_major[COLS_PER_GROUP, 4]())
             var p1a_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, COLS_PER_GROUP]())
+            ](row_major[COLS_PER_GROUP, 4]())
             var p1b_all = tt_stack_allocation[
                 dtype=.uint32, address_space=.LOCAL
-            ](row_major[4, COLS_PER_GROUP]())
+            ](row_major[COLS_PER_GROUP, 4]())
 
             comptime for c in range(COLS_PER_GROUP):
                 # Column byte offset for this iteration.
@@ -1761,10 +1763,18 @@ struct MLA_SM100_Decode_Sparse[
                     p1a = hmul2_bf16x8_by_scalar[Self.q_type](p1a, s1)
                     p1b = hmul2_bf16x8_by_scalar[Self.q_type](p1b, s1)
 
-                p0a_all.raw_store(c * 4, p0a)
-                p0b_all.raw_store(c * 4, p0b)
-                p1a_all.raw_store(c * 4, p1a)
-                p1b_all.raw_store(c * 4, p1b)
+                p0a_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[c], Idx[0]), p0a
+                )
+                p0b_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[c], Idx[0]), p0b
+                )
+                p1a_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[c], Idx[0]), p1a
+                )
+                p1b_all.store[alignment=align_of[DType.uint32]()](
+                    Coord(Idx[c], Idx[0]), p1b
+                )
 
             # Single barrier: all 128 threads finish reads before writes.
             named_barrier[Int32(WARPGROUP_SIZE)](3)
@@ -1778,22 +1788,30 @@ struct MLA_SM100_Decode_Sparse[
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     bf16_sw_0a,
-                    p0a_all.raw_load[width=4](c * 4),
+                    p0a_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[c], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     bf16_sw_0b,
-                    p0b_all.raw_load[width=4](c * 4),
+                    p0b_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[c], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     bf16_sw_1a,
-                    p1a_all.raw_load[width=4](c * 4),
+                    p1a_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[c], Idx[0])
+                    ),
                 )
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.q_type](
                     dst_block,
                     bf16_sw_1b,
-                    p1b_all.raw_load[width=4](c * 4),
+                    p1b_all.load[width=4, alignment=align_of[DType.uint32]()](
+                        Coord(Idx[c], Idx[0])
+                    ),
                 )
 
             fence_async_view_proxy()

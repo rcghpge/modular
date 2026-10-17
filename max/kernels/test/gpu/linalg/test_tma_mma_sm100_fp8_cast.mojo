@@ -274,6 +274,7 @@ def tma_umma_kernel_sgs[
 
         var tid = thread_idx.x
         comptime swizzle = make_swizzle[b_smem_type, b_swizzle]()
+        var b_smem_flat = b_smem_tile.reshape(row_major[b_size]())
 
         comptime for elem in range(elems_per_thread // simd_size):
             var local_idx = simd_size * (elem * num_threads + tid)
@@ -306,9 +307,7 @@ def tma_umma_kernel_sgs[
             var k_q, k_r = divmod(k_local, b_shape10)
             var k_offset = k_q * b_stride11 + k_r * b_stride10
             var offset = swizzle(n_offset + k_offset)
-            b_smem_tile.raw_store[width=simd_size, alignment=2 * simd_size](
-                offset, bf16_val
-            )
+            b_smem_flat.store[alignment=2 * simd_size](Coord(offset), bf16_val)
 
         # Sync: wait for TMA to complete and all threads to finish storing to smem
         tma_mbar[0].wait(tma_phase)

@@ -165,7 +165,8 @@ def _rope_split_store_ragged_impl[
                 input_row_offsets, global_token_idx
             )
             var ti = Int(
-                UInt32(global_token_idx) - input_row_offsets.raw_load(bi)
+                UInt32(global_token_idx)
+                - rebind[UInt32](input_row_offsets.load(Coord(bi)))
             )
 
             # Cache position: used for cache stores and as the default

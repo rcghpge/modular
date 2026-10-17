@@ -3234,8 +3234,11 @@ struct EPDispatchKernel[
             )
 
         if expert_idx < Int32(Self.n_experts):
+            var topk_ids_flat = topk_ids.reshape(
+                row_major(num_tokens * Self.top_k)
+            )
             for i in range(lane_id(), num_tokens * Self.top_k, WARP_SIZE):
-                if topk_ids.raw_load(i) == global_expert_idx:
+                if rebind[Int32](topk_ids_flat[i]) == global_expert_idx:
                     expert_count += 1
 
             expert_count = warp.sum(expert_count)

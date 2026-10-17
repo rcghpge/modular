@@ -1391,7 +1391,7 @@ struct TileTensor[
             or coord.rank == 1
         )
 
-        return self.raw_load[
+        return self._load_storage[
             width=width,
             alignment=alignment,
             invariant=invariant,
@@ -1421,7 +1421,11 @@ struct TileTensor[
             coord: The coordinates specifying the element's position.
             value: The SIMD vector to store.
         """
-        comptime assert Self.is_compatible_with[coord.element_types]
+        comptime assert (
+            Self.is_compatible_with[coord.element_types]
+            or coord.rank == Self.flat_rank
+            or coord.rank == 1
+        )
 
         self._store_storage[alignment=alignment, non_temporal=non_temporal](
             self.layout[linear_idx_type=Self.linear_idx_type](coord),
@@ -1481,7 +1485,7 @@ struct TileTensor[
         Returns:
             A SIMD vector containing the loaded elements.
         """
-        return self.raw_load[
+        return self._load_storage[
             width=width, alignment=alignment, invariant=invariant
         ](self._linear_offset(idx))
 
@@ -1508,7 +1512,9 @@ struct TileTensor[
             idx: The multi-dimensional index.
             value: The SIMD vector to store.
         """
-        self.raw_store[alignment=alignment](self._linear_offset(idx), value)
+        self._store_storage[alignment=alignment](
+            self._linear_offset(idx), value
+        )
 
     @inline(.nodebug)
     def raw_load[
@@ -4038,7 +4044,13 @@ def _pretty_print_elementwise[W: Writer](tensor: TileTensor, mut writer: W):
         var offset = tensor.layout[linear_idx_type=tensor.linear_idx_type](
             Scalar[tensor.linear_idx_type](i)
         )
-        writer.write(tensor.raw_load[width=tensor.element_size](offset))
+        writer.write(
+            tensor._load_storage[
+                width=tensor.element_size,
+                alignment=align_of[tensor.dtype](),
+                invariant=_default_invariant[tensor.mut](),
+            ](offset)
+        )
         if i < n - 1:
             writer.write(", ")
     writer.write("]")

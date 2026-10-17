@@ -51,8 +51,10 @@ comptime _Tile[LayoutType: TensorLayout] = TileTensor[
 
 
 def _fill_ramp[LayoutType: TensorLayout](tile: _Tile[LayoutType]):
-    for i in range(Int(tile.dim[0]())):
-        tile.raw_store[width=1](i, Float32(i + 1))
+    var count = Int(tile.dim[0]())
+    var flat = tile.reshape(row_major(count))
+    for i in range(count):
+        flat[i] = Float32(i + 1)
 
 
 def optional_reg_kernel[

@@ -31,7 +31,7 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
 )
-from layout import Coord, TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor, row_major
 from std.memory import AddressSpace
 from std.random import Random
 
@@ -92,6 +92,7 @@ def _rms_norm_fused_residual_cpu_2d[
     comptime simd_width = simd_width_of[dtype]()
     var simd_loop_end = align_down(num_cols, simd_width)
     comptime intermediate_type = get_accum_type[dtype]()
+    var gamma_flat = gamma.reshape(row_major(gamma.num_elements()))
 
     # Calculate dropout scale if needed
     var dropout_scale = Scalar[dtype](1.0)
@@ -163,13 +164,17 @@ def _rms_norm_fused_residual_cpu_2d[
         # Second pass: apply normalization
         def _normalize[
             sw: Int
-        ](col: Int) {gamma, weight_offset, residual_read_fn, output_fn, mut}:
+        ](col: Int) {
+            gamma_flat, weight_offset, residual_read_fn, output_fn, mut
+        }:
             # Read the pre-computed sum values (input + residual) from first pass
             var sum_vals = residual_read_fn[sw](row, col).cast[
                 intermediate_type
             ]()
 
-            var gamma_val = gamma.raw_load[width=sw](col)
+            var gamma_val = gamma_flat.load[
+                width=sw, alignment=align_of[dtype]()
+            ](Coord(col))
             var norm_val: SIMD[dtype, sw]
 
             if multiply_before_cast:

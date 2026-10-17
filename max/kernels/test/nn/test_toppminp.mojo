@@ -17,6 +17,7 @@ from std.random import random_float64
 from max.algorithm.functional import parallelize_over_rows
 from std.benchmark import Bench, Bencher, BenchId
 from layout import (
+    Coord,
     Idx,
     DefaultEngine,
     TileTensor,
@@ -83,9 +84,10 @@ def fill_random[
     comptime min_val = -1e6
     comptime max_val = 1e6
     var total_elements = buffer.num_elements()
+    var flat = buffer.reshape(row_major(total_elements))
     for i in range(total_elements):
         var random_value = random_float64(min_val, max_val)
-        buffer.raw_store(i, random_value.cast[dtype]())
+        flat[i] = random_value.cast[dtype]()
 
 
 def fill_iota[
@@ -107,20 +109,27 @@ def test_is_sorted_descending[
     var sorted_flag = Span(_sorted_flag)
 
     def process_rows(start_batch: Int, end_batch: Int) {var}:
+        var buf_flat = buf.reshape(row_major(buf.num_elements()))
         # Process a chunk of batches
         for batch_id in range(start_batch, end_batch):
             var offset = batch_id * vocab_size
             for i in range(vocab_size - 1):
-                if buf.raw_load(offset + i) < buf.raw_load(offset + i + 1):
+                var cur = rebind[Scalar[dtype]](
+                    buf_flat.load(Coord(offset + i))
+                )
+                var nxt = rebind[Scalar[dtype]](
+                    buf_flat.load(Coord(offset + i + 1))
+                )
+                if cur < nxt:
                     print(
                         "[",
                         batch_id,
                         "][",
                         i,
                         "]: ",
-                        buf.raw_load(offset + i),
+                        cur,
                         " < ",
-                        buf.raw_load(offset + i + 1),
+                        nxt,
                     )
                     sorted_flag[batch_id] = False
                     break

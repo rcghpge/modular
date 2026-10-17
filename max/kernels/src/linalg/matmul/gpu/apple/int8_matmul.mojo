@@ -49,10 +49,11 @@ from max.gpu.host import DeviceContext
 from max.gpu.memory import build_edge_mask, gmem_edge_masked_load
 from std.collections import Optional
 from std.math import ceildiv, round
+from std.sys import align_of
 from std.memory import unsafe_stack_allocation
 from std.utils import IndexList
 
-from layout import TensorEngine, TileTensor
+from layout import TensorEngine, TileTensor, row_major
 from layout.coord import Coord
 from layout.tile_layout import TensorLayout
 
@@ -187,10 +188,14 @@ struct Int8DequantWriter[
                 var col0 = tile_c0 + cb
                 var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
                 if col0 + 3 < self.N:
-                    var bs = self.b_scale.raw_load[width=4](col0)
+                    var bs = self.b_scale.load[
+                        width=4, alignment=align_of[DType.float32]()
+                    ](Coord(col0))
                     var y4 = (fv * asc * bs).cast[Self.c_type]()
                     comptime if Self.has_bias:
-                        y4 = y4 + self.bias.raw_load[width=4](col0)
+                        y4 = y4 + self.bias.load[
+                            width=4, alignment=align_of[Self.c_type]()
+                        ](Coord(col0))
                     self.c.store[width=4](Coord(r, col0), y4)
                 else:
                     comptime for cc in range(4):
@@ -228,10 +233,14 @@ struct Int8DequantWriter[
             var asc = self.a_scale.load[width=1](Coord(r))
             var col0 = tile_c0 + cb
             var fv = frag.slice[4, offset=half * 4]().cast[.float32]()
-            var bs = self.b_scale.raw_load[width=4](col0)
+            var bs = self.b_scale.load[
+                width=4, alignment=align_of[DType.float32]()
+            ](Coord(col0))
             var y4 = (fv * asc * bs).cast[Self.c_type]()
             comptime if Self.has_bias:
-                y4 = y4 + self.bias.raw_load[width=4](col0)
+                y4 = y4 + self.bias.load[
+                    width=4, alignment=align_of[Self.c_type]()
+                ](Coord(col0))
             self.c.store[width=4](Coord(r, col0), y4)
 
 
@@ -343,8 +352,11 @@ struct AppleM5Int8MatMul[
         # (a misaligned address under align=16 is rounded down) -- see KB
         # kernels/apple-m5-int8-matmul.
         comptime align = 16
-        var lo16 = strip.raw_load[width=16, alignment=align](Int(lo_off))
-        var hi16 = strip.raw_load[width=16, alignment=align](Int(hi_off))
+        # The offsets index the parent's rows past the strip's own extent, so
+        # read through a flat view that spans them.
+        var flat = strip.reshape(row_major(Int(hi_off) + 16))
+        var lo16 = flat.load[width=16, alignment=align]((Int(lo_off),))
+        var hi16 = flat.load[width=16, alignment=align]((Int(hi_off),))
         return {
             fill_with_unrolled = lambda [j: Int]() -> SIMD[
                 .int8, 8

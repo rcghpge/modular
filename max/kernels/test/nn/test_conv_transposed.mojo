@@ -286,11 +286,13 @@ def test_conv_transposed[
     )
 
     # Check results, return on the first failed comparison.
+    var output_ref_flat = output_ref.reshape(row_major(output_size))
+    var output_flat = output.reshape(row_major(output_size))
     for i in range(output_size):
         if not all(
             isclose(
-                output_ref.raw_load[width=1](i),
-                output.raw_load[width=1](i),
+                output_ref_flat[i],
+                output_flat[i],
                 atol=1e-4,  # absolute error tolerance
                 rtol=1e-4,  # relative error tolerance
             )
@@ -299,8 +301,8 @@ def test_conv_transposed[
             print("filter shape: ", filter_shape)
             print("num groups", num_groups)
             print("flat output index:", i)
-            print("Golden value: ", output_ref.raw_load[width=1](i))
-            print("Actual value: ", output.raw_load[width=1](i))
+            print("Golden value: ", output_ref_flat[i])
+            print("Actual value: ", output_flat[i])
             bias_ptr.free()
             return
 

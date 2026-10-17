@@ -1338,12 +1338,13 @@ def _multistage_gemm_kernel_impl[
                 var m = thread_row + i * thread_rows
                 var n = thread_col
                 if m < M and n < N:
+                    var row, col = divmod(swizzled_idx, WN)
                     store_output[alignment](
                         m,
                         n,
-                        accum_smem_warp_tile.raw_load[
+                        accum_smem_warp_tile.load[
                             width=simd_size, alignment=alignment
-                        ](swizzled_idx),
+                        ](Coord(row, col)),
                     )
         else:
             if c_tile_in_range:

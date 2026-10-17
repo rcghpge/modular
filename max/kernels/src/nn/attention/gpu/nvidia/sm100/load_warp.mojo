@@ -13,7 +13,7 @@
 """TMA load warp logic for FA4 (SM100 Flash Attention)."""
 
 from std.math import ceildiv
-from std.sys import size_of
+from std.sys import align_of, size_of
 from max.gpu import thread_idx
 from max.gpu.memory import CacheEviction, fence_async_view_proxy
 from max.gpu.sync import syncwarp
@@ -315,7 +315,9 @@ def fa4_load[
                     + (BM - q_pad_rows) * gran
                     + (c % chunks_per_blk) * chunk
                 )
-                smem_dst.raw_store(off, SIMD[qkv_type, chunk](0))
+                smem_dst.store[alignment=align_of[qkv_type]()](
+                    Coord(off), SIMD[qkv_type, chunk](0)
+                )
             fence_async_view_proxy()
             syncwarp()
             comptime for blk in range(nblk):

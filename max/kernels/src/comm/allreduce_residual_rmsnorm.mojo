@@ -967,17 +967,19 @@ def _launch_split_allreduce_rmsnorm_fp8[
         )
     )
 
-    var _cols = cols
+    var residual_2d = residual.reshape(row_major(rows, cols))
+    var residual_output_2d = residual_output.reshape(row_major(rows, cols))
 
     # Define input_fn for RMSNorm (reads from residual_output after allreduce).
-    @__copy_capture(residual_output, _cols)
+    @__copy_capture(residual_output_2d)
     @inline(.always)
     @__parameter
     def input_fn[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
-        var li = idx[0] * _cols + idx[1]
-        return residual_output.raw_load[width=width, alignment=width](li)
+        return residual_output_2d.load[width=width, alignment=width](
+            Coord(idx[0], idx[1])
+        )
 
     var shape = IndexList[2](rows, cols)
     var scale_output_2d = TileTensor(
@@ -1002,7 +1004,7 @@ def _launch_split_allreduce_rmsnorm_fp8[
     )
 
     # Step 1: Allreduce with add epilogue → residual_output.
-    @__copy_capture(residual, residual_output, _cols)
+    @__copy_capture(residual_2d, residual_output_2d)
     @inline(.always)
     @__parameter
     def add_epilogue[
@@ -1012,19 +1014,16 @@ def _launch_split_allreduce_rmsnorm_fp8[
         _alignment: Int,
     ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
         var il = coord_to_index_list(coords)
-        var flat_idx = il[0] * _cols + il[1]
-        var res = residual.raw_load[width=_width, alignment=_alignment](
-            flat_idx
-        )
+        var rc = Coord(il[0], il[1])
+        var res = residual_2d.load[width=_width, alignment=_alignment](rc)
         # Add in f32 for precision parity with the fused kernel,
         # which accumulates allreduce + residual in f32 before casting.
         var sum_f32 = (
             val.cast[.float32]()
             + rebind[SIMD[_dtype, _width]](res).cast[.float32]()
         )
-        residual_output.raw_store[width=_width, alignment=_alignment](
-            flat_idx,
-            rebind[SIMD[in_dtype, _width]](sum_f32.cast[_dtype]()),
+        residual_output_2d.store[alignment=_alignment](
+            rc, rebind[SIMD[in_dtype, _width]](sum_f32.cast[_dtype]())
         )
 
     allreduce[ngpus=ngpus, output_lambda=add_epilogue](

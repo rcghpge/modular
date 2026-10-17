@@ -461,6 +461,7 @@ def _argsort_gpu[
     # Create a device buffer to store a copy of the input data
     var n = indices.num_elements()
     var input_flat = input.reshape(row_major(input.num_elements()))
+    var indices_flat = indices.reshape(row_major(n))
 
     if n.is_power_of_two():
         var input_copy_buffer = ctx.enqueue_create_buffer[input.dtype](n)
@@ -472,8 +473,8 @@ def _argsort_gpu[
         ](offset: Coord) {var}:
             var i = offset[0].value()
 
-            indices.raw_store(
-                i,
+            indices_flat.store[alignment=align_of[indices.dtype]()](
+                Coord(i),
                 iota[indices.dtype, width](Scalar[indices.dtype](i)),
             )
             input_copy.store[alignment=simd_width_of[input_copy.dtype]()](
@@ -517,8 +518,9 @@ def _argsort_gpu[
     def fill_indices_iota[width: Int, alignment: Int = 1](offset: Coord) {var}:
         var i = Int(offset[0].value())
         if i < n:
-            padded_indices.raw_store(
-                i, iota[padded_indices.dtype, width](Scalar[indices.dtype](i))
+            padded_indices.store[alignment=align_of[padded_indices.dtype]()](
+                Coord(i),
+                iota[padded_indices.dtype, width](Scalar[indices.dtype](i)),
             )
             padded_input.store[alignment=simd_width_of[padded_input.dtype]()](
                 Coord(i),
@@ -530,11 +532,11 @@ def _argsort_gpu[
 
         # otherwise we pad with a sentinel value and the max/min value for the type.
         comptime UNKNOWN_VALUE = -1
-        padded_indices.raw_store(
-            i, SIMD[padded_indices.dtype, width](UNKNOWN_VALUE)
+        padded_indices.store[alignment=align_of[padded_indices.dtype]()](
+            Coord(i), SIMD[padded_indices.dtype, width](UNKNOWN_VALUE)
         )
-        padded_input.raw_store(
-            i,
+        padded_input.store[alignment=align_of[padded_input.dtype]()](
+            Coord(i),
             SIMD[padded_input.dtype, width](
                 _sentinel_val[padded_input.dtype, ascending]()
             ),

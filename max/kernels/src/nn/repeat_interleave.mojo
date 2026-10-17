@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Implements `repeat_interleave`, which repeats each tensor element a specified number of times along an axis."""
 
-from std.sys import simd_width_of
+from std.sys import align_of, simd_width_of
 
 from max.algorithm.functional import elementwise
 from max.gpu import (
@@ -144,11 +144,12 @@ def _repeat_interleave_cpu[
         var input_index = output_index
         input_index[1] = offset_mapping_view[output_index[1]]
 
-        var input_idx = collapsed_input.layout(Coord(input_index))
-        var input_value = collapsed_input.raw_load[width=width](input_idx)
-
-        var output_idx = collapsed_output.layout(Coord(output_index))
-        collapsed_output.raw_store(output_idx, input_value)
+        var input_value = collapsed_input.load[
+            width=width, alignment=align_of[dtype]()
+        ](Coord(input_index))
+        collapsed_output.store[alignment=align_of[dtype]()](
+            Coord(output_index), input_value
+        )
 
     elementwise[simd_width_of[output.dtype]()](
         func, collapsed_output.layout.shape_coord(), ctx
@@ -266,8 +267,11 @@ def _repeat_interleave_emit_kernel[
     var outer_idx = flat // (inner * out_axis)
     var src_axis = Int(offset_map[axis_idx])
     var src_flat = outer_idx * in_axis * inner + src_axis * inner + inner_idx
-    var value = input_buffer.raw_load(src_flat)
-    output_buffer.raw_store(flat, value)
+    var input_flat = input_buffer.reshape(row_major(outer * in_axis * inner))
+    var output_flat = output_buffer.reshape(row_major(outer * out_axis * inner))
+    output_flat.store(
+        Coord(flat), rebind[Scalar[dtype]](input_flat.load(Coord(src_flat)))
+    )
 
 
 def _repeat_interleave_gpu[
@@ -339,11 +343,12 @@ def _repeat_interleave_gpu[
             var input_index = output_index
             input_index[1] = output_index[1] // repeat_count
 
-            var input_idx = collapsed_input.layout(Coord(input_index))
-            var input_value = collapsed_input.raw_load[width=width](input_idx)
-
-            var output_idx = collapsed_output.layout(Coord(output_index))
-            collapsed_output.raw_store(output_idx, input_value)
+            var input_value = collapsed_input.load[
+                width=width, alignment=align_of[dtype]()
+            ](Coord(input_index))
+            collapsed_output.store[alignment=align_of[dtype]()](
+                Coord(output_index), input_value
+            )
 
         elementwise[simd_width_of[output.dtype](), target=target](
             scalar_func, collapsed_output.layout.shape_coord(), ctx

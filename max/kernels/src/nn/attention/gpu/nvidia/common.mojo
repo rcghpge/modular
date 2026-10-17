@@ -22,7 +22,7 @@ from std.math import ceildiv, align_up
 from std.memory import (
     bitcast,
 )
-from std.sys import size_of
+from std.sys import align_of, size_of
 from std.sys._assembly import inlined_assembly
 
 import max.gpu.primitives.warp as warp
@@ -1113,8 +1113,8 @@ def output_reg_to_smem_st_matrix[
                 )
             )
             var offset = accum_smem_tile.ptr + accum_smem_idx
-            var output_frag = output_reg_tile.raw_load[width=8](
-                m_mma * o_frag_size + i * 8
-            ).cast[output_type]()
+            var output_frag = output_reg_tile.load[
+                width=8, alignment=align_of[accum_type]()
+            ](Coord(Idx[m_mma], Idx[i * 8])).cast[output_type]()
             var output_frag_f32_packed = bitcast[.float32, 4](output_frag)
             st_matrix[simd_width=4](offset, output_frag_f32_packed)

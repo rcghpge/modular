@@ -30,6 +30,7 @@ to be L2-resident. C is ``[m, n]``.
 """
 
 from std.math import ceildiv
+from std.sys import align_of
 from max.gpu import (
     WARP_SIZE,
     block_idx,
@@ -44,7 +45,7 @@ from max.gpu.compute.mma import mma
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
 
-from layout import TensorLayout, TensorEngine, TileTensor
+from layout import Coord, TensorLayout, TensorEngine, TileTensor, row_major
 
 comptime _MFMA_K = 32
 comptime _TILE_N = 16
@@ -140,8 +141,12 @@ def _smallm_shuffle_a_kernel[
         + l * 8
     )
     var src_row = min(row, Int(m) - 1)
+    var a_flat = a.reshape(row_major(Int(m) * k_static))
     dst.store(
-        dst_off, a.raw_load[width=8, invariant=False](src_row * k_static + k)
+        dst_off,
+        a_flat.load[width=8, alignment=align_of[a_type](), invariant=False](
+            Coord(src_row * k_static + k)
+        ),
     )
 
 

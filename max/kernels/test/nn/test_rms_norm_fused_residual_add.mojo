@@ -198,15 +198,22 @@ def run_rms_norm_fused_residual_add_gpu[
     )
 
     var flattened_size = rows * cols
+    var flat_layout = row_major(flattened_size)
+    var result_fused_flat = result_fused_h.reshape(flat_layout)
+    var result_unfused_flat = result_unfused_h.reshape(flat_layout)
+    var residual_fused_output_flat = residual_fused_output_h.reshape(
+        flat_layout
+    )
+    var unfused_intermediate_flat = unfused_intermediate_h.reshape(flat_layout)
     for i in range(flattened_size):
         assert_almost_equal(
-            result_fused_h.raw_load(i),
-            result_unfused_h.raw_load(i),
+            result_fused_flat[i],
+            result_unfused_flat[i],
             rtol=rtol,
         )
         assert_almost_equal(
-            residual_fused_output_h.raw_load(i),
-            unfused_intermediate_h.raw_load(i),
+            residual_fused_output_flat[i],
+            unfused_intermediate_flat[i],
             rtol=rtol,
         )
     _ = gamma2_heap^

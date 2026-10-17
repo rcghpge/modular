@@ -40,7 +40,7 @@ from max.gpu import (
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.math import align_up, ceildiv
-from std.sys import simd_width_of
+from std.sys import align_of, simd_width_of
 from std.utils import StaticTuple
 
 from layout import (
@@ -340,10 +340,9 @@ struct MXFP4MoERoutedMatmul[
                 )
                 var data = a_bc.load[.uint8, simd_width](Int32(a_byte_off))
                 var local_row = row_thread + i * load_thread_rows
-                var smem_byte_off = (
-                    local_row * Self.BK_BYTES + col_thread * simd_width
+                a_smem.store[alignment=align_of[DType.uint8]()](
+                    Coord(local_row, col_thread * simd_width), data
                 )
-                a_smem.raw_store[width=simd_width](smem_byte_off, data)
             barrier()
 
             # 2. Per-warp inner: scale-pack loop, ds_read A, load B + scales, MFMA.
@@ -371,9 +370,10 @@ struct MXFP4MoERoutedMatmul[
                             .vectorize[1, Self.FRAG_W_BYTES]()
                             .distribute[lane_layout](lane_id())
                         )
-                        a_frags[ikxdl * Self.num_m_mmas + m] = a_frag.raw_load[
-                            width=Self.FRAG_W_BYTES
-                        ](0)
+                        a_frags[ikxdl * Self.num_m_mmas + m] = a_frag.load[
+                            width=Self.FRAG_W_BYTES,
+                            alignment=align_of[DType.uint8](),
+                        ](Coord(0, 0))
 
                 var b_frags = StaticTuple[
                     SIMD[.uint8, Self.FRAG_W_BYTES],

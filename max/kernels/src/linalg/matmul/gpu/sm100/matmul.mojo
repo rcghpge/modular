@@ -23,7 +23,7 @@ For new code, use sm100_structured directly:
 - Import matmul from: linalg.matmul.gpu.sm100_structured.matmul
 """
 
-from std.sys import size_of
+from std.sys import align_of, size_of
 
 from max.gpu import lane_id, warp_id
 from max.gpu.primitives.cluster import elect_one_sync
@@ -239,6 +239,7 @@ def f32_frag_to_smem[
     var thread_row = (lane >> 2) & 7
     var thread_col = lane & 3
     var base_offset = thread_row * stride0 + thread_col * 2
+    var dst_flat = dst.reshape(row_major[shape0 * stride0]())
 
     comptime for i in range(frag_rows):
         comptime for j in range(frag_cols):
@@ -248,7 +249,9 @@ def f32_frag_to_smem[
                 rebind[Scalar[dst.dtype]](vec[2 * i_vec + 1]),
             )
             var offset = base_offset + i * 8 * stride0 + j * 8
-            dst.raw_store(offset, val)
+            dst_flat.store[alignment=align_of[dst.dtype]()](
+                Coord(Int(offset)), val
+            )
 
 
 @inline(.always)

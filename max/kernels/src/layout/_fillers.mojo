@@ -24,7 +24,7 @@ The module includes:
 from std.itertools import product
 from std.random import random_float64
 from std.sys import is_nvidia_gpu
-from layout.coord import Coord
+from layout.coord import Coord, Idx
 
 from .tile_layout import TensorLayout, row_major
 from .tile_tensor import TileTensor
@@ -78,14 +78,16 @@ def _filler_impl[
             tensor.layout.shape_coord()
         ).static_product * tensor.element_size
 
+        var flat = tensor.reshape(row_major[num_elements]())
         comptime for i in range(num_elements):
             var val = filler(i)
-            tensor.raw_store(i, val.cast[tensor.dtype]())
+            flat.store(Coord(Idx[i]), val.cast[tensor.dtype]())
     else:
         var num_elements = tensor.layout.product() * tensor.element_size
+        var flat = tensor.reshape(row_major(num_elements))
         for i in range(num_elements):
             var val = filler(i)
-            tensor.raw_store(i, val.cast[tensor.dtype]())
+            flat.store(Coord(i), val.cast[tensor.dtype]())
 
 
 def arange[

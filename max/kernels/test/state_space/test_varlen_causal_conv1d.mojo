@@ -192,14 +192,6 @@ def run_varlen_causal_conv1d_fwd[
     var query_start_loc_buf = query_start_loc_tt
     var output_ref_buf = output_ref_tt
 
-    # Strides for row-major layout
-    var x_dim_stride: UInt32 = UInt32(total_seqlen)
-    var x_seqlen_stride: UInt32 = 1
-    var weight_dim_stride: UInt32 = UInt32(width)
-    var weight_width_stride: UInt32 = 1
-    var out_dim_stride: UInt32 = UInt32(total_seqlen)
-    var out_seqlen_stride: UInt32 = 1
-
     comptime silu_activation = activation == "silu"
 
     # Test kernel
@@ -234,28 +226,16 @@ def run_varlen_causal_conv1d_fwd[
                     var input_val: Scalar[dtype] = Scalar[dtype](0.0)
 
                     if input_l >= 0:
-                        var x_offset = (
-                            UInt32(d) * x_dim_stride
-                            + UInt32((seq_start + input_l)) * x_seqlen_stride
-                        )
-                        input_val = x_buf.raw_load(x_offset)
+                        input_val = x_buf[d, seq_start + input_l]
 
-                    var weight_offset = (
-                        UInt32(d) * weight_dim_stride
-                        + UInt32(w_idx) * weight_width_stride
-                    )
-                    var weight_val = weight_buf.raw_load(weight_offset)
+                    var weight_val = weight_buf[d, w_idx]
                     conv_sum = conv_sum + input_val * weight_val
 
                 var out_val = conv_sum
                 if silu_activation:
                     out_val = silu_ref[dtype](out_val)
 
-                var out_offset = (
-                    UInt32(d) * out_dim_stride
-                    + UInt32((seq_start + l)) * out_seqlen_stride
-                )
-                output_ref_buf.raw_store(out_offset, out_val)
+                output_ref_buf[d, seq_start + l] = out_val
 
     # Compare results
     var flattened_size = dim * total_seqlen
@@ -365,19 +345,6 @@ def run_varlen_causal_conv1d_update[
     var output_ref_buf = output_ref_tt
     var conv_state_ref_buf = conv_state_ref_tt
 
-    # Strides for row-major layout
-    var x_batch_stride: UInt32 = UInt32(dim * seqlen)
-    var x_dim_stride: UInt32 = UInt32(seqlen)
-    var x_seqlen_stride: UInt32 = 1
-    var weight_dim_stride: UInt32 = UInt32(width)
-    var weight_width_stride: UInt32 = 1
-    var conv_state_batch_stride: UInt32 = UInt32(dim * state_len)
-    var conv_state_dim_stride: UInt32 = UInt32(state_len)
-    var conv_state_seqlen_stride: UInt32 = 1
-    var out_batch_stride: UInt32 = UInt32(dim * seqlen)
-    var out_dim_stride: UInt32 = UInt32(seqlen)
-    var out_seqlen_stride: UInt32 = 1
-
     var silu_activation = activation == "silu"
 
     # Test kernel
@@ -434,65 +401,35 @@ def run_varlen_causal_conv1d_update[
                         ) % state_len
 
                         if state_pos >= 0 and state_pos < state_len:
-                            var state_offset = (
-                                UInt32(state_batch_idx)
-                                * conv_state_batch_stride
-                                + UInt32(d) * conv_state_dim_stride
-                                + UInt32(state_pos) * conv_state_seqlen_stride
-                            )
-                            input_val = conv_state_ref_buf.raw_load(
-                                state_offset
-                            )
+                            input_val = conv_state_ref_buf[
+                                state_batch_idx, d, state_pos
+                            ]
                     else:
                         # Read from x
                         var x_l = rel_pos + l
                         if x_l >= 0 and x_l < seqlen:
-                            var x_offset = (
-                                UInt32(b) * x_batch_stride
-                                + UInt32(d) * x_dim_stride
-                                + UInt32(x_l) * x_seqlen_stride
-                            )
-                            input_val = x_buf.raw_load(x_offset)
+                            input_val = x_buf[b, d, x_l]
 
-                    var weight_offset = (
-                        UInt32(d) * weight_dim_stride
-                        + UInt32(w_idx) * weight_width_stride
-                    )
-                    var weight_val = weight_buf.raw_load(weight_offset)
+                    var weight_val = weight_buf[d, w_idx]
                     conv_sum = conv_sum + input_val * weight_val
 
                 var out_val = conv_sum
                 if silu_activation:
                     out_val = silu_ref[dtype](out_val)
 
-                var out_offset = (
-                    UInt32(b) * out_batch_stride
-                    + UInt32(d) * out_dim_stride
-                    + UInt32(l) * out_seqlen_stride
-                )
-                output_ref_buf.raw_store(out_offset, out_val)
+                output_ref_buf[b, d, l] = out_val
 
             # Update state with new x values
             # This matches the CPU implementation logic exactly
             for l in range(seqlen):
-                var x_offset = (
-                    UInt32(b) * x_batch_stride
-                    + UInt32(d) * x_dim_stride
-                    + UInt32(l) * x_seqlen_stride
-                )
-                var x_val = x_buf.raw_load(x_offset)
+                var x_val = x_buf[b, d, l]
 
                 var state_pos: Int
                 # has_cache_seqlens is True in our test, so use circular buffer
-                var cache_seqlen = Int(cache_seqlens_buf.raw_load(b))
+                var cache_seqlen = Int(cache_seqlens_buf[b])
                 state_pos = (cache_seqlen + l) % state_len
 
-                var state_offset = (
-                    UInt32(state_batch_idx) * conv_state_batch_stride
-                    + UInt32(d) * conv_state_dim_stride
-                    + UInt32(state_pos) * conv_state_seqlen_stride
-                )
-                conv_state_ref_buf.raw_store(state_offset, x_val)
+                conv_state_ref_buf[state_batch_idx, d, state_pos] = x_val
 
     # Compare results
     var flattened_size = batch * dim * seqlen
@@ -568,13 +505,6 @@ def run_varlen_causal_conv1d_states[
     var cu_seqlens_buf = cu_seqlens_tt
     var states_ref_buf = states_ref_tt
 
-    # Strides for row-major layout
-    var x_seqlen_stride: UInt32 = UInt32(dim)
-    var x_dim_stride: UInt32 = 1
-    var states_batch_stride: UInt32 = UInt32(dim * state_len)
-    var states_dim_stride: UInt32 = UInt32(state_len)
-    var states_seqlen_stride: UInt32 = 1
-
     # Test kernel
     causal_conv1d_varlen_states_cpu[
         dtype,
@@ -602,17 +532,7 @@ def run_varlen_causal_conv1d_states[
             var states_seq_idx = state_len - num_elements + i
 
             for d in range(dim):
-                var x_offset = (
-                    UInt32(x_seq_idx) * x_seqlen_stride
-                    + UInt32(d) * x_dim_stride
-                )
-                var states_offset = (
-                    UInt32(b) * states_batch_stride
-                    + UInt32(d) * states_dim_stride
-                    + UInt32(states_seq_idx) * states_seqlen_stride
-                )
-                var val = x_buf.raw_load(x_offset)
-                states_ref_buf.raw_store(states_offset, val)
+                states_ref_buf[b, d, states_seq_idx] = x_buf[x_seq_idx, d]
 
     # Compare results
     var flattened_size = batch * dim * state_len
@@ -685,10 +605,9 @@ def run_conv_state_writeback[
     for b in range(batch):
         for d in range(dim):
             for s in range(state_len):
-                var idx = (b * dim + d) * state_len + s
-                var value = Scalar[dtype](1 + idx)
-                conv_states_tt.raw_store(idx, value)
-                initial_tt.raw_store(idx, value)
+                var value = Scalar[dtype](1 + (b * dim + d) * state_len + s)
+                conv_states_tt[b, d, s] = value
+                initial_tt[b, d, s] = value
 
     _conv_cpu[False,](
         x_tt,
@@ -713,21 +632,11 @@ def run_conv_state_writeback[
                 var offset = seqlen - state_len + s
                 var expected: Scalar[dtype]
                 if offset >= 0:
-                    expected = x_tt.raw_load(
-                        UInt32(d) * UInt32(total_seqlen)
-                        + UInt32(b * seqlen + offset)
-                    )
+                    expected = x_tt[d, b * seqlen + offset]
                 else:
-                    expected = initial_tt.raw_load(
-                        UInt32((b * dim + d) * state_len)
-                        + UInt32(state_len + offset)
-                    )
+                    expected = initial_tt[b, d, state_len + offset]
                 assert_almost_equal(
-                    conv_states_tt.raw_load(
-                        UInt32((b * dim + d) * state_len) + UInt32(s)
-                    ),
-                    expected,
-                    rtol=0.001,
+                    conv_states_tt[b, d, s], expected, rtol=0.001
                 )
 
 

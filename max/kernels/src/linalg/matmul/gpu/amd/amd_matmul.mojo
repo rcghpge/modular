@@ -40,7 +40,7 @@ from max.gpu.sync import (
     schedule_barrier,
     schedule_group_barrier,
 )
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major, col_major
 from layout.tile_tensor import stack_allocation
@@ -556,13 +556,10 @@ struct AMDMatmul[
                     var m = warp_tile_m + m_mma * MMA_M + thread_m
 
                     if m < M:
-                        comptime src_off = (
-                            m_mma * num_n_mmas * c_frag_size
-                            + n_mma * c_frag_size
-                        )
-                        var v = c_reg.raw_load[width=c_frag_size](src_off).cast[
-                            Self.c_type
-                        ]()
+                        var v = c_reg.load[
+                            width=c_frag_size,
+                            alignment=align_of[Self.accum_type](),
+                        ](Coord(m_mma, n_mma * c_frag_size)).cast[Self.c_type]()
 
                         comptime if MMA_M == 32:
                             for e in range(c_frag_size):
@@ -628,13 +625,10 @@ struct AMDMatmul[
                     var m = warp_tile_m + m_mma * MMA_M + thread_m
 
                     if m < M:
-                        comptime src_off = (
-                            m_mma * num_n_mmas * c_frag_size
-                            + n_mma * c_frag_size
-                        )
-                        var v = c_reg.raw_load[width=c_frag_size](src_off).cast[
-                            Self.c_type
-                        ]()
+                        var v = c_reg.load[
+                            width=c_frag_size,
+                            alignment=align_of[Self.accum_type](),
+                        ](Coord(m_mma, n_mma * c_frag_size)).cast[Self.c_type]()
 
                         comptime if MMA_M == 32:
                             for e in range(c_frag_size):
@@ -646,7 +640,7 @@ struct AMDMatmul[
                                     + (e % 4)
                                 )
                                 if col < N:
-                                    c.raw_store(m * N + col, v[e])
+                                    c.store(Coord(m, col), v[e])
                         else:
                             var n = (
                                 warp_tile_n
@@ -654,7 +648,9 @@ struct AMDMatmul[
                                 + lane_group * c_frag_size
                             )
                             if n < N:
-                                c.raw_store[width=c_frag_size](m * N + n, v)
+                                c.store[alignment=align_of[Self.c_type]()](
+                                    Coord(m, n), v
+                                )
         else:
             # Fast path: N is block-aligned, no OOB checks needed.
             var c_block = c.tile[BM, BN](block_m, block_n)

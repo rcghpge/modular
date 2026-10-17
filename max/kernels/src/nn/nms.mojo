@@ -329,13 +329,13 @@ def non_max_suppression[
             # this happens when:
             #   1. Score does not meet score threshold (filtered out initially)
             #   2. IoU with an already-selected boc is above IOU threshold (suppressed)
-            var offset = scores.layout(Coord(b, c, Idx[0]))
-
             # Filter boxes by score threshold
             # This reduces the number of boxes to sort and process
             var num_boxes_remaining = 0
             for i in range(num_boxes):
-                var score = scores.raw_load[invariant=False](Int(offset) + i)
+                var score = rebind[Scalar[dtype]](
+                    scores.load[invariant=False](Coord(b, c, i))
+                )
                 if score > score_threshold.cast[dtype]():
                     per_class_scores[i] = score
                     num_boxes_remaining += 1

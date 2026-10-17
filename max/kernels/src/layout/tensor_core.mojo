@@ -709,13 +709,18 @@ struct TensorCore[
                 (0, 0)
             )
         else:
-            var frag = b.vectorize[width, 1]().distribute[
+            var frag_offset = b.vectorize[width, 1]().distribute_with_offset[
                 row_major[WARP_SIZE // N, N](), swizzle=swizzle
-            ](Int(lane_id()))
+            ](Int(lane_id()))[2]
             comptime row_stride = b.static_stride[0]
+            var b_flat = b.reshape(row_major[b.LayoutType.static_cosize]())
             var result = SIMD[Self.in_type, width]()
             comptime for r in range(width):
-                result[r] = frag.raw_load[invariant=False](r * row_stride)
+                result[r] = rebind[Scalar[Self.in_type]](
+                    b_flat.load[invariant=False](
+                        (frag_offset + r * row_stride,)
+                    )
+                )
             return result
 
     @inline(.always)

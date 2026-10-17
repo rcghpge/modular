@@ -108,8 +108,14 @@ def run_causal_conv1d_update[
     random(bias_h)
 
     # Copy conv_state for reference
+    var conv_state_flat = conv_state_h.reshape(
+        row_major(batch * dim * state_len)
+    )
+    var conv_state_ref_flat = conv_state_ref_h.reshape(
+        row_major(batch * dim * state_len)
+    )
     for i in range(batch * dim * state_len):
-        conv_state_ref_h.raw_store(i, conv_state_h.raw_load(i))
+        conv_state_ref_flat[i] = conv_state_flat[i]
 
     var input_buf = input_h
     var weight_buf = weight_h
@@ -216,10 +222,14 @@ def run_causal_conv1d_update[
 
     # Compare results
     var flattened_size = batch * dim * seqlen
+    var result_fused_flat = result_fused_h.reshape(row_major(flattened_size))
+    var result_unfused_flat = result_unfused_h.reshape(
+        row_major(flattened_size)
+    )
     for i in range(flattened_size):
         assert_almost_equal(
-            result_fused_h.raw_load(i),
-            result_unfused_h.raw_load(i),
+            result_fused_flat[i],
+            result_unfused_flat[i],
             rtol=rtol,
         )
 
@@ -227,8 +237,8 @@ def run_causal_conv1d_update[
     var conv_state_size = batch * dim * state_len
     for i in range(conv_state_size):
         assert_almost_equal(
-            conv_state_h.raw_load(i),
-            conv_state_ref_h.raw_load(i),
+            conv_state_flat[i],
+            conv_state_ref_flat[i],
             rtol=rtol,
         )
 

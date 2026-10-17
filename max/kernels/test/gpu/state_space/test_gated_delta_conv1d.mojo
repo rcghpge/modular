@@ -22,6 +22,7 @@ from layout import (
     TileTensor,
     row_major,
 )
+from layout.tile_layout import Layout
 from std.random import rand
 from state_space.gated_delta_conv1d import (
     CONV1D_TOKENS_PER_BLOCK,
@@ -81,23 +82,42 @@ def gated_delta_conv1d_sequential_reference[
     if batch_item_idx >= Int(batch_size) or conv_channel_idx >= Int(conv_dim):
         return
 
-    var slot = Int(slot_idx.raw_load(batch_item_idx))
+    var slot = Int(rebind[UInt32](slot_idx.load(Coord(batch_item_idx))))
     var sequence_start_flat_idx = Int(
-        input_row_offsets.raw_load(batch_item_idx)
+        rebind[UInt32](input_row_offsets.load(Coord(batch_item_idx)))
     )
     var sequence_end_flat_idx = Int(
-        input_row_offsets.raw_load(batch_item_idx + 1)
+        rebind[UInt32](input_row_offsets.load(Coord(batch_item_idx + 1)))
     )
     var sequence_length = sequence_end_flat_idx - sequence_start_flat_idx
 
+    var qkv_input_view = qkv_input_ragged.reshape(
+        Layout(
+            Coord(Int(total_seq_len), Int(conv_dim)),
+            Coord(Int(qkv_input_seqlen_stride), Int(qkv_input_channel_stride)),
+        )
+    )
+    var conv_weight_view = conv_weight.reshape(
+        Layout(
+            Coord(Int(conv_dim), KERNEL_SIZE),
+            Coord(
+                Int(conv_weight_channel_stride), Int(conv_weight_offset_stride)
+            ),
+        )
+    )
+    var conv_output_view = conv_output_ragged.reshape(
+        Layout(
+            Coord(Int(total_seq_len), Int(conv_dim)),
+            Coord(
+                Int(conv_output_seqlen_stride), Int(conv_output_channel_stride)
+            ),
+        )
+    )
+
     var weight_register = SIMD[work_dtype, KERNEL_SIZE](0)
     comptime for kernel_offset_k in range(KERNEL_SIZE):
-        var weight_flat_offset = (
-            UInt32(conv_channel_idx) * conv_weight_channel_stride
-            + UInt32(kernel_offset_k) * conv_weight_offset_stride
-        )
-        weight_register[kernel_offset_k] = conv_weight.raw_load(
-            weight_flat_offset
+        weight_register[kernel_offset_k] = rebind[Scalar[work_dtype]](
+            conv_weight_view.load(Coord(conv_channel_idx, kernel_offset_k))
         )
 
     comptime KERNEL_SIZE_MINUS_ONE = KERNEL_SIZE - 1
@@ -116,13 +136,15 @@ def gated_delta_conv1d_sequential_reference[
             var input_value: Float32 = 0
 
             if lookback_position >= 0:
-                var ragged_flat_offset = (
-                    UInt32(sequence_start_flat_idx + lookback_position)
-                    * qkv_input_seqlen_stride
-                    + UInt32(conv_channel_idx) * qkv_input_channel_stride
-                )
                 input_value = Float32(
-                    qkv_input_ragged.raw_load(ragged_flat_offset)
+                    rebind[Scalar[work_dtype]](
+                        qkv_input_view.load(
+                            Coord(
+                                sequence_start_flat_idx + lookback_position,
+                                conv_channel_idx,
+                            )
+                        )
+                    )
                 )
             else:
                 var window_idx = KERNEL_SIZE_MINUS_ONE + lookback_position
@@ -135,12 +157,9 @@ def gated_delta_conv1d_sequential_reference[
 
             conv_sum += input_value * Float32(weight_register[kernel_offset_k])
 
-        var output_flat_offset = (
-            UInt32(flat_token_idx) * conv_output_seqlen_stride
-            + UInt32(conv_channel_idx) * conv_output_channel_stride
-        )
-        conv_output_ragged.raw_store(
-            output_flat_offset, Scalar[work_dtype](conv_sum)
+        conv_output_view.store(
+            Coord(flat_token_idx, conv_channel_idx),
+            Scalar[work_dtype](conv_sum),
         )
 
     comptime for state_slot_j in range(KERNEL_SIZE_MINUS_ONE):
@@ -150,13 +169,16 @@ def gated_delta_conv1d_sequential_reference[
 
         var state_value: Scalar[state_dtype] = 0
         if source_position_in_sequence >= 0:
-            var source_flat_offset = (
-                UInt32(sequence_start_flat_idx + source_position_in_sequence)
-                * qkv_input_seqlen_stride
-                + UInt32(conv_channel_idx) * qkv_input_channel_stride
-            )
             state_value = Scalar[state_dtype](
-                qkv_input_ragged.raw_load(source_flat_offset)
+                rebind[Scalar[work_dtype]](
+                    qkv_input_view.load(
+                        Coord(
+                            sequence_start_flat_idx
+                            + source_position_in_sequence,
+                            conv_channel_idx,
+                        )
+                    )
+                )
             )
         else:
             var old_window_idx = (

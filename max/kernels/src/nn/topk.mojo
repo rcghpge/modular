@@ -414,11 +414,9 @@ def _top_k_cpu[
 
             for i in range(k_val):
                 indices[axis] = Int(idxs[i])
-                var input_idx = input.layout(Coord(indices))
-                var val = input.raw_load(input_idx)
+                var val = rebind[Scalar[dtype]](input.load(Coord(indices)))
                 indices[axis] = i
-                var out_vals_idx = out_vals.layout(Coord(indices))
-                out_vals.raw_store(out_vals_idx, val)
+                out_vals.store(Coord(indices), val)
                 out_idxs[Coord(indices)] = rebind[Scalar[out_idx_type]](idxs[i])
 
             # A row asking for fewer than the output width gets the padding
@@ -2754,6 +2752,7 @@ def _gumbel_argmax_fused_kernel[
 
         # Block-level argmax reduction over per-thread winners.
         var total = _block_reduce_topk[ascending=True](partial)
+        var out_idxs_flat = out_idxs.reshape(row_major(out_idxs.num_elements()))
 
         comptime if multi_block:
             var is_last = unsafe_stack_allocation[
@@ -2794,10 +2793,14 @@ def _gumbel_argmax_fused_kernel[
                     ):
                         best_value = value
                         best_index = index
-                out_idxs.raw_store(batch_id, best_index.cast[out_idx_type]())
+                out_idxs_flat.store(
+                    Coord(batch_id), best_index.cast[out_idx_type]()
+                )
         else:
             if tid == 0:
-                out_idxs.raw_store(batch_id, Int(total.p).cast[out_idx_type]())
+                out_idxs_flat.store(
+                    Coord(batch_id), Int(total.p).cast[out_idx_type]()
+                )
 
 
 @inline(.always)

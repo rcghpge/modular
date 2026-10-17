@@ -54,7 +54,13 @@ Entry point: block_scaled_matmul_amd()
 
 from std.math import ceildiv
 from std.memory import bitcast
-from std.sys import get_defined_bool, get_defined_int, simd_width_of, size_of
+from std.sys import (
+    align_of,
+    get_defined_bool,
+    get_defined_int,
+    simd_width_of,
+    size_of,
+)
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
     WARP_SIZE,
@@ -465,6 +471,9 @@ struct BlockScaledMmaOp[
         comptime assert slot < Self.num_b_slots, "slot out of range"
         comptime if Self.b_bits == 6:
             var b_reg8 = self._b_reg.vectorize[1, 8]()
+            var b_smem_flat = b_smem_warp.reshape(
+                row_major[type_of(b_smem_warp).LayoutType.static_product]()
+            )
             var b_lane = Int(lane_id())
             var b_lane_row = b_lane % Self.MMA_M
             var b_byte_base = (
@@ -482,12 +491,17 @@ struct BlockScaledMmaOp[
                     var b_off = _swizzled_smem_off[
                         Self.B_SMEM_ROW_BYTES, Self.smem_swizzle
                     ](b_row, b_byte_base + chunk * 8)
-                    b_reg8[b_idx, chunk] = b_smem_warp.raw_load[width=8](b_off)
+                    b_reg8[b_idx, chunk] = b_smem_flat.load[
+                        width=8, alignment=align_of[DType.uint8]()
+                    ](Coord(b_off))
         else:
             self._load_b_frag_vectorized[k_tile_idx, slot=slot](b_smem_warp)
 
         comptime if Self.a_bits == 6:
             var a_reg8 = self._a_reg.vectorize[1, 8]()
+            var a_smem_flat = a_smem_warp.reshape(
+                row_major[type_of(a_smem_warp).LayoutType.static_product]()
+            )
             var a_lane = Int(lane_id())
             var a_lane_row = a_lane % Self.MMA_M
             var a_byte_base = (
@@ -501,7 +515,9 @@ struct BlockScaledMmaOp[
                     var a_off = _swizzled_smem_off[
                         Self.A_SMEM_ROW_BYTES, Self.smem_swizzle
                     ](a_row, a_byte_base + chunk * 8)
-                    a_reg8[a_idx, chunk] = a_smem_warp.raw_load[width=8](a_off)
+                    a_reg8[a_idx, chunk] = a_smem_flat.load[
+                        width=8, alignment=align_of[DType.uint8]()
+                    ](Coord(a_off))
         else:
             self._load_a_frag_vectorized[k_tile_idx](a_smem_warp)
 
@@ -540,6 +556,9 @@ struct BlockScaledMmaOp[
         var lane_k_vec = Int(lane_crd[1])
 
         var b_reg_v = self._b_reg.vectorize[1, half_w]()
+        var b_smem_flat = b_smem_warp.reshape(
+            row_major[type_of(b_smem_warp).LayoutType.static_product]()
+        )
         comptime for i in range(Self.num_n_mmas):
             var b_idx = (
                 slot * Self._b_slot_stride + k_tile_idx * Self.num_n_mmas + i
@@ -554,7 +573,9 @@ struct BlockScaledMmaOp[
                 var off = _swizzled_smem_off[
                     Self.B_SMEM_ROW_BYTES, Self.smem_swizzle
                 ](row, col_byte)
-                b_reg_v[b_idx, h] = b_smem_warp.raw_load[width=half_w](off)
+                b_reg_v[b_idx, h] = b_smem_flat.load[
+                    width=half_w, alignment=align_of[DType.uint8]()
+                ](Coord(off))
 
     @inline(.always)
     def _load_a_frag_vectorized[
@@ -578,6 +599,9 @@ struct BlockScaledMmaOp[
         var lane_k_vec = Int(lane_crd[1])
 
         var a_reg_v = self._a_reg.vectorize[1, half_w]()
+        var a_smem_flat = a_smem_warp.reshape(
+            row_major[type_of(a_smem_warp).LayoutType.static_product]()
+        )
         comptime for i in range(Self.num_m_mmas):
             var a_idx = k_tile_idx * Self.num_m_mmas + i
             var row = i * Self.MMA_M + lane_row
@@ -590,7 +614,9 @@ struct BlockScaledMmaOp[
                 var off = _swizzled_smem_off[
                     Self.A_SMEM_ROW_BYTES, Self.smem_swizzle
                 ](row, col_byte)
-                a_reg_v[a_idx, h] = a_smem_warp.raw_load[width=half_w](off)
+                a_reg_v[a_idx, h] = a_smem_flat.load[
+                    width=half_w, alignment=align_of[DType.uint8]()
+                ](Coord(off))
 
     @inline(.always)
     def load_a_frag_from_smem[
@@ -612,6 +638,9 @@ struct BlockScaledMmaOp[
         var lane_row = Int(lane_crd[0])
         var lane_k_vec = Int(lane_crd[1])
         var a_reg_v = self._a_reg.vectorize[1, half_w]()
+        var a_smem_flat = a_smem_warp.reshape(
+            row_major[type_of(a_smem_warp).LayoutType.static_product]()
+        )
         comptime for i in range(Self.num_m_mmas):
             var a_idx = k_tile_idx * Self.num_m_mmas + i
             var row = i * Self.MMA_M + lane_row
@@ -624,7 +653,9 @@ struct BlockScaledMmaOp[
                 var off = _swizzled_smem_off[
                     Self.A_SMEM_ROW_BYTES, Self.smem_swizzle
                 ](row, col_byte)
-                a_reg_v[a_idx, h] = a_smem_warp.raw_load[width=half_w](off)
+                a_reg_v[a_idx, h] = a_smem_flat.load[
+                    width=half_w, alignment=align_of[DType.uint8]()
+                ](Coord(off))
 
     @inline(.always)
     def load_b_frag_preshuffled[
@@ -774,21 +805,21 @@ struct BlockScaledMmaOp[
                     + k_tile_idx * Self.num_n_mmas
                     + n
                 )
-                comptime a_off = a_row * Self.a_reg_frag_bytes
-                comptime b_off = b_row * Self.b_reg_frag_bytes
-                comptime c_off = (
-                    m * Self.num_n_mmas * Self.c_frag_size
-                    + n * Self.c_frag_size
-                )
+                var c_coord = Coord(m, n * Self.c_frag_size)
 
-                var a_frag = self._a_reg.raw_load[width=Self.a_reg_frag_bytes](
-                    a_off
-                )
-                var b_frag = self._b_reg.raw_load[width=Self.b_reg_frag_bytes](
-                    b_off
-                )
+                var a_frag = self._a_reg.load[
+                    width=Self.a_reg_frag_bytes,
+                    alignment=align_of[DType.uint8](),
+                ](Coord(a_row, 0))
+                var b_frag = self._b_reg.load[
+                    width=Self.b_reg_frag_bytes,
+                    alignment=align_of[DType.uint8](),
+                ](Coord(b_row, 0))
 
-                var c_frag = self._c_reg.raw_load[width=Self.c_frag_size](c_off)
+                var c_frag = self._c_reg.load[
+                    width=Self.c_frag_size,
+                    alignment=align_of[DType.float32](),
+                ](c_coord)
 
                 var a_scale = rebind[Int32](self._a_scale_packed[0, k_tile_idx])
                 var b_scale = rebind[Int32](self._b_scale_packed[0, k_tile_idx])
@@ -805,7 +836,9 @@ struct BlockScaledMmaOp[
                     a_scale,
                 )
 
-                self._c_reg.raw_store[width=Self.c_frag_size](c_off, c_frag)
+                self._c_reg.store[alignment=align_of[DType.float32]()](
+                    c_coord, c_frag
+                )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1395,26 +1428,36 @@ struct BlockScaledMatmulAMD[
             def store_a() {imm}:
                 var a_row = tid // a_load_cols
                 var a_col_byte = (tid % a_load_cols) * simd_width
+                var a_smem_flat = a_smem.reshape(
+                    row_major[type_of(a_smem).LayoutType.static_product]()
+                )
                 comptime for v in range(a_loads_per_tile):
                     var off = _swizzled_smem_off[
                         A_SMEM_ROW_BYTES, MmaOpT.smem_swizzle
                     ](a_row + v * a_load_rows, a_col_byte)
-                    a_smem.raw_store[width=simd_width](
-                        a_stage_base + off,
-                        a_load_reg.raw_load[width=simd_width](v * simd_width),
+                    a_smem_flat.store[alignment=align_of[DType.uint8]()](
+                        Coord(a_stage_base + off),
+                        a_load_reg.load[
+                            width=simd_width, alignment=align_of[DType.uint8]()
+                        ](Coord(0, v * simd_width)),
                     )
 
             @inline(.always)
             def store_b() {imm}:
                 var b_row = tid // b_load_cols
                 var b_col_byte = (tid % b_load_cols) * simd_width
+                var b_smem_flat = b_smem.reshape(
+                    row_major[type_of(b_smem).LayoutType.static_product]()
+                )
                 comptime for v in range(b_loads_per_tile):
                     var off = _swizzled_smem_off[
                         B_SMEM_ROW_BYTES, MmaOpT.smem_swizzle
                     ](b_row + v * b_load_rows, b_col_byte)
-                    b_smem.raw_store[width=simd_width](
-                        b_stage_base + off,
-                        b_load_reg.raw_load[width=simd_width](v * simd_width),
+                    b_smem_flat.store[alignment=align_of[DType.uint8]()](
+                        Coord(b_stage_base + off),
+                        b_load_reg.load[
+                            width=simd_width, alignment=align_of[DType.uint8]()
+                        ](Coord(0, v * simd_width)),
                     )
 
             comptime if a_active_threads == num_threads:
@@ -1733,7 +1776,10 @@ struct BlockScaledMatmulAMD[
                     comptime for n_mma in range(num_n_mmas):
                         var v = (
                             c_reg.tile[1, c_frag_size](m_mma, n_mma)
-                            .raw_load[width=c_frag_size](0)
+                            .load[
+                                width=c_frag_size,
+                                alignment=align_of[DType.float32](),
+                            ](Coord(0, 0))
                             .cast[out_dtype]()
                         )
                         var n_global = (
@@ -3102,10 +3148,11 @@ def _preshuffle_a_scale_4d_kernel[
         return
     var mn, k_scale = divmod(idx, K_SCALES)
     var byte_off = Shuffler[1].scale_4d_byte_off[K_SCALES=K_SCALES](mn, k_scale)
-    var value = src.raw_load[width=1](mn * K_SCALES + k_scale) if mn < Int(
-        M
-    ) else Scalar[DType.float8_e8m0fnu](0)
-    dst.raw_store[width=1](byte_off, value)
+    var src_flat = src.reshape(row_major(Int(M) * K_SCALES))
+    var value = rebind[Scalar[DType.float8_e8m0fnu]](
+        src_flat.load(Coord(idx))
+    ) if mn < Int(M) else Scalar[DType.float8_e8m0fnu](0)
+    dst.reshape(row_major(total)).store(Coord(byte_off), value)
 
 
 def _launch_block_scaled_preb[

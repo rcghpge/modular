@@ -2641,6 +2641,11 @@ struct RegTileWriter[
         comptime dst_shape1 = type_of(dst_dist).static_shape[1]
         comptime dst_stride0 = type_of(dst_dist).static_stride[0]
         comptime dst_stride1 = type_of(dst_dist).static_stride[1]
+        # Source offsets index the register tile's flat storage.
+        var src_flat = src_tile.reshape(
+            row_major[type_of(src_tile).LayoutType.static_cosize]()
+        )
+        comptime src_align = align_of[src_tile.dtype]()
 
         comptime if mfma32:
             # 32×32 MFMA hardware register permutation.
@@ -2654,7 +2659,9 @@ struct RegTileWriter[
                     comptime dst_elem_offset = (
                         dr * dst_stride0 + dc * dst_stride1
                     )
-                    var data = src_tile.raw_load[width=elem_size](src_offset)
+                    var data = src_flat.load[
+                        width=elem_size, alignment=src_align
+                    ](Coord(src_offset))
                     self.bc.store(
                         base_offset + Int32(dst_elem_offset),
                         data.cast[Self.dtype](),
@@ -2669,7 +2676,9 @@ struct RegTileWriter[
                 comptime src_offset = sr * src_stride0 + sc * elem_size
                 comptime dr, dc = divmod(i, dst_shape1)
                 comptime dst_elem_offset = (dr * dst_stride0 + dc * dst_stride1)
-                var data = src_tile.raw_load[width=elem_size](src_offset)
+                var data = src_flat.load[width=elem_size, alignment=src_align](
+                    Coord(src_offset)
+                )
                 self.bc.store(
                     base_offset + Int32(dst_elem_offset),
                     data.cast[Self.dtype](),
@@ -2952,11 +2961,15 @@ def _buffer_load_impl[
     var src_s1 = Int(dist.layout.stride[1]().value())
     comptime dst_s0 = dst_layout.static_stride[0]
     comptime dst_s1 = dst_layout.static_stride[1]
+    # `dst_layout` places elem_size-wide vectors in dst's flat storage.
+    var dst_flat = dst.reshape(
+        row_major[dst_layout.static_cosize * elem_size]()
+    )
 
     comptime for i in range(M):
         comptime for j in range(N):
-            dst.raw_store[width=elem_size](
-                (i * dst_s0 + j * dst_s1) * elem_size,
+            dst_flat.store[alignment=align_of[dst.dtype]()](
+                Coord((i * dst_s0 + j * dst_s1) * elem_size),
                 bc.load[dst.dtype, elem_size](
                     base_offset,
                     scalar_offset=Int32(i * src_s0 + j * src_s1),
@@ -3029,6 +3042,14 @@ struct RegTileWriterLDS[
         comptime dist_type = type_of(dst_dist)
         comptime DstVec = SIMD[dist_type.dtype, elem_size]
         comptime rank = dist_type.LayoutType.flat_rank
+        comptime dst_align = align_of[dist_type.dtype]()
+        var dst_flat = dst_dist.reshape(
+            row_major[dist_type.LayoutType.static_cosize]()
+        )
+        var src_flat = src.reshape(
+            row_major[type_of(src).LayoutType.static_cosize]()
+        )
+        comptime src_align = align_of[src.dtype]()
 
         # Row-major iteration order matches RegTileLoader's storage.
         # Handles both flat (rank 2) and hierarchical Coord layouts (rank 3).
@@ -3041,10 +3062,12 @@ struct RegTileWriterLDS[
                 comptime for j in range(R1):
                     comptime src_idx = i * R1 + j
                     comptime dst_off = i * s0 + j * s1
-                    dst_dist.raw_store[width=elem_size](
-                        dst_off,
+                    dst_flat.store[alignment=dst_align](
+                        Coord(dst_off),
                         rebind[DstVec](
-                            src.raw_load[width=elem_size](src_idx * elem_size)
+                            src_flat.load[width=elem_size, alignment=src_align](
+                                Coord(src_idx * elem_size)
+                            )
                         ),
                     )
         elif rank == 3:
@@ -3059,12 +3082,12 @@ struct RegTileWriterLDS[
                     comptime for k in range(R2):
                         comptime src_idx = i * R1 * R2 + j * R2 + k
                         comptime dst_off = i * s0 + j * s1 + k * s2
-                        dst_dist.raw_store[width=elem_size](
-                            dst_off,
+                        dst_flat.store[alignment=dst_align](
+                            Coord(dst_off),
                             rebind[DstVec](
-                                src.raw_load[width=elem_size](
-                                    src_idx * elem_size
-                                )
+                                src_flat.load[
+                                    width=elem_size, alignment=src_align
+                                ](Coord(src_idx * elem_size))
                             ),
                         )
         else:
@@ -3144,11 +3167,20 @@ struct RegTileWriterLDS[
 
         # Compile-time vector stride (above swizzle range for typical configs).
         comptime row_delta = tgr * cols_per_blk * simd_width
+        var dst_flat = dst.reshape(
+            row_major[type_of(dst).LayoutType.static_cosize]()
+        )
+        var src_flat = src.reshape(
+            row_major[type_of(src).LayoutType.static_cosize]()
+        )
+        comptime align = align_of[dst.dtype]()
 
         comptime for v in range(vectors_per_thread):
-            dst.raw_store[width=simd_width](
-                Int(base_offset + UInt32(v * row_delta)),
-                src.raw_load[width=simd_width](v * simd_width),
+            dst_flat.store[alignment=align](
+                Coord(Int(base_offset + UInt32(v * row_delta))),
+                src_flat.load[width=simd_width, alignment=align](
+                    Coord(v * simd_width)
+                ),
             )
 
 

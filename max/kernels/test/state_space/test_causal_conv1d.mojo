@@ -129,13 +129,14 @@ def run_causal_conv1d[
                 result_unfused_buf[b, c, l] = out_val
 
     # Compare results
-    var flattened_size = batch * dim * seqlen
-    for i in range(flattened_size):
-        assert_almost_equal(
-            result_fused_h.raw_load(i),
-            result_unfused_h.raw_load(i),
-            rtol=rtol,
-        )
+    for b in range(batch):
+        for c in range(dim):
+            for l in range(seqlen):
+                assert_almost_equal(
+                    result_fused_h[b, c, l],
+                    result_unfused_h[b, c, l],
+                    rtol=rtol,
+                )
 
 
 def test_basic_causal_conv1d() raises:

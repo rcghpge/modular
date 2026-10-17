@@ -30,8 +30,7 @@ def print_elements[dtype: DType](tensor: TileTensor[dtype, ...]) raises:
     def print_elements_lambda[
         simd_width: Int, alignment: Int = 1
     ](coords: Coord) {var}:
-        var idx = tensor.layout(coords)
-        print(tensor.raw_load(idx))
+        print(rebind[Scalar[dtype]](tensor.load(coords)))
 
     elementwise[1](print_elements_lambda, shape, DeviceContext(api="cpu"))
 

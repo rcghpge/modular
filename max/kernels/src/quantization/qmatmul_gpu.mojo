@@ -963,6 +963,9 @@ def multistage_qgemm_kernel[
             comptime num_stores_per_thread = type_of(
                 c_gmem_frag
             ).LayoutType.static_product
+            var accum_smem_flat = accum_smem_warp_tile.reshape(
+                row_major[WM * WN]()
+            )
 
             comptime for i in range(num_stores_per_thread):
                 var src_idx = Int(c_smem_frag.layout(Idx[i]))
@@ -978,9 +981,9 @@ def multistage_qgemm_kernel[
                 if m < M and n < N:
                     epilogue_fn[alignment=alignment](
                         (m, n),
-                        accum_smem_warp_tile.raw_load[
+                        accum_smem_flat.load[
                             width=simd_size, alignment=alignment
-                        ](swizzled_idx).cast[c_type](),
+                        ](Coord(swizzled_idx)).cast[c_type](),
                     )
         else:
             copy_sram_to_dram[warp_layout, swizzle=swizzle, masked=True](

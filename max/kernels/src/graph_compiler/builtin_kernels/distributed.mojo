@@ -21,7 +21,7 @@
 from std.math.uutils import ualign_down
 from std.math import align_down, ceildiv
 from std.sys import get_defined_bool
-from std.sys.info import size_of
+from std.sys.info import align_of, size_of
 import extensibility
 
 # ===-----------------------------------------------------------------------===#
@@ -1116,7 +1116,9 @@ struct DistributedReduceScatterRMSNorm:
                 def norm_input_fn[
                     width: Int
                 ](coords: Coord) -> SIMD[dtype, width]:
-                    return sum_buf.raw_load[width=width](sum_buf.layout(coords))
+                    return sum_buf.load[
+                        width=width, alignment=align_of[dtype]()
+                    ](coords)
 
                 @__copy_capture(normed_buf)
                 @__parameter
@@ -1369,7 +1371,9 @@ struct DistributedAllGatherRMSNorm:
                 def norm_input_fn[
                     width: Int
                 ](coords: Coord) -> SIMD[dtype, width]:
-                    return sum_buf.raw_load[width=width](sum_buf.layout(coords))
+                    return sum_buf.load[
+                        width=width, alignment=align_of[dtype]()
+                    ](coords)
 
                 @__copy_capture(normed_buf)
                 @__parameter
@@ -1580,7 +1584,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
 
             # Both write paths index the quant/scale destinations by computed
             # offset with no bound on the destination's own extents: the fused
-            # epilogue's `raw_store` documents the caller as responsible, and
+            # epilogue's `store` does no bounds check of its own, and
             # `quantize_mx_amd` derives its geometry from the INPUT. So an
             # undersized scale tensor writes into the next row -- self-consistent
             # garbage a byte-compare oracle cannot see -- and past the allocation
@@ -1646,8 +1650,8 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                 # Quantize on every lane -- the block max is a cross-lane
                 # reduction. Only the in-range lanes store.
                 if col < cols_rt:
-                    quant_buf.raw_store[width=width](
-                        quant_buf.layout(Coord(row, col)), quantized
+                    quant_buf.store[alignment=align_of[quant_dtype]()](
+                        Coord(row, col), quantized
                     )
                     if col % MXFP8_SF_VECTOR_SIZE == 0:
                         scale_buf[row, col // MXFP8_SF_VECTOR_SIZE] = e8m0
@@ -1672,7 +1676,9 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                 def norm_input_fn[
                     width: Int
                 ](coords: Coord) -> SIMD[dtype, width]:
-                    return sum_buf.raw_load[width=width](sum_buf.layout(coords))
+                    return sum_buf.load[
+                        width=width, alignment=align_of[dtype]()
+                    ](coords)
 
                 @__copy_capture(normed_buf)
                 @__parameter
@@ -1994,7 +2000,9 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                 def norm_input_fn[
                     width: Int
                 ](coords: Coord) -> SIMD[dtype, width]:
-                    return sum_buf.raw_load[width=width](sum_buf.layout(coords))
+                    return sum_buf.load[
+                        width=width, alignment=align_of[dtype]()
+                    ](coords)
 
                 @__copy_capture(normed_buf)
                 @__parameter

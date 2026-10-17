@@ -775,9 +775,10 @@ def fill_random[
     comptime min_val = -1e9
     comptime max_val = 1e9
     var total_elements = buffer.num_elements()
+    var flat = buffer.reshape(row_major(total_elements))
     for i in range(total_elements):
         var random_value = random_float64(min_val, max_val)
-        buffer.raw_store(i, random_value.cast[dtype]())
+        flat.store(Coord(i), random_value.cast[dtype]())
 
 
 def fill_normal[
@@ -790,14 +791,15 @@ def fill_normal[
     searches need -- the quantity this benchmark exists to measure.
     """
     var total_elements = buffer.num_elements()
+    var flat = buffer.reshape(row_major(total_elements))
     var i = 0
     while i < total_elements:
         var u1 = max(random_float64(0.0, 1.0), 1e-12)
         var u2 = random_float64(0.0, 1.0)
         var r = sigma * (-2.0 * log(u1)) ** 0.5
-        buffer.raw_store(i, (r * cos(2.0 * pi * u2)).cast[dtype]())
+        flat.store(Coord(i), (r * cos(2.0 * pi * u2)).cast[dtype]())
         if i + 1 < total_elements:
-            buffer.raw_store(i + 1, (r * sin(2.0 * pi * u2)).cast[dtype]())
+            flat.store(Coord(i + 1), (r * sin(2.0 * pi * u2)).cast[dtype]())
         i += 2
 
 
@@ -805,11 +807,12 @@ def fill_constant[
     rank: Int, dtype: DType
 ](mut buffer: TileTensor[mut=True, dtype, ...]):
     var total_elements = buffer.num_elements()
+    var flat = buffer.reshape(row_major(total_elements))
     for i in range(total_elements):
         if i % 3 == 1:
-            buffer.raw_store(i, 1.0)
+            flat.store(Coord(i), Scalar[dtype](1.0))
         else:
-            buffer.raw_store(i, 0.0)
+            flat.store(Coord(i), Scalar[dtype](0.0))
 
 
 def fill_iota[

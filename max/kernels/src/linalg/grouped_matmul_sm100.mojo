@@ -1184,6 +1184,8 @@ def multi_stage_store_C[
             )
             comptime value_shape = logical_c_layout.size() // thread_num
             comptime cN = c_static_N
+            # `swizzle` yields offsets into the stage's flat storage.
+            var c_smem_flat = c_smem_tile.reshape(row_major[c_smem_tile_size]())
 
             comptime for v in range(value_shape):
                 comptime thread_offset = v * thread_num
@@ -1196,9 +1198,9 @@ def multi_stage_store_C[
                 var src_idx = UInt32(simd_size) * thread_index
                 var c_smem_idx = swizzle(src_idx)
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
-                var val_vec = c_smem_tile.raw_load[
+                var val_vec = c_smem_flat.load[
                     width=simd_size, alignment=alignment
-                ](c_smem_idx)
+                ](Coord(c_smem_idx))
                 var chunk_idx = rest // UInt32(stageN)
                 var n = UInt32(coord_n) + n_idx
                 var m = UInt32(work_tile_coord[0]) + (

@@ -110,7 +110,7 @@ from max.gpu.primitives import warp
 from max.gpu.sync import barrier
 from std.math import ceildiv, fma, rsqrt
 from std.memory import unsafe_stack_allocation
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, Idx, TensorEngine, TensorLayout, TileTensor, row_major
 
 
 comptime _SharedF32 = Pointer[
@@ -836,16 +836,18 @@ def gated_delta_state_fold_gpu[
                 )
             )
 
-    # The pool is dense, so a row's offset is a runtime base plus a
-    # compile-time stride per key-dim row. Indexing through the layout
-    # instead multiplies each row by a runtime stride and costs registers.
-    comptime pool_stride_head = KEY_HEAD_DIM * VALUE_HEAD_DIM
-    comptime pool_stride_kd = VALUE_HEAD_DIM
-    var pool_base_offset = (
-        slot * (_num_value_heads * pool_stride_head)
-        + value_head_idx * pool_stride_head
-        + tid
+    # The pool is dense, so a head's state is a runtime base plus
+    # compile-time strides per key-dim row. Indexing through the pool's own
+    # layout instead multiplies each row by a runtime stride and costs
+    # registers.
+    var pool_heads = recurrent_state.reshape(
+        row_major(
+            Int(recurrent_state.dim[0]()) * _num_value_heads,
+            Idx[KEY_HEAD_DIM],
+            Idx[VALUE_HEAD_DIM],
+        )
     )
+    var pool_head = slot * _num_value_heads + value_head_idx
 
     # The update is elementwise in the key dim, so the column is processed
     # in register-sized tiles. Each tile applies every record, so the state
@@ -856,8 +858,8 @@ def gated_delta_state_fold_gpu[
         var state_tile = SIMD[.float32, KEY_DIM_TILE](0.0)
         comptime for i in range(KEY_DIM_TILE):
             state_tile[i] = Float32(
-                recurrent_state.raw_load(
-                    pool_base_offset + (tile_base + i) * pool_stride_kd
+                rebind[Scalar[state_dtype]](
+                    pool_heads.load(Coord(pool_head, Idx[tile_base + i], tid))
                 )
             )
 
@@ -875,7 +877,7 @@ def gated_delta_state_fold_gpu[
                     )
 
         comptime for i in range(KEY_DIM_TILE):
-            recurrent_state.raw_store(
-                pool_base_offset + (tile_base + i) * pool_stride_kd,
+            pool_heads.store(
+                Coord(pool_head, Idx[tile_base + i], tid),
                 Scalar[state_dtype](state_tile[i]),
             )

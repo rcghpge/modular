@@ -169,14 +169,14 @@ def run_selective_scan_fwd[
         random(delta_bias_h)
 
     # Scale A to be negative for stability
+    var A_flat = A_h.reshape(row_major(dim * dstate))
     for i in range(dim * dstate):
-        var val = A_h.raw_load(i)
-        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
+        A_flat[i] = Scalar[dtype](Float32(A_flat[i]) * -0.5)
 
     # Scale delta to be positive
+    var delta_flat = delta_h.reshape(row_major(batch * dim * seqlen))
     for i in range(batch * dim * seqlen):
-        var val = delta_h.raw_load(i)
-        delta_h.raw_store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
+        delta_flat[i] = Scalar[dtype](abs(Float32(delta_flat[i])) * 0.5)
 
     var x_tt = TileTensor(
         x_heap,
@@ -214,8 +214,9 @@ def run_selective_scan_fwd[
 
     # Basic sanity check: output should not be all zeros
     var has_nonzero = False
+    var output_flat = output_h.reshape(row_major(batch * dim * seqlen))
     for i in range(batch * dim * seqlen):
-        if abs(Float32(output_h.raw_load(i))) > 1e-6:
+        if abs(Float32(output_flat[i])) > 1e-6:
             has_nonzero = True
             break
 
@@ -331,13 +332,17 @@ def run_selective_scan_update[
         random(dt_bias_h)
 
     # Scale A to be negative for stability
+    var A_flat = A_h.reshape(row_major(dim * dstate))
     for i in range(dim * dstate):
-        var val = A_h.raw_load(i)
-        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
+        A_flat[i] = Scalar[dtype](Float32(A_flat[i]) * -0.5)
 
     # Copy state_in for reference
+    var state_in_flat = state_in_h.reshape(row_major(batch * dim * dstate))
+    var state_out_ref_flat = state_out_ref_h.reshape(
+        row_major(batch * dim * dstate)
+    )
     for i in range(batch * dim * dstate):
-        state_out_ref_h.raw_store(i, state_in_h.raw_load(i))
+        state_out_ref_flat[i] = state_in_flat[i]
 
     var x_buf = x_h
     var dt_buf = dt_h
@@ -437,18 +442,21 @@ def run_selective_scan_update[
 
     # Compare results
     var state_size = batch * dim * dstate
+    var state_out_flat = state_out_h.reshape(row_major(state_size))
     for i in range(state_size):
         assert_almost_equal(
-            state_out_h.raw_load(i),
-            state_out_ref_h.raw_load(i),
+            state_out_flat[i],
+            state_out_ref_flat[i],
             rtol=rtol,
         )
 
     var output_size = batch * dim
+    var output_flat = output_h.reshape(row_major(output_size))
+    var output_ref_flat = output_ref_h.reshape(row_major(output_size))
     for i in range(output_size):
         assert_almost_equal(
-            output_h.raw_load(i),
-            output_ref_h.raw_load(i),
+            output_flat[i],
+            output_ref_flat[i],
             rtol=rtol,
         )
 

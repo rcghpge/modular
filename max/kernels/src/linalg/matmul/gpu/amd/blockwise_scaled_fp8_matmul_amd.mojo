@@ -50,7 +50,7 @@ the correctness-critical part is authored once, not copied.
 """
 
 from std.math import ceildiv
-from std.sys import simd_width_of, size_of
+from std.sys import align_of, simd_width_of, size_of
 
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,
@@ -62,7 +62,7 @@ from max.gpu import (
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
 
-from layout import Idx, TensorEngine, TensorLayout, TileTensor
+from layout import Coord, Idx, TensorEngine, TensorLayout, TileTensor
 from layout.swizzle import Swizzle
 from layout.tile_layout import row_major
 from layout.tile_tensor import stack_allocation
@@ -222,7 +222,6 @@ def blockwise_scaled_fp8_matmul_amd_tile[
     comptime num_m_mmas = WM // MMA_M
     comptime num_n_mmas = WN // MMA_N
     comptime c_frag_size = MMA_M * MMA_N // WARP_SIZE
-    comptime num_c_regs = num_m_mmas * num_n_mmas * c_frag_size
     comptime num_threads = num_warps_m * num_warps_n * WARP_SIZE
 
     # DRAM->reg->LDS tiling keys off the host SIMD width (like `AMDMatmul`),
@@ -312,8 +311,9 @@ def blockwise_scaled_fp8_matmul_amd_tile[
     var promoted = stack_allocation[accum_type, address_space=.LOCAL](
         row_major[num_m_mmas, num_n_mmas * c_frag_size]()
     )
-    comptime for i in range(num_c_regs):
-        promoted.raw_store(i, Scalar[accum_type](0))
+    comptime for i in range(num_m_mmas):
+        comptime for j in range(num_n_mmas * c_frag_size):
+            promoted[i, j] = 0
 
     # Per-lane output fragment coordinates (constant across slabs).
     var lane = Int(lane_id())
@@ -398,8 +398,9 @@ def blockwise_scaled_fp8_matmul_amd_tile[
             if k < TAIL_K_TILES or kb < NUM_SLABS - 1:
                 var k_blk = kb * num_k_tiles + k
 
-                comptime for i in range(num_c_regs):
-                    blk_acc.raw_store(i, Scalar[accum_type](0))
+                comptime for i in range(num_m_mmas):
+                    comptime for j in range(num_n_mmas * c_frag_size):
+                        blk_acc[i, j] = 0
                 mma_op.mma[k]()
 
                 # fp32 per-block promotion: `a_scale[k_blk, m]` one scalar per row,
@@ -423,14 +424,16 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                         ).cast[accum_type]()
                         var scale = a_s * b_s
 
-                        comptime off = (
-                            m_mma * num_n_mmas * c_frag_size
-                            + n_mma * c_frag_size
-                        )
-                        var blk_v = blk_acc.raw_load[width=c_frag_size](off)
-                        var prom_v = promoted.raw_load[width=c_frag_size](off)
-                        promoted.raw_store[width=c_frag_size](
-                            off, prom_v + blk_v * scale
+                        comptime align = align_of[accum_type]()
+                        var frag = Coord(m_mma, n_mma * c_frag_size)
+                        var blk_v = blk_acc.load[
+                            width=c_frag_size, alignment=align
+                        ](frag)
+                        var prom_v = promoted.load[
+                            width=c_frag_size, alignment=align
+                        ](frag)
+                        promoted.store[alignment=align](
+                            frag, prom_v + blk_v * scale
                         )
 
     # Output store with per-element OOB masking. Split-K rows live at
@@ -443,10 +446,9 @@ def blockwise_scaled_fp8_matmul_amd_tile[
         if m < M:
             comptime for n_mma in range(num_n_mmas):
                 var n0 = warp_tile_n + n_mma * MMA_N + lane_group * c_frag_size
-                comptime off = (
-                    m_mma * num_n_mmas * c_frag_size + n_mma * c_frag_size
-                )
-                var v = promoted.raw_load[width=c_frag_size](off).cast[c_type]()
+                var v = promoted.load[
+                    width=c_frag_size, alignment=align_of[accum_type]()
+                ](Coord(m_mma, n_mma * c_frag_size)).cast[c_type]()
                 comptime for e in range(c_frag_size):
                     var col = n0 + e
                     if col < N:

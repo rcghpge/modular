@@ -2712,6 +2712,9 @@ struct Grouped1D1DMatmulKernel[
 
             # SFB SMEM tile at this pipeline offset
             var sfb_smem_tile = sfb_tiles[offset]
+            var sfb_smem_flat = sfb_smem_tile.reshape(
+                row_major[type_of(sfb_smem_tile).LayoutType.static_product]()
+            )
             var sfb_tmem_offset = UInt32(tmem_region.sfb(Int(offset)).col_addr)
 
             comptime SFB_TILE_BYTES = SF_ATOM_M[0] * SF_ATOM_M[
@@ -2756,10 +2759,10 @@ struct Grouped1D1DMatmulKernel[
                         * (UInt(SF_ATOM_M[1]) * UInt(SF_ATOM_K))
                         + (outer / UInt(SF_ATOM_M[0])) * UInt(SF_ATOM_K)
                     )
-                    sfb_scales = sfb_smem_tile.raw_load[
+                    sfb_scales = sfb_smem_flat.load[
                         width=SF_ATOM_K,
                         alignment=align_of[SIMD[Self.sfb_dtype, SF_ATOM_K]](),
-                    ](scales_offset)
+                    ](Coord(Int(scales_offset)))
 
                 # Reconverge the divergent load above before the
                 # warp-collective store.

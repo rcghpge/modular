@@ -387,10 +387,13 @@ def verify_output[
     """Checks output against the reference, printing at most six mismatches."""
     var mismatches = 0
     for i in range(output.num_elements()):
-        var idx = Int(output.layout(output.layout.idx2crd(i)))
+        var crd = output.layout.idx2crd(i)
+        var idx = Int(output.layout(crd))
+        var actual = rebind[Scalar[dtype]](output.load(crd))
+        var expected = rebind[Scalar[dtype]](ref_output.load(crd))
         if not isclose(
-            output.raw_load(idx),
-            ref_output.raw_load(idx),
+            actual,
+            expected,
             atol=1e-5,
             rtol=1e-4,
         ):
@@ -407,8 +410,8 @@ def verify_output[
             print(
                 "Mismatch at",
                 idx,
-                output.raw_load(idx),
-                ref_output.raw_load(idx),
+                actual,
+                expected,
             )
 
             mismatches = mismatches + 1

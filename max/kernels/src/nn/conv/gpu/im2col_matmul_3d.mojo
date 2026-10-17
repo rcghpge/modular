@@ -24,7 +24,7 @@ without touching the TMA im2col descriptor layer.
 
 from std.math import ceildiv, divmod, gcd
 from std.math.uutils import udivmod
-from std.sys import simd_width_of, size_of
+from std.sys import align_of, simd_width_of, size_of
 from max.gpu import block_dim, block_idx, global_idx, thread_idx
 from max.gpu.host import DeviceContext
 from layout import (
@@ -132,15 +132,11 @@ def _im2col_ndhwc_kernel[
     var d_out, rem = udivmod(spatial, HW_out)
     var h_out, w_out = udivmod(rem, W_out)
 
-    # Precompute input-base offsets and (batch, stride, pad)-dependent
-    # addends; within a block only (q, r, s, c) change across threads.
+    # Precompute the (stride, pad)-dependent input bases; within a block
+    # only (q, r, s, c) change across threads.
     var d_in_base = d_out * _stride_d - _pad_d
     var h_in_base = h_out * _stride_h - _pad_h
     var w_in_base = w_out * _stride_w - _pad_w
-    var batch_base = batch * D * H * W * C
-    var dhw_stride = H * W * C
-    var hw_stride = W * C
-    var w_stride = C
 
     var RSC = R * S * C
     var SC = S * C
@@ -158,14 +154,9 @@ def _im2col_ndhwc_kernel[
 
         var val = SIMD[input_dtype, simd_width](0)
         if 0 <= d_in < D and 0 <= h_in < H and 0 <= w_in < W:
-            var in_idx = (
-                batch_base
-                + d_in * dhw_stride
-                + h_in * hw_stride
-                + w_in * w_stride
-                + c
-            )
-            val = input.raw_load[width=simd_width](in_idx)
+            val = input.load[
+                width=simd_width, alignment=align_of[input_dtype]()
+            ](Coord(batch, d_in, h_in, w_in, c))
 
         im2col_ptr.store(row_base + k, val)
         k += block_dim.x * simd_width

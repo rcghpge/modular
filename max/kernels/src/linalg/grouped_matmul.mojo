@@ -168,10 +168,16 @@ def naive_grouped_matmul_kernel[
     # the block is not active for LoRA use cases.
     # NOTE: we still call elementwise lambda even if expert is -1
     if expert != -1:
+        var a_flat = a.reshape(row_major(a.num_elements()))
+        var b_flat = b.reshape(row_major(b.num_elements()))
         for k in range(K):
             accum += (
-                a.raw_load(a_expert_off + m * K + k).cast[accum_type]()
-                * b.raw_load(b_expert_off + n * K + k).cast[accum_type]()
+                rebind[Scalar[a_type]](
+                    a_flat.load(Coord(a_expert_off + m * K + k))
+                ).cast[accum_type]()
+                * rebind[Scalar[b_type]](
+                    b_flat.load(Coord(b_expert_off + n * K + k))
+                ).cast[accum_type]()
             )
 
     var idx = Coord(Int(a_start_row) + m, n)
@@ -181,7 +187,9 @@ def naive_grouped_matmul_kernel[
     else:
         comptime if has_compute_fn:
             out = compute_fn[c_type, 1, alignment=1](idx, out)
-        c.raw_store(Int(a_start_row) * N + m * N + n, out)
+        c.reshape(row_major(c.num_elements())).store(
+            Coord(Int(a_start_row) * N + m * N + n), out
+        )
 
 
 @always_inline
@@ -1321,10 +1329,16 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
 
     # ``expert == -1`` marks an inactive (LoRA) block; skip the matmul.
     if expert != -1:
+        var a_flat = a.reshape(row_major(a.num_elements()))
+        var b_flat = b.reshape(row_major(b.num_elements()))
         for k in range(K):
             accum += (
-                a.raw_load(a_expert_off + m * K + k).cast[accum_type]()
-                * b.raw_load(b_expert_off + n * K + k).cast[accum_type]()
+                rebind[Scalar[a_type]](
+                    a_flat.load(Coord(a_expert_off + m * K + k))
+                ).cast[accum_type]()
+                * rebind[Scalar[b_type]](
+                    b_flat.load(Coord(b_expert_off + n * K + k))
+                ).cast[accum_type]()
             )
 
         # Apply the rowwise + per-token scale ONCE after the full-K reduction
@@ -1340,7 +1354,9 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
         ).cast[accum_type]()
         accum = accum * a_scale * b_scale
 
-    c.raw_store(Int(a_start_row) * N + m * N + n, accum.cast[c_type]())
+    c.reshape(row_major(c.num_elements())).store(
+        Coord(Int(a_start_row) * N + m * N + n), accum.cast[c_type]()
+    )
 
 
 @inline(.always)
@@ -1546,11 +1562,17 @@ def grouped_matmul_vendor[
         Trace[TraceLevel.OP]._get_detail_str(vendor_description_fn),
         task_id=get_safe_task_id(ctx),
     ):
+        var expert_ids_flat = expert_ids.reshape(
+            row_major(expert_ids.num_elements())
+        )
+        var a_offsets_flat = a_offsets.reshape(
+            row_major(a_offsets.num_elements())
+        )
         for i in range(num_active_experts):
-            var expert_id = expert_ids.raw_load(i)
+            var expert_id = rebind[Int32](expert_ids_flat.load(Coord(i)))
 
-            var token_start = a_offsets.raw_load(i)
-            var token_end = a_offsets.raw_load(i + 1)
+            var token_start = rebind[UInt32](a_offsets_flat.load(Coord(i)))
+            var token_end = rebind[UInt32](a_offsets_flat.load(Coord(i + 1)))
             var num_tokens = Int(token_end - token_start)
 
             # Skip if no tokens for this expert

@@ -448,8 +448,11 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
 
     # When epilogue multiplies by 2, scale reference to match.
     comptime if value_epilogue or value_compute:
-        for i in range(c_host_ref.num_elements()):
-            c_host_ref.raw_store(i, c_host_ref.raw_load(i) * Scalar[c_type](2))
+        var c_ref_flat = c_host_ref.reshape(
+            row_major(c_host_ref.num_elements())
+        )
+        for i in range(c_ref_flat.num_elements()):
+            c_ref_flat[i] = c_ref_flat[i] * Scalar[c_type](2)
 
     assert_almost_equal(
         c_host.as_span(),

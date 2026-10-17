@@ -39,6 +39,7 @@ expresses this.
 
 from std.math import ceildiv, rsqrt
 from std.atomic import Atomic, Ordering, fence
+from std.sys import align_of
 from std.sys.info import _is_sm_100x_or_newer, simd_width_of, size_of
 from std.time import global_perf_counter_ns
 
@@ -628,8 +629,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     @__copy_capture(y)
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[c_type, width]:
-        var idx = y.layout(coords)
-        return y.raw_load[width=width](idx)
+        return y.load[width=width, alignment=align_of[c_type]()](coords)
 
     @inline(.always)
     @__copy_capture(normed_output)
