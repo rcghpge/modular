@@ -29,7 +29,6 @@ from std.ffi import (
 from std.memory.unsafe_pointer import unsafe_cast
 from std.sys import (
     is_amd_gpu,
-    is_apple_gpu,
     is_gpu,
     is_nvidia_gpu,
     stdin,
@@ -40,7 +39,6 @@ from std.sys._amdgpu import (
     printf_append_string_n,
     printf_begin,
 )
-from std.sys._metal_print import _metal_print_write
 from std.sys._libc import dup, fclose, fdopen, fflush, FILE_ptr
 from std.sys.info import CompilationTarget
 
@@ -294,17 +292,18 @@ def _printf[
                 Int32(Int(bound == args_len)),
             )
 
-    elif is_apple_gpu():
-        # Apple GPU: format the template string and write to the shared
-        # print buffer. Metal doesn't support printf-style variadic args.
-        var buf = _FixedWriteBuffer()
-        buf.write_string(fmt)
-        var cstr = buf.nul_terminate()
-        _metal_print_write(
-            StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul())
-        )
     elif not is_gpu():
         _printf_cpu[fmt](*args, file=file)
+    elif case .Some(_emit) = CurrentPlugin.print_emit_fn:
+        # The hook takes a formatted byte buffer and there is no printf
+        # formatter on device, so the arguments are dropped and only `fmt` is
+        # written.
+        var buffer = _FixedWriteBuffer()
+        buffer.write_string(fmt)
+        var cstr = buffer.nul_terminate()
+
+        # FIXME: The origin param of `_emit` should be inferred from `cstr`.
+        _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)
     else:
         # If we aren't targeting either a known GPU vendor, or CPU, issue
         # a target error.
