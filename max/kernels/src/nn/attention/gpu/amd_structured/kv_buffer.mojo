@@ -75,7 +75,7 @@ struct KVCacheIterator[
     """TileTensor-based DRAM tile iterator.
 
     Returns a TileTensor with Scalar for the row dimension (valid-row
-    count) and ComptimeInt for depth and strides. No RuntimeLayout storage.
+    count) and ComptimeInt for depth and strides.
 
     When cache_depth != depth, the DRAM stride uses cache_depth (e.g., MLA
     K_rope reads 64 columns from a 576-wide cache row). head_dim_offset

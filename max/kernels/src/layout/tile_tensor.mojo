@@ -4715,22 +4715,6 @@ def _get_index_type[
     return .int64
 
 
-comptime _ToRuntimeMapper[
-    dtype: DType,
-    element_types: TypeList[Trait=CoordLike, _],
-    idx: Int,
-] = Scalar[dtype]
-"""Convert shape types to Scalar for slicing operations.
-
-When slicing, compile-time dimensions become runtime dimensions because
-we can't change ComptimeInt[4] to ComptimeInt[2] in the type system.
-
-Parameters:
-    dtype: The default data type to use for Scalar conversions.
-    element_types: The variadic sequence of types to convert (wrapped in values).
-    idx: The current index being processed.
-"""
-
 comptime _StaticSplitShapeTabulator[
     count: Int,
     axis: Int,

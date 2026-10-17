@@ -1293,7 +1293,6 @@ def _mha_sm90[
     #     ),
     # )
     # Vectorizing the layout:
-    comptime element_layout = Layout.row_major(1, frag_simdwidth)
     comptime vec_output_row_shape = IntTuple(num_row_blocks_per_mma, num_m_mmas)
     comptime p_vec_output_layout = Layout(
         IntTuple(

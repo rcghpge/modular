@@ -161,9 +161,8 @@ def _get_worker_idx[thread_scope: ThreadScope]() -> Int:
     the (up to 3D) thread block. For `WARP` scope, returns the lane ID
     within the warp.
 
-    Duplicated from `layout_tensor._get_worker_idx` to avoid a cross-module
-    import; the BLOCK path unconditionally uses the 3D formula, since for
-    1D/2D launches `thread_idx.z == 0` and `block_dim.y/z == 1` and the
+    The BLOCK path unconditionally uses the 3D formula, since for 1D/2D
+    launches `thread_idx.z == 0` and `block_dim.y/z == 1` and the
     extra terms fold away at compile time.
 
     Parameters:
