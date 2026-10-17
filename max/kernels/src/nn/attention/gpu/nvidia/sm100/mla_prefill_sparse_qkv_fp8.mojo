@@ -1638,9 +1638,8 @@ def mla_prefill_sparse_qkv_fp8[
         tma_dtype=FP8_TYPE,
     ](ctx)
 
-    var output_2d = TileTensor(
-        output.ptr,
-        row_major(num_q_rows * config.num_q_heads, config.v_depth),
+    var output_2d = output.reshape(
+        row_major(num_q_rows * config.num_q_heads, config.v_depth)
     )
     var o_tma_op = create_tensor_tile[
         coord[config.num_q_heads // config.cta_group, config.v_depth],

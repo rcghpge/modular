@@ -167,6 +167,25 @@ def immut_tile_tensor_1d[
     )
 
 
+def immut_tile_tensor_1d[
+    dtype: DType, //
+](tensor: TileTensor[dtype, address_space=.GENERIC, ...]) -> ImmutTileTensor1D[
+    dtype
+]:
+    """Views the contiguous elements of `tensor` as an `ImmutTileTensor1D`.
+
+    Parameters:
+        dtype: Element type of the tensor (inferred).
+
+    Args:
+        tensor: Tensor whose elements are viewed as one flat dimension.
+
+    Returns:
+        An immutable, untracked-origin 1-D view over the elements.
+    """
+    return immut_tile_tensor_1d(tensor.ptr, tensor.num_elements())
+
+
 struct Pack[
     MaskType: MHAMask,
     SchedulerType: MHATileScheduler,

@@ -3047,9 +3047,9 @@ struct _RMSNormQuantizeFp8GroupKernel[
         comptime align = align_of[SIMD[Self.in_dtype, Self.simd_width]]()
 
         var input_fn = self.input_fn
-        var output = TileTensor(self.output.ptr, self.output.layout)
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
-        var gamma = TileTensor(self.gamma.ptr, self.gamma.layout)
+        var output = self.output
+        var scales = self.scales
+        var gamma = self.gamma
 
         var tid = thread_idx.x
         var row = block_idx.x

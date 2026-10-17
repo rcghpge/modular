@@ -116,9 +116,7 @@ def matmul[
     comptime c_type = c.dtype
     comptime simd_size = _epilogue_simd_size[c_type]()
 
-    var c_tt = TileTensor(
-        c.ptr, row_major(Coord(Int(c.dim[0]()), Int(c.dim[1]())))
-    )
+    var c_tt = c
 
     def epilogue_wrapper[
         simd_width: Int, alignment: Int = 1
@@ -212,9 +210,7 @@ def apply_compute_fn_in_place[
     comptime c_type = c.dtype
     comptime simd_size = _epilogue_simd_size[c_type]()
 
-    var c_tt = TileTensor(
-        c.ptr, row_major(Coord(Int(c.dim[0]()), Int(c.dim[1]())))
-    )
+    var c_tt = c
 
     def compute_wrapper[
         simd_width: Int, alignment: Int = 1

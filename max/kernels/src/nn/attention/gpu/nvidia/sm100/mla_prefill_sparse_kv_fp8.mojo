@@ -896,7 +896,6 @@ struct MLAPrefillSparseFP8[
         scale: Float32,
         attn_sink_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
         indices_stride: Int32,
-        output_gmem_ptr: UnsafePointer[Scalar[Self.output_dtype], MutAnyOrigin],
         scales_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
     ) where (topk_lengths.flat_rank == 1 and indices.flat_rank == 1):
         var cta_id = UInt32(block_idx.x % Self.config.cta_group)
@@ -1749,9 +1748,8 @@ def mla_prefill_sparse_fp8[
         tma_dtype=DType.int64,
     ](ctx)
 
-    var output_2d_fp8 = TileTensor(
-        output.ptr,
-        row_major(num_q_rows * config.num_q_heads, config.v_depth),
+    var output_2d_fp8 = output.reshape(
+        row_major(num_q_rows * config.num_q_heads, config.v_depth)
     )
     var o_tma_op_fp8 = create_tensor_tile[
         coord[config.num_q_heads // config.cta_group, config.v_depth],
@@ -1790,7 +1788,6 @@ def mla_prefill_sparse_fp8[
         scale,
         attn_sink_ptr,
         indices_stride,
-        output.ptr,
         scales_ptr,
         grid_dim=(config.cta_group * num_q_rows, 1, 1),
         block_dim=(config.num_threads, 1, 1),

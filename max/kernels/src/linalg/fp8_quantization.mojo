@@ -714,8 +714,8 @@ struct _QuantizeFp8Kernel[
             return
 
         var input_fn = self.input_fn
-        var output = TileTensor(self.output.ptr, self.output.layout)
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
+        var output = self.output
+        var scales = self.scales
         var scale_ub = self.scale_ub
         var amax_floor = self.amax_floor
         comptime use_warp_tiling = Self.group_size <= Self.num_threads * Self.simd_width
@@ -838,7 +838,7 @@ struct _ComputeScalesFp8Kernel[
         reduces these maxes to the tensor-wide scale.
         """
         var input_fn = self.input_fn
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
+        var scales = self.scales
         comptime fp8_max = Scalar[Self.out_type].MAX_FINITE
         comptime accum_type = get_accum_type[Self.in_type]()
 
@@ -917,7 +917,7 @@ struct _ReducePerTensorScaleFp8Kernel[
         slot with the per-tensor scale factor, so downstream readers that index
         ``scales[group_idx, row]`` all see the same value.
         """
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
+        var scales = self.scales
         var num_rows = Int(self.num_rows_dev)
         var tid = thread_idx.x
 
@@ -995,8 +995,8 @@ struct _QuantizeFp8KernelPerTensor[
         ``scales[group_idx, row]`` and does not write ``scales``.
         """
         var input_fn = self.input_fn
-        var output = TileTensor(self.output.ptr, self.output.layout)
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
+        var output = self.output
+        var scales = self.scales
         comptime accum_type = get_accum_type[Self.in_type]()
 
         var tid = thread_idx.x
@@ -1148,8 +1148,8 @@ struct _BatchedQuantizeFp8Kernel[
     )
     def __call__(self) capturing:
         var input_fn = self.input_fn
-        var output = TileTensor(self.output.ptr, self.output.layout)
-        var scales = TileTensor(self.scales.ptr, self.scales.layout)
+        var output = self.output
+        var scales = self.scales
         var scale_ub = self.scale_ub
         comptime use_warp_tiling = Self.group_size <= Self.num_threads * Self.simd_width
         comptime accum_type = get_accum_type[Self.in_type]()

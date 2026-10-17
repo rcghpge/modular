@@ -852,8 +852,7 @@ def TopKSamplingFromProbKernel[
         if case .Some(indices) = indices:
             row_idx = Int(indices.load(bx))
 
-        var probs_ptr = probs.ptr + row_idx * _d
-        var probs_row = TileTensor(probs_ptr, row_major(Idx[1], _d))
+        var probs_row = probs.tile(Coord(Idx[1], _d), Coord(row_idx, 0))
 
         # The final sampled index, produced by whichever search path runs.
         var sampled_id = 0

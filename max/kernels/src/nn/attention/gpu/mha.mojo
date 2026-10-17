@@ -262,8 +262,7 @@ def flash_attention[
             v,
             MaterializedMask(
                 TileTensor(
-                    mask.unsafe_ptr(),
-                    row_major(mask.layout.shape_coord()),
+                    mask.unsafe_ptr(), row_major(mask.layout.shape_coord())
                 )
             ),
             scale,
@@ -836,7 +835,7 @@ def flash_attention[
         k,
         v,
         mask_functor,
-        immut_tile_tensor_1d(valid_length.ptr, valid_length.num_elements()),
+        immut_tile_tensor_1d(valid_length),
         scale,
         ctx,
         q_max_seq_len,
@@ -2276,25 +2275,23 @@ def _flash_attention_dense[
     # static pattern with `Idx` for the known dims. The operand infers
     # `buffer_layout` from the passed TileTensor.
     var k_operand = TileTensorMHAOperand(
-        TileTensor(
-            k.unsafe_ptr(),
+        k.reshape(
             row_major(
                 Int(k.dim[0]()),
                 Int(k.dim[1]()),
                 Idx[kv_num_heads],
                 Idx[depth],
-            ),
+            )
         )
     )
     var v_operand = TileTensorMHAOperand(
-        TileTensor(
-            v.unsafe_ptr(),
+        v.reshape(
             row_major(
                 Int(v.dim[0]()),
                 Int(v.dim[1]()),
                 Idx[kv_num_heads],
                 Idx[depth],
-            ),
+            )
         )
     )
 
@@ -2515,9 +2512,7 @@ def flash_attention_ragged[
 
     var is_token_generation = False
 
-    var cache_row_offsets = immut_tile_tensor_1d(
-        input_row_offsets.unsafe_ptr(), input_row_offsets.num_elements()
-    )
+    var cache_row_offsets = immut_tile_tensor_1d(input_row_offsets)
     var k_operand = RaggedMHAOperand(
         TileTensor(
             k.unsafe_ptr(),
@@ -6445,10 +6440,10 @@ def mha_gpu_naive[
         sink_weights: Optional sink-token weight tensor for attention sinks.
     """
     var k_operand = TileTensorMHAOperand(
-        TileTensor(k.unsafe_ptr(), row_major(k.layout.shape_coord()))
+        k.reshape(row_major(k.layout.shape_coord()))
     )
     var v_operand = TileTensorMHAOperand(
-        TileTensor(v.unsafe_ptr(), row_major(v.layout.shape_coord()))
+        v.reshape(row_major(v.layout.shape_coord()))
     )
     mha_gpu_naive[_is_cache_length_accurate=True, sink=sink](
         q,
@@ -6555,7 +6550,7 @@ def mha_gpu_naive[
         mask_functor,
         output,
         OptionalReg[ImmutTileTensor1D[.uint32]](
-            immut_tile_tensor_1d(valid_length.ptr, valid_length.num_elements())
+            immut_tile_tensor_1d(valid_length)
         ),
         scale,
         batch_size,
@@ -6653,7 +6648,7 @@ def mha_gpu_naive[
         mask_functor,
         output,
         OptionalReg[ImmutTileTensor1D[.uint32]](
-            immut_tile_tensor_1d(valid_length.ptr, valid_length.num_elements())
+            immut_tile_tensor_1d(valid_length)
         ),
         scale,
         batch_size,

@@ -598,7 +598,7 @@ def flare_mla_decoding[
 
     # Preserve static/runtime dimension types for the operand's buffer layout.
     var k_operand = TileTensorMHAOperand(
-        TileTensor(k.ptr, row_major(k.layout.shape_coord()))
+        k.reshape(row_major(k.layout.shape_coord()))
     )
 
     var valid_length = TileTensor(
@@ -3028,7 +3028,7 @@ def flare_mla_prefill[
         var k_operand = RaggedMHAOperand(_ragged_kv_view(k), cro_buf)
         var v_operand = RaggedMHAOperand(_ragged_kv_view(v), cro_buf)
         var k_rope_operand = TileTensorMHAOperand(
-            TileTensor(k_rope.ptr, row_major(k_rope.layout.shape_coord()))
+            k_rope.reshape(row_major(k_rope.layout.shape_coord()))
         )
 
         comptime output_type = output.dtype
@@ -3141,10 +3141,9 @@ def flare_mla_prefill[
         var k_operand = RaggedMHAOperand(_ragged_kv_view(k), cro_buf)
         var v_operand = RaggedMHAOperand(_ragged_kv_view(v), cro_buf)
         var k_rope_operand = TileTensorMHAOperand(
-            TileTensor(k_rope.ptr, row_major(k_rope.layout.shape_coord())),
-            TileTensor(
-                k_rope_scales.ptr,
-                row_major(k_rope_scales.layout.shape_coord()),
+            k_rope.reshape(row_major(k_rope.layout.shape_coord())),
+            k_rope_scales.reshape(
+                row_major(k_rope_scales.layout.shape_coord())
             ),
         )
 
@@ -3266,7 +3265,7 @@ def flare_mla_prefill[
 
         var v_operand = RaggedMHAOperand(_ragged_kv_view(v), cro_buf)
         var k_rope_operand = TileTensorMHAOperand(
-            TileTensor(k_rope.ptr, row_major(k_rope.layout.shape_coord()))
+            k_rope.reshape(row_major(k_rope.layout.shape_coord()))
         )
 
         var batch_size: Int = Int(valid_length.dim[0]()) - 1

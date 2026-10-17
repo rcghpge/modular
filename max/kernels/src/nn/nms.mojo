@@ -324,19 +324,18 @@ def non_max_suppression[
 
     for b in range(batch_size):
         for c in range(num_classes):
-            # Entries of per_class_scores_ptr are set to neginf when they no longer
+            # Entries of the per-class scores are set to neginf when they no longer
             # correspond to an eligible box
             # this happens when:
             #   1. Score does not meet score threshold (filtered out initially)
             #   2. IoU with an already-selected boc is above IOU threshold (suppressed)
             var offset = scores.layout(Coord(b, c, Idx[0]))
-            var per_class_scores_ptr = scores.ptr + offset
 
             # Filter boxes by score threshold
             # This reduces the number of boxes to sort and process
             var num_boxes_remaining = 0
             for i in range(num_boxes):
-                var score = per_class_scores_ptr.load(i)
+                var score = scores.raw_load[invariant=False](Int(offset) + i)
                 if score > score_threshold.cast[dtype]():
                     per_class_scores[i] = score
                     num_boxes_remaining += 1

@@ -102,14 +102,10 @@ def _repeat_interleave_cpu[
     assert collapsed_output_shape[0] == collapsed_input_shape[0]
     assert collapsed_output_shape[2] == collapsed_input_shape[2]
 
-    var collapsed_input = TileTensor(
-        input.ptr,
-        row_major(Coord(collapsed_input_shape)),
-    )
+    var collapsed_input = input.reshape(row_major(Coord(collapsed_input_shape)))
 
-    var collapsed_output = TileTensor(
-        output.ptr,
-        row_major(Coord(collapsed_output_shape)),
+    var collapsed_output = output.reshape(
+        row_major(Coord(collapsed_output_shape))
     )
 
     var input_repeat_dim = collapsed_input_shape[1]
@@ -312,13 +308,9 @@ def _repeat_interleave_gpu[
     assert collapsed_output_shape[0] == collapsed_input_shape[0]
     assert collapsed_output_shape[2] == collapsed_input_shape[2]
 
-    var collapsed_input = TileTensor(
-        input.ptr,
-        row_major(Coord(collapsed_input_shape)),
-    )
-    var collapsed_output = TileTensor(
-        output.ptr,
-        row_major(Coord(collapsed_output_shape)),
+    var collapsed_input = input.reshape(row_major(Coord(collapsed_input_shape)))
+    var collapsed_output = output.reshape(
+        row_major(Coord(collapsed_output_shape))
     )
 
     var num_elements = output.num_elements()

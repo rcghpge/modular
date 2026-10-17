@@ -306,7 +306,6 @@ struct MLAPrefillSparse[
         scale: Float32,
         attn_sink_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
         indices_stride: Int32,
-        output_gmem_ptr: UnsafePointer[Scalar[Self.output_dtype], MutAnyOrigin],
     ) where (topk_lengths.flat_rank == 1 and indices.flat_rank == 1):
         var cta_id = UInt32(block_idx.x % Self.config.cta_group)
         var seq_idx = UInt32(block_idx.x // Self.config.cta_group)
@@ -1034,9 +1033,8 @@ struct MLAPrefillSparse[
         comptime col_dim = smem_tensor.static_shape[1]
         comptime num_col_tiles = col_dim // 64
         comptime row_dim = smem_tensor.static_shape[0]
-        var tma_smem_tensor = TileTensor(
-            smem_tensor.ptr,
-            row_major[row_dim * num_col_tiles, 64](),
+        var tma_smem_tensor = smem_tensor.reshape(
+            row_major[row_dim * num_col_tiles, 64]()
         )
 
         comptime outer_row_start = col_range[0] // 64
@@ -1475,9 +1473,8 @@ def mla_prefill_sparse[
 
     # Output viewed 2D as [num_q_rows * num_q_heads, v_depth] so per-cluster
     # TMA stores address the right head range with a single [row, col] coord.
-    var output_2d = TileTensor(
-        output.ptr,
-        row_major(num_q_rows * config.num_q_heads, config.v_depth),
+    var output_2d = output.reshape(
+        row_major(num_q_rows * config.num_q_heads, config.v_depth)
     )
 
     var o_tma_op = create_tensor_tile[
@@ -1514,7 +1511,6 @@ def mla_prefill_sparse[
         scale,
         attn_sink_ptr,
         indices_stride,
-        output.ptr,
         grid_dim=(config.cta_group * num_q_rows, 1, 1),
         block_dim=(config.num_threads, 1, 1),
         shared_mem_bytes=smem_size,

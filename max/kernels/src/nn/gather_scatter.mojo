@@ -201,11 +201,8 @@ def gather_reduce[
     comptime if output.flat_rank == 3:
         output_2d_dims[1] = Int(output.dim[2]())
 
-    var output_bind = TileTensor(output.ptr, row_major(Coord(output_2d_dims)))
-    var input_bind = TileTensor(
-        input.ptr,
-        input.layout.make_dynamic[.int64](),
-    )
+    var output_bind = output.reshape(row_major(Coord(output_2d_dims)))
+    var input_bind = input.reshape(input.layout.make_dynamic[.int64]())
 
     var gather_axis_size = Int(input.dim(gather_axis))
 
@@ -349,11 +346,8 @@ def gather_sum[
 
     # Rank-3 outputs ([batch, 1, emb_dim]) are contiguous with the rank-2
     # view, so one flat layout covers both.
-    var output_flat = TileTensor(output.ptr, row_major(Coord(batch, emb_dim)))
-    var input_flat = TileTensor(
-        input.ptr,
-        input.layout.make_dynamic[.int64](),
-    )
+    var output_flat = output.reshape(row_major(Coord(batch, emb_dim)))
+    var input_flat = input.reshape(input.layout.make_dynamic[.int64]())
 
     comptime if is_cpu[target]():
 
@@ -1147,10 +1141,8 @@ def scatter_nd_generator[
                 " indices_shape[-1] - 1"
             )
 
-        var output_flat = TileTensor(
-            output.ptr, row_major(output.num_elements())
-        )
-        var data_flat = TileTensor(data.ptr, row_major(data.num_elements()))
+        var output_flat = output.reshape(row_major(output.num_elements()))
+        var data_flat = data.reshape(row_major(data.num_elements()))
 
         var output_strides = IndexList[data.rank]()
         for i in range(data.rank):

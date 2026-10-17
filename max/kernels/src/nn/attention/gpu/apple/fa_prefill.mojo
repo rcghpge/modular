@@ -970,13 +970,11 @@ def fa_prefill_apple[
 
     # Flatten to 1-D views; the kernel bakes the
     # ragged/BSHD + q_row0 offset into each per-simdgroup tile base.
-    var q_flat = TileTensor(
-        q.unsafe_ptr().as_imm().as_unsafe_any_origin(),
-        row_major(q.num_elements()),
+    var q_flat = (
+        q.as_imm().as_unsafe_any_origin().reshape(row_major(q.num_elements()))
     )
-    var output_flat = TileTensor(
-        output.unsafe_ptr().as_unsafe_any_origin(),
-        row_major(output.num_elements()),
+    var output_flat = output.as_unsafe_any_origin().reshape(
+        row_major(output.num_elements())
     )
 
     # MODULAR_APPLE_FA_PREFILL_NUM_SIMDGROUPS={4,8,16,32} overrides the

@@ -3623,12 +3623,24 @@ def quantize_mx_amd[
 @__name("quantize_dynamic_block_scaled_mxfp4_kernel")
 def quantize_dynamic_block_scaled_mxfp4_kernel[
     in_dtype: DType,
+    output_layout: TensorLayout,
+    scales_layout: TensorLayout,
+    input_layout: TensorLayout,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
     *,
     elements_per_thread: Int,
 ](
-    output_ptr: UnsafePointer[UInt8, MutAnyOrigin],
-    output_scales_ptr: UnsafePointer[Float8_e8m0fnu, MutAnyOrigin],
-    input_ptr: UnsafePointer[Scalar[in_dtype], ImmutAnyOrigin],
+    output: TileTensor[
+        .uint8, output_layout, MutAnyOrigin, Engine=OutputEngine
+    ],
+    output_scales: TileTensor[
+        .float8_e8m0fnu, scales_layout, MutAnyOrigin, Engine=ScalesEngine
+    ],
+    input: TileTensor[
+        in_dtype, input_layout, ImmutAnyOrigin, Engine=InputEngine
+    ],
     num_elements: Int32,
 ):
     var _num_elements = Int(num_elements)
@@ -3638,7 +3650,7 @@ def quantize_dynamic_block_scaled_mxfp4_kernel[
     if n >= _num_elements:
         return
 
-    var loaded_vec = input_ptr.load[width=8](n)
+    var loaded_vec = input.raw_load[width=8, invariant=False](n)
     var thread_max = abs(loaded_vec).reduce_max().cast[.float32]()
     var group_max = warp.lane_group_max[num_lanes=threads_per_group](thread_max)
 
@@ -3646,9 +3658,9 @@ def quantize_dynamic_block_scaled_mxfp4_kernel[
     var scale_f32 = fp8_scale_factor.cast[.float32]()
 
     if thread_idx.x % threads_per_group == 0:
-        output_scales_ptr[n // MXFP4_SF_VECTOR_SIZE] = fp8_scale_factor
+        output_scales.raw_store(n // MXFP4_SF_VECTOR_SIZE, fp8_scale_factor)
 
-    output_ptr.store[alignment=4](
+    output.raw_store[alignment=4](
         n // 2,
         bitcast[.uint8, 4](cast_float_to_fp4e2m1_amd(loaded_vec, scale_f32)),
     )
@@ -3695,13 +3707,19 @@ def quantize_dynamic_block_scaled_mxfp4[
 
         comptime kernel = quantize_dynamic_block_scaled_mxfp4_kernel[
             in_dtype,
+            type_of(output).LayoutType,
+            type_of(output_scales).LayoutType,
+            type_of(input).LayoutType,
+            type_of(output).Engine,
+            type_of(output_scales).Engine,
+            type_of(input).Engine,
             elements_per_thread=elements_per_thread,
         ]
 
         ctx.enqueue_function[kernel](
-            output.ptr,
-            output_scales.ptr,
-            input.ptr,
+            output,
+            output_scales,
+            input,
             Int32(num_elements),
             grid_dim=ceildiv(num_elements // elements_per_thread, BLOCK_DIM),
             block_dim=BLOCK_DIM,
@@ -3714,11 +3732,16 @@ def _mxfp4_dotprod[
     //,
     BLOCK_N: Int,
 ](
-    c_ptr: UnsafePointer[Scalar[out_dtype], MutAnyOrigin],
-    a_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    b_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    a_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
-    b_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
+    c: TileTensor[mut=True, out_dtype, ...],
+    c_offset: Int,
+    a: TileTensor[mut=False, .uint8, ...],
+    a_offset: Int,
+    b: TileTensor[mut=False, .uint8, ...],
+    b_offset: Int,
+    a_scales: TileTensor[mut=False, .float8_e8m0fnu, ...],
+    a_scales_offset: Int,
+    b_scales: TileTensor[mut=False, .float8_e8m0fnu, ...],
+    b_scales_offset: Int,
     K: Int,
 ):
     @inline(.always)
@@ -3739,26 +3762,36 @@ def _mxfp4_dotprod[
 
     var k_groups = K // MXFP4_SF_VECTOR_SIZE
 
-    var a_local_ptr = a_ptr
-    var b_local_ptr = b_ptr
+    var a_local_offset = a_offset
+    var b_local_offset = b_offset
 
     var accum = SIMD[.float32, BLOCK_N](0)
 
     for ko in range(k_groups):
-        var a_scale = a_scales_ptr[ko].cast[.float32]()
+        var a_scale = a_scales.raw_load[invariant=False](
+            a_scales_offset + ko
+        ).cast[.float32]()
         var b_scale = Array[_, BLOCK_N](
             fill_with_unrolled=lambda [bn: Int]() {
-                imm b_scales_ptr, imm k_groups, imm ko
-            } -> Float32: b_scales_ptr[bn * k_groups + ko].cast[.float32]()
+                imm b_scales, imm b_scales_offset, imm k_groups, imm ko
+            } -> Float32: b_scales.raw_load[invariant=False](
+                b_scales_offset + bn * k_groups + ko
+            ).cast[
+                .float32
+            ]()
         )
 
         comptime for ki in range(0, MXFP4_SF_VECTOR_SIZE // 2, 4):
-            var a_data = bitcast[.int32, 1](a_local_ptr.load[width=4](ki))
+            var a_data = bitcast[.int32, 1](
+                a.raw_load[width=4, invariant=False](a_local_offset + ki)
+            )
             var b_data = Array[_, BLOCK_N](
                 fill_with_unrolled=lambda [bn: Int]() {
-                    imm b_local_ptr, imm K
+                    imm b, imm b_local_offset, imm K
                 } -> Int32: bitcast[.int32, 1](
-                    b_local_ptr.load[width=4](bn * (K // 2) + ki)
+                    b.raw_load[width=4, invariant=False](
+                        b_local_offset + bn * (K // 2) + ki
+                    )
                 )
             )
 
@@ -3776,10 +3809,10 @@ def _mxfp4_dotprod[
                         accum[bn],
                     )
 
-        a_local_ptr += MXFP4_SF_VECTOR_SIZE // 2
-        b_local_ptr += MXFP4_SF_VECTOR_SIZE // 2
+        a_local_offset += MXFP4_SF_VECTOR_SIZE // 2
+        b_local_offset += MXFP4_SF_VECTOR_SIZE // 2
 
-    c_ptr.store(accum.cast[out_dtype]())
+    c.raw_store(c_offset, accum.cast[out_dtype]())
 
 
 @inline(.always)
@@ -3790,13 +3823,28 @@ def _mxfp4_dotprod_block_size(static_N: Int) -> Int:
 
 @__name("matmul_dynamic_block_scaled_amd_kernel")
 def matmul_dynamic_block_scaled_amd_kernel[
-    out_dtype: DType, BLOCK_N: Int
+    out_dtype: DType,
+    BLOCK_N: Int,
+    c_layout: TensorLayout,
+    a_layout: TensorLayout,
+    b_layout: TensorLayout,
+    a_scales_layout: TensorLayout,
+    b_scales_layout: TensorLayout,
+    CEngine: TensorEngine,
+    AEngine: TensorEngine,
+    BEngine: TensorEngine,
+    AScalesEngine: TensorEngine,
+    BScalesEngine: TensorEngine,
 ](
-    c_ptr: UnsafePointer[Scalar[out_dtype], MutAnyOrigin],
-    a_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    b_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    a_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
-    b_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
+    c: TileTensor[out_dtype, c_layout, MutAnyOrigin, Engine=CEngine],
+    a: TileTensor[.uint8, a_layout, ImmutAnyOrigin, Engine=AEngine],
+    b: TileTensor[.uint8, b_layout, ImmutAnyOrigin, Engine=BEngine],
+    a_scales: TileTensor[
+        .float8_e8m0fnu, a_scales_layout, ImmutAnyOrigin, Engine=AScalesEngine
+    ],
+    b_scales: TileTensor[
+        .float8_e8m0fnu, b_scales_layout, ImmutAnyOrigin, Engine=BScalesEngine
+    ],
     M: Int32,
     N: Int32,
     K: Int32,
@@ -3813,11 +3861,16 @@ def matmul_dynamic_block_scaled_amd_kernel[
     var k_groups = _K // MXFP4_SF_VECTOR_SIZE
 
     _mxfp4_dotprod[BLOCK_N](
-        c_ptr + m * _N + n,
-        a_ptr + m * (_K // 2),
-        b_ptr + n * (_K // 2),
-        a_scales_ptr + m * k_groups,
-        b_scales_ptr + n * k_groups,
+        c,
+        m * _N + n,
+        a,
+        m * (_K // 2),
+        b,
+        n * (_K // 2),
+        a_scales,
+        m * k_groups,
+        b_scales,
+        n * k_groups,
         _K,
     )
 
@@ -3868,15 +3921,26 @@ def matmul_dynamic_block_scaled_amd[
             return
 
         comptime kernel = matmul_dynamic_block_scaled_amd_kernel[
-            out_dtype, BLOCK_N
+            out_dtype,
+            BLOCK_N,
+            type_of(c).LayoutType,
+            type_of(a).LayoutType,
+            type_of(b).LayoutType,
+            type_of(a_scales).LayoutType,
+            type_of(b_scales).LayoutType,
+            type_of(c).Engine,
+            type_of(a).Engine,
+            type_of(b).Engine,
+            type_of(a_scales).Engine,
+            type_of(b_scales).Engine,
         ]
 
         ctx.enqueue_function[kernel](
-            c.ptr,
-            a.ptr,
-            b.ptr,
-            a_scales.ptr,
-            b_scales.ptr,
+            c,
+            a,
+            b,
+            a_scales,
+            b_scales,
             Int32(M),
             Int32(N),
             Int32(K),
@@ -3887,15 +3951,38 @@ def matmul_dynamic_block_scaled_amd[
 
 @__name("grouped_matmul_block_scaled_amd_kernel")
 def grouped_matmul_block_scaled_amd_kernel[
-    out_dtype: DType, BLOCK_N: Int
+    out_dtype: DType,
+    BLOCK_N: Int,
+    c_layout: TensorLayout,
+    a_layout: TensorLayout,
+    b_layout: TensorLayout,
+    a_scales_layout: TensorLayout,
+    b_scales_layout: TensorLayout,
+    row_offsets_layout: TensorLayout,
+    expert_ids_layout: TensorLayout,
+    CEngine: TensorEngine,
+    AEngine: TensorEngine,
+    BEngine: TensorEngine,
+    AScalesEngine: TensorEngine,
+    BScalesEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ExpertIdsEngine: TensorEngine,
 ](
-    c_ptr: UnsafePointer[Scalar[out_dtype], MutAnyOrigin],
-    a_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    b_ptr: UnsafePointer[UInt8, ImmutAnyOrigin],
-    a_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
-    b_scales_ptr: UnsafePointer[Float8_e8m0fnu, ImmutAnyOrigin],
-    row_offsets_ptr: UnsafePointer[UInt32, ImmutAnyOrigin],
-    expert_ids_ptr: UnsafePointer[Int32, ImmutAnyOrigin],
+    c: TileTensor[out_dtype, c_layout, MutAnyOrigin, Engine=CEngine],
+    a: TileTensor[.uint8, a_layout, ImmutAnyOrigin, Engine=AEngine],
+    b: TileTensor[.uint8, b_layout, ImmutAnyOrigin, Engine=BEngine],
+    a_scales: TileTensor[
+        .float8_e8m0fnu, a_scales_layout, ImmutAnyOrigin, Engine=AScalesEngine
+    ],
+    b_scales: TileTensor[
+        .float8_e8m0fnu, b_scales_layout, ImmutAnyOrigin, Engine=BScalesEngine
+    ],
+    row_offsets: TileTensor[
+        .uint32, row_offsets_layout, ImmutAnyOrigin, Engine=RowOffsetsEngine
+    ],
+    expert_ids: TileTensor[
+        .int32, expert_ids_layout, ImmutAnyOrigin, Engine=ExpertIdsEngine
+    ],
     num_active_experts: Int32,
     M: Int32,
     N: Int32,
@@ -3913,22 +4000,29 @@ def grouped_matmul_block_scaled_amd_kernel[
 
     var expert_id = -1
     for i in range(_num_active_experts):
-        if m >= Int(row_offsets_ptr[i]) and m < Int(row_offsets_ptr[i + 1]):
-            expert_id = Int(expert_ids_ptr[i])
+        if m >= Int(row_offsets.raw_load[invariant=False](i)) and m < Int(
+            row_offsets.raw_load[invariant=False](i + 1)
+        ):
+            expert_id = Int(expert_ids.raw_load[invariant=False](i))
             break
 
     if expert_id == -1:
-        c_ptr.store(m * _N + n, SIMD[out_dtype, BLOCK_N](0))
+        c.raw_store(m * _N + n, SIMD[out_dtype, BLOCK_N](0))
         return
 
     var k_groups = _K // MXFP4_SF_VECTOR_SIZE
 
     _mxfp4_dotprod[BLOCK_N](
-        c_ptr + m * _N + n,
-        a_ptr + m * (_K // 2),
-        b_ptr + (expert_id * _N + n) * (_K // 2),
-        a_scales_ptr + m * k_groups,
-        b_scales_ptr + (expert_id * _N + n) * k_groups,
+        c,
+        m * _N + n,
+        a,
+        m * (_K // 2),
+        b,
+        (expert_id * _N + n) * (_K // 2),
+        a_scales,
+        m * k_groups,
+        b_scales,
+        (expert_id * _N + n) * k_groups,
         _K,
     )
 
@@ -3988,17 +4082,32 @@ def grouped_matmul_block_scaled_amd[
             return
 
         comptime kernel = grouped_matmul_block_scaled_amd_kernel[
-            out_dtype, BLOCK_N
+            out_dtype,
+            BLOCK_N,
+            type_of(c).LayoutType,
+            type_of(a).LayoutType,
+            type_of(b).LayoutType,
+            type_of(a_scales).LayoutType,
+            type_of(b_scales).LayoutType,
+            type_of(row_offsets).LayoutType,
+            type_of(expert_ids).LayoutType,
+            type_of(c).Engine,
+            type_of(a).Engine,
+            type_of(b).Engine,
+            type_of(a_scales).Engine,
+            type_of(b_scales).Engine,
+            type_of(row_offsets).Engine,
+            type_of(expert_ids).Engine,
         ]
 
         ctx.enqueue_function[kernel](
-            c.ptr,
-            a.ptr,
-            b.ptr,
-            a_scales.ptr,
-            b_scales.ptr,
-            row_offsets.ptr,
-            expert_ids.ptr,
+            c,
+            a,
+            b,
+            a_scales,
+            b_scales,
+            row_offsets,
+            expert_ids,
             Int32(num_active_experts),
             Int32(M),
             Int32(N),

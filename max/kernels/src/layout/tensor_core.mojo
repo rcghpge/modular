@@ -715,7 +715,7 @@ struct TensorCore[
             comptime row_stride = b.static_stride[0]
             var result = SIMD[Self.in_type, width]()
             comptime for r in range(width):
-                result[r] = frag.unsafe_ptr().load(r * row_stride)
+                result[r] = frag.raw_load[invariant=False](r * row_stride)
             return result
 
     @inline(.always)

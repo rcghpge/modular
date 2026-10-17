@@ -883,12 +883,10 @@ def mla_prefill_branch_fp8[
     )
 
     # Reuse decode's rank-3 w_uv by flattening [H, Dv, K] -> [H*Dv, K].
-    var w_v = TileTensor(
-        w_uv.ptr,
+    var w_v = w_uv.reshape(
         row_major(Idx[num_heads * v_head_dim], Idx[kv_latent_dim]),
     )
-    var w_v_scale = TileTensor(
-        w_uv_scale.ptr,
+    var w_v_scale = w_uv_scale.reshape(
         row_major(
             (
                 Idx[num_heads * (v_head_dim // n_scale_granularity)],
@@ -1591,8 +1589,7 @@ def mla_decode_branch_fp8[
 
     # We start by create a view of the input tensor `q` that only contains the
     # first qk_nope_head_dim columns of each Q head.
-    var q_nope = TileTensor(
-        q.ptr,
+    var q_nope = q.reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_nope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
@@ -1601,8 +1598,7 @@ def mla_decode_branch_fp8[
 
     # Then create a view of the mla_decode_input tensor that only contains the
     # first kv_latent_dim columns of each Q head.
-    var mla_decode_input_nope = TileTensor(
-        mla_decode_input.ptr,
+    var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
@@ -1729,8 +1725,7 @@ def mla_decode_branch_fp8[
         )
         # View decode input/output as rank-4 [batch,1,heads,depth]; decode has
         # q_seq_len==1 (batch==seq_len), so a size-1 axis, no data movement.
-        var q_padded = TileTensor(
-            mla_decode_input.ptr,
+        var q_padded = mla_decode_input.reshape(
             TileLayout(
                 (batch_size, Idx[1], Idx[num_heads], Idx[k_cache_dim]),
                 (
@@ -1741,8 +1736,7 @@ def mla_decode_branch_fp8[
                 ),
             ),
         )
-        var raw_output_padded = TileTensor(
-            raw_output.ptr,
+        var raw_output_padded = raw_output.reshape(
             TileLayout(
                 (batch_size, Idx[1], Idx[num_heads], Idx[kv_latent_dim]),
                 (
@@ -1826,8 +1820,7 @@ def mla_decode_branch_fp8[
     # Create a view of the output tensor with logical shape
     # [num_heads, seq_len, v_head_dim], and map directly to
     # [seq_len, num_heads, v_head_dim] physical memory.
-    var output_t = TileTensor(
-        output.ptr,
+    var output_t = output.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
@@ -1956,15 +1949,13 @@ def mla_prefill_branch_sparse_fp8[
         row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
     )
 
-    var q_nope = TileTensor(
-        q.ptr,
+    var q_nope = q.reshape(
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_nope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
         ),
     )
-    var mla_decode_input_nope = TileTensor(
-        mla_decode_input.ptr,
+    var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
@@ -2033,8 +2024,7 @@ def mla_prefill_branch_sparse_fp8[
         var batch_size = seq_len
         # View decode input/output as rank-4 [batch,1,heads,depth]; one slot
         # per gathered row (q_seq_len==1), so a size-1 axis, no data movement.
-        var q_padded = TileTensor(
-            mla_decode_input.ptr,
+        var q_padded = mla_decode_input.reshape(
             TileLayout(
                 (batch_size, Idx[1], Idx[num_heads], Idx[k_cache_dim]),
                 (
@@ -2045,8 +2035,7 @@ def mla_prefill_branch_sparse_fp8[
                 ),
             ),
         )
-        var raw_output_padded = TileTensor(
-            raw_output.ptr,
+        var raw_output_padded = raw_output.reshape(
             TileLayout(
                 (batch_size, Idx[1], Idx[num_heads], Idx[kv_latent_dim]),
                 (
@@ -2126,9 +2115,10 @@ def mla_prefill_branch_sparse_fp8[
                     q_fp8_buf,
                     row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
                 )
-                var mla_decode_input_bf16 = TileTensor(
-                    mla_decode_input.ptr.bitcast[BFloat16](),
-                    row_major(seq_len, Idx[num_heads], Idx[k_cache_dim]),
+                var mla_decode_input_bf16 = mla_decode_input.bitcast[
+                    DType.bfloat16
+                ]().reshape(
+                    row_major(seq_len, Idx[num_heads], Idx[k_cache_dim])
                 )
                 convert_bf16_to_fp8_e4m3fn(mla_decode_input_bf16, q_fp8, ctx)
 
@@ -2209,8 +2199,7 @@ def mla_prefill_branch_sparse_fp8[
                 ctx,
             )
 
-    var output_t = TileTensor(
-        output.ptr,
+    var output_t = output.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
@@ -2870,8 +2859,7 @@ def mla_prefill_branch_bf16[
             Optional(ctx),
         )
 
-        var w_v = TileTensor(
-            w_uv.ptr,
+        var w_v = w_uv.reshape(
             row_major(Idx[num_heads * v_head_dim], Idx[kv_latent_dim]),
         )
 
@@ -2939,8 +2927,7 @@ def mla_prefill_branch_bf16[
             Optional(ctx),
         )
 
-        var w_v = TileTensor(
-            w_uv.ptr,
+        var w_v = w_uv.reshape(
             row_major(Idx[num_heads * v_head_dim], Idx[kv_latent_dim]),
         )
         var v_buf = ctx.enqueue_create_buffer[.bfloat16](
@@ -3185,8 +3172,7 @@ def mla_decode_branch_bf16[
     # Create a view of the `q` tensor that only contains the first
     # qk_nope_head_dim columns of each Q head. Also transposed to
     # [num_heads, seq_len, qk_nope_head_dim].
-    var q_nope_t = TileTensor(
-        q.ptr,
+    var q_nope_t = q.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[qk_nope_head_dim]),
             (Idx[q_head_dim], Idx[num_heads * q_head_dim], Idx[1]),
@@ -3195,8 +3181,7 @@ def mla_decode_branch_bf16[
 
     # Then create a view of the mla_decode_input tensor that only contains the
     # first kv_latent_dim columns of each Q head.
-    var mla_decode_input_nope = TileTensor(
-        mla_decode_input.ptr,
+    var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
@@ -3386,8 +3371,7 @@ def mla_decode_branch_bf16[
     # Create a view of the output tensor with logical shape
     # [num_heads, seq_len, v_head_dim], and map directly to
     # [seq_len, num_heads, v_head_dim] physical memory.
-    var output_t = TileTensor(
-        output.ptr,
+    var output_t = output.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
@@ -3489,15 +3473,13 @@ def mla_prefill_branch_sparse_bf16[
 
     # Transposed view [num_heads, seq_len, qk_nope_head_dim] of the first
     # qk_nope_head_dim columns of each Q head.
-    var q_nope_t = TileTensor(
-        q.ptr,
+    var q_nope_t = q.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[qk_nope_head_dim]),
             (Idx[q_head_dim], Idx[num_heads * q_head_dim], Idx[1]),
         ),
     )
-    var mla_decode_input_nope = TileTensor(
-        mla_decode_input.ptr,
+    var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
@@ -3648,8 +3630,7 @@ def mla_prefill_branch_sparse_bf16[
             (Idx[kv_latent_dim], Idx[num_heads * kv_latent_dim], Idx[1]),
         ),
     )
-    var output_t = TileTensor(
-        output.ptr,
+    var output_t = output.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),

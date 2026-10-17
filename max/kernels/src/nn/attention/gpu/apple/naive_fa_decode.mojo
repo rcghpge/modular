@@ -694,13 +694,11 @@ def naive_fa_decode_apple[
     # (`_o_idx`/`_ml_idx`) and the BSHD/ragged q/out offset, so the flat views
     # just carry the storage handles with TileTensor typing (no raw pointers /
     # DeviceBuffer-as-pointer inside the kernels).
-    var q_flat = TileTensor(
-        q.unsafe_ptr().as_imm().as_unsafe_any_origin(),
-        row_major(q.num_elements()),
+    var q_flat = (
+        q.as_imm().as_unsafe_any_origin().reshape(row_major(q.num_elements()))
     )
-    var output_flat = TileTensor(
-        output.unsafe_ptr().as_unsafe_any_origin(),
-        row_major(output.num_elements()),
+    var output_flat = output.as_unsafe_any_origin().reshape(
+        row_major(output.num_elements())
     )
     var o_partial_t = TileTensor(o_partial_dev, row_major(o_partial_n))
     var m_partial_t = TileTensor(m_partial_dev, row_major(ml_partial_n))

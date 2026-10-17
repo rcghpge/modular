@@ -2954,12 +2954,12 @@ def print_kv_cache_paged_generic_cpu[
 
 def _device_view[
     dtype: DType
-](
-    ctx: DeviceContext, ptr: Pointer[Scalar[dtype], _], count: Int
-) -> DeviceBuffer[dtype]:
+](ctx: DeviceContext, tensor: TileTensor[dtype, ...]) -> DeviceBuffer[dtype]:
     # The pointer-pair `enqueue_copy` is device to device, which some drivers
     # reject for a pageable host destination.
-    return DeviceBuffer[dtype](ctx, ptr, count, owning=False)
+    return DeviceBuffer[dtype](
+        ctx, tensor.ptr, tensor.num_elements(), owning=False
+    )
 
 
 def print_kv_cache_paged_generic_gpu[
@@ -2989,7 +2989,7 @@ def print_kv_cache_paged_generic_gpu[
         Scalar[dtype], origin_of(blocks_alloc)
     ] = blocks_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
-        blocks_ptr, _device_view(dev_ctx, kv_collection.blocks.ptr, n_blocks)
+        blocks_ptr, _device_view(dev_ctx, kv_collection.blocks)
     )
     var blocks_host = type_of(kv_collection.blocks).OriginCastType[_](
         ptr=blocks_ptr,
@@ -3005,7 +3005,7 @@ def print_kv_cache_paged_generic_gpu[
     ] = cache_lengths_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
         cache_lengths_ptr,
-        _device_view(dev_ctx, kv_collection.cache_lengths.ptr, n_cache_lengths),
+        _device_view(dev_ctx, kv_collection.cache_lengths),
     )
     var cache_lengths_host = type_of(
         kv_collection.cache_lengths
@@ -3023,7 +3023,7 @@ def print_kv_cache_paged_generic_gpu[
     ] = lookup_table_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
         lookup_table_ptr,
-        _device_view(dev_ctx, kv_collection.lookup_table.ptr, n_lookup_table),
+        _device_view(dev_ctx, kv_collection.lookup_table),
     )
     var lookup_table_host = type_of(kv_collection.lookup_table).OriginCastType[
         mut=False, _
@@ -3064,7 +3064,7 @@ def print_kv_cache_paged_generic_gpu[
     )
     dev_ctx.enqueue_copy(
         valid_lengths_host_ptr,
-        _device_view(dev_ctx, valid_lengths.ptr, valid_lengths.num_elements()),
+        _device_view(dev_ctx, valid_lengths),
     )
 
     var k_cache = host_kv_collection.get_key_cache(Int(layer_idx))
