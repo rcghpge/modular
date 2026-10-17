@@ -49,8 +49,6 @@ from std.math.uutils import udivmod
 from layout import CoordLike, Coord, Idx, TileTensor, coord, row_major
 from internal_utils import assert_almost_equal
 from std.random import rand
-from std.collections import Optional
-from linalg.utils import elementwise_epilogue_type
 from max.gpu.sync import syncwarp
 from std.random import random_ui64
 from linalg.fp4_utils import (
@@ -495,7 +493,6 @@ def sm100_block_scaled_mxfp8[
     SF_VECTOR_SIZE: Int,
     a_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
     b_swizzle: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_128B,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     accum_type: DType = get_accum_type[c_type](),
 ](
     c: TileTensor[mut=True, c_type, c_layout, _],

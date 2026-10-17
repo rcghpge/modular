@@ -62,8 +62,6 @@ from ...utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     GemmShape,
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -115,7 +113,6 @@ def matmul_kernel[
     a_type: DType,
     b_type: DType,
     tile_size: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     s_type: DType = get_accum_type[c_type](),
 ](
     c_ptr: MutPointer[Scalar[c_type], MutAnyOrigin],
@@ -139,9 +136,6 @@ def matmul_kernel[
         b_type: DType of the input matrix B elements.
         tile_size: Side length, in elements, of the square shared-memory
             tile loaded from A and B and written to C.
-        elementwise_lambda_fn: Optional epilogue applied to the accumulated
-            value before it is stored to C (defaults to `None`, which
-            stores the raw accumulation).
         s_type: DType used for the inner accumulation (defaults to the
             accumulator type for `c_type`).
 
@@ -261,10 +255,7 @@ def matmul_kernel[
     )
 
     if row < m and col < n:
-        comptime if case .Some(elementwise_lambda) = elementwise_lambda_fn:
-            elementwise_lambda[c_type, 1]((row, col), result.cast[c_type]())
-        else:
-            c[row, col] = result.cast[c_type]()
+        c[row, col] = result.cast[c_type]()
 
 
 @__name(
@@ -710,10 +701,6 @@ def _matmul_gpu[
     use_tensor_core: Bool = False,
     transpose_b: Bool = False,
     use_tf32: Bool = True,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     pdl_level: PDLLevel = PDLLevel(),
 ](
     c: TileTensor[mut=True, ...],
@@ -729,45 +716,14 @@ def _matmul_gpu[
     only, and only for shapes the fp32 split-K GEMV supports (compile-time
     error otherwise).
     """
-    comptime if case .Some(compute_lambda) = elementwise_compute_lambda_fn:
-
-        def compute_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-            return compute_lambda[dtype, width, alignment=alignment](idx, val)
-
-        _matmul_gpu_impl[
-            use_tensor_core=use_tensor_core,
-            transpose_b=transpose_b,
-            use_tf32=use_tf32,
-            pdl_level=pdl_level,
-            has_epilogue_fn=False,
-            has_compute_fn=True,
-        ](c, a, b, no_epilogue_fn, compute_fn, ctx)
-    elif case .Some(store_lambda) = elementwise_lambda_fn:
-
-        def epilogue_fn[
-            dtype: DType, width: SIMDLength, *, alignment: Int
-        ](idx: Coord, val: SIMD[dtype, width]):
-            store_lambda[dtype, width, alignment=alignment](idx, val)
-
-        _matmul_gpu_impl[
-            use_tensor_core=use_tensor_core,
-            transpose_b=transpose_b,
-            use_tf32=use_tf32,
-            pdl_level=pdl_level,
-            has_epilogue_fn=True,
-            has_compute_fn=False,
-        ](c, a, b, epilogue_fn, no_compute_fn, ctx)
-    else:
-        _matmul_gpu_impl[
-            use_tensor_core=use_tensor_core,
-            transpose_b=transpose_b,
-            use_tf32=use_tf32,
-            pdl_level=pdl_level,
-            has_epilogue_fn=False,
-            has_compute_fn=False,
-        ](c, a, b, no_epilogue_fn, no_compute_fn, ctx)
+    _matmul_gpu_impl[
+        use_tensor_core=use_tensor_core,
+        transpose_b=transpose_b,
+        use_tf32=use_tf32,
+        pdl_level=pdl_level,
+        has_epilogue_fn=False,
+        has_compute_fn=False,
+    ](c, a, b, no_epilogue_fn, no_compute_fn, ctx)
 
 
 def _matmul_gpu[

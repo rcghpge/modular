@@ -2610,14 +2610,7 @@ struct Struct_smallm_streaming_matmul:
             )
             return
 
-        matmul[
-            False,
-            True,
-            False,
-            None,
-            None,
-            target=target,
-        ](
+        matmul[transpose_b=True, target=target](
             c.to_tile_tensor[.int64](),
             a.to_tile_tensor[.int64](),
             b.to_tile_tensor[.int64](),

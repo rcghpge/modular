@@ -16,7 +16,6 @@ from std.sys import (
     get_defined_bool,
     get_defined_int,
     get_defined_string,
-    align_of,
 )
 from max.gpu import global_idx, grid_dim, block_dim, thread_idx, block_idx
 import linalg.matmul.vendor.blas as vendor_blas
@@ -68,7 +67,6 @@ from linalg.matmul.gpu.sm100.block_scaled_matmul import (
 )
 from linalg.matmul.gpu.sm100.config import BlockScaledMatmulConfig
 from linalg.matmul.gpu.sm100.tile_scheduler import RasterOrder
-from linalg.utils import elementwise_compute_lambda_type
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 from std.utils.numerics import isfinite
 from max.gpu.primitives import block
@@ -802,28 +800,6 @@ def bench_matmul[
         var b_scales = TileTensor(
             cb_b_scales.offset_ptr(iteration), row_major(b_scales_shape)
         )
-
-        @inline(.always)
-        @__copy_capture(c)
-        def test_lambda_add_coords_prod[
-            _dtype: DType,
-            width: Int,
-            *,
-            alignment: Int = align_of[SIMD[_dtype, width]](),
-        ](idx: Coord, val: SIMD[_dtype, width]) capturing -> SIMD[
-            _dtype, width
-        ]:
-            comptime assert (
-                idx.rank == 2
-            ), "the matmul epilogue contract is rank 2"
-            comptime assert c.flat_rank >= 2
-            var x = c.load[width=width](idx).cast[_dtype]()
-            var y = val * x
-            return y
-
-        comptime optional_lambda_fn = Optional[elementwise_compute_lambda_type](
-            test_lambda_add_coords_prod
-        ) if epilogue else None
 
         comptime if use_vendor_blas:
             run_vendor_blas(ctx, c, a, b, a_scales, b_scales)

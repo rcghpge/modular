@@ -73,7 +73,7 @@ comptime elementwise_simd_epilogue_type = def[
 """Fused elementwise epilogue for convolution: `(coord, value) -> None`.
 
 The coordinate is rank-N in the output's own space (NHWC / NDHWC), unlike
-`linalg.utils.elementwise_epilogue_type`, which is always rank 2. The `Coord`
+`linalg.utils.ElementwiseEpilogueFn`, which is always rank 2. The `Coord`
 carries its own rank.
 """
 

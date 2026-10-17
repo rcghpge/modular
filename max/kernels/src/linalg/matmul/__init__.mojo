@@ -21,7 +21,6 @@ from std.sys.info import align_of, simd_width_of
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_valid_target
 from layout import (
-    Coord,
     Layout,
     RowMajorLayout,
     TileTensor,
@@ -38,8 +37,6 @@ from ..utils import (
     ElementwiseComputeFn,
     ElementwiseEpilogueFn,
     GemmShape,
-    elementwise_compute_lambda_type,
-    elementwise_epilogue_type,
     no_compute_fn,
     no_epilogue_fn,
 )
@@ -51,15 +48,11 @@ def matmul[
     transpose_a: Bool = False,
     transpose_b: Bool = False,
     b_packed: Bool = False,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
-    elementwise_compute_lambda_fn: Optional[
-        elementwise_compute_lambda_type
-    ] = None,
     saturated_vnni: Bool = False,
     _trace_description: StaticString = "",
     target: StaticString = "cpu",
-    # Kept last so existing positional-parameter callers (e.g. the mo.matmul
-    # op) are unaffected; set it by keyword.
+    # Kept last so positional-parameter callers are unaffected; set it by
+    # keyword.
     use_tf32: Bool = True,
 ](
     c: TileTensor[mut=True, address_space=.GENERIC, ...],
@@ -80,11 +73,6 @@ def matmul[
         transpose_b: Transpose `b` before the matmul (defaults to `False`).
         b_packed: `b` is already in a CPU-friendly packed layout (CPU only;
             defaults to `False`).
-        elementwise_lambda_fn: Epilogue lambda applied to each stored tile of
-            `c` (defaults to `None`).
-        elementwise_compute_lambda_fn: Compute lambda transforming each result
-            tile before store; on CPU it is wrapped as an epilogue (defaults
-            to `None`).
         saturated_vnni: Use the saturating VNNI variant on x86 (CPU only;
             defaults to `False`).
         _trace_description: Extra string folded into the op trace label
@@ -105,8 +93,6 @@ def matmul[
         transpose_a=transpose_a,
         transpose_b=transpose_b,
         b_packed=b_packed,
-        elementwise_lambda_fn=elementwise_lambda_fn,
-        elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
         saturated_vnni=saturated_vnni,
         _trace_description=_trace_description,
         target=target,
@@ -166,8 +152,6 @@ def matmul[
         transpose_a=transpose_a,
         transpose_b=transpose_b,
         b_packed=b_packed,
-        elementwise_lambda_fn=None,
-        elementwise_compute_lambda_fn=None,
         saturated_vnni=saturated_vnni,
         _trace_description=_trace_description,
         target=target,
@@ -226,8 +210,6 @@ def matmul[
         transpose_a=transpose_a,
         transpose_b=transpose_b,
         b_packed=b_packed,
-        elementwise_lambda_fn=None,
-        elementwise_compute_lambda_fn=None,
         saturated_vnni=saturated_vnni,
         _trace_description=_trace_description,
         target=target,
@@ -246,8 +228,6 @@ def _matmul_impl[
     transpose_a: Bool,
     transpose_b: Bool,
     b_packed: Bool,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type],
-    elementwise_compute_lambda_fn: Optional[elementwise_compute_lambda_type],
     saturated_vnni: Bool,
     _trace_description: StaticString,
     target: StaticString,
@@ -319,8 +299,6 @@ def _matmul_impl[
                     use_tensor_core=True,
                     transpose_b=transpose_b,
                     use_tf32=use_tf32,
-                    elementwise_lambda_fn=elementwise_lambda_fn,
-                    elementwise_compute_lambda_fn=elementwise_compute_lambda_fn,
                 ](c, a, b, ctx.value())
     else:
         # CPU path: handle tracing and compute lambda wrapping, then
@@ -374,34 +352,6 @@ def _matmul_impl[
                     b_packed=b_packed,
                     saturated_vnni=saturated_vnni,
                 ](c, a, b, epilogue_fn, kernel_type_m, ctx=cpu_ctx)
-            elif case .Some(compute_lambda) = elementwise_compute_lambda_fn:
-
-                @inline(.always)
-                def legacy_compute_fn[
-                    dtype: DType, width: SIMDLength, *, alignment: Int
-                ](idx: Coord, val: SIMD[dtype, width]) -> SIMD[dtype, width]:
-                    return compute_lambda[dtype, width, alignment=alignment](
-                        idx, val
-                    )
-
-                cpu.matmul[
-                    transpose_b=transpose_b,
-                    b_packed=b_packed,
-                    saturated_vnni=saturated_vnni,
-                ](c, a, b, legacy_compute_fn, kernel_type_m, ctx=cpu_ctx)
-            elif case .Some(store_lambda) = elementwise_lambda_fn:
-
-                @inline(.always)
-                def legacy_epilogue_fn[
-                    dtype: DType, width: SIMDLength, *, alignment: Int
-                ](idx: Coord, val: SIMD[dtype, width]):
-                    store_lambda[dtype, width, alignment=alignment](idx, val)
-
-                cpu.matmul[
-                    transpose_b=transpose_b,
-                    b_packed=b_packed,
-                    saturated_vnni=saturated_vnni,
-                ](c, a, b, legacy_epilogue_fn, kernel_type_m, ctx=cpu_ctx)
             else:
                 cpu.matmul[
                     transpose_b=transpose_b,

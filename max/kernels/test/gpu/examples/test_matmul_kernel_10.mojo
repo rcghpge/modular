@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import Optional
 from std.math import ceildiv
 from std.math.uutils import udivmod, umod
 
@@ -41,7 +40,6 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
-from linalg.utils import elementwise_epilogue_type
 
 from std.utils import StaticTuple
 from std.utils.numerics import isnan
@@ -78,7 +76,6 @@ def sgemm_warp_tiling_kernel[
     TM: Int,
     TN: Int,
     NUM_THREADS: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     mat_c: TileTensor[
         c_type,
@@ -259,17 +256,7 @@ def sgemm_warp_tiling_kernel[
                         width=4, alignment=16
                     ](c_idx)
 
-                    comptime if case .Some(epilogue) = elementwise_lambda_fn:
-                        comptime elementwise_lambda = elementwise_lambda_fn.value()
-                        elementwise_lambda[c_type, 4](
-                            (
-                                M_offset_warp + M_offset_subtile + M_offset_val,
-                                N_offset_warp + N_offset_subtile + N_offset_val,
-                            ),
-                            vec,
-                        )
-                    else:
-                        C_interim.store[alignment=16](c_idx, vec)
+                    C_interim.store[alignment=16](c_idx, vec)
 
 
 def matmul_naive(

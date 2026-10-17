@@ -107,27 +107,6 @@ def partial_simd_store[
     return masked_store(data, storage, mask)
 
 
-comptime elementwise_epilogue_type = def[
-    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](Coord, SIMD[dtype, width]) capturing -> None
-"""Fused elementwise epilogue lambda: `(coord, value) -> None`.
-
-The coordinate is always rank 2 (row, column) in the output's own space.
-`Coord` cannot express that constraint in the type -- it is variadic over
-`CoordLike`, and `Coord[_, _]` is rejected as unbound variadic syntax -- so
-every implementation asserts `coord.rank == 2` instead. Kernels whose epilogue
-is genuinely rank-N (concat, conv, allreduce, the reduction generators) use
-their own aliases and do not share this one.
-"""
-
-comptime elementwise_compute_lambda_type = def[
-    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](Coord, SIMD[dtype, width]) capturing -> SIMD[dtype, width]
-"""Fused elementwise compute lambda: `(coord, value) -> value`.
-
-Same rank-2 coordinate contract as `elementwise_epilogue_type`; see there.
-"""
-
 comptime _elementwise_compute_fn_signature = def[
     dtype: DType, width: SIMDLength, *, alignment: Int
 ](Coord, SIMD[dtype, width]) -> SIMD[dtype, width]
@@ -135,12 +114,12 @@ comptime _elementwise_compute_fn_signature = def[
 comptime ElementwiseComputeFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_compute_fn_signature
 )
-"""Value-taking counterpart of `elementwise_compute_lambda_type`.
+"""Fused elementwise compute closure: `(coord, value) -> value`.
 
-A unified closure passed as a runtime value carries the origins of its
+The coordinate has the same rank-2 contract as `ElementwiseEpilogueFn`; see
+there. A unified closure passed as a runtime value carries the origins of its
 captures, so the buffers it reads stay alive until the kernel that calls it
-has launched. `alignment` has no default; pass `alignment=1` where the
-legacy type relied on its default.
+has launched.
 """
 
 comptime _elementwise_output_compute_fn_signature = def[
@@ -168,12 +147,17 @@ comptime _elementwise_epilogue_fn_signature = def[
 comptime ElementwiseEpilogueFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_epilogue_fn_signature
 )
-"""Value-taking counterpart of `elementwise_epilogue_type`.
+"""Fused elementwise epilogue closure: `(coord, value) -> None`.
+
+The coordinate is always rank 2 (row, column) in the output's own space.
+`Coord` cannot express that constraint in the type -- it is variadic over
+`CoordLike`, and `Coord[_, _]` is rejected as unbound variadic syntax -- so
+every implementation asserts `coord.rank == 2` instead. Kernels whose epilogue
+is genuinely rank-N (concat, conv, allreduce, the reduction generators) use
+their own aliases and do not share this one.
 
 The closure stores the output itself, so a kernel that receives one writes
 nothing to its output argument. Pass it to a named kernel with `host_arg=`.
-`alignment` has no default; pass `alignment=1` where the legacy type relied
-on its default.
 """
 
 
@@ -353,7 +337,7 @@ trait TileOperation(DevicePassable, TrivialRegisterPassable):
         Args:
             tile_coord: Absolute element coord of this sub-tile's top-left in
                 the global output tensor — consistent with `TileConsumer.__call__`
-                and the legacy `elementwise_compute_lambda_type`.
+                and `ElementwiseComputeFn`.
             thread_layout: Logical layout of the threads collaborating on this
                 call. Passed as a value (its static dims are comptime-readable
                 via `type_of(thread_layout)`), so the kernel states "this call

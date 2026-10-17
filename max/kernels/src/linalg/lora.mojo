@@ -170,7 +170,7 @@ def shrink_qkv_permute_3mn_sm100(
 #     against the matching plane of `P` -- the per-region operand switch, done in
 #     the load stage. Region boundaries are tile-aligned, so every output tile is
 #     single-region.
-#   - Store (route): `elementwise_lambda_fn` routes each output element
+#   - Store (route): `epilogue_fn` routes each output element
 #     `(token, out_col)` to `q_out` or the row-stacked `kv_out [2M, kv_dim]`
 #     (K -> rows [0, M), V -> rows [M, 2M)), matching `kv_cache_ragged_2m_iadd`.
 #
@@ -209,7 +209,7 @@ def expand_qkv_sm100(
     A operand. The per-region operand switch (which plane of `P`) is a load-stage
     specialization (`a_plane_splits`, shifting the activation row by `plane * M`);
     the Q/K/V output routing is an output-epilogue specialization
-    (`elementwise_lambda_fn`). K and V are row-stacked in `kv_out` (K into rows
+    (`epilogue_fn`). K and V are row-stacked in `kv_out` (K into rows
     `[0, M)`, V into rows `[M, 2M)`), matching the layout `kv_cache_ragged_2m_iadd`
     consumes downstream.
 

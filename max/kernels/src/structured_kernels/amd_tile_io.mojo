@@ -100,11 +100,8 @@ comptime elementwise_epilogue_type = def[
 ](Coord, SIMD[dtype, width]) capturing -> None
 """Type alias for a fused elementwise epilogue lambda.
 
-Local re-declaration of `linalg.utils.elementwise_epilogue_type`.
-`structured_kernels` is a *dependency* of `linalg`, so we cannot
-Mojo function-pointer types are structural, so this duplicate alias
-is interchangeable with the canonical one at every call site that
-hands a lambda across the package boundary.
+Local legacy closure type; `linalg.utils` now only defines the value
+closure types (`ElementwiseEpilogueFn`, `ElementwiseComputeFn`).
 """
 
 comptime _elementwise_epilogue_fn_signature = def[
@@ -114,8 +111,8 @@ comptime _elementwise_epilogue_fn_signature = def[
 comptime ElementwiseEpilogueFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_epilogue_fn_signature
 )
-"""Local re-declaration of `linalg.utils.ElementwiseEpilogueFn`, for the
-same cyclic-dependency reason as `elementwise_epilogue_type`."""
+"""Local re-declaration of `linalg.utils.ElementwiseEpilogueFn`;
+`structured_kernels` is a dependency of `linalg`, so it cannot import it."""
 
 comptime _elementwise_compute_fn_signature = def[
     dtype: DType, width: SIMDLength, *, alignment: Int
@@ -125,7 +122,7 @@ comptime ElementwiseComputeFn = (
     ImplicitlyCopyable & RegisterPassable & _elementwise_compute_fn_signature
 )
 """Local re-declaration of `linalg.utils.ElementwiseComputeFn`, for the
-same cyclic-dependency reason as `elementwise_epilogue_type`."""
+same reason as `ElementwiseEpilogueFn`."""
 
 
 comptime _alias_scope_attr = __mlir_attr.`[#llvm.alias_scope<id= "amdgpu.AsyncCopies", domain=#llvm.alias_scope_domain<id = "amdgpu.AsyncOps">>]`

@@ -14,7 +14,7 @@
 # Benchmarks three SM100 (Blackwell) BF16 matmul+epilogue variants head-to-head:
 #
 #   1. plain         — bare _matmul_gpu (no epilogue tensor)
-#   2. compute_lambda_bias — epilogue tensor applied via elementwise_compute_lambda_fn
+#   2. compute_lambda_bias — epilogue tensor applied via a compute closure
 #   3. tma_bias      — epilogue tensor passed as a TMA epilogue parameter to _matmul_gpu
 #
 # Only runs on SM100+ (B200) GPUs; prints a warning and exits on other hardware.

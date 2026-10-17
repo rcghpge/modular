@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.collections import Optional
 from std.math import ceildiv
 from std.math.uutils import ufloordiv, udivmod, uceildiv
 from std.os import abort
@@ -23,7 +22,6 @@ from max.gpu import (
     WARP_SIZE,
     block_idx,
     grid_dim,
-    lane_id,
     thread_idx,
 )
 from max.gpu.sync import barrier
@@ -50,7 +48,6 @@ from layout.tile_iterator import TileTensorIter
 from layout.tile_layout import Layout as TileLayout
 from layout.tensor_core import get_fragment_size, get_mma_shape
 from linalg.matmul.gpu._multistage_gemm_gpu import multistage_mma
-from linalg.utils import elementwise_epilogue_type
 from linalg.utils_gpu import block_swizzle
 from std.testing import assert_almost_equal
 
@@ -152,7 +149,6 @@ def b2b_gemm[
     transpose_b: Bool,
     transpose_c: Bool,
     config: BackToBackMatmulConfig[d_type, in_type, transpose_b, transpose_c],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
     *,
     d_layout: TensorLayout,
     a_layout: TensorLayout,
@@ -182,7 +178,6 @@ def b2b_gemm[
     # B is K x L
     # C is L x N
     # D is M x N
-    var M = Int(D.dim[0]())
     var L = Int(B.dim[0 if transpose_b else 1]())
     # TODO: allow dynamic `K`, so long as it still
     # fits in shared memory, we shouldn't require static.
@@ -458,8 +453,6 @@ def b2b_gemm[
     var d_gmem_tile = D.tile[BM, BN](block_idx[1], 0)
     var d_gmem_warp_tile = d_gmem_tile.tile[WM, WN](warp_y, warp_x)
 
-    var ln_id = lane_id()
-
     # Store FP32 mma results to half precision buffer in global memory.
     # Each thread's fragment has 2x2 fp32 values. Casting to half float and
     # directly storing to global memory results in 2 4B writes. Following cutlass,
@@ -491,65 +484,17 @@ def b2b_gemm[
         comptime thread_rows = WARP_SIZE * simd_size // WN
         comptime thread_cols = WN // simd_size
         comptime warp_layout = row_major[thread_rows, thread_cols]()
-        comptime if case .Some(epilogue) = elementwise_lambda_fn:
-            var d_smem_frag = accum_smem_warp_tile.vectorize[
-                1, simd_size
-            ]().distribute[warp_layout](Int(ln_id))
-            var d_smem_frag_offset = (
-                Int(d_smem_frag.ptr) - Int(accum_smem_warp_tile.ptr)
-            ) // size_of[d_type]()
-            var warp_row = Int(block_idx[1]) * BM + Int(warp_y) * WM
-            var warp_col = Int(warp_x) * WN
-            var thread_row = warp_row + Int(ln_id) // thread_cols
-            var thread_col = warp_col + (Int(ln_id) % thread_cols) * simd_size
-            comptime alignment = align_of[SIMD[d_type, simd_size]]()
-
-            comptime for i in range(WM // thread_rows):
-                var src_idx = Int(d_smem_frag.layout(Idx[i]))
-                var src_idx_base = src_idx % swizzle.size()
-                var swizzled_idx = swizzle(
-                    d_smem_frag_offset + src_idx_base
-                ) + (src_idx - src_idx_base)
-                var m = thread_row + i * thread_rows
-                var n = thread_col
-                if m < M and n < N:
-                    epilogue(
-                        (m, n),
-                        accum_smem_warp_tile.ptr.load[
-                            width=simd_size, alignment=alignment
-                        ](swizzled_idx),
-                    )
-        else:
-            copy_sram_to_dram[thread_layout=warp_layout, swizzle=swizzle](
-                d_gmem_warp_tile.vectorize[1, simd_size](),
-                accum_smem_warp_tile.vectorize[1, simd_size](),
-            )
+        copy_sram_to_dram[thread_layout=warp_layout, swizzle=swizzle](
+            d_gmem_warp_tile.vectorize[1, simd_size](),
+            accum_smem_warp_tile.vectorize[1, simd_size](),
+        )
 
     # Store FP32 results to FP32 buffer in global memory.
     else:
-        comptime if case .Some(epilogue) = elementwise_lambda_fn:
-            # m16n8 accumulators: each thread owns 2-wide vectors along N of
-            # rows `lane // 4` and `lane // 4 + 8` of every mma.
-            comptime vecs_per_frag = d_frag_size // 2
-            var d_reg_frag = d_reg_tile.vectorize[1, 2]().transpose()
-            var warp_row = Int(block_idx[1]) * BM + Int(warp_y) * WM
-            var warp_col = Int(warp_x) * WN
-            var thread_row = warp_row + Int(ln_id) // 4
-            var thread_col = warp_col + (Int(ln_id) % 4) * 2
-
-            comptime for frag_col in range(WN // 8):
-                comptime for frag_row in range(WM // 8):
-                    comptime i = frag_col * (WM // 8) + frag_row
-                    var vec = d_reg_frag[i % vecs_per_frag, i // vecs_per_frag]
-                    var m = thread_row + frag_row * 8
-                    var n = thread_col + frag_col * 8
-                    if m < M and n < N:
-                        epilogue((m, n), vec)
-        else:
-            copy_local_to_dram[thread_layout=row_major[8, 4]()](
-                d_gmem_warp_tile.vectorize[1, 2](),
-                d_reg_tile.vectorize[1, 2]().transpose(),
-            )
+        copy_local_to_dram[thread_layout=row_major[8, 4]()](
+            d_gmem_warp_tile.vectorize[1, 2](),
+            d_reg_tile.vectorize[1, 2]().transpose(),
+        )
 
 
 def multistage_b2b_gemm[
@@ -561,7 +506,6 @@ def multistage_b2b_gemm[
     config: BackToBackMatmulConfig[
         dst_type, src_type, transpose_b, transpose_c
     ],
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](
     D: TileTensor[mut=True, ...],
     A: TileTensor[mut=True, ...],
@@ -580,7 +524,6 @@ def multistage_b2b_gemm[
             transpose_b,
             transpose_c,
             config,
-            elementwise_lambda_fn,
             d_layout=D.LayoutType,
             a_layout=A.LayoutType,
             b_layout=B.LayoutType,

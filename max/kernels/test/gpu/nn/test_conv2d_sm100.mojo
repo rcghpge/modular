@@ -1427,7 +1427,7 @@ def test_conv_gpu_residual_diag_no_lambda[
 ](ctx: DeviceContext) raises:
     """Residual-only diagnostic: zero input/filter, position-encoded source.
 
-    Bypasses the elementwise_lambda_fn branch — calls conv_gpu with
+    Bypasses the epilogue branch — calls conv_gpu with
     `has_residual=True` and no epilogue lambda. Expected output = source
     (since Conv = 0). Any wrong-source read shows up directly as a
     per-element mismatch — random-input tests mask this via magnitude.

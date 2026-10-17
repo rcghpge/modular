@@ -14,7 +14,7 @@
 # Benchmarks three SM100 (Blackwell) BF16 matmul+1D-bias epilogue variants:
 #
 #   1. plain              — bare _matmul_gpu (no epilogue tensor)
-#   2. compute_lambda_bias — 1D bias via elementwise_compute_lambda_fn (broadcast)
+#   2. compute_lambda_bias — 1D bias via a compute closure (broadcast)
 #   3. tma_bias           — 1D bias loaded via TMA epilogue (cp.async.bulk)
 #
 # Only runs on SM100+ (B200) GPUs; prints a warning and exits on other hardware.
