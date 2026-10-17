@@ -111,17 +111,17 @@ def _rms_norm_fused_residual_cpu_2d[
 
             # Apply dropout if enabled
             if dropout_p > zero_scalar:
+                var rng_vals = SIMD[dtype, simd_width]()
                 comptime for i in range(simd_width):
                     var element_offset = row * num_cols + col + i
                     var generator = Random(
                         seed=seed, offset=UInt64(element_offset)
                     )
                     var rng = generator.step_uniform()
-                    var rng_val = rng[0].cast[dtype]()
-                    if rng_val >= dropout_p:
-                        input_vals[i] = input_vals[i] * dropout_scale
-                    else:
-                        input_vals[i] = zero_scalar
+                    rng_vals[i] = rng[0].cast[dtype]()
+                input_vals = rng_vals.ge(dropout_p).select(
+                    input_vals * dropout_scale, SIMD[dtype, simd_width](0)
+                )
 
             var sum_vals = input_vals + residual_vals
 

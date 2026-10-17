@@ -1838,25 +1838,48 @@ def apply_qk_rms_norm_cpu[
     q_cols: Int,
     k_cols: Int,
 ):
-    """Naive CPU reference path (also used as a correctness oracle)."""
+    """Applies Q/K RMS normalization across independent CPU SIMD lanes."""
     comptime assert q.flat_rank == 2, "q must have rank 2"
     comptime assert k.flat_rank == 2, "k must have rank 2"
+    comptime assert q_out.flat_rank == 2, "q_out must have rank 2"
+    comptime assert k_out.flat_rank == 2, "k_out must have rank 2"
+    comptime assert gamma_q.flat_rank == 1, "gamma_q must have rank 1"
+    comptime assert gamma_k.flat_rank == 1, "gamma_k must have rank 1"
+    comptime simd_width = simd_width_of[DType.float32]()
+    var contiguous_q = (
+        q.layout.stride_coord().flatten()[1].value() == 1
+        and gamma_q.layout.stride_coord().flatten()[0].value() == 1
+        and q_out.layout.stride_coord().flatten()[1].value() == 1
+    )
+    var contiguous_k = (
+        k.layout.stride_coord().flatten()[1].value() == 1
+        and gamma_k.layout.stride_coord().flatten()[0].value() == 1
+        and k_out.layout.stride_coord().flatten()[1].value() == 1
+    )
     for r in range(rows):
-        var rs_q = rsqrt(qk_var.load[width=1](Coord((r, 0))) + epsilon)
-        for c in range(q_cols):
-            var xf = q.load[width=1](Coord((r, c)))[0].cast[DType.float32]()
-            var g = gamma_q.load[width=1](Coord(c))
-            q_out.store[width=1](
-                Coord((r, c)), ((xf * rs_q) * g).cast[out_dtype]()
-            )
+        var rs_q = rsqrt(qk_var.load[width=1]((r, 0)) + epsilon)
 
-        var rs_k = rsqrt(qk_var.load[width=1](Coord((r, 1))) + epsilon)
-        for c in range(k_cols):
-            var xf = k.load[width=1](Coord((r, c)))[0].cast[DType.float32]()
-            var g = gamma_k.load[width=1](Coord(c))
-            k_out.store[width=1](
-                Coord((r, c)), ((xf * rs_k) * g).cast[out_dtype]()
-            )
+        def normalize_q[width: Int](c: Int) {q, gamma_q, q_out, rs_q, r}:
+            var xf = q.load[width=width]((r, c)).cast[.float32]()
+            var g = gamma_q.load[width=width]((c,))
+            q_out.store((r, c), ((xf * rs_q) * g).cast[out_dtype]())
+
+        if contiguous_q:
+            vectorize[simd_width](q_cols, normalize_q)
+        else:
+            vectorize[1](q_cols, normalize_q)
+
+        var rs_k = rsqrt(qk_var.load[width=1]((r, 1)) + epsilon)
+
+        def normalize_k[width: Int](c: Int) {k, gamma_k, k_out, rs_k, r}:
+            var xf = k.load[width=width]((r, c)).cast[.float32]()
+            var g = gamma_k.load[width=width]((c,))
+            k_out.store((r, c), ((xf * rs_k) * g).cast[out_dtype]())
+
+        if contiguous_k:
+            vectorize[simd_width](k_cols, normalize_k)
+        else:
+            vectorize[1](k_cols, normalize_k)
 
 
 def apply_qk_rms_norm[

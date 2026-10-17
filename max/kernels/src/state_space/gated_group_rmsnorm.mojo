@@ -68,9 +68,10 @@ from max.gpu import (
     lane_id,
 )
 from max.gpu.host import DeviceContext
+from std.algorithm import vectorize
 from std.math import ceildiv, rsqrt
 from std.collections import Array
-from std.sys import size_of
+from std.sys import simd_width_of, size_of
 from std.utils.index import StaticTuple
 from std.utils.numerics import get_accum_type
 import max.gpu.primitives.warp as warp
@@ -400,12 +401,22 @@ def gated_group_rmsnorm_cpu[
                 var gated = yv * silu(gv)
                 m2 += gated * gated
             var nf = rsqrt(m2 / Float32(group_size) + eps)
-            for j in range(group_size):
+
+            def normalize[width: Int](j: Int) {imm}:
                 var col = base + j
-                var yv = y.load[width=1](Coord(n, col)).cast[.float32]()
-                var gv = gate_fn[1, 1](n, col).cast[.float32]()
+                var yv = y.load[width=width]((n, col)).cast[.float32]()
+                var gv = gate_fn[width, 1](n, col).cast[.float32]()
                 var gated = yv * silu(gv)
                 var t_in = (gated * nf).cast[dtype]()
-                var w = weight.load[width=1](Coord(col)).cast[.float32]()
+                var w = weight.load[width=width]((col,))
                 var prod = w * t_in.cast[.float32]()
-                output.store(Coord(n, col), prod.cast[dtype]())
+                output.store((n, col), prod.cast[dtype]())
+
+            if (
+                Int(y.layout.stride_coord().flatten()[1].value()) == 1
+                and Int(output.layout.stride_coord().flatten()[1].value()) == 1
+                and Int(weight.layout.stride_coord().flatten()[0].value()) == 1
+            ):
+                vectorize[simd_width_of[DType.float32]()](group_size, normalize)
+            else:
+                vectorize[1](group_size, normalize)

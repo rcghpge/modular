@@ -12,9 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 """Implements the ONNX CumSum operator, computing prefix sums along a specified tensor axis."""
 
+from std.algorithm import vectorize
 from std.math import align_up, ceildiv
 from std.memory import stack_allocation
 from std.sys import bit_width_of
+from std.sys.info import simd_width_of
 from std.utils.static_tuple import StaticTuple
 
 from layout import (
@@ -129,47 +131,38 @@ def cumsum[
         row_major(input.num_elements()),
     )
 
-    for outer_index in range(outer):
-        var outer_index_adj: Int
-
-        comptime if reverse:
-            outer_index_adj = (outer - 1) - outer_index
-        else:
-            outer_index_adj = outer_index
-
-        for inner_index in range(inner):
-            var accumulator: Scalar[accum_type] = 0
-            var inner_index_adj: Int
-
-            comptime if reverse:
-                inner_index_adj = (inner - 1) - inner_index
-            else:
-                inner_index_adj = inner_index
-
+    comptime simd_width = simd_width_of[accum_type]()
+    for inner_index in range(inner):
+        # SIMD lanes scan independent trailing positions without reassociating
+        # the additions along the scan axis.
+        def scan_chunk[
+            width: Int
+        ](outer_index: Int) {
+            input_data, output_data, inner_index, depth, outer
+        }:
+            var accumulator = SIMD[accum_type, width](0)
             for depth_index in range(depth):
-                var depth_index_adj: Int
-
-                comptime if reverse:
-                    depth_index_adj = (depth - 1) - depth_index
-                else:
-                    depth_index_adj = depth_index
-
+                var depth_index_adj = (
+                    depth - 1 - depth_index if reverse else depth_index
+                )
                 var index = (
-                    outer_index_adj
-                    + inner_index_adj * depth * outer
+                    outer_index
+                    + inner_index * depth * outer
                     + depth_index_adj * outer
                 )
 
                 comptime if exclusive:
-                    output_data[index] = accumulator.cast[dtype]()
-                    accumulator = (
-                        accumulator + input_data[index].cast[accum_type]()
-                    )
+                    output_data.store((index,), accumulator.cast[dtype]())
+                    accumulator += input_data.load[width=width]((index,)).cast[
+                        accum_type
+                    ]()
                 else:
-                    accumulator = (
-                        accumulator + input_data[index].cast[accum_type]()
-                    )
-                    output_data[index] = accumulator.cast[dtype]()
+                    accumulator += input_data.load[width=width]((index,)).cast[
+                        accum_type
+                    ]()
+                    output_data.store((index,), accumulator.cast[dtype]())
+
+        vectorize[simd_width](outer, scan_chunk)
 
 
 def _gpu_accum_type[dtype: DType]() -> DType:
