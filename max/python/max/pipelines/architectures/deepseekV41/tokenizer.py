@@ -15,43 +15,77 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from max.pipelines.lib.tokenizer import ReasoningTextTokenizer
+import numpy as np
+import numpy.typing as npt
+from max.pipelines.context import (
+    GrammarEnforcementState,
+    ImageMetadata,
+    TextAndVisionContext,
+    TokenBuffer,
+)
+from max.pipelines.context.exceptions import InputError, PromptTooLongError
+from max.pipelines.lib.tokenizer import (
+    ReasoningTextTokenizer,
+    encode_dkv_cache_hint,
+    max_tokens_to_generate,
+    open_image,
+    run_with_default_executor,
+)
 from max.pipelines.modeling.types import (
+    ImageContentPart,
     TextContentPart,
+    TextGenerationRequest,
     TextGenerationRequestMessage,
     TextGenerationRequestTool,
 )
+from max.support.image import hash_image
+from PIL import Image
 
 from .encoding_dsv41 import encode_messages
+from .image_processor import DeepseekV41ImageProcessor, expand_image_spans
 from .reasoning_effort import resolve_reasoning_effort
 
 if TYPE_CHECKING:
     from max.pipelines.lib.config import PipelineConfig
 
 
+# The encoder only needs an image block to have a source; the pixels come
+# from the request's images, in the same order.
+_IMAGE_BLOCK = {"type": "image", "data": "request.images"}
+
+
 def _flatten_message(message: TextGenerationRequestMessage) -> dict[str, Any]:
     """Flattens a message to a role/content dict for the V4.1 encoder.
 
     Joins multi-part text with ``\\n\\n``, the separator the V4.1 prompt
-    format uses between text parts.
+    format uses between text parts. A message with images keeps its parts as
+    content blocks, which the encoder renders as image placeholders joined by
+    the same separator.
     """
+    content: str | list[dict[str, Any]]
     if isinstance(message.content, str):
-        content_str = message.content
+        content = message.content
     else:
-        parts: list[str] = []
+        blocks: list[dict[str, Any]] = []
         for part in message.content:
             if isinstance(part, TextContentPart):
-                parts.append(part.text)
+                blocks.append({"type": "text", "text": part.text})
+            elif isinstance(part, ImageContentPart):
+                blocks.append(dict(_IMAGE_BLOCK))
             else:
-                raise ValueError("only text content can be flattened.")
-        content_str = "\n\n".join(parts)
+                raise InputError("DeepSeek-V4.1 accepts text and images only.")
+        if any(block["type"] == "image" for block in blocks):
+            content = blocks
+        else:
+            content = "\n\n".join(block["text"] for block in blocks)
 
     flattened: dict[str, Any] = {
         "role": str(message.role),
-        "content": content_str,
+        "content": content,
     }
     if message.tool_calls is not None:
         flattened["tool_calls"] = message.tool_calls
@@ -116,7 +150,8 @@ def render_prompt(
 class DeepseekV41Tokenizer(ReasoningTextTokenizer):
     """Tokenizer for DeepSeek-V4.1 that renders chat with the V4.1 encoder.
 
-    A custom ``--chat-template``, when given, replaces the encoder.
+    A custom ``--chat-template``, when given, replaces the encoder. Each image
+    placeholder in the encoded prompt grows into the image's span.
     """
 
     def __init__(
@@ -126,6 +161,17 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         **kwargs,
     ) -> None:
         super().__init__(model_path, pipeline_config, **kwargs)
+        config = pipeline_config.model.huggingface_config
+        self.image_token_id = int(config.image_token_id)
+        self.image_processor = DeepseekV41ImageProcessor(config.vision_config)
+        self.enable_prefix_caching = (
+            pipeline_config.model.kv_cache.enable_prefix_caching
+        )
+
+    @property
+    def expects_content_wrapping(self) -> bool:
+        """Returns ``True``: images arrive as typed content parts."""
+        return True
 
     def apply_chat_template(
         self,
@@ -142,4 +188,98 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
             [_flatten_message(message) for message in messages],
             tools,
             chat_template_options,
+        )
+
+    def _expand_images(
+        self,
+        token_ids: npt.NDArray[np.integer[Any]],
+        images: Sequence[bytes | Image.Image],
+    ) -> tuple[npt.NDArray[np.int64], list[ImageMetadata]]:
+        opened = [open_image(image) for image in images]
+        # Checked before patchifying: images below min_pixels are upscaled,
+        # so many tiny ones would take gigabytes before a later check.
+        length = len(token_ids) + sum(
+            self.image_processor.plan(image.width, image.height)[0].num_tokens
+            - 1
+            for image in opened
+        )
+        if self.max_length and length > self.max_length:
+            raise PromptTooLongError(length, self.max_length)
+        processed = [self.image_processor(image) for image in opened]
+        expanded, starts = expand_image_spans(
+            token_ids.tolist(),
+            [grid for _, grid in processed],
+            self.image_token_id,
+        )
+        metadata = [
+            ImageMetadata(
+                start_idx=start,
+                end_idx=start + grid.num_tokens,
+                pixel_values=patches,
+                image_hash=hash_image(patches)
+                if self.enable_prefix_caching
+                else None,
+            )
+            for start, (patches, grid) in zip(starts, processed, strict=True)
+        ]
+        return expanded, metadata
+
+    async def new_context(
+        self, request: TextGenerationRequest
+    ) -> TextAndVisionContext:
+        """Builds the context, expanding every image into its span.
+
+        Raises:
+            InputError: If the request carries a video, an image cannot be
+                decoded, or the prompt's placeholder count differs from the
+                image count.
+        """
+        if request.videos:
+            raise InputError("DeepSeek-V4.1 does not support video inputs.")
+        _, text_ids = await self._generate_prompt_and_token_ids(
+            prompt=request.prompt,
+            messages=request.messages,
+            tools=request.tools,
+            **(request.chat_template_options or {}),
+        )
+        token_ids, images = await run_with_default_executor(
+            self._expand_images, text_ids, request.images_for_processing()
+        )
+
+        max_gen_tokens = max_tokens_to_generate(
+            len(token_ids),
+            self.max_length,
+            request.sampling_params.max_new_tokens,
+        )
+        extra_model_args: dict[str, npt.NDArray[Any]] = {}
+        if images:
+            extra_model_args["image_token_indices"] = np.flatnonzero(
+                token_ids == self.image_token_id
+            )
+        response_format = request.response_format
+        return TextAndVisionContext(
+            request_id=request.request_id,
+            eos_tracker=await self.create_eos_tracker(request),
+            max_length=len(token_ids) + max_gen_tokens
+            if max_gen_tokens is not None
+            else self.max_length,
+            tokens=TokenBuffer(array=token_ids),
+            vocab_size=self.tokenizer_vocab_size,
+            log_probabilities=request.logprobs,
+            log_probabilities_echo=request.echo,
+            json_schema=json.dumps(response_format.json_schema)
+            if response_format and response_format.json_schema is not None
+            else None,
+            grammar=response_format.grammar if response_format else None,
+            grammar_state=GrammarEnforcementState.from_response_format(
+                response_format
+            ),
+            sampling_params=request.sampling_params,
+            model_name=request.model_name,
+            target_endpoint=request.target_endpoint,
+            dkv_cache_hint=encode_dkv_cache_hint(request.dkv_cache_hint),
+            cache_salt=request.cache_salt,
+            images=images,
+            vision_token_ids=[self.image_token_id],
+            extra_model_args=extra_model_args,
         )
