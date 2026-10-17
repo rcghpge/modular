@@ -51,6 +51,7 @@ INTERNAL_PACKAGES = [
     "//Kernels/lib/kda",
     "//Kernels/lib/matmul_rs",
     "//Kernels/lib/mega_ffn",
+    "//Kernels/lib/mega_mhc",
     "//Kernels/lib/msa",
     "//Kernels/lib/qsa",
     "//max/driver/src/max_license/_hal",

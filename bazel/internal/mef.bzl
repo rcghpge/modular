@@ -20,6 +20,7 @@ MOJO_DEPS = [
     "//Kernels/lib/kda",
     "//Kernels/lib/matmul_rs",
     "//Kernels/lib/mega_ffn",
+    "//Kernels/lib/mega_mhc",
     "//Kernels/lib/msa",
     "//Kernels/lib/qsa",
     "//max:algorithm",
