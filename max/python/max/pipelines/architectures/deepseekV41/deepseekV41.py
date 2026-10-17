@@ -21,6 +21,7 @@ from hashed n-grams of the input tokens.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 
 import numpy as np
 from max.dtype import DType
@@ -56,7 +57,7 @@ from ..deepseekV4.layers.quantization import (
 )
 from .layer_resolver import LayerInfo
 from .layer_resolver import resolve as resolve_layers
-from .layers import final_collapse
+from .layers import final_collapse, fused_hc_step
 from .layers.attention import (
     CSA2Attention,
     CSA2Cache,
@@ -170,6 +171,75 @@ def _hc_mean(x: TensorValue) -> TensorValue:
     return ops.cast(ops.squeeze(mean, 2), x.dtype)
 
 
+@dataclass(frozen=True)
+class HCStreams:
+    """The ``[1, s, hc, d]`` stream copies between two sublayers.
+
+    With ``out`` set, the copies are ``residual`` plus the earlier
+    sublayer's ``[1, s, d]`` output, still to be written back through
+    ``post`` and ``comb``; the next sublayer fuses that write-back into its
+    own mixing step. With ``out`` unset, ``residual`` holds the copies.
+    ``pre`` is the collapse weight carried into the next sublayer, ``None``
+    before the first sublayer of a stack.
+    """
+
+    residual: TensorValue
+    pre: TensorValue | None = None
+    out: TensorValue | None = None
+    post: TensorValue | None = None
+    comb: TensorValue | None = None
+
+    def materialize(self) -> TensorValue:
+        """Returns the ``[1, s, hc, d]`` copies with ``out`` written back."""
+        if self.out is None:
+            return self.residual
+        assert self.post is not None and self.comb is not None
+        return hc_post(self.out, self.residual, self.post, self.comb)
+
+    def collapse(self) -> TensorValue:
+        """Merges the copies with ``pre`` into the final ``[1, s, d]`` state."""
+        assert self.pre is not None  # at least one sublayer always runs
+        return final_collapse(self.materialize(), self.pre)
+
+
+def _hc_enter(
+    streams: HCStreams, hc: HyperConnection, norm: RMSNorm
+) -> tuple[TensorValue, HCStreams]:
+    """Mixes the copies into a sublayer's normalized ``[1, s, d]`` input.
+
+    Returns the input and the copies the sublayer reads, with its own
+    ``post``, ``comb`` and ``pre``; set ``out`` on them once it runs.
+    """
+    if streams.out is None:
+        h, post, comb, pre = _hc_pre(streams.residual, hc, streams.pre)
+        return norm(h), HCStreams(
+            streams.residual, pre=pre, post=post, comb=comb
+        )
+    assert streams.post is not None and streams.comb is not None
+    assert streams.pre is not None
+    h, residual, post, comb, pre = fused_hc_step(
+        streams.out,
+        streams.residual,
+        streams.post,
+        streams.comb,
+        streams.pre,
+        hc,
+        norm,
+    )
+    return h, HCStreams(residual, pre=pre, post=post, comb=comb)
+
+
+def _with_out(streams: HCStreams, out: TensorValue) -> HCStreams:
+    """Records the sublayer output ``out`` on the copies it read."""
+    return HCStreams(
+        streams.residual,
+        pre=streams.pre,
+        out=out,
+        post=streams.post,
+        comb=streams.comb,
+    )
+
+
 def _apply_engram(
     x: TensorValue,
     engram_fn: Engram,
@@ -238,15 +308,14 @@ class DeepseekV41Block(Module):
     @staticmethod
     def tensor_parallel(
         blocks: Sequence[DeepseekV41Block],
-        xs: Sequence[TensorValue],
-        pre_mixes: Sequence[TensorValue | None],
+        streams: Sequence[HCStreams],
         rows: Sequence[RaggedRows],
         token_ids: Sequence[TensorValue],
         caches: Sequence[object],
         signal_buffers: Sequence[BufferValue],
         *,
         engram_operands: Sequence[EngramOperand] | None = None,
-    ) -> tuple[list[TensorValue], list[TensorValue]]:
+    ) -> tuple[list[HCStreams], list[TensorValue]]:
         """Runs :meth:`__call__` on every device, one replica per device.
 
         Attention is split by heads, and its output-projection partial sums
@@ -257,7 +326,7 @@ class DeepseekV41Block(Module):
         hyper-connections run in full on every device.
 
         Returns:
-            Each device's output stream and FFN ``pre``.
+            Each device's output copies and the copies its attention read.
         """
         moes: list[DeepseekV41MoE | DeepseekV41DSparkMoE] = []
         for block in blocks:
@@ -282,43 +351,48 @@ class DeepseekV41Block(Module):
             ]
             if len(kvs) > 1:
                 kvs = ops.allgather(kvs, signal_buffers, axis=-1)
-            xs = [
-                _apply_engram(x, engram, kv, None)
-                for x, engram, kv in zip(xs, engrams, kvs, strict=True)
+            streams = [
+                HCStreams(
+                    _apply_engram(stream.materialize(), engram, kv, None),
+                    pre=stream.pre,
+                )
+                for stream, engram, kv in zip(
+                    streams, engrams, kvs, strict=True
+                )
             ]
 
-        attn_contracted = [
-            _hc_pre(x, block.hc_attn, pre_mix)
-            for block, x, pre_mix in zip(blocks, xs, pre_mixes, strict=True)
+        attn_entered = [
+            _hc_enter(stream, block.hc_attn, block.attn_norm)
+            for block, stream in zip(blocks, streams, strict=True)
         ]
         if not isinstance(blocks[0].attn, CSA2Attention):
             partials = [
-                block.attn(block.attn_norm(h), row, cache)
-                for block, (h, _, _, _), row, cache in zip(
-                    blocks, attn_contracted, rows, caches, strict=True
+                block.attn(h, row, cache)
+                for block, (h, _), row, cache in zip(
+                    blocks, attn_entered, rows, caches, strict=True
                 )
             ]
         else:
             partials = DeepseekV41Block._csa2_partials(
-                blocks, attn_contracted, rows, caches, signal_buffers
+                blocks,
+                [h for h, _ in attn_entered],
+                rows,
+                caches,
+                signal_buffers,
             )
         attended = ops.allreduce.sum(partials, signal_buffers)
-        xs = [
-            hc_post(h, residual, post, comb)
-            for h, residual, (_, post, comb, _) in zip(
-                attended, xs, attn_contracted, strict=True
-            )
+        streams = [
+            _with_out(read, h)
+            for h, (_, read) in zip(attended, attn_entered, strict=True)
         ]
         return DeepseekV41Block._ffn_tensor_parallel(
-            blocks, xs, attn_contracted, moes, token_ids, signal_buffers
-        )
+            blocks, streams, moes, token_ids, signal_buffers
+        ), [read.residual for _, read in attn_entered]
 
     @staticmethod
     def _csa2_partials(
         blocks: Sequence[DeepseekV41Block],
-        attn_contracted: Sequence[
-            tuple[TensorValue, TensorValue, TensorValue, TensorValue]
-        ],
+        normed: Sequence[TensorValue],
         rows: Sequence[RaggedRows],
         caches: Sequence[object],
         signal_buffers: Sequence[BufferValue],
@@ -333,9 +407,9 @@ class DeepseekV41Block(Module):
             assert isinstance(block.attn, CSA2Attention)
             attns.append(block.attn)
         states = [
-            attn.begin(block.attn_norm(h), row, cache)
-            for attn, block, (h, _, _, _), row, cache in zip(
-                attns, blocks, attn_contracted, rows, caches, strict=True
+            attn.begin(h, row, cache)
+            for attn, h, row, cache in zip(
+                attns, normed, rows, caches, strict=True
             )
         ]
         if states[0].index_score is not None:
@@ -357,62 +431,42 @@ class DeepseekV41Block(Module):
     @staticmethod
     def _ffn_tensor_parallel(
         blocks: Sequence[DeepseekV41Block],
-        xs: Sequence[TensorValue],
-        attn_contracted: Sequence[
-            tuple[TensorValue, TensorValue, TensorValue, TensorValue]
-        ],
+        streams: Sequence[HCStreams],
         moes: Sequence[DeepseekV41MoE | DeepseekV41DSparkMoE],
         token_ids: Sequence[TensorValue],
         signal_buffers: Sequence[BufferValue],
-    ) -> tuple[list[TensorValue], list[TensorValue]]:
+    ) -> list[HCStreams]:
         """Runs the FFN half of :meth:`tensor_parallel`.
 
         The attention sublayer's ``pre`` weights merge the FFN's input.
         """
-        ffn_contracted = [
-            _hc_pre(x, block.hc_ffn, attn_pre)
-            for block, x, (_, _, _, attn_pre) in zip(
-                blocks, xs, attn_contracted, strict=True
-            )
+        ffn_entered = [
+            _hc_enter(stream, block.hc_ffn, block.ffn_norm)
+            for block, stream in zip(blocks, streams, strict=True)
         ]
         moved = DeepseekV41MoE.tensor_parallel(
-            moes,
-            [
-                block.ffn_norm(h)
-                for block, (h, _, _, _) in zip(
-                    blocks, ffn_contracted, strict=True
-                )
-            ],
-            token_ids,
-            signal_buffers,
+            moes, [h for h, _ in ffn_entered], token_ids, signal_buffers
         )
-        return (
-            [
-                hc_post(h, x, post, comb)
-                for h, x, (_, post, comb, _) in zip(
-                    moved, xs, ffn_contracted, strict=True
-                )
-            ],
-            [ffn_pre for _, _, _, ffn_pre in ffn_contracted],
-        )
+        return [
+            _with_out(read, h)
+            for h, (_, read) in zip(moved, ffn_entered, strict=True)
+        ]
 
     def __call__(
         self,
-        x: TensorValue,
-        pre_mix: TensorValue | None,
+        streams: HCStreams,
         rows: RaggedRows,
         token_ids: TensorValue,
         cache: object | None = None,
         *,
         engram_operand: EngramOperand | None = None,
         engram_token_mask: TensorValue | None = None,
-    ) -> tuple[TensorValue, TensorValue]:
-        """Runs the block on the ``[1, s, hc, d]`` stream and carried ``pre``.
+    ) -> tuple[HCStreams, TensorValue]:
+        """Runs the block on the stream copies entering it.
 
         Args:
-            x: The ``[1, s, hc, d]`` stream entering this block.
-            pre_mix: The previous block's FFN ``pre``, or ``None`` for the
-                first block.
+            streams: The copies entering this block, carrying the previous
+                block's FFN ``pre`` and possibly its pending FFN output.
             rows: Ragged-batch bookkeeping, forwarded to ``attn``.
             token_ids: Forwarded to ``ffn``.
             cache: Forwarded to ``attn``; opaque to this block.
@@ -422,8 +476,9 @@ class DeepseekV41Block(Module):
                 that position. ``None`` keeps it on everywhere.
 
         Returns:
-            The block's output stream and its FFN ``pre``, carried into the
-            next block or into the final merge after the last block.
+            The block's output copies, carried into the next block or into
+            the final merge after the last block, and the ``[1, s, hc, d]``
+            copies its attention read.
 
         Raises:
             ValueError: If this is an Engram layer and ``engram_operand`` is
@@ -435,24 +490,21 @@ class DeepseekV41Block(Module):
                     f"layer {self.layer_info.layer_id} is an Engram layer "
                     "but no engram_operand was given"
                 )
-            x = _apply_engram(
-                x,
-                self.engram_fn,
-                self.engram_fn.project(engram_operand),
-                engram_token_mask,
+            streams = HCStreams(
+                _apply_engram(
+                    streams.materialize(),
+                    self.engram_fn,
+                    self.engram_fn.project(engram_operand),
+                    engram_token_mask,
+                ),
+                pre=streams.pre,
             )
 
-        residual = x
-        h, post, comb, attn_pre = _hc_pre(x, self.hc_attn, pre_mix)
-        h = self.attn(self.attn_norm(h), rows, cache)
-        x = hc_post(h, residual, post, comb)
+        h, attn_read = _hc_enter(streams, self.hc_attn, self.attn_norm)
+        streams = _with_out(attn_read, self.attn(h, rows, cache))
 
-        residual = x
-        h, post, comb, ffn_pre = _hc_pre(x, self.hc_ffn, attn_pre)
-        h = self.ffn(self.ffn_norm(h), token_ids)
-        x = hc_post(h, residual, post, comb)
-
-        return x, ffn_pre
+        h, ffn_read = _hc_enter(streams, self.hc_ffn, self.ffn_norm)
+        return _with_out(ffn_read, self.ffn(h, token_ids)), attn_read.residual
 
 
 class DeepseekV41Trunk(Module):
@@ -581,17 +633,17 @@ class DeepseekV41Trunk(Module):
                 "layers"
             )
         taps: list[TensorValue] = []
-        x = expand_copies(self.embed(tokens), self.config.hc_mult)
-        pre_mix: TensorValue | None = None
+        streams = HCStreams(
+            expand_copies(self.embed(tokens), self.config.hc_mult)
+        )
         for layer_info, layer in zip(
             self.layer_infos, self.layers, strict=True
         ):
-            if layer_info.layer_id in tap_ids:
-                if layer_info.has_engram:
-                    raise ValueError(
-                        f"tap layer {layer_info.layer_id} is an Engram layer"
-                    )
-                taps.append(_hc_mean(x))
+            tapped = layer_info.layer_id in tap_ids
+            if tapped and layer_info.has_engram:
+                raise ValueError(
+                    f"tap layer {layer_info.layer_id} is an Engram layer"
+                )
             operand = None
             if layer_info.has_engram:
                 if (
@@ -603,19 +655,17 @@ class DeepseekV41Trunk(Module):
                         "but engram_operands has no entry for it"
                     )
                 operand = engram_operands[layer_info.layer_id]
-            x, pre_mix = layer(
-                x,
-                pre_mix,
+            streams, entry = layer(
+                streams,
                 rows,
                 tokens,
                 cache,
                 engram_operand=operand,
                 engram_token_mask=engram_token_mask,
             )
-        assert pre_mix is not None  # at least one trunk layer always runs
-        return final_collapse(x, pre_mix), (
-            ops.concat(taps, axis=-1) if taps else None
-        )
+            if tapped:
+                taps.append(_hc_mean(entry))
+        return streams.collapse(), (ops.concat(taps, axis=-1) if taps else None)
 
     @staticmethod
     def tensor_parallel(
@@ -673,28 +723,24 @@ class DeepseekV41Trunk(Module):
                 "layers"
             )
         taps: list[list[TensorValue]] = [[] for _ in trunks]
-        xs = [
-            expand_copies(trunk.embed(tok), lead.config.hc_mult)
+        streams = [
+            HCStreams(expand_copies(trunk.embed(tok), lead.config.hc_mult))
             for trunk, tok in zip(trunks, tokens, strict=True)
         ]
-        pre_mixes: Sequence[TensorValue | None] = [None] * len(trunks)
         for i, layer_info in enumerate(lead.layer_infos):
-            if layer_info.layer_id in tap_ids:
-                if layer_info.has_engram:
-                    raise ValueError(
-                        f"tap layer {layer_info.layer_id} is an Engram layer"
-                    )
-                for per_dev, x in zip(taps, xs, strict=True):
-                    per_dev.append(_hc_mean(x))
+            tapped = layer_info.layer_id in tap_ids
+            if tapped and layer_info.has_engram:
+                raise ValueError(
+                    f"tap layer {layer_info.layer_id} is an Engram layer"
+                )
             blocks = []
             for trunk in trunks:
                 block = trunk.layers[i]
                 assert isinstance(block, DeepseekV41Block)
                 blocks.append(block)
-            xs, pre_mixes = DeepseekV41Block.tensor_parallel(
+            streams, entries = DeepseekV41Block.tensor_parallel(
                 blocks,
-                xs,
-                pre_mixes,
+                streams,
                 rows,
                 tokens,
                 caches,
@@ -708,8 +754,10 @@ class DeepseekV41Trunk(Module):
                     else None
                 ),
             )
-        assert pre_mixes[0] is not None  # at least one trunk layer always runs
-        return final_collapse(xs[0], pre_mixes[0]), (
+            if tapped:
+                for per_dev, entry in zip(taps, entries, strict=True):
+                    per_dev.append(_hc_mean(entry))
+        return streams[0].collapse(), (
             [ops.concat(per_dev, axis=-1) for per_dev in taps]
             if tap_layer_ids
             else None

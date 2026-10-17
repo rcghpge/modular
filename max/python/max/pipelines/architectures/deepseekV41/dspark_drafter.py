@@ -32,10 +32,14 @@ from max.nn.norm.rms_norm import RMSNorm
 from typing_extensions import Self
 
 from ..deepseekV4.layers import expand_copies
-from .deepseekV41 import DeepseekV41, DeepseekV41Block, DeepseekV41Trunk
+from .deepseekV41 import (
+    DeepseekV41,
+    DeepseekV41Block,
+    DeepseekV41Trunk,
+    HCStreams,
+)
 from .layer_resolver import LayerInfo
 from .layer_resolver import resolve as resolve_layers
-from .layers import final_collapse
 from .layers.attention import CSA2Cache
 from .layers.dspark import (
     DeepseekV41DSparkAttention,
@@ -249,12 +253,12 @@ class DeepseekV41DSparkDrafter(Module):
             raise ValueError(
                 f"expected {len(self.stages)} stage windows, got {len(windows)}"
             )
-        x = expand_copies(embed(block_ids), self.config.hc_mult)
-        pre_mix: TensorValue | None = None
+        streams = HCStreams(
+            expand_copies(embed(block_ids), self.config.hc_mult)
+        )
         for stage, window in zip(self.stages, windows, strict=True):
-            x, pre_mix = stage(x, pre_mix, rows, block_ids, window)
-        assert pre_mix is not None
-        return final_collapse(x, pre_mix)
+            streams, _ = stage(streams, rows, block_ids, window)
+        return streams.collapse()
 
     def __call__(
         self,
@@ -288,28 +292,25 @@ class DeepseekV41DSparkDrafter(Module):
             (identical on every device).
         """
         lead = drafters[0]
-        xs = [
-            expand_copies(embed(ids), lead.config.hc_mult)
+        streams = [
+            HCStreams(expand_copies(embed(ids), lead.config.hc_mult))
             for embed, ids in zip(embeds, block_ids, strict=True)
         ]
-        pre_mixes: Sequence[TensorValue | None] = [None] * len(drafters)
         for i in range(len(lead.stages)):
             stages = []
             for drafter in drafters:
                 stage = drafter.stages[i]
                 assert isinstance(stage, DeepseekV41Block)
                 stages.append(stage)
-            xs, pre_mixes = DeepseekV41Block.tensor_parallel(
+            streams, _ = DeepseekV41Block.tensor_parallel(
                 stages,
-                xs,
-                pre_mixes,
+                streams,
                 rows,
                 block_ids,
                 [per_dev[i] for per_dev in windows],
                 signal_buffers,
             )
-        assert pre_mixes[0] is not None
-        return final_collapse(xs[0], pre_mixes[0])
+        return streams[0].collapse()
 
     def logits(
         self, hidden: TensorValue, head_weight: TensorValue
