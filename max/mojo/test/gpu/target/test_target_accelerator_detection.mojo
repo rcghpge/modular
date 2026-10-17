@@ -71,8 +71,11 @@
 from std.compile import compile_info
 from std.sys import get_defined_string
 from std.sys.info import current_accelerator
+
+from std._plugin._overlay import TARGETS
+
 from max.gpu.host import default_accelerator
-from max.gpu.host.info import GPUInfo, TargetAccelerator, get_gpu_target
+from max.gpu.host.info import TargetAccelerator, get_gpu_target, get_gpu_info
 
 
 def main() raises:
@@ -83,8 +86,8 @@ def main() raises:
         comptime assert not default_accelerator().is_nvidia_gpu()
         comptime assert not default_accelerator().is_apple_gpu()
         comptime if expect == "amd_default_accelerator":
-            comptime target = TargetAccelerator.default_accelerator
-            comptime assert target.gpu_info == GPUInfo.default_accelerator()
+            comptime target = TargetAccelerator.default_accelerator[TARGETS]
+            comptime assert target.gpu_info == get_gpu_info()
     elif expect == "nvidia":
         comptime assert default_accelerator().is_nvidia_gpu()
         comptime assert not default_accelerator().is_amd_gpu()
@@ -100,7 +103,7 @@ def main() raises:
         comptime assert not default_accelerator().is_apple_gpu()
     elif expect == "error_gpu_info_from_name":
         # CHECK-INVALID-GPUInfo_from_name: GPU architecture 'wombat42' is not supported.
-        comptime info = GPUInfo.from_name["wombat42"]()
+        comptime info = get_gpu_info["wombat42"]()
         comptime assert info.name == "wombat42"
     elif expect == "error_default_accelerator":
         # CHECK-INVALID-default_accelerator: GPU architecture 'wombat42' is not supported.
@@ -109,7 +112,7 @@ def main() raises:
         # CHECK-INVALID-default_accelerator: Apple: apple-m1 (M1), apple-m1-metal4 (M1 Metal4)
         # Force resolution of `.default_accelerator` to trigger error.
         comptime assert (
-            TargetAccelerator.default_accelerator.gpu_info.name != ""
+            TargetAccelerator.default_accelerator[TARGETS]().gpu_info.name != ""
         )
     elif expect == "error_current_accelerator_on_host":
         # CHECK-NON-ACCELERATOR: current_accelerator() requires an accelerator compilation target, but the current compilation target is '

@@ -22,7 +22,7 @@ SF_VECTOR_SIZE (32) consecutive elements.
 from std.math import ceildiv
 from max.gpu import block_idx, thread_idx, grid_dim, block_dim
 from max.gpu.host import DeviceContext
-from max.gpu.host.info import GPUInfo
+from max.gpu.host.info import get_gpu_info
 from max.gpu.primitives.grid_controls import (
     PDL,
     PDLLevel,
@@ -183,7 +183,7 @@ def dequant_mxfp4[
         "num_cols must be a multiple of ELEMENTS_PER_THREAD (8)",
     )
     comptime num_max_threads = 512
-    comptime _gpu = GPUInfo.default_accelerator()
+    comptime _gpu = get_gpu_info()
     comptime num_SMs = _gpu.sm_count
 
     var num_col_threads = ceildiv(num_cols, ELEMENTS_PER_THREAD)

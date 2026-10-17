@@ -34,7 +34,7 @@ from max.gpu import (
 from max.gpu.sync import barrier
 from max.gpu.primitives.grid_controls import PDLLevel
 from max.gpu.host import DeviceContext, FuncAttribute
-from max.gpu.host.info import A100, B200, H100, MI355X, GPUInfo
+from max.gpu.host.info import A100, B200, H100, MI355X, get_gpu_info
 from layout import (
     Coord,
     Idx,
@@ -641,7 +641,7 @@ def _amdgpu_matmul_config_from_block_shape[
 
 
 def _amdgpu_matmul_build_block_shape_list[N: Int]() -> List[IndexList[2]]:
-    comptime sm_count = GPUInfo.default_accelerator().sm_count
+    comptime sm_count = get_gpu_info().sm_count
 
     comptime block_sizes_alias = [16, 32, 64, 96, 128, 160, 192, 224, 256]
     comptime len_block_sizes = len(block_sizes_alias)

@@ -57,7 +57,7 @@ struct _LookupTargetAccelerator[
         Elt: TargetAcceleratorType,
         Idx: Int,
     ] Bool,
-    Collections: TypeList[Trait=TargetAcceleratorCollection, ...] = TARGETS,
+    Collections: TypeList[Trait=TargetAcceleratorCollection, ...],
 ]:
     comptime by_target_arch[target_arch: StaticString] = (
         _LookupTargetAccelerator[
@@ -151,7 +151,11 @@ struct TargetAccelerator[
     def __init__(out self):
         pass
 
-    comptime default_accelerator = Self.from_arch[_accelerator_arch()]
+    comptime default_accelerator[
+        Collections: TypeList[Trait=TargetAcceleratorCollection, ...],
+    ] = Self.from_arch[_accelerator_arch(), Collections]
+    """Lookup information for the default accelerator in the given target
+    collections."""
 
     # Note:
     #   These parametric aliases can't instead be a static methods like:
@@ -159,12 +163,22 @@ struct TargetAccelerator[
     #   because the compiler requires the `Self` type be concrete, otherwise the
     #   call fails due to an 'unbound struct type parameters' error.
 
-    comptime from_arch[name: StaticString] = (
-        _LookupTargetAccelerator[].by_target_arch[name].single_result
+    comptime from_arch[
+        name: StaticString,
+        Collections: TypeList[Trait=TargetAcceleratorCollection, ...],
+    ] = (
+        _LookupTargetAccelerator[Collections=Collections]
+        .by_target_arch[name]
+        .single_result
     )
 
-    comptime from_gpu_name[name: StaticString] = (
-        _LookupTargetAccelerator[].by_gpu_name[name].single_result
+    comptime from_gpu_name[
+        name: StaticString,
+        Collections: TypeList[Trait=TargetAcceleratorCollection, ...],
+    ] = (
+        _LookupTargetAccelerator[Collections=Collections]
+        .by_gpu_name[name]
+        .single_result
     )
 
     # Forwarded for backwards compatibility. Enables e.g. `B200.sm_count` to
@@ -347,45 +361,6 @@ struct GPUInfo(Copyable, Equatable, Movable, RegisterPassable, Writable):
 
     var max_thread_block_size: Int
     """Maximum number of threads allowed in a thread block."""
-
-    @staticmethod
-    def from_target[target: CompilationTarget]() -> Self:
-        """Creates a `GPUInfo` instance from an MLIR target.
-
-        Parameters:
-            target: MLIR target configuration.
-
-        Returns:
-            GPU info corresponding to the target.
-        """
-        return Self.from_name[target._arch()]()
-
-    @staticmethod
-    def default_accelerator() -> Self:
-        """Gets `GPUInfo` for the default target accelerator.
-
-        Returns:
-            `GPUInfo` instance for the default target accelerator.
-        """
-        return GPUInfo.from_name[_accelerator_arch()]()
-
-    @staticmethod
-    def from_name[target_arch0: StaticString, /]() -> Self:
-        """Gets `GPUInfo` for a specific target architecture.
-
-        Maps target architecture strings to corresponding `GPUInfo` instances.
-
-        Parameters:
-            target_arch0: Target architecture name (e.g., "sm_80", "gfx942").
-
-        Returns:
-            `GPUInfo` instance for the specified target architecture.
-        """
-        comptime result = _LookupTargetAccelerator[].by_target_arch[
-            target_arch0
-        ].single_result
-
-        return materialize[result.gpu_info]()
 
     @staticmethod
     def from_family(

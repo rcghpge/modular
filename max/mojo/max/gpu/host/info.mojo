@@ -122,6 +122,8 @@ from std._plugin.metal.metal_targets import (
     _metal_m2_target,
 )
 
+from std._plugin._overlay import TARGETS
+
 # ===----------------------------------------------------------------------=== #
 # Accelerator target lookup
 # ===----------------------------------------------------------------------=== #
@@ -216,7 +218,24 @@ def get_gpu_target[
 # can't fold while types are parsed; inlining it would embed the whole
 # accelerator table in every type and symbol name that mentions the target.
 def _gpu_mlir_target[target_arch: StaticString]() -> _TargetType:
-    return TargetAccelerator.from_arch[target_arch].mlir_target
+    return TargetAccelerator.from_arch[target_arch, TARGETS].mlir_target
+
+
+def get_gpu_info[target_arch: StaticString = _accelerator_arch()]() -> GPUInfo:
+    """Gets `GPUInfo` for a specific target architecture.
+
+    Maps target architecture strings to corresponding `GPUInfo` instances.
+
+    Parameters:
+        target_arch: Target architecture name (e.g., "sm_80", "gfx942").
+          Defaults to the current accelerator architecture.
+
+    Returns:
+        `GPUInfo` instance for the specified target architecture.
+    """
+    comptime result = TargetAccelerator.from_arch[target_arch, TARGETS]
+
+    return materialize[result.gpu_info]()
 
 
 # ===----------------------------------------------------------------------=== #

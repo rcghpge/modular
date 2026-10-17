@@ -75,9 +75,8 @@ from std.utils._serialize import _serialize_elements
 from std.utils.static_tuple import StaticTuple
 
 from .info import _device_type_encoder_target, is_cpu
-from std._gpu.host.info import GPUInfo
 
-from max.gpu.host.info import get_gpu_target
+from max.gpu.host.info import get_gpu_target, get_gpu_info
 from max._plugin._overlay import max_default_accelerator
 
 from .compile import (
@@ -4572,7 +4571,7 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
     comptime CPU = DeviceContextBase[CompilationTarget.current()]
     """DeviceContext type for the current CPU target."""
 
-    comptime default_device_info = GPUInfo.from_target[Self.target]()
+    comptime default_device_info = get_gpu_info[Self.target._arch()]()
     """`GPUInfo` object for the default accelerator."""
 
     # ===-------------------------------------------------------------------===#

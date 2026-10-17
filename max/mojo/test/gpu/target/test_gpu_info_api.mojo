@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from max.gpu.host.info import GPUInfo
+from max.gpu.host.info import get_gpu_info
 from std.testing import TestSuite, assert_equal
 
 
@@ -35,23 +35,23 @@ def test_amd_spellings_resolve() raises:
     """
     comptime for i in range(len(_MI250X_SPELLINGS)):
         assert_equal(
-            GPUInfo.from_name[_MI250X_SPELLINGS[i]]().name,
+            get_gpu_info[_MI250X_SPELLINGS[i]]().name,
             "MI250X",
             String("wrong record for ", _MI250X_SPELLINGS[i]),
         )
 
-    assert_equal(GPUInfo.from_name["mi300x"]().name, "MI300X")
-    assert_equal(GPUInfo.from_name["amdgpu:mi300x"]().name, "MI300X")
-    assert_equal(GPUInfo.from_name["amd:mi300x"]().name, "MI300X")
-    assert_equal(GPUInfo.from_name["amdgpu:gfx942"]().name, "MI300X")
-    assert_equal(GPUInfo.from_name["amd:gfx942"]().name, "MI300X")
-    assert_equal(GPUInfo.from_name["mi355x"]().name, "MI355X")
-    assert_equal(GPUInfo.from_name["amdgpu:mi355x"]().name, "MI355X")
-    assert_equal(GPUInfo.from_name["amd:mi355x"]().name, "MI355X")
+    assert_equal(get_gpu_info["mi300x"]().name, "MI300X")
+    assert_equal(get_gpu_info["amdgpu:mi300x"]().name, "MI300X")
+    assert_equal(get_gpu_info["amd:mi300x"]().name, "MI300X")
+    assert_equal(get_gpu_info["amdgpu:gfx942"]().name, "MI300X")
+    assert_equal(get_gpu_info["amd:gfx942"]().name, "MI300X")
+    assert_equal(get_gpu_info["mi355x"]().name, "MI355X")
+    assert_equal(get_gpu_info["amdgpu:mi355x"]().name, "MI355X")
+    assert_equal(get_gpu_info["amd:mi355x"]().name, "MI355X")
 
     # MI300A shares the gfx942 ISA with MI300X, so this alias is the only way to
     # reach its distinct record.
-    assert_equal(GPUInfo.from_name["amdgpu:mi300a"]().name, "MI300A")
+    assert_equal(get_gpu_info["amdgpu:mi300a"]().name, "MI300A")
 
 
 def main() raises:
