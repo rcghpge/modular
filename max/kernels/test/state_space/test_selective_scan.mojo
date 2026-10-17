@@ -376,12 +376,11 @@ def run_selective_scan_update[
             var group_id = d // group_size
 
             # Load dt value
-            var dt_offset = b * dim + d
-            var dt_val = Float32(dt_buf.unsafe_ptr()[dt_offset])
+            var dt_val = Float32(dt_buf[b, d])
 
             # Apply dt_bias if present
             if has_delta_bias:
-                var bias_val = Float32(dt_bias_buf.unsafe_ptr()[d])
+                var bias_val = Float32(dt_bias_buf[d])
                 dt_val += bias_val
 
             # Apply softplus if requested
@@ -389,21 +388,18 @@ def run_selective_scan_update[
                 dt_val = softplus_ref(dt_val)
 
             # Load x value
-            var x_offset = b * dim + d
-            var x_val = Float32(x_buf.unsafe_ptr()[x_offset])
+            var x_val = Float32(x_buf[b, d])
 
             # Load A values and compute dA
             var dA_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
-                var A_offset = d * dstate + n
-                var A_val = Float32(A_buf.unsafe_ptr()[A_offset]) * LOG2E
+                var A_val = Float32(A_buf[d, n]) * LOG2E
                 dA_vals[n] = exp2(A_val * dt_val)
 
             # Load B values and compute dB
             var dB_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
-                var B_offset = b * n_groups * dstate + group_id * dstate + n
-                var B_val = Float32(B_buf.unsafe_ptr()[B_offset])
+                var B_val = Float32(B_buf[b, group_id, n])
                 dB_vals[n] = B_val * dt_val
 
             # Load current state
@@ -421,21 +417,19 @@ def run_selective_scan_update[
             # Load C values
             var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
-                var C_offset = b * n_groups * dstate + group_id * dstate + n
-                C_vals[n] = Float32(C_buf.unsafe_ptr()[C_offset])
+                C_vals[n] = Float32(C_buf[b, group_id, n])
 
             # Compute output
             var out_val = (state_vals * C_vals).reduce_add()
 
             # Add skip connection
             if has_D:
-                var D_val = Float32(D_buf.unsafe_ptr()[d])
+                var D_val = Float32(D_buf[d])
                 out_val += x_val * D_val
 
             # Apply gating
             if has_z:
-                var z_offset = b * dim + d
-                var z_val = Float32(z_buf.unsafe_ptr()[z_offset])
+                var z_val = Float32(z_buf[b, d])
                 out_val *= z_val * sigmoid_ref(z_val)
 
             # Store output

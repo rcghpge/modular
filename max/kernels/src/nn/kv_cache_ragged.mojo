@@ -4226,9 +4226,7 @@ def generic_flash_attention_kv_cache_ragged_sink[
             context,
             decode_dispatch_metadata,
             OptionalReg[ImmutTileTensor1D[dtype]](
-                immut_tile_tensor_1d(
-                    sink_weights.ptr, sink_weights.num_elements()
-                )
+                immut_tile_tensor_1d(sink_weights)
             ),
         )
 
@@ -4779,9 +4777,7 @@ def _flare_mla_prefill_kv_cache_ragged[
             buffer_row_offsets,
             scale,
             context,
-            cache_offsets=immut_tile_tensor_1d(
-                cache_offsets.ptr, cache_offsets.num_elements()
-            ),
+            cache_offsets=immut_tile_tensor_1d(cache_offsets),
         )
 
     dispatch_mask[
@@ -5108,10 +5104,7 @@ def _cross_attention_dispatch[
                 scale,
                 context,
                 Int(q_max_seq_len),
-                immut_tile_tensor_1d(
-                    kv_input_row_offsets.unsafe_ptr(),
-                    Int(kv_input_row_offsets.dim[0]()),
-                ),
+                immut_tile_tensor_1d(kv_input_row_offsets),
                 None,
             )
 

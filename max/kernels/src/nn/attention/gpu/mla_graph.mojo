@@ -945,10 +945,7 @@ def mla_prefill_branch_fp8[
             q_fp8_buf,
             row_major(seq_len, Idx[num_heads], Idx[q_head_dim]),
         )
-        var q_view = TileTensor(
-            q.as_imm().ptr.bitcast[BFloat16](),
-            row_major(seq_len, Idx[num_heads], Idx[q_head_dim]),
-        )
+        var q_view = q.as_imm().bitcast[.bfloat16]()
         convert_bf16_to_fp8_e4m3fn(q_view, q_fp8, ctx)
 
         var k_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
@@ -958,10 +955,7 @@ def mla_prefill_branch_fp8[
             k_fp8_buf,
             row_major((buffer_length, Idx[num_heads], Idx[qk_nope_head_dim])),
         )
-        var k_view = TileTensor(
-            k.as_imm().ptr.bitcast[BFloat16](),
-            row_major((buffer_length, Idx[num_heads], Idx[qk_nope_head_dim])),
-        )
+        var k_view = k.as_imm().bitcast[.bfloat16]()
         convert_bf16_to_fp8_e4m3fn(k_view, k_fp8, ctx)
 
         var v_fp8_buf = ctx.enqueue_create_buffer[.float8_e4m3fn](
@@ -971,10 +965,7 @@ def mla_prefill_branch_fp8[
             v_fp8_buf,
             row_major(buffer_length, Idx[num_heads], Idx[v_head_dim]),
         )
-        var v_view = TileTensor(
-            v.as_imm().ptr.bitcast[BFloat16](),
-            row_major(buffer_length, Idx[num_heads], Idx[v_head_dim]),
-        )
+        var v_view = v.as_imm().bitcast[.bfloat16]()
         convert_bf16_to_fp8_e4m3fn(v_view, v_fp8, ctx)
 
         generic_flare_mla_prefill_kv_cache_ragged[
@@ -1593,7 +1584,7 @@ def mla_decode_branch_fp8[
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_nope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # Then create a view of the mla_decode_input tensor that only contains the
@@ -1602,7 +1593,7 @@ def mla_decode_branch_fp8[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
-        ),
+        )
     )
 
     # Proceed with the fp8 batched matmul
@@ -1734,7 +1725,7 @@ def mla_decode_branch_fp8[
                     Idx[k_cache_dim],
                     Idx[1],
                 ),
-            ),
+            )
         )
         var raw_output_padded = raw_output.reshape(
             TileLayout(
@@ -1745,7 +1736,7 @@ def mla_decode_branch_fp8[
                     Idx[kv_latent_dim],
                     Idx[1],
                 ),
-            ),
+            )
         )
 
         # `topk_lengths` is the constant `index_topk`, so masking with it marks
@@ -1824,7 +1815,7 @@ def mla_decode_branch_fp8[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # Another batched matmul to project the raw output to the original space
@@ -1953,13 +1944,13 @@ def mla_prefill_branch_sparse_fp8[
         TileLayout(
             (seq_len, Idx[num_heads], Idx[qk_nope_head_dim]),
             (Idx[num_heads * q_head_dim], Idx[q_head_dim], Idx[1]),
-        ),
+        )
     )
     var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
-        ),
+        )
     )
     quantize_and_bmm_fp8_helper[
         m_scale_granularity=m_scale_granularity,
@@ -2033,7 +2024,7 @@ def mla_prefill_branch_sparse_fp8[
                     Idx[k_cache_dim],
                     Idx[1],
                 ),
-            ),
+            )
         )
         var raw_output_padded = raw_output.reshape(
             TileLayout(
@@ -2044,7 +2035,7 @@ def mla_prefill_branch_sparse_fp8[
                     Idx[kv_latent_dim],
                     Idx[1],
                 ),
-            ),
+            )
         )
         # `topk_lengths` is the constant `index_topk`, so derive each gathered
         # row's real length from its `-1` suffix; confined to this AMD arm.
@@ -2203,7 +2194,7 @@ def mla_prefill_branch_sparse_fp8[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
-        ),
+        )
     )
     quantize_and_bmm_fp8_helper[
         dtype=dtype,
@@ -3176,7 +3167,7 @@ def mla_decode_branch_bf16[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[qk_nope_head_dim]),
             (Idx[q_head_dim], Idx[num_heads * q_head_dim], Idx[1]),
-        ),
+        )
     )
 
     # Then create a view of the mla_decode_input tensor that only contains the
@@ -3185,7 +3176,7 @@ def mla_decode_branch_bf16[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
-        ),
+        )
     )
 
     _batched_matmul_gpu[transpose_b=True](
@@ -3375,7 +3366,7 @@ def mla_decode_branch_bf16[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
-        ),
+        )
     )
 
     _batched_matmul_gpu[transpose_b=True](output_t, raw_output_t, w_uv, ctx)
@@ -3477,13 +3468,13 @@ def mla_prefill_branch_sparse_bf16[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[qk_nope_head_dim]),
             (Idx[q_head_dim], Idx[num_heads * q_head_dim], Idx[1]),
-        ),
+        )
     )
     var mla_decode_input_nope = mla_decode_input.reshape(
         TileLayout(
             (Idx[num_heads], seq_len, Idx[kv_latent_dim]),
             (Idx[k_cache_dim], Idx[num_heads * k_cache_dim], Idx[1]),
-        ),
+        )
     )
     _batched_matmul_gpu[transpose_b=True](
         mla_decode_input_nope, q_nope_t, w_uk, ctx
@@ -3634,7 +3625,7 @@ def mla_prefill_branch_sparse_bf16[
         TileLayout(
             (Idx[num_heads], seq_len, Idx[v_head_dim]),
             (Idx[v_head_dim], Idx[num_heads * v_head_dim], Idx[1]),
-        ),
+        )
     )
     _batched_matmul_gpu[transpose_b=True](output_t, raw_output_t, w_uv, ctx)
 

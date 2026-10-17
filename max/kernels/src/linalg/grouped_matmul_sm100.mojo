@@ -498,7 +498,7 @@ def load_AB_cuda_core[
 
     # A tile [BM, BK]
     comptime a_sw = make_swizzle[a_type, a_swizzle]()
-    var a_smem_ptr = a_smem_tiles[stage].ptr
+    var a_smem = a_smem_tiles[stage]
     comptime a_rows_per_thread = BM // WARP_SIZE
     comptime a_tv = tl_col_major(Idx[WARP_SIZE], Idx[a_rows_per_thread])
 
@@ -524,13 +524,13 @@ def load_AB_cuda_core[
         comptime for k in range(BK):
             var smem_off = a_sw(m * Int32(BK) + Int32(k))
             comptime if k < K_actual:
-                a_smem_ptr[smem_off] = vec[k]
+                a_smem.raw_store(smem_off, vec[k])
             else:
-                a_smem_ptr[smem_off] = Scalar[a_type](0)
+                a_smem.raw_store(smem_off, Scalar[a_type](0))
 
     # B tile [BN, BK]
     comptime b_sw = make_swizzle[b_type, b_swizzle]()
-    var b_smem_ptr = b_smem_tiles[stage].ptr
+    var b_smem = b_smem_tiles[stage]
     comptime b_rows_per_thread = BN // WARP_SIZE
     comptime b_tv = tl_col_major(Idx[WARP_SIZE], Idx[b_rows_per_thread])
 
@@ -551,9 +551,9 @@ def load_AB_cuda_core[
         comptime for k in range(BK):
             var smem_off = b_sw(n * Int32(BK) + Int32(k))
             comptime if k < K_actual:
-                b_smem_ptr[smem_off] = vec[k]
+                b_smem.raw_store(smem_off, vec[k])
             else:
-                b_smem_ptr[smem_off] = Scalar[b_type](0)
+                b_smem.raw_store(smem_off, Scalar[b_type](0))
 
     # fence.proxy.async makes smem stores visible through the
     # mbarrier async proxy before signaling completion.

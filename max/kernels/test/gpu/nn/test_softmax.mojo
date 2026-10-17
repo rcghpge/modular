@@ -344,12 +344,12 @@ def test_gpu_softmax_large_vocab[test_type: DType](ctx: DeviceContext) raises:
     var out_ref = HostDeviceTileTensor[ref_type](layout, ctx)
     var out_test = HostDeviceTileTensor[test_type](layout, ctx)
 
-    var in_host_test = in_test.host_tensor().unsafe_ptr()
-    var in_host_ref = in_ref.host_tensor().unsafe_ptr()
+    var in_host_test = in_test.host_tensor()
+    var in_host_ref = in_ref.host_tensor()
     for i in range(length):
         var v = random_float64(-3, 3).cast[.float32]().cast[test_type]()
-        in_host_test[i] = v
-        in_host_ref[i] = v.cast[ref_type]()
+        in_host_test.raw_store(i, v)
+        in_host_ref.raw_store(i, v.cast[ref_type]())
 
     in_ref.to_device()
     in_test.to_device()
@@ -392,11 +392,11 @@ def test_gpu_softmax_large_vocab[test_type: DType](ctx: DeviceContext) raises:
 
     out_ref.to_host()
     out_test.to_host()
-    var out_host_ref = out_ref.host_tensor().unsafe_ptr()
-    var out_host_test = out_test.host_tensor().unsafe_ptr()
+    var out_host_ref = out_ref.host_tensor()
+    var out_host_test = out_test.host_tensor()
     for i in range(length):
-        var ref_val = out_host_ref[i]
-        var test_val = out_host_test[i].cast[ref_type]()
+        var ref_val = out_host_ref.raw_load(i)
+        var test_val = out_host_test.raw_load(i).cast[ref_type]()
         assert_almost_equal(ref_val, test_val, atol=1e-2)
 
 

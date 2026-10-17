@@ -1198,7 +1198,12 @@ def _softmax_gpu[
                         simd_width if use_vectorized else 1
                     )
                     var null_temp_arr = Optional[
-                        UnsafePointer[Float32, ImmutAnyOrigin]
+                        TileTensor[
+                            .float32,
+                            RowMajorLayout[Int64],
+                            ImmutAnyOrigin,
+                            Engine=DefaultEngine[element_width=1],
+                        ]
                     ]()
 
                     if num_splits > 1:
@@ -1411,6 +1416,8 @@ def _softmax_temperature_kernel[
     OutputLayoutType: TensorLayout,
     output_origin: MutOrigin,
     OutputEngine: TensorEngine,
+    TempLayoutType: TensorLayout = RowMajorLayout[Int64],
+    TempEngine: TensorEngine = DefaultEngine[element_width=1],
     accum_type: DType = get_accum_type[dtype](),
 ](
     shape: IndexList[rank],
@@ -1419,7 +1426,9 @@ def _softmax_temperature_kernel[
     ],
     temperature: Float32,
     temperature_arr: Optional[
-        UnsafePointer[Scalar[temp_dtype], ImmutAnyOrigin]
+        TileTensor[
+            temp_dtype, TempLayoutType, ImmutAnyOrigin, Engine=TempEngine
+        ]
     ],
     input_fn: InputFnType,
 ):
@@ -1462,7 +1471,9 @@ def _softmax_temperature_kernel[
 
             var temp = _temperature.cast[accum_type]()
             if case .Some(temperature_arr) = temperature_arr:
-                temp = temperature_arr[row_idx].cast[accum_type]()
+                temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
+                    accum_type
+                ]()
             # Clamp to prevent division by zero on greedy (T=0) rows.
             temp = max(temp, Scalar[accum_type](1e-6))
             var inv_temp = Scalar[accum_type](1) / temp
@@ -1557,12 +1568,16 @@ def _softmax_split_partial_kernel[
     dtype: DType,
     temp_dtype: DType,
     rank: Int,
+    TempLayoutType: TensorLayout = RowMajorLayout[Int64],
+    TempEngine: TensorEngine = DefaultEngine[element_width=1],
     accum_type: DType = get_accum_type[dtype](),
 ](
     shape: IndexList[rank],
     temperature: Scalar[temp_dtype],
     temperature_arr: Optional[
-        UnsafePointer[Scalar[temp_dtype], ImmutAnyOrigin]
+        TileTensor[
+            temp_dtype, TempLayoutType, ImmutAnyOrigin, Engine=TempEngine
+        ]
     ],
     num_splits_dev: Int32,
     partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
@@ -1601,7 +1616,9 @@ def _softmax_split_partial_kernel[
         # Every block owning this row must read the same temperature.
         var temp = temperature.cast[accum_type]()
         if case .Some(temperature_arr) = temperature_arr:
-            temp = temperature_arr[row_idx].cast[accum_type]()
+            temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
+                accum_type
+            ]()
         temp = max(temp, Scalar[accum_type](1e-6))
         var inv_temp = Scalar[accum_type](1) / temp
 
@@ -1662,6 +1679,8 @@ def _softmax_split_combine_kernel[
     OutputLayoutType: TensorLayout,
     output_origin: MutOrigin,
     OutputEngine: TensorEngine,
+    TempLayoutType: TensorLayout = RowMajorLayout[Int64],
+    TempEngine: TensorEngine = DefaultEngine[element_width=1],
     accum_type: DType = get_accum_type[dtype](),
 ](
     shape: IndexList[rank],
@@ -1670,7 +1689,9 @@ def _softmax_split_combine_kernel[
     ],
     temperature: Scalar[temp_dtype],
     temperature_arr: Optional[
-        UnsafePointer[Scalar[temp_dtype], ImmutAnyOrigin]
+        TileTensor[
+            temp_dtype, TempLayoutType, ImmutAnyOrigin, Engine=TempEngine
+        ]
     ],
     num_splits_dev: Int32,
     partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
@@ -1706,7 +1727,9 @@ def _softmax_split_combine_kernel[
 
         var temp = temperature.cast[accum_type]()
         if case .Some(temperature_arr) = temperature_arr:
-            temp = temperature_arr[row_idx].cast[accum_type]()
+            temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
+                accum_type
+            ]()
         temp = max(temp, Scalar[accum_type](1e-6))
         var inv_temp = Scalar[accum_type](1) / temp
 
@@ -1795,11 +1818,6 @@ def softmax_with_temperature[
     if batch_size == 0 or d == 0:
         return
 
-    # Extract raw pointer for the kernel (null if not provided).
-    var temp_ptr = Optional[UnsafePointer[Scalar[temp_dtype], ImmutAnyOrigin]]()
-    if case .Some(temperature_arr) = temperature_arr:
-        temp_ptr = temperature_arr.ptr
-
     comptime BLOCK_SIZE = 256
     comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     var sm_count = ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT)
@@ -1825,12 +1843,14 @@ def softmax_with_temperature[
         output.LayoutType,
         output.origin,
         output.Engine,
+        TempLayoutType,
+        TempEngine,
     ]
     ctx.enqueue_function[kernel](
         IndexList[2](batch_size, d),
         output,
         temperature.cast[.float32](),
-        temp_ptr,
+        temperature_arr,
         host_arg=input_load_fn,
         grid_dim=num_blocks,
         block_dim=BLOCK_SIZE,

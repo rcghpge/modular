@@ -660,10 +660,12 @@ def multistage_qgemm_kernel[
         row_major[N // 64, K * 64 // pack_factor]()
     )
 
-    var b_scales_ptr = b_packed.ptr + N * K // 2
-    var scales = TileTensor(
-        b_scales_ptr.bitcast[Scalar[scales_type]](),
-        row_major[K // group_size, N](),
+    comptime packed_bytes = b_layout.static_product
+    var scales = (
+        b_packed.reshape(row_major[packed_bytes]())
+        .slice[N * K // 2 : packed_bytes]()
+        .bitcast[scales_type]()
+        .reshape(row_major[K // group_size, N]())
     )
 
     comptime num_warp_k_partitions = config.num_warp_k_partitions
@@ -1147,10 +1149,12 @@ def repack_Q4_0_for_sm8x[
         row_major[N // 64, K * 64 // pack_factor]()
     )
 
-    var b_scales_ptr = q_packed_weight.ptr + N * K // 2
-    var repack_scales = TileTensor(
-        b_scales_ptr.bitcast[Scalar[scales_type]](),
-        row_major[K_groups, N](),
+    comptime packed_bytes = repack_layout.static_product
+    var repack_scales = (
+        q_packed_weight.reshape(row_major[packed_bytes]())
+        .slice[N * K // 2 : packed_bytes]()
+        .bitcast[scales_type]()
+        .reshape(row_major[K_groups, N]())
     )
 
     # We keep 128x2 Q4_0 GGUF blocks in smem
@@ -1302,19 +1306,24 @@ def repack_GPTQ_for_sm8x[
     var raw_weights = (
         in_tensor.bitcast[.uint32]().reshape(row_major[uint_K, N]()).transpose()
     )
-    var raw_scales_ptr = in_tensor.ptr + N * K // 2
-    var raw_scales = TileTensor(
-        raw_scales_ptr.bitcast[Scalar[raw_scales_type]](),
-        row_major[K_groups, N](),
-    ).transpose()
+    comptime in_bytes = in_layout.static_product
+    var raw_scales = (
+        in_tensor.reshape(row_major[in_bytes]())
+        .slice[N * K // 2 : in_bytes]()
+        .bitcast[raw_scales_type]()
+        .reshape(row_major[K_groups, N]())
+        .transpose()
+    )
 
     var repack_weights = out_tensor.bitcast[.uint32]().reshape(
         row_major[N // 64, K * 64 // pack_factor]()
     )
-    var repacked_scales_ptr = out_tensor.ptr + N * K // 2
-    var repack_scales = TileTensor(
-        repacked_scales_ptr.bitcast[Scalar[scales_type]](),
-        row_major[K_groups, N](),
+    comptime out_bytes = out_layout.static_product
+    var repack_scales = (
+        out_tensor.reshape(row_major[out_bytes]())
+        .slice[N * K // 2 : out_bytes]()
+        .bitcast[scales_type]()
+        .reshape(row_major[K_groups, N]())
     )
 
     # We keep 128x2 GPTQ blocks in smem
@@ -2364,9 +2373,7 @@ def gpu_qint4_repack_GPTQ[
             False,
         ]
 
-        var empty_permutation = TileTensor(
-            b.ptr.bitcast[Int32](), row_major(Int(0))
-        )
+        var empty_permutation = b.bitcast[.int32]().reshape(row_major(Int(0)))
 
         cuda_ctx.enqueue_function[repack](
             b,

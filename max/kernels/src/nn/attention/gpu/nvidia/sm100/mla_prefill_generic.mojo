@@ -2811,9 +2811,7 @@ def _mla_prefill_sm100_valid_length_dispatch[
     comptime SinkType = NullPointer[output_dtype]
     comptime KVRowOffsetsType = NullPointer[.uint32]
     comptime PartitionType = NoPartition[.float32]
-    var valid_len: ValidLengthType = {
-        rebind[UnsafePointer[UInt32, ImmutAnyOrigin]](valid_length.ptr)
-    }
+    var valid_len: ValidLengthType = {valid_length}
 
     # Launch the kernel built from `cfg` (the 2Q `fa4_config` or its 1Q
     # variant). All TMA ops were created by the caller from `fa4_config`;

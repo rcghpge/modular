@@ -425,14 +425,14 @@ def execute_dual_cache_fused_mxfp6[
     var iq_maxdiff = Float32(0.0)
     for m in range(total_length):
         for c in range(q_dim):
-            var a = fused_q_host.ptr[m * q_dim + c].cast[.float32]()
-            var b = q_host.ptr[m * q_dim + c].cast[.float32]()
+            var a = fused_q_host[m, c].cast[.float32]()
+            var b = q_host[m, c].cast[.float32]()
             if not isclose(a, b, atol=Float64(atol_f), rtol=Float64(rtol_f)):
                 q_mm += 1
             q_maxdiff = max(q_maxdiff, abs(a - b))
         for c in range(iq_dim):
-            var a = fused_iq_host.ptr[m * iq_dim + c].cast[.float32]()
-            var b = iq_host.ptr[m * iq_dim + c].cast[.float32]()
+            var a = fused_iq_host[m, c].cast[.float32]()
+            var b = iq_host[m, c].cast[.float32]()
             if not isclose(a, b, atol=Float64(atol_f), rtol=Float64(rtol_f)):
                 iq_mm += 1
             iq_maxdiff = max(iq_maxdiff, abs(a - b))
@@ -458,8 +458,8 @@ def execute_dual_cache_fused_mxfp6[
     var main_mismatches = 0
     var main_max_diff = Float32(0.0)
     for i in range(main_n):
-        var a = main_host.ptr[i].cast[.float32]()
-        var b = main_ref_host.ptr[i].cast[.float32]()
+        var a = main_host.raw_load(i).cast[.float32]()
+        var b = main_ref_host.raw_load(i).cast[.float32]()
         if not isclose(a, b, atol=Float64(atol_f), rtol=Float64(rtol_f)):
             main_mismatches += 1
         main_max_diff = max(main_max_diff, abs(a - b))
@@ -468,8 +468,8 @@ def execute_dual_cache_fused_mxfp6[
     var index_mismatches = 0
     var index_max_diff = Float32(0.0)
     for i in range(index_n):
-        var a = index_host.ptr[i].cast[.float32]()
-        var b = index_ref_host.ptr[i].cast[.float32]()
+        var a = index_host.raw_load(i).cast[.float32]()
+        var b = index_ref_host.raw_load(i).cast[.float32]()
         if not isclose(a, b, atol=Float64(atol_f), rtol=Float64(rtol_f)):
             index_mismatches += 1
         index_max_diff = max(index_max_diff, abs(a - b))

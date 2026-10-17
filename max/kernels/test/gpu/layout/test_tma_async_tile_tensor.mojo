@@ -231,8 +231,7 @@ def test_tma_store_rank[
         row_major(Coord[*global_shape.element_types]()), ctx
     )
     var initial_host = dst.host_tensor()
-    for i in range(_idx_product[global_shape]()):
-        initial_host.ptr[i] = -1
+    _ = initial_host.fill(-1)
     dst.to_device()
     var tma = create_tensor_tile[
         tile_shape,
@@ -258,7 +257,7 @@ def test_tma_store_rank[
             local[dim] = value - (4 if dim == rank - 1 else 1)
             inside = inside and (0 <= local[dim] < Int(tile_shape[dim].value()))
         if not inside:
-            assert_equal(host.ptr[linear], Float32(-1))
+            assert_equal(host.raw_load(linear), Float32(-1))
             continue
 
         var box = 0
@@ -273,7 +272,7 @@ def test_tma_store_rank[
                 desc_shape[i].value()
             )
         assert_equal(
-            host.ptr[linear],
+            host.raw_load(linear),
             Float32(box * _idx_product[desc_shape]() + inner + 1),
         )
 

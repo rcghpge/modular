@@ -1279,12 +1279,8 @@ def flare_mla_decoding_dispatch[
             # one CTA per row. At S=1 == num_heads, byte-identical.
             comptime _split_k_rows = num_heads * q_seq_len
 
-            var q_device = DeviceBuffer[q.dtype](
-                ctx, q.ptr, q.num_elements(), owning=False
-            )
-            var output_device = DeviceBuffer[output.dtype](
-                ctx, output.ptr, output.num_elements(), owning=False
-            )
+            var q_device = q.to_device_buffer(ctx)
+            var output_device = output.to_device_buffer(ctx)
 
             if num_partitions_value == 1:
                 # Single-partition fast path — no intermediate buffers, no reduce.
@@ -3595,12 +3591,8 @@ def flare_mla_prefill_dispatch[
             " bfloat16 and float8_e4m3fn"
         )
 
-        var q_device = DeviceBuffer[q.dtype](
-            ctx, q.ptr, q.num_elements(), owning=False
-        )
-        var output_device = DeviceBuffer[output.dtype](
-            ctx, output.ptr, output.num_elements(), owning=False
-        )
+        var q_device = q.to_device_buffer(ctx)
+        var output_device = output.to_device_buffer(ctx)
 
         comptime kernel = mla_prefill[
             config.dtype,

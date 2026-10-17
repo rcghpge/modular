@@ -352,7 +352,6 @@ def radix_sort_pairs_kernel[
     # Initialize counts[NUM_BUCKETS]
     var counts_stack = Array[Int32, NUM_BUCKETS](fill=0)
     var counts_buf = TileTensor(counts_stack, row_major[NUM_BUCKETS]())
-    var counts = counts_buf.ptr
 
     # Process elements and compute counts for each thread
     for index in range(tid * elems_per_thread, (tid + 1) * elems_per_thread):
@@ -363,11 +362,11 @@ def radix_sort_pairs_kernel[
             var radix = (normalized_key >> KeyType(current_bit)) & KeyType(
                 NUM_BUCKETS - 1
             )
-            counts[radix] += 1
+            counts_buf[radix] += 1
 
     # Store counts[NUM_BUCKETS] per thread into shared memory s_counts
     comptime for i in range(NUM_BUCKETS):
-        s_counts[tid * NUM_BUCKETS + i] = counts[i]
+        s_counts[tid * NUM_BUCKETS + i] = counts_buf[i]
     barrier()
 
     # Compute total_counts[NUM_BUCKETS] by summing counts[NUM_BUCKETS] across threads
@@ -440,7 +439,6 @@ def radix_sort_pairs_kernel[
     var local_offsets_buf = TileTensor(
         local_offsets_stack, row_major[NUM_BUCKETS]()
     )
-    var local_offsets = local_offsets_buf.ptr
 
     # Now, each thread processes its elements, computes destination index, write to output
     for index in range(tid * elems_per_thread, (tid + 1) * elems_per_thread):
@@ -460,13 +458,13 @@ def radix_sort_pairs_kernel[
                 global_offset = Int(
                     total_offsets[radix]
                     + s_thread_offsets[tid * NUM_BUCKETS + radix]
-                    + local_offsets[radix]
+                    + local_offsets_buf[radix]
                 )
             else:
                 global_offset = Int(
                     total_offsets_descending[radix]
                     + s_thread_offsets[tid * NUM_BUCKETS + radix]
-                    + local_offsets[radix]
+                    + local_offsets_buf[radix]
                 )
 
             output_keys[global_offset] = key
@@ -476,7 +474,7 @@ def radix_sort_pairs_kernel[
             else:
                 output_key_ids[global_offset] = input_key_ids[index]
 
-            local_offsets[radix] += 1
+            local_offsets_buf[radix] += 1
 
 
 struct DoubleBuffer[dtype: DType](ImplicitlyCopyable):

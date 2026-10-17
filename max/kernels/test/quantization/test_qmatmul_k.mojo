@@ -542,12 +542,14 @@ def test_case[qgemm: QuantizedGemm](M: Int, N: Int, K: Int) raises:
 
     var mismatch = False
     for i in range(ctx.c.num_elements()):
-        if not isclose(ctx.c.ptr[i], ctx.c_golden.ptr[i], atol=1e-4, rtol=1e-4):
+        if not isclose(
+            ctx.c.raw_load(i), ctx.c_golden.raw_load(i), atol=1e-4, rtol=1e-4
+        ):
             print(
                 "MISMATCH",
                 divmod(i, N),
-                ctx.c.ptr[i],
-                ctx.c_golden.ptr[i],
+                ctx.c.raw_load(i),
+                ctx.c_golden.raw_load(i),
             )
             mismatch = True
             break

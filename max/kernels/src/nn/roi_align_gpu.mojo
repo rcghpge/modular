@@ -126,12 +126,6 @@ def roi_align_kernel[
             else:
                 pool_val = min_or_neg_inf[dtype]()
 
-            var in_base = input_tensor.ptr + Int(
-                input_tensor.layout(Coord(roi_batch_idx, 0, 0, c))
-            )
-            var in_stride_h = Int(input_tensor.layout.stride[1]().value())
-            var in_stride_w = Int(input_tensor.layout.stride[2]().value())
-
             for iy in range(roi_bin_grid_h):
                 for ix in range(roi_bin_grid_w):
                     # Map (ph, pw, iy, ix) into the input plane.
@@ -173,67 +167,42 @@ def roi_align_kernel[
                     var w3 = ly * hx
                     var w4 = ly * lx
 
+                    var v1 = input_tensor.load[width=1](
+                        Coord(roi_batch_idx, y_low, x_low, c)
+                    )
+                    var v2 = input_tensor.load[width=1](
+                        Coord(roi_batch_idx, y_low, x_high, c)
+                    )
+                    var v3 = input_tensor.load[width=1](
+                        Coord(roi_batch_idx, y_high, x_low, c)
+                    )
+                    var v4 = input_tensor.load[width=1](
+                        Coord(roi_batch_idx, y_high, x_high, c)
+                    )
+
                     comptime if mode == "AVG":
-                        pool_val = pool_val + (
-                            Scalar[dtype](w1)
-                            * in_base[y_low * in_stride_h + x_low * in_stride_w]
-                        )
-                        pool_val = pool_val + (
-                            Scalar[dtype](w2)
-                            * in_base[
-                                y_low * in_stride_h + x_high * in_stride_w
-                            ]
-                        )
-                        pool_val = pool_val + (
-                            Scalar[dtype](w3)
-                            * in_base[
-                                y_high * in_stride_h + x_low * in_stride_w
-                            ]
-                        )
-                        pool_val = pool_val + (
-                            Scalar[dtype](w4)
-                            * in_base[
-                                y_high * in_stride_h + x_high * in_stride_w
-                            ]
-                        )
+                        pool_val = pool_val + (Scalar[dtype](w1) * v1)
+                        pool_val = pool_val + (Scalar[dtype](w2) * v2)
+                        pool_val = pool_val + (Scalar[dtype](w3) * v3)
+                        pool_val = pool_val + (Scalar[dtype](w4) * v4)
                     else:
                         pool_val = max(
                             pool_val,
                             max(
                                 max(
-                                    Scalar[dtype](w1)
-                                    * in_base[
-                                        y_low * in_stride_h
-                                        + x_low * in_stride_w
-                                    ],
-                                    Scalar[dtype](w2)
-                                    * in_base[
-                                        y_low * in_stride_h
-                                        + x_high * in_stride_w
-                                    ],
+                                    Scalar[dtype](w1) * v1,
+                                    Scalar[dtype](w2) * v2,
                                 ),
                                 max(
-                                    Scalar[dtype](w3)
-                                    * in_base[
-                                        y_high * in_stride_h
-                                        + x_low * in_stride_w
-                                    ],
-                                    Scalar[dtype](w4)
-                                    * in_base[
-                                        y_high * in_stride_h
-                                        + x_high * in_stride_w
-                                    ],
+                                    Scalar[dtype](w3) * v3,
+                                    Scalar[dtype](w4) * v4,
                                 ),
                             ),
                         )
 
-            var out_ptr = output_tensor.ptr + Int(
-                output_tensor.layout(Coord(ri, ph, pw, c))
-            )
             comptime if mode == "AVG":
-                out_ptr[0] = pool_val / Scalar[dtype](pool_elemn_num)
-            else:
-                out_ptr[0] = pool_val
+                pool_val = pool_val / Scalar[dtype](pool_elemn_num)
+            output_tensor.store[width=1](Coord(ri, ph, pw, c), pool_val)
 
 
 def _roi_align_impl[

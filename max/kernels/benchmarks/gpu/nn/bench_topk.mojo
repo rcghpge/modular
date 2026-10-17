@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.math import ceildiv, cos, iota, log, pi, sin
+from std.math import ceildiv, cos, log, pi, sin
 from std.random import random_float64
 
 from max.algorithm.reduction import max as reduce_max
@@ -26,7 +26,7 @@ from std.benchmark import (
 from max.gpu.host import DeviceContext, default_accelerator
 from internal_utils import arg_parse
 
-from layout import Coord, Idx, TileTensor, coord_to_index_list, row_major
+from layout import Coord, Idx, TileTensor, row_major
 
 from nn.topk import _top_k_cpu, _topk_gpu, _topk_topp_sampling_fi, topk_gpu
 from nn.sampling import topk_topp_masked_probs, topk_topp_sampling_from_prob
@@ -815,10 +815,8 @@ def fill_constant[
 def fill_iota[
     rank: Int, dtype: DType
 ](mut buf: TileTensor[mut=True, dtype, ...]):
-    iota(
-        buf.ptr,
-        coord_to_index_list(buf.layout.shape_coord()).flattened_length(),
-    )
+    for i in range(buf.num_elements()):
+        buf.raw_store(i, Scalar[dtype](i))
 
 
 def fill_buffer[

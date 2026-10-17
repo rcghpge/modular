@@ -175,10 +175,10 @@ def execute_oob_canary[
     for i in range(page_pos, len(block_perm)):
         var offset = block_perm[i] * block_size_elements
         for j in range(block_size_elements):
-            kv_block_paged_host.unsafe_ptr()[offset + j] = inf_val
+            kv_block_paged_host.raw_store(offset + j, inf_val)
     var sentinel_offset = sentinel_block_idx * block_size_elements
     for j in range(block_size_elements):
-        kv_block_paged_host.unsafe_ptr()[sentinel_offset + j] = inf_val
+        kv_block_paged_host.raw_store(sentinel_offset + j, inf_val)
     kv_block_paged.to_device()
     paged_lut.to_device()
 

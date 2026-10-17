@@ -329,8 +329,8 @@ def test_combine[depth: Int, mode: Int](ctx: DeviceContext) raises:
     var l_host = l_in.host_tensor()
 
     # O ~ N(0,1); l = |N(0,1)| + 1 (strictly positive, it is a sum of exp).
-    randn[ACC_TYPE](O_host.unsafe_ptr(), NUM_PARTITIONS * ROWS * depth)
-    randn[ACC_TYPE](l_host.unsafe_ptr(), NUM_PARTITIONS * ROWS)
+    randn[ACC_TYPE](O_host.as_span())
+    randn[ACC_TYPE](l_host.as_span())
     for p in range(NUM_PARTITIONS):
         for r in range(ROWS):
             l_host[p, r] = abs(l_host[p, r]) + 1.0

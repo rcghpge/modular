@@ -146,7 +146,7 @@ def _verify_gathered_rows[
     dtype: DType, row_width: Int
 ](
     h_out: ImmPointer[Scalar[dtype], _],
-    h_source: ImmPointer[Scalar[dtype], _],
+    h_source: ImmSpan[Scalar[dtype], _],
     h_indices: ImmPointer[Int32, _],
     num_rows: Int,
 ) raises:
@@ -391,7 +391,7 @@ def test_raw_smoke[
     h_indices[2] = r2
     h_indices[3] = r3
     _verify_gathered_rows[dtype, row_width](
-        h_out.unsafe_ptr(), h_data.unsafe_ptr(), h_indices.unsafe_ptr(), 4
+        h_out.unsafe_ptr(), h_data.as_span(), h_indices.unsafe_ptr(), 4
     )
     print("  PASSED: all 4 gathered rows match expected data")
 
@@ -530,7 +530,7 @@ def _run_paged_gather4_test[
     # which equals phys_row * row_width + col.
     _verify_gathered_rows[dtype, row_width](
         h_out.unsafe_ptr(),
-        blocks_host.unsafe_ptr(),
+        blocks_host.as_span(),
         h_indices.unsafe_ptr(),
         topk,
     )
@@ -699,7 +699,7 @@ def test_continuous_kv_cache[
 
     _verify_gathered_rows[dtype, row_width](
         h_out.unsafe_ptr(),
-        blocks_host.unsafe_ptr(),
+        blocks_host.as_span(),
         h_indices.unsafe_ptr(),
         topk,
     )
@@ -784,7 +784,7 @@ def test_device_buffer_overload[
     ctx.synchronize()
 
     _verify_gathered_rows[dtype, row_width](
-        h_out.unsafe_ptr(), h_data.unsafe_ptr(), h_indices.unsafe_ptr(), topk
+        h_out.unsafe_ptr(), h_data.as_span(), h_indices.unsafe_ptr(), topk
     )
     print("  PASSED: all", topk, "rows from DeviceBuffer overload match")
 
@@ -982,7 +982,7 @@ def test_wide_gather4_device_buffer[
 
     # Verify: output row i should match source row h_indices[i].
     _verify_gathered_rows[dtype, tile_width](
-        h_out.unsafe_ptr(), h_data.unsafe_ptr(), h_indices.unsafe_ptr(), topk
+        h_out.unsafe_ptr(), h_data.as_span(), h_indices.unsafe_ptr(), topk
     )
     print(
         "  PASSED: all",
@@ -1114,7 +1114,7 @@ def test_wide_gather4_paged_kv[
 
     _verify_gathered_rows[dtype, tile_width](
         h_out.unsafe_ptr(),
-        blocks_host.unsafe_ptr(),
+        blocks_host.as_span(),
         h_indices.unsafe_ptr(),
         topk,
     )
@@ -1246,7 +1246,7 @@ def test_wide_gather4_continuous_kv[
 
     _verify_gathered_rows[dtype, tile_width](
         h_out.unsafe_ptr(),
-        blocks_host.unsafe_ptr(),
+        blocks_host.as_span(),
         h_indices.unsafe_ptr(),
         topk,
     )
@@ -1383,7 +1383,7 @@ def test_wide_gather4_mha_operand[
 
     _verify_gathered_rows[dtype, tile_width](
         h_out.unsafe_ptr(),
-        blocks_host.unsafe_ptr(),
+        blocks_host.as_span(),
         h_indices.unsafe_ptr(),
         topk,
     )

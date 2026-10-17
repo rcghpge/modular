@@ -117,7 +117,7 @@ def test_kv_cache_radd[
     )
     var a_host = a.host_tensor()
     for i in range(a_host.num_elements()):
-        a_host.unsafe_ptr().unsafe_store(i, Scalar[dtype](i))
+        a_host.raw_store(i, Scalar[dtype](i))
     a.to_device()
 
     var layer_idx = 1

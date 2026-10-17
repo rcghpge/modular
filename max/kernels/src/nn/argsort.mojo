@@ -148,9 +148,6 @@ def _bitonic_local_sort_kernel[
     comptime BLOCK_SIZE = 256
     var tid = thread_idx.x
     var gid: Int = block_idx.x * BLOCK_SIZE + tid
-    var vals = input_arg.ptr
-    var idxs = indices_arg.ptr
-
     var shared_vals = unsafe_stack_allocation[
         BLOCK_SIZE,
         Scalar[input_dtype],
@@ -163,8 +160,8 @@ def _bitonic_local_sort_kernel[
     ]()
 
     if gid < _n_arg:
-        shared_vals.unsafe_store(tid, vals.unsafe_load(gid))
-        shared_idxs.unsafe_store(tid, idxs.unsafe_load(gid))
+        shared_vals.unsafe_store(tid, input_arg.raw_load(gid))
+        shared_idxs.unsafe_store(tid, indices_arg.raw_load(gid))
     else:
         shared_vals.unsafe_store(tid, _sentinel_val[input_dtype, ascending]())
         shared_idxs.unsafe_store(tid, Scalar[indices_dtype](-1))
@@ -200,8 +197,8 @@ def _bitonic_local_sort_kernel[
 
     barrier()
     if gid < _n_arg:
-        vals.unsafe_store(gid, shared_vals.unsafe_load(tid))
-        idxs.unsafe_store(gid, shared_idxs.unsafe_load(tid))
+        input_arg.raw_store(gid, shared_vals.unsafe_load(tid))
+        indices_arg.raw_store(gid, shared_idxs.unsafe_load(tid))
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](256))
@@ -244,9 +241,6 @@ def _bitonic_merge_local_kernel[
     comptime BLOCK_SIZE = 256
     var tid = thread_idx.x
     var gid: Int = block_idx.x * BLOCK_SIZE + tid
-    var vals = input_arg.ptr
-    var idxs = indices_arg.ptr
-
     var shared_vals = unsafe_stack_allocation[
         BLOCK_SIZE,
         Scalar[input_dtype],
@@ -258,8 +252,8 @@ def _bitonic_merge_local_kernel[
         address_space=.SHARED,
     ]()
 
-    shared_vals.unsafe_store(tid, vals.unsafe_load(gid))
-    shared_idxs.unsafe_store(tid, idxs.unsafe_load(gid))
+    shared_vals.unsafe_store(tid, input_arg.raw_load(gid))
+    shared_idxs.unsafe_store(tid, indices_arg.raw_load(gid))
 
     var j = BLOCK_SIZE >> 1
     while j > 0:
@@ -285,8 +279,8 @@ def _bitonic_merge_local_kernel[
         j >>= 1
 
     barrier()
-    vals.unsafe_store(gid, shared_vals.unsafe_load(tid))
-    idxs.unsafe_store(gid, shared_idxs.unsafe_load(tid))
+    input_arg.raw_store(gid, shared_vals.unsafe_load(tid))
+    indices_arg.raw_store(gid, shared_idxs.unsafe_load(tid))
 
 
 def _argsort_gpu_impl[

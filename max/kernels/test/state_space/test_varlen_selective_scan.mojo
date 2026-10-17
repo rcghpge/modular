@@ -242,11 +242,7 @@ def run_varlen_selective_scan_fwd[
     var has_nonzero = False
     var output_size = dim * total_length
     for i in range(output_size):
-        var value = (
-            z_buf.unsafe_ptr()
-            .load(i) if has_z else output_buf.unsafe_ptr()
-            .load(i)
-        )
+        var value = z_buf.raw_load(i) if has_z else output_buf.raw_load(i)
         if abs(Float32(value)) > 1e-6:
             has_nonzero = True
             break

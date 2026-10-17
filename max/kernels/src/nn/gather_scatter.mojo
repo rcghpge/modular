@@ -468,12 +468,10 @@ def gather[
 
     comptime prefetch_offset = 12  # TODO: search
 
-    var end_indices_ptr = indices.ptr.unsafe_offset(indices.num_elements())
-
     @inline(.always)
     def prefetch_fn(
         _input_coords: Coord, indices_coords: Coord
-    ) {var end_indices_ptr, var indices, var input}:
+    ) {var indices, var input}:
         # `input_coords` is written below; arguments are immutable.
         var input_coords = _input_coords
         comptime assert indices_coords.rank == indices.rank
@@ -489,18 +487,20 @@ def gather[
             and indices.Engine == DefaultEngine[element_width=1]
             and input.Engine == DefaultEngine[element_width=1]
         ):
-            var indices_ptr = indices.ptr_at_offset(indices_coords)
-            var indices_remaining = (
-                Int(end_indices_ptr) - Int(indices_ptr)
-            ) // size_of[indices_type]()
+            var indices_offset = Int(
+                indices.layout[linear_idx_type=indices.linear_idx_type](
+                    indices_coords
+                )
+            )
+            var indices_remaining = indices.num_elements() - indices_offset
             # assumes that indices are laid out in row major order
-            var next_idx_ptr = indices_ptr.unsafe_offset(
-                min(indices_remaining - 1, prefetch_offset)
+            var next_idx = indices.raw_load(
+                indices_offset + min(indices_remaining - 1, prefetch_offset)
             )
             input_coords.replace_dynamic[axis](
                 Int64(
                     _unsafe_normalize_neg_index(
-                        next_idx_ptr.unsafe_load(),
+                        next_idx,
                         Int(input.dim[axis]()),
                     )
                 )

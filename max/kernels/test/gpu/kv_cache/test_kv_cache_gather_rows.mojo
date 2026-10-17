@@ -76,7 +76,7 @@ def run_case[
     )
     var blocks_host = blocks.host_tensor()
     for i in range(blocks_host.num_elements()):
-        blocks_host.unsafe_ptr().unsafe_store(i, Scalar[dtype](randn_float64()))
+        blocks_host.raw_store(i, Scalar[dtype](randn_float64()))
     blocks.to_device()
 
     var offsets = HostDeviceTileTensor[.uint32](

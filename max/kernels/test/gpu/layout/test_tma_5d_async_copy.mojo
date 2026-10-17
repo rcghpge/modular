@@ -288,7 +288,9 @@ def test_tma_5d_load_row_major[
                                             for i in range(desc_tile_size):
                                                 var desc_idx = swizzle(i)
                                                 assert_equal(
-                                                    desc_tile.ptr[desc_idx],
+                                                    desc_tile.raw_load(
+                                                        desc_idx
+                                                    ),
                                                     dest_ptr[i],
                                                 )
 

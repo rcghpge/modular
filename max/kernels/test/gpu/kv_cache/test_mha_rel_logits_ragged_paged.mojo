@@ -173,10 +173,10 @@ def execute_rel_logits_flash_attention_test[
 
     test_output.to_host()
     reference_output.to_host()
-    var actual = test_output.host_tensor().unsafe_ptr()
-    var expected = reference_output.host_tensor().unsafe_ptr()
+    var actual = test_output.host_tensor()
+    var expected = reference_output.host_tensor()
     for i in range(total_length * num_q_heads * head_size):
-        assert_almost_equal(actual[i], expected[i], atol=0.06)
+        assert_almost_equal(actual.raw_load(i), expected.raw_load(i), atol=0.06)
 
     print("PASSED [", label, "]", sep="")
 

@@ -2012,9 +2012,7 @@ def _mla_prefill_sm100_valid_length_dispatch[
     comptime SinkType = NullPointer[output_dtype]
     comptime KVRowOffsetsType = NullPointer[.uint32]
     comptime PartitionType = NoPartition[.float32]
-    var valid_len: ValidLengthType = {
-        rebind[UnsafePointer[UInt32, ImmutAnyOrigin]](valid_length.ptr)
-    }
+    var valid_len: ValidLengthType = {valid_length}
 
     comptime SM100MLAType = SM100MLA[
         KVType,

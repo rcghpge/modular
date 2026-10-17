@@ -194,7 +194,7 @@ def swizzled_vectorized_sram_to_dram_kernel(
 
     if thread_idx.x == 0:
         for i in range(_V_ROWS * _V_COLS):
-            smem.ptr[swizzle(i)] = src_ptr[i]
+            smem.raw_store(swizzle(i), src_ptr[i])
     barrier()
     copy_sram_to_dram[thread_layout, swizzle=swizzle](
         dst.vectorize[1, _V_WIDTH](), smem.vectorize[1, _V_WIDTH]()
@@ -225,7 +225,7 @@ def swizzled_vectorized_local_to_shared_kernel(
 
     if thread_idx.x == 0:
         for i in range(_V_ROWS * _V_COLS):
-            smem.ptr[i] = -1.0
+            smem.raw_store(i, -1.0)
     barrier()
 
     var row = thread_idx.x // threads_per_row
@@ -239,7 +239,7 @@ def swizzled_vectorized_local_to_shared_kernel(
 
     if thread_idx.x == 0:
         for i in range(_V_ROWS * _V_COLS):
-            dst_ptr[i] = smem.ptr[swizzle(i)]
+            dst_ptr[i] = smem.raw_load(swizzle(i))
 
 
 def async_dram_to_sram_to_dram_kernel(
@@ -370,9 +370,7 @@ def _bounded_local_to_dram_kernel[
     owner[ROWS + 1] = Float32(-7001)
     comptime for i in range(ROWS):
         owner[i + 1] = Float32(warp * 100000 + lane * 1000 + i)
-    var local = TileTensor[address_space=.LOCAL](
-        owner.ptr + 1, row_major[ROWS // 4, 4]()
-    )
+    var local = owner.slice[1 : ROWS + 1]().reshape(row_major[ROWS // 4, 4]())
     var layout = TileLayout(
         Coord(Idx[ROWS], Idx[32]), Coord(row_stride, Idx[1])
     )

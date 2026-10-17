@@ -598,9 +598,10 @@ def ss_qk_multistage_kernel[
 # ---------------------------------------------------------------------------
 # SS helpers
 # ---------------------------------------------------------------------------
-def fill_random_fp8[dtype: DType](ptr: MutPointer[Scalar[dtype], _], n: Int):
+def fill_random_fp8[dtype: DType](span: MutSpan[Scalar[dtype], _]):
     """Generates random FP8 values via float32 RNG -> cast (matches the
     model smoke test)."""
+    var n = len(span)
     var f32_buf = alloc[Float32](n)
     randn[.float32](f32_buf, n)
     for i in range(n):
@@ -609,14 +610,14 @@ def fill_random_fp8[dtype: DType](ptr: MutPointer[Scalar[dtype], _], n: Int):
             v = 2.0
         if v < -2.0:
             v = -2.0
-        ptr[i] = Scalar[dtype](v)
+        span[i] = Scalar[dtype](v)
     f32_buf.free()
 
 
 def dequant_fp8_to_bf16[
     src_dtype: DType, dst_dtype: DType
 ](
-    src: ImmPointer[Scalar[src_dtype], _],
+    src: ImmSpan[Scalar[src_dtype], _],
     dst: MutPointer[Scalar[dst_dtype], _],
     n: Int,
 ):
@@ -695,15 +696,15 @@ def _ss_compare[
     M: Int = QK_M
 ](
     label: String,
-    c_out_ptr: ImmPointer[Scalar[ACC_TYPE], _],
+    c_out: TileTensor[ACC_TYPE, type_of(row_major[M, QK_N]()), _],
     c_ref_host: ImmPointer[Float32, _],
     require_finite: Bool,
 ) raises:
     """Compares the GPU output against the host reference within FP8 tol.
 
-    Generic over the pointer origins so the caller can pass a host tensor's
-    `unsafe_ptr()` and an `alloc`'d host buffer (MutUntrackedOrigin) without
-    an origin mismatch.
+    Generic over the tensor and pointer origins so the caller can pass a host
+    tensor and an `alloc`'d host buffer (MutUntrackedOrigin) without an origin
+    mismatch.
 
     When `require_finite` is True (the NaN-safety variant), additionally
     asserts every GPU output element is finite -- a leaked `0*NaN` would
@@ -717,7 +718,7 @@ def _ss_compare[
         for c in range(QK_N):
             var idx = r * QK_N + c
             var ref_val = c_ref_host[idx]
-            var gpu_val = c_out_ptr[idx]
+            var gpu_val = c_out[r, c]
             if not isfinite(gpu_val):
                 num_nonfinite += 1
                 continue
@@ -787,8 +788,8 @@ def test_ss_partial(ctx: DeviceContext) raises:
     var b_inp = HostDeviceTileTensor[FP8_TYPE](QK_B_LAYOUT, ctx)
     var a_host = a_inp.host_tensor()
     var b_host = b_inp.host_tensor()
-    fill_random_fp8[FP8_TYPE](a_host.unsafe_ptr(), QK_M * QK_K)
-    fill_random_fp8[FP8_TYPE](b_host.unsafe_ptr(), QK_N * QK_K)
+    fill_random_fp8[FP8_TYPE](a_host.as_span())
+    fill_random_fp8[FP8_TYPE](b_host.as_span())
     a_inp.to_device()
     b_inp.to_device()
 
@@ -798,10 +799,10 @@ def test_ss_partial(ctx: DeviceContext) raises:
     var a_ref_host = alloc[Scalar[REF_TYPE]](QK_M * QK_K)
     var b_ref_host = alloc[Scalar[REF_TYPE]](QK_N * QK_K)
     dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        a_host.unsafe_ptr(), a_ref_host, QK_M * QK_K
+        a_host.as_span(), a_ref_host, QK_M * QK_K
     )
     dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        b_host.unsafe_ptr(), b_ref_host, QK_N * QK_K
+        b_host.as_span(), b_ref_host, QK_N * QK_K
     )
     ctx.enqueue_copy(a_ref_dev, a_ref_host)
     ctx.enqueue_copy(b_ref_dev, b_ref_host)
@@ -845,7 +846,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_full_buf.to_host()
     _ss_compare(
         "v1 full[18]",
-        c_full_buf.host_tensor().unsafe_ptr(),
+        c_full_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -876,7 +877,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_deg_buf.to_host()
     _ss_compare(
         "v2 partial[18,valid=18]",
-        c_deg_buf.host_tensor().unsafe_ptr(),
+        c_deg_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -906,7 +907,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_ms_buf.to_host()
     _ss_compare(
         "v4 multistage(9+9,valid=18)",
-        c_ms_buf.host_tensor().unsafe_ptr(),
+        c_ms_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -940,7 +941,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_st_buf.to_host()
     _ss_compare(
         "v5 struct.mma",
-        c_st_buf.host_tensor().unsafe_ptr(),
+        c_st_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -978,7 +979,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_st_ms_buf.to_host()
     _ss_compare(
         "v6 struct.mma num_stages=3",
-        c_st_ms_buf.host_tensor().unsafe_ptr(),
+        c_st_ms_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -1013,7 +1014,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_st_pd_buf.to_host()
     _ss_compare(
         "v7 struct.partial[valid=18]",
-        c_st_pd_buf.host_tensor().unsafe_ptr(),
+        c_st_pd_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -1046,8 +1047,8 @@ def test_ss_partial(ctx: DeviceContext) raises:
     var b_nan = HostDeviceTileTensor[FP8_TYPE](QK_B_LAYOUT, ctx)
     var a_nan_host = a_nan.host_tensor()
     var b_nan_host = b_nan.host_tensor()
-    fill_random_fp8[FP8_TYPE](a_nan_host.unsafe_ptr(), QK_M * QK_K)
-    fill_random_fp8[FP8_TYPE](b_nan_host.unsafe_ptr(), QK_N * QK_K)
+    fill_random_fp8[FP8_TYPE](a_nan_host.as_span())
+    fill_random_fp8[FP8_TYPE](b_nan_host.as_span())
 
     # Poison the tail K-columns [QK_VALID_K, QK_K) of BOTH operands with NaN.
     var nan_byte = fp8_nan()
@@ -1123,7 +1124,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_nan_buf.to_host()
     _ss_compare(
         "v3 partial[18,valid=10]+NaN",
-        c_nan_buf.host_tensor().unsafe_ptr(),
+        c_nan_buf.host_tensor(),
         c_ref_v,
         require_finite=True,  # any leaked 0*NaN -> non-finite -> fail.
     )
@@ -1157,7 +1158,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_st_nan_buf.to_host()
     _ss_compare(
         "v8 struct.partial[valid=10]+NaN",
-        c_st_nan_buf.host_tensor().unsafe_ptr(),
+        c_st_nan_buf.host_tensor(),
         c_ref_v,
         require_finite=True,
     )
@@ -1193,7 +1194,7 @@ def test_ss_partial(ctx: DeviceContext) raises:
     c_st_nan_ms_buf.to_host()
     _ss_compare(
         "v9 struct.partial 3-stage[valid=10]+NaN",
-        c_st_nan_ms_buf.host_tensor().unsafe_ptr(),
+        c_st_nan_ms_buf.host_tensor(),
         c_ref_v,
         require_finite=True,
     )
@@ -1438,8 +1439,8 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     var b_inp = HostDeviceTileTensor[FP8_TYPE](QK_B_LAYOUT, ctx)
     var a_host = a_inp.host_tensor()
     var b_host = b_inp.host_tensor()
-    fill_random_fp8[FP8_TYPE](a_host.unsafe_ptr(), NW_M * QK_K)
-    fill_random_fp8[FP8_TYPE](b_host.unsafe_ptr(), QK_N * QK_K)
+    fill_random_fp8[FP8_TYPE](a_host.as_span())
+    fill_random_fp8[FP8_TYPE](b_host.as_span())
     a_inp.to_device()
     b_inp.to_device()
 
@@ -1448,10 +1449,10 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     var a_ref_host = alloc[Scalar[REF_TYPE]](NW_M * QK_K)
     var b_ref_host = alloc[Scalar[REF_TYPE]](QK_N * QK_K)
     dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        a_host.unsafe_ptr(), a_ref_host, NW_M * QK_K
+        a_host.as_span(), a_ref_host, NW_M * QK_K
     )
     dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        b_host.unsafe_ptr(), b_ref_host, QK_N * QK_K
+        b_host.as_span(), b_ref_host, QK_N * QK_K
     )
     ctx.enqueue_copy(a_ref_dev, a_ref_host)
     ctx.enqueue_copy(b_ref_dev, b_ref_host)
@@ -1494,7 +1495,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_full_buf.to_host()
     _ss_compare[M=NW_M](
         "v1 full[18]",
-        c_full_buf.host_tensor().unsafe_ptr(),
+        c_full_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -1525,7 +1526,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_deg_buf.to_host()
     _ss_compare[M=NW_M](
         "v2 partial[18,valid=18]",
-        c_deg_buf.host_tensor().unsafe_ptr(),
+        c_deg_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -1557,7 +1558,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_st_deg_buf.to_host()
     _ss_compare[M=NW_M](
         "v3 struct.partial[valid=18]",
-        c_st_deg_buf.host_tensor().unsafe_ptr(),
+        c_st_deg_buf.host_tensor(),
         c_ref_full,
         require_finite=False,
     )
@@ -1585,8 +1586,8 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     var b_nan = HostDeviceTileTensor[FP8_TYPE](QK_B_LAYOUT, ctx)
     var a_nan_host = a_nan.host_tensor()
     var b_nan_host = b_nan.host_tensor()
-    fill_random_fp8[FP8_TYPE](a_nan_host.unsafe_ptr(), NW_M * QK_K)
-    fill_random_fp8[FP8_TYPE](b_nan_host.unsafe_ptr(), QK_N * QK_K)
+    fill_random_fp8[FP8_TYPE](a_nan_host.as_span())
+    fill_random_fp8[FP8_TYPE](b_nan_host.as_span())
 
     var nan_byte = fp8_nan()
     for r in range(NW_M):
@@ -1657,7 +1658,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_nan_buf.to_host()
     _ss_compare[M=NW_M](
         "v4 partial[18,valid=10]+NaN",
-        c_nan_buf.host_tensor().unsafe_ptr(),
+        c_nan_buf.host_tensor(),
         c_ref_v,
         require_finite=True,
     )
@@ -1689,7 +1690,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_st_nan_buf.to_host()
     _ss_compare[M=NW_M](
         "v5 struct.partial[valid=10]+NaN",
-        c_st_nan_buf.host_tensor().unsafe_ptr(),
+        c_st_nan_buf.host_tensor(),
         c_ref_v,
         require_finite=True,
     )
@@ -1725,7 +1726,7 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
     c_st_nan_ms_buf.to_host()
     _ss_compare[M=NW_M](
         "v6 struct.partial 3-stage[valid=10]+NaN",
-        c_st_nan_ms_buf.host_tensor().unsafe_ptr(),
+        c_st_nan_ms_buf.host_tensor(),
         c_ref_v,
         require_finite=True,
     )
@@ -2085,7 +2086,7 @@ def _ts_launch[
 
 def _ts_foldsum_compare(
     label: String,
-    p_ptr: ImmPointer[Scalar[TS_ACCUM_TYPE], _],
+    p: TileTensor[TS_ACCUM_TYPE, type_of(TS_P_LAYOUT), _],
     ref_ptr: ImmPointer[Float32, _],
 ) raises:
     """Fold-sum comparison: P_gpu[:, c] + P_gpu[:, c+64] vs P_ref[64,64]."""
@@ -2093,9 +2094,7 @@ def _ts_foldsum_compare(
     for r in range(TS_P_REF_ROWS):
         for c in range(TS_P_REF_COLS):
             var ref_val = ref_ptr[r * TS_P_REF_COLS + c]
-            var gpu_val = Float32(p_ptr[r * TS_P_COLS + c]) + Float32(
-                p_ptr[r * TS_P_COLS + c + TS_P_ROWS]
-            )
+            var gpu_val = Float32(p[r, c]) + Float32(p[r, c + TS_P_ROWS])
             var err = abs(gpu_val - ref_val) / max(abs(ref_val), Float32(1.0))
             if err > max_err:
                 max_err = err
@@ -2115,12 +2114,12 @@ def test_ts_partial(ctx: DeviceContext) raises:
     seed(42)
     var q_inp = HostDeviceTileTensor[TS_OP_TYPE](TS_Q_LAYOUT, ctx)
     var q_inp_host = q_inp.host_tensor()
-    randn[TS_OP_TYPE](q_inp_host.unsafe_ptr(), TS_ROWS * TS_COLS)
+    randn(q_inp_host.as_span())
     q_inp.to_device()
 
     var k_inp = HostDeviceTileTensor[TS_OP_TYPE](TS_K_LAYOUT, ctx)
     var k_inp_host = k_inp.host_tensor()
-    randn[TS_OP_TYPE](k_inp_host.unsafe_ptr(), TS_K_ROWS * TS_K_COLS)
+    randn(k_inp_host.as_span())
     k_inp.to_device()
 
     # =====================================================================
@@ -2136,23 +2135,11 @@ def test_ts_partial(ctx: DeviceContext) raises:
     var p_ref_dev = ctx.enqueue_create_buffer[.float32](
         TS_P_REF_ROWS * TS_P_REF_COLS
     )
-    var q_dev_ptr = q_inp.device_tensor().unsafe_ptr()
-    var k_dev_ptr = k_inp.device_tensor().unsafe_ptr()
     var c_ref_tt = TileTensor(
         p_ref_dev, row_major(TS_P_REF_ROWS, TS_P_REF_COLS)
     )
-    var a_tt = TileTensor(
-        ImmPointer[Scalar[TS_OP_TYPE], ImmutAnyOrigin](
-            unsafe_from_address=Int(q_dev_ptr)
-        ),
-        row_major(TS_ROWS, TS_COLS),
-    )
-    var b_tt = TileTensor(
-        ImmPointer[Scalar[TS_OP_TYPE], ImmutAnyOrigin](
-            unsafe_from_address=Int(k_dev_ptr)
-        ),
-        row_major(TS_K_ROWS, TS_K_COLS),
-    )
+    var a_tt = q_inp.device_tensor()
+    var b_tt = k_inp.device_tensor()
     comptime gemm_naive = matmul_kernel_naive[
         .float32,
         TS_OP_TYPE,
@@ -2183,13 +2170,13 @@ def test_ts_partial(ctx: DeviceContext) raises:
     ctx.enqueue_copy(p_ref_host, p_ref_dev)
     ctx.synchronize()
 
-    var p_full_ptr = p_full_buf.host_tensor().unsafe_ptr()
+    var p_full = p_full_buf.host_tensor()
     var max_err_full: Float32 = 0.0
     for r in range(TS_P_REF_ROWS):
         for c in range(TS_P_REF_COLS):
             var ref_val = p_ref_host[r * TS_P_REF_COLS + c]
-            var gpu_val = Float32(p_full_ptr[r * TS_P_COLS + c]) + Float32(
-                p_full_ptr[r * TS_P_COLS + c + TS_P_ROWS]
+            var gpu_val = Float32(p_full[r, c]) + Float32(
+                p_full[r, c + TS_P_ROWS]
             )
             var err = abs(gpu_val - ref_val) / max(abs(ref_val), Float32(1.0))
             if err > max_err_full:
@@ -2204,13 +2191,13 @@ def test_ts_partial(ctx: DeviceContext) raises:
     _ts_launch[TS_NUM_K_MMAS, True](
         ctx, q_inp, k_inp, UInt32(TS_NUM_K_MMAS), p_deg_buf
     )
-    var p_deg_ptr = p_deg_buf.host_tensor().unsafe_ptr()
+    var p_deg = p_deg_buf.host_tensor()
     var max_err_deg: Float32 = 0.0
     for r in range(TS_P_REF_ROWS):
         for c in range(TS_P_REF_COLS):
             var ref_val = p_ref_host[r * TS_P_REF_COLS + c]
-            var gpu_val = Float32(p_deg_ptr[r * TS_P_COLS + c]) + Float32(
-                p_deg_ptr[r * TS_P_COLS + c + TS_P_ROWS]
+            var gpu_val = Float32(p_deg[r, c]) + Float32(
+                p_deg[r, c + TS_P_ROWS]
             )
             var err = abs(gpu_val - ref_val) / max(abs(ref_val), Float32(1.0))
             if err > max_err_deg:
@@ -2248,15 +2235,14 @@ def test_ts_partial(ctx: DeviceContext) raises:
         ctx, q_inp, k_inp, UInt32(TS_VALID), p_oracle_buf
     )
 
-    var p_partial_ptr = p_partial_buf.host_tensor().unsafe_ptr()
-    var p_oracle_ptr = p_oracle_buf.host_tensor().unsafe_ptr()
+    var p_partial = p_partial_buf.host_tensor()
+    var p_oracle = p_oracle_buf.host_tensor()
     var max_diff: Float32 = 0.0
     var num_nonfinite: Int = 0
     for r in range(TS_P_ROWS):
         for c in range(TS_P_COLS):
-            var idx = r * TS_P_COLS + c
-            var pv = p_partial_ptr[idx]
-            var ov = p_oracle_ptr[idx]
+            var pv = p_partial[r, c]
+            var ov = p_oracle[r, c]
             if not isfinite(pv):
                 num_nonfinite += 1
             var d = abs(pv - ov)
@@ -2276,10 +2262,9 @@ def test_ts_partial(ctx: DeviceContext) raises:
     # accumulators should be bitwise-identical; allow a hair for any reorder.
     for r in range(TS_P_ROWS):
         for c in range(TS_P_COLS):
-            var idx = r * TS_P_COLS + c
             assert_almost_equal(
-                p_partial_ptr[idx],
-                p_oracle_ptr[idx],
+                p_partial[r, c],
+                p_oracle[r, c],
                 atol=1e-3,
                 rtol=1e-3,
                 msg="TS v3 raw mismatch at r=" + String(r) + " c=" + String(c),
@@ -2296,7 +2281,7 @@ def test_ts_partial(ctx: DeviceContext) raises:
     )
     _ts_foldsum_compare(
         "v4 struct.mma",
-        p_st_buf.host_tensor().unsafe_ptr(),
+        p_st_buf.host_tensor(),
         p_ref_host.unsafe_ptr(),
     )
 
@@ -2311,7 +2296,7 @@ def test_ts_partial(ctx: DeviceContext) raises:
     )
     _ts_foldsum_compare(
         "v5 struct.mma num_stages=2",
-        p_st_ms_buf.host_tensor().unsafe_ptr(),
+        p_st_ms_buf.host_tensor(),
         p_ref_host.unsafe_ptr(),
     )
 
@@ -2325,7 +2310,7 @@ def test_ts_partial(ctx: DeviceContext) raises:
     )
     _ts_foldsum_compare(
         "v6 struct.partial[valid=16]",
-        p_st_deg_buf.host_tensor().unsafe_ptr(),
+        p_st_deg_buf.host_tensor(),
         p_ref_host.unsafe_ptr(),
     )
 
@@ -2338,20 +2323,19 @@ def test_ts_partial(ctx: DeviceContext) raises:
     _ts_launch[TS_NUM_K_MMAS, True, USE_STRUCT=True](
         ctx, q_inp, k_inp, UInt32(TS_VALID), p_st_part_buf
     )
-    var p_st_part_ptr = p_st_part_buf.host_tensor().unsafe_ptr()
+    var p_st_part = p_st_part_buf.host_tensor()
     for r in range(TS_P_ROWS):
         for c in range(TS_P_COLS):
-            var idx = r * TS_P_COLS + c
             assert_true(
-                isfinite(p_st_part_ptr[idx]),
+                isfinite(p_st_part[r, c]),
                 msg="TS v7: struct partial output non-finite at r="
                 + String(r)
                 + " c="
                 + String(c),
             )
             assert_almost_equal(
-                p_st_part_ptr[idx],
-                p_oracle_ptr[idx],
+                p_st_part[r, c],
+                p_oracle[r, c],
                 atol=1e-3,
                 rtol=1e-3,
                 msg="TS v7 raw mismatch at r=" + String(r) + " c=" + String(c),

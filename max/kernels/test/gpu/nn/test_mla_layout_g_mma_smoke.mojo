@@ -488,12 +488,14 @@ def pv_smoke_kernel[
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def fill_random_fp8[dtype: DType](ptr: MutPointer[Scalar[dtype], _], n: Int):
+def fill_random_fp8[dtype: DType](t: TileTensor[mut=True, dtype, ...]):
     """Generates random FP8 values via float32 RNG -> cast.
 
     randn doesn't directly support float8_e4m3fn, so we draw float32
     values, scale them down to fit FP8's e4m3 range, and cast.
     """
+    var n = t.num_elements()
+    var data = t.as_span()
     var f32_buf = alloc[Float32](n)
     randn[.float32](f32_buf, n)
     for i in range(n):
@@ -504,19 +506,16 @@ def fill_random_fp8[dtype: DType](ptr: MutPointer[Scalar[dtype], _], n: Int):
             v = 2.0
         if v < -2.0:
             v = -2.0
-        ptr[i] = Scalar[dtype](v)
+        data[i] = Scalar[dtype](v)
     f32_buf.free()
 
 
 def dequant_fp8_to_bf16[
     src_dtype: DType, dst_dtype: DType
-](
-    src: ImmPointer[Scalar[src_dtype], _],
-    dst: MutPointer[Scalar[dst_dtype], _],
-    n: Int,
-):
-    for i in range(n):
-        dst[i] = src[i].cast[dst_dtype]()
+](src: TileTensor[src_dtype, ...], dst: MutPointer[Scalar[dst_dtype], _],):
+    var data = src.as_span()
+    for i in range(src.num_elements()):
+        dst[i] = data[i].cast[dst_dtype]()
 
 
 # ---------------------------------------------------------------------------
@@ -539,8 +538,8 @@ def test_qk_smoke(ctx: DeviceContext) raises:
     var a_host = a_inp.host_tensor()
     var b_host = b_inp.host_tensor()
 
-    fill_random_fp8[FP8_TYPE](a_host.unsafe_ptr(), QK_M * QK_K)
-    fill_random_fp8[FP8_TYPE](b_host.unsafe_ptr(), QK_N * QK_K)
+    fill_random_fp8(a_host)
+    fill_random_fp8(b_host)
 
     # BF16 dequantized copies for the GPU naive reference.
     var a_ref_dev = ctx.enqueue_create_buffer[REF_TYPE](QK_M * QK_K)
@@ -549,12 +548,8 @@ def test_qk_smoke(ctx: DeviceContext) raises:
     var a_ref_host = alloc[Scalar[REF_TYPE]](QK_M * QK_K)
     var b_ref_host = alloc[Scalar[REF_TYPE]](QK_N * QK_K)
 
-    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        a_host.unsafe_ptr(), a_ref_host, QK_M * QK_K
-    )
-    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        b_host.unsafe_ptr(), b_ref_host, QK_N * QK_K
-    )
+    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](a_host, a_ref_host)
+    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](b_host, b_ref_host)
 
     ctx.enqueue_copy(a_ref_dev, a_ref_host)
     ctx.enqueue_copy(b_ref_dev, b_ref_host)
@@ -648,17 +643,17 @@ def test_qk_smoke(ctx: DeviceContext) raises:
 
     # ---- Compare ----
     c_out_buf.to_host()
-    var c_out_ptr = c_out_buf.host_tensor().unsafe_ptr()
+    var c_out = c_out_buf.host_tensor()
 
     print(
         "  C_gpu[0,0]="
-        + String(c_out_ptr[0])
+        + String(c_out[0, 0])
         + "  C_ref[0,0]="
         + String(c_ref_host[0])
     )
     print(
         "  C_gpu[31,63]="
-        + String(c_out_ptr[31 * QK_N + 63])
+        + String(c_out[31, 63])
         + "  C_ref[31,63]="
         + String(c_ref_host[31 * QK_N + 63])
     )
@@ -670,7 +665,7 @@ def test_qk_smoke(ctx: DeviceContext) raises:
         for c in range(QK_N):
             var idx = r * QK_N + c
             var ref_val = c_ref_host[idx]
-            var gpu_val = c_out_ptr[idx]
+            var gpu_val = c_out[r, c]
             var abs_err = abs(gpu_val - ref_val)
             var rel_err = abs_err / max(abs(ref_val), Float32(1.0))
             if abs_err > max_abs_err:
@@ -734,8 +729,8 @@ def test_pv_smoke(ctx: DeviceContext) raises:
     var a_host = a_inp.host_tensor()
     var b_host = b_inp.host_tensor()
 
-    fill_random_fp8[FP8_TYPE](a_host.unsafe_ptr(), PV_M * PV_K)
-    fill_random_fp8[FP8_TYPE](b_host.unsafe_ptr(), PV_N * PV_K)
+    fill_random_fp8(a_host)
+    fill_random_fp8(b_host)
 
     var a_ref_dev = ctx.enqueue_create_buffer[REF_TYPE](PV_M * PV_K)
     var b_ref_dev = ctx.enqueue_create_buffer[REF_TYPE](PV_N * PV_K)
@@ -743,12 +738,8 @@ def test_pv_smoke(ctx: DeviceContext) raises:
     var a_ref_host = alloc[Scalar[REF_TYPE]](PV_M * PV_K)
     var b_ref_host = alloc[Scalar[REF_TYPE]](PV_N * PV_K)
 
-    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        a_host.unsafe_ptr(), a_ref_host, PV_M * PV_K
-    )
-    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](
-        b_host.unsafe_ptr(), b_ref_host, PV_N * PV_K
-    )
+    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](a_host, a_ref_host)
+    dequant_fp8_to_bf16[FP8_TYPE, REF_TYPE](b_host, b_ref_host)
 
     ctx.enqueue_copy(a_ref_dev, a_ref_host)
     ctx.enqueue_copy(b_ref_dev, b_ref_host)
@@ -843,11 +834,11 @@ def test_pv_smoke(ctx: DeviceContext) raises:
     ctx.synchronize()
 
     c_out_buf.to_host()
-    var c_out_ptr = c_out_buf.host_tensor().unsafe_ptr()
+    var c_out = c_out_buf.host_tensor()
 
     print(
         "  C_gpu[0,0]="
-        + String(c_out_ptr[0])
+        + String(c_out[0, 0])
         + "  C_ref[0,0]="
         + String(c_ref_host[0])
     )
@@ -855,7 +846,7 @@ def test_pv_smoke(ctx: DeviceContext) raises:
         "  C_gpu[31,"
         + String(PV_N - 1)
         + "]="
-        + String(c_out_ptr[31 * PV_N + (PV_N - 1)])
+        + String(c_out[31, PV_N - 1])
         + "  C_ref[31,"
         + String(PV_N - 1)
         + "]="
@@ -869,7 +860,7 @@ def test_pv_smoke(ctx: DeviceContext) raises:
         for c in range(PV_N):
             var idx = r * PV_N + c
             var ref_val = c_ref_host[idx]
-            var gpu_val = c_out_ptr[idx]
+            var gpu_val = c_out[r, c]
             var abs_err = abs(gpu_val - ref_val)
             var rel_err = abs_err / max(abs(ref_val), Float32(1.0))
             if abs_err > max_abs_err:

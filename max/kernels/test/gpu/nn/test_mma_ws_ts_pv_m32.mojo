@@ -450,8 +450,8 @@ def test_pv_ts_batched[
 
     var p_host = p_inp.host_tensor()
     var v_host = v_inp.host_tensor()
-    randn[OP_TYPE](p_host.unsafe_ptr(), MMA_M * BN_KEYS)
-    randn[OP_TYPE](v_host.unsafe_ptr(), BN_KEYS * depth)
+    randn(p_host.as_span())
+    randn(v_host.as_span())
 
     var o_out_buf = HostDeviceTileTensor[ACC_TYPE](
         row_major[MMA_M, out_cols](), ctx
@@ -497,15 +497,15 @@ def test_pv_ts_batched[
     #   O_g[m, dd] = sum_{k<PART_KEYS} P[m, g*PART_KEYS + k] * V[g*PART_KEYS+k, dd]
     # read straight from the natural V tensor; sum_g O_g == full attention P @ V.
     o_out_buf.to_host()
-    var o_out_ptr = o_out_buf.host_tensor().unsafe_ptr()
+    var o_out = o_out_buf.host_tensor()
 
     print(
         "  O_gpu[0,0]="
-        + String(o_out_ptr[0])
+        + String(o_out[0, 0])
         + "  O_gpu[31,"
         + String(out_cols - 1)
         + "]="
-        + String(o_out_ptr[31 * out_cols + (out_cols - 1)])
+        + String(o_out[31, out_cols - 1])
     )
 
     var max_abs_err: Float32 = 0.0
@@ -523,7 +523,7 @@ def test_pv_ts_batched[
                     var pv = p_host[m, gg * PART_KEYS + k].cast[ACC_TYPE]()
                     var vv = v_host[gg * PART_KEYS + k, dd].cast[ACC_TYPE]()
                     acc += pv * vv
-                var gpu_val = o_out_ptr[m * out_cols + (gg * depth + dd)]
+                var gpu_val = o_out[m, gg * depth + dd]
                 var abs_err = abs(gpu_val - acc)
                 var rel_err = abs_err / max(abs(acc), Float32(1.0))
                 if abs_err > max_abs_err:
@@ -567,7 +567,7 @@ def test_pv_ts_batched[
             var ref_sum: Float32 = 0.0
             var gpu_sum: Float32 = 0.0
             for gg in range(M_PACK):
-                gpu_sum += o_out_ptr[m * out_cols + (gg * depth + dd)]
+                gpu_sum += o_out[m, gg * depth + dd]
                 for k in range(PART_KEYS):
                     ref_sum += (
                         p_host[m, gg * PART_KEYS + k].cast[ACC_TYPE]()

@@ -1022,6 +1022,13 @@ struct NonNullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
         self.ptr = rebind[Self.PtrType](ptr.unsafe_ptr())
 
     @inline(.always)
+    def __init__(
+        out self,
+        tensor: TileTensor[Self.dtype, address_space=Self.address_space, ...],
+    ):
+        self.ptr = tensor.ptr.as_imm().as_unsafe_any_origin()
+
+    @inline(.always)
     def value(self) -> Self.PtrType:
         assert Int(self.ptr) != 0, (
             "NonNullPointer is supposed to provide a compile-time guarantee"

@@ -537,11 +537,11 @@ def _nms_greedy_kernel[
 
         # Load, filter, and pad the current pair's candidates.
         var i = tid
-        var scores_base = scores_arg.ptr + scores_arg.layout(
-            Coord(Int32(b), Int32(c), Idx[0])
+        var scores_base = Int(
+            scores_arg.layout(Coord(Int32(b), Int32(c), Idx[0]))
         )
         while i < n:
-            var score = scores_base.unsafe_load(i)
+            var score = scores_arg.raw_load(scores_base + i)
             if score > score_threshold.cast[dtype]():
                 # Eligible: keep the real score so the sort's total order
                 # matches the CPU path.
@@ -646,15 +646,15 @@ def _nms_greedy_kernel[
                 var row = sh_row[0]
                 var out_rows = Int64(output_arg.layout.shape[0]().value())
                 if row < out_rows:
-                    output_arg.ptr.unsafe_store(
+                    output_arg.raw_store(
                         output_arg.layout(Coord(row, Idx[0])),
                         Int64(b),
                     )
-                    output_arg.ptr.unsafe_store(
+                    output_arg.raw_store(
                         output_arg.layout(Coord(row, Idx[0])) + 1,
                         Int64(c),
                     )
-                    output_arg.ptr.unsafe_store(
+                    output_arg.raw_store(
                         output_arg.layout(Coord(row, Idx[0])) + 2,
                         Int64(winner),
                     )
@@ -662,10 +662,10 @@ def _nms_greedy_kernel[
 
             # Suppress remaining candidates that overlap the winner.
             var w_base = boxes_arg.layout(Coord(Int32(b), winner, Idx[0]))
-            var w_y1 = boxes_arg.ptr.unsafe_load(w_base)
-            var w_x1 = boxes_arg.ptr.unsafe_load(w_base + 1)
-            var w_y2 = boxes_arg.ptr.unsafe_load(w_base + 2)
-            var w_x2 = boxes_arg.ptr.unsafe_load(w_base + 3)
+            var w_y1 = boxes_arg.raw_load(w_base)
+            var w_x1 = boxes_arg.raw_load(w_base + 1)
+            var w_y2 = boxes_arg.raw_load(w_base + 2)
+            var w_x2 = boxes_arg.raw_load(w_base + 3)
             i = tid
             while i < n:
                 if sh_alive[i]:
@@ -677,10 +677,10 @@ def _nms_greedy_kernel[
                             w_x1,
                             w_y2,
                             w_x2,
-                            boxes_arg.ptr.unsafe_load(c_base),
-                            boxes_arg.ptr.unsafe_load(c_base + 1),
-                            boxes_arg.ptr.unsafe_load(c_base + 2),
-                            boxes_arg.ptr.unsafe_load(c_base + 3),
+                            boxes_arg.raw_load(c_base),
+                            boxes_arg.raw_load(c_base + 1),
+                            boxes_arg.raw_load(c_base + 2),
+                            boxes_arg.raw_load(c_base + 3),
                         )
                         > iou_threshold.cast[dtype]()
                     ):

@@ -1494,14 +1494,16 @@ struct BlockScaledMatmulAMD[
 
             if tid < Self.BM:
                 comptime for w in range(SCALE_WORDS_PER_ROW):
-                    sfa_smem.ptr.bitcast[Int32]()[
-                        sfa_stage_base + tid * SCALE_WORDS_PER_ROW + w
-                    ] = sfa_load_reg.raw_load(w)
+                    sfa_smem.bitcast[DType.int32]().raw_store(
+                        sfa_stage_base + tid * SCALE_WORDS_PER_ROW + w,
+                        sfa_load_reg.raw_load(w),
+                    )
             if tid < Self.BN:
                 comptime for w in range(SCALE_WORDS_PER_ROW):
-                    sfb_smem.ptr.bitcast[Int32]()[
-                        sfb_stage_base + tid * SCALE_WORDS_PER_ROW + w
-                    ] = sfb_load_reg.raw_load(w)
+                    sfb_smem.bitcast[DType.int32]().raw_store(
+                        sfb_stage_base + tid * SCALE_WORDS_PER_ROW + w,
+                        sfb_load_reg.raw_load(w),
+                    )
 
         # === Schedule-driven pipeline ===
         # The schedule prologue pre-loads 2 tiles, so we need at least 2

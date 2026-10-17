@@ -644,9 +644,8 @@ def test_blackwell_kernel_5[
         comptime rtol = 1e-2
 
         assert_almost_equal(
-            c_host.unsafe_ptr(),
-            c_host_ref.unsafe_ptr(),
-            M * N,
+            c_host.as_span(),
+            c_host_ref.as_span(),
             atol=0.0001,
             rtol=rtol,
         )
