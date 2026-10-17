@@ -17,7 +17,7 @@ Provides `MHAConfig` (tile/pipeline configuration), `FlashAttentionAlgorithm`
 types used by both prefill and decode attention kernels.
 """
 
-from std.math import align_up, ceildiv
+from std.math import align_up, ceildiv, iota
 from std.math.uutils import ufloordiv, ualign_up
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.collections import OptionalReg
@@ -487,17 +487,11 @@ def _kernel_mask[
 ](
     coord: IndexList[2, ...], bound: IndexList[2, ...], vec: SIMD[dtype, width]
 ) -> SIMD[dtype, width]:
-    var masked_vec = SIMD[dtype, width]()
-
-    # TODO: use `select` to see if it generates the same code.
-    comptime for i in range(width):
-        masked_vec[i] = (
-            vec[i] if coord[0] < bound[0]
-            and UInt32(coord[1]) + UInt32(i)
-            < UInt32(bound[1]) else min_or_neg_inf[dtype]()
-        )
-
-    return masked_vec
+    var columns = iota[.uint32, width](UInt32(coord[1]))
+    var in_bounds = columns.lt(UInt32(bound[1])) & SIMD[.bool, width](
+        fill=coord[0] < bound[0]
+    )
+    return in_bounds.select(vec, SIMD[dtype, width](min_or_neg_inf[dtype]()))
 
 
 @inline(.always)

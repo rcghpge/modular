@@ -388,27 +388,16 @@ def cast_fp_to_fp4e2m1[
     # (x >= 3.5) & (x <= 5.0)] => 4.0
     # (x > 5.0) => 6.0
 
-    var sign = x.lt(0).select(-1.0, 1.0).cast[dtype]()
+    var sign = x.lt(0).select(SIMD[dtype, width](-1.0), SIMD[dtype, width](1.0))
     var abs_x = abs(x)
-    var result = SIMD[dtype, width]()
-
-    comptime for i in range(width):
-        if abs_x[i] <= 0.25:
-            result[i] = 0.0
-        elif abs_x[i] < 0.75:
-            result[i] = 0.5
-        elif abs_x[i] <= 1.25:
-            result[i] = 1.0
-        elif abs_x[i] < 1.75:
-            result[i] = 1.5
-        elif abs_x[i] <= 2.5:
-            result[i] = 2.0
-        elif abs_x[i] < 3.5:
-            result[i] = 3.0
-        elif abs_x[i] <= 5.0:
-            result[i] = 4.0
-        else:
-            result[i] = 6.0
+    var result = SIMD[dtype, width](6.0)
+    result = abs_x.le(5.0).select[dtype](4.0, result)
+    result = abs_x.lt(3.5).select[dtype](3.0, result)
+    result = abs_x.le(2.5).select[dtype](2.0, result)
+    result = abs_x.lt(1.75).select[dtype](1.5, result)
+    result = abs_x.le(1.25).select[dtype](1.0, result)
+    result = abs_x.lt(0.75).select[dtype](0.5, result)
+    result = abs_x.le(0.25).select[dtype](0.0, result)
     return result * sign
 
 
