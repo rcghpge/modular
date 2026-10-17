@@ -376,7 +376,7 @@ You can access the input/output lambdas via `static_spec` parameter.
 ### Converting Between Tensor Types
 
 A `ManagedTensorSlice` can be converted to the tensor types used by the
-underlying kernels via its `to_tile_tensor` and `to_layout_tensor` methods,
+underlying kernels via its `to_tile_tensor` method,
 defined in
 `max/kernels/src/graph_compiler/extensibility/managed_tensor_slice.mojo`.
 Plenty of examples of calling these can be found throughout the kernel
