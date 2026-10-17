@@ -48,9 +48,7 @@ def _check_rms_norm[cols: Int](rows: Int) raises:
     var x = _input(rows, cols)
     var out = List[Scalar[dtype]](length=rows * cols, fill=0)
     var gamma_h = List[Scalar[dtype]](length=cols, fill=1)
-    var gamma = TileTensor[mut=False](
-        gamma_h.unsafe_ptr(), row_major(Coord(Index(cols)))
-    )
+    var gamma = TileTensor[mut=False](gamma_h.unsafe_ptr(), row_major(cols))
     var x_ptr = x.unsafe_ptr()
     var out_ptr = out.unsafe_ptr()
     comptime eps = Float32(1e-5)
@@ -95,9 +93,7 @@ def _check_rms_norm[cols: Int](rows: Int) raises:
 def _check_softmax[cols: Int, logsoftmax: Bool = False](rows: Int) raises:
     var x = _input(rows, cols)
     var out = List[Scalar[dtype]](length=rows * cols, fill=0)
-    var out_t = TileTensor(
-        out.unsafe_ptr(), row_major(Coord(Index(rows, cols)))
-    )
+    var out_t = TileTensor(out.unsafe_ptr(), row_major(rows, cols))
     var x_ptr = x.unsafe_ptr()
 
     @inline(.always)

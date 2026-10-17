@@ -69,12 +69,10 @@ def index_tensor_shape[
     var indices_shape = IndexList[combined_indices_rank]()
 
     comptime for i in range(batch_dims):
-        indices_shape[i] = Int(input_buf.layout.shape[i]().value())
+        indices_shape[i] = Int(input_buf.dim[i]())
 
     comptime for i in range(indices_buf.rank):
-        indices_shape[batch_dims + i] = Int(
-            indices_buf.layout.shape[i]().value()
-        )
+        indices_shape[batch_dims + i] = Int(indices_buf.dim[i]())
 
     var index_size = indices_shape[combined_indices_rank - 1]
     # TODO: Revisit when we generalize (see above TODO).
@@ -700,7 +698,7 @@ def advanced_indexing_setitem_inplace[
     # Find the common iteration space
     comptime for i in range(iteration_rank):
         comptime if i < start_axis:
-            iteration_shape[i] = Int(input_tensor.layout.shape[i]().value())
+            iteration_shape[i] = Int(input_tensor.dim[i]())
         elif i >= start_axis + index_rank:
             iteration_shape[i] = Int(
                 input_tensor.layout.shape[

@@ -95,7 +95,7 @@ def run_one_case(
     ctx.enqueue_copy(gamma_d, gamma_h)
 
     var data_buf = TileTensor(data_d, row_major(Coord(shape)))
-    var gamma = TileTensor(gamma_d, row_major(Coord(Index(cols))))
+    var gamma = TileTensor(gamma_d, row_major(cols))
     comptime epsilon = Float32(0.001)
     comptime weight_offset = Float32(0.0)
 

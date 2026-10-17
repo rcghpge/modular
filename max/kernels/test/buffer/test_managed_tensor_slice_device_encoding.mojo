@@ -32,15 +32,15 @@ def _copy_with_metadata[
 ):
     var row = global_idx.y
     var col = global_idx.x
-    var rows = Int(source.layout.shape[0]().value())
-    var cols = Int(source.layout.shape[1]().value())
+    var rows = Int(source.dim[0]())
+    var cols = Int(source.dim[1]())
     if row >= rows or col >= cols:
         return
     var metadata = Float32(
         rows
         + 3 * cols
-        + 5 * Int(output.layout.shape[0]().value())
-        + 7 * Int(output.layout.shape[1]().value())
+        + 5 * Int(output.dim[0]())
+        + 7 * Int(output.dim[1]())
         + 11 * Int(source.layout.stride[0]().value())
         + 13 * Int(source.layout.stride[1]().value())
         + 17 * Int(output.layout.stride[0]().value())

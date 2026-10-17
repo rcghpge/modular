@@ -3033,9 +3033,8 @@ def create_tensor_tile[
                     owning=False,
                 ),
                 (
-                    Int(tensor.layout.shape[0]().value()),
-                    Int(tensor.layout.shape[1]().value())
-                    * (2 if unpack_fp4 else 1),
+                    Int(tensor.dim[0]()),
+                    Int(tensor.dim[1]()) * (2 if unpack_fp4 else 1),
                 ),
                 (
                     Int(tensor.layout.stride[0]().value()),
@@ -3055,10 +3054,9 @@ def create_tensor_tile[
                     owning=False,
                 ),
                 IndexList[3](
-                    Int(tensor.layout.shape[0]().value()),
-                    Int(tensor.layout.shape[1]().value()),
-                    Int(tensor.layout.shape[2]().value())
-                    * (2 if unpack_fp4 else 1),
+                    Int(tensor.dim[0]()),
+                    Int(tensor.dim[1]()),
+                    Int(tensor.dim[2]()) * (2 if unpack_fp4 else 1),
                 ),
                 IndexList[3](
                     Int(tensor.layout.stride[0]().value()),
@@ -3077,10 +3075,10 @@ def create_tensor_tile[
                     owning=False,
                 ),
                 IndexList[4](
-                    Int(tensor.layout.shape[0]().value()),
-                    Int(tensor.layout.shape[1]().value()),
-                    Int(tensor.layout.shape[2]().value()),
-                    Int(tensor.layout.shape[3]().value()),
+                    Int(tensor.dim[0]()),
+                    Int(tensor.dim[1]()),
+                    Int(tensor.dim[2]()),
+                    Int(tensor.dim[3]()),
                 ),
                 IndexList[4](
                     Int(tensor.layout.stride[0]().value()),
@@ -3100,11 +3098,11 @@ def create_tensor_tile[
                     owning=False,
                 ),
                 IndexList[5](
-                    Int(tensor.layout.shape[0]().value()),
-                    Int(tensor.layout.shape[1]().value()),
-                    Int(tensor.layout.shape[2]().value()),
-                    Int(tensor.layout.shape[3]().value()),
-                    Int(tensor.layout.shape[4]().value()),
+                    Int(tensor.dim[0]()),
+                    Int(tensor.dim[1]()),
+                    Int(tensor.dim[2]()),
+                    Int(tensor.dim[3]()),
+                    Int(tensor.dim[4]()),
                 ),
                 IndexList[5](
                     Int(tensor.layout.stride[0]().value()),

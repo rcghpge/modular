@@ -924,7 +924,7 @@ def pad_repeat[
     )
 
     comptime for i in range(output.rank):
-        loop_bounds[i] = IndexList[2](0, Int(input.layout.shape[i]().value()))
+        loop_bounds[i] = IndexList[2](0, Int(input.dim[i]()))
 
     var non_pad_iter = _NestedLoopIter[output.rank](loop_bounds)
 

@@ -714,8 +714,8 @@ def extract_topk_from_masked[
     comptime assert masked_logits.flat_rank >= 2
     comptime assert masked_logits.LayoutType._shape_types[0].DTYPE.is_integral()
     comptime assert masked_logits.LayoutType._shape_types[1].DTYPE.is_integral()
-    var batch_size = Int(masked_logits.layout.shape[0]().value())
-    var N = Int(masked_logits.layout.shape[1]().value())
+    var batch_size = Int(masked_logits.dim[0]())
+    var N = Int(masked_logits.dim[1]())
 
     for b in range(batch_size):
         var values = List[Scalar[dtype]]()

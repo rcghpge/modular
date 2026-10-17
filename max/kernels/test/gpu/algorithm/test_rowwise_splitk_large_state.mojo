@@ -70,7 +70,7 @@ def _check(rows: Int, cols: Int) raises:
         var x_d = ctx.enqueue_create_buffer[dtype](n)
         var out_d = ctx.enqueue_create_buffer[dtype](rows)
         ctx.enqueue_copy(x_d, x_h)
-        var x = TileTensor(x_d, row_major(Coord(Index(rows, cols))))
+        var x = TileTensor(x_d, row_major(rows, cols))
         var out_ptr = out_d.unsafe_ptr()
 
         @inline(.always)

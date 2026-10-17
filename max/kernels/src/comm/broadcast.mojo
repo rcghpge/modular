@@ -117,7 +117,7 @@ def broadcast_multimem_kernel[
                 var elem_idx = idx * simd_width
                 # Load from input buffer with invariant hint
                 var data = in_tensor.load[
-                    width=simd_width, alignment=alignment, invariant=True
+                    width=simd_width, alignment=alignment
                 ]((elem_idx,))
                 # Store to multicast address - all GPUs receive this write
                 multimem_st[
@@ -141,7 +141,6 @@ def broadcast_multimem_kernel[
                 var data = in_tensor.load[
                     width=min_mm_width,
                     alignment=align_of[dtype](),
-                    invariant=True,
                 ](Coord(tail_elem_idx))
                 multimem_st[
                     scope=Scope.GPU,
@@ -161,7 +160,6 @@ def broadcast_multimem_kernel[
                     var data = in_tensor.load[
                         width=min_mm_width,
                         alignment=align_of[dtype](),
-                        invariant=True,
                     ](Coord(overlap_idx))
                     multimem_st[
                         scope=Scope.GPU,
@@ -237,9 +235,9 @@ def broadcast_pull_1stage_kernel[
         # Grid-strided loop to cover all elements (vectorized).
         for idx in range(global_tid, num_simd_vectors, stride):
             var elem_idx = idx * simd_width
-            var data = in_tensor.load[
-                width=simd_width, alignment=alignment, invariant=True
-            ]((elem_idx,))
+            var data = in_tensor.load[width=simd_width, alignment=alignment](
+                (elem_idx,)
+            )
             out_tensor.store[alignment=alignment]((elem_idx,), data)
 
         # Handle tail elements (when num_elements is not a multiple of simd_width)
@@ -247,9 +245,7 @@ def broadcast_pull_1stage_kernel[
         var tail_start = num_simd_vectors * simd_width
         var tail_idx = tail_start + global_tid
         if tail_idx < num_elements:
-            var data = rebind[Scalar[dtype]](
-                in_tensor.load[invariant=True]((tail_idx,))
-            )
+            var data = rebind[Scalar[dtype]](in_tensor.load((tail_idx,)))
             out_tensor.store((tail_idx,), data)
 
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)

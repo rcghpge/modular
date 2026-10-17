@@ -970,14 +970,14 @@ def _allreduce_1stage_reduce_store_one[
     var accum = (
         ptrs[0]
         .address_space_cast[_target_address_space]()
-        .load[width=1, alignment=scalar_align, invariant=True]((elem_idx,))
+        .load[width=1, alignment=scalar_align]((elem_idx,))
         .cast[accum_type]()
     )
     comptime for gpu_idx in range(1, num_tensors):
         accum += (
             ptrs[gpu_idx]
             .address_space_cast[_target_address_space]()
-            .load[width=1, alignment=scalar_align, invariant=True]((elem_idx,))
+            .load[width=1, alignment=scalar_align]((elem_idx,))
             .cast[accum_type]()
         )
     var reduced = accum.cast[dtype]()

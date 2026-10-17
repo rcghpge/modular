@@ -124,8 +124,8 @@ def _probe_layer_norm[
     var shape = Index(rows, cols)
     var in_buf = TileTensor(in_d, row_major(Coord(shape)))
     var out_buf = TileTensor(out_d, row_major(Coord(shape)))
-    var gamma = TileTensor(gamma_d, row_major(Coord(Index(cols))))
-    var beta = TileTensor(beta_d, row_major(Coord(Index(cols))))
+    var gamma = TileTensor(gamma_d, row_major(cols))
+    var beta = TileTensor(beta_d, row_major(cols))
     var epsilon = Scalar[dtype](1e-5)
 
     @inline(.always)
@@ -198,7 +198,7 @@ def _probe_rms_norm[
     var shape = Index(rows, cols)
     var in_buf = TileTensor(in_d, row_major(Coord(shape)))
     var out_buf = TileTensor(out_d, row_major(Coord(shape)))
-    var gamma = TileTensor(gamma_d, row_major(Coord(Index(cols))))
+    var gamma = TileTensor(gamma_d, row_major(cols))
     comptime epsilon = Float32(1e-5)
 
     @inline(.always)

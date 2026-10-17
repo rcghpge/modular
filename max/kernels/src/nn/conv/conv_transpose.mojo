@@ -1496,7 +1496,7 @@ def pack_filter(
                     for f in range(f_tile_size):
                         packed_filter_ptr.store(
                             f,
-                            filter.load[invariant=False](
+                            filter.load(
                                 filter.layout.idx2crd(filter_offset + c + f * C)
                             ).cast[packed_filter_ptr.T.dtype](),
                         )
@@ -1530,7 +1530,7 @@ def pack_filter(
                     for f in range(residual):
                         packed_filter_ptr.store(
                             f,
-                            filter.load[invariant=False](
+                            filter.load(
                                 filter.layout.idx2crd(filter_offset + c + f * C)
                             ).cast[packed_filter_ptr.T.dtype](),
                         )
@@ -1628,7 +1628,7 @@ def conv_transposed_cpu[
             packed_filter_shape = IndexList[packed_filter_rank]()
 
             comptime for i in range(packed_filter_rank):
-                packed_filter_shape[i] = Int(filter.layout.shape[i]().value())
+                packed_filter_shape[i] = Int(filter.dim[i]())
 
         var packed_filter_alloc_layout = AllocLayout[Scalar[filter.dtype]](
             count=packed_filter_shape.flattened_length()

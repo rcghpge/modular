@@ -2377,7 +2377,7 @@ def fused_token_sampling_gpu[
 
         comptime assert input.flat_rank == 2
 
-        var vocab_size = Int(input.layout.shape[1]().value())
+        var vocab_size = Int(input.dim[1]())
         var adjusted_max_k = vocab_size if max_k == -1 else max_k
 
         # One kernel for every sampling configuration. Picking a narrower

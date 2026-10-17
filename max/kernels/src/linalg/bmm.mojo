@@ -195,11 +195,11 @@ def _reshape_tile_tensor_with_batch_to_3d(
         comptime if ShapeType.is_static_value:
             shape_ptr.write(rebind[ShapeType](Idx[ShapeType.static_value]))
         else:
-            var shape_val = Int(tensor.layout.shape[idx]().value())
+            var shape_val = Int(tensor.dim[idx]())
 
             comptime if i == 0:
                 comptime for batch_idx in range(rank - 3):
-                    shape_val *= Int(tensor.layout.shape[batch_idx]().value())
+                    shape_val *= Int(tensor.dim[batch_idx]())
 
             comptime if ShapeType == Int:
                 shape_ptr.write(rebind[ShapeType](shape_val))

@@ -1498,7 +1498,7 @@ def _rms_norm_impl[
     var reduce_dim_size = Int(shape[rank - 1].value())
 
     # Note: we only support reduction along the last dimension
-    if Int(gamma.layout.shape[0]().value()) != reduce_dim_size:
+    if Int(gamma.dim[0]()) != reduce_dim_size:
         raise Error(
             "Gamma size "
             + String(gamma.layout.shape[0]().value())

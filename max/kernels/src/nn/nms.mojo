@@ -299,19 +299,19 @@ def non_max_suppression[
     comptime assert boxes.rank == 3, "boxes must be of rank 3"
     comptime assert scores.rank == 3, "scores must be of rank 3"
 
-    var batch_size = Int(boxes.layout.shape[0]().value())
-    var num_boxes = Int(boxes.layout.shape[1]().value())
-    var num_classes = Int(scores.layout.shape[1]().value())
+    var batch_size = Int(boxes.dim[0]())
+    var num_boxes = Int(boxes.dim[1]())
+    var num_classes = Int(scores.dim[1]())
 
-    assert Int(boxes.layout.shape[2]().value()) == 4, (
+    assert Int(boxes.dim[2]()) == 4, (
         "boxes must be specified with the 2D coords representing the"
         " diagonal corners"
     )
-    assert Int(boxes.layout.shape[0]().value()) == Int(
-        scores.layout.shape[0]().value()
+    assert Int(boxes.dim[0]()) == Int(
+        scores.dim[0]()
     ), "dim 0 of boxes and scores must be equal"
-    assert Int(boxes.layout.shape[1]().value()) == Int(
-        scores.layout.shape[2]().value()
+    assert Int(boxes.dim[1]()) == Int(
+        scores.dim[2]()
     ), "boxes and scores must contain the same number of boxes"
 
     if max_output_boxes_per_class == 0:
@@ -531,7 +531,7 @@ def _nms_greedy_kernel[
         sh_row[0] = 0
 
     var pair = 0
-    while pair < Int(scores_arg.layout.shape[0]().value()) * n_classes:
+    while pair < Int(scores_arg.dim[0]()) * n_classes:
         var b, c = divmod(pair, n_classes)
 
         # Load, filter, and pad the current pair's candidates.
@@ -753,9 +753,9 @@ def non_max_suppression_gpu[
     comptime assert scores.flat_rank == 3, "scores must be rank 3"
     comptime assert output.flat_rank == 2, "output must be rank 2"
 
-    var batch = Int(boxes.layout.shape[0]().value())
-    var num_boxes = Int(boxes.layout.shape[1]().value())
-    var num_classes = Int(scores.layout.shape[1]().value())
+    var batch = Int(boxes.dim[0]())
+    var num_boxes = Int(boxes.dim[1]())
+    var num_classes = Int(scores.dim[1]())
 
     # The kernel takes Int32 pair coordinates and extents; dimensions
     # beyond Int32 cannot be handled without wrapping (and would need
@@ -773,15 +773,15 @@ def non_max_suppression_gpu[
 
     # Same invariants the CPU kernel asserts; the verifier does not
     # enforce shape consistency between boxes and scores.
-    assert Int(boxes.layout.shape[2]().value()) == 4, (
+    assert Int(boxes.dim[2]()) == 4, (
         "boxes must be specified with the 2D coords representing the"
         " diagonal corners"
     )
-    assert Int(boxes.layout.shape[0]().value()) == Int(
-        scores.layout.shape[0]().value()
+    assert Int(boxes.dim[0]()) == Int(
+        scores.dim[0]()
     ), "dim 0 of boxes and scores must be equal"
     assert num_boxes == Int(
-        scores.layout.shape[2]().value()
+        scores.dim[2]()
     ), "boxes and scores must contain the same number of boxes"
 
     if num_boxes > _NMS_MAX_LOCAL:
@@ -878,7 +878,7 @@ def non_max_suppression[
     comptime assert scores.flat_rank == 3, "scores must be rank 3"
     comptime assert output.flat_rank == 2, "output must be rank 2"
 
-    var num_boxes = Int(boxes.layout.shape[1]().value())
+    var num_boxes = Int(boxes.dim[1]())
 
     comptime if is_cpu[target]():
         # Host tensors: run the CPU kernel directly, no copies.
@@ -975,9 +975,9 @@ def _nms_host_fallback[
     num_boxes: Int,
 ) raises:
     """Host NMS fallback: device -> host copies, CPU kernel, copy back."""
-    var batch = Int(boxes.layout.shape[0]().value())
-    var n_classes = Int(scores.layout.shape[1]().value())
-    var out_rows = Int(output.layout.shape[0]().value())
+    var batch = Int(boxes.dim[0]())
+    var n_classes = Int(scores.dim[1]())
+    var out_rows = Int(output.dim[0]())
     var n_boxes_total = batch * num_boxes * 4
     var n_scores_total = batch * n_classes * num_boxes
     var n_out_total = out_rows * 3

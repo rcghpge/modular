@@ -74,9 +74,9 @@ def roi_align_kernel[
     var _rows_per_block = Int(rows_per_block)
     var _total_rows = Int(total_rows)
 
-    var channels = Int(input_tensor.layout.shape[3]().value())
-    var height = Int(input_tensor.layout.shape[1]().value())
-    var width = Int(input_tensor.layout.shape[2]().value())
+    var channels = Int(input_tensor.dim[3]())
+    var height = Int(input_tensor.dim[1]())
+    var width = Int(input_tensor.dim[2]())
 
     var rows_per_iter = block_dim.y
 

@@ -151,8 +151,8 @@ def arange[
     else:
         # Provide evidence that flat_rank == 2 for the constraint system
         comptime assert tensor.flat_rank == 2
-        var rows = Int(tensor.layout.shape[0]().value())
-        var cols = Int(tensor.layout.shape[1]().value())
+        var rows = Int(tensor.dim[0]())
+        var cols = Int(tensor.dim[1]())
         for m, n in product(range(rows), range(cols)):
             tensor[m, n] = (Scalar[dtype](m * cols + n) * step + start) % end
 

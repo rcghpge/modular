@@ -860,11 +860,7 @@ def _test_swiglu_dispatch[
                 var i4 = (post_col_lo // NVFP4_SF_VECTOR_SIZE) % SF_ATOM_K
                 var sf_idx = (
                     (
-                        (
-                            Int(i0)
-                            * Int(S_ref_tensor.layout.shape[1]().value())
-                            + Int(i1)
-                        )
+                        (Int(i0) * Int(S_ref_tensor.dim[1]()) + Int(i1))
                         * Int(SF_ATOM_M[0])
                         + Int(i2)
                     )

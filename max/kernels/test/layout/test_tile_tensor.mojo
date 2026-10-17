@@ -324,8 +324,8 @@ def test_tensor_span_constructor() raises:
 def test_fill() raises:
     var stack = Array[UInt32, 16](fill=0)
     var tensor = TileTensor(stack, row_major[4, 4]()).fill(1)
-    for i in range(Int(tensor.layout.shape[0]().value())):
-        for j in range(Int(tensor.layout.shape[1]().value())):
+    for i in range(Int(tensor.dim[0]())):
+        for j in range(Int(tensor.dim[1]())):
             assert_equal(tensor[i, j], 1)
 
 
@@ -333,8 +333,8 @@ def test_fill_large() raises:
     # layout._fillers.BATCH_SIZE is 2048, so we do 4096
     var stack = Array[UInt32, 4096](fill=0)
     var tensor = TileTensor(stack, row_major[2048, 2]()).fill(1)
-    for i in range(Int(tensor.layout.shape[0]().value())):
-        for j in range(Int(tensor.layout.shape[1]().value())):
+    for i in range(Int(tensor.dim[0]())):
+        for j in range(Int(tensor.dim[1]())):
             assert_equal(tensor[i, j], 1)
 
 

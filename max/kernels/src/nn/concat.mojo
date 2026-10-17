@@ -873,9 +873,9 @@ def _concat_gpu_flat_kernel[
             )
             output_flat.store[alignment=vec_width](
                 (vec_idx,),
-                input_flat.load[
-                    width=vec_width, alignment=vec_width, invariant=True
-                ](Coord(in_offset)),
+                input_flat.load[width=vec_width, alignment=vec_width](
+                    Coord(in_offset)
+                ),
             )
             return
         acc += input_concat_dim
