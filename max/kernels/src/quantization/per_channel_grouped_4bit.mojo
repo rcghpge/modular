@@ -329,7 +329,7 @@ struct Q4sym[
                 var flat_index_input = (
                     input_inner_stride * i + j * Self.group_size
                 )
-                var loaded_group = input_tt.ptr.load[width=Self.group_size](
+                var loaded_group = input_tt.raw_load[width=Self.group_size](
                     flat_index_input
                 )
 
@@ -412,7 +412,7 @@ struct Q4sym[
                 var flat_index_output = (
                     output_inner_dim * i + j * Self.group_size
                 )
-                output_tt.ptr.store(
+                output_tt.raw_store(
                     flat_index_output,
                     encoded.decode_fully(),
                 )
@@ -498,12 +498,8 @@ def q4_k_dequantize_impl(
     # The q_bits array is the last field of the block.
     comptime q_bits_offset = block_nbytes - block_QK_K.quantized_k // 2
     var input_q4_k_ptr = input_tt.ptr.bitcast[block_Q4_K]()
-    var input_flat = TileTensor(
-        input_tt.ptr, row_major(input_tt.num_elements())
-    )
-    var output_flat = TileTensor(
-        output_tt.ptr, row_major(output_tt.num_elements())
-    )
+    var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
+    var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):
         var src_ptr = input_q4_k_ptr + block_idx
         var src_base = block_idx * block_nbytes + q_bits_offset
@@ -598,12 +594,8 @@ def q6_k_dequantize_impl[
     # Block layout: low 4 bits, then high 2 bits, then scales and the base.
     comptime qh_offset = block_QK_K.quantized_k // 2
     var input_q6_k_ptr = input_tt.ptr.bitcast[block_Q6_K]()
-    var input_flat = TileTensor(
-        input_tt.ptr, row_major(input_tt.num_elements())
-    )
-    var output_flat = TileTensor(
-        output_tt.ptr, row_major(output_tt.num_elements())
-    )
+    var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
+    var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):
         var src_ptr = input_q6_k_ptr + block_idx
         var src_base = block_idx * block_nbytes

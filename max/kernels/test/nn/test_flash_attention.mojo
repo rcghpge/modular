@@ -389,7 +389,10 @@ def verify_output[
     for i in range(output.num_elements()):
         var idx = Int(output.layout(output.layout.idx2crd(i)))
         if not isclose(
-            output.ptr[idx], ref_output.ptr[idx], atol=1e-5, rtol=1e-4
+            output.raw_load(idx),
+            ref_output.raw_load(idx),
+            atol=1e-5,
+            rtol=1e-4,
         ):
             if mismatches == 0:
                 print(
@@ -404,8 +407,8 @@ def verify_output[
             print(
                 "Mismatch at",
                 idx,
-                output.ptr[idx],
-                ref_output.ptr[idx],
+                output.raw_load(idx),
+                ref_output.raw_load(idx),
             )
 
             mismatches = mismatches + 1

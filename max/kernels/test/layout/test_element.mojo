@@ -322,7 +322,7 @@ def test_element_masked_load():
     var tensor_4x4_stack = Array[Float32, 4 * 4](fill={})
     var tensor_4x4 = TileTensor(tensor_4x4_stack, row_major[4, 4]())
     arange(tensor_4x4)
-    var tensor_1x3 = TileTensor(tensor_4x4.unsafe_ptr(), row_major[1, 3]())
+    var tensor_1x3 = tensor_4x4.reshape(row_major[1, 3]())
 
     var tensor_1x3_v4 = tensor_1x3.as_imm().vectorize[1, 4]()
     # CHECK: [0.0, 1.0, 2.0, 0.0]
@@ -342,7 +342,7 @@ def test_element_masked_load():
     )
 
     # CHECK: [0.0, 4.0, 8.0, 0.0]
-    var tensor_3x4 = TileTensor(tensor_4x4.unsafe_ptr(), row_major[3, 4]())
+    var tensor_3x4 = tensor_4x4.reshape(row_major[3, 4]())
 
     var tensor_3x1_v4 = tensor_3x4.as_imm().vectorize[4, 1]()
 

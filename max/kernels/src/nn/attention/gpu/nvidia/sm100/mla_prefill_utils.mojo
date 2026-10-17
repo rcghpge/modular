@@ -728,7 +728,7 @@ def cvt_block_fp8_to_bf16_with_scale[
         var row = UInt32(i * 2) + t_row
         var col = t_col * 4
         var elem_offset = row * UInt32(row_stride) + col
-        var fp8x4 = (input.ptr + Int(swizzle_fp8(elem_offset))).load[width=4]()
+        var fp8x4 = input.raw_load[width=4](Int(swizzle_fp8(elem_offset)))
         fp8_regs = fp8_regs.insert[offset=i * 4](fp8x4)
 
     # make sure all the fp8_regs are loaded
@@ -756,12 +756,12 @@ def cvt_block_fp8_to_bf16_with_scale[
                 KRopeType.scale_dtype
             ]()
             fp32x4 = fp32x4 * scale
-            (output.ptr + Int(swizzle_bf16(elem_offset))).store(
-                fp32x4.cast[output_dtype]()
+            output.raw_store(
+                Int(swizzle_bf16(elem_offset)), fp32x4.cast[output_dtype]()
             )
         else:
             var fp16x4 = fp8_regs.slice[4, offset=i * 4]().cast[output_dtype]()
-            (output.ptr + Int(swizzle_bf16(elem_offset))).store(fp16x4)
+            output.raw_store(Int(swizzle_bf16(elem_offset)), fp16x4)
 
     fence_async_view_proxy()
 

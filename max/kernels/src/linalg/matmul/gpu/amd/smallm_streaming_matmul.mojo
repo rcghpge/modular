@@ -140,7 +140,9 @@ def _smallm_shuffle_a_kernel[
         + l * 8
     )
     var src_row = min(row, Int(m) - 1)
-    dst.store(dst_off, a.ptr.load[width=8](src_row * k_static + k))
+    dst.store(
+        dst_off, a.raw_load[width=8, invariant=False](src_row * k_static + k)
+    )
 
 
 @__name(

@@ -917,7 +917,7 @@ struct PRegisterBuffer[
         var p_reg_tile = p_reg_vec.tile[1, 1](reg_idx, 0)
         comptime frag_size = p_reg_tile.element_size
         var reg_val = Self._scale_p(
-            p_reg_tile.ptr.load[width=frag_size]()
+            p_reg_tile.raw_load[width=frag_size](0)
         ).cast[Self.dtype]()
 
         # Apply swizzle to spread rows across different LDS banks.

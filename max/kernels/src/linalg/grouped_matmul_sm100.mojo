@@ -1196,9 +1196,9 @@ def multi_stage_store_C[
                 var src_idx = UInt32(simd_size) * thread_index
                 var c_smem_idx = swizzle(src_idx)
                 comptime alignment = align_of[SIMD[c_type, simd_size]]()
-                var val_vec = (c_smem_tile.unsafe_ptr() + c_smem_idx).load[
+                var val_vec = c_smem_tile.raw_load[
                     width=simd_size, alignment=alignment
-                ]()
+                ](c_smem_idx)
                 var chunk_idx = rest // UInt32(stageN)
                 var n = UInt32(coord_n) + n_idx
                 var m = UInt32(work_tile_coord[0]) + (

@@ -152,10 +152,11 @@ struct Inner_matmul_neon(InnerMatmulKernel, Movable):
                 `global_bound` so boundary clipping can be skipped.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert c.flat_rank == 2, "c must be rank 2"
 
         var c_stride = Int(c.dim[1]())
 
-        var c_ptr = c.ptr + (global_offset.M * c_stride + global_offset.N)
+        var c_ptr = c.ptr_at_offset(Coord(global_offset.M, global_offset.N))
         var c_bound = Index(global_bound.M, global_bound.N) - Index(
             global_offset.M, global_offset.N
         )

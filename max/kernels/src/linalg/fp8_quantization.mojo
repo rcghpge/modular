@@ -2114,17 +2114,17 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
 
     if not skip:
         var m_global = a_start_row + m_local
-        var a_row_ptr = a.ptr + m_global * K
-        var b_expert_ptr = b.ptr + expert * N * K
         for k in range(K):
-            var a_val = a_row_ptr[k].cast[accum_type]()
+            var a_val = a.raw_load(m_global * K + k).cast[accum_type]()
             var a_scale = rebind[Scalar[a_scales_type]](
                 a_scales[
                     k // MAT_A_ROWS_SCALE_SIZE,
                     m_global // MAT_A_COLS_SCALE_SIZE,
                 ]
             ).cast[accum_type]()
-            var b_val = b_expert_ptr[n * K + k].cast[accum_type]()
+            var b_val = b.raw_load(expert * N * K + n * K + k).cast[
+                accum_type
+            ]()
             var b_scale = rebind[Scalar[b_scales_type]](
                 b_scales[
                     expert,
@@ -2134,8 +2134,7 @@ def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
             ).cast[accum_type]()
             accum += a_val * b_val * a_scale * b_scale
 
-    var c_ptr = c.ptr + a_start_row * N
-    c_ptr[m_local * N + n] = accum.cast[c_type]()
+    c.raw_store(a_start_row * N + m_local * N + n, accum.cast[c_type]())
 
 
 ########################################################

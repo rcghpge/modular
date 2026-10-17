@@ -1033,7 +1033,7 @@ def quantize_dynamic_scaled_async_fp4_kernel[
                             input_dtype, input_swizzle_mode
                         ]()
                         var swizzle_idx = input_swizzle(swizzle_offset)
-                        var temp = smem_tile.ptr.load[
+                        var temp = smem_tile.raw_load[
                             width=8,
                             alignment=align_of[SIMD[input_dtype, 8]](),
                         ](swizzle_idx)
@@ -1083,14 +1083,14 @@ def quantize_dynamic_scaled_async_fp4_kernel[
                         + idx * SF_VECTOR_SIZE
                     )
                     var output_swizzle_idx = output_swizzle(swizzle_offset)
-                    output_smem.ptr.store[
+                    output_smem.raw_store[
                         alignment=align_of[SIMD[output_dtype, SF_VECTOR_SIZE]]()
                     ](
                         output_swizzle_idx,
                         bitcast[output_dtype, SF_VECTOR_SIZE](slice_elements),
                     )
 
-                scales_smem.ptr.store[
+                scales_smem.raw_store[
                     alignment=align_of[SIMD[scales_dtype, SF_ATOM_K]]()
                 ](
                     (local_row_idx % 32) * 16
@@ -1714,7 +1714,7 @@ def grouped_quantize_dynamic_scaled_fp4_async_kernel[
             var smem_idx = (
                 (local_row % 32) * 16 + (local_row // 32) * SF_ATOM_K + sf_group
             )
-            scales_smem.ptr.store(smem_idx, fp8_scale_factor)
+            scales_smem.raw_store(smem_idx, fp8_scale_factor)
 
     barrier()
 

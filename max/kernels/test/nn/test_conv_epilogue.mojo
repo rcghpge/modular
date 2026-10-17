@@ -248,8 +248,8 @@ def test[
     # Check results, return on the first failed comparison.
     for i in range(output_size):
         if not isclose(
-            output_ref.ptr[i],
-            output.ptr[i],
+            output_ref.raw_load(i),
+            output.raw_load(i),
             atol=1e-4,  # absolute error tolerance
             rtol=1e-4,  # relative error tolerance
         ):
@@ -258,8 +258,8 @@ def test[
             print("filter packed", filter_packed)
             print("num groups", num_groups)
             print("flat output index:", i)
-            print("Golden value: ", output_ref.ptr[i])
-            print("Actual value: ", output.ptr[i])
+            print("Golden value: ", output_ref.raw_load(i))
+            print("Actual value: ", output.raw_load(i))
             bias_ptr.free()
             return
 

@@ -139,10 +139,10 @@ def execute_ragged_flash_attention() raises:
 
         var mixed_ce_cache_len = mixed_ce_cache_lens[bs_idx]
 
-        var true_ce_offset = true_ce_q_ragged.ptr + true_ce_q_ragged.layout(
+        var true_ce_offset = true_ce_q_ragged.ptr_at_offset(
             Coord(Int(true_ce_row_offset + UInt32(mixed_ce_cache_len)), 0, 0)
         )
-        var mixed_ce_offset = mixed_ce_q_ragged.ptr + mixed_ce_q_ragged.layout(
+        var mixed_ce_offset = mixed_ce_q_ragged.ptr_at_offset(
             Coord(Int(mixed_ce_row_offset), 0, 0)
         )
 

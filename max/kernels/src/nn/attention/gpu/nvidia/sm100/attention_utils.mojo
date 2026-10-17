@@ -685,9 +685,7 @@ struct TMemTile[
 
                 comptime if src_type == Self.dtype:
                     comptime for _i in range(frag_width):
-                        frag[_i] = src.ptr.unsafe_bitcast[UInt32]().load(
-                            offset + _i
-                        )
+                        frag[_i] = src.bitcast[.uint32]().raw_load(offset + _i)
                 elif pow_two > 1:
                     comptime size_ratio = size_of[src_type]() // Self.dtype_size
                     comptime cast_width = min(

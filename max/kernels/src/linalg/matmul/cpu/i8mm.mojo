@@ -211,6 +211,7 @@ struct Inner_matmul_i8mm(InnerMatmulKernel, Movable):
                 processing tile to index the packed B matrix.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert a.flat_rank == 2, "a must be rank 2"
 
         var n_outer_idx = tile_n_k_idx[0] // (kernel_cols // 2)
         var kl = tile_n_k_idx[1]
@@ -219,7 +220,9 @@ struct Inner_matmul_i8mm(InnerMatmulKernel, Movable):
 
         # This inner kernels works with non-transposed A.
         var K = Int(a.dim[1]())
-        var a_ptr = a.ptr + (global_offset.M * K + 2 * global_offset.K + 2 * kl)
+        var a_ptr = a.ptr_at_offset(
+            Coord(global_offset.M, 2 * global_offset.K + 2 * kl)
+        )
 
         # Prefetch B matrix.
         comptime prefetch_distance = get_matmul_prefetch_b_distance_k()
@@ -287,13 +290,14 @@ struct Inner_matmul_i8mm(InnerMatmulKernel, Movable):
                 and storing the C tile.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert c.flat_rank == 2, "c must be rank 2"
 
         comptime kernel_rows2 = kernel_rows // 2 if kernel_rows != 1 else kernel_rows
         comptime single_row = (kernel_rows == 1)
 
         var c_stride = Int(c.dim[1]())
 
-        var c_ptr = c.ptr + (global_offset.M * c_stride + global_offset.N)
+        var c_ptr = c.ptr_at_offset(Coord(global_offset.M, global_offset.N))
 
         var c_bound = Index(global_bound.M, global_bound.N) - Index(
             global_offset.M, global_offset.N

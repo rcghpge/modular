@@ -629,7 +629,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[c_type, width]:
         var idx = y.layout(coords)
-        return y.ptr.unsafe_load[width=width](idx)
+        return y.raw_load[width=width](idx)
 
     @inline(.always)
     @__copy_capture(normed_output)
@@ -638,9 +638,7 @@ def _gemv_partial_norm_unfused_with_scratch[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[c_type, width]) -> None:
         var idx = normed_output.layout(coords)
-        normed_output.ptr.unsafe_store[width=width, alignment=alignment](
-            idx, val
-        )
+        normed_output.raw_store[width=width, alignment=alignment](idx, val)
 
     var gamma_c = rebind[TileTensor[c_type, gamma.LayoutType, gamma.origin]](
         gamma

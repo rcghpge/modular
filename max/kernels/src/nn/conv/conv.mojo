@@ -3303,7 +3303,7 @@ def pack_filter_from_fcrs(
                             + c * dim_F
                             + f
                         )
-                        rscf_buf.store(dst, filter.unsafe_ptr().load(src))
+                        rscf_buf.store(dst, filter.raw_load(src))
         # Reinterpret as int64 for pack_filter (matches existing convention).
         var rscf_tile = TileTensor(
             rscf_buf.bitcast[Int64](),
@@ -3336,7 +3336,7 @@ def pack_filter_from_fcrs(
                                 + c * dim_F
                                 + f
                             )
-                            rscf_buf.store(dst, filter.unsafe_ptr().load(src))
+                            rscf_buf.store(dst, filter.raw_load(src))
         var rscf_tile = TileTensor(
             rscf_buf.bitcast[Int64](),
             row_major(

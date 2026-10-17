@@ -1376,8 +1376,8 @@ struct BlockScaledMatmulAMD_PreB[
         ](b_pre)
         # Bitcast scales' float8_e8m0fnu to uint8 — same byte representation,
         # the PreshuffledScaleLoader expects uint8 buffers.
-        var sfa_u8 = TileTensor(sfa.ptr.bitcast[UInt8](), sfa.layout)
-        var sfb_u8 = TileTensor(sfb.ptr.bitcast[UInt8](), sfb.layout)
+        var sfa_u8 = sfa.bitcast[.uint8]()
+        var sfb_u8 = sfb.bitcast[.uint8]()
         var a_scale_loader = PreshuffledScaleLoader[
             MN_padded=MN_PADDED_PLACEHOLDER, K_SCALES=K_SCALES
         ](sfa_u8)

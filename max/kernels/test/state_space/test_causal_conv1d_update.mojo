@@ -109,7 +109,7 @@ def run_causal_conv1d_update[
 
     # Copy conv_state for reference
     for i in range(batch * dim * state_len):
-        conv_state_ref_h.unsafe_ptr()[i] = conv_state_h.unsafe_ptr()[i]
+        conv_state_ref_h.raw_store(i, conv_state_h.raw_load(i))
 
     var input_buf = input_h
     var weight_buf = weight_h
@@ -288,8 +288,8 @@ def run_causal_conv1d_update[
     var flattened_size = batch * dim * seqlen
     for i in range(flattened_size):
         assert_almost_equal(
-            result_fused_h.unsafe_ptr()[i],
-            result_unfused_h.unsafe_ptr()[i],
+            result_fused_h.raw_load(i),
+            result_unfused_h.raw_load(i),
             rtol=rtol,
         )
 
@@ -297,8 +297,8 @@ def run_causal_conv1d_update[
     var conv_state_size = batch * dim * state_len
     for i in range(conv_state_size):
         assert_almost_equal(
-            conv_state_h.unsafe_ptr()[i],
-            conv_state_ref_h.unsafe_ptr()[i],
+            conv_state_h.raw_load(i),
+            conv_state_ref_h.raw_load(i),
             rtol=rtol,
         )
 

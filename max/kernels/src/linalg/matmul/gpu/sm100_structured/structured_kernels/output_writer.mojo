@@ -1844,10 +1844,10 @@ struct TileWriter[
                             continue
                         var p3_src_idx = UInt32(p3_simd_size) * p3_tidx
                         var p3_smem_idx = p3_swizzle(p3_src_idx)
-                        var p3_val_vec = (c_smem_tile.ptr + p3_smem_idx).load[
+                        var p3_val_vec = c_smem_tile.raw_load[
                             width=p3_simd_size,
                             alignment=p3_smem_alignment,
-                        ]()
+                        ](p3_smem_idx)
                         var p3_chunk_idx = p3_rest // UInt32(Self.stageN)
                         var p3_local_col = (
                             p3_chunk_idx * UInt32(p3_vec_chunkM)

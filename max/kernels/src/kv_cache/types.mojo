@@ -2598,10 +2598,7 @@ struct ContinuousBatchingKVCache[
         var full_block_idx = self._get_idx_tuple(
             block_idx, head_idx, start_tok_idx, head_dim_idx
         )
-        var offset_ptr = self.blocks.ptr + Int(
-            self.blocks.layout(full_block_idx)
-        )
-        return offset_ptr.as_unsafe_any_origin()
+        return self.blocks.ptr_at_offset(full_block_idx).as_unsafe_any_origin()
 
     @inline(.always)
     def block_paged_storage[
@@ -3326,13 +3323,11 @@ struct PagedKVCache[
                     " in `_padded_lut_cols`."
                 ),
             )
-            var lut_row_ptr = (
-                self.lookup_table.ptr + batch_idx * row_stride + first_lut_idx
-            )
+            var lut_row_offset = Int(batch_idx * row_stride + first_lut_idx)
             comptime for c in range(num_chunks):
-                var simd = lut_row_ptr.load[width=chunk, alignment=4 * chunk](
-                    c * chunk
-                )
+                var simd = self.lookup_table.raw_load[
+                    width=chunk, alignment=4 * chunk
+                ](lut_row_offset + c * chunk)
                 var rows_simd = simd * SIMD[.uint32, chunk](stride)
                 comptime for i in range(chunk):
                     result.rows[c * chunk + i] = rows_simd[i]
@@ -3992,8 +3987,7 @@ struct PagedKVCache[
             batch_idx, head_idx, start_tok_idx, head_dim_idx
         )
 
-        var ptr = self.blocks.ptr + Int(self.blocks.layout(full_block_idx))
-        return ptr.as_unsafe_any_origin()
+        return self.blocks.ptr_at_offset(full_block_idx).as_unsafe_any_origin()
 
     @inline(.always)
     def block_paged_storage[

@@ -48,7 +48,7 @@ def gemm_naive(a: TileTensor, b: TileTensor, c: TileTensor[mut=True, ...]):
                 accum[i * n + j] += a_val * b_val
 
     for idx in range(m * n):
-        c.ptr[idx] = accum[idx].cast[c.dtype]()
+        c.raw_store(idx, accum[idx].cast[c.dtype]())
 
 
 def verify(a: TileTensor, b: TileTensor, c: TileTensor):

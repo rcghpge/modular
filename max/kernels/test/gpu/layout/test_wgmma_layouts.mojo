@@ -40,7 +40,7 @@ def _arange_2d_col_major_tensor(t: TileTensor[mut=True, ...]):
 
     for i in range(size):
         var idx = t.layout(Coord(i))
-        t.ptr[idx] = Scalar[t.dtype](i)
+        t.raw_store(idx, Scalar[t.dtype](i))
 
 
 def wgmma_tf32_tf32_f32_kernel[

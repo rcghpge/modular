@@ -108,13 +108,13 @@ def broadcast_multimem_kernel[
 
             # Get multicast output pointer and input pointer
             var out_ptr = output.ptr.address_space_cast[.GLOBAL]()
-            var in_ptr = input.ptr.address_space_cast[_target_address_space]()
+            var in_tensor = input.address_space_cast[_target_address_space]()
 
             # Grid-strided loop to cover all elements (vectorized)
             for idx in range(global_tid, num_simd_vectors, stride):
                 var elem_idx = idx * simd_width
                 # Load from input buffer with invariant hint
-                var data = in_ptr.load[
+                var data = in_tensor.raw_load[
                     width=simd_width, alignment=alignment, invariant=True
                 ](elem_idx)
                 # Store to multicast address - all GPUs receive this write
@@ -136,9 +136,9 @@ def broadcast_multimem_kernel[
             # Spread tail chunks across threads
             if global_tid < num_tail_chunks:
                 var tail_elem_idx = tail_start + global_tid * min_mm_width
-                var data = in_ptr.load[width=min_mm_width, invariant=True](
-                    tail_elem_idx
-                )
+                var data = in_tensor.raw_load[
+                    width=min_mm_width, invariant=True
+                ](tail_elem_idx)
                 multimem_st[
                     scope=Scope.GPU,
                     consistency=Consistency.RELAXED,
@@ -154,9 +154,9 @@ def broadcast_multimem_kernel[
                     and num_elements >= min_mm_width
                 ):
                     var overlap_idx = num_elements - min_mm_width
-                    var data = in_ptr.load[width=min_mm_width, invariant=True](
-                        overlap_idx
-                    )
+                    var data = in_tensor.raw_load[
+                        width=min_mm_width, invariant=True
+                    ](overlap_idx)
                     multimem_st[
                         scope=Scope.GPU,
                         consistency=Consistency.RELAXED,
@@ -219,8 +219,8 @@ def broadcast_pull_1stage_kernel[
         _multi_gpu_barrier[ngpus, is_start=True](rank_sigs, my_sig, _my_rank)
 
         comptime alignment = align_of[SIMD[dtype, simd_width]]()
-        var in_ptr = input.ptr.address_space_cast[_target_address_space]()
-        var out_ptr = output.ptr.address_space_cast[_target_address_space]()
+        var in_tensor = input.address_space_cast[_target_address_space]()
+        var out_tensor = output.address_space_cast[_target_address_space]()
 
         var num_elements = input.num_elements()
         var num_simd_vectors = num_elements // simd_width
@@ -228,18 +228,18 @@ def broadcast_pull_1stage_kernel[
         # Grid-strided loop to cover all elements (vectorized).
         for idx in range(global_tid, num_simd_vectors, stride):
             var elem_idx = idx * simd_width
-            var data = in_ptr.load[
+            var data = in_tensor.raw_load[
                 width=simd_width, alignment=alignment, invariant=True
             ](elem_idx)
-            out_ptr.store[alignment=alignment](elem_idx, data)
+            out_tensor.raw_store[alignment=alignment](elem_idx, data)
 
         # Handle tail elements (when num_elements is not a multiple of simd_width)
         # Spread across threads instead of just thread 0
         var tail_start = num_simd_vectors * simd_width
         var tail_idx = tail_start + global_tid
         if tail_idx < num_elements:
-            var data = in_ptr.load[width=1, invariant=True](tail_idx)
-            out_ptr.store(tail_idx, data)
+            var data = in_tensor.raw_load[width=1, invariant=True](tail_idx)
+            out_tensor.raw_store(tail_idx, data)
 
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)
 

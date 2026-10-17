@@ -1207,8 +1207,8 @@ struct BlockScaledMatmulAMD[
         var warp_m, warp_n = divmod(_warp_id, Self.num_warps_n)
 
         # === GMEM views ===
-        var a_gmem = TileTensor(a.ptr.bitcast[UInt8](), a.layout)
-        var b_gmem = TileTensor(b.ptr.bitcast[UInt8](), b.layout)
+        var a_gmem = a.bitcast[.uint8]()
+        var b_gmem = b.bitcast[.uint8]()
 
         # === SMEM tiles (row-major allocation; access is conditionally
         # XOR-swizzled per BlockScaledMmaOp.use_smem_swizzle) ===
@@ -1455,7 +1455,10 @@ struct BlockScaledMatmulAMD[
                     var src_word_base = (row * K_SCALES + base_scale_k) // 4
                     comptime for w in range(SCALE_WORDS_PER_ROW):
                         sfa_load_reg.raw_store(
-                            w, sfa.ptr.bitcast[Int32]()[src_word_base + w]
+                            w,
+                            sfa.bitcast[.int32]().raw_load[invariant=False](
+                                src_word_base + w
+                            ),
                         )
                 else:
                     comptime for w in range(SCALE_WORDS_PER_ROW):
@@ -1467,7 +1470,10 @@ struct BlockScaledMatmulAMD[
                     var src_word_base = (row * K_SCALES + base_scale_k) // 4
                     comptime for w in range(SCALE_WORDS_PER_ROW):
                         sfb_load_reg.raw_store(
-                            w, sfb.ptr.bitcast[Int32]()[src_word_base + w]
+                            w,
+                            sfb.bitcast[.int32]().raw_load[invariant=False](
+                                src_word_base + w
+                            ),
                         )
                 else:
                     comptime for w in range(SCALE_WORDS_PER_ROW):

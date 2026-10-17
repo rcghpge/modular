@@ -152,7 +152,7 @@ def scatter_nd[
     # Copy input data to output (appropriate elements will be updated as needed
     # by the end of scatternd kernel).
     for _i in range(output.num_elements()):
-        output.ptr[_i] = data.ptr[_i]
+        output.raw_store(_i, data.raw_load(_i))
 
     # Depending on r_minus_m = data_rank - last_shape_of_indices,
     # we will be copying:
@@ -259,7 +259,7 @@ def linear_fill[
     assert buf.num_elements() == len(elems), "must fill all elements of tensor"
 
     for i in range(buf.num_elements()):
-        buf.ptr[i] = elems[i]
+        buf.raw_store(i, elems[i])
 
 
 def test_case[
@@ -299,7 +299,7 @@ def test_case[
     linear_fill(output_ref, output_ref_vals)
 
     for i in range(output.num_elements()):
-        if output_ref.ptr[i] != output.ptr[i]:
+        if output_ref.raw_load(i) != output.raw_load(i):
             print("FAILURE: Mismatch at idx: ", end="")
             print(i)
             assert_false(True)

@@ -101,9 +101,8 @@ def create_ref_b[
     # Unpack quantized weights
     comptime scales_type = DType.bfloat16
     comptime b_type = DType.uint32
-    var b_q = TileTensor(
-        b_packed.ptr.bitcast[Scalar[b_type]](),
-        row_major[N // 64, K * 64 // pack_factor](),
+    var b_q = b_packed.bitcast[b_type]().reshape(
+        row_major[N // 64, K * 64 // pack_factor]()
     )
 
     var b_scales_ptr = b_packed.ptr + N * K // 2

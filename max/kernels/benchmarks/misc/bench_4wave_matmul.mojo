@@ -146,8 +146,8 @@ def verify_matmul[
         var b_host = TileTensor(b_host_ptr, row_major(b_shape))
 
         comptime if a_type.is_float8():
-            rand(a_host.ptr, a_host.num_elements())
-            rand(b_host.ptr, b_host.num_elements())
+            rand(a_host.as_span())
+            rand(b_host.as_span())
         else:
             if init_type == InitializationType.zero:
                 _ = a_host.fill(0)
@@ -156,8 +156,8 @@ def verify_matmul[
                 _ = a_host.fill(1)
                 _ = b_host.fill(1)
             elif init_type == InitializationType.uniform_distribution:
-                rand(a_host.ptr, a_host.num_elements())
-                rand(b_host.ptr, b_host.num_elements())
+                rand(a_host.as_span())
+                rand(b_host.as_span())
             elif init_type == InitializationType.arange:
                 for i in range(a_host.num_elements()):
                     a_host.raw_store(i, Scalar[a_type](i))
@@ -367,8 +367,8 @@ def bench_matmul[
         var b_host = TileTensor(b_host_ptr, row_major(cb_b.alloc_size()))
 
         comptime if a_type.is_float8():
-            rand(a_host.ptr, a_host.num_elements())
-            rand(b_host.ptr, b_host.num_elements())
+            rand(a_host.as_span())
+            rand(b_host.as_span())
         else:
             if init_type == InitializationType.zero:
                 _ = a_host.fill(0)
@@ -377,8 +377,8 @@ def bench_matmul[
                 _ = a_host.fill(1)
                 _ = b_host.fill(1)
             elif init_type == InitializationType.uniform_distribution:
-                rand(a_host.ptr, a_host.num_elements())
-                rand(b_host.ptr, b_host.num_elements())
+                rand(a_host.as_span())
+                rand(b_host.as_span())
             elif init_type == InitializationType.arange:
                 for i in range(a_host.num_elements()):
                     a_host.raw_store(i, Scalar[a_type](i))

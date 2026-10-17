@@ -122,15 +122,15 @@ def run_causal_conv1d_update_gpu[
     )
 
     # Initialize input data
-    rand[dtype](input_h.unsafe_ptr(), input_h.num_elements())
-    rand[dtype](conv_state_h.unsafe_ptr(), conv_state_h.num_elements())
-    rand[dtype](weight_h.unsafe_ptr(), weight_h.num_elements())
-    rand[dtype](bias_h.unsafe_ptr(), bias_h.num_elements())
+    rand[dtype](input_h.as_span())
+    rand[dtype](conv_state_h.as_span())
+    rand[dtype](weight_h.as_span())
+    rand[dtype](bias_h.as_span())
 
     # Copy conv_state for CPU and GPU
     for i in range(batch * dim * state_len):
-        conv_state_cpu_h.unsafe_ptr()[i] = conv_state_h.unsafe_ptr()[i]
-        conv_state_gpu_h.unsafe_ptr()[i] = conv_state_h.unsafe_ptr()[i]
+        conv_state_cpu_h.raw_store(i, conv_state_h.raw_load(i))
+        conv_state_gpu_h.raw_store(i, conv_state_h.raw_load(i))
 
     var input_buf = input_h
     var conv_state_cpu_buf = conv_state_cpu_h
@@ -307,8 +307,8 @@ def run_causal_conv1d_update_gpu[
     var flattened_size = batch * dim * seqlen
     for i in range(flattened_size):
         assert_almost_equal(
-            result_gpu_h.unsafe_ptr()[i],
-            result_cpu_h.unsafe_ptr()[i],
+            result_gpu_h.raw_load(i),
+            result_cpu_h.raw_load(i),
             rtol=rtol,
         )
 
@@ -316,8 +316,8 @@ def run_causal_conv1d_update_gpu[
     var conv_state_size = batch * dim * state_len
     for i in range(conv_state_size):
         assert_almost_equal(
-            conv_state_gpu_h.unsafe_ptr()[i],
-            conv_state_cpu_h.unsafe_ptr()[i],
+            conv_state_gpu_h.raw_load(i),
+            conv_state_cpu_h.raw_load(i),
             rtol=rtol,
         )
 

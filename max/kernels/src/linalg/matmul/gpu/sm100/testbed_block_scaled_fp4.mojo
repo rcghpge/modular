@@ -64,14 +64,12 @@ def _rand_mxfp4_value() -> Scalar[MXFP4_SF_DTYPE]:
     return bitcast[MXFP4_SF_DTYPE](random_ui64(1, 254).cast[.uint8]())
 
 
-def _rand_mxfp4[
-    scales_dtype: DType
-](ptr: MutPointer[Scalar[scales_dtype], ...], size: Int):
+def _rand_mxfp4[scales_dtype: DType](span: MutSpan[Scalar[scales_dtype], _]):
     comptime assert (
         scales_dtype == MXFP4_SF_DTYPE
     ), "_rand_mxfp4 only supports MXFP4 scales dtype"
-    for i in range(size):
-        ptr[i] = _rand_mxfp4_value().cast[scales_dtype]()
+    for i in range(len(span)):
+        span[i] = _rand_mxfp4_value().cast[scales_dtype]()
 
 
 def simple_init() -> Bool:
@@ -287,15 +285,15 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
                 comptime assert b_host.flat_rank >= 2
                 b_host[n, k] = UInt8(n).cast[b_type]()
     else:
-        rand(a_host.ptr, a_host.num_elements(), min=0, max=255)
-        rand(b_host.ptr, b_host.num_elements(), min=0, max=255)
+        rand(a_host.as_span(), min=0, max=255)
+        rand(b_host.as_span(), min=0, max=255)
 
     comptime if scales_dtype == NVFP4_SF_DTYPE:
-        rand(a_scales_host.ptr, a_scales_host.num_elements())
-        rand(b_scales_host.ptr, b_scales_host.num_elements())
+        rand(a_scales_host.as_span())
+        rand(b_scales_host.as_span())
     elif scales_dtype == MXFP4_SF_DTYPE:
-        _rand_mxfp4(a_scales_host.ptr, a_scales_host.num_elements())
-        _rand_mxfp4(b_scales_host.ptr, b_scales_host.num_elements())
+        _rand_mxfp4(a_scales_host.as_span())
+        _rand_mxfp4(b_scales_host.as_span())
     else:
         comptime assert False, "Unsupported scales_dtype in FP4 testbed"
 

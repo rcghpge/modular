@@ -278,8 +278,8 @@ def bench_matmul_1d_tma_epilogue[
             # pointer for 1D bias.
             var epi_1 = Int64(1)
             var epi_n = Int64(N)
-            var epilogue_for_gpu = TileTensor(
-                bias_tile.ptr, row_major(epi_1, epi_n)
+            var epilogue_for_gpu = bias_tile.reshape(
+                row_major(epi_1, epi_n)
             ).as_imm()
             fused_bias_residual_matmul_dispatch_sm100[
                 transpose_b=transpose_b,

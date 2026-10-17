@@ -254,7 +254,7 @@ def f32_frag_to_smem[
                 rebind[Scalar[dst.dtype]](vec[2 * i_vec + 1]),
             )
             var offset = base_offset + i * 8 * stride0 + j * 8
-            (dst.ptr + offset).store(val)
+            dst.raw_store(offset, val)
 
 
 @inline(.always)

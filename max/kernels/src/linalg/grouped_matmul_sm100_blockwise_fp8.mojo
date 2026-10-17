@@ -986,7 +986,7 @@ def _copy_partial_a_tile_blockwise_from_gmem[
             av = a_gmem.load[width=VEC, alignment=align_of[a_type]()](
                 Coord(g_row, iter_idx * BK + k0)
             )
-        (a_smem_tile.unsafe_ptr() + Int(a_sw(Int32(row * BK + k0)))).store(av)
+        a_smem_tile.raw_store(Int(a_sw(Int32(row * BK + k0))), av)
 
     # a_scales: BM scalars total; each lane writes one row per outer iteration.
     comptime for i in range(BM // WARP_SIZE):
@@ -1605,13 +1605,12 @@ def multi_stage_reg_epilogue[
                     var global_i: Int = coord_m + local_i
                     var global_j: Int = coord_n + local_j
                     if global_i < Int(group_end_idx):
-                        var src_ptr = c_smem_split.unsafe_ptr() + (
+                        var src = c_smem_split.raw_load[
+                            width=simd_size, alignment=alignment
+                        ](
                             linear_idx if size_of[c_type]()
                             != 2 else swizzle(linear_idx)
                         )
-                        var src = src_ptr.load[
-                            width=simd_size, alignment=alignment
-                        ]()
                         var dst_ptr = c_ptr + global_i * c_static_N + global_j
                         dst_ptr.store[width=simd_size, alignment=alignment](src)
         else:

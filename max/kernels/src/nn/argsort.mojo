@@ -90,13 +90,7 @@ def _argsort_cpu[
         else:
             return input[a] > input[b]
 
-    sort(
-        Span[
-            Scalar[indices.dtype],
-            indices.origin,
-        ](unsafe_ptr=indices.ptr, length=indices.num_elements()),
-        cmp_fn,
-    )
+    sort(indices.as_span(), cmp_fn)
 
 
 @inline(.always)
@@ -480,7 +474,7 @@ def _argsort_gpu[
                 iota[indices.dtype, width](Scalar[indices.dtype](i)),
             )
             input_copy.raw_store[alignment=simd_width_of[input_copy.dtype]()](
-                i, input.ptr.unsafe_load[width=width](i)
+                i, input.raw_load[width=width](i)
             )
 
         elementwise[

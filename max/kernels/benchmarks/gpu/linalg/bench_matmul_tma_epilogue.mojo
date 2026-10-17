@@ -299,8 +299,8 @@ def bench_matmul_tma_epilogue[
             # returns Int which mismatches; use Int64 directly.
             var epi_m = Int64(epilogue_shape[0].value())
             var epi_n = Int64(epilogue_shape[1].value())
-            var epilogue_for_gpu = TileTensor(
-                tensor_epilogue.ptr, row_major(epi_m, epi_n)
+            var epilogue_for_gpu = tensor_epilogue.reshape(
+                row_major(epi_m, epi_n)
             ).as_imm()
             fused_bias_residual_matmul_dispatch_sm100[transpose_b=transpose_b,](
                 tensor_c,

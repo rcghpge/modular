@@ -140,7 +140,7 @@ def naive_grouped_matmul_kernel[
     var a_start_row = rebind[UInt32](a_offsets[block_idx.z])
 
     var expert = rebind[Int32](expert_ids[block_idx.z])
-    var b_by_expert = b.ptr + Int64(expert) * Int64(N) * Int64(K)
+    var b_expert_off = Int(expert) * N * K
 
     # indices in current matmul
     var n = global_idx.x
@@ -158,7 +158,7 @@ def naive_grouped_matmul_kernel[
         a_row_off = lora_qkv_plane_row_offset[a_plane_splits](
             Int(n), Int(a.dim[0]()) // 3
         )
-    var a_by_expert = a.ptr + Int64(Int(a_start_row) + a_row_off) * Int64(K)
+    var a_expert_off = (Int(a_start_row) + a_row_off) * K
 
     comptime accum_type = get_accum_type[a_type]()
 
@@ -170,8 +170,8 @@ def naive_grouped_matmul_kernel[
     if expert != -1:
         for k in range(K):
             accum += (
-                a_by_expert[m * K + k].cast[accum_type]()
-                * b_by_expert[n * K + k].cast[accum_type]()
+                a.raw_load(a_expert_off + m * K + k).cast[accum_type]()
+                * b.raw_load(b_expert_off + n * K + k).cast[accum_type]()
             )
 
     var idx = Coord(Int(a_start_row) + m, n)
@@ -181,8 +181,7 @@ def naive_grouped_matmul_kernel[
     else:
         comptime if has_compute_fn:
             out = compute_fn[c_type, 1, alignment=1](idx, out)
-        var c_by_expert = c.ptr + Int64(a_start_row) * Int64(N)
-        c_by_expert[m * N + n] = out
+        c.raw_store(Int(a_start_row) * N + m * N + n, out)
 
 
 @always_inline
@@ -1303,10 +1302,10 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
     var K = Int(b.dim[2]())
 
     var a_start_row = rebind[UInt32](a_offsets[block_idx.z])
-    var a_by_expert = a.ptr + Int64(a_start_row) * Int64(K)
+    var a_expert_off = Int(a_start_row) * K
 
     var expert = rebind[Int32](expert_ids[block_idx.z])
-    var b_by_expert = b.ptr + Int64(expert) * Int64(N) * Int64(K)
+    var b_expert_off = Int(expert) * N * K
 
     # indices in current matmul
     var n = global_idx.x
@@ -1324,8 +1323,8 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
     if expert != -1:
         for k in range(K):
             accum += (
-                a_by_expert[m * K + k].cast[accum_type]()
-                * b_by_expert[n * K + k].cast[accum_type]()
+                a.raw_load(a_expert_off + m * K + k).cast[accum_type]()
+                * b.raw_load(b_expert_off + n * K + k).cast[accum_type]()
             )
 
         # Apply the rowwise + per-token scale ONCE after the full-K reduction
@@ -1341,8 +1340,7 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
         ).cast[accum_type]()
         accum = accum * a_scale * b_scale
 
-    var c_by_expert = c.ptr + Int64(a_start_row) * Int64(N)
-    c_by_expert[m * N + n] = accum.cast[c_type]()
+    c.raw_store(Int(a_start_row) * N + m * N + n, accum.cast[c_type]())
 
 
 @inline(.always)

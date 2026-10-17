@@ -76,7 +76,7 @@ def tma_store_uint32_kernel[
         # threads write 32 contiguous uint32 == one full sweep over all 32
         # banks.
         var base = UInt32(it * ELEMS_PER_ITER) + UInt32(tid) * UInt32(VEC)
-        smem.unsafe_ptr().store(Int(base), SIMD[.uint32, VEC](base) + iota)
+        smem.raw_store(Int(base), SIMD[.uint32, VEC](base) + iota)
 
     barrier()
     fence_async_view_proxy()

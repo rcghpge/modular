@@ -441,9 +441,7 @@ def _batched_matmul_cpu_impl[
                     a_packed_alloc.unsafe_ptr(),
                     row_major(mh, kh),
                 )
-                packA_i8mm[a_type](
-                    0, m, k, a_view.ptr, a_packed_alloc.unsafe_ptr()
-                )
+                packA_i8mm[a_type](0, m, k, a_view, a_packed_alloc.unsafe_ptr())
 
                 _submatmul_sequential_sync[
                     config,
@@ -654,15 +652,11 @@ def batched_matmul_kernel_gpu[
             `host_arg2=compute_fn`.
     """
     var batch_idx = block_idx.z
-    var a_ptr = a_tensor.ptr + batch_idx * Int(
-        a_tensor.layout.stride[0]().value()
-    )
-    var b_ptr = b_tensor.ptr + batch_idx * Int(
-        b_tensor.layout.stride[0]().value()
-    )
-    var c_ptr = c_tensor.ptr + batch_idx * Int(
-        c_tensor.layout.stride[0]().value()
-    )
+    comptime assert a_tensor.flat_rank == 3 and b_tensor.flat_rank == 3
+    comptime assert c_tensor.flat_rank == 3
+    var a_ptr = a_tensor.ptr_at_offset(Coord(batch_idx, Idx[0], Idx[0]))
+    var b_ptr = b_tensor.ptr_at_offset(Coord(batch_idx, Idx[0], Idx[0]))
+    var c_ptr = c_tensor.ptr_at_offset(Coord(batch_idx, Idx[0], Idx[0]))
 
     var m = Int(c_tensor.dim[1]())
 

@@ -94,6 +94,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
             tile_n_k: Dynamic tile sizes along the N and K dimensions.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert a.flat_rank == 2, "a must be rank 2"
 
         comptime c_type = c_local.dtype
         # Seek outer indices in packed layout.
@@ -129,7 +130,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
         var a_local = stack_allocation[
             dtype=a.dtype, address_space=a.address_space
         ](row_major[kernel_rows * 4]())
-        var a_base_ptr = a.ptr + (global_offset.M * K + global_k)
+        var a_base_ptr = a.ptr_at_offset(Coord(global_offset.M, global_k))
         var a_ptr = a_local.ptr if (
             is_tail
             and not CompilationTarget.has_avx512f()
@@ -227,10 +228,11 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
                 results.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert c.flat_rank == 2, "c must be rank 2"
 
         var c_stride = Int(c.dim[1]())
 
-        var c_ptr = c.ptr + (global_offset.M * c_stride + global_offset.N)
+        var c_ptr = c.ptr_at_offset(Coord(global_offset.M, global_offset.N))
         var c_bound = Index(global_bound.M, global_bound.N) - Index(
             global_offset.M, global_offset.N
         )

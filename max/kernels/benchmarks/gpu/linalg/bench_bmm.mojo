@@ -183,10 +183,9 @@ def bench_bmm[
         def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
             comptime if use_vendor_blas:
                 comptime if ctx.target.is_amd_gpu():
-                    var c_buffer = TileTensor(c_device.ptr, row_major(m, n))
-                    var a_buffer = TileTensor(a_device.ptr, row_major(m, k))
-                    var b_buffer = TileTensor(
-                        b_device.ptr,
+                    var c_buffer = c_device.reshape(row_major(m, n))
+                    var a_buffer = a_device.reshape(row_major(m, k))
+                    var b_buffer = b_device.reshape(
                         row_major(
                             Idx[
                                 NType.static_value if transpose_b else KType.static_value

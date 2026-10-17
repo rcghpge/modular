@@ -158,8 +158,8 @@ def run_causal_conv1d[
     var flattened_size = batch * dim * seqlen
     for i in range(flattened_size):
         assert_almost_equal(
-            result_fused_h.unsafe_ptr()[i],
-            result_unfused_h.unsafe_ptr()[i],
+            result_fused_h.raw_load(i),
+            result_unfused_h.raw_load(i),
             rtol=rtol,
         )
 

@@ -445,9 +445,7 @@ struct VBufferRDNA[
                     )
                     src_col += depth_idx * Self.depth_tile_size
                     var offset = Int(src_row) * stride + Int(src_col)
-                    var data = (strip.ptr + offset).load[
-                        width=Self.load_width
-                    ]()
+                    var data = strip.raw_load[width=Self.load_width](offset)
                     comptime for j in range(Self.load_width):
                         load_tile[dst_idx, j] = data[j]
                 else:
@@ -686,13 +684,13 @@ struct QRegisterBufferRDNA[
 
                     if row < (valid_rows - Int(warp_base_row)):
                         var offset0 = warp_offset + row_offset + k_offset
-                        var data0 = (tensor.ptr + offset0).load[
-                            width=Self.simd_width
-                        ]()
+                        var data0 = tensor.raw_load[width=Self.simd_width](
+                            offset0
+                        )
                         var offset1 = offset0 + Self.simd_width
-                        var data1 = (tensor.ptr + offset1).load[
-                            width=Self.simd_width
-                        ]()
+                        var data1 = tensor.raw_load[width=Self.simd_width](
+                            offset1
+                        )
                         comptime for j in range(Self.simd_width):
                             self.reg_tile[frag_idx, j] = data0[j]
                             self.reg_tile[

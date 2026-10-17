@@ -422,8 +422,8 @@ def _top_k_cpu[
                 var out_vals_idx = out_vals.layout(Coord(indices))
                 var out_idxs_idx = out_idxs.layout(Coord(indices))
                 out_vals.raw_store(out_vals_idx, val)
-                out_idxs.ptr[out_idxs_idx] = rebind[Scalar[out_idx_type]](
-                    idxs[i]
+                out_idxs.raw_store(
+                    out_idxs_idx, rebind[Scalar[out_idx_type]](idxs[i])
                 )
 
             # A row asking for fewer than the output width gets the padding
@@ -435,9 +435,9 @@ def _top_k_cpu[
                     out_vals.layout(Coord(indices)),
                     _topk_dead_val[dtype, largest](),
                 )
-                out_idxs.ptr[out_idxs.layout(Coord(indices))] = Scalar[
-                    out_idx_type
-                ](-1)
+                out_idxs.raw_store(
+                    out_idxs.layout(Coord(indices)), Scalar[out_idx_type](-1)
+                )
 
     parallelize_over_rows(
         process_rows, shape, axis, parallelism_grain_size, ctx
@@ -2793,10 +2793,10 @@ def _gumbel_argmax_fused_kernel[
                     ):
                         best_value = value
                         best_index = index
-                out_idxs.ptr[batch_id] = best_index.cast[out_idx_type]()
+                out_idxs.raw_store(batch_id, best_index.cast[out_idx_type]())
         else:
             if tid == 0:
-                out_idxs.ptr[batch_id] = Int(total.p).cast[out_idx_type]()
+                out_idxs.raw_store(batch_id, Int(total.p).cast[out_idx_type]())
 
 
 @inline(.always)

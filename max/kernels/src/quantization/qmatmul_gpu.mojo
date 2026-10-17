@@ -656,9 +656,8 @@ def multistage_qgemm_kernel[
     # Unpack quantized weights
     comptime scales_type = DType.bfloat16
     comptime b_type = DType.uint32
-    var b = TileTensor(
-        b_packed.ptr.bitcast[Scalar[b_type]](),
-        row_major[N // 64, K * 64 // pack_factor](),
+    var b = b_packed.bitcast[b_type]().reshape(
+        row_major[N // 64, K * 64 // pack_factor]()
     )
 
     var b_scales_ptr = b_packed.ptr + N * K // 2
@@ -1144,9 +1143,8 @@ def repack_Q4_0_for_sm8x[
         return bitcast[scales_type, 2](f32_values)[1]
 
     # Each 64x16 weight tile occupies 128 contiguous uint32 values.
-    var repack_weights = TileTensor(
-        q_packed_weight.ptr.bitcast[UInt32](),
-        row_major[N // 64, K * 64 // pack_factor](),
+    var repack_weights = q_packed_weight.bitcast[.uint32]().reshape(
+        row_major[N // 64, K * 64 // pack_factor]()
     )
 
     var b_scales_ptr = q_packed_weight.ptr + N * K // 2
@@ -1301,18 +1299,17 @@ def repack_GPTQ_for_sm8x[
         var f32_values = bitcast[.float16, 1](input_bytes).cast[.float32]()
         return bitcast[scales_type, 2](f32_values)[1]
 
-    var raw_weights = TileTensor(
-        in_tensor.ptr.bitcast[UInt32](), row_major[uint_K, N]()
-    ).transpose()
+    var raw_weights = (
+        in_tensor.bitcast[.uint32]().reshape(row_major[uint_K, N]()).transpose()
+    )
     var raw_scales_ptr = in_tensor.ptr + N * K // 2
     var raw_scales = TileTensor(
         raw_scales_ptr.bitcast[Scalar[raw_scales_type]](),
         row_major[K_groups, N](),
     ).transpose()
 
-    var repack_weights = TileTensor(
-        out_tensor.ptr.bitcast[UInt32](),
-        row_major[N // 64, K * 64 // pack_factor](),
+    var repack_weights = out_tensor.bitcast[.uint32]().reshape(
+        row_major[N // 64, K * 64 // pack_factor]()
     )
     var repacked_scales_ptr = out_tensor.ptr + N * K // 2
     var repack_scales = TileTensor(

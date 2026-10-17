@@ -315,7 +315,7 @@ def fa4_load[
                     + (BM - q_pad_rows) * gran
                     + (c % chunks_per_blk) * chunk
                 )
-                (smem_dst.ptr + off).store(SIMD[qkv_type, chunk](0))
+                smem_dst.raw_store(off, SIMD[qkv_type, chunk](0))
             fence_async_view_proxy()
             syncwarp()
             comptime for blk in range(nblk):

@@ -1337,7 +1337,7 @@ def _multistage_gemm_kernel_impl[
                     store_output[alignment](
                         m,
                         n,
-                        accum_smem_warp_tile.ptr.load[
+                        accum_smem_warp_tile.raw_load[
                             width=simd_size, alignment=alignment
                         ](swizzled_idx),
                     )

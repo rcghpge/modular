@@ -525,8 +525,7 @@ def execute_fused_qk_rope_ragged(
         .reshape(Coord(Int64(true_ce_cache_lengths_shape[0])))
         .as_imm()
         .as_unsafe_any_origin(),
-        TileTensor(
-            paged_lut_host_tensor.ptr,
+        paged_lut_host_tensor.reshape(
             row_major(Int64(paged_lut_shape[0]), Int64(paged_lut_shape[1])),
         )
         .as_imm()
@@ -549,8 +548,7 @@ def execute_fused_qk_rope_ragged(
         .reshape(Coord(Int64(mixed_ce_cache_lengths_shape[0])))
         .as_imm()
         .as_unsafe_any_origin(),
-        TileTensor(
-            paged_lut_host_tensor.ptr,
+        paged_lut_host_tensor.reshape(
             row_major(Int64(paged_lut_shape[0]), Int64(paged_lut_shape[1])),
         )
         .as_imm()

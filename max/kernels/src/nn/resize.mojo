@@ -366,7 +366,9 @@ def resize_nearest_neighbor[
                         in_coords[last] = (out_last + lane) >> shift_scales[
                             last
                         ]
-                        values[lane] = input.ptr[input.layout(Coord(in_coords))]
+                        values[lane] = input.raw_load(
+                            input.layout(Coord(in_coords))
+                        )
 
                     output.raw_store[width=simd_width, alignment=alignment](
                         output.layout(out_coords), values
@@ -391,7 +393,9 @@ def resize_nearest_neighbor[
                     var values = SIMD[dtype, simd_width]()
                     comptime for lane in range(simd_width):
                         in_coords[last] = (out_last + lane) // int_scales[last]
-                        values[lane] = input.ptr[input.layout(Coord(in_coords))]
+                        values[lane] = input.raw_load(
+                            input.layout(Coord(in_coords))
+                        )
 
                     output.raw_store[width=simd_width, alignment=alignment](
                         output.layout(out_coords), values
@@ -466,7 +470,7 @@ def resize_nearest_neighbor[
                 Int(output.dim(last)),
                 scales[last],
             )
-            values[lane] = input.ptr[input.layout(Coord(in_coords))]
+            values[lane] = input.raw_load(input.layout(Coord(in_coords)))
 
         output.raw_store[width=simd_width, alignment=alignment](
             output.layout(out_coords), values

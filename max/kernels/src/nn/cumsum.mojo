@@ -457,8 +457,8 @@ def _enqueue_scan[
     var num_chunks = ceildiv(axis_len, chunk_len)
     if row_scan:
         var rows_layout = row_major((num_rows, axis_len))
-        var out_rows = TileTensor(output.unsafe_ptr(), rows_layout)
-        var in_rows = TileTensor(input.unsafe_ptr(), rows_layout)
+        var out_rows = output.reshape(rows_layout)
+        var in_rows = input.reshape(rows_layout)
         comptime kernel = _cumsum_row_scan_kernel[
             dtype,
             accum_type,
@@ -480,8 +480,8 @@ def _enqueue_scan[
         return
 
     var lines_layout = row_major((num_rows, axis_len, stride))
-    var out_lines = TileTensor(output.unsafe_ptr(), lines_layout)
-    var in_lines = TileTensor(input.unsafe_ptr(), lines_layout)
+    var out_lines = output.reshape(lines_layout)
+    var in_lines = input.reshape(lines_layout)
     comptime kernel = _cumsum_serial_kernel[
         dtype,
         accum_type,
@@ -520,9 +520,7 @@ def _enqueue_chunk_totals[
     `[num_rows * stride, num_chunks]` tensor `totals`, in scan order."""
     var num_chunks = ceildiv(axis_len, chunk_len)
     if row_scan:
-        var in_rows = TileTensor(
-            input.unsafe_ptr(), row_major((num_rows, axis_len))
-        )
+        var in_rows = input.reshape(row_major((num_rows, axis_len)))
         comptime kernel = _cumsum_row_total_kernel[
             dtype,
             accum_type,
@@ -539,9 +537,7 @@ def _enqueue_chunk_totals[
         )
         return
 
-    var in_lines = TileTensor(
-        input.unsafe_ptr(), row_major((num_rows, axis_len, stride))
-    )
+    var in_lines = input.reshape(row_major((num_rows, axis_len, stride)))
     comptime kernel = _cumsum_serial_total_kernel[
         dtype, accum_type, reverse, in_lines.LayoutType, totals.LayoutType
     ]
@@ -630,10 +626,7 @@ def _cumsum_gpu[
     var row_scan = _use_row_scan(num_lines, axis_len, stride, sm_count)
     var chunk_len = _chunk_len(row_scan, num_lines, axis_len, sm_count)
     # Stands in for `carry` wherever `has_carry` is False; never read.
-    var no_carry = TileTensor(
-        input.unsafe_ptr().unsafe_bitcast[Scalar[accum_type]](),
-        row_major((1, 1)),
-    )
+    var no_carry = input.bitcast[accum_type]().reshape(row_major((1, 1)))
     if chunk_len == axis_len:
         _enqueue_scan[dtype, accum_type, exclusive, reverse, False](
             output,

@@ -170,13 +170,13 @@ def run_selective_scan_fwd[
 
     # Scale A to be negative for stability
     for i in range(dim * dstate):
-        var val = A_h.unsafe_ptr().load(i)
-        A_h.unsafe_ptr().store(i, Scalar[dtype](Float32(val) * -0.5))
+        var val = A_h.raw_load(i)
+        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
 
     # Scale delta to be positive
     for i in range(batch * dim * seqlen):
-        var val = delta_h.unsafe_ptr().load(i)
-        delta_h.unsafe_ptr().store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
+        var val = delta_h.raw_load(i)
+        delta_h.raw_store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
 
     var x_tt = TileTensor(
         x_heap,
@@ -215,7 +215,7 @@ def run_selective_scan_fwd[
     # Basic sanity check: output should not be all zeros
     var has_nonzero = False
     for i in range(batch * dim * seqlen):
-        if abs(Float32(output_h.unsafe_ptr()[i])) > 1e-6:
+        if abs(Float32(output_h.raw_load(i))) > 1e-6:
             has_nonzero = True
             break
 
@@ -332,12 +332,12 @@ def run_selective_scan_update[
 
     # Scale A to be negative for stability
     for i in range(dim * dstate):
-        var val = A_h.unsafe_ptr()[i]
-        A_h.unsafe_ptr()[i] = Scalar[dtype](Float32(val) * -0.5)
+        var val = A_h.raw_load(i)
+        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
 
     # Copy state_in for reference
     for i in range(batch * dim * dstate):
-        state_out_ref_h.unsafe_ptr()[i] = state_in_h.unsafe_ptr()[i]
+        state_out_ref_h.raw_store(i, state_in_h.raw_load(i))
 
     var x_buf = x_h
     var dt_buf = dt_h
@@ -410,9 +410,7 @@ def run_selective_scan_update[
             var state_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
                 var state_offset = b * dim * dstate + d * dstate + n
-                state_vals[n] = Float32(
-                    state_out_ref_h.unsafe_ptr()[state_offset]
-                )
+                state_vals[n] = Float32(state_out_ref_h.raw_load(state_offset))
 
             # Update state
             state_vals = state_vals * dA_vals + dB_vals * x_val
@@ -420,8 +418,8 @@ def run_selective_scan_update[
             # Store updated state
             for n in range(dstate):
                 var state_offset = b * dim * dstate + d * dstate + n
-                state_out_ref_h.unsafe_ptr()[state_offset] = Scalar[dtype](
-                    state_vals[n]
+                state_out_ref_h.raw_store(
+                    state_offset, Scalar[dtype](state_vals[n])
                 )
 
             # Load C values
@@ -446,22 +444,22 @@ def run_selective_scan_update[
 
             # Store output
             var out_offset = b * dim + d
-            output_ref_h.unsafe_ptr()[out_offset] = Scalar[dtype](out_val)
+            output_ref_h.raw_store(out_offset, Scalar[dtype](out_val))
 
     # Compare results
     var state_size = batch * dim * dstate
     for i in range(state_size):
         assert_almost_equal(
-            state_out_h.unsafe_ptr()[i],
-            state_out_ref_h.unsafe_ptr()[i],
+            state_out_h.raw_load(i),
+            state_out_ref_h.raw_load(i),
             rtol=rtol,
         )
 
     var output_size = batch * dim
     for i in range(output_size):
         assert_almost_equal(
-            output_h.unsafe_ptr()[i],
-            output_ref_h.unsafe_ptr()[i],
+            output_h.raw_load(i),
+            output_ref_h.raw_load(i),
             rtol=rtol,
         )
 

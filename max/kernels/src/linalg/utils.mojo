@@ -1219,7 +1219,7 @@ def packA_i8mm[
     t0: Int,
     t1: Int,
     k: Int,
-    a_ptr: ImmPointer[Scalar[a_type], ...],
+    a: TileTensor[a_type, ...],
     a_packed_ptr: MutPointer[Scalar[a_type], ...],
 ):
     """Packs a range of rows of matrix A for the i8mm kernel layout.
@@ -1231,25 +1231,27 @@ def packA_i8mm[
         t0: The starting row index of the range to pack.
         t1: The ending row index of the range to pack (exclusive).
         k: The K dimension of the matmul.
-        a_ptr: Pointer to the source A matrix in row-major layout.
+        a: The source A matrix in row-major layout.
         a_packed_ptr: Pointer to the destination packed A buffer.
     """
+
+    comptime assert a.flat_rank == 2, "a must be rank 2"
 
     @inline(.always)
     def packA_helper[
         nrow: Int
-    ](offset: Int) {var k, var t0, imm a_ptr, imm a_packed_ptr}:
+    ](offset: Int) {var k, var t0, imm a, imm a_packed_ptr}:
         var kl = align_down(k, 8)
         var kh = align_up(k, 8)
         var j = t0 + offset
         for l in range(0, k, 8):
             comptime for idx in range(nrow):
-                var t0 = a_ptr.load[width=8]((j + idx) * k + l)
+                var t0 = a.raw_load[width=8, invariant=False]((j + idx) * k + l)
                 a_packed_ptr.store(kh * j + 2 * l + 8 * idx, t0)
 
         comptime for idx in range(nrow):
             var t0 = partial_simd_load[8](
-                a_ptr + ((j + idx) * k + kl), 0, k - kl, 0
+                a.ptr_at_offset(Coord(j + idx, kl)), 0, k - kl, 0
             )
             partial_simd_store(
                 a_packed_ptr + (kh * j + 2 * kl + 8 * idx),

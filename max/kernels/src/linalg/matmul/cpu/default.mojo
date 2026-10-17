@@ -68,6 +68,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
                 processing tile to index the packed B matrix.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert a.flat_rank == 2, "a must be rank 2"
 
         # Seek outer indices in packed layout.
         var n_outer_idx = tile_n_k_idx[0] // kernel_cols
@@ -92,7 +93,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
 
         # This inner kernels works with non-transposed A.
         var K = Int(a.dim[1]())
-        var a_ptr = a.ptr + (global_offset.M * K + global_k)
+        var a_ptr = a.ptr_at_offset(Coord(global_offset.M, global_k))
 
         comptime c_type = c_local.dtype
 
@@ -146,10 +147,11 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
                 loads and stores.
         """
         comptime assert b_packed.flat_rank == 3, "b_packed must be rank 3"
+        comptime assert c.flat_rank == 2, "c must be rank 2"
 
         var c_stride = Int(c.dim[1]())
 
-        var c_ptr = c.ptr + (global_offset.M * c_stride + global_offset.N)
+        var c_ptr = c.ptr_at_offset(Coord(global_offset.M, global_offset.N))
 
         var c_bound = Index(global_bound.M, global_bound.N) - Index(
             global_offset.M, global_offset.N

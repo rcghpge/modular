@@ -231,7 +231,7 @@ def swizzled_vectorized_local_to_shared_kernel(
     var row = thread_idx.x // threads_per_row
     var col = (thread_idx.x % threads_per_row) * _V_WIDTH
     for j in range(_V_WIDTH):
-        local.ptr[j] = src_ptr[row * _V_COLS + col + j]
+        local.raw_store(j, src_ptr[row * _V_COLS + col + j])
     copy_local_to_shared[thread_layout, swizzle=swizzle](
         smem.vectorize[1, _V_WIDTH](), local.vectorize[1, _V_WIDTH]()
     )

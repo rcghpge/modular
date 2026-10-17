@@ -149,14 +149,7 @@ def bench_topk_batched[
     var K_host_ptr = List(length=batch_size, fill=Int64(K))
     var K_host_buffer = TileTensor(K_host_ptr, row_major(batch_size))
 
-    var max_k = Int(
-        reduce_max(
-            Span(
-                unsafe_ptr=K_host_buffer.ptr,
-                length=K_host_buffer.num_elements(),
-            )
-        )
-    )
+    var max_k = Int(reduce_max(K_host_buffer.as_span()))
 
     ctx.enqueue_copy(K_dev_buffer, K_host_ptr)
 
@@ -175,7 +168,7 @@ def bench_topk_batched[
         @inline(.always)
         def kernel_launch(ctx: DeviceContext) raises {imm}:
             var k_imm = (
-                TileTensor(k.ptr, row_major(Int64(batch_size)))
+                k.reshape(row_major(Int64(batch_size)))
                 .as_unsafe_any_origin()
                 .as_imm()
             )
@@ -366,14 +359,7 @@ def bench_topk_multi_rank[
     var k = TileTensor(K_dev_buffer, row_major(batch_size))
     ctx.enqueue_copy(K_dev_buffer, K_host_ptr)
     ctx.synchronize()
-    var max_k = Int(
-        reduce_max(
-            Span(
-                unsafe_ptr=K_host_buffer.ptr,
-                length=K_host_buffer.num_elements(),
-            )
-        )
-    )
+    var max_k = Int(reduce_max(K_host_buffer.as_span()))
 
     @inline(.always)
     def bench_func(mut b: Bencher) {var k, imm}:
@@ -385,7 +371,7 @@ def bench_topk_multi_rank[
                 device_in,
                 device_out_vals,
                 device_out_idxs,
-                k=TileTensor(k.ptr, row_major(Int64(batch_size)))
+                k=k.reshape(row_major(Int64(batch_size)))
                 .as_unsafe_any_origin()
                 .as_imm(),
                 block_size=block_size,

@@ -162,16 +162,16 @@ def run_varlen_selective_scan_fwd[
         row_major(batch + 1),
     )
     var cumsum = 0
-    query_start_loc_h.unsafe_ptr().store(0, Int32(0))
+    query_start_loc_h.raw_store(0, Int32(0))
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_h.unsafe_ptr().store(i + 1, Int32(cumsum))
+        query_start_loc_h.raw_store(i + 1, Int32(cumsum))
 
     # cache_indices: (batch,) - can be empty or identity mapping
     var cache_indices_heap = List(length=batch, fill=Int32(0))
     var cache_indices_h = TileTensor(cache_indices_heap, row_major(batch))
     for i in range(batch):
-        cache_indices_h.unsafe_ptr().store(i, Int32(i))
+        cache_indices_h.raw_store(i, Int32(i))
 
     # has_initial_state: (batch,) - can be empty or all False
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](False))
@@ -191,13 +191,13 @@ def run_varlen_selective_scan_fwd[
 
     # Scale A to be negative for stability
     for i in range(dim * dstate):
-        var val = A_h.unsafe_ptr().load(i)
-        A_h.unsafe_ptr().store(i, Scalar[dtype](Float32(val) * -0.5))
+        var val = A_h.raw_load(i)
+        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
 
     # Scale delta to be positive
     for i in range(dim * total_length):
-        var val = delta_h.unsafe_ptr().load(i)
-        delta_h.unsafe_ptr().store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
+        var val = delta_h.raw_load(i)
+        delta_h.raw_store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
 
     var ssm_states_tt = TileTensor(
         ssm_states_heap,
@@ -355,7 +355,7 @@ def run_varlen_selective_state_update[
         row_major(batch),
     )
     for i in range(batch):
-        state_batch_indices_h.unsafe_ptr().store(i, Int32(i))
+        state_batch_indices_h.raw_store(i, Int32(i))
 
     # Initialize input data
     random(x_h)
@@ -372,13 +372,13 @@ def run_varlen_selective_state_update[
 
     # Scale A to be negative for stability
     for i in range(nheads * dim * dstate):
-        var val = A_h.unsafe_ptr().load(i)
-        A_h.unsafe_ptr().store(i, Scalar[dtype](Float32(val) * -0.5))
+        var val = A_h.raw_load(i)
+        A_h.raw_store(i, Scalar[dtype](Float32(val) * -0.5))
 
     # Scale dt to be positive
     for i in range(batch * nheads * dim):
-        var val = dt_h.unsafe_ptr().load(i)
-        dt_h.unsafe_ptr().store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
+        var val = dt_h.raw_load(i)
+        dt_h.raw_store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
 
     var state_tt = TileTensor(
         state_heap,
@@ -413,7 +413,7 @@ def run_varlen_selective_state_update[
     # Basic sanity check: output should not be all zeros
     var has_nonzero = False
     for i in range(batch * nheads * dim):
-        if abs(Float32(output_h.unsafe_ptr().load(i))) > 1e-6:
+        if abs(Float32(output_h.raw_load(i))) > 1e-6:
             has_nonzero = True
             break
 

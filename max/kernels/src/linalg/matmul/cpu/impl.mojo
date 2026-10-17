@@ -623,7 +623,7 @@ def _matmul_cpu_impl[
             var t0 = sub_matmul_config.offset[0]
             var t1 = t0 + sub_matmul_config.shape[0]
             packA_i8mm[a.dtype](
-                t0, t1, k, a.ptr, a_packed_alloc.unsafe_value().unsafe_ptr()
+                t0, t1, k, a, a_packed_alloc.unsafe_value().unsafe_ptr()
             )
 
         @inline(.always)
