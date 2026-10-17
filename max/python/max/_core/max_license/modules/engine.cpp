@@ -698,8 +698,8 @@ void M::Graph::Python::bindEngineModule(nb::module_ m) {
                    "A string that sets the Mojo assertion level for "
                    "compiled kernels. One of ``''``, ``'none'``, "
                    "``'warn'``, ``'safe'``, ``'all'``. Higher levels "
-                   "enable more runtime checks (such as LayoutTensor "
-                   "bounds) at a performance cost. Takes effect at "
+                   "enable more runtime checks at a performance cost. "
+                   "Takes effect at "
                    "model build time.")
       .def_prop_rw(
           "print_style",
