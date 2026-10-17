@@ -1060,7 +1060,7 @@ static PromotedSignature buildPromotedSignature(
           std::move(newParams)};
 }
 
-DefASTDecl *ClosureEmitter::promoteClosure(
+ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
     DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclAttr> prependedParams,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
     ASTDecl *targetParent) {
@@ -1161,7 +1161,7 @@ DefASTDecl *ClosureEmitter::promoteClosure(
   assert(!existing && "unexpected redefinition of promoted closure");
   if (prependedParams.empty()) {
     nestedFnDecl.setIRValue(function);
-    return &decl;
+    return {&decl, nullptr};
   }
 
   ArrayRef<ParamDeclAttr> promotedFnParams = function.getParams();
@@ -1179,13 +1179,15 @@ DefASTDecl *ClosureEmitter::promoteClosure(
   }
   assert(captureIndex == captureParams.size() &&
          "all capture params must be rebound");
-  nestedFnDecl.setIRValue(PValue(function.getFuncLiteralGenerator(
+  PValue boundFunction(function.getFuncLiteralGenerator(
       shared.getEvaluationContext(),
-      ParameterExprArrayAttr::get(ctx, bindings))));
-  return &decl;
+      ParameterExprArrayAttr::get(ctx, bindings)));
+  ASTDecl &valueDecl =
+      shared.declResolver->replaceDecl(nestedFnDecl, boundFunction);
+  return {&decl, &valueDecl};
 }
 
-DefASTDecl *ClosureEmitter::promoteClosure(
+ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
     DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclRefAttr> prependedParamRefs,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
     ASTDecl *targetParent) {
@@ -1639,10 +1641,11 @@ DefASTDecl *ClosureEmitter::liftClosureIntoMethod(
   MLIRContext *ctx = shared.getContext();
   // Nest under the storage struct as a method. Captured parameters already
   // live on the storage struct, so do not prepend them to the method.
-  DefASTDecl *promotedDecl = promoteClosure(
-      nestedFnDecl, ArrayRef<ParamDeclAttr>{}, /*selfArg=*/selfArg,
-      /*capturingOverride=*/TriBool::yes(),
-      /*targetParent=*/&storageStructDecl);
+  DefASTDecl *promotedDecl =
+      promoteClosure(nestedFnDecl, ArrayRef<ParamDeclAttr>{},
+                     /*selfArg=*/selfArg, /*capturingOverride=*/TriBool::yes(),
+                     /*targetParent=*/&storageStructDecl)
+          .functionDecl;
   FnOp promotedCallFunction = promotedDecl->getOp();
   assert(concreteFieldDecls.size() == concreteFieldCaptures.size() &&
          "expected one capture value per closure field");

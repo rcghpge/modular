@@ -1808,7 +1808,7 @@ static BodyCaptures collectBodyCaptures(SharedState &shared, DefASTDecl &decl,
 
 /// Construct the runtime value for a fully-resolved non-legacy nested-`def`
 /// closure: promote a stateless closure to a top-level function, or otherwise
-/// materialize a storage-struct instance. Sets the decl's IR value on success.
+/// materialize a storage-struct instance.
 static LogicalResult constructClosure(SharedState &shared, DefASTDecl &decl,
                                       FnOp funcOp, ArrayRef<Capture> captures,
                                       ArrayRef<ParamDeclRefAttr> paramCaptures,
@@ -2140,14 +2140,17 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
          return ASTType(type).isSingleton(shared);
        }))) {
     resolveAllWithin(decl);
-    shared.closureEmitter->promoteClosure(decl, bodyCaptures.paramRefs);
+    ClosureEmitter::PromotedClosure promoted =
+        shared.closureEmitter->promoteClosure(decl, bodyCaptures.paramRefs);
     // Two folds, keyed on whether enclosing parameters were baked in. With
     // parameters (comptime _values_, not runtime captures -- e.g.
     // `comptime add[N: Int] = lambda (x: Int) {} -> Int: x + N`),
-    // `promoteClosure` leaves a bound func-literal generator as the decl's IR
-    // value; fold to it.
-    if (CValue boundLiteral = decl.getIfIRValue())
+    // `promoteClosure` replaces the source binding with a bound func-literal
+    // generator when enclosing parameters were baked in.
+    if (promoted.valueDecl) {
+      CValue boundLiteral = promoted.valueDecl->getIfIRValue();
       return emitter.emitResult(AnyValue(boundLiteral), node, dest);
+    }
     // With no parameters baked in, no such value is left, so build the promoted
     // function's own func-literal here -- the value a `def` reference yields.
     PValue literal(

@@ -50,6 +50,11 @@ public:
     ArgConvention convention;
   };
 
+  struct PromotedClosure {
+    DefASTDecl *functionDecl;
+    ASTDecl *valueDecl;
+  };
+
   /// Move `nestedFnDecl` into `storageStructDecl` as a method and wire its
   /// captured values to the storage struct fields. Returns the method decl.
   DefASTDecl *
@@ -63,7 +68,7 @@ public:
 
   /// Promote a closure decl into `targetParent`. nullptr → nearest FileModuleOp
   /// (thin/stateless promotions).
-  DefASTDecl *
+  PromotedClosure
   promoteClosure(DefASTDecl &nestedFnDecl,
                  ArrayRef<ParamDeclAttr> prependedParams = {},
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,
@@ -71,7 +76,7 @@ public:
                  ASTDecl *targetParent = nullptr);
 
   /// Adapter overload for callsites that currently hold ParamDeclRefAttr.
-  DefASTDecl *
+  PromotedClosure
   promoteClosure(DefASTDecl &nestedFnDecl,
                  ArrayRef<ParamDeclRefAttr> prependedParamRefs,
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,

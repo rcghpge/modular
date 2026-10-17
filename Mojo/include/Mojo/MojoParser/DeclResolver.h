@@ -137,6 +137,20 @@ public:
   /// for an N-decl module, regardless of how many decls are removed.
   void eraseDecls(llvm::ArrayRef<ASTDecl *> decls);
 
+  /// Replace a resolved declaration with a new declaration for \p value.
+  ///
+  /// Use this when resolving a declaration produces a value with a different
+  /// representation from the declaration's original IR. For example,
+  /// promoting a nested function with bound parameters moves its `FnOp` to a
+  /// new `DefASTDecl`; the source binding must then refer to the bound function
+  /// literal rather than leave a `DefASTDecl` holding a value.
+  ///
+  /// The replacement retains the old declaration's resolution state and
+  /// every name-table entry, including aliases. The caller must transfer any
+  /// owned children before calling this method. The old declaration is retired,
+  /// so callers must not access it afterwards.
+  ASTDecl &replaceDecl(ASTDecl &decl, DeclIRValue value);
+
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the
   /// decl to be found via ModuleType::getDecl() but not via name lookup.

@@ -477,6 +477,39 @@ void DeclResolver::eraseDecl(ASTDecl &decl) {
   eraseDecls({&decl});
 }
 
+/// Replace a resolved declaration with a new declaration for \p value.
+///
+/// Use this when resolving a declaration produces a value with a different
+/// representation from the declaration's original IR. For example, promoting
+/// a nested function with bound parameters moves its `FnOp` to a new
+/// `DefASTDecl`; the source binding must then refer to the bound function
+/// literal rather than leave a `DefASTDecl` holding a value.
+///
+/// The replacement retains the old declaration's resolution state and every
+/// name-table entry, including aliases. The caller must transfer any owned
+/// children before calling this method. The old declaration is retired, so
+/// callers must not access it afterwards.
+ASTDecl &DeclResolver::replaceDecl(ASTDecl &decl, DeclIRValue value) {
+  auto &replacement =
+      createUnlistedDecl(value, decl.loc, decl.parentDecl, LexerCursor(),
+                         LexerCursor(), decl.indentation);
+  replacement.resolvedness = decl.resolvedness;
+  if (decl.isErroneous())
+    replacement.setErroneous();
+
+  for (ASTDecl *scope : parsedDeclList) {
+    if (!scope->declsInScope)
+      continue;
+    for (auto &[_, entries] : *scope->declsInScope)
+      for (ASTDecl *&entry : entries)
+        if (entry == &decl)
+          entry = &replacement;
+  }
+
+  eraseDecl(decl);
+  return replacement;
+}
+
 void DeclResolver::eraseDecls(llvm::ArrayRef<ASTDecl *> seeds) {
   // Expand the seeds to the full set of decls to remove: each seed plus the
   // tree of owned children rooted at it. A child is only reachable through its
