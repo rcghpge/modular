@@ -178,17 +178,15 @@ def test[
     var output_image_size = output_dims.flattened_length()
     for n in range(N):
         for i in range(output_image_size):
-            var output_ref_ptr = output_ref.ptr + F * (
-                i + output_image_size * n
-            )
+            var row_offset = F * (i + output_image_size * n)
 
             @inline(.always)
             def body0[width: Int](offset: Int) {var}:
-                output_ref_ptr.store(
-                    offset,
+                output_ref.raw_store(
+                    row_offset + offset,
                     10.0
                     * (
-                        output_ref_ptr.load[width=width](offset)
+                        output_ref.raw_load[width=width](row_offset + offset)
                         + bias_ptr.load[width=width](offset)
                     ),
                 )

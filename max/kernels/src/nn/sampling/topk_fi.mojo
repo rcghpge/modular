@@ -198,7 +198,7 @@ def get_min_max_value[
     block_size: Int,
     dtype: DType,
 ](
-    in_data: UnsafePointer[Scalar[dtype], _],
+    in_data: TileTensor[dtype, ...],
     row_idx: Int,
     d: Int,
 ) -> Tuple[
@@ -212,7 +212,7 @@ def get_min_max_value[
         dtype: The dtype of the input data.
 
     Args:
-        in_data: Pointer to input data buffer.
+        in_data: Input data tensor of shape `[batch, d]`.
         row_idx: Row index for the current block (for 2D data access).
         d: Total number of elements in the row.
 
@@ -230,8 +230,10 @@ def get_min_max_value[
         var in_data_vec = SIMD[.float32, vec_size](0)
 
         if (i * block_size + tx) * vec_size < d:
-            var offset = row_idx * d + i * block_size * vec_size + tx * vec_size
-            in_data_vec = in_data.load[width=vec_size](offset).cast[.float32]()
+            var col = i * block_size * vec_size + tx * vec_size
+            in_data_vec = in_data.load[
+                width=vec_size, alignment=align_of[dtype](), invariant=False
+            ](Coord(row_idx, col)).cast[.float32]()
 
         thread_max = max(thread_max, in_data_vec.reduce_max())
         thread_min = min(thread_min, in_data_vec.reduce_min())
@@ -293,7 +295,7 @@ def TopKMaskLogitsKernel[
 
         if k < _d:
             var min_max = get_min_max_value[vec_size, block_size](
-                logits.ptr, row_idx, _d
+                logits, row_idx, _d
             )
             var min_val, max_val = min_max[0], min_max[1]
 
@@ -3027,7 +3029,7 @@ def topk_softmax_sample_kernel[
 
         if k < _d:
             var min_max = get_min_max_value[vec_size, block_size](
-                logits.ptr, row_idx, _d
+                logits, row_idx, _d
             )
             var min_val, max_val = min_max[0], min_max[1]
 
@@ -3107,7 +3109,7 @@ def topk_softmax_sample_kernel[
         else:
             # If k >= _d, include all elements.
             var min_max = get_min_max_value[vec_size, block_size](
-                logits.ptr, row_idx, _d
+                logits, row_idx, _d
             )
             max_logit = min_max[1]
 
@@ -3361,14 +3363,18 @@ def TopKTopPMaskedProbsKernel[
     dtype: DType,
     LogitsLayoutType: TensorLayout,
     logits_origin: ImmOrigin,
+    ProbsLayoutType: TensorLayout,
     coop_size: Int = 1,
     *,
     LogitsEngine: TensorEngine,
+    ProbsEngine: TensorEngine,
 ](
     logits: TileTensor[
         dtype, LogitsLayoutType, logits_origin, Engine=LogitsEngine
     ],
-    probs_ptr: UnsafePointer[Float32, MutAnyOrigin],
+    probs: TileTensor[
+        .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
+    ],
     top_k_arr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     top_k_val: Int32,
     top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
@@ -3389,13 +3395,15 @@ def TopKTopPMaskedProbsKernel[
         dtype: Element type of `logits`.
         LogitsLayoutType: Memory layout of the `logits` tile.
         logits_origin: Origin tag for the immutable `logits` tile.
+        ProbsLayoutType: Memory layout of the `probs` tile.
         coop_size: Blocks sharing each row; 1 keeps the whole row in one
             block and compiles the cross-block traffic away.
         LogitsEngine: Storage engine backing the `logits` tile.
+        ProbsEngine: Storage engine backing the `probs` tile.
 
     Args:
         logits: Input logits [batch_size, d].
-        probs_ptr: Output masked renormalized distribution [batch_size, d].
+        probs: Output masked renormalized distribution [batch_size, d].
         top_k_arr: Optional per-row top-k [batch_size].
         top_k_val: Default top-k if `top_k_arr` is null.
         top_p_arr: Optional per-row top-p [batch_size].
@@ -3470,7 +3478,7 @@ def TopKTopPMaskedProbsKernel[
         ]()
         return exp((v - m) * inv_temp)
 
-    var probs_row = TileTensor(probs_ptr + bx * _d, row_major(Idx[1], _d))
+    var probs_row = probs[bx : bx + 1, :]
 
     # Total mass, plus how many tokens carry any. At most k positive tokens
     # need no top-k search: cutoff zero already keeps the full positive set.
@@ -3712,12 +3720,14 @@ def topk_topp_masked_probs[
                 dtype,
                 logits.LayoutType,
                 ImmOrigin(logits.origin),
+                probs.LayoutType,
                 coop_size,
                 LogitsEngine=logits.Engine,
+                ProbsEngine=probs.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
-                probs.ptr,
+                probs,
                 top_k_ptr,
                 Int32(top_k_val),
                 top_p_ptr,

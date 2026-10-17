@@ -726,10 +726,15 @@ def _launch_blockwise_split_k[
     comptime block_dim_x: Int = 256
     var total_elems = M * N
     var num_blocks = ceildiv(total_elems, block_dim_x)
-    comptime reduce_kernel = _split_k_reduce_kernel[num_splits, c_type]
+    comptime reduce_kernel = _split_k_reduce_kernel[
+        num_splits,
+        c_type,
+        type_of(c).LayoutType,
+        type_of(c).Engine,
+    ]
     ctx.enqueue_function[reduce_kernel](
         workspace.scratch.unsafe_ptr(),
-        c.ptr,
+        c,
         Int32(total_elems),
         Int32(elems_per_split),
         Int32(N),

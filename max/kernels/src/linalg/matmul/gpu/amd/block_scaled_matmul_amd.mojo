@@ -2127,11 +2127,15 @@ def _launch_block_scaled_split_k_impl[
     var num_blocks = ceildiv(total_elems, block_dim_x)
     comptime if has_epilogue_fn:
         comptime reduce_kernel = _split_k_reduce_kernel_epilogue_fn[
-            num_splits, c_dtype, EpilogueFnType
+            num_splits,
+            c_dtype,
+            type_of(c).LayoutType,
+            type_of(c).Engine,
+            EpilogueFnType,
         ]
         ctx.enqueue_function[reduce_kernel](
             workspace.scratch.unsafe_ptr(),
-            c.ptr,
+            c,
             Int32(total_elems),
             Int32(elems_per_split),
             Int32(N),
@@ -2141,11 +2145,15 @@ def _launch_block_scaled_split_k_impl[
         )
     elif has_compute_fn:
         comptime reduce_kernel = _split_k_reduce_kernel_compute_fn[
-            num_splits, c_dtype, ComputeFnType
+            num_splits,
+            c_dtype,
+            type_of(c).LayoutType,
+            type_of(c).Engine,
+            ComputeFnType,
         ]
         ctx.enqueue_function[reduce_kernel](
             workspace.scratch.unsafe_ptr(),
-            c.ptr,
+            c,
             Int32(total_elems),
             Int32(elems_per_split),
             Int32(N),
@@ -2154,10 +2162,15 @@ def _launch_block_scaled_split_k_impl[
             block_dim=block_dim_x,
         )
     else:
-        comptime reduce_kernel = _split_k_reduce_kernel[num_splits, c_dtype]
+        comptime reduce_kernel = _split_k_reduce_kernel[
+            num_splits,
+            c_dtype,
+            type_of(c).LayoutType,
+            type_of(c).Engine,
+        ]
         ctx.enqueue_function[reduce_kernel](
             workspace.scratch.unsafe_ptr(),
-            c.ptr,
+            c,
             Int32(total_elems),
             Int32(elems_per_split),
             Int32(N),

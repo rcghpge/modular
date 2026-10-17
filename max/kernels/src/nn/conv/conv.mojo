@@ -4970,8 +4970,7 @@ def conv_gpu[
         pad_constant_gpu[full_rank, input_type, DType.int](
             padded_device_buffer,
             padded_shape,
-            input.ptr,
-            input_shape,
+            input,
             paddings_tensor.ptr,
             zero_scalar,
             ctx,

@@ -334,7 +334,7 @@ def local_a_kernel(
         type_of(p_layout),
         _,
         address_space=AddressSpace.LOCAL,
-    ](p.ptr, p_layout, bound=p_rows * frag[2])
+    ](p, p_layout, bound=p_rows * frag[2])
     var b_iter = TileTensorIter[
         dtype,
         type_of(b_layout),

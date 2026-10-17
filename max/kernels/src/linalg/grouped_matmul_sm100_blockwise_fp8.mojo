@@ -1381,7 +1381,7 @@ def multi_stage_reg_epilogue[
         Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
-    c_ptr: MutPointer[Scalar[c_type], _],
+    c: TileTensor[mut=True, c_type, ...],
     c_coord: Tuple[Int, Int],
     elect_one_warp: Bool,
     group_end_idx: UInt32,
@@ -1417,7 +1417,7 @@ def multi_stage_reg_epilogue[
             staged MMA results to be stored.
         c_smem_base: Base pointer to the C SMEM staging buffer.
         c_tma_op: TMA descriptor for storing C output tiles.
-        c_ptr: Pointer to the output `C` buffer in global memory.
+        c: Output `C` tensor in global memory.
         c_coord: Output tile coordinates as (m, n) in the `C` matrix.
         elect_one_warp: Whether this warp is the elected leader for TMA
             stores.
@@ -1598,8 +1598,9 @@ def multi_stage_reg_epilogue[
                             linear_idx if size_of[c_type]()
                             != 2 else swizzle(linear_idx)
                         )
-                        var dst_ptr = c_ptr + global_i * c_static_N + global_j
-                        dst_ptr.store[width=simd_size, alignment=alignment](src)
+                        c.store[width=simd_size, alignment=alignment](
+                            (global_i, global_j), src
+                        )
         else:
             var c_smem_split = c_smem_tile.tile[TMA_BM, stageN](
                 c_smem_coord_m, 0
@@ -2015,6 +2016,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
     a_scales_gmem_layout: TensorLayout,
     b_scales_type: DType,
     b_scales_layout: TensorLayout,
+    c_layout: TensorLayout,
     transpose_b: Bool,
     config: MatmulConfig[a_type, b_type, c_type, transpose_b],
     num_pipeline_stages: Int,
@@ -2027,7 +2029,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
-    c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
+    c: TileTensor[c_type, c_layout, MutAnyOrigin],
     a_scales_tma_op: TMATensorTile[
         a_scales_type,
         a_scales_tile_shape,
@@ -2571,7 +2573,7 @@ def blackwell_gmm_tma_umma_warp_specialized_blockwise_fp8_kernel[
                 c_lower_main_tile,
                 c_smem_base.as_unsafe_any_origin(),
                 c_tma_op,
-                c_ptr,
+                c,
                 c_coord=(Int(work_info.m), Int(work_info.n)),
                 elect_one_warp=elect_one_warp,
                 group_end_idx=rebind[UInt32](
@@ -2866,6 +2868,7 @@ def grouped_matmul_sm100_blockwise_scaled_fp8_persistent[
         type_of(a_scales.layout),
         b_scales_type,
         type_of(b_scales_2d.layout),
+        type_of(c.layout),
         transpose_b=transpose_b,
         config=config,
         num_pipeline_stages=max_pipeline_stages,
@@ -2898,7 +2901,7 @@ def grouped_matmul_sm100_blockwise_scaled_fp8_persistent[
         a_tma_op,
         b_tma_op,
         c_tma_op,
-        c.ptr.as_unsafe_any_origin(),
+        c.as_unsafe_any_origin(),
         a_scales_tma_op,
         a_offsets.as_unsafe_any_origin(),
         Int32(ceildiv(K, BK)),

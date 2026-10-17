@@ -15,7 +15,13 @@
 from std.algorithm.functional import vectorize
 from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.host import DeviceContext, DeviceBuffer, DeviceAttribute
-from layout import Coord, TensorEngine, TensorLayout, TileTensor
+from layout import (
+    Coord,
+    TensorEngine,
+    TensorLayout,
+    TileTensor,
+    coord_to_index_list,
+)
 from layout.tile_layout import Layout
 from std.math import align_down, ceildiv
 from std.sys.info import align_of
@@ -254,6 +260,43 @@ def pad_constant[
     """
 
     var input_strides = Array[Int, rank]()
+    _fill_strides_indexlist[rank](input_shape, input_strides)
+
+    var input_tensor = TileTensor(
+        input,
+        Layout(Coord(input_shape), Coord(input_strides)),
+    )
+    pad_constant[rank, dtype, padding_type](
+        output, output_shape, input_tensor, paddings, constant, ctx
+    )
+
+
+def pad_constant[
+    rank: Int, dtype: DType, padding_type: DType
+](
+    output: MutPointer[Scalar[dtype], _],
+    output_shape: IndexList[rank],
+    input: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
+    paddings: ImmPointer[Scalar[padding_type], _],
+    constant: Scalar[dtype],
+    ctx: DeviceContext,
+) raises:
+    """
+    Fill `output` with values from `input`, and edges padded with `constant`
+    based on `paddings`.
+
+    Args:
+        output: The output buffer.
+        output_shape: The output shape.
+        input: The input tensor, copied with its own layout.
+        paddings: Ordered (before, after) padding sizes for each axis.
+        constant: The constant to pad output with.
+        ctx: Device context for participating GPU.
+    """
+
+    var input_shape = rebind[IndexList[rank]](
+        coord_to_index_list(input.layout.shape_coord())
+    )
     var output_strides = Array[Int, rank]()
 
     var output_size: Int = 1
@@ -266,13 +309,7 @@ def pad_constant[
     )
     output_buffer.enqueue_fill(constant)
 
-    _fill_strides_indexlist[rank](input_shape, input_strides)
     _fill_strides_indexlist[rank](output_shape, output_strides)
-
-    var input_tensor = TileTensor(
-        input,
-        Layout(Coord(input_shape), Coord(input_strides)),
-    )
 
     var pre_pad_offset = 0
 
@@ -287,7 +324,7 @@ def pad_constant[
     )
 
     _pad_constant_impl[dtype](
-        input_tensor,
+        input,
         output_tensor,
         ctx,
     )

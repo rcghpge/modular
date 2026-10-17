@@ -275,7 +275,7 @@ def b2b_gemm[
         _,
         masked=A.static_shape[0] % BM != 0 or K % BK != 0,
     ](
-        A.ptr + Int(A.layout(Coord(block_idx[1] * BM, 0))),
+        A.tile[BM, BK](Coord(block_idx[1], 0)),
         a_gmem_layout,
         bound=A.static_shape[0] * A.static_stride[0],
         stride=BK,
@@ -328,12 +328,7 @@ def b2b_gemm[
         var b_gmem_iter = TileTensorIter[
             in_type, type_of(b_gmem_layout), _, masked=b_gmem_masked
         ](
-            B.ptr
-            + Int(
-                B.layout(
-                    Coord(b_tile_coords[0] * BD_0, b_tile_coords[1] * BD_1)
-                )
-            ),
+            B.tile[BD_0, BD_1](Coord(b_tile_coords[0], b_tile_coords[1])),
             b_gmem_layout,
             bound=B.static_shape[0] * B.static_stride[0],
             stride=BK * B.static_stride[b_tile_axis],
@@ -341,12 +336,7 @@ def b2b_gemm[
         var c_gmem_iter = TileTensorIter[
             in_type, type_of(c_gmem_layout), _, masked=c_gmem_masked
         ](
-            C.ptr
-            + Int(
-                C.layout(
-                    Coord(c_tile_coords[0] * CD_0, c_tile_coords[1] * CD_1)
-                )
-            ),
+            C.tile[CD_0, CD_1](Coord(c_tile_coords[0], c_tile_coords[1])),
             c_gmem_layout,
             bound=C.static_shape[0] * C.static_stride[0],
             stride=BK * C.static_stride[c_tile_axis],
@@ -423,7 +413,7 @@ def b2b_gemm[
         ]()
         var ab_iter = TileTensorIter[
             accum_type, type_of(ab_layout), _, address_space=.LOCAL
-        ](ab_reg_tile.ptr, ab_layout, bound=accum_layout.static_product)
+        ](ab_reg_tile, ab_layout, bound=accum_layout.static_product)
         var c_smem_iter = b_smem_iter.reshape(c_smem_layout)
         # Compensate for prefetch
         c_gmem_iter += num_pipeline_stages - 1

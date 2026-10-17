@@ -342,13 +342,17 @@ def TopKTopPMaskedProbsClusterKernel[
     dtype: DType,
     LogitsLayoutType: TensorLayout,
     logits_origin: ImmOrigin,
+    ProbsLayoutType: TensorLayout,
     cluster_size: Int,
     LogitsEngine: TensorEngine,
+    ProbsEngine: TensorEngine,
 ](
     logits: TileTensor[
         dtype, LogitsLayoutType, logits_origin, Engine=LogitsEngine
     ],
-    probs_ptr: UnsafePointer[Float32, MutAnyOrigin],
+    probs: TileTensor[
+        .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
+    ],
     top_k_arr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
     top_k_val: Int32,
     top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
@@ -457,7 +461,7 @@ def TopKTopPMaskedProbsClusterKernel[
         ]()
         return exp((v - m) * inv_temp)
 
-    var probs_row = TileTensor(probs_ptr + bx * _d, row_major(Idx[1], _d))
+    var probs_row = probs[bx : bx + 1, :]
 
     # Total mass, plus how many tokens carry any: a row whose every positive
     # token already satisfies the constraint has no boundary to find, and the
@@ -675,13 +679,15 @@ def topk_topp_masked_probs_cluster[
                 dtype,
                 logits.LayoutType,
                 ImmOrigin(logits.origin),
+                probs.LayoutType,
                 cluster_size,
                 LogitsEngine=logits.Engine,
+                ProbsEngine=probs.Engine,
             ]
             var smem_bytes = _stage_smem_bytes(d, vec_size, cluster_size)
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
-                probs.ptr,
+                probs,
                 top_k_ptr,
                 Int32(top_k_val),
                 top_p_ptr,
@@ -705,11 +711,13 @@ def topk_topp_masked_probs_cluster[
                 dtype,
                 logits.LayoutType,
                 ImmOrigin(logits.origin),
+                probs.LayoutType,
                 LogitsEngine=logits.Engine,
+                ProbsEngine=probs.Engine,
             ]
             ctx.enqueue_function[kernel](
                 logits.as_imm(),
-                probs.ptr,
+                probs,
                 top_k_ptr,
                 Int32(top_k_val),
                 top_p_ptr,

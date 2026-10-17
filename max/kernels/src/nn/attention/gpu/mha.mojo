@@ -3380,7 +3380,7 @@ def mha_single_batch[
                 _,
                 address_space=.LOCAL,
             ](
-                p_reg_tile.ptr,
+                p_reg_tile,
                 p_reg_tile_layout,
                 bound=num_m_mmas * num_n_mmas * p_frag_size,
             )
@@ -4032,7 +4032,7 @@ def mha_single_batch_pipelined[
                 _,
                 address_space=.LOCAL,
             ](
-                p_reg_tile.ptr,
+                p_reg_tile,
                 p_reg_tile_layout,
                 bound=num_m_mmas * num_n_mmas * p_frag_size,
             )
@@ -5066,7 +5066,7 @@ def mha_decoding_single_batch[
                 _,
                 address_space=.LOCAL,
             ](
-                p_reg_tile.ptr,
+                p_reg_tile,
                 p_reg_tile_layout,
                 bound=num_m_mmas * num_n_mmas * p_frag_size,
             )

@@ -580,8 +580,8 @@ struct _FlashAttention[
         mask_fn: MaskFnType,
         qk_block_ptr: MutPointer[Scalar[Self.dtype], _],
         o_block_ptr: MutPointer[Scalar[Self.dtype], _],
-        max_vals: MutPointer[Scalar[Self.dtype], _],
-        sum_vals: MutPointer[Scalar[Self.dtype], _],
+        max_vals: TileTensor[mut=True, Self.dtype, ...],
+        sum_vals: TileTensor[mut=True, Self.dtype, ...],
         count_m: Int,
         count_n: Int,
         kv_seq_cnt: Int,
@@ -629,7 +629,7 @@ struct _FlashAttention[
                 _simd_max_elementwise,
                 output_fn,
                 qk_row.num_elements(),
-                max_vals[m],
+                max_vals.load[width=1](Coord(m)),
             )
 
             if do_sink:
@@ -657,11 +657,14 @@ struct _FlashAttention[
             if do_sink:
                 accum_val += exp(sink_logit - max_val)
 
-            var fixup_val = exp(max_vals[m] - max_val)
+            var fixup_val = exp(max_vals.load[width=1](Coord(m)) - max_val)
 
             # Update the running maximum and sum for the row.
-            max_vals[m] = max_val
-            sum_vals[m] = sum_vals[m] * fixup_val + accum_val
+            max_vals.store(Coord(m), max_val)
+            sum_vals.store(
+                Coord(m),
+                sum_vals.load[width=1](Coord(m)) * fixup_val + accum_val,
+            )
 
             @inline(.always)
             def do_correction[
@@ -901,8 +904,8 @@ struct _FlashAttention[
                         mask_2d_fn,
                         qk_block_ptr,
                         o_block_ptr,
-                        max_vals.ptr,
-                        sum_vals.ptr,
+                        max_vals,
+                        sum_vals,
                         count_m,
                         count_n,
                         kv_seq_cnt,

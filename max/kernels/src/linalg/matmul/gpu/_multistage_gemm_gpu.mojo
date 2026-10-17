@@ -1111,7 +1111,7 @@ def _multistage_gemm_kernel_impl[
         _,
         masked=_tile_is_masked[ALT, BM, BK](),
     ](
-        a_tt.ptr + Int(a_tt.layout(Coord(a_row0, bk_start * BK))),
+        a_tt.tile[BM, BK](Coord(block_m, bk_start)),
         a_tile_layout,
         bound=M * Int(a_tt.layout.stride[0]().value()),
         stride=BK * Int(a_tt.layout.stride[1]().value()),
@@ -1120,7 +1120,6 @@ def _multistage_gemm_kernel_impl[
 
     comptime b_tile_axis = 1 if transpose_b else 0
     var b_row0 = block_n * BN if transpose_b else bk_start * BK
-    var b_col0 = bk_start * BK if transpose_b else block_n * BN
     var b_tile_layout = TileLayout(
         Coord(Idx[BD_0], Idx[BD_1]), b_tt.layout.stride_coord()
     )
@@ -1130,7 +1129,12 @@ def _multistage_gemm_kernel_impl[
         _,
         masked=_tile_is_masked[BLT, BD_0, BD_1](),
     ](
-        b_tt.ptr + Int(b_tt.layout(Coord(b_row0, b_col0))),
+        b_tt.tile[BD_0, BD_1](
+            Coord(
+                block_n if transpose_b else bk_start,
+                bk_start if transpose_b else block_n,
+            )
+        ),
         b_tile_layout,
         bound=Int(b_tt.dim[0]()) * Int(b_tt.layout.stride[0]().value()),
         stride=BK * Int(b_tt.layout.stride[b_tile_axis]().value()),

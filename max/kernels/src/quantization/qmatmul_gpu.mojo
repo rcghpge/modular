@@ -776,7 +776,7 @@ def multistage_qgemm_kernel[
         type_of(a_gmem_tile).LayoutType,
         _,
         linear_idx_type=a_tt.linear_idx_type,
-    ](a_gmem_tile.unsafe_ptr(), a_gmem_tile.layout, bound=K, stride=BK)
+    ](a_gmem_tile, a_gmem_tile.layout, bound=K, stride=BK)
 
     var b_tile_coords = args_to_tuple[transpose_b](bk_start, block_idx[0])
     comptime b_tile_axis = 1 if transpose_b else 0
@@ -789,7 +789,7 @@ def multistage_qgemm_kernel[
         _,
         linear_idx_type=b.linear_idx_type,
     ](
-        b_gmem_tile.unsafe_ptr(),
+        b_gmem_tile,
         b_gmem_tile.layout,
         bound=type_of(b).static_shape[b_tile_axis] * b_axis_stride,
         stride=b_tile_extent * b_axis_stride,
@@ -808,7 +808,7 @@ def multistage_qgemm_kernel[
         _,
         linear_idx_type=scales.linear_idx_type,
     ](
-        scales_gmem_tile.unsafe_ptr(),
+        scales_gmem_tile,
         scales_gmem_tile.layout,
         bound=(K // group_size) * N,
         stride=groups_per_iter * N,

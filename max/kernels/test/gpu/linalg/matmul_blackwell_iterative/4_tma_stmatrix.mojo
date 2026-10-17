@@ -327,14 +327,15 @@ def kernel_4[
     if elect_one_warp and thread_idx.x < BN // TMA_BN:
         fence_async_view_proxy()
 
-        var smem_offset = c_smem_tile.unsafe_ptr() + BM * TMA_BN * thread_idx.x
-
-        var c_tma_tile = TileTensor(
-            smem_offset,
-            row_major[
-                c_tile_shape.element_types[0].static_value,
-                c_tile_shape.element_types[1].static_value,
-            ](),
+        var c_tma_tile = (
+            c_smem_tile.reshape(row_major[BM * (BN // TMA_BN), TMA_BN]())
+            .tile[BM, TMA_BN](Int(thread_idx.x), 0)
+            .reshape(
+                row_major[
+                    c_tile_shape.element_types[0].static_value,
+                    c_tile_shape.element_types[1].static_value,
+                ]()
+            )
         )
 
         c_tma_op.async_store(

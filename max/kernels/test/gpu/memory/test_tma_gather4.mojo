@@ -435,10 +435,7 @@ def _run_paged_gather4_test[
     var blocks_host = blocks.host_tensor()
 
     # Fill entire buffer with random data.
-    var block_elems = (
-        num_blocks * kv_dim * num_layers * page_size * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # Build cache_lengths.
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -624,10 +621,7 @@ def test_continuous_kv_cache[
     var blocks_host = blocks.host_tensor()
 
     # Fill entire buffer with random data.
-    var block_elems = (
-        num_blocks * 2 * num_layers * max_seq_len * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # Build cache_lengths.
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -909,7 +903,7 @@ def gather4_kernel[
                     + cg * box_width
                     + col_in_group
                 )
-                d_out[out_idx] = smem_tile.unsafe_ptr()[Int(swizzle(i))]
+                d_out[out_idx] = smem_tile.raw_load(Int(swizzle(i)))
 
             barrier()
             phase ^= 1
@@ -1038,10 +1032,7 @@ def test_wide_gather4_paged_kv[
     var blocks = HostDeviceTileTensor[dtype](row_major(Coord(shape_6d)), ctx)
     var blocks_host = blocks.host_tensor()
 
-    var block_elems = (
-        num_blocks * kv_dim * num_layers * page_size * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # Build cache_lengths.
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -1177,10 +1168,7 @@ def test_wide_gather4_continuous_kv[
     var blocks = HostDeviceTileTensor[dtype](row_major(Coord(shape_6d)), ctx)
     var blocks_host = blocks.host_tensor()
 
-    var block_elems = (
-        num_blocks * 2 * num_layers * max_seq_len * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # Build cache_lengths.
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -1312,10 +1300,7 @@ def test_wide_gather4_mha_operand[
     var blocks = HostDeviceTileTensor[dtype](row_major(Coord(shape_6d)), ctx)
     var blocks_host = blocks.host_tensor()
 
-    var block_elems = (
-        num_blocks * kv_dim * num_layers * page_size * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # Build cache_lengths.
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -1635,7 +1620,7 @@ def test_gather4_tile_api[
         row_major[total_tokens, cols](), ctx
     )
     var k_full_host = k_full.host_tensor()
-    randn[dtype](k_full_host.unsafe_ptr(), total_tokens * cols)
+    randn(k_full_host.as_span())
 
     # ---- Build bn non-contiguous indices ----
     var h_indices = ctx.enqueue_create_host_buffer[.int32](bn)
@@ -1779,10 +1764,7 @@ def test_gather4_tile_api_paged[
     var blocks = HostDeviceTileTensor[dtype](row_major(Coord(pg_shape_6d)), ctx)
     var blocks_host = blocks.host_tensor()
     seed(42)
-    var block_elems = (
-        num_blocks * kv_dim * num_layers * page_size * num_heads * head_size
-    )
-    rand[dtype](blocks_host.unsafe_ptr(), block_elems)
+    rand(blocks_host.as_span())
 
     # ---- Build cache_lengths ----
     var cache_lengths_managed = HostDeviceTileTensor[.uint32](
@@ -1837,9 +1819,9 @@ def test_gather4_tile_api_paged[
     for i in range(topk):
         var src_row = Int(h_indices[i])
         for c in range(row_width):
-            k_ref[i * row_width + c] = blocks_host.unsafe_ptr()[
+            k_ref[i * row_width + c] = blocks_host.raw_load(
                 src_row * row_width + c
-            ]
+            )
 
     # ---- Allocate output buffer ----
     var out_device = ctx.enqueue_create_buffer[dtype](topk * row_width)

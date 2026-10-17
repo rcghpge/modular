@@ -452,8 +452,10 @@ def bench_shape[
             band_n: Int
         ](
             col_off: Int,
-            out_ptr: MutPointer[Scalar[OUT_DTYPE], MutAnyOrigin],
-        ) raises {mut cb_w, mut cb_bsf, imm}:
+            c: TileTensor[mut=True, OUT_DTYPE, ...],
+        ) raises {
+            mut cb_w, mut cb_bsf, imm
+        }:
             var w = TileTensor(
                 cb_w.offset_ptr(iteration) + col_off * hidden,
                 row_major(Idx[band_n], Idx[hidden]),
@@ -463,7 +465,6 @@ def bench_shape[
                 + col_off * k_scales,
                 row_major(Idx[band_n], Idx[k_scales]),
             )
-            var c = TileTensor(out_ptr, row_major(total_seq, Idx[band_n]))
             block_scaled_matmul_amd[lane_bytes=32](
                 c,
                 hs_tt,
@@ -473,12 +474,27 @@ def bench_shape[
                 ctx,
             )
 
-        band[q_dim](0, _any(q_out.unsafe_ptr()))
-        band[kv_dim](k_off, _any(kv_out_ptr))
-        band[kv_dim](v_off, _any(kv_out_ptr) + total_seq * kv_dim)
+        band[q_dim](0, q_out)
+        band[kv_dim](
+            k_off,
+            TileTensor(_any(kv_out_ptr), row_major(total_seq, Idx[kv_dim])),
+        )
+        band[kv_dim](
+            v_off,
+            TileTensor(
+                _any(kv_out_ptr) + total_seq * kv_dim,
+                row_major(total_seq, Idx[kv_dim]),
+            ),
+        )
         comptime if HAS_INDEXER:
-            band[iq_dim](iq_off, _any(iq_out.unsafe_ptr()))
-            band[ik_dim](ik_off, _any(kv_out_ptr) + 2 * total_seq * kv_dim)
+            band[iq_dim](iq_off, iq_out)
+            band[ik_dim](
+                ik_off,
+                TileTensor(
+                    _any(kv_out_ptr) + 2 * total_seq * kv_dim,
+                    row_major(total_seq, Idx[ik_dim]),
+                ),
+            )
 
         # Placing K/V (and IndexK) is the other half of what the fused epilogue
         # does, so the unfused path pays for those paged-store launches on top

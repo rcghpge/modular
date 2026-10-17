@@ -208,29 +208,23 @@ def bench_bmm[
                 else:
                     # Fallback vendor BMM for non-AMD GPUs
                     for i in range(Int(b.value())):
-                        var c_ptr = c_device.ptr + (
-                            i * Int(m.value()) * Int(n.value())
+                        var batch = Coord(i, Idx[0], Idx[0])
+                        var c_buffer = c_device.tile(
+                            Coord(Idx[1], m, n), batch
+                        ).reshape(row_major(m, n))
+                        var a_buffer = a_device.tile(
+                            Coord(Idx[1], m, k), batch
+                        ).reshape(row_major(m, k))
+                        comptime b_rows = (
+                            NType.static_value if transpose_b else KType.static_value
                         )
-                        var a_ptr = a_device.ptr + (
-                            i * Int(m.value()) * Int(k.value())
+                        comptime b_cols = (
+                            KType.static_value if transpose_b else NType.static_value
                         )
-                        var b_ptr = b_device.ptr + (
-                            i * Int(k.value()) * Int(n.value())
-                        )
-
-                        var c_buffer = TileTensor(c_ptr, row_major(m, n))
-                        var a_buffer = TileTensor(a_ptr, row_major(m, k))
-                        var b_buffer = TileTensor(
-                            b_ptr,
-                            row_major(
-                                Idx[
-                                    NType.static_value if transpose_b else KType.static_value
-                                ],
-                                Idx[
-                                    KType.static_value if transpose_b else NType.static_value
-                                ],
-                            ),
-                        )
+                        var b_buffer = b_device.tile(
+                            Coord(Idx[1], Idx[b_rows], Idx[b_cols]),
+                            batch,
+                        ).reshape(row_major(Idx[b_rows], Idx[b_cols]))
 
                         vendor_blas.matmul[use_tf32=True](
                             ctx,

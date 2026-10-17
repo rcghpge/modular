@@ -175,7 +175,7 @@ def _topp_minp_sampling[
 
     # Initialize sorted_ids with iota values
     for batch_id in range(batch_size):
-        iota(sorted_ids.ptr + (batch_id * vocab_size), vocab_size)
+        iota(sorted_ids[batch_id : batch_id + 1, :].as_span())
         # Copy input_logits to sorted_probs
         for i in range(vocab_size):
             var batch_offset = batch_id * vocab_size

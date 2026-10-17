@@ -21,7 +21,7 @@ from std.algorithm import tile
 
 from max.algorithm import sync_parallelize
 from max.gpu.host import DeviceContext
-from layout import TileTensor
+from layout import Coord, TileTensor
 from linalg.accumulate import _Accumulator
 from linalg.arch.cpu.neon_intrinsics import _neon_dotprod_lane
 from linalg.arch.cpu.vnni_intrinsics import (
@@ -297,10 +297,9 @@ def _quantize_a_Q8_K[
     ] = packed_base_alloc.unsafe_ptr()
 
     for ko in range(0, K, quantized_k):
-        var am_ptr = a.ptr + ko
 
         @inline(.always)
-        def process_rows[tile_m: Int](m: Int) {mut am_ptr, mut packed_ptr, imm}:
+        def process_rows[tile_m: Int](m: Int) {mut packed_ptr, imm}:
             comptime assert (
                 size_of[_block_Q8_K_packed[group_size]]() * tile_m
                 == size_of[_block_Q8_K_packed[group_size, tile_m]]()
@@ -317,7 +316,9 @@ def _quantize_a_Q8_K[
                 var max_value_simd = SIMD[dtype, group_size](Scalar[dtype].MIN)
 
                 for g in range(group_count):
-                    var fp_data = am_ptr.load[width=group_size](g * group_size)
+                    var fp_data = a.load[
+                        width=group_size, alignment=align_of[dtype]()
+                    ](Coord(m + row, ko + g * group_size))
                     max_value_simd = max(abs(fp_data), max_value_simd)
 
                 var max_value = max_value_simd.reduce_max()
@@ -325,7 +326,9 @@ def _quantize_a_Q8_K[
                 var multiplier = 127.0 / max_value if max_value != 0.0 else 0.0
 
                 for g in range(group_count):
-                    var fp_data = am_ptr.load[width=group_size](g * group_size)
+                    var fp_data = a.load[
+                        width=group_size, alignment=align_of[dtype]()
+                    ](Coord(m + row, ko + g * group_size))
                     var q_data_i32 = roundeven_to_int32(fp_data * multiplier)
                     var q_data_i8 = q_data_i32.cast[.int8]()
                     var group_sum = q_data_i32.reduce_add()
@@ -346,13 +349,9 @@ def _quantize_a_Q8_K[
 
                 block_ptr[].scales[row] = scale
 
-                am_ptr += K
-
             packed_ptr += tile_m
 
         tile[[4, 2, 1]](0, M, process_rows)
-        # TODO(MOCO-2074): Suppress false positive unused var warning.
-        _ = am_ptr
 
     return packed_base_alloc^
 
