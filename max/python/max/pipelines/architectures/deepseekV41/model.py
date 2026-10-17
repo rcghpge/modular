@@ -14,7 +14,9 @@
 
 Builds the servable graph on one device or tensor-parallel across several,
 and loads the weights: routed experts stream straight to their devices, and
-Engram tables are pinned in host memory while the graph compiles.
+Engram tables are pinned in host memory while the graph compiles. Images are
+encoded by a separately compiled vision model on device 0, whose span rows
+the language graph merges into its token embeddings.
 """
 
 from __future__ import annotations
@@ -42,6 +44,9 @@ from max.driver import (
 )
 from max.dtype import DType
 from max.engine import InferenceSession, Model
+from max.experimental import functional as F
+from max.experimental.compilation import CompiledCallable
+from max.experimental.tensor import default_dtype
 from max.graph import (
     DeviceRef,
     Graph,
@@ -60,7 +65,11 @@ from max.nn.kv_cache import (
 )
 from max.nn.layer import Module
 from max.nn.transformer import ReturnLogits
-from max.pipelines.context import TextContext
+from max.pipelines.context import (
+    ImageMetadata,
+    TextAndVisionContext,
+    TextContext,
+)
 from max.pipelines.lib import (
     GraphPipelineModelWithKVCache,
     KVCacheConfig,
@@ -81,20 +90,32 @@ from max.pipelines.lib.utils import (
     CompilationTimer,
     parse_state_dict_from_weights,
 )
+from max.pipelines.lib.vision_batching import create_empty_image_embeddings
+from max.pipelines.lib.vision_encoder_cache import VisionEncodeResult
 from max.profiler import traced
 from max.support.host_memory import available_host_memory, host_memory_limit
 from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoTokenizer
 
 from . import engram_shared_host, kv_leaves, weight_adapters
-from .deepseekV41 import DeepseekV41, DeepseekV41Block
+from .batch_vision_inputs import pack_uncached_images
+from .deepseekV41 import DeepseekV41, DeepseekV41Block, VisionMerge
 from .layers.attention import CSA2Cache
 from .layers.engram_hash import EngramLayout, engram_lookback_token_ids
 from .layers.engram_lookup import EngramLookup
 from .layers.engram_token_map import compressed_token_map_array
 from .layers.moe import DeepseekV41MoE
 from .memory_planner import check_planned_max_length
-from .model_config import DeepseekV41Config, forward_row_bound
+from .model_config import (
+    DeepseekV41Config,
+    forward_row_bound,
+    max_images_per_request,
+)
+from .vision import (
+    DeepseekV41VisionConfig,
+    DeepseekV41VisionModel,
+    vision_input_types,
+)
 
 logger = logging.getLogger("max.pipelines")
 
@@ -750,6 +771,7 @@ class DeepseekV41Inputs(ModelInputs):
 
     @property
     def buffers(self) -> tuple[Buffer, ...]:
+        """The graph inputs; the vision ones are empty for a text-only model."""
         assert self.kv_cache_inputs is not None
         lookback = (
             (self.engram_lookback_ids,)
@@ -763,6 +785,8 @@ class DeepseekV41Inputs(ModelInputs):
             *lookback,
             *self.signal_buffers,
             *tree.leaves(self.kv_cache_inputs),
+            *self.vision_embeddings,
+            *self.vision_scatter_indices,
             *self.engram_host_buffers,
         )
 
@@ -845,10 +869,14 @@ class DeepseekV41BatchProcessor(
 class DeepseekV41Model(
     LogProbabilitiesMixin, GraphPipelineModelWithKVCache[TextContext]
 ):
-    """A DeepSeek-V4.1-Flash pipeline model for text generation.
+    """A DeepSeek-V4.1-Flash pipeline model for text and image generation.
 
     :class:`LogProbabilitiesMixin` computes logprobs from the graph's
-    float32 logits.
+    float32 logits. As a
+    :class:`~max.pipelines.lib.vision_encoder_cache.SupportsVisionEncoding`
+    model, the pipeline's vision encoder cache drives :meth:`vision_execute`
+    and hands the language graph each step's span rows and their token
+    rows.
     """
 
     model_config_cls: ClassVar[type[Any]] = DeepseekV41Config
@@ -858,6 +886,9 @@ class DeepseekV41Model(
 
     model: Model
     """The compiled and initialized MAX Engine model."""
+
+    vision_model: CompiledCallable[..., Any] | None
+    """The compiled vision model; ``None`` for a checkpoint without one."""
 
     _engram_host_buffers: list[Buffer]
     """Pinned Engram tables, bound as the last graph inputs.
@@ -917,6 +948,102 @@ class DeepseekV41Model(
             memory_plan=memory_plan,
         )
         self.model = self.load_model(session)
+        self.vision_model = self._load_vision_model(session)
+
+    @functools.cached_property
+    def _vision_config(self) -> DeepseekV41VisionConfig | None:
+        """``None`` without a tower, or with images capped at 0."""
+        vision_config = getattr(self.huggingface_config, "vision_config", None)
+        if (
+            vision_config is None
+            or max_images_per_request(self.pipeline_config) == 0
+        ):
+            return None
+        return DeepseekV41VisionConfig.from_hf(
+            vision_config.to_dict(),
+            DeepseekV41Config.get_text_config(
+                self.huggingface_config
+            ).hidden_size,
+        )
+
+    def _load_vision_model(
+        self, session: InferenceSession
+    ) -> CompiledCallable[..., Any] | None:
+        """Compiles the vision model on device 0 and loads its weights.
+
+        Raises:
+            ValueError: If the checkpoint's vision tensors do not load
+                strictly into the model.
+        """
+        config = self._vision_config
+        if config is None:
+            return None
+        device = self.devices[0]
+        with F.lazy(), default_dtype(DType.bfloat16):
+            vision = DeepseekV41VisionModel(config)
+            vision.to(device)
+        weights = weight_adapters.convert_safetensor_vision_state_dict(
+            dict(self.weights.items())
+        )
+        problems = weight_adapters.vision_load_mismatches(
+            weights, {n: (t.shape, t.dtype) for n, t in vision.parameters}
+        )
+        if problems:
+            raise ValueError(
+                "the checkpoint's vision tensors do not load into the vision "
+                "model:\n" + "\n".join(problems)
+            )
+        logger.info(
+            "Loading %d vision tensors: 0 missing, 0 unexpected", len(weights)
+        )
+        return vision.compile(
+            *vision_input_types(
+                config, DeviceRef.from_device(device), DType.bfloat16
+            ),
+            weights=weights,
+            session=session,
+        )
+
+    def pack_vision_inputs(
+        self,
+        selection: Sequence[
+            tuple[TextAndVisionContext, Sequence[ImageMetadata]]
+        ],
+        devices: list[Device],
+    ) -> list[Buffer] | None:
+        """Packs the pipeline-selected uncached images to device 0."""
+        if self._vision_config is None:
+            return None
+        return pack_uncached_images(selection, devices[0], self._vision_config)
+
+    def vision_execute(
+        self,
+        selection: Sequence[
+            tuple[TextAndVisionContext, Sequence[ImageMetadata]]
+        ],
+        devices: list[Device],
+        packed: list[Buffer] | None,
+    ) -> VisionEncodeResult:
+        """Encodes the packed images into their span rows on every device."""
+        if packed is None:
+            return VisionEncodeResult(
+                embeddings=self.empty_vision_embeddings(devices)
+            )
+        if self.vision_model is None:
+            raise ValueError("this checkpoint has no vision model")
+        (rows,) = self.vision_model.execute_raw(*packed)
+        return VisionEncodeResult(embeddings=[rows.to(d) for d in devices])
+
+    def empty_vision_embeddings(self, devices: list[Device]) -> list[Buffer]:
+        """Per-device zero-row span embeddings, cached across steps."""
+        if not hasattr(self, "_empty_vision_embeddings"):
+            self._empty_vision_embeddings = create_empty_image_embeddings(
+                devices,
+                DeepseekV41Config.get_text_config(
+                    self.huggingface_config
+                ).hidden_size,
+            )
+        return self._empty_vision_embeddings
 
     def _create_model_config(
         self, state_dict: dict[str, Any]
@@ -1100,9 +1227,23 @@ class DeepseekV41Model(
         input_types = self.batch_processor.get_symbolic_inputs(
             kv_params=self.kv_params, device_refs=self.device_refs
         )
-        input_types = [*input_types, *engram_input_types]
+        hidden_size = model_config.hidden_size
+        vision_types = [
+            *(
+                TensorType(
+                    DType.bfloat16, ["vision_rows", hidden_size], device=ref
+                )
+                for ref in self.device_refs
+            ),
+            *(
+                TensorType(DType.int32, ["vision_scatter_rows"], device=ref)
+                for ref in self.device_refs
+            ),
+        ]
+        input_types = [*input_types, *vision_types, *engram_input_types]
 
-        n_engram_inputs = len(engram_input_types)
+        n_dev = len(self.device_refs)
+        n_trailing = len(vision_types) + len(engram_input_types)
         with Graph("deepseekV41", input_types=input_types) as graph:
             all_inputs = list(graph.inputs)
             tokens, input_row_offsets, return_n_logits = all_inputs[:3]
@@ -1111,12 +1252,15 @@ class DeepseekV41Model(
             engram_lookback_ids = (
                 all_inputs[3].tensor if engram_layer_ids else None
             )
-            if n_engram_inputs:
-                variadic_args = all_inputs[n_leading:-n_engram_inputs]
-                engram_graph_inputs = all_inputs[-n_engram_inputs:]
-            else:
-                variadic_args = all_inputs[n_leading:]
-                engram_graph_inputs = []
+            variadic_args = all_inputs[n_leading:-n_trailing]
+            vision_inputs = all_inputs[-n_trailing:][: 2 * n_dev]
+            engram_graph_inputs = all_inputs[-n_trailing:][2 * n_dev :]
+            visions = [
+                VisionMerge(embeddings.tensor, indices.tensor)
+                for embeddings, indices in zip(
+                    vision_inputs[:n_dev], vision_inputs[n_dev:], strict=True
+                )
+            ]
 
             per_device_tables = self._per_device_engram_tables(
                 engram_graph_inputs, engram_layer_ids
@@ -1133,7 +1277,6 @@ class DeepseekV41Model(
                 strict=self._strict_state_dict_loading,
             )
             weights_registry = nn_model.state_dict(auto_initialize=False)
-            n_dev = len(self.device_refs)
             serving = (
                 [nn_model]
                 if n_dev == 1
@@ -1165,6 +1308,7 @@ class DeepseekV41Model(
                     return_n_logits.tensor,
                     csa2_cache(specs, groups, 0),
                     engram_lookback_ids=engram_lookback_ids,
+                    vision=visions[0],
                 )
             else:
                 signal_buffers = [v.buffer for v in variadic_args[:n_dev]]
@@ -1193,6 +1337,7 @@ class DeepseekV41Model(
                     caches,
                     signal_buffers,
                     engram_lookback_ids=lookback_per_dev,
+                    visions=visions,
                 )
             graph.output(*outputs)
         if expert_uploads:

@@ -15,7 +15,8 @@
 Each decoder block wraps attention and a feed-forward network in
 hyper-connections, which keep several copies of the residual stream and learn
 how to mix them. Some blocks first add an Engram value: an embedding looked up
-from hashed n-grams of the input tokens.
+from hashed n-grams of the input tokens. Image span positions take their
+embeddings from the vision model and take no part in Engram.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
 from max.nn.transformer import logits_postprocess
+from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
 from typing_extensions import Self
 
 from ..deepseekV4.layers import (
@@ -68,7 +70,11 @@ from .layers.engram import Engram
 from .layers.engram_hash import EngramLayout
 from .layers.engram_lookup import EngramLookup, EngramOperand, EngramTokens
 from .layers.indexer import DeepseekV41Indexer
-from .layers.moe import DeepseekV41MoE, nvfp4_moe_ffn_factory
+from .layers.moe import (
+    IMAGE_SENTINEL_BASE_ID,
+    DeepseekV41MoE,
+    nvfp4_moe_ffn_factory,
+)
 from .layers.ragged import V41RaggedRows as RaggedRows
 from .model_config import DeepseekV41Config, head_bf16_enabled
 
@@ -82,6 +88,7 @@ __all__ = [
     "DeepseekV41Block",
     "DeepseekV41Trunk",
     "RaggedRows",
+    "VisionMerge",
     "apply_rope_tail",
     "fp4_qat_quantize",
     "fp8_qat_quantize",
@@ -113,6 +120,67 @@ def _adopt_shards(
         _adopt_shards(
             child, [replica.sublayers[name] for replica in replicas], devices
         )
+
+
+@dataclass(frozen=True)
+class VisionMerge:
+    """Image span embeddings and the token rows they replace."""
+
+    embeddings: TensorValue
+    """``[n, d]`` rows from the vision model."""
+
+    indices: TensorValue
+    """``[n]`` int32 token row of each embedding; a negative one is skipped."""
+
+
+def merge_vision(x: TensorValue, vision: VisionMerge | None) -> TensorValue:
+    """Scatters the image span rows into the ``[1, s, d]`` token embeddings."""
+    if vision is None:
+        return x
+    s, d = x.shape[1], x.shape[2]
+    merged = merge_multimodal_embeddings(
+        ops.reshape(x, [s, d]), vision.embeddings, vision.indices
+    )
+    return ops.reshape(merged, [1, s, d])
+
+
+def is_text_token(tokens: TensorValue) -> TensorValue:
+    """``[s]`` bool, false at image span positions."""
+    return ops.not_equal(ops.reshape(tokens, [-1]), IMAGE_SENTINEL_BASE_ID)
+
+
+def engram_tokens(
+    tokens: TensorValue,
+    rows: RaggedRows,
+    lookback_token_ids: TensorValue | None,
+    depth: int,
+) -> EngramTokens:
+    """Returns one forward's Engram hash inputs, on ``tokens``' device.
+
+    ``lookback_token_ids`` is ``[b, depth]``: column ``j`` holds the token at
+    ``start - 1 - j``, ``-1`` before the sequence start. ``None`` means every
+    request starts at position 0. Image span tokens, in the chunk or its
+    lookback, are dead: no n-gram spans them.
+    """
+    device = tokens.device
+    ids = ops.cast(ops.reshape(tokens, [-1]), DType.int32)
+    num_reqs = rows.batch
+    if lookback_token_ids is None:
+        lookback = ops.broadcast_to(
+            ops.constant(-1, DType.int32, device), [num_reqs, depth]
+        )
+    else:
+        lookback = ops.rebind(
+            ops.cast(lookback_token_ids, DType.int32), [num_reqs, depth]
+        )
+    return EngramTokens(
+        ids=ids,
+        positions=ops.cast(rows.positions, DType.int64),
+        query_start_loc=ops.cast(rows.offsets, DType.int32),
+        dead_mask=ops.equal(ids, IMAGE_SENTINEL_BASE_ID),
+        lookback=lookback,
+        lookback_dead=ops.equal(lookback, IMAGE_SENTINEL_BASE_ID),
+    )
 
 
 def _hyper_connection(
@@ -315,6 +383,7 @@ class DeepseekV41Block(Module):
         signal_buffers: Sequence[BufferValue],
         *,
         engram_operands: Sequence[EngramOperand] | None = None,
+        engram_token_masks: Sequence[TensorValue | None] | None = None,
     ) -> tuple[list[HCStreams], list[TensorValue]]:
         """Runs :meth:`__call__` on every device, one replica per device.
 
@@ -351,13 +420,14 @@ class DeepseekV41Block(Module):
             ]
             if len(kvs) > 1:
                 kvs = ops.allgather(kvs, signal_buffers, axis=-1)
+            masks = engram_token_masks or [None] * len(blocks)
             streams = [
                 HCStreams(
-                    _apply_engram(stream.materialize(), engram, kv, None),
+                    _apply_engram(stream.materialize(), engram, kv, mask),
                     pre=stream.pre,
                 )
-                for stream, engram, kv in zip(
-                    streams, engrams, kvs, strict=True
+                for stream, engram, kv, mask in zip(
+                    streams, engrams, kvs, masks, strict=True
                 )
             ]
 
@@ -570,7 +640,7 @@ class DeepseekV41Trunk(Module):
         cache: object | None = None,
         *,
         engram_operands: Mapping[int, EngramOperand] | None = None,
-        engram_token_mask: TensorValue | None = None,
+        vision: VisionMerge | None = None,
     ) -> TensorValue:
         """Runs the trunk and returns the pre-norm ``[1, s, d]`` stream.
 
@@ -581,8 +651,8 @@ class DeepseekV41Trunk(Module):
             engram_operands: Each Engram layer's table rows gathered for
                 these tokens, keyed by ``layer_id``; required for every
                 ``has_engram`` layer.
-            engram_token_mask: ``[s]`` bool; ``False`` turns Engram off at
-                that position. ``None`` keeps it on everywhere.
+            vision: Image span rows merged into the token embeddings;
+                ``None`` for a batch without images.
 
         Returns:
             ``[1, s, d]`` pre-norm hidden states.
@@ -593,7 +663,7 @@ class DeepseekV41Trunk(Module):
             cache,
             tap_layer_ids=(),
             engram_operands=engram_operands,
-            engram_token_mask=engram_token_mask,
+            vision=vision,
         )
         return x
 
@@ -605,13 +675,13 @@ class DeepseekV41Trunk(Module):
         *,
         tap_layer_ids: Sequence[int],
         engram_operands: Mapping[int, EngramOperand] | None = None,
-        engram_token_mask: TensorValue | None = None,
+        vision: VisionMerge | None = None,
     ) -> tuple[TensorValue, TensorValue | None]:
         """Runs :meth:`__call__`, also returning hidden states at some layers.
 
         A tap is the ``[1, s, hc, d]`` stream entering a layer in
         ``tap_layer_ids``, averaged over its copies. ``tap_layer_ids=()``
-        adds nothing to the graph.
+        adds nothing to the graph. Engram is off at image span positions.
 
         Returns:
             The pre-norm ``[1, s, d]`` stream, and the taps concatenated in
@@ -634,8 +704,11 @@ class DeepseekV41Trunk(Module):
             )
         taps: list[TensorValue] = []
         streams = HCStreams(
-            expand_copies(self.embed(tokens), self.config.hc_mult)
+            expand_copies(
+                merge_vision(self.embed(tokens), vision), self.config.hc_mult
+            )
         )
+        engram_token_mask = is_text_token(tokens)
         for layer_info, layer in zip(
             self.layer_infos, self.layers, strict=True
         ):
@@ -676,6 +749,7 @@ class DeepseekV41Trunk(Module):
         signal_buffers: Sequence[BufferValue],
         *,
         engram_operands: Sequence[Mapping[int, EngramOperand]],
+        visions: Sequence[VisionMerge] | None = None,
     ) -> TensorValue:
         """Runs :meth:`__call__` over one trunk replica per device.
 
@@ -692,6 +766,7 @@ class DeepseekV41Trunk(Module):
             signal_buffers,
             tap_layer_ids=(),
             engram_operands=engram_operands,
+            visions=visions,
         )
         return x
 
@@ -705,6 +780,7 @@ class DeepseekV41Trunk(Module):
         *,
         tap_layer_ids: Sequence[int],
         engram_operands: Sequence[Mapping[int, EngramOperand]],
+        visions: Sequence[VisionMerge] | None = None,
     ) -> tuple[TensorValue, list[TensorValue] | None]:
         """Runs :meth:`forward_with_taps` over one trunk replica per device.
 
@@ -723,10 +799,20 @@ class DeepseekV41Trunk(Module):
                 "layers"
             )
         taps: list[list[TensorValue]] = [[] for _ in trunks]
+        per_device: Sequence[VisionMerge | None] = visions or [None] * len(
+            trunks
+        )
         streams = [
-            HCStreams(expand_copies(trunk.embed(tok), lead.config.hc_mult))
-            for trunk, tok in zip(trunks, tokens, strict=True)
+            HCStreams(
+                expand_copies(
+                    merge_vision(trunk.embed(tok), vision), lead.config.hc_mult
+                )
+            )
+            for trunk, tok, vision in zip(
+                trunks, tokens, per_device, strict=True
+            )
         ]
+        engram_token_masks = [is_text_token(tok) for tok in tokens]
         for i, layer_info in enumerate(lead.layer_infos):
             tapped = layer_info.layer_id in tap_ids
             if tapped and layer_info.has_engram:
@@ -753,6 +839,7 @@ class DeepseekV41Trunk(Module):
                     if layer_info.has_engram
                     else None
                 ),
+                engram_token_masks=engram_token_masks,
             )
             if tapped:
                 for per_dev, entry in zip(taps, entries, strict=True):
@@ -904,45 +991,6 @@ class DeepseekV41(Module):
             for table in self._engram_host_tables[layer_id]
         ]
 
-    def _engram_tokens(
-        self,
-        lookup: EngramLookup,
-        tokens: TensorValue,
-        rows: RaggedRows,
-        lookback_token_ids: TensorValue | None,
-    ) -> EngramTokens:
-        """Returns this forward's Engram hash inputs on this device.
-
-        ``lookback_token_ids`` is ``[b, max_ngram_size - 1]``: column ``j``
-        holds the token at ``start - 1 - j``, ``-1`` before the sequence
-        start. ``None`` means every request starts at position 0. No position
-        is masked out of Engram.
-        """
-        depth = lookup.lookback_depth
-        ids = ops.cast(ops.reshape(tokens, [-1]), DType.int32)
-        total = ids.shape[0]
-        num_reqs = rows.batch
-        if lookback_token_ids is None:
-            lookback = ops.broadcast_to(
-                ops.constant(-1, DType.int32, self.device), [num_reqs, depth]
-            )
-        else:
-            lookback = ops.rebind(
-                ops.cast(lookback_token_ids, DType.int32), [num_reqs, depth]
-            )
-        return EngramTokens(
-            ids=ids,
-            positions=ops.cast(rows.positions, DType.int64),
-            query_start_loc=ops.cast(rows.offsets, DType.int32),
-            dead_mask=ops.broadcast_to(
-                ops.constant(False, DType.bool, self.device), [total]
-            ),
-            lookback=lookback,
-            lookback_dead=ops.broadcast_to(
-                ops.constant(False, DType.bool, self.device), [num_reqs, depth]
-            ),
-        )
-
     def _engram_operands(
         self,
         tokens: TensorValue,
@@ -951,13 +999,15 @@ class DeepseekV41(Module):
     ) -> Mapping[int, EngramOperand]:
         """Returns each Engram layer's gathered rows from the full tables.
 
-        ``lookback_token_ids``: see :meth:`_engram_tokens`.
+        ``lookback_token_ids``: see :func:`engram_tokens`.
         """
         lookup = self._engram_lookup()
         if lookup is None:
             return {}
         return lookup.full(
-            self._engram_tokens(lookup, tokens, rows, lookback_token_ids),
+            engram_tokens(
+                tokens, rows, lookback_token_ids, lookup.lookback_depth
+            ),
             self._engram_tables(lookup),
             self.device,
         )
@@ -986,9 +1036,9 @@ class DeepseekV41(Module):
         return list(
             lookup.sharded(
                 [
-                    replica._engram_tokens(lookup, tok, row, lookback)
-                    for replica, tok, row, lookback in zip(
-                        replicas, tokens, rows, lookbacks, strict=True
+                    engram_tokens(tok, row, lookback, lookup.lookback_depth)
+                    for tok, row, lookback in zip(
+                        tokens, rows, lookbacks, strict=True
                     )
                 ],
                 [replica._engram_tables(lookup) for replica in replicas],
@@ -1003,13 +1053,16 @@ class DeepseekV41(Module):
         rows: RaggedRows,
         cache: object | None = None,
         engram_lookback_ids: TensorValue | None = None,
+        vision: VisionMerge | None = None,
     ) -> TensorValue:
         """Runs the trunk and returns the pre-norm ``[1, s, d]`` stream.
 
-        ``engram_lookback_ids``: see :meth:`_engram_tokens`.
+        ``engram_lookback_ids``: see :func:`engram_tokens`.
         """
         operands = self._engram_operands(tokens, rows, engram_lookback_ids)
-        return self.trunk(tokens, rows, cache, engram_operands=operands)
+        return self.trunk(
+            tokens, rows, cache, engram_operands=operands, vision=vision
+        )
 
     def serve(
         self,
@@ -1018,10 +1071,11 @@ class DeepseekV41(Module):
         return_n_logits: TensorValue,
         cache: object,
         engram_lookback_ids: TensorValue | None = None,
+        vision: VisionMerge | None = None,
     ) -> tuple[TensorValue, ...]:
         """Builds the serving graph body: ragged tokens in, logits out.
 
-        ``engram_lookback_ids``: see :meth:`_engram_tokens`.
+        ``engram_lookback_ids``: see :func:`engram_tokens`.
 
         Raises:
             TypeError: If ``cache`` is not a :class:`CSA2Cache`.
@@ -1038,6 +1092,7 @@ class DeepseekV41(Module):
             rows,
             cache,
             engram_lookback_ids=engram_lookback_ids,
+            vision=vision,
         )
         return logits_postprocess(
             ops.reshape(x, [t, self.config.hidden_size]),
@@ -1112,11 +1167,13 @@ class DeepseekV41(Module):
         caches: Sequence[CSA2Cache],
         signal_buffers: Sequence[BufferValue],
         engram_lookback_ids: Sequence[TensorValue] | None = None,
+        visions: Sequence[VisionMerge] | None = None,
     ) -> tuple[TensorValue, ...]:
         """Runs :meth:`serve` with one replica per device.
 
-        ``tokens``, ``input_row_offsets``, ``caches`` and
-        ``engram_lookback_ids`` are per device; logits come from device 0.
+        ``tokens``, ``input_row_offsets``, ``caches``,
+        ``engram_lookback_ids`` and ``visions`` are per device; logits come
+        from device 0.
         """
         lead = replicas[0]
         t = tokens[0].shape[0]
@@ -1138,6 +1195,7 @@ class DeepseekV41(Module):
             engram_operands=DeepseekV41._engram_operands_tensor_parallel(
                 replicas, tokens_2d, rows, engram_lookback_ids, signal_buffers
             ),
+            visions=visions,
         )
         return logits_postprocess(
             ops.reshape(x, [t, lead.config.hidden_size]),

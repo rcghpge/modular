@@ -283,6 +283,27 @@ class DeepseekV41Config(ArchConfigWithKVCache):
         return huggingface_config.text_config
 
     @classmethod
+    def estimate_vision_cache_entry_bytes(
+        cls, huggingface_config: AutoConfig
+    ) -> int:
+        """One largest image span's bf16 embeddings; 0 without a tower."""
+        vision_config = getattr(huggingface_config, "vision_config", None)
+        if vision_config is None:
+            return 0
+        hidden_size = cls.get_text_config(huggingface_config).hidden_size
+        return vision_config.max_image_tokens * hidden_size * 2
+
+    @classmethod
+    def get_vision_cache_row_spec(
+        cls, huggingface_config: AutoConfig
+    ) -> tuple[int, DType] | None:
+        """One bf16 text-width row per image span position."""
+        if getattr(huggingface_config, "vision_config", None) is None:
+            return None
+        hidden_size = cls.get_text_config(huggingface_config).hidden_size
+        return hidden_size, DType.bfloat16
+
+    @classmethod
     def construct_kv_params(
         cls,
         huggingface_config: AutoConfig,
@@ -458,6 +479,46 @@ class DeepseekV41Config(ArchConfigWithKVCache):
             **cls.resolve_text_fields(text_config),
             **cls.resolve_quantization_fields(config),
         )
+
+
+MAX_IMAGES_PER_REQUEST = "max_images_per_request"
+"""The one ``--vision-config-overrides`` key DeepSeek-V4.1 reads."""
+
+
+def max_images_per_request(pipeline_config: PipelineConfig) -> int | None:
+    """Returns the per-request image cap, ``None`` for no cap.
+
+    Set with ``--vision-config-overrides '{"max_images_per_request": N}'``,
+    as vLLM's ``--limit-mm-per-prompt``. ``0`` serves text only: the vision
+    model is neither loaded nor planned, and the router rejects any request
+    with an image. DSpark always serves text only, because its graph has no
+    vision inputs.
+
+    Raises:
+        ValueError: On any other override key, or a cap that is not a
+            non-negative integer.
+    """
+    overrides = dict(pipeline_config.model.vision_config_overrides)
+    unknown = sorted(overrides.keys() - {MAX_IMAGES_PER_REQUEST})
+    if unknown:
+        raise ValueError(
+            f"DeepSeek-V4.1 vision_config_overrides accepts only "
+            f"{MAX_IMAGES_PER_REQUEST!r}, got {unknown}"
+        )
+    cap = overrides.get(MAX_IMAGES_PER_REQUEST)
+    if cap is not None and (
+        isinstance(cap, bool) or not isinstance(cap, int) or cap < 0
+    ):
+        raise ValueError(
+            f"{MAX_IMAGES_PER_REQUEST} must be a non-negative integer, "
+            f"got {cap!r}"
+        )
+    if cap == 0:
+        return 0
+    speculative = pipeline_config.speculative
+    if speculative is not None and speculative.is_dspark():
+        return 0
+    return cap
 
 
 def forward_row_bound(

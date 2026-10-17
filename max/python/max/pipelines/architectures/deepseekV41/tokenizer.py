@@ -45,8 +45,14 @@ from max.pipelines.modeling.types import (
 from max.support.image import hash_image
 from PIL import Image
 
+from .batch_vision_inputs import IMAGE_GRIDS
 from .encoding_dsv41 import encode_messages
-from .image_processor import DeepseekV41ImageProcessor, expand_image_spans
+from .image_processor import (
+    DeepseekV41ImageProcessor,
+    ImageGrid,
+    expand_image_spans,
+)
+from .model_config import MAX_IMAGES_PER_REQUEST, max_images_per_request
 from .reasoning_effort import resolve_reasoning_effort
 
 if TYPE_CHECKING:
@@ -164,9 +170,18 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         config = pipeline_config.model.huggingface_config
         self.image_token_id = int(config.image_token_id)
         self.image_processor = DeepseekV41ImageProcessor(config.vision_config)
-        self.enable_prefix_caching = (
-            pipeline_config.model.kv_cache.enable_prefix_caching
-        )
+        # The router reads this to reject requests over the cap.
+        self.max_images_per_request = max_images_per_request(pipeline_config)
+        overrides = pipeline_config.model.vision_config_overrides
+        if (
+            overrides.get(MAX_IMAGES_PER_REQUEST) == 0
+            and pipeline_config.runtime.vision_cache_utilization > 0
+        ):
+            raise ValueError(
+                f"{MAX_IMAGES_PER_REQUEST} 0 serves text only; also pass "
+                "--vision-cache-utilization 0 so no KV memory is reserved "
+                "for a vision encoder cache that is never filled."
+            )
 
     @property
     def expects_content_wrapping(self) -> bool:
@@ -194,7 +209,7 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         self,
         token_ids: npt.NDArray[np.integer[Any]],
         images: Sequence[bytes | Image.Image],
-    ) -> tuple[npt.NDArray[np.int64], list[ImageMetadata]]:
+    ) -> tuple[npt.NDArray[np.int64], list[ImageMetadata], list[ImageGrid]]:
         opened = [open_image(image) for image in images]
         # Checked before patchifying: images below min_pixels are upscaled,
         # so many tiny ones would take gigabytes before a later check.
@@ -216,13 +231,15 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
                 start_idx=start,
                 end_idx=start + grid.num_tokens,
                 pixel_values=patches,
-                image_hash=hash_image(patches)
-                if self.enable_prefix_caching
-                else None,
+                # Prefix caching and the vision encoder cache both key on
+                # it; equal patch arrays can come from different grids.
+                image_hash=hash(
+                    (hash_image(patches), grid.n_vit_h, grid.n_vit_w)
+                ),
             )
             for start, (patches, grid) in zip(starts, processed, strict=True)
         ]
-        return expanded, metadata
+        return expanded, metadata, [grid for _, grid in processed]
 
     async def new_context(
         self, request: TextGenerationRequest
@@ -242,7 +259,7 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
             tools=request.tools,
             **(request.chat_template_options or {}),
         )
-        token_ids, images = await run_with_default_executor(
+        token_ids, images, grids = await run_with_default_executor(
             self._expand_images, text_ids, request.images_for_processing()
         )
 
@@ -255,6 +272,9 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         if images:
             extra_model_args["image_token_indices"] = np.flatnonzero(
                 token_ids == self.image_token_id
+            )
+            extra_model_args[IMAGE_GRIDS] = np.array(
+                [(grid.n_vit_h, grid.n_vit_w) for grid in grids], np.int64
             )
         response_format = request.response_format
         return TextAndVisionContext(

@@ -46,6 +46,8 @@ def _pipeline_config(
 ) -> NonCallableMock:
     config = NonCallableMock(spec=PipelineConfig)
     config.model = MagicMock()
+    # These plans serve text only.
+    config.model.vision_config_overrides = {"max_images_per_request": 0}
     config.runtime = MagicMock()
     config.model.max_length = max_length
     config.model.kv_cache.kv_cache_page_size = 128

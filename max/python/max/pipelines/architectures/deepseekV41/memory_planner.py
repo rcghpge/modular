@@ -39,6 +39,7 @@ from .model_config import (
     DeepseekV41Config,
     forward_row_bound,
     head_bf16_enabled,
+    max_images_per_request,
     nvfp4_sf_preinterleave_enabled,
     woa_mxfp8_enabled,
 )
@@ -48,6 +49,7 @@ from .weight_adapters import (
     FUSED_QUERY_PROJECTIONS,
     HEAD_WEIGHT,
     MXFP8_BLOCK_SIZE,
+    VISION_NORM_WEIGHT,
     is_host_dequantized,
     is_skipped_checkpoint_tensor,
 )
@@ -235,8 +237,8 @@ def _score_row_bytes(max_seq_len: int, ratio: int) -> int:
 # ---------------------------------------------------------------------------
 # Weight sizing from safetensors headers. Checkpoint file sizes are wrong for
 # this model: Engram's hash tables live in pinned host memory, DSpark and
-# vision tensors are not loaded by the trunk, and replicated tensors are held
-# once per device.
+# vision tensors are not loaded by the trunk (the vision model holds them on
+# device 0), and replicated tensors are held once per device.
 # ---------------------------------------------------------------------------
 
 # Engram's hash tables (weight and e8m0 scale) live in pinned host memory.
@@ -400,6 +402,44 @@ def device_weight_bytes(
     return ceil(per_device), host
 
 
+def vision_weight_bytes(tensors: Iterable[CheckpointTensor]) -> int:
+    """Returns the vision model's device bytes, held on device 0 only.
+
+    Its bf16 RMSNorm weights are widened to float32.
+    """
+    return sum(
+        tensor.nbytes
+        * (
+            2
+            if tensor.dtype == "BF16"
+            and VISION_NORM_WEIGHT.fullmatch(tensor.name)
+            else 1
+        )
+        for tensor in tensors
+        if is_skipped_checkpoint_tensor(tensor.name)
+    )
+
+
+# Measured on a B200 with the memory manager off: one encode of 9189 patches
+# (the most one image's span allows) peaks 1032 MiB above the loaded model,
+# 117764 bytes per patch. Reserved with a 25% margin.
+_VISION_BYTES_PER_PATCH = 117_764
+_VISION_PEAK_MARGIN = 1.25
+
+
+def vision_activation_bytes(vision_config: Any, image_tokens: int) -> int:
+    """Returns the vision model's peak for images spanning ``image_tokens``.
+
+    An aligner row takes ``downsample_ratio**2`` patches and fills one span
+    row, so the images have at most ``downsample_ratio**2 * image_tokens``
+    patches. In whole MemoryManager pages.
+    """
+    patches = vision_config.downsample_ratio**2 * max(0, image_tokens)
+    return _mm_pages(
+        ceil(patches * _VISION_BYTES_PER_PATCH * _VISION_PEAK_MARGIN)
+    )
+
+
 def check_planned_max_length(
     *, planned: int | None, requested: int, forward_rows: int
 ) -> None:
@@ -444,9 +484,9 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         """Estimates device weight bytes, summed over devices.
 
         Free memory is compared summed over devices, so this returns the
-        per-device size times the device count. Falls back to the
-        checkpoint's file sizes when the headers cannot be read (e.g. a
-        remote repo).
+        per-device size times the device count, plus the vision model's
+        weights on device 0. Falls back to the checkpoint's file sizes when
+        the headers cannot be read (e.g. a remote repo).
         """
         model_config = pipeline_config.model
         num_devices = max(1, len(model_config.device_specs))
@@ -465,14 +505,22 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         if not tensors:
             return model_config.weights_size()
         per_device, host = device_weight_bytes(tensors, num_devices)
+        vision = (
+            vision_weight_bytes(tensors)
+            if max_images_per_request(pipeline_config) != 0
+            else 0
+        )
         logger.info(
             "Estimated DeepSeek-V4.1-Flash weights: %s per device x %d "
-            "devices (%s of Engram tables kept in host memory)",
+            "devices, plus %s (%d bytes) of vision weights on device 0 (%s "
+            "of Engram tables kept in host memory)",
             to_human_readable_bytes(per_device),
             num_devices,
+            to_human_readable_bytes(vision),
+            vision,
             to_human_readable_bytes(host),
         )
-        return per_device * num_devices
+        return per_device * num_devices + vision
 
     def estimate_activation_memory(
         self, pipeline_config: Any, huggingface_config: Any
@@ -487,14 +535,20 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         Returns:
             :func:`graph_arena_bytes` plus :func:`indexer_activation_bytes`
             per device, summed over devices (free memory is summed the same
-            way). Excludes KV leaf storage (see module docstring).
+            way), plus :func:`vision_activation_bytes` of one largest image
+            on device 0. Excludes KV leaf storage (see module docstring).
         """
         text_config = DeepseekV41Config.get_text_config(huggingface_config)
         specs = kv_leaves.kv_leaf_specs(text_config)
+        vision = (
+            self._vision_activation_bytes(huggingface_config)
+            if max_images_per_request(pipeline_config) != 0
+            else 0
+        )
 
         if not any(spec.kind == "comp" for spec in specs):
             # No compressed layer, so no indexer scoring.
-            return 0
+            return vision
 
         runtime = pipeline_config.runtime
         max_length = pipeline_config.model.max_length
@@ -533,4 +587,23 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             local_heads,
             row_tile,
         )
-        return per_device * num_devices
+        return per_device * num_devices + vision
+
+    @staticmethod
+    def _vision_activation_bytes(huggingface_config: Any) -> int:
+        """The vision model's peak for one largest image."""
+        vision_config = getattr(huggingface_config, "vision_config", None)
+        if vision_config is None:
+            return 0
+        # TODO: a forward whose rows overlap several unencoded images
+        # encodes them in one call, whose peak grows with their patches.
+        peak = vision_activation_bytes(
+            vision_config, vision_config.max_image_tokens
+        )
+        logger.info(
+            "Estimated DeepSeek-V4.1-Flash vision activation memory on "
+            "device 0: %s for one %d-token image",
+            to_human_readable_bytes(peak),
+            vision_config.max_image_tokens,
+        )
+        return peak

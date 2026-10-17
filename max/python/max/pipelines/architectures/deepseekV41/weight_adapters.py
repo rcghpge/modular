@@ -14,10 +14,10 @@
 
 Rules key on each tensor's on-disk dtype rather than its name, so a
 dequantized checkpoint passes through the quantized-tensor rules unchanged.
-Besides renaming, the adapter drops vision tensors, stacks per-expert
-tensors, converts block scales to the layouts the kernels read, dequantizes
-projections the model runs in higher precision, and widens weights the model
-keeps in float32.
+Besides renaming, the trunk adapters drop vision tensors, stack per-expert
+tensors, convert block scales to the layouts the kernels read, dequantize
+projections the model runs in higher precision, and widen weights the model
+keeps in float32. The vision adapter keeps only the vision tensors.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ import sys
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol, SupportsInt
 
 import numpy as np
 from max.driver import Buffer, DLPackArray
@@ -117,7 +118,7 @@ HEAD_WEIGHT = "head.weight"
 # Scales kept as raw e8m0 (widening Engram's would quadruple their size).
 _RAW_SCALE_PREFIXES = (".engram.embed",)
 
-# VL checkpoint tensors the text-only pipeline does not load.
+# VL checkpoint tensors, which the vision tower loads apart from the trunk.
 _SKIPPED_PREFIXES = ("vision.", "aligner.")
 _SKIPPED_EXACT = ("image_start", "image_end", "image_newline")
 
@@ -129,7 +130,7 @@ _LIBC = ctypes.CDLL(None)
 
 
 def is_skipped_checkpoint_tensor(name: str) -> bool:
-    """Whether ``name`` is a vision tensor this text-only adapter drops.
+    """Whether ``name`` is a vision tensor, which the trunk adapters drop.
 
     Args:
         name: A checkpoint tensor's full dotted path.
@@ -1388,3 +1389,65 @@ def convert_dspark_safetensor_state_dict(
         **rewire_trunk_state_dict(trunk),
         **rewire_dspark_state_dict(stages, last_stage=num_stages - 1),
     }
+
+
+# The checkpoint stores the vision RMSNorm weights in bfloat16; the reference
+# ``inference/vision.py`` applies them in float32.
+VISION_NORM_WEIGHT = re.compile(
+    r"vision\.(?:blocks\.\d+\.norm[12]|norm)\.weight"
+)
+
+
+class _TensorSource(Protocol):
+    def data(self) -> WeightData: ...
+
+
+def convert_safetensor_vision_state_dict(
+    state_dict: Mapping[str, _TensorSource], **unused_kwargs: object
+) -> dict[str, WeightData]:
+    """The vision tower's, aligner's and span delimiters' weights.
+
+    Keeps the tensors :func:`is_skipped_checkpoint_tensor` names, whose
+    checkpoint names are already the attribute paths of
+    :class:`~.vision.DeepseekV41VisionModel`, and widens the RMSNorm
+    weights to float32.
+    """
+    out: dict[str, WeightData] = {}
+    for name, value in state_dict.items():
+        if not is_skipped_checkpoint_tensor(name):
+            continue
+        data = value.data()
+        out[name] = (
+            bfloat16_to_float32(data, name)
+            if data.dtype == DType.bfloat16
+            and VISION_NORM_WEIGHT.fullmatch(name)
+            else data
+        )
+    return out
+
+
+def vision_load_mismatches(
+    converted: Mapping[str, WeightData],
+    expected: Mapping[str, tuple[Iterable[SupportsInt], DType]],
+) -> list[str]:
+    """Every way ``converted`` fails a strict load into the vision model.
+
+    Args:
+        converted: :func:`convert_safetensor_vision_state_dict`'s output.
+        expected: Each vision model parameter's shape and dtype, by name.
+
+    Returns:
+        One line per missing, unexpected or mismatched tensor; empty when
+        the load is exact.
+    """
+    problems = [f"missing {n}" for n in sorted(expected.keys() - converted)]
+    problems += [f"unexpected {n}" for n in sorted(converted.keys() - expected)]
+    for name in sorted(expected.keys() & converted.keys()):
+        shape, dtype = [int(d) for d in expected[name][0]], expected[name][1]
+        got = converted[name]
+        got_shape = [int(d) for d in got.shape]
+        if got_shape != shape or got.dtype != dtype:
+            problems.append(
+                f"{name}: {got.dtype} {got_shape}, expected {dtype} {shape}"
+            )
+    return problems
