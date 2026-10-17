@@ -307,6 +307,7 @@ def _bench(
         imm slot_tt,
         imm offsets_tt,
         imm out_new_tt,
+        imm out_old_tt,
         imm total_T,
         imm conv_dim,
         imm num_seqs,
@@ -323,6 +324,8 @@ def _bench(
             slot_tt,
             offsets_tt,
             out_new_tt,
+            # Never written without CAPTURE_INPUT.
+            out_old_tt,
             grid_dim=(
                 ceildiv(total_T, tokens_per_block),
                 ceildiv(conv_dim, CONV1D_BLOCK_DIM),

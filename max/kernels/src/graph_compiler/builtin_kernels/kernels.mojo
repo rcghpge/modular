@@ -3628,6 +3628,37 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         ctx: DeviceContext,
     ) capturing raises:
+        Self.launch[work_dtype, state_dtype, target, capture_input=False](
+            conv_output_ragged,
+            qkv_input_ragged,
+            conv_weight,
+            conv_state,
+            slot_idx,
+            input_row_offsets,
+            conv_output_ragged,
+            ctx,
+        )
+
+    @staticmethod
+    def launch[
+        work_dtype: DType,
+        state_dtype: DType,
+        target: StaticString,
+        capture_input: Bool,
+    ](
+        conv_output_ragged: OutputTensor[dtype=work_dtype, rank=2, ...],
+        qkv_input_ragged: InputTensor[dtype=work_dtype, rank=2, ...],
+        conv_weight: InputTensor[dtype=work_dtype, rank=2, ...],
+        conv_state: MutableInputTensor[dtype=state_dtype, rank=3, ...],
+        slot_idx: InputTensor[dtype=.uint32, rank=1, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        qkv_window: OutputTensor[dtype=work_dtype, rank=2, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        """Launches the conv, also copying its input to `qkv_window` when
+        `capture_input`. `qkv_window` then has the output's shape and is
+        otherwise never touched.
+        """
         # Number of threads per block along the conv_dim axis.
         comptime CONV1D_BLOCK_DIM: Int = 128
 
@@ -3679,6 +3710,7 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
         var input_row_offsets_tt = input_row_offsets.to_tile_tensor[
             DType.int64
         ]()
+        var qkv_window_tt = qkv_window.to_tile_tensor[.int64]()
 
         comptime assert is_gpu[
             target
@@ -3732,6 +3764,8 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
                     input_row_offsets_tt.LayoutType,
                     conv_output_ragged_tt.LayoutType,
                     qkv_input_ragged_tt.Engine,
+                    capture_input,
+                    qkv_window_tt.LayoutType,
                 ]
             ](
                 Int32(batch_size),
@@ -3744,6 +3778,7 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
                 slot_idx_tt,
                 input_row_offsets_tt,
                 conv_output_ragged_tt,
+                qkv_window_tt,
                 grid_dim=(grid_dim_tokens, grid_dim_channels),
                 block_dim=(CONV1D_BLOCK_DIM,),
             )
@@ -3816,11 +3851,17 @@ struct GatedDeltaConv1dVerifyFwd[rollback: Bool]:
     `K > 0` the forward launch raises unless every row is one token and its
     `K` drafts.
 
+    The forward launch at `K > 0` also copies its input to `qkv_window`,
+    which the rollback replays from; with every row one token and its
+    drafts, the copy is the whole input. Every other launch leaves
+    `qkv_window` unwritten.
+
     Parameters:
         rollback: Whether this is the rollback's launch.
 
     Tensor Shapes:
         As `gated_delta_conv1d_fwd`, plus
+        - qkv_window         : [batch_size * (K + 1), conv_dim]       (OUT)
         - verify_width       : [K]                                   int64
     """
 
@@ -3831,6 +3872,7 @@ struct GatedDeltaConv1dVerifyFwd[rollback: Bool]:
         target: StaticString,
     ](
         conv_output_ragged: OutputTensor[dtype=work_dtype, rank=2, ...],
+        qkv_window: OutputTensor[dtype=work_dtype, rank=2, ...],
         qkv_input_ragged: InputTensor[dtype=work_dtype, rank=2, ...],
         conv_weight: InputTensor[dtype=work_dtype, rank=2, ...],
         conv_state: MutableInputTensor[dtype=state_dtype, rank=3, ...],
@@ -3875,8 +3917,8 @@ struct GatedDeltaConv1dVerifyFwd[rollback: Bool]:
                 ctx,
             )
         else:
-            GatedDeltaConv1dFwd[write_state=False].execute[
-                work_dtype, state_dtype, target
+            GatedDeltaConv1dFwd[write_state=False].launch[
+                work_dtype, state_dtype, target, capture_input=True
             ](
                 conv_output_ragged,
                 qkv_input_ragged,
@@ -3884,39 +3926,9 @@ struct GatedDeltaConv1dVerifyFwd[rollback: Bool]:
                 conv_state,
                 slot_idx,
                 input_row_offsets,
+                qkv_window,
                 ctx,
             )
-
-
-@extensibility.register_shape_function("gated_delta_conv1d_verify_fwd")
-def gated_delta_conv1d_verify_fwd_shape(
-    qkv_input_ragged: Some[Tensor],
-    conv_weight: Some[Tensor],
-    conv_state: Some[Tensor],
-    slot_idx: Some[Tensor],
-    input_row_offsets: Some[Tensor],
-    verify_width: Some[Tensor],
-) -> IndexList[2]:
-    """Computes the output shape for `gated_delta_conv1d_verify_fwd`.
-
-    Args:
-        qkv_input_ragged: Ragged QKV input, `[total_seq_len, conv_dim]`.
-        conv_weight: Convolution filter, `[conv_dim, kernel_size]`.
-        conv_state: Conv-state pool, `[max_slots, conv_dim, kernel_size-1]`.
-        slot_idx: Pool row per batch item, `[batch_size]`.
-        input_row_offsets: Ragged offsets, `[batch_size + 1]`.
-        verify_width: `[K]`, read for its shape only.
-    """
-    comptime assert (
-        type_of(verify_width).rank == 1
-    ), "verify_width must be rank 1"
-    return gated_delta_conv1d_fwd_shape(
-        qkv_input_ragged,
-        conv_weight,
-        conv_state,
-        slot_idx,
-        input_row_offsets,
-    )
 
 
 @fieldwise_init

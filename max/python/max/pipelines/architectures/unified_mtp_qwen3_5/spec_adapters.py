@@ -143,7 +143,6 @@ class Qwen3_5MTPProposer:
             num_draft_tokens=_shape_to_scalar(
                 batch.num_draft_tokens, batch.device0
             ),
-            total_rows=batch.merged_tokens.shape[0],
             signal_buffers=batch.signal_buffers,
             device=batch.device0,
         )

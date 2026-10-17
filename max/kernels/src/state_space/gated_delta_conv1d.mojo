@@ -44,6 +44,8 @@ Inputs:
 Outputs:
   conv_output_ragged : [total_seq_len, conv_dim]              float32
       Causal conv output in the same ragged layout as the input.
+  qkv_window         : [total_seq_len, conv_dim]              float32
+      A copy of the input under CAPTURE_INPUT; untouched otherwise.
   (conv_state is mutated in place; there is no separate state-out
    tensor.  Window slot j ends up holding the raw input at position
    seq_len - (kernel_size-1) + j within the sequence, carrying forward
@@ -96,6 +98,8 @@ def gated_delta_conv1d_fwd_gpu[
     input_row_offsets_LT: TensorLayout,
     conv_output_ragged_LT: TensorLayout,
     Engine: TensorEngine,
+    CAPTURE_INPUT: Bool = False,
+    qkv_window_LT: TensorLayout = conv_output_ragged_LT,
 ](
     batch_size: Int32,
     total_seq_len: Int32,
@@ -119,13 +123,18 @@ def gated_delta_conv1d_fwd_gpu[
     conv_output_ragged: TileTensor[
         work_dtype, conv_output_ragged_LT, MutUntrackedOrigin, Engine=Engine
     ],
+    qkv_window: TileTensor[
+        work_dtype, qkv_window_LT, MutUntrackedOrigin, Engine=Engine
+    ],
 ):
     """Slot-indexed causal depthwise conv1d over a ragged batch.
 
     The thread owning a sequence's first token computes the outputs that
     see the old conv window and then rewrites the window; later tokens read
     only the ragged input. With `WRITE_STATE` False the window is left
-    unchanged.
+    unchanged. With `CAPTURE_INPUT` every thread also copies the input it
+    owns to `qkv_window`, which has the output's shape; otherwise
+    `qkv_window` is never touched.
     """
     comptime KERNEL_SIZE_MINUS_ONE = KERNEL_SIZE - 1
 
@@ -171,6 +180,16 @@ def gated_delta_conv1d_fwd_gpu[
             linear_idx_type=conv_output_ragged.linear_idx_type
         ](Coord(0, conv_channel_idx))
     )
+    var window_row_stride = UInt32(
+        qkv_window.layout[linear_idx_type=qkv_window.linear_idx_type](
+            Coord(1, 0)
+        )
+    )
+    var window_channel_offset = UInt32(
+        qkv_window.layout[linear_idx_type=qkv_window.linear_idx_type](
+            Coord(0, conv_channel_idx)
+        )
+    )
 
     # Cached across the consecutive tokens this thread owns.
     var batch_item_idx = 0
@@ -182,6 +201,17 @@ def gated_delta_conv1d_fwd_gpu[
         first_flat_token_idx,
         min(first_flat_token_idx + _tokens_per_block, _total_seq_len),
     ):
+        comptime if CAPTURE_INPUT:
+            if active:
+                qkv_window.raw_store(
+                    UInt32(flat_token_idx) * window_row_stride
+                    + window_channel_offset,
+                    qkv_input_ragged.raw_load(
+                        UInt32(flat_token_idx) * input_row_stride
+                        + input_channel_offset
+                    ),
+                )
+
         if flat_token_idx >= sequence_end_flat_idx:
             # Rightmost b with input_row_offsets[b] <= flat_token_idx, which
             # skips zero-length sequences.

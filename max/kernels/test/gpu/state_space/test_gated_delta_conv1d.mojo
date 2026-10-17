@@ -372,6 +372,8 @@ def run_slot_indexed_gpu[
             slot_idx_tt,
             input_row_offsets_tt,
             conv_output_tt,
+            # Never written without CAPTURE_INPUT.
+            conv_output_ref_tt,
             grid_dim=(
                 ceildiv(total_seq_len, tokens_per_block),
                 ceildiv(conv_dim, CONV1D_BLOCK_DIM),
@@ -609,7 +611,7 @@ def test_suppressing_the_window_write_spares_a_carry_forward_row() raises:
 
 
 def _launch_conv[
-    WRITE_STATE: Bool
+    WRITE_STATE: Bool, CAPTURE_INPUT: Bool = False
 ](
     ctx: DeviceContext,
     qkv: DeviceBuffer[.float32],
@@ -619,6 +621,7 @@ def _launch_conv[
     offsets: DeviceBuffer[.uint32],
     conv_out: DeviceBuffer[.float32],
     seq_len: Int,
+    qkv_window: DeviceBuffer[.float32],
 ) raises:
     """Runs one kernel-size-4 conv launch over one row of `seq_len` tokens."""
     comptime KERNEL_SIZE = 4
@@ -633,6 +636,7 @@ def _launch_conv[
     var slot_tt = TileTensor(slot, row_major(1))
     var offsets_tt = TileTensor(offsets, row_major(2))
     var out_tt = TileTensor(conv_out, row_major(seq_len, CONV_DIM))
+    var window_tt = TileTensor(qkv_window, row_major(seq_len, CONV_DIM))
     var kernel = ctx.compile_function[
         gated_delta_conv1d_fwd_gpu[
             DType.float32,
@@ -647,6 +651,8 @@ def _launch_conv[
             offsets_tt.LayoutType,
             out_tt.LayoutType,
             qkv_tt.Engine,
+            CAPTURE_INPUT,
+            window_tt.LayoutType,
         ]
     ]()
     comptime tokens_per_block = 1
@@ -662,6 +668,7 @@ def _launch_conv[
         slot_tt,
         offsets_tt,
         out_tt,
+        window_tt,
         grid_dim=(
             ceildiv(seq_len, tokens_per_block),
             ceildiv(CONV_DIM, CONV1D_BLOCK_DIM),
@@ -674,10 +681,11 @@ def _launch_conv[
 def run_deferred_window_write(accepted: Int) raises:
     """Checks a deferred window, written at `accepted` tokens, is the forward's.
 
-    One launch covers a four-token window with the write suppressed, and a
-    second writes the window over the first `accepted` tokens. The pool must
-    match a single launch over those tokens from the same starting window,
-    which below `KERNEL_SIZE - 1` carries slots of that window forward.
+    One launch covers a four-token window with the write suppressed and
+    captures its input, and a second writes the window over the first
+    `accepted` captured tokens. The pool must match a single launch over
+    those tokens from the same starting window, which below
+    `KERNEL_SIZE - 1` carries slots of that window forward.
     """
     comptime KERNEL_SIZE = 4
     comptime CONV_DIM = 8
@@ -710,6 +718,8 @@ def run_deferred_window_write(accepted: Int) raises:
     var window_offsets = ctx.enqueue_create_buffer[.uint32](2)
     var accepted_offsets = ctx.enqueue_create_buffer[.uint32](2)
     var conv_out = ctx.enqueue_create_buffer[.float32](WINDOW * CONV_DIM)
+    var qkv_window = ctx.enqueue_create_buffer[.float32](WINDOW * CONV_DIM)
+    var unused_window = ctx.enqueue_create_buffer[.float32](WINDOW * CONV_DIM)
     ctx.enqueue_copy(qkv, qkv_h)
     ctx.enqueue_copy(weight, weight_h)
     ctx.enqueue_copy(pool, pool_h)
@@ -719,11 +729,27 @@ def run_deferred_window_write(accepted: Int) raises:
     ctx.enqueue_copy(accepted_offsets, accepted_offsets_h)
     ctx.synchronize()
 
-    _launch_conv[False](
-        ctx, qkv, weight, pool, slot, window_offsets, conv_out, WINDOW
+    _launch_conv[False, CAPTURE_INPUT=True](
+        ctx,
+        qkv,
+        weight,
+        pool,
+        slot,
+        window_offsets,
+        conv_out,
+        WINDOW,
+        qkv_window,
     )
     _launch_conv[True](
-        ctx, qkv, weight, pool, slot, accepted_offsets, conv_out, WINDOW
+        ctx,
+        qkv_window,
+        weight,
+        pool,
+        slot,
+        accepted_offsets,
+        conv_out,
+        WINDOW,
+        unused_window,
     )
     _launch_conv[True](
         ctx,
@@ -734,6 +760,7 @@ def run_deferred_window_write(accepted: Int) raises:
         accepted_offsets,
         conv_out,
         WINDOW,
+        unused_window,
     )
 
     var pool_after = ctx.enqueue_create_host_buffer[.float32](POOL_ELEMS)
@@ -843,6 +870,12 @@ def test_gated_delta_conv1d_gpu_deep_slot_no_alias() raises:
     var conv_output_tt = TileTensor(
         conv_output_device, row_major(total_seq_len, conv_dim)
     )
+    var unused_window_device = ctx.enqueue_create_buffer[work_dtype](
+        total_seq_len * conv_dim
+    )
+    var unused_window_tt = TileTensor(
+        unused_window_device, row_major(total_seq_len, conv_dim)
+    )
 
     var conv_state_device = ctx.enqueue_create_buffer[state_dtype](
         num_slots * row_elements
@@ -891,6 +924,7 @@ def test_gated_delta_conv1d_gpu_deep_slot_no_alias() raises:
         slot_idx_tt,
         input_row_offsets_tt,
         conv_output_tt,
+        unused_window_tt,
         grid_dim=(
             ceildiv(total_seq_len, CONV1D_TOKENS_PER_BLOCK),
             ceildiv(conv_dim, CONV1D_BLOCK_DIM),
