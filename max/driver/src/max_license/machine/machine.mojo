@@ -21,7 +21,7 @@ interconnects, etc), and associated data and metadata.
 from . import DeviceSpec
 from .device import DeviceRef
 from std.sys.info import _accelerator_arch
-from max.gpu.host.info import GPUInfo
+from max.gpu.host.info import GPUInfo, get_gpu_info
 
 
 struct MachineDefinition:
@@ -58,7 +58,7 @@ struct MachineDefinition:
         """
         comptime arch = _accelerator_arch()
         comptime if arch != "":
-            comptime info = GPUInfo.from_name[arch]()
+            comptime info = get_gpu_info[arch]()
             comptime spec = DeviceSpec(arch, info)
             comptime device_ref = DeviceRef(spec, 0, private=())
 

@@ -52,7 +52,6 @@ from std.os import abort, getenv
 from std.reflection import call_location, reflect, SourceLocation
 from std.sys import bit_width_of, size_of, CompilationTarget
 from std.sys.info import is_gpu
-from max.gpu.host.info import _device_type_encoder_target, is_cpu
 from std.time import monotonic
 from max.gpu.host._hal import (
     Buffer,
@@ -87,7 +86,12 @@ from max.gpu.host import (
     default_accelerator,
 )
 from max.gpu.host.device_attribute import DeviceAttribute
-from max.gpu.host.info import GPUInfo
+from max.gpu.host.info import (
+    GPUInfo,
+    get_gpu_info,
+    is_cpu,
+    _device_type_encoder_target,
+)
 from max.gpu.host.func_attribute import Attribute, FuncAttribute
 
 
@@ -401,8 +405,8 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     comptime device_spec = get_device_spec[0]()
     """`DeviceSpec` describing the device this context targets."""
 
-    comptime default_device_info = GPUInfo.from_target[
-        DeviceSpec.target[Self.device_spec]()
+    comptime default_device_info = get_gpu_info[
+        DeviceSpec.target[Self.device_spec]()._arch()
     ]()
     """`GPUInfo` object for the default accelerator."""
 
