@@ -109,8 +109,6 @@ def is_host_dequantized(base: str, *, woa_mxfp8: bool | None = None) -> bool:
 FLOAT32_WEIGHT_SUFFIXES = (
     ".compressor.wkv.weight",
     ".compressor.wgate.weight",
-    ".engram.q_weight",
-    ".engram.k_weight",
     "norm.weight",
 )
 # Widened to float32 too unless ``head_bf16_enabled()``.
