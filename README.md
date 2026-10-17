@@ -75,7 +75,7 @@ downloaded.
 ## Community & Events
 
 There are a lot of great ways to get involved! Check out the
-[Mojo community page][mojo-community] for details.
+[Modular community page][community] for details.
 
 ## Thanks to our contributors
 
@@ -92,4 +92,4 @@ There are a lot of great ways to get involved! Check out the
 [Mojo docs]: https://mojolang.org/docs/
 
 <!-- Community & Events links -->
-[mojo-community]: https://mojolang.org/community/
+[community]: https://www.modular.com/open-source/community
