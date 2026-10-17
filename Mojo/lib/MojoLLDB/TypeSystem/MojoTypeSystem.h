@@ -31,12 +31,15 @@
 #include "lldb/lldb-private.h"
 
 namespace M {
-class MojoParserContext;
 class TargetInfoAttr;
 namespace DebugInfo {
 class SourceNameAttr;
 } // namespace DebugInfo
 } // namespace M
+
+namespace M::KGEN::LIT {
+class MojoParserContext;
+} // namespace M::KGEN::LIT
 
 namespace M::AsyncRT {
 class CPUDevice;
@@ -64,7 +67,7 @@ public:
   AsyncRT::CPUDevice &getCPUDevice();
 
   /// Return the Mojo parser context attached to this type system.
-  MojoParserContext &getParserContext();
+  LIT::MojoParserContext &getParserContext();
 
   /// Return the target info that corresponds to the current LLDB target, it
   /// might be invalid if it couldn't be computed.
@@ -688,8 +691,8 @@ public:
   createPOPArrayType(lldb::opaque_compiler_type_t elementType,
                      size_t numElements);
 
-  MojoASTDeclRef getOrCreatePackageDecl(StringRef name,
-                                        MojoASTDeclRef parentDeclRef);
+  LIT::ASTDecl *getOrCreatePackageDecl(StringRef name,
+                                       LIT::ASTDecl *parentDecl);
 
   /// If the given `name` is parsable as a `SourceName`, traverse each decl
   /// and create it unless it's been created already.
@@ -700,16 +703,15 @@ public:
   /// should be used.
   ///
   /// Return the leaf decl.
-  MojoASTDeclRef
+  LIT::ASTDecl *
   getOrCreateDeclChainForDie(const lldb_private::plugin::dwarf::DWARFDIE &die,
                              StringRef name);
 
   /// Add a field at the end of the given struct decl and the given type.
   ///
   /// Return the decl of the newly created field.
-  MojoASTDeclRef addFieldToStruct(MojoASTDeclRef structDecl,
-                                  StringRef fieldName,
-                                  lldb::opaque_compiler_type_t type);
+  LIT::ASTDecl *addFieldToStruct(LIT::ASTDecl *structDecl, StringRef fieldName,
+                                 lldb::opaque_compiler_type_t type);
 
 private:
   /// Create a struct decl given its name under the given parent decl. If the
@@ -717,8 +719,8 @@ private:
   /// If the parent decl is null, then a placeholder module will be created.
   ///
   /// Return the decl of the struct.
-  MojoASTDeclRef getOrCreateStructDecl(StringRef structName,
-                                       MojoASTDeclRef parentDecl);
+  LIT::ASTDecl *getOrCreateStructDecl(StringRef structName,
+                                      LIT::ASTDecl *parentDecl);
 
   /// Create a module decl given its name under the given parentDecl. If the
   /// parent module already contains a module with that name, return it
@@ -726,8 +728,8 @@ private:
   /// If the parent decl is null, then the Mojo parser's top decl will be used.
   ///
   /// Return the decl of the module.
-  MojoASTDeclRef getOrCreateModuleDecl(StringRef moduleName,
-                                       MojoASTDeclRef parentDecl = {});
+  LIT::ASTDecl *getOrCreateModuleDecl(StringRef moduleName,
+                                      LIT::ASTDecl *parentDecl = nullptr);
 
   /// Create a function decl given its name under the given parentDecl. If the
   /// parent decl already contains a function with that name, return it
@@ -735,14 +737,14 @@ private:
   /// If the parent decl is null, then the Mojo parser's top decl will be used.
   ///
   /// Return the decl of the funcction.
-  MojoASTDeclRef getOrCreateFunctionDecl(StringRef functionName,
-                                         MojoASTDeclRef parentDecl = {});
+  LIT::ASTDecl *getOrCreateFunctionDecl(StringRef functionName,
+                                        LIT::ASTDecl *parentDecl = nullptr);
 
   /// Traverse each decl of the `SourceName` and create it unless it's been
   /// created already.
   ///
   /// Return the leaf decl.
-  MojoASTDeclRef
+  LIT::ASTDecl *
   createDeclsFromSourceNameRecursive(M::DebugInfo::SourceNameAttr sourceName);
 
   //===--------------------------------------------------------------------===//

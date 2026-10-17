@@ -27,7 +27,7 @@ using namespace M::KGEN::Mojo;
 //===----------------------------------------------------------------------===//
 
 struct MojoTypeDataLayoutContext::Impl {
-  Impl(MojoParserContext &context, TargetInfoAttr targetInfo)
+  Impl(LIT::MojoParserContext &context, TargetInfoAttr targetInfo)
       : context(context), targetInfo(targetInfo) {}
 
   /// Implementation of `MojoTypeDataLayoutContext::getOrCalculate`
@@ -60,7 +60,7 @@ struct MojoTypeDataLayoutContext::Impl {
   calculateForStructLike(ArrayRef<MojoASTTypeRef> fieldTypes);
 
   DenseMap<Type, std::optional<MojoTypeDataLayout>> cache;
-  MojoParserContext &context;
+  LIT::MojoParserContext &context;
   TargetInfoAttr targetInfo;
 };
 
@@ -194,8 +194,8 @@ MojoTypeDataLayoutContext::Impl::calculate(MojoASTTypeRef type) {
   if (auto replType = sugarDynCast<LIT::REPLResultRefType>(type.getMLIRType()))
     return calculate(KGEN::PointerType::get(replType.getElementType()));
 
-  if (MojoASTDeclRef declRef = context.getDecl(type)) {
-    if (auto *structDecl = dyn_cast<LIT::StructASTDecl>(&*declRef))
+  if (LIT::ASTDecl *decl = context.getDecl(type)) {
+    if (auto *structDecl = dyn_cast<LIT::StructASTDecl>(decl))
       return calculateForStruct(type, structDecl->getOp());
   }
 
@@ -235,8 +235,8 @@ MojoTypeDataLayoutContext::Impl::calculate(MojoASTTypeRef type) {
 
 MojoTypeDataLayoutContext::~MojoTypeDataLayoutContext() = default;
 
-MojoTypeDataLayoutContext::MojoTypeDataLayoutContext(MojoParserContext &context,
-                                                     TargetInfoAttr targetInfo)
+MojoTypeDataLayoutContext::MojoTypeDataLayoutContext(
+    LIT::MojoParserContext &context, TargetInfoAttr targetInfo)
     : impl(std::make_unique<MojoTypeDataLayoutContext::Impl>(context,
                                                              targetInfo)) {}
 

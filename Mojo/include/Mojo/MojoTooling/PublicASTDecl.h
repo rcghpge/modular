@@ -37,15 +37,12 @@ enum class PassingKind : uint32_t;
 enum class VariadicKind : uint32_t;
 } // namespace M::KGEN
 
-namespace M {
-class MojoParserContext;
-} // namespace M
-
 namespace M::KGEN::LIT {
 
 using M::KGEN::TypeMetadata;
 
 class ASTDecl;
+class MojoParserContext;
 class SharedState;
 class FnTypeGeneratorType;
 
@@ -77,76 +74,6 @@ using ConformanceConditionMap =
     llvm::DenseMap<KGEN::TraitSymbolAttr, std::string>;
 
 //===----------------------------------------------------------------------===//
-// MojoASTDeclRef
-//===----------------------------------------------------------------------===//
-
-/// This class is a wrapper around an internal Mojo AST declaration.
-class MojoASTDeclRef {
-public:
-  MojoASTDeclRef(ASTDecl *decl = nullptr) : decl(decl) {}
-
-  /// Returns if the AST declaration is valid.
-  operator bool() const { return decl != nullptr; }
-
-  /// Access the underlying AST decl.
-  ASTDecl &operator*() { return *decl; }
-  ASTDecl *operator->() { return decl; }
-  const ASTDecl &operator*() const { return *decl; }
-  const ASTDecl *operator->() const { return decl; }
-  bool operator==(const MojoASTDeclRef &other) const {
-    return decl == other.decl;
-  }
-
-  /// Returns the type corresponding to this declaration. If not available, this
-  /// returns an invalid `MojoASTTypeRef`.
-  MojoASTTypeRef getType() const;
-
-  /// Get the name of this declaration if available.
-  std::optional<StringRef> getName() const;
-
-  /// Get the deprecation warning on this declaration if available.
-  std::optional<StringRef> getDeprecationWarning() const;
-
-  /// Get the location of the start token of this decl. It might not be the
-  /// identifier.
-  llvm::SMLoc getLoc() const;
-
-  /// Get the parent MojoASTDeclRef of this decl.
-  MojoASTDeclRef getParent() const;
-
-  /// Get the SharedState for this decl if non-null.
-  SharedState *getShared() const;
-
-  /// Get a PublicDecl that can be used for more easily inspecting the metadata
-  /// of this decl. It supports aliases, modules, functions, structs, arguments,
-  /// struct fields and variables.
-  std::unique_ptr<PublicDecl> getDecl() const;
-
-  /// Return the approximate kind of decl that would be created by would created
-  /// by `getDecl`, if any. This isn't guaranteed to be the exact decl kind, but
-  /// it can be used to provide a fast indicator.
-  std::optional<PublicDeclKind> getApproximateDeclKind() const;
-
-private:
-  using ApproximatePublicDeclKind = std::optional<PublicDeclKind>;
-  using PublicDeclInstance = std::unique_ptr<PublicDecl>;
-
-  /// The documentation for this method is in the corresponding cpp file.
-  template <typename ResultType, typename PublicDeclT, typename... DeclArgs>
-  ResultType createPublicDecl(DeclArgs &&...declArgs) const;
-
-  /// The documentation for this method is in the corresponding cpp file.
-  template <typename ResultType>
-  ResultType getDeclImpl() const;
-
-  /// Allow MojoParserContext to access the internal impl.
-  friend class M::MojoParserContext;
-
-  /// The ASTDecl being referenced.
-  ASTDecl *decl;
-};
-
-//===----------------------------------------------------------------------===//
 // MojoASTTypeRef
 //===----------------------------------------------------------------------===//
 
@@ -173,10 +100,10 @@ public:
 
 private:
   // Return the decl that defined this type.
-  MojoASTDeclRef getDecl(SharedState &sharedState);
+  ASTDecl *getDecl(SharedState &sharedState);
 
   /// Allow MojoParserContext to access the internal implementation.
-  friend class M::MojoParserContext;
+  friend class MojoParserContext;
 
   /// The internal implementation of the AST type.
   ASTType type;
@@ -296,7 +223,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicVariableDecl(ASTDecl *decl);
 
@@ -508,13 +435,10 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicAliasDecl(ASTDecl *decl);
 
-  /// The underlying decl. Retained so that `getSignature` can delegate to the
-  /// op-driven signature printer in MojoParser.
-  ASTDecl *decl;
   SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
   std::string aliasConstraints;
   std::string value;
@@ -630,7 +554,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicFunctionDecl(ASTDecl *decl);
   PublicFunctionDecl(ASTDecl *decl, FnTypeGeneratorType signature);
@@ -719,7 +643,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicStructFieldDecl(ASTDecl *decl);
 
@@ -800,7 +724,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicTraitDecl(ASTDecl *decl);
 
@@ -875,7 +799,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicStructDecl(ASTDecl *decl);
 
@@ -941,7 +865,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicModuleDecl(ASTDecl *decl);
 
@@ -990,7 +914,7 @@ public:
   }
 
 private:
-  friend class MojoASTDeclRef;
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 
   PublicPackageDecl(ASTDecl *decl);
 
@@ -1008,7 +932,6 @@ private:
 namespace M {
 using KGEN::LIT::ConformanceConditionMap;
 using KGEN::LIT::FunctionDeclOverloadSet;
-using KGEN::LIT::MojoASTDeclRef;
 using KGEN::LIT::MojoASTTypeRef;
 using KGEN::LIT::PublicAliasDecl;
 using KGEN::LIT::PublicArgumentDecl;

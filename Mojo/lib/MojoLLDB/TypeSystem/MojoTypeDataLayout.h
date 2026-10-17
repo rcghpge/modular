@@ -23,10 +23,10 @@
 namespace M {
 
 namespace KGEN::LIT {
+class MojoParserContext;
 class StructDeclOp;
 } // namespace KGEN::LIT
 
-class MojoParserContext;
 class TargetInfoAttr;
 } // namespace M
 
@@ -108,7 +108,7 @@ private:
 /// nested structs.
 class MojoTypeDataLayoutContext {
 public:
-  MojoTypeDataLayoutContext(MojoParserContext &context,
+  MojoTypeDataLayoutContext(LIT::MojoParserContext &context,
                             TargetInfoAttr targetInfo);
   ~MojoTypeDataLayoutContext();
 

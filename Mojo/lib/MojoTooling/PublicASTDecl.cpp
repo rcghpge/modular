@@ -426,14 +426,178 @@ populatePublicParameterDecls(SharedState &shared, ArrayRef<Type> paramTypes,
 // PublicDecl
 //===----------------------------------------------------------------------===//
 
+/// Return the signature type contained by a declaration, if any.
+static FnTypeGeneratorType getSignatureFromDecl(ASTDecl *decl) {
+  if (!decl)
+    return nullptr;
+  if (auto defDecl = dyn_cast<DefASTDecl>(decl))
+    if (auto func = defDecl->getOp())
+      return func.getFuncTypeGenerator();
+  if (auto typeValue = decl->getIfTypeValue())
+    return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
+  return nullptr;
+}
+
+/// Return the index corresponding to a function argument declaration.
+static std::optional<size_t> getDeclArgIndex(ASTDecl &decl, BlockArgument arg) {
+  if (arg.getParentRegion())
+    return arg.getArgNumber();
+
+  size_t argIndex = 0;
+  for (auto [_, decls] : decl.getParentDecl()->getDeclsInScope()) {
+    if (decls.size() != 1)
+      continue;
+    if (auto value = decls.front()->getIfIRValue()) {
+      if (value.getIfPValue())
+        continue;
+      if (value.getMlirValue() == arg)
+        return argIndex;
+      ++argIndex;
+    }
+  }
+  return std::nullopt;
+}
+
+/// Return a function argument that is represented directly in the IR.
+static BlockArgument getIfNotOwnedFunctionArgument(ASTDecl &decl) {
+  Value value = decl.getIfIRValue().getMlirValue();
+  if (!value)
+    return {};
+  if (auto rebind = value.getDefiningOp<RebindOp>())
+    value = rebind.getInput();
+
+  if (auto arg = dyn_cast<BlockArgument>(value)) {
+    if (isa_and_nonnull<FnOp>(arg.getOwner()->getParentOp()) ||
+        !arg.getOwner()->getParentOp())
+      return arg;
+  }
+  return {};
+}
+
+static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
+  if (auto value = decl.getIfIRValue().getIfPValue())
+    return dyn_cast<ParamDeclRefAttr>(value.get());
+  return {};
+}
+
+static std::unique_ptr<PublicArgumentDecl>
+createPublicArgumentDecl(ASTDecl *decl, unsigned arg) {
+  auto functionView = llvm::unique_dyn_cast_or_null<PublicFunctionDecl>(
+      getPublicDecl(decl->getParentDecl()));
+  if (!functionView || functionView->getArguments().size() <= arg)
+    return nullptr;
+  return std::make_unique<PublicArgumentDecl>(functionView->getArgument(arg));
+}
+
 std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
-  return MojoASTDeclRef(decl).getDecl();
+  if (!decl)
+    return nullptr;
+
+  if (Operation *declOp = decl->getOperation()) {
+    if (isa<AliasDeclOp>(declOp))
+      return std::unique_ptr<PublicAliasDecl>(new PublicAliasDecl(decl));
+    if (isa<FnOp>(declOp))
+      return std::unique_ptr<PublicFunctionDecl>(new PublicFunctionDecl(decl));
+    if (isa<FileModuleOp, ImportOp>(declOp))
+      return std::unique_ptr<PublicModuleDecl>(new PublicModuleDecl(decl));
+    if (isa<StructDeclOp>(declOp))
+      return std::unique_ptr<PublicStructDecl>(new PublicStructDecl(decl));
+    if (isa<StructFieldOp>(declOp))
+      return std::unique_ptr<PublicStructFieldDecl>(
+          new PublicStructFieldDecl(decl));
+    if (auto varDecl = dyn_cast<VarDeclOp>(declOp)) {
+      if (varDecl.getKind() == VarDeclKind::Arg) {
+        auto parentFn = varDecl->getParentOfType<FnOp>();
+        for (auto [idx, pogAttr] : llvm::enumerate(
+                 parentFn.getFuncTypeGenerator().getArgListAttrs().getPogs()))
+          if (pogAttr.getName() == varDecl.getNameAttr())
+            return createPublicArgumentDecl(decl, idx);
+      }
+      return std::unique_ptr<PublicVariableDecl>(new PublicVariableDecl(decl));
+    }
+    if (isa<PackageOp>(declOp))
+      return std::unique_ptr<PublicPackageDecl>(new PublicPackageDecl(decl));
+    if (isa<TraitDeclOp>(declOp))
+      return std::unique_ptr<PublicTraitDecl>(new PublicTraitDecl(decl));
+  }
+
+  if (auto signature = getSignatureFromDecl(decl))
+    return std::unique_ptr<PublicFunctionDecl>(
+        new PublicFunctionDecl(decl, signature));
+
+  if (BlockArgument arg = getIfNotOwnedFunctionArgument(*decl)) {
+    if (std::optional<size_t> argIdx = getDeclArgIndex(*decl, arg))
+      return createPublicArgumentDecl(decl, *argIdx);
+    return nullptr;
+  }
+
+  if (ParamDeclRefAttr param = getIfParameter(*decl)) {
+    auto name = demangleParameterName(param.getName(), /*forUser=*/true);
+    std::unique_ptr<PublicDecl> parent = getPublicDecl(decl->getParentDecl());
+    if (!parent)
+      return nullptr;
+    return TypeSwitch<PublicDecl *, std::unique_ptr<PublicDecl>>(&*parent)
+        .Case<PublicFunctionDecl, PublicStructDecl>([&](auto *parent) {
+          for (const PublicParameterDecl &candidate : parent->parameters)
+            if (candidate.getName() == name)
+              return std::unique_ptr<PublicDecl>(
+                  new PublicParameterDecl(candidate));
+          return std::unique_ptr<PublicDecl>();
+        })
+        .Default(nullptr);
+  }
+
+  return nullptr;
 }
 
 std::optional<PublicDeclKind>
 M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
-  return MojoASTDeclRef(decl).getApproximateDeclKind();
+  if (!decl)
+    return std::nullopt;
+
+  if (Operation *declOp = decl->getOperation()) {
+    if (isa<AliasDeclOp>(declOp))
+      return PublicAliasDecl::getKindStatic();
+    if (isa<FnOp>(declOp))
+      return PublicFunctionDecl::getKindStatic();
+    if (isa<FileModuleOp, ImportOp>(declOp))
+      return PublicModuleDecl::getKindStatic();
+    if (isa<StructDeclOp>(declOp))
+      return PublicStructDecl::getKindStatic();
+    if (isa<StructFieldOp>(declOp))
+      return PublicStructFieldDecl::getKindStatic();
+    if (auto varDecl = dyn_cast<VarDeclOp>(declOp))
+      return varDecl.getKind() == VarDeclKind::Arg
+                 ? PublicArgumentDecl::getKindStatic()
+                 : PublicVariableDecl::getKindStatic();
+    if (isa<PackageOp>(declOp))
+      return PublicPackageDecl::getKindStatic();
+    if (isa<TraitDeclOp>(declOp))
+      return PublicTraitDecl::getKindStatic();
+  }
+
+  if (getSignatureFromDecl(decl))
+    return PublicFunctionDecl::getKindStatic();
+  if (getIfNotOwnedFunctionArgument(*decl))
+    return PublicArgumentDecl::getKindStatic();
+  if (getIfParameter(*decl))
+    return PublicParameterDecl::getKindStatic();
+  return std::nullopt;
 }
+
+ASTDecl *MojoASTTypeRef::getDecl(SharedState &shared) {
+  return type.getDecl(shared);
+}
+
+std::string MojoASTTypeRef::getAsString(SharedState &shared) const {
+  return type.getAsString(/*ctx=*/{&shared});
+}
+
+MojoASTTypeRef MojoASTTypeRef::getReferenceElementType() const {
+  return type.getReferenceElementType();
+}
+
+Type MojoASTTypeRef::getMLIRType() const { return type.mlirType; }
 
 StringRef PublicDecl::getKindAsString(PublicDeclKind kind) {
   switch (kind) {
@@ -812,7 +976,7 @@ std::string PublicAliasDecl::getSignature(
 PublicAliasDecl::PublicAliasDecl(ASTDecl *decl)
     : PublicDecl(PublicDeclKind::DK_PublicAliasDecl,
                  decl->getName().value_or(StringRef())),
-      decl(decl), isGlobalAlias(isGlobalAliasDecl(decl)),
+      isGlobalAlias(isGlobalAliasDecl(decl)),
       deprecated(decl->getDeprecationWarning().value_or(StringRef())) {
   LIT::AliasDeclOp aliasOp = cast<LIT::AliasASTDecl>(decl)->getOp();
 
@@ -1293,13 +1457,13 @@ static void collectParentTraits(MojoParserContext &ctx, ASTDecl *self,
   for (TraitSymbolAttr symbol : canonicalTrait.getSymbols()) {
     if (!seenDecls.insert(symbol).second)
       continue;
-    MojoASTDeclRef decl = ctx.getTraitDecl(symbol);
-    if (!decl || &*decl == self)
+    ASTDecl *decl = ctx.getTraitDecl(symbol);
+    if (!decl || decl == self)
       continue;
-    std::optional<StringRef> name = decl.getName();
+    std::optional<StringRef> name = decl->getName();
     if (!name)
       continue;
-    if (!isa<TraitASTDecl>(&*decl))
+    if (!isa<TraitASTDecl>(decl))
       continue;
     std::string entry = name->str();
     if (StringRef condition = lookupConformanceCondition(conditions, symbol);
@@ -1333,10 +1497,10 @@ collectParentTraitsWithMetadata(MojoParserContext &ctx, ASTDecl *self,
     StringRef condition = lookupConformanceCondition(conditions, symbol);
 
     // Try to resolve the trait through AST
-    MojoASTDeclRef decl = ctx.getTraitDecl(symbol);
-    if (decl && &*decl != self) {
-      std::optional<StringRef> name = decl.getName();
-      if (name && isa<TraitASTDecl>(&*decl)) {
+    ASTDecl *decl = ctx.getTraitDecl(symbol);
+    if (decl && decl != self) {
+      std::optional<StringRef> name = decl->getName();
+      if (name && isa<TraitASTDecl>(decl)) {
         TypeMetadata metadata = ::KGEN::TypeExtractionUtils::extractLibraryInfo(
             *name, self, &ctx.getSharedState());
         traitData.push_back({*name, metadata, condition});
@@ -1683,15 +1847,14 @@ llvm::json::Object PublicPackageDecl::toJSON(MojoParserContext &ctx) const {
   if (auto *packageDecl = dyn_cast<PackageASTDecl>(&*decl)) {
     for (ASTDecl *child :
          ctx.getSharedState().getNestedModuleDecls(packageDecl->getOp())) {
-      MojoASTDeclRef childRef(child);
-      StringRef name = childRef.getName().value_or(StringRef());
+      StringRef name = child->getName().value_or(StringRef());
       if (shouldHideDeclInDocGen(*child, name) ||
           child->getParentDecl() != &*decl)
         continue;
       if (isa<FileModuleASTDecl>(child))
-        modules.push_back(cast<PublicModuleDecl>(*childRef.getDecl()));
+        modules.push_back(cast<PublicModuleDecl>(*getPublicDecl(child)));
       else if (isa<PackageASTDecl>(child))
-        packages.push_back(cast<PublicPackageDecl>(*childRef.getDecl()));
+        packages.push_back(cast<PublicPackageDecl>(*getPublicDecl(child)));
     }
   }
 

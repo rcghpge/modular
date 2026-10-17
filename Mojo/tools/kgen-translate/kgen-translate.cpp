@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
           config.parserListener = &lspListener;
 
           MojoParserContext parserContext(sourceMgr, config);
-          MojoASTDeclRef decl =
+          LIT::ASTDecl *decl =
               parserContext.parseFileForLSP(sourceMgr.getMainFileID());
           parserContext.ensureSignaturesResolved();
           if (!decl)

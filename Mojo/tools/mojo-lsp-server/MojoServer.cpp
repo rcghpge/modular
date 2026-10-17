@@ -2054,9 +2054,9 @@ void MojoDocStrings::addDocString(MojoDocument &mainDoc, ASTDecl *decl,
     // Parse the code block.
     auto [moduleDecl, exprFnDecl] = ctx.parseREPLExpression(
         listener, bufferId, contents, "__mojo_repl_lsp_main",
-        persistentVariables, MojoASTDeclRef(prevDecl),
+        persistentVariables, prevDecl,
         /*parseForLSP=*/true);
-    prevDecl = codeBlock->decl = moduleDecl ? &*moduleDecl : nullptr;
+    prevDecl = codeBlock->decl = moduleDecl;
     if (exprFnDecl)
       mainDoc.checkModuleSemantics(codeBlock->decl);
 
@@ -2088,8 +2088,8 @@ std::vector<KGEN::Mojo::CodeCompletionResult>
 MojoDocStrings::CodeBlock::onCodeCompletion(llvm::SMLoc completeLoc,
                                             MojoParserContext &ctx) {
   uint64_t rawCompletePos = completeLoc.getPointer() - contents.data();
-  return ctx.codeCompleteREPLExpression(
-      contents, rawCompletePos, persistentVariables, MojoASTDeclRef(decl));
+  return ctx.codeCompleteREPLExpression(contents, rawCompletePos,
+                                        persistentVariables, decl);
 }
 
 std::optional<KGEN::Mojo::SignatureHelpResult>
@@ -2097,7 +2097,7 @@ MojoDocStrings::CodeBlock::onSignatureHelp(llvm::SMLoc loc,
                                            MojoParserContext &ctx) {
   uint64_t rawPos = loc.getPointer() - contents.data();
   return ctx.signatureHelpREPLExpression(contents, rawPos, persistentVariables,
-                                         MojoASTDeclRef(decl));
+                                         decl);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2123,9 +2123,8 @@ MojoTextDocument::MojoTextDocument(const lsp::URIForFile &uri,
 size_t MojoTextDocument::parseDocumentImpl() {
   KGEN::CompilerTimeTraceScope traceScope("parseTextDocument");
 
-  MojoASTDeclRef parsed =
+  parsedDecl =
       getParserContext().parseFileForLSP(getSourceMgr().getMainFileID());
-  parsedDecl = parsed ? &*parsed : nullptr;
 
   checkModuleSemantics(parsedDecl);
   processDocStrings(docStrings, parsedDecl);
@@ -2276,9 +2275,9 @@ size_t MojoNotebookDocument::parseDocumentImpl() {
       cell.persistentVariables = persistentVariables;
       MojoParserContext::ParsedREPLExpr result = ctx.parseREPLExpression(
           listener, cell.bufferId, cell.contents, "__mojo_repl_lsp_main",
-          persistentVariables, MojoASTDeclRef(prevDecl),
+          persistentVariables, prevDecl,
           /*parseForLSP=*/false);
-      prevDecl = cell.decl = result.moduleDecl ? &*result.moduleDecl : nullptr;
+      prevDecl = cell.decl = result.moduleDecl;
       if (result.isValid())
         checkModuleSemantics(cell.decl);
       processDocStrings(cell.docStrings, cell.decl, /*curReplDecl=*/cell.decl);
@@ -2311,8 +2310,8 @@ size_t MojoNotebookDocument::parseDocumentImpl() {
         SMLoc());
     MojoParserContext::ParsedREPLExpr result = ctx.parseREPLExpression(
         listener, pythonCellId, pythonCell, "__mojo_repl_lsp_main",
-        persistentVariables, MojoASTDeclRef(prevDecl), /*parseForLSP=*/false);
-    prevDecl = result.moduleDecl ? &*result.moduleDecl : nullptr;
+        persistentVariables, prevDecl, /*parseForLSP=*/false);
+    prevDecl = result.moduleDecl;
   }
 
   return size;
@@ -2378,8 +2377,7 @@ MojoNotebookDocument::onCodeCompletionSyncImpl(SMLoc completeLoc) {
   // Query the mojo parser for potential completion results.
   uint64_t rawCompletePos = completeLoc.getPointer() - cell.contents.data();
   return getParserContext().codeCompleteREPLExpression(
-      cell.contents, rawCompletePos, cell.persistentVariables,
-      MojoASTDeclRef(cell.decl));
+      cell.contents, rawCompletePos, cell.persistentVariables, cell.decl);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2433,8 +2431,7 @@ MojoNotebookDocument::onSignatureHelpSyncImpl(SMLoc loc) {
   // Query the mojo parser for potential help results.
   uint64_t rawPos = loc.getPointer() - cell.contents.data();
   return getParserContext().signatureHelpREPLExpression(
-      cell.contents, rawPos, cell.persistentVariables,
-      MojoASTDeclRef(cell.decl));
+      cell.contents, rawPos, cell.persistentVariables, cell.decl);
 }
 
 //===----------------------------------------------------------------------===//

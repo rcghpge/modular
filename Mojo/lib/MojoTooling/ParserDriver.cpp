@@ -101,21 +101,20 @@ const KGEN::CompilationOptions &MojoParserContext::getCompilationOptions() {
   return impl->sharedState.options;
 }
 
-MojoASTDeclRef MojoParserContext::getDecl(MojoASTTypeRef type) {
-  return type.getDecl(impl->sharedState);
+ASTDecl *MojoParserContext::getDecl(MojoASTTypeRef type) {
+  return ASTType(type.getMLIRType()).getDecl(impl->sharedState);
 }
 
-MojoASTDeclRef
-MojoParserContext::getTraitDecl(KGEN::TraitSymbolAttr traitSymbol) {
-  return MojoASTDeclRef(&impl->sharedState.declResolver->getDeclForTypeSymbol(
-      traitSymbol.getSymbol()));
+ASTDecl *MojoParserContext::getTraitDecl(KGEN::TraitSymbolAttr traitSymbol) {
+  return &impl->sharedState.declResolver->getDeclForTypeSymbol(
+      traitSymbol.getSymbol());
 }
 
 MojoASTTypeRef MojoParserContext::concretizeType(MojoASTTypeRef base,
                                                  ArrayRef<TypedAttr> params,
                                                  MojoASTTypeRef type) {
   KGEN::ParameterEvaluator evaluator(
-      cast<StructASTDecl>(base.getDecl(getSharedState()).decl)
+      cast<StructASTDecl>(ASTType(base.getMLIRType()).getDecl(getSharedState()))
           ->getOp()
           .getInputParams(),
       params);
@@ -229,8 +228,8 @@ static ASTDecl *buildModuleOrPackageDecl(const std::filesystem::path &path,
   return buildPackageDecl(path, sharedState);
 }
 
-MojoASTDeclRef MojoParserContext::parseFile(unsigned fileId,
-                                            bool eraseUnparsedDecls) {
+ASTDecl *MojoParserContext::parseFile(unsigned fileId,
+                                      bool eraseUnparsedDecls) {
   llvm::SourceMgr &sourceMgr = getSourceMgr();
 
   const llvm::MemoryBuffer *sourceBuf = sourceMgr.getMemoryBuffer(fileId);
@@ -242,7 +241,7 @@ MojoASTDeclRef MojoParserContext::parseFile(unsigned fileId,
   if (eraseUnparsedDecls)
     impl->sharedState.declResolver->eraseUnparsedDecls();
 
-  return MojoASTDeclRef(moduleDecl);
+  return moduleDecl;
 }
 
 /// Resolves an unparsed decl enough for the language server to operate. We
@@ -278,7 +277,7 @@ void M::resolveForLSP(DeclResolver &resolver, ASTDecl &decl) {
   }
 }
 
-MojoASTDeclRef MojoParserContext::parseFileForLSP(unsigned fileId) {
+ASTDecl *MojoParserContext::parseFileForLSP(unsigned fileId) {
   llvm::SourceMgr &sourceMgr = getSourceMgr();
 
   const llvm::MemoryBuffer *sourceBuf = sourceMgr.getMemoryBuffer(fileId);
@@ -289,7 +288,7 @@ MojoASTDeclRef MojoParserContext::parseFileForLSP(unsigned fileId) {
   resolveForLSP(*impl->sharedState.declResolver, *moduleDecl);
   resolveSignaturesForLSP(*impl->sharedState.declResolver);
 
-  return MojoASTDeclRef(moduleDecl);
+  return moduleDecl;
 }
 
 void M::resolveSignaturesForLSP(DeclResolver &resolver) {
@@ -343,8 +342,7 @@ void MojoParserContext::ensureSignaturesResolved() {
   resolveSignaturesForLSP(*impl->sharedState.declResolver);
 }
 
-MojoASTDeclRef
-MojoParserContext::parsePackage(const std::filesystem::path &path) {
+ASTDecl *MojoParserContext::parsePackage(const std::filesystem::path &path) {
   // Check that the path is actually a package.
   if (!(Filesystem::isMojoSourcePackagePath(path) ||
         Filesystem::isMojoBinaryPackagePath(path)))
@@ -352,7 +350,7 @@ MojoParserContext::parsePackage(const std::filesystem::path &path) {
   return parseFileOrPackage(path);
 }
 
-MojoASTDeclRef
+ASTDecl *
 MojoParserContext::parseFileOrPackage(const std::filesystem::path &path) {
   ASTDecl *moduleDecl = buildModuleOrPackageDecl(path, impl->sharedState);
   if (!moduleDecl)
@@ -360,10 +358,10 @@ MojoParserContext::parseFileOrPackage(const std::filesystem::path &path) {
   impl->sharedState.declResolver->resolveAllReferencedFrom(*moduleDecl);
   impl->sharedState.declResolver->eraseUnparsedDecls();
 
-  return MojoASTDeclRef(moduleDecl);
+  return moduleDecl;
 }
 
-MojoASTDeclRef MojoParserContext::parseFileOrPackageNonRecursive(
+ASTDecl *MojoParserContext::parseFileOrPackageNonRecursive(
     const std::filesystem::path &path) {
   ASTDecl *moduleDecl = buildModuleOrPackageDecl(path, impl->sharedState);
   if (!moduleDecl)
@@ -371,10 +369,10 @@ MojoASTDeclRef MojoParserContext::parseFileOrPackageNonRecursive(
 
   // Resolve just the top-level decl.
   (void)impl->sharedState.declResolver->resolveBody(*moduleDecl, SMLoc());
-  return MojoASTDeclRef(moduleDecl);
+  return moduleDecl;
 }
 
-MojoASTDeclRef MojoParserContext::parseIsolatedFileOrPackage(
+ASTDecl *MojoParserContext::parseIsolatedFileOrPackage(
     const std::filesystem::path &path) {
   ASTDecl *moduleDecl = buildModuleOrPackageDecl(path, impl->sharedState);
   if (!moduleDecl) {
@@ -409,7 +407,7 @@ MojoASTDeclRef MojoParserContext::parseIsolatedFileOrPackage(
     }
   }
 
-  return MojoASTDeclRef(moduleDecl);
+  return moduleDecl;
 }
 
 bool MojoParserContext::wasErrorEmitted() const {

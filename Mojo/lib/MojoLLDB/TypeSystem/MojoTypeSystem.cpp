@@ -1005,30 +1005,29 @@ static LIT::ASTDecl *lookupSingleMember(LIT::ASTDecl &decl, StringAttr name) {
   return existingDecls[0];
 }
 
-MojoASTDeclRef
-MojoTypeSystem::getOrCreatePackageDecl(StringRef name,
-                                       MojoASTDeclRef parentDeclRef) {
+LIT::ASTDecl *MojoTypeSystem::getOrCreatePackageDecl(StringRef name,
+                                                     LIT::ASTDecl *parentDecl) {
   LIT::SharedState &sharedState = impl->parserContext->getSharedState();
 
-  LIT::ASTDecl &parentDecl =
-      parentDeclRef ? *parentDeclRef
-                    : impl->parserContext->getSharedState().getTopLevelDecl();
+  LIT::ASTDecl &parent =
+      parentDecl ? *parentDecl
+                 : impl->parserContext->getSharedState().getTopLevelDecl();
 
   // We first check if the package already exists, in which case we just return
   // its decl.
-  if (auto decl = lookupSingleMember(parentDecl,
-                                     StringAttr::get(getMLIRContext(), name)))
+  if (auto decl =
+          lookupSingleMember(parent, StringAttr::get(getMLIRContext(), name)))
     return decl;
 
-  auto moduleBuilder = parentDecl.getDeclEndBuilder();
+  auto moduleBuilder = parent.getDeclEndBuilder();
   auto packageName = StringAttr::get(sharedState.getContext(), name);
   auto packageOp = LIT::PackageOp::create(
-      moduleBuilder, sharedState.translateLocation(parentDecl.getLoc()),
+      moduleBuilder, sharedState.translateLocation(parent.getLoc()),
       packageName);
 
   return &sharedState.declResolver->addDecl(
-      packageOp, SMLoc(), packageName, &parentDecl, parentDecl.getCursor(),
-      parentDecl.getCursor(), /*indentation=*/-1);
+      packageOp, SMLoc(), packageName, &parent, parent.getCursor(),
+      parent.getCursor(), /*indentation=*/-1);
 }
 
 /// Generate a human readable version of an identifier along with its parameters
@@ -1061,30 +1060,30 @@ static std::string generateParametrizedName(DebugInfo::SourceNameAttr attr) {
   return displayName;
 }
 
-MojoASTDeclRef MojoTypeSystem::createDeclsFromSourceNameRecursive(
+LIT::ASTDecl *MojoTypeSystem::createDeclsFromSourceNameRecursive(
     DebugInfo::SourceNameAttr sourceName) {
-  MojoASTDeclRef parentDeclRef;
+  LIT::ASTDecl *parentDecl = nullptr;
   if (DebugInfo::SourceNameAttr parent = sourceName.getParent())
-    parentDeclRef = createDeclsFromSourceNameRecursive(parent);
+    parentDecl = createDeclsFromSourceNameRecursive(parent);
 
   switch (sourceName.getKind()) {
   case DebugInfo::SourceNameKind::Package:
-    return getOrCreatePackageDecl(sourceName.getName(), parentDeclRef);
+    return getOrCreatePackageDecl(sourceName.getName(), parentDecl);
   case DebugInfo::SourceNameKind::Module:
-    return getOrCreateModuleDecl(sourceName.getName(), parentDeclRef);
+    return getOrCreateModuleDecl(sourceName.getName(), parentDecl);
   case DebugInfo::SourceNameKind::Struct:
     return getOrCreateStructDecl(generateParametrizedName(sourceName),
-                                 parentDeclRef);
+                                 parentDecl);
   case DebugInfo::SourceNameKind::Fn:
     return getOrCreateFunctionDecl(generateParametrizedName(sourceName),
-                                   parentDeclRef);
+                                   parentDecl);
   default:
     return {};
   }
 }
 
-MojoASTDeclRef MojoTypeSystem::getOrCreateDeclChainForDie(const DWARFDIE &die,
-                                                          StringRef name) {
+LIT::ASTDecl *MojoTypeSystem::getOrCreateDeclChainForDie(const DWARFDIE &die,
+                                                         StringRef name) {
   std::string effectiveName = name.str();
   if (name.empty() && die.Tag() != DW_TAG_subroutine_type &&
       die.Tag() != DW_TAG_inlined_subroutine) {
@@ -1104,31 +1103,30 @@ MojoASTDeclRef MojoTypeSystem::getOrCreateDeclChainForDie(const DWARFDIE &die,
 
   switch (die.Tag()) {
   case DW_TAG_compile_unit:
-    return getOrCreateModuleDecl(effectiveName, MojoASTDeclRef{});
+    return getOrCreateModuleDecl(effectiveName);
   case DW_TAG_structure_type: {
-    return getOrCreateStructDecl(effectiveName, MojoASTDeclRef{});
+    return getOrCreateStructDecl(effectiveName, nullptr);
   case DW_TAG_subprogram:
   case DW_TAG_subroutine_type:
   case DW_TAG_inlined_subroutine:
-    return getOrCreateFunctionDecl(effectiveName, MojoASTDeclRef{});
+    return getOrCreateFunctionDecl(effectiveName);
   }
   default:
     return {};
   }
 }
 
-MojoASTDeclRef
-MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
-                                      MojoASTDeclRef parentDeclRef) {
+LIT::ASTDecl *MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
+                                                    LIT::ASTDecl *parentDecl) {
   LIT::SharedState &sharedState = impl->parserContext->getSharedState();
-  LIT::ASTDecl &parentDecl =
-      parentDeclRef ? *parentDeclRef
-                    : impl->parserContext->getSharedState().getTopLevelDecl();
+  LIT::ASTDecl &parent =
+      parentDecl ? *parentDecl
+                 : impl->parserContext->getSharedState().getTopLevelDecl();
 
   // We first check if the module already exists, in which case we just return
   // its decl.
   if (auto decl = lookupSingleMember(
-          parentDecl, StringAttr::get(getMLIRContext(), moduleName)))
+          parent, StringAttr::get(getMLIRContext(), moduleName)))
     return decl;
 
   // We create a fake empty file so that parser diagnostics can be emitted if
@@ -1145,16 +1143,16 @@ MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
 
   auto name = StringAttr::get(sharedState.getContext(), moduleName);
 
-  OpBuilder builder = parentDecl.getDeclEndBuilder();
+  OpBuilder builder = parent.getDeclEndBuilder();
   Operation *fileOp = LIT::FileModuleOp::create(
-      builder, sharedState.translateLocation(parentDecl.getLoc()), name);
+      builder, sharedState.translateLocation(parent.getLoc()), name);
   return &sharedState.declResolver->addFullyResolvedDecl(
-      fileOp, name, lexer.getToken().getLoc(), &parentDecl);
+      fileOp, name, lexer.getToken().getLoc(), &parent);
 }
 
-MojoASTDeclRef
+LIT::ASTDecl *
 MojoTypeSystem::getOrCreateFunctionDecl(StringRef functionName,
-                                        MojoASTDeclRef parentDecl) {
+                                        LIT::ASTDecl *parentDecl) {
   if (!parentDecl)
     parentDecl = getOrCreateModuleDecl("__lldb_anonymous__");
 
@@ -1181,13 +1179,12 @@ MojoTypeSystem::getOrCreateFunctionDecl(StringRef functionName,
   auto newFunction = LIT::FnOp::create(
       builder, sharedState.translateLocation(parentDecl->getLoc()), nameAttr,
       name, signature);
-  return MojoASTDeclRef(&sharedState.declResolver->addDecl(
-      newFunction, parentDecl->getLoc(), name, &*parentDecl, {}, {}, -1));
+  return &sharedState.declResolver->addDecl(newFunction, parentDecl->getLoc(),
+                                            name, parentDecl, {}, {}, -1);
 }
 
-MojoASTDeclRef
-MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
-                                      MojoASTDeclRef parentDecl) {
+LIT::ASTDecl *MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
+                                                    LIT::ASTDecl *parentDecl) {
   if (!parentDecl)
     parentDecl = getOrCreateModuleDecl("__lldb_anonymous__");
 
@@ -1201,12 +1198,12 @@ MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
   OpBuilder builder = parentDecl->getDeclEndBuilder();
   auto newStruct = LIT::StructDeclOp::create(
       builder, getSharedState().translateLocation(parentDecl->getLoc()), name);
-  return MojoASTDeclRef(&getSharedState().declResolver->addDecl(
-      newStruct, parentDecl->getLoc(), name, &*parentDecl, {}, {}, -1));
+  return &getSharedState().declResolver->addDecl(
+      newStruct, parentDecl->getLoc(), name, parentDecl, {}, {}, -1);
 }
 
-MojoASTDeclRef
-MojoTypeSystem::addFieldToStruct(MojoASTDeclRef structDecl, StringRef fieldName,
+LIT::ASTDecl *
+MojoTypeSystem::addFieldToStruct(LIT::ASTDecl *structDecl, StringRef fieldName,
                                  lldb::opaque_compiler_type_t type) {
   StringAttr name = StringAttr::get(getMLIRContext(), fieldName);
   OpBuilder builder = structDecl->getDeclEndBuilder();
@@ -1215,9 +1212,9 @@ MojoTypeSystem::addFieldToStruct(MojoASTDeclRef structDecl, StringRef fieldName,
       mlir::Type::getFromOpaquePointer(type), LIT::DocStringAttr(),
       /*isDocHidden=*/false, /*allowLegacyAnyOrigin=*/false,
       /*annotations=*/ArrayAttr());
-  auto fieldDecl = MojoASTDeclRef(&getSharedState().declResolver->addDecl(
-      newField, structDecl->getLoc(), name, &*structDecl, {}, {}, -1));
-  impl->dataLayoutContext->invalidateCache(structDecl.getType());
+  auto *fieldDecl = &getSharedState().declResolver->addDecl(
+      newField, structDecl->getLoc(), name, structDecl, {}, {}, -1);
+  impl->dataLayoutContext->invalidateCache(structDecl->getToolingType());
   return fieldDecl;
 }
 
@@ -1226,15 +1223,14 @@ MojoTypeSystem::DeclContextGetScopeQualifiedName(void *opaqueDeclCtx) {
   if (!opaqueDeclCtx)
     return {};
   auto *decl = static_cast<LIT::ASTDecl *>(opaqueDeclCtx);
-  return ConstString(MojoASTDeclRef(decl).getType().getAsString(
-      impl->parserContext->getSharedState()));
+  return ConstString(decl->getToolingType().getAsString(
+      LIT::ASTTypePrinterContext(&impl->parserContext->getSharedState())));
 }
 
 ConstString MojoTypeSystem::DeclContextGetName(void *opaqueDeclCtx) {
-  if (!opaqueDeclCtx) {
+  if (opaqueDeclCtx) {
     if (std::optional<StringRef> name =
-            MojoASTDeclRef(static_cast<LIT::ASTDecl *>(opaqueDeclCtx))
-                .getName()) {
+            static_cast<LIT::ASTDecl *>(opaqueDeclCtx)->getName()) {
       return ConstString(*name);
     }
   }
