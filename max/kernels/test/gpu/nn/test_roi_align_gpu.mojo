@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from max.gpu.host import DeviceContext
-from layout import Coord, DefaultEngine, Idx, TileTensor, row_major
+from layout import DefaultEngine, Idx, TileTensor, row_major
 from nn.roi_align import roi_align_nhwc
 from nn.roi_align_gpu import roi_align_gpu
 from std.testing import assert_almost_equal
@@ -119,8 +119,8 @@ def test_roi_align_gpu[
 
     for i in range(out_layout.product()):
         assert_almost_equal(
-            output[Coord(i)],
-            output_cpu[Coord(i)],
+            output[i],
+            output_cpu[i],
             atol=1e-4,
             rtol=1e-4,
             msg=String("roi_align mismatch at flat index ", i),

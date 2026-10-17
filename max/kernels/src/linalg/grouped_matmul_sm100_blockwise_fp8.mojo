@@ -449,8 +449,8 @@ def matmul_sm100_grouped_blockwise_scaled_fp8_1d2d_kernel[
                 ).static_product + 2 * i
                 var c_pair = SIMD[accum_type, 2](c_frag[idx], c_frag[idx + 1])
                 var t_pair = SIMD[accum_type, 2](
-                    c_frag_temp[Coord(coord[0, i], Idx[0])],
-                    c_frag_temp[Coord(coord[1, i], Idx[0])],
+                    c_frag_temp[coord[0, i], Idx[0]],
+                    c_frag_temp[coord[1, i], Idx[0]],
                 )
                 var result = c_pair + t_pair * scale_pair
                 c_frag[idx] = result[0]

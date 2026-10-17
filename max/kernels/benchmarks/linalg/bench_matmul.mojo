@@ -17,7 +17,7 @@ from std.utils.numerics import get_accum_type
 
 from std.benchmark import *
 from std.benchmark import keep
-from layout import Coord, TileTensor, row_major
+from layout import TileTensor, row_major
 from linalg.matmul import matmul
 from linalg.packing import pack_b_ndbuffer, pack_matmul_b_shape_func
 from std.memory import Alignment, dealloc, Layout
@@ -42,18 +42,16 @@ def gemm_naive(a: TileTensor, b: TileTensor, c: TileTensor[mut=True, ...]):
 
     for i in range(m):
         for p in range(k):
-            var a_val = rebind[Scalar[a.dtype]](a.load(Coord(i, p))).cast[
-                acc_type
-            ]()
+            var a_val = rebind[Scalar[a.dtype]](a.load((i, p))).cast[acc_type]()
             for j in range(n):
-                var b_val = rebind[Scalar[b.dtype]](b.load(Coord(p, j))).cast[
+                var b_val = rebind[Scalar[b.dtype]](b.load((p, j))).cast[
                     acc_type
                 ]()
                 accum[i * n + j] += a_val * b_val
 
     for i in range(m):
         for j in range(n):
-            c.store(Coord(i, j), accum[i * n + j].cast[c.dtype]())
+            c.store((i, j), accum[i * n + j].cast[c.dtype]())
 
 
 def verify(a: TileTensor, b: TileTensor, c: TileTensor):
@@ -68,7 +66,7 @@ def verify(a: TileTensor, b: TileTensor, c: TileTensor):
         for j in range(n):
             try:
                 assert_almost_equal(
-                    rebind[Scalar[c.dtype]](c.load(Coord(i, j))),
+                    rebind[Scalar[c.dtype]](c.load((i, j))),
                     c_ref[i, j],
                 )
             except e:

@@ -256,11 +256,11 @@ def _index_tensor_1d[
                 var data_coord = IndexList[reshaped_data_rank]()
                 data_coord[0] = i
                 for k in range(last_index_dim):
-                    data_coord[k + 1] = Int(indices.load(Coord(j, k)))
+                    data_coord[k + 1] = Int(indices.load((j, k)))
 
                 var rd_coord = Coord(data_coord)
                 output_flat.store(
-                    Coord(i * Int(indices.dim(0)) + j),
+                    (i * Int(indices.dim(0)) + j,),
                     reshaped_data.load(rd_coord),
                 )
 

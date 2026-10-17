@@ -252,9 +252,7 @@ def warpgroup_fence[
     comptime num_regs = type_of(accum).LayoutType.static_product
     var accum_flat = accum.reshape(tile_row_major[num_regs]())
     comptime for i in range(num_regs):
-        _warpgroup_fence_operand(
-            accum_flat.load[invariant=False](Coord(Idx[i]))
-        )
+        _warpgroup_fence_operand(accum_flat.load[invariant=False]((Idx[i],)))
 
 
 # constructs core matrix or "minimal dense" layout in bytes as described in file

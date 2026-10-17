@@ -1400,19 +1400,19 @@ def _matmul_dynamic_scaled_fp8_impl[
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var a_scale = a_scales.load[width=1](
-                    Coord(Idx[0], idx[0])
-                ).cast[.float32]()
+                var a_scale = a_scales.load[width=1]((Idx[0], idx[0])).cast[
+                    .float32
+                ]()
                 var b_scale: SIMD[.float32, width]
 
                 comptime if transpose_b:
-                    b_scale = b_scales.load[width=width](
-                        Coord(idx[1], Idx[0])
-                    ).cast[.float32]()
+                    b_scale = b_scales.load[width=width]((idx[1], Idx[0])).cast[
+                        .float32
+                    ]()
                 else:
-                    b_scale = b_scales.load[width=width](
-                        Coord(Idx[0], idx[1])
-                    ).cast[.float32]()
+                    b_scale = b_scales.load[width=width]((Idx[0], idx[1])).cast[
+                        .float32
+                    ]()
 
                 var scaled_val = val.cast[.float32]() * a_scale * b_scale
                 return scaled_val.cast[_dtype]()
@@ -1429,12 +1429,12 @@ def _matmul_dynamic_scaled_fp8_impl[
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var a_scale = a_scales.load[width=1](
-                    Coord(Idx[0], Idx[0])
-                ).cast[.float32]()
-                var b_scale = b_scales.load[width=1](
-                    Coord(Idx[0], Idx[0])
-                ).cast[.float32]()
+                var a_scale = a_scales.load[width=1]((Idx[0], Idx[0])).cast[
+                    .float32
+                ]()
+                var b_scale = b_scales.load[width=1]((Idx[0], Idx[0])).cast[
+                    .float32
+                ]()
                 var scaled_val = val.cast[.float32]() * a_scale * b_scale
                 return scaled_val.cast[_dtype]()
 
@@ -1476,19 +1476,19 @@ def _matmul_dynamic_scaled_fp8_impl[
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var a_scale = a_scales.load[width=1](
-                    Coord(Idx[0], idx[0])
-                ).cast[dtype]()
+                var a_scale = a_scales.load[width=1]((Idx[0], idx[0])).cast[
+                    dtype
+                ]()
                 var b_scale: SIMD[dtype, width]
 
                 comptime if transpose_b:
-                    b_scale = b_scales.load[width=width](
-                        Coord(idx[1], Idx[0])
-                    ).cast[dtype]()
+                    b_scale = b_scales.load[width=width]((idx[1], Idx[0])).cast[
+                        dtype
+                    ]()
                 else:
-                    b_scale = b_scales.load[width=width](
-                        Coord(Idx[0], idx[1])
-                    ).cast[dtype]()
+                    b_scale = b_scales.load[width=width]((Idx[0], idx[1])).cast[
+                        dtype
+                    ]()
 
                 var scaled_val = val * a_scale * b_scale
 
@@ -1505,12 +1505,12 @@ def _matmul_dynamic_scaled_fp8_impl[
                 comptime assert (
                     idx.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var a_scale = a_scales.load[width=1](
-                    Coord(Idx[0], Idx[0])
-                ).cast[dtype]()
-                var b_scale = b_scales.load[width=1](
-                    Coord(Idx[0], Idx[0])
-                ).cast[dtype]()
+                var a_scale = a_scales.load[width=1]((Idx[0], Idx[0])).cast[
+                    dtype
+                ]()
+                var b_scale = b_scales.load[width=1]((Idx[0], Idx[0])).cast[
+                    dtype
+                ]()
                 var scaled_val = val * a_scale * b_scale
 
                 c.store[width=width, alignment=alignment](

@@ -872,7 +872,7 @@ def _concat_gpu_flat_kernel[
                 row_major(inputs[i].num_elements())
             )
             output_flat.store[alignment=vec_width](
-                Coord(vec_idx),
+                (vec_idx,),
                 input_flat.load[
                     width=vec_width, alignment=vec_width, invariant=True
                 ](Coord(in_offset)),

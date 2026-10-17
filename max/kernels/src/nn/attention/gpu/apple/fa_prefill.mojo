@@ -649,16 +649,16 @@ def fa_prefill_apple_core[
             comptime if DEPTH_MMAS % 2 == 0:
                 comptime for sp in range(DEPTH_MMAS // 2):
                     var qlo = q_tile.load[width=8, alignment=q_align](
-                        Coord(rb, 32 * sp + 2 * cb)
+                        (rb, 32 * sp + 2 * cb)
                     )
                     var qhi = q_tile.load[width=8, alignment=q_align](
-                        Coord(rb + 8, 32 * sp + 2 * cb)
+                        (rb + 8, 32 * sp + 2 * cb)
                     )
                     var klo = k_tile.load[width=8, alignment=k_align](
-                        Coord(rb, 32 * sp + 2 * cb)
+                        (rb, 32 * sp + 2 * cb)
                     )
                     var khi = k_tile.load[width=8, alignment=k_align](
-                        Coord(rb + 8, 32 * sp + 2 * cb)
+                        (rb + 8, 32 * sp + 2 * cb)
                     )
                     _mma_apple_transposable(
                         score_col[0],
@@ -860,11 +860,11 @@ def fa_prefill_apple_core[
         var frag = output_accum[ni]
         if lo_ok:
             o_sub.store[alignment=o_align](
-                Coord(rb, cb), frag.slice[4, offset=0]().cast[output_type]()
+                (rb, cb), frag.slice[4, offset=0]().cast[output_type]()
             )
         if hi_ok:
             o_sub.store[alignment=o_align](
-                Coord(rb + 8, cb), frag.slice[4, offset=4]().cast[output_type]()
+                (rb + 8, cb), frag.slice[4, offset=4]().cast[output_type]()
             )
 
 

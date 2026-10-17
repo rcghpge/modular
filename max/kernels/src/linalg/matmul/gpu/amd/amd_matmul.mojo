@@ -640,7 +640,7 @@ struct AMDMatmul[
                                     + (e % 4)
                                 )
                                 if col < N:
-                                    c.store(Coord(m, col), v[e])
+                                    c.store((m, col), v[e])
                         else:
                             var n = (
                                 warp_tile_n

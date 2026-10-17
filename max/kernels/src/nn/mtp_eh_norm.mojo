@@ -143,10 +143,10 @@ def mtp_eh_norm_kernel[
     var acc_h = Float32(0)
     var col = tid
     while col < hidden_size:
-        var e = rebind[Scalar[dtype]](embed_flat.load(Coord(row + col))).cast[
+        var e = rebind[Scalar[dtype]](embed_flat.load((row + col,))).cast[
             .float32
         ]()
-        var p = rebind[Scalar[dtype]](prev_flat.load(Coord(row + col))).cast[
+        var p = rebind[Scalar[dtype]](prev_flat.load((row + col,))).cast[
             .float32
         ]()
         acc_e += e * e
@@ -167,24 +167,22 @@ def mtp_eh_norm_kernel[
     while col < hidden_size:
         # Cast before the multiply: `multiply_before_cast=False`.
         var e = (
-            rebind[Scalar[dtype]](embed_flat.load(Coord(row + col))).cast[
+            rebind[Scalar[dtype]](embed_flat.load((row + col,))).cast[
                 .float32
             ]()
             * rrms_e
         )
         var p = (
-            rebind[Scalar[dtype]](prev_flat.load(Coord(row + col))).cast[
-                .float32
-            ]()
+            rebind[Scalar[dtype]](prev_flat.load((row + col,))).cast[.float32]()
             * rrms_h
         )
         out_flat.store(
-            Coord(out_row + col),
+            (out_row + col,),
             e.cast[dtype]()
             * rebind[Scalar[dtype]](enorm_flat.load(Coord(col))),
         )
         out_flat.store(
-            Coord(out_row + hidden_size + col),
+            (out_row + hidden_size + col,),
             p.cast[dtype]()
             * rebind[Scalar[dtype]](hnorm_flat.load(Coord(col))),
         )

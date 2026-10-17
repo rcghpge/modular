@@ -15,7 +15,7 @@ from std.math import ceildiv
 
 from max.gpu import block_dim, global_idx
 from max.gpu.host import DeviceContext
-from layout import Coord, TileTensor, row_major
+from layout import TileTensor, row_major
 from layout.tile_tensor import stack_allocation
 from std.testing import assert_false
 
@@ -154,9 +154,7 @@ def scatter_nd[
     var output_flat = output.reshape(row_major(output.num_elements()))
     var data_flat = data.reshape(row_major(data.num_elements()))
     for _i in range(output.num_elements()):
-        output_flat.store(
-            Coord(_i), rebind[Scalar[dtype]](data_flat.load(Coord(_i)))
-        )
+        output_flat.store((_i,), rebind[Scalar[dtype]](data_flat.load((_i,))))
 
     # Depending on r_minus_m = data_rank - last_shape_of_indices,
     # we will be copying:
@@ -264,7 +262,7 @@ def linear_fill[
 
     var buf_flat = buf.reshape(row_major(buf.num_elements()))
     for i in range(buf.num_elements()):
-        buf_flat.store(Coord(i), elems[i])
+        buf_flat.store((i,), elems[i])
 
 
 def test_case[

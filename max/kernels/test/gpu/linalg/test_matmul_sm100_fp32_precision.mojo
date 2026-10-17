@@ -42,7 +42,6 @@ from std.random import random_float64, seed
 from max.gpu.host import DeviceContext
 from std.testing import assert_true
 from layout import (
-    Coord,
     TileTensor,
     Idx,
     DefaultEngine,
@@ -84,8 +83,8 @@ def _stats_vs_ref(
     var max_abs = Float64(0.0)
     for mm in range(rows):
         for nn in range(N):
-            var g = Float64(rebind[Scalar[f32]](got.load(Coord(mm, nn))))
-            var r = rebind[Scalar[f64]](reference.load(Coord(mm, nn)))
+            var g = Float64(rebind[Scalar[f32]](got.load((mm, nn))))
+            var r = rebind[Scalar[f64]](reference.load((mm, nn)))
             var ad = abs(g - r)
             var denom = abs(r)
             if denom < 1e-30:

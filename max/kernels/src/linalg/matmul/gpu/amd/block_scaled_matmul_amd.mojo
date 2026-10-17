@@ -1502,7 +1502,7 @@ struct BlockScaledMatmulAMD[
                     comptime for w in range(SCALE_WORDS_PER_ROW):
                         sfa_load_reg[0, w] = rebind[Int32](
                             sfa_words.load[invariant=False](
-                                Coord(src_word_base + w)
+                                (src_word_base + w,)
                             )
                         )
                 else:
@@ -1516,7 +1516,7 @@ struct BlockScaledMatmulAMD[
                     comptime for w in range(SCALE_WORDS_PER_ROW):
                         sfb_load_reg[0, w] = rebind[Int32](
                             sfb_words.load[invariant=False](
-                                Coord(src_word_base + w)
+                                (src_word_base + w,)
                             )
                         )
                 else:
@@ -3150,7 +3150,7 @@ def _preshuffle_a_scale_4d_kernel[
     var byte_off = Shuffler[1].scale_4d_byte_off[K_SCALES=K_SCALES](mn, k_scale)
     var src_flat = src.reshape(row_major(Int(M) * K_SCALES))
     var value = rebind[Scalar[DType.float8_e8m0fnu]](
-        src_flat.load(Coord(idx))
+        src_flat.load((idx,))
     ) if mn < Int(M) else Scalar[DType.float8_e8m0fnu](0)
     dst.reshape(row_major(total)).store(Coord(byte_off), value)
 

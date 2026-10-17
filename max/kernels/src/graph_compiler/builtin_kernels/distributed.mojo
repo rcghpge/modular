@@ -1972,7 +1972,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                         var word = pack_fp6_x4(codes.slice[4, offset=g * 4]())
                         comptime for b in range(3):
                             quant_buf.store(
-                                Coord(row, byte_col + g * 3 + b),
+                                (row, byte_col + g * 3 + b),
                                 rebind[Scalar[quant_dtype]](
                                     UInt8(
                                         (word >> UInt32(8 * b)) & UInt32(0xFF)

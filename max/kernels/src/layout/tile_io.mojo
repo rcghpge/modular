@@ -758,7 +758,7 @@ struct LocalToSharedTileCopier[
                 var swizzled_idx = swizzle_fn(
                     dst_frag_offset + dst_idx_base
                 ) + Scalar[dst.linear_idx_type](dst_idx_diff)
-                var src_vec = src.load[alignment=src_align](Coord(Idx[i])).cast[
+                var src_vec = src.load[alignment=src_align]((Idx[i],)).cast[
                     dst.dtype
                 ]()
                 dst_flat.store[alignment=dst_align](

@@ -65,7 +65,7 @@ from std.memory import unsafe_stack_allocation
 from std.sys.info import align_of
 from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
-from layout import Coord, TensorLayout, TensorEngine, TileTensor
+from layout import TensorLayout, TensorEngine, TileTensor
 from state_space.selective_scan import softplus
 
 # exp(x) == exp2(x * LOG2E), and exp2 is the faster GPU instruction.
@@ -514,7 +514,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
                     var p = p0 + i * NY
                     if t < n_tok and p < head_dim and tx * W_STAGED < T * P:
                         y.store(
-                            Coord(cur + t, h, p),
+                            (cur + t, h, p),
                             (
                                 y_vals[j]
                                 + head.D * x_s[(buf + t) * CH + i * NY + ty]
@@ -572,7 +572,7 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
                 var p = p0 + i * NY
                 if tx * W_TOKEN < P and p < head_dim:
                     y.store(
-                        Coord(gt, h, p),
+                        (gt, h, p),
                         (y_vals[j] + head.D * x_vals[i]).cast[kernel_dtype](),
                     )
 

@@ -17,7 +17,6 @@ from std.math import iota
 from std.memory import unsafe_stack_allocation
 
 from layout import (
-    Coord,
     DefaultEngine,
     Idx,
     ImmTileTensor,
@@ -334,7 +333,7 @@ def non_max_suppression[
             var num_boxes_remaining = 0
             for i in range(num_boxes):
                 var score = rebind[Scalar[dtype]](
-                    scores.load[invariant=False](Coord(b, c, i))
+                    scores.load[invariant=False]((b, c, i))
                 )
                 if score > score_threshold.cast[dtype]():
                     per_class_scores[i] = score
@@ -539,7 +538,7 @@ def _nms_greedy_kernel[
         var i = tid
         while i < n:
             var score = rebind[Scalar[dtype]](
-                scores_arg.load(Coord(Int32(b), Int32(c), i))
+                scores_arg.load((Int32(b), Int32(c), i))
             )
             if score > score_threshold.cast[dtype]():
                 # Eligible: keep the real score so the sort's total order
@@ -645,23 +644,23 @@ def _nms_greedy_kernel[
                 var row = sh_row[0]
                 var out_rows = Int64(output_arg.layout.shape[0]().value())
                 if row < out_rows:
-                    output_arg.store(Coord(row, Idx[0]), Int64(b))
-                    output_arg.store(Coord(row, Idx[1]), Int64(c))
-                    output_arg.store(Coord(row, Idx[2]), Int64(winner))
+                    output_arg.store((row, Idx[0]), Int64(b))
+                    output_arg.store((row, Idx[1]), Int64(c))
+                    output_arg.store((row, Idx[2]), Int64(winner))
                 sh_row[0] = row + 1
 
             # Suppress remaining candidates that overlap the winner.
             var w_y1 = rebind[Scalar[dtype]](
-                boxes_arg.load(Coord(Int32(b), winner, Idx[0]))
+                boxes_arg.load((Int32(b), winner, Idx[0]))
             )
             var w_x1 = rebind[Scalar[dtype]](
-                boxes_arg.load(Coord(Int32(b), winner, Idx[1]))
+                boxes_arg.load((Int32(b), winner, Idx[1]))
             )
             var w_y2 = rebind[Scalar[dtype]](
-                boxes_arg.load(Coord(Int32(b), winner, Idx[2]))
+                boxes_arg.load((Int32(b), winner, Idx[2]))
             )
             var w_x2 = rebind[Scalar[dtype]](
-                boxes_arg.load(Coord(Int32(b), winner, Idx[3]))
+                boxes_arg.load((Int32(b), winner, Idx[3]))
             )
             i = tid
             while i < n:
@@ -674,16 +673,16 @@ def _nms_greedy_kernel[
                             w_y2,
                             w_x2,
                             rebind[Scalar[dtype]](
-                                boxes_arg.load(Coord(Int32(b), cand, Idx[0]))
+                                boxes_arg.load((Int32(b), cand, Idx[0]))
                             ),
                             rebind[Scalar[dtype]](
-                                boxes_arg.load(Coord(Int32(b), cand, Idx[1]))
+                                boxes_arg.load((Int32(b), cand, Idx[1]))
                             ),
                             rebind[Scalar[dtype]](
-                                boxes_arg.load(Coord(Int32(b), cand, Idx[2]))
+                                boxes_arg.load((Int32(b), cand, Idx[2]))
                             ),
                             rebind[Scalar[dtype]](
-                                boxes_arg.load(Coord(Int32(b), cand, Idx[3]))
+                                boxes_arg.load((Int32(b), cand, Idx[3]))
                             ),
                         )
                         > iou_threshold.cast[dtype]()

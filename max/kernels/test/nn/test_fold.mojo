@@ -157,7 +157,7 @@ def _copy_values_to_tile_tensor[
 
     var flat = tensor.reshape(row_major(num_elements))
     for i in range(num_elements):
-        flat.store(Coord(i), values[i])
+        flat.store((i,), values[i])
 
 
 def main() raises:

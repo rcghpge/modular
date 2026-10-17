@@ -13,7 +13,7 @@
 
 from max.gpu.host import DeviceContext
 from layout._fillers import arange
-from layout import Coord, TileTensor, row_major
+from layout import TileTensor, row_major
 from nn.pool import (
     PoolMethod,
     avg_pool,
@@ -442,8 +442,8 @@ def assert_allclose[
     try:
         for i in range(h_output_ref.layout.product()):
             assert_almost_equal(
-                rebind[Scalar[dtype]](ref_flat.load(Coord(i))),
-                rebind[Scalar[dtype]](gpu_flat.load(Coord(i))),
+                rebind[Scalar[dtype]](ref_flat.load((i,))),
+                rebind[Scalar[dtype]](gpu_flat.load((i,))),
             )
     except e:
         print(e)

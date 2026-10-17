@@ -1849,7 +1849,7 @@ struct TileWriter[
                         var p3_val_vec = p3_smem_flat.load[
                             width=p3_simd_size,
                             alignment=p3_smem_alignment,
-                        ](Coord(Int(p3_smem_idx)))
+                        ]((Int(p3_smem_idx),))
                         var p3_chunk_idx = p3_rest // UInt32(Self.stageN)
                         var p3_local_col = (
                             p3_chunk_idx * UInt32(p3_vec_chunkM)
@@ -2374,7 +2374,7 @@ struct TileWriter[
                             width=simd_size, alignment=alignment
                         ]()
                         c_tensor.store[width=simd_size, alignment=alignment](
-                            Coord(Int(global_i), Int(global_j)),
+                            (Int(global_i), Int(global_j)),
                             src,
                         )
                     else:
@@ -2383,7 +2383,7 @@ struct TileWriter[
                             width=simd_size, alignment=alignment
                         ]()
                         c_tensor.store[width=simd_size, alignment=alignment](
-                            Coord(Int(global_i), Int(global_j)),
+                            (Int(global_i), Int(global_j)),
                             src,
                         )
 
@@ -2464,7 +2464,7 @@ struct TileWriter[
             ) * UInt32(simd_size)
             if global_token < m_end and global_weight < UInt32(cN):
                 c_tensor.store[width=simd_size, alignment=smem_alignment](
-                    Coord(Int(global_token), Int(global_weight)),
+                    (Int(global_token), Int(global_weight)),
                     val_vec,
                 )
 

@@ -270,7 +270,7 @@ def _repeat_interleave_emit_kernel[
     var input_flat = input_buffer.reshape(row_major(outer * in_axis * inner))
     var output_flat = output_buffer.reshape(row_major(outer * out_axis * inner))
     output_flat.store(
-        Coord(flat), rebind[Scalar[dtype]](input_flat.load(Coord(src_flat)))
+        (flat,), rebind[Scalar[dtype]](input_flat.load((src_flat,)))
     )
 
 

@@ -81,13 +81,13 @@ def _filler_impl[
         var flat = tensor.reshape(row_major[num_elements]())
         comptime for i in range(num_elements):
             var val = filler(i)
-            flat.store(Coord(Idx[i]), val.cast[tensor.dtype]())
+            flat.store((Idx[i],), val.cast[tensor.dtype]())
     else:
         var num_elements = tensor.layout.product() * tensor.element_size
         var flat = tensor.reshape(row_major(num_elements))
         for i in range(num_elements):
             var val = filler(i)
-            flat.store(Coord(i), val.cast[tensor.dtype]())
+            flat.store((i,), val.cast[tensor.dtype]())
 
 
 def arange[

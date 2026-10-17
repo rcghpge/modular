@@ -512,7 +512,7 @@ def load_AB_cuda_core[
         var vec: SIMD[a_type, K_padded]
         comptime if K_actual == K_padded:
             vec = a_gmem.load[width=K_padded, alignment=a_row_align](
-                Coord(Int(a_row0 + m), Int(a_col0))
+                (Int(a_row0 + m), Int(a_col0))
             )
         else:
             vec = partial_simd_load[K_padded](
@@ -539,7 +539,7 @@ def load_AB_cuda_core[
         var vec: SIMD[b_type, K_padded]
         comptime if K_actual == K_padded:
             vec = b_gmem.load[width=K_padded, alignment=b_row_align](
-                Coord(Int(b_row0 + n), Int(b_col0))
+                (Int(b_row0 + n), Int(b_col0))
             )
         else:
             vec = partial_simd_load[K_padded](

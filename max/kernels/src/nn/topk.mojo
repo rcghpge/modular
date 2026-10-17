@@ -2794,12 +2794,12 @@ def _gumbel_argmax_fused_kernel[
                         best_value = value
                         best_index = index
                 out_idxs_flat.store(
-                    Coord(batch_id), best_index.cast[out_idx_type]()
+                    (batch_id,), best_index.cast[out_idx_type]()
                 )
         else:
             if tid == 0:
                 out_idxs_flat.store(
-                    Coord(batch_id), Int(total.p).cast[out_idx_type]()
+                    (batch_id,), Int(total.p).cast[out_idx_type]()
                 )
 
 

@@ -110,7 +110,7 @@ from max.gpu.primitives import warp
 from max.gpu.sync import barrier
 from std.math import ceildiv, fma, rsqrt
 from std.memory import unsafe_stack_allocation
-from layout import Coord, Idx, TensorEngine, TensorLayout, TileTensor, row_major
+from layout import Idx, TensorEngine, TensorLayout, TileTensor, row_major
 
 
 comptime _SharedF32 = Pointer[
@@ -859,7 +859,7 @@ def gated_delta_state_fold_gpu[
         comptime for i in range(KEY_DIM_TILE):
             state_tile[i] = Float32(
                 rebind[Scalar[state_dtype]](
-                    pool_heads.load(Coord(pool_head, Idx[tile_base + i], tid))
+                    pool_heads.load((pool_head, Idx[tile_base + i], tid))
                 )
             )
 
@@ -878,6 +878,6 @@ def gated_delta_state_fold_gpu[
 
         comptime for i in range(KEY_DIM_TILE):
             pool_heads.store(
-                Coord(pool_head, Idx[tile_base + i], tid),
+                (pool_head, Idx[tile_base + i], tid),
                 Scalar[state_dtype](state_tile[i]),
             )

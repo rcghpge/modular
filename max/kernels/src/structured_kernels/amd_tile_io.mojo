@@ -2661,7 +2661,7 @@ struct RegTileWriter[
                     )
                     var data = src_flat.load[
                         width=elem_size, alignment=src_align
-                    ](Coord(src_offset))
+                    ]((src_offset,))
                     self.bc.store(
                         base_offset + Int32(dst_elem_offset),
                         data.cast[Self.dtype](),
@@ -2677,7 +2677,7 @@ struct RegTileWriter[
                 comptime dr, dc = divmod(i, dst_shape1)
                 comptime dst_elem_offset = (dr * dst_stride0 + dc * dst_stride1)
                 var data = src_flat.load[width=elem_size, alignment=src_align](
-                    Coord(src_offset)
+                    (src_offset,)
                 )
                 self.bc.store(
                     base_offset + Int32(dst_elem_offset),
@@ -3066,7 +3066,7 @@ struct RegTileWriterLDS[
                         Coord(dst_off),
                         rebind[DstVec](
                             src_flat.load[width=elem_size, alignment=src_align](
-                                Coord(src_idx * elem_size)
+                                (src_idx * elem_size,)
                             )
                         ),
                     )
@@ -3087,7 +3087,7 @@ struct RegTileWriterLDS[
                             rebind[DstVec](
                                 src_flat.load[
                                     width=elem_size, alignment=src_align
-                                ](Coord(src_idx * elem_size))
+                                ]((src_idx * elem_size,))
                             ),
                         )
         else:
@@ -3177,9 +3177,9 @@ struct RegTileWriterLDS[
 
         comptime for v in range(vectors_per_thread):
             dst_flat.store[alignment=align](
-                Coord(Int(base_offset + UInt32(v * row_delta))),
+                (Int(base_offset + UInt32(v * row_delta)),),
                 src_flat.load[width=simd_width, alignment=align](
-                    Coord(v * simd_width)
+                    (v * simd_width,)
                 ),
             )
 

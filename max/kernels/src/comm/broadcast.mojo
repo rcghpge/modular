@@ -118,7 +118,7 @@ def broadcast_multimem_kernel[
                 # Load from input buffer with invariant hint
                 var data = in_tensor.load[
                     width=simd_width, alignment=alignment, invariant=True
-                ](Coord(elem_idx))
+                ]((elem_idx,))
                 # Store to multicast address - all GPUs receive this write
                 multimem_st[
                     dtype,
@@ -239,8 +239,8 @@ def broadcast_pull_1stage_kernel[
             var elem_idx = idx * simd_width
             var data = in_tensor.load[
                 width=simd_width, alignment=alignment, invariant=True
-            ](Coord(elem_idx))
-            out_tensor.store[alignment=alignment](Coord(elem_idx), data)
+            ]((elem_idx,))
+            out_tensor.store[alignment=alignment]((elem_idx,), data)
 
         # Handle tail elements (when num_elements is not a multiple of simd_width)
         # Spread across threads instead of just thread 0
@@ -248,9 +248,9 @@ def broadcast_pull_1stage_kernel[
         var tail_idx = tail_start + global_tid
         if tail_idx < num_elements:
             var data = rebind[Scalar[dtype]](
-                in_tensor.load[invariant=True](Coord(tail_idx))
+                in_tensor.load[invariant=True]((tail_idx,))
             )
-            out_tensor.store(Coord(tail_idx), data)
+            out_tensor.store((tail_idx,), data)
 
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)
 
@@ -361,7 +361,7 @@ def broadcast_pull_2stage_kernel[
             my_payload.address_space_cast[_target_address_space]().store[
                 alignment=alignment
             ](idx - my_chunk_start, data)
-            result_tt.store[alignment=alignment](Coord(idx), data)
+            result_tt.store[alignment=alignment]((idx,), data)
 
         # Handle tail elements (spread across threads)
         var tail_idx = aligned_chunk_end + global_tid
@@ -372,7 +372,7 @@ def broadcast_pull_2stage_kernel[
             my_payload.address_space_cast[_target_address_space]().store(
                 tail_idx - my_chunk_start, data
             )
-            result_tt.store(Coord(tail_idx), data)
+            result_tt.store((tail_idx,), data)
 
         # Barrier with memory fence to ensure scatter is complete
         _multi_gpu_barrier[ngpus, is_start=False, need_fence=True](
@@ -414,7 +414,7 @@ def broadcast_pull_2stage_kernel[
                         ]().load[width=simd_width, alignment=alignment](idx)
                         # Write to final position in result
                         result_tt.store[alignment=alignment](
-                            Coord(chunk_start + idx), data
+                            (chunk_start + idx,), data
                         )
 
             # Handle tail elements from last GPU's chunk (thread 0 only)
@@ -430,7 +430,7 @@ def broadcast_pull_2stage_kernel[
                     var data = last_payload.address_space_cast[
                         _target_address_space
                     ]().load(i)
-                    result_tt.store(Coord(last_chunk_start + i), data)
+                    result_tt.store((last_chunk_start + i,), data)
 
         # Root: copy all elements from input to result (after Stage 2)
         # Skip if in-place (input and result point to same memory)
@@ -447,7 +447,7 @@ def broadcast_pull_2stage_kernel[
                 ]().load[width=simd_width, alignment=alignment, invariant=True](
                     elem_idx
                 )
-                result_tt.store[alignment=alignment](Coord(elem_idx), data)
+                result_tt.store[alignment=alignment]((elem_idx,), data)
 
             # Handle tail elements (spread across threads)
             var root_tail_idx = tail_start + global_tid
@@ -455,7 +455,7 @@ def broadcast_pull_2stage_kernel[
                 var data = root_input_ptr.address_space_cast[
                     _target_address_space
                 ]().load[width=1, invariant=True](root_tail_idx)
-                result_tt.store(Coord(root_tail_idx), data)
+                result_tt.store((root_tail_idx,), data)
 
         # Final barrier to ensure all GPUs complete before returning
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)

@@ -182,7 +182,7 @@ def _topp_minp_sampling[
         for i in range(vocab_size):
             var batch_offset = batch_id * vocab_size
             sorted_probs[batch_id, i] = rebind[Scalar[dtype]](
-                logits_flat.load(Coord(batch_offset + i))
+                logits_flat.load((batch_offset + i,))
             )
 
     def apply_temperature[
@@ -206,7 +206,7 @@ def _topp_minp_sampling[
             row_major(batch_size * vocab_size)
         )
         for i in range(batch_size * vocab_size):
-            logits_flat.store(Coord(i), sorted_probs_flat[i])
+            logits_flat.store((i,), sorted_probs_flat[i])
 
     # Process each batch
     for batch in range(batch_size):
@@ -366,15 +366,11 @@ def merge[
 
     # Copy data to temporary arrays
     for i in range(left_size):
-        left_keys_data[i] = rebind[Scalar[dtype]](keys.load(Coord(start + i)))
-        left_ids_data[i] = rebind[Scalar[out_idx_type]](
-            ids.load(Coord(start + i))
-        )
+        left_keys_data[i] = rebind[Scalar[dtype]](keys.load((start + i,)))
+        left_ids_data[i] = rebind[Scalar[out_idx_type]](ids.load((start + i,)))
     for i in range(right_size):
-        right_keys_data[i] = rebind[Scalar[dtype]](keys.load(Coord(mid + i)))
-        right_ids_data[i] = rebind[Scalar[out_idx_type]](
-            ids.load(Coord(mid + i))
-        )
+        right_keys_data[i] = rebind[Scalar[dtype]](keys.load((mid + i,)))
+        right_ids_data[i] = rebind[Scalar[out_idx_type]](ids.load((mid + i,)))
 
     # Merge back into original array
     var i = 0  # Index for left subarray

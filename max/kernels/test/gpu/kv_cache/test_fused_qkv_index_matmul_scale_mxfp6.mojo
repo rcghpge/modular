@@ -99,7 +99,7 @@ def _fill_random_u8(t: TileTensor[mut=True, ...], n: Int, lo: Int, hi: Int):
     """
     var bytes = t.bitcast[.uint8]().reshape(row_major(n))
     for i in range(n):
-        bytes.store(Coord(i), UInt8(Int(random_ui64(UInt64(lo), UInt64(hi)))))
+        bytes.store((i,), UInt8(Int(random_ui64(UInt64(lo), UInt64(hi)))))
 
 
 def execute_dual_cache_fused_mxfp6[

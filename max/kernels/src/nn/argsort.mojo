@@ -161,10 +161,10 @@ def _bitonic_local_sort_kernel[
 
     if gid < _n_arg:
         shared_vals.unsafe_store(
-            tid, rebind[Scalar[input_dtype]](input_arg.load(Coord(gid)))
+            tid, rebind[Scalar[input_dtype]](input_arg.load((gid,)))
         )
         shared_idxs.unsafe_store(
-            tid, rebind[Scalar[indices_dtype]](indices_arg.load(Coord(gid)))
+            tid, rebind[Scalar[indices_dtype]](indices_arg.load((gid,)))
         )
     else:
         shared_vals.unsafe_store(tid, _sentinel_val[input_dtype, ascending]())
@@ -201,8 +201,8 @@ def _bitonic_local_sort_kernel[
 
     barrier()
     if gid < _n_arg:
-        input_arg.store(Coord(gid), shared_vals.unsafe_load(tid))
-        indices_arg.store(Coord(gid), shared_idxs.unsafe_load(tid))
+        input_arg.store((gid,), shared_vals.unsafe_load(tid))
+        indices_arg.store((gid,), shared_idxs.unsafe_load(tid))
 
 
 @__llvm_metadata(MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](256))
@@ -257,10 +257,10 @@ def _bitonic_merge_local_kernel[
     ]()
 
     shared_vals.unsafe_store(
-        tid, rebind[Scalar[input_dtype]](input_arg.load(Coord(gid)))
+        tid, rebind[Scalar[input_dtype]](input_arg.load((gid,)))
     )
     shared_idxs.unsafe_store(
-        tid, rebind[Scalar[indices_dtype]](indices_arg.load(Coord(gid)))
+        tid, rebind[Scalar[indices_dtype]](indices_arg.load((gid,)))
     )
 
     var j = BLOCK_SIZE >> 1
@@ -287,8 +287,8 @@ def _bitonic_merge_local_kernel[
         j >>= 1
 
     barrier()
-    input_arg.store(Coord(gid), shared_vals.unsafe_load(tid))
-    indices_arg.store(Coord(gid), shared_idxs.unsafe_load(tid))
+    input_arg.store((gid,), shared_vals.unsafe_load(tid))
+    indices_arg.store((gid,), shared_idxs.unsafe_load(tid))
 
 
 def _argsort_gpu_impl[

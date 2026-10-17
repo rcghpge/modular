@@ -73,7 +73,7 @@ def cpu_matmul_naive[
                 acc += rebind[Float32](
                     A.load(a_coord).cast[.float32]()
                 ) * rebind[Float32](B.load(b_coord).cast[.float32]())
-            C.store(Coord(m, n), acc.cast[C.dtype]())
+            C.store((m, n), acc.cast[C.dtype]())
 
 
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)
@@ -296,9 +296,9 @@ def tma_umma_kernel_sgs[
             var fp8_val: SIMD[b_gmem_type, simd_size]
             # Load from gmem - layout is NxK when transpose_b, KxN otherwise
             comptime if transpose_b:
-                fp8_val = b.load[width=simd_size](Coord(gmem_n, gmem_k))
+                fp8_val = b.load[width=simd_size]((gmem_n, gmem_k))
             else:
-                fp8_val = b.load[width=simd_size](Coord(gmem_k, gmem_n))
+                fp8_val = b.load[width=simd_size]((gmem_k, gmem_n))
 
             # Cast and store to smem using local coordinates
             var bf16_val = fp8_val.cast[b_smem_type]()
@@ -307,7 +307,7 @@ def tma_umma_kernel_sgs[
             var k_q, k_r = divmod(k_local, b_shape10)
             var k_offset = k_q * b_stride11 + k_r * b_stride10
             var offset = swizzle(n_offset + k_offset)
-            b_smem_flat.store[alignment=2 * simd_size](Coord(offset), bf16_val)
+            b_smem_flat.store[alignment=2 * simd_size]((offset,), bf16_val)
 
         # Sync: wait for TMA to complete and all threads to finish storing to smem
         tma_mbar[0].wait(tma_phase)

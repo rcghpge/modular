@@ -223,15 +223,15 @@ def gated_delta_conv1d_fwd_gpu[
         comptime if CAPTURE_INPUT:
             if active:
                 qkv_window_flat.store(
-                    Coord(
+                    (
                         UInt32(flat_token_idx) * window_row_stride
-                        + window_channel_offset
+                        + window_channel_offset,
                     ),
                     rebind[Scalar[work_dtype]](
                         qkv_input_flat.load(
-                            Coord(
+                            (
                                 UInt32(flat_token_idx) * input_row_stride
-                                + input_channel_offset
+                                + input_channel_offset,
                             )
                         )
                     ),
@@ -309,9 +309,9 @@ def gated_delta_conv1d_fwd_gpu[
 
             if active:
                 conv_output_flat.store(
-                    Coord(
+                    (
                         UInt32(flat_token_idx) * output_row_stride
-                        + output_channel_offset
+                        + output_channel_offset,
                     ),
                     Scalar[work_dtype](conv_sum),
                 )
@@ -342,13 +342,13 @@ def gated_delta_conv1d_fwd_gpu[
                     input_value = Float32(
                         rebind[Scalar[work_dtype]](
                             qkv_input_flat.load(
-                                Coord(
+                                (
                                     UInt32(
                                         sequence_start_flat_idx
                                         + lookback_position
                                     )
                                     * input_row_stride
-                                    + input_channel_offset
+                                    + input_channel_offset,
                                 )
                             )
                         )
@@ -369,10 +369,10 @@ def gated_delta_conv1d_fwd_gpu[
 
             if active:
                 conv_output_flat.store(
-                    Coord(
+                    (
                         UInt32(sequence_start_flat_idx + head_position)
                         * output_row_stride
-                        + output_channel_offset
+                        + output_channel_offset,
                     ),
                     Scalar[work_dtype](conv_sum),
                 )
@@ -390,13 +390,13 @@ def gated_delta_conv1d_fwd_gpu[
                     state_value = Scalar[state_dtype](
                         rebind[Scalar[work_dtype]](
                             qkv_input_flat.load(
-                                Coord(
+                                (
                                     UInt32(
                                         sequence_start_flat_idx
                                         + source_position_in_sequence
                                     )
                                     * input_row_stride
-                                    + input_channel_offset
+                                    + input_channel_offset,
                                 )
                             )
                         )

@@ -91,7 +91,7 @@ def arg_nonzero[
                 comptime for k in range(input_buffer.rank):
                     out_indices[1] = k
                     output_buffer.store(
-                        Coord(out_indices[0], out_indices[1]),
+                        (out_indices[0], out_indices[1]),
                         output_buffer.ElementType(coords[k].value()),
                     )
 
@@ -250,7 +250,7 @@ def _arg_nonzero_emit_kernel[
                 )
                 remainder -= coordinate * Int(strides[axis])
                 output_buffer.store(
-                    Coord(output_row, axis),
+                    (output_row, axis),
                     output_buffer.ElementType(coordinate),
                 )
 

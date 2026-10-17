@@ -2170,7 +2170,7 @@ struct ContinuousBatchingKVCache[
         assert (
             batch_idx < self._batch_size()
         ), "KVCache batch_idx is out of bounds"
-        return Int(self.cache_lengths.load(Coord(batch_idx)))
+        return Int(self.cache_lengths.load((batch_idx,)))
 
     @inline(.always)
     def load[
@@ -2181,7 +2181,7 @@ struct ContinuousBatchingKVCache[
     ]:
         assert bs < self._batch_size(), "KVCache::load batch_size out of range"
 
-        var block_idx = self.lookup_table.load(Coord(bs))
+        var block_idx = self.lookup_table.load((bs,))
         var idx = self._get_idx_tuple(
             Int(block_idx), head_idx, tok_idx, head_dim_idx
         )
@@ -2198,7 +2198,7 @@ struct ContinuousBatchingKVCache[
         val: SIMD[Self.dtype, ...],
     ):
         assert bs < self._batch_size(), "KVCache::store batch_size out of range"
-        var block_idx = self.lookup_table.load(Coord(bs))
+        var block_idx = self.lookup_table.load((bs,))
         var idx = self._get_idx_tuple(
             Int(block_idx), head_idx, tok_idx, head_dim_idx
         )
@@ -2322,7 +2322,7 @@ struct ContinuousBatchingKVCache[
     @inline(.always)
     def row_idx(self, batch_idx: UInt32, tok_idx: UInt32) -> UInt32:
         """Returns the row idx when viewing the memory as a matrix."""
-        var block_idx = self.lookup_table.load(Coord(Int(batch_idx)))[0]
+        var block_idx = self.lookup_table.load((Int(batch_idx),))[0]
         return block_idx * self._stride() + tok_idx
 
     @inline(.always)
@@ -2594,7 +2594,7 @@ struct ContinuousBatchingKVCache[
         head_idx: Int,
         head_dim_idx: Int = 0,
     ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
-        var block_idx = Int(self.lookup_table.load(Coord(batch_idx)))
+        var block_idx = Int(self.lookup_table.load((batch_idx,)))
         var full_block_idx = self._get_idx_tuple(
             block_idx, head_idx, start_tok_idx, head_dim_idx
         )
@@ -2626,7 +2626,7 @@ struct ContinuousBatchingKVCache[
         Returns:
             The blocks storage handle advanced to the block.
         """
-        var block_idx = Int(self.lookup_table.load(Coord(batch_idx)))
+        var block_idx = Int(self.lookup_table.load((batch_idx,)))
         var full_block_idx = self._get_idx_tuple(
             block_idx, head_idx, start_tok_idx, head_dim_idx
         )
@@ -2934,7 +2934,7 @@ struct PagedKVCache[
 
     def cache_length(self, batch_idx: Int) -> Int:
         """Returns the length of the cache for a given batch index."""
-        return Int(self.cache_lengths.load(Coord(batch_idx)))
+        return Int(self.cache_lengths.load((batch_idx,)))
 
     @inline(.always)
     def _stride(self) -> UInt32:
@@ -2984,7 +2984,7 @@ struct PagedKVCache[
             logical_index >= 0 and page < lut_cols and Int(batch_idx) < lut_rows
         )
         var block = self.lookup_table.load(
-            Coord(Int(batch_idx) if in_table else 0, page if in_table else 0)
+            (Int(batch_idx) if in_table else 0, page if in_table else 0)
         )[0]
         var valid = in_table and Int(block) < Int(self.blocks.dim[0]())
         var row = Int32(block) * Int32(self._stride()) + Int32(offset)
@@ -3047,7 +3047,7 @@ struct PagedKVCache[
             Int(self.scales_lookup_table.dim[1]()),
         )
         var block_idx = self.scales_lookup_table.load(
-            Coord(Int(batch_idx), lut_block_index)
+            (Int(batch_idx), lut_block_index)
         )[0]
         return block_idx * self._scale_stride() + UInt32(tok_in_block_idx)
 
@@ -3149,7 +3149,7 @@ struct PagedKVCache[
             Int(self.lookup_table.dim[1]()),
         )
         var block_idx = self.lookup_table.load(
-            Coord(Int(batch_idx), lut_block_index)
+            (Int(batch_idx), lut_block_index)
         )[0]
         # alias row_stride = Int(num_heads * head_size * Self.collection_size)
         return block_idx * self._stride() + UInt32(tok_in_block_idx)
@@ -3226,7 +3226,7 @@ struct PagedKVCache[
                 )
                 var lut_idx = base_kv_row // UInt32(Self.page_size)
                 var block_idx = self.lookup_table.load(
-                    Coord(Int(batch_idx), Int(lut_idx))
+                    (Int(batch_idx), Int(lut_idx))
                 )[0]
                 result.rows[0] = block_idx * self._stride()
             else:
@@ -3326,7 +3326,7 @@ struct PagedKVCache[
             comptime for c in range(num_chunks):
                 var simd = self.lookup_table.load[
                     width=chunk, alignment=4 * chunk
-                ](Coord(Int(batch_idx), Int(first_lut_idx) + c * chunk))
+                ]((Int(batch_idx), Int(first_lut_idx) + c * chunk))
                 var rows_simd = simd * SIMD[.uint32, chunk](stride)
                 comptime for i in range(chunk):
                     result.rows[c * chunk + i] = rows_simd[i]
@@ -3715,7 +3715,7 @@ struct PagedKVCache[
             " with lookup_table inner dim ",
             Int(self.lookup_table.dim[1]()),
         )
-        var block_idx = Int(self.lookup_table.load(Coord(bs, lut_block_idx)))
+        var block_idx = Int(self.lookup_table.load((bs, lut_block_idx)))
         return dyn_coord[.int64](
             (
                 block_idx,
@@ -3822,7 +3822,7 @@ struct PagedKVCache[
         immediately after the KV cache.
         """
         var lut_block_idx, tok_in_block_idx = divmod(tok_idx, self.page_size)
-        var block_idx = Int(self.lookup_table.load(Coord(bs, lut_block_idx)))
+        var block_idx = Int(self.lookup_table.load((bs, lut_block_idx)))
         debug_assert(
             block_idx < Int(self.blocks.dim[0]()),
             "KVCache block_idx resolved to sentinel/unassigned LUT entry (",
@@ -4262,7 +4262,7 @@ struct ContinuousBatchingKVCacheCollection[
         )
 
     def cache_length(self, bs_idx: Int) -> Int:
-        return Int(self.cache_lengths.load(Coord(bs_idx)))
+        return Int(self.cache_lengths.load((bs_idx,)))
 
 
 struct PagedKVCacheCollection[
@@ -4600,4 +4600,4 @@ struct PagedKVCacheCollection[
         )
 
     def cache_length(self, bs_idx: Int) -> Int:
-        return Int(self.cache_lengths.load(Coord(bs_idx)))
+        return Int(self.cache_lengths.load((bs_idx,)))

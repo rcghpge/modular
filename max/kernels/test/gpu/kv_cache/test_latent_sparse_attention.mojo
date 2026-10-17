@@ -28,7 +28,7 @@ from std.utils.numerics import min_or_neg_inf
 
 from max.gpu.host import DeviceContext
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
-from layout import Coord, Idx, TileTensor, row_major
+from layout import Idx, TileTensor, row_major
 from layout._host_device_tile_tensor import HostDeviceTileTensor
 from nn.attention.latent_sparse_attention import (
     latent_sparse_attention_ragged_paged,
@@ -58,7 +58,7 @@ comptime Collection[dtype: DType, page_size: Int] = PagedKVCacheCollection[
 def _fill_random(tensor: TileTensor[mut=True, ...]):
     var flat = tensor.reshape(row_major(tensor.num_elements()))
     for i in range(tensor.num_elements()):
-        flat.store(Coord(i), Scalar[tensor.dtype](randn_float64()))
+        flat.store((i,), Scalar[tensor.dtype](randn_float64()))
 
 
 def run_case[

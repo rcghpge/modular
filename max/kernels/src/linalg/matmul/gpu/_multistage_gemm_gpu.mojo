@@ -1344,7 +1344,7 @@ def _multistage_gemm_kernel_impl[
                         n,
                         accum_smem_warp_tile.load[
                             width=simd_size, alignment=alignment
-                        ](Coord(row, col)),
+                        ]((row, col)),
                     )
         else:
             if c_tile_in_range:

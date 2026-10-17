@@ -666,7 +666,7 @@ def test_conv_states_pool_offset_avoids_32bit_wrap() raises:
     this offset by hand in `UInt32`:
     `UInt32(cache_idx) * UInt32(conv_states_batch_stride) + ...`, which wraps
     for this `cache_idx` (asserted below). After the fix, the kernel indexes
-    `conv_states.load(Coord(cache_idx, d, state_idx))` /
+    `conv_states.load((cache_idx, d, state_idx))` /
     `.store(Coord(...), ...)`, which forms the offset at `conv_states`'s own
     `linear_idx_type` -- 64-bit for a dynamic, `GENERIC`-address-space pool
     per `_get_index_type` (`layout/tile_tensor.mojo`) -- so it no longer

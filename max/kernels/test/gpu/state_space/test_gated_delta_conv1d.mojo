@@ -82,12 +82,12 @@ def gated_delta_conv1d_sequential_reference[
     if batch_item_idx >= Int(batch_size) or conv_channel_idx >= Int(conv_dim):
         return
 
-    var slot = Int(rebind[UInt32](slot_idx.load(Coord(batch_item_idx))))
+    var slot = Int(rebind[UInt32](slot_idx.load((batch_item_idx,))))
     var sequence_start_flat_idx = Int(
-        rebind[UInt32](input_row_offsets.load(Coord(batch_item_idx)))
+        rebind[UInt32](input_row_offsets.load((batch_item_idx,)))
     )
     var sequence_end_flat_idx = Int(
-        rebind[UInt32](input_row_offsets.load(Coord(batch_item_idx + 1)))
+        rebind[UInt32](input_row_offsets.load((batch_item_idx + 1,)))
     )
     var sequence_length = sequence_end_flat_idx - sequence_start_flat_idx
 
@@ -117,7 +117,7 @@ def gated_delta_conv1d_sequential_reference[
     var weight_register = SIMD[work_dtype, KERNEL_SIZE](0)
     comptime for kernel_offset_k in range(KERNEL_SIZE):
         weight_register[kernel_offset_k] = rebind[Scalar[work_dtype]](
-            conv_weight_view.load(Coord(conv_channel_idx, kernel_offset_k))
+            conv_weight_view.load((conv_channel_idx, kernel_offset_k))
         )
 
     comptime KERNEL_SIZE_MINUS_ONE = KERNEL_SIZE - 1
@@ -139,7 +139,7 @@ def gated_delta_conv1d_sequential_reference[
                 input_value = Float32(
                     rebind[Scalar[work_dtype]](
                         qkv_input_view.load(
-                            Coord(
+                            (
                                 sequence_start_flat_idx + lookback_position,
                                 conv_channel_idx,
                             )
@@ -150,15 +150,13 @@ def gated_delta_conv1d_sequential_reference[
                 var window_idx = KERNEL_SIZE_MINUS_ONE + lookback_position
                 if window_idx >= 0:
                     input_value = Float32(
-                        conv_state.load(
-                            Coord(slot, conv_channel_idx, window_idx)
-                        )[0]
+                        conv_state.load((slot, conv_channel_idx, window_idx))[0]
                     )
 
             conv_sum += input_value * Float32(weight_register[kernel_offset_k])
 
         conv_output_view.store(
-            Coord(flat_token_idx, conv_channel_idx),
+            (flat_token_idx, conv_channel_idx),
             Scalar[work_dtype](conv_sum),
         )
 
@@ -172,7 +170,7 @@ def gated_delta_conv1d_sequential_reference[
             state_value = Scalar[state_dtype](
                 rebind[Scalar[work_dtype]](
                     qkv_input_view.load(
-                        Coord(
+                        (
                             sequence_start_flat_idx
                             + source_position_in_sequence,
                             conv_channel_idx,
@@ -186,12 +184,10 @@ def gated_delta_conv1d_sequential_reference[
             )
             if old_window_idx >= 0:
                 state_value = conv_state.load(
-                    Coord(slot, conv_channel_idx, old_window_idx)
+                    (slot, conv_channel_idx, old_window_idx)
                 )[0]
 
-        conv_state.store(
-            Coord(slot, conv_channel_idx, state_slot_j), state_value
-        )
+        conv_state.store((slot, conv_channel_idx, state_slot_j), state_value)
 
 
 def run_slot_indexed_gpu[

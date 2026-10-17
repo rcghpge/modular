@@ -208,7 +208,7 @@ def _allreduce_rmsnorm_fp8_kernel_warp_tiling[
     var gamma_vec = SIMD[accum_type, simd_width](0)
     if is_valid:
         gamma_vec = (
-            gamma.load[width=simd_width, alignment=align](Coord(idx)).cast[
+            gamma.load[width=simd_width, alignment=align]((idx,)).cast[
                 accum_type
             ]()
             + _weight_offset.cast[accum_type]()
@@ -248,13 +248,11 @@ def _allreduce_rmsnorm_fp8_kernel_warp_tiling[
             comptime if has_residual:
                 vec_data += (
                     residual[]
-                    .load[width=simd_width](Coord(row, idx))
+                    .load[width=simd_width]((row, idx))
                     .cast[accum_type]()
                 )
                 # Write bf16 pre-normalization sum for the residual stream.
-                residual_output[].store(
-                    Coord(row, idx), vec_data.cast[in_dtype]()
-                )
+                residual_output[].store((row, idx), vec_data.cast[in_dtype]())
 
         # Phase 1: Compute mean-square.
         var thread_m2 = (vec_data**2).reduce_add()
@@ -508,7 +506,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     var gamma_vec = SIMD[accum_type, simd_width](0)
     if is_valid:
         gamma_vec = (
-            gamma.load[width=simd_width, alignment=align](Coord(col_idx)).cast[
+            gamma.load[width=simd_width, alignment=align]((col_idx,)).cast[
                 accum_type
             ]()
             + _weight_offset.cast[accum_type]()
@@ -546,7 +544,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                 comptime if has_residual:
                     accum += (
                         residual[]
-                        .load[width=simd_width](Coord(row, col_idx))
+                        .load[width=simd_width]((row, col_idx))
                         .cast[accum_type]()
                     )
                     var local_elem = local_row * _cols + col_idx
@@ -666,7 +664,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                             invariant=True,
                         ](local_elem)
                     )
-                    residual_output[].store(Coord(row, col_idx), bf16_val)
+                    residual_output[].store((row, col_idx), bf16_val)
 
     # No end barrier. Every block waited at the mid barrier for its peer
     # blocks to finish Stage 1, so all P2P reads of the inputs are done by
@@ -726,14 +724,14 @@ def _allreduce_rmsnorm_fp8_launch[
     var grid_dim = min(rows, max_blocks)
     var block_dim = threads_per_block
 
-    # Provide evidence that flat_rank >= 2 for output.store(Coord(..., ...)).
+    # Provide evidence that flat_rank >= 2 for output.store((..., ...)).
     comptime assert output.flat_rank >= 2
 
     @inline(.always)
     def output_fn[
         width: SIMDLength
     ](row: Int, col: Int, val: SIMD[out_dtype, width]) {var output}:
-        output.store(Coord(row, col), val)
+        output.store((row, col), val)
 
     comptime kernel = _allreduce_rmsnorm_fp8_kernel_warp_tiling[
         mut=gamma.mut,
@@ -884,14 +882,14 @@ def _allreduce_rmsnorm_fp8_launch_2stage[
             + " B) for SIMD residual stores"
         )
 
-    # Provide evidence that flat_rank >= 2 for output.store(Coord(..., ...)).
+    # Provide evidence that flat_rank >= 2 for output.store((..., ...)).
     comptime assert output.flat_rank >= 2
 
     @inline(.always)
     def output_fn[
         width: SIMDLength
     ](row: Int, col: Int, val: SIMD[out_dtype, width]) {var output}:
-        output.store(Coord(row, col), val)
+        output.store((row, col), val)
 
     comptime kernel = _allreduce_rmsnorm_fp8_kernel_2stage[
         mut=gamma.mut,
@@ -978,7 +976,7 @@ def _launch_split_allreduce_rmsnorm_fp8[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
         return residual_output_2d.load[width=width, alignment=width](
-            Coord(idx[0], idx[1])
+            (idx[0], idx[1])
         )
 
     var shape = IndexList[2](rows, cols)

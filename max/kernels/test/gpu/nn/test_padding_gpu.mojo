@@ -135,7 +135,7 @@ def test_pad_constant_gpu[
 
     # Compare GPU and CPU results
     for i in range(output.num_elements()):
-        assert_equal(output[Coord(i)], output_cpu[Coord(i)])
+        assert_equal(output[i], output_cpu[i])
 
     print("PASS: rank=" + String(rank))
 
@@ -239,7 +239,7 @@ def test_pad_reflect_gpu[
 
     # Compare GPU and CPU results
     for i in range(output.num_elements()):
-        assert_equal(output[Coord(i)], output_cpu[Coord(i)])
+        assert_equal(output[i], output_cpu[i])
 
     print("PASS: rank=" + String(rank))
 
@@ -343,7 +343,7 @@ def test_pad_repeat_gpu[
 
     # Compare GPU and CPU results
     for i in range(output.num_elements()):
-        assert_equal(output[Coord(i)], output_cpu[Coord(i)])
+        assert_equal(output[i], output_cpu[i])
 
     print("PASS: rank=" + String(rank))
 

@@ -688,7 +688,7 @@ struct TMemTile[
                 comptime if src_type == Self.dtype:
                     comptime for _i in range(frag_width):
                         frag[_i] = rebind[UInt32](
-                            src.bitcast[.uint32]().load(Coord(Idx[offset + _i]))
+                            src.bitcast[.uint32]().load((Idx[offset + _i],))
                         )
                 elif pow_two > 1:
                     comptime size_ratio = size_of[src_type]() // Self.dtype_size
@@ -722,7 +722,7 @@ struct TMemTile[
                             frag[_i] = packed[_i]
                 else:
                     frag[0] = bitcast[.uint32](
-                        rebind[Scalar[src_type]](src.load(Coord(Idx[0]))).cast[
+                        rebind[Scalar[src_type]](src.load((Idx[0],))).cast[
                             Self.dtype
                         ]()
                     )

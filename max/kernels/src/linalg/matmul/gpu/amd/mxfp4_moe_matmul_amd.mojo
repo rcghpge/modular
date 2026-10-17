@@ -247,7 +247,7 @@ struct MXFP4MoERoutedMatmul[
         var warp_m, warp_n = divmod(wid, Self.num_warps_n)
 
         # ---- Decode expert_id, build per-expert / per-block TileTensors ----
-        var expert_id_i32 = expert_ids[Coord(bx)]
+        var expert_id_i32 = expert_ids[bx]
 
         # TODO: confirm no production routing producer emits -1; if not,
         # drop the predicate and update the test fixtures to express
@@ -304,7 +304,7 @@ struct MXFP4MoERoutedMatmul[
         comptime for i in range(a_loads_per_tile):
             var local_row = row_thread + i * load_thread_rows
             var sorted_row_idx = bx_m + local_row
-            var fused = sorted_token_ids[Coord(sorted_row_idx)]
+            var fused = sorted_token_ids[sorted_row_idx]
             var t = Int(fused & UInt32(0xFFFFFF))
             comptime if (
                 Self.INPUT_ROW_MODE._value == InputRowMode.TOKEN_ID._value
@@ -439,7 +439,7 @@ struct MXFP4MoERoutedMatmul[
                     + i
                 )
                 var sorted_row_idx = bx_m + local_row
-                var fused = sorted_token_ids[Coord(sorted_row_idx)]
+                var fused = sorted_token_ids[sorted_row_idx]
                 var t = Int(fused & UInt32(0xFFFFFF))
                 var s = Int(fused >> UInt32(24))
                 c_dst_rows[i] = t * Self.topk + s
@@ -455,9 +455,7 @@ struct MXFP4MoERoutedMatmul[
                 var acc = c_acc[m_mma * Self.num_n_mmas + n_mma]
                 comptime for i in range(Self.C_FRAG_SIZE):
                     if row_valids[i]:
-                        c[Coord(c_dst_rows[i], c_col)] = acc[i].cast[
-                            out_dtype
-                        ]()
+                        c[c_dst_rows[i], c_col] = acc[i].cast[out_dtype]()
 
 
 # Thin host-launchable wrapper around `MXFP4MoERoutedMatmul.run`.

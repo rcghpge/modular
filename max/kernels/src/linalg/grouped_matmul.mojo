@@ -173,10 +173,10 @@ def naive_grouped_matmul_kernel[
         for k in range(K):
             accum += (
                 rebind[Scalar[a_type]](
-                    a_flat.load(Coord(a_expert_off + m * K + k))
+                    a_flat.load((a_expert_off + m * K + k,))
                 ).cast[accum_type]()
                 * rebind[Scalar[b_type]](
-                    b_flat.load(Coord(b_expert_off + n * K + k))
+                    b_flat.load((b_expert_off + n * K + k,))
                 ).cast[accum_type]()
             )
 
@@ -188,7 +188,7 @@ def naive_grouped_matmul_kernel[
         comptime if has_compute_fn:
             out = compute_fn[c_type, 1, alignment=1](idx, out)
         c.reshape(row_major(c.num_elements())).store(
-            Coord(Int(a_start_row) * N + m * N + n), out
+            (Int(a_start_row) * N + m * N + n,), out
         )
 
 
@@ -1334,10 +1334,10 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
         for k in range(K):
             accum += (
                 rebind[Scalar[a_type]](
-                    a_flat.load(Coord(a_expert_off + m * K + k))
+                    a_flat.load((a_expert_off + m * K + k,))
                 ).cast[accum_type]()
                 * rebind[Scalar[b_type]](
-                    b_flat.load(Coord(b_expert_off + n * K + k))
+                    b_flat.load((b_expert_off + n * K + k,))
                 ).cast[accum_type]()
             )
 
@@ -1355,7 +1355,7 @@ def grouped_matmul_rowwise_scaled_fp8_kernel[
         accum = accum * a_scale * b_scale
 
     c.reshape(row_major(c.num_elements())).store(
-        Coord(Int(a_start_row) * N + m * N + n), accum.cast[c_type]()
+        (Int(a_start_row) * N + m * N + n,), accum.cast[c_type]()
     )
 
 
@@ -1569,10 +1569,10 @@ def grouped_matmul_vendor[
             row_major(a_offsets.num_elements())
         )
         for i in range(num_active_experts):
-            var expert_id = rebind[Int32](expert_ids_flat.load(Coord(i)))
+            var expert_id = rebind[Int32](expert_ids_flat.load((i,)))
 
-            var token_start = rebind[UInt32](a_offsets_flat.load(Coord(i)))
-            var token_end = rebind[UInt32](a_offsets_flat.load(Coord(i + 1)))
+            var token_start = rebind[UInt32](a_offsets_flat.load((i,)))
+            var token_end = rebind[UInt32](a_offsets_flat.load((i + 1,)))
             var num_tokens = Int(token_end - token_start)
 
             # Skip if no tokens for this expert

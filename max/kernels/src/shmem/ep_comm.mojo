@@ -6849,11 +6849,11 @@ def fused_silu_mx_kernel[
                 # grouped matmul's per-expert `scale_4d` slot; single-byte
                 # stores never collide, whichever thread owns the row.
                 while expert_slot < n_active - 1 and Int(
-                    row_offsets[Coord(expert_slot + 1)]
+                    row_offsets[expert_slot + 1]
                 ) <= Int(m):
                     expert_slot += 1
 
-                var token_start = Int(row_offsets[Coord(expert_slot)])
+                var token_start = Int(row_offsets[expert_slot])
                 var local_row = Int(m) - token_start
                 debug_assert(
                     local_row < _max_padded_M,
@@ -7217,10 +7217,10 @@ def fused_silu_mxfp6_kernel[
                 )
 
             while expert_slot < n_active - 1 and Int(
-                row_offsets[Coord(expert_slot + 1)]
+                row_offsets[expert_slot + 1]
             ) <= Int(m):
                 expert_slot += 1
-            var local_row = Int(m) - Int(row_offsets[Coord(expert_slot)])
+            var local_row = Int(m) - Int(row_offsets[expert_slot])
             debug_assert(
                 local_row < _max_padded_M,
                 (
