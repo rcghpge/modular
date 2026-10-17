@@ -194,6 +194,13 @@ trait PluginHooks:
         _StackAllocationPluginHookFnType[address_space]
     ] = None
 
+    comptime supports_atomic_rmw[dtype: DType]: Bool = True
+    """Whether the backend lowers `Atomic` read-modify-write and
+    compare-exchange operations on `dtype`.
+
+    Metal, for example, only lowers them on 32-bit types.
+    """
+
     comptime address_space_fn[name: StaticString]: OptionalReg[
         AddressSpace
     ] = None

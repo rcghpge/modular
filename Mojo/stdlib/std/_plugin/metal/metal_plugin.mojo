@@ -27,7 +27,7 @@ from std.collections.string.string_span import (
 )
 from std.ffi import CStringSpan
 from std.io.file_descriptor import RawFileDescriptor
-from std.sys import llvm_intrinsic
+from std.sys import bit_width_of, llvm_intrinsic
 from std.sys._metal_print import _metal_print_write
 
 
@@ -91,6 +91,10 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit
+
+    comptime supports_atomic_rmw[dtype: DType]: Bool = (
+        bit_width_of[dtype, target=Self.target]() == 32
+    )
 
     comptime unary_math_fn[
         name: StaticString, dtype: DType, width: Int
