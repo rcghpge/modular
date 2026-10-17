@@ -18,7 +18,7 @@ from std.reflection import get_linkage_name, call_location, SourceLocation
 from std.sys.compile import DebugLevel, OptimizationLevel
 from std.sys import size_of
 
-from max.gpu.host.compile import _compile_code, get_gpu_target
+from max.gpu.host.compile import _compile_code
 
 from . import (
     Dim,

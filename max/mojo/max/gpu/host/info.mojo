@@ -18,6 +18,7 @@ memory specifications, thread organization, and performance characteristics.
 """
 
 
+from std.sys import CompilationTarget
 from std.sys.info import _TargetType, _accelerator_arch, _current_target
 
 
@@ -27,7 +28,6 @@ from std._gpu.host.info import (
     GPUInfo,
     NoGPU,
     TargetAccelerator,
-    get_gpu_target,
     is_accelerator,
     is_cpu,
     is_gpu,
@@ -121,6 +121,107 @@ from std._plugin.metal.metal_targets import (
     _metal_m1_target,
     _metal_m2_target,
 )
+
+# ===----------------------------------------------------------------------=== #
+# Accelerator target lookup
+# ===----------------------------------------------------------------------=== #
+
+
+# TODO(MOLIB-127): Move this out of the `max.gpu` module and somewhere more
+#   general. This is not limited to GPUs only.
+def default_accelerator() -> type_of(get_gpu_target()):
+    """Get the default accelerator target.
+
+    The default accelerator is determined automatically by the compiler, but
+    may be overridden by the `--target-accelerator` command line flag.
+
+    This function will always return the same value, whether called in host or
+    accelerator offload (`compile_info`) compilation context.
+
+    Constraints:
+        An accelerator target must be configured.
+
+    Returns:
+        A value representing the current accelerator target.
+    """
+    comptime current = CompilationTarget.current()
+
+    comptime accelerator = get_gpu_target()
+
+    # Note:
+    #   Defensively assert that there aren't multiple different accelerator
+    #   targets in play in a program that depends on calling
+    #   `default_accelerator()`. In theory, this should never be hit in
+    #   Mojo programs doing accelerator programming in the standard way,
+    #   without hard-coding targets, using the `--target-accelerator`.
+    comptime if current.is_accelerator():
+        # This function is being called from non-host code.
+        comptime assert current._eq_triple_and_arch[accelerator](), String(
+            __get_current_function_name(),
+            "() called while compiling for accelerator target '",
+            StaticString(current.__triple()),
+            "' (arch: '",
+            StaticString(current.__arch()),
+            "'), which is not the default accelerator '",
+            StaticString(accelerator.__triple()),
+            "' (arch: '",
+            StaticString(accelerator.__arch()),
+            (
+                "'). This divergence could mean subtle behavior differences"
+                " between host and accelerator code. The default accelerator"
+                " comes from `--target-accelerator` or the detected GPU, and"
+                " this function assumes a program only compiles for that one"
+                " accelerator. This may happens when code is offloaded with an"
+                " explicit `target` that differs from the default. In"
+                " accelerator-only code, use `current_accelerator()`, or pass"
+                " the target explicitly. This error may be overly cautious,"
+                " please file a bug if it blocks your progress."
+            ),
+        )
+
+    return {}
+
+
+@always_inline("builtin")
+def foldable_default_accelerator() -> type_of(get_gpu_target()):
+    """Get the default accelerator target. Suitable for use in parameter types
+    that must be parser foldable.
+
+    See `default_accelerator()` for more information.
+
+    Returns:
+        The default accelerator target.
+    """
+    return {}
+
+
+@always_inline("builtin")
+def get_gpu_target[
+    # TODO: Ideally this is an Optional[StaticString] but blocked by MOCO-1039
+    target_arch: StaticString = _accelerator_arch(),
+]() -> CompilationTarget[_mlir_value=_gpu_mlir_target[target_arch]()]:
+    """Gets the GPU target information for the specified architecture.
+
+    Parameters:
+        target_arch: GPU architecture name (defaults to current accelerator architecture).
+
+    Returns:
+        Target type information for the specified GPU architecture.
+    """
+    return {}
+
+
+# Must stay an ordinary (not builtin-inlined) function. The default
+# `accelerator_arch` is only resolved at elaboration time, so the table lookup
+# can't fold while types are parsed; inlining it would embed the whole
+# accelerator table in every type and symbol name that mentions the target.
+def _gpu_mlir_target[target_arch: StaticString]() -> _TargetType:
+    return TargetAccelerator.from_arch[target_arch].mlir_target
+
+
+# ===----------------------------------------------------------------------=== #
+# Other
+# ===----------------------------------------------------------------------=== #
 
 
 @inline(.always)

@@ -25,7 +25,7 @@ from max.algorithm.functional import (
     sync_parallelize,
 )
 from max.gpu import block_idx, thread_idx
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from max.gpu.host.info import is_cpu, is_valid_target
 from layout import (
     Coord,
@@ -108,11 +108,12 @@ def preferred_simd_width[dtype: DType]() -> Int:
     Parameters:
         dtype: Element type used to compute the SIMD scalar width.
     """
+    comptime target = default_accelerator()
     return (
         32
-        // size_of[dtype]() if CompilationTarget.default_accelerator()._is_arch[
-            "sm_100a"
-        ]() else simd_width_of[dtype, target=get_gpu_target()]()
+        // size_of[dtype]() if target._is_arch["sm_100a"]() else simd_width_of[
+            dtype, target=target
+        ]()
     )
 
 

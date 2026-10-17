@@ -74,10 +74,10 @@ from std.utils import Variant
 from std.utils._serialize import _serialize_elements
 from std.utils.static_tuple import StaticTuple
 
-from std._gpu.host import get_gpu_target
 from .info import _device_type_encoder_target, is_cpu
 from std._gpu.host.info import GPUInfo
 
+from max.gpu.host.info import get_gpu_target
 from max._plugin._overlay import max_default_accelerator
 
 from .compile import (

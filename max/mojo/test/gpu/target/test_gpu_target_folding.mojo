@@ -23,8 +23,9 @@
 # RUN: %mojo-build --emit object --target-accelerator gfx950 %s -o %t
 
 from std.sys.info import CompilationTarget
-from max.gpu.host.info import get_gpu_target
 from std.reflection import get_linkage_name
+
+from max.gpu.host.info import default_accelerator, get_gpu_target
 
 
 struct _Parameterized[target: CompilationTarget]:
@@ -32,7 +33,7 @@ struct _Parameterized[target: CompilationTarget]:
 
 
 def _takes_default_accelerator(
-    x: _Parameterized[CompilationTarget.default_accelerator()],
+    x: _Parameterized[default_accelerator()],
 ):
     pass
 

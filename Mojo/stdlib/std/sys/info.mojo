@@ -26,8 +26,6 @@ from std.builtin.variadics import _MLIR
 from std.collections.string.string_span import _get_kgen_string
 from std.ffi import _external_call_const, external_call
 
-from std._gpu.host.info import get_gpu_target
-
 from std._plugin.selector import TargetPluginSelector
 from std._plugin import StdPlugin, DefaultPlugin, PluginHooks
 
@@ -37,59 +35,6 @@ comptime _TargetType = __mlir_type.`!kgen.target`
 @inline(.nodebug)
 def _current_target() -> _TargetType:
     return __mlir_attr.`#kgen.param.expr<current_target> : !kgen.target`
-
-
-def default_accelerator() -> type_of(get_gpu_target()):
-    """Get the default accelerator target.
-
-    The default accelerator is determined automatically by the compiler, but
-    may be overridden by the `--target-accelerator` command line flag.
-
-    This function will always return the same value, whether called in host or
-    accelerator offload (`compile_info`) compilation context.
-
-    Constraints:
-        An accelerator target must be configured.
-
-    Returns:
-        A value representing the current accelerator target.
-    """
-    comptime current = CompilationTarget.current()
-
-    comptime accelerator = get_gpu_target()
-
-    # Note:
-    #   Defensively assert that there aren't multiple different accelerator
-    #   targets in play in a program that depends on calling
-    #   `default_accelerator()`. In theory, this should never be hit in
-    #   Mojo programs doing accelerator programming in the standard way,
-    #   without hard-coding targets, using the `--target-accelerator`.
-    comptime if current.is_accelerator():
-        # This function is being called from non-host code.
-        comptime assert current._eq_triple_and_arch[accelerator](), String(
-            __get_current_function_name(),
-            "() called while compiling for accelerator target '",
-            StaticString(current.__triple()),
-            "' (arch: '",
-            StaticString(current.__arch()),
-            "'), which is not the default accelerator '",
-            StaticString(accelerator.__triple()),
-            "' (arch: '",
-            StaticString(accelerator.__arch()),
-            (
-                "'). This divergence could mean subtle behavior differences"
-                " between host and accelerator code. The default accelerator"
-                " comes from `--target-accelerator` or the detected GPU, and"
-                " this function assumes a program only compiles for that one"
-                " accelerator. This may happens when code is offloaded with an"
-                " explicit `target` that differs from the default. In"
-                " accelerator-only code, use `current_accelerator()`, or pass"
-                " the target explicitly. This error may be overly cautious,"
-                " please file a bug if it blocks your progress."
-            ),
-        )
-
-    return {}
 
 
 def current_accelerator() -> type_of(CompilationTarget.current()):
@@ -188,7 +133,7 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
         such as `--target-triple`, `--target-cpu`, and `--target-features`.
 
     * Within an accelerator "offload" compilation, this is the accelerator
-        target, equivalent to `CompilationTarget.default_accelerator()`.
+        target, typically equivalent to `max.gpu.host.default_accelerator()`.
 
     Returns:
         A value representing the current compilation target.
@@ -196,21 +141,6 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
 
     comptime _unknown = CompilationTarget[_mlir_value=_empty_target]
     """Get an empty target configuration representing an unknown target."""
-
-    @staticmethod
-    @always_inline("builtin")
-    def default_accelerator() -> type_of(get_gpu_target()):
-        """Get the accelerator target.
-
-        This value is derived from the `--target-accelerator` command line flag.
-
-        Constraints:
-            An accelerator target must be configured.
-
-        Returns:
-            A value representing the current accelerator target.
-        """
-        return {}
 
     # ===-------------------------------------------------------------------===#
     # Methods
