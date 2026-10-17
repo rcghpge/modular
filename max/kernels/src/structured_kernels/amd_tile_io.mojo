@@ -44,13 +44,13 @@ DRAM↔register loaders:
                       Buffer-resource OOB clamping handles the M
                       boundary cleanly but cannot distinguish row/col
                       straddle, so use this only when N is BN-aligned
-                      and no fused lambda is needed.
+                      and no fused closure is needed.
     RegTileEpilogue - Per-lane epilogue writer with optional fused
-                      elementwise lambda. Caller passes
+                      elementwise closure. Caller passes
                       (m_global, n_global) per call; the writer
                       handles the fully-in-bounds chunk store, the
                       partial-chunk-straddling-N per-element fallback,
-                      and the lambda dispatch. Use this for any kernel
+                      and the closure dispatch. Use this for any kernel
                       that needs to support N-misaligned shapes or a
                       fused epilogue.
 
@@ -94,15 +94,6 @@ from layout.tensor_engine import DefaultEngine, TensorEngine
 from layout.tile_tensor import stack_allocation as tt_stack_allocation
 from std.itertools import product
 
-
-comptime elementwise_epilogue_type = def[
-    dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](Coord, SIMD[dtype, width]) capturing -> None
-"""Type alias for a fused elementwise epilogue lambda.
-
-Local legacy closure type; `linalg.utils` now only defines the value
-closure types (`ElementwiseEpilogueFn`, `ElementwiseComputeFn`).
-"""
 
 comptime _elementwise_epilogue_fn_signature = def[
     dtype: DType, width: SIMDLength, *, alignment: Int
@@ -2577,7 +2568,7 @@ struct RegTileWriter[
     SIMD chunk that straddles an N boundary (last column block when
     `N % BN != 0`) will spill into the next row of the same buffer
     instead of being clipped. Use `RegTileEpilogue` instead for kernels
-    that need to support N-misaligned shapes (or a fused lambda).
+    that need to support N-misaligned shapes (or a fused closure).
 
     Parameters:
         dtype: Element data type for DRAM destination.
@@ -2694,22 +2685,21 @@ struct RegTileWriter[
 struct RegTileEpilogue[
     c_type: DType,
     chunk_width: Int,
-    elementwise_lambda_fn: Optional[elementwise_epilogue_type] = None,
 ](TrivialRegisterPassable):
-    """Per-lane MFMA epilogue writer with optional fused elementwise lambda.
+    """Per-lane MFMA epilogue writer with optional fused elementwise closure.
 
-    Encapsulates the per-lane `(m_global, n_global) → store / lambda`
+    Encapsulates the per-lane `(m_global, n_global) → store / closure`
     handoff at the end of an AMD matmul kernel. Each `store()` call
     writes one SIMD chunk of `chunk_width` columns at a single row:
     the natural shape of an AMD MFMA output fragment for one lane.
 
     Per-lane bound handling:
     - In-bounds chunk (`n + chunk_width <= n_total`): one SIMD store
-      or one lambda call.
+      or one closure call.
     - Partial chunk (`n < n_total < n + chunk_width`): per-element
       fallback. The SIMD-of-`chunk_width` store would otherwise spill
       into the next row of the buffer (where stride==N), so we degrade
-      to up to `chunk_width` scalar stores or scalar lambda calls,
+      to up to `chunk_width` scalar stores or scalar closure calls,
       each gated on `col < n_total`. This is what makes the writer
       correct for N-misaligned outputs.
     - Fully OOB column (`n >= n_total`): skip silently.
@@ -2717,18 +2707,17 @@ struct RegTileEpilogue[
     The caller is responsible for the M bound check before calling
     `store()`: a split-K matmul kernel passes a workspace row that
     differs from the logical output row, so the writer cannot derive
-    a single M bound that applies to both DRAM and lambda modes.
+    a single M bound that applies to both DRAM and closure modes.
 
-    With `elementwise_lambda_fn=None` writes go to DRAM at
-    `c_ptr + m * row_stride + n` directly (no buffer-resource clamp;
-    the partial-chunk fallback gates by `n_total` explicitly). With a
-    lambda set the lambda receives global `(m, n)` and the SIMD chunk;
-    DRAM is left untouched. Lambda mode therefore requires the caller
-    to pass `m` as the LOGICAL output row, incompatible with a
-    per-split workspace write. Kernels that use both split-K and a
-    fused lambda should not set the lambda on the per-split matmul
-    kernel; instead run a non-fused split-K and apply the lambda in
-    the reduce kernel that consumes the partials.
+    `store` writes to DRAM at `c_ptr + m * row_stride + n` directly
+    (no buffer-resource clamp; the partial-chunk fallback gates by
+    `n_total` explicitly). `store_with_epilogue_fn` and
+    `store_with_compute_fn` hand the closure global `(m, n)` and the
+    SIMD chunk, so they require the caller to pass `m` as the LOGICAL
+    output row, incompatible with a per-split workspace write. Kernels
+    that use both split-K and a fused closure should not fuse it into
+    the per-split matmul kernel; instead run a non-fused split-K and
+    apply the closure in the reduce kernel that consumes the partials.
 
     Parameters:
         c_type: Output element type.
@@ -2738,7 +2727,6 @@ struct RegTileEpilogue[
             elements but they are spread across non-contiguous columns,
             so callers should fan out into per-element calls
             (`chunk_width = 1`) instead.
-        elementwise_lambda_fn: Optional fused epilogue.
     """
 
     var c_ptr_as_int: Int
@@ -2765,8 +2753,7 @@ struct RegTileEpilogue[
         For split-K matmul kernels: `dst` is the
         `(num_splits * M, N)` workspace; `m` in `store()` is the
         workspace row (`split_id * M + pid_m * BM + ...`). Callers
-        must keep `elementwise_lambda_fn` unset in that case: see
-        the struct doc.
+        must use plain `store` in that case: see the struct doc.
 
         Args:
             dst: Destination DRAM tile (must be mutable).
@@ -2793,36 +2780,24 @@ struct RegTileEpilogue[
 
         The caller has already checked the M bound. If the chunk
         straddles `n_total` (a partial block at the column boundary)
-        the writer falls back to per-element stores or lambda calls.
+        the writer falls back to per-element stores.
 
         Args:
             v: SIMD value to write (already cast to `Self.c_type`).
             m: Destination row (DRAM row for split-K workspace, or
-                logical output row for non-split-K / reduce-kernel
-                lambda mode).
+                logical output row for non-split-K).
             n: Destination starting column. Caller has typically
                 offset by `lane_group * chunk_width` already.
         """
         if n + Self.chunk_width <= self.n_total:
-            comptime if case .Some(epilogue_fn) = Self.elementwise_lambda_fn:
-                epilogue_fn[
-                    alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
-                ](Coord(m, n), v)
-            else:
-                self._ptr().store[
-                    alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
-                ](m * self.row_stride + n, v)
+            self._ptr().store[
+                alignment=align_of[SIMD[Self.c_type, Self.chunk_width]]()
+            ](m * self.row_stride + n, v)
         elif n < self.n_total:
             for e in range(Self.chunk_width):
                 var col = n + e
                 if col < self.n_total:
-                    comptime if case .Some(ep) = Self.elementwise_lambda_fn:
-                        ep[alignment=align_of[Scalar[Self.c_type]]()](
-                            Coord(m, col),
-                            SIMD[Self.c_type, 1](v[e]),
-                        )
-                    else:
-                        self._ptr()[m * self.row_stride + col] = v[e]
+                    self._ptr()[m * self.row_stride + col] = v[e]
 
     @inline(.always)
     def store_with_epilogue_fn[
@@ -2838,7 +2813,7 @@ struct RegTileEpilogue[
         """Hand a SIMD chunk at `(m, n)` to `epilogue_fn` instead of dst.
 
         Same bound handling as `store`. `m` must be the logical output
-        row, and `elementwise_lambda_fn` must be unset.
+        row.
 
         Parameters:
             EpilogueFnType: Type of `epilogue_fn`.
@@ -2849,10 +2824,6 @@ struct RegTileEpilogue[
             m: Logical output row.
             n: Starting output column.
         """
-        comptime assert not Self.elementwise_lambda_fn, (
-            "store_with_epilogue_fn takes the epilogue as a value; leave"
-            " elementwise_lambda_fn unset"
-        )
         if n + Self.chunk_width <= self.n_total:
             epilogue_fn[
                 Self.c_type,
@@ -2883,7 +2854,7 @@ struct RegTileEpilogue[
         """Write `compute_fn((m, n), v)` at `(m, n)` of dst.
 
         Same bound handling as `store`. `m` must be the logical output
-        row, and `elementwise_lambda_fn` must be unset.
+        row.
 
         Parameters:
             ComputeFnType: Type of `compute_fn`.
@@ -2895,10 +2866,6 @@ struct RegTileEpilogue[
             m: Logical output row.
             n: Starting output column.
         """
-        comptime assert not Self.elementwise_lambda_fn, (
-            "store_with_compute_fn takes the epilogue as a value; leave"
-            " elementwise_lambda_fn unset"
-        )
         if n + Self.chunk_width <= self.n_total:
             comptime chunk_alignment = align_of[
                 SIMD[Self.c_type, Self.chunk_width]
