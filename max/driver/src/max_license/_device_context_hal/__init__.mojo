@@ -80,7 +80,12 @@ from max.gpu.host._hal.execution_config import (
 )
 from std.builtin.variadics import TypeList
 
-from max.gpu.host import ConstantMemoryMapping, Dim, LaunchAttribute
+from max.gpu.host import (
+    ConstantMemoryMapping,
+    Dim,
+    LaunchAttribute,
+    default_accelerator,
+)
 from max.gpu.host.device_attribute import DeviceAttribute
 from max.gpu.host.info import GPUInfo
 from max.gpu.host.func_attribute import Attribute, FuncAttribute
@@ -332,9 +337,9 @@ See `DeviceContextBase` for additional documentation.
 """
 
 
-struct DeviceContextBase[
-    target: CompilationTarget = CompilationTarget.default_accelerator()
-](ImplicitlyCopyable, RegisterPassable, _HALFunctionEnqueuer):
+struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
+    ImplicitlyCopyable, RegisterPassable, _HALFunctionEnqueuer
+):
     """Represents a single stream of execution on a particular accelerator
     (GPU).
 
@@ -679,7 +684,7 @@ struct DeviceContextBase[
             This device context cast to the default target.
         """
         comptime assert Self.target._eq_triple_and_arch[
-            CompilationTarget.default_accelerator()
+            default_accelerator()
         ](), String(
             t"using DeviceContext with non-default target is not supported fro"
             t"m: {call_location()}"
