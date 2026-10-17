@@ -1112,7 +1112,7 @@ struct TraitTensorTupleAddArray:
                 comptime assert conforms_to(type_of(outputs[k]), TileTensorable)
                 var zt = to_tile_tensor(outputs[k])
                 return rebind[OutputTile](
-                    TileTensor(zt.ptr, zt.layout.make_dynamic[.int64]())
+                    zt.reshape(zt.layout.make_dynamic[.int64]())
                 )
 
             def input_tile[k: Int]() {imm inputs} -> InputTile:
