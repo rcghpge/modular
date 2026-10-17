@@ -40,11 +40,16 @@ bf16, SWIZZLE_128B, M=N=K=128 so `num_chunks = BK // gran = 2` makes the
 chunk-inner ordering observable. B200-only (SM100), single CTA.
 """
 
-from std.sys import default_accelerator, size_of
+from std.sys import size_of
 
 from max.gpu import thread_idx, warp_id as get_warp_id
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
+from max.gpu.host import (
+    DeviceBuffer,
+    DeviceContext,
+    FuncAttribute,
+    default_accelerator,
+)
 from max.gpu.memory import external_memory
 from max.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
 from max.gpu.compute.arch.mma_nvidia_sm100 import mma_arrive

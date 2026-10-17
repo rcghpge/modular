@@ -15,10 +15,10 @@ from std.math import cbrt, inf, isinf, isnan, ldexp, max, nan
 from std.math import ulp as spacing
 from std.math.math import _call_libm
 from std.memory import bitcast
-from std.sys import bit_width_of, default_accelerator, simd_width_of
+from std.sys import bit_width_of, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import TestSuite, assert_equal, assert_true
 
 from std.utils.coord import Coord

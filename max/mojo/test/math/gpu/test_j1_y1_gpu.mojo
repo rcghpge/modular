@@ -13,11 +13,11 @@
 
 from std.math import exp, frexp, inf, isinf, isnan, j1, ldexp, nan, sqrt, y1
 from std.math.math import _call_libm
-from std.sys import default_accelerator, simd_width_of
+from std.sys import simd_width_of
 from std.utils.numerics import FPUtils
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import assert_equal, assert_true, TestSuite
 
 from std.utils.coord import Coord

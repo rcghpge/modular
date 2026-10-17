@@ -12,7 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.random import randint, randn, seed
-from std.sys import default_accelerator
 
 from max.algorithm import sync_parallelize
 from max.benchmark import bencher_iter_custom
@@ -27,7 +26,7 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from comm.sync import enable_p2p
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from layout import TileTensor, Idx, row_major
 from std.math import ceildiv
 from shmem.ep import (

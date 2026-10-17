@@ -28,10 +28,10 @@ from std.math import (
 )
 from std.math.math import _call_libm
 from std.memory import bitcast
-from std.sys import default_accelerator, simd_width_of
+from std.sys import simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import TestSuite, assert_equal
 
 from std.utils.coord import Coord

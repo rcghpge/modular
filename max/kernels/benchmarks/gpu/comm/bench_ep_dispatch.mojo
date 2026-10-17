@@ -43,7 +43,7 @@ Correctness is not checked here; `test_p2p_ep_dispatch.mojo` owns that.
 
 from std.os import getenv
 from std.random import random_float64, seed
-from std.sys import get_defined_int, default_accelerator
+from std.sys import get_defined_int
 
 
 # Routing mode is read at run time, not baked in: measuring an optimization
@@ -89,7 +89,7 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from comm.sync import enable_p2p
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from layout import TileTensor, Idx, row_major
 from std.math import ceildiv
 from shmem.ep import (

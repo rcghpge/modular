@@ -13,10 +13,10 @@
 
 from std.math import erf, exp2, inf, isinf, isnan, nan
 from std.math.math import _call_libm
-from std.sys import bit_width_of, default_accelerator, simd_width_of
+from std.sys import bit_width_of, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import assert_true, TestSuite
 
 from std.utils.coord import Coord

@@ -17,10 +17,9 @@ from std.sys.info import simd_width_of
 from std.algorithm import vectorize
 from std.complex import ComplexSIMD
 from max.gpu import global_idx
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import assert_equal
 
-from std.sys import default_accelerator
 from layout import TileTensor, row_major
 
 comptime float_type = DType.float32 if default_accelerator().is_apple_gpu() else DType.float64

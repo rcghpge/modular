@@ -29,7 +29,6 @@ from std.sys import (
     align_of,
     get_defined_bool,
     has_amd_rdna_gpu_accelerator,
-    default_accelerator,
     is_amd_gpu,
     is_nvidia_gpu,
     simd_width_of,
@@ -56,7 +55,7 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceContext, DeviceBuffer
+from max.gpu.host import DeviceContext, DeviceBuffer, default_accelerator
 from max.gpu.host import Dim as LaunchDim
 from max.gpu.host import FuncAttribute
 from max.gpu.host.info import A100, H100, GPUInfo, _is_sm10x_gpu

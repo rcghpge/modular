@@ -23,7 +23,7 @@ from std.benchmark import (
     BenchMetric,
     ThroughputMeasure,
 )
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from internal_utils import arg_parse
 
 from layout import Coord, Idx, TileTensor, coord_to_index_list, row_major
@@ -38,7 +38,6 @@ from std.testing import assert_almost_equal, assert_equal
 
 from std.utils import IndexList
 from std.sys import (
-    default_accelerator,
     size_of,
     get_defined_int,
     get_defined_bool,

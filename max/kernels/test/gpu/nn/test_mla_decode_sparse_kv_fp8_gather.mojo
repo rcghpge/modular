@@ -43,9 +43,8 @@ covered by `test_mla_decode_sparse_kv_fp8.mojo` and friends.
 
 from std.math import ceildiv, exp, isnan
 from std.memory import bitcast
-from std.sys import default_accelerator
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from internal_utils.fp8_utils import cast_saturating
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (

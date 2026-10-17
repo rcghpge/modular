@@ -26,7 +26,6 @@ from std.sys import (
     align_of,
     get_defined_bool,
     get_defined_int,
-    default_accelerator,
     is_amd_gpu,
     is_nvidia_gpu,
     simd_width_of,
@@ -36,7 +35,7 @@ from std.sys.info import _accelerator_arch
 
 from std.bit import prev_power_of_two
 from max.gpu import WARP_SIZE, lane_id
-from max.gpu.host import DeviceBuffer
+from max.gpu.host import DeviceBuffer, default_accelerator
 from max.gpu.host.nvidia.tma import TensorMapSwizzle
 from layout import (
     Coord,

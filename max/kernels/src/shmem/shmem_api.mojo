@@ -22,7 +22,6 @@ The headings below corrosspond to section 9: OpenSHMEM Library API.
 from std.os import getenv
 from std.sys import (
     CompilationTarget,
-    default_accelerator,
     is_amd_gpu,
     is_nvidia_gpu,
     size_of,
@@ -33,6 +32,7 @@ from max.gpu.host import (
     DeviceContext,
     DeviceFunction,
     DeviceStream,
+    default_accelerator,
 )
 from max.gpu.host._nvidia_cuda import CUDA, CUDA_MODULE
 from max.gpu.host._amdgpu_hip import HIP, HIP_MODULE

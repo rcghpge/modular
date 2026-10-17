@@ -77,14 +77,19 @@ B200-only (SM100 TMA). Single block / single elected thread, no cluster setup.
 
 from max.gpu import thread_idx
 from max.gpu.sync import barrier
-from max.gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
+from max.gpu.host import (
+    DeviceBuffer,
+    DeviceContext,
+    FuncAttribute,
+    default_accelerator,
+)
 from max.gpu.memory import (
     cp_async_bulk_tensor_shared_cluster_global,
     external_memory,
 )
 from max.gpu.host.nvidia.tma import TensorMapSwizzle, create_tma_descriptor
 from std.memory import unsafe_memset_zero, unsafe_stack_allocation
-from std.sys import default_accelerator, size_of
+from std.sys import size_of
 from std.utils.index import Index, IndexList
 
 from layout import UNKNOWN_VALUE, coord, row_major

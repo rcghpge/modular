@@ -70,7 +70,8 @@
 
 from std.compile import compile_info
 from std.sys import get_defined_string
-from std.sys.info import current_accelerator, default_accelerator
+from std.sys.info import current_accelerator
+from max.gpu.host import default_accelerator
 from max.gpu.host.info import GPUInfo, TargetAccelerator, get_gpu_target
 
 

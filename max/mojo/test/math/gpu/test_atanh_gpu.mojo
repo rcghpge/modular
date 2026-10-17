@@ -15,10 +15,10 @@ from std.math import atanh, frexp, inf, isinf, isnan, nan, nextafter
 from std.math.math import _call_libm, _frexp_bits
 from std.memory import bitcast
 from std.sys import simd_width_of
-from std.sys.info import bit_width_of, default_accelerator
+from std.sys.info import bit_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.utils.numerics import FPUtils
 from std.testing import assert_equal, assert_true, TestSuite
 

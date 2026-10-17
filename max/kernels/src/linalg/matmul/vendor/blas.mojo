@@ -18,7 +18,7 @@ types that abstract over the NVIDIA and AMD vendor libraries so callers can
 dispatch GEMM operations without binding to a specific vendor API.
 """
 
-from std.sys import default_accelerator, size_of
+from std.sys import size_of
 from std.math import ceildiv
 from std.ffi import _get_global_or_null, external_call
 
@@ -94,7 +94,7 @@ from _rocblas.rocblas import (
     rocblas_create_handle,
     rocblas_destroy_handle,
 )
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from max.gpu.host._kernel_load_gate import KernelLoadScope
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA

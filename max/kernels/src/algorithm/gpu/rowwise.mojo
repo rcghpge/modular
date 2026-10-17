@@ -47,7 +47,7 @@ from max.gpu import (
     warp_id,
 )
 from max.gpu import barrier, syncwarp
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from max.gpu.primitives import block
 from max.gpu.primitives import warp
 from max.gpu.primitives.grid_controls import (
@@ -59,7 +59,7 @@ from std.math import ceildiv
 from std.math.uutils import udivmod
 from std.memory import UnsafePointer, stack_allocation
 from std.sys import size_of, get_defined_int
-from std.sys.info import default_accelerator, is_apple_gpu
+from std.sys.info import is_apple_gpu
 from std.utils.coord import Coord, DynamicCoord, coord_to_index_list
 from std.utils.static_tuple import StaticTuple
 

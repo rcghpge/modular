@@ -18,7 +18,7 @@ broadcast collectives, along with communicator initialization helpers and
 availability probes.
 """
 
-from std.sys import simd_width_of, size_of, default_accelerator
+from std.sys import simd_width_of, size_of
 from std.pathlib import Path
 from max.algorithm import elementwise
 from std.ffi import _get_global_or_null, external_call
@@ -29,7 +29,7 @@ from std.collections.optional import Optional
 from layout import TensorLayout, TileTensor, row_major
 from std.memory.unsafe_pointer import unsafe_cast
 from std.memory.alloc import Layout as AllocLayout
-from max.gpu.host import DeviceContext, DeviceBuffer
+from max.gpu.host import DeviceContext, DeviceBuffer, default_accelerator
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
 from comm import MAX_GPUS, Signal

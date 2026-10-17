@@ -12,7 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 """Implements tensor indexing and gather kernels with FP8 quantization support on Blackwell and AMD CDNA4 GPUs."""
 from std.math.uutils import ufloordiv, udivmod
-from std.sys import default_accelerator, size_of, simd_width_of
+from std.sys import size_of, simd_width_of
 from std.sys.info import (
     _accelerator_arch,
     _cdna_4_or_newer,
@@ -32,7 +32,7 @@ from layout.tile_tensor import ImmTileTensor, MutTileTensor
 from layout.tile_layout import row_major
 from max.gpu import WARP_SIZE, block_idx, lane_id, thread_idx
 from max.gpu.compute.mma import mma as gpu_mma
-from max.gpu.host import DeviceContext, FuncAttribute
+from max.gpu.host import DeviceContext, FuncAttribute, default_accelerator
 from max.gpu.intrinsics import permlane_swap
 from max.gpu.sync import barrier
 from max.gpu.memory import external_memory

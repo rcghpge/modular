@@ -20,9 +20,8 @@ that agreed bit for bit would mean the parameter selected nothing.
 """
 
 from std.math import ceildiv, sqrt
-from std.sys import default_accelerator
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from max.gpu.host.info import _is_sm10x_gpu
 from internal_utils.fp8_utils import cast_saturating
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection

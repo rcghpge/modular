@@ -14,10 +14,9 @@
 from std.math import frexp, inf, isinf, isnan, lgamma, max, nan
 from std.math.math import _call_libm
 from std.sys import simd_width_of
-from std.sys.info import default_accelerator
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from std.testing import TestSuite
 from test_utils.math import (
     lgamma_bit_refs,

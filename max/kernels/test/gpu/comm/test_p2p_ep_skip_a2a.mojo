@@ -20,9 +20,9 @@ and that the combine kernel produces the expected weighted reduction:
 """
 
 from std.random import randint, randn, seed
-from std.sys import default_accelerator, size_of
+from std.sys import size_of
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from layout import Coord, TileTensor, Idx, row_major
 from shmem.ep import (
     ep_fused_dispatch_kernel_api,

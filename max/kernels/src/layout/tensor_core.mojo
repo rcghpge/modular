@@ -49,7 +49,6 @@ from std.math import align_down
 from std.math.uutils import umod, ufloordiv
 from std.sys import (
     align_of,
-    default_accelerator,
     is_amd_gpu,
     is_nvidia_gpu,
     simd_width_of,
@@ -71,6 +70,7 @@ from max.gpu import (
     lane_id,
     thread_idx,
 )
+from max.gpu.host import default_accelerator
 from max.gpu.intrinsics import lop
 from max.gpu.compute.mma import (
     get_amd_bf8_dtype,

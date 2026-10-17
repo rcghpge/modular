@@ -12,11 +12,11 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import isnan, remainder
-from std.sys import default_accelerator, simd_width_of
+from std.sys import simd_width_of
 from std.utils.numerics import FPUtils
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from std.testing import TestSuite
 from test_utils.math import (
     PairMode,

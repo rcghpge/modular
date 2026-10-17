@@ -26,7 +26,6 @@ from nn.attention.mha_utils import DynamicInt, MHA_PDL_LEVEL
 from std.math.constants import log2e
 from std.sys import (
     align_of,
-    default_accelerator,
     get_defined_int,
     simd_width_of,
     size_of,
@@ -65,6 +64,7 @@ from max.gpu.host import (
     FuncAttribute,
     DeviceBuffer,
     Dim as LaunchDim,
+    default_accelerator,
 )
 from max.gpu.host.info import A100, H100, _is_sm10x_gpu
 from max.gpu.memory import (

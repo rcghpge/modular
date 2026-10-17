@@ -15,7 +15,6 @@ from std.sys import (
     get_defined_bool,
     get_defined_dtype,
     get_defined_int,
-    default_accelerator,
 )
 
 import linalg.matmul.vendor.blas as vendor_blas
@@ -28,7 +27,7 @@ from std.benchmark import (
     ThroughputMeasure,
 )
 from max.gpu import global_idx, grid_dim, block_dim, thread_idx, block_idx
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from max.gpu.primitives import block
 from internal_utils import (
     CacheBustingBuffer,

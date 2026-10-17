@@ -34,11 +34,16 @@ owns the numerics, this one owns the wiring.
 """
 
 from std.memory import bitcast
-from std.sys import default_accelerator, simd_width_of, size_of
+from std.sys import simd_width_of, size_of
 from std.testing import assert_equal, assert_true
 from std.utils.index import Index
 
-from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
+from max.gpu.host import (
+    DeviceBuffer,
+    DeviceContext,
+    get_gpu_target,
+    default_accelerator,
+)
 from layout import Coord, TileTensor, row_major
 
 from comm import Signal, group_end, group_start

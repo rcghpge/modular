@@ -20,14 +20,13 @@ from std.ffi import _external_call_const
 from std.math import align_up, inf, isinf, isnan, nan, scalb, trunc
 from std.sys import (
     CompilationTarget,
-    default_accelerator,
     simd_width_of,
     size_of,
 )
 from std.utils.numerics import FPUtils, max_finite
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from std.testing import TestSuite, assert_true
 
 from std.utils.coord import Coord

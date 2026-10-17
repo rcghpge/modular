@@ -26,12 +26,16 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.memory import async_copy_wait_all
-from max.gpu.host import DeviceContext, DeviceBuffer, get_gpu_target
+from max.gpu.host import (
+    DeviceContext,
+    DeviceBuffer,
+    get_gpu_target,
+    default_accelerator,
+)
 from layout import Layout, LayoutTensor, print_layout
 from std.memory import Pointer
 from std.sys import has_accelerator
 from std.sys.info import (
-    default_accelerator,
     is_nvidia_gpu,
     simd_width_of,
 )

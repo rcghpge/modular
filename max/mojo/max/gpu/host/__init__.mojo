@@ -16,6 +16,10 @@
 @__doc_inline
 from std._gpu.host import get_gpu_target
 
+
+@__doc_inline
+from std.sys import default_accelerator
+
 from .constant_memory_mapping import ConstantMemoryMapping
 from .device_attribute import DeviceAttribute
 from .device_context import (

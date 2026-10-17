@@ -20,7 +20,7 @@ from std.ffi import (
     c_int,
     RTLD,
 )
-from std.sys import default_accelerator
+from max.gpu.host import default_accelerator
 
 # ===-----------------------------------------------------------------------===#
 # Library Load

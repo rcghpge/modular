@@ -30,9 +30,8 @@ fused output matches the two-step output bit for bit.
 
 from std.math import ceildiv
 from std.memory import bitcast
-from std.sys import default_accelerator
 
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import Idx, TileTensor, row_major
 from layout.tile_layout import Layout as TileLayout

@@ -18,10 +18,10 @@
 # correctly rounded (MPFR via mpmath).
 
 from std.math import inf, isfinite, isnan, j0, j1, nan, y0, y1
-from std.sys import bit_width_of, default_accelerator, simd_width_of
+from std.sys import bit_width_of, simd_width_of
 
 from max.algorithm.functional import elementwise
-from max.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import TestSuite, assert_false, assert_true
 
 from std.utils.coord import Coord
