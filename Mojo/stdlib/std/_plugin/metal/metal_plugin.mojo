@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std._gpu.primitives.id import _GPUIdPluginHookFnType
+from std.math.uutils import ufloordiv
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
@@ -37,6 +39,50 @@ def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
     Metal kernels have a single os_log stream, so `file` is ignored.
     """
     _metal_print_write(StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul()))
+
+
+@inline(.always)
+def _air_read[intrinsic: StaticString, dtype: DType]() -> Int:
+    return Int(
+        llvm_intrinsic[intrinsic, Scalar[dtype], has_side_effect=False]()
+    )
+
+
+@inline(.always)
+def _air_gpu_id[name: StaticString, dim: StaticString]() -> Int:
+    """Reads the GPU index or size `name` along `dim` from its `air.*`
+    intrinsic.
+    """
+    comptime if name == "lane_id":
+        return _air_read["llvm.air.thread_index_in_simdgroup", DType.int32]()
+    elif name == "thread_idx":
+        return _air_read[
+            get_static_string[
+                "llvm.air.thread_position_in_threadgroup.", dim
+            ](),
+            DType.uint32,
+        ]()
+    elif name == "block_idx":
+        return _air_read[
+            get_static_string["llvm.air.threadgroup_position_in_grid.", dim](),
+            DType.uint32,
+        ]()
+    elif name == "block_dim":
+        return _air_read[
+            get_static_string["llvm.air.threads_per_threadgroup.", dim](),
+            DType.int32,
+        ]()
+    else:
+        comptime assert name == "grid_dim", "unknown GPU id"
+        # Metal reports the grid size in threads; the other backends count
+        # blocks.
+        return ufloordiv(
+            _air_read[
+                get_static_string["llvm.air.threads_per_grid.", dim](),
+                DType.int32,
+            ](),
+            _air_gpu_id["block_dim", dim](),
+        )
 
 
 def _has_air_op[name: StaticString, dtype: DType]() -> Bool:
@@ -88,6 +134,10 @@ struct MetalPlugin(StdPlugin):
 
 
 struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
+    comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
+        _GPUIdPluginHookFnType
+    ] = _air_gpu_id[name, dim]
+
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit

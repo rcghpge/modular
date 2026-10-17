@@ -23,6 +23,7 @@ from std.math.math import (
 )
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
+from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
 from std.collections.string.string_span import (
     _get_kgen_string,
@@ -233,6 +234,25 @@ trait PluginHooks:
 
     Returns:
         The raw integer address used to construct the dangling pointer.
+    """
+
+    # ===------------------------------------------------------------------=== #
+    # GPU Operations
+    # ===------------------------------------------------------------------=== #
+
+    comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
+        _GPUIdPluginHookFnType
+    ] = None
+    """Reads a GPU execution index or size.
+
+    `lane_id`, `thread_idx`, `block_idx`, `block_dim`, and `grid_dim` consult
+    this hook first, and fall back to their NVIDIA and AMD lowerings when it
+    is `None`. The hook must inline into the kernel.
+
+    Parameters:
+        name: One of `"lane_id"`, `"thread_idx"`, `"block_idx"`,
+            `"block_dim"`, or `"grid_dim"`.
+        dim: `"x"`, `"y"`, or `"z"`; empty for `"lane_id"`.
     """
 
     # ===------------------------------------------------------------------=== #

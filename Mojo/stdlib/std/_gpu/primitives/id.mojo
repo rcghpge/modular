@@ -21,16 +21,19 @@ Most functionality is architecture-agnostic, with some NVIDIA-specific features 
 The module is designed to work seamlessly across different GPU architectures while providing
 optimal performance through hardware-specific optimizations where applicable."""
 
-from std.math.uutils import ufloordiv
+from std._plugin import CurrentPlugin
 from std.sys import llvm_intrinsic
 from std.sys.info import (
     CompilationTarget,
     _is_sm_9x_or_newer,
     is_amd_gpu,
-    is_apple_gpu,
     is_gpu,
     is_nvidia_gpu,
 )
+
+
+comptime _GPUIdPluginHookFnType = def() thin -> Int
+"""Plugin-hook signature for `PluginHooks.gpu_id_fn`."""
 
 
 # ===-----------------------------------------------------------------------===#
@@ -81,7 +84,10 @@ def lane_id() -> Int:
 def _lane_id() -> Int:
     comptime assert is_gpu(), "This function only applies to GPUs."
 
-    comptime if is_nvidia_gpu():
+    comptime hook = CurrentPlugin.gpu_id_fn["lane_id", ""]
+    comptime if hook:
+        return comptime (hook.value())()
+    elif is_nvidia_gpu():
         var i = llvm_intrinsic[
             "llvm.nvvm.read.ptx.sreg.laneid",
             Int32,
@@ -98,14 +104,6 @@ def _lane_id() -> Int:
         var i = llvm_intrinsic[
             "llvm.amdgcn.mbcnt.hi", Int32, has_side_effect=False
         ](none, t)
-        return Int(i)
-
-    elif is_apple_gpu():
-        var i = llvm_intrinsic[
-            "llvm.air.thread_index_in_simdgroup",
-            Int32,
-            has_side_effect=False,
-        ]()
         return Int(i)
 
     else:
@@ -135,8 +133,6 @@ struct _ThreadIdx(Defaultable, TrivialRegisterPassable):
             return "llvm.nvvm.read.ptx.sreg.tid." + dim
         elif is_amd_gpu():
             return "llvm.amdgcn.workitem.id." + dim
-        elif is_apple_gpu():
-            return "llvm.air.thread_position_in_threadgroup." + dim
         else:
             CompilationTarget.unsupported_target_error[
                 operation=__get_current_function_name(),
@@ -150,9 +146,15 @@ struct _ThreadIdx(Defaultable, TrivialRegisterPassable):
             The `x`, `y`, or `z` coordinates of a thread within a block.
         """
         _verify_xyz[dim]()
-        comptime intrinsic_name = Self._get_intrinsic_name[dim]()
-        var i = llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
-        return Int(i)
+        comptime hook = CurrentPlugin.gpu_id_fn["thread_idx", dim]
+        comptime if hook:
+            return comptime (hook.value())()
+        else:
+            comptime intrinsic_name = Self._get_intrinsic_name[dim]()
+            var i = llvm_intrinsic[
+                intrinsic_name, UInt32, has_side_effect=False
+            ]()
+            return Int(i)
 
 
 comptime thread_idx = _ThreadIdx()
@@ -180,8 +182,6 @@ struct _BlockIdx(Defaultable, TrivialRegisterPassable):
             return "llvm.nvvm.read.ptx.sreg.ctaid." + dim
         elif is_amd_gpu():
             return "llvm.amdgcn.workgroup.id." + dim
-        elif is_apple_gpu():
-            return "llvm.air.threadgroup_position_in_grid." + dim
         else:
             CompilationTarget.unsupported_target_error[
                 operation=__get_current_function_name(),
@@ -195,9 +195,15 @@ struct _BlockIdx(Defaultable, TrivialRegisterPassable):
             The `x`, `y`, or `z` coordinates of a block within a grid.
         """
         _verify_xyz[dim]()
-        comptime intrinsic_name = Self._get_intrinsic_name[dim]()
-        var i = llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
-        return Int(i)
+        comptime hook = CurrentPlugin.gpu_id_fn["block_idx", dim]
+        comptime if hook:
+            return comptime (hook.value())()
+        else:
+            comptime intrinsic_name = Self._get_intrinsic_name[dim]()
+            var i = llvm_intrinsic[
+                intrinsic_name, UInt32, has_side_effect=False
+            ]()
+            return Int(i)
 
 
 comptime block_idx = _BlockIdx()
@@ -225,17 +231,13 @@ struct _BlockDim(Defaultable, TrivialRegisterPassable):
         """
         _verify_xyz[dim]()
 
-        comptime if is_nvidia_gpu():
+        comptime hook = CurrentPlugin.gpu_id_fn["block_dim", dim]
+        comptime if hook:
+            return comptime (hook.value())()
+        elif is_nvidia_gpu():
             comptime intrinsic_name = "llvm.nvvm.read.ptx.sreg.ntid." + dim
             var i = llvm_intrinsic[
                 intrinsic_name, Int32, has_side_effect=False
-            ]()
-            return Int(i)
-        elif is_apple_gpu():
-            var i = llvm_intrinsic[
-                "llvm.air.threads_per_threadgroup." + dim,
-                Int32,
-                has_side_effect=False,
             ]()
             return Int(i)
         elif is_amd_gpu():
@@ -286,7 +288,10 @@ struct _GridDim(Defaultable, TrivialRegisterPassable):
         """
         _verify_xyz[dim]()
 
-        comptime if is_nvidia_gpu():
+        comptime hook = CurrentPlugin.gpu_id_fn["grid_dim", dim]
+        comptime if hook:
+            return comptime (hook.value())()
+        elif is_nvidia_gpu():
             comptime intrinsic_name = "llvm.nvvm.read.ptx.sreg.nctaid." + dim
             var i = llvm_intrinsic[
                 intrinsic_name, Int32, has_side_effect=False
@@ -305,16 +310,6 @@ struct _GridDim(Defaultable, TrivialRegisterPassable):
                         return 2
 
             return Int(_get_gcn_idx[_get_offset(), DType.uint32]())
-        elif is_apple_gpu():
-            comptime intrinsic_name = "llvm.air.threads_per_grid." + dim
-            var gridDim = Int(
-                llvm_intrinsic[intrinsic_name, Int32, has_side_effect=False]()
-            )
-            # Metal passes grid dimension as a gridDim.dim * blockDim.dim.
-            # To make things compatible with NVidia and AMDGPU, divide result
-            # by block_dim.dim
-            var i = ufloordiv(gridDim, block_dim.__getattr_param__[dim]())
-            return Int(i)
         else:
             CompilationTarget.unsupported_target_error[
                 operation=__get_current_function_name(),
