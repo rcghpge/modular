@@ -6,7 +6,7 @@
 // `OutputTensor` (`ManagedTensorSlice`), while its two inputs carry the
 // composable tensor-argument traits (`Some[Input & DenseTensor]`). Both the
 // legacy write path (`OutputTensor.__setitem__`) and the trait read path
-// (`to_tile_tensor(...).raw_load`) fire in the same emitted kernel. With
+// (`to_tile_tensor(...)` loads) fire in the same emitted kernel. With
 // all-ones inputs, `z[i] = x[i] + y[i]` must return all 2.
 
 // CHECK: 'trait_mixed_legacy_out_add_graph' returned tensor<4xf32> [2.000000e+00, 2.000000e+00, 2.000000e+00, 2.000000e+00]
