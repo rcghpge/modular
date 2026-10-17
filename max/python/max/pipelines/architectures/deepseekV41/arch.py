@@ -47,4 +47,6 @@ deepseekV41_arch = SupportedArchitecture(
     # reserves room for them.
     checkpoint_draft_width=dspark_draft_width,
     reasoning_parser="deepseekv4",
+    # TODO(ENABLE-3069): remove once activation memory is properly bounded
+    required_arguments={"max_length": 40000},
 )
