@@ -17,89 +17,20 @@ other GPU kernel implementations. They depend only on `layout` and stdlib,
 making them safe to import without pulling in higher-level kernel packages.
 
 Types:
-- SMemTile: Shared memory tile
-- RegTile: Register tile
 - SMemBarrier: Pointer to shared memory barrier
 - PipelineBarrier: Array of pipeline barriers
-- SMemTileArray: Array of shared memory tiles
 - SMemArray: Generic shared memory array
 - SMemPtr: Typed pointer into shared memory
 - eval: Compile-time expression evaluator
 
-Retained legacy: SMemTile and RegTile are still backed by the legacy tile
-type. Their consumers across linalg/, nn/attention/, and test/ construct
-them from raw pointers and pass them to legacy-only APIs, and many of those
-files are owned by other migration waves, so the aliases cannot be flipped
-to TileTensor until those consumers migrate. New code should prefer the
-native TileTensor-based SMemTile in structured_kernels.tile_types.
+Shared-memory and register tiles are `TileTensor`s; see
+`structured_kernels.tile_types` for the tile and tile-array helpers.
 """
 
 from std.sys import align_of, size_of
 
-from layout import Layout, LayoutTensor, lt_to_tt
-from layout.int_tuple import _get_index_type, _get_layout_type
 from layout.tma_async import SharedMemBarrier
 from std.memory import unsafe_stack_allocation
-
-
-comptime SMemTile[
-    _dtype: DType,
-    layout: Layout,
-    /,
-    *,
-    element_layout: Layout = Layout(1, 1),
-    layout_int_type: DType = _get_layout_type(layout, .SHARED),
-    linear_idx_type: DType = _get_index_type(layout, .SHARED),
-    masked: Bool = False,
-    alignment: Int = align_of[_dtype](),
-] = LayoutTensor[
-    _dtype,
-    layout,
-    MutAnyOrigin,
-    address_space=.SHARED,
-    element_layout=element_layout,
-    layout_int_type=layout_int_type,
-    linear_idx_type=linear_idx_type,
-    masked=masked,
-    alignment=alignment,
-]
-"""Type alias for shared memory tile tensors."""
-
-comptime RegTile[
-    _dtype: DType,
-    layout: Layout,
-    /,
-    *,
-    element_layout: Layout = Layout(1, 1),
-    layout_int_type: DType = _get_layout_type(layout, .LOCAL),
-    linear_idx_type: DType = _get_index_type(layout, .LOCAL),
-    masked: Bool = False,
-    alignment: Int = align_of[_dtype](),
-] = LayoutTensor[
-    _dtype,
-    layout,
-    MutAnyOrigin,
-    address_space=.LOCAL,
-    element_layout=element_layout,
-    layout_int_type=layout_int_type,
-    linear_idx_type=linear_idx_type,
-    masked=masked,
-    alignment=alignment,
-]
-"""Type alias for register (local memory) tile tensors."""
-
-
-@inline(.always)
-def reg_tile_to_tile_tensor[
-    dtype: DType,
-    layout: Layout,
-](tile: RegTile[dtype, layout, ...]) -> type_of(lt_to_tt(tile)):
-    """Return a TileTensor view of a register tile.
-
-    Kept here so kernels that have moved to TileTensor do not need to
-    reference the legacy conversion helper directly.
-    """
-    return lt_to_tt(tile)
 
 
 comptime SMemBarrier = UnsafePointer[
@@ -111,103 +42,6 @@ comptime PipelineBarrier[num_pipeline_stages: Int] = SMemArray[
     SharedMemBarrier, num_pipeline_stages
 ]
 """Type alias for shared memory pipeline barrier array."""
-
-
-# TODO: This type should correctly propagate mutability.
-struct SMemTileArray[
-    dtype: DType,
-    layout: Layout,
-    num_tiles: Int,
-    alignment: Int,
-](TrivialRegisterPassable):
-    """Array of tiles in shared memory.
-
-    Parameters:
-        dtype: Tile data type.
-        layout: Tile layout configuration.
-        num_tiles: Number of tiles.
-        alignment: Memory alignment.
-    """
-
-    comptime Tile = SMemTile[
-        Self.dtype,
-        Self.layout,
-        alignment=Self.alignment,
-    ]
-
-    comptime num_elements = Self.layout.size() * Self.num_tiles
-
-    comptime storage_size = Self.num_elements * size_of[Self.dtype]()
-
-    comptime Storage = Array[Scalar[Self.dtype], Self.num_elements]
-
-    var ptr: UnsafePointer[
-        Scalar[Self.dtype], MutUntrackedOrigin, address_space=.SHARED
-    ]
-
-    def __init__(
-        ref[AddressSpace.SHARED] storage: Self.Storage,
-    ) -> Self:
-        """Initialize with Storage.
-
-        Args:
-            storage: Storage.
-        """
-        return Self(storage.unsafe_ptr())
-
-    def __init__(
-        out self,
-        # TODO: This should correctly propagate mutability.
-        unsafe_ptr: UnsafePointer[Scalar[Self.dtype], _, address_space=.SHARED],
-    ):
-        """Initialize with shared memory pointer.
-
-        Args:
-            unsafe_ptr: Shared memory pointer.
-        """
-        comptime assert (
-            Self.layout.all_dims_known()
-        ), "Layout must be known at compile time."
-
-        self.ptr = rebind[type_of(self.ptr)](unsafe_ptr)
-
-    @inline(.always)
-    def __getitem__[T: Intable](self, index: T) -> Self.Tile:
-        """Get tile at index.
-
-        Args:
-            index: Tile index.
-
-        Returns:
-            Tile at index.
-        """
-        return Self.Tile(
-            (
-                self.ptr + eval[Self.layout.size()] * Int(index)
-            ).as_unsafe_any_origin()
-        )
-
-    def slice[
-        length: Int
-    ](
-        self,
-        start: Int,
-        out result: SMemTileArray[
-            Self.dtype, Self.layout, length, Self.alignment
-        ],
-    ):
-        return type_of(result)(self.ptr + eval[Self.layout.size()] * start)
-
-    @inline(.always)
-    @staticmethod
-    def stack_allocation() -> Self:
-        var ptr = unsafe_stack_allocation[
-            Self.storage_size,
-            Self.dtype,
-            alignment=Self.alignment,
-            address_space=.SHARED,
-        ]()
-        return Self(ptr)
 
 
 struct SMemArray[type: TrivialRegisterPassable, size: Int](

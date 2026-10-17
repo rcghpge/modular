@@ -269,8 +269,8 @@ __extension HopperMatmulSM90Kernel:
             warpgroup_reg_alloc[232]()
 
             var local_warp_group_idx = warp_group_idx - 1
-            var c_reg_tile = Self.AccumRegTile.stack_allocation()
-            var final_c_reg_tile = Self.AccumRegTile.stack_allocation()
+            var c_reg_tile = Self.allocate_accum_reg_tile()
+            var final_c_reg_tile = Self.allocate_accum_reg_tile()
 
             Self.consumer_arrive_empty_barriers(warp_group_thread_idx, pipeline)
 

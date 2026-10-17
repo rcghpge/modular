@@ -49,8 +49,6 @@ from layout.tensor_engine import TensorEngine
 from layout.tile_io import copy_sram_to_dram
 from max.gpu.memory import fence_async_view_proxy
 from std.collections import OptionalReg
-from ....structuring import RegTile
-from structured_kernels.smem_types import reg_tile_to_tile_tensor
 from layout.swizzle import Swizzle
 from max.gpu import lane_id
 from max.gpu.globals import WARP_SIZE, WARPGROUP_SIZE
@@ -412,7 +410,7 @@ trait RegTileWriter(TrivialRegisterPassable):
     @inline(.always)
     def write_tile(
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         coords: Tuple[Int, Int],
     ) capturing -> None:
         """Write a register tile to memory.
@@ -588,7 +586,7 @@ struct FragmentToSMemWriter[
     @inline(.always)
     def write_tile(
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         coords: Tuple[Int, Int],
     ) capturing -> None:
         """Write accumulator tile from registers to shared memory.
@@ -651,8 +649,8 @@ struct FragmentToSMemWriter[
                 var reg_fragment = c_reg_tile.tile[1, elements_per_store](
                     m_frag, reg_fragment_idx
                 )
-                var frag_data = reg_fragment.load[elements_per_store](
-                    0, 0
+                var frag_data = reg_fragment.load[width=elements_per_store](
+                    (0, 0)
                 ).cast[Self.c_type]()
                 self._store_fragment[elements_per_store, m_frag, n_frag](
                     smem_frag, frag_data
@@ -671,8 +669,8 @@ struct FragmentToSMemWriter[
                 var reg_fragment = c_reg_tile.tile[1, elements_per_store](
                     m_frag, reg_fragment_idx
                 )
-                var frag_data = reg_fragment.load[elements_per_store](
-                    0, 0
+                var frag_data = reg_fragment.load[width=elements_per_store](
+                    (0, 0)
                 ).cast[Self.c_type]()
                 self._store_fragment[elements_per_store, m_frag, n_frag](
                     smem_frag, frag_data
@@ -777,7 +775,7 @@ struct RegisterToGMemWriter[
     @inline(.always)
     def write_tile(
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         coords: Tuple[Int, Int],
     ) capturing -> None:
         """Write a single MMA tile from registers to global memory.
@@ -800,7 +798,7 @@ struct RegisterToGMemWriter[
         has_compute_fn: Bool = False,
     ](
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         coords: Tuple[Int, Int],
         value_epilogue_fn: EpilogueFnType,
         value_compute_fn: ComputeFnType = no_compute_fn,
@@ -840,7 +838,7 @@ struct RegisterToGMemWriter[
     @inline(.always)
     def _write_direct_vectorized(
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         m_mma: Int,
         n_mma: Int,
         mma_id: Int,
@@ -857,7 +855,7 @@ struct RegisterToGMemWriter[
         # Direct copy using hardware layout
         copy_local_to_dram[row_major[8, 4]()](
             warp_tile.vectorize[1, 2](),
-            reg_tile_to_tile_tensor(c_frag).vectorize[1, 2](),
+            c_frag.vectorize[1, 2](),
         )
 
     @inline(.always)
@@ -870,7 +868,7 @@ struct RegisterToGMemWriter[
         has_compute_fn: Bool,
     ](
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         m_mma: Int,
         n_mma: Int,
         mma_id: Int,
@@ -940,7 +938,7 @@ struct RegisterToGMemWriter[
         has_compute_fn: Bool,
     ](
         gmem_frag: TileTensor[mut=True, Self.c_type, ...],
-        c_reg_frag: RegTile,
+        c_reg_frag: TileTensor[address_space=.LOCAL, ...],
         mma_id: Int,
         m: Int,
         n: Int,
@@ -971,7 +969,7 @@ struct RegisterToGMemWriter[
         has_compute_fn: Bool,
     ](
         self,
-        c_reg_tile: RegTile,
+        c_reg_tile: TileTensor[address_space=.LOCAL, ...],
         m_mma: Int,
         n_mma: Int,
         mma_id: Int,

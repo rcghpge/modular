@@ -82,7 +82,7 @@ from ....utils import (
 from ....utils_gpu import block_swizzle
 from ..tile_scheduler import RasterOrder
 from ..tile_scheduler_splitk import SplitKTileScheduler
-from ....structuring import RegTile
+from layout.tile_tensor import stack_allocation
 
 # Shared types from SM100 tile_types
 from structured_kernels.tile_types import (
@@ -349,9 +349,14 @@ struct HopperMatmulSM90Kernel[
     ) // Self.adjusted_num_pipeline_stages
     comptime TMABarrier = TMABarrierHandler[Self._tma_bytes_per_stage]
 
-    comptime AccumRegTile = RegTile[
+    comptime AccumRegTileLayout = row_major[
+        Self.num_m_mmas * Self.num_n_mmas, Self.c_frag_size
+    ]()
+    comptime AccumRegTile = TileTensor[
         Self.accum_type,
-        Layout.row_major(Self.num_m_mmas * Self.num_n_mmas, Self.c_frag_size),
+        type_of(Self.AccumRegTileLayout),
+        MutUntrackedOrigin,
+        address_space=.LOCAL,
     ]
 
     comptime cluster_size = Int(
@@ -519,6 +524,14 @@ struct HopperMatmulSM90Kernel[
 
     @staticmethod
     @inline(.always)
+    def allocate_accum_reg_tile() -> Self.AccumRegTile:
+        """Allocates one WGMMA accumulator tile in registers."""
+        return stack_allocation[Self.accum_type, address_space=.LOCAL](
+            Self.AccumRegTileLayout
+        )
+
+    @staticmethod
+    @inline(.always)
     def setup_consumer(
         warp_group_idx: Int,
     ) -> Tuple[Int, Self.AccumRegTile, Self.AccumRegTile]:
@@ -538,8 +551,8 @@ struct HopperMatmulSM90Kernel[
         warpgroup_reg_alloc[num_regs()]()
 
         var local_warp_group_idx = warp_group_idx - 1
-        var c_reg_tile = Self.AccumRegTile.stack_allocation()
-        var final_c_reg_tile = Self.AccumRegTile.stack_allocation()
+        var c_reg_tile = Self.allocate_accum_reg_tile()
+        var final_c_reg_tile = Self.allocate_accum_reg_tile()
 
         return (local_warp_group_idx, c_reg_tile, final_c_reg_tile)
 
@@ -1695,11 +1708,11 @@ struct HopperMatmulSM90Kernel[
             DType.float16,
         ), "Only support fp32 and fp16 data type in CUDA Core promotion"
         comptime assert (
-            len(c_reg_tile.layout) == 2
+            c_reg_tile.rank == c_reg_tile.flat_rank == 2
         ), "Only support 2D layout in CUDA Core promotion"
 
-        comptime num_mma = c_reg_tile.layout.shape[0].value()
-        comptime c_frag_size = c_reg_tile.layout.shape[1].value()
+        comptime num_mma = c_reg_tile.static_shape[0]
+        comptime c_frag_size = c_reg_tile.static_shape[1]
 
         # Add tensor core results to higher-precision accumulator
         comptime for mma_id in range(num_mma):

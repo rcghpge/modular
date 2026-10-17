@@ -30,7 +30,6 @@ from max.gpu import block_idx, grid_dim, thread_idx
 from layout import (
     Coord,
     DefaultEngine,
-    Layout,
     TensorEngine,
     TensorLayout,
     TileTensor,
@@ -42,8 +41,6 @@ from std.bit import log2_floor
 from std.utils.index import Index, IndexList
 
 from .tile_scheduler import RasterOrder, WorkInfo
-
-from ...structuring import RegTile
 
 
 @inline(.nodebug)
@@ -631,7 +628,7 @@ struct SplitKTileScheduler[
     @inline(.always)
     def reduction[
         accum_type: DType,
-        c_reg_layout: Layout,
+        c_reg_layout: TensorLayout,
         workspace_layout: TensorLayout,
         workspace_engine: TensorEngine,
     ](
@@ -639,7 +636,9 @@ struct SplitKTileScheduler[
         reduction_workspace: TileTensor[
             mut=True, accum_type, workspace_layout, _, Engine=workspace_engine
         ],
-        c_reg_tile: RegTile[accum_type, c_reg_layout],
+        c_reg_tile: TileTensor[
+            mut=True, accum_type, c_reg_layout, address_space=.LOCAL, ...
+        ],
         work_tile_info: WorkInfo,
         num_barriers: UInt32,
         warp_group_local_idx: UInt32,
@@ -776,7 +775,7 @@ struct SplitKTileScheduler[
     @inline(.always)
     def store_accumulator[
         accum_type: DType,
-        c_reg_layout: Layout,
+        c_reg_layout: TensorLayout,
         workspace_layout: TensorLayout,
         workspace_origin: MutOrigin,
         workspace_engine: TensorEngine,
@@ -788,7 +787,9 @@ struct SplitKTileScheduler[
             workspace_origin,
             Engine=workspace_engine,
         ],
-        c_reg_tile: RegTile[accum_type, c_reg_layout],
+        c_reg_tile: TileTensor[
+            mut=True, accum_type, c_reg_layout, address_space=.LOCAL, ...
+        ],
         reduction_tile_idx: UInt32,
         warp_group_local_idx: UInt32,
         warp_group_thread_idx: UInt32,
@@ -797,8 +798,8 @@ struct SplitKTileScheduler[
             accum_type == .float32
         ), "Only support float32 accumulator type"
 
-        comptime num_mma = c_reg_tile.layout.shape[0].value()
-        comptime c_frag_size = c_reg_tile.layout.shape[1].value()
+        comptime num_mma = c_reg_tile.static_shape[0]
+        comptime c_frag_size = c_reg_tile.static_shape[1]
         comptime slab_scalar_count = (
             Int(UInt32(workspace_layout.static_shape[1]) // Self.num_consumer)
             * workspace_layout.static_shape[2]
@@ -821,7 +822,7 @@ struct SplitKTileScheduler[
     @inline(.always)
     def reduce_add[
         accum_type: DType,
-        c_reg_layout: Layout,
+        c_reg_layout: TensorLayout,
         workspace_layout: TensorLayout,
         workspace_origin: MutOrigin,
         workspace_engine: TensorEngine,
@@ -836,7 +837,9 @@ struct SplitKTileScheduler[
             workspace_origin,
             Engine=workspace_engine,
         ],
-        c_reg_tile: RegTile[accum_type, c_reg_layout],
+        c_reg_tile: TileTensor[
+            mut=True, accum_type, c_reg_layout, address_space=.LOCAL, ...
+        ],
         reduction_tile_idx: UInt32,
         warp_group_local_idx: UInt32,
         warp_group_thread_idx: UInt32,
@@ -845,8 +848,8 @@ struct SplitKTileScheduler[
             accum_type == .float32
         ), "Only support float32 accumulator type"
 
-        comptime num_mma = c_reg_tile.layout.shape[0].value()
-        comptime c_frag_size = c_reg_tile.layout.shape[1].value()
+        comptime num_mma = c_reg_tile.static_shape[0]
+        comptime c_frag_size = c_reg_tile.static_shape[1]
         comptime slab_scalar_count = (
             Int(UInt32(workspace_layout.static_shape[1]) // Self.num_consumer)
             * workspace_layout.static_shape[2]
