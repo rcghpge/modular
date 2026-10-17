@@ -34,6 +34,14 @@ adapter changes the *storage* of the quantized tensors, which the reference's
   load; so does this adapter (exact).
 * everything else (bf16 / f32 / the int64 ``tid2eid`` tables) passes through.
 
+Last, projections that read the same input are stacked along N into one
+module weight, so each pair runs as one GEMM: ``attn.wq_a`` + ``attn.wkv`` ->
+``attn.wqa_wkv``, ``shared_experts.w1`` + ``w3`` -> ``w13``, and each
+compressor's ``wkv`` + ``wgate`` -> ``wkv_wgate``. The rows are concatenated
+after the storage conversion, the ``weight_scale`` block rows with them: every
+fp8 projection's N is a multiple of the 128-row scale block, so block ``i`` of
+the second projection lands at block ``N1 / 128 + i``, as its rows do.
+
 The adapter keys on the *stored* dtypes, so a dequantized f32 copy of the
 checkpoint passes through untouched and drives the dense f32 modules.
 
@@ -82,6 +90,17 @@ _FLOAT32_WEIGHTS = (
 )
 _FLOAT32_HEAD = "head.weight"
 
+_FP8_WEIGHT_BLOCK = 128
+
+# ``(first, second, stacked)`` module-name suffixes; ``stacked`` is
+# ``[first; second]`` along N. ``.attn.wkv`` does not match the compressors'
+# ``.compressor.wkv``.
+_STACKED_PROJECTIONS = (
+    (".attn.wq_a", ".attn.wkv", ".attn.wqa_wkv"),
+    (".shared_experts.w1", ".shared_experts.w3", ".shared_experts.w13"),
+    (".compressor.wkv", ".compressor.wgate", ".compressor.wkv_wgate"),
+)
+
 
 def as_uint8(data: DLPackArray) -> np.ndarray:
     """The raw bytes of a one-byte-per-element tensor (fp8, e8m0, int8)."""
@@ -111,6 +130,66 @@ def bfloat16_to_float32(weight: WeightData, name: str) -> WeightData:
     )
     bits = np.from_dlpack(buffer.view(DType.uint16)).astype(np.uint32) << 16
     return with_dtype(bits, DType.float32, name)
+
+
+def _row_bytes(weight: WeightData) -> np.ndarray:
+    """``weight``'s bytes as ``[N, row_bytes]`` uint8, whatever its dtype."""
+    buffer = (
+        weight.data
+        if isinstance(weight.data, Buffer)
+        else Buffer.from_dlpack(weight.data)
+    )
+    rows = int(weight.shape[0])
+    width = buffer.num_elements * buffer.element_size // rows
+    return np.from_dlpack(buffer.view(DType.uint8, [rows, width]))
+
+
+def concat_rows(first: WeightData, second: WeightData, name: str) -> WeightData:
+    """``[first; second]`` along axis 0, bytes copied unchanged."""
+    dims = [[int(d) for d in w.shape] for w in (first, second)]
+    if first.dtype != second.dtype or dims[0][1:] != dims[1][1:]:
+        raise ValueError(
+            f"{name}: cannot stack {first.name} {first.dtype} {dims[0]} "
+            f"with {second.name} {second.dtype} {dims[1]}"
+        )
+    joined = np.concatenate([_row_bytes(first), _row_bytes(second)], axis=0)
+    shape = [dims[0][0] + dims[1][0], *dims[0][1:]]
+    buffer = Buffer.from_numpy(joined).view(first.dtype, shape)
+    return WeightData(buffer, name, first.dtype, Shape(shape))
+
+
+def stack_projections(state_dict: dict[str, WeightData]) -> None:
+    """Replaces each :data:`_STACKED_PROJECTIONS` pair with its stack, in place.
+
+    ``weight`` always, ``weight_scale`` when the pair is fp8.
+    """
+    for first, second, stacked in _STACKED_PROJECTIONS:
+        suffix = f"{first}.weight"
+        prefixes = [n[: -len(suffix)] for n in state_dict if n.endswith(suffix)]
+        for prefix in prefixes:
+            n_first = int(state_dict[prefix + suffix].shape[0])
+            for part in ("weight", "weight_scale"):
+                a = f"{prefix}{first}.{part}"
+                b = f"{prefix}{second}.{part}"
+                if a not in state_dict and b not in state_dict:
+                    continue
+                if a not in state_dict or b not in state_dict:
+                    raise ValueError(f"{a} and {b} must both be present")
+                if (
+                    part == "weight_scale"
+                    and int(state_dict[a].shape[0]) * _FP8_WEIGHT_BLOCK
+                    != n_first
+                ):
+                    # The second projection's scale rows would land on the
+                    # wrong weight rows.
+                    raise ValueError(
+                        f"{a}: {n_first} rows are not whole "
+                        f"{_FP8_WEIGHT_BLOCK}-row scale blocks"
+                    )
+                out = f"{prefix}{stacked}.{part}"
+                state_dict[out] = concat_rows(
+                    state_dict.pop(a), state_dict.pop(b), out
+                )
 
 
 def stack_experts(
@@ -224,6 +303,7 @@ def convert_weight_data(
 
     for prefix, experts in packed_experts.items():
         new_state_dict.update(stack_experts(experts, prefix))
+    stack_projections(new_state_dict)
     return new_state_dict
 
 

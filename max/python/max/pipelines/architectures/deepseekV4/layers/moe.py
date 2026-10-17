@@ -95,6 +95,28 @@ def sqrt_softplus(x: TensorValue) -> TensorValue:
     return ops.sqrt(softplus)
 
 
+def _swiglu(
+    gate: TensorValue,
+    up: TensorValue,
+    weights: TensorValue | None,
+    swiglu_limit: float,
+    dtype: DType,
+) -> TensorValue:
+    """``silu(gate) * up`` in float32, clamped and weighted, cast to ``dtype``."""
+    gate = ops.cast(gate, DType.float32)
+    up = ops.cast(up, DType.float32)
+    if swiglu_limit > 0:
+        limit = float(swiglu_limit)
+        # Asymmetric on purpose: the reference clamps ``up`` on both sides
+        # but ``gate`` only from above.
+        up = ops.min(ops.max(up, -limit), limit)
+        gate = ops.min(gate, limit)
+    h = ops.silu(gate) * up
+    if weights is not None:
+        h = weights * h
+    return ops.cast(h, dtype)
+
+
 class DeepseekV4Expert(Module):
     """SwiGLU FFN. ``w1`` gate, ``w3`` up, ``w2`` down.
 
@@ -103,9 +125,9 @@ class DeepseekV4Expert(Module):
     arithmetic: the reference multiplies in float32 and casts to the model
     dtype afterwards, so the rounding lands on the scaled value.
 
-    ``linear`` builds each projection from ``(in_dim, out_dim)``: the
-    checkpoint's fp8 linears (:func:`linear_for`) for the shared expert,
-    plain ``config.dtype`` linears for the dense routed experts.
+    ``linear`` builds each projection from ``(in_dim, out_dim)``: plain
+    ``config.dtype`` linears for the dense routed experts. The shared expert
+    is :class:`DeepseekV4SharedExpert`, which stacks its fp8 ``w1``/``w3``.
     """
 
     def __init__(
@@ -120,18 +142,33 @@ class DeepseekV4Expert(Module):
     def __call__(
         self, x: TensorValue, weights: TensorValue | None = None
     ) -> TensorValue:
-        gate = ops.cast(self.w1(x), DType.float32)
-        up = ops.cast(self.w3(x), DType.float32)
-        if self.swiglu_limit > 0:
-            limit = float(self.swiglu_limit)
-            # Asymmetric on purpose: the reference clamps ``up`` on both sides
-            # but ``gate`` only from above.
-            up = ops.min(ops.max(up, -limit), limit)
-            gate = ops.min(gate, limit)
-        h = ops.silu(gate) * up
-        if weights is not None:
-            h = weights * h
-        return self.w2(ops.cast(h, x.dtype))
+        h = _swiglu(self.w1(x), self.w3(x), weights, self.swiglu_limit, x.dtype)
+        return self.w2(h)
+
+
+class DeepseekV4SharedExpert(Module):
+    """The shared expert: :class:`DeepseekV4Expert` on the checkpoint's fp8.
+
+    ``w1`` and ``w3`` read the same input, so the adapter stacks them into
+    ``w13`` (``[w1; w3]`` along N) and one GEMM computes both. With
+    ``config.quant_config`` unset the projections are plain ``config.dtype``
+    linears, as for the dequantized gates.
+    """
+
+    def __init__(self, config: DeepseekV4Config, device: DeviceRef) -> None:
+        super().__init__()
+        self.swiglu_limit = config.swiglu_limit
+        hidden = config.hidden_size
+        self.intermediate = config.moe_intermediate_size
+        self.w13 = linear_for(config, hidden, 2 * self.intermediate, device)
+        self.w2 = linear_for(config, self.intermediate, hidden, device)
+
+    def __call__(self, x: TensorValue) -> TensorValue:
+        gate_up = self.w13(x)
+        width = int(gate_up.shape[-1])
+        gate = gate_up[..., : self.intermediate]
+        up = gate_up[..., self.intermediate : width]
+        return self.w2(_swiglu(gate, up, None, self.swiglu_limit, x.dtype))
 
 
 class DeepseekV4Gate(Module):
@@ -584,9 +621,7 @@ class DeepseekV4MoE(Module):
                     for _ in range(config.n_routed_experts)
                 ]
             )
-        self.shared_experts = DeepseekV4Expert(
-            config, partial(linear_for, config, device=device)
-        )
+        self.shared_experts = DeepseekV4SharedExpert(config, device)
         # Global ids of the routed experts this module computes.
         self.local_experts = range(config.n_routed_experts)
 
