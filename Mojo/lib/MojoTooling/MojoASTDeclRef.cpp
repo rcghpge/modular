@@ -80,8 +80,8 @@ static std::optional<size_t> getDeclArgIndex(ASTDecl &decl, BlockArgument arg) {
 
 /// If this decl corresponds to a not owned function argument, return its
 /// corresponding BlockArgument. Otherwise, return null.
-static BlockArgument getIfNotOwnedFunctionArgument(MojoASTDeclRef declRef) {
-  Value val = declRef->getIfIRValue().getMlirValue();
+static BlockArgument getIfNotOwnedFunctionArgument(ASTDecl &decl) {
+  Value val = decl.getIfIRValue().getMlirValue();
   if (!val)
     return {};
 
@@ -104,79 +104,24 @@ static BlockArgument getIfNotOwnedFunctionArgument(MojoASTDeclRef declRef) {
   return {};
 }
 
-static ParamDeclRefAttr getIfParameter(MojoASTDeclRef declRef) {
-  if (auto val = declRef->getIfIRValue().getIfPValue()) {
+static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
+  if (auto val = decl.getIfIRValue().getIfPValue()) {
     if (auto paramRef = dyn_cast<ParamDeclRefAttr>(val.get()))
       return paramRef;
   }
   return {};
 }
 
-/// Return the defining Op from the IR encapsulated by this decl. It might be
-/// null.
-static Operation *getDefiningOpFromIR(MojoASTDeclRef declRef) {
-  if (Value val = declRef->getIfIRValue().getMlirValue())
-    return val.getDefiningOp();
-  return nullptr;
-}
-
 MojoASTTypeRef MojoASTDeclRef::getType() const {
-  if (!decl->getOperation())
-    return {};
-  return TypeSwitch<Operation &, MojoASTTypeRef>(*decl->getOperation())
-      .Case([&](VarDeclOp op) { return MojoASTTypeRef(op.getType()); })
-      .Case([&](FnOp op) { return op.getFullSignature(); })
-      .Case([&](StructDeclOp op) { return StructASTDecl::computeSelfType(op); })
-      .Case([&](TraitDeclOp op) { return TraitASTDecl::computeSelfType(op); })
-      .Default({});
+  return decl->getToolingType();
 }
 
 std::optional<StringRef> MojoASTDeclRef::getName() const {
-  auto getFromOp = [&](Operation *op) -> std::optional<StringRef> {
-    if (!op)
-      return std::nullopt;
-    return TypeSwitch<Operation &, std::optional<StringRef>>(*op)
-        .Case<StructDeclOp, StructFieldOp, VarDeclOp>(
-            [](auto op) { return op.getName(); })
-        .Case([](FnOp op) { return op.getSourceName(); })
-        .Case<FileModuleOp, PackageOp>([](auto op) { return op.getDeclName(); })
-        .Case([](ImportOp op) { return op.getSymName(); })
-        .Case([](AliasDeclOp op) {
-          return demangleParameterName(op.getParamDecl().getName(),
-                                       /*forUser*/ true);
-        })
-        .Case([](ASTDeclInterface op) { return op.getDeclName(); })
-        .Default({});
-  };
-
-  // We first try to get the name from the operation. Then we try to match the
-  // decl with a function argument. Finally, as a last resort, we extract the
-  // defining Op from the IR to fetch the name.
-  if (auto name = getFromOp(decl->getOperation()))
-    return name;
-
-  if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*this)) {
-    FnTypeGeneratorType signature = getSignatureFromDecl(decl->getParentDecl());
-    if (!signature)
-      return std::nullopt;
-    std::optional<size_t> argNumber = getDeclArgIndex(*decl, bbArg);
-    if (argNumber && *argNumber < signature.getNumArguments())
-      return signature.getArgName(*argNumber);
-    return std::nullopt;
-  }
-
-  if (auto paramRef = getIfParameter(*this))
-    return demangleParameterName(paramRef.getName(), /*forUser*/ true);
-
-  return getFromOp(getDefiningOpFromIR(*this));
+  return decl->getName();
 }
 
 std::optional<StringRef> MojoASTDeclRef::getDeprecationWarning() const {
-  if (auto stabilityItf =
-          dyn_cast<StabilityDecoratorInterface>(decl->getOperation()))
-    if (StringAttr attr = stabilityItf.getDeprecationWarningAttr())
-      return attr.getValue();
-  return {};
+  return decl->getDeprecationWarning();
 }
 
 llvm::SMLoc MojoASTDeclRef::getLoc() const { return decl->getLoc(); }
@@ -282,7 +227,7 @@ ResultType MojoASTDeclRef::getDeclImpl() const {
 
   // After failing to match with regular Ops, we then inspect the IR to
   // identify if this decl is an argument.
-  if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*this)) {
+  if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*decl)) {
     if constexpr (isApproximateResult) {
       return PublicDeclKind::DK_PublicArgumentDecl;
     } else {
@@ -293,7 +238,7 @@ ResultType MojoASTDeclRef::getDeclImpl() const {
   }
 
   // Now we inspect the IR checking for a parameter.
-  if (ParamDeclRefAttr param = getIfParameter(*this)) {
+  if (ParamDeclRefAttr param = getIfParameter(*decl)) {
     if constexpr (isApproximateResult) {
       return PublicDeclKind::DK_PublicParameterDecl;
     } else {
@@ -326,25 +271,6 @@ std::unique_ptr<PublicDecl> MojoASTDeclRef::getDecl() const {
 
 std::optional<PublicDeclKind> MojoASTDeclRef::getApproximateDeclKind() const {
   return getDeclImpl<ApproximatePublicDeclKind>();
-}
-
-//===----------------------------------------------------------------------===//
-// Children
-
-MojoASTDeclRef::ChildEntry MojoASTDeclRef::ChildIterator::operator*() const {
-  auto it = std::next(getBase()->getDeclsInScope().begin(), getIndex());
-  return ChildEntry(it->first, it->second);
-}
-
-MojoASTDeclRef::ChildIterator::ChildIterator(MojoASTDeclRef decl, size_t index)
-    : llvm::indexed_accessor_iterator<ChildIterator, ASTDecl *, ChildEntry,
-                                      ChildEntry, ChildEntry>(decl.decl,
-                                                              index) {}
-
-llvm::iterator_range<MojoASTDeclRef::ChildIterator>
-MojoASTDeclRef::getChildren() const {
-  return llvm::make_range(ChildIterator(*this, 0),
-                          ChildIterator(*this, decl->getDeclsInScope().size()));
 }
 
 //===----------------------------------------------------------------------===//

@@ -165,8 +165,8 @@ struct CodeCompletionListener : public BaseCompletionListener {
     MojoASTDeclRef packageDecl = getPackageDecl();
 
     // A package's submodules are unlisted children: they live in the
-    // module-state cache and the package IR, not in declsInScope (which is what
-    // getChildren() iterates below). Thus we enumerate them from the cache
+    // module-state cache and the package IR, not in declsInScope. Thus we
+    // enumerate them from the cache
     // instead. This lets a relative import (`from . import X`) complete any
     // sibling module or sub-package.
     if (auto *package = dyn_cast<PackageASTDecl>(&*packageDecl)) {
@@ -185,9 +185,9 @@ struct CodeCompletionListener : public BaseCompletionListener {
       return;
     }
 
-    for (MojoASTDeclRef::ChildEntry child : packageDecl.getChildren()) {
-      StringRef name = child.getName();
-      MojoASTDeclRef childDecl = *child.getDecls().begin();
+    for (auto [nameAttr, children] : packageDecl->getDeclsInScope()) {
+      StringRef name = nameAttr.getValue();
+      MojoASTDeclRef childDecl = children.front();
       if (!showDeclDuringLookup(packageDecl, name, childDecl,
                                 /*isModuleLookup=*/true))
         continue;
@@ -207,10 +207,10 @@ struct CodeCompletionListener : public BaseCompletionListener {
     auto collectDeclChildren = [&](MojoASTDeclRef decl) {
       // Snapshot the child list: adding a completion for an import placeholder
       // resolves decls lazily, which can grow this scope's decl map (e.g. a
-      // module importing from itself) and invalidate a live child iterator.
+      // module importing from itself) and invalidate a live scope iterator.
       SmallVector<std::pair<StringRef, MojoASTDeclRef>> children;
-      for (MojoASTDeclRef::ChildEntry child : decl.getChildren())
-        children.emplace_back(child.getName(), *child.getDecls().begin());
+      for (auto [name, decls] : decl->getDeclsInScope())
+        children.emplace_back(name.getValue(), decls.front());
 
       for (auto &[name, childDecl] : children) {
         if (!showDeclDuringLookup(decl, name, childDecl))

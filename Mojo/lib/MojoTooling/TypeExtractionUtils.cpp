@@ -140,12 +140,12 @@ tryResolveTypeToDecl(llvm::StringRef typeName, SharedState &sharedState,
     M::MojoASTDeclRef current = *contextDecl;
     while (current) {
       // Look for the type in the current scope
-      for (auto childEntry : current.getChildren()) {
-        if (childEntry.getName() == typeName) {
-          for (auto child : childEntry.getDecls()) {
+      for (auto [name, children] : current->getDeclsInScope()) {
+        if (name.getValue() == typeName) {
+          for (ASTDecl *child : children) {
             if (isa_and_nonnull<StructASTDecl, TraitASTDecl, AliasASTDecl>(
-                    &*child)) {
-              return child;
+                    child)) {
+              return M::MojoASTDeclRef(child);
             }
           }
         }

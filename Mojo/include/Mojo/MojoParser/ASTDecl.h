@@ -99,6 +99,11 @@ public:
   SharedState &getShared() const { return shared; }
   MLIRContext *getContext() const { return shared.getContext(); }
 
+  /// Return tooling information for this declaration.
+  ASTType getToolingType();
+  std::optional<StringRef> getName();
+  std::optional<StringRef> getDeprecationWarning();
+
   CValue getIfIRValue() const { return dyn_cast<CValue>(irValue); }
 
   /// If the IRValue is an Operation*, return it, otherwise return null.

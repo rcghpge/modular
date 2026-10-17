@@ -124,58 +124,6 @@ public:
   /// it can be used to provide a fast indicator.
   std::optional<PublicDeclKind> getApproximateDeclKind() const;
 
-  //===--------------------------------------------------------------------===//
-  // Children
-  //===--------------------------------------------------------------------===//
-
-  /// This class represents an individual child entry. It contains the name of
-  /// the child declaration, and the group of declarations that share the same
-  /// name.
-  class ChildEntry {
-  public:
-    /// Return the name of this entry.
-    StringRef getName() const { return name; }
-
-    /// Return the declarations within this entry.
-    auto getDecls() const {
-      return llvm::map_range(rawEntries, [](KGEN::LIT::ASTDecl *entry) {
-        return MojoASTDeclRef(entry);
-      });
-    }
-
-  private:
-    friend MojoASTDeclRef;
-
-    /// Constructs a new child entry.
-    ChildEntry(StringRef name, ArrayRef<KGEN::LIT::ASTDecl *> rawEntries)
-        : name(name), rawEntries(rawEntries) {}
-
-    /// The name of this entry.
-    StringRef name;
-
-    /// The raw entry array.
-    ArrayRef<KGEN::LIT::ASTDecl *> rawEntries;
-  };
-
-  /// This class defines an iterator over the children of a declaration.
-  class ChildIterator
-      : public llvm::indexed_accessor_iterator<ChildIterator,
-                                               KGEN::LIT::ASTDecl *, ChildEntry,
-                                               ChildEntry, ChildEntry> {
-  public:
-    /// Accesses the entry at the current position.
-    ChildEntry operator*() const;
-
-  private:
-    friend MojoASTDeclRef;
-
-    /// Constructs a new iterator.
-    ChildIterator(MojoASTDeclRef decl, size_t index);
-  };
-
-  /// Return the children of this declaration.
-  llvm::iterator_range<ChildIterator> getChildren() const;
-
 private:
   using ApproximatePublicDeclKind = std::optional<PublicDeclKind>;
   using PublicDeclInstance = std::unique_ptr<PublicDecl>;

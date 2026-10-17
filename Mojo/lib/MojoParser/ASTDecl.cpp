@@ -21,10 +21,132 @@
 #include "Mojo/lib/MojoParser/Traits.h"
 #include "MojoUtils.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace M;
 using namespace KGEN;
 using namespace LIT;
+
+static FnTypeGeneratorType getToolingSignature(ASTDecl *decl) {
+  if (!decl)
+    return nullptr;
+  if (auto defDecl = dyn_cast<DefASTDecl>(decl))
+    if (auto func = defDecl->getOp())
+      return func.getFuncTypeGenerator();
+  if (auto typeValue = decl->getIfTypeValue())
+    return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
+  return nullptr;
+}
+
+static std::optional<size_t> getDeclArgIndex(ASTDecl &decl, BlockArgument arg) {
+  if (arg.getParentRegion())
+    return arg.getArgNumber();
+
+  size_t argIndex = 0;
+  for (auto [name, decls] : decl.getParentDecl()->getDeclsInScope()) {
+    if (decls.size() != 1)
+      continue;
+    if (auto cv = decls.front()->getIfIRValue()) {
+      if (decls.front()->getIfIRValue().getIfPValue())
+        continue;
+      if (cv.getMlirValue() == arg)
+        return argIndex;
+      ++argIndex;
+    }
+  }
+  return std::nullopt;
+}
+
+static BlockArgument getIfNotOwnedFunctionArgument(ASTDecl &decl) {
+  Value val = decl.getIfIRValue().getMlirValue();
+  if (!val)
+    return {};
+
+  if (auto rebind = val.getDefiningOp<RebindOp>())
+    val = rebind.getInput();
+
+  if (auto bbArg = dyn_cast<BlockArgument>(val)) {
+    if (isa_and_nonnull<FnOp>(bbArg.getOwner()->getParentOp()))
+      return bbArg;
+    if (!bbArg.getOwner()->getParentOp())
+      return bbArg;
+  }
+  return {};
+}
+
+static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
+  if (auto val = decl.getIfIRValue().getIfPValue())
+    return dyn_cast<ParamDeclRefAttr>(val.get());
+  return {};
+}
+
+static Operation *getDefiningOpFromIR(ASTDecl &decl) {
+  if (Value val = decl.getIfIRValue().getMlirValue())
+    return val.getDefiningOp();
+  return nullptr;
+}
+
+ASTType ASTDecl::getToolingType() {
+  if (auto *varDecl = dyn_cast<VarASTDecl>(this)) {
+    if (VarDeclOp varOp = varDecl->getOp())
+      return varOp.getType();
+    return {};
+  }
+  if (auto *defDecl = dyn_cast<DefASTDecl>(this)) {
+    if (FnOp fnOp = defDecl->getOp())
+      return fnOp.getFullSignature();
+    return {};
+  }
+  if (auto *structDecl = dyn_cast<StructASTDecl>(this))
+    return StructASTDecl::computeSelfType(structDecl->getOp());
+  if (auto *traitDecl = dyn_cast<TraitASTDecl>(this))
+    return TraitASTDecl::computeSelfType(traitDecl->getOp());
+  return {};
+}
+
+std::optional<StringRef> ASTDecl::getName() {
+  auto getFromOp = [&](Operation *op) -> std::optional<StringRef> {
+    if (!op)
+      return std::nullopt;
+    return TypeSwitch<Operation &, std::optional<StringRef>>(*op)
+        .Case<StructDeclOp, StructFieldOp, VarDeclOp>(
+            [](auto op) { return op.getName(); })
+        .Case([](FnOp op) { return op.getSourceName(); })
+        .Case<FileModuleOp, PackageOp>([](auto op) { return op.getDeclName(); })
+        .Case([](ImportOp op) { return op.getSymName(); })
+        .Case([](AliasDeclOp op) {
+          return demangleParameterName(op.getParamDecl().getName(),
+                                       /*forUser=*/true);
+        })
+        .Case([](ASTDeclInterface op) { return op.getDeclName(); })
+        .Default({});
+  };
+
+  if (auto name = getFromOp(getOperation()))
+    return name;
+
+  if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*this)) {
+    FnTypeGeneratorType signature = getToolingSignature(getParentDecl());
+    if (!signature)
+      return std::nullopt;
+    std::optional<size_t> argNumber = getDeclArgIndex(*this, bbArg);
+    if (argNumber && *argNumber < signature.getNumArguments())
+      return signature.getArgName(*argNumber);
+    return std::nullopt;
+  }
+
+  if (auto paramRef = getIfParameter(*this))
+    return demangleParameterName(paramRef.getName(), /*forUser=*/true);
+
+  return getFromOp(getDefiningOpFromIR(*this));
+}
+
+std::optional<StringRef> ASTDecl::getDeprecationWarning() {
+  if (auto stabilityItf = dyn_cast<StabilityDecoratorInterface>(getOperation()))
+    if (StringAttr attr = stabilityItf.getDeprecationWarningAttr())
+      return attr.getValue();
+  return {};
+}
 
 ASTDecl::ASTDecl(SharedState &shared, DeclIRValue irValue, llvm::SMLoc loc,
                  ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
