@@ -545,8 +545,8 @@ def _matmul_cpu_impl[
     var k = shape.K
     # Matrix by vector pattern -> use gemv
     if n == 1:
-        var out = TileTensor(c.ptr, row_major(Int(c.dim[0]())))
-        var rhs = TileTensor(b.ptr, row_major(Int(b.dim[0]())))
+        var out = c.reshape(row_major(Int(c.dim[0]())))
+        var rhs = b.reshape(row_major(Int(b.dim[0]())))
         _gemv_cpu[
             parallelize=True,
             has_epilogue_fn=has_epilogue_fn,

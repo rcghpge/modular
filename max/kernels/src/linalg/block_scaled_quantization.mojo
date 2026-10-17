@@ -1221,14 +1221,13 @@ def quantize_dynamic_scaled_fp4_async[
 
     # The TMA box covers one (M1, K) atom, so the two innermost scale dims
     # are folded into a single contiguous extent for a rank-4 descriptor.
-    var scales_4d_tensor = TileTensor(
-        scales_tensor_tile.ptr,
+    var scales_4d_tensor = scales_tensor_tile.reshape(
         row_major(
             Int(scales_tensor_tile.dim[0]()),
             Int(scales_tensor_tile.dim[1]()),
             Idx[SF_ATOM_M[0]],
             Idx[SF_ATOM_M[1] * SF_ATOM_K],
-        ),
+        )
     )
 
     comptime scales_tma_tile_shape = coord[
@@ -1872,14 +1871,13 @@ def grouped_quantize_dynamic_scaled_fp4_async[
 
     # The TMA box covers one (M1, K) atom, so the two innermost scale dims
     # are folded into a single contiguous extent for a rank-4 descriptor.
-    var scales_4d_tensor = TileTensor(
-        scales_tensor.ptr,
+    var scales_4d_tensor = scales_tensor.reshape(
         row_major(
             Int(scales_tensor.dim[0]()),
             Int(scales_tensor.dim[1]()),
             Int(scales_tensor.dim[2]()),
             Int(scales_tensor.dim[3]()) * Int(scales_tensor.dim[4]()),
-        ),
+        )
     )
 
     comptime scales_tma_tile_shape = coord[

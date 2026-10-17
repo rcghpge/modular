@@ -36,7 +36,7 @@ from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from std.math import align_up, ceildiv
 
-from layout import Idx, TileTensor, row_major
+from layout import Idx, TensorEngine, TensorLayout, TileTensor, row_major
 
 from linalg.utils import (
     ElementwiseComputeFn,
@@ -56,9 +56,12 @@ from nn.conv.gpu.nvidia.sm100.conv_config import Conv2dProblemShape
 
 @__name(t"amd_4wave_conv_residual_kpad_{dtype}")
 def _kpad_filter_frsc[
-    dtype: DType
+    dtype: DType,
+    SrcLayoutType: TensorLayout,
+    src_origin: ImmOrigin,
+    SrcEngine: TensorEngine,
 ](
-    src_ptr: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
     dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     K_real: Int32,
     K_padded: Int32,
@@ -81,7 +84,7 @@ def _kpad_filter_frsc[
     if k >= _K_real:
         dst_ptr.store(tid, Scalar[dtype](0))
         return
-    dst_ptr.store(tid, src_ptr.load(f * _K_real + k))
+    dst_ptr.store(tid, src.raw_load(f * _K_real + k))
 
 
 @inline(.always)
@@ -235,8 +238,14 @@ def amd_4wave_conv_fprop_with_residual[
         comptime _kpad_block = 256
         var _kpad_total = _C_out * K_padded
         var _kpad_grid = ceildiv(_kpad_total, _kpad_block)
-        ctx.enqueue_function[_kpad_filter_frsc[filter_type]](
-            filter.ptr,
+        comptime kpad_kernel = _kpad_filter_frsc[
+            filter_type,
+            filter.LayoutType,
+            ImmOrigin(filter.origin),
+            filter.Engine,
+        ]
+        ctx.enqueue_function[kpad_kernel](
+            filter.as_imm(),
             filter_padded_buf,
             Int32(K_real),
             Int32(K_padded),
@@ -400,8 +409,14 @@ def _launch_plain_conv[
         comptime _kpad_block = 256
         var _kpad_total = _C_out * K_padded
         var _kpad_grid = ceildiv(_kpad_total, _kpad_block)
-        ctx.enqueue_function[_kpad_filter_frsc[filter_type]](
-            filter.ptr,
+        comptime kpad_kernel = _kpad_filter_frsc[
+            filter_type,
+            filter.LayoutType,
+            ImmOrigin(filter.origin),
+            filter.Engine,
+        ]
+        ctx.enqueue_function[kpad_kernel](
+            filter.as_imm(),
             filter_padded_buf,
             Int32(K_real),
             Int32(K_padded),

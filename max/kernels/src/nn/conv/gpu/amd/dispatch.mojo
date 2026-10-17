@@ -47,7 +47,7 @@ from std.sys import simd_width_of
 from std.sys.info import _accelerator_arch
 from std.utils import IndexList
 
-from layout import Coord, TileTensor, row_major
+from layout import Coord, TensorEngine, TensorLayout, TileTensor, row_major
 
 from linalg.utils import ElementwiseEpilogueFn, no_epilogue_fn
 
@@ -62,8 +62,11 @@ from nn.conv.gpu.amd.amd_4wave_conv import amd_4wave_conv
 @__name(t"amd_4wave_transpose_rscf_to_frsc_kpad_{dtype}")
 def _transpose_rscf_to_frsc_kpad[
     dtype: DType,
+    SrcLayoutType: TensorLayout,
+    src_origin: ImmOrigin,
+    SrcEngine: TensorEngine,
 ](
-    src_ptr: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
     dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     R: Int32,
     S: Int32,
@@ -94,16 +97,17 @@ def _transpose_rscf_to_frsc_kpad[
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    # RSCF source index: ((r * _S + s) * _C + c) * _F + f.
-    var rscf_idx = ((r * _S + s) * _C + c) * _F + f
-    dst_ptr.store(tid, src_ptr.load(rscf_idx))
+    dst_ptr.store(tid, src.load[width=1]((r, s, c, f))[0])
 
 
 @__name(t"amd_4wave_transpose_fcrs_to_frsc_kpad_{dtype}")
 def _transpose_fcrs_to_frsc_kpad[
     dtype: DType,
+    SrcLayoutType: TensorLayout,
+    src_origin: ImmOrigin,
+    SrcEngine: TensorEngine,
 ](
-    src_ptr: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
     dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
     F: Int32,
     C: Int32,
@@ -134,9 +138,7 @@ def _transpose_fcrs_to_frsc_kpad[
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    # FCRS source index: f*_C*_R*_S + c*_R*_S + r*_S + s.
-    var fcrs_idx = f * _C * _R * _S + c * _R * _S + r * _S + s
-    dst_ptr.store(tid, src_ptr.load(fcrs_idx))
+    dst_ptr.store(tid, src.load[width=1]((f, c, r, s))[0])
 
 
 # ---------------------------------------------------------------------------
@@ -412,8 +414,14 @@ def dispatch_amd_4wave_conv2d[
         var transpose_total = _C_out * _K_padded
         var transpose_grid = ceildiv(transpose_total, _transpose_block)
         comptime if filter_is_fcrs:
-            ctx.enqueue_function[_transpose_fcrs_to_frsc_kpad[filter_type]](
-                filter.ptr,
+            comptime transpose_kernel = _transpose_fcrs_to_frsc_kpad[
+                filter_type,
+                filter.LayoutType,
+                ImmOrigin(filter.origin),
+                filter.Engine,
+            ]
+            ctx.enqueue_function[transpose_kernel](
+                filter.as_imm(),
                 filter_frsc_ptr,
                 Int32(_C_out),
                 Int32(_C_in),
@@ -424,8 +432,14 @@ def dispatch_amd_4wave_conv2d[
                 block_dim=_transpose_block,
             )
         else:
-            ctx.enqueue_function[_transpose_rscf_to_frsc_kpad[filter_type]](
-                filter.ptr,
+            comptime transpose_kernel = _transpose_rscf_to_frsc_kpad[
+                filter_type,
+                filter.LayoutType,
+                ImmOrigin(filter.origin),
+                filter.Engine,
+            ]
+            ctx.enqueue_function[transpose_kernel](
+                filter.as_imm(),
                 filter_frsc_ptr,
                 Int32(_R),
                 Int32(_S),

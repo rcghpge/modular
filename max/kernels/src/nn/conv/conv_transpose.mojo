@@ -1488,25 +1488,21 @@ def pack_filter(
 
             # Consider a point in filter window as a neighbor to input point.
             for nbr in range(window_dims_prod):
-                var filter_ptr = (
-                    filter.ptr
-                    + nbr * F * C
-                    + (g * F_per_group + f_tile_start) * C
+                var filter_offset = (
+                    nbr * F * C + (g * F_per_group + f_tile_start) * C
                 )
 
-                for _ in range(C):
+                for c in range(C):
                     for f in range(f_tile_size):
                         packed_filter_ptr.store(
                             f,
-                            filter_ptr.load(f * C).cast[
-                                packed_filter_ptr.T.dtype
-                            ](),
+                            filter.raw_load[invariant=False](
+                                filter_offset + c + f * C
+                            ).cast[packed_filter_ptr.T.dtype](),
                         )
 
                     # FRSCf layout. Increment by `f` in c loop.
                     packed_filter_ptr += f_tile_size
-                    # RSFC layout. Increment by 1 in c loop.
-                    filter_ptr += 1
 
         # If F % simd_size != 0, the following won't touch the remainder.
         tile[[micro_kernel_f_size, simd_size]](0, F_per_group, pack)
@@ -1526,22 +1522,19 @@ def pack_filter(
             )
 
             for nbr in range(window_dims_prod):
-                var filter_ptr = (
-                    filter.ptr
-                    + nbr * F * C
-                    + (g * F_per_group + F_round_by_simd) * C
+                var filter_offset = (
+                    nbr * F * C + (g * F_per_group + F_round_by_simd) * C
                 )
 
-                for _ in range(C):
+                for c in range(C):
                     for f in range(residual):
                         packed_filter_ptr.store(
                             f,
-                            filter_ptr.load(f * C).cast[
-                                packed_filter_ptr.T.dtype
-                            ](),
+                            filter.raw_load[invariant=False](
+                                filter_offset + c + f * C
+                            ).cast[packed_filter_ptr.T.dtype](),
                         )
 
-                    filter_ptr += 1
                     packed_filter_ptr = packed_filter_ptr + simd_size
 
 

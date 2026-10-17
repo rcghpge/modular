@@ -452,9 +452,8 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
             c_host_ref.raw_store(i, c_host_ref.raw_load(i) * Scalar[c_type](2))
 
     assert_almost_equal(
-        c_host.ptr,
-        c_host_ref.ptr,
-        c_host.num_elements(),
+        c_host.as_span(),
+        c_host_ref.as_span(),
         atol=1e-2,
         rtol=1e-2,
     )

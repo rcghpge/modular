@@ -2492,8 +2492,6 @@ def apply_gumbel_noise_kernel[
             if case .Some(seed) = seed:
                 seed_val = seed[tok_idx]
 
-            var ld_ptr = input.ptr + tok_idx * N
-            var st_ptr = output.ptr + tok_idx * N
             comptime align = align_of[SIMD[dtype, simd_width]]()
 
             for i in range(tid_in_group, N // simd_width, group_size):
@@ -2502,11 +2500,15 @@ def apply_gumbel_noise_kernel[
                 )
                 var input_val: SIMD[dtype, simd_width]
                 if N % simd_width == 0:
-                    input_val = ld_ptr.load[width=simd_width, alignment=align](
-                        i * simd_width
-                    )
+                    input_val = input.load[
+                        width=simd_width, alignment=align, invariant=False
+                    ]((tok_idx, i * simd_width))
                 else:
-                    input_val = ld_ptr.load[width=simd_width](i * simd_width)
+                    input_val = input.load[
+                        width=simd_width,
+                        alignment=align_of[dtype](),
+                        invariant=False,
+                    ]((tok_idx, i * simd_width))
                 var noised_logits = input_val.cast[.float32]() / temp_val
 
                 comptime for loop_i in range(simd_width // 4):
@@ -2517,11 +2519,13 @@ def apply_gumbel_noise_kernel[
                         noised_logits[4 * loop_i + vec_i] += rnd_val[vec_i]
 
                 if N % simd_width == 0:
-                    st_ptr.store[width=simd_width, alignment=align](
-                        i * simd_width, noised_logits.cast[dtype]()
+                    output.store[width=simd_width, alignment=align](
+                        (tok_idx, i * simd_width), noised_logits.cast[dtype]()
                     )
                 else:
-                    st_ptr.store(i * simd_width, noised_logits.cast[dtype]())
+                    output.store[width=simd_width, alignment=align_of[dtype]()](
+                        (tok_idx, i * simd_width), noised_logits.cast[dtype]()
+                    )
 
             # If N is not divisible by simd_width, handle remaining elements
             if N % simd_width != 0:
@@ -2532,15 +2536,15 @@ def apply_gumbel_noise_kernel[
                     + UInt64(tid_in_group),
                 )
                 if tid_in_group < N_res:
-                    var input_val = ld_ptr.load(
-                        (N - N_res) + tid_in_group
+                    var input_val = input.load[width=1, invariant=False](
+                        (tok_idx, (N - N_res) + tid_in_group)
                     ).cast[.float32]()
                     var noised_logit = input_val / temp_val
                     var rnd_val = rng_state.step_uniform()[0]
                     rnd_val = -LOG2 * log2(-log2(rnd_val + EPS) + EPS)
                     noised_logit += rnd_val
-                    st_ptr.store(
-                        (N - N_res) + tid_in_group,
+                    output.store[width=1](
+                        (tok_idx, (N - N_res) + tid_in_group),
                         noised_logit.cast[dtype](),
                     )
 
@@ -2676,7 +2680,6 @@ def _gumbel_argmax_fused_kernel[
     if case .Some(seed) = seed:
         seed_val = seed[batch_id]
 
-    var ld_ptr = input.ptr + batch_id * N
     comptime align = align_of[SIMD[dtype, simd_width]]()
 
     var chunk_begin = 0
@@ -2699,11 +2702,15 @@ def _gumbel_argmax_fused_kernel[
             )
             var input_val: SIMD[dtype, simd_width]
             if N % simd_width == 0:
-                input_val = ld_ptr.load[width=simd_width, alignment=align](
-                    i * simd_width
-                )
+                input_val = input.load[
+                    width=simd_width, alignment=align, invariant=False
+                ]((batch_id, i * simd_width))
             else:
-                input_val = ld_ptr.load[width=simd_width](i * simd_width)
+                input_val = input.load[
+                    width=simd_width,
+                    alignment=align_of[dtype](),
+                    invariant=False,
+                ]((batch_id, i * simd_width))
             var noised_logits: SIMD[.float32, simd_width]
             comptime if from_probs:
                 noised_logits = LOG2 * log2(input_val.cast[.float32]())
@@ -2732,7 +2739,9 @@ def _gumbel_argmax_fused_kernel[
                 seed=seed_val * UInt64(N) + UInt64(N - N_res) + UInt64(tid),
             )
             if tid < N_res:
-                var input_val = ld_ptr.load((N - N_res) + tid).cast[.float32]()
+                var input_val = input.load[width=1, invariant=False](
+                    (batch_id, (N - N_res) + tid)
+                ).cast[.float32]()
                 var noised_logit: Float32
                 comptime if from_probs:
                     noised_logit = LOG2 * log2(input_val)

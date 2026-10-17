@@ -132,8 +132,6 @@ def _argn[
         for i in range(start, end):
             var input_offset = i * input_stride
             var output_offset = i * output_stride
-            var input_dim_ptr = input.ptr.unsafe_offset(input_offset)
-            var output_dim_ptr = output.ptr.unsafe_offset(output_offset)
             var global_val: Scalar[input.dtype]
 
             # initialize limits
@@ -147,14 +145,16 @@ def _argn[
             if axis_size < simd_width:
                 global_values = global_val
             else:
-                global_values = input_dim_ptr.unsafe_load[width=simd_width]()
+                global_values = input.raw_load[width=simd_width](input_offset)
 
             # iterate over values evenly divisible by simd_width
             var indices = iota[output.dtype, simd_width]()
             var global_indices = indices
             var last_simd_index = align_down(axis_size, simd_width)
             for j in range(simd_width, last_simd_index, simd_width):
-                var curr_values = input_dim_ptr.unsafe_load[width=simd_width](j)
+                var curr_values = input.raw_load[width=simd_width](
+                    input_offset + j
+                )
                 indices += Scalar[output.dtype](simd_width)
 
                 var mask = cmpeq(curr_values, global_values)
@@ -170,7 +170,7 @@ def _argn[
             var idx = Scalar[output.dtype](0)
             var found_min: Bool = False
             for j in range(last_simd_index, axis_size, 1):
-                var elem = input_dim_ptr.unsafe_load(j)
+                var elem = input.raw_load(input_offset + j)
                 if cmp(global_val, elem):
                     global_val = elem
                     idx = Scalar[output.dtype](j)
@@ -183,7 +183,7 @@ def _argn[
                     global_indices, Scalar[output.dtype].MAX
                 )
                 idx = min_indices.reduce_min()
-            output_dim_ptr[] = idx
+            output.raw_store(output_offset, idx)
 
     sync_parallelize(task_func, parallel_size, ctx)
 

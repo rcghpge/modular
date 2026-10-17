@@ -387,8 +387,8 @@ def _reduce_output[
     simd_size: Int,
     has_epilogue: Bool = False,
 ](
-    scratch: ImmPointer[Scalar[dtype], _],
-    output: MutPointer[Scalar[dtype], _],
+    scratch: TileTensor[dtype, ...],
+    output: TileTensor[mut=True, dtype, ...],
     N: Int,
     output_space_dims: IndexList,
     F: Int,
@@ -411,15 +411,15 @@ def _reduce_output[
             width: Int
         ](offset: Int) {F, scratch, num_partitions, output, imm buf_size, mut}:
             var tid_output_offset = reduce_range[0] * F + offset
-            var vec = scratch.load[width=width](tid_output_offset)
+            var vec = scratch.raw_load[width=width](tid_output_offset)
             # The number of partitions here is typically small.
             # There may not be much benefit from unrolling the reduction axis.
             # Only unroll the last dimension.
             for i in range(1, num_partitions):
-                vec += scratch.load[width=width](
+                vec += scratch.raw_load[width=width](
                     tid_output_offset + i * buf_size
                 )
-            output.store(tid_output_offset, vec)
+            output.raw_store(tid_output_offset, vec)
 
         vectorize[simd_size, unroll_factor=4](reduce_range[1] * F, sum)
 
@@ -697,8 +697,8 @@ struct ConvDirectNHWC[
                 # Only support channel partition for 2D shapes (ResNet).
                 has_epilogue=Self.has_epilogue and input.rank == 4,
             ](
-                output_scratch.ptr,
-                output.ptr,
+                output_scratch,
+                output,
                 conv_shape.n,
                 conv_shape.output_space_dims(),
                 conv_shape.f,
@@ -3201,19 +3201,14 @@ def pack_filter[
             var packed_filter_ptr = group_start + f_tile_start * outer_dims_prod
 
             for row in range(outer_dims_prod):
-                var filter_ptr = (
-                    filter.unsafe_ptr()
-                    + row * F
-                    + g * F_per_group
-                    + f_tile_start
-                )
+                var filter_offset = row * F + g * F_per_group + f_tile_start
 
                 comptime for i in range(f_tile_size // simd_size):
                     packed_filter_ptr.store(
                         i * simd_size,
-                        filter_ptr.load[width=simd_size](i * simd_size).cast[
-                            packed_filter_dtype
-                        ](),
+                        filter.raw_load[width=simd_size, invariant=False](
+                            filter_offset + i * simd_size
+                        ).cast[packed_filter_dtype](),
                     )
 
                 packed_filter_ptr += f_tile_size

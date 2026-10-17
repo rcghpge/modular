@@ -427,15 +427,17 @@ def padded_index_mode_kernel[
             input_tensor.layout.stride[output_tensor.rank - 1]().value()
         )
 
-        var output_ptr = output_tensor.ptr + Int(
-            output_tensor.layout(out_coord)
-        )
-        var input_ptr = input_tensor.ptr + base_offset
+        var output_offset = Int(output_tensor.layout(out_coord))
 
         var tid = thread_idx.x % threads_per_row
         for j in range(tid, _row_length, threads_per_row):
             var src_last = _pad_src_index[mode](j, in_last, pre_last)
-            output_ptr[j] = input_ptr[src_last * in_stride_last]
+            output_tensor.raw_store(
+                output_offset + j,
+                input_tensor.raw_load[invariant=False](
+                    base_offset + src_last * in_stride_last
+                ),
+            )
 
 
 def _pad_index_mode_impl[

@@ -276,19 +276,14 @@ def _batched_matmul_cpu_impl[
         coord_to_index_list(b_tile.layout.shape_coord())
     )
 
-    var c = TileTensor(
-        c_tile.ptr,
-        row_major(collapsed_batches, mat_rows, mat_cols),
+    var c = c_tile.reshape(row_major(collapsed_batches, mat_rows, mat_cols))
+    var a = a_tile.reshape(
+        row_major(collapsed_batches, a_shape[rank - 2], a_shape[rank - 1])
     )
-    var a = TileTensor(
-        a_tile.ptr,
-        row_major(collapsed_batches, a_shape[rank - 2], a_shape[rank - 1]),
-    )
-    var b = TileTensor(
-        b_tile.ptr,
+    var b = b_tile.reshape(
         row_major(
             collapsed_batches, b_shape_idx[rank - 2], b_shape_idx[rank - 1]
-        ),
+        )
     )
     var batch_size: Int = Int(c.dim[0]())
 
@@ -883,20 +878,13 @@ def _batched_matmul_gpu_impl[
 
             # batch_size==1, so flatten (1, X, Y) → (X, Y)
             # by constructing rank-2 TileTensors directly.
-            var c_2d = TileTensor(
-                c_tensor_reshaped.ptr,
-                row_major(m, n),
-            )
-            var a_2d = TileTensor(
-                a_tensor_reshaped.ptr,
-                row_major(m, k),
-            )
+            var c_2d = c_tensor_reshaped.reshape(row_major(m, n))
+            var a_2d = a_tensor_reshaped.reshape(row_major(m, k))
             # Use b's actual dims since their order depends on transpose_b.
-            var b_2d = TileTensor(
-                b_tensor_reshaped.ptr,
+            var b_2d = b_tensor_reshaped.reshape(
                 row_major(
                     Int(b_tensor_reshaped.dim(1)), Int(b_tensor_reshaped.dim(2))
-                ),
+                )
             )
 
             comptime if has_epilogue_fn:
