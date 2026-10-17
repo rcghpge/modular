@@ -656,8 +656,8 @@ public:
   /// Create a CompilerType for the given MLIR type.
   lldb_private::CompilerType createCompilerType(Type type);
 
-  /// Create a CompilerType for the given MojoASTTypeRef.
-  lldb_private::CompilerType createCompilerType(MojoASTTypeRef type);
+  /// Create a CompilerType for the given AST type.
+  lldb_private::CompilerType createCompilerType(LIT::ASTType type);
 
   //===--------------------------------------------------------------------===//
   // Debug Info Parsing

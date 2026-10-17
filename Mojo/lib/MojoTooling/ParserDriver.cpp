@@ -101,25 +101,21 @@ const KGEN::CompilationOptions &MojoParserContext::getCompilationOptions() {
   return impl->sharedState.options;
 }
 
-ASTDecl *MojoParserContext::getDecl(MojoASTTypeRef type) {
-  return ASTType(type.getMLIRType()).getDecl(impl->sharedState);
-}
-
 ASTDecl *MojoParserContext::getTraitDecl(KGEN::TraitSymbolAttr traitSymbol) {
   return &impl->sharedState.declResolver->getDeclForTypeSymbol(
       traitSymbol.getSymbol());
 }
 
-MojoASTTypeRef MojoParserContext::concretizeType(MojoASTTypeRef base,
-                                                 ArrayRef<TypedAttr> params,
-                                                 MojoASTTypeRef type) {
+ASTType MojoParserContext::concretizeType(ASTType base,
+                                          ArrayRef<TypedAttr> params,
+                                          ASTType type) {
   KGEN::ParameterEvaluator evaluator(
-      cast<StructASTDecl>(ASTType(base.getMLIRType()).getDecl(getSharedState()))
+      cast<StructASTDecl>(base.getDecl(getSharedState()))
           ->getOp()
           .getInputParams(),
       params);
 
-  return evaluator.replace(evaluator.getReboundType(type.getMLIRType()));
+  return ASTType(evaluator.replace(evaluator.getReboundType(type.mlirType)));
 }
 
 //===----------------------------------------------------------------------===//

@@ -25,7 +25,7 @@ namespace M {
 namespace KGEN {
 namespace LIT {
 class ASTDecl;
-class MojoASTTypeRef;
+class ASTType;
 } // namespace LIT
 
 namespace TypeExtractionUtils {
@@ -38,7 +38,7 @@ std::string extractSymbolLeafName(mlir::SymbolRefAttr symbol);
 /// For example: "std.collections.List[T]" -> "List", and
 /// "ref [_] SomeType[T, U]" -> "SomeType". Uses AST information when available,
 /// falls back to string parsing.
-std::string extractBaseTypeName(const LIT::MojoASTTypeRef &astType,
+std::string extractBaseTypeName(LIT::ASTType astType,
                                 llvm::StringRef fullTypeStr);
 
 /// Convenience for extracting base type names when no AST info is available.

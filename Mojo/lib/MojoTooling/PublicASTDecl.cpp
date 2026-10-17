@@ -585,20 +585,6 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
   return std::nullopt;
 }
 
-ASTDecl *MojoASTTypeRef::getDecl(SharedState &shared) {
-  return type.getDecl(shared);
-}
-
-std::string MojoASTTypeRef::getAsString(SharedState &shared) const {
-  return type.getAsString(/*ctx=*/{&shared});
-}
-
-MojoASTTypeRef MojoASTTypeRef::getReferenceElementType() const {
-  return type.getReferenceElementType();
-}
-
-Type MojoASTTypeRef::getMLIRType() const { return type.mlirType; }
-
 StringRef PublicDecl::getKindAsString(PublicDeclKind kind) {
   switch (kind) {
   case PublicDeclKind::DK_PublicAliasDecl:
@@ -709,9 +695,9 @@ PublicVariableDecl::PublicVariableDecl(ASTDecl *decl)
       deprecated(decl->getDeprecationWarning().value_or(StringRef())) {
   auto &shared = decl->getShared();
   if (isa<VarASTDecl>(decl)) {
-    MojoASTTypeRef astType(decl->getToolingType());
+    ASTType astType = decl->getToolingType();
     astType = astType.getReferenceElementType();
-    type = astType.getAsString(shared);
+    type = astType.getAsString(ASTTypePrinterContext(&shared));
     typeMetadata =
         ::KGEN::TypeExtractionUtils::extractLibraryInfo(type, decl, &shared);
   }

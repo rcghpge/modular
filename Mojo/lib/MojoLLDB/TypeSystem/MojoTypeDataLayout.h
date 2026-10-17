@@ -14,7 +14,7 @@
 #ifndef KGEN_LIB_MOJOLLDB_TYPESYSTEM_MOJOTYPEDATALAYOUT_H
 #define KGEN_LIB_MOJOLLDB_TYPESYSTEM_MOJOTYPEDATALAYOUT_H
 
-#include "Mojo/MojoTooling/PublicASTDecl.h"
+#include "Mojo/MojoParser/ASTType.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "Support/LLVMForwardDecls.h"
 #include "lldb/lldb-enumerations.h"
@@ -51,7 +51,7 @@ public:
   class Field {
   public:
     Field(uint64_t byteOffset, uint64_t byteSize, uint64_t alignment,
-          MojoASTTypeRef concreteType)
+          LIT::ASTType concreteType)
         : byteOffset(byteOffset), byteSize(byteSize), alignment(alignment),
           concreteType(concreteType) {}
 
@@ -66,13 +66,13 @@ public:
 
     /// Return the concrete type of this field gotten by resolving its
     /// parameters.
-    MojoASTTypeRef getConcreteType() const { return concreteType; }
+    LIT::ASTType getConcreteType() const { return concreteType; }
 
   private:
     uint64_t byteOffset;
     uint64_t byteSize;
     uint64_t alignment;
-    MojoASTTypeRef concreteType;
+    LIT::ASTType concreteType;
   };
 
   /// Return the layout entries of each field if it's a struct, otherwise return
@@ -115,13 +115,12 @@ public:
   /// Get of calculate the data layout of the given type. If it's impossible to
   /// calculate the layout of the type or of any of its nested types in the case
   /// of a struct, then this returns null.
-  const std::optional<MojoTypeDataLayout> &
-  getOrCalculate(MojoASTTypeRef typeRef);
+  const std::optional<MojoTypeDataLayout> &getOrCalculate(LIT::ASTType typeRef);
 
   /// Invalidate the cached layout stored for the given type. This is not
   /// recursive, i.e. invalidating a struct type doesn't automatically
   /// invalidate its members.
-  void invalidateCache(MojoASTTypeRef typeRef);
+  void invalidateCache(LIT::ASTType typeRef);
 
 private:
   struct Impl;

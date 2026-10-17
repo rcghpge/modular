@@ -49,11 +49,10 @@ std::string extractSymbolLeafName(mlir::SymbolRefAttr symbol) {
 }
 
 /// Gets the base type name, removing generic parameters and qualifiers.
-std::string extractBaseTypeName(const M::MojoASTTypeRef &astType,
-                                llvm::StringRef fullTypeStr) {
+std::string extractBaseTypeName(ASTType astType, llvm::StringRef fullTypeStr) {
   // Try AST-based extraction first
   if (astType) {
-    Type mlirType = astType.getMLIRType();
+    Type mlirType = astType.mlirType;
 
     // Handle struct types
     if (auto structType = sugarDynCast<LIT::StructType>(mlirType)) {
@@ -100,7 +99,7 @@ std::string extractBaseTypeName(const M::MojoASTTypeRef &astType,
 
 /// Convenience for extracting base type names when no AST info is available.
 std::string extractBaseTypeName(llvm::StringRef fullTypeStr) {
-  return extractBaseTypeName(M::MojoASTTypeRef{}, fullTypeStr);
+  return extractBaseTypeName(ASTType{}, fullTypeStr);
 }
 
 /// Extracts the fully qualified module path from an AST declaration reference.

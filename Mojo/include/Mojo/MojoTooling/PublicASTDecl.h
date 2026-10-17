@@ -60,7 +60,6 @@ static constexpr size_t kTypicalParameterCount = 2;
 static constexpr size_t kTypicalArgumentCount = 2;
 } // namespace
 class PublicDecl;
-class MojoASTTypeRef;
 enum class PublicDeclKind;
 
 std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
@@ -72,42 +71,6 @@ std::optional<PublicDeclKind> getApproximatePublicDeclKind(ASTDecl *decl);
 /// distinct symbols can share one name.
 using ConformanceConditionMap =
     llvm::DenseMap<KGEN::TraitSymbolAttr, std::string>;
-
-//===----------------------------------------------------------------------===//
-// MojoASTTypeRef
-//===----------------------------------------------------------------------===//
-
-/// This class provides a wrapper around an internal Mojo AST type.
-class MojoASTTypeRef {
-public:
-  MojoASTTypeRef() : MojoASTTypeRef(nullptr) {}
-  MojoASTTypeRef(ASTType type) : type(type) {}
-  MojoASTTypeRef(Type type) : type(type) {}
-  MojoASTTypeRef(const void *impl) : type(Type::getFromOpaquePointer(impl)) {}
-
-  /// Returns if the AST declaration is valid.
-  operator bool() const { return bool(type); }
-
-  /// Returns a readable string representation of this type.
-  std::string getAsString(SharedState &shared) const;
-
-  /// If the current type is a reference, return the type of the pointee. This
-  /// aborts if the current type isn't a reference.
-  MojoASTTypeRef getReferenceElementType() const;
-
-  /// Return the MLIR type associated with this
-  Type getMLIRType() const;
-
-private:
-  // Return the decl that defined this type.
-  ASTDecl *getDecl(SharedState &sharedState);
-
-  /// Allow MojoParserContext to access the internal implementation.
-  friend class MojoParserContext;
-
-  /// The internal implementation of the AST type.
-  ASTType type;
-};
 
 //===----------------------------------------------------------------------===//
 // PublicDecls
@@ -575,7 +538,6 @@ private:
   SmallVector<PublicArgumentDecl, kTypicalArgumentCount> args;
   SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
   std::string fnConstraints;
-  // TODO: Convert this to MojoASTTypeRef.
   std::optional<std::string> returnType;
 
   //===----------------------------------------------------------------------===//
@@ -932,7 +894,6 @@ private:
 namespace M {
 using KGEN::LIT::ConformanceConditionMap;
 using KGEN::LIT::FunctionDeclOverloadSet;
-using KGEN::LIT::MojoASTTypeRef;
 using KGEN::LIT::PublicAliasDecl;
 using KGEN::LIT::PublicArgumentDecl;
 using KGEN::LIT::PublicDecl;
@@ -947,34 +908,5 @@ using KGEN::LIT::PublicTraitDecl;
 using KGEN::LIT::PublicVariableDecl;
 using KGEN::LIT::StableInfo;
 } // namespace M
-
-namespace llvm {
-/// Cast from an MojoASTTypeRef to a mojo type.
-template <typename T>
-struct CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>
-    : public NullableValueCastFailed<T>,
-      public DefaultDoCastIfPossible<
-          T, M::KGEN::LIT::MojoASTTypeRef,
-          CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>> {
-  // Provide isPossible here because here we have the const-stripping from
-  // ConstStrippingCast.
-  static bool isPossible(M::KGEN::LIT::MojoASTTypeRef astType) {
-    if (!astType)
-      return false;
-    return T::classof(astType.getMLIRType());
-  }
-
-  static T doCast(M::KGEN::LIT::MojoASTTypeRef astType) {
-    return cast<T>(astType.getMLIRType());
-  }
-};
-
-template <typename T>
-struct CastInfo<T, const M::KGEN::LIT::MojoASTTypeRef>
-    : public ConstStrippingForwardingCast<
-          T, const M::KGEN::LIT::MojoASTTypeRef,
-          CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>> {};
-
-} // namespace llvm
 
 #endif // KGEN_MOJOTOOLING_PublicASTDecl_H

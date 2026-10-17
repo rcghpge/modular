@@ -31,33 +31,32 @@ struct MojoTypeDataLayoutContext::Impl {
       : context(context), targetInfo(targetInfo) {}
 
   /// Implementation of `MojoTypeDataLayoutContext::getOrCalculate`
-  const std::optional<MojoTypeDataLayout> &
-  getOrCalculate(MojoASTTypeRef typeRef);
+  const std::optional<MojoTypeDataLayout> &getOrCalculate(LIT::ASTType typeRef);
 
   /// Calculate the data layout of the given type.
-  std::optional<MojoTypeDataLayout> calculate(MojoASTTypeRef type);
+  std::optional<MojoTypeDataLayout> calculate(LIT::ASTType type);
 
   /// Calculate the data layout of the given struct.
   std::optional<MojoTypeDataLayout>
-  calculateForStruct(MojoASTTypeRef type, LIT::StructDeclOp structOp);
+  calculateForStruct(LIT::ASTType type, LIT::StructDeclOp structOp);
 
   /// Calculate the data layout of the given struct.
   std::optional<MojoTypeDataLayout>
-  calculateForStruct(MojoASTTypeRef typeRef, KGEN::StructType structType);
+  calculateForStruct(LIT::ASTType typeRef, KGEN::StructType structType);
 
   /// Calculate the data layout of the given variant.
   std::optional<MojoTypeDataLayout>
-  calculateForVariant(MojoASTTypeRef typeRef, VariantType variantType);
+  calculateForVariant(LIT::ASTType typeRef, VariantType variantType);
 
   /// Calculate the data layout of the given union. Each member sits at
   /// offset 0; the type's overall size is the max member size, rounded up
   /// to the union's alignment.
-  std::optional<MojoTypeDataLayout> calculateForUnion(MojoASTTypeRef typeRef,
+  std::optional<MojoTypeDataLayout> calculateForUnion(LIT::ASTType typeRef,
                                                       POP::UnionType unionType);
 
   /// Calculate the data layout of a struct-like collection of types.
   std::optional<MojoTypeDataLayout>
-  calculateForStructLike(ArrayRef<MojoASTTypeRef> fieldTypes);
+  calculateForStructLike(ArrayRef<LIT::ASTType> fieldTypes);
 
   DenseMap<Type, std::optional<MojoTypeDataLayout>> cache;
   LIT::MojoParserContext &context;
@@ -66,11 +65,11 @@ struct MojoTypeDataLayoutContext::Impl {
 
 std::optional<MojoTypeDataLayout>
 MojoTypeDataLayoutContext::Impl::calculateForStructLike(
-    ArrayRef<MojoASTTypeRef> fieldTypes) {
+    ArrayRef<LIT::ASTType> fieldTypes) {
   uint64_t size = 0, align = 1;
   MojoTypeDataLayout layout;
 
-  for (MojoASTTypeRef fieldType : fieldTypes) {
+  for (LIT::ASTType fieldType : fieldTypes) {
     auto &fieldLayout = getOrCalculate(fieldType);
     // If we cannot calculate the layout of a field, we bail because reporting
     // an incorrect size for this struct might result in miscalculating the
@@ -91,12 +90,11 @@ MojoTypeDataLayoutContext::Impl::calculateForStructLike(
 
 std::optional<MojoTypeDataLayout>
 MojoTypeDataLayoutContext::Impl::calculateForStruct(
-    MojoASTTypeRef typeRef, LIT::StructDeclOp structOp) {
-  auto refType = sugarCast<LIT::StructType>(typeRef.getMLIRType());
+    LIT::ASTType typeRef, LIT::StructDeclOp structOp) {
+  auto refType = sugarCast<LIT::StructType>(typeRef.mlirType);
   return calculateForStructLike(llvm::map_to_vector(
       structOp.getFieldDecls(), [&](LIT::StructFieldOp field) {
-        MojoASTTypeRef fieldType =
-            MojoASTTypeRef(field.getTypeAttr().getValue());
+        LIT::ASTType fieldType(field.getTypeAttr().getValue());
         // If the StructType has parameters, try to evaluate and substitute
         // them into the type.
         if (!refType.getParamValues().empty()) {
@@ -109,16 +107,16 @@ MojoTypeDataLayoutContext::Impl::calculateForStruct(
 
 std::optional<MojoTypeDataLayout>
 MojoTypeDataLayoutContext::Impl::calculateForStruct(
-    MojoASTTypeRef typeRef, KGEN::StructType structType) {
+    LIT::ASTType typeRef, KGEN::StructType structType) {
   std::optional<SmallVector<Type>> elementTypes = structType.getElementTypes();
   if (!elementTypes)
     return {};
   return calculateForStructLike(llvm::map_to_vector(
-      *elementTypes, [&](Type value) { return MojoASTTypeRef(value); }));
+      *elementTypes, [&](Type value) { return LIT::ASTType(value); }));
 }
 
 std::optional<MojoTypeDataLayout>
-MojoTypeDataLayoutContext::Impl::calculateForVariant(MojoASTTypeRef typeRef,
+MojoTypeDataLayoutContext::Impl::calculateForVariant(LIT::ASTType typeRef,
                                                      VariantType variantType) {
   // FIXME(35592): We are disabling printing of non-concrete variants for the
   // time being, because they can't be introspected.
@@ -131,7 +129,7 @@ MojoTypeDataLayoutContext::Impl::calculateForVariant(MojoASTTypeRef typeRef,
 
   MojoTypeDataLayout layout;
   uint64_t maxVariantSize = 0;
-  for (MojoASTTypeRef fieldType : variantType.getTypes()) {
+  for (LIT::ASTType fieldType : variantType.getTypes()) {
     auto &fieldLayout = getOrCalculate(fieldType);
     if (!fieldLayout)
       return {};
@@ -155,7 +153,7 @@ MojoTypeDataLayoutContext::Impl::calculateForVariant(MojoASTTypeRef typeRef,
 }
 
 std::optional<MojoTypeDataLayout>
-MojoTypeDataLayoutContext::Impl::calculateForUnion(MojoASTTypeRef typeRef,
+MojoTypeDataLayoutContext::Impl::calculateForUnion(LIT::ASTType typeRef,
                                                    POP::UnionType unionType) {
   if (!unionType.isResolved())
     return {};
@@ -167,7 +165,7 @@ MojoTypeDataLayoutContext::Impl::calculateForUnion(MojoASTTypeRef typeRef,
 
   MojoTypeDataLayout layout;
   for (Type memberType : unionType.getTypes()) {
-    MojoASTTypeRef memberRef(memberType);
+    LIT::ASTType memberRef(memberType);
     auto &memberLayout = getOrCalculate(memberRef);
     if (!memberLayout)
       return {};
@@ -180,38 +178,38 @@ MojoTypeDataLayoutContext::Impl::calculateForUnion(MojoASTTypeRef typeRef,
 }
 
 const std::optional<MojoTypeDataLayout> &
-MojoTypeDataLayoutContext::Impl::getOrCalculate(MojoASTTypeRef type) {
-  auto it = cache.find(type.getMLIRType());
+MojoTypeDataLayoutContext::Impl::getOrCalculate(LIT::ASTType type) {
+  auto it = cache.find(type.mlirType);
   if (it != cache.end())
     return it->second;
-  auto ret = cache.try_emplace(type.getMLIRType(), calculate(type));
+  auto ret = cache.try_emplace(type.mlirType, calculate(type));
   return ret.first->second;
 }
 
 std::optional<MojoTypeDataLayout>
-MojoTypeDataLayoutContext::Impl::calculate(MojoASTTypeRef type) {
+MojoTypeDataLayoutContext::Impl::calculate(LIT::ASTType type) {
   // A REPLResultRefType is effectively a pointer, so we transform it into one.
-  if (auto replType = sugarDynCast<LIT::REPLResultRefType>(type.getMLIRType()))
+  if (auto replType = sugarDynCast<LIT::REPLResultRefType>(type.mlirType))
     return calculate(KGEN::PointerType::get(replType.getElementType()));
 
-  if (LIT::ASTDecl *decl = context.getDecl(type)) {
+  if (LIT::ASTDecl *decl = type.getDecl(context.getSharedState())) {
     if (auto *structDecl = dyn_cast<LIT::StructASTDecl>(decl))
       return calculateForStruct(type, structDecl->getOp());
   }
 
-  if (auto structType = dyn_cast<KGEN::StructType>(type))
+  if (auto structType = dyn_cast<KGEN::StructType>(type.mlirType))
     return calculateForStruct(type, structType);
 
-  if (auto variantType = dyn_cast<VariantType>(type))
+  if (auto variantType = dyn_cast<VariantType>(type.mlirType))
     return calculateForVariant(type, variantType);
 
-  if (auto unionType = dyn_cast<POP::UnionType>(type))
+  if (auto unionType = dyn_cast<POP::UnionType>(type.mlirType))
     return calculateForUnion(type, unionType);
 
   std::optional<uint64_t> size =
-      DataLayoutInterface::getTypeStoreSize(targetInfo, type.getMLIRType());
+      DataLayoutInterface::getTypeStoreSize(targetInfo, type.mlirType);
   std::optional<uint64_t> alignment =
-      DataLayoutInterface::getTypeABIAlign(targetInfo, type.getMLIRType());
+      DataLayoutInterface::getTypeABIAlign(targetInfo, type.mlirType);
 
   if (!size || !alignment)
     return {};
@@ -221,7 +219,8 @@ MojoTypeDataLayoutContext::Impl::calculate(MojoASTTypeRef type) {
   // read. We also need to report these cases at least with an error message.
   if (size == std::numeric_limits<uint64_t>::max()) {
     llvm::errs() << "Error: MLIR type '"
-                 << type.getAsString(context.getSharedState())
+                 << type.getAsString(
+                        LIT::ASTTypePrinterContext(&context.getSharedState()))
                  << "' has an invalid size of " << size << " (-1).\n";
     size = 0;
     alignment = 1;
@@ -241,10 +240,10 @@ MojoTypeDataLayoutContext::MojoTypeDataLayoutContext(
                                                              targetInfo)) {}
 
 const std::optional<MojoTypeDataLayout> &
-MojoTypeDataLayoutContext::getOrCalculate(MojoASTTypeRef type) {
+MojoTypeDataLayoutContext::getOrCalculate(LIT::ASTType type) {
   return impl->getOrCalculate(type);
 }
 
-void MojoTypeDataLayoutContext::invalidateCache(MojoASTTypeRef typeRef) {
-  impl->cache.erase(typeRef.getMLIRType());
+void MojoTypeDataLayoutContext::invalidateCache(LIT::ASTType typeRef) {
+  impl->cache.erase(typeRef.mlirType);
 }
