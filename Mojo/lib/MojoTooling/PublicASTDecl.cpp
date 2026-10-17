@@ -293,11 +293,11 @@ extractChildDecls(const ASTDecl &decl,
 
   for (const auto &[name, decls] : decl.getDeclsInScope()) {
     if (decls.empty() || !decls.front() ||
-        !isa_and_nonnull<OpType>(decls.front()->getIfOperation()))
+        !isa_and_nonnull<OpType>(decls.front()->getOperation()))
       continue;
 
     for (ASTDecl *child : decls) {
-      OpType childOp = dyn_cast_or_null<OpType>(child->getIfOperation());
+      OpType childOp = dyn_cast_or_null<OpType>(child->getOperation());
       if (!childOp || shouldHideDeclInDocGen(*child, name))
         continue;
 
@@ -963,7 +963,9 @@ std::string PublicFunctionDecl::getSignature(
   // This is the same code the compiler calls when synthesizing declarations
   // for diagnostics that have no source location.
   if (decl) {
-    if (auto fnOp = dyn_cast_or_null<FnOp>(decl.getIfOperation())) {
+    auto *fnDecl = dyn_cast<DefASTDecl>(&*decl);
+    if (fnDecl && fnDecl->getOp()) {
+      FnOp fnOp = fnDecl->getOp();
       std::string out;
       llvm::raw_string_ostream os(out);
       SignatureOffsets so;
@@ -1048,7 +1050,7 @@ PublicFunctionDecl::PublicFunctionDecl(MojoASTDeclRef declRef)
                  declRef.getName().value_or(StringRef{})),
       decl(declRef),
       deprecated(declRef.getDeprecationWarning().value_or(StringRef{})) {
-  auto funcOp = cast<FnOp>(declRef.getIfOperation());
+  auto funcOp = cast<DefASTDecl>(*declRef).getOp();
   isStaticFlag = funcOp.getIsStatic();
   isImplicitConversionFlag = funcOp.isImplicitConversion();
   isMethodFlag = !isStaticFlag && isa<StructDeclOp>(funcOp->getParentOp());
@@ -1072,7 +1074,8 @@ PublicFunctionDecl::PublicFunctionDecl(MojoASTDeclRef declRef,
 /// Return the decl for the trait default that `decl` inherits, or `decl` itself
 /// if it is not an inherited default.
 static ASTDecl *findDefaultImplDecl(SharedState &shared, ASTDecl *decl) {
-  auto fnOp = dyn_cast_or_null<FnOp>(decl->getIfOperation());
+  auto *fnDecl = dyn_cast_or_null<DefASTDecl>(decl);
+  FnOp fnOp = fnDecl ? fnDecl->getOp() : nullptr;
   if (!fnOp)
     return decl;
 
@@ -1098,8 +1101,7 @@ void PublicFunctionDecl::initFromSignature(MojoASTDeclRef declRef,
 
   // If this is a method, grab the expected "Self" type.
   std::optional<ASTType> selfType;
-  if (declRef.getParent() &&
-      isa_and_nonnull<StructDeclOp>(declRef.getParent().getIfOperation()))
+  if (isa<StructASTDecl>(declRef->getParentDecl()))
     selfType = cast<StructASTDecl>(declRef->getParentDecl())->getSelfType();
 
   // Populate parameter infos (with per-param `conforms_to` merging applied
@@ -1115,8 +1117,9 @@ void PublicFunctionDecl::initFromSignature(MojoASTDeclRef declRef,
   populateArgumentInfos(
       shared, signature, userArgTypes, selfType, evaluator,
       [&]() -> bool {
-        if (auto fnDecl = dyn_cast_if_present<FnOp>(declRef.getIfOperation()))
-          return fnDecl.getSpecialFunctionInfo().hasSelfResult();
+        if (auto *fnDecl = dyn_cast<DefASTDecl>(&*declRef))
+          if (auto fnOp = fnDecl->getOp())
+            return fnOp.getSpecialFunctionInfo().hasSelfResult();
         return false;
       },
       argInfos);
@@ -1186,7 +1189,7 @@ llvm::json::Object PublicStructFieldDecl::toJSON(MojoParserContext &ctx) const {
 PublicStructFieldDecl::PublicStructFieldDecl(MojoASTDeclRef declRef)
     : PublicDecl(PublicDeclKind::DK_PublicStructFieldDecl,
                  declRef.getName().value_or(StringRef{})) {
-  auto fieldOp = cast<StructFieldOp>(declRef.getIfOperation());
+  auto fieldOp = cast<StructFieldASTDecl>(*declRef).getOp();
 
   llvm::raw_string_ostream typeOS(type);
   ASTType(fieldOp.getType()).print(typeOS, /*ctx=*/{declRef.getShared()});
@@ -1289,7 +1292,7 @@ static void collectParentTraits(MojoParserContext &ctx, MojoASTDeclRef self,
     std::optional<StringRef> name = decl.getName();
     if (!name)
       continue;
-    if (!isa_and_nonnull<TraitDeclOp>(decl.getIfOperation()))
+    if (!isa<TraitASTDecl>(&*decl))
       continue;
     std::string entry = name->str();
     if (StringRef condition = lookupConformanceCondition(conditions, symbol);
@@ -1326,7 +1329,7 @@ collectParentTraitsWithMetadata(MojoParserContext &ctx, MojoASTDeclRef self,
     MojoASTDeclRef decl = ctx.getTraitDecl(symbol);
     if (decl && decl != self) {
       std::optional<StringRef> name = decl.getName();
-      if (name && isa_and_nonnull<TraitDeclOp>(decl.getIfOperation())) {
+      if (name && isa<TraitASTDecl>(&*decl)) {
         TypeMetadata metadata = ::KGEN::TypeExtractionUtils::extractLibraryInfo(
             *name, &self, &ctx.getSharedState());
         traitData.push_back({*name, metadata, condition});
@@ -1404,7 +1407,7 @@ llvm::json::Object PublicTraitDecl::toJSON(MojoParserContext &ctx) const {
   // Collect parent traits with type metadata. A trait's own conformance list
   // cannot carry a `where` clause, so there are no conditions to report.
   llvm::json::Array parentTraitsWithMetadata = collectParentTraitsWithMetadata(
-      ctx, decl, cast<TraitDeclOp>(decl.getIfOperation()).getCanonicalTrait(),
+      ctx, decl, cast<TraitASTDecl>(*decl).getOp().getCanonicalTrait(),
       /*conditions=*/nullptr);
 
   return llvm::json::Object{
@@ -1428,7 +1431,7 @@ PublicTraitDecl::PublicTraitDecl(MojoASTDeclRef declRef)
                  declRef.getName().value_or(StringRef())),
       deprecated(declRef.getDeprecationWarning().value_or(StringRef())),
       decl(declRef) {
-  auto traitOp = cast<TraitDeclOp>(declRef.getIfOperation());
+  auto traitOp = cast<TraitASTDecl>(*declRef).getOp();
   stableInfo = computeStableInfo(traitOp);
 
   if (auto docStr = decl->getParsedDocString()) {
@@ -1489,10 +1492,9 @@ std::string PublicStructDecl::getDeclarationSnippet(
                                 ctx.getSharedState(), os, so);
 
   SmallVector<std::string> parentTraits;
-  collectParentTraits(
-      ctx, decl, parentTraits,
-      cast<StructDeclOp>(decl.getIfOperation()).getCanonicalTrait(),
-      &conformanceConditions);
+  collectParentTraits(ctx, decl, parentTraits,
+                      cast<StructASTDecl>(*decl).getOp().getCanonicalTrait(),
+                      &conformanceConditions);
   if (!parentTraits.empty()) {
     os << "\n# Traits: ";
     llvm::interleaveComma(parentTraits, os,
@@ -1553,7 +1555,7 @@ llvm::json::Object PublicStructDecl::toJSON(MojoParserContext &ctx) const {
 
   // Collect parent traits with type metadata
   llvm::json::Array parentTraitsWithMetadata = collectParentTraitsWithMetadata(
-      ctx, decl, cast<StructDeclOp>(decl->getIfOperation()).getCanonicalTrait(),
+      ctx, decl, cast<StructASTDecl>(*decl).getOp().getCanonicalTrait(),
       &conformanceConditions);
 
   return llvm::json::Object{
@@ -1581,7 +1583,7 @@ PublicStructDecl::PublicStructDecl(MojoASTDeclRef declRef)
                  declRef.getName().value_or(StringRef())),
       deprecated(declRef.getDeprecationWarning().value_or(StringRef())),
       decl(declRef) {
-  auto structOp = cast<StructDeclOp>(declRef.getIfOperation());
+  auto structOp = cast<StructASTDecl>(*declRef).getOp();
   TypeSignatureType signature = structOp.getSignature();
   convention = structOp.getConvention();
   stableInfo = computeStableInfo(structOp);

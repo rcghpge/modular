@@ -419,7 +419,7 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
     // Otherwise, we're good, charge forwards.
     entries.push_back(decl);
 
-    assert(dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getIfOperation()));
+    assert(dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getOperation()));
     registerDeclSymbol(decl);
     return;
   }
@@ -537,7 +537,7 @@ void DeclResolver::eraseDecls(llvm::ArrayRef<ASTDecl *> seeds) {
 
 void DeclResolver::registerDeclSymbol(ASTDecl *decl) {
   if (auto symbolDecl =
-          dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getIfOperation())) {
+          dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getOperation())) {
     shared.uniquifyNameAndAddToParentSymbolTable(symbolDecl.getOperation());
     // This symbol may have been renamed by the above
     // uniquifyNameAndAddToParentSymbolTable call.
@@ -1319,9 +1319,12 @@ LogicalResult DeclResolver::importDeclFromModule(
     SMLoc destNameLoc, bool resolveTarget) {
 
   auto modulePath = SharedState::ImportPath::fromAttr(moduleName);
-  ASTDecl &module =
+  // A failed import yields an erroneous placeholder (a plain ASTDecl backed by
+  // no operation), so keep this a ModuleASTDecl-tolerant lookup until the
+  // erroneous check below has ruled the placeholder out.
+  ASTDecl &imported =
       shared.importModule(modulePath, currentPackage, loc, /*importer=*/&dest);
-  shared.notifyListenerOnModuleImport(module, modulePath, loc);
+  shared.notifyListenerOnModuleImport(imported, modulePath, loc);
 
   // A relative self-import written inside a package's __init__ (`from . import
   // sub`) would, via the package->__init__ redirect, look up the submodule in
@@ -1334,7 +1337,7 @@ LogicalResult DeclResolver::importDeclFromModule(
   // re-export binding inside it is being resolved on demand.
   bool selfReferential = false;
   ASTDecl *initDecl = nullptr;
-  if (auto *package = dyn_cast<PackageASTDecl>(&module)) {
+  if (auto *package = dyn_cast<PackageASTDecl>(&imported)) {
     if (auto initOrFail = package->resolveInitModule(loc);
         succeeded(initOrFail)) {
       initDecl = *initOrFail;
@@ -1352,23 +1355,24 @@ LogicalResult DeclResolver::importDeclFromModule(
   LookupResult result =
       selfReferential
           ? LookupResult::getFailure({})
-          : shared.lookupAndResolveDecl(sourceName, sourceNameLoc, module,
+          : shared.lookupAndResolveDecl(sourceName, sourceNameLoc, imported,
                                         /*searchParentScopes=*/false,
                                         /*resolveTarget=*/resolveTarget);
   if (result.isErroneous())
     return failure();
+
+  // Only now is the import known to name a real module or package.
+  auto &module = cast<ModuleASTDecl>(imported);
   SmallVector<ASTDecl *> results;
   if (result.isFailure()) {
     // The name was not bound in the module's (or, for a package, its
     // __init__'s) scope. It may instead be a submodule of the package -
     // resolve it lazily from the filesystem.
-    if (ASTDecl *sub = shared.tryImportSubModule(cast<ModuleASTDecl>(module),
-                                                 sourceName, sourceNameLoc)) {
+    if (ASTDecl *sub =
+            shared.tryImportSubModule(module, sourceName, sourceNameLoc)) {
       results.push_back(sub);
     } else {
-      StringRef name =
-          cast_or_null<mlir::SymbolOpInterface>(module.getIfOperation())
-              .getName();
+      StringRef name = cast<mlir::SymbolOpInterface>(module.getOp()).getName();
       StringRef declType = isa<PackageASTDecl>(module) ? "package" : "module";
       emitError(sourceNameLoc, declType + " '" + name + "' does not contain '" +
                                    sourceName.getValue() + "'");
@@ -1433,7 +1437,7 @@ LogicalResult DeclResolver::importDeclFromModule(
         }
     }
     if (placeholderDecl) {
-      Operation *oldOp = placeholderDecl->getIfOperation();
+      Operation *oldOp = placeholderDecl->getOperation();
       OpBuilder fromBuilder(oldOp);
       auto gateOp =
           ImportOp::create(fromBuilder, shared.translateLocation(destNameLoc),
@@ -1473,8 +1477,8 @@ LogicalResult DeclResolver::importWildcardDeclsFromModule(
   auto modulePath = SharedState::ImportPath::fromAttr(moduleName);
   auto *packageDecl = dyn_cast<PackageASTDecl>(&context);
   PackageOp currentPackage = packageDecl ? packageDecl->getOp() : PackageOp();
-  if (!currentPackage && context.getIfOperation())
-    currentPackage = context.getIfOperation()->getParentOfType<PackageOp>();
+  if (!currentPackage && context.getOperation())
+    currentPackage = context.getOperation()->getParentOfType<PackageOp>();
 
   // Make sure the module has been resolved.
   ASTDecl &module = shared.importModule(modulePath, currentPackage, loc,
@@ -1646,8 +1650,9 @@ LogicalResult DeclResolver::resolve(ASTDecl &decl, DeclResolvedness howResolved,
       // or cause spurious error messages.
     } else {
       // Deferred source modules materialize their lexer cursor on first use.
-      if (isa<FileModuleASTDecl>(decl) && decl.getCursor().isInvalid() &&
-          failed(shared.materializeDeferredModule(decl, loc))) {
+      if (auto *fileModuleDecl = dyn_cast<FileModuleASTDecl>(&decl);
+          fileModuleDecl && decl.getCursor().isInvalid() &&
+          failed(shared.materializeDeferredModule(*fileModuleDecl, loc))) {
         decl.setErroneous();
       } else if (decl.getCursor().isInvalid()) {
         if (failed(decl.resolveSyntheticBody()))
@@ -1802,7 +1807,7 @@ void DeclResolver::eraseUnparsedDecls() {
       continue;
     if (decl->resolvedness == DeclResolvedness::unparsed &&
         !decl->loadedFromBytecode) {
-      if (Operation *op = decl->getIfOperation()) {
+      if (Operation *op = decl->getOperation()) {
         if (!isa<UnresolvedImportOp>(op))
           opsToErase.insert(op);
       }
@@ -1811,7 +1816,7 @@ void DeclResolver::eraseUnparsedDecls() {
 
   SmallVector<ASTDecl *> declsToErase;
   for (ASTDecl *decl : parsedDeclList)
-    if (opsToErase.contains(decl->getIfOperation()))
+    if (opsToErase.contains(decl->getOperation()))
       declsToErase.push_back(decl);
   eraseDecls(declsToErase);
 
@@ -1829,7 +1834,7 @@ void DeclResolver::eraseDeadImportPlaceholders() {
     return;
   SmallVector<ASTDecl *> placeholderDecls;
   for (ASTDecl *decl : parsedDeclList)
-    if (deadImportPlaceholders.contains(decl->getIfOperation()))
+    if (deadImportPlaceholders.contains(decl->getOperation()))
       placeholderDecls.push_back(decl);
   eraseDecls(placeholderDecls);
   for (Operation *op : deadImportPlaceholders)
@@ -2205,7 +2210,7 @@ StringAttr DeclResolver::getMangledName(StringAttr baseName, ASTDecl &container,
   // Compute the full signature of the decl to ensure dependent parameters from
   // a parent decl are name-erased in the mangled name.
   FnTypeGeneratorType fullSig =
-      LIT::getFullSignature(container.getIfOperation(), signatureGen);
+      LIT::getFullSignature(container.getOperation(), signatureGen);
 
   SmallString<64> mangledName(baseName.getValue().begin(),
                               baseName.getValue().end());

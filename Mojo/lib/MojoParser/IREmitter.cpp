@@ -1301,7 +1301,7 @@ void IREmitter::emitExpressionWithoutEvaluatingIt(
   ASTDecl *curDecl = &declScope;
   Operation *opToInsertInto = nullptr;
   // Scan for an operation with a region.
-  while (!(opToInsertInto = curDecl->getIfOperation()) ||
+  while (!(opToInsertInto = curDecl->getOperation()) ||
          opToInsertInto->getNumRegions() == 0) {
     curDecl = curDecl->getParentDecl();
     if (!curDecl) {

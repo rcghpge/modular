@@ -78,7 +78,7 @@ public:
                  TriBool capturingOverride = TriBool::unknown(),
                  ASTDecl *targetParent = nullptr);
 
-  Value emitClosure(ASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
+  Value emitClosure(ModuleASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
                     ArrayRef<Capture> captures, Location location,
                     bool isCopyable, ArrayRef<ParamDeclRefAttr> paramCaptures);
   static ASTDecl *addCaptureValue(SharedState &shared, DefASTDecl &closure,
@@ -162,7 +162,7 @@ private:
 
   /// Construct the closure struct, lift the nested function into a method, and
   /// emit witness tables for all closure parents.
-  Closure liftClosure(ASTDecl &moduleDecl, SMLoc smLoc,
+  Closure liftClosure(ModuleASTDecl &moduleDecl, SMLoc smLoc,
                       SmallVector<ClosureParent> &closureParents,
                       SymbolRefAttr parentSymbolRef,
                       SmallVector<StructDefFieldAttr> &&fieldDecls,

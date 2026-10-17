@@ -45,7 +45,7 @@ static StringRef getDeclName(Operation *op) {
 }
 
 static StringRef getDeclName(ASTDecl &decl) {
-  return getDeclName(decl.getIfOperation());
+  return getDeclName(decl.getOperation());
 }
 
 /// Forward declaration; defined below near `checkDeclUsageWarnings`, its
@@ -64,8 +64,8 @@ static std::string getIgnoreDeprecatedName(ASTDecl &decl, SharedState &shared) {
 
 /// Returns true if the declaration is marked @stable.
 static bool hasStableDecorator(ASTDecl &decl) {
-  if (auto stabilityIface = dyn_cast_if_present<StabilityDecoratorInterface>(
-          decl.getIfOperation()))
+  if (auto stabilityIface =
+          dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation()))
     return stabilityIface.isStable();
   return false;
 }
@@ -76,10 +76,9 @@ static bool hasStableDecorator(ASTDecl &decl) {
 static PackageOp findOptedInPackage(ASTDecl &decl) {
   ASTDecl *cur = decl.getNearestDeclOfType<PackageOp>();
   while (cur) {
-    if (auto *op = cur->getIfOperation())
-      if (auto pkgOp = dyn_cast<PackageOp>(op))
-        if (isPackageOptedIntoStabilityMarkers(pkgOp.getSymName()))
-          return pkgOp;
+    if (auto *packageDecl = dyn_cast<PackageASTDecl>(cur))
+      if (isPackageOptedIntoStabilityMarkers(packageDecl->getOp().getSymName()))
+        return packageDecl->getOp();
     cur = cur->getParentDecl();
     if (cur)
       cur = cur->getNearestDeclOfType<PackageOp>();
@@ -143,7 +142,7 @@ void M::KGEN::LIT::checkDeprecationAndWarn(ASTDecl &decl, SMLoc useLoc,
   // Use StabilityDecoratorInterface which now handles both @stable and
   // @deprecated.
   auto stabilityItf =
-      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getIfOperation());
+      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation());
   if (!stabilityItf || !stabilityItf.isDeprecated())
     return;
 
@@ -179,7 +178,7 @@ void M::KGEN::LIT::checkUnavailableAndError(ASTDecl &decl, SMLoc useLoc,
                                             CallSyntax syntax, SMLoc fixitLoc) {
   // Check if the declaration has an @unavailable decorator.
   auto stabilityItf =
-      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getIfOperation());
+      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation());
   if (!stabilityItf || !stabilityItf.isUnavailable())
     return;
 

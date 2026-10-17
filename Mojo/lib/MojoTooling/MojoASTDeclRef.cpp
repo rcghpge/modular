@@ -43,8 +43,8 @@ KGEN::LIT::SharedState *MojoASTDeclRef::getShared() const {
 static FnTypeGeneratorType getSignatureFromDecl(ASTDecl *decl) {
   if (!decl)
     return nullptr;
-  if (auto declOp = decl->getIfOperation())
-    if (auto func = dyn_cast<FnOp>(declOp))
+  if (auto defDecl = dyn_cast<DefASTDecl>(decl))
+    if (auto func = defDecl->getOp())
       return func.getFuncTypeGenerator();
   if (auto typeValue = decl->getIfTypeValue())
     return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
@@ -120,14 +120,10 @@ static Operation *getDefiningOpFromIR(MojoASTDeclRef declRef) {
   return nullptr;
 }
 
-Operation *MojoASTDeclRef::getIfOperation() const {
-  return decl->getIfOperation();
-}
-
 MojoASTTypeRef MojoASTDeclRef::getType() const {
-  if (!decl->getIfOperation())
+  if (!decl->getOperation())
     return {};
-  return TypeSwitch<Operation &, MojoASTTypeRef>(*decl->getIfOperation())
+  return TypeSwitch<Operation &, MojoASTTypeRef>(*decl->getOperation())
       .Case([&](VarDeclOp op) { return MojoASTTypeRef(op.getType()); })
       .Case([&](FnOp op) { return op.getFullSignature(); })
       .Case([&](StructDeclOp op) { return StructASTDecl::computeSelfType(op); })
@@ -156,7 +152,7 @@ std::optional<StringRef> MojoASTDeclRef::getName() const {
   // We first try to get the name from the operation. Then we try to match the
   // decl with a function argument. Finally, as a last resort, we extract the
   // defining Op from the IR to fetch the name.
-  if (auto name = getFromOp(decl->getIfOperation()))
+  if (auto name = getFromOp(decl->getOperation()))
     return name;
 
   if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*this)) {
@@ -177,7 +173,7 @@ std::optional<StringRef> MojoASTDeclRef::getName() const {
 
 std::optional<StringRef> MojoASTDeclRef::getDeprecationWarning() const {
   if (auto stabilityItf =
-          dyn_cast<StabilityDecoratorInterface>(decl->getIfOperation()))
+          dyn_cast<StabilityDecoratorInterface>(decl->getOperation()))
     if (StringAttr attr = stabilityItf.getDeprecationWarningAttr())
       return attr.getValue();
   return {};
@@ -236,7 +232,7 @@ ResultType MojoASTDeclRef::getDeclImpl() const {
   constexpr bool isApproximateResult =
       std::is_same_v<ResultType, ApproximatePublicDeclKind>;
 
-  if (Operation *declOp = decl->getIfOperation()) {
+  if (Operation *declOp = decl->getOperation()) {
     if (isa<AliasDeclOp>(declOp))
       return createPublicDecl<ResultType, PublicAliasDecl>(*this);
 

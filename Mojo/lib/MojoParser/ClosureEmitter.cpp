@@ -293,12 +293,12 @@ static StructFieldOp addFieldOpAndDecl(StringAttr name, Type type,
 }
 
 static std::pair<StructASTDecl &, StructDeclOp>
-createStruct(SharedState &shared, ASTDecl &moduleDecl, StringAttr name,
+createStruct(SharedState &shared, ModuleASTDecl &moduleDecl, StringAttr name,
              ArrayRef<ParamDeclAttr> params, SMLoc loc,
              ArrayRef<PassingKind> passingKinds) {
   assert(passingKinds.size() == params.size() &&
          "passing kind per struct parameter");
-  OpBuilder b(moduleDecl.getIfOperation()->getRegion(0));
+  OpBuilder b(&moduleDecl.getOp()->getRegion(0));
   SmallVector<StringAttr> paramNames;
 #ifndef NDEBUG // Only used for assertion checks below.
   SmallPtrSet<StringAttr, 16> paramNamesSet;
@@ -380,7 +380,7 @@ getReboundCaptureDeviceFieldType(ASTType captureStorageHostType,
 }
 
 static FailureOr<LIT::StructType>
-createDeviceTypeStruct(SharedState &shared, ASTDecl &moduleDecl,
+createDeviceTypeStruct(SharedState &shared, ModuleASTDecl &moduleDecl,
                        StructASTDecl &storageStructDecl,
                        ArrayRef<Type> deviceFieldTypes) {
   MLIRContext *ctx = shared.getContext();
@@ -1723,7 +1723,7 @@ DefASTDecl *ClosureEmitter::liftClosureIntoMethod(
 }
 
 ClosureEmitter::Closure ClosureEmitter::liftClosure(
-    ASTDecl &moduleDecl, SMLoc smLoc,
+    ModuleASTDecl &moduleDecl, SMLoc smLoc,
     SmallVector<ClosureParent> &closureParents, SymbolRefAttr parentSymbolRef,
     SmallVector<StructDefFieldAttr> &&concreteFieldDecls,
     SmallVector<Value> &&concreteFieldCaptures,
@@ -2100,7 +2100,8 @@ static TypeConvention typeConventionOf(SharedState &shared, ParamType paramType,
                                                    shared);
 }
 
-Value ClosureEmitter::emitClosure(ASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
+Value ClosureEmitter::emitClosure(ModuleASTDecl &moduleDecl,
+                                  DefASTDecl &nestedFnDecl,
                                   ArrayRef<Capture> captures, Location location,
                                   bool isCopyable,
                                   ArrayRef<ParamDeclRefAttr> paramCaptures) {
@@ -2884,7 +2885,8 @@ void ClosureEmitter::addConformanceToDevicePassable(
 void ClosureEmitter::addStorageConformanceToDevicePassable(
     StructASTDecl &structDecl, ArrayRef<Type> deviceCaptureFieldTypes,
     StringRef name) {
-  ASTDecl *fileModule = structDecl.getNearestDeclOfType<FileModuleOp>();
+  ModuleASTDecl *fileModule = cast_or_null<FileModuleASTDecl>(
+      structDecl.getNearestDeclOfType<FileModuleOp>());
   if (!fileModule) {
     // for parametric trait based closure, the struct decl is put within the top
     // level decl.

@@ -115,7 +115,8 @@ MojoASTTypeRef MojoParserContext::concretizeType(MojoASTTypeRef base,
                                                  ArrayRef<TypedAttr> params,
                                                  MojoASTTypeRef type) {
   KGEN::ParameterEvaluator evaluator(
-      cast<StructDeclOp>(base.getDecl(getSharedState()).decl->getIfOperation())
+      cast<StructASTDecl>(base.getDecl(getSharedState()).decl)
+          ->getOp()
           .getInputParams(),
       params);
 
@@ -328,7 +329,7 @@ void M::resolveSignaturesForLSP(DeclResolver &resolver) {
       // only resolution leaves the body empty. resolveBody materializes the
       // body from bytecode, satisfying the invariant and making the op's
       // members visible to LSP queries.
-      if (isa_and_nonnull<LIT::FnOp>(parsedDecl->getIfOperation()))
+      if (isa_and_nonnull<DefASTDecl>(parsedDecl))
         (void)resolver.resolveSignature(*parsedDecl, parsedDecl->getLoc());
       else
         (void)resolver.resolveBody(*parsedDecl, parsedDecl->getLoc());

@@ -82,11 +82,6 @@ class MojoASTDeclRef {
 public:
   MojoASTDeclRef(KGEN::LIT::ASTDecl *decl = nullptr) : decl(decl) {}
 
-  /// Returns the operation corresponding to this decl if there is one, nullptr
-  /// otherwise. The returned operation should only be used for introspection,
-  /// it should not be modified in any way.
-  Operation *getIfOperation() const;
-
   /// Returns if the AST declaration is valid.
   operator bool() const { return decl != nullptr; }
 

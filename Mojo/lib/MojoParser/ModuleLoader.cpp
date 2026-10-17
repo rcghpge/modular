@@ -1056,7 +1056,7 @@ ModuleLoader::createModuleState(StringAttr declName,
 
   // Auto-import the core language modules.
   if (LLVM_LIKELY(shared.hasBuiltinModule()))
-    shared.importBuiltinModules(*moduleState.decl);
+    shared.importBuiltinModules(cast<FileModuleASTDecl>(*moduleState.decl));
   shared.notifyListenerOnModuleDecl(*moduleState.decl,
                                     moduleState.decl->getLoc());
   return moduleState;

@@ -78,9 +78,9 @@ struct BaseCompletionListener : public ParserListener {
 static bool showDeclDuringLookup(MojoASTDeclRef declRef, StringRef &member,
                                  MojoASTDeclRef child,
                                  bool isModuleLookup = false) {
-  if (llvm::isa_and_present<PackageOp>(declRef.getIfOperation())) {
+  if (isa<PackageASTDecl>(&*declRef)) {
     bool childIsPackageOrModule =
-        llvm::isa_and_present<FileModuleOp, PackageOp>(child.getIfOperation());
+        llvm::isa_and_present<FileModuleASTDecl, PackageASTDecl>(&*child);
     // If this is a module lookup, we only want to show non-init modules defined
     // within the package.
     if (isModuleLookup)
@@ -173,11 +173,11 @@ struct CodeCompletionListener : public BaseCompletionListener {
       SharedState &shared = parserContext->getSharedState();
       for (ASTDecl *sub : shared.getNestedModuleDecls(package->getOp())) {
         MojoASTDeclRef subRef(sub);
-        StringAttr nameAttr =
-            TypeSwitch<Operation *, StringAttr>(subRef.getIfOperation())
-                .Case<FileModuleOp, PackageOp>(
-                    [](auto m) { return m.getDeclName(); })
-                .Default(StringAttr());
+        StringAttr nameAttr = TypeSwitch<Operation *, StringAttr>(
+                                  cast<ModuleASTDecl>(*subRef).getOp())
+                                  .Case<FileModuleOp, PackageOp>(
+                                      [](auto m) { return m.getDeclName(); })
+                                  .Default(StringAttr());
         if (!nameAttr || nameAttr.getValue() == "__init__")
           continue;
         addCompletionForOp(nameAttr.getValue(), subRef);
@@ -261,7 +261,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
       collectDeclChildren(decl);
       decl = decl.getParent();
     } while (
-        !llvm::isa_and_present<PackageOp, ModuleOp>(decl.getIfOperation()));
+        !llvm::isa_and_present<PackageASTDecl, TopLevelModuleASTDecl>(&*decl));
   }
 
   /// Resolve the decl bound by an unresolved import to the decl it names within
@@ -297,7 +297,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
     if (!addedResults.insert({&*declRef, name}).second)
       return;
 
-    Operation *op = declRef.getIfOperation();
+    Operation *op = declRef->getOperation();
     if (!op || (filter && !filter(op)))
       return;
 
@@ -319,9 +319,10 @@ struct CodeCompletionListener : public BaseCompletionListener {
     // placeholder, which would complete as an unknown kind. Peek at the decl it
     // names in its defining module for the kind.
     if (auto importOp = dyn_cast<UnresolvedImportOp>(op)) {
-      if (MojoASTDeclRef target = resolveImportedDecl(importOp);
-          target && target.getIfOperation())
-        kind = kindForOp(target.getIfOperation());
+      if (MojoASTDeclRef target = resolveImportedDecl(importOp); target) {
+        if (Operation *targetOp = target->getOperation())
+          kind = kindForOp(targetOp);
+      }
     }
 
     CodeCompletionResult result(name, kind);

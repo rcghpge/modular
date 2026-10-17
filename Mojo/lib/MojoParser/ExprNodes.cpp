@@ -998,12 +998,13 @@ diagnoseUnknownDeclaration(StringRef spelling, ASTDecl &lookupScope,
       const char *replacement =
           isa<StructASTDecl>(parentDecl) ? "self." : "Self.";
       // References to static methods can always use capital Self.
-      Operation *firstCandidate = failureDecls[0]->getIfOperation();
-      if (auto fnCandidate = dyn_cast_or_null<FnOp>(firstCandidate)) {
-        declKind = "method ";
-        if (fnCandidate.getIsStatic())
-          replacement = "Self.";
-      } else if (isa_and_nonnull<AliasDeclOp>(firstCandidate)) {
+      if (auto *defDecl = dyn_cast<DefASTDecl>(failureDecls[0])) {
+        if (FnOp fnCandidate = defDecl->getOp()) {
+          declKind = "method ";
+          if (fnCandidate.getIsStatic())
+            replacement = "Self.";
+        }
+      } else if (isa<AliasASTDecl>(failureDecls[0])) {
         declKind = "comptime ";
         // Aliases are properties of the type, so `Self` is more idiomatic.
         // However `self.` is also supported.
@@ -1023,13 +1024,13 @@ diagnoseUnknownDeclaration(StringRef spelling, ASTDecl &lookupScope,
     }
   }
 
-  if (auto lookupOp = lookupScope.getIfOperation();
-      lookupOp && isa<PackageOp, FileModuleOp>(lookupOp)) {
+  if (isa_and_nonnull<PackageASTDecl, FileModuleASTDecl>(&lookupScope)) {
     auto diag = emitter.emitError(loc);
-    if (auto packageOp = dyn_cast<PackageOp>(lookupOp))
-      diag << "package '" << packageOp.getName();
+    if (auto *packageDecl = dyn_cast<PackageASTDecl>(&lookupScope))
+      diag << "package '" << packageDecl->getOp().getName();
     else {
-      diag << "module '" << cast<FileModuleOp>(lookupOp).getName();
+      diag << "module '"
+           << cast<FileModuleASTDecl>(&lookupScope)->getOp().getName();
     }
     diag << "' has no declaration '" << spelling << "'" << expr->getRange();
     return {};
@@ -1264,10 +1265,9 @@ lookupMembersInDecls(SmallVectorImpl<ASTDecl *> &memberDecls,
     bool isExtension = isa<ExtensionASTDecl>(containerDecl);
     for (ASTDecl *decl : lookup.getIfSuccess()) {
       if (isExtension)
-        if (!decl->getIfOperation())
-          if (PValue cv = decl->getIfIRValue().getIfPValue())
-            if (sugarIsa<ParamDeclRefAttr>(cv.get()))
-              continue;
+        if (PValue cv = decl->getIfIRValue().getIfPValue())
+          if (sugarIsa<ParamDeclRefAttr>(cv.get()))
+            continue;
       memberDecls.push_back(decl);
     }
   }
@@ -2227,12 +2227,11 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   if (spelling.empty())
     return {};
 
-  // This could be null for TraitType.
-  auto typeDeclOp = typeDecl->getIfOperation();
-
   // Handle import-gated module references. ImportOp gates access to the
   // real package: nested ImportOps control which child modules are accessible.
-  if (auto importOp = dyn_cast_or_null<ImportOp>(typeDeclOp)) {
+  if (auto *gateDecl = dyn_cast<ImportASTDecl>(typeDecl);
+      gateDecl && gateDecl->isResolved()) {
+    ImportOp importOp = gateDecl->getIfResolvedOp();
     // The gate may be only signature-resolved when reached here (e.g., reloaded
     // from a precompiled package) so body-resolve it before looking in its
     // scope.
@@ -2269,8 +2268,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
             ModuleAttr::get(LIT::ModuleType::get(memberDecl->getSymbolRef())));
         return emitter.emitCResult(result, this, dest);
       }
-      if (isa_and_nonnull<PackageOp, FileModuleOp>(
-              memberDecl->getIfOperation())) {
+      if (isa_and_nonnull<PackageASTDecl, FileModuleASTDecl>(memberDecl)) {
         // A raw submodule bound in __init__'s scope. It is reachable precisely
         // because __init__ bound it, so access is allowed. Bind a child
         // ImportOp over it and hand that back (not the raw module) so deeper
@@ -2299,12 +2297,12 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   // scan in an ancestor package scope. (Cross-package access goes through an
   // ImportOp, handled above.)
   // FIXME: Can we remove this?
-  if (isa_and_nonnull<PackageOp, FileModuleOp>(typeDeclOp))
+  if (isa_and_nonnull<PackageASTDecl, FileModuleASTDecl>(typeDecl))
     return DeclRefNode::emitUnqualLookup(spelling, this, *typeDecl, dest,
                                          emitter, false);
 
   // We can only look up in something of struct or trait type.
-  if (!isa_and_nonnull<StructDeclOp, TraitDeclOp>(typeDeclOp) &&
+  if (!isa_and_nonnull<TypeASTDecl>(typeDecl) &&
       !sugarIsa<TraitType>(typeDecl->getIfTypeValue())) {
     emitter.emitError(getLoc(), "cannot access attribute in type ")
         << baseVal.getType() << base->getRange();
@@ -2406,7 +2404,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   // Functions are checked in CallEmission.cpp::getCallee after overload
   // resolution.
   for (ASTDecl *memberDecl : memberDecls)
-    if (memberDecl->getIfOperation())
+    if (memberDecl->getOperation())
       checkDeclUsageWarnings(*memberDecl, getIdentifierLoc(),
                              emitter.getDeclScope(), shared, getRange(),
                              CallSyntax::kDirectCall, {});

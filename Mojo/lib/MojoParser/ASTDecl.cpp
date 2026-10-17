@@ -206,7 +206,7 @@ WitnessASTDecl::WitnessASTDecl(SharedState &shared,
 
 LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
   auto &resolver = shared.getDeclResolver();
-  if (getIfOperation()) {
+  if (getOperation()) {
     llvm_unreachable("do not know how to resolve this decl signature");
   }
 
@@ -218,7 +218,7 @@ LogicalResult ASTDecl::resolveSignature(Lexer &lexer) {
 
 LogicalResult ASTDecl::resolveSyntheticSignature() {
   auto &resolver = shared.getDeclResolver();
-  if (!getIfOperation())
+  if (!getOperation())
     if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue()))
       return success(!failed(resolver.resolveSignature(traitType, *this)));
 
@@ -230,7 +230,7 @@ LogicalResult ASTDecl::resolveSyntheticSignature() {
 
 LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
   auto &resolver = shared.getDeclResolver();
-  if (getIfOperation()) {
+  if (getOperation()) {
     llvm_unreachable("do not know how to resolve this decl body");
   }
 
@@ -278,7 +278,7 @@ ImplicitConversionKind ASTDecl::getDeclImplicitConversionKind() const {
 }
 
 DocStringAttr ASTDecl::getDocString() const {
-  if (auto astDeclOp = dyn_cast_or_null<ASTDeclInterface>(getIfOperation()))
+  if (auto astDeclOp = dyn_cast_or_null<ASTDeclInterface>(getOperation()))
     return astDeclOp.getDocStringAttr();
   return {};
 }
@@ -300,7 +300,7 @@ ASTDecl::lookupParamReference(ParamDeclRefAttr paramRef) const {
 
   const ASTDecl *current = this;
   for (; current; current = current->getParentDecl()) {
-    if (auto op = current->getIfOperation()) {
+    if (auto op = current->getOperation()) {
       if (auto declIntf = dyn_cast<DeclInterface>(op)) {
         for (auto [idx, param] : llvm::enumerate(declIntf.getInputParams())) {
           if (param.getName() == paramDecl.getName() &&
@@ -466,9 +466,8 @@ static std::pair<ASTDecl *, size_t> getNearestParamScopeAndDepth(
   while (decl) {
     checkForCollision(decl);
 
-    bool isParamScope =
-        isa_and_nonnull<DeclInterface>(decl->getIfOperation()) ||
-        decl->getIsExplicitParamScope();
+    bool isParamScope = isa_and_nonnull<DeclInterface>(decl->getOperation()) ||
+                        decl->getIsExplicitParamScope();
     if (!paramScope && isParamScope)
       paramScope = decl;
 
@@ -583,7 +582,7 @@ StringAttr ASTDecl::mangleParamName(const Twine &name) {
 
 void ASTDecl::dump() const {
   // The value is either an operation or a type of MLIR `Value`.
-  if (auto *op = getIfOperation()) {
+  if (auto *op = getOperation()) {
     // Print without verifying, since IR could be in an invalid state.
     op->print(llvm::errs(), mlir::OpPrintingFlags().printGenericOpForm());
     llvm::errs() << "\n";
@@ -612,7 +611,7 @@ ASTType ASTDecl::getIfTypeValue() const {
 }
 
 std::optional<StringRef> ASTDecl::getUserNameIfOperation() const {
-  if (Operation *op = getIfOperation())
+  if (Operation *op = getOperation())
     if (auto decl = dyn_cast<ASTDeclInterface>(op))
       return decl.getDeclName().getValue();
   return {};
@@ -631,7 +630,7 @@ SymbolRefAttr ASTDecl::getSymbolRef() const {
     return {};
   }
 
-  auto op = dyn_cast_if_present<mlir::SymbolOpInterface>(getIfOperation());
+  auto op = dyn_cast_if_present<mlir::SymbolOpInterface>(getOperation());
   if (!op)
     return {};
   assert((!isa<FnOp>(op) || resolvedness >= DeclResolvedness::signature) &&

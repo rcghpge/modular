@@ -120,8 +120,8 @@ struct Symbol {
     // Modules/Packages (and Import access gates over them) just point to the
     // direct location; their own decl location isn't a source identifier we can
     // size. Their per-segment source range is supplied via `onModuleImport`.
-    if (isa_and_nonnull<FileModuleOp, PackageOp, ImportOp>(
-            declRef.getIfOperation()))
+    if (isa_and_nonnull<FileModuleASTDecl, PackageASTDecl, ImportASTDecl>(
+            &*declRef))
       range = {identifierLoc, identifierLoc};
     else
       range = getRangeForText(identifierLoc, identifier);
@@ -390,8 +390,8 @@ Symbol *SymbolIndex::registerSymbol(MojoASTDeclRef declRef,
     // would assert in IntervalMap). This also prevents crashes when a REPL
     // docstring imports the module being parsed (a self-import), which causes
     // PackageOp symbols with locations in the main doc to reach this path.
-    if (!isa_and_nonnull<FileModuleOp, PackageOp, ImportOp>(
-            declRef->getIfOperation()))
+    if (!isa_and_nonnull<FileModuleASTDecl, PackageASTDecl, ImportASTDecl>(
+            &*declRef))
       insertRangeInMainDoc({symbol, symbol.range});
   }
   return &symbol;
@@ -953,7 +953,7 @@ void MojoDocument::checkModuleSemantics(MojoASTDeclRef decl) {
   });
 
   // Don't check the semantics of the module if there were parser errors.
-  if (hasParserErrors || !decl || !decl.getIfOperation())
+  if (hasParserErrors || !decl || !decl->getOperation())
     return;
 
   // Clone the module this decl is in so that we don't mess with the AST, as
@@ -1618,7 +1618,8 @@ void MojoDocument::onSemanticTokens(
 static bool isSelfArgument(MojoASTDeclRef decl) {
   if (decl.getName() == "self") {
     if (ASTDecl *parentDecl = decl->getParentDecl()) {
-      auto parentFunc = dyn_cast<FnOp>(parentDecl->getIfOperation());
+      auto *parentDefDecl = dyn_cast<DefASTDecl>(parentDecl);
+      FnOp parentFunc = parentDefDecl ? parentDefDecl->getOp() : nullptr;
       return parentFunc &&
              isa<StructDeclOp, TraitDeclOp>(parentFunc->getParentOp()) &&
              !parentFunc.getIsStatic();
@@ -1759,7 +1760,7 @@ static std::optional<int64_t> getAddressSpace(const Symbol &symbol) {
 
   MojoASTDeclRef declRef = symbol.declRef;
   ASTType type;
-  if (Operation *op = declRef.getIfOperation()) {
+  if (Operation *op = declRef->getOperation()) {
     if (auto varDecl = dyn_cast<VarDeclOp>(op))
       type = varDecl.getType();
     else if (auto field = dyn_cast<StructFieldOp>(op))

@@ -13,6 +13,7 @@
 
 #include "MojoTypeDataLayout.h"
 #include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/MojoParser/ASTDecl.h"
 #include "Mojo/MojoTooling/ParserDriver.h"
 #include "Mojo/MojoTooling/PublicASTDecl.h"
 #include "Mojo/POPDialect/POPTypes.h"
@@ -194,10 +195,8 @@ MojoTypeDataLayoutContext::Impl::calculate(MojoASTTypeRef type) {
     return calculate(KGEN::PointerType::get(replType.getElementType()));
 
   if (MojoASTDeclRef declRef = context.getDecl(type)) {
-    if (LIT::StructDeclOp structDeclOp =
-            dyn_cast_if_present<LIT::StructDeclOp>(declRef.getIfOperation())) {
-      return calculateForStruct(type, structDeclOp);
-    }
+    if (auto *structDecl = dyn_cast<LIT::StructASTDecl>(&*declRef))
+      return calculateForStruct(type, structDecl->getOp());
   }
 
   if (auto structType = dyn_cast<KGEN::StructType>(type))

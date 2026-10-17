@@ -104,6 +104,12 @@ public:
   /// If the IRValue is an Operation*, return it, otherwise return null.
   /// This is used for things like Module, StructDecl, Func, or ParamDecl.
   Operation *getIfOperation() const { return dyn_cast<Operation *>(irValue); }
+
+  /// Return the operation backing this decl, or null if it holds a value.
+  /// Callers that know the decl kind should downcast and use the typed
+  /// getOp() accessors instead.
+  virtual Operation *getOperation() const { return getIfOperation(); }
+
   void setIRValue(DeclIRValue value) { irValue = value; }
 
   /// Return true if this decl is callable: a `FnOp`, or a witness for one.
@@ -140,7 +146,7 @@ public:
   template <typename... OpTs>
   ASTDecl *getNearestDeclOfType() {
     ASTDecl *cur = this;
-    while (cur && !isa_and_nonnull<OpTs...>(cur->getIfOperation()))
+    while (cur && !isa_and_nonnull<OpTs...>(cur->getOperation()))
       cur = cur->getParentDecl();
     return cur;
   }
@@ -175,7 +181,7 @@ public:
 
   /// Return the builder at the end of the region that the decl contains.
   OpBuilder getDeclEndBuilder() {
-    Operation *op = getIfOperation();
+    Operation *op = getOperation();
     assert(op && op->getNumRegions() == 1 &&
            "can't get builder for this ASTDecl");
     return OpBuilder::atBlockEnd(&op->getRegion(0).front());
@@ -561,6 +567,10 @@ public:
   LogicalResult resolveSyntheticSignature() override;
   LogicalResult resolveBody(Lexer &lexer) override;
   LogicalResult resolveSyntheticBody() override;
+
+  /// Return the module operation backing this decl. Subclasses shadow this
+  /// with a typed version.
+  Operation *getOp() const { return getIfOperation(); }
 
   /// Return the absolute import path for this module, or null if it has no
   /// symbol.

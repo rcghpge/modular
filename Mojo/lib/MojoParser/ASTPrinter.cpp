@@ -197,7 +197,7 @@ static bool tryPrintIdentityReconstruction(raw_ostream &os, TypedAttr typeValue,
   if (ASTDecl *decl =
           diagShared->getDeclResolver().getDeclForTypeSymbolIfExists(
               structTy.getValue().getValue())) {
-    auto declIntf = dyn_cast<DeclInterface>(decl->getIfOperation());
+    auto declIntf = dyn_cast<DeclInterface>(decl->getOperation());
     if (!declIntf)
       return false;
     ArrayRef<ParamDeclAttr> declaredParams = declIntf.getInputParams();
@@ -623,13 +623,13 @@ static ParamDeclRefAttr findDeclRefForIndexRef(ParamIndexRefAttr idxRef,
   // Find the named param decl from the param list and print a reference
   // to it instead.
   for (; ctxDecl; ctxDecl = ctxDecl->getParentDecl()) {
-    if (auto op = ctxDecl->getIfOperation()) {
-      if (auto fn = dyn_cast<LIT::FnOp>(op)) {
+    if (auto *defDecl = dyn_cast<DefASTDecl>(ctxDecl)) {
+      if (LIT::FnOp fn = defDecl->getOp()) {
         auto paramDecls = fn.collectAllParams(/*implicitOrigins*/ false);
         if (idxRef.getIndex() < paramDecls.size())
           return ParamDeclRefAttr::get(paramDecls[idxRef.getIndex()]);
 
-        if (auto declIntf = dyn_cast<DeclInterface>(op)) {
+        if (auto declIntf = dyn_cast<DeclInterface>(fn.getOperation())) {
           ArrayRef<ParamDeclAttr> paramDecls = declIntf.getInputParams();
           if (idxRef.getIndex() < paramDecls.size())
             return ParamDeclRefAttr::get(paramDecls[idxRef.getIndex()]);
@@ -655,8 +655,8 @@ findArgNameForImplicitOriginRef(ImplicitOriginRefAttr originRef,
   // Find the named param decl from the param list and print a reference
   // to it instead.
   for (; ctxDecl; ctxDecl = ctxDecl->getParentDecl()) {
-    if (auto op = ctxDecl->getIfOperation()) {
-      if (auto fn = dyn_cast<LIT::FnOp>(op)) {
+    if (auto *defDecl = dyn_cast<DefASTDecl>(ctxDecl)) {
+      if (LIT::FnOp fn = defDecl->getOp()) {
         for (auto [idx, argType] :
              llvm::enumerate(fn.getFuncTypeGenerator().getArguments())) {
           if (auto refType = dyn_cast<RefType>(argType))

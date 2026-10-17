@@ -109,14 +109,8 @@ std::string extractModulePathFromDecl(M::MojoASTDeclRef declRef) {
 
   M::MojoASTDeclRef current = declRef;
   while (current) {
-    Operation *op = current.getIfOperation();
-    if (auto fileModule = dyn_cast_or_null<FileModuleOp>(op)) {
-      // File module - add its name and continue up to get full hierarchy
-      if (auto name = current.getName()) {
-        pathComponents.push_back(*name);
-      }
-    } else if (auto packageOp = dyn_cast_or_null<PackageOp>(op)) {
-      // Package - add its name and continue up
+    if (isa<FileModuleASTDecl, PackageASTDecl>(&*current)) {
+      // Module or package - add its name and continue up to get full hierarchy
       if (auto name = current.getName()) {
         pathComponents.push_back(*name);
       }
@@ -149,9 +143,8 @@ tryResolveTypeToDecl(llvm::StringRef typeName, SharedState &sharedState,
       for (auto childEntry : current.getChildren()) {
         if (childEntry.getName() == typeName) {
           for (auto child : childEntry.getDecls()) {
-            Operation *childOp = child.getIfOperation();
-            if (isa_and_nonnull<StructDeclOp, TraitDeclOp, AliasDeclOp>(
-                    childOp)) {
+            if (isa_and_nonnull<StructASTDecl, TraitASTDecl, AliasASTDecl>(
+                    &*child)) {
               return child;
             }
           }

@@ -610,7 +610,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
       // `attachNote(Location)` does not. The location lives on the decl's
       // operation, so use it when present; otherwise fall back to the decl
       // overload to locate the note.
-      if (Operation *op = traitFnDecl->getIfOperation())
+      if (Operation *op = traitFnDecl->getOperation())
         return diag->attachNote(op->getLoc());
       return diag->attachNote(*traitFnDecl);
     };

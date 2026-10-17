@@ -87,7 +87,7 @@ void ParserBase::parseDocString(ASTDecl &decl) {
   if (docString.empty())
     return;
   if (auto astDeclOp =
-          dyn_cast_or_null<ASTDeclInterface>(decl.getIfOperation())) {
+          dyn_cast_or_null<ASTDeclInterface>(decl.getOperation())) {
     Location loc = shared.diags.translateLocation(
         lexer.getStringLiteralStartLoc(docString));
 
@@ -4628,7 +4628,9 @@ StmtParser::parseImportModuleName(SharedState::ImportPath &parsedName,
 
     // Otherwise, this is importing from within a package.
     shared.notifyListenerOnImport(loc, [&]() -> ASTDecl & {
-      auto curOp = curDeclScope->getIfOperation()->getParentOfType<PackageOp>();
+      auto *packageDecl = curDeclScope->getNearestDeclOfType<PackageOp>();
+      PackageOp curOp =
+          packageDecl ? cast<PackageASTDecl>(packageDecl)->getOp() : nullptr;
       return shared.importModule(parsedName, curOp, loc);
     });
   };

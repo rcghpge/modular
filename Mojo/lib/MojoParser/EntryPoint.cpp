@@ -293,12 +293,12 @@ static void eraseUnreachableDecls(Operation *declOp, ModuleOp module) {
 /// Parse a mojo module or package into the specified MLIR context. Returns the
 /// resultant IR, and the decl for the module or package. This abstracts away
 /// the shared setup between module and package parsing.
-static std::tuple<OwningOpRef<mlir::ModuleOp>, ASTDecl *>
+static std::tuple<OwningOpRef<mlir::ModuleOp>, ModuleASTDecl *>
 importMojoImpl(ContextRef context, StringRef moduleIdentifier,
                SourceMgr &sourceMgr, SharedState &sharedState,
                mlir::TimingScope &ts,
                SmallVectorImpl<std::string> *includedFiles,
-               function_ref<ASTDecl &(ModuleOp)> buildDeclFn) {
+               function_ref<ModuleASTDecl &(ModuleOp)> buildDeclFn) {
   auto fileLoc =
       sharedState.createLocation(moduleIdentifier, /*line=*/1, /*column=*/1);
   llvm::StringMap<Telemetry::MetricAttributeValue> attrs = {
@@ -312,7 +312,7 @@ importMojoImpl(ContextRef context, StringRef moduleIdentifier,
   mlir::OwningOpRef<ModuleOp> module(ModuleOp::create(fileLoc));
 
   // Build the decl for the main module.
-  ASTDecl &moduleDecl = buildDeclFn(*module);
+  ModuleASTDecl &moduleDecl = buildDeclFn(*module);
 
   // Resolve everything within the main input module.
   sharedState.declResolver->resolveAllReferencedFrom(moduleDecl);
@@ -339,7 +339,7 @@ importMojoImpl(ContextRef context, StringRef moduleIdentifier,
   }
 #endif // MODULAR_PRODUCTION
 
-  eraseUnreachableDecls(moduleDecl.getIfOperation(), *module);
+  eraseUnreachableDecls(moduleDecl.getOp(), *module);
   sortValueUses(*module);
 
   // Set the included files if requested.
@@ -350,7 +350,7 @@ importMojoImpl(ContextRef context, StringRef moduleIdentifier,
 
 /// Parse the specified Mojo file into the specified MLIR context. Returns the
 /// resultant IR, and the decl for the module represented by the input file.
-static std::tuple<OwningOpRef<mlir::ModuleOp>, ASTDecl *>
+static std::tuple<OwningOpRef<mlir::ModuleOp>, ModuleASTDecl *>
 importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
                    SharedState &sharedState, mlir::TimingScope &ts,
                    SmallVectorImpl<std::string> *includedFiles) {
@@ -360,7 +360,7 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
 
   return importMojoImpl(
       context, bufName, sourceMgr, sharedState, ts, includedFiles,
-      [&](ModuleOp module) -> ASTDecl & {
+      [&](ModuleOp module) -> ModuleASTDecl & {
         Lexer lexer(sharedState.diags, sourceBuf);
         auto startSMLoc = lexer.getToken().getLoc();
 
@@ -384,8 +384,8 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
           moduleName = "<input>";
 
         // Build the input module.
-        return sharedState.createModule(moduleName, sourceBuf,
-                                        cast<FileLineColLoc>(module->getLoc()));
+        return cast<FileModuleASTDecl>(sharedState.createModule(
+            moduleName, sourceBuf, cast<FileLineColLoc>(module->getLoc())));
       });
 }
 
@@ -407,7 +407,7 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
   auto [module, packageDecl] = importMojoImpl(
       context, path, sourceMgr,
       // TODO(MOCO-1295): Generate Python bindings for Mojo packages.
-      sharedState, ts, includedFiles, [&](ModuleOp module) -> ASTDecl & {
+      sharedState, ts, includedFiles, [&](ModuleOp module) -> ModuleASTDecl & {
         // Create the top-level outer decl, which will contain all things we
         // parse.
         auto &topLevelDecl = sharedState.declResolver->addDecl(
@@ -419,7 +419,8 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
           fileGuard = sharedState.diBuilder->pushFile(path);
 
         // Build the package.
-        return sharedState.createPackage(path, packageName);
+        return cast<PackageASTDecl>(
+            sharedState.createPackage(path, packageName));
       });
   LLVM_DEBUG(
       llvm::dbgs()
@@ -449,7 +450,7 @@ OwningOpRef<ModuleOp> LIT::cloneDeclModuleForCompilation(ASTDecl &decl) {
 }
 OwningOpRef<ModuleOp> LIT::cloneDeclModuleForCompilation(ASTDecl &decl,
                                                          IRMapping &mapping) {
-  Operation *declOp = decl.getIfOperation();
+  Operation *declOp = decl.getOperation();
   assert(declOp && "expected decl to be an operation");
 
   // Clone the module containing the decl.

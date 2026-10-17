@@ -361,7 +361,7 @@ public:
   /// Open and lex the source file of a deferred module, wiring up its parse
   /// cursor so its body can be resolved. The loc is the location that triggered
   /// materialization (e.g. the import that first referenced the module).
-  LogicalResult materializeDeferredModule(ASTDecl &decl, llvm::SMLoc loc);
+  LogicalResult materializeDeferredModule(ModuleASTDecl &decl, llvm::SMLoc loc);
 
   /// Create a new module with the given name, location, and body.
   ASTDecl &createModule(StringRef moduleName,
@@ -683,7 +683,7 @@ private:
   const llvm::MemoryBuffer *openModuleFile(StringRef path, llvm::SMLoc loc);
 
   /// Implicitly import the builtin modules into the given module decl.
-  void importBuiltinModules(ASTDecl &moduleDecl);
+  void importBuiltinModules(ModuleASTDecl &moduleDecl);
 
   /// The config bytecode is parsed with.
   mlir::ParserConfig &getBytecodeParserConfig();

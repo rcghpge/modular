@@ -158,10 +158,8 @@ struct MojoTypeSystem::Impl {
   /// struct, otherwise an invalid object is returned.
   LIT::StructDeclOp getIfStructDecl(MojoASTTypeRef astType) {
     if (auto declRef = parserContext->getDecl(astType)) {
-      if (LIT::StructDeclOp structDeclOp =
-              dyn_cast_if_present<LIT::StructDeclOp>(
-                  declRef.getIfOperation())) {
-        return structDeclOp;
+      if (auto *structDecl = dyn_cast<LIT::StructASTDecl>(&*declRef)) {
+        return structDecl->getOp();
       }
     }
     return {};

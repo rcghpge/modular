@@ -507,8 +507,8 @@ static ASTDecl &lookupSingleDecl(ASTDecl &decl, StringRef name) {
 static void processVariablesForPersistence(MojoParserREPLListener &listener,
                                            ASTDecl &exprFnDecl,
                                            ASTDecl &stateStructDecl) {
-  auto exprFn = cast<FnOp>(exprFnDecl.getIfOperation());
-  auto stateStruct = cast<StructDeclOp>(stateStructDecl.getIfOperation());
+  auto exprFn = cast<DefASTDecl>(exprFnDecl).getOp();
+  auto stateStruct = cast<StructASTDecl>(stateStructDecl).getOp();
 
   // Grab all of the variables within the expression body and sort them by name,
   // so that we can deterministically process them.
@@ -781,8 +781,10 @@ static ASTDecl &buildAndResolveREPLModule(
       // If we hit an overlap and these are function decls, save them for
       // processing for later. We might be able to import if the signatures
       // don't overlap.
-      if (isa_and_nonnull<FnOp>(existingDecls.front()->getIfOperation()) &&
-          isa_and_nonnull<FnOp>(decls.front()->getIfOperation())) {
+      auto *existingFnDecl = dyn_cast<DefASTDecl>(existingDecls.front());
+      auto *newFnDecl = dyn_cast<DefASTDecl>(decls.front());
+      if (existingFnDecl && existingFnDecl->getOp() && newFnDecl &&
+          newFnDecl->getOp()) {
         fnDecls.push_back({name, decls});
       }
     }

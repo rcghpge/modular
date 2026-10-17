@@ -626,7 +626,7 @@ SharedState::uniquifyNameAndAddToParentSymbolTable(Operation *declOp) {
 }
 
 Operation *SharedState::lookupSymbolIn(ASTDecl *container, StringAttr name) {
-  Operation *tableOp = container->getIfOperation();
+  Operation *tableOp = container->getOperation();
   assert(tableOp && "decl is not an operation");
   return impl->symbolTables.getSymbolTable(tableOp).lookup(name);
 }
@@ -1152,7 +1152,7 @@ ArrayRef<ASTDecl *> SharedState::getBuiltinFunction(ASTDecl &module,
   return decls;
 }
 
-void SharedState::importBuiltinModules(ASTDecl &moduleDecl) {
+void SharedState::importBuiltinModules(ModuleASTDecl &moduleDecl) {
   // Check if this is the first attempt at resolving the builtin modules.
   if (impl->implicitBuiltinImports.empty()) {
     // Import the main standard library package.
@@ -1194,7 +1194,7 @@ void SharedState::importBuiltinModules(ASTDecl &moduleDecl) {
   // Child modules must be explicitly imported by the user or re-exported by
   // std's __init__.mojo.
   StringAttr stdAttr = StringAttr::get(getContext(), "std");
-  auto &block = moduleDecl.getIfOperation()->getRegion(0).front();
+  auto &block = moduleDecl.getOp()->getRegion(0).front();
   OpBuilder builder = OpBuilder::atBlockEnd(&block);
   declResolver->createImportOp(
       moduleDecl, builder, stdAttr,
@@ -1248,7 +1248,8 @@ SharedState::getModuleSourcePath(ModuleASTDecl &module) {
   return state->sourcePath();
 }
 
-LogicalResult SharedState::materializeDeferredModule(ASTDecl &decl, SMLoc loc) {
+LogicalResult SharedState::materializeDeferredModule(ModuleASTDecl &decl,
+                                                     SMLoc loc) {
   // Only a deferred source module (FileModuleOp with an invalid cursor and a
   // recorded source path) needs materializing; everything else is a no-op.
   ModuleState *state = getModuleLoader().lookupState(&decl);
@@ -1348,7 +1349,7 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
 
   // Find the entry that matches the full symbol name.
   for (ASTDecl *decl : result) {
-    if (decl->getIfOperation() != declOp)
+    if (decl->getOperation() != declOp)
       continue;
     if (failed(declResolver->resolve(*decl, howResolved, loc)))
       return nullptr;
@@ -1364,7 +1365,7 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
   if (ModuleState *state = getModuleLoader().lookupState(&container)) {
     auto it = state->nestedModules.find(name);
     if (it != state->nestedModules.end() && it->second->decl &&
-        it->second->decl->getIfOperation() == declOp) {
+        it->second->decl->getOperation() == declOp) {
       if (failed(declResolver->resolve(*it->second->decl, howResolved, loc)))
         return nullptr;
       return it->second->decl;
@@ -1411,7 +1412,7 @@ ASTDecl *SharedState::resolveAndGetTypeDecl(SymbolRefAttr symbol, SMLoc loc) {
 LogicalResult
 SharedState::resolveDeclFromBytecode(ASTDecl &decl,
                                      DeclResolvedness resolvedness) {
-  Operation *declOp = decl.getIfOperation();
+  Operation *declOp = decl.getOperation();
   auto &refWalker = getImpl().bytecodeRefResolutionWalker;
   auto savedContextLoc = refWalker.saveResolutionContextLoc(decl.getLoc());
 
@@ -1711,7 +1712,7 @@ LogicalResult SharedState::finalizeImportedBytecodeModules() {
         decl->resolvedness != DeclResolvedness::unparsed)
       continue;
     unparsedBytecodeDecls.push_back(decl);
-    if (Operation *op = decl->getIfOperation()) {
+    if (Operation *op = decl->getOperation()) {
       bool isLazy = llvm::any_of(readers, [op](mlir::BytecodeReader *r) {
         return r->isMaterializable(op);
       });
@@ -1997,7 +1998,7 @@ void SharedState::notifyListenerOnModuleImport(ASTDecl &decl,
                                                SMLoc loc) {
   if (!isListenerInterestedInLoc(parserListener, loc))
     return;
-  if (!decl.getIfOperation())
+  if (!decl.getOperation())
     return;
 
   // Skip over relative module markers in the location. Note we're assuming each
