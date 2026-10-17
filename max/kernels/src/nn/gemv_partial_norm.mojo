@@ -637,8 +637,7 @@ def _gemv_partial_norm_unfused_with_scratch[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[c_type, width]) -> None:
-        var idx = normed_output.layout(coords)
-        normed_output.raw_store[width=width, alignment=alignment](idx, val)
+        normed_output.store[alignment=alignment](coords, val)
 
     var gamma_c = rebind[TileTensor[c_type, gamma.LayoutType, gamma.origin]](
         gamma

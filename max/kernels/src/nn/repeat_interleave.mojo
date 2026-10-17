@@ -193,7 +193,7 @@ def _repeat_offset_map_kernel[
         var selected: Int64 = 0
         var i = chunk + tid
         if i < axis_size:
-            var r = Int64(repeats.raw_load(i))
+            var r = Int64(repeats[i])
             if r < 0:
                 r = 0
             selected = r
@@ -204,12 +204,12 @@ def _repeat_offset_map_kernel[
         )
 
         if i < axis_size:
-            var r = Int(repeats.raw_load(i))
+            var r = Int(repeats[i])
             if r < 0:
                 r = 0
             var s = Int(start)
             for _ in range(r):
-                offset_map.raw_store(s, Int32(i))
+                offset_map[s] = Int32(i)
                 s += 1
 
         # Advance the running base by this chunk's total.
@@ -264,7 +264,7 @@ def _repeat_interleave_emit_kernel[
     var inner_idx = flat % inner
     var axis_idx = (flat // inner) % out_axis
     var outer_idx = flat // (inner * out_axis)
-    var src_axis = Int(offset_map.raw_load(axis_idx))
+    var src_axis = Int(offset_map[axis_idx])
     var src_flat = outer_idx * in_axis * inner + src_axis * inner + inner_idx
     var value = input_buffer.raw_load(src_flat)
     output_buffer.raw_store(flat, value)

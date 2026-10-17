@@ -328,10 +328,7 @@ def main() raises:
         )
 
         for i in range(flat_buf.num_elements()):
-            var idx = flat_buf.layout(Coord(i))
-            flat_buf.raw_store(
-                idx, Scalar[dtype](flat_buf.num_elements() - i - 1)
-            )
+            flat_buf[i] = Scalar[dtype](flat_buf.num_elements() - i - 1)
         flat_buf[0] = -1
 
     def test_5d():

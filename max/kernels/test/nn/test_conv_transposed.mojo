@@ -259,12 +259,10 @@ def test_conv_transposed[
             var curr_coords = coords
             curr_coords.replace_dynamic[rank + 1](f)
 
-            var output_idx = output.layout(curr_coords)
+            var vec = output.load[width=width](curr_coords)
 
-            var vec = output.raw_load[width=width](output_idx)
-
-            output.raw_store(
-                output_idx, 10.0 * (vec + bias_ptr.load[width=width](f))
+            output.store(
+                curr_coords, 10.0 * (vec + bias_ptr.load[width=width](f))
             )
 
         vectorize[simd_size](f_size, body1)

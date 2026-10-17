@@ -79,7 +79,7 @@ def arg_nonzero[
                 i, coord_to_index_list(input_buffer.layout.shape_coord())
             )
             var offset = input_buffer.layout(Coord(indices))
-            if input_buffer.raw_load(offset) != 0:
+            if input_buffer[Coord(indices)] != 0:
                 var out_indices = IndexList[2]()
                 out_indices[0] = j
                 j += 1
@@ -143,7 +143,7 @@ def _arg_nonzero_count_kernel[
                 local += 1
     var count = block.sum[block_size=BLOCK_SIZE](local)
     if thread_idx.x == 0:
-        counts.raw_store(Int64(block_idx.x), Int64(count))
+        counts[block_idx.x] = Int64(count)
 
 
 @__llvm_metadata(
@@ -171,12 +171,12 @@ def _arg_nonzero_offsets_kernel[
     var tid = thread_idx.x
     var selected: Int64 = 0
     if tid < num_tiles:
-        selected = Int64(counts.raw_load(tid))
+        selected = Int64(counts[tid])
     var offset = block.prefix_sum[block_size=BLOCK_SIZE, exclusive=True](
         selected
     )
     if tid < num_tiles:
-        counts.raw_store(Int64(tid), Int64(offset))
+        counts[tid] = Int64(offset)
 
 
 @__llvm_metadata(

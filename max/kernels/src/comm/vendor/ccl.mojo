@@ -481,10 +481,10 @@ def allreduce[
 
     def epilogue_wrapper[simd_width: Int, alignment: Int = 1](idx: Coord) {var}:
         var flat_idx = idx[0].value()
-        var val = reduced.raw_load[
+        var val = reduced.load[
             width=simd_width,
             alignment=alignment * size_of[dtype](),
-        ](flat_idx)
+        ](Coord(Int(flat_idx)))
         output_lambda[dtype, simd_width, alignment=alignment](
             output_layout.idx2crd(Int(flat_idx)),
             val,

@@ -830,14 +830,14 @@ def test_gated_delta_conv1d_gpu_deep_slot_no_alias() raises:
         conv_weight_heap, row_major(conv_dim, KERNEL_SIZE)
     )
     for c in range(conv_dim):
-        conv_weight_h.raw_store(c * KERNEL_SIZE, Float32(1))
+        conv_weight_h[c, 0] = Float32(1)
     var slot_idx_heap = List(length=batch_size, fill=UInt32(slot_deep))
     var slot_idx_h = TileTensor(slot_idx_heap, row_major(batch_size))
     var input_row_offsets_heap = List(length=batch_size + 1, fill=UInt32(0))
     var input_row_offsets_h = TileTensor(
         input_row_offsets_heap, row_major(batch_size + 1)
     )
-    input_row_offsets_h.raw_store(1, UInt32(total_seq_len))
+    input_row_offsets_h[1] = UInt32(total_seq_len)
 
     var qkv_input_device = ctx.enqueue_create_buffer[work_dtype](
         total_seq_len * conv_dim
@@ -948,13 +948,13 @@ def test_gated_delta_conv1d_gpu_deep_slot_no_alias() raises:
     ctx.synchronize()
 
     # The deep sentinel, not the front row it would alias onto.
-    assert_equal(output_h.raw_load(0), Scalar[work_dtype](deep_sentinel))
+    assert_equal(output_h[0, 0], Scalar[work_dtype](deep_sentinel))
 
     # The front of the pool must be untouched.
-    assert_equal(front_readback_h.raw_load(0), front_sentinel)
+    assert_equal(front_readback_h[0], front_sentinel)
 
     # The deep slot itself must carry the write.
-    assert_equal(deep_readback_h.raw_load(0), Scalar[state_dtype](x_val))
+    assert_equal(deep_readback_h[0], Scalar[state_dtype](x_val))
 
 
 def test_slot_indexed_ragged_short_sequences() raises:

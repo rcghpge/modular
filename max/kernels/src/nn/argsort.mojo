@@ -14,7 +14,7 @@
 
 
 from std.math import ceildiv, iota
-from std.sys.info import simd_width_of
+from std.sys.info import align_of, simd_width_of
 
 from max.algorithm import elementwise
 from std.bit import next_power_of_two
@@ -460,6 +460,7 @@ def _argsort_gpu[
     comptime assert input.flat_rank == 1
     # Create a device buffer to store a copy of the input data
     var n = indices.num_elements()
+    var input_flat = input.reshape(row_major(input.num_elements()))
 
     if n.is_power_of_two():
         var input_copy_buffer = ctx.enqueue_create_buffer[input.dtype](n)
@@ -475,8 +476,11 @@ def _argsort_gpu[
                 i,
                 iota[indices.dtype, width](Scalar[indices.dtype](i)),
             )
-            input_copy.raw_store[alignment=simd_width_of[input_copy.dtype]()](
-                i, input.raw_load[width=width](i)
+            input_copy.store[alignment=simd_width_of[input_copy.dtype]()](
+                Coord(i),
+                input_flat.load[width=width, alignment=align_of[input.dtype]()](
+                    Coord(i)
+                ),
             )
 
         elementwise[
@@ -516,9 +520,12 @@ def _argsort_gpu[
             padded_indices.raw_store(
                 i, iota[padded_indices.dtype, width](Scalar[indices.dtype](i))
             )
-            padded_input.raw_store[
-                alignment=simd_width_of[padded_input.dtype]()
-            ](i, input.raw_load[width=width](i))
+            padded_input.store[alignment=simd_width_of[padded_input.dtype]()](
+                Coord(i),
+                input_flat.load[width=width, alignment=align_of[input.dtype]()](
+                    Coord(i)
+                ),
+            )
             return
 
         # otherwise we pad with a sentinel value and the max/min value for the type.

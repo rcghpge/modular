@@ -92,7 +92,7 @@ def _launch_norm_full[
     @__copy_capture(in_buf)
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[in_dtype, width]:
-        return in_buf.raw_load[width=width](in_buf.layout(coords))
+        return in_buf.load[width=width](coords)
 
     @inline(.always)
     @__copy_capture(out_buf)
@@ -100,9 +100,7 @@ def _launch_norm_full[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[in_dtype, width]) -> None:
-        out_buf.raw_store[width=width, alignment=alignment](
-            out_buf.layout(coords), val
-        )
+        out_buf.store[alignment=alignment](coords, val)
 
     rms_norm_gpu[
         2,

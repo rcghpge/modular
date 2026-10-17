@@ -85,7 +85,7 @@ def _check(rows: Int, cols: Int) raises:
             def load[
                 width: Int, alignment: Int
             ](idx: RowCoord[rank]) {var x} -> SIMD[dtype, width]:
-                return x.raw_load[width=width](x.layout(idx.coord))
+                return x.load[width=width](idx.coord)
 
             var row = rowwise.Row[
                 params, dtype, dtype, 1, rank, is_cached=False

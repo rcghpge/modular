@@ -960,10 +960,7 @@ def pad_repeat[
                 mode="repeat"
             ](write_idx[axis])
 
-            var in_idx = Int(output.layout(Coord(read_idx)))
-
-            var out_idx = Int(output.layout(Coord(write_idx)))
-            output.raw_store(out_idx, output.raw_load(in_idx))
+            output[Coord(write_idx)] = output[Coord(read_idx)]
 
         # and now post-padding
         var post_lower = pre_pads[axis] + Int(input.dim(axis))
@@ -981,6 +978,4 @@ def pad_repeat[
                 mode="repeat"
             ](write_idx[axis])
 
-            var in_idx = Int(output.layout(Coord(read_idx)))
-            var out_idx = Int(output.layout(Coord(write_idx)))
-            output.raw_store(out_idx, output.raw_load(in_idx))
+            output[Coord(write_idx)] = output[Coord(read_idx)]

@@ -97,8 +97,7 @@ def _run_rms_norm_unfused[
     @__copy_capture(in_view)
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[dtype, width]:
-        var idx = in_view.layout(coords)
-        return in_view.raw_load[width=width](idx)
+        return in_view.load[width=width](coords)
 
     @inline(.always)
     @__copy_capture(out_view)
@@ -106,8 +105,7 @@ def _run_rms_norm_unfused[
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) -> None:
-        var idx = out_view.layout(coords)
-        out_view.raw_store[width=width, alignment=alignment](idx, val)
+        out_view.store[alignment=alignment](coords, val)
 
     rms_norm_gpu[
         2,  # rank

@@ -72,6 +72,7 @@ from max.gpu.sync import (
     schedule_group_barrier,
 )
 from layout import (
+    Coord,
     Idx,
     TensorLayout,
     TensorEngine,
@@ -728,7 +729,7 @@ struct BlockScaledMmaOp[
                 ]
             )
             a_packed = a_packed | bitcast[.int32](byte_val << UInt32(m_mma * 8))
-        self._a_scale_packed.raw_store(k_tile_idx, a_packed)
+        self._a_scale_packed[0, k_tile_idx] = a_packed
 
         var b_packed = Int32(0)
         comptime for n_mma in range(Self.num_n_mmas):
@@ -746,7 +747,7 @@ struct BlockScaledMmaOp[
                 ]
             )
             b_packed = b_packed | bitcast[.int32](byte_val << UInt32(n_mma * 8))
-        self._b_scale_packed.raw_store(k_tile_idx, b_packed)
+        self._b_scale_packed[0, k_tile_idx] = b_packed
 
     @inline(.always)
     def mma[k_tile_idx: Int, slot: Int = 0](self):
@@ -789,12 +790,8 @@ struct BlockScaledMmaOp[
 
                 var c_frag = self._c_reg.raw_load[width=Self.c_frag_size](c_off)
 
-                var a_scale = rebind[Int32](
-                    self._a_scale_packed.raw_load(k_tile_idx)
-                )
-                var b_scale = rebind[Int32](
-                    self._b_scale_packed.raw_load(k_tile_idx)
-                )
+                var a_scale = rebind[Int32](self._a_scale_packed[0, k_tile_idx])
+                var b_scale = rebind[Int32](self._b_scale_packed[0, k_tile_idx])
                 cdna4_block_scaled_mfma[
                     Int32(n),
                     Int32(m),
@@ -1447,6 +1444,12 @@ struct BlockScaledMatmulAMD[
             var base_scale_k = k_scale_counter * scales_per_mma * num_k_tiles
             var a_base_row = block_idx.y * Self.BM
             var b_base_row = block_idx.x * Self.BN
+            var sfa_words = sfa.bitcast[.int32]().reshape(
+                row_major(M * K_SCALES // 4)
+            )
+            var sfb_words = sfb.bitcast[.int32]().reshape(
+                row_major(N * K_SCALES // 4)
+            )
 
             # A scales: guard M-OOB rows.
             if tid < Self.BM:
@@ -1454,30 +1457,28 @@ struct BlockScaledMatmulAMD[
                 if row < M:
                     var src_word_base = (row * K_SCALES + base_scale_k) // 4
                     comptime for w in range(SCALE_WORDS_PER_ROW):
-                        sfa_load_reg.raw_store(
-                            w,
-                            sfa.bitcast[.int32]().raw_load[invariant=False](
-                                src_word_base + w
-                            ),
+                        sfa_load_reg[0, w] = rebind[Int32](
+                            sfa_words.load[invariant=False](
+                                Coord(src_word_base + w)
+                            )
                         )
                 else:
                     comptime for w in range(SCALE_WORDS_PER_ROW):
-                        sfa_load_reg.raw_store(w, Int32(0))
+                        sfa_load_reg[0, w] = Int32(0)
             # B scales: guard N-OOB rows (B is transposed).
             if tid < Self.BN:
                 var row = b_base_row + tid
                 if row < N:
                     var src_word_base = (row * K_SCALES + base_scale_k) // 4
                     comptime for w in range(SCALE_WORDS_PER_ROW):
-                        sfb_load_reg.raw_store(
-                            w,
-                            sfb.bitcast[.int32]().raw_load[invariant=False](
-                                src_word_base + w
-                            ),
+                        sfb_load_reg[0, w] = rebind[Int32](
+                            sfb_words.load[invariant=False](
+                                Coord(src_word_base + w)
+                            )
                         )
                 else:
                     comptime for w in range(SCALE_WORDS_PER_ROW):
-                        sfb_load_reg.raw_store(w, Int32(0))
+                        sfb_load_reg[0, w] = Int32(0)
 
             k_scale_counter += 1
 

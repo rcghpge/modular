@@ -3292,19 +3292,13 @@ def pack_filter_from_fcrs(
             for c in range(dim_C):
                 for r in range(dim_R):
                     for s in range(dim_S):
-                        var src = (
-                            f * dim_C * dim_R * dim_S
-                            + c * dim_R * dim_S
-                            + r * dim_S
-                            + s
-                        )
                         var dst = (
                             r * dim_S * dim_C * dim_F
                             + s * dim_C * dim_F
                             + c * dim_F
                             + f
                         )
-                        rscf_buf.store(dst, filter.raw_load(src))
+                        rscf_buf.store(dst, filter[f, c, r, s])
         # Reinterpret as int64 for pack_filter (matches existing convention).
         var rscf_tile = TileTensor(
             rscf_buf.bitcast[Int64](),
@@ -3323,13 +3317,6 @@ def pack_filter_from_fcrs(
                 for q in range(dim_Q):
                     for r in range(dim_R):
                         for s in range(dim_S):
-                            var src = (
-                                f * dim_C * dim_Q * dim_R * dim_S
-                                + c * dim_Q * dim_R * dim_S
-                                + q * dim_R * dim_S
-                                + r * dim_S
-                                + s
-                            )
                             var dst = (
                                 q * dim_R * dim_S * dim_C * dim_F
                                 + r * dim_S * dim_C * dim_F
@@ -3337,7 +3324,7 @@ def pack_filter_from_fcrs(
                                 + c * dim_F
                                 + f
                             )
-                            rscf_buf.store(dst, filter.raw_load(src))
+                            rscf_buf.store(dst, filter[f, c, q, r, s])
         var rscf_tile = TileTensor(
             rscf_buf.bitcast[Int64](),
             row_major(

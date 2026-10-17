@@ -912,13 +912,12 @@ def multistage_qgemm_kernel[
         var thread_offset = c_tile_offset + c_warp_offset + c_frag_offset
 
         comptime for i in range(type_of(c_gmem_frag).LayoutType.static_product):
-            var src_idx = Int(c_reg_frag.layout(Idx[i]))
             var dst_idx = Int(c_gmem_frag.layout(Idx[i]))
             comptime alignment = align_of[SIMD[c_type, 2]]()
             var m, n = divmod(thread_offset + dst_idx, N)
             if m < M and n < N:
-                var vec = c_reg_frag.raw_load[width=2, alignment=alignment](
-                    src_idx
+                var vec = c_reg_frag.load[width=2, alignment=alignment](
+                    Coord(Idx[i])
                 )
                 epilogue_fn[alignment=alignment]((m, n), vec)
 

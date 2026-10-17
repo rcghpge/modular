@@ -198,7 +198,7 @@ def test_case_sampling[
     # Fill tensors
     fill_fn(in_logits)
     for i in range(batch_size):
-        p_thresholds.raw_store(i, p_threshold)
+        p_thresholds[i] = p_threshold
 
     comptime if DEBUG_BENCH:
 

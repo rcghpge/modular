@@ -470,9 +470,9 @@ struct MLA_SM100_Decode_Sparse[
         comptime num_reg_keep_fp8tofp16 = 184
         var indices_stride = Int(indices_stride_dev)
         var extra_indices_stride = Int(extra_indices_stride_dev)
-        var batch_size = Int(scalar_args.raw_load(0))
+        var batch_size = Int(scalar_args[0])
         var selection_lag = Int(selection_lag_dev)
-        var q_max_seq_len = Int(scalar_args.raw_load(1))
+        var q_max_seq_len = Int(scalar_args[1])
         var num_partitions = Int(mla_decode_pack.num_partitions)
         var mask = mla_decode_pack.mask
         var valid_length = mla_decode_pack.valid_length

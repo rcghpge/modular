@@ -261,7 +261,7 @@ def test_rmsnorm_then_matmul[
     @__copy_capture(a_raw_tensor)
     @__parameter
     def input_fn[width: Int](coords: Coord) -> SIMD[a_type, width]:
-        return a_raw_tensor.raw_load[width=width](a_raw_tensor.layout(coords))
+        return a_raw_tensor.load[width=width](coords)
 
     @inline(.always)
     @__copy_capture(a_normed_vendor_tensor)
@@ -269,9 +269,7 @@ def test_rmsnorm_then_matmul[
     def output_fn_vendor[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[a_type, width]) -> None:
-        a_normed_vendor_tensor.raw_store[width=width, alignment=alignment](
-            a_normed_vendor_tensor.layout(coords), val
-        )
+        a_normed_vendor_tensor.store[alignment=alignment](coords, val)
 
     rms_norm_gpu[
         2,
@@ -297,9 +295,7 @@ def test_rmsnorm_then_matmul[
     def output_fn_ours[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[a_type, width]) -> None:
-        a_normed_ours_tensor.raw_store[width=width, alignment=alignment](
-            a_normed_ours_tensor.layout(coords), val
-        )
+        a_normed_ours_tensor.store[alignment=alignment](coords, val)
 
     rms_norm_gpu[
         2,
@@ -330,9 +326,9 @@ def test_rmsnorm_then_matmul[
         _dtype: DType, width: SIMDLength, *, alignment: Int
     ](idx: Coord, val: SIMD[_dtype, width]) {var c_ours_tensor}:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        c_ours_tensor.raw_store[
-            width=width, alignment=alignment * size_of[c_type]()
-        ](c_ours_tensor.layout(idx), rebind[SIMD[c_type, width]](val))
+        c_ours_tensor.store[alignment=alignment * size_of[c_type]()](
+            idx, rebind[SIMD[c_type, width]](val)
+        )
 
     blackwell_matmul_tma_umma_warp_specialized[
         transpose_b=transpose_b,

@@ -628,10 +628,9 @@ def _fp8_index_body[
                         ) // kpool
                         if key_local < key_bound and tok_local < tok_hi:
                             var out_row = out_row0 + tok_local
-                            output.raw_store(
-                                out_row * max_num_keys + key_local,
-                                (k_scale * (acc[0] + acc[1])).cast[out_dtype](),
-                            )
+                            output[out_row, key_local] = (
+                                k_scale * (acc[0] + acc[1])
+                            ).cast[out_dtype]()
                         acc = SIMD[AT, 2](0)
         tcgen05_load_wait()
         _ = s_empty[cs].arrive()

@@ -159,10 +159,10 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     var cumsum = 0
-    query_start_loc_h.raw_store(0, Int32(0))
+    query_start_loc_h[0] = Int32(0)
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_h.raw_store(i + 1, Int32(cumsum))
+        query_start_loc_h[i + 1] = Int32(cumsum)
 
     # cache_indices: (batch,) - identity mapping
     var cache_indices_heap = List(length=batch, fill=UInt32(0))
@@ -173,7 +173,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     for i in range(batch):
-        cache_indices_h.raw_store(i, UInt32(i))
+        cache_indices_h[i] = UInt32(i)
 
     # has_initial_state: (batch,) - all False
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](False))
@@ -184,15 +184,13 @@ def run_varlen_causal_conv1d_fwd_gpu[
         ),
     )
     for i in range(batch):
-        has_initial_state_h.raw_store(i, Scalar[.bool](nonzero_initial_state))
+        has_initial_state_h[i] = Scalar[.bool](nonzero_initial_state)
 
     # update_state: (batch,), or empty to write every sequence's window
     var update_state_heap = List(length=batch, fill=Scalar[.bool](True))
     var update_state_h = TileTensor(update_state_heap, row_major(batch))
     for i in range(batch):
-        update_state_h.raw_store(
-            i, Scalar[.bool](not update_flags or i % 2 == 0)
-        )
+        update_state_h[i] = Scalar[.bool](not update_flags or i % 2 == 0)
     var update_len = batch if update_flags else 0
 
     # conv_states: (batch, dim, width - 1)
@@ -373,8 +371,8 @@ def run_varlen_causal_conv1d_fwd_gpu[
     # the seed.
     if nonzero_initial_state:
         for b in range(batch):
-            var seq_start = Int(query_start_loc_h.raw_load(b))
-            var seqlen = Int(query_start_loc_h.raw_load(b + 1)) - seq_start
+            var seq_start = Int(query_start_loc_h[b])
+            var seqlen = Int(query_start_loc_h[b + 1]) - seq_start
             for d in range(dim):
                 for s in range(state_len):
                     var offset = seqlen - state_len + s
@@ -384,10 +382,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
                             # No update: the slot keeps its seed.
                             offset = s - state_len
                     if offset >= 0:
-                        expected = x_h.raw_load(
-                            UInt32(d) * UInt32(total_seqlen)
-                            + UInt32(seq_start + offset)
-                        )
+                        expected = x_h[d, seq_start + offset]
                     else:
                         expected = conv_states_seed_heap[
                             (b * dim + d) * state_len + state_len + offset
@@ -532,7 +527,7 @@ def run_varlen_causal_conv1d_update_gpu[
         ),
     )
     for i in range(batch):
-        cache_seqlens_h.raw_store(i, Int32(0))
+        cache_seqlens_h[i] = Int32(0)
 
     # conv_state_indices: (batch,) - identity mapping
     var conv_state_indices_heap = List(length=batch, fill=Int32(0))
@@ -543,7 +538,7 @@ def run_varlen_causal_conv1d_update_gpu[
         ),
     )
     for i in range(batch):
-        conv_state_indices_h.raw_store(i, Int32(i))
+        conv_state_indices_h[i] = Int32(i)
 
     # output: (batch, dim, seqlen)
     var output_gpu_heap = List(
@@ -1299,14 +1294,14 @@ def test_varlen_causal_conv1d_fwd_gpu_conv_states_deep_row_no_alias() raises:
     var weight_heap = List(length=dim * width, fill=Scalar[dtype](0))
     var weight_h = TileTensor(weight_heap, row_major(dim, width))
     for d in range(dim):
-        weight_h.raw_store(d * width, Scalar[dtype](1))
+        weight_h[d, 0] = Scalar[dtype](1)
     var bias_heap = List(length=dim, fill=Scalar[dtype](0))
     var bias_h = TileTensor(bias_heap, row_major(dim))
     var query_start_loc_heap = List(length=batch + 1, fill=Int32(0))
     var query_start_loc_h = TileTensor(
         query_start_loc_heap, row_major(batch + 1)
     )
-    query_start_loc_h.raw_store(1, Int32(total_seqlen))
+    query_start_loc_h[1] = Int32(total_seqlen)
     var cache_indices_heap = List(length=batch, fill=UInt32(cache_idx_deep))
     var cache_indices_h = TileTensor(cache_indices_heap, row_major(batch))
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](True))
@@ -1413,13 +1408,13 @@ def test_varlen_causal_conv1d_fwd_gpu_conv_states_deep_row_no_alias() raises:
     ctx.synchronize()
 
     # The deep sentinel, not the front row it would alias onto.
-    assert_equal(output_h.raw_load(0), Scalar[dtype](deep_sentinel))
+    assert_equal(output_h[0, 0], Scalar[dtype](deep_sentinel))
 
     # The front of the pool must be untouched.
-    assert_equal(front_readback_h.raw_load(0), front_sentinel)
+    assert_equal(front_readback_h[0], front_sentinel)
 
     # The deep row itself must carry the write.
-    assert_equal(deep_readback_h.raw_load(0), Scalar[conv_states_dtype](x_val))
+    assert_equal(deep_readback_h[0], Scalar[conv_states_dtype](x_val))
 
 
 def run_varlen_states_padded(

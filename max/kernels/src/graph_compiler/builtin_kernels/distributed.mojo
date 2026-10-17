@@ -1124,9 +1124,7 @@ struct DistributedReduceScatterRMSNorm:
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
                 ](coords: Coord, val: SIMD[dtype, width]) -> None:
-                    normed_buf.raw_store[width=width, alignment=alignment](
-                        normed_buf.layout(coords), val
-                    )
+                    normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
@@ -1379,9 +1377,7 @@ struct DistributedAllGatherRMSNorm:
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
                 ](coords: Coord, val: SIMD[dtype, width]) -> None:
-                    normed_buf.raw_store[width=width, alignment=alignment](
-                        normed_buf.layout(coords), val
-                    )
+                    normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
@@ -1654,12 +1650,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                         quant_buf.layout(Coord(row, col)), quantized
                     )
                     if col % MXFP8_SF_VECTOR_SIZE == 0:
-                        scale_buf.raw_store(
-                            scale_buf.layout(
-                                Coord(row, col // MXFP8_SF_VECTOR_SIZE)
-                            ),
-                            e8m0,
-                        )
+                        scale_buf[row, col // MXFP8_SF_VECTOR_SIZE] = e8m0
 
             # Above the fuse threshold. Owes the same outputs as the fused
             # path -- skipping the quantize leaves `outputs_quant` stale.
@@ -1689,9 +1680,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
                 ](coords: Coord, val: SIMD[dtype, width]) -> None:
-                    normed_buf.raw_store[width=width, alignment=alignment](
-                        normed_buf.layout(coords), val
-                    )
+                    normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
@@ -1976,10 +1965,8 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     comptime for g in range(width // 4):
                         var word = pack_fp6_x4(codes.slice[4, offset=g * 4]())
                         comptime for b in range(3):
-                            quant_buf.raw_store[width=1](
-                                quant_buf.layout(
-                                    Coord(row, byte_col + g * 3 + b)
-                                ),
+                            quant_buf.store(
+                                Coord(row, byte_col + g * 3 + b),
                                 rebind[Scalar[quant_dtype]](
                                     UInt8(
                                         (word >> UInt32(8 * b)) & UInt32(0xFF)
@@ -1987,12 +1974,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                                 ),
                             )
                     if col % MXFP6_SF_VECTOR_SIZE == 0:
-                        scale_buf.raw_store(
-                            scale_buf.layout(
-                                Coord(row, col // MXFP6_SF_VECTOR_SIZE)
-                            ),
-                            e8m0,
-                        )
+                        scale_buf[row, col // MXFP6_SF_VECTOR_SIZE] = e8m0
 
             @inline(.always)
             def two_launch_with_quant() raises {imm}:
@@ -2020,9 +2002,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
                 ](coords: Coord, val: SIMD[dtype, width]) -> None:
-                    normed_buf.raw_store[width=width, alignment=alignment](
-                        normed_buf.layout(coords), val
-                    )
+                    normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,

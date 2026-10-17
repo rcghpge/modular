@@ -381,9 +381,9 @@ def bench_matmul[
                 rand(b_host.as_span())
             elif init_type == InitializationType.arange:
                 for i in range(a_host.num_elements()):
-                    a_host.raw_store(i, Scalar[a_type](i))
+                    a_host[i] = Scalar[a_type](i)
                 for i in range(b_host.num_elements()):
-                    b_host.raw_store(i, Scalar[a_type](i))
+                    b_host[i] = Scalar[a_type](i)
 
         ctx.enqueue_copy(cb_a.device_buffer(), a_host_ptr)
         ctx.enqueue_copy(cb_b.device_buffer(), b_host_ptr)

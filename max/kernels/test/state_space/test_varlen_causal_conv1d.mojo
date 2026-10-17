@@ -136,10 +136,10 @@ def run_varlen_causal_conv1d_fwd[
         ),
     )
     var cumsum = 0
-    query_start_loc_tt.raw_store(0, Int32(0))
+    query_start_loc_tt[0] = Int32(0)
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_tt.raw_store(i + 1, Int32(cumsum))
+        query_start_loc_tt[i + 1] = Int32(cumsum)
 
     # cache_indices: (batch,) - identity mapping
     var cache_indices_heap = List(length=batch, fill=UInt32(0))
@@ -150,7 +150,7 @@ def run_varlen_causal_conv1d_fwd[
         ),
     )
     for i in range(batch):
-        cache_indices_tt.raw_store(i, UInt32(i))
+        cache_indices_tt[i] = UInt32(i)
 
     # has_initial_state: (batch,) - all False
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](False))
@@ -219,12 +219,12 @@ def run_varlen_causal_conv1d_fwd[
     # Reference implementation
     var width_minus_1: Int = width - 1
     for b in range(batch):
-        var seq_start = Int(query_start_loc_buf.raw_load(b))
-        var seq_end = Int(query_start_loc_buf.raw_load(b + 1))
+        var seq_start = Int(query_start_loc_buf[b])
+        var seq_end = Int(query_start_loc_buf[b + 1])
         var seqlen = seq_end - seq_start
 
         for d in range(dim):
-            var bias_val = bias_buf.raw_load(d)
+            var bias_val = bias_buf[d]
 
             for l in range(seqlen):
                 var conv_sum: Scalar[dtype] = bias_val
@@ -325,7 +325,7 @@ def run_varlen_causal_conv1d_update[
         ),
     )
     for i in range(batch):
-        conv_state_indices_tt.raw_store(i, Int32(i))
+        conv_state_indices_tt[i] = Int32(i)
 
     # output: (batch, dim, seqlen)
     var output_heap = List(length=batch * dim * seqlen, fill=Scalar[dtype](0))
@@ -415,7 +415,7 @@ def run_varlen_causal_conv1d_update[
         var state_batch_idx = b
 
         for d in range(dim):
-            var bias_val = bias_buf.raw_load(d)
+            var bias_val = bias_buf[d]
 
             for l in range(seqlen):
                 var conv_sum: Scalar[dtype] = bias_val
@@ -428,7 +428,7 @@ def run_varlen_causal_conv1d_update[
                         # Read from state
                         var state_pos: Int
                         # has_cache_seqlens is True in our test, so use circular buffer
-                        var cache_seqlen = Int(cache_seqlens_buf.raw_load(b))
+                        var cache_seqlen = Int(cache_seqlens_buf[b])
                         state_pos = (
                             cache_seqlen + rel_pos + l + state_len
                         ) % state_len
@@ -542,10 +542,10 @@ def run_varlen_causal_conv1d_states[
         ),
     )
     var cumsum = 0
-    cu_seqlens_tt.raw_store(0, Int32(0))
+    cu_seqlens_tt[0] = Int32(0)
     for i in range(batch):
         cumsum += seq_lengths[i]
-        cu_seqlens_tt.raw_store(i + 1, Int32(cumsum))
+        cu_seqlens_tt[i + 1] = Int32(cumsum)
 
     # states: (batch, dim, state_len)
     var states_heap = List(
@@ -592,8 +592,8 @@ def run_varlen_causal_conv1d_states[
 
     # Reference implementation
     for b in range(batch):
-        var end_idx = Int(cu_seqlens_buf.raw_load(b + 1))
-        var start_idx_seq = Int(cu_seqlens_buf.raw_load(b))
+        var end_idx = Int(cu_seqlens_buf[b + 1])
+        var start_idx_seq = Int(cu_seqlens_buf[b])
         var start_idx = max(start_idx_seq, end_idx - state_len)
         var num_elements = end_idx - start_idx
 
@@ -659,12 +659,12 @@ def run_conv_state_writeback[
         query_start_loc_heap, row_major(batch + 1)
     )
     for i in range(batch + 1):
-        query_start_loc_tt.raw_store(i, Int32(i * seqlen))
+        query_start_loc_tt[i] = Int32(i * seqlen)
 
     var cache_indices_heap = List(length=batch, fill=UInt32(0))
     var cache_indices_tt = TileTensor(cache_indices_heap, row_major(batch))
     for i in range(batch):
-        cache_indices_tt.raw_store(i, UInt32(i))
+        cache_indices_tt[i] = UInt32(i)
 
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](True))
     var has_initial_state_tt = TileTensor(

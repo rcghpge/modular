@@ -72,7 +72,7 @@ def _batch_of_pool_row(
 ) -> Int:
     """Batch owning output row `pool_row`."""
     for b in range(batch_size):
-        if pool_row < Int(pool_row_offsets.raw_load(b + 1)):
+        if pool_row < Int(pool_row_offsets[b + 1]):
             return b
     return batch_size - 1
 
@@ -170,7 +170,7 @@ def kpool_compress_kernel[
     # The last offset is the exact pool count, so an over-sized grid is
     # harmless.
     var batch_size = Int(pool_row_offsets.dim[0]()) - 1
-    if pool_row >= Int(pool_row_offsets.raw_load(batch_size)):
+    if pool_row >= Int(pool_row_offsets[batch_size]):
         return
 
     var c = thread_idx.x
@@ -179,15 +179,13 @@ def kpool_compress_kernel[
 
     var b = _batch_of_pool_row(pool_row_offsets, batch_size, pool_row)
 
-    var local_pool = pool_row - Int(pool_row_offsets.raw_load(b))
+    var local_pool = pool_row - Int(pool_row_offsets[b])
     # A cached prefix ending mid-pool means this call opens partway through a
     # pool it cannot build. Skip those leading tokens; the tail ring carries
     # that pool.
     var cache_len = Int(cache_lengths[b])
     var align = (kpool - cache_len % kpool) % kpool
-    var first_row = (
-        Int(input_row_offsets.raw_load(b)) + align + local_pool * kpool
-    )
+    var first_row = Int(input_row_offsets[b]) + align + local_pool * kpool
 
     # Every member of a written pool exists, so nothing needs masking.
     var logits = Array[Float32, kpool]()
@@ -328,7 +326,7 @@ def kpool_tail_update_kernel[
         return
 
     comptime max_closed = ceildiv(next_n, kpool)
-    var tail_base = Int(slot_idx.raw_load(r)) * 2 * kpool * head_dim
+    var tail_base = Int(slot_idx[r]) * 2 * kpool * head_dim
     var n_closed = 0
 
     # Walk in position order: a pool closing here reads slots that earlier
@@ -472,13 +470,13 @@ def kpool_seed_tail_kernel[
     if c >= head_dim:
         return
 
-    var row_start = Int(input_row_offsets.raw_load(r))
-    var n = Int(input_row_offsets.raw_load(r + 1)) - row_start
+    var row_start = Int(input_row_offsets[r])
+    var n = Int(input_row_offsets[r + 1]) - row_start
     var cache_len = Int(cache_lengths[r])
     var end = cache_len + n
     # Positions after the last complete pool, clipped to this call.
     var seed_start = max((end // kpool) * kpool, cache_len)
-    var tail_base = Int(slot_idx.raw_load(r)) * 2 * kpool * head_dim
+    var tail_base = Int(slot_idx[r]) * 2 * kpool * head_dim
 
     for pos in range(seed_start, end):
         var slot = pos % kpool
@@ -635,24 +633,24 @@ def kpool_ring_close_kernel[
         # Nothing pending: this request's cache already sits on a pool
         # boundary, so there is no partial pool for this call to close.
         if c == 0:
-            closed_pool.raw_store(r, Int32(-1))
+            closed_pool[r] = Int32(-1)
         return
 
-    var row_start = Int(input_row_offsets.raw_load(r))
-    var row_end = Int(input_row_offsets.raw_load(r + 1))
+    var row_start = Int(input_row_offsets[r])
+    var row_end = Int(input_row_offsets[r + 1])
     var align = kpool - ring_members
     if row_end - row_start < align:
         # Not enough new tokens yet to finish the pending pool; it stays in
         # the ring, extended by `kpool_seed_tail_kernel`, for a later call.
         if c == 0:
-            closed_pool.raw_store(r, Int32(-1))
+            closed_pool[r] = Int32(-1)
         return
 
     # The pending pool runs from `(cache_len // kpool) * kpool` to
     # `cache_len - 1`: its first `ring_members` members already sit in the
     # ring at slots `[0, ring_members)`, and this call's first `align` new
     # tokens are its remaining members, at slots `[ring_members, kpool)`.
-    var ring_base = Int(slot_idx.raw_load(r)) * 2 * kpool * head_dim
+    var ring_base = Int(slot_idx[r]) * 2 * kpool * head_dim
     var logits = Array[Float32, kpool]()
     var vals = Array[Float32, kpool]()
     for m in range(kpool):
@@ -674,7 +672,7 @@ def kpool_ring_close_kernel[
         r * head_dim + c, pool_channel[kpool](logits, vals).cast[dtype]()
     )
     if c == 0:
-        closed_pool.raw_store(r, Int32(cache_len // kpool))
+        closed_pool[r] = Int32(cache_len // kpool)
 
 
 @__name(t"mla_kpool_expand_topk_{kpool}_{pool_topk}_{always_select_tail}")
@@ -774,11 +772,11 @@ def kpool_expand_topk_kernel[
     var batch_size = Int(input_row_offsets.dim[0]()) - 1
     var b = 0
     for i in range(batch_size):
-        if token_idx < Int(input_row_offsets.raw_load(i + 1)):
+        if token_idx < Int(input_row_offsets[i + 1]):
             b = i
             break
 
-    var local = token_idx - Int(input_row_offsets.raw_load(b))
+    var local = token_idx - Int(input_row_offsets[b])
     # Causal: a query sees its own position and everything before it.
     var visible = Int(cache_lengths[b]) + local + 1
 

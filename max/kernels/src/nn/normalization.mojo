@@ -2107,9 +2107,8 @@ def group_norm_gpu_warp_tiling[
                 vec_data - row_mean
             ) * norm_factor * gamma_vec + beta_vec
 
-            var output_idx = output.layout(Coord(row, idx))
-            output.raw_store[alignment=align](
-                output_idx, norm_val.cast[dtype]()
+            output.store[alignment=align](
+                Coord(row, idx), norm_val.cast[dtype]()
             )
 
 
@@ -2208,9 +2207,8 @@ def group_norm_gpu_block[
                     vec_data - row_mean
                 ) * norm_factor * gamma_vec + beta_vec
 
-                var output_row_offset = output.layout(Coord(row, offset))
-                output.raw_store[alignment=align](
-                    output_row_offset, norm_val.cast[dtype]()
+                output.store[alignment=align](
+                    Coord(row, offset), norm_val.cast[dtype]()
                 )
 
 
@@ -2417,9 +2415,8 @@ def group_norm_gpu_multi_block_norm[
                         vec_data - row_mean
                     ) * norm_factor * gamma_vec + beta_vec
 
-                var output_row_offset = output.layout(Coord(row, offset))
-                output.raw_store[alignment=align](
-                    output_row_offset, norm_val.cast[dtype]()
+                output.store[alignment=align](
+                    Coord(row, offset), norm_val.cast[dtype]()
                 )
 
 

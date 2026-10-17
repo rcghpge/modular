@@ -440,7 +440,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             ](s_tmem_slot)
 
             comptime for _i in range(type_of(s_row_val).length):
-                s_row.raw_store(_i, s_row_val[_i])
+                s_row[_i] = s_row_val[_i]
             tcgen05_load_wait()
 
             s_cons.release()
@@ -729,7 +729,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 pack=False,
             ](o_tmem_base_LG)
             comptime for _i in range(per_warp_elems_LG):
-                o_row_subtile_LG.raw_store(_i, _o_ld_LG[_i])
+                o_row_subtile_LG[_i] = _o_ld_LG[_i]
             tcgen05_load_wait()
 
             # All 4 warps acquire/commit every slot for the 128-thread
@@ -995,7 +995,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                     ](o_tmem_subtile)
 
                     comptime for _i in range(per_warp_corr_elems):
-                        o_row_subtile.raw_store(_i, _o_ld_corr[_i])
+                        o_row_subtile[_i] = _o_ld_corr[_i]
                     tcgen05_load_wait()
 
                     var float2_register = o_row_subtile.vectorize[2]()
@@ -1008,7 +1008,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                     var _o_st_corr = Array[_, per_warp_corr_elems](
                         fill_with_unrolled=lambda [i: Int]() -> Scalar[
                             Self.AccumType
-                        ]: o_row_subtile.raw_load(i)
+                        ]: o_row_subtile[i]
                     )
                     tcgen05_st[
                         datapaths=32,
@@ -1099,8 +1099,8 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         )
 
         # Extract scalar launch args from the stable device buffer.
-        var batch_size = Int(scalar_args.raw_load(0))
-        var q_max_seq_len = Int(scalar_args.raw_load(1))
+        var batch_size = Int(scalar_args[0])
+        var q_max_seq_len = Int(scalar_args[1])
         var num_partitions = Int(mla_decode_pack.num_partitions)
 
         comptime num_reg_softmax = 192

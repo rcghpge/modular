@@ -205,8 +205,7 @@ def _transpose_qrscf_to_nk[
     var r, sc = udivmod(rsc, SC)
     var s, c = udivmod(sc, C)
 
-    var src_idx = ((q * R + r) * S + s) * C * F + c * F + f
-    dst_ptr.store(tid, filter.raw_load(src_idx))
+    dst_ptr.store(tid, filter[q, r, s, c, f])
 
 
 @__name(t"conv3d_transpose_fcqrs_to_nk_{dtype}")
@@ -243,8 +242,7 @@ def _transpose_fcqrs_to_nk[
     var r, sc = udivmod(rsc, SC)
     var s, c = udivmod(sc, C)
 
-    var src_idx = f * C * Q * R * S + c * Q * R * S + q * R * S + r * S + s
-    dst_ptr.store(tid, filter.raw_load(src_idx))
+    dst_ptr.store(tid, filter[f, c, q, r, s])
 
 
 # =========================================================================

@@ -162,10 +162,8 @@ def main() raises:
             for nn in range(N):
                 var acc = Float64(0.0)
                 for kk in range(K):
-                    acc += Float64(a_host.raw_load(mm * K + kk)) * Float64(
-                        b_host.raw_load(nn * K + kk)
-                    )
-                ref_host.raw_store(mm * N + nn, acc)
+                    acc += Float64(a_host[mm, kk]) * Float64(b_host[nn, kk])
+                ref_host[mm, nn] = acc
 
         # Kept for the cross-m comparisons below.
         var c64_buf = ctx.enqueue_create_host_buffer[f32](REF_ROWS * N)

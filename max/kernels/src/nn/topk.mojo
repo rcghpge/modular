@@ -363,9 +363,9 @@ def _top_k_cpu[
                     lhs: Int64, rhs: Int64
                 ) {mut indices, input, axis} -> Bool:
                     indices[axis] = Int(lhs)
-                    var lhs_val = input.raw_load(input.layout(Coord(indices)))
+                    var lhs_val = input[Coord(indices)]
                     indices[axis] = Int(rhs)
-                    var rhs_val = input.raw_load(input.layout(Coord(indices)))
+                    var rhs_val = input[Coord(indices)]
                     return lhs_val > rhs_val
 
                 if sorted:
@@ -379,9 +379,9 @@ def _top_k_cpu[
                     lhs: Int64, rhs: Int64
                 ) {mut indices, input, axis} -> Bool:
                     indices[axis] = Int(lhs)
-                    var lhs_val = input.raw_load(input.layout(Coord(indices)))
+                    var lhs_val = input[Coord(indices)]
                     indices[axis] = Int(rhs)
-                    var rhs_val = input.raw_load(input.layout(Coord(indices)))
+                    var rhs_val = input[Coord(indices)]
                     return lhs_val < rhs_val
 
                 if sorted:
@@ -398,13 +398,11 @@ def _top_k_cpu[
                 var i = 0
                 while i < shape[axis] - 1:
                     indices[axis] = Int(idxs[i])
-                    var input_idx = input.layout(Coord(indices))
-                    var curr = input.raw_load(input_idx)
+                    var curr = input[Coord(indices)]
                     var num_equal = 1
                     for j in range(i + 1, shape[axis]):
                         indices[axis] = Int(idxs[j])
-                        var input_idx = input.layout(Coord(indices))
-                        var next = input.raw_load(input_idx)
+                        var next = input[Coord(indices)]
                         if curr != next:
                             break
                         num_equal += 1
@@ -428,10 +426,7 @@ def _top_k_cpu[
             var out_k = coord_to_index_list(out_idxs.layout.shape_coord())[axis]
             for i in range(k_val, out_k):
                 indices[axis] = i
-                out_vals.raw_store(
-                    out_vals.layout(Coord(indices)),
-                    _topk_dead_val[dtype, largest](),
-                )
+                out_vals[Coord(indices)] = _topk_dead_val[dtype, largest]()
                 out_idxs[Coord(indices)] = Scalar[out_idx_type](-1)
 
     parallelize_over_rows(

@@ -65,8 +65,7 @@ def fill_tile_through_slot_kernel[
     var cols = Int(tile.dim[1]())
     for r in range(rows):
         for c in range(cols):
-            var idx = Int(tile.layout(Coord(r, c)))
-            tile.raw_store[width=1](idx, _value(r, c))
+            tile.store(Coord(r, c), _value(r, c))
 
 
 def _slot_over(mut slot: DeviceBuffer[.uint64]) -> StableAddr:

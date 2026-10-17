@@ -99,10 +99,9 @@ def _test_reduce_sum_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         def input_fn[
             width: Int, alignment: Int
         ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-            var idx = in_buf.layout(coords)
-            return in_buf.raw_load[
+            return in_buf.load[
                 width=width, alignment=alignment * align_of[dtype]()
-            ](idx)
+            ](coords)
 
         @inline(.always)
         def output_fn[
@@ -174,10 +173,9 @@ def _test_reduce_max_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         def input_fn[
             width: Int, alignment: Int
         ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-            var idx = in_buf.layout(coords)
-            return in_buf.raw_load[
+            return in_buf.load[
                 width=width, alignment=alignment * align_of[dtype]()
-            ](idx)
+            ](coords)
 
         @inline(.always)
         def output_fn[
@@ -246,10 +244,9 @@ def _test_reduce_argmax_stale_buffer_gpu[dtype: DType = DType.float32]() raises:
         def input_fn[
             width: Int, alignment: Int
         ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-            var idx = in_buf.layout(coords)
-            return in_buf.raw_load[
+            return in_buf.load[
                 width=width, alignment=alignment * align_of[dtype]()
-            ](idx)
+            ](coords)
 
         @inline(.always)
         def output_fn[

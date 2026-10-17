@@ -383,11 +383,10 @@ def _run_shaped[
     def input_fn[
         width: Int, alignment: Int
     ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-        var idx = in_buf.layout(coords)
         return rebind[SIMD[dtype, width]](
-            in_buf.raw_load[
-                width=width, alignment=alignment * align_of[rd_type]()
-            ](idx)
+            in_buf.load[width=width, alignment=alignment * align_of[rd_type]()](
+                coords
+            )
         )
 
     @inline(.always)

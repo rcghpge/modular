@@ -399,7 +399,7 @@ def gather_sum[
 
             var accum = SIMD[dtype, width](0)
             for j in range(multi_hot):
-                var idx = Int(indices.raw_load(i * multi_hot + j))
+                var idx = Int(indices[i, j])
                 if idx < 0:
                     idx += table_size
                 # Trap in safe builds if normalization still leaves the
@@ -413,13 +413,13 @@ def gather_sum[
                         " more detailed error checking."
                     ),
                 )
-                accum += input_flat.raw_load[
+                accum += input_flat.load[
                     width=width, alignment=alignment * align_of[dtype]()
-                ](idx * emb_dim + k)
+                ](Coord(idx, k))
 
-            output_flat.raw_store[
-                width=width, alignment=alignment * align_of[dtype]()
-            ](i * emb_dim + k, accum)
+            output_flat.store[alignment=alignment * align_of[dtype]()](
+                Coord(i, k), accum
+            )
 
         elementwise[
             simd_width=target_simd_width,

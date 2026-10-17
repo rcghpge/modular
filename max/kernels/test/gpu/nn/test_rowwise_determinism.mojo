@@ -132,18 +132,16 @@ def _probe_layer_norm[
     def input_fn[
         width: Int, alignment: Int
     ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-        var idx = in_buf.layout(coords)
-        return in_buf.raw_load[
+        return in_buf.load[
             width=width, alignment=alignment * align_of[dtype]()
-        ](idx)
+        ](coords)
 
     @inline(.always)
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
-        var idx = out_buf.layout(coords)
-        out_buf.raw_store[width=width, alignment=alignment * align_of[dtype]()](
-            idx, rebind[SIMD[dtype, width]](val)
+        out_buf.store[alignment=alignment * align_of[dtype]()](
+            coords, rebind[SIMD[dtype, width]](val)
         )
 
     var hashes = List[UInt64]()
@@ -209,18 +207,16 @@ def _probe_rms_norm[
     def input_fn[
         width: Int, alignment: Int
     ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-        var idx = in_buf.layout(coords)
-        return in_buf.raw_load[
+        return in_buf.load[
             width=width, alignment=alignment * align_of[dtype]()
-        ](idx)
+        ](coords)
 
     @inline(.always)
     def output_fn[
         width: SIMDLength, alignment: Int
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
-        var idx = out_buf.layout(coords)
-        out_buf.raw_store[width=width, alignment=alignment * align_of[dtype]()](
-            idx, rebind[SIMD[dtype, width]](val)
+        out_buf.store[alignment=alignment * align_of[dtype]()](
+            coords, rebind[SIMD[dtype, width]](val)
         )
 
     var hashes = List[UInt64]()
@@ -274,10 +270,9 @@ def _probe_softmax[
     def input_fn[
         width: Int, alignment: Int
     ](coords: Coord) {var in_buf} -> SIMD[dtype, width]:
-        var idx = in_buf.layout(coords)
-        return in_buf.raw_load[
+        return in_buf.load[
             width=width, alignment=alignment * align_of[dtype]()
-        ](idx)
+        ](coords)
 
     var hashes = List[UInt64]()
     var nans = 0

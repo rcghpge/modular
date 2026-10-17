@@ -370,9 +370,7 @@ def resize_nearest_neighbor[
                             input.layout(Coord(in_coords))
                         )
 
-                    output.raw_store[width=simd_width, alignment=alignment](
-                        output.layout(out_coords), values
-                    )
+                    output.store[alignment=alignment](out_coords, values)
 
                 elementwise[width, target=target](
                     nn_shift, output.layout.shape_coord(), ctx
@@ -397,9 +395,7 @@ def resize_nearest_neighbor[
                             input.layout(Coord(in_coords))
                         )
 
-                    output.raw_store[width=simd_width, alignment=alignment](
-                        output.layout(out_coords), values
-                    )
+                    output.store[alignment=alignment](out_coords, values)
 
                 elementwise[width, target=target](
                     nn_div, output.layout.shape_coord(), ctx
@@ -472,9 +468,7 @@ def resize_nearest_neighbor[
             )
             values[lane] = input.raw_load(input.layout(Coord(in_coords)))
 
-        output.raw_store[width=simd_width, alignment=alignment](
-            output.layout(out_coords), values
-        )
+        output.store[alignment=alignment](out_coords, values)
 
     comptime width = (
         16 // size_of[dtype]() if is_gpu[target]() else simd_width_of[dtype]()
