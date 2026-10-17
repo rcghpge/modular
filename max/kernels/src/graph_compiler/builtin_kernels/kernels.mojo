@@ -21,7 +21,7 @@ from std.collections import OptionalReg
 from std.math import align_up, ceildiv, iota
 from std.os import getenv
 from std.random import seed
-from std.sys.info import _has_sm_8x_or_newer, size_of
+from std.sys.info import size_of
 import extensibility
 
 # ===-----------------------------------------------------------------------===#
@@ -4810,8 +4810,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
                 comptime if (
                     DSTATE == 128
                     and dtype == .bfloat16
-                    and ctx.target.is_nvidia_gpu()
-                    and _has_sm_8x_or_newer()
+                    and ctx.target._is_sm_8x_or_newer()
                 ):
                     if use_chunked_ssd(
                         x.dim_size(0),

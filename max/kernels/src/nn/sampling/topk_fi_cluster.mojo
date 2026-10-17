@@ -90,7 +90,7 @@ def _stage_smem_budget(ctx: DeviceContext) -> Int:
     """The staging budget for one CTA on the target this launch compiles for.
 
     `_MAX_STAGE_SMEM_BYTES` alone is not a safe bound. The sampling package
-    dispatches these kernels on `_has_sm_9x_or_newer`, which also admits
+    dispatches these kernels on `target._is_sm_9x_or_newer()`, which also admits
     consumer Blackwell (`NvidiaBlackwellConsumerFamily`: `sm_120a` and
     `sm_121`), whose SMs carry 100 KiB rather than 228 KiB. Taking the
     target's own figure keeps the request inside its per-block opt-in limit.

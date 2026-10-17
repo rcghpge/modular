@@ -15,7 +15,6 @@
 from std.bit import pop_count
 from std.builtin.device_passable import DeviceTypeEncoder
 from std.sys import get_defined_int, size_of
-from std.sys.info import _has_blackwell_tcgen05
 from std.math import align_up, ceildiv, clamp
 
 from layout import (
@@ -905,7 +904,7 @@ def _mla_indexer_paged_impl[
     # MXFP4 has no other scorer: its tile is 32 heads at 64 bytes a row, and
     # it splits a page smaller than a key tile (ratio-2 pages of 64 rows).
     comptime FP4 = _is_mxfp4[dtype]()
-    comptime use_sm100_scorer = _has_blackwell_tcgen05() and (
+    comptime use_sm100_scorer = ctx.target._has_blackwell_tcgen05() and (
         (
             num_heads == 32
             and depth == 64

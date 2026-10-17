@@ -41,7 +41,6 @@ from nn.topk_bitonic import _elems_per_16b
 from std.math import align_up, ceildiv, clamp, log
 from std.sys import size_of
 from std.random import rand, random_ui64
-from std.sys.info import _has_blackwell_tcgen05
 from layout import (
     Idx,
     TensorLayout,
@@ -708,7 +707,7 @@ def test_mla_index_fp8_paged_variable_lengths[
     comptime if check_scores or check_selection:
         # tcgen05-only, so B200 only; on H100 this case still ran the scalar
         # fallback + the index checks above.
-        comptime if _has_blackwell_tcgen05():
+        comptime if ctx.target._has_blackwell_tcgen05():
             var sc_size = total_seq_len * total_num_keys_max
             var sc_buf = ctx.enqueue_create_buffer[.float32](sc_size)
             sc_buf.enqueue_fill(-Float32.MAX)
@@ -1899,7 +1898,7 @@ def main() raises:
         # counts (< 16) exist only on the tensor-core path — the scalar
         # fallback's [16, 8] copier thread layout silently stages nothing
         # below 16 heads — so these are compile-gated to Blackwell. =====
-        comptime if _has_blackwell_tcgen05():
+        comptime if ctx.target._has_blackwell_tcgen05():
             print("\n--- SM100 tensor-core scorer (num_heads=8, depth=128) ---")
 
             # Dense NULL + strict_complete across the 16-token tile boundary
@@ -2193,7 +2192,7 @@ def main() raises:
         # ===== GLM 32 heads sharded over 8 ranks (num_heads=4, depth=128):
         # N_TOKENS = 32. The scalar fallback tiles heads by 8, so this count
         # only compiles where the SM100 tensor-core path is taken. =====
-        comptime if _has_blackwell_tcgen05():
+        comptime if ctx.target._has_blackwell_tcgen05():
             print("\n--- SM100 tensor-core scorer (num_heads=4, depth=128) ---")
 
             test_mla_index_fp8_paged_variable_lengths[
@@ -2460,7 +2459,7 @@ def main() raises:
 
         # GLM 5.2 TP8 decode geometry (4 local heads) with the frozen stride;
         # Blackwell-only, as the scalar fallback does not compile at 4 heads.
-        comptime if _has_blackwell_tcgen05():
+        comptime if ctx.target._has_blackwell_tcgen05():
             test_mla_index_fp8_paged_variable_lengths[
                 num_heads=4,
                 depth=128,
@@ -2549,7 +2548,7 @@ def main() raises:
         # ===== Chunked score matrix (SM100 only -- the scalar fallback and
         # its mask pass do not take a row window, so there the op is always one
         # chunk and these cases would compare a run against itself) =====
-        comptime if _has_blackwell_tcgen05():
+        comptime if ctx.target._has_blackwell_tcgen05():
             print("\n--- chunked score-matrix equivalence tests ---")
 
             # K-streaming prefill route (token_tiles = 20 >= 16), chunk
@@ -2765,7 +2764,7 @@ def main() raises:
         # A cache row is one pooled key per `kpool` tokens, so each token's
         # candidate count is its visible-token count floored by `kpool`.
         # kpool > 1 requires a tensor-core scorer: SM100 or gfx950.
-        comptime if _has_blackwell_tcgen05() or _has_gfx950_accelerator():
+        comptime if ctx.target._has_blackwell_tcgen05() or _has_gfx950_accelerator():
             print("\n--- pooled candidates (kpool=4) ---")
 
             # GLM indexer geometry. `nh=32` routes to the warp-specialized

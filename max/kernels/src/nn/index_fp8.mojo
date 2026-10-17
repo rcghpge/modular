@@ -16,7 +16,6 @@ from std.sys import default_accelerator, size_of, simd_width_of
 from std.sys.info import (
     _accelerator_arch,
     _cdna_4_or_newer,
-    _has_blackwell_tcgen05,
     is_amd_gpu,
 )
 from std.math import ceildiv
@@ -748,7 +747,7 @@ def fp8_index[
             ctx,
         )
     elif (
-        _has_blackwell_tcgen05()
+        ctx.target._has_blackwell_tcgen05()
         and (
             num_heads == 64
             or num_heads == 32

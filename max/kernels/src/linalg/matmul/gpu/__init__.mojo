@@ -21,7 +21,7 @@ from std.sys import (
     simd_width_of,
     size_of,
 )
-from std.sys.info import _accelerator_arch, _has_blackwell_tcgen05
+from std.sys.info import _accelerator_arch
 
 from std.algorithm.functional import tile_and_unswitch
 
@@ -847,9 +847,7 @@ def _matmul_gpu_impl[
     # Fail loudly instead of silently ignoring the precision request on
     # targets whose fp32 matmul paths have no TF32 opt-out wired up.
     comptime assert (
-        use_tf32
-        or a_type != .float32
-        or (ctx.target.is_nvidia_gpu() and _has_blackwell_tcgen05())
+        use_tf32 or a_type != .float32 or ctx.target._has_blackwell_tcgen05()
     ), "use_tf32=False is only implemented for the SM100 matmul dispatch"
 
     var shape = GemmShape.get[transpose_b=False](c, a, b)
@@ -1049,7 +1047,7 @@ def _matmul_gpu_impl[
         logger.info("Executing: Vendor BLAS")
         return _vendor_dispatch()
 
-    comptime if (ctx.target.is_nvidia_gpu() and _has_blackwell_tcgen05()):
+    comptime if ctx.target._has_blackwell_tcgen05():
         comptime if has_epilogue_fn:
             return matmul_dispatch_sm100[
                 transpose_b=transpose_b,

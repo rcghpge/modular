@@ -43,7 +43,6 @@ from std.math.uutils import ufloordiv, uceildiv, udivmod
 from std.memory import unsafe_stack_allocation
 from std.sys._assembly import inlined_assembly
 from std.sys.defines import get_defined_bool, get_defined_int
-from std.sys.info import _has_sm_100x_or_newer
 from std.utils.coord import Coord, CoordLike, coord_to_index_list
 from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
@@ -902,7 +901,7 @@ def _elementwise_impl_gpu[
     # accelerator-arch predicate is only evaluated when work-stealing is
     # actually enabled. This avoids per-instantiation comptime cost in the
     # common case where `_USE_CLC_WORK_STEALING` is off.
-    comptime if _USE_CLC_WORK_STEALING and _has_sm_100x_or_newer():
+    comptime if _USE_CLC_WORK_STEALING and ctx.target._is_sm_100x_or_newer():
         var num_packed = ufloordiv(length, simd_width)
         var num_tiles = uceildiv(num_packed, block_size * elems_per_thread)
 

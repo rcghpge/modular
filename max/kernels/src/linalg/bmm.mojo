@@ -16,7 +16,6 @@
 from std.math import align_up, ceildiv, gcd
 from std.sys import size_of
 from std.sys.info import (
-    _has_blackwell_tcgen05,
     _is_amd_rdna,
     is_amd_gpu,
     is_nvidia_gpu,
@@ -963,9 +962,7 @@ def _batched_matmul_gpu_impl[
     )
 
     # SM100 (B200+) batched BF16 matmul dispatch
-    comptime use_SM100_kernels = (
-        ctx.target.is_nvidia_gpu() and _has_blackwell_tcgen05()
-    )
+    comptime use_SM100_kernels = ctx.target._has_blackwell_tcgen05()
     comptime if use_SM100_kernels and has_static_NK and transpose_b:
         logger.info(
             "Dispatching Batched Matmul via SM100",

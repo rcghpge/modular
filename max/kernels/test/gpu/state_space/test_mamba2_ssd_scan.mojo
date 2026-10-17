@@ -35,7 +35,6 @@ from state_space.mamba2_ssd_scan import (
     mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split,
 )
 from std.sys import size_of
-from std.sys.info import _has_sm_8x_or_newer
 from std.testing import (
     TestSuite,
     assert_almost_equal,
@@ -390,7 +389,7 @@ def _run_gpu[
 
     comptime if DSTATE_SPLIT < 0:
         # The chunked kernel is NVIDIA-only (it needs `m16n8k16` bf16 MMAs).
-        comptime if ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer():
+        comptime if ctx.target._is_sm_8x_or_newer():
             mamba2_ssd_chunked_fwd_inplace_gpu[DSTATE, dt_softplus=True](
                 ctx,
                 total_len,
@@ -1424,7 +1423,7 @@ def test_mamba2_ssd_chunked() raises:
     seeds nonzero initial states.
     """
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         # One sequence, 2 full chunks + a 188-token tail, nonzero state.
         run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
@@ -1455,7 +1454,7 @@ def test_mamba2_ssd_chunked_boundaries() raises:
     against the serial kernel at 1% of the largest output.
     """
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         # 1, 255, 256, 257 (chunk -1/0/+1), 511, 512, 513 (two chunks -1/0/+1),
         # fresh and seeded states.
@@ -1478,7 +1477,7 @@ def test_mamba2_ssd_chunked_boundaries() raises:
 def test_mamba2_ssd_chunked_many_sequences() raises:
     """Many sequences in one launch, mixing 1-token and multi-chunk rows."""
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         run_mamba2_ssd[DType.bfloat16, 128, -1, init_state=True](
             4,
@@ -1528,7 +1527,7 @@ def test_mamba2_ssd_chunked_many_sequences() raises:
 def test_mamba2_ssd_chunked_shapes() raises:
     """Head layouts the Nemotron configs use, and optional inputs."""
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         # One group shared by every head; 8 heads per group; 2 heads per group
         # with head_dim 128 (two head tiles).
@@ -1564,7 +1563,7 @@ def test_mamba2_ssd_chunked_shapes() raises:
 def test_mamba2_ssd_chunked_decay_range() raises:
     """Very strong and very weak decay stay finite and match the reference."""
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         # Strong decay: exp2 of the cumulative log decay underflows to 0 within
         # a chunk; the carry and the masked scores must not produce NaN or inf.
@@ -1588,7 +1587,7 @@ def test_mamba2_ssd_chunked_signed_slow_decay() raises:
     absolute tolerance of 2% of the largest value to the 2% relative one.
     """
     with DeviceContext() as ctx:
-        comptime if not (ctx.target.is_nvidia_gpu() and _has_sm_8x_or_newer()):
+        comptime if not ctx.target._is_sm_8x_or_newer():
             return
         run_mamba2_ssd[
             DType.bfloat16, 128, -1, init_state=True, dt_offset=-9.0

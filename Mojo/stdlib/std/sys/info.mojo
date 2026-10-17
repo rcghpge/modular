@@ -834,6 +834,87 @@ struct CompilationTarget[_mlir_value: _TargetType = _current_target(), //](
             return is_apple
 
     # ===----------------------------------------------------------------------=== #
+    # Nvidia Architectures
+    # ===----------------------------------------------------------------------=== #
+
+    @inline(.nodebug)
+    def _is_nvidia_gpu_any[archs: List[StaticString]](self) -> Bool:
+        comptime if not Self().is_nvidia_gpu():
+            return False
+
+        comptime for arch in archs:
+            comptime if Self().is_nvidia_gpu[arch]():
+                return True
+        return False
+
+    @inline(.nodebug)
+    def _is_sm_8x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_80X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_9x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_90X_ARCHS]()
+
+    @inline(.nodebug)
+    def _has_blackwell_tcgen05(self) -> Bool:
+        return self._is_nvidia_gpu_any[
+            _SM_100X_ARCHS + _SM_101X_ARCHS + _SM_103X_ARCHS
+        ]()
+
+    @inline(.nodebug)
+    def _is_sm_100x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_100X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_101x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_101X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_103x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_103X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_110x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_110X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_120x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_120X_ARCHS]()
+
+    @inline(.nodebug)
+    def _is_sm_121x(self) -> Bool:
+        return self._is_nvidia_gpu_any[_SM_121X_ARCHS]()
+
+    #
+    # 'or newer' variants
+    #
+
+    @inline(.nodebug)
+    def _is_sm_8x_or_newer(self) -> Bool:
+        return self._is_sm_8x() or self._is_sm_9x_or_newer()
+
+    @inline(.nodebug)
+    def _is_sm_9x_or_newer(self) -> Bool:
+        return self._is_sm_9x() or self._is_sm_100x_or_newer()
+
+    @inline(.nodebug)
+    def _is_sm_100x_or_newer(self) -> Bool:
+        return (
+            self._has_blackwell_tcgen05()
+            or self._is_sm_100x()
+            or self._is_sm_103x()
+            or self._is_sm_110x_or_newer()
+        )
+
+    @inline(.nodebug)
+    def _is_sm_110x_or_newer(self) -> Bool:
+        return self._is_sm_110x() or self._is_sm_120x_or_newer()
+
+    @inline(.nodebug)
+    def _is_sm_120x_or_newer(self) -> Bool:
+        return self._is_sm_120x() or self._is_sm_121x()
+
+    # ===----------------------------------------------------------------------=== #
     # OS
     # ===----------------------------------------------------------------------=== #
 
@@ -955,189 +1036,44 @@ def is_triple[
     return target.is_triple[name]()
 
 
-@inline(.nodebug)
-def _is_nvidia_gpu_any[archs: List[StaticString]]() -> Bool:
-    comptime for arch in archs:
-        comptime if is_nvidia_gpu[arch]():
-            return True
-    return False
-
-
-@inline(.nodebug)
-def _has_nvidia_gpu_any[archs: List[StaticString]]() -> Bool:
-    comptime if not _has_nvidia_gpu_accelerator():
-        return False
-
-    comptime for arch in archs:
-        comptime if arch.removeprefix("sm_") in _accelerator_arch():
-            return True
-    return False
-
-
 comptime _SM_80X_ARCHS: List[StaticString] = ["sm_80", "sm_86", "sm_89"]
-
-
-@inline(.nodebug)
-def _is_sm_8x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_80X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_8x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_80X_ARCHS]()
-
-
 comptime _SM_90X_ARCHS: List[StaticString] = ["sm_90", "sm_90a"]
-
-
-@inline(.nodebug)
-def _is_sm_9x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_90X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_9x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_90X_ARCHS]()
-
-
 comptime _SM_100X_ARCHS: List[StaticString] = ["sm_100", "sm_100a"]
-
-
-@inline(.nodebug)
-def _is_sm_100x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_100X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_100x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_100X_ARCHS]()
-
-
 comptime _SM_101X_ARCHS: List[StaticString] = ["sm_101", "sm_101a"]
-
-
-@inline(.nodebug)
-def _is_sm_101x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_101X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_101x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_101X_ARCHS]()
-
-
 comptime _SM_103X_ARCHS: List[StaticString] = ["sm_103", "sm_103a"]
-
-
-@inline(.nodebug)
-def _is_sm_103x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_103X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_103x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_103X_ARCHS]()
-
-
 comptime _SM_110X_ARCHS: List[StaticString] = ["sm_110", "sm_110a"]
-
-
-@inline(.nodebug)
-def _is_sm_110x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_110X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_110x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_110X_ARCHS]()
-
-
 comptime _SM_120X_ARCHS: List[StaticString] = ["sm_120", "sm_120a"]
-
-
-@inline(.nodebug)
-def _is_sm_120x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_120X_ARCHS]()
-
-
-@inline(.nodebug)
-def _has_sm_120x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_120X_ARCHS]()
-
-
 comptime _SM_121X_ARCHS: List[StaticString] = ["sm_121", "sm_121a"]
 
 
 @inline(.nodebug)
-def _is_sm_121x() -> Bool:
-    return _is_nvidia_gpu_any[_SM_121X_ARCHS]()
+def _is_sm_9x() -> Bool:
+    return CompilationTarget.current()._is_sm_9x()
 
 
 @inline(.nodebug)
-def _has_sm_121x() -> Bool:
-    return _has_nvidia_gpu_any[_SM_121X_ARCHS]()
+def _is_sm_100x() -> Bool:
+    return CompilationTarget.current()._is_sm_100x()
 
 
 @inline(.nodebug)
-def _has_blackwell_tcgen05() -> Bool:
-    return _has_nvidia_gpu_any[
-        _SM_100X_ARCHS + _SM_101X_ARCHS + _SM_103X_ARCHS
-    ]()
-
-
-@inline(.nodebug)
-def _is_sm_8x_or_newer() -> Bool:
-    return _is_sm_8x() or _is_sm_9x_or_newer()
-
-
-@inline(.nodebug)
-def _has_sm_8x_or_newer() -> Bool:
-    return _has_sm_8x() or _has_sm_9x_or_newer()
+def _is_sm_110x() -> Bool:
+    return CompilationTarget.current()._is_sm_110x()
 
 
 @inline(.nodebug)
 def _is_sm_9x_or_newer() -> Bool:
-    return _is_sm_9x() or _is_sm_100x_or_newer()
-
-
-@inline(.nodebug)
-def _has_sm_9x_or_newer() -> Bool:
-    return _has_sm_9x() or _has_sm_100x_or_newer()
+    return CompilationTarget.current()._is_sm_9x_or_newer()
 
 
 @inline(.nodebug)
 def _is_sm_100x_or_newer() -> Bool:
-    return _is_sm_100x() or _is_sm_103x() or _is_sm_110x_or_newer()
-
-
-@inline(.nodebug)
-def _has_sm_100x_or_newer() -> Bool:
-    return (
-        _has_blackwell_tcgen05()
-        or _has_sm_100x()
-        or _has_sm_103x()
-        or _has_sm_110x_or_newer()
-    )
-
-
-@inline(.nodebug)
-def _is_sm_110x_or_newer() -> Bool:
-    return _is_sm_110x() or _is_sm_120x_or_newer()
-
-
-@inline(.nodebug)
-def _has_sm_110x_or_newer() -> Bool:
-    return _has_sm_110x() or _has_sm_120x_or_newer()
+    return CompilationTarget.current()._is_sm_100x_or_newer()
 
 
 @inline(.nodebug)
 def _is_sm_120x_or_newer() -> Bool:
-    return _is_sm_120x() or _is_sm_121x()
-
-
-@inline(.nodebug)
-def _has_sm_120x_or_newer() -> Bool:
-    return _has_sm_120x() or _has_sm_121x()
+    return CompilationTarget.current()._is_sm_120x_or_newer()
 
 
 @inline(.nodebug)
@@ -1940,17 +1876,4 @@ def has_amd_rdna_gpu_accelerator() -> Bool:
     var arch = _accelerator_arch()
     return (
         _is_amd_rdna() or "gfx10" in arch or "gfx11" in arch or "gfx12" in arch
-    )
-
-
-@inline(.nodebug)
-def _has_nvidia_gpu_accelerator() -> Bool:
-    """Returns True if the host system has an NVIDIA GPU and False otherwise.
-
-    Returns:
-        True if the host system has an NVIDIA GPU.
-    """
-    return (
-        is_nvidia_gpu()
-        or CompilationTarget.default_accelerator().is_nvidia_gpu()
     )
