@@ -22,7 +22,7 @@ from std.sys.info import simd_width_of
 from max.algorithm.functional import elementwise
 import extensibility
 from layout import TensorLayout
-from layout import TileTensor, CoordLike, Coord, DefaultEngine
+from layout import TileTensor, CoordLike, Coord, DefaultEngine, row_major
 from layout.coord import DynamicCoord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
@@ -305,7 +305,7 @@ def imposter_add_raising_shape_shape(
 
 # Device entry for the GPU negate path: one thread per flat element, negating
 # `input` into `output`. The trait arg's device representation is a `TileTensor`
-# (see `_MoggDenseTensorArg.device_type`), so the kernel gets Coord/raw-indexable
+# (see `_MoggDenseTensorArg.device_type`), so the kernel gets Coord-indexable
 # tiles rather than bare pointers.
 def _gpu_negate_kernel[
     dtype: DType, LayoutType: TensorLayout
@@ -318,10 +318,9 @@ def _gpu_negate_kernel[
     var linear_idx = global_idx.x
     if linear_idx >= num_elements:
         return
-    output.raw_store(
-        Int(linear_idx),
-        rebind[SIMD[dtype, 1]](-input.raw_load(Int(linear_idx))),
-    )
+    var output_flat = output.reshape(row_major(num_elements))
+    var input_flat = input.reshape(row_major(num_elements))
+    output_flat[Int(linear_idx)] = -input_flat[Int(linear_idx)]
 
 
 # Trait-lane dense unary kernel (Slice 3 / Phase 4 e2e proof). Uses the
@@ -356,9 +355,12 @@ struct TraitNegate:
             # emitter to another engine must break here first.
             comptime assert type_of(zt).Engine == DefaultEngine[element_width=1]
             var n = Int(x.shape().product())
+            var zf = zt.reshape(row_major(n))
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
-                zt.raw_store(
-                    i, rebind[SIMD[type_of(zt).dtype, 1]](-xt.raw_load(i))
+                zf.store(
+                    Coord(i),
+                    rebind[SIMD[type_of(zt).dtype, 1]](-xf.load(Coord(i))),
                 )
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
@@ -395,10 +397,9 @@ def _gpu_stable_negate_kernel[
     var linear_idx = global_idx.x
     if linear_idx >= num_elements:
         return
-    output.raw_store(
-        Int(linear_idx),
-        -input.raw_load(Int(linear_idx)),
-    )
+    var output_flat = output.reshape(row_major(num_elements))
+    var input_flat = input.reshape(row_major(num_elements))
+    output_flat[Int(linear_idx)] = -input_flat[Int(linear_idx)]
 
 
 # Trait-lane `Stable` kernel: `x` arrives as an emitted `_MoggStableTensorArg`
@@ -479,9 +480,12 @@ struct TraitNegateTileTensor:
         var xt = to_tile_tensor(x)
         comptime if is_cpu[target]():
             var n = Int(x.shape().product())
+            var zf = zt.reshape(row_major(n))
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
-                zt.raw_store(
-                    i, rebind[SIMD[type_of(zt).dtype, 1]](-xt.raw_load(i))
+                zf.store(
+                    Coord(i),
+                    rebind[SIMD[type_of(zt).dtype, 1]](-xf.load(Coord(i))),
                 )
         else:
             comptime block_size = 64
@@ -521,7 +525,7 @@ def _gpu_fused_load_negate_unified_closure_kernel[
     def load_fn(idx: Int) {imm input} -> SIMD[dtype, 1]:
         return rebind[SIMD[dtype, 1]](input.load[1](Coord(idx)))
 
-    output.raw_store(i, -load_fn(i))
+    output.reshape(row_major(n))[i] = -load_fn(i)
 
 
 @extensibility.register("trait_fused_load_negate_unified_closure")
@@ -539,9 +543,10 @@ struct TraitFusedLoadNegateUnifiedClosure:
             comptime assert conforms_to(type_of(x), Loadable)
             var zt = to_tile_tensor(z)
             var n = Int(z.shape().product())
+            var zf = zt.reshape(row_major(n))
             for i in range(n):
                 var v = x.load[1](Coord(i))
-                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+                zf.store(Coord(i), rebind[SIMD[type_of(zt).dtype, 1]](-v))
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
@@ -596,7 +601,7 @@ def _gpu_fused_load_negate_host_unified_closure_kernel[
     var i = Int(global_idx.x)
     if i >= Int(n_dev):
         return
-    zt.raw_store(i, -load_fn[dtype, 1](i))
+    zt.reshape(row_major(Int(n_dev))).store(Coord(i), -load_fn[dtype, 1](i))
 
 
 @inline(.always)
@@ -621,8 +626,9 @@ def _fused_load_negate[
     comptime assert conforms_to(type_of(load_fn), TrivialRegisterPassable)
     comptime if is_cpu[target]():
         var zt = to_tile_tensor(z)
+        var zf = zt.reshape(row_major(n))
         for i in range(n):
-            zt.raw_store(i, -load_fn[type_of(zt).dtype, 1](i))
+            zf.store(Coord(i), -load_fn[type_of(zt).dtype, 1](i))
     else:
         var zt = to_tile_tensor(z)
         var n_dev = Int32(n)
@@ -703,7 +709,9 @@ def _gpu_fused_load_negate_parameter_closure_kernel[
     var i = Int(global_idx.x)
     if i >= n:
         return
-    output.raw_store(i, rebind[SIMD[dtype, 1]](-load_fn[dtype, 1](i)))
+    output.reshape(row_major(n))[i] = rebind[SIMD[dtype, 1]](
+        -load_fn[dtype, 1](i)
+    )
 
 
 @inline(.always)
@@ -722,9 +730,10 @@ def _fused_load_negate_parameter_closure[
     """
     var zt = to_tile_tensor(z)
     comptime if is_cpu[target]():
+        var zf = zt.reshape(row_major(n))
         for i in range(n):
-            zt.raw_store(
-                i,
+            zf.store(
+                Coord(i),
                 rebind[SIMD[type_of(zt).dtype, 1]](
                     -load_fn[type_of(zt).dtype, 1](i)
                 ),
@@ -854,9 +863,11 @@ struct TraitInplaceIncrement:
         comptime assert conforms_to(type_of(x), TileTensorable)
         var xt = to_tile_tensor(x)
         var n = Int(x.shape().product())
+        var xf = xt.reshape(row_major(n))
         for i in range(n):
-            xt.raw_store(
-                i, rebind[SIMD[type_of(xt).dtype, 1]](xt.raw_load(i) + 1)
+            xf.store(
+                Coord(i),
+                rebind[SIMD[type_of(xt).dtype, 1]](xf.load(Coord(i)) + 1),
             )
 
 
@@ -899,7 +910,9 @@ def _gpu_fused_load_negate_kernel[
     var i = Int(global_idx.x)
     if i >= n:
         return
-    output.raw_store(i, rebind[SIMD[dtype, 1]](-input.load[1](Coord(i))))
+    output.reshape(row_major(n))[i] = rebind[SIMD[dtype, 1]](
+        -input.load[1](Coord(i))
+    )
 
 
 @extensibility.register("trait_fused_load_negate")
@@ -917,9 +930,10 @@ struct TraitFusedLoadNegate:
             comptime assert conforms_to(type_of(x), Loadable)
             var zt = to_tile_tensor(z)
             var n = Int(z.shape().product())
+            var zf = zt.reshape(row_major(n))
             for i in range(n):
                 var v = x.load[1](Coord(i))
-                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](-v))
+                zf.store(Coord(i), rebind[SIMD[type_of(zt).dtype, 1]](-v))
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
@@ -960,15 +974,22 @@ def _gpu_tensor_tuple_add_kernel[
     var i = Int32(global_idx.x)
     if i >= n_dev:
         return
-    var b = rebind[Scalar[bias_dtype]](bias.raw_load(0))
+    var b = rebind[Scalar[bias_dtype]](
+        bias.reshape(row_major(bias.num_elements()))[0]
+    )
     comptime for k in range(len(Ins)):
         if i >= offsets[k] and i < offsets[k + 1]:
             comptime out_dtype = Outs[k].dtype
             var z = rebind[TileProjection[True, Outs[k]]](outputs[k])
             var x = rebind[TileProjection[False, Ins[k]]](inputs[k])
             var j = Int(i - offsets[k])
-            var v = rebind[Scalar[Ins[k].dtype]](x.raw_load(j))
-            z.raw_store(j, v.cast[out_dtype]() + b.cast[out_dtype]())
+            var n = Int(offsets[k + 1] - offsets[k])
+            var v = rebind[Scalar[Ins[k].dtype]](
+                x.reshape(row_major(n)).load(Coord(j))
+            )
+            z.reshape(row_major(n)).store(
+                Coord(j), v.cast[out_dtype]() + b.cast[out_dtype]()
+            )
 
 
 # `TensorTuple` kernel with a variadic on each side:
@@ -1001,13 +1022,18 @@ struct TraitTensorTupleAdd:
                 var zt = to_tile_tensor(outputs[i])
                 var xt = to_tile_tensor(inputs[i])
                 comptime OutT = SIMD[type_of(zt).dtype, 1]
-                var b = rebind[SIMD[type_of(bt).dtype, 1]](bt.raw_load(0)).cast[
-                    type_of(zt).dtype
-                ]()
-                for j in range(Int(inputs[i].shape().product())):
-                    var v = rebind[SIMD[type_of(xt).dtype, 1]](xt.raw_load(j))
-                    zt.raw_store(
-                        j, rebind[OutT](v.cast[type_of(zt).dtype]() + b)
+                var b = rebind[SIMD[type_of(bt).dtype, 1]](
+                    bt.reshape(row_major(bt.num_elements())).load(Coord(0))
+                ).cast[type_of(zt).dtype]()
+                var n = Int(inputs[i].shape().product())
+                var zf = zt.reshape(row_major(n))
+                var xf = xt.reshape(row_major(n))
+                for j in range(n):
+                    var v = rebind[SIMD[type_of(xt).dtype, 1]](
+                        xf.load(Coord(j))
+                    )
+                    zf.store(
+                        Coord(j), rebind[OutT](v.cast[type_of(zt).dtype]() + b)
                     )
         else:
             comptime assert len(Outs) == len(Ins)
@@ -1056,14 +1082,16 @@ def _gpu_array_tuple_add_kernel[
     var i = Int(global_idx.x)
     if i >= Int(n_dev):
         return
-    var b = rebind[Scalar[bias_dtype]](bias.raw_load(0)).cast[out_dtype]()
+    var b = rebind[Scalar[bias_dtype]](
+        bias.reshape(row_major(bias.num_elements()))[0]
+    ).cast[out_dtype]()
     var offset = 0
     comptime for k in range(size):
         var n = inputs[k].num_elements()
         if i < offset + n:
             var j = i - offset
-            var v = rebind[Scalar[in_dtype]](inputs[k].raw_load(j))
-            outputs[k].raw_store(j, v.cast[out_dtype]() + b)
+            var v = rebind[Scalar[in_dtype]](inputs[k][j])
+            outputs[k][j] = v.cast[out_dtype]() + b
             return
         offset += n
 
@@ -1176,9 +1204,8 @@ def _gpu_fused_tuple_concat_kernel[
     comptime for k in range(len(Ins)):
         if i >= offsets[k] and i < offsets[k + 1]:
             comptime assert conforms_to(type_of(inputs[k]), Loadable)
-            output.raw_store(
-                Int(i),
-                inputs[k].load[1](Coord(Int(i - offsets[k]))).cast[dtype](),
+            output.reshape(row_major(Int(n_dev)))[Int(i)] = (
+                inputs[k].load[1](Coord(Int(i - offsets[k]))).cast[dtype]()
             )
 
 
@@ -1210,11 +1237,12 @@ struct TraitTensorTupleFusedConcat:
                 comptime assert conforms_to(type_of(inputs[k]), Loadable)
                 return inputs[k].load[1](Coord(j)).cast[out_dtype]()
 
+            var zf = zt.reshape(row_major(Int(z.shape().product())))
             var offset = 0
             comptime for k in range(len(Ins)):
                 var n = Int(inputs[k].shape().product())
                 for j in range(n):
-                    zt.raw_store(offset + j, load_input[k](j))
+                    zf.store(Coord(offset + j), load_input[k](j))
                 offset += n
         else:
             # The tuple holds host-side proxies, so it crosses as a
@@ -1262,7 +1290,7 @@ def _gpu_fused_tuple_split_kernel[
     var i = Int32(global_idx.x)
     if i >= n_dev:
         return
-    var v = rebind[Scalar[dtype]](input.raw_load(Int(i)))
+    var v = rebind[Scalar[dtype]](input.reshape(row_major(Int(n_dev)))[Int(i)])
     comptime for k in range(len(Outs)):
         if i >= offsets[k] and i < offsets[k + 1]:
             comptime assert conforms_to(type_of(outputs[k]), Storable)
@@ -1291,13 +1319,14 @@ struct TraitTensorTupleFusedStoreSplit:
         comptime if is_cpu[target]():
             comptime assert conforms_to(type_of(x), TileTensorable)
             var xt = to_tile_tensor(x)
+            var xf = xt.reshape(row_major(Int(x.shape().product())))
             var offset = 0
             comptime for k in range(len(Outs)):
                 comptime assert conforms_to(type_of(outputs[k]), Storable)
                 var n = Int(outputs[k].shape().product())
                 for j in range(n):
                     var v = rebind[Scalar[type_of(xt).dtype]](
-                        xt.raw_load(offset + j)
+                        xf.load(Coord(offset + j))
                     )
                     outputs[k].store[1](
                         Coord(j), v.cast[type_of(outputs[k]).dtype]()
@@ -1345,7 +1374,7 @@ def _gpu_fused_store_double_kernel[
     var i = Int(global_idx.x)
     if i >= n:
         return
-    var v = rebind[SIMD[dtype, 1]](input.raw_load(i)) * 2
+    var v = rebind[SIMD[dtype, 1]](input.reshape(row_major(n))[i]) * 2
     output.store[1](Coord(i), rebind[SIMD[type_of(output).dtype, 1]](v))
 
 
@@ -1364,8 +1393,9 @@ struct TraitFusedStoreDouble:
             comptime assert conforms_to(type_of(x), TileTensorable)
             var xt = to_tile_tensor(x)
             var n = Int(z.shape().product())
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
-                var v = rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2
+                var v = rebind[SIMD[type_of(z).dtype, 1]](xf.load(Coord(i))) * 2
                 z.store[1](Coord(i), v)
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
@@ -1404,7 +1434,7 @@ def _gpu_fused_store_parameter_closure_kernel[
     store_adapter[ZDev, 1](
         output,
         Coord(i),
-        rebind[SIMD[ZDev.dtype, 1]](input.raw_load(i)),
+        rebind[SIMD[ZDev.dtype, 1]](input.reshape(row_major(n))[i]),
     )
 
 
@@ -1450,10 +1480,11 @@ struct TraitFusedStoreParameterClosure:
             comptime assert conforms_to(type_of(x), TileTensorable)
             var xt = to_tile_tensor(x)
             var n = Int(z.shape().product())
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
                 z.store[1](
                     Coord(i),
-                    rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)),
+                    rebind[SIMD[type_of(z).dtype, 1]](xf.load(Coord(i))),
                 )
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
@@ -1497,7 +1528,7 @@ def _gpu_fused_store_unified_closure_kernel[
     var i = Int(global_idx.x)
     if i >= n:
         return
-    var v = rebind[SIMD[dtype, 1]](input.raw_load(i)) * 2
+    var v = rebind[SIMD[dtype, 1]](input.reshape(row_major(n))[i]) * 2
 
     # Unified closure capturing the projected (access-enabled) store proxy.
     @inline(.always)
@@ -1522,10 +1553,11 @@ struct TraitFusedStoreUnifiedClosure:
             comptime assert conforms_to(type_of(x), TileTensorable)
             var xt = to_tile_tensor(x)
             var n = Int(z.shape().product())
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
                 z.store[1](
                     Coord(i),
-                    rebind[SIMD[type_of(z).dtype, 1]](xt.raw_load(i)) * 2,
+                    rebind[SIMD[type_of(z).dtype, 1]](xf.load(Coord(i))) * 2,
                 )
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
@@ -1596,7 +1628,7 @@ def _gpu_fused_transform_bias_kernel[
         return
     var coord = Coord(i)
     var raw = rebind[SIMD[type_of(z).dtype, 1]](
-        rebind[SIMD[dtype, 1]](x.raw_load(i)) + 1
+        rebind[SIMD[dtype, 1]](x.reshape(row_major(n))[i]) + 1
     )
     var t = z.transform[1](coord, raw)
     var zt = z.to_tile_tensor()
@@ -1627,10 +1659,14 @@ struct TraitFusedTransformBias:
             var zt = to_tile_tensor(z)
             var xt = to_tile_tensor(x)
             var n = Int(z.shape().product())
+            var zf = zt.reshape(row_major(n))
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
-                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
+                var raw = (
+                    rebind[SIMD[type_of(zt).dtype, 1]](xf.load(Coord(i))) + 1
+                )
                 var t = z.transform[1](Coord(i), raw)
-                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
+                zf.store(Coord(i), rebind[SIMD[type_of(zt).dtype, 1]](t))
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
@@ -1671,7 +1707,7 @@ def _gpu_fused_transform_bias_unified_closure_kernel[
         return
     var coord = Coord(i)
     var raw = rebind[SIMD[type_of(z).dtype, 1]](
-        rebind[SIMD[dtype, 1]](x.raw_load(i)) + 1
+        rebind[SIMD[dtype, 1]](x.reshape(row_major(n))[i]) + 1
     )
     comptime assert type_of(z).mut
 
@@ -1701,10 +1737,14 @@ struct TraitFusedTransformBiasUnifiedClosure:
             var zt = to_tile_tensor(z)
             var xt = to_tile_tensor(x)
             var n = Int(z.shape().product())
+            var zf = zt.reshape(row_major(n))
+            var xf = xt.reshape(row_major(n))
             for i in range(n):
-                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.raw_load(i)) + 1
+                var raw = (
+                    rebind[SIMD[type_of(zt).dtype, 1]](xf.load(Coord(i))) + 1
+                )
                 var t = z.transform[1](Coord(i), raw)
-                zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](t))
+                zf.store(Coord(i), rebind[SIMD[type_of(zt).dtype, 1]](t))
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
@@ -2684,8 +2724,11 @@ struct TraitTensorTupleShapeOp:
         var zt = to_tile_tensor(output)
         var xt = to_tile_tensor(inputs[0])
         comptime OutT = SIMD[type_of(zt).dtype, 1]
-        for j in range(Int(output.shape().product())):
-            zt.raw_store(j, rebind[OutT](xt.raw_load(j)))
+        var n = Int(output.shape().product())
+        var zf = zt.reshape(row_major(n))
+        var xf = xt.reshape(row_major(n))
+        for j in range(n):
+            zf.store(Coord(j), rebind[OutT](xf.load(Coord(j))))
 
 
 @extensibility.register_shape_function("trait_tensor_tuple_shape_op")
@@ -3506,16 +3549,17 @@ struct TraitMixedLegacyAdd:
         comptime assert conforms_to(type_of(z), TileTensorable)
         var zt = to_tile_tensor(z)
         var n = x.size()
+        var zf = zt.reshape(row_major(n))
         for i in range(n):
             var xv = x[i]
             var yv = rebind[Scalar[type_of(x).dtype]](y[i])
-            zt.raw_store(i, rebind[SIMD[type_of(zt).dtype, 1]](xv + yv))
+            zf.store(Coord(i), rebind[SIMD[type_of(zt).dtype, 1]](xv + yv))
 
 
 # Mirror of `trait_mixed_legacy_add` with the lanes swapped: a legacy
 # `OutputTensor` alongside two trait-bound dense inputs, so the legacy write
 # path (`OutputTensor.__setitem__`) and the trait read path
-# (`to_tile_tensor(...).raw_load`) both fire in the same emitted kernel.
+# (`to_tile_tensor(...).load`) both fire in the same emitted kernel.
 @extensibility.register("trait_mixed_legacy_out_add")
 struct TraitMixedLegacyOutAdd:
     @staticmethod
@@ -3532,9 +3576,11 @@ struct TraitMixedLegacyOutAdd:
         var xt = to_tile_tensor(x)
         var yt = to_tile_tensor(y)
         var n = Int(x.shape().product())
+        var xf = xt.reshape(row_major(n))
+        var yf = yt.reshape(row_major(n))
         for i in range(n):
-            var xv = xt.raw_load(i)
-            var yv = rebind[SIMD[type_of(xt).dtype, 1]](yt.raw_load(i))
+            var xv = rebind[SIMD[type_of(xt).dtype, 1]](xf.load(Coord(i)))
+            var yv = rebind[SIMD[type_of(xt).dtype, 1]](yf.load(Coord(i)))
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
 
 
@@ -3559,8 +3605,9 @@ struct TraitDualLaneAdd:
         comptime assert conforms_to(type_of(x), TileTensorable)
         var xt = to_tile_tensor(x)
         var n = y.size()
+        var xf = xt.reshape(row_major(n))
         for i in range(n):
-            var xv = xt.raw_load(i)
+            var xv = rebind[SIMD[type_of(xt).dtype, 1]](xf.load(Coord(i)))
             var yv = rebind[SIMD[type_of(xt).dtype, 1]](y[i])
             z[i] = rebind[Scalar[z.dtype]](xv + yv)
 
@@ -3959,8 +4006,8 @@ struct TraitTensorTupleFusedConcatUnifiedClosure:
                 comptime for k in range(len(Ins)):
                     if i >= offsets[k] and i < offsets[k + 1]:
                         comptime assert conforms_to(type_of(views[k]), Loadable)
-                        zt.raw_store(
-                            Int(i),
+                        zt.reshape(row_major(Int(n_dev))).store(
+                            Coord(Int(i)),
                             views[k]
                             .load[1](Coord(Int(i - offsets[k])))
                             .cast[out_dtype](),
