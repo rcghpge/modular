@@ -56,9 +56,9 @@ def _batch_of_row(
 ) -> Int:
     var r = UInt32(row)
     for b in range(num_batches):
-        if r >= row_offsets.load[width=1]((b,)) and r < row_offsets.load[
-            width=1
-        ]((b + 1,)):
+        var lo = rebind[UInt32](row_offsets.load((b,)))
+        var hi = rebind[UInt32](row_offsets.load((b + 1,)))
+        if r >= lo and r < hi:
             return b
     return 0
 
@@ -85,8 +85,8 @@ def _indexer_score_cpu[
     var cap = num_cand // 2
     for t in range(num_rows):
         var b = _batch_of_row(t, row_offsets, num_batches)
-        var base = Int(base_t.load[width=1]((b,)))
-        var cutoff = Int(cutoff_t.load[width=1]((t,)))
+        var base = Int(rebind[Int32](base_t.load((b,))))
+        var cutoff = Int(rebind[Int32](cutoff_t.load((t,))))
         for c in range(num_cand):
             var e: Int
             var live: Bool
@@ -106,14 +106,14 @@ def _indexer_score_cpu[
                         )
                         var qv = SIMD[.float32, chunk](0)
                         comptime for i in range(chunk):
-                            qv[i] = q.load[width=1]((t, h, d0 + i)).cast[
-                                .float32
-                            ]()
+                            qv[i] = rebind[Float32](
+                                q.load((t, h, d0 + i)).cast[.float32]()
+                            )
                         acc += (qv * k).reduce_add()
-                    score += max(acc, Float32(0)) * weights.load[width=1](
-                        (t, h)
+                    score += max(acc, Float32(0)) * rebind[Float32](
+                        weights.load((t, h))
                     )
-            output.store[width=1]((t, c), score)
+            output.store((t, c), score)
 
 
 def indexer_score_ragged_paged[
@@ -219,8 +219,8 @@ def indexer_score_ragged_paged[
             var cap = n // 2
 
             var b = _batch_of_row(t, input_row_offsets, Int(num_batches_i32))
-            var base_b = Int(base.load[width=1]((b,)))
-            var cutoff_t = Int(cutoff.load[width=1]((t,)))
+            var base_b = Int(rebind[Int32](base.load((b,))))
+            var cutoff_t = Int(rebind[Int32](cutoff.load((t,))))
             var c = c0 + tid
 
             # Live columns are [0, base) and [cap, cap + cutoff - base); a
@@ -229,7 +229,7 @@ def indexer_score_ragged_paged[
             var c1 = c0 + block_size
             if not (c0 < base_b or (c1 > cap and c0 < cap + cutoff_t - base_b)):
                 if c < n:
-                    output.store[width=1]((t, c), Float32(0))
+                    output.store((t, c), Float32(0))
                 return
 
             var sq = unsafe_stack_allocation[
@@ -241,9 +241,11 @@ def indexer_score_ragged_paged[
             for i in range(tid, num_heads * head_dim, block_size):
                 var h = i // head_dim
                 var d = i - h * head_dim
-                sq.unsafe_store(i, q.load[width=1]((t, h, d)).cast[.float32]())
+                sq.unsafe_store(
+                    i, rebind[Float32](q.load((t, h, d)).cast[.float32]())
+                )
             for h in range(tid, num_heads, block_size):
-                sw.unsafe_store(h, weights.load[width=1]((t, h)))
+                sw.unsafe_store(h, rebind[Float32](weights.load((t, h))))
             barrier()
 
             if c >= n:
@@ -269,7 +271,7 @@ def indexer_score_ragged_paged[
                         acc[h] += (qv * k).reduce_add()
                 comptime for h in range(num_heads):
                     score += max(acc[h], Float32(0)) * sw.unsafe_load(h)
-            output.store[width=1]((t, c), score)
+            output.store((t, c), score)
 
         ctx.enqueue_function(
             kernel,

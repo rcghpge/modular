@@ -13,7 +13,7 @@
 
 from std.math import isclose
 from std.random import rand
-from std.sys.info import simd_width_of
+from std.sys.info import align_of, simd_width_of
 
 from std.algorithm.functional import vectorize
 from layout import Coord, TileTensor, row_major
@@ -182,11 +182,14 @@ def test[
 
             @inline(.always)
             def body0[width: Int](offset: Int) {var}:
-                output_ref.raw_store(
-                    row_offset + offset,
+                var coord = output_ref.layout.idx2crd(row_offset + offset)
+                output_ref.store[alignment=align_of[dtype]()](
+                    coord,
                     10.0
                     * (
-                        output_ref.raw_load[width=width](row_offset + offset)
+                        output_ref.load[
+                            width=width, alignment=align_of[dtype]()
+                        ](coord)
                         + bias_ptr.load[width=width](offset)
                     ),
                 )

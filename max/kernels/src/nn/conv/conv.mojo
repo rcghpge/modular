@@ -411,15 +411,19 @@ def _reduce_output[
             width: Int
         ](offset: Int) {F, scratch, num_partitions, output, imm buf_size, mut}:
             var tid_output_offset = reduce_range[0] * F + offset
-            var vec = scratch.raw_load[width=width](tid_output_offset)
+            var vec = scratch.load[width=width, alignment=align_of[dtype]()](
+                Coord(tid_output_offset)
+            )
             # The number of partitions here is typically small.
             # There may not be much benefit from unrolling the reduction axis.
             # Only unroll the last dimension.
             for i in range(1, num_partitions):
-                vec += scratch.raw_load[width=width](
-                    tid_output_offset + i * buf_size
+                vec += scratch.load[width=width, alignment=align_of[dtype]()](
+                    Coord(tid_output_offset + i * buf_size)
                 )
-            output.raw_store(tid_output_offset, vec)
+            output.store[alignment=align_of[dtype]()](
+                output.layout.idx2crd(tid_output_offset), vec
+            )
 
         vectorize[simd_size, unroll_factor=4](reduce_range[1] * F, sum)
 
@@ -3204,11 +3208,13 @@ def pack_filter[
                 var filter_offset = row * F + g * F_per_group + f_tile_start
 
                 comptime for i in range(f_tile_size // simd_size):
+                    var filter_vec = filter.load[
+                        width=simd_size,
+                        alignment=align_of[filter.dtype](),
+                        invariant=False,
+                    ](filter.layout.idx2crd(filter_offset + i * simd_size))
                     packed_filter_ptr.store(
-                        i * simd_size,
-                        filter.raw_load[width=simd_size, invariant=False](
-                            filter_offset + i * simd_size
-                        ).cast[packed_filter_dtype](),
+                        i * simd_size, filter_vec.cast[packed_filter_dtype]()
                     )
 
                 packed_filter_ptr += f_tile_size

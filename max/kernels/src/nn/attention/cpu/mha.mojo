@@ -629,7 +629,7 @@ struct _FlashAttention[
                 _simd_max_elementwise,
                 output_fn,
                 qk_row.num_elements(),
-                max_vals.load[width=1](Coord(m)),
+                rebind[Scalar[Self.dtype]](max_vals.load(Coord(m))),
             )
 
             if do_sink:
@@ -657,13 +657,16 @@ struct _FlashAttention[
             if do_sink:
                 accum_val += exp(sink_logit - max_val)
 
-            var fixup_val = exp(max_vals.load[width=1](Coord(m)) - max_val)
+            var fixup_val = exp(
+                rebind[Scalar[Self.dtype]](max_vals.load(Coord(m))) - max_val
+            )
 
             # Update the running maximum and sum for the row.
             max_vals.store(Coord(m), max_val)
             sum_vals.store(
                 Coord(m),
-                sum_vals.load[width=1](Coord(m)) * fixup_val + accum_val,
+                rebind[Scalar[Self.dtype]](sum_vals.load(Coord(m))) * fixup_val
+                + accum_val,
             )
 
             @inline(.always)

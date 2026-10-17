@@ -409,34 +409,29 @@ def padded_index_mode_kernel[
     for row in range(start_row, end_row, rows_per_iter):
         var out_coord = output_tensor.layout.idx2crd(row * _row_length)
 
-        # Compute the source base offset for axes 0..rank-2 via the shared
+        # Compute the source coordinate for axes 0..rank-2 via the shared
         # index map. The last axis is handled per-element below.
-        var base_offset = 0
+        var src_idx = IndexList[rank]()
         comptime for axis in range(output_tensor.rank - 1):
             var in_len = Int(input_tensor.layout.shape[axis]().value())
-            var src = _pad_src_index[mode](
+            src_idx[axis] = _pad_src_index[mode](
                 Int(out_coord[axis].value()), in_len, Int(pre_pads[axis])
             )
-            base_offset += src * Int(input_tensor.layout.stride[axis]().value())
 
         var in_last = Int(
             input_tensor.layout.shape[output_tensor.rank - 1]().value()
         )
         var pre_last = Int(pre_pads[output_tensor.rank - 1])
-        var in_stride_last = Int(
-            input_tensor.layout.stride[output_tensor.rank - 1]().value()
-        )
 
-        var output_offset = Int(output_tensor.layout(out_coord))
+        var out_idx = rebind[IndexList[rank]](coord_to_index_list(out_coord))
 
         var tid = thread_idx.x % threads_per_row
         for j in range(tid, _row_length, threads_per_row):
-            var src_last = _pad_src_index[mode](j, in_last, pre_last)
-            output_tensor.raw_store(
-                output_offset + j,
-                input_tensor.raw_load[invariant=False](
-                    base_offset + src_last * in_stride_last
-                ),
+            src_idx[rank - 1] = _pad_src_index[mode](j, in_last, pre_last)
+            out_idx[rank - 1] = j
+            output_tensor.store(
+                Coord(out_idx),
+                input_tensor.load[invariant=False](Coord(src_idx)),
             )
 
 

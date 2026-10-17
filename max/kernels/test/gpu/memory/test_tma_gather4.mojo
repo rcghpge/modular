@@ -848,6 +848,7 @@ def gather4_kernel[
     var smem_tile = stack_allocation[
         dtype=dtype, address_space=.SHARED, alignment=128
     ](row_major[4, box_width]())
+    var smem_flat = smem_tile.reshape[4 * box_width]()
 
     var mbar = unsafe_stack_allocation[
         1,
@@ -903,7 +904,7 @@ def gather4_kernel[
                     + cg * box_width
                     + col_in_group
                 )
-                d_out[out_idx] = smem_tile.raw_load(Int(swizzle(i)))
+                d_out[out_idx] = smem_flat[Int(swizzle(i))]
 
             barrier()
             phase ^= 1
@@ -1816,12 +1817,13 @@ def test_gather4_tile_api_paged[
 
     # ---- Build reference K_gathered on host ----
     var k_ref = ctx.enqueue_create_host_buffer[dtype](topk * row_width)
+    var blocks_rows = blocks_host.reshape(
+        row_major(blocks_host.num_elements() // row_width, row_width)
+    )
     for i in range(topk):
         var src_row = Int(h_indices[i])
         for c in range(row_width):
-            k_ref[i * row_width + c] = blocks_host.raw_load(
-                src_row * row_width + c
-            )
+            k_ref[i * row_width + c] = blocks_rows[src_row, c]
 
     # ---- Allocate output buffer ----
     var out_device = ctx.enqueue_create_buffer[dtype](topk * row_width)

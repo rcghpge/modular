@@ -199,7 +199,7 @@ def _split_k_reduce_impl[
             var out = acc.cast[c_type]()
             comptime if has_compute_fn:
                 out = compute_fn[c_type, 1, alignment=1]((m, n), out)
-            c.store[width=1]((m, n), out)
+            c.store((m, n), out)
         tid += stride
 
 

@@ -1496,8 +1496,8 @@ def pack_filter(
                     for f in range(f_tile_size):
                         packed_filter_ptr.store(
                             f,
-                            filter.raw_load[invariant=False](
-                                filter_offset + c + f * C
+                            filter.load[invariant=False](
+                                filter.layout.idx2crd(filter_offset + c + f * C)
                             ).cast[packed_filter_ptr.T.dtype](),
                         )
 
@@ -1530,8 +1530,8 @@ def pack_filter(
                     for f in range(residual):
                         packed_filter_ptr.store(
                             f,
-                            filter.raw_load[invariant=False](
-                                filter_offset + c + f * C
+                            filter.load[invariant=False](
+                                filter.layout.idx2crd(filter_offset + c + f * C)
                             ).cast[packed_filter_ptr.T.dtype](),
                         )
 

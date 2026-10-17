@@ -1488,22 +1488,24 @@ struct BlockScaledMatmulAMD[
             Parameters:
                 stage: SMEM pipeline stage (0 unless `num_stages > 1`).
             """
-            comptime sfa_stage_base = stage * Self.BM * SCALE_WORDS_PER_ROW
-            comptime sfb_stage_base = stage * Self.BN * SCALE_WORDS_PER_ROW
+            var sfa_smem_words = sfa_smem.bitcast[DType.int32]().reshape(
+                row_major[num_stages * Self.BM, SCALE_WORDS_PER_ROW]()
+            )
+            var sfb_smem_words = sfb_smem.bitcast[DType.int32]().reshape(
+                row_major[num_stages * Self.BN, SCALE_WORDS_PER_ROW]()
+            )
             var tid = thread_idx.x
 
             if tid < Self.BM:
                 comptime for w in range(SCALE_WORDS_PER_ROW):
-                    sfa_smem.bitcast[DType.int32]().raw_store(
-                        sfa_stage_base + tid * SCALE_WORDS_PER_ROW + w,
-                        sfa_load_reg.raw_load(w),
-                    )
+                    sfa_smem_words[stage * Self.BM + tid, w] = sfa_load_reg[
+                        0, w
+                    ]
             if tid < Self.BN:
                 comptime for w in range(SCALE_WORDS_PER_ROW):
-                    sfb_smem.bitcast[DType.int32]().raw_store(
-                        sfb_stage_base + tid * SCALE_WORDS_PER_ROW + w,
-                        sfb_load_reg.raw_load(w),
-                    )
+                    sfb_smem_words[stage * Self.BN + tid, w] = sfb_load_reg[
+                        0, w
+                    ]
 
         # === Schedule-driven pipeline ===
         # The schedule prologue pre-loads 2 tiles, so we need at least 2

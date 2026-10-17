@@ -119,8 +119,9 @@ def assert_no_nan_inf[
     output.to_host()
     var host = output.host_tensor()
     var n = host.num_elements()
+    var flat = host.reshape(row_major(n))
     for i in range(n):
-        var v = host.raw_load(i).cast[.float32]()
+        var v = flat[i].cast[.float32]()
         if isnan(v):
             raise Error(
                 String("NaN at element ")

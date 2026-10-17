@@ -1471,9 +1471,9 @@ def _softmax_temperature_kernel[
 
             var temp = _temperature.cast[accum_type]()
             if case .Some(temperature_arr) = temperature_arr:
-                temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
-                    accum_type
-                ]()
+                temp = rebind[Scalar[accum_type]](
+                    temperature_arr.load(Coord(row_idx)).cast[accum_type]()
+                )
             # Clamp to prevent division by zero on greedy (T=0) rows.
             temp = max(temp, Scalar[accum_type](1e-6))
             var inv_temp = Scalar[accum_type](1) / temp
@@ -1616,9 +1616,9 @@ def _softmax_split_partial_kernel[
         # Every block owning this row must read the same temperature.
         var temp = temperature.cast[accum_type]()
         if case .Some(temperature_arr) = temperature_arr:
-            temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
-                accum_type
-            ]()
+            temp = rebind[Scalar[accum_type]](
+                temperature_arr.load(Coord(row_idx)).cast[accum_type]()
+            )
         temp = max(temp, Scalar[accum_type](1e-6))
         var inv_temp = Scalar[accum_type](1) / temp
 
@@ -1727,9 +1727,9 @@ def _softmax_split_combine_kernel[
 
         var temp = temperature.cast[accum_type]()
         if case .Some(temperature_arr) = temperature_arr:
-            temp = temperature_arr.load[width=1](Coord(row_idx)).cast[
-                accum_type
-            ]()
+            temp = rebind[Scalar[accum_type]](
+                temperature_arr.load(Coord(row_idx)).cast[accum_type]()
+            )
         temp = max(temp, Scalar[accum_type](1e-6))
         var inv_temp = Scalar[accum_type](1) / temp
 

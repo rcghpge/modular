@@ -541,17 +541,15 @@ def test_case[qgemm: QuantizedGemm](M: Int, N: Int, K: Int) raises:
     qgemm.kernel(ctx.a, ctx.b_packed, ctx.c)
 
     var mismatch = False
-    for i in range(ctx.c.num_elements()):
-        if not isclose(
-            ctx.c.raw_load(i), ctx.c_golden.raw_load(i), atol=1e-4, rtol=1e-4
-        ):
-            print(
-                "MISMATCH",
-                divmod(i, N),
-                ctx.c.raw_load(i),
-                ctx.c_golden.raw_load(i),
-            )
-            mismatch = True
+    for m in range(M):
+        for n in range(N):
+            if not isclose(
+                ctx.c[m, n], ctx.c_golden[m, n], atol=1e-4, rtol=1e-4
+            ):
+                print("MISMATCH", m, n, ctx.c[m, n], ctx.c_golden[m, n])
+                mismatch = True
+                break
+        if mismatch:
             break
     if mismatch:
         raise Error("found mismatch")

@@ -61,7 +61,7 @@ def _transpose_rscf_to_krsc[
     var r: Int
     r, rem = divmod(rem, _S * _C)
     var s, c = divmod(rem, _C)
-    dst_ptr.store(tid, src.load[width=1]((r, s, c, k))[0])
+    dst_ptr.store(tid, src.load((r, s, c, k))[0])
 
 
 @__name(t"transpose_fcrs_to_krsc_{dtype}")
@@ -90,7 +90,7 @@ def _transpose_fcrs_to_krsc[
     var r: Int
     r, rem = divmod(rem, _S * _C)
     var s, c = divmod(rem, _C)
-    dst_ptr.store(tid, src.load[width=1]((k, c, r, s))[0])
+    dst_ptr.store(tid, src.load((k, c, r, s))[0])
 
 
 # =========================================================================

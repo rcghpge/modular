@@ -167,17 +167,23 @@ def roi_align_kernel[
                     var w3 = ly * hx
                     var w4 = ly * lx
 
-                    var v1 = input_tensor.load[width=1](
-                        Coord(roi_batch_idx, y_low, x_low, c)
+                    var v1 = rebind[Scalar[dtype]](
+                        input_tensor.load(Coord(roi_batch_idx, y_low, x_low, c))
                     )
-                    var v2 = input_tensor.load[width=1](
-                        Coord(roi_batch_idx, y_low, x_high, c)
+                    var v2 = rebind[Scalar[dtype]](
+                        input_tensor.load(
+                            Coord(roi_batch_idx, y_low, x_high, c)
+                        )
                     )
-                    var v3 = input_tensor.load[width=1](
-                        Coord(roi_batch_idx, y_high, x_low, c)
+                    var v3 = rebind[Scalar[dtype]](
+                        input_tensor.load(
+                            Coord(roi_batch_idx, y_high, x_low, c)
+                        )
                     )
-                    var v4 = input_tensor.load[width=1](
-                        Coord(roi_batch_idx, y_high, x_high, c)
+                    var v4 = rebind[Scalar[dtype]](
+                        input_tensor.load(
+                            Coord(roi_batch_idx, y_high, x_high, c)
+                        )
                     )
 
                     comptime if mode == "AVG":
@@ -202,7 +208,7 @@ def roi_align_kernel[
 
             comptime if mode == "AVG":
                 pool_val = pool_val / Scalar[dtype](pool_elemn_num)
-            output_tensor.store[width=1](Coord(ri, ph, pw, c), pool_val)
+            output_tensor.store(Coord(ri, ph, pw, c), pool_val)
 
 
 def _roi_align_impl[

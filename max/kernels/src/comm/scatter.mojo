@@ -25,8 +25,8 @@ Example with DP=4, TP=2, 8 GPUs:
 Uses a pull-based approach: each GPU reads its chunk from root via P2P.
 """
 
-from layout import TensorEngine, TileTensor
-from layout.tile_layout import TensorLayout
+from layout import Coord, TensorEngine, TileTensor
+from layout.tile_layout import TensorLayout, row_major
 from std.collections import Array
 from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu import (
@@ -41,7 +41,7 @@ from max.gpu.primitives.grid_controls import (
 )
 
 from std.math import ceildiv
-from std.sys import simd_width_of
+from std.sys import align_of, simd_width_of
 from std.utils import StaticTuple
 
 from .sync import (
@@ -92,12 +92,13 @@ def scatter_pull_kernel[
         var data_ptr = input_ptrs[dp_idx]
         var num_elems = Int(chunk_num_elems[dp_idx])
         var num_simd_vectors = num_elems // simd_width
+        var output_flat = output.reshape(row_major(num_elems))
 
         # Grid-strided vectorized copy.
         for idx in range(global_tid, num_simd_vectors, stride):
             var elem_idx = idx * simd_width
-            output.raw_store(
-                elem_idx,
+            output_flat.store[alignment=align_of[dtype]()](
+                Coord(elem_idx),
                 data_ptr.load[width=simd_width](elem_idx),
             )
 
@@ -105,8 +106,8 @@ def scatter_pull_kernel[
         var tail_start = num_simd_vectors * simd_width
         var tail_idx = tail_start + global_tid
         if tail_idx < num_elems:
-            output.raw_store(
-                tail_idx,
+            output_flat.store(
+                Coord(tail_idx),
                 data_ptr.load(tail_idx),
             )
 

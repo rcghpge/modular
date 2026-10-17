@@ -109,7 +109,7 @@ def _transpose_qrscf_to_fk_kpad[
     var sc = rsc - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load[width=1]((q, r, s, c, f))[0])
+    dst_ptr.store(tid, src.load((q, r, s, c, f))[0])
 
 
 @__name(t"amd_4wave_3d_transpose_fcqrs_to_fk_kpad_{dtype}")
@@ -154,7 +154,7 @@ def _transpose_fcqrs_to_fk_kpad[
     var sc = rsc - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load[width=1]((f, c, q, r, s))[0])
+    dst_ptr.store(tid, src.load((f, c, q, r, s))[0])
 
 
 # ---------------------------------------------------------------------------

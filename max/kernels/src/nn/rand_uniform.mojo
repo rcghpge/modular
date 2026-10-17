@@ -124,7 +124,7 @@ def keyed_uniform[
         comptime assert width == 1, "each row keys its own Philox stream"
 
         var row = Int(idx[0].value())
-        var generator = Random(seed=seed.load[width=1](Coord(row)))
-        output.store[width=1](Coord(row), generator.step_uniform()[0])
+        var generator = Random(seed=rebind[UInt64](seed.load(Coord(row))))
+        output.store(Coord(row), generator.step_uniform()[0])
 
     elementwise[simd_width=1, target=target](draw, (rows,), ctx)

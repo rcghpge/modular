@@ -2519,11 +2519,11 @@ def apply_gumbel_noise_kernel[
                         noised_logits[4 * loop_i + vec_i] += rnd_val[vec_i]
 
                 if N % simd_width == 0:
-                    output.store[width=simd_width, alignment=align](
+                    output.store[alignment=align](
                         (tok_idx, i * simd_width), noised_logits.cast[dtype]()
                     )
                 else:
-                    output.store[width=simd_width, alignment=align_of[dtype]()](
+                    output.store[alignment=align_of[dtype]()](
                         (tok_idx, i * simd_width), noised_logits.cast[dtype]()
                     )
 
@@ -2536,14 +2536,14 @@ def apply_gumbel_noise_kernel[
                     + UInt64(tid_in_group),
                 )
                 if tid_in_group < N_res:
-                    var input_val = input.load[width=1, invariant=False](
+                    var input_val = input.load[invariant=False](
                         (tok_idx, (N - N_res) + tid_in_group)
                     ).cast[.float32]()
                     var noised_logit = input_val / temp_val
                     var rnd_val = rng_state.step_uniform()[0]
                     rnd_val = -LOG2 * log2(-log2(rnd_val + EPS) + EPS)
                     noised_logit += rnd_val
-                    output.store[width=1](
+                    output.store(
                         (tok_idx, (N - N_res) + tid_in_group),
                         noised_logit.cast[dtype](),
                     )
@@ -2739,9 +2739,11 @@ def _gumbel_argmax_fused_kernel[
                 seed=seed_val * UInt64(N) + UInt64(N - N_res) + UInt64(tid),
             )
             if tid < N_res:
-                var input_val = input.load[width=1, invariant=False](
-                    (batch_id, (N - N_res) + tid)
-                ).cast[.float32]()
+                var input_val = rebind[Float32](
+                    input.load[invariant=False](
+                        (batch_id, (N - N_res) + tid)
+                    ).cast[.float32]()
+                )
                 var noised_logit: Float32
                 comptime if from_probs:
                     noised_logit = LOG2 * log2(input_val)

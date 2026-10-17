@@ -1254,12 +1254,13 @@ def test_sparse_paged_mma_ws_ts[
 
     # ---- Build reference K_gathered on host ----
     var k_ref_host = ctx.enqueue_create_host_buffer[op_type](topk * row_width)
+    var blocks_rows = blocks_host.reshape(
+        row_major(blocks_host.num_elements() // row_width, row_width)
+    )
     for i in range(topk):
         var src_row = Int(h_indices[i])
         for c in range(row_width):
-            k_ref_host[i * row_width + c] = blocks_host.raw_load(
-                src_row * row_width + c
-            )
+            k_ref_host[i * row_width + c] = blocks_rows[src_row, c]
 
     var k_ref_device = ctx.enqueue_create_buffer[op_type](topk * row_width)
     ctx.enqueue_copy(k_ref_device, k_ref_host)

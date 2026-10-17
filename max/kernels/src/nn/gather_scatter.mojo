@@ -494,9 +494,9 @@ def gather[
             )
             var indices_remaining = indices.num_elements() - indices_offset
             # assumes that indices are laid out in row major order
-            var next_idx = indices.raw_load(
+            var next_idx = indices.reshape(row_major(indices.num_elements()))[
                 indices_offset + min(indices_remaining - 1, prefetch_offset)
-            )
+            ]
             input_coords.replace_dynamic[axis](
                 Int64(
                     _unsafe_normalize_neg_index(

@@ -252,6 +252,7 @@ def test_tma_5d_load_row_major[
             desc_tile_dim1, desc_tile_dim2, desc_tile_dim3, desc_tile_dim4
         ]()
     )
+    var desc_flat = desc_tile.reshape(row_major[desc_tile_size]())
 
     var dest_ptr = dst_host.ptr
     for dest_tile_v in range(src_dim0 // cta_tile_dim0):
@@ -288,9 +289,7 @@ def test_tma_5d_load_row_major[
                                             for i in range(desc_tile_size):
                                                 var desc_idx = swizzle(i)
                                                 assert_equal(
-                                                    desc_tile.raw_load(
-                                                        desc_idx
-                                                    ),
+                                                    desc_flat[desc_idx],
                                                     dest_ptr[i],
                                                 )
 

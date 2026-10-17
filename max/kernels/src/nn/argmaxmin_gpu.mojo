@@ -25,7 +25,14 @@ from std.sys import align_of, simd_width_of, size_of
 
 from max.gpu.host import DeviceContext
 from max.runtime.tracing import Trace, TraceLevel, trace_arg
-from layout import TensorLayout, TensorEngine, TileTensor, coord_to_index_list
+from layout import (
+    Coord,
+    TensorLayout,
+    TensorEngine,
+    TileTensor,
+    coord_to_index_list,
+    row_major,
+)
 from nn.topk import TopK_2, _block_reduce_topk, _topk_dead_val
 from std.utils.index import IndexList
 
@@ -315,7 +322,9 @@ def _argmaxmin_combine_kernel[
         var total = _block_reduce_topk[ascending=largest](partial)
 
         if tid == 0:
-            out_idxs.raw_store(row_id, Int(total.p).cast[out_idx_type]())
+            out_idxs.reshape(row_major(out_idxs.num_elements())).store(
+                Coord(row_id), Int(total.p).cast[out_idx_type]()
+            )
 
 
 def argmaxmin_gpu[
@@ -712,11 +721,13 @@ def _argmax_biased_scan_kernel[
         var vec_end = align_down(count, simd_width)
         if tid < count - vec_end:
             partial.insert(
-                logits.load[width=1, invariant=False](
-                    (row_id, Int(position_arg), begin + vec_end + tid)
+                rebind[Scalar[dtype]](
+                    logits.load[invariant=False](
+                        (row_id, Int(position_arg), begin + vec_end + tid)
+                    )
                 ).cast[.float32]()
-                + bias.load[width=1, invariant=False](
-                    (row_id, begin + vec_end + tid)
+                + rebind[Scalar[bias_dtype]](
+                    bias.load[invariant=False]((row_id, begin + vec_end + tid))
                 ).cast[.float32](),
                 vec_end + tid,
             )

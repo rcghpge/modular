@@ -44,8 +44,9 @@ def compute_hash[
     type: DType
 ](tensor: TileTensor[type, ...], size: Int) -> UInt64:
     var h: UInt64 = 14695981039346656037
+    var flat = tensor.reshape(row_major(size))
     for i in range(size):
-        var val = tensor.raw_load(i).cast[.float32]()
+        var val = flat[i].cast[.float32]()
         var bits = bitcast[.uint32, 1](val)
         h ^= bits.cast[.uint64]()
         h *= 1099511628211

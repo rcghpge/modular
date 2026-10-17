@@ -242,7 +242,9 @@ def test_tma_store_rank[
         tma_store_rank_kernel[tile_shape, desc_shape, k_major, generic]
     ](tma, grid_dim=1, block_dim=32)
     dst.to_host()
-    var host = dst.host_tensor()
+    var host = dst.host_tensor().reshape(
+        row_major[_idx_product[global_shape]()]()
+    )
 
     # Decode destination coordinates independently of the device offset helper.
     # Values outside the translated tile must retain the sentinel.
@@ -257,7 +259,7 @@ def test_tma_store_rank[
             local[dim] = value - (4 if dim == rank - 1 else 1)
             inside = inside and (0 <= local[dim] < Int(tile_shape[dim].value()))
         if not inside:
-            assert_equal(host.raw_load(linear), Float32(-1))
+            assert_equal(host[linear], Float32(-1))
             continue
 
         var box = 0
@@ -272,7 +274,7 @@ def test_tma_store_rank[
                 desc_shape[i].value()
             )
         assert_equal(
-            host.raw_load(linear),
+            host[linear],
             Float32(box * _idx_product[desc_shape]() + inner + 1),
         )
 

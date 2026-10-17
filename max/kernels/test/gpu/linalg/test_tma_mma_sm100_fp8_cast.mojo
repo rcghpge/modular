@@ -68,23 +68,12 @@ def cpu_matmul_naive[
         for m in range(M):
             var acc: Float32 = 0.0
             for k in range(K):
-                var a_idx: Int
-
-                comptime if transpose_a:
-                    a_idx = k * M + m
-                else:
-                    a_idx = m * K + k
-                var b_idx: Int
-
-                comptime if transpose_b:
-                    b_idx = n * K + k
-                else:
-                    b_idx = k * N + n
-                acc += (
-                    A.raw_load(a_idx).cast[.float32]()
-                    * B.raw_load(b_idx).cast[.float32]()
-                )
-            C.raw_store(m * N + n, acc.cast[C.dtype]())
+                var a_coord = Coord(k, m) if transpose_a else Coord(m, k)
+                var b_coord = Coord(n, k) if transpose_b else Coord(k, n)
+                acc += rebind[Float32](
+                    A.load(a_coord).cast[.float32]()
+                ) * rebind[Float32](B.load(b_coord).cast[.float32]())
+            C.store(Coord(m, n), acc.cast[C.dtype]())
 
 
 @__llvm_metadata(`nvvm.cluster_dim`=cluster_shape)

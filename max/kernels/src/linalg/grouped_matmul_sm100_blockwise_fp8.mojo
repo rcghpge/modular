@@ -1598,9 +1598,7 @@ def multi_stage_reg_epilogue[
                             linear_idx if size_of[c_type]()
                             != 2 else swizzle(linear_idx)
                         )
-                        c.store[width=simd_size, alignment=alignment](
-                            (global_i, global_j), src
-                        )
+                        c.store[alignment=alignment]((global_i, global_j), src)
         else:
             var c_smem_split = c_smem_tile.tile[TMA_BM, stageN](
                 c_smem_coord_m, 0

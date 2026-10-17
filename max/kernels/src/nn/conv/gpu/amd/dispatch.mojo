@@ -97,7 +97,7 @@ def _transpose_rscf_to_frsc_kpad[
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load[width=1]((r, s, c, f))[0])
+    dst_ptr.store(tid, src.load((r, s, c, f))[0])
 
 
 @__name(t"amd_4wave_transpose_fcrs_to_frsc_kpad_{dtype}")
@@ -138,7 +138,7 @@ def _transpose_fcrs_to_frsc_kpad[
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load[width=1]((f, c, r, s))[0])
+    dst_ptr.store(tid, src.load((f, c, r, s))[0])
 
 
 # ---------------------------------------------------------------------------

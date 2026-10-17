@@ -855,9 +855,10 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
     # Verify no-sinks result
     var mismatches_no_sinks = 0
     for i in range(output_no_sinks.num_elements()):
+        var coord = output_no_sinks.layout.idx2crd(i)
         if not isclose(
-            output_no_sinks.raw_load(i),
-            ref_output_no_sinks.raw_load(i),
+            output_no_sinks[coord],
+            ref_output_no_sinks[coord],
             atol=1e-5,
             rtol=1e-4,
         ):
@@ -866,9 +867,9 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
                     "No-sinks mismatch at",
                     i,
                     ":",
-                    output_no_sinks.raw_load(i),
+                    output_no_sinks[coord],
                     "vs",
-                    ref_output_no_sinks.raw_load(i),
+                    ref_output_no_sinks[coord],
                 )
             mismatches_no_sinks += 1
 
@@ -918,9 +919,10 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
     # Verify sinks result
     var mismatches_with_sinks = 0
     for i in range(output_with_sinks.num_elements()):
+        var coord = output_with_sinks.layout.idx2crd(i)
         if not isclose(
-            output_with_sinks.raw_load(i),
-            ref_output_with_sinks.raw_load(i),
+            output_with_sinks[coord],
+            ref_output_with_sinks[coord],
             atol=1e-5,
             rtol=1e-4,
         ):
@@ -929,9 +931,9 @@ def test_flash_attention_with_sinks[dtype: DType]() raises:
                     "With-sinks mismatch at",
                     i,
                     ":",
-                    output_with_sinks.raw_load(i),
+                    output_with_sinks[coord],
                     "vs",
-                    ref_output_with_sinks.raw_load(i),
+                    ref_output_with_sinks[coord],
                 )
             mismatches_with_sinks += 1
 

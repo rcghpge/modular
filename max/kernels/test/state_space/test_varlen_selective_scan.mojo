@@ -240,11 +240,15 @@ def run_varlen_selective_scan_fwd[
 
     # Basic sanity check: output should not be all zeros
     var has_nonzero = False
-    var output_size = dim * total_length
-    for i in range(output_size):
-        var value = z_buf.raw_load(i) if has_z else output_buf.raw_load(i)
-        if abs(Float32(value)) > 1e-6:
-            has_nonzero = True
+    for d in range(dim):
+        for t in range(total_length):
+            var value = Float32(z_buf[d, t]) if has_z else Float32(
+                output_buf[d, t]
+            )
+            if abs(value) > 1e-6:
+                has_nonzero = True
+                break
+        if has_nonzero:
             break
 
     if not has_nonzero:

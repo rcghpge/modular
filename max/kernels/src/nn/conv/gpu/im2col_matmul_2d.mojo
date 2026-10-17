@@ -118,7 +118,7 @@ def _im2col_nhwc_kernel[
 
         var val = Scalar[dtype](0)
         if 0 <= h_in < _H and 0 <= w_in < _W:
-            val = input.load[width=1]((batch, h_in, w_in, c))[0]
+            val = input.load((batch, h_in, w_in, c))[0]
 
         output_ptr.store(row_base + k, val)
         k += block_dim.x
@@ -159,9 +159,9 @@ def _transpose_filter_to_nk[
 
     var val: Scalar[dtype]
     comptime if filter_is_fcrs:
-        val = src.load[width=1]((f, c, r, s))[0]
+        val = src.load((f, c, r, s))[0]
     else:
-        val = src.load[width=1]((r, s, c, f))[0]
+        val = src.load((r, s, c, f))[0]
     dst_ptr.store(tid, val)
 
 

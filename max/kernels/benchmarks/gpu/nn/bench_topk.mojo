@@ -815,8 +815,9 @@ def fill_constant[
 def fill_iota[
     rank: Int, dtype: DType
 ](mut buf: TileTensor[mut=True, dtype, ...]):
+    var flat = buf.reshape(row_major(buf.num_elements()))
     for i in range(buf.num_elements()):
-        buf.raw_store(i, Scalar[dtype](i))
+        flat.store(Coord(i), Scalar[dtype](i))
 
 
 def fill_buffer[

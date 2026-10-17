@@ -203,6 +203,7 @@ def test_tma_3d_load_row_major[
     var desc_tile = stack_allocation[dtype=dtype, alignment=align_of[dtype]()](
         row_major[desc_tile_dim1, desc_tile_dim2]()
     )
+    var desc_flat = desc_tile.reshape(row_major[desc_tile_size]())
 
     var dest_ptr = dst_host.ptr
     for dest_tile_z in range(src_dim0 // cta_tile_dim0):
@@ -225,9 +226,7 @@ def test_tma_3d_load_row_major[
 
                             for i in range(desc_tile_size):
                                 var desc_idx = swizzle(i)
-                                assert_equal(
-                                    desc_tile.raw_load(desc_idx), dest_ptr[i]
-                                )
+                                assert_equal(desc_flat[desc_idx], dest_ptr[i])
 
                             dest_ptr += desc_tile_size
 

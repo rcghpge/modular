@@ -194,7 +194,7 @@ def swizzled_vectorized_sram_to_dram_kernel(
 
     if thread_idx.x == 0:
         for i in range(_V_ROWS * _V_COLS):
-            smem.raw_store(swizzle(i), src_ptr[i])
+            smem.reshape[_V_ROWS * _V_COLS]()[swizzle(i)] = src_ptr[i]
     barrier()
     copy_sram_to_dram[thread_layout, swizzle=swizzle](
         dst.vectorize[1, _V_WIDTH](), smem.vectorize[1, _V_WIDTH]()
@@ -224,8 +224,9 @@ def swizzled_vectorized_local_to_shared_kernel(
     )
 
     if thread_idx.x == 0:
-        for i in range(_V_ROWS * _V_COLS):
-            smem.raw_store(i, -1.0)
+        for row in range(_V_ROWS):
+            for col in range(_V_COLS):
+                smem[row, col] = -1.0
     barrier()
 
     var row = thread_idx.x // threads_per_row
@@ -239,7 +240,7 @@ def swizzled_vectorized_local_to_shared_kernel(
 
     if thread_idx.x == 0:
         for i in range(_V_ROWS * _V_COLS):
-            dst_ptr[i] = smem.raw_load(swizzle(i))
+            dst_ptr[i] = smem.reshape[_V_ROWS * _V_COLS]()[swizzle(i)]
 
 
 def async_dram_to_sram_to_dram_kernel(
