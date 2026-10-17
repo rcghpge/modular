@@ -165,4 +165,5 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime lowers_subvector_intrinsics: Bool = False
 
     comptime has_generic_address_space: Bool = False
+    comptime lowers_prefetch: Bool = False
     comptime default_atomic_ordering: Ordering = Ordering.RELAXED

@@ -182,6 +182,12 @@ trait PluginHooks:
     round-tripping it through an integer.
     """
 
+    comptime lowers_prefetch: Bool = True
+    """Whether the backend lowers `llvm.prefetch`.
+
+    Where this is `False`, `prefetch` emits nothing.
+    """
+
     comptime default_atomic_ordering: Ordering = Ordering.SEQUENTIAL
     """The ordering `Atomic` read-modify-write and compare-exchange
     operations use when the caller does not name one.

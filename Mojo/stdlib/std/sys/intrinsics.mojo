@@ -27,7 +27,7 @@ from std._plugin import CurrentPlugin
 
 
 from ._assembly import inlined_assembly
-from .info import is_amd_gpu, is_apple_gpu, is_nvidia_gpu, size_of
+from .info import is_amd_gpu, is_nvidia_gpu, size_of
 
 
 # ===-----------------------------------------------------------------------===#
@@ -504,8 +504,8 @@ def prefetch[
             constraints="l,~{memory}",
             has_side_effect=True,
         ](addr.unsafe_bitcast[NoneType]())
-    elif is_apple_gpu():
-        # Apple GPU officially does not support prefetch intrinsic
+    elif not CurrentPlugin.lowers_prefetch:
+        # A prefetch is only a hint, so dropping it keeps the program correct.
         pass
     else:
         llvm_intrinsic["llvm.prefetch", NoneType](
