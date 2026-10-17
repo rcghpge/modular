@@ -6531,6 +6531,96 @@ def moe_finalize(
     return result[0].tensor
 
 
+def moe_create_indices_with_slots(
+    topk_ids: TensorValue,
+    slot_weights: TensorValue,
+    num_groups: int,
+    *,
+    slot_stride: int,
+    scale_rows: DimLike,
+    expert_offset: int = 0,
+    local_experts: int | None = None,
+) -> tuple[TensorValue, ...]:
+    """:func:`moe_create_indices` plus a slot-packed grouped GEMM's row maps.
+
+    For a grouped GEMM over the routed slots sorted by group and packed, that
+    reads its A-side scales from 128-row tiles per group (the layout of
+    ``needs_scales_offset``). The maps it would otherwise derive from the
+    CSR in the graph come out of the same kernel, with the same values.
+
+    Expert ids are mapped to groups first: ``id - expert_offset`` when that
+    is in ``[0, local_experts)``, else ``local_experts``. With
+    ``num_groups == local_experts + 1`` that last group collects the slots
+    of experts held on other devices (expert parallel), so every slot still
+    gets order and restore entries.
+
+    Args:
+        topk_ids: ``[slots]`` int32 expert id of each routed slot.
+        slot_weights: ``[slots]`` float32 routing weight of each slot.
+        num_groups: Groups to bucket into, ``local_experts`` or one more.
+        slot_stride: Slots per token (``n_experts_per_tok``).
+        scale_rows: Length of ``scale_slot``, at least the aligned total of
+            the group tiles; ``slots + 128 * num_groups`` always is, and so is
+            ``128 * (ceil(slots / 128) + min(num_groups, slots))``.
+        expert_offset: Global id of the first local expert.
+        local_experts: Experts held locally; ``num_groups`` if ``None``.
+
+    Returns:
+        ``token_expert_order``, ``expert_start_indices``,
+        ``restore_token_order`` (int32), ``expert_ids`` and
+        ``expert_usage_stats`` as :func:`moe_create_indices`, then:
+
+        - scales_offset: ``[num_groups]`` uint32, as ``needs_scales_offset``.
+        - slot_token: ``[slots]`` int32, ``token_expert_order // slot_stride``.
+        - slot_weight: ``[slots]`` float32,
+          ``slot_weights[token_expert_order]``.
+        - scale_slot: ``[scale_rows]`` int32, the sorted slot
+          whose scales each scale row holds: row ``r`` of group ``g``'s tiles
+          holds slot ``expert_start_indices[g] + r`` while ``r`` is below the
+          group's count, and every other row holds slot 0.
+    """
+    if local_experts is None:
+        local_experts = num_groups
+    if num_groups not in (local_experts, local_experts + 1):
+        raise ValueError(
+            f"num_groups={num_groups} must be local_experts={local_experts}"
+            " or one more"
+        )
+    if topk_ids.dtype != DType.int32 or slot_weights.dtype != DType.float32:
+        raise ValueError(
+            "expected int32 topk_ids and float32 slot_weights, got"
+            f" {topk_ids.dtype} and {slot_weights.dtype}"
+        )
+    device = topk_ids.device
+    slots = topk_ids.shape[0]
+
+    def out(dtype: DType, length: Any) -> TensorType:
+        return TensorType(dtype=dtype, shape=[length], device=device)
+
+    results = ops.custom(
+        "mo.moe.create.indices.with.slots",
+        device=device,
+        values=[topk_ids, slot_weights],
+        out_types=[
+            out(DType.uint32, slots),  # token_expert_order
+            out(DType.uint32, num_groups + 1),  # expert_start_indices
+            out(DType.int32, slots),  # restore_token_order
+            out(DType.int32, num_groups),  # expert_ids
+            out(DType.uint32, 2),  # expert_usage_stats
+            out(DType.uint32, num_groups),  # scales_offset
+            out(DType.int32, slots),  # slot_token
+            out(DType.float32, slots),  # slot_weight
+            out(DType.int32, scale_rows),  # scale_slot
+        ],
+        parameters={
+            "slot_stride": slot_stride,
+            "expert_offset": expert_offset,
+            "local_experts": local_experts,
+        },
+    )
+    return tuple(r.tensor for r in results)
+
+
 def moe_router_group_limited(
     expert_scores: TensorValue,
     expert_bias: TensorValue,

@@ -93,6 +93,7 @@ from nn.mhc import hyper_connection_gates
 from nn.moe import (
     eplb_remap,
     moe_create_indices,
+    moe_create_indices_with_slots,
     moe_finalize,
     router_group_limited,
     sigmoid_gemv_single_group_router,
@@ -2149,6 +2150,51 @@ struct Struct_moe_create_indices_with_scales_offset:
             topk_ids.to_tile_tensor[.int64](),
             context,
             scales_offset_p=scales_offset._ptr.as_unsafe_any_origin(),
+        )
+
+
+@extensibility.register("mo.moe.create.indices.with.slots")
+struct Struct_moe_create_indices_with_slots:
+    """Registers the `mo.moe.create.indices.with.slots` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        slot_stride: Int,
+        expert_offset: Int,
+        local_experts: Int,
+        target: StaticString,
+    ](
+        token_expert_order: OutputTensor[dtype=.uint32, rank=1, ...],
+        expert_start_indices: OutputTensor[dtype=.uint32, rank=1, ...],
+        restore_token_order: OutputTensor[dtype=.int32, rank=1, ...],
+        expert_ids: OutputTensor[dtype=.int32, rank=1, ...],
+        expert_usage_stats: OutputTensor[dtype=.uint32, rank=1, ...],
+        scales_offset: OutputTensor[dtype=.uint32, rank=1, ...],
+        slot_token: OutputTensor[dtype=.int32, rank=1, ...],
+        slot_weight: OutputTensor[dtype=.float32, rank=1, ...],
+        scale_slot: OutputTensor[dtype=.int32, rank=1, ...],
+        topk_ids: InputTensor[dtype=.int32, rank=1, ...],
+        slot_weights: InputTensor[dtype=.float32, rank=1, ...],
+        context: DeviceContext,
+    ) raises:
+        moe_create_indices_with_slots[slot_stride, target=target](
+            token_expert_order.to_tile_tensor[.int64](),
+            expert_start_indices.to_tile_tensor[.int64](),
+            restore_token_order.to_tile_tensor[.int64](),
+            expert_ids.to_tile_tensor[.int64](),
+            expert_usage_stats.to_tile_tensor[.int64](),
+            scales_offset._ptr.as_unsafe_any_origin(),
+            slot_token._ptr.as_unsafe_any_origin(),
+            slot_weight._ptr.as_unsafe_any_origin(),
+            scale_slot._ptr.as_unsafe_any_origin(),
+            scale_slot.dim_size(0),
+            topk_ids.to_tile_tensor[.int64](),
+            slot_weights._ptr.as_unsafe_any_origin(),
+            expert_offset,
+            local_experts,
+            context,
         )
 
 
