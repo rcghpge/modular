@@ -27,7 +27,6 @@ class StructDeclOp;
 } // namespace KGEN::LIT
 
 class MojoParserContext;
-class MojoASTTypeRef;
 class TargetInfoAttr;
 } // namespace M
 

@@ -39,10 +39,6 @@ struct SignatureHelpResult;
 } // namespace Mojo
 } // namespace KGEN
 
-class PublicDecl;
-class MojoASTDeclRef;
-class MojoASTTypeRef;
-
 //===----------------------------------------------------------------------===//
 // MojoParserREPLListener
 //===----------------------------------------------------------------------===//

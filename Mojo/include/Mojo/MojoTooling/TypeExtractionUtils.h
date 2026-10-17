@@ -21,14 +21,12 @@
 #include <optional>
 #include <string>
 
-// Forward declarations to avoid circular dependency
-namespace M {
-class MojoASTTypeRef;
-class MojoASTDeclRef;
-} // namespace M
-
 namespace M {
 namespace KGEN {
+namespace LIT {
+class ASTDecl;
+class MojoASTTypeRef;
+} // namespace LIT
 
 namespace TypeExtractionUtils {
 
@@ -40,7 +38,7 @@ std::string extractSymbolLeafName(mlir::SymbolRefAttr symbol);
 /// For example: "std.collections.List[T]" -> "List", and
 /// "ref [_] SomeType[T, U]" -> "SomeType". Uses AST information when available,
 /// falls back to string parsing.
-std::string extractBaseTypeName(const M::MojoASTTypeRef &astType,
+std::string extractBaseTypeName(const LIT::MojoASTTypeRef &astType,
                                 llvm::StringRef fullTypeStr);
 
 /// Convenience for extracting base type names when no AST info is available.
@@ -49,7 +47,7 @@ std::string extractBaseTypeName(llvm::StringRef fullTypeStr);
 /// Extracts the fully qualified module path from an AST declaration reference.
 /// For example, a declaration in std.collections would return
 /// "std.collections".
-std::string extractModulePathFromDecl(M::MojoASTDeclRef declRef);
+std::string extractModulePathFromDecl(M::KGEN::LIT::ASTDecl *decl);
 
 /// Attempts to resolve a type name (e.g., "List", "Int") to its actual AST
 /// declaration. Uses two strategies:
@@ -57,10 +55,10 @@ std::string extractModulePathFromDecl(M::MojoASTDeclRef declRef);
 ///    matching struct/trait/alias declarations
 /// 2) Falls back to builtin trait lookup via SharedState for compiler
 /// intrinsics
-std::optional<M::MojoASTDeclRef>
+std::optional<M::KGEN::LIT::ASTDecl *>
 tryResolveTypeToDecl(llvm::StringRef typeName,
                      M::KGEN::LIT::SharedState &sharedState,
-                     const M::MojoASTDeclRef *contextDecl);
+                     const M::KGEN::LIT::ASTDecl *contextDecl);
 
 /// Generates a documentation path from module info for cross-linking.
 /// Uses the docsBasePath and moduleStr to construct a path.
@@ -83,7 +81,7 @@ std::string generateDocPath(llvm::StringRef module, llvm::StringRef typeName,
 /// performance, and falls back to basic name for unresolvable types.
 TypeMetadata
 extractLibraryInfo(llvm::StringRef typeStr,
-                   const M::MojoASTDeclRef *currentDeclContext = nullptr,
+                   const M::KGEN::LIT::ASTDecl *currentDeclContext = nullptr,
                    M::KGEN::LIT::SharedState *sharedState = nullptr);
 
 /// Strip type parameters that are member-access references to `argName`

@@ -14,6 +14,7 @@
 #ifndef KGEN_LIB_MOJOLLDB_TYPESYSTEM_MOJODWARFPARSER_H
 #define KGEN_LIB_MOJOLLDB_TYPESYSTEM_MOJODWARFPARSER_H
 
+#include "Mojo/MojoTooling/PublicASTDecl.h"
 #include "Support/DebugInfoDialect/IR/DebugInfoAttrs.h"
 #include "lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParser.h"
 #include "lldb/source/Plugins/SymbolFile/DWARF/DWARFDIE.h"
@@ -25,14 +26,9 @@ class DWARFDebugInfoEntry;
 class SymbolFileDWARF;
 } // namespace lldb_private::plugin::dwarf
 
-namespace M {
-class MojoASTDeclRef;
-
-namespace KGEN::LIT {
+namespace M::KGEN::LIT {
 class ASTDecl;
-} // namespace KGEN::LIT
-
-} // namespace M
+} // namespace M::KGEN::LIT
 
 namespace M::KGEN::Mojo {
 class MojoTypeSystem;

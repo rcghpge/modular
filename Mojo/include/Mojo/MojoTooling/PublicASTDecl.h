@@ -32,22 +32,22 @@ class Object;
 } // namespace json
 } // namespace llvm
 
-namespace M {
-
-using KGEN::TypeMetadata;
-
-namespace KGEN {
+namespace M::KGEN {
 enum class PassingKind : uint32_t;
 enum class VariadicKind : uint32_t;
-namespace LIT {
+} // namespace M::KGEN
+
+namespace M {
+class MojoParserContext;
+} // namespace M
+
+namespace M::KGEN::LIT {
+
+using M::KGEN::TypeMetadata;
+
 class ASTDecl;
 class SharedState;
 class FnTypeGeneratorType;
-} // namespace LIT
-} // namespace KGEN
-
-class MojoASTDeclRef;
-class MojoParserContext;
 
 namespace {
 /// Typical max trait composition size in Mojo APIs.
@@ -66,6 +66,9 @@ class PublicDecl;
 class MojoASTTypeRef;
 enum class PublicDeclKind;
 
+std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
+std::optional<PublicDeclKind> getApproximatePublicDeclKind(ASTDecl *decl);
+
 /// Rendered `where` conditions of a decl's conditional trait conformances,
 /// keyed by the conformed trait's symbol. Unconditional conformances are
 /// absent. The key is the symbol rather than the trait's short name because
@@ -80,16 +83,16 @@ using ConformanceConditionMap =
 /// This class is a wrapper around an internal Mojo AST declaration.
 class MojoASTDeclRef {
 public:
-  MojoASTDeclRef(KGEN::LIT::ASTDecl *decl = nullptr) : decl(decl) {}
+  MojoASTDeclRef(ASTDecl *decl = nullptr) : decl(decl) {}
 
   /// Returns if the AST declaration is valid.
   operator bool() const { return decl != nullptr; }
 
   /// Access the underlying AST decl.
-  KGEN::LIT::ASTDecl &operator*() { return *decl; }
-  KGEN::LIT::ASTDecl *operator->() { return decl; }
-  const KGEN::LIT::ASTDecl &operator*() const { return *decl; }
-  const KGEN::LIT::ASTDecl *operator->() const { return decl; }
+  ASTDecl &operator*() { return *decl; }
+  ASTDecl *operator->() { return decl; }
+  const ASTDecl &operator*() const { return *decl; }
+  const ASTDecl *operator->() const { return decl; }
   bool operator==(const MojoASTDeclRef &other) const {
     return decl == other.decl;
   }
@@ -112,7 +115,7 @@ public:
   MojoASTDeclRef getParent() const;
 
   /// Get the SharedState for this decl if non-null.
-  KGEN::LIT::SharedState *getShared() const;
+  SharedState *getShared() const;
 
   /// Get a PublicDecl that can be used for more easily inspecting the metadata
   /// of this decl. It supports aliases, modules, functions, structs, arguments,
@@ -137,10 +140,10 @@ private:
   ResultType getDeclImpl() const;
 
   /// Allow MojoParserContext to access the internal impl.
-  friend class MojoParserContext;
+  friend class M::MojoParserContext;
 
   /// The ASTDecl being referenced.
-  KGEN::LIT::ASTDecl *decl;
+  ASTDecl *decl;
 };
 
 //===----------------------------------------------------------------------===//
@@ -151,7 +154,7 @@ private:
 class MojoASTTypeRef {
 public:
   MojoASTTypeRef() : MojoASTTypeRef(nullptr) {}
-  MojoASTTypeRef(KGEN::LIT::ASTType type) : type(type) {}
+  MojoASTTypeRef(ASTType type) : type(type) {}
   MojoASTTypeRef(Type type) : type(type) {}
   MojoASTTypeRef(const void *impl) : type(Type::getFromOpaquePointer(impl)) {}
 
@@ -159,7 +162,7 @@ public:
   operator bool() const { return bool(type); }
 
   /// Returns a readable string representation of this type.
-  std::string getAsString(KGEN::LIT::SharedState &shared) const;
+  std::string getAsString(SharedState &shared) const;
 
   /// If the current type is a reference, return the type of the pointee. This
   /// aborts if the current type isn't a reference.
@@ -170,13 +173,13 @@ public:
 
 private:
   // Return the decl that defined this type.
-  MojoASTDeclRef getDecl(KGEN::LIT::SharedState &sharedState);
+  MojoASTDeclRef getDecl(SharedState &sharedState);
 
   /// Allow MojoParserContext to access the internal implementation.
-  friend class MojoParserContext;
+  friend class M::MojoParserContext;
 
   /// The internal implementation of the AST type.
-  KGEN::LIT::ASTType type;
+  ASTType type;
 };
 
 //===----------------------------------------------------------------------===//
@@ -295,7 +298,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicVariableDecl(MojoASTDeclRef declRef);
+  PublicVariableDecl(ASTDecl *decl);
 
   std::string type;
   TypeMetadata typeMetadata;
@@ -310,9 +313,8 @@ public:
   /// (which carries the type string with any conforms_to trait bounds
   /// already merged in). Type metadata for doc cross-linking is computed
   /// once during construction.
-  PublicParameterDecl(KGEN::ParameterInfo info,
-                      KGEN::LIT::SharedState &sharedState,
-                      const MojoASTDeclRef *currentDeclContext = nullptr);
+  PublicParameterDecl(KGEN::ParameterInfo info, SharedState &sharedState,
+                      const ASTDecl *currentDeclContext = nullptr);
 
   KGEN::PassingKind getPassingKind() const { return info.passingKind; }
 
@@ -380,9 +382,8 @@ public:
   using Convention = KGEN::ArgumentConvention;
 
   /// Build a documented argument from a fully-resolved `ArgumentInfo`.
-  PublicArgumentDecl(KGEN::ArgumentInfo info,
-                     KGEN::LIT::SharedState &sharedState,
-                     const MojoASTDeclRef *currentDeclContext = nullptr);
+  PublicArgumentDecl(KGEN::ArgumentInfo info, SharedState &sharedState,
+                     const ASTDecl *currentDeclContext = nullptr);
 
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
@@ -509,11 +510,11 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicAliasDecl(MojoASTDeclRef declRef);
+  PublicAliasDecl(ASTDecl *decl);
 
   /// The underlying decl. Retained so that `getSignature` can delegate to the
   /// op-driven signature printer in MojoParser.
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
   SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
   std::string aliasConstraints;
   std::string value;
@@ -631,13 +632,11 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicFunctionDecl(MojoASTDeclRef declRef);
-  PublicFunctionDecl(MojoASTDeclRef declRef,
-                     KGEN::LIT::FnTypeGeneratorType signature);
+  PublicFunctionDecl(ASTDecl *decl);
+  PublicFunctionDecl(ASTDecl *decl, FnTypeGeneratorType signature);
 
   /// Initialize the function decl with the given signature.
-  void initFromSignature(MojoASTDeclRef declRef,
-                         KGEN::LIT::FnTypeGeneratorType signature,
+  void initFromSignature(ASTDecl *decl, FnTypeGeneratorType signature,
                          ArrayRef<Type> userArgTypes, Type userResultType);
 
   /// Augment this function decl with docstring documentation, as well as its
@@ -648,7 +647,7 @@ private:
   /// op-driven signature printer in MojoParser when an `FnOp` is available.
   /// May be null if this `PublicFunctionDecl` was synthesized from a derived
   /// signature without a backing op.
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
   SmallVector<PublicArgumentDecl, kTypicalArgumentCount> args;
   SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
   std::string fnConstraints;
@@ -722,7 +721,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicStructFieldDecl(MojoASTDeclRef declRef);
+  PublicStructFieldDecl(ASTDecl *decl);
 
   std::string type;
   std::string value;
@@ -803,7 +802,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicTraitDecl(MojoASTDeclRef declRef);
+  PublicTraitDecl(ASTDecl *decl);
 
   //===----------------------------------------------------------------------===//
   // Parsed DocString
@@ -813,7 +812,7 @@ private:
   std::string description;
   StableInfo stableInfo;
   std::string summary;
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
 };
 
 /// Decl for structs.
@@ -878,7 +877,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicStructDecl(MojoASTDeclRef declRef);
+  PublicStructDecl(ASTDecl *decl);
 
   /// Augment this struct decl with docstring documentation, as well as its
   /// parameters.
@@ -889,7 +888,7 @@ private:
 
   ConformanceConditionMap conformanceConditions;
 
-  KGEN::LIT::TypeConvention convention;
+  TypeConvention convention;
 
   //===----------------------------------------------------------------------===//
   // Parsed DocString
@@ -900,7 +899,7 @@ private:
   std::string description;
   StableInfo stableInfo;
   std::string summary;
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
 };
 
 /// Decl for module.
@@ -944,7 +943,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicModuleDecl(MojoASTDeclRef declRef);
+  PublicModuleDecl(ASTDecl *decl);
 
   //===----------------------------------------------------------------------===//
   // Parsed DocString
@@ -952,7 +951,7 @@ private:
 
   std::string description;
   std::string summary;
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
 };
 
 class PublicPackageDecl : public PublicDecl {
@@ -993,7 +992,7 @@ public:
 private:
   friend class MojoASTDeclRef;
 
-  PublicPackageDecl(MojoASTDeclRef declRef);
+  PublicPackageDecl(ASTDecl *decl);
 
   //===----------------------------------------------------------------------===//
   // Parsed DocString
@@ -1001,35 +1000,57 @@ private:
 
   std::string description;
   std::string summary;
-  MojoASTDeclRef decl;
+  ASTDecl *decl;
 };
 
+} // namespace M::KGEN::LIT
+
+namespace M {
+using KGEN::LIT::ConformanceConditionMap;
+using KGEN::LIT::FunctionDeclOverloadSet;
+using KGEN::LIT::MojoASTDeclRef;
+using KGEN::LIT::MojoASTTypeRef;
+using KGEN::LIT::PublicAliasDecl;
+using KGEN::LIT::PublicArgumentDecl;
+using KGEN::LIT::PublicDecl;
+using KGEN::LIT::PublicDeclKind;
+using KGEN::LIT::PublicFunctionDecl;
+using KGEN::LIT::PublicModuleDecl;
+using KGEN::LIT::PublicPackageDecl;
+using KGEN::LIT::PublicParameterDecl;
+using KGEN::LIT::PublicStructDecl;
+using KGEN::LIT::PublicStructFieldDecl;
+using KGEN::LIT::PublicTraitDecl;
+using KGEN::LIT::PublicVariableDecl;
+using KGEN::LIT::StableInfo;
 } // namespace M
 
 namespace llvm {
 /// Cast from an MojoASTTypeRef to a mojo type.
 template <typename T>
-struct CastInfo<T, M::MojoASTTypeRef>
+struct CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>
     : public NullableValueCastFailed<T>,
-      public DefaultDoCastIfPossible<T, M::MojoASTTypeRef,
-                                     CastInfo<T, M::MojoASTTypeRef>> {
+      public DefaultDoCastIfPossible<
+          T, M::KGEN::LIT::MojoASTTypeRef,
+          CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>> {
   // Provide isPossible here because here we have the const-stripping from
   // ConstStrippingCast.
-  static bool isPossible(M::MojoASTTypeRef astType) {
+  static bool isPossible(M::KGEN::LIT::MojoASTTypeRef astType) {
     if (!astType)
       return false;
     return T::classof(astType.getMLIRType());
   }
 
-  static T doCast(M::MojoASTTypeRef astType) {
+  static T doCast(M::KGEN::LIT::MojoASTTypeRef astType) {
     return cast<T>(astType.getMLIRType());
   }
 };
 
 template <typename T>
-struct CastInfo<T, const M::MojoASTTypeRef>
-    : public ConstStrippingForwardingCast<T, const M::MojoASTTypeRef,
-                                          CastInfo<T, M::MojoASTTypeRef>> {};
+struct CastInfo<T, const M::KGEN::LIT::MojoASTTypeRef>
+    : public ConstStrippingForwardingCast<
+          T, const M::KGEN::LIT::MojoASTTypeRef,
+          CastInfo<T, M::KGEN::LIT::MojoASTTypeRef>> {};
 
 } // namespace llvm
 

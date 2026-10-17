@@ -104,18 +104,18 @@ std::string extractBaseTypeName(llvm::StringRef fullTypeStr) {
 }
 
 /// Extracts the fully qualified module path from an AST declaration reference.
-std::string extractModulePathFromDecl(M::MojoASTDeclRef declRef) {
+std::string extractModulePathFromDecl(ASTDecl *decl) {
   llvm::SmallVector<llvm::StringRef> pathComponents;
 
-  M::MojoASTDeclRef current = declRef;
+  ASTDecl *current = decl;
   while (current) {
-    if (isa<FileModuleASTDecl, PackageASTDecl>(&*current)) {
+    if (isa<FileModuleASTDecl, PackageASTDecl>(current)) {
       // Module or package - add its name and continue up to get full hierarchy
-      if (auto name = current.getName()) {
+      if (auto name = current->getName()) {
         pathComponents.push_back(*name);
       }
     }
-    current = current.getParent();
+    current = current->getParentDecl();
   }
 
   std::reverse(pathComponents.begin(), pathComponents.end());
@@ -131,13 +131,13 @@ std::string extractModulePathFromDecl(M::MojoASTDeclRef declRef) {
 }
 
 /// Attempts to resolve a type name (eg, "List") to its actual AST declaration.
-std::optional<M::MojoASTDeclRef>
-tryResolveTypeToDecl(llvm::StringRef typeName, SharedState &sharedState,
-                     const M::MojoASTDeclRef *contextDecl) {
+std::optional<ASTDecl *> tryResolveTypeToDecl(llvm::StringRef typeName,
+                                              SharedState &sharedState,
+                                              const ASTDecl *contextDecl) {
   // Strategy 1: If we have a context declaration, try looking up the type in
   // its scope and parent scopes
-  if (contextDecl && *contextDecl) {
-    M::MojoASTDeclRef current = *contextDecl;
+  if (contextDecl) {
+    const ASTDecl *current = contextDecl;
     while (current) {
       // Look for the type in the current scope
       for (auto [name, children] : current->getDeclsInScope()) {
@@ -145,20 +145,20 @@ tryResolveTypeToDecl(llvm::StringRef typeName, SharedState &sharedState,
           for (ASTDecl *child : children) {
             if (isa_and_nonnull<StructASTDecl, TraitASTDecl, AliasASTDecl>(
                     child)) {
-              return M::MojoASTDeclRef(child);
+              return child;
             }
           }
         }
       }
-      current = current.getParent();
+      current = current->getParentDecl();
     }
   }
 
   // Strategy 2: Try looking up builtin traits using SharedState
-  if (contextDecl && *contextDecl) {
+  if (contextDecl) {
     if (ASTDecl *builtinTraitDecl =
             sharedState.lookupBuiltinTrait(typeName, SMLoc())) {
-      return M::MojoASTDeclRef(builtinTraitDecl);
+      return builtinTraitDecl;
     }
   }
 
@@ -253,7 +253,7 @@ struct ResolvedPath {
 
 /// The main function that extracts comprehensive type metadata from type names.
 TypeMetadata extractLibraryInfo(llvm::StringRef typeStr,
-                                const M::MojoASTDeclRef *currentDeclContext,
+                                const ASTDecl *currentDeclContext,
                                 SharedState *sharedState) {
   // Cache for resolved cross-reference paths, keyed by stripped base name.
   static std::map<std::string, ResolvedPath> pathCache;
@@ -285,15 +285,15 @@ TypeMetadata extractLibraryInfo(llvm::StringRef typeStr,
 
   // Try AST-based resolution if we have shared state
   if (sharedState) {
-    if (auto declRef =
+    if (auto decl =
             tryResolveTypeToDecl(baseType, *sharedState, currentDeclContext)) {
-      std::string modulePath = extractModulePathFromDecl(*declRef);
+      std::string modulePath = extractModulePathFromDecl(*decl);
       if (!modulePath.empty()) {
         std::string typeName;
         std::string docPath;
 
         // Check if this is an alias declaration
-        bool isAlias = isa<AliasASTDecl>(&**declRef);
+        bool isAlias = isa<AliasASTDecl>(*decl);
         if (isAlias) {
           // Preserve the original alias name (used to build the URL anchor)
           typeName = baseType.str();

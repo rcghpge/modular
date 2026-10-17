@@ -31,7 +31,6 @@
 #include "lldb/lldb-private.h"
 
 namespace M {
-class MojoASTTypeRef;
 class MojoParserContext;
 class TargetInfoAttr;
 namespace DebugInfo {

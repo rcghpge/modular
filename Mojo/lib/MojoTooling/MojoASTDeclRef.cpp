@@ -179,22 +179,22 @@ ResultType MojoASTDeclRef::getDeclImpl() const {
 
   if (Operation *declOp = decl->getOperation()) {
     if (isa<AliasDeclOp>(declOp))
-      return createPublicDecl<ResultType, PublicAliasDecl>(*this);
+      return createPublicDecl<ResultType, PublicAliasDecl>(decl);
 
     if (isa<FnOp>(declOp))
-      return createPublicDecl<ResultType, PublicFunctionDecl>(*this);
+      return createPublicDecl<ResultType, PublicFunctionDecl>(decl);
 
     // An import op names either a module or package; they ultimately resolve to
     // the same thing but classify it as a module so tooling sees the imported
     // name as a module rather than a variable.
     if (isa<FileModuleOp, ImportOp>(declOp))
-      return createPublicDecl<ResultType, PublicModuleDecl>(*this);
+      return createPublicDecl<ResultType, PublicModuleDecl>(decl);
 
     if (isa<StructDeclOp>(declOp))
-      return createPublicDecl<ResultType, PublicStructDecl>(*this);
+      return createPublicDecl<ResultType, PublicStructDecl>(decl);
 
     if (isa<StructFieldOp>(declOp))
-      return createPublicDecl<ResultType, PublicStructFieldDecl>(*this);
+      return createPublicDecl<ResultType, PublicStructFieldDecl>(decl);
 
     if (auto varDecl = dyn_cast<VarDeclOp>(declOp)) {
       // Handle the case of an argument materialized in a variable.
@@ -210,20 +210,20 @@ ResultType MojoASTDeclRef::getDeclImpl() const {
         }
       }
       // Otherwise, this is a regular variable.
-      return createPublicDecl<ResultType, PublicVariableDecl>(*this);
+      return createPublicDecl<ResultType, PublicVariableDecl>(decl);
     }
 
     if (isa<PackageOp>(declOp))
-      return createPublicDecl<ResultType, PublicPackageDecl>(*this);
+      return createPublicDecl<ResultType, PublicPackageDecl>(decl);
 
     if (isa<TraitDeclOp>(declOp))
-      return createPublicDecl<ResultType, PublicTraitDecl>(*this);
+      return createPublicDecl<ResultType, PublicTraitDecl>(decl);
   }
 
   // If the decl corresponds to a signature, synthesize a function view for
   // it.
   if (auto signature = getSignatureFromDecl(decl))
-    return createPublicDecl<ResultType, PublicFunctionDecl>(*this, signature);
+    return createPublicDecl<ResultType, PublicFunctionDecl>(decl, signature);
 
   // After failing to match with regular Ops, we then inspect the IR to
   // identify if this decl is an argument.
