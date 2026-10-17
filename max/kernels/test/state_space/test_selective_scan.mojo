@@ -409,18 +409,14 @@ def run_selective_scan_update[
             # Load current state
             var state_vals = SIMD[.float32, MAX_DSTATE](0.0)
             for n in range(dstate):
-                var state_offset = b * dim * dstate + d * dstate + n
-                state_vals[n] = Float32(state_out_ref_h.raw_load(state_offset))
+                state_vals[n] = Float32(state_out_ref_h[b, d, n])
 
             # Update state
             state_vals = state_vals * dA_vals + dB_vals * x_val
 
             # Store updated state
             for n in range(dstate):
-                var state_offset = b * dim * dstate + d * dstate + n
-                state_out_ref_h.raw_store(
-                    state_offset, Scalar[dtype](state_vals[n])
-                )
+                state_out_ref_h[b, d, n] = Scalar[dtype](state_vals[n])
 
             # Load C values
             var C_vals = SIMD[.float32, MAX_DSTATE](0.0)
@@ -443,8 +439,7 @@ def run_selective_scan_update[
                 out_val *= z_val * sigmoid_ref(z_val)
 
             # Store output
-            var out_offset = b * dim + d
-            output_ref_h.raw_store(out_offset, Scalar[dtype](out_val))
+            output_ref_h[b, d] = Scalar[dtype](out_val)
 
     # Compare results
     var state_size = batch * dim * dstate

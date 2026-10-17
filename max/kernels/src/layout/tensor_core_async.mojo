@@ -982,7 +982,7 @@ def _convert_cfrags_to_tuple[
     comptime assert c_frags.static_shape[1] == c_frag_size
     var c_frags_in_tuple = StaticTuple[Scalar[c_type], c_frag_size]()
     comptime for i in range(c_frag_size):
-        c_frags_in_tuple[i] = c_frags.raw_load(i)
+        c_frags_in_tuple[i] = c_frags[0, i]
     return c_frags_in_tuple
 
 
@@ -1003,7 +1003,7 @@ def _convert_cfrags_to_simd[
     comptime assert c_frags.static_shape[0] == 1
     comptime assert c_frags.static_shape[1] == c_frag_size
     comptime for i in range(c_frag_size):
-        c_frags.raw_store(i, c_frags_in_tuple[i])
+        c_frags[0, i] = c_frags_in_tuple[i]
 
 
 struct TensorCoreAsync[

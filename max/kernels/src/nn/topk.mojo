@@ -420,11 +420,8 @@ def _top_k_cpu[
                 var val = input.raw_load(input_idx)
                 indices[axis] = i
                 var out_vals_idx = out_vals.layout(Coord(indices))
-                var out_idxs_idx = out_idxs.layout(Coord(indices))
                 out_vals.raw_store(out_vals_idx, val)
-                out_idxs.raw_store(
-                    out_idxs_idx, rebind[Scalar[out_idx_type]](idxs[i])
-                )
+                out_idxs[Coord(indices)] = rebind[Scalar[out_idx_type]](idxs[i])
 
             # A row asking for fewer than the output width gets the padding
             # the GPU kernels write, not whatever the buffer held.
@@ -435,9 +432,7 @@ def _top_k_cpu[
                     out_vals.layout(Coord(indices)),
                     _topk_dead_val[dtype, largest](),
                 )
-                out_idxs.raw_store(
-                    out_idxs.layout(Coord(indices)), Scalar[out_idx_type](-1)
-                )
+                out_idxs[Coord(indices)] = Scalar[out_idx_type](-1)
 
     parallelize_over_rows(
         process_rows, shape, axis, parallelism_grain_size, ctx

@@ -763,10 +763,10 @@ struct AttentionRDNA[
                         comptime reg_offset = (
                             mma_idx * Self.output_frag_size + elem
                         )
-                        var val = reg_tile.raw_load(reg_offset)
-                        self.output_tile.raw_store(
-                            output_offset, val.cast[Self.output_type]()
-                        )
+                        var val = reg_tile[mma_idx, elem]
+                        self.output_tile[global_seq, global_depth] = val.cast[
+                            Self.output_type
+                        ]()
 
     @inline(.always)
     def copy_fragment_to_smem[chunk_idx: Int](self):

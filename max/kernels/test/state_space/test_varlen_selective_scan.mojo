@@ -162,16 +162,16 @@ def run_varlen_selective_scan_fwd[
         row_major(batch + 1),
     )
     var cumsum = 0
-    query_start_loc_h.raw_store(0, Int32(0))
+    query_start_loc_h[0] = Int32(0)
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_h.raw_store(i + 1, Int32(cumsum))
+        query_start_loc_h[i + 1] = Int32(cumsum)
 
     # cache_indices: (batch,) - can be empty or identity mapping
     var cache_indices_heap = List(length=batch, fill=Int32(0))
     var cache_indices_h = TileTensor(cache_indices_heap, row_major(batch))
     for i in range(batch):
-        cache_indices_h.raw_store(i, Int32(i))
+        cache_indices_h[i] = Int32(i)
 
     # has_initial_state: (batch,) - can be empty or all False
     var has_initial_state_heap = List(length=batch, fill=Scalar[.bool](False))
@@ -355,7 +355,7 @@ def run_varlen_selective_state_update[
         row_major(batch),
     )
     for i in range(batch):
-        state_batch_indices_h.raw_store(i, Int32(i))
+        state_batch_indices_h[i] = Int32(i)
 
     # Initialize input data
     random(x_h)
