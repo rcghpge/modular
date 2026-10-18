@@ -191,7 +191,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
     SmallVector<ASTDecl *> structDefinesMethods;
     for (ASTDecl *decl : possibleOverloads) {
       auto *implDecl = llvm::dyn_cast_if_present<DefASTDecl>(decl);
-      if (!implDecl || !implDecl->getOp() || isInheritedFnOp(implDecl->getOp()))
+      if (!implDecl || isInheritedFnOp(implDecl->getOp()))
         continue;
 
       structDefinesMethods.push_back(decl);
@@ -345,7 +345,7 @@ static LogicalResult signatureResolveDefaultTraitFnStubs(
 
   for (ASTDecl *decl : candidates) {
     auto *fnDecl = dyn_cast_if_present<DefASTDecl>(decl);
-    if (!fnDecl || !fnDecl->getOp())
+    if (!fnDecl)
       continue;
     FnOp fnOp = fnDecl->getOp();
 
@@ -560,7 +560,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
     // resolution for inherited methods also calls verifyConformance.
     for (ASTDecl *decl : decls) {
       if (auto *fnDecl = dyn_cast<DefASTDecl>(decl))
-        if (fnDecl->getOp() && isInheritedFnOp(fnDecl->getOp()))
+        if (isInheritedFnOp(fnDecl->getOp()))
           continue;
       if (failed(shared.declResolver->resolveSignature(*decl,
                                                        structDecl.getLoc()))) {
@@ -828,8 +828,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
     for (auto &[name, decls] : traitDecl.getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
         // Skip any children that aren't methods or aliases.
-        if (auto *traitFnDecl = dyn_cast<DefASTDecl>(decl);
-            traitFnDecl && traitFnDecl->getOp()) {
+        if (auto *traitFnDecl = dyn_cast<DefASTDecl>(decl); traitFnDecl) {
           auto traitFn = traitFnDecl->getOp();
           if (failed(checkMethod(name, decl, traitFn.getSymNameAttr(),
                                  traitFn.getFullSignature()))) {
@@ -1637,8 +1636,7 @@ FailureOr<TypedAttr> LIT::getUniqueWitnessForTypeIfConforms(
   // on AnyType and Movable right now.
   if (auto *aliasDecl = dyn_cast<AliasASTDecl>(&entry)) {
     resultType = aliasDecl->getOp().getType();
-  } else if (auto *fnDecl = dyn_cast<DefASTDecl>(&entry);
-             fnDecl && fnDecl->getOp()) {
+  } else if (auto *fnDecl = dyn_cast<DefASTDecl>(&entry); fnDecl) {
     // Ensure the function is signature resolved so we can access the mangled
     // name.
     if (failed(shared.declResolver->resolveSignature(entry, errorLoc)))

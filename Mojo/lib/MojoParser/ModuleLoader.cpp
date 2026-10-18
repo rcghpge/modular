@@ -759,7 +759,9 @@ ModuleState *ModuleLoader::importSubModuleStateImpl(StringRef name,
 ModuleState &
 ModuleLoader::importRelativeModuleState(const SharedState::ImportPath &path,
                                         ASTDecl *parentDecl, llvm::SMLoc loc) {
-  ASTDecl &importContext = *parentDecl;
+  ModuleState *contextState = lookupState(parentDecl);
+  assert(contextState && "parent decl must have a module state");
+  ModuleASTDecl &importContext = *contextState->decl;
   llvm::SMLoc identifierLoc = loc.isValid() ? loc : parentDecl->getLoc();
   // These are structural path failures, not name-binding failures: the record
   // exists for per-site diagnostic dedup and to hand back an erroneous state.
@@ -1015,12 +1017,12 @@ ModuleState &ModuleLoader::createFileModuleState(
 
   auto moduleBuilder = parentState.decl->getDeclEndBuilder();
   FileModuleOp fileOp = FileModuleOp::create(moduleBuilder, loc, declName);
-  // Use createUnlistedDecl (not addDecl) so the module is NOT added to
+  // An empty binding name keeps the module out of
   // parentState.decl->declsInScope. This prevents "leaky imports"; the module
   // stays navigable via ModuleState::nestedModules.
-  auto &moduleDecl = shared.declResolver->createUnlistedDecl(
-      fileOp, declLoc, parentState.decl, cursor, endCursor,
-      /*indentation=*/-1);
+  auto &moduleDecl = cast<FileModuleASTDecl>(shared.declResolver->addDecl(
+      fileOp.getOperation(), declLoc, StringAttr(), parentState.decl, cursor,
+      endCursor, /*indentation=*/-1));
   shared.declResolver->registerDeclSymbol(&moduleDecl);
 
   ModuleState &moduleState = parentState.insertNestedModule(
@@ -1090,11 +1092,11 @@ ModuleState &ModuleLoader::createPackageState(ModuleSpec moduleSpec,
                                               ModuleState &parentState,
                                               SMLoc importLoc) {
   StringAttr declName = StringAttr::get(shared.getContext(), moduleSpec.name);
-  // Create a new decl for this module. We use createUnlistedDecl instead of
-  // addDecl so the package is NOT added to parentState.decl->declsInScope.
-  // This prevents "leaky imports" where importing a sub-module makes the
-  // parent package globally accessible. The package is still navigable via
-  // ModuleState::nestedModules (populated by insertNestedModule below).
+  // Use an empty binding name so the package is not added to
+  // parentState.decl->declsInScope. This prevents "leaky imports" where
+  // importing a sub-module makes the parent package globally accessible. The
+  // package is still navigable via ModuleState::nestedModules (populated by
+  // insertNestedModule below).
   assert(moduleSpec.isSourcePackageLike() && "Invalid package kind");
 
   // The same directory bound under a second name is one package under two
@@ -1114,10 +1116,10 @@ ModuleState &ModuleLoader::createPackageState(ModuleSpec moduleSpec,
   auto packageOp = PackageOp::create(moduleBuilder, loc, declName);
   // Note we intentionally don't set a valid 'loc' here. The real loc is set
   // if/when the module is actually opened on demand.
-  auto &decl = shared.declResolver->createUnlistedDecl(
-      packageOp, /*loc=*/SMLoc(), parentState.decl,
+  auto &decl = cast<PackageASTDecl>(shared.declResolver->addDecl(
+      packageOp.getOperation(), /*loc=*/SMLoc(), StringAttr(), parentState.decl,
       parentState.decl->getCursor(), parentState.decl->getCursor(),
-      /*indentation=*/-1);
+      /*indentation=*/-1));
   // Register the symbol so ModuleType::getDecl() works.
   shared.declResolver->registerDeclSymbol(&decl);
 
@@ -1268,11 +1270,12 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
     else
       shared.getOrCreateInflatedClosure(key, creation);
   }
-  // Insert a new module decl. Use createUnlistedDecl instead of addBytecodeDecl
-  // so the package is NOT added to parentState.decl->declsInScope.
-  auto &decl = shared.declResolver->createUnlistedDecl(
-      packageOp, shared.diags.convertLocToSMLoc(packageOp->getLoc()),
-      parentState.decl, LexerCursor(), LexerCursor(), /*indentation=*/-1);
+  // Insert a new module decl without binding it into
+  // parentState.decl->declsInScope.
+  auto &decl = cast<PackageASTDecl>(shared.declResolver->addDecl(
+      packageOp.getOperation(),
+      shared.diags.convertLocToSMLoc(packageOp->getLoc()), StringAttr(),
+      parentState.decl, LexerCursor(), LexerCursor(), /*indentation=*/-1));
   decl.loadedFromBytecode = true;
   decl.resolvedness = DeclResolvedness::signature;
   shared.declResolver->registerDeclSymbol(&decl);
@@ -1313,7 +1316,7 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
 }
 
 ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
-                                                  ASTDecl &errorContext,
+                                                  ModuleASTDecl &errorContext,
                                                   const Twine &errorMsg,
                                                   bool unlisted,
                                                   const Twine &note) {
@@ -1328,7 +1331,7 @@ ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
   }
   std::unique_ptr<ModuleState> &state = (*contextState->failedImports)[name];
   if (!state) {
-    auto &parentDecl = cast<ModuleASTDecl>(errorContext);
+    auto &parentDecl = errorContext;
     OpBuilder builder = parentDecl.getDeclEndBuilder();
     // The source spelling is bound in the parent name table, but this
     // synthesized module must not claim that symbol: a later import can still
@@ -1337,13 +1340,9 @@ ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
         parentDecl.getContext(), Twine(name.getValue()) + ".__error_module");
     FileModuleOp moduleOp = FileModuleOp::create(
         builder, shared.translateLocation(loc), symbolName);
-    ASTDecl &decl = unlisted
-                        ? shared.declResolver->createUnlistedDecl(
-                              moduleOp, loc, &parentDecl, LexerCursor(),
-                              LexerCursor(), /*indentation=*/-1)
-                        : shared.declResolver->addDecl(
-                              moduleOp, loc, name, &parentDecl, LexerCursor(),
-                              LexerCursor(), /*indentation=*/-1);
+    ASTDecl &decl = shared.declResolver->addDecl(
+        moduleOp.getOperation(), loc, unlisted ? StringAttr() : name,
+        &parentDecl, LexerCursor(), LexerCursor(), /*indentation=*/-1);
     auto &moduleDecl = cast<FileModuleASTDecl>(decl);
     moduleDecl.resolvedness = DeclResolvedness::body;
     moduleDecl.setErroneous();

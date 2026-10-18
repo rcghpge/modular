@@ -276,7 +276,7 @@ void M::KGEN::LIT::checkStableTraitMemberImplementation(
     return; // All good - stable implementation.
 
   if (auto *fnDecl = dyn_cast<DefASTDecl>(&structMemberDecl)) {
-    if (fnDecl->getOp() && fnDecl->getOp().isSynthetic())
+    if (fnDecl->getOp().isSynthetic())
       return;
   }
   // Determine member kind from the trait member's operation type.

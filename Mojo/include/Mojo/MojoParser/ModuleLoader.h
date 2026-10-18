@@ -241,7 +241,7 @@ public:
   /// `unlisted` is set, the erroneous decl is not registered in
   /// `errorContext`'s name table. A non-empty `note` is attached to the error.
   ModuleState &createErrorModuleState(SMLoc loc, StringAttr name,
-                                      ASTDecl &errorContext,
+                                      ModuleASTDecl &errorContext,
                                       const Twine &errorMsg,
                                       bool unlisted = false,
                                       const Twine &note = {});

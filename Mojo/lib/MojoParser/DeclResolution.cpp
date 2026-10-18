@@ -1130,8 +1130,9 @@ void FnSigDecorators::applyCopyOrMoveCapture(SMLoc decoratorLoc,
     // e.g. an op that produces a ref to the value in the capture list.  Instead
     // we are still forming references outside the closure for things that are
     // copied and moved into the closure.
-    emitter.getDeclResolver().addFullyResolvedDecl(resultVal, declRef->spelling,
-                                                   sigDecl.getLoc(), &sigDecl);
+    emitter.getDeclResolver().addFullyResolvedDecl(
+        resultVal, StringAttr::get(sigDecl.getContext(), declRef->spelling),
+        sigDecl.getLoc(), &sigDecl);
 
     // Both move and copy captures are the same here - a move capture just does
     // the transfer above to generate its RValue.
@@ -1876,10 +1877,10 @@ static LogicalResult createCaptureValues(ParserBase &p, ASTDecl &sigDecl,
 /// generator / mangled-symbol attributes. Returns the (implicit-origin-indexed)
 /// generator signature, or null on failure.
 static FnTypeGeneratorType
-finalizeResolvedFnOp(SharedState &shared, FnOp funcOp, ASTDecl &decl,
+finalizeResolvedFnOp(SharedState &shared, FnOp funcOp, DefASTDecl &decl,
                      TypeCheckedFnSignature &tcSignature,
                      TypeCheckedParamList &paramList, StringAttr baseName) {
-  OpBuilder builder = cast<OpASTDecl>(decl).getDeclEndBuilder();
+  OpBuilder builder = decl.getDeclEndBuilder();
   NamedAttrList attrs = funcOp->getAttrDictionary();
 
   FnTypeGeneratorType signature = tcSignature.getFnTypeGeneratorType();
@@ -2224,7 +2225,8 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
       assert(paramDecls.size() == 1 &&
              "expected exactly one parameter declaration");
       ASTDecl *paramDecl = paramDecls.front();
-      resolver.addFullyResolvedDecl(paramDecl->getIfIRValue(), paramName,
+      resolver.addFullyResolvedDecl(paramDecl->getIfIRValue(),
+                                    StringAttr::get(getContext(), paramName),
                                     paramDecl->getLoc(), &sigDecl);
     }
   }
@@ -2860,11 +2862,11 @@ LogicalResult PackageASTDecl::resolveSyntheticBody() {
   return resolvePackage();
 }
 
-FailureOr<ASTDecl *> PackageASTDecl::resolveInitModule(SMLoc loc) {
+FailureOr<ModuleASTDecl *> PackageASTDecl::resolveInitModule(SMLoc loc) {
   PackageOp packageOp = getOp();
   if (!shared.hasNestedModule(packageOp, "__init__"))
     return nullptr;
-  ASTDecl &initDecl = shared.importModule(
+  ModuleASTDecl &initDecl = shared.importModule(
       SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), packageOp,
       loc);
   if (initDecl.isErroneous())
@@ -4201,9 +4203,8 @@ static FnOp lookupSpecialInit(StructASTDecl &structDecl,
 
   for (ASTDecl *candidate : inits.getIfSuccess()) {
     auto *defDecl = dyn_cast<DefASTDecl>(candidate);
-    if (!defDecl || !defDecl->getOp() ||
-        failed(shared.getDeclResolver().resolveSignature(*candidate,
-                                                         candidate->getLoc())))
+    if (!defDecl || failed(shared.getDeclResolver().resolveSignature(
+                        *candidate, candidate->getLoc())))
       continue;
     FnOp func = defDecl->getOp();
 
@@ -4230,7 +4231,7 @@ static FnOp findFieldwiseInit(StructASTDecl &structDecl) {
                                      structOp.getFieldDecls().end());
   for (ASTDecl *declaration : inits.getIfSuccess()) {
     auto *defDecl = dyn_cast<DefASTDecl>(declaration);
-    if (!defDecl || !defDecl->getOp())
+    if (!defDecl)
       continue;
     auto func = defDecl->getOp();
     auto signature = func.getFuncTypeGenerator();
@@ -4700,8 +4701,7 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
       for (ASTDecl *childDecl : childDecls) {
         LogicalResult result = success();
         if (auto *fnDecl = dyn_cast<DefASTDecl>(childDecl)) {
-          if (FnOp fnOp = fnDecl->getOp())
-            result = insertDefaultDecl(fnOp, childName, childDecl);
+          result = insertDefaultDecl(fnDecl->getOp(), childName, childDecl);
         } else if (auto *aliasDecl = dyn_cast<AliasASTDecl>(childDecl)) {
           result = insertDefaultDecl(aliasDecl->getOp(), childName, childDecl);
         }
@@ -5733,7 +5733,7 @@ ParseResult DeclResolver::resolveBody(TraitType traitType, ASTDecl &traitDecl) {
     for (auto &[name, decls] : parentDecl.getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
         auto *fnDecl = dyn_cast<DefASTDecl>(decl);
-        bool isFunction = fnDecl && fnDecl->getOp();
+        bool isFunction = fnDecl;
         if (!isFunction && !isa<AliasASTDecl>(decl)) {
           // If the decl is not a function or alias, it is an error.
           return emitError(parentDecl.getLoc(), "unexpected decl in trait")

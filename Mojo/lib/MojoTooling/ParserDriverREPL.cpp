@@ -762,8 +762,9 @@ static ASTDecl &buildAndResolveREPLModule(
     AliasDeclOp typeDecl = AliasDeclOp::create(
         builder, builder.getUnknownLoc(),
         ParamDeclAttr::get(typeName, typeValue.getType()), typeValue.get());
-    sharedState.declResolver->addFullyResolvedDecl(&*typeDecl, typeName,
-                                                   SMLoc(), &moduleDecl);
+    sharedState.declResolver->addFullyResolvedDecl(
+        &*typeDecl, StringAttr::get(sharedState.getContext(), typeName),
+        SMLoc(), &moduleDecl);
   }
 
   // Before resolving everything in the REPL cell, resolve the body and import

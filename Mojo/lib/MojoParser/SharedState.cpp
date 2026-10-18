@@ -577,8 +577,8 @@ void SharedState::addBuiltinTypes(ASTDecl &builtinsDecl) {
   auto anyNonStructTypeType = NonStructTypeType::get(getContext());
   auto addMagicMLIRDecl = [&](StringRef name, Type magicType) {
     TypedAttr value = TypeParamAttr::get(magicType, anyNonStructTypeType);
-    resolver.addFullyResolvedDecl(PValue(value), name, builtinsDecl.getLoc(),
-                                  &builtinsDecl);
+    resolver.addFullyResolvedDecl(PValue(value), StringAttr::get(context, name),
+                                  builtinsDecl.getLoc(), &builtinsDecl);
   };
 
   addMagicMLIRDecl("__mlir_attr", MagicMLIRAttrType::get(context));
@@ -1145,7 +1145,7 @@ ArrayRef<ASTDecl *> SharedState::getBuiltinFunction(ASTDecl &module,
   }
   ArrayRef<ASTDecl *> decls = result.getIfSuccess();
   auto *defDecl = dyn_cast<DefASTDecl>(decls.front());
-  if (!defDecl || !defDecl->getOp()) {
+  if (!defDecl) {
     emitError(loc, "internal error: builtin '")
         << fnName << "' does not refer to a function";
     return {};
@@ -1622,8 +1622,9 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
                   op.isSynthetic() ? param.getName()
                                    : demangleParameterName(param.getName());
               declResolver->addFullyResolvedDecl(
-                  PValue(ParamDeclRefAttr::get(param)), paramName,
-                  structDecl.getLoc(), &structDecl);
+                  PValue(ParamDeclRefAttr::get(param)),
+                  StringAttr::get(getContext(), paramName), structDecl.getLoc(),
+                  &structDecl);
             }
           })
           .Case([&](TraitDeclOp op) {

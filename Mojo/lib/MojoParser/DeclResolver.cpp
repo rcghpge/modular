@@ -112,33 +112,6 @@ ASTDecl &DeclResolver::addDecl(CValue value, SMLoc loc, StringAttr baseName,
   return decl;
 }
 
-TopLevelModuleASTDecl &
-DeclResolver::addDecl(ModuleOp op, SMLoc loc, StringAttr baseName,
-                      ASTDecl *parentDecl, LexerCursor cursor,
-                      LexerCursor endCursor, ssize_t indentation) {
-  return cast<TopLevelModuleASTDecl>(addDecl(op.getOperation(), loc, baseName,
-                                             parentDecl, cursor, endCursor,
-                                             indentation));
-}
-
-ImportASTDecl &DeclResolver::addDecl(ImportOp op, SMLoc loc,
-                                     StringAttr baseName, ASTDecl *parentDecl,
-                                     LexerCursor cursor, LexerCursor endCursor,
-                                     ssize_t indentation) {
-  return cast<ImportASTDecl>(addDecl(op.getOperation(), loc, baseName,
-                                     parentDecl, cursor, endCursor,
-                                     indentation));
-}
-
-ImportASTDecl &DeclResolver::addDecl(UnresolvedImportOp op, SMLoc loc,
-                                     StringAttr baseName, ASTDecl *parentDecl,
-                                     LexerCursor cursor, LexerCursor endCursor,
-                                     ssize_t indentation) {
-  return cast<ImportASTDecl>(addDecl(op.getOperation(), loc, baseName,
-                                     parentDecl, cursor, endCursor,
-                                     indentation));
-}
-
 ASTDecl &DeclResolver::addBytecodeDecl(Operation *op, StringAttr baseName,
                                        ASTDecl *parentDecl,
                                        DeclResolvedness resolvedness) {
@@ -167,34 +140,21 @@ ASTDecl &DeclResolver::addFullyResolvedDecl(CValue value, StringAttr name,
   return decl;
 }
 
-ASTDecl &DeclResolver::addFullyResolvedDecl(Operation *operation,
-                                            StringRef name, llvm::SMLoc loc,
-                                            ASTDecl *parentDecl) {
-  return addFullyResolvedDecl(operation, StringAttr::get(getContext(), name),
-                              loc, parentDecl);
-}
-
-ASTDecl &DeclResolver::addFullyResolvedDecl(CValue value, StringRef name,
-                                            llvm::SMLoc loc,
-                                            ASTDecl *parentDecl) {
-  return addFullyResolvedDecl(value, StringAttr::get(getContext(), name), loc,
-                              parentDecl);
-}
-
 ASTDecl &DeclResolver::addErroneousDecl(StringRef baseName, llvm::SMLoc loc,
                                         ASTDecl *parentDecl, bool unlisted) {
   // Use a dummy attribute representation for the error.
   BoolAttr dummyAttr = BoolAttr::get(parentDecl->getContext(), true);
   if (unlisted) {
-    ASTDecl &errDecl =
-        createUnlistedDecl(PValue(dummyAttr), loc, parentDecl, LexerCursor(),
-                           LexerCursor(), /*indentation=*/0);
+    ASTDecl &errDecl = addDecl(PValue(dummyAttr), loc, StringAttr(), parentDecl,
+                               LexerCursor(), LexerCursor(),
+                               /*indentation=*/0);
     errDecl.resolvedness = DeclResolvedness::body;
     errDecl.setErroneous();
     return errDecl;
   }
-  ASTDecl &errDecl =
-      addFullyResolvedDecl(PValue(dummyAttr), baseName, loc, parentDecl);
+  ASTDecl &errDecl = addFullyResolvedDecl(
+      PValue(dummyAttr), StringAttr::get(getContext(), baseName), loc,
+      parentDecl);
   errDecl.setErroneous();
   return errDecl;
 }
@@ -238,7 +198,7 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
   } else if (isa_and_nonnull<ImportOp, UnresolvedImportOp,
                              UnresolvedWildcardImportOp>(op)) {
     decl = shared.persistentAllocator.create<ImportASTDecl>(
-        shared, op, loc, parentDecl, cursor, endCursor, indentation);
+        shared, *op, loc, parentDecl, cursor, endCursor, indentation);
   } else if (auto fieldOp = dyn_cast_if_present<StructFieldOp>(op)) {
     decl = shared.persistentAllocator.create<StructFieldASTDecl>(
         shared, fieldOp, loc, parentDecl, cursor, endCursor, indentation);
@@ -247,7 +207,7 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
         shared, varOp, loc, parentDecl, cursor, endCursor, indentation);
   } else if (op) {
     decl = shared.persistentAllocator.create<OtherOpASTDecl>(
-        shared, op, loc, parentDecl, cursor, endCursor, indentation);
+        shared, *op, loc, parentDecl, cursor, endCursor, indentation);
   } else {
     decl = shared.persistentAllocator.create<ASTDecl>(
         shared, loc, parentDecl, cursor, endCursor, indentation);
@@ -275,24 +235,6 @@ ASTDecl &DeclResolver::createUnlistedDecl(CValue value, SMLoc loc,
   if (decl->getIfIRValue().getRValueType().isTypeCheckErrorType())
     decl->setErroneous();
   return *decl;
-}
-
-FileModuleASTDecl &DeclResolver::createUnlistedDecl(FileModuleOp op, SMLoc loc,
-                                                    ASTDecl *parentDecl,
-                                                    LexerCursor cursor,
-                                                    LexerCursor endCursor,
-                                                    ssize_t indentation) {
-  return cast<FileModuleASTDecl>(createUnlistedDecl(
-      op.getOperation(), loc, parentDecl, cursor, endCursor, indentation));
-}
-
-PackageASTDecl &DeclResolver::createUnlistedDecl(PackageOp op, SMLoc loc,
-                                                 ASTDecl *parentDecl,
-                                                 LexerCursor cursor,
-                                                 LexerCursor endCursor,
-                                                 ssize_t indentation) {
-  return cast<PackageASTDecl>(createUnlistedDecl(
-      op.getOperation(), loc, parentDecl, cursor, endCursor, indentation));
 }
 
 WitnessASTDecl &
@@ -366,13 +308,13 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
   // actually allow type overloading on parameters theoretically to support
   // T[4] and T[1,7] as different things, but let's no proactively add
   // complexity.
-  if (auto *defDecl = dyn_cast<DefASTDecl>(decl); defDecl && defDecl->getOp()) {
+  if (auto *defDecl = dyn_cast<DefASTDecl>(decl); defDecl) {
     // Verify that all previous entries are also functions.  Note that we can't
     // check the overload set is compatible with each other because the
     // signatures aren't all resolved.
     for (ASTDecl *previous : entries) {
       auto *previousFunction = dyn_cast<DefASTDecl>(previous);
-      if (!previousFunction || !previousFunction->getOp()) {
+      if (!previousFunction) {
         auto diag = emitError(decl->getLoc(), "invalid redefinition of ")
                     << name;
         diag.attachNote(*previous)
@@ -519,9 +461,8 @@ void DeclResolver::eraseDecl(ASTDecl &decl) {
 /// not already transferred elsewhere. The old declaration is retired, so
 /// callers must not access it afterwards.
 ASTDecl &DeclResolver::replaceDecl(ASTDecl &decl, CValue value) {
-  auto &replacement =
-      createUnlistedDecl(value, decl.loc, decl.parentDecl, LexerCursor(),
-                         LexerCursor(), decl.indentation);
+  auto &replacement = addDecl(value, decl.loc, StringAttr(), decl.parentDecl,
+                              LexerCursor(), LexerCursor(), decl.indentation);
   replacement.resolvedness = decl.resolvedness;
   if (decl.isErroneous())
     replacement.setErroneous();
@@ -721,8 +662,7 @@ LogicalResult DeclResolver::checkImportNamingConflict(
           continue;
       if (d == skip)
         continue;
-      if (auto *defDecl = dyn_cast<DefASTDecl>(d);
-          defDecl && defDecl->getOp()) {
+      if (auto *defDecl = dyn_cast<DefASTDecl>(d); defDecl) {
         if (!result
                  .fn) // any representative def suffices for conflict detection
           result.fn = d;
@@ -796,10 +736,9 @@ LogicalResult DeclResolver::aliasDeclsImpl(
         !decls.empty())
       return success();
 
-    ImportASTDecl &importDecl =
-        addDecl(importOp, frontDecl->getLoc(), name, &context,
-                frontDecl->getCursor(), frontDecl->getCursor(),
-                /*indentation=*/-1);
+    auto &importDecl = cast<ImportASTDecl>(addDecl(
+        importOp.getOperation(), frontDecl->getLoc(), name, &context,
+        frontDecl->getCursor(), frontDecl->getCursor(), /*indentation=*/-1));
     return success(!importDecl.isErroneous());
   }
 
@@ -901,8 +840,7 @@ LogicalResult DeclResolver::aliasDeclsImpl(
   // If the decls are functions, try to merge them into the existing set.
   auto *frontFunction = dyn_cast<DefASTDecl>(frontDecl);
   auto *existingFunction = dyn_cast<DefASTDecl>(existing);
-  if (frontFunction && frontFunction->getOp() && existingFunction &&
-      existingFunction->getOp()) {
+  if (frontFunction && existingFunction) {
     // Check that none of the decls are already in the set.
     auto canMergeDecl = [&](ASTDecl *decl) {
       FnOp declOp = cast<DefASTDecl>(decl)->getOp();
@@ -966,8 +904,9 @@ ImportASTDecl &DeclResolver::createImportOp(ASTDecl &dest,
   auto importOp = ImportOp::create(builder, loc,
                                    /*sym_name=*/name, modulePath);
   SMLoc smloc = shared.diags.convertLocToSMLoc(loc);
-  auto &importDecl = addDecl(importOp, smloc, name, &dest, LexerCursor(),
-                             LexerCursor(), /*indentation=*/-1);
+  auto &importDecl = cast<ImportASTDecl>(
+      addDecl(importOp.getOperation(), smloc, name, &dest, LexerCursor(),
+              LexerCursor(), /*indentation=*/-1));
   // ImportOp has no body to parse — mark as fully resolved so that name
   // lookup through parent scopes doesn't trip the resolvedness assertion.
   importDecl.resolvedness = DeclResolvedness::body;
@@ -1781,9 +1720,8 @@ void DeclResolver::resolveReferencedDecls() {
       if (decl.resolvedness == DeclResolvedness::unparsed) {
         // Some decls always need to be resolved if their parents were resolved,
         // allowlist the decls that we can safely ignore when unparsed.
-        if ((isa<DefASTDecl>(decl) && cast<DefASTDecl>(decl).getOp()) ||
-            isa<FileModuleASTDecl, PackageASTDecl, ImportASTDecl, StructASTDecl,
-                TraitASTDecl, AliasASTDecl>(decl)) {
+        if (isa<DefASTDecl, FileModuleASTDecl, PackageASTDecl, ImportASTDecl,
+                StructASTDecl, TraitASTDecl, AliasASTDecl>(decl)) {
           deferredDecls.insert(&decl);
           continue;
         }
@@ -2061,9 +1999,9 @@ ASTDecl *DeclResolver::getTraitCompositionDecl(TraitType trait) {
   // Otherwise, create a new decl and register for the canonical trait type.
   // Trait compositions are anonymous declarations and do not have a source
   // location themselves. Conformance errors will be routed to its member decls.
-  ASTDecl *decl = &createUnlistedDecl(CValue(trait), /*loc=*/{},
-                                      /*parentDecl=*/nullptr, LexerCursor(),
-                                      LexerCursor(), /*indentation=*/-1);
+  ASTDecl *decl = &addDecl(CValue(trait), /*loc=*/{}, StringAttr(),
+                           /*parentDecl=*/nullptr, LexerCursor(), LexerCursor(),
+                           /*indentation=*/-1);
 
   // Initialize the decl to signature-resolved since we do not have anything to
   // do for the signature resolve phase.

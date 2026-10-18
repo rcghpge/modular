@@ -4248,8 +4248,7 @@ ParseResult StmtParser::checkImportScope(SMLoc kwLoc) {
   // HLCF::ComptimeForOp) are transparent — we continue walking through them.
   // Any other op in between (HLCF::IfOp, LIT::LoopOp, etc.) is runtime control
   // flow and the import is rejected.
-  if (auto *defDecl = dyn_cast<DefASTDecl>(&getParentDecl());
-      defDecl && defDecl->getOp()) {
+  if (isa<DefASTDecl>(getParentDecl())) {
     Block *block = builder.getInsertionBlock();
     while (block) {
       Operation *op = block->getParentOp();
@@ -4956,10 +4955,9 @@ ParseResult StmtParser::parseVarStmt(LexerCursor startCursor,
   // If the declaration is in a function body, we delay adding it until after
   // resolving the RHS, so that the RHS can reference any identifiers that the
   // decl is shadowing.
-  ASTDecl &decl = getDeclResolver().createUnlistedDecl(
-      declOp, smLoc, curDeclScope, startCursor, getLexer().getCursor(),
-      stmtIndent);
-  getDeclResolver().attachDeclToParentNameTable(&decl, name);
+  ASTDecl &decl =
+      getDeclResolver().addDecl(declOp, smLoc, name, curDeclScope, startCursor,
+                                getLexer().getCursor(), stmtIndent);
 
   auto *varDecl = dyn_cast<VarASTDecl>(&decl);
   if (!varDecl) {
@@ -5242,9 +5240,9 @@ ParseResult StmtParser::parseEnumCaseStmt(size_t stmtIndent) {
   // The decl is unlisted: a case is not itself a member but is used to
   // generate the member of its name (a `comptime` value or a static
   // constructor), which is the one that name lookup finds.
-  (void)getDeclResolver().createUnlistedDecl(
-      caseOp.getOperation(), nameLoc, curDeclScope, caseCursor,
-      getLexer().getCursor(), stmtIndent);
+  (void)getDeclResolver().addDecl(caseOp.getOperation(), nameLoc, StringAttr(),
+                                  curDeclScope, caseCursor,
+                                  getLexer().getCursor(), stmtIndent);
   // A case op is not an `ASTDeclInterface`, so set its doc string here.
   StringRef docString;
   parseDocString(docString);

@@ -31,8 +31,7 @@ static FnTypeGeneratorType getToolingSignature(ASTDecl *decl) {
   if (!decl)
     return nullptr;
   if (auto defDecl = dyn_cast<DefASTDecl>(decl))
-    if (auto func = defDecl->getOp())
-      return func.getFuncTypeGenerator();
+    return defDecl->getOp().getFuncTypeGenerator();
   if (auto typeValue = decl->getIfTypeValue())
     return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
   return nullptr;
@@ -87,16 +86,10 @@ static Operation *getDefiningOpFromIR(ASTDecl &decl) {
 }
 
 ASTType ASTDecl::getToolingType() {
-  if (auto *varDecl = dyn_cast<VarASTDecl>(this)) {
-    if (VarDeclOp varOp = varDecl->getOp())
-      return varOp.getType();
-    return {};
-  }
-  if (auto *defDecl = dyn_cast<DefASTDecl>(this)) {
-    if (FnOp fnOp = defDecl->getOp())
-      return fnOp.getFullSignature();
-    return {};
-  }
+  if (auto *varDecl = dyn_cast<VarASTDecl>(this))
+    return varDecl->getOp().getType();
+  if (auto *defDecl = dyn_cast<DefASTDecl>(this))
+    return defDecl->getOp().getFullSignature();
   if (auto *structDecl = dyn_cast<StructASTDecl>(this))
     return StructASTDecl::computeSelfType(structDecl->getOp());
   if (auto *traitDecl = dyn_cast<TraitASTDecl>(this))
@@ -171,11 +164,11 @@ ASTDecl::ASTDecl(Kind declKind, SharedState &shared, llvm::SMLoc loc,
 
 ASTDecl::~ASTDecl() = default;
 
-OpASTDecl::OpASTDecl(Kind kind, SharedState &shared, Operation *operation,
+OpASTDecl::OpASTDecl(Kind kind, SharedState &shared, Operation &operation,
                      llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                      LexerCursor endCursor, ssize_t indentation)
     : ASTDecl(kind, shared, loc, parentDecl, cursor, endCursor, indentation),
-      operation(operation) {}
+      operation(&operation) {}
 
 IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
                      ASTDecl *parentDecl, LexerCursor cursor,
@@ -184,7 +177,7 @@ IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
               indentation),
       value(std::move(value)) {}
 
-OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation *op,
+OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,
                                llvm::SMLoc loc, ASTDecl *parentDecl,
                                LexerCursor cursor, LexerCursor endCursor,
                                ssize_t indentation)
@@ -194,11 +187,11 @@ OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation *op,
 VarASTDecl::VarASTDecl(SharedState &shared, VarDeclOp varOp, llvm::SMLoc loc,
                        ASTDecl *parentDecl, LexerCursor cursor,
                        LexerCursor endCursor, ssize_t indentation)
-    : OpASTDecl(Kind::Var, shared, varOp.getOperation(), loc, parentDecl,
+    : OpASTDecl(Kind::Var, shared, *varOp.getOperation(), loc, parentDecl,
                 cursor, endCursor, indentation) {}
 
 ModuleASTDecl::ModuleASTDecl(Kind kind, SharedState &shared,
-                             Operation *moduleOp, llvm::SMLoc loc,
+                             Operation &moduleOp, llvm::SMLoc loc,
                              ASTDecl *parentDecl, LexerCursor cursor,
                              LexerCursor endCursor, ssize_t indentation)
     : OpASTDecl(kind, shared, moduleOp, loc, parentDecl, cursor, endCursor,
@@ -229,37 +222,37 @@ TopLevelModuleASTDecl::TopLevelModuleASTDecl(SharedState &shared,
                                              LexerCursor cursor,
                                              LexerCursor endCursor,
                                              ssize_t indentation)
-    : ModuleASTDecl(Kind::TopLevelModule, shared, moduleOp.getOperation(), loc,
+    : ModuleASTDecl(Kind::TopLevelModule, shared, *moduleOp.getOperation(), loc,
                     parentDecl, cursor, endCursor, indentation) {}
 
 FileModuleASTDecl::FileModuleASTDecl(SharedState &shared, FileModuleOp moduleOp,
                                      llvm::SMLoc loc, ASTDecl *parentDecl,
                                      LexerCursor cursor, LexerCursor endCursor,
                                      ssize_t indentation)
-    : ModuleASTDecl(Kind::FileModule, shared, moduleOp.getOperation(), loc,
+    : ModuleASTDecl(Kind::FileModule, shared, *moduleOp.getOperation(), loc,
                     parentDecl, cursor, endCursor, indentation) {}
 
 PackageASTDecl::PackageASTDecl(SharedState &shared, PackageOp packageOp,
                                llvm::SMLoc loc, ASTDecl *parentDecl,
                                LexerCursor cursor, LexerCursor endCursor,
                                ssize_t indentation)
-    : ModuleASTDecl(Kind::Package, shared, packageOp.getOperation(), loc,
+    : ModuleASTDecl(Kind::Package, shared, *packageOp.getOperation(), loc,
                     parentDecl, cursor, endCursor, indentation) {}
 
 DefASTDecl::DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
                        ASTDecl *parentDecl, LexerCursor cursor,
                        LexerCursor endCursor, ssize_t indentation)
-    : OpASTDecl(Kind::Def, shared, fnOp.getOperation(), loc, parentDecl, cursor,
-                endCursor, indentation) {}
+    : OpASTDecl(Kind::Def, shared, *fnOp.getOperation(), loc, parentDecl,
+                cursor, endCursor, indentation) {}
 
 TypeScopeASTDecl::TypeScopeASTDecl(Kind kind, SharedState &shared,
-                                   Operation *op, llvm::SMLoc loc,
+                                   Operation &op, llvm::SMLoc loc,
                                    ASTDecl *parentDecl, LexerCursor cursor,
                                    LexerCursor endCursor, ssize_t indentation)
     : OpASTDecl(kind, shared, op, loc, parentDecl, cursor, endCursor,
                 indentation) {}
 
-TypeASTDecl::TypeASTDecl(Kind kind, SharedState &shared, Operation *op,
+TypeASTDecl::TypeASTDecl(Kind kind, SharedState &shared, Operation &op,
                          llvm::SMLoc loc, ASTDecl *parentDecl,
                          LexerCursor cursor, LexerCursor endCursor,
                          ssize_t indentation)
@@ -270,28 +263,28 @@ ExtensionASTDecl::ExtensionASTDecl(SharedState &shared,
                                    ExtensionDeclOp extensionOp, llvm::SMLoc loc,
                                    ASTDecl *parentDecl, LexerCursor cursor,
                                    LexerCursor endCursor, ssize_t indentation)
-    : TypeScopeASTDecl(Kind::Extension, shared, extensionOp.getOperation(), loc,
-                       parentDecl, cursor, endCursor, indentation) {}
+    : TypeScopeASTDecl(Kind::Extension, shared, *extensionOp.getOperation(),
+                       loc, parentDecl, cursor, endCursor, indentation) {}
 
 StructASTDecl::StructASTDecl(SharedState &shared, StructDeclOp structOp,
                              llvm::SMLoc loc, ASTDecl *parentDecl,
                              LexerCursor cursor, LexerCursor endCursor,
                              ssize_t indentation)
-    : TypeASTDecl(Kind::Struct, shared, structOp.getOperation(), loc,
+    : TypeASTDecl(Kind::Struct, shared, *structOp.getOperation(), loc,
                   parentDecl, cursor, endCursor, indentation) {}
 
 TraitASTDecl::TraitASTDecl(SharedState &shared, TraitDeclOp traitOp,
                            llvm::SMLoc loc, ASTDecl *parentDecl,
                            LexerCursor cursor, LexerCursor endCursor,
                            ssize_t indentation)
-    : TypeASTDecl(Kind::Trait, shared, traitOp.getOperation(), loc, parentDecl,
+    : TypeASTDecl(Kind::Trait, shared, *traitOp.getOperation(), loc, parentDecl,
                   cursor, endCursor, indentation) {}
 
 AliasASTDecl::AliasASTDecl(SharedState &shared, AliasDeclOp aliasOp,
                            llvm::SMLoc loc, ASTDecl *parentDecl,
                            LexerCursor cursor, LexerCursor endCursor,
                            ssize_t indentation)
-    : OpASTDecl(Kind::Alias, shared, aliasOp.getOperation(), loc, parentDecl,
+    : OpASTDecl(Kind::Alias, shared, *aliasOp.getOperation(), loc, parentDecl,
                 cursor, endCursor, indentation) {}
 
 ConformanceASTDecl::ConformanceASTDecl(SharedState &shared,
@@ -300,10 +293,10 @@ ConformanceASTDecl::ConformanceASTDecl(SharedState &shared,
                                        LexerCursor cursor,
                                        LexerCursor endCursor,
                                        ssize_t indentation)
-    : OpASTDecl(Kind::Conformance, shared, conformanceOp.getOperation(), loc,
+    : OpASTDecl(Kind::Conformance, shared, *conformanceOp.getOperation(), loc,
                 parentDecl, cursor, endCursor, indentation) {}
 
-ImportASTDecl::ImportASTDecl(SharedState &shared, Operation *importOp,
+ImportASTDecl::ImportASTDecl(SharedState &shared, Operation &importOp,
                              llvm::SMLoc loc, ASTDecl *parentDecl,
                              LexerCursor cursor, LexerCursor endCursor,
                              ssize_t indentation)
@@ -318,7 +311,7 @@ EnumCaseASTDecl::EnumCaseASTDecl(SharedState &shared, EnumCaseOp caseOp,
                                  llvm::SMLoc loc, ASTDecl *parentDecl,
                                  LexerCursor cursor, LexerCursor endCursor,
                                  ssize_t indentation)
-    : OpASTDecl(Kind::EnumCase, shared, caseOp.getOperation(), loc, parentDecl,
+    : OpASTDecl(Kind::EnumCase, shared, *caseOp.getOperation(), loc, parentDecl,
                 cursor, endCursor, indentation) {}
 
 StructFieldASTDecl::StructFieldASTDecl(SharedState &shared,
@@ -326,7 +319,7 @@ StructFieldASTDecl::StructFieldASTDecl(SharedState &shared,
                                        ASTDecl *parentDecl, LexerCursor cursor,
                                        LexerCursor endCursor,
                                        ssize_t indentation)
-    : OpASTDecl(Kind::StructField, shared, fieldOp.getOperation(), loc,
+    : OpASTDecl(Kind::StructField, shared, *fieldOp.getOperation(), loc,
                 parentDecl, cursor, endCursor, indentation) {}
 
 WitnessASTDecl::WitnessASTDecl(SharedState &shared,
@@ -376,9 +369,6 @@ LogicalResult ASTDecl::resolveBody(Lexer &lexer) {
 
 LogicalResult ASTDecl::resolveSyntheticBody() {
   auto &resolver = shared.getDeclResolver();
-  if (isa<EnumCaseASTDecl, StructASTDecl, StructFieldASTDecl, ExtensionASTDecl,
-          TraitASTDecl, AliasASTDecl>(this))
-    return success();
   if (auto traitType = dyn_cast_or_null<TraitType>(getIfTypeValue())) {
     return success(!failed(resolver.resolveBody(traitType, *this)));
   }
@@ -389,8 +379,7 @@ LogicalResult ASTDecl::resolveSyntheticBody() {
 bool ASTDecl::isCallableDecl() const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this))
     return isa<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType);
-  auto *defDecl = dyn_cast<DefASTDecl>(this);
-  return defDecl && defDecl->getOp();
+  return isa<DefASTDecl>(this);
 }
 
 FnTypeGeneratorType ASTDecl::getDeclFullSignature() const {
@@ -465,9 +454,6 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
 
 /// If this is a method of a struct, trait, or extension, return its parent.
 TypeScopeASTDecl *DefASTDecl::tryGetMethodParentDecl() const {
-  if (!getOp())
-    return nullptr;
-
   // Don't return non-null for nested functions or module-level functions.
   return dyn_cast_if_present<TypeScopeASTDecl>(getParentDecl());
 }

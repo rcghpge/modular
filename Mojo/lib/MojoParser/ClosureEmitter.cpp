@@ -2608,8 +2608,8 @@ ASTDecl *ClosureEmitter::addCaptureValue(DefASTDecl &closure, SMLoc location,
   // Ensure the capture value we created is used when parsing the body of the
   // closure.
   ASTDecl &captureValueDecl = shared.getDeclResolver().addFullyResolvedDecl(
-      captureValue, name, closure.getLoc(),
-      signatureDecl ? signatureDecl : &closure);
+      captureValue, StringAttr::get(shared.getContext(), name),
+      closure.getLoc(), signatureDecl ? signatureDecl : &closure);
   shared.addCaptureToScope(closure, result,
                            Capture(captureValue, convention, name));
   return &captureValueDecl;

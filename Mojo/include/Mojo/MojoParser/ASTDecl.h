@@ -496,20 +496,24 @@ public:
   }
 
   Operation *getIfOperation() const final { return operation; }
+  Operation &getOperation() const {
+    assert(operation && "OpASTDecl must have an operation");
+    return *operation;
+  }
 
   /// Return the builder at the end of the operation's sole region.
   OpBuilder getDeclEndBuilder() {
-    assert(operation->getNumRegions() == 1 &&
+    assert(getOperation().getNumRegions() == 1 &&
            "can't get builder for this OpASTDecl");
-    return OpBuilder::atBlockEnd(&operation->getRegion(0).front());
+    return OpBuilder::atBlockEnd(&getOperation().getRegion(0).front());
   }
 
 protected:
-  OpASTDecl(Kind kind, SharedState &shared, Operation *operation,
+  OpASTDecl(Kind kind, SharedState &shared, Operation &operation,
             llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
             LexerCursor endCursor, ssize_t indentation);
 
-  void setOperation(Operation *newOperation) { operation = newOperation; }
+  void setOperation(Operation &newOperation) { operation = &newOperation; }
 
 private:
   Operation *operation;
@@ -545,12 +549,12 @@ public:
     return decl->getKind() == Kind::OtherOp;
   }
 
-  Operation *getOp() const { return getIfOperation(); }
+  Operation &getOp() const { return getOperation(); }
   ParamAssertOp getIfParamAssertOp() const {
-    return dyn_cast_if_present<ParamAssertOp>(getOp());
+    return dyn_cast<ParamAssertOp>(getOp());
   }
   UnboundRegionOp getIfUnboundRegionOp() const {
-    return dyn_cast_if_present<UnboundRegionOp>(getOp());
+    return dyn_cast<UnboundRegionOp>(getOp());
   }
   bool isParamAssert() const { return bool(getIfParamAssertOp()); }
   bool isUnboundRegion() const { return bool(getIfUnboundRegionOp()); }
@@ -559,7 +563,7 @@ private:
   friend class M::BumpAllocator;
   friend class DeclResolver;
 
-  OtherOpASTDecl(SharedState &shared, Operation *op, llvm::SMLoc loc,
+  OtherOpASTDecl(SharedState &shared, Operation &op, llvm::SMLoc loc,
                  ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
                  ssize_t indentation);
 };
@@ -571,9 +575,7 @@ public:
     return decl->getKind() == Kind::Var;
   }
 
-  VarDeclOp getOp() const {
-    return dyn_cast_if_present<VarDeclOp>(getIfOperation());
-  }
+  VarDeclOp getOp() const { return cast<VarDeclOp>(getOperation()); }
   bool isArgument() const {
     VarDeclOp op = getOp();
     return op && op.getKind() == VarDeclKind::Arg;
@@ -603,14 +605,14 @@ public:
 
   /// Return the module operation backing this decl. Subclasses shadow this
   /// with a typed version.
-  Operation *getOp() const { return getIfOperation(); }
+  Operation *getOp() const { return &getOperation(); }
 
   /// Return the absolute import path for this module, or null if it has no
   /// symbol.
   ImportPathAttr getAbsoluteModuleName() const;
 
 protected:
-  ModuleASTDecl(Kind kind, SharedState &shared, Operation *moduleOp,
+  ModuleASTDecl(Kind kind, SharedState &shared, Operation &moduleOp,
                 llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                 LexerCursor endCursor, ssize_t indentation);
 };
@@ -622,7 +624,7 @@ public:
     return decl->getKind() == Kind::TopLevelModule;
   }
 
-  ModuleOp getOp() const { return cast<ModuleOp>(getIfOperation()); }
+  ModuleOp getOp() const { return cast<ModuleOp>(getOperation()); }
 
 private:
   friend class M::BumpAllocator;
@@ -640,7 +642,7 @@ public:
     return decl->getKind() == Kind::FileModule;
   }
 
-  FileModuleOp getOp() const { return cast<FileModuleOp>(getIfOperation()); }
+  FileModuleOp getOp() const { return cast<FileModuleOp>(getOperation()); }
   LogicalResult resolveBody(Lexer &lexer) override;
 
 private:
@@ -659,9 +661,9 @@ public:
     return decl->getKind() == Kind::Package;
   }
 
-  PackageOp getOp() const { return cast<PackageOp>(getIfOperation()); }
+  PackageOp getOp() const { return cast<PackageOp>(getOperation()); }
   /// Resolve and return the package's __init__ module, if present.
-  FailureOr<ASTDecl *> resolveInitModule(llvm::SMLoc loc);
+  FailureOr<ModuleASTDecl *> resolveInitModule(llvm::SMLoc loc);
   LogicalResult resolveBody(Lexer &lexer) override;
   LogicalResult resolveSyntheticBody() override;
 
@@ -683,8 +685,8 @@ public:
     return decl->getKind() == Kind::Def;
   }
 
-  FnOp getOp() const { return dyn_cast_if_present<FnOp>(getIfOperation()); }
-  void setOp(FnOp op) { setOperation(op.getOperation()); }
+  FnOp getOp() const { return cast<FnOp>(getOperation()); }
+  void setOp(FnOp op) { setOperation(*op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
@@ -726,9 +728,10 @@ public:
   /// inherits from it.
   DenseMap<TraitSymbolAttr, std::pair<TraitSymbolAttr, SMLoc>> *
   getTraitConformanceLineage(bool createIfMissing = false);
+  LogicalResult resolveSyntheticBody() override { return success(); }
 
 protected:
-  TypeScopeASTDecl(Kind kind, SharedState &shared, Operation *op,
+  TypeScopeASTDecl(Kind kind, SharedState &shared, Operation &op,
                    llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
 
@@ -748,7 +751,7 @@ public:
   }
 
 protected:
-  TypeASTDecl(Kind kind, SharedState &shared, Operation *op, llvm::SMLoc loc,
+  TypeASTDecl(Kind kind, SharedState &shared, Operation &op, llvm::SMLoc loc,
               ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
               ssize_t indentation);
 };
@@ -761,7 +764,7 @@ public:
   }
 
   ExtensionDeclOp getOp() const {
-    return cast<ExtensionDeclOp>(getIfOperation());
+    return cast<ExtensionDeclOp>(getOperation());
   }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
@@ -782,7 +785,7 @@ public:
     return decl->getKind() == Kind::Struct;
   }
 
-  StructDeclOp getOp() const { return cast<StructDeclOp>(getIfOperation()); }
+  StructDeclOp getOp() const { return cast<StructDeclOp>(getOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 
@@ -805,7 +808,7 @@ public:
     return decl->getKind() == Kind::Trait;
   }
 
-  TraitDeclOp getOp() const { return cast<TraitDeclOp>(getIfOperation()); }
+  TraitDeclOp getOp() const { return cast<TraitDeclOp>(getOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
 
@@ -829,11 +832,12 @@ public:
   }
 
   /// Return the alias operation represented by this declaration.
-  AliasDeclOp getOp() const { return cast<AliasDeclOp>(getIfOperation()); }
-  void setOp(AliasDeclOp op) { setOperation(op.getOperation()); }
+  AliasDeclOp getOp() const { return cast<AliasDeclOp>(getOperation()); }
+  void setOp(AliasDeclOp op) { setOperation(*op.getOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
   LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override { return success(); }
 
 private:
   friend class M::BumpAllocator;
@@ -851,7 +855,7 @@ public:
     return decl->getKind() == Kind::Conformance;
   }
 
-  ConformanceOp getOp() const { return cast<ConformanceOp>(getIfOperation()); }
+  ConformanceOp getOp() const { return cast<ConformanceOp>(getOperation()); }
   StructASTDecl &getStructDecl() const;
   LogicalResult resolveBody(Lexer &lexer) override;
   LogicalResult resolveSyntheticBody() override;
@@ -886,7 +890,7 @@ public:
   bool isResolved() const { return bool(getIfResolvedOp()); }
   bool isUnresolved() const { return bool(getIfUnresolvedOp()); }
   bool isWildcard() const { return bool(getIfWildcardOp()); }
-  void setResolvedOp(ImportOp op) { setOperation(op.getOperation()); }
+  void setResolvedOp(ImportOp op) { setOperation(*op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSignature(bool resolveTarget);
@@ -898,7 +902,7 @@ private:
   friend class M::BumpAllocator;
   friend class DeclResolver;
 
-  ImportASTDecl(SharedState &shared, Operation *importOp, llvm::SMLoc loc,
+  ImportASTDecl(SharedState &shared, Operation &importOp, llvm::SMLoc loc,
                 ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
                 ssize_t indentation);
 };
@@ -910,7 +914,7 @@ public:
     return decl->getKind() == Kind::EnumCase;
   }
 
-  EnumCaseOp getOp() const { return cast<EnumCaseOp>(getIfOperation()); }
+  EnumCaseOp getOp() const { return cast<EnumCaseOp>(getOperation()); }
   StructASTDecl &getEnumDecl() const {
     return cast<StructASTDecl>(*getParentDecl());
   }
@@ -918,6 +922,7 @@ public:
   resolveAndCheckRedefinition(EnumCaseASTDecl *previousDefinition);
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override { return success(); }
 
 private:
   friend class M::BumpAllocator;
@@ -935,12 +940,13 @@ public:
     return decl->getKind() == Kind::StructField;
   }
 
-  StructFieldOp getOp() const { return cast<StructFieldOp>(getIfOperation()); }
+  StructFieldOp getOp() const { return cast<StructFieldOp>(getOperation()); }
   StructASTDecl &getStructDecl() const {
     return cast<StructASTDecl>(*getParentDecl());
   }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveBody(Lexer &lexer) override;
+  LogicalResult resolveSyntheticBody() override { return success(); }
 
 private:
   friend class M::BumpAllocator;

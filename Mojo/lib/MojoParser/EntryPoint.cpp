@@ -366,9 +366,11 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
 
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        auto &topLevelDecl = sharedState.declResolver->addDecl(
-            module, startSMLoc, StringAttr(), /*parentDecl=*/nullptr,
-            lexer.getCursor(), LexerCursor::getEOF(sourceBuf), -1);
+        auto &topLevelDecl =
+            cast<TopLevelModuleASTDecl>(sharedState.declResolver->addDecl(
+                module.getOperation(), startSMLoc, StringAttr(),
+                /*parentDecl=*/nullptr, lexer.getCursor(),
+                LexerCursor::getEOF(sourceBuf), -1));
         sharedState.initialize(topLevelDecl);
 
         // If we are emitting debug info, create a file entry for this file.
@@ -410,9 +412,11 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
       sharedState, ts, includedFiles, [&](ModuleOp module) -> ModuleASTDecl & {
         // Create the top-level outer decl, which will contain all things we
         // parse.
-        auto &topLevelDecl = sharedState.declResolver->addDecl(
-            module, SMLoc(), StringAttr(), /*parentDecl=*/nullptr,
-            LexerCursor(), LexerCursor(), /*indentation=*/-1);
+        auto &topLevelDecl =
+            cast<TopLevelModuleASTDecl>(sharedState.declResolver->addDecl(
+                module.getOperation(), SMLoc(), StringAttr(),
+                /*parentDecl=*/nullptr, LexerCursor(), LexerCursor(),
+                /*indentation=*/-1));
         sharedState.initialize(topLevelDecl);
 
         if (sharedState.diBuilder)

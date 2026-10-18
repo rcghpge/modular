@@ -74,17 +74,6 @@ public:
   ASTDecl &addDecl(CValue value, llvm::SMLoc loc, StringAttr baseName,
                    ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
-  TopLevelModuleASTDecl &addDecl(ModuleOp op, llvm::SMLoc loc,
-                                 StringAttr baseName, ASTDecl *parentDecl,
-                                 LexerCursor cursor, LexerCursor endCursor,
-                                 ssize_t indentation);
-  ImportASTDecl &addDecl(ImportOp op, llvm::SMLoc loc, StringAttr baseName,
-                         ASTDecl *parentDecl, LexerCursor cursor,
-                         LexerCursor endCursor, ssize_t indentation);
-  ImportASTDecl &addDecl(UnresolvedImportOp op, llvm::SMLoc loc,
-                         StringAttr baseName, ASTDecl *parentDecl,
-                         LexerCursor cursor, LexerCursor endCursor,
-                         ssize_t indentation);
 
   /// Add a declaration that was loaded from bytecode.
   ASTDecl &addBytecodeDecl(Operation *op, StringAttr baseName,
@@ -95,37 +84,12 @@ public:
                                 llvm::SMLoc loc, ASTDecl *parentDecl);
   ASTDecl &addFullyResolvedDecl(CValue value, StringAttr baseName,
                                 llvm::SMLoc loc, ASTDecl *parentDecl);
-  ASTDecl &addFullyResolvedDecl(Operation *operation, StringRef baseName,
-                                llvm::SMLoc loc, ASTDecl *parentDecl);
-  ASTDecl &addFullyResolvedDecl(CValue value, StringRef baseName,
-                                llvm::SMLoc loc, ASTDecl *parentDecl);
 
   /// Add a declaration that represents an erroneous declaration. The generated
   /// decl is treated as fully resolved, and in an error state. If `unlisted`
   /// is set, the decl is not registered in the parent's name table.
   ASTDecl &addErroneousDecl(StringRef baseName, llvm::SMLoc loc,
                             ASTDecl *parentDecl, bool unlisted = false);
-
-  /// Add a new declaration that needs to be resolved, but don't attach it to
-  /// parent's name table.  It needs to be added later.
-  /// "Unlisted" means it has no parent; it's not in any parent's name table.
-  /// Nothing else can find it, even if you traverse the entire tree.
-  /// Often, this is just the first step before adding it to a parent, but
-  /// sometimes it's not, and it must be found some other way.
-  ASTDecl &createUnlistedDecl(Operation *operation, llvm::SMLoc loc,
-                              ASTDecl *parentDecl, LexerCursor cursor,
-                              LexerCursor endCursor, ssize_t indentation);
-  ASTDecl &createUnlistedDecl(CValue value, llvm::SMLoc loc,
-                              ASTDecl *parentDecl, LexerCursor cursor,
-                              LexerCursor endCursor, ssize_t indentation);
-  FileModuleASTDecl &createUnlistedDecl(FileModuleOp op, llvm::SMLoc loc,
-                                        ASTDecl *parentDecl, LexerCursor cursor,
-                                        LexerCursor endCursor,
-                                        ssize_t indentation);
-  PackageASTDecl &createUnlistedDecl(PackageOp op, llvm::SMLoc loc,
-                                     ASTDecl *parentDecl, LexerCursor cursor,
-                                     LexerCursor endCursor,
-                                     ssize_t indentation);
 
   /// Create a witness declaration and install it in the trait's scope.
   WitnessASTDecl &
@@ -209,6 +173,14 @@ public:
                                  bool allowMultipleWithSameName);
 
 private:
+  /// Allocate a declaration without adding it to a parent name table.
+  ASTDecl &createUnlistedDecl(Operation *operation, llvm::SMLoc loc,
+                              ASTDecl *parentDecl, LexerCursor cursor,
+                              LexerCursor endCursor, ssize_t indentation);
+  ASTDecl &createUnlistedDecl(CValue value, llvm::SMLoc loc,
+                              ASTDecl *parentDecl, LexerCursor cursor,
+                              LexerCursor endCursor, ssize_t indentation);
+
   /// Add a pre-existing set of declarations, which may optionally be imported
   /// from a given module, as children of the specified context, using the
   /// provided alias name (which may differ from that of the decl).

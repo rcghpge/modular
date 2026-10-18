@@ -59,9 +59,10 @@ MojoParserContext::Impl::Impl(llvm::SourceMgr &sourceMgr, ParserConfig &config)
     : sharedState(sourceMgr, config), replLocMapper(sourceMgr) {
   // Create the top-level outer decl, which will contain all things we parse.
   module = ModuleOp::create(UnknownLoc::get(sharedState.getContext()));
-  topLevelDecl = &sharedState.declResolver->addDecl(
-      *module, SMLoc(), StringAttr(), /*parentDecl=*/nullptr, LexerCursor(),
-      LexerCursor(), /*indentation=*/-1);
+  topLevelDecl = &cast<TopLevelModuleASTDecl>(sharedState.declResolver->addDecl(
+      module->getOperation(), SMLoc(), StringAttr(),
+      /*parentDecl=*/nullptr, LexerCursor(), LexerCursor(),
+      /*indentation=*/-1));
   sharedState.initialize(*topLevelDecl);
 }
 

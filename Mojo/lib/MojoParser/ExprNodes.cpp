@@ -893,7 +893,8 @@ LogicalResult DeclRefNode::emitDestructuringPValue(PValue toBind,
                                                    IREmitter &emitter) const {
   assert(toBind && "No PValue provided when binding a parameter?");
   ASTDecl &paramASTDecl = emitter.getDeclResolver().addFullyResolvedDecl(
-      toBind, spelling, getLoc(), &emitter.getDeclScope());
+      toBind, StringAttr::get(emitter.getContext(), spelling), getLoc(),
+      &emitter.getDeclScope());
   emitter.shared.notifyListenerOnVariableDecl(paramASTDecl, getLoc());
   return success();
 }
@@ -997,11 +998,9 @@ diagnoseUnknownDeclaration(StringRef spelling, ASTDecl &lookupScope,
           isa<StructASTDecl>(parentDecl) ? "self." : "Self.";
       // References to static methods can always use capital Self.
       if (auto *defDecl = dyn_cast<DefASTDecl>(failureDecls[0])) {
-        if (FnOp fnCandidate = defDecl->getOp()) {
-          declKind = "method ";
-          if (fnCandidate.getIsStatic())
-            replacement = "Self.";
-        }
+        declKind = "method ";
+        if (defDecl->getOp().getIsStatic())
+          replacement = "Self.";
       } else if (isa<AliasASTDecl>(failureDecls[0])) {
         declKind = "comptime ";
         // Aliases are properties of the type, so `Self` is more idiomatic.
@@ -1454,8 +1453,7 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
   }
 
   // Functions form an address, and may be overloaded.
-  if (auto *fnDecl = dyn_cast<DefASTDecl>(decls[0]);
-      fnDecl && fnDecl->getOp()) {
+  if (auto *fnDecl = dyn_cast<DefASTDecl>(decls[0]); fnDecl) {
     // Form an overload set value with all the candidates.
     auto result = OverloadSetUValue::create(
         spelling, decls, ParamBindings(emitter.getDeclScope(), expr),
@@ -1546,7 +1544,7 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
   // If this is a capture we need to emit a capture value.
   ASTDecl *declRef = nullptr;
   auto *defDecl = decls.size() == 1 ? dyn_cast<DefASTDecl>(decls[0]) : nullptr;
-  if (decls.size() == 1 && (!defDecl || !defDecl->getOp())) {
+  if (decls.size() == 1 && !defDecl) {
     assert(decls.size() == 1 && "Only functions may be overloaded");
     declRef = decls[0];
   }
@@ -5247,7 +5245,7 @@ AnyValue MagicFunctionNode::emitFunctionsInModule(ExprDest &dest,
           continue;
 
         auto *fnDecl = dyn_cast<DefASTDecl>(decl);
-        if (!fnDecl || !fnDecl->getOp() || fnDecl->getOp().isSynthetic())
+        if (!fnDecl || fnDecl->getOp().isSynthetic())
           continue;
 
         // TODO(MOCO-2556): consistently allow recursive references.
