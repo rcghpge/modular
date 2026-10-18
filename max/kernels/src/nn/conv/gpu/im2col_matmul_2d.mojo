@@ -394,8 +394,8 @@ def dispatch_im2col_matmul_conv2d[
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var full_m = m_offset + Int(coords_2d[0].value())
-                var n_idx = Int(coords_2d[1].value())
+                var full_m = m_offset + Int(coords_2d[0])
+                var n_idx = Int(coords_2d[1])
                 var batch_idx, sp = divmod(full_m, HW_out)
                 var h_idx, w_idx = divmod(sp, _W_out)
                 epilogue_4d(
@@ -618,8 +618,8 @@ def dispatch_fused_im2col_conv2d_apple[
             comptime assert (
                 coords_2d.rank == 2
             ), "the matmul epilogue contract is rank 2"
-            var full_m = Int(coords_2d[0].value())
-            var n_idx = Int(coords_2d[1].value())
+            var full_m = Int(coords_2d[0])
+            var n_idx = Int(coords_2d[1])
             var batch_idx, sp = divmod(full_m, HW_out)
             var h_idx, w_idx = divmod(sp, _W_out)
             epilogue_4d(

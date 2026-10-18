@@ -191,7 +191,7 @@ def memcpy_or_fuse[
             var load = input.load[width=simd_width, alignment=1](index)
 
             var out_index = _get_start_indices_of_nth_subvolume[0](
-                Int(index[0].value()) + typed_offset,
+                Int(index[0]) + typed_offset,
                 out_shape,
             )
 
@@ -1068,7 +1068,7 @@ def _concat_gpu_elementwise[
             var input = inputs[i]
             var input_shape = coord_to_index_list(input.layout.shape_coord())
 
-            if Int(in_index[axis].value()) < input_shape[axis]:
+            if Int(in_index[axis]) < input_shape[axis]:
                 var in_coord = Coord(in_index)
 
                 comptime if has_epilogue:
@@ -1462,7 +1462,7 @@ def _fused_concat_gpu_elementwise[
         comptime for i in range(num_inputs):
             var input_shape = input_shapes[i]
 
-            if Int(in_index[axis].value()) < input_shape[axis]:
+            if Int(in_index[axis]) < input_shape[axis]:
                 output_0_fn[dtype, width=simd_width, alignment=alignment](
                     out_index,
                     input_fn[i, simd_width, alignment=alignment](in_index),
@@ -1470,7 +1470,7 @@ def _fused_concat_gpu_elementwise[
                 return
 
             in_index.replace_dynamic[axis](
-                Int(in_index[axis].value()) - input_shape[axis]
+                Int(in_index[axis]) - input_shape[axis]
             )
 
     # When axis != rank-1, the SIMD group spans the innermost (non-concat)
@@ -1565,14 +1565,14 @@ def _fused_dual_concat_gpu_elementwise[
         var in_index = out_index.make_dynamic[.int]()
         comptime for i in range(size_0):
             var input_shape = input_shapes_0[i]
-            if Int(in_index[axis].value()) < input_shape[axis]:
+            if Int(in_index[axis]) < input_shape[axis]:
                 output_0_fn[dtype, width=simd_width, alignment=alignment](
                     out_index,
                     input_fn_0[i, simd_width, alignment=alignment](in_index),
                 )
                 return
             in_index.replace_dynamic[axis](
-                Int(in_index[axis].value()) - input_shape[axis]
+                Int(in_index[axis]) - input_shape[axis]
             )
 
     @inline(.always)
@@ -1583,14 +1583,14 @@ def _fused_dual_concat_gpu_elementwise[
         var in_index = out_index.make_dynamic[.int]()
         comptime for i in range(size_1):
             var input_shape = input_shapes_1[i]
-            if Int(in_index[axis].value()) < input_shape[axis]:
+            if Int(in_index[axis]) < input_shape[axis]:
                 output_1_fn[dtype, width=simd_width, alignment=alignment](
                     out_index,
                     input_fn_1[i, simd_width, alignment=alignment](in_index),
                 )
                 return
             in_index.replace_dynamic[axis](
-                Int(in_index[axis].value()) - input_shape[axis]
+                Int(in_index[axis]) - input_shape[axis]
             )
 
     # Build IndexList[rank] explicitly so both shapes share the same type.

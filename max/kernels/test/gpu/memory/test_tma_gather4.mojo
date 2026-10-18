@@ -843,7 +843,7 @@ def gather4_kernel[
     over column groups.  The box width and number of column groups are
     derived from the tile's compile-time shape ``tile_shape_param[1]``.
     """
-    comptime box_width = Int(tile_shape_param[1].value())
+    comptime box_width = Int(tile_shape_param[1])
     comptime num_col_groups = ceildiv(tile_width, box_width)
     var smem_tile = stack_allocation[
         dtype=dtype, address_space=.SHARED, alignment=128
@@ -1430,7 +1430,7 @@ def test_non_divisible_width[
     ](ctx, d_data, num_tokens)
 
     comptime box_width = Int(
-        type_of(kv_tile).tile_shape.element_types[1].static_value.value()
+        type_of(kv_tile).tile_shape.element_types[1].static_value
     )
     comptime num_col_groups = ceildiv(tile_width, box_width)
     comptime padded_row_width = num_col_groups * box_width

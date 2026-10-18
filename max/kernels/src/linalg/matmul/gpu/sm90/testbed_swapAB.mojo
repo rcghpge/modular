@@ -81,9 +81,9 @@ def test_matmul_sm90_swapAB_comparison[
         k: The K dimension (can be static or dynamic).
     """
     comptime transpose_b = True
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     # Convert SM90 configs to base configs for the kernel
     comptime base_config = config.to_base_config()
@@ -477,9 +477,9 @@ def test_matmul_sm90_swapAB_comparison_v2[
             when `has_compute_fn` is set.
     """
     comptime transpose_b = True
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     # Build compile-time configs directly using BaseMatmulConfig
     comptime base_config = BaseMatmulConfig[

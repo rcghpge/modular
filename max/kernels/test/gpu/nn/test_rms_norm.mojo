@@ -137,7 +137,7 @@ def run_rms_norm_gpu_static_dims[
     print("== run_rms_norm_gpu_static_dims")
 
     comptime rank = type_of(shape).rank
-    var cols = Int(shape[rank - 1].value())
+    var cols = Int(shape[rank - 1])
     var rows = Int(shape.product()) // cols
 
     var data_h = ctx.enqueue_create_host_buffer[dtype](rows * cols)

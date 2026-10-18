@@ -549,7 +549,7 @@ struct TMemEngine(TensorEngine):
         # `ComptimeInt` part and a runtime part, and both fit in 32 bits.
         var grid_offset = UInt32(0)
         comptime for i in range(offset_coord.flat_rank):
-            grid_offset += UInt32(Int(offset_coord[i].value()))
+            grid_offset += UInt32(Int(offset_coord[i]))
         return type_of(storage)(
             _encode(_grid_index(storage.addr) + grid_offset)
         )

@@ -56,7 +56,7 @@ def _run_rms_norm_fused_residual_gpu_impl[
     differently from an all-runtime one.
     """
     comptime rank = type_of(shape).rank
-    var cols = Int(shape[rank - 1].value())
+    var cols = Int(shape[rank - 1])
     var rows = Int(shape.product()) // cols
 
     # Allocate host memory

@@ -141,8 +141,8 @@ def _rope_split_store_ragged_impl[
     }:
         comptime simd_width = width
         comptime assert idx_arg.rank == 2
-        var global_token_idx = Int(idx_arg[0].value())
-        var col = Int(idx_arg[1].value())
+        var global_token_idx = Int(idx_arg[0])
+        var col = Int(idx_arg[1])
 
         # Guard: simd_width >= 2 is guaranteed by the comptime assert after
         # this function. We wrap in comptime if because elementwise
@@ -518,7 +518,7 @@ def _rope_split_store_ragged_with_position_ids[
     comptime if case .Some(sections) = mrope_section:
         comptime for i in range(len(sections)):
             comptime assert (
-                Int(sections[i].value()) % kernel_simd_width == 0
+                Int(sections[i]) % kernel_simd_width == 0
             ), "mrope_section must be divisible by rope kernel simd_width"
 
     def get_freq_pos(
@@ -527,7 +527,7 @@ def _rope_split_store_ragged_with_position_ids[
         comptime if case .Some(sections) = mrope_section:
             var section_idx = 0
             comptime for i in range(len(sections)):
-                comptime val = Int(sections[i].value())
+                comptime val = Int(sections[i])
                 if dim_idx < val:
                     section_idx = i
                     break

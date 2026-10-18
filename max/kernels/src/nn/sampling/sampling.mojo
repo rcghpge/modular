@@ -93,7 +93,7 @@ def apply_penalties_to_logits[
         comptime assert idx.rank == 1, "apply_penalties_fn: rank must be 1"
 
         var batch_id = get_batch_from_row_offsets(
-            frequency_offsets, Int(idx[0].value())
+            frequency_offsets, Int(idx[0])
         )
         var token = Int(compressed_frequency_data[idx[0], 0])
 
@@ -192,9 +192,7 @@ def apply_masked_penalties_to_logits[
         var token = Int(compressed_frequency_data[idx[0], 0])
         if token < 0:
             return
-        var row = get_batch_from_row_offsets(
-            frequency_offsets, Int(idx[0].value())
-        )
+        var row = get_batch_from_row_offsets(frequency_offsets, Int(idx[0]))
         var word = packed[row, token >> 5][0]
         if ((word >> Int32(token & 31)) & 1) == 0:
             return

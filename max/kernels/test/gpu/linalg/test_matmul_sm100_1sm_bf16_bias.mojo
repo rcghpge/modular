@@ -53,9 +53,9 @@ def test_blackwell_matmul_with_epilogue_tensor[
     num_accum_pipeline_stages: Int = 2,
     num_clc_pipeline_stages: Int = 2,
 ](ctx: DeviceContext, m: MType, n: NType, k: KType) raises:
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     print(
         t"in/out dtypes=({a_type}, {b_type}, {c_type})  problem shape=({M},"

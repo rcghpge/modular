@@ -503,11 +503,9 @@ def bench_shape[
         def k_in[
             width: Int, alignment: Int
         ](idx: Coord) {var kv_out_ptr} -> SIMD[OUT_DTYPE, width]:
-            return (
-                _any(kv_out_ptr)
-                + Int(idx[0].value()) * kv_dim
-                + Int(idx[2].value())
-            ).load[width=width]()
+            return (_any(kv_out_ptr) + Int(idx[0]) * kv_dim + Int(idx[2])).load[
+                width=width
+            ]()
 
         @inline(.always)
         def v_in[
@@ -516,8 +514,8 @@ def bench_shape[
             return (
                 _any(kv_out_ptr)
                 + total_seq * kv_dim
-                + Int(idx[0].value()) * kv_dim
-                + Int(idx[2].value())
+                + Int(idx[0]) * kv_dim
+                + Int(idx[2])
             ).load[width=width]()
 
         @inline(.always)
@@ -527,8 +525,8 @@ def bench_shape[
             return (
                 _any(kv_out_ptr)
                 + 2 * total_seq * kv_dim
-                + Int(idx[0].value()) * ik_dim
-                + Int(idx[2].value())
+                + Int(idx[0]) * ik_dim
+                + Int(idx[2])
             ).load[width=width]()
 
         kv_cache_store_ragged[target="gpu"](

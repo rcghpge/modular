@@ -392,8 +392,8 @@ def _batched_matmul_cpu_impl[
                 # buffer rank, not the collapsed buffer rank
                 # so un-collapse the batch dims here
                 var nd_coords = batch_coords
-                nd_coords[rank - 1] = Int(out_coords[1].value())
-                nd_coords[rank - 2] = Int(out_coords[0].value())
+                nd_coords[rank - 1] = Int(out_coords[1])
+                nd_coords[rank - 2] = Int(out_coords[0])
 
                 epilogue_fn[c_type, width, alignment=alignment](
                     Coord(nd_coords), out_val
@@ -410,8 +410,8 @@ def _batched_matmul_cpu_impl[
                     out_coords.rank == 2
                 ), "the matmul epilogue contract is rank 2"
                 var nd_coords = batch_coords
-                nd_coords[rank - 1] = Int(out_coords[1].value())
-                nd_coords[rank - 2] = Int(out_coords[0].value())
+                nd_coords[rank - 1] = Int(out_coords[1])
+                nd_coords[rank - 2] = Int(out_coords[0])
 
                 return compute_fn[c_type, width, alignment=alignment](
                     Coord(nd_coords), out_val
@@ -693,8 +693,8 @@ def batched_matmul_kernel_gpu[
         var nd_coords = _get_start_indices_of_nth_subvolume[2](
             block_idx.z, c_buff_nd_shape
         )
-        nd_coords[rank - 1] = Int(out_coords[1].value())
-        nd_coords[rank - 2] = Int(out_coords[0].value())
+        nd_coords[rank - 1] = Int(out_coords[1])
+        nd_coords[rank - 2] = Int(out_coords[0])
         epilogue_fn[dtype, width, alignment=1](Coord(nd_coords), val)
 
     @inline(.always)
@@ -710,8 +710,8 @@ def batched_matmul_kernel_gpu[
         var nd_coords = _get_start_indices_of_nth_subvolume[2](
             block_idx.z, c_buff_nd_shape
         )
-        nd_coords[rank - 1] = Int(out_coords[1].value())
-        nd_coords[rank - 2] = Int(out_coords[0].value())
+        nd_coords[rank - 1] = Int(out_coords[1])
+        nd_coords[rank - 2] = Int(out_coords[0])
         return compute_fn[dtype, width, alignment=1](Coord(nd_coords), val)
 
     comptime assert not (
@@ -898,8 +898,8 @@ def _batched_matmul_gpu_impl[
                     ), "the matmul epilogue contract is rank 2"
                     var batch_coords = IndexList[rank](0)
 
-                    batch_coords[rank - 1] = Int(out_coords[1].value())
-                    batch_coords[rank - 2] = Int(out_coords[0].value())
+                    batch_coords[rank - 1] = Int(out_coords[1])
+                    batch_coords[rank - 2] = Int(out_coords[0])
 
                     epilogue_fn[dtype, width, alignment=1](
                         Coord(batch_coords), val
@@ -921,8 +921,8 @@ def _batched_matmul_gpu_impl[
                     ), "the matmul epilogue contract is rank 2"
                     var batch_coords = IndexList[rank](0)
 
-                    batch_coords[rank - 1] = Int(out_coords[1].value())
-                    batch_coords[rank - 2] = Int(out_coords[0].value())
+                    batch_coords[rank - 1] = Int(out_coords[1])
+                    batch_coords[rank - 2] = Int(out_coords[0])
 
                     return compute_fn[dtype, width, alignment=1](
                         Coord(batch_coords), val

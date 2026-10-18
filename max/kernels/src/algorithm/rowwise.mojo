@@ -863,7 +863,7 @@ struct RowCache[
         # `UnsafePointer(unsafe_from_address=...)`'s IntLiteral overload,
         # whose comptime null check rejects it. `cache` overwrites this
         # with the real base when `shared`.
-        self._shmem_addr = Int(row_coord.coord[0].value())
+        self._shmem_addr = Int(row_coord.coord[0])
 
     @inline(.always)
     def recompute[
@@ -964,7 +964,7 @@ struct RowCache[
                 Scalar[Self.T], MutUntrackedOrigin, address_space=.SHARED
             ](unsafe_from_address=self._shmem_addr)
             return sh.load[width=w, alignment=al](
-                warp_off + Int(coord.coord[Self.axis].value())
+                warp_off + Int(coord.coord[Self.axis])
             )
         else:
             return self.recompute[w](coord, input_fn, compute)
@@ -1232,7 +1232,7 @@ struct Row[
                 var input_fn, var contribute, var ctx
             }:
                 comptime al = ctx.element_alignment[Self.dtype, ws]()
-                var pos = Int(coords.coord[Self.axis].value())
+                var pos = Int(coords.coord[Self.axis])
                 state.accumulate[Self.accum, ws](
                     contribute[ws](input_fn[ws, al](coords), coords),
                     Self._index_vector[ws](pos),
@@ -1241,7 +1241,7 @@ struct Row[
             comptime if is_cpu[Self.params.target]():
                 _cpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     partial,
                     splitk_reduce_tile,
@@ -1250,7 +1250,7 @@ struct Row[
             else:
                 _gpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     partial,
                     splitk_reduce_tile,
@@ -1282,7 +1282,7 @@ struct Row[
                 var input_fn, var contribute, var ctx
             }:
                 comptime al = ctx.element_alignment[Self.dtype, ws]()
-                var pos = Int(coords.coord[Self.axis].value())
+                var pos = Int(coords.coord[Self.axis])
                 state.accumulate[Self.accum, ws](
                     contribute[ws](input_fn[ws, al](coords), coords),
                     Self._index_vector[ws](pos),
@@ -1291,7 +1291,7 @@ struct Row[
             comptime if is_cpu[Self.params.target]():
                 _cpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     state,
                     reduce_tile,
@@ -1302,7 +1302,7 @@ struct Row[
                 ](), "unknown rowwise target"
                 _gpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     state,
                     reduce_tile,
@@ -1367,14 +1367,14 @@ struct Row[
                 comptime if is_cpu[Self.params.target]():
                     _cpu_reduce(
                         self.row_coord,
-                        Int(self.axis_size.value()),
+                        Int(self.axis_size),
                         self.ctx,
                         splitk_emit_tile,
                     )
                 else:
                     _gpu_reduce(
                         self.row_coord,
-                        Int(self.axis_size.value()),
+                        Int(self.axis_size),
                         self.ctx,
                         splitk_emit_tile,
                     )
@@ -1405,7 +1405,7 @@ struct Row[
             comptime if is_cpu[Self.params.target]():
                 _cpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     emit_tile,
                 )
@@ -1415,7 +1415,7 @@ struct Row[
                 ](), "unknown rowwise target"
                 _gpu_reduce(
                     self.row_coord,
-                    Int(self.axis_size.value()),
+                    Int(self.axis_size),
                     self.ctx,
                     emit_tile,
                 )
@@ -1672,7 +1672,7 @@ struct Row[
                     )
         else:
             var over_ = over
-            var axis_size = Int(self.axis_size.value())
+            var axis_size = Int(self.axis_size)
 
             @inline(.always)
             def reduce_tile[
@@ -1683,7 +1683,7 @@ struct Row[
                 var input_fn,
                 var compute,
             }:
-                var pos = Int(coords.coord[Self.axis].value())
+                var pos = Int(coords.coord[Self.axis])
                 state.accumulate[Self.accum, ws](
                     contribute[ws](
                         over_.recompute[ws](coords, input_fn, compute),
@@ -1809,7 +1809,7 @@ struct Row[
                     )
         else:
             var over_ = over
-            var axis_size = Int(self.axis_size.value())
+            var axis_size = Int(self.axis_size)
 
             @inline(.always)
             def emit_tile[

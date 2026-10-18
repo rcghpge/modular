@@ -785,9 +785,9 @@ def convert_ref_scales_to_mxfp8_format[
     comptime assert a_scales.flat_rank == 5, "a_scales must be 5D"
     comptime assert b_scales.flat_rank == 5, "b_scales must be 5D"
 
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     # initialize a_scales_tensor and b_scales_tensor based on reference scales
     for m in range(M):

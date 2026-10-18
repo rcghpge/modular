@@ -259,7 +259,7 @@ def rms_norm_fused_residual_cpu[
     comptime assert gamma.flat_rank == 1, "gamma must have rank 1"
     comptime rank = shape.rank
 
-    var last_dim = Int(shape[rank - 1].value())
+    var last_dim = Int(shape[rank - 1])
     var prod_all_but_last_dim = Int(shape.product()) // last_dim
 
     # 2D wrappers that translate each `(row, col)` back to the rank-N coord.
@@ -370,7 +370,7 @@ def _rms_norm_fused_residual_cpu_entry[
     comptime rank = shape.rank
 
     # Note: we only support reduction along the last dimension
-    if Int(gamma.dim[0]()) != Int(shape[rank - 1].value()):
+    if Int(gamma.dim[0]()) != Int(shape[rank - 1]):
         raise Error(
             "Gamma size "
             + String(gamma.dim[0]())
@@ -401,11 +401,11 @@ def _rms_norm_fused_residual_cpu_entry[
         if dropout_p > zero_scalar:
             var one_scalar = Scalar[dtype](1.0)
             var dropout_scale = one_scalar / (one_scalar - dropout_p)
-            var last_dim = Int(shape[rank - 1].value())
+            var last_dim = Int(shape[rank - 1])
             var row = Int(coords.product()) // last_dim
 
             comptime for i in range(width):
-                var col_idx = Int(coords[coords.rank - 1].value()) + i
+                var col_idx = Int(coords[coords.rank - 1]) + i
                 var element_offset = row * last_dim + col_idx
                 var generator = Random(seed=seed, offset=UInt64(element_offset))
                 var rng = generator.step_uniform()
@@ -722,7 +722,7 @@ def rms_norm_fused_residual_gpu[
     comptime rank = shape.rank
     comptime assert rank > 0, "shape must have rank >= 1 to normalize over"
 
-    var last_dim = Int(shape[rank - 1].value())
+    var last_dim = Int(shape[rank - 1])
 
     if last_dim == 0:
         return
@@ -844,7 +844,7 @@ def _rms_norm_fused_residual_impl[
     comptime rank = shape.rank
 
     # Note: we only support reduction along the last dimension
-    if Int(gamma.dim[0]()) != Int(shape[rank - 1].value()):
+    if Int(gamma.dim[0]()) != Int(shape[rank - 1]):
         raise Error(
             "Gamma size "
             + String(gamma.dim[0]())

@@ -246,11 +246,7 @@ def test_fused_concat_cpu() raises:
     def input_fn[
         input_index: Int, width: Int, alignment: Int = 1
     ](coords: Coord) -> SIMD[dtype, width]:
-        var flat = (
-            Int(coords[0].value()) * 100
-            + Int(coords[1].value()) * 10
-            + Int(coords[2].value())
-        )
+        var flat = Int(coords[0]) * 100 + Int(coords[1]) * 10 + Int(coords[2])
         comptime if input_index == 0:
             return SIMD[dtype, width](Float32(flat))
         else:

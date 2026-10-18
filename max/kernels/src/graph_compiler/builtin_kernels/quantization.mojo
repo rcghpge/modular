@@ -166,7 +166,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
         ) {var scale_t, var in_shape}:
             var row = 0
             comptime for i in range(rank - 1):
-                row = row * in_shape[i] + Int(coords[i].value())
+                row = row * in_shape[i] + Int(coords[i])
             scale_t.store_linear[width=1, alignment=1](IndexList[1](row), val)
 
         # Static row width (when known) enables the register-cached row path.

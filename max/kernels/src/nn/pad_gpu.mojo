@@ -415,7 +415,7 @@ def padded_index_mode_kernel[
         comptime for axis in range(output_tensor.rank - 1):
             var in_len = Int(input_tensor.dim[axis]())
             src_idx[axis] = _pad_src_index[mode](
-                Int(out_coord[axis].value()), in_len, Int(pre_pads[axis])
+                Int(out_coord[axis]), in_len, Int(pre_pads[axis])
             )
 
         var in_last = Int(input_tensor.dim[output_tensor.rank - 1]())

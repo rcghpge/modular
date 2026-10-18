@@ -518,9 +518,7 @@ def _softmax_3_pass_base[
         _dtype: DType, _width: Int
     ](coords: Coord) {imm} -> SIMD[_dtype, _width]:
         comptime assert coords.rank == 1
-        return rebind[SIMD[_dtype, _width]](
-            input_fn_1d[_width](Int(coords[0].value()))
-        )
+        return rebind[SIMD[_dtype, _width]](input_fn_1d[_width](Int(coords[0])))
 
     # Output function
     @inline(.always)
@@ -931,7 +929,7 @@ def softmax_kernel[
                 sink_val = sink_weights.load_linear[width=1](
                     IndexList[1](
                         umod(
-                            Int(row_coords[0].value()),
+                            Int(row_coords[0]),
                             Int(sink_weights.dim[0]()),
                         )
                     )

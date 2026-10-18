@@ -555,7 +555,7 @@ def sparse_mma_ws_ts_kernel[
     barrier()
 
     # ---- K TMA gather4: all calls on a single barrier ----
-    comptime box_width = Int(k_tile_shape[1].value())
+    comptime box_width = Int(k_tile_shape[1])
     comptime num_col_groups = ceildiv(cols, box_width)
     comptime num_4row_chunks = rows // 4
     comptime total_calls = num_col_groups * num_4row_chunks

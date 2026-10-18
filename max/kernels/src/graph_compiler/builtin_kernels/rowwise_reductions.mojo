@@ -68,7 +68,7 @@ def reduce_sum[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -156,7 +156,7 @@ def reduce_max[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_max"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -237,7 +237,7 @@ def reduce_min[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_min"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -318,7 +318,7 @@ def reduce_product[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_product"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -401,7 +401,7 @@ def reduce_mean[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_mean"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -518,7 +518,7 @@ def reduce_argmin[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_argmin"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -601,7 +601,7 @@ def reduce_argmax[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_argmax"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[
@@ -696,7 +696,7 @@ def reduce_min_and_max[
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
     comptime op_name = name if name != "" else "reduce_min_and_max"
-    var axis_size = Int(input_shape[reduce_dim].value())
+    var axis_size = Int(input_shape[reduce_dim])
 
     @inline(.always)
     def body[

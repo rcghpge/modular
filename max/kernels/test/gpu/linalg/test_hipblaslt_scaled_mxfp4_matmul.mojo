@@ -102,9 +102,9 @@ def test_block_scaled_mxfp4_hipblaslt[
         DType.bfloat16,
     ), "Only BF16/FP32 output type are supported for MXFP4."
 
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     # TODO (KERN-2238): uint8 is a proxy data type for two Float4-E2M1 values for now.
     # Replace this with float4-e2m1fn when GENAI-337 is fixed.

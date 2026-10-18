@@ -179,9 +179,9 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     )
     var c_shape = row_major(m, Idx[NType.static_value])
 
-    var a_size = Int(m.value()) * (KType.static_value // 2)
-    var b_size = Int(n.value()) * (KType.static_value // 2)
-    var c_size = Int(m.value()) * Int(n.value())
+    var a_size = Int(m) * (KType.static_value // 2)
+    var b_size = Int(n) * (KType.static_value // 2)
+    var c_size = Int(m) * Int(n)
 
     var a_host_alloc = alloc(
         AllocLayout[Scalar[a_type]](count=a_size)
@@ -232,14 +232,14 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     # Dim 4: each subrow has 4 scale factors.
 
     var a_scales_shape = row_major(
-        ceildiv(Int(m.value()), SF_MN_GROUP_SIZE),
+        ceildiv(Int(m), SF_MN_GROUP_SIZE),
         Idx[ceildiv(KType.static_value, SF_VECTOR_SIZE * SF_ATOM_K)],
         Idx[SF_ATOM_M[0]],
         Idx[SF_ATOM_M[1]],
         Idx[SF_ATOM_K],
     )
     var b_scales_shape = row_major(
-        ceildiv(Int(n.value()), SF_MN_GROUP_SIZE),
+        ceildiv(Int(n), SF_MN_GROUP_SIZE),
         Idx[ceildiv(KType.static_value, SF_VECTOR_SIZE * SF_ATOM_K)],
         Idx[SF_ATOM_M[0]],
         Idx[SF_ATOM_M[1]],
@@ -276,12 +276,12 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     # Initialize matmul operands using TileTensor host views before moving them
     # to the device.
     if simple_init():
-        for m in range(Int(m.value())):
-            for k in range(Int(k.value()) // 2):
+        for m in range(Int(m)):
+            for k in range(Int(k) // 2):
                 comptime assert a_host.flat_rank == 2
                 a_host[m, k] = UInt8(m).cast[a_type]()
-        for n in range(Int(n.value())):
-            for k in range(Int(k.value()) // 2):
+        for n in range(Int(n)):
+            for k in range(Int(k) // 2):
                 comptime assert b_host.flat_rank >= 2
                 b_host[n, k] = UInt8(n).cast[b_type]()
     else:
@@ -298,24 +298,24 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
         comptime assert False, "Unsupported scales_dtype in FP4 testbed"
 
     # NOTE: It is very important that we set unused scales to 0.0 otherwise we will hit accuracy issues
-    for idx0 in range(align_up(Int(m.value()), SF_MN_GROUP_SIZE)):
+    for idx0 in range(align_up(Int(m), SF_MN_GROUP_SIZE)):
         for idx1 in range(
             0,
-            align_up(Int(k.value()), SF_VECTOR_SIZE * SF_ATOM_K),
+            align_up(Int(k), SF_VECTOR_SIZE * SF_ATOM_K),
             SF_VECTOR_SIZE,
         ):
-            if idx0 >= Int(m.value()) or idx1 >= Int(k.value()):
+            if idx0 >= Int(m) or idx1 >= Int(k):
                 set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
                     a_scales_host, idx0, idx1, Scalar[scales_dtype](0.0)
                 )
 
-    for idx0 in range(align_up(Int(n.value()), SF_MN_GROUP_SIZE)):
+    for idx0 in range(align_up(Int(n), SF_MN_GROUP_SIZE)):
         for idx1 in range(
             0,
-            align_up(Int(k.value()), SF_VECTOR_SIZE * SF_ATOM_K),
+            align_up(Int(k), SF_VECTOR_SIZE * SF_ATOM_K),
             SF_VECTOR_SIZE,
         ):
-            if idx0 >= Int(n.value()) or idx1 >= Int(k.value()):
+            if idx0 >= Int(n) or idx1 >= Int(k):
                 set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
                     b_scales_host, idx0, idx1, Scalar[scales_dtype](0.0)
                 )

@@ -201,7 +201,7 @@ def test[
     def epilogue(coords: Coord, f_size: Int) {imm}:
         @inline(.always)
         def body1[width: Int](idx: Int) {imm}:
-            var f = Int(coords[rank + 1].value()) + idx
+            var f = Int(coords[rank + 1]) + idx
             var curr_coords = coords
             curr_coords.replace_dynamic[rank + 1](f)
 

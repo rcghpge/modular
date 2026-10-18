@@ -82,8 +82,8 @@ def test_mxfp8_dispatch[
     `heuristic_and_outliers_dispatch` with an epilogue closure and with a
     compute closure, each against the same reference."""
     var M = m
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var N = Int(n)
+    var K = Int(k)
 
     comptime scales_type = MXFP8_SF_DTYPE
     comptime SF_VECTOR_SIZE = MXFP8_SF_VECTOR_SIZE

@@ -894,7 +894,7 @@ def _store_fused_qkv_element[
     comptime kv_type = cache_t.dtype
     comptime kv_params = cache_t.kv_params
 
-    var col = Int(idx[1].value())
+    var col = Int(idx[1])
     if col < q_dim:
         output.store[alignment=align_of[dtype]()](
             idx,
@@ -902,7 +902,7 @@ def _store_fused_qkv_element[
         )
         return
 
-    var global_token_idx = Int(idx[0].value())
+    var global_token_idx = Int(idx[0])
 
     var batch_idx: Int = get_batch_from_row_offsets(
         input_row_offsets, global_token_idx
@@ -1117,7 +1117,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_bias[
         var qk_offset,
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
         var output_val = val + rebind[SIMD[_dtype, width]](
             bias.load[width=width, alignment=align_of[dtype]()](Coord(col))
         )
@@ -1261,7 +1261,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
         var v_cache,
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
         var output_val: SIMD[dtype, width]
 
         comptime if use_per_tensor:
@@ -1269,9 +1269,9 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             var scale_b = weight_scale[0, 0][0].cast[dtype]()
             output_val = val * (scale_a * scale_b)
         elif use_per_channel:
-            var scale_a = input_scale.load[width=1](
-                Coord(0, Int(idx[0].value()))
-            ).cast[dtype]()
+            var scale_a = input_scale.load[width=1](Coord(0, Int(idx[0]))).cast[
+                dtype
+            ]()
             var scale_b = weight_scale.load[
                 width=width, alignment=align_of[scale_dtype]()
             ](Coord(col, 0)).cast[dtype]()
@@ -1296,7 +1296,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             )
             return
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -1360,7 +1360,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
             comptime assert (
                 idx.rank == 2
             ), "the matmul epilogue contract is rank 2"
-            var col = Int(idx[1].value())
+            var col = Int(idx[1])
             var output_val_out: SIMD[output_dtype, width] = rebind[
                 SIMD[output_dtype, width]
             ](val.cast[output_dtype]())
@@ -1377,7 +1377,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale[
                 )
                 return
 
-            var global_token_idx = Int(idx[0].value())
+            var global_token_idx = Int(idx[0])
 
             var batch_idx: Int = get_batch_from_row_offsets(
                 input_row_offsets, global_token_idx
@@ -1525,7 +1525,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
             SIMD[output_dtype, width]
         ](val.cast[output_dtype]())
 
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
 
         if col < q_dim:
             output.store[alignment=align_of[output_dtype]()](
@@ -1534,7 +1534,7 @@ def _fused_qkv_matmul_kv_cache_ragged_impl_scale_float4[
             )
             return
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
 
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -1976,7 +1976,7 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
             SIMD[output_dtype, width]
         ](val.cast[output_dtype]())
 
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
 
         # Q band -> q_output[:, col].
         if col < q_end:
@@ -1990,12 +1990,12 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl_scale_float4[
         # (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
             iq_output.store[alignment=align_of[output_dtype]()](
-                Coord(Int(idx[0].value()), col - v_end),
+                Coord(Int(idx[0]), col - v_end),
                 output_val_out,
             )
             return
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2343,7 +2343,7 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl[
             val.cast[dtype]()
         )
 
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
 
         # Q band -> output[:, col].
         if col < q_end:
@@ -2355,12 +2355,12 @@ def _fused_qkv_index_matmul_kv_cache_ragged_impl[
         # branch order matches the column layout (Q | K | V | IndexQ | IndexK).
         if col >= v_end and col < iq_end:
             output.store[alignment=align_of[dtype]()](
-                Coord(Int(idx[0].value()), q_dim + (col - v_end)),
+                Coord(Int(idx[0]), q_dim + (col - v_end)),
                 output_val_out,
             )
             return
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx: Int = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2874,7 +2874,7 @@ def _matmul_kv_cache_ragged_impl[
         var k_cache_reg, var v_cache_reg, var input_row_offsets, var k_offset
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var col = Int(idx[1].value())
+        var col = Int(idx[1])
         if col < k_offset:
             _store_ragged_k_or_v_element(
                 k_cache_reg, input_row_offsets, idx, val
@@ -2883,7 +2883,7 @@ def _matmul_kv_cache_ragged_impl[
             _store_ragged_k_or_v_element(
                 v_cache_reg,
                 input_row_offsets,
-                Coord(Int(idx[0].value()), col - k_offset),
+                Coord(Int(idx[0]), col - k_offset),
                 val,
             )
 
@@ -3232,7 +3232,7 @@ def _matmul_k_cache_ragged_scale_impl[
         ), "Mismatch in dtype between hidden state and KV tensors"
 
         # Token index in the "ragged" combined sequence dimension.
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
 
         var batch_idx = get_batch_from_row_offsets(
             input_row_offsets, global_token_idx
@@ -3241,7 +3241,7 @@ def _matmul_k_cache_ragged_scale_impl[
             UInt32(global_token_idx) - input_row_offsets[batch_idx]
         )
 
-        var h_idx, hd_idx = udivmod(Int(idx[1].value()), kv_params.head_size)
+        var h_idx, hd_idx = udivmod(Int(idx[1]), kv_params.head_size)
 
         var cache_length = k_cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
@@ -3563,7 +3563,7 @@ def _store_ragged_k_or_v_element[
     ), "Mismatch in dtype between hidden state and KV tensors"
 
     # Token index in the "ragged" combined sequence dimension.
-    var global_token_idx = Int(idx[0].value())
+    var global_token_idx = Int(idx[0])
 
     var batch_idx = get_batch_from_row_offsets(
         input_row_offsets, global_token_idx
@@ -3572,7 +3572,7 @@ def _store_ragged_k_or_v_element[
 
     # Write this element to the K or V cache.
     var cache = k_or_v_cache
-    var h_idx, hd_idx = udivmod(Int(idx[1].value()), kv_params.head_size)
+    var h_idx, hd_idx = udivmod(Int(idx[1]), kv_params.head_size)
 
     var cache_length = cache.cache_length(batch_idx)
     var cache_token_idx = token_idx + cache_length
@@ -5328,12 +5328,12 @@ def generic_kv_cache_radd_dispatch[
 
         var cache: collection_t.CacheType
         var corrected_dim: Int
-        if Int(idx[1].value()) < hidden_size:
+        if Int(idx[1]) < hidden_size:
             cache = k_cache
-            corrected_dim = Int(idx[1].value())
+            corrected_dim = Int(idx[1])
         else:
             cache = v_cache
-            corrected_dim = Int(idx[1].value()) - hidden_size
+            corrected_dim = Int(idx[1]) - hidden_size
 
         var h_idx: Int
         var hd_idx: Int
@@ -5419,7 +5419,7 @@ def kv_cache_store_ragged[
         width: Int,
         alignment: Int = 1,
     ](idx: Coord) {var}:
-        var row = Int(idx[0].value())
+        var row = Int(idx[0])
         # Rows past the last offset belong to no request. A producer whose
         # output row count is only an upper bound on a data-dependent one
         # (`kpool_compress_kernel`, say, whose pool count is a sum of
@@ -5429,12 +5429,12 @@ def kv_cache_store_ragged[
         # pages follow.
         if row >= Int(input_row_offsets[input_row_offsets.num_elements() - 1]):
             return
-        var input_idx = Coord(row, Int(idx[1].value()), Int(idx[2].value()))
+        var input_idx = Coord(row, Int(idx[1]), Int(idx[2]))
         var loaded_val = input_fn[width=width, alignment=alignment](input_idx)
         var batch_idx = get_batch_from_row_offsets(input_row_offsets, row)
         var token_idx = Int(UInt32(row) - input_row_offsets[batch_idx])
-        var h_idx = Int(idx[1].value())
-        var hd_idx = Int(idx[2].value())
+        var h_idx = Int(idx[1])
+        var hd_idx = Int(idx[2])
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
         cache.store(
@@ -5501,14 +5501,14 @@ def kv_cache_store_padded[
 
     @inline(.always)
     def write_to_cache[width: Int, alignment: Int = 1](idx: Coord) {var}:
-        var batch_idx = Int(idx[0].value())
-        var token_idx = Int(idx[1].value())
+        var batch_idx = Int(idx[0])
+        var token_idx = Int(idx[1])
         var valid_len = Int(valid_lengths[batch_idx])
         if token_idx >= valid_len:
             return
         var loaded_val = input_fn[width=width, alignment=alignment](idx)
-        var h_idx = Int(idx[2].value())
-        var hd_idx = Int(idx[3].value())
+        var h_idx = Int(idx[2])
+        var hd_idx = Int(idx[3])
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = token_idx + cache_length
         cache.store(
@@ -5623,21 +5623,19 @@ def kv_cache_2m_iadd_dispatch[
         var cache: collection_t.CacheType
         var row_idx: Int
 
-        if Int(idx[0].value()) < m:
+        if Int(idx[0]) < m:
             cache = k_cache
-            row_idx = Int(idx[0].value())
+            row_idx = Int(idx[0])
         else:
             cache = v_cache
-            row_idx = Int(idx[0].value()) - m
+            row_idx = Int(idx[0]) - m
 
         var batch_idx = get_batch_from_row_offsets(input_row_offsets, row_idx)
         var tok_idx = Int(UInt32(row_idx) - input_row_offsets[batch_idx])
 
         var h_idx: Int
         var hd_idx: Int
-        h_idx, hd_idx = udivmod(
-            Int(idx[1].value()), collection_t.kv_params.head_size
-        )
+        h_idx, hd_idx = udivmod(Int(idx[1]), collection_t.kv_params.head_size)
 
         var cache_length = cache.cache_length(batch_idx)
         var cache_token_idx = tok_idx + cache_length

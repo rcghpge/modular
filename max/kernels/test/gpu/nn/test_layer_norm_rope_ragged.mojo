@@ -119,7 +119,7 @@ def run_layer_norm_rope_ragged_gpu[
     comptime rank = shape.rank
     print("== run_layer_norm_rope_ragged_gpu")
 
-    var cols = Int(shape[rank - 1].value())
+    var cols = Int(shape[rank - 1])
     var rows = Int(shape.product()) // cols
     var num_batches = len(start_pos_vals)
 

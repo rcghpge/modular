@@ -123,7 +123,7 @@ def keyed_uniform[
     def draw[width: Int, alignment: Int = 1](idx: Coord) {var}:
         comptime assert width == 1, "each row keys its own Philox stream"
 
-        var row = Int(idx[0].value())
+        var row = Int(idx[0])
         var generator = Random(seed=rebind[UInt64](seed.load((row,))))
         output.store((row,), generator.step_uniform()[0])
 

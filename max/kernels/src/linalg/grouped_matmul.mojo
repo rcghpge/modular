@@ -346,8 +346,8 @@ def grouped_matmul_amd_kernel_launcher[
         var epilogue_fn, var compute_fn, var c_ptr, var a_start_row
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var row = Int(idx[0].value())
-        var col = Int(idx[1].value())
+        var row = Int(idx[0])
+        var col = Int(idx[1])
         var row_idx = Coord(Int(a_start_row) + row, col)
         comptime if has_compute_fn:
             (c_ptr + row * N + col).store[alignment=alignment](

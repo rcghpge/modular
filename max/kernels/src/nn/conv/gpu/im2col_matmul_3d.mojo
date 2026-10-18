@@ -452,8 +452,8 @@ def dispatch_im2col_matmul_conv3d[
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var full_m = _m_offset + Int(coords_2d[0].value())
-                var n_idx = Int(coords_2d[1].value())
+                var full_m = _m_offset + Int(coords_2d[0])
+                var n_idx = Int(coords_2d[1])
                 var batch_idx, sp = divmod(full_m, DHW_out)
                 var d_idx, rem2 = divmod(sp, HW_out)
                 var h_idx, w_idx = divmod(rem2, W_out)

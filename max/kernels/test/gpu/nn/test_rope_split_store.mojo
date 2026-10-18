@@ -288,9 +288,7 @@ def execute_test[
         width: Int, alignment: Int
     ](idx: Coord) {var k_ptr, var k_stride0} -> SIMD[dtype, width]:
         var flat = (
-            Int(idx[0].value()) * k_stride0
-            + Int(idx[1].value()) * head_dim
-            + Int(idx[2].value())
+            Int(idx[0]) * k_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
         return (k_ptr + flat).load[width=width]()
 
@@ -298,9 +296,7 @@ def execute_test[
         width: Int, alignment: Int
     ](idx: Coord) {var v_ptr, var v_stride0} -> SIMD[dtype, width]:
         var flat = (
-            Int(idx[0].value()) * v_stride0
-            + Int(idx[1].value()) * head_dim
-            + Int(idx[2].value())
+            Int(idx[0]) * v_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
         return (v_ptr + flat).load[width=width]()
 
@@ -705,9 +701,7 @@ def execute_test_with_position_ids[
         width: Int, alignment: Int
     ](idx: Coord) {var k_ptr, var k_stride0} -> SIMD[dtype, width]:
         var flat = (
-            Int(idx[0].value()) * k_stride0
-            + Int(idx[1].value()) * head_dim
-            + Int(idx[2].value())
+            Int(idx[0]) * k_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
         return (k_ptr + flat).load[width=width]()
 
@@ -715,9 +709,7 @@ def execute_test_with_position_ids[
         width: Int, alignment: Int
     ](idx: Coord) {var v_ptr, var v_stride0} -> SIMD[dtype, width]:
         var flat = (
-            Int(idx[0].value()) * v_stride0
-            + Int(idx[1].value()) * head_dim
-            + Int(idx[2].value())
+            Int(idx[0]) * v_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
         return (v_ptr + flat).load[width=width]()
 

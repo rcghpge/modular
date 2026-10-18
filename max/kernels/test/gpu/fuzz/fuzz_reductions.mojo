@@ -398,7 +398,7 @@ def _run_shaped[
         var row = 0
         comptime for i in range(nd):
             if i != dim:
-                row = row * shape[i] + Int(coords[i].value())
+                row = row * shape[i] + Int(coords[i])
         out_ptr.unsafe_store[width=width](
             row, rebind[SIMD[rd_type, width]](val)
         )
@@ -410,7 +410,7 @@ def _run_shaped[
         var row = 0
         comptime for i in range(nd):
             if i != dim:
-                row = row * shape[i] + Int(coords[i].value())
+                row = row * shape[i] + Int(coords[i])
         out_idx_ptr.unsafe_store[width=width](row, val)
 
     var coord = Coord(shape)

@@ -508,7 +508,7 @@ def _argsort_gpu[
 
     # Initialize indices with sequential values and copy input data to device
     def fill_indices_iota[width: Int, alignment: Int = 1](offset: Coord) {var}:
-        var i = Int(offset[0].value())
+        var i = Int(offset[0])
         if i < n:
             padded_indices.store[alignment=align_of[padded_indices.dtype]()](
                 (i,),

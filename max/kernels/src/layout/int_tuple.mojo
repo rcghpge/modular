@@ -2847,7 +2847,7 @@ def coord_to_int_tuple[
             result.append(coord_to_int_tuple(value[i].tuple()))
         else:
             # Convert value elements to integers
-            result.append(IntTuple(Int(value[i].value())))
+            result.append(IntTuple(Int(value[i])))
 
     return result
 

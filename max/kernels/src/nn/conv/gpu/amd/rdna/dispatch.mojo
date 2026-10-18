@@ -441,8 +441,8 @@ def dispatch_rdna_conv2d[
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var m_idx = Int(coords_2d[0].value())
-                var n_idx = Int(coords_2d[1].value())
+                var m_idx = Int(coords_2d[0])
+                var n_idx = Int(coords_2d[1])
                 var out_val = val
 
                 # Fold the fused skip connection: out = conv + beta*source.
@@ -486,8 +486,8 @@ def dispatch_rdna_conv2d[
                 comptime assert (
                     coords_2d.rank == 2
                 ), "the matmul epilogue contract is rank 2"
-                var m_idx = Int(coords_2d[0].value())
-                var n_idx = Int(coords_2d[1].value())
+                var m_idx = Int(coords_2d[0])
+                var n_idx = Int(coords_2d[1])
                 var s = (
                     (resid_src + (m_idx * N + n_idx))
                     .load[width=_width]()

@@ -37,8 +37,8 @@ def test_runtime_and_compile_time_dim_and_stride[
         MutPointer[Float32, MutAnyOrigin].unsafe_dangling(), row_major(shape)
     )
 
-    var K = Int(k.value())
-    var M = Int(m.value())
+    var K = Int(k)
+    var M = Int(m)
 
     assert_equal(Int(tensor.dim(0)), K)
     assert_equal(Int(tensor.dim(1)), M)
@@ -47,7 +47,7 @@ def test_runtime_and_compile_time_dim_and_stride[
 
     assert_equal(Int(tensor.dim[0]()), K)
     assert_equal(Int(tensor.dim[1]()), M)
-    assert_equal(Int(tensor.layout.stride[0]().value()), M)
+    assert_equal(Int(tensor.layout.stride[0]()), M)
     assert_equal(tensor.layout.stride[1]().value(), 1)
 
 

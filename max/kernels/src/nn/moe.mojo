@@ -631,8 +631,8 @@ def moe_finalize[
 
     @inline(.always)
     def finalize[width: Int, alignment: Int = 1](idx: Coord) {var}:
-        var token = Int(idx[0].value())
-        var col = Int(idx[1].value())
+        var token = Int(idx[0])
+        var col = Int(idx[1])
         var acc = SIMD[.float32, width](0)
         for k in range(num_experts_per_token):
             var row = Int(restore_order[token * num_experts_per_token + k])
@@ -1088,7 +1088,7 @@ def router_group_limited[
         target
     ](), "Group limited MoE router is only supported on GPU"
 
-    var num_tokens = Int(scores_layout.shape[0]().value())
+    var num_tokens = Int(scores_layout.shape[0]())
     if num_tokens == 0:
         return
 
@@ -1682,7 +1682,7 @@ def single_group_router[
         target
     ](), "Single group router is only supported on GPU"
 
-    var num_tokens = Int(scores_layout.shape[0]().value())
+    var num_tokens = Int(scores_layout.shape[0]())
     if num_tokens == 0:
         return
 
@@ -1860,8 +1860,8 @@ def _single_group_router_on_partials[
         comptime for split in range(1, num_splits):
             score += partials.load[width=width](
                 (
-                    split * Int(grid_dim.x) + Int(coords[0].value()),
-                    Int(coords[1].value()),
+                    split * Int(grid_dim.x) + Int(coords[0]),
+                    Int(coords[1]),
                 )
             )
         return sigmoid(score)
@@ -2465,7 +2465,7 @@ def single_group_router_eplb[
         target
     ](), "Single group router (EPLB) is only supported on GPU"
 
-    var num_tokens = Int(scores_layout.shape[0]().value())
+    var num_tokens = Int(scores_layout.shape[0]())
     if num_tokens == 0:
         return
 

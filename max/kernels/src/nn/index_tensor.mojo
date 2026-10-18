@@ -288,7 +288,7 @@ def _index_tensor_impl[
     ](output_idx_arg: Coord) {var}:
         var output_idx = IndexList[output.rank]()
         comptime for i in range(output.rank):
-            output_idx[i] = Int(output_idx_arg[i].value())
+            output_idx[i] = Int(output_idx_arg[i])
         var data_idx = IndexList[data.rank]()
         var indices_idx = IndexList[indices.rank]()
         var indices_last_dim = Int(indices.dim[indices.rank - 1]())
@@ -502,12 +502,10 @@ def advanced_indexing_getitem[
         # Find the associated output index from input index
         comptime for input_dim in range(input_rank):
             comptime if input_dim < start_axis:
-                input_index[input_dim] = Int(output_index[input_dim].value())
+                input_index[input_dim] = Int(output_index[input_dim])
             elif input_dim >= start_axis + num_index_tensors:
                 input_index[input_dim] = Int(
-                    output_index[
-                        input_dim - num_index_tensors + index_rank
-                    ].value()
+                    output_index[input_dim - num_index_tensors + index_rank]
                 )
             else:
                 comptime index_tensor_offset = input_dim - start_axis
@@ -515,7 +513,7 @@ def advanced_indexing_getitem[
 
                 comptime for offset in range(index_rank):
                     index_tensor_indices[offset] = Int(
-                        output_index[offset + start_axis].value()
+                        output_index[offset + start_axis]
                     )
                 input_index[input_dim] = Int(
                     indices_fn[index_tensor_offset](Coord(index_tensor_indices))
@@ -716,21 +714,17 @@ def advanced_indexing_setitem_inplace[
 
         # Find the index into the indexing tensors from the common index
         comptime for i in range(index_rank):
-            index_tensor_indices[i] = Int(
-                iteration_indices[i + start_axis].value()
-            )
+            index_tensor_indices[i] = Int(iteration_indices[i + start_axis])
 
         # Find the index into the inputs from the common index
         var input_tensor_indices = IndexList[input_tensor.rank]()
 
         comptime for i in range(input_tensor.rank):
             comptime if i < start_axis:
-                input_tensor_indices[i] = Int(iteration_indices[i].value())
+                input_tensor_indices[i] = Int(iteration_indices[i])
             elif i >= start_axis + num_index_tensors:
                 input_tensor_indices[i] = Int(
-                    iteration_indices[
-                        i - num_index_tensors + index_rank
-                    ].value()
+                    iteration_indices[i - num_index_tensors + index_rank]
                 )
 
             else:

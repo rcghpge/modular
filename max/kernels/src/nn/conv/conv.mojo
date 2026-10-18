@@ -263,15 +263,15 @@ struct Naive2dConvolution[
         dth dimensions.
         """
         # Iterate on output batch dimension.
-        for n in range(Int(self.output_shape[0].value())):
+        for n in range(Int(self.output_shape[0])):
             # Iterate on filter dimension.
-            for f in range(Int(self.output_shape[4].value())):
+            for f in range(Int(self.output_shape[4])):
                 # Iterate on output H dimension.
-                for do in range(Int(self.output_shape[1].value())):
+                for do in range(Int(self.output_shape[1])):
                     # Iterate on output H dimension.
-                    for ho in range(Int(self.output_shape[2].value())):
+                    for ho in range(Int(self.output_shape[2])):
                         # Iterate on output W dimension.
-                        for wo in range(Int(self.output_shape[3].value())):
+                        for wo in range(Int(self.output_shape[3])):
                             # Compute the result value at this specific output posit-
                             #  ion.
                             self._compute_point(n, do, ho, wo, f)
@@ -284,23 +284,23 @@ struct Naive2dConvolution[
         var value: Scalar[Self.output_type] = 0
 
         # Input dims.
-        var D = Int(self.input_shape[1].value())
-        var H = Int(self.input_shape[2].value())
-        var W = Int(self.input_shape[3].value())
-        var C = Int(self.input_shape[4].value())
+        var D = Int(self.input_shape[1])
+        var H = Int(self.input_shape[2])
+        var W = Int(self.input_shape[3])
+        var C = Int(self.input_shape[4])
         var image_bound = Index(D, H, W)
         var C_per_group = C // self.num_groups
 
         # Filter dims.
-        var Q = Int(self.filter_shape[0].value())
-        var R = Int(self.filter_shape[1].value())
-        var S = Int(self.filter_shape[2].value())
+        var Q = Int(self.filter_shape[0])
+        var R = Int(self.filter_shape[1])
+        var S = Int(self.filter_shape[2])
 
         # Output dims.
-        var DO = Int(self.output_shape[1].value())
-        var HO = Int(self.output_shape[2].value())
-        var WO = Int(self.output_shape[3].value())
-        var F = Int(self.output_shape[4].value())
+        var DO = Int(self.output_shape[1])
+        var HO = Int(self.output_shape[2])
+        var WO = Int(self.output_shape[3])
+        var F = Int(self.output_shape[4])
 
         var g = f // (F // self.num_groups)
 
@@ -308,9 +308,9 @@ struct Naive2dConvolution[
         var dilation = coord_to_index_list(self.dilation)
         # Padding offset, using the left padding only here.
         var pad_lower = Index(
-            Int(self.pad_d[0].value()),
-            Int(self.pad_h[0].value()),
-            Int(self.pad_w[0].value()),
+            Int(self.pad_d[0]),
+            Int(self.pad_h[0]),
+            Int(self.pad_w[0]),
         )
 
         for q in range(Q):
@@ -731,9 +731,7 @@ struct ConvDirectNHWC[
                 self.partition.ng_offset + self.partition.ng_size,
             ):
                 var n, g = divmod(ng, self.conv_shape.num_groups)
-                self._c_tile_loop[padded](
-                    n, g, Int(self.cf_tile_size[0].value())
-                )
+                self._c_tile_loop[padded](n, g, Int(self.cf_tile_size[0]))
 
         unswitch(self.conv_shape.padded(), body)
 
@@ -3580,9 +3578,7 @@ def conv_nhwc_direct[
             def body[width: Int](idx: Int) {coords, output, imm}:
                 comptime last = input.rank - 1
                 var curr_coords = coords
-                curr_coords.replace_dynamic[last](
-                    Int(coords[last].value()) + idx
-                )
+                curr_coords.replace_dynamic[last](Int(coords[last]) + idx)
 
                 # Read through the parameter, not the local `output_tt`
                 # view: this closure outlives the last explicit use of the
@@ -4430,10 +4426,10 @@ def _conv_miopen[
             var S_dim,
             var C_dim,
         }:
-            var f = Int(coords[0].value())
-            var r = Int(coords[1].value())
-            var s = Int(coords[2].value())
-            var c = Int(coords[3].value())
+            var f = Int(coords[0])
+            var r = Int(coords[1])
+            var s = Int(coords[2])
+            var c = Int(coords[3])
             var val = filter.load[width=_width]((f, c, r, s))
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
@@ -4465,10 +4461,10 @@ def _conv_miopen[
             var S_dim,
             var C_dim,
         }:
-            var f = Int(coords[0].value())
-            var r = Int(coords[1].value())
-            var s = Int(coords[2].value())
-            var c = Int(coords[3].value())
+            var f = Int(coords[0])
+            var r = Int(coords[1])
+            var s = Int(coords[2])
+            var c = Int(coords[3])
             var val = filter.load[width=_width]((r, s, c, f))
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
@@ -4505,11 +4501,11 @@ def _conv_miopen[
             var S_dim,
             var C_dim,
         }:
-            var f = Int(coords[0].value())
-            var q = Int(coords[1].value())
-            var r = Int(coords[2].value())
-            var s = Int(coords[3].value())
-            var c = Int(coords[4].value())
+            var f = Int(coords[0])
+            var q = Int(coords[1])
+            var r = Int(coords[2])
+            var s = Int(coords[3])
+            var c = Int(coords[4])
             var val = filter.load[width=_width]((q, r, s, c, f))
             var out_idx = (
                 f * Q_dim * R_dim * S_dim * C_dim
@@ -5089,8 +5085,8 @@ def conv_gpu[
                         comptime assert (
                             coords_2d.rank == 2
                         ), "the matmul epilogue contract is rank 2"
-                        var m = Int(coords_2d[0].value())
-                        var n = Int(coords_2d[1].value())
+                        var m = Int(coords_2d[0])
+                        var n = Int(coords_2d[1])
                         var batch_idx: Int
                         var rem: Int
                         var h_idx: Int
@@ -5449,8 +5445,8 @@ def conv_gpu[
                     comptime assert (
                         coords_2d.rank == 2
                     ), "the matmul epilogue contract is rank 2"
-                    var m = Int(coords_2d[0].value())
-                    var n = Int(coords_2d[1].value())
+                    var m = Int(coords_2d[0])
+                    var n = Int(coords_2d[1])
                     var batch_idx: Int
                     var rem: Int
                     var h_idx: Int
@@ -5696,8 +5692,8 @@ def conv_gpu[
                         comptime assert (
                             coords_2d.rank == 2
                         ), "the matmul epilogue contract is rank 2"
-                        var m = Int(coords_2d[0].value())
-                        var n = Int(coords_2d[1].value())
+                        var m = Int(coords_2d[0])
+                        var n = Int(coords_2d[1])
                         var batch_idx: Int
                         var rem: Int
                         var d_idx: Int

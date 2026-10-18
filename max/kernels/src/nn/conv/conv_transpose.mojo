@@ -638,7 +638,7 @@ struct ConvTransposedPacked[
             self._zero_output(n, g)
 
             # ConvTransposed computation
-            self._c_tile_loop(n, g, Int(self.cf_tile_size[0].value()))
+            self._c_tile_loop(n, g, Int(self.cf_tile_size[0]))
 
             # Epilogue. Avoid putting it after register tiling for now because
             # input row i may update output row i-1. It's hard to tell if a row
@@ -1670,7 +1670,7 @@ def conv_transposed_cpu[
                 # Coordinates of the current index.
                 var curr_coords = coords
                 curr_coords.replace_dynamic[input_rank - 1](
-                    Int(coords[input_rank - 1].value()) + idx
+                    Int(coords[input_rank - 1]) + idx
                 )
 
                 var vec = output.load[

@@ -103,7 +103,7 @@ def _check(rows: Int, cols: Int) raises:
 
             @inline(.always)
             def write(oc: RowCoord[rank]) {var acc, var out_ptr}:
-                out_ptr.unsafe_store(Int(oc.coord[0].value()), acc[0])
+                out_ptr.unsafe_store(Int(oc.coord[0]), acc[0])
 
             row.emit(write)
 

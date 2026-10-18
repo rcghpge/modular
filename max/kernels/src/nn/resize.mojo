@@ -356,11 +356,9 @@ def resize_nearest_neighbor[
                     var in_coords = IndexList[input.rank](0)
 
                     comptime for i in range(last):
-                        in_coords[i] = (
-                            Int(out_coords[i].value()) >> shift_scales[i]
-                        )
+                        in_coords[i] = Int(out_coords[i]) >> shift_scales[i]
 
-                    var out_last = Int(out_coords[last].value())
+                    var out_last = Int(out_coords[last])
                     var values = SIMD[dtype, simd_width]()
                     comptime for lane in range(simd_width):
                         in_coords[last] = (out_last + lane) >> shift_scales[
@@ -381,11 +379,9 @@ def resize_nearest_neighbor[
                     var in_coords = IndexList[input.rank](0)
 
                     comptime for i in range(last):
-                        in_coords[i] = (
-                            Int(out_coords[i].value()) // int_scales[i]
-                        )
+                        in_coords[i] = Int(out_coords[i]) // int_scales[i]
 
-                    var out_last = Int(out_coords[last].value())
+                    var out_last = Int(out_coords[last])
                     var values = SIMD[dtype, simd_width]()
                     comptime for lane in range(simd_width):
                         in_coords[last] = (out_last + lane) // int_scales[last]
@@ -445,13 +441,13 @@ def resize_nearest_neighbor[
             in_coords[i] = _nearest_source_index[
                 coordinate_transformation_mode, round_mode
             ](
-                Int(out_coords[i].value()),
+                Int(out_coords[i]),
                 Int(input.dim(i)),
                 Int(output.dim(i)),
                 scales[i],
             )
 
-        var out_last = Int(out_coords[last].value())
+        var out_last = Int(out_coords[last])
         var values = SIMD[dtype, simd_width]()
         comptime for lane in range(simd_width):
             in_coords[last] = _nearest_source_index[

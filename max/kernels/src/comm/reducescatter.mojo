@@ -1336,8 +1336,8 @@ def _reducescatter_plan[
             Int(input_buffers[group_start].dim[1]()) if axis
             == 0 else n_units * simd_width
         )
-        var out_rows = Int(output_layout.shape[0]().value())
-        var out_cols = Int(output_layout.shape[1]().value())
+        var out_rows = Int(output_layout.shape[0]())
+        var out_cols = Int(output_layout.shape[1]())
         if out_rows != expected_rows or out_cols != expected_cols:
             raise Error(
                 "output buffer shape ("

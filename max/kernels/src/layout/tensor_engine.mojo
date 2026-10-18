@@ -87,7 +87,7 @@ def _offset_elements(offset_coord: Coord) -> Int:
     """
     var total = 0
     comptime for i in range(offset_coord.flat_rank):
-        total += Int(offset_coord[i].value())
+        total += Int(offset_coord[i])
     return total
 
 

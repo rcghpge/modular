@@ -255,7 +255,7 @@ def test_conv_transposed[
     def epilogue(coords: Coord, f_size: Int) {var output, var bias_ptr}:
         @inline(.always)
         def body1[width: Int](idx: Int) {var}:
-            var f = Int(coords[rank + 1].value()) + idx
+            var f = Int(coords[rank + 1]) + idx
             var curr_coords = coords
             curr_coords.replace_dynamic[rank + 1](f)
 

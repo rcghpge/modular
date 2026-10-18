@@ -1296,8 +1296,8 @@ def rms_norm_cpu[
 
     comptime simd_width = simd_width_of[dtype]()
 
-    var num_rows = Int(out_shape[0].value())
-    var num_cols = Int(out_shape[1].value())
+    var num_rows = Int(out_shape[0])
+    var num_cols = Int(out_shape[1])
 
     var simd_loop_end = align_down(num_cols, simd_width)
     comptime intermediate_type = get_accum_type[dtype]()
@@ -1366,7 +1366,7 @@ def rms_norm_cpu[
     comptime assert gamma.flat_rank == 1, "gamma must have rank 1"
     comptime rank = shape.rank
 
-    var last_dim = Int(shape[rank - 1].value())
+    var last_dim = Int(shape[rank - 1])
     var prod_all_but_last_dim = Int(shape.product()) // last_dim
 
     var num_workers = min(parallelism_level(ctx), prod_all_but_last_dim)
@@ -1495,7 +1495,7 @@ def _rms_norm_impl[
     comptime assert gamma.flat_rank == 1, "gamma must have rank 1"
     comptime assert shape.rank == rank, "shape.rank must be the same as rank"
 
-    var reduce_dim_size = Int(shape[rank - 1].value())
+    var reduce_dim_size = Int(shape[rank - 1])
 
     # Note: we only support reduction along the last dimension
     if Int(gamma.dim[0]()) != reduce_dim_size:
@@ -2439,15 +2439,15 @@ def group_norm_gpu[
     comptime accum_type = get_accum_type[dtype]()
     comptime assert shape.rank == rank, "shape.rank must be the same as rank"
 
-    var N = Int(shape[0].value())
-    var C = Int(shape[1].value())
+    var N = Int(shape[0])
+    var C = Int(shape[1])
 
     var spatial = Int(shape.product()) // (N * C)
 
     # The device closure reads only the innermost dim; a typed `Coord` capture
     # fails the launch (CUDA_ERROR_INVALID_VALUE), so unwrap it here and let the
     # closure capture plain `Int`s.
-    var last_dim = Int(shape[rank - 1].value())
+    var last_dim = Int(shape[rank - 1])
     var channels_per_group = C // num_groups
 
     var output_rs = group_norm_reshape[dtype, rank](
@@ -2778,8 +2778,8 @@ def group_norm_cpu[
     comptime accum_type = get_accum_type[dtype]()
     comptime assert shape.rank == rank, "shape.rank must be the same as rank"
 
-    var N = Int(shape[0].value())
-    var C = Int(shape[1].value())
+    var N = Int(shape[0])
+    var C = Int(shape[1])
     var spatial = Int(shape.product()) // (N * C)
     var channels_per_group = C // num_groups
     var group_size = channels_per_group * spatial
@@ -2816,7 +2816,7 @@ def group_norm_cpu[
             ]:
                 var c_offset, s = divmod(col, spatial)
                 comptime if rank == 4:
-                    var h, w = divmod(s, Int(shape[3].value()))
+                    var h, w = divmod(s, Int(shape[3]))
                     return rebind[DynamicCoord[.int64, rank]](
                         Coord(
                             Int64(n),
@@ -2889,7 +2889,7 @@ def group_norm[
 
     var num_groups: Int = Int(groups[0])
 
-    var C = Int(shape[1].value())
+    var C = Int(shape[1])
     if C % num_groups != 0:
         raise Error(
             "Invalid num_groups: channels (C = {C}) must be divisible by"

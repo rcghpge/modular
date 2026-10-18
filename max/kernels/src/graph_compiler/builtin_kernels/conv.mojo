@@ -639,7 +639,7 @@ struct Conv2dResidualAdd:
             var result = val
 
             comptime if has_bias:
-                var c_idx = Int(coords[coords.rank - 1].value())
+                var c_idx = Int(coords[coords.rank - 1])
                 var bias_vec = (bias.unsafe_ptr() + c_idx).load[width=_width]()
                 result = val + bias_vec.cast[_dtype]()
 

@@ -404,7 +404,7 @@ def sliced_add[
     def _sliced_add[width: Int, alignment: Int = 1](idx: Coord) {var}:
         var out_val: SIMD[dtype, width]
 
-        if Int(idx[0].value()) >= batch_end_idx:
+        if Int(idx[0]) >= batch_end_idx:
             out_val = a.load[width](idx)
         else:
             var a_val = a.load[width](idx)

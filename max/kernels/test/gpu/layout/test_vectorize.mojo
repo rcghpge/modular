@@ -95,8 +95,8 @@ def test_native_vectorize_dynamic[width: Int]() raises:
     comptime assert fragments.linear_idx_type == .int32
     assert_equal(fragments.dim[0](), 8)
     assert_equal(fragments.dim[1](), Int32(8 // width))
-    assert_equal(Int(fragments.layout.stride_coord()[0].value()), 8)
-    assert_equal(Int(fragments.layout.stride_coord()[1].value()), width)
+    assert_equal(Int(fragments.layout.stride_coord()[0]), 8)
+    assert_equal(Int(fragments.layout.stride_coord()[1]), width)
     for row in range(8):
         for column in range(8 // width):
             var coordinate = Coord(row, column)

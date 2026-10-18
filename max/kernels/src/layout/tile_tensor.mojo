@@ -1273,7 +1273,7 @@ struct TileTensor[
                 # `indices` resolves the open ends against the parent extent
                 # and folds in Python's negative-index wrap.
                 var bounds = rebind[ContiguousSlice](args[axis]).indices(
-                    Int(self.layout.shape[axis]().value())
+                    Int(self.layout.shape[axis]())
                 )
                 offset += Scalar[Self.linear_idx_type](bounds[0]) * stride
                 Pointer(to=new_shape[out_axis]).write(
@@ -4065,14 +4065,14 @@ def _pretty_print_2d_tensor[
     var m_dim = tensor.layout.shape[0]()
     var n_dim = tensor.layout.shape[1]()
     writer.write("[")
-    for m in range(Int(m_dim.value())):
+    for m in range(Int(m_dim)):
         writer.write("[")
-        for n in range(Int(n_dim.value())):
+        for n in range(Int(n_dim)):
             writer.write(tensor[m, n])
-            if n < Int(n_dim.value()) - 1:
+            if n < Int(n_dim) - 1:
                 writer.write(", ")
         writer.write("]")
-        if m < Int(m_dim.value()) - 1:
+        if m < Int(m_dim) - 1:
             writer.write(", ")
     writer.write("]")
 
@@ -4154,14 +4154,14 @@ def _distribute[
         comptime if not NewShapeTypes[i].is_static_value:
             Pointer(to=shape[i]).write(
                 _coerce_dynamic[NewShapeTypes[i]](
-                    Int(data_layout_tensor.layout.shape_coord()[i].value())
+                    Int(data_layout_tensor.layout.shape_coord()[i])
                     // thread_layout.shape_types[i].static_value
                 )
             )
         comptime if not NewStrideTypes[i].is_static_value:
             Pointer(to=stride[i]).write(
                 _coerce_dynamic[NewStrideTypes[i]](
-                    Int(data_layout_tensor.layout.stride_coord()[i].value())
+                    Int(data_layout_tensor.layout.stride_coord()[i])
                     * thread_layout.shape_types[i].static_value
                 )
             )
@@ -4223,9 +4223,7 @@ def _distribute_with_offset[
         comptime shape_i = thread_layout.shape_types[i].static_value
         var thread_coord_i = (thread_id // stride_i) % shape_i
         thread_coords[i] = thread_coord_i
-        offset += thread_coord_i * Int(
-            data_layout_tensor.layout.stride[i]().value()
-        )
+        offset += thread_coord_i * Int(data_layout_tensor.layout.stride[i]())
 
     # Swizzling applies to the index of elements rather than scalars because
     # the former is the unit in distribution.
@@ -4251,14 +4249,14 @@ def _distribute_with_offset[
         comptime if not NewShapeTypes[i].is_static_value:
             Pointer(to=shape[i]).write(
                 _coerce_dynamic[NewShapeTypes[i]](
-                    Int(data_layout_tensor.layout.shape_coord()[i].value())
+                    Int(data_layout_tensor.layout.shape_coord()[i])
                     // thread_layout.shape_types[i].static_value
                 )
             )
         comptime if not NewStrideTypes[i].is_static_value:
             Pointer(to=stride[i]).write(
                 _coerce_dynamic[NewStrideTypes[i]](
-                    Int(data_layout_tensor.layout.stride_coord()[i].value())
+                    Int(data_layout_tensor.layout.stride_coord()[i])
                     * thread_layout.shape_types[i].static_value
                 )
             )
@@ -4446,13 +4444,11 @@ def _tile_with_offset[
     var corner_coords = IndexList[coord_types.length]()
 
     comptime for i in range(coord_types.length):
-        corner_coords[i] = Int(tile_coords[i].value()) * Int(
-            tile_shape[i].value()
-        )
+        corner_coords[i] = Int(tile_coords[i]) * Int(tile_shape[i])
         offset += (
-            Int(tile_coords[i].value())
-            * Int(tile_shape[i].value())
-            * Int(data_layout_tensor.layout.stride[i]().value())
+            Int(tile_coords[i])
+            * Int(tile_shape[i])
+            * Int(data_layout_tensor.layout.stride[i]())
         )
 
     var tile_layout = Layout(
@@ -4563,13 +4559,11 @@ def _tile_with_offset[
     var corner_coords = IndexList[coord_types.length]()
 
     comptime for i in range(coord_types.length):
-        corner_coords[i] = Int(tile_coords[i].value()) * Int(
-            tile_shape[i].value()
-        )
+        corner_coords[i] = Int(tile_coords[i]) * Int(tile_shape[i])
         offset += (
-            Int(tile_coords[i].value())
-            * Int(tile_shape[i].value())
-            * Int(data_layout_tensor.layout.stride[i]().value())
+            Int(tile_coords[i])
+            * Int(tile_shape[i])
+            * Int(data_layout_tensor.layout.stride[i]())
         )
 
     var tile_layout = Layout(

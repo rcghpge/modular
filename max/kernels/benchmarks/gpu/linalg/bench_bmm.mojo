@@ -116,15 +116,11 @@ def bench_bmm[
     k: KType,
     init_type: InitializationType,
 ) raises:
-    var a_size = Int(b.value()) * Int(m.value()) * Int(k.value())
+    var a_size = Int(b) * Int(m) * Int(k)
     var b_size = (
-        Int(b.value())
-        * Int(n.value())
-        * Int(k.value()) if transpose_b else Int(b.value())
-        * Int(k.value())
-        * Int(n.value())
+        Int(b) * Int(n) * Int(k) if transpose_b else Int(b) * Int(k) * Int(n)
     )
-    var c_size = Int(b.value()) * Int(m.value()) * Int(n.value())
+    var c_size = Int(b) * Int(m) * Int(n)
 
     var a_device_buffer = ctx.enqueue_create_buffer[a_type](a_size)
     var b_device_buffer = ctx.enqueue_create_buffer[a_type](b_size)
@@ -203,11 +199,11 @@ def bench_bmm[
                         b_buffer,
                         c_row_major=True,
                         transpose_b=transpose_b,
-                        batch_size=Int(b.value()),
+                        batch_size=Int(b),
                     )
                 else:
                     # Fallback vendor BMM for non-AMD GPUs
-                    for i in range(Int(b.value())):
+                    for i in range(Int(b)):
                         var batch = Coord(i, Idx[0], Idx[0])
                         var c_buffer = c_device.tile(
                             Coord(Idx[1], m, n), batch
@@ -271,17 +267,13 @@ def bench_bmm[
                 transpose_b=transpose_b,
                 use_vendor_blas=use_vendor_blas,
                 lambda_fn=lambda_fn,
-            ](Int(b.value()), Int(m.value()), Int(n.value()), Int(k.value()))
+            ](Int(b), Int(m), Int(n), Int(k))
         ),
         # TODO: Pick relevant benchmetric
         [
             ThroughputMeasure(
                 BenchMetric.flops,
-                2
-                * Int(b.value())
-                * Int(m.value())
-                * Int(n.value())
-                * Int(k.value()),
+                2 * Int(b) * Int(m) * Int(n) * Int(k),
             )
         ],
     )

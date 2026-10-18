@@ -35,9 +35,9 @@ def test_naive_blockwise_fp8_matmul[
     comptime BLOCK_SCALE_N = block_scales_sizes[1]
     comptime BLOCK_SCALE_K = block_scales_sizes[2]
 
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     print(
         "== test_naive_blockwise_fp8_matmul",

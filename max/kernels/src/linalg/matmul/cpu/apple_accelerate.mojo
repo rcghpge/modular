@@ -760,8 +760,8 @@ def _apple_batched_matmul_impl[
                 out_coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
             var local_batch_coords = batch_coords
-            local_batch_coords[rank - 1] = Int(out_coords[1].value())
-            local_batch_coords[rank - 2] = Int(out_coords[0].value())
+            local_batch_coords[rank - 1] = Int(out_coords[1])
+            local_batch_coords[rank - 2] = Int(out_coords[0])
 
             epilogue_fn[c_type, width, alignment=alignment](
                 Coord(local_batch_coords), out_val
@@ -778,8 +778,8 @@ def _apple_batched_matmul_impl[
                 out_coords.rank == 2
             ), "the matmul epilogue contract is rank 2"
             var local_batch_coords = batch_coords
-            local_batch_coords[rank - 1] = Int(out_coords[1].value())
-            local_batch_coords[rank - 2] = Int(out_coords[0].value())
+            local_batch_coords[rank - 1] = Int(out_coords[1])
+            local_batch_coords[rank - 2] = Int(out_coords[0])
 
             return compute_fn[c_type, width, alignment=alignment](
                 Coord(local_batch_coords), out_val

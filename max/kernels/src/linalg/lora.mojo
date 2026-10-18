@@ -127,8 +127,8 @@ def shrink_qkv_permute_3mn_sm100(
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime N = c_lora.static_shape[2]
-        var i = Int(idx[0].value())
-        var j = Int(idx[1].value())
+        var i = Int(idx[0])
+        var j = Int(idx[1])
         var new_j, new_k = divmod(j, N)
         comptime assert N % width == 0, "N must be divisible by width"
         # The current index is [i, new_j, new_k] in the M x 3 x N row major
@@ -356,8 +356,8 @@ def expand_qkv_sm100(
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
         comptime assert q_dim % width == 0, "q_dim must be divisible by width"
         comptime assert kv_dim % width == 0, "kv_dim must be divisible by width"
-        var token = Int(idx[0].value())
-        var j = Int(idx[1].value())
+        var token = Int(idx[0])
+        var j = Int(idx[1])
         if j < q_dim:
             q_out.store_linear[width=width, alignment=alignment](
                 IndexList[2](token, j), val.cast[q_type]()

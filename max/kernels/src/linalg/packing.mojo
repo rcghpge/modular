@@ -196,19 +196,19 @@ struct PackMatrixRows[
         # Calculate the remaining bound from the local offset.
         # Boundaries for readable data.
         var read_bound = Index(
-            Int(self.valid_data_dim[0].value()) - local_off_set[0],
-            Int(self.valid_data_dim[1].value()) - local_off_set[1],
+            Int(self.valid_data_dim[0]) - local_off_set[0],
+            Int(self.valid_data_dim[1]) - local_off_set[1],
         )
         # Boundaries for writeable space.
         var write_bound = Index(
-            Int(self.pack_tile_dim[0].value()) - local_off_set[0],
-            Int(self.pack_tile_dim[1].value()) - local_off_set[1],
+            Int(self.pack_tile_dim[0]) - local_off_set[0],
+            Int(self.pack_tile_dim[1]) - local_off_set[1],
         )
 
         # Global index the packing is starting from.
         var start_idx_global = Index(
-            local_off_set[0] + Int(self.global_offset[0].value()),
-            local_off_set[1] + Int(self.global_offset[1].value()),
+            local_off_set[0] + Int(self.global_offset[0]),
+            local_off_set[1] + Int(self.global_offset[1]),
         )
 
         # Fill the simd_size x simd_size transpose buffer
@@ -298,18 +298,8 @@ struct PackMatrixRows[
         )
 
         var valid_tile_simd_dim = Index(
-            Int(
-                min(
-                    self.valid_simd_dim[0].value(),
-                    self.pack_tile_dim[0].value(),
-                )
-            ),
-            Int(
-                min(
-                    self.valid_simd_dim[1].value(),
-                    self.pack_tile_dim[1].value(),
-                )
-            ),
+            Int(min(self.valid_simd_dim[0], self.pack_tile_dim[0])),
+            Int(min(self.valid_simd_dim[1], self.pack_tile_dim[1])),
         )
 
         # fill rows with valid data
@@ -333,8 +323,8 @@ struct PackMatrixRows[
             )
 
         # Pack the whole matrices with the unit helper.
-        var pack_tile_rows = Int(self.pack_tile_dim[0].value())
-        var pack_tile_cols = Int(self.pack_tile_dim[1].value())
+        var pack_tile_rows = Int(self.pack_tile_dim[0])
+        var pack_tile_cols = Int(self.pack_tile_dim[1])
         while row_idx < pack_tile_rows:
             col_idx = 0
             while col_idx < pack_tile_cols:
@@ -469,10 +459,10 @@ struct PackMatrixCols[
         @inline(.always)
         def pack_vector(row_idx: Int, col_idx: Int) {imm}:
             var global_idx = Index(
-                Int(self.global_offset[0].value()) + row_idx,
-                Int(self.global_offset[1].value()) + col_idx,
+                Int(self.global_offset[0]) + row_idx,
+                Int(self.global_offset[1]) + col_idx,
             )
-            var valid_cols = Int(self.valid_data_dim[1].value())
+            var valid_cols = Int(self.valid_data_dim[1])
             var data = SIMD[Self.dtype, Self.simd_size](0)
             if skip_col_bound or (col_idx + Self.simd_size <= valid_cols):
                 data = self.original_matrix.load_linear[
@@ -511,12 +501,9 @@ struct PackMatrixCols[
         @inline(.always)
         def prefetch_body[idx: Int]() {imm}:
             var global_row_idx = (
-                Int(self.global_offset[0].value())
-                + row_start
-                + unroll_factor
-                + idx
+                Int(self.global_offset[0]) + row_start + unroll_factor + idx
             )
-            var global_col_idx = Int(self.global_offset[1].value()) + col_start
+            var global_col_idx = Int(self.global_offset[1]) + col_start
             prefetch[
                 PrefetchOptions().for_read().high_locality().to_data_cache()
             ](
@@ -544,11 +531,11 @@ struct PackMatrixCols[
 
         comptime vnni_cols = 4
 
-        var kc = Int(self.valid_data_dim[0].value())
-        var nc = Int(self.valid_data_dim[1].value())
+        var kc = Int(self.valid_data_dim[0])
+        var nc = Int(self.valid_data_dim[1])
         var nr = Self.column_inner_size
-        for i in range(0, Int(self.pack_tile_dim[0].value()), vnni_cols):
-            for j in range(Int(self.pack_tile_dim[1].value()) // nr):
+        for i in range(0, Int(self.pack_tile_dim[0]), vnni_cols):
+            for j in range(Int(self.pack_tile_dim[1]) // nr):
                 for p in range(nr):
                     comptime for l in range(vnni_cols):
                         var local_idx = Index(i + l, p + nr * j)
@@ -556,10 +543,8 @@ struct PackMatrixCols[
                             1
                         ] >= nc else self.original_matrix.load_linear[width=1](
                             Index(
-                                Int(self.global_offset[0].value())
-                                + local_idx[0],
-                                Int(self.global_offset[1].value())
-                                + local_idx[1],
+                                Int(self.global_offset[0]) + local_idx[0],
+                                Int(self.global_offset[1]) + local_idx[1],
                             )
                         )
                         self.packed_matrix.store_linear[width=1](
@@ -576,11 +561,11 @@ struct PackMatrixCols[
         comptime i8mm_cols = 8
 
         comptime assert Self.use_i8mm
-        var kc = Int(self.valid_data_dim[0].value())
-        var nc = Int(self.valid_data_dim[1].value())
+        var kc = Int(self.valid_data_dim[0])
+        var nc = Int(self.valid_data_dim[1])
         comptime nr = Self.column_inner_size // 2
-        for i in range(0, Int(self.pack_tile_dim[0].value()), i8mm_cols):
-            for j in range(Int(self.pack_tile_dim[1].value()) // nr):
+        for i in range(0, Int(self.pack_tile_dim[0]), i8mm_cols):
+            for j in range(Int(self.pack_tile_dim[1]) // nr):
                 for p in range(0, nr, i8mm_rows):
                     for i2 in range(i8mm_cols):
                         for p2 in range(i8mm_rows):
@@ -591,10 +576,8 @@ struct PackMatrixCols[
                                 width=1
                             ](
                                 Index(
-                                    Int(self.global_offset[0].value())
-                                    + local_idx[0],
-                                    Int(self.global_offset[1].value())
-                                    + local_idx[1],
+                                    Int(self.global_offset[0]) + local_idx[0],
+                                    Int(self.global_offset[1]) + local_idx[1],
                                 )
                             )
                             self.packed_matrix.store_linear[width=1](
@@ -611,7 +594,7 @@ struct PackMatrixCols[
         Each iteration copies a block of shape (unroll_factor, simd_size)."""
         comptime assert not Self.use_vnni and not Self.use_i8mm
         var valid_row_count = Int(
-            min(self.valid_data_dim[0].value(), self.pack_tile_dim[0].value())
+            min(self.valid_data_dim[0], self.pack_tile_dim[0])
         )
         comptime unroll_factor = get_packB_unroll_factor()
 
@@ -626,8 +609,8 @@ struct PackMatrixCols[
                 row_idx, valid_row_count, col_idx
             )
 
-        var pack_tile_cols = Int(self.pack_tile_dim[1].value())
-        var valid_cols = Int(self.valid_data_dim[1].value())
+        var pack_tile_cols = Int(self.pack_tile_dim[1])
+        var valid_cols = Int(self.valid_data_dim[1])
         while row_idx < valid_row_count:
             col_idx = 0
             while col_idx < pack_tile_cols:
@@ -1196,11 +1179,11 @@ struct BTileGenerator[
             var factor = get_matmul_arch_factor[use_vnni, use_i8mm]()
             comptime inner_size2 = inner_size // 2 if use_i8mm else inner_size
 
-            var tile_k = Int(self.tile_n_k[1].value())
+            var tile_k = Int(self.tile_n_k[1])
             var tile_k2 = align_up(min(tile_k, valid_data_dim_nk[1]), factor)
 
             var tile_shape_pack = IndexList[3](
-                Int(self.tile_n_k[0].value()) // inner_size2,
+                Int(self.tile_n_k[0]) // inner_size2,
                 tile_k2 // factor,
                 inner_size2 * factor,
             )

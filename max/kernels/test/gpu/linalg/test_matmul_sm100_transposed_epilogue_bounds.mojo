@@ -58,9 +58,9 @@ def test_transposed_epilogue_row_straddle[
     transpose_b: Bool = True,
     swapAB: Bool = True,
 ](ctx: DeviceContext, m: MType, n: NType, k: KType) raises:
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     print(
         t"in/out=({a_type},{b_type},{c_type}) shape=({M},{N},{K})"

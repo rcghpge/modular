@@ -128,10 +128,7 @@ struct TensorCoreMMA[algorithm: StaticString]:
             comptime if gpu_ctx.target.is_nvidia_gpu():
                 comptime assert out_tt.rank == out_tt.flat_rank == 2
                 var output_strides = out_tt.layout.stride_coord()
-                if (
-                    Int(output_strides[0].value()) != N
-                    or Int(output_strides[1].value()) != 1
-                ):
+                if Int(output_strides[0]) != N or Int(output_strides[1]) != 1:
                     raise Error(
                         "NVIDIA tensor-core examples require row-major output"
                     )

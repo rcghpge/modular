@@ -87,7 +87,7 @@ def apply_rope[
     # runtime below, which static (`ComptimeInt`) elements forbid.
     var idx_dyn = idx.make_dynamic[.int64]()
     var indices = get_safetensors_idx(
-        Int(idx[rank - 1].value()), x.static_shape[rank - 1]
+        Int(idx[rank - 1]), x.static_shape[rank - 1]
     )
     var pos_re = idx_dyn
     var pos_im = idx_dyn
@@ -219,7 +219,7 @@ def rope_ragged[
             )
             return
         else:
-            var global_token_idx = Int(idx_arg[0].value())
+            var global_token_idx = Int(idx_arg[0])
 
             var batch_idx: Int = get_batch_from_row_offsets(
                 input_row_offsets, global_token_idx
@@ -227,7 +227,7 @@ def rope_ragged[
             var token_idx = Int(
                 UInt32(global_token_idx) - input_row_offsets[batch_idx]
             )
-            var head_dim_idx = Int(idx_arg[2].value())
+            var head_dim_idx = Int(idx_arg[2])
 
             # Use position_ids if provided, otherwise fall back to cache calculation
             var post_seq_idx = start_pos[batch_idx] + UInt32(token_idx)
@@ -238,7 +238,7 @@ def rope_ragged[
                     var section_idx = 0
 
                     comptime for i in range(len(sections)):
-                        comptime val = Int(sections[i].value())
+                        comptime val = Int(sections[i])
                         if head_dim_idx < val:
                             section_idx = i
                             break

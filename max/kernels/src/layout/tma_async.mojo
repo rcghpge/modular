@@ -136,7 +136,7 @@ def _coord_to_index_list[rank: Int, shape: Coord]() -> IndexList[rank]:
     ), "Coord rank must match the explicit IndexList rank"
     var result = IndexList[rank]()
     comptime for i in range(rank):
-        result[i] = Int(Coord[*shape.element_types]()[i].value())
+        result[i] = Int(Coord[*shape.element_types]()[i])
     return result
 
 

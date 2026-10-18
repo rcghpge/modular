@@ -57,14 +57,14 @@ def _check_rms_norm[cols: Int](rows: Int) raises:
     def input_fn[
         width: Int, alignment: Int
     ](c: Coord) {var x_ptr} -> SIMD[dtype, width]:
-        var i = Int(c[0].value()) * cols + Int(c[1].value())
+        var i = Int(c[0]) * cols + Int(c[1])
         return x_ptr.unsafe_offset(i).unsafe_load[width=width]()
 
     @inline(.always)
     def output_fn[
         width: SIMDLength, alignment: Int
     ](c: Coord, v: SIMD[dtype, width]) {var out_ptr}:
-        var i = Int(c[0].value()) * cols + Int(c[1].value())
+        var i = Int(c[0]) * cols + Int(c[1])
         out_ptr.unsafe_offset(i).unsafe_store[width=width](v)
 
     rms_norm[dtype, 2, target="cpu", epsilon=eps, weight_offset=Float32(0)](
@@ -100,7 +100,7 @@ def _check_softmax[cols: Int, logsoftmax: Bool = False](rows: Int) raises:
     def input_fn[
         width: Int, alignment: Int
     ](c: Coord) {var x_ptr} -> SIMD[dtype, width]:
-        var i = Int(c[0].value()) * cols + Int(c[1].value())
+        var i = Int(c[0]) * cols + Int(c[1])
         return x_ptr.unsafe_offset(i).unsafe_load[width=width]()
 
     softmax[dtype, 2, target="cpu", logsoftmax=logsoftmax](

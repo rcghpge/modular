@@ -550,5 +550,5 @@ def _num_outputs_excluding_axis[axis: Int](shape: Coord) -> Int:
     var num_outputs = 1
     comptime for i in range(shape.rank):
         if i != axis:
-            num_outputs *= Int(shape[i].value())
+            num_outputs *= Int(shape[i])
     return num_outputs

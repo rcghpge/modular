@@ -276,8 +276,8 @@ def _fused_qkv_matmul_kv_cache_impl[
         var output,
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var col = Int(idx[1].value())
-        var b_idx, t_idx = udivmod(Int(idx[0].value()), SEQ_LEN)
+        var col = Int(idx[1])
+        var b_idx, t_idx = udivmod(Int(idx[0]), SEQ_LEN)
         if col < q_dim:
             output.store[alignment=align_of[dtype]()](
                 (b_idx, t_idx, col),
@@ -2614,7 +2614,7 @@ def rms_norm_kv_cache_ragged_paged[
             rank
         )
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2626,12 +2626,10 @@ def rms_norm_kv_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = Int(idx[1].value())
-            head_dim_idx = Int(idx[2].value())
+            head_idx = Int(idx[1])
+            head_dim_idx = Int(idx[2])
         else:
-            head_idx, head_dim_idx = divmod(
-                Int(idx[1].value()), params.head_size
-            )
+            head_idx, head_dim_idx = divmod(Int(idx[1]), params.head_size)
 
         return k_cache.load[width=width](
             bs=batch_idx,
@@ -2652,7 +2650,7 @@ def rms_norm_kv_cache_ragged_paged[
             rank
         )
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2664,12 +2662,10 @@ def rms_norm_kv_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = Int(idx[1].value())
-            head_dim_idx = Int(idx[2].value())
+            head_idx = Int(idx[1])
+            head_dim_idx = Int(idx[2])
         else:
-            head_idx, head_dim_idx = divmod(
-                Int(idx[1].value()), params.head_size
-            )
+            head_idx, head_dim_idx = divmod(Int(idx[1]), params.head_size)
         k_cache.store(
             bs=batch_idx,
             tok_idx=cache_token_idx,
@@ -2765,7 +2761,7 @@ def rms_norm_value_cache_ragged_paged[
             + String(rank)
         )
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2777,12 +2773,10 @@ def rms_norm_value_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = Int(idx[1].value())
-            head_dim_idx = Int(idx[2].value())
+            head_idx = Int(idx[1])
+            head_dim_idx = Int(idx[2])
         else:
-            head_idx, head_dim_idx = divmod(
-                Int(idx[1].value()), params.head_size
-            )
+            head_idx, head_dim_idx = divmod(Int(idx[1]), params.head_size)
 
         return v_cache.load[width=width](
             bs=batch_idx,
@@ -2802,7 +2796,7 @@ def rms_norm_value_cache_ragged_paged[
             + String(rank)
         )
 
-        var global_token_idx = Int(idx[0].value())
+        var global_token_idx = Int(idx[0])
         var batch_idx, token_idx = get_batch_and_token_idx_from_row_offsets(
             input_row_offsets, global_token_idx
         )
@@ -2814,12 +2808,10 @@ def rms_norm_value_cache_ragged_paged[
         var head_dim_idx: Int
 
         comptime if per_head_norm:
-            head_idx = Int(idx[1].value())
-            head_dim_idx = Int(idx[2].value())
+            head_idx = Int(idx[1])
+            head_dim_idx = Int(idx[2])
         else:
-            head_idx, head_dim_idx = divmod(
-                Int(idx[1].value()), params.head_size
-            )
+            head_idx, head_dim_idx = divmod(Int(idx[1]), params.head_size)
         v_cache.store(
             bs=batch_idx,
             tok_idx=cache_token_idx,

@@ -394,8 +394,8 @@ def gather_sum[
             var emb_dim,
             var table_size,
         }:
-            var i = Int(coords[0].value())
-            var k = Int(coords[1].value())
+            var i = Int(coords[0])
+            var k = Int(coords[1])
 
             var accum = SIMD[dtype, width](0)
             for j in range(multi_hot):
@@ -1983,9 +1983,9 @@ def gather_nd[
             ), "data index out of bounds"
 
         comptime for i in range(output.rank):
-            assert Int(output_idx[i].value()) >= 0 and Int(
-                output_idx[i].value()
-            ) < Int(output.dim[i]()), "output index out of bounds"
+            assert Int(output_idx[i]) >= 0 and Int(output_idx[i]) < Int(
+                output.dim[i]()
+            ), "output index out of bounds"
 
         var data_coord = Coord(data_idx)
         var output_coord = Coord(output_idx)
@@ -2163,8 +2163,8 @@ def apply_packed_bitmask[
         comptime assert (
             width <= 32
         ), "apply_packed_bitmask: simd_width must be <= 32"
-        var b = Int(idx[0].value())
-        var v = Int(idx[1].value())
+        var b = Int(idx[0])
+        var v = Int(idx[1])
         var tok = Int32(v) + iota[.int32, width]()
         var base = v >> 5
         var w0 = SIMD[.int32, width](packed[b, base][0])

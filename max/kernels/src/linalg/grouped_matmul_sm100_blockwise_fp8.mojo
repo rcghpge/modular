@@ -1593,8 +1593,8 @@ def multi_stage_reg_epilogue[
                     var cmem_crd = split_layout.idx2crd[out_dtype=.uint32](
                         Int(linear_idx)
                     )
-                    var local_i = Int(cmem_crd[0].value())
-                    var local_j = Int(cmem_crd[1].value())
+                    var local_i = Int(cmem_crd[0])
+                    var local_j = Int(cmem_crd[1])
                     var global_i: Int = coord_m + local_i
                     var global_j: Int = coord_n + local_j
                     if global_i < Int(group_end_idx):

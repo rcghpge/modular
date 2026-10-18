@@ -107,7 +107,7 @@ def _is_row_major_contiguous[
     var expected = 1
 
     comptime for i in reversed(range(LayoutType.rank)):
-        if Int(tensor.layout.stride[i]().value()) != expected:
+        if Int(tensor.layout.stride[i]()) != expected:
             return False
         expected *= Int(tensor.dim[i]())
 

@@ -64,10 +64,10 @@ def test_blackwell_batched_matmul_tma_umma_warp_specialized[
     swapAB: Bool = False,
     k_group_size: Int = 1,
 ](ctx: DeviceContext, batch: BatchType, m: MType, n: NType, k: KType) raises:
-    var B = Int(batch.value())
-    var M = Int(m.value())
-    var N = Int(n.value())
-    var K = Int(k.value())
+    var B = Int(batch)
+    var M = Int(m)
+    var N = Int(n)
+    var K = Int(k)
 
     print(
         t"in/out dtypes=({a_type}, {b_type}, {c_type})  problem shape=({B},"
@@ -85,9 +85,9 @@ def test_blackwell_batched_matmul_tma_umma_warp_specialized[
     )
     var c_shape = row_major(batch, m, Idx[NType.static_value])
 
-    var a_size = Int(batch.value()) * Int(m.value()) * Int(k.value())
-    var b_size = Int(batch.value()) * Int(n.value()) * Int(k.value())
-    var c_size = Int(batch.value()) * Int(m.value()) * Int(n.value())
+    var a_size = Int(batch) * Int(m) * Int(k)
+    var b_size = Int(batch) * Int(n) * Int(k)
+    var c_size = Int(batch) * Int(m) * Int(n)
 
     var a_host_ptr = ctx.enqueue_create_host_buffer[a_type](a_size)
     var a_host = TileTensor(a_host_ptr, a_shape)

@@ -409,9 +409,9 @@ def gated_group_rmsnorm_cpu[
                 output.store((n, col), prod.cast[dtype]())
 
             if (
-                Int(y.layout.stride_coord().flatten()[1].value()) == 1
-                and Int(output.layout.stride_coord().flatten()[1].value()) == 1
-                and Int(weight.layout.stride_coord().flatten()[0].value()) == 1
+                Int(y.layout.stride_coord().flatten()[1]) == 1
+                and Int(output.layout.stride_coord().flatten()[1]) == 1
+                and Int(weight.layout.stride_coord().flatten()[0]) == 1
             ):
                 vectorize[simd_width_of[DType.float32]()](group_size, normalize)
             else:

@@ -3024,12 +3024,12 @@ def _gemv_cpu[
         out_type: DType, width: SIMDLength
     ](idx: Coord, value: SIMD[out_type, width]):
         comptime if has_epilogue_fn:
-            var m = Int(idx[0].value())
+            var m = Int(idx[0])
 
             comptime for i in range(width):
                 epilogue_fn[out_type, 1, alignment=1]((m + i, 0), value[i])
         elif has_compute_fn:
-            var m = Int(idx[0].value())
+            var m = Int(idx[0])
 
             comptime for i in range(width):
                 var out = compute_fn[out_type, 1, alignment=1](

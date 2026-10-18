@@ -208,7 +208,7 @@ def test_router_group_limited_fused_scores[
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
         return SIMD[.float32, width](
-            Float32(n_experts) - Float32(Int(coords[1].value()))
+            Float32(n_experts) - Float32(Int(coords[1]))
         )
 
     router_group_limited[
@@ -304,8 +304,8 @@ def test_single_group_router_fused_scores[
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
-        var token = Int(coords[0].value())
-        var expert = Int(coords[1].value())
+        var token = Int(coords[0])
+        var expert = Int(coords[1])
         var score = Float32(expert)
         if token == 0:
             score = Float32(n_experts - expert)
@@ -438,8 +438,8 @@ def test_single_group_router_eplb_fused_scores[
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
-        var token = Int(coords[0].value())
-        var expert = Int(coords[1].value())
+        var token = Int(coords[0])
+        var expert = Int(coords[1])
         var score = Float32(expert)
         if token == 0:
             score = Float32(n_experts - expert)
@@ -685,9 +685,7 @@ def test_single_group_router_scores_from_layout_and_lambda[
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
-        var rotated = (
-            Int(coords[1].value()) - Int(coords[0].value()) + n_experts
-        ) % n_experts
+        var rotated = (Int(coords[1]) - Int(coords[0]) + n_experts) % n_experts
         return SIMD[.float32, width](Float32(n_experts - rotated))
 
     single_group_router[n_experts, topk_experts, True, "gpu"](

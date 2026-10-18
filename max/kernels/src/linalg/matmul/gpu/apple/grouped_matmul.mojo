@@ -325,8 +325,8 @@ def grouped_matmul_mma_kernel[
         var epilogue_fn, var compute_fn, var c_ptr, var a_start
     }:
         comptime assert idx.rank == 2, "the matmul epilogue contract is rank 2"
-        var row = a_start + Int(idx[0].value())
-        var col = Int(idx[1].value())
+        var row = a_start + Int(idx[0])
+        var col = Int(idx[1])
         var row_idx = Coord(row, col)
         comptime if has_compute_fn:
             (c_ptr + row * N + col).store[alignment=alignment](

@@ -741,8 +741,8 @@ def test_blockscaled_pair_cta_mxfp8[
 ](ctx: DeviceContext, m: MType, n: NType) raises:
     comptime assert transpose_b, "transpose_b must be true"
 
-    var M = Int(m.value())
-    var N = Int(n.value())
+    var M = Int(m)
+    var N = Int(n)
     var K = k
 
     comptime BM = block_tile_shape[0]
