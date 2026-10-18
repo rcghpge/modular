@@ -14,6 +14,7 @@
 from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 from std.sys.info import CompilationTarget
+from std.sys.intrinsics import PrefetchOptions
 
 from std._plugin import DefaultPluginHooks
 from std._plugin.metal import MetalPluginHooks
@@ -68,6 +69,12 @@ def test_gpu_plugin_hooks() raises:
     comptime assert cuda.sleep_fn
     comptime assert hip.sleep_fn
     comptime assert not _host_target.stdlib_plugin.sleep_fn
+
+    comptime assert cuda.prefetch_fn[.GENERIC, PrefetchOptions()]
+    comptime assert not hip.prefetch_fn[.GENERIC, PrefetchOptions()]
+    comptime assert _metal_m1_target.stdlib_plugin.prefetch_fn[
+        .GENERIC, PrefetchOptions()
+    ]
 
     comptime assert cuda.atomic_float_minmax_via_int
     comptime assert not hip.atomic_float_minmax_via_int

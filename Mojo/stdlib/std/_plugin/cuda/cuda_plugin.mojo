@@ -28,6 +28,8 @@ from std.io.file_descriptor import RawFileDescriptor
 from std.math.math import _UnaryMathOp
 from std.io.io import _printf
 from std.reflection.location import SourceLocation
+from std.sys._assembly import inlined_assembly
+from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 
 from .cuda_gpu_id import _nvptx_gpu_id
 from .cuda_math import _nvptx_unary_math_fn
@@ -74,6 +76,19 @@ def _debug_assert_emit[
     )
 
 
+@inline(.always)
+def _prefetch[
+    address_space: AddressSpace
+](addr: Pointer[NoneType, ImmUntrackedOrigin, address_space=address_space]):
+    """Prefetches `addr` into the L2 cache."""
+    inlined_assembly[
+        "prefetch.global.L2 [$0];",
+        NoneType,
+        constraints="l,~{memory}",
+        has_side_effect=True,
+    ](addr)
+
+
 struct CUDAPlugin(StdPlugin):
     """`PluginHooks` implementation for NVIDIA CUDA backends."""
 
@@ -93,6 +108,12 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     comptime sleep_fn: OptionalReg[_SleepPluginHookFnType] = _sleep
 
     comptime atomic_float_minmax_via_int: Bool = True
+
+    comptime prefetch_fn[
+        address_space: AddressSpace, params: PrefetchOptions
+    ]: OptionalReg[_PrefetchPluginHookFnType[address_space]] = _prefetch[
+        address_space
+    ]
 
     @staticmethod
     @inline(.always)

@@ -32,6 +32,7 @@ from std.io.file_descriptor import RawFileDescriptor
 from std.math.math import _BinaryMathOp, _UnaryMathOp
 from std.sys import bit_width_of, llvm_intrinsic
 from std.sys._metal_print import _metal_print_write
+from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 
 
 def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
@@ -40,6 +41,15 @@ def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
     Metal kernels have a single os_log stream, so `file` is ignored.
     """
     _metal_print_write(StringSlice(unsafe_from_utf8=cstr.as_bytes_with_nul()))
+
+
+@inline(.always)
+def _drop_prefetch[
+    address_space: AddressSpace
+](addr: Pointer[NoneType, ImmUntrackedOrigin, address_space=address_space]):
+    # Metal has no prefetch instruction, and dropping a hint keeps the program
+    # correct.
+    pass
 
 
 @inline(.always)
@@ -193,5 +203,11 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime lowers_subvector_intrinsics: Bool = False
 
     comptime has_generic_address_space: Bool = False
-    comptime lowers_prefetch: Bool = False
+
+    comptime prefetch_fn[
+        address_space: AddressSpace, params: PrefetchOptions
+    ]: OptionalReg[_PrefetchPluginHookFnType[address_space]] = _drop_prefetch[
+        address_space
+    ]
+
     comptime default_atomic_ordering: Ordering = Ordering.RELAXED

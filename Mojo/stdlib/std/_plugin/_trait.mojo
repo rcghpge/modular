@@ -25,6 +25,7 @@ from std.math.math import (
 )
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
+from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
 from std.time.time import (
@@ -198,10 +199,21 @@ trait PluginHooks:
     round-tripping it through an integer.
     """
 
-    comptime lowers_prefetch: Bool = True
-    """Whether the backend lowers `llvm.prefetch`.
+    comptime prefetch_fn[
+        address_space: AddressSpace, params: PrefetchOptions
+    ]: OptionalReg[_PrefetchPluginHookFnType[address_space]] = None
+    """Override for `prefetch` on a pointer in `address_space`.
 
-    Where this is `False`, `prefetch` emits nothing.
+    `prefetch` lowers to `llvm.prefetch` where this is `None`. A backend that
+    cannot lower `llvm.prefetch` provides a hook that emits nothing, since a
+    prefetch is only a hint.
+
+    Parameters:
+        address_space: The address space of the pointer being prefetched.
+        params: The prefetch options the caller passed to `prefetch`.
+
+    Args:
+        addr: The address to prefetch.
     """
 
     comptime default_atomic_ordering: Ordering = Ordering.SEQUENTIAL
