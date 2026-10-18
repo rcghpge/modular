@@ -188,6 +188,9 @@ def indexer_k_norm_rope_store[
     ), "frequencies must be [rows, frequency_stride]"
     comptime assert cache.rank == 2, "cache must be [pages, page_stride]"
     var count = Int(keys.dim[0]())
+    # An empty batch may carry any pointer, so return before checking it.
+    if count == 0:
+        return
     var key_stride = row_stride[alignment=16](keys, "keys")
     var frequency_stride = row_stride[alignment=16](frequencies, "frequencies")
     var page_stride = row_stride[alignment=4](cache, "cache")
@@ -204,8 +207,6 @@ def indexer_k_norm_rope_store[
     )
     debug_assert(page_size > 0)
     debug_assert(Int(cache.dim[1]()) >= page_size * record_bytes)
-    if count == 0:
-        return
     ctx.enqueue_function[_indexer_k_store[fp4, ratio]](
         raw_pointer(keys).as_imm().as_unsafe_any_origin(),
         dense_pointer(positions).as_imm().as_unsafe_any_origin(),

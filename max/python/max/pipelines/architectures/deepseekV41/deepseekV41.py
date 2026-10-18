@@ -69,7 +69,6 @@ from .layers.dspark_moe import DeepseekV41DSparkMoE
 from .layers.engram import Engram
 from .layers.engram_hash import EngramLayout
 from .layers.engram_lookup import EngramLookup, EngramOperand, EngramTokens
-from .layers.indexer import DeepseekV41Indexer
 from .layers.moe import (
     IMAGE_SENTINEL_BASE_ID,
     DeepseekV41MoE,
@@ -444,11 +443,7 @@ class DeepseekV41Block(Module):
             ]
         else:
             partials = DeepseekV41Block._csa2_partials(
-                blocks,
-                [h for h, _ in attn_entered],
-                rows,
-                caches,
-                signal_buffers,
+                blocks, [h for h, _ in attn_entered], rows, caches
             )
         attended = ops.allreduce.sum(partials, signal_buffers)
         streams = [
@@ -465,13 +460,8 @@ class DeepseekV41Block(Module):
         normed: Sequence[TensorValue],
         rows: Sequence[RaggedRows],
         caches: Sequence[object],
-        signal_buffers: Sequence[BufferValue],
     ) -> list[TensorValue]:
-        """Returns each device's CSA2 output-projection partial sum.
-
-        Indexer scores are all-reduced between :meth:`CSA2Attention.begin`
-        and :meth:`CSA2Attention.end`.
-        """
+        """Returns each device's CSA2 output-projection partial sum."""
         attns: list[CSA2Attention] = []
         for block in blocks:
             assert isinstance(block.attn, CSA2Attention)
@@ -482,17 +472,6 @@ class DeepseekV41Block(Module):
                 attns, normed, rows, caches, strict=True
             )
         ]
-        if states[0].index_score is not None:
-            scores = []
-            for state in states:
-                assert state.index_score is not None
-                scores.append(state.index_score)
-            # Row-tiled so each all-reduce fits the signal buffers.
-            reduced = DeepseekV41Indexer.reduce_scores(
-                scores, signal_buffers, max_rows=attns[0].max_seq_len
-            )
-            for state, score in zip(states, reduced, strict=True):
-                state.index_score = score
         return [
             attn.end(state, row)
             for attn, state, row in zip(attns, states, rows, strict=True)

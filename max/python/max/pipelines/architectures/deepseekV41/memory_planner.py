@@ -24,7 +24,7 @@ import functools
 import json
 import logging
 import struct
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
@@ -34,7 +34,7 @@ from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.support.human_readable_formatter import to_human_readable_bytes
 
 from . import kv_leaves
-from .layers.indexer import INDEXER_SCORE_TILE_BYTES, indexer_score_row_tile
+from .layers.indexer import candidate_blocks_active, candidate_num_blocks
 from .model_config import (
     DeepseekV41Config,
     forward_row_bound,
@@ -56,91 +56,18 @@ from .weight_adapters import (
 
 logger = logging.getLogger("max.pipelines")
 
-# Indexer scores are float32.
-_SCORE_BYTES_PER_ENTRY = 4
-
-
-@dataclass(frozen=True)
-class KvLeafPlan:
-    """Page geometry for one KV-cache leaf, reduced to plain ints."""
-
-    slots_per_page: int
-    bytes_per_slot: int
-    """Bytes per physical cache entry: ``kv_dim * head_dim * dtype_bytes``."""
-
-
-@dataclass(frozen=True)
-class KvMemoryPlanConfig:
-    """Static inputs to :func:`plan_kv_memory`."""
-
-    leaves: Mapping[str, KvLeafPlan]
-    max_seq_len: int
-    score_ratio: int
-    """Smallest (widest-row) compress ratio among layers that own KV storage.
-
-    Layers run sequentially and reuse the score scratch, so it is sized for
-    the widest row rather than summed.
-    """
-
-
-def plan_kv_memory(
-    config: KvMemoryPlanConfig,
-    slots_by_leaf: Mapping[str, int],
-    score_budget_bytes: int,
-    live_rows: int,
-) -> tuple[dict[str, int], int, int]:
-    """Plans KV-cache leaf and indexer score-scratch bytes.
-
-    Each leaf's page-padded storage is summed independently. Score rows are
-    chunked against ``score_budget_bytes``; ``score_bytes`` is one reusable
-    chunk buffer, since chunks run sequentially.
-
-    Args:
-        config: Per-leaf page geometry plus the score-width inputs.
-        slots_by_leaf: Physical (already ratio-compressed) cache entries per
-            leaf, keyed as ``config.leaves``.
-        score_budget_bytes: Byte ceiling for the score scratch buffer.
-        live_rows: Query rows ``T`` the score buffer must size for.
-
-    Returns:
-        ``(arena_bytes_by_leaf, score_bytes, total_bytes)``.
-
-    Raises:
-        ValueError: If ``live_rows > 0`` and one score row exceeds
-            ``score_budget_bytes``.
-    """
-    arena_bytes_by_leaf = {
-        key: _leaf_arena_bytes(config.leaves[key], slots)
-        for key, slots in slots_by_leaf.items()
-    }
-
-    score_bytes = 0
-    if live_rows > 0:
-        row_bytes = _score_row_bytes(config.max_seq_len, config.score_ratio)
-        if row_bytes > score_budget_bytes:
-            raise ValueError(
-                f"one indexer score row needs {row_bytes} B "
-                f"(max_seq_len={config.max_seq_len}, "
-                f"ratio={config.score_ratio}) but score_budget_bytes is "
-                f"only {score_budget_bytes} B; rejecting rather than "
-                "truncating the row width or allocating over budget"
-            )
-        rows_per_chunk = score_budget_bytes // row_bytes
-        score_bytes = min(live_rows, rows_per_chunk) * row_bytes
-
-    total_bytes = sum(arena_bytes_by_leaf.values()) + score_bytes
-    return arena_bytes_by_leaf, score_bytes, total_bytes
-
-
-# The forward graph's planned arena, fitted to measured device memory at
-# S = 40000: ~2 MiB of activations per query row, five float32 and two bool
-# ``[T, S]`` score tensors, and a row-independent part. It barely depends on
-# the tensor-parallel degree (MoE intermediates are ``T * top_k`` rows on
-# every rank).
+# The forward graph's planned arena: ~2 MiB of activations per query row and
+# a row-independent part. It barely depends on the tensor-parallel degree
+# (MoE intermediates are ``T * top_k`` rows on every rank).
 _ARENA_ROW_BYTES = 2 << 20
-_ARENA_SCORE_F32_SLOTS = 5
-_ARENA_SCORE_MASK_SLOTS = 2
 _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
+# The indexer kernel scores query rows in windows that fit this transient
+# budget, whatever the batch or context length.
+_INDEXER_SCORES_BUDGET_BYTES = 512 << 20
+# The candidate keep step's ``[T, blocks]`` tensors: two float32 (the block
+# maxima and their forced copy) and up to four one-byte masks; plus its
+# top-k's float32 values, int64 ids and int32 tie ids, at most one per block.
+_KEEP_BYTES_PER_ENTRY = 2 * 4 + 4 + 4 + 8 + 4
 # The device MemoryManager allocates whole 256 MiB pages.
 _MM_PAGE_BYTES = 256 << 20
 
@@ -150,88 +77,60 @@ def _mm_pages(nbytes: int) -> int:
     return ceil(nbytes / _MM_PAGE_BYTES) * _MM_PAGE_BYTES if nbytes > 0 else 0
 
 
-def indexer_activation_bytes(
-    *, live_rows: int, score_cols: int, local_heads: int, row_tile: int
-) -> int:
-    """Returns per-device bytes of the indexer row loop's scratch.
+def indexer_activation_bytes(*, live_rows: int, candidate_blocks: int) -> int:
+    """Returns per-device bytes of the indexer's transient memory.
 
-    Counts, outside the graph arena, the ``[T, S]`` float32 output plus one
-    tile's ``[rows, S]`` result and ``[rows * local_heads, S]`` product,
-    ``rows = min(T, row_tile)``, each in whole MemoryManager pages.
+    The kernel's score window plus the candidate keep step's ``[T, blocks]``
+    tensors, each in whole MemoryManager pages.
 
     Args:
         live_rows: Query rows ``T`` in one forward.
-        score_cols: Score columns ``S`` (one per raw position).
-        local_heads: Indexer heads on one device.
-        row_tile: Rows per indexer score tile.
-    """
-    if live_rows <= 0 or score_cols <= 0:
-        return 0
-    rows = min(live_rows, row_tile)
-    return (
-        _mm_pages(live_rows * score_cols * _SCORE_BYTES_PER_ENTRY)
-        + _mm_pages(rows * score_cols * _SCORE_BYTES_PER_ENTRY)
-        + _mm_pages(rows * local_heads * score_cols * _SCORE_BYTES_PER_ENTRY)
-    )
-
-
-def graph_arena_bytes(*, live_rows: int, score_cols: int) -> int:
-    """Returns per-device bytes of the forward graph's planned arena.
-
-    A fixed part, a per-row part and five float32 and two bool ``[T, S]``
-    score tensors, rounded up to whole pages.
+        candidate_blocks: Candidate blocks per row, or 0 if no layer keeps
+            candidate blocks.
     """
     if live_rows <= 0:
         return 0
-    per_entry = (
-        _ARENA_SCORE_F32_SLOTS * _SCORE_BYTES_PER_ENTRY
-        + _ARENA_SCORE_MASK_SLOTS
-    )
-    return _mm_pages(
-        _ARENA_FIXED_BYTES
-        + live_rows * _ARENA_ROW_BYTES
-        + live_rows * max(0, score_cols) * per_entry
+    return _mm_pages(_INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(
+        live_rows * max(0, candidate_blocks) * _KEEP_BYTES_PER_ENTRY
     )
 
 
-def forward_activation_bytes(
-    *,
-    live_rows: int,
-    score_cols: int,
-    local_heads: int,
-    tile_bytes: int = INDEXER_SCORE_TILE_BYTES,
-) -> int:
+def graph_arena_bytes(*, live_rows: int) -> int:
+    """Returns per-device bytes of the forward graph's planned arena.
+
+    A fixed part plus a per-row part, rounded up to whole pages.
+    """
+    if live_rows <= 0:
+        return 0
+    return _mm_pages(_ARENA_FIXED_BYTES + live_rows * _ARENA_ROW_BYTES)
+
+
+def forward_activation_bytes(*, live_rows: int, candidate_blocks: int) -> int:
     """Returns one forward's per-device transient peak bytes.
 
-    The graph arena plus the indexer scratch, with the row tile the model
-    builds for ``tile_bytes``.
+    The graph arena plus the indexer's transient memory.
     """
-    row_tile = indexer_score_row_tile(local_heads, score_cols, tile_bytes)
-    return graph_arena_bytes(
-        live_rows=live_rows, score_cols=score_cols
-    ) + indexer_activation_bytes(
-        live_rows=live_rows,
-        score_cols=score_cols,
-        local_heads=local_heads,
-        row_tile=row_tile,
+    return graph_arena_bytes(live_rows=live_rows) + indexer_activation_bytes(
+        live_rows=live_rows, candidate_blocks=candidate_blocks
     )
 
 
-def _leaf_arena_bytes(leaf: KvLeafPlan, slots: int) -> int:
-    """Page-padded bytes for one leaf's ``slots`` physical cache entries."""
-    if slots <= 0:
-        return 0
-    pages = ceil(slots / leaf.slots_per_page)
-    return pages * leaf.slots_per_page * leaf.bytes_per_slot
+def candidate_blocks_per_row(text_config: Any, max_length: int) -> int:
+    """Returns the candidate blocks per row the keep step builds, or 0.
 
-
-def _score_row_bytes(max_seq_len: int, ratio: int) -> int:
-    """One dense indexer score row's bytes: ``2*ceil(max_seq_len/ratio)*4``.
-
-    The factor of two conservatively budgets a fresh and a retained half.
+    Sized for the smallest compress ratio, which gives the most blocks.
     """
-    width = 2 * ceil(max_seq_len / ratio)
-    return width * _SCORE_BYTES_PER_ENTRY
+    block_size = getattr(text_config, "candidate_block_size", 0) or 0
+    topk_blocks = getattr(text_config, "candidate_topk_blocks", 0) or 0
+    ratios = [r for r in text_config.compress_ratios if r > 0]
+    if not ratios:
+        return 0
+    ratio = min(ratios)
+    if not candidate_blocks_active(
+        max_length, ratio, block_size=block_size, topk_blocks=topk_blocks
+    ):
+        return 0
+    return candidate_num_blocks(max_length, ratio, block_size)
 
 
 # ---------------------------------------------------------------------------
@@ -245,17 +144,14 @@ def _score_row_bytes(max_seq_len: int, ratio: int) -> int:
 _HOST_RESIDENT_MARKER = ".engram.embed."
 
 # Split across the devices (each holds ``1 / num_devices``): the routed
-# experts (expert parallel), the head-sharded attention and indexer
-# projections, and Engram's column-parallel ``wkv`` (weight and scale).
-# Everything else is replicated, including ``wo_b`` (held whole on each
-# device).
+# experts (expert parallel), the head-sharded attention projections, and
+# Engram's column-parallel ``wkv`` (weight and scale). Everything else is
+# replicated, including ``wo_b`` and the indexer (held whole on each device).
 _SHARDED_MARKERS = (
     ".ffn.experts.",
     ".attn.wq_b.",
     ".attn.wo_a.",
     ".attn.attn_sink",
-    ".attn.indexer.wq_b.",
-    ".attn.indexer.weights_proj.",
     ".engram.wkv.",
 )
 # The fused query projection's fp8 weights are dequantized (2x) and their
@@ -547,45 +443,36 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         )
 
         if not any(spec.kind == "comp" for spec in specs):
-            # No compressed layer, so no indexer scoring.
+            # No compressed layer, so no indexer.
             return vision
 
         runtime = pipeline_config.runtime
         max_length = pipeline_config.model.max_length
-        # Decode also scores a dense [T, S] row, so this is not zeroed for
-        # decode-only roles.
+        # Decode also runs the keep step over every block, so this is not
+        # zeroed for decode-only roles.
         live_rows = forward_row_bound(
             runtime.max_num_input_tokens,
             runtime.max_batch_input_tokens,
             max_length,
         )
         num_devices = max(1, len(pipeline_config.model.device_specs))
-        local_heads = ceil(text_config.index_n_heads / num_devices)
-
-        row_tile = indexer_score_row_tile(
-            local_heads, max_length, INDEXER_SCORE_TILE_BYTES
-        )
-        arena = graph_arena_bytes(live_rows=live_rows, score_cols=max_length)
+        blocks = candidate_blocks_per_row(text_config, max_length)
+        arena = graph_arena_bytes(live_rows=live_rows)
         indexer = indexer_activation_bytes(
-            live_rows=live_rows,
-            score_cols=max_length,
-            local_heads=local_heads,
-            row_tile=row_tile,
+            live_rows=live_rows, candidate_blocks=blocks
         )
         per_device = arena + indexer
 
         logger.info(
             "Estimated DeepSeek-V4.1-Flash forward activation memory: %s per "
-            "device x %d devices (graph arena %s + indexer scoring %s; %d "
-            "live rows x %d columns, %d local heads, %d-row tiles)",
+            "device x %d devices (graph arena %s + indexer %s; %d live rows, "
+            "%d candidate blocks)",
             to_human_readable_bytes(per_device),
             num_devices,
             to_human_readable_bytes(arena),
             to_human_readable_bytes(indexer),
             live_rows,
-            max_length,
-            local_heads,
-            row_tile,
+            blocks,
         )
         return per_device * num_devices + vision
 
