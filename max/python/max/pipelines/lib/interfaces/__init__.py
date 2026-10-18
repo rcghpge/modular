@@ -42,7 +42,6 @@ from .arch_config import (
 )
 from .pipeline_model import (
     AlwaysSignalBuffersMixin,
-    GraphPipelineModel,
     GraphPipelineModelWithKVCache,
     ModelInputs,
     ModelOutputs,
@@ -69,7 +68,6 @@ __all__ = [
     "ArchVLConfigWithTextSubconfig",
     "BatchProcessor",
     "BatchProcessorRuntime",
-    "GraphPipelineModel",
     "GraphPipelineModelWithKVCache",
     "ModelInputs",
     "ModelOutputs",

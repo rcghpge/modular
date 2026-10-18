@@ -845,60 +845,6 @@ class PipelineModel(
         )
 
 
-class GraphPipelineModel(PipelineModel[BaseContextType, _ModelConfigT, Model]):
-    """Graph-API pipeline model without KV cache.
-
-    Subclasses implement :meth:`_build_graph_for_compile` and optionally
-    :meth:`_create_model_config` and :meth:`_wire_batch_processor`.
-    """
-
-    state_dict: dict[str, Any]
-
-    @traced
-    def load_model(self, session: InferenceSession) -> Model:
-        """Load weights, build the graph, compile, and wire the batch processor."""
-        state_dict = self._load_state_dict()
-        model_config = self._create_model_config(state_dict)
-
-        with CompilationTimer("model") as timer:
-            graph, weights_registry = self._build_graph_for_compile(
-                session, state_dict, model_config
-            )
-            timer.mark_build_complete()
-            self.state_dict = weights_registry
-            model = session.load(graph, weights_registry=weights_registry)
-
-        self._maybe_release_host_weights(model)
-        self._wire_batch_processor(model, model_config)
-        return model
-
-    def _load_state_dict(self) -> dict[str, Any]:
-        """Load and optionally adapt weights from the configured source."""
-        if self.adapter:
-            return self.adapter(dict(self.weights.items()))
-        return {key: value.data() for key, value in self.weights.items()}
-
-    def _hf_config_for_weights(self) -> AutoConfig | None:
-        """Optional HuggingFace config override for weight loading."""
-        return None
-
-    def _create_model_config(self, state_dict: dict[str, Any]) -> Any:
-        """Optional hook; returns ``None`` when no arch config object is needed."""
-        del state_dict
-        return None
-
-    def _build_graph_for_compile(
-        self,
-        session: InferenceSession,
-        state_dict: dict[str, Any],
-        model_config: Any,
-    ) -> tuple[Graph, dict[str, Any]]:
-        """Build the graph and return ``(graph, weights_registry)``."""
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement _build_graph_for_compile"
-        )
-
-
 class ModuleV3PipelineModel(PipelineModel[BaseContextType]):
     """ModuleV3 pipeline model without KV cache.
 

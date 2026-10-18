@@ -68,7 +68,6 @@ Model interface
    :template: autosummary/class.rst
 
    AlwaysSignalBuffersMixin
-   GraphPipelineModel
    GraphPipelineModelWithKVCache
    ModuleV3MultiGraphPipelineModelWithKVCache
    ModuleV3Outputs

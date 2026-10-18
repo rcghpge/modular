@@ -46,6 +46,10 @@ This version is still a work in progress.
 - Removed the `max.pipelines.lib.bfloat16_utils` module. Import its functions
   from `max.driver` instead.
 
+- Removed `GraphPipelineModel` from `max.pipelines.lib`. Subclass
+  `PipelineModel`, return the model's graphs from `graph_specs()`, and load
+  them with `load_graphs()` instead.
+
 ## Fixes
 
 ## Mojo language
