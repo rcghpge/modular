@@ -17,6 +17,7 @@ from std._plugin._trait import (
     StdPlugin,
     _GlobalPerfCounterNsPluginHookFnType,
     _PrintEmitPluginHookFnType,
+    _PrintfEmitPluginHookFnType,
     _SleepPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
@@ -29,6 +30,7 @@ from std.collections.string.string_span import (
 from std.ffi import CStringSpan
 from std.io.file_descriptor import RawFileDescriptor
 from std.math.math import _UnaryMathOp
+from std.memory import bitcast
 from std.reflection.location import SourceLocation
 from std.sys._amdgpu import (
     printf_append_args,
@@ -49,6 +51,88 @@ def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
     """
     var msg = printf_begin()
     _ = printf_append_string_n(msg, cstr.as_bytes_with_nul(), is_last=True)
+
+
+@inline(.always)
+def _printf_emit[
+    fmt: StaticString, *types: AnyType
+](*args: *types, file: RawFileDescriptor):
+    """Writes `_printf` output from an AMD kernel through the hostcall
+    fprintf service.
+
+    The service writes to a single output stream, so `file` is ignored.
+    """
+
+    # This is adapted from Triton's third party method for lowering
+    # AMD printf calls:
+    # https://github.com/triton-lang/triton/blob/1c28e08971a0d70c4331432994338ee05d31e633/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp#L321
+    def _to_uint64[T: AnyType, //](value: T) -> UInt64:
+        comptime if T == UInt64:
+            return rebind[UInt64](value)
+        elif T == UInt32:
+            return UInt64(rebind[UInt32](value))
+        elif T == UInt16:
+            return UInt64(rebind[UInt16](value))
+        elif T == UInt8:
+            return UInt64(rebind[UInt8](value))
+        elif T == Int64:
+            return UInt64(rebind[Int64](value))
+        elif T == Int32:
+            return UInt64(rebind[Int32](value))
+        elif T == Int16:
+            return UInt64(rebind[Int16](value))
+        elif T == Int8:
+            return UInt64(rebind[Int8](value))
+        elif T == Float16:
+            return bitcast[.uint64](Float64(rebind[Float16](value)))
+        elif T == Float32:
+            return bitcast[.uint64](Float64(rebind[Float32](value)))
+        elif T == Float64:
+            return bitcast[.uint64](rebind[Float64](value))
+        elif T == Int:
+            return UInt64(rebind[Int](value))
+        elif T == UInt:
+            return UInt64(rebind[UInt](value))
+        return 0
+
+    comptime args_len = types.length
+
+    var message = printf_begin()
+    # `get_static_string` guarantees a trailing nul in static memory (just
+    # past the returned range); include it so the AMD fprintf service sees a
+    # terminated format string even when `len(fmt)` is a multiple of 8.
+    # `as_bytes()` alone drops the nul, corrupting output (MSTDL-1597).
+    var fmt_str = get_static_string[fmt]()
+    message = printf_append_string_n(
+        message,
+        Span(
+            unsafe_ptr=fmt_str.as_bytes().unsafe_ptr(),
+            length=fmt_str.byte_length() + 1,
+        ),
+        args_len == 0,
+    )
+    comptime k_args_per_group = 7
+
+    comptime for group in range(0, args_len, k_args_per_group):
+        comptime bound = min(group + k_args_per_group, args_len)
+        comptime num_args = bound - group
+
+        var arguments = Array[UInt64, k_args_per_group](fill=0)
+
+        comptime for i in range(num_args):
+            arguments[i] = _to_uint64(args[group + i])
+        message = printf_append_args(
+            message,
+            UInt32(num_args),
+            arguments[0],
+            arguments[1],
+            arguments[2],
+            arguments[3],
+            arguments[4],
+            arguments[5],
+            arguments[6],
+            Int32(Int(bound == args_len)),
+        )
 
 
 # TODO(MSTDL-1783): Use `_printf` once it passes runtime `%s` arguments on
@@ -146,6 +230,10 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
         _debug_assert_emit(message, length, loc)
 
     comptime _handles_debug_assert: Bool = True
+
+    comptime printf_emit_fn[fmt: StaticString, *types: AnyType]: OptionalReg[
+        _PrintfEmitPluginHookFnType[*types]
+    ] = _printf_emit[fmt, *types]
 
     comptime unary_math_fn[
         op: _UnaryMathOp, dtype: DType, width: Int

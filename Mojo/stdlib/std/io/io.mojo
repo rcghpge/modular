@@ -28,21 +28,12 @@ from std.ffi import (
 )
 from std.memory.unsafe_pointer import unsafe_cast
 from std.sys import (
-    is_amd_gpu,
     is_gpu,
-    is_nvidia_gpu,
     stdin,
     stdout,
 )
-from std.sys._amdgpu import (
-    printf_append_args,
-    printf_append_string_n,
-    printf_begin,
-)
 from std.sys._libc import dup, fclose, fdopen, fflush, FILE_ptr
 from std.sys.info import CompilationTarget
-
-from std.memory import bitcast
 
 from .file_descriptor import RawFileDescriptor
 
@@ -53,6 +44,16 @@ comptime _PrintEmitPluginHookFnType = def[O: Origin](
     file_value: RawFileDescriptor,
 ) thin -> None
 """Plugin-hook signature for `PluginHooks.print_emit_fn`; keep in sync with the `print` emit path."""
+
+
+# TODO(OSSMDLR-2752): Drop `fmt: off` once mblack stops splitting
+# `*args: *types` into `* args: * types`.
+# fmt: off
+comptime _PrintfEmitPluginHookFnType[*types: AnyType] = def(
+    *args: *types, file: RawFileDescriptor
+) thin -> None
+"""Plugin-hook signature for `PluginHooks.printf_emit_fn`; keep in sync with `_printf`."""
+# fmt: on
 
 
 # ===----------------------------------------------------------------------=== #
@@ -210,88 +211,10 @@ def _printf[
         _printf_cpu[fmt](*args, file=file)
         return
 
-    comptime if is_nvidia_gpu():
-        # The argument pack will contain references for each value in the pack,
-        # but we want to pass their values directly into the C printf call. Load
-        # all the members of the pack.
-        var loaded_pack = args.get_loaded_kgen_pack()
-
-        _ = external_call["vprintf", Int32](
-            get_static_string[fmt]().as_c_string_span(),
-            Pointer(to=loaded_pack),
-        )
-    elif is_amd_gpu():
-        # This is adapted from Triton's third party method for lowering
-        # AMD printf calls:
-        # https://github.com/triton-lang/triton/blob/1c28e08971a0d70c4331432994338ee05d31e633/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp#L321
-        def _to_uint64[T: AnyType, //](value: T) -> UInt64:
-            comptime if T == UInt64:
-                return rebind[UInt64](value)
-            elif T == UInt32:
-                return UInt64(rebind[UInt32](value))
-            elif T == UInt16:
-                return UInt64(rebind[UInt16](value))
-            elif T == UInt8:
-                return UInt64(rebind[UInt8](value))
-            elif T == Int64:
-                return UInt64(rebind[Int64](value))
-            elif T == Int32:
-                return UInt64(rebind[Int32](value))
-            elif T == Int16:
-                return UInt64(rebind[Int16](value))
-            elif T == Int8:
-                return UInt64(rebind[Int8](value))
-            elif T == Float16:
-                return bitcast[.uint64](Float64(rebind[Float16](value)))
-            elif T == Float32:
-                return bitcast[.uint64](Float64(rebind[Float32](value)))
-            elif T == Float64:
-                return bitcast[.uint64](rebind[Float64](value))
-            elif T == Int:
-                return UInt64(rebind[Int](value))
-            elif T == UInt:
-                return UInt64(rebind[UInt](value))
-            return 0
-
-        comptime args_len = types.length
-
-        var message = printf_begin()
-        # `get_static_string` guarantees a trailing nul in static memory (just
-        # past the returned range); include it so the AMD fprintf service sees a
-        # terminated format string even when `len(fmt)` is a multiple of 8.
-        # `as_bytes()` alone drops the nul, corrupting output (MSTDL-1597).
-        var fmt_str = get_static_string[fmt]()
-        message = printf_append_string_n(
-            message,
-            Span(
-                unsafe_ptr=fmt_str.as_bytes().unsafe_ptr(),
-                length=fmt_str.byte_length() + 1,
-            ),
-            args_len == 0,
-        )
-        comptime k_args_per_group = 7
-
-        comptime for group in range(0, args_len, k_args_per_group):
-            comptime bound = min(group + k_args_per_group, args_len)
-            comptime num_args = bound - group
-
-            var arguments = Array[UInt64, k_args_per_group](fill=0)
-
-            comptime for i in range(num_args):
-                arguments[i] = _to_uint64(args[group + i])
-            message = printf_append_args(
-                message,
-                UInt32(num_args),
-                arguments[0],
-                arguments[1],
-                arguments[2],
-                arguments[3],
-                arguments[4],
-                arguments[5],
-                arguments[6],
-                Int32(Int(bound == args_len)),
-            )
-
+    comptime if case .Some(_printf_emit) = CurrentPlugin.printf_emit_fn[
+        fmt, *types
+    ]:
+        _printf_emit(*args, file=file)
     elif not is_gpu():
         _printf_cpu[fmt](*args, file=file)
     elif case .Some(_emit) = CurrentPlugin.print_emit_fn:
@@ -305,8 +228,6 @@ def _printf[
         # FIXME: The origin param of `_emit` should be inferred from `cstr`.
         _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)
     else:
-        # If we aren't targeting either a known GPU vendor, or CPU, issue
-        # a target error.
         CompilationTarget.unsupported_target_error[
             operation=__get_current_function_name()
         ]()

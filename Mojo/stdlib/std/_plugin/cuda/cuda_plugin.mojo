@@ -17,13 +17,17 @@ from std._plugin._trait import (
     StdPlugin,
     _GlobalPerfCounterNsPluginHookFnType,
     _PrintEmitPluginHookFnType,
+    _PrintfEmitPluginHookFnType,
     _SleepPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
 from std.collections import OptionalReg
 from std.sys.info import CompilationTarget
-from std.collections.string.string_span import _get_kgen_string
-from std.ffi import CStringSpan
+from std.collections.string.string_span import (
+    _get_kgen_string,
+    get_static_string,
+)
+from std.ffi import CStringSpan, external_call
 from std.io.file_descriptor import RawFileDescriptor
 from std.math.math import _UnaryMathOp
 from std.io.io import _printf
@@ -77,6 +81,25 @@ def _debug_assert_emit[
 
 
 @inline(.always)
+def _printf_emit[
+    fmt: StaticString, *types: AnyType
+](*args: *types, file: RawFileDescriptor):
+    """Formats `args` into `fmt` with device `printf`.
+
+    Device `printf` has a single output stream, so `file` is ignored.
+    """
+    # The argument pack will contain references for each value in the pack,
+    # but we want to pass their values directly into the C printf call. Load
+    # all the members of the pack.
+    var loaded_pack = args.get_loaded_kgen_pack()
+
+    _ = external_call["vprintf", Int32](
+        get_static_string[fmt]().as_c_string_span(),
+        Pointer(to=loaded_pack),
+    )
+
+
+@inline(.always)
 def _prefetch[
     address_space: AddressSpace
 ](addr: Pointer[NoneType, ImmUntrackedOrigin, address_space=address_space]):
@@ -123,6 +146,10 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
         _debug_assert_emit(message, length, loc)
 
     comptime _handles_debug_assert: Bool = True
+
+    comptime printf_emit_fn[fmt: StaticString, *types: AnyType]: OptionalReg[
+        _PrintfEmitPluginHookFnType[*types]
+    ] = _printf_emit[fmt, *types]
 
     comptime unary_math_fn[
         op: _UnaryMathOp, dtype: DType, width: Int

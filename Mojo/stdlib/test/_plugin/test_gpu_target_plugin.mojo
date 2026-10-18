@@ -63,6 +63,8 @@ def test_gpu_plugin_hooks() raises:
 
     comptime assert cuda.print_emit_fn
     comptime assert hip.print_emit_fn
+    comptime assert cuda.printf_emit_fn["%d", Int32]
+    comptime assert not _host_target.stdlib_plugin.printf_emit_fn["%d", Int32]
 
     comptime assert cuda.global_perf_counter_ns_fn
     comptime assert hip.global_perf_counter_ns_fn

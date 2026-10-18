@@ -27,7 +27,7 @@ from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 from std._gpu.primitives.id import _GPUIdPluginHookFnType
-from std.io.io import _PrintEmitPluginHookFnType
+from std.io.io import _PrintEmitPluginHookFnType, _PrintfEmitPluginHookFnType
 from std.time.time import (
     _GlobalPerfCounterNsPluginHookFnType,
     _SleepPluginHookFnType,
@@ -308,6 +308,24 @@ trait PluginHooks:
     comptime print_emit_fn: OptionalReg[_PrintEmitPluginHookFnType] = None
     """Plugin hook for emitting a `print()` UTF-8 byte buffer to a file
     descriptor."""
+
+    comptime printf_emit_fn[fmt: StaticString, *types: AnyType]: OptionalReg[
+        _PrintfEmitPluginHookFnType[*types]
+    ] = None
+    """Override for `_printf`, which formats its arguments into `fmt` with the
+    target's own `printf`.
+
+    Where this is `None`, `_printf` calls the C `fprintf` on a CPU and writes
+    `fmt` through `print_emit_fn` on a GPU.
+
+    Parameters:
+        fmt: The C `printf` format string.
+        types: The types of the values to format.
+
+    Args:
+        args: The values to format into `fmt`.
+        file: The file descriptor `_printf` was asked to write to.
+    """
 
     comptime global_perf_counter_ns_fn: OptionalReg[
         _GlobalPerfCounterNsPluginHookFnType
