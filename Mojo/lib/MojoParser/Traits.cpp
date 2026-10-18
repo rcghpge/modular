@@ -773,7 +773,7 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
         Attribute newValAttr =
             traitAliasReplacer.replace(clonedDefault->getAttrDictionary());
         clonedDefault->setAttrs(cast<DictionaryAttr>(newValAttr));
-        structAliasDecl->setIRValue(clonedDefault);
+        structAliasDecl->setOp(clonedDefault);
         structAliasDecl->resolvedness = DeclResolvedness::body;
       }
 

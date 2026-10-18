@@ -30,8 +30,6 @@ namespace M::KGEN::LIT {
 class DocString;
 class TypeScopeASTDecl;
 
-using DeclIRValue = SmartVariant<Operation *, CValue>;
-
 struct UnresolvedWildcardImport {
   ImportPathAttr moduleName;
   SMLoc importLoc;
@@ -62,6 +60,7 @@ class ASTDecl {
 public:
   enum class Kind : uint8_t {
     Base,
+    IR,
     OtherOp,
     Var,
     Alias,
@@ -104,18 +103,16 @@ public:
   std::optional<StringRef> getName();
   std::optional<StringRef> getDeprecationWarning();
 
-  CValue getIfIRValue() const { return dyn_cast<CValue>(irValue); }
+  virtual CValue getIfIRValue() const { return {}; }
 
   /// If the IRValue is an Operation*, return it, otherwise return null.
   /// This is used for things like Module, StructDecl, Func, or ParamDecl.
-  Operation *getIfOperation() const { return dyn_cast<Operation *>(irValue); }
+  Operation *getIfOperation() const { return operation; }
 
   /// Return the operation backing this decl, or null if it holds a value.
   /// Callers that know the decl kind should downcast and use the typed
   /// getOp() accessors instead.
   virtual Operation *getOperation() const { return getIfOperation(); }
-
-  void setIRValue(DeclIRValue value) { irValue = value; }
 
   /// Return true if this decl is callable: a `FnOp`, or a witness for one.
   bool isCallableDecl() const;
@@ -375,24 +372,25 @@ private:
   friend class DeclResolver;
   friend class ModuleLoader;
   friend class SharedState;
-  ASTDecl(SharedState &shared, DeclIRValue irValue, llvm::SMLoc loc,
+  ASTDecl(SharedState &shared, Operation *operation, llvm::SMLoc loc,
           ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
           ssize_t indentation);
   ASTDecl(const ASTDecl &) = delete;
   ASTDecl &operator=(const ASTDecl &) = delete;
 
 protected:
-  ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
+  ASTDecl(Kind declKind, SharedState &shared, Operation *operation,
           llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
           LexerCursor endCursor, ssize_t indentation);
 
   /// The Mojo shared state this decl is associated with.
   SharedState &shared;
 
+  void setOperation(Operation *newOperation) { operation = newOperation; }
+
 private:
-  /// This is the IRValue or MLIR operation that this decl corresponds to if it
-  /// has one.
-  DeclIRValue irValue;
+  /// The MLIR operation that this decl corresponds to, if it has one.
+  Operation *operation;
 
   /// This is the source location of the declaration, used for diagnostics and
   /// debug information.
@@ -506,6 +504,27 @@ private:
   /// this declaration. It may reference parameter declarations from this
   /// ASTDecl or its parent ASTDecls.
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
+};
+
+/// An AST declaration backed by a compile-time or runtime IR value.
+class IRASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::IR;
+  }
+
+  CValue getIfIRValue() const override { return value; }
+  void setValue(CValue newValue) { value = std::move(newValue); }
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
+            ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+            ssize_t indentation);
+
+  CValue value;
 };
 
 /// An AST declaration backed by an operation without dedicated declaration
@@ -655,9 +674,8 @@ public:
     return decl->getKind() == Kind::Def;
   }
 
-  /// Return the function operation, or null after a nested function has been
-  /// replaced by its captured function value during closure lowering.
   FnOp getOp() const { return dyn_cast_if_present<FnOp>(getIfOperation()); }
+  void setOp(FnOp op) { setOperation(op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
@@ -803,6 +821,7 @@ public:
 
   /// Return the alias operation represented by this declaration.
   AliasDeclOp getOp() const { return cast<AliasDeclOp>(getIfOperation()); }
+  void setOp(AliasDeclOp op) { setOperation(op.getOperation()); }
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSyntheticSignature() override;
   LogicalResult resolveBody(Lexer &lexer) override;
@@ -858,7 +877,7 @@ public:
   bool isResolved() const { return bool(getIfResolvedOp()); }
   bool isUnresolved() const { return bool(getIfUnresolvedOp()); }
   bool isWildcard() const { return bool(getIfWildcardOp()); }
-  void setResolvedOp(ImportOp op) { setIRValue(op.getOperation()); }
+  void setResolvedOp(ImportOp op) { setOperation(op.getOperation()); }
 
   LogicalResult resolveSignature(Lexer &lexer) override;
   LogicalResult resolveSignature(bool resolveTarget);

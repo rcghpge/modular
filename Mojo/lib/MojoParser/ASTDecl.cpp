@@ -148,19 +148,18 @@ std::optional<StringRef> ASTDecl::getDeprecationWarning() {
   return {};
 }
 
-ASTDecl::ASTDecl(SharedState &shared, DeclIRValue irValue, llvm::SMLoc loc,
+ASTDecl::ASTDecl(SharedState &shared, Operation *operation, llvm::SMLoc loc,
                  ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
                  ssize_t indentation)
-    : ASTDecl(Kind::Base, shared, std::move(irValue), loc, parentDecl, cursor,
-              endCursor, indentation) {}
+    : ASTDecl(Kind::Base, shared, operation, loc, parentDecl, cursor, endCursor,
+              indentation) {}
 
-ASTDecl::ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
+ASTDecl::ASTDecl(Kind declKind, SharedState &shared, Operation *operation,
                  llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
                  LexerCursor endCursor, ssize_t indentation)
-    : shared(shared), irValue(std::move(irValue)), loc(loc),
-      parentDecl(parentDecl), cursor(cursor),
-      endCursorState(endCursor.getState()), indentation(indentation),
-      kind(static_cast<unsigned char>(declKind)) {
+    : shared(shared), operation(operation), loc(loc), parentDecl(parentDecl),
+      cursor(cursor), endCursorState(endCursor.getState()),
+      indentation(indentation), kind(static_cast<unsigned char>(declKind)) {
   resolvedness = DeclResolvedness::unparsed;
   referencedFromBytecode = false;
   hasReferenceError = false;
@@ -171,6 +170,13 @@ ASTDecl::ASTDecl(Kind declKind, SharedState &shared, DeclIRValue irValue,
 }
 
 ASTDecl::~ASTDecl() = default;
+
+IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
+                     ASTDecl *parentDecl, LexerCursor cursor,
+                     LexerCursor endCursor, ssize_t indentation)
+    : ASTDecl(Kind::IR, shared, /*operation=*/nullptr, loc, parentDecl, cursor,
+              endCursor, indentation),
+      value(std::move(value)) {}
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation *op,
                                llvm::SMLoc loc, ASTDecl *parentDecl,

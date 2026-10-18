@@ -3226,7 +3226,7 @@ ParseResult StmtParser::parseTryStmt(size_t curIndent) {
           // Add an ASTDecl for the error name. TODO: Generalize to an
           // arbitrary pattern.
           auto &vd = cast<VarASTDecl>(getDeclResolver().addFullyResolvedDecl(
-              DeclIRValue(errDecl), errDecl.getNameAttr(), errExpr->getLoc(),
+              errDecl.getOperation(), errDecl.getNameAttr(), errExpr->getLoc(),
               curDeclScope));
           getEmitter().shared.notifyListenerOnVariableDecl(vd,
                                                            errExpr->getLoc());

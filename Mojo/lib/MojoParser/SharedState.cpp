@@ -2054,6 +2054,12 @@ void SharedState::notifyListenerOnVariableDecl(ASTDecl &decl,
     parserListener->onVariableDecl(&decl, identifierLoc);
 }
 
+void SharedState::notifyListenerOnDeclReplaced(ASTDecl &oldDecl,
+                                               ASTDecl &newDecl) {
+  if (parserListener)
+    parserListener->onDeclReplaced(&oldDecl, &newDecl);
+}
+
 void SharedState::notifyListenerOnRef(ArrayRef<ASTDecl *> decls,
                                       StringRef spelling, SMLoc loc) {
   if (!loc.isValid())

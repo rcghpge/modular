@@ -68,7 +68,10 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Add a new declaration that needs to be resolved.
-  ASTDecl &addDecl(DeclIRValue irValue, llvm::SMLoc loc, StringAttr baseName,
+  ASTDecl &addDecl(Operation *operation, llvm::SMLoc loc, StringAttr baseName,
+                   ASTDecl *parentDecl, LexerCursor cursor,
+                   LexerCursor endCursor, ssize_t indentation);
+  ASTDecl &addDecl(CValue value, llvm::SMLoc loc, StringAttr baseName,
                    ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
   TopLevelModuleASTDecl &addDecl(ModuleOp op, llvm::SMLoc loc,
@@ -88,9 +91,13 @@ public:
                            ASTDecl *parentDecl, DeclResolvedness resolvedness);
 
   /// Add a declaration that is already fully resolved.
-  ASTDecl &addFullyResolvedDecl(DeclIRValue declVal, StringAttr baseName,
+  ASTDecl &addFullyResolvedDecl(Operation *operation, StringAttr baseName,
                                 llvm::SMLoc loc, ASTDecl *parentDecl);
-  ASTDecl &addFullyResolvedDecl(DeclIRValue declVal, StringRef baseName,
+  ASTDecl &addFullyResolvedDecl(CValue value, StringAttr baseName,
+                                llvm::SMLoc loc, ASTDecl *parentDecl);
+  ASTDecl &addFullyResolvedDecl(Operation *operation, StringRef baseName,
+                                llvm::SMLoc loc, ASTDecl *parentDecl);
+  ASTDecl &addFullyResolvedDecl(CValue value, StringRef baseName,
                                 llvm::SMLoc loc, ASTDecl *parentDecl);
 
   /// Add a declaration that represents an erroneous declaration. The generated
@@ -105,10 +112,10 @@ public:
   /// Nothing else can find it, even if you traverse the entire tree.
   /// Often, this is just the first step before adding it to a parent, but
   /// sometimes it's not, and it must be found some other way.
-  ASTDecl &createUnlistedDecl(DeclIRValue irValue, llvm::SMLoc loc,
+  ASTDecl &createUnlistedDecl(Operation *operation, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
-  ASTDecl &createUnlistedDecl(Operation *decl, llvm::SMLoc loc,
+  ASTDecl &createUnlistedDecl(CValue value, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
   FileModuleASTDecl &createUnlistedDecl(FileModuleOp op, llvm::SMLoc loc,
@@ -145,11 +152,11 @@ public:
   /// new `DefASTDecl`; the source binding must then refer to the bound function
   /// literal rather than leave a `DefASTDecl` holding a value.
   ///
-  /// The replacement retains the old declaration's resolution state and
-  /// every name-table entry, including aliases. The caller must transfer any
-  /// owned children before calling this method. The old declaration is retired,
-  /// so callers must not access it afterwards.
-  ASTDecl &replaceDecl(ASTDecl &decl, DeclIRValue value);
+  /// The replacement retains the old declaration's resolution state and every
+  /// name-table entry, including aliases, and takes ownership of any children
+  /// not already transferred elsewhere. The old declaration is retired, so
+  /// callers must not access it afterwards.
+  ASTDecl &replaceDecl(ASTDecl &decl, CValue value);
 
   /// Register a decl's symbol in the MLIR symbol table and declForTypeSymbol
   /// map, without adding it to the parent's declsInScope. This allows the

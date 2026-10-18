@@ -1346,7 +1346,7 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
         spelling, varType, expr->getLocation(emitter), declKind);
     auto &varASTDecl =
         cast<VarASTDecl>(emitter.getDeclResolver().addFullyResolvedDecl(
-            DeclIRValue(varDecl), varDecl.getNameAttr(), loc, &lookupScope));
+            varDecl.getOperation(), varDecl.getNameAttr(), loc, &lookupScope));
     emitter.shared.notifyListenerOnVariableDecl(varASTDecl, loc);
 
     CValue result = isRefOrBind ? CValue(RLValue(varDecl)) : MLValue(varDecl);
@@ -2751,7 +2751,8 @@ static AnyValue emitMLIROperatorCall(const CallNode &call,
       auto region = std::make_unique<Region>();
       region->takeBody(unboundRegion.getRegion());
       unboundRegion.erase();
-      results.front()->setIRValue(PValue(BoolAttr::get(context, false)));
+      emitter.getDeclResolver().replaceDecl(
+          *results.front(), PValue(BoolAttr::get(context, false)));
       state.addRegion(std::move(region));
       continue;
     }
@@ -4887,9 +4888,9 @@ AnyValue FunctionTypeNode::emitIR(ExprDest &dest, IREmitter &emitter) const {
       return {};
   }
 
-  // Set the value of the dummy scope to the generated signature so that we can
-  // still resolve information about it in tools.
-  dummyScope.setIRValue(PValue(signature));
+  // Preserve the parameter scope for tooling while replacing its temporary
+  // declaration with the generated signature.
+  emitter.getDeclResolver().replaceDecl(dummyScope, PValue(signature));
 
   // The parsed FuncTypeGeneratorType is set to the pretty type that includes
   // implicit origins, we strip off the named origin decl references and replace
@@ -4937,7 +4938,7 @@ AnyValue GeneratorTypeNode::emitIR(ExprDest &dest, IREmitter &emitter) const {
   Type genType = GeneratorType::get(
       inputParamTypes, remapper.replace(bodyType.mlirType), metadata);
 
-  dummyScope.setIRValue(PValue(genType));
+  emitter.getDeclResolver().replaceDecl(dummyScope, PValue(genType));
   return emitter.emitResult(ASTType(genType), this, dest);
 }
 

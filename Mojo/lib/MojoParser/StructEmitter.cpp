@@ -324,7 +324,7 @@ FnOp StructEmitter::synthesizeDefaultTraitMethodWrapper(
       funcOp.getContext(), funcOp.getFunctionType().getInputs(), {resultType}));
 
   // Attach the new operation to the provided declaration.
-  existingDecl.setIRValue(funcOp.getOperation());
+  existingDecl.setOp(funcOp);
   existingDecl.resolvedness = DeclResolvedness::signature;
 
   [[maybe_unused]] Operation *existing =

@@ -604,7 +604,7 @@ static void processVariablesForPersistence(MojoParserREPLListener &listener,
       if (MRValue field = checkInsertPersistentVar(varOp)) {
         varOp.replaceAllUsesWith(field);
         varOp.erase();
-        decl->setIRValue(field);
+        decl = &decl->getShared().getDeclResolver().replaceDecl(*decl, field);
       }
       continue;
     }

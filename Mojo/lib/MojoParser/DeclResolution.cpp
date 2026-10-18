@@ -1116,7 +1116,7 @@ void FnSigDecorators::applyCopyOrMoveCapture(SMLoc decoratorLoc,
       return;
 
     // How is this transferring the RValue into the closure?
-    DeclIRValue resultVal;
+    CValue resultVal;
     if (auto srVal = captureRVal.getIfSRValue())
       resultVal = srVal;
     else {
@@ -1834,7 +1834,7 @@ static LogicalResult constructClosure(SharedState &shared, DefASTDecl &decl,
   MLValue instance = emitClosureInstance(captures, decl, shared, paramCaptures);
   if (!instance)
     return failure();
-  decl.setIRValue(instance);
+  shared.declResolver->replaceDecl(decl, instance);
   return success();
 }
 
@@ -2728,8 +2728,8 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
 
     // This function sets the argument decl to be fully resolved with the
     // specified IR representation.
-    auto setDecl = [&](DeclIRValue value) {
-      argDecl.setIRValue(std::move(value));
+    auto setDecl = [&](CValue value) {
+      cast<IRASTDecl>(argDecl).setValue(std::move(value));
       shared.notifyListenerOnArgumentDecl(argDecl, argName, argDecl.getLoc());
     };
 

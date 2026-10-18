@@ -276,6 +276,10 @@ public:
   /// Return nullptr if not found.
   Symbol *findSymbol(ASTDecl *decl);
 
+  /// Update the indexed declaration for a source binding that was replaced
+  /// during parsing.
+  void replaceSymbolDecl(ASTDecl *oldDecl, ASTDecl *newDecl);
+
   /// Walk all symbols in the index, regardless of range.
   void walkSymbols(function_ref<void(Symbol &)> callback);
 
@@ -310,6 +314,19 @@ Symbol *SymbolIndex::findSymbol(ASTDecl *decl) {
   if (auto it = symbolTable.find(decl); it != symbolTable.end())
     return it->second.get();
   return nullptr;
+}
+
+void SymbolIndex::replaceSymbolDecl(ASTDecl *oldDecl, ASTDecl *newDecl) {
+  auto it = symbolTable.find(oldDecl);
+  if (it == symbolTable.end())
+    return;
+
+  assert(!symbolTable.contains(newDecl) &&
+         "replacement decl is already indexed");
+  std::unique_ptr<Symbol> symbol = std::move(it->second);
+  symbolTable.erase(it);
+  symbol->decl = newDecl;
+  symbolTable.insert({newDecl, std::move(symbol)});
 }
 
 void SymbolIndex::walkSymbols(function_ref<void(Symbol &)> callback) {
@@ -605,6 +622,8 @@ public:
 
   void onVariableDecl(ASTDecl *decl, SMLoc identifierLoc) override;
 
+  void onDeclReplaced(ASTDecl *oldDecl, ASTDecl *newDecl) override;
+
   void onRef(ArrayRef<ASTDecl *> decls, StringRef spelling,
              llvm::SMRange range) override;
 
@@ -664,6 +683,10 @@ void LSPParserListener::onStructDecl(ASTDecl *decl, SMLoc identifierLoc) {
 
 void LSPParserListener::onVariableDecl(ASTDecl *decl, SMLoc identifierLoc) {
   addSymbolDecl(decl, identifierLoc);
+}
+
+void LSPParserListener::onDeclReplaced(ASTDecl *oldDecl, ASTDecl *newDecl) {
+  symbolIndex.replaceSymbolDecl(oldDecl, newDecl);
 }
 
 void LSPParserListener::onTraitDecl(ASTDecl *decl, SMLoc identifierLoc) {

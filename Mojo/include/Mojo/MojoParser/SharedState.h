@@ -505,6 +505,10 @@ public:
   /// declaration has been resolved by the parser.
   void notifyListenerOnVariableDecl(ASTDecl &decl, SMLoc identifierLoc);
 
+  /// Notify the parser listener, if present, that a declaration has been
+  /// replaced while preserving the source binding it represents.
+  void notifyListenerOnDeclReplaced(ASTDecl &oldDecl, ASTDecl &newDecl);
+
   /// Notify the parser listener, if present, that a new reference has been
   /// resolved by the parser, i.e. its declarations are known.
   void notifyListenerOnRef(ArrayRef<ASTDecl *> decls, StringRef spelling,

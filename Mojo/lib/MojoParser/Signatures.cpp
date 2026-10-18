@@ -2251,7 +2251,7 @@ static void typeCheckOneArgument(size_t idx, DefASTDecl *fnDecl,
   BlockArgument bbArg =
       blockOwningArg.addArgument(fullType, shared.translateLocation(arg.loc));
 
-  DeclIRValue argIRValue;
+  CValue argIRValue;
   if (arg.kgenConvention == ArgConvention::ImmReg)
     argIRValue = SRValue(bbArg);
   else // Everything else is passed in memory.

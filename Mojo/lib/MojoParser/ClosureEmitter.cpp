@@ -1159,10 +1159,8 @@ ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
   [[maybe_unused]] Operation *existing =
       shared.declResolver->finalizeFuncSignature(function, decl);
   assert(!existing && "unexpected redefinition of promoted closure");
-  if (prependedParams.empty()) {
-    nestedFnDecl.setIRValue(function);
+  if (prependedParams.empty())
     return {&decl, nullptr};
-  }
 
   ArrayRef<ParamDeclAttr> promotedFnParams = function.getParams();
   ArrayRef<ParamDeclAttr> captureParams =
