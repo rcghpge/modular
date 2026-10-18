@@ -420,7 +420,7 @@ struct SharedToGenericTileCopier[
             comptime if Self.masked:
                 var dst_num_rows = dst_num_valid_rows.or_else(Int(dst.dim[0]()))
                 dst_idx_bound = Scalar[dst.linear_idx_type](
-                    dst_num_rows * Int(dst.layout.stride[0]().value())
+                    dst_num_rows * Int(dst.dynamic_stride(0))
                 ) - Scalar[dst.linear_idx_type](dst_fragments._distance(dst))
 
             var src_flat = src.reshape(
@@ -894,7 +894,7 @@ struct GenericToSharedAsyncTileCopier[
             # the way the legacy iterator did).
             var src_num_rows = src_num_valid_rows.or_else(Int(src.dim[0]()))
             src_idx_bound = Scalar[idx_type](
-                src_num_rows * Int(src.layout.stride[0]().value())
+                src_num_rows * Int(src.dynamic_stride(0))
             ) - Scalar[idx_type](src_fragments._distance(src))
 
         # When swizzling, `copy_from_async` computes the destination address in
@@ -1117,7 +1117,7 @@ def copy_local_to_dram[
     comptime assert src.LayoutType.static_product == (
         rows * cols // thread_layout.size()
     )
-    debug_assert(Int(dst.layout.stride[0]().value()) >= 2 * cols)
+    debug_assert(Int(dst.dynamic_stride(0)) >= 2 * cols)
 
     var row_bound = min(rows, max(0, valid_rows))
     if row_bound == 0:

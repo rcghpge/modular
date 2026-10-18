@@ -3003,7 +3003,7 @@ struct PagedKVCache[
         the parent 6-D scales tensor interleaves kv_idx and layer_idx, so it
         cannot be recomputed from `page_size` alone.
         """
-        return UInt32(self.scales.value().layout.stride[0]().value()) // UInt32(
+        return UInt32(self.scales.value().dynamic_stride(0)) // UInt32(
             Self.kv_params.num_heads * Self.head_dim_granularity
         )
 

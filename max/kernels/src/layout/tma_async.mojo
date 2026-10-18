@@ -2723,8 +2723,8 @@ def create_tma_tile[
         ),
         (Int(tensor.dim[0]()), Int(tensor.dim[1]())),
         (
-            Int(tensor.layout.stride[0]().value()),
-            Int(tensor.layout.stride[1]().value()),
+            Int(tensor.dynamic_stride(0)),
+            Int(tensor.dynamic_stride(1)),
         ),
         (tile_sizes[0], tile_sizes[1]),
     )
@@ -3037,8 +3037,8 @@ def create_tensor_tile[
                     Int(tensor.dim[1]()) * (2 if unpack_fp4 else 1),
                 ),
                 (
-                    Int(tensor.layout.stride[0]().value()),
-                    Int(tensor.layout.stride[1]().value()),
+                    Int(tensor.dynamic_stride(0)),
+                    Int(tensor.dynamic_stride(1)),
                 ),
                 _coord_to_index_list[2, __desc_shape](),
             )
@@ -3059,9 +3059,9 @@ def create_tensor_tile[
                     Int(tensor.dim[2]()) * (2 if unpack_fp4 else 1),
                 ),
                 IndexList[3](
-                    Int(tensor.layout.stride[0]().value()),
-                    Int(tensor.layout.stride[1]().value()),
-                    Int(tensor.layout.stride[2]().value()),
+                    Int(tensor.dynamic_stride(0)),
+                    Int(tensor.dynamic_stride(1)),
+                    Int(tensor.dynamic_stride(2)),
                 ),
                 _coord_to_index_list[3, __desc_shape](),
             )
@@ -3081,10 +3081,10 @@ def create_tensor_tile[
                     Int(tensor.dim[3]()),
                 ),
                 IndexList[4](
-                    Int(tensor.layout.stride[0]().value()),
-                    Int(tensor.layout.stride[1]().value()),
-                    Int(tensor.layout.stride[2]().value()),
-                    Int(tensor.layout.stride[3]().value()),
+                    Int(tensor.dynamic_stride(0)),
+                    Int(tensor.dynamic_stride(1)),
+                    Int(tensor.dynamic_stride(2)),
+                    Int(tensor.dynamic_stride(3)),
                 ),
                 _coord_to_index_list[4, __desc_shape](),
             )
@@ -3105,11 +3105,11 @@ def create_tensor_tile[
                     Int(tensor.dim[4]()),
                 ),
                 IndexList[5](
-                    Int(tensor.layout.stride[0]().value()),
-                    Int(tensor.layout.stride[1]().value()),
-                    Int(tensor.layout.stride[2]().value()),
-                    Int(tensor.layout.stride[3]().value()),
-                    Int(tensor.layout.stride[4]().value()),
+                    Int(tensor.dynamic_stride(0)),
+                    Int(tensor.dynamic_stride(1)),
+                    Int(tensor.dynamic_stride(2)),
+                    Int(tensor.dynamic_stride(3)),
+                    Int(tensor.dynamic_stride(4)),
                 ),
                 _coord_to_index_list[5, __desc_shape](),
             )

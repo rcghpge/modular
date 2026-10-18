@@ -1592,16 +1592,16 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
             # `comm/allgather_rmsnorm.mojo`, which exist because sizing an output
             # from the whole world instead of the TP group is the natural mistake
             # here; these two only reach the kernel through a closure.
-            var rows_rt = Int(normed_buf.num_elements()) // cols_rt
+            var rows_rt = normed_buf.num_elements() // cols_rt
             var quant_cols = Int(quant_buf.dim[rank - 1]())
             if (
                 quant_cols != cols_rt
-                or Int(quant_buf.num_elements()) != rows_rt * cols_rt
+                or quant_buf.num_elements() != rows_rt * cols_rt
             ):
                 raise Error(
                     String(
                         "allgather_rms_norm_quant_mxfp8: outputs_quant is ",
-                        Int(quant_buf.num_elements()) // quant_cols,
+                        quant_buf.num_elements() // quant_cols,
                         " x ",
                         quant_cols,
                         ", expected ",
@@ -1614,12 +1614,12 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
             var scale_cols = Int(scale_buf.dim[rank - 1]())
             if (
                 scale_cols * MXFP8_SF_VECTOR_SIZE != cols_rt
-                or Int(scale_buf.num_elements()) != rows_rt * scale_cols
+                or scale_buf.num_elements() != rows_rt * scale_cols
             ):
                 raise Error(
                     String(
                         "allgather_rms_norm_quant_mxfp8: outputs_scale is ",
-                        Int(scale_buf.num_elements()) // scale_cols,
+                        scale_buf.num_elements() // scale_cols,
                         " x ",
                         scale_cols,
                         ", expected ",
@@ -1905,18 +1905,18 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
             var gamma_tensor = gammas[index].to_tile_tensor[.int64]()
             var cols_rt = Int(sum_buf.dim[rank - 1]())
 
-            var rows_rt = Int(normed_buf.num_elements()) // cols_rt
+            var rows_rt = normed_buf.num_elements() // cols_rt
             var quant_cols = Int(quant_buf.dim[rank - 1]())
             var packed_cols = (cols_rt * 3) // 4
             if (
                 cols_rt % 4 != 0
                 or quant_cols != packed_cols
-                or Int(quant_buf.num_elements()) != rows_rt * packed_cols
+                or quant_buf.num_elements() != rows_rt * packed_cols
             ):
                 raise Error(
                     String(
                         "allgather_rms_norm_quant_mxfp6: outputs_quant is ",
-                        Int(quant_buf.num_elements()) // quant_cols,
+                        quant_buf.num_elements() // quant_cols,
                         " x ",
                         quant_cols,
                         ", expected ",
@@ -1929,12 +1929,12 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
             var scale_cols = Int(scale_buf.dim[rank - 1]())
             if (
                 scale_cols * MXFP6_SF_VECTOR_SIZE != cols_rt
-                or Int(scale_buf.num_elements()) != rows_rt * scale_cols
+                or scale_buf.num_elements() != rows_rt * scale_cols
             ):
                 raise Error(
                     String(
                         "allgather_rms_norm_quant_mxfp6: outputs_scale is ",
-                        Int(scale_buf.num_elements()) // scale_cols,
+                        scale_buf.num_elements() // scale_cols,
                         " x ",
                         scale_cols,
                         ", expected ",

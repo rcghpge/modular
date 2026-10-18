@@ -1501,7 +1501,7 @@ def _rms_norm_impl[
     if Int(gamma.dim[0]()) != reduce_dim_size:
         raise Error(
             "Gamma size "
-            + String(gamma.layout.shape[0]().value())
+            + String(gamma.dim[0]())
             + " does not match dimension of reduction "
             + String(reduce_dim_size)
             + "."

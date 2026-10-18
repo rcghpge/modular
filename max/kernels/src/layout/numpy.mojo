@@ -167,9 +167,9 @@ def to_numpy[
     var shape = DynamicCoord[.int, LayoutType.rank]()
 
     comptime for i in range(LayoutType.rank):
-        shape[i] = rebind[type_of(shape[i])](Int(Int(tensor.dim[i]())))
+        shape[i] = rebind[type_of(shape[i])](Int(tensor.dim[i]()))
 
-    var n = tensor.layout.size()
+    var n = tensor.num_elements()
 
     if _is_row_major_contiguous(tensor):
         return copy_to_numpy_tensor(

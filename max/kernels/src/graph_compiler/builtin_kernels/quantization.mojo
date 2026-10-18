@@ -195,7 +195,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
                 output_fn,
                 scale_fn,
                 input.shape_coord(),
-                Int(Int(input.shape()[rank - 1])),
+                Int(input.shape()[rank - 1]),
                 gamma.to_tile_tensor[.int64](),
                 epsilon.cast[input_dtype](),
                 weight_offset.cast[input_dtype](),

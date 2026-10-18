@@ -972,7 +972,7 @@ def transpose_trivial_memcpy[
     comptime min_work_per_task = 1 * KB
     comptime min_work_for_parallel = 4 * min_work_per_task
 
-    var total_size = Int(output.num_elements())
+    var total_size = output.num_elements()
 
     if total_size <= min_work_for_parallel:
         unsafe_memcpy(dest=dst_ptr, src=src_ptr, count=total_size)
@@ -1192,7 +1192,7 @@ def transpose_strided[
     comptime for i in range(rank):
         output_shape[i] = Int(output.dim[i]())
 
-    var output_bytecount = Int(output.num_elements()) * size_of[dtype]()
+    var output_bytecount = output.num_elements() * size_of[dtype]()
 
     # Kickoff; for intuition on permuted input strides, note that
     #   transpose(output, input, [2, 0, 1])
