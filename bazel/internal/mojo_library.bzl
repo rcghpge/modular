@@ -51,6 +51,7 @@ def mojo_library(
         bitcode_libs = [],
         ignore_deprecated = [],
         import_path = ".",
+        target_compatible_with = [],
         tags = []):
     """
     Precompiles sources into a mojoc file.
@@ -87,6 +88,9 @@ def mojo_library(
             `IGNORED_POINTER_DEPRECATIONS` (see
             `//max/kernels/src:deprecations.bzl`) here explicitly.
         import_path: Forwarded to `mojo_library`
+        target_compatible_with:
+            Forwarded to all subtargets. See
+            https://bazel.build/extending/platforms#skipping-incompatible-targets
         tags: Forwarded to all subtargets
     """
     library_rule = _transitioned_mojo_library if use_production_compiler_for_asan else _upstream_mojo_library
@@ -104,6 +108,7 @@ def mojo_library(
         copts = copts + ignore_deprecated_copts,
         bitcode_libs = bitcode_libs,
         import_path = import_path,
+        target_compatible_with = target_compatible_with,
         **library_kwargs
     )
 
@@ -122,6 +127,7 @@ def mojo_library(
             visibility = visibility,
             tags = [ALLOW_UNUSED_TAG] + tags,
             testonly = testonly,
+            target_compatible_with = target_compatible_with,
         )
 
         build_test(
@@ -129,4 +135,5 @@ def mojo_library(
             targets = [name + ".docs"],
             tags = ["mojo-docs", "lint-test"] + tags,
             visibility = ["//visibility:private"],
+            target_compatible_with = target_compatible_with,
         )
