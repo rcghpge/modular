@@ -25,6 +25,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from max.dtype import DType
 from max.graph import BufferType, DeviceRef, TensorType, TensorValue, ops
+from max.nn.comm.ep import EPBatchManager
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer import ReturnLogits, logits_postprocess
 from max.pipelines.speculative.block_driver import (
@@ -187,6 +188,10 @@ class DeepseekV41BlockTarget:
         """
         assert batch.host_merged_offsets is not None
         assert batch.data_parallel_splits is not None
+        manager = self.replicas[0].ep_batch_manager
+        if manager is not None:
+            assert batch.ep_inputs is not None
+            manager.fetch_buffers(batch.ep_inputs)
         lookback = batch.extra.get(ENGRAM_LOOKBACK)
         split = DeepseekV41.split_replicas(
             self.replicas,
@@ -221,7 +226,9 @@ class DeepseekV41BlockTarget:
         return Verified(logits=outputs[1], hidden=(taps, split.rows))
 
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
+        if self.config.ep_config is None:
+            return ()
+        return EPBatchManager(self.config.ep_config).input_types()
 
 
 class DSparkDeepseekV41Proposer:

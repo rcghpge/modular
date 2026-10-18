@@ -187,8 +187,9 @@ modular_py_test(
 )
 
 # Guards the shared spec-decode graph (pipelines/speculative block_driver.py
-# and spec_input_types.py), SpeculativeConfig, and the KV cache input types
-# from nn/kv_cache MultiKVCacheParams. Traces only, but needs a GPU because
+# and spec_input_types.py), SpeculativeConfig, the KV cache input types from
+# nn/kv_cache MultiKVCacheParams, and the expert-parallel graph inputs from
+# nn/comm/ep EPBatchManager. Traces only, but needs a GPU because
 # the MXFP8 scale layout follows the host's accelerator.
 modular_py_test(
     name = "test_unified_dspark_construction",

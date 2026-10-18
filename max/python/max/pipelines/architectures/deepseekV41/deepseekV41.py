@@ -35,6 +35,7 @@ from max.graph import (
     Weight,
     ops,
 )
+from max.nn.comm.ep import EPBatchManager
 from max.nn.data_parallelism import split_batch_replicated
 from max.nn.embedding import Embedding
 from max.nn.hyper_connection import HyperConnection
@@ -1130,6 +1131,10 @@ class DeepseekV41(Module):
         if device is None:
             device = config.devices[0]
         self.device = device
+        self.ep_batch_manager: EPBatchManager | None = None
+        """Shared by the data-parallel replicas' routed experts; its graph
+        inputs must be fetched before the forward
+        (:meth:`data_parallel_replicas`)."""
 
         attn_factory, _ = make_csa2_attn_factory(
             num_heads=config.num_attention_heads,
@@ -1356,8 +1361,9 @@ class DeepseekV41(Module):
         Like :meth:`tensor_parallel_replicas`, but only the MoE splits its
         routed experts. Attention, its indexer and Engram's projection stay
         whole, since each device runs them on its own requests, and every
-        replica reads the full Engram tables. Call once, after
-        :meth:`load_state_dict`.
+        replica reads the full Engram tables. With ``config.ep_config``,
+        the replicas' routed experts share one :class:`EPBatchManager`
+        (:attr:`ep_batch_manager`). Call once, after :meth:`load_state_dict`.
 
         Args:
             devices: One device per replica.
@@ -1406,7 +1412,13 @@ class DeepseekV41(Module):
             for device, tables in zip(devices, engram_host_tables, strict=True)
         ]
         _adopt_shards(self, replicas, list(devices))
+        manager = (
+            EPBatchManager(self.config.ep_config)
+            if not split_attention and self.config.ep_config is not None
+            else None
+        )
         for rank, replica in enumerate(replicas):
+            replica.ep_batch_manager = manager
             for block in replica.trunk.layers:
                 assert isinstance(block, DeepseekV41Block)
                 assert isinstance(block.attn, CSA2Attention)
@@ -1414,6 +1426,7 @@ class DeepseekV41(Module):
                 if split_attention:
                     block.attn.keep_local_heads(n)
                 block.ffn.keep_local_experts(n, rank)
+                block.ffn.ep_batch_manager = manager
         return replicas
 
     @staticmethod

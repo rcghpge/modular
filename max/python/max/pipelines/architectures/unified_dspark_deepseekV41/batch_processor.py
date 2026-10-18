@@ -55,7 +55,8 @@ class UnifiedDSparkDeepseekV41Inputs(UnifiedSpecDecodeInputs):
     offsets (and, under data parallelism, their host copy) and logit count;
     under data parallelism the replica splits; the signal buffers (only with
     more than one device); the KV cache buffers; under data parallelism each
-    device's context length; the speculative-decoding inputs; the Engram
+    device's context length and the expert-parallel buffers; the
+    speculative-decoding inputs; the Engram
     lookback window and pinned Engram tables (only when the model has
     Engram); and last, a placeholder buffer whose length sets
     :data:`MERGED_ROWS_DIM`.
@@ -77,6 +78,9 @@ class UnifiedDSparkDeepseekV41Inputs(UnifiedSpecDecodeInputs):
 
     Only under data parallelism.
     """
+    ep_buffers: Sequence[Buffer] = ()
+    """The routed experts' expert-parallel communication buffers; only
+    under data parallelism."""
     engram_lookback_ids: Buffer | None = None
     """``[batch, max_ngram_size - 1]`` int64 token ids before each chunk.
 
@@ -112,6 +116,7 @@ class UnifiedDSparkDeepseekV41Inputs(UnifiedSpecDecodeInputs):
             *self.signal_buffers,
             *tree.leaves(self.kv_cache_inputs),
             *self.batch_context_lengths,
+            *self.ep_buffers,
             *self._spec_decode_tail_buffers(include_in_thinking_phase=False),
             *lookback,
             *self.engram_host_buffers,
@@ -137,6 +142,12 @@ class UnifiedDSparkDeepseekV41BatchProcessor(
     ]
 ):
     """Ragged batching with the sampling seed and the Engram lookback window."""
+
+    _ep_buffers: tuple[Buffer, ...] = ()
+
+    def bind_ep_buffers(self, buffers: Sequence[Buffer]) -> None:
+        """Binds the expert-parallel buffers created at model load."""
+        self._ep_buffers = tuple(buffers)
 
     @override
     def prepare_initial_token_inputs(
@@ -201,4 +212,5 @@ class UnifiedDSparkDeepseekV41BatchProcessor(
             kv_cache_inputs=kv_cache_inputs,
             seed=seed,
             structured_output=structured_output,
+            ep_buffers=self._ep_buffers,
         )

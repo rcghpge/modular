@@ -25,6 +25,7 @@ import numpy as np
 import pytest
 from max.dtype import DType
 from max.graph import DeviceRef, Graph, TensorType, TensorValue
+from max.nn.comm.ep import EPConfig
 from max.nn.kv_cache import MultiKVCacheParams
 from max.nn.layer import Module
 from max.pipelines.architectures import hf_config_shims  # noqa: F401
@@ -39,6 +40,7 @@ from max.pipelines.architectures.deepseekV41.layers.engram_lookup import (
     EngramLookup,
 )
 from max.pipelines.architectures.deepseekV41.model_config import (
+    NVFP4_ACTIVATION_QUANT_CONFIG,
     DeepseekV41Config,
 )
 from max.pipelines.architectures.unified_dspark_deepseekV41.model import (
@@ -63,7 +65,10 @@ def _speculative() -> SpeculativeConfig:
 
 
 def _model_config(
-    config: AutoConfig, devices: list[DeviceRef], data_parallel_degree: int
+    config: AutoConfig,
+    devices: list[DeviceRef],
+    data_parallel_degree: int,
+    expert_parallel: bool = False,
 ) -> DeepseekV41Config:
     text_config = DeepseekV41Config.get_text_config(config)
     pipeline_config = Mock()
@@ -76,13 +81,30 @@ def _model_config(
         kv_cache_config=KVCacheConfig(),
         cache_dtype=DType.bfloat16,
     )
+    text_fields = DeepseekV41Config.resolve_text_fields(text_config)
+    ep_config = (
+        EPConfig(
+            dispatch_dtype=DType.uint8,
+            dispatch_quant_config=NVFP4_ACTIVATION_QUANT_CONFIG,
+            combine_dtype=DType.bfloat16,
+            hidden_size=text_fields["hidden_size"],
+            top_k=text_fields["num_experts_per_tok"],
+            n_experts=text_fields["n_routed_experts"],
+            max_tokens_per_rank=256,
+            n_gpus_per_node=len(devices),
+            n_nodes=1,
+        )
+        if expert_parallel
+        else None
+    )
     return DeepseekV41Config(
         dtype=DType.bfloat16,
+        ep_config=ep_config,
         kv_params=kv_params,
         devices=devices,
         max_seq_len=4096,
         data_parallel_degree=data_parallel_degree,
-        **DeepseekV41Config.resolve_text_fields(text_config),
+        **text_fields,
         **DeepseekV41Config.resolve_quantization_fields(config),
     )
 
@@ -94,19 +116,24 @@ def _fix_up_weight_names(module: Module) -> None:
 
 
 @pytest.mark.parametrize(
-    ("num_devices", "data_parallel_degree"), [(1, 1), (4, 1), (4, 4)]
+    ("num_devices", "data_parallel_degree", "expert_parallel"),
+    [(1, 1, False), (4, 1, False), (4, 4, False), (4, 4, True)],
 )
 def test_unified_dspark_graph_traces(
-    num_devices: int, data_parallel_degree: int
+    num_devices: int, data_parallel_degree: int, expert_parallel: bool
 ) -> None:
     """One spec-decode step traces; a weightless driver declares its inputs.
 
     With a data-parallel degree of 4 each device verifies and drafts its own
-    replica's requests.
+    replica's requests; with ``expert_parallel`` the verification's routed
+    experts dispatch their rows to the owning devices, which reads the
+    expert-parallel graph inputs.
     """
     config = AutoConfig.from_pretrained(str(TESTDATA / "config.json"))
     devices = [DeviceRef.GPU(i) for i in range(num_devices)]
-    model_config = _model_config(config, devices, data_parallel_degree)
+    model_config = _model_config(
+        config, devices, data_parallel_degree, expert_parallel
+    )
     kv_params = model_config.kv_params
     assert isinstance(kv_params, MultiKVCacheParams)
     specs = kv_leaves.kv_leaf_specs(DeepseekV41Config.get_text_config(config))

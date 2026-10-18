@@ -28,6 +28,10 @@ from max.pipelines.architectures.deepseekV41.memory_planner import (
     DeviceWeightLayout,
     device_weight_bytes,
 )
+from max.pipelines.architectures.deepseekV41.model_config import (
+    DeepseekV41Config,
+    data_parallel_ep_config,
+)
 from max.pipelines.kv_cache.memory_planner import ModelConfigWithKVCache
 from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.memory_estimation import MemoryEstimator
@@ -280,18 +284,29 @@ def test_dp4_splits_only_the_routed_experts() -> None:
     assert abs(dp4 - (whole - expert_bytes * 3 / 4)) <= 1
 
 
-def _dp4_activation(data_parallel_degree: int) -> int:
+def _dp4_config(data_parallel_degree: int) -> NonCallableMock:
     config = _pipeline_config(
         max_length=40000, max_num_input_tokens=8192, num_devices=4
     )
     config.model.data_parallel_degree = data_parallel_degree
-    return _planner().estimate_activation_memory(
-        config, _real_huggingface_config()
+    for i, spec in enumerate(config.model.device_specs):
+        spec.id = i
+    config.speculative = None
+    return config
+
+
+def test_dp4_reserves_the_expert_parallel_buffers() -> None:
+    """Each DP4 device also reserves the expert-parallel buffers and 12 KiB
+    for each row its experts can receive: every replica's 8192 rows, six
+    routed copies each."""
+    hf_config = _real_huggingface_config()
+    extra = (
+        _planner().estimate_activation_memory(_dp4_config(4), hf_config)
+        - _planner().estimate_activation_memory(_dp4_config(1), hf_config)
+    ) // 4
+    ep = data_parallel_ep_config(
+        _dp4_config(4), DeepseekV41Config.get_text_config(hf_config)
     )
-
-
-def test_dp4_reserves_the_other_replicas_moe_rows() -> None:
-    """Each DP4 device also reserves the MoE's rows of the other three
-    replicas: 256 KiB for each of their 8192 rows."""
-    extra = (_dp4_activation(4) - _dp4_activation(1)) // 4
-    assert extra == 3 * 8192 * (256 << 10)
+    assert ep is not None
+    assert ep.get_max_recv_tokens() == 4 * 8192 * 6
+    assert extra == ep.estimate_memory_usage() + 4 * 8192 * 6 * (12 << 10)

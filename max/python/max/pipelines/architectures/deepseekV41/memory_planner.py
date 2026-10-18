@@ -37,6 +37,7 @@ from . import kv_leaves
 from .layers.indexer import candidate_blocks_active, candidate_num_blocks
 from .model_config import (
     DeepseekV41Config,
+    data_parallel_ep_config,
     forward_row_bound,
     head_bf16_enabled,
     max_images_per_request,
@@ -64,6 +65,11 @@ _ARENA_ROW_BYTES = 2 << 20
 # top-k intermediates, float32 partial sum), for the other replicas' rows a
 # data-parallel device also runs the MoE on.
 _MOE_ROW_BYTES = 256 << 10
+
+# Upper bound on the routed experts' transient bytes per row of an
+# expert-parallel receive buffer: the rows arrive quantized, so this is the
+# bf16 down projection output plus slack.
+_EP_RECV_ROW_BYTES = 12 << 10
 _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
 # The indexer kernel scores query rows in windows that fit this transient
 # budget, whatever the batch or context length.
@@ -477,9 +483,35 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         indexer = indexer_activation_bytes(
             live_rows=live_rows, candidate_blocks=blocks
         )
-        # Each replica gets its own row budget; under data parallelism the
-        # MoE runs on every replica's rows at once.
-        moe_rows = _mm_pages((dp - 1) * live_rows * _MOE_ROW_BYTES)
+        ep_config = data_parallel_ep_config(pipeline_config, text_config)
+        if ep_config is not None:
+            # Expert-parallel dispatch: the persistent communication buffers,
+            # and the experts' intermediates over the statically sized
+            # receive rows.
+            ep_buffers = ep_config.estimate_memory_usage()
+            moe_rows = ep_buffers + _mm_pages(
+                ep_config.get_max_recv_tokens() * _EP_RECV_ROW_BYTES
+            )
+            speculative = pipeline_config.speculative
+            if speculative is not None and speculative.is_dspark():
+                # The drafter's experts still run every replica's draft
+                # blocks on each device.
+                assert runtime.max_batch_size is not None
+                draft_rows = runtime.max_batch_size * (
+                    (speculative.num_speculative_tokens or 0) + 1
+                )
+                moe_rows += _mm_pages((dp - 1) * draft_rows * _MOE_ROW_BYTES)
+            logger.info(
+                "Estimated DeepSeek-V4.1-Flash expert-parallel memory: %s "
+                "per device (communication buffers %s, %d receive rows)",
+                to_human_readable_bytes(moe_rows),
+                to_human_readable_bytes(ep_buffers),
+                ep_config.get_max_recv_tokens(),
+            )
+        else:
+            # Each replica gets its own row budget; under data parallelism
+            # without expert dispatch, the MoE runs on every replica's rows.
+            moe_rows = _mm_pages((dp - 1) * live_rows * _MOE_ROW_BYTES)
         per_device = arena + indexer + moe_rows
 
         logger.info(

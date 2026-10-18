@@ -48,6 +48,7 @@ from max.experimental import functional as F
 from max.experimental.compilation import CompiledCallable
 from max.experimental.tensor import default_dtype
 from max.graph import (
+    BufferType,
     DeviceRef,
     Graph,
     TensorType,
@@ -57,6 +58,7 @@ from max.graph import (
     ops,
 )
 from max.graph.weights import WeightData, Weights, WeightsAdapter
+from max.nn.comm.ep import EPBatchManager, EPCommInitializer
 from max.nn.kv_cache import (
     KVCacheInputs,
     KVCacheParamInterface,
@@ -72,10 +74,13 @@ from max.pipelines.context import (
 )
 from max.pipelines.lib import (
     GraphPipelineModelWithKVCache,
+    GraphRole,
+    GraphSpec,
     KVCacheConfig,
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
+    compile_and_init_graphs,
 )
 from max.pipelines.lib.interfaces.batch_processor import (
     BatchProcessor,
@@ -98,6 +103,7 @@ from max.profiler import traced
 from max.support.host_memory import available_host_memory, host_memory_limit
 from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoTokenizer
+from typing_extensions import override
 
 from . import engram_shared_host, kv_leaves, weight_adapters
 from .batch_vision_inputs import pack_uncached_images
@@ -776,6 +782,10 @@ class DeepseekV41Inputs(ModelInputs):
     Only under data parallelism, where the batch is replica-major.
     """
 
+    ep_buffers: Sequence[Buffer] = ()
+    """The routed experts' expert-parallel communication buffers; only
+    under data parallelism."""
+
     engram_host_buffers: Sequence[Buffer] = ()
     """Pinned Engram tables, one (weight, scale) pair per device and layer.
 
@@ -804,6 +814,7 @@ class DeepseekV41Inputs(ModelInputs):
             self.return_n_logits,
             *lookback,
             *data_parallel,
+            *self.ep_buffers,
             *self.signal_buffers,
             *tree.leaves(self.kv_cache_inputs),
             *self.vision_embeddings,
@@ -823,8 +834,15 @@ class DeepseekV41BatchProcessor(
     ``engram_lookback_ids`` is inserted right after ``return_n_logits``.
     Under data parallelism the replicas' requests are staged replica-major
     into one batch, and ``host_input_row_offsets`` and
-    ``data_parallel_splits`` follow (on CPU).
+    ``data_parallel_splits`` follow (on CPU), then the expert-parallel
+    communication buffers.
     """
+
+    _ep_buffers: tuple[Buffer, ...] = ()
+
+    def bind_ep_buffers(self, buffers: Sequence[Buffer]) -> None:
+        """Binds the expert-parallel buffers created at model load."""
+        self._ep_buffers = tuple(buffers)
 
     @property
     def _engram_lookback_depth(self) -> int:
@@ -848,7 +866,7 @@ class DeepseekV41BatchProcessor(
         depth = self._engram_lookback_depth
         # Right after `return_n_logits`; must match the order of
         # `DeepseekV41Inputs.buffers`.
-        extra: list[TensorType] = []
+        extra: list[TensorType | BufferType] = []
         if depth:
             extra.append(
                 TensorType(
@@ -866,6 +884,8 @@ class DeepseekV41BatchProcessor(
                     data_parallel_degree=dp,
                 ).values()
             )
+        if self.config.ep_config is not None:
+            extra.extend(EPBatchManager(self.config.ep_config).input_types())
         inputs[3:3] = extra
         return inputs
 
@@ -915,6 +935,7 @@ class DeepseekV41BatchProcessor(
                 if dp > 1
                 else None
             ),
+            ep_buffers=self._ep_buffers,
         )
 
 
@@ -1202,6 +1223,38 @@ class DeepseekV41Model(
         """
         self._pending_weight_loads.append((load, overlaps_compile))
 
+    ep_comm_initializer: EPCommInitializer | None = None
+
+    @override
+    def _init_distributed_runtime(
+        self, session: InferenceSession, model_config: Any
+    ) -> None:
+        """Sets up the routed experts' expert-parallel communication.
+
+        Only under data parallelism (``model_config.ep_config``), and not on
+        virtual devices, which compile the graph without running it.
+        """
+        assert isinstance(model_config, DeepseekV41Config)
+        ep_config = model_config.ep_config
+        if ep_config is None or is_virtual_device_mode():
+            return
+        initializer = EPCommInitializer(ep_config)
+        init = initializer.init_module()
+        specs: dict[str, GraphSpec] = {
+            GraphRole.EP_INIT: GraphSpec(init, "ep_init", init.input_types())
+        }
+        modules = compile_and_init_graphs(session, specs)
+        initializer.run_init(modules[GraphRole.EP_INIT].engine_model)
+        self.ep_comm_initializer = initializer
+        # Every V4.1 batch processor takes the buffers as graph inputs.
+        bind = getattr(self.batch_processor, "bind_ep_buffers", None)
+        if bind is None:
+            raise TypeError(
+                f"{type(self.batch_processor).__name__} cannot take the "
+                "expert-parallel buffers"
+            )
+        bind(initializer.model_inputs())
+
     @traced
     def load_model(self, session: InferenceSession) -> Model:
         """Builds the graph, then compiles it while the weights load.
@@ -1311,6 +1364,13 @@ class DeepseekV41Model(
                     v.tensor for v in all_inputs[n_leading : n_leading + 2]
                 )
                 n_leading += 2
+            n_ep = (
+                len(EPBatchManager(model_config.ep_config).input_types())
+                if model_config.ep_config is not None
+                else 0
+            )
+            ep_inputs = all_inputs[n_leading : n_leading + n_ep]
+            n_leading += n_ep
             variadic_args = all_inputs[n_leading:-n_trailing]
             vision_inputs = all_inputs[-n_trailing:][: 2 * n_dev]
             engram_graph_inputs = all_inputs[-n_trailing:][2 * n_dev :]
@@ -1342,6 +1402,8 @@ class DeepseekV41Model(
                 serving = nn_model.data_parallel_replicas(
                     self.device_refs, per_device_tables
                 )
+                if serving[0].ep_batch_manager is not None:
+                    serving[0].ep_batch_manager.fetch_buffers(ep_inputs)
             else:
                 serving = nn_model.tensor_parallel_replicas(
                     self.device_refs, per_device_tables
