@@ -29,6 +29,7 @@ from std.collections.string.string_span import (
 )
 from std.ffi import CStringSpan
 from std.io.file_descriptor import RawFileDescriptor
+from std.math.math import _BinaryMathOp, _UnaryMathOp
 from std.sys import bit_width_of, llvm_intrinsic
 from std.sys._metal_print import _metal_print_write
 
@@ -85,10 +86,41 @@ def _air_gpu_id[name: StaticString, dim: StaticString]() -> Int:
         )
 
 
-def _has_air_op[name: StaticString, dtype: DType]() -> Bool:
-    comptime if name == "exp2":
-        return dtype in (DType.float16, DType.float32)
-    return name == "sqrt" or name == "rsqrt" or name == "sin" or name == "cos"
+comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
+
+
+def _air_unary_math_fn[op: _UnaryMathOp, dtype: DType]() -> _MathFn:
+    """Returns the AIR lowering of the `std.math` function `op` for `dtype`,
+    or `None` to keep the stdlib's own lowering."""
+    comptime match op:
+        case .exp2:
+            return comptime (
+                _MathFn(_air_unary_math[name="exp2"]) if dtype
+                in (DType.float16, DType.float32) else _MathFn(None)
+            )
+        case .sqrt:
+            return comptime (_MathFn(_air_unary_math[name="sqrt"]))
+        case .rsqrt:
+            return comptime (_MathFn(_air_unary_math[name="rsqrt"]))
+        case .sin:
+            return comptime (_MathFn(_air_unary_math[name="sin"]))
+        case .cos:
+            return comptime (_MathFn(_air_unary_math[name="cos"]))
+        case .exp | .log | .log2 | .recip | .tanh:
+            return None
+
+
+def _air_binary_math_fn[
+    op: _BinaryMathOp
+]() -> OptionalReg[_BinaryMathPluginHookFnType]:
+    """Returns the AIR lowering of the two-argument function `op`."""
+    comptime match op:
+        case .pow:
+            return comptime (
+                OptionalReg[_BinaryMathPluginHookFnType](
+                    _air_binary_math[name="pow"]
+                )
+            )
 
 
 def _air_unary_math[
@@ -147,16 +179,12 @@ struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     )
 
     comptime unary_math_fn[
-        name: StaticString, dtype: DType, width: Int
-    ]: OptionalReg[_UnaryMathPluginHookFnType] = (
-        _air_unary_math[name=name] if _has_air_op[name, dtype]() else None
-    )
+        op: _UnaryMathOp, dtype: DType, width: Int
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = _air_unary_math_fn[op, dtype]()
 
     comptime binary_math_fn[
-        name: StaticString, dtype: DType, width: Int
-    ]: OptionalReg[_BinaryMathPluginHookFnType] = (
-        _air_binary_math[name=name] if name == "pow" else None
-    )
+        op: _BinaryMathOp, dtype: DType, width: Int
+    ]: OptionalReg[_BinaryMathPluginHookFnType] = _air_binary_math_fn[op]()
 
     comptime supports_float64: Bool = False
 

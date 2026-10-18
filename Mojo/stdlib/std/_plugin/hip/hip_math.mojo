@@ -14,36 +14,36 @@
 
 from std.collections import OptionalReg
 from std.collections.string.string_span import get_static_string
-from std.math.math import _UnaryMathPluginHookFnType
+from std.math.math import _UnaryMathOp, _UnaryMathPluginHookFnType
 from std.sys import llvm_intrinsic
 
 
 comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
 
 
-def _amdgcn_unary_math_fn[name: StaticString, dtype: DType]() -> _MathFn:
-    """Returns the AMDGCN lowering of the `std.math` function `name` for
+def _amdgcn_unary_math_fn[op: _UnaryMathOp, dtype: DType]() -> _MathFn:
+    """Returns the AMDGCN lowering of the `std.math` function `op` for
     `dtype`, or `None` to keep the stdlib's own lowering."""
-    comptime match name:
-        case "rsqrt":
+    comptime match op:
+        case .rsqrt:
             return comptime (_MathFn(_amdgcn_unary_math["llvm.amdgcn.rsq"]))
-        case "recip":
+        case .recip:
             return comptime (_MathFn(_amdgcn_unary_math["llvm.amdgcn.rcp"]))
-        case "exp2":
+        case .exp2:
             return comptime (
                 _lowering[
                     _amdgcn_unary_math["llvm.amdgcn.exp2"],
                     dtype in (DType.float16, DType.float32),
                 ]
             )
-        case "log2":
+        case .log2:
             return comptime (
                 _lowering[
                     _amdgcn_unary_math["llvm.amdgcn.log"],
                     dtype in (DType.float16, DType.float32),
                 ]
             )
-        case _:
+        case .exp | .log | .sqrt | .sin | .cos | .tanh:
             return None
 
 

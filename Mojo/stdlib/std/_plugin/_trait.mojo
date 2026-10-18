@@ -18,7 +18,9 @@ from std.reflection.location import SourceLocation
 from std.utils.coord import Coord
 from std.utils.index import IndexList
 from std.math.math import (
+    _BinaryMathOp,
     _BinaryMathPluginHookFnType,
+    _UnaryMathOp,
     _UnaryMathPluginHookFnType,
 )
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
@@ -94,20 +96,24 @@ trait PluginHooks:
     # ===------------------------------------------------------------------=== #
 
     comptime unary_math_fn[
-        name: StaticString, dtype: DType, width: Int
+        op: _UnaryMathOp, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = None
-    """Elementwise override for the `std.math` function called `name`.
+    """Elementwise override for the `std.math` function `op`.
 
     Consulted by `exp`, `exp2`, `log`, `log2`, `sqrt`, `rsqrt`, `recip`,
     `sin`, `cos`, and `tanh` for floating-point inputs, before the stdlib
     converts the input to another `dtype`, so the hook sees the caller's
-    `dtype`. Returning `None` for a `name`, `dtype`, and `width` keeps the
+    `dtype`. Returning `None` for an `op`, `dtype`, and `width` keeps the
     stdlib's own lowering for that case. The hook is not called when the
     function is evaluated at compile time, because the compile-time
     interpreter cannot run backend intrinsics.
 
+    An implementation matches on `op` without a wildcard case, naming the
+    functions it leaves to the stdlib, so that adding a function to
+    `_UnaryMathOp` makes every plugin decide how to lower it.
+
     Parameters:
-        name: The `std.math` function being lowered, such as `"sqrt"`.
+        op: The `std.math` function being lowered, such as `.sqrt`.
         dtype: The `dtype` of the input and output SIMD vector.
         width: The width of the input and output SIMD vector.
 
@@ -115,20 +121,20 @@ trait PluginHooks:
         x: The input SIMD vector.
 
     Returns:
-        Elementwise `name(x)` computed on the vendor backend.
+        Elementwise `op(x)` computed on the vendor backend.
     """
 
     comptime binary_math_fn[
-        name: StaticString, dtype: DType, width: Int
+        op: _BinaryMathOp, dtype: DType, width: Int
     ]: OptionalReg[_BinaryMathPluginHookFnType] = None
-    """Elementwise override for the two-argument function called `name`.
+    """Elementwise override for the two-argument function `op`.
 
     Consulted by `pow` when both arguments are floating point, under the same
     rules as `unary_math_fn`: the hook sees the caller's `dtype`, `None` keeps
     the stdlib's own lowering, and compile-time evaluation skips the hook.
 
     Parameters:
-        name: The function being lowered, such as `"pow"`.
+        op: The function being lowered, such as `.pow`.
         dtype: The `dtype` of the inputs and output SIMD vectors.
         width: The width of the inputs and output SIMD vectors.
 
@@ -137,7 +143,7 @@ trait PluginHooks:
         y: The second input SIMD vector.
 
     Returns:
-        Elementwise `name(x, y)` computed on the vendor backend.
+        Elementwise `op(x, y)` computed on the vendor backend.
     """
 
     comptime supports_float64: Bool = True

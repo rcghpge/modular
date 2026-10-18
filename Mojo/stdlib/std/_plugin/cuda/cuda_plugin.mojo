@@ -24,6 +24,7 @@ from std.sys.info import CompilationTarget
 from std.collections.string.string_span import _get_kgen_string
 from std.ffi import CStringSpan
 from std.io.file_descriptor import RawFileDescriptor
+from std.math.math import _UnaryMathOp
 from std.io.io import _printf
 from std.reflection.location import SourceLocation
 
@@ -99,7 +100,7 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     comptime _handles_debug_assert: Bool = True
 
     comptime unary_math_fn[
-        name: StaticString, dtype: DType, width: Int
+        op: _UnaryMathOp, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = _nvptx_unary_math_fn[
-        name, dtype, Self.target
+        op, dtype, Self.target
     ]()

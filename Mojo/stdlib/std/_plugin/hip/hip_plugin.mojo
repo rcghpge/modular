@@ -27,6 +27,7 @@ from std.collections.string.string_span import (
 )
 from std.ffi import CStringSpan
 from std.io.file_descriptor import RawFileDescriptor
+from std.math.math import _UnaryMathOp
 from std.reflection.location import SourceLocation
 from std.sys._amdgpu import (
     printf_append_args,
@@ -145,7 +146,7 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
     comptime _handles_debug_assert: Bool = True
 
     comptime unary_math_fn[
-        name: StaticString, dtype: DType, width: Int
+        op: _UnaryMathOp, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = _amdgcn_unary_math_fn[
-        name, dtype
+        op, dtype
     ]()

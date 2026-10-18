@@ -206,6 +206,27 @@ comptime _BinaryMathPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
 """Plugin-hook signature for `PluginHooks.binary_math_fn`."""
 
 
+__enum _UnaryMathOp(ImplicitlyCopyable):
+    """A `std.math` function that `PluginHooks.unary_math_fn` can lower."""
+
+    case exp
+    case exp2
+    case log
+    case log2
+    case sqrt
+    case rsqrt
+    case recip
+    case sin
+    case cos
+    case tanh
+
+
+__enum _BinaryMathOp(ImplicitlyCopyable):
+    """A two-argument function that `PluginHooks.binary_math_fn` can lower."""
+
+    case pow
+
+
 @inline(.always)
 def sqrt[
     dtype: DType, width: SIMDLength, //
@@ -238,7 +259,7 @@ def sqrt[
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.sqrt"](x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["sqrt", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.sqrt, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -273,7 +294,7 @@ def rsqrt[
     if __is_run_in_comptime_interpreter:
         return 1.0 / sqrt(x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["rsqrt", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.rsqrt, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -308,7 +329,7 @@ def recip[
     if __is_run_in_comptime_interpreter:
         return 1.0 / x
 
-    comptime hook = CurrentPlugin.unary_math_fn["recip", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.recip, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -342,7 +363,7 @@ def exp2[
     if __is_run_in_comptime_interpreter:
         return _exp2_impl(x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["exp2", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.exp2, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -551,7 +572,7 @@ def exp[
     if __is_run_in_comptime_interpreter:
         return _exp_impl(x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["exp", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.exp, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -910,7 +931,7 @@ def log[
     _assert_float64_supported[dtype, "log"]()
 
     if not __is_run_in_comptime_interpreter:
-        comptime hook = CurrentPlugin.unary_math_fn["log", dtype, width]
+        comptime hook = CurrentPlugin.unary_math_fn[.log, dtype, width]
         comptime if hook:
             return comptime (hook.value())(x)
 
@@ -967,7 +988,7 @@ def log2[
 
         return _log_base[2](x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["log2", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.log2, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -1103,7 +1124,7 @@ def tanh[
     if __is_run_in_comptime_interpreter:
         return _tanh_impl(x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["tanh", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.tanh, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -1832,7 +1853,7 @@ def cos[
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.cos"](x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["cos", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.cos, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 
@@ -1869,7 +1890,7 @@ def sin[
     if __is_run_in_comptime_interpreter:
         return _llvm_unary_fn["llvm.sin"](x)
 
-    comptime hook = CurrentPlugin.unary_math_fn["sin", dtype, width]
+    comptime hook = CurrentPlugin.unary_math_fn[.sin, dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
 

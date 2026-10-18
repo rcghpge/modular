@@ -14,6 +14,7 @@
 
 from std.collections import OptionalReg
 from std.math.math import (
+    _UnaryMathOp,
     _UnaryMathPluginHookFnType,
     _call_ptx_intrinsic,
     _llvm_unary_fn,
@@ -25,25 +26,25 @@ comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
 
 
 def _nvptx_unary_math_fn[
-    name: StaticString, dtype: DType, target: CompilationTarget
+    op: _UnaryMathOp, dtype: DType, target: CompilationTarget
 ]() -> _MathFn:
-    """Returns the NVIDIA lowering of the `std.math` function `name` for
+    """Returns the NVIDIA lowering of the `std.math` function `op` for
     `dtype` on `target`, or `None` to keep the stdlib's own lowering.
 
     Narrower dtypes that get `None` here reach the float32 lowering through
-    the stdlib, which converts them to float32 and calls `name` again.
+    the stdlib, which converts them to float32 and calls `op` again.
     """
-    comptime match name:
-        case "sqrt":
+    comptime match op:
+        case .sqrt:
             # NVIDIA has no approximate f64 sqrt (`sqrt.approx.d` does not
             # exist), so f64 keeps the stdlib's `llvm.sqrt`, which lowers to
             # the IEEE `sqrt.rn.f64`.
             return comptime (_lowering[_sqrt, dtype != DType.float64])
-        case "rsqrt":
+        case .rsqrt:
             return comptime (_MathFn(_rsqrt))
-        case "recip":
+        case .recip:
             return comptime (_MathFn(_recip))
-        case "exp2":
+        case .exp2:
             return comptime (
                 _lowering[
                     _exp2,
@@ -53,29 +54,29 @@ def _nvptx_unary_math_fn[
                     ),
                 ]
             )
-        case "tanh":
+        case .tanh:
             return comptime (
                 _lowering[
                     _tanh,
                     dtype in (DType.float16, DType.bfloat16, DType.float32),
                 ]
             )
-        case "log":
+        case .log:
             return comptime (_lowering[_log, dtype == DType.float32])
-        case "log2":
+        case .log2:
             return comptime (_lowering[_log2, dtype == DType.float32])
-        case "sin":
+        case .sin:
             # float64 is claimed only so `_sin` rejects it, rather than
             # letting the stdlib fall back to `llvm.sin`.
             return comptime (
                 _lowering[_sin, dtype in (DType.float32, DType.float64)]
             )
-        case "cos":
+        case .cos:
             # As for `sin`, float64 is claimed only so `_cos` rejects it.
             return comptime (
                 _lowering[_cos, dtype in (DType.float32, DType.float64)]
             )
-        case _:
+        case .exp:
             return None
 
 

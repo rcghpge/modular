@@ -3758,7 +3758,7 @@ def _pow[
         if __is_run_in_comptime_interpreter:
             return _powf(base, exp)
 
-        comptime hook = CurrentPlugin.binary_math_fn["pow", base.dtype, width]
+        comptime hook = CurrentPlugin.binary_math_fn[.pow, base.dtype, width]
         comptime if hook:
             return comptime (hook.value())(base, rebind[type_of(base)](exp))
         return _powf(base, exp)
