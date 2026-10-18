@@ -65,6 +65,9 @@ def test_gpu_plugin_hooks() raises:
     comptime assert hip.sleep_fn
     comptime assert not _host_target.stdlib_plugin.sleep_fn
 
+    comptime assert cuda.atomic_float_minmax_via_int
+    comptime assert not hip.atomic_float_minmax_via_int
+
 
 def test_payload_plugin_selection() raises:
     # fmt: off

@@ -90,6 +90,8 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime sleep_fn: OptionalReg[_SleepPluginHookFnType] = _sleep
 
+    comptime atomic_float_minmax_via_int: Bool = True
+
     @staticmethod
     @inline(.always)
     def debug_assert_emit_fn[

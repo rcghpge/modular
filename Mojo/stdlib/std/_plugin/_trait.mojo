@@ -213,6 +213,18 @@ trait PluginHooks:
     fences default to `Ordering.SEQUENTIAL` regardless.
     """
 
+    comptime atomic_float_minmax_via_int: Bool = False
+    """Whether `Atomic.max` and `Atomic.min` on floating-point values use
+    integer atomics.
+
+    Where it is `True`, `Atomic.max` with a non-negative operand is a signed
+    integer atomic max on the value's bits, and with a negative operand an
+    unsigned integer atomic min; `Atomic.min` swaps the two. Each update is
+    then one integer atomic instruction. Where it is `False`, the
+    floating-point read-modify-write goes to the backend, which may expand it
+    into a compare-exchange loop.
+    """
+
     comptime stack_allocation_fn[address_space: AddressSpace]: OptionalReg[
         _StackAllocationPluginHookFnType[address_space]
     ] = None
