@@ -426,22 +426,9 @@ def print[
         # FIXME: The origin param of `_emit` should be inferred from `cstr`.
         _emit[origin_of(buffer).unsafe_mut_cast[False]()](cstr, file)
     elif is_gpu():
-        var buffer = _FixedWriteBuffer()
-        values._write_to(buffer, sep=sep, end=end)
-
-        var cstr = buffer.nul_terminate()
-
-        comptime if is_nvidia_gpu():
-            _printf["%s"](cstr.ptr())
-        elif is_amd_gpu():
-            var msg = printf_begin()
-            _ = printf_append_string_n(
-                msg, cstr.as_bytes_with_nul(), is_last=True
-            )
-        else:
-            CompilationTarget.unsupported_target_error[
-                operation=__get_current_function_name()
-            ]()
+        CompilationTarget.unsupported_target_error[
+            operation=__get_current_function_name()
+        ]()
     else:
         var buffer = _FlushingWriteBuffer(file)
         values._write_to(buffer, sep=sep, end=end)

@@ -14,13 +14,58 @@
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
+    _PrintEmitPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
 from std.collections import OptionalReg
 from std.sys.info import CompilationTarget
 from std.collections.string.string_span import _get_kgen_string
+from std.ffi import CStringSpan
+from std.io.file_descriptor import RawFileDescriptor
+from std.io.io import _printf
+from std.reflection.location import SourceLocation
 
 from .cuda_math import _has_nvptx_op, _nvptx_unary_math
+
+
+def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
+    """Writes `print()` output from an NVIDIA kernel through device `printf`.
+
+    Device `printf` has a single output stream, so `file` is ignored.
+    """
+    _printf["%s"](cstr.ptr())
+
+
+@inline(.always)
+def _debug_assert_emit[
+    O: Origin
+](message: Pointer[Byte, O], length: Int, loc: SourceLocation):
+    """Writes a failed `debug_assert` message, with the failing block and
+    thread, through device `printf`.
+    """
+    # `_debug_assert_msg` hands every assertion to this hook, including ones
+    # evaluated at compile time, so it keeps the stdlib's compile-time message.
+    if __is_run_in_comptime_interpreter:
+        print("At: ", loc, ": Assert Error: ", message, sep="")
+        return
+
+    from std._gpu.primitives.id import block_idx, thread_idx
+
+    _printf[
+        "At: %s:%llu:%llu: block: [%llu,%llu,%llu] thread:"
+        " [%llu,%llu,%llu] Assert Error: %s\n"
+    ](
+        loc.file_name().as_c_string_span(),
+        loc.line(),
+        loc.column(),
+        UInt(block_idx.x),
+        UInt(block_idx.y),
+        UInt(block_idx.z),
+        UInt(thread_idx.x),
+        UInt(thread_idx.y),
+        UInt(thread_idx.z),
+        message,
+    )
 
 
 struct CUDAPlugin(StdPlugin):
@@ -31,6 +76,19 @@ struct CUDAPlugin(StdPlugin):
 
 
 struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
+    comptime print_emit_fn: OptionalReg[
+        _PrintEmitPluginHookFnType
+    ] = _print_emit
+
+    @staticmethod
+    @inline(.always)
+    def debug_assert_emit_fn[
+        O: Origin
+    ](message: Pointer[Byte, O], length: Int, loc: SourceLocation):
+        _debug_assert_emit(message, length, loc)
+
+    comptime _handles_debug_assert: Bool = True
+
     comptime unary_math_fn[
         name: StaticString, dtype: DType, width: Int
     ]: OptionalReg[_UnaryMathPluginHookFnType] = (

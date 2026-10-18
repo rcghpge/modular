@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.testing import assert_equal, assert_false, TestSuite
+from std.testing import assert_equal, assert_false, assert_true, TestSuite
 
 from std.sys.info import CompilationTarget
 
@@ -51,6 +51,9 @@ def test_gpu_plugin_hooks() raises:
     comptime assert not hip.unary_math_fn["sqrt", DType.float32, 1]
     comptime assert not hip.unary_math_fn["log2", DType.float64, 1]
 
+    comptime assert cuda.print_emit_fn
+    comptime assert hip.print_emit_fn
+
 
 def test_payload_plugin_selection() raises:
     # fmt: off
@@ -63,7 +66,9 @@ def test_payload_plugin_selection() raises:
 
 
 def test_plugin_for_target_specializes_on_target() raises:
-    assert_false(_h100_target.stdlib_plugin._handles_debug_assert)
+    assert_true(_h100_target.stdlib_plugin._handles_debug_assert)
+    assert_true(_mi300x_target.stdlib_plugin._handles_debug_assert)
+    assert_false(_host_target.stdlib_plugin._handles_debug_assert)
 
 
 def main() raises:

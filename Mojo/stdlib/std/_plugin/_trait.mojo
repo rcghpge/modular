@@ -78,6 +78,11 @@ trait PluginHooks:
     their dispatch sites lie on `OptionalReg.value()`'s own instantiation
     path — an `OptionalReg` field would re-enter that template via its own
     `debug_assert` and deadlock comptime instantiation.
+
+    An implementation keeps each hook's logic in a module-level function and
+    binds it in its `PluginHooks` struct, either as a `comptime` field or as a
+    static method that forwards to it, so the struct reads as a list of the
+    hooks the plugin overrides.
     """
 
     # ===------------------------------------------------------------------=== #
@@ -283,7 +288,11 @@ trait PluginHooks:
     def debug_assert_emit_fn[
         O: Origin
     ](message: Pointer[Byte, O], length: Int, loc: SourceLocation):
-        """Assertion-message emitter for targets without a usable `_printf`.
+        """Emits a failed assertion's message in the target's own format.
+
+        GPU targets use it to add the failing block and thread ids, and
+        targets without a usable `_printf` use it in place of the generic
+        `_printf` fallback.
 
         Parameters:
             O: The origin of the message pointer.
@@ -300,10 +309,11 @@ trait PluginHooks:
 
     comptime _handles_debug_assert: Bool = False
     """If `True`, `_debug_assert_msg` dispatches to `debug_assert_emit_fn`
-    and comptime-elides its `_printf` fallback. Required because the
-    fallback's transitive `OptionalReg.value()` → `debug_assert` recurses
-    back through `_debug_assert_msg` and deadlocks instantiation when
-    assertions are enabled."""
+    and comptime-elides its `_printf` fallback. A target without a usable
+    `_printf` must set it, because the fallback's transitive
+    `OptionalReg.value()` → `debug_assert` recurses back through
+    `_debug_assert_msg` and deadlocks instantiation when assertions are
+    enabled."""
 
 
 # ===-----------------------------------------------------------------------===#
