@@ -229,7 +229,7 @@ def index_key_layer_pages[
     record_bytes: Int
 ](
     blocks: TileTensor[.uint8, ...], page_stride: Int, layer: Int
-) raises -> Tuple[UnsafePointer[UInt8, MutUntrackedOrigin], Int]:
+) raises -> Tuple[MutPointer[UInt8, MutUntrackedOrigin], Int]:
     """Locates one layer's pages in a multi-layer paged index-key leaf.
 
     The leaf is `[blocks, 1, layers, page_size, 1, record_bytes]`: each block

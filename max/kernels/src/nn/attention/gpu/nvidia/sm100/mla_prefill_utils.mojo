@@ -448,7 +448,7 @@ def split_smem[
     TMA only uses .ptr — flat row_major layout avoids needing
     InternalLayout equivalents of swizzled layouts.
     """
-    comptime SmemPtr[dt: DType] = UnsafePointer[
+    comptime SmemPtr[dt: DType] = MutPointer[
         Scalar[dt], MutAnyOrigin, address_space=.SHARED
     ]
     var ptr = rebind[SmemPtr[first_dtype]](tensor.ptr)

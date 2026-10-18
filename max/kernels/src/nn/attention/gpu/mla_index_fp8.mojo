@@ -113,8 +113,8 @@ trait IndexerTopk:
         in_dtype: DType, RB: RowBound
     ](
         ctx: DeviceContext,
-        scores: UnsafePointer[Scalar[in_dtype], ImmutAnyOrigin],
-        out_idxs: UnsafePointer[Int32, MutAnyOrigin],
+        scores: ImmPointer[Scalar[in_dtype], ImmutAnyOrigin],
+        out_idxs: MutPointer[Int32, MutAnyOrigin],
         n: Int,
         k: Int,
         rows: Int,
@@ -146,8 +146,8 @@ struct BlockSplitTopk(IndexerTopk):
         in_dtype: DType, RB: RowBound
     ](
         ctx: DeviceContext,
-        scores: UnsafePointer[Scalar[in_dtype], ImmutAnyOrigin],
-        out_idxs: UnsafePointer[Int32, MutAnyOrigin],
+        scores: ImmPointer[Scalar[in_dtype], ImmutAnyOrigin],
+        out_idxs: MutPointer[Int32, MutAnyOrigin],
         n: Int,
         k: Int,
         rows: Int,
@@ -425,7 +425,7 @@ struct _IndexerSink[R: SparseIndexRemap, write_logical: Bool](TopkSink):
         write_logical: Whether the logical index is written at all.
     """
 
-    var logical: UnsafePointer[Int32, MutUntrackedOrigin]
+    var logical: MutPointer[Int32, MutUntrackedOrigin]
     """Flat logical output, `[rows, top_k]`."""
     var remap: Self.R
     """Second output derived from each logical index."""
@@ -435,7 +435,7 @@ struct _IndexerSink[R: SparseIndexRemap, write_logical: Bool](TopkSink):
     @inline(.always)
     def __init__(
         out self,
-        logical: UnsafePointer[Int32, MutAnyOrigin],
+        logical: MutPointer[Int32, MutAnyOrigin],
         remap: Self.R,
         batch: Int,
     ):
@@ -480,9 +480,9 @@ struct _IndexerRowBound[
     comptime Sink = _IndexerSink[Self.R, Self.write_logical]
     """Writes the logical indices and their remap."""
 
-    var row_offsets: UnsafePointer[UInt32, ImmUntrackedOrigin]
+    var row_offsets: ImmPointer[UInt32, ImmUntrackedOrigin]
     """Ragged query row offsets, `batch_size + 1` entries."""
-    var cache_lengths: UnsafePointer[UInt32, ImmUntrackedOrigin]
+    var cache_lengths: ImmPointer[UInt32, ImmUntrackedOrigin]
     """Per-batch cached-prefix length."""
     var batch_size: Int32
     """Number of batch entries."""
@@ -494,8 +494,8 @@ struct _IndexerRowBound[
     @inline(.always)
     def __init__(
         out self,
-        row_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
-        cache_lengths: UnsafePointer[UInt32, ImmutAnyOrigin],
+        row_offsets: ImmPointer[UInt32, ImmutAnyOrigin],
+        cache_lengths: ImmPointer[UInt32, ImmutAnyOrigin],
         batch_size: Int,
         first_row: Int,
         remap: Self.R,
@@ -519,7 +519,7 @@ struct _IndexerRowBound[
 
     @inline(.always)
     def row(
-        self, row: Int, out_idxs: UnsafePointer[Int32, MutAnyOrigin]
+        self, row: Int, out_idxs: MutPointer[Int32, MutAnyOrigin]
     ) -> Tuple[Int, Self.Sink]:
         """Returns the live key count of launch row `row` and its sink.
 
@@ -840,7 +840,7 @@ read it unchanged.
 def _mxfp4_index_k_cache[
     page_size: Int
 ](
-    base: UnsafePointer[UInt8, MutUntrackedOrigin],
+    base: MutPointer[UInt8, MutUntrackedOrigin],
     num_pages: Int64,
     page_stride: Int64,
     lookup_table: TileTensor[.uint32, ...],

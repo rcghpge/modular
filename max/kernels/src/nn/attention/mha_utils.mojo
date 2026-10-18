@@ -970,7 +970,7 @@ trait OptionalPointer(Copyable, DevicePassable, TrivialRegisterPassable):
     @inline(.always)
     def value(
         self,
-    ) -> UnsafePointer[
+    ) -> ImmPointer[
         Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
     ]:
         ...
@@ -990,7 +990,7 @@ struct NonNullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
     comptime dtype: DType = Self.dtype_
     comptime is_null: Bool = False
     comptime address_space: AddressSpace = Self.address_space_
-    comptime PtrType = UnsafePointer[
+    comptime PtrType = ImmPointer[
         Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
     ]
 
@@ -1051,7 +1051,7 @@ struct NullPointer[dtype_: DType, address_space_: AddressSpace = .GENERIC](
     comptime dtype: DType = Self.dtype_
     comptime is_null: Bool = True
     comptime address_space: AddressSpace = Self.address_space_
-    comptime PtrType = UnsafePointer[
+    comptime PtrType = ImmPointer[
         Scalar[Self.dtype], ImmutAnyOrigin, address_space=Self.address_space
     ]
 
@@ -1090,7 +1090,7 @@ comptime MaybeNullPointer[dtype: DType, present: Bool] = NonNullPointer[
 @inline(.always)
 def maybe_null_pointer[
     dtype: DType, //, present: Bool
-](ptr: UnsafePointer[Scalar[dtype], _]) -> MaybeNullPointer[dtype, present]:
+](ptr: Pointer[Scalar[dtype], _]) -> MaybeNullPointer[dtype, present]:
     """Wraps `ptr` as a `NonNullPointer` when `present`, else drops it.
 
     Lets a caller that knows at compile time whether an optional operand is
@@ -1160,7 +1160,7 @@ def unread_pointer[T: OptionalPointer]() -> T:
 def as_optional_reg[
     T: OptionalPointer
 ](ptr: T) -> OptionalReg[
-    UnsafePointer[Scalar[T.dtype], MutAnyOrigin, address_space=T.address_space]
+    MutPointer[Scalar[T.dtype], MutAnyOrigin, address_space=T.address_space]
 ]:
     """Converts an `OptionalPointer` to the runtime-nullable `OptionalReg` form.
 
@@ -1180,7 +1180,7 @@ def as_optional_reg[
         return None
     else:
         return rebind[
-            UnsafePointer[
+            MutPointer[
                 Scalar[T.dtype], MutAnyOrigin, address_space=T.address_space
             ]
         ](ptr.value())
@@ -1279,14 +1279,14 @@ struct SplitKPartition[dtype: DType](
     comptime LSEPointerType = NonNullPointer[Self.accum_dtype]
 
     @__allow_legacy_any_origin_fields
-    var ptr: UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin]
+    var ptr: MutPointer[Scalar[Self.accum_dtype], MutAnyOrigin]
     var num_partitions_value: UInt32
     var max_num_partitions_value: UInt32
 
     @inline(.always)
     def __init__(
         out self,
-        ptr: UnsafePointer[Scalar[Self.accum_dtype], MutAnyOrigin],
+        ptr: MutPointer[Scalar[Self.accum_dtype], MutAnyOrigin],
         num_partitions_value: UInt32,
         max_num_partitions_value: UInt32,
     ):

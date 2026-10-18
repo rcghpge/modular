@@ -133,7 +133,7 @@ def test_optional_reg_capture(ctx: DeviceContext, engaged: Bool) raises:
 
 
 def optional_pointer_kernel(
-    ptr: Optional[UnsafePointer[Float32, MutAnyOrigin]], n: Int32
+    ptr: Optional[MutPointer[Float32, MutAnyOrigin]], n: Int32
 ):
     if global_idx.x != 0:
         return

@@ -151,7 +151,7 @@ def _topp_minp_sampling[
     var sorted_probs_alloc = alloc(
         AllocLayout[Scalar[dtype]](count=batch_size * vocab_size)
     ).into_managed()
-    var sorted_probs_ptr: UnsafePointer[
+    var sorted_probs_ptr: MutPointer[
         Scalar[dtype], origin_of(sorted_probs_alloc)
     ] = sorted_probs_alloc.unsafe_ptr()
     var sorted_probs = TileTensor(
@@ -162,7 +162,7 @@ def _topp_minp_sampling[
     var sorted_ids_alloc = alloc(
         AllocLayout[Scalar[out_idx_type]](count=batch_size * vocab_size)
     ).into_managed()
-    var sorted_ids_ptr: UnsafePointer[
+    var sorted_ids_ptr: MutPointer[
         Scalar[out_idx_type], origin_of(sorted_ids_alloc)
     ] = sorted_ids_alloc.unsafe_ptr()
     var sorted_ids = TileTensor(
@@ -348,16 +348,16 @@ def merge[
     var right_ids_ptr = alloc(
         AllocLayout[Scalar[out_idx_type]](count=right_size)
     )
-    var left_keys_data: UnsafePointer[
+    var left_keys_data: MutPointer[
         Scalar[dtype], origin_of(left_keys_ptr._alloc)
     ] = left_keys_ptr.unsafe_ptr()
-    var right_keys_data: UnsafePointer[
+    var right_keys_data: MutPointer[
         Scalar[dtype], origin_of(right_keys_ptr._alloc)
     ] = right_keys_ptr.unsafe_ptr()
-    var left_ids_data: UnsafePointer[
+    var left_ids_data: MutPointer[
         Scalar[out_idx_type], origin_of(left_ids_ptr._alloc)
     ] = left_ids_ptr.unsafe_ptr()
-    var right_ids_data: UnsafePointer[
+    var right_ids_data: MutPointer[
         Scalar[out_idx_type], origin_of(right_ids_ptr._alloc)
     ] = right_ids_ptr.unsafe_ptr()
 

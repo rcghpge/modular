@@ -87,8 +87,8 @@ def _accum_bf16_to_fp32_kernel[
     dtype: DType,
     output_simd_width: Int,
 ](
-    accum_fp32_ptr: UnsafePointer[Float32, MutAnyOrigin],
-    src_bf16_ptr: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    accum_fp32_ptr: MutPointer[Float32, MutAnyOrigin],
+    src_bf16_ptr: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
     per_batch_elems: Int32,
 ):
     """Elementwise `accum_fp32[i] += src_bf16[i].cast[fp32]()`.
@@ -118,8 +118,8 @@ def _fp32_to_dtype_plain_kernel[
     dtype: DType,
     output_simd_width: Int,
 ](
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    src_fp32_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    src_fp32_ptr: ImmPointer[Float32, ImmutAnyOrigin],
     output_elems: Int32,
 ):
     """Elementwise cast fp32 → `dtype` with no epilogue."""
@@ -143,7 +143,7 @@ def _fp32_to_dtype_epilogue_kernel[
     epilogue: elementwise_simd_epilogue_type,
     output_simd_width: Int,
 ](
-    src_fp32_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+    src_fp32_ptr: ImmPointer[Float32, ImmutAnyOrigin],
     batch: Int32,
     D_out: Int32,
     H_out: Int32,

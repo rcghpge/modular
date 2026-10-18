@@ -1152,17 +1152,17 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
         clc_throttle_storage.unsafe_ptr(),
     )
 
-    var ptr_tmem_addr: UnsafePointer[
+    var ptr_tmem_addr: MutPointer[
         UInt32, origin_of(tmem_addr_storage), address_space=.SHARED
     ] = tmem_addr_storage.unsafe_ptr()
 
     var clc_response = clc_response_storage.unsafe_ptr()
-    var clc_full_mbar: UnsafePointer[
+    var clc_full_mbar: MutPointer[
         SharedMemBarrier,
         origin_of(clc_mbars_full_storage),
         address_space=.SHARED,
     ] = clc_mbars_full_storage.unsafe_ptr()
-    var clc_empty_mbar: UnsafePointer[
+    var clc_empty_mbar: MutPointer[
         SharedMemBarrier,
         origin_of(clc_mbars_empty_storage),
         address_space=.SHARED,

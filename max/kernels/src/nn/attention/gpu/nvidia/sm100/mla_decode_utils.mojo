@@ -992,7 +992,7 @@ struct SparseRowLayout(TrivialRegisterPassable):
 def _sparse_row_packed[
     sparse_row: SparseRowLayout
 ](
-    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+    d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     q_token_idx: Int,
     visible: Int,
@@ -1013,7 +1013,7 @@ def _sparse_row_packed[
 def assert_sparse_row_packed[
     sparse_row: SparseRowLayout
 ](
-    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+    d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
     indices_stride: Int,
     q_token_idx: Int,
     visible: Int,
@@ -1123,7 +1123,7 @@ struct OffsetPosition[
     def __init__(
         out self,
         k: Self.KVLUTType,
-        valid_length: UnsafePointer[
+        valid_length: ImmPointer[
             Scalar[Self.ValidLengthType.dtype], origin=ImmutAnyOrigin
         ],
         max_seq_len: Int,
@@ -1336,7 +1336,7 @@ struct OffsetPosition[
         sparse_row: SparseRowLayout
     ](
         self,
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         indices_stride: Int,
         selection_lag: Int,
     ):
@@ -3218,7 +3218,7 @@ def write_bf16x2_row_to_smem_chunked[
     chunk_size: Int = 16,
     scale_needed: Bool = False,
 ](
-    shared_mem: UnsafePointer[
+    shared_mem: MutPointer[
         Scalar[out_dtype], MutAnyOrigin, address_space=.SHARED
     ],
     local_mem: LocalTensor[in_dtype, row_major[local_tile_size](), _],
@@ -3306,7 +3306,7 @@ def write_fp8_row_to_smem_chunked[
     row_size: Int = config.BN_QK,
     swizzle_kind: TensorMapSwizzle = TensorMapSwizzle.SWIZZLE_64B,
 ](
-    shared_mem: UnsafePointer[
+    shared_mem: MutPointer[
         Scalar[out_dtype], MutAnyOrigin, address_space=.SHARED
     ],
     local_mem: LocalTensor[in_dtype, row_major[local_tile_size](), _],
@@ -3392,9 +3392,7 @@ def write_fp8_row_to_smem_chunked[
 def st_shared_v4_b32_at_fp8_elem_off[
     out_dtype: DType
 ](
-    dst_fp8: UnsafePointer[
-        Scalar[out_dtype], MutAnyOrigin, address_space=.SHARED
-    ],
+    dst_fp8: MutPointer[Scalar[out_dtype], MutAnyOrigin, address_space=.SHARED],
     elem_off: Int,  # FP8 element offset
     packed: SIMD[.uint32, 4],
 ):
@@ -3484,9 +3482,7 @@ def cvt_fp8x16_from_u32x4_to_bf16x16_packed_2xu32x4[
 def st_shared_v4_b32_at_bf16_elem_off[
     out_dtype: DType
 ](
-    dst_bf16: UnsafePointer[
-        mut=True, Scalar[out_dtype], _, address_space=.SHARED
-    ],
+    dst_bf16: MutPointer[Scalar[out_dtype], _, address_space=.SHARED],
     elem_off: Int,  # bf16 element offset
     packed: SIMD[.uint32, 4],
 ):
@@ -3714,7 +3710,7 @@ struct MLA_SM100_Decode_Common[
                     + head_idx
                 )
                 var lse_ptr = rebind[
-                    UnsafePointer[Scalar[Self.AccumType], origin=MutAnyOrigin]
+                    MutPointer[Scalar[Self.AccumType], origin=MutAnyOrigin]
                 ](lse_accum_split_ptr.value())
                 lse_ptr[lse_offset] = neg_inf_val
 
@@ -3810,7 +3806,7 @@ struct MLA_SM100_Decode_Common[
         # [total_q_tokens, indices_stride] layout as the physical `d_indices`
         # gather buffer, with -1 for invalid/padding slots. Only read when
         # SparseCausalLogical=True.
-        logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+        logical_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
         logical_indices_stride: Int = 0,
         q_token_idx: Int = 0,
         # Valid per-q_token length of `logical_indices` (the main sparse topk,
@@ -4072,12 +4068,12 @@ struct MLA_SM100_Decode_Common[
         lse_accum_split_ptr: Self.SplitAccumType,
         batch_size: Int,
         scale_k_smem: OptionalReg[SharedMemPointer[Float32]] = None,
-        q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
+        q_scale_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]] = None,
         attn_sink_log2: Float32 = Float32(min_or_neg_inf[.float32]()),
         # Logical sparse indices and their valid per-q_token length, forwarded
         # to the inner apply_mask (documented there); required non-null when
         # SparseCausalLogical is derived below.
-        logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+        logical_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
         logical_indices_stride: Int = 0,
         logical_indices_len: Int = 0,
         # Positions between the token the sparse row was computed for and
@@ -4617,9 +4613,7 @@ struct MLA_SM100_Decode_Common[
                     )
                     # need to rebind the pointer to mutable pointer for write access
                     var lse_ptr = rebind[
-                        UnsafePointer[
-                            Scalar[Self.AccumType], origin=MutAnyOrigin
-                        ]
+                        MutPointer[Scalar[Self.AccumType], origin=MutAnyOrigin]
                     ](lse_accum_split_ptr.value())
                     lse_ptr[lse_offset] = partial_lse
 

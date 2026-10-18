@@ -1031,7 +1031,7 @@ struct BTileGenerator[
     var b: TileTensor[
         Self.b_type, Self.b_layout, Self.origin, Engine=Self.b_engine
     ]  # packed layout if b_packed is True
-    var b_tile_stack_ptr: UnsafePointer[Scalar[Self.b_type], MutUntrackedOrigin]
+    var b_tile_stack_ptr: MutPointer[Scalar[Self.b_type], MutUntrackedOrigin]
     var tile_n_k: DynamicCoord[.int64, 2]
 
     # needs to be always_inline so b_tile_stack_ptr gets allocated on caller's stack
@@ -1053,7 +1053,7 @@ struct BTileGenerator[
         Self.origin,
         Self.b_engine,
     ]:
-        var b_tile_stack_ptr = UnsafePointer[
+        var b_tile_stack_ptr = MutPointer[
             Scalar[Self.b_type], MutUntrackedOrigin
         ].unsafe_dangling()
 

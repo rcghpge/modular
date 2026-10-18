@@ -79,7 +79,7 @@ trait MHAOperand(DevicePassable, TrivialRegisterPassable):
     @inline(.always)
     def indexed_row_ptr(
         self, batch_idx: UInt32, key_idx: UInt32
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         """Returns the start of key `key_idx`'s row for `batch_idx`.
 
         Only read when `rows_indexed` is set. The default is the dense row,
@@ -118,7 +118,7 @@ trait MHAOperand(DevicePassable, TrivialRegisterPassable):
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         ...
 
     @inline(.always)
@@ -166,7 +166,7 @@ trait MHAOperand(DevicePassable, TrivialRegisterPassable):
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         ...
 
     @inline(.always)
@@ -494,7 +494,7 @@ trait MHAOperand(DevicePassable, TrivialRegisterPassable):
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         """Returns the base pointer to the quantization scales tensor.
 
         Returns a null pointer for operands without quantization support.
@@ -532,13 +532,13 @@ struct SparseRowsMHAOperand[
     comptime Engine: TensorEngine = Self.base_t.Engine
 
     var base: Self.base_t
-    var blocks_base: UnsafePointer[Scalar[Self.dtype], ImmUntrackedOrigin]
+    var blocks_base: ImmPointer[Scalar[Self.dtype], ImmUntrackedOrigin]
     """Base of the cache storage that `base.get_tma_row` rows index."""
-    var zero_row: UnsafePointer[Scalar[Self.dtype], ImmUntrackedOrigin]
+    var zero_row: ImmPointer[Scalar[Self.dtype], ImmUntrackedOrigin]
     """A `row_width`-element row of zeros."""
-    var indices: UnsafePointer[Int32, ImmUntrackedOrigin]
+    var indices: ImmPointer[Int32, ImmUntrackedOrigin]
     """Encoded physical indices, `[batch, indices_stride]`, `-1` unused."""
-    var valid_lengths: UnsafePointer[UInt32, ImmUntrackedOrigin]
+    var valid_lengths: ImmPointer[UInt32, ImmUntrackedOrigin]
     """Per-entry count of leading valid slots."""
     var indices_stride: Int32
 
@@ -556,10 +556,10 @@ struct SparseRowsMHAOperand[
     def __init__(
         out self,
         base: Self.base_t,
-        blocks_base: UnsafePointer[Scalar[Self.dtype], _],
-        zero_row: UnsafePointer[Scalar[Self.dtype], _],
-        indices: UnsafePointer[Int32, _],
-        valid_lengths: UnsafePointer[UInt32, _],
+        blocks_base: Pointer[Scalar[Self.dtype], _],
+        zero_row: Pointer[Scalar[Self.dtype], _],
+        indices: Pointer[Int32, _],
+        valid_lengths: Pointer[UInt32, _],
         indices_stride: Int,
     ):
         """Wraps `base` with a top-k selection.
@@ -593,7 +593,7 @@ struct SparseRowsMHAOperand[
     @inline(.always)
     def indexed_row_ptr(
         self, batch_idx: UInt32, key_idx: UInt32
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         # Branch-free so a caller resolving many keys can issue all the index
         # loads before using any: the slot is clamped in range, both addresses
         # are formed, and the result is a select.
@@ -633,7 +633,7 @@ struct SparseRowsMHAOperand[
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         return self.base.block_paged_ptr[tile_size](
             batch_idx, start_tok_idx, head_idx, head_dim_idx
         )
@@ -645,7 +645,7 @@ struct SparseRowsMHAOperand[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         return self.base.scales_block_paged_ptr(
             batch_idx, start_tok_idx, head_idx, head_dim_idx
         )
@@ -783,7 +783,7 @@ struct SparseRowsMHAOperand[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         return self.base.scales_raw_ptr()
 
 
@@ -831,7 +831,7 @@ struct KVCacheMHAOperand[
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         return self.cache.block_paged_ptr[tile_size](
             Int(batch_idx), Int(start_tok_idx), Int(head_idx), Int(head_dim_idx)
         )
@@ -868,7 +868,7 @@ struct KVCacheMHAOperand[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         return self.cache.scales_block_paged_ptr(
             batch_idx, start_tok_idx, head_idx, head_dim_idx
         )
@@ -1195,9 +1195,9 @@ struct KVCacheMHAOperand[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         """Returns the base pointer to the quantization scales tensor."""
-        return rebind[UnsafePointer[Float32, MutAnyOrigin]](
+        return rebind[MutPointer[Float32, MutAnyOrigin]](
             self.cache.scales_raw_ptr()
         )
 
@@ -1247,7 +1247,7 @@ struct KVCacheScalesMHAOperand[
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         # Forward to scales_block_paged_ptr instead of block_paged_ptr
         return self.cache.scales_block_paged_ptr(
             Int(batch_idx), Int(start_tok_idx), Int(head_idx), Int(head_dim_idx)
@@ -1285,10 +1285,10 @@ struct KVCacheScalesMHAOperand[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         # SAFETY: KVCacheScalesMHAOperand doesn't support block-paged scales;
         # callers only dereference behind comptime quantization guards.
-        return UnsafePointer[
+        return ImmPointer[
             Scalar[Self.scale_dtype], ImmutAnyOrigin
         ].unsafe_dangling()
 
@@ -1508,12 +1508,12 @@ struct KVCacheScalesMHAOperand[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         """Returns a dangling pointer. KVCacheScalesMHAOperand already points to the
         scales pointer."""
         # SAFETY: Callers access scales through the operand's own pointer, not
         # this raw_ptr; only used behind comptime quantization guards.
-        return UnsafePointer[Float32, MutAnyOrigin].unsafe_dangling()
+        return MutPointer[Float32, MutAnyOrigin].unsafe_dangling()
 
 
 @inline(.always)
@@ -1534,7 +1534,7 @@ def _null_scale_tile_tensor[
     ]
     return rebind[TileTensor[scale_dtype, scale_layout, ImmutAnyOrigin]](
         TileTensor[scale_dtype, NullScaleLayout, ImmutAnyOrigin](
-            ptr=UnsafePointer[
+            ptr=ImmPointer[
                 Scalar[scale_dtype], ImmutAnyOrigin
             ].unsafe_dangling(),
             layout=NullScaleLayout(),
@@ -1644,7 +1644,7 @@ struct TileTensorMHAOperand[
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         var ret_ptr = self.buffer.ptr + self.buffer.layout[
             linear_idx_type=type_of(self.buffer).linear_idx_type
         ](
@@ -1699,7 +1699,7 @@ struct TileTensorMHAOperand[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         var ret_ptr = self.scale_buffer.ptr + self.scale_buffer.layout[
             linear_idx_type=type_of(self.scale_buffer).linear_idx_type
         ](
@@ -1962,12 +1962,12 @@ struct TileTensorMHAOperand[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         """Returns a dangling pointer for unsupported raw-scale access."""
         # SAFETY: This raw-scale API is unsupported; the returned sentinel must
         # not be dereferenced. Contiguous scales are accessed through
         # scales_block_paged_ptr or load_scale.
-        return UnsafePointer[Float32, MutAnyOrigin].unsafe_dangling()
+        return MutPointer[Float32, MutAnyOrigin].unsafe_dangling()
 
 
 struct RaggedMHAOperand[
@@ -2069,7 +2069,7 @@ struct RaggedMHAOperand[
         ]
         self.scale_buffer = rebind[type_of(self.scale_buffer)](
             TileTensor[Self.scale_dtype, NullScaleLayout, ImmutAnyOrigin](
-                ptr=UnsafePointer[
+                ptr=ImmPointer[
                     Scalar[Self.scale_dtype], ImmutAnyOrigin
                 ].unsafe_dangling(),
                 layout=NullScaleLayout(),
@@ -2107,7 +2107,7 @@ struct RaggedMHAOperand[
         start_tok_idx: UInt32,
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
         var global_token_idx = Int(
             self.cache_row_offsets[Int(batch_idx)] + start_tok_idx
         )
@@ -2166,10 +2166,10 @@ struct RaggedMHAOperand[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
+    ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
         # SAFETY: Ragged operands don't support quantization; callers only
         # dereference behind comptime quantization guards.
-        return UnsafePointer[
+        return ImmPointer[
             Scalar[Self.scale_dtype], ImmutAnyOrigin
         ].unsafe_dangling()
 
@@ -2425,9 +2425,9 @@ struct RaggedMHAOperand[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         """Returns a dangling pointer. Ragged operands do not support
         quantization."""
         # SAFETY: Ragged operands don't support quantization; callers only
         # dereference behind comptime quantization guards.
-        return UnsafePointer[Float32, MutAnyOrigin].unsafe_dangling()
+        return MutPointer[Float32, MutAnyOrigin].unsafe_dangling()

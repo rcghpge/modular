@@ -134,7 +134,7 @@ def _load_to_lds[
 ](
     bc: AMDBufferResource,
     vector_offset: Int32,
-    shared_ptr: UnsafePointer[Scalar[dtype], _, address_space=.SHARED],
+    shared_ptr: Pointer[Scalar[dtype], _, address_space=.SHARED],
     scalar_offset: Int32 = 0,
 ):
     """Loads one raw-buffer vector into LDS with TileIO's async-copy scope.
@@ -173,13 +173,13 @@ def _load_to_lds[
         CacheOperation.ALWAYS,
         CacheOperation.STREAMING,
     ), "_load_to_lds supports ALWAYS or STREAMING cache policy"
-    var desc_ptr = UnsafePointer[
+    var desc_ptr = MutPointer[
         BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
     ].unsafe_dangling()
-    var ptr_to_ptr = UnsafePointer(to=desc_ptr)
-    var ptr_to_simd = UnsafePointer(to=bc.desc)
+    var ptr_to_ptr = Pointer(to=desc_ptr)
+    var ptr_to_simd = Pointer(to=bc.desc)
     ptr_to_ptr[0] = ptr_to_simd.bitcast[
-        UnsafePointer[BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE]
+        MutPointer[BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE]
     ]()[0]
     var desc_ptr_llvm = __mlir_op.`builtin.unrealized_conversion_cast`[
         _type=__mlir_type.`!llvm.ptr<8>`
@@ -227,8 +227,8 @@ def _global_load_to_lds[
     //,
     width: Int,
 ](
-    global_ptr: UnsafePointer[Scalar[dtype], _, address_space=.GLOBAL],
-    shared_ptr: UnsafePointer[Scalar[dtype], _, address_space=.SHARED],
+    global_ptr: Pointer[Scalar[dtype], _, address_space=.GLOBAL],
+    shared_ptr: Pointer[Scalar[dtype], _, address_space=.SHARED],
 ):
     """Loads one global-memory vector into LDS with TileIO's async-copy scope.
 
@@ -326,7 +326,7 @@ struct _IndexedSubTileLayout[
     def load_strip(
         dst: TileTensor[Self.dtype, _, _, address_space=.SHARED, ...],
         strip: Int,
-        src: UnsafePointer[Scalar[Self.dtype], _],
+        src: Pointer[Scalar[Self.dtype], _],
     ):
         """Copies this lane's chunk of `strip` from `src` into `dst`.
 
@@ -584,7 +584,7 @@ struct TiledMmaLoader[
         bk_tile: Int,
         dt: Int,
     ](
-        v_base: UnsafePointer[
+        v_base: MutPointer[
             Scalar[Self.in_type], MutAnyOrigin, address_space=.SHARED
         ],
         rel_key: Int,
@@ -674,7 +674,7 @@ struct TiledMmaLoader[
         bk_tile: Int,
         dt: Int,
     ](
-        v_base: UnsafePointer[
+        v_base: MutPointer[
             Scalar[Self.in_type], MutAnyOrigin, address_space=.SHARED
         ],
         key_group: Int,
@@ -861,7 +861,7 @@ def _load_from_lds[
     imm_offset_bytes: Int = 0,
     typed_imm_offset_bytes: Int = 0,
 ](
-    shared_ptr: UnsafePointer[Scalar[dtype], _, address_space=.SHARED],
+    shared_ptr: Pointer[Scalar[dtype], _, address_space=.SHARED],
 ) -> SIMD[
     dtype, width
 ]:
@@ -1047,11 +1047,7 @@ def _load_from_lds[
 @inline(.always)
 def ds_read_b128_imm_u32x4[
     offset_bytes: Int,
-](
-    base_ptr: UnsafePointer[BFloat16, _, address_space=.SHARED],
-) -> SIMD[
-    .uint32, 4
-]:
+](base_ptr: Pointer[BFloat16, _, address_space=.SHARED],) -> SIMD[.uint32, 4]:
     """Issues `ds_read_b128` with a comptime immediate offset and returns the
     loaded 128 bits as `SIMD[.uint32, 4]`.
 
@@ -1963,13 +1959,13 @@ struct SubTileLoaderLDS[
             ](umod(swizzled_worker_idx, WARP_SIZE))
             var dst_ptr = dst_partitions.ptr.address_space_cast[.SHARED]()
 
-            var desc_ptr_ = UnsafePointer[
+            var desc_ptr_ = MutPointer[
                 BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
             ].unsafe_dangling()
-            var ptr_to_ptr = UnsafePointer(to=desc_ptr_)
-            var ptr_to_simd = UnsafePointer(to=self.bc.desc)
+            var ptr_to_ptr = Pointer(to=desc_ptr_)
+            var ptr_to_simd = Pointer(to=self.bc.desc)
             ptr_to_ptr[0] = ptr_to_simd.bitcast[
-                UnsafePointer[
+                MutPointer[
                     BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
                 ]
             ]()[0]
@@ -2372,13 +2368,13 @@ struct SubTileLoaderLDS_st_8x32[
                 _type=__mlir_type.`!llvm.ptr<3>`
             ](v_smem_warp_ptr)
 
-            var desc_ptr_ = UnsafePointer[
+            var desc_ptr_ = MutPointer[
                 BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
             ].unsafe_dangling()
-            var ptr_to_ptr = UnsafePointer(to=desc_ptr_)
-            var ptr_to_simd = UnsafePointer(to=self.bc.desc)
+            var ptr_to_ptr = Pointer(to=desc_ptr_)
+            var ptr_to_simd = Pointer(to=self.bc.desc)
             ptr_to_ptr[0] = ptr_to_simd.bitcast[
-                UnsafePointer[
+                MutPointer[
                     BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
                 ]
             ]()[0]
@@ -2771,8 +2767,8 @@ struct RegTileEpilogue[
         self.n_total = Int(dst.dim[1]())
 
     @inline(.always)
-    def _ptr(self) -> UnsafePointer[Scalar[Self.c_type], MutAnyOrigin]:
-        return UnsafePointer[Scalar[Self.c_type], MutAnyOrigin](
+    def _ptr(self) -> MutPointer[Scalar[Self.c_type], MutAnyOrigin]:
+        return MutPointer[Scalar[Self.c_type], MutAnyOrigin](
             unsafe_from_address=self.c_ptr_as_int
         )
 

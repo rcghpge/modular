@@ -62,7 +62,6 @@ from .grouped_1d1d_matmul_kernel import (
     SwiGLUOutput,
 )
 from ..structured_kernels.row_scales import NullRowScales, RowScales
-from std.memory import UnsafePointer
 
 
 def grouped_matmul_block_scaled[
@@ -561,9 +560,7 @@ def grouped_matmul_block_scaled[
             Int32(num_active_experts),
             UInt32(K),
             # AB_swapped: SFB data comes from a_scales.
-            rebind[UnsafePointer[Scalar[sfa_dtype], ImmutAnyOrigin]](
-                a_scales.ptr
-            ),
+            rebind[ImmPointer[Scalar[sfa_dtype], ImmutAnyOrigin]](a_scales.ptr),
             Int32(Int(a_scales.dim[1]()) * _sfb_K_TILE_ELEMS),
             Int32(Int(a_scales.dim[1]())),
             swiglu_out,
@@ -640,7 +637,7 @@ def grouped_matmul_block_scaled[
             Int32(num_active_experts),
             UInt32(K),
             # Non-swapped: SFB data comes from _b_scales.
-            rebind[UnsafePointer[Scalar[sfb_dtype], ImmutAnyOrigin]](
+            rebind[ImmPointer[Scalar[sfb_dtype], ImmutAnyOrigin]](
                 _b_scales.ptr
             ),
             Int32(Int(_b_scales.dim[2]()) * _sfb_K_TILE_ELEMS),

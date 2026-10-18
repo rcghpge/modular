@@ -40,7 +40,7 @@ def block_reduce[
     op: def(Float32, Float32) thin -> Float32
 ](
     val: Float32,
-    shared_mem: UnsafePointer[Float32, MutAnyOrigin, address_space=.SHARED],
+    shared_mem: MutPointer[Float32, MutAnyOrigin, address_space=.SHARED],
 ) -> Float32:
     var tid = thread_idx.x
     var smem = shared_mem
@@ -63,9 +63,9 @@ def block_reduce[
 
 
 def softmax_kernel(
-    S: UnsafePointer[Float32, MutAnyOrigin],
-    D: UnsafePointer[Float32, MutAnyOrigin],
-    P: UnsafePointer[Float32, MutAnyOrigin],
+    S: MutPointer[Float32, MutAnyOrigin],
+    D: MutPointer[Float32, MutAnyOrigin],
+    P: MutPointer[Float32, MutAnyOrigin],
     N_dev: Int32,
 ):
     # Int is not device-passable; widen the fixed-width arg.

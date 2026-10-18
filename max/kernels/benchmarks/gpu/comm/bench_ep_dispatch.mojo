@@ -165,7 +165,7 @@ def zipf_expert_weights[
 def fill_topk_ids[
     n_experts: Int, top_k: Int
 ](
-    topk_ids: UnsafePointer[Int32, MutUntrackedOrigin],
+    topk_ids: MutPointer[Int32, MutUntrackedOrigin],
     n_tokens: Int,
     cdf: List[Float64],
 ) -> None:
@@ -226,7 +226,7 @@ def routing_cdf[n_experts: Int, n_ranks: Int](out result: List[Float64]) raises:
 
 def report_routing[
     n_experts: Int, n_ranks: Int, top_k: Int
-](topk_ids: UnsafePointer[Int32, MutUntrackedOrigin], n_tokens: Int) -> None:
+](topk_ids: MutPointer[Int32, MutUntrackedOrigin], n_tokens: Int) -> None:
     """Prints the imbalance this run will actually see.
 
     The two rebalancing optimizations are within noise on even routing by
@@ -615,7 +615,7 @@ def bench_dispatch_common[
     var recv_count_bufs_list = List[DeviceBuffer[.uint64]](capacity=n_ranks)
     var atomic_counters_list = List[DeviceBuffer[.int32]](capacity=n_ranks)
 
-    var host_topk_ids_list = Array[UnsafePointer[Int32, MutUntrackedOrigin], n_ranks](uninitialized=True)
+    var host_topk_ids_list = Array[MutPointer[Int32, MutUntrackedOrigin], n_ranks](uninitialized=True)
 
     var device_topk_bufs_list = List[DeviceBuffer[.int32]](capacity=n_ranks)
     var device_input_bufs_list = List[DeviceBuffer[input_type]](capacity=n_ranks)

@@ -75,7 +75,7 @@ def _transpose_qrscf_to_fk_kpad[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     Q: Int32,
     R: Int32,
     S: Int32,
@@ -120,7 +120,7 @@ def _transpose_fcqrs_to_fk_kpad[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     F: Int32,
     C: Int32,
     Q: Int32,

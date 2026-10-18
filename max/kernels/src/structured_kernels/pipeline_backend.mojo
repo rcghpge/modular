@@ -47,7 +47,7 @@ from std.atomic import Atomic
 from max.gpu import lane_id
 from std.sys._assembly import inlined_assembly
 
-comptime MbarPtr = UnsafePointer[
+comptime MbarPtr = MutPointer[
     SharedMemBarrier, MutUntrackedOrigin, address_space=.SHARED
 ]
 
@@ -80,7 +80,7 @@ trait PipelineBackend(TrivialRegisterPassable):
         num_stages: Int
     ](
         out self,
-        ptr: UnsafePointer[
+        ptr: MutPointer[
             Self.BarrierStorage, MutUntrackedOrigin, address_space=.SHARED
         ],
     ):
@@ -331,7 +331,7 @@ struct NvidiaMbarBackend[num_stages: Int](PipelineBackend):
 # ===----------------------------------------------------------------------=== #
 # AMD atomic-counter backend
 # ===----------------------------------------------------------------------=== #
-comptime AmdCounterPtr = UnsafePointer[
+comptime AmdCounterPtr = MutPointer[
     Int64, MutUntrackedOrigin, address_space=AddressSpace.SHARED
 ]
 

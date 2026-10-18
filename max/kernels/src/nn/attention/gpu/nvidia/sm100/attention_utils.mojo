@@ -522,9 +522,7 @@ def store_p_quadrant[
     # A-descriptor is built over (`BM` for the shared-key datapath).
     p_tile_rows: Int,
 ](
-    p_smem: UnsafePointer[
-        mut=True, Scalar[p_type], _, address_space=AddressSpace.SHARED
-    ],
+    p_smem: MutPointer[Scalar[p_type], _, address_space=AddressSpace.SHARED],
     p: Array[Scalar[DType.float32], cols],
     row: UInt32,
     warp_in_wg: UInt32,
@@ -2558,7 +2556,7 @@ def elect_mma_arrive[
 
 @inline(.always)
 def expect_bytes_pred(
-    mbar_ptr: UnsafePointer[address_space=.SHARED, ...],
+    mbar_ptr: Pointer[address_space=.SHARED, ...],
     bytes: Int32,
     pred: Int32,
 ):

@@ -73,12 +73,12 @@ def mha_sm100_depth512_dispatch[
     sink: Bool = False,
 ](
     output: DeviceBuffer[output_type],
-    q_arg: UnsafePointer[Scalar[q_type], _],
+    q_arg: Pointer[Scalar[q_type], _],
     k: KVType,
     v: KVType,
     num_rows_q: Int,
     mask: MaskType,
-    valid_length: UnsafePointer[UInt32, _],
+    valid_length: Pointer[UInt32, _],
     max_prompt_len_arg: MaxPromptLenType,
     max_cache_valid_length_arg: Int,
     scale: Float32,
@@ -394,7 +394,7 @@ def mha_sm100_depth512_dispatch[
         comptime if sink:
             with_sink[NonNullPointer[KVType.dtype]](
                 {
-                    rebind[UnsafePointer[Scalar[KVType.dtype], ImmutAnyOrigin]](
+                    rebind[ImmPointer[Scalar[KVType.dtype], ImmutAnyOrigin]](
                         sink_weights.value().ptr
                     )
                 }
@@ -522,7 +522,7 @@ def mha_sm100_depth512_dispatch[
         comptime if sink:
             with_sink_q[NonNullPointer[KVType.dtype]](
                 {
-                    rebind[UnsafePointer[Scalar[KVType.dtype], ImmutAnyOrigin]](
+                    rebind[ImmPointer[Scalar[KVType.dtype], ImmutAnyOrigin]](
                         sink_weights.value().ptr
                     )
                 }

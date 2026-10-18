@@ -363,10 +363,10 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
             MaskType=Self.MaskType,
             SplitAccumType=Self.SplitAccumType,
         ],
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         indices_stride_dev: Int32,
         topk_lengths: Self.TopkLengthsPtrType,
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         attn_sink_ptr: Self.AttnSinkPtrType,
         # Extra KV parameters: separate cache for always-attend tokens.
         # Single TMA covering full 576-byte row (all-FP8).
@@ -376,12 +376,10 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
             desc_shape=coord[1, Self.kv_gather4_box_w],
         ],
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk_lengths: Self.TopkLengthsPtrType,
         extra_indices_stride_dev: Int32,
-        extra_scales_ptr: OptionalReg[
-            UnsafePointer[Float32, origin=MutAnyOrigin]
-        ],
+        extra_scales_ptr: OptionalReg[MutPointer[Float32, origin=MutAnyOrigin]],
         scalar_args: TileTensor[
             .int64,
             RowMajorLayout[ComptimeInt[3]],
@@ -443,7 +441,7 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
         ](
             kv_lut,
             rebind[
-                UnsafePointer[
+                ImmPointer[
                     Scalar[Self.ValidLengthType.dtype],
                     ImmutAnyOrigin,
                     address_space=.GENERIC,
@@ -921,7 +919,7 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
     @staticmethod
     @inline(.always)
     def _transform_indices_to_smem(
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         idx_smem: SharedMemPointer[Int32],
         indices_base: Int,
         kv_lut: Self.KVLUTType,
@@ -959,9 +957,9 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
         ],
         idx_smem_base: SharedMemPointer[Int32],
         kv_lut: Self.KVLUTType,
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         topk: Int,
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         scale_smem_base: SharedMemPointer[UInt8],
         offset_position: OffsetPosition[
             Self.config,
@@ -976,11 +974,9 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
         ],
         num_orig_blocks: Int,
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk: Int,
-        extra_scales_ptr: OptionalReg[
-            UnsafePointer[Float32, origin=MutAnyOrigin]
-        ],
+        extra_scales_ptr: OptionalReg[MutPointer[Float32, origin=MutAnyOrigin]],
     ):
         """Index transform producer running on warp 11 (32 threads).
 
@@ -1281,7 +1277,7 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
     @inline(.always)
     def _load_scales_for_tile(
         scale_smem_base: SharedMemPointer[UInt8],
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         kv_lut: Self.KVLUTType,
         stage_idx: UInt32,
         tile_kv_row_start: UInt32,
@@ -1434,7 +1430,7 @@ struct MLA_SM100_Decode_Sparse_KV_FP8[
     @inline(.always)
     def _load_scales_for_tile_sparse(
         scale_smem_base: SharedMemPointer[UInt8],
-        scales_ptr: OptionalReg[UnsafePointer[Float32, origin=MutAnyOrigin]],
+        scales_ptr: OptionalReg[MutPointer[Float32, origin=MutAnyOrigin]],
         stage_idx: UInt32,
         idx_smem: SharedMemPointer[Int32],
     ):

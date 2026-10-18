@@ -22,7 +22,7 @@ Usage:
 
 from std.collections import Array
 from std.utils.static_tuple import StaticTuple
-from std.memory import Pointer, UnsafePointer
+from std.memory import Pointer
 from std.sys import (
     simd_width_of,
     size_of,
@@ -104,7 +104,7 @@ comptime P3_MAX_RANKS = 8
 comptime P5_SEND_MBX_INTS = 32
 comptime P5_SEND_MBX_STRIDE = 4
 
-comptime P5SendMailboxPtr = UnsafePointer[
+comptime P5SendMailboxPtr = MutPointer[
     Int32, MutUntrackedOrigin, address_space=AddressSpace.SHARED
 ]
 
@@ -135,8 +135,8 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
     dereferenced -- gated behind `p3_control >= 0`) and 0-valued scalars.
     """
 
-    var atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin]
-    var src_info_ptr: UnsafePointer[Int32, ImmUntrackedOrigin]
+    var atomic_counter: MutPointer[Int32, MutUntrackedOrigin]
+    var src_info_ptr: ImmPointer[Int32, ImmUntrackedOrigin]
     # Per-ROW resolved destination cache, one UInt64 per absolute row, zeroed
     # once per launch by the caller.
     #
@@ -153,9 +153,9 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
     # base pointer. A real base pointer is never 0 or 1. Two tiles racing on
     # the same row both compute the SAME value, so the store is idempotent and
     # needs no ordering.
-    var row_base_ptr: UnsafePointer[UInt64, MutUntrackedOrigin]
+    var row_base_ptr: MutPointer[UInt64, MutUntrackedOrigin]
     var recv_buf_ptrs: StaticTuple[
-        UnsafePointer[UInt8, MutUntrackedOrigin], P3_MAX_RANKS
+        MutPointer[UInt8, MutUntrackedOrigin], P3_MAX_RANKS
     ]
     var n_ranks: Int
     var p2p_world_size: Int
@@ -173,7 +173,7 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
     # UInt64 per physical CTA -- [2*cta] = first peer store issued, [2*cta+1] =
     # last. Zeroed once per launch by the caller; `first` is written only while
     # still 0, `last` on every tile.
-    var send_stamp_ptr: UnsafePointer[UInt64, MutUntrackedOrigin]
+    var send_stamp_ptr: MutPointer[UInt64, MutUntrackedOrigin]
     # `send_stamp_ptr` is `unsafe_dangling()` in every arm that does not supply
     # a buffer, and a dangling pointer is NOT a valid "uninitialized" sentinel,
     # so the writes need their own runtime enable -- the same shape as
@@ -183,7 +183,7 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
     var send_stamp_on: Int
     # `-D P5_TRACE_EPI=true` (default OFF): per-CTA accumulator for the send
     # warps' own busy time, which nothing outside this file can see.
-    var trace_ptr: UnsafePointer[UInt64, MutUntrackedOrigin]
+    var trace_ptr: MutPointer[UInt64, MutUntrackedOrigin]
     # Own runtime enable, for the same reason `send_stamp_on` has one: a
     # dangling pointer is not a valid "uninitialized" sentinel, and the arms
     # that share this instantiation pass no buffer.
@@ -196,11 +196,11 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
     @staticmethod
     def disabled() -> Self:
         return Self(
-            UnsafePointer[Int32, MutUntrackedOrigin].unsafe_dangling(),
-            UnsafePointer[Int32, ImmUntrackedOrigin].unsafe_dangling(),
-            UnsafePointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
-            StaticTuple[UnsafePointer[UInt8, MutUntrackedOrigin], P3_MAX_RANKS](
-                UnsafePointer[UInt8, MutUntrackedOrigin].unsafe_dangling()
+            MutPointer[Int32, MutUntrackedOrigin].unsafe_dangling(),
+            ImmPointer[Int32, ImmUntrackedOrigin].unsafe_dangling(),
+            MutPointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
+            StaticTuple[MutPointer[UInt8, MutUntrackedOrigin], P3_MAX_RANKS](
+                MutPointer[UInt8, MutUntrackedOrigin].unsafe_dangling()
             ),
             0,
             1,
@@ -209,9 +209,9 @@ struct P3PeerSendConfig(ImplicitlyCopyable, Movable):
             0,
             0,
             P5SendMailboxPtr.unsafe_dangling(),
-            UnsafePointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
+            MutPointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
             0,
-            UnsafePointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
+            MutPointer[UInt64, MutUntrackedOrigin].unsafe_dangling(),
             0,
             -1,
         )
@@ -857,9 +857,9 @@ struct TileWriter[
         self,
         stage: Self.Stage,
         scheduler: TileScheduler,
-        workspace: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
+        workspace: MutPointer[Scalar[Self.accum_type], MutAnyOrigin],
         counters: SplitKTileCounters,
-        c: UnsafePointer[Scalar[Self.c_type], MutAnyOrigin],
+        c: MutPointer[Scalar[Self.c_type], MutAnyOrigin],
         c_row_stride: Int,
         work_info: WorkInfo,
         shape: Tuple[UInt32, UInt32],
@@ -2393,9 +2393,7 @@ struct TileWriter[
         c_tensor_layout: TensorLayout,
         c_tensor_engine: TensorEngine,
     ](
-        c_smem_ptr: UnsafePointer[
-            Scalar[Self.c_type], _, address_space=.SHARED
-        ],
+        c_smem_ptr: Pointer[Scalar[Self.c_type], _, address_space=.SHARED],
         c_tensor: TileTensor[
             mut=True,
             Self.c_type,
@@ -3284,7 +3282,7 @@ struct TileWriter[
         c_tiles: Self.CTileArray,
         output_stage: Self.Stage,
         mut epilogue_pipeline: ProducerConsumerPipeline[num_epi_stages],
-        epilogue_tiles_base: UnsafePointer[
+        epilogue_tiles_base: MutPointer[
             Scalar[Self.c_type], MutAnyOrigin, address_space=.SHARED
         ],
         epilogue_tile_elems: Int,

@@ -852,7 +852,7 @@ struct PRegisterBuffer[
         reg_idx: Int
     ](
         self,
-        smem_base: UnsafePointer[
+        smem_base: MutPointer[
             Scalar[Self.dtype], MutAnyOrigin, address_space=.SHARED
         ],
         byte_offset: Int,

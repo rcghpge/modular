@@ -30,12 +30,12 @@ from nn.attention.mha_operand import TileTensorMHAOperand, MHAOperand
 def _decode_pipelined_kernel[
     dtype: DType, k_t: MHAOperand, v_t: MHAOperand
 ](
-    q: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    q: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    exp_sum: UnsafePointer[Scalar[get_accum_type[dtype]()], MutAnyOrigin],
-    qk_max: UnsafePointer[Scalar[get_accum_type[dtype]()], MutAnyOrigin],
+    output: MutPointer[Scalar[dtype], MutAnyOrigin],
+    exp_sum: MutPointer[Scalar[get_accum_type[dtype]()], MutAnyOrigin],
+    qk_max: MutPointer[Scalar[get_accum_type[dtype]()], MutAnyOrigin],
 ):
     # Keep platform-width Int values inside the GPU launch boundary.
     mha_decoding_single_batch_pipelined[

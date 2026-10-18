@@ -116,8 +116,8 @@ def matmul_kernel[
     s_type: DType = get_accum_type[c_type](),
 ](
     c_ptr: MutPointer[Scalar[c_type], MutAnyOrigin],
-    a_ptr: UnsafePointer[Scalar[a_type], ImmutAnyOrigin],
-    b_ptr: UnsafePointer[Scalar[b_type], ImmutAnyOrigin],
+    a_ptr: ImmPointer[Scalar[a_type], ImmutAnyOrigin],
+    b_ptr: ImmPointer[Scalar[b_type], ImmutAnyOrigin],
     m_dev: Int32,
     n_dev: Int32,
     k_dev: Int32,

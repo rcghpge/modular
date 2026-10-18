@@ -86,7 +86,7 @@ struct LoadStore_i8mm[
     @inline(.always)
     def _load_c_tile(
         mut self,
-        c_ptr: UnsafePointer[Scalar[Self.dtype], ...],
+        c_ptr: Pointer[Scalar[Self.dtype], ...],
         c_stride: Int,
         tile_n_idx: Int,
         c_bound: IndexList[2],

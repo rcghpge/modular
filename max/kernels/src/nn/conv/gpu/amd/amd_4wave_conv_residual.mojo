@@ -62,7 +62,7 @@ def _kpad_filter_frsc[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     K_real: Int32,
     K_padded: Int32,
     F: Int32,
@@ -278,7 +278,7 @@ def amd_4wave_conv_fprop_with_residual[
                 filter_2d,
                 output_2d,
                 ctx,
-                source_ptr=UnsafePointer[Scalar[out_type], ImmutAnyOrigin](
+                source_ptr=ImmPointer[Scalar[out_type], ImmutAnyOrigin](
                     unsafe_from_address=Int(source.ptr)
                 ),
                 source_row_stride=_source_row_stride,
@@ -329,7 +329,7 @@ def amd_4wave_conv_fprop_with_residual[
                 filter_2d_no_pad,
                 output_2d,
                 ctx,
-                source_ptr=UnsafePointer[Scalar[out_type], ImmutAnyOrigin](
+                source_ptr=ImmPointer[Scalar[out_type], ImmutAnyOrigin](
                     unsafe_from_address=Int(source.ptr)
                 ),
                 source_row_stride=_source_row_stride,

@@ -76,7 +76,6 @@ from extensibility import (
 from extensibility import (
     _MutableInputVariadicTensors as MutableInputVariadicTensors,
 )
-from std.memory import UnsafePointer
 from std.logger import Logger
 
 comptime logger = Logger()
@@ -517,7 +516,7 @@ struct DistributedAllGather:
         # group-local slicing internally.
         comptime InputTensorType = type_of(
             TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], ImmutAnyOrigin]](
+                rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
                     inputs[0]._ptr
                 ),
                 row_major(inputs[0].size()),
@@ -525,7 +524,7 @@ struct DistributedAllGather:
         )
         comptime OutputTensorType = type_of(
             TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+                rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                     outputs[0]._ptr
                 ),
                 row_major(outputs[0].size()),
@@ -542,14 +541,14 @@ struct DistributedAllGather:
         )
         comptime for i in range(num_devices):
             in_tensors[i] = TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], ImmutAnyOrigin]](
+                rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
                     inputs[i]._ptr
                 ),
                 row_major(inputs[i].size()),
             )
         comptime for i in range(num_devices * group_size):
             out_tensors[i] = TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+                rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                     outputs[i]._ptr
                 ),
                 row_major(outputs[i].size()),
@@ -1295,7 +1294,7 @@ struct DistributedAllGatherRMSNorm:
         )
         comptime OutViewType = type_of(
             TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+                rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                     outputs_residual[0].to_tile_tensor[.int64]()._storage
                 ),
                 row_major(world_cols, world_cols),
@@ -1306,7 +1305,7 @@ struct DistributedAllGatherRMSNorm:
         )
         comptime for d in range(num_devices):
             comptime d_group_start = ualign_down(d, group_size)
-            var d_base = rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+            var d_base = rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                 outputs_residual[d].to_tile_tensor[.int64]()._storage
             )
             var row_off = 0
@@ -1531,7 +1530,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
         )
         comptime OutViewType = type_of(
             TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+                rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                     outputs_residual[0].to_tile_tensor[.int64]()._storage
                 ),
                 row_major(world_cols, world_cols),
@@ -1542,7 +1541,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
         )
         comptime for d in range(num_devices):
             comptime d_group_start = ualign_down(d, group_size)
-            var d_base = rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+            var d_base = rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                 outputs_residual[d].to_tile_tensor[.int64]()._storage
             )
             var row_off = 0
@@ -1854,7 +1853,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
         )
         comptime OutViewType = type_of(
             TileTensor(
-                rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+                rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                     outputs_residual[0].to_tile_tensor[.int64]()._storage
                 ),
                 row_major(world_cols, world_cols),
@@ -1865,7 +1864,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
         )
         comptime for d in range(num_devices):
             comptime d_group_start = ualign_down(d, group_size)
-            var d_base = rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
+            var d_base = rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
                 outputs_residual[d].to_tile_tensor[.int64]()._storage
             )
             var row_off = 0
@@ -2129,13 +2128,9 @@ struct LamportAllreduceRMSNorm:
                 ") -- one pack per thread required",
             )
 
-        var src = rebind[UnsafePointer[Scalar[dtype], ImmutAnyOrigin]](act._ptr)
-        var dst = rebind[UnsafePointer[Scalar[dtype], MutAnyOrigin]](
-            output._ptr
-        )
-        var gm = rebind[UnsafePointer[Scalar[dtype], ImmutAnyOrigin]](
-            gamma._ptr
-        )
+        var src = rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](act._ptr)
+        var dst = rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](output._ptr)
+        var gm = rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](gamma._ptr)
 
         lamport_allreduce_rmsnorm[
             dtype, ngpus, pdl=pdl, early_launch=early_launch

@@ -597,7 +597,7 @@ struct AppleM5Fp4MatMul[
                     if arow + 8 < m and acol < n:
                         _write4(lrow + 8, lcol, acol, frag.slice[4, offset=4]())
         else:
-            var c_ptr_fp32 = rebind[UnsafePointer[Float32, MutAnyOrigin]](c_ptr)
+            var c_ptr_fp32 = rebind[MutPointer[Float32, MutAnyOrigin]](c_ptr)
             var c_mat_fp32 = TileTensor(c_ptr_fp32, row_major(m, n))
             var c_sub_fp32 = c_mat_fp32.tile[SG_M, SG_N](
                 Int(sg_row_idx), Int(sg_col_idx)

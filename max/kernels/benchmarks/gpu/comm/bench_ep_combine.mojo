@@ -163,7 +163,7 @@ def routing_cdf[n_experts: Int, n_ranks: Int](out result: List[Float64]) raises:
 def fill_topk_ids[
     origin: MutOrigin, //, n_experts: Int, top_k: Int
 ](
-    topk_ids: UnsafePointer[Int32, origin],
+    topk_ids: MutPointer[Int32, origin],
     n_tokens: Int,
     cdf: List[Float64],
 ) -> None:
@@ -257,7 +257,7 @@ def bench_combine[
     # Shared atomic counter buffer for dispatch and combine
     var atomic_counters_list = List[DeviceBuffer[.int32]](capacity=n_ranks)
 
-    var host_topk_ids_list = Array[UnsafePointer[Int32, MutAnyOrigin], n_ranks](uninitialized=True)
+    var host_topk_ids_list = Array[MutPointer[Int32, MutAnyOrigin], n_ranks](uninitialized=True)
 
     var device_topk_bufs_list = List[DeviceBuffer[.int32]](capacity=n_ranks)
     var device_input_bufs_list = List[DeviceBuffer[input_type]](capacity=n_ranks)
@@ -374,12 +374,12 @@ def bench_combine[
 
     # fmt: off
     # Dispatch buffers
-    var dispatch_recv_bufs_inputs = Array[Array[UnsafePointer[UInt8, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
-    var dispatch_recv_count_bufs_inputs = Array[Array[UnsafePointer[UInt64, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
+    var dispatch_recv_bufs_inputs = Array[Array[MutPointer[UInt8, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
+    var dispatch_recv_count_bufs_inputs = Array[Array[MutPointer[UInt64, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
 
     # Combine buffers
-    var combine_recv_bufs_inputs = Array[Array[UnsafePointer[UInt8, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
-    var combine_recv_count_bufs_inputs = Array[Array[UnsafePointer[UInt64, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
+    var combine_recv_bufs_inputs = Array[Array[MutPointer[UInt8, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
+    var combine_recv_count_bufs_inputs = Array[Array[MutPointer[UInt64, MutAnyOrigin], n_ranks], n_slots](uninitialized=True)
 
     for slot_idx in range(n_slots):
         for dev_idx in range(n_ranks):
@@ -390,20 +390,20 @@ def bench_combine[
 
     # Dispatch helpers
     @inline(.always)
-    def get_dispatch_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt8, MutAnyOrigin]) raises {mut dispatch_send_bufs_list, imm}:
+    def get_dispatch_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: MutPointer[UInt8, MutAnyOrigin]) raises {mut dispatch_send_bufs_list, imm}:
         result = (dispatch_send_bufs_list[dev_idx].unsafe_ptr() + slot_idx * n_tokens_per_rank * msg_bytes).as_unsafe_any_origin()
 
     # Combine helpers
     @inline(.always)
-    def get_combine_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt8, MutAnyOrigin]) raises {mut combine_send_bufs_list, imm}:
+    def get_combine_send_buf_ptr(dev_idx: Int, slot_idx: Int, out result: MutPointer[UInt8, MutAnyOrigin]) raises {mut combine_send_bufs_list, imm}:
         result = (combine_send_bufs_list[dev_idx].unsafe_ptr() + slot_idx * max_recv_num_tokens * combine_msg_bytes).as_unsafe_any_origin()
 
     @inline(.always)
-    def get_combine_recv_buf_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt8, MutAnyOrigin]) raises {mut combine_recv_bufs_list, imm}:
+    def get_combine_recv_buf_ptr(dev_idx: Int, slot_idx: Int, out result: MutPointer[UInt8, MutAnyOrigin]) raises {mut combine_recv_bufs_list, imm}:
         result = (combine_recv_bufs_list[dev_idx].unsafe_ptr() + slot_idx * n_tokens_per_rank * top_k * combine_msg_bytes).as_unsafe_any_origin()
 
     @inline(.always)
-    def get_combine_recv_count_ptr(dev_idx: Int, slot_idx: Int, out result: UnsafePointer[UInt64, MutAnyOrigin]) raises {mut combine_recv_count_bufs_list, imm}:
+    def get_combine_recv_count_ptr(dev_idx: Int, slot_idx: Int, out result: MutPointer[UInt64, MutAnyOrigin]) raises {mut combine_recv_count_bufs_list, imm}:
         result = (combine_recv_count_bufs_list[dev_idx].unsafe_ptr() + slot_idx * n_experts).as_unsafe_any_origin()
 
     @inline(.always)

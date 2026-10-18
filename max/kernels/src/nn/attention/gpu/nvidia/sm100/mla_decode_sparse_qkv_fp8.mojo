@@ -70,7 +70,6 @@ ring is not on that loop, so leftover SMEM buys depth on the SW64 side only
 """
 
 from std.collections import OptionalReg
-from std.memory import UnsafePointer
 from std.math import ceildiv, clamp
 from std.math.constants import log2e
 from std.sys import get_defined_int, size_of
@@ -318,13 +317,13 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             MaskType=Self.MaskType,
             SplitAccumType=Self.SplitAccumType,
         ],
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         indices_stride_dev: Int32,
         # Logical sparse indices (same layout as `d_indices`, -1 padding) for
         # position-based causal masking. See mla_decode_utils.mojo.
-        logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        logical_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         topk_lengths: Self.TopkLengthsPtrType,
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         attn_sink_ptr: Self.AttnSinkPtrType,
         extra_k_tma: TMATensorTile[
             DType.int64,
@@ -332,10 +331,10 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             desc_shape=coord[1, Self.kv_gather4_box_w],
         ],
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk_lengths: Self.TopkLengthsPtrType,
         extra_indices_stride_dev: Int32,
-        extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]],
+        extra_scales_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]],
         scalar_args: TileTensor[
             .int64,
             RowMajorLayout[ComptimeInt[3]],
@@ -389,7 +388,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         ](
             kv_lut,
             rebind[
-                UnsafePointer[
+                ImmPointer[
                     Scalar[Self.ValidLengthType.dtype],
                     ImmutAnyOrigin,
                     address_space=.GENERIC,
@@ -761,7 +760,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     @staticmethod
     @inline(.always)
     def _transform_indices_to_smem(
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         idx_smem: SharedMemPointer[Int32],
         indices_base: Int,
         kv_lut: Self.KVLUTType,
@@ -790,7 +789,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         ],
         idx_smem_base: SharedMemPointer[Int32],
         kv_lut: Self.KVLUTType,
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         topk: Int,
         offset_position: OffsetPosition[
             Self.config,
@@ -805,7 +804,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         ],
         num_orig_blocks: Int,
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk: Int,
     ):
         # The extra stream's caller (latent sparse attention) passes flat

@@ -1350,7 +1350,7 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         scale: Float32,
         num_keys: Int32,
         start_pos: Int32,
-        sink_weights_ptr: UnsafePointer[Scalar[q_dtype], ImmutAnyOrigin],
+        sink_weights_ptr: ImmPointer[Scalar[q_dtype], ImmutAnyOrigin],
     ):
         """Multi-block 8-warp MHA forward (inference-only).
 
@@ -2258,15 +2258,15 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         cross_attention: Bool = False,
         sink: Bool = False,
     ](
-        q_ptr: UnsafePointer[Scalar[qkv_dtype], ImmutAnyOrigin],
+        q_ptr: ImmPointer[Scalar[qkv_dtype], ImmutAnyOrigin],
         k: k_t,
         v: v_t,
-        output_ptr: UnsafePointer[Scalar[output_dtype], MutAnyOrigin],
+        output_ptr: MutPointer[Scalar[output_dtype], MutAnyOrigin],
         mask_functor: mask_t,
         scale: Float32,
-        input_row_offsets_ptr: UnsafePointer[UInt32, ImmutAnyOrigin],
-        kv_input_row_offsets_ptr: UnsafePointer[UInt32, ImmutAnyOrigin],
-        sink_weights_ptr: UnsafePointer[Scalar[qkv_dtype], ImmutAnyOrigin],
+        input_row_offsets_ptr: ImmPointer[UInt32, ImmutAnyOrigin],
+        kv_input_row_offsets_ptr: ImmPointer[UInt32, ImmutAnyOrigin],
+        sink_weights_ptr: ImmPointer[Scalar[qkv_dtype], ImmutAnyOrigin],
     ):
         """Ragged-batch GPU kernel entry: per-sequence setup + `run`.
 
@@ -2401,20 +2401,20 @@ def mha_prefill_v2_ragged[
         DeviceContext.target.default_compile_options()
     ),
 ](
-    q_ptr: UnsafePointer[Scalar[qkv_dtype], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[qkv_dtype], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_dtype], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_dtype], MutAnyOrigin],
     mask_functor: mask_t,
     scale: Float32,
-    input_row_offsets_ptr: UnsafePointer[UInt32, ImmutAnyOrigin],
-    kv_input_row_offsets_ptr: UnsafePointer[UInt32, ImmutAnyOrigin],
+    input_row_offsets_ptr: ImmPointer[UInt32, ImmutAnyOrigin],
+    kv_input_row_offsets_ptr: ImmPointer[UInt32, ImmutAnyOrigin],
     max_prompt_len: Int,
     batch_size: Int,
     ctx: DeviceContext,
-    sink_weights_ptr: UnsafePointer[
+    sink_weights_ptr: ImmPointer[
         Scalar[qkv_dtype], ImmutAnyOrigin
-    ] = UnsafePointer[Scalar[qkv_dtype], ImmutAnyOrigin].unsafe_dangling(),
+    ] = ImmPointer[Scalar[qkv_dtype], ImmutAnyOrigin].unsafe_dangling(),
 ) raises:
     """Host launcher for ragged `MhaPrefillV2` prefill.
 
@@ -2530,9 +2530,9 @@ def mha_prefill_v2[
     num_keys: Int,
     start_pos: Int,
     ctx: DeviceContext,
-    sink_weights_ptr: UnsafePointer[
+    sink_weights_ptr: ImmPointer[Scalar[q.dtype], ImmutAnyOrigin] = ImmPointer[
         Scalar[q.dtype], ImmutAnyOrigin
-    ] = UnsafePointer[Scalar[q.dtype], ImmutAnyOrigin].unsafe_dangling(),
+    ].unsafe_dangling(),
 ) raises:
     """Host launcher for `MhaPrefillV2`.
 

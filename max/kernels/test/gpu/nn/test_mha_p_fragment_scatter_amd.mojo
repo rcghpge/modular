@@ -44,7 +44,7 @@ def _register_value(n_mma: Int, m_mma: Int, lane: Int, frag: Int) -> Float32:
     return Float32(n_mma * 10000 + m_mma * 1000 + lane * 16 + frag + 1) / 32
 
 
-def _scatter[dtype: DType](output: UnsafePointer[Scalar[dtype], MutAnyOrigin]):
+def _scatter[dtype: DType](output: MutPointer[Scalar[dtype], MutAnyOrigin]):
     comptime mma = get_mma_shape[dtype, .float32]()
     comptime assert mma[0] == MMA_M and mma[1] == MMA_N
     comptime assert get_fragment_size[mma]()[2] == FRAGMENT

@@ -2365,7 +2365,7 @@ struct MatmulSwiGLUBias:
             b.to_tile_tensor[.int64](),
             ctx,
             OptionalReg(
-                UnsafePointer[BFloat16, ImmutAnyOrigin](
+                ImmPointer[BFloat16, ImmutAnyOrigin](
                     unsafe_from_address=Int(bias.unsafe_ptr())
                 )
             ),
@@ -2587,22 +2587,22 @@ struct Struct_smallm_streaming_matmul:
         ), "smallm streaming matmul requires a static [N, K] weight shape"
 
         if M <= 32:
-            var b_ptr = UnsafePointer[BFloat16, ImmutAnyOrigin](
+            var b_ptr = ImmPointer[BFloat16, ImmutAnyOrigin](
                 unsafe_from_address=Int(b_shuffled.unsafe_ptr())
             )
-            var c_ptr = UnsafePointer[BFloat16, MutAnyOrigin](
+            var c_ptr = MutPointer[BFloat16, MutAnyOrigin](
                 unsafe_from_address=Int(c.unsafe_ptr())
             )
             var c_tt = TileTensor[
                 .bfloat16, type_of(row_major(1, Idx[N])), MutAnyOrigin
             ](c_ptr, row_major(M, Idx[N]))
-            var a_ptr = UnsafePointer[BFloat16, ImmutAnyOrigin](
+            var a_ptr = ImmPointer[BFloat16, ImmutAnyOrigin](
                 unsafe_from_address=Int(a.unsafe_ptr())
             )
             var a_tt = TileTensor[
                 .bfloat16, type_of(row_major(1, Idx[K])), ImmutAnyOrigin
             ](a_ptr, row_major(M, Idx[K]))
-            var scratch_ptr = UnsafePointer[BFloat16, MutAnyOrigin](
+            var scratch_ptr = MutPointer[BFloat16, MutAnyOrigin](
                 unsafe_from_address=Int(a_scratch.unsafe_ptr())
             )
             smallm_streaming_matmul[k_static=K](

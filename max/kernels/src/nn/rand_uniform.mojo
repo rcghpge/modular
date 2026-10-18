@@ -34,7 +34,7 @@ def random_uniform[
     shape: IndexList[rank],
     lower_bound: Scalar[dtype],
     upper_bound: Scalar[dtype],
-    seed_ptr: UnsafePointer[UInt64, ImmutAnyOrigin],
+    seed_ptr: ImmPointer[UInt64, ImmutAnyOrigin],
     ctx: DeviceContext,
     output_fn: OutputFn,
 ) raises:

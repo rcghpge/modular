@@ -369,7 +369,7 @@ comptime _MXF4_K_BYTES = 32
 
 @inline(.always)
 def _sf_atom_desc(
-    atom: UnsafePointer[UInt32, address_space=.SHARED, ...]
+    atom: Pointer[UInt32, address_space=.SHARED, ...]
 ) -> MMASmemDescriptor:
     """The `tcgen05.cp.32x128b` source of an atom: 32 rows of 16 bytes."""
     return MMASmemDescriptor.create[8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE](
@@ -379,7 +379,7 @@ def _sf_atom_desc(
 
 @inline(.always)
 def _store_sf_atom(
-    atom: UnsafePointer[mut=True, UInt32, address_space=.SHARED, ...],
+    atom: MutPointer[UInt32, address_space=.SHARED, ...],
     words: SIMD[DType.uint32, _SF_ATOM_COLS],
 ):
     """Writes a scale atom from a warp's per-row words, in place.

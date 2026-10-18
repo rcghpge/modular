@@ -591,7 +591,7 @@ struct HopperMatmulSM90Kernel[
     @staticmethod
     @inline(.always)
     def get_block_swizzle(
-        lut_ptr: OptionalReg[UnsafePointer[UInt32, MutAnyOrigin]] = None,
+        lut_ptr: OptionalReg[MutPointer[UInt32, MutAnyOrigin]] = None,
     ) -> IndexList[2, element_type=.uint32]:
         """Calculate block swizzle for better L2 cache locality.
 
@@ -917,7 +917,7 @@ struct HopperMatmulSM90Kernel[
         c: TileTensor[
             Self.c_type, c_tensor_layout, MutAnyOrigin, Engine=Self.c_engine
         ],
-        lut_ptr: UnsafePointer[UInt32, MutAnyOrigin],
+        lut_ptr: MutPointer[UInt32, MutAnyOrigin],
         epilogue_fn: EpilogueFnType,
         compute_fn: ComputeFnType,
     ):
@@ -1103,8 +1103,8 @@ struct HopperMatmulSM90Kernel[
         c: TileTensor[
             Self.c_type, c_tensor_layout, MutAnyOrigin, Engine=Self.c_engine
         ],
-        workspace_ptr: UnsafePointer[Scalar[Self.accum_type], MutAnyOrigin],
-        locks_ptr: UnsafePointer[UInt8, MutAnyOrigin],
+        workspace_ptr: MutPointer[Scalar[Self.accum_type], MutAnyOrigin],
+        locks_ptr: MutPointer[UInt8, MutAnyOrigin],
         problem_shape: IndexList[3],
         epilogue_fn: EpilogueFnType,
         compute_fn: ComputeFnType,

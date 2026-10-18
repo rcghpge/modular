@@ -2858,7 +2858,7 @@ def fa4_softmax[
                     # `WSLSEType.dtype` with `accum_dtype`, which the assert at
                     # the top of the function pins to the same f32.
                     var _ws_lse = rebind[
-                        UnsafePointer[Scalar[accum_dtype], MutAnyOrigin]
+                        MutPointer[Scalar[accum_dtype], MutAnyOrigin]
                     ](ws_lse_ptr.value().unsafe_mut_cast[True]())
                     _ws_lse[Int(_off)] = _lse
 
@@ -3878,7 +3878,7 @@ def fa4_softmax[
 
     comptime if not SinkType.is_null:
         var sink_weights_ptr = rebind[
-            UnsafePointer[Scalar[qkv_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[qkv_type], ImmutAnyOrigin]
         ](sink_weights.value())
 
         comptime if use_fma:

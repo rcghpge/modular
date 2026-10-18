@@ -2612,10 +2612,10 @@ def mha[
     _is_cache_length_accurate: Bool = False,
     _padded_ndbuffer: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
     scale: Float32,
     batch_size: Int32,
     seq_len_arg: Int32,
@@ -2749,7 +2749,7 @@ def mha[
         # gfx950 (CDNA) and gfx11/12 (RDNA) need different fragment
         # geometry / wave size / WMMA intrinsics.
         var sink_weights_ptr = OptionalReg[
-            UnsafePointer[Scalar[q_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[q_type], ImmutAnyOrigin]
         ]()
         comptime if sink:
             sink_weights_ptr = sink_weights.value().ptr
@@ -2816,10 +2816,10 @@ def mha_single_batch[
     group: Int = 1,
     sink: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
     scale: Float32,
     seq_len: Int,  # valid sequence length i.e. w/o padding.
     max_seq_len: Int,  # sequence length after padding.
@@ -3499,10 +3499,10 @@ def mha_single_batch_pipelined[
     group: Int = 1,
     sink: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
     scale: Float32,
     seq_len: Int,  # valid sequence length i.e. w/o padding.
     max_seq_len: Int,  # sequence length after padding.
@@ -4182,12 +4182,12 @@ def mha_decoding[
     decoding_warp_split_k: Bool = False,
     q_seq_len: Int = 1,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
-    qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
     batch_size: Int32,
     num_partitions: Int32,
@@ -4421,7 +4421,7 @@ def mha_decoding[
         ]()
 
         var sink_weights_ptr = OptionalReg[
-            UnsafePointer[Scalar[q_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[q_type], ImmutAnyOrigin]
         ]()
         comptime if sink:
             sink_weights_ptr = sink_weights.value().ptr
@@ -4610,12 +4610,12 @@ def mha_decoding_single_batch[
     decoding_warp_split_k: Bool = False,
     sink: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
-    qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
     num_keys: Int,
     num_partitions: Int,
@@ -5261,12 +5261,12 @@ def mha_decoding_single_batch_pipelined[
     decoding_warp_split_k: Bool = False,
     sink: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     v: v_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
-    qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
     num_keys: Int,
     num_partitions: Int,
@@ -5713,12 +5713,12 @@ def mha_splitk_reduce[
     num_threads: Int,
     use_exp2: Bool = False,
 ](
-    intermediate_ptr: UnsafePointer[Scalar[intermediate_type], ImmutAnyOrigin],
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[
+    intermediate_ptr: ImmPointer[Scalar[intermediate_type], ImmutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: ImmPointer[
         Scalar[get_accum_type[output_type]()], ImmutAnyOrigin
     ],
-    qk_max_ptr: UnsafePointer[
+    qk_max_ptr: ImmPointer[
         Scalar[get_accum_type[output_type]()], ImmutAnyOrigin
     ],
     batch_size: Int32,
@@ -6077,8 +6077,8 @@ def _bmm0_bs[
     _use_valid_length: Bool = False,
     _is_cache_length_accurate: Bool = False,
 ](
-    p_ptr: UnsafePointer[Scalar[p_type], MutAnyOrigin],
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    p_ptr: MutPointer[Scalar[p_type], MutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k: k_t,
     valid_length: OptionalReg[ImmutTileTensor1D[.uint32]],
     scale: Float32,
@@ -6210,8 +6210,8 @@ def _bmm1_bs[
     _use_valid_length: Bool = False,
     _is_cache_length_accurate: Bool = False,
 ](
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    p_ptr: UnsafePointer[Scalar[p_type], ImmutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    p_ptr: ImmPointer[Scalar[p_type], ImmutAnyOrigin],
     v: v_t,
     valid_length: OptionalReg[ImmutTileTensor1D[.uint32]],
     max_prompt_len: Int32,

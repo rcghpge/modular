@@ -270,11 +270,11 @@ def flare_mla_decoding[
     # Per-token Q scale pointer: float32 array with one scale per Q token.
     # sigma_Q[q_token_idx] is folded into scale_log2e inside the Softmax function.
     # Default is null (sigma_Q = 1.0, no effect).
-    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
+    q_scale_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]] = None,
     # Sparse indices: when non-null, the kernel uses gather4 TMA with
     # pre-computed physical row indices instead of page-table lookups.
     # d_indices[batch * indices_stride + token] = physical KV row index.
-    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     # Per-batch topk lengths: when non-null, topk_lengths[batch_idx] gives
     # the actual number of valid sparse indices for that batch. indices_stride
@@ -284,19 +284,19 @@ def flare_mla_decoding[
     # Extra KV: separate always-attend cache. Tokens from extra_k are
     # appended after the topk tokens in a unified attention loop.
     extra_k: OptionalReg[cache_t] = None,
-    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
     extra_topk_lengths: TopkLengthsPtrType = unread_pointer[
         TopkLengthsPtrType
     ](),
-    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]] = None,
     # Capturable-graph scalar from the Python resolver. When set, the
     # SM100 dispatcher uses this instead of recomputing num_partitions
     # at grid time.
     num_partitions_in: Optional[Int] = None,
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
-    logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    logical_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     # Positions between the token each sparse row was computed for and the
     # token that reads it, for a selection reused at a later position.
     selection_lag: Int = 0,
@@ -602,7 +602,7 @@ def flare_mla_decoding[
     )
 
     var valid_length = TileTensor(
-        UnsafePointer[UInt32, MutUntrackedOrigin].unsafe_dangling(),
+        MutPointer[UInt32, MutUntrackedOrigin].unsafe_dangling(),
         row_major(Idx[0]),
     )
 
@@ -680,7 +680,7 @@ def flare_mla_decoding_rows[
     ), "row-indexed K operands are only supported on AMD"
 
     var valid_length = TileTensor(
-        UnsafePointer[UInt32, MutUntrackedOrigin].unsafe_dangling(),
+        MutPointer[UInt32, MutUntrackedOrigin].unsafe_dangling(),
         row_major(Idx[0]),
     )
 
@@ -755,25 +755,25 @@ def flare_mla_decoding_dispatch[
     ],
     kv_input_row_offsets: OptionalReg[ImmutTileTensor1D[.uint32]] = None,
     num_partitions: Optional[Int] = None,
-    q_scale_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
-    d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    q_scale_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]] = None,
+    d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     indices_stride: Int = 0,
     topk_lengths: TopkLengthsPtrType = null_pointer[TopkLengthsPtrType](),
     attn_sink_ptr: AttnSinkPtrType = null_pointer[AttnSinkPtrType](),
     # Extra KV: separate always-attend cache operand.
     extra_k: OptionalReg[k_t] = None,
-    extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     extra_indices_stride: Int = 0,
     extra_topk_lengths: TopkLengthsPtrType = unread_pointer[
         TopkLengthsPtrType
     ](),
-    extra_scales_ptr: OptionalReg[UnsafePointer[Float32, MutAnyOrigin]] = None,
+    extra_scales_ptr: OptionalReg[MutPointer[Float32, MutAnyOrigin]] = None,
     # Capturable-graph scalar: forwarded by the Python resolver so grid-time
     # dispatch matches the kernel's device-side divmod.
     num_partitions_in: Optional[Int] = None,
     # Logical sparse indices for position-based causal masking; `None` keeps
     # the prior slot-count behavior. See mla_decode_utils.mojo.
-    logical_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    logical_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]] = None,
     # Positions between the token each sparse row was computed for and the
     # token that reads it, for a selection reused at a later position.
     selection_lag: Int = 0,
@@ -1091,7 +1091,7 @@ def flare_mla_decoding_dispatch[
                 valid_length,
                 mask_functor,
                 TileTensor(
-                    rebind[UnsafePointer[Int64, origin=MutAnyOrigin]](
+                    rebind[MutPointer[Int64, origin=MutAnyOrigin]](
                         local_args.gpu_buf.unsafe_ptr()
                     ),
                     row_major[3](),
@@ -1622,14 +1622,12 @@ def mla_splitk_reduce[
     # byte-identically.
     ragged: Bool = False,
 ](
-    intermediate_ptr: UnsafePointer[Scalar[intermediate_type], ImmutAnyOrigin],
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[
+    intermediate_ptr: ImmPointer[Scalar[intermediate_type], ImmutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[
         Scalar[get_accum_type[output_type]()], MutAnyOrigin
     ],
-    qk_max_ptr: UnsafePointer[
-        Scalar[get_accum_type[output_type]()], MutAnyOrigin
-    ],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[output_type]()], MutAnyOrigin],
     batch_size: Int32,
     num_partitions: Int32,
     # input_row_offsets `[batch_size + 1]`. Read only on the `ragged and
@@ -1890,11 +1888,11 @@ def mla_decoding[
     # it (its fold path is selected separately).
     q_seq_len: Int = 1,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], MutAnyOrigin],
+    q_ptr: MutPointer[Scalar[q_type], MutAnyOrigin],
     k: k_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
-    qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
     batch_size_dev: Int32,
     num_partitions_dev: Int32,
@@ -2130,11 +2128,11 @@ def mla_decoding_single_batch[
     num_pipeline_stages: Int,
     decoding_warp_split_k: Bool = False,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], MutAnyOrigin],
+    q_ptr: MutPointer[Scalar[q_type], MutAnyOrigin],
     k: k_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    exp_sum_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
-    qk_max_ptr: UnsafePointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    exp_sum_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
+    qk_max_ptr: MutPointer[Scalar[get_accum_type[q_type]()], MutAnyOrigin],
     scale: Float32,
     num_keys: Int,
     num_partitions: Int,
@@ -2710,7 +2708,7 @@ def _ragged_kv_view(
     `RaggedMHAOperand` buffer field expects.
     """
     return TileTensor(
-        rebind[UnsafePointer[Scalar[src.dtype], ImmutAnyOrigin]](src.ptr),
+        rebind[ImmPointer[Scalar[src.dtype], ImmutAnyOrigin]](src.ptr),
         row_major(Int(src.dim[0]()), Int(src.dim[1]()), Int(src.dim[2]())),
     )
 
@@ -2726,7 +2724,7 @@ def _ragged_offsets_view(
     Mirrors `_ragged_kv_view` for the rank-1 `cache_row_offsets` operand.
     """
     return TileTensor(
-        rebind[UnsafePointer[UInt32, ImmutAnyOrigin]](src.ptr),
+        rebind[ImmPointer[UInt32, ImmutAnyOrigin]](src.ptr),
         row_major(Int(src.dim[0]())),
     )
 
@@ -2743,7 +2741,7 @@ def _ragged_scales_view(
     operand, normalizing to the GENERIC + `ImmutAnyOrigin` scale-buffer form.
     """
     return TileTensor(
-        rebind[UnsafePointer[Scalar[src.dtype], ImmutAnyOrigin]](src.ptr),
+        rebind[ImmPointer[Scalar[src.dtype], ImmutAnyOrigin]](src.ptr),
         row_major(Int(src.dim[0]()), Int(src.dim[1]())),
     )
 
@@ -3658,11 +3656,11 @@ def mla_prefill[
     _ndbuffer_mha_operand: Bool = False,
     v_depth: Int = config.depth,
 ](
-    q_ptr: UnsafePointer[Scalar[q_type], MutAnyOrigin],
+    q_ptr: MutPointer[Scalar[q_type], MutAnyOrigin],
     k: k_t,
     v: v_t,
     k_rope: k_rope_t,
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
     scale: Float32,
     batch_size: Int32,
     seq_len_arg: Int32,

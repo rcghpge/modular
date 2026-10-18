@@ -57,7 +57,7 @@ def _im2col_ndhwc_kernel[
     output_engine: TensorEngine,
     filter_is_fcrs: Bool,
 ](
-    im2col_ptr: UnsafePointer[Scalar[input_dtype], MutAnyOrigin],
+    im2col_ptr: MutPointer[Scalar[input_dtype], MutAnyOrigin],
     input: TileTensor[
         input_dtype, input_layout_type, ImmutAnyOrigin, Engine=input_engine
     ],
@@ -171,7 +171,7 @@ def _transpose_qrscf_to_nk[
     filter: TileTensor[
         dtype, filter_layout_type, ImmutAnyOrigin, Engine=filter_engine
     ],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
 ):
     """QRSCF [Q,R,S,C,F] -> [F, Q*R*S*C] row-major for matmul transpose_b."""
     comptime assert filter.shape_known, "filter shape must be static"
@@ -208,7 +208,7 @@ def _transpose_fcqrs_to_nk[
     filter: TileTensor[
         dtype, filter_layout_type, ImmutAnyOrigin, Engine=filter_engine
     ],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
 ):
     """FCQRS [F,C,Q,R,S] -> [F, Q*R*S*C] row-major for matmul transpose_b."""
     comptime assert filter.shape_known, "filter shape must be static"

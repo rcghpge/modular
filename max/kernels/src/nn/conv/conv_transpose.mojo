@@ -749,9 +749,7 @@ struct ConvTransposedPacked[
         var g = self.conv_shape.f_to_group(f_tile_offset)
 
         # Filter pointer to the current cf tile offset location.
-        var filter_ptr: UnsafePointer[
-            Scalar[Self.filter_type], ImmUntrackedOrigin
-        ]
+        var filter_ptr: ImmPointer[Scalar[Self.filter_type], ImmUntrackedOrigin]
 
         # Move the pointer to the current group's start.
         filter_ptr = _get_group_filter_base(
@@ -847,8 +845,8 @@ struct ConvTransposedPacked[
     ](
         self,
         output: MutPointer[Scalar[output_dt], _],
-        input: UnsafePointer[Scalar[input_dt], _],
-        filter: UnsafePointer[Scalar[filter_dt], _],
+        input: Pointer[Scalar[input_dt], _],
+        filter: Pointer[Scalar[filter_dt], _],
         n: Int,
         first_c_tile_in_group: Bool,
         c_tile_size: Int,
@@ -935,8 +933,8 @@ struct ConvTransposedPacked[
     ](
         self,
         output: MutPointer[Scalar[output_dt], _],
-        input: UnsafePointer[Scalar[input_dt], _],
-        filter: UnsafePointer[Scalar[filter_dt], _],
+        input: Pointer[Scalar[input_dt], _],
+        filter: Pointer[Scalar[filter_dt], _],
         n: Int,
         first_c_tile_in_group: Bool,
         c_tile_size: Int,
@@ -1189,8 +1187,8 @@ def update_w_tile_3d[
     filter_dt: DType,
 ](
     output: MutPointer[Scalar[output_dt], _],
-    input: UnsafePointer[Scalar[input_dt], _],
-    filter: UnsafePointer[Scalar[filter_dt], _],
+    input: Pointer[Scalar[input_dt], _],
+    filter: Pointer[Scalar[filter_dt], _],
     _init_output: Bool,
     c_tile_size: Int,
     f_tile_offset: Int,
@@ -1378,7 +1376,7 @@ def accumulate_wo_tile[
 @inline(.always)
 def _get_group_filter_base(
     packed_filter: TileTensor, group_idx: Int, f_per_group: Int
-) -> UnsafePointer[
+) -> Pointer[
     Scalar[packed_filter.dtype],
     packed_filter.origin,
     address_space=packed_filter.address_space,
@@ -1878,7 +1876,7 @@ def _conv_transposed_cudnn[
             cudnn_handle[].ptr_conv_desc,
             cudnn_handle[].ptr_output_desc,
             algo,
-            UnsafePointer(to=workspace_size),
+            Pointer(to=workspace_size),
         )
     )
 
@@ -1890,7 +1888,7 @@ def _conv_transposed_cudnn[
     check_cudnn_error(
         cudnnConvolutionBackwardData(
             cudnn_handle[].ptr_handle,
-            UnsafePointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).bitcast[NoneType](),
             cudnn_handle[].ptr_filter_desc,
             filter.ptr.bitcast[NoneType](),
             cudnn_handle[].ptr_input_desc,
@@ -1901,7 +1899,7 @@ def _conv_transposed_cudnn[
             .bitcast[NoneType]()
             .as_unsafe_any_origin(),
             workspace_size,
-            UnsafePointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).bitcast[NoneType](),
             cudnn_handle[].ptr_output_desc,
             output.ptr.bitcast[NoneType](),
         )

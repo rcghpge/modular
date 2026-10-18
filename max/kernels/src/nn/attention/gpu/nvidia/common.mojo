@@ -144,9 +144,7 @@ comptime ImmutTileTensor1D[
 
 def immut_tile_tensor_1d[
     mut: Bool, dtype: DType, origin: Origin[mut=mut], //
-](ptr: UnsafePointer[Scalar[dtype], origin], size: Int) -> ImmutTileTensor1D[
-    dtype
-]:
+](ptr: Pointer[Scalar[dtype], origin], size: Int) -> ImmutTileTensor1D[dtype]:
     """Views `size` contiguous elements at `ptr` as an `ImmutTileTensor1D`.
 
     Parameters:
@@ -442,8 +440,8 @@ struct MHAPosition[
         partition: partition_t,
         batch_size: UInt32,
     ) -> Tuple[
-        UnsafePointer[Scalar[partition_t.accum_dtype], MutAnyOrigin],
-        UnsafePointer[Scalar[partition_t.accum_dtype], MutAnyOrigin],
+        MutPointer[Scalar[partition_t.accum_dtype], MutAnyOrigin],
+        MutPointer[Scalar[partition_t.accum_dtype], MutAnyOrigin],
     ]:
         comptime assert partition_t.do_partition, (
             "exp_sum_qk_max_ptr is split-K only; a non-partitioning scheme has"
@@ -460,9 +458,9 @@ struct MHAPosition[
             self.prompt_idx + batch_size * self.prompt_offset
         )
         var exp_sum_ptr = (
-            rebind[
-                UnsafePointer[Scalar[partition_t.accum_dtype], MutAnyOrigin]
-            ](partition.lse_pointer().value().unsafe_mut_cast[True]())
+            rebind[MutPointer[Scalar[partition_t.accum_dtype], MutAnyOrigin]](
+                partition.lse_pointer().value().unsafe_mut_cast[True]()
+            )
             + exp_sum_offset
         )
         var qk_max_ptr = exp_sum_ptr + (
@@ -599,7 +597,7 @@ def get_seq_info[
     ](partition.num_partitions())
     # SAFETY: Stored in MHATileState.sidx_ptr but never dereferenced.
     var state: MHATileState = scheduler.initial_state(
-        UnsafePointer[
+        MutPointer[
             UInt32, MutAnyOrigin, address_space=.SHARED
         ].unsafe_dangling(),
         tile_summary,
@@ -915,7 +913,7 @@ def q_tma_prefill[
     num_qk_stages: Int = 1,
 ](
     ctx: DeviceContext,
-    ptr: UnsafePointer[Scalar[dtype], _],
+    ptr: Pointer[Scalar[dtype], _],
     rows: Int,
 ) raises -> QTMATilePrefill[
     dtype, swizzle_mode, BM=BM, depth=depth, num_qk_stages=num_qk_stages
@@ -953,7 +951,7 @@ def q_tma_fused[
     num_qk_stages: Int = 1,
 ](
     ctx: DeviceContext,
-    ptr: UnsafePointer[Scalar[dtype], _],
+    ptr: Pointer[Scalar[dtype], _],
     rows: Int,
 ) raises -> QTMATileFused[
     dtype,

@@ -159,9 +159,9 @@ def group() -> _Group:
 
 
 def ncclCommInitAll(
-    comms: UnsafePointer[ncclComm_t, _],
+    comms: Pointer[ncclComm_t, _],
     ndev: Int,
-    devlist: UnsafePointer[Int32, _],
+    devlist: Pointer[Int32, _],
 ) raises -> ncclResult_t:
     """Initializes NCCL/RCCL communicators for a set of GPUs.
 

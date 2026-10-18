@@ -561,7 +561,7 @@ __extension SM100MLA:
                     NullPointer[Self.output_dtype](),
                     NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
                         rebind[
-                            UnsafePointer[
+                            ImmPointer[
                                 Scalar[config.scale_dtype],
                                 ImmutAnyOrigin,
                                 address_space=.SHARED,
@@ -570,7 +570,7 @@ __extension SM100MLA:
                     ),
                     NonNullPointer[config.scale_dtype, AddressSpace.SHARED](
                         rebind[
-                            UnsafePointer[
+                            ImmPointer[
                                 Scalar[config.scale_dtype],
                                 ImmutAnyOrigin,
                                 address_space=.SHARED,

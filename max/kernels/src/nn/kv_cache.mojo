@@ -345,7 +345,7 @@ def _matmul_common[
         var c_alloc = alloc(
             AllocLayout[Scalar[dtype]](count=BS * SEQ_LEN * N)
         ).into_managed()
-        var c_ptr: UnsafePointer[
+        var c_ptr: MutPointer[
             Scalar[dtype], origin_of(c_alloc)
         ] = c_alloc.unsafe_ptr()
         var c_nd = TileTensor(c_ptr, row_major(BS * SEQ_LEN, Idx[N]))
@@ -2966,7 +2966,7 @@ def print_kv_cache_paged_generic_gpu[
     var blocks_alloc = alloc(
         AllocLayout[Scalar[dtype]](count=n_blocks)
     ).into_managed()
-    var blocks_ptr: UnsafePointer[
+    var blocks_ptr: MutPointer[
         Scalar[dtype], origin_of(blocks_alloc)
     ] = blocks_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
@@ -2981,7 +2981,7 @@ def print_kv_cache_paged_generic_gpu[
     var cache_lengths_alloc = alloc(
         AllocLayout[UInt32](count=n_cache_lengths)
     ).into_managed()
-    var cache_lengths_ptr: UnsafePointer[
+    var cache_lengths_ptr: MutPointer[
         UInt32, origin_of(cache_lengths_alloc)
     ] = cache_lengths_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
@@ -2999,7 +2999,7 @@ def print_kv_cache_paged_generic_gpu[
     var lookup_table_alloc = alloc(
         AllocLayout[UInt32](count=n_lookup_table)
     ).into_managed()
-    var lookup_table_ptr: UnsafePointer[
+    var lookup_table_ptr: MutPointer[
         UInt32, origin_of(lookup_table_alloc)
     ] = lookup_table_alloc.unsafe_ptr()
     dev_ctx.enqueue_copy(
@@ -3037,7 +3037,7 @@ def print_kv_cache_paged_generic_gpu[
     var valid_lengths_host_alloc = alloc(
         AllocLayout[UInt32](count=valid_lengths.num_elements())
     ).into_managed()
-    var valid_lengths_host_ptr: UnsafePointer[
+    var valid_lengths_host_ptr: MutPointer[
         UInt32, origin_of(valid_lengths_host_alloc)
     ] = valid_lengths_host_alloc.unsafe_ptr()
     var valid_lengths_host = TileTensor(

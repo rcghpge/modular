@@ -63,7 +63,7 @@ def _split_k_reduce_kernel[
     c_layout: TensorLayout,
     c_engine: TensorEngine,
 ](
-    scratch: UnsafePointer[Float32, MutAnyOrigin],
+    scratch: MutPointer[Float32, MutAnyOrigin],
     c: TileTensor[c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     total_elems: Int32,
     elems_per_split: Int32,
@@ -99,7 +99,7 @@ def _split_k_reduce_kernel_epilogue_fn[
     c_engine: TensorEngine,
     EpilogueFnType: ElementwiseEpilogueFn,
 ](
-    scratch: UnsafePointer[Float32, MutAnyOrigin],
+    scratch: MutPointer[Float32, MutAnyOrigin],
     c: TileTensor[c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     total_elems: Int32,
     elems_per_split: Int32,
@@ -132,7 +132,7 @@ def _split_k_reduce_kernel_compute_fn[
     c_engine: TensorEngine,
     ComputeFnType: ElementwiseComputeFn,
 ](
-    scratch: UnsafePointer[Float32, MutAnyOrigin],
+    scratch: MutPointer[Float32, MutAnyOrigin],
     c: TileTensor[c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     total_elems: Int32,
     elems_per_split: Int32,
@@ -170,7 +170,7 @@ def _split_k_reduce_impl[
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
 ](
-    scratch: UnsafePointer[Float32, MutAnyOrigin],
+    scratch: MutPointer[Float32, MutAnyOrigin],
     c: TileTensor[c_type, c_layout, MutAnyOrigin, Engine=c_engine],
     total_elems: Int32,
     elems_per_split: Int32,

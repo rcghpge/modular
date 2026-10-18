@@ -475,8 +475,8 @@ struct Shuffler[E: Int]:
         K_BYTES: Int,
         lane_bytes: Int,
     ](
-        raw: UnsafePointer[UInt8, ImmutAnyOrigin],
-        dst: UnsafePointer[UInt8, MutAnyOrigin],
+        raw: ImmPointer[UInt8, ImmutAnyOrigin],
+        dst: MutPointer[UInt8, MutAnyOrigin],
         num_frags: Int32,
     ):
         """Scatters each lane fragment into its planes.

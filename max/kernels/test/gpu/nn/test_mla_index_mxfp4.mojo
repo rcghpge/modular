@@ -179,7 +179,7 @@ def _score_mxfp4[
     output: MutTileTensor[.float32, output_layout, _],
     q: ImmTileTensor[.uint8, q_layout, _],
     weights: ImmTileTensor[.float32, w_layout, _],
-    q_sf: UnsafePointer[UInt32, ImmutAnyOrigin],
+    q_sf: ImmPointer[UInt32, ImmutAnyOrigin],
     input_row_offsets: ImmTileTensor[.uint32, iro_layout, _],
     k_cache: MXFP4IndexKCache[page_size],
     batch_size: Int,

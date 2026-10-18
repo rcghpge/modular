@@ -49,8 +49,8 @@ def _bmm0_bs[
     q_type: DType,
     p_type: DType,
 ](
-    p_ptr: UnsafePointer[Scalar[p_type], MutAnyOrigin],
-    q_ptr: UnsafePointer[Scalar[q_type], ImmutAnyOrigin],
+    p_ptr: MutPointer[Scalar[p_type], MutAnyOrigin],
+    q_ptr: ImmPointer[Scalar[q_type], ImmutAnyOrigin],
     k_cache: cache_t,
     q_input_row_offsets: TileTensor[.uint32, QLayoutType, ImmutAnyOrigin],
     kv_input_row_offsets: TileTensor[.uint32, KVLayoutType, ImmutAnyOrigin],
@@ -164,8 +164,8 @@ def _bmm1_bs[
     p_type: DType,
     output_type: DType,
 ](
-    output_ptr: UnsafePointer[Scalar[output_type], MutAnyOrigin],
-    p_ptr: UnsafePointer[Scalar[p_type], ImmutAnyOrigin],
+    output_ptr: MutPointer[Scalar[output_type], MutAnyOrigin],
+    p_ptr: ImmPointer[Scalar[p_type], ImmutAnyOrigin],
     v_cache: cache_t,
     q_input_row_offsets: TileTensor[.uint32, QLayoutType, ImmutAnyOrigin],
     kv_input_row_offsets: TileTensor[.uint32, KVLayoutType, ImmutAnyOrigin],

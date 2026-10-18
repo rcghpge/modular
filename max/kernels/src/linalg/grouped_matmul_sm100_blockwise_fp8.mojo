@@ -270,7 +270,7 @@ def matmul_sm100_grouped_blockwise_scaled_fp8_1d2d_kernel[
     ]
 
     var a_smem = rebind[
-        UnsafePointer[Scalar[a_type], MutAnyOrigin, address_space=.SHARED]
+        MutPointer[Scalar[a_type], MutAnyOrigin, address_space=.SHARED]
     ](
         external_memory[
             Scalar[a_type],
@@ -1022,14 +1022,10 @@ def load_AB[
         a_scales_tile_shape,
         a_scales_desc_shape,
     ],
-    a_smem_base: UnsafePointer[
-        mut=True, Scalar[a_type], _, address_space=.SHARED
-    ],
-    b_smem_base: UnsafePointer[
-        mut=True, Scalar[b_type], _, address_space=.SHARED
-    ],
-    a_scales_smem_base: UnsafePointer[
-        mut=True, Scalar[a_scales_type], _, address_space=.SHARED
+    a_smem_base: MutPointer[Scalar[a_type], _, address_space=.SHARED],
+    b_smem_base: MutPointer[Scalar[b_type], _, address_space=.SHARED],
+    a_scales_smem_base: MutPointer[
+        Scalar[a_scales_type], _, address_space=.SHARED
     ],
     load_mma_pipeline: ProducerConsumerPipeline[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
@@ -1210,14 +1206,10 @@ def load_AB_partial[
         a_scales_type, a_scales_gmem_layout, ImmutAnyOrigin
     ],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
-    a_smem_base: UnsafePointer[
-        mut=True, Scalar[a_type], _, address_space=.SHARED
-    ],
-    b_smem_base: UnsafePointer[
-        mut=True, Scalar[b_type], _, address_space=.SHARED
-    ],
-    a_scales_smem_base: UnsafePointer[
-        mut=True, Scalar[a_scales_type], _, address_space=.SHARED
+    a_smem_base: MutPointer[Scalar[a_type], _, address_space=.SHARED],
+    b_smem_base: MutPointer[Scalar[b_type], _, address_space=.SHARED],
+    a_scales_smem_base: MutPointer[
+        Scalar[a_scales_type], _, address_space=.SHARED
     ],
     load_mma_pipeline: ProducerConsumerPipeline[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
@@ -1380,7 +1372,7 @@ def multi_stage_reg_epilogue[
 ](
     c_upper_main_tile: TileTensor[accum_type, _, _, address_space=.LOCAL, ...],
     c_lower_main_tile: TileTensor[accum_type, _, _, address_space=.LOCAL, ...],
-    c_smem_base: UnsafePointer[
+    c_smem_base: MutPointer[
         Scalar[c_type], MutAnyOrigin, address_space=.SHARED
     ],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
@@ -1654,8 +1646,8 @@ def promote_accumulators[
 ](
     b_scales: TileTensor[b_scales_type, b_scales_layout, ImmutAnyOrigin],
     b_scales_n: Int,
-    a_scales_smem_base: UnsafePointer[
-        mut=True, Scalar[a_scales_type], _, address_space=.SHARED
+    a_scales_smem_base: MutPointer[
+        Scalar[a_scales_type], _, address_space=.SHARED
     ],
     c_upper_main_tile: TileTensor[
         mut=True, accum_type, _, _, address_space=.LOCAL, ...

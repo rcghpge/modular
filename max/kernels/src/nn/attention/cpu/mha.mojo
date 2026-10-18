@@ -111,9 +111,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         tile_m: Int, tile_n: Int
     ](
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        b_ptr: Pointer[Scalar[Self.dtype], _],
         b_stride: Int,
         mut c_tile: _Accumulator[Self.dtype, tile_m, tile_n, Self.simd_width],
     ):
@@ -154,9 +154,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         tile_m: Int, tile_n: Int
     ](
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        b_ptr: Pointer[Scalar[Self.dtype], _],
         b_stride: Int,
         mut c_tile: _Accumulator[Self.dtype, tile_m, tile_n, Self.simd_width],
     ):
@@ -197,9 +197,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         M: Int,
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         a_stride: Int,
-        b_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        b_ptr: Pointer[Scalar[Self.dtype], _],
         c_ptr: MutPointer[Scalar[Self.dtype], _],
         c_stride: Int,
         accumulate: Bool = False,
@@ -357,7 +357,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         input_b_fn: InputBFnType,
         N: Int,
         dynamic_k: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         c_ptr: MutPointer[Scalar[Self.dtype], _],
     ):
         var K = static_k if static_k != UNKNOWN_VALUE else dynamic_k
@@ -428,7 +428,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         input_b_fn: InputBFnType,
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         c_ptr: MutPointer[Scalar[Self.dtype], _],
         accumulate: Bool = False,
     ):
@@ -465,7 +465,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         M: Int,
         N: Int,
         K: Int,
-        a_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        a_ptr: Pointer[Scalar[Self.dtype], _],
         a_stride: Int,
         packed_ptr: MutPointer[Scalar[Self.dtype], _],
         c_ptr: MutPointer[Scalar[Self.dtype], _],
@@ -682,7 +682,7 @@ struct _FlashAttention[
     def run[
         q_origin: ImmOrigin,
         output_origin: Origin[mut=True],
-        InputQPtrFnType: def(IndexList[Self.rank]) -> UnsafePointer[
+        InputQPtrFnType: def(IndexList[Self.rank]) -> ImmPointer[
             Scalar[Self.dtype], q_origin
         ],
         InputKFnType: def[simd_width: Int, rank: Int](IndexList[rank]) -> SIMD[
@@ -694,7 +694,7 @@ struct _FlashAttention[
         MaskFnType: def[simd_width: SIMDLength, mask_rank: Int](
             IndexList[mask_rank], SIMD[Self.dtype, simd_width], Int
         ) -> SIMD[Self.dtype, simd_width],
-        OutputPtrFnType: def(IndexList[Self.rank]) -> UnsafePointer[
+        OutputPtrFnType: def(IndexList[Self.rank]) -> MutPointer[
             Scalar[Self.dtype], output_origin
         ],
         QLengthFnType: def(Int) -> Int,
@@ -1023,7 +1023,7 @@ def _flash_attention[
     @inline(.always)
     def input_q_ptr_fn(
         coords: IndexList[rank],
-    ) {imm} -> UnsafePointer[Scalar[dtype], q_origin]:
+    ) {imm} -> ImmPointer[Scalar[dtype], q_origin]:
         var coord = Coord(coords)
         comptime assert coord.flat_rank == q.flat_rank
         return q.ptr_at_offset(coord)
@@ -1031,7 +1031,7 @@ def _flash_attention[
     @inline(.always)
     def output_ptr_fn(
         coords: IndexList[rank],
-    ) {imm} -> UnsafePointer[Scalar[dtype], output_origin]:
+    ) {imm} -> MutPointer[Scalar[dtype], output_origin]:
         var coord = Coord(coords)
         comptime assert coord.flat_rank == output.flat_rank
         return output.ptr_at_offset(coord)
@@ -1376,7 +1376,7 @@ def _flash_attention_kv_cache[
     @inline(.always)
     def input_q_ptr_fn(
         coords: IndexList[4],
-    ) {imm} -> UnsafePointer[Scalar[dtype], q_origin]:
+    ) {imm} -> ImmPointer[Scalar[dtype], q_origin]:
         var coord = Coord(coords)
         comptime assert coord.flat_rank == q.flat_rank
         return q.ptr_at_offset(coord)
@@ -1384,7 +1384,7 @@ def _flash_attention_kv_cache[
     @inline(.always)
     def output_ptr_fn(
         coords: IndexList[4],
-    ) {imm} -> UnsafePointer[Scalar[dtype], output_origin]:
+    ) {imm} -> MutPointer[Scalar[dtype], output_origin]:
         var coord = Coord(coords)
         comptime assert coord.flat_rank == output.flat_rank
         return output.ptr_at_offset(coord)
@@ -1418,10 +1418,8 @@ def _flash_attention_kv_cache[
     cache_t: KVCacheT,
     q_origin: ImmOrigin,
     output_origin: Origin[mut=True],
-    InputQPtrFnType: def(IndexList[4]) -> UnsafePointer[
-        Scalar[dtype], q_origin
-    ],
-    OutputPtrFnType: def(IndexList[4]) -> UnsafePointer[
+    InputQPtrFnType: def(IndexList[4]) -> ImmPointer[Scalar[dtype], q_origin],
+    OutputPtrFnType: def(IndexList[4]) -> MutPointer[
         Scalar[dtype], output_origin
     ],
     QLengthFnType: def(Int) -> Int,
@@ -1672,7 +1670,7 @@ def flash_attention_kv_cache[
     @inline(.always)
     def input_q_ptr_fn(
         idx: IndexList[4],
-    ) {imm} -> UnsafePointer[Scalar[dtype], q_origin]:
+    ) {imm} -> ImmPointer[Scalar[dtype], q_origin]:
         var bs = idx[0]
         var tok_idx = idx[1]
         var q_start = Int(q_input_row_offsets[bs]) + tok_idx
@@ -1682,7 +1680,7 @@ def flash_attention_kv_cache[
     @inline(.always)
     def output_ptr_fn(
         idx: IndexList[4],
-    ) {imm} -> UnsafePointer[Scalar[dtype], output_origin]:
+    ) {imm} -> MutPointer[Scalar[dtype], output_origin]:
         var bs = idx[0]
         var tok_idx = idx[1]
         var q_start = Int(q_input_row_offsets[bs]) + tok_idx

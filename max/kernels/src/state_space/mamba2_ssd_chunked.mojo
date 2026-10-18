@@ -48,7 +48,7 @@ from max.gpu.compute.mma import ld_matrix, mma
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
 from std.math import ceildiv, divmod, exp2, fma
-from std.memory import UnsafePointer, unsafe_stack_allocation
+from std.memory import unsafe_stack_allocation
 from std.sys.info import align_of
 from layout import Coord, TensorLayout, TensorEngine, TileTensor, row_major
 from state_space.mamba2_ssd_scan import (
@@ -490,15 +490,13 @@ def ssd_state_passing[
 
 
 @always_inline
-def _ld2(
-    ptr: UnsafePointer[Scalar[.bfloat16], ...], off: Int
-) -> SIMD[.bfloat16, 2]:
+def _ld2(ptr: Pointer[Scalar[.bfloat16], ...], off: Int) -> SIMD[.bfloat16, 2]:
     return ptr.load[width=2, alignment=4](off)
 
 
 @always_inline
 def _frag_a(
-    ptr: UnsafePointer[Scalar[.bfloat16], ...], row: Int, col: Int, ld: Int
+    ptr: Pointer[Scalar[.bfloat16], ...], row: Int, col: Int, ld: Int
 ) -> SIMD[.bfloat16, 8]:
     """Loads this lane's A fragment (16 x 16, row major) of an m16n8k16 MMA.
 
@@ -515,7 +513,7 @@ def _frag_a(
 
 @always_inline
 def _frag_b(
-    ptr: UnsafePointer[Scalar[.bfloat16], ...], row: Int, col: Int, ld: Int
+    ptr: Pointer[Scalar[.bfloat16], ...], row: Int, col: Int, ld: Int
 ) -> SIMD[.bfloat16, 4]:
     """Loads this lane's B fragment (16 x 8) of an m16n8k16 MMA.
 

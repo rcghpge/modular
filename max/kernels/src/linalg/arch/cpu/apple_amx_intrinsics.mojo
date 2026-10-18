@@ -325,7 +325,7 @@ def genlut(gpr: Int):
 @inline(.always)
 def _encode_load_store[
     row_count: Int, dtype: DType
-](src: UnsafePointer[Scalar[dtype], _], start_index: Int) -> Int:
+](src: Pointer[Scalar[dtype], _], start_index: Int) -> Int:
     """
     Utility to do the bit encoding for load and store ops.
     """
@@ -339,7 +339,7 @@ def _encode_load_store[
 @inline(.always)
 def store_x[
     row_count: Int, dtype: DType
-](src: UnsafePointer[Scalar[dtype], _], start_index: Int):
+](src: Pointer[Scalar[dtype], _], start_index: Int):
     """Loads row_count rows from memory at src into AMX X registers starting at start_index.
 
     Parameters:
@@ -356,7 +356,7 @@ def store_x[
 @inline(.always)
 def store_y[
     row_count: Int, dtype: DType
-](src: UnsafePointer[Scalar[dtype], _], start_index: Int):
+](src: Pointer[Scalar[dtype], _], start_index: Int):
     """Loads row_count rows from memory at src into AMX Y registers starting at start_index.
 
     Parameters:
@@ -373,7 +373,7 @@ def store_y[
 @inline(.always)
 def store_z[
     row_count: Int, dtype: DType
-](src: UnsafePointer[Scalar[dtype], _], start_index: Int):
+](src: Pointer[Scalar[dtype], _], start_index: Int):
     """Loads row_count rows from memory at src into AMX Z accumulator registers starting at start_index.
 
     Parameters:

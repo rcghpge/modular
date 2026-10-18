@@ -427,7 +427,7 @@ struct KVMmaOp[
         bk_tile: Int
     ](
         self,
-        smem_base: UnsafePointer[
+        smem_base: MutPointer[
             Scalar[Self.in_type], MutAnyOrigin, address_space=.SHARED
         ],
     ):
@@ -550,7 +550,7 @@ struct KVMmaOp[
         bk_tile: Int
     ](
         self,
-        smem_base: UnsafePointer[
+        smem_base: MutPointer[
             Scalar[Self.in_type], MutAnyOrigin, address_space=.SHARED
         ],
         rel_key: Int,

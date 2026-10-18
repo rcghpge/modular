@@ -176,9 +176,9 @@ def gemv_kernel[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -203,9 +203,9 @@ def gemv_kernel_epilogue_fn[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -231,9 +231,9 @@ def gemv_kernel_compute_fn[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -263,9 +263,9 @@ def _gemv_kernel_impl[
     accum_type: DType,
     pdl_level: PDLLevel,
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -1493,9 +1493,9 @@ def gevm_kernel[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -1523,9 +1523,9 @@ def gevm_kernel_epilogue_fn[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -1554,9 +1554,9 @@ def gevm_kernel_compute_fn[
     accum_type: DType = get_accum_type[c_type](),
     pdl_level: PDLLevel = PDLLevel(),
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -1586,9 +1586,9 @@ def _gevm_kernel_impl[
     accum_type: DType,
     pdl_level: PDLLevel,
 ](
-    c: UnsafePointer[Scalar[c_type], AnyOrigin[mut=True]],
-    a: UnsafePointer[Scalar[a_type], ImmUnsafeAnyOrigin],
-    b: UnsafePointer[Scalar[b_type], ImmUnsafeAnyOrigin],
+    c: MutPointer[Scalar[c_type], AnyOrigin[mut=True]],
+    a: ImmPointer[Scalar[a_type], ImmUnsafeAnyOrigin],
+    b: ImmPointer[Scalar[b_type], ImmUnsafeAnyOrigin],
     m: Int32,
     n: Int32,
     k: Int32,
@@ -3401,7 +3401,7 @@ struct _MmaCpAsyncMmaComputer[
     var smem_a: Self.SmemTilesA
     var smem_b: Self.SmemTilesB
     var smem_barrier: Self.Barriers
-    var out_ptr: UnsafePointer[Scalar[Self.c_type], Self.out_origin]
+    var out_ptr: MutPointer[Scalar[Self.c_type], Self.out_origin]
     var compute_warp: Int
     var lane_idx: Int
     var warp_k_off: Int
@@ -3418,7 +3418,7 @@ struct _MmaCpAsyncMmaComputer[
         smem_a: Self.SmemTilesA,
         smem_b: Self.SmemTilesB,
         smem_barrier: Self.Barriers,
-        out_ptr: UnsafePointer[Scalar[Self.c_type], Self.out_origin],
+        out_ptr: MutPointer[Scalar[Self.c_type], Self.out_origin],
         compute_warp: Int,
         lane_idx: Int,
         warp_k_off: Int,

@@ -177,7 +177,7 @@ def _reshape_tile_tensor_with_batch_to_3d(
         comptime idx = rank - 3 + i
 
         # copy the stride
-        var stride_ptr = UnsafePointer(to=strides[i])
+        var stride_ptr = Pointer(to=strides[i])
         comptime StrideType = out_stride_types[i]
 
         comptime if StrideType.is_static_value:
@@ -189,7 +189,7 @@ def _reshape_tile_tensor_with_batch_to_3d(
             )
 
         # copy the shape
-        var shape_ptr = UnsafePointer(to=shape[i])
+        var shape_ptr = Pointer(to=shape[i])
         comptime ShapeType = out_shape_types[i]
 
         comptime if ShapeType.is_static_value:

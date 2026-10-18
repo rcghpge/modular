@@ -47,7 +47,7 @@ def _register_value(n_mma: Int, m_mma: Int, lane: Int, frag: Int) -> Float32:
 
 def _scatter[
     dtype: DType, WIDTH: Int
-](output: UnsafePointer[Scalar[dtype], MutAnyOrigin]):
+](output: MutPointer[Scalar[dtype], MutAnyOrigin]):
     comptime assert WIDTH == 1 or WIDTH == 2
     comptime mma = get_mma_shape[dtype, DType.float32]()
     comptime assert mma[0] == MMA_M and mma[1] == MMA_N

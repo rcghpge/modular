@@ -121,7 +121,7 @@ def create_flat_scale_tma_tile[
     dtype: DType, BOX: Int
 ](
     ctx: DeviceContext,
-    ptr: UnsafePointer[mut=_, Scalar[dtype], _],
+    ptr: Pointer[Scalar[dtype], _],
     rows: Int,
 ) raises -> TMATensorTile[dtype, coord[1, BOX]]:
     """Builds a flat `1 x rows` TMA descriptor with a `BOX`-wide box.
@@ -165,7 +165,7 @@ def create_paged_scale_tma_tile[
     dtype: DType, BOX: Int
 ](
     ctx: DeviceContext,
-    ptr: UnsafePointer[mut=_, Scalar[dtype], _],
+    ptr: Pointer[Scalar[dtype], _],
     total_blocks: Int,
     rows_per_block: Int,
     block_stride: Int,
@@ -222,7 +222,7 @@ def create_flat_kv_tma_tile[
     dtype: DType, //, BN: Int, BK: Int, swizzle_mode: TensorMapSwizzle
 ](
     ctx: DeviceContext,
-    ptr: UnsafePointer[Scalar[dtype], ImmutAnyOrigin],
+    ptr: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
     rows: Int,
     heads: Int,
     depth: Int,
@@ -396,7 +396,7 @@ def _make_cache_tt[
     rank: Int,
     Engine: TensorEngine,
 ](
-    ptr: UnsafePointer[mut=_, Scalar[dtype], _],
+    ptr: Pointer[Scalar[dtype], _],
     shape: DynamicCoord[.int64, rank],
     strides: DynamicCoord[.int64, rank],
 ) -> TileTensor[
@@ -807,9 +807,7 @@ struct PagedRowIndices[
     ](
         self,
         tma_op: TMATensorTile[dtype, tile_shape, desc_shape, True],
-        stage_base: UnsafePointer[
-            mut=True, Scalar[dtype], _, address_space=.SHARED
-        ],
+        stage_base: MutPointer[Scalar[dtype], _, address_space=.SHARED],
         ref[AddressSpace.SHARED] mbar: SharedMemBarrier,
         *,
         kv_head_idx: UInt32,
@@ -930,7 +928,7 @@ struct PagedRowIndices[
             " an unfoldable issue-site geometry"
         )
 
-        var desc_ptr = UnsafePointer(to=tma_op.descriptor).bitcast[NoneType]()
+        var desc_ptr = Pointer(to=tma_op.descriptor).bitcast[NoneType]()
 
         comptime if needs_partial:
             # valid_pages is always in [1, pages_per_iter]; the dispatch loop
@@ -1159,9 +1157,7 @@ struct PagedRowIndices[
     ](
         self,
         tma_op: TMATensorTile[dtype, tile_shape, desc_shape, True],
-        stage_base: UnsafePointer[
-            mut=True, Scalar[dtype], _, address_space=.SHARED
-        ],
+        stage_base: MutPointer[Scalar[dtype], _, address_space=.SHARED],
         ref[AddressSpace.SHARED] mbar: SharedMemBarrier,
         *,
         kv_head_idx: UInt32,
@@ -1319,9 +1315,7 @@ struct PagedRowIndices[
     ](
         self,
         tma_op: TMATensorTile[dtype, tile_shape, desc_shape, True],
-        stage_base: UnsafePointer[
-            mut=True, Scalar[dtype], _, address_space=.SHARED
-        ],
+        stage_base: MutPointer[Scalar[dtype], _, address_space=.SHARED],
         ref[AddressSpace.SHARED] mbar: SharedMemBarrier,
         *,
         kv_head_idx: UInt32,
@@ -1590,7 +1584,7 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         """Returns a pointer to the KVCache block at the given index.
 
         Paged KVCache implementations must have a block_size which is a multiple of the
@@ -1605,14 +1599,14 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns a pointer to the scales block at the requested indices."""
         ...
 
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns the base pointer to the scales tensor.
 
         For PagedKVCache with quantization enabled, this returns the raw
@@ -1624,7 +1618,7 @@ trait KVCacheT(DevicePassable, TrivialRegisterPassable):
     @always_inline
     def blocks_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         """Returns the base pointer to the K/V blocks tensor.
 
         Combined with `get_tma_row`, this lets a caller address a row
@@ -2590,7 +2584,7 @@ struct ContinuousBatchingKVCache[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         var block_idx = Int(self.lookup_table.load((batch_idx,)))
         var full_block_idx = self._get_idx_tuple(
             block_idx, head_idx, start_tok_idx, head_dim_idx
@@ -2646,7 +2640,7 @@ struct ContinuousBatchingKVCache[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns a pointer to the scales block at the requested indices.
 
         Note: ContinuousBatchingKVCache does not support KVCache quantization.
@@ -2654,26 +2648,26 @@ struct ContinuousBatchingKVCache[
         """
         # SAFETY: Callers only dereference scales pointers behind comptime
         # `quantization_enabled` guards, which are False for this cache type.
-        return UnsafePointer[
+        return MutPointer[
             Scalar[Self.scale_dtype], MutAnyOrigin
         ].unsafe_dangling()
 
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns a dangling pointer. ContinuousBatchingKVCache does not support
         quantization."""
         # SAFETY: Callers only dereference scales pointers behind comptime
         # `quantization_enabled` guards, which are False for this cache type.
-        return UnsafePointer[
+        return MutPointer[
             Scalar[Self.scale_dtype], MutAnyOrigin
         ].unsafe_dangling()
 
     @always_inline
     def blocks_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         """Returns the base pointer to the blocks tensor."""
         return self.blocks.ptr.as_unsafe_any_origin()
 
@@ -3957,7 +3951,7 @@ struct PagedKVCache[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         comptime assert (
             tile_size <= Self.page_size and Self.page_size % tile_size == 0
         ), (
@@ -4029,7 +4023,7 @@ struct PagedKVCache[
         start_tok_idx: Int,
         head_idx: Int,
         head_dim_idx: Int = 0,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns a pointer to the scales block at the requested indices."""
         comptime assert (
             self.quantization_enabled
@@ -4048,7 +4042,7 @@ struct PagedKVCache[
     @inline(.always)
     def scales_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.scale_dtype], MutAnyOrigin]:
         """Returns the base pointer to the scales tensor, or a
         dangling pointer if scales are not set."""
 
@@ -4056,14 +4050,14 @@ struct PagedKVCache[
             return self.scales.value().ptr.as_unsafe_any_origin()
         # SAFETY: Only reached when quantization is disabled; callers guard
         # scales access behind comptime `quantization_enabled` checks.
-        return UnsafePointer[
+        return MutPointer[
             Scalar[Self.scale_dtype], MutAnyOrigin
         ].unsafe_dangling()
 
     @always_inline
     def blocks_raw_ptr(
         self,
-    ) -> UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]:
+    ) -> MutPointer[Scalar[Self.dtype], MutAnyOrigin]:
         """Returns the base pointer to the blocks tensor."""
         return self.blocks.ptr.as_unsafe_any_origin()
 

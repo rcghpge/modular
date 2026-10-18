@@ -49,10 +49,10 @@ comptime N_GENERATIONS = 8
 
 
 def producer_kernel(
-    peer_recv_count: UnsafePointer[UInt64, MutUntrackedOrigin],
-    peer_payload: UnsafePointer[UInt64, MutUntrackedOrigin],
-    rank_completion_counter: UnsafePointer[Int32, MutUntrackedOrigin],
-    tickets: UnsafePointer[Int32, MutUntrackedOrigin],
+    peer_recv_count: MutPointer[UInt64, MutUntrackedOrigin],
+    peer_payload: MutPointer[UInt64, MutUntrackedOrigin],
+    rank_completion_counter: MutPointer[Int32, MutUntrackedOrigin],
+    tickets: MutPointer[Int32, MutUntrackedOrigin],
     generation: UInt64,
 ):
     """One single-thread block per expert on the SOURCE GPU (peer writes).
@@ -72,7 +72,7 @@ def producer_kernel(
         )
 
     if thread_idx.x == 0:
-        var ptrs = Array[UnsafePointer[UInt64, MutUntrackedOrigin], 1](
+        var ptrs = Array[MutPointer[UInt64, MutUntrackedOrigin], 1](
             fill=peer_recv_count
         )
         # The 1-entry peer array already points AT the peer, so index 0 is
@@ -94,9 +94,9 @@ def producer_kernel(
 
 
 def consumer_kernel(
-    recv_count: UnsafePointer[UInt64, MutUntrackedOrigin],
-    payload: UnsafePointer[UInt64, MutUntrackedOrigin],
-    result: UnsafePointer[Int32, MutUntrackedOrigin],
+    recv_count: MutPointer[UInt64, MutUntrackedOrigin],
+    payload: MutPointer[UInt64, MutUntrackedOrigin],
+    result: MutPointer[Int32, MutUntrackedOrigin],
     generation: UInt64,
 ):
     """Destination GPU: one system-scope ACQUIRE on the rank flag only."""

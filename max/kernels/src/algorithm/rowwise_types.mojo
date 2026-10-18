@@ -27,7 +27,6 @@ Member-naming convention: members a body reads have plain names
 discriminators and split-K plumbing — are `_`-prefixed.
 """
 
-from std.memory import UnsafePointer
 from max.gpu.host.info import is_cpu
 from std.utils.coord import Coord, DynamicCoord
 
@@ -298,10 +297,10 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
         """
         return tile_alignment[dtype, ws, Self.target]()
 
-    var _partials_base: UnsafePointer[UInt8, MutUntrackedOrigin]
+    var _partials_base: MutPointer[UInt8, MutUntrackedOrigin]
     """Split-K partials scratch (GPU only; sentinel on CPU)."""
 
-    var _counters_base: UnsafePointer[Int32, MutUntrackedOrigin]
+    var _counters_base: MutPointer[Int32, MutUntrackedOrigin]
     """Split-K per-row counters (GPU only; sentinel on CPU)."""
 
     var _blocks_per_row: Int32
@@ -328,8 +327,8 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
     @inline(.always)
     def __init__(
         out self,
-        partials_base: UnsafePointer[UInt8, MutUntrackedOrigin],
-        counters_base: UnsafePointer[Int32, MutUntrackedOrigin],
+        partials_base: MutPointer[UInt8, MutUntrackedOrigin],
+        counters_base: MutPointer[Int32, MutUntrackedOrigin],
         blocks_per_row: Int32,
         block_in_row: Int32,
         row_idx: Int32,
@@ -366,10 +365,10 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
             A `Context[params]` with sentinel pointers and zero counters.
         """
         return Self(
-            partials_base=UnsafePointer[UInt8, MutUntrackedOrigin](
+            partials_base=MutPointer[UInt8, MutUntrackedOrigin](
                 unsafe_from_address=1
             ),
-            counters_base=UnsafePointer[Int32, MutUntrackedOrigin](
+            counters_base=MutPointer[Int32, MutUntrackedOrigin](
                 unsafe_from_address=1
             ),
             blocks_per_row=Int32(0),
@@ -381,7 +380,7 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
     @inline(.always)
     def partial_slot[
         S: AnyType
-    ](self, slot: Int) -> UnsafePointer[S, MutUntrackedOrigin]:
+    ](self, slot: Int) -> MutPointer[S, MutUntrackedOrigin]:
         """Returns split-K partials slot `slot`, typed as `S`.
 
         The scratch is an array of fixed `_SPLITK_STATE_BYTES` slots, so it is
@@ -402,7 +401,7 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
     @inline(.always)
     def row_partial[
         S: AnyType
-    ](self, split: Int) -> UnsafePointer[S, MutUntrackedOrigin]:
+    ](self, split: Int) -> MutPointer[S, MutUntrackedOrigin]:
         """Returns split `split`'s partial for this row in the reduce-shaped
         split-K scratch, laid out `[num_rows x blocks_per_row]`.
 
@@ -422,9 +421,7 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
     @inline(.always)
     def phase_partial[
         S: AnyType
-    ](self, reduce_index: Int, split: Int) -> UnsafePointer[
-        S, MutUntrackedOrigin
-    ]:
+    ](self, reduce_index: Int, split: Int) -> MutPointer[S, MutUntrackedOrigin]:
         """Returns split `split`'s partial for reduce `reduce_index` of this
         row in the per-element split-K scratch, laid out
         `[num_rows x num_reduces x blocks_per_row]` with

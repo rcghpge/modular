@@ -49,7 +49,7 @@ def _im2col_nhwc_kernel[
     input_origin: ImmOrigin,
     InputEngine: TensorEngine,
 ](
-    output_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    output_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     input: TileTensor[dtype, InputLayoutType, input_origin, Engine=InputEngine],
     batch_size: Int32,
     H: Int32,
@@ -133,7 +133,7 @@ def _transpose_filter_to_nk[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     R: Int32,
     S: Int32,
     C: Int32,
@@ -584,9 +584,9 @@ def dispatch_fused_im2col_conv2d_apple[
     comptime assert (
         filter_type == input_type
     ), "Apple fused conv expects filter dtype == input dtype (bf16)"
-    var filter_nk_in_ptr = rebind[
-        UnsafePointer[Scalar[input_type], MutAnyOrigin]
-    ](filter_nk_ptr)
+    var filter_nk_in_ptr = rebind[MutPointer[Scalar[input_type], MutAnyOrigin]](
+        filter_nk_ptr
+    )
     var filter_nk = TileTensor(filter_nk_in_ptr, row_major(N, K))
     # Flat (M, N) view of the NHWC output buffer (NHWC rows are contiguous).
     var c_tt = output.reshape(row_major(full_M, N))

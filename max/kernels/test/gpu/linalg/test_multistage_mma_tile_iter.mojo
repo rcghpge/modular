@@ -110,7 +110,7 @@ def _frag_coords[warp_tile_n: Int](thread: Int, reg: Int) -> Tuple[Int, Int]:
 
 def _dump(
     c: TileTensor[mut=True, accum_type, ...],
-    out_ptr: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    out_ptr: MutPointer[Scalar[accum_type], MutAnyOrigin],
 ):
     var base = (
         (block_idx.y * (N // BN) + block_idx.x) * num_threads + thread_idx.x
@@ -124,9 +124,9 @@ def global_pipeline_kernel[
     transpose_b: Bool,
     masked_a: Bool,
 ](
-    a_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    b_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    out_ptr: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    a_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    b_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    out_ptr: MutPointer[Scalar[accum_type], MutAnyOrigin],
     M_arg: Int32,
 ):
     var M = Int(M_arg)
@@ -204,10 +204,8 @@ comptime smem_depth = 128
 def _stage_tiles[
     rows: Int, cols: Int, row_stride: Int, threads: Int
 ](
-    smem: UnsafePointer[
-        mut=True, Scalar[dtype], _, address_space=AddressSpace.SHARED
-    ],
-    gmem: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    smem: MutPointer[Scalar[dtype], _, address_space=AddressSpace.SHARED],
+    gmem: MutPointer[Scalar[dtype], MutAnyOrigin],
     num_tiles: Int,
     tile_step: Int,
 ):
@@ -232,9 +230,9 @@ def _stage_tiles[
 
 
 def smem_pipeline_kernel(
-    a_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    b_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    out_ptr: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    a_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    b_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    out_ptr: MutPointer[Scalar[accum_type], MutAnyOrigin],
 ):
     """QK-style: both operands already in shared memory, static trip count.
     A is `(BM, depth)` and B is `(BN, depth)`, both row-major in global
@@ -297,8 +295,8 @@ def _p_value(thread: Int, i: Int, j: Int) -> Scalar[accum_type]:
 
 
 def local_a_kernel(
-    b_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
-    out_ptr: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    b_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
+    out_ptr: MutPointer[Scalar[accum_type], MutAnyOrigin],
 ):
     """PV-style: A operand is an fp32 register tile, B comes from shared.
     B is `(BN, BN)` row-major in global memory.

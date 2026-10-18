@@ -178,9 +178,9 @@ struct Naive2dConvolution[
     """
 
     # Input params.
-    var output: UnsafePointer[Scalar[Self.output_type], Self.output_origin]
-    var input: UnsafePointer[Scalar[Self.input_type], Self.input_origin]
-    var filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin]
+    var output: MutPointer[Scalar[Self.output_type], Self.output_origin]
+    var input: ImmPointer[Scalar[Self.input_type], Self.input_origin]
+    var filter: ImmPointer[Scalar[Self.filter_type], Self.filter_origin]
     var pad_d: DynamicCoord[.int64, 2]
     var pad_h: DynamicCoord[.int64, 2]
     var pad_w: DynamicCoord[.int64, 2]
@@ -195,9 +195,9 @@ struct Naive2dConvolution[
 
     @staticmethod
     def run(
-        output: UnsafePointer[Scalar[Self.output_type], Self.output_origin],
-        input: UnsafePointer[Scalar[Self.input_type], Self.input_origin],
-        filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin],
+        output: MutPointer[Scalar[Self.output_type], Self.output_origin],
+        input: ImmPointer[Scalar[Self.input_type], Self.input_origin],
+        filter: ImmPointer[Scalar[Self.filter_type], Self.filter_origin],
         output_shape: IndexList[5],
         input_shape: IndexList[5],
         filter_shape: IndexList[5],
@@ -231,9 +231,9 @@ struct Naive2dConvolution[
 
     def __init__(
         out self,
-        output: UnsafePointer[Scalar[Self.output_type], Self.output_origin],
-        input: UnsafePointer[Scalar[Self.input_type], Self.input_origin],
-        filter: UnsafePointer[Scalar[Self.filter_type], Self.filter_origin],
+        output: MutPointer[Scalar[Self.output_type], Self.output_origin],
+        input: ImmPointer[Scalar[Self.input_type], Self.input_origin],
+        filter: ImmPointer[Scalar[Self.filter_type], Self.filter_origin],
         output_shape: IndexList[5],
         input_shape: IndexList[5],
         filter_shape: IndexList[5],
@@ -947,7 +947,7 @@ struct ConvDirectNHWC[
                 self.conv_shape.f,
                 self.conv_shape.f_per_group() % simd_size,
             )
-        var filter_ptr: UnsafePointer[
+        var filter_ptr: ImmPointer[
             Scalar[Self.filter_type], Self.filter_origin
         ] = self.filter.ptr
 
@@ -1075,7 +1075,7 @@ struct ConvDirectNHWC[
         has_residual: Bool,
     ](
         self,
-        output_base: UnsafePointer[Scalar[Self.output_type], ...],
+        output_base: Pointer[Scalar[Self.output_type], ...],
         output_micro_tile: TileTensor[mut=True, Self.output_type, ...],
     ):
         """Load a micro tile from the output buffer.
@@ -1222,8 +1222,8 @@ struct ConvDirectNHWC[
         self,
         c_tile_size: Int,
         input_stride: Int,
-        input_base: UnsafePointer[Scalar[Self.input_type], ...],
-        filter_base: UnsafePointer[Scalar[Self.filter_type], ...],
+        input_base: Pointer[Scalar[Self.input_type], ...],
+        filter_base: Pointer[Scalar[Self.filter_type], ...],
         mut acc_in: _Accumulator[
             Self.output_type, micro_kernel_height, micro_kernel_width, simd_size
         ],
@@ -1323,7 +1323,7 @@ struct ConvDirectNHWC[
 
         # Filter pointer to the current cf tile offset location.
         # Use ImmutAnyOrigin to detach from self's filter_origin for aliasing.
-        var filter_ptr: UnsafePointer[
+        var filter_ptr: Pointer[
             Scalar[Self.filter_type], type_of(self.filter.ptr).origin
         ]
 
@@ -1784,7 +1784,7 @@ struct ConvDirectNHWC[
         comptime WO = Self.output_layout.static_shape[2]  # NHWC
         comptime F = Self.output_layout.static_shape[3]  # NHWC
 
-        var filter_base: UnsafePointer[
+        var filter_base: Pointer[
             Scalar[Self.filter_type], type_of(self.filter.ptr).origin
         ]
 
@@ -1960,14 +1960,14 @@ struct ConvDirectNHWC[
         last_c_tile: Bool,
     ](
         self,
-        input_base: UnsafePointer[
-            mut=False, Scalar[Self.input_type], ...
+        input_base: ImmPointer[
+            Scalar[Self.input_type], ...
         ],  # points to (ho, wo) mapped in input
-        filter_base: UnsafePointer[
-            mut=False, Scalar[Self.filter_type], ...
+        filter_base: ImmPointer[
+            Scalar[Self.filter_type], ...
         ],  # point to filter in cf tile
-        output_base: UnsafePointer[
-            mut=True, Scalar[Self.output_type], ...
+        output_base: MutPointer[
+            Scalar[Self.output_type], ...
         ],  # point to (ho, wo) in output
         f_tile_offset: Int,
         f_tile_size: Int,
@@ -3061,7 +3061,7 @@ def pack_filter_shape[
 @inline(.always)
 def _get_group_filter_base(
     packed_filter: TileTensor, group_idx: Int, f_per_group: Int
-) -> UnsafePointer[
+) -> Pointer[
     Scalar[packed_filter.dtype],
     packed_filter.origin,
     address_space=packed_filter.address_space,
@@ -3758,44 +3758,42 @@ struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
     """
 
     @__allow_legacy_any_origin_fields
-    var ptr_handle: UnsafePointer[cudnnContext, AnyOrigin[mut=True]]
+    var ptr_handle: MutPointer[cudnnContext, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_input_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_input_desc: MutPointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct, AnyOrigin[mut=True]]
+    var ptr_filter_desc: MutPointer[cudnnFilterStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_conv_desc: UnsafePointer[
-        cudnnConvolutionStruct, AnyOrigin[mut=True]
-    ]
+    var ptr_conv_desc: MutPointer[cudnnConvolutionStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_output_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_output_desc: MutPointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     def __init__(out self) raises:
         var ptr_handle: Optional[type_of(self.ptr_handle)] = None
-        check_cudnn_error(cudnnCreate(UnsafePointer(to=ptr_handle)))
+        check_cudnn_error(cudnnCreate(Pointer(to=ptr_handle)))
 
         var ptr_input_desc: Optional[type_of(self.ptr_input_desc)] = None
         check_cudnn_error(
-            cudnnCreateTensorDescriptor(UnsafePointer(to=ptr_input_desc))
+            cudnnCreateTensorDescriptor(Pointer(to=ptr_input_desc))
         )
 
         var ptr_filter_desc: Optional[type_of(self.ptr_filter_desc)] = None
         check_cudnn_error(
-            cudnnCreateFilterDescriptor(UnsafePointer(to=ptr_filter_desc))
+            cudnnCreateFilterDescriptor(Pointer(to=ptr_filter_desc))
         )
 
         var ptr_conv_desc: Optional[type_of(self.ptr_conv_desc)] = None
         check_cudnn_error(
-            cudnnCreateConvolutionDescriptor(UnsafePointer(to=ptr_conv_desc))
+            cudnnCreateConvolutionDescriptor(Pointer(to=ptr_conv_desc))
         )
 
         var ptr_output_desc: Optional[type_of(self.ptr_output_desc)] = None
         check_cudnn_error(
-            cudnnCreateTensorDescriptor(UnsafePointer(to=ptr_output_desc))
+            cudnnCreateTensorDescriptor(Pointer(to=ptr_output_desc))
         )
 
         self.ptr_handle = ptr_handle.value()
@@ -3823,7 +3821,7 @@ struct CuDNNConvMeta(ImplicitlyCopyable, RegisterPassable):
 
 def _get_cudnn_meta(
     ctx: DeviceContext,
-) raises -> UnsafePointer[CuDNNConvMeta, AnyOrigin[mut=True]]:
+) raises -> MutPointer[CuDNNConvMeta, AnyOrigin[mut=True]]:
     """Get the cuDNN metadata with proper device context management.
 
     If the metadata is not found for this device, create a new one and insert
@@ -3897,21 +3895,19 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
     """
 
     @__allow_legacy_any_origin_fields
-    var ptr_handle: UnsafePointer[cudnnContext, AnyOrigin[mut=True]]
+    var ptr_handle: MutPointer[cudnnContext, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_input_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_input_desc: MutPointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_filter_desc: UnsafePointer[cudnnFilterStruct, AnyOrigin[mut=True]]
+    var ptr_filter_desc: MutPointer[cudnnFilterStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_conv_desc: UnsafePointer[
-        cudnnConvolutionStruct, AnyOrigin[mut=True]
-    ]
+    var ptr_conv_desc: MutPointer[cudnnConvolutionStruct, AnyOrigin[mut=True]]
 
     @__allow_legacy_any_origin_fields
-    var ptr_output_desc: UnsafePointer[cudnnTensorStruct, AnyOrigin[mut=True]]
+    var ptr_output_desc: MutPointer[cudnnTensorStruct, AnyOrigin[mut=True]]
 
     # Workspace size cache (actual buffer is allocated per-call via ctx)
     var workspace_size: Int
@@ -3932,26 +3928,26 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
 
     def __init__(out self) raises:
         var ptr_handle: Optional[type_of(self.ptr_handle)] = None
-        check_cudnn_error(cudnnCreate(UnsafePointer(to=ptr_handle)))
+        check_cudnn_error(cudnnCreate(Pointer(to=ptr_handle)))
 
         var ptr_input_desc: Optional[type_of(self.ptr_input_desc)] = None
         check_cudnn_error(
-            cudnnCreateTensorDescriptor(UnsafePointer(to=ptr_input_desc))
+            cudnnCreateTensorDescriptor(Pointer(to=ptr_input_desc))
         )
 
         var ptr_filter_desc: Optional[type_of(self.ptr_filter_desc)] = None
         check_cudnn_error(
-            cudnnCreateFilterDescriptor(UnsafePointer(to=ptr_filter_desc))
+            cudnnCreateFilterDescriptor(Pointer(to=ptr_filter_desc))
         )
 
         var ptr_conv_desc: Optional[type_of(self.ptr_conv_desc)] = None
         check_cudnn_error(
-            cudnnCreateConvolutionDescriptor(UnsafePointer(to=ptr_conv_desc))
+            cudnnCreateConvolutionDescriptor(Pointer(to=ptr_conv_desc))
         )
 
         var ptr_output_desc: Optional[type_of(self.ptr_output_desc)] = None
         check_cudnn_error(
-            cudnnCreateTensorDescriptor(UnsafePointer(to=ptr_output_desc))
+            cudnnCreateTensorDescriptor(Pointer(to=ptr_output_desc))
         )
 
         self.ptr_handle = ptr_handle.value()
@@ -3977,7 +3973,7 @@ struct CachedCuDNNMetaNHWCFull(ImplicitlyCopyable):
 
 def _get_cached_cudnn_meta_nhwc_full(
     ctx: DeviceContext,
-) raises -> UnsafePointer[CachedCuDNNMetaNHWCFull, AnyOrigin[mut=True]]:
+) raises -> MutPointer[CachedCuDNNMetaNHWCFull, AnyOrigin[mut=True]]:
     var cache_key = "CUDA_CUDNN_CACHED_META_NHWC_FULL_" + String(ctx.id())
 
     var ptr_meta = _get_global_or_null(cache_key)
@@ -4153,7 +4149,7 @@ def _conv_cudnn[
                 ptr_meta[].ptr_conv_desc,
                 ptr_meta[].ptr_output_desc,
                 1,
-                UnsafePointer(to=returned_count),
+                Pointer(to=returned_count),
                 perf,
             )
         )
@@ -4175,7 +4171,7 @@ def _conv_cudnn[
                 ptr_meta[].ptr_conv_desc,
                 ptr_meta[].ptr_output_desc,
                 ptr_meta[].best_algo,
-                UnsafePointer(to=ws_size),
+                Pointer(to=ws_size),
             )
         )
         ptr_meta[].workspace_size = ws_size
@@ -4201,7 +4197,7 @@ def _conv_cudnn[
     check_cudnn_error(
         cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            UnsafePointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
             input.ptr.bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
@@ -4210,7 +4206,7 @@ def _conv_cudnn[
             ptr_meta[].best_algo,
             workspace_buffer.unsafe_ptr().bitcast[NoneType](),
             ptr_meta[].workspace_size,
-            UnsafePointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
             output.ptr.bitcast[NoneType](),
         )
@@ -4297,34 +4293,34 @@ struct CachedMIOpenMeta[conv_rank: Int](Movable):
     def __init__(out self) raises:
         self.handle = MIOpenHandle()
         check_miopen_error(
-            miopenCreate(UnsafePointer(to=self.handle).bitcast[NoneType]())
+            miopenCreate(Pointer(to=self.handle).bitcast[NoneType]())
         )
 
         self.input_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                UnsafePointer(to=self.input_desc).bitcast[NoneType]()
+                Pointer(to=self.input_desc).bitcast[NoneType]()
             )
         )
 
         self.filter_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                UnsafePointer(to=self.filter_desc).bitcast[NoneType]()
+                Pointer(to=self.filter_desc).bitcast[NoneType]()
             )
         )
 
         self.output_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                UnsafePointer(to=self.output_desc).bitcast[NoneType]()
+                Pointer(to=self.output_desc).bitcast[NoneType]()
             )
         )
 
         self.conv_desc = MIOpenConvolutionDescriptor()
         check_miopen_error(
             miopenCreateConvolutionDescriptor(
-                UnsafePointer(to=self.conv_desc).bitcast[NoneType]()
+                Pointer(to=self.conv_desc).bitcast[NoneType]()
             )
         )
 
@@ -4345,7 +4341,7 @@ def _get_cached_miopen_meta[
     conv_rank: Int
 ](
     ctx: DeviceContext,
-) raises -> UnsafePointer[
+) raises -> MutPointer[
     CachedMIOpenMeta[conv_rank], MutAnyOrigin
 ]:
     var cache_key = String(
@@ -4651,7 +4647,7 @@ def _conv_miopen[
                 ptr_meta[].input_desc,
                 ptr_meta[].conv_desc,
                 ptr_meta[].output_desc,
-                UnsafePointer(to=workspace_size).as_unsafe_any_origin(),
+                Pointer(to=workspace_size).as_unsafe_any_origin(),
             )
         )
 
@@ -4672,8 +4668,8 @@ def _conv_miopen[
                 ptr_meta[].output_desc,
                 output.ptr.bitcast[NoneType](),
                 Int32(1),
-                UnsafePointer(to=returned_count).as_unsafe_any_origin(),
-                UnsafePointer(to=perf).as_unsafe_any_origin(),
+                Pointer(to=returned_count).as_unsafe_any_origin(),
+                Pointer(to=perf).as_unsafe_any_origin(),
                 find_workspace.unsafe_ptr().bitcast[NoneType](),
                 workspace_size,
                 False,  # non-exhaustive search
@@ -4707,14 +4703,14 @@ def _conv_miopen[
     check_miopen_error(
         miopenConvolutionForward(
             ptr_meta[].handle,
-            UnsafePointer(to=alpha).as_imm().as_unsafe_any_origin(),
+            Pointer(to=alpha).as_imm().as_unsafe_any_origin(),
             ptr_meta[].input_desc,
             input.ptr.bitcast[NoneType](),
             ptr_meta[].filter_desc,
             filter_frsc_ptr.bitcast[NoneType](),
             ptr_meta[].conv_desc,
             ptr_meta[].algo,
-            UnsafePointer(to=beta).as_imm().as_unsafe_any_origin(),
+            Pointer(to=beta).as_imm().as_unsafe_any_origin(),
             ptr_meta[].output_desc,
             output.ptr.bitcast[NoneType](),
             forward_workspace.unsafe_ptr().bitcast[NoneType](),
@@ -4855,9 +4851,7 @@ def conv_gpu[
     padding: IndexList[2 * conv_rank],
     num_groups: Int,
     ctx: DeviceContext,
-    source_ptr: Optional[
-        UnsafePointer[Scalar[output_type], MutAnyOrigin]
-    ] = None,
+    source_ptr: Optional[MutPointer[Scalar[output_type], MutAnyOrigin]] = None,
     beta: Float32 = 0.0,
 ) raises:
     """Dispatches a GPU convolution to the best available backend for the
@@ -5222,7 +5216,7 @@ def conv_gpu[
                 rebind[IndexList[2]](symmetric_padding),
                 num_groups,
                 ctx,
-                source_ptr.value() if has_residual else UnsafePointer[
+                source_ptr.value() if has_residual else MutPointer[
                     Scalar[output_type], MutAnyOrigin
                 ].unsafe_dangling(),
                 beta,
@@ -6179,7 +6173,7 @@ def _conv3d_cudnn_depth_tiled[
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].ptr_output_desc,
             algo,
-            UnsafePointer(to=ws_size),
+            Pointer(to=ws_size),
         )
         if ws_st != cudnnStatus_t.CUDNN_STATUS_SUCCESS or ws_size > FIND_WS_CAP:
             # Fall back to IMPLICIT_GEMM (no workspace needed).
@@ -6199,7 +6193,7 @@ def _conv3d_cudnn_depth_tiled[
 
         var fwd_status = cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            UnsafePointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
             in_ptr.bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
@@ -6208,7 +6202,7 @@ def _conv3d_cudnn_depth_tiled[
             algo,
             workspace_buffer.unsafe_ptr().bitcast[NoneType](),
             ws_size,
-            UnsafePointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
             out_ptr.bitcast[NoneType](),
         )
@@ -6526,7 +6520,7 @@ def _conv3d_cudnn[
                 ptr_meta[].ptr_conv_desc,
                 ptr_meta[].ptr_output_desc,
                 precomp,
-                UnsafePointer(to=ws_size),
+                Pointer(to=ws_size),
             )
             if (
                 ws_st == cudnnStatus_t.CUDNN_STATUS_SUCCESS
@@ -6555,7 +6549,7 @@ def _conv3d_cudnn[
     var workspace_buffer = ctx.enqueue_create_buffer[.uint8](workspace_size_var)
     var fwd_status = cudnnConvolutionForward(
         ptr_meta[].ptr_handle,
-        UnsafePointer(to=alpha).bitcast[NoneType](),
+        Pointer(to=alpha).bitcast[NoneType](),
         ptr_meta[].ptr_input_desc,
         input.ptr.bitcast[NoneType](),
         ptr_meta[].ptr_filter_desc,
@@ -6564,7 +6558,7 @@ def _conv3d_cudnn[
         algo,
         workspace_buffer.unsafe_ptr().bitcast[NoneType](),
         workspace_size_var,
-        UnsafePointer(to=beta).bitcast[NoneType](),
+        Pointer(to=beta).bitcast[NoneType](),
         ptr_meta[].ptr_output_desc,
         output.ptr.bitcast[NoneType](),
     )
@@ -6593,7 +6587,7 @@ def _conv3d_cudnn[
         var retry_workspace = ctx.enqueue_create_buffer[.uint8](0)
         fwd_status = cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            UnsafePointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
             input.ptr.bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
@@ -6602,7 +6596,7 @@ def _conv3d_cudnn[
             algo,
             retry_workspace.unsafe_ptr().bitcast[NoneType](),
             0,
-            UnsafePointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
             output.ptr.bitcast[NoneType](),
         )

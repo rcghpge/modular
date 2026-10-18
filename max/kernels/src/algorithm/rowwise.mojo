@@ -110,7 +110,6 @@ from max.gpu.host import DeviceContext, get_gpu_target
 from max.gpu.host.info import is_cpu, is_gpu
 from std.math import ceildiv, iota
 from std.memory import stack_allocation
-from std.memory.unsafe_pointer import UnsafePointer
 from std.sys.info import (
     align_of,
     is_apple_gpu,
@@ -960,7 +959,7 @@ struct RowCache[
             var warp_off = (
                 Int(warp_id()) * Self.cols
             ) if Self.params._tier == ReduceTier.Warp else 0
-            var sh = UnsafePointer[
+            var sh = MutPointer[
                 Scalar[Self.T], MutUntrackedOrigin, address_space=.SHARED
             ](unsafe_from_address=self._shmem_addr)
             return sh.load[width=w, alignment=al](

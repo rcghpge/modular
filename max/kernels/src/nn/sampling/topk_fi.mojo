@@ -268,9 +268,7 @@ def TopKMaskLogitsKernel[
         masked_logits_origin,
         Engine=MaskedLogitsEngine,
     ],
-    top_k_arr: Optional[
-        UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
-    ],
+    top_k_arr: Optional[MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]],
     top_k_val: Int32,
     d: Int32,
 ):
@@ -477,7 +475,7 @@ def topk_mask_logits[
         var vec_size = gcd(8, d)
 
         var top_k_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
+            MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
@@ -798,10 +796,8 @@ def TopKSamplingFromProbKernel[
     output: TileTensor[
         out_idx_type, OutputLayoutType, output_origin, Engine=OutputEngine
     ],
-    indices: Optional[UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]],
-    top_k_arr: Optional[
-        UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
-    ],
+    indices: Optional[MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]],
+    top_k_arr: Optional[MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]],
     top_k_val: Int32,
     d: Int32,
     rng_seed: UInt64,
@@ -1236,13 +1232,13 @@ def topk_sampling_from_prob[
         var vec_size = gcd(8, d)
 
         var indices_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
+            MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
         if case .Some(indices) = indices:
             indices_ptr = indices.ptr
 
         var top_k_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
+            MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
@@ -1293,8 +1289,8 @@ def apply_min_p_mask_kernel[
     dtype: DType,
     block_size: Int,
 ](
-    probs: UnsafePointer[Scalar[dtype], MutUntrackedOrigin],
-    min_p_arr: UnsafePointer[Float32, ImmUntrackedOrigin],
+    probs: MutPointer[Scalar[dtype], MutUntrackedOrigin],
+    min_p_arr: ImmPointer[Float32, ImmUntrackedOrigin],
     d: Int32,
 ):
     """Zero out probabilities below the per-row min_p threshold.
@@ -1489,7 +1485,7 @@ def _sampling_rejection_loop_coop[
     z: Float32,
     mut generator: Random,
     mut coop: CoopRow[coop_size],
-    coop_ws: UnsafePointer[Int32, MutAnyOrigin],
+    coop_ws: MutPointer[Int32, MutAnyOrigin],
     coop_table: MutPointer[Float32, _, address_space=.SHARED],
     vec_begin: Int,
     vec_end: Int,
@@ -1674,7 +1670,7 @@ def _topk_topp_cutoff_search[
     high_init: Float32,
     mass_above_low_init: Float32,
     mut coop: CoopRow[coop_size],
-    coop_ws: Optional[UnsafePointer[Int32, MutAnyOrigin]],
+    coop_ws: Optional[MutPointer[Int32, MutAnyOrigin]],
     coop_table: MutPointer[Float32, _, address_space=.SHARED],
     vec_begin: Int,
     vec_end: Int,
@@ -1870,18 +1866,18 @@ def TopKTopPSamplingFromProbKernel[
     output: TileTensor[
         out_idx_type, OutputLayoutType, output_origin, Engine=OutputEngine
     ],
-    out_dist: Optional[UnsafePointer[Scalar[dist_dtype], MutAnyOrigin]],
-    indices: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
-    top_k_arr: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
+    out_dist: Optional[MutPointer[Scalar[dist_dtype], MutAnyOrigin]],
+    indices: Optional[ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]],
+    top_k_arr: Optional[ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]],
     top_k_val: Int32,
-    top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    top_p_arr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     top_p_val: Float32,
     d: Int32,
-    rng_seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
+    rng_seed: Optional[ImmPointer[UInt64, ImmutAnyOrigin]],
     rng_offset: UInt64,
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    min_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    coop_ws: Optional[UnsafePointer[Int32, MutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    min_p: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    coop_ws: Optional[MutPointer[Int32, MutAnyOrigin]],
 ):
     """Kernel for joint top-k + top-p sampling from probability distribution.
 
@@ -2800,37 +2796,37 @@ def topk_topp_sampling_from_prob[
         var vec_size = gcd(8, d)
 
         var indices_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
         if case .Some(indices) = indices:
             indices_ptr = indices.ptr
 
         var top_k_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
 
-        var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var top_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(top_p_arr) = top_p_arr:
             top_p_ptr = top_p_arr.ptr
 
-        var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+        var seed_ptr: Optional[ImmPointer[UInt64, ImmutAnyOrigin]] = None
         if case .Some(rng_seed) = rng_seed:
             seed_ptr = rng_seed.ptr
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
 
-        var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var min_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(min_p) = min_p:
             min_p_ptr = min_p.ptr
 
         var dist_ptr: Optional[
-            UnsafePointer[Scalar[dist_dtype], MutAnyOrigin]
+            MutPointer[Scalar[dist_dtype], MutAnyOrigin]
         ] = None
 
         comptime if emit_dist:
@@ -2855,7 +2851,7 @@ def topk_topp_sampling_from_prob[
         var coop_buf = ctx.enqueue_create_buffer[.int32](
             coop_row_words(batch_size, coop) if coop > 1 else 1
         )
-        var coop_ptr: Optional[UnsafePointer[Int32, MutAnyOrigin]] = None
+        var coop_ptr: Optional[MutPointer[Int32, MutAnyOrigin]] = None
         if coop > 1:
             # Barrier counters must start at zero.
             ctx.enqueue_memset(coop_buf, 0)
@@ -2942,14 +2938,12 @@ def topk_softmax_sample_kernel[
     sampled_indices: TileTensor[
         out_idx_type, SampledLayoutType, sampled_origin, Engine=SampledEngine
     ],
-    top_k_arr: Optional[
-        UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
-    ],
+    top_k_arr: Optional[MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]],
     top_k_val: Int32,
     temperature_val: Float32,
-    temperature: Optional[UnsafePointer[Float32, MutUntrackedOrigin]],
+    temperature: Optional[MutPointer[Float32, MutUntrackedOrigin]],
     seed_val: UInt64,
-    seed: Optional[UnsafePointer[UInt64, MutUntrackedOrigin]],
+    seed: Optional[MutPointer[UInt64, MutUntrackedOrigin]],
     d: Int32,
 ):
     var _top_k_val = Int(top_k_val)
@@ -3301,18 +3295,16 @@ def topk_softmax_sample[
             )
 
         var top_k_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], MutUntrackedOrigin]
+            MutPointer[Scalar[out_idx_type], MutUntrackedOrigin]
         ] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
 
-        var temp_ptr: Optional[
-            UnsafePointer[Float32, MutUntrackedOrigin]
-        ] = None
+        var temp_ptr: Optional[MutPointer[Float32, MutUntrackedOrigin]] = None
         if case .Some(temperature) = temperature:
             temp_ptr = temperature.ptr
 
-        var seed_ptr: Optional[UnsafePointer[UInt64, MutUntrackedOrigin]] = None
+        var seed_ptr: Optional[MutPointer[UInt64, MutUntrackedOrigin]] = None
         if case .Some(seed) = seed:
             seed_ptr = seed.ptr
 
@@ -3373,13 +3365,13 @@ def TopKTopPMaskedProbsKernel[
     probs: TileTensor[
         .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
     ],
-    top_k_arr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
+    top_k_arr: Optional[ImmPointer[Int64, ImmutAnyOrigin]],
     top_k_val: Int32,
-    top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    top_p_arr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     top_p_val: Float32,
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     d: Int32,
-    coop_ws: Optional[UnsafePointer[Int32, MutAnyOrigin]],
+    coop_ws: Optional[MutPointer[Int32, MutAnyOrigin]],
 ):
     """Writes each row's top-k/top-p masked softmax.
 
@@ -3684,16 +3676,16 @@ def topk_topp_masked_probs[
 
         var vec_size = gcd(8, d)
 
-        var top_k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
+        var top_k_ptr: Optional[ImmPointer[Int64, ImmutAnyOrigin]] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
 
-        var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var top_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(top_p_arr) = top_p_arr:
             top_p_ptr = top_p_arr.ptr
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
@@ -3705,7 +3697,7 @@ def topk_topp_masked_probs[
         var coop_buf = ctx.enqueue_create_buffer[.int32](
             coop_row_words(batch_size, coop) if coop > 1 else 1
         )
-        var coop_ptr: Optional[UnsafePointer[Int32, MutAnyOrigin]] = None
+        var coop_ptr: Optional[MutPointer[Int32, MutAnyOrigin]] = None
         if coop > 1:
             # Barrier counters must start at zero.
             ctx.enqueue_memset(coop_buf, 0)

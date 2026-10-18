@@ -353,11 +353,11 @@ def TopKTopPMaskedProbsClusterKernel[
     probs: TileTensor[
         .float32, ProbsLayoutType, MutAnyOrigin, Engine=ProbsEngine
     ],
-    top_k_arr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
+    top_k_arr: Optional[ImmPointer[Int64, ImmutAnyOrigin]],
     top_k_val: Int32,
-    top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    top_p_arr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     top_p_val: Float32,
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     d: Int32,
 ):
     """`TopKTopPMaskedProbsKernel` with one row spread over a cluster.
@@ -644,16 +644,16 @@ def topk_topp_masked_probs_cluster[
 
         var vec_size = gcd(8, d)
 
-        var top_k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
+        var top_k_ptr: Optional[ImmPointer[Int64, ImmutAnyOrigin]] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
 
-        var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var top_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(top_p_arr) = top_p_arr:
             top_p_ptr = top_p_arr.ptr
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
@@ -724,7 +724,7 @@ def topk_topp_masked_probs_cluster[
                 top_p_val,
                 temperature_ptr,
                 Int32(d),
-                Optional[UnsafePointer[Int32, MutAnyOrigin]](None),
+                Optional[MutPointer[Int32, MutAnyOrigin]](None),
                 grid_dim=batch_size,
                 block_dim=block_size,
                 attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -1028,17 +1028,17 @@ def TopKTopPSamplingEmitDistClusterKernel[
     output: TileTensor[
         out_idx_type, OutputLayoutType, output_origin, Engine=OutputEngine
     ],
-    out_dist: UnsafePointer[Scalar[dist_dtype], MutAnyOrigin],
-    indices: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
-    top_k_arr: Optional[UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]],
+    out_dist: MutPointer[Scalar[dist_dtype], MutAnyOrigin],
+    indices: Optional[ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]],
+    top_k_arr: Optional[ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]],
     top_k_val: Int32,
-    top_p_arr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    top_p_arr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     top_p_val: Float32,
     d: Int32,
-    rng_seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
+    rng_seed: Optional[ImmPointer[UInt64, ImmutAnyOrigin]],
     rng_offset: UInt64,
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    min_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    min_p: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
 ):
     """`TopKTopPSamplingFromProbKernel` with `from_logits` and `emit_dist`,
     spread over a cluster.
@@ -1485,37 +1485,37 @@ def topk_topp_sampling_from_prob_cluster[
         var vec_size = gcd(8, d)
 
         var indices_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
         if case .Some(indices) = indices:
             indices_ptr = indices.ptr
 
         var top_k_ptr: Optional[
-            UnsafePointer[Scalar[out_idx_type], ImmutAnyOrigin]
+            ImmPointer[Scalar[out_idx_type], ImmutAnyOrigin]
         ] = None
         if case .Some(top_k_arr) = top_k_arr:
             top_k_ptr = top_k_arr.ptr
 
-        var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var top_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(top_p_arr) = top_p_arr:
             top_p_ptr = top_p_arr.ptr
 
-        var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+        var seed_ptr: Optional[ImmPointer[UInt64, ImmutAnyOrigin]] = None
         if case .Some(rng_seed) = rng_seed:
             seed_ptr = rng_seed.ptr
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
 
-        var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+        var min_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
         if case .Some(min_p) = min_p:
             min_p_ptr = min_p.ptr
 
         var dist_ptr: Optional[
-            UnsafePointer[Scalar[dist_dtype], MutAnyOrigin]
+            MutPointer[Scalar[dist_dtype], MutAnyOrigin]
         ] = None
 
         comptime if emit_dist:
@@ -1623,7 +1623,7 @@ def topk_topp_sampling_from_prob_cluster[
                 rng_offset,
                 temperature_ptr,
                 min_p_ptr,
-                Optional[UnsafePointer[Int32, MutAnyOrigin]](None),
+                Optional[MutPointer[Int32, MutAnyOrigin]](None),
                 grid_dim=batch_size,
                 block_dim=block_size,
                 attributes=pdl_launch_attributes(PDLLevel.ON),

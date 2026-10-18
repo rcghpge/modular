@@ -43,7 +43,7 @@ def _transpose_rscf_to_krsc[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     R: Int32,
     S: Int32,
     C: Int32,
@@ -72,7 +72,7 @@ def _transpose_fcrs_to_krsc[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     F: Int32,
     C: Int32,
     R: Int32,
@@ -141,7 +141,7 @@ def dispatch_sm100_conv2d[
     symmetric_padding: IndexList[2],
     ctx: DeviceContext,
     source_ptr: OptionalReg[
-        UnsafePointer[Scalar[output_type], MutAnyOrigin]
+        MutPointer[Scalar[output_type], MutAnyOrigin]
     ] = None,
     beta: Float32 = 0.0,
     epilogue_fn: EpilogueFnType = no_epilogue_fn,

@@ -50,12 +50,12 @@ comptime cblas_gemm_type = def(
     Int32,
     Int32,
     Float32,
-    UnsafePointer[Float32, ImmutAnyOrigin],
+    ImmPointer[Float32, ImmutAnyOrigin],
     Int32,
-    UnsafePointer[Float32, ImmutAnyOrigin],
+    ImmPointer[Float32, ImmutAnyOrigin],
     Int32,
     Float32,
-    UnsafePointer[Float32, MutAnyOrigin],
+    MutPointer[Float32, MutAnyOrigin],
     Int32,
 ) thin -> None
 """Function type matching the Accelerate `cblas_sgemm` C signature."""
@@ -206,12 +206,12 @@ def _cblas_f32[
         n,
         k,
         alpha,
-        rebind[UnsafePointer[Float32, ImmutAnyOrigin]](a_ptr),
+        rebind[ImmPointer[Float32, ImmutAnyOrigin]](a_ptr),
         lda,
-        rebind[UnsafePointer[Float32, ImmutAnyOrigin]](b_ptr),
+        rebind[ImmPointer[Float32, ImmutAnyOrigin]](b_ptr),
         ldb,
         beta,
-        rebind[UnsafePointer[Float32, MutAnyOrigin]](c_ptr),
+        rebind[MutPointer[Float32, MutAnyOrigin]](c_ptr),
         ldc,
     )
 
@@ -316,7 +316,7 @@ def apple_gemv[
 
     var transposed_b_alloc = Optional[ManagedAllocation[Scalar[b.dtype]]]()
     var transposed_b = TileTensor(
-        UnsafePointer[Scalar[b.dtype], MutUntrackedOrigin].unsafe_dangling(),
+        MutPointer[Scalar[b.dtype], MutUntrackedOrigin].unsafe_dangling(),
         row_major(Int(0), Int(0)),
     )
 
@@ -477,9 +477,9 @@ def apple_matmul[
         ldc,
         alpha,
         beta,
-        rebind[UnsafePointer[Float32, MutAnyOrigin]](c.ptr),
-        rebind[UnsafePointer[Float32, ImmutAnyOrigin]](a.ptr),
-        rebind[UnsafePointer[Float32, ImmutAnyOrigin]](b.ptr),
+        rebind[MutPointer[Float32, MutAnyOrigin]](c.ptr),
+        rebind[ImmPointer[Float32, ImmutAnyOrigin]](a.ptr),
+        rebind[ImmPointer[Float32, ImmutAnyOrigin]](b.ptr),
     )
 
     comptime if has_epilogue_fn or has_compute_fn:

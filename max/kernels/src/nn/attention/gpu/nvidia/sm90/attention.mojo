@@ -432,20 +432,14 @@ def produce[
         BK=padded_depth,
     ],
     q_smem: MutPointer[Scalar[qkv_type], _, address_space=.SHARED],
-    kv_smem: UnsafePointer[
-        mut=True, Scalar[qkv_type], _, address_space=.SHARED
-    ],
-    produced_mbar_kv: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
-    consumed_mbar_kv: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
+    kv_smem: MutPointer[Scalar[qkv_type], _, address_space=.SHARED],
+    produced_mbar_kv: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
+    consumed_mbar_kv: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
     produced_mbar_q: Optional[
-        UnsafePointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
+        MutPointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
     ],
     consumed_mbar_q: Optional[
-        UnsafePointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
+        MutPointer[SharedMemBarrier, MutAnyOrigin, address_space=.SHARED]
     ],
     kv_lut: KVLUTType,
     initial_position: MHAPosition[
@@ -1031,7 +1025,7 @@ def output_reg_to_smem[
     tid: UInt32,
     local_warp_group_idx: UInt32,
     warp_y: UInt32,
-    q_smem: UnsafePointer[
+    q_smem: MutPointer[
         Scalar[output_type], MutAnyOrigin, address_space=.SHARED
     ],
     output_reg_tile: TileTensor[

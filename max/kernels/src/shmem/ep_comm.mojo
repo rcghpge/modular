@@ -192,7 +192,7 @@ def _acquire_wait[
     scope: StaticString = "",
     wait_while_equal: Bool = False,
 ](
-    ptr: UnsafePointer[Scalar[dtype], MutUntrackedOrigin],
+    ptr: MutPointer[Scalar[dtype], MutUntrackedOrigin],
     sentinel: Scalar[dtype],
 ) -> Scalar[dtype]:
     """Spins until `ptr[]` differs from `sentinel`, then takes the acquire once.
@@ -527,11 +527,11 @@ def ep_signal_completion[
     my_rank: Int32,
     dst_rank: Int32,
     recv_count_ptrs: Array[
-        UnsafePointer[UInt64, MutUntrackedOrigin], p2p_world_size
+        MutPointer[UInt64, MutUntrackedOrigin], p2p_world_size
     ],
     signal_offset: Int32,
     signal: UInt64,
-    rank_completion_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+    rank_completion_counter: MutPointer[Int32, MutUntrackedOrigin],
     rank_flag_offset: Int32 = 0,
 ) -> Int32:
     """
@@ -840,8 +840,8 @@ trait TokenFormat(Deinitable, DevicePassable):
     @always_inline
     @staticmethod
     def scatter_row_scales(
-        recv_base: UnsafePointer[UInt8, MutUntrackedOrigin],
-        send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
+        recv_base: MutPointer[UInt8, MutUntrackedOrigin],
+        send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         dst_expert_local_idx: Int32,
         final_row: Int32,
         lane: Int,
@@ -899,9 +899,9 @@ trait TokenFormat(Deinitable, DevicePassable):
     @inline(.always)
     def copy_msg_tile_to_output_tensor[
         extract_topk_info_func: def(
-            UnsafePointer[UInt8, MutUntrackedOrigin], Int
+            MutPointer[UInt8, MutUntrackedOrigin], Int
         ) -> None,
-        recv_buf_ptr_func: def(Int) -> UnsafePointer[UInt8, MutUntrackedOrigin],
+        recv_buf_ptr_func: def(Int) -> MutPointer[UInt8, MutUntrackedOrigin],
         //,
         n_warps: Int,
         shared_expert_offset: Int = 0,
@@ -1008,7 +1008,7 @@ struct BF16TokenFormat[
         ],
     ):
         self.output_tokens = {
-            UnsafePointer[BFloat16, MutUntrackedOrigin](
+            MutPointer[BFloat16, MutUntrackedOrigin](
                 unsafe_from_address=Int(output_tokens._storage)
             ),
             output_tokens.layout,
@@ -1157,13 +1157,13 @@ struct BlockwiseFP8TokenFormat[
         ],
     ):
         self.output_tokens = {
-            UnsafePointer[Scalar[Self.fp8_dtype], MutUntrackedOrigin](
+            MutPointer[Scalar[Self.fp8_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_tokens._storage)
             ),
             output_tokens.layout,
         }
         self.output_scales = {
-            UnsafePointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
+            MutPointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_scales._storage)
             ),
             output_scales.layout,
@@ -1549,13 +1549,13 @@ struct NVBlockScaledTokenFormat[
                 `nvfp4_dyn_global_scales` and ignored otherwise.
         """
         self.output_tokens = {
-            UnsafePointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
+            MutPointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_tokens._storage)
             ),
             output_tokens.layout,
         }
         self.output_scales_offset = {
-            UnsafePointer[UInt32, MutUntrackedOrigin](
+            MutPointer[UInt32, MutUntrackedOrigin](
                 unsafe_from_address=Int(output_scales_offset._storage)
             ),
             output_scales_offset.layout,
@@ -1567,14 +1567,14 @@ struct NVBlockScaledTokenFormat[
                     " buffer"
                 )
             self.output_rowwise_scales = {
-                UnsafePointer[BFloat16, MutUntrackedOrigin](
+                MutPointer[BFloat16, MutUntrackedOrigin](
                     unsafe_from_address=Int(output_rowwise_scales.value())
                 ),
                 row_major(Int64(output_tokens.dim(0))),
             }
         else:
             self.output_rowwise_scales = {
-                UnsafePointer[BFloat16, MutUntrackedOrigin].unsafe_dangling(),
+                MutPointer[BFloat16, MutUntrackedOrigin].unsafe_dangling(),
                 row_major(Int64(0)),
             }
 
@@ -1814,8 +1814,8 @@ struct NVBlockScaledTokenFormat[
     @inline(.always)
     @staticmethod
     def scatter_row_scales(
-        recv_base: UnsafePointer[UInt8, MutUntrackedOrigin],
-        send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
+        recv_base: MutPointer[UInt8, MutUntrackedOrigin],
+        send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         dst_expert_local_idx: Int32,
         final_row: Int32,
         lane: Int,
@@ -2072,9 +2072,9 @@ struct NVBlockScaledTokenFormat[
     @inline(.always)
     def copy_msg_tile_to_output_tensor[
         extract_topk_info_func: def(
-            UnsafePointer[UInt8, MutUntrackedOrigin], Int
+            MutPointer[UInt8, MutUntrackedOrigin], Int
         ) -> None,
-        recv_buf_ptr_func: def(Int) -> UnsafePointer[UInt8, MutUntrackedOrigin],
+        recv_buf_ptr_func: def(Int) -> MutPointer[UInt8, MutUntrackedOrigin],
         //,
         n_warps: Int,
         shared_expert_offset: Int = 0,
@@ -2127,7 +2127,7 @@ struct NVBlockScaledTokenFormat[
         comptime n_scales_simd_per_token = n_scales_per_token // SF_ATOM_K
 
         var scales_gmem_ptr = Optional[
-            UnsafePointer[Scalar[Self.scales_dtype], MutUntrackedOrigin]
+            MutPointer[Scalar[Self.scales_dtype], MutUntrackedOrigin]
         ]()
         if not oob:
             var scales_base = (
@@ -2356,13 +2356,13 @@ struct MXTokenFormat[
         max_padded_M: Int,
     ):
         self.output_tokens = {
-            UnsafePointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
+            MutPointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_tokens._storage)
             ),
             output_tokens.layout,
         }
         self.output_scales = {
-            UnsafePointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
+            MutPointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
                 unsafe_from_address=Int(output_scales._storage)
             ),
             output_scales.layout,
@@ -2646,7 +2646,7 @@ struct EPLocalSyncCounters[n_experts: Int](
       buffers sized by `allocation_size()` (`get_reserved_ptr()`).
     """
 
-    var ptr: UnsafePointer[Int32, MutUntrackedOrigin]
+    var ptr: MutPointer[Int32, MutUntrackedOrigin]
     """Base pointer to the allocated atomic counter memory."""
 
     comptime device_type: AnyType = Self
@@ -2759,7 +2759,7 @@ struct EPLocalSyncCounters[n_experts: Int](
         return Self.total_size() + EP_LOCAL_SYNC_RESERVED_WORDS
 
     @inline(.always)
-    def get_reserved_ptr(self) -> UnsafePointer[Int32, MutUntrackedOrigin]:
+    def get_reserved_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns the first reserved word, past every counter region. Only a
         buffer of `allocation_size()` elements has the reserved words."""
         return self.ptr + Self.total_size()
@@ -2767,7 +2767,7 @@ struct EPLocalSyncCounters[n_experts: Int](
     @inline(.always)
     def get_dispatch_async_ptr(
         self,
-    ) -> UnsafePointer[Int32, MutUntrackedOrigin]:
+    ) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to dispatch_async kernel atomic counters.
 
         Layout:
@@ -2777,12 +2777,12 @@ struct EPLocalSyncCounters[n_experts: Int](
         return self.ptr
 
     @inline(.always)
-    def get_dispatch_wait_ptr(self) -> UnsafePointer[Int32, MutUntrackedOrigin]:
+    def get_dispatch_wait_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to dispatch_wait kernel atomic counters."""
         return self.ptr + Self.dispatch_async_size()
 
     @inline(.always)
-    def get_combine_async_ptr(self) -> UnsafePointer[Int32, MutUntrackedOrigin]:
+    def get_combine_async_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to combine_async kernel atomic counters.
 
         Note: Returns the same pointer as get_dispatch_wait_ptr() because
@@ -2791,7 +2791,7 @@ struct EPLocalSyncCounters[n_experts: Int](
         return self.ptr + Self.dispatch_async_size()
 
     @inline(.always)
-    def get_combine_wait_ptr(self) -> UnsafePointer[Int32, MutUntrackedOrigin]:
+    def get_combine_wait_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to combine_wait kernel atomic counters."""
         return self.ptr + Self.dispatch_async_size() + Self.dispatch_wait_size()
 
@@ -3190,11 +3190,11 @@ struct EPDispatchKernel[
     ](
         topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
         recv_count_ptrs: Array[
-            UnsafePointer[UInt64, MutUntrackedOrigin], Self.p2p_world_size
+            MutPointer[UInt64, MutUntrackedOrigin], Self.p2p_world_size
         ],
-        expert_reserved_counter: UnsafePointer[Int32, MutUntrackedOrigin],
-        expert_finished_counter: UnsafePointer[Int32, MutUntrackedOrigin],
-        rank_completion_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        expert_reserved_counter: MutPointer[Int32, MutUntrackedOrigin],
+        expert_finished_counter: MutPointer[Int32, MutUntrackedOrigin],
+        rank_completion_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         sm_id: Int,
     ) -> None:
@@ -3298,18 +3298,18 @@ struct EPDispatchKernel[
             mut=False, input_type, Engine=DefaultEngine[], ...
         ],
         topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
-        send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
+        send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         recv_buf_ptrs: Array[
-            UnsafePointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
+            MutPointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
         ],
-        expert_reserved_counter: UnsafePointer[Int32, MutUntrackedOrigin],
-        expert_finished_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        expert_reserved_counter: MutPointer[Int32, MutUntrackedOrigin],
+        expert_finished_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         sm_id: Int,
         n_active_send_sms: Int,
         # Source-local block-base mailbox: [0, n_experts) bases,
         # [n_experts, 2*n_experts) generation tags. Inert when defaulted.
-        prod_gen_p: UnsafePointer[Int32, MutUntrackedOrigin] = UnsafePointer[
+        prod_gen_p: MutPointer[Int32, MutUntrackedOrigin] = MutPointer[
             Int32, MutUntrackedOrigin
         ](unsafe_from_address=16),
         prod_gen: Int32 = 0,
@@ -3715,10 +3715,10 @@ struct EPDispatchKernel[
         n_comm_threads: Int = Self.num_threads,
         comm_barrier_id: Int = -1,
     ](
-        smem_expert_tiles: UnsafePointer[
+        smem_expert_tiles: MutPointer[
             Int32, MutUntrackedOrigin, address_space=AddressSpace.SHARED
         ],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         n_comm_sms: Int,
     ) -> None:
         """Hands out comm SMs in proportion to each expert's work.
@@ -3783,8 +3783,8 @@ struct EPDispatchKernel[
         format_handler: Self.token_fmt_type,
         row_offsets: TileTensor[mut=True, .uint32, Engine=DefaultEngine[], ...],
         expert_ids: TileTensor[mut=True, .int32, Engine=DefaultEngine[], ...],
-        recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         n_active_offset_sms: Int,
         reserved_shared_expert_tokens: UInt32 = 0,
@@ -4016,15 +4016,15 @@ struct EPDispatchKernel[
         format_handler: Self.token_fmt_type,
         row_offsets: TileTensor[mut=True, .uint32, Engine=DefaultEngine[], ...],
         src_info: TileTensor[mut=True, .int32, Engine=DefaultEngine[], ...],
-        recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         scatter_sm_id: Int,
         # Fused dispatch->L1 arrival counter (Some only under `emit_l1_release`;
         # None default keeps the standalone ABI unchanged -- pointers are
         # non-nullable, so nullability is modeled with `Optional`).
         l1_arrival_ptr: Optional[
-            UnsafePointer[Scalar[DType.uint32], MutAnyOrigin]
+            MutPointer[Scalar[DType.uint32], MutAnyOrigin]
         ] = None,
         trace_buf: TraceBufT = NullTrace(),
         trace_ring_base: Int = 0,
@@ -4206,7 +4206,7 @@ struct EPDispatchKernel[
             @inline(.always)
             def _recv_buf_ptr_for(
                 tok_local: Int,
-            ) {imm} -> UnsafePointer[UInt8, MutUntrackedOrigin]:
+            ) {imm} -> MutPointer[UInt8, MutUntrackedOrigin]:
                 """Return the pointer to the token in the receive buffer."""
                 var wep = tile_start + tok_local
                 var src_rank = Int(tok_rank_map[tok_local])
@@ -4224,7 +4224,7 @@ struct EPDispatchKernel[
 
             @inline(.always)
             def extract_topk_info(
-                token_ptr: UnsafePointer[UInt8, MutUntrackedOrigin],
+                token_ptr: MutPointer[UInt8, MutUntrackedOrigin],
                 output_pos: Int,
             ) {imm} -> None:
                 """Extract the top-k info from the token ans save it to the
@@ -4349,8 +4349,8 @@ struct EPDispatchKernel[
     @inline(.always)
     def pack_shared_expert_inputs(
         format_handler: Self.token_fmt_type,
-        send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-        fused_se_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+        fused_se_counter: MutPointer[Int32, MutUntrackedOrigin],
         shared_expert_token_count: Int,
         pack_sm_id: Int,
         n_active_comm_sms: Int,
@@ -4412,14 +4412,14 @@ struct EPDispatchKernel[
             @inline(.always)
             def _send_buf_ptr_for(
                 tok_local: Int,
-            ) {imm} -> UnsafePointer[UInt8, MutUntrackedOrigin]:
+            ) {imm} -> MutPointer[UInt8, MutUntrackedOrigin]:
                 return send_buf_p + Self.send_buf_layout(
                     (tile_start + tok_local, Idx[0])
                 )
 
             @inline(.always)
             def extract_topk_info(
-                token_ptr: UnsafePointer[UInt8, MutUntrackedOrigin],
+                token_ptr: MutPointer[UInt8, MutUntrackedOrigin],
                 output_pos: Int,
             ) {imm} -> None:
                 pass
@@ -4460,12 +4460,10 @@ def dispatch_async_kernel[
         input_type, input_tokens_layout, ImmUntrackedOrigin
     ],
     topk_ids: TileTensor[.int32, topk_ids_layout, ImmUntrackedOrigin],
-    send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_buf_ptrs: Array[
-        UnsafePointer[UInt8, MutUntrackedOrigin], p2p_world_size
-    ],
+    send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
-        UnsafePointer[UInt64, MutUntrackedOrigin], p2p_world_size
+        MutPointer[UInt64, MutUntrackedOrigin], p2p_world_size
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
@@ -4580,8 +4578,8 @@ def dispatch_wait_kernel[
     row_offsets: TileTensor[.uint32, row_offsets_layout, MutUntrackedOrigin],
     expert_ids: TileTensor[.int32, expert_ids_layout, MutUntrackedOrigin],
     src_info: TileTensor[.int32, src_info_layout, MutUntrackedOrigin],
-    recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin],
+    recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
 ):
@@ -4836,23 +4834,23 @@ struct EPCombineKernel[
     ](
         input_tokens: TileTensor[input_type, Engine=DefaultEngine[], ...],
         src_info: TileTensor[.int32, Engine=DefaultEngine[], ...],
-        send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
+        send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         recv_buf_ptrs: Array[
-            UnsafePointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
+            MutPointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
         ],
         recv_count_ptrs: Array[
-            UnsafePointer[UInt64, MutUntrackedOrigin], Self.p2p_world_size
+            MutPointer[UInt64, MutUntrackedOrigin], Self.p2p_world_size
         ],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
-        rank_completion_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
+        rank_completion_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         send_sm_id: Int,
         n_send_sms: Int,
         ffn_done_ptr: Optional[
-            UnsafePointer[Scalar[DType.uint32], MutUntrackedOrigin]
+            MutPointer[Scalar[DType.uint32], MutUntrackedOrigin]
         ] = None,
         row_offsets_ptr: Optional[
-            UnsafePointer[Scalar[DType.uint32], MutUntrackedOrigin]
+            MutPointer[Scalar[DType.uint32], MutUntrackedOrigin]
         ] = None,
     ) -> None:
         """Send processed tokens back to their original ranks.
@@ -5358,8 +5356,8 @@ struct EPCombineKernel[
     @staticmethod
     @inline(.always)
     def wait_for_all_arrivals(
-        recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         n_active_reduce_sms: Int,
     ) -> None:
         """Auxiliary SM logic for combine_wait_kernel.
@@ -5408,12 +5406,12 @@ struct EPCombineKernel[
         router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
     ](
         num_tokens: Int,
-        recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-        atomic_counter: UnsafePointer[Int32, MutUntrackedOrigin],
+        recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+        atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
         reduce_sm_id: Int,
         n_active_reduce_sms: Int,
-        topk_ids_p: Optional[UnsafePointer[Int32, ImmUntrackedOrigin]] = None,
+        topk_ids_p: Optional[ImmPointer[Int32, ImmUntrackedOrigin]] = None,
     ) -> None:
         """Communication SM logic for combine_wait_kernel.
 
@@ -5571,12 +5569,10 @@ def combine_async_kernel[
         input_type, input_tokens_layout, ImmUntrackedOrigin
     ],
     src_info: TileTensor[.int32, src_info_layout, ImmUntrackedOrigin],
-    send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_buf_ptrs: Array[
-        UnsafePointer[UInt8, MutUntrackedOrigin], p2p_world_size
-    ],
+    send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
-        UnsafePointer[UInt64, MutUntrackedOrigin], p2p_world_size
+        MutPointer[UInt64, MutUntrackedOrigin], p2p_world_size
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
@@ -5671,8 +5667,8 @@ def combine_wait_kernel[
     router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
 ](
     num_tokens: Int32,
-    recv_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin],
+    recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
 ):
@@ -5789,12 +5785,10 @@ def dispatch_kernel[
     row_offsets: TileTensor[.uint32, row_offsets_layout, MutUntrackedOrigin],
     expert_ids: TileTensor[.int32, expert_ids_layout, MutUntrackedOrigin],
     src_info: TileTensor[.int32, src_info_layout, MutUntrackedOrigin],
-    send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_buf_ptrs: Array[
-        UnsafePointer[UInt8, MutUntrackedOrigin], p2p_world_size
-    ],
+    send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
-        UnsafePointer[UInt64, MutUntrackedOrigin], p2p_world_size
+        MutPointer[UInt64, MutUntrackedOrigin], p2p_world_size
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
@@ -6009,15 +6003,13 @@ def combine_kernel[
     ],
     src_info: TileTensor[.int32, src_info_layout, ImmUntrackedOrigin],
     num_tokens: Int32,
-    send_buf_p: UnsafePointer[UInt8, MutUntrackedOrigin],
-    recv_buf_ptrs: Array[
-        UnsafePointer[UInt8, MutUntrackedOrigin], p2p_world_size
-    ],
+    send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
+    recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
-        UnsafePointer[UInt64, MutUntrackedOrigin], p2p_world_size
+        MutPointer[UInt64, MutUntrackedOrigin], p2p_world_size
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
-    topk_ids_p: Optional[UnsafePointer[Int32, ImmUntrackedOrigin]],
+    topk_ids_p: Optional[ImmPointer[Int32, ImmUntrackedOrigin]],
     my_rank: Int32,
 ):
     """

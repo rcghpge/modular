@@ -16,7 +16,7 @@ from std.math import ceil, ceildiv
 from std.sys.info import align_of, size_of
 
 from layout import Coord, TileTensor, row_major
-from std.memory import UnsafePointer, bitcast, unsafe_memcpy
+from std.memory import bitcast, unsafe_memcpy
 from std.utils import IndexList, StaticTuple
 
 
@@ -342,7 +342,7 @@ struct Q4sym[
                 var encoded_data = Q4sym[Self.group_size, Self.float_dtype](
                     loaded_group
                 )
-                var src_ptr = UnsafePointer(to=encoded_data).address_space_cast[
+                var src_ptr = Pointer(to=encoded_data).address_space_cast[
                     output_ptr.address_space
                 ]()
                 unsafe_memcpy(
@@ -410,7 +410,7 @@ struct Q4sym[
                 var flat_index_input = input_inner_dim * i + j
                 var encoded = Q4sym[Self.group_size, Self.float_dtype]()
                 unsafe_memcpy(
-                    dest=UnsafePointer(to=encoded),
+                    dest=Pointer(to=encoded),
                     src=base_block_ptr + flat_index_input,
                     count=1,
                 )
@@ -452,7 +452,7 @@ struct block_Q4_K:
 
 
 def scale_min_k4(
-    src_ptr: UnsafePointer[block_Q4_K, address_space=.GENERIC, ...],
+    src_ptr: Pointer[block_Q4_K, address_space=.GENERIC, ...],
     g: Int,
 ) -> Tuple[Float32, Float32]:
     """Extracts the 6-bit quantized scale and min for group `g` from a Q4_K block.

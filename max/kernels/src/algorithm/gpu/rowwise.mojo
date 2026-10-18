@@ -57,7 +57,7 @@ from max.gpu.primitives.grid_controls import (
 )
 from std.math import ceildiv
 from std.math.uutils import udivmod
-from std.memory import UnsafePointer, stack_allocation
+from std.memory import stack_allocation
 from std.sys import size_of, get_defined_int
 from std.sys.info import is_apple_gpu
 from std.utils.coord import Coord, DynamicCoord, coord_to_index_list
@@ -278,8 +278,8 @@ def _warp_shuffle_combine[S: ReduceOp](mut state: S):
     comptime for step in reversed(range(log2_floor(WARP_SIZE))):
         var stride = UInt32(1 << step)
         var partner = S()
-        var state_ptr = UnsafePointer(to=state).bitcast[UInt32]()
-        var partner_ptr = UnsafePointer(to=partner).bitcast[UInt32]()
+        var state_ptr = Pointer(to=state).bitcast[UInt32]()
+        var partner_ptr = Pointer(to=partner).bitcast[UInt32]()
 
         comptime for word in range(n_words):
             partner_ptr[word] = warp.shuffle_xor(state_ptr[word], stride)
@@ -1168,8 +1168,8 @@ struct _SplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
 
     var body: Self.Body
     var shape: DynamicCoord[.int64, Self.rank]
-    var partials: UnsafePointer[UInt8, MutUntrackedOrigin]
-    var counters: UnsafePointer[Int32, MutUntrackedOrigin]
+    var partials: MutPointer[UInt8, MutUntrackedOrigin]
+    var counters: MutPointer[Int32, MutUntrackedOrigin]
     var blocks_per_row: Int32
 
     @inline(.always)
@@ -1177,8 +1177,8 @@ struct _SplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
         out self,
         body: Self.Body,
         shape: DynamicCoord[.int64, Self.rank],
-        partials: UnsafePointer[UInt8, MutUntrackedOrigin],
-        counters: UnsafePointer[Int32, MutUntrackedOrigin],
+        partials: MutPointer[UInt8, MutUntrackedOrigin],
+        counters: MutPointer[Int32, MutUntrackedOrigin],
         blocks_per_row: Int32,
     ):
         self.body = body
@@ -1232,7 +1232,7 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
 
     var body: Self.Body
     var shape: DynamicCoord[.int64, Self.rank]
-    var partials: UnsafePointer[UInt8, MutUntrackedOrigin]
+    var partials: MutPointer[UInt8, MutUntrackedOrigin]
     var num_splits: Int32
     var phase: Int32
 
@@ -1241,7 +1241,7 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
         out self,
         body: Self.Body,
         shape: DynamicCoord[.int64, Self.rank],
-        partials: UnsafePointer[UInt8, MutUntrackedOrigin],
+        partials: MutPointer[UInt8, MutUntrackedOrigin],
         num_splits: Int32,
         phase: Int32,
     ):
@@ -1273,7 +1273,7 @@ struct _PointwiseSplitkKernel[rank: Int, params: ContextParams, Body: RowBody](
         )
         var ctx = Context[Self.params](
             partials_base=self.partials,
-            counters_base=UnsafePointer[Int32, MutUntrackedOrigin](
+            counters_base=MutPointer[Int32, MutUntrackedOrigin](
                 unsafe_from_address=1
             ),
             blocks_per_row=self.num_splits,

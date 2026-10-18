@@ -129,7 +129,7 @@ def pad_constant[
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     input: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    paddings: Pointer[Scalar[paddings_type], _],
     constant: Scalar[constant_type],
 ):
     """
@@ -162,14 +162,12 @@ def pad_constant[
     comptime output_rank = output.rank
 
     def pad_constant_wrapper(
-        output: UnsafePointer[
-            mut=True, Scalar[dtype], address_space=.GENERIC, ...
-        ],
-        input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
-        paddings: UnsafePointer[Scalar[paddings_type], _],
+        output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
+        input: Pointer[Scalar[dtype], address_space=.GENERIC, ...],
+        paddings: Pointer[Scalar[paddings_type], _],
         output_shape: IndexList[output_rank],
         output_strides: MutPointer[Int, _],
-        input_strides: UnsafePointer[Int, _],
+        input_strides: Pointer[Int, _],
     ) {var constant_cast}:
         return _pad_constant_impl[output_rank, dtype, paddings_type](
             output,
@@ -193,7 +191,7 @@ def pad_reflect[
 ](
     output: TileTensor[mut=True, dtype, address_space=.GENERIC, ...],
     input: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    paddings: Pointer[Scalar[paddings_type], _],
 ):
     """
     Fill `output` with values from `input`, and edges padded with reflected
@@ -225,14 +223,12 @@ def pad_reflect[
     comptime output_rank = output.rank
 
     def pad_reflect_wrapper(
-        output: UnsafePointer[
-            mut=True, Scalar[dtype], address_space=.GENERIC, ...
-        ],
-        input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
-        paddings: UnsafePointer[Scalar[paddings_type], _],
+        output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
+        input: Pointer[Scalar[dtype], address_space=.GENERIC, ...],
+        paddings: Pointer[Scalar[paddings_type], _],
         output_shape: IndexList[output_rank],
         output_strides: MutPointer[Int, _],
-        input_strides: UnsafePointer[Int, _],
+        input_strides: Pointer[Int, _],
     ) {}:
         return _pad_reflect_impl[output_rank, dtype, paddings_type](
             output, input, paddings, output_shape, output_strides, input_strides
@@ -297,18 +293,18 @@ def _do_pad[
     PadImplFn: ImplicitlyCopyable
     & def(
         MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
-        UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
-        UnsafePointer[Scalar[paddings_type], _],
+        Pointer[Scalar[dtype], address_space=.GENERIC, ...],
+        Pointer[Scalar[paddings_type], _],
         IndexList[OutputLayoutType.rank],
         MutPointer[Int, _],
-        UnsafePointer[Int, _],
+        Pointer[Int, _],
     ) -> None,
 ](
     output: TileTensor[
         mut=True, dtype, OutputLayoutType, address_space=.GENERIC, ...
     ],
     input: TileTensor[mut=False, dtype, address_space=.GENERIC, ...],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    paddings: Pointer[Scalar[paddings_type], _],
     pad_impl_fn: PadImplFn,
 ):
     var input_strides_stack = Array[Int, output.rank](uninitialized=True)
@@ -405,7 +401,7 @@ struct _PadAxis[rank: Int, paddings_type: DType](TrivialRegisterPassable):
     def __init__(
         out self,
         axis: Int,
-        paddings: UnsafePointer[Scalar[Self.paddings_type], _],
+        paddings: Pointer[Scalar[Self.paddings_type], _],
         output_shape: IndexList[Self.rank],
     ):
         var axis_dim = output_shape[axis]
@@ -481,7 +477,7 @@ struct _AxisParams[rank: Int, dtype: DType, paddings_type: DType](
     def __init__(
         out self,
         axis: Int,
-        paddings: UnsafePointer[Scalar[Self.paddings_type], _],
+        paddings: Pointer[Scalar[Self.paddings_type], _],
         output_shape: IndexList[Self.rank],
     ):
         self.pad_axis = _PadAxis[Self.rank, Self.paddings_type](
@@ -521,7 +517,7 @@ struct _AxisParams[rank: Int, dtype: DType, paddings_type: DType](
     def base(
         mut self,
         output: MutPointer[Scalar[Self.dtype], _],
-        input: UnsafePointer[Scalar[Self.dtype], _],
+        input: Pointer[Scalar[Self.dtype], _],
         constant: Scalar[Self.dtype],
         axis_dim: Int,
     ):
@@ -548,11 +544,11 @@ def _pad_constant_axis[
     rank: Int, dtype: DType, paddings_type: DType, axis: Int
 ](
     output: MutPointer[Scalar[dtype], _],
-    input: UnsafePointer[Scalar[dtype], _],
+    input: Pointer[Scalar[dtype], _],
     constant: Scalar[dtype],
     output_shape: IndexList[rank],
-    output_strides: UnsafePointer[Int, _],
-    input_strides: UnsafePointer[Int, _],
+    output_strides: Pointer[Int, _],
+    input_strides: Pointer[Int, _],
     var axis_params: StaticTuple[_AxisParams[rank, dtype, paddings_type], rank],
 ):
     comptime if axis == (rank - 1):
@@ -585,12 +581,12 @@ def _pad_constant_impl[
     rank: Int, dtype: DType, paddings_type: DType
 ](
     output: MutPointer[Scalar[dtype], _],
-    input: UnsafePointer[Scalar[dtype], _],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    input: Pointer[Scalar[dtype], _],
+    paddings: Pointer[Scalar[paddings_type], _],
     constant: Scalar[dtype],
     output_shape: IndexList[rank],
-    output_strides: UnsafePointer[Int, _],
-    input_strides: UnsafePointer[Int, _],
+    output_strides: Pointer[Int, _],
+    input_strides: Pointer[Int, _],
 ):
     """
     Fill axis ∈ [axis, rank) in `output` with values from `input`, and edges
@@ -702,7 +698,7 @@ struct _AxisParamsReflect[rank: Int, dtype: DType, paddings_type: DType](
     def __init__(
         out self,
         axis: Int,
-        paddings: UnsafePointer[Scalar[Self.paddings_type], _],
+        paddings: Pointer[Scalar[Self.paddings_type], _],
         output_shape: IndexList[Self.rank],
     ):
         self.pad_axis = _PadAxis[Self.rank, Self.paddings_type](
@@ -736,10 +732,8 @@ struct _AxisParamsReflect[rank: Int, dtype: DType, paddings_type: DType](
         mut self,
         output_offset: Int,
         input_offset: Int,
-        output: UnsafePointer[
-            mut=True, Scalar[Self.dtype], address_space=.GENERIC, ...
-        ],
-        input: UnsafePointer[Scalar[Self.dtype], address_space=.GENERIC, ...],
+        output: MutPointer[Scalar[Self.dtype], address_space=.GENERIC, ...],
+        input: Pointer[Scalar[Self.dtype], address_space=.GENERIC, ...],
     ):
         # no more dimensions to recurse, copy from input to unpadded region
         var non_pad_start_ptr = output + (output_offset + self.pre_pad())
@@ -774,9 +768,9 @@ def _pad_reflect_axis[
     axis: Int,
 ](
     output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
-    input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
-    output_strides: UnsafePointer[Int, _],
-    input_strides: UnsafePointer[Int, _],
+    input: Pointer[Scalar[dtype], address_space=.GENERIC, ...],
+    output_strides: Pointer[Int, _],
+    input_strides: Pointer[Int, _],
     var axis_params: StaticTuple[
         _AxisParamsReflect[rank, dtype, paddings_type], rank
     ],
@@ -828,11 +822,11 @@ def _pad_reflect_impl[
     paddings_type: DType,
 ](
     output: MutPointer[Scalar[dtype], address_space=.GENERIC, ...],
-    input: UnsafePointer[Scalar[dtype], address_space=.GENERIC, ...],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    input: Pointer[Scalar[dtype], address_space=.GENERIC, ...],
+    paddings: Pointer[Scalar[paddings_type], _],
     output_shape: IndexList[rank],
     output_strides: MutPointer[Int, _],
-    input_strides: UnsafePointer[Int, _],
+    input_strides: Pointer[Int, _],
 ):
     """
     Fill axis ∈ [axis, rank) in `output` with values from `input`, and edges
@@ -868,7 +862,7 @@ def pad_repeat[
 ](
     output: TileTensor[mut=True, dtype, ...],
     input: TileTensor[mut=False, dtype, ...],
-    paddings: UnsafePointer[Scalar[paddings_type], _],
+    paddings: Pointer[Scalar[paddings_type], _],
 ):
     """
     Fill `output` with values from `input`, and edges padded boundary

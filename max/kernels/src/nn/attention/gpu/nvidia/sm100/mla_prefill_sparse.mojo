@@ -304,7 +304,7 @@ struct MLAPrefillSparse[
         ],
         kv_lut: Self.KVLUTType,
         scale: Float32,
-        attn_sink_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+        attn_sink_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
         indices_stride: Int32,
     ) where (topk_lengths.flat_rank == 1 and indices.flat_rank == 1):
         var cta_id = UInt32(block_idx.x % Self.config.cta_group)
@@ -333,8 +333,7 @@ struct MLAPrefillSparse[
 
         var full_q_ptr = qkvo_union.unsafe_get[Self.FULL_Q_TYPE]().unsafe_ptr()
         ref shared_qkv = qkvo_union.unsafe_get[Self.SHARED_QKV_TYPE]()
-        var shared_qkv_ptr: UnsafePointer[
-            mut=True,
+        var shared_qkv_ptr: MutPointer[
             Scalar[Self.qkv_dtype],
             origin_of(shared_qkv),
             address_space=.SHARED,
@@ -343,63 +342,63 @@ struct MLAPrefillSparse[
         var v_smem_ptr = shared_qkv_ptr + Self.SMemType.SHARED_Q_SIZE
         var k_smem_ptr = v_smem_ptr + Self.SMemType.V_SIZE
         ref o_union = qkvo_union.unsafe_get[Self.O_TYPE]()
-        var o_ptr: UnsafePointer[
+        var o_ptr: MutPointer[
             Scalar[Self.qkv_dtype], origin_of(o_union), address_space=.SHARED
         ] = o_union.unsafe_ptr()
         var scores_ptr = smem.scores.unsafe_ptr()
         var p_ptr = smem.p.unsafe_ptr()
         var prologue_q_ptr = smem.prologue_q.unsafe_ptr()
         var prologue_q_cp_ptr = smem.prologue_q_cp.unsafe_ptr()
-        var qk_ss_done_ptr: UnsafePointer[
+        var qk_ss_done_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.qk_ss_done), address_space=.SHARED
         ] = smem.qk_ss_done.unsafe_ptr()
-        var qk_ts_done_ptr: UnsafePointer[
+        var qk_ts_done_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.qk_ts_done), address_space=.SHARED
         ] = smem.qk_ts_done.unsafe_ptr()
-        var sv_p0_done_ptr: UnsafePointer[
+        var sv_p0_done_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.sv_p0_done), address_space=.SHARED
         ] = smem.sv_p0_done.unsafe_ptr()
-        var sv_p1_done_ptr: UnsafePointer[
+        var sv_p1_done_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.sv_p1_done), address_space=.SHARED
         ] = smem.sv_p1_done.unsafe_ptr()
-        var k_p0_ready_ptr: UnsafePointer[
+        var k_p0_ready_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.k_p0_ready), address_space=.SHARED
         ] = smem.k_p0_ready.unsafe_ptr()
-        var k_p1_ready_ptr: UnsafePointer[
+        var k_p1_ready_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.k_p1_ready), address_space=.SHARED
         ] = smem.k_p1_ready.unsafe_ptr()
-        var v_p0_ready_ptr: UnsafePointer[
+        var v_p0_ready_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.v_p0_ready), address_space=.SHARED
         ] = smem.v_p0_ready.unsafe_ptr()
-        var v_p1_ready_ptr: UnsafePointer[
+        var v_p1_ready_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.v_p1_ready), address_space=.SHARED
         ] = smem.v_p1_ready.unsafe_ptr()
-        var p_free_ptr: UnsafePointer[
+        var p_free_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.p_free), address_space=.SHARED
         ] = smem.p_free.unsafe_ptr()
-        var so_ready_ptr: UnsafePointer[
+        var so_ready_ptr: MutPointer[
             SharedMemBarrier, origin_of(smem.so_ready), address_space=.SHARED
         ] = smem.so_ready.unsafe_ptr()
-        var k_valid_ready_ptr: UnsafePointer[
+        var k_valid_ready_ptr: MutPointer[
             SharedMemBarrier,
             origin_of(smem.k_valid_ready),
             address_space=.SHARED,
         ] = smem.k_valid_ready.unsafe_ptr()
-        var k_valid_free_ptr: UnsafePointer[
+        var k_valid_free_ptr: MutPointer[
             SharedMemBarrier,
             origin_of(smem.k_valid_free),
             address_space=.SHARED,
         ] = smem.k_valid_free.unsafe_ptr()
         # Byte at offset `buf * MASK_BYTES_PER_BUF + j` holds bits for
         # keys `[j*8, j*8+8)` of buffer `buf`.
-        var is_k_valid_ptr: UnsafePointer[
+        var is_k_valid_ptr: MutPointer[
             UInt8, origin_of(smem.is_k_valid), address_space=.SHARED
         ] = smem.is_k_valid.unsafe_ptr()
         var tmem_addr_ptr = smem.tmem_addr.unsafe_ptr()
-        var rowwise_max_ptr: UnsafePointer[
+        var rowwise_max_ptr: MutPointer[
             Float32, origin_of(smem.rowwise_max), address_space=.SHARED
         ] = smem.rowwise_max.unsafe_ptr()
-        var rowwise_sum_ptr: UnsafePointer[
+        var rowwise_sum_ptr: MutPointer[
             Float32, origin_of(smem.rowwise_sum), address_space=.SHARED
         ] = smem.rowwise_sum.unsafe_ptr()
 
@@ -1020,9 +1019,7 @@ struct MLAPrefillSparse[
         num_rows: Int,
     ](
         tma_op: TMATensorTile[Self.qkv_dtype, _, _],
-        smem_barrier: UnsafePointer[
-            SharedMemBarrier, address_space=.SHARED, ...
-        ],
+        smem_barrier: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
         smem_tensor: TileTensor[
             mut=True, Self.qkv_dtype, address_space=.SHARED, ...
         ],
@@ -1067,9 +1064,7 @@ struct MLAPrefillSparse[
         local_row_range: Tuple[Int, Int],
     ](
         tma_op: TMATensorTile[Self.qkv_dtype, _, _],
-        smem_barrier: UnsafePointer[
-            SharedMemBarrier, address_space=.SHARED, ...
-        ],
+        smem_barrier: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
         smem_tensor: TileTensor[
             mut=True, Self.qkv_dtype, address_space=.SHARED, ...
         ],
@@ -1159,13 +1154,13 @@ struct MLAPrefillSparse[
         ],
         indices: TileTensor[.uint32, address_space=.GENERIC, ...],
         kv_lut: Self.KVLUTType,
-        k_smem_ptr: UnsafePointer[
-            mut=True, Scalar[Self.qkv_dtype], address_space=.SHARED, ...
+        k_smem_ptr: MutPointer[
+            Scalar[Self.qkv_dtype], address_space=.SHARED, ...
         ],
-        qk_ss_done: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        qk_ts_done: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        k_p0_ready: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        k_p1_ready: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
+        qk_ss_done: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        qk_ts_done: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        k_p0_ready: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        k_p1_ready: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
         k: UInt32,
         cta_id: UInt32,
         warp_idx: UInt32,
@@ -1293,13 +1288,13 @@ struct MLAPrefillSparse[
             Self.v_tile_shape,
             Self.v_desc_shape,
         ],
-        v_smem_ptr: UnsafePointer[
-            mut=True, Scalar[Self.qkv_dtype], address_space=.SHARED, ...
+        v_smem_ptr: MutPointer[
+            Scalar[Self.qkv_dtype], address_space=.SHARED, ...
         ],
-        sv_p0_done: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        sv_p1_done: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        v_p0_ready: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
-        v_p1_ready: UnsafePointer[SharedMemBarrier, address_space=.SHARED, ...],
+        sv_p0_done: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        sv_p1_done: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        v_p0_ready: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
+        v_p1_ready: Pointer[SharedMemBarrier, address_space=.SHARED, ...],
         indices: TileTensor[.uint32, address_space=.GENERIC, ...],
         kv_lut: Self.KVLUTType,
         k: UInt32,
@@ -1388,7 +1383,7 @@ def mla_prefill_sparse[
     # entirely; pass `Some(ptr)` with a buffer of `num_q_heads` fp32
     # values to add `exp2(sink_h - mi)` to the softmax normalizer per
     # head.
-    attn_sink_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
+    attn_sink_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
     scale: Float32,
     indices_stride: Int32,
     ctx: DeviceContext,

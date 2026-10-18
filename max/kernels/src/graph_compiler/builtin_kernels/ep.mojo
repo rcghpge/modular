@@ -235,13 +235,13 @@ struct Struct_ep_init:
         var atomic_counters_1_buf = atomic_counters_1.to_device_buffer(gpu_ctx)
         gpu_ctx.enqueue_memset(atomic_counters_1_buf, Int32(0))
 
-        var dispatch_send_p: UnsafePointer[UInt8, MutUntrackedOrigin]
-        var dispatch_recv_p: UnsafePointer[UInt8, MutUntrackedOrigin]
-        var dispatch_recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin]
+        var dispatch_send_p: MutPointer[UInt8, MutUntrackedOrigin]
+        var dispatch_recv_p: MutPointer[UInt8, MutUntrackedOrigin]
+        var dispatch_recv_count_p: MutPointer[UInt64, MutUntrackedOrigin]
 
-        var combine_send_p: Optional[UnsafePointer[UInt8, MutUntrackedOrigin]]
-        var combine_recv_p: UnsafePointer[UInt8, MutUntrackedOrigin]
-        var combine_recv_count_p: UnsafePointer[UInt64, MutUntrackedOrigin]
+        var combine_send_p: Optional[MutPointer[UInt8, MutUntrackedOrigin]]
+        var combine_recv_p: MutPointer[UInt8, MutUntrackedOrigin]
+        var combine_recv_count_p: MutPointer[UInt64, MutUntrackedOrigin]
 
         comptime if n_nodes > 1:
             # Initialize the SHMEM library for this GPU

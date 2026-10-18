@@ -54,7 +54,7 @@ struct _Accumulator[
     comptime _size = Self.num_rows * Self.num_cols * Self.simd_width
 
     # The output buffer, should have num_rows x num_cols x simd_width.
-    var _storage: UnsafePointer[Scalar[Self.dtype], MutUntrackedOrigin]
+    var _storage: MutPointer[Scalar[Self.dtype], MutUntrackedOrigin]
 
     @inline(.always)
     def __init__(out self):
@@ -71,7 +71,7 @@ struct _Accumulator[
     @inline(.always)
     def __init__(
         out self,
-        other_storage: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
+        other_storage: MutPointer[Scalar[Self.dtype], MutAnyOrigin],
     ):
         comptime assert (
             (Self.num_cols > 0)
@@ -144,13 +144,9 @@ struct _Accumulator[
             # get it to compile successfully.
             m: Int,
             n: Int,
-            ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin],
+            ptr: MutPointer[Scalar[Self.dtype], MutAnyOrigin],
         ) -> None,
-    ](
-        func: FuncType,
-        base_ptr: UnsafePointer[Scalar[Self.dtype], _],
-        stride: Int,
-    ):
+    ](func: FuncType, base_ptr: Pointer[Scalar[Self.dtype], _], stride: Int,):
         var row_ptr = base_ptr
 
         comptime for m in range(Self.num_rows):
@@ -173,7 +169,7 @@ struct _Accumulator[
     ):
         @inline(.always)
         def do_transfer(
-            m: Int, n: Int, ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]
+            m: Int, n: Int, ptr: MutPointer[Scalar[Self.dtype], MutAnyOrigin]
         ) {mut self}:
             # TODO: Ideally `ptr` should be immutable, but origins aren't inferring correctly.
             self[m, n] = ptr.load[width=Self.simd_width]()
@@ -211,7 +207,7 @@ struct _Accumulator[
         is_load: Bool
     ](
         mut self,
-        c_ptr: UnsafePointer[Scalar[Self.dtype], _],
+        c_ptr: Pointer[Scalar[Self.dtype], _],
         c_stride: Int,
         tile_n_idx: Int,
         c_bound: IndexList[2],
@@ -230,7 +226,7 @@ struct _Accumulator[
                 c_bound[1] - tile_n_idx, Self.num_cols * Self.simd_width
             )
             var row_ptrs = Array[_, Self.num_rows](
-                fill_with=lambda (row: Int) -> UnsafePointer[
+                fill_with=lambda (row: Int) -> Pointer[
                     Scalar[Self.dtype], AnyOrigin[mut=c_ptr.mut]
                 ]: (c_ptr_loc + row * c_stride).as_unsafe_any_origin()
             )
@@ -248,7 +244,7 @@ struct _Accumulator[
         is_load: Bool,
     ](
         mut self,
-        row_ptrs: UnsafePointer[UnsafePointer[Scalar[Self.dtype], origin], _],
+        row_ptrs: Pointer[Pointer[Scalar[Self.dtype], origin], _],
         stride: Int,
     ):
         """Loads or stores one or more columns from the base column for each
@@ -293,7 +289,7 @@ struct _Accumulator[
     ](
         mut self,
         transfer_count: Int,
-        row_ptrs: UnsafePointer[UnsafePointer[Scalar[Self.dtype], origin], _],
+        row_ptrs: Pointer[Pointer[Scalar[Self.dtype], origin], _],
         stride: Int,
     ):
         """Loads/stores all pairwise vectors of the tile and dispatches the
@@ -330,7 +326,7 @@ struct _Accumulator[
     ](
         mut self,
         transfer_count: Int,
-        row_ptrs: UnsafePointer[UnsafePointer[Scalar[Self.dtype], origin], _],
+        row_ptrs: Pointer[Pointer[Scalar[Self.dtype], origin], _],
         stride: Int,
     ):
         """Loads/stores the last elements of the tile that cannot be accessed
@@ -360,7 +356,7 @@ struct _Accumulator[
     ](
         mut self,
         transfer_count: Int,
-        row_ptrs: UnsafePointer[UnsafePointer[Scalar[Self.dtype], origin], _],
+        row_ptrs: Pointer[Pointer[Scalar[Self.dtype], origin], _],
         stride: Int,
     ):
         comptime assert is_load or origin.mut, "ahhh"
@@ -396,7 +392,7 @@ struct _Accumulator[
     ):
         @inline(.always)
         def do_transfer(
-            m: Int, n: Int, ptr: UnsafePointer[Scalar[Self.dtype], MutAnyOrigin]
+            m: Int, n: Int, ptr: MutPointer[Scalar[Self.dtype], MutAnyOrigin]
         ) {mut self}:
             ptr.store(self[m, n])
 

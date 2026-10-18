@@ -176,7 +176,7 @@ from extensibility import (
 from extensibility import (
     _MutableInputVariadicTensors as MutableInputVariadicTensors,
 )
-from std.memory import UnsafePointer, unsafe_memcpy
+from std.memory import unsafe_memcpy
 from std.time import sleep
 from std.logger import Logger
 

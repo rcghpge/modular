@@ -752,7 +752,7 @@ struct TMAReduceExecutor[
                     reduction_kind=ReduceOp.ADD
                 ](
                     c_smem_split._storage,
-                    UnsafePointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                    Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
                     Index(
                         store_coords.coord_n,
                         store_coords.coord_m,
@@ -764,7 +764,7 @@ struct TMAReduceExecutor[
                     reduction_kind=ReduceOp.ADD
                 ](
                     c_smem_split._storage,
-                    UnsafePointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                    Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
                     Index(store_coords.coord_n, store_coords.coord_m),
                 )
 
@@ -1225,7 +1225,7 @@ struct EpilogueApplier[
         local_row: UInt32,
         local_col: UInt32,
         is_upper: Bool,
-        src_ptr: UnsafePointer[Scalar[c_type], _, address_space=.SHARED],
+        src_ptr: Pointer[Scalar[c_type], _, address_space=.SHARED],
         beta: Scalar[epilogue_dtype],
     ):
         """Add beta * C to fragment elements by loading C from swizzled SMEM.
@@ -1290,7 +1290,7 @@ struct EpilogueApplier[
         mut upper_frag: Array[Scalar[epilogue_dtype], frag_size],
         mut lower_frag: Array[Scalar[epilogue_dtype], frag_size],
         stage: UInt32,
-        src_ptr: UnsafePointer[Scalar[c_type], _, address_space=.SHARED],
+        src_ptr: Pointer[Scalar[c_type], _, address_space=.SHARED],
         beta: Scalar[epilogue_dtype],
     ) -> Tuple[
         Array[Scalar[epilogue_dtype], frag_size],
@@ -1902,7 +1902,7 @@ struct SMemEpilogueWriter[
         # Construct fresh TileTensors from raw pointers to break origin
         # aliasing (upper and lower share the same c_smem_tile origin).
         comptime warp_tile_layout = row_major[Self.data_paths, Self.stageN]()
-        comptime SMemPtr = UnsafePointer[
+        comptime SMemPtr = MutPointer[
             Scalar[Self.c_type], MutUntrackedOrigin, address_space=.SHARED
         ]
         var upper_tile = TileTensor(

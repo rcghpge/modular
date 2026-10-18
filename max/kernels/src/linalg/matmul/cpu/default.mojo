@@ -168,7 +168,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
                 acc.init(0)
             else:
                 acc.load(
-                    rebind[UnsafePointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),
+                    rebind[MutPointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),
                     c_stride,
                     idx_n,
                     c_bound,
@@ -187,7 +187,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
                     (idx_n, idx_k),
                 )
             acc.store(
-                rebind[UnsafePointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),
+                rebind[MutPointer[Scalar[c.dtype], MutAnyOrigin]](c_ptr),
                 c_stride,
                 idx_n,
                 c_bound,

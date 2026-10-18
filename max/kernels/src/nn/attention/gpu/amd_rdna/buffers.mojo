@@ -151,7 +151,7 @@ struct KBufferRDNA[
             ImmutAnyOrigin,
             Engine=Self.Engine,
         ],
-        shared_ptr: UnsafePointer[
+        shared_ptr: MutPointer[
             Scalar[Self.cache_dtype], MutAnyOrigin, address_space=.SHARED
         ],
     ):
@@ -374,7 +374,7 @@ struct VBufferRDNA[
             ImmutAnyOrigin,
             Engine=Self.Engine,
         ],
-        shared_ptr: UnsafePointer[
+        shared_ptr: MutPointer[
             Scalar[Self.cache_dtype], MutAnyOrigin, address_space=.SHARED
         ],
         total_rows: OptionalReg[Int] = None,
@@ -855,14 +855,14 @@ struct PRegisterBufferRDNA[
     var reg_tile: Self.RegisterTileType
 
     @__allow_legacy_any_origin_fields
-    var shared_memory_ptr: UnsafePointer[
+    var shared_memory_ptr: MutPointer[
         Scalar[Self.dtype], MutAnyOrigin, address_space=.SHARED
     ]
 
     @inline(.always)
     def __init__(
         out self,
-        shared_ptr: UnsafePointer[
+        shared_ptr: MutPointer[
             Scalar[Self.dtype], MutAnyOrigin, address_space=.SHARED
         ],
     ):

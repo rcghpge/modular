@@ -95,7 +95,7 @@ def shrink_qkv_permute_3mn_sm100(
     # write into C directly; any changes to the final C output must happen
     # exclusively via the epilogue function.
     var c = TileTensor(
-        UnsafePointer[Scalar[c_type], MutUntrackedOrigin].unsafe_dangling(),
+        MutPointer[Scalar[c_type], MutUntrackedOrigin].unsafe_dangling(),
         row_major(M, N_Total),
     )
 
@@ -295,7 +295,7 @@ def expand_qkv_sm100(
     # keeps `c.static_shape[1]` static so the dispatcher reaches the SM100
     # tensor-core kernel instead of falling back to naive.
     var c = TileTensor(
-        UnsafePointer[Scalar[c_type], MutUntrackedOrigin].unsafe_dangling(),
+        MutPointer[Scalar[c_type], MutUntrackedOrigin].unsafe_dangling(),
         row_major(M, Idx[D_total]),
     )
 

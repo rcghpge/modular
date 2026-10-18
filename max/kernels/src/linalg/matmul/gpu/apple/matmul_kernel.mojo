@@ -282,7 +282,7 @@ struct Im2colALoader[
     comptime num_n_mmas = Self.num_n
     comptime NUM_ROWS = Self.num_m * 2  # 2 row-halves x num_m M-fragments
 
-    var input_ptr: UnsafePointer[Scalar[Self.dtype], ImmUntrackedOrigin]
+    var input_ptr: ImmPointer[Scalar[Self.dtype], ImmUntrackedOrigin]
     var h_base: Array[Int32, Self.NUM_ROWS]
     var w_base: Array[Int32, Self.NUM_ROWS]
     var batch_base: Array[Int32, Self.NUM_ROWS]
@@ -307,7 +307,7 @@ struct Im2colALoader[
     @inline(.always)
     def __init__(
         out self,
-        input_ptr: UnsafePointer[Scalar[Self.dtype], ImmUntrackedOrigin],
+        input_ptr: ImmPointer[Scalar[Self.dtype], ImmUntrackedOrigin],
         row_base: Int32,
         rb: Int32,
         cb: Int32,
@@ -937,7 +937,7 @@ struct AppleM5MatMul[
         )
         var accum: Mma.AccumType
         comptime if do_seed:
-            var c_ptr_fp32_seed = rebind[UnsafePointer[Float32, MutAnyOrigin]](
+            var c_ptr_fp32_seed = rebind[MutPointer[Float32, MutAnyOrigin]](
                 c_ptr_shifted
             )
             var c_mat_fp32_seed = TileTensor[
@@ -1088,7 +1088,7 @@ struct AppleM5MatMul[
         def _fast_path_store[
             bounded: Bool
         ](valid_rows: Int = 0, valid_cols: Int = 0) {imm}:
-            var c_ptr_fp32 = rebind[UnsafePointer[Float32, MutAnyOrigin]](
+            var c_ptr_fp32 = rebind[MutPointer[Float32, MutAnyOrigin]](
                 c_ptr_shifted
             )
             var c_mat_fp32 = TileTensor[linear_idx_type=Self.linear_idx_type](
@@ -1727,7 +1727,7 @@ struct AppleM5MatMul[
         a_engine: TensorEngine,
         b_engine: TensorEngine,
     ](
-        partials_ptr: UnsafePointer[Float32, MutAnyOrigin],
+        partials_ptr: MutPointer[Float32, MutAnyOrigin],
         a: TileTensor[Self.in_type, a_layout, ImmutAnyOrigin, Engine=a_engine],
         b: TileTensor[Self.in_type, b_layout, ImmutAnyOrigin, Engine=b_engine],
         log2_grid_m: UInt32,
@@ -1913,7 +1913,7 @@ struct AppleM5MatMul[
         c_engine: TensorEngine,
     ](
         c: TileTensor[Self.c_type, c_layout, MutAnyOrigin, Engine=c_engine],
-        partials_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+        partials_ptr: ImmPointer[Float32, ImmutAnyOrigin],
         num_splits: Int32,
     ):
         """Sum `num_splits` fp32 partials per output element, cast, store.
@@ -1944,7 +1944,7 @@ struct AppleM5MatMul[
         EpilogueFnType: ElementwiseEpilogueFn,
     ](
         c: TileTensor[Self.c_type, c_layout, MutAnyOrigin, Engine=c_engine],
-        partials_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+        partials_ptr: ImmPointer[Float32, ImmutAnyOrigin],
         num_splits: Int32,
         epilogue_fn: EpilogueFnType,
     ):
@@ -1976,7 +1976,7 @@ struct AppleM5MatMul[
         ComputeFnType: ElementwiseComputeFn,
     ](
         c: TileTensor[Self.c_type, c_layout, MutAnyOrigin, Engine=c_engine],
-        partials_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+        partials_ptr: ImmPointer[Float32, ImmutAnyOrigin],
         num_splits: Int32,
         compute_fn: ComputeFnType,
     ):
@@ -2013,7 +2013,7 @@ struct AppleM5MatMul[
         has_compute_fn: Bool,
     ](
         c: TileTensor[Self.c_type, c_layout, MutAnyOrigin, Engine=c_engine],
-        partials_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+        partials_ptr: ImmPointer[Float32, ImmutAnyOrigin],
         num_splits: Int32,
         epilogue_fn: EpilogueFnType,
         compute_fn: ComputeFnType,

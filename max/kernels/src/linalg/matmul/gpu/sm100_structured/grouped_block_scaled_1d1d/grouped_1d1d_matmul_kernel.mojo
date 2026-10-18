@@ -40,7 +40,7 @@ architecture.
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.collections import Array, Optional
 from std.math import align_up, ceildiv
-from std.memory import Pointer, UnsafePointer, bitcast
+from std.memory import Pointer, bitcast
 from std.math.uutils import ufloordiv, umod
 from std.sys import align_of, get_defined_int, size_of
 
@@ -511,22 +511,20 @@ struct RealSwiGLUOutput[
     comptime device_type: AnyType = Self
 
     @__allow_legacy_any_origin_fields
-    var c_packed_ptr: UnsafePointer[UInt8, MutAnyOrigin]
+    var c_packed_ptr: MutPointer[UInt8, MutAnyOrigin]
 
     @__allow_legacy_any_origin_fields
-    var c_swiglu_scales_ptr: UnsafePointer[Scalar[Self._sf_dtype], MutAnyOrigin]
+    var c_swiglu_scales_ptr: MutPointer[Scalar[Self._sf_dtype], MutAnyOrigin]
 
     @__allow_legacy_any_origin_fields
-    var c_input_scales_ptr: UnsafePointer[Float32, ImmutAnyOrigin]
+    var c_input_scales_ptr: ImmPointer[Float32, ImmutAnyOrigin]
 
     @inline(.always)
     def __init__(
         out self,
-        c_packed_ptr: UnsafePointer[UInt8, MutAnyOrigin],
-        c_swiglu_scales_ptr: UnsafePointer[
-            Scalar[Self._sf_dtype], MutAnyOrigin
-        ],
-        c_input_scales_ptr: UnsafePointer[Float32, ImmutAnyOrigin],
+        c_packed_ptr: MutPointer[UInt8, MutAnyOrigin],
+        c_swiglu_scales_ptr: MutPointer[Scalar[Self._sf_dtype], MutAnyOrigin],
+        c_input_scales_ptr: ImmPointer[Float32, ImmutAnyOrigin],
     ):
         self.c_packed_ptr = c_packed_ptr
         self.c_swiglu_scales_ptr = c_swiglu_scales_ptr
@@ -1527,7 +1525,7 @@ struct Grouped1D1DMatmulKernel[
         K: UInt32,
         # Raw SFB pointer and strides for cp.async path (MMA_N < 64 only).
         # When group_size < SF_MN_GROUP_SIZE, cp.async replaces TMA for SFB.
-        sfb_global_ptr: UnsafePointer[Scalar[Self.sfb_dtype], ImmutAnyOrigin],
+        sfb_global_ptr: ImmPointer[Scalar[Self.sfb_dtype], ImmutAnyOrigin],
         sfb_n_stride: Int32,
         sfb_k_tiles: Int32,
         # Fused-SwiGLU+quant output sink. Pass `NullSwiGLUOutput[]()` for
@@ -2435,7 +2433,7 @@ struct Grouped1D1DMatmulKernel[
                                             address_space=.SHARED,
                                         ](
                                             rebind[
-                                                UnsafePointer[
+                                                MutPointer[
                                                     Scalar[Self.sf_tma_dtype],
                                                     MutAnyOrigin,
                                                     address_space=.SHARED,
@@ -3084,7 +3082,7 @@ struct Grouped1D1DMatmulKernel[
                         address_space=.SHARED,
                     ](
                         rebind[
-                            UnsafePointer[
+                            MutPointer[
                                 Scalar[Self.sf_tma_dtype],
                                 MutAnyOrigin,
                                 address_space=.SHARED,
@@ -3116,7 +3114,7 @@ struct Grouped1D1DMatmulKernel[
                             address_space=.SHARED,
                         ](
                             rebind[
-                                UnsafePointer[
+                                MutPointer[
                                     Scalar[Self.sf_tma_dtype],
                                     MutAnyOrigin,
                                     address_space=.SHARED,

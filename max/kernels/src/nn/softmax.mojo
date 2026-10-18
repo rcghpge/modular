@@ -1578,8 +1578,8 @@ def _softmax_split_partial_kernel[
         ]
     ],
     num_splits_dev: Int32,
-    partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
-    partial_sum: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    partial_max: MutPointer[Scalar[accum_type], MutAnyOrigin],
+    partial_sum: MutPointer[Scalar[accum_type], MutAnyOrigin],
     input_fn: InputFnType,
 ):
     """Stage 1 of split-K softmax: reduce one contiguous column chunk of one
@@ -1690,8 +1690,8 @@ def _softmax_split_combine_kernel[
         ]
     ],
     num_splits_dev: Int32,
-    partial_max: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
-    partial_sum: UnsafePointer[Scalar[accum_type], MutAnyOrigin],
+    partial_max: MutPointer[Scalar[accum_type], MutAnyOrigin],
+    partial_sum: MutPointer[Scalar[accum_type], MutAnyOrigin],
     input_fn: InputFnType,
 ):
     """Stage 2 of split-K softmax: combine the row's partials into
@@ -2202,9 +2202,7 @@ def _online_softmax_iter_for_mma_output_split_warp_reduce[
 ](
     output_reg_tile: TileTensor[mut=True, dtype, address_space=.LOCAL, ...],
     warp_scratch: TileTensor[mut=True, dtype, address_space=.SHARED, ...],
-    o_smem_ptr_base: UnsafePointer[
-        mut=True, Scalar[dtype], address_space=.SHARED, _
-    ],
+    o_smem_ptr_base: MutPointer[Scalar[dtype], address_space=.SHARED, _],
 ):
     comptime assert output_reg_tile.rank == output_reg_tile.flat_rank == 2
     comptime assert output_reg_tile.static_shape[0] > 0

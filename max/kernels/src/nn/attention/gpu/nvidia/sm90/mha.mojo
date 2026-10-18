@@ -1108,7 +1108,7 @@ def _mha_sm90[
         BN=_kv_sub_tile_rows(config.block_n(), KVLUTType.page_size),
         BK=config.padded_depth,
     ],
-    o_ptr_arg: UnsafePointer[Scalar[output_type], MutAnyOrigin],
+    o_ptr_arg: MutPointer[Scalar[output_type], MutAnyOrigin],
     kv_lut: KVLUTType,
     scale: Float32,
     batch_size: UInt32,
@@ -1338,13 +1338,13 @@ def _mha_sm90[
 
     # Handle sink_weights
     var sink_weights_ptr = Optional[
-        UnsafePointer[Scalar[kv_type], ImmutAnyOrigin]
+        ImmPointer[Scalar[kv_type], ImmutAnyOrigin]
     ]()
 
     comptime if not SinkType.is_null:
-        sink_weights_ptr = rebind[
-            UnsafePointer[Scalar[kv_type], ImmutAnyOrigin]
-        ](sink_weights.value())
+        sink_weights_ptr = rebind[ImmPointer[Scalar[kv_type], ImmutAnyOrigin]](
+            sink_weights.value()
+        )
 
     var produced_mbar_kv = (kv_smem + kv_smem_size).bitcast[SharedMemBarrier]()
     var consumed_mbar_kv = produced_mbar_kv + pipeline_stages
@@ -1803,7 +1803,7 @@ def _mha_sm90[
                         vout[Idx[row], Idx[col]] * rs_inv
                     )
 
-            var output_ptr: UnsafePointer[
+            var output_ptr: MutPointer[
                 Scalar[output_type], MutAnyOrigin
             ] = o_ptr_arg
 

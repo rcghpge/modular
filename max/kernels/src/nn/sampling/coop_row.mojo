@@ -114,24 +114,22 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
 
     @inline(.always)
     def _counter(
-        self, workspace: UnsafePointer[Int32, MutAnyOrigin]
-    ) -> UnsafePointer[Int32, MutAnyOrigin]:
+        self, workspace: MutPointer[Int32, MutAnyOrigin]
+    ) -> MutPointer[Int32, MutAnyOrigin]:
         return workspace + self._row * (
             _COOP_CONTROL_WORDS + 2 * Self.group_size * COOP_SLOT_FLOATS
         )
 
     @inline(.always)
     def _slots(
-        self, workspace: UnsafePointer[Int32, MutAnyOrigin]
-    ) -> UnsafePointer[Float32, MutAnyOrigin]:
+        self, workspace: MutPointer[Int32, MutAnyOrigin]
+    ) -> MutPointer[Float32, MutAnyOrigin]:
         return (self._counter(workspace) + _COOP_CONTROL_WORDS).bitcast[
             Float32
         ]()
 
     @inline(.always)
-    def _arrive_and_wait(
-        mut self, workspace: UnsafePointer[Int32, MutAnyOrigin]
-    ):
+    def _arrive_and_wait(mut self, workspace: MutPointer[Int32, MutAnyOrigin]):
         """Synchronizes the group with device-scoped release and acquire fences.
 
         Thread 0 updates the counter. Block barriers make the acquired peer
@@ -164,7 +162,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
         barrier()
 
     @inline(.always)
-    def sync(mut self, workspace: UnsafePointer[Int32, MutAnyOrigin]):
+    def sync(mut self, workspace: MutPointer[Int32, MutAnyOrigin]):
         """Makes each block's preceding global writes visible to its peers."""
         self._arrive_and_wait(workspace)
 
@@ -173,7 +171,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
         width: Int
     ](
         mut self,
-        workspace: UnsafePointer[Int32, MutAnyOrigin],
+        workspace: MutPointer[Int32, MutAnyOrigin],
         table: MutPointer[Float32, _, address_space=.SHARED],
         vals: SIMD[.float32, width],
     ):
@@ -208,7 +206,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
         width: Int, combine_fn: _ReduceFn
     ](
         mut self,
-        workspace: UnsafePointer[Int32, MutAnyOrigin],
+        workspace: MutPointer[Int32, MutAnyOrigin],
         table: MutPointer[Float32, _, address_space=.SHARED],
         vals: SIMD[.float32, width],
     ) -> SIMD[.float32, width]:

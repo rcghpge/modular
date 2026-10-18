@@ -181,7 +181,7 @@ def _adjust_top_p[
     address_space: AddressSpace = .GENERIC,
 ](
     top_p: Scalar[T],
-    values: UnsafePointer[Scalar[T], _, address_space=address_space],
+    values: Pointer[Scalar[T], _, address_space=address_space],
     k: Int,
     total_sum: Scalar[T],
 ) -> Scalar[T]:
@@ -553,7 +553,7 @@ def fused_token_sampling_cpu[
         var out_vals_alloc = alloc(
             AllocLayout[Scalar[dtype]](count=out_vals_shape.flattened_length())
         ).into_managed()
-        var out_vals_ptr: UnsafePointer[
+        var out_vals_ptr: MutPointer[
             Scalar[dtype], origin_of(out_vals_alloc)
         ] = out_vals_alloc.unsafe_ptr()
         var out_vals = TileTensor(
@@ -711,7 +711,7 @@ def _top_k_sampling[
     var out_idxs_tmp_alloc = alloc(
         AllocLayout[Int64](count=out_vals.num_elements())
     )
-    var out_idxs_tmp_ptr: UnsafePointer[
+    var out_idxs_tmp_ptr: MutPointer[
         Int64, origin_of(out_idxs_tmp_alloc._alloc)
     ] = out_idxs_tmp_alloc.unsafe_ptr()
     var out_idxs_tmp = TileTensor(
@@ -750,7 +750,7 @@ def _top_k_sampling[
         var max_val = reshaped_out_vals[batch, 0][0]
         var sum_exp = Scalar[dtype](0)
         var exp_vals = alloc(AllocLayout[Scalar[dtype]](count=k_val))
-        var exp_vals_ptr: UnsafePointer[
+        var exp_vals_ptr: MutPointer[
             Scalar[dtype], origin_of(exp_vals._alloc)
         ] = exp_vals.unsafe_ptr()
         var temp_val = temperature_val.cast[dtype]()
@@ -1106,15 +1106,15 @@ def _topk_stage1[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
+    K: Optional[ImmPointer[Int64, ImmutAnyOrigin]],
     max_k: Int32,
     num_elements: Int32,
     num_blocks_per_input: Int32,
-    in_buffer_tmp: UnsafePointer[Scalar[T], MutAnyOrigin],
-    local_topk_vals: UnsafePointer[
+    in_buffer_tmp: MutPointer[Scalar[T], MutAnyOrigin],
+    local_topk_vals: MutPointer[
         Scalar[T], MutAnyOrigin
     ],  # Output buffer of size num_blocks_per_input * max_k
-    local_topk_idxs: UnsafePointer[
+    local_topk_idxs: MutPointer[
         Scalar[out_idx_type], MutAnyOrigin
     ],  # Output buffer of size num_blocks_per_input * max_k
 ):
@@ -1264,26 +1264,26 @@ def _topk_stage2[
     sampling: Bool = True,
     largest: Bool = True,
 ](
-    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
+    K: Optional[ImmPointer[Int64, ImmutAnyOrigin]],
     max_k: Int32,
     num_blocks_per_input: Int32,
-    local_topk_vals: UnsafePointer[
+    local_topk_vals: ImmPointer[
         Scalar[T], ImmutAnyOrigin
     ],  # Input array of size n_batch * num_blocks_per_input * K
-    local_topk_idxs: UnsafePointer[
+    local_topk_idxs: ImmPointer[
         Scalar[out_idx_type], ImmutAnyOrigin
     ],  # Input array of size n_batch * num_blocks_per_input * K
-    global_topk_vals: UnsafePointer[
+    global_topk_vals: MutPointer[
         Scalar[T], MutAnyOrigin
     ],  # sampling ? undefined : output array of size K
-    global_topk_idxs: UnsafePointer[
+    global_topk_idxs: MutPointer[
         Scalar[out_idx_type], MutAnyOrigin
     ],  # sampling ? sampled token : Output array of size K
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    top_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    min_p: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
-    valid: Optional[UnsafePointer[Int8, MutAnyOrigin]] = None,
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    top_p: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    min_p: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    seed: Optional[ImmPointer[UInt64, ImmutAnyOrigin]],
+    valid: Optional[MutPointer[Int8, MutAnyOrigin]] = None,
 ):
     """
     Computes the global Top-K elements from the local Top-K results produced by stage 1.
@@ -1553,12 +1553,12 @@ def _topk_warp[
     out_idx_type: DType,
     largest: Bool = True,
 ](
-    K: Optional[UnsafePointer[Int64, ImmutAnyOrigin]],
+    K: Optional[ImmPointer[Int64, ImmutAnyOrigin]],
     max_k: Int32,
     num_elements: Int32,
-    in_buffer: UnsafePointer[Scalar[T], ImmutAnyOrigin],
-    out_vals: UnsafePointer[Scalar[T], MutAnyOrigin],
-    out_idxs: UnsafePointer[Scalar[out_idx_type], MutAnyOrigin],
+    in_buffer: ImmPointer[Scalar[T], ImmutAnyOrigin],
+    out_vals: MutPointer[Scalar[T], MutAnyOrigin],
+    out_idxs: MutPointer[Scalar[out_idx_type], MutAnyOrigin],
 ):
     """Selects the top-K of a short row with a single warp, in one launch.
 
@@ -1700,7 +1700,7 @@ def _topk_gpu[
     seed: Optional[
         TileTensor[.uint64, SeedLayoutType, ImmutAnyOrigin, Engine=SeedEngine]
     ] = None,
-    valid: Optional[UnsafePointer[Int8, MutAnyOrigin]] = None,
+    valid: Optional[MutPointer[Int8, MutAnyOrigin]] = None,
 ) raises:
     """Computes the Top-K elements from the input tensor using a GPU-accelerated two-stage algorithm.
 
@@ -1803,9 +1803,9 @@ def _topk_gpu[
     var block_dim_stage1 = effective_block_size
 
     # Handle optional k parameter
-    var k_ptr: Optional[UnsafePointer[Int64, ImmutAnyOrigin]] = None
+    var k_ptr: Optional[ImmPointer[Int64, ImmutAnyOrigin]] = None
     if case .Some(k) = k:
-        k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](k.ptr)
+        k_ptr = rebind[ImmPointer[Int64, ImmutAnyOrigin]](k.ptr)
 
     # Enqueue the first kernel (stage 1)
     var input_buf_tmp = ctx.enqueue_create_buffer[dtype](batch_size * N)
@@ -1845,24 +1845,22 @@ def _topk_gpu[
     var block_dim_stage2 = block_size
 
     # Handle optional temperature parameter
-    var temp_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+    var temp_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
     if case .Some(temperature) = temperature:
-        temp_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](
-            temperature.ptr
-        )
+        temp_ptr = rebind[ImmPointer[Float32, ImmutAnyOrigin]](temperature.ptr)
 
     # Handle optional top_p parameter
-    var top_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+    var top_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
     if case .Some(top_p) = top_p:
-        top_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](top_p.ptr)
+        top_p_ptr = rebind[ImmPointer[Float32, ImmutAnyOrigin]](top_p.ptr)
 
     # Handle optional min_p parameter
-    var min_p_ptr: Optional[UnsafePointer[Float32, ImmutAnyOrigin]] = None
+    var min_p_ptr: Optional[ImmPointer[Float32, ImmutAnyOrigin]] = None
     if case .Some(min_p) = min_p:
-        min_p_ptr = rebind[UnsafePointer[Float32, ImmutAnyOrigin]](min_p.ptr)
+        min_p_ptr = rebind[ImmPointer[Float32, ImmutAnyOrigin]](min_p.ptr)
 
     # Handle optional seed parameter
-    var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+    var seed_ptr: Optional[ImmPointer[UInt64, ImmutAnyOrigin]] = None
     if case .Some(seed) = seed:
         seed_ptr = seed.ptr
 
@@ -1951,7 +1949,7 @@ def topk_gpu[
     seed: Optional[
         TileTensor[.uint64, SeedLayoutType, ImmutAnyOrigin, Engine=SeedEngine]
     ] = None,
-    valid: Optional[UnsafePointer[Int8, MutAnyOrigin]] = None,
+    valid: Optional[MutPointer[Int8, MutAnyOrigin]] = None,
 ) raises:
     """
     Generalized implementation of the Top K algorithm with/without sampling.
@@ -2142,10 +2140,10 @@ def topk_gpu[
                 and internal_bs > 0
             ):
                 var warp_k_ptr: Optional[
-                    UnsafePointer[Int64, ImmutAnyOrigin]
+                    ImmPointer[Int64, ImmutAnyOrigin]
                 ] = None
                 if case .Some(k) = k:
-                    warp_k_ptr = rebind[UnsafePointer[Int64, ImmutAnyOrigin]](
+                    warp_k_ptr = rebind[ImmPointer[Int64, ImmutAnyOrigin]](
                         k.ptr
                     )
 
@@ -2429,8 +2427,8 @@ def apply_gumbel_noise_kernel[
     input: TileTensor[
         dtype, InputLayoutType, ImmutAnyOrigin, Engine=InputEngine
     ],
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    seed: Optional[ImmPointer[UInt64, ImmutAnyOrigin]],
 ):
     """Adds Gumbel(0,1) noise to logits for sampling via the Gumbel-max trick.
 
@@ -2592,11 +2590,11 @@ def _gumbel_argmax_fused_kernel[
         MutAnyOrigin,
         Engine=OutIdxEngine,
     ],
-    temperature: Optional[UnsafePointer[Float32, ImmutAnyOrigin]],
-    seed: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]],
+    temperature: Optional[ImmPointer[Float32, ImmutAnyOrigin]],
+    seed: Optional[ImmPointer[UInt64, ImmutAnyOrigin]],
     blocks_per_row: Int32 = Int32(1),
-    partials: Optional[UnsafePointer[UInt8, MutAnyOrigin]] = None,
-    counters: Optional[UnsafePointer[Int32, MutAnyOrigin]] = None,
+    partials: Optional[MutPointer[UInt8, MutAnyOrigin]] = None,
+    counters: Optional[MutPointer[Int32, MutAnyOrigin]] = None,
 ):
     """Fused Gumbel-noise + argmax.
 
@@ -2874,11 +2872,11 @@ def gumbel_sampling_fused_gpu[
         comptime block_size = hw_info.max_thread_block_size
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
-        var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+        var seed_ptr: Optional[ImmPointer[UInt64, ImmutAnyOrigin]] = None
         if case .Some(seed) = seed:
             seed_ptr = seed.ptr
 
@@ -2894,10 +2892,10 @@ def gumbel_sampling_fused_gpu[
                 )
                 var counters_buf = ctx.enqueue_create_buffer[.int32](batch_size)
                 ctx.enqueue_memset(counters_buf, Int32(0))
-                var partials_ptr = Optional[UnsafePointer[UInt8, MutAnyOrigin]](
+                var partials_ptr = Optional[MutPointer[UInt8, MutAnyOrigin]](
                     partials_buf.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin]()
                 )
-                var counters_ptr = Optional[UnsafePointer[Int32, MutAnyOrigin]](
+                var counters_ptr = Optional[MutPointer[Int32, MutAnyOrigin]](
                     counters_buf.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin]()
                 )
                 comptime split_kernel = _gumbel_argmax_fused_kernel[
@@ -2942,8 +2940,8 @@ def gumbel_sampling_fused_gpu[
             temperature_ptr,
             seed_ptr,
             Int32(1),
-            Optional[UnsafePointer[UInt8, MutAnyOrigin]](None),
-            Optional[UnsafePointer[Int32, MutAnyOrigin]](None),
+            Optional[MutPointer[UInt8, MutAnyOrigin]](None),
+            Optional[MutPointer[Int32, MutAnyOrigin]](None),
             grid_dim=batch_size,
             block_dim=block_size,
             attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -3020,11 +3018,11 @@ def gumbel_sampling_gpu[
         ]
 
         var temperature_ptr: Optional[
-            UnsafePointer[Float32, ImmutAnyOrigin]
+            ImmPointer[Float32, ImmutAnyOrigin]
         ] = None
         if case .Some(temperature) = temperature:
             temperature_ptr = temperature.ptr
-        var seed_ptr: Optional[UnsafePointer[UInt64, ImmutAnyOrigin]] = None
+        var seed_ptr: Optional[ImmPointer[UInt64, ImmutAnyOrigin]] = None
         if case .Some(seed) = seed:
             seed_ptr = seed.ptr
 

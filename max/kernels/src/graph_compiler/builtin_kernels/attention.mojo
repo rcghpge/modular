@@ -106,7 +106,6 @@ from extensibility import (
 from extensibility import (
     _MutableInputTensor as MutableInputTensor,
 )
-from std.memory import UnsafePointer
 from std.logger import Logger
 
 comptime logger = Logger()
@@ -2499,7 +2498,7 @@ struct Struct_fused_qk_rope_ragged_paged[interleaved: Bool]:
     ) raises:
         # Dummy position_ids - won't be used since has_position_ids=False
         var dummy_position_ids = DynamicTensor[dtype=DType.uint32, rank=2, ...](
-            UnsafePointer[UInt32, MutAnyOrigin].unsafe_dangling(),
+            MutPointer[UInt32, MutAnyOrigin].unsafe_dangling(),
             IndexList[2](0),
         )
         var kv_collection = generic_get_paged_cache(
@@ -3341,7 +3340,7 @@ def _sparse_indices_ptr[
 ](
     sparse_indices: InputTensor[dtype=.int32, rank=2, ...],
     num_tokens: Int,
-) raises -> UnsafePointer[Int32, MutAnyOrigin]:
+) raises -> MutPointer[Int32, MutAnyOrigin]:
     """Returns the sparse indices after checking their shape.
 
     The kernels index the buffer flat, `row * indices_stride + slot`, one row
@@ -3368,7 +3367,7 @@ def _sparse_gather_indices[
     kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
     kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
     ctx: DeviceContext,
-) raises -> UnsafePointer[Int32, MutAnyOrigin]:
+) raises -> MutPointer[Int32, MutAnyOrigin]:
     """Remaps the logical `sparse_indices` to physical rows in `scratch`.
 
     The caller keeps `scratch` alive until its kernels are enqueued.
@@ -3402,7 +3401,7 @@ def _sparse_decode_indices[
     kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
     num_tokens: Int,
     ctx: DeviceContext,
-) raises -> UnsafePointer[Int32, MutAnyOrigin]:
+) raises -> MutPointer[Int32, MutAnyOrigin]:
     """Returns the sparse indices the decode branch reads.
 
     The AMD sparse MLA arm gathers paged physical rows, so logical indices are
@@ -3449,7 +3448,7 @@ def _sparse_prefill_indices[
     kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
     max_seq_len: Int,
     ctx: DeviceContext,
-) raises -> OptionalReg[UnsafePointer[Int32, MutAnyOrigin]]:
+) raises -> OptionalReg[MutPointer[Int32, MutAnyOrigin]]:
     """Returns the remapped rows for the prefill branch of a prefill+decode op.
 
     Without the indexer's physical rows only the prefill branch needs a remap;
@@ -3580,9 +3579,7 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
         # needs each slot's logical key position for causality. With one query
         # position per sequence, the shared list is just a reused row, which
         # `selection_lag` bounds, and the fold does not launch.
-        var logical_indices_ptr = OptionalReg[
-            UnsafePointer[Int32, MutAnyOrigin]
-        ]()
+        var logical_indices_ptr = OptionalReg[MutPointer[Int32, MutAnyOrigin]]()
         comptime if index_share:
             if max_prompt_length.unsafe_ptr()[0] > 1:
                 logical_indices_ptr = (
@@ -4283,7 +4280,7 @@ struct Struct_mla_prefill_sparse_paged:
 
         var num_indices_sparse = sparse_indices.size()
 
-        var attn_sink_ptr = UnsafePointer[Float32, origin=ImmutAnyOrigin](
+        var attn_sink_ptr = ImmPointer[Float32, origin=ImmutAnyOrigin](
             attn_sink.unsafe_ptr()
         )
 
@@ -4393,11 +4390,11 @@ struct Struct_mla_prefill_sparse_paged_fp8:
 
         var num_indices_sparse = sparse_indices.size()
 
-        var attn_sink_ptr = UnsafePointer[Float32, origin=ImmutAnyOrigin](
+        var attn_sink_ptr = ImmPointer[Float32, origin=ImmutAnyOrigin](
             attn_sink.unsafe_ptr()
         )
 
-        var scales_ptr = UnsafePointer[Float32, ImmutAnyOrigin](
+        var scales_ptr = ImmPointer[Float32, ImmutAnyOrigin](
             kv_scales.unsafe_ptr()
         )
 

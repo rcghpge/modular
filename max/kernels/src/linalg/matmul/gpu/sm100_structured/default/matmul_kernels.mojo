@@ -32,7 +32,6 @@ The kernel implements a warp-specialized architecture:
 from std.math import ceildiv
 from std.sys import align_of, size_of
 
-from std.memory import UnsafePointer
 from max.gpu import WARP_SIZE, warp_id as get_warp_id
 from max.gpu.sync import barrier
 from max.gpu.primitives.cluster import (
@@ -1706,7 +1705,7 @@ struct BlackwellMatmulSM100Kernel[
         workspace: Span[UInt64, MutAnyOrigin],
         rank_sigs: Optional[
             Array[
-                UnsafePointer[Signal, MutAnyOrigin],
+                MutPointer[Signal, MutAnyOrigin],
                 Self.num_c_tma_descriptors,
             ]
         ] = None,
@@ -1843,7 +1842,7 @@ struct BlackwellMatmulSM100Kernel[
         workspace: Span[UInt64, MutAnyOrigin],
         rank_sigs: Optional[
             Array[
-                UnsafePointer[Signal, MutAnyOrigin],
+                MutPointer[Signal, MutAnyOrigin],
                 Self.num_c_tma_descriptors,
             ]
         ],
@@ -1911,7 +1910,7 @@ struct BlackwellMatmulSM100Kernel[
         workspace: Span[UInt64, MutAnyOrigin],
         rank_sigs: Optional[
             Array[
-                UnsafePointer[Signal, MutAnyOrigin],
+                MutPointer[Signal, MutAnyOrigin],
                 Self.num_c_tma_descriptors,
             ]
         ],
@@ -2455,7 +2454,7 @@ struct BlackwellMatmulSM100Kernel[
         a_tma_op: Self.ATmaOp_splitk,
         b_tma_op: Self.BTmaOp_splitk,
         c_tma_op: Self.CTmaOp_splitk,
-        c_ptr: UnsafePointer[Scalar[Self.c_type], MutAnyOrigin],
+        c_ptr: MutPointer[Scalar[Self.c_type], MutAnyOrigin],
         c_row_stride: UInt32,
         counter_slot: Int32,
         reduction_tensor: TileTensor[
@@ -2464,7 +2463,7 @@ struct BlackwellMatmulSM100Kernel[
             MutAnyOrigin,
             Engine=reduction_engine,
         ],
-        lock_ptr: UnsafePointer[UInt8, AnyOrigin[mut=True]],
+        lock_ptr: MutPointer[UInt8, AnyOrigin[mut=True]],
         cluster_dim: StaticTuple[Int32, 3],
         mnk: StaticTuple[UInt32, 3],
         workspace: Span[UInt64, MutAnyOrigin],
@@ -2745,7 +2744,7 @@ struct BlackwellMatmulSM100Kernel[
                                     output_stage,
                                     scheduler,
                                     rebind[
-                                        UnsafePointer[
+                                        MutPointer[
                                             Scalar[Self.config.accum_type],
                                             MutAnyOrigin,
                                         ]

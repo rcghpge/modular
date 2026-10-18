@@ -276,7 +276,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             MaskType=Self.MaskType,
             SplitAccumType=Self.SplitAccumType,
         ],
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         indices_stride: Int32,
         topk_lengths: Self.TopkLengthsPtrType,
         attn_sink_ptr: Self.AttnSinkPtrType,
@@ -289,7 +289,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             desc_shape=coord[1, Self.kv_gather4_box_w],
         ],
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk_lengths: Self.TopkLengthsPtrType,
         extra_indices_stride: Int32,
         scalar_args: TileTensor[
@@ -352,7 +352,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         ](
             kv_lut,
             rebind[
-                UnsafePointer[
+                ImmPointer[
                     Scalar[Self.ValidLengthType.dtype],
                     ImmutAnyOrigin,
                     address_space=.GENERIC,
@@ -684,7 +684,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             desc_shape=coord[1, Self.kv_gather4_box_w],
         ],
         cur_kv_lut: Self.KVLUTType,
-        cur_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        cur_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         cur_topk: UInt32,
         idx_smem_base: SharedMemPointer[Int32],
         indices_base: Int,
@@ -734,9 +734,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             comptime assert (
                 chunks_per_warp * Self.num_gather_warps * 4 == Self.config.BN_QK
             )
-            var desc_ptr = UnsafePointer(to=cur_k_tma.descriptor).bitcast[
-                NoneType
-            ]()
+            var desc_ptr = Pointer(to=cur_k_tma.descriptor).bitcast[NoneType]()
             var mbar_ptr = k_mbar[].unsafe_ptr()
             comptime for g in range(chunks_per_warp):
                 var c = g * Self.num_gather_warps + warp_in_wg
@@ -809,14 +807,14 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         ],
         idx_smem_base: SharedMemPointer[Int32],
         topk: Int,
-        d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_k_tma: TMATensorTile[
             DType.bfloat16,
             tile_shape=coord[Self.config.BK_PV, Self.kv_gather4_box_w],
             desc_shape=coord[1, Self.kv_gather4_box_w],
         ],
         extra_kv_lut: Self.KVLUTType,
-        extra_d_indices: OptionalReg[UnsafePointer[Int32, MutAnyOrigin]],
+        extra_d_indices: OptionalReg[MutPointer[Int32, MutAnyOrigin]],
         extra_topk: Int,
     ):
         # The extra stream's caller (latent sparse attention) passes flat

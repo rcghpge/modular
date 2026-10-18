@@ -176,12 +176,8 @@ def load_AB[
     b_smem_tiles: SMemTileArray2D[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
-    mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
-    tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
+    mma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
+    tma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
     producer_phase: PipelineState[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
     work_tile_coord: Tuple[Int, Int],
@@ -370,12 +366,8 @@ def load_AB_cuda_core[
     b_smem_tiles: SMemTileArray2D[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
-    mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
-    tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
+    mma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
+    tma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
     producer_phase: PipelineState[num_pipeline_stages],
     peer_cta_coord: Tuple[Int, Int, Int],
     work_tile_coord: Tuple[Int, Int],
@@ -594,12 +586,8 @@ def consumer_main_loop[
     b_smem_tiles: SMemTileArray2D[
         b_type, b_dim0, b_dim1, b_num_tiles, b_swizzle_bytes
     ],
-    mma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
-    tma_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
+    mma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
+    tma_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
     consumer_phase: PipelineState[pipeline_stages],
     mma_op: MmaOpSM100_SS[
         c_type,
@@ -824,18 +812,12 @@ def multi_stage_store_C[
     has_compute_fn: Bool = False,
     transpose_c: Bool = False,
 ](
-    c_smem_base: UnsafePointer[
-        mut=True, Scalar[c_type], _, address_space=.SHARED
-    ],
+    c_smem_base: MutPointer[Scalar[c_type], _, address_space=.SHARED],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
     c_ptr: MutPointer[Scalar[c_type], _],
     accum_pipeline_consumer_state: PipelineState[num_accum_pipeline_stages],
-    accum_full_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
-    accum_empty_mbar: UnsafePointer[
-        mut=True, SharedMemBarrier, _, address_space=.SHARED
-    ],
+    accum_full_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
+    accum_empty_mbar: MutPointer[SharedMemBarrier, _, address_space=.SHARED],
     tmem_addr: UInt32,
     work_tile_coord: Tuple[Int, Int],
     group_end_idx: UInt32,
@@ -1230,7 +1212,7 @@ def zero_output[
     ComputeFnType: ElementwiseComputeFn = type_of(identity_compute_fn),
     has_compute_fn: Bool = False,
 ](
-    c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
+    c_ptr: MutPointer[Scalar[c_type], MutAnyOrigin],
     coord: Tuple[UInt32, UInt32],
     group_end_idx: UInt32,
     compute_fn: ComputeFnType,
@@ -1433,13 +1415,13 @@ def blackwell_tma_umma_warp_specialized_kernel[
     a_gmem_layout: TensorLayout = type_of(row_major[1, 1]()),
     b_gmem_layout: TensorLayout = type_of(row_major[1, 1]()),
 ](
-    expert_usage_stats: UnsafePointer[UInt32, ImmutAnyOrigin],
+    expert_usage_stats: ImmPointer[UInt32, ImmutAnyOrigin],
     a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
-    expert_ids: UnsafePointer[Int32, ImmutAnyOrigin],
+    expert_ids: ImmPointer[Int32, ImmutAnyOrigin],
     b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
-    b_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
+    b_offsets: ImmPointer[UInt32, ImmutAnyOrigin],
     c_tma_op: TMATensorTile[c_type, c_tile_shape, c_desc_shape],
-    c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
+    c_ptr: MutPointer[Scalar[c_type], MutAnyOrigin],
     mnk: StaticTuple[UInt32, 3],
     a_gmem: TileTensor[a_type, a_gmem_layout, ImmutAnyOrigin],
     b_gmem: TileTensor[b_type, b_gmem_layout, ImmutAnyOrigin],
@@ -2135,12 +2117,12 @@ def _grouped_matmul_sm100_persistent[
     has_compute_fn: Bool = False,
     a_plane_splits: IndexList[2] = Index(0, 0),
 ](
-    c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
-    a_ptr: UnsafePointer[Scalar[a_type], ImmutAnyOrigin],
-    expert_ids: UnsafePointer[Int32, ImmutAnyOrigin],
-    b_ptr: UnsafePointer[Scalar[b_type], ImmutAnyOrigin],
-    b_offsets: UnsafePointer[UInt32, ImmutAnyOrigin],
-    expert_usage_stats: UnsafePointer[UInt32, ImmutAnyOrigin],
+    c_ptr: MutPointer[Scalar[c_type], MutAnyOrigin],
+    a_ptr: ImmPointer[Scalar[a_type], ImmutAnyOrigin],
+    expert_ids: ImmPointer[Int32, ImmutAnyOrigin],
+    b_ptr: ImmPointer[Scalar[b_type], ImmutAnyOrigin],
+    b_offsets: ImmPointer[UInt32, ImmutAnyOrigin],
+    expert_usage_stats: ImmPointer[UInt32, ImmutAnyOrigin],
     M_runtime: Int,
     b_desc_rows: Int,
     epilogue_fn: EpilogueFnType,

@@ -1327,7 +1327,7 @@ def mxfp4_index_score_sm100[
 ](
     output: MutTileTensor[out_dtype, output_layout, _],
     q: ImmTileTensor[dtype, q_layout, _],
-    q_sf: UnsafePointer[UInt32, ImmutAnyOrigin],
+    q_sf: ImmPointer[UInt32, ImmutAnyOrigin],
     weights: ImmTileTensor[.float32, qs_layout, _],
     k_operand: KOperand,
     ks_operand: KSOperand,
@@ -1427,7 +1427,7 @@ def mxfp4_index_score_sm100[
 ](
     output: MutTileTensor[out_dtype, output_layout, _],
     q: ImmTileTensor[dtype, q_layout, _],
-    q_sf: UnsafePointer[UInt32, ImmutAnyOrigin],
+    q_sf: ImmPointer[UInt32, ImmutAnyOrigin],
     weights: ImmTileTensor[.float32, qs_layout, _],
     k_operand: KOperand,
     ks_operand: KSOperand,

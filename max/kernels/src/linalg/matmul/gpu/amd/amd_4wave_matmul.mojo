@@ -1366,7 +1366,7 @@ struct AMD4WaveMatmul[
         a: TileTensor[Self.a_type, a_layout, ImmutAnyOrigin, Engine=a_engine],
         b: TileTensor[Self.b_type, b_layout, ImmutAnyOrigin, Engine=b_engine],
         c: TileTensor[Self.c_type, c_layout, MutAnyOrigin, Engine=c_engine],
-        source_ptr: UnsafePointer[Scalar[Self.c_type], ImmutAnyOrigin],
+        source_ptr: ImmPointer[Scalar[Self.c_type], ImmutAnyOrigin],
         source_row_stride: Int32,
         beta: Float32,
         epilogue_fn: EpilogueFnType,

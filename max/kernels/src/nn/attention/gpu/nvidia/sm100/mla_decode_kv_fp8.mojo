@@ -305,7 +305,7 @@ struct MLA_SM100_Decode_KV_FP8[
             MaskType=Self.MaskType,
             SplitAccumType=Self.SplitAccumType,
         ],
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         scalar_args: TileTensor[
             .int64,
             RowMajorLayout[ComptimeInt[3]],
@@ -345,7 +345,7 @@ struct MLA_SM100_Decode_KV_FP8[
         ](
             kv_lut,
             rebind[
-                UnsafePointer[
+                ImmPointer[
                     Scalar[Self.ValidLengthType.dtype],
                     ImmutAnyOrigin,
                     address_space=.GENERIC,
@@ -682,7 +682,7 @@ struct MLA_SM100_Decode_KV_FP8[
             Self.config.decoding_warp_split_k,
         ],
         scale_smem_base: SharedMemPointer[UInt8],
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
     ):
         var num_k_tiles = ceildiv(
             offset_position.num_keys_this_split, Self.config.BN_QK
@@ -824,7 +824,7 @@ struct MLA_SM100_Decode_KV_FP8[
     @inline(.always)
     def _load_scales_for_tile(
         scale_smem_base: SharedMemPointer[UInt8],
-        scales_ptr: UnsafePointer[Float32, origin=MutAnyOrigin],
+        scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
         kv_lut: Self.KVLUTType,
         stage_idx: UInt32,
         tile_kv_row_start: UInt32,

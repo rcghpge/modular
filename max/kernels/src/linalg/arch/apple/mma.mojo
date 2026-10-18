@@ -652,7 +652,7 @@ struct MmaOpApple[
         input_origin: ImmOrigin, bounded: Bool, c_aligned: Bool, mi: Int
     ](
         self,
-        input_ptr: UnsafePointer[Scalar[Self.in_type], input_origin],
+        input_ptr: ImmPointer[Scalar[Self.in_type], input_origin],
         conv: ConvIm2colParams,
         h_base: Array[Int32, Self.num_m_mmas * 2],
         w_base: Array[Int32, Self.num_m_mmas * 2],
@@ -822,7 +822,7 @@ struct MmaOpApple[
     ](
         self,
         mut accum: Self.AccumType,
-        input_ptr: UnsafePointer[Scalar[Self.in_type], input_origin],
+        input_ptr: ImmPointer[Scalar[Self.in_type], input_origin],
         conv: ConvIm2colParams,
         b_tile: TileTensor[Self.b_type, ...],
         h_base: Array[Int32, Self.num_m_mmas * 2],

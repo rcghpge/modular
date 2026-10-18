@@ -35,8 +35,8 @@ struct Element(Comparable, ImplicitlyCopyable):
 
 def spmv_csc_kernel(
     cscMatrix: CSCMatrix,
-    x: UnsafePointer[Float32, ImmutAnyOrigin],
-    y: UnsafePointer[Float32, MutAnyOrigin],
+    x: ImmPointer[Float32, ImmutAnyOrigin],
+    y: MutPointer[Float32, MutAnyOrigin],
 ):
     var col = block_idx.x * block_dim.x + thread_idx.x
     if col < cscMatrix.numCols:

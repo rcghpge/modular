@@ -67,7 +67,7 @@ def _transpose_rscf_to_frsc_kpad[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     R: Int32,
     S: Int32,
     C: Int32,
@@ -108,7 +108,7 @@ def _transpose_fcrs_to_frsc_kpad[
     SrcEngine: TensorEngine,
 ](
     src: TileTensor[dtype, SrcLayoutType, src_origin, Engine=SrcEngine],
-    dst_ptr: UnsafePointer[Scalar[dtype], MutAnyOrigin],
+    dst_ptr: MutPointer[Scalar[dtype], MutAnyOrigin],
     F: Int32,
     C: Int32,
     R: Int32,
@@ -168,9 +168,9 @@ def _launch_amd_4wave_conv2d_runtime[
     stride: Int,
     pad: Int,
     ctx: DeviceContext,
-    source_ptr: UnsafePointer[
+    source_ptr: ImmPointer[Scalar[output_type], ImmutAnyOrigin] = ImmPointer[
         Scalar[output_type], ImmutAnyOrigin
-    ] = UnsafePointer[Scalar[output_type], ImmutAnyOrigin].unsafe_dangling(),
+    ].unsafe_dangling(),
     beta: Float32 = 0.0,
     epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises -> Bool:
@@ -263,9 +263,7 @@ def dispatch_amd_4wave_conv2d[
     symmetric_padding: IndexList[2],
     num_groups: Int,
     ctx: DeviceContext,
-    source_ptr: Optional[
-        UnsafePointer[Scalar[output_type], MutAnyOrigin]
-    ] = None,
+    source_ptr: Optional[MutPointer[Scalar[output_type], MutAnyOrigin]] = None,
     beta: Float32 = 0.0,
     epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ) raises -> Bool:
@@ -459,20 +457,20 @@ def dispatch_amd_4wave_conv2d[
         # the kernel arg (which only reads it when has_residual=True at
         # comptime, so the value is never dereferenced in the
         # has_residual=False path).
-        var _src_ptr_immut = UnsafePointer[
+        var _src_ptr_immut = ImmPointer[
             Scalar[output_type], ImmutAnyOrigin
         ].unsafe_dangling()
 
         @inline(.always)
         def _src_immut() {
             imm
-        } -> UnsafePointer[Scalar[output_type], ImmutAnyOrigin]:
+        } -> ImmPointer[Scalar[output_type], ImmutAnyOrigin]:
             comptime if has_residual:
                 # When called with has_residual=True, the caller must
                 # supply source_ptr. Materialize an immutable view of it
                 # (the kernel only reads).
                 if case .Some(source_ptr) = source_ptr:
-                    return UnsafePointer[Scalar[output_type], ImmutAnyOrigin](
+                    return ImmPointer[Scalar[output_type], ImmutAnyOrigin](
                         unsafe_from_address=Int(source_ptr)
                     )
             return _src_ptr_immut

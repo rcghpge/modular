@@ -153,9 +153,7 @@ def quantize_static_scaled_fp8[
 
 
 @__name("fp8_zero_scale_global_kernel")
-def zero_scale_global_kernel(
-    scale_global: UnsafePointer[Float32, MutAnyOrigin]
-):
+def zero_scale_global_kernel(scale_global: MutPointer[Float32, MutAnyOrigin]):
     """Zeros the global FP8 scale factor in a single thread.
 
     Writes ``0`` to ``scale_global[0]`` directly rather than using
