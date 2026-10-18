@@ -74,15 +74,10 @@ static bool hasStableDecorator(ASTDecl &decl) {
 /// Walks the full ancestor chain so that e.g. code in `std::builtin::int`
 /// finds the `std` package.  Returns nullptr if no opted-in package is found.
 static PackageOp findOptedInPackage(ASTDecl &decl) {
-  ASTDecl *cur = decl.getNearestDeclOfType<PackageOp>();
-  while (cur) {
+  for (ASTDecl *cur = &decl; cur; cur = cur->getParentDecl())
     if (auto *packageDecl = dyn_cast<PackageASTDecl>(cur))
       if (isPackageOptedIntoStabilityMarkers(packageDecl->getOp().getSymName()))
         return packageDecl->getOp();
-    cur = cur->getParentDecl();
-    if (cur)
-      cur = cur->getNearestDeclOfType<PackageOp>();
-  }
   return {};
 }
 

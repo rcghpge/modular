@@ -909,13 +909,13 @@ void SharedState::materializePrecompiledStdlibOp(Operation *op) {
     (void)reader.materialize(op);
 }
 
-ASTDecl &SharedState::importModule(const ImportPath &path,
-                                   PackageOp currentPackage, llvm::SMLoc loc,
-                                   ASTDecl *importer) {
+ModuleASTDecl &SharedState::importModule(const ImportPath &path,
+                                         PackageOp currentPackage,
+                                         llvm::SMLoc loc, ASTDecl *importer) {
   return getModuleLoader().importModule(path, currentPackage, loc, importer);
 }
 
-SmallVector<ASTDecl *>
+SmallVector<ModuleASTDecl *>
 SharedState::getNestedModuleDecls(PackageOp packageOp) const {
   return getModuleLoader().getNestedModuleDecls(packageOp);
 }
@@ -938,8 +938,9 @@ const llvm::MemoryBuffer *SharedState::openModuleFile(StringRef path,
   return getSourceMgr().getMemoryBuffer(fileID);
 }
 
-ASTDecl *SharedState::tryImportSubModule(ModuleASTDecl &parent, StringRef name,
-                                         llvm::SMLoc loc) {
+ModuleASTDecl *SharedState::tryImportSubModule(ModuleASTDecl &parent,
+                                               StringRef name,
+                                               llvm::SMLoc loc) {
   return getModuleLoader().tryImportSubModule(parent, name, loc);
 }
 
@@ -1207,9 +1208,10 @@ void SharedState::importBuiltinModules(ModuleASTDecl &moduleDecl) {
   }
 }
 
-ASTDecl &SharedState::createModule(StringRef moduleName,
-                                   const llvm::MemoryBuffer *moduleBuffer,
-                                   FileLineColLoc loc) {
+FileModuleASTDecl &
+SharedState::createModule(StringRef moduleName,
+                          const llvm::MemoryBuffer *moduleBuffer,
+                          FileLineColLoc loc) {
   // Create a new module state.
   ModuleSpec spec{moduleName.str(),
                   /*path=*/std::string(moduleBuffer->getBufferIdentifier()),
@@ -1218,10 +1220,10 @@ ASTDecl &SharedState::createModule(StringRef moduleName,
   ModuleState &state = loader.createModuleState(
       StringAttr::get(getContext(), moduleName), moduleBuffer,
       loader.getTopLevelState(), loc, spec, /*importLoc=*/{});
-  return *state.decl;
+  return cast<FileModuleASTDecl>(*state.decl);
 }
 
-ASTDecl &SharedState::createPackage(StringRef path, StringRef name) {
+PackageASTDecl &SharedState::createPackage(StringRef path, StringRef name) {
   // Note the importLoc here is empty as this is a top-level package and so
   // isn't imported from anywhere.
   ModuleSpec spec{name.str(), path.str(), ModuleSpec::Kind::SourcePackage};
@@ -1229,15 +1231,16 @@ ASTDecl &SharedState::createPackage(StringRef path, StringRef name) {
   ModuleState &state =
       loader.createPackageState(spec, loader.getTopLevelState(),
                                 /*importLoc=*/{});
-  return *state.decl;
+  return cast<PackageASTDecl>(*state.decl);
 }
 
-ASTDecl &SharedState::createBinaryPackage(StringRef path, StringRef name) {
+PackageASTDecl &SharedState::createBinaryPackage(StringRef path,
+                                                 StringRef name) {
   ModuleSpec spec{name.str(), path.str(), ModuleSpec::Kind::Precompiled};
   ModuleLoader &loader = getModuleLoader();
   ModuleState &state =
       loader.createBinaryPackageState(SMLoc(), spec, loader.getTopLevelState());
-  return *state.decl;
+  return cast<PackageASTDecl>(*state.decl);
 }
 
 std::optional<std::string>
@@ -1652,17 +1655,18 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
             // stamp on an import loc.
             diags.recordImportedFileIncludeLoc(op->getLoc(), packageImportLoc);
             ASTDecl &decl = addDeclForOp(op, name);
+            auto &moduleDecl = cast<ModuleASTDecl>(decl);
 
             // Record a nested module state for this decl. The child is a
             // module inside the artifact's one file, so it shares the
             // enclosing package's origin and holds no spec of its own: it was
             // never resolved, so there is no candidate to describe.
-            auto childState = std::make_unique<ModuleState>(&decl);
+            auto childState = std::make_unique<ModuleState>(&moduleDecl);
             childState->origin = packageState->origin;
             ModuleState &moduleState =
                 packageState->insertNestedModule(name, std::move(childState));
 
-            getModuleLoader().setState(decl, moduleState);
+            getModuleLoader().setState(moduleDecl, moduleState);
             if constexpr (std::is_same_v<decltype(op), PackageOp>)
               getModuleLoader().setPackageState(op, moduleState);
           })
@@ -1858,7 +1862,7 @@ void SharedState::addCaptureToScope(ASTDecl &scope, ASTDecl *captureDecl,
                                     Capture capture) {
   getImpl().capturesInScope[&scope].insert({capture.getSpelling(), capture});
   if (captureDecl->getParentDecl() != scope.getParentDecl()) {
-    if (scope.getNearestDeclOfType<FnOp>())
+    if (scope.getNearestDeclOfType<DefASTDecl>())
       addCaptureToScope(*scope.getParentDecl(), captureDecl, capture);
   }
 }

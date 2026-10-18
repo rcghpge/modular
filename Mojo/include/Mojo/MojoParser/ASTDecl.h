@@ -139,14 +139,15 @@ public:
     return parentDecl;
   }
 
-  /// Get the nearest decl backed by one of the given operations. This can
-  /// return itself, a parent decl, or null if no such decl is found.
-  template <typename... OpTs>
-  ASTDecl *getNearestDeclOfType() {
-    ASTDecl *cur = this;
-    while (cur && !isa_and_nonnull<OpTs...>(cur->getIfOperation()))
-      cur = cur->getParentDecl();
-    return cur;
+  /// Get the nearest declaration of the given AST declaration class. This can
+  /// return itself, a parent declaration, or null if no matching declaration
+  /// is found.
+  template <typename DeclT>
+  DeclT *getNearestDeclOfType() {
+    for (ASTDecl *cur = this; cur; cur = cur->getParentDecl())
+      if (auto *decl = dyn_cast<DeclT>(cur))
+        return decl;
+    return nullptr;
   }
 
   /// Return the indentation of the introducer token or -1 if it wasn't on the
@@ -176,14 +177,6 @@ public:
   /// be needed, making it unique for every declaration.  This returns null for
   /// named values that do not have a declaration.
   SymbolRefAttr getSymbolRef() const;
-
-  /// Return the builder at the end of the region that the decl contains.
-  OpBuilder getDeclEndBuilder() {
-    Operation *op = getIfOperation();
-    assert(op && op->getNumRegions() == 1 &&
-           "can't get builder for this ASTDecl");
-    return OpBuilder::atBlockEnd(&op->getRegion(0).front());
-  }
 
   /// Add an unresolved wild card import into this scope.
   void addUnresolvedWildcardImport(UnresolvedWildcardImport unresolvedImport);
@@ -498,7 +491,18 @@ private:
 /// An AST declaration backed by an MLIR operation.
 class OpASTDecl : public ASTDecl {
 public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getIfOperation() != nullptr;
+  }
+
   Operation *getIfOperation() const final { return operation; }
+
+  /// Return the builder at the end of the operation's sole region.
+  OpBuilder getDeclEndBuilder() {
+    assert(operation->getNumRegions() == 1 &&
+           "can't get builder for this OpASTDecl");
+    return OpBuilder::atBlockEnd(&operation->getRegion(0).front());
+  }
 
 protected:
   OpASTDecl(Kind kind, SharedState &shared, Operation *operation,

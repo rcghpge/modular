@@ -27,6 +27,7 @@ class SymbolFileDWARF;
 
 namespace M::KGEN::LIT {
 class ASTDecl;
+class OpASTDecl;
 } // namespace M::KGEN::LIT
 
 namespace M::KGEN::Mojo {

@@ -384,8 +384,8 @@ importMojoFileImpl(ContextRef context, SourceMgr &sourceMgr,
           moduleName = "<input>";
 
         // Build the input module.
-        return cast<FileModuleASTDecl>(sharedState.createModule(
-            moduleName, sourceBuf, cast<FileLineColLoc>(module->getLoc())));
+        return sharedState.createModule(moduleName, sourceBuf,
+                                        cast<FileLineColLoc>(module->getLoc()));
       });
 }
 
@@ -419,8 +419,7 @@ LIT::importMojoPackage(ContextRef context, StringRef path,
           fileGuard = sharedState.diBuilder->pushFile(path);
 
         // Build the package.
-        return cast<PackageASTDecl>(
-            sharedState.createPackage(path, packageName));
+        return sharedState.createPackage(path, packageName);
       });
   LLVM_DEBUG(
       llvm::dbgs()

@@ -1063,7 +1063,7 @@ static PromotedSignature buildPromotedSignature(
 ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
     DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclAttr> prependedParams,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
-    ASTDecl *targetParent) {
+    OpASTDecl *targetParent) {
   assert(nestedFnDecl.resolvedness == DeclResolvedness::body &&
          "nested decl must be fully resolved to promote");
   // Mark dead unparsed code as resolved to prevent resolution dependent on
@@ -1079,7 +1079,7 @@ ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
   FnOp function = nestedFnDecl.getOp();
   SMLoc loc = nestedFnDecl.getLoc();
   if (!targetParent)
-    targetParent = nestedFnDecl.getNearestDeclOfType<FileModuleOp>();
+    targetParent = nestedFnDecl.getNearestDeclOfType<FileModuleASTDecl>();
   assert(targetParent && "expected a target parent for promotion");
 
   auto [promotedSignature, promotedFunctionType, selfRuntimeArgType,
@@ -1188,7 +1188,7 @@ ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
 ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
     DefASTDecl &nestedFnDecl, ArrayRef<ParamDeclRefAttr> prependedParamRefs,
     std::optional<PromotedClosureSelfArg> selfArg, TriBool capturingOverride,
-    ASTDecl *targetParent) {
+    OpASTDecl *targetParent) {
   SmallVector<ParamDeclAttr> prependedParams =
       llvm::map_to_vector(prependedParamRefs, [](ParamDeclRefAttr paramRef) {
         return ParamDeclAttr::get(paramRef);
@@ -2390,8 +2390,9 @@ ASTDecl *ClosureEmitter::addCaptureValue(DefASTDecl &closure, SMLoc location,
     return existing.front();
   }
   FnOp funcOp = closure.getOp();
-  ASTDecl *fnParentDecl = closure.getParentDecl()->getNearestDeclOfType<FnOp>();
-  auto &parentDef = cast<DefASTDecl>(*fnParentDecl);
+  DefASTDecl *fnParentDecl =
+      closure.getParentDecl()->getNearestDeclOfType<DefASTDecl>();
+  auto &parentDef = *fnParentDecl;
   auto parentFn = parentDef.getOp();
   ASTDecl *result = nullptr;
   if (usesClosurePipeline(parentFn)) {
@@ -2886,8 +2887,8 @@ void ClosureEmitter::addConformanceToDevicePassable(
 void ClosureEmitter::addStorageConformanceToDevicePassable(
     StructASTDecl &structDecl, ArrayRef<Type> deviceCaptureFieldTypes,
     StringRef name) {
-  ModuleASTDecl *fileModule = cast_or_null<FileModuleASTDecl>(
-      structDecl.getNearestDeclOfType<FileModuleOp>());
+  ModuleASTDecl *fileModule =
+      structDecl.getNearestDeclOfType<FileModuleASTDecl>();
   if (!fileModule) {
     // for parametric trait based closure, the struct decl is put within the top
     // level decl.

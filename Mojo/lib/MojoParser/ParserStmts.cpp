@@ -252,14 +252,16 @@ struct FromImportDecorators {
 struct StmtParser : public ParserBase {
   StmtParser(Lexer &lexer, ASTDecl &curDeclScope)
       : ParserBase(curDeclScope.getShared(), lexer), parentDecl(curDeclScope),
-        curDeclScope(&curDeclScope), builder(curDeclScope.getDeclEndBuilder()) {
+        curDeclScope(&curDeclScope),
+        builder(cast<OpASTDecl>(curDeclScope).getDeclEndBuilder()) {
     initializeBuilderForFunctions(curDeclScope, builder);
   }
   StmtParser(Lexer &lexer, IREmitter &emitter)
       : ParserBase(emitter.shared, lexer), parentDecl(emitter.getDeclScope()),
         curDeclScope(&emitter.getDeclScope()),
-        builder(emitter.builder ? emitter.builder.value()
-                                : curDeclScope->getDeclEndBuilder()) {
+        builder(emitter.builder
+                    ? emitter.builder.value()
+                    : cast<OpASTDecl>(curDeclScope)->getDeclEndBuilder()) {
     if (!emitter.builder)
       initializeBuilderForFunctions(emitter.getDeclScope(), builder);
   }
@@ -4528,7 +4530,7 @@ static void buildImportChain(ParserBase &p, ASTDecl &dest, OpBuilder builder,
 
     // Descend so the next segment is gated as a child of this node.
     scope = node;
-    builder = scope->getDeclEndBuilder();
+    builder = cast<ImportASTDecl>(scope)->getDeclEndBuilder();
   }
 
   p.shared.notifyListenerOnModuleImport(*scope, modulePath,
@@ -4628,9 +4630,8 @@ StmtParser::parseImportModuleName(SharedState::ImportPath &parsedName,
 
     // Otherwise, this is importing from within a package.
     shared.notifyListenerOnImport(loc, [&]() -> ASTDecl & {
-      auto *packageDecl = curDeclScope->getNearestDeclOfType<PackageOp>();
-      PackageOp curOp =
-          packageDecl ? cast<PackageASTDecl>(packageDecl)->getOp() : nullptr;
+      auto *packageDecl = curDeclScope->getNearestDeclOfType<PackageASTDecl>();
+      PackageOp curOp = packageDecl ? packageDecl->getOp() : nullptr;
       return shared.importModule(parsedName, curOp, loc);
     });
   };
@@ -4816,7 +4817,7 @@ ParseResult StmtParser::parseDefFnStmt(LexerCursor startCursor,
 
   // If this is a nested function, parse its body right now so captures can be
   // resolved correctly.
-  if (curDeclScope->getNearestDeclOfType<FnOp>())
+  if (curDeclScope->getNearestDeclOfType<DefASTDecl>())
     (void)getDeclResolver().resolveBody(funcDecl, loc);
   return success();
 }

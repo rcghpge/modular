@@ -1831,7 +1831,7 @@ llvm::json::Object PublicPackageDecl::toJSON(MojoParserContext &ctx) const {
   SmallVector<PublicModuleDecl> modules;
   SmallVector<PublicPackageDecl> packages;
   if (auto *packageDecl = dyn_cast<PackageASTDecl>(&*decl)) {
-    for (ASTDecl *child :
+    for (ModuleASTDecl *child :
          ctx.getSharedState().getNestedModuleDecls(packageDecl->getOp())) {
       StringRef name = child->getName().value_or(StringRef());
       if (shouldHideDeclInDocGen(*child, name) ||

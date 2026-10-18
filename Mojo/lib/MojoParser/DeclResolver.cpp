@@ -1514,7 +1514,7 @@ LogicalResult DeclResolver::importDeclFromModule(
         deadImportPlaceholders.insert(oldOp);
     } else {
       // No placeholder to reuse (defensive): bind a fresh gate decl.
-      OpBuilder fromBuilder = dest.getDeclEndBuilder();
+      OpBuilder fromBuilder = cast<OpASTDecl>(dest).getDeclEndBuilder();
       createImportOp(dest, fromBuilder, destName, gatePath,
                      shared.translateLocation(destNameLoc));
     }
@@ -1834,7 +1834,7 @@ void DeclResolver::resolveAllReferencedFrom(ASTDecl &decl) {
     // we need to do it now.
     if (auto *packageDecl = dyn_cast<PackageASTDecl>(declIt)) {
       PackageOp packageOp = packageDecl->getOp();
-      for (ASTDecl *sub : shared.getNestedModuleDecls(packageOp)) {
+      for (ModuleASTDecl *sub : shared.getNestedModuleDecls(packageOp)) {
         (void)resolveBody(*sub, declIt->getLoc());
         worklist.push_front(sub);
       }
@@ -2166,7 +2166,7 @@ void DeclResolver::exportMain(DefASTDecl &funcDecl) {
   // Generate a shim for main that handles parsing command line arguments,
   // capturing uncaught exceptions, and returning the exit code. The shim
   // defines a C-ABI compatible function that sets up the mojo runtime.
-  OpBuilder builder = containingDecl->getDeclEndBuilder();
+  OpBuilder builder = cast<OpASTDecl>(containingDecl)->getDeclEndBuilder();
 
   // The Startup module provides a stubbed out shim for us to use, so pull that
   // in.

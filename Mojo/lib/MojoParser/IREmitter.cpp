@@ -2048,7 +2048,7 @@ void IREmitter::emitNormalReturn(Location loc, Value value, bool emitEndFunc) {
     if (auto func = getBlockParentOfType<FnOp>(builder->getInsertionBlock());
         func && func.getNamedResultAttr() &&
         !func.getFuncTypeGenerator().hasMemoryOnlyResult()) {
-      auto *funcDecl = declScope.getNearestDeclOfType<FnOp>();
+      auto *funcDecl = declScope.getNearestDeclOfType<DefASTDecl>();
       assert(funcDecl && "must be in a function");
       ArrayRef<ASTDecl *> declList =
           funcDecl->lookupInCurrentScope(func.getNamedResultAttr());

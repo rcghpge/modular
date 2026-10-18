@@ -170,9 +170,8 @@ struct CodeCompletionListener : public BaseCompletionListener {
     // sibling module or sub-package.
     if (auto *package = dyn_cast<PackageASTDecl>(packageDecl)) {
       SharedState &shared = parserContext->getSharedState();
-      for (ASTDecl *sub : shared.getNestedModuleDecls(package->getOp())) {
-        StringAttr nameAttr = TypeSwitch<Operation *, StringAttr>(
-                                  cast<ModuleASTDecl>(sub)->getOp())
+      for (ModuleASTDecl *sub : shared.getNestedModuleDecls(package->getOp())) {
+        StringAttr nameAttr = TypeSwitch<Operation *, StringAttr>(sub->getOp())
                                   .Case<FileModuleOp, PackageOp>(
                                       [](auto m) { return m.getDeclName(); })
                                   .Default(StringAttr());
@@ -269,7 +268,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
   ASTDecl *resolveImportedDecl(UnresolvedImportOp importOp) {
     SharedState &shared = parserContext->getSharedState();
     SMLoc loc = shared.diags.convertLocToSMLoc(importOp->getLoc());
-    ASTDecl &module = shared.importModule(
+    ModuleASTDecl &module = shared.importModule(
         SharedState::ImportPath::fromAttr(importOp.getModulePathAttr()),
         importOp->getParentOfType<PackageOp>(), loc);
     StringAttr declName = importOp.getDeclNameAttr();
@@ -282,8 +281,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
     if (!result.isSuccess()) {
       // The name may be a submodule of a package rather than a symbol in its
       // scope.
-      return shared.tryImportSubModule(cast<ModuleASTDecl>(module),
-                                       declName.getValue(), loc);
+      return shared.tryImportSubModule(module, declName.getValue(), loc);
     }
     return result.getIfSuccess().front();
   }

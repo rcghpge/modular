@@ -990,7 +990,8 @@ MojoTypeSystem::createPOPArrayType(lldb::opaque_compiler_type_t elementType,
 
 /// This looks up the specified name in the indicated decl and returns a match
 /// if one exists, or null if not.
-static LIT::ASTDecl *lookupSingleMember(LIT::ASTDecl &decl, StringAttr name) {
+static LIT::OpASTDecl *lookupSingleMember(LIT::OpASTDecl &decl,
+                                          StringAttr name) {
   // Mark the decl as fully resolved so we can look up into it.  This is pretty
   // unfortunate, should we resolve the decl instead?
   auto oldResolvedness = decl.resolvedness;
@@ -1003,14 +1004,15 @@ static LIT::ASTDecl *lookupSingleMember(LIT::ASTDecl &decl, StringAttr name) {
     return nullptr;
   assert(existingDecls.size() == 1 &&
          "We expect one single decl with a given name");
-  return existingDecls[0];
+  return cast<LIT::OpASTDecl>(existingDecls[0]);
 }
 
-LIT::ASTDecl *MojoTypeSystem::getOrCreatePackageDecl(StringRef name,
-                                                     LIT::ASTDecl *parentDecl) {
+LIT::OpASTDecl *
+MojoTypeSystem::getOrCreatePackageDecl(StringRef name,
+                                       LIT::OpASTDecl *parentDecl) {
   LIT::SharedState &sharedState = impl->parserContext->getSharedState();
 
-  LIT::ASTDecl &parent =
+  LIT::OpASTDecl &parent =
       parentDecl ? *parentDecl
                  : impl->parserContext->getSharedState().getTopLevelDecl();
 
@@ -1026,9 +1028,10 @@ LIT::ASTDecl *MojoTypeSystem::getOrCreatePackageDecl(StringRef name,
       moduleBuilder, sharedState.translateLocation(parent.getLoc()),
       packageName);
 
-  return &sharedState.declResolver->addDecl(
+  auto &decl = sharedState.declResolver->addDecl(
       packageOp, SMLoc(), packageName, &parent, parent.getCursor(),
       parent.getCursor(), /*indentation=*/-1);
+  return cast<LIT::OpASTDecl>(&decl);
 }
 
 /// Generate a human readable version of an identifier along with its parameters
@@ -1061,9 +1064,9 @@ static std::string generateParametrizedName(DebugInfo::SourceNameAttr attr) {
   return displayName;
 }
 
-LIT::ASTDecl *MojoTypeSystem::createDeclsFromSourceNameRecursive(
+LIT::OpASTDecl *MojoTypeSystem::createDeclsFromSourceNameRecursive(
     DebugInfo::SourceNameAttr sourceName) {
-  LIT::ASTDecl *parentDecl = nullptr;
+  LIT::OpASTDecl *parentDecl = nullptr;
   if (DebugInfo::SourceNameAttr parent = sourceName.getParent())
     parentDecl = createDeclsFromSourceNameRecursive(parent);
 
@@ -1117,10 +1120,11 @@ LIT::ASTDecl *MojoTypeSystem::getOrCreateDeclChainForDie(const DWARFDIE &die,
   }
 }
 
-LIT::ASTDecl *MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
-                                                    LIT::ASTDecl *parentDecl) {
+LIT::OpASTDecl *
+MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
+                                      LIT::OpASTDecl *parentDecl) {
   LIT::SharedState &sharedState = impl->parserContext->getSharedState();
-  LIT::ASTDecl &parent =
+  LIT::OpASTDecl &parent =
       parentDecl ? *parentDecl
                  : impl->parserContext->getSharedState().getTopLevelDecl();
 
@@ -1147,13 +1151,14 @@ LIT::ASTDecl *MojoTypeSystem::getOrCreateModuleDecl(StringRef moduleName,
   OpBuilder builder = parent.getDeclEndBuilder();
   Operation *fileOp = LIT::FileModuleOp::create(
       builder, sharedState.translateLocation(parent.getLoc()), name);
-  return &sharedState.declResolver->addFullyResolvedDecl(
+  auto &decl = sharedState.declResolver->addFullyResolvedDecl(
       fileOp, name, lexer.getToken().getLoc(), &parent);
+  return cast<LIT::OpASTDecl>(&decl);
 }
 
-LIT::ASTDecl *
+LIT::OpASTDecl *
 MojoTypeSystem::getOrCreateFunctionDecl(StringRef functionName,
-                                        LIT::ASTDecl *parentDecl) {
+                                        LIT::OpASTDecl *parentDecl) {
   if (!parentDecl)
     parentDecl = getOrCreateModuleDecl("__lldb_anonymous__");
 
@@ -1180,12 +1185,14 @@ MojoTypeSystem::getOrCreateFunctionDecl(StringRef functionName,
   auto newFunction = LIT::FnOp::create(
       builder, sharedState.translateLocation(parentDecl->getLoc()), nameAttr,
       name, signature);
-  return &sharedState.declResolver->addDecl(newFunction, parentDecl->getLoc(),
-                                            name, parentDecl, {}, {}, -1);
+  auto &decl = sharedState.declResolver->addDecl(
+      newFunction, parentDecl->getLoc(), name, parentDecl, {}, {}, -1);
+  return cast<LIT::OpASTDecl>(&decl);
 }
 
-LIT::ASTDecl *MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
-                                                    LIT::ASTDecl *parentDecl) {
+LIT::OpASTDecl *
+MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
+                                      LIT::OpASTDecl *parentDecl) {
   if (!parentDecl)
     parentDecl = getOrCreateModuleDecl("__lldb_anonymous__");
 
@@ -1199,12 +1206,14 @@ LIT::ASTDecl *MojoTypeSystem::getOrCreateStructDecl(StringRef structName,
   OpBuilder builder = parentDecl->getDeclEndBuilder();
   auto newStruct = LIT::StructDeclOp::create(
       builder, getSharedState().translateLocation(parentDecl->getLoc()), name);
-  return &getSharedState().declResolver->addDecl(
+  auto &decl = getSharedState().declResolver->addDecl(
       newStruct, parentDecl->getLoc(), name, parentDecl, {}, {}, -1);
+  return cast<LIT::OpASTDecl>(&decl);
 }
 
 LIT::ASTDecl *
-MojoTypeSystem::addFieldToStruct(LIT::ASTDecl *structDecl, StringRef fieldName,
+MojoTypeSystem::addFieldToStruct(LIT::StructASTDecl *structDecl,
+                                 StringRef fieldName,
                                  lldb::opaque_compiler_type_t type) {
   StringAttr name = StringAttr::get(getMLIRContext(), fieldName);
   OpBuilder builder = structDecl->getDeclEndBuilder();

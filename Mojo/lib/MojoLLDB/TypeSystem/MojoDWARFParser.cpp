@@ -552,8 +552,7 @@ MojoDWARFParser::ParseTypeFromDWARF(const lldb_private::SymbolContext &sc,
 bool MojoDWARFParser::CompleteStructureTypeFromDWARF(
     const DWARFDIE &die, lldb_private::Type *type,
     const CompilerType &compilerType) {
-  LIT::ASTDecl *structDecl = getDeclForDIE(die);
-  assert(structDecl && "All structs should have a decl.");
+  auto *structDecl = cast<LIT::StructASTDecl>(getDeclForDIE(die));
 
   if (completedDecls.contains(structDecl))
     return true;

@@ -718,9 +718,9 @@ LogicalResult REPLDiagnosticHandler::processDiagnostics() {
 //===----------------------------------------------------------------------===//
 
 /// Build a module decl for use in a REPL expression.
-static ASTDecl &buildREPLModule(const llvm::MemoryBuffer *sourceBuf,
-                                StringRef moduleName,
-                                SharedState &sharedState) {
+static FileModuleASTDecl &buildREPLModule(const llvm::MemoryBuffer *sourceBuf,
+                                          StringRef moduleName,
+                                          SharedState &sharedState) {
   StringRef exprId = sourceBuf->getBufferIdentifier();
 
   // If we are emitting debug info, create a file entry for this file.
@@ -731,7 +731,8 @@ static ASTDecl &buildREPLModule(const llvm::MemoryBuffer *sourceBuf,
   // Create the input module.
   MLIRContext *ctx = sharedState.getContext();
   auto fileLoc = FileLineColLoc::get(ctx, exprId, /*line=*/1, /*column=*/1);
-  ASTDecl &decl = sharedState.createModule(moduleName, sourceBuf, fileLoc);
+  FileModuleASTDecl &decl =
+      sharedState.createModule(moduleName, sourceBuf, fileLoc);
   (void)sharedState.declResolver->resolveBody(decl, decl.getLoc());
   return decl;
 }
@@ -742,7 +743,8 @@ static ASTDecl &buildAndResolveREPLModule(
     const llvm::MemoryBuffer *sourceBuf, StringRef moduleName,
     SharedState &sharedState, ASTDecl *prevReplExpr, bool parseForLSP,
     ArrayRef<std::pair<StringRef, Type>> replVariables = {}) {
-  ASTDecl &moduleDecl = buildREPLModule(sourceBuf, moduleName, sharedState);
+  FileModuleASTDecl &moduleDecl =
+      buildREPLModule(sourceBuf, moduleName, sharedState);
 
   // Generate aliases for the types of any persistent variables. We do this
   // programmatically because we can't guarantee we can print the type in a way

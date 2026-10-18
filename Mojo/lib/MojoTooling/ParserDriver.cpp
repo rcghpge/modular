@@ -154,7 +154,7 @@ static ASTDecl *buildNestedModuleDecl(std::filesystem::path filepath,
   }
 
   // Create the package using the outermost name.
-  ASTDecl &packageDecl = sharedState.createPackage(
+  PackageASTDecl &packageDecl = sharedState.createPackage(
       filepath.string(), getNameForSourcePackage(filepath));
 
   // Import the file from within the package.
@@ -163,8 +163,7 @@ static ASTDecl *buildNestedModuleDecl(std::filesystem::path filepath,
   path.relativeLevel = 1;
   for (const std::string &name : packageNames)
     path.components.push_back(name);
-  return &sharedState.importModule(
-      path, cast<PackageASTDecl>(packageDecl).getOp(), SMLoc());
+  return &sharedState.importModule(path, packageDecl.getOp(), SMLoc());
 }
 
 /// Create an ASTDecl for the given file module.
@@ -383,11 +382,11 @@ ASTDecl *MojoParserContext::parseIsolatedFileOrPackage(
     worklist.pop_back();
 
     if (isPackage) {
-      if (auto parent = decl->getNearestDeclOfType<PackageOp>();
+      if (auto parent = decl->getNearestDeclOfType<PackageASTDecl>();
           parent != moduleDecl)
         continue;
     } else {
-      if (auto parent = decl->getNearestDeclOfType<FileModuleOp>();
+      if (auto parent = decl->getNearestDeclOfType<FileModuleASTDecl>();
           parent != moduleDecl) {
         continue;
       }

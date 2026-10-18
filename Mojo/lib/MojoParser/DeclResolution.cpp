@@ -1729,8 +1729,7 @@ emitClosureInstance(ArrayRef<Capture> captures, DefASTDecl &nestedFnDecl,
   assert(nestedFnDecl.getParentDecl() &&
          "closure instance must have a parent function");
 
-  auto *moduleDecl = cast<FileModuleASTDecl>(
-      nestedFnDecl.getNearestDeclOfType<FileModuleOp>());
+  auto *moduleDecl = nestedFnDecl.getNearestDeclOfType<FileModuleASTDecl>();
   auto [capturedRefs, _] =
       DeclResolver::createSelfContainedSignature(closureSig);
 
@@ -1880,7 +1879,7 @@ static FnTypeGeneratorType
 finalizeResolvedFnOp(SharedState &shared, FnOp funcOp, ASTDecl &decl,
                      TypeCheckedFnSignature &tcSignature,
                      TypeCheckedParamList &paramList, StringAttr baseName) {
-  OpBuilder builder = decl.getDeclEndBuilder();
+  OpBuilder builder = cast<OpASTDecl>(decl).getDeclEndBuilder();
   NamedAttrList attrs = funcOp->getAttrDictionary();
 
   FnTypeGeneratorType signature = tcSignature.getFnTypeGeneratorType();
@@ -1968,7 +1967,7 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
     }
     // Anchor the synthetic def at the nearest enclosing decl op (a `def`,
     // struct, alias, ...) -- the param-list scope isn't an op, so walk up.
-    ASTDecl *anchor = parentScope.getNearestDeclOfType<ASTDeclInterface>();
+    OpASTDecl *anchor = parentScope.getNearestDeclOfType<OpASTDecl>();
     if (!anchor) {
       emitter.emitErrorForDynamicValueInParameter(
           node, "cannot use a lambda expression");

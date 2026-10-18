@@ -27,6 +27,7 @@
 #include "Support/DebugInfoDialect/IR/DIBuilder.h"
 
 namespace M::KGEN::LIT {
+class OpASTDecl;
 class TraitASTDecl;
 
 // Naming schemes used for emitting closure related-struct.
@@ -66,14 +67,14 @@ public:
                         ArrayRef<CaptureConvention> captureConventions,
                         ArrayRef<Type> selfBoundFieldTypes, Location location);
 
-  /// Promote a closure decl into `targetParent`. nullptr → nearest FileModuleOp
-  /// (thin/stateless promotions).
+  /// Promote a closure decl into `targetParent`. nullptr → nearest
+  /// FileModuleASTDecl (thin/stateless promotions).
   PromotedClosure
   promoteClosure(DefASTDecl &nestedFnDecl,
                  ArrayRef<ParamDeclAttr> prependedParams = {},
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,
                  TriBool capturingOverride = TriBool::unknown(),
-                 ASTDecl *targetParent = nullptr);
+                 OpASTDecl *targetParent = nullptr);
 
   /// Adapter overload for callsites that currently hold ParamDeclRefAttr.
   PromotedClosure
@@ -81,7 +82,7 @@ public:
                  ArrayRef<ParamDeclRefAttr> prependedParamRefs,
                  std::optional<PromotedClosureSelfArg> selfArg = std::nullopt,
                  TriBool capturingOverride = TriBool::unknown(),
-                 ASTDecl *targetParent = nullptr);
+                 OpASTDecl *targetParent = nullptr);
 
   Value emitClosure(ModuleASTDecl &moduleDecl, DefASTDecl &nestedFnDecl,
                     ArrayRef<Capture> captures, Location location,

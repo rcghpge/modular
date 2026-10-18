@@ -431,8 +431,8 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
   llvm::SmallPtrSet<ASTDecl *, 4> uniqueExtensions;
 
   // Search for extensions in the struct's file scope
-  if (ASTDecl *structFileScope =
-          structDecl.getNearestDeclOfType<FileModuleOp>()) {
+  if (FileModuleASTDecl *structFileScope =
+          structDecl.getNearestDeclOfType<FileModuleASTDecl>()) {
     structFileScope->findExtensionsInScopeForStruct(structDecl.getSymbolRef(),
                                                     uniqueExtensions, parent);
   }
@@ -440,8 +440,8 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
   // Search for extensions in the trait's file scope
   auto &traitDecl = cast<TraitASTDecl>(
       shared.declResolver->getDeclForTypeSymbol(parent.getSymbol()));
-  if (ASTDecl *traitFileScope =
-          traitDecl.getNearestDeclOfType<FileModuleOp>()) {
+  if (FileModuleASTDecl *traitFileScope =
+          traitDecl.getNearestDeclOfType<FileModuleASTDecl>()) {
     traitFileScope->findExtensionsInScopeForStruct(structDecl.getSymbolRef(),
                                                    uniqueExtensions, parent);
   }
