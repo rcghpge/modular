@@ -89,12 +89,13 @@ trait PluginHooks:
     ]: OptionalReg[_UnaryMathPluginHookFnType] = None
     """Elementwise override for the `std.math` function called `name`.
 
-    Consulted by `exp`, `exp2`, `sqrt`, `rsqrt`, `sin`, `cos`, and `tanh`
-    for floating-point inputs, before the stdlib converts the input to another
-    `dtype`, so the hook sees the caller's `dtype`. Returning `None` for a
-    `name`, `dtype`, and `width` keeps the stdlib's own lowering for that
-    case. The hook is not called when the function is evaluated at compile
-    time, because the compile-time interpreter cannot run backend intrinsics.
+    Consulted by `exp`, `exp2`, `log`, `log2`, `sqrt`, `rsqrt`, `recip`,
+    `sin`, `cos`, and `tanh` for floating-point inputs, before the stdlib
+    converts the input to another `dtype`, so the hook sees the caller's
+    `dtype`. Returning `None` for a `name`, `dtype`, and `width` keeps the
+    stdlib's own lowering for that case. The hook is not called when the
+    function is evaluated at compile time, because the compile-time
+    interpreter cannot run backend intrinsics.
 
     Parameters:
         name: The `std.math` function being lowered, such as `"sqrt"`.

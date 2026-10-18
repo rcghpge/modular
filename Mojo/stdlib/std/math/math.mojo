@@ -22,7 +22,6 @@ from std.math import floor
 from std.sys import (
     CompilationTarget,
     bit_width_of,
-    is_amd_gpu,
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
@@ -31,7 +30,7 @@ from std.sys import (
 )
 from std.sys._assembly import inlined_assembly
 from std.ffi import _external_call_const
-from std.sys.info import _is_sm_9x_or_newer, is_32bit
+from std.sys.info import is_32bit
 
 from std.algorithm import vectorize
 from std.bit import count_leading_zeros, count_trailing_zeros
@@ -196,15 +195,6 @@ def _sqrt_int(x: Int) -> Int:
     return r
 
 
-@inline(.always)
-def _sqrt_nvvm(x: SIMD, out res: type_of(x)):
-    comptime assert x.dtype == .float32, "must be DType.float32"
-    res = {}
-
-    comptime for i in range(x.length):
-        res[i] = _llvm_unary_fn["llvm.nvvm.sqrt.approx.ftz.f"](x[i])
-
-
 comptime _UnaryMathPluginHookFnType = def[dtype: DType, width: SIMDLength, //](
     SIMD[dtype, width]
 ) thin -> SIMD[dtype, width]
@@ -252,36 +242,12 @@ def sqrt[
     comptime if hook:
         return comptime (hook.value())(x)
 
-    comptime if is_nvidia_gpu():
-        comptime if dtype in (DType.float16, DType.bfloat16):
-            return _sqrt_nvvm(x.cast[.float32]()).cast[dtype]()
-        comptime if dtype == .float64:
-            # NVIDIA has no approximate f64 sqrt (`sqrt.approx.d` does not
-            # exist); use the IEEE correctly-rounded hardware sqrt via the
-            # generic intrinsic, which lowers to `sqrt.rn.f64`.
-            return _llvm_unary_fn["llvm.sqrt"](x)
-        return _sqrt_nvvm(x)
-
     return _llvm_unary_fn["llvm.sqrt"](x)
 
 
 # ===----------------------------------------------------------------------=== #
 # rsqrt
 # ===----------------------------------------------------------------------=== #
-
-
-@inline(.always)
-def _rsqrt_nvvm(x: SIMD, out res: type_of(x)):
-    comptime assert x.dtype in (
-        DType.float32,
-        DType.float64,
-    ), "must be f32 or f64 type"
-
-    comptime instruction = "llvm.nvvm.rsqrt.approx.ftz.f" if x.dtype == .float32 else "llvm.nvvm.rsqrt.approx.d"
-    res = {}
-
-    comptime for i in range(x.length):
-        res[i] = _llvm_unary_fn[instruction](x[i])
 
 
 @inline(.always)
@@ -311,39 +277,12 @@ def rsqrt[
     comptime if hook:
         return comptime (hook.value())(x)
 
-    comptime if is_nvidia_gpu():
-        comptime if dtype in (DType.float16, DType.bfloat16):
-            return _rsqrt_nvvm(x.cast[.float32]()).cast[dtype]()
-
-        return _rsqrt_nvvm(x)
-    elif is_amd_gpu():
-        comptime if dtype in (DType.float16, DType.float32, DType.float64):
-            return _call_amdgcn_intrinsic[
-                String("llvm.amdgcn.rsq.", _get_amdgcn_type_suffix[dtype]())
-            ](x)
-
-        return rsqrt(x.cast[.float32]()).cast[dtype]()
-
     return 1.0 / sqrt(x)
 
 
 # ===----------------------------------------------------------------------=== #
 # recip
 # ===----------------------------------------------------------------------=== #
-
-
-@inline(.always)
-def _recip_nvvm(x: SIMD, out res: type_of(x)):
-    comptime assert x.dtype in (
-        DType.float32,
-        DType.float64,
-    ), "must be f32 or f64 type"
-
-    comptime instruction = "llvm.nvvm.rcp.approx.ftz.f" if x.dtype == .float32 else "llvm.nvvm.rcp.approx.ftz.d"
-    res = {}
-
-    comptime for i in range(x.length):
-        res[i] = _llvm_unary_fn[instruction](x[i])
 
 
 @inline(.always)
@@ -369,18 +308,9 @@ def recip[
     if __is_run_in_comptime_interpreter:
         return 1.0 / x
 
-    comptime if is_nvidia_gpu():
-        comptime if dtype in (DType.float16, DType.bfloat16):
-            return _recip_nvvm(x.cast[.float32]()).cast[dtype]()
-
-        return _recip_nvvm(x)
-    elif is_amd_gpu():
-        comptime if dtype in (DType.float16, DType.float32, DType.float64):
-            return _call_amdgcn_intrinsic[
-                String("llvm.amdgcn.rcp.", _get_amdgcn_type_suffix[dtype]())
-            ](x)
-
-        return recip(x.cast[.float32]()).cast[dtype]()
+    comptime hook = CurrentPlugin.unary_math_fn["recip", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
 
     return 1.0 / x
 
@@ -415,36 +345,6 @@ def exp2[
     comptime hook = CurrentPlugin.unary_math_fn["exp2", dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
-
-    comptime if is_nvidia_gpu():
-        comptime if dtype == .float16:
-            comptime if _is_sm_9x_or_newer():
-                return _call_ptx_intrinsic[
-                    scalar_instruction="ex2.approx.f16",
-                    vector2_instruction="ex2.approx.f16x2",
-                    scalar_constraints="=h,h",
-                    vector_constraints="=r,r",
-                ](x)
-            else:
-                return _call_ptx_intrinsic[
-                    instruction="ex2.approx.f16", constraints="=h,h"
-                ](x)
-        elif dtype == .bfloat16 and _is_sm_9x_or_newer():
-            return _call_ptx_intrinsic[
-                scalar_instruction="ex2.approx.ftz.bf16",
-                vector2_instruction="ex2.approx.ftz.bf16x2",
-                scalar_constraints="=h,h",
-                vector_constraints="=r,r",
-            ](x)
-        elif dtype == .float32:
-            return _call_ptx_intrinsic[
-                instruction="ex2.approx.ftz.f32", constraints="=f,f"
-            ](x)
-
-    comptime if is_amd_gpu() and dtype in (DType.float16, DType.float32):
-        return _call_amdgcn_intrinsic[
-            String("llvm.amdgcn.exp2.", _get_amdgcn_type_suffix[dtype]())
-        ](x)
 
     return _exp2_impl(x)
 
@@ -1009,6 +909,11 @@ def log[
 
     _assert_float64_supported[dtype, "log"]()
 
+    if not __is_run_in_comptime_interpreter:
+        comptime hook = CurrentPlugin.unary_math_fn["log", dtype, width]
+        comptime if hook:
+            return comptime (hook.value())(x)
+
     comptime if dtype == .float64:
         var r = _log_accurate(x)
         r = x.eq(inf[dtype]()).select(x, r)
@@ -1030,10 +935,6 @@ def log[
         return _is_zero_bits(x).select(
             -inf[dtype](), positive.select(r, nan[dtype]())
         )
-
-    comptime if is_nvidia_gpu() and dtype == .float32:
-        comptime ln2 = 0.69314718055966295651160180568695068359375
-        return ln2 * log2(x)
 
     return _log_base[27](x)
 
@@ -1066,15 +967,11 @@ def log2[
 
         return _log_base[2](x)
 
-    comptime if is_nvidia_gpu() and dtype == .float32:
-        return _call_ptx_intrinsic[
-            instruction="lg2.approx.ftz.f32", constraints="=f,f"
-        ](x)
-    elif is_amd_gpu() and dtype in (DType.float32, DType.float16):
-        return _call_amdgcn_intrinsic[
-            String("llvm.amdgcn.log.", _get_amdgcn_type_suffix[dtype]())
-        ](x)
-    elif size_of[dtype]() < size_of[DType.float32]():
+    comptime hook = CurrentPlugin.unary_math_fn["log2", dtype, width]
+    comptime if hook:
+        return comptime (hook.value())(x)
+
+    comptime if size_of[dtype]() < size_of[DType.float32]():
         return log2(x.cast[.float32]()).cast[dtype]()
 
     return _log_base[2](x)
@@ -1209,35 +1106,6 @@ def tanh[
     comptime hook = CurrentPlugin.unary_math_fn["tanh", dtype, width]
     comptime if hook:
         return comptime (hook.value())(x)
-
-    comptime if is_nvidia_gpu():
-        comptime instruction = "tanh.approx.f32"
-
-        comptime if dtype == .float16:
-            return _call_ptx_intrinsic[
-                scalar_instruction="tanh.approx.f16",
-                vector2_instruction="tanh.approx.f16x2",
-                scalar_constraints="=h,h",
-                vector_constraints="=r,r",
-            ](x)
-
-        elif dtype == .bfloat16:
-            comptime if _is_sm_9x_or_newer():
-                return _call_ptx_intrinsic[
-                    scalar_instruction="tanh.approx.bf16",
-                    vector2_instruction="tanh.approx.bf16x2",
-                    scalar_constraints="=h,h",
-                    vector_constraints="=r,r",
-                ](x)
-            else:
-                return _call_ptx_intrinsic[
-                    instruction="tanh.approx.f32", constraints="=f,f"
-                ](x.cast[.float32]()).cast[dtype]()
-
-        elif dtype == .float32:
-            return _call_ptx_intrinsic[
-                instruction="tanh.approx.f32", constraints="=f,f"
-            ](x)
 
     return _tanh_impl(x)
 
@@ -1971,15 +1839,7 @@ def cos[
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return cos(x.cast[.float32]()).cast[dtype]()
 
-    comptime if is_nvidia_gpu() and dtype == .float32:
-        return _call_ptx_intrinsic[
-            instruction="cos.approx.ftz.f32", constraints="=f,f"
-        ](x)
-    else:
-        comptime assert (
-            not is_nvidia_gpu() or dtype != .float64
-        ), "DType.float64 is not supported for cos on NVIDIA GPU"
-        return _llvm_unary_fn["llvm.cos"](x)
+    return _llvm_unary_fn["llvm.cos"](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -2016,15 +1876,7 @@ def sin[
     comptime if size_of[dtype]() < size_of[DType.float32]():
         return sin(x.cast[.float32]()).cast[dtype]()
 
-    comptime if is_nvidia_gpu() and dtype == .float32:
-        return _call_ptx_intrinsic[
-            instruction="sin.approx.ftz.f32", constraints="=f,f"
-        ](x)
-    else:
-        comptime assert (
-            not is_nvidia_gpu() or dtype != .float64
-        ), "DType.float64 is not supported for sin on NVIDIA GPU"
-        return _llvm_unary_fn["llvm.sin"](x)
+    return _llvm_unary_fn["llvm.sin"](x)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -3309,27 +3161,6 @@ def _call_ptx_intrinsic[
         )
 
     return res
-
-
-@inline(.always)
-def _call_amdgcn_intrinsic[intrin: StaticString](x: SIMD, out res: type_of(x)):
-    res = {}
-
-    comptime for i in range(x.length):
-        res[i] = _llvm_unary_fn[intrin](x[i])
-
-
-@inline(.always)
-def _get_amdgcn_type_suffix[dtype: DType]() -> StaticString:
-    comptime match dtype:
-        case .float16:
-            return "f16"
-        case .float32:
-            return "f32"
-        case .float64:
-            return "f64"
-        case _:
-            comptime assert False, "Extend to support additional dtypes."
 
 
 # ===----------------------------------------------------------------------=== #

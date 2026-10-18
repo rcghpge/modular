@@ -35,6 +35,23 @@ comptime _host_target = CompilationTarget[
 ]()
 
 
+def test_gpu_plugin_hooks() raises:
+    comptime cuda = _h100_target.stdlib_plugin
+    comptime hip = _mi300x_target.stdlib_plugin
+
+    comptime assert cuda.unary_math_fn["sqrt", DType.float32, 4]
+    comptime assert not cuda.unary_math_fn["sqrt", DType.float64, 1]
+    comptime assert cuda.unary_math_fn["log", DType.float32, 1]
+    comptime assert not cuda.unary_math_fn["log", DType.float16, 1]
+    comptime assert not CUDAPluginHooks[_a100_target].unary_math_fn[
+        "exp2", DType.bfloat16, 1
+    ]
+    comptime assert cuda.unary_math_fn["exp2", DType.bfloat16, 2]
+    comptime assert hip.unary_math_fn["rsqrt", DType.bfloat16, 1]
+    comptime assert not hip.unary_math_fn["sqrt", DType.float32, 1]
+    comptime assert not hip.unary_math_fn["log2", DType.float64, 1]
+
+
 def test_payload_plugin_selection() raises:
     # fmt: off
     comptime assert _host_target.stdlib_plugin == DefaultPluginHooks[_host_target]

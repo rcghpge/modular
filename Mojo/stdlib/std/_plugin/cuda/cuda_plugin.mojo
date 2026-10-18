@@ -11,20 +11,30 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._plugin._trait import PluginHooks, StdPlugin
+from std._plugin._trait import (
+    PluginHooks,
+    StdPlugin,
+    _UnaryMathPluginHookFnType,
+)
+from std.collections import OptionalReg
 from std.sys.info import CompilationTarget
 from std.collections.string.string_span import _get_kgen_string
 
+from .cuda_math import _has_nvptx_op, _nvptx_unary_math
+
 
 struct CUDAPlugin(StdPlugin):
-    """`PluginHooks` implementation for NVIDIA CUDA backends.
-
-    Every hook is left at its `PluginHooks` default.
-    """
+    """`PluginHooks` implementation for NVIDIA CUDA backends."""
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["cuda"]()
     comptime HookFor[target: CompilationTarget] = CUDAPluginHooks[target]
 
 
 struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
-    pass
+    comptime unary_math_fn[
+        name: StaticString, dtype: DType, width: Int
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = (
+        _nvptx_unary_math[name=name] if _has_nvptx_op[
+            name, dtype, Self.target
+        ]() else None
+    )

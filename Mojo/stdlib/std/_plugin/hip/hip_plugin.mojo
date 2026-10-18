@@ -11,20 +11,28 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._plugin._trait import PluginHooks, StdPlugin
+from std._plugin._trait import (
+    PluginHooks,
+    StdPlugin,
+    _UnaryMathPluginHookFnType,
+)
+from std.collections import OptionalReg
 from std.sys.info import CompilationTarget
 from std.collections.string.string_span import _get_kgen_string
 
+from .hip_math import _amdgcn_unary_math, _has_amdgcn_op
+
 
 struct HIPPlugin(StdPlugin):
-    """`PluginHooks` implementation for AMD HIP backends.
-
-    Every hook is left at its `PluginHooks` default.
-    """
+    """`PluginHooks` implementation for AMD HIP backends."""
 
     comptime name: __mlir_type.`!kgen.string` = _get_kgen_string["hip"]()
     comptime HookFor[target: CompilationTarget] = HIPPluginHooks[target]
 
 
 struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
-    pass
+    comptime unary_math_fn[
+        name: StaticString, dtype: DType, width: Int
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = (
+        _amdgcn_unary_math[name=name] if _has_amdgcn_op[name, dtype]() else None
+    )
