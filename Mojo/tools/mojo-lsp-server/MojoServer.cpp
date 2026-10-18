@@ -1380,6 +1380,24 @@ void MojoDocument::getDocumentSymbols(
   });
 }
 
+static std::string getVariableTypeForDocumentSymbol(VarASTDecl &decl) {
+  ASTType type = decl.getToolingType().getReferenceElementType();
+  return type.getAsString(ASTTypePrinterContext(&decl.getShared()));
+}
+
+static std::string
+getStructFieldTypeForDocumentSymbol(StructFieldASTDecl &decl) {
+  std::string type;
+  llvm::raw_string_ostream os(type);
+  ASTType(decl.getOp().getType()).print(os, /*ctx=*/{&decl.getShared()});
+  return type;
+}
+
+static bool isGlobalVariableDecl(const VarASTDecl &decl) {
+  return isa_and_nonnull<FileModuleASTDecl, PackageASTDecl, StructASTDecl>(
+      decl.getParentDecl());
+}
+
 void MojoDocument::getDocumentSymbols(
     ASTDecl *decl, std::vector<lsp::DocumentSymbol> &symbols,
     function_ref<bool(ASTDecl *)> shouldIncludeDecl) {
@@ -1396,9 +1414,16 @@ void MojoDocument::getDocumentSymbols(
   // Check for symbol information for this decl.
   auto *symbol = context->symbolIndex.findSymbol(decl);
   if (symbol && symbol->range.isValid()) {
-    if (std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(decl)) {
-      lsp::Range range(getSourceMgr(), symbol->range);
-
+    lsp::Range range(getSourceMgr(), symbol->range);
+    if (auto *field = dyn_cast<StructFieldASTDecl>(decl)) {
+      addSymbol(field->getName().value_or(StringRef{}), lsp::SymbolKind::Field,
+                range, getStructFieldTypeForDocumentSymbol(*field));
+    } else if (auto *var = dyn_cast<VarASTDecl>(decl)) {
+      if (isGlobalVariableDecl(*var))
+        addSymbol(var->getName().value_or(StringRef{}),
+                  lsp::SymbolKind::Variable, range,
+                  getVariableTypeForDocumentSymbol(*var));
+    } else if (std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(decl)) {
       TypeSwitch<PublicDecl *>(publicDecl.get())
           .Case([&](PublicAliasDecl *alias) {
             // We only consider global aliases here, we don't want to show every
@@ -1417,21 +1442,8 @@ void MojoDocument::getDocumentSymbols(
             addSymbol(structDecl->getName(), lsp::SymbolKind::Struct, range,
                       structDecl->getSignature(*context->parserContext));
           })
-          .Case([&](PublicStructFieldDecl *field) {
-            addSymbol(field->getName(), lsp::SymbolKind::Field, range,
-                      field->getType().str());
-          })
           .Case([&](PublicTraitDecl *traitDecl) {
             addSymbol(traitDecl->getName(), lsp::SymbolKind::Interface, range);
-          })
-          .Case([&](PublicVariableDecl *var) {
-            // We only consider global variables here, we don't want to show
-            // every conceivable decl.
-            if (!var->isGlobal())
-              return;
-
-            addSymbol(var->getName(), lsp::SymbolKind::Variable, range,
-                      var->getType().str());
           });
     }
   }
@@ -1921,12 +1933,8 @@ static bool isLocalVariable(const Symbol &symbol) {
   if (symbol.approximateViewKind != PublicDeclKind::DK_PublicVariableDecl)
     return false;
 
-  std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(symbol.decl);
-  if (const auto *varPublicDecl =
-          dyn_cast<PublicVariableDecl>(publicDecl.get()))
-    return !varPublicDecl->isGlobal();
-
-  return false;
+  auto *varDecl = dyn_cast<VarASTDecl>(symbol.decl);
+  return varDecl && !isGlobalVariableDecl(*varDecl);
 }
 
 ErrorOr<std::vector<llvm::lsp::TextEdit>>

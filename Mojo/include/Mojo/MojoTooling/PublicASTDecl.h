@@ -121,9 +121,7 @@ public:
   virtual ~PublicDecl() = default;
 
   /// Generate a correct piece of code that summarizes this decl.
-  virtual std::string getDeclarationSnippet(MojoParserContext &ctx) const {
-    return {};
-  }
+  virtual std::string getDeclarationSnippet(MojoParserContext &ctx) const;
 
   /// Get the name of the decl. It might be empty.
   StringRef getName() const { return name; }
@@ -165,52 +163,6 @@ private:
   PublicDeclKind kind;
   ASTDecl *decl;
   StringRef name;
-};
-
-/// Decl for `var`.
-class PublicVariableDecl : public PublicDecl {
-public:
-  VarASTDecl &getASTDecl() const;
-
-  /// Get the type string of this variable
-  StringRef getType() const { return type; }
-
-  /// Return if this variable is global.
-  bool isGlobal() const { return isGlobalVariable; }
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  ///  {
-  ///    "kind": "variable",
-  ///    "name": string,
-  ///    "type": string,
-  ///    "path": string
-  ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicVariableDecl;
-  }
-
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicVariableDecl(ASTDecl *decl);
-
-  std::string type;
-  TypeMetadata typeMetadata;
-  bool isGlobalVariable;
-  StringRef deprecated;
 };
 
 /// Decl for parameters of structs or functions.
@@ -580,51 +532,6 @@ private:
   std::string summary;
 };
 
-/// Decl for struct field.
-class PublicStructFieldDecl : public PublicDecl {
-public:
-  StructFieldASTDecl &getASTDecl() const;
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  std::string getMarkdownDocString() const override;
-
-  /// Return the type of this field.
-  StringRef getType() const { return type; }
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  /// {
-  ///   "kind": "field",
-  ///   "name": string,
-  ///   "description": string,
-  ///   "summary": string,
-  ///   "type": string
-  /// }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicStructFieldDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicStructFieldDecl(ASTDecl *decl);
-
-  std::string type;
-  std::string value;
-};
-
 /// A collection of overloaded functions in the same scope.
 class FunctionDeclOverloadSet {
 public:
@@ -743,7 +650,7 @@ public:
   ///     // such as `Writable where conforms_to(T, Writable)`.
   ///     "condition"?: string
   ///   }[],
-  ///   "fields": PublicStructFieldDecl[],
+  ///   "fields": PublicDecl[],
   ///   "signature": string,
   ///   "summary": string
   /// }
@@ -801,9 +708,7 @@ using KGEN::LIT::PublicDeclKind;
 using KGEN::LIT::PublicFunctionDecl;
 using KGEN::LIT::PublicParameterDecl;
 using KGEN::LIT::PublicStructDecl;
-using KGEN::LIT::PublicStructFieldDecl;
 using KGEN::LIT::PublicTraitDecl;
-using KGEN::LIT::PublicVariableDecl;
 using KGEN::LIT::StableInfo;
 } // namespace M
 
