@@ -64,6 +64,7 @@ from ..model_config import (
     DeepseekV41Config,
     nvfp4_sf_preinterleaved,
 )
+from .ragged import ReplicaTokens
 
 # One E4M3 scale per 16 K-elements (``quantization_config.group_size``).
 NVFP4_BLOCK = 16
@@ -687,6 +688,61 @@ class DeepseekV41MoE(Module):
             )
             for moe, x, y in zip(moes, xs, reduced, strict=True)
         ]
+
+    @staticmethod
+    def data_parallel(
+        moes: Sequence[ExpertParallelFFN],
+        xs: Sequence[TensorValue],
+        token_ids: Sequence[TensorValue],
+        replica_tokens: ReplicaTokens,
+        signal_buffers: Sequence[BufferValue],
+    ) -> list[TensorValue]:
+        """Runs the MoE expert-parallel over data-parallel devices.
+
+        Each device holds only its own rows. They are all-gathered into the
+        whole batch, which then runs as in :meth:`tensor_parallel`: each
+        device's routed share over every row, all-reduced in float32. Each
+        device keeps its own rows and adds its replicated shared expert.
+
+        Args:
+            moes: One replica per device.
+            xs: Per device, its own ``[1, t_i, hidden]`` rows.
+            token_ids: Per device, the whole batch's ``[1, T]`` token ids.
+            replica_tokens: Where each device's rows sit in the batch.
+            signal_buffers: The collectives' signal buffers.
+
+        Returns:
+            One ``[1, t_i, hidden]`` output per device, in ``x``'s dtype.
+        """
+        hidden = int(xs[0].shape[-1])
+        total = replica_tokens.total
+        gathered = ops.allgather(
+            [ops.reshape(x, [-1, hidden]) for x in xs], signal_buffers, axis=0
+        )
+        partials = [
+            moe.routed(
+                ops.reshape(ops.rebind(g, [total, hidden]), [1, total, hidden]),
+                tok,
+            )
+            for moe, g, tok in zip(moes, gathered, token_ids, strict=True)
+        ]
+        reduced = ops.allreduce.sum(partials, signal_buffers)
+        outs = []
+        for moe, x, y, (start, stop) in zip(
+            moes, xs, reduced, replica_tokens.ranges, strict=True
+        ):
+            rows = ops.slice_tensor(
+                ops.reshape(y, [total, hidden]),
+                [(slice(start, stop), x.shape[1]), slice(None)],
+            )
+            local = ops.reshape(rows, x.shape)
+            outs.append(
+                ops.cast(
+                    local + ops.cast(moe.shared_experts(x), DType.float32),
+                    x.dtype,
+                )
+            )
+        return outs
 
     def __call__(self, x: TensorValue, token_ids: TensorValue) -> TensorValue:
         """``[1, s, hidden]``, ``[1, s]`` token ids -> ``[1, s, hidden]``."""

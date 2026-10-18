@@ -81,6 +81,7 @@ from max.pipelines.lib.interfaces.batch_processor import (
     BatchProcessor,
     SingleReplicaRaggedBatchProcessor,
     build_single_replica_ragged_token_arrays,
+    ragged_batch_inputs,
     ragged_kv_symbolic_inputs,
     single_replica_context_batch,
 )
@@ -88,6 +89,7 @@ from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.lib.utils import (
     CompilationTimer,
+    compute_data_parallel_splits,
     parse_state_dict_from_weights,
 )
 from max.pipelines.lib.vision_batching import create_empty_image_embeddings
@@ -523,14 +525,17 @@ def _engram_row_ranges(
 ) -> list[list[tuple[int, int]]]:
     """Per rank, per Engram layer, the ``(first row, rows)`` it reads.
 
-    One device reads the whole table. With several, each rank reads only the
-    rows of its own hash columns, so table traffic splits across ranks.
+    One device, or each data-parallel device, reads the whole table. Under
+    tensor parallelism each rank reads only the rows of its own hash columns,
+    so table traffic splits across ranks.
     """
     layout = EngramLayout.from_config(model_config)
     if layout is None:
         return [[] for _ in range(n_dev)]
-    if n_dev == 1:
-        return [[(0, rows) for rows in layout.num_embeddings]]
+    if n_dev == 1 or model_config.data_parallel_degree > 1:
+        return [
+            [(0, rows) for rows in layout.num_embeddings] for _ in range(n_dev)
+        ]
     assert token_map is not None
     lookup = EngramLookup(layout, token_map)
     return [
@@ -762,6 +767,15 @@ class DeepseekV41Inputs(ModelInputs):
     On device 0; ``None`` when the config has no Engram layers.
     """
 
+    host_input_row_offsets: Buffer | None = None
+    """CPU copy of :attr:`input_row_offsets`; only under data parallelism."""
+
+    data_parallel_splits: Buffer | None = None
+    """Int64 ``[replicas + 1]`` request boundaries of each replica, on CPU.
+
+    Only under data parallelism, where the batch is replica-major.
+    """
+
     engram_host_buffers: Sequence[Buffer] = ()
     """Pinned Engram tables, one (weight, scale) pair per device and layer.
 
@@ -778,11 +792,18 @@ class DeepseekV41Inputs(ModelInputs):
             if self.engram_lookback_ids is not None
             else ()
         )
+        data_parallel = (
+            (self.host_input_row_offsets, self.data_parallel_splits)
+            if self.host_input_row_offsets is not None
+            and self.data_parallel_splits is not None
+            else ()
+        )
         return (
             self.tokens,
             self.input_row_offsets,
             self.return_n_logits,
             *lookback,
+            *data_parallel,
             *self.signal_buffers,
             *tree.leaves(self.kv_cache_inputs),
             *self.vision_embeddings,
@@ -796,10 +817,13 @@ class DeepseekV41BatchProcessor(
         TextContext, DeepseekV41Inputs, DeepseekV41Config
     ]
 ):
-    """Batches requests into ragged inputs for a single model replica.
+    """Batches requests into ragged inputs for the model's replicas.
 
     Inputs follow the standard ragged KV order. With Engram layers,
     ``engram_lookback_ids`` is inserted right after ``return_n_logits``.
+    Under data parallelism the replicas' requests are staged replica-major
+    into one batch, and ``host_input_row_offsets`` and
+    ``data_parallel_splits`` follow (on CPU).
     """
 
     @property
@@ -822,17 +846,27 @@ class DeepseekV41BatchProcessor(
             include_signal_buffers=len(device_refs) > 1,
         )
         depth = self._engram_lookback_depth
+        # Right after `return_n_logits`; must match the order of
+        # `DeepseekV41Inputs.buffers`.
+        extra: list[TensorType] = []
         if depth:
-            # Right after `return_n_logits`; must match the order of
-            # `DeepseekV41Inputs.buffers`.
-            inputs.insert(
-                3,
+            extra.append(
                 TensorType(
                     DType.int64,
                     shape=["engram_lookback_batch", depth],
                     device=device_refs[0],
-                ),
+                )
             )
+        dp = self.config.data_parallel_degree
+        if dp > 1:
+            extra.extend(
+                ragged_batch_inputs(
+                    device_refs[0],
+                    ("host_row_offsets", "data_parallel_splits"),
+                    data_parallel_degree=dp,
+                ).values()
+            )
+        inputs[3:3] = extra
         return inputs
 
     def prepare_initial_token_inputs(
@@ -841,9 +875,19 @@ class DeepseekV41BatchProcessor(
         kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None,
         return_n_logits: int = 1,
     ) -> DeepseekV41Inputs:
-        context_batch = single_replica_context_batch(
-            replica_batches, processor_name=type(self).__qualname__
-        )
+        dp = self.config.data_parallel_degree
+        if dp > 1:
+            if len(replica_batches) != dp:
+                raise ValueError(
+                    f"expected {dp} replica batches, got {len(replica_batches)}"
+                )
+            context_batch = [ctx for batch in replica_batches for ctx in batch]
+        else:
+            context_batch = list(
+                single_replica_context_batch(
+                    replica_batches, processor_name=type(self).__qualname__
+                )
+            )
         tokens_np, offsets_np = build_single_replica_ragged_token_arrays(
             context_batch
         )
@@ -863,6 +907,14 @@ class DeepseekV41BatchProcessor(
             kv_cache_inputs=kv_cache_inputs,
             signal_buffers=list(self.runtime.signal_buffers),
             engram_lookback_ids=engram_lookback_ids,
+            host_input_row_offsets=(
+                Buffer.from_numpy(offsets_np) if dp > 1 else None
+            ),
+            data_parallel_splits=(
+                Buffer.from_numpy(compute_data_parallel_splits(replica_batches))
+                if dp > 1
+                else None
+            ),
         )
 
 
@@ -1247,11 +1299,18 @@ class DeepseekV41Model(
         with Graph("deepseekV41", input_types=input_types) as graph:
             all_inputs = list(graph.inputs)
             tokens, input_row_offsets, return_n_logits = all_inputs[:3]
-            # The Engram lookback window follows `return_n_logits`.
+            # The Engram lookback window follows `return_n_logits`, then the
+            # data-parallel host offsets and splits.
             n_leading = 4 if engram_layer_ids else 3
             engram_lookback_ids = (
                 all_inputs[3].tensor if engram_layer_ids else None
             )
+            data_parallel = model_config.data_parallel_degree > 1
+            if data_parallel:
+                host_row_offsets, data_parallel_splits = (
+                    v.tensor for v in all_inputs[n_leading : n_leading + 2]
+                )
+                n_leading += 2
             variadic_args = all_inputs[n_leading:-n_trailing]
             vision_inputs = all_inputs[-n_trailing:][: 2 * n_dev]
             engram_graph_inputs = all_inputs[-n_trailing:][2 * n_dev :]
@@ -1277,13 +1336,16 @@ class DeepseekV41Model(
                 strict=self._strict_state_dict_loading,
             )
             weights_registry = nn_model.state_dict(auto_initialize=False)
-            serving = (
-                [nn_model]
-                if n_dev == 1
-                else nn_model.tensor_parallel_replicas(
+            if n_dev == 1:
+                serving = [nn_model]
+            elif data_parallel:
+                serving = nn_model.data_parallel_replicas(
                     self.device_refs, per_device_tables
                 )
-            )
+            else:
+                serving = nn_model.tensor_parallel_replicas(
+                    self.device_refs, per_device_tables
+                )
             expert_uploads = _make_routed_experts_device_resident(
                 nn_model,
                 serving,
@@ -1329,16 +1391,30 @@ class DeepseekV41Model(
                     if engram_lookback_ids is not None
                     else None
                 )
-                outputs = DeepseekV41.serve_tensor_parallel(
-                    serving,
-                    tokens_per_dev,
-                    offsets_per_dev,
-                    return_n_logits.tensor,
-                    caches,
-                    signal_buffers,
-                    engram_lookback_ids=lookback_per_dev,
-                    visions=visions,
-                )
+                if data_parallel:
+                    outputs = DeepseekV41.serve_data_parallel(
+                        serving,
+                        tokens_per_dev,
+                        offsets_per_dev,
+                        host_row_offsets,
+                        data_parallel_splits,
+                        return_n_logits.tensor,
+                        caches,
+                        signal_buffers,
+                        engram_lookback_ids=lookback_per_dev,
+                        visions=visions,
+                    )
+                else:
+                    outputs = DeepseekV41.serve_tensor_parallel(
+                        serving,
+                        tokens_per_dev,
+                        offsets_per_dev,
+                        return_n_logits.tensor,
+                        caches,
+                        signal_buffers,
+                        engram_lookback_ids=lookback_per_dev,
+                        visions=visions,
+                    )
             graph.output(*outputs)
         if expert_uploads:
             self._defer_weight_load(

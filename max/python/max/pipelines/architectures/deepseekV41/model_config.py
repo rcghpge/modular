@@ -456,6 +456,13 @@ class DeepseekV41Config(ArchConfigWithKVCache):
             DeviceRef(spec.device_type, spec.id)
             for spec in model_config.device_specs
         ]
+        if model_config.data_parallel_degree not in (1, len(device_refs)):
+            raise ValueError(
+                "DeepSeek-V4.1 supports data_parallel_degree 1 (tensor-"
+                "parallel attention) or the device count (data-parallel "
+                f"attention), got {model_config.data_parallel_degree} for "
+                f"{len(device_refs)} devices"
+            )
         kv_params = cls.construct_kv_params(
             config,
             pipeline_config,

@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Tests that the shared memory estimator fits the TP2 plan on two B200s.
+"""Tests the planner's TP2 plan on two B200s and its DP4 sizing.
 
 The planner's weight and activation estimates feed the estimator's KV cache
 budget. Measured constants come from device memory traces on B200 GPUs.
@@ -262,3 +262,36 @@ def test_tp2_in_graph_interleave_layout_is_refused_at_plan_time() -> None:
             activation,
             _TP2_SIGNAL_BYTES,
         )
+
+
+def test_dp4_splits_only_the_routed_experts() -> None:
+    """Under DP4 each device holds attention and Engram whole and a quarter
+    of the routed experts."""
+    experts = [
+        t
+        for t in _REAL_CHECKPOINT
+        if t.name.startswith("layers.") and ".ffn.experts." in t.name
+    ]
+    whole, _ = device_weight_bytes(_REAL_CHECKPOINT, 1, layout=_DEFAULT_LAYOUT)
+    expert_bytes, _ = device_weight_bytes(experts, 1, layout=_DEFAULT_LAYOUT)
+    dp4, _ = device_weight_bytes(
+        _REAL_CHECKPOINT, 4, layout=_DEFAULT_LAYOUT, data_parallel=True
+    )
+    assert abs(dp4 - (whole - expert_bytes * 3 / 4)) <= 1
+
+
+def _dp4_activation(data_parallel_degree: int) -> int:
+    config = _pipeline_config(
+        max_length=40000, max_num_input_tokens=8192, num_devices=4
+    )
+    config.model.data_parallel_degree = data_parallel_degree
+    return _planner().estimate_activation_memory(
+        config, _real_huggingface_config()
+    )
+
+
+def test_dp4_reserves_the_other_replicas_moe_rows() -> None:
+    """Each DP4 device also reserves the MoE's rows of the other three
+    replicas: 256 KiB for each of their 8192 rows."""
+    extra = (_dp4_activation(4) - _dp4_activation(1)) // 4
+    assert extra == 3 * 8192 * (256 << 10)

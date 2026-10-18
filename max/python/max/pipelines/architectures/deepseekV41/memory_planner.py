@@ -60,6 +60,10 @@ logger = logging.getLogger("max.pipelines")
 # a row-independent part. It barely depends on the tensor-parallel degree
 # (MoE intermediates are ``T * top_k`` rows on every rank).
 _ARENA_ROW_BYTES = 2 << 20
+# Upper bound on the MoE's transient bytes per row (gathered input, routed
+# top-k intermediates, float32 partial sum), for the other replicas' rows a
+# data-parallel device also runs the MoE on.
+_MOE_ROW_BYTES = 256 << 10
 _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
 # The indexer kernel scores query rows in windows that fit this transient
 # budget, whatever the batch or context length.
@@ -147,6 +151,8 @@ _HOST_RESIDENT_MARKER = ".engram.embed."
 # experts (expert parallel), the head-sharded attention projections, and
 # Engram's column-parallel ``wkv`` (weight and scale). Everything else is
 # replicated, including ``wo_b`` and the indexer (held whole on each device).
+# Under data parallelism only the routed experts are split.
+_EXPERT_MARKER = ".ffn.experts."
 _SHARDED_MARKERS = (
     ".ffn.experts.",
     ".attn.wq_b.",
@@ -263,14 +269,18 @@ def device_weight_bytes(
     tensors: Iterable[CheckpointTensor],
     num_devices: int,
     layout: DeviceWeightLayout | None = None,
+    *,
+    data_parallel: bool = False,
 ) -> tuple[int, int]:
     """Returns per-device weight bytes, plus the bytes kept in host memory.
 
     Args:
         tensors: The checkpoint's tensors (:func:`read_safetensors_headers`).
-        num_devices: Devices the trunk is split across (TP = EP degree).
+        num_devices: Devices the trunk is split across (the EP degree).
         layout: The load-time switches; defaults to
             :meth:`DeviceWeightLayout.current`.
+        data_parallel: Whether attention runs data-parallel, so only the
+            routed experts split across devices.
 
     Returns:
         ``(per_device_bytes, host_bytes)``: what each device holds after
@@ -292,7 +302,8 @@ def device_weight_bytes(
             host += tensor.nbytes
             continue
         nbytes = tensor.nbytes * _device_bytes_factor(tensor, layout)
-        if any(marker in name for marker in _SHARDED_MARKERS):
+        markers = (_EXPERT_MARKER,) if data_parallel else _SHARDED_MARKERS
+        if any(marker in name for marker in markers):
             nbytes /= num_devices
         per_device += nbytes
     return ceil(per_device), host
@@ -400,7 +411,11 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             return model_config.weights_size()
         if not tensors:
             return model_config.weights_size()
-        per_device, host = device_weight_bytes(tensors, num_devices)
+        per_device, host = device_weight_bytes(
+            tensors,
+            num_devices,
+            data_parallel=int(model_config.data_parallel_degree) > 1,
+        )
         vision = (
             vision_weight_bytes(tensors)
             if max_images_per_request(pipeline_config) != 0
@@ -456,12 +471,16 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             max_length,
         )
         num_devices = max(1, len(pipeline_config.model.device_specs))
+        dp = int(pipeline_config.model.data_parallel_degree)
         blocks = candidate_blocks_per_row(text_config, max_length)
         arena = graph_arena_bytes(live_rows=live_rows)
         indexer = indexer_activation_bytes(
             live_rows=live_rows, candidate_blocks=blocks
         )
-        per_device = arena + indexer
+        # Each replica gets its own row budget; under data parallelism the
+        # MoE runs on every replica's rows at once.
+        moe_rows = _mm_pages((dp - 1) * live_rows * _MOE_ROW_BYTES)
+        per_device = arena + indexer + moe_rows
 
         logger.info(
             "Estimated DeepSeek-V4.1-Flash forward activation memory: %s per "

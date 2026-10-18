@@ -140,7 +140,9 @@ modular_py_test(
 )
 
 # Guards graph capture and replay input binding in
-# pipelines/lib/graph_capture.py (ServeGraphCaptureRunner).
+# pipelines/lib/graph_capture.py (ServeGraphCaptureRunner), and the
+# data-parallel splits from pipelines/lib/utils.py
+# (compute_data_parallel_splits) under UnifiedSpecDecodeBatchProcessor.
 modular_py_test(
     name = "test_serve_capture_inputs",
     srcs = ["test_serve_capture_inputs.py"],

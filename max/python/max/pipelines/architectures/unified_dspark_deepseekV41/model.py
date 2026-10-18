@@ -89,6 +89,9 @@ def driver_outputs(
         pinned_bitmask=inputs.pinned_bitmask,
         wait_payload=inputs.wait_payload,
         device_bitmask_scratch=inputs.device_bitmask_scratch,
+        host_input_row_offsets=inputs.host_input_row_offsets,
+        data_parallel_splits=inputs.data_parallel_splits,
+        batch_context_lengths=inputs.batch_context_lengths,
         extra=(
             {ENGRAM_LOOKBACK: inputs.trailing[0].tensor} if has_engram else {}
         ),

@@ -29,11 +29,13 @@ from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    DimLike,
     ShardingStrategy,
     TensorValue,
     Weight,
     ops,
 )
+from max.nn.data_parallelism import split_batch_replicated
 from max.nn.embedding import Embedding
 from max.nn.hyper_connection import HyperConnection
 from max.nn.layer import LayerList, Module
@@ -74,6 +76,7 @@ from .layers.moe import (
     DeepseekV41MoE,
     nvfp4_moe_ffn_factory,
 )
+from .layers.ragged import ReplicaTokens
 from .layers.ragged import V41RaggedRows as RaggedRows
 from .model_config import DeepseekV41Config, head_bf16_enabled
 
@@ -130,6 +133,37 @@ class VisionMerge:
 
     indices: TensorValue
     """``[n]`` int32 token row of each embedding; a negative one is skipped."""
+
+    def for_rows(
+        self, offsets: TensorValue, first: TensorValue, past: TensorValue
+    ) -> VisionMerge:
+        """Keeps the embeddings for the token rows of requests ``[first, past)``.
+
+        Their rows count from the first of those requests' rows; every other
+        row is skipped. ``offsets`` are the batch's ``[B + 1]`` row offsets on
+        the embeddings' device; ``first`` and ``past`` are int64 request
+        indices on CPU, so no host value is copied to the device.
+        """
+        device = self.indices.device
+        off = ops.cast(offsets, DType.int32)
+        start, stop = (
+            ops.rebind(
+                ops.slice_tensor(
+                    off, [(slice(i, i + 1), f"vision_row_bound_{name}")]
+                ),
+                [1],
+            )
+            for i, name in ((first, "start"), (past, "stop"))
+        )
+        inside = ops.logical_and(self.indices >= start, self.indices < stop)
+        return VisionMerge(
+            self.embeddings,
+            ops.where(
+                inside,
+                self.indices - start,
+                ops.constant(-1, DType.int32, device),
+            ),
+        )
 
 
 def merge_vision(x: TensorValue, vision: VisionMerge | None) -> TensorValue:
@@ -329,6 +363,38 @@ def _apply_engram(
     return ops.reshape(y, [b, s, hc_mult, hidden_size])
 
 
+@dataclass
+class ReplicaBatch:
+    """A replica-major batch cut into each data-parallel device's requests."""
+
+    tokens: list[TensorValue]
+    """Per device, its own ``[1, t_i]`` token ids."""
+    batch_tokens: list[TensorValue]
+    """Per device, the whole batch's ``[1, T]`` token ids."""
+    rows: list[RaggedRows]
+    """Per device, its own requests' bookkeeping."""
+    replica_tokens: ReplicaTokens
+    """Where each device's rows sit in the batch."""
+    lookbacks: list[TensorValue | None]
+    """Per device, its requests' Engram lookback rows, or ``None``."""
+
+
+def gather_rows(
+    xs: Sequence[TensorValue],
+    total: DimLike,
+    signal_buffers: Sequence[BufferValue],
+) -> TensorValue:
+    """Gathers each device's ``[1, t_i, d]`` rows into ``[T, d]`` on device 0.
+
+    Devices hold consecutive runs of the batch's rows, in device order.
+    """
+    hidden = int(xs[0].shape[-1])
+    gathered = ops.allgather(
+        [ops.reshape(x, [-1, hidden]) for x in xs], signal_buffers, axis=0
+    )
+    return ops.rebind(gathered[0], [total, hidden])
+
+
 class DeepseekV41Block(Module):
     """A decoder block: attention then FFN, each inside a hyper-connection.
 
@@ -450,8 +516,91 @@ class DeepseekV41Block(Module):
             _with_out(read, h)
             for h, (_, read) in zip(attended, attn_entered, strict=True)
         ]
-        return DeepseekV41Block._ffn_tensor_parallel(
-            blocks, streams, moes, token_ids, signal_buffers
+        return DeepseekV41Block._ffn_parallel(
+            blocks,
+            streams,
+            lambda normed: DeepseekV41MoE.tensor_parallel(
+                moes, normed, token_ids, signal_buffers
+            ),
+        ), [read.residual for _, read in attn_entered]
+
+    @staticmethod
+    def data_parallel(
+        blocks: Sequence[DeepseekV41Block],
+        streams: Sequence[HCStreams],
+        rows: Sequence[RaggedRows],
+        batch_token_ids: Sequence[TensorValue],
+        caches: Sequence[object],
+        signal_buffers: Sequence[BufferValue],
+        replica_tokens: ReplicaTokens,
+        *,
+        engram_operands: Sequence[EngramOperand] | None = None,
+        engram_token_masks: Sequence[TensorValue | None] | None = None,
+    ) -> tuple[list[HCStreams], list[TensorValue]]:
+        """Runs :meth:`__call__` with each device on its own requests.
+
+        Engram, attention (with its indexer) and both hyper-connections run
+        whole on each device, over its own rows, with no collective. The FFN
+        is expert-parallel over the whole batch
+        (:meth:`DeepseekV41MoE.data_parallel`).
+
+        Args:
+            batch_token_ids: Per device, the whole batch's ``[1, T]`` token
+                ids, for the MoE gate.
+            replica_tokens: Where each device's rows sit in the batch.
+
+        Every other per-device argument covers only that device's rows.
+
+        Returns:
+            Each device's output copies and the copies its attention read.
+        """
+        moes: list[DeepseekV41MoE | DeepseekV41DSparkMoE] = []
+        for block in blocks:
+            assert isinstance(block.ffn, (DeepseekV41MoE, DeepseekV41DSparkMoE))
+            moes.append(block.ffn)
+
+        if blocks[0].engram_fn is not None:
+            if engram_operands is None:
+                raise ValueError(
+                    f"layer {blocks[0].layer_info.layer_id} is an Engram "
+                    "layer but no engram_operands was given"
+                )
+            engrams: list[Engram] = []
+            for block in blocks:
+                assert block.engram_fn is not None
+                engrams.append(block.engram_fn)
+            masks = engram_token_masks or [None] * len(blocks)
+            streams = [
+                HCStreams(
+                    _apply_engram(
+                        stream.materialize(),
+                        engram,
+                        engram.project(operand),
+                        mask,
+                    ),
+                    pre=stream.pre,
+                )
+                for stream, engram, operand, mask in zip(
+                    streams, engrams, engram_operands, masks, strict=True
+                )
+            ]
+
+        attn_entered = [
+            _hc_enter(stream, block.hc_attn, block.attn_norm)
+            for block, stream in zip(blocks, streams, strict=True)
+        ]
+        streams = [
+            _with_out(read, block.attn(h, row, cache))
+            for block, (h, read), row, cache in zip(
+                blocks, attn_entered, rows, caches, strict=True
+            )
+        ]
+        return DeepseekV41Block._ffn_parallel(
+            blocks,
+            streams,
+            lambda normed: DeepseekV41MoE.data_parallel(
+                moes, normed, batch_token_ids, replica_tokens, signal_buffers
+            ),
         ), [read.residual for _, read in attn_entered]
 
     @staticmethod
@@ -478,24 +627,21 @@ class DeepseekV41Block(Module):
         ]
 
     @staticmethod
-    def _ffn_tensor_parallel(
+    def _ffn_parallel(
         blocks: Sequence[DeepseekV41Block],
         streams: Sequence[HCStreams],
-        moes: Sequence[DeepseekV41MoE | DeepseekV41DSparkMoE],
-        token_ids: Sequence[TensorValue],
-        signal_buffers: Sequence[BufferValue],
+        moe: Callable[[list[TensorValue]], list[TensorValue]],
     ) -> list[HCStreams]:
-        """Runs the FFN half of :meth:`tensor_parallel`.
+        """Runs the FFN half of a multi-device block.
 
-        The attention sublayer's ``pre`` weights merge the FFN's input.
+        The attention sublayer's ``pre`` weights merge the FFN's input;
+        ``moe`` maps every device's normed input to its FFN output.
         """
         ffn_entered = [
             _hc_enter(stream, block.hc_ffn, block.ffn_norm)
             for block, stream in zip(blocks, streams, strict=True)
         ]
-        moved = DeepseekV41MoE.tensor_parallel(
-            moes, [h for h, _ in ffn_entered], token_ids, signal_buffers
-        )
+        moved = moe([h for h, _ in ffn_entered])
         return [
             _with_out(read, h)
             for h, (_, read) in zip(moved, ffn_entered, strict=True)
@@ -829,6 +975,94 @@ class DeepseekV41Trunk(Module):
             else None
         )
 
+    @staticmethod
+    def data_parallel_with_taps(
+        trunks: Sequence[DeepseekV41Trunk],
+        tokens: Sequence[TensorValue],
+        batch_tokens: Sequence[TensorValue],
+        rows: Sequence[RaggedRows],
+        caches: Sequence[CSA2Cache],
+        signal_buffers: Sequence[BufferValue],
+        replica_tokens: ReplicaTokens,
+        *,
+        tap_layer_ids: Sequence[int],
+        engram_operands: Sequence[Mapping[int, EngramOperand]],
+        visions: Sequence[VisionMerge] | None = None,
+    ) -> tuple[list[TensorValue], list[TensorValue] | None]:
+        """Runs :meth:`forward_with_taps` with each device on its own requests.
+
+        ``tokens``, ``rows``, ``caches``, ``engram_operands`` and ``visions``
+        (:meth:`VisionMerge.for_rows`) cover each device's own rows;
+        ``batch_tokens`` is the whole batch's ``[1, T]`` token ids on every
+        device (:meth:`DeepseekV41Block.data_parallel`).
+
+        Returns:
+            Per device, its own ``[1, t_i, d]`` stream and its
+            ``[1, t_i, d * len(tap_layer_ids)]`` taps (``None`` for no taps).
+        """
+        lead = trunks[0]
+        tap_ids = set(tap_layer_ids)
+        if len(tap_ids) != len(tap_layer_ids):
+            raise ValueError(f"repeated tap layer ids: {list(tap_layer_ids)}")
+        trunk_ids = {row.layer_id for row in lead.layer_infos}
+        if not tap_ids <= trunk_ids:
+            raise ValueError(
+                f"tap layer ids {sorted(tap_ids - trunk_ids)} are not trunk "
+                "layers"
+            )
+        taps: list[list[TensorValue]] = [[] for _ in trunks]
+        per_device: Sequence[VisionMerge | None] = visions or [None] * len(
+            trunks
+        )
+        streams = [
+            HCStreams(
+                expand_copies(
+                    merge_vision(trunk.embed(tok), vision), lead.config.hc_mult
+                )
+            )
+            for trunk, tok, vision in zip(
+                trunks, tokens, per_device, strict=True
+            )
+        ]
+        engram_token_masks = [is_text_token(tok) for tok in tokens]
+        for i, layer_info in enumerate(lead.layer_infos):
+            tapped = layer_info.layer_id in tap_ids
+            if tapped and layer_info.has_engram:
+                raise ValueError(
+                    f"tap layer {layer_info.layer_id} is an Engram layer"
+                )
+            blocks = []
+            for trunk in trunks:
+                block = trunk.layers[i]
+                assert isinstance(block, DeepseekV41Block)
+                blocks.append(block)
+            streams, entries = DeepseekV41Block.data_parallel(
+                blocks,
+                streams,
+                rows,
+                batch_tokens,
+                caches,
+                signal_buffers,
+                replica_tokens,
+                engram_operands=(
+                    [
+                        operands[layer_info.layer_id]
+                        for operands in engram_operands
+                    ]
+                    if layer_info.has_engram
+                    else None
+                ),
+                engram_token_masks=engram_token_masks,
+            )
+            if tapped:
+                for per_dev, entry in zip(taps, entries, strict=True):
+                    per_dev.append(_hc_mean(entry))
+        return [stream.collapse() for stream in streams], (
+            [ops.concat(per_dev, axis=-1) for per_dev in taps]
+            if tap_layer_ids
+            else None
+        )
+
 
 def _engram_factory(
     config: DeepseekV41Config, layer_info: LayerInfo, device: DeviceRef
@@ -1108,15 +1342,59 @@ class DeepseekV41(Module):
         Returns:
             The per-device replicas.
         """
+        return self._replicas(devices, engram_host_tables, split_attention=True)
+
+    def data_parallel_replicas(
+        self,
+        devices: Sequence[DeviceRef],
+        engram_host_tables: Sequence[
+            Mapping[int, tuple[TensorValue, TensorValue]]
+        ],
+    ) -> list[Self]:
+        """Builds one copy of the model per device for data parallelism.
+
+        Like :meth:`tensor_parallel_replicas`, but only the MoE splits its
+        routed experts. Attention, its indexer and Engram's projection stay
+        whole, since each device runs them on its own requests, and every
+        replica reads the full Engram tables. Call once, after
+        :meth:`load_state_dict`.
+
+        Args:
+            devices: One device per replica.
+            engram_host_tables: Per device, in ``devices`` order, the full
+                ``engram_host_tables`` mapping (as in the constructor).
+
+        Returns:
+            The per-device replicas.
+        """
+        return self._replicas(
+            devices, engram_host_tables, split_attention=False
+        )
+
+    def _replicas(
+        self,
+        devices: Sequence[DeviceRef],
+        engram_host_tables: Sequence[
+            Mapping[int, tuple[TensorValue, TensorValue]]
+        ],
+        *,
+        split_attention: bool,
+    ) -> list[Self]:
+        """Builds the per-device copies, splitting the routed experts.
+
+        ``split_attention`` also splits attention heads (with the indexer's)
+        and Engram's projection columns.
+        """
         n = len(devices)
         for block in self.trunk.layers:
             assert isinstance(block, DeepseekV41Block)
             assert isinstance(block.attn, CSA2Attention)
             assert isinstance(block.ffn, DeepseekV41MoE)
-            block.attn.shard_heads(n)
             block.ffn.shard_experts(n)
-            if block.engram_fn is not None:
-                block.engram_fn.shard_columns(n)
+            if split_attention:
+                block.attn.shard_heads(n)
+                if block.engram_fn is not None:
+                    block.engram_fn.shard_columns(n)
         # `type(self)` so subclasses replicate their extra submodules too.
         replicas = [
             type(self)(
@@ -1133,7 +1411,8 @@ class DeepseekV41(Module):
                 assert isinstance(block, DeepseekV41Block)
                 assert isinstance(block.attn, CSA2Attention)
                 assert isinstance(block.ffn, DeepseekV41MoE)
-                block.attn.keep_local_heads(n)
+                if split_attention:
+                    block.attn.keep_local_heads(n)
                 block.ffn.keep_local_experts(n, rank)
         return replicas
 
@@ -1178,6 +1457,152 @@ class DeepseekV41(Module):
         )
         return logits_postprocess(
             ops.reshape(x, [t, lead.config.hidden_size]),
+            input_row_offsets[0],
+            return_n_logits,
+            norm=lead.norm,
+            lm_head=lead._lm_head,
+            return_logits=lead.config.return_logits,
+            return_hidden_states=lead.config.return_hidden_states,
+        )
+
+    @staticmethod
+    def split_replicas(
+        replicas: Sequence[DeepseekV41],
+        tokens: Sequence[TensorValue],
+        input_row_offsets: Sequence[TensorValue],
+        host_input_row_offsets: TensorValue,
+        data_parallel_splits: TensorValue,
+        caches: Sequence[CSA2Cache],
+        engram_lookback_ids: Sequence[TensorValue] | None = None,
+        *,
+        prefix: str = "",
+    ) -> ReplicaBatch:
+        """Cuts a replica-major batch into each device's own requests.
+
+        ``tokens``, ``input_row_offsets`` and ``engram_lookback_ids`` hold the
+        whole batch on every device; ``caches`` are per device, each covering
+        its replica's requests. ``host_input_row_offsets`` (the whole
+        batch's) and ``data_parallel_splits`` (``[n + 1]`` request
+        boundaries of the replicas) are on CPU. ``prefix`` names the split
+        dims, distinct per call within one graph.
+        """
+        n = len(replicas)
+        total = tokens[0].shape[0]
+        host_offsets = ops.cast(host_input_row_offsets, DType.int64)
+        local_tokens, local_offsets = split_batch_replicated(
+            [replica.device for replica in replicas],
+            list(tokens),
+            list(input_row_offsets),
+            host_offsets,
+            data_parallel_splits,
+            prefix=prefix,
+        )
+        rows = [
+            RaggedRows.from_offsets(
+                offsets,
+                tok.shape[0],
+                ops.cast(cache.swa_collection.cache_lengths, DType.int32),
+            )
+            for tok, offsets, cache in zip(
+                local_tokens, local_offsets, caches, strict=True
+            )
+        ]
+        lookbacks: list[TensorValue | None] = [None] * n
+        if engram_lookback_ids is not None:
+            lookbacks = [
+                ops.slice_tensor(
+                    lookback,
+                    [
+                        (
+                            slice(
+                                data_parallel_splits[i],
+                                data_parallel_splits[i + 1],
+                            ),
+                            f"{prefix}_engram_lookback_split_{i}",
+                        ),
+                        slice(None),
+                    ],
+                )
+                for i, lookback in enumerate(engram_lookback_ids)
+            ]
+        return ReplicaBatch(
+            tokens=[
+                ops.reshape(tok, [1, tok.shape[0]]) for tok in local_tokens
+            ],
+            batch_tokens=[ops.reshape(tok, [1, total]) for tok in tokens],
+            rows=rows,
+            replica_tokens=ReplicaTokens.from_splits(
+                host_offsets, data_parallel_splits, total, n
+            ),
+            lookbacks=lookbacks,
+        )
+
+    @staticmethod
+    def serve_data_parallel(
+        replicas: Sequence[DeepseekV41],
+        tokens: Sequence[TensorValue],
+        input_row_offsets: Sequence[TensorValue],
+        host_input_row_offsets: TensorValue,
+        data_parallel_splits: TensorValue,
+        return_n_logits: TensorValue,
+        caches: Sequence[CSA2Cache],
+        signal_buffers: Sequence[BufferValue],
+        engram_lookback_ids: Sequence[TensorValue] | None = None,
+        visions: Sequence[VisionMerge] | None = None,
+    ) -> tuple[TensorValue, ...]:
+        """Runs :meth:`serve` with each device on its own replica's requests.
+
+        The arguments are as in :meth:`split_replicas`; ``visions`` hold the
+        whole batch's image rows on every device, and each device merges its
+        own. The streams are gathered onto device 0, which computes the
+        logits for the whole batch.
+        """
+        lead = replicas[0]
+        split = DeepseekV41.split_replicas(
+            replicas,
+            tokens,
+            input_row_offsets,
+            host_input_row_offsets,
+            data_parallel_splits,
+            caches,
+            engram_lookback_ids,
+        )
+        xs, _ = DeepseekV41Trunk.data_parallel_with_taps(
+            [replica.trunk for replica in replicas],
+            split.tokens,
+            split.batch_tokens,
+            split.rows,
+            caches,
+            signal_buffers,
+            split.replica_tokens,
+            tap_layer_ids=(),
+            engram_operands=[
+                replica._engram_operands(tok, row, lookback)
+                for replica, tok, row, lookback in zip(
+                    replicas,
+                    split.tokens,
+                    split.rows,
+                    split.lookbacks,
+                    strict=True,
+                )
+            ],
+            visions=(
+                [
+                    vision.for_rows(
+                        offsets,
+                        data_parallel_splits[i],
+                        data_parallel_splits[i + 1],
+                    )
+                    for i, (vision, offsets) in enumerate(
+                        zip(visions, input_row_offsets, strict=True)
+                    )
+                ]
+                if visions is not None
+                else None
+            ),
+        )
+        return logits_postprocess(
+            gather_rows(xs, split.replica_tokens.total, signal_buffers),
             input_row_offsets[0],
             return_n_logits,
             norm=lead.norm,
