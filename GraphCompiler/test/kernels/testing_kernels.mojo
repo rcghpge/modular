@@ -1133,9 +1133,7 @@ struct TraitTensorTupleAddArray:
                 ), "trait_tensor_tuple_add_array's outputs must share one dtype"
                 comptime assert conforms_to(type_of(outputs[k]), TileTensorable)
                 var zt = to_tile_tensor(outputs[k])
-                return rebind[OutputTile](
-                    zt.reshape(zt.layout.make_dynamic[.int64]())
-                )
+                return rebind[OutputTile](zt.make_dynamic[.int64]())
 
             def input_tile[k: Int]() {imm inputs} -> InputTile:
                 comptime assert (
@@ -1143,9 +1141,7 @@ struct TraitTensorTupleAddArray:
                 ), "trait_tensor_tuple_add_array's inputs must share one dtype"
                 comptime assert conforms_to(type_of(inputs[k]), TileTensorable)
                 var xt = to_tile_tensor(inputs[k])
-                return rebind[InputTile](
-                    TileTensor(xt.ptr, xt.layout.make_dynamic[.int64]())
-                )
+                return rebind[InputTile](xt.make_dynamic[.int64]())
 
             var output_tiles = Array[OutputTile, len(Outs)](
                 fill_with_unrolled=output_tile
