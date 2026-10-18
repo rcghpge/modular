@@ -42,8 +42,14 @@ namespace M::KGEN::LIT {
 using M::KGEN::TypeMetadata;
 
 class ASTDecl;
+class AliasASTDecl;
 class MojoParserContext;
+class PackageASTDecl;
 class SharedState;
+class StructASTDecl;
+class StructFieldASTDecl;
+class TraitASTDecl;
+class VarASTDecl;
 class FnTypeGeneratorType;
 
 namespace {
@@ -115,7 +121,9 @@ public:
   virtual ~PublicDecl() = default;
 
   /// Generate a correct piece of code that summarizes this decl.
-  virtual std::string getDeclarationSnippet(MojoParserContext &ctx) const = 0;
+  virtual std::string getDeclarationSnippet(MojoParserContext &ctx) const {
+    return {};
+  }
 
   /// Get the name of the decl. It might be empty.
   StringRef getName() const { return name; }
@@ -130,11 +138,11 @@ public:
   static StringRef getKindAsString(PublicDeclKind kind);
 
   /// Serialize the fields in this decl to JSON.
-  virtual llvm::json::Object toJSON(MojoParserContext &ctx) const = 0;
+  virtual llvm::json::Object toJSON(MojoParserContext &ctx) const;
 
   /// Return a nicely formatted markdown docstring of this declaration. It might
   /// be empty if no docstring is available.
-  virtual std::string getMarkdownDocString() const { return {}; }
+  virtual std::string getMarkdownDocString() const;
 
   /// Return a nicely formatted markdown blob containing the declaration snippet
   /// and doc string of the decl.
@@ -148,6 +156,8 @@ public:
   PublicDeclKind getKind() const { return kind; }
 
 protected:
+  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
+
   PublicDecl(PublicDeclKind kind, ASTDecl &decl, StringRef name)
       : kind(kind), decl(&decl), name(name) {}
 
@@ -160,6 +170,8 @@ private:
 /// Decl for `var`.
 class PublicVariableDecl : public PublicDecl {
 public:
+  VarASTDecl &getASTDecl() const;
+
   /// Get the type string of this variable
   StringRef getType() const { return type; }
 
@@ -343,6 +355,8 @@ private:
 /// Decl for alias.
 class PublicAliasDecl : public PublicDecl {
 public:
+  AliasASTDecl &getASTDecl() const;
+
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
   /// Get the declaration snippet for the alias. The positions of parameters
@@ -569,6 +583,8 @@ private:
 /// Decl for struct field.
 class PublicStructFieldDecl : public PublicDecl {
 public:
+  StructFieldASTDecl &getASTDecl() const;
+
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
   std::string getMarkdownDocString() const override;
@@ -607,13 +623,6 @@ private:
 
   std::string type;
   std::string value;
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  std::string description;
-  std::string summary;
 };
 
 /// A collection of overloaded functions in the same scope.
@@ -653,6 +662,8 @@ private:
 // Decl for trait decls.
 class PublicTraitDecl : public PublicDecl {
 public:
+  TraitASTDecl &getASTDecl() const;
+
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
   std::string getMarkdownDocString() const override;
@@ -686,19 +697,15 @@ private:
 
   PublicTraitDecl(ASTDecl *decl);
 
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
   StringRef deprecated;
-  std::string description;
   StableInfo stableInfo;
-  std::string summary;
 };
 
 /// Decl for structs.
 class PublicStructDecl : public PublicDecl {
 public:
+  StructASTDecl &getASTDecl() const;
+
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
   /// Get the declaration snippet for the struct. The positions of parameters
@@ -782,105 +789,6 @@ private:
   std::string summary;
 };
 
-/// Decl for module.
-class PublicModuleDecl : public PublicDecl {
-public:
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  /// Get the description of this decl extracted from its docstring. It might be
-  /// empty.
-  StringRef getDescription() const { return description; }
-
-  std::string getMarkdownDocString() const override;
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  /// {
-  ///   "kind": "module",
-  ///   "name": string,
-  ///   "aliases": PublicAliasDecl[],
-  ///   "description": string,
-  ///   "functions": FunctionDeclOverloadSet[],
-  ///   "structs": PublicStructDecl[],
-  ///   "traits": PublicTraitDecl[],
-  ///   "summary": string
-  /// }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicModuleDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicModuleDecl(ASTDecl *decl);
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  std::string description;
-  std::string summary;
-};
-
-class PublicPackageDecl : public PublicDecl {
-public:
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  /// Get the description of this decl extracted from its docstring. It might be
-  /// empty.
-  StringRef getDescription() const { return description; }
-
-  std::string getMarkdownDocString() const override;
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  /// {
-  ///   "kind": "package",
-  ///   "name": string,
-  ///   "description": string,
-  ///   "summary": string,
-  ///   "modules": PublicModuleDecl[],
-  ///   "packages": PublicPackageDecl[],
-  /// }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicPackageDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicPackageDecl(ASTDecl *decl);
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  std::string description;
-  std::string summary;
-};
-
 } // namespace M::KGEN::LIT
 
 namespace M {
@@ -891,8 +799,6 @@ using KGEN::LIT::PublicArgumentDecl;
 using KGEN::LIT::PublicDecl;
 using KGEN::LIT::PublicDeclKind;
 using KGEN::LIT::PublicFunctionDecl;
-using KGEN::LIT::PublicModuleDecl;
-using KGEN::LIT::PublicPackageDecl;
 using KGEN::LIT::PublicParameterDecl;
 using KGEN::LIT::PublicStructDecl;
 using KGEN::LIT::PublicStructFieldDecl;

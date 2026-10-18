@@ -25,6 +25,7 @@
 #include "Mojo/LITDialect/LITOps.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TinyPtrVector.h"
+#include <string>
 
 namespace M::KGEN::LIT {
 class DocString;
@@ -206,6 +207,13 @@ public:
 
   /// Return the parsed `DocString` for this decl if available.
   std::optional<DocString> getParsedDocString() const;
+
+  /// Return the docstring summary, or an empty string when absent.
+  std::string getDocumentationSummary() const;
+
+  /// Return the formatted docstring description, or an empty string when
+  /// absent.
+  std::string getDocumentationDescription() const;
 
   /// Given a decl for a struct or trait type, check if this type conforms
   /// to the specified trait type. Returns a 3-state result:

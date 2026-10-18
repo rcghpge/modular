@@ -414,6 +414,18 @@ std::optional<DocString> ASTDecl::getParsedDocString() const {
   return {};
 }
 
+std::string ASTDecl::getDocumentationSummary() const {
+  if (auto docString = getParsedDocString())
+    return docString->getSummary().str();
+  return {};
+}
+
+std::string ASTDecl::getDocumentationDescription() const {
+  if (auto docString = getParsedDocString())
+    return DocString::formatDescription(docString->getDescription());
+  return {};
+}
+
 /// Given a reference to a parameter, look at this declaration and enclosing
 /// scopes to find the ASTDecl that defines it (e.g. the enclosing function,
 /// struct or trait).  This can return null if not found.
