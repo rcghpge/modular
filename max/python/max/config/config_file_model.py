@@ -154,10 +154,15 @@ class ConfigFileModel(MAXBaseModel):
                     f"Configuration file must contain a mapping at the root, got {type(loaded_data)}"
                 )
 
-            explicit_section_name = data.get("section_name")
-            if explicit_section_name is not None:
-                # Caller explicitly requested a section.
-                section_data = loaded_data.get(explicit_section_name)
+            section_name = data.get("section_name")
+            # Field defaults are not applied yet in a "before" validator. A file
+            # without the class's default section is read as a flat config.
+            if section_name is None:
+                default = cls.model_fields["section_name"].default
+                if default is not None and default in loaded_data:
+                    section_name = default
+            if section_name is not None:
+                section_data = loaded_data.get(section_name)
                 if section_data is None:
                     available_sections = [
                         key
@@ -165,12 +170,12 @@ class ConfigFileModel(MAXBaseModel):
                         if isinstance(value, dict)
                     ]
                     raise KeyError(
-                        f"Section '{explicit_section_name}' not found in configuration file. "
+                        f"Section '{section_name}' not found in configuration file. "
                         f"Available sections: {available_sections}."
                     )
                 if not isinstance(section_data, dict):
                     raise TypeError(
-                        f"Section '{explicit_section_name}' must be a mapping, got {type(section_data)}"
+                        f"Section '{section_name}' must be a mapping, got {type(section_data)}"
                     )
                 loaded_data = section_data
 
