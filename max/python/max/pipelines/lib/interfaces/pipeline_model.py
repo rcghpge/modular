@@ -1492,11 +1492,14 @@ class ModuleV3MultiGraphPipelineModelWithKVCache(
     """ModuleV3 VLM with separate vision and language compiled callables.
 
     Subclasses implement :meth:`_load_state_dict` (tower weight prep),
-    :meth:`_create_model_config`, and :meth:`_compile_vision_model` /
-    :meth:`_compile_language_model`. The base :meth:`load_model` passes each
-    tower's ``WeightData`` dict into the matching compile hook (the vision or
-    language slice of :attr:`_vision_weights_dict` / :attr:`_language_weights_dict`,
-    not the raw checkpoint returned from :meth:`_load_state_dict`).
+    :meth:`_create_model_config`, and :meth:`_vision_spec` /
+    :meth:`_language_spec`. :meth:`graph_specs` passes each tower's
+    ``WeightData`` dict into the matching spec hook (the vision or language
+    slice of :attr:`_vision_weights_dict` / :attr:`_language_weights_dict`,
+    not the raw checkpoint returned from :meth:`_load_state_dict`) and
+    registers the towers under the vision and decoder roles.
+    :meth:`_load_towers` compiles each tower on its own through
+    :meth:`load_graphs`.
 
     Graph-API VLMs should inherit :class:`MultiGraphPipelineModelWithKVCache`
     instead.
@@ -1505,6 +1508,45 @@ class ModuleV3MultiGraphPipelineModelWithKVCache(
     _vision_weights_dict: dict[str, Any]
     _language_weights_dict: dict[str, Any]
 
+    def graph_specs(self, model_config: _ModelConfigT) -> dict[str, GraphSpec]:
+        """Returns the vision tower and the language tower as the decoder.
+
+        Initializes the distributed runtime first. A checkpoint without a
+        vision tower registers the decoder alone.
+
+        Args:
+            model_config: The config :meth:`_create_model_config` returned.
+        """
+        self._init_distributed_runtime(model_config)
+        specs: dict[str, GraphSpec] = {}
+        vision = self._vision_spec(model_config, self._vision_weights_dict)
+        if vision is not None:
+            specs[GraphRole.VISION] = vision
+        specs[GraphRole.DECODER] = self._language_spec(
+            model_config, self._language_weights_dict
+        )
+        return specs
+
+    def _load_towers(
+        self, session: InferenceSession
+    ) -> tuple[Callable[..., Any] | None, Callable[..., Any]]:
+        """Compiles the towers through :meth:`load_graphs`.
+
+        Args:
+            session: The session that compiles and initializes the towers.
+
+        Returns:
+            The vision tower, or ``None`` when the checkpoint has none, and
+            the language tower.
+        """
+        self.load_graphs(session)
+        return (
+            self.compiled_modules.get(GraphRole.VISION),
+            self.compiled_modules[GraphRole.DECODER],
+        )
+
+    # TODO(kathywu): Remove `load_model` and the `_compile_*` hooks once
+    # every subclass implements the spec hooks.
     @traced
     def load_model(
         self,
@@ -1548,4 +1590,20 @@ class ModuleV3MultiGraphPipelineModelWithKVCache(
         """Builds and compiles the language tower."""
         raise NotImplementedError(
             f"{type(self).__qualname__} must implement `_compile_language_model`."
+        )
+
+    def _vision_spec(
+        self, model_config: _ModelConfigT, state_dict: dict[str, Any]
+    ) -> GraphSpec | None:
+        """Builds the vision tower, or returns ``None`` without one."""
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `_vision_spec`."
+        )
+
+    def _language_spec(
+        self, model_config: _ModelConfigT, state_dict: dict[str, Any]
+    ) -> GraphSpec:
+        """Builds the language tower."""
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement `_language_spec`."
         )
