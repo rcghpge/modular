@@ -1951,14 +1951,14 @@ def blockwise_scaled_fp8_matmul_amd_batched_kernel[
         c.ptr_at_offset(Coord(batch, 0, 0)),
         TileLayout(
             Coord(Int64(M), Idx[N]),
-            Coord(Int64(Int(c.layout.stride[1]().value())), Idx[1]),
+            Coord(Int64(Int(c.dynamic_stride(1))), Idx[1]),
         ),
     )
     var a_tt = TileTensor(
         a.ptr_at_offset(Coord(batch, 0, 0)),
         TileLayout(
             Coord(Int64(M), Idx[K]),
-            Coord(Int64(Int(a.layout.stride[1]().value())), Idx[1]),
+            Coord(Int64(Int(a.dynamic_stride(1))), Idx[1]),
         ),
     )
     var b_tt = TileTensor(
@@ -2120,13 +2120,13 @@ def blockwise_scaled_fp8_matmul_amd_batched[
     # The kernel bakes innermost column stride 1 and the tile body assumes a
     # K-/N-contiguous tail; guard the runtime slices and extents satisfy that.
     assert (
-        Int(c.layout.stride[2]().value()) == 1
+        Int(c.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires c innermost stride 1"
     assert (
-        Int(a.layout.stride[2]().value()) == 1
+        Int(a.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires a innermost stride 1"
     assert (
-        Int(b.layout.stride[2]().value()) == 1
+        Int(b.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires b innermost stride 1"
     assert N_rt == N, "AMD tiled batched dispatch: runtime N != comptime N"
     assert K_rt == K, "AMD tiled batched dispatch: runtime K != comptime K"
@@ -2285,19 +2285,19 @@ def _batched_matmul_dynamic_scaled_fp8_amd_tiled[
     # The per-batch views pin column stride to static 1 and the loader assumes
     # a contiguous tail; these asserts guard the runtime slices/extents match.
     assert (
-        Int(c.layout.stride[2]().value()) == 1
+        Int(c.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires c innermost stride 1"
     assert (
-        Int(a.layout.stride[2]().value()) == 1
+        Int(a.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires a innermost stride 1"
     assert (
-        Int(b.layout.stride[2]().value()) == 1
+        Int(b.dynamic_stride(2)) == 1
     ), "AMD tiled batched dispatch requires b innermost stride 1"
     assert N_rt == N, "AMD tiled batched dispatch: runtime N != comptime N"
     assert K_rt == K, "AMD tiled batched dispatch: runtime K != comptime K"
 
-    var c_row_stride = Int64(Int(c.layout.stride[1]().value()))
-    var a_row_stride = Int64(Int(a.layout.stride[1]().value()))
+    var c_row_stride = Int64(Int(c.dynamic_stride(1)))
+    var a_row_stride = Int64(Int(a.dynamic_stride(1)))
 
     # Each iteration enqueues one kernel, so the fallback issues exactly ``B``
     # dispatches; returned so the launch-count gate can tell it from the ``1``.

@@ -87,8 +87,8 @@ def row_stride[
     """
     comptime assert t.rank == 2, "expected a [rows, columns] tensor"
     comptime size = size_of[dtype]()
-    var stride = Int(t.layout.stride[0]().value())
-    if Int(t.layout.stride[1]().value()) != 1:
+    var stride = Int(t.dynamic_stride(0))
+    if Int(t.dynamic_stride(1)) != 1:
         raise Error(String(name, " rows must be contiguous"))
     if (stride * size) % alignment or Int(t.ptr) % alignment:
         raise Error(

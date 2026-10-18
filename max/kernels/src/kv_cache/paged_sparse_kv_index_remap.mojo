@@ -451,8 +451,8 @@ def paged_sparse_kv_index_remap[
     var si_tt = sparse_indices.to_tile_tensor()
     var num_batches = input_row_offsets.dim_size(0) - 1
     var invalid_block_id = UInt32(kv_blocks.dim_size(0))
-    var log_stride0 = Int(si_tt.layout.stride[0]().value())
-    var log_stride1 = Int(si_tt.layout.stride[1]().value())
+    var log_stride0 = Int(si_tt.dynamic_stride(0))
+    var log_stride1 = Int(si_tt.dynamic_stride(1))
     paged_sparse_kv_logical_to_physical_indices_from_row_offsets_dispatch[
         target, page_size
     ](

@@ -174,9 +174,9 @@ def indexer_score_ragged_paged[
     )
     debug_assert(num_cand % 2 == 0, "num_cand must be even")
     debug_assert(
-        Int(q.layout.stride[2]().value()) == 1
-        and Int(weights.layout.stride[1]().value()) == 1
-        and Int(output.layout.stride[1]().value()) == 1,
+        Int(q.dynamic_stride(2)) == 1
+        and Int(weights.dynamic_stride(1)) == 1
+        and Int(output.dynamic_stride(1)) == 1,
         "q, weights and output must be contiguous along the last axis",
     )
     if num_rows == 0 or num_cand == 0:

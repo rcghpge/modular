@@ -2767,7 +2767,7 @@ struct RegTileEpilogue[
             dst: Destination DRAM tile (must be mutable).
         """
         self.c_ptr_as_int = Int(dst.ptr)
-        self.row_stride = Int(dst.layout.stride[0]().value())
+        self.row_stride = Int(dst.dynamic_stride(0))
         self.n_total = Int(dst.dim[1]())
 
     @inline(.always)
@@ -2957,8 +2957,8 @@ def _buffer_load_impl[
     comptime N = type_of(dist).static_shape[1]
     # `src` may carry a runtime row stride (batched per-batch view), where
     # `static_stride` is only a sentinel; read layout values (static ones fold).
-    var src_s0 = Int(dist.layout.stride[0]().value())
-    var src_s1 = Int(dist.layout.stride[1]().value())
+    var src_s0 = Int(dist.dynamic_stride(0))
+    var src_s1 = Int(dist.dynamic_stride(1))
     comptime dst_s0 = dst_layout.static_stride[0]
     comptime dst_s1 = dst_layout.static_stride[1]
     # `dst_layout` places elem_size-wide vectors in dst's flat storage.

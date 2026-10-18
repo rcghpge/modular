@@ -1113,8 +1113,8 @@ def _multistage_gemm_kernel_impl[
     ](
         a_tt.tile[BM, BK](Coord(block_m, bk_start)),
         a_tile_layout,
-        bound=M * Int(a_tt.layout.stride[0]().value()),
-        stride=BK * Int(a_tt.layout.stride[1]().value()),
+        bound=M * Int(a_tt.dynamic_stride(0)),
+        stride=BK * Int(a_tt.dynamic_stride(1)),
         num_valid_rows=M - a_row0,
     )
 
@@ -1136,8 +1136,8 @@ def _multistage_gemm_kernel_impl[
             )
         ),
         b_tile_layout,
-        bound=Int(b_tt.dim[0]()) * Int(b_tt.layout.stride[0]().value()),
-        stride=BK * Int(b_tt.layout.stride[b_tile_axis]().value()),
+        bound=Int(b_tt.dim[0]()) * Int(b_tt.dynamic_stride(0)),
+        stride=BK * Int(b_tt.dynamic_stride(b_tile_axis)),
     )
     var b_valid_rows = Int(b_tt.dim[0]()) - b_row0
 

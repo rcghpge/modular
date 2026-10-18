@@ -418,9 +418,7 @@ def padded_index_mode_kernel[
                 Int(out_coord[axis].value()), in_len, Int(pre_pads[axis])
             )
 
-        var in_last = Int(
-            input_tensor.layout.shape[output_tensor.rank - 1]().value()
-        )
+        var in_last = Int(input_tensor.dim[output_tensor.rank - 1]())
         var pre_last = Int(pre_pads[output_tensor.rank - 1])
 
         var out_idx = rebind[IndexList[rank]](coord_to_index_list(out_coord))

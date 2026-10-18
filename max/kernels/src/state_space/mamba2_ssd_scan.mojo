@@ -77,7 +77,7 @@ def _strides[rank: Int](t: TileTensor[...]) -> IndexList[rank]:
     """Returns the strides of `t`, read from its layout."""
     var result = IndexList[rank]()
     comptime for i in range(rank):
-        result[i] = Int(t.layout.stride[i]().value())
+        result[i] = Int(t.dynamic_stride(i))
     return result
 
 

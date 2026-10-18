@@ -2487,7 +2487,7 @@ def flash_attention_ragged[
     comptime assert q.rank == 3, "only support rank 3 inputs for ragged inputs."
     comptime assert input_row_offsets.rank == input_row_offsets.flat_rank == 1
     comptime assert input_row_offsets.element_size == 1
-    if Int(input_row_offsets.layout.stride[0]().value()) != 1:
+    if Int(input_row_offsets.dynamic_stride(0)) != 1:
         raise Error("input_row_offsets must have unit stride")
     comptime assert (
         q.dtype == k.dtype == v.dtype == output.dtype

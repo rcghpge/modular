@@ -252,7 +252,7 @@ def run_one_case(
         return slot_g.load[width=width]((b,))
 
     var x_addr = Int(x_g.unsafe_ptr())
-    var x_row_stride = Int(x_g.layout.stride[0]().value())
+    var x_row_stride = Int(x_g.dynamic_stride(0))
     causal_conv1d_varlen_fwd_gpu[
         WIDTH, silu_activation=True, channels_last=True
     ](

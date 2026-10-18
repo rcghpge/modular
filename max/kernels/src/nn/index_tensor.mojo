@@ -701,9 +701,7 @@ def advanced_indexing_setitem_inplace[
             iteration_shape[i] = Int(input_tensor.dim[i]())
         elif i >= start_axis + index_rank:
             iteration_shape[i] = Int(
-                input_tensor.layout.shape[
-                    i - index_rank + num_index_tensors
-                ]().value()
+                input_tensor.dim[i - index_rank + num_index_tensors]()
             )
         else:
             iteration_shape[i] = index_tensor_shape[i - start_axis]

@@ -5090,7 +5090,7 @@ def _cross_attention_dispatch[
             )
         else:
             comptime assert kv_input_row_offsets.flat_rank == 1
-            if Int(kv_input_row_offsets.layout.stride[0]().value()) != 1:
+            if Int(kv_input_row_offsets.dynamic_stride(0)) != 1:
                 raise Error("kv_input_row_offsets must have unit stride")
             gpu_flash_attention[ragged=True, sink=False](
                 output,

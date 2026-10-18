@@ -642,7 +642,7 @@ def _nms_greedy_kernel[
                 # agree; the clamp guards against future drift so this
                 # can never write past the allocation.
                 var row = sh_row[0]
-                var out_rows = Int64(output_arg.layout.shape[0]().value())
+                var out_rows = Int64(output_arg.dim[0]())
                 if row < out_rows:
                     output_arg.store((row, Idx[0]), Int64(b))
                     output_arg.store((row, Idx[1]), Int64(c))

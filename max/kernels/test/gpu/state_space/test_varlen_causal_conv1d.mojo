@@ -328,7 +328,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
             return cache_indices_device_tt.load[width=width]((b,))
 
         var x_addr = Int(x_device_tt.unsafe_ptr())
-        var x_row_stride = Int(x_device_tt.layout.stride[0]().value())
+        var x_row_stride = Int(x_device_tt.dynamic_stride(0))
         causal_conv1d_varlen_fwd_gpu[kWidth, silu_activation, use_residual](
             weight_device_tt,
             bias_device_tt,
@@ -1379,7 +1379,7 @@ def test_varlen_causal_conv1d_fwd_gpu_conv_states_deep_row_no_alias() raises:
         return cache_indices_device_tt.load[width=width]((b,))
 
     var x_addr = Int(x_device_tt.unsafe_ptr())
-    var x_row_stride = Int(x_device_tt.layout.stride[0]().value())
+    var x_row_stride = Int(x_device_tt.dynamic_stride(0))
     causal_conv1d_varlen_fwd_gpu[width](
         weight_device_tt,
         bias_device_tt,

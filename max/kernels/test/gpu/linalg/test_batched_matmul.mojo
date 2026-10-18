@@ -161,9 +161,9 @@ def run_bmm_and_check_result[
             ctx,
         )
     else:
-        var c_batch_stride = Int(c_device_ref_3d.layout.stride[0]().value())
-        var a_batch_stride = Int(a_device_3d.layout.stride[0]().value())
-        var b_batch_stride = Int(b_device_3d.layout.stride[0]().value())
+        var c_batch_stride = Int(c_device_ref_3d.dynamic_stride(0))
+        var a_batch_stride = Int(a_device_3d.dynamic_stride(0))
+        var b_batch_stride = Int(b_device_3d.dynamic_stride(0))
 
         for i in range(b):
             var c_ptr = c_device_ref_3d._storage + Scalar[

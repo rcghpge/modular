@@ -43,7 +43,7 @@ comptime MAX_DSTATE = 16
 def _is_unit_stride[axis: Int](t: TileTensor[...]) -> Bool:
     """Returns whether `t` has unit stride along `axis`, read from its layout.
     """
-    return Int(t.layout.stride[axis]().value()) == 1
+    return Int(t.dynamic_stride(axis)) == 1
 
 
 @always_inline

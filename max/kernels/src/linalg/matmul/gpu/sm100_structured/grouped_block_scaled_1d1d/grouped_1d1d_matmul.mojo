@@ -479,7 +479,7 @@ def grouped_matmul_block_scaled[
         Engine=t.Engine,
         address_space=t.address_space,
     ]:
-        var shape = Coord(Int64(t.layout.shape[0]().value()))
+        var shape = Coord(Int64(t.dim[0]()))
         var stride = Coord(Idx[1])
         return {
             t._unsafe_storage_cast[

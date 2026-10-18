@@ -460,8 +460,8 @@ def _as_cache_tt[
     var shape = DynamicCoord[.int64, rank]()
     var strides = DynamicCoord[.int64, rank]()
     comptime for i in range(rank):
-        var dim = Int64(tt.layout.shape[i]().value())
-        var stride = Int64(tt.layout.stride[i]().value())
+        var dim = Int64(tt.dim[i]())
+        var stride = Int64(tt.dynamic_stride(i))
         comptime if ResultLayout._shape_types[i].is_static_value:
             debug_assert(
                 Int(dim) == ResultLayout.static_shape[i],
@@ -2291,7 +2291,7 @@ struct ContinuousBatchingKVCache[
 
     @inline(.always)
     def _stride(self) -> UInt32:
-        return UInt32(self.blocks.layout.stride[0]().value()) // UInt32(
+        return UInt32(self.blocks.dynamic_stride(0)) // UInt32(
             self.kv_params.num_heads * self.kv_params.head_size
         )
 
@@ -2383,7 +2383,7 @@ struct ContinuousBatchingKVCache[
         ), "only a paged cache holds a key spread over token rows"
         var total_blocks = Int(self.blocks.dim[0]())
         var rows_per_block = Int(self.blocks.dim[1]())
-        var block_pitch = Int(self.blocks.layout.stride[0]().value())
+        var block_pitch = Int(self.blocks.dynamic_stride(0))
         comptime heads = Self.kv_params.num_heads
         comptime depth = Self.kv_params.head_size
         var kv_tensor = self.blocks.reshape(
@@ -2935,7 +2935,7 @@ struct PagedKVCache[
 
     @inline(.always)
     def _stride(self) -> UInt32:
-        return UInt32(self.blocks.layout.stride[0]().value()) // UInt32(
+        return UInt32(self.blocks.dynamic_stride(0)) // UInt32(
             self.kv_params.num_heads * self.kv_params.head_size
         )
 
@@ -3268,9 +3268,7 @@ struct PagedKVCache[
                 ),
             )
             var first_lut_idx = base_kv_row // UInt32(Self.page_size)
-            var row_stride = UInt32(
-                self.lookup_table.layout.stride[0]().value()
-            )
+            var row_stride = UInt32(self.lookup_table.dynamic_stride(0))
             # The address passed to the `ld.global.v{chunk}.u32`
             # emitter must be naturally aligned to `chunk * 4` bytes
             # AND each `ceildiv(num_pages, chunk)`-width vector load
@@ -3455,7 +3453,7 @@ struct PagedKVCache[
             " page"
         )
         var total_blocks = Int(self.blocks.dim[0]())
-        var block_pitch = Int(self.blocks.layout.stride[0]().value())
+        var block_pitch = Int(self.blocks.dynamic_stride(0))
         comptime heads = Self.kv_params.num_heads
         comptime depth = Self.kv_params.head_size * pool_row_tokens
         comptime rows = Self.page_size // pool_row_tokens

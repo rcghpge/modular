@@ -1202,8 +1202,7 @@ def causal_conv1d_varlen_fwd_gpu[
             x_addr % 8 == 0 and x_row_stride % V == 0 and x_col_stride == 1
         )
         var bias_ok = Int(bias.dim[0]()) == 0 or (
-            Int(bias.unsafe_ptr()) % 8 == 0
-            and Int(bias.layout.stride[0]().value()) == 1
+            Int(bias.unsafe_ptr()) % 8 == 0 and Int(bias.dynamic_stride(0)) == 1
         )
         if (
             dim % V == 0
@@ -1211,8 +1210,8 @@ def causal_conv1d_varlen_fwd_gpu[
             and bias_ok
             and Int(output.unsafe_ptr()) % 8 == 0
             and Int(weight.unsafe_ptr()) % 8 == 0
-            and Int(output.layout.stride[0]().value()) % V == 0
-            and Int(output.layout.stride[1]().value()) == 1
+            and Int(output.dynamic_stride(0)) % V == 0
+            and Int(output.dynamic_stride(1)) == 1
         ):
             launch[V, False]()
             return

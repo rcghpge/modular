@@ -1378,7 +1378,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_split_k[
     var counter_slot = -1
     # The parallel reduction stores C itself; a 32-bit row stride keeps its
     # store addressing in one register.
-    var c_row_stride = Int(c_device.layout.stride[0]().value())
+    var c_row_stride = Int(c_device.dynamic_stride(0))
     comptime if parallel:
         if c_row_stride > Int(UInt32.MAX):
             raise Error(

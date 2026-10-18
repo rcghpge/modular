@@ -200,7 +200,7 @@ def rope_ragged[
         # position_ids rows (`section_idx * pos_ids_stride`), so use the actual
         # dim-0 stride rather than assuming a row-major-contiguous layout where
         # it happens to equal `dim[1]`.
-        pos_ids_stride = Int(pos_ids.layout.stride[0]().value())
+        pos_ids_stride = Int(pos_ids.dynamic_stride(0))
     else:
         pos_ids_ptr = rebind[PtrType](start_pos.ptr.as_imm())
         pos_ids_stride = 0

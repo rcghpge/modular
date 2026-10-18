@@ -253,12 +253,10 @@ def _is_vec_ok(t: TileTensor) -> Bool:
     comptime rank = t.flat_rank
     var row_ok = True
     comptime if rank > 1:
-        row_ok = (
-            Int(t.layout.stride[0]().value()) * size_of[t.dtype]() % 16 == 0
-        )
+        row_ok = Int(t.dynamic_stride(0)) * size_of[t.dtype]() % 16 == 0
     return (
         Int(t.unsafe_ptr()) % 16 == 0
-        and Int(t.layout.stride[rank - 1]().value()) == 1
+        and Int(t.dynamic_stride(rank - 1)) == 1
         and row_ok
     )
 
