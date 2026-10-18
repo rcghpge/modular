@@ -245,7 +245,7 @@ def _count_slice_dims[
 ]() -> Int:
     """Returns the number of `ContiguousSlice` (rank-preserving) arguments."""
     var count = 0
-    comptime for i in range(slices.size):
+    comptime for i in range(slices.length):
         match slices[i]:
             case .slice:
                 count += 1
@@ -266,7 +266,7 @@ def _kept_slice_axis_for_output[
     `ContiguousSlice` survive into the result; this skips the dropped axes.
     """
     var kept_axes_seen = 0
-    comptime for axis in range(slices.size):
+    comptime for axis in range(slices.length):
         match slices[axis]:
             case .slice if kept_axes_seen == out_axis:
                 return axis
@@ -326,7 +326,7 @@ def _slice_storage_offset[
     storage handle instead.
     """
     var offset = 0
-    comptime for axis in range(slices.size):
+    comptime for axis in range(slices.length):
         offset += _slice_start[slices, axis]() * layout.static_stride[axis]
     return offset
 
@@ -2116,9 +2116,9 @@ struct TileTensor[
         Returns:
             A view into the original tensor representing the sub-tile.
         """
-        comptime assert tile_sizes.size == Self.rank, String(
+        comptime assert tile_sizes.length == Self.rank, String(
             t"tile requires exactly one tile size per tensor dimension; got"
-            t" {tile_sizes.size} tile sizes for tensor of rank {Self.rank}"
+            t" {tile_sizes.length} tile sizes for tensor of rank {Self.rank}"
         )
         return _tile(self, coord[*tile_sizes], coordinates)
 
@@ -2152,9 +2152,9 @@ struct TileTensor[
         Returns:
             A view into the original tensor representing the specified tile.
         """
-        comptime assert tile_sizes.size == Self.rank, String(
+        comptime assert tile_sizes.length == Self.rank, String(
             t"tile requires exactly one tile size per tensor dimension; got"
-            t" {tile_sizes.size} tile sizes for tensor of rank {Self.rank}"
+            t" {tile_sizes.length} tile sizes for tensor of rank {Self.rank}"
         )
         comptime assert stride_layout.rank == Self.rank, String(
             t"stride_layout rank {stride_layout.rank} must match tensor rank"
@@ -2235,9 +2235,9 @@ struct TileTensor[
         Returns:
             Tuple of (tile, corner_coords, offset).
         """
-        comptime assert tile_sizes.size == Self.rank, String(
-            t"tile_with_offset requires one tile size per tensor dimension;"
-            t" got {tile_sizes.size} tile sizes for tensor of rank {Self.rank}"
+        comptime assert tile_sizes.length == Self.rank, String(
+            t"tile_with_offset requires one tile size per tensor dimension; got"
+            t" {tile_sizes.length} tile sizes for tensor of rank {Self.rank}"
         )
         return _tile_with_offset(self, coord[*tile_sizes], coordinates)
 
@@ -2271,9 +2271,9 @@ struct TileTensor[
         Returns:
             Tuple of (tile, corner_coords, offset).
         """
-        comptime assert tile_sizes.size == Self.rank, String(
-            t"tile_with_offset requires one tile size per tensor dimension;"
-            t" got {tile_sizes.size} tile sizes for tensor of rank {Self.rank}"
+        comptime assert tile_sizes.length == Self.rank, String(
+            t"tile_with_offset requires one tile size per tensor dimension; got"
+            t" {tile_sizes.length} tile sizes for tensor of rank {Self.rank}"
         )
         comptime assert stride_layout.rank == Self.rank, String(
             t"stride_layout rank {stride_layout.rank} must match tensor rank"
@@ -2400,9 +2400,9 @@ struct TileTensor[
         var t = tensor.tile[2, 2](1, 0)
         ```
         """
-        comptime assert tile_sizes.size == Self.rank, String(
+        comptime assert tile_sizes.length == Self.rank, String(
             t"tile requires exactly one tile size per tensor dimension; got"
-            t" {tile_sizes.size} tile sizes for tensor of rank {Self.rank}"
+            t" {tile_sizes.length} tile sizes for tensor of rank {Self.rank}"
         )
         var coordinates = DynamicCoord[Self.linear_idx_type, Self.rank]()
 
@@ -2884,7 +2884,7 @@ struct TileTensor[
     ](self) -> Self.OffsetViewType[
         TypeList.of[_SlicedOffset[slices, Self.LayoutType]](),
         _SlicedLayout[slices, Self.LayoutType],
-    ] where (slices.size == Self.flat_rank and Self.all_dims_known):
+    ] where (slices.length == Self.flat_rank and Self.all_dims_known):
         """Extract a view of the tensor, fixing or subslicing each dimension.
 
         Each parameter is either an `Int`, which fixes that dimension to the
@@ -2940,7 +2940,7 @@ struct TileTensor[
         - Slice bounds are checked at compile time against the parent's static
             shape; out-of-range bounds are a compile error, not a runtime one.
         """
-        comptime for i in range(slices.size):
+        comptime for i in range(slices.length):
             comptime if slices[i].is_slice():
                 comptime s = slices[i].unsafe_get_slice()
                 comptime start = s.start.or_else(0)

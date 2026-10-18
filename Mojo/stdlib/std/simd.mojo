@@ -413,7 +413,7 @@ struct FastMathFlag(EnumLike, Equatable, ImplicitlyCopyable, RegisterPassable):
     ].values
 
     comptime _enum_case_types = TypeList.splat[
-        ParameterList[Self._enum_case_names].size, NoneType
+        ParameterList[Self._enum_case_names].length, NoneType
     ].values
 
     @inline(.always)
@@ -2734,7 +2734,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         """
 
         comptime assert (
-            output_size == mask.size
+            output_size == mask.length
         ), "size of the mask must match the output SIMD size"
 
         # FIXME: Support parameters on initializers better, removing __init__.
