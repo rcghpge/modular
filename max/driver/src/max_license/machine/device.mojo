@@ -18,9 +18,9 @@ devices to be used within the Mojo metaprogramm.
 
 from std.sys.info import _TargetType, CompilationTarget
 
-from std._plugin._overlay import TARGETS
-
 from max.gpu.host.info import GPUInfo, TargetAccelerator
+
+from max._plugin._overlay import TARGETS
 
 
 struct DeviceRef(Copyable, Movable):
