@@ -79,7 +79,7 @@ class MPNetPipelineModel(ModuleV3PipelineModel[TextContext]):
             max_batch_size=max_batch_size,
             memory_plan=memory_plan,
         )
-        self.model = self.load_model()
+        self.model = self._load_encoder(session)
 
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:
         assert isinstance(model_inputs, MPNetInputs)

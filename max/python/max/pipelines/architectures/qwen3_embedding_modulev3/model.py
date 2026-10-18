@@ -95,16 +95,18 @@ class Qwen3EmbeddingModel(ModuleV3PipelineModel[TextContext]):
             memory_plan=memory_plan,
             max_batch_size=max_batch_size,
         )
-        self.model = self.load_model()
+        self.model = self._load_encoder(session)
 
     @override
     def _load_state_dict(self) -> dict[str, Any]:
-        return parse_state_dict_from_weights(
+        # Kept for `graph_specs`, as the base's loader does.
+        self._checkpoint = parse_state_dict_from_weights(
             self.pipeline_config,
             self.weights,
             self.adapter,
             hf_config=self._hf_config_for_weights(),
         )
+        return self._checkpoint
 
     def _create_model_config(self, state_dict: dict[str, Any]) -> None:
         del state_dict

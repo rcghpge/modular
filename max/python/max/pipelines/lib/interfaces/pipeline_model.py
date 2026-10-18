@@ -904,31 +904,46 @@ class ModuleV3PipelineModel(PipelineModel[BaseContextType]):
 
     Subclasses implement :meth:`_instantiate_module` and optionally
     :meth:`_create_model_config`, :meth:`_prepare_state_dict`, and
-    :meth:`_module_default_dtype`.
+    :meth:`_module_default_dtype`. :meth:`graph_specs` builds the module under
+    ``F.lazy()`` and registers it, with the prepared checkpoint weights, as
+    the encoder, which :meth:`_load_encoder` compiles.
     """
 
-    @traced
-    def load_model(self) -> Callable[..., Any]:
-        """Build and compile the ModuleV3 callable."""
-        state_dict = self._load_state_dict()
-        model_config = self._create_model_config(state_dict)
-        state_dict = self._prepare_state_dict(state_dict, model_config)
+    _checkpoint: dict[str, Any]
 
-        with CompilationTimer("model") as timer:
-            module_default_dtype = self._module_default_dtype(
-                state_dict, model_config
+    def graph_specs(self, model_config: Any) -> dict[str, GraphSpec]:
+        """Returns the encoder, built from the checkpoint weights.
+
+        Args:
+            model_config: The config :meth:`_create_model_config` returned.
+        """
+        state_dict = self._prepare_state_dict(self._checkpoint, model_config)
+        module_default_dtype = self._module_default_dtype(
+            state_dict, model_config
+        )
+        with F.lazy(), default_dtype(module_default_dtype):
+            nn_model = self._instantiate_module(model_config)
+        return {
+            GraphRole.ENCODER: GraphSpec(
+                nn_model,
+                type(nn_model).__qualname__,
+                self._get_compile_input_types(model_config),
+                weights=state_dict,
             )
-            with F.lazy(), default_dtype(module_default_dtype):
-                nn_model = self._instantiate_module(model_config)
-            compile_input_types = self._get_compile_input_types(model_config)
-            timer.mark_build_complete()
-            return nn_model.compile(*compile_input_types, weights=state_dict)
+        }
+
+    def _load_encoder(self, session: InferenceSession) -> Callable[..., Any]:
+        """Compiles the encoder through :meth:`load_graphs`."""
+        self.load_graphs(session)
+        # The callable keeps the weight registry; drop the other reference
+        # to the checkpoint.
+        del self._checkpoint
+        return self.compiled_modules[GraphRole.ENCODER]
 
     def _load_state_dict(self) -> dict[str, Any]:
-        """Load and optionally adapt weights from the configured source."""
-        if self.adapter:
-            return self.adapter(dict(self.weights.items()))
-        return {key: value.data() for key, value in self.weights.items()}
+        """Loads the checkpoint, and keeps it for :meth:`graph_specs`."""
+        self._checkpoint = super()._load_state_dict()
+        return self._checkpoint
 
     def _hf_config_for_weights(self) -> AutoConfig | None:
         """Optional HuggingFace config override for weight loading."""
