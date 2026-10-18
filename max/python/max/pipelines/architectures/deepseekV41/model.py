@@ -28,7 +28,7 @@ import math
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Protocol, runtime_checkable
 
@@ -73,13 +73,13 @@ from max.pipelines.context import (
     TextContext,
 )
 from max.pipelines.lib import (
-    GraphPipelineModelWithKVCache,
     GraphRole,
     GraphSpec,
     KVCacheConfig,
     ModelInputs,
     ModelOutputs,
     PipelineConfig,
+    PipelineModelWithKVCache,
     compile_and_init_graphs,
 )
 from max.pipelines.lib.interfaces.batch_processor import (
@@ -103,7 +103,6 @@ from max.profiler import traced
 from max.support.host_memory import available_host_memory, host_memory_limit
 from max.support.human_readable_formatter import to_human_readable_bytes
 from transformers import AutoTokenizer
-from typing_extensions import override
 
 from . import engram_shared_host, kv_leaves, weight_adapters
 from .batch_vision_inputs import pack_uncached_images
@@ -939,8 +938,20 @@ class DeepseekV41BatchProcessor(
         )
 
 
+class _GraphBody(Module):
+    """Traces ``build``, which emits a graph's body from its inputs."""
+
+    def __init__(self, build: Callable[..., tuple[TensorValue, ...]]) -> None:
+        super().__init__()
+        self._build = build
+
+    def __call__(self, *inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        return self._build(*inputs)
+
+
 class DeepseekV41Model(
-    LogProbabilitiesMixin, GraphPipelineModelWithKVCache[TextContext]
+    LogProbabilitiesMixin,
+    PipelineModelWithKVCache[TextContext, DeepseekV41Config, Model],
 ):
     """A DeepSeek-V4.1-Flash pipeline model for text and image generation.
 
@@ -975,12 +986,18 @@ class DeepseekV41Model(
     _pending_weight_loads: list[tuple[Callable[[], None], bool]]
     """Weight loads queued by :meth:`_defer_weight_load`."""
 
+    _running_weight_loads: list[tuple[Future[None], bool]]
+    """Weight loads :meth:`_start_weight_loads` started."""
+
+    _weights_dict: dict[str, Any]
+    """The checkpoint weights :meth:`graph_specs` builds the decoder from."""
+
     _stream_routed_experts: ClassVar[bool] = True
     """Whether routed experts are uploaded straight to their devices.
 
-    When on, :meth:`_load_state_dict` leaves them deferred and
-    :meth:`_build_graph_for_compile` makes them device-resident. A subclass
-    whose graph build does not make them device-resident must turn this off.
+    When on, :meth:`_load_state_dict` leaves them deferred and the graph
+    build makes them device-resident. A subclass whose graph build does not
+    make them device-resident must turn this off.
     """
 
     def __init__(
@@ -1225,7 +1242,6 @@ class DeepseekV41Model(
 
     ep_comm_initializer: EPCommInitializer | None = None
 
-    @override
     def _init_distributed_runtime(
         self, session: InferenceSession, model_config: Any
     ) -> None:
@@ -1255,14 +1271,58 @@ class DeepseekV41Model(
             )
         bind(initializer.model_inputs())
 
+    def _start_weight_loads(self) -> None:
+        """Starts the deferred weight loads, each on its own thread.
+
+        Returns once the loads that must not overlap the compile are done;
+        :meth:`_finish_weight_loads` waits for the rest.
+        """
+        pending, self._pending_weight_loads = self._pending_weight_loads, []
+        pool = ThreadPoolExecutor(max(1, len(pending)))
+        self._running_weight_loads = [
+            (pool.submit(load), overlaps_compile)
+            for load, overlaps_compile in pending
+        ]
+        pool.shutdown(wait=False)
+        for load, overlaps_compile in self._running_weight_loads:
+            if not overlaps_compile:
+                load.result()
+
+    def _finish_weight_loads(self) -> None:
+        """Waits for the weight loads :meth:`_start_weight_loads` started."""
+        running, self._running_weight_loads = self._running_weight_loads, []
+        for load, _ in running:
+            load.result()
+
+    def _build_graph_for_compile(
+        self,
+        session: InferenceSession,
+        state_dict: dict[str, Any],
+        model_config: DeepseekV41Config,
+    ) -> tuple[Graph, dict[str, Any]]:
+        """Builds the decoder graph the legacy way, for :meth:`load_model`.
+
+        Only the DSpark subclass implements it.
+        """
+        raise NotImplementedError
+
     @traced
     def load_model(self, session: InferenceSession) -> Model:
-        """Builds the graph, then compiles it while the weights load.
+        """Loads the decoder :meth:`graph_specs` returns.
 
-        Deferred weight loads run on worker threads: the compile waits for the
+        A subclass that still overrides ``_build_graph_for_compile`` builds
+        the graph through that hook, then compiles it while the deferred
+        weight loads run on worker threads: the compile waits for the
         routed-expert upload (which holds the GIL) and overlaps the Engram
         pinning.
         """
+        # TODO(kathywu): Drop once the spec-v3 stack moves the DSpark
+        # subclass onto graph specs.
+        if (
+            type(self)._build_graph_for_compile
+            is DeepseekV41Model._build_graph_for_compile
+        ):
+            return self.load_graphs(session)[GraphRole.DECODER]
         self._pending_weight_loads = []
         state_dict = self._load_state_dict()
         model_config = self._create_model_config(state_dict)
@@ -1275,24 +1335,47 @@ class DeepseekV41Model(
             timer.mark_build_complete()
             del state_dict
             self.state_dict = weights_registry
-            pending, self._pending_weight_loads = self._pending_weight_loads, []
-            with ThreadPoolExecutor(max(1, len(pending))) as pool:
-                loads = [
-                    (pool.submit(load), overlaps_compile)
-                    for load, overlaps_compile in pending
-                ]
-                for load, overlaps_compile in loads:
-                    if not overlaps_compile:
-                        load.result()
-                compiled = session.compile_reusing_mefs(graph)
-                for load, _ in loads:
-                    load.result()
+            self._start_weight_loads()
+            compiled = session.compile_reusing_mefs(graph)
+            self._finish_weight_loads()
             model = session.init(compiled, weights_registry=weights_registry)
 
         self._maybe_release_host_weights(model)
         _drop_checkpoint_page_cache(self.weights)
         self._wire_batch_processor(model, model_config)
         return model
+
+    @traced
+    def load_graphs(self, session: InferenceSession) -> dict[str, Model]:
+        """Compiles and initializes the graphs :meth:`graph_specs` returns.
+
+        The decoder's trace starts the deferred weight loads, so the compile
+        waits for the routed-expert upload and overlaps the Engram pinning,
+        which finishes before the host weights can be released.
+
+        Args:
+            session: The session that compiles and initializes the graphs.
+
+        Returns:
+            The initialized models, keyed by role.
+        """
+        self._pending_weight_loads = []
+        self._weights_dict = self._load_state_dict()
+        model_config = self._create_model_config(self._weights_dict)
+        self._init_distributed_runtime(session, model_config)
+        with CompilationTimer("model") as timer:
+            specs = self.graph_specs(model_config)
+            timer.mark_build_complete()
+            self.compiled_modules = compile_and_init_graphs(session, specs)
+            self._finish_weight_loads()
+        models = {
+            role: compiled.engine_model
+            for role, compiled in self.compiled_modules.items()
+        }
+        self._maybe_release_host_weights(*models.values())
+        _drop_checkpoint_page_cache(self.weights)
+        self._wire_batch_processor(models[GraphRole.DECODER], model_config)
+        return models
 
     def _per_device_engram_tables(
         self,
@@ -1316,13 +1399,16 @@ class DeepseekV41Model(
             per_device_tables.append(table)
         return per_device_tables
 
-    def _build_graph_for_compile(
-        self,
-        session: InferenceSession,
-        state_dict: dict[str, Any],
-        model_config: DeepseekV41Config,
-    ) -> tuple[Graph, dict[str, Any]]:
-        del session
+    def graph_specs(
+        self, model_config: DeepseekV41Config
+    ) -> dict[str, GraphSpec]:
+        """Returns the decoder graph, tensor or data parallel across devices.
+
+        The model is built as the graph traces, since its Engram tables are
+        graph inputs, and the trace ends by starting the deferred weight
+        loads (:meth:`_start_weight_loads`).
+        """
+        state_dict, self._weights_dict = self._weights_dict, {}
         engram_layer_ids = model_config.engram_layer_ids
         engram_input_types, engram_token_map = self._prepare_engram(
             state_dict, model_config
@@ -1349,8 +1435,10 @@ class DeepseekV41Model(
 
         n_dev = len(self.device_refs)
         n_trailing = len(vision_types) + len(engram_input_types)
-        with Graph("deepseekV41", input_types=input_types) as graph:
-            all_inputs = list(graph.inputs)
+        weights_registry: dict[str, Any] = {}
+
+        def build(*graph_inputs: Value[Any]) -> tuple[TensorValue, ...]:
+            all_inputs = list(graph_inputs)
             tokens, input_row_offsets, return_n_logits = all_inputs[:3]
             # The Engram lookback window follows `return_n_logits`, then the
             # data-parallel host offsets and splits.
@@ -1395,7 +1483,7 @@ class DeepseekV41Model(
                 weight_alignment=1,
                 strict=self._strict_state_dict_loading,
             )
-            weights_registry = nn_model.state_dict(auto_initialize=False)
+            weights_registry.update(nn_model.state_dict(auto_initialize=False))
             if n_dev == 1:
                 serving = [nn_model]
             elif data_parallel:
@@ -1477,15 +1565,25 @@ class DeepseekV41Model(
                         engram_lookback_ids=lookback_per_dev,
                         visions=visions,
                     )
-            graph.output(*outputs)
-        if expert_uploads:
-            self._defer_weight_load(
-                lambda: weights_registry.update(
-                    _stream_routed_experts(expert_uploads)
-                ),
-                overlaps_compile=False,
+            if expert_uploads:
+                self._defer_weight_load(
+                    lambda: weights_registry.update(
+                        _stream_routed_experts(expert_uploads)
+                    ),
+                    overlaps_compile=False,
+                )
+            # The end of the trace is the last step before the compile.
+            self._start_weight_loads()
+            return outputs
+
+        return {
+            GraphRole.DECODER: GraphSpec(
+                _GraphBody(build),
+                "deepseekV41",
+                input_types,
+                weights=weights_registry,
             )
-        return graph, weights_registry
+        }
 
     def prepare_initial_token_inputs(
         self,
