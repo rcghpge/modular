@@ -17,15 +17,15 @@ trait Indexer:
     pass
 
 
-def Index(a: Int, b: Int, c: Int) -> Tuple[Int, Int, Int]:
-    return (a, b, c)
+def Index[*Ts: Intable](*args: *Ts):
+    pass
 
 # CHECK-LABEL: "name": "x1"
-# CHECK: "value": "Index(Int(16), Int(16), Int(16))"
+# CHECK: "value": "Index[Int, Int, Int](Int(16), Int(16), Int(16))"
 comptime x1 = Index(16, 16, 16)
 
 # CHECK-LABEL: "name": "x2"
-# CHECK: "value": "Tuple(Index(Int(64), Int(8), Int(8)))"
+# CHECK: "value": "Tuple(Index[Int, Int, Int](Int(64), Int(8), Int(8)))"
 comptime x2 = (Index(64, 8, 8),)
 
 # CHECK-LABEL: "name": "x3"

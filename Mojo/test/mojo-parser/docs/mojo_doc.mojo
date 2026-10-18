@@ -77,7 +77,7 @@ comptime alias_str = ""
 @deprecated("deprecated alias")
 comptime deprecated_alias = 1
 
-# Issue #5361: kgen-doc crashes on alias of parametrized function with origin
+# Issue #5361: Doc generation crashes on alias of parametrized function with origin
 
 # CHECK-LABEL: "name": "parametric_ref_origin_alias",
 # CHECK: "value": "fn_literal"
