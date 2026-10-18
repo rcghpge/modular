@@ -12,29 +12,44 @@
 # ===----------------------------------------------------------------------=== #
 """AMDGCN lowerings for the `std.math` functions `HIPPlugin` overrides."""
 
+from std.collections import OptionalReg
 from std.collections.string.string_span import get_static_string
+from std.math.math import _UnaryMathPluginHookFnType
 from std.sys import llvm_intrinsic
 
 
-def _has_amdgcn_op[name: StaticString, dtype: DType]() -> Bool:
-    """Returns whether `_amdgcn_unary_math` lowers `name` for `dtype`."""
-    comptime if name == "rsqrt" or name == "recip":
-        return True
-    elif name == "exp2" or name == "log2":
-        return dtype in (DType.float16, DType.float32)
-    return False
+comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
 
 
-def _amdgcn_intrinsic[name: StaticString, dtype: DType]() -> StaticString:
-    comptime if name == "rsqrt":
-        return get_static_string["llvm.amdgcn.rsq.", _amdgcn_suffix[dtype]()]()
-    elif name == "recip":
-        return get_static_string["llvm.amdgcn.rcp.", _amdgcn_suffix[dtype]()]()
-    elif name == "exp2":
-        return get_static_string["llvm.amdgcn.exp2.", _amdgcn_suffix[dtype]()]()
-    else:
-        comptime assert name == "log2", "no AMDGCN intrinsic for this function"
-        return get_static_string["llvm.amdgcn.log.", _amdgcn_suffix[dtype]()]()
+def _amdgcn_unary_math_fn[name: StaticString, dtype: DType]() -> _MathFn:
+    """Returns the AMDGCN lowering of the `std.math` function `name` for
+    `dtype`, or `None` to keep the stdlib's own lowering."""
+    comptime match name:
+        case "rsqrt":
+            return comptime (_MathFn(_amdgcn_unary_math["llvm.amdgcn.rsq"]))
+        case "recip":
+            return comptime (_MathFn(_amdgcn_unary_math["llvm.amdgcn.rcp"]))
+        case "exp2":
+            return comptime (
+                _lowering[
+                    _amdgcn_unary_math["llvm.amdgcn.exp2"],
+                    dtype in (DType.float16, DType.float32),
+                ]
+            )
+        case "log2":
+            return comptime (
+                _lowering[
+                    _amdgcn_unary_math["llvm.amdgcn.log"],
+                    dtype in (DType.float16, DType.float32),
+                ]
+            )
+        case _:
+            return None
+
+
+comptime _lowering[
+    lowering: _UnaryMathPluginHookFnType, supported: Bool
+]: _MathFn = _MathFn(lowering) if supported else _MathFn(None)
 
 
 def _amdgcn_suffix[dtype: DType]() -> StaticString:
@@ -49,22 +64,22 @@ def _amdgcn_suffix[dtype: DType]() -> StaticString:
 
 @inline(.always)
 def _amdgcn_unary_math[
-    dtype: DType, width: SIMDLength, //, name: StaticString
+    dtype: DType, width: SIMDLength, //, intrinsic: StaticString
 ](x: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    """Lowers the `std.math` function `name` to its `llvm.amdgcn.*` intrinsic,
-    one element at a time.
+    """Applies the `intrinsic` overload for `dtype`, such as
+    `llvm.amdgcn.rsq.f32`, one element at a time.
 
     The intrinsics have only f16, f32, and f64 overloads, so other dtypes
     round-trip through f32.
     """
     comptime if dtype not in (DType.float16, DType.float32, DType.float64):
-        return _amdgcn_unary_math[name=name](x.cast[.float32]()).cast[dtype]()
+        return _amdgcn_unary_math[intrinsic](x.cast[.float32]()).cast[dtype]()
     else:
         var res = SIMD[dtype, width]()
 
         comptime for i in range(width):
             res[i] = llvm_intrinsic[
-                _amdgcn_intrinsic[name, dtype](),
+                get_static_string[intrinsic, ".", _amdgcn_suffix[dtype]()](),
                 Scalar[dtype],
                 has_side_effect=False,
             ](x[i])

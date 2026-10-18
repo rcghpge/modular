@@ -34,7 +34,7 @@ from std.sys._amdgpu import (
     printf_begin,
 )
 
-from .hip_math import _amdgcn_unary_math, _has_amdgcn_op
+from .hip_math import _amdgcn_unary_math_fn
 from .hip_time import _global_perf_counter_ns, _sleep
 
 
@@ -146,6 +146,6 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime unary_math_fn[
         name: StaticString, dtype: DType, width: Int
-    ]: OptionalReg[_UnaryMathPluginHookFnType] = (
-        _amdgcn_unary_math[name=name] if _has_amdgcn_op[name, dtype]() else None
-    )
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = _amdgcn_unary_math_fn[
+        name, dtype
+    ]()

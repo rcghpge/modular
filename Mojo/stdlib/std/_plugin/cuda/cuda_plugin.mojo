@@ -27,7 +27,7 @@ from std.io.file_descriptor import RawFileDescriptor
 from std.io.io import _printf
 from std.reflection.location import SourceLocation
 
-from .cuda_math import _has_nvptx_op, _nvptx_unary_math
+from .cuda_math import _nvptx_unary_math_fn
 from .cuda_time import _global_perf_counter_ns, _sleep
 
 
@@ -100,8 +100,6 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime unary_math_fn[
         name: StaticString, dtype: DType, width: Int
-    ]: OptionalReg[_UnaryMathPluginHookFnType] = (
-        _nvptx_unary_math[name=name] if _has_nvptx_op[
-            name, dtype, Self.target
-        ]() else None
-    )
+    ]: OptionalReg[_UnaryMathPluginHookFnType] = _nvptx_unary_math_fn[
+        name, dtype, Self.target
+    ]()

@@ -12,75 +12,76 @@
 # ===----------------------------------------------------------------------=== #
 """NVIDIA PTX lowerings of `std.math` functions, for `CUDAPluginHooks`."""
 
-from std.math.math import _call_ptx_intrinsic, _llvm_unary_fn
+from std.collections import OptionalReg
+from std.math.math import (
+    _UnaryMathPluginHookFnType,
+    _call_ptx_intrinsic,
+    _llvm_unary_fn,
+)
 from std.sys.info import CompilationTarget, _is_sm_9x_or_newer
 
 
-def _has_nvptx_op[
-    name: StaticString, dtype: DType, target: CompilationTarget
-]() -> Bool:
-    """Returns whether `_nvptx_unary_math` lowers `name` for `dtype` on
-    `target`.
+comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
 
-    Narrower dtypes that are left out here reach the float32 lowering through
+
+def _nvptx_unary_math_fn[
+    name: StaticString, dtype: DType, target: CompilationTarget
+]() -> _MathFn:
+    """Returns the NVIDIA lowering of the `std.math` function `name` for
+    `dtype` on `target`, or `None` to keep the stdlib's own lowering.
+
+    Narrower dtypes that get `None` here reach the float32 lowering through
     the stdlib, which converts them to float32 and calls `name` again.
     """
-    comptime if name == "sqrt":
-        # NVIDIA has no approximate f64 sqrt (`sqrt.approx.d` does not exist).
-        # The stdlib's `llvm.sqrt` lowers to the IEEE `sqrt.rn.f64` instead.
-        return dtype != DType.float64
-    elif name == "rsqrt" or name == "recip":
-        return True
-    elif name == "exp2":
-        return dtype in (DType.float16, DType.float32) or (
-            dtype == DType.bfloat16 and target._is_sm_9x_or_newer()
-        )
-    elif name == "tanh":
-        return dtype in (DType.float16, DType.bfloat16, DType.float32)
-    elif name == "log" or name == "log2":
-        return dtype == DType.float32
-    elif name == "sin" or name == "cos":
-        # float64 is claimed only so `_nvptx_unary_math` rejects it, rather
-        # than letting the stdlib fall back to `llvm.sin` and `llvm.cos`.
-        return dtype in (DType.float32, DType.float64)
-    return False
+    comptime match name:
+        case "sqrt":
+            # NVIDIA has no approximate f64 sqrt (`sqrt.approx.d` does not
+            # exist), so f64 keeps the stdlib's `llvm.sqrt`, which lowers to
+            # the IEEE `sqrt.rn.f64`.
+            return comptime (_lowering[_sqrt, dtype != DType.float64])
+        case "rsqrt":
+            return comptime (_MathFn(_rsqrt))
+        case "recip":
+            return comptime (_MathFn(_recip))
+        case "exp2":
+            return comptime (
+                _lowering[
+                    _exp2,
+                    dtype in (DType.float16, DType.float32)
+                    or (
+                        dtype == DType.bfloat16 and target._is_sm_9x_or_newer()
+                    ),
+                ]
+            )
+        case "tanh":
+            return comptime (
+                _lowering[
+                    _tanh,
+                    dtype in (DType.float16, DType.bfloat16, DType.float32),
+                ]
+            )
+        case "log":
+            return comptime (_lowering[_log, dtype == DType.float32])
+        case "log2":
+            return comptime (_lowering[_log2, dtype == DType.float32])
+        case "sin":
+            # float64 is claimed only so `_sin` rejects it, rather than
+            # letting the stdlib fall back to `llvm.sin`.
+            return comptime (
+                _lowering[_sin, dtype in (DType.float32, DType.float64)]
+            )
+        case "cos":
+            # As for `sin`, float64 is claimed only so `_cos` rejects it.
+            return comptime (
+                _lowering[_cos, dtype in (DType.float32, DType.float64)]
+            )
+        case _:
+            return None
 
 
-@inline(.always)
-def _nvptx_unary_math[
-    dtype: DType, width: SIMDLength, //, name: StaticString
-](x: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    """Lowers the `std.math` function `name` to NVIDIA PTX."""
-    comptime if name == "sqrt":
-        return _sqrt(x)
-    elif name == "rsqrt":
-        return _rsqrt(x)
-    elif name == "recip":
-        return _recip(x)
-    elif name == "exp2":
-        return _exp2(x)
-    elif name == "tanh":
-        return _tanh(x)
-    elif name == "log":
-        comptime ln2 = 0.69314718055966295651160180568695068359375
-        return ln2 * _log2(x)
-    elif name == "log2":
-        return _log2(x)
-    elif name == "sin":
-        comptime assert (
-            dtype != DType.float64
-        ), "DType.float64 is not supported for sin on NVIDIA GPU"
-        return _call_ptx_intrinsic[
-            instruction="sin.approx.ftz.f32", constraints="=f,f"
-        ](x)
-    else:
-        comptime assert name == "cos", "no NVIDIA lowering for this function"
-        comptime assert (
-            dtype != DType.float64
-        ), "DType.float64 is not supported for cos on NVIDIA GPU"
-        return _call_ptx_intrinsic[
-            instruction="cos.approx.ftz.f32", constraints="=f,f"
-        ](x)
+comptime _lowering[
+    lowering: _UnaryMathPluginHookFnType, supported: Bool
+]: _MathFn = _MathFn(lowering) if supported else _MathFn(None)
 
 
 @inline(.always)
@@ -172,6 +173,32 @@ def _exp2(x: SIMD) -> type_of(x):
 def _log2(x: SIMD) -> type_of(x):
     return _call_ptx_intrinsic[
         instruction="lg2.approx.ftz.f32", constraints="=f,f"
+    ](x)
+
+
+@inline(.always)
+def _log(x: SIMD) -> type_of(x):
+    comptime ln2 = 0.69314718055966295651160180568695068359375
+    return ln2 * _log2(x)
+
+
+@inline(.always)
+def _sin(x: SIMD) -> type_of(x):
+    comptime assert (
+        x.dtype != DType.float64
+    ), "DType.float64 is not supported for sin on NVIDIA GPU"
+    return _call_ptx_intrinsic[
+        instruction="sin.approx.ftz.f32", constraints="=f,f"
+    ](x)
+
+
+@inline(.always)
+def _cos(x: SIMD) -> type_of(x):
+    comptime assert (
+        x.dtype != DType.float64
+    ), "DType.float64 is not supported for cos on NVIDIA GPU"
+    return _call_ptx_intrinsic[
+        instruction="cos.approx.ftz.f32", constraints="=f,f"
     ](x)
 
 
