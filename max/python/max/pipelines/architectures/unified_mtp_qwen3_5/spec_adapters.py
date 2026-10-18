@@ -69,6 +69,9 @@ class Qwen3_5Target:
             # ``merged_tokens`` rather than with the real tokens. ``None``
             # keeps the target on its static rope table, which is correct
             # only while no request in the batch has an image in context.
+            #
+            # Images arrive only in a K = 0 step, which merges no drafts, so
+            # the scatter indices into the step's tokens need no remapping.
             outputs = self.target(
                 batch.merged_tokens,
                 batch.kv_collections,
@@ -76,6 +79,8 @@ class Qwen3_5Target:
                 batch.merged_offsets,
                 batch.signal_buffers,
                 verify_state,
+                image_embeddings=batch.vision_embeddings or None,
+                image_token_indices=batch.vision_scatter_indices or None,
                 position_ids=batch.extra[POSITION_IDS],
             )
 
@@ -147,6 +152,10 @@ class Qwen3_5MTPProposer:
             device=batch.device0,
         )
 
+        # TODO(sliu): merge the image embeddings into this shifted window too,
+        # one position left of the target's. Until then the head embeds the
+        # image placeholder token at those positions, which only costs
+        # acceptance on image prompts.
         hidden = self.draft(
             tokens=tokens,
             hidden_states=target_hidden,
