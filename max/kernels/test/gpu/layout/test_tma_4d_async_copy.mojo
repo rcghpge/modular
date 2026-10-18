@@ -225,7 +225,7 @@ def test_tma_4d_load_row_major[
     var desc_tile = stack_allocation[dtype=dtype, alignment=align_of[dtype]()](
         row_major[desc_tile_dim1, desc_tile_dim2, desc_tile_dim3]()
     )
-    var desc_flat = desc_tile.reshape(row_major[desc_tile_size]())
+    var desc_flat = desc_tile.coalesce()
 
     var dest_ptr = dst_host.ptr
     for dest_tile_w in range(src_dim0 // cta_tile_dim0):

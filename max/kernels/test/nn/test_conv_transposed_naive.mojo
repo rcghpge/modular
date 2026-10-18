@@ -185,7 +185,7 @@ def test_convtranspose_dilation():
         Scalar[type], origin_of(input_stack)
     ] = input_stack.unsafe_ptr()
     var input = TileTensor(input_stack_ptr, input_layout)
-    var input_flat = input.reshape(row_major[input_layout.product()]())
+    var input_flat = input.coalesce()
     input_flat[0] = 3
     input_flat[1] = 8
     input_flat[2] = 1
@@ -202,7 +202,7 @@ def test_convtranspose_dilation():
         Scalar[type], origin_of(filter_stack)
     ] = filter_stack.unsafe_ptr()
     var filter = TileTensor(filter_stack_ptr, filter_layout)
-    var filter_flat = filter.reshape(row_major[filter_layout.product()]())
+    var filter_flat = filter.coalesce()
     filter_flat[0] = 7
     filter_flat[1] = 2
     filter_flat[2] = 1

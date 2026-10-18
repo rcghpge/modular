@@ -538,7 +538,7 @@ def test_tma_replace_global_dim_in_smem_descriptor[
     comptime swizzle = make_swizzle[dtype, swizzle_mode]()
 
     var dest_tile = stack_allocation[dtype](row_major[cta_tile_M, cta_tile_N]())
-    var dest_flat = dest_tile.reshape(row_major[cta_tile_M * cta_tile_N]())
+    var dest_flat = dest_tile.coalesce()
     comptime assert dest_flat.flat_rank == 1
 
     dst.to_host()

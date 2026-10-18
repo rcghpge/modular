@@ -100,7 +100,7 @@ def bench_stencil_avg_pool[
     )
 
     # Initialize input data
-    var h_input_flat = h_input.reshape(row_major[input_size]())
+    var h_input_flat = h_input.coalesce()
     for i in range(input_size):
         h_input_flat[i] = Scalar[dtype](i + 1)
 
@@ -362,7 +362,7 @@ def bench_stencil_max_pool[
     )
 
     # Initialize input data
-    var h_input_flat = h_input.reshape(row_major[input_size]())
+    var h_input_flat = h_input.coalesce()
     for i in range(input_size):
         h_input_flat[i] = Scalar[dtype](i + 1)
 
@@ -612,7 +612,7 @@ def bench_stencil_avg_pool_padded[
     )
 
     # Initialize input data
-    var h_input_flat = h_input.reshape(row_major[input_size]())
+    var h_input_flat = h_input.coalesce()
     for i in range(input_size):
         h_input_flat[i] = Scalar[dtype](i + 1)
 
