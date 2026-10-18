@@ -1374,10 +1374,12 @@ def _multistage_gemm_kernel_impl[
             store_c_frags[in_range=True]()
         else:
             store_c_frags[in_range=False]()
-    # Store FP32 results to FP32 buffer in global memory.
+    # Store FP32 results to FP32 buffer in global memory. The TileTensor
+    # `copy_local_to_dram` does not convert, so a C whose dtype differs from
+    # the accumulator's goes through `store_c_frags`, which casts each element.
     else:
         if c_rows_aligned and c_tile_in_range:
-            comptime if has_output_fn:
+            comptime if has_output_fn or c_type != accum_type:
                 store_c_frags[in_range=True]()
             else:
                 copy_local_to_dram[thread_layout=row_major[8, 4]()](
