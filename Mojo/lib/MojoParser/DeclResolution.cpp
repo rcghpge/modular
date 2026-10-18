@@ -221,7 +221,7 @@ LogicalResult Decorators::handleMessageDecorator(
   // From here on, we've matched @<name> - all paths must return success().
 
   // Check that the decl's operation implements StabilityDecoratorInterface.
-  Operation *op = decl.getOperation();
+  Operation *op = decl.getIfOperation();
   auto stabilityInterface =
       op ? dyn_cast<StabilityDecoratorInterface>(op) : nullptr;
   if (!stabilityInterface) {
@@ -350,7 +350,7 @@ LogicalResult Decorators::handleUnavailable(ExprNode *expr, ASTDecl &decl) {
 LogicalResult Decorators::handleStable(ExprNode *expr, ASTDecl &decl) {
   // Common logic applied once @stable has been matched on a supported decl.
   auto applyStable = [&](StringAttr sinceVersion = {}) -> LogicalResult {
-    Operation *op = decl.getOperation();
+    Operation *op = decl.getIfOperation();
     auto stabilityInterface =
         op ? dyn_cast<StabilityDecoratorInterface>(op) : nullptr;
     if (!stabilityInterface) {
@@ -500,7 +500,7 @@ void Decorators::applySignatureDecorators(
   // @unavailable. At most one of these may appear on a single declaration.
   if (auto stabilityInterface =
           dyn_cast_if_present<StabilityDecoratorInterface>(
-              decl.getOperation())) {
+              decl.getIfOperation())) {
     // Use the first decorator's location for the error message.
     SMLoc errorLoc = decoratorExprs.empty()
                          ? decl.getLoc()
@@ -752,7 +752,7 @@ void Decorators::applyBodyDecorators(
     }
   }
 
-  cast<ASTDeclInterface>(decl.getOperation())
+  cast<ASTDeclInterface>(decl.getIfOperation())
       .setDecoratorsAttr(DecoratorsAttr::get(getContext(), decoPValues));
 }
 
@@ -1974,7 +1974,7 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
           node, "cannot use a lambda expression");
       return {};
     }
-    paramBuilder.setInsertionPoint(anchor->getOperation());
+    paramBuilder.setInsertionPoint(anchor->getIfOperation());
   }
   OpBuilder &builder = insideParamContext ? paramBuilder : *emitter.builder;
   MLIRContext *ctx = builder.getContext();

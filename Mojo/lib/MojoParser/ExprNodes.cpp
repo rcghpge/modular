@@ -2404,7 +2404,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
   // Functions are checked in CallEmission.cpp::getCallee after overload
   // resolution.
   for (ASTDecl *memberDecl : memberDecls)
-    if (memberDecl->getOperation())
+    if (memberDecl->getIfOperation())
       checkDeclUsageWarnings(*memberDecl, getIdentifierLoc(),
                              emitter.getDeclScope(), shared, getRange(),
                              CallSyntax::kDirectCall, {});

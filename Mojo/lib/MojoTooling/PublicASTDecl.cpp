@@ -293,11 +293,11 @@ extractChildDecls(const ASTDecl &decl,
 
   for (const auto &[name, decls] : decl.getDeclsInScope()) {
     if (decls.empty() || !decls.front() ||
-        !isa_and_nonnull<OpType>(decls.front()->getOperation()))
+        !isa_and_nonnull<OpType>(decls.front()->getIfOperation()))
       continue;
 
     for (ASTDecl *child : decls) {
-      OpType childOp = dyn_cast_or_null<OpType>(child->getOperation());
+      OpType childOp = dyn_cast_or_null<OpType>(child->getIfOperation());
       if (!childOp || shouldHideDeclInDocGen(*child, name))
         continue;
 
@@ -493,7 +493,7 @@ std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
   if (!decl)
     return nullptr;
 
-  if (Operation *declOp = decl->getOperation()) {
+  if (Operation *declOp = decl->getIfOperation()) {
     if (isa<AliasDeclOp>(declOp))
       return std::unique_ptr<PublicAliasDecl>(new PublicAliasDecl(decl));
     if (isa<FnOp>(declOp))
@@ -555,7 +555,7 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
   if (!decl)
     return std::nullopt;
 
-  if (Operation *declOp = decl->getOperation()) {
+  if (Operation *declOp = decl->getIfOperation()) {
     if (isa<AliasDeclOp>(declOp))
       return PublicAliasDecl::getKindStatic();
     if (isa<FnOp>(declOp))

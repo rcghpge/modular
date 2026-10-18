@@ -626,7 +626,7 @@ SharedState::uniquifyNameAndAddToParentSymbolTable(Operation *declOp) {
 }
 
 Operation *SharedState::lookupSymbolIn(ASTDecl *container, StringAttr name) {
-  Operation *tableOp = container->getOperation();
+  Operation *tableOp = container->getIfOperation();
   assert(tableOp && "decl is not an operation");
   return impl->symbolTables.getSymbolTable(tableOp).lookup(name);
 }
@@ -1349,7 +1349,7 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
 
   // Find the entry that matches the full symbol name.
   for (ASTDecl *decl : result) {
-    if (decl->getOperation() != declOp)
+    if (decl->getIfOperation() != declOp)
       continue;
     if (failed(declResolver->resolve(*decl, howResolved, loc)))
       return nullptr;
@@ -1365,7 +1365,7 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
   if (ModuleState *state = getModuleLoader().lookupState(&container)) {
     auto it = state->nestedModules.find(name);
     if (it != state->nestedModules.end() && it->second->decl &&
-        it->second->decl->getOperation() == declOp) {
+        it->second->decl->getIfOperation() == declOp) {
       if (failed(declResolver->resolve(*it->second->decl, howResolved, loc)))
         return nullptr;
       return it->second->decl;
@@ -1412,7 +1412,7 @@ ASTDecl *SharedState::resolveAndGetTypeDecl(SymbolRefAttr symbol, SMLoc loc) {
 LogicalResult
 SharedState::resolveDeclFromBytecode(ASTDecl &decl,
                                      DeclResolvedness resolvedness) {
-  Operation *declOp = decl.getOperation();
+  Operation *declOp = decl.getIfOperation();
   auto &refWalker = getImpl().bytecodeRefResolutionWalker;
   auto savedContextLoc = refWalker.saveResolutionContextLoc(decl.getLoc());
 
@@ -1712,7 +1712,7 @@ LogicalResult SharedState::finalizeImportedBytecodeModules() {
         decl->resolvedness != DeclResolvedness::unparsed)
       continue;
     unparsedBytecodeDecls.push_back(decl);
-    if (Operation *op = decl->getOperation()) {
+    if (Operation *op = decl->getIfOperation()) {
       bool isLazy = llvm::any_of(readers, [op](mlir::BytecodeReader *r) {
         return r->isMaterializable(op);
       });
@@ -1998,7 +1998,7 @@ void SharedState::notifyListenerOnModuleImport(ASTDecl &decl,
                                                SMLoc loc) {
   if (!isListenerInterestedInLoc(parserListener, loc))
     return;
-  if (!decl.getOperation())
+  if (!decl.getIfOperation())
     return;
 
   // Skip over relative module markers in the location. Note we're assuming each

@@ -450,7 +450,7 @@ OwningOpRef<ModuleOp> LIT::cloneDeclModuleForCompilation(ASTDecl &decl) {
 }
 OwningOpRef<ModuleOp> LIT::cloneDeclModuleForCompilation(ASTDecl &decl,
                                                          IRMapping &mapping) {
-  Operation *declOp = decl.getOperation();
+  Operation *declOp = decl.getIfOperation();
   assert(declOp && "expected decl to be an operation");
 
   // Clone the module containing the decl.

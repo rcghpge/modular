@@ -51,7 +51,7 @@ static bool isPrivateMemberName(StringRef name) {
 
 /// Return if a decl should be hidden given its name.
 bool LIT::shouldHideDeclInDocGen(ASTDecl &decl, StringRef name) {
-  Operation *declOp = decl.getOperation();
+  Operation *declOp = decl.getIfOperation();
   // Hide private names (non dunder methods starting with _).
   if (isPrivateMemberName(name))
     return true;
@@ -479,7 +479,7 @@ public:
     if (decl.isErroneous())
       return;
 
-    if (!decl.getOperation())
+    if (!decl.getIfOperation())
       return;
     auto validateOperation = [&](auto op, bool requiresDoc) {
       ValidationKind validation =
@@ -498,7 +498,7 @@ public:
       validateDecl(decl, op, validation);
     };
 
-    TypeSwitch<Operation *>(decl.getOperation())
+    TypeSwitch<Operation *>(decl.getIfOperation())
         .Case<FnOp>([&](FnOp op) {
           validateOperation(op, requiresDocString(decl, op));
         })
@@ -1009,8 +1009,8 @@ public:
     if (decl.isErroneous())
       return std::nullopt;
 
-    if (decl.getOperation()) {
-      TypeSwitch<Operation *>(decl.getOperation())
+    if (decl.getIfOperation()) {
+      TypeSwitch<Operation *>(decl.getIfOperation())
           .Case<FnOp, FileModuleOp, StructDeclOp, StructFieldOp, TraitDeclOp,
                 AliasDeclOp>([&](auto op) {
             StringRef summaryCodeBlock = "[summary].";

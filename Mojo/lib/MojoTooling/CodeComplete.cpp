@@ -295,7 +295,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
     if (!addedResults.insert({decl, name}).second)
       return;
 
-    Operation *op = decl->getOperation();
+    Operation *op = decl->getIfOperation();
     if (!op || (filter && !filter(op)))
       return;
 
@@ -318,7 +318,7 @@ struct CodeCompletionListener : public BaseCompletionListener {
     // names in its defining module for the kind.
     if (auto importOp = dyn_cast<UnresolvedImportOp>(op)) {
       if (ASTDecl *target = resolveImportedDecl(importOp)) {
-        if (Operation *targetOp = target->getOperation())
+        if (Operation *targetOp = target->getIfOperation())
           kind = kindForOp(targetOp);
       }
     }

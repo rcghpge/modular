@@ -197,7 +197,7 @@ static bool tryPrintIdentityReconstruction(raw_ostream &os, TypedAttr typeValue,
   if (ASTDecl *decl =
           diagShared->getDeclResolver().getDeclForTypeSymbolIfExists(
               structTy.getValue().getValue())) {
-    auto declIntf = dyn_cast<DeclInterface>(decl->getOperation());
+    auto declIntf = dyn_cast<DeclInterface>(decl->getIfOperation());
     if (!declIntf)
       return false;
     ArrayRef<ParamDeclAttr> declaredParams = declIntf.getInputParams();

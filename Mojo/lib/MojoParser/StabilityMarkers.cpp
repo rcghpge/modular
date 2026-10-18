@@ -45,7 +45,7 @@ static StringRef getDeclName(Operation *op) {
 }
 
 static StringRef getDeclName(ASTDecl &decl) {
-  return getDeclName(decl.getOperation());
+  return getDeclName(decl.getIfOperation());
 }
 
 /// Forward declaration; defined below near `checkDeclUsageWarnings`, its
@@ -64,8 +64,8 @@ static std::string getIgnoreDeprecatedName(ASTDecl &decl, SharedState &shared) {
 
 /// Returns true if the declaration is marked @stable.
 static bool hasStableDecorator(ASTDecl &decl) {
-  if (auto stabilityIface =
-          dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation()))
+  if (auto stabilityIface = dyn_cast_if_present<StabilityDecoratorInterface>(
+          decl.getIfOperation()))
     return stabilityIface.isStable();
   return false;
 }
@@ -142,7 +142,7 @@ void M::KGEN::LIT::checkDeprecationAndWarn(ASTDecl &decl, SMLoc useLoc,
   // Use StabilityDecoratorInterface which now handles both @stable and
   // @deprecated.
   auto stabilityItf =
-      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation());
+      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getIfOperation());
   if (!stabilityItf || !stabilityItf.isDeprecated())
     return;
 
@@ -178,7 +178,7 @@ void M::KGEN::LIT::checkUnavailableAndError(ASTDecl &decl, SMLoc useLoc,
                                             CallSyntax syntax, SMLoc fixitLoc) {
   // Check if the declaration has an @unavailable decorator.
   auto stabilityItf =
-      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getOperation());
+      dyn_cast_if_present<StabilityDecoratorInterface>(decl.getIfOperation());
   if (!stabilityItf || !stabilityItf.isUnavailable())
     return;
 

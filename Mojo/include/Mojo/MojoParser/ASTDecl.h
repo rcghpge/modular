@@ -105,14 +105,10 @@ public:
 
   virtual CValue getIfIRValue() const { return {}; }
 
-  /// If the IRValue is an Operation*, return it, otherwise return null.
-  /// This is used for things like Module, StructDecl, Func, or ParamDecl.
-  Operation *getIfOperation() const { return operation; }
-
-  /// Return the operation backing this decl, or null if it holds a value.
+  /// Return the operation backing this decl, or null if it does not have one.
   /// Callers that know the decl kind should downcast and use the typed
   /// getOp() accessors instead.
-  virtual Operation *getOperation() const { return getIfOperation(); }
+  virtual Operation *getIfOperation() const { return nullptr; }
 
   /// Return true if this decl is callable: a `FnOp`, or a witness for one.
   bool isCallableDecl() const;
@@ -148,7 +144,7 @@ public:
   template <typename... OpTs>
   ASTDecl *getNearestDeclOfType() {
     ASTDecl *cur = this;
-    while (cur && !isa_and_nonnull<OpTs...>(cur->getOperation()))
+    while (cur && !isa_and_nonnull<OpTs...>(cur->getIfOperation()))
       cur = cur->getParentDecl();
     return cur;
   }
@@ -183,7 +179,7 @@ public:
 
   /// Return the builder at the end of the region that the decl contains.
   OpBuilder getDeclEndBuilder() {
-    Operation *op = getOperation();
+    Operation *op = getIfOperation();
     assert(op && op->getNumRegions() == 1 &&
            "can't get builder for this ASTDecl");
     return OpBuilder::atBlockEnd(&op->getRegion(0).front());
@@ -372,25 +368,18 @@ private:
   friend class DeclResolver;
   friend class ModuleLoader;
   friend class SharedState;
-  ASTDecl(SharedState &shared, Operation *operation, llvm::SMLoc loc,
-          ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
-          ssize_t indentation);
+  ASTDecl(SharedState &shared, llvm::SMLoc loc, ASTDecl *parentDecl,
+          LexerCursor cursor, LexerCursor endCursor, ssize_t indentation);
   ASTDecl(const ASTDecl &) = delete;
   ASTDecl &operator=(const ASTDecl &) = delete;
 
 protected:
-  ASTDecl(Kind declKind, SharedState &shared, Operation *operation,
-          llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
-          LexerCursor endCursor, ssize_t indentation);
+  ASTDecl(Kind declKind, SharedState &shared, llvm::SMLoc loc,
+          ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
+          ssize_t indentation);
 
   /// The Mojo shared state this decl is associated with.
   SharedState &shared;
-
-  void setOperation(Operation *newOperation) { operation = newOperation; }
-
-private:
-  /// The MLIR operation that this decl corresponds to, if it has one.
-  Operation *operation;
 
   /// This is the source location of the declaration, used for diagnostics and
   /// debug information.
@@ -506,6 +495,22 @@ private:
   std::unique_ptr<llvm::SetVector<ConstraintAttr>> knownAssumptions;
 };
 
+/// An AST declaration backed by an MLIR operation.
+class OpASTDecl : public ASTDecl {
+public:
+  Operation *getIfOperation() const final { return operation; }
+
+protected:
+  OpASTDecl(Kind kind, SharedState &shared, Operation *operation,
+            llvm::SMLoc loc, ASTDecl *parentDecl, LexerCursor cursor,
+            LexerCursor endCursor, ssize_t indentation);
+
+  void setOperation(Operation *newOperation) { operation = newOperation; }
+
+private:
+  Operation *operation;
+};
+
 /// An AST declaration backed by a compile-time or runtime IR value.
 class IRASTDecl final : public ASTDecl {
 public:
@@ -530,7 +535,7 @@ private:
 /// An AST declaration backed by an operation without dedicated declaration
 /// semantics. This is intended for the long tail of operations that are
 /// uncommonly used but are represented by an Operation.
-class OtherOpASTDecl final : public ASTDecl {
+class OtherOpASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::OtherOp;
@@ -556,7 +561,7 @@ private:
 };
 
 /// The AST representation of a variable declaration.
-class VarASTDecl final : public ASTDecl {
+class VarASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Var;
@@ -580,7 +585,7 @@ private:
 };
 
 /// Base class for top-level, file, and package module declarations.
-class ModuleASTDecl : public ASTDecl {
+class ModuleASTDecl : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() >= Kind::TopLevelModule &&
@@ -668,7 +673,7 @@ private:
 };
 
 /// The AST representation of a function declaration.
-class DefASTDecl final : public ASTDecl {
+class DefASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Def;
@@ -695,7 +700,7 @@ private:
 };
 
 /// An AST declaration that provides a `Self` type to its members.
-class TypeScopeASTDecl : public ASTDecl {
+class TypeScopeASTDecl : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Extension ||
@@ -813,7 +818,7 @@ private:
 };
 
 /// An AST declaration backed by an alias declaration operation.
-class AliasASTDecl final : public ASTDecl {
+class AliasASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Alias;
@@ -836,7 +841,7 @@ private:
 };
 
 /// The AST representation of a trait conformance declaration.
-class ConformanceASTDecl final : public ASTDecl {
+class ConformanceASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Conformance;
@@ -859,7 +864,7 @@ private:
 };
 
 /// The AST representation of an import declaration.
-class ImportASTDecl final : public ASTDecl {
+class ImportASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::Import;
@@ -895,7 +900,7 @@ private:
 };
 
 /// The AST representation of an enum case declaration.
-class EnumCaseASTDecl final : public ASTDecl {
+class EnumCaseASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::EnumCase;
@@ -920,7 +925,7 @@ private:
 };
 
 /// The AST representation of a stored struct field declaration.
-class StructFieldASTDecl final : public ASTDecl {
+class StructFieldASTDecl final : public OpASTDecl {
 public:
   static bool classof(const ASTDecl *decl) {
     return decl->getKind() == Kind::StructField;

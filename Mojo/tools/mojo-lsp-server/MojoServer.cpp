@@ -969,7 +969,7 @@ void MojoDocument::checkModuleSemantics(ASTDecl *decl) {
   });
 
   // Don't check the semantics of the module if there were parser errors.
-  if (hasParserErrors || !decl || !decl->getOperation())
+  if (hasParserErrors || !decl || !decl->getIfOperation())
     return;
 
   // Clone the module this decl is in so that we don't mess with the AST, as
@@ -1774,7 +1774,7 @@ static std::optional<int64_t> getAddressSpace(const Symbol &symbol) {
   }
 
   ASTType type;
-  if (Operation *op = symbol.decl->getOperation()) {
+  if (Operation *op = symbol.decl->getIfOperation()) {
     if (auto varDecl = dyn_cast<VarDeclOp>(op))
       type = varDecl.getType();
     else if (auto field = dyn_cast<StructFieldOp>(op))

@@ -230,7 +230,7 @@ MojoInflightDiag &MojoInflightDiag::attachNote(const ASTDecl &ctxDecl) & {
   if (!shared)
     return *this;
 
-  Operation *op = ctxDecl.getOperation();
+  Operation *op = ctxDecl.getIfOperation();
   // Prefer the operation's location if available; it is often more correct in
   // the case of synthetic functions.
   Location loc =

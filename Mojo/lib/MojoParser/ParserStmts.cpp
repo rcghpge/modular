@@ -87,7 +87,7 @@ void ParserBase::parseDocString(ASTDecl &decl) {
   if (docString.empty())
     return;
   if (auto astDeclOp =
-          dyn_cast_or_null<ASTDeclInterface>(decl.getOperation())) {
+          dyn_cast_or_null<ASTDeclInterface>(decl.getIfOperation())) {
     Location loc = shared.diags.translateLocation(
         lexer.getStringLiteralStartLoc(docString));
 

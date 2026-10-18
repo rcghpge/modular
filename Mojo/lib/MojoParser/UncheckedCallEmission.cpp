@@ -1354,7 +1354,7 @@ bool ExclusivityChecker::mayAccessCallerStack() const {
     // Walk up the decl hierarchy to find the one that contains the parameter.
     for (auto *curDecl = &declScope; curDecl;
          curDecl = curDecl->getParentDecl()) {
-      Operation *declOp = curDecl->getOperation();
+      Operation *declOp = curDecl->getIfOperation();
       if (!declOp)
         continue;
 

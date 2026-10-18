@@ -250,7 +250,7 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
         shared, op, loc, parentDecl, cursor, endCursor, indentation);
   } else {
     decl = shared.persistentAllocator.create<ASTDecl>(
-        shared, op, loc, parentDecl, cursor, endCursor, indentation);
+        shared, loc, parentDecl, cursor, endCursor, indentation);
   }
   parsedDeclList.push_back(decl);
 
@@ -448,7 +448,7 @@ void DeclResolver::attachDeclToParentNameTable(ASTDecl *decl, StringAttr name) {
     // Otherwise, we're good, charge forwards.
     entries.push_back(decl);
 
-    assert(dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getOperation()));
+    assert(dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getIfOperation()));
     registerDeclSymbol(decl);
     return;
   }
@@ -601,7 +601,7 @@ void DeclResolver::eraseDecls(llvm::ArrayRef<ASTDecl *> seeds) {
 
 void DeclResolver::registerDeclSymbol(ASTDecl *decl) {
   if (auto symbolDecl =
-          dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getOperation())) {
+          dyn_cast_or_null<mlir::SymbolOpInterface>(decl->getIfOperation())) {
     shared.uniquifyNameAndAddToParentSymbolTable(symbolDecl.getOperation());
     // This symbol may have been renamed by the above
     // uniquifyNameAndAddToParentSymbolTable call.
@@ -1501,7 +1501,7 @@ LogicalResult DeclResolver::importDeclFromModule(
         }
     }
     if (placeholderDecl) {
-      Operation *oldOp = placeholderDecl->getOperation();
+      Operation *oldOp = placeholderDecl->getIfOperation();
       OpBuilder fromBuilder(oldOp);
       auto gateOp =
           ImportOp::create(fromBuilder, shared.translateLocation(destNameLoc),
@@ -1541,8 +1541,8 @@ LogicalResult DeclResolver::importWildcardDeclsFromModule(
   auto modulePath = SharedState::ImportPath::fromAttr(moduleName);
   auto *packageDecl = dyn_cast<PackageASTDecl>(&context);
   PackageOp currentPackage = packageDecl ? packageDecl->getOp() : PackageOp();
-  if (!currentPackage && context.getOperation())
-    currentPackage = context.getOperation()->getParentOfType<PackageOp>();
+  if (!currentPackage && context.getIfOperation())
+    currentPackage = context.getIfOperation()->getParentOfType<PackageOp>();
 
   // Make sure the module has been resolved.
   ASTDecl &module = shared.importModule(modulePath, currentPackage, loc,
@@ -1871,7 +1871,7 @@ void DeclResolver::eraseUnparsedDecls() {
       continue;
     if (decl->resolvedness == DeclResolvedness::unparsed &&
         !decl->loadedFromBytecode) {
-      if (Operation *op = decl->getOperation()) {
+      if (Operation *op = decl->getIfOperation()) {
         if (!isa<UnresolvedImportOp>(op))
           opsToErase.insert(op);
       }
@@ -1880,7 +1880,7 @@ void DeclResolver::eraseUnparsedDecls() {
 
   SmallVector<ASTDecl *> declsToErase;
   for (ASTDecl *decl : parsedDeclList)
-    if (opsToErase.contains(decl->getOperation()))
+    if (opsToErase.contains(decl->getIfOperation()))
       declsToErase.push_back(decl);
   eraseDecls(declsToErase);
 
@@ -1898,7 +1898,7 @@ void DeclResolver::eraseDeadImportPlaceholders() {
     return;
   SmallVector<ASTDecl *> placeholderDecls;
   for (ASTDecl *decl : parsedDeclList)
-    if (deadImportPlaceholders.contains(decl->getOperation()))
+    if (deadImportPlaceholders.contains(decl->getIfOperation()))
       placeholderDecls.push_back(decl);
   eraseDecls(placeholderDecls);
   for (Operation *op : deadImportPlaceholders)
@@ -2274,7 +2274,7 @@ StringAttr DeclResolver::getMangledName(StringAttr baseName, ASTDecl &container,
   // Compute the full signature of the decl to ensure dependent parameters from
   // a parent decl are name-erased in the mangled name.
   FnTypeGeneratorType fullSig =
-      LIT::getFullSignature(container.getOperation(), signatureGen);
+      LIT::getFullSignature(container.getIfOperation(), signatureGen);
 
   SmallString<64> mangledName(baseName.getValue().begin(),
                               baseName.getValue().end());
