@@ -120,6 +120,9 @@ public:
   /// Get the name of the decl. It might be empty.
   StringRef getName() const { return name; }
 
+  /// Return the declaration this public view represents.
+  ASTDecl &getDecl() const { return *decl; }
+
   /// Get a string representation of the kind of decl, e.g., 'variable',
   /// 'function', etc.
   StringRef getKindAsString() const;
@@ -145,10 +148,12 @@ public:
   PublicDeclKind getKind() const { return kind; }
 
 protected:
-  PublicDecl(PublicDeclKind kind, StringRef name) : kind(kind), name(name) {}
+  PublicDecl(PublicDeclKind kind, ASTDecl &decl, StringRef name)
+      : kind(kind), decl(&decl), name(name) {}
 
 private:
   PublicDeclKind kind;
+  ASTDecl *decl;
   StringRef name;
 };
 
@@ -203,8 +208,8 @@ public:
   /// (which carries the type string with any conforms_to trait bounds
   /// already merged in). Type metadata for doc cross-linking is computed
   /// once during construction.
-  PublicParameterDecl(KGEN::ParameterInfo info, SharedState &sharedState,
-                      const ASTDecl *currentDeclContext = nullptr);
+  PublicParameterDecl(ASTDecl &decl, KGEN::ParameterInfo info,
+                      SharedState &sharedState);
 
   KGEN::PassingKind getPassingKind() const { return info.passingKind; }
 
@@ -272,8 +277,8 @@ public:
   using Convention = KGEN::ArgumentConvention;
 
   /// Build a documented argument from a fully-resolved `ArgumentInfo`.
-  PublicArgumentDecl(KGEN::ArgumentInfo info, SharedState &sharedState,
-                     const ASTDecl *currentDeclContext = nullptr);
+  PublicArgumentDecl(ASTDecl &decl, KGEN::ArgumentInfo info,
+                     SharedState &sharedState);
 
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
@@ -530,11 +535,6 @@ private:
   /// parameters and args.
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
-  /// The underlying decl. Retained so that `getSignature` can delegate to the
-  /// op-driven signature printer in MojoParser when an `FnOp` is available.
-  /// May be null if this `PublicFunctionDecl` was synthesized from a derived
-  /// signature without a backing op.
-  ASTDecl *decl;
   SmallVector<PublicArgumentDecl, kTypicalArgumentCount> args;
   SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
   std::string fnConstraints;
@@ -569,10 +569,6 @@ private:
 /// Decl for struct field.
 class PublicStructFieldDecl : public PublicDecl {
 public:
-  PublicStructFieldDecl(StringRef name, StringRef type)
-      : PublicDecl(PublicDeclKind::DK_PublicStructFieldDecl, name), type(type) {
-  }
-
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
   std::string getMarkdownDocString() const override;
@@ -698,7 +694,6 @@ private:
   std::string description;
   StableInfo stableInfo;
   std::string summary;
-  ASTDecl *decl;
 };
 
 /// Decl for structs.
@@ -785,7 +780,6 @@ private:
   std::string description;
   StableInfo stableInfo;
   std::string summary;
-  ASTDecl *decl;
 };
 
 /// Decl for module.
@@ -837,7 +831,6 @@ private:
 
   std::string description;
   std::string summary;
-  ASTDecl *decl;
 };
 
 class PublicPackageDecl : public PublicDecl {
@@ -886,7 +879,6 @@ private:
 
   std::string description;
   std::string summary;
-  ASTDecl *decl;
 };
 
 } // namespace M::KGEN::LIT
