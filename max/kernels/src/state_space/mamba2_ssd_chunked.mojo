@@ -47,7 +47,7 @@ from max.gpu import WARP_SIZE, block_idx, thread_idx
 from max.gpu.compute.mma import ld_matrix, mma
 from max.gpu.host import DeviceContext
 from max.gpu.sync import barrier
-from std.math import ceildiv, exp2, fma
+from std.math import ceildiv, divmod, exp2, fma
 from std.memory import UnsafePointer, unsafe_stack_allocation
 from std.sys.info import align_of
 from layout import Coord, TensorLayout, TensorEngine, TileTensor, row_major
@@ -88,6 +88,12 @@ comptime SMEM_PAD = 8
 """Row padding (bf16 elements) of the shared tiles, against bank conflicts."""
 comptime MIN_AVG_SEQ_LEN = 128
 """Average sequence length from which the chunked scan beats the serial one."""
+comptime GROUPED_CB_AUTO = 0
+"""Selects grouped score reuse only for the validated amortization regime."""
+comptime GROUPED_CB_OFF = 1
+"""Disables grouped score precomputation."""
+comptime GROUPED_CB_ON = 2
+"""Forces grouped score precomputation for explicit comparisons."""
 
 
 def chunked_slots(total_len: Int, batch: Int) -> Int:
@@ -110,6 +116,28 @@ def use_chunked_ssd(
     """
     return head_dim % TILE == 0 and total_len >= max(
         min_tokens, MIN_AVG_SEQ_LEN * batch
+    )
+
+
+def use_grouped_cb_ssd(
+    total_len: Int, batch: Int, nheads: Int, head_dim: Int, ngroups: Int
+) -> Bool:
+    """Returns shape eligibility for amortized grouped score precomputation.
+
+    The caller separately gates the architecture, device name and dtypes.
+    With head and state dimensions 128, eight heads per group bound the extra
+    fp32 score scratch to half of the existing chunk-state scratch. Long
+    average rows and sufficient head-token work amortize the additional
+    allocation/launch.
+    """
+    if batch <= 0 or nheads <= 0 or ngroups <= 0 or head_dim != 2 * TILE:
+        return False
+    var heads_per_group, remainder = divmod(nheads, ngroups)
+    return (
+        remainder == 0
+        and heads_per_group >= 8
+        and total_len // batch >= 32 * CHUNK
+        and total_len >= ceildiv(1024 * CHUNK, nheads)
     )
 
 
@@ -500,6 +528,115 @@ def _frag_b(
     return b
 
 
+def ssd_chunk_cb[
+    kernel_dtype: DType,
+    SLT: TensorLayout,
+    SEngine: TensorEngine,
+    BFn: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, alignment: Int](Int, Int, Int) -> SIMD[
+        kernel_dtype, width
+    ],
+    CFn: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, alignment: Int](Int, Int, Int) -> SIMD[
+        kernel_dtype, width
+    ],
+    DSTATE: Int,
+](
+    slots_i: Int32,
+    ngroups_i: Int32,
+    info: TileTensor[.int32, SLT, ImmUntrackedOrigin, Engine=SEngine],
+    cb_out: TileTensor[.float32, SLT, MutUntrackedOrigin, Engine=SEngine],
+    b_fn: BFn,
+    c_fn: CFn,
+):
+    """Computes undecayed fp32 `C B^T` once per chunk and B/C group.
+
+    Grid `(slots, ngroups, CHUNK / TILE)`, block `OUT_THREADS`. The fragment
+    traversal and increasing-k MMA order match `ssd_chunk_output` exactly;
+    every fragment the consumer loads, including its masked lanes, is stored.
+    """
+    comptime assert kernel_dtype == .bfloat16, "tensor-core path is bf16"
+    comptime LDK = DSTATE + SMEM_PAD
+    comptime KSTEPS = DSTATE // MMA_K
+    var slots = Int(slots_i)
+    var ngroups = Int(ngroups_i)
+    var slot = block_idx.x
+    var group_id = block_idx.y
+    var rt = block_idx.z
+    var tid = thread_idx.x
+    var warp, lane = divmod(tid, WARP_SIZE)
+    var g, t4 = divmod(lane, QUAD)
+    var length = Int(info.load[width=1]((slots + slot,)))
+    var i0 = rt * TILE
+    if i0 >= length:
+        return
+    var start = Int(info.load[width=1]((slot,)))
+    var base = (slot * ngroups + group_id) * CHUNK * CHUNK
+    var Cs = unsafe_stack_allocation[
+        TILE * LDK,
+        DType.bfloat16,
+        address_space=.SHARED,
+        alignment=16,
+    ]()
+    var Bs = unsafe_stack_allocation[
+        TILE * LDK,
+        DType.bfloat16,
+        address_space=.SHARED,
+        alignment=16,
+    ]()
+    comptime for r in range(TILE * DSTATE // VEC // OUT_THREADS):
+        var e = tid + r * OUT_THREADS
+        var i, n8 = divmod(e, DSTATE // VEC)
+        n8 *= VEC
+        var v = SIMD[kernel_dtype, VEC](0)
+        if i0 + i < length:
+            v = c_fn[VEC, VEC](start + i0 + i, group_id, n8)
+        Cs.unsafe_store[alignment=16](i * LDK + n8, v.cast[.bfloat16]())
+    barrier()
+
+    var r0 = warp * MMA_M
+    var a_frag = Array[SIMD[.bfloat16, 8], KSTEPS](fill=0)
+    comptime for ks in range(KSTEPS):
+        a_frag[ks] = _frag_a(Cs, r0 + g, ks * MMA_K + t4 * 2, LDK)
+    var n_jt = min(rt + 1, ceildiv(length, TILE))
+    for jt in range(n_jt):
+        var j0 = jt * TILE
+        comptime for r in range(TILE * DSTATE // VEC // OUT_THREADS):
+            var e = tid + r * OUT_THREADS
+            var j, n8 = divmod(e, DSTATE // VEC)
+            n8 *= VEC
+            var v = SIMD[kernel_dtype, VEC](0)
+            if j0 + j < length:
+                v = b_fn[VEC, VEC](start + j0 + j, group_id, n8)
+            Bs.unsafe_store[alignment=16](j * LDK + n8, v.cast[.bfloat16]())
+        barrier()
+        comptime for sub in range(TILE // MMA_K):
+            if jt < rt or sub * MMA_K <= r0 + MMA_M - 1:
+                var cb = Array[SIMD[.float32, FRAG_C], 2](fill=0)
+                comptime for ks in range(KSTEPS):
+                    comptime for n8 in range(MMA_K // MMA_N):
+                        var bf = _frag_b(
+                            Bs,
+                            sub * MMA_K + n8 * MMA_N + g,
+                            ks * MMA_K + t4 * 2,
+                            LDK,
+                        )
+                        mma(cb[n8], a_frag[ks], bf, cb[n8])
+                comptime for n8 in range(MMA_K // MMA_N):
+                    comptime for half in range(2):
+                        var i = i0 + r0 + g + half * HALF
+                        var j = j0 + sub * MMA_K + n8 * MMA_N + t4 * 2
+                        cb_out.store[width=2, alignment=8](
+                            (base + i * CHUNK + j,),
+                            SIMD[.float32, 2](
+                                cb[n8][half * 2], cb[n8][half * 2 + 1]
+                            ),
+                        )
+        barrier()
+
+
 def ssd_chunk_output[
     kernel_dtype: DType,
     SLT: TensorLayout,
@@ -525,6 +662,7 @@ def ssd_chunk_output[
         kernel_dtype, width
     ],
     DSTATE: Int,
+    use_grouped_cb: Bool = False,
 ](
     slots_i: Int32,
     nheads_i: Int32,
@@ -533,9 +671,10 @@ def ssd_chunk_output[
     D: TileTensor[kernel_dtype, D_LT, ImmUntrackedOrigin, Engine=Engine],
     y: TileTensor[kernel_dtype, y_LT, MutUntrackedOrigin, Engine=Engine],
     info: TileTensor[.int32, SLT, MutUntrackedOrigin, Engine=SEngine],
-    cs: TileTensor[.float32, SLT, MutUntrackedOrigin, Engine=SEngine],
+    cs: TileTensor[.float32, SLT, ImmUntrackedOrigin, Engine=SEngine],
     delta_in: TileTensor[.float32, SLT, MutUntrackedOrigin, Engine=SEngine],
     states: TileTensor[.float32, SLT, MutUntrackedOrigin, Engine=SEngine],
+    cb_in: TileTensor[.float32, SLT, ImmUntrackedOrigin, Engine=SEngine],
     x_fn: XFn,
     b_fn: BFn,
     c_fn: CFn,
@@ -649,14 +788,17 @@ def ssd_chunk_output[
     var n_jt = min(rt + 1, ceildiv(length, TILE))
     for jt in range(n_jt):
         var j0 = jt * TILE
-        comptime for r in range(TILE * DSTATE // VEC // OUT_THREADS):
-            var e = tid + r * OUT_THREADS
-            var j = e // (DSTATE // VEC)
-            var n8 = (e % (DSTATE // VEC)) * VEC
-            var v = SIMD[kernel_dtype, VEC](0)
-            if j0 + j < length:
-                v = b_fn[VEC, VEC](start + j0 + j, group_id, n8)
-            SBs.unsafe_store[alignment=16](j * LDK + n8, v.cast[.bfloat16]())
+        comptime if not use_grouped_cb:
+            comptime for r in range(TILE * DSTATE // VEC // OUT_THREADS):
+                var e = tid + r * OUT_THREADS
+                var j = e // (DSTATE // VEC)
+                var n8 = (e % (DSTATE // VEC)) * VEC
+                var v = SIMD[kernel_dtype, VEC](0)
+                if j0 + j < length:
+                    v = b_fn[VEC, VEC](start + j0 + j, group_id, n8)
+                SBs.unsafe_store[alignment=16](
+                    j * LDK + n8, v.cast[.bfloat16]()
+                )
         comptime for r in range(TILE * TILE // VEC // OUT_THREADS):
             var e = tid + r * OUT_THREADS
             var j = e // (TILE // VEC)
@@ -671,15 +813,30 @@ def ssd_chunk_output[
             # Columns past this warp's last row are fully masked.
             if jt < rt or sub * MMA_K <= r0 + MMA_M - 1:
                 var cb = Array[SIMD[.float32, FRAG_C], 2](fill=0)
-                comptime for ks in range(KSTEPS):
+                comptime if use_grouped_cb:
                     comptime for n8 in range(MMA_K // MMA_N):
-                        var bf = _frag_b(
-                            SBs,
-                            sub * MMA_K + n8 * MMA_N + g,
-                            ks * MMA_K + t4 * 2,
-                            LDK,
-                        )
-                        mma(cb[n8], a_frag[ks], bf, cb[n8])
+                        comptime for half in range(2):
+                            var i = i0 + r0 + g + half * HALF
+                            var j = j0 + sub * MMA_K + n8 * MMA_N + t4 * 2
+                            var pair = cb_in.load[width=2, alignment=8](
+                                (
+                                    ((slot * ngroups + group_id) * CHUNK + i)
+                                    * CHUNK
+                                    + j,
+                                )
+                            )
+                            cb[n8][half * 2] = pair[0]
+                            cb[n8][half * 2 + 1] = pair[1]
+                else:
+                    comptime for ks in range(KSTEPS):
+                        comptime for n8 in range(MMA_K // MMA_N):
+                            var bf = _frag_b(
+                                SBs,
+                                sub * MMA_K + n8 * MMA_N + g,
+                                ks * MMA_K + t4 * 2,
+                                LDK,
+                            )
+                            mma(cb[n8], a_frag[ks], bf, cb[n8])
                 var m = SIMD[.bfloat16, 8](0)
                 comptime for n8 in range(MMA_K // MMA_N):
                     comptime for e in range(4):
@@ -744,6 +901,7 @@ def mamba2_ssd_chunked_fwd_inplace_gpu[
     //,
     DSTATE: Int,
     dt_softplus: Bool,
+    grouped_cb_mode: Int = GROUPED_CB_AUTO,
 ](
     ctx: DeviceContext,
     total_len: Int,
@@ -780,6 +938,9 @@ def mamba2_ssd_chunked_fwd_inplace_gpu[
         SlotFn: Reads the pool slot of each sequence.
         DSTATE: State dimension per head.
         dt_softplus: Whether to apply softplus to `dt + dt_bias`.
+        grouped_cb_mode: `GROUPED_CB_OFF`, `GROUPED_CB_ON`, or
+            `GROUPED_CB_AUTO`. AUTO selects only the validated B200 bf16
+            kernel, fp32 state, dimension-128 amortization regime.
 
     Args:
         ctx: Device context.
@@ -801,6 +962,11 @@ def mamba2_ssd_chunked_fwd_inplace_gpu[
         slot_fn: Reads the pool slot of each sequence.
     """
     comptime assert DSTATE % 64 == 0, "the chunked scan needs DSTATE % 64 == 0"
+    comptime assert grouped_cb_mode in (
+        GROUPED_CB_AUTO,
+        GROUPED_CB_OFF,
+        GROUPED_CB_ON,
+    ), "invalid grouped score precomputation mode"
     var nheads = Int(y.dim[1]())
     var head_dim = Int(y.dim[2]())
     var slots = chunked_slots(total_len, batch)
@@ -912,34 +1078,103 @@ def mamba2_ssd_chunked_fwd_inplace_gpu[
         block_dim=(NUM_THREADS, 1, 1),
     )
 
-    comptime out_kernel = ssd_chunk_output[
-        kernel_dtype,
-        cs.LayoutType,
-        cs.Engine,
-        A.LayoutType,
-        D.LayoutType,
-        dt_bias.LayoutType,
-        y.LayoutType,
-        y.Engine,
-        type_of(x_fn),
-        type_of(b_fn),
-        type_of(c_fn),
-        DSTATE,
-    ]
-    ctx.enqueue_function[out_kernel](
-        Int32(slots),
-        Int32(nheads),
-        Int32(head_dim),
-        Int32(ngroups),
-        D,
-        y,
-        info,
-        cs,
-        delta,
-        states,
-        host_arg=x_fn,
-        host_arg2=b_fn,
-        host_arg3=c_fn,
-        grid_dim=(slots, nheads, (CHUNK // TILE) * (head_dim // TILE)),
-        block_dim=(OUT_THREADS, 1, 1),
-    )
+    def launch_output[use_grouped_cb: Bool]() raises {imm}:
+        comptime out_kernel = ssd_chunk_output[
+            kernel_dtype,
+            cs.LayoutType,
+            cs.Engine,
+            A.LayoutType,
+            D.LayoutType,
+            dt_bias.LayoutType,
+            y.LayoutType,
+            y.Engine,
+            type_of(x_fn),
+            type_of(b_fn),
+            type_of(c_fn),
+            DSTATE,
+            use_grouped_cb,
+        ]
+        comptime if use_grouped_cb:
+            var cb_d = ctx.enqueue_create_buffer[.float32](
+                slots * ngroups * CHUNK * CHUNK
+            )
+            var cb = TileTensor(
+                cb_d, row_major(slots * ngroups * CHUNK * CHUNK)
+            )
+            comptime cb_kernel = ssd_chunk_cb[
+                kernel_dtype,
+                cs.LayoutType,
+                cs.Engine,
+                type_of(b_fn),
+                type_of(c_fn),
+                DSTATE,
+            ]
+            ctx.enqueue_function[cb_kernel](
+                Int32(slots),
+                Int32(ngroups),
+                info.as_imm(),
+                cb,
+                host_arg=b_fn,
+                host_arg2=c_fn,
+                grid_dim=(slots, ngroups, CHUNK // TILE),
+                block_dim=(OUT_THREADS, 1, 1),
+            )
+            ctx.enqueue_function[out_kernel](
+                Int32(slots),
+                Int32(nheads),
+                Int32(head_dim),
+                Int32(ngroups),
+                D,
+                y,
+                info,
+                cs.as_imm(),
+                delta,
+                states,
+                cb.as_imm(),
+                host_arg=x_fn,
+                host_arg2=b_fn,
+                host_arg3=c_fn,
+                grid_dim=(slots, nheads, (CHUNK // TILE) * (head_dim // TILE)),
+                block_dim=(OUT_THREADS, 1, 1),
+            )
+            return
+        ctx.enqueue_function[out_kernel](
+            Int32(slots),
+            Int32(nheads),
+            Int32(head_dim),
+            Int32(ngroups),
+            D,
+            y,
+            info,
+            cs.as_imm(),
+            delta,
+            states,
+            cs.as_imm(),
+            host_arg=x_fn,
+            host_arg2=b_fn,
+            host_arg3=c_fn,
+            grid_dim=(slots, nheads, (CHUNK // TILE) * (head_dim // TILE)),
+            block_dim=(OUT_THREADS, 1, 1),
+        )
+
+    comptime if grouped_cb_mode == GROUPED_CB_ON:
+        launch_output[True]()
+    elif grouped_cb_mode == GROUPED_CB_OFF:
+        launch_output[False]()
+    else:
+        comptime if (
+            kernel_dtype == .bfloat16
+            and state_dtype == .float32
+            and DSTATE == 128
+            and (
+                ctx.target.is_nvidia_gpu["sm_100"]()
+                or ctx.target.is_nvidia_gpu["sm_100a"]()
+            )
+        ):
+            if (
+                use_grouped_cb_ssd(total_len, batch, nheads, head_dim, ngroups)
+                and ctx.name() == "NVIDIA B200"
+            ):
+                launch_output[True]()
+                return
+        launch_output[False]()

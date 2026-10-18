@@ -10,21 +10,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Benchmark the token-parallel `gated_delta_conv1d_fwd_gpu` against the
-retired sequential kernel (inlined below as the reference).
+"""Benchmark the current token-parallel `gated_delta_conv1d_fwd_gpu`.
 
-The sequential kernel runs one thread per (batch_item, conv_channel); the
-production kernel runs one thread per (token tile, conv_channel), with the
-head thread producing positions 0..K-2. Timing follows
-`bench_gated_delta_recurrence.mojo`: 5 warmup, 30 timed, median.
+Compare source revisions with the same harness for optimization A/Bs. The
+optional `--legacy=True` also times the retired sequential kernel below;
+that comparison is not evidence for a change to the current kernel.
 
-Shapes: the Qwen3.8-27B TP2 conv_dim shard (5120) at prefill chunk lengths,
-and decode/spec-decode batches.
+The adjacent YAML manifest owns the grids. Named CLI arguments select one
+sequence-length vector and channel count.
+Each sample starts from identical state restored outside the event interval.
+Timing uses 5 warmup launches, 30 single-launch samples, and no L2 flush.
 """
 
 from max.gpu import block_idx, thread_idx
+from std.benchmark import Batch, Bench, BenchmarkInfo, Report
+from std.builtin.sort import sort
 from std.math import ceildiv
 
+from internal_utils import arg_parse
 from max.gpu.host import DeviceContext
 from layout import (
     Coord,
@@ -39,24 +42,19 @@ from state_space.gated_delta_conv1d import (
     gated_delta_conv1d_fwd_gpu,
 )
 
-comptime KERNEL_SIZE: Int = 4
+comptime KERNEL_SIZE = 4
 comptime CONV1D_BLOCK_DIM: Int = 128
 comptime WARMUP: Int = 5
 comptime ITERS: Int = 30
 
 
 def _median(times: List[Float64]) -> Float64:
-    var s = List[Float64]()
-    for t in times:
-        var inserted = False
-        for j in range(len(s)):
-            if t < s[j]:
-                s.insert(j, t)
-                inserted = True
-                break
-        if not inserted:
-            s.append(t)
-    return s[len(s) // 2]
+    var ordered = times.copy()
+    sort(Span(ordered))
+    var middle = len(ordered) // 2
+    if len(ordered) % 2 == 0:
+        return (ordered[middle - 1] + ordered[middle]) / 2
+    return ordered[middle]
 
 
 def gated_delta_conv1d_sequential_reference[
@@ -222,14 +220,20 @@ def gated_delta_conv1d_sequential_reference[
 
 def _bench(
     ctx: DeviceContext,
-    num_seqs: Int,
-    seq_len: Int,
+    seq_lengths: List[Int],
     conv_dim: Int,
+    compare_legacy: Bool = False,
 ) raises:
     comptime work_dtype = DType.float32
     comptime state_dtype = DType.bfloat16
     comptime state_len = KERNEL_SIZE - 1
-    var total_T = seq_len * num_seqs
+    var num_seqs = len(seq_lengths)
+    var total_T = 0
+    var length_strings = List[String]()
+    for seq_len in seq_lengths:
+        total_T += seq_len
+        length_strings.append(String(seq_len))
+    var lengths = ":".join(length_strings)
     # Same tiling rule as the op registration.
     var tokens_per_block = min(
         CONV1D_TOKENS_PER_BLOCK, max(1, ceildiv(total_T, num_seqs))
@@ -241,31 +245,36 @@ def _bench(
     var weight_d = ctx.enqueue_create_buffer[work_dtype](conv_dim * KERNEL_SIZE)
     var pool_new_d = ctx.enqueue_create_buffer[state_dtype](pool_size)
     var pool_old_d = ctx.enqueue_create_buffer[state_dtype](pool_size)
+    var pool_initial_d = ctx.enqueue_create_buffer[state_dtype](pool_size)
     var slot_d = ctx.enqueue_create_buffer[.uint32](num_seqs)
     var offsets_d = ctx.enqueue_create_buffer[.uint32](num_seqs + 1)
     var out_new_d = ctx.enqueue_create_buffer[work_dtype](total_T * conv_dim)
     var out_old_d = ctx.enqueue_create_buffer[work_dtype](total_T * conv_dim)
 
-    var qkv_h = alloc[Scalar[work_dtype]](total_T * conv_dim)
+    var qkv_h = ctx.enqueue_create_host_buffer[work_dtype](total_T * conv_dim)
     for i in range(total_T * conv_dim):
         qkv_h[i] = Scalar[work_dtype](Float32((i % 1000) - 500) * 0.003)
     ctx.enqueue_copy(qkv_d, qkv_h)
-    var weight_h = alloc[Scalar[work_dtype]](conv_dim * KERNEL_SIZE)
+    var weight_h = ctx.enqueue_create_host_buffer[work_dtype](
+        conv_dim * KERNEL_SIZE
+    )
     for i in range(conv_dim * KERNEL_SIZE):
         weight_h[i] = Scalar[work_dtype](0.25 - Float32(i % 7) * 0.01)
     ctx.enqueue_copy(weight_d, weight_h)
-    var pool_h = alloc[Scalar[state_dtype]](pool_size)
+    var pool_h = ctx.enqueue_create_host_buffer[state_dtype](pool_size)
     for i in range(pool_size):
         pool_h[i] = Scalar[state_dtype](0.1 - Float32(i % 11) * 0.005)
-    ctx.enqueue_copy(pool_new_d, pool_h)
-    ctx.enqueue_copy(pool_old_d, pool_h)
-    var slot_h = alloc[Scalar[.uint32]](num_seqs)
+    ctx.enqueue_copy(pool_initial_d, pool_h)
+    var slot_h = ctx.enqueue_create_host_buffer[.uint32](num_seqs)
     for b in range(num_seqs):
-        slot_h[b] = Scalar[.uint32](b)
+        slot_h[b] = UInt32(b)
     ctx.enqueue_copy(slot_d, slot_h)
-    var offsets_h = alloc[Scalar[.uint32]](num_seqs + 1)
-    for b in range(num_seqs + 1):
-        offsets_h[b] = Scalar[.uint32](b * seq_len)
+    var offsets_h = ctx.enqueue_create_host_buffer[.uint32](num_seqs + 1)
+    var offset = 0
+    offsets_h[0] = 0
+    for b in range(num_seqs):
+        offset += seq_lengths[b]
+        offsets_h[b + 1] = UInt32(offset)
     ctx.enqueue_copy(offsets_d, offsets_h)
     ctx.synchronize()
 
@@ -386,46 +395,72 @@ def _bench(
             block_dim=(CONV1D_BLOCK_DIM,),
         )
 
+    var shape = String(
+        t"work_dtype={work_dtype} state_dtype={state_dtype} "
+        t"conv_dim={conv_dim} kernel_size={KERNEL_SIZE} "
+        t"batch={num_seqs} sequence_lengths={lengths} total_tokens={total_T} "
+        t"tokens_per_block={tokens_per_block} write_state=true"
+    )
     for _ in range(WARMUP):
+        ctx.enqueue_copy(pool_new_d, pool_initial_d)
         launch_new(ctx)
     ctx.synchronize()
     var times = List[Float64]()
     for _ in range(ITERS):
+        ctx.enqueue_copy(pool_new_d, pool_initial_d)
+        ctx.synchronize()
         times.append(Float64(ctx.execution_time(launch_new, 1)))
     ctx.synchronize()
-    var new_us = _median(times) / 1000.0
-
-    for _ in range(WARMUP):
-        launch_old(ctx)
-    ctx.synchronize()
-    times = List[Float64]()
-    for _ in range(ITERS):
-        times.append(Float64(ctx.execution_time(launch_old, 1)))
-    ctx.synchronize()
-    var old_us = _median(times) / 1000.0
-
+    for sample in range(len(times)):
+        print(
+            t"sample kernel=gated_delta_conv1d {shape} "
+            t"index={sample} ns={times[sample]}"
+        )
+    var benchmark = Bench()
+    var report = Report()
+    for elapsed in times:
+        report.runs.append(Batch(Int(elapsed), 1, True))
+    benchmark.info_vec.append(BenchmarkInfo(shape, report^))
+    var median_ns = _median(times)
     print(
-        "conv_dim=",
-        conv_dim,
-        "  ",
-        num_seqs,
-        " rows x ",
-        seq_len,
-        " tokens  span=",
-        tokens_per_block,
-        "   old ",
-        old_us,
-        " us   new ",
-        new_us,
-        " us   speedup ",
-        old_us / new_us,
-        sep="",
+        t"summary kernel=gated_delta_conv1d {shape} "
+        t"samples={ITERS} median_ns={median_ns}"
     )
 
+    if compare_legacy:
+        for _ in range(WARMUP):
+            ctx.enqueue_copy(pool_old_d, pool_initial_d)
+            launch_old(ctx)
+        ctx.synchronize()
+        times = List[Float64]()
+        for _ in range(ITERS):
+            ctx.enqueue_copy(pool_old_d, pool_initial_d)
+            ctx.synchronize()
+            times.append(Float64(ctx.execution_time(launch_old, 1)))
+        ctx.synchronize()
+        for sample in range(len(times)):
+            print(
+                t"sample kernel=gated_delta_conv1d_legacy {shape} "
+                t"index={sample} ns={times[sample]}"
+            )
+        var legacy_median_ns = _median(times)
+        print(
+            t"summary kernel=gated_delta_conv1d_legacy {shape} "
+            t"samples={ITERS} median_ns={legacy_median_ns}"
+        )
+
+        var legacy_report = Report()
+        for elapsed in times:
+            legacy_report.runs.append(Batch(Int(elapsed), 1, True))
+        benchmark.info_vec.append(
+            BenchmarkInfo(String(t"legacy {shape}"), legacy_report^)
+        )
+    benchmark.dump_report()
     _ = qkv_d^
     _ = weight_d^
     _ = pool_new_d^
     _ = pool_old_d^
+    _ = pool_initial_d^
     _ = slot_d^
     _ = offsets_d^
     _ = out_new_d^
@@ -433,11 +468,24 @@ def _bench(
 
 
 def main() raises:
+    var lengths = List[Int]()
+    for value in (
+        arg_parse("sequence_lengths", String("")).strip("[]").split(",")
+    ):
+        lengths.append(Int(value))
+    var channels = arg_parse("channels", 0)
+    var compare_legacy = arg_parse("legacy", False)
+    if len(lengths) == 0 or channels <= 0:
+        raise Error(
+            "Sequence lengths and a positive channel count are required"
+        )
+    for length in lengths:
+        if length < 0:
+            raise Error("Sequence lengths must be nonnegative")
     with DeviceContext() as ctx:
-        print("gated_delta_conv1d, median us per call (fp32 work, bf16 pool)")
-        # Production Qwen3.8-27B TP2 prefill shard.
-        _bench(ctx, 1, 2048, 5120)
-        _bench(ctx, 1, 8192, 5120)
-        # Decode / spec-decode.
-        _bench(ctx, 20, 1, 5120)
-        _bench(ctx, 20, 4, 5120)
+        print(
+            t"config warmup={WARMUP} samples={ITERS} "
+            t"launches_per_sample=1 state_reset=outside_timing l2_flush=false"
+            t" csv_statistic=mean raw_statistic=median"
+        )
+        _bench(ctx, lengths, channels, compare_legacy)
