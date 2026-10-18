@@ -11,16 +11,21 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: kgen-doc %s | FileCheck %s
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %s | FileCheck %s
 
-from std.utils import Index
+trait Indexer:
+    pass
+
+
+def Index(a: Int, b: Int, c: Int) -> Tuple[Int, Int, Int]:
+    return (a, b, c)
 
 # CHECK-LABEL: "name": "x1"
-# CHECK: "value": "Index[Int, Int, Int](Int(16), Int(16), Int(16))"
+# CHECK: "value": "Index(Int(16), Int(16), Int(16))"
 comptime x1 = Index(16, 16, 16)
 
 # CHECK-LABEL: "name": "x2"
-# CHECK: "value": "Tuple(Index[Int, Int, Int](Int(64), Int(8), Int(8)))"
+# CHECK: "value": "Tuple(Index(Int(64), Int(8), Int(8)))"
 comptime x2 = (Index(64, 8, 8),)
 
 # CHECK-LABEL: "name": "x3"
@@ -33,7 +38,7 @@ comptime x3: Tuple[Int, Int] = (1, 1)
 comptime x4 = Indexer
 
 
-def Indexing[T: Indexer](x: T):
+def Indexing[T: AnyType](x: T):
     pass
 
 

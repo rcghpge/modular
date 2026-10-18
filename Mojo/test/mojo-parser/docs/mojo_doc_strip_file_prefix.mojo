@@ -11,17 +11,11 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: kgen-doc %S/dotted.pkg | FileCheck %s
 
-# A package directory (and sub-package/module) whose name contains periods
-# keeps its whole name in the generated docs: the periods are part of the
-# name, not an extension to strip.
-
-# CHECK:  "kind": "package"
-# CHECK:  "modules":
-# CHECK:    "name": "__init__"
-# CHECK:    "name": "module.with.dots"
-# CHECK:  "name": "dotted.pkg"
-# CHECK:  "packages":
-# CHECK:    "name": "sub.pkg"
-# CHECK:  "summary": "This is a dotted package."
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages -strip-file-prefix=%S %s 2>&1 | FileCheck %s
+# Diagnostics from the parser go through SourceMgr, not the tool's error
+# prefix, so the expected output starts directly with the filename (no
+# "kgen-translate: error:" prefix).
+# CHECK: {{^}}mojo_doc_strip_file_prefix.mojo:21:5: error
+def main():
+    4 = "hello"

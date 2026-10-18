@@ -11,19 +11,14 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %S/inputs/test_package | FileCheck %s
 
-struct Struct:
-    def parametric[a: Int](self) -> Int:
-        return a
-
-    def foo(self):
-        return
-
-
-struct ParametricStruct[a: Int]:
-    def foo(self):
-        return
-
-
-def print10():
-    print(10)
+# CHECK:  "description": "This is a description.",
+# CHECK:  "kind": "package"
+# CHECK:  "modules":
+# CHECK:    "name": "__init__"
+# CHECK:  "name": "test_package"
+# CHECK:  "packages":
+# CHECK:    "name": "inner1"
+# CHECK:    "name": "inner2"
+# CHECK:  "summary": "This is a test package."

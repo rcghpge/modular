@@ -11,10 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: kgen-doc --diagnose-missing-doc-strings -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WNO-ERROR
-# RUN: not kgen-doc --diagnose-missing-doc-strings -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WERROR
-# RUN: kgen-doc --diagnose-missing-doc-strings -Werror -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WERROR-THEN-WNO
-# RUN: not kgen-doc --diagnose-missing-doc-strings -Wno-error -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WNO-THEN-WERROR
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WNO-ERROR
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WERROR
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Werror -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WERROR-THEN-WNO
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Wno-error -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=WNO-THEN-WERROR
 
 # WERROR: error: unknown argument 'y' in doc string
 # WERROR-NOT: warning: unknown argument 'y' in doc string
@@ -31,20 +31,20 @@
 # WNO-THEN-WERROR-NOT: warning: unknown argument 'y' in doc string
 
 # Test that --validate-doc-strings is a deprecated alias for -Werror.
-# RUN: not kgen-doc --diagnose-missing-doc-strings --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED
 # DEPRECATED: warning: --validate-doc-strings is deprecated, use -Werror instead
 # DEPRECATED: error: unknown argument 'y' in doc string
 
 # Test that -Wno-error takes precedence over --validate-doc-strings.
-# RUN: kgen-doc --diagnose-missing-doc-strings --validate-doc-strings -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WNO
-# RUN: kgen-doc --diagnose-missing-doc-strings -Wno-error --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WNO
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings --validate-doc-strings -Wno-error %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WNO
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Wno-error --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WNO
 # DEPRECATED-WNO-NOT: --validate-doc-strings is deprecated
 # DEPRECATED-WNO: warning: unknown argument 'y' in doc string
 # DEPRECATED-WNO-NOT: error: unknown argument 'y' in doc string
 
 # Test that -Werror takes precedence over --validate-doc-strings.
-# RUN: not kgen-doc --diagnose-missing-doc-strings --validate-doc-strings -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WERROR
-# RUN: not kgen-doc --diagnose-missing-doc-strings -Werror --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WERROR
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings --validate-doc-strings -Werror %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WERROR
+# RUN: not kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages --diagnose-missing-doc-strings -Werror --validate-doc-strings %s -o /dev/null 2>&1 | FileCheck %s --check-prefix DEPRECATED-WERROR
 # DEPRECATED-WERROR-NOT: --validate-doc-strings is deprecated
 # DEPRECATED-WERROR: error: unknown argument 'y' in doc string
 

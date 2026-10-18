@@ -14,10 +14,10 @@
 """
 This module tests docstring formatting issues."""
 
-# RUN: kgen-doc %s | FileCheck %s
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %s | FileCheck %s
 
 # Check that no diagnostics are output:
-# RUN: kgen-doc %s 2>&1 | FileCheck %s --allow-empty --check-prefix CHECK-DIAG
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %s 2>&1 | FileCheck %s --allow-empty --check-prefix CHECK-DIAG
 # CHECK-DIAG-NOT: warning
 
 

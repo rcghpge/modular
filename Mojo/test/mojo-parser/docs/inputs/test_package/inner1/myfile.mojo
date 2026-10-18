@@ -10,37 +10,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Defines the symbols re-exported by __init__."""
-
-comptime INLINED_ALIAS = 7
-"""Docstring of the alias."""
-
-comptime NOT_INLINED_ALIAS = 8
-"""Docstring of the alias that is imported without the decorator."""
 
 
-def inlined_func() -> Int:
-    """Docstring of the function.
+struct Struct:
+    def parametric[a: Int](self) -> Int:
+        return a
 
-    Returns:
-        Seven.
-    """
-    return INLINED_ALIAS
-
-
-struct InlinedStruct:
-    """Docstring of the struct."""
-
-    var value: Int
-    """Docstring of the field."""
-
-    def __init__(out self):
-        """Docstring of the constructor."""
-        self.value = INLINED_ALIAS
+    def foo(self):
+        return
 
 
-@doc_hidden
-struct HiddenStruct:
-    """Docstring of the hidden struct."""
+struct ParametricStruct[a: Int]:
+    def foo(self):
+        return
 
-    pass
+
+def print10():
+    return

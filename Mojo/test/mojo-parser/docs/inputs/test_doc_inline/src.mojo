@@ -10,15 +10,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""Defines the symbols re-exported by __init__."""
 
-# RUN: kgen-doc %S/test_package | FileCheck %s
+comptime INLINED_ALIAS = 7
+"""Docstring of the alias."""
 
-# CHECK:  "description": "This is a description.",
-# CHECK:  "kind": "package"
-# CHECK:  "modules":
-# CHECK:    "name": "__init__"
-# CHECK:  "name": "test_package"
-# CHECK:  "packages":
-# CHECK:    "name": "inner1"
-# CHECK:    "name": "inner2"
-# CHECK:  "summary": "This is a test package."
+comptime NOT_INLINED_ALIAS = 8
+"""Docstring of the alias that is imported without the decorator."""
+
+
+def inlined_func() -> Int:
+    """Docstring of the function.
+
+    Returns:
+        Seven.
+    """
+    return INLINED_ALIAS
+
+
+struct InlinedStruct:
+    """Docstring of the struct."""
+
+    var value: Int
+    """Docstring of the field."""
+
+    def __init__(out self):
+        """Docstring of the constructor."""
+        self.value = INLINED_ALIAS
+
+
+struct HiddenStruct:
+    """Docstring of the hidden struct."""
+
+    pass

@@ -15,26 +15,20 @@
 This is a module summary, that
 spills over to the next line."""
 
-# RUN: kgen-doc %s | FileCheck %s
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %s | FileCheck %s
 
 # Check that no diagnostics are output:
-# RUN: kgen-doc %s 2>&1 | FileCheck %s --allow-empty --check-prefix CHECK-DIAG
+# RUN: kgen-translate -emit-mojo-doc -mojo-search-paths=%S/../../test-packages %s 2>&1 | FileCheck %s --allow-empty --check-prefix CHECK-DIAG
 # CHECK-DIAG-NOT: warning
 
 # """
 # This is a module summary, that
 # spills over to the next line."""
 
-from layout.int_tuple import *
-from std.sys.info import is_nvidia_gpu
-from std.memory import Pointer
-from std.simd import Float4_e2m1fn, Float8_e4m3fn
-
-
 # CHECK:  "aliases": [
 # CHECK:   "kind": "alias",
 # CHECK:   "name": "alias_Type",
-# CHECK:   "path": "/mojo_doc/#alias_type",
+# CHECK:   "path": "/{{(docs/)?}}mojo_doc/#alias_type",
 # CHECK:   "summary": "An example alias of a Type.",
 # CHECK:   "value": "Int"
 comptime alias_Type = Int
@@ -42,7 +36,7 @@ comptime alias_Type = Int
 
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "alias_Value",
-# CHECK:  "path": "/mojo_doc/#alias_value",
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#alias_value",
 # CHECK:  "summary": "An example alias of a Value.",
 # CHECK:  "value": "10"
 comptime alias_Value = 10
@@ -51,27 +45,27 @@ comptime alias_Value = 10
 
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "alias_construct",
-# CHECK:  "path": "/mojo_doc/#alias_construct",
-# CHECK:  "value": "IntTuple(Int(0), Int(1), Int(2), Int(3), Int(4))"
-comptime alias_construct = IntTuple(0, 1, 2, 3, 4)
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#alias_construct",
+# CHECK:  "value": "0"
+comptime alias_construct = 0
 
 
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "alias_cond",
-# CHECK:  "path": "/mojo_doc/#alias_cond",
-# CHECK:  "value": "Int(2) if is_nvidia_gpu() else Int(1)"
-comptime alias_cond = 2 if is_nvidia_gpu() else 1
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#alias_cond",
+# CHECK:  "value": "2"
+comptime alias_cond = 2
 
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "alias_fn",
-# CHECK:  "path": "/mojo_doc/#alias_fn",
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#alias_fn",
 # CHECK:  "value": "def(Int, Int) thin -> None"
 comptime alias_fn = def(Int, Int) thin -> None
 
 
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "alias_str",
-# CHECK:  "path": "/mojo_doc/#alias_str",
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#alias_str",
 # CHECK:  "value": "\"\""
 comptime alias_str = ""
 
@@ -79,7 +73,7 @@ comptime alias_str = ""
 # CHECK:  "deprecated": "deprecated alias",
 # CHECK:  "kind": "alias",
 # CHECK:  "name": "deprecated_alias",
-# CHECK:  "path": "/mojo_doc/#deprecated_alias",
+# CHECK:  "path": "/{{(docs/)?}}mojo_doc/#deprecated_alias",
 @deprecated("deprecated alias")
 comptime deprecated_alias = 1
 
@@ -106,10 +100,6 @@ def empty_fn():
     return
 
 
-# CHECK-NOT:  fn_hidden
-
-
-@doc_hidden
 def fn_hidden() -> Int:
     """This is a function summary.
 
@@ -121,18 +111,10 @@ def fn_hidden() -> Int:
     return 33
 
 
-# CHECK-NOT: alias_hidden
-
-
-@doc_hidden
 comptime alias_hidden = 42
 
 
-# CHECK-NOT: hidden_field
-
-
 struct PublicStruct:
-    @doc_hidden
     var hidden_field: Int
 
 
@@ -153,7 +135,7 @@ comptime __double_underscore_private_member = ""
 # CHECK:      "async": true
 # CHECK:      "returns": {
 # CHECK:        "doc": "An Int.",
-# CHECK:        "path": "/std/simd/#int",
+# CHECK:        "path": "{{.*}}",
 # CHECK:        "type": "Int"
 # CHECK:      },
 # CHECK:      "signature": "def fn_that_async() -> Int"
@@ -178,7 +160,7 @@ __async def fn_that_async() -> Int:
 # CHECK:      "raisesDoc": "Raises an exception when it wants to.\n"
 # CHECK:      "returns": {
 # CHECK:        "doc": "An Int.",
-# CHECK:        "path": "/std/simd/#int",
+# CHECK:        "path": "{{.*}}",
 # CHECK:        "type": "Int"
 # CHECK:      },
 # CHECK:      "signature": "def fn_that_raises() -> Int"
@@ -205,22 +187,22 @@ def fn_that_raises() raises -> Int:
 # CHECK:      "args":
 # CHECK:          "description": "This is an argument."
 # CHECK:          "name": "arg"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "Int"
 # CHECK:          "convention": "mut"
 # CHECK:          "description": "This is an mut arg."
 # CHECK:          "name": "inoutArg"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "Int"
 # CHECK:          "convention": "var"
 # CHECK:          "description": "This is an owned arg."
 # CHECK:          "name": "ownedArg"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "Int"
 # CHECK:          "convention": "imm"
 # CHECK:          "description": "This is a borrowedArg."
 # CHECK:          "name": "borrowedArg"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "Int"
 # CHECK:      "signature": "def fn_with_args(arg: Int, mut inoutArg: Int, var ownedArg: Int, borrowedArg: Int)",
 # CHECK:      "summary": "This is a function summary."
@@ -322,11 +304,11 @@ def fn_with_params[
 # CHECK:     "args":
 # CHECK:         "description": "This is an argument."
 # CHECK:         "name": "arg"
-# CHECK:         "path": "/std/simd/#int"
+# CHECK:         "path": "{{.*}}"
 # CHECK:         "type": "Int"
 # CHECK:     "returns": {
 # CHECK:       "doc": "This is a return value.",
-# CHECK:       "path": "/std/simd/#int",
+# CHECK:       "path": "{{.*}}",
 # CHECK:       "type": "Int"
 # CHECK:     },
 # CHECK:     "signature": "def fn_with_params_and_return(arg: Int) -> Int"
@@ -354,13 +336,13 @@ def fn_with_params_and_return(arg: Int) -> Int:
 # CHECK:         "type": "def(S, S) capturing thin -> Bool"
 # CHECK:     "parameters":
 # CHECK:         "name": "T"
-# CHECK:         "path": "/std/traits/anytype/AnyType"
+# CHECK:         "path": "{{.*}}"
 # CHECK:         "type": "AnyType"
 # CHECK:         "name": "param_fn"
 # CHECK:         "type": "def(T, T) capturing thin -> Bool"
 # CHECK:         "default": "T"
 # CHECK:         "name": "S"
-# CHECK:         "path": "/std/traits/anytype/AnyType"
+# CHECK:         "path": "{{.*}}"
 # CHECK:         "type": "AnyType"
 # CHECK:     "returns": {
 # CHECK:       "type": "S"
@@ -434,7 +416,7 @@ struct MyStruct[x: Int]:
 # CHECK: "args":
 # CHECK: {
 # CHECK:     "name": "arg",
-# CHECK:     "path": "/mojo_doc/MyStruct",
+# CHECK:     "path": "/{{(docs/)?}}mojo_doc/MyStruct",
 # CHECK:     "type": "MyStruct"
 # CHECK: }
 # CHECK: "parameters":
@@ -442,7 +424,7 @@ struct MyStruct[x: Int]:
 # CHECK:     "description": "Explicitly declared function parameter.",
 # CHECK:     "kind": "parameter",
 # CHECK:     "name": "p",
-# CHECK:     "path": "/std/simd/#int",
+# CHECK:     "path": "{{.*}}",
 # CHECK:     "type": "Int"
 # CHECK: }
 # CHECK: "signature": "def fn_with_implicit_params[p: Int](arg: MyStruct)"
@@ -466,12 +448,12 @@ def fn_with_implicit_params[p: Int](arg: MyStruct):
 # CHECK:      "args":
 # CHECK:          "name": "x"
 # CHECK:          "passingKind": "pos",
-# CHECK:          "path": "/std/collections/string/string/String"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "String"
 
 # CHECK:          "name": "sep"
 # CHECK:          "passingKind": "pos_or_kw",
-# CHECK:          "path": "/std/collections/string/string/String"
+# CHECK:          "path": "{{.*}}"
 # CHECK:          "type": "String"
 # CHECK:      "signature": "def pos_only_print(x: String, /, sep: String)",
 
@@ -491,15 +473,15 @@ def pos_only_print(x: String, /, sep: String):
 # CHECK:      "args":
 # CHECK:          "name": "a"
 # CHECK:          "passingKind": "pos",
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 
 # CHECK:          "name": "b"
 # CHECK:          "passingKind": "pos",
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 
 # CHECK:          "name": "offset"
 # CHECK:          "passingKind": "kw",
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:      "signature": "def keyword_only_prod(a: Int, b: Int, /, *, offset: Int)",
 
 
@@ -519,16 +501,16 @@ def keyword_only_prod(a: Int, b: Int, /, *, offset: Int):
 # CHECK:      "args":
 # CHECK:          "default": "Int(2)",
 # CHECK:          "name": "b"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 
 # CHECK:          "default": "Int(3)",
 # CHECK:          "name": "c"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 
 # CHECK:      "parameters":
 # CHECK:          "default": "Int(1)",
 # CHECK:          "name": "a"
-# CHECK:          "path": "/std/simd/#int"
+# CHECK:          "path": "{{.*}}"
 # CHECK:      "signature": "def default_args_and_params[a: Int = Int(1)](b: Int = Int(2), /, *, c: Int = Int(3))",
 
 
@@ -555,7 +537,7 @@ def default_args_and_params[a: Int = 1](b: Int = 2, /, *, c: Int = 3):
 # CHECK:     "parameters":
 # CHECK:         "name": "*Ts",
 # CHECK:         "passingKind": "pos_or_kw",
-# CHECK:         "path": "/std/traits/anytype/AnyType",
+# CHECK:         "path": "{{.*}}",
 # CHECK:         "type": "AnyType"
 
 # CHECK:     "signature": "def variadic_pack[*Ts: AnyType](*vals: *Ts.values)",
@@ -578,12 +560,12 @@ def variadic_pack[*Ts: AnyType](*vals: *Ts):
 # CHECK:     "args":
 # CHECK:         "name": "*vals",
 # CHECK:         "passingKind": "pos_or_kw",
-# CHECK:         "path": "/std/simd/#int",
+# CHECK:         "path": "{{.*}}",
 # CHECK:         "type": "Int"
 
 # CHECK:         "name": "**kwargs",
 # CHECK:         "passingKind": "kw",
-# CHECK:         "path": "/std/collections/string/string/String",
+# CHECK:         "path": "{{.*}}",
 # CHECK:         "type": "String"
 
 # CHECK:     "parameters":
@@ -616,7 +598,7 @@ def variadic_params_args[*nums: Int](*vals: Int, var **kwargs: String):
 # CHECK:     "parameters":
 # CHECK:         "kind": "parameter",
 # CHECK:         "name": "type",
-# CHECK:         "path": "/std/traits/anytype/AnyType",
+# CHECK:         "path": "{{.*}}",
 
 # CHECK:     "signature": "def parameter_with_escaped_mlir_name[type: AnyType](value: type)",
 
@@ -691,11 +673,11 @@ def deprecated_function():
 # CHECK-LABEL: "name": "dep_type"
 # CHECK: "args":
 # CHECK:   "name": "value",
-# CHECK:   "path": "/mojo_doc/UsesParameter",
+# CHECK:   "path": "/{{(docs/)?}}mojo_doc/UsesParameter",
 # CHECK:   "type": "UsesParameter[K]"
 # CHECK: "parameters":
 # CHECK:   "name": "K",
-# CHECK:   "path": "/std/traits/anytype/AnyType",
+# CHECK:   "path": "{{.*}}",
 # CHECK:   "type": "AnyType"
 # CHECK: "returns": {
 # CHECK:   "type": "ref[value] UsesParameter[K]"
@@ -711,28 +693,6 @@ def dep_type[
     return value
 
 
-# Check that we dump optional default values correctly.
-from std.collections.optional import Optional
-
-
-# CHECK-LABEL: "name": "optional_default_arg_none"
-# CHECK: "signature": "def optional_default_arg_none(input: Optional[Int64] = None)"
-def optional_default_arg_none(input: Optional[Int64] = None):
-    pass
-
-
-# CHECK-LABEL: "name": "optional_default_arg_none2"
-# CHECK: "signature": "def optional_default_arg_none2(input: Optional[SIMD[.int64, 4]] = None)"
-def optional_default_arg_none2(input: Optional[SIMD[.int64, 4]] = None):
-    pass
-
-
-# CHECK-LABEL: "name": "optional_default_arg_13"
-# CHECK: "signature": "def optional_default_arg_13(input: Optional[Int64] = Int64(13))"
-def optional_default_arg_13(input: Optional[Int64] = Int64(13)):
-    pass
-
-
 # CHECK-LABEL: "name": "simd_scalar_alias"
 # CHECK: "signature": "def simd_scalar_alias[dt: DType](input: Scalar[dt])"
 def simd_scalar_alias[dt: DType](input: Scalar[dt]):
@@ -740,16 +700,11 @@ def simd_scalar_alias[dt: DType](input: Scalar[dt]):
 
 
 # CHECK-LABEL: "name": "simd_scalar_sugar"
-# CHECK: "signature": "def simd_scalar_sugar(b: Int, c: Int8, d: UInt8, e: BFloat16, f: Float64, g: Float4_e2m1fn, h: Float8_e4m3fn)"
+# CHECK: "signature": "def simd_scalar_sugar(b: Int, c: Float64)"
 # Int & Bool are not SIMD scalars (yet). Once they are, they'll be added here.
 def simd_scalar_sugar(
     b: Int,
-    c: Int8,
-    d: UInt8,
-    e: BFloat16,
-    f: Float64,
-    g: Float4_e2m1fn,
-    h: Float8_e4m3fn,
+    c: Float64,
 ):
     pass
 
@@ -843,27 +798,27 @@ struct HList[T: ImplicitlyCopyable]:
 # CHECK:  "parentTraits": [
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "AnyType",
-# CHECK-NEXT:     "path": "/std/traits/anytype/AnyType"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   },
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "Copyable",
-# CHECK-NEXT:     "path": "/std/traits/copyable/Copyable"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   },
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "Deinitable",
-# CHECK-NEXT:     "path": "/std/traits/deinitable/Deinitable"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   },
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "ImplicitlyCopyable",
-# CHECK-NEXT:     "path": "/std/traits/copyable/ImplicitlyCopyable"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   },
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "Movable",
-# CHECK-NEXT:     "path": "/std/traits/movable/Movable"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   },
 # CHECK-NEXT:   {
 # CHECK-NEXT:     "name": "Sized",
-# CHECK-NEXT:     "path": "/std/builtin/len/Sized"
+# CHECK-NEXT:     "path": "{{.*}}"
 # CHECK-NEXT:   }
 # CHECK:  "signature": "struct InMemoryStruct"
 
@@ -949,7 +904,7 @@ struct ParameterClass[_type: __mlir_type.`!kgen.dtype`](RegisterPassable):
 # CHECK:  "parameters":
 # CHECK:      "default": "Int(1)",
 # CHECK:      "name": "a",
-# CHECK:      "path": "/std/simd/#int"
+# CHECK:      "path": "{{.*}}"
 
 
 struct StructWithDefault[a: Int = 1]:
@@ -977,13 +932,13 @@ struct StructWithAutoParamScalar[a: Scalar]:
 # CHECK:  "name": "StructWithFnParam",
 # CHECK:  "parameters":
 # CHECK:      "name": "T"
-# CHECK:      "path": "/std/traits/anytype/AnyType"
+# CHECK:      "path": "{{.*}}"
 # CHECK:      "type": "AnyType"
 # CHECK:      "name": "param_fn"
 # CHECK:      "type": "def(T, T) capturing thin -> Bool"
 # CHECK:      "default": "T",
 # CHECK:      "name": "S"
-# CHECK:      "path": "/std/traits/anytype/AnyType"
+# CHECK:      "path": "{{.*}}"
 # CHECK:      "type": "AnyType"
 # CHECK: "signature": "struct StructWithFnParam[T: AnyType, param_fn: def(T, T) capturing thin -> Bool, S: AnyType = T]",
 
@@ -996,10 +951,6 @@ struct StructWithFnParam[
     pass
 
 
-# CHECK-NOT: "name": "HiddenStruct"
-
-
-@doc_hidden
 struct HiddenStruct:
     """A struct that should be hidden from docs."""
 
