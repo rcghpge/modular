@@ -54,6 +54,12 @@ def test_gpu_plugin_hooks() raises:
     comptime assert cuda.print_emit_fn
     comptime assert hip.print_emit_fn
 
+    comptime assert cuda.global_perf_counter_ns_fn
+    comptime assert hip.global_perf_counter_ns_fn
+    comptime assert cuda.sleep_fn
+    comptime assert hip.sleep_fn
+    comptime assert not _host_target.stdlib_plugin.sleep_fn
+
 
 def test_payload_plugin_selection() raises:
     # fmt: off

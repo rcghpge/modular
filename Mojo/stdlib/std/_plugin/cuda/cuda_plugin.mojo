@@ -14,7 +14,9 @@
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
+    _GlobalPerfCounterNsPluginHookFnType,
     _PrintEmitPluginHookFnType,
+    _SleepPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
 from std.collections import OptionalReg
@@ -26,6 +28,7 @@ from std.io.io import _printf
 from std.reflection.location import SourceLocation
 
 from .cuda_math import _has_nvptx_op, _nvptx_unary_math
+from .cuda_time import _global_perf_counter_ns, _sleep
 
 
 def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
@@ -79,6 +82,12 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit
+
+    comptime global_perf_counter_ns_fn: OptionalReg[
+        _GlobalPerfCounterNsPluginHookFnType
+    ] = _global_perf_counter_ns
+
+    comptime sleep_fn: OptionalReg[_SleepPluginHookFnType] = _sleep
 
     @staticmethod
     @inline(.always)

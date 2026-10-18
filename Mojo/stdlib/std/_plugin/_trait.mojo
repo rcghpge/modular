@@ -25,6 +25,10 @@ from std.memory.stack_allocation import _StackAllocationPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std.io.io import _PrintEmitPluginHookFnType
+from std.time.time import (
+    _GlobalPerfCounterNsPluginHookFnType,
+    _SleepPluginHookFnType,
+)
 from std.collections.string.string_span import (
     _get_kgen_string,
 )
@@ -274,6 +278,31 @@ trait PluginHooks:
     comptime print_emit_fn: OptionalReg[_PrintEmitPluginHookFnType] = None
     """Plugin hook for emitting a `print()` UTF-8 byte buffer to a file
     descriptor."""
+
+    comptime global_perf_counter_ns_fn: OptionalReg[
+        _GlobalPerfCounterNsPluginHookFnType
+    ] = None
+    """Reads the device-wide nanosecond timer behind `global_perf_counter_ns()`.
+
+    On GPU targets, `perf_counter_ns()`, `perf_counter()`, and `monotonic()`
+    read this timer too. A GPU target that leaves it `None` rejects those
+    functions at compile time; CPU targets use the host's monotonic clock.
+
+    Returns:
+        The current time in nanoseconds, from a timer shared by every block on
+        the device.
+    """
+
+    comptime sleep_fn: OptionalReg[_SleepPluginHookFnType] = None
+    """Suspends the calling thread for `time.sleep()`.
+
+    `time.sleep()` returns before calling the hook when `sec` is not
+    positive. A GPU target that leaves it `None` rejects `time.sleep()` at
+    compile time; CPU targets call the C library's `nanosleep`.
+
+    Args:
+        sec: The number of seconds to sleep for, always positive.
+    """
 
     @staticmethod
     def abort_fn():

@@ -14,7 +14,9 @@
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
+    _GlobalPerfCounterNsPluginHookFnType,
     _PrintEmitPluginHookFnType,
+    _SleepPluginHookFnType,
     _UnaryMathPluginHookFnType,
 )
 from std.collections import OptionalReg
@@ -33,6 +35,7 @@ from std.sys._amdgpu import (
 )
 
 from .hip_math import _amdgcn_unary_math, _has_amdgcn_op
+from .hip_time import _global_perf_counter_ns, _sleep
 
 
 def _print_emit[O: Origin](cstr: CStringSpan[O], file: RawFileDescriptor):
@@ -125,6 +128,12 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType
     ] = _print_emit
+
+    comptime global_perf_counter_ns_fn: OptionalReg[
+        _GlobalPerfCounterNsPluginHookFnType
+    ] = _global_perf_counter_ns
+
+    comptime sleep_fn: OptionalReg[_SleepPluginHookFnType] = _sleep
 
     @staticmethod
     @inline(.always)
