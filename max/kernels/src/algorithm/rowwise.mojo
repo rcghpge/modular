@@ -638,6 +638,7 @@ def launch[
     computationally_expensive: Bool = False,
     associative: Bool = False,
     dtype_size: Int = 0,
+    name: StaticString = "rowwise",
 ](body: Body, shape: Coord, ctx: Optional[DeviceContext] = None) raises:
     """Top-level scaffolder. `num_phases` picks reduce-shaped
     (`num_phases == 1`, output collapses the reduced axis, terminal
@@ -674,6 +675,9 @@ def launch[
             default) leaves both tiers unreachable (softmax / log-softmax
             / rms_norm pass their dtype's size to engage them).
             Meaningless for reduce-shaped bodies.
+        name: Operation name propagated to the GPU tier kernels'
+            `@__name` so a profile row identifies the op (defaults to
+            `"rowwise"`). CPU ignores.
 
     Args:
         body: The per-row computation. Receives a `Context` and the
@@ -715,6 +719,7 @@ def launch[
                 BLOCK_SIZE=BLOCK_SIZE,
                 COOPERATIVE_BLOCK_SIZE=COOPERATIVE_BLOCK_SIZE,
                 WARP_BLOCK_WARPS=WARP_BLOCK_WARPS,
+                name=name,
             ](body, shape, ctx.value())
     else:
         # Normalize-shaped: output keeps the input shape, per-element
@@ -744,6 +749,7 @@ def launch[
                 WARP_BLOCK_WARPS=WARP_BLOCK_WARPS,
                 num_phases=num_phases,
                 dtype_size=dtype_size,
+                name=name,
             ](body, shape, ctx.value())
 
 

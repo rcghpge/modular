@@ -253,6 +253,9 @@ def quantize_dynamic_scaled_fp4fp8[
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
+@__name(
+    t"quantize_dynamic_scaled_fp4fp8_{out_dtype}_{scales_dtype}_{in_dtype}_sf{SF_VECTOR_SIZE}",
+)
 def quantize_dynamic_scaled_fp4fp8_kernel[
     out_dtype: DType,
     scales_dtype: DType,
@@ -2711,9 +2714,11 @@ def block_scaled_matmul_with_epilogue[
                 transpose_b=True,
                 c_row_major=True,
             )
-            elementwise[simd_size, target="gpu"](
-                value_epilogue_wrapper, (m, n), ctx
-            )
+            elementwise[
+                simd_size,
+                target="gpu",
+                _trace_description="elementwise_block_scaled_matmul_epilogue",
+            ](value_epilogue_wrapper, (m, n), ctx)
         else:
             matmul[scales_type=scales_dtype](
                 ctx,

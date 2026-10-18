@@ -502,7 +502,7 @@ def apple_matmul[
 
         # TODO: thread a DeviceContext through the matmul stack so we can
         # drop this local construction.
-        elementwise[simd_size](
+        elementwise[simd_size, _trace_description="apple_matmul_epilogue"](
             epilogue_on_col_chunk, (m, n), DeviceContext(api="cpu")
         )
 

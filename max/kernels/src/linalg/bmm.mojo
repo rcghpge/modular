@@ -988,9 +988,11 @@ def _batched_matmul_gpu_impl[
                         Coord(nd_coords), c_val
                     )
 
-                elementwise[simd_size, target="gpu"](
-                    epilogue_wrapper, Coord(batch_size, m, n), ctx
-                )
+                elementwise[
+                    simd_size,
+                    target="gpu",
+                    _trace_description="elementwise_batched_matmul_sm100_epilogue",
+                ](epilogue_wrapper, Coord(batch_size, m, n), ctx)
             elif has_compute_fn:
                 comptime simd_size = 32 // size_of[c_type]()
 
@@ -1016,9 +1018,11 @@ def _batched_matmul_gpu_impl[
                         ),
                     )
 
-                elementwise[simd_size, target="gpu"](
-                    compute_wrapper, Coord(batch_size, m, n), ctx
-                )
+                elementwise[
+                    simd_size,
+                    target="gpu",
+                    _trace_description="elementwise_batched_matmul_sm100_compute",
+                ](compute_wrapper, Coord(batch_size, m, n), ctx)
 
             return
 

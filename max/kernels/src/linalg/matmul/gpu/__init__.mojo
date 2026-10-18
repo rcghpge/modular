@@ -2101,7 +2101,11 @@ def _split_k_reduce_impl[
                 )
             c.store((c_coord[0], c_coord[1]), out)
 
-    elementwise[simd_width, target="gpu"](_reduce, (M, N), ctx)
+    elementwise[
+        simd_width,
+        target="gpu",
+        _trace_description="matmul_split_k_reduce",
+    ](_reduce, (M, N), ctx)
 
 
 @inline(.always)

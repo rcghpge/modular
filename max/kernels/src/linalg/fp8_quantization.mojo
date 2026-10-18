@@ -152,6 +152,7 @@ def quantize_static_scaled_fp8[
     )
 
 
+@__name("fp8_zero_scale_global_kernel")
 def zero_scale_global_kernel(
     scale_global: UnsafePointer[Float32, MutAnyOrigin]
 ):
@@ -173,6 +174,9 @@ def zero_scale_global_kernel(
 
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_threads))
+)
+@__name(
+    t"fp8_max_reduction_scale_{in_dtype}_{out_dtype}_t{num_threads}",
 )
 def max_reduction_scale_kernel[
     in_dtype: DType,
@@ -708,6 +712,9 @@ struct _QuantizeFp8Kernel[
             Int32(Self.num_threads)
         )
     )
+    @__name(
+        t"fp8_quantize_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}{'_rb' if Self.row_bounded else ''}",
+    )
     def __call__(self) capturing:
         comptime if _groups_per_warp[Self.group_size, Self.simd_width]() > 0:
             self._quantize_warp_groups()
@@ -829,6 +836,9 @@ struct _ComputeScalesFp8Kernel[
             Int32(Self.num_threads)
         )
     )
+    @__name(
+        t"fp8_compute_scales_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
+    )
     def __call__(self) capturing:
         """Compute per-group FP8 scale factors without quantizing.
 
@@ -909,6 +919,9 @@ struct _ReducePerTensorScaleFp8Kernel[
             Int32(Self.num_threads)
         )
     )
+    @__name(
+        t"fp8_reduce_per_tensor_scale_{Self.scales_type}_{Self.out_type}_g{Self.num_groups}_t{Self.num_threads}",
+    )
     def __call__(self) capturing:
         """Reduces the per-group maxes to one per-tensor FP8 scale.
 
@@ -987,6 +1000,9 @@ struct _QuantizeFp8KernelPerTensor[
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](
             Int32(Self.num_threads)
         )
+    )
+    @__name(
+        t"fp8_quantize_per_tensor_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
     )
     def __call__(self) capturing:
         """Quantizes one (row, group) tile with the per-tensor FP8 scale.
@@ -1145,6 +1161,9 @@ struct _BatchedQuantizeFp8Kernel[
         MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](
             Int32(Self.num_threads)
         )
+    )
+    @__name(
+        t"fp8_batched_quantize_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
     )
     def __call__(self) capturing:
         var input_fn = self.input_fn
@@ -1733,6 +1752,9 @@ def naive_blockwise_scaled_fp8_matmul[
     )
 
 
+@__name(
+    t"naive_blockwise_scaled_fp8_matmul_{c_type}_{a_type}_{b_type}_bd{BLOCK_DIM}{'_tb' if transpose_b else ''}{'_ep' if has_epilogue_fn else ''}",
+)
 def naive_blockwise_scaled_fp8_matmul_kernel[
     c_type: DType,
     a_type: DType,
@@ -2011,6 +2033,9 @@ def naive_blockwise_scaled_fp8_grouped_matmul[
     )
 
 
+@__name(
+    t"naive_blockwise_scaled_fp8_grouped_matmul_{c_type}_{a_type}_{b_type}{'_ntb' if not transpose_b else ''}",
+)
 def naive_blockwise_scaled_fp8_grouped_matmul_kernel[
     c_layout: TensorLayout,
     a_layout: TensorLayout,
@@ -2325,9 +2350,11 @@ def blockwise_scaled_fp8_with_epilogue[
                 config=matmul_config,
                 n_scale_granularity=scales_granularity_mnk[1],
             ](c, a, b, a_scales, b_scales, ctx)
-            elementwise[simd_size, target="gpu"](
-                value_epilogue_wrapper, Coord(m, n), ctx
-            )
+            elementwise[
+                simd_size,
+                target="gpu",
+                _trace_description="elementwise_blockwise_scaled_fp8_epilogue",
+            ](value_epilogue_wrapper, Coord(m, n), ctx)
         else:
             blockwise_fp8_matmul[
                 transpose_b=transpose_b,

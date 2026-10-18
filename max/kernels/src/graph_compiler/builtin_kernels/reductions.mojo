@@ -140,6 +140,7 @@ struct ArgMax:
             input.dtype,
             target=target,
             reduce_dim=reduce_dim,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -199,6 +200,7 @@ struct ArgMin:
             input.dtype,
             target=target,
             reduce_dim=reduce_dim,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -252,6 +254,7 @@ struct Mean:
     def execute[
         target: StaticString,
         axis: Int,
+        _trace_name: StaticString,
     ](
         output: FusedOutputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
@@ -262,6 +265,7 @@ struct Mean:
         Parameters:
             target: Compilation target string.
             axis: Dimension along which to reduce.
+            _trace_name: Name used for tracing and debugging.
 
         Args:
             output: Output tensor receiving the result.
@@ -293,6 +297,7 @@ struct Mean:
             output.dtype,
             target=target,
             reduce_dim=axis,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -605,6 +610,7 @@ struct ReduceAdd:
             output.dtype,
             target=target,
             reduce_dim=axis,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -677,6 +683,7 @@ struct ReduceMul:
             output.dtype,
             target=target,
             reduce_dim=axis,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -750,6 +757,7 @@ struct ReduceMax:
             output.dtype,
             target=target,
             reduce_dim=axis,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -822,6 +830,7 @@ struct ReduceMin:
             output.dtype,
             target=target,
             reduce_dim=axis,
+            name=_trace_name,
         ](input_fn, output_fn, input.shape_coord(), ctx)
 
 
@@ -1545,6 +1554,7 @@ struct ReduceMinAndMax:
             dtype,
             target=target,
             reduce_dim=norm_axis,
+            name=_trace_name,
         ](input_fn, output_min_fn, output_max_fn, input.shape_coord(), ctx)
 
 

@@ -49,6 +49,9 @@ __extension HopperMatmulSM90Kernel:
         ),
         `nvvm.cluster_dim`=cluster_shape,
     )
+    @__name(
+        t"sm90_matmul_persistent_{Self.a_type}_{Self.b_type}_{Self.c_type}{'_cf' if has_compute_fn else ''}{'_ep' if has_epilogue_fn else ''}",
+    )
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
@@ -191,6 +194,9 @@ __extension HopperMatmulSM90Kernel:
             Int32(num_threads)
         ),
         `nvvm.cluster_dim`=cluster_shape,
+    )
+    @__name(
+        t"sm90_matmul_unaligned_{Self.a_type}_{Self.b_type}_{Self.c_type}{'_cf' if has_compute_fn else ''}{'_ep' if has_epilogue_fn else ''}",
     )
     @__llvm_arg_metadata(c_tma_op, `nvvm.grid_constant`)
     def run_unaligned[

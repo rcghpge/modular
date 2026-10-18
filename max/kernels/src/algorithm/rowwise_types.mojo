@@ -162,6 +162,12 @@ struct ContextParams(TrivialRegisterPassable):
     few-rows-by-very-long-inner shapes. Scaffolder-internal; set only by
     the tier picker, never read by a body."""
 
+    var name: StaticString
+    """Operation name propagated from the graph op (`_trace_name`) so the
+    tier kernels' `@__name` identifies the op in profiler traces. Defaults
+    to `"rowwise"` when the caller doesn't provide one. Scaffolder-internal
+    — a body never reads it."""
+
     @inline(.always)
     def __init__(
         out self,
@@ -172,6 +178,7 @@ struct ContextParams(TrivialRegisterPassable):
         target: StaticString,
         tier: ReduceTier = ReduceTier.Block,
         num_phases: Int = 0,
+        name: StaticString = "rowwise",
     ):
         """Initializes a `ContextParams` from per-tier comptime values.
 
@@ -185,6 +192,8 @@ struct ContextParams(TrivialRegisterPassable):
                 every CPU tier and the GPU tiled/cooperative tiers).
             num_phases: Per-element-output split-K total phase count
                 (`<= 1` disables the tier).
+            name: Operation name for the tier kernels' `@__name`
+                (defaults to `"rowwise"`).
         """
         debug_assert(
             not is_cpu(target) or BLOCK_SIZE == 1,
@@ -197,6 +206,7 @@ struct ContextParams(TrivialRegisterPassable):
         self.simd_width = simd_width
         self.target = target
         self._num_phases = num_phases
+        self.name = name
 
 
 # ===-----------------------------------------------------------------------===#

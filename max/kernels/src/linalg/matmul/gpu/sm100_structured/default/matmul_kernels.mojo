@@ -2919,6 +2919,9 @@ struct BlackwellMatmulSM100FallbackKernel[
     @inline(.always)
     @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
+    @__name(
+        t"sm100_matmul_fallback_{Self.a_type}_{Self.b_type}_{Self.c_type}_nt{Self.num_threads}",
+    )
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     def run(
         a_tma_op: Self.ATmaOp,
@@ -2944,6 +2947,9 @@ struct BlackwellMatmulSM100FallbackKernel[
     @inline(.always)
     @__llvm_metadata(`nvvm.cluster_dim`=Self.cluster_shape)
     @__llvm_arg_metadata(a_tma_op, `nvvm.grid_constant`)
+    @__name(
+        t"sm100_matmul_fallback_compute_fn_{Self.a_type}_{Self.b_type}_{Self.c_type}_nt{Self.num_threads}",
+    )
     @__llvm_arg_metadata(b_tma_op, `nvvm.grid_constant`)
     def run_with_compute_fn[
         ComputeFnType: ElementwiseComputeFn

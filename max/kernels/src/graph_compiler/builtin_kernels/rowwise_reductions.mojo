@@ -47,6 +47,7 @@ def reduce_sum[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_sum",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -59,6 +60,7 @@ def reduce_sum[
     `input_fn` / `output_fn` are value-based closures (a type parameter
     bound to a callable trait + a value argument), not comptime
     `capturing[_]` parameters."""
+    comptime op_name = name if name != "" else "reduce_sum"
     comptime simd_width = rowwise.pick_simd_width[
         ReduceSum[dtype, 1], target, 64, dtype
     ]()
@@ -117,6 +119,7 @@ def reduce_sum[
         target=target,
         num_phases=1,
         associative=True,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -138,6 +141,7 @@ def reduce_max[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_max",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -151,6 +155,7 @@ def reduce_max[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_max"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -201,6 +206,7 @@ def reduce_max[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -216,6 +222,7 @@ def reduce_min[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_min",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -229,6 +236,7 @@ def reduce_min[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_min"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -279,6 +287,7 @@ def reduce_min[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -294,6 +303,7 @@ def reduce_product[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_product",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -307,6 +317,7 @@ def reduce_product[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_product"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -359,6 +370,7 @@ def reduce_product[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -374,6 +386,7 @@ def reduce_mean[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_mean",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -387,6 +400,7 @@ def reduce_mean[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_mean"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -464,6 +478,7 @@ def reduce_mean[
         target=target,
         num_phases=1,
         associative=True,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -485,6 +500,7 @@ def reduce_argmin[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_argmin",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -501,6 +517,7 @@ def reduce_argmin[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_argmin"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -553,6 +570,7 @@ def reduce_argmin[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -568,6 +586,7 @@ def reduce_argmax[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_argmax",
 ](
     input_fn: InputFn,
     output_fn: OutputFn,
@@ -581,6 +600,7 @@ def reduce_argmax[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_argmax"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -633,6 +653,7 @@ def reduce_argmax[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
 
 
@@ -657,6 +678,7 @@ def reduce_min_and_max[
     target: StaticString,
     *,
     reduce_dim: Int,
+    name: StaticString = "reduce_min_and_max",
 ](
     input_fn: InputFn,
     output_min_fn: OutputMinFn,
@@ -673,6 +695,7 @@ def reduce_min_and_max[
         0 <= reduce_dim < input_shape.rank
     ), "reduce_dim must index input_shape"
     comptime assert input_shape.is_flat, "input_shape must be flat"
+    comptime op_name = name if name != "" else "reduce_min_and_max"
     var axis_size = Int(input_shape[reduce_dim].value())
 
     @inline(.always)
@@ -731,4 +754,5 @@ def reduce_min_and_max[
         simd_width=simd_width,
         target=target,
         num_phases=1,
+        name=op_name,
     ](body, input_shape, context)
