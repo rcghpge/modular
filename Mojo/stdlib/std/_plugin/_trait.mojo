@@ -279,8 +279,8 @@ trait PluginHooks:
     ] = None
     """Reads a GPU execution index or size.
 
-    `lane_id`, `thread_idx`, `block_idx`, `block_dim`, and `grid_dim` consult
-    this hook first, and fall back to their NVIDIA and AMD lowerings when it
+    `lane_id`, `thread_idx`, `block_idx`, `block_dim`, and `grid_dim` read
+    through this hook, and raise an unsupported-target error on a GPU where it
     is `None`. The hook must inline into the kernel.
 
     Parameters:

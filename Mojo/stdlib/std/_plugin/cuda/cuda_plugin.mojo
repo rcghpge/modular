@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
@@ -28,6 +29,7 @@ from std.math.math import _UnaryMathOp
 from std.io.io import _printf
 from std.reflection.location import SourceLocation
 
+from .cuda_gpu_id import _nvptx_gpu_id
 from .cuda_math import _nvptx_unary_math_fn
 from .cuda_time import _global_perf_counter_ns, _sleep
 
@@ -106,3 +108,7 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     ]: OptionalReg[_UnaryMathPluginHookFnType] = _nvptx_unary_math_fn[
         op, dtype, Self.target
     ]()
+
+    comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
+        _GPUIdPluginHookFnType
+    ] = _nvptx_gpu_id[name, dim]

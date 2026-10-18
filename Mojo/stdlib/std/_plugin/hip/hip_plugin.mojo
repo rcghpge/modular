@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std._gpu.primitives.id import _GPUIdPluginHookFnType
 from std._plugin._trait import (
     PluginHooks,
     StdPlugin,
@@ -35,6 +36,7 @@ from std.sys._amdgpu import (
     printf_begin,
 )
 
+from .hip_gpu_id import _amdgcn_gpu_id
 from .hip_math import _amdgcn_unary_math_fn
 from .hip_time import _global_perf_counter_ns, _sleep
 
@@ -150,3 +152,7 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
     ]: OptionalReg[_UnaryMathPluginHookFnType] = _amdgcn_unary_math_fn[
         op, dtype
     ]()
+
+    comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
+        _GPUIdPluginHookFnType
+    ] = _amdgcn_gpu_id[name, dim]

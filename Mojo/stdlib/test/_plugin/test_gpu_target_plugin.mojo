@@ -56,6 +56,10 @@ def test_gpu_plugin_hooks() raises:
     comptime assert not metal.unary_math_fn[.log, DType.float32, 1]
     comptime assert metal.binary_math_fn[.pow, DType.float32, 1]
 
+    comptime assert cuda.gpu_id_fn["thread_idx", "x"]
+    comptime assert hip.gpu_id_fn["lane_id", ""]
+    comptime assert not _host_target.stdlib_plugin.gpu_id_fn["block_idx", "x"]
+
     comptime assert cuda.print_emit_fn
     comptime assert hip.print_emit_fn
 
