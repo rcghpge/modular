@@ -1818,8 +1818,7 @@ struct TileTensorMHAOperand[
                 " Driver will crash."
             ),
         )
-        var scale_tensor = TileTensor(
-            self.scale_buffer.ptr,
+        var scale_tensor = self.scale_buffer.reshape(
             row_major(Idx[1], total_elements),
         )
         return create_tensor_tile[
@@ -2278,8 +2277,7 @@ struct RaggedMHAOperand[
                     " Nvidia Driver will crash."
                 ),
             )
-            var scale_tensor = TileTensor(
-                self.scale_buffer.ptr,
+            var scale_tensor = self.scale_buffer.reshape(
                 row_major(Idx[1], total_elements),
             )
             return create_tensor_tile[
@@ -2293,8 +2291,7 @@ struct RaggedMHAOperand[
             comptime num_heads = Self.scale_layout.static_shape[0]
             var total_seq_len = Int(self.buffer.dim[1]())
 
-            var scale_tensor = TileTensor(
-                self.scale_buffer.ptr,
+            var scale_tensor = self.scale_buffer.reshape(
                 row_major(Idx[num_heads], total_seq_len),
             )
 

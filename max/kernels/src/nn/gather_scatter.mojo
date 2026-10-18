@@ -1156,19 +1156,8 @@ def scatter_nd_generator[
         comptime if is_gpu[target]():
             # TODO: Does it matter if output.data or output_flat.data (and data)?
             var ctx = context
-            # TODO: Owning = True or False?
-            var outp = DeviceBuffer(
-                ctx,
-                output.ptr,
-                data.num_elements(),
-                owning=False,
-            )
-            var inp = DeviceBuffer(
-                ctx, data.ptr, data.num_elements(), owning=False
-            )
             ctx.enqueue_copy(
-                outp,
-                inp,
+                output.to_device_buffer(ctx), data.to_device_buffer(ctx)
             )
 
         comptime if is_cpu[target]():

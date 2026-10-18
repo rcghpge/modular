@@ -887,7 +887,7 @@ struct QMatmulGPURepackGPTQ_b4_g128_desc_act:
         gpu_qint4_repack_GPTQ[128, target](
             b.to_tile_tensor(),
             b_packed.to_tile_tensor(),
-            TileTensor(permutation.ptr, row_major(Int(permutation.dim[0]())))
+            permutation.reshape(row_major(Int(permutation.dim[0]())))
             .as_imm()
             .as_unsafe_any_origin(),
             ctx=ctx,

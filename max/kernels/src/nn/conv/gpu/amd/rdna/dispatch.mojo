@@ -312,7 +312,7 @@ def dispatch_rdna_conv2d[
             comptime BLOCK_N = 128
 
             var filter_nk_tt = TileTensor(filter_nk_ptr, row_major(N, K))
-            var out_tt = TileTensor(output.ptr, row_major(M, N))
+            var out_tt = output.reshape(row_major(M, N))
 
             comptime conv_kernel = conv2d_kernel_rdna[
                 output_type,

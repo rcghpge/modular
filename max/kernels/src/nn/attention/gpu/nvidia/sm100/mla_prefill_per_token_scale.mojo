@@ -1981,9 +1981,7 @@ def q_scale_tma[
     """
     var num_elements = q_scale_tensor.num_elements()
     debug_assert(num_elements % 4 == 0, "num_elements must be divisible by 4")
-    var tensor = TileTensor(
-        q_scale_tensor.unsafe_ptr(), tt_row_major(Idx[1], num_elements)
-    )
+    var tensor = q_scale_tensor.reshape(tt_row_major(Idx[1], num_elements))
 
     return create_tensor_tile[
         coord[1, BM],

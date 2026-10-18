@@ -2948,9 +2948,7 @@ def _device_view[
 ](ctx: DeviceContext, tensor: TileTensor[dtype, ...]) -> DeviceBuffer[dtype]:
     # The pointer-pair `enqueue_copy` is device to device, which some drivers
     # reject for a pageable host destination.
-    return DeviceBuffer[dtype](
-        ctx, tensor.ptr, tensor.num_elements(), owning=False
-    )
+    return tensor.to_device_buffer(ctx)
 
 
 def print_kv_cache_paged_generic_gpu[

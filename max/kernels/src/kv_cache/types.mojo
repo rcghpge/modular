@@ -2386,8 +2386,7 @@ struct ContinuousBatchingKVCache[
         var block_pitch = Int(self.blocks.layout.stride[0]().value())
         comptime heads = Self.kv_params.num_heads
         comptime depth = Self.kv_params.head_size
-        var kv_tensor = TileTensor(
-            self.blocks.ptr,
+        var kv_tensor = self.blocks.reshape(
             InternalLayout(
                 Coord(total_blocks, rows_per_block, heads, depth),
                 Coord(block_pitch, heads * depth, depth, Idx[1]),
@@ -3460,8 +3459,7 @@ struct PagedKVCache[
         comptime heads = Self.kv_params.num_heads
         comptime depth = Self.kv_params.head_size * pool_row_tokens
         comptime rows = Self.page_size // pool_row_tokens
-        var kv_tensor = TileTensor(
-            self.blocks.ptr,
+        var kv_tensor = self.blocks.reshape(
             InternalLayout(
                 Coord(total_blocks, rows, heads, depth),
                 Coord(block_pitch, heads * depth, depth, Idx[1]),

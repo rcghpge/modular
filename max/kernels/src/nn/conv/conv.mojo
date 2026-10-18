@@ -5301,9 +5301,7 @@ def conv_gpu[
                 # Snapshot our 4-wave result before MIOpen overwrites
                 # `output` via the user epilogue.
                 var our_buf = ctx.enqueue_create_buffer[output_type](n_elements)
-                var output_view = DeviceBuffer[output_type](
-                    ctx, output.ptr, n_elements, owning=False
-                )
+                var output_view = output.to_device_buffer(ctx)
                 ctx.enqueue_copy(our_buf, output_view)
 
                 # Run MIOpen + user's epilogue. The epilogue writes to
