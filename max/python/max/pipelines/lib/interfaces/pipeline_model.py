@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic
 
 from max import tree
 from max.driver import Buffer, Device
@@ -845,95 +845,6 @@ class PipelineModel(
         )
 
 
-class ModuleV3PipelineModel(PipelineModel[BaseContextType]):
-    """ModuleV3 pipeline model without KV cache.
-
-    Subclasses implement :meth:`_instantiate_module` and optionally
-    :meth:`_create_model_config`, :meth:`_prepare_state_dict`, and
-    :meth:`_module_default_dtype`. :meth:`graph_specs` builds the module under
-    ``F.lazy()`` and registers it, with the prepared checkpoint weights, as
-    the encoder, which :meth:`_load_encoder` compiles.
-    """
-
-    _checkpoint: dict[str, Any]
-
-    def graph_specs(self, model_config: Any) -> dict[str, GraphSpec]:
-        """Returns the encoder, built from the checkpoint weights.
-
-        Args:
-            model_config: The config :meth:`_create_model_config` returned.
-        """
-        state_dict = self._prepare_state_dict(self._checkpoint, model_config)
-        module_default_dtype = self._module_default_dtype(
-            state_dict, model_config
-        )
-        with F.lazy(), default_dtype(module_default_dtype):
-            nn_model = self._instantiate_module(model_config)
-        return {
-            GraphRole.ENCODER: GraphSpec(
-                nn_model,
-                type(nn_model).__qualname__,
-                self._get_compile_input_types(model_config),
-                weights=state_dict,
-            )
-        }
-
-    def _load_encoder(self, session: InferenceSession) -> Callable[..., Any]:
-        """Compiles the encoder through :meth:`load_graphs`."""
-        self.load_graphs(session)
-        # The callable keeps the weight registry; drop the other reference
-        # to the checkpoint.
-        del self._checkpoint
-        return self.compiled_modules[GraphRole.ENCODER]
-
-    def _load_state_dict(self) -> dict[str, Any]:
-        """Loads the checkpoint, and keeps it for :meth:`graph_specs`."""
-        self._checkpoint = super()._load_state_dict()
-        return self._checkpoint
-
-    def _hf_config_for_weights(self) -> AutoConfig | None:
-        """Optional HuggingFace config override for weight loading."""
-        return None
-
-    def _create_model_config(self, state_dict: dict[str, Any]) -> Any:
-        """Builds model config from ``state_dict``."""
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `_create_model_config`."
-        )
-
-    def _prepare_state_dict(
-        self, state_dict: dict[str, Any], model_config: Any
-    ) -> dict[str, Any]:
-        """Optional hook to cast or rewrite weights before ``nn.compile``."""
-        del model_config
-        return state_dict
-
-    def _module_default_dtype(
-        self, state_dict: dict[str, Any], model_config: Any
-    ) -> DType:
-        """Default dtype for the module build context."""
-        del state_dict, model_config
-        return self.dtype
-
-    def _instantiate_module(self, model_config: Any) -> Any:
-        """Constructs and places the nn module under ``F.lazy()``."""
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `_instantiate_module`."
-        )
-
-    def _get_compile_input_types(self, model_config: Any) -> tuple[Any, ...]:
-        """Symbolic inputs passed to ``nn_model.compile``."""
-        del model_config
-        batch_processor = self.batch_processor
-        assert batch_processor is not None
-        return tuple(
-            batch_processor.get_symbolic_inputs(
-                kv_params=cast(KVCacheParamInterface, None),
-                device_refs=self.device_refs,
-            )
-        )
-
-
 class PipelineModelWithKVCache(
     PipelineModel[BaseContextType, _ModelConfigT, _CompiledModelT]
 ):
@@ -1242,9 +1153,7 @@ class ModuleV3PipelineModelWithKVCache(
     ``_prepare_state_dict()``, ``_init_distributed_runtime()``,
     ``_module_default_dtype()``, or ``_get_compile_input_types()``.
 
-    An encoder model without a KV cache subclasses
-    :class:`ModuleV3PipelineModel`, and a vision-language model that compiles
-    several modules subclasses
+    A vision-language model that compiles several modules subclasses
     :class:`ModuleV3MultiGraphPipelineModelWithKVCache`.
 
     The constructor compiles the decoder through :meth:`load_graphs` on the

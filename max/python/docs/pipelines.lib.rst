@@ -71,7 +71,6 @@ Model interface
    GraphPipelineModelWithKVCache
    ModuleV3MultiGraphPipelineModelWithKVCache
    ModuleV3Outputs
-   ModuleV3PipelineModel
    ModuleV3PipelineModelWithKVCache
    MultiGraphPipelineModelWithKVCache
    PipelineModelWithKVCache
