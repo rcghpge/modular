@@ -127,6 +127,8 @@ from nn.attention.gpu.sparse_index_fp8_sm100_prefill import (
     _is_mxfp4,
     _k_box_rows,
     _k_tile_fits_pages,
+    IndexerScoreHook,
+    NoScoreHook,
     fp8_index_score_sm100_prefill,
 )
 
@@ -1379,6 +1381,71 @@ def mxfp4_index_score_sm100[
         ctx: Device context.
         out_row_begin: Global token row that `output` row 0 holds.
     """
+    mxfp4_index_score_sm100[
+        KOperand,
+        KSOperand,
+        num_heads,
+        _is_cache_length_accurate,
+        kpool,
+        pool_row_tokens,
+        k_box_rows,
+    ](
+        output,
+        q,
+        q_sf,
+        weights,
+        k_operand,
+        ks_operand,
+        k_tma,
+        valid_length,
+        batch_size,
+        max_seq_len,
+        max_num_keys,
+        causal,
+        ctx,
+        out_row_begin,
+        NoScoreHook(),
+    )
+
+
+def mxfp4_index_score_sm100[
+    dtype: DType,
+    out_dtype: DType,
+    output_layout: TensorLayout,
+    q_layout: TensorLayout,
+    qs_layout: TensorLayout,
+    vl_layout: TensorLayout,
+    H: IndexerScoreHook,
+    //,
+    KOperand: MHAOperand,
+    KSOperand: MHAOperand,
+    num_heads: Int,
+    _is_cache_length_accurate: Bool,
+    kpool: Int = 1,
+    pool_row_tokens: Int = 1,
+    k_box_rows: Int = _BM_KEY,
+](
+    output: MutTileTensor[out_dtype, output_layout, _],
+    q: ImmTileTensor[dtype, q_layout, _],
+    q_sf: UnsafePointer[UInt32, ImmutAnyOrigin],
+    weights: ImmTileTensor[.float32, qs_layout, _],
+    k_operand: KOperand,
+    ks_operand: KSOperand,
+    k_tma: KTMATileT[dtype, k_box_rows, 64],
+    valid_length: ImmTileTensor[.uint32, vl_layout, _],
+    batch_size: Int,
+    max_seq_len: Int,
+    max_num_keys: Int,
+    causal: Bool,
+    ctx: DeviceContext,
+    out_row_begin: Int,
+    score_hook: H,
+) raises:
+    """Launch the SM100 MXFP4 indexer scorer into `output` with a score hook.
+
+    `score_hook` runs on every score the epilogue stores. Its rows count from
+    the window's first row, so its row 0 is `output`'s row 0.
+    """
     comptime assert _is_mxfp4[dtype](), "MXFP4 rows are packed in uint8"
     # An MXFP4 row is 128 E2M1 values in 64 bytes.
     comptime depth = 64
@@ -1425,4 +1492,5 @@ def mxfp4_index_score_sm100[
         ctx,
         out_row_begin,
         q_sf,
+        score_hook,
     )

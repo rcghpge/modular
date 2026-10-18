@@ -123,6 +123,7 @@ from max.gpu.compute.arch.tcgen05 import (
     tcgen05_release_allocation_lock,
 )
 from std.bit import next_power_of_two
+from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.math import align_down, align_up, ceildiv, clamp, lcm
 from std.sys import get_defined_dtype, get_defined_int, size_of
 from std.utils.index import Index, IndexList
@@ -227,6 +228,139 @@ comptime _SF_ATOM_COLS = 4
 def _is_mxfp4[dtype: DType]() -> Bool:
     """Whether Q and K are packed MXFP4, as `uint8` stands in for E2M1."""
     return dtype == DType.uint8
+
+
+trait IndexerScoreHook(DevicePassable, TrivialRegisterPassable):
+    """Reads or rewrites indexer scores in the scorer's epilogue.
+
+    The scorer hands every score it produces to `score`, as the value it is
+    about to store, so a hook sees exactly what the top-k later reads and adds
+    no pass over the score matrix. The lanes of a warp call `score` together
+    for one score row, lane `l` holding key `lane_keys * j + l` for some `j`,
+    so a hook may combine aligned blocks of up to `lane_keys` keys with warp
+    shuffles.
+    """
+
+    comptime enabled: Bool
+    """Whether the hook runs; `False` compiles every call away."""
+
+    def window(
+        self, ctx: DeviceContext, first_row: Int, rows: Int
+    ) raises -> Self:
+        """Prepares a window of score rows and returns the hook to run on it.
+
+        Args:
+            ctx: Device context; work enqueued here precedes the scorer.
+            first_row: Query token of the window's row 0.
+            rows: Rows in the window.
+
+        Returns:
+            The hook whose row 0 is query token `first_row`.
+        """
+        ...
+
+    def score[
+        dtype: DType, lane_keys: Int
+    ](
+        self,
+        value: Scalar[dtype],
+        row: Int32,
+        key: Int32,
+        key_live: Bool,
+        row_live: Bool,
+    ) -> Scalar[dtype]:
+        """Returns the score to store for `(row, key)`.
+
+        Parameters:
+            dtype: Score element type.
+            lane_keys: Consecutive keys a warp holds, one per lane, starting
+                at a multiple of `lane_keys`.
+
+        Args:
+            value: The score, rounded to `dtype`.
+            row: Window row of the query token.
+            key: Key column.
+            key_live: Whether the key is below the row's bound; only such
+                scores are stored.
+            row_live: Whether the row is in the window; the same on every
+                lane. A dead row must not be read or written.
+
+        Returns:
+            The score to store.
+        """
+        ...
+
+
+struct NoScoreHook(IndexerScoreHook):
+    """Leaves the scores alone."""
+
+    comptime device_type: AnyType = Self
+    """Device-side type; the struct is trivially device-passable."""
+
+    comptime enabled = False
+    """Never runs."""
+
+    def __init__(out self):
+        """Creates the hook."""
+        pass
+
+    def window(
+        self, ctx: DeviceContext, first_row: Int, rows: Int
+    ) raises -> Self:
+        """Returns the hook unchanged.
+
+        Args:
+            ctx: Device context.
+            first_row: Query token of the window's row 0.
+            rows: Rows in the window.
+
+        Returns:
+            This hook.
+        """
+        return self
+
+    @inline(.always)
+    def score[
+        dtype: DType, lane_keys: Int
+    ](
+        self,
+        value: Scalar[dtype],
+        row: Int32,
+        key: Int32,
+        key_live: Bool,
+        row_live: Bool,
+    ) -> Scalar[dtype]:
+        """Returns `value`.
+
+        Parameters:
+            dtype: Score element type.
+            lane_keys: Consecutive keys a warp holds.
+
+        Args:
+            value: The score.
+            row: Window row of the query token.
+            key: Key column.
+            key_live: Whether the key is below the row's bound.
+            row_live: Whether the row is in the window.
+
+        Returns:
+            `value`.
+        """
+        return value
+
+    def _to_device_type(
+        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
+    ):
+        encoder.encode_fields[Self](self, target)
+
+    @staticmethod
+    def get_type_name() -> String:
+        """Returns the type name for runtime diagnostics.
+
+        Returns:
+            Always `"NoScoreHook"`.
+        """
+        return "NoScoreHook"
 
 
 # Bytes of one row one `KIND_MXF4` MMA contracts: 64 E2M1 values.
@@ -1064,6 +1198,7 @@ def _fp8_index_score_prefill_kernel_sm100[
     VLEngine: TensorEngine = DefaultEngine[element_width=1],
     QSEngine: TensorEngine = DefaultEngine[element_width=1],
     OutEngine: TensorEngine = DefaultEngine[element_width=1],
+    H: IndexerScoreHook = NoScoreHook,
 ](
     q_tma: QTMATileT[dtype, N_TOKENS * num_heads, depth],
     k_tma: KTMATileT[dtype, k_box_rows, depth],
@@ -1080,6 +1215,7 @@ def _fp8_index_score_prefill_kernel_sm100[
     num_key_parts_dev: Int32,
     out_row_begin_dev: Int32,
     out_row_end_dev: Int32,
+    score_hook: H,
 ):
     comptime assert valid_length.flat_rank == 1
     comptime MMA_N = N_TOKENS * num_heads
@@ -1267,6 +1403,13 @@ def _fp8_index_score_prefill_kernel_sm100[
     comptime assert BM_key == _NUM_SOFTMAX_THREADS, (
         "the epilogue drains one TMEM lane per thread, so BM_key must equal the"
         " consumer warpgroup size"
+    )
+    # Thread `row` holds key `tile * BM_key + row`, so each warp holds
+    # `WARP_SIZE` consecutive keys from a multiple of `WARP_SIZE`: the span the
+    # score hook may combine across lanes.
+    comptime assert BM_key % WARP_SIZE == 0, (
+        "a score hook combines keys across a warp, so a key tile must be whole"
+        " warps"
     )
     comptime EPI_CHUNK = _EPILOGUE_CHUNK
     comptime assert MMA_N % EPI_CHUNK == 0
@@ -1828,16 +1971,25 @@ def _fp8_index_score_prefill_kernel_sm100[
                             # (32x32->64) rather than a 64-bit multiply. Do NOT
                             # narrow it.
                             var out_row = out_row0 + tok_local
+                            var key_live = key_local < key_bound
+                            var row_live = tok_local < tok_hi
+                            var value = (k_scale * tok_sum).cast[out_dtype]()
+                            comptime if H.enabled:
+                                value = score_hook.score[lane_keys=WARP_SIZE](
+                                    value,
+                                    out_row,
+                                    key_local,
+                                    key_live,
+                                    row_live,
+                                )
                             store_global_pred(
                                 out_base
                                 + (
                                     Int(out_row) * Int(max_num_keys)
                                     + Int(key_local)
                                 ),
-                                (k_scale * tok_sum).cast[out_dtype](),
-                                Int32(
-                                    key_local < key_bound and tok_local < tok_hi
-                                ),
+                                value,
+                                Int32(key_live and row_live),
                             )
                         comptime if not Q_INTERLEAVE:
                             acc[0] = SIMD[FT, ACCW](0)
@@ -2546,6 +2698,83 @@ def fp8_index_score_sm100_prefill[
     the same four-scale word per key. The score is then
     `sum_head relu(q . k) * q_s[token, head]`, with no per-key factor.
     """
+    fp8_index_score_sm100_prefill[
+        dtype,
+        KOperand,
+        KSOperand,
+        num_heads,
+        depth,
+        BM_key,
+        N_TOKENS,
+        _is_cache_length_accurate,
+        kpool,
+        pool_row_tokens,
+        k_box_rows,
+        VLEngine=VLEngine,
+        QSEngine=QSEngine,
+        OutEngine=OutEngine,
+    ](
+        q_ptr,
+        num_q_tokens,
+        k_tma,
+        k_operand,
+        ks_operand,
+        valid_length,
+        q_s,
+        output,
+        batch_size,
+        max_seq_len,
+        max_num_keys,
+        causal,
+        ctx,
+        out_row_begin,
+        q_sf,
+        NoScoreHook(),
+    )
+
+
+def fp8_index_score_sm100_prefill[
+    out_dtype: DType,
+    H: IndexerScoreHook,
+    //,
+    dtype: DType,
+    KOperand: MHAOperand,
+    KSOperand: MHAOperand,
+    num_heads: Int,
+    depth: Int,
+    BM_key: Int,
+    N_TOKENS: Int,
+    _is_cache_length_accurate: Bool,
+    kpool: Int = 1,
+    pool_row_tokens: Int = 1,
+    k_box_rows: Int = BM_key,
+    *,
+    VLEngine: TensorEngine = DefaultEngine[element_width=1],
+    QSEngine: TensorEngine = DefaultEngine[element_width=1],
+    OutEngine: TensorEngine = DefaultEngine[element_width=1],
+](
+    q_ptr: ImmPointer[Scalar[dtype], ImmutAnyOrigin],
+    num_q_tokens: Int,
+    k_tma: KTMATileT[dtype, k_box_rows, depth],
+    k_operand: KOperand,
+    ks_operand: KSOperand,
+    valid_length: TileTensor[mut=False, .uint32, ..., Engine=VLEngine],
+    q_s: TileTensor[mut=False, .float32, ..., Engine=QSEngine],
+    output: TileTensor[out_dtype, ..., Engine=OutEngine],
+    batch_size: Int,
+    max_seq_len: Int,
+    max_num_keys: Int,
+    causal: Int,
+    ctx: DeviceContext,
+    out_row_begin: Int,
+    q_sf: OptionalPointer[UInt32, ImmutAnyOrigin],
+    score_hook: H,
+) raises:
+    """Enqueue the K-streaming prefill scorer into `output` with a score hook.
+
+    `score_hook` runs on every score the epilogue stores. Its rows count from
+    the window's first row, so its row 0 is `output`'s row 0.
+    """
     # The window bounds the token blocks any entry can contribute, so a chunked
     # launch does not pay for a grid sized to the whole batch.
     var out_rows = Int(output.dim[0]())
@@ -2632,6 +2861,7 @@ def fp8_index_score_sm100_prefill[
         VLEngine=type_of(valid_length.as_imm()).Engine,
         QSEngine=q_s.Engine,
         OutEngine=output.Engine,
+        H=H,
     ]
     # Validate where the config is BUILT, ahead of the derived asserts below --
     # the SMEM check fires on an over-forced ring depth first and reports only a
@@ -2728,6 +2958,7 @@ def fp8_index_score_sm100_prefill[
         Int32(num_key_parts),
         Int32(out_row_begin),
         Int32(out_row_begin + out_rows),
+        score_hook,
         grid_dim=(
             batch_size,
             token_blocks,
