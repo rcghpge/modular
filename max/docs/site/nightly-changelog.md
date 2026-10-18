@@ -46,10 +46,10 @@ This version is still a work in progress.
 - Removed the `max.pipelines.lib.bfloat16_utils` module. Import its functions
   from `max.driver` instead.
 
-- Removed `GraphPipelineModel` and `ModuleV3PipelineModel` from
-  `max.pipelines.lib`. Subclass `PipelineModel`, return the module from
-  `graph_specs()` under `GraphRole.ENCODER`, and load it with `load_graphs()`
-  instead.
+- Removed `GraphPipelineModel`, `ModuleV3PipelineModel` and
+  `MultiGraphPipelineModelWithKVCache` from `max.pipelines.lib`. Subclass
+  `PipelineModel`, return the module from `graph_specs()` under
+  `GraphRole.ENCODER`, and load it with `load_graphs()` instead.
 
 ## Fixes
 

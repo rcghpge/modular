@@ -72,7 +72,6 @@ Model interface
    ModuleV3MultiGraphPipelineModelWithKVCache
    ModuleV3Outputs
    ModuleV3PipelineModelWithKVCache
-   MultiGraphPipelineModelWithKVCache
    PipelineModelWithKVCache
    SupportsSSMStateWarmup
    UnifiedEagleOutputs
