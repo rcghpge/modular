@@ -76,6 +76,7 @@ from nn.kv_cache import (
     print_kv_cache_paged_generic_cpu,
     print_kv_cache_paged_generic_gpu,
 )
+from nn.chunked_qkv_rope_store import chunked_qkv_rope_store_paged_ragged
 from nn.rope_split_store import (
     rope_split_store_paged_ragged,
     rope_split_store_paged_ragged_with_position_ids,
@@ -1441,6 +1442,70 @@ def generic_fused_qkv_matmul_kv_cache_paged_ragged_kernel_api_bias[
         bias.to_tile_tensor[.int64](),
         ctx,
     )
+
+
+@extensibility.register("mo.chunked_qkv_rope_store.ragged.paged")
+struct Struct_chunked_qkv_rope_store_ragged_paged[
+    qk_head_dim: Int, v_head_dim: Int
+]:
+    """Registers chunked QKV unpacking, partial NeoX RoPE, and paged stores.
+
+    The execute method receives value_scale as a CPU Float32 operand and
+    applies it to V before rounding to BF16.
+
+    Parameters:
+        qk_head_dim: Unpadded query and key head width.
+        v_head_dim: Unpadded value head width.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        cache_dtype: DType,
+        //,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=.bfloat16, rank=3, ...],
+        qkv: InputTensor[dtype=.bfloat16, rank=3, ...],
+        input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
+        freqs_cis: InputTensor[dtype=.bfloat16, rank=2, ...],
+        kv_blocks: MutableInputTensor[dtype=cache_dtype, rank=6, ...],
+        page_stride: InputTensor[dtype=.int64, rank=1, ...],
+        cache_lengths: InputTensor[dtype=.uint32, rank=1, ...],
+        kv_lookup_table: InputTensor[dtype=.uint32, rank=2, ...],
+        max_prompt_length: InputTensor[dtype=.uint32, rank=1, ...],
+        max_cache_length: InputTensor[dtype=.uint32, rank=1, ...],
+        layer_idx: UInt32,
+        value_scale: Float32,
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[
+            target
+        ](), "chunked QKV preparation requires a GPU"
+        comptime assert (
+            cache_dtype == DType.bfloat16
+        ), "kv_blocks must be a rank-6 BF16 cache"
+        var kv_collection = generic_get_paged_cache(
+            kv_blocks,
+            page_stride,
+            cache_lengths,
+            kv_lookup_table,
+            max_prompt_length,
+            max_cache_length,
+        )
+        return chunked_qkv_rope_store_paged_ragged[
+            qk_head_dim=Self.qk_head_dim,
+            v_head_dim=Self.v_head_dim,
+        ](
+            qkv.to_tile_tensor[.int64](),
+            input_row_offsets.to_tile_tensor[.int64](),
+            freqs_cis.to_tile_tensor[.int64](),
+            kv_collection,
+            layer_idx,
+            output.to_tile_tensor[.int64](),
+            value_scale,
+            ctx,
+        )
 
 
 @extensibility.register("mo.rope_split_store.ragged.paged")
