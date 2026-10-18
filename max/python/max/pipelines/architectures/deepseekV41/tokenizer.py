@@ -29,10 +29,13 @@ from max.pipelines.context import (
 )
 from max.pipelines.context.exceptions import InputError, PromptTooLongError
 from max.pipelines.lib.tokenizer import (
-    ReasoningTextTokenizer,
+    ReasoningDelimitersMixin,
+    TextAndVisionTokenizer,
+    _render_custom_chat_template,
     encode_dkv_cache_hint,
     max_tokens_to_generate,
     open_image,
+    resolve_eos_token_ids,
     run_with_default_executor,
 )
 from max.pipelines.modeling.types import (
@@ -44,6 +47,7 @@ from max.pipelines.modeling.types import (
 )
 from max.support.image import hash_image
 from PIL import Image
+from transformers import AutoTokenizer
 
 from .batch_vision_inputs import IMAGE_GRIDS
 from .encoding_dsv41 import encode_messages
@@ -125,9 +129,8 @@ def render_prompt(
 
     Raises:
         InputError: If ``reasoning_effort`` is not ``None``, ``"none"``, an
-            int in [1, 100], or a named effort.
-        ValueError: If the encoder rejects the conversation for any other
-            reason.
+            int in [1, 100], or a named effort, or if the encoder rejects
+            the conversation.
     """
     thinking_mode, reasoning_effort = resolve_reasoning_effort(
         chat_template_options
@@ -148,12 +151,13 @@ def render_prompt(
             ),
             reasoning_effort=reasoning_effort,
         )
-    except (AssertionError, NotImplementedError) as e:
-        # The encoder signals unsupported input with these.
-        raise ValueError(f"DeepSeek-V4.1 prompt encoding failed: {e}") from e
+    except (AssertionError, NotImplementedError, ValueError) as e:
+        # The encoder signals unsupported input with these; InputError
+        # carries the message to the client as an HTTP 400.
+        raise InputError(f"DeepSeek-V4.1 prompt encoding failed: {e}") from e
 
 
-class DeepseekV41Tokenizer(ReasoningTextTokenizer):
+class DeepseekV41Tokenizer(ReasoningDelimitersMixin, TextAndVisionTokenizer):
     """Tokenizer for DeepSeek-V4.1 that renders chat with the V4.1 encoder.
 
     A custom ``--chat-template``, when given, replaces the encoder. Each image
@@ -164,9 +168,27 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         self,
         model_path: str,
         pipeline_config: PipelineConfig,
-        **kwargs,
+        *,
+        revision: str | None = None,
+        max_length: int | None = None,
+        trust_remote_code: bool = False,
+        chat_template: str | None = None,
+        **unused_kwargs,
     ) -> None:
-        super().__init__(model_path, pipeline_config, **kwargs)
+        # Not the base initializer: the checkpoint ships no AutoProcessor.
+        self.model_path = model_path
+        self.delegate = AutoTokenizer.from_pretrained(
+            model_path,
+            revision=revision,
+            trust_remote_code=trust_remote_code,
+            model_max_length=max_length,
+        )
+        self.max_length = max_length or self.delegate.model_max_length
+        self._eos_token_ids = resolve_eos_token_ids(
+            self.delegate.eos_token_id, pipeline_config
+        )
+        self._chat_template = chat_template
+        self._resolve_reasoning_delimiters(self.delegate)
         config = pipeline_config.model.huggingface_config
         self.image_token_id = int(config.image_token_id)
         self.image_processor = DeepseekV41ImageProcessor(config.vision_config)
@@ -183,26 +205,39 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
                 "for a vision encoder cache that is never filled."
             )
 
-    @property
-    def expects_content_wrapping(self) -> bool:
-        """Returns ``True``: images arrive as typed content parts."""
-        return True
-
     def apply_chat_template(
         self,
         messages: list[TextGenerationRequestMessage],
-        tools: list[TextGenerationRequestTool] | None,
+        tools: list[TextGenerationRequestTool] | None = None,
         **chat_template_options: Any,
     ) -> str:
-        """Renders messages with the DeepSeek-V4.1 encoder."""
-        if self._custom_template_provided:
-            return super().apply_chat_template(
-                messages, tools, **chat_template_options
+        """Renders messages with the DeepSeek-V4.1 encoder.
+
+        A custom ``--chat-template`` replaces the encoder. It sees each image
+        as an ``{"type": "image"}`` content block, and text-only messages as
+        the shared text path flattens them.
+
+        Raises:
+            InputError: If the encoder rejects the conversation.
+            ValueError: If a custom template fails to render.
+        """
+        if self._chat_template is None:
+            return render_prompt(
+                [_flatten_message(message) for message in messages],
+                tools,
+                chat_template_options,
             )
-        return render_prompt(
-            [_flatten_message(message) for message in messages],
+        return _render_custom_chat_template(
+            self.delegate,
+            self._chat_template,
+            [
+                _flatten_message(message)
+                if message.number_of_images
+                else message.flatten_content()
+                for message in messages
+            ],
             tools,
-            chat_template_options,
+            **{"add_generation_prompt": True, **chat_template_options},
         )
 
     def _expand_images(
@@ -253,12 +288,20 @@ class DeepseekV41Tokenizer(ReasoningTextTokenizer):
         """
         if request.videos:
             raise InputError("DeepSeek-V4.1 does not support video inputs.")
-        _, text_ids = await self._generate_prompt_and_token_ids(
-            prompt=request.prompt,
-            messages=request.messages,
-            tools=request.tools,
-            **(request.chat_template_options or {}),
-        )
+        if request.prompt is not None:
+            text_ids = await self.encode(request.prompt)
+        elif request.messages:
+            # Off the event loop: the render is pure Python over the whole
+            # conversation.
+            prompt = await run_with_default_executor(
+                self.apply_chat_template,
+                request.messages,
+                request.tools,
+                **(request.chat_template_options or {}),
+            )
+            text_ids = await self.encode(prompt, add_special_tokens=False)
+        else:
+            raise ValueError(f"{request} does not provide messages or prompt.")
         token_ids, images, grids = await run_with_default_executor(
             self._expand_images, text_ids, request.images_for_processing()
         )
