@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 #
-# RUN: kgen-doc %s | FileCheck %s
+# RUN: mojo doc %s | FileCheck %s
 
 
 from max.gpu.host.info import GPUInfo, AMDRDNAFamily
