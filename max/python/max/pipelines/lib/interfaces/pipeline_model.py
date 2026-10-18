@@ -1291,27 +1291,6 @@ class ModuleV3MultiGraphPipelineModelWithKVCache(
             self.compiled_modules[GraphRole.DECODER],
         )
 
-    # TODO(kathywu): Remove `load_model` and the `_compile_*` hooks once
-    # every subclass implements the spec hooks.
-    @traced
-    def load_model(
-        self,
-    ) -> tuple[Callable[..., Any] | None, Callable[..., Any]]:
-        """Build and compile vision and language ModuleV3 callables."""
-        state_dict = self._load_state_dict()
-        model_config = self._create_model_config(state_dict)
-        self._init_distributed_runtime(model_config)
-
-        vision_model = self._compile_vision_model(
-            model_config, self._vision_weights_dict
-        )
-        language_model = self._compile_language_model(
-            model_config, self._language_weights_dict
-        )
-
-        self._wire_batch_processor(vision_model, model_config)
-        return vision_model, language_model
-
     def _create_model_config(self, state_dict: dict[str, Any]) -> _ModelConfigT:
         """Builds model config from ``state_dict``."""
         raise NotImplementedError(
@@ -1321,22 +1300,6 @@ class ModuleV3MultiGraphPipelineModelWithKVCache(
     def _init_distributed_runtime(self, model_config: _ModelConfigT) -> None:
         """Initializes EP/NVSHMEM or other distributed runtime (no-op by default)."""
         del model_config
-
-    def _compile_vision_model(
-        self, model_config: _ModelConfigT, state_dict: dict[str, Any]
-    ) -> Callable[..., Any]:
-        """Builds and compiles the vision tower."""
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `_compile_vision_model`."
-        )
-
-    def _compile_language_model(
-        self, model_config: _ModelConfigT, state_dict: dict[str, Any]
-    ) -> Callable[..., Any]:
-        """Builds and compiles the language tower."""
-        raise NotImplementedError(
-            f"{type(self).__qualname__} must implement `_compile_language_model`."
-        )
 
     def _vision_spec(
         self, model_config: _ModelConfigT, state_dict: dict[str, Any]
