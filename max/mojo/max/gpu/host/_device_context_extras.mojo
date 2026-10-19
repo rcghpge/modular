@@ -11,14 +11,10 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.ffi import external_call, CStringSpan, c_size_t
 from std.builtin.device_passable import DevicePassable
 from std.collections.optional import OptionalReg
 from std.reflection import get_linkage_name, call_location, SourceLocation
-from std.sys.compile import DebugLevel, OptimizationLevel
 from std.sys import size_of
-
-from max.gpu.host.compile import _compile_code
 
 from . import (
     Dim,
@@ -36,130 +32,10 @@ from .device_context import (
     DeviceFunction,
     DeviceExternalFunction,
     _checked,
-    _CString,
     _DumpPath,
     _check_dim,
-    _DeviceFunctionPtr,
-    _DeviceContextPtr,
     _FunctionEnqueuer,
-    _max_dynamic_shared_bytes_for_load,
-    _snapshot_capture_sizes,
 )
-
-
-# const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
-#     const DeviceFunction **result, const DeviceContext *ctx,
-#     const char *moduleName, const char *functionName, const char *data,
-#     size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
-#     int32_t optimizationLevel, const char *debugName)
-@inline(.never)
-def _load_function(
-    ctx: _DeviceContextPtr[mut=True],
-    *,
-    module_name: StaticString,
-    function_name: StaticString,
-    asm: StaticString,
-    max_dynamic_shared_size_bytes: Int32,
-    debug_name: StaticString = "",
-) raises -> _DeviceFunctionPtr[mut=True]:
-    """Loads a compiled kernel into the context and returns its handle.
-
-    Shared by every kernel, so the call and its error path are emitted once
-    instead of inlined into each launch site.
-
-    Args:
-        ctx: The device context to load the kernel into.
-        module_name: The compiled module's name.
-        function_name: The kernel's linkage name within the module.
-        asm: The compiled module contents.
-        max_dynamic_shared_size_bytes: The dynamic shared memory the kernel
-            may request, or -1 for the default.
-        debug_name: A display name for the kernel. Backends that have no use
-            for it ignore it, and an empty name means the linkage name.
-
-    Returns:
-        The loaded function's handle, retained for the caller.
-
-    Raises:
-        If the runtime fails to load the kernel.
-    """
-    comptime debug_level = DebugLevel.level
-    var result: _DeviceFunctionPtr[mut=True] = {}
-    _checked(
-        external_call[
-            "AsyncRT_DeviceContext_loadFunctionWithDebugName",
-            _CString[],
-            Pointer[_DeviceFunctionPtr[mut=True], origin_of(result)],
-            _DeviceContextPtr[mut=True],
-            CStringSpan[ImmStaticOrigin],
-            CStringSpan[ImmStaticOrigin],
-            CStringSpan[ImmStaticOrigin],
-            c_size_t,
-            Int32,
-            CStringSpan[ImmStaticOrigin],
-            Int32,
-            CStringSpan[ImmStaticOrigin],
-        ](
-            Pointer(to=result),
-            ctx,
-            module_name.as_c_string_span(),
-            function_name.as_c_string_span(),
-            asm.as_c_string_span(),
-            c_size_t(asm.byte_length()),
-            max_dynamic_shared_size_bytes,
-            debug_level.as_c_string_span(),
-            Int32(Int(OptimizationLevel)),
-            debug_name.as_c_string_span(),
-        ),
-    )
-    return result
-
-
-__extension DeviceFunction:
-    @doc_hidden
-    @inline(.always)
-    def __init__(
-        out self,
-        ctx: DeviceContext.Generic[Self.target],
-        *,
-        func_attribute: OptionalReg[FuncAttribute] = None,
-        name: StaticString = "",
-    ) raises:
-        """Initializes a new DeviceFunction by compiling the function for the specified device.
-
-        Args:
-            ctx: The device context to compile the function for.
-            func_attribute: Optional attributes to apply to the function, such as shared memory size.
-            name: A display name for the kernel, such as for profiling. Empty
-                means the linkage name.
-
-        Raises:
-            If compilation fails or if an unsupported function attribute is provided.
-        """
-        self._context = ctx
-
-        var max_dynamic_shared_size_bytes = _max_dynamic_shared_bytes_for_load[
-            Self.target
-        ](func_attribute)
-
-        self._func_impl = _compile_code[
-            Self.func,
-            emission_kind=self._emission_kind,
-            target=Self.target,
-            compile_options=Self.compile_options,
-            link_options=Self.link_options,
-        ]()
-        self._capture_sizes = _snapshot_capture_sizes(
-            self._func_impl.num_captures, self._func_impl.capture_sizes
-        )
-        self._handle = _load_function(
-            ctx._handle,
-            module_name=self._func_impl.module_name,
-            function_name=self._func_impl.function_name,
-            asm=self._func_impl.asm,
-            max_dynamic_shared_size_bytes=max_dynamic_shared_size_bytes,
-            debug_name=name,
-        )
 
 
 __extension DeviceExternalFunction:
