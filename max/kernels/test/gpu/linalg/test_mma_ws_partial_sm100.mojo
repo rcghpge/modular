@@ -697,6 +697,9 @@ def _ss_naive_ref[
         type_of(b_tt).LayoutType,
         NAIVE_BLOCK_DIM,
         transpose_b=True,
+        c_engine=type_of(c_ref_tt).Engine,
+        a_engine=type_of(a_tt).Engine,
+        b_engine=type_of(b_tt).Engine,
     ]
 
     ctx.enqueue_function[gemm_naive](
@@ -2193,6 +2196,9 @@ def test_ts_partial(ctx: DeviceContext) raises:
         type_of(b_tt).LayoutType,
         NAIVE_BLOCK_DIM,
         transpose_b=True,
+        c_engine=type_of(c_ref_tt).Engine,
+        a_engine=type_of(a_tt).Engine,
+        b_engine=type_of(b_tt).Engine,
     ]
     ctx.enqueue_function[gemm_naive](
         c_ref_tt,

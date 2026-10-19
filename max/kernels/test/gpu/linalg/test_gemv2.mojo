@@ -140,6 +140,9 @@ def test[
         type_of(b_tt).LayoutType,
         BLOCK_DIM,
         transpose_b=transpose_b,
+        c_engine=type_of(c_tt).Engine,
+        a_engine=type_of(a_tt).Engine,
+        b_engine=type_of(b_tt).Engine,
     ]
     ctx.enqueue_function[naive_kernel](
         c_tt,

@@ -538,6 +538,9 @@ def run_matmul_stream_k[
         type_of(a_buf).LayoutType,
         type_of(b_buf).LayoutType,
         BLOCK_DIM,
+        c_engine=type_of(c_buf_n).Engine,
+        a_engine=type_of(a_buf).Engine,
+        b_engine=type_of(b_buf).Engine,
     ]
 
     ctx.enqueue_function[kernel](

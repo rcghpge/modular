@@ -375,10 +375,13 @@ def sram_blocked_matmul_dynamic_nd_buffer[
     BM: Int,
     BN: Int,
     BK: Int,
+    DstEngine: TensorEngine,
+    LhsEngine: TensorEngine,
+    RhsEngine: TensorEngine,
 ](
-    dst: TileTensor[.float32, DstLayoutType, MutAnyOrigin],
-    lhs: TileTensor[.float32, LhsLayoutType, ImmutAnyOrigin],
-    rhs: TileTensor[.float32, RhsLayoutType, ImmutAnyOrigin],
+    dst: TileTensor[.float32, DstLayoutType, MutAnyOrigin, Engine=DstEngine],
+    lhs: TileTensor[.float32, LhsLayoutType, ImmutAnyOrigin, Engine=LhsEngine],
+    rhs: TileTensor[.float32, RhsLayoutType, ImmutAnyOrigin, Engine=RhsEngine],
 ):
     var lhs_sram_tile = stack_allocation[.float32, address_space=.SHARED](
         col_major[BM, BK]()
@@ -494,6 +497,9 @@ def test_sram_blocked_matmul_dynamic_nd_buffer(ctx: DeviceContext) raises:
         BM,
         BN,
         BK,
+        type_of(mat_c).Engine,
+        type_of(mat_a).Engine,
+        type_of(mat_b).Engine,
     ]
 
     ctx.enqueue_function[sram_blocked_matmul_dynamic_nd_buffer_kernel](

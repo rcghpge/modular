@@ -26,6 +26,7 @@ from layout import (
     Coord,
     TileTensor,
     TensorLayout,
+    TensorEngine,
     DefaultEngine,
     row_major,
     stack_allocation,
@@ -76,25 +77,14 @@ def sgemm_warp_tiling_kernel[
     TM: Int,
     TN: Int,
     NUM_THREADS: Int,
+    *,
+    CEngine: TensorEngine,
+    AEngine: TensorEngine,
+    BEngine: TensorEngine,
 ](
-    mat_c: TileTensor[
-        c_type,
-        CLayoutType,
-        MutAnyOrigin,
-        Engine=DefaultEngine[element_width=1],
-    ],
-    mat_a: TileTensor[
-        a_type,
-        ALayoutType,
-        MutAnyOrigin,
-        Engine=DefaultEngine[element_width=1],
-    ],
-    mat_b: TileTensor[
-        b_type,
-        BLayoutType,
-        MutAnyOrigin,
-        Engine=DefaultEngine[element_width=1],
-    ],
+    mat_c: TileTensor[c_type, CLayoutType, MutAnyOrigin, Engine=CEngine],
+    mat_a: TileTensor[a_type, ALayoutType, MutAnyOrigin, Engine=AEngine],
+    mat_b: TileTensor[b_type, BLayoutType, MutAnyOrigin, Engine=BEngine],
     alpha: Scalar[c_type],
     beta: Scalar[c_type],
 ) where (a_type.is_numeric() and b_type.is_numeric()):
@@ -131,12 +121,12 @@ def sgemm_warp_tiling_kernel[
     )
 
     # Move blocktile to beginning of A's row and B's column.
-    var aa_ptr = mat_a._storage.unsafe_offset(c_row * BM * K)
-    var bb_ptr = mat_b._storage.unsafe_offset(c_col * BN)
+    var aa_ptr = mat_a.ptr.unsafe_offset(c_row * BM * K)
+    var bb_ptr = mat_b.ptr.unsafe_offset(c_col * BN)
     # Move C_ptr to warp's output tile
     var M_offset_warp = c_row * BM + warp_row * WM
     var N_offset_warp = c_col * BN + warp_col * WN
-    var cc_ptr = mat_c._storage.unsafe_offset(M_offset_warp * N).unsafe_offset(
+    var cc_ptr = mat_c.ptr.unsafe_offset(M_offset_warp * N).unsafe_offset(
         N_offset_warp
     )
 
@@ -404,6 +394,9 @@ def bench_matmuls(mut m: Bench, ctx: DeviceContext) raises:
         TM=K10_TM,
         TN=K10_TN,
         NUM_THREADS=K10_NUM_THREADS,
+        CEngine=type_of(c_buffer).Engine,
+        AEngine=type_of(a_buffer).Engine,
+        BEngine=type_of(b_buffer).Engine,
     ]
 
     @inline(.always)

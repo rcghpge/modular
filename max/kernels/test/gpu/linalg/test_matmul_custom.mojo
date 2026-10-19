@@ -93,6 +93,9 @@ def run_matmul_naive(ctx: DeviceContext, M: Int, N: Int, K: Int) raises:
             type_of(a_tt_bf16).LayoutType,
             type_of(b_tt_bf16).LayoutType,
             BLOCK_DIM,
+            c_engine=type_of(c_tt_bf16).Engine,
+            a_engine=type_of(a_tt_bf16).Engine,
+            b_engine=type_of(b_tt_bf16).Engine,
         ]
         ctx.enqueue_function[kernel](
             c_tt_bf16,
@@ -141,6 +144,9 @@ def run_matmul_naive(ctx: DeviceContext, M: Int, N: Int, K: Int) raises:
             type_of(a_tt_fp32).LayoutType,
             type_of(b_tt_fp32).LayoutType,
             BLOCK_DIM,
+            c_engine=type_of(c_tt_fp32).Engine,
+            a_engine=type_of(a_tt_fp32).Engine,
+            b_engine=type_of(b_tt_fp32).Engine,
         ]
         ctx.enqueue_function[kernel](
             c_tt_fp32,
@@ -273,6 +279,9 @@ def run_matmul[
             type_of(a_tt).LayoutType,
             type_of(b_tt).LayoutType,
             BLOCK_DIM,
+            c_engine=type_of(c_tt).Engine,
+            a_engine=type_of(a_tt).Engine,
+            b_engine=type_of(b_tt).Engine,
         ]
         ctx.enqueue_function[kernel](
             c_tt,
@@ -419,6 +428,9 @@ def run_matmul_split_k[
         type_of(a_tt).LayoutType,
         type_of(b_tt).LayoutType,
         BLOCK_DIM,
+        c_engine=type_of(c_tt).Engine,
+        a_engine=type_of(a_tt).Engine,
+        b_engine=type_of(b_tt).Engine,
     ]
 
     ctx.enqueue_function[kernel](
@@ -554,6 +566,9 @@ def run_matmul_transpose[
             type_of(b_tt).LayoutType,
             BLOCK_DIM,
             transpose_b,
+            c_engine=type_of(c_tt).Engine,
+            a_engine=type_of(a_tt).Engine,
+            b_engine=type_of(b_tt).Engine,
         ]
         ctx.enqueue_function[kernel](
             c_tt,
