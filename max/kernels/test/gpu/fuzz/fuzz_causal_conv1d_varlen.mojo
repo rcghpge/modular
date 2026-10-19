@@ -273,7 +273,8 @@ def run_one_case(
 
     if check:
         var x_t = TileTensor(
-            proj_h + spec.x_off, MixedLayout((total, dim), x_strides)
+            proj_h.unsafe_offset(spec.x_off),
+            MixedLayout((total, dim), x_strides),
         )
         var weight_t = TileTensor(weight_h, row_major(dim, WIDTH))
         var bias_t = TileTensor(bias_h, row_major(dim))

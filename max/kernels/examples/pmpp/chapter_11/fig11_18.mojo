@@ -123,7 +123,7 @@ def inter_block_scan(
             prev_block_partial_sum_s[0] = 0.0
         else:
             # Wait for previous block to pass partial sum
-            while Atomic.load(flags + Int(bid - 1)) == 0:
+            while Atomic.load(flags.unsafe_offset(Int(bid - 1))) == 0:
                 pass
 
             # Read previous block's partial sum
@@ -133,7 +133,7 @@ def inter_block_scan(
         partial_sums[Int(bid)] = prev_block_partial_sum_s[0] + val
 
         # Set this block's flag
-        _ = Atomic.fetch_add(flags + Int(bid), UInt32(1))
+        _ = Atomic.fetch_add(flags.unsafe_offset(Int(bid)), UInt32(1))
 
     barrier()
     return prev_block_partial_sum_s[0]

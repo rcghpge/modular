@@ -55,7 +55,7 @@ def matrixMulKernel(
             name="shared_dynamic_memory",
         ]()
     )
-    var Nds = Mds + 32 * 32  # Use max size for allocation
+    var Nds = Mds.unsafe_offset(32 * 32)  # Use max size for allocation
 
     var tx = thread_idx.x
     var ty = thread_idx.y
