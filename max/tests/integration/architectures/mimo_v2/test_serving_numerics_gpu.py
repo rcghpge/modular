@@ -66,7 +66,7 @@ def _kl(
 @pytest.fixture(scope="module")
 def logits_by_mode(
     tmp_path_factory: pytest.TempPathFactory,
-) -> dict[tuple[bool, bool], list[npt.NDArray[np.float32]]]:
+) -> dict[tuple[bool, bool, bool], list[npt.NDArray[np.float32]]]:
     checkpoint = tiny_fixture.tensors()
     goldens = np.load(GOLDENS)
     assert str(goldens["digest"]) == tiny_fixture.digest(checkpoint), (
@@ -83,15 +83,21 @@ def logits_by_mode(
         np.array(ids, np.int64) for ids in tiny_fixture.prompts().values()
     ]
     results = {}
-    for fused in (False, True):
+    for sliding, full in (
+        (False, False),
+        (True, False),
+        (False, True),
+        (True, True),
+    ):
         model = Runner(
             path,
             num_devices=num_devices,
             max_seq_len=256,
             kv_cache_bytes=256 * 1024**2,
-            fused_sliding_qkv=fused,
+            fused_sliding_qkv=sliding,
+            fused_full_qkv=full,
         )
-        assert (model.fused_qkv_count > 0) == fused
+        assert (model.fused_qkv_count > 0) == (sliding or full)
         for captured in (False, True):
             outputs = model.teacher_forced(
                 prompts, CHUNK, DECODE, device_graph_capture=captured
@@ -116,16 +122,23 @@ def logits_by_mode(
             for output, _ in outputs:
                 assert output is not None
                 logits.append(output)
-            results[fused, captured] = logits
+            results[sliding, full, captured] = logits
         del model
     return results
 
 
-@pytest.mark.parametrize("fused", [False, True], ids=["unfused", "fused"])
+@pytest.mark.parametrize(
+    ("sliding", "full"),
+    [(False, False), (True, False), (False, True), (True, True)],
+    ids=["unfused", "sliding", "full", "combined"],
+)
 @pytest.mark.parametrize("captured", [False, True], ids=["eager", "capture"])
 def test_serving_logits_match_hf(
-    logits_by_mode: dict[tuple[bool, bool], list[npt.NDArray[np.float32]]],
-    fused: bool,
+    logits_by_mode: dict[
+        tuple[bool, bool, bool], list[npt.NDArray[np.float32]]
+    ],
+    sliding: bool,
+    full: bool,
     captured: bool,
 ) -> None:
     goldens = np.load(GOLDENS)
@@ -133,7 +146,7 @@ def test_serving_logits_match_hf(
         os.environ.get("MIMO_TEST_TP_DEGREE", str(min(2, accelerator_count())))
     )
     prompts = tiny_fixture.prompts()
-    outputs = logits_by_mode[fused, captured]
+    outputs = logits_by_mode[sliding, full, captured]
     kl, top1 = {}, {}
     for name, logits in zip(prompts, outputs, strict=True):
         assert logits is not None
@@ -154,14 +167,23 @@ def test_serving_logits_match_hf(
     assert agree >= TOP1, summary
 
 
+@pytest.mark.parametrize(
+    ("sliding", "full"),
+    [(True, False), (False, True), (True, True)],
+    ids=["sliding", "full", "combined"],
+)
 @pytest.mark.parametrize("captured", [False, True], ids=["eager", "capture"])
 def test_fused_logits_match_unfused(
-    logits_by_mode: dict[tuple[bool, bool], list[npt.NDArray[np.float32]]],
+    sliding: bool,
+    full: bool,
+    logits_by_mode: dict[
+        tuple[bool, bool, bool], list[npt.NDArray[np.float32]]
+    ],
     captured: bool,
 ) -> None:
     for unfused, fused in zip(
-        logits_by_mode[False, captured],
-        logits_by_mode[True, captured],
+        logits_by_mode[False, False, captured],
+        logits_by_mode[sliding, full, captured],
         strict=True,
     ):
         np.testing.assert_array_equal(fused, unfused)

@@ -1446,7 +1446,7 @@ def generic_fused_qkv_matmul_kv_cache_paged_ragged_kernel_api_bias[
 
 @extensibility.register("mo.chunked_qkv_rope_store.ragged.paged")
 struct Struct_chunked_qkv_rope_store_ragged_paged[
-    qk_head_dim: Int, v_head_dim: Int
+    qk_head_dim: Int, v_head_dim: Int, chunk_padding: Int = 0
 ]:
     """Registers chunked QKV unpacking, partial NeoX RoPE, and paged stores.
 
@@ -1456,6 +1456,7 @@ struct Struct_chunked_qkv_rope_store_ragged_paged[
     Parameters:
         qk_head_dim: Unpadded query and key head width.
         v_head_dim: Unpadded value head width.
+        chunk_padding: Trailing projection rows to ignore in each chunk.
     """
 
     @inline(.always)
@@ -1496,6 +1497,7 @@ struct Struct_chunked_qkv_rope_store_ragged_paged[
         return chunked_qkv_rope_store_paged_ragged[
             qk_head_dim=Self.qk_head_dim,
             v_head_dim=Self.v_head_dim,
+            chunk_padding=Self.chunk_padding,
         ](
             qkv.to_tile_tensor[.int64](),
             input_row_offsets.to_tile_tensor[.int64](),
