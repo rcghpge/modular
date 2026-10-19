@@ -295,12 +295,10 @@ def test_fused_allreduce_rmsnorm_fp8[
 
     var ref_sum_ptr = ref_sum_dev.unsafe_ptr()
 
-    @__copy_capture(ref_sum_ptr)
     @inline(.always)
-    @__parameter
     def ref_input_fn[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var ref_sum_ptr} -> SIMD[in_dtype, width]:
         var linear_idx = idx[0] * cols + idx[1]
         return ref_sum_ptr.load[width=width, alignment=width](linear_idx)
 
@@ -318,8 +316,8 @@ def test_fused_allreduce_rmsnorm_fp8[
         out_dtype,
         scales_dtype,
         2,
-        ref_input_fn,
     ](
+        ref_input_fn,
         shape,
         ref_fp8_tile,
         gamma_tensor,
@@ -670,12 +668,10 @@ def test_fused_allreduce_residual_rmsnorm_fp8[
 
     var ref_sum_ptr = ref_sum_dev.unsafe_ptr()
 
-    @__copy_capture(ref_sum_ptr)
     @inline(.always)
-    @__parameter
     def ref_input_fn[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var ref_sum_ptr} -> SIMD[in_dtype, width]:
         var linear_idx = idx[0] * cols + idx[1]
         return ref_sum_ptr.load[width=width, alignment=width](linear_idx)
 
@@ -694,8 +690,8 @@ def test_fused_allreduce_residual_rmsnorm_fp8[
         out_dtype,
         DType.float32,
         2,
-        ref_input_fn,
     ](
+        ref_input_fn,
         shape,
         ref_fp8_tile,
         gamma_tensor,

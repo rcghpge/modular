@@ -2604,11 +2604,9 @@ def rms_norm_kv_cache_ragged_paged[
         shape[1] = rms_norm_cols
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(k_cache, input_row_offsets)
     def key_cache_input_fn[
         width: Int, alignment: Int
-    ](idx: Coord) -> SIMD[dtype, width]:
+    ](idx: Coord) {var k_cache, var input_row_offsets} -> SIMD[dtype, width]:
         comptime assert (
             idx.rank == rank
         ), "rms_norm_key_cache input lambda index should have rank " + String(
@@ -2640,11 +2638,11 @@ def rms_norm_kv_cache_ragged_paged[
         ).cast[dtype]()
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(k_cache)
     def key_cache_output_fn[
         width: SIMDLength, alignment: Int
-    ](idx: Coord, val: SIMD[dtype, width]) -> None:
+    ](idx: Coord, val: SIMD[dtype, width]) {
+        var k_cache, var input_row_offsets
+    } -> None:
         comptime assert (
             idx.rank == rank
         ), "rms_norm_key_cache output lambda index should have rank " + String(
@@ -2685,13 +2683,13 @@ def rms_norm_kv_cache_ragged_paged[
         _rms_norm_impl[
             dtype,
             rank,
-            key_cache_input_fn,
-            key_cache_output_fn,
             target=target,
             epsilon=epsilon,
             weight_offset=weight_offset,
             multiply_before_cast=multiply_before_cast,
         ](
+            key_cache_input_fn,
+            key_cache_output_fn,
             Coord(shape),
             gamma,
             context,
@@ -2752,11 +2750,9 @@ def rms_norm_value_cache_ragged_paged[
         shape[1] = rms_norm_cols
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(v_cache, input_row_offsets)
     def value_cache_input_fn[
         width: Int, alignment: Int
-    ](idx: Coord) -> SIMD[dtype, width]:
+    ](idx: Coord) {var v_cache, var input_row_offsets} -> SIMD[dtype, width]:
         comptime assert idx.rank == rank, (
             "rms_norm_value_cache input lambda index should have rank "
             + String(rank)
@@ -2787,11 +2783,11 @@ def rms_norm_value_cache_ragged_paged[
         ).cast[dtype]()
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(v_cache)
     def value_cache_output_fn[
         width: SIMDLength, alignment: Int
-    ](idx: Coord, val: SIMD[dtype, width]) -> None:
+    ](idx: Coord, val: SIMD[dtype, width]) {
+        var v_cache, var input_row_offsets
+    } -> None:
         comptime assert idx.rank == rank, (
             "rms_norm_value_cache output lambda index should have rank "
             + String(rank)
@@ -2831,13 +2827,13 @@ def rms_norm_value_cache_ragged_paged[
         _rms_norm_impl[
             dtype,
             rank,
-            value_cache_input_fn,
-            value_cache_output_fn,
             target=target,
             epsilon=epsilon,
             weight_offset=weight_offset,
             multiply_before_cast=multiply_before_cast,
         ](
+            value_cache_input_fn,
+            value_cache_output_fn,
             Coord(shape),
             gamma,
             context,

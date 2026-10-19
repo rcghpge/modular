@@ -991,12 +991,10 @@ def _launch_split_allreduce_rmsnorm_fp8[
     var residual_output_2d = residual_output.reshape(row_major(rows, cols))
 
     # Define input_fn for RMSNorm (reads from residual_output after allreduce).
-    @__copy_capture(residual_output_2d)
     @inline(.always)
-    @__parameter
     def input_fn[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var residual_output_2d} -> SIMD[in_dtype, width]:
         return residual_output_2d.load[width=width, alignment=width](
             (idx[0], idx[1])
         )
@@ -1010,9 +1008,8 @@ def _launch_split_allreduce_rmsnorm_fp8[
     # This avoids a deadlock where cuModuleLoadDataEx (JIT compilation)
     # blocks on the CUDA context while the allreduce kernel is waiting
     # at a multi-GPU barrier for other ranks to be enqueued.
-    rms_norm_fused_fp8[
-        in_dtype, out_dtype, scales_dtype, 2, input_fn, compile_only=True
-    ](
+    rms_norm_fused_fp8[in_dtype, out_dtype, scales_dtype, 2, compile_only=True](
+        input_fn,
         shape,
         output_2d,
         gamma,
@@ -1051,7 +1048,8 @@ def _launch_split_allreduce_rmsnorm_fp8[
     )
 
     # Step 2: Fused RMSNorm + FP8 on residual_output (kernel already compiled).
-    rms_norm_fused_fp8[in_dtype, out_dtype, scales_dtype, 2, input_fn](
+    rms_norm_fused_fp8[in_dtype, out_dtype, scales_dtype, 2](
+        input_fn,
         shape,
         output_2d,
         gamma,

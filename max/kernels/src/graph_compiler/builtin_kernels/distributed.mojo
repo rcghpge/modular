@@ -1132,37 +1132,35 @@ struct DistributedReduceScatterRMSNorm:
                         my_rank=index,
                     )
 
-                # `@__copy_capture` is REQUIRED: embedded into the
-                # `rms_norm_gpu` device kernel, a captured local `var`
-                # (`sum_buf`/`normed_buf`) is not carried to the device without
-                # it -> the closure reads a garbage host-stack pointer and
-                # corrupts device memory.
-                @__copy_capture(sum_buf)
-                @__parameter
+                # The `{var}` copies are REQUIRED: run by the `rms_norm_gpu`
+                # device kernel, a local `var` (`sum_buf`/`normed_buf`)
+                # captured by reference is not carried to the device -> the
+                # closure reads a garbage host-stack pointer and corrupts
+                # device memory.
                 @inline(.always)
                 def norm_input_fn[
                     width: Int
-                ](coords: Coord) -> SIMD[dtype, width]:
+                ](coords: Coord) {var sum_buf} -> SIMD[dtype, width]:
                     return sum_buf.load[
                         width=width, alignment=align_of[dtype]()
                     ](coords)
 
-                @__copy_capture(normed_buf)
-                @__parameter
                 @inline(.always)
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
-                ](coords: Coord, val: SIMD[dtype, width]) -> None:
+                ](coords: Coord, val: SIMD[dtype, width]) {
+                    var normed_buf
+                } -> None:
                     normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
-                    norm_input_fn,
-                    norm_output_fn,
                     epsilon=epsilon,
                     weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
+                    norm_input_fn,
+                    norm_output_fn,
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
                     dev_ctxs_input[index],
@@ -1393,35 +1391,34 @@ struct DistributedAllGatherRMSNorm:
                     index,
                 )
 
-                # `@__copy_capture` REQUIRED: without it the local `var`
-                # (`sum_buf`/`normed_buf`) reaches the `rms_norm_gpu` device
-                # kernel as a garbage host-stack pointer and corrupts memory.
-                @__copy_capture(sum_buf)
-                @__parameter
+                # The `{var}` copies are REQUIRED: captured by reference, the
+                # local `var` (`sum_buf`/`normed_buf`) reaches the
+                # `rms_norm_gpu` device kernel as a garbage host-stack pointer
+                # and corrupts memory.
                 @inline(.always)
                 def norm_input_fn[
                     width: Int
-                ](coords: Coord) -> SIMD[dtype, width]:
+                ](coords: Coord) {var sum_buf} -> SIMD[dtype, width]:
                     return sum_buf.load[
                         width=width, alignment=align_of[dtype]()
                     ](coords)
 
-                @__copy_capture(normed_buf)
-                @__parameter
                 @inline(.always)
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
-                ](coords: Coord, val: SIMD[dtype, width]) -> None:
+                ](coords: Coord, val: SIMD[dtype, width]) {
+                    var normed_buf
+                } -> None:
                     normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
-                    norm_input_fn,
-                    norm_output_fn,
                     epsilon=epsilon,
                     weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
+                    norm_input_fn,
+                    norm_output_fn,
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
                     dev_ctxs_input[index],
@@ -1705,32 +1702,30 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                     index,
                 )
 
-                @__copy_capture(sum_buf)
-                @__parameter
                 @inline(.always)
                 def norm_input_fn[
                     width: Int
-                ](coords: Coord) -> SIMD[dtype, width]:
+                ](coords: Coord) {var sum_buf} -> SIMD[dtype, width]:
                     return sum_buf.load[
                         width=width, alignment=align_of[dtype]()
                     ](coords)
 
-                @__copy_capture(normed_buf)
-                @__parameter
                 @inline(.always)
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
-                ](coords: Coord, val: SIMD[dtype, width]) -> None:
+                ](coords: Coord, val: SIMD[dtype, width]) {
+                    var normed_buf
+                } -> None:
                     normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
-                    norm_input_fn,
-                    norm_output_fn,
                     epsilon=epsilon,
                     weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
+                    norm_input_fn,
+                    norm_output_fn,
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
                     dev_ctxs_input[index],
@@ -2033,32 +2028,30 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     index,
                 )
 
-                @__copy_capture(sum_buf)
-                @__parameter
                 @inline(.always)
                 def norm_input_fn[
                     width: Int
-                ](coords: Coord) -> SIMD[dtype, width]:
+                ](coords: Coord) {var sum_buf} -> SIMD[dtype, width]:
                     return sum_buf.load[
                         width=width, alignment=align_of[dtype]()
                     ](coords)
 
-                @__copy_capture(normed_buf)
-                @__parameter
                 @inline(.always)
                 def norm_output_fn[
                     width: SIMDLength, alignment: Int
-                ](coords: Coord, val: SIMD[dtype, width]) -> None:
+                ](coords: Coord, val: SIMD[dtype, width]) {
+                    var normed_buf
+                } -> None:
                     normed_buf.store[alignment=alignment](coords, val)
 
                 rms_norm_gpu[
                     rank,
-                    norm_input_fn,
-                    norm_output_fn,
                     epsilon=epsilon,
                     weight_offset=weight_offset,
                     multiply_before_cast=True,
                 ](
+                    norm_input_fn,
+                    norm_output_fn,
                     sum_buf.layout.shape_coord(),
                     gamma_tensor,
                     dev_ctxs_input[index],

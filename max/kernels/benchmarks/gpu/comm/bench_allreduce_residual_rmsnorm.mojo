@@ -137,12 +137,10 @@ def _verify_results[
     # Fused path: allreduce + fused RMSNorm+FP8.
     var ar_ptr_v = ar_out_dev[0].unsafe_ptr()
 
-    @__copy_capture(ar_ptr_v)
     @inline(.always)
-    @__parameter
     def v_fused_in[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var ar_ptr_v} -> SIMD[in_dtype, width]:
         var li = idx[0] * num_cols + idx[1]
         return ar_ptr_v.load[width=width, alignment=width](li)
 
@@ -151,8 +149,8 @@ def _verify_results[
         out_dtype,
         DType.float32,
         2,
-        v_fused_in,
     ](
+        v_fused_in,
         IndexList[2](num_rows, num_cols),
         TileTensor(
             v_fused_fp8_dev,
@@ -401,12 +399,10 @@ def _verify_add_results[
     # allreduce + residual).
     var ar_ptr_v = ar_out_dev[0].unsafe_ptr()
 
-    @__copy_capture(ar_ptr_v)
     @inline(.always)
-    @__parameter
     def v_ep_fused_in[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var ar_ptr_v} -> SIMD[in_dtype, width]:
         var li = idx[0] * num_cols + idx[1]
         return ar_ptr_v.load[width=width, alignment=width](li)
 
@@ -415,8 +411,8 @@ def _verify_add_results[
         out_dtype,
         DType.float32,
         2,
-        v_ep_fused_in,
     ](
+        v_ep_fused_in,
         IndexList[2](num_rows, num_cols),
         TileTensor(
             v_ep_fp8_dev,
@@ -836,12 +832,10 @@ def bench_allreduce_rmsnorm_fp8[
                 # Fused RMSNorm + FP8.
                 var ar_ptr = ar_out_dev[ctx_idx].unsafe_ptr()
 
-                @__copy_capture(ar_ptr)
                 @inline(.always)
-                @__parameter
                 def fused_in[
                     width: Int, _rank: Int
-                ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+                ](idx: IndexList[_rank]) {var ar_ptr} -> SIMD[in_dtype, width]:
                     var li = idx[0] * num_cols + idx[1]
                     return ar_ptr.load[width=width, alignment=width](li)
 
@@ -850,8 +844,8 @@ def bench_allreduce_rmsnorm_fp8[
                     out_dtype,
                     DType.float32,
                     2,
-                    fused_in,
                 ](
+                    fused_in,
                     IndexList[2](num_rows, num_cols),
                     TileTensor(
                         fused_fp8_out_ptrs[ctx_idx],
@@ -981,12 +975,10 @@ def bench_allreduce_rmsnorm_fp8[
 
                 # Step 2: Fused RMSNorm + FP8 (reads from ar_out which has
                 # allreduce + residual).
-                @__copy_capture(ar_ptr)
                 @inline(.always)
-                @__parameter
                 def add_fused_in[
                     width: Int, _rank: Int
-                ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+                ](idx: IndexList[_rank]) {var ar_ptr} -> SIMD[in_dtype, width]:
                     var li = idx[0] * num_cols + idx[1]
                     return ar_ptr.load[width=width, alignment=width](li)
 
@@ -995,8 +987,8 @@ def bench_allreduce_rmsnorm_fp8[
                     out_dtype,
                     DType.float32,
                     2,
-                    add_fused_in,
                 ](
+                    add_fused_in,
                     IndexList[2](num_rows, num_cols),
                     TileTensor(
                         fused_add_fp8_out_ptrs[ctx_idx],

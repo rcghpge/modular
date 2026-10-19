@@ -195,12 +195,10 @@ def test_dynamic[
 
     var in_ptr = in_device.unsafe_ptr()
 
-    @__copy_capture(in_ptr)
     @inline(.always)
-    @__parameter
     def input_fn[
         width: Int, _rank: Int
-    ](idx: IndexList[_rank]) -> SIMD[in_dtype, width]:
+    ](idx: IndexList[_rank]) {var in_ptr, var shape} -> SIMD[in_dtype, width]:
         var linear_idx = Int(0)
         var stride = 1
         for i in reversed(range(_rank)):
@@ -216,9 +214,9 @@ def test_dynamic[
         out_dtype,
         scales_dtype,
         rank,
-        input_fn,
         target="gpu",
     ](
+        input_fn,
         shape,
         out_tile,
         gamma_tensor,
