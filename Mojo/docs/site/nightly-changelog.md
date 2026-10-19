@@ -10,6 +10,12 @@ This version is still a work in progress.
 
 ## Language enhancements
 
+- `with` statements now no longer copy when passed a reference to a context
+  manager like in `with foo: pass`.
+
+- `__exit__(self, error: E)` now additionally supports `var self` and
+  `deinit self`, similar to the non-error `__exit__`.
+
 ## Language changes
 
 ## Library stabilizations
