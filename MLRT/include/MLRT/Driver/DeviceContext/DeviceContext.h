@@ -455,7 +455,8 @@ public:
 
   ErrorOrSuccess copyFrom(const void *src);
 
-  ErrorOrSuccess reassignOwnershipTo(DeviceContext &ctx);
+  // The caller orders `ctx` after this buffer's pending work.
+  void setContext(DeviceContext &ctx);
 
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset, size_t byteSize);
 

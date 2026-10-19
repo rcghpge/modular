@@ -659,17 +659,8 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceBuffer::copyFrom(const void *src) {
   return dst.context().enqueueCopyToDevice(dst, src);
 }
 
-MODULAR_CXX_EXPORT ErrorOrSuccess
-DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
-  if ((context().device().api() != ctx.device().api()) ||
-      (context().device().id() != ctx.device().id())) {
-    RETURN_ERROR("cannot reassign a buffer between different devices");
-  }
-  DEFINE_OR_RETURN_ERROR(DeviceEventRef, srcEvent, context().enqueueEvent());
-  RETURN_IF_ERROR(ctx.enqueueWaitForEvent(*srcEvent));
-
+MODULAR_CXX_EXPORT void DeviceBuffer::setContext(DeviceContext &ctx) {
   context_ = DeviceContextRef::copy(&ctx);
-  return success();
 }
 
 MODULAR_CXX_EXPORT ErrorOr<DeviceBufferRef>

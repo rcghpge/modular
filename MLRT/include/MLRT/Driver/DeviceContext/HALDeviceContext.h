@@ -310,9 +310,8 @@ public:
   /// The view keeps this buffer alive.
   ErrorOr<DeviceBufferRef> createSubBuffer(size_t byteOffset, size_t byteSize);
 
-  /// Re-binds this buffer to `ctx` (same underlying device), ordering `ctx`
-  /// after all work currently enqueued on the owning context.
-  ErrorOrSuccess reassignOwnershipTo(DeviceContext &ctx);
+  /// The caller orders `ctx` after this buffer's pending work.
+  void setContext(DeviceContext &ctx);
 
   /// Copies this buffer's full contents into `dst`, enqueued on `dst`'s
   /// context.

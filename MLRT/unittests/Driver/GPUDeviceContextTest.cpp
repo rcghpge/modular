@@ -804,7 +804,9 @@ TEST_F(GPUDeviceContextTest, RecycleBuffers) {
     size_t allocSize = sizes[i & 7];
     ASSIGN_NO_ERR(DeviceBufferRef, buf,
                   allocCtx->enqueueCreateBuffer(allocSize));
-    EXPECT_NO_ERR(buf->reassignOwnershipTo(*freeCtx));
+    ASSIGN_NO_ERR(DeviceEventRef, allocated, allocCtx->enqueueEvent());
+    EXPECT_NO_ERR(freeCtx->enqueueWaitForEvent(*allocated));
+    buf->setContext(*freeCtx);
     // this synchronize guarantees that the flush handler is called
     EXPECT_NO_ERR(freeCtx->synchronize());
     // buf goes out of scope here and is freed by freeCtx.

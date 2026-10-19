@@ -205,7 +205,7 @@ struct Buffer {
   Buffer copyTo(PyDeviceTy device);
 
   /// Implementation of Python Buffer.to.
-  Buffer to(PyDeviceTy device);
+  Buffer to(PyDeviceTy device, const DeviceEvent *after = nullptr);
   std::vector<Buffer> to(std::vector<PyDeviceTy> devices);
 
   /// Copies buffer from another buffer.

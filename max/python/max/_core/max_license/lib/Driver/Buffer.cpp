@@ -696,14 +696,24 @@ Python::Buffer Python::Buffer::copyTo(Python::PyDeviceTy device) {
       /*hostHazardRecord=*/nullptr);
 }
 
-Python::Buffer Python::Buffer::to(Python::PyDeviceTy device) {
+// std::invalid_argument surfaces in Python as ValueError.
+static M::Driver::DeviceEvent &requireAfter(const Python::DeviceEvent *after) {
+  if (after)
+    return *after->ev.getPointer();
+  throw std::invalid_argument(
+      "moving a buffer to another queue on the same device requires `after`, "
+      "an event recorded on the source queue");
+}
+
+Python::Buffer Python::Buffer::to(Python::PyDeviceTy device,
+                                  const Python::DeviceEvent *after) {
   // Pinned host memory and device memory are different memory spaces
   // even if associated with the same device. Always copy if source is pinned.
   if (*this->stream->dev != *device || this->isPinned())
     return copyTo(std::move(device));
 
   ErrorOr<std::shared_ptr<BufferStorage>> storageOr =
-      createStorageViewOn(*storage, device->ctx);
+      createStorageViewOn(*storage, device->ctx, requireAfter(after));
   if (storageOr.isError())
     throw std::runtime_error(storageOr.takeError().get());
   return Python::Buffer(spec, storageOr.takeValue(),

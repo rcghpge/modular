@@ -77,17 +77,16 @@ Python::createStorageView(const Python::BufferStorage &storage,
 
 ErrorOr<std::shared_ptr<Python::BufferStorage>>
 Python::createStorageViewOn(const Python::BufferStorage &storage,
-                            const M::Driver::DeviceContextRef &targetCtx) {
+                            const M::Driver::DeviceContextRef &targetCtx,
+                            M::Driver::DeviceEvent &after) {
   ErrorOr<M::Driver::DeviceBufferRef> newBufOr =
       storage.buf->createSubBuffer(0, storage.buf->byteSize());
   if (newBufOr.isError())
     return newBufOr.takeError();
   M::Driver::DeviceBufferRef newBuf = newBufOr.takeValue();
-  if (targetCtx->device().api() != M::Driver::Device::cpuAPI) {
-    if (ErrorOrSuccess err = newBuf->reassignOwnershipTo(*targetCtx);
-        err.isError())
-      return err.takeError();
-  }
+  if (ErrorOrSuccess err = targetCtx->enqueueWaitForEvent(after); err.isError())
+    return err.takeError();
+  newBuf->setContext(*targetCtx);
   // Retargeting to another context is still a view over the same memory, so
   // the allocation intent carries over unchanged.
   return std::make_shared<Python::BufferStorage>(std::move(newBuf),

@@ -81,12 +81,11 @@ ErrorOr<std::shared_ptr<BufferStorage>>
 createStorageView(const BufferStorage &storage, const TensorSpec &newSpec,
                   size_t byteOffset = 0);
 
-/// Mirrors GenericML `DeviceMemory::createViewOn`: creates a sub-buffer
-/// spanning the whole storage and reassigns its ownership to `targetCtx`
-/// unless `targetCtx` is a host context.
+/// Views the whole storage on `targetCtx`, ordered after `after`.
 ErrorOr<std::shared_ptr<BufferStorage>>
 createStorageViewOn(const BufferStorage &storage,
-                    const M::Driver::DeviceContextRef &targetCtx);
+                    const M::Driver::DeviceContextRef &targetCtx,
+                    M::Driver::DeviceEvent &after);
 
 /// Wraps the same memory in a non-owning `DeviceBuffer`, so the result aliases
 /// `storage` without extending its lifetime.

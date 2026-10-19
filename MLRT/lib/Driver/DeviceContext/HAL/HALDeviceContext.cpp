@@ -505,14 +505,8 @@ ErrorOrSuccess DeviceBuffer::synchronize(void *external_stream) {
   return context().synchronize();
 }
 
-ErrorOrSuccess DeviceBuffer::reassignOwnershipTo(DeviceContext &ctx) {
-  if (ctx.device_->isVirtual())
-    return virtualDeviceError("buffer ownership transfer");
-  if (const char *err =
-          MojoHAL_DeviceContext_reassignWait(ctx.mojoCtx_, context().mojoCtx_))
-    return takeError(err);
+void DeviceBuffer::setContext(DeviceContext &ctx) {
   context_ = DeviceContextRef::copy(&ctx);
-  return {};
 }
 
 // ===-- DeviceContext ---------------------------------------------------=== //

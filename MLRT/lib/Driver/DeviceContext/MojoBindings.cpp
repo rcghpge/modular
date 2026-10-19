@@ -275,14 +275,6 @@ AsyncRT_DeviceBuffer_context(DeviceBuffer *buffer) {
   return &buffer->context();
 }
 
-MODULAR_EXPORT const char *
-AsyncRT_DeviceBuffer_reassignOwnershipTo(DeviceBuffer *buf,
-                                         DeviceContext *ctx) {
-  TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceBuffer_reassignOwnershipTo",
-                       TRACY_COLOR_GRAY);
-  return checkSuccess(buf->reassignOwnershipTo(*ctx));
-}
-
 // TODO: Remove the V1 compatibility.
 MODULAR_EXPORT void AsyncRT_DeviceBuffer_release_ptr(DeviceBuffer *buffer) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceBuffer_release_ptr", TRACY_COLOR_GRAY);

@@ -53,15 +53,21 @@ extern "C" const char *AsyncRT_DeviceContext_enableAllPeerAccess();
 // it will return a new tensor on the target device.
 nb::typed<nb::object, Python::Buffer> static tensorTo(
     nb::pointer_and_handle<Python::Buffer> self,
-    Python::PyDeviceTy &currentDevice, Python::PyDeviceTy &targetDevice) {
+    Python::PyDeviceTy &currentDevice, Python::PyDeviceTy &targetDevice,
+    const Python::DeviceEvent *after) {
   // Pinned host memory and device memory can have the same
   // device context, but they're different memory spaces (host RAM
   // vs GPU VRAM). Always copy if the source is pinned memory.
   if (*currentDevice->ctx == *targetDevice->ctx && !self.p->isPinned()) {
     return nb::borrow(self.h);
   } else {
-    return nb::cast(self.p->to(targetDevice));
+    return nb::cast(self.p->to(targetDevice, after));
   }
+}
+
+static const Python::DeviceEvent *
+eventOrNull(const std::optional<Python::PyDeviceEventTy> &after) {
+  return after ? after->get() : nullptr;
 }
 
 void M::Graph::Python::bindDriverModule(nb::module_ m) {
@@ -1405,28 +1411,41 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
       .def(
           "to",
           [](nb::pointer_and_handle<Python::Buffer> self,
-             Python::PyDeviceTy device) {
-            return tensorTo(self, self.p->getStream()->stream, device);
+             Python::PyDeviceTy device,
+             std::optional<Python::PyDeviceEventTy> after) {
+            return tensorTo(self, self.p->getStream()->stream, device,
+                            eventOrNull(after));
           },
-          "device"_a,
+          "device"_a, nb::kw_only(), "after"_a = nb::none(),
           R"nbdoc(
         Returns a buffer that's guaranteed to be on the given device.
 
         The buffer is only copied if the requested device is different from the
-        device upon which the buffer is already resident.
+        device upon which the buffer is already resident. A buffer on another
+        queue of the same device becomes a view on the default queue, ordered
+        after ``after``.
+
+        Args:
+            device (Device): The device to move the buffer to.
+            after (DeviceEvent, optional): Recorded on the buffer's current
+                queue. Required when the result is a view.
+
+        Raises:
+            ValueError: If the result is a view and ``after`` is not given.
       )nbdoc")
       .def(
           "to",
           [](nb::pointer_and_handle<Python::Buffer> self,
-             std::vector<Python::PyDeviceTy> devices) {
+             std::vector<Python::PyDeviceTy> devices,
+             std::optional<Python::PyDeviceEventTy> after) {
             std::vector<nb::typed<nb::object, Python::Buffer>> tensors;
             for (Python::PyDeviceTy &device : devices) {
-              tensors.emplace_back(
-                  tensorTo(self, self.p->getStream()->stream, device));
+              tensors.emplace_back(tensorTo(self, self.p->getStream()->stream,
+                                            device, eventOrNull(after)));
             }
             return tensors;
           },
-          "devices"_a,
+          "devices"_a, nb::kw_only(), "after"_a = nb::none(),
           R"nbdoc(
             Returns a list of buffers that are guaranteed to be on the given devices.
 

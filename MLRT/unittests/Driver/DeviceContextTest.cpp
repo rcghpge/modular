@@ -20,12 +20,15 @@
 
 #include "gtest/gtest.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 
 using namespace M::Driver;
 using namespace M::AsyncRT;
@@ -217,6 +220,61 @@ TEST(DeviceContextTest, FailDeviceBuffers) {
 
     free(aPtr);
   }
+}
+
+namespace {
+struct OrderingProbe {
+  std::atomic<bool> release{false};
+  std::atomic<bool> dstRan{false};
+  int *data = nullptr;
+  int observed = -1;
+};
+} // namespace
+
+TEST(DeviceContextTest, CPUSubBufferOnAnotherContextOrdersAfterEvent) {
+  ASSIGN_NO_ERR(DeviceContextRef, src, DeviceContext::create(Device::cpuAPI));
+  ASSIGN_NO_ERR(DeviceContextRef, dst, src->device().createContext());
+  ASSIGN_NO_ERR(DeviceBufferRef, buf, src->enqueueCreateBuffer(sizeof(int)));
+  EXPECT_NO_ERR(src->synchronize());
+
+  OrderingProbe probe;
+  probe.data = static_cast<int *>(buf->ptr());
+  *probe.data = 0;
+  auto *handle = reinterpret_cast<int8_t *>(&probe);
+  auto noDestroy = [](int8_t *) {};
+
+  EXPECT_NO_ERR(src->enqueueHostFunction(
+      [](int8_t *h) {
+        auto *p = reinterpret_cast<OrderingProbe *>(h);
+        while (!p->release.load())
+          std::this_thread::yield();
+        *p->data = 1;
+      },
+      noDestroy, handle));
+  ASSIGN_NO_ERR(DeviceEventRef, after, src->enqueueEvent());
+
+  ASSIGN_NO_ERR(DeviceBufferRef, view,
+                buf->createSubBuffer(0, buf->byteSize()));
+  EXPECT_NO_ERR(dst->enqueueWaitForEvent(*after));
+  view->setContext(*dst);
+  EXPECT_EQ(&view->context(), dst.getPointer());
+  EXPECT_EQ(view->ptr(), buf->ptr());
+
+  EXPECT_NO_ERR(view->context().enqueueHostFunction(
+      [](int8_t *h) {
+        auto *p = reinterpret_cast<OrderingProbe *>(h);
+        p->observed = *p->data;
+        *p->data = 2;
+        p->dstRan.store(true);
+      },
+      noDestroy, handle));
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  EXPECT_FALSE(probe.dstRan.load());
+  probe.release.store(true);
+  EXPECT_NO_ERR(dst->synchronize());
+  EXPECT_EQ(probe.observed, 1);
+  EXPECT_EQ(*probe.data, 2);
 }
 
 TEST(DeviceContextTest, SubBuffer) {
