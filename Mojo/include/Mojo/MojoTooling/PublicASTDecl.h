@@ -70,6 +70,7 @@ enum class PublicDeclKind;
 
 std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 std::optional<PublicDeclKind> getApproximatePublicDeclKind(ASTDecl *decl);
+std::string getToolingAliasValue(AliasASTDecl &decl);
 
 /// Rendered `where` conditions of a decl's conditional trait conformances,
 /// keyed by the conformed trait's symbol. Unconditional conformances are
@@ -165,25 +166,26 @@ private:
   StringRef name;
 };
 
-/// Decl for parameters of structs or functions.
-class PublicParameterDecl : public PublicDecl {
+/// Documentation for a parameter of a struct or function.
+class DocumentedParameter {
 public:
   /// Build a documented parameter from a fully-resolved `ParameterInfo`
   /// (which carries the type string with any conforms_to trait bounds
   /// already merged in). Type metadata for doc cross-linking is computed
   /// once during construction.
-  PublicParameterDecl(ASTDecl &decl, KGEN::ParameterInfo info,
+  DocumentedParameter(ASTDecl &decl, KGEN::ParameterInfo info,
                       SharedState &sharedState);
 
+  StringRef getName() const { return info.name; }
   KGEN::PassingKind getPassingKind() const { return info.passingKind; }
 
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
+  std::string getDeclarationSnippet(MojoParserContext &ctx) const;
 
   /// Get the description of this decl extracted from its docstring. It might be
   /// empty.
   StringRef getDescription() const { return description; }
 
-  std::string getMarkdownDocString() const override;
+  std::string getMarkdownDocString() const;
 
   /// Set the description of this decl.
   void setDescription(StringRef desc) { description = desc; }
@@ -207,19 +209,7 @@ public:
   ///    "defaultValue": string?
   ///    "constraints": string?
   ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicParameterDecl;
-  }
-
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
+  llvm::json::Object toJSON(MojoParserContext &ctx) const;
 
 private:
   KGEN::ParameterInfo info;
@@ -233,24 +223,25 @@ private:
   std::string description;
 };
 
-/// Decl for function arguments, including varargs arguments.
-class PublicArgumentDecl : public PublicDecl {
+/// Documentation for a function argument, including varargs arguments.
+class DocumentedArgument {
 public:
   /// The convention this argument is passed with. Aliased to the shared
   /// signature model's `ArgumentConvention` so callers can use either name.
   using Convention = KGEN::ArgumentConvention;
 
   /// Build a documented argument from a fully-resolved `ArgumentInfo`.
-  PublicArgumentDecl(ASTDecl &decl, KGEN::ArgumentInfo info,
+  DocumentedArgument(ASTDecl &decl, KGEN::ArgumentInfo info,
                      SharedState &sharedState);
 
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
+  StringRef getName() const { return info.name; }
+  std::string getDeclarationSnippet(MojoParserContext &ctx) const;
 
   /// Get the description of this decl extracted from its docstring. It might be
   /// empty.
   StringRef getDescription() const { return description; }
 
-  std::string getMarkdownDocString() const override;
+  std::string getMarkdownDocString() const;
 
   Convention getConvention() const { return info.convention; }
 
@@ -277,20 +268,7 @@ public:
   ///    "passingKind": string,
   ///    "defaultValue": string?
   ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicArgumentDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
+  llvm::json::Object toJSON(MojoParserContext &ctx) const;
 
 private:
   KGEN::ArgumentInfo info;
@@ -302,92 +280,6 @@ private:
   //===----------------------------------------------------------------------===//
 
   std::string description;
-};
-
-/// Decl for alias.
-class PublicAliasDecl : public PublicDecl {
-public:
-  AliasASTDecl &getASTDecl() const;
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  /// Get the declaration snippet for the alias. The positions of parameters
-  /// within the printed snippet may be extracted via `parameterOffsets`, which
-  /// may be null if parameter offsets are not desired.
-  std::string getDeclarationSnippet(
-      MojoParserContext &ctx,
-      SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets) const;
-
-  std::string getMarkdownDocString() const override;
-
-  /// Return the parameters of this alias.
-  ArrayRef<PublicParameterDecl> getParameters() const { return parameters; }
-
-  StringRef getValue() const { return value; }
-
-  /// Return the type of this alias if available.
-  StringRef getType() const { return type; }
-
-  /// Return if this alias is global.
-  bool isGlobal() const { return isGlobalAlias; }
-
-  /// Populate the parameter descriptions from a docstring.
-  void augmentWithDocumentation(ArrayRef<StringRef> description);
-
-  /// Generate a string for the signature of this alias, given its
-  /// components. The positions of parameters within the printed signature may
-  /// be extracted via the optionally null `parameterOffsets`.
-  std::string getSignature(MojoParserContext &ctx,
-                           SmallVectorImpl<std::pair<unsigned, unsigned>>
-                               *parameterOffsets = nullptr) const;
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  ///  {
-  ///    "kind": "alias",
-  ///    "name": string,
-  ///    "description": string,
-  ///    "summary": string,
-  ///    "parameters": PublicParameterDecl[],
-  ///    "signature": string,
-  ///    "value": string,
-  ///    "type": string
-  ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicAliasDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicAliasDecl(ASTDecl *decl);
-
-  SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
-  std::string aliasConstraints;
-  std::string value;
-  std::string type;
-  std::string docPath;
-  bool isGlobalAlias;
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  StringRef deprecated;
-  std::string description;
-  StableInfo stableInfo;
-  std::string summary;
 };
 
 /// Decl for functions of any kind, including closures, instance methods, fn
@@ -411,8 +303,8 @@ public:
   bool hasDefaultImplementation() const { return isDefaultImplFlag; }
 
   /// Return the list of arguments of this function.
-  ArrayRef<PublicArgumentDecl> getArguments() const { return args; }
-  const PublicArgumentDecl &getArgument(size_t i) const { return args[i]; }
+  ArrayRef<DocumentedArgument> getArguments() const { return args; }
+  const DocumentedArgument &getArgument(size_t i) const { return args[i]; }
 
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
@@ -433,7 +325,7 @@ public:
   std::string getMarkdownDocString() const override;
 
   /// Return the parameters of this function.
-  ArrayRef<PublicParameterDecl> getParameters() const { return parameters; }
+  ArrayRef<DocumentedParameter> getParameters() const { return parameters; }
 
   // TODO: always return the type, including None. The doc and snippet
   // generation will need to be updated accordingly.
@@ -459,13 +351,13 @@ public:
   /// {
   ///   "kind": "function",
   ///   "name": string,
-  ///   "args": PublicArgumentDecl[],
+  ///   "args": DocumentedArgument[],
   ///   "constraints": string,
   ///   "description": string,
   ///   "hasDefaultImplementation": boolean,
   ///   "isImplicitConversion", boolean,
   ///   "isStatic": boolean,
-  ///   "parameters": PublicParameterDecl[],
+  ///   "parameters": DocumentedParameter[],
   ///   "raises": boolean,
   ///   "raisesDoc": string,
   ///   "returns": {"type": string, "path": string?, "doc": string?},
@@ -501,8 +393,8 @@ private:
   /// parameters and args.
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
-  SmallVector<PublicArgumentDecl, kTypicalArgumentCount> args;
-  SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
+  SmallVector<DocumentedArgument, kTypicalArgumentCount> args;
+  SmallVector<DocumentedParameter, kTypicalParameterCount> parameters;
   std::string fnConstraints;
   std::optional<std::string> returnType;
 
@@ -566,48 +458,6 @@ private:
   SmallVector<PublicFunctionDecl, 2> functions;
 };
 
-// Decl for trait decls.
-class PublicTraitDecl : public PublicDecl {
-public:
-  TraitASTDecl &getASTDecl() const;
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  std::string getMarkdownDocString() const override;
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  /// {
-  ///   "kind": "trait",
-  ///   "name": string,
-  ///   "description": string,
-  ///   "functions": FunctionDeclOverloadSet[],
-  ///   "parentTraits": { "name": string, "path"?: string }[],
-  ///   "summary": string
-  /// }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicTraitDecl;
-  }
-
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicTraitDecl(ASTDecl *decl);
-
-  StringRef deprecated;
-  StableInfo stableInfo;
-};
-
 /// Decl for structs.
 class PublicStructDecl : public PublicDecl {
 public:
@@ -632,17 +482,17 @@ public:
                                *parameterOffsets = nullptr) const;
 
   /// Return the parameters of this struct.
-  ArrayRef<PublicParameterDecl> getParameters() const { return parameters; }
+  ArrayRef<DocumentedParameter> getParameters() const { return parameters; }
 
   /// The output of the generation is defined in the following schema:
   ///
   /// {
   ///   "kind": "struct",
   ///   "name": string,
-  ///   "aliases": PublicAliasDecl[],
+  ///   "aliases": PublicDecl[],
   ///   "description": string,
   ///   "functions": FunctionDeclOverloadSet[],
-  ///   "parameters": PublicParameterDecl[],
+  ///   "parameters": DocumentedParameter[],
   ///   "parentTraits": {
   ///     "name": string,
   ///     "path"?: string,
@@ -678,7 +528,7 @@ private:
   /// parameters.
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
-  SmallVector<PublicParameterDecl, kTypicalParameterCount> parameters;
+  SmallVector<DocumentedParameter, kTypicalParameterCount> parameters;
   std::string structConstraints;
 
   ConformanceConditionMap conformanceConditions;
@@ -700,15 +550,13 @@ private:
 
 namespace M {
 using KGEN::LIT::ConformanceConditionMap;
+using KGEN::LIT::DocumentedArgument;
+using KGEN::LIT::DocumentedParameter;
 using KGEN::LIT::FunctionDeclOverloadSet;
-using KGEN::LIT::PublicAliasDecl;
-using KGEN::LIT::PublicArgumentDecl;
 using KGEN::LIT::PublicDecl;
 using KGEN::LIT::PublicDeclKind;
 using KGEN::LIT::PublicFunctionDecl;
-using KGEN::LIT::PublicParameterDecl;
 using KGEN::LIT::PublicStructDecl;
-using KGEN::LIT::PublicTraitDecl;
 using KGEN::LIT::StableInfo;
 } // namespace M
 

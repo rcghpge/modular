@@ -1398,6 +1398,11 @@ static bool isGlobalVariableDecl(const VarASTDecl &decl) {
       decl.getParentDecl());
 }
 
+static bool isGlobalAliasDecl(const AliasASTDecl &decl) {
+  return isa_and_nonnull<FileModuleASTDecl, PackageASTDecl, StructASTDecl>(
+      decl.getParentDecl());
+}
+
 void MojoDocument::getDocumentSymbols(
     ASTDecl *decl, std::vector<lsp::DocumentSymbol> &symbols,
     function_ref<bool(ASTDecl *)> shouldIncludeDecl) {
@@ -1423,17 +1428,16 @@ void MojoDocument::getDocumentSymbols(
         addSymbol(var->getName().value_or(StringRef{}),
                   lsp::SymbolKind::Variable, range,
                   getVariableTypeForDocumentSymbol(*var));
+    } else if (auto *alias = dyn_cast<AliasASTDecl>(decl)) {
+      if (isGlobalAliasDecl(*alias))
+        addSymbol(alias->getName().value_or(StringRef{}),
+                  lsp::SymbolKind::Property, range,
+                  getToolingAliasValue(*alias));
+    } else if (auto *trait = dyn_cast<TraitASTDecl>(decl)) {
+      addSymbol(trait->getName().value_or(StringRef{}),
+                lsp::SymbolKind::Interface, range);
     } else if (std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(decl)) {
       TypeSwitch<PublicDecl *>(publicDecl.get())
-          .Case([&](PublicAliasDecl *alias) {
-            // We only consider global aliases here, we don't want to show every
-            // conceivable decl.
-            if (!alias->isGlobal())
-              return;
-
-            addSymbol(alias->getName(), lsp::SymbolKind::Property, range,
-                      alias->getValue().str());
-          })
           .Case([&](PublicFunctionDecl *fn) {
             addSymbol(fn->getName(), lsp::SymbolKind::Function, range,
                       fn->getSignature(*context->parserContext));
@@ -1441,9 +1445,6 @@ void MojoDocument::getDocumentSymbols(
           .Case([&](PublicStructDecl *structDecl) {
             addSymbol(structDecl->getName(), lsp::SymbolKind::Struct, range,
                       structDecl->getSignature(*context->parserContext));
-          })
-          .Case([&](PublicTraitDecl *traitDecl) {
-            addSymbol(traitDecl->getName(), lsp::SymbolKind::Interface, range);
           });
     }
   }
