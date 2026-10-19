@@ -68,8 +68,8 @@ struct ParameterInfo {
 
   StringRef name;
   std::string type;
-  PassingKind passingKind;
-  VariadicKind variadicKind;
+  PassingKind passingKind = PassingKind::PosOrKw;
+  VariadicKind variadicKind = VariadicKind::None;
   mlir::TypedAttr defaultValue;
   std::string constraints;
   std::string description;

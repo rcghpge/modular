@@ -1436,15 +1436,15 @@ void MojoDocument::getDocumentSymbols(
     } else if (auto *trait = dyn_cast<TraitASTDecl>(decl)) {
       addSymbol(trait->getName().value_or(StringRef{}),
                 lsp::SymbolKind::Interface, range);
+    } else if (auto *structDecl = dyn_cast<StructASTDecl>(decl)) {
+      addSymbol(structDecl->getName().value_or(StringRef{}),
+                lsp::SymbolKind::Struct, range,
+                getStructSignature(*structDecl));
     } else if (std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(decl)) {
       TypeSwitch<PublicDecl *>(publicDecl.get())
           .Case([&](PublicFunctionDecl *fn) {
             addSymbol(fn->getName(), lsp::SymbolKind::Function, range,
                       fn->getSignature(*context->parserContext));
-          })
-          .Case([&](PublicStructDecl *structDecl) {
-            addSymbol(structDecl->getName(), lsp::SymbolKind::Struct, range,
-                      structDecl->getSignature(*context->parserContext));
           });
     }
   }

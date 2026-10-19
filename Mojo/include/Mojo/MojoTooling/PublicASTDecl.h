@@ -64,6 +64,14 @@ enum class PublicDeclKind;
 std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
 std::optional<PublicDeclKind> getApproximatePublicDeclKind(ASTDecl *decl);
 std::string getToolingAliasValue(AliasASTDecl &decl);
+SmallVector<KGEN::ParameterInfo, kTypicalParameterCount>
+getStructParameters(StructASTDecl &decl);
+std::string getStructSignature(
+    StructASTDecl &decl,
+    SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets = nullptr);
+std::string getStructDeclarationSnippet(
+    StructASTDecl &decl, MojoParserContext &ctx,
+    SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets = nullptr);
 
 /// Rendered `where` conditions of a decl's conditional trait conformances,
 /// keyed by the conformed trait's symbol. Unconditional conformances are
@@ -335,94 +343,6 @@ private:
   SmallVector<PublicFunctionDecl, 2> functions;
 };
 
-/// Decl for structs.
-class PublicStructDecl : public PublicDecl {
-public:
-  StructASTDecl &getASTDecl() const;
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
-
-  /// Get the declaration snippet for the struct. The positions of parameters
-  /// within the printed snippet may be extracted via `parameterOffsets`, which
-  /// may be null if parameter offsets are not desired.
-  std::string getDeclarationSnippet(
-      MojoParserContext &ctx,
-      SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets) const;
-
-  std::string getMarkdownDocString() const override;
-
-  /// Generate a string for the signature of this function, given its
-  /// components. The positions of parameters within the printed signature may
-  /// be extracted via the optionally null `parameterOffsets`.
-  std::string getSignature(MojoParserContext &ctx,
-                           SmallVectorImpl<std::pair<unsigned, unsigned>>
-                               *parameterOffsets = nullptr) const;
-
-  /// Return the parameters of this struct.
-  ArrayRef<KGEN::ParameterInfo> getParameters() const { return parameters; }
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  /// {
-  ///   "kind": "struct",
-  ///   "name": string,
-  ///   "aliases": PublicDecl[],
-  ///   "description": string,
-  ///   "functions": FunctionDeclOverloadSet[],
-  ///   "parameters": ParameterInfo[],
-  ///   "parentTraits": {
-  ///     "name": string,
-  ///     "path"?: string,
-  ///     // The `where` condition, present only for a conditional conformance
-  ///     // such as `Writable where conforms_to(T, Writable)`.
-  ///     "condition"?: string
-  ///   }[],
-  ///   "fields": PublicDecl[],
-  ///   "signature": string,
-  ///   "summary": string
-  /// }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const override;
-
-  static PublicDeclKind getKindStatic() {
-    return PublicDeclKind::DK_PublicStructDecl;
-  }
-
-public:
-  //===----------------------------------------------------------------------===//
-  // LLVM RTTI Support
-  //===----------------------------------------------------------------------===//
-
-  static bool classof(const PublicDecl *decl) {
-    return decl->getKind() == getKindStatic();
-  }
-
-private:
-  friend std::unique_ptr<PublicDecl> getPublicDecl(ASTDecl *decl);
-
-  PublicStructDecl(ASTDecl *decl);
-
-  /// Augment this struct decl with docstring documentation, as well as its
-  /// parameters.
-  void augmentWithDocumentation(ArrayRef<StringRef> description);
-
-  SmallVector<KGEN::ParameterInfo, kTypicalParameterCount> parameters;
-  std::string structConstraints;
-
-  ConformanceConditionMap conformanceConditions;
-
-  TypeConvention convention;
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  StringRef deprecated;
-  std::string constraints;
-  std::string description;
-  StableInfo stableInfo;
-  std::string summary;
-};
-
 } // namespace M::KGEN::LIT
 
 namespace M {
@@ -431,7 +351,6 @@ using KGEN::LIT::FunctionDeclOverloadSet;
 using KGEN::LIT::PublicDecl;
 using KGEN::LIT::PublicDeclKind;
 using KGEN::LIT::PublicFunctionDecl;
-using KGEN::LIT::PublicStructDecl;
 using KGEN::LIT::StableInfo;
 } // namespace M
 

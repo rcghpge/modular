@@ -428,19 +428,34 @@ struct SignatureHelpListener : public BaseCompletionListener {
       std::unique_ptr<PublicDecl> publicDecl = getPublicDecl(decl);
       if (!publicDecl)
         continue;
-      TypeSwitch<PublicDecl *>(publicDecl.get())
-          .Case<PublicFunctionDecl, PublicStructDecl>([&](auto *publicDecl) {
-            if (parameters.size() > publicDecl->getParameters().size())
-              return;
-            SignatureHelpResult::Signature signature;
-            SmallVector<std::pair<unsigned, unsigned>> paramOffsets;
-            signature.label = publicDecl->getDeclarationSnippet(*parserContext,
-                                                                &paramOffsets);
-            addDeclDocAndParametersToSignature(
-                *parserContext, signature, *publicDecl,
-                publicDecl->getParameters(), paramOffsets);
-            result.signatures.emplace_back(std::move(signature));
-          });
+      if (auto *fnDecl = dyn_cast<PublicFunctionDecl>(publicDecl.get())) {
+        if (parameters.size() > fnDecl->getParameters().size())
+          continue;
+        SignatureHelpResult::Signature signature;
+        SmallVector<std::pair<unsigned, unsigned>> paramOffsets;
+        signature.label =
+            fnDecl->getDeclarationSnippet(*parserContext, &paramOffsets);
+        addDeclDocAndParametersToSignature(*parserContext, signature, *fnDecl,
+                                           fnDecl->getParameters(),
+                                           paramOffsets);
+        result.signatures.emplace_back(std::move(signature));
+        continue;
+      }
+
+      auto *structDecl = dyn_cast<StructASTDecl>(decl);
+      if (!structDecl)
+        continue;
+      SmallVector<ParameterInfo, kTypicalParameterCount> structParameters =
+          getStructParameters(*structDecl);
+      if (parameters.size() > structParameters.size())
+        continue;
+      SignatureHelpResult::Signature signature;
+      SmallVector<std::pair<unsigned, unsigned>> paramOffsets;
+      signature.label = getStructDeclarationSnippet(*structDecl, *parserContext,
+                                                    &paramOffsets);
+      addDeclDocAndParametersToSignature(*parserContext, signature, *publicDecl,
+                                         structParameters, paramOffsets);
+      result.signatures.emplace_back(std::move(signature));
     }
   }
 
