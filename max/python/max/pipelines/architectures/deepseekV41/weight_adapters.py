@@ -49,7 +49,6 @@ from transformers.configuration_utils import PretrainedConfig
 from .model_config import (
     NVFP4_SF_ATOM_COLS,
     NVFP4_SF_ATOM_ROWS,
-    ep_dispatch_active,
     gate_up_rows_interleaved,
     head_bf16_enabled,
     num_dspark_stages,
@@ -680,11 +679,9 @@ def _shared_scalar(
     kind: str,
     prefix: str,
 ) -> np.ndarray:
-    """One per-expert scalar for ``w1``+``w3``, warning if theirs differ.
+    """``w1``'s per-expert scalar for the fused ``gate_up_proj``.
 
-    The fused ``gate_up_proj`` has one scalar per expert. ``weight_scale_2``
-    takes ``w1``'s value, and ``input_scale`` takes the max of the two so the
-    activation scale covers both inputs' ranges.
+    Warns if ``w3``'s differs.
     """
     w1_values = np.array(
         [_scalar(experts[e][f"w1.{kind}"]) for e in ids], dtype=np.float32
@@ -692,16 +689,32 @@ def _shared_scalar(
     w3_values = np.array(
         [_scalar(experts[e][f"w3.{kind}"]) for e in ids], dtype=np.float32
     )
-    if np.array_equal(w1_values, w3_values):
-        return w1_values
-    use_max = kind == "input_scale"
-    choice = "the max of the two" if use_max else "w1's value"
-    warnings.warn(
-        f"{prefix}: w1 and w3 {kind} disagree; using {choice} for the "
-        "fused gate_up_proj",
-        stacklevel=3,
+    if not np.array_equal(w1_values, w3_values):
+        warnings.warn(
+            f"{prefix}: w1 and w3 {kind} disagree; using w1's value for the "
+            "fused gate_up_proj",
+            stacklevel=3,
+        )
+    return w1_values
+
+
+def _layer_max_input_scale(
+    experts: Mapping[int, Mapping[str, np.ndarray]],
+    ids: list[int],
+    projs: tuple[str, ...],
+) -> np.ndarray:
+    """The max ``input_scale`` of ``projs`` over all experts, once per expert.
+
+    Every expert quantizes its activations against this one scale, as vLLM's
+    FlashInfer NVFP4 MoE does. The checkpoint's per-expert scales spread 80x,
+    and quantizing against them clips the small-scale experts. Reduced here
+    rather than in the graph, where an expert-parallel shard sees only its own
+    experts.
+    """
+    scale = max(
+        _scalar(experts[e][f"{p}.input_scale"]) for e in ids for p in projs
     )
-    return np.maximum(w1_values, w3_values) if use_max else w1_values
+    return np.full(len(ids), scale, dtype=np.float32)
 
 
 def interleave_nvfp4_scales(scales: np.ndarray) -> np.ndarray:
@@ -827,20 +840,17 @@ def stack_nvfp4_experts(
     *,
     defer: bool = False,
     interleave_gate_up: bool = False,
-    global_gate_up_input_scale: bool = False,
 ) -> dict[str, WeightData]:
     """Per-expert NVFP4 tensors -> the two stacked trunk routed-expert weights.
 
     ``experts[e]`` holds ``w{1,2,3}`` (uint8 ``[N, K/2]``, packed E2M1),
     ``w{1,2,3}.weight_scale`` (``float8_e4m3fn`` bytes ``[N, K/16]``) and
     float32 scalars ``w{1,2,3}.weight_scale_2`` and ``w{1,2,3}.input_scale``.
-    With ``defer``, each ``weight`` and ``weight_scale`` is returned as a
-    :class:`DeferredExpertStack`. With ``interleave_gate_up``, the
-    ``gate_up_proj`` rows (and their scale rows) alternate ``w1``, ``w3``
-    instead of all ``w1`` rows then all ``w3`` rows. With
-    ``global_gate_up_input_scale``, every expert's ``gate_up_proj``
-    ``input_scale`` is the largest over all experts, the one scale
-    expert-parallel dispatch quantizes every row against.
+    Both projections' ``input_scale`` become the layer max
+    (:func:`_layer_max_input_scale`). With ``defer``, each ``weight`` and
+    ``weight_scale`` is returned as a :class:`DeferredExpertStack`. With
+    ``interleave_gate_up``, the ``gate_up_proj`` rows (and their scale rows)
+    alternate ``w1``, ``w3`` instead of all ``w1`` rows then all ``w3`` rows.
 
     Raises:
         ValueError: If expert ids are not dense ``0..E-1``.
@@ -868,19 +878,12 @@ def stack_nvfp4_experts(
         return with_dtype(deferred.materialize(), dtype, name)
 
     gate_up_scale_2 = _shared_scalar(experts, ids, "weight_scale_2", prefix)
-    gate_up_input_scale = _shared_scalar(experts, ids, "input_scale", prefix)
-    if global_gate_up_input_scale:
-        gate_up_input_scale = np.full_like(
-            gate_up_input_scale, gate_up_input_scale.max()
-        )
+    gate_up_input_scale = _layer_max_input_scale(experts, ids, ("w1", "w3"))
     down_scale_2 = np.array(
         [_scalar(experts[e]["w2.weight_scale_2"]) for e in ids],
         dtype=np.float32,
     )
-    down_input_scale = np.array(
-        [_scalar(experts[e]["w2.input_scale"]) for e in ids],
-        dtype=np.float32,
-    )
+    down_input_scale = _layer_max_input_scale(experts, ids, ("w2",))
 
     gate_up_name = f"{prefix}.{GATE_UP_PROJ}"
     down_name = f"{prefix}.{DOWN_PROJ}"
@@ -981,10 +984,8 @@ def convert_weight_data(
             (whether the trunk's ``wo_a`` stays MXFP8).
         head_bf16: Overrides :func:`~.model_config.head_bf16_enabled`
             (whether ``head.weight`` stays bf16 instead of float32).
-        data_parallel_degree: The serving data-parallel degree. Under
-            expert-parallel dispatch (:func:`~.model_config.ep_dispatch_active`)
-            the trunk's routed ``gate_up_proj`` takes one global input scale,
-            and its rows interleave when
+        data_parallel_degree: The serving data-parallel degree. The trunk's
+            routed ``gate_up_proj`` rows interleave when
             :func:`~.model_config.gate_up_rows_interleaved` holds.
 
     Returns:
@@ -998,7 +999,6 @@ def convert_weight_data(
     interleave_trunk = gate_up_rows_interleaved(
         num_routed_experts, data_parallel_degree
     )
-    dispatched_trunk = ep_dispatch_active(data_parallel_degree)
 
     def stack_nvfp4(
         experts: Mapping[int, Mapping[str, np.ndarray]], prefix: str
@@ -1009,7 +1009,6 @@ def convert_weight_data(
             prefix,
             defer=defer_routed_experts,
             interleave_gate_up=interleave_trunk and is_trunk,
-            global_gate_up_input_scale=dispatched_trunk and is_trunk,
         )
 
     host_dequantized = functools.partial(
