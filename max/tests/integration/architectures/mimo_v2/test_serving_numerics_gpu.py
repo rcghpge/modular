@@ -40,12 +40,14 @@ MEAN_KL, MAX_KL, TOP1 = 4e-3, 2.5e-2, 0.92
 """Bounds on KL(HF || MAX) over the whole vocabulary, and on top-1
 agreement, over every row of both prompts.
 
-A correct run on two B200s gives a mean KL of 1.4e-3, a maximum of 6.6e-3
-and top-1 agreement of 0.952. The goldens decode the same quantized weights
-in float32, while MAX also quantizes the GEMM inputs: FP8 for the dense
-projections and MXFP4 for the experts. The random logits are flat (a mean
-top probability of 0.12), so near-ties cost top-1. The bounds sit at 2.8x
-and 3.8x the clean KL and three points of top-1 below it. Each of these
+The original MXFP4-activation run on two B200s gave mean KL 1.4e-3,
+maximum KL 6.6e-3 and top-1 agreement 0.952. With MXFP8 expert inputs, mean
+KL is 1.09e-3, maximum KL 6.6e-3 and top-1 agreement 0.972. These measurements
+are TP2 eager with unfused QKV preparation. The goldens
+decode the same quantized weights in float32; GEMM inputs are FP8 for the
+dense projections and MXFP8 for the experts. The random logits are flat
+(a mean top probability of 0.12), so near-ties cost top-1. The bounds pass
+both runs; test_expert_precision_gpu.py pins the expert precision. Each of these
 defects exceeds a bound by at least 6x: no sinks (mean 2.6e-2), a 129-key
 window (row 148, 3.5e-1), RoPE over the whole head (mean 1.85e-1) and
 interleaved RoPE (mean 2.9e-2)."""
