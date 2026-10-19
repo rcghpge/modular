@@ -24,6 +24,7 @@ from layout import (
 )
 from layout.tensor_engine import TensorEngine
 from std.memory import alloc, bitcast
+from std.memory.alloc import unsafe_alloc
 from std.random import rand
 from nn.activations import silu
 from state_space.varlen_causal_conv1d import (
@@ -1466,9 +1467,9 @@ def run_varlen_states_padded(
     var x_strides = (x_row, 1)
     var states_strides = (dim * s_row, s_row, 1)
 
-    var x_h = alloc[Scalar[dtype]](total * x_row)
+    var x_h = unsafe_alloc[Scalar[dtype]](total * x_row)
     rand(x_h, total * x_row)
-    var cu_h = alloc[Int32](batch + 1)
+    var cu_h = unsafe_alloc[Int32](batch + 1)
     cu_h.store(0, Int32(0))
     var cum = 0
     for i in range(batch):
@@ -1477,7 +1478,7 @@ def run_varlen_states_padded(
 
     # Expected: the last state_len tokens of each sequence, zero-padded in
     # front, as states[b, d, s].
-    var expected = alloc[Scalar[dtype]](states_size)
+    var expected = unsafe_alloc[Scalar[dtype]](states_size)
     for i in range(states_size):
         expected.store(i, Scalar[dtype](0))
     for b in range(batch):
@@ -1493,7 +1494,7 @@ def run_varlen_states_padded(
     var cu_tt = TileTensor(cu_h, row_major(batch + 1))
     var x_tt = TileTensor(x_h, MixedLayout((total, dim), x_strides))
 
-    var cpu_h = alloc[Scalar[dtype]](states_size)
+    var cpu_h = unsafe_alloc[Scalar[dtype]](states_size)
     for i in range(states_size):
         cpu_h.store(i, Scalar[dtype](0))
     var cpu_tt = TileTensor(
@@ -1543,7 +1544,7 @@ def run_varlen_states_padded(
         grid_dim=(ceildiv(dim, BLOCK_N), ceildiv(state_len, BLOCK_M), batch),
         block_dim=(BLOCK_N, BLOCK_M),
     )
-    var gpu_h = alloc[Scalar[dtype]](states_size)
+    var gpu_h = unsafe_alloc[Scalar[dtype]](states_size)
     ctx.enqueue_copy(gpu_h, s_d)
     ctx.synchronize()
 
@@ -1591,7 +1592,7 @@ def test_nvidia_f32_silu_bit_exact() raises:
     f32 `exp` overflows near 88.72, so -89 is past that threshold.
     """
     comptime n = 16
-    var vals_h = alloc[Scalar[.float32]](n)
+    var vals_h = unsafe_alloc[Scalar[.float32]](n)
     vals_h.store(0, Scalar[.float32](-80))
     vals_h.store(1, Scalar[.float32](-40))
     vals_h.store(2, Scalar[.float32](0))
@@ -1625,8 +1626,8 @@ def test_nvidia_f32_silu_bit_exact() raises:
                 vals_tt.Engine,
             ]
         ](vals_tt, got_tt, ref_tt, grid_dim=4, block_dim=1)
-        var got_h = alloc[Scalar[.float32]](n)
-        var ref_h = alloc[Scalar[.float32]](n)
+        var got_h = unsafe_alloc[Scalar[.float32]](n)
+        var ref_h = unsafe_alloc[Scalar[.float32]](n)
         ctx.enqueue_copy(got_h, got_d)
         ctx.enqueue_copy(ref_h, ref_d)
         ctx.synchronize()

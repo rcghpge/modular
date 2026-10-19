@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory.alloc import unsafe_alloc
+
 
 # ========================== CPU CODE ==========================
 def sequential_scan(
@@ -36,8 +38,8 @@ def main() raises:
     comptime N = 16
 
     # Allocate host memory
-    var h_input = alloc[Float32](N)
-    var h_output = alloc[Float32](N)
+    var h_input = unsafe_alloc[Float32](N)
+    var h_output = unsafe_alloc[Float32](N)
 
     # Initialize input with simple values
     print("Input: ", end="")

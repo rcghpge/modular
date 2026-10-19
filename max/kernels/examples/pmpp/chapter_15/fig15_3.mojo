@@ -19,6 +19,7 @@ from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.itertools import product
 from std.memory import unsafe_stack_allocation
+from std.memory.alloc import unsafe_alloc
 
 comptime bM = 64
 comptime bN = 64
@@ -193,10 +194,10 @@ def main() raises:
     )
 
     # Allocate host memory
-    var h_A = alloc[Float32](M * K)
-    var h_B = alloc[Float32](K * N)
-    var h_C_gpu = alloc[Float32](M * N)
-    var h_C_cpu = alloc[Float32](M * N)
+    var h_A = unsafe_alloc[Float32](M * K)
+    var h_B = unsafe_alloc[Float32](K * N)
+    var h_C_gpu = unsafe_alloc[Float32](M * N)
+    var h_C_cpu = unsafe_alloc[Float32](M * N)
 
     # Initialize matrices
     print("Initializing matrices...")

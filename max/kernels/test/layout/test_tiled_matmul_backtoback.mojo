@@ -398,7 +398,7 @@ def alloc_tensor[
     elt: DType, layout: TensorLayout
 ](rtlayout: layout) -> TileTensor[mut=True, elt, layout, MutUntrackedOrigin]:
     return TileTensor[mut=True, elt, layout, MutUntrackedOrigin](
-        alloc[Scalar[elt]](Int(rtlayout.product()), alignment=64),
+        unsafe_alloc[Scalar[elt]](Int(rtlayout.product()), alignment=64),
         rtlayout,
     )
 

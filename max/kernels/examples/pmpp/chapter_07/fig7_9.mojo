@@ -21,6 +21,7 @@ from std.math import ceildiv
 from max.gpu import block_idx, thread_idx
 from max.gpu.host import DeviceContext
 from std.itertools import product
+from std.memory.alloc import unsafe_alloc
 
 # ========================== KERNEL CODE ==========================
 
@@ -172,10 +173,10 @@ def main() raises:
     var filter_elements = filter_width * filter_width
 
     # Allocate host memory
-    var h_in = alloc[Float32](in_elements)
-    var h_filter = alloc[Float32](filter_elements)
-    var h_out = alloc[Float32](in_elements)
-    var h_ref = alloc[Float32](in_elements)
+    var h_in = unsafe_alloc[Float32](in_elements)
+    var h_filter = unsafe_alloc[Float32](filter_elements)
+    var h_out = unsafe_alloc[Float32](in_elements)
+    var h_ref = unsafe_alloc[Float32](in_elements)
 
     # Initialize input and filter with random values
     for i in range(in_elements):

@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import ceildiv, isclose
+from std.memory.alloc import unsafe_alloc
 from std.random import random_float64
 
 from max.gpu.host import DeviceContext
@@ -26,12 +27,12 @@ from std.testing import assert_almost_equal
 def run_matmul_naive(ctx: DeviceContext, M: Int, N: Int, K: Int) raises:
     print("== run_matmul naive kernel")
 
-    var a_host = alloc[BFloat16](M * K)
-    var b_host = alloc[BFloat16](K * N)
-    var c_host = alloc[BFloat16](M * N)
-    var a_host_n = alloc[Float32](M * K)
-    var b_host_n = alloc[Float32](K * N)
-    var c_host_n = alloc[Float32](M * N)
+    var a_host = unsafe_alloc[BFloat16](M * K)
+    var b_host = unsafe_alloc[BFloat16](K * N)
+    var c_host = unsafe_alloc[BFloat16](M * N)
+    var a_host_n = unsafe_alloc[Float32](M * K)
+    var b_host_n = unsafe_alloc[Float32](K * N)
+    var c_host_n = unsafe_alloc[Float32](M * N)
 
     var rand_min = -1.0
     var rand_max = 1.0
@@ -200,12 +201,12 @@ def run_matmul[
 ) raises:
     print("== run_matmul kernel => ", dtype, M, N, K)
 
-    var a_host = alloc[Scalar[dtype]](M * K)
-    var b_host = alloc[Scalar[dtype]](K * N)
-    var c_host = alloc[Scalar[dtype]](M * N)
-    var a_host_n = alloc[Scalar[dtype]](M * K)
-    var b_host_n = alloc[Scalar[dtype]](K * N)
-    var c_host_n = alloc[Scalar[dtype]](M * N)
+    var a_host = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host = unsafe_alloc[Scalar[dtype]](M * N)
+    var a_host_n = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host_n = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host_n = unsafe_alloc[Scalar[dtype]](M * N)
 
     var rand_min = -1 * rng_width
     var rand_max = rng_width
@@ -345,10 +346,10 @@ def run_matmul_split_k[
         K,
     )
 
-    var a_host = alloc[Scalar[dtype]](M * K)
-    var b_host = alloc[Scalar[dtype]](K * N)
-    var c_host = alloc[Scalar[dtype]](M * N)
-    var c_host_n = alloc[Scalar[dtype]](M * N)
+    var a_host = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host = unsafe_alloc[Scalar[dtype]](M * N)
+    var c_host_n = unsafe_alloc[Scalar[dtype]](M * N)
 
     var rand_min = -1 * rng_width
     var rand_max = rng_width
@@ -484,12 +485,12 @@ def run_matmul_transpose[
     print("== run_matmul kernel transpose => ", String(dtype), M, N, K)
 
     comptime transpose_b = True
-    var a_host = alloc[Scalar[dtype]](M * K)
-    var b_host = alloc[Scalar[dtype]](K * N)
-    var c_host = alloc[Scalar[dtype]](M * N)
-    var a_host_n = alloc[Scalar[dtype]](M * K)
-    var b_host_n = alloc[Scalar[dtype]](K * N)
-    var c_host_n = alloc[Scalar[dtype]](M * N)
+    var a_host = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host = unsafe_alloc[Scalar[dtype]](M * N)
+    var a_host_n = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host_n = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host_n = unsafe_alloc[Scalar[dtype]](M * N)
 
     var rand_min = -1 * rng_width
     var rand_max = rng_width
@@ -616,12 +617,12 @@ def run_batched_matmul(
 ) raises:
     print("== test_batched_matmul")
 
-    var a_host = alloc[BFloat16](B * M * K)
-    var b_host = alloc[BFloat16](B * K * N)
-    var c_host = alloc[BFloat16](B * M * N)
-    var a_host_n = alloc[Float32](B * M * K)
-    var b_host_n = alloc[Float32](B * K * N)
-    var c_host_n = alloc[Float32](B * M * N)
+    var a_host = unsafe_alloc[BFloat16](B * M * K)
+    var b_host = unsafe_alloc[BFloat16](B * K * N)
+    var c_host = unsafe_alloc[BFloat16](B * M * N)
+    var a_host_n = unsafe_alloc[Float32](B * M * K)
+    var b_host_n = unsafe_alloc[Float32](B * K * N)
+    var c_host_n = unsafe_alloc[Float32](B * M * N)
 
     var rand_min = -100.0
     var rand_max = 100.0

@@ -20,6 +20,7 @@ from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import DefaultEngine, TensorEngine, TileTensor, row_major
 from linalg.matmul.gpu import matmul_kernel_naive
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_almost_equal
 
 from std.utils import IndexList
@@ -459,10 +460,10 @@ def run_matmul_stream_k[
 ](ctx: DeviceContext) raises:
     print("== run_matmul kernel stream_k")
 
-    var a_host = alloc[Scalar[dtype]](M * K)
-    var b_host = alloc[Scalar[dtype]](K * N)
-    var c_host = alloc[Scalar[dtype]](M * N)
-    var c_host_n = alloc[Scalar[dtype]](M * N)
+    var a_host = unsafe_alloc[Scalar[dtype]](M * K)
+    var b_host = unsafe_alloc[Scalar[dtype]](K * N)
+    var c_host = unsafe_alloc[Scalar[dtype]](M * N)
+    var c_host_n = unsafe_alloc[Scalar[dtype]](M * N)
 
     for i in range(M * K):
         var val = Float32(i % 20)

@@ -63,6 +63,7 @@ from max.gpu import global_idx
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext, default_accelerator
 from std.memory import bitcast
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_true
 
 from comm.lamport import has_neg_zero, set_neg_zero
@@ -226,7 +227,7 @@ def run_variant[
     var shared = reader_ctx.create_buffer_sync[DTYPE](NUM_SLOTS * PACK_WIDTH)
     # Initialize to the sentinel so the reader's first read is "not ready",
     # never uninitialized garbage.
-    var init_host = alloc[Scalar[DTYPE]](NUM_SLOTS * PACK_WIDTH)
+    var init_host = unsafe_alloc[Scalar[DTYPE]](NUM_SLOTS * PACK_WIDTH)
     var neg_zero = bitcast[DTYPE, 1](SIMD[UDTYPE, 1](UInt32(1) << 31))[0]
     for i in range(NUM_SLOTS * PACK_WIDTH):
         init_host[i] = neg_zero
@@ -266,8 +267,8 @@ def run_variant[
     reader_ctx.synchronize()
 
     # Reduce results on the host.
-    var torn_host = alloc[Int64](NUM_SLOTS)
-    var seen_host = alloc[Int64](NUM_SLOTS)
+    var torn_host = unsafe_alloc[Int64](NUM_SLOTS)
+    var seen_host = unsafe_alloc[Int64](NUM_SLOTS)
     reader_ctx.enqueue_copy(torn_host, torn_buf)
     reader_ctx.enqueue_copy(seen_host, seen_buf)
     reader_ctx.synchronize()

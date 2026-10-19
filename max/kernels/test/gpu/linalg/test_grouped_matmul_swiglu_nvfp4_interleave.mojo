@@ -34,6 +34,7 @@ no FP-noise is expected.
 from std.math import align_up, ceildiv
 from max.gpu.host import DeviceContext
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.random import random_ui64, seed, rand
 from std.simd import _convert_f32_to_float8_scalar
 from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
@@ -119,16 +120,16 @@ def _test_swiglu_interleave[
     var b_size = num_experts * N * packed_K
     var c_size = M * N
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
+    var a_host_ptr = unsafe_alloc[Scalar[a_type]](a_size)
     var a_host = TileTensor(a_host_ptr, a_shape)
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
+    var b_host_ptr = unsafe_alloc[Scalar[b_type]](b_size)
     var b_host = TileTensor(b_host_ptr, b_shape)
-    var b_perm_host_ptr = alloc[Scalar[b_type]](b_size)
+    var b_perm_host_ptr = unsafe_alloc[Scalar[b_type]](b_size)
     var b_perm_host = TileTensor(b_perm_host_ptr, b_shape)
 
-    var c_ref_host_ptr = alloc[Scalar[c_type]](c_size)
+    var c_ref_host_ptr = unsafe_alloc[Scalar[c_type]](c_size)
     var c_ref_host = TileTensor(c_ref_host_ptr, c_shape)
-    var c_perm_host_ptr = alloc[Scalar[c_type]](c_size)
+    var c_perm_host_ptr = unsafe_alloc[Scalar[c_type]](c_size)
     var c_perm_host = TileTensor(c_perm_host_ptr, c_shape)
 
     var a_device = ctx.enqueue_create_buffer[a_type](a_size)
@@ -144,11 +145,11 @@ def _test_swiglu_interleave[
 
     # ---- Per-expert offsets / IDs (static lengths so the SwiGLU kernel's
     # ----  comptime n_groups = scales_offsets.static_shape[0] resolves) ----
-    var a_offsets_host_ptr = alloc[UInt32](num_active_experts + 1)
-    var a_scale_offsets_ptr = alloc[UInt32](num_active_experts)
-    var expert_ids_host_ptr = alloc[Int32](num_active_experts)
-    var expert_scales_host_ptr = alloc[Float32](num_experts)
-    var input_scales_host_ptr = alloc[Float32](num_active_experts)
+    var a_offsets_host_ptr = unsafe_alloc[UInt32](num_active_experts + 1)
+    var a_scale_offsets_ptr = unsafe_alloc[UInt32](num_active_experts)
+    var expert_ids_host_ptr = unsafe_alloc[Int32](num_active_experts)
+    var expert_scales_host_ptr = unsafe_alloc[Float32](num_experts)
+    var input_scales_host_ptr = unsafe_alloc[Float32](num_active_experts)
 
     var a_offsets_device = ctx.enqueue_create_buffer[.uint32](
         num_active_experts + 1
@@ -226,11 +227,13 @@ def _test_swiglu_interleave[
     var a_scales_total = a_scales_shape.product()
     var b_scales_total = b_scales_shape.product()
 
-    var a_scales_host_ptr = alloc[Scalar[scales_dtype]](a_scales_total)
+    var a_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](a_scales_total)
     var a_scales_host = TileTensor(a_scales_host_ptr, a_scales_shape)
-    var b_scales_host_ptr = alloc[Scalar[scales_dtype]](b_scales_total)
+    var b_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](b_scales_total)
     var b_scales_host = TileTensor(b_scales_host_ptr, b_scales_shape)
-    var b_scales_perm_host_ptr = alloc[Scalar[scales_dtype]](b_scales_total)
+    var b_scales_perm_host_ptr = unsafe_alloc[Scalar[scales_dtype]](
+        b_scales_total
+    )
     var b_scales_perm_host = TileTensor(b_scales_perm_host_ptr, b_scales_shape)
 
     var a_scales_device = ctx.enqueue_create_buffer[scales_dtype](
@@ -264,10 +267,10 @@ def _test_swiglu_interleave[
     var S_ref_tensor = TileTensor(S_ref_device, swiglu_scales_shape)
     var S_perm_device = ctx.enqueue_create_buffer[scales_dtype](S_size)
     var S_perm_tensor = TileTensor(S_perm_device, swiglu_scales_shape)
-    var O_ref_host_ptr = alloc[Scalar[fp4_dtype]](O_size)
-    var O_perm_host_ptr = alloc[Scalar[fp4_dtype]](O_size)
-    var S_ref_host_ptr = alloc[Scalar[scales_dtype]](S_size)
-    var S_perm_host_ptr = alloc[Scalar[scales_dtype]](S_size)
+    var O_ref_host_ptr = unsafe_alloc[Scalar[fp4_dtype]](O_size)
+    var O_perm_host_ptr = unsafe_alloc[Scalar[fp4_dtype]](O_size)
+    var S_ref_host_ptr = unsafe_alloc[Scalar[scales_dtype]](S_size)
+    var S_perm_host_ptr = unsafe_alloc[Scalar[scales_dtype]](S_size)
 
     # ---- Init data: random uint8 weights/activations, power-of-2 e4m3
     #      input scales, random (zeroed-OOB) e4m3 weight scales ----

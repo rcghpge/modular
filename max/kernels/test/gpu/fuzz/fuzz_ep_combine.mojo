@@ -44,6 +44,7 @@
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 from std.random import randint, randn, seed
 from std.sys import size_of
 from std.sys.defines import get_defined_int
@@ -217,8 +218,10 @@ def run_one_case(ctx: DeviceContext, spec: CaseSpec) raises:
     )
 
     # ----- legitimate inputs: random unique top-k expert ids + token values
-    var host_topk = alloc[Int32](n_tokens_per_rank * top_k)
-    var host_tokens = alloc[Scalar[input_type]](n_tokens_per_rank * hidden_size)
+    var host_topk = unsafe_alloc[Int32](n_tokens_per_rank * top_k)
+    var host_tokens = unsafe_alloc[Scalar[input_type]](
+        n_tokens_per_rank * hidden_size
+    )
     seed(0)
     randint(host_topk, n_tokens_per_rank * top_k, 0, n_experts - 1)
     # Make each token's top-k expert ids unique (a token isn't sent to one

@@ -47,6 +47,7 @@ from std.testing import assert_almost_equal, assert_equal
 
 from linalg.matmul.gpu.amd import Shuffler
 from std.math import align_up
+from std.memory.alloc import unsafe_alloc
 from linalg.fp4_utils import (
     E2M1_TO_FLOAT32,
     MXFP4_SF_VECTOR_SIZE,
@@ -183,7 +184,7 @@ struct BF16DispatchTest[
                 )
             )
             self.host_output_bufs_list.append(
-                alloc[BFloat16](
+                unsafe_alloc[BFloat16](
                     Self.n_slots * Self.max_recv_num_tokens * Self.hidden_size
                 )
             )
@@ -327,12 +328,12 @@ struct BlockwiseFP8DispatchTest[
                 )
             )
             self.host_output_bufs_list.append(
-                alloc[Scalar[Self.fp8_dtype]](
+                unsafe_alloc[Scalar[Self.fp8_dtype]](
                     Self.n_slots * Self.max_recv_num_tokens * Self.hidden_size
                 )
             )
             self.host_output_scales_bufs_list.append(
-                alloc[Scalar[Self.scales_dtype]](
+                unsafe_alloc[Scalar[Self.scales_dtype]](
                     Self.n_slots
                     * Self.max_recv_num_tokens
                     * Self.hidden_size
@@ -539,7 +540,9 @@ struct NVFP4DispatchTest[
                     )
                 )
                 self.host_output_rowwise_scales_bufs_list.append(
-                    alloc[BFloat16](Self.n_slots * Self.max_recv_num_tokens)
+                    unsafe_alloc[BFloat16](
+                        Self.n_slots * Self.max_recv_num_tokens
+                    )
                 )
             self.device_output_bufs_list.append(
                 list_of_ctx[i].enqueue_create_buffer[Self.fp4_dtype](
@@ -562,14 +565,14 @@ struct NVFP4DispatchTest[
                 )
             )
             self.host_output_bufs_list.append(
-                alloc[Scalar[Self.fp4_dtype]](
+                unsafe_alloc[Scalar[Self.fp4_dtype]](
                     Self.n_slots
                     * Self.max_recv_num_tokens
                     * Self.uint8_last_dim
                 )
             )
             self.host_output_scales_bufs_list.append(
-                alloc[Scalar[Self.scales_dtype]](
+                unsafe_alloc[Scalar[Self.scales_dtype]](
                     Self.n_slots
                     * Self.scales_padded_size
                     * Self.hidden_size
@@ -577,7 +580,9 @@ struct NVFP4DispatchTest[
                 )
             )
             self.host_output_scales_offset_bufs_list.append(
-                alloc[UInt32](Self.n_slots * (Self.n_experts // Self.n_ranks))
+                unsafe_alloc[UInt32](
+                    Self.n_slots * (Self.n_experts // Self.n_ranks)
+                )
             )
 
     def __deinit__(deinit self):
@@ -893,14 +898,14 @@ struct MXDispatchTest[
                 )
             )
             self.host_output_bufs_list.append(
-                alloc[Scalar[Self.quant_dtype]](
+                unsafe_alloc[Scalar[Self.quant_dtype]](
                     Self.n_slots
                     * Self.max_recv_num_tokens
                     * Self.quant_last_dim
                 )
             )
             self.host_output_scales_bufs_list.append(
-                alloc[Scalar[Self.scales_dtype]](
+                unsafe_alloc[Scalar[Self.scales_dtype]](
                     Self.n_slots * Self.scales_per_slot
                 )
             )
@@ -1092,8 +1097,8 @@ def test_dispatch_common[
         ctx.enqueue_memset(atomic_counters_list[i], Int32(0))
         ctx.enqueue_memset(recv_count_bufs_list[i], UInt64.MAX_FINITE)
 
-        host_topk_ids_list[i] = alloc[Int32](n_slots * n_tokens_per_rank * top_k)
-        host_input_tokens_list[i] = alloc[Scalar[input_type]](n_slots * n_tokens_per_rank * hidden_size)
+        host_topk_ids_list[i] = unsafe_alloc[Int32](n_slots * n_tokens_per_rank * top_k)
+        host_input_tokens_list[i] = unsafe_alloc[Scalar[input_type]](n_slots * n_tokens_per_rank * hidden_size)
 
         device_topk_bufs_list.append(ctx.enqueue_create_buffer[.int32](n_slots * n_tokens_per_rank * top_k))
         device_input_bufs_list.append(ctx.enqueue_create_buffer[input_type](n_slots * n_tokens_per_rank * hidden_size))
@@ -1178,9 +1183,9 @@ def test_dispatch_common[
         )
 
     # fmt: off
-    var send_ptrs_inputs = alloc[UInt64](n_slots * n_ranks)
-    var recv_ptrs_inputs = alloc[UInt64](n_slots * n_ranks)
-    var recv_count_ptrs_inputs = alloc[UInt64](n_slots * n_ranks)
+    var send_ptrs_inputs = unsafe_alloc[UInt64](n_slots * n_ranks)
+    var recv_ptrs_inputs = unsafe_alloc[UInt64](n_slots * n_ranks)
+    var recv_count_ptrs_inputs = unsafe_alloc[UInt64](n_slots * n_ranks)
 
     for slot_idx in range(n_slots):
         for dev_idx in range(n_ranks):
@@ -1489,15 +1494,17 @@ def test_dispatch_common[
         var ctx = list_of_ctx[dev_idx]
 
         # Allocate host buffers for copying device outputs
-        var host_output = alloc[Scalar[input_type]](
+        var host_output = unsafe_alloc[Scalar[input_type]](
             n_slots * max_recv_num_tokens * hidden_size
         )
-        var host_row_offsets = alloc[UInt32](n_slots * (n_local_experts + 1))
-        var host_expert_ids = alloc[Int32](n_slots * n_local_experts)
-        var host_src_token_info = alloc[Int32](
+        var host_row_offsets = unsafe_alloc[UInt32](
+            n_slots * (n_local_experts + 1)
+        )
+        var host_expert_ids = unsafe_alloc[Int32](n_slots * n_local_experts)
+        var host_src_token_info = unsafe_alloc[Int32](
             n_slots * max_recv_num_tokens * 2
         )
-        var host_atomic_counter = alloc[Int32](
+        var host_atomic_counter = unsafe_alloc[Int32](
             n_slots * EPLocalSyncCounters[n_experts].total_size()
         )
 

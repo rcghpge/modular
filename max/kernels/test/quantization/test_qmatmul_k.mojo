@@ -13,6 +13,7 @@
 
 from std.math import ceildiv, isclose
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.random import rand, random_float64
 from std.sys import size_of
 
@@ -131,7 +132,7 @@ struct qgemm_Q4_0(QuantizedGemm):
         N: Int, K: Int
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
-        var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q4_0]())
+        var b_ptr = unsafe_alloc[UInt8](N * k_groups * size_of[_block_Q4_0]())
         var block_ptr = b_ptr.unsafe_bitcast[_block_Q4_0]()
 
         for _n in range(N):
@@ -224,7 +225,7 @@ struct qgemm_Q4_K(QuantizedGemm):
         N: Int, K: Int
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
-        var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q4_K]())
+        var b_ptr = unsafe_alloc[UInt8](N * k_groups * size_of[_block_Q4_K]())
         var block_ptr = b_ptr.unsafe_bitcast[_block_Q4_K]()
 
         for _n in range(N):
@@ -354,7 +355,7 @@ struct qgemm_Q6_K(QuantizedGemm):
         N: Int, K: Int
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
-        var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q6_K]())
+        var b_ptr = unsafe_alloc[UInt8](N * k_groups * size_of[_block_Q6_K]())
         var block_ptr = b_ptr.unsafe_bitcast[_block_Q6_K]()
 
         for _n in range(N):
@@ -502,7 +503,7 @@ struct GemmContext[qgemm: QuantizedGemm]:
     def _build_float_buffer(
         M: Int, N: Int
     ) raises -> TileTensor[.float32, MatrixLayout, MutUntrackedOrigin]:
-        var ptr = alloc[Float32](M * N)
+        var ptr = unsafe_alloc[Float32](M * N)
         for i in range(M * N):
             ptr[i] = random_float64(min=-1.0, max=+1.0).cast[.float32]()
         return TileTensor(ptr, row_major(M, N))
@@ -517,7 +518,7 @@ struct GemmContext[qgemm: QuantizedGemm]:
     def _pack_b_buffer(
         b: TileTensor[mut=True, .uint8, MatrixLayout, _]
     ) raises -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
-        var b_packed_buffer = alloc[UInt8](b.num_elements())
+        var b_packed_buffer = unsafe_alloc[UInt8](b.num_elements())
         var b_packed = TileTensor(b_packed_buffer, b.layout)
         Self.qgemm.pack_b_buffer(b, b_packed)
         return b_packed

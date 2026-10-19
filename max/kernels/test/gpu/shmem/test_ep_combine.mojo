@@ -25,6 +25,7 @@ from max.gpu.host import DeviceBuffer, DeviceContext
 from layout import Coord, TileTensor, Idx
 from layout.tile_layout import row_major
 from std.memory import Pointer
+from std.memory.alloc import unsafe_alloc
 from shmem import *
 from shmem.ep_comm import (
     BF16TokenFormat,
@@ -141,8 +142,8 @@ def test_combine[
     ctx.enqueue_memset(recv_count_buf, UInt64.MAX_FINITE)
     ctx.enqueue_memset(atomic_counter, Int32(0))
 
-    var host_topk_ids = alloc[Int32](n_tokens_per_rank * top_k)
-    var host_input_tokens = alloc[Scalar[input_type]](
+    var host_topk_ids = unsafe_alloc[Int32](n_tokens_per_rank * top_k)
+    var host_input_tokens = unsafe_alloc[Scalar[input_type]](
         n_tokens_per_rank * hidden_size
     )
 
@@ -399,7 +400,7 @@ def test_combine[
         # this time we do the clean up after we verify the results
 
         if not is_benchmark():
-            var host_output_2 = alloc[Scalar[input_type]](
+            var host_output_2 = unsafe_alloc[Scalar[input_type]](
                 n_tokens_per_rank * top_k * hidden_size
             )
             ctx.enqueue_copy(host_output_2, device_output_2_buf)

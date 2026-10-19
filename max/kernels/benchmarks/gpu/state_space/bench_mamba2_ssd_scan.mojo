@@ -24,6 +24,7 @@ reports contain means of the same samples, without remeasurement.
 
 from std.benchmark import Batch, Bench, BenchmarkInfo, Report
 from std.builtin.sort import sort
+from std.memory.alloc import unsafe_alloc
 from std.random import rand, seed
 from std.time import perf_counter_ns
 
@@ -286,20 +287,20 @@ def _bench_ssd[
     var pool_size = max_slots * state_size
     var y_size = total_len * nheads * head_dim
 
-    var x_h = alloc[Scalar[dtype]](total_len * x_row)
-    var dt_h = alloc[Scalar[dtype]](total_len * nheads)
-    var A_h = alloc[Scalar[dtype]](nheads)
-    var B_h = alloc[Scalar[dtype]](total_len * bc_row)
-    var C_h = alloc[Scalar[dtype]](total_len * bc_row)
-    var D_h = alloc[Scalar[dtype]](nheads)
-    var dt_bias_h = alloc[Scalar[dtype]](nheads)
-    var is_h = alloc[Float32](batch * state_size)
-    var his_h = alloc[Scalar[.bool]](batch)
-    var us_h = alloc[Scalar[.bool]](batch)
-    var qsl_h = alloc[Int32](batch + 1)
-    var slot_h = alloc[UInt32](batch)
-    var pool_h = alloc[Float32](pool_size)
-    var y_h = alloc[Scalar[dtype]](y_size + 64)
+    var x_h = unsafe_alloc[Scalar[dtype]](total_len * x_row)
+    var dt_h = unsafe_alloc[Scalar[dtype]](total_len * nheads)
+    var A_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var B_h = unsafe_alloc[Scalar[dtype]](total_len * bc_row)
+    var C_h = unsafe_alloc[Scalar[dtype]](total_len * bc_row)
+    var D_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var dt_bias_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var is_h = unsafe_alloc[Float32](batch * state_size)
+    var his_h = unsafe_alloc[Scalar[.bool]](batch)
+    var us_h = unsafe_alloc[Scalar[.bool]](batch)
+    var qsl_h = unsafe_alloc[Int32](batch + 1)
+    var slot_h = unsafe_alloc[UInt32](batch)
+    var pool_h = unsafe_alloc[Float32](pool_size)
+    var y_h = unsafe_alloc[Scalar[dtype]](y_size + 64)
 
     # Match the seeded inputs used for the original before/after measurements.
     seed(1234)

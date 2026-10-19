@@ -22,6 +22,7 @@ from std.benchmark import (
     BenchMetric,
     ThroughputMeasure,
 )
+from std.memory.alloc import unsafe_alloc
 from layout import (
     Coord,
     TileTensor,
@@ -344,10 +345,10 @@ def bench_matmuls(mut m: Bench, ctx: DeviceContext) raises:
 
     comptime assert K10_TN % 4 == 0, "TN must be a multiple of 4"
 
-    var a_host = alloc[Float32](M * K)
-    var b_host = alloc[Float32](K * N)
-    var c_host = alloc[Float32](M * N)
-    var c_host_naive = alloc[Float32](M * N)
+    var a_host = unsafe_alloc[Float32](M * K)
+    var b_host = unsafe_alloc[Float32](K * N)
+    var c_host = unsafe_alloc[Float32](M * N)
+    var c_host_naive = unsafe_alloc[Float32](M * N)
 
     for i in range(M * K):
         a_host[i] = Float32(i)

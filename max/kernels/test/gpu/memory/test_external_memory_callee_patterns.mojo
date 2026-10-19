@@ -18,6 +18,7 @@ from max.gpu import thread_idx
 from max.gpu.host import DeviceContext
 from max.gpu.memory import external_memory
 from max.gpu.sync import barrier
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_equal
 
 comptime BLOCK_SIZE = 64
@@ -60,7 +61,7 @@ def test_external_memory_in_callee(ctx: DeviceContext) raises:
         # Kernel itself does NOT call external_memory; the callee does.
         _callee_fill_and_reduce(data, thread_idx.x, block_idx.x)
 
-    var host_buf = alloc[Float32](NUM_BLOCKS)
+    var host_buf = unsafe_alloc[Float32](NUM_BLOCKS)
     var dev_buf = ctx.enqueue_create_buffer[.float32](NUM_BLOCKS)
 
     for i in range(NUM_BLOCKS):
@@ -128,7 +129,7 @@ def test_external_memory_deep_callgraph(ctx: DeviceContext) raises:
         # Kernel calls _deep_bar which calls _deep_baz (the only ext_memory user).
         _deep_bar(data, thread_idx.x, block_idx.x)
 
-    var host_buf = alloc[Float32](NUM_BLOCKS)
+    var host_buf = unsafe_alloc[Float32](NUM_BLOCKS)
     var dev_buf = ctx.enqueue_create_buffer[.float32](NUM_BLOCKS)
 
     for i in range(NUM_BLOCKS):

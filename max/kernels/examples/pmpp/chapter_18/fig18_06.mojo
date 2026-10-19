@@ -23,6 +23,7 @@ from max.gpu.host import DeviceContext
 from std.atomic import Atomic
 from std.collections import List
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 
 from graph_utils import (
     UNVISITED,
@@ -88,7 +89,7 @@ def main() raises:
     print("Graph has", num_edges, "edges")
 
     # Allocate host memory
-    var h_level = alloc[UInt32](NUM_VERTICES)
+    var h_level = unsafe_alloc[UInt32](NUM_VERTICES)
     for i in range(NUM_VERTICES):
         h_level[i] = UNVISITED
 
@@ -102,8 +103,8 @@ def main() raises:
     var d_new_vertex_visited = ctx.enqueue_create_buffer[.uint32](1)
 
     # Copy graph to device
-    var h_src_ptrs = alloc[UInt32](NUM_VERTICES + 1)
-    var h_dst = alloc[UInt32](num_edges)
+    var h_src_ptrs = unsafe_alloc[UInt32](NUM_VERTICES + 1)
+    var h_dst = unsafe_alloc[UInt32](num_edges)
     for i in range(NUM_VERTICES + 1):
         h_src_ptrs[i] = src_ptrs[i]
     for i in range(num_edges):
@@ -120,7 +121,7 @@ def main() raises:
     print("Running BFS...")
     while True:
         # Reset new_vertex_visited flag
-        var h_flag = alloc[UInt32](1)
+        var h_flag = unsafe_alloc[UInt32](1)
         h_flag[0] = 0
         ctx.enqueue_copy(d_new_vertex_visited, h_flag)
 

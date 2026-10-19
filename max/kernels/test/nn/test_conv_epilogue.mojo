@@ -16,6 +16,7 @@ from std.random import rand
 from std.sys.info import align_of, simd_width_of
 
 from std.algorithm.functional import vectorize
+from std.memory.alloc import unsafe_alloc
 from layout import Coord, TileTensor, row_major
 from nn.conv.conv import (
     ConvDirectNHWC,
@@ -108,7 +109,7 @@ def test[
 
     # Kept as raw alloc because it's captured by closure bodies, which
     # require ImplicitlyCopyable.
-    var bias_ptr = alloc[Scalar[dtype]](F)
+    var bias_ptr = unsafe_alloc[Scalar[dtype]](F)
     rand(bias_ptr, F)
 
     # Find the tile size used in packing.

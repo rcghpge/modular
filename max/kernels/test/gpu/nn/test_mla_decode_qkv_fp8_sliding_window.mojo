@@ -34,6 +34,7 @@ Dispatch logic relevant to coverage (from mla_decode_dispatch.mojo):
 - Sliding-window caps effective_split_len at window_size + q_max_seq_len
 """
 
+from std.memory.alloc import unsafe_alloc
 from std.random import randn
 
 from max.gpu import *
@@ -110,13 +111,13 @@ def test[
     var k_size = batch_size * kv_num_heads * num_keys * depth
     var o_size = batch_size * num_heads * seq_len * v_depth
 
-    var q_bf16_ptr = alloc[Scalar[output_type]](q_size)
-    var q_fp8_ptr = alloc[Scalar[q_type]](q_size)
-    var q_bf16_dequant_ptr = alloc[Scalar[output_type]](q_size)
-    var k_fp8_ptr = alloc[Scalar[kv_type]](k_size)
-    var k_bf16_ptr = alloc[Scalar[output_type]](k_size)
-    var output_ptr = alloc[Scalar[output_type]](o_size)
-    var flash_output_ptr = alloc[Scalar[output_type]](o_size)
+    var q_bf16_ptr = unsafe_alloc[Scalar[output_type]](q_size)
+    var q_fp8_ptr = unsafe_alloc[Scalar[q_type]](q_size)
+    var q_bf16_dequant_ptr = unsafe_alloc[Scalar[output_type]](q_size)
+    var k_fp8_ptr = unsafe_alloc[Scalar[kv_type]](k_size)
+    var k_bf16_ptr = unsafe_alloc[Scalar[output_type]](k_size)
+    var output_ptr = unsafe_alloc[Scalar[output_type]](o_size)
+    var flash_output_ptr = unsafe_alloc[Scalar[output_type]](o_size)
 
     randn[output_type](q_bf16_ptr, q_size)
     host_quantize_bf16_to_fp8[bf16_t=output_type, fp8_t=q_type](
@@ -250,7 +251,7 @@ def test[
     ctx.synchronize()
     print("  Reference completed.")
 
-    var ref_full_output_ptr = alloc[Scalar[output_type]](ref_full_o_size)
+    var ref_full_output_ptr = unsafe_alloc[Scalar[output_type]](ref_full_o_size)
     ctx.enqueue_copy(ref_full_output_ptr, output_ref_full_device_ptr)
     ctx.synchronize()
 

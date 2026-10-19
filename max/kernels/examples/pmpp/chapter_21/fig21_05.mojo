@@ -23,6 +23,7 @@ atomic operations which can be a performance bottleneck.
 
 from std.math import ceildiv, sqrt
 from std.atomic import Atomic
+from std.memory.alloc import unsafe_alloc
 from max.gpu import block_idx, thread_idx, block_dim
 from max.gpu.host import DeviceContext
 
@@ -135,9 +136,9 @@ def main() raises:
     var grid_size = vol_dim.x * vol_dim.y * vol_dim.z
 
     # Allocate host memory
-    var h_atoms = alloc[Float32](atoms_size)
-    var h_energygrid_cpu = alloc[Float32](grid_size)
-    var h_energygrid_gpu = alloc[Float32](grid_size)
+    var h_atoms = unsafe_alloc[Float32](atoms_size)
+    var h_energygrid_cpu = unsafe_alloc[Float32](grid_size)
+    var h_energygrid_gpu = unsafe_alloc[Float32](grid_size)
 
     # Initialize
     init_atoms(h_atoms, numatoms, gridspacing, vol_dim.x, vol_dim.y, vol_dim.z)
@@ -153,7 +154,7 @@ def main() raises:
     ctx.enqueue_copy(d_atoms, h_atoms)
 
     # Initialize device grid to zero
-    var h_zeros = alloc[Float32](grid_size)
+    var h_zeros = unsafe_alloc[Float32](grid_size)
     for i in range(grid_size):
         h_zeros[i] = 0.0
     ctx.enqueue_copy(d_energygrid, h_zeros)

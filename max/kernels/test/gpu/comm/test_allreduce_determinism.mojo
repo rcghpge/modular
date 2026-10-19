@@ -43,6 +43,7 @@
 # ngpus >= 2 at comptime); the multi-GPU determinism sweep needs a >= 2 GPU
 # runner (`--config=remote-b200` / the nightly multi-GPU lane).
 
+from std.memory.alloc import unsafe_alloc
 from std.sys import size_of
 
 from comm import Signal, group_end, group_start
@@ -95,7 +96,7 @@ def hash_positive_control() raises -> None:
     runs (and gives evidence) even on a single-GPU box.
     """
     comptime n = 4096
-    var buf = alloc[Float32](n)
+    var buf = unsafe_alloc[Float32](n)
     for j in range(n):
         buf[j] = Float32(j) * 0.5 - 1024.0
 
@@ -146,9 +147,9 @@ def allreduce_determinism_test[
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
 
-        var h_in = alloc[Scalar[dtype]](length)
+        var h_in = unsafe_alloc[Scalar[dtype]](length)
         host_in.append(h_in)
-        host_out.append(alloc[Scalar[dtype]](length))
+        host_out.append(unsafe_alloc[Scalar[dtype]](length))
 
         # Fixed, deterministic per-rank inputs: a closed-form function of
         # (rank, index) mapped to a small bounded float so bf16 sums across up

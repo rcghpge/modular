@@ -22,6 +22,7 @@ from max.gpu.memory import (
     async_copy_wait_group,
 )
 from std.memory import unsafe_stack_allocation
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_equal
 
 
@@ -52,8 +53,8 @@ def copy_via_shared(
 
 def run_copy_via_shared(ctx: DeviceContext) raises:
     print("== run_copy_via_shared")
-    var in_data = alloc[Float32](16)
-    var out_data = alloc[Float32](16)
+    var in_data = unsafe_alloc[Float32](16)
+    var out_data = unsafe_alloc[Float32](16)
     var in_data_device = ctx.enqueue_create_buffer[.float32](16)
     var out_data_device = ctx.enqueue_create_buffer[.float32](16)
 
@@ -151,8 +152,8 @@ def test_copy_with_src_size(ctx: DeviceContext) raises:
     comptime size = 4
 
     # Allocate arrays of different sizes to trigger an OOB address in test.
-    var a_host = alloc[Float32](size)
-    var b_host = alloc[Float32](2 * size)
+    var a_host = unsafe_alloc[Float32](size)
+    var b_host = unsafe_alloc[Float32](2 * size)
 
     for i in range(size):
         a_host[i] = Float32(i + 1)
@@ -199,8 +200,8 @@ def test_copy_with_non_zero_fill(ctx: DeviceContext) raises:
     comptime size = 8
 
     # Allocate arrays of different sizes to trigger an OOB address in test.
-    var a_host = alloc[BFloat16](size)
-    var b_host = alloc[BFloat16](2 * size)
+    var a_host = unsafe_alloc[BFloat16](size)
+    var b_host = unsafe_alloc[BFloat16](2 * size)
 
     for i in range(size):
         a_host[i] = BFloat16(i + 1)

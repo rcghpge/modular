@@ -49,6 +49,7 @@ from max.gpu.host import DeviceContext
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import Idx, TileTensor, row_major
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.utils.numerics import isinf, isnan
 from nn.attention.mha_mask import CausalMask
 from nn.attention.gpu.mla import flare_mla_prefill
@@ -106,10 +107,10 @@ def run_finite_check[
     var v_size = k_size
     var o_size = batch_size * seq_len * num_heads * kv_depth
 
-    var q_ptr = alloc[Scalar[qkv_type]](q_size)
-    var k_ptr = alloc[Scalar[qkv_type]](k_size)
-    var v_ptr = alloc[Scalar[qkv_type]](v_size)
-    var output_ptr = alloc[Scalar[output_type]](o_size)
+    var q_ptr = unsafe_alloc[Scalar[qkv_type]](q_size)
+    var k_ptr = unsafe_alloc[Scalar[qkv_type]](k_size)
+    var v_ptr = unsafe_alloc[Scalar[qkv_type]](v_size)
+    var output_ptr = unsafe_alloc[Scalar[output_type]](o_size)
 
     randn[qkv_type](q_ptr, q_size)
     randn[qkv_type](k_ptr, k_size)
@@ -117,8 +118,8 @@ def run_finite_check[
 
     # Row-offset tables. input_row_offsets indexes the query rows (seq_len);
     # cache_row_offsets indexes the ragged K/V rows (num_keys total).
-    var input_row_offsets_host = alloc[UInt32](batch_size + 1)
-    var cache_row_offsets_host = alloc[UInt32](batch_size + 1)
+    var input_row_offsets_host = unsafe_alloc[UInt32](batch_size + 1)
+    var cache_row_offsets_host = unsafe_alloc[UInt32](batch_size + 1)
     for i in range(batch_size):
         input_row_offsets_host[i] = UInt32(i * seq_len)
         cache_row_offsets_host[i] = UInt32(i * num_keys)
@@ -132,10 +133,10 @@ def run_finite_check[
     var block_elems = paged_block_elems(total_pages, page_size, CACHE_DEPTH)
     var scales_elems = paged_scale_block_elems(total_pages, page_size)
 
-    var blocks_host = alloc[Scalar[k_rope_type]](block_elems)
-    var scales_host = alloc[Float32](scales_elems)
-    var cache_lengths_host = alloc[UInt32](batch_size)
-    var lookup_table_host = alloc[UInt32](lut_size)
+    var blocks_host = unsafe_alloc[Scalar[k_rope_type]](block_elems)
+    var scales_host = unsafe_alloc[Float32](scales_elems)
+    var cache_lengths_host = unsafe_alloc[UInt32](batch_size)
+    var lookup_table_host = unsafe_alloc[UInt32](lut_size)
 
     fill_paged_blocks_uniform[k_rope_type](
         blocks_host, batch_size, num_keys, page_size

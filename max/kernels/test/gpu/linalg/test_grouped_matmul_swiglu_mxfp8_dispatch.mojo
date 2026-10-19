@@ -45,6 +45,7 @@ from std.math import align_up, ceildiv
 from max.gpu.host import DeviceBuffer, DeviceContext
 from std.memory import alloc
 from std.memory.unsafe import bitcast
+from std.memory.alloc import unsafe_alloc
 from std.random import seed, rand
 
 from layout import Idx, TileTensor, row_major
@@ -138,8 +139,8 @@ def _build_shared_b[
 
     var b_size = num_experts * N * packed_K
 
-    var b_host_ptr = alloc[Scalar[b_type]](b_size)
-    var b_perm_host_ptr = alloc[Scalar[b_type]](b_size)
+    var b_host_ptr = unsafe_alloc[Scalar[b_type]](b_size)
+    var b_perm_host_ptr = unsafe_alloc[Scalar[b_type]](b_size)
 
     var b_scales_shape = row_major(
         Idx[num_experts],
@@ -150,12 +151,14 @@ def _build_shared_b[
         Idx[SF_ATOM_K],
     )
     var b_scales_total = b_scales_shape.product()
-    var b_scales_host_ptr = alloc[Scalar[scales_dtype]](b_scales_total)
-    var b_scales_perm_host_ptr = alloc[Scalar[scales_dtype]](b_scales_total)
+    var b_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](b_scales_total)
+    var b_scales_perm_host_ptr = unsafe_alloc[Scalar[scales_dtype]](
+        b_scales_total
+    )
     var b_scales_host = TileTensor(b_scales_host_ptr, b_scales_shape)
     var b_scales_perm_host = TileTensor(b_scales_perm_host_ptr, b_scales_shape)
 
-    var expert_scales_host_ptr = alloc[Float32](num_experts)
+    var expert_scales_host_ptr = unsafe_alloc[Float32](num_experts)
     for i in range(num_experts):
         expert_scales_host_ptr[i] = 1.0 + Float32(i + 1) / Float32(num_experts)
 
@@ -339,7 +342,7 @@ def _test_swiglu_mxfp8_dispatch[
     var a_size = M * packed_K
     var c_size = M * N
 
-    var a_host_ptr = alloc[Scalar[a_type]](a_size)
+    var a_host_ptr = unsafe_alloc[Scalar[a_type]](a_size)
     var a_device = ctx.enqueue_create_buffer[a_type](a_size)
     var a_tensor = TileTensor(a_device, a_shape)
 
@@ -353,9 +356,9 @@ def _test_swiglu_mxfp8_dispatch[
     # ---- Per-expert offsets / IDs sized at comptime upper bound
     # `num_experts`. Tail slots [num_active_experts, num_experts) are
     # padded (0 tokens, -1 id); the kernel skips expert_id < 0.
-    var a_offsets_host_ptr = alloc[UInt32](num_experts + 1)
-    var a_scale_offsets_ptr = alloc[UInt32](num_experts)
-    var expert_ids_host_ptr = alloc[Int32](num_experts)
+    var a_offsets_host_ptr = unsafe_alloc[UInt32](num_experts + 1)
+    var a_scale_offsets_ptr = unsafe_alloc[UInt32](num_experts)
+    var expert_ids_host_ptr = unsafe_alloc[Int32](num_experts)
 
     var a_offsets_device = ctx.enqueue_create_buffer[.uint32](num_experts + 1)
     var a_offsets_tensor = TileTensor(
@@ -402,7 +405,7 @@ def _test_swiglu_mxfp8_dispatch[
         Idx[SF_ATOM_K],
     )
     var a_scales_total = a_scales_shape.product()
-    var a_scales_host_ptr = alloc[Scalar[scales_dtype]](a_scales_total)
+    var a_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](a_scales_total)
     var a_scales_device = ctx.enqueue_create_buffer[scales_dtype](
         a_scales_total
     )
@@ -424,10 +427,10 @@ def _test_swiglu_mxfp8_dispatch[
     var O_test_device = ctx.enqueue_create_buffer[fp8_dtype](O_size)
     var S_ref_device = ctx.enqueue_create_buffer[scales_dtype](S_size)
     var S_test_device = ctx.enqueue_create_buffer[scales_dtype](S_size)
-    var O_ref_host_ptr = alloc[Scalar[fp8_dtype]](O_size)
-    var O_test_host_ptr = alloc[Scalar[fp8_dtype]](O_size)
-    var S_ref_host_ptr = alloc[Scalar[scales_dtype]](S_size)
-    var S_test_host_ptr = alloc[Scalar[scales_dtype]](S_size)
+    var O_ref_host_ptr = unsafe_alloc[Scalar[fp8_dtype]](O_size)
+    var O_test_host_ptr = unsafe_alloc[Scalar[fp8_dtype]](O_size)
+    var S_ref_host_ptr = unsafe_alloc[Scalar[scales_dtype]](S_size)
+    var S_test_host_ptr = unsafe_alloc[Scalar[scales_dtype]](S_size)
     var O_ref_tensor = TileTensor(O_ref_device, O_shape)
     var O_test_tensor = TileTensor(O_test_device, O_shape)
     var S_ref_tensor = TileTensor(S_ref_device, swiglu_scales_shape)

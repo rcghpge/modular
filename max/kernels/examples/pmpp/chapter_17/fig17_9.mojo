@@ -15,6 +15,7 @@ from spmv_utils import CSRMatrix, generate_sparse_matrix, spmv_cpu, verify
 from max.gpu import block_idx, thread_idx, block_dim
 from max.gpu.host import DeviceContext
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 
 
 def spmv_csr_kernel(
@@ -71,11 +72,11 @@ def main() raises:
     spmv_cpu(rows, cols, h_row_idx, h_col_idx, h_values, h_x, h_y_ref)
 
     # Prepare host pointers
-    var h_rowPtrs_ptr = alloc[UInt32](rows + 1)
-    var h_colIdx_ptr = alloc[UInt32](numNonzeros)
-    var h_value_ptr = alloc[Float32](numNonzeros)
-    var h_x_ptr = alloc[Float32](cols)
-    var h_y_ptr = alloc[Float32](rows)
+    var h_rowPtrs_ptr = unsafe_alloc[UInt32](rows + 1)
+    var h_colIdx_ptr = unsafe_alloc[UInt32](numNonzeros)
+    var h_value_ptr = unsafe_alloc[Float32](numNonzeros)
+    var h_x_ptr = unsafe_alloc[Float32](cols)
+    var h_y_ptr = unsafe_alloc[Float32](rows)
 
     for i in range(rows + 1):
         h_rowPtrs_ptr[i] = h_rowPtrs[i]
@@ -103,7 +104,7 @@ def main() raises:
     ctx.enqueue_copy(d_x_buf, h_x_ptr)
 
     # Initialize y on device to 0
-    var h_y_zeros = alloc[Float32](rows)
+    var h_y_zeros = unsafe_alloc[Float32](rows)
     for i in range(rows):
         h_y_zeros[i] = 0.0
     ctx.enqueue_copy(d_y_buf, h_y_zeros)

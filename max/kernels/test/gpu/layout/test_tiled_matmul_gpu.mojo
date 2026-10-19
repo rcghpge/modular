@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_equal
 
 from max.gpu.host import DeviceContext
@@ -466,9 +467,9 @@ def test_sram_blocked_matmul_dynamic_nd_buffer(ctx: DeviceContext) raises:
 
     comptime thread_layout = row_major[TH_M, TH_N]()
 
-    var mat_c_ptr = alloc[Float32](M * N)
-    var mat_a_ptr = alloc[Float32](M * K)
-    var mat_b_ptr = alloc[Float32](K * N)
+    var mat_c_ptr = unsafe_alloc[Float32](M * N)
+    var mat_a_ptr = unsafe_alloc[Float32](M * K)
+    var mat_b_ptr = unsafe_alloc[Float32](K * N)
 
     for i in range(M * K):
         mat_a_ptr[i] = Float32(i)

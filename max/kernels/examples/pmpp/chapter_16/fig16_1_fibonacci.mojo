@@ -11,6 +11,8 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+from std.memory.alloc import unsafe_alloc
+
 # Figure 16.1: Top-down and bottom-up Mojo implementations of Fibonacci series
 
 
@@ -30,7 +32,7 @@ def fibonacci_bottomup(n: Int) -> Int:
         return n
 
     # Allocate table
-    var table = alloc[Int](n + 1)
+    var table = unsafe_alloc[Int](n + 1)
 
     # Initialize table
     table[0] = 0
@@ -82,7 +84,7 @@ def fibonacci_topdown(n: Int) -> Int:
         The nth Fibonacci number.
     """
     # Allocate hash_table (memoization array), initialize to -1
-    var hash_table = alloc[Int](n + 1)
+    var hash_table = unsafe_alloc[Int](n + 1)
     for i in range(n + 1):
         hash_table[i] = -1
 
@@ -99,7 +101,7 @@ def test_fibonacci() raises:
     print("Testing Fibonacci implementations...")
 
     # Test cases
-    var test_values = alloc[Int](9)
+    var test_values = unsafe_alloc[Int](9)
     test_values[0] = 0
     test_values[1] = 1
     test_values[2] = 2
@@ -110,7 +112,7 @@ def test_fibonacci() raises:
     test_values[7] = 15
     test_values[8] = 20
 
-    var expected = alloc[Int](9)
+    var expected = unsafe_alloc[Int](9)
     expected[0] = 0
     expected[1] = 1
     expected[2] = 1

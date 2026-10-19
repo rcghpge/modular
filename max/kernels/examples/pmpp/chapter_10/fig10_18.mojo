@@ -15,6 +15,7 @@ from max.gpu import block_idx, thread_idx, block_dim, WARP_SIZE
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
+from std.memory.alloc import unsafe_alloc
 from max.gpu.primitives.warp import shuffle_down
 from max.gpu.primitives.id import (
     lane_id,
@@ -115,9 +116,9 @@ def main() raises:
     comptime N = 65536  # Large array
 
     # Host memory allocation
-    var h_input = alloc[Float32](N)
-    var h_output = alloc[Float32](1)
-    var h_ref = alloc[Float32](1)
+    var h_input = unsafe_alloc[Float32](N)
+    var h_output = unsafe_alloc[Float32](1)
+    var h_ref = unsafe_alloc[Float32](1)
 
     # Initialize input with random values
     for i in range(N):

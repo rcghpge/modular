@@ -18,6 +18,7 @@ from max.gpu import block_idx, thread_idx, block_dim, grid_dim
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
+from std.memory.alloc import unsafe_alloc
 from max.gpu.primitives.warp import (
     shuffle_idx,
     lane_group_max,
@@ -238,7 +239,7 @@ def cpu_attention(
     var neg_inf = Float32(-3.40282e38)
 
     for i in range(N):
-        var scores = alloc[Float32](N)
+        var scores = unsafe_alloc[Float32](N)
         var max_val = neg_inf
 
         for j in range(N):
@@ -279,12 +280,12 @@ def main() raises:
     print("Initializing data N=", N, "d=", D_MODEL, "...")
 
     var size_mat = N * D_MODEL
-    var h_Q = alloc[Float32](size_mat)
-    var h_K = alloc[Float32](size_mat)
-    var h_V = alloc[Float32](size_mat)
-    var h_O = alloc[Float32](size_mat)
-    var h_O_ref = alloc[Float32](size_mat)
-    var h_D = alloc[Float32](N)
+    var h_Q = unsafe_alloc[Float32](size_mat)
+    var h_K = unsafe_alloc[Float32](size_mat)
+    var h_V = unsafe_alloc[Float32](size_mat)
+    var h_O = unsafe_alloc[Float32](size_mat)
+    var h_O_ref = unsafe_alloc[Float32](size_mat)
+    var h_D = unsafe_alloc[Float32](N)
 
     rand(h_Q, size_mat)
     rand(h_K, size_mat)

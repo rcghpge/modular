@@ -25,6 +25,7 @@ from std.testing import TestSuite, assert_almost_equal
 
 from std.utils.index import Index, IndexList
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 
 
 def run_varlen_selective_scan_fwd_gpu[
@@ -54,25 +55,25 @@ def run_varlen_selective_scan_fwd_gpu[
 
     # Allocate host memory
 
-    var ssm_states_cpu_h = alloc[Scalar[dtype]](batch * dim * dstate)
-    var ssm_states_gpu_h = alloc[Scalar[dtype]](batch * dim * dstate)
-    var output_cpu_h = alloc[Scalar[dtype]](dim * total_length)
-    var output_gpu_h = alloc[Scalar[dtype]](dim * total_length)
-    var u_h = alloc[Scalar[dtype]](dim * total_length)
-    var delta_h = alloc[Scalar[dtype]](dim * total_length)
-    var A_h = alloc[Scalar[dtype]](dim * dstate)
-    var B_h = alloc[Scalar[dtype]](ngroups * dstate * total_length)
-    var C_h = alloc[Scalar[dtype]](ngroups * dstate * total_length)
+    var ssm_states_cpu_h = unsafe_alloc[Scalar[dtype]](batch * dim * dstate)
+    var ssm_states_gpu_h = unsafe_alloc[Scalar[dtype]](batch * dim * dstate)
+    var output_cpu_h = unsafe_alloc[Scalar[dtype]](dim * total_length)
+    var output_gpu_h = unsafe_alloc[Scalar[dtype]](dim * total_length)
+    var u_h = unsafe_alloc[Scalar[dtype]](dim * total_length)
+    var delta_h = unsafe_alloc[Scalar[dtype]](dim * total_length)
+    var A_h = unsafe_alloc[Scalar[dtype]](dim * dstate)
+    var B_h = unsafe_alloc[Scalar[dtype]](ngroups * dstate * total_length)
+    var C_h = unsafe_alloc[Scalar[dtype]](ngroups * dstate * total_length)
     var D_size = dim if has_D else 0
-    var D_h = alloc[Scalar[dtype]](max(D_size, 1))
+    var D_h = unsafe_alloc[Scalar[dtype]](max(D_size, 1))
     var z_size = dim * total_length if has_z else 0
-    var z_cpu_h = alloc[Scalar[dtype]](max(z_size, 1))
-    var z_gpu_h = alloc[Scalar[dtype]](max(z_size, 1))
+    var z_cpu_h = unsafe_alloc[Scalar[dtype]](max(z_size, 1))
+    var z_gpu_h = unsafe_alloc[Scalar[dtype]](max(z_size, 1))
     var delta_bias_size = dim if has_delta_bias else 0
-    var delta_bias_h = alloc[Scalar[dtype]](max(delta_bias_size, 1))
-    var query_start_loc_h = alloc[Int32](batch + 1)
-    var cache_indices_h = alloc[Int32](batch)
-    var has_initial_state_h = alloc[Scalar[.bool]](batch)
+    var delta_bias_h = unsafe_alloc[Scalar[dtype]](max(delta_bias_size, 1))
+    var query_start_loc_h = unsafe_alloc[Int32](batch + 1)
+    var cache_indices_h = unsafe_alloc[Int32](batch)
+    var has_initial_state_h = unsafe_alloc[Scalar[.bool]](batch)
 
     # Initialize input data
     rand(u_h, dim * total_length)
@@ -488,19 +489,19 @@ def run_varlen_selective_state_update_gpu[
     var n_B = batch * ngroups * dstate
     var n_D = nheads * dim
 
-    var state_cpu_h = alloc[Scalar[dtype]](n_state)
-    var state_gpu_h = alloc[Scalar[dtype]](n_state)
-    var out_cpu_h = alloc[Scalar[dtype]](n_x)
-    var out_gpu_h = alloc[Scalar[dtype]](n_x)
-    var x_h = alloc[Scalar[dtype]](n_x)
-    var dt_h = alloc[Scalar[dtype]](n_x)
-    var A_h = alloc[Scalar[dtype]](n_A)
-    var B_h = alloc[Scalar[dtype]](n_B)
-    var C_h = alloc[Scalar[dtype]](n_B)
-    var D_h = alloc[Scalar[dtype]](n_D)
-    var z_h = alloc[Scalar[dtype]](n_x)
-    var dt_bias_h = alloc[Scalar[dtype]](n_D)
-    var sbi_h = alloc[Int32](batch)
+    var state_cpu_h = unsafe_alloc[Scalar[dtype]](n_state)
+    var state_gpu_h = unsafe_alloc[Scalar[dtype]](n_state)
+    var out_cpu_h = unsafe_alloc[Scalar[dtype]](n_x)
+    var out_gpu_h = unsafe_alloc[Scalar[dtype]](n_x)
+    var x_h = unsafe_alloc[Scalar[dtype]](n_x)
+    var dt_h = unsafe_alloc[Scalar[dtype]](n_x)
+    var A_h = unsafe_alloc[Scalar[dtype]](n_A)
+    var B_h = unsafe_alloc[Scalar[dtype]](n_B)
+    var C_h = unsafe_alloc[Scalar[dtype]](n_B)
+    var D_h = unsafe_alloc[Scalar[dtype]](n_D)
+    var z_h = unsafe_alloc[Scalar[dtype]](n_x)
+    var dt_bias_h = unsafe_alloc[Scalar[dtype]](n_D)
+    var sbi_h = unsafe_alloc[Int32](batch)
 
     rand(state_cpu_h, n_state)
     rand(x_h, n_x)

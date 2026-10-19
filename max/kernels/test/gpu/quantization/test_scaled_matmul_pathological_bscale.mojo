@@ -43,6 +43,7 @@ from layout import (
     TileTensor,
     row_major,
 )
+from std.memory.alloc import unsafe_alloc
 from std.utils.numerics import isinf, isnan, max_finite
 from linalg.fp8_quantization import matmul_dynamic_scaled_fp8
 from std.testing import assert_equal
@@ -71,11 +72,11 @@ def run_pathological_bscale[
     var a_scales_size = M
     var b_scales_size = N
 
-    var a_host_ptr = alloc[Scalar[in_dtype]](a_size)
-    var b_host_ptr = alloc[Scalar[in_dtype]](b_size)
-    var c_host_ptr = alloc[Scalar[out_dtype]](c_size)
-    var a_scales_host_ptr = alloc[Scalar[scales_dtype]](a_scales_size)
-    var b_scales_host_ptr = alloc[Scalar[scales_dtype]](b_scales_size)
+    var a_host_ptr = unsafe_alloc[Scalar[in_dtype]](a_size)
+    var b_host_ptr = unsafe_alloc[Scalar[in_dtype]](b_size)
+    var c_host_ptr = unsafe_alloc[Scalar[out_dtype]](c_size)
+    var a_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](a_scales_size)
+    var b_scales_host_ptr = unsafe_alloc[Scalar[scales_dtype]](b_scales_size)
 
     var a_layout = row_major(m, k)
     var b_layout = row_major(n, k)

@@ -13,6 +13,7 @@
 
 from std.sys import size_of, simd_width_of
 from std.itertools import product
+from std.memory.alloc import unsafe_alloc
 
 from layout import (
     Coord,
@@ -95,7 +96,7 @@ def allreduce_test[
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
 
         # Create and initialize host buffers
-        var host_buffer = alloc[Scalar[dtype]](length)
+        var host_buffer = unsafe_alloc[Scalar[dtype]](length)
         host_buffers.append(host_buffer)
 
         # Initialize host buffer with values (i + 1).0
@@ -325,7 +326,7 @@ def allreduce_naive_test() raises -> None:
     for i in range(ngpus):
         in_dev.append(ctxs[i].enqueue_create_buffer[.float32](length))
         out_dev.append(ctxs[i].enqueue_create_buffer[.float32](length))
-        var h = alloc[Float32](length)
+        var h = unsafe_alloc[Float32](length)
         host_ptrs.append(h)
         for j in range(length):
             h[j] = Float32(i + 1)

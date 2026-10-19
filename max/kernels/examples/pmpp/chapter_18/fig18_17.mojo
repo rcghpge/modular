@@ -20,6 +20,7 @@ from max.gpu import block_idx, thread_idx, block_dim, grid_dim
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.memory import unsafe_stack_allocation
+from std.memory.alloc import unsafe_alloc
 from std.atomic import Atomic
 from std.collections import List
 
@@ -138,7 +139,7 @@ def main() raises:
     var num_edges = len(dst)
     print("Graph has", num_edges, "edges")
 
-    var h_level = alloc[UInt32](NUM_VERTICES)
+    var h_level = unsafe_alloc[UInt32](NUM_VERTICES)
     for i in range(NUM_VERTICES):
         h_level[i] = UNVISITED
 
@@ -152,8 +153,8 @@ def main() raises:
     var d_curr_frontier = ctx.enqueue_create_buffer[.uint32](NUM_VERTICES * 2)
     var d_num_curr_frontier = ctx.enqueue_create_buffer[.uint32](1)
 
-    var h_src_ptrs = alloc[UInt32](NUM_VERTICES + 1)
-    var h_dst = alloc[UInt32](num_edges)
+    var h_src_ptrs = unsafe_alloc[UInt32](NUM_VERTICES + 1)
+    var h_dst = unsafe_alloc[UInt32](num_edges)
     for i in range(NUM_VERTICES + 1):
         h_src_ptrs[i] = src_ptrs[i]
     for i in range(num_edges):
@@ -163,7 +164,7 @@ def main() raises:
     ctx.enqueue_copy(d_dst, h_dst)
     ctx.enqueue_copy(d_level, h_level)
 
-    var h_frontier = alloc[UInt32](1)
+    var h_frontier = unsafe_alloc[UInt32](1)
     h_frontier[0] = UInt32(start_vertex)
     ctx.enqueue_copy(d_prev_frontier, h_frontier)
     h_frontier.free()
@@ -175,7 +176,7 @@ def main() raises:
 
     print("Running BFS with grid=", fixed_grid_size, ", block=", BLOCK_SIZE)
     while num_prev_frontier > 0:
-        var h_zero = alloc[UInt32](1)
+        var h_zero = unsafe_alloc[UInt32](1)
         h_zero[0] = 0
         ctx.enqueue_copy(d_num_curr_frontier, h_zero)
         h_zero.free()
@@ -194,7 +195,7 @@ def main() raises:
         )
         ctx.synchronize()
 
-        var h_num = alloc[UInt32](1)
+        var h_num = unsafe_alloc[UInt32](1)
         ctx.enqueue_copy(h_num, d_num_curr_frontier)
         ctx.synchronize()
         num_prev_frontier = Int(h_num[0])

@@ -40,6 +40,7 @@ from shmem.ep_comm import (
 )
 from std.testing import assert_equal
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 from std.utils.index import IndexList
 
 
@@ -155,8 +156,8 @@ def test_combine[
         ))
         ctx.enqueue_memset(atomic_counters_list[i], Int32(0))
 
-        host_topk_ids_list[i] = alloc[Int32](n_slots * n_tokens_per_rank * top_k).as_unsafe_any_origin()
-        host_input_tokens_list[i] = alloc[Scalar[input_type]](n_slots * n_tokens_per_rank * hidden_size).as_unsafe_any_origin()
+        host_topk_ids_list[i] = unsafe_alloc[Int32](n_slots * n_tokens_per_rank * top_k).as_unsafe_any_origin()
+        host_input_tokens_list[i] = unsafe_alloc[Scalar[input_type]](n_slots * n_tokens_per_rank * hidden_size).as_unsafe_any_origin()
 
         device_topk_bufs_list.append(ctx.enqueue_create_buffer[.int32](n_slots * n_tokens_per_rank * top_k))
         device_input_bufs_list.append(ctx.enqueue_create_buffer[input_type](n_slots * n_tokens_per_rank * hidden_size))
@@ -601,7 +602,7 @@ def test_combine[
         var ctx = list_of_ctx[dev_idx]
 
         # Allocate host buffers for copying device outputs
-        var host_output_2 = alloc[Scalar[input_type]](
+        var host_output_2 = unsafe_alloc[Scalar[input_type]](
             n_slots * n_tokens_per_rank * top_k * hidden_size
         )
 

@@ -24,6 +24,7 @@
 # support.
 
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.random import rand, random_ui64, seed
 from std.sys.defines import get_defined_int
 
@@ -176,16 +177,16 @@ def run_one_case(
         slots[j] = tmp
 
     var proj_row = spec.x_off + dim + spec.pad
-    var proj_h = alloc[Scalar[dtype]](total * proj_row)
-    var weight_h = alloc[Scalar[dtype]](dim * WIDTH)
-    var bias_h = alloc[Scalar[dtype]](dim)
-    var his_h = alloc[Scalar[.bool]](batch)
-    var qsl_h = alloc[Int32](batch + 1)
-    var slot_h = alloc[UInt32](batch)
-    var pool_h = alloc[Scalar[dtype]](pool_slots * dim * state_len)
-    var pool_ref_h = alloc[Scalar[dtype]](pool_slots * dim * state_len)
-    var y_ref_h = alloc[Scalar[dtype]](total * dim)
-    var y_gpu_h = alloc[Scalar[dtype]](total * dim)
+    var proj_h = unsafe_alloc[Scalar[dtype]](total * proj_row)
+    var weight_h = unsafe_alloc[Scalar[dtype]](dim * WIDTH)
+    var bias_h = unsafe_alloc[Scalar[dtype]](dim)
+    var his_h = unsafe_alloc[Scalar[.bool]](batch)
+    var qsl_h = unsafe_alloc[Int32](batch + 1)
+    var slot_h = unsafe_alloc[UInt32](batch)
+    var pool_h = unsafe_alloc[Scalar[dtype]](pool_slots * dim * state_len)
+    var pool_ref_h = unsafe_alloc[Scalar[dtype]](pool_slots * dim * state_len)
+    var y_ref_h = unsafe_alloc[Scalar[dtype]](total * dim)
+    var y_gpu_h = unsafe_alloc[Scalar[dtype]](total * dim)
 
     rand(proj_h, total * proj_row)
     rand(weight_h, dim * WIDTH)

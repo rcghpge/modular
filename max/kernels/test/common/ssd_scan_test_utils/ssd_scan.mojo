@@ -14,6 +14,7 @@
 """Shares GPU launches and parity checks between SSD tests and benchmarks."""
 
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 from std.sys import size_of
 from std.testing import assert_almost_equal
 from std.utils.numerics import isfinite, isnan, nan
@@ -445,9 +446,9 @@ def run_ssd_gpu[
         ), "grouped A/B requires poisoned output guards"
         var pool_seed_d = ctx.enqueue_create_buffer[state_dtype](pool_size)
         ctx.enqueue_copy(pool_seed_d, pool)
-        var y_base_h = alloc[Scalar[dtype]](y_size + 64)
-        var pool_base_h = alloc[Scalar[state_dtype]](pool_size)
-        var pool_initial_h = alloc[Scalar[state_dtype]](pool_size)
+        var y_base_h = unsafe_alloc[Scalar[dtype]](y_size + 64)
+        var pool_base_h = unsafe_alloc[Scalar[state_dtype]](pool_size)
+        var pool_initial_h = unsafe_alloc[Scalar[state_dtype]](pool_size)
         for i in range(pool_size):
             pool_initial_h.store(i, pool.load(i))
 

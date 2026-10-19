@@ -13,6 +13,7 @@
 """Shared utilities for KV cache tests."""
 
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 from std.random import shuffle
 from std.utils.numerics import isinf, isnan
 
@@ -158,7 +159,9 @@ struct _KVCacheTestTensor[dtype: DType, rank: Int](Copyable):
 
     def __init__(out self, shape: IndexList[Self.rank]):
         self.shape = shape
-        self.host_ptr = alloc[Scalar[Self.dtype]](shape.flattened_length())
+        self.host_ptr = unsafe_alloc[Scalar[Self.dtype]](
+            shape.flattened_length()
+        )
         self.device_buf = None
 
     def __deinit__(deinit self):

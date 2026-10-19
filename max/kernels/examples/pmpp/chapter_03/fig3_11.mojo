@@ -18,6 +18,7 @@ from std.math import ceildiv
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from std.itertools import product
+from std.memory.alloc import unsafe_alloc
 
 # ========================== KERNEL CODE ==========================
 
@@ -97,10 +98,10 @@ def main() raises:
     var num_elements = Width * Width
 
     # Allocate host memory
-    var A_h = alloc[Float32](num_elements)
-    var B_h = alloc[Float32](num_elements)
-    var C_h = alloc[Float32](num_elements)
-    var C_ref = alloc[Float32](num_elements)
+    var A_h = unsafe_alloc[Float32](num_elements)
+    var B_h = unsafe_alloc[Float32](num_elements)
+    var C_h = unsafe_alloc[Float32](num_elements)
+    var C_ref = unsafe_alloc[Float32](num_elements)
 
     # Initialize host arrays
     initialize_host(A_h, B_h, Width)

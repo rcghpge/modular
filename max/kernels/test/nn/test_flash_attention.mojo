@@ -12,6 +12,7 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import exp, isclose
+from std.memory.alloc import unsafe_alloc
 from std.random import rand, seed
 
 from layout import (
@@ -432,7 +433,7 @@ def build_ndbuffer[
     ],
     MutUntrackedOrigin,
 ]:
-    var ptr = alloc[Scalar[dtype]](shape.flattened_length())
+    var ptr = unsafe_alloc[Scalar[dtype]](shape.flattened_length())
     rand(ptr, shape.flattened_length())
     comptime ShapeTypes = _IntTupleToCoordLike[
         .int64, Layout.row_major(static_shape).shape

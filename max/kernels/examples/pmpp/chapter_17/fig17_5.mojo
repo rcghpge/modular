@@ -16,6 +16,7 @@ from max.gpu import block_idx, thread_idx, block_dim
 from max.gpu.host import DeviceContext
 from std.atomic import Atomic
 from std.math import ceildiv
+from std.memory.alloc import unsafe_alloc
 
 
 def spmv_coo_kernel(
@@ -59,11 +60,11 @@ def main() raises:
     spmv_cpu(rows, cols, h_row_idx, h_col_idx, h_values, h_x, h_y_ref)
 
     # Prepare host pointers
-    var h_rowIdx_ptr = alloc[UInt32](numNonzeros)
-    var h_colIdx_ptr = alloc[UInt32](numNonzeros)
-    var h_value_ptr = alloc[Float32](numNonzeros)
-    var h_x_ptr = alloc[Float32](cols)
-    var h_y_ptr = alloc[Float32](rows)  # Output on host
+    var h_rowIdx_ptr = unsafe_alloc[UInt32](numNonzeros)
+    var h_colIdx_ptr = unsafe_alloc[UInt32](numNonzeros)
+    var h_value_ptr = unsafe_alloc[Float32](numNonzeros)
+    var h_x_ptr = unsafe_alloc[Float32](cols)
+    var h_y_ptr = unsafe_alloc[Float32](rows)  # Output on host
 
     for i in range(numNonzeros):
         h_rowIdx_ptr[i] = h_row_idx[i]
@@ -91,7 +92,7 @@ def main() raises:
     ctx.enqueue_copy(d_value_buf, h_value_ptr)
     ctx.enqueue_copy(d_x_buf, h_x_ptr)
     # Initialize y on device to 0
-    var h_y_zeros = alloc[Float32](rows)
+    var h_y_zeros = unsafe_alloc[Float32](rows)
     for i in range(rows):
         h_y_zeros[i] = 0.0
     ctx.enqueue_copy(d_y_buf, h_y_zeros)

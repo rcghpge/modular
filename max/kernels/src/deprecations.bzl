@@ -9,7 +9,6 @@ other deprecation warnings visible.
 """
 
 IGNORED_POINTER_DEPRECATIONS = [
-    "alloc",
     "Pointer.__getitem__",
     "Pointer.load",
     "Pointer.store",

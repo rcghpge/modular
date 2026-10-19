@@ -24,6 +24,7 @@
 
 from std.math import ceildiv
 from std.memory import alloc
+from std.memory.alloc import unsafe_alloc
 from std.random import rand, random_ui64, seed
 from std.sys import size_of
 from std.sys.defines import get_defined_int
@@ -205,20 +206,20 @@ def run_one_case(
     var bc_row = NGROUPS * DSTATE + pad
     var dt_row = nheads + pad
 
-    var x_h = alloc[Scalar[dtype]](total * x_row)
-    var dt_h = alloc[Scalar[dtype]](total * dt_row)
-    var A_h = alloc[Scalar[dtype]](nheads)
-    var B_h = alloc[Scalar[dtype]](total * bc_row)
-    var C_h = alloc[Scalar[dtype]](total * bc_row)
-    var D_h = alloc[Scalar[dtype]](nheads)
-    var dt_bias_h = alloc[Scalar[dtype]](nheads)
-    var his_h = alloc[Scalar[.bool]](batch)
-    var qsl_h = alloc[Int32](batch + 1)
-    var slot_h = alloc[UInt32](batch)
-    var pool_h = alloc[Float32](pool_slots * head_row)
-    var pool_ref_h = alloc[Float32](pool_slots * head_row)
-    var y_ref_h = alloc[Scalar[dtype]](total * nheads * head_dim)
-    var y_gpu_h = alloc[Scalar[dtype]](total * nheads * head_dim)
+    var x_h = unsafe_alloc[Scalar[dtype]](total * x_row)
+    var dt_h = unsafe_alloc[Scalar[dtype]](total * dt_row)
+    var A_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var B_h = unsafe_alloc[Scalar[dtype]](total * bc_row)
+    var C_h = unsafe_alloc[Scalar[dtype]](total * bc_row)
+    var D_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var dt_bias_h = unsafe_alloc[Scalar[dtype]](nheads)
+    var his_h = unsafe_alloc[Scalar[.bool]](batch)
+    var qsl_h = unsafe_alloc[Int32](batch + 1)
+    var slot_h = unsafe_alloc[UInt32](batch)
+    var pool_h = unsafe_alloc[Float32](pool_slots * head_row)
+    var pool_ref_h = unsafe_alloc[Float32](pool_slots * head_row)
+    var y_ref_h = unsafe_alloc[Scalar[dtype]](total * nheads * head_dim)
+    var y_gpu_h = unsafe_alloc[Scalar[dtype]](total * nheads * head_dim)
 
     rand(x_h, total * x_row)
     rand(dt_h, total * dt_row)

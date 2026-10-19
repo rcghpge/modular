@@ -64,6 +64,7 @@ from internal_utils import human_readable_size
 from max.gpu.host import DeviceBuffer, DeviceContext, get_gpu_target
 from max.gpu.primitives.grid_controls import PDLLevel
 from std.memory import bitcast
+from std.memory.alloc import unsafe_alloc
 from std.testing import assert_equal, assert_true
 from std.utils import IndexList, StaticTuple
 
@@ -142,7 +143,7 @@ def lamport_allreduce_test[
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
 
-        var host_buffer = alloc[Scalar[dtype]](length)
+        var host_buffer = unsafe_alloc[Scalar[dtype]](length)
         host_buffers.append(host_buffer)
 
         # Rank i seeds value (i + 1). When seed_neg_zero, every other lane is
@@ -342,7 +343,7 @@ def lamport_mixed_size_test[
     for i in range(ngpus):
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](max_length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](max_length))
-        host.append(alloc[Scalar[dtype]](max_length))
+        host.append(unsafe_alloc[Scalar[dtype]](max_length))
         signal_buffers.append(
             list_of_ctx[i].create_buffer_sync[.uint8](
                 size_of[Signal]() + scratch_bytes
@@ -521,7 +522,7 @@ def _lamport_random_call[
     for i in range(ngpus):
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
-        var h = alloc[Scalar[dtype]](length)
+        var h = unsafe_alloc[Scalar[dtype]](length)
         for j in range(length):
             comptime if dtype == .float32:
                 h[j] = random_float64(min=-1.0, max=1.0).cast[dtype]()
@@ -530,7 +531,7 @@ def _lamport_random_call[
         host.append(h)
         list_of_ctx[i].enqueue_copy(in_dev[i], h)
 
-    var expected = alloc[Scalar[dtype]](length)
+    var expected = unsafe_alloc[Scalar[dtype]](length)
     for j in range(length):
         expected[j] = (
             host[0][j].cast[DType.float32]() + host[1][j].cast[DType.float32]()
@@ -674,14 +675,14 @@ def _lamport_rmsnorm_random_call[
     var host = List[MutPointer[Scalar[dtype], MutUntrackedOrigin]](
         capacity=ngpus
     )
-    var gamma = alloc[Scalar[dtype]](cols)
+    var gamma = unsafe_alloc[Scalar[dtype]](cols)
     for j in range(cols):
         gamma[j] = random_float64(min=0.5, max=1.5).cast[dtype]()
     for i in range(ngpus):
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         gamma_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](cols))
-        var h = alloc[Scalar[dtype]](length)
+        var h = unsafe_alloc[Scalar[dtype]](length)
         for j in range(length):
             comptime if dtype == .float32:
                 h[j] = random_float64(min=-1.0, max=1.0).cast[dtype]()
@@ -691,7 +692,7 @@ def _lamport_rmsnorm_random_call[
         list_of_ctx[i].enqueue_copy(in_dev[i], h)
         list_of_ctx[i].enqueue_copy(gamma_dev[i], gamma)
 
-    var expected = alloc[Float64](length)
+    var expected = unsafe_alloc[Float64](length)
     for r in range(rows):
         var sumsq = Float64(0)
         for c in range(cols):
@@ -843,7 +844,7 @@ def lamport_coexist_test[
     var scratch_bytes = ngpus * large_len * size_of[dtype]()
     var signal_buffers = List[DeviceBuffer[.uint8]](capacity=ngpus)
 
-    var lfill = alloc[Scalar[dtype]](large_len)
+    var lfill = unsafe_alloc[Scalar[dtype]](large_len)
     for j in range(large_len):
         lfill[j] = Scalar[dtype](1)
 
@@ -852,7 +853,7 @@ def lamport_coexist_test[
         sout_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](small_len))
         lin_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](large_len))
         lout_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](large_len))
-        shost.append(alloc[Scalar[dtype]](small_len))
+        shost.append(unsafe_alloc[Scalar[dtype]](small_len))
         signal_buffers.append(
             list_of_ctx[i].create_buffer_sync[.uint8](
                 size_of[Signal]() + scratch_bytes
@@ -1054,7 +1055,7 @@ def lamport_unsynced_skew_test[
         # (i+1) + (it % 5): varies across calls so a stale read of another
         # generation's slice is a detectable wrong sum, and < 256 so the integer
         # sum is exact in bf16.
-        var h = alloc[Scalar[dtype]](total)
+        var h = unsafe_alloc[Scalar[dtype]](total)
         for it in range(NUM_UNSYNCED_ITERS):
             var v = Scalar[dtype](Scalar[dtype](i + 1) + Scalar[dtype](it % 5))
             for j in range(length):
@@ -1216,7 +1217,7 @@ def lamport_wrap_test[
     for i in range(ngpus):
         in_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
         out_dev.append(list_of_ctx[i].enqueue_create_buffer[dtype](length))
-        host.append(alloc[Scalar[dtype]](length))
+        host.append(unsafe_alloc[Scalar[dtype]](length))
         signal_buffers.append(
             list_of_ctx[i].create_buffer_sync[.uint8](
                 size_of[Signal]() + scratch_bytes

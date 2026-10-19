@@ -19,6 +19,7 @@ and that the combine kernel produces the expected weighted reduction:
   output[i] = input[i] * (1 + sum(w_k for local k))  [fused_shared_expert]
 """
 
+from std.memory.alloc import unsafe_alloc
 from std.random import randint, randn, seed
 from std.sys import size_of
 
@@ -124,9 +125,9 @@ def test_skip_a2a[
     var device_src_info_buf = ctx.enqueue_create_buffer[.int32](max_recv_num_tokens * 2)
 
     # --- Host buffers ---
-    var host_topk_ids = alloc[Int32](n_tokens * top_k)
-    var host_input_tokens = alloc[Scalar[input_type]](n_tokens * hidden_size)
-    var host_router_weights = alloc[Float32](n_tokens * top_k)
+    var host_topk_ids = unsafe_alloc[Int32](n_tokens * top_k)
+    var host_input_tokens = unsafe_alloc[Scalar[input_type]](n_tokens * hidden_size)
+    var host_router_weights = unsafe_alloc[Float32](n_tokens * top_k)
 
     # Initialize random data
     seed(42)
@@ -144,18 +145,18 @@ def test_skip_a2a[
     comptime N_DEVICES = 2
     var ptrs_layout = row_major[N_DEVICES]()
 
-    var dispatch_send_ptrs = alloc[UInt64](N_DEVICES)
+    var dispatch_send_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     dispatch_send_ptrs[my_rank] = UInt64(Int(dispatch_send_buf.unsafe_ptr()))
-    var dispatch_recv_ptrs = alloc[UInt64](N_DEVICES)
+    var dispatch_recv_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     dispatch_recv_ptrs[my_rank] = UInt64(Int(dispatch_recv_buf.unsafe_ptr()))
-    var dispatch_recv_count_ptrs = alloc[UInt64](N_DEVICES)
+    var dispatch_recv_count_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     dispatch_recv_count_ptrs[my_rank] = UInt64(Int(dispatch_recv_count_buf.unsafe_ptr()))
 
-    var combine_send_ptrs = alloc[UInt64](N_DEVICES)
+    var combine_send_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     combine_send_ptrs[my_rank] = UInt64(Int(combine_send_buf.unsafe_ptr()))
-    var combine_recv_ptrs = alloc[UInt64](N_DEVICES)
+    var combine_recv_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     combine_recv_ptrs[my_rank] = UInt64(Int(combine_recv_buf.unsafe_ptr()))
-    var combine_recv_count_ptrs = alloc[UInt64](N_DEVICES)
+    var combine_recv_count_ptrs = unsafe_alloc[UInt64](N_DEVICES)
     combine_recv_count_ptrs[my_rank] = UInt64(Int(combine_recv_count_buf.unsafe_ptr()))
     # fmt: on
 
@@ -282,7 +283,7 @@ def test_skip_a2a[
 
     # --- Verify results ---
     print("Verifying results...")
-    var host_output = alloc[Scalar[input_type]](n_tokens * hidden_size)
+    var host_output = unsafe_alloc[Scalar[input_type]](n_tokens * hidden_size)
     ctx.enqueue_copy(host_output, device_combine_output_buf)
     ctx.synchronize()
 

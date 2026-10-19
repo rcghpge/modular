@@ -53,6 +53,7 @@ from std.benchmark import (
     Report,
     ThroughputMeasure,
 )
+from std.memory.alloc import unsafe_alloc
 from comm.sync import enable_p2p
 from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from layout import Coord, TileTensor, Idx
@@ -289,7 +290,7 @@ def bench_combine[
         ))
         ctx.enqueue_memset(atomic_counters_list[i], Int32(0))
 
-        host_topk_ids_list[i] = alloc[Int32](n_slots * n_tokens_per_rank * top_k).as_unsafe_any_origin()
+        host_topk_ids_list[i] = unsafe_alloc[Int32](n_slots * n_tokens_per_rank * top_k).as_unsafe_any_origin()
 
         device_topk_bufs_list.append(ctx.enqueue_create_buffer[.int32](n_slots * n_tokens_per_rank * top_k))
         device_input_bufs_list.append(ctx.enqueue_create_buffer[input_type](n_slots * n_tokens_per_rank * hidden_size))
@@ -335,8 +336,8 @@ def bench_combine[
     # (destination expert, source rank), the unit of work one thread block
     # owns, so `max/mean` over pairs is the factor by which the slowest block
     # outlasts the average one.
-    var pair_counts = alloc[Int32](n_experts * n_ranks)
-    var rank_counts = alloc[Int32](n_ranks)
+    var pair_counts = unsafe_alloc[Int32](n_experts * n_ranks)
+    var rank_counts = unsafe_alloc[Int32](n_ranks)
     for i in range(n_experts * n_ranks):
         pair_counts[i] = 0
     for i in range(n_ranks):
@@ -645,9 +646,9 @@ def bench_combine[
     # The kernel APIs take peer pointers as uint64 tensors, one entry per
     # rank, rather than the raw arrays the kernels themselves take.
     # fmt: off
-    var c_send_ptrs = alloc[UInt64](n_slots * n_ranks)
-    var c_recv_ptrs = alloc[UInt64](n_slots * n_ranks)
-    var c_recv_count_ptrs = alloc[UInt64](n_slots * n_ranks)
+    var c_send_ptrs = unsafe_alloc[UInt64](n_slots * n_ranks)
+    var c_recv_ptrs = unsafe_alloc[UInt64](n_slots * n_ranks)
+    var c_recv_count_ptrs = unsafe_alloc[UInt64](n_slots * n_ranks)
     for slot_idx in range(n_slots):
         for dev_idx in range(n_ranks):
             var ptr_idx = slot_idx * n_ranks + dev_idx

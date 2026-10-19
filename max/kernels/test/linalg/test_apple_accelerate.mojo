@@ -16,6 +16,7 @@ from linalg.matmul.cpu.apple_accelerate import (
     apple_batched_matmul,
     apple_matmul,
 )
+from std.memory.alloc import unsafe_alloc
 from std.testing import *
 
 from std.utils.index import Index
@@ -59,7 +60,7 @@ def test_matmul(
     comptime assert c.flat_rank >= 2
     comptime assert a.flat_rank >= 2
     comptime assert b.flat_rank >= 2
-    var golden_ptr = alloc[Scalar[c.dtype]](m * n, alignment=alignment)
+    var golden_ptr = unsafe_alloc[Scalar[c.dtype]](m * n, alignment=alignment)
     var golden = TileTensor(golden_ptr, row_major(m, n))
 
     for i in range(m):
@@ -110,9 +111,9 @@ def test_matmul(
 
 
 def test_matmul(m: Int, n: Int, k: Int) raises:
-    var c_ptr = alloc[Scalar[c_type]](m * n, alignment=alignment)
-    var a_ptr = alloc[Scalar[a_type]](m * k, alignment=alignment)
-    var b_ptr = alloc[Scalar[b_type]](k * n, alignment=alignment)
+    var c_ptr = unsafe_alloc[Scalar[c_type]](m * n, alignment=alignment)
+    var a_ptr = unsafe_alloc[Scalar[a_type]](m * k, alignment=alignment)
+    var b_ptr = unsafe_alloc[Scalar[b_type]](k * n, alignment=alignment)
 
     var c = TileTensor(c_ptr, row_major(m, n))
     var a = TileTensor(a_ptr, row_major(m, k))
@@ -170,7 +171,7 @@ def test_batched_matmul(
     comptime assert c.flat_rank >= 3
     comptime assert a.flat_rank >= 3
     comptime assert b.flat_rank >= 3
-    var golden_ptr = alloc[Scalar[c.dtype]](
+    var golden_ptr = unsafe_alloc[Scalar[c.dtype]](
         batches * m * n, alignment=alignment
     )
     var golden = TileTensor(golden_ptr, row_major(batches, m, n))
@@ -236,9 +237,9 @@ def test_batched_matmul(
 
 
 def test_batched_matmul(batch: Int, m: Int, n: Int, k: Int) raises:
-    var c_ptr = alloc[Scalar[c_type]](batch * m * n, alignment=alignment)
-    var a_ptr = alloc[Scalar[a_type]](batch * m * k, alignment=alignment)
-    var b_ptr = alloc[Scalar[b_type]](batch * k * n, alignment=alignment)
+    var c_ptr = unsafe_alloc[Scalar[c_type]](batch * m * n, alignment=alignment)
+    var a_ptr = unsafe_alloc[Scalar[a_type]](batch * m * k, alignment=alignment)
+    var b_ptr = unsafe_alloc[Scalar[b_type]](batch * k * n, alignment=alignment)
 
     var c = TileTensor(c_ptr, row_major(batch, m, n))
     var a = TileTensor(a_ptr, row_major(batch, m, k))

@@ -29,6 +29,7 @@ bf16 that's `cols % 8 == 0` and `cols <= 8192`).
 from std.sys import size_of
 from std.random import random_float64
 from std.memory import bitcast
+from std.memory.alloc import unsafe_alloc
 
 from max.gpu.host import DeviceBuffer, DeviceContext
 
@@ -170,7 +171,7 @@ def rmsnorm_test[
     var sigs_ar_devbufs = List[DeviceBuffer[.uint8]](capacity=ngpus)
     var sigs_fused_devbufs = List[DeviceBuffer[.uint8]](capacity=ngpus)
 
-    var gamma_host = alloc[Scalar[dtype]](K)
+    var gamma_host = unsafe_alloc[Scalar[dtype]](K)
     for i in range(K):
         gamma_host[i] = random_float64(min=0.5, max=1.5).cast[dtype]()
     var act_host = List[MutPointer[Scalar[dtype], MutUntrackedOrigin]](
@@ -179,7 +180,7 @@ def rmsnorm_test[
 
     var neg_zero = _neg_zero_bits()
     for g in range(ngpus):
-        var a = alloc[Scalar[dtype]](act_size)
+        var a = unsafe_alloc[Scalar[dtype]](act_size)
         for i in range(act_size):
             if seed_neg_zero and (i % 2 == 0):
                 a[i] = neg_zero
@@ -283,16 +284,16 @@ def rmsnorm_test[
 
     # Copy rank 0's unfused output back to host as the comparison reference
     # (all ranks compute identical AR+RMSNorm outputs).
-    var expected_host = alloc[Scalar[dtype]](act_size)
+    var expected_host = unsafe_alloc[Scalar[dtype]](act_size)
     list_of_ctx[0].enqueue_copy(expected_host, unfused_out[0])
     list_of_ctx[0].synchronize()
-    var expected = alloc[Float32](act_size)
+    var expected = unsafe_alloc[Float32](act_size)
     for i in range(act_size):
         expected[i] = expected_host[i].cast[.float32]()
 
     # ---- Fused kernel: `lamport_allreduce_rmsnorm` on each device. ----
-    var host = alloc[Scalar[dtype]](act_size)
-    var got = alloc[Float32](act_size)
+    var host = unsafe_alloc[Scalar[dtype]](act_size)
+    var got = unsafe_alloc[Float32](act_size)
 
     for it in range(iters):
         comptime if interleave_zero_rows:
@@ -399,7 +400,7 @@ def unsynced_skew_test[
     var sigs_ar_devbufs = List[DeviceBuffer[.uint8]](capacity=ngpus)
     var sigs_fused_devbufs = List[DeviceBuffer[.uint8]](capacity=ngpus)
 
-    var gamma_host = alloc[Scalar[dtype]](K)
+    var gamma_host = unsafe_alloc[Scalar[dtype]](K)
     for i in range(K):
         gamma_host[i] = random_float64(min=0.5, max=1.5).cast[dtype]()
 
@@ -407,7 +408,7 @@ def unsynced_skew_test[
         # Per-call value for rank g, call it: (g+1) + (it % 5). Constant
         # across the slice, varies across calls, < 256 so the integer
         # ngpus-sum is exact in bf16.
-        var h = alloc[Scalar[dtype]](total_size)
+        var h = unsafe_alloc[Scalar[dtype]](total_size)
         for it in range(NUM_UNSYNCED_ITERS):
             var v = Scalar[dtype](Scalar[dtype](g + 1) + Scalar[dtype](it % 5))
             for j in range(slice_size):
@@ -529,10 +530,10 @@ def unsynced_skew_test[
     for g in range(ngpus):
         list_of_ctx[g].synchronize()
 
-    var unfused_host = alloc[Scalar[dtype]](total_size)
-    var fused_host = alloc[Scalar[dtype]](total_size)
-    var expected_f32 = alloc[Float32](slice_size)
-    var got_f32 = alloc[Float32](slice_size)
+    var unfused_host = unsafe_alloc[Scalar[dtype]](total_size)
+    var fused_host = unsafe_alloc[Scalar[dtype]](total_size)
+    var expected_f32 = unsafe_alloc[Float32](slice_size)
+    var got_f32 = unsafe_alloc[Float32](slice_size)
 
     # Verify rank 0's slices against rank 0's unfused reference.
     list_of_ctx[0].enqueue_copy(unfused_host, unfused_big[0])
