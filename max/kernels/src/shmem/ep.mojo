@@ -629,6 +629,11 @@ def ep_fused_dispatch_kernel_api[
         skip_a2a=skip_a2a,
         use_shmem=use_shmem,
         allreduce_world_size=allreduce_world_size,
+        InputTokensEngine=input_tokens.Engine,
+        TopkIdsEngine=topk_ids.Engine,
+        RowOffsetsEngine=row_offsets.Engine,
+        ExpertIdsEngine=expert_ids.Engine,
+        SrcInfoEngine=src_info.Engine,
     ]
 
     @inline(.always)
@@ -824,6 +829,8 @@ def ep_combine_async_kernel_api[
         max_token_per_rank,
         n_gpus_per_node,
         use_shmem=use_shmem,
+        InputTokensEngine=input_tokens.Engine,
+        SrcInfoEngine=src_info.Engine,
     ]
 
     @inline(.always)
@@ -1070,8 +1077,8 @@ def ep_fused_combine_kernel_api[
     use_shmem: Bool = (n_nodes > 1),
     allreduce_world_size: Int = 1,
     *,
-    # Defaulted because the output is written through `store_fn`: there is no
-    # output tile argument for the engine to be inferred from.
+    # The output goes through `store_fn`, so there is no output tile to infer
+    # the engine from.
     OutputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     num_tokens: Int,
@@ -1181,6 +1188,8 @@ def ep_fused_combine_kernel_api[
         skip_a2a=skip_a2a,
         use_shmem=use_shmem,
         allreduce_world_size=allreduce_world_size,
+        InputTokensEngine=input_tokens.Engine,
+        SrcInfoEngine=src_info.Engine,
     ]
 
     @inline(.always)

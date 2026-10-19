@@ -3207,9 +3207,11 @@ struct EPDispatchKernel[
     @staticmethod
     @inline(.always)
     def monitor_and_signal_completion[
+        TopkIdsEngine: TensorEngine,
+        //,
         comm_warp_base: Int = 0,
     ](
-        topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
+        topk_ids: TileTensor[mut=False, .int32, Engine=TopkIdsEngine, ...],
         recv_count_ptrs: Array[
             MutPointer[UInt64, MutUntrackedOrigin], Self.p2p_world_size
         ],
@@ -3308,6 +3310,8 @@ struct EPDispatchKernel[
     @staticmethod
     @inline(.always)
     def copy_and_send_tokens[
+        InputTokensEngine: TensorEngine,
+        TopkIdsEngine: TensorEngine,
         input_type: DType,
         //,
         input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
@@ -3317,9 +3321,9 @@ struct EPDispatchKernel[
         TraceT: DispatchTraceSink = NullDispatchTrace,
     ](
         input_tokens: TileTensor[
-            mut=False, input_type, Engine=DefaultEngine[], ...
+            mut=False, input_type, Engine=InputTokensEngine, ...
         ],
-        topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
+        topk_ids: TileTensor[mut=False, .int32, Engine=TopkIdsEngine, ...],
         send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         recv_buf_ptrs: Array[
             MutPointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
@@ -3822,13 +3826,18 @@ struct EPDispatchKernel[
     @staticmethod
     @inline(.always)
     def wait_for_arrivals_and_compute_offsets[
+        RowOffsetsEngine: TensorEngine,
+        ExpertIdsEngine: TensorEngine,
+        //,
         comm_thread_base: Int = 0,
         n_comm_threads: Int = Self.num_threads,
         comm_barrier_id: Int = -1,
     ](
         format_handler: Self.token_fmt_type,
-        row_offsets: TileTensor[mut=True, .uint32, Engine=DefaultEngine[], ...],
-        expert_ids: TileTensor[mut=True, .int32, Engine=DefaultEngine[], ...],
+        row_offsets: TileTensor[
+            mut=True, .uint32, Engine=RowOffsetsEngine, ...
+        ],
+        expert_ids: TileTensor[mut=True, .int32, Engine=ExpertIdsEngine, ...],
         recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
         atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
@@ -3921,7 +3930,7 @@ struct EPDispatchKernel[
         # Some token format handlers may require padding the expert offsets to
         # satisfy the grouped matmul alignment requirement.
         comptime n_groups = Self.n_local_experts + shared_expert_offset
-        format_handler.pad_expert_offsets[n_groups](row_offsets._storage)
+        format_handler.pad_expert_offsets[n_groups](row_offsets.ptr)
 
         # Write out data needed for other SMs to copy the tokens to the output
         # tensor.
@@ -4031,6 +4040,9 @@ struct EPDispatchKernel[
     @staticmethod
     @inline(.always)
     def copy_received_tokens_to_output[
+        RowOffsetsEngine: TensorEngine,
+        SrcInfoEngine: TensorEngine,
+        //,
         comm_thread_base: Int = 0,
         n_comm_threads: Int = Self.num_threads,
         comm_barrier_id: Int = -1,
@@ -4060,8 +4072,10 @@ struct EPDispatchKernel[
         TraceBufT: TraceBuf = NullTrace,
     ](
         format_handler: Self.token_fmt_type,
-        row_offsets: TileTensor[mut=True, .uint32, Engine=DefaultEngine[], ...],
-        src_info: TileTensor[mut=True, .int32, Engine=DefaultEngine[], ...],
+        row_offsets: TileTensor[
+            mut=True, .uint32, Engine=RowOffsetsEngine, ...
+        ],
+        src_info: TileTensor[mut=True, .int32, Engine=SrcInfoEngine, ...],
         recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         atomic_counter: MutPointer[Int32, MutUntrackedOrigin],
         my_rank: Int32,
@@ -4856,6 +4870,8 @@ struct EPCombineKernel[
     @inline(.always)
     def send_tokens_back[
         input_type: DType,
+        InputTokensEngine: TensorEngine,
+        SrcInfoEngine: TensorEngine,
         //,
         # Combine-seam gate: when True, each per-(expert, rank) block
         # acquire-spins `ffn_done_ptr[local_expert_id]` for the producer's
@@ -4889,8 +4905,8 @@ struct EPCombineKernel[
         warp_base: Int = 0,
         comm_barrier_id: Int = -1,
     ](
-        input_tokens: TileTensor[input_type, Engine=DefaultEngine[], ...],
-        src_info: TileTensor[.int32, Engine=DefaultEngine[], ...],
+        input_tokens: TileTensor[input_type, Engine=InputTokensEngine, ...],
+        src_info: TileTensor[.int32, Engine=SrcInfoEngine, ...],
         send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
         recv_buf_ptrs: Array[
             MutPointer[UInt8, MutUntrackedOrigin], Self.p2p_world_size
@@ -5476,6 +5492,10 @@ struct EPCombineKernel[
         output_type: DType,
         store_fn: ep_combine_store_type,
         router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
+        *,
+        # The output goes through `store_fn`, so there is no output tile to
+        # infer the engine from.
+        OutputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
     ](
         num_tokens: Int,
         recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
@@ -5498,6 +5518,7 @@ struct EPCombineKernel[
             router_weights_wrapper: The wrapper for the router weights. If
                 provided, the routed experts' outputs for a token are weighted
                 and summed.
+            OutputTokensEngine: Storage engine backing the output tokens tile.
 
         Args:
             num_tokens: The number of output tokens.
@@ -5638,11 +5659,21 @@ def combine_async_kernel[
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
     use_shmem: Bool = True,
+    *,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    InputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
+    SrcInfoEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     input_tokens: TileTensor[
-        input_type, input_tokens_layout, ImmUntrackedOrigin
+        input_type,
+        input_tokens_layout,
+        ImmUntrackedOrigin,
+        Engine=InputTokensEngine,
     ],
-    src_info: TileTensor[.int32, src_info_layout, ImmUntrackedOrigin],
+    src_info: TileTensor[
+        .int32, src_info_layout, ImmUntrackedOrigin, Engine=SrcInfoEngine
+    ],
     send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
     recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
@@ -5671,6 +5702,8 @@ def combine_async_kernel[
         max_tokens_per_rank: The maximum number of tokens per rank.
         p2p_world_size: Size of a High-speed GPU interconnect group.
         use_shmem: Whether to use the SHMEM API for the communication.
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
 
     Args:
         input_tokens: The tokens to be sent back to the original rank.
@@ -5850,15 +5883,34 @@ def dispatch_kernel[
     skip_a2a: Bool = False,
     use_shmem: Bool = True,
     allreduce_world_size: Int = 1,
+    *,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    InputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
+    TopkIdsEngine: TensorEngine = DefaultEngine[element_width=1],
+    RowOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    ExpertIdsEngine: TensorEngine = DefaultEngine[element_width=1],
+    SrcInfoEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     input_tokens: TileTensor[
-        input_type, input_tokens_layout, ImmUntrackedOrigin
+        input_type,
+        input_tokens_layout,
+        ImmUntrackedOrigin,
+        Engine=InputTokensEngine,
     ],
-    topk_ids: TileTensor[.int32, topk_ids_layout, ImmUntrackedOrigin],
+    topk_ids: TileTensor[
+        .int32, topk_ids_layout, ImmUntrackedOrigin, Engine=TopkIdsEngine
+    ],
     format_handler: token_fmt_type,
-    row_offsets: TileTensor[.uint32, row_offsets_layout, MutUntrackedOrigin],
-    expert_ids: TileTensor[.int32, expert_ids_layout, MutUntrackedOrigin],
-    src_info: TileTensor[.int32, src_info_layout, MutUntrackedOrigin],
+    row_offsets: TileTensor[
+        .uint32, row_offsets_layout, MutUntrackedOrigin, Engine=RowOffsetsEngine
+    ],
+    expert_ids: TileTensor[
+        .int32, expert_ids_layout, MutUntrackedOrigin, Engine=ExpertIdsEngine
+    ],
+    src_info: TileTensor[
+        .int32, src_info_layout, MutUntrackedOrigin, Engine=SrcInfoEngine
+    ],
     send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
     recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
     recv_count_ptrs: Array[
@@ -5900,6 +5952,11 @@ def dispatch_kernel[
         allreduce_world_size: The world size of the allreduce operation. Only
             needed for skip_a2a. Used to calculate the workload distribution for
             the shared expert (if has one).
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        TopkIdsEngine: Storage engine backing the `topk_ids` tile.
+        RowOffsetsEngine: Storage engine backing the `row_offsets` tile.
+        ExpertIdsEngine: Storage engine backing the `expert_ids` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
 
     Args:
         input_tokens: The input tokens to be dispatched. Also used as shared
@@ -6076,11 +6133,21 @@ def combine_kernel[
     skip_a2a: Bool = False,
     use_shmem: Bool = True,
     allreduce_world_size: Int = 1,
+    *,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    InputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
+    SrcInfoEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     input_tokens: TileTensor[
-        input_type, input_tokens_layout, ImmUntrackedOrigin
+        input_type,
+        input_tokens_layout,
+        ImmUntrackedOrigin,
+        Engine=InputTokensEngine,
     ],
-    src_info: TileTensor[.int32, src_info_layout, ImmUntrackedOrigin],
+    src_info: TileTensor[
+        .int32, src_info_layout, ImmUntrackedOrigin, Engine=SrcInfoEngine
+    ],
     num_tokens: Int32,
     send_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
     recv_buf_ptrs: Array[MutPointer[UInt8, MutUntrackedOrigin], p2p_world_size],
@@ -6129,6 +6196,8 @@ def combine_kernel[
         allreduce_world_size: The world size of the allreduce operation. Only
             needed for skip_a2a. Used to calculate the workload distribution for
             the shared expert (if has one).
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
     Args:
         input_tokens: The tokens to be sent back to the original rank.
         src_info: The source token info tensor.
@@ -6418,12 +6487,14 @@ def fused_silu_nvfp4_kernel[
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
     *,
-    OutputEngine: TensorEngine,
-    ScalesEngine: TensorEngine,
-    InputEngine: TensorEngine,
-    RowOffsetsEngine: TensorEngine,
-    ScalesOffsetsEngine: TensorEngine,
-    InputScalesEngine: TensorEngine,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    OutputEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesEngine: TensorEngine = DefaultEngine[element_width=1],
+    InputEngine: TensorEngine = DefaultEngine[element_width=1],
+    RowOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    InputScalesEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     output_tensor: TileTensor[
         fp4_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
@@ -6625,12 +6696,14 @@ def fused_silu_nvfp4_interleaved_kernel[
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
     *,
-    OutputEngine: TensorEngine,
-    ScalesEngine: TensorEngine,
-    InputEngine: TensorEngine,
-    RowOffsetsEngine: TensorEngine,
-    ScalesOffsetsEngine: TensorEngine,
-    InputScalesEngine: TensorEngine,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    OutputEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesEngine: TensorEngine = DefaultEngine[element_width=1],
+    InputEngine: TensorEngine = DefaultEngine[element_width=1],
+    RowOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    InputScalesEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     output_tensor: TileTensor[
         fp4_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
@@ -7016,11 +7089,13 @@ def fused_silu_mxfp8_interleaved_kernel[
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
     *,
-    OutputEngine: TensorEngine,
-    ScalesEngine: TensorEngine,
-    InputEngine: TensorEngine,
-    RowOffsetsEngine: TensorEngine,
-    ScalesOffsetsEngine: TensorEngine,
+    # Callers bind this kernel before the call, so there is no tile argument
+    # to infer the engines from.
+    OutputEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesEngine: TensorEngine = DefaultEngine[element_width=1],
+    InputEngine: TensorEngine = DefaultEngine[element_width=1],
+    RowOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
+    ScalesOffsetsEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     output_tensor: TileTensor[
         fp8_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
