@@ -62,6 +62,10 @@ This version is still a work in progress.
 
 ## Fixes
 
+- `max serve` now runs prompts given as token ids, with no images, on Gemma 3,
+  InternVL, Idefics3, Pixtral and Qwen 2.5 VL. These requests used to fail in
+  the tokenizer.
+
 ## Mojo language
 
 For all the updates to the Mojo language, standard library, and tools,
