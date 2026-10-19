@@ -1908,11 +1908,7 @@ struct PrintTensorSpecFusedOp:
     @staticmethod
     def execute[
         target: StaticString,
-    ](
-        outp: FusedOutputTensor,
-        x: FusedInputTensor,
-        ctx: DeviceContext,
-    ) capturing raises:
+    ](outp: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContext,) raises:
         print("x.shape =", x._static_shape_tuple)
         print("x.strides =", x._static_strides_tuple)
         print("x.alignment =", x.alignment)
@@ -1943,7 +1939,7 @@ struct PrintOutputShapeStridesFusedOp:
         output: FusedOutputTensor,
         x: FusedInputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         print("output._static_shape_tuple = ", output._static_shape_tuple)
         print("output._static_strides_tuple = ", output._static_strides_tuple)
         print("output._runtime_shape = ", output.shape())
@@ -2089,7 +2085,7 @@ struct AddFuseLHS:
         x: FusedInputTensor,
         y: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
@@ -2105,11 +2101,7 @@ struct ImposterHasPrologueFusion:
     def execute[
         target: StaticString,
         has_prologue_fusion: Bool,
-    ](
-        output: OutputTensor,
-        x: FusedInputTensor,
-        ctx: DeviceContext,
-    ) capturing raises:
+    ](output: OutputTensor, x: FusedInputTensor, ctx: DeviceContext,) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             return rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
@@ -2127,7 +2119,7 @@ struct AddFuseInputs:
         x: FusedInputTensor,
         y: FusedInputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](
@@ -2148,7 +2140,7 @@ struct AddComputeFusion:
         x: InputTensor[dtype=dtype, rank=2, ...],
         y: InputTensor[dtype=dtype, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime has_compute_lambda = type_of(z)._has_compute_fusion
         print("has_compute_lambda =", has_compute_lambda)
 
@@ -2189,7 +2181,7 @@ struct AddFuseOutput:
         x: InputTensor,
         y: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x.load[width](idx)) + rebind[
@@ -2211,7 +2203,7 @@ struct MatmulFuseOut:
         a: InputTensor,
         b: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime rank = a.rank
         comptime a_dtype = a.dtype
         comptime b_dtype = b.dtype
@@ -2312,7 +2304,7 @@ struct VariadicAdd:
         output: OutputTensor[dtype=dtype, rank=rank, ...],
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[dtype, width]:
             var acc = SIMD[dtype, width](0)
@@ -2330,11 +2322,7 @@ struct ElementwisePrintShape:
     @staticmethod
     def execute[
         target: StaticString,
-    ](
-        z: FusedOutputTensor,
-        x: FusedInputTensor,
-        ctx: DeviceContext,
-    ) capturing raises:
+    ](z: FusedOutputTensor, x: FusedInputTensor, ctx: DeviceContext,) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[z.dtype, width]:
             return rebind[SIMD[z.dtype, width]](x._fused_load[width](idx))
@@ -2893,7 +2881,7 @@ struct CustomOpWithCustomParameterShapeFunc:
     @staticmethod
     def execute[
         test_flag: Int
-    ](y: FusedOutputTensor, x: FusedInputTensor) capturing raises:
+    ](y: FusedOutputTensor, x: FusedInputTensor) raises:
         raise "This should not run!"
 
 
@@ -2998,7 +2986,7 @@ struct MutableStore:
         tw: TensorWrapper,
         tensor: FusedInputTensor[dtype=.float32, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @__parameter
         @inline(.always)
         def func[
@@ -3033,7 +3021,7 @@ struct MySquareComputeOutFusion:
     ](
         outp: _FusedComputeOutputTensor[dtype=dtype, rank=1, ...],
         input: InputTensor[dtype=dtype, rank=1, ...],
-    ) capturing:
+    ):
         var res = input[0] * input[0]
         comptime has_compute_lambda = type_of(outp)._has_compute_fusion
         comptime has_store_lambda = type_of(outp)._has_output_store_fusion
@@ -3056,7 +3044,7 @@ struct InplaceNoOutFunc:
         output: MutableInputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
             var val = input._fused_load[width](idx)
@@ -3083,10 +3071,7 @@ struct ParameterizedOpaqueType:
     @staticmethod
     def execute[
         P0: Int
-    ](
-        output: OutputTensor[dtype=.int32, rank=1, ...],
-        x: SIMDPair[P0, _],
-    ) capturing:
+    ](output: OutputTensor[dtype=.int32, rank=1, ...], x: SIMDPair[P0, _],):
         output.store((0,), x.x)
         output.store((P0,), x.y)
 
@@ -3607,11 +3592,7 @@ struct MapLowerOneFusedOutput:
     def execute[
         target: StaticString,
         has_epilogue_fusion: Bool,
-    ](
-        res: FusedOutputTensor,
-        a: InputTensor,
-        ctx: DeviceContext,
-    ) capturing raises:
+    ](res: FusedOutputTensor, a: InputTensor, ctx: DeviceContext,) raises:
         pass
 
 
@@ -3657,7 +3638,7 @@ struct MapLowerTwoFusedOutputs:
         res1: FusedOutputTensor,
         a: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 
@@ -3679,7 +3660,7 @@ struct MapLowerVariadicFusedOutput:
         ],
         a: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 
@@ -3708,7 +3689,7 @@ struct MapLowerPartialFusedOutputs:
         res1: OutputTensor,
         a: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 
@@ -3726,7 +3707,7 @@ struct MapLowerTwoInputsOneFusedOutput:
         a: InputTensor,
         b: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 
@@ -3926,7 +3907,7 @@ struct MapLowerTwoFusedInputs:
         a: FusedInputTensor,
         b: FusedInputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 
@@ -3940,7 +3921,7 @@ struct MapLowerPartialFusedInputs:
         a: FusedInputTensor,
         b: InputTensor,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 

@@ -990,7 +990,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         mut execution_config: ExecutionConfigType,
         *args: *actual_arg_types,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a kernel for execution on this device.
 
         Parameters:
@@ -1053,7 +1053,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         mut execution_config: ExecutionConfigType,
         func: FuncType,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a capturing kernel for execution on this device.
 
         This overload is for kernels that capture variables from their enclosing scope.
@@ -1103,7 +1103,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         f: DeviceFunction,
         *args: *Ts,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues a pre-compiled checked function for execution on this device.
 
         This overload requires a `DeviceFunction` that was compiled with
@@ -1179,7 +1179,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         var constant_memory: List[ConstantMemoryMapping] = [],
         func_attribute: OptionalReg[FuncAttribute] = None,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
         passing the trailing host arguments by host layout.
 
@@ -1268,7 +1268,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         var constant_memory: List[ConstantMemoryMapping] = [],
         func_attribute: OptionalReg[FuncAttribute] = None,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a capturing kernel for execution on this device.
 
         This overload is for kernels that capture variables from their enclosing scope.
@@ -1333,7 +1333,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues a pre-compiled checked function for execution on this device.
 
         This overload requires a `DeviceFunction` that was compiled with
@@ -1440,7 +1440,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues an external device function for execution on this device.
 
         Parameters:
@@ -2742,7 +2742,7 @@ struct DeviceFunction[
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         # Launch `attributes` (e.g. PDL / programmatic stream serialization,
         # cluster dimensions) are forwarded to the plugin via the attribute
         # array assembled below. `constant_memory` mappings DO change
@@ -2789,7 +2789,7 @@ struct DeviceFunction[
         host_args: Tuple[*HostArgs] = (),
         var attributes: List[LaunchAttribute] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         comptime extra_host_count = HostArgs.length
 
         _check_device_context_hal_only_supported_exec_config(execution_config)
@@ -3021,7 +3021,7 @@ struct DeviceFunction[
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         # Launch `attributes` (e.g. PDL / programmatic stream serialization,
         # cluster dimensions) are forwarded to the plugin via the attribute
         # array assembled below. `constant_memory` mappings DO change
@@ -3190,7 +3190,7 @@ struct DeviceFunction[
         mut execution_config: ExecutionConfigType,
         *args: *Ts,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         _check_device_context_hal_only_supported_exec_config(execution_config)
 
         comptime num_args = Ts.length
@@ -3415,7 +3415,7 @@ struct DeviceExternalFunction(ImplicitlyCopyable, Movable):
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         # Launch `attributes` (e.g. PDL / programmatic stream serialization,
         # cluster dimensions) are forwarded to the plugin via the attribute
         # array assembled below. `constant_memory` mappings DO change
@@ -3494,7 +3494,7 @@ struct DeviceExternalFunction(ImplicitlyCopyable, Movable):
         mut execution_config: ExecutionConfigType,
         *args: *Ts,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         _check_device_context_hal_only_supported_exec_config(execution_config)
 
         comptime num_args = Ts.length
@@ -3776,7 +3776,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a kernel for execution on this stream.
 
         Parameters:
@@ -3828,7 +3828,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         mut execution_config: ExecutionConfigType,
         *args: *actual_arg_types,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a kernel for execution on this stream.
 
         Parameters:
@@ -3867,7 +3867,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a capturing kernel for execution on this stream.
 
         Parameters:
@@ -3918,7 +3918,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         func: FuncType,
         *,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Compiles and enqueues a capturing kernel for execution on this stream.
 
         Parameters:
@@ -3956,7 +3956,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues a pre-compiled checked function for execution on this stream.
 
         Parameters:
@@ -4005,7 +4005,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         f: DeviceFunction,
         *args: *Ts,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues a pre-compiled checked function for execution on this stream.
 
         Parameters:
@@ -4052,7 +4052,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         var attributes: List[LaunchAttribute] = [],
         var constant_memory: List[ConstantMemoryMapping] = [],
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues an external device function for execution on this stream.
 
         Parameters:
@@ -4101,7 +4101,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         f: DeviceExternalFunction,
         *args: *Ts,
         location: Optional[SourceLocation] = None,
-    ) capturing raises:
+    ) raises:
         """Enqueues an external device function for execution on this stream.
 
         Parameters:
