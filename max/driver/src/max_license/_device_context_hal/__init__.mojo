@@ -1147,7 +1147,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         _check_dim["DeviceContext.enqueue_function", "block_dim"](
             block_dim, location=call_location()
         )
-        f._call_with_pack_checked(
+        f._do_call_with_pack_checked(
             self,
             execution_config,
             *args,
@@ -1159,7 +1159,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host: RegisterPassable,
+        Host: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1236,7 +1236,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_arg=host_arg,
+            host_args=(host_arg,),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -1251,8 +1251,8 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
+        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1332,8 +1332,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_arg=host_arg,
-            host_arg2=host_arg2,
+            host_args=(host_arg, host_arg2),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -1348,9 +1347,9 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
+        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1433,9 +1432,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_arg=host_arg,
-            host_arg2=host_arg2,
-            host_arg3=host_arg3,
+            host_args=(host_arg, host_arg2, host_arg3),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -1450,10 +1447,10 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
-        Host3: RegisterPassable,
+        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host3: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1539,10 +1536,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_arg=host_arg,
-            host_arg2=host_arg2,
-            host_arg3=host_arg3,
-            host_arg4=host_arg4,
+            host_args=(host_arg, host_arg2, host_arg3, host_arg4),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -1557,11 +1551,11 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
-        Host3: RegisterPassable,
-        Host4: RegisterPassable,
+        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host3: Deinitable & ImplicitlyCopyable & RegisterPassable,
+        Host4: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1650,11 +1644,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_arg=host_arg,
-            host_arg2=host_arg2,
-            host_arg3=host_arg3,
-            host_arg4=host_arg4,
-            host_arg5=host_arg5,
+            host_args=(host_arg, host_arg2, host_arg3, host_arg4, host_arg5),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
@@ -3218,12 +3208,15 @@ struct DeviceFunction[
 
     @inline(.always)
     def _call_with_pack_checked[
-        *Ts: DevicePassable,
+        HostArgs: TypeList[Trait=RegisterPassable, ...],
+        //,
+        *Encoded: DevicePassable,
         ContextT: _HALFunctionEnqueuer,
     ](
         imm self,
         ctx: ContextT,
-        *args: *Ts,
+        *encoded_args: *Encoded,
+        host_args: Tuple[*HostArgs] = (),
         grid_dim: Dim,
         block_dim: Dim,
         cluster_dim: OptionalReg[Dim] = None,
@@ -3244,434 +3237,43 @@ struct DeviceFunction[
                 "HAL DeviceContext.enqueue_function does not support"
                 " `constant_memory` mappings."
             )
-
-        debug_assert(
-            shared_mem_bytes.or_else(0) >= 0,
-            "shared_mem_bytes must be non-negative",
-        )
-
-        var config = GPUExecutionConfiguration(grid_dim, block_dim)
-        config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-
-        self._call_with_pack_checked[*Ts, ContextT=ContextT](
-            ctx, config, *args, attributes=attributes^, location=location
-        )
-
-    @inline(.always)
-    def _call_with_pack_checked[
-        Host: RegisterPassable,
-        *Encoded: DevicePassable,
-        ContextT: _HALFunctionEnqueuer,
-    ](
-        imm self,
-        ctx: ContextT,
-        *encoded_args: *Encoded,
-        host_arg: Host,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-        if constant_memory:
-            raise Error(
-                "HAL DeviceContext.enqueue_function does not support"
-                " `constant_memory` mappings."
-            )
         debug_assert(
             shared_mem_bytes.or_else(0) >= 0,
             "shared_mem_bytes must be non-negative",
         )
         var config = GPUExecutionConfiguration(grid_dim, block_dim)
         config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-        Self._check_trailing_host[Host, Encoded.length]()
-        var host0 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        comptime if size_of[Host]() != 0:
-            host0 = Optional(
-                Pointer(to=host_arg)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        self._call_with_pack_checked[
-            *Encoded, extra_host_count=1, ContextT=ContextT
-        ](
+
+        comptime for idx in range(HostArgs.length):
+            Self._check_trailing_host[HostArgs[idx], Encoded.length + idx]()
+
+        self._do_call_with_pack_checked[*Encoded, ContextT=ContextT](
             ctx,
             config,
             *encoded_args,
-            host0=host0,
-            host0_size=UInt64(size_of[Host]()),
+            host_args=host_args,
             attributes=attributes^,
             location=location,
         )
 
     @inline(.always)
-    def _call_with_pack_checked[
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        *Encoded: DevicePassable,
-        ContextT: _HALFunctionEnqueuer,
-    ](
-        imm self,
-        ctx: ContextT,
-        *encoded_args: *Encoded,
-        host_arg: Host0,
-        host_arg2: Host1,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-        if constant_memory:
-            raise Error(
-                "HAL DeviceContext.enqueue_function does not support"
-                " `constant_memory` mappings."
-            )
-        debug_assert(
-            shared_mem_bytes.or_else(0) >= 0,
-            "shared_mem_bytes must be non-negative",
-        )
-        var config = GPUExecutionConfiguration(grid_dim, block_dim)
-        config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-        Self._check_trailing_host[Host0, Encoded.length]()
-        Self._check_trailing_host[Host1, Encoded.length + 1]()
-        var host0 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host1 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        comptime if size_of[Host0]() != 0:
-            host0 = Optional(
-                Pointer(to=host_arg)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host1]() != 0:
-            host1 = Optional(
-                Pointer(to=host_arg2)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        self._call_with_pack_checked[
-            *Encoded, extra_host_count=2, ContextT=ContextT
-        ](
-            ctx,
-            config,
-            *encoded_args,
-            host0=host0,
-            host1=host1,
-            host0_size=UInt64(size_of[Host0]()),
-            host1_size=UInt64(size_of[Host1]()),
-            attributes=attributes^,
-            location=location,
-        )
-
-    @inline(.always)
-    def _call_with_pack_checked[
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
-        *Encoded: DevicePassable,
-        ContextT: _HALFunctionEnqueuer,
-    ](
-        imm self,
-        ctx: ContextT,
-        *encoded_args: *Encoded,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-        if constant_memory:
-            raise Error(
-                "HAL DeviceContext.enqueue_function does not support"
-                " `constant_memory` mappings."
-            )
-        debug_assert(
-            shared_mem_bytes.or_else(0) >= 0,
-            "shared_mem_bytes must be non-negative",
-        )
-        var config = GPUExecutionConfiguration(grid_dim, block_dim)
-        config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-        Self._check_trailing_host[Host0, Encoded.length]()
-        Self._check_trailing_host[Host1, Encoded.length + 1]()
-        Self._check_trailing_host[Host2, Encoded.length + 2]()
-        var host0 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host1 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host2 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        comptime if size_of[Host0]() != 0:
-            host0 = Optional(
-                Pointer(to=host_arg)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host1]() != 0:
-            host1 = Optional(
-                Pointer(to=host_arg2)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host2]() != 0:
-            host2 = Optional(
-                Pointer(to=host_arg3)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        self._call_with_pack_checked[
-            *Encoded, extra_host_count=3, ContextT=ContextT
-        ](
-            ctx,
-            config,
-            *encoded_args,
-            host0=host0,
-            host1=host1,
-            host2=host2,
-            host0_size=UInt64(size_of[Host0]()),
-            host1_size=UInt64(size_of[Host1]()),
-            host2_size=UInt64(size_of[Host2]()),
-            attributes=attributes^,
-            location=location,
-        )
-
-    @inline(.always)
-    def _call_with_pack_checked[
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
-        Host3: RegisterPassable,
-        *Encoded: DevicePassable,
-        ContextT: _HALFunctionEnqueuer,
-    ](
-        imm self,
-        ctx: ContextT,
-        *encoded_args: *Encoded,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        host_arg4: Host3,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-        if constant_memory:
-            raise Error(
-                "HAL DeviceContext.enqueue_function does not support"
-                " `constant_memory` mappings."
-            )
-        debug_assert(
-            shared_mem_bytes.or_else(0) >= 0,
-            "shared_mem_bytes must be non-negative",
-        )
-        var config = GPUExecutionConfiguration(grid_dim, block_dim)
-        config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-        Self._check_trailing_host[Host0, Encoded.length]()
-        Self._check_trailing_host[Host1, Encoded.length + 1]()
-        Self._check_trailing_host[Host2, Encoded.length + 2]()
-        Self._check_trailing_host[Host3, Encoded.length + 3]()
-        var host0 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host1 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host2 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host3 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        comptime if size_of[Host0]() != 0:
-            host0 = Optional(
-                Pointer(to=host_arg)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host1]() != 0:
-            host1 = Optional(
-                Pointer(to=host_arg2)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host2]() != 0:
-            host2 = Optional(
-                Pointer(to=host_arg3)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host3]() != 0:
-            host3 = Optional(
-                Pointer(to=host_arg4)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        self._call_with_pack_checked[
-            *Encoded, extra_host_count=4, ContextT=ContextT
-        ](
-            ctx,
-            config,
-            *encoded_args,
-            host0=host0,
-            host1=host1,
-            host2=host2,
-            host3=host3,
-            host0_size=UInt64(size_of[Host0]()),
-            host1_size=UInt64(size_of[Host1]()),
-            host2_size=UInt64(size_of[Host2]()),
-            host3_size=UInt64(size_of[Host3]()),
-            attributes=attributes^,
-            location=location,
-        )
-
-    @inline(.always)
-    def _call_with_pack_checked[
-        Host0: RegisterPassable,
-        Host1: RegisterPassable,
-        Host2: RegisterPassable,
-        Host3: RegisterPassable,
-        Host4: RegisterPassable,
-        *Encoded: DevicePassable,
-        ContextT: _HALFunctionEnqueuer,
-    ](
-        imm self,
-        ctx: ContextT,
-        *encoded_args: *Encoded,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        host_arg4: Host3,
-        host_arg5: Host4,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-        if constant_memory:
-            raise Error(
-                "HAL DeviceContext.enqueue_function does not support"
-                " `constant_memory` mappings."
-            )
-        debug_assert(
-            shared_mem_bytes.or_else(0) >= 0,
-            "shared_mem_bytes must be non-negative",
-        )
-        var config = GPUExecutionConfiguration(grid_dim, block_dim)
-        config.set_near_compute_scratchpad_usage(shared_mem_bytes.or_else(0))
-        Self._check_trailing_host[Host0, Encoded.length]()
-        Self._check_trailing_host[Host1, Encoded.length + 1]()
-        Self._check_trailing_host[Host2, Encoded.length + 2]()
-        Self._check_trailing_host[Host3, Encoded.length + 3]()
-        Self._check_trailing_host[Host4, Encoded.length + 4]()
-        var host0 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host1 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host2 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host3 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        var host4 = Optional[OpaquePointer[MutAnyOrigin]](None)
-        comptime if size_of[Host0]() != 0:
-            host0 = Optional(
-                Pointer(to=host_arg)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host1]() != 0:
-            host1 = Optional(
-                Pointer(to=host_arg2)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host2]() != 0:
-            host2 = Optional(
-                Pointer(to=host_arg3)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host3]() != 0:
-            host3 = Optional(
-                Pointer(to=host_arg4)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        comptime if size_of[Host4]() != 0:
-            host4 = Optional(
-                Pointer(to=host_arg5)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-        self._call_with_pack_checked[
-            *Encoded, extra_host_count=5, ContextT=ContextT
-        ](
-            ctx,
-            config,
-            *encoded_args,
-            host0=host0,
-            host1=host1,
-            host2=host2,
-            host3=host3,
-            host4=host4,
-            host0_size=UInt64(size_of[Host0]()),
-            host1_size=UInt64(size_of[Host1]()),
-            host2_size=UInt64(size_of[Host2]()),
-            host3_size=UInt64(size_of[Host3]()),
-            host4_size=UInt64(size_of[Host4]()),
-            attributes=attributes^,
-            location=location,
-        )
-
-    @inline(.always)
-    def _call_with_pack_checked[
+    def _do_call_with_pack_checked[
         ExecutionConfigType: GridBlockExecutionConfig,
+        HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
         *Ts: DevicePassable,
-        extra_host_count: Int = 0,
         ContextT: _HALFunctionEnqueuer,
     ](
         imm self,
         ctx: ContextT,
         mut execution_config: ExecutionConfigType,
         *args: *Ts,
-        host0: Optional[OpaquePointer[MutAnyOrigin]] = None,
-        host1: Optional[OpaquePointer[MutAnyOrigin]] = None,
-        host2: Optional[OpaquePointer[MutAnyOrigin]] = None,
-        host3: Optional[OpaquePointer[MutAnyOrigin]] = None,
-        host4: Optional[OpaquePointer[MutAnyOrigin]] = None,
-        host0_size: UInt64 = 0,
-        host1_size: UInt64 = 0,
-        host2_size: UInt64 = 0,
-        host3_size: UInt64 = 0,
-        host4_size: UInt64 = 0,
+        host_args: Tuple[*HostArgs] = (),
         var attributes: List[LaunchAttribute] = [],
         location: Optional[SourceLocation] = None,
     ) capturing raises:
+        comptime extra_host_count = HostArgs.length
+
         _check_device_context_hal_only_supported_exec_config(execution_config)
 
         var shared_mem_bytes: Int = 0
@@ -3694,17 +3296,14 @@ struct DeviceFunction[
         var validated_args = Self._validate_arguments[
             *Ts, num_args=num_encoded, extra_declared=extra_host_count
         ]()
+
         var num_translated_args = validated_args[0]
-        if extra_host_count >= 1 and host0:
-            num_translated_args += 1
-        if extra_host_count >= 2 and host1:
-            num_translated_args += 1
-        if extra_host_count >= 3 and host2:
-            num_translated_args += 1
-        if extra_host_count >= 4 and host3:
-            num_translated_args += 1
-        if extra_host_count >= 5 and host4:
-            num_translated_args += 1
+        comptime for i in range(extra_host_count):
+            comptime size = size_of[HostArgs[i]]()
+            # Skip zero-sized types (ZSTs).
+            comptime if size != 0:
+                num_translated_args += 1
+
         var translated_arg_offsets = validated_args[1].copy()
 
         ref func_info = self._func_info
@@ -3827,25 +3426,21 @@ struct DeviceFunction[
                 )
                 translated_arg_idx += 1
 
-        if extra_host_count >= 1 and host0:
-            dense_args_addrs[unsafe_offset=translated_arg_idx] = host0.value()
-            dense_args_sizes[unsafe_offset=translated_arg_idx] = host0_size
-            translated_arg_idx += 1
-        if extra_host_count >= 2 and host1:
-            dense_args_addrs[unsafe_offset=translated_arg_idx] = host1.value()
-            dense_args_sizes[unsafe_offset=translated_arg_idx] = host1_size
-            translated_arg_idx += 1
-        if extra_host_count >= 3 and host2:
-            dense_args_addrs[unsafe_offset=translated_arg_idx] = host2.value()
-            dense_args_sizes[unsafe_offset=translated_arg_idx] = host2_size
-            translated_arg_idx += 1
-        if extra_host_count >= 4 and host3:
-            dense_args_addrs[unsafe_offset=translated_arg_idx] = host3.value()
-            dense_args_sizes[unsafe_offset=translated_arg_idx] = host3_size
-            translated_arg_idx += 1
-        if extra_host_count >= 5 and host4:
-            dense_args_addrs[unsafe_offset=translated_arg_idx] = host4.value()
-            dense_args_sizes[unsafe_offset=translated_arg_idx] = host4_size
+        comptime for i in range(extra_host_count):
+            comptime size = size_of[HostArgs[i]]()
+            # Skip zero-sized types (ZSTs).
+            if size == 0:
+                continue
+
+            var addr = (
+                Pointer(to=host_args[i])
+                .unsafe_bitcast[NoneType]()
+                .unsafe_mut_cast[True]()
+                .as_unsafe_any_origin()
+            )
+
+            dense_args_addrs[unsafe_offset=translated_arg_idx] = addr
+            dense_args_sizes[unsafe_offset=translated_arg_idx] = UInt64(size)
             translated_arg_idx += 1
 
         # Kernels that use `with PDL()` emit `griddepcontrol` instructions and
@@ -4918,7 +4513,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
             block_dim, location=call_location()
         )
 
-        f._call_with_pack_checked(
+        f._do_call_with_pack_checked(
             self,
             execution_config,
             *args,
