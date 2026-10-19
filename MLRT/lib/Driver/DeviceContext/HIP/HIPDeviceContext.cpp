@@ -161,7 +161,8 @@ private:
 };
 
 static Error formatHipError(const char *file, int line, const char *func,
-                            HIPDriver::Result result) {
+                            HIPDriver::Result result,
+                            std::string extra_msg = "") {
   ErrorOr<const HIPDriver &> errDriver = HIPDriver::get();
   const char *errName = nullptr;
   const char *errStr = nullptr;
@@ -172,19 +173,23 @@ static Error formatHipError(const char *file, int line, const char *func,
     errDriver->hipDrvGetErrorString(result, &errStr);
   }
 
+  if (!extra_msg.empty())
+    extra_msg = std::string(" - ") + extra_msg;
+
   if ((errName != nullptr) && (errStr != nullptr)) {
     return DeviceContext::formatError(file, line, func,
                                       llvm::Twine("HIP call failed: ") +
-                                          errName + " (" + errStr + ")");
+                                          errName + " (" + errStr + ")" +
+                                          extra_msg);
   } else if ((errName != nullptr) || (errStr != nullptr)) {
     return DeviceContext::formatError(
         file, line, func,
         llvm::Twine("HIP call failed: ") +
-            (errName != nullptr ? errName : errStr));
+            (errName != nullptr ? errName : errStr) + extra_msg);
   } else {
     return DeviceContext::formatError(file, line, func,
                                       llvm::Twine("HIP call failed: ") +
-                                          llvm::Twine(result));
+                                          llvm::Twine(result) + extra_msg);
   }
 }
 
@@ -1049,7 +1054,8 @@ ErrorOrSuccess HIPDeviceGraph::instantiate() {
           hipGraphInstantiateFlags::hipGraphInstantiateFlagAutoFreeOnLaunch));
 
   if (res != HIPDriver::SUCCESS)
-    RETURN_ERROR("failed to instantiate HIP graph");
+    return formatHipError(__FILE__, __LINE__, __FUNCTION__, res,
+                          "failed to instantiate HIP graph");
 
   // Destroy the raw graph now that instantiation succeeded; exec_ takes over.
   HIP_CHECK_ERR(hipDevice.hipDriver().hipGraphDestroy(rawGraph_));

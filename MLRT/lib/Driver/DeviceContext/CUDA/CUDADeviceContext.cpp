@@ -1331,7 +1331,7 @@ ErrorOrSuccess CUDADeviceGraph::instantiate() {
       errorMsg +=
           " at node " + llvm::formatv("{0}", (void *)params.hErrNode_out).str();
     }
-    RETURN_ERROR(errorMsg);
+    return formatCUDAError(__FILE__, __LINE__, __FUNCTION__, res, errorMsg);
   }
 
   // Destroy the raw graph now that instantiation succeeded; exec_ takes over.
