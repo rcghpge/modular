@@ -2987,30 +2987,23 @@ struct MutableStore:
         tensor: FusedInputTensor[dtype=.float32, rank=2, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
+        var buffer = tw.buffer
+
         @inline(.always)
-        def func[
+        def out_func[
             width: Int
-        ](idx: IndexList[tensor.rank]) -> SIMD[.float32, width]:
-            return rebind[SIMD[tensor.dtype, width]](
+        ](index: IndexList[tensor.rank]) {var tensor, var buffer}:
+            var idx = rebind[IndexList[tensor.rank]](index)
+            var val = rebind[SIMD[.float32, width]](
                 tensor._fused_load[width](idx)
             )
-
-        @__parameter
-        @inline(.always)
-        def out_func[width: Int](index: IndexList[tensor.rank]) capturing:
-            var idx = rebind[IndexList[tensor.rank]](index)
-            var val = func[width](idx)
             idx[0] += 1
             idx[1] += 1
-            tw.buffer.store_linear[width=width](idx, val)
+            buffer.store_linear[width=width](idx, val)
 
-        foreach_out_func[
-            func,
-            out_func,
-            target=target,
-            _trace_name=_trace_name,
-        ](tensor, ctx)
+        foreach_out_func[target=target, _trace_name=_trace_name](
+            out_func, tensor, ctx
+        )
 
 
 @extensibility.register("my_square_compute_out_fusion")
