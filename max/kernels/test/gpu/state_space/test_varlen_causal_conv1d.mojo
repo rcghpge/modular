@@ -113,6 +113,9 @@ def run_varlen_causal_conv1d_fwd_gpu[
     use_residual: Bool = False,
     # Clears update_state on every odd sequence, whose slot must keep its seed.
     update_flags: Bool = False,
+    # Passes an empty `(0,)` bias tile, the shape the model ops send when a
+    # conv has no bias: both kernels must read it as zero, never load it.
+    has_bias: Bool = True,
 ](
     batch: Int,
     dim: Int,
@@ -141,12 +144,16 @@ def run_varlen_causal_conv1d_fwd_gpu[
     var weight_heap = List(length=dim * width, fill=Scalar[dtype](0))
     var weight_h = TileTensor(weight_heap, row_major(dim, width))
 
-    # bias: (dim,)
+    # bias: (dim,), or empty when the conv has none. The backing heap stays
+    # dim-sized either way: an empty tile over random data means a bias read
+    # that slips past the guard shows up as a mismatch, not as a false pass
+    # on zeros.
+    var bias_len = dim if has_bias else 0
     var bias_heap = List(length=dim, fill=Scalar[dtype](0))
     var bias_h = TileTensor(
         bias_heap,
         row_major(
-            dim,
+            bias_len,
         ),
     )
 
@@ -280,7 +287,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
     var bias_device_tt = TileTensor(
         bias_device,
         row_major(
-            dim,
+            bias_len,
         ),
     )
     var query_start_loc_device_tt = TileTensor(
@@ -402,7 +409,7 @@ def run_varlen_causal_conv1d_fwd_gpu[
     var bias_cpu_tt = TileTensor(
         bias_buf._storage,
         row_major(
-            dim,
+            bias_len,
         ),
     )
     var query_start_loc_cpu_tt = TileTensor(
@@ -985,6 +992,21 @@ def test_varlen_causal_conv1d_fwd_gpu_variable_lengths() raises:
         return
     run_varlen_causal_conv1d_fwd_gpu[.float32, "none"](
         batch=3, dim=4, seq_lengths=Index(10, 6, 1), width=3, ctx=ctx
+    )
+
+
+def test_varlen_causal_conv1d_fwd_gpu_empty_bias() raises:
+    """An empty `(0,)` bias tile -- the shape the model ops send for a conv
+    with no bias -- must read as zero on both the CPU reference and the GPU
+    kernel, which guard on `bias.dim[0]() == 0` and never load it."""
+    var ctx = DeviceContext()
+    if not ctx.is_compatible():
+        return
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "none", has_bias=False](
+        batch=3, dim=8, seq_lengths=Index(10, 6, 1), width=2, ctx=ctx
+    )
+    run_varlen_causal_conv1d_fwd_gpu[.float32, "silu", has_bias=False](
+        batch=2, dim=4, seq_lengths=Index(16, 9), width=4, ctx=ctx
     )
 
 
