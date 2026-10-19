@@ -803,6 +803,15 @@ TEST_F(DriverPluginContextTest, ContextCopyInterDeviceSync) {
   memory_free_sync(contexts[0], srcDev);
 }
 
+namespace {
+// Destroys the shared contexts once every test has run.
+struct SharedPluginSessionEnvironment : ::testing::Environment {
+  void TearDown() override { SharedPluginSession::drop(); }
+};
+[[maybe_unused]] ::testing::Environment *const sharedPluginSessionEnvironment =
+    ::testing::AddGlobalTestEnvironment(new SharedPluginSessionEnvironment);
+} // namespace
+
 static void bumpHostFlag(void *userData) {
   *static_cast<uint64_t *>(userData) = 42;
 }

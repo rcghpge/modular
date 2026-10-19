@@ -19,7 +19,9 @@
 #include <cstdlib>
 #include <dlfcn.h>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <vector>
 
 using std::cerr;
 using std::endl;
@@ -65,6 +67,50 @@ using std::endl;
       EXPECT_EQ(status, M_DRIVER_STATUS_SUCCESS) << getStatusMessage(status);  \
   } while (0)
 
+// Some plugins take seconds to create a context. With
+// `MODULAR_DRIVER_TEST_SHARE_CONTEXTS=1`, consecutive context-level tests
+// borrow one driver, its devices and their contexts from this session instead
+// of creating them per test. Any other test drops the session first, so a test
+// that creates contexts itself never runs while shared ones are alive. Unset,
+// every test creates and destroys its own.
+struct SharedPluginSession {
+  void *soHandle = nullptr;
+  M_driver_destroy_func_ptr_t destroy = nullptr;
+  M_driver_context_destroy_func_ptr_t context_destroy = nullptr;
+  M_driver_driver_t driver = nullptr;
+  bool hasDevices = false;
+  std::vector<M_driver_device_t> devices;
+  bool hasContexts = false;
+  std::vector<M_driver_context_t> contexts;
+
+  static bool enabled() {
+    static const bool on = [] {
+      const char *env = std::getenv("MODULAR_DRIVER_TEST_SHARE_CONTEXTS");
+      return env != nullptr && std::string(env) == "1";
+    }();
+    return on;
+  }
+
+  static std::unique_ptr<SharedPluginSession> &current() {
+    static std::unique_ptr<SharedPluginSession> session;
+    return session;
+  }
+
+  // Destroys the shared contexts and driver, if there are any.
+  static void drop() {
+    std::unique_ptr<SharedPluginSession> &session = current();
+    if (!session)
+      return;
+    for (M_driver_context_t context : session->contexts)
+      if (context != nullptr)
+        session->context_destroy(context);
+    if (session->driver != nullptr)
+      session->destroy(session->driver);
+    dlclose(session->soHandle);
+    session.reset();
+  }
+};
+
 struct DriverPluginTest : ::testing::Test {
   void SetUp() override {
     const char *pluginSpec = std::getenv("MODULAR_DRIVER_PLUGINS");
@@ -90,7 +136,24 @@ struct DriverPluginTest : ::testing::Test {
     M_driver_version version = {.major = M_DRIVER_INTERFACE_VERSION_MAJOR,
                                 .minor = M_DRIVER_INTERFACE_VERSION_MINOR,
                                 .patch = M_DRIVER_INTERFACE_VERSION_PATCH};
-    DO_TEST(create(&version, &driver));
+    if (sharesContexts && SharedPluginSession::enabled()) {
+      std::unique_ptr<SharedPluginSession> &session =
+          SharedPluginSession::current();
+      if (!session) {
+        session = std::make_unique<SharedPluginSession>();
+        // Its own reference keeps the plugin loaded between tests.
+        session->soHandle = dlopen(pluginSpec, RTLD_NOW);
+        ASSERT_TRUE(session->soHandle != nullptr);
+        session->destroy = destroy;
+        session->context_destroy = context_destroy;
+        DO_TEST(create(&version, &session->driver));
+      }
+      driver = session->driver;
+      usingSharedSession = true;
+    } else {
+      SharedPluginSession::drop();
+      DO_TEST(create(&version, &driver));
+    }
     ASSERT_EQ(version.major, M_DRIVER_INTERFACE_VERSION_MAJOR);
     ASSERT_EQ(version.minor, M_DRIVER_INTERFACE_VERSION_MINOR);
 
@@ -103,7 +166,8 @@ struct DriverPluginTest : ::testing::Test {
   void TearDown() override {
     if (soHandle == nullptr)
       return;
-    DO_TEST(destroy(driver));
+    if (!usingSharedSession)
+      DO_TEST(destroy(driver));
 #define M_DRIVER_HAL_SYMBOL(name) name = nullptr;
 #include "HAL/M_driver_hal_symbols.inc"
 #undef M_DRIVER_HAL_SYMBOL
@@ -143,6 +207,11 @@ struct DriverPluginTest : ::testing::Test {
   M_driver_driver_t driver = nullptr;
 
   llvm::StringRef api;
+
+  // Set by the context-level fixtures, whose tests may borrow the shared
+  // session.
+  bool sharesContexts = false;
+  bool usingSharedSession = false;
 };
 
 struct DriverPluginDeviceTest : DriverPluginTest {
@@ -151,6 +220,12 @@ struct DriverPluginDeviceTest : DriverPluginTest {
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
+    SharedPluginSession *session =
+        usingSharedSession ? SharedPluginSession::current().get() : nullptr;
+    if (session != nullptr && session->hasDevices) {
+      devices = session->devices;
+      return;
+    }
     int64_t deviceCount = 0;
     ASSERT_SUCCESS(device_count(driver, &deviceCount));
     deviceCount = testDeviceCount(deviceCount);
@@ -159,27 +234,49 @@ struct DriverPluginDeviceTest : DriverPluginTest {
       EXPECT_SUCCESS(device_get(driver, i, &device));
       devices.push_back(device);
     }
+    if (session != nullptr) {
+      session->devices = devices;
+      session->hasDevices = true;
+    }
   }
 
   std::vector<M_driver_device_t> devices;
 };
 
 struct DriverPluginContextTest : DriverPluginDeviceTest {
+  DriverPluginContextTest() { sharesContexts = true; }
+
   void SetUp() override {
     DriverPluginDeviceTest::SetUp();
     if (this->HasFatalFailure() || this->IsSkipped())
       return;
 
+    SharedPluginSession *session =
+        usingSharedSession ? SharedPluginSession::current().get() : nullptr;
+    if (session != nullptr && session->hasContexts) {
+      contexts = session->contexts;
+      return;
+    }
     for (M_driver_device_t device : devices) {
       M_driver_context_t context = nullptr;
       ASSERT_SUCCESS(context_create(device, &context));
       contexts.push_back(context);
     }
+    if (session != nullptr) {
+      session->contexts = contexts;
+      session->hasContexts = true;
+    }
   }
 
   void TearDown() override {
-    for (M_driver_context_t context : contexts) {
-      EXPECT_SUCCESS(context_destroy(context));
+    if (usingSharedSession) {
+      // A test may have destroyed and recreated one; hand back what it holds.
+      if (SharedPluginSession *session = SharedPluginSession::current().get())
+        session->contexts = contexts;
+    } else {
+      for (M_driver_context_t context : contexts) {
+        EXPECT_SUCCESS(context_destroy(context));
+      }
     }
     DriverPluginTest::TearDown();
   }
