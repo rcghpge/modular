@@ -354,7 +354,7 @@ def _rms_norm_warp_tiling_subkernel[
 
 
 @__name(
-    t"rms_norm_gpu_warp_tiling_128_{dtype}_{epsilon}_{weight_offset}_{multiply_before_cast}"
+    t"rms_norm_gpu_warp_tiling_128_{dtype}_{epsilon.to_bits()}_{weight_offset.to_bits()}_{multiply_before_cast}"
 )
 def rms_norm_gpu_warp_tiling_128[
     mut: Bool,
@@ -440,7 +440,7 @@ def rms_norm_gpu_warp_tiling_128[
 #     from L2 and normalize. Handles ragged tails and wider rows. `chunks` is
 #     unused (pass any value, e.g. 1).
 @__name(
-    t"rms_norm_gpu_warp_per_row_{dtype}_{single_pass}_{chunks}_{epsilon}_{weight_offset}_{multiply_before_cast}"
+    t"rms_norm_gpu_warp_per_row_{dtype}_{single_pass}_{chunks}_{epsilon.to_bits()}_{weight_offset.to_bits()}_{multiply_before_cast}"
 )
 def rms_norm_gpu_warp_per_row[
     mut: Bool,
@@ -636,7 +636,7 @@ struct _RowSpec[element_types: TypeList[Trait=CoordLike, ...]](
 #      (the ISETP/SEL bloat) are dropped at comptime. A guarded variant
 #      (`exact_fit=False`) handles ragged tails.
 @__name(
-    t"rms_norm_gpu_warp_tiling_{dtype}_{chunks_per_thread}_{exact_fit}_{epsilon}_{weight_offset}_{multiply_before_cast}"
+    t"rms_norm_gpu_warp_tiling_{dtype}_{chunks_per_thread}_{exact_fit}_{epsilon.to_bits()}_{weight_offset.to_bits()}_{multiply_before_cast}"
 )
 def rms_norm_gpu_warp_tiling[
     mut: Bool,
@@ -824,7 +824,7 @@ def _rms_norm_gpu_block_subkernel[
 
 
 @__name(
-    t"rms_norm_gpu_block_{dtype}_{epsilon}_{weight_offset}_{multiply_before_cast}"
+    t"rms_norm_gpu_block_{dtype}_{epsilon.to_bits()}_{weight_offset.to_bits()}_{multiply_before_cast}"
 )
 def rms_norm_gpu_block[
     mut: Bool,
