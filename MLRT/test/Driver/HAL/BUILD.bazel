@@ -91,16 +91,26 @@ mojo_shared_library(
     name = "vec_add",
     srcs = ["vec_add.mojo"],
     shared_lib_name = "vec_add.so",
+    # Excluded from the source-only OSS build (SDLC-4549): depends on
+    # //max_private/sys/_hal, an internal, experimental HAL that is deliberately
+    # excluded from the OSS export (see //max_private/BUILD.bazel; made internal
+    # in #96929, "make max.sys internal -- still experimental"). Stays enabled in
+    # the internal monorepo, where //:oss_source_only_build is false.
     target_compatible_with = select({
         "//:nvidia_gpu": [],
         "//:apple_gpu": [],
         "//:amd_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        "//:oss_source_only_build": ["@platforms//:incompatible"],
+        "//conditions:default": [],
     }),
-    deps = [
-        "//max_private/sys/_hal:_mojo_module",
-        "@mojo//:std",
-    ],
+    # Incompatibility alone does not stop Bazel from loading //max_private, which
+    # is absent from the OSS tree, so the dep itself is also selected away.
+    deps = ["@mojo//:std"] + select({
+        "//:oss_source_only_build": [],
+        "//conditions:default": ["//max_private/sys/_hal:_mojo_module"],
+    }),
 )
 
 # ---------------------------------------------------------------------------
@@ -143,18 +153,32 @@ modular_py_test(
         # vec_add.so is a Mojo extension loaded at runtime via mojo.importer,
         # invisible to the Python import-graph analyzer.
         "vec_add.vec_add",
-    ],
+    ] + select({
+        # max_private is not exported, so the source-only build drops the dep
+        # below; the test itself is incompatible there, but its pydeps check
+        # still runs.
+        "//:oss_source_only_build": ["max_private"],
+        "//conditions:default": [],
+    }),
     tags = ["gpu"],
+    # Excluded from the source-only OSS build (SDLC-4549): depends on
+    # //max_private/sys/_hal, an internal, experimental HAL that is deliberately
+    # excluded from the OSS export (see //max_private/BUILD.bazel; made internal
+    # in #96929, "make max.sys internal -- still experimental"). Stays enabled in
+    # the internal monorepo, where //:oss_source_only_build is false.
     target_compatible_with = select({
         "//:nvidia_gpu": [],
         "//:apple_gpu": [],
         "//:amd_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        "//:oss_source_only_build": ["@platforms//:incompatible"],
+        "//conditions:default": [],
     }),
-    deps = [
-        "//max_private/sys/_hal",
-        requirement("numpy"),
-    ],
+    deps = [requirement("numpy")] + select({
+        "//:oss_source_only_build": [],
+        "//conditions:default": ["//max_private/sys/_hal"],
+    }),
 )
 
 # ---------------------------------------------------------------------------
