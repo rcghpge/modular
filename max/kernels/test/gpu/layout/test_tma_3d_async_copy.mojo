@@ -228,7 +228,7 @@ def test_tma_3d_load_row_major[
                                 var desc_idx = swizzle(i)
                                 assert_equal(desc_flat[desc_idx], dest_ptr[i])
 
-                            dest_ptr += desc_tile_size
+                            dest_ptr = dest_ptr.unsafe_offset(desc_tile_size)
 
     _ = src^
     _ = dst^

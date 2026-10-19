@@ -403,7 +403,7 @@ def non_max_suppression[
                 var box_idxs_ptr = box_idxs.unsafe_ptr()
                 sort(
                     Span(
-                        unsafe_ptr=box_idxs_ptr + pred_idx,
+                        unsafe_ptr=box_idxs_ptr.unsafe_offset(pred_idx),
                         length=num_boxes_curr_pred,
                     ),
                     _greater_than,

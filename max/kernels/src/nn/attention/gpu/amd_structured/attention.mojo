@@ -673,7 +673,7 @@ struct Attention[
         ]()
 
         var q_tile = TileTensor[Self.q_type, Self.QTileLayout, ImmutAnyOrigin](
-            ptr=q + Int(q_offset),
+            ptr=q.unsafe_offset(Int(q_offset)),
             layout=Self.QTileLayout(
                 Coord(
                     Int64(valid_rows),
@@ -687,7 +687,7 @@ struct Attention[
         self.output_tile = TileTensor[
             Self.output_type, Self.OutputTileLayout, MutAnyOrigin
         ](
-            ptr=output_ptr + Int(output_offset),
+            ptr=output_ptr.unsafe_offset(Int(output_offset)),
             layout=Self.OutputTileLayout(
                 Coord(
                     Int64(valid_rows),

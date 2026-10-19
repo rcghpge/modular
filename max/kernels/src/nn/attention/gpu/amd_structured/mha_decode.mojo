@@ -190,7 +190,9 @@ __extension Attention:
             self.batch_idx,
             self.kv_head_idx(),
             VBufT.SmemParentType(
-                (self.v_smem_ptr + v_warp_smem_offset).as_unsafe_any_origin(),
+                self.v_smem_ptr.unsafe_offset(
+                    v_warp_smem_offset
+                ).as_unsafe_any_origin(),
                 VBufT._SmemParentLayout(),
             ),
             end,

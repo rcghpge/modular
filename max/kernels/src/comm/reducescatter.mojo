@@ -428,7 +428,7 @@ def _reducescatter_kernel[
             var elem_start = u_start * config.unit_numel
             var flat_tiles = Array[_, num_buffers](
                 fill_with_unrolled=lambda [i: Int]() -> FlatTile: FlatTile(
-                    reordered[i]._storage + elem_start,
+                    reordered[i]._storage.unsafe_offset(elem_start),
                     row_major(n_elements),
                 )
             )

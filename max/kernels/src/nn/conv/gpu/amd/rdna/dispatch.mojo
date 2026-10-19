@@ -448,7 +448,7 @@ def dispatch_rdna_conv2d[
                 # Fold the fused skip connection: out = conv + beta*source.
                 comptime if has_residual:
                     var s = (
-                        (resid_src + (m_idx * N + n_idx))
+                        (resid_src.unsafe_offset(m_idx * N + n_idx))
                         .load[width=_width]()
                         .cast[_dtype]()
                     )
@@ -489,7 +489,7 @@ def dispatch_rdna_conv2d[
                 var m_idx = Int(coords_2d[0])
                 var n_idx = Int(coords_2d[1])
                 var s = (
-                    (resid_src + (m_idx * N + n_idx))
+                    (resid_src.unsafe_offset(m_idx * N + n_idx))
                     .load[width=_width]()
                     .cast[_dtype]()
                 )

@@ -116,17 +116,20 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
     def _counter(
         self, workspace: MutPointer[Int32, MutAnyOrigin]
     ) -> MutPointer[Int32, MutAnyOrigin]:
-        return workspace + self._row * (
-            _COOP_CONTROL_WORDS + 2 * Self.group_size * COOP_SLOT_FLOATS
+        return workspace.unsafe_offset(
+            self._row
+            * (_COOP_CONTROL_WORDS + 2 * Self.group_size * COOP_SLOT_FLOATS)
         )
 
     @inline(.always)
     def _slots(
         self, workspace: MutPointer[Int32, MutAnyOrigin]
     ) -> MutPointer[Float32, MutAnyOrigin]:
-        return (self._counter(workspace) + _COOP_CONTROL_WORDS).unsafe_bitcast[
-            Float32
-        ]()
+        return (
+            self._counter(workspace)
+            .unsafe_offset(_COOP_CONTROL_WORDS)
+            .unsafe_bitcast[Float32]()
+        )
 
     @inline(.always)
     def _arrive_and_wait(mut self, workspace: MutPointer[Int32, MutAnyOrigin]):

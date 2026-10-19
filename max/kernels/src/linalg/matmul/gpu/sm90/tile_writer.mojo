@@ -568,7 +568,7 @@ struct FragmentToSMemWriter[
 
         # Execute st.matrix hardware instruction
         st_matrix[simd_width=packed_width, transpose=Self.swapAB](
-            smem_tile._storage + swizzled_offset, packed_data
+            smem_tile._storage.unsafe_offset(swizzled_offset), packed_data
         )
 
     @inline(.always)
@@ -601,7 +601,9 @@ struct FragmentToSMemWriter[
             origin=MutAnyOrigin,
             address_space=.SHARED,
         ](
-            self.c_tile._storage + tile_linear_idx * elements_per_tile,
+            self.c_tile._storage.unsafe_offset(
+                tile_linear_idx * elements_per_tile
+            ),
             flat_tile_layout,
         )
 

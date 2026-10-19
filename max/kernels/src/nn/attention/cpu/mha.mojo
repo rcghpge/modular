@@ -130,7 +130,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 ]: ak_ptr.load[width=lane_count](m * a_stride)
             )
 
-            ak_ptr += lane_count
+            ak_ptr = ak_ptr.unsafe_offset(lane_count)
 
             comptime for k in range(lane_count):
                 comptime for n in range(tile_n):
@@ -141,7 +141,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                     comptime for m in range(tile_m):
                         c_tile.fma(m, n, a_tile[m][k], b_data)
 
-                bk_ptr += b_stride
+                bk_ptr = bk_ptr.unsafe_offset(b_stride)
 
         tile[[Self.simd_width, 1]](0, K, loop_body)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -183,8 +183,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                     comptime for n in range(tile_n):
                         c_tile.fma(m, n, a_data, b_tile[n])
 
-                ak_ptr += 1
-                bk_ptr += b_stride
+                ak_ptr = ak_ptr.unsafe_offset(1)
+                bk_ptr = bk_ptr.unsafe_offset(b_stride)
 
         tile[[2, 1]](0, K, loop_body)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -234,15 +234,15 @@ struct _Matmul[dtype: DType, simd_width: Int]:
 
                 c_tile.store(cn_ptr, c_stride)
 
-                bn_ptr += tile_n * Self.simd_width
-                cn_ptr += tile_n * Self.simd_width
+                bn_ptr = bn_ptr.unsafe_offset(tile_n * Self.simd_width)
+                cn_ptr = cn_ptr.unsafe_offset(tile_n * Self.simd_width)
 
             tile[Self._matmul_config.col_sizes](
                 0, ceildiv(N, Self.simd_width), process_cols
             )
 
-            am_ptr += tile_m * a_stride
-            cm_ptr += tile_m * c_stride
+            am_ptr = am_ptr.unsafe_offset(tile_m * a_stride)
+            cm_ptr = cm_ptr.unsafe_offset(tile_m * c_stride)
 
             # TODO(MOCO-2074): Suppress false positive unused var warning.
             _ = bn_ptr
@@ -318,7 +318,8 @@ struct _Matmul[dtype: DType, simd_width: Int]:
         if aligned_n != N:
             for k in range(K):
                 unsafe_memset_zero(
-                    packed_ptr + k * aligned_n + N, aligned_n - N
+                    packed_ptr.unsafe_offset(k * aligned_n).unsafe_offset(N),
+                    aligned_n - N,
                 )
 
     @inline(.never)
@@ -345,9 +346,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             tile[Self._matmul_config.pack_sizes](0, N, packed_copy)
 
             if aligned_n != N:
-                unsafe_memset_zero(output_ptr + N, aligned_n - N)
+                unsafe_memset_zero(output_ptr.unsafe_offset(N), aligned_n - N)
 
-            output_ptr += aligned_n
+            output_ptr = output_ptr.unsafe_offset(aligned_n)
 
     @inline(.never)
     @staticmethod
@@ -413,7 +414,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
             comptime for nn in range(tile_n):
                 cn_ptr.store(nn, scalar_accum[nn])
 
-            cn_ptr += tile_n
+            cn_ptr = cn_ptr.unsafe_offset(tile_n)
 
         tile[[4, 1]](0, N, process_cols)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -446,7 +447,7 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 accum += cn_ptr.load[width=_simd_width]()
 
             cn_ptr.store(accum)
-            cn_ptr += _simd_width
+            cn_ptr = cn_ptr.unsafe_offset(_simd_width)
 
         tile[Self._matmul_config.gemv_sizes](0, N, process_cols)
         # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -675,8 +676,8 @@ struct _FlashAttention[
 
             vectorize[Self.simd_width, unroll_factor=2](count_n, do_correction)
 
-            qk_row_ptr += Self._config.qk_block_n
-            o_row_ptr += Self._config.o_block_n
+            qk_row_ptr = qk_row_ptr.unsafe_offset(Self._config.qk_block_n)
+            o_row_ptr = o_row_ptr.unsafe_offset(Self._config.o_block_n)
 
     @staticmethod
     def run[
@@ -956,8 +957,8 @@ struct _FlashAttention[
                         count_n, do_final
                     )
 
-                    o_ptr += q_seq_stride
-                    oz_ptr += Self._config.o_block_n
+                    o_ptr = o_ptr.unsafe_offset(q_seq_stride)
+                    oz_ptr = oz_ptr.unsafe_offset(Self._config.o_block_n)
 
             # NOTE: passing `dealloc[Scalar[Self.dtype]]` directly crashes the
             # when the dtype is parametric; wrap it in a local function as a workaround.

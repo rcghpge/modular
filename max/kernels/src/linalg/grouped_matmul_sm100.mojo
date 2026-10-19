@@ -307,11 +307,11 @@ def load_AB[
     var b_smem_tile = b_smem_tiles[stage]
 
     var a_smem_slice = type_of(a_smem_tile)(
-        a_smem_tile.ptr + peer_cta_coord[2] * a_tma_load_size,
+        a_smem_tile.ptr.unsafe_offset(peer_cta_coord[2] * a_tma_load_size),
         a_smem_tile.layout,
     )
     var b_smem_slice = type_of(b_smem_tile)(
-        b_smem_tile.ptr + peer_cta_coord[1] * b_tma_load_size,
+        b_smem_tile.ptr.unsafe_offset(peer_cta_coord[1] * b_tma_load_size),
         b_smem_tile.layout,
     )
 
@@ -681,7 +681,7 @@ def consumer_main_loop[
             init_c=(iter_idx == 0),  # Initialize C on first iteration
         )
 
-        mma_op.commit(mma_mbar + stage)
+        mma_op.commit(mma_mbar.unsafe_offset(stage))
 
 
 @inline(.always)
@@ -763,7 +763,7 @@ def stsm_helper[
             comptime for _j in range(cast_width):
                 v[k * cast_width + _j] = casted[_j]
         st_matrix[simd_width=4, transpose=transpose_c](
-            dst.unsafe_ptr().unsafe_mut_cast[True]() + offset,
+            dst.unsafe_ptr().unsafe_mut_cast[True]().unsafe_offset(offset),
             bitcast[.float32, 4](v),
         )
 
@@ -984,7 +984,7 @@ def multi_stage_store_C[
         tcgen05_load_wait()
 
         comptime if stage == num_stages - 1:
-            umma_arrive_leader_cta(accum_empty_mbar + index)
+            umma_arrive_leader_cta(accum_empty_mbar.unsafe_offset(index))
 
         # Assume double-buffer for shared memory packing
         comptime c_smem_tile_size = c_smem_layout.size()
@@ -1026,7 +1026,7 @@ def multi_stage_store_C[
 
         # 128B alignment comes from external_memory and aligned buffer offsets.
         var c_smem_tile = TileTensor(
-            c_smem_base + (stage % 2) * c_smem_tile_size,
+            c_smem_base.unsafe_offset((stage % 2) * c_smem_tile_size),
             LTToTTLayout[c_smem_layout](),
         )
 
@@ -1194,9 +1194,9 @@ def multi_stage_store_C[
                             (n, m), val_vec
                         )
                     else:
-                        (c_ptr + Int(n) * cN + Int(m)).store[
-                            alignment=alignment
-                        ](val_vec)
+                        c_ptr.unsafe_offset(Int(n) * cN).unsafe_offset(
+                            Int(m)
+                        ).store[alignment=alignment](val_vec)
 
         comptime if stage > 0 or stage == num_stages - 1:
             # Guard the tma read from shared memory is done.
@@ -1253,7 +1253,9 @@ def zero_output[
 
     # Note that output_tile_shape is always the proper C tile shape independent of transpose_c.
     comptime output_N = output_tile_shape.element_types[1].static_value
-    var ptr = c_ptr + Int(coord[1]) * c_stride + Int(coord[0])
+    var ptr = c_ptr.unsafe_offset(Int(coord[1]) * c_stride).unsafe_offset(
+        Int(coord[0])
+    )
     comptime assert thread_num * simd_size >= output_N, (
         "output_N must be less than thread_num * simd_size. Got "
         + String(output_N)
@@ -1277,8 +1279,10 @@ def zero_output[
                     ),
                     zero_vec,
                 )
-            (ptr + thread_idx.x * simd_size).store[alignment=alignment](val)
-            ptr += c_stride
+            (ptr.unsafe_offset(thread_idx.x * simd_size)).store[
+                alignment=alignment
+            ](val)
+            ptr = ptr.unsafe_offset(c_stride)
 
 
 @inline(.always)
@@ -1585,10 +1589,10 @@ def blackwell_tma_umma_warp_specialized_kernel[
     )
 
     var a_smem_base = base_ptr_smem
-    var b_smem_base = (a_smem_base + a_smem_size).unsafe_bitcast[
+    var b_smem_base = a_smem_base.unsafe_offset(a_smem_size).unsafe_bitcast[
         Scalar[b_type]
     ]()
-    var c_smem_base = (b_smem_base + b_smem_size).unsafe_bitcast[
+    var c_smem_base = b_smem_base.unsafe_offset(b_smem_size).unsafe_bitcast[
         Scalar[c_type]
     ]()
 
@@ -1608,18 +1612,24 @@ def blackwell_tma_umma_warp_specialized_kernel[
         swizzle_mode_to_bytes[b_swizzle],
     ](b_smem_base)
 
-    var smem_pool = (c_smem_base + c_smem_size).unsafe_bitcast[Int64]()
+    var smem_pool = c_smem_base.unsafe_offset(c_smem_size).unsafe_bitcast[
+        Int64
+    ]()
 
     var tma_mbar_ptr = smem_pool
-    var mma_mbar_ptr = tma_mbar_ptr + num_pipeline_stages
-    var accum_full_mbar_ptr = mma_mbar_ptr + num_pipeline_stages
-    var accum_empty_mbar_ptr = accum_full_mbar_ptr + num_accum_pipeline_stages
+    var mma_mbar_ptr = tma_mbar_ptr.unsafe_offset(num_pipeline_stages)
+    var accum_full_mbar_ptr = mma_mbar_ptr.unsafe_offset(num_pipeline_stages)
+    var accum_empty_mbar_ptr = accum_full_mbar_ptr.unsafe_offset(
+        num_accum_pipeline_stages
+    )
 
     var tmem_dealloc_mbar_ptr = (
-        accum_empty_mbar_ptr + num_accum_pipeline_stages
+        accum_empty_mbar_ptr.unsafe_offset(num_accum_pipeline_stages)
     ).unsafe_bitcast[Int64]()
 
-    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = tmem_dealloc_mbar_ptr.unsafe_offset(1).unsafe_bitcast[
+        UInt32
+    ]()
 
     var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
@@ -1859,11 +1869,11 @@ def blackwell_tma_umma_warp_specialized_kernel[
                 if elect_one_sync():
                     comptime if cta_group == 2:
                         mma_arrive_multicast[cta_group](
-                            accum_full_mbar + accum_index,
+                            accum_full_mbar.unsafe_offset(accum_index),
                             UInt16(mma_complete_mask),
                         )
                     else:
-                        mma_arrive(accum_full_mbar + accum_index)
+                        mma_arrive(accum_full_mbar.unsafe_offset(accum_index))
 
                 accum_pipeline_producer_state.step()
             work_info = next_work_info

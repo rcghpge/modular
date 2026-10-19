@@ -1327,7 +1327,7 @@ def flare_mla_decoding_dispatch[
                 )
                 var qk_max_device = DeviceBuffer[accum_type](
                     ctx,
-                    exp_sum_qk_max_data.unsafe_ptr() + data_len,
+                    exp_sum_qk_max_data.unsafe_ptr().unsafe_offset(data_len),
                     data_len,
                     owning=False,
                 )
@@ -1994,11 +1994,11 @@ def mla_decoding[
     # split-k intermediate buffers — only used when num_partitions > 1
     var qk_max_batch_ptr = qk_max_ptr
     if num_partitions > 1:
-        qk_max_batch_ptr = qk_max_ptr + qk_max_offset
+        qk_max_batch_ptr = qk_max_ptr.unsafe_offset(qk_max_offset)
 
     var exp_sum_batch_ptr = exp_sum_ptr
     if num_partitions > 1:
-        exp_sum_batch_ptr = exp_sum_ptr + exp_sum_offset
+        exp_sum_batch_ptr = exp_sum_ptr.unsafe_offset(exp_sum_offset)
 
     var seq_len: Int
     var q_batch_offset: Int
@@ -2050,9 +2050,9 @@ def mla_decoding[
             num_pipeline_stages=num_pipeline_stages,
             decoding_warp_split_k=decoding_warp_split_k,
         ](
-            q_ptr + q_batch_offset,
+            q_ptr.unsafe_offset(q_batch_offset),
             k,
-            output_ptr + output_batch_offset,
+            output_ptr.unsafe_offset(output_batch_offset),
             exp_sum_batch_ptr,
             qk_max_batch_ptr,
             scale,
@@ -2087,8 +2087,8 @@ def mla_decoding[
             # MTP token fold: M = num_heads * q_seq_len query rows.
             q_seq_len=q_seq_len,
         ](
-            output_ptr + output_batch_offset,
-            q_ptr + q_batch_offset,
+            output_ptr.unsafe_offset(output_batch_offset),
+            q_ptr.unsafe_offset(q_batch_offset),
             k,
             k,
             mask,
@@ -2232,7 +2232,9 @@ def mla_decoding_single_batch[
     ](q_smem, q_smem_layout, bound=q_smem_size)
 
     comptime kv_smem_size = BN * depth
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
 
     # For MLA, We define V = K[:, :nope_dim], thus we split the K tensor
     # in two parts when storing it in the smem: K[:, :nope_dim] and
@@ -2271,7 +2273,11 @@ def mla_decoding_single_batch[
         _,
         address_space=.SHARED,
         circular=True,
-    ](k_smem + BN * nope_dim, k_rope_smem_layout, bound=BN * rope_dim)
+    ](
+        k_smem.unsafe_offset(BN * nope_dim),
+        k_rope_smem_layout,
+        bound=BN * rope_dim,
+    )
 
     comptime mma_shape = get_mma_shape[q_type, get_accum_type[q_type]()]()
     comptime MMA_M = mma_shape[0]
@@ -2311,7 +2317,9 @@ def mla_decoding_single_batch[
         rowsum[i] = 0.0
 
     # Shared memory for P = Q * K^t
-    var p_smem = (k_smem + kv_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var p_smem = k_smem.unsafe_offset(kv_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime p_smem_size = BM * BN
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
@@ -2320,7 +2328,7 @@ def mla_decoding_single_batch[
 
     # Each warp group needs separate maximum and sum slots.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN).unsafe_bitcast[Scalar[accum_type]](),
+        p_smem.unsafe_offset(BM * BN).unsafe_bitcast[Scalar[accum_type]](),
         row_major[2 * num_warps_n, BM](),
     )
 
@@ -2334,7 +2342,10 @@ def mla_decoding_single_batch[
         Coord(Idx[BM], Idx[BK]), Coord(Idx[depth], Idx[1])
     )
     var q_gmem_iter = TileTensorIter[q_type, type_of(q_gmem_tile_layout), _](
-        q_ptr + q_offset, q_gmem_tile_layout, bound=BM * depth, stride=BK
+        q_ptr.unsafe_offset(q_offset),
+        q_gmem_tile_layout,
+        bound=BM * depth,
+        stride=BK,
     )
 
     var start, end = get_start_and_end_for_partitions[BN](
@@ -2640,7 +2651,9 @@ def mla_decoding_single_batch[
     var o_offset = nope_dim * BM * q_head_group
 
     comptime output_gmem_layout = row_major[BM, nope_dim]()
-    var output_gmem_tile = TileTensor(output_ptr + o_offset, output_gmem_layout)
+    var output_gmem_tile = TileTensor(
+        output_ptr.unsafe_offset(o_offset), output_gmem_layout
+    )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](
         Coord(warp_y, warp_x)
     )
@@ -3718,11 +3731,11 @@ def mla_prefill[
             q_depth=q_depth,
             cache_depth=cache_depth,
         ](
-            q_ptr + q_batch_offset,
+            q_ptr.unsafe_offset(q_batch_offset),
             k,
             v,
             k_rope,
-            output_ptr + o_batch_offset,
+            output_ptr.unsafe_offset(o_batch_offset),
             scale,
             seq_len,
             max_seq_len,
@@ -3736,8 +3749,8 @@ def mla_prefill[
         var attention = Attention[
             config, 1, False, q_depth=q_depth, output_depth=v_depth
         ](
-            output_ptr + o_batch_offset,
-            q_ptr + q_batch_offset,
+            output_ptr.unsafe_offset(o_batch_offset),
+            q_ptr.unsafe_offset(q_batch_offset),
             k,
             v,
             mask,
@@ -3883,7 +3896,9 @@ def mla_prefill_single_batch[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = BN * q_depth
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -3894,7 +3909,9 @@ def mla_prefill_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = BN * depth
-    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var v_smem = k_smem.unsafe_offset(k_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime v_smem_layout = row_major[BK, depth]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -3921,7 +3938,7 @@ def mla_prefill_single_batch[
     var q_gmem_iter = TileTensorIter[
         q_type, type_of(q_gmem_tile_layout), _, masked=True
     ](
-        q_ptr + Int(q_offset),
+        q_ptr.unsafe_offset(Int(q_offset)),
         q_gmem_tile_layout,
         bound=BM * num_heads * q_depth,
         stride=BK,
@@ -3971,7 +3988,9 @@ def mla_prefill_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var p_smem = v_smem.unsafe_offset(v_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3983,7 +4002,7 @@ def mla_prefill_single_batch[
 
     # Each warp group needs separate maximum and sum slots.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
+        p_smem.unsafe_offset(BM * BN if num_warps_n > 1 else 0).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[2 * num_warps_n, BM](),
@@ -4429,7 +4448,7 @@ def mla_prefill_single_batch[
         Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
     var output_gmem_tile = TileTensor[linear_idx_type=.int32](
-        output_ptr + Int(output_offset), output_gmem_layout
+        output_ptr.unsafe_offset(Int(output_offset)), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN_O](
         Coord(Int(warp_y), Int(warp_x))

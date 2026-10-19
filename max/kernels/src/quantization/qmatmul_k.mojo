@@ -115,17 +115,17 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
                 var packed_bits = SIMD[.uint8, Self._simd_width](0)
 
                 comptime for i in range(2):
-                    var bytes = (src_ptr + i * Self._packed_stride).load[
-                        width=Self._simd_width
-                    ]()
+                    var bytes = src_ptr.unsafe_offset(
+                        i * Self._packed_stride
+                    ).load[width=Self._simd_width]()
                     packed_bits |= bytes << UInt8(i * 4)
 
-                src_ptr += Self._simd_width
+                src_ptr = src_ptr.unsafe_offset(Self._simd_width)
 
                 bits_ptr.store(packed_bits)
-                bits_ptr += Self._simd_width
+                bits_ptr = bits_ptr.unsafe_offset(Self._simd_width)
 
-            src_ptr += Self._packed_stride
+            src_ptr = src_ptr.unsafe_offset(Self._packed_stride)
 
     @inline(.always)
     def _unpack_int4(self, var dst_ptr: MutPointer[UInt8, _]):
@@ -139,15 +139,17 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
         for _ in range(0, Self.block_m, 2 * Self._tuple_width):
             comptime for col in range(Self._tile_n):
                 var packed_bits = bits_ptr.load[width=Self._simd_width]()
-                bits_ptr += Self._simd_width
+                bits_ptr = bits_ptr.unsafe_offset(Self._simd_width)
 
                 comptime for i in range(2):
                     var bytes = (packed_bits >> UInt8(i * 4)) & 15
-                    (dst_ptr + i * Self._packed_stride).store(bytes)
+                    (dst_ptr.unsafe_offset(i * Self._packed_stride)).store(
+                        bytes
+                    )
 
-                dst_ptr += Self._simd_width
+                dst_ptr = dst_ptr.unsafe_offset(Self._simd_width)
 
-            dst_ptr += Self._packed_stride
+            dst_ptr = dst_ptr.unsafe_offset(Self._packed_stride)
 
     # For the 6-bit encoding, the following encoding is used (one lane of the
     # SIMD register is depicted) where four rows of M are bundled together:
@@ -168,24 +170,24 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
             var src_col_ptr = src_ptr
 
             comptime for col in range(Self._tile_n):
-                var hi_bytes = (src_col_ptr + 3 * Self._packed_stride).load[
-                    width=Self._simd_width
-                ]()
+                var hi_bytes = src_col_ptr.unsafe_offset(
+                    3 * Self._packed_stride
+                ).load[width=Self._simd_width]()
 
                 comptime for i in range(3):
-                    var bytes = (src_col_ptr + i * Self._packed_stride).load[
-                        width=Self._simd_width
-                    ]()
+                    var bytes = src_col_ptr.unsafe_offset(
+                        i * Self._packed_stride
+                    ).load[width=Self._simd_width]()
                     var packed_bits = bytes | (
                         ((hi_bytes >> UInt8(i * 2)) & 3) << 6
                     )
 
                     bits_ptr.store(packed_bits)
-                    bits_ptr += Self._simd_width
+                    bits_ptr = bits_ptr.unsafe_offset(Self._simd_width)
 
-                src_col_ptr += Self._simd_width
+                src_col_ptr = src_col_ptr.unsafe_offset(Self._simd_width)
 
-            src_ptr += Self._packed_stride * 4
+            src_ptr = src_ptr.unsafe_offset(Self._packed_stride * 4)
 
     @inline(.always)
     def _unpack_int6[
@@ -206,21 +208,21 @@ struct _packed_bit_array[bit_width: Int, block_m: Int, block_n: Int]:
 
                 comptime for i in range(3):
                     var packed_bits = bits_ptr.load[width=Self._simd_width]()
-                    bits_ptr += Self._simd_width
+                    bits_ptr = bits_ptr.unsafe_offset(Self._simd_width)
 
-                    (dst_col_ptr + i * Self._packed_stride).store(
+                    (dst_col_ptr.unsafe_offset(i * Self._packed_stride)).store(
                         (packed_bits & 63) - zero_point,
                     )
 
                     hi_bytes |= (packed_bits >> 6) << UInt8(i * 2)
 
-                (dst_col_ptr + 3 * Self._packed_stride).store(
+                (dst_col_ptr.unsafe_offset(3 * Self._packed_stride)).store(
                     hi_bytes - zero_point,
                 )
 
-                dst_col_ptr += Self._simd_width
+                dst_col_ptr = dst_col_ptr.unsafe_offset(Self._simd_width)
 
-            dst_ptr += Self._packed_stride * 4
+            dst_ptr = dst_ptr.unsafe_offset(Self._packed_stride * 4)
 
     @inline(.always)
     def pack(mut self, var src_ptr: Pointer[UInt8, ...]):
@@ -349,7 +351,7 @@ def _quantize_a_Q8_K[
 
                 block_ptr[].scales[row] = scale
 
-            packed_ptr += tile_m
+            packed_ptr = packed_ptr.unsafe_offset(tile_m)
 
         tile[[4, 2, 1]](0, M, process_rows)
 
@@ -361,11 +363,11 @@ def _expand_q_bits_lo[
 ](var src_ptr: Pointer[UInt8, ...], var dst_ptr: MutPointer[UInt8, ...],):
     for _k in range(0, _block_QK_K.quantized_k // 2, width):
         var src_q_bits = src_ptr.load[width=width]()
-        src_ptr += width
+        src_ptr = src_ptr.unsafe_offset(width)
 
         comptime for i in range(2):
             dst_ptr.store((src_q_bits >> UInt8(i * 4)) & 15)
-            dst_ptr += width
+            dst_ptr = dst_ptr.unsafe_offset(width)
 
 
 def _expand_and_merge_q_bits_hi[
@@ -376,7 +378,7 @@ def _expand_and_merge_q_bits_hi[
 
     for _k in range(0, _block_QK_K.quantized_k // values_per_byte, width):
         var src_q_bits = src_ptr.load[width=width]()
-        src_ptr += width
+        src_ptr = src_ptr.unsafe_offset(width)
 
         for _ in range(values_per_byte):
             var dst_q_bits_lo = dst_ptr.load[width=width]()
@@ -384,7 +386,7 @@ def _expand_and_merge_q_bits_hi[
             src_q_bits >>= UInt8(bit_count)
 
             dst_ptr.store(dst_q_bits_hi | dst_q_bits_lo)
-            dst_ptr += width
+            dst_ptr = dst_ptr.unsafe_offset(width)
 
 
 def _copy_column_q_bits_to_block[
@@ -395,8 +397,8 @@ def _copy_column_q_bits_to_block[
     """
     for _k in range(0, _block_QK_K.quantized_k, 4):
         dst_ptr.store(src_ptr.load[width=4]())
-        src_ptr += 4
-        dst_ptr += block_n * 4
+        src_ptr = src_ptr.unsafe_offset(4)
+        dst_ptr = dst_ptr.unsafe_offset(block_n * 4)
 
 
 def _pack_block_Q4_K[
@@ -456,10 +458,10 @@ def _pack_block_Q4_K[
         )
         _copy_column_q_bits_to_block[block_n](
             q_bits_column_buf.unsafe_ptr(),
-            q_bits_block_ptr + n * 4,
+            q_bits_block_ptr.unsafe_offset(n * 4),
         )
 
-        src_ptr += stride
+        src_ptr = src_ptr.unsafe_offset(stride)
 
     # Allocate a staging buffer to pack the scales and minimums as a single
     # blob and to do processor specific reordering of the values for the
@@ -471,7 +473,9 @@ def _pack_block_Q4_K[
         UInt8, origin_of(q_scales_and_mins_buf)
     ] = q_scales_and_mins_buf.unsafe_ptr()
     var q_scales_reorder_buf = q_scales_and_mins_ptr
-    var q_mins_reorder_buf = q_scales_and_mins_ptr + group_count * block_n
+    var q_mins_reorder_buf = q_scales_and_mins_ptr.unsafe_offset(
+        group_count * block_n
+    )
 
     # Scales are not currently transformed.
     unsafe_memcpy(
@@ -493,8 +497,8 @@ def _pack_block_Q4_K[
     # two rows are split across the lower and upper halves of the register:
     #       [n0_g0 n1_g0 n2_g0 n3_g0 : n0_g1 n1_g1 n2_g1 n3_g1]
     for g in range(0, group_count, 2):
-        var q_mins_row_0_ptr = q_mins_ptr + g * block_n
-        var q_mins_row_1_ptr = q_mins_row_0_ptr + block_n
+        var q_mins_row_0_ptr = q_mins_ptr.unsafe_offset(g * block_n)
+        var q_mins_row_1_ptr = q_mins_row_0_ptr.unsafe_offset(block_n)
         for n in range(block_n):
             var q_mins_row_0_val = q_mins_row_0_ptr[n]
             var q_mins_row_1_val = q_mins_row_1_ptr[n]
@@ -553,10 +557,10 @@ def _pack_block_Q6_K[
             src_ptr[].q_bits_hi.unsafe_ptr(), q_bits_column_buf
         )
         _copy_column_q_bits_to_block[block_n](
-            q_bits_column_buf, q_bits_block_buf + n * 4
+            q_bits_column_buf, q_bits_block_buf.unsafe_offset(n * 4)
         )
 
-        src_ptr += stride
+        src_ptr = src_ptr.unsafe_offset(stride)
 
     dst_ptr[].q_bits.pack(q_bits_block_buf)
 
@@ -589,10 +593,10 @@ def matmul_Q4_K_pack_b(
         for _n in range(0, N, block_n):
             _pack_block_Q4_K[block_n](src_n_ptr, k_blocks, dst_ptr)
 
-            src_n_ptr += k_blocks * block_n
-            dst_ptr += 1
+            src_n_ptr = src_n_ptr.unsafe_offset(k_blocks * block_n)
+            dst_ptr = dst_ptr.unsafe_offset(1)
 
-        src_ptr += 1
+        src_ptr = src_ptr.unsafe_offset(1)
 
 
 def matmul_Q6_K_pack_b(
@@ -623,10 +627,10 @@ def matmul_Q6_K_pack_b(
         for _n in range(0, N, block_n):
             _pack_block_Q6_K[block_n](src_n_ptr, k_blocks, dst_ptr)
 
-            src_n_ptr += k_blocks * block_n
-            dst_ptr += 1
+            src_n_ptr = src_n_ptr.unsafe_offset(k_blocks * block_n)
+            dst_ptr = dst_ptr.unsafe_offset(1)
 
-        src_ptr += 1
+        src_ptr = src_ptr.unsafe_offset(1)
 
 
 @inline(.always)
@@ -662,9 +666,10 @@ def _matmul_group_stream_x86[
                 comptime for row in range(tile_m):
                     var a_val = SIMD[.int32, simd_width](
                         bitcast[.int32, 1](
-                            (a_q_bits_ptr + row * group_size + k + tk * 4).load[
-                                width=4
-                            ]()
+                            a_q_bits_ptr.unsafe_offset(row * group_size)
+                            .unsafe_offset(k)
+                            .unsafe_offset(tk * 4)
+                            .load[width=4]()
                         )
                     )
                     c_int32_group[row, col] = dot_i8_to_i32_saturated_x86(
@@ -699,7 +704,7 @@ def _matmul_group_stream_neon_dotprod[
     comptime for k in range(0, group_size, 16):
         var a_tile = Array[_, tile_m](
             fill_with=lambda (row: Int) {imm a_q_bits_ptr} -> SIMD[.int8, 16]: (
-                a_q_bits_ptr + row * group_size + k
+                a_q_bits_ptr.unsafe_offset(row * group_size).unsafe_offset(k)
             ).load[width=16]()
         )
 
@@ -772,7 +777,7 @@ def _matmul_group_unpacked[
     ) {mut b_q_bits_ptr, imm}:
         comptime for col in range(tile_n):
             b_vals[col] = b_q_bits_ptr.load[width=SIMDLength(simd_width) * 4]()
-            b_q_bits_ptr += simd_width * 4
+            b_q_bits_ptr = b_q_bits_ptr.unsafe_offset(simd_width * 4)
 
     _matmul_group_stream[group_size, tile_k=1](
         a_q_bits_ptr, c_int32_group, stream_b_vals
@@ -790,7 +795,7 @@ def _apply_base_scales[
     # Convert to floating point and apply the block scale of matrix B.
     comptime for col in range(tile_n):
         var b_scale = (
-            (b_base_scales_ptr + col * simd_width)
+            (b_base_scales_ptr.unsafe_offset(col * simd_width))
             .load[width=simd_width]()
             .cast[.float32]()
         )
@@ -846,7 +851,7 @@ def _apply_zero_point_correction[
         elif CompilationTarget.has_neon():
             # Use `smull(2)` and `smlal(2)` instructions to do an `int16*int16`
             # widening multiply/add to an int32 accumulator.
-            var group_sums = (a_group_sums_ptr + g * tile_m).load[
+            var group_sums = a_group_sums_ptr.unsafe_offset(g * tile_m).load[
                 width=tile_m * 2
             ]()
 
@@ -890,7 +895,7 @@ def _apply_zero_point_correction[
     # float accumulator.
     comptime for col in range(tile_n):
         var base_mins = (
-            (b_base_mins_ptr + col * simd_width)
+            (b_base_mins_ptr.unsafe_offset(col * simd_width))
             .load[width=simd_width]()
             .cast[.float32]()
         )
@@ -986,7 +991,7 @@ def _matmul_group_packed_Q4_K[
             var packed_bits = b_q_bits_ptr.load[
                 width=SIMDLength(simd_width) * 4
             ]()
-            b_q_bits_ptr += simd_width * 4
+            b_q_bits_ptr = b_q_bits_ptr.unsafe_offset(simd_width * 4)
 
             comptime for i in range(2):
                 var bytes = (packed_bits >> UInt8(i * 4)) & 15
@@ -1036,7 +1041,9 @@ def _matmul_Q4_K_tile[
     var b_tile_ptr = b_ptr.unsafe_bitcast[_block_Q4_K_packed[block_n]]()
 
     var b_q_scales_ptr = b_q_scales_and_mins_buf
-    var b_q_mins_ptr = b_q_scales_and_mins_buf + group_count * block_n
+    var b_q_mins_ptr = b_q_scales_and_mins_buf.unsafe_offset(
+        group_count * block_n
+    )
 
     var c_int32_block = _Accumulator[.int32, tile_m, tile_n, simd_width]()
 
@@ -1056,7 +1063,7 @@ def _matmul_Q4_K_tile[
             a_q_bits_ptr.as_imm().unsafe_origin_cast[ImmutAnyOrigin](),
             c_int32_group,
         )
-        a_q_bits_ptr += tile_m * group_size
+        a_q_bits_ptr = a_q_bits_ptr.unsafe_offset(tile_m * group_size)
 
         # Scale the accumulator for this group and add to the block level
         # accumulators.
@@ -1196,8 +1203,8 @@ def _matmul_Q4_K_columns[
         )
         _ = b_q_bits_ptr
 
-        a_ptr += tile_m
-        c_ptr += tile_m * N
+        a_ptr = a_ptr.unsafe_offset(tile_m)
+        c_ptr = c_ptr.unsafe_offset(tile_m * N)
 
     tile[[4, 2, 1]](0, M, process_rows)
 
@@ -1230,7 +1237,7 @@ def _matmul_group_packed_Q6_K[
                 var packed_bits = b_q_bits_ptr.load[
                     width=SIMDLength(simd_width) * 4
                 ]()
-                b_q_bits_ptr += simd_width * 4
+                b_q_bits_ptr = b_q_bits_ptr.unsafe_offset(simd_width * 4)
 
                 var bytes = packed_bits & 63
                 b_vals[col * tile_k + i] = bytes - zero_point
@@ -1311,7 +1318,7 @@ def _matmul_Q6_K_tile[
             c_int32_group,
         )
 
-        a_q_bits_ptr += tile_m * group_size
+        a_q_bits_ptr = a_q_bits_ptr.unsafe_offset(tile_m * group_size)
 
         var b_q_scales_ptr: Pointer[
             Int8, origin_of(b_tile_ptr[].q_scales)
@@ -1438,8 +1445,8 @@ def _matmul_Q6_K_columns[
         )
         _ = b_q_bits_ptr
 
-        a_ptr += tile_m
-        c_ptr += tile_m * N
+        a_ptr = a_ptr.unsafe_offset(tile_m)
+        c_ptr = c_ptr.unsafe_offset(tile_m * N)
 
     tile[[4, 2, 1]](0, M, process_rows)
 
@@ -1519,8 +1526,8 @@ def _matmul_Qb_K[
         var b_packed_ptr = b.ptr.unsafe_bitcast[b_type]()
 
         for k_block in range(k_blocks):
-            var bn_packed_ptr = b_packed_ptr + task_n_start
-            var cn_ptr = c.ptr + task_n_start
+            var bn_packed_ptr = b_packed_ptr.unsafe_offset(task_n_start)
+            var cn_ptr = c.ptr.unsafe_offset(task_n_start)
             var accumulate = k_block > 0
 
             # only run epilogue for the last iter of K loop
@@ -1544,8 +1551,8 @@ def _matmul_Qb_K[
                     epilogue_fn,
                 )
 
-                bn_packed_ptr += tile_n * simd_width
-                cn_ptr += tile_n * simd_width
+                bn_packed_ptr = bn_packed_ptr.unsafe_offset(tile_n * simd_width)
+                cn_ptr = cn_ptr.unsafe_offset(tile_n * simd_width)
 
             tile[[2, 1]](0, ceildiv(task_n_count, simd_width), process_cols)
             # TODO(MOCO-2074): Suppress false positive unused var warning.
@@ -1554,8 +1561,8 @@ def _matmul_Qb_K[
             _ = accumulate
             _ = is_last_k_iter
 
-            a_packed_ptr += M
-            b_packed_ptr += N
+            a_packed_ptr = a_packed_ptr.unsafe_offset(M)
+            b_packed_ptr = b_packed_ptr.unsafe_offset(N)
 
     sync_parallelize(task_func, num_workers, ctx)
 

@@ -332,9 +332,9 @@ def grouped_matmul_amd_kernel_launcher[
     # (Kimi K3 gate/up at 8 devices), and the wrapped pointer reads out of
     # bounds without erroring. A and C scale with token rows and fit today,
     # but a large `max_batch_input_tokens` would wrap them too.
-    var a_ptr = a_tensor.ptr + Int(a_start_row) * Int(K)
-    var b_ptr = b_tensor.ptr + Int(expert_id) * Int(N) * Int(K)
-    var c_ptr = c_tensor.ptr + Int(a_start_row) * Int(N)
+    var a_ptr = a_tensor.ptr.unsafe_offset(Int(a_start_row) * Int(K))
+    var b_ptr = b_tensor.ptr.unsafe_offset(Int(expert_id) * Int(N) * Int(K))
+    var c_ptr = c_tensor.ptr.unsafe_offset(Int(a_start_row) * Int(N))
 
     comptime has_any_epilogue = has_epilogue_fn or has_compute_fn
 
@@ -350,7 +350,9 @@ def grouped_matmul_amd_kernel_launcher[
         var col = Int(idx[1])
         var row_idx = Coord(Int(a_start_row) + row, col)
         comptime if has_compute_fn:
-            (c_ptr + row * N + col).store[alignment=alignment](
+            c_ptr.unsafe_offset(row * N).unsafe_offset(col).store[
+                alignment=alignment
+            ](
                 rebind[SIMD[c_type, width]](
                     compute_fn[dtype, width, alignment=alignment](row_idx, val)
                 )
@@ -1581,7 +1583,7 @@ def grouped_matmul_vendor[
 
             # Handle experts with expert_id = -1 by writing zeros
             if expert_id < 0:
-                var c_ptr = c.ptr + Int(token_start) * Int(c_N)
+                var c_ptr = c.ptr.unsafe_offset(Int(token_start) * Int(c_N))
                 var buff = DeviceBuffer(
                     ctx, c_ptr, num_tokens * c_N, owning=False
                 )

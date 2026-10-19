@@ -115,8 +115,8 @@ def mm_tiled_kernel(
     for i in range(ceildiv(Int(K), bK)):
         # Load tiles into shared memory
         var curr_offset = i * bK
-        var addr_A = A + bRow * Int(K) + curr_offset
-        var addr_B = B + curr_offset * Int(N) + bCol
+        var addr_A = A.unsafe_offset(bRow * Int(K)).unsafe_offset(curr_offset)
+        var addr_B = B.unsafe_offset(curr_offset * Int(N)).unsafe_offset(bCol)
 
         loadTile(
             addr_A, Int(K), Int(M) - bRow, Int(K) - curr_offset, A_s, bK, bM, bK

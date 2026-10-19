@@ -1889,7 +1889,9 @@ def flash_attention_dispatch[
                             exp_sum_qk_max_data.unsafe_ptr(), stats_layout
                         )
                         var qk_max = TileTensor(
-                            exp_sum_qk_max_data.unsafe_ptr() + data_len,
+                            exp_sum_qk_max_data.unsafe_ptr().unsafe_offset(
+                                data_len
+                            ),
                             stats_layout,
                         )
 
@@ -2708,10 +2710,10 @@ def mha[
                 group=group,
                 sink=sink,
             ](
-                q_ptr + q_batch_offset,
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
-                output_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(q_batch_offset),
                 scale,
                 seq_len,
                 max_seq_len,
@@ -2728,10 +2730,10 @@ def mha[
                 group=group,
                 sink=sink,
             ](
-                q_ptr + q_batch_offset,
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
-                output_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(q_batch_offset),
                 scale,
                 seq_len,
                 max_seq_len,
@@ -2756,8 +2758,8 @@ def mha[
 
         comptime if _is_amd_rdna():
             var attention = AttentionRDNA[config, group, sink](
-                output_ptr + q_batch_offset,
-                q_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(q_batch_offset),
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
                 mask,
@@ -2777,8 +2779,8 @@ def mha[
             # the kernel is inlined here — measured ~14% loss vs `MhaPrefillV2`
             # as a top-level kernel).
             var attention = Attention[config, group, sink](
-                output_ptr + q_batch_offset,
-                q_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(q_batch_offset),
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
                 mask,
@@ -2910,7 +2912,9 @@ def mha_single_batch[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = config.k_smem_size()
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -2921,7 +2925,9 @@ def mha_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = config.v_smem_size()
-    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var v_smem = k_smem.unsafe_offset(k_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime v_smem_layout = row_major[BK, BN]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -2947,7 +2953,7 @@ def mha_single_batch[
     var q_gmem_iter = TileTensorIter[
         q_type, type_of(q_gmem_tile_layout), _, masked=True
     ](
-        q_ptr + Int(q_offset),
+        q_ptr.unsafe_offset(Int(q_offset)),
         q_gmem_tile_layout,
         bound=BM * num_heads * depth,
         stride=BK,
@@ -3008,7 +3014,9 @@ def mha_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var p_smem = v_smem.unsafe_offset(v_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3020,7 +3028,7 @@ def mha_single_batch[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
+        p_smem.unsafe_offset(BM * BN if num_warps_n > 1 else 0).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[2 * num_warps_n, BM](),
@@ -3431,7 +3439,7 @@ def mha_single_batch[
         Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
     var output_gmem_tile = TileTensor[linear_idx_type=.int32](
-        output_ptr + Int(q_offset), output_gmem_layout
+        output_ptr.unsafe_offset(Int(q_offset)), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
         Coord(Int(warp_y), Int(warp_x))
@@ -3594,7 +3602,9 @@ def mha_single_batch_pipelined[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = config.kv_smem_size()
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -3620,7 +3630,7 @@ def mha_single_batch_pipelined[
     var q_gmem_iter = TileTensorIter[
         q_type, type_of(q_gmem_tile_layout), _, masked=True
     ](
-        q_ptr + Int(q_offset),
+        q_ptr.unsafe_offset(Int(q_offset)),
         q_gmem_tile_layout,
         bound=BM * num_heads * depth,
         stride=BK,
@@ -3687,7 +3697,9 @@ def mha_single_batch_pipelined[
     # Shared memory for P = Q * K^t
     # Only use BN/BK tiles. Setting circular so that the prefetch in matmul
     # doesn't go OOB at the last tile.
-    var p_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var p_smem = k_smem.unsafe_offset(k_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3699,7 +3711,7 @@ def mha_single_batch_pipelined[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
+        p_smem.unsafe_offset(BM * BN if num_warps_n > 1 else 0).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[p_frag_simdwidth * num_warps_n, BM](),
@@ -4080,7 +4092,7 @@ def mha_single_batch_pipelined[
         Coord(Idx[BM], Idx[depth]), Coord(Idx[num_heads * depth], Idx[1])
     )
     var output_gmem_tile = TileTensor[linear_idx_type=.int32](
-        output_ptr + Int(q_offset), output_gmem_layout
+        output_ptr.unsafe_offset(Int(q_offset)), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
         Coord(Int(warp_y), Int(warp_x))
@@ -4335,11 +4347,11 @@ def mha_decoding[
     # split-k intermediate buffers — only used when _num_partitions > 1
     var qk_max_batch_ptr = qk_max_ptr
     if _num_partitions > 1:
-        qk_max_batch_ptr = qk_max_ptr + qk_max_offset
+        qk_max_batch_ptr = qk_max_ptr.unsafe_offset(qk_max_offset)
 
     var exp_sum_batch_ptr = exp_sum_ptr
     if _num_partitions > 1:
-        exp_sum_batch_ptr = exp_sum_ptr + exp_sum_offset
+        exp_sum_batch_ptr = exp_sum_ptr.unsafe_offset(exp_sum_offset)
 
     var num_keys = k.cache_length(batch_idx)
 
@@ -4362,10 +4374,10 @@ def mha_decoding[
                 decoding_warp_split_k=decoding_warp_split_k,
                 sink=sink,
             ](
-                q_ptr + q_batch_offset,
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
-                output_ptr + output_batch_offset,
+                output_ptr.unsafe_offset(output_batch_offset),
                 exp_sum_batch_ptr,
                 qk_max_batch_ptr,
                 scale,
@@ -4390,10 +4402,10 @@ def mha_decoding[
                 decoding_warp_split_k=decoding_warp_split_k,
                 sink=sink,
             ](
-                q_ptr + q_batch_offset,
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
-                output_ptr + output_batch_offset,
+                output_ptr.unsafe_offset(output_batch_offset),
                 exp_sum_batch_ptr,
                 qk_max_batch_ptr,
                 scale,
@@ -4435,8 +4447,8 @@ def mha_decoding[
                 q_seq_len == 1
             ), "RDNA MHA decode does not implement the query-token fold"
             var attention = AttentionRDNA[config, group, sink, token_gen=True](
-                output_ptr + output_batch_offset,
-                q_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(output_batch_offset),
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
                 mask,
@@ -4464,8 +4476,8 @@ def mha_decoding[
             var attention = Attention[
                 config, group, sink, token_gen=True, q_seq_len=tile_q_seq_len
             ](
-                output_ptr + output_batch_offset,
-                q_ptr + q_batch_offset,
+                output_ptr.unsafe_offset(output_batch_offset),
+                q_ptr.unsafe_offset(q_batch_offset),
                 k,
                 v,
                 mask,
@@ -4708,7 +4720,9 @@ def mha_decoding_single_batch[
     ](q_smem, q_smem_layout, bound=q_smem_size)
 
     comptime k_smem_size = BN * depth
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -4719,7 +4733,9 @@ def mha_decoding_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = BN * BN
-    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var v_smem = k_smem.unsafe_offset(k_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime v_smem_layout = row_major[BK, BN]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -4788,7 +4804,9 @@ def mha_decoding_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var p_smem = v_smem.unsafe_offset(v_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type, type_of(p_smem_layout), _, address_space=.SHARED
@@ -4796,7 +4814,7 @@ def mha_decoding_single_batch[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN).unsafe_bitcast[Scalar[accum_type]](),
+        p_smem.unsafe_offset(BM * BN).unsafe_bitcast[Scalar[accum_type]](),
         row_major[2 * num_warps_n, BM](),
     )
 
@@ -4811,7 +4829,7 @@ def mha_decoding_single_batch[
     var q_gmem_iter = TileTensorIter[
         q_type, type_of(q_gmem_tile_layout), _, masked=True
     ](
-        q_ptr + q_offset,
+        q_ptr.unsafe_offset(q_offset),
         q_gmem_tile_layout,
         bound=BM * depth,
         stride=BK,
@@ -5077,7 +5095,11 @@ def mha_decoding_single_batch[
                 _,
                 address_space=.SHARED,
                 circular=True,
-            ](v_smem + BN * WN * warp_x, v_sub_layout, bound=v_smem_size)
+            ](
+                v_smem.unsafe_offset(BN * WN * warp_x),
+                v_sub_layout,
+                bound=v_smem_size,
+            )
             multistage_mma[
                 BM,
                 BN,
@@ -5136,7 +5158,9 @@ def mha_decoding_single_batch[
             address_space=.SHARED,
         ](
             ptr=(
-                o_smem_ptr + num_warps_n * (num_warps_n - 1) * WM * WN
+                o_smem_ptr.unsafe_offset(
+                    num_warps_n * (num_warps_n - 1) * WM * WN
+                )
             ).unsafe_origin_cast[MutAnyOrigin](),
             layout=row_major[2 * num_warps_n, BM](),
         )
@@ -5181,19 +5205,21 @@ def mha_decoding_single_batch[
             qk_max_ptr[q_head_idx] = row_max
 
     # Pack results in shared memory for wider simd width.
-    var accum_smem_warp_ptr = (
-        q_smem.unsafe_bitcast[Scalar[output_type]]() + warp_id * WM * WN
-    )
+    var accum_smem_warp_ptr = q_smem.unsafe_bitcast[
+        Scalar[output_type]
+    ]().unsafe_offset(warp_id * WM * WN)
 
     comptime if decoding_warp_split_k:
-        accum_smem_warp_ptr += ufloordiv(
-            (
-                (num_warps_n * (num_warps_n - 1))
-                * WM
-                * WN
-                * size_of[accum_type]()
-            ),
-            size_of[output_type](),
+        accum_smem_warp_ptr = accum_smem_warp_ptr.unsafe_offset(
+            ufloordiv(
+                (
+                    (num_warps_n * (num_warps_n - 1))
+                    * WM
+                    * WN
+                    * size_of[accum_type]()
+                ),
+                size_of[output_type](),
+            )
         )
     comptime accum_smem_layout = row_major[WM, WN]()
     var accum_smem_warp_tile = TileTensor(
@@ -5224,7 +5250,7 @@ def mha_decoding_single_batch[
     # real query heads, so the copy is bounded to the rows this warp owns.
     comptime output_gmem_layout = row_major[BM, depth]()
     var output_gmem_tile = TileTensor[linear_idx_type=.int32](
-        output_ptr + q_offset, output_gmem_layout
+        output_ptr.unsafe_offset(q_offset), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
         Coord(warp_y, warp_x)
@@ -5366,7 +5392,9 @@ def mha_decoding_single_batch_pipelined[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = num_pipeline_stages * BN * BK
-    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
+    var k_smem = q_smem.unsafe_offset(q_smem_size).unsafe_bitcast[
+        Scalar[k_type]
+    ]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -5445,7 +5473,9 @@ def mha_decoding_single_batch_pipelined[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
+    var p_smem = v_smem.unsafe_offset(v_smem_size).unsafe_bitcast[
+        Scalar[v_type]
+    ]()
     comptime p_smem_size = BM * BN
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
@@ -5458,7 +5488,7 @@ def mha_decoding_single_batch_pipelined[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN)
+        (p_smem.unsafe_offset(BM * BN))
         .unsafe_bitcast[Scalar[accum_type]]()
         .as_unsafe_any_origin(),
         row_major[p_frag_simdwidth * num_warps_n, BM](),
@@ -5472,7 +5502,7 @@ def mha_decoding_single_batch_pipelined[
     var q_gmem_iter = TileTensorIter[
         q_type, type_of(q_gmem_tile_layout), _, masked=True
     ](
-        q_ptr + q_offset,
+        q_ptr.unsafe_offset(q_offset),
         q_gmem_tile_layout,
         bound=BM * depth,
         stride=BK,
@@ -5673,7 +5703,9 @@ def mha_decoding_single_batch_pipelined[
     # Pack results in shared memory for wider simd width.
     comptime accum_smem_layout = row_major[WM, WN]()
     var accum_smem_warp_tile = TileTensor(
-        q_smem.unsafe_bitcast[Scalar[output_type]]() + warp_id * WM * WN,
+        q_smem.unsafe_bitcast[Scalar[output_type]]().unsafe_offset(
+            warp_id * WM * WN
+        ),
         accum_smem_layout,
     )
 
@@ -5690,7 +5722,7 @@ def mha_decoding_single_batch_pipelined[
     # real query heads, so the copy is bounded to the rows this warp owns.
     comptime output_gmem_layout = row_major[BM, depth]()
     var output_gmem_tile = TileTensor[linear_idx_type=.int32](
-        output_ptr + q_offset, output_gmem_layout
+        output_ptr.unsafe_offset(q_offset), output_gmem_layout
     )
     var output_gmem_warp_tile = output_gmem_tile.tile[WM, WN](
         Coord(warp_y, warp_x)
@@ -6145,11 +6177,11 @@ def _bmm0_bs[
     if x >= padded_num_keys or y >= _max_prompt_len:
         return
 
-    var q = q_ptr + q_offset
+    var q = q_ptr.unsafe_offset(q_offset)
 
     var kv_head = ufloordiv(head, _group)
 
-    var p = p_ptr + p_offset
+    var p = p_ptr.unsafe_offset(p_offset)
 
     var accum = Scalar[p_type](0.0)
 
@@ -6273,10 +6305,10 @@ def _bmm1_bs[
     if x >= _depth or y >= cur_query_len:
         return
 
-    var p = p_ptr + p_offset
+    var p = p_ptr.unsafe_offset(p_offset)
 
     var kv_head = ufloordiv(head, _group)
-    var output = output_ptr + output_offset
+    var output = output_ptr.unsafe_offset(output_offset)
 
     var accum = Float32(0.0)
 

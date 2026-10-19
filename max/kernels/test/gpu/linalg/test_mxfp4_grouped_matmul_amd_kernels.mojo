@@ -119,23 +119,23 @@ def _gpu_per_expert_reference[
             continue
 
         var a_expert = TileTensor(
-            a_dev.unsafe_ptr() + token_start * packed_K,
+            a_dev.unsafe_ptr().unsafe_offset(token_start * packed_K),
             row_major(num_tokens, Idx[packed_K]),
         )
         var b_expert = TileTensor(
-            b_dev.unsafe_ptr() + expert_id * N * packed_K,
+            b_dev.unsafe_ptr().unsafe_offset(expert_id * N * packed_K),
             row_major[N, packed_K](),
         ).as_imm()
         var sfa_expert = TileTensor(
-            a_scales_dev.unsafe_ptr() + token_start * scale_K,
+            a_scales_dev.unsafe_ptr().unsafe_offset(token_start * scale_K),
             row_major(num_tokens, Idx[scale_K]),
         ).as_imm()
         var sfb_expert = TileTensor(
-            b_scales_dev.unsafe_ptr() + expert_id * N * scale_K,
+            b_scales_dev.unsafe_ptr().unsafe_offset(expert_id * N * scale_K),
             row_major[N, scale_K](),
         ).as_imm()
         var c_expert = TileTensor(
-            c_ref_dev.unsafe_ptr() + token_start * N,
+            c_ref_dev.unsafe_ptr().unsafe_offset(token_start * N),
             row_major(num_tokens, Idx[N]),
         )
 

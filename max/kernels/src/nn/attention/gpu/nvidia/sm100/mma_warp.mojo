@@ -1032,7 +1032,7 @@ def fa4_mma[
                         BK=BN,
                         swizzle_mode=P_SWIZZLE,
                         is_k_major=True,
-                    ](smem.p_smem() + wg * UInt32(BM * BN))
+                    ](smem.p_smem().unsafe_offset(wg * UInt32(BM * BN)))
 
                     for c in range(live_chunks):
                         # P columns advance by ONE key chunk per `c`;

@@ -133,7 +133,13 @@ def merge_basic_kernel(
     var n_local = n - b_idx
 
     # Perform local merge
-    local_subset_merge(A + a_idx, m_local, B + b_idx, n_local, C + k_begin)
+    local_subset_merge(
+        A.unsafe_offset(a_idx),
+        m_local,
+        B.unsafe_offset(b_idx),
+        n_local,
+        C.unsafe_offset(k_begin),
+    )
 
 
 def cpu_merge(

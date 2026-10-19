@@ -106,11 +106,11 @@ def consumer_kernel(
     # Spin exactly as the fused activation gate does: sentinel until the
     # elected producer's release lands from the peer GPU.
     var flag = Atomic[UInt64].load[ordering=Ordering.ACQUIRE](
-        recv_count + RANK_FLAG_OFFSET
+        recv_count.unsafe_offset(RANK_FLAG_OFFSET)
     )
     while flag == SENTINEL:
         flag = Atomic[UInt64].load[ordering=Ordering.ACQUIRE](
-            recv_count + RANK_FLAG_OFFSET
+            recv_count.unsafe_offset(RANK_FLAG_OFFSET)
         )
 
     var bad: Int32 = 0
@@ -133,7 +133,7 @@ def consumer_kernel(
     # sentinel after consuming the dispatch, so a stale flag can never satisfy
     # the next generation's wait.
     Atomic[UInt64].store[ordering=Ordering.RELEASE](
-        recv_count + RANK_FLAG_OFFSET, SENTINEL
+        recv_count.unsafe_offset(RANK_FLAG_OFFSET), SENTINEL
     )
 
 

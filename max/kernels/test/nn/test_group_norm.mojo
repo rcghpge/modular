@@ -106,7 +106,7 @@ def run_group_norm_cpu[
     var data_ptr_ptr = data_ptr.unsafe_ptr()
     for r in range(rows):
         var vec = TileTensor(
-            data_ptr_ptr + r * cols,
+            data_ptr_ptr.unsafe_offset(r * cols),
             row_major(cols),
         )
         var stats = compute_group_stats(vec, cols, epsilon)

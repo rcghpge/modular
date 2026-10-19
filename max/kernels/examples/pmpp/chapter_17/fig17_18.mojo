@@ -46,7 +46,7 @@ def spmv_csc_kernel(
         for i in range(Int(start), Int(end)):
             var row = cscMatrix.rowIdxs[i]
             var val = cscMatrix.values[i]
-            _ = Atomic.fetch_add(y + Int(row), inValue * val)
+            _ = Atomic.fetch_add(y.unsafe_offset(Int(row)), inValue * val)
 
 
 def main() raises:

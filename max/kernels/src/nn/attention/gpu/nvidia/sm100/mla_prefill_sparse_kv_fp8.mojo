@@ -515,7 +515,7 @@ struct MLAPrefillSparseFP8[
             var pb0 = p0b_all.ptr.load[width=4](c * 4)
             var pa1 = p1a_all.ptr.load[width=4](c * 4)
             var pb1 = p1b_all.ptr.load[width=4](c * 4)
-            var dst_block = k_smem_bf16_ptr + c * BLOCK_ELEMS
+            var dst_block = k_smem_bf16_ptr.unsafe_offset(c * BLOCK_ELEMS)
             st_shared_v4_b32_at_bf16_elem_off[out_dtype=bf16_type](
                 dst_block, sw0_a, pa0
             )
@@ -805,7 +805,9 @@ struct MLAPrefillSparseFP8[
                     comptime slot = (r * COLS_PER_GROUP + c) * 4
                     var pa = pa_all.ptr.load[width=4](slot)
                     var pb = pb_all.ptr.load[width=4](slot)
-                    var dst = v_smem_bf16_ptr + kh * KH_ELEMS + c * CG_ELEMS
+                    var dst = v_smem_bf16_ptr.unsafe_offset(
+                        kh * KH_ELEMS
+                    ).unsafe_offset(c * CG_ELEMS)
                     st_shared_v4_b32_at_bf16_elem_off[out_dtype=bf16_type](
                         dst, sw_a, pa
                     )
@@ -913,8 +915,10 @@ struct MLAPrefillSparseFP8[
             Scalar[Self.qkv_dtype], origin_of(shared_qkv), address_space=.SHARED
         ] = shared_qkv.unsafe_ptr()
         var q_smem_ptr = shared_qkv_ptr
-        var v_smem_ptr = shared_qkv_ptr + Self.SMemType.SHARED_Q_SIZE
-        var k_smem_ptr = v_smem_ptr + Self.SMemType.V_SIZE
+        var v_smem_ptr = shared_qkv_ptr.unsafe_offset(
+            Self.SMemType.SHARED_Q_SIZE
+        )
+        var k_smem_ptr = v_smem_ptr.unsafe_offset(Self.SMemType.V_SIZE)
         ref o_union = qkvo_union.unsafe_get[Self.O_TYPE]()
         var o_ptr: MutPointer[
             Scalar[Self.qkv_dtype], origin_of(o_union), address_space=.SHARED
@@ -989,12 +993,12 @@ struct MLAPrefillSparseFP8[
         ] = smem_fp8.v_fp8_tma_done.unsafe_ptr()
         # FP8 K staging: upper half of K SMEM (k_smem_ptr + K_SIZE FP8 bytes).
         # FP8 V staging: upper half of V SMEM (v_smem_ptr + V_SIZE FP8 bytes).
-        var k_smem_fp8_ptr = (
-            k_smem_ptr.unsafe_bitcast[Float8_e4m3fn]() + Self.SMemType.K_SIZE
-        )
-        var v_smem_fp8_ptr = (
-            v_smem_ptr.unsafe_bitcast[Float8_e4m3fn]() + Self.SMemType.V_SIZE
-        )
+        var k_smem_fp8_ptr = k_smem_ptr.unsafe_bitcast[
+            Float8_e4m3fn
+        ]().unsafe_offset(Self.SMemType.K_SIZE)
+        var v_smem_fp8_ptr = v_smem_ptr.unsafe_bitcast[
+            Float8_e4m3fn
+        ]().unsafe_offset(Self.SMemType.V_SIZE)
 
         if warp_idx == 0:
             if elect_one_sync():
@@ -1377,7 +1381,7 @@ struct MLAPrefillSparseFP8[
                             smem_offset * (1 - pad_row)
                             + (Self.SMemType.O_SIZE - 2) * pad_row
                         )
-                        (o_ptr + store_off).store[width=2](v)
+                        (o_ptr.unsafe_offset(store_off)).store[width=2](v)
 
             named_barrier[Int32(WARPGROUP_SIZE)](Int32(0))
             if warp_idx == 0:
@@ -1463,7 +1467,7 @@ struct MLAPrefillSparseFP8[
                         indices,
                         kv_lut,
                         k_smem_fp8_ptr,
-                        k_fp8_tma_done_ptr + cur_buf,
+                        k_fp8_tma_done_ptr.unsafe_offset(cur_buf),
                         k,
                         cta_id,
                         local_warp_idx,
@@ -1530,7 +1534,7 @@ struct MLAPrefillSparseFP8[
                         indices,
                         kv_lut,
                         v_smem_fp8_ptr,
-                        v_fp8_tma_done_ptr + cur_buf,
+                        v_fp8_tma_done_ptr.unsafe_offset(cur_buf),
                         k,
                         cta_id,
                         local_warp_idx,
@@ -1583,7 +1587,7 @@ struct MLAPrefillSparseFP8[
 
             if cta_id == 0 and warp_idx == 12 and elect_one_sync():
                 var q_tmem_desc = Self.QKMMAOpType.tmem_descriptor_q(
-                    q_smem_ptr + Self.SMemType.SHARED_Q_SIZE
+                    q_smem_ptr.unsafe_offset(Self.SMemType.SHARED_Q_SIZE)
                 )
                 # Expect exactly the REAL in-bounds Q bytes (num_q_heads):
                 # both the 64/128 built-in copy and the sub-64 manual depth-

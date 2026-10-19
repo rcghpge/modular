@@ -2011,7 +2011,7 @@ def TopKTopPSamplingFromProbKernel[
         if case .Some(top_p_arr) = top_p_arr:
             p = top_p_arr[row_idx]
 
-        var probs_ptr = probs.ptr + row_idx * _d
+        var probs_ptr = probs.ptr.unsafe_offset(row_idx * _d)
         var probs_row = TileTensor(probs_ptr, row_major(Idx[1], _d))
 
         comptime if is_apple_gpu() and coop_size == 1:
@@ -2124,7 +2124,7 @@ def TopKTopPSamplingFromProbKernel[
                     # Each thread rereads its own slice. Block reductions
                     # order the only cross-thread scalar read.
                     var dist_row = TileTensor(
-                        out_dist.unsafe_value() + bx * _d,
+                        out_dist.unsafe_value().unsafe_offset(bx * _d),
                         row_major(Idx[1], _d),
                     )
                     dist_row.store((Idx[0], i * vec_size), e.cast[dist_dtype]())
@@ -2171,7 +2171,7 @@ def TopKTopPSamplingFromProbKernel[
                 var e: SIMD[.float32, width]
                 comptime if cache_dist:
                     var dist_row = TileTensor(
-                        out_dist.unsafe_value() + bx * _d,
+                        out_dist.unsafe_value().unsafe_offset(bx * _d),
                         row_major(Idx[1], _d),
                     )
                     e = dist_row.load[width=width]((Idx[0], offset)).cast[
@@ -2544,7 +2544,7 @@ def TopKTopPSamplingFromProbKernel[
                         kept_mass = refined[1]
 
                 var dist_row = TileTensor(
-                    out_dist.unsafe_value() + bx * _d,
+                    out_dist.unsafe_value().unsafe_offset(bx * _d),
                     row_major(Idx[1], _d),
                 )
                 for i in range(vec_begin + Int(tx), vec_end, block_size):
@@ -3007,7 +3007,7 @@ def topk_softmax_sample_kernel[
         alignment=align_of[Float32](),
     ]()
 
-    var s_idxs = (s_vals + k_rounded).unsafe_bitcast[Int]()
+    var s_idxs = s_vals.unsafe_offset(k_rounded).unsafe_bitcast[Int]()
     var s_count = unsafe_stack_allocation[1, Int, address_space=.SHARED]()
 
     with PDL():

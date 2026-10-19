@@ -376,7 +376,9 @@ def _bounded_local_to_dram_kernel[
         Coord(Idx[ROWS], Idx[32]), Coord(row_stride, Idx[1])
     )
     var offset = 9 + (warp * (ROWS + 4) + 2) * Int(row_stride) + 32
-    var dst = TileTensor[linear_idx_type=.int32](dst_ptr + offset, layout)
+    var dst = TileTensor[linear_idx_type=.int32](
+        dst_ptr.unsafe_offset(offset), layout
+    )
     var valid_rows = Int(valid0 if warp == 0 else valid1)
     copy_local_to_dram[
         thread_layout, num_threads=NUM_THREADS, thread_scope=SCOPE
@@ -414,10 +416,10 @@ def _check_bounded_local_to_dram[
         host[i] = Float32(-9999)
     for i in range(64 * (ROWS + 2)):
         after_host[i] = Float32(-9999)
-    assert_equal(Int(device.unsafe_ptr() + prefix) % 4, 0)
+    assert_equal(Int(device.unsafe_ptr().unsafe_offset(prefix)) % 4, 0)
     for tile in range(2):
         var offset = prefix + (tile * (ROWS + 4) + 2) * stride + 32
-        assert_equal(Int(device.unsafe_ptr() + offset) % 8, 4)
+        assert_equal(Int(device.unsafe_ptr().unsafe_offset(offset)) % 8, 4)
     ctx.enqueue_copy(device, host)
     ctx.enqueue_copy(after_device, after_host)
     ctx.enqueue_function[

@@ -37,7 +37,7 @@ def legalize_topk_ids[
     n_experts: Int, top_k: Int
 ](topk_ids: MutPointer[Int32, _], n_tokens: Int):
     for tok_id in range(n_tokens):
-        var topk_ids_for_token = topk_ids + tok_id * top_k
+        var topk_ids_for_token = topk_ids.unsafe_offset(tok_id * top_k)
 
         def is_duplicate() {imm} -> Int:
             for i in range(top_k):
@@ -48,7 +48,12 @@ def legalize_topk_ids[
 
         var duplicate_idx = is_duplicate()
         while duplicate_idx != -1:
-            randint(topk_ids_for_token + duplicate_idx, 1, 0, n_experts - 1)
+            randint(
+                topk_ids_for_token.unsafe_offset(duplicate_idx),
+                1,
+                0,
+                n_experts - 1,
+            )
             duplicate_idx = is_duplicate()
 
 

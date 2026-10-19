@@ -140,11 +140,13 @@ def global_pipeline_kernel[
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
+    var b_smem = a_smem.unsafe_offset(a_smem_size).unsafe_bitcast[
+        Scalar[dtype]
+    ]()
 
     var a_rows = min(BM, M - block_idx.y * BM)
-    var a_block = a_ptr + block_idx.y * BM * K
-    var b_block = b_ptr + (
+    var a_block = a_ptr.unsafe_offset(block_idx.y * BM * K)
+    var b_block = b_ptr.unsafe_offset(
         block_idx.x * BN * K if transpose_b else block_idx.x * BN
     )
 
@@ -219,8 +221,8 @@ def _stage_tiles[
     comptime smem_layout = row_major[rows, cols]()
     comptime gmem_layout = _gmem_layout[rows, cols, row_stride]()
     for t in range(num_tiles):
-        var dst = TileTensor(smem + t * rows * cols, smem_layout)
-        var src = TileTensor(gmem + t * tile_step, gmem_layout)
+        var dst = TileTensor(smem.unsafe_offset(t * rows * cols), smem_layout)
+        var src = TileTensor(gmem.unsafe_offset(t * tile_step), gmem_layout)
         copy_dram_to_sram_async_ldmatrix[
             thread_layout, simd_size=simd, swizzle=True, num_threads=threads
         ](dst, src)
@@ -247,7 +249,9 @@ def smem_pipeline_kernel(
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
+    var b_smem = a_smem.unsafe_offset(a_smem_size).unsafe_bitcast[
+        Scalar[dtype]
+    ]()
     _stage_tiles[BM, BK, smem_depth, num_threads](a_smem, a_ptr, num_tiles, BK)
     _stage_tiles[BN, BK, smem_depth, num_threads](b_smem, b_ptr, num_tiles, BK)
 
@@ -310,7 +314,9 @@ def local_a_kernel(
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
+    var b_smem = a_smem.unsafe_offset(a_smem_size).unsafe_bitcast[
+        Scalar[dtype]
+    ]()
     _stage_tiles[BK, BN, BN, local_threads](b_smem, b_ptr, BN // BK, BK * BN)
 
     var p = stack_allocation[

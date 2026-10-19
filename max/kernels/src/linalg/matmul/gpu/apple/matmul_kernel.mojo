@@ -919,10 +919,12 @@ struct AppleM5MatMul[
         # hot loop -- same hoist as the A slab (see the `run` wrapper docstring).
         # `b_ptr_shifted`/`c_ptr_shifted`: same shift as the A slab in `run`
         # (no-op when `clamp_active` is False).
-        var b_ptr_shifted = b_ptr + Int(col_shift) * (
-            k if Self.transpose_b else 1
+        var b_ptr_shifted = b_ptr.unsafe_offset(
+            Int(col_shift) * (k if Self.transpose_b else 1)
         )
-        var c_ptr_shifted = c_ptr + (Int(row_shift) * n + Int(col_shift))
+        var c_ptr_shifted = c_ptr.unsafe_offset(
+            Int(row_shift) * n + Int(col_shift)
+        )
         var b_mat = TileTensor[linear_idx_type=Self.linear_idx_type](
             b_ptr_shifted, Self._pick_b_mat_layout(k, n)
         )
@@ -1476,7 +1478,7 @@ struct AppleM5MatMul[
         var tile_row0 = align_down(row_base, BM_i32)
         if tile_row0 + BM_i32 > Int32(m):
             var row_shift = (Int32(m) - BM_i32) - tile_row0
-            a_ptr = a_ptr + Int(row_shift) * k
+            a_ptr = a_ptr.unsafe_offset(Int(row_shift) * k)
 
         var a_mat = TileTensor[linear_idx_type=Self.linear_idx_type](
             a_ptr, Layout(Coord(m, k), Coord(k, Idx[1]))
@@ -1860,7 +1862,8 @@ struct AppleM5MatMul[
                     k_valid=Int(k_valid),
                 )
             var part_sub = TileTensor[linear_idx_type=Self.linear_idx_type](
-                partials_ptr + Int(split_idx) * m * n, row_major(m, n)
+                partials_ptr.unsafe_offset(Int(split_idx) * m * n),
+                row_major(m, n),
             ).tile[SG_M, SG_N](Int(sg_row_idx), Int(sg_col_idx))
             mma_op.store_bounded(
                 accum, part_sub, Int(valid_rows), Int(valid_cols)
@@ -1902,7 +1905,8 @@ struct AppleM5MatMul[
                     k_valid=Int(k_valid),
                 )
             var part_sub = TileTensor[linear_idx_type=Self.linear_idx_type](
-                partials_ptr + Int(split_idx) * m * n, row_major(m, n)
+                partials_ptr.unsafe_offset(Int(split_idx) * m * n),
+                row_major(m, n),
             ).tile[SG_M, SG_N](Int(sg_row_idx), Int(sg_col_idx))
             mma_op.store(accum, part_sub)
 

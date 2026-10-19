@@ -1566,7 +1566,9 @@ def gather4_tile_api_kernel[
         UInt8, address_space=.SHARED, alignment=128
     ]()
     var smem_ptr = smem_base.unsafe_bitcast[Scalar[dtype]]()
-    var mbar = (smem_base + smem_bytes).unsafe_bitcast[SharedMemBarrier]()
+    var mbar = smem_base.unsafe_offset(smem_bytes).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var elect_one_thread = tid == 0

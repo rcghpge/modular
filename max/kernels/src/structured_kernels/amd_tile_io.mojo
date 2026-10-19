@@ -337,7 +337,7 @@ struct _IndexedSubTileLayout[
         """
         comptime assert type_of(dst).static_stride[1] == 1
         comptime assert type_of(dst).static_stride[0] == Self.cols
-        var dst_ptr = dst.ptr + strip * Self.sub_rows * Self.cols
+        var dst_ptr = dst.ptr.unsafe_offset(strip * Self.sub_rows * Self.cols)
         _global_load_to_lds[width=Self.chunk_width](
             src.unsafe_address_space_cast[.GLOBAL](),
             dst_ptr.unsafe_address_space_cast[.SHARED](),
@@ -374,7 +374,7 @@ def ds_read_tr16_b64_row(
         thread_layout
     ](lane_in_row)
     var offset = dist_result[2]
-    var ptr = tile.ptr + offset
+    var ptr = tile.ptr.unsafe_offset(offset)
 
     var shared_ptr3 = __mlir_op.`builtin.unrealized_conversion_cast`[
         _type=__mlir_type.`!llvm.ptr<3>`
@@ -626,7 +626,7 @@ struct TiledMmaLoader[
         comptime depth_offset = dt * MMA_M
         comptime blk = depth_offset // BK
         comptime d_in_blk = depth_offset % BK
-        var block_base = v_base + blk * BN * BK
+        var block_base = v_base.unsafe_offset(blk * BN * BK)
 
         # Match K's swizzle on V reads.  In `mla_kv_alias` mode K and V
         # share one SMEM image: K writes via `SubTileLoaderLDS.load`,
@@ -655,10 +655,12 @@ struct TiledMmaLoader[
                 var vec_idx = byte_offset // simd_w
                 var sub_vec = byte_offset & (simd_w - 1)
                 var swizzled_vec = swizzle_fn(vec_idx)
-                var addr = block_base + swizzled_vec * simd_w + sub_vec
+                var addr = block_base.unsafe_offset(
+                    swizzled_vec * simd_w
+                ).unsafe_offset(sub_vec)
                 return ds_read_tr8_b64(addr)
             else:
-                return ds_read_tr8_b64(block_base + byte_offset)
+                return ds_read_tr8_b64(block_base.unsafe_offset(byte_offset))
 
         var r0 = _load_keys[0]()
         var r1 = _load_keys[16]()
@@ -756,7 +758,7 @@ struct TiledMmaLoader[
         comptime depth_offset = dt * MMA_M
         comptime blk = depth_offset // block_width
         comptime d_in_blk = depth_offset % block_width
-        var block_base = v_base + blk * BN * block_width
+        var block_base = v_base.unsafe_offset(blk * BN * block_width)
 
         comptime simd_w = simd_width_of[Self.in_type]()
         # Even lanes (is_odd=0) read the low-half-depth-byte octet
@@ -772,10 +774,12 @@ struct TiledMmaLoader[
             comptime if case .Some(swizzle_fn) = Self.swizzle:
                 var vec_idx, sub_vec = udivmod(byte_offset, simd_w)
                 var swizzled_vec = swizzle_fn(vec_idx)
-                var addr = block_base + swizzled_vec * simd_w + sub_vec
+                var addr = block_base.unsafe_offset(
+                    swizzled_vec * simd_w
+                ).unsafe_offset(sub_vec)
                 return ds_read_tr8_b64(addr)
             else:
-                return ds_read_tr8_b64(block_base + byte_offset)
+                return ds_read_tr8_b64(block_base.unsafe_offset(byte_offset))
 
         var r0 = _load_keys[0]()
         var r1 = _load_keys[8]()
@@ -845,7 +849,7 @@ struct TiledMmaLoader[
 
         return _load_from_lds[
             width=simd_width, imm_offset_bytes=imm_offset_bytes
-        ](src.ptr + offset)
+        ](src.ptr.unsafe_offset(offset))
 
 
 # ===----------------------------------------------------------------------=== #
@@ -917,7 +921,7 @@ def _load_from_lds[
         typed_imm_offset_bytes % size_of[dtype]() == 0
     ), "_load_from_lds: typed_imm_offset_bytes must be a multiple of dtype size"
     comptime _offset_elts = typed_imm_offset_bytes // size_of[dtype]()
-    var shifted_ptr = shared_ptr + _offset_elts
+    var shifted_ptr = shared_ptr.unsafe_offset(_offset_elts)
 
     var shared_ptr3 = __mlir_op.`builtin.unrealized_conversion_cast`[
         _type=__mlir_type.`!llvm.ptr<3>`
@@ -1003,7 +1007,7 @@ def _load_from_lds[
             noalias_scopes=alias_scope_attr,
             alias_scopes=no_alias_scope_attr,
         ](shared_ptr3)
-        var shared_ptr_offset = shifted_ptr + 16
+        var shared_ptr_offset = shifted_ptr.unsafe_offset(16)
         var shared_ptr3_hi = __mlir_op.`builtin.unrealized_conversion_cast`[
             _type=__mlir_type.`!llvm.ptr<3>`
         ](shared_ptr_offset)
@@ -1206,7 +1210,7 @@ def load_lds_fragment[
                     frag_idx * _reg_stride,
                     rebind[FragElement](
                         _load_from_lds[width=lds_frag_width](
-                            smem_ptr + full_offset
+                            smem_ptr.unsafe_offset(full_offset)
                         )
                     ),
                 )
@@ -1221,7 +1225,9 @@ def load_lds_fragment[
             reg_ptr.store(
                 i * _reg_stride,
                 rebind[FragElement](
-                    _load_from_lds[width=lds_frag_width](smem_ptr + full_offset)
+                    _load_from_lds[width=lds_frag_width](
+                        smem_ptr.unsafe_offset(full_offset)
+                    )
                 ),
             )
 
@@ -2360,8 +2366,8 @@ struct SubTileLoaderLDS_st_8x32[
                     # lane*_bytes_per_thread). _bytes_per_thread == 16, matching
                     # the within-chunk lane stride the closed form assumes.
                     lds_warp_byte = Int32(_ci * 0x410)
-            var v_smem_warp_ptr = v_smem_base + lds_warp_byte // Int32(
-                size_of[Self.dtype]()
+            var v_smem_warp_ptr = v_smem_base.unsafe_offset(
+                lds_warp_byte // Int32(size_of[Self.dtype]())
             )
 
             var shared_ptr3 = __mlir_op.`builtin.unrealized_conversion_cast`[

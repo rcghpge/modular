@@ -1856,9 +1856,9 @@ struct TileWriter[
                             + p3_vec_chunkM_idx
                         ) * UInt32(p3_simd_size)
                         (
-                            p3_unswiz.ptr
-                            + p3_n_idx * UInt32(Self.stage_contiguous_size)
-                            + p3_local_col
+                            p3_unswiz.ptr.unsafe_offset(
+                                p3_n_idx * UInt32(Self.stage_contiguous_size)
+                            ).unsafe_offset(p3_local_col)
                         ).store[alignment=p3_smem_alignment](p3_val_vec)
 
                     WarpGroupBarrier[Self.num_output_warps * WARP_SIZE].sync()
@@ -1973,10 +1973,9 @@ struct TileWriter[
                                         Int(p3_src_idx) * p3_cfg.top_k
                                         + Int(p3_src_topk)
                                     ) * p3_cfg.msg_bytes + p3_byte_off
-                                    var p3_dst_ptr = (
-                                        p3_cfg.recv_buf_ptrs[p3_dst_p2p_rank]
-                                        + p3_recv_off
-                                    )
+                                    var p3_dst_ptr = p3_cfg.recv_buf_ptrs[
+                                        p3_dst_p2p_rank
+                                    ].unsafe_offset(p3_recv_off)
                                     comptime p3_row_bytes = (
                                         Self.stage_contiguous_size
                                         * size_of[Self.c_type]()
@@ -2020,9 +2019,12 @@ struct TileWriter[
                                     cp_async_bulk_global_shared_cta(
                                         p3_dst_ptr,
                                         (
-                                            p3_unswiz.ptr
-                                            + UInt32(p3_tid)
-                                            * UInt32(Self.stage_contiguous_size)
+                                            p3_unswiz.ptr.unsafe_offset(
+                                                UInt32(p3_tid)
+                                                * UInt32(
+                                                    Self.stage_contiguous_size
+                                                )
+                                            )
                                         ).unsafe_bitcast[UInt8](),
                                         Int32(p3_row_bytes),
                                     )
@@ -2367,8 +2369,8 @@ struct TileWriter[
                     )
                 if in_bounds:
                     comptime if size_of[Self.c_type]() == 2:
-                        var src_ptr = c_smem_split._storage + swizzle(
-                            linear_idx
+                        var src_ptr = c_smem_split._storage.unsafe_offset(
+                            swizzle(linear_idx)
                         )
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
@@ -2378,7 +2380,9 @@ struct TileWriter[
                             src,
                         )
                     else:
-                        var src_ptr = c_smem_split._storage + linear_idx
+                        var src_ptr = c_smem_split._storage.unsafe_offset(
+                            linear_idx
+                        )
                         var src = src_ptr.load[
                             width=simd_size, alignment=alignment
                         ]()
@@ -2450,7 +2454,7 @@ struct TileWriter[
                 continue
             var src_idx = UInt32(simd_size) * tidx
             var c_smem_idx = swizzle(src_idx)
-            var val_vec = (c_smem_ptr + c_smem_idx).load[
+            var val_vec = c_smem_ptr.unsafe_offset(c_smem_idx).load[
                 width=simd_size,
                 alignment=smem_alignment,
             ]()
@@ -2937,7 +2941,7 @@ struct TileWriter[
                         ldm_m_row * UInt32(sub_tile_n) + ldm_nloc
                     )
                     var epi_vals = ld_matrix[simd_width=4, transpose=True](
-                        epilogue_tile._storage + Int(ldm_off)
+                        epilogue_tile._storage.unsafe_offset(Int(ldm_off))
                     )
 
                     upper_frag_casted[frag_offset] += epi_vals[0].cast[
@@ -2966,7 +2970,7 @@ struct TileWriter[
                         ldm_row * UInt32(sub_tile_n) + ldm_nloc
                     )
                     var epi_vals = ld_matrix[simd_width=4](
-                        epilogue_tile._storage + Int(ldm_off)
+                        epilogue_tile._storage.unsafe_offset(Int(ldm_off))
                     )
 
                     upper_frag_casted[frag_offset] += epi_vals[0].cast[
@@ -3007,7 +3011,7 @@ struct TileWriter[
                         )
                         var epi_vals_l = ld_matrix[
                             simd_width=4, transpose=True
-                        ](epilogue_tile._storage + Int(ldm_off_l))
+                        ](epilogue_tile._storage.unsafe_offset(Int(ldm_off_l)))
 
                         lower_frag_casted[frag_offset] += epi_vals_l[0].cast[
                             Self.epilogue_dtype
@@ -3036,7 +3040,7 @@ struct TileWriter[
                             ldm_row_l * UInt32(sub_tile_n) + ldm_nloc_l
                         )
                         var epi_vals_l = ld_matrix[simd_width=4](
-                            epilogue_tile._storage + Int(ldm_off_l)
+                            epilogue_tile._storage.unsafe_offset(Int(ldm_off_l))
                         )
 
                         lower_frag_casted[frag_offset] += epi_vals_l[0].cast[
@@ -3214,7 +3218,7 @@ struct TileWriter[
                 else:
                     var n_col = local_col + top_u[1] + UInt32(inc)
                     var bias = (
-                        (epilogue_tile._storage + Int(n_col))
+                        (epilogue_tile._storage.unsafe_offset(Int(n_col)))
                         .load[width=2]()
                         .cast[Self.epilogue_dtype]()
                     )
@@ -3247,7 +3251,7 @@ struct TileWriter[
                     else:
                         var n_col_l = local_col + top_l[1] + UInt32(inc)
                         var bias = (
-                            (epilogue_tile._storage + Int(n_col_l))
+                            (epilogue_tile._storage.unsafe_offset(Int(n_col_l)))
                             .load[width=2]()
                             .cast[Self.epilogue_dtype]()
                         )
@@ -3387,8 +3391,8 @@ struct TileWriter[
             comptime for col_wg in range(num_col_warp_groups):
                 epilogue_pipeline.wait_producer()
                 var epi_stage_idx = Int(epilogue_pipeline.consumer_stage())
-                var tile_ptr = (
-                    epilogue_tiles_base + epi_stage_idx * epilogue_tile_elems
+                var tile_ptr = epilogue_tiles_base.unsafe_offset(
+                    epi_stage_idx * epilogue_tile_elems
                 )
 
                 comptime expected_col = (
@@ -3404,7 +3408,7 @@ struct TileWriter[
                         ldm_row * UInt32(sub_tile_n) + UInt32(col_in_tile)
                     )
                     var epi_vals = ld_matrix[simd_width=4](
-                        tile_ptr + Int(ldm_off)
+                        tile_ptr.unsafe_offset(Int(ldm_off))
                     )
 
                     if is_my_col_group:
@@ -3427,7 +3431,7 @@ struct TileWriter[
                             ldm_row_l * UInt32(sub_tile_n) + UInt32(col_in_tile)
                         )
                         var epi_vals_l = ld_matrix[simd_width=4](
-                            tile_ptr + Int(ldm_off_l)
+                            tile_ptr.unsafe_offset(Int(ldm_off_l))
                         )
 
                         if is_my_col_group:

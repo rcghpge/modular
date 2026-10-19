@@ -292,11 +292,13 @@ def merge_tiled_kernel(
 
         # All threads call the sequential merge function
         merge_sequential_shared(
-            A_S + a_curr,
+            A_S.unsafe_offset(a_curr),
             a_next - a_curr,
-            B_S + b_curr,
+            B_S.unsafe_offset(b_curr),
             b_next - b_curr,
-            C + C_curr + C_completed + c_curr,
+            C.unsafe_offset(C_curr)
+            .unsafe_offset(C_completed)
+            .unsafe_offset(c_curr),
         )
 
         # Update the number of A and B elements that have been consumed thus far

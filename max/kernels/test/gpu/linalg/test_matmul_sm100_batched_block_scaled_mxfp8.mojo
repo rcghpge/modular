@@ -293,20 +293,20 @@ def test_blackwell_block_scaled_matmul_tma_umma_warp_specialized[
 
     for b in range(Int(batch)):
         var a_2d = TileTensor(
-            a_tensor._storage + b * a_batch_stride, a_2d_shape
+            a_tensor._storage.unsafe_offset(b * a_batch_stride), a_2d_shape
         )
         var b_2d = TileTensor(
-            b_tensor._storage + b * b_batch_stride, b_2d_shape
+            b_tensor._storage.unsafe_offset(b * b_batch_stride), b_2d_shape
         )
         var c_ref_2d = TileTensor(
-            c_ref_tensor._storage + b * c_batch_stride, c_2d_shape
+            c_ref_tensor._storage.unsafe_offset(b * c_batch_stride), c_2d_shape
         )
         var a_scales_5d = TileTensor(
-            a_scales_tensor._storage + b * a_scales_batch_stride,
+            a_scales_tensor._storage.unsafe_offset(b * a_scales_batch_stride),
             a_scales_5d_shape,
         )
         var b_scales_5d = TileTensor(
-            b_scales_tensor._storage + b * b_scales_batch_stride,
+            b_scales_tensor._storage.unsafe_offset(b * b_scales_batch_stride),
             b_scales_5d_shape,
         )
 

@@ -760,7 +760,7 @@ def _softmax_cpu[
         for i in range(start_offset, end_offset):
             var buffer_offset = i * inner_dim
             var output_buffer_view = TileTensor(
-                output.ptr + buffer_offset,
+                output.ptr.unsafe_offset(buffer_offset),
                 row_major(inner_dim),
             )
             var indices = _get_nd_indices_from_flat_index(i, shape_il, rank - 1)
@@ -2270,8 +2270,9 @@ def _online_softmax_iter_for_mma_output_split_warp_reduce[
     comptime row_warp_tile_size = (num_warps_n - 1) * warp_tile_size
     # Makes sure arithmetic is optimized away when `num_warps_m == 1`.
     var o_smem_ptr = (
-        o_smem_ptr_base
-        + warp_y * (num_warps_n - 1) * row_warp_tile_size if num_warps_m
+        o_smem_ptr_base.unsafe_offset(
+            warp_y * (num_warps_n - 1) * row_warp_tile_size
+        ) if num_warps_m
         > 1 else o_smem_ptr_base
     )
 
@@ -2439,8 +2440,8 @@ def _online_softmax_iter_for_mma_output_split_warp_reduce[
             # `N\X` refer to `warp_n`, `warp_x`
             comptime row = warp_n
             var col = warp_x - (1 if warp_x > warp_n else 0)
-            var o_smem_ptr_write = (
-                o_smem_ptr + (row * (num_warps_n - 1) + col) * warp_tile_size
+            var o_smem_ptr_write = o_smem_ptr.unsafe_offset(
+                (row * (num_warps_n - 1) + col) * warp_tile_size
             )
             var o_smem_write = (
                 TileTensor[
@@ -2473,8 +2474,8 @@ def _online_softmax_iter_for_mma_output_split_warp_reduce[
     comptime for warp_n in range(num_warps_n - 1):
         var row = warp_x
         comptime col = warp_n
-        var o_smem_ptr_reduce = (
-            o_smem_ptr + (row * (num_warps_n - 1) + col) * warp_tile_size
+        var o_smem_ptr_reduce = o_smem_ptr.unsafe_offset(
+            (row * (num_warps_n - 1) + col) * warp_tile_size
         )
         var o_smem_reduce = (
             TileTensor[

@@ -135,15 +135,21 @@ def kernel_5[
     comptime c_smem_bytes = BM * MMA_N * size_of[c_type]()
 
     var a_smem = smem.unsafe_bitcast[Scalar[a_type]]()
-    var b_smem = (smem + a_smem_bytes).unsafe_bitcast[Scalar[b_type]]()
-    var c_smem = (smem + a_smem_bytes + b_smem_bytes).unsafe_bitcast[
-        Scalar[c_type]
+    var b_smem = smem.unsafe_offset(a_smem_bytes).unsafe_bitcast[
+        Scalar[b_type]
     ]()
+    var c_smem = (
+        smem.unsafe_offset(a_smem_bytes)
+        .unsafe_offset(b_smem_bytes)
+        .unsafe_bitcast[Scalar[c_type]]()
+    )
 
     var c_smem_tile = TileTensor(c_smem, row_major[BM, MMA_N]())
 
     var smem_pool = (
-        smem + a_smem_bytes + b_smem_bytes + c_smem_bytes
+        smem.unsafe_offset(a_smem_bytes)
+        .unsafe_offset(b_smem_bytes)
+        .unsafe_offset(c_smem_bytes)
     ).unsafe_bitcast[Int64]()
 
     var a_smem_tile = TileTensor(a_smem, a_smem_layout)
@@ -160,9 +166,9 @@ def kernel_5[
     comptime expected_bytes = cta_group * (a_expected_bytes + b_expected_bytes)
 
     var tma_mbar_ptr = smem_pool.unsafe_bitcast[Int64]()
-    var mma_mbar_ptr = tma_mbar_ptr + 2
+    var mma_mbar_ptr = tma_mbar_ptr.unsafe_offset(2)
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (mma_mbar_ptr + 2).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = mma_mbar_ptr.unsafe_offset(2).unsafe_bitcast[UInt32]()
 
     var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
@@ -254,11 +260,15 @@ def kernel_5[
                 comptime assert ((a_offset * size_of[a_type]()) % 128) == 0
                 comptime assert ((b_offset * size_of[b_type]()) % 128) == 0
                 var a_smem_slice = TileTensor(
-                    a_smem + a_offset + peer_cta_coord[2] * a_tma_load_size,
+                    a_smem.unsafe_offset(a_offset).unsafe_offset(
+                        peer_cta_coord[2] * a_tma_load_size
+                    ),
                     sub_a_smem_layout,
                 )
                 var b_smem_slice = TileTensor(
-                    b_smem + b_offset + peer_cta_coord[1] * b_tma_load_size,
+                    b_smem.unsafe_offset(b_offset).unsafe_offset(
+                        peer_cta_coord[1] * b_tma_load_size
+                    ),
                     sub_b_smem_layout,
                 )
                 a_tma_op.async_multicast_load[cta_group](
@@ -377,10 +387,12 @@ def kernel_5[
             var d_reg_lower_packed = bitcast[.float32, 4](d_reg_lower)
 
             st_matrix[simd_width=4](
-                upper.unsafe_ptr() + st_matrix_offset, d_reg_upper_packed
+                upper.unsafe_ptr().unsafe_offset(st_matrix_offset),
+                d_reg_upper_packed,
             )
             st_matrix[simd_width=4](
-                lower.unsafe_ptr() + st_matrix_offset, d_reg_lower_packed
+                lower.unsafe_ptr().unsafe_offset(st_matrix_offset),
+                d_reg_lower_packed,
             )
 
     barrier()

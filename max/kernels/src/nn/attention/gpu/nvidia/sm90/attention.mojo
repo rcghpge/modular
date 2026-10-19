@@ -582,7 +582,7 @@ def produce[
             address_space=.SHARED,
             linear_idx_type=.int32,
         ](
-            q_smem + UInt32(q_size) * q_idx + offset,
+            q_smem.unsafe_offset(UInt32(q_size) * q_idx).unsafe_offset(offset),
             row_major(q_tile_shape),
         )
 
@@ -647,7 +647,7 @@ def produce[
         comptime if is_k_side:
             paged_rows.tma_copy_k[needs_partial=False](
                 tma_op,
-                kv_smem + UInt32(stage_sz) * write_idx,
+                kv_smem.unsafe_offset(UInt32(stage_sz) * write_idx),
                 p_mbar,
                 kv_head_idx=kv_head_idx,
                 elect=e,
@@ -655,7 +655,7 @@ def produce[
         else:
             paged_rows.tma_copy_v[needs_partial=False](
                 tma_op,
-                kv_smem + UInt32(stage_sz) * write_idx,
+                kv_smem.unsafe_offset(UInt32(stage_sz) * write_idx),
                 p_mbar,
                 kv_head_idx=kv_head_idx,
                 elect=e,
@@ -700,7 +700,7 @@ def produce[
         comptime if is_k_side:
             paged_rows.tma_copy_k[needs_partial=True](
                 tma_op,
-                kv_smem + UInt32(stage_sz) * write_idx,
+                kv_smem.unsafe_offset(UInt32(stage_sz) * write_idx),
                 p_mbar,
                 kv_head_idx=kv_head_idx,
                 elect=e,
@@ -709,7 +709,7 @@ def produce[
         else:
             paged_rows.tma_copy_v[needs_partial=True](
                 tma_op,
-                kv_smem + UInt32(stage_sz) * write_idx,
+                kv_smem.unsafe_offset(UInt32(stage_sz) * write_idx),
                 p_mbar,
                 kv_head_idx=kv_head_idx,
                 elect=e,

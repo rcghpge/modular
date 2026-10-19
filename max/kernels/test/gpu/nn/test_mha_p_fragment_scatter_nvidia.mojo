@@ -65,7 +65,7 @@ def _scatter[
     registers_storage[0] = -29
     registers_storage[REG_ROWS * FRAGMENT + 1] = -30
     var registers = TileTensor[address_space=.LOCAL, linear_idx_type=.int32](
-        registers_storage.unsafe_ptr() + 1,
+        registers_storage.unsafe_ptr().unsafe_offset(1),
         row_major[REG_ROWS, FRAGMENT](),
     )
     comptime for n_mma in range(WN // MMA_N):
@@ -82,7 +82,7 @@ def _scatter[
         address_space=.SHARED,
         circular=True,
     ](
-        storage.unsafe_ptr() + GUARD,
+        storage.unsafe_ptr().unsafe_offset(GUARD),
         tile_layout,
         bound=RING_SIZE,
         stride=BM * BK,

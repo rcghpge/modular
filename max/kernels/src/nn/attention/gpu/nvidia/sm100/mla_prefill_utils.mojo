@@ -467,7 +467,7 @@ def split_smem[
             MutAnyOrigin,
             address_space=.SHARED,
         ](
-            rebind[SmemPtr[second_dtype]](ptr + first_size),
+            rebind[SmemPtr[second_dtype]](ptr.unsafe_offset(first_size)),
             second_layout,
         ),
     }
@@ -603,12 +603,12 @@ struct TMAtoCvtPipeline[
     @inline(.always)
     def producer_mbar(self) -> MBarType:
         var idx: UInt32 = self.state.index()
-        return self.producer_mbars + idx
+        return self.producer_mbars.unsafe_offset(idx)
 
     @inline(.always)
     def consumer_mbar(self) -> MBarType:
         var idx: UInt32 = self.state.index()
-        return self.consumer_mbars + idx
+        return self.consumer_mbars.unsafe_offset(idx)
 
     @inline(.always)
     def producer_acquire(self):
@@ -660,12 +660,12 @@ struct CvtToMMAPipeline[
     @inline(.always)
     def producer_mbar(self) -> MBarType:
         var idx: UInt32 = self.state.index()
-        return self.producer_mbars + idx
+        return self.producer_mbars.unsafe_offset(idx)
 
     @inline(.always)
     def consumer_mbar(self) -> MBarType:
         var idx: UInt32 = self.state.index()
-        return self.consumer_mbars + idx
+        return self.consumer_mbars.unsafe_offset(idx)
 
     @inline(.always)
     def producer_acquire(self):

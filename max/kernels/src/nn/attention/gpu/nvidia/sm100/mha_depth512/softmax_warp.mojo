@@ -204,7 +204,9 @@ def depth512_scale_write_output[
                 var o_k_block = col // o_sw_K
                 var o_inner = Int(m_row) * o_sw_K + col % o_sw_K
                 (
-                    o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)
+                    o_smem.unsafe_offset(o_k_block * BM * o_sw_K).unsafe_offset(
+                        o_swizzle(o_inner)
+                    )
                 ).unsafe_bitcast[UInt32]().store(packed)
 
     comptime if config.split_o:
@@ -699,7 +701,9 @@ def depth512_softmax[
                 comptime r = base % p_sw_K
                 var p_inner = Int(m_row) * p_sw_K + r
                 (
-                    p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)
+                    p_smem.unsafe_offset(p_k_block * BM * p_sw_K).unsafe_offset(
+                        p_swizzle(p_inner)
+                    )
                 ).unsafe_bitcast[UInt32]().store(bitcast[.uint32, 4](vals))
 
         # Batch 0: compute exp.
@@ -909,7 +913,9 @@ def depth512_softmax[
     ].O_mma_hi_offset if config.split_o else Depth512MBars[
         config.num_kv_stages, config.split_o
     ].O_mma_lo_offset
-    var o_mma_done_mbar: MBarType = mbars.mbar_base + o_mma_done_offset
+    var o_mma_done_mbar: MBarType = mbars.mbar_base.unsafe_offset(
+        o_mma_done_offset
+    )
     o_mma_done_mbar[].wait(o_phase)
     tcgen05_fence_after()
 

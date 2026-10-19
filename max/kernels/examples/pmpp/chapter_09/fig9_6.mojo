@@ -40,7 +40,7 @@ def histogram_kernel(
 
     if i < width * height:
         var b = image[Int(i)]
-        _ = Atomic.fetch_add(bins + Int(b), UInt32(1))
+        _ = Atomic.fetch_add(bins.unsafe_offset(Int(b)), UInt32(1))
 
 
 # ========================== TEST CODE ==========================

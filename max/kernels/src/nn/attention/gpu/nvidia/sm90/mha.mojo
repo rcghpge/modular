@@ -1208,7 +1208,7 @@ def _mha_sm90[
     ]()
     # We have `num_pipeline_stages` instances of each
     comptime kv_smem_size = config.kv_smem_size(True)
-    var kv_smem = q_smem + q_smem_size
+    var kv_smem = q_smem.unsafe_offset(q_smem_size)
 
     # var head_idx: UInt32 = block_idx.y
     # var q_tile_idx: UInt32 = block_idx.x
@@ -1346,13 +1346,15 @@ def _mha_sm90[
             sink_weights.value()
         )
 
-    var produced_mbar_kv = (kv_smem + kv_smem_size).unsafe_bitcast[
+    var produced_mbar_kv = kv_smem.unsafe_offset(kv_smem_size).unsafe_bitcast[
         SharedMemBarrier
     ]()
-    var consumed_mbar_kv = produced_mbar_kv + pipeline_stages
-    var produced_mbar_q = consumed_mbar_kv + pipeline_stages
-    var consumed_mbar_q = produced_mbar_q + 2
-    var block_idx_ptr = (consumed_mbar_q + 2).unsafe_bitcast[UInt32]()
+    var consumed_mbar_kv = produced_mbar_kv.unsafe_offset(pipeline_stages)
+    var produced_mbar_q = consumed_mbar_kv.unsafe_offset(pipeline_stages)
+    var consumed_mbar_q = produced_mbar_q.unsafe_offset(2)
+    var block_idx_ptr = consumed_mbar_q.unsafe_offset(2).unsafe_bitcast[
+        UInt32
+    ]()
 
     # comptime USE_TMA = True
     comptime USE_TMA = False
@@ -1437,7 +1439,8 @@ def _mha_sm90[
     ) {imm}:
         comptime sz = BN * config.padded_depth
         k_smem = TileTensor[address_space=.SHARED, linear_idx_type=.int32](
-            (kv_smem + UInt32(sz) * idx).as_unsafe_any_origin(), k_smem_layout
+            kv_smem.unsafe_offset(UInt32(sz) * idx).as_unsafe_any_origin(),
+            k_smem_layout,
         )
 
     @inline(.always)
@@ -1453,7 +1456,8 @@ def _mha_sm90[
     ) {imm}:
         comptime sz = BN * config.padded_depth
         v_smem = TileTensor[address_space=.SHARED, linear_idx_type=.int32](
-            (kv_smem + UInt32(sz) * idx).as_unsafe_any_origin(), v_smem_layout
+            kv_smem.unsafe_offset(UInt32(sz) * idx).as_unsafe_any_origin(),
+            v_smem_layout,
         )
 
     @inline(.always)
@@ -1540,7 +1544,9 @@ def _mha_sm90[
         ]:
             # Preserve the full parent Q layout and its pitch across warp groups.
             return TileTensor[address_space=.SHARED, linear_idx_type=.int32](
-                (q_smem + UInt32(q_size) * q_idx).as_unsafe_any_origin(),
+                q_smem.unsafe_offset(
+                    UInt32(q_size) * q_idx
+                ).as_unsafe_any_origin(),
                 q_smem_layout_consumer,
             )
 
@@ -1810,7 +1816,7 @@ def _mha_sm90[
             ] = o_ptr_arg
 
             comptime if decoding and PartitionType.do_partition:
-                output_ptr = output_ptr + (
+                output_ptr = output_ptr.unsafe_offset(
                     UInt32(depth * num_heads)
                     * batch_size
                     * position.prompt_offset
@@ -1835,7 +1841,9 @@ def _mha_sm90[
                 tid,
                 local_warp_group_idx,
                 warp_y,
-                (q_smem + q_idx * q_tile_size).as_unsafe_any_origin(),
+                q_smem.unsafe_offset(
+                    q_idx * q_tile_size
+                ).as_unsafe_any_origin(),
                 output_reg_tile,
             )
             # Guard writing to shared memory.

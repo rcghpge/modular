@@ -115,13 +115,17 @@ def _run_case[
     ctx.enqueue_copy(input_device, input_host)
     output_device.enqueue_fill(nan[.float32]())
     var source = Input(
-        input_device.unsafe_ptr() + 1, (rows, cols), input_strides
+        input_device.unsafe_ptr().unsafe_offset(1), (rows, cols), input_strides
     )
     var output = Output(
-        output_device.unsafe_ptr() + 1, (rows, cols), output_strides
+        output_device.unsafe_ptr().unsafe_offset(1),
+        (rows, cols),
+        output_strides,
     )
     var output_alias = Output(
-        output_device.unsafe_ptr() + 1, (rows, cols), output_strides
+        output_device.unsafe_ptr().unsafe_offset(1),
+        (rows, cols),
+        output_strides,
     )
 
     # Passing the slices themselves exercises DevicePassable, not projection.
@@ -148,13 +152,13 @@ def _run_case[
         io_spec=IOSpec.MutableInput, static_spec=input_spec
     ]
     var inplace_source = MutableInput(
-        input_device.unsafe_ptr() + 1, (rows, cols), input_strides
+        input_device.unsafe_ptr().unsafe_offset(1), (rows, cols), input_strides
     )
     var inplace = InPlaceOutput(
-        input_device.unsafe_ptr() + 1, (rows, cols), input_strides
+        input_device.unsafe_ptr().unsafe_offset(1), (rows, cols), input_strides
     )
     var inplace_alias = InPlaceOutput(
-        input_device.unsafe_ptr() + 1, (rows, cols), input_strides
+        input_device.unsafe_ptr().unsafe_offset(1), (rows, cols), input_strides
     )
     ctx.enqueue_function[
         _copy_with_metadata[Input.RuntimeLayout, InPlaceOutput.RuntimeLayout]

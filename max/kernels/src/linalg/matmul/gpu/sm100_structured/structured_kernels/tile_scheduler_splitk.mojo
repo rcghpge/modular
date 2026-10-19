@@ -859,9 +859,9 @@ struct TileScheduler[
             ](tmem.addr + UInt32(c0))
             tcgen05_load_wait()
             comptime for q in range(CH // 4):
-                (workspace + row0 + 4 * (c0 // 4 + q) * Self.BM).store[
-                    alignment=16
-                ](
+                workspace.unsafe_offset(row0).unsafe_offset(
+                    4 * (c0 // 4 + q) * Self.BM
+                ).store[alignment=16](
                     SIMD[accum_type, 4](
                         v[4 * q], v[4 * q + 1], v[4 * q + 2], v[4 * q + 3]
                     )
@@ -920,7 +920,7 @@ struct TileScheduler[
         comptime NB = ceildiv(PT, RB)
         var tile = Int(self.output_tile_index(work_info))
         var split = Int(work_info.k_start // self.k_tiles_per_split)
-        var count = counters + tile * SPLITK_COUNTER_STRIDE
+        var count = counters.unsafe_offset(tile * SPLITK_COUNTER_STRIDE)
 
         # Every thread's slot stores precede thread 0's release add.
         named_barrier[Int32(WARPGROUP_SIZE)](Int32(Self.PARALLEL_BARRIER_ID))
@@ -957,7 +957,9 @@ struct TileScheduler[
                             lo + epilogue_thread_idx + WARPGROUP_SIZE * u, last
                         )
                         vals[k * RB + uu] = (
-                            workspace + base + k * Self.BM * Self.MMA_N + 4 * p
+                            workspace.unsafe_offset(base)
+                            .unsafe_offset(k * Self.BM * Self.MMA_N)
+                            .unsafe_offset(4 * p)
                         ).load[width=4, alignment=16]()
             comptime for uu in range(RB):
                 comptime u = jb * RB + uu
@@ -1077,7 +1079,7 @@ struct TileScheduler[
         val: UInt32,
     ):
         var sema = NamedBarrierSemaphore[Int32(WARPGROUP_SIZE), 4, 1](
-            lock_ptr + lock_idx, barrier_group_thread_idx
+            lock_ptr.unsafe_offset(lock_idx), barrier_group_thread_idx
         )
         sema.wait_eq(barrier_id, Int32(val))
 
@@ -1102,7 +1104,7 @@ struct TileScheduler[
         val: UInt32,
     ):
         var sema = NamedBarrierSemaphore[Int32(WARPGROUP_SIZE), 4, 1](
-            lock_ptr + lock_idx, barrier_group_thread_idx
+            lock_ptr.unsafe_offset(lock_idx), barrier_group_thread_idx
         )
         sema.arrive_set(barrier_id, Int32(val))
 

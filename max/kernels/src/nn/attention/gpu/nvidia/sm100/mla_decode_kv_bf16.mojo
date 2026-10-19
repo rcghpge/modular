@@ -333,7 +333,7 @@ struct MLA_SM100_Decode_KV_BF16[
             name="mha_dynamic_shared_memory",
         ]()
         var kv_smem = (
-            q_smem + Self.BlockElems * Self.NumQKBlocks
+            q_smem.unsafe_offset(Self.BlockElems * Self.NumQKBlocks)
         ).unsafe_bitcast[Scalar[Self.kv_type]]()
         comptime kv_total_stages = Self.config.num_kv_stages
         # to reuse the K for V as well, we break KV as 9 stages of 64x64 to cover 64x576
@@ -355,22 +355,24 @@ struct MLA_SM100_Decode_KV_BF16[
 
         # max_smem is double-buffered (2 x 128 elements) to avoid a race
         # condition in softmax; li_smem is a single 128-element buffer.
-        var max_smem = (out_smem + out_smem_total).unsafe_bitcast[
+        var max_smem = out_smem.unsafe_offset(out_smem_total).unsafe_bitcast[
             Scalar[Self.AccumType]
         ]()
 
-        var li_smem = (
-            max_smem + 2 * WARPGROUP_SIZE
+        var li_smem = max_smem.unsafe_offset(
+            2 * WARPGROUP_SIZE
         )  # 128 x1 for SMEM correction for Softmax
         #  Now we have to define MBARS for the kernel
         var mbar_base: MBarType = (
-            (li_smem + WARPGROUP_SIZE)
+            (li_smem.unsafe_offset(WARPGROUP_SIZE))
             .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
         var mbar_q: MBarType = mbar_base  # q uses 0
-        var mbar_kv_base: MBarType = mbar_base + 1  # barrier total[1]
+        var mbar_kv_base: MBarType = mbar_base.unsafe_offset(
+            1
+        )  # barrier total[1]
 
         var kv_pipeline = KVPipelineGeneric[
             num_kv_stages=Self.config.num_kv_stages,  # 2
@@ -380,7 +382,9 @@ struct MLA_SM100_Decode_KV_BF16[
         ](mbar_kv_base)
 
         # Move mbar_base to the first free barrier *after* KV:
-        mbar_base = mbar_kv_base + kv_pipeline.num_mbars()  # kv uses 1..4
+        mbar_base = mbar_kv_base.unsafe_offset(
+            kv_pipeline.num_mbars()
+        )  # kv uses 1..4
         # Move mbar_base to the first free barrier *after* k done:
         var s_bars = DecodeSM100MiscMBars[
             num_stages=2, num_producer=1, num_consumer=WARPGROUP_SIZE
@@ -430,7 +434,7 @@ struct MLA_SM100_Decode_KV_BF16[
         ](
             mbar_base
         )  # Write uses 23 + (num_out_stages)*2
-        mbar_base += (
+        mbar_base = mbar_base.unsafe_offset(
             out_pipeline.num_mbars()
         )  # barrier total [23 + (num_out_stages)*2]
         var warp_idx = UInt32(warp_id[broadcast=True]())
@@ -837,7 +841,9 @@ struct MLA_SM100_Decode_KV_BF16[
         )
         var p_cons = DecodePConsumer(p_bars.consumer())
         var o_prod = DecodeOProducer(o_bars.producer())
-        var p_smem_base = kv_smem + Self.NumVOBlocks * Self.BlockElems
+        var p_smem_base = kv_smem.unsafe_offset(
+            Self.NumVOBlocks * Self.BlockElems
+        )
         var p_descriptor = Self.UMMAPVSS.descriptor_p_block(p_smem_base)
         var v_descriptor = Self.UMMAPVSS.descriptor_v_block(kv_smem)
         comptime block_step = Self.config.MMA_PV_N // Self.config.BN_QK

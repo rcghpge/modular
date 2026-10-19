@@ -269,11 +269,11 @@ def load_AB[
     var a_scales_smem_tile = a_scales_smem_tiles[stage]
 
     var a_smem_slice = type_of(a_smem_tile)(
-        a_smem_tile.ptr + peer_cta_coord[2] * a_tma_load_size,
+        a_smem_tile.ptr.unsafe_offset(peer_cta_coord[2] * a_tma_load_size),
         a_smem_tile.layout,
     )
     var b_smem_slice = type_of(b_smem_tile)(
-        b_smem_tile.ptr + peer_cta_coord[1] * b_tma_load_size,
+        b_smem_tile.ptr.unsafe_offset(peer_cta_coord[1] * b_tma_load_size),
         b_smem_tile.layout,
     )
     var tma_mbar = load_mma_pipeline.producer_mbar(stage)
@@ -1028,15 +1028,15 @@ def blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
     comptime a_scales_smem_size = a_scales_smem_layout.size() * num_pipeline_stages
 
     var a_smem_base = base_ptr_smem
-    var b_smem_base = (a_smem_base + a_smem_size).unsafe_bitcast[
+    var b_smem_base = a_smem_base.unsafe_offset(a_smem_size).unsafe_bitcast[
         Scalar[b_type]
     ]()
-    var c_smem_base = (b_smem_base + b_smem_size).unsafe_bitcast[
+    var c_smem_base = b_smem_base.unsafe_offset(b_smem_size).unsafe_bitcast[
         Scalar[c_type]
     ]()
-    var a_scales_smem_base = (c_smem_base + c_smem_size).unsafe_bitcast[
-        Scalar[a_scales_type]
-    ]()
+    var a_scales_smem_base = c_smem_base.unsafe_offset(
+        c_smem_size
+    ).unsafe_bitcast[Scalar[a_scales_type]]()
 
     # TileTensor views of shared memory for both TMA producer and MMA consumer.
     # The size guards make the TileTensor array boundary explicit: pointer
@@ -1081,7 +1081,7 @@ def blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
         128,
     ](a_scales_smem_base)
     var load_mma_mbar_ptr = (
-        a_scales_smem_base + a_scales_smem_size
+        a_scales_smem_base.unsafe_offset(a_scales_smem_size)
     ).unsafe_bitcast[SharedMemBarrier]()
 
     # Load warp as producer and mma warp as consumer
@@ -1089,15 +1089,19 @@ def blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
         load_mma_mbar_ptr
     )
 
-    var mma_output_mbar_ptr = load_mma_mbar_ptr + 2 * num_pipeline_stages
+    var mma_output_mbar_ptr = load_mma_mbar_ptr.unsafe_offset(
+        2 * num_pipeline_stages
+    )
     var mma_output_pipeline = ProducerConsumerPipeline[
         config.num_accum_pipeline_stages
     ](mma_output_mbar_ptr)
 
-    var clc_full_mbar_ptr = (
-        mma_output_mbar_ptr + 2 * config.num_accum_pipeline_stages
+    var clc_full_mbar_ptr = mma_output_mbar_ptr.unsafe_offset(
+        2 * config.num_accum_pipeline_stages
     )
-    var clc_empty_mbar_ptr = clc_full_mbar_ptr + config.num_clc_pipeline_stages
+    var clc_empty_mbar_ptr = clc_full_mbar_ptr.unsafe_offset(
+        config.num_clc_pipeline_stages
+    )
 
     # Load warp as producer and scheduler warp as consumer.
     # No data dependence. Introduce dependence to prevent CLC goes too ahead.
@@ -1105,17 +1109,19 @@ def blackwell_tma_umma_warp_specialized_blockwise_fp8_kernel[
     # there will be no guarantee they get balanced number of tiles.
     var load_clc_pipeline = ProducerConsumerPipeline[
         config.num_clc_pipeline_stages
-    ](clc_empty_mbar_ptr + config.num_clc_pipeline_stages)
+    ](clc_empty_mbar_ptr.unsafe_offset(config.num_clc_pipeline_stages))
 
     var clc_response_ptr = (
-        clc_empty_mbar_ptr + 3 * config.num_clc_pipeline_stages
+        clc_empty_mbar_ptr.unsafe_offset(3 * config.num_clc_pipeline_stages)
     ).unsafe_bitcast[Int128]()
 
     var tmem_dealloc_mbar_ptr = (
-        clc_response_ptr + config.num_clc_pipeline_stages
+        clc_response_ptr.unsafe_offset(config.num_clc_pipeline_stages)
     ).unsafe_bitcast[Int64]()
 
-    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = tmem_dealloc_mbar_ptr.unsafe_offset(1).unsafe_bitcast[
+        UInt32
+    ]()
 
     var clc_response = clc_response_ptr.unsafe_bitcast[UInt128]()
     var clc_full_mbar = clc_full_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()

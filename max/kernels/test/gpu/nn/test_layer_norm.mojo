@@ -96,7 +96,7 @@ def run_layer_norm_gpu[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h.unsafe_ptr() + r * cols,
+            data_h.unsafe_ptr().unsafe_offset(r * cols),
             row_major(cols),
         )
         var mean_ref = mean(vec)

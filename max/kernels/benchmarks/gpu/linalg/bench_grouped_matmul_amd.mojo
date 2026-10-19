@@ -235,12 +235,12 @@ def _block_scaled_matmul_fp8_ref(
 
     var k_groups = K // MXFP8_SF_VECTOR_SIZE
 
-    var am_scales_ptr = a_scales_ptr + m * k_groups
-    var bn_scales_ptr = b_scales_ptr + n * k_groups
+    var am_scales_ptr = a_scales_ptr.unsafe_offset(m * k_groups)
+    var bn_scales_ptr = b_scales_ptr.unsafe_offset(n * k_groups)
 
     # One byte per element at MXFP8, so the row stride is K.
-    var am_ptr = (a_ptr + m * K).unsafe_bitcast[Float8_e4m3fn]()
-    var bn_ptr = (b_ptr + n * K).unsafe_bitcast[Float8_e4m3fn]()
+    var am_ptr = a_ptr.unsafe_offset(m * K).unsafe_bitcast[Float8_e4m3fn]()
+    var bn_ptr = b_ptr.unsafe_offset(n * K).unsafe_bitcast[Float8_e4m3fn]()
 
     var accum = Float32(0)
 
@@ -253,8 +253,8 @@ def _block_scaled_matmul_fp8_ref(
             part += am_ptr[ki].cast[.float32]() * bn_ptr[ki].cast[.float32]()
         accum += part * a_scale * b_scale
 
-        am_ptr += MXFP8_SF_VECTOR_SIZE
-        bn_ptr += MXFP8_SF_VECTOR_SIZE
+        am_ptr = am_ptr.unsafe_offset(MXFP8_SF_VECTOR_SIZE)
+        bn_ptr = bn_ptr.unsafe_offset(MXFP8_SF_VECTOR_SIZE)
 
     c_ptr[m * N + n] = accum
 
@@ -535,15 +535,23 @@ def bench_preb[
                     continue
                 var eid = Int(ei_h[slot])
                 ctx.enqueue_function[_block_scaled_matmul_fp8_ref](
-                    (cb_a.offset_ptr(0) + tok_start * packed_K).as_imm(),
-                    (cb_b.offset_ptr(0) + eid * N * packed_K).as_imm(),
-                    (verify_sfa_natural_dev.unsafe_ptr() + tok_start * scale_K)
+                    cb_a.offset_ptr(0)
+                    .unsafe_offset(tok_start * packed_K)
+                    .as_imm(),
+                    cb_b.offset_ptr(0)
+                    .unsafe_offset(eid * N * packed_K)
+                    .as_imm(),
+                    (
+                        verify_sfa_natural_dev.unsafe_ptr().unsafe_offset(
+                            tok_start * scale_K
+                        )
+                    )
                     .unsafe_bitcast[Float8_e8m0fnu]()
                     .as_imm(),
-                    (cb_b_sc.offset_ptr(0) + eid * N * scale_K)
+                    (cb_b_sc.offset_ptr(0).unsafe_offset(eid * N * scale_K))
                     .unsafe_bitcast[Float8_e8m0fnu]()
                     .as_imm(),
-                    verify_c_ref_dev.unsafe_ptr() + tok_start * N,
+                    verify_c_ref_dev.unsafe_ptr().unsafe_offset(tok_start * N),
                     Int32(m_slot),
                     Int32(N),
                     Int32(K),

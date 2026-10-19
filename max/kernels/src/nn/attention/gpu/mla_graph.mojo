@@ -1169,12 +1169,16 @@ def _amd_sparse_mla_gather_kv_rows[
     if col < indices_stride_i:
         var vec_off = thread_idx.x * _AMD_SPARSE_MLA_GATHER_VEC
         var slot = batch_idx * indices_stride_i + col
-        var dst = scratch + slot * k_cache_dim + vec_off
+        var dst = scratch.unsafe_offset(slot * k_cache_dim).unsafe_offset(
+            vec_off
+        )
 
         var encoded = d_indices[slot]
         if col < Int(topk_lengths[batch_idx]) and encoded >= 0:
             var virtual_row = Int(k_cache.get_tma_row(encoded))
-            var src = blocks_base + virtual_row * k_cache_dim + vec_off
+            var src = blocks_base.unsafe_offset(
+                virtual_row * k_cache_dim
+            ).unsafe_offset(vec_off)
             dst.store(src.load[width=_AMD_SPARSE_MLA_GATHER_VEC]())
         else:
             dst.store(SIMD[CacheT.dtype, _AMD_SPARSE_MLA_GATHER_VEC](0))
@@ -3258,8 +3262,8 @@ def mla_decode_branch_bf16[
             ](
                 k_cache,
                 k_cache_blocks_base,
-                compact_buf.unsafe_ptr() + token0 * indices_stride,
-                topk_lengths_ptr + token0,
+                compact_buf.unsafe_ptr().unsafe_offset(token0 * indices_stride),
+                topk_lengths_ptr.unsafe_offset(token0),
                 scratch_buf.unsafe_ptr(),
                 Int32(indices_stride),
                 grid_dim=(
@@ -3278,7 +3282,9 @@ def mla_decode_branch_bf16[
                 row_major(tokens, indices_stride, Idx[1], Idx[k_cache_dim]),
             )
             var q_tokens = TileTensor(
-                mla_decode_input.ptr + token0 * num_heads * k_cache_dim,
+                mla_decode_input.ptr.unsafe_offset(
+                    token0 * num_heads * k_cache_dim
+                ),
                 TileLayout(
                     (tokens, Idx[1], Idx[num_heads], Idx[k_cache_dim]),
                     (
@@ -3290,7 +3296,9 @@ def mla_decode_branch_bf16[
                 ),
             )
             var out_tokens = TileTensor(
-                raw_output.ptr + token0 * num_heads * kv_latent_dim,
+                raw_output.ptr.unsafe_offset(
+                    token0 * num_heads * kv_latent_dim
+                ),
                 TileLayout(
                     (tokens, Idx[1], Idx[num_heads], Idx[kv_latent_dim]),
                     (
@@ -3302,7 +3310,8 @@ def mla_decode_branch_bf16[
                 ),
             )
             var lengths_tt = TileTensor(
-                valid_lengths_buf.unsafe_ptr() + token0, row_major(tokens)
+                valid_lengths_buf.unsafe_ptr().unsafe_offset(token0),
+                row_major(tokens),
             )
             # The partition count from the graph is sized for the request
             # batch, not this token chunk, so let the AMD heuristic pick.

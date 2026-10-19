@@ -1347,7 +1347,7 @@ struct DistributedAllGatherRMSNorm:
                     // world_cols
                 )
                 world_out_views[d * group_size + i] = TileTensor(
-                    d_base + row_off * world_cols,
+                    d_base.unsafe_offset(row_off * world_cols),
                     row_major(len_i, world_cols),
                 )
                 row_off += len_i
@@ -1587,7 +1587,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                     // world_cols
                 )
                 world_out_views[d * group_size + i] = TileTensor(
-                    d_base + row_off * world_cols,
+                    d_base.unsafe_offset(row_off * world_cols),
                     row_major(len_i, world_cols),
                 )
                 row_off += len_i
@@ -1914,7 +1914,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     // world_cols
                 )
                 world_out_views[d * group_size + i] = TileTensor(
-                    d_base + row_off * world_cols,
+                    d_base.unsafe_offset(row_off * world_cols),
                     row_major(len_i, world_cols),
                 )
                 row_off += len_i

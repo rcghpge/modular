@@ -595,7 +595,12 @@ def _transpose_2d_serial_tiled[
         tile_size_m: Int, tile_size_n: Int
     ](m: Int, n: Int) {var N, var M, imm}:
         _process_tile[tile_size_m, tile_size_n, dtype](
-            m, n, M, N, output.ptr + offset, input.ptr + offset
+            m,
+            n,
+            M,
+            N,
+            output.ptr.unsafe_offset(offset),
+            input.ptr.unsafe_offset(offset),
         )
 
     comptime tile_size = simd_width if simd_width <= 16 else 1
@@ -682,8 +687,8 @@ def _transpose_2d_parallel_tiled[
                     n,
                     M,
                     N,
-                    output.ptr + offset,
-                    input.ptr + offset,
+                    output.ptr.unsafe_offset(offset),
+                    input.ptr.unsafe_offset(offset),
                 )
 
     sync_parallelize(_parallel_tile, num_tasks, ctx)
@@ -783,8 +788,8 @@ def _transpose_4d_swap_middle_helper[
                     var in_off = l * M * N * K + m * N * K + n * K
                     var out_off = l * M * N * K + n * M * K + m * K
                     unsafe_memcpy(
-                        dest=dst_ptr + out_off,
-                        src=src_ptr + in_off,
+                        dest=dst_ptr.unsafe_offset(out_off),
+                        src=src_ptr.unsafe_offset(in_off),
                         count=K,
                     )
         return
@@ -806,8 +811,8 @@ def _transpose_4d_swap_middle_helper[
                 var in_off = l * M * N * K + m * N * K + n * K
                 var out_off = l * M * N * K + n * M * K + m * K
                 unsafe_memcpy(
-                    dest=dst_ptr + out_off,
-                    src=src_ptr + in_off,
+                    dest=dst_ptr.unsafe_offset(out_off),
+                    src=src_ptr.unsafe_offset(in_off),
                     count=K,
                 )
 
@@ -1032,8 +1037,8 @@ def _copy_with_strides[
     var output_axis_stride: Int = Int(output_strides.load(axis)[0])
 
     if axis + 1 == rank:
-        var src_ptr = input_ptr + input_offset
-        var dst_ptr = output_ptr + output_offset
+        var src_ptr = input_ptr.unsafe_offset(input_offset)
+        var dst_ptr = output_ptr.unsafe_offset(output_offset)
         if input_axis_stride == 1 and output_axis_stride == 1:
             unsafe_memcpy(dest=dst_ptr, src=src_ptr, count=axis_dim)
         else:
@@ -1052,8 +1057,8 @@ def _copy_with_strides[
                     dst_ptr,
                     output_axis_stride,
                 )
-                src_ptr = src_ptr + simd_width * input_axis_stride
-                dst_ptr = dst_ptr + simd_width * output_axis_stride
+                src_ptr = src_ptr.unsafe_offset(simd_width * input_axis_stride)
+                dst_ptr = dst_ptr.unsafe_offset(simd_width * output_axis_stride)
 
             vectorize[simd_width_of[dtype]()](axis_dim, _copy)
 

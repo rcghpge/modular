@@ -188,13 +188,13 @@ def combine_kernel[
     ]()
     var f32_base = smem_base.unsafe_bitcast[Scalar[ACC_TYPE]]()
     var stage0 = f32_base
-    var stage1 = stage0 + STAGE
-    var maxsum0 = stage1 + STAGE
-    var maxsum1 = maxsum0 + ML
-    var l2_stage = maxsum1 + ML
-    var l2_maxsum = l2_stage + L2STAGE
-    var o_smem = f32_base + o_smem_offset[depth]()
-    var ptr_tmem_addr = (o_smem + OSMEM).unsafe_bitcast[UInt32]()
+    var stage1 = stage0.unsafe_offset(STAGE)
+    var maxsum0 = stage1.unsafe_offset(STAGE)
+    var maxsum1 = maxsum0.unsafe_offset(ML)
+    var l2_stage = maxsum1.unsafe_offset(ML)
+    var l2_maxsum = l2_stage.unsafe_offset(L2STAGE)
+    var o_smem = f32_base.unsafe_offset(o_smem_offset[depth]())
+    var ptr_tmem_addr = o_smem.unsafe_offset(OSMEM).unsafe_bitcast[UInt32]()
 
     var tid = thread_idx.x
     var wid = Int(tid >> 5)  # 0..7 : global warp
@@ -377,7 +377,9 @@ def test_combine[depth: Int, mode: Int](ctx: DeviceContext) raises:
     _ = o_dev.host_tensor().fill(SENTINEL)
     o_dev.to_device()
     var dev_ptr = o_dev.device_tensor().unsafe_ptr()
-    var o_store = OStoreT[depth].create(ctx, dev_ptr + ROWS * depth, rows=ROWS)
+    var o_store = OStoreT[depth].create(
+        ctx, dev_ptr.unsafe_offset(ROWS * depth), rows=ROWS
+    )
 
     O_in.to_device()
     m_in.to_device()

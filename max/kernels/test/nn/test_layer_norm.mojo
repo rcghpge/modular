@@ -78,7 +78,7 @@ def run_layer_norm_cpu[
     var input_ptr_ptr = input_ptr.unsafe_ptr()
     for r, c in product(range(rows), range(cols)):
         var vec = TileTensor(
-            input_ptr_ptr + r * cols,
+            input_ptr_ptr.unsafe_offset(r * cols),
             row_major(cols),
         )
         var mean_ref = mean(vec)

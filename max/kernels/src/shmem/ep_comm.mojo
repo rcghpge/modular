@@ -309,7 +309,10 @@ def block_memcpy[
                 NoneType,
                 constraints="v,v,~{memory}",
                 has_side_effect=True,
-            ](Int(dst_p + i * store_width), bitcast[DType.uint32, 4](data))
+            ](
+                Int(dst_p.unsafe_offset(i * store_width)),
+                bitcast[DType.uint32, 4](data),
+            )
     else:
         comptime simd_width = simd_width_of[DType.uint8]()
         comptime n_vec = num_bytes // simd_width
@@ -629,7 +632,9 @@ def ep_signal_completion[
     # If the target device is on the same node, we can directly write to its
     # receive count buffer.
     if my_p2p_world == dst_p2p_world:
-        var dst_p2p_ptr = recv_count_ptrs[dst_p2p_rank] + signal_offset
+        var dst_p2p_ptr = recv_count_ptrs[dst_p2p_rank].unsafe_offset(
+            signal_offset
+        )
         comptime if ep_ord_r:
             # Rank-level completion. The count word is issued BEFORE the
             # election so it sits in this thread's release set when the RMW
@@ -646,7 +651,7 @@ def ep_signal_completion[
                 )
             var old_count = _counter_atomic.fetch_add[
                 ordering=Ordering.ACQUIRE_RELEASE
-            ](rank_completion_counter + Int(dst_p2p_rank), 1)
+            ](rank_completion_counter.unsafe_offset(Int(dst_p2p_rank)), 1)
             # The last expert for this destination rank is elected to publish
             # the rank-level arrival. `rank_completion_counter` is
             # source-local, so the election stays at device scope.
@@ -660,7 +665,9 @@ def ep_signal_completion[
                 # in the docstring this single release carries every
                 # producer's payload and count stores.
                 Atomic[scope=scope].store[ordering=Ordering.RELEASE](
-                    recv_count_ptrs[dst_p2p_rank] + rank_flag_offset,
+                    recv_count_ptrs[dst_p2p_rank].unsafe_offset(
+                        rank_flag_offset
+                    ),
                     UInt64(n_experts_per_device),
                 )
                 # Reset counter for next kernel invocation, AFTER the release:
@@ -680,7 +687,7 @@ def ep_signal_completion[
             return -1
 
         var old_count = _counter_atomic.fetch_add[ordering=Ordering.RELAXED](
-            rank_completion_counter + Int(dst_p2p_rank), 1
+            rank_completion_counter.unsafe_offset(Int(dst_p2p_rank)), 1
         )
 
         # If this is the last expert for this destination rank,
@@ -717,7 +724,7 @@ def ep_signal_completion[
             # in order, the remote device can confirm all the tokens for the
             # expert has been received once the signal operation is received.
             shmem_signal_op(
-                recv_count_ptrs[my_p2p_rank] + signal_offset,
+                recv_count_ptrs[my_p2p_rank].unsafe_offset(signal_offset),
                 signal,
                 SHMEM_SIGNAL_SET,
                 dst_rank,
@@ -1851,8 +1858,10 @@ struct NVBlockScaledTokenFormat[
                 + u_lo * SF_ROW_STRIDE_LOCAL
                 + u_hi * SF_ATOM_K
             )
-            var dst = recv_base + Self.sf_arena_rows * Self.msg_size()
-            var src = send_buf_p + Self.scales_offset()
+            var dst = recv_base.unsafe_offset(
+                Self.sf_arena_rows * Self.msg_size()
+            )
+            var src = send_buf_p.unsafe_offset(Self.scales_offset())
             for q in range(lane, Self.sf_kxg, WARP_SIZE):
                 var d = base + q * SF_ATOM_ELEMS_LOCAL
                 var o = q * SF_ATOM_K
@@ -2054,10 +2063,10 @@ struct NVBlockScaledTokenFormat[
         # Rebase past the host kernel's SMEM when fused (0 standalone); must
         # match `copy_msg_tile_to_output_tensor` so the mbars line up.
         comptime if smem_base_offset != 0:
-            smem_base += smem_base_offset
-        var mbar_base = (smem_base + Self._mbar_smem_offset).unsafe_bitcast[
-            SharedMemBarrier
-        ]()
+            smem_base = smem_base.unsafe_offset(smem_base_offset)
+        var mbar_base = smem_base.unsafe_offset(
+            Self._mbar_smem_offset
+        ).unsafe_bitcast[SharedMemBarrier]()
         # Index by the COMM-LOCAL warp (`warp_id() - warp_base`), matching the
         # `mbar_base + w` (`w = warp_id() - warp_base`) that
         # `copy_msg_tile_to_output_tensor` reads. `warp_base` is 0 in the
@@ -2107,9 +2116,11 @@ struct NVBlockScaledTokenFormat[
         ]()
         # Rebase past the host kernel's SMEM when fused (0 standalone).
         comptime if smem_base_offset != 0:
-            smem_ptr += smem_base_offset // size_of[Self.scales_dtype]()
+            smem_ptr = smem_ptr.unsafe_offset(
+                smem_base_offset // size_of[Self.scales_dtype]()
+            )
         var scales_tile = TileTensor(
-            smem_ptr + aligned_tile_size * w,
+            smem_ptr.unsafe_offset(aligned_tile_size * w),
             row_major(Self.tma_tile_shape),
         )
 
@@ -2131,9 +2142,13 @@ struct NVBlockScaledTokenFormat[
         ]()
         if not oob:
             var scales_base = (
-                recv_buf_ptr_functor(scales_tok) + Self.scales_offset()
+                recv_buf_ptr_functor(scales_tok).unsafe_offset(
+                    Self.scales_offset()
+                )
             ).unsafe_bitcast[Scalar[Self.scales_dtype]]()
-            scales_gmem_ptr = scales_base + n_scales_per_token * k_tile_idx
+            scales_gmem_ptr = scales_base.unsafe_offset(
+                n_scales_per_token * k_tile_idx
+            )
 
         comptime for i in range(0, n_scales_simd_per_token, sub_warp_size):
             var _i = i + lane_in_sub_warp
@@ -2188,14 +2203,12 @@ struct NVBlockScaledTokenFormat[
         var k_byte_offset = k_tile_idx * quant_bytes_per_ktile
 
         var smem_base = smem_ptr.unsafe_bitcast[UInt8]()
-        var warp_quant_smem = (
-            smem_base
-            + Self._n_warps * Self._scales_smem_per_warp
-            + w * Self._quant_smem_per_warp
-        )
-        var mbar_base = (smem_base + Self._mbar_smem_offset).unsafe_bitcast[
-            SharedMemBarrier
-        ]()
+        var warp_quant_smem = smem_base.unsafe_offset(
+            Self._n_warps * Self._scales_smem_per_warp
+        ).unsafe_offset(w * Self._quant_smem_per_warp)
+        var mbar_base = smem_base.unsafe_offset(
+            Self._mbar_smem_offset
+        ).unsafe_bitcast[SharedMemBarrier]()
         var output_tokens_base = self.output_tokens._storage.unsafe_bitcast[
             UInt8
         ]()
@@ -2209,11 +2222,11 @@ struct NVBlockScaledTokenFormat[
 
             if is_warp_leader:
                 # g2s: load quant bytes from recv_buf to SMEM via 1D TMA.
-                var mbar = mbar_base + w
+                var mbar = mbar_base.unsafe_offset(w)
                 mbar[].expect_bytes(Int32(quant_bytes_per_ktile))
                 cp_async_bulk_shared_cluster_global(
                     warp_quant_smem,
-                    token_ptr + k_byte_offset,
+                    token_ptr.unsafe_offset(k_byte_offset),
                     Int32(quant_bytes_per_ktile),
                     mbar[].unsafe_ptr(),
                 )
@@ -2223,9 +2236,9 @@ struct NVBlockScaledTokenFormat[
                 # s2g: write quant bytes from SMEM to output_tokens via 1D TMA.
                 fence_async_view_proxy()
                 cp_async_bulk_global_shared_cta(
-                    output_tokens_base
-                    + output_pos * Self.quant_size()
-                    + k_byte_offset,
+                    output_tokens_base.unsafe_offset(
+                        output_pos * Self.quant_size()
+                    ).unsafe_offset(k_byte_offset),
                     warp_quant_smem,
                     Int32(quant_bytes_per_ktile),
                 )
@@ -2249,7 +2262,7 @@ struct NVBlockScaledTokenFormat[
         # Filp the mbarrier phase to even if it is odd.
         if is_warp_leader:
             if phase == 1:
-                var mbar = mbar_base + w
+                var mbar = mbar_base.unsafe_offset(w)
                 mbar[].expect_bytes(0)
                 mbar[].wait(phase=phase)
 
@@ -2764,7 +2777,7 @@ struct EPLocalSyncCounters[n_experts: Int](
     def get_reserved_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns the first reserved word, past every counter region. Only a
         buffer of `allocation_size()` elements has the reserved words."""
-        return self.ptr + Self.total_size()
+        return self.ptr.unsafe_offset(Self.total_size())
 
     @inline(.always)
     def get_dispatch_async_ptr(
@@ -2781,7 +2794,7 @@ struct EPLocalSyncCounters[n_experts: Int](
     @inline(.always)
     def get_dispatch_wait_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to dispatch_wait kernel atomic counters."""
-        return self.ptr + Self.dispatch_async_size()
+        return self.ptr.unsafe_offset(Self.dispatch_async_size())
 
     @inline(.always)
     def get_combine_async_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
@@ -2790,12 +2803,14 @@ struct EPLocalSyncCounters[n_experts: Int](
         Note: Returns the same pointer as get_dispatch_wait_ptr() because
         combine_async_kernel reads the offset/count data that dispatch_wait_kernel writes.
         """
-        return self.ptr + Self.dispatch_async_size()
+        return self.ptr.unsafe_offset(Self.dispatch_async_size())
 
     @inline(.always)
     def get_combine_wait_ptr(self) -> MutPointer[Int32, MutUntrackedOrigin]:
         """Returns pointer to combine_wait kernel atomic counters."""
-        return self.ptr + Self.dispatch_async_size() + Self.dispatch_wait_size()
+        return self.ptr.unsafe_offset(Self.dispatch_async_size()).unsafe_offset(
+            Self.dispatch_wait_size()
+        )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -3258,7 +3273,8 @@ struct EPDispatchKernel[
 
                 # Wait until all the tokens for the expert have been sent.
                 _ = _acquire_wait[scope=DEVICE_SCOPE](
-                    expert_finished_counter + counter_offset, expert_count
+                    expert_finished_counter.unsafe_offset(counter_offset),
+                    expert_count,
                 )
 
                 # The rank flag published here is keyed by the SOURCE rank, so
@@ -3416,8 +3432,8 @@ struct EPDispatchKernel[
                 _tr_tokens += 1
             # First, all threads in the block copy the input token to the send
             # buffer.
-            var curr_send_buf_ptr = send_buf_p + Self.send_buf_layout(
-                (token_idx, Idx[0])
+            var curr_send_buf_ptr = send_buf_p.unsafe_offset(
+                Self.send_buf_layout((token_idx, Idx[0]))
             )
             var input_tensor_ptr = input_tokens.ptr_at_offset(
                 (token_idx, Idx[0])
@@ -3527,7 +3543,12 @@ struct EPDispatchKernel[
                     if lane_id() == 0:
                         slot_idx = _counter_atomic.fetch_add[
                             ordering=Ordering.RELAXED
-                        ](expert_reserved_counter + counter_offset, 1)
+                        ](
+                            expert_reserved_counter.unsafe_offset(
+                                counter_offset
+                            ),
+                            1,
+                        )
                     slot_idx = warp.broadcast(slot_idx)
                     comptime if TraceT.enabled:
                         if _tr_pairs == 0 and _tr_pub >= 0 and lane_id() == 0:
@@ -3542,9 +3563,9 @@ struct EPDispatchKernel[
                     # source-local ordinal is unchanged.
                     var _fl_row = slot_idx
                     comptime if Self.ep_prod_reserve:
-                        var _pg = (
-                            prod_gen_p + Self.n_experts + Int(target_expert)
-                        )
+                        var _pg = prod_gen_p.unsafe_offset(
+                            Self.n_experts
+                        ).unsafe_offset(Int(target_expert))
                         # The publisher plain-stores the base then
                         # RELEASE-stores this tag, so the acquire here is
                         # what orders the base read below against it.
@@ -3563,12 +3584,14 @@ struct EPDispatchKernel[
 
                     var dst_recv_buf_ptr = recv_buf_ptrs[
                         dst_p2p_rank
-                    ] + Self.recv_buf_layout(
-                        (
-                            dst_expert_local_idx,
-                            Int32(0) if Self.ep_final_layout else my_rank,
-                            _fl_row,
-                            Idx[0],
+                    ].unsafe_offset(
+                        Self.recv_buf_layout(
+                            (
+                                dst_expert_local_idx,
+                                Int32(0) if Self.ep_final_layout else my_rank,
+                                _fl_row,
+                                Idx[0],
+                            )
                         )
                     )
 
@@ -3621,7 +3644,12 @@ struct EPDispatchKernel[
                     if lane_id() == 0:
                         _ = _counter_atomic.fetch_add[
                             ordering=Ordering.RELAXED
-                        ](expert_finished_counter + counter_offset, 1)
+                        ](
+                            expert_finished_counter.unsafe_offset(
+                                counter_offset
+                            ),
+                            1,
+                        )
                         comptime if TraceT.enabled:
                             if _tr_pairs == 0 and _tr_pub >= 0:
                                 trace.stamp[DISPATCH_PAIR_FINISHED](
@@ -3669,15 +3697,22 @@ struct EPDispatchKernel[
                     ):
                         var slot_idx = _counter_atomic.fetch_add[
                             ordering=Ordering.RELAXED
-                        ](expert_reserved_counter + counter_offset, 1)
+                        ](
+                            expert_reserved_counter.unsafe_offset(
+                                counter_offset
+                            ),
+                            1,
+                        )
                         var dst_recv_buf_ptr = recv_buf_ptrs[
                             my_p2p_rank
-                        ] + Self.recv_buf_layout(
-                            (
-                                dst_expert_local_idx,
-                                my_rank,
-                                slot_idx,
-                                Idx[0],
+                        ].unsafe_offset(
+                            Self.recv_buf_layout(
+                                (
+                                    dst_expert_local_idx,
+                                    my_rank,
+                                    slot_idx,
+                                    Idx[0],
+                                )
                             )
                         )
                         shmem_put_nbi[kind=SHMEMScope.default](
@@ -3689,7 +3724,12 @@ struct EPDispatchKernel[
 
                         _ = _counter_atomic.fetch_add[
                             ordering=Ordering.RELEASE
-                        ](expert_finished_counter + counter_offset, 1)
+                        ](
+                            expert_finished_counter.unsafe_offset(
+                                counter_offset
+                            ),
+                            1,
+                        )
 
         comptime if TraceT.enabled:
             # CTA info (comm thread 0) and each publisher's first-pair info.
@@ -3853,7 +3893,7 @@ struct EPDispatchKernel[
         if tid < Self.n_experts:
             # System scope: `recv_count_p` is written by the peer.
             var _token_count = _acquire_wait[wait_while_equal=True](
-                recv_count_p + tid, UInt64.MAX_FINITE
+                recv_count_p.unsafe_offset(tid), UInt64.MAX_FINITE
             )
             token_count = UInt32(_token_count)
         Self._comm_barrier[n_comm_threads, comm_barrier_id]()
@@ -3938,7 +3978,7 @@ struct EPDispatchKernel[
                 Int32(n_active_offset_sms),
             )
             _counter_atomic.store[ordering=Ordering.RELEASE](
-                atomic_counter + Self.ready_flag_offset,
+                atomic_counter.unsafe_offset(Self.ready_flag_offset),
                 Int32(EP_DATA_READY_FLAG),
             )
 
@@ -4116,7 +4156,12 @@ struct EPDispatchKernel[
             """
             return Atomic[scope=DEVICE_SCOPE].fetch_add[
                 ordering=Ordering.ACQUIRE
-            ](atomic_counter + Self.work_counter_offset + expert, 1)
+            ](
+                atomic_counter.unsafe_offset(
+                    Self.work_counter_offset
+                ).unsafe_offset(expert),
+                1,
+            )
 
         @inline(.always)
         def fill_tok_rank_map(tile_id: Int, _total: Int) {mut} -> None:
@@ -4135,7 +4180,7 @@ struct EPDispatchKernel[
         # Wait for the auxiliary SM to signal that all offsets are ready.
         if warp_id() - comm_warp_base == 0:
             _ = _acquire_wait[scope=DEVICE_SCOPE](
-                atomic_counter + Self.ready_flag_offset,
+                atomic_counter.unsafe_offset(Self.ready_flag_offset),
                 Int32(EP_DATA_READY_FLAG),
             )
 
@@ -4148,7 +4193,7 @@ struct EPDispatchKernel[
             if tid == 0:
                 smem_vals[2] = Int32(umod(sm_id, Self.n_local_experts))
             syncwarp()
-            var sched = atomic_counter + Self.sm_schedule_offset
+            var sched = atomic_counter.unsafe_offset(Self.sm_schedule_offset)
             for e in range(Int(tid), Self.n_local_experts, WARP_SIZE):
                 var hi = Int(sched[e])
                 var lo = 0 if e == 0 else Int(sched[e - 1])
@@ -4171,7 +4216,7 @@ struct EPDispatchKernel[
                 Self.n_ranks <= WARP_SIZE
             ), "n_ranks must be less than or equal to warp size"
             if tid < Self.n_ranks:
-                rank_prefix[tid] = (atomic_counter + base)[tid]
+                rank_prefix[tid] = atomic_counter.unsafe_offset(base)[tid]
             syncwarp()
 
             # Fill tok_rank_map for the first tile.
@@ -4215,12 +4260,14 @@ struct EPDispatchKernel[
                 var rank_base = (
                     Int(rank_prefix[src_rank - 1]) if src_rank > 0 else 0
                 )
-                return recv_buf_p + Self.recv_buf_layout(
-                    (
-                        local_expert_id,
-                        src_rank,
-                        wep - rank_base,
-                        Idx[0],
+                return recv_buf_p.unsafe_offset(
+                    Self.recv_buf_layout(
+                        (
+                            local_expert_id,
+                            src_rank,
+                            wep - rank_base,
+                            Idx[0],
+                        )
                     )
                 )
 
@@ -4305,8 +4352,9 @@ struct EPDispatchKernel[
                         _ = Atomic[UInt32, scope=DEVICE_SCOPE].fetch_add[
                             ordering=Ordering.RELEASE
                         ](
-                            l1_arrival
-                            + (pool_base + _m) * l1_release_atomic_pad,
+                            l1_arrival.unsafe_offset(
+                                (pool_base + _m) * l1_release_atomic_pad
+                            ),
                             l1_release_delta,
                         )
                         # Section B (E44): SCAT_TILE_DONE eligibility. Both
@@ -4343,7 +4391,10 @@ struct EPDispatchKernel[
         if warp_id() - comm_warp_base == 0 and tid == 0:
             var count = Atomic[scope=DEVICE_SCOPE].fetch_add[
                 ordering=Ordering.RELAXED
-            ](atomic_counter + Self.cleanup_counter_offset, Int32(-1))
+            ](
+                atomic_counter.unsafe_offset(Self.cleanup_counter_offset),
+                Int32(-1),
+            )
             if count == 1:
                 atomic_counter.store(Self.ready_flag_offset, Int32(0))
 
@@ -4399,7 +4450,7 @@ struct EPDispatchKernel[
             # Signal that this SM has started; the last one resets both counters.
             var started = Atomic[scope=DEVICE_SCOPE].fetch_add[
                 ordering=Ordering.RELAXED
-            ](fused_se_counter + 1, 1)
+            ](fused_se_counter.unsafe_offset(1), 1)
             if started == Int32(n_sms_for_shared) - 1:
                 fused_se_counter.store(Int32(0))
                 fused_se_counter.store(1, Int32(0))
@@ -4415,8 +4466,8 @@ struct EPDispatchKernel[
             def _send_buf_ptr_for(
                 tok_local: Int,
             ) {imm} -> MutPointer[UInt8, MutUntrackedOrigin]:
-                return send_buf_p + Self.send_buf_layout(
-                    (tile_start + tok_local, Idx[0])
+                return send_buf_p.unsafe_offset(
+                    Self.send_buf_layout((tile_start + tok_local, Idx[0]))
                 )
 
             @inline(.always)
@@ -4524,9 +4575,9 @@ def dispatch_async_kernel[
     # The finished counter is incremented once the token is sent.
     var atomic_counter = ep_counters.get_dispatch_async_ptr()
     var expert_reserved_counter = atomic_counter
-    var expert_finished_counter = atomic_counter + n_experts
+    var expert_finished_counter = atomic_counter.unsafe_offset(n_experts)
     # Per-rank completion counter for same-node signaling.
-    var rank_completion_counter = atomic_counter + 2 * n_experts
+    var rank_completion_counter = atomic_counter.unsafe_offset(2 * n_experts)
 
     # The auxiliary SMs are used for counting the number of tokens that need to
     # be sent to each expert. It also monitors the completion of
@@ -5033,7 +5084,9 @@ struct EPCombineKernel[
                             var prev = _counter_atomic.fetch_add[
                                 ordering=Ordering.RELAXED
                             ](
-                                atomic_counter + Self.pair_done_offset + pr,
+                                atomic_counter.unsafe_offset(
+                                    Self.pair_done_offset
+                                ).unsafe_offset(pr),
                                 1,
                             )
                             if Int(prev) + 1 == max(cn, 1):
@@ -5095,9 +5148,10 @@ struct EPCombineKernel[
                                 WARP_SIZE,
                                 bypass_l2=True,
                             ](
-                                recv_buf_ptrs[rl]
-                                + Self.recv_buf_layout(
-                                    (sti[0], sti[1], Idx[0])
+                                recv_buf_ptrs[rl].unsafe_offset(
+                                    Self.recv_buf_layout(
+                                        (sti[0], sti[1], Idx[0])
+                                    )
                                 ),
                                 input_tokens.ptr_at_offset(
                                     (ti, Idx[0])
@@ -5160,7 +5214,9 @@ struct EPCombineKernel[
                 comptime if gate_ffn_done:
                     if token_end > token_start:
                         if tid == 0:
-                            var done = ffn_done_ptr.value() + local_expert_id
+                            var done = ffn_done_ptr.value().unsafe_offset(
+                                local_expert_id
+                            )
                             var target = ffn_done_sentinel
                             comptime if ffn_done_tiles_per_m_block > 0:
                                 var rows = row_offsets_ptr.value()
@@ -5200,8 +5256,10 @@ struct EPCombineKernel[
 
                         var dst_recv_buf_ptr = recv_buf_ptrs[
                             dst_p2p_rank
-                        ] + Self.recv_buf_layout(
-                            (src_idx, src_topk_idx, Idx[0])
+                        ].unsafe_offset(
+                            Self.recv_buf_layout(
+                                (src_idx, src_topk_idx, Idx[0])
+                            )
                         )
                         block_memcpy[
                             hid_dim * size_of[input_type](), Self.num_threads
@@ -5233,8 +5291,11 @@ struct EPCombineKernel[
                             )
                             if token_idx < token_end:
                                 var curr_send_buf_ptr = (
-                                    send_buf_p
-                                    + Self.send_buf_layout((token_idx, Idx[0]))
+                                    send_buf_p.unsafe_offset(
+                                        Self.send_buf_layout(
+                                            (token_idx, Idx[0])
+                                        )
+                                    )
                                 )
 
                                 # To use SHMEM API, we need to copy the tokens to
@@ -5271,18 +5332,21 @@ struct EPCombineKernel[
                                         src_idx, src_topk_idx
                                     ):
                                         var curr_send_buf_ptr = (
-                                            send_buf_p
-                                            + Self.send_buf_layout(
-                                                (token_idx, Idx[0])
+                                            send_buf_p.unsafe_offset(
+                                                Self.send_buf_layout(
+                                                    (token_idx, Idx[0])
+                                                )
                                             )
                                         )
                                         var dst_recv_buf_ptr = recv_buf_ptrs[
                                             my_p2p_rank
-                                        ] + Self.recv_buf_layout(
-                                            (
-                                                Int(src_idx),
-                                                Int(src_topk_idx),
-                                                Idx[0],
+                                        ].unsafe_offset(
+                                            Self.recv_buf_layout(
+                                                (
+                                                    Int(src_idx),
+                                                    Int(src_topk_idx),
+                                                    Idx[0],
+                                                )
                                             )
                                         )
 
@@ -5337,7 +5401,7 @@ struct EPCombineKernel[
         _scoped_barrier[Self.num_threads, comm_barrier_id]()
         if tid == 0:
             var prev_b = _counter_atomic.fetch_add[ordering=Ordering.RELAXED](
-                atomic_counter + Self.blocks_done_offset, 1
+                atomic_counter.unsafe_offset(Self.blocks_done_offset), 1
             )
             smem_done[0] = Int32(1) if Int(prev_b) + 1 == n_send_sms else Int32(
                 0
@@ -5384,7 +5448,7 @@ struct EPCombineKernel[
         comptime DATA_READY_FLAG = 1024
 
         if thread_idx.x < Self.n_experts:
-            var target_count_ptr = recv_count_p + thread_idx.x
+            var target_count_ptr = recv_count_p.unsafe_offset(thread_idx.x)
             # System scope: `recv_count_p` is written by the peer.
             _ = _acquire_wait[wait_while_equal=True](
                 target_count_ptr, UInt64.MAX_FINITE
@@ -5396,7 +5460,9 @@ struct EPCombineKernel[
         # copy the tokens to the output tensor. Seed only the active reduce SMs.
         if thread_idx.x < n_active_reduce_sms:
             _counter_atomic.store[ordering=Ordering.RELEASE](
-                atomic_counter + Self.n_wait_sms + thread_idx.x,
+                atomic_counter.unsafe_offset(Self.n_wait_sms).unsafe_offset(
+                    thread_idx.x
+                ),
                 Int32(DATA_READY_FLAG),
             )
 
@@ -5461,7 +5527,7 @@ struct EPCombineKernel[
 
         if thread_idx.x == 0:
             _ = _acquire_wait[scope=DEVICE_SCOPE](
-                atomic_counter + sm_id, Int32(DATA_READY_FLAG)
+                atomic_counter.unsafe_offset(sm_id), Int32(DATA_READY_FLAG)
             )
 
             # Reset the atomic counter for the next round.
@@ -5505,11 +5571,13 @@ struct EPCombineKernel[
                     ):
                         continue
 
-                var recv_buf_ptr = recv_buf_p + Self.recv_buf_layout(
-                    (
-                        token_idx,
-                        topk_idx,
-                        chunk_idx_in_token * n_chunk_bytes,
+                var recv_buf_ptr = recv_buf_p.unsafe_offset(
+                    Self.recv_buf_layout(
+                        (
+                            token_idx,
+                            topk_idx,
+                            chunk_idx_in_token * n_chunk_bytes,
+                        )
                     )
                 )
                 # recv_buf is fresh peer data each round: not invariant.
@@ -5634,7 +5702,7 @@ def combine_async_kernel[
 
     var atomic_counter = ep_counters.get_combine_async_ptr()
     # Per-rank completion counter for same-node signaling.
-    var rank_completion_counter = atomic_counter + 2 * n_experts
+    var rank_completion_counter = atomic_counter.unsafe_offset(2 * n_experts)
 
     combine_impl.send_tokens_back(
         input_tokens,
@@ -5879,8 +5947,10 @@ def dispatch_kernel[
     # ===== dispatch_async =====
     var async_atomic_counter = ep_counters.get_dispatch_async_ptr()
     var expert_reserved_counter = async_atomic_counter
-    var expert_finished_counter = async_atomic_counter + n_experts
-    var rank_completion_counter = async_atomic_counter + 2 * n_experts
+    var expert_finished_counter = async_atomic_counter.unsafe_offset(n_experts)
+    var rank_completion_counter = async_atomic_counter.unsafe_offset(
+        2 * n_experts
+    )
 
     var wait_atomic_counter = ep_counters.get_dispatch_wait_ptr()
     var my_p2p_rank = my_rank % Int32(p2p_world_size)
@@ -5921,8 +5991,9 @@ def dispatch_kernel[
                         _ = Atomic[scope=DEVICE_SCOPE].fetch_add[
                             ordering=Ordering.RELEASE
                         ](
-                            wait_atomic_counter
-                            + dispatch_impl.send_buf_ready_offset,
+                            wait_atomic_counter.unsafe_offset(
+                                dispatch_impl.send_buf_ready_offset
+                            ),
                             1,
                         )
 
@@ -5950,14 +6021,16 @@ def dispatch_kernel[
                         UInt32(my_rank),
                         num_tokens % _allreduce_world_size,
                     )
-                    _send_buf_p += rank_offset * UInt32(
-                        token_fmt_type.msg_size()
+                    _send_buf_p = _send_buf_p.unsafe_offset(
+                        rank_offset * UInt32(token_fmt_type.msg_size())
                     )
 
                 dispatch_impl.pack_shared_expert_inputs(
                     format_handler,
                     _send_buf_p,
-                    wait_atomic_counter + dispatch_impl.send_buf_ready_offset,
+                    wait_atomic_counter.unsafe_offset(
+                        dispatch_impl.send_buf_ready_offset
+                    ),
                     Int(shared_expert_token_count),
                     block_idx.x,
                     grid_dim.x - dispatch_impl.n_offset_sms,
@@ -6096,7 +6169,9 @@ def combine_kernel[
 
     # ===== combine_async =====
     var async_atomic_counter = ep_counters.get_combine_async_ptr()
-    var rank_completion_counter = async_atomic_counter + 2 * n_experts
+    var rank_completion_counter = async_atomic_counter.unsafe_offset(
+        2 * n_experts
+    )
 
     with PDL():
         combine_impl.send_tokens_back(

@@ -854,7 +854,9 @@ def pjoin[
             # block's result is a scalar, which holds the second `BlockReducer`
             # tree's shmem at width-1 whatever `simd_width` the tier runs at.
             var blocks_per_row_ = Int(ctx._blocks_per_row)
-            var counter_ptr = ctx._counters_base + Int(ctx._row_idx)
+            var counter_ptr = ctx._counters_base.unsafe_offset(
+                Int(ctx._row_idx)
+            )
             var last_shmem = stack_allocation[1, Bool, address_space=.SHARED]()
             var tid_ = thread_idx.x
             if tid_ == 0:

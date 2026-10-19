@@ -176,8 +176,8 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
         (a_scales_size * size_of[a_scales_type]()) % 16
     ) == 0, "preserve alignment"
 
-    var b_smem = (a_smem + a_size).unsafe_bitcast[Scalar[b_type]]()
-    var a_scales_smem = (b_smem + b_size).unsafe_bitcast[
+    var b_smem = a_smem.unsafe_offset(a_size).unsafe_bitcast[Scalar[b_type]]()
+    var a_scales_smem = b_smem.unsafe_offset(b_size).unsafe_bitcast[
         Scalar[a_scales_type]
     ]()
 
@@ -214,15 +214,19 @@ def matmul_sm100_blockwise_scaled_fp8_1d2d_kernel[
     var a_scales_smem_tile_2D_view = a_scales_smem_tiles[0]
     var a_scales_smem_tile_3D_view = _to_batched_3d(a_scales_smem_tile_2D_view)
 
-    var ptr_tmem_addr = (a_scales_smem + a_scales_size).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = a_scales_smem.unsafe_offset(
+        a_scales_size
+    ).unsafe_bitcast[UInt32]()
 
     comptime a_expected_bytes = a_size * size_of[a_type]()
     comptime b_expected_bytes = b_size * size_of[b_type]()
     comptime a_scales_expected_bytes = a_scales_size * size_of[a_scales_type]()
     comptime expected_bytes = a_expected_bytes + b_expected_bytes + a_scales_expected_bytes
 
-    var tma_mbar = (ptr_tmem_addr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = tma_mbar + 1
+    var tma_mbar = ptr_tmem_addr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = tma_mbar.unsafe_offset(1)
 
     var warp_id = get_warp_id()
     var elect_one_warp = warp_id == 0

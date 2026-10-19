@@ -125,7 +125,7 @@ def broadcast_multimem_kernel[
                     simd_width=simd_width,
                     scope=Scope.GPU,
                     consistency=Consistency.RELAXED,
-                ](out_ptr + elem_idx, data)
+                ](out_ptr.unsafe_offset(elem_idx), data)
 
             # Handle tail elements (when num_elements is not a multiple of simd_width).
             # multimem_st requires >= 32 bits total, so use a minimum vector width
@@ -145,7 +145,7 @@ def broadcast_multimem_kernel[
                 multimem_st[
                     scope=Scope.GPU,
                     consistency=Consistency.RELAXED,
-                ](out_ptr + tail_elem_idx, data)
+                ](out_ptr.unsafe_offset(tail_elem_idx), data)
 
             # Handle any remaining sub-chunk elements with an overlapping
             # write that re-stores the last min_mm_width elements of the
@@ -164,7 +164,7 @@ def broadcast_multimem_kernel[
                     multimem_st[
                         scope=Scope.GPU,
                         consistency=Consistency.RELAXED,
-                    ](out_ptr + overlap_idx, data)
+                    ](out_ptr.unsafe_offset(overlap_idx), data)
 
         _multi_gpu_barrier[ngpus, is_start=False](rank_sigs, my_sig, _my_rank)
 
@@ -319,7 +319,7 @@ def broadcast_pull_2stage_kernel[
     comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
     var payloads = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> PtrType: (
-            rank_sigs[i].address_space_cast[.GENERIC]() + 1
+            rank_sigs[i].address_space_cast[.GENERIC]().unsafe_offset(1)
         ).unsafe_bitcast[Scalar[dtype]]()
     )
 

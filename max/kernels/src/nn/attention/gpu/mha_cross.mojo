@@ -110,11 +110,11 @@ def _bmm0_bs[
     if x >= (_kv_max_seq_len + _max_cache_size) or y >= _q_max_seq_len:
         return
 
-    var q = q_ptr + q_offset
+    var q = q_ptr.unsafe_offset(q_offset)
 
     var kv_head = ufloordiv(head, _group)
 
-    var p = p_ptr + p_offset
+    var p = p_ptr.unsafe_offset(p_offset)
 
     var accum = Scalar[p_type](0.0)
 
@@ -218,10 +218,10 @@ def _bmm1_bs[
     if x >= _depth or y >= cur_query_len:
         return
 
-    var p = p_ptr + p_offset
+    var p = p_ptr.unsafe_offset(p_offset)
 
     var kv_head = ufloordiv(head, _group)
-    var output = output_ptr + output_offset
+    var output = output_ptr.unsafe_offset(output_offset)
 
     var accum = Float32(0.0)
 

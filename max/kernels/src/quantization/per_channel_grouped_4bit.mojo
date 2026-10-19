@@ -336,7 +336,7 @@ struct Q4sym[
                 ](Coord(i, j * Self.group_size))
 
                 var flat_index_output = output_inner_stride * i + j
-                var output_ptr = base_block_ptr + flat_index_output
+                var output_ptr = base_block_ptr.unsafe_offset(flat_index_output)
 
                 # TODO: use the memory more directly instead of unsafe_memcpy
                 var encoded_data = Q4sym[Self.group_size, Self.float_dtype](
@@ -411,7 +411,7 @@ struct Q4sym[
                 var encoded = Q4sym[Self.group_size, Self.float_dtype]()
                 unsafe_memcpy(
                     dest=Pointer(to=encoded),
-                    src=base_block_ptr + flat_index_input,
+                    src=base_block_ptr.unsafe_offset(flat_index_input),
                     count=1,
                 )
 
@@ -503,7 +503,7 @@ def q4_k_dequantize_impl(
     var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
     var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):
-        var src_ptr = input_q4_k_ptr + block_idx
+        var src_ptr = input_q4_k_ptr.unsafe_offset(block_idx)
         var src_base = block_idx * block_nbytes + q_bits_offset
         var dst_base = block_idx * block_nelems
 
@@ -599,7 +599,7 @@ def q6_k_dequantize_impl[
     var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
     var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):
-        var src_ptr = input_q6_k_ptr + block_idx
+        var src_ptr = input_q6_k_ptr.unsafe_offset(block_idx)
         var src_base = block_idx * block_nbytes
         var dst_base = block_idx * block_nelems
 

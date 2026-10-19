@@ -601,7 +601,9 @@ struct MLAPrefillSparseCommon[
                         cp_async_bulk_tensor_shared_cluster_global[
                             cta_group=Self.config.cta_group
                         ](
-                            full_q_ptr + j * Q_PADDED_DEPTH_TILE_STRIDE,
+                            full_q_ptr.unsafe_offset(
+                                j * Q_PADDED_DEPTH_TILE_STRIDE
+                            ),
                             Pointer(to=q_tma_op.descriptor).unsafe_bitcast[
                                 NoneType
                             ](),
@@ -725,7 +727,9 @@ struct MLAPrefillSparseCommon[
             tcgen05_fence_after()
 
             var k_p1_smem_desc = Self.QKMMAOpType.descriptor_k_p1(
-                k_smem_ptr + Self.B_TOPK_PER_CTA * Self.config.q_smem_depth
+                k_smem_ptr.unsafe_offset(
+                    Self.B_TOPK_PER_CTA * Self.config.q_smem_depth
+                )
             )
             # TS MMA is split across NUM_TS_STAGES stages (see
             # TSMMAType definition).  Each stage adds its k-batch to P;
@@ -763,17 +767,21 @@ struct MLAPrefillSparseCommon[
             )
             var s_p0_smem_desc = Self.SVMMAType.descriptor_s(s_smem_ptr)
             var s_p1_smem_desc = Self.SVMMAType.descriptor_s(
-                s_smem_ptr + Self.PADDED_HEADS_PER_CTA * Self.config.B_TOPK // 2
+                s_smem_ptr.unsafe_offset(
+                    Self.PADDED_HEADS_PER_CTA * Self.config.B_TOPK // 2
+                )
             )
             var v_atom1_p0_desc = Self.SVMMAType.descriptor_v(v_smem_ptr)
             var v_atom1_p1_desc = Self.SVMMAType.descriptor_v(
-                v_smem_ptr + KEY_HALF_OFFSET
+                v_smem_ptr.unsafe_offset(KEY_HALF_OFFSET)
             )
             var v_atom2_p0_desc = Self.SVMMAType.descriptor_v(
-                v_smem_ptr + ATOM2_COL_OFFSET
+                v_smem_ptr.unsafe_offset(ATOM2_COL_OFFSET)
             )
             var v_atom2_p1_desc = Self.SVMMAType.descriptor_v(
-                v_smem_ptr + KEY_HALF_OFFSET + ATOM2_COL_OFFSET
+                v_smem_ptr.unsafe_offset(KEY_HALF_OFFSET).unsafe_offset(
+                    ATOM2_COL_OFFSET
+                )
             )
 
             so_ready[curr_buf].wait(cur_phase)

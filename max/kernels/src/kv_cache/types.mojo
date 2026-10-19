@@ -992,7 +992,7 @@ struct PagedRowIndices[
                                     cta_group=Self.cta_group,
                                     eviction_policy=eviction_policy,
                                 ](
-                                    stage_base + smem_off_oob_rm,
+                                    stage_base.unsafe_offset(smem_off_oob_rm),
                                     desc_ptr,
                                     mbar.unsafe_ptr(),
                                     Index(
@@ -1019,7 +1019,7 @@ struct PagedRowIndices[
                                     cta_group=Self.cta_group,
                                     eviction_policy=eviction_policy,
                                 ](
-                                    stage_base + smem_off_oob_f,
+                                    stage_base.unsafe_offset(smem_off_oob_f),
                                     desc_ptr,
                                     mbar.unsafe_ptr(),
                                     Index(
@@ -1040,7 +1040,7 @@ struct PagedRowIndices[
                                         cta_group=Self.cta_group,
                                         eviction_policy=eviction_policy,
                                     ](
-                                        stage_base + smem_off_oob,
+                                        stage_base.unsafe_offset(smem_off_oob),
                                         desc_ptr,
                                         mbar.unsafe_ptr(),
                                         Index(
@@ -1081,7 +1081,7 @@ struct PagedRowIndices[
                     cta_group=Self.cta_group,
                     eviction_policy=eviction_policy,
                 ](
-                    stage_base + smem_off_rm,
+                    stage_base.unsafe_offset(smem_off_rm),
                     desc_ptr,
                     mbar.unsafe_ptr(),
                     Index(
@@ -1107,7 +1107,7 @@ struct PagedRowIndices[
                     cta_group=Self.cta_group,
                     eviction_policy=eviction_policy,
                 ](
-                    stage_base + smem_off_f,
+                    stage_base.unsafe_offset(smem_off_f),
                     desc_ptr,
                     mbar.unsafe_ptr(),
                     Index(
@@ -1128,7 +1128,7 @@ struct PagedRowIndices[
                         cta_group=Self.cta_group,
                         eviction_policy=eviction_policy,
                     ](
-                        stage_base + smem_off,
+                        stage_base.unsafe_offset(smem_off),
                         desc_ptr,
                         mbar.unsafe_ptr(),
                         Index(
@@ -3626,9 +3626,9 @@ struct PagedKVCache[
         )
         # Offset past the FP8 content to reach the BF16 rope data,
         # then reinterpret the pointer as BF16.
-        var rope_ptr = (self.blocks.ptr + padded_depth).unsafe_bitcast[
-            BFloat16
-        ]()
+        var rope_ptr = self.blocks.ptr.unsafe_offset(
+            padded_depth
+        ).unsafe_bitcast[BFloat16]()
         comptime smem_dim = coord[BN, 1, BK]
         comptime gmem_dim = coord[
             UNKNOWN_VALUE, Self.kv_params.num_heads, bf16_row_stride
@@ -3668,9 +3668,9 @@ struct PagedKVCache[
         reinterprets as BF16, and creates a gather4 TMA descriptor whose row
         stride is the full row width in BF16 elements.
         """
-        var rope_ptr = (self.blocks.ptr + padded_depth).unsafe_bitcast[
-            BFloat16
-        ]()
+        var rope_ptr = self.blocks.ptr.unsafe_offset(
+            padded_depth
+        ).unsafe_bitcast[BFloat16]()
         return create_tma_tile_gather4[
             .bfloat16,
             tile_height=tile_height,
@@ -4038,8 +4038,8 @@ struct PagedKVCache[
         assert self.scales is not None, "Quantization scale factors not set."
         var scales_block = self.scales.value()
 
-        var scales_ptr = scales_block.ptr + Int(
-            scales_block.layout(full_scale_block_idx)
+        var scales_ptr = scales_block.ptr.unsafe_offset(
+            Int(scales_block.layout(full_scale_block_idx))
         )
         return scales_ptr.as_unsafe_any_origin()
 
@@ -4232,7 +4232,7 @@ struct ContinuousBatchingKVCacheCollection[
                 4,
                 Engine=Self.CacheType.blocks_engine,
             ](
-                self.blocks.ptr + offset,
+                self.blocks.ptr.unsafe_offset(offset),
                 self.kv_cache_dynamic_shape,
                 self.kv_cache_dynamic_strides,
             ),
@@ -4555,7 +4555,7 @@ struct PagedKVCacheCollection[
                     4,
                     Engine=Self.CacheType.scales_engine,
                 ](
-                    scales.ptr + scale_offset,
+                    scales.ptr.unsafe_offset(scale_offset),
                     self.kv_cache_scales_dynamic_shape,
                     self.kv_cache_scales_dynamic_strides,
                 )
@@ -4568,7 +4568,7 @@ struct PagedKVCacheCollection[
                 4,
                 Engine=Self.CacheType.blocks_engine,
             ](
-                self.blocks.ptr + blocks_offset,
+                self.blocks.ptr.unsafe_offset(blocks_offset),
                 self.kv_cache_dynamic_shape,
                 self.kv_cache_dynamic_strides,
             ),

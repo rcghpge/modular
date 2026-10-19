@@ -317,7 +317,9 @@ def mla_combine_kernel[
         + head_idx
     )
     var oaccum_base = (
-        params.out_accum_split_ptr + out_row * Int(params.out_accum_stride_head)
+        params.out_accum_split_ptr.unsafe_offset(
+            out_row * Int(params.out_accum_stride_head)
+        )
     ).as_imm()
 
     # Prefetch first split's data into registers
@@ -467,7 +469,9 @@ def mla_combine_kernel[
         # Non-ragged: same padded layout as o_accum_split
         final_out_row = out_row
 
-    var out_ptr = params.output_ptr + final_out_row * Int(params.out_stride_row)
+    var out_ptr = params.output_ptr.unsafe_offset(
+        final_out_row * Int(params.out_stride_row)
+    )
 
     comptime for i in range(elems_per_thread):
         var offset = (
@@ -731,7 +735,9 @@ def mla_combine_kernel_split_parallel[
         + head_idx
     )
     var oaccum_base = (
-        params.out_accum_split_ptr + out_row * Int(params.out_accum_stride_head)
+        params.out_accum_split_ptr.unsafe_offset(
+            out_row * Int(params.out_accum_stride_head)
+        )
     ).as_imm()
 
     var lse_base = (
@@ -913,8 +919,8 @@ def mla_combine_kernel_split_parallel[
         else:
             final_out_row = out_row
 
-        var out_ptr = params.output_ptr + final_out_row * Int(
-            params.out_stride_row
+        var out_ptr = params.output_ptr.unsafe_offset(
+            final_out_row * Int(params.out_stride_row)
         )
 
         comptime for i in range(elems_per_thread):

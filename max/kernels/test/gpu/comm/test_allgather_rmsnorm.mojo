@@ -542,7 +542,7 @@ def _allgather_full[
         comptime for src in range(group_size):
             var start = config.rank_unit_start(src)
             world_out_views[dev * group_size + src] = OutViewType(
-                dev_base + start * num_cols,
+                dev_base.unsafe_offset(start * num_cols),
                 row_major(Coord(Index(config.rank_units(src), num_cols))),
             )
     allgather[group_size=group_size](
@@ -1342,7 +1342,7 @@ def _run_asymmetric_fuse_gate_case[
                 ](sum_full[dev].unsafe_ptr())
                 comptime for src in range(group_size):
                     world_out_views[dev * group_size + src] = FullType(
-                        dev_base + src * dev_rows * num_cols,
+                        dev_base.unsafe_offset(src * dev_rows * num_cols),
                         row_major(Coord(Index(dev_rows, num_cols))),
                     )
             allgather[group_size=group_size](

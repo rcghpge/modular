@@ -253,10 +253,10 @@ def ss_qk_partial_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var a_smem_ptr = (smem_base + QK_A_OFFSET).unsafe_bitcast[
+    var a_smem_ptr = smem_base.unsafe_offset(QK_A_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
-    var b_smem_ptr = (smem_base + QK_B_OFFSET).unsafe_bitcast[
+    var b_smem_ptr = smem_base.unsafe_offset(QK_B_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
 
@@ -264,11 +264,19 @@ def ss_qk_partial_kernel[
     var b_smem_tile = TileTensor(b_smem_ptr, QK_B_LAYOUT)
 
     # ---- Metadata ----
-    var metadata_ptr = (smem_base + QK_META_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(QK_META_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var a_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var b_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var a_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var b_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -459,21 +467,29 @@ def ss_qk_multistage_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var a_smem_ptr = (smem_base + QK_A_OFFSET).unsafe_bitcast[
+    var a_smem_ptr = smem_base.unsafe_offset(QK_A_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
-    var b_smem_ptr = (smem_base + QK_B_OFFSET).unsafe_bitcast[
+    var b_smem_ptr = smem_base.unsafe_offset(QK_B_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
 
     var a_smem_tile = TileTensor(a_smem_ptr, QK_A_LAYOUT)
     var b_smem_tile = TileTensor(b_smem_ptr, QK_B_LAYOUT)
 
-    var metadata_ptr = (smem_base + QK_META_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(QK_META_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var a_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var b_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var a_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var b_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -1281,10 +1297,10 @@ def ss_nonws_partial_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var a_smem_ptr = (smem_base + NW_A_OFFSET).unsafe_bitcast[
+    var a_smem_ptr = smem_base.unsafe_offset(NW_A_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
-    var b_smem_ptr = (smem_base + NW_B_OFFSET).unsafe_bitcast[
+    var b_smem_ptr = smem_base.unsafe_offset(NW_B_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
 
@@ -1292,11 +1308,19 @@ def ss_nonws_partial_kernel[
     var b_smem_tile = TileTensor(b_smem_ptr, QK_B_LAYOUT)
 
     # ---- Metadata ----
-    var metadata_ptr = (smem_base + NW_META_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(NW_META_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var a_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var b_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var a_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var b_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -1873,16 +1897,24 @@ def ts_partial_kernel[
     var q_smem_ptr = smem_base.unsafe_bitcast[Scalar[TS_OP_TYPE]]()
     var q_smem_tile = TileTensor(q_smem_ptr, TS_Q_SMEM_LAYOUT)
 
-    var k_smem_ptr = (smem_base + TS_K_SMEM_OFFSET).unsafe_bitcast[
+    var k_smem_ptr = smem_base.unsafe_offset(TS_K_SMEM_OFFSET).unsafe_bitcast[
         Scalar[TS_OP_TYPE]
     ]()
     var k_smem_tile = TileTensor(k_smem_ptr, TS_K_SMEM_LAYOUT)
 
-    var metadata_ptr = (smem_base + TS_METADATA_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(
+        TS_METADATA_OFFSET
+    ).unsafe_bitcast[UInt32]()
     var ptr_tmem_addr = metadata_ptr
-    var q_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var k_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var q_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var k_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()

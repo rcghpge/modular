@@ -459,7 +459,7 @@ def unsynced_skew_test[
         var in_tensors = Array[_, ngpus](
             fill_with=lambda (g: Int) -> InType: InType(
                 rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
-                    act_big[g].unsafe_ptr() + base
+                    act_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 act_layout,
             )
@@ -467,7 +467,7 @@ def unsynced_skew_test[
         var ar_out_tensors = Array[_, ngpus](
             fill_with=lambda (g: Int) -> OutType: OutType(
                 rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
-                    ar_big[g].unsafe_ptr() + base
+                    ar_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 act_layout,
             )
@@ -487,10 +487,10 @@ def unsynced_skew_test[
         for g in range(ngpus):
             _run_rms_norm_unfused[EPS](
                 rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
-                    ar_big[g].unsafe_ptr() + base
+                    ar_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
-                    unfused_big[g].unsafe_ptr() + base
+                    unfused_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
                     gamma[g].unsafe_ptr()
@@ -509,10 +509,10 @@ def unsynced_skew_test[
             lamport_allreduce_rmsnorm[dtype, ngpus, pdl=False](
                 g,
                 rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
-                    act_big[g].unsafe_ptr() + base
+                    act_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 rebind[MutPointer[Scalar[dtype], MutAnyOrigin]](
-                    fused_big[g].unsafe_ptr() + base
+                    fused_big[g].unsafe_ptr().unsafe_offset(base)
                 ),
                 rebind[ImmPointer[Scalar[dtype], ImmutAnyOrigin]](
                     gamma[g].unsafe_ptr()

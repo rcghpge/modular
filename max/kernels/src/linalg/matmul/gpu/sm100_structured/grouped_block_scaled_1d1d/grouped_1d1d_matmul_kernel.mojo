@@ -2361,11 +2361,14 @@ struct Grouped1D1DMatmulKernel[
                                             fill=Scalar[Self.sfb_dtype](0),
                                         ](
                                             (
-                                                sfb_global_ptr + global_offset
+                                                sfb_global_ptr.unsafe_offset(
+                                                    global_offset
+                                                )
                                             ).address_space_cast[.GLOBAL](),
                                             (
-                                                sfb_smem_tile._storage
-                                                + smem_offset
+                                                sfb_smem_tile._storage.unsafe_offset(
+                                                    smem_offset
+                                                )
                                             ).address_space_cast[.SHARED](),
                                             src_size=Int32(
                                                 copy_size
@@ -2408,8 +2411,9 @@ struct Grouped1D1DMatmulKernel[
                                         )
 
                                         var atom_dst = TileTensor(
-                                            sfb_smem_tile._storage
-                                            + smem_offset,
+                                            sfb_smem_tile._storage.unsafe_offset(
+                                                smem_offset
+                                            ),
                                             row_major[
                                                 Self.SFB_TMA_ROWS, ROW_STRIDE
                                             ](),
@@ -3026,11 +3030,15 @@ struct Grouped1D1DMatmulKernel[
 
                 # Peer CTA slice using TileTensor pattern (ptr + layout)
                 var a_peer_tt = type_of(a_tt)(
-                    a_tt._storage + peer_m_rank * Self.a_tma_load_size,
+                    a_tt._storage.unsafe_offset(
+                        peer_m_rank * Self.a_tma_load_size
+                    ),
                     a_tt.layout,
                 )
                 var b_peer_tt = type_of(b_tt)(
-                    b_tt._storage + peer_rank_m * Self.b_tma_load_size,
+                    b_tt._storage.unsafe_offset(
+                        peer_rank_m * Self.b_tma_load_size
+                    ),
                     b_tt.layout,
                 )
 

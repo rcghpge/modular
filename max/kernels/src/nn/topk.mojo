@@ -408,7 +408,7 @@ def _top_k_cpu[
                         num_equal += 1
                     if num_equal > 1:
                         var idxs_ptr = idxs.unsafe_ptr()
-                        var ptr = idxs_ptr + i
+                        var ptr = idxs_ptr.unsafe_offset(i)
                         sort(Span(unsafe_ptr=ptr, length=num_equal))
                     i += num_equal
 
@@ -1173,11 +1173,11 @@ def _topk_stage1[
         block_end = min(block_offset + block_len, _num_elements)
         stride = block_size
 
-    var _in_buffer_tmp = in_buffer_tmp + batch_id * _num_elements
+    var _in_buffer_tmp = in_buffer_tmp.unsafe_offset(batch_id * _num_elements)
 
     # Hoist per-block output base pointers out of the k loop.
-    var out_vals = local_topk_vals + bid * _max_k
-    var out_idxs = local_topk_idxs + bid * _max_k
+    var out_vals = local_topk_vals.unsafe_offset(bid * _max_k)
+    var out_idxs = local_topk_idxs.unsafe_offset(bid * _max_k)
 
     var k_batch = _max_k
     if case .Some(K) = K:
@@ -1326,12 +1326,16 @@ def _topk_stage2[
     var batch_id = block_idx.x
     # assert (block_idx.x == 0)
     # assert (grid_dim.x == 1)
-    var batch_i_topk_vals = global_topk_vals + batch_id * _max_k
-    var batch_i_topk_idxs = global_topk_idxs + batch_id * (
-        1 if sampling else _max_k
+    var batch_i_topk_vals = global_topk_vals.unsafe_offset(batch_id * _max_k)
+    var batch_i_topk_idxs = global_topk_idxs.unsafe_offset(
+        batch_id * (1 if sampling else _max_k)
     )
-    var _local_topk_vals = local_topk_vals + batch_id * num_elem_reduced
-    var _local_topk_idxs = local_topk_idxs + batch_id * num_elem_reduced
+    var _local_topk_vals = local_topk_vals.unsafe_offset(
+        batch_id * num_elem_reduced
+    )
+    var _local_topk_idxs = local_topk_idxs.unsafe_offset(
+        batch_id * num_elem_reduced
+    )
 
     # Allocate shared memory for values and indices
     var num_e_rounded = align_up(num_elem_reduced, WARP_SIZE)
@@ -1346,7 +1350,9 @@ def _topk_stage2[
         alignment=align_of[Scalar[T]](),
     ]()
 
-    var idxs_sram = (vals_sram + vals_smem_size).unsafe_bitcast[Int]()
+    var idxs_sram = vals_sram.unsafe_offset(vals_smem_size).unsafe_bitcast[
+        Int
+    ]()
 
     # SAFETY: Only dereferenced inside `comptime if sampling` blocks;
     # overwritten with real pointers before use when sampling is enabled.
@@ -1378,9 +1384,9 @@ def _topk_stage2[
 
         comptime if sampling:
             # Storing the top-K logits in shmem for sampling
-            s_id = (idxs_sram + vals_smem_size).unsafe_bitcast[Int]()
+            s_id = idxs_sram.unsafe_offset(vals_smem_size).unsafe_bitcast[Int]()
             # The 2* below is for warp align safety
-            s_val2 = (s_id + 2 * k_batch).unsafe_bitcast[Scalar[T]]()
+            s_val2 = s_id.unsafe_offset(2 * k_batch).unsafe_bitcast[Scalar[T]]()
 
         var s_sum = unsafe_stack_allocation[
             1, Scalar[T], address_space=.SHARED
@@ -1595,9 +1601,9 @@ def _topk_warp[
     var lane = thread_idx.x
     var batch_id = block_idx.x
 
-    var row = in_buffer + batch_id * _num_elements
-    var row_vals = out_vals + batch_id * _max_k
-    var row_idxs = out_idxs + batch_id * _max_k
+    var row = in_buffer.unsafe_offset(batch_id * _num_elements)
+    var row_vals = out_vals.unsafe_offset(batch_id * _max_k)
+    var row_idxs = out_idxs.unsafe_offset(batch_id * _max_k)
 
     var k_batch = _max_k
     if case .Some(K) = K:
@@ -2758,14 +2764,16 @@ def _gumbel_argmax_fused_kernel[
             ]()
             if tid == 0:
                 var slot = batch_id * blocks_per_row_int + block_in_row
-                var slot_ptr = (
-                    partials.unsafe_value() + slot * _GUMBEL_PARTIAL_BYTES
+                var slot_ptr = partials.unsafe_value().unsafe_offset(
+                    slot * _GUMBEL_PARTIAL_BYTES
                 )
                 slot_ptr.unsafe_bitcast[Float32]()[0] = total.u.cast[.float32]()
-                (slot_ptr + 8).unsafe_bitcast[Int64]()[0] = Int64(total.p)
+                (slot_ptr.unsafe_offset(8)).unsafe_bitcast[Int64]()[0] = Int64(
+                    total.p
+                )
                 var previous = Atomic[Int32].fetch_add[
                     ordering=Ordering.RELEASE
-                ](counters.unsafe_value() + batch_id, Int32(1))
+                ](counters.unsafe_value().unsafe_offset(batch_id), Int32(1))
                 is_last[0] = Int(previous) + 1 == blocks_per_row_int
             barrier()
 
@@ -2774,18 +2782,21 @@ def _gumbel_argmax_fused_kernel[
                 # each partial.
                 fence[Ordering.ACQUIRE]()
                 var row_base = batch_id * blocks_per_row_int
-                var first = (
-                    partials.unsafe_value() + row_base * _GUMBEL_PARTIAL_BYTES
+                var first = partials.unsafe_value().unsafe_offset(
+                    row_base * _GUMBEL_PARTIAL_BYTES
                 )
                 var best_value = first.unsafe_bitcast[Float32]()[0]
-                var best_index = (first + 8).unsafe_bitcast[Int64]()[0]
+                var best_index = first.unsafe_offset(8).unsafe_bitcast[Int64]()[
+                    0
+                ]
                 for block in range(1, blocks_per_row_int):
-                    var slot_ptr = (
-                        partials.unsafe_value()
-                        + (row_base + block) * _GUMBEL_PARTIAL_BYTES
+                    var slot_ptr = partials.unsafe_value().unsafe_offset(
+                        (row_base + block) * _GUMBEL_PARTIAL_BYTES
                     )
                     var value = slot_ptr.unsafe_bitcast[Float32]()[0]
-                    var index = (slot_ptr + 8).unsafe_bitcast[Int64]()[0]
+                    var index = slot_ptr.unsafe_offset(8).unsafe_bitcast[
+                        Int64
+                    ]()[0]
                     if value > best_value or (
                         value == best_value and index < best_index
                     ):

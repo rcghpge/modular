@@ -833,7 +833,7 @@ def argmax_with_bias_gpu[
             ceildiv(ceildiv(num_elements, num_splits), simd_width) * simd_width
         )
 
-        var logits_ptr = logits.ptr + position * num_elements
+        var logits_ptr = logits.ptr.unsafe_offset(position * num_elements)
         var aligned = (
             num_elements % simd_width == 0
             and Int(logits_ptr) % align_of[SIMD[dtype, simd_width]]() == 0

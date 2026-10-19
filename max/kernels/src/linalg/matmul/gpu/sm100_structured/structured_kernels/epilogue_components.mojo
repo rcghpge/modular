@@ -345,7 +345,7 @@ def store_fragment_to_smem[
                 v[k * cast_width + _j] = casted[_j]
 
         st_matrix[simd_width=stmtx_simd_width, transpose=transpose_c](
-            dst._storage.unsafe_mut_cast[True]() + offset,
+            dst._storage.unsafe_mut_cast[True]().unsafe_offset(offset),
             bitcast[.float32, stmtx_simd_width](v),
         )
 
@@ -2034,8 +2034,8 @@ def shared_memory_epilogue_transpose[
                 # undo swizzle to get logical `c_smem[logical_crd]` value.
                 var ptr = (
                     c_smem._storage.unsafe_mut_cast[True]()
-                    + swizzle(cj * swizzle_dim + ck)
-                    + UInt32(ci * swizzle_dim) * UInt32(stageN)
+                    .unsafe_offset(swizzle(cj * swizzle_dim + ck))
+                    .unsafe_offset(UInt32(ci * swizzle_dim) * UInt32(stageN))
                 )
                 var row = local_i + gmem_col
                 var col = local_j + gmem_row
@@ -2081,9 +2081,9 @@ def shared_memory_epilogue_transpose[
                     var local_j = logical_crd[1].value()
 
                     # Undo swizzle to get logical value
-                    var ptr = c_smem._storage.unsafe_mut_cast[True]() + swizzle(
-                        offset
-                    )
+                    var ptr = c_smem._storage.unsafe_mut_cast[
+                        True
+                    ]().unsafe_offset(swizzle(offset))
                     var row = UInt32(local_i) + gmem_col
                     var col = UInt32(local_j) + gmem_row
                     if row < UInt32(Int(M)) and col < UInt32(Int(N)):

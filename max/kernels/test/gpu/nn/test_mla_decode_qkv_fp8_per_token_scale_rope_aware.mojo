@@ -116,7 +116,7 @@ def create_interleaved_q_data(
 
             # Rope: BF16 stored as raw bytes in the FP8 buffer, and in ref
             var rope_byte_ptr = (
-                q_host_fp8 + fp8_row_start + V_DEPTH
+                q_host_fp8.unsafe_offset(fp8_row_start).unsafe_offset(V_DEPTH)
             ).unsafe_bitcast[BFloat16]()
             for d in range(ROPE_DIM):
                 rope_byte_ptr[d] = rope_bf16[rope_start + d]
@@ -167,7 +167,7 @@ def create_interleaved_kv_block_data(
 
         # Rope: store BF16 bytes in the FP8 buffer
         var rope_byte_ptr = (
-            blocks_host + fp8_row_start + V_DEPTH
+            blocks_host.unsafe_offset(fp8_row_start).unsafe_offset(V_DEPTH)
         ).unsafe_bitcast[BFloat16]()
         for d in range(ROPE_DIM):
             rope_byte_ptr[d] = rope_bf16[rope_start + d]
@@ -200,9 +200,11 @@ def extract_bf16_kv_from_block(
             ]()
 
         # Copy BF16 rope
-        var rope_src = (blocks_host + src_row + V_DEPTH).unsafe_bitcast[
-            BFloat16
-        ]()
+        var rope_src = (
+            blocks_host.unsafe_offset(src_row)
+            .unsafe_offset(V_DEPTH)
+            .unsafe_bitcast[BFloat16]()
+        )
         for d in range(ROPE_DIM):
             k_bf16_out[dst_row + V_DEPTH + d] = rope_src[d]
 
@@ -567,7 +569,7 @@ def run_test[
             var dst_offset = tok * KV_NUM_HEADS * LOGICAL_DEPTH
             extract_bf16_kv_from_block(
                 blocks_host.unsafe_ptr(),
-                k_b_host.unsafe_ptr() + dst_offset,
+                k_b_host.unsafe_ptr().unsafe_offset(dst_offset),
                 physical_page,
                 tok_in_page,
                 kv_dim2,
@@ -928,9 +930,9 @@ def run_test_with_scales[
                 for kh in range(KV_NUM_HEADS):
                     var rope_ptr = (
                         blocks_host.unsafe_ptr()
-                        + tok_fp8_base
-                        + kh * PHYSICAL_DIM
-                        + V_DEPTH
+                        .unsafe_offset(tok_fp8_base)
+                        .unsafe_offset(kh * PHYSICAL_DIM)
+                        .unsafe_offset(V_DEPTH)
                     ).unsafe_bitcast[BFloat16]()
                     for d in range(ROPE_DIM):
                         rope_ptr[d] = (
@@ -989,7 +991,9 @@ def run_test_with_scales[
             var row_idx = t * num_heads + h
             # Divide Q_rope BF16 in the interleaved FP8 buffer
             var fp8_rope_ptr = (
-                q_host_fp8.unsafe_ptr() + row_idx * PHYSICAL_DIM + V_DEPTH
+                q_host_fp8.unsafe_ptr()
+                .unsafe_offset(row_idx * PHYSICAL_DIM)
+                .unsafe_offset(V_DEPTH)
             ).unsafe_bitcast[BFloat16]()
             for d in range(ROPE_DIM):
                 fp8_rope_ptr[d] = (
@@ -1222,7 +1226,7 @@ def run_test_with_scales[
             var dst_offset = tok * KV_NUM_HEADS * LOGICAL_DEPTH
             extract_bf16_kv_from_block(
                 blocks_host.unsafe_ptr(),
-                k_b_host.unsafe_ptr() + dst_offset,
+                k_b_host.unsafe_ptr().unsafe_offset(dst_offset),
                 physical_page,
                 tok_in_page,
                 kv_dim2,

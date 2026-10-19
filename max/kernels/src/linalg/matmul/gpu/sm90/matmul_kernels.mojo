@@ -1536,7 +1536,9 @@ struct HopperMatmulSM90Kernel[
                     var col = Int(idx[1])
                     var row_idx = Coord(row, col)
                     comptime if has_compute_fn:
-                        (c_ptr + row * N + col).store[alignment=alignment](
+                        c_ptr.unsafe_offset(row * N).unsafe_offset(col).store[
+                            alignment=alignment
+                        ](
                             rebind[SIMD[Self.c_type, width]](
                                 compute_fn[dtype, width, alignment=alignment](
                                     row_idx, val

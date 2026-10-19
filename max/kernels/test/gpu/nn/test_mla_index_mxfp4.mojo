@@ -713,7 +713,9 @@ def _run_case[
             ctx,
             NoRemap(),
             BlockMaxScoreHook[HOOK_BLOCK](
-                (d_block_max.unsafe_ptr() + max_shift).as_unsafe_any_origin(),
+                d_block_max.unsafe_ptr()
+                .unsafe_offset(max_shift)
+                .as_unsafe_any_origin(),
                 num_blocks,
             ),
             scores_budget_bytes,

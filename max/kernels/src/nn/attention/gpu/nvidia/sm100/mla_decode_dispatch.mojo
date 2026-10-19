@@ -2330,7 +2330,7 @@ def mla_decode_sm100_sink_split_k[
         # Q_rope TMA: BF16 rope, SWIZZLE_128B, BM x rope_depth (64)
         # Rope starts at byte offset padded_depth (512) from Q row start.
         var q_ptr_bf16_rope = rebind[MutPointer[BFloat16, origin=MutAnyOrigin]](
-            q.ptr + mla_config.padded_depth
+            q.ptr.unsafe_offset(mla_config.padded_depth)
         )
         var q_rope_tma = tma_tile_qo[
             swizzle_mode=mla_config.rope_swizzle_mode,  # SWIZZLE_128B

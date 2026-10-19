@@ -87,8 +87,8 @@ def softmax_kernel(
     var row = block_idx.x
     var tid = thread_idx.x
 
-    var S_row = S + (row * N)
-    var P_row = P_ptr + (row * N)
+    var S_row = S.unsafe_offset(row * N)
+    var P_row = P_ptr.unsafe_offset(row * N)
 
     comptime neg_inf = Float32(-3.40282e38)
     var max_val_thread = neg_inf

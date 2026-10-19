@@ -143,7 +143,7 @@ def test_conv2d_fused_apple_dynamic_round(
             + Int(coords[1]) * W_out_i
             + Int(coords[2])
         ) * C_out_i + Int(coords[3])
-        (out_ptr + flat).store(rebind[SIMD[.bfloat16, _width]](y))
+        (out_ptr.unsafe_offset(flat)).store(rebind[SIMD[.bfloat16, _width]](y))
 
     var handled = dispatch_fused_im2col_conv2d_apple[
         maybe_epilogue_func=Optional[elementwise_simd_epilogue_type](

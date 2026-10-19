@@ -1984,7 +1984,10 @@ struct TileTensor[
                         async_copy[
                             element_size_bytes,
                             eviction_policy=eviction_policy,
-                        ](src_ptr + src_idx, dst_ptr + swizzled_idx)
+                        ](
+                            src_ptr.unsafe_offset(src_idx),
+                            dst_ptr.unsafe_offset(swizzled_idx),
+                        )
                 elif fill_value.value() == 0:
                     # Zero fill is byte-granular: `cp.async` copies
                     # `src_size` bytes and zeroes the rest of the element.
@@ -1993,8 +1996,8 @@ struct TileTensor[
                         fill=fill_value,
                         eviction_policy=eviction_policy,
                     ](
-                        src_ptr + src_idx,
-                        dst_ptr + swizzled_idx,
+                        src_ptr.unsafe_offset(src_idx),
+                        dst_ptr.unsafe_offset(swizzled_idx),
                         Int32(element_size_bytes) if in_bounds else 0,
                     )
                 else:
@@ -2013,8 +2016,8 @@ struct TileTensor[
                         fill=fill_value,
                         eviction_policy=eviction_policy,
                     ](
-                        src_ptr + src_idx,
-                        dst_ptr + swizzled_idx,
+                        src_ptr.unsafe_offset(src_idx),
+                        dst_ptr.unsafe_offset(swizzled_idx),
                         Int32(element_size_bytes) if in_bounds else 0,
                         predicate=in_bounds,
                     )
@@ -2022,7 +2025,10 @@ struct TileTensor[
                 async_copy[
                     element_size_bytes,
                     eviction_policy=eviction_policy,
-                ](src_ptr + src_idx, dst_ptr + swizzled_idx)
+                ](
+                    src_ptr.unsafe_offset(src_idx),
+                    dst_ptr.unsafe_offset(swizzled_idx),
+                )
 
     @__allow_legacy_custom_self_type
     def _distance(

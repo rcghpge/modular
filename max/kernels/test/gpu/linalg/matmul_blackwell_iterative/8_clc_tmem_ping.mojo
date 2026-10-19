@@ -182,11 +182,15 @@ def load_AB[
     var b_smem_tile = b_smem[stage]
 
     var a_smem_slice = TileTensor(
-        a_smem_tile.unsafe_ptr() + peer_cta_coord[2] * a_tma_load_size,
+        a_smem_tile.unsafe_ptr().unsafe_offset(
+            peer_cta_coord[2] * a_tma_load_size
+        ),
         a_smem_tile.layout,
     )
     var b_smem_slice = TileTensor(
-        b_smem_tile.unsafe_ptr() + peer_cta_coord[1] * b_tma_load_size,
+        b_smem_tile.unsafe_ptr().unsafe_offset(
+            peer_cta_coord[1] * b_tma_load_size
+        ),
         b_smem_tile.layout,
     )
 
@@ -264,7 +268,7 @@ def consumer_main_loop[
             init_c=(iter_idx == 0),  # Initialize C on first iteration
         )
 
-        mma_op.commit(mma_mbar + stage)
+        mma_op.commit(mma_mbar.unsafe_offset(stage))
 
 
 @inline(.always)
@@ -305,7 +309,7 @@ def stsm_helper[
             v[2 * k] = casted[0]
             v[2 * k + 1] = casted[1]
         st_matrix[simd_width=4](
-            dst.unsafe_ptr() + offset, bitcast[.float32, 4](v)
+            dst.unsafe_ptr().unsafe_offset(offset), bitcast[.float32, 4](v)
         )
 
 
@@ -402,7 +406,7 @@ def multi_stage_store_C[
         tcgen05_load_wait()
 
         comptime if stage == num_stages - 1:
-            umma_arrive_leader_cta(accum_empty_mbar + index)
+            umma_arrive_leader_cta(accum_empty_mbar.unsafe_offset(index))
 
         # Assume double-buffer for shared memory packing
         var c_smem_tile = c_iter[stage % 2]
@@ -569,10 +573,10 @@ def kernel_8[
     ].static_value * num_output_stages
 
     var a_smem_base = base_ptr_smem
-    var b_smem_base = (a_smem_base + a_smem_size).unsafe_bitcast[
+    var b_smem_base = a_smem_base.unsafe_offset(a_smem_size).unsafe_bitcast[
         Scalar[b_type]
     ]()
-    var c_smem_base = (b_smem_base + b_smem_size).unsafe_bitcast[
+    var c_smem_base = b_smem_base.unsafe_offset(b_smem_size).unsafe_bitcast[
         Scalar[c_type]
     ]()
 
@@ -580,31 +584,41 @@ def kernel_8[
     var b_smem = BTileArray(b_smem_base)
     var c_smem_iter = CTileArray(c_smem_base)
 
-    var smem_pool = (c_smem_base + c_smem_size).unsafe_bitcast[Int64]()
+    var smem_pool = c_smem_base.unsafe_offset(c_smem_size).unsafe_bitcast[
+        Int64
+    ]()
 
     var tma_mbar_ptr = smem_pool
-    var mma_mbar_ptr = tma_mbar_ptr + num_pipeline_stages
-    var accum_full_mbar_ptr = mma_mbar_ptr + num_pipeline_stages
-    var accum_empty_mbar_ptr = accum_full_mbar_ptr + num_accum_pipeline_stages
-
-    var clc_full_mbar_ptr = accum_empty_mbar_ptr + num_accum_pipeline_stages
-    var clc_empty_mbar_ptr = clc_full_mbar_ptr + num_clc_pipeline_stages
-    var clc_throttle_full_mbar_ptr = (
-        clc_empty_mbar_ptr + num_clc_pipeline_stages
+    var mma_mbar_ptr = tma_mbar_ptr.unsafe_offset(num_pipeline_stages)
+    var accum_full_mbar_ptr = mma_mbar_ptr.unsafe_offset(num_pipeline_stages)
+    var accum_empty_mbar_ptr = accum_full_mbar_ptr.unsafe_offset(
+        num_accum_pipeline_stages
     )
-    var clc_throttle_empty_mbar_ptr = (
-        clc_throttle_full_mbar_ptr + num_clc_pipeline_stages
+
+    var clc_full_mbar_ptr = accum_empty_mbar_ptr.unsafe_offset(
+        num_accum_pipeline_stages
+    )
+    var clc_empty_mbar_ptr = clc_full_mbar_ptr.unsafe_offset(
+        num_clc_pipeline_stages
+    )
+    var clc_throttle_full_mbar_ptr = clc_empty_mbar_ptr.unsafe_offset(
+        num_clc_pipeline_stages
+    )
+    var clc_throttle_empty_mbar_ptr = clc_throttle_full_mbar_ptr.unsafe_offset(
+        num_clc_pipeline_stages
     )
 
     var clc_response_ptr = (
-        clc_throttle_empty_mbar_ptr + num_clc_pipeline_stages
+        clc_throttle_empty_mbar_ptr.unsafe_offset(num_clc_pipeline_stages)
     ).unsafe_bitcast[Int128]()
 
     var tmem_dealloc_mbar_ptr = (
-        clc_response_ptr + num_clc_pipeline_stages
+        clc_response_ptr.unsafe_offset(num_clc_pipeline_stages)
     ).unsafe_bitcast[Int64]()
 
-    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = tmem_dealloc_mbar_ptr.unsafe_offset(1).unsafe_bitcast[
+        UInt32
+    ]()
 
     var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
@@ -864,7 +878,7 @@ def kernel_8[
                 # mma arrive multicast will track completion of all mma prior to this barrier.
                 if elect_one_sync():
                     mma_arrive_multicast[cta_group](
-                        accum_full_mbar + accum_index,
+                        accum_full_mbar.unsafe_offset(accum_index),
                         UInt16(mma_complete_mask),
                     )
                 accum_pipeline_producer_state.step()

@@ -146,8 +146,9 @@ def warp_split_k_reduction[
         barrier()
         var red_tb_smem = TileTensor(
             (
-                smem.unsafe_bitcast[Scalar[c_type]]()
-                + ((warp_k_part_id % i_red) * BM * BN)
+                smem.unsafe_bitcast[Scalar[c_type]]().unsafe_offset(
+                    (warp_k_part_id % i_red) * BM * BN
+                )
             ).as_unsafe_any_origin(),
             row_major[1, BM * BN](),
         )
@@ -1069,15 +1070,15 @@ def _multistage_gemm_kernel_impl[
         address_space=.SHARED,
         circular=True,
     ](
-        a_smem + Int(warp_k_part_id) * a_smem_size,
+        a_smem.unsafe_offset(Int(warp_k_part_id) * a_smem_size),
         a_smem_layout,
         bound=a_smem_size,
     )
 
     # There is one pre-allocated shared buffer. Explicitly offset B after at A's end.
-    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).unsafe_bitcast[
-        Scalar[b_type]
-    ]()
+    var b_smem = a_smem.unsafe_offset(
+        num_warp_k_partitions * a_smem_size
+    ).unsafe_bitcast[Scalar[b_type]]()
     comptime b_smem_size: Int = num_pipeline_stages * BK * BN
     comptime BD_0 = BN if transpose_b else BK
     comptime BD_1 = BK if transpose_b else BN
@@ -1089,7 +1090,7 @@ def _multistage_gemm_kernel_impl[
         address_space=.SHARED,
         circular=True,
     ](
-        b_smem + Int(warp_k_part_id) * b_smem_size,
+        b_smem.unsafe_offset(Int(warp_k_part_id) * b_smem_size),
         b_smem_layout,
         bound=b_smem_size,
     )
@@ -1295,7 +1296,9 @@ def _multistage_gemm_kernel_impl[
         ]()
 
         var accum_smem_warp_tile = TileTensor(
-            a_smem.unsafe_bitcast[Scalar[c_type]]() + Int(warp_id) * WM * WN,
+            a_smem.unsafe_bitcast[Scalar[c_type]]().unsafe_offset(
+                Int(warp_id) * WM * WN
+            ),
             row_major[WM, WN](),
         )
 

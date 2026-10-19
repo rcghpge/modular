@@ -2035,8 +2035,9 @@ struct DefaultEngine[*, element_width: Int = 1](TensorOps):
         # it as a scalar pointer so `+ offset` advances in scalar (not SIMD)
         # units, then `rebind` back to the original handle type.
         return (
-            storage.unsafe_bitcast[Scalar[offset_dtype]]()
-            + _offset_elements(offset_coord)
+            storage.unsafe_bitcast[Scalar[offset_dtype]]().unsafe_offset(
+                _offset_elements(offset_coord)
+            )
         ).unsafe_bitcast[SIMD[offset_dtype, Self.element_width]]()
 
     @staticmethod
@@ -3604,7 +3605,7 @@ struct DevicePointerEngine[*, element_width: Int = 1](TensorOps):
             var leaf = Pointer(to=result).unsafe_bitcast[
                 MutPointer[Scalar[type_of(storage).dtype], MutAnyOrigin]
             ]()
-            leaf[] = leaf[] + _offset_elements(offset_coord)
+            leaf[] = leaf[].unsafe_offset(_offset_elements(offset_coord))
             return result
         else:
             # Keep this non-raising (matching the pointer-backed engine and
@@ -5010,7 +5011,9 @@ struct StaticOffsetEngine[*, static_offset: Int, element_width: Int = 1](
             element the engine exposes, i.e. `static_offset` scalar elements
             past the handle.
         """
-        return storage.unsafe_bitcast[Scalar[dtype]]() + Self.static_offset
+        return storage.unsafe_bitcast[Scalar[dtype]]().unsafe_offset(
+            Self.static_offset
+        )
 
     @staticmethod
     @inline(.always)

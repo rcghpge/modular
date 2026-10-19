@@ -216,9 +216,9 @@ def test[
             # [new_j, i, new_k].
             var ptr = (
                 c_out_ptr.unsafe_bitcast[Scalar[out_type]]()
-                + new_j * total_num_tokens * N
-                + i * N
-                + new_k
+                .unsafe_offset(new_j * total_num_tokens * N)
+                .unsafe_offset(i * N)
+                .unsafe_offset(new_k)
             )
             ptr.store[width=width, alignment=alignment](val.cast[out_type]())
 
@@ -250,7 +250,9 @@ def test[
                 new_val[i] = test_epilogue(row, col + i, val[i])
 
             var ptr = (
-                c_out_ptr.unsafe_bitcast[Scalar[out_type]]() + row * N + col
+                c_out_ptr.unsafe_bitcast[Scalar[out_type]]()
+                .unsafe_offset(row * N)
+                .unsafe_offset(col)
             )
             ptr.store[width=width, alignment=alignment](
                 new_val.cast[out_type]()

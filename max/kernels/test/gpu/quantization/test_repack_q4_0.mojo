@@ -69,7 +69,9 @@ def test_repack_q4_0[N: Int, K: Int](ctx: DeviceContext) raises:
         row_major[N // 64, K * 8](),
     )
     var packed_scales = TileTensor(
-        (output_host.unsafe_ptr() + N * K // 2).unsafe_bitcast[UInt16](),
+        output_host.unsafe_ptr()
+        .unsafe_offset(N * K // 2)
+        .unsafe_bitcast[UInt16](),
         row_major[groups, N](),
     )
     for row_tile in range(N // 64):

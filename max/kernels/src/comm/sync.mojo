@@ -456,9 +456,9 @@ def _multi_gpu_barrier[
         )
         var internal_counter_ptr = (
             self_sg.unsafe_bitcast[Scalar[flag_t]]()
-            + self_domain_offset
-            + bid * MAX_GPUS
-            + my_gpu
+            .unsafe_offset(self_domain_offset)
+            .unsafe_offset(bid * MAX_GPUS)
+            .unsafe_offset(my_gpu)
         )
         var val = internal_counter_ptr[] + 1
         internal_counter_ptr[] = val
@@ -480,22 +480,23 @@ def _multi_gpu_barrier[
 
         # this line should compute &rank_sigs[my_gpu]->peer_counter[domain_id][val % 2][bid][my_rank]
         var peer_counter_ptr = (
-            rank_sigs[my_gpu].unsafe_bitcast[Scalar[flag_t]]()
-            + peer_counter_offset
-            + peer_domain_offset
-            + (val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS)
-            + bid * MAX_GPUS
-            + my_rank
+            rank_sigs[my_gpu]
+            .unsafe_bitcast[Scalar[flag_t]]()
+            .unsafe_offset(peer_counter_offset)
+            .unsafe_offset(peer_domain_offset)
+            .unsafe_offset((val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS))
+            .unsafe_offset(bid * MAX_GPUS)
+            .unsafe_offset(my_rank)
         )
         # this line should compute
         # &self_sg->peer_counter[domain_id][val % 2][bid][my_gpu]
         var self_counter_ptr = (
             self_sg.unsafe_bitcast[Scalar[flag_t]]()
-            + peer_counter_offset
-            + peer_domain_offset
-            + (val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS)
-            + bid * MAX_GPUS
-            + my_gpu
+            .unsafe_offset(peer_counter_offset)
+            .unsafe_offset(peer_domain_offset)
+            .unsafe_offset((val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS))
+            .unsafe_offset(bid * MAX_GPUS)
+            .unsafe_offset(my_gpu)
         )
 
         # Write the expected counter value to peer and wait for correct value from

@@ -438,10 +438,10 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_gpu_dstate_split[
             alignment=16,
         ]()
         var B_s = smem
-        var C_s = smem + BC_SIZE
-        var x_s = smem + 2 * BC_SIZE
-        var dA_s = x_s + 2 * T * CH
-        var delta_s = dA_s + 2 * T
+        var C_s = smem.unsafe_offset(BC_SIZE)
+        var x_s = smem.unsafe_offset(2 * BC_SIZE)
+        var dA_s = x_s.unsafe_offset(2 * T * CH)
+        var delta_s = dA_s.unsafe_offset(2 * T)
         var tid = ty * DSTATE_SPLIT + tx
         var t_w = tid // (DSTATE // 8)
         var n_w = (tid % (DSTATE // 8)) * 8

@@ -412,7 +412,9 @@ struct MLAPrefillSparseQKVFP8[
         ]()
         var half_idx = key_base / UInt32(Self.PV_BK)
         var local_key_base = key_base % UInt32(Self.PV_BK)
-        var p_half_smem = p_smem + Int(half_idx) * Self.P_KHALF_STRIDE
+        var p_half_smem = p_smem.unsafe_offset(
+            Int(half_idx) * Self.P_KHALF_STRIDE
+        )
         comptime for g in range(n // 16):
             comptime col_offset = g * 16
             var logical = Int(
@@ -501,7 +503,9 @@ struct MLAPrefillSparseQKVFP8[
                 var r3 = d_indices_buf[base_i + 3]
                 comptime for cg in range(NUM_CG):
                     var dst = TileTensor(
-                        kv_smem_buf + Int(c) * 4 * box_w + cg * BN * box_w,
+                        kv_smem_buf.unsafe_offset(
+                            Int(c) * 4 * box_w
+                        ).unsafe_offset(cg * BN * box_w),
                         row_major[4, box_w](),
                     )
                     kv_tma_op.async_copy_gather4[cta_group=1](
@@ -594,10 +598,11 @@ struct MLAPrefillSparseQKVFP8[
                         + UInt32(j)
                     )
                     var dst = TileTensor(
-                        v_smem_buf
-                        + Int(khalf) * Self.V_KHALF_STRIDE
-                        + Int(local_c) * 4 * box_w
-                        + v_cg * Self.PV_BK * box_w,
+                        v_smem_buf.unsafe_offset(
+                            Int(khalf) * Self.V_KHALF_STRIDE
+                        )
+                        .unsafe_offset(Int(local_c) * 4 * box_w)
+                        .unsafe_offset(v_cg * Self.PV_BK * box_w),
                         row_major[4, box_w](),
                     )
                     kv_tma_op.async_copy_gather4[cta_group=1](
@@ -657,7 +662,7 @@ struct MLAPrefillSparseQKVFP8[
                     cp_async_bulk_tensor_shared_cluster_global[
                         cta_group=Self.config.cta_group
                     ](
-                        q_smem + j * Q_PADDED_DEPTH_TILE_STRIDE,
+                        q_smem.unsafe_offset(j * Q_PADDED_DEPTH_TILE_STRIDE),
                         Pointer(to=q_tma_op.descriptor).unsafe_bitcast[
                             NoneType
                         ](),
@@ -945,9 +950,13 @@ struct MLAPrefillSparseQKVFP8[
                     kv_tma_op,
                     indices,
                     kv_lut,
-                    kv_ptr + buf * UInt32(Self.SMemType.KV_STAGE_SIZE),
-                    d_indices_ptr + buf * UInt32(Self.config.B_TOPK),
-                    kv_ready_ptr + buf,
+                    kv_ptr.unsafe_offset(
+                        buf * UInt32(Self.SMemType.KV_STAGE_SIZE)
+                    ),
+                    d_indices_ptr.unsafe_offset(
+                        buf * UInt32(Self.config.B_TOPK)
+                    ),
+                    kv_ready_ptr.unsafe_offset(buf),
                     k,
                     indices_base,
                     local_warp_idx,
@@ -982,9 +991,13 @@ struct MLAPrefillSparseQKVFP8[
                         kv_tma_op,
                         indices,
                         kv_lut,
-                        v_ptr + buf * UInt32(Self.SMemType.V_STAGE_SIZE),
-                        d_indices_v_ptr + buf * UInt32(Self.config.B_TOPK),
-                        v_tma_done_ptr + buf,
+                        v_ptr.unsafe_offset(
+                            buf * UInt32(Self.SMemType.V_STAGE_SIZE)
+                        ),
+                        d_indices_v_ptr.unsafe_offset(
+                            buf * UInt32(Self.config.B_TOPK)
+                        ),
+                        v_tma_done_ptr.unsafe_offset(buf),
                         k,
                         indices_base,
                         local_warp_idx,
@@ -1096,7 +1109,11 @@ struct MLAPrefillSparseQKVFP8[
                     BK=Self.config.qk_depth,
                     swizzle_mode=SW64,
                     is_k_major=True,
-                ](kv_ptr + buf * UInt32(Self.SMemType.KV_STAGE_SIZE))
+                ](
+                    kv_ptr.unsafe_offset(
+                        buf * UInt32(Self.SMemType.KV_STAGE_SIZE)
+                    )
+                )
                 var s_tmem_addr = UInt32(Self.S_TMEM_BASE) + s_slot * UInt32(
                     Self.S_SLOT_STRIDE
                 )
@@ -1123,11 +1140,17 @@ struct MLAPrefillSparseQKVFP8[
                 # cg1 reads V mn-major from the shared K buffer; cg2 from the
                 # separate per-CTA V buffer.
                 var v_base = (
-                    v_ptr + pbuf * UInt32(Self.SMemType.V_STAGE_SIZE)
+                    v_ptr.unsafe_offset(
+                        pbuf * UInt32(Self.SMemType.V_STAGE_SIZE)
+                    )
                 ) if Self.is_cg2 else (
-                    kv_ptr + pbuf * UInt32(Self.SMemType.KV_STAGE_SIZE)
+                    kv_ptr.unsafe_offset(
+                        pbuf * UInt32(Self.SMemType.KV_STAGE_SIZE)
+                    )
                 )
-                var p_base = p_ptr + pbuf * UInt32(Self.SMemType.P_STAGE_SIZE)
+                var p_base = p_ptr.unsafe_offset(
+                    pbuf * UInt32(Self.SMemType.P_STAGE_SIZE)
+                )
                 var c_scale_sv: UInt32 = 0 if k == 1 else 1
                 # K-axis split: NUM_PV_KHALVES independent BK=PV_BK sub-MMAs
                 # per atom, each reading its own self-contained P/V half-tile
@@ -1141,13 +1164,13 @@ struct MLAPrefillSparseQKVFP8[
                         BK=Self.PV_BK,
                         swizzle_mode=SW64,
                         is_k_major=True,
-                    ](p_base + UInt32(khalf * Self.P_KHALF_STRIDE))
+                    ](p_base.unsafe_offset(UInt32(khalf * Self.P_KHALF_STRIDE)))
                     var v_desc = smem_descriptor[
                         BMN=Self.V_BMN_PER_ATOM,
                         BK=Self.PV_BK,
                         swizzle_mode=SW64,
                         is_k_major=False,
-                    ](v_base + UInt32(khalf * Self.V_KHALF_STRIDE))
+                    ](v_base.unsafe_offset(UInt32(khalf * Self.V_KHALF_STRIDE)))
                     # khalf 0 obeys the block's accum_init (c_scale_sv);
                     # khalf 1+ always accumulate onto khalf 0's partial sum.
                     var c_scale: UInt32 = c_scale_sv if khalf == 0 else 1
@@ -1339,7 +1362,9 @@ struct MLAPrefillSparseQKVFP8[
             # Write FP8 P (exp2 numerators) into the double-buffered P SMEM in
             # the SW64 k-major layout the PV A descriptor reads.
             Self._write_p_fp8[P_PER_THREAD](
-                p_ptr + cur_buf * UInt32(Self.SMemType.P_STAGE_SIZE),
+                p_ptr.unsafe_offset(
+                    cur_buf * UInt32(Self.SMemType.P_STAGE_SIZE)
+                ),
                 nums,
                 query,
                 key_base,
@@ -1477,7 +1502,7 @@ struct MLAPrefillSparseQKVFP8[
                         smem_offset * (1 - pad_row)
                         + (Self.SMemType.O_SIZE - 2) * pad_row
                     )
-                    (o_ptr + store_off).store[width=2](v)
+                    (o_ptr.unsafe_offset(store_off)).store[width=2](v)
 
         named_barrier[Int32(WARPGROUP_SIZE)](Int32(0))
         if warp_idx == 0:

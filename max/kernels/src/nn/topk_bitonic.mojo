@@ -1746,7 +1746,7 @@ def _histsel_topk_impl[
     var parked = False
     var lane = Int(lane_id())
     var wbase = Int(warp_id()) * _HSEL_WARP_CAP
-    var wcur_p = wcur + Int(warp_id())
+    var wcur_p = wcur.unsafe_offset(Int(warp_id()))
     var wn = 0
 
     # Per half: at bf16 the score half's 16 significant bits take two rounds
@@ -1821,8 +1821,9 @@ def _histsel_topk_impl[
                                 _ = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                                     ordering=Ordering.RELAXED
                                 ](
-                                    hist
-                                    + _hsel_digit[half, w_out, nbins](ph, rc),
+                                    hist.unsafe_offset(
+                                        _hsel_digit[half, w_out, nbins](ph, rc)
+                                    ),
                                     UInt32(1),
                                 )
                             col = ncol
@@ -1886,10 +1887,11 @@ def _histsel_topk_impl[
                                             ].fetch_add[
                                                 ordering=Ordering.RELAXED
                                             ](
-                                                hist
-                                                + _hsel_digit[
-                                                    half, w_out, nbins
-                                                ](ph[j], ~UInt32(base + j)),
+                                                hist.unsafe_offset(
+                                                    _hsel_digit[
+                                                        half, w_out, nbins
+                                                    ](ph[j], ~UInt32(base + j))
+                                                ),
                                                 UInt32(1),
                                             )
                             else:
@@ -1901,9 +1903,10 @@ def _histsel_topk_impl[
                                         _ = Atomic[
                                             UInt32, scope=BLOCK_SCOPE
                                         ].fetch_add[ordering=Ordering.RELAXED](
-                                            hist
-                                            + _hsel_digit[half, w_out, nbins](
-                                                ph[j], rc
+                                            hist.unsafe_offset(
+                                                _hsel_digit[half, w_out, nbins](
+                                                    ph[j], rc
+                                                )
                                             ),
                                             UInt32(1),
                                         )
@@ -1981,7 +1984,7 @@ def _histsel_topk_impl[
                         if wn > _HSEL_WARP_CAP:
                             _ = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                                 ordering=Ordering.RELAXED
-                            ](ctl + 4, UInt32(1))
+                            ](ctl.unsafe_offset(4), UInt32(1))
                     # The next round's zeroing must not race the reads above.
                     barrier()
                     comptime if rr == 1:
@@ -2029,7 +2032,7 @@ def _histsel_topk_impl[
                 var pos = Int(
                     Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                         ordering=Ordering.RELAXED
-                    ](ctl + 3, UInt32(1))
+                    ](ctl.unsafe_offset(3), UInt32(1))
                 )
                 if pos < sel_cap:
                     sel_k[pos] = _pack_key(ph, rc)
@@ -2060,7 +2063,7 @@ def _histsel_topk_impl[
                     var pos = Int(
                         Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                             ordering=Ordering.RELAXED
-                        ](ctl + 3, UInt32(1))
+                        ](ctl.unsafe_offset(3), UInt32(1))
                     )
                     if pos < sel_cap:
                         sel_k[pos] = _pack_key(ph[j], rc)
@@ -2481,7 +2484,7 @@ def _hsel_rank_write[
         if p0 + i < M:
             _ = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                 ordering=Ordering.RELAXED
-            ](hist + Int(dig[i]), UInt32(1))
+            ](hist.unsafe_offset(Int(dig[i])), UInt32(1))
     barrier()
 
     comptime if enable_trace:
@@ -2526,7 +2529,7 @@ def _hsel_rank_write[
             var p = Int(
                 Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                     ordering=Ordering.RELAXED
-                ](cur + Int(dig[i]), UInt32(1))
+                ](cur.unsafe_offset(Int(dig[i])), UInt32(1))
             )
             sel_k[p] = mine[i]
     barrier()
@@ -2553,7 +2556,7 @@ def _hsel_rank_write[
     # Slots are taken strided rather than adjacent, because the phase costs the
     # *widest* run and adjacent slots share one. Striding spreads a thread's keys
     # across runs while keeping a warp's lanes together.
-    var stage = cur + nbins
+    var stage = cur.unsafe_offset(nbins)
     comptime for i in range(items):
         var key: UInt64
         var b: Int
@@ -2974,8 +2977,9 @@ def _histsel_resident_impl[
                                 _ = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                                     ordering=Ordering.RELAXED
                                 ](
-                                    hist
-                                    + _hsel_digit[half, w_out, nbins](p, rc),
+                                    hist.unsafe_offset(
+                                        _hsel_digit[half, w_out, nbins](p, rc)
+                                    ),
                                     UInt32(1),
                                 )
                     comptime if fold_bracket:
@@ -2986,10 +2990,10 @@ def _histsel_resident_impl[
                         if lane_id() == 0:
                             Atomic[UInt32, scope=BLOCK_SCOPE].max[
                                 ordering=Ordering.RELAXED
-                            ](ctl + 6, wmax)
+                            ](ctl.unsafe_offset(6), wmax)
                             Atomic[UInt32, scope=BLOCK_SCOPE].min[
                                 ordering=Ordering.RELAXED
-                            ](ctl + 7, wmin)
+                            ](ctl.unsafe_offset(7), wmin)
                     barrier()
 
                     var folded = False
@@ -3217,7 +3221,7 @@ def _histsel_resident_impl[
                 if lane_id() == WARP_SIZE - 1:
                     wb = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                         ordering=Ordering.RELAXED
-                    ](ctl + 3, pre + gc)
+                    ](ctl.unsafe_offset(3), pre + gc)
                 var gp = Int(warp.shuffle_idx(wb, UInt32(WARP_SIZE - 1)) + pre)
                 comptime for j in range(_PTOPK_ITEMS):
                     if (gmask >> UInt32(j)) & UInt32(1) != 0:
@@ -3243,7 +3247,7 @@ def _histsel_resident_impl[
             if lane_id() == WARP_SIZE - 1:
                 ewb = Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                     ordering=Ordering.RELAXED
-                ](ctl + 3, epre + ec_all)
+                ](ctl.unsafe_offset(3), epre + ec_all)
             var ep = Int(warp.shuffle_idx(ewb, UInt32(WARP_SIZE - 1)) + epre)
             comptime for v in range(res_vecs):
                 var c0 = tid * _PTOPK_ITEMS + v * res_step
@@ -3277,7 +3281,7 @@ def _histsel_resident_impl[
                     ec += 1
             var local = (gc << UInt32(16)) | ec
             var inclusive = _hsel_block_scan[_HSEL_RES_BLOCK](
-                local, wscan + v * wscan_warps
+                local, wscan.unsafe_offset(v * wscan_warps)
             )
             pref[v] = inclusive - local
             if tid == _HSEL_RES_BLOCK - 1:
@@ -3360,7 +3364,7 @@ def _histsel_resident_impl[
                 var pos = Int(
                     Atomic[UInt32, scope=BLOCK_SCOPE].fetch_add[
                         ordering=Ordering.RELAXED
-                    ](ctl + 3, UInt32(1))
+                    ](ctl.unsafe_offset(3), UInt32(1))
                 )
                 if pos < sel_cap:
                     sel_k[pos] = _pack_key(p, rc)

@@ -302,7 +302,7 @@ def _cluster_cutoff_search[
             packed[i] = stats[i]
         var combined = cluster_allreduce[
             _cutoff_stats_combine, cluster_size, need_tail_sync=False
-        ](cluster_slot + phase * _CLUSTER_SLOT_FLOATS, packed)
+        ](cluster_slot.unsafe_offset(phase * _CLUSTER_SLOT_FLOATS), packed)
         phase ^= 1
 
         min_gt_low = combined[0]
@@ -485,7 +485,7 @@ def TopKTopPMaskedProbsClusterKernel[
     )
 
     var totals = cluster_allreduce[_sum, cluster_size, need_tail_sync=False](
-        cluster_slot + _CLUSTER_SLOT_FLOATS,
+        cluster_slot.unsafe_offset(_CLUSTER_SLOT_FLOATS),
         SIMD[.float32, 2](block_total.value, Float32(block_total.count)),
     )
     var z = totals[0]
@@ -873,7 +873,7 @@ def _sampling_rejection_loop_cluster[
             slice_stats[2], slice_last, slice_last_val, 0
         )
         var table = cluster_allgather[cluster_size, need_tail_sync=False](
-            cluster_slot + phase * slot_floats, published
+            cluster_slot.unsafe_offset(phase * slot_floats), published
         )
         phase ^= 1
 
@@ -928,7 +928,7 @@ def _sampling_rejection_loop_cluster[
                 found[1] = smem[sid]
 
         var comb = cluster_allreduce[_max, cluster_size, need_tail_sync=False](
-            cluster_slot + phase * slot_floats, found
+            cluster_slot.unsafe_offset(phase * slot_floats), found
         )
         phase ^= 1
 
@@ -978,7 +978,7 @@ def _sampling_rejection_loop_cluster[
 
         var combined = cluster_allreduce[
             _sum, cluster_size, need_tail_sync=False
-        ](cluster_slot + phase * slot_floats, packed)
+        ](cluster_slot.unsafe_offset(phase * slot_floats), packed)
         phase ^= 1
         var mass_0 = combined[0]
         var mass_1 = combined[1]
@@ -1202,7 +1202,7 @@ def TopKTopPSamplingEmitDistClusterKernel[
         smem.store((i - vec_begin) * vec_size, e)
 
     var z = cluster_allreduce[_sum, cluster_size, need_tail_sync=False](
-        cluster_slot + _CLUSTER_SLOT_FLOATS,
+        cluster_slot.unsafe_offset(_CLUSTER_SLOT_FLOATS),
         Float32(block.sum[block_size=block_size, broadcast=False](thread_sum)),
     )[0]
     # `min_p_thresh` is cluster-uniform (one row per cluster), so every CTA
@@ -1269,7 +1269,9 @@ def TopKTopPSamplingEmitDistClusterKernel[
     # Masks the staged weights; each lane owns the elements it wrote (the
     # same partition as the staging pass), so this needs no barrier against
     # the search.
-    var dist_row = TileTensor(out_dist + bx * _d, row_major(Idx[1], _d))
+    var dist_row = TileTensor(
+        out_dist.unsafe_offset(bx * _d), row_major(Idx[1], _d)
+    )
     for i in range(vec_begin + tx, vec_end, block_size):
         var e = smem.load[width=vec_size]((i - vec_begin) * vec_size)
         var masked = (e.gt(cutoff)).select(

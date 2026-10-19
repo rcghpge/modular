@@ -397,7 +397,7 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
             A pointer to the slot's state.
         """
         return (
-            self._partials_base + slot * _SPLITK_STATE_BYTES
+            self._partials_base.unsafe_offset(slot * _SPLITK_STATE_BYTES)
         ).unsafe_bitcast[S]()
 
     @inline(.always)

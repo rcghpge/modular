@@ -423,7 +423,9 @@ def _run_case[
     # `bi*max_pages_per_batch + p`), so a plain row-major reshape over
     # `blocks_device` is a dense `[batch, num_keys_padded, 1, depth]` view.
     var q_last_padded = TileTensor(
-        q_device.unsafe_ptr() + (seq_q_len - 1) * num_heads * K_CACHE_DIM,
+        q_device.unsafe_ptr().unsafe_offset(
+            (seq_q_len - 1) * num_heads * K_CACHE_DIM
+        ),
         TileLayout(
             (batch_size, Idx[1], Idx[num_heads], Idx[K_CACHE_DIM]),
             (

@@ -259,7 +259,9 @@ def test_tma_4d_load_row_major[
                                             dest_ptr[i],
                                         )
 
-                                    dest_ptr += desc_tile_size
+                                    dest_ptr = dest_ptr.unsafe_offset(
+                                        desc_tile_size
+                                    )
 
     _ = src^
     _ = dst^

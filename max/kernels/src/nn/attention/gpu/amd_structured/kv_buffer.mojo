@@ -504,8 +504,9 @@ struct KVBuffer[
                             + warp_row * Self.warp_tile_rows
                             + row
                         ),
+                    ).unsafe_offset(
+                        warp_col * Self.bk_smem + Self.head_dim_offset + col
                     )
-                    + (warp_col * Self.bk_smem + Self.head_dim_offset + col)
                 ).unsafe_origin_cast[ImmUntrackedOrigin]()
         return srcs
 

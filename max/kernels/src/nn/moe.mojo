@@ -252,7 +252,7 @@ def moe_create_indices_kernel[
                 continue
             _ = Atomic[UInt32, scope=atomic_scope].fetch_add[
                 ordering=Ordering.RELAXED
-            ](counts.ptr + e, UInt32(1))
+            ](counts.ptr.unsafe_offset(e), UInt32(1))
         barrier()
 
         var count_val = counts[tid]
@@ -330,7 +330,7 @@ def moe_create_indices_kernel[
                 continue
             var pos = Atomic[UInt32, scope=atomic_scope].fetch_add[
                 ordering=Ordering.RELAXED
-            ](counts.ptr + e, UInt32(1))
+            ](counts.ptr.unsafe_offset(e), UInt32(1))
             token_expert_order[pos] = UInt32(i)
             restore_token_order[i] = pos.cast[restore_type]()
             comptime if slot_layout:
@@ -1209,7 +1209,7 @@ def _block_top_k[
     ]()
 
     var shared_mem_phase1 = shared_mem
-    var shared_mem_phase2 = shared_mem + phase1_candidates
+    var shared_mem_phase2 = shared_mem.unsafe_offset(phase1_candidates)
 
     var val = TopK_2(u=biased_score, p=tid)
     var sorted_val = _warp_bitonic_sort[num_lanes=WARP_SIZE](val)

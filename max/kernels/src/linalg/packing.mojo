@@ -234,11 +234,12 @@ struct PackMatrixRows[
                     # Not skipping col bound, need to do a partial fill of
                     #  the transpose buffer row.
                     row_data = partial_simd_load[Self.simd_size](
-                        self.original_matrix.ptr
-                        + self.original_matrix.layout(
-                            Coord(
-                                row_global_index[0],
-                                row_global_index[1],
+                        self.original_matrix.ptr.unsafe_offset(
+                            self.original_matrix.layout(
+                                Coord(
+                                    row_global_index[0],
+                                    row_global_index[1],
+                                )
                             )
                         ),
                         0,  # no left bound.
@@ -472,9 +473,10 @@ struct PackMatrixCols[
                 # Starting point within bound but cannot load a whole
                 #  vector. Do a partial load.
                 data = partial_simd_load[Self.simd_size](
-                    self.original_matrix.ptr
-                    + self.original_matrix.layout(
-                        Coord(global_idx[0], global_idx[1])
+                    self.original_matrix.ptr.unsafe_offset(
+                        self.original_matrix.layout(
+                            Coord(global_idx[0], global_idx[1])
+                        )
                     ),
                     0,
                     valid_cols - col_idx,
@@ -507,9 +509,10 @@ struct PackMatrixCols[
             prefetch[
                 PrefetchOptions().for_read().high_locality().to_data_cache()
             ](
-                self.original_matrix.ptr
-                + self.original_matrix.layout(
-                    Coord(global_row_idx, global_col_idx)
+                self.original_matrix.ptr.unsafe_offset(
+                    self.original_matrix.layout(
+                        Coord(global_row_idx, global_col_idx)
+                    )
                 )
             )
 
@@ -756,7 +759,7 @@ def pack_b[
 
             for idx_n in range(0, n_out, tile_n):
                 var packed_dst_view = TileTensor(
-                    dst_flat_ptr + dst_offset,
+                    dst_flat_ptr.unsafe_offset(dst_offset),
                     row_major(
                         tile_n // inner_size2,
                         tile_k2 // factor,
@@ -798,7 +801,7 @@ def pack_b[
         for idx_k_t in range(0, k_out_t, tile_k):
             for idx_n_t in range(0, n_out_t, tile_n):
                 var packed_dst_view_t = TileTensor(
-                    dst_flat_ptr + dst_offset,
+                    dst_flat_ptr.unsafe_offset(dst_offset),
                     row_major(tile_n // inner_size, tile_k, inner_size),
                 )
                 var valid_k_t = min(tile_k, k_in_t - idx_k_t)
@@ -1197,8 +1200,9 @@ struct BTileGenerator[
                 #   2. the n dimension of each thread's tile is guaranteed to be an
                 #       exact multiple of the inner size
                 #   3. each tile has dims [tile_n/inner, tile_k, inner]
-                self.b.ptr
-                + (tile_k_idx * tile_k * n_padded + global_offset.N * tile_k2),
+                self.b.ptr.unsafe_offset(
+                    tile_k_idx * tile_k * n_padded + global_offset.N * tile_k2
+                ),
                 row_major(
                     tile_shape_pack[0], tile_shape_pack[1], tile_shape_pack[2]
                 ),

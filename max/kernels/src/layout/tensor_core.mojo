@@ -1244,7 +1244,7 @@ def _load_matrix_frag[
     # `base_shift` moves the base back by that many elements so the swizzle
     # is evaluated with the index inside the enclosing shared tile.
     return ld_matrix[res.length, transpose=transposed](
-        mma_tile.ptr + (lane_offset - base_shift)
+        mma_tile.ptr.unsafe_offset(lane_offset - base_shift)
     )
 
 

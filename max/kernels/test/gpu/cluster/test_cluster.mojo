@@ -174,8 +174,8 @@ def pipeline_test_kernel[
             # The warp sync ensures expect_tx is completed.
             if elect_one_sync():
                 clusterlaunchcontrol_try_cancel[multicast=True](
-                    clc_response + write_idx,
-                    (full_mbar + write_idx).unsafe_bitcast[Int64](),
+                    clc_response.unsafe_offset(write_idx),
+                    full_mbar.unsafe_offset(write_idx).unsafe_bitcast[Int64](),
                 )
 
             pipeline_state_write.step()
@@ -185,7 +185,7 @@ def pipeline_test_kernel[
             full_mbar[full_idx].wait(pipeline_state.phase())
             is_valid = Bool(
                 clusterlaunchcontrol_query_cancel_is_canceled(
-                    clc_response + full_idx
+                    clc_response.unsafe_offset(full_idx)
                 )
             )
             empty_mbar[full_idx].arrive_cluster(0)

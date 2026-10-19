@@ -272,7 +272,10 @@ def index_key_layer_pages[
         .unsafe_origin_cast[MutUntrackedOrigin]()
         .address_space_cast[.GENERIC]()
     )
-    return base + layer * Int(blocks.dim[3]()) * record_bytes, pitch
+    return (
+        base.unsafe_offset(layer * Int(blocks.dim[3]()) * record_bytes),
+        pitch,
+    )
 
 
 def indexer_k_norm_rope_store_layer[

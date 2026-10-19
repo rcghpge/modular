@@ -226,7 +226,9 @@ struct BlockMaxScoreHook[block_size: Int](IndexerScoreHook):
         Returns:
             The hook whose row 0 is query token `first_row`.
         """
-        var block_max = self.block_max + first_row * Int(self.num_blocks)
+        var block_max = self.block_max.unsafe_offset(
+            first_row * Int(self.num_blocks)
+        )
         ctx.enqueue_memset(
             DeviceBuffer(
                 ctx,
@@ -279,7 +281,9 @@ struct BlockMaxScoreHook[block_size: Int](IndexerScoreHook):
         best = warp.lane_group_max[num_lanes=Self.block_size](best)
         var block = key // Int32(Self.block_size)
         store_global_pred(
-            self.block_max + (Int(row) * Int(self.num_blocks) + Int(block)),
+            self.block_max.unsafe_offset(
+                Int(row) * Int(self.num_blocks) + Int(block)
+            ),
             best,
             Int32(
                 row_live
@@ -352,7 +356,7 @@ struct BlockMaskScoreHook[block_size: Int](IndexerScoreHook):
             The window's hook.
         """
         var hook = self
-        hook.keep = self.keep + first_row * Int(self.num_blocks)
+        hook.keep = self.keep.unsafe_offset(first_row * Int(self.num_blocks))
         return hook
 
     @inline(.always)
@@ -391,8 +395,7 @@ struct BlockMaskScoreHook[block_size: Int](IndexerScoreHook):
         # load is invariant and unbranched so it does not stall the epilogue.
         var kept = (
             (
-                self.keep
-                + (
+                self.keep.unsafe_offset(
                     Int(row) * Int(self.num_blocks)
                     + Int(block) if in_range else 0
                 )
@@ -874,7 +877,9 @@ def _mxfp4_index_k_cache[
         ),
     )
     var scales = TileTensor(
-        (base + page_size * MXFP4_INDEX_VALUE_BYTES).unsafe_bitcast[UInt32](),
+        base.unsafe_offset(page_size * MXFP4_INDEX_VALUE_BYTES).unsafe_bitcast[
+            UInt32
+        ](),
         InternalLayout(
             Coord(num_pages, Idx[page_size], Idx[1], Idx[1]),
             Coord(page_stride // 4, Idx[1], Idx[1], Idx[1]),

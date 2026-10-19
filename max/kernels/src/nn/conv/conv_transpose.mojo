@@ -610,9 +610,9 @@ struct ConvTransposedPacked[
             g * self.conv_shape.f_per_group() + self.partition.f_offset
         )
         var num_rows = self.conv_shape.output_image_flat_size()
-        var output_ptr = (
-            self.output.ptr + n * num_rows * self.conv_shape.f + f_offset
-        )
+        var output_ptr = self.output.ptr.unsafe_offset(
+            n * num_rows * self.conv_shape.f
+        ).unsafe_offset(f_offset)
 
         for _ in range(num_rows):
 
@@ -622,7 +622,7 @@ struct ConvTransposedPacked[
 
             vectorize[simd_size](self.partition.f_size, zero)
 
-            output_ptr += self.conv_shape.f
+            output_ptr = output_ptr.unsafe_offset(self.conv_shape.f)
 
     def _batch_group_loop(self):
         """Loop over the batch and group dimensions. Only support groups = 1 for now.
@@ -757,7 +757,7 @@ struct ConvTransposedPacked[
         ).unsafe_origin_cast[ImmUntrackedOrigin]()
         # Move the pointer to (c_tile_offset, f_tile_offset) mapped in
         # current group.
-        filter_ptr = filter_ptr + (
+        filter_ptr = filter_ptr.unsafe_offset(
             # Jump over f_tile_offset in current group.
             self.conv_shape.f_in_group(f_tile_offset)
             * self.conv_shape.c_per_group()
@@ -768,13 +768,13 @@ struct ConvTransposedPacked[
 
         # Pointer to input and output of the current sample (batch dim).
         # fmt: off
-        var input_ptr  = self.input.ptr + c_tile_offset \
-                       + self.conv_shape.input_image_flat_size() \
-                       * self.conv_shape.c * n
+        var input_ptr  = self.input.ptr.unsafe_offset(c_tile_offset) \
+                       .unsafe_offset(self.conv_shape.input_image_flat_size() \
+                       * self.conv_shape.c * n)
 
-        var output_ptr = self.output.ptr + f_tile_offset \
-                       + self.conv_shape.output_image_flat_size() \
-                       * self.conv_shape.f * n
+        var output_ptr = self.output.ptr.unsafe_offset(f_tile_offset) \
+                       .unsafe_offset(self.conv_shape.output_image_flat_size() \
+                       * self.conv_shape.f * n)
 
         # fmt: on
 
@@ -870,11 +870,14 @@ struct ConvTransposedPacked[
                 - self.conv_shape.pad_h_lower()
             )
 
-            var input_base = input + self.conv_shape.c * self.conv_shape.w() * h
+            var input_base = input.unsafe_offset(
+                self.conv_shape.c * self.conv_shape.w() * h
+            )
 
             # Points output to the start of the row
-            var output_base = output + self.conv_shape.f * (
-                -self.conv_shape.pad_w_lower() + self.conv_shape.wo() * ho
+            var output_base = output.unsafe_offset(
+                self.conv_shape.f
+                * (-self.conv_shape.pad_w_lower() + self.conv_shape.wo() * ho)
             )
 
             # TODO(MOCO-4664): `var h` copy-captures the loop variable to work
@@ -903,8 +906,10 @@ struct ConvTransposedPacked[
                     Index(h, w),
                 )
 
-                input_base = input_base + height * self.conv_shape.c
-                output_base = output_base + (
+                input_base = input_base.unsafe_offset(
+                    height * self.conv_shape.c
+                )
+                output_base = output_base.unsafe_offset(
                     height * self.conv_shape.stride_at[1]() * self.conv_shape.f
                 )
 
@@ -960,16 +965,19 @@ struct ConvTransposedPacked[
                 var ho = h * self.conv_shape.stride_at[1]() - self.conv_shape.pad_h_lower()
                 # fmt: on
 
-                var input_base = (
-                    input
-                    + self.conv_shape.c
+                var input_base = input.unsafe_offset(
+                    self.conv_shape.c
                     * self.conv_shape.w()
                     * (h + d * self.conv_shape.h())
                 )
 
-                var output_base = output + self.conv_shape.f * (
-                    -self.conv_shape.pad_w_lower()
-                    + self.conv_shape.wo() * (ho + self.conv_shape.ho() * do)
+                var output_base = output.unsafe_offset(
+                    self.conv_shape.f
+                    * (
+                        -self.conv_shape.pad_w_lower()
+                        + self.conv_shape.wo()
+                        * (ho + self.conv_shape.ho() * do)
+                    )
                 )
 
                 # TODO(MOCO-4664): `var d`/`var h` copy-capture the loop
@@ -999,8 +1007,10 @@ struct ConvTransposedPacked[
                         Index(d, h, w),
                     )
 
-                    input_base = input_base + height * self.conv_shape.c
-                    output_base = output_base + (
+                    input_base = input_base.unsafe_offset(
+                        height * self.conv_shape.c
+                    )
+                    output_base = output_base.unsafe_offset(
                         height
                         * self.conv_shape.stride_at[2]()
                         * self.conv_shape.f
@@ -1027,9 +1037,9 @@ struct ConvTransposedPacked[
             g * self.conv_shape.f_per_group() + self.partition.f_offset
         )
         var num_rows = self.conv_shape.output_image_flat_size()
-        var output_base = (
-            self.output.ptr + n * num_rows * self.conv_shape.f + f_offset
-        )
+        var output_base = self.output.ptr.unsafe_offset(
+            n * num_rows * self.conv_shape.f
+        ).unsafe_offset(f_offset)
 
         comptime if Self.has_epilogue:
             var output_ptr = output_base
@@ -1040,7 +1050,7 @@ struct ConvTransposedPacked[
                         self.epilogue_fn(
                             (n, ho, wo, f_offset), self.partition.f_size
                         )
-                        output_ptr += self.conv_shape.f
+                        output_ptr = output_ptr.unsafe_offset(self.conv_shape.f)
 
             elif Self.InputLayoutType.rank == 5:  # 3D ConvTransposed.
                 for do in range(self.conv_shape.do()):
@@ -1050,7 +1060,9 @@ struct ConvTransposedPacked[
                                 (n, do, ho, wo, f_offset),
                                 self.partition.f_size,
                             )
-                            output_ptr += self.conv_shape.f
+                            output_ptr = output_ptr.unsafe_offset(
+                                self.conv_shape.f
+                            )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1142,12 +1154,12 @@ def update_w_tile_2d[
             continue
 
         for s in range(conv_shape.s()):
-            var output_ptr = (
-                output + r * output_stride_by_r + s * output_stride_by_s
-            )
-            var filter_ptr = (
-                filter + r * filter_stride_by_r + s * filter_stride_by_s
-            )
+            var output_ptr = output.unsafe_offset(
+                r * output_stride_by_r
+            ).unsafe_offset(s * output_stride_by_s)
+            var filter_ptr = filter.unsafe_offset(
+                r * filter_stride_by_r
+            ).unsafe_offset(s * filter_stride_by_s)
 
             comptime if effected_by_padding:
                 comptime assert (
@@ -1264,12 +1276,12 @@ def update_w_tile_3d[
                 continue
 
             for s in range(conv_shape.s()):
-                var output_ptr = output + (
+                var output_ptr = output.unsafe_offset(
                     q * output_stride_by_q
                     + r * output_stride_by_r
                     + s * output_stride_by_s
                 )
-                var filter_ptr = filter + (
+                var filter_ptr = filter.unsafe_offset(
                     q * filter_stride_by_q
                     + r * filter_stride_by_r
                     + s * filter_stride_by_s
@@ -1480,8 +1492,8 @@ def pack_filter(
         ](f_tile_start: Int) {
             var g, var group_start, var C, var F_per_group, var F, imm
         }:
-            var packed_filter_ptr = (
-                group_start + f_tile_start * window_dims_prod * C
+            var packed_filter_ptr = group_start.unsafe_offset(
+                f_tile_start * window_dims_prod * C
             )
 
             # Consider a point in filter window as a neighbor to input point.
@@ -1500,7 +1512,9 @@ def pack_filter(
                         )
 
                     # FRSCf layout. Increment by `f` in c loop.
-                    packed_filter_ptr += f_tile_size
+                    packed_filter_ptr = packed_filter_ptr.unsafe_offset(
+                        f_tile_size
+                    )
 
         # If F % simd_size != 0, the following won't touch the remainder.
         tile[[micro_kernel_f_size, simd_size]](0, F_per_group, pack)
@@ -1515,8 +1529,8 @@ def pack_filter(
             var group_start = _get_group_filter_base(
                 packed_filter, g, F_per_group
             )
-            var packed_filter_ptr = (
-                group_start + F_round_by_simd * window_dims_prod * C
+            var packed_filter_ptr = group_start.unsafe_offset(
+                F_round_by_simd * window_dims_prod * C
             )
 
             for nbr in range(window_dims_prod):
@@ -1533,7 +1547,9 @@ def pack_filter(
                             ).cast[packed_filter_ptr.T.dtype](),
                         )
 
-                    packed_filter_ptr = packed_filter_ptr + simd_size
+                    packed_filter_ptr = packed_filter_ptr.unsafe_offset(
+                        simd_size
+                    )
 
 
 # ===----------------------------------------------------------------------=== #

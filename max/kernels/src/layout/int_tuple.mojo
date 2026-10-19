@@ -193,7 +193,7 @@ struct IntArray(ImplicitlyCopyable, RegisterPassable):
         """
         if self._data and source._data:
             unsafe_memcpy(
-                dest=self._data.unsafe_value() + offset,
+                dest=self._data.unsafe_value().unsafe_offset(offset),
                 src=source._data.unsafe_value(),
                 count=size,
             )
@@ -212,8 +212,8 @@ struct IntArray(ImplicitlyCopyable, RegisterPassable):
         """
         if self._data and source._data:
             unsafe_memcpy(
-                dest=self._data.unsafe_value() + dst_offset,
-                src=source._data.unsafe_value() + src_offset,
+                dest=self._data.unsafe_value().unsafe_offset(dst_offset),
+                src=source._data.unsafe_value().unsafe_offset(src_offset),
                 count=size,
             )
 

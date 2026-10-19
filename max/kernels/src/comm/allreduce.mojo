@@ -840,10 +840,9 @@ def _allreduce_2stage_kernel[
         comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
         var tmps = Array[_, ngpus](
             fill_with_unrolled=lambda [i: Int]() -> PtrType: (
-                rank_sigs[circular_add[ngpus](_my_rank, i)].address_space_cast[
-                    .GENERIC
-                ]()
-                + 1
+                rank_sigs[circular_add[ngpus](_my_rank, i)]
+                .address_space_cast[.GENERIC]()
+                .unsafe_offset(1)
             ).unsafe_bitcast[Scalar[dtype]]()
         )
 
@@ -1359,7 +1358,7 @@ def _allreduce_lamport_kernel[
         barrier()
         if thread_idx.x == 0:
             var arrived = Atomic.fetch_add(
-                state + Lamport.STATE_ARRIVAL, UInt32(1)
+                state.unsafe_offset(Lamport.STATE_ARRIVAL), UInt32(1)
             )
             if Int(arrived) == grid_dim.x - 1:
                 state.store[volatile=True](

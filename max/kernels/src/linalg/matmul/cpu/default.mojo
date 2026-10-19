@@ -89,7 +89,7 @@ struct Inner_matmul_default(InnerMatmulKernel, Movable):
             comptime for idx in range(kernel_cols // simd_size):
                 prefetch[
                     PrefetchOptions().for_read().high_locality().to_data_cache()
-                ](b_ptr + (prefetch_offset + idx * simd_size))
+                ](b_ptr.unsafe_offset(prefetch_offset + idx * simd_size))
 
         # This inner kernels works with non-transposed A.
         var K = Int(a.dim[1]())

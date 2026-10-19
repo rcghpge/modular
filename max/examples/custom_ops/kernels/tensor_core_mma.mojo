@@ -1507,11 +1507,11 @@ def mma_tile_buffers[
     @inline(.always)
     def load_tiles_from_shared[k_tile_idx: Int]() {imm}:
         var a_block = TileTensor(
-            a_smem.ptr + k_tile_idx * BM * k_tile_size,
+            a_smem.ptr.unsafe_offset(k_tile_idx * BM * k_tile_size),
             row_major[BM, k_tile_size](),
         )
         var b_block = TileTensor(
-            b_smem.ptr + k_tile_idx * BN * k_tile_size,
+            b_smem.ptr.unsafe_offset(k_tile_idx * BN * k_tile_size),
             row_major[BN, k_tile_size](),
         )
         mma_op.load_frag[k_tile_idx](

@@ -2358,8 +2358,12 @@ struct MhaPrefillV2[config: MhaConfigV2]:
         var ragged_layout = row_major(
             1, seq_len, Self.config.num_heads, Self.config.depth
         )
-        var q_tt = TileTensor(q_ptr + q_batch_offset, ragged_layout)
-        var o_tt = TileTensor(output_ptr + q_batch_offset, ragged_layout)
+        var q_tt = TileTensor(
+            q_ptr.unsafe_offset(q_batch_offset), ragged_layout
+        )
+        var o_tt = TileTensor(
+            output_ptr.unsafe_offset(q_batch_offset), ragged_layout
+        )
 
         Self.run[
             k_t,

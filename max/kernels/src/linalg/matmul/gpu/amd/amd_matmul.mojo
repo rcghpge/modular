@@ -474,11 +474,15 @@ struct AMDMatmul[
                     # Offset is in blocked-product element order, not row-major.
                     comptime k = entry.op.subtile
                     var a_blk = TileTensor(
-                        a_smem.ptr + a_warp_k_off + k * BM * k_tile_size,
+                        a_smem.ptr.unsafe_offset(a_warp_k_off).unsafe_offset(
+                            k * BM * k_tile_size
+                        ),
                         row_major[BM, k_tile_size](),
                     )
                     var b_blk = TileTensor(
-                        b_smem.ptr + b_warp_k_off + k * BN * k_tile_size,
+                        b_smem.ptr.unsafe_offset(b_warp_k_off).unsafe_offset(
+                            k * BN * k_tile_size
+                        ),
                         row_major[BN, k_tile_size](),
                     )
                     mma_op.load_frag[k](

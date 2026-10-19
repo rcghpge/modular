@@ -274,7 +274,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         for i in range(tid, tail_elems, Self.config.num_threads):
             q_smem[tail_off + i] = zero
         comptime for stage in range(Self.num_mma_stages):
-            var base = kv_smem + stage * Self.KVStageElems + tail_off
+            var base = kv_smem.unsafe_offset(
+                stage * Self.KVStageElems
+            ).unsafe_offset(tail_off)
             for i in range(tid, tail_elems, Self.config.num_threads):
                 base[i] = zero
 
@@ -465,29 +467,35 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
         # Linear (SWIZZLE_NONE) gather destination -- the re-swizzle WG's
         # source. Same per-stage size as the SW64 destination below.
-        var kv_smem_linear = q_smem + Self.BlockElems * Self.NumQKBlocks
+        var kv_smem_linear = q_smem.unsafe_offset(
+            Self.BlockElems * Self.NumQKBlocks
+        )
         # SW64 destination the native FP8 MMA reads -- byte-identical role
         # to the single-buffer kernel's `kv_smem`, one ring deeper.
-        var kv_smem = kv_smem_linear + Self.KVStageElems * kv_total_stages
-        var p_smem = kv_smem + Self.KVStageElems * Self.num_mma_stages
+        var kv_smem = kv_smem_linear.unsafe_offset(
+            Self.KVStageElems * kv_total_stages
+        )
+        var p_smem = kv_smem.unsafe_offset(
+            Self.KVStageElems * Self.num_mma_stages
+        )
 
         # Output SMEM reuses the SW64 KV region (same as the single-buffer
         # native FP8 kernel and the BF16 kernel).
         var out_smem = kv_smem.unsafe_bitcast[Scalar[Self.output_type]]()
 
         var max_smem = (
-            p_smem + Self.PStageElems * Self.num_stages
+            p_smem.unsafe_offset(Self.PStageElems * Self.num_stages)
         ).unsafe_bitcast[Scalar[Self.AccumType]]()
-        var li_smem = max_smem + 2 * WARPGROUP_SIZE
+        var li_smem = max_smem.unsafe_offset(2 * WARPGROUP_SIZE)
 
         var mbar_base: MBarType = (
-            (li_smem + WARPGROUP_SIZE)
+            (li_smem.unsafe_offset(WARPGROUP_SIZE))
             .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
         var mbar_q: MBarType = mbar_base
-        var mbar_kv_gather_base: MBarType = mbar_base + 1
+        var mbar_kv_gather_base: MBarType = mbar_base.unsafe_offset(1)
         # Load (TMA, 1 leader thread) -> re-swizzle WG (128 threads, all
         # independently release).
         var kv_pipeline_gather = KVPipelineGeneric[
@@ -496,8 +504,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_producer=1,
             num_consumer=WARPGROUP_SIZE,
         ](mbar_kv_gather_base)
-        var mbar_kv_mma_base: MBarType = (
-            mbar_kv_gather_base + kv_pipeline_gather.num_mbars()
+        var mbar_kv_mma_base: MBarType = mbar_kv_gather_base.unsafe_offset(
+            kv_pipeline_gather.num_mbars()
         )
         # Re-swizzle WG (128 threads, all independently commit) -> mmaQK +
         # mmaPV (2 consumers) -- same consumer shape as the single-buffer
@@ -509,8 +517,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_producer=WARPGROUP_SIZE,
             num_consumer=2,
         ](mbar_kv_mma_base)
-        var mbar_base2: MBarType = (
-            mbar_kv_mma_base + kv_pipeline_mma.num_mbars()
+        var mbar_base2: MBarType = mbar_kv_mma_base.unsafe_offset(
+            kv_pipeline_mma.num_mbars()
         )
 
         var s_bars = DecodeSM100MiscMBars[
@@ -552,7 +560,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_producer=WARPGROUP_SIZE,
             num_consumer=1,
         ](mbar_base7)
-        var mbar_base8: MBarType = mbar_base7 + out_pipeline.num_mbars()
+        var mbar_base8: MBarType = mbar_base7.unsafe_offset(
+            out_pipeline.num_mbars()
+        )
 
         # idx_bars: warp 11 (producer, 32 threads) -> warp 8 (consumer, 32
         # threads). Depth matches Self.num_stages (= config.num_kv_stages),
@@ -563,9 +573,13 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         var mbar_base9: MBarType = idx_bars.end()
 
         var ptr_tmem_addr = (mbar_base9).unsafe_bitcast[UInt32]()
-        var idx_smem_base = (ptr_tmem_addr + 1).unsafe_bitcast[Int32]()
+        var idx_smem_base = ptr_tmem_addr.unsafe_offset(1).unsafe_bitcast[
+            Int32
+        ]()
         comptime if Self.idx_smem_align_pad > 0:
-            idx_smem_base += ((16 - (Int(idx_smem_base) & 15)) & 15) // 4
+            idx_smem_base = idx_smem_base.unsafe_offset(
+                ((16 - (Int(idx_smem_base) & 15)) & 15) // 4
+            )
         comptime idx_smem_stride = Self.config.BN_QK
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
@@ -702,14 +716,17 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                     offset_position,
                 )
             elif warp_idx == 11:
-                var batch_d_indices_w11 = d_indices.unsafe_value() + (
-                    offset_position.q_token_idx * indices_stride
+                var batch_d_indices_w11 = (
+                    d_indices.unsafe_value().unsafe_offset(
+                        offset_position.q_token_idx * indices_stride
+                    )
                 )
                 var batch_extra_d_indices_w11 = extra_d_indices
                 comptime if Self.has_extra_kv:
                     batch_extra_d_indices_w11 = (
-                        extra_d_indices.unsafe_value()
-                        + (offset_position.q_token_idx * extra_indices_stride)
+                        extra_d_indices.unsafe_value().unsafe_offset(
+                            offset_position.q_token_idx * extra_indices_stride
+                        )
                     )
                 Self.idx_producer(
                     idx_bars,
@@ -837,8 +854,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         # any depth), not a hand-rolled toggle.
 
         if first_tile_from_orig:
-            var idx_smem = idx_smem_base + idx_prod.state.index() * UInt32(
-                Self.config.BN_QK
+            var idx_smem = idx_smem_base.unsafe_offset(
+                idx_prod.state.index() * UInt32(Self.config.BN_QK)
             )
             Self._transform_indices_to_smem(
                 d_indices,
@@ -855,8 +872,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         var t: Int = 0
         while t < remaining_orig:
             idx_prod.acquire()
-            var idx_smem = idx_smem_base + idx_prod.state.index() * UInt32(
-                Self.config.BN_QK
+            var idx_smem = idx_smem_base.unsafe_offset(
+                idx_prod.state.index() * UInt32(Self.config.BN_QK)
             )
             Self._transform_indices_to_smem(
                 d_indices,
@@ -878,8 +895,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var num_extra_tiles = num_k_tiles - num_orig_tiles
 
             if not first_tile_from_orig:
-                var idx_smem = idx_smem_base + idx_prod.state.index() * UInt32(
-                    Self.config.BN_QK
+                var idx_smem = idx_smem_base.unsafe_offset(
+                    idx_prod.state.index() * UInt32(Self.config.BN_QK)
                 )
                 Self._transform_indices_to_smem(
                     extra_d_indices,
@@ -896,8 +913,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var te: Int = 0
             while te < num_extra_tiles:
                 idx_prod.acquire()
-                var idx_smem = idx_smem_base + idx_prod.state.index() * UInt32(
-                    Self.config.BN_QK
+                var idx_smem = idx_smem_base.unsafe_offset(
+                    idx_prod.state.index() * UInt32(Self.config.BN_QK)
                 )
                 Self._transform_indices_to_smem(
                     extra_d_indices,
@@ -1096,8 +1113,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                     comptime for j in range(B):
                         comptime c = b * B + j
                         var dst = TileTensor(
-                            kv_stage_ptr.unsafe_bitcast[Int64]()
-                            + c * 4 * box_w,
+                            kv_stage_ptr.unsafe_bitcast[Int64]().unsafe_offset(
+                                c * 4 * box_w
+                            ),
                             tt_row_major[4, box_w](),
                         )
                         var r = rows[j].cast[DType.int32]()
@@ -1139,8 +1157,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         var k_mbar = kv_prod.producer_mbar[qk_stage=0]()
 
         idx_cons.wait()
-        var idx_smem = idx_smem_base + idx_cons.state.index() * UInt32(
-            Self.config.BN_QK
+        var idx_smem = idx_smem_base.unsafe_offset(
+            idx_cons.state.index() * UInt32(Self.config.BN_QK)
         )
 
         expect_bytes_pred(k_mbar, Int32(kv_bytes), Int32(is_leader))
@@ -1182,8 +1200,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var k_mbar = kv_prod.producer_mbar[qk_stage=0]()
 
             idx_cons.wait()
-            var idx_smem = idx_smem_base + idx_cons.state.index() * UInt32(
-                Self.config.BN_QK
+            var idx_smem = idx_smem_base.unsafe_offset(
+                idx_cons.state.index() * UInt32(Self.config.BN_QK)
             )
 
             expect_bytes_pred(k_mbar, Int32(kv_bytes), Int32(is_leader))
@@ -1298,7 +1316,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 var q1 = ld_shared_v4_u32(
                     src_u8, fp8_base_1 + c * GROUP_SIZE * 16
                 )
-                var dst_block = dst + c * Self.BlockElems
+                var dst_block = dst.unsafe_offset(c * Self.BlockElems)
                 st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
                     dst_block, sw_off_0, q0
                 )

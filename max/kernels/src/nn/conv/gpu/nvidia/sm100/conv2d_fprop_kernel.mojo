@@ -672,11 +672,15 @@ struct Conv2dFpropKernel[
 
                 # Peer CTA slicing
                 var act_peer_tile = type_of(act_tile)(
-                    act_tile.ptr + peer_m_rank * Self.act_tma_load_size,
+                    act_tile.ptr.unsafe_offset(
+                        peer_m_rank * Self.act_tma_load_size
+                    ),
                     act_tile.layout,
                 )
                 var filter_peer_tile = type_of(filter_tile)(
-                    filter_tile.ptr + peer_rank_m * Self.filter_tma_load_size,
+                    filter_tile.ptr.unsafe_offset(
+                        peer_rank_m * Self.filter_tma_load_size
+                    ),
                     filter_tile.layout,
                 )
 

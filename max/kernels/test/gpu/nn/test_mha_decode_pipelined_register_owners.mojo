@@ -136,7 +136,7 @@ def _check_decode_pipelined[dtype: DType](ctx: DeviceContext) raises:
         q.unsafe_ptr().as_unsafe_any_origin(),
         k,
         v,
-        (out_buffer.unsafe_ptr() + guard).as_unsafe_any_origin(),
+        out_buffer.unsafe_ptr().unsafe_offset(guard).as_unsafe_any_origin(),
         exp_sum_buffer.unsafe_ptr().as_unsafe_any_origin(),
         qk_max_buffer.unsafe_ptr().as_unsafe_any_origin(),
         grid_dim=(1, 1, 1),

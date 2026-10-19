@@ -2192,8 +2192,12 @@ struct MlaPrefillV2[config: MlaConfigV2]:
         var o_ragged_layout = row_major(
             1, seq_len, Self.config.num_heads, Self.config.depth
         )
-        var q_tt = TileTensor(q_ptr + q_batch_offset, q_ragged_layout)
-        var o_tt = TileTensor(output_ptr + o_batch_offset, o_ragged_layout)
+        var q_tt = TileTensor(
+            q_ptr.unsafe_offset(q_batch_offset), q_ragged_layout
+        )
+        var o_tt = TileTensor(
+            output_ptr.unsafe_offset(o_batch_offset), o_ragged_layout
+        )
 
         Self.run[
             k_nope_t,

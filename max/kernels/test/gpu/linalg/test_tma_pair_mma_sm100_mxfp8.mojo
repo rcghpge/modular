@@ -179,16 +179,25 @@ def blockscaled_pair_cta_mxfp8[
     ]()
 
     var a_smem = smem.unsafe_bitcast[Scalar[a_type]]()
-    var b_smem = (smem + a_smem_bytes).unsafe_bitcast[Scalar[b_type]]()
-    var a_scales_smem = (smem + a_smem_bytes + b_smem_bytes).unsafe_bitcast[
-        Scalar[a_scales_type]
+    var b_smem = smem.unsafe_offset(a_smem_bytes).unsafe_bitcast[
+        Scalar[b_type]
     ]()
+    var a_scales_smem = (
+        smem.unsafe_offset(a_smem_bytes)
+        .unsafe_offset(b_smem_bytes)
+        .unsafe_bitcast[Scalar[a_scales_type]]()
+    )
     var b_scales_smem = (
-        smem + a_smem_bytes + b_smem_bytes + a_scales_bytes
+        smem.unsafe_offset(a_smem_bytes)
+        .unsafe_offset(b_smem_bytes)
+        .unsafe_offset(a_scales_bytes)
     ).unsafe_bitcast[Scalar[b_scales_type]]()
 
     var smem_pool = (
-        smem + a_smem_bytes + b_smem_bytes + a_scales_bytes + b_scales_bytes
+        smem.unsafe_offset(a_smem_bytes)
+        .unsafe_offset(b_smem_bytes)
+        .unsafe_offset(a_scales_bytes)
+        .unsafe_offset(b_scales_bytes)
     ).unsafe_bitcast[Int64]()
 
     var a_smem_tile = TileTensor(
@@ -216,9 +225,11 @@ def blockscaled_pair_cta_mxfp8[
     comptime accum_type = get_accum_type[a_type]()
 
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (smem_pool.unsafe_bitcast[Int64]() + 4).unsafe_bitcast[
-        UInt32
-    ]()
+    var ptr_tmem_addr = (
+        smem_pool.unsafe_bitcast[Int64]()
+        .unsafe_offset(4)
+        .unsafe_bitcast[UInt32]()
+    )
 
     comptime c_frag_size = MMA_M * MMA_N // 128 // cta_group
     var c_frag: Array[Scalar[accum_type], c_frag_size]
@@ -231,7 +242,7 @@ def blockscaled_pair_cta_mxfp8[
     ) + a_scales_bytes + b_scales_bytes
 
     var tma_mbar_ptr = smem_pool.unsafe_bitcast[Int64]()
-    var mma_mbar_ptr = smem_pool.unsafe_bitcast[Int64]() + 2
+    var mma_mbar_ptr = smem_pool.unsafe_bitcast[Int64]().unsafe_offset(2)
 
     var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
@@ -404,7 +415,11 @@ def blockscaled_pair_cta_mxfp8[
                         )
                         var a_scales_desc = MMASmemDescriptor.create[
                             8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE
-                        ](a_scales_smem_tile.unsafe_ptr() + a_scales_offset)
+                        ](
+                            a_scales_smem_tile.unsafe_ptr().unsafe_offset(
+                                a_scales_offset
+                            )
+                        )
                         tcgen05_cp[
                             cta_group=2,
                             datapaths=32,
@@ -423,7 +438,11 @@ def blockscaled_pair_cta_mxfp8[
                         )
                         var b_scales_desc = MMASmemDescriptor.create[
                             8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE
-                        ](b_scales_smem_tile.unsafe_ptr() + b_scales_offset)
+                        ](
+                            b_scales_smem_tile.unsafe_ptr().unsafe_offset(
+                                b_scales_offset
+                            )
+                        )
                         tcgen05_cp[
                             cta_group=2,
                             datapaths=32,

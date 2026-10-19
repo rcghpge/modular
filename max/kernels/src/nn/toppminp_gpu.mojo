@@ -91,7 +91,7 @@ def topk_wrapper[
 
     var batch_id, block_lane = divmod(bid, _num_blocks_per_input)
 
-    var _in_buffer = in_buffer + batch_id * _num_elements
+    var _in_buffer = in_buffer.unsafe_offset(batch_id * _num_elements)
 
     # # Allocate shared memory for the values and indices
     var topk_sram = unsafe_stack_allocation[
@@ -314,10 +314,10 @@ def radix_sort_pairs_kernel[
     var elems_per_thread = ceildiv(_num_keys, BLOCK_SIZE)
     comptime NUM_BUCKETS = 2**NUM_BITS_PER_PASS
 
-    var input_keys = input_keys_ + batch_id * _num_keys
-    var output_keys = output_keys_ + batch_id * _num_keys
-    var input_key_ids = input_key_ids_ + batch_id * _num_keys
-    var output_key_ids = output_key_ids_ + batch_id * _num_keys
+    var input_keys = input_keys_.unsafe_offset(batch_id * _num_keys)
+    var output_keys = output_keys_.unsafe_offset(batch_id * _num_keys)
+    var input_key_ids = input_key_ids_.unsafe_offset(batch_id * _num_keys)
+    var output_key_ids = output_key_ids_.unsafe_offset(batch_id * _num_keys)
 
     if skip_sort[batch_id]:
         return
@@ -644,8 +644,8 @@ def topp_minp_sampling_kernel[
         return
 
     var p_threshold = p_thresholds_[batch_id]
-    var sorted_probs = sorted_probs_ + batch_id * _vocab_size
-    var sorted_ids = sorted_ids_ + batch_id * _vocab_size
+    var sorted_probs = sorted_probs_.unsafe_offset(batch_id * _vocab_size)
+    var sorted_ids = sorted_ids_.unsafe_offset(batch_id * _vocab_size)
 
     comptime if is_top_p:
         if tid == 0:
@@ -846,14 +846,16 @@ def _topp_minp_sampling_gpu[
     var ids_buf = ctx.enqueue_create_buffer[out_idx_type](input_size * 2)
     var probs_double_buffer = DoubleBuffer(
         probs_buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
-        probs_buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        + input_size,
+        probs_buf.unsafe_ptr()
+        .unsafe_origin_cast[MutUntrackedOrigin]()
+        .unsafe_offset(input_size),
         input_size,
     )
     var keys_double_buffer = DoubleBuffer(
         ids_buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin](),
-        ids_buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        + input_size,
+        ids_buf.unsafe_ptr()
+        .unsafe_origin_cast[MutUntrackedOrigin]()
+        .unsafe_offset(input_size),
         input_size,
     )
 

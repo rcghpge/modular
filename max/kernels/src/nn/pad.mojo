@@ -521,15 +521,19 @@ struct _AxisParams[rank: Int, dtype: DType, paddings_type: DType](
         constant: Scalar[Self.dtype],
         axis_dim: Int,
     ):
-        var pre_pad_start_ptr = output + self.output_offset
+        var pre_pad_start_ptr = output.unsafe_offset(self.output_offset)
 
         # setting values
         if self.pad_with_constant:
             _fill(pre_pad_start_ptr, constant, axis_dim)
         else:
-            var non_pad_start_ptr = pre_pad_start_ptr + self.pre_pad()
-            var post_pad_start_ptr = non_pad_start_ptr + self.non_pad()
-            var input_start_ptr = input + self.input_offset
+            var non_pad_start_ptr = pre_pad_start_ptr.unsafe_offset(
+                self.pre_pad()
+            )
+            var post_pad_start_ptr = non_pad_start_ptr.unsafe_offset(
+                self.non_pad()
+            )
+            var input_start_ptr = input.unsafe_offset(self.input_offset)
             _fill(pre_pad_start_ptr, constant, self.pre_pad())
             unsafe_memcpy(
                 dest=non_pad_start_ptr,
@@ -651,8 +655,10 @@ def _memcpy_regions_fast[
                 copy_to, non_pad, pre_pad
             )
 
-            var copy_to_ptr = pre_pad_start_ptr + (copy_to * output_axis_stride)
-            var copy_from_ptr = pre_pad_start_ptr + (
+            var copy_to_ptr = pre_pad_start_ptr.unsafe_offset(
+                copy_to * output_axis_stride
+            )
+            var copy_from_ptr = pre_pad_start_ptr.unsafe_offset(
                 copy_from * output_axis_stride
             )
 
@@ -736,8 +742,10 @@ struct _AxisParamsReflect[rank: Int, dtype: DType, paddings_type: DType](
         input: Pointer[Scalar[Self.dtype], address_space=.GENERIC, ...],
     ):
         # no more dimensions to recurse, copy from input to unpadded region
-        var non_pad_start_ptr = output + (output_offset + self.pre_pad())
-        var input_start_ptr = input + input_offset
+        var non_pad_start_ptr = output.unsafe_offset(
+            output_offset + self.pre_pad()
+        )
+        var input_start_ptr = input.unsafe_offset(input_offset)
         unsafe_memcpy(
             dest=non_pad_start_ptr, src=input_start_ptr, count=self.non_pad()
         )
@@ -749,7 +757,7 @@ struct _AxisParamsReflect[rank: Int, dtype: DType, paddings_type: DType](
         output_offset: Int,
         output: MutPointer[Scalar[Self.dtype], _],
     ):
-        var pre_pad_start_ptr = output + output_offset
+        var pre_pad_start_ptr = output.unsafe_offset(output_offset)
 
         _memcpy_regions_fast(
             self.pre_pad(),

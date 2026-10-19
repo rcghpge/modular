@@ -113,7 +113,7 @@ struct _PerRowBound[dtype: DType](RowBound):
         return (
             n,
             Self.Sink(
-                self.scores + row * n,
+                self.scores.unsafe_offset(row * n),
                 self.out_vals,
                 self.out_idxs,
                 row * max_k,

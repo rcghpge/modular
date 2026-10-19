@@ -303,11 +303,15 @@ def load_AB[
             var b_smem_tile = b_smem_tiles[offset]
 
             var a_smem_slice = type_of(a_smem_tile)(
-                a_smem_tile._storage + peer_cta_coord[2] * a_tma_load_size,
+                a_smem_tile._storage.unsafe_offset(
+                    peer_cta_coord[2] * a_tma_load_size
+                ),
                 a_smem_tile.layout,
             )
             var b_smem_slice = type_of(b_smem_tile)(
-                b_smem_tile._storage + peer_cta_coord[1] * b_tma_load_size,
+                b_smem_tile._storage.unsafe_offset(
+                    peer_cta_coord[1] * b_tma_load_size
+                ),
                 b_smem_tile.layout,
             )
 
@@ -965,7 +969,9 @@ def _swiglu_epilogue_smem_tma[
                 mma_output_pipeline, output_stage_index
             )
 
-        var buf_base = c_out_smem + Int(store_idx & 1) * c_out_tile_elems
+        var buf_base = c_out_smem.unsafe_offset(
+            Int(store_idx & 1) * c_out_tile_elems
+        )
         var bias_stage_offset: Int = stage * stageN
         # For cg2 MMA_M=128 non-swap, warps 0-1 write the top SMEM half (→ H-cols
         # c_h_base .. c_h_base+stageN/2-1) while warps 2-3 write the bot SMEM half
@@ -985,8 +991,9 @@ def _swiglu_epilogue_smem_tma[
                 var m_col_b = m_col_a + 1
 
                 var pair_base = (
-                    buf_base
-                    + UInt32(warp_id // 2) * UInt32(c_out_pair_tile_elems)
+                    buf_base.unsafe_offset(
+                        UInt32(warp_id // 2) * UInt32(c_out_pair_tile_elems)
+                    )
                 ) if _is_layout_b_swap else buf_base
 
                 var own_ua = upper_frag_partial[r * 4 + 0]
@@ -1257,7 +1264,7 @@ def _swiglu_epilogue_smem_tma[
                         Index(Int(out_col), Int(pair0_row)),
                     )
 
-                var pair1_buf = buf_base + c_out_pair_tile_elems
+                var pair1_buf = buf_base.unsafe_offset(c_out_pair_tile_elems)
                 if pair1_row < M_bound and out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         pair1_buf,
@@ -1321,7 +1328,7 @@ def _swiglu_epilogue_smem_tma[
                         Index(Int(top_out_col), Int(out_row)),
                     )
 
-                var bot_buf = buf_base + BM * HalfN
+                var bot_buf = buf_base.unsafe_offset(BM * HalfN)
                 if out_row < M_bound and bot_out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         bot_buf,
@@ -1610,7 +1617,7 @@ def blackwell_swiglu_warp_specialized_kernel[
         UInt32, origin_of(smem.tmem_addr), address_space=.SHARED
     ] = smem.tmem_addr.unsafe_ptr()
     var tmem_dealloc_mbar = smem.tmem_dealloc_mbar.unsafe_ptr()
-    var c_out_smem = (smem_bytes + c_out_smem_offset).unsafe_bitcast[
+    var c_out_smem = smem_bytes.unsafe_offset(c_out_smem_offset).unsafe_bitcast[
         Scalar[c_type]
     ]()
 
@@ -1893,16 +1900,18 @@ def blackwell_swiglu_warp_specialized_kernel[
                         0
                     )
                     var src_ptr = (
-                        bias_1d_tile.value().ptr + gmem_offset + lane_start
+                        bias_1d_tile.value()
+                        .ptr.unsafe_offset(gmem_offset)
+                        .unsafe_offset(lane_start)
                     ).address_space_cast[.GLOBAL]()
                     var bias_smem_base: MutPointer[
                         Scalar[c_type],
                         origin_of(smem.bias_smem),
                         address_space=.SHARED,
                     ] = smem.bias_smem.unsafe_ptr()
-                    var dst_ptr = (
-                        bias_smem_base + Int(stage) * bias_dim + lane_start
-                    )
+                    var dst_ptr = bias_smem_base.unsafe_offset(
+                        Int(stage) * bias_dim
+                    ).unsafe_offset(lane_start)
                     async_copy[bytes_per_lane, fill=Scalar[c_type](0)](
                         src_ptr, dst_ptr, src_size=src_bytes
                     )
@@ -1957,7 +1966,9 @@ def blackwell_swiglu_warp_specialized_kernel[
                     origin_of(smem.bias_smem),
                     address_space=.SHARED,
                 ] = smem.bias_smem.unsafe_ptr()
-                var bias_smem_ptr = bias_smem_base + epi_stage * bias_dim
+                var bias_smem_ptr = bias_smem_base.unsafe_offset(
+                    epi_stage * bias_dim
+                )
                 comptime if config.register_swiglu:
                     _swiglu_epilogue_gmem[
                         a_type,

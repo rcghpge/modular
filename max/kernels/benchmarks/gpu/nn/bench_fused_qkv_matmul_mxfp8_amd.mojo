@@ -461,14 +461,13 @@ def bench_shape[
             mut cb_w, mut cb_bsf, imm
         }:
             var w = TileTensor(
-                cb_w.offset_ptr(iteration) + col_off * hidden,
+                cb_w.offset_ptr(iteration).unsafe_offset(col_off * hidden),
                 row_major(Idx[band_n], Idx[hidden]),
             )
             var bsf = TileTensor(
-                cb_bsf.offset_ptr(iteration).unsafe_bitcast[
-                    Scalar[SCALE_DTYPE]
-                ]()
-                + col_off * k_scales,
+                cb_bsf.offset_ptr(iteration)
+                .unsafe_bitcast[Scalar[SCALE_DTYPE]]()
+                .unsafe_offset(col_off * k_scales),
                 row_major(Idx[band_n], Idx[k_scales]),
             )
             block_scaled_matmul_amd[lane_bytes=32](
@@ -488,7 +487,7 @@ def bench_shape[
         band[kv_dim](
             v_off,
             TileTensor(
-                _any(kv_out_ptr) + total_seq * kv_dim,
+                _any(kv_out_ptr).unsafe_offset(total_seq * kv_dim),
                 row_major(total_seq, Idx[kv_dim]),
             ),
         )
@@ -497,7 +496,7 @@ def bench_shape[
             band[ik_dim](
                 ik_off,
                 TileTensor(
-                    _any(kv_out_ptr) + 2 * total_seq * kv_dim,
+                    _any(kv_out_ptr).unsafe_offset(2 * total_seq * kv_dim),
                     row_major(total_seq, Idx[ik_dim]),
                 ),
             )
@@ -509,9 +508,12 @@ def bench_shape[
         def k_in[
             width: Int, alignment: Int
         ](idx: Coord) {var kv_out_ptr} -> SIMD[OUT_DTYPE, width]:
-            return (_any(kv_out_ptr) + Int(idx[0]) * kv_dim + Int(idx[2])).load[
-                width=width
-            ]()
+            return (
+                _any(kv_out_ptr)
+                .unsafe_offset(Int(idx[0]) * kv_dim)
+                .unsafe_offset(Int(idx[2]))
+                .load[width=width]()
+            )
 
         @inline(.always)
         def v_in[
@@ -519,9 +521,9 @@ def bench_shape[
         ](idx: Coord) {var kv_out_ptr, var total_seq} -> SIMD[OUT_DTYPE, width]:
             return (
                 _any(kv_out_ptr)
-                + total_seq * kv_dim
-                + Int(idx[0]) * kv_dim
-                + Int(idx[2])
+                .unsafe_offset(total_seq * kv_dim)
+                .unsafe_offset(Int(idx[0]) * kv_dim)
+                .unsafe_offset(Int(idx[2]))
             ).load[width=width]()
 
         @inline(.always)
@@ -530,9 +532,9 @@ def bench_shape[
         ](idx: Coord) {var kv_out_ptr, var total_seq} -> SIMD[OUT_DTYPE, width]:
             return (
                 _any(kv_out_ptr)
-                + 2 * total_seq * kv_dim
-                + Int(idx[0]) * ik_dim
-                + Int(idx[2])
+                .unsafe_offset(2 * total_seq * kv_dim)
+                .unsafe_offset(Int(idx[0]) * ik_dim)
+                .unsafe_offset(Int(idx[2]))
             ).load[width=width]()
 
         kv_cache_store_ragged[target="gpu"](

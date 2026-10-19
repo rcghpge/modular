@@ -712,15 +712,15 @@ def multistage_qgemm_kernel[
         circular=True,
         linear_idx_type=a_tt.linear_idx_type,
     ](
-        a_smem + warp_k_part_id * a_smem_size,
+        a_smem.unsafe_offset(warp_k_part_id * a_smem_size),
         a_smem_layout,
         bound=a_smem_size,
     )
 
     # There is one pre-allocated shared buffer. Explicitly offset B after at A's end.
-    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).unsafe_bitcast[
-        Scalar[b_type]
-    ]()
+    var b_smem = a_smem.unsafe_offset(
+        num_warp_k_partitions * a_smem_size
+    ).unsafe_bitcast[Scalar[b_type]]()
     comptime b_smem_size = num_pipeline_stages * BK * BN // pack_factor
     comptime BD_0 = BN // repack_tile[0]
     comptime BD_1 = (BK * repack_tile[0]) // pack_factor
@@ -734,7 +734,7 @@ def multistage_qgemm_kernel[
         circular=True,
         linear_idx_type=b.linear_idx_type,
     ](
-        b_smem + warp_k_part_id * b_smem_size,
+        b_smem.unsafe_offset(warp_k_part_id * b_smem_size),
         b_smem_layout,
         bound=b_smem_size,
     )
@@ -744,7 +744,7 @@ def multistage_qgemm_kernel[
         (num_pipeline_stages - 1) * BK, group_size
     ) + 1
     var scales_smem = (
-        b_smem + num_warp_k_partitions * b_smem_size
+        b_smem.unsafe_offset(num_warp_k_partitions * b_smem_size)
     ).unsafe_bitcast[Scalar[scales_type]]()
     comptime scales_smem_size = num_scales_stages * BN * ceildiv(BK, group_size)
     comptime scales_smem_layout = row_major[ceildiv(BK, group_size), BN]()
@@ -757,7 +757,7 @@ def multistage_qgemm_kernel[
         circular=True,
         linear_idx_type=scales.linear_idx_type,
     ](
-        scales_smem + warp_k_part_id * scales_smem_size,
+        scales_smem.unsafe_offset(warp_k_part_id * scales_smem_size),
         scales_smem_layout,
         bound=scales_smem_size,
     )
@@ -765,7 +765,7 @@ def multistage_qgemm_kernel[
     var scales_native_ring = TileTensor[
         linear_idx_type=scales.linear_idx_type, address_space=.SHARED
     ](
-        scales_smem + warp_k_part_id * scales_smem_size,
+        scales_smem.unsafe_offset(warp_k_part_id * scales_smem_size),
         row_major[num_scales_stages * ceildiv(BK, group_size), BN](),
     )
 
@@ -932,7 +932,9 @@ def multistage_qgemm_kernel[
         ]()
 
         var accum_smem_warp_tile = TileTensor(
-            a_smem.unsafe_bitcast[Scalar[c_type]]() + warp_id * WM * WN,
+            a_smem.unsafe_bitcast[Scalar[c_type]]().unsafe_offset(
+                warp_id * WM * WN
+            ),
             row_major[WM, WN](),
         )
 

@@ -389,7 +389,7 @@ struct MHAPosition[
         return TileTensor[
             dtype, Self.q_output_gmem_layout, type_of(ptr).origin
         ](
-            ptr + self.q_out_offset,
+            ptr.unsafe_offset(self.q_out_offset),
             Self.q_output_gmem_layout(
                 Coord(Idx[Self.BM], Idx[Self.depth]),
                 Coord(Idx[Self.q_stride], Idx[1]),
@@ -457,13 +457,14 @@ struct MHAPosition[
         var exp_sum_offset = UInt32(Self.q_num_heads) * (
             self.prompt_idx + batch_size * self.prompt_offset
         )
-        var exp_sum_ptr = (
-            rebind[MutPointer[Scalar[partition_t.accum_dtype], MutAnyOrigin]](
-                partition.lse_pointer().value().unsafe_mut_cast[True]()
-            )
-            + exp_sum_offset
+        var exp_sum_ptr = rebind[
+            MutPointer[Scalar[partition_t.accum_dtype], MutAnyOrigin]
+        ](
+            partition.lse_pointer().value().unsafe_mut_cast[True]()
+        ).unsafe_offset(
+            exp_sum_offset
         )
-        var qk_max_ptr = exp_sum_ptr + (
+        var qk_max_ptr = exp_sum_ptr.unsafe_offset(
             UInt32(Self.q_num_heads) * batch_size * partition.num_partitions()
         )
         return (exp_sum_ptr, qk_max_ptr)
@@ -1110,7 +1111,7 @@ def output_reg_to_smem_st_matrix[
                     st_matrix_args
                 )
             )
-            var offset = accum_smem_tile.ptr + accum_smem_idx
+            var offset = accum_smem_tile.ptr.unsafe_offset(accum_smem_idx)
             var output_frag = output_reg_tile.load[
                 width=8, alignment=align_of[accum_type]()
             ](Coord(Idx[m_mma], Idx[i * 8])).cast[output_type]()

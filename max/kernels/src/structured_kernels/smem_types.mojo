@@ -86,7 +86,7 @@ struct SMemArray[type: TrivialRegisterPassable, size: Int](
         Returns:
             Pointer to element.
         """
-        return self.ptr + Int(index)
+        return self.ptr.unsafe_offset(Int(index))
 
     @inline(.always)
     @staticmethod

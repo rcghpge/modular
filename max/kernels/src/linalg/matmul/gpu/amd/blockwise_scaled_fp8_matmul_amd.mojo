@@ -355,11 +355,11 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                 if kb == NUM_SLABS - 1:
                     comptime n_oob = k_tile_size - c_valid
                     var a_tail = TileTensor(
-                        a_smem.ptr + kt_partial * BM * k_tile_size,
+                        a_smem.ptr.unsafe_offset(kt_partial * BM * k_tile_size),
                         row_major[BM, k_tile_size](),
                     )
                     var b_tail = TileTensor(
-                        b_smem.ptr + kt_partial * BN * k_tile_size,
+                        b_smem.ptr.unsafe_offset(kt_partial * BN * k_tile_size),
                         row_major[BN, k_tile_size](),
                     )
                     var tid = Int(warp_id()) * WARP_SIZE + Int(lane_id())
@@ -379,11 +379,11 @@ def blockwise_scaled_fp8_matmul_amd_tile[
 
         comptime for k in range(num_k_tiles):
             var a_blk = TileTensor(
-                a_smem.ptr + k * BM * k_tile_size,
+                a_smem.ptr.unsafe_offset(k * BM * k_tile_size),
                 row_major[BM, k_tile_size](),
             )
             var b_blk = TileTensor(
-                b_smem.ptr + k * BN * k_tile_size,
+                b_smem.ptr.unsafe_offset(k * BN * k_tile_size),
                 row_major[BN, k_tile_size](),
             )
             mma_op.load_frag[k](

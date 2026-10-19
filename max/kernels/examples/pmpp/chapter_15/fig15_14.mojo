@@ -124,15 +124,15 @@ def mm_tiled_kernel_double_buffer(
 
     # Pre-fetch first iteration tiles
     var curr_offset = 0
-    var addr_A = A + bRow * Int(K) + curr_offset
-    var addr_B = B + curr_offset * Int(N) + bCol
+    var addr_A = A.unsafe_offset(bRow * Int(K)).unsafe_offset(curr_offset)
+    var addr_B = B.unsafe_offset(curr_offset * Int(N)).unsafe_offset(bCol)
 
     loadTile(
         addr_A,
         Int(K),
         Int(M) - bRow,
         Int(K) - curr_offset,
-        A_s + A_curr_offset,
+        A_s.unsafe_offset(A_curr_offset),
         bK,
         bM,
         bK,
@@ -142,7 +142,7 @@ def mm_tiled_kernel_double_buffer(
         Int(N),
         Int(K) - curr_offset,
         Int(N) - bCol,
-        B_s + B_curr_offset,
+        B_s.unsafe_offset(B_curr_offset),
         bN,
         bK,
         bN,
@@ -154,15 +154,15 @@ def mm_tiled_kernel_double_buffer(
     for tile in range(numTiles - 1):
         # Pre-fetch next iteration tiles while computing current
         curr_offset = (tile + 1) * bK
-        addr_A = A + bRow * Int(K) + curr_offset
-        addr_B = B + curr_offset * Int(N) + bCol
+        addr_A = A.unsafe_offset(bRow * Int(K)).unsafe_offset(curr_offset)
+        addr_B = B.unsafe_offset(curr_offset * Int(N)).unsafe_offset(bCol)
 
         loadTile(
             addr_A,
             Int(K),
             Int(M) - bRow,
             Int(K) - curr_offset,
-            A_s + A_next_offset,
+            A_s.unsafe_offset(A_next_offset),
             bK,
             bM,
             bK,
@@ -172,7 +172,7 @@ def mm_tiled_kernel_double_buffer(
             Int(N),
             Int(K) - curr_offset,
             Int(N) - bCol,
-            B_s + B_next_offset,
+            B_s.unsafe_offset(B_next_offset),
             bN,
             bK,
             bN,

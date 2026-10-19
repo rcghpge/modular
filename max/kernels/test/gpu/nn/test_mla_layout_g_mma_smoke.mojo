@@ -202,10 +202,10 @@ def qk_smoke_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var a_smem_ptr = (smem_base + QK_A_OFFSET).unsafe_bitcast[
+    var a_smem_ptr = smem_base.unsafe_offset(QK_A_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
-    var b_smem_ptr = (smem_base + QK_B_OFFSET).unsafe_bitcast[
+    var b_smem_ptr = smem_base.unsafe_offset(QK_B_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
 
@@ -213,11 +213,19 @@ def qk_smoke_kernel[
     var b_smem_tile = TileTensor(b_smem_ptr, row_major[QK_N, QK_K]())
 
     # ---- Metadata ----
-    var metadata_ptr = (smem_base + QK_META_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(QK_META_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var a_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var b_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var a_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var b_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -364,10 +372,10 @@ def pv_smoke_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var a_smem_ptr = (smem_base + PV_A_OFFSET).unsafe_bitcast[
+    var a_smem_ptr = smem_base.unsafe_offset(PV_A_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
-    var b_smem_ptr = (smem_base + PV_B_OFFSET).unsafe_bitcast[
+    var b_smem_ptr = smem_base.unsafe_offset(PV_B_OFFSET).unsafe_bitcast[
         Scalar[FP8_TYPE]
     ]()
 
@@ -376,11 +384,19 @@ def pv_smoke_kernel[
     # N as the major axis (same as PV_K from the A side via transpose_b=False).
     var b_smem_tile = TileTensor(b_smem_ptr, row_major[PV_N, PV_K]())
 
-    var metadata_ptr = (smem_base + PV_META_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(PV_META_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var a_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var b_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var a_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var b_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()

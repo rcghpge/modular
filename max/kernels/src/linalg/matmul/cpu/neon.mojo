@@ -96,7 +96,7 @@ struct Inner_matmul_neon(InnerMatmulKernel, Movable):
         comptime for lane in range(a_col_size):
             comptime for col in range(kernel_cols // simd_size):
                 var b_val = (
-                    (b_ptr + col * simd_size)
+                    (b_ptr.unsafe_offset(col * simd_size))
                     .load[width=simd_size]()
                     .cast[c_local.dtype]()
                 )
@@ -109,7 +109,7 @@ struct Inner_matmul_neon(InnerMatmulKernel, Movable):
                     )
                     c_local[row, col] = c_val
 
-            b_ptr = b_ptr + kernel_cols
+            b_ptr = b_ptr.unsafe_offset(kernel_cols)
 
     @inline(.always)
     def __inner_matmul__[

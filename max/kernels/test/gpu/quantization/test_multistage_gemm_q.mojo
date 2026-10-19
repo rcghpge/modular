@@ -105,7 +105,7 @@ def create_ref_b[
         row_major[N // 64, K * 64 // pack_factor]()
     )
 
-    var b_scales_ptr = b_packed.ptr + N * K // 2
+    var b_scales_ptr = b_packed.ptr.unsafe_offset(N * K // 2)
     var scales = TileTensor(
         b_scales_ptr.unsafe_bitcast[Scalar[scales_type]](),
         row_major[K // group_size, N](),
@@ -215,7 +215,7 @@ def test_repack_Q4_0_for_sm8x[
             for _ in range(k_groups):
                 block_ptr[].base_scale = random_float16()
                 fill_random(block_ptr[].q_bits)
-                block_ptr += 1
+                block_ptr = block_ptr.unsafe_offset(1)
 
     comptime group_size = 32
     comptime pack_factor = 8
@@ -372,9 +372,11 @@ def test_quantized[
 
     rand(a_host_ptr.unsafe_ptr(), a_size)
 
-    var b_scales_ptr = (b_host_ptr.unsafe_ptr() + N * K // 2).unsafe_bitcast[
-        Scalar[a_type]
-    ]()
+    var b_scales_ptr = (
+        b_host_ptr.unsafe_ptr()
+        .unsafe_offset(N * K // 2)
+        .unsafe_bitcast[Scalar[a_type]]()
+    )
     var b_scales_size = (K // group_size) * N
     # elements of b matrix is between [-1, 1]
     rand(b_scales_ptr, b_scales_size, min=0, max=0.125)

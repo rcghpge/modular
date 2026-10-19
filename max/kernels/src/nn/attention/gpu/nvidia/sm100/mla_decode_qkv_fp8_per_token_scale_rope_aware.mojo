@@ -458,22 +458,24 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
 
         # Q_rope BF16: starts right after Q_nope
         # 64 × 64 × 2 = 8192 bytes (SWIZZLE_128B)
-        var q_rope_smem = (q_nope_smem + Self.ContentStageElems).unsafe_bitcast[
-            Scalar[Self.bf16_type]
-        ]()
+        var q_rope_smem = q_nope_smem.unsafe_offset(
+            Self.ContentStageElems
+        ).unsafe_bitcast[Scalar[Self.bf16_type]]()
 
         # KV content SMEM: N stages of 64 × 512 FP8
         # Starts after Q_nope + Q_rope
         # Q total bytes = 32768 + 8192 = 40960
         # In FP8 element count: 40960 / 1 = 40960
         comptime q_total_fp8_elems = Self.ContentStageElems + Self.RopeStageElems * Self.bf16_bytes_per_element // Self.fp8_bytes_per_element
-        var kv_content_smem = q_nope_smem + q_total_fp8_elems
+        var kv_content_smem = q_nope_smem.unsafe_offset(q_total_fp8_elems)
 
         # KV rope SMEM: N stages of 64 × 64 BF16
         # Starts after KV content stages
         comptime kv_total_stages = Self.config.num_kv_stages
         var kv_rope_smem = (
-            kv_content_smem + Self.ContentStageElems * kv_total_stages
+            kv_content_smem.unsafe_offset(
+                Self.ContentStageElems * kv_total_stages
+            )
         ).unsafe_bitcast[Scalar[Self.bf16_type]]()
 
         # P reuses KV rope SMEM: P_i maps to rope stage i.
@@ -496,17 +498,17 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
         # max_smem is double-buffered (2 × 128 elements) to avoid a race
         # condition in softmax; li_smem is a single 128-element buffer.
         var max_smem = (
-            kv_rope_smem + Self.RopeStageElems * kv_total_stages
+            kv_rope_smem.unsafe_offset(Self.RopeStageElems * kv_total_stages)
         ).unsafe_bitcast[Scalar[Self.AccumType]]()
-        var li_smem = max_smem + 2 * WARPGROUP_SIZE
+        var li_smem = max_smem.unsafe_offset(2 * WARPGROUP_SIZE)
 
         # Per-token scale SMEM: N stages × 256 bytes each (64 tokens × 1 × float32).
         # Placed right after li_smem. Used by the load warp to store per-token
         # sigma_KV values from HBM before they are applied later.
         # In MLA's absorbed mode, K and V share one scale per token.
-        var scale_smem_base = (li_smem + WARPGROUP_SIZE).unsafe_bitcast[
-            Float32
-        ]()
+        var scale_smem_base = li_smem.unsafe_offset(
+            WARPGROUP_SIZE
+        ).unsafe_bitcast[Float32]()
         comptime per_token_scales_total_elems = Self.config.num_kv_stages * Self.config.per_token_scales_per_stage // size_of[
             DType.float32
         ]()
@@ -514,13 +516,13 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
         # ---- Barrier layout (6N+11 fixed for N-stage pipelines) ----
         # bar_q(1) + kv(2N) + s(2N) + p(2N) + o(4) + c(2) + corr_done(4)
         var mbar_base: MBarType = (
-            (scale_smem_base + per_token_scales_total_elems)
+            (scale_smem_base.unsafe_offset(per_token_scales_total_elems))
             .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
         var mbar_q: MBarType = mbar_base
-        var mbar_kv_base: MBarType = mbar_base + 1
+        var mbar_kv_base: MBarType = mbar_base.unsafe_offset(1)
 
         var kv_pipeline = KVPipelineGeneric[
             num_kv_stages=Self.config.num_kv_stages,
@@ -529,7 +531,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
             num_consumer=2,
         ](mbar_kv_base)
 
-        mbar_base = mbar_kv_base + kv_pipeline.num_mbars()
+        mbar_base = mbar_kv_base.unsafe_offset(kv_pipeline.num_mbars())
         # S pipeline: N-stage (matching KV stages)
         var s_bars = DecodeSM100MiscMBars[
             num_stages=Self.num_stages,
@@ -566,7 +568,7 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
             num_producer=WARPGROUP_SIZE,
             num_consumer=1,
         ](mbar_base)
-        mbar_base += out_pipeline.num_mbars()
+        mbar_base = mbar_base.unsafe_offset(out_pipeline.num_mbars())
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
         var ptr_tmem_addr = (mbar_base).unsafe_bitcast[UInt32]()
@@ -843,8 +845,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
             else:
                 k0_bar[].expect_bytes(Int32(kv_content_bytes + kv_rope_bytes))
             # K_content TMA: load FP8 content into kv_content_smem
-            var content_stage_ptr = kv_content_smem + stage0_idx * UInt32(
-                Self.ContentStageElems
+            var content_stage_ptr = kv_content_smem.unsafe_offset(
+                stage0_idx * UInt32(Self.ContentStageElems)
             )
             paged_rows.tma_copy_k[needs_partial=False](
                 k_content_tma,
@@ -854,8 +856,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                 elect=elect_mask,
             )
             # K_rope TMA: load BF16 rope into kv_rope_smem
-            var rope_stage_ptr = kv_rope_smem + stage0_idx * UInt32(
-                Self.RopeStageElems
+            var rope_stage_ptr = kv_rope_smem.unsafe_offset(
+                stage0_idx * UInt32(Self.RopeStageElems)
             )
             paged_rows.tma_copy_k[needs_partial=False](
                 k_rope_tma,
@@ -869,8 +871,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
             # tensor; the column coordinate is the physical row index
             # (kv_gmem_row) which directly indexes the flat scales array.
             comptime if Self.has_per_token_scales:
-                var scale_stage_ptr = scale_smem_base + stage0_idx * UInt32(
-                    scale_elems_per_stage
+                var scale_stage_ptr = scale_smem_base.unsafe_offset(
+                    stage0_idx * UInt32(scale_elems_per_stage)
                 )
                 var scale_tensor = _smem_tt[.float32, scale_elems](
                     scale_stage_ptr, tt_row_major[scale_elems]()
@@ -906,8 +908,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                         Int32(kv_content_bytes + kv_rope_bytes)
                     )
                 # K_content TMA
-                var content_stage_ptr = kv_content_smem + stage_idx * UInt32(
-                    Self.ContentStageElems
+                var content_stage_ptr = kv_content_smem.unsafe_offset(
+                    stage_idx * UInt32(Self.ContentStageElems)
                 )
                 paged_rows.tma_copy_k[needs_partial=False](
                     k_content_tma,
@@ -917,8 +919,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                     elect=elect_mask,
                 )
                 # K_rope TMA
-                var rope_stage_ptr = kv_rope_smem + stage_idx * UInt32(
-                    Self.RopeStageElems
+                var rope_stage_ptr = kv_rope_smem.unsafe_offset(
+                    stage_idx * UInt32(Self.RopeStageElems)
                 )
                 paged_rows.tma_copy_k[needs_partial=False](
                     k_rope_tma,
@@ -929,8 +931,8 @@ struct MLA_SM100_Decode_QKV_FP8_PerTokenScale_RopeAware[
                 )
                 # Scale TMA
                 comptime if Self.has_per_token_scales:
-                    var scale_stage_ptr = scale_smem_base + stage_idx * UInt32(
-                        scale_elems_per_stage
+                    var scale_stage_ptr = scale_smem_base.unsafe_offset(
+                        stage_idx * UInt32(scale_elems_per_stage)
                     )
                     var scale_tensor = _smem_tt[.float32, scale_elems](
                         scale_stage_ptr, tt_row_major[scale_elems]()

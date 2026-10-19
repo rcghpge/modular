@@ -511,7 +511,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 type_of(smem_1d_layout),
                 MutAnyOrigin,
                 address_space=.SHARED,
-            ](max_smem + buf_offset, smem_1d_layout)
+            ](max_smem.unsafe_offset(buf_offset), smem_1d_layout)
             max_buf[lane_id] = current_max
             named_barrier[Int32(WARPGROUP_SIZE)](2)
             # Each lane reads the 4 col-quadrant partials for its row;
@@ -565,7 +565,9 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             # into the warp's col-quadrant slot.
             p_prod.acquire()
             var p_stage = p_prod.stage_index()
-            var p_smem_stage = p_smem_ptr + p_stage * UInt32(Self.PStageElems)
+            var p_smem_stage = p_smem_ptr.unsafe_offset(
+                p_stage * UInt32(Self.PStageElems)
+            )
             # P swizzle MUST match `Self._ummapv_p_swizzle` (the PV MMA P
             # descriptor) — mismatch corrupts the P read.
             comptime _p_swizzle = (
@@ -829,7 +831,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                         # Fold: BM=32 packs q_len_fold * num_q_heads rows;
                         # emit one TMA store per q_token.
                         comptime for q_local_LG in range(Self.q_len_fold):
-                            var q_stage_ptr_LG = stage_ptr_LG + (
+                            var q_stage_ptr_LG = stage_ptr_LG.unsafe_offset(
                                 q_local_LG
                                 * Self.config.num_q_heads
                                 * (Self.config.BN_PV // 4)
@@ -1216,9 +1218,9 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             alignment=128,
             name="mha_dynamic_shared_memory",
         ]()
-        var kv_smem = q_smem + Self.BlockElems * Self.NumQKBlocks
+        var kv_smem = q_smem.unsafe_offset(Self.BlockElems * Self.NumQKBlocks)
         comptime kv_total_stages = Self.config.num_kv_stages
-        var p_smem = kv_smem + Self.KVStageElems * kv_total_stages
+        var p_smem = kv_smem.unsafe_offset(Self.KVStageElems * kv_total_stages)
         comptime p_total_stages = Self.num_stages
 
         # Output SMEM aliases KV SMEM (same as Layout E).
@@ -1226,20 +1228,20 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         var out_smem = out_smem_start.unsafe_bitcast[Scalar[Self.output_type]]()
 
         var max_smem = (
-            p_smem + Self.PStageElems * p_total_stages
+            p_smem.unsafe_offset(Self.PStageElems * p_total_stages)
         ).unsafe_bitcast[Scalar[Self.AccumType]]()
-        var li_smem = max_smem + 2 * WARPGROUP_SIZE
+        var li_smem = max_smem.unsafe_offset(2 * WARPGROUP_SIZE)
 
         # Barrier layout (6N+11 fixed, N=num_kv_stages):
         # bar_q(1) + kv(2N) + s(2N) + p(2N) + o(4) + c(2) + corr_done(4)
         var mbar_base: MBarType = (
-            (li_smem + WARPGROUP_SIZE)
+            (li_smem.unsafe_offset(WARPGROUP_SIZE))
             .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
         var mbar_q: MBarType = mbar_base
-        var mbar_kv_base: MBarType = mbar_base + 1
+        var mbar_kv_base: MBarType = mbar_base.unsafe_offset(1)
 
         var kv_pipeline = KVPipelineGeneric[
             num_kv_stages=Self.config.num_kv_stages,
@@ -1248,7 +1250,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             num_consumer=2,
         ](mbar_kv_base)
 
-        mbar_base = mbar_kv_base + kv_pipeline.num_mbars()
+        mbar_base = mbar_kv_base.unsafe_offset(kv_pipeline.num_mbars())
         var s_bars = DecodeSM100MiscMBars[
             num_stages=Self.num_stages,
             num_producer=1,
@@ -1283,7 +1285,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             num_producer=WARPGROUP_SIZE,
             num_consumer=1,
         ](mbar_base)
-        mbar_base += out_pipeline.num_mbars()
+        mbar_base = mbar_base.unsafe_offset(out_pipeline.num_mbars())
 
         # TMEM column map (matches Layout E):
         #   TMEM_O      = 0     (PV accumulator)

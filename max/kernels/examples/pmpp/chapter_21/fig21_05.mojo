@@ -84,7 +84,8 @@ def cenergy_scatter_kernel(
                 # Scatter add with atomic operation
                 var energy_contrib = charge / sqrt(dx * dx + dy2 + dz2)
                 _ = Atomic.fetch_add(
-                    energygrid + grid_row_offset + i, energy_contrib
+                    energygrid.unsafe_offset(grid_row_offset).unsafe_offset(i),
+                    energy_contrib,
                 )
 
 

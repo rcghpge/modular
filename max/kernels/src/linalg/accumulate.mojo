@@ -154,11 +154,11 @@ struct _Accumulator[
                 func(
                     m,
                     n,
-                    (row_ptr + n * Self.simd_width)
+                    (row_ptr.unsafe_offset(n * Self.simd_width))
                     .unsafe_mut_cast[True]()
                     .as_unsafe_any_origin(),
                 )
-            row_ptr += stride
+            row_ptr = row_ptr.unsafe_offset(stride)
 
     # TODO: merge with load
     @inline(.always)
@@ -214,7 +214,7 @@ struct _Accumulator[
         skip_boundary_check: Bool,
     ):
         comptime assert is_load or c_ptr.mut, "ahhh"
-        var c_ptr_loc = c_ptr + tile_n_idx
+        var c_ptr_loc = c_ptr.unsafe_offset(tile_n_idx)
 
         if skip_boundary_check:
             comptime if is_load:
@@ -228,7 +228,9 @@ struct _Accumulator[
             var row_ptrs = Array[_, Self.num_rows](
                 fill_with=lambda (row: Int) -> Pointer[
                     Scalar[Self.dtype], AnyOrigin[mut=c_ptr.mut]
-                ]: (c_ptr_loc + row * c_stride).as_unsafe_any_origin()
+                ]: c_ptr_loc.unsafe_offset(
+                    row * c_stride
+                ).as_unsafe_any_origin()
             )
 
             self._transfer_loop[0, is_load](
@@ -368,7 +370,7 @@ struct _Accumulator[
 
             comptime if is_load:
                 self[row, col] = partial_simd_load[Self.simd_width](
-                    row_ptrs[0] + (stride * row + base_column),
+                    row_ptrs[0].unsafe_offset(stride * row + base_column),
                     0,
                     tail_size,
                     0,
@@ -376,7 +378,7 @@ struct _Accumulator[
             else:
                 partial_simd_store(
                     (
-                        row_ptrs[0] + (stride * row + base_column)
+                        row_ptrs[0].unsafe_offset(stride * row + base_column)
                     ).unsafe_mut_cast[True](),
                     0,
                     tail_size,
@@ -442,7 +444,9 @@ struct _Accumulator[
         # TODO: could we lift partial_load_size out of the loop?
         comptime for i in range(Self.num_rows):
             comptime for j in range(Self.num_cols):
-                var input_ptr = input + i * input_stride + j * Self.simd_width
+                var input_ptr = input.unsafe_offset(
+                    i * input_stride
+                ).unsafe_offset(j * Self.simd_width)
                 comptime partial_load_last_vec = partial_load and (
                     j == Self.num_cols - 1
                 )
@@ -700,9 +704,9 @@ struct _Accumulator[
                         .high_locality()
                         .to_data_cache()
                     ](
-                        b_ptr
-                        + prefetch_distance * kernel_width
-                        + j * Self.simd_width
+                        b_ptr.unsafe_offset(
+                            prefetch_distance * kernel_width
+                        ).unsafe_offset(j * Self.simd_width)
                     )
 
             comptime for i in range(Self.row_start, Self.row_stop):
@@ -725,7 +729,7 @@ struct _Accumulator[
                         self[i, j],
                     )
 
-            b_ptr = b_ptr + b_stride
+            b_ptr = b_ptr.unsafe_offset(b_stride)
 
     @inline(.always)
     def _accumulate_x86_simd[
@@ -764,9 +768,9 @@ struct _Accumulator[
                         .high_locality()
                         .to_data_cache()
                     ](
-                        b_ptr
-                        + prefetch_distance * kernel_width
-                        + j * Self.simd_width
+                        b_ptr.unsafe_offset(
+                            prefetch_distance * kernel_width
+                        ).unsafe_offset(j * Self.simd_width)
                     )
 
             comptime for i in range(Self.row_start, Self.row_stop):
@@ -788,7 +792,7 @@ struct _Accumulator[
                         self[i, j],
                     )
 
-            b_ptr = b_ptr + b_stride
+            b_ptr = b_ptr.unsafe_offset(b_stride)
 
     # ===-------------------------------------------------------------------===#
     # Accumulation optimized for NEON
@@ -858,7 +862,7 @@ struct _Accumulator[
             comptime for i in range(Self.row_start, Self.row_stop):
                 a_vecs[i] = a.load[width=num_lanes](offset + i * a_stride)
 
-            var b_ptr = b + offset * b_stride
+            var b_ptr = b.unsafe_offset(offset * b_stride)
 
             comptime for lane in range(num_lanes):
                 comptime for j in range(Self.num_cols):
@@ -878,7 +882,7 @@ struct _Accumulator[
                             self[i, j],
                         )
 
-                b_ptr = b_ptr + b_stride
+                b_ptr = b_ptr.unsafe_offset(b_stride)
 
         # Load vectors from A first. The remainder is handled one element at a time.
         tile[[Self.simd_width, 1]](0, length, micro_kernel)
@@ -917,7 +921,7 @@ struct _Accumulator[
                 var a_idx = Int(a_base_offsets[i]) + a_offset + offset
                 a_vecs[i] = a.load[width=num_lanes](a_idx)
 
-            var b_ptr = b + offset * b_stride
+            var b_ptr = b.unsafe_offset(offset * b_stride)
 
             comptime for lane in range(num_lanes):
                 comptime for j in range(Self.num_cols):
@@ -937,7 +941,7 @@ struct _Accumulator[
                             self[i, j],
                         )
 
-                b_ptr += b_stride
+                b_ptr = b_ptr.unsafe_offset(b_stride)
 
         # Load vectors from A first. The remainder is handled one element at a time.
         tile[[Self.simd_width, 1]](0, length, micro_kernel)
@@ -963,7 +967,7 @@ def _simd_load_maybe_partial[
 
     comptime if partial_load:
         return partial_simd_load[simd_width](
-            ptr + offset, 0, partial_load_size.value(), 0
+            ptr.unsafe_offset(offset), 0, partial_load_size.value(), 0
         )
     else:
         return ptr.load[width=simd_width](offset)
@@ -986,7 +990,7 @@ def _simd_store_maybe_partial[
     comptime if partial_store:
         # TODO: check if partial_store_size is present.
         return partial_simd_store[simd_width](
-            ptr + offset, 0, partial_store_size.value(), vec
+            ptr.unsafe_offset(offset), 0, partial_store_size.value(), vec
         )
     else:
         return ptr.store(offset, vec)

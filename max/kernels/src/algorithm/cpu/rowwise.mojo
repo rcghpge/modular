@@ -444,7 +444,9 @@ def pjoin[
             var num_splits = Int(ctx._blocks_per_row)
             var split = Int(ctx._block_in_row)
             ctx.row_partial[State.Single](split)[0] = sc
-            var counter_ptr = ctx._counters_base + Int(ctx._row_idx)
+            var counter_ptr = ctx._counters_base.unsafe_offset(
+                Int(ctx._row_idx)
+            )
             # `fetch_add` returns the prior value; `prev + 1 == num_splits`
             # means this worker arrived last.
             var prev = Atomic[Int32].fetch_add(counter_ptr, Int32(1))

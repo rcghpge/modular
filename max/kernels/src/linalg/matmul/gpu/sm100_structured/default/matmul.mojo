@@ -1116,7 +1116,9 @@ def _splitk_context(ctx: DeviceContext) raises -> _SplitKContext:
     if device < _SPLITK_MAX_DEVICES:
         var counts = _SPLITK_SLOT_COUNTS.get_or_create_ptr()
         var taken = Int(
-            Atomic[Int64].fetch_add(counts[].unsafe_ptr() + device, 1)
+            Atomic[Int64].fetch_add(
+                counts[].unsafe_ptr().unsafe_offset(device), 1
+            )
         )
         if taken < SPLITK_COUNTER_SLOTS:
             slot = taken

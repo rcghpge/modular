@@ -356,18 +356,20 @@ def ssd_chunk_state[
         comptime for ks in range(TT // MMA_K):
             # A = X'^T (p x t) from the [t][p] tile.
             var a = ld_matrix[8, transpose=True](
-                Xs
-                + (ks * MMA_K + lane % LDM_ROWS + (m // 2) * HALF) * LDX
-                + warp * MMA_M
-                + (m % 2) * HALF
+                Xs.unsafe_offset(
+                    (ks * MMA_K + lane % LDM_ROWS + (m // 2) * HALF) * LDX
+                )
+                .unsafe_offset(warp * MMA_M)
+                .unsafe_offset((m % 2) * HALF)
             )
             comptime for np in range(NT // 2):
                 # Two n8 tiles of B (t x n) per x4 load.
                 var bq = ld_matrix[8, transpose=True](
-                    Bs
-                    + (ks * MMA_K + lane % LDM_ROWS + (m % 2) * HALF) * LDK
-                    + np * MMA_K
-                    + (m // 2) * HALF
+                    Bs.unsafe_offset(
+                        (ks * MMA_K + lane % LDM_ROWS + (m % 2) * HALF) * LDK
+                    )
+                    .unsafe_offset(np * MMA_K)
+                    .unsafe_offset((m // 2) * HALF)
                 )
                 var b0 = SIMD[.bfloat16, 4](bq[0], bq[1], bq[2], bq[3])
                 var b1 = SIMD[.bfloat16, 4](bq[4], bq[5], bq[6], bq[7])

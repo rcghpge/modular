@@ -456,31 +456,32 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     # +1 advances the Signal pointer by sizeof(Signal) bytes, stepping
     # past the Signal header to reach the scratch region of the buffer.
     var scratch_fp8 = (
-        rank_sigs[_my_rank].address_space_cast[.GENERIC]() + 1
+        rank_sigs[_my_rank].address_space_cast[.GENERIC]().unsafe_offset(1)
     ).unsafe_bitcast[Scalar[out_dtype]]()
-    var scratch_scale = (scratch_fp8 + fp8_per_rank).unsafe_bitcast[
+    var scratch_scale = scratch_fp8.unsafe_offset(fp8_per_rank).unsafe_bitcast[
         Scalar[scales_dtype]
     ]()
-    var scratch_residual = (scratch_scale + scale_pad_elements).unsafe_bitcast[
-        Scalar[in_dtype]
-    ]()
+    var scratch_residual = scratch_scale.unsafe_offset(
+        scale_pad_elements
+    ).unsafe_bitcast[Scalar[in_dtype]]()
 
     # P2P scratch pointers for all GPUs (for reads in Stage 2).
     # +1 advances by sizeof(Signal) bytes (see local scratch note above).
     comptime Fp8PtrType = MutPointer[Scalar[out_dtype], MutAnyOrigin]
     var fp8_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> Fp8PtrType: (
-            rank_sigs[i].address_space_cast[.GENERIC]() + 1
+            rank_sigs[i].address_space_cast[.GENERIC]().unsafe_offset(1)
         ).unsafe_bitcast[Scalar[out_dtype]]()
     )
 
     comptime ScalePtrType = MutPointer[Scalar[scales_dtype], MutAnyOrigin]
     var scale_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> ScalePtrType: (
-            (rank_sigs[i].address_space_cast[.GENERIC]() + 1).unsafe_bitcast[
-                Scalar[out_dtype]
-            ]()
-            + fp8_per_rank
+            rank_sigs[i]
+            .address_space_cast[.GENERIC]()
+            .unsafe_offset(1)
+            .unsafe_bitcast[Scalar[out_dtype]]()
+            .unsafe_offset(fp8_per_rank)
         ).unsafe_bitcast[Scalar[scales_dtype]]()
     )
     var residual_ptrs = Array[
@@ -490,7 +491,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     comptime if has_residual:
         comptime for i in range(ngpus):
             residual_ptrs[i] = (
-                scale_ptrs[i] + scale_pad_elements
+                scale_ptrs[i].unsafe_offset(scale_pad_elements)
             ).unsafe_bitcast[Scalar[in_dtype]]()
 
     # Round-robin P2P input pointers for NVLink load-balancing.

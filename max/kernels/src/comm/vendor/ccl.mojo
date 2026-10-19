@@ -636,7 +636,10 @@ def allgather[
                 ctx, outputs[out_idx]._storage, count, owning=False
             )
             var src_db = DeviceBuffer[dtype](
-                ctx, recv_tmp[dev].unsafe_ptr() + src_off, count, owning=False
+                ctx,
+                recv_tmp[dev].unsafe_ptr().unsafe_offset(src_off),
+                count,
+                owning=False,
             )
             # API takes (dst, src)
             ctx.enqueue_copy(dest_db, src_db)

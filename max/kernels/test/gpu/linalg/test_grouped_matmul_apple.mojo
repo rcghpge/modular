@@ -142,7 +142,7 @@ def _run_case[
 
     var a = TileTensor(a_buf, row_major(total_m, Idx[K]))
     var b = TileTensor(
-        b_buf.unsafe_ptr() - expert_base * N * K,
+        b_buf.unsafe_ptr().unsafe_offset(-(expert_base * N * K)),
         row_major[num_experts, N, K](),
     )
     var off = TileTensor(off_buf, row_major(num_experts + 1))

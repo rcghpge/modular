@@ -500,7 +500,7 @@ struct Shuffler[E: Int]:
             var e, n = divmod(e_n, N)
             var k_byte = frag * lane_bytes
 
-            var src = raw + (e * N * K_BYTES + n * K_BYTES + k_byte)
+            var src = raw.unsafe_offset(e * N * K_BYTES + n * K_BYTES + k_byte)
 
             comptime for pl in range(num_planes):
                 comptime pb = Self.plane_bytes[lane_bytes, pl]()
@@ -794,9 +794,9 @@ struct Shuffler[E: Int]:
                 var cell_byte_off = Self.scale_4d_slot_byte_off[
                     K_SCALES=K_SCALES, packed_mode=True
                 ](expert_slot, cell_mn_base, cell_k_base, _max_padded_M)
-                var dst_ptr = (sfa_pre.ptr + cell_byte_off).unsafe_bitcast[
-                    Int32
-                ]()
+                var dst_ptr = sfa_pre.ptr.unsafe_offset(
+                    cell_byte_off
+                ).unsafe_bitcast[Int32]()
                 dst_ptr[0] = bitcast[.int32, 1](cell_bytes)[0]
 
                 target_tile += _total_wg

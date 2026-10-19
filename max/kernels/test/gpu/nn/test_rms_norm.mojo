@@ -105,7 +105,7 @@ def run_rms_norm_gpu[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h.unsafe_ptr() + r * cols,
+            data_h.unsafe_ptr().unsafe_offset(r * cols),
             row_major(cols),
         )
         var rms_ref = compute_rms(vec, cols, epsilon)
@@ -187,7 +187,7 @@ def run_rms_norm_gpu_static_dims[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h.unsafe_ptr() + r * cols,
+            data_h.unsafe_ptr().unsafe_offset(r * cols),
             row_major(cols),
         )
         var rms_ref = compute_rms(vec, cols, epsilon)
@@ -337,7 +337,7 @@ def run_rms_norm_row_based[
 
     for r in range(rows):
         var vec = TileTensor(
-            data_h.unsafe_ptr() + r * cols,
+            data_h.unsafe_ptr().unsafe_offset(r * cols),
             row_major(cols),
         )
         var rms_ref = compute_rms(vec, cols, eps_f32)

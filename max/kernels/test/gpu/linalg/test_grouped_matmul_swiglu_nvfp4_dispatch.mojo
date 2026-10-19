@@ -207,7 +207,7 @@ def _build_shared_b[
     )
     for e in range(num_experts):
         var expert_view = TileTensor(
-            b_scales_host_ptr + e * b_expert_sf_size,
+            b_scales_host_ptr.unsafe_offset(e * b_expert_sf_size),
             row_major(
                 Idx[n_groups_b],
                 Idx[k_groups],
@@ -242,7 +242,7 @@ def _build_shared_b[
 
     for e in range(num_experts):
         var src_view = TileTensor(
-            b_scales_host_ptr + e * b_expert_sf_size,
+            b_scales_host_ptr.unsafe_offset(e * b_expert_sf_size),
             row_major(
                 Idx[n_groups_b],
                 Idx[k_groups],
@@ -252,7 +252,7 @@ def _build_shared_b[
             ),
         )
         var dst_view = TileTensor(
-            b_scales_perm_host_ptr + e * b_expert_sf_size,
+            b_scales_perm_host_ptr.unsafe_offset(e * b_expert_sf_size),
             row_major(
                 Idx[n_groups_b],
                 Idx[k_groups],

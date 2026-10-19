@@ -134,7 +134,7 @@ def test_row_amax_quantization[
     var src_host = alloc[Scalar[DType.bfloat16]](src_rows * N)
     var state = UInt64(12345 + N)
     for r in range(src_rows):
-        _fill_row(src_host + r * N, N, r % 8, state)
+        _fill_row(src_host.unsafe_offset(r * N), N, r % 8, state)
     var indices_host = alloc[UInt32](max(total, 1))
     var source_of = alloc[Int](max(total, 1))
     for i in range(total):

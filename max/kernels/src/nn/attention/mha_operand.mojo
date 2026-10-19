@@ -602,9 +602,8 @@ struct SparseRowsMHAOperand[
             Int(batch_idx) * Int(self.indices_stride) + slot
         ]
         var valid = (key_idx < self.valid_lengths[batch_idx]) & (encoded >= 0)
-        var row_ptr = (
-            self.blocks_base
-            + Int(self.base.get_tma_row(max(encoded, 0))) * Self.row_width
+        var row_ptr = self.blocks_base.unsafe_offset(
+            Int(self.base.get_tma_row(max(encoded, 0))) * Self.row_width
         )
         return (row_ptr if valid else self.zero_row).as_unsafe_any_origin()
 
@@ -1645,14 +1644,16 @@ struct TileTensorMHAOperand[
         head_idx: UInt32,
         head_dim_idx: UInt32 = 0,
     ) -> ImmPointer[Scalar[Self.dtype], ImmutAnyOrigin]:
-        var ret_ptr = self.buffer.ptr + self.buffer.layout[
-            linear_idx_type=type_of(self.buffer).linear_idx_type
-        ](
-            Coord(
-                Int(batch_idx),
-                Int(start_tok_idx),
-                Int(head_idx),
-                Int(head_dim_idx),
+        var ret_ptr = self.buffer.ptr.unsafe_offset(
+            self.buffer.layout[
+                linear_idx_type=type_of(self.buffer).linear_idx_type
+            ](
+                Coord(
+                    Int(batch_idx),
+                    Int(start_tok_idx),
+                    Int(head_idx),
+                    Int(head_dim_idx),
+                )
             )
         )
         return ret_ptr.as_imm().as_unsafe_any_origin()
@@ -1700,14 +1701,16 @@ struct TileTensorMHAOperand[
         head_idx: Int,
         head_dim_idx: Int = 0,
     ) -> ImmPointer[Scalar[Self.scale_dtype], ImmutAnyOrigin]:
-        var ret_ptr = self.scale_buffer.ptr + self.scale_buffer.layout[
-            linear_idx_type=type_of(self.scale_buffer).linear_idx_type
-        ](
-            Coord(
-                Int(batch_idx),
-                Int(start_tok_idx),
-                Int(head_idx),
-                Int(head_dim_idx // Self.quantization_granularity),
+        var ret_ptr = self.scale_buffer.ptr.unsafe_offset(
+            self.scale_buffer.layout[
+                linear_idx_type=type_of(self.scale_buffer).linear_idx_type
+            ](
+                Coord(
+                    Int(batch_idx),
+                    Int(start_tok_idx),
+                    Int(head_idx),
+                    Int(head_dim_idx // Self.quantization_granularity),
+                )
             )
         )
         return ret_ptr.as_imm().as_unsafe_any_origin()
@@ -2111,13 +2114,15 @@ struct RaggedMHAOperand[
         var global_token_idx = Int(
             self.cache_row_offsets[Int(batch_idx)] + start_tok_idx
         )
-        var ret_ptr = self.buffer.ptr + self.buffer.layout[
-            linear_idx_type=type_of(self.buffer).linear_idx_type
-        ](
-            Coord(
-                global_token_idx,
-                Int(head_idx),
-                Int(head_dim_idx),
+        var ret_ptr = self.buffer.ptr.unsafe_offset(
+            self.buffer.layout[
+                linear_idx_type=type_of(self.buffer).linear_idx_type
+            ](
+                Coord(
+                    global_token_idx,
+                    Int(head_idx),
+                    Int(head_dim_idx),
+                )
             )
         )
         return ret_ptr.as_imm().as_unsafe_any_origin()

@@ -555,9 +555,9 @@ def async_copy_with_bound_check[
             swizzle(Scalar[dst.linear_idx_type](dst_frag_offset + dst_idx_base))
             + Scalar[dst.linear_idx_type](dst_idx_diff)
         )
-        var dst_ptr = dst._storage.unsafe_bitcast[Scalar[dtype]]() + Int(
-            dst_swizzled_idx
-        )
+        var dst_ptr = dst._storage.unsafe_bitcast[
+            Scalar[dtype]
+        ]().unsafe_offset(Int(dst_swizzled_idx))
 
         # Calculate the 2D coordinates for this element
         # TODO: we should be able to use idx2crd for this.
@@ -571,11 +571,10 @@ def async_copy_with_bound_check[
 
         # Calculate source pointer based on 2D coordinates
         var src_ptr = (
-            src._storage.unsafe_bitcast[Scalar[dtype]]().address_space_cast[
-                .GLOBAL
-            ]()
-            + dst_coord1
-            + dst_coord0 * Int32(src_stride0)
+            src._storage.unsafe_bitcast[Scalar[dtype]]()
+            .address_space_cast[.GLOBAL]()
+            .unsafe_offset(dst_coord1)
+            .unsafe_offset(dst_coord0 * Int32(src_stride0))
         )
 
         # Perform boundary check and issue appropriate async copy

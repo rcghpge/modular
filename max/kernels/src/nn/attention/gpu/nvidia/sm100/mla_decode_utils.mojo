@@ -1002,7 +1002,7 @@ def _sparse_row_packed[
     var n = sparse_row.row_limit(visible, selection_lag)
     if not d_indices or n == Int.MAX:
         return True
-    var row = d_indices.value() + q_token_idx * indices_stride
+    var row = d_indices.value().unsafe_offset(q_token_idx * indices_stride)
     if min(n, sparse_topk) > 0 and row[min(n, sparse_topk) - 1] < 0:
         return False
     # At or past the slot count, the scan stops before the padding.
@@ -1456,8 +1456,8 @@ struct KVLoad2CvtProducer[dtype: DType, config: MLA_SM100_Decode_Config](
         *, qk_stage: Int = 0
     ](self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var stage_idx: UInt32 = self.pipe.state.index()
-        return self.smem_upper_fp8 + stage_idx * UInt32(
-            Self.fp8_stage_stride_elems
+        return self.smem_upper_fp8.unsafe_offset(
+            stage_idx * UInt32(Self.fp8_stage_stride_elems)
         )
 
     @inline(.always)
@@ -1521,7 +1521,9 @@ struct KVLoad2CvtConsumer[dtype: DType, config: MLA_SM100_Decode_Config](
     @inline(.always)
     def stage_base_ptr(self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var idx: UInt32 = self.pipe.state.index()
-        return self.smem_upper_fp8 + idx * UInt32(Self.fp8_stage_stride_elems)
+        return self.smem_upper_fp8.unsafe_offset(
+            idx * UInt32(Self.fp8_stage_stride_elems)
+        )
 
     @inline(.nodebug)
     def wait(self):
@@ -1579,7 +1581,7 @@ struct KVCvt2MmaProducer[dtype: DType, config: MLA_SM100_Decode_Config](
     @inline(.always)
     def stage_base_ptr(self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var idx = self.pipe.state.index()
-        return self.smem + idx * UInt32(Self.kv_stage_elems)
+        return self.smem.unsafe_offset(idx * UInt32(Self.kv_stage_elems))
 
     @inline(.nodebug)
     def commit_all(mut self):
@@ -1627,7 +1629,7 @@ struct KVCvt2MmaConsumer[dtype: DType, config: MLA_SM100_Decode_Config](
     ](self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var stage_idx: UInt32 = self.pipe.state.index()
         var stage_offset: UInt32 = stage_idx * UInt32(Self.kv_stage_elems)
-        return self.smem + stage_offset
+        return self.smem.unsafe_offset(stage_offset)
 
     @inline(.always)
     def stage_index[*, qk_stage: Int = 0](self) -> UInt32:
@@ -1711,7 +1713,7 @@ struct DecodeKVProducer[
     ](self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var stage_idx: UInt32 = self.pipe.state.index()
         var stage_offset: UInt32 = stage_idx * UInt32(Self.kv_stage_elems)
-        return self.smem + stage_offset
+        return self.smem.unsafe_offset(stage_offset)
 
     @inline(.always)
     def stage_index[*, qk_stage: Int = 0](self) -> UInt32:
@@ -1803,7 +1805,7 @@ struct DecodeKVConsumer[
     ](self) -> SharedMemPointer[Scalar[Self.dtype]]:
         var stage_idx: UInt32 = self.pipe.state.index()
         var stage_offset: UInt32 = stage_idx * UInt32(Self.kv_stage_elems)
-        return self.smem + stage_offset
+        return self.smem.unsafe_offset(stage_offset)
 
     @inline(.always)
     def stage_index[*, qk_stage: Int = 0](self) -> UInt32:
@@ -1889,12 +1891,16 @@ struct KVPipelineGeneric[
     @inline(.always)
     def producer_mbar[qk_stage: Int](self) -> MBarType:
         var idx: UInt32 = self.state.index()
-        return self.mbar + UInt32(Self.num_qk_stages) * idx + qk_stage
+        return self.mbar.unsafe_offset(
+            UInt32(Self.num_qk_stages) * idx
+        ).unsafe_offset(qk_stage)
 
     @inline(.always)
     def consumer_mbar[qk_stage: Int](self, idx: UInt32) -> MBarType:
         comptime const_offset = qk_stage + Self.num_stages
-        return self.mbar + UInt32(Self.num_qk_stages) * idx + const_offset
+        return self.mbar.unsafe_offset(
+            UInt32(Self.num_qk_stages) * idx
+        ).unsafe_offset(const_offset)
 
     @inline(.always)
     def consumer_mbar[qk_stage: Int](self) -> MBarType:
@@ -1968,16 +1974,16 @@ struct DecodeSM100MiscMBars[
 
     @inline(.always)
     def producer(self) -> ProducerPipeline[Self.num_stages]:
-        return {self.mbar_base, self.mbar_base + Self.num_stages}
+        return {self.mbar_base, self.mbar_base.unsafe_offset(Self.num_stages)}
 
     @inline(.always)
     def consumer(self) -> ConsumerPipeline[Self.num_stages]:
-        return {self.mbar_base, self.mbar_base + Self.num_stages}
+        return {self.mbar_base, self.mbar_base.unsafe_offset(Self.num_stages)}
 
     @inline(.always)
     def end(self) -> MBarType:
         # We consumed 2 * s_num_stages mbars: prod[2] + cons[2]
-        return self.mbar_base + 2 * Self.num_stages
+        return self.mbar_base.unsafe_offset(2 * Self.num_stages)
 
 
 # ------------------------------------------------------------------------------
@@ -2350,7 +2356,9 @@ struct OutPipeline[num_out_stages: Int, num_producer: Int, num_consumer: Int](
             self.mbar[i].init(Int32(Self.num_producer))
 
         comptime for i in range(Self.num_stages):
-            (self.mbar + Self.num_stages)[i].init(Int32(Self.num_consumer))
+            self.mbar.unsafe_offset(Self.num_stages)[i].init(
+                Int32(Self.num_consumer)
+            )
 
     @inline(.always)
     def producer_mbar(self) -> MBarType:
@@ -2358,7 +2366,7 @@ struct OutPipeline[num_out_stages: Int, num_producer: Int, num_consumer: Int](
 
     @inline(.always)
     def consumer_mbar(self) -> MBarType:
-        return self.mbar + Self.num_stages
+        return self.mbar.unsafe_offset(Self.num_stages)
 
     @inline(.nodebug)
     def producer_acquire(self):
@@ -2376,7 +2384,7 @@ struct OutPipeline[num_out_stages: Int, num_producer: Int, num_consumer: Int](
     @inline(.nodebug)
     def consumer_release[](mut self, e: Int32):
         var idx = self.state.index()
-        elect_mma_arrive(self.consumer_mbar() + idx, e)
+        elect_mma_arrive(self.consumer_mbar().unsafe_offset(idx), e)
         self.state.step()
 
     @inline(.nodebug)
@@ -2450,7 +2458,7 @@ struct DecodeOutProducer[dtype: DType, config: MLA_SM100_Decode_Config](
         ) * UInt32(Self.blocks_per_stage) + UInt32(
             half_idx * Self.out_stage_elems
         )
-        return self.smem + stage_offset
+        return self.smem.unsafe_offset(stage_offset)
 
     @inline(.always)
     def producer_mbar(self) -> MBarType:
@@ -2513,7 +2521,7 @@ struct DecodeOutConsumer[dtype: DType, config: MLA_SM100_Decode_Config](
         ) * UInt32(Self.blocks_per_stage) + UInt32(
             half_idx * Self.out_stage_elems
         )
-        return self.smem + stage_offset
+        return self.smem.unsafe_offset(stage_offset)
 
     @inline(.nodebug)
     def wait(self):
@@ -3424,7 +3432,7 @@ def ld_shared_v4_u32(
         src_u8: Byte-typed shared memory pointer to the base of the load.
         byte_off: Byte offset from `src_u8` to the first uint32 to load.
     """
-    var addr = src_u8 + byte_off
+    var addr = src_u8.unsafe_offset(byte_off)
     var result = inlined_assembly[
         "ld.shared.v4.b32 {$0, $1, $2, $3}, [$4];",
         _RegisterPackType[UInt32, UInt32, UInt32, UInt32],
@@ -3922,7 +3930,7 @@ struct MLA_SM100_Decode_Common[
                 var n_readable = max(
                     min(logical_indices_len - col_base, half_load), 0
                 )
-                var logical_row = logical_ptr + (
+                var logical_row = logical_ptr.unsafe_offset(
                     q_token_idx * logical_indices_stride + col_base
                 )
                 # `pos <= causal_limit - 1` in 32 bits is `pos <
@@ -4278,8 +4286,9 @@ struct MLA_SM100_Decode_Common[
                 # In float32 elements per stage: BN_QK = 64.
                 comptime _scale_elems_per_stage = Self.config.BN_QK
                 var _scale_stage_ptr = (
-                    scale_k_smem.unsafe_value()
-                    + slot_idx * UInt32(_scale_elems_per_stage)
+                    scale_k_smem.unsafe_value().unsafe_offset(
+                        slot_idx * UInt32(_scale_elems_per_stage)
+                    )
                 )
                 # Load all 32 sigma_KV values for this thread's columns into
                 # registers ONCE. This is the ONLY SMEM read for scales in the
@@ -4390,7 +4399,7 @@ struct MLA_SM100_Decode_Common[
             var buf_offset = (tiles_done & 1) * WARPGROUP_SIZE
             var max_buf = TileTensor[
                 Self.AccumType, type_of(smem_1d_layout), address_space=.SHARED
-            ](max_smem + buf_offset, smem_1d_layout)
+            ](max_smem.unsafe_offset(buf_offset), smem_1d_layout)
             max_buf[lane_id] = current_max
             named_barrier[Int32(WARPGROUP_SIZE)](2)
             # 0 ^ 64 = 64, 1 ^ 64 = 65, ... 63 ^ 64 = 127

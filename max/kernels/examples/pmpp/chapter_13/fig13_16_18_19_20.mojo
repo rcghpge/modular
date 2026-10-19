@@ -298,7 +298,9 @@ def merge_circular_buffer_kernel(
             a_next - a_curr,
             B_S,
             b_next - b_curr,
-            C + C_curr + C_completed + c_curr,
+            C.unsafe_offset(C_curr)
+            .unsafe_offset(C_completed)
+            .unsafe_offset(c_curr),
             A_S_start + a_curr,
             B_S_start + b_curr,
             tile_size,

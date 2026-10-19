@@ -363,7 +363,8 @@ def stsm_helper[
             comptime for _j in range(cast_width):
                 v[k * cast_width + _j] = casted[_j]
         st_matrix[simd_width=stmtx_simd_width, transpose=transpose_c](
-            dst.ptr + offset, bitcast[.float32, stmtx_simd_width](v)
+            dst.ptr.unsafe_offset(offset),
+            bitcast[.float32, stmtx_simd_width](v),
         )
 
 

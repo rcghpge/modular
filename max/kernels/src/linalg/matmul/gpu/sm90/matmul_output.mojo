@@ -482,7 +482,7 @@ struct MatmulTileWriter[
                     var tma_writer = TileWriterTMA(Pointer(to=tma_op))
 
                     if self.local_thread_idx < (Self.WG_BN // TMA_BN):
-                        var smem_offset = self.smem_tile._storage + (
+                        var smem_offset = self.smem_tile._storage.unsafe_offset(
                             Self.WG_BM * TMA_BN * self.local_thread_idx
                         )
                         comptime tma_smem_layout = row_major[

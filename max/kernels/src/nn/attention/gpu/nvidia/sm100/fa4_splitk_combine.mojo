@@ -229,7 +229,7 @@ def _fa4_splitk_combine_kernel[
     )
     comptime max_d_per_lane = ceildiv(ov_depth, WARP_SIZE)
 
-    var oaccum_base = (o_partial_ptr + rh * ov_depth).as_imm()
+    var oaccum_base = o_partial_ptr.unsafe_offset(rh * ov_depth).as_imm()
 
     # Effective partition count: the comptime `P_STATIC` when this is a
     # ladder-rung specialization, otherwise the runtime `num_partitions`.

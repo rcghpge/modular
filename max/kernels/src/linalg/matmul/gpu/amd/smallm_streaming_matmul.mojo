@@ -209,7 +209,9 @@ def _gemm_smallm_streaming_kernel[
     # k-group l//16 (4 groups of 8 contiguous k). Fragment-major operands make
     # each fragment a single 16B load at a lane-linear offset.
     var frag_row = lane % _TILE_N
-    var a_base = a_shuffled + warp_in_block * region + lane * 8
+    var a_base = a_shuffled.unsafe_offset(warp_in_block * region).unsafe_offset(
+        lane * 8
+    )
 
     # A loads once per block, amortized over the column loop below.
     var a_frags = Array[SIMD[a_type, 8], iters if a_in_regs else 1](fill=0)
@@ -234,11 +236,9 @@ def _gemm_smallm_streaming_kernel[
     var n_tiles = ceildiv(_n, _TILE_N)
     comptime if a_in_regs:
         for ct in range(block_idx.x, n_tiles, grid_dim.x):
-            var b_ptr = (
-                b_shuffled
-                + (ct * warps_per_block + warp_in_block) * region
-                + lane * 8
-            )
+            var b_ptr = b_shuffled.unsafe_offset(
+                (ct * warps_per_block + warp_in_block) * region
+            ).unsafe_offset(lane * 8)
             var acc = Array[SIMD[.float32, 4], m_tiles](fill=0)
 
             # Depth-2 B pipeline: the next chunk's load issues before this

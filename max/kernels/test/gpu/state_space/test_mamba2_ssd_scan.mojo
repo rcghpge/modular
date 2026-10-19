@@ -882,25 +882,29 @@ def test_mamba2_ssd_varlen_no_cross_sequence_bleed() raises:
         qsl_s_h.store(1, Int32(slen))
         _scan_cpu[dstate](
             TileTensor(
-                x_h + off * nheads * head_dim,
+                x_h.unsafe_offset(off * nheads * head_dim),
                 row_major(slen, nheads, head_dim),
             ),
-            TileTensor(dt_h + off * nheads, row_major(slen, nheads)),
+            TileTensor(
+                dt_h.unsafe_offset(off * nheads), row_major(slen, nheads)
+            ),
             A_tt,
             TileTensor(
-                B_h + off * ngroups * dstate, row_major(slen, ngroups, dstate)
+                B_h.unsafe_offset(off * ngroups * dstate),
+                row_major(slen, ngroups, dstate),
             ),
             TileTensor(
-                C_h + off * ngroups * dstate, row_major(slen, ngroups, dstate)
+                C_h.unsafe_offset(off * ngroups * dstate),
+                row_major(slen, ngroups, dstate),
             ),
             D_tt,
             dt_bias_tt,
             TileTensor(
-                y_indep + off * nheads * head_dim,
+                y_indep.unsafe_offset(off * nheads * head_dim),
                 row_major(slen, nheads, head_dim),
             ),
             TileTensor(
-                pool_indep + s * state_size,
+                pool_indep.unsafe_offset(s * state_size),
                 row_major(1, nheads, head_dim, dstate),
             ),
             TileTensor(qsl_s_h, row_major(2)),

@@ -328,7 +328,7 @@ def dispatch_qslice_conv3d_sm100[
 
     for n_batch in range(batch):
         var accum_n_offset = n_batch * per_batch_elems
-        var accum_n_ptr = accum_fp32_ptr + accum_n_offset
+        var accum_n_ptr = accum_fp32_ptr.unsafe_offset(accum_n_offset)
 
         for q in range(Q):
             var input_offset = input.layout[

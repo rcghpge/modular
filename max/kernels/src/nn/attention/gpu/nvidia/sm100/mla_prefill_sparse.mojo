@@ -339,8 +339,10 @@ struct MLAPrefillSparse[
             address_space=.SHARED,
         ] = shared_qkv.unsafe_ptr()
         var q_smem_ptr = shared_qkv_ptr
-        var v_smem_ptr = shared_qkv_ptr + Self.SMemType.SHARED_Q_SIZE
-        var k_smem_ptr = v_smem_ptr + Self.SMemType.V_SIZE
+        var v_smem_ptr = shared_qkv_ptr.unsafe_offset(
+            Self.SMemType.SHARED_Q_SIZE
+        )
+        var k_smem_ptr = v_smem_ptr.unsafe_offset(Self.SMemType.V_SIZE)
         ref o_union = qkvo_union.unsafe_get[Self.O_TYPE]()
         var o_ptr: MutPointer[
             Scalar[Self.qkv_dtype], origin_of(o_union), address_space=.SHARED
@@ -859,7 +861,7 @@ struct MLAPrefillSparse[
                             smem_offset * (1 - pad_row)
                             + (Self.SMemType.O_SIZE - 2) * pad_row
                         )
-                        (o_ptr + store_off).store[width=2](v)
+                        (o_ptr.unsafe_offset(store_off)).store[width=2](v)
 
             named_barrier[Int32(WARPGROUP_SIZE)](Int32(0))
             if warp_idx == 0:
@@ -941,7 +943,7 @@ struct MLAPrefillSparse[
             if cta_id == 0 and warp_idx == 12 and elect_one_sync():
                 # use for copying q_tmem from smem to tmem
                 var q_tmem_desc = Self.QKMMAOpType.tmem_descriptor_q(
-                    q_smem_ptr + Self.SMemType.SHARED_Q_SIZE
+                    q_smem_ptr.unsafe_offset(Self.SMemType.SHARED_Q_SIZE)
                 )
                 # pair cta only signal leader cta for byte arrival.
                 # Expect exactly the REAL in-bounds Q bytes (num_q_heads):
@@ -1092,8 +1094,8 @@ struct MLAPrefillSparse[
         comptime num_cgs_per_atom = (Self.V_BMN_PER_ATOM // Self.v_gather_box)
         # Each warp owns 4 contiguous rows within every 16-row stripe.
         # Within a col-group: 4-row stride = 4 * gather_box = 256.
-        var v_smem_base = smem_tensor.ptr + warp_idx * UInt32(
-            4 * Self.v_gather_box
+        var v_smem_base = smem_tensor.ptr.unsafe_offset(
+            warp_idx * UInt32(4 * Self.v_gather_box)
         )
 
         comptime for local_row in range(row_start, row_end):
@@ -1133,7 +1135,10 @@ struct MLAPrefillSparse[
                 comptime atom_idx = cg // num_cgs_per_atom
                 comptime local_cg = cg % num_cgs_per_atom
                 tma_op.async_copy_gather4[cta_group=Self.config.cta_group](
-                    TileTensor(v_smem_base + smem_offset, smem_tensor.layout),
+                    TileTensor(
+                        v_smem_base.unsafe_offset(smem_offset),
+                        smem_tensor.layout,
+                    ),
                     smem_barrier[],
                     Int32(atom_idx * Self.V_DEPTH_PER_CTA)
                     + Int32(cta_id * UInt32(Self.V_BMN_PER_ATOM))
@@ -1230,7 +1235,7 @@ struct MLAPrefillSparse[
                 (UInt32(0), UInt32(Self.config.q_smem_depth)),
             ](
                 k_tma_op,
-                k_p0_ready + curr_buf,
+                k_p0_ready.unsafe_offset(curr_buf),
                 k_smem_tensor,
                 local_indices,
                 warp_idx,
@@ -1263,7 +1268,7 @@ struct MLAPrefillSparse[
                 ),
             ](
                 k_tma_op,
-                k_p1_ready + curr_buf,
+                k_p1_ready.unsafe_offset(curr_buf),
                 k_smem_tensor,
                 local_indices,
                 warp_idx,
@@ -1318,7 +1323,9 @@ struct MLAPrefillSparse[
         # (= 16384 elems: 64 rows × 256 cols × 1 element, where 256 cols
         # covers both SV atoms' contributions per CTA).
         var v_smem_tensor_p1 = TileTensor(
-            v_smem_ptr + Self.v_tile_height * Self.V_SMEM_COLS_PER_CTA,
+            v_smem_ptr.unsafe_offset(
+                Self.v_tile_height * Self.V_SMEM_COLS_PER_CTA
+            ),
             row_major[Self.v_tile_height, Self.V_SMEM_COLS_PER_CTA](),
         )
 
@@ -1333,7 +1340,7 @@ struct MLAPrefillSparse[
         # K-half 0 (rows 0..63 in V) → writes to batch-0 smem region.
         Self.v_tma_gather4_load[(0, HALF_LOCAL_ROWS)](
             v_tma_op,
-            v_p0_ready + curr_buf,
+            v_p0_ready.unsafe_offset(curr_buf),
             v_smem_tensor_p0,
             indices,
             kv_lut,
@@ -1354,7 +1361,7 @@ struct MLAPrefillSparse[
         # B_TOPK indices when local_row spans 0..2*HALF_LOCAL_ROWS-1).
         Self.v_tma_gather4_load[(HALF_LOCAL_ROWS, 2 * HALF_LOCAL_ROWS)](
             v_tma_op,
-            v_p1_ready + curr_buf,
+            v_p1_ready.unsafe_offset(curr_buf),
             v_smem_tensor_p1,
             indices,
             kv_lut,

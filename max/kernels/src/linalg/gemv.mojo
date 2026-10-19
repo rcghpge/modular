@@ -3208,8 +3208,8 @@ struct _MmaCpAsyncGmemLoaderA[
                         Index(self.batch_idx, self.cta_m + m_idx, gmem_k)
                     )
                     async_copy[16, bypass_L1_16B=True, l2_prefetch=128](
-                        gmem_base + Int(offset),
-                        smem_tile_ptr + self.smem_offsets[v],
+                        gmem_base.unsafe_offset(Int(offset)),
+                        smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),
                     )
                 else:
                     # The grid covers ceildiv(gemm_m, tile_m) * tile_m rows;
@@ -3221,7 +3221,7 @@ struct _MmaCpAsyncGmemLoaderA[
                         fill=Scalar[Self.a_type](0),
                     ](
                         gmem_base,
-                        smem_tile_ptr + self.smem_offsets[v],
+                        smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),
                         src_size=0,
                     )
 
@@ -3348,8 +3348,8 @@ struct _MmaCpAsyncGmemLoaderB[
                         Index(self.batch_idx, self.cta_n + n_idx, gmem_k)
                     )
                     async_copy[16, bypass_L1_16B=True, l2_prefetch=128](
-                        gmem_base + Int(offset),
-                        smem_tile_ptr + self.smem_offsets[v],
+                        gmem_base.unsafe_offset(Int(offset)),
+                        smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),
                     )
                 else:
                     async_copy[
@@ -3358,7 +3358,7 @@ struct _MmaCpAsyncGmemLoaderB[
                         fill=Scalar[Self.b_type](0),
                     ](
                         gmem_base,
-                        smem_tile_ptr + self.smem_offsets[v],
+                        smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),
                         src_size=0,
                     )
 
@@ -3455,8 +3455,9 @@ struct _MmaCpAsyncMmaComputer[
                 var a_m_idx = self.lane_idx % 16
                 var a_k_base = k_in_tile + (self.lane_idx // 16) * 8
                 var a_reg = ld_matrix[8](
-                    a_tile_ptr
-                    + Self.swizzle_a(a_m_idx * Self.tile_k + a_k_base)
+                    a_tile_ptr.unsafe_offset(
+                        Self.swizzle_a(a_m_idx * Self.tile_k + a_k_base)
+                    )
                 )
 
                 # ld_matrix for B (8x16 bf16 block).
@@ -3465,8 +3466,9 @@ struct _MmaCpAsyncMmaComputer[
                 if b_k_base >= Self.tile_k:
                     b_k_base = k_in_tile
                 var b_reg_full = ld_matrix[8](
-                    b_tile_ptr
-                    + Self.swizzle_b(b_n_idx * Self.tile_k + b_k_base)
+                    b_tile_ptr.unsafe_offset(
+                        Self.swizzle_b(b_n_idx * Self.tile_k + b_k_base)
+                    )
                 )
                 var b_reg = SIMD[Self.b_type, 4](
                     b_reg_full[0], b_reg_full[1], b_reg_full[2], b_reg_full[3]
@@ -3897,7 +3899,7 @@ def _gemm_mma_cpasync_kernel_impl[
     var cta_n = tile_n * block_idx.y
     var batch_idx = block_idx.z
 
-    var out_ptr = output.ptr + batch_idx * _gemm_m * _gemm_n
+    var out_ptr = output.ptr.unsafe_offset(batch_idx * _gemm_m * _gemm_n)
 
     # K-loop parameters.
     var k_iters = _gemm_k // tile_k

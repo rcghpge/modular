@@ -169,13 +169,13 @@ def block_scaled_mxfp8_kernel[
         (b_scales_size * size_of[b_scales_type]()) % 16
     ) == 0, "preserve alignment"
 
-    var b_smem = (a_smem + a_size).unsafe_bitcast[Scalar[b_type]]()
-    var a_scales_smem = (b_smem + b_size).unsafe_bitcast[
+    var b_smem = a_smem.unsafe_offset(a_size).unsafe_bitcast[Scalar[b_type]]()
+    var a_scales_smem = b_smem.unsafe_offset(b_size).unsafe_bitcast[
         Scalar[a_scales_type]
     ]()
-    var b_scales_smem = (a_scales_smem + a_scales_size).unsafe_bitcast[
-        Scalar[b_scales_type]
-    ]()
+    var b_scales_smem = a_scales_smem.unsafe_offset(
+        a_scales_size
+    ).unsafe_bitcast[Scalar[b_scales_type]]()
 
     var a_smem_tile = TileTensor(
         a_smem, tile_layout_k_major_typed[a_type, BM, BK, a_swizzle]
@@ -200,7 +200,9 @@ def block_scaled_mxfp8_kernel[
     )
 
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (b_scales_smem + b_scales_size).unsafe_bitcast[UInt32]()
+    var ptr_tmem_addr = b_scales_smem.unsafe_offset(
+        b_scales_size
+    ).unsafe_bitcast[UInt32]()
 
     comptime accum_type = get_accum_type[a_type]()
 
@@ -213,8 +215,10 @@ def block_scaled_mxfp8_kernel[
     comptime b_scales_expected_bytes = b_scales_size * size_of[b_scales_type]()
     comptime expected_bytes = a_expected_bytes + b_expected_bytes + a_scales_expected_bytes + b_scales_expected_bytes
 
-    var tma_mbar = (ptr_tmem_addr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = tma_mbar + 1
+    var tma_mbar = ptr_tmem_addr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = tma_mbar.unsafe_offset(1)
 
     if thread_idx.x == 0:
         tma_mbar[0].init()
@@ -228,7 +232,7 @@ def block_scaled_mxfp8_kernel[
     var elect_one_cta = block_rank_in_cluster() % 2 == 0
     comptime max_tmem_cols = 512
 
-    var tmem_addr_ptr = (mma_mbar + 1).unsafe_bitcast[UInt32]()
+    var tmem_addr_ptr = mma_mbar.unsafe_offset(1).unsafe_bitcast[UInt32]()
     if elect_one_warp:
         tcgen05_alloc[1](tmem_addr_ptr, max_tmem_cols)
 
@@ -334,7 +338,11 @@ def block_scaled_mxfp8_kernel[
                 )
                 var a_scales_desc = MMASmemDescriptor.create[
                     8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE
-                ](a_scales_smem_tile.unsafe_ptr() + a_scales_offset)
+                ](
+                    a_scales_smem_tile.unsafe_ptr().unsafe_offset(
+                        a_scales_offset
+                    )
+                )
                 tcgen05_cp[
                     cta_group=1, datapaths=32, bits=128, multicast="warpx4"
                 ](a_scales_tmem_addr, a_scales_desc)
@@ -349,7 +357,11 @@ def block_scaled_mxfp8_kernel[
                 )
                 var b_scales_desc = MMASmemDescriptor.create[
                     8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE
-                ](b_scales_smem_tile.unsafe_ptr() + b_scales_offset)
+                ](
+                    b_scales_smem_tile.unsafe_ptr().unsafe_offset(
+                        b_scales_offset
+                    )
+                )
                 tcgen05_cp[
                     cta_group=1, datapaths=32, bits=128, multicast="warpx4"
                 ](b_scales_tmem_addr, b_scales_desc)

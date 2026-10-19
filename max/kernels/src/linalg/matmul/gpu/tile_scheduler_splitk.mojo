@@ -741,7 +741,7 @@ struct SplitKTileScheduler[
     ):
         var sema = NamedBarrierSemaphore[
             Int32(WARPGROUP_SIZE), 4, Int32(Self.num_consumer)
-        ](lock_ptr + lock_idx, barrier_group_thread_idx)
+        ](lock_ptr.unsafe_offset(lock_idx), barrier_group_thread_idx)
         sema.wait_eq(barrier_id, Int32(val))
 
     @staticmethod
@@ -755,7 +755,7 @@ struct SplitKTileScheduler[
     ):
         var sema = NamedBarrierSemaphore[
             Int32(WARPGROUP_SIZE), 4, Int32(Self.num_consumer)
-        ](lock_ptr + lock_idx, barrier_group_thread_idx)
+        ](lock_ptr.unsafe_offset(lock_idx), barrier_group_thread_idx)
         sema.wait_lt(barrier_id, Int32(count))
 
     @staticmethod
@@ -769,7 +769,7 @@ struct SplitKTileScheduler[
     ):
         var sema = NamedBarrierSemaphore[
             Int32(WARPGROUP_SIZE), 4, Int32(Self.num_consumer)
-        ](lock_ptr + lock_idx, barrier_group_thread_idx)
+        ](lock_ptr.unsafe_offset(lock_idx), barrier_group_thread_idx)
         sema.arrive_set(barrier_id, Int32(increment))
 
     @inline(.always)
@@ -875,7 +875,7 @@ struct SplitKTileScheduler[
                             + warp_group_thread_idx
                         )
                         _ = Atomic.fetch_add(
-                            work_space_tile_reshaped.ptr + offset,
+                            work_space_tile_reshaped.ptr.unsafe_offset(offset),
                             c_reg_tile.load[width=1]((mma_id, i)),
                         )
                     else:

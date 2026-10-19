@@ -224,7 +224,9 @@ def test_split_k_epilogue[
         var base = Int(idx[0]) * N_static + Int(idx[1])
         comptime for w in range(width):
             epi_ptr[base + w] = val[w].cast[.float32]() * 2.0 + 1.0
-            _ = Atomic[Int32].fetch_add(fire_ptr + base + w, Int32(1))
+            _ = Atomic[Int32].fetch_add(
+                fire_ptr.unsafe_offset(base).unsafe_offset(w), Int32(1)
+            )
 
     @inline(.always)
     def affine_fn[

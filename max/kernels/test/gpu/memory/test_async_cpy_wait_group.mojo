@@ -40,8 +40,8 @@ def copy_via_shared(
     ] = src.address_space_cast[.GLOBAL]()
 
     async_copy[4](
-        src_global + thread_id,
-        mem_buff + thread_id,
+        src_global.unsafe_offset(thread_id),
+        mem_buff.unsafe_offset(thread_id),
     )
 
     async_copy_commit_group()
@@ -107,7 +107,9 @@ def copy_with_src_size(
     # Use `mojo build <this test>; compute-sanitizer <this test>` to verify there
     # is no OOB access.
     async_copy[16, fill=Float32(0)](
-        src.address_space_cast[.GLOBAL]() + 4, smem + 4, 0
+        src.address_space_cast[.GLOBAL]().unsafe_offset(4),
+        smem.unsafe_offset(4),
+        0,
     )
     async_copy_wait_all()
 
@@ -135,8 +137,8 @@ def copy_with_non_zero_fill[
     )
 
     async_copy[16, fill=BFloat16(32)](
-        (src + offset).address_space_cast[.GLOBAL](),
-        smem + offset,
+        src.unsafe_offset(offset).address_space_cast[.GLOBAL](),
+        smem.unsafe_offset(offset),
         predicate=False,
     )
     async_copy_wait_all()

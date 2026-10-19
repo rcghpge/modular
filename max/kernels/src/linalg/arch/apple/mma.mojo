@@ -301,8 +301,12 @@ struct MmaOpApple[
         )
         var lo_mask = col_mask if self.rb < valid_rows else Int16(0)
         var hi_mask = col_mask if self.rb + 8 < valid_rows else Int16(0)
-        var lo = gmem_edge_masked_load[4](tile.ptr + lo_off, lo_mask)
-        var hi = gmem_edge_masked_load[4](tile.ptr + hi_off, hi_mask)
+        var lo = gmem_edge_masked_load[4](
+            tile.ptr.unsafe_offset(lo_off), lo_mask
+        )
+        var hi = gmem_edge_masked_load[4](
+            tile.ptr.unsafe_offset(hi_off), hi_mask
+        )
         return lo.join(hi)
 
     @inline(.always)
@@ -531,10 +535,18 @@ struct MmaOpApple[
             var lo_mask_b = mask_b if self.rb < valid_rows else Int16(0)
             var hi_mask_a = mask_a if self.rb + 8 < valid_rows else Int16(0)
             var hi_mask_b = mask_b if self.rb + 8 < valid_rows else Int16(0)
-            lo_a = gmem_edge_masked_load[4](tile.ptr + lo_off, lo_mask_a)
-            lo_b = gmem_edge_masked_load[4](tile.ptr + lo_off + 4, lo_mask_b)
-            hi_a = gmem_edge_masked_load[4](tile.ptr + hi_off, hi_mask_a)
-            hi_b = gmem_edge_masked_load[4](tile.ptr + hi_off + 4, hi_mask_b)
+            lo_a = gmem_edge_masked_load[4](
+                tile.ptr.unsafe_offset(lo_off), lo_mask_a
+            )
+            lo_b = gmem_edge_masked_load[4](
+                tile.ptr.unsafe_offset(lo_off).unsafe_offset(4), lo_mask_b
+            )
+            hi_a = gmem_edge_masked_load[4](
+                tile.ptr.unsafe_offset(hi_off), hi_mask_a
+            )
+            hi_b = gmem_edge_masked_load[4](
+                tile.ptr.unsafe_offset(hi_off).unsafe_offset(4), hi_mask_b
+            )
         else:
             lo_a = tile.load[width=4, alignment=align](
                 Self._frag_coord(tile, row, two_cb)
@@ -708,7 +720,7 @@ struct MmaOpApple[
                 var w_in = w_base[ri] + s
                 if h_in >= 0 and h_in < conv.H and w_in >= 0 and w_in < conv.W:
                     var in_idx = batch_base[ri] + h_in * wc + w_in * conv.C + c0
-                    var v = (input_ptr + Int(in_idx)).load[
+                    var v = input_ptr.unsafe_offset(Int(in_idx)).load[
                         width=8, alignment=in_align
                     ]()
                     comptime for i in range(4):

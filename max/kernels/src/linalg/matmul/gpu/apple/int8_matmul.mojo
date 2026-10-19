@@ -510,10 +510,10 @@ struct AppleM5Int8MatMul[
         var lo_mask = kmask if rb < valid_along_row else Int16(0)
         var hi_mask = kmask if (rb + 8) < valid_along_row else Int16(0)
         var lo = gmem_edge_masked_load[4](
-            sub.ptr + (rb * row_stride + cb), lo_mask
+            sub.ptr.unsafe_offset(rb * row_stride + cb), lo_mask
         )
         var hi = gmem_edge_masked_load[4](
-            sub.ptr + ((rb + 8) * row_stride + cb), hi_mask
+            sub.ptr.unsafe_offset((rb + 8) * row_stride + cb), hi_mask
         )
         return lo.join(hi)
 

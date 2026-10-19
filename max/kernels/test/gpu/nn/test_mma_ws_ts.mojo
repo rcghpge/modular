@@ -232,20 +232,28 @@ def dense_mma_ws_ts_kernel[
     var q_smem_tile = TileTensor(q_smem_ptr, Q_SMEM_LAYOUT)
 
     # ---- K SMEM region (starts after Q) ----
-    var k_smem_ptr = (smem_base + K_SMEM_OFFSET).unsafe_bitcast[
+    var k_smem_ptr = smem_base.unsafe_offset(K_SMEM_OFFSET).unsafe_bitcast[
         Scalar[OP_TYPE]
     ]()
     var k_smem_tile = TileTensor(k_smem_ptr, K_SMEM_LAYOUT)
 
     # ---- Metadata region (after both SMEM tiles) ----
-    var metadata_ptr = (smem_base + METADATA_OFFSET).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(METADATA_OFFSET).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
     # Q barrier at offset +8 bytes (2 x UInt32) from metadata start.
-    var q_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
+    var q_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
     # K barrier at offset +16 bytes from metadata start.
-    var k_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
+    var k_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
     # MMA barrier at offset +24 bytes from metadata start.
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -495,16 +503,24 @@ def sparse_mma_ws_ts_kernel[
     var q_smem_tile = TileTensor(q_smem_ptr, q_smem_layout)
 
     # ---- K SMEM region (starts after Q) ----
-    var k_smem_ptr = (smem_base + k_smem_offset).unsafe_bitcast[
+    var k_smem_ptr = smem_base.unsafe_offset(k_smem_offset).unsafe_bitcast[
         Scalar[op_type]
     ]()
 
     # ---- Metadata region ----
-    var metadata_ptr = (smem_base + metadata_offset).unsafe_bitcast[UInt32]()
+    var metadata_ptr = smem_base.unsafe_offset(metadata_offset).unsafe_bitcast[
+        UInt32
+    ]()
     var ptr_tmem_addr = metadata_ptr
-    var q_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
-    var k_mbar = (metadata_ptr + 4).unsafe_bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
+    var q_mbar = metadata_ptr.unsafe_offset(2).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var k_mbar = metadata_ptr.unsafe_offset(4).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var mma_mbar = metadata_ptr.unsafe_offset(6).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()
@@ -576,7 +592,7 @@ def sparse_mma_ws_ts_kernel[
                 var idx_base = c * 4
                 var chunk_elem_off = c * 4 * box_width
                 var elem_off = cg_elem_off + chunk_elem_off
-                var smem_dst_ptr = k_smem_ptr + elem_off
+                var smem_dst_ptr = k_smem_ptr.unsafe_offset(elem_off)
                 var smem_dst_tile = TileTensor(
                     smem_dst_ptr, row_major[4, box_width]()
                 )

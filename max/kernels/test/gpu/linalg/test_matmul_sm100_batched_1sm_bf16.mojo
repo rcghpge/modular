@@ -149,15 +149,15 @@ def test_blackwell_batched_matmul_tma_umma_warp_specialized[
     # Reference: per-batch vendor_blas.matmul
     for b in range(B):
         var a_2d = TileTensor(
-            a_tensor._storage + b * M * K,
+            a_tensor._storage.unsafe_offset(b * M * K),
             row_major((M, K)),
         )
         var b_2d = TileTensor(
-            b_tensor._storage + b * N * K,
+            b_tensor._storage.unsafe_offset(b * N * K),
             row_major((N, K)),
         )
         var c_ref_2d = TileTensor(
-            c_ref_tensor._storage + b * M * N,
+            c_ref_tensor._storage.unsafe_offset(b * M * N),
             row_major((M, N)),
         )
 

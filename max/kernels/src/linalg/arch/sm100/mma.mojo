@@ -752,7 +752,7 @@ struct MmaOpSM100_BlockScaled_SS[
             )
             var sf_desc = MMASmemDescriptor.create[
                 8 * 16, 0, TensorMapSwizzle.SWIZZLE_NONE
-            ](sf_smem.ptr + sf_offset)
+            ](sf_smem.ptr.unsafe_offset(sf_offset))
             tcgen05_cp[
                 cta_group=Int32(Self.cta_group),
                 datapaths=32,

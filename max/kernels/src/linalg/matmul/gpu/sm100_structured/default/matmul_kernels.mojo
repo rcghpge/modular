@@ -1107,11 +1107,15 @@ struct BlackwellMatmulSM100Kernel[
 
                 # Peer CTA slice using pointer arithmetic
                 var a_peer_tile = type_of(a_tile)(
-                    a_tile._storage + peer_m_rank * Self.a_tma_load_size,
+                    a_tile._storage.unsafe_offset(
+                        peer_m_rank * Self.a_tma_load_size
+                    ),
                     a_tile.layout,
                 )
                 var b_peer_tile = type_of(b_tile)(
-                    b_tile._storage + peer_rank_m * Self.b_tma_load_size,
+                    b_tile._storage.unsafe_offset(
+                        peer_rank_m * Self.b_tma_load_size
+                    ),
                     b_tile.layout,
                 )
 
@@ -1188,7 +1192,9 @@ struct BlackwellMatmulSM100Kernel[
                 ](tiles.stage(), j)
 
                 var a_peer_tile = type_of(a_tile)(
-                    a_tile._storage + peer_m_rank * Self.a_tma_load_size,
+                    a_tile._storage.unsafe_offset(
+                        peer_m_rank * Self.a_tma_load_size
+                    ),
                     a_tile.layout,
                 )
 
@@ -1245,7 +1251,9 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
                 var b_peer_tile = type_of(b_tile)(
-                    b_tile._storage + peer_rank_m * Self.b_tma_load_size,
+                    b_tile._storage.unsafe_offset(
+                        peer_rank_m * Self.b_tma_load_size
+                    ),
                     b_tile.layout,
                 )
 
@@ -1318,7 +1326,9 @@ struct BlackwellMatmulSM100Kernel[
                 ](tiles.stage(), j)
 
                 var b_peer_tile = type_of(b_tile)(
-                    b_tile._storage + peer_rank_m * Self.b_tma_load_size,
+                    b_tile._storage.unsafe_offset(
+                        peer_rank_m * Self.b_tma_load_size
+                    ),
                     b_tile.layout,
                 )
 
@@ -1372,7 +1382,9 @@ struct BlackwellMatmulSM100Kernel[
                 )
 
                 var a_peer_tile = type_of(a_tile)(
-                    a_tile._storage + peer_m_rank * Self.a_tma_load_size,
+                    a_tile._storage.unsafe_offset(
+                        peer_m_rank * Self.a_tma_load_size
+                    ),
                     a_tile.layout,
                 )
 
@@ -1477,11 +1489,15 @@ struct BlackwellMatmulSM100Kernel[
                 # TMA descriptor layout. Pointer arithmetic with a_tma_load_size
                 # preserves the original working behavior.
                 var a_peer_tile = type_of(a_tile)(
-                    a_tile._storage + peer_m_rank * Self.a_tma_load_size,
+                    a_tile._storage.unsafe_offset(
+                        peer_m_rank * Self.a_tma_load_size
+                    ),
                     a_tile.layout,
                 )
                 var b_peer_tile = type_of(b_tile)(
-                    b_tile._storage + peer_rank_m * Self.b_tma_load_size,
+                    b_tile._storage.unsafe_offset(
+                        peer_rank_m * Self.b_tma_load_size
+                    ),
                     b_tile.layout,
                 )
 
@@ -1605,14 +1621,14 @@ struct BlackwellMatmulSM100Kernel[
                         bias_1d_tile._offset_storage(gmem_offset + lane_start),
                         bias_1d_tile.layout,
                     ).ptr.address_space_cast[.GLOBAL]()
-                    var dst_ptr = smem_tile._storage + lane_start
+                    var dst_ptr = smem_tile._storage.unsafe_offset(lane_start)
                     comptime for chunk in range(num_copies):
                         async_copy[
                             copy_bytes,
                             fill=Scalar[Self.c_type](0),
                         ](
-                            src_ptr + chunk * elems_per_copy,
-                            dst_ptr + chunk * elems_per_copy,
+                            src_ptr.unsafe_offset(chunk * elems_per_copy),
+                            dst_ptr.unsafe_offset(chunk * elems_per_copy),
                             src_size=src_bytes,
                         )
                 var mbar = epilogue_load_pipeline.producer_mbar(stage)
@@ -2707,9 +2723,8 @@ struct BlackwellMatmulSM100Kernel[
 
             var tile_counters: SplitKTileCounters
             if counter_slot >= 0:
-                tile_counters = (
-                    splitk_tile_counters()
-                    + Int(counter_slot) * SPLITK_SLOT_WORDS
+                tile_counters = splitk_tile_counters().unsafe_offset(
+                    Int(counter_slot) * SPLITK_SLOT_WORDS
                 )
             else:
                 tile_counters = rebind[SplitKTileCounters](
@@ -3008,7 +3023,7 @@ struct BlackwellMatmulSM100FallbackKernel[
             ]()
         )
 
-        var b_smem = (a_smem + Self.a_size).unsafe_bitcast[
+        var b_smem = a_smem.unsafe_offset(Self.a_size).unsafe_bitcast[
             Scalar[Self.b_type]
         ]()
 
@@ -3020,7 +3035,9 @@ struct BlackwellMatmulSM100FallbackKernel[
         )
 
         # Shared memory pointer to hold tensor memory address
-        var ptr_tmem_addr = (b_smem + Self.b_size).unsafe_bitcast[UInt32]()
+        var ptr_tmem_addr = b_smem.unsafe_offset(Self.b_size).unsafe_bitcast[
+            UInt32
+        ]()
 
         var c_frag: Array[Scalar[Self.accum_type], Self.c_frag_size]
 
@@ -3028,8 +3045,10 @@ struct BlackwellMatmulSM100FallbackKernel[
         comptime b_expected_bytes = Self.b_size * size_of[Self.b_type]()
         comptime expected_bytes = a_expected_bytes + b_expected_bytes
 
-        var tma_mbar = (ptr_tmem_addr + 2).unsafe_bitcast[SharedMemBarrier]()
-        var mma_mbar = tma_mbar + 1
+        var tma_mbar = ptr_tmem_addr.unsafe_offset(2).unsafe_bitcast[
+            SharedMemBarrier
+        ]()
+        var mma_mbar = tma_mbar.unsafe_offset(1)
 
         var elect_one_warp = get_warp_id() == 0
         var elect_one_thread = elect_one_warp and elect_one_sync()

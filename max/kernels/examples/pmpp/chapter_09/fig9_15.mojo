@@ -67,12 +67,12 @@ def histogram_kernel(
                 if bin_next == bin:
                     bin_r += 1
                 else:
-                    _ = Atomic.fetch_add(bins_s + Int(bin), bin_r)
+                    _ = Atomic.fetch_add(bins_s.unsafe_offset(Int(bin)), bin_r)
                     bin = bin_next
                     bin_r = 1
 
         # Add final accumulated count
-        _ = Atomic.fetch_add(bins_s + Int(bin), bin_r)
+        _ = Atomic.fetch_add(bins_s.unsafe_offset(Int(bin)), bin_r)
 
     barrier()
 
@@ -80,7 +80,7 @@ def histogram_kernel(
     b = UInt32(thread_idx.x)
     while b < NUM_BINS:
         if bins_s[Int(b)] > 0:
-            _ = Atomic.fetch_add(bins + Int(b), bins_s[Int(b)])
+            _ = Atomic.fetch_add(bins.unsafe_offset(Int(b)), bins_s[Int(b)])
         b += UInt32(256)
 
 

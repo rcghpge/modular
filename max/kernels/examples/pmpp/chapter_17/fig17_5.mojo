@@ -30,7 +30,7 @@ def spmv_coo_kernel(
         var val = cooMatrix.value[i]
 
         # Atomic add to y[row]
-        _ = Atomic.fetch_add(y + row, x[col] * val)
+        _ = Atomic.fetch_add(y.unsafe_offset(row), x[col] * val)
 
 
 def main() raises:

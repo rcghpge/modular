@@ -1257,7 +1257,7 @@ def packA_i8mm[
                 a.ptr_at_offset(Coord(j + idx, kl)), 0, k - kl, 0
             )
             partial_simd_store(
-                a_packed_ptr + (kh * j + 2 * kl + 8 * idx),
+                a_packed_ptr.unsafe_offset(kh * j + 2 * kl + 8 * idx),
                 0,
                 k - kl,
                 t0,

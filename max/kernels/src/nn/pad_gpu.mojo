@@ -148,8 +148,8 @@ def padded_copy_kernel[
         var output_offset = Int(output_tensor.layout(coord))
         var input_offset = row * _row_length
 
-        var output_ptr = output_tensor.ptr + output_offset
-        var input_ptr = input_tensor.ptr + input_offset
+        var output_ptr = output_tensor.ptr.unsafe_offset(output_offset)
+        var input_ptr = input_tensor.ptr.unsafe_offset(input_offset)
 
         _vectorized_copy_row[dtype, simd_width](
             input_ptr,
@@ -316,7 +316,7 @@ def pad_constant[
     for i in range(rank):
         pre_pad_offset += Int(paddings[2 * i]) * output_strides[i]
 
-    var adjusted_output_ptr = output + pre_pad_offset
+    var adjusted_output_ptr = output.unsafe_offset(pre_pad_offset)
 
     var output_tensor = TileTensor(
         adjusted_output_ptr,

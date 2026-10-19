@@ -365,9 +365,9 @@ def _allgather_tma_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var mbar_base = (smem_base + NUM_WARPS * BYTES_PER_COPY).unsafe_bitcast[
-        SharedMemBarrier
-    ]()
+    var mbar_base = smem_base.unsafe_offset(
+        NUM_WARPS * BYTES_PER_COPY
+    ).unsafe_bitcast[SharedMemBarrier]()
 
     var warp = warp_id()
     var is_leader = elect_one_sync()
@@ -391,8 +391,8 @@ def _allgather_tma_kernel[
         .address_space_cast[.GLOBAL]()
     )
     var nbytes = Int(lengths[my_src_idx]) * size_of[dtype]()
-    var smem = smem_base + warp * BYTES_PER_COPY
-    var mbar = mbar_base + warp
+    var smem = smem_base.unsafe_offset(warp * BYTES_PER_COPY)
+    var mbar = mbar_base.unsafe_offset(warp)
 
     # Grid-strided chunk distribution across warps handling the same source.
     var warps_per_src_per_block = NUM_WARPS // ngpus
@@ -416,14 +416,17 @@ def _allgather_tma_kernel[
                 # Async NVLink read: global → shared.
                 mbar[].expect_bytes(Int32(copy_bytes))
                 cp_async_bulk_shared_cluster_global(
-                    smem, src_g + offset, Int32(copy_bytes), mbar[].unsafe_ptr()
+                    smem,
+                    src_g.unsafe_offset(offset),
+                    Int32(copy_bytes),
+                    mbar[].unsafe_ptr(),
                 )
                 mbar[].wait(phase=phase)
                 phase ^= 1
 
                 # Async local write: shared → global.
                 cp_async_bulk_global_shared_cta(
-                    dst_g + offset, smem, Int32(copy_bytes)
+                    dst_g.unsafe_offset(offset), smem, Int32(copy_bytes)
                 )
                 cp_async_bulk_commit_group()
                 cp_async_bulk_wait_group[0]()
