@@ -203,28 +203,6 @@ struct DistributedAllReduceSum:
                 signal_buffers[group_start].size(), scratch_buffer_size_bytes
             )
 
-        # output_lambda writes each device's reduced output into the fused
-        # epilogue output tensor. Defined at execute scope so that
-        # epilogue_wrapper in vendor_ccl.allreduce (also execute scope) can
-        # call it without triggering the MLIR 'kgen.param.declare.region must
-        # have subprogram scope' error that arises when parameterized functions
-        # are defined inside closures.
-        @inline(.always)
-        @__parameter
-        def output_lambda[
-            output_index: Int,
-            _dtype: DType,
-            _width: SIMDLength,
-            *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-            outputs[output_index]._lambda_store[
-                width=_width, element_alignment=_alignment
-            ](
-                rebind[IndexList[rank]](coord_to_index_list(coords)),
-                rebind[SIMD[dtype, _width]](val),
-            )
-
         # Marshal signal buffers into the expected format. World-view, indexed
         # by GLOBAL device rank -- the collectives below do their own
         # group-local slicing internally.
@@ -277,12 +255,30 @@ struct DistributedAllReduceSum:
                 else:
                     vendor_ccl.wait_for_comms(num_devices)
 
-                vendor_ccl.allreduce[
-                    ngpus=num_devices,
-                    output_lambda=output_lambda[output_index=index, ...],
-                ](
+                # Writes this device's reduced output into its fused epilogue
+                # output. It runs on the device, so it copies the tensor.
+                var out_tensor = outputs[index]
+
+                @inline(.always)
+                def output_lambda[
+                    _dtype: DType,
+                    _width: SIMDLength,
+                    *,
+                    alignment: Int,
+                ](coords: Coord, val: SIMD[_dtype, _width]) {
+                    var out_tensor
+                } -> None:
+                    out_tensor._lambda_store[
+                        width=_width, element_alignment=alignment
+                    ](
+                        rebind[IndexList[rank]](coord_to_index_list(coords)),
+                        rebind[SIMD[dtype, _width]](val),
+                    )
+
+                vendor_ccl.allreduce[ngpus=num_devices](
                     in_tensors,
                     outputs[index].runtime_layout(),
+                    output_lambda,
                     rank_sigs,
                     dev_ctxs_input[index],
                 )
@@ -304,13 +300,30 @@ struct DistributedAllReduceSum:
             imm outputs,
         }:
             var out_layout = outputs[index].runtime_layout()
-            allreduce[
-                ngpus=num_devices,
-                group_size=effective_group_size,
-                output_lambda=output_lambda[output_index=index, ...],
-            ](
+            # Writes this device's reduced output into its fused epilogue
+            # output. It runs on the device, so it copies the tensor.
+            var out_tensor = outputs[index]
+
+            @inline(.always)
+            def output_lambda[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_tensor
+            } -> None:
+                out_tensor._lambda_store[
+                    width=_width, element_alignment=alignment
+                ](
+                    rebind[IndexList[rank]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
+            allreduce[ngpus=num_devices, group_size=effective_group_size](
                 in_tensors,
                 out_layout,
+                output_lambda,
                 rank_sigs,
                 dev_ctxs_input[index],
                 my_rank=index,
@@ -420,23 +433,6 @@ struct DistributedReduceScatterSum:
             )
 
         @inline(.always)
-        @__parameter
-        def output_lambda[
-            output_index: Int,
-            _dtype: DType,
-            _width: SIMDLength,
-            *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-            outputs[output_index]._lambda_store[
-                width=_width,
-                element_alignment=_alignment,
-            ](
-                rebind[IndexList[rank]](coord_to_index_list(coords)),
-                rebind[SIMD[dtype, _width]](val),
-            )
-
-        @inline(.always)
         def launch_reducescatter[
             index: Int
         ]() raises {
@@ -444,15 +440,32 @@ struct DistributedReduceScatterSum:
             imm out_layouts,
             imm rank_sigs,
             imm dev_ctxs_input,
+            imm outputs,
         }:
-            reducescatter[
-                ngpus=num_devices,
-                group_size=group_size,
-                output_lambda=output_lambda[output_index=index, ...],
-                axis=axis,
-            ](
+            # Writes this device's reduced output into its fused epilogue
+            # output. It runs on the device, so it copies the tensor.
+            var out_tensor = outputs[index]
+
+            @inline(.always)
+            def output_lambda[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_tensor
+            } -> None:
+                out_tensor._lambda_store[
+                    width=_width, element_alignment=alignment
+                ](
+                    rebind[IndexList[rank]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
+            reducescatter[ngpus=num_devices, group_size=group_size, axis=axis](
                 in_tensors,
                 out_layouts,
+                output_lambda,
                 rank_sigs,
                 dev_ctxs_input[index],
                 my_rank=index,
@@ -1664,14 +1677,14 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                     )
                 )
 
-            # `@__copy_capture` REQUIRED: any local this closure reads but does
-            # not list reaches the device as a host-stack pointer and faults.
-            @__copy_capture(quant_buf, scale_buf, cols_rt)
-            @__parameter
+            # The `{var}` copies are REQUIRED: a local this closure captures by
+            # reference reaches the device as a host-stack pointer and faults.
             @inline(.always)
             def mx_epilogue[
                 width: Int
-            ](row: Int, col: Int, val: SIMD[dtype, width]):
+            ](row: Int, col: Int, val: SIMD[dtype, width]) {
+                var quant_buf, var scale_buf, var cols_rt
+            }:
                 var quantized: SIMD[quant_dtype, width]
                 var e8m0: Scalar[scales_dtype]
                 quantized, e8m0 = quantize_mxfp8_lane_group[
@@ -1735,10 +1748,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                     dev_ctxs_input[index], quant_buf, scale_buf, normed_buf
                 )
 
-            _dispatch_ag_norm_quant[
-                quant_epilogue=mx_epilogue,
-                group_size=group_size,
-            ](
+            _dispatch_ag_norm_quant[group_size=group_size](
                 in_tensors,
                 normed_buf,
                 sum_buf,
@@ -1747,6 +1757,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
                 weight_offset.cast[dtype](),
                 rank_sigs,
                 dev_ctxs_input[index],
+                mx_epilogue,
                 two_launch_with_quant,
                 my_rank=index,
             )
@@ -1981,14 +1992,14 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     )
                 )
 
-            # `@__copy_capture` REQUIRED: any local this closure reads but does
-            # not list reaches the device as a host-stack pointer and faults.
-            @__copy_capture(quant_buf, scale_buf, cols_rt)
-            @__parameter
+            # The `{var}` copies are REQUIRED: a local this closure captures by
+            # reference reaches the device as a host-stack pointer and faults.
             @inline(.always)
             def mx_epilogue[
                 width: Int
-            ](row: Int, col: Int, val: SIMD[dtype, width]):
+            ](row: Int, col: Int, val: SIMD[dtype, width]) {
+                var quant_buf, var scale_buf, var cols_rt
+            }:
                 comptime assert width % 4 == 0, (
                     "packed FP6 addresses groups of four codes, so a thread's"
                     " slice must be a whole number of groups"
@@ -2064,10 +2075,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                     normed_buf.as_imm(),
                 )
 
-            _dispatch_ag_norm_quant[
-                quant_epilogue=mx_epilogue,
-                group_size=group_size,
-            ](
+            _dispatch_ag_norm_quant[group_size=group_size](
                 in_tensors,
                 normed_buf,
                 sum_buf,
@@ -2076,6 +2084,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
                 weight_offset.cast[dtype](),
                 rank_sigs,
                 dev_ctxs_input[index],
+                mx_epilogue,
                 two_launch_with_quant,
                 my_rank=index,
             )

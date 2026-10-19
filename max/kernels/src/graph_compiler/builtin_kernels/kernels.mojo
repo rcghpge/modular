@@ -3276,24 +3276,21 @@ struct BundledAllReduceSum:
         )
 
         @inline(.always)
-        @__parameter
         def output_lambda[
             _dtype: DType,
             _width: SIMDLength,
             *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-            output._lambda_store[width=_width, element_alignment=_alignment](
+            alignment: Int,
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var output} -> None:
+            output._lambda_store[width=_width, element_alignment=alignment](
                 rebind[IndexList[rank]](coord_to_index_list(coords)),
                 rebind[SIMD[dtype, _width]](val),
             )
 
-        allreduce[
-            ngpus=num_devices,
-            output_lambda=output_lambda,
-        ](
+        allreduce[ngpus=num_devices](
             in_tensors,
             out_layout,
+            output_lambda,
             rank_sigs,
             ctx,
         )

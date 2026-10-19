@@ -1021,30 +1021,30 @@ def _launch_split_allreduce_rmsnorm_fp8[
     )
 
     # Step 1: Allreduce with add epilogue → residual_output.
-    @__copy_capture(residual_2d, residual_output_2d)
     @inline(.always)
-    @__parameter
     def add_epilogue[
         _dtype: DType,
         _width: SIMDLength,
         *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
+        alignment: Int,
+    ](coords: Coord, val: SIMD[_dtype, length=_width]) {
+        var residual_2d, var residual_output_2d
+    } -> None:
         var il = coord_to_index_list(coords)
         var rc = Coord(il[0], il[1])
-        var res = residual_2d.load[width=_width, alignment=_alignment](rc)
+        var res = residual_2d.load[width=_width, alignment=alignment](rc)
         # Add in f32 for precision parity with the fused kernel,
         # which accumulates allreduce + residual in f32 before casting.
         var sum_f32 = (
             val.cast[.float32]()
             + rebind[SIMD[_dtype, _width]](res).cast[.float32]()
         )
-        residual_output_2d.store[alignment=_alignment](
+        residual_output_2d.store[alignment=alignment](
             rc, rebind[SIMD[in_dtype, _width]](sum_f32.cast[_dtype]())
         )
 
-    allreduce[ngpus=ngpus, output_lambda=add_epilogue](
-        input_buffers, residual_output.layout, rank_sigs, ctx
+    allreduce[ngpus=ngpus](
+        input_buffers, residual_output.layout, add_epilogue, rank_sigs, ctx
     )
 
     # Step 2: Fused RMSNorm + FP8 on residual_output (kernel already compiled).

@@ -225,32 +225,29 @@ def lamport_allreduce_test[
         out_capture[i] = TileTensor(out_dev[i], row_major(length))
 
     for it in range(NUM_ITERS):
-
-        @inline(.always)
-        @__parameter
-        @__copy_capture(out_capture)
-        def lamport_epilogue[
-            input_index: Int,
-            _dtype: DType,
-            _width: SIMDLength,
-            *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-            out_capture[input_index].store_linear[
-                width=_width, alignment=_alignment
-            ](
-                rebind[IndexList[1]](coord_to_index_list(coords)),
-                rebind[SIMD[dtype, _width]](val),
-            )
-
         comptime for i in range(ngpus):
+
+            @inline(.always)
+            def lamport_epilogue[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_capture
+            } -> None:
+                out_capture[i].store_linear[width=_width, alignment=alignment](
+                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
             _allreduce_lamport_p2p[
                 ngpus=ngpus,
-                output_lambda=lamport_epilogue[input_index=i, ...],
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
                 out_tensors[i].layout,
+                lamport_epilogue,
                 rank_sigs,
                 lamport_cfg,
                 list_of_ctx[i],
@@ -366,23 +363,6 @@ def lamport_mixed_size_test[
     for i in range(ngpus):
         out_capture[i] = TileTensor(out_dev[i], row_major(max_length))
 
-    @inline(.always)
-    @__parameter
-    @__copy_capture(out_capture)
-    def mixed_epilogue[
-        input_index: Int,
-        _dtype: DType,
-        _width: SIMDLength,
-        *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        out_capture[input_index].store_linear[
-            width=_width, alignment=_alignment
-        ](
-            rebind[IndexList[1]](coord_to_index_list(coords)),
-            rebind[SIMD[dtype, _width]](val),
-        )
-
     # One-time init of the signal buffers (zero counters/state, sentinel region).
     for i in range(ngpus):
         init_signal_buffer(signal_buffers[i], list_of_ctx[i])
@@ -442,13 +422,30 @@ def lamport_mixed_size_test[
             )
 
             comptime for i in range(ngpus):
+
+                @inline(.always)
+                def mixed_epilogue[
+                    _dtype: DType,
+                    _width: SIMDLength,
+                    *,
+                    alignment: Int,
+                ](coords: Coord, val: SIMD[_dtype, _width]) {
+                    var out_capture
+                } -> None:
+                    out_capture[i].store_linear[
+                        width=_width, alignment=alignment
+                    ](
+                        rebind[IndexList[1]](coord_to_index_list(coords)),
+                        rebind[SIMD[dtype, _width]](val),
+                    )
+
                 _allreduce_lamport_p2p[
                     ngpus=ngpus,
-                    output_lambda=mixed_epilogue[input_index=i, ...],
                     pdl_level=PDLLevel(),
                 ](
                     in_tensors,
                     out_tensors[i].layout,
+                    mixed_epilogue,
                     rank_sigs,
                     cfg,
                     list_of_ctx[i],
@@ -911,23 +908,6 @@ def lamport_coexist_test[
     for i in range(ngpus):
         out_capture[i] = TileTensor(sout_dev[i], row_major(small_len))
 
-    @inline(.always)
-    @__parameter
-    @__copy_capture(out_capture)
-    def coexist_epilogue[
-        input_index: Int,
-        _dtype: DType,
-        _width: SIMDLength,
-        *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        out_capture[input_index].store_linear[
-            width=_width, alignment=_alignment
-        ](
-            rebind[IndexList[1]](coord_to_index_list(coords)),
-            rebind[SIMD[dtype, _width]](val),
-        )
-
     for i in range(ngpus):
         init_signal_buffer(signal_buffers[i], list_of_ctx[i])
     for i in range(ngpus):
@@ -960,13 +940,28 @@ def lamport_coexist_test[
             algorithm=AllReduceAlgorithm.LAMPORT,
         )
         comptime for i in range(ngpus):
+
+            @inline(.always)
+            def coexist_epilogue[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_capture
+            } -> None:
+                out_capture[i].store_linear[width=_width, alignment=alignment](
+                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
             _allreduce_lamport_p2p[
                 ngpus=ngpus,
-                output_lambda=coexist_epilogue[input_index=i, ...],
                 pdl_level=PDLLevel(),
             ](
                 sin_tensors,
                 sout_tensors[i].layout,
+                coexist_epilogue,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],
@@ -1108,23 +1103,6 @@ def lamport_unsynced_skew_test[
                 row_major(length),
             )
 
-        @inline(.always)
-        @__parameter
-        @__copy_capture(out_capture)
-        def skew_epilogue[
-            input_index: Int,
-            _dtype: DType,
-            _width: SIMDLength,
-            *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-            out_capture[input_index].store_linear[
-                width=_width, alignment=_alignment
-            ](
-                rebind[IndexList[1]](coord_to_index_list(coords)),
-                rebind[SIMD[dtype, _width]](val),
-            )
-
         var cfg = AllReduceTuningConfig(
             ngpus=ngpus,
             num_bytes=length * size_of[dtype](),
@@ -1133,13 +1111,28 @@ def lamport_unsynced_skew_test[
             algorithm=AllReduceAlgorithm.LAMPORT,
         )
         comptime for i in range(ngpus):
+
+            @inline(.always)
+            def skew_epilogue[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_capture
+            } -> None:
+                out_capture[i].store_linear[width=_width, alignment=alignment](
+                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
             _allreduce_lamport_p2p[
                 ngpus=ngpus,
-                output_lambda=skew_epilogue[input_index=i, ...],
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
                 out_capture[i].layout,
+                skew_epilogue,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],
@@ -1237,23 +1230,6 @@ def lamport_wrap_test[
     for i in range(ngpus):
         out_capture[i] = TileTensor(out_dev[i], row_major(length))
 
-    @inline(.always)
-    @__parameter
-    @__copy_capture(out_capture)
-    def wrap_epilogue[
-        input_index: Int,
-        _dtype: DType,
-        _width: SIMDLength,
-        *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        out_capture[input_index].store_linear[
-            width=_width, alignment=_alignment
-        ](
-            rebind[IndexList[1]](coord_to_index_list(coords)),
-            rebind[SIMD[dtype, _width]](val),
-        )
-
     # One-time init, then seed every rank's counter just below the wrap so all
     # ranks cross it on the same call (as they do in production).
     for i in range(ngpus):
@@ -1304,13 +1280,28 @@ def lamport_wrap_test[
             algorithm=AllReduceAlgorithm.LAMPORT,
         )
         comptime for i in range(ngpus):
+
+            @inline(.always)
+            def wrap_epilogue[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_capture
+            } -> None:
+                out_capture[i].store_linear[width=_width, alignment=alignment](
+                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](val),
+                )
+
             _allreduce_lamport_p2p[
                 ngpus=ngpus,
-                output_lambda=wrap_epilogue[input_index=i, ...],
                 pdl_level=PDLLevel(),
             ](
                 in_tensors,
                 out_tensors[i].layout,
+                wrap_epilogue,
                 rank_sigs,
                 cfg,
                 list_of_ctx[i],

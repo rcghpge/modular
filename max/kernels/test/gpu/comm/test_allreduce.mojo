@@ -173,26 +173,6 @@ def allreduce_test[
     for i in range(ngpus):
         out_tensors_capture[i] = TileTensor(out_dev[i], row_major(length))
 
-    # Custom epilogue that negates values to distinguish from default
-    @inline(.always)
-    @__parameter
-    @__copy_capture(out_tensors_capture)
-    def outputs_lambda[
-        input_index: Int,
-        _dtype: DType,
-        _width: SIMDLength,
-        *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        out_tensors_capture[input_index].store_linear[
-            width=_width, alignment=_alignment
-        ](
-            rebind[IndexList[1]](coord_to_index_list(coords)),
-            rebind[SIMD[dtype, _width]](
-                -val  # Negate to distinguish from default epilogue
-            ),
-        )
-
     # Precompute expected sum across GPUs for verification.
     var expected_sum = Scalar[dtype](0)
     for i in range(ngpus):
@@ -202,11 +182,32 @@ def allreduce_test[
 
     comptime for i in range(ngpus):
         comptime if use_custom_epilogue:
-            allreduce[
-                ngpus=ngpus,
-                output_lambda=outputs_lambda[input_index=i, ...],
-                use_multimem=use_multimem,
-            ](in_tensors, out_tensors[i].layout, rank_sigs, list_of_ctx[i])
+            # Custom epilogue that negates values to distinguish from default
+            @inline(.always)
+            def outputs_lambda[
+                _dtype: DType,
+                _width: SIMDLength,
+                *,
+                alignment: Int,
+            ](coords: Coord, val: SIMD[_dtype, _width]) {
+                var out_tensors_capture
+            } -> None:
+                out_tensors_capture[i].store_linear[
+                    width=_width, alignment=alignment
+                ](
+                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                    rebind[SIMD[dtype, _width]](
+                        -val  # Negate to distinguish from default epilogue
+                    ),
+                )
+
+            allreduce[ngpus=ngpus, use_multimem=use_multimem](
+                in_tensors,
+                out_tensors[i].layout,
+                outputs_lambda,
+                rank_sigs,
+                list_of_ctx[i],
+            )
         else:
             allreduce[ngpus=ngpus, use_multimem=use_multimem](
                 in_tensors, out_tensors[i], rank_sigs, list_of_ctx[i]
@@ -359,30 +360,28 @@ def allreduce_naive_test() raises -> None:
     for i in range(ngpus):
         out_tensors_capture[i] = TileTensor(out_dev[i], row_major(length))
 
-    @inline(.always)
-    @__parameter
-    @__copy_capture(out_tensors_capture)
-    def outputs_lambda[
-        input_index: Int,
-        _dtype: DType,
-        _width: SIMDLength,
-        *,
-        _alignment: Int,
-    ](coords: Coord, val: SIMD[_dtype, _width]) -> None:
-        out_tensors_capture[input_index].store_linear[
-            width=_width, alignment=_alignment
-        ](
-            rebind[IndexList[1]](coord_to_index_list(coords)),
-            rebind[SIMD[.float32, _width]](val),
-        )
-
     # Launch naive allreduce per device
     comptime for i in range(ngpus):
-        _allreduce_naive_single[
-            dtype=DType.float32,
-            ngpus=ngpus,
-            output_lambda=outputs_lambda[input_index=i, ...],
-        ](in_tensors, out_tensors[i].layout, 216, ctxs[i])
+
+        @inline(.always)
+        def outputs_lambda[
+            _dtype: DType,
+            _width: SIMDLength,
+            *,
+            alignment: Int,
+        ](coords: Coord, val: SIMD[_dtype, _width]) {
+            var out_tensors_capture
+        } -> None:
+            out_tensors_capture[i].store_linear[
+                width=_width, alignment=alignment
+            ](
+                rebind[IndexList[1]](coord_to_index_list(coords)),
+                rebind[SIMD[.float32, _width]](val),
+            )
+
+        _allreduce_naive_single[dtype=DType.float32, ngpus=ngpus](
+            in_tensors, out_tensors[i].layout, outputs_lambda, 216, ctxs[i]
+        )
 
     # Synchronize and verify
     for i in range(ngpus):

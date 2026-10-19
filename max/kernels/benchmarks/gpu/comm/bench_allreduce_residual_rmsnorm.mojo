@@ -366,29 +366,33 @@ def _verify_add_results[
     comptime for i in range(ngpus):
         var ar_ptr_i = ar_out_dev[i].unsafe_ptr()
 
-        @__copy_capture(ar_ptr_i, residual_ptr)
         @inline(.always)
-        @__parameter
         def add_epilogue_v[
             _dtype: DType,
             _width: SIMDLength,
             *,
-            _alignment: Int,
-        ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
+            alignment: Int,
+        ](coords: Coord, val: SIMD[_dtype, length=_width]) {
+            var ar_ptr_i, var residual_ptr
+        } -> None:
             var il = coord_to_index_list(coords)
             var flat_idx = il[0] * num_cols + il[1]
-            var res = residual_ptr.load[width=_width, alignment=_alignment](
+            var res = residual_ptr.load[width=_width, alignment=alignment](
                 flat_idx
             )
-            ar_ptr_i.store[width=_width, alignment=_alignment](
+            ar_ptr_i.store[width=_width, alignment=alignment](
                 flat_idx,
                 rebind[SIMD[in_dtype, _width]](
                     val + rebind[SIMD[_dtype, _width]](res)
                 ),
             )
 
-        allreduce[ngpus=ngpus, output_lambda=add_epilogue_v](
-            in_tensors, out_tensors[i].layout, rank_sigs, list_of_ctx[i]
+        allreduce[ngpus=ngpus](
+            in_tensors,
+            out_tensors[i].layout,
+            add_epilogue_v,
+            rank_sigs,
+            list_of_ctx[i],
         )
     group_end()
 
@@ -945,30 +949,31 @@ def bench_allreduce_rmsnorm_fp8[
                 # Step 1: Allreduce with add epilogue (fuses allreduce + add).
                 var ar_ptr = ar_out_dev[ctx_idx].unsafe_ptr()
 
-                @__copy_capture(ar_ptr, residual_ptr_base)
                 @inline(.always)
-                @__parameter
                 def add_epilogue[
                     _dtype: DType,
                     _width: SIMDLength,
                     *,
-                    _alignment: Int,
-                ](coords: Coord, val: SIMD[_dtype, length=_width]) -> None:
+                    alignment: Int,
+                ](coords: Coord, val: SIMD[_dtype, length=_width]) {
+                    var ar_ptr, var residual_ptr_base
+                } -> None:
                     var il = coord_to_index_list(coords)
                     var flat_idx = il[0] * num_cols + il[1]
                     var res = residual_ptr_base.load[
-                        width=_width, alignment=_alignment
+                        width=_width, alignment=alignment
                     ](flat_idx)
-                    ar_ptr.store[width=_width, alignment=_alignment](
+                    ar_ptr.store[width=_width, alignment=alignment](
                         flat_idx,
                         rebind[SIMD[in_dtype, _width]](
                             val + rebind[SIMD[_dtype, _width]](res)
                         ),
                     )
 
-                allreduce[ngpus=ngpus, output_lambda=add_epilogue](
+                allreduce[ngpus=ngpus](
                     in_tensors,
                     ar_out_tensors[ctx_idx].layout,
+                    add_epilogue,
                     rank_sigs,
                     ctx_inner,
                 )
