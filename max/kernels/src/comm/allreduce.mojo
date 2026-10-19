@@ -560,7 +560,9 @@ def _naive_reduce_kernel_with_lambda[
             var elem_idx = idx * simd_width
             output_lambda[width=simd_width, alignment=simd_align](
                 output_layout.idx2crd(elem_idx),
-                src_buf.load[width=simd_width, alignment=simd_align](elem_idx),
+                src_buf.unsafe_load[width=simd_width, alignment=simd_align](
+                    elem_idx
+                ),
             )
 
     if simd_prefix_elems < _num_elements:
@@ -569,7 +571,7 @@ def _naive_reduce_kernel_with_lambda[
         ):
             output_lambda[width=1, alignment=scalar_align](
                 output_layout.idx2crd(elem_idx),
-                src_buf.load[width=1, alignment=scalar_align](elem_idx),
+                src_buf.unsafe_load[width=1, alignment=scalar_align](elem_idx),
             )
 
 
@@ -930,7 +932,7 @@ def _allreduce_2stage_kernel[
                     output_layout.idx2crd(dst_idx),
                     tmps[gpu_idx]
                     .unsafe_address_space_cast[_target_address_space]()
-                    .load[width=simd_width, alignment=alignment](idx),
+                    .unsafe_load[width=simd_width, alignment=alignment](idx),
                 )
 
         # Ragged tail - max 1 simd vector per gpu, spread work between threads
@@ -945,7 +947,7 @@ def _allreduce_2stage_kernel[
                     output_layout.idx2crd(dst_idx),
                     tmps[global_tid]
                     .unsafe_address_space_cast[_target_address_space]()
-                    .load[width=simd_width, alignment=alignment](idx),
+                    .unsafe_load[width=simd_width, alignment=alignment](idx),
                 )
 
 
@@ -1256,12 +1258,14 @@ def _allreduce_lamport_kernel[
 
     with PDL():
         var state = rank_sigs[_my_rank][].lamport_state_ptr()
-        var flag = Int(state.load[width=1, volatile=True](Lamport.STATE_FLAG))
+        var flag = Int(
+            state.unsafe_load[width=1, volatile=True](Lamport.STATE_FLAG)
+        )
         # Packs to reset in the generation cleared this call: the previous
         # call's written extent in 16-byte packs, independent of either call's
         # dtype.
         var clear_packs = Int(
-            state.load[width=1, volatile=True](Lamport.STATE_PREV_PACKS)
+            state.unsafe_load[width=1, volatile=True](Lamport.STATE_PREV_PACKS)
         )
 
         # Generation geometry. The per-generation stride is FIXED at the reserved
@@ -1294,7 +1298,7 @@ def _allreduce_lamport_kernel[
             # iterating i balances fabric traffic).
             var push_off = data_gen_off + _my_rank * Lamport.MAX_PACKS + pack
             comptime for i in range(1, ngpus):
-                peer_regions[i].store[
+                peer_regions[i].unsafe_store[
                     width=atomic_width, alignment=alignment, volatile=True
                 ](push_off * atomic_width, local)
 
@@ -1317,7 +1321,7 @@ def _allreduce_lamport_kernel[
                     var slot_off = (
                         data_gen_off + peer * Lamport.MAX_PACKS + pack
                     )
-                    var p = my_region.load[
+                    var p = my_region.unsafe_load[
                         width=atomic_width, alignment=alignment, volatile=True
                     ](slot_off * atomic_width)
                     peer_packs[i] = p
@@ -1345,7 +1349,7 @@ def _allreduce_lamport_kernel[
                     var clr_off = (
                         clear_gen_off + peer * Lamport.MAX_PACKS + pack
                     )
-                    my_region.store[
+                    my_region.unsafe_store[
                         width=atomic_width, alignment=alignment, volatile=True
                     ](clr_off * atomic_width, sentinel)
 
@@ -1358,7 +1362,7 @@ def _allreduce_lamport_kernel[
             comptime for i in range(1, ngpus):
                 var peer = circular_add[ngpus](_my_rank, i)
                 var clr_off = clear_gen_off + peer * Lamport.MAX_PACKS + cp
-                my_region.store[
+                my_region.unsafe_store[
                     width=atomic_width, alignment=alignment, volatile=True
                 ](clr_off * atomic_width, sentinel)
 
@@ -1370,14 +1374,16 @@ def _allreduce_lamport_kernel[
                 state.unsafe_offset(Lamport.STATE_ARRIVAL), UInt32(1)
             )
             if Int(arrived) == grid_dim.x - 1:
-                state.store[volatile=True](
+                state.unsafe_store[volatile=True](
                     Lamport.STATE_FLAG,
                     UInt32(LamportGeneration.advance(flag)),
                 )
-                state.store[volatile=True](
+                state.unsafe_store[volatile=True](
                     Lamport.STATE_PREV_PACKS, UInt32(num_packs)
                 )
-                state.store[volatile=True](Lamport.STATE_ARRIVAL, UInt32(0))
+                state.unsafe_store[volatile=True](
+                    Lamport.STATE_ARRIVAL, UInt32(0)
+                )
 
 
 @inline(.always)

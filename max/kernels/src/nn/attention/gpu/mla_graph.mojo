@@ -1212,9 +1212,11 @@ def _amd_sparse_mla_gather_kv_rows[
             var src = blocks_base.unsafe_offset(
                 virtual_row * k_cache_dim
             ).unsafe_offset(vec_off)
-            dst.store(src.load[width=_AMD_SPARSE_MLA_GATHER_VEC]())
+            dst.unsafe_store(
+                src.unsafe_load[width=_AMD_SPARSE_MLA_GATHER_VEC]()
+            )
         else:
-            dst.store(SIMD[CacheT.dtype, _AMD_SPARSE_MLA_GATHER_VEC](0))
+            dst.unsafe_store(SIMD[CacheT.dtype, _AMD_SPARSE_MLA_GATHER_VEC](0))
 
 
 comptime _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS = 256

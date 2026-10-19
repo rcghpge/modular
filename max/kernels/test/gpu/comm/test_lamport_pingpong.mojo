@@ -117,13 +117,17 @@ def writer_kernel[
 
     for g in range(1, ITERS + 1):
         # Mark "not ready" (the tear-prone window opens here).
-        slot_ptr.store[width=PACK_WIDTH, alignment=16, volatile=True](sentinel)
+        slot_ptr.unsafe_store[width=PACK_WIDTH, alignment=16, volatile=True](
+            sentinel
+        )
         comptime if use_fence:
             fence[ordering=Ordering.RELEASE, scope=fence_scope]()
 
         # Publish the data pack: every lane carries the same generation g.
         var data = SIMD[DTYPE, PACK_WIDTH](Scalar[DTYPE](g))
-        slot_ptr.store[width=PACK_WIDTH, alignment=16, volatile=True](data)
+        slot_ptr.unsafe_store[width=PACK_WIDTH, alignment=16, volatile=True](
+            data
+        )
         comptime if use_fence:
             fence[ordering=Ordering.RELEASE, scope=fence_scope]()
 
@@ -168,7 +172,7 @@ def reader_kernel[
         var spins = 0
         while spins < SPIN_CAP:
             spins += 1
-            var pack = slot_ptr.load[
+            var pack = slot_ptr.unsafe_load[
                 width=PACK_WIDTH, alignment=16, volatile=True
             ]()
             comptime if use_fence:

@@ -219,13 +219,13 @@ def _acquire_wait[
     Returns:
         The value that ended the wait.
     """
-    var observed = ptr.load[volatile=True]()
+    var observed = ptr.unsafe_load[volatile=True]()
     comptime if wait_while_equal:
         while observed == sentinel:
-            observed = ptr.load[volatile=True]()
+            observed = ptr.unsafe_load[volatile=True]()
     else:
         while observed != sentinel:
-            observed = ptr.load[volatile=True]()
+            observed = ptr.unsafe_load[volatile=True]()
     fence[ordering=Ordering.ACQUIRE, scope=scope]()
     return observed
 
@@ -300,7 +300,7 @@ def block_memcpy[
             num_bytes % store_width == 0
         ), "num_bytes must be a multiple of the 16-byte store width"
         for i in range(thread_idx, num_bytes // store_width, block_size):
-            var data = src_p.load[
+            var data = src_p.unsafe_load[
                 width=store_width,
                 alignment=store_width,
                 invariant=src_invariant,
@@ -319,9 +319,9 @@ def block_memcpy[
         comptime n_vec = num_bytes // simd_width
         comptime if unroll == 1:
             for i in range(thread_idx, n_vec, block_size):
-                dst_p.store[alignment=simd_width](
+                dst_p.unsafe_store[alignment=simd_width](
                     i * simd_width,
-                    src_p.load[
+                    src_p.unsafe_load[
                         width=simd_width,
                         alignment=simd_width,
                         invariant=src_invariant,
@@ -333,7 +333,7 @@ def block_memcpy[
                 comptime for k in range(unroll):
                     var i = base + k * block_size
                     if i < n_vec:
-                        vals[k] = src_p.load[
+                        vals[k] = src_p.unsafe_load[
                             width=simd_width,
                             alignment=simd_width,
                             invariant=src_invariant,
@@ -341,7 +341,7 @@ def block_memcpy[
                 comptime for k in range(unroll):
                     var i = base + k * block_size
                     if i < n_vec:
-                        dst_p.store[alignment=simd_width](
+                        dst_p.unsafe_store[alignment=simd_width](
                             i * simd_width, vals[k]
                         )
 
@@ -1069,7 +1069,7 @@ struct BF16TokenFormat[
             self.output_tokens.store(
                 (token_index, i * bf16_width),
                 bitcast[.bfloat16, bf16_width](
-                    buf_p.load[
+                    buf_p.unsafe_load[
                         width=byte_width,
                         invariant=True,
                         alignment=Self.alignment,
@@ -1262,7 +1262,7 @@ struct BlockwiseFP8TokenFormat[
         for i in range(
             thread_idx.x - thread_base, Self.hid_dim // src_width, block_size
         ):
-            var loaded_vec = src_p.load[
+            var loaded_vec = src_p.unsafe_load[
                 width=src_width, alignment=Self.alignment, invariant=True
             ](i * src_width).cast[Self.scales_dtype]()
             var thread_max = abs(loaded_vec).reduce_max()
@@ -1273,7 +1273,7 @@ struct BlockwiseFP8TokenFormat[
             var output_vec = loaded_vec / scale_factor
             output_vec = output_vec.clamp(-fp8_max_t, fp8_max_t)
 
-            buf_p.store[alignment=byte_width](
+            buf_p.unsafe_store[alignment=byte_width](
                 i * byte_width,
                 bitcast[.uint8, byte_width](output_vec.cast[Self.fp8_dtype]()),
             )
@@ -1282,7 +1282,7 @@ struct BlockwiseFP8TokenFormat[
             comptime scale_bytes = size_of[Self.scales_dtype]()
             if umod(lane_id(), n_threads_per_group) == 0:
                 var scale_idx = ufloordiv(i * src_width, Self.group_size)
-                buf_p.store[alignment=scale_bytes](
+                buf_p.unsafe_store[alignment=scale_bytes](
                     Self.scales_offset() + scale_idx * scale_bytes,
                     bitcast[.uint8, scale_bytes](scale_factor),
                 )
@@ -1306,7 +1306,7 @@ struct BlockwiseFP8TokenFormat[
             self.output_tokens.store(
                 (token_index, i * fp8_width),
                 bitcast[Self.fp8_dtype, fp8_width](
-                    buf_p.load[
+                    buf_p.unsafe_load[
                         width=fp8_width,
                         invariant=True,
                         alignment=Self.alignment,
@@ -1325,7 +1325,7 @@ struct BlockwiseFP8TokenFormat[
             self.output_scales.store(
                 (i, token_index),
                 bitcast[Self.scales_dtype, 1](
-                    buf_p.load[
+                    buf_p.unsafe_load[
                         width=scale_bytes,
                         invariant=True,
                         alignment=scale_bytes,
@@ -1765,7 +1765,7 @@ struct NVBlockScaledTokenFormat[
             )
             var thread_max = Float32(0)
             for i in range(thread_idx.x, n_items, block_size):
-                var item = src_p.load[
+                var item = src_p.unsafe_load[
                     width=src_width, alignment=Self.alignment, invariant=True
                 ](Int(i) * src_width)
                 thread_max = max(
@@ -1787,7 +1787,7 @@ struct NVBlockScaledTokenFormat[
                 ).cast[DType.bfloat16]()
             if thread_idx.x == 0:
                 comptime scale_bytes = size_of[BFloat16]()
-                buf_p.store[alignment=scale_bytes](
+                buf_p.unsafe_store[alignment=scale_bytes](
                     Self.global_scale_offset(),
                     bitcast[DType.uint8, scale_bytes](inv_global_scale),
                 )
@@ -1878,8 +1878,8 @@ struct NVBlockScaledTokenFormat[
                     comptime assert (
                         SF_ATOM_K == 4
                     ), "sf_vec4 assumes a 4-byte SF atom"
-                    dst.store[width=4, alignment=4](
-                        d, src.load[width=4, alignment=4](o)
+                    dst.unsafe_store[width=4, alignment=4](
+                        d, src.unsafe_load[width=4, alignment=4](o)
                     )
                 else:
                     comptime for j in range(SF_ATOM_K):
@@ -1945,12 +1945,12 @@ struct NVBlockScaledTokenFormat[
                 size_of[Self.scales_dtype]() == 1
             ), "ep_prequantized assumes 1-byte canonical scales (E8M0)"
             comptime scale_bytes_pq = size_of[Self.scales_dtype]()
-            var q_vec = src_p.load[
+            var q_vec = src_p.unsafe_load[
                 width=src_width, alignment=Self.alignment, invariant=True
             ](i * src_width)
             # Same address, same alignment clamp as the quantized store below,
             # so the payload bytes land byte-for-byte where R0_FULL puts them.
-            buf_p.store[
+            buf_p.unsafe_store[
                 alignment=src_width if src_width
                 < Self.alignment else Self.alignment
             ](i * src_width, bitcast[DType.uint8, src_width](q_vec))
@@ -1966,16 +1966,16 @@ struct NVBlockScaledTokenFormat[
                 # this consumer agree BY CONSTRUCTION rather than by matching
                 # arithmetic, and stay in agreement if the alignment padding of
                 # either region ever changes.
-                var s_vec = src_p.load[width=scale_bytes_pq, invariant=True](
-                    Self.scales_offset() + sidx_pq * scale_bytes_pq
-                )
-                buf_p.store[alignment=scale_bytes_pq](
+                var s_vec = src_p.unsafe_load[
+                    width=scale_bytes_pq, invariant=True
+                ](Self.scales_offset() + sidx_pq * scale_bytes_pq)
+                buf_p.unsafe_store[alignment=scale_bytes_pq](
                     Self.scales_offset() + sidx_pq * scale_bytes_pq,
                     bitcast[DType.uint8, scale_bytes_pq](s_vec),
                 )
             return
 
-        var loaded_vec = src_p.load[
+        var loaded_vec = src_p.unsafe_load[
             width=src_width, alignment=Self.alignment, invariant=True
         ](i * src_width)
 
@@ -2009,7 +2009,7 @@ struct NVBlockScaledTokenFormat[
         # write back the scale factor
         comptime scale_bytes = size_of[Self.scales_dtype]()
         if i % NUM_THREADS_PER_SF == 0:
-            buf_p.store[alignment=scale_bytes](
+            buf_p.unsafe_store[alignment=scale_bytes](
                 Self.scales_offset()
                 + ufloordiv(i, NUM_THREADS_PER_SF) * scale_bytes,
                 bitcast[DType.uint8, scale_bytes](fp8_scale_factor),
@@ -2025,7 +2025,7 @@ struct NVBlockScaledTokenFormat[
             # are bit-identical; it only makes width 32 legal, where
             # src_width=32 would otherwise assert 32-byte alignment on a
             # 16-byte-aligned allocation.
-            buf_p.store[
+            buf_p.unsafe_store[
                 alignment=src_width if src_width
                 < Self.alignment else Self.alignment
             ](
@@ -2036,7 +2036,7 @@ struct NVBlockScaledTokenFormat[
             var output_vector = bitcast[Self.quant_dtype, byte_width](
                 cast_fp32_to_fp4e2m1(input_f32)
             )
-            buf_p.store[alignment=byte_width](
+            buf_p.unsafe_store[alignment=byte_width](
                 i * byte_width,
                 bitcast[DType.uint8, byte_width](output_vector),
             )
@@ -2158,7 +2158,7 @@ struct NVBlockScaledTokenFormat[
             var _i = i + lane_in_sub_warp
             var scales_simd = SIMD[Self.scales_dtype, SF_ATOM_K](0.0)
             if case .Some(scales_ptr) = scales_gmem_ptr:
-                scales_simd = scales_ptr.load[
+                scales_simd = scales_ptr.unsafe_load[
                     width=SF_ATOM_K, invariant=True, alignment=SF_ATOM_K
                 ](_i * SF_ATOM_K)
 
@@ -2258,7 +2258,7 @@ struct NVBlockScaledTokenFormat[
                         self.output_rowwise_scales[output_pos] = bitcast[
                             DType.bfloat16, 1
                         ](
-                            token_ptr.load[
+                            token_ptr.unsafe_load[
                                 width=scale_bytes, alignment=scale_bytes
                             ](Self.global_scale_offset())
                         )
@@ -2445,7 +2445,7 @@ struct MXTokenFormat[
         ), "hid_dim must be divisible by the MXFP6 block size"
 
         for b in range(thread_idx.x, Self.hid_dim // blk, block_size):
-            var data = src_p.load[
+            var data = src_p.unsafe_load[
                 width=blk, alignment=Self.alignment, invariant=True
             ](b * blk).cast[.float32]()
 
@@ -2472,12 +2472,12 @@ struct MXTokenFormat[
                     )
 
             comptime for chunk in range(bytes_per_blk // 8):
-                buf_p.store[alignment=8](
+                buf_p.unsafe_store[alignment=8](
                     b * bytes_per_blk + chunk * 8,
                     packed.slice[8, offset=chunk * 8](),
                 )
 
-            buf_p.store[alignment=scale_bytes](
+            buf_p.unsafe_store[alignment=scale_bytes](
                 Self.scales_offset() + b * scale_bytes,
                 bitcast[.uint8, scale_bytes](
                     rebind[Scalar[Self.scales_dtype]](e8m0_scale)
@@ -2508,7 +2508,7 @@ struct MXTokenFormat[
                 Self.hid_dim // src_width,
                 block_size,
             ):
-                var loaded_vec = src_p.load[
+                var loaded_vec = src_p.unsafe_load[
                     width=src_width, alignment=Self.alignment, invariant=True
                 ](i * src_width).cast[.float32]()
 
@@ -2539,7 +2539,7 @@ struct MXTokenFormat[
                 # write back the scale factor
                 comptime scale_bytes = size_of[Self.scales_dtype]()
                 if i % NUM_THREADS_PER_SF == 0:
-                    buf_p.store[alignment=scale_bytes](
+                    buf_p.unsafe_store[alignment=scale_bytes](
                         Self.scales_offset()
                         + i // NUM_THREADS_PER_SF * scale_bytes,
                         bitcast[.uint8, scale_bytes](fp8_scale_factor),
@@ -2553,7 +2553,7 @@ struct MXTokenFormat[
                         0.0
                     ) if block_is_dead else loaded_vec
                     var fp8_vec = (data * scale_f32).cast[Self.quant_dtype]()
-                    buf_p.store[alignment=byte_width](
+                    buf_p.unsafe_store[alignment=byte_width](
                         i * byte_width,
                         bitcast[.uint8, byte_width](fp8_vec),
                     )
@@ -2564,7 +2564,7 @@ struct MXTokenFormat[
                             scale_f32,
                         )
                     )
-                    buf_p.store[alignment=byte_width](
+                    buf_p.unsafe_store[alignment=byte_width](
                         i * byte_width,
                         bitcast[.uint8, byte_width](output_vector),
                     )
@@ -2593,7 +2593,7 @@ struct MXTokenFormat[
             self.output_tokens.store(
                 (token_index, i * fp4_width),
                 bitcast[Self.quant_dtype, fp4_width](
-                    buf_p.load[
+                    buf_p.unsafe_load[
                         width=fp4_width,
                         invariant=True,
                         alignment=Self.alignment,
@@ -2625,7 +2625,7 @@ struct MXTokenFormat[
             ),
         )
         for i in range(lane_id(), Self.hid_dim // Self.group_size, WARP_SIZE):
-            var byte = buf_p.load[
+            var byte = buf_p.unsafe_load[
                 width=scale_bytes,
                 invariant=True,
                 alignment=scale_bytes,
@@ -3463,7 +3463,7 @@ struct EPDispatchKernel[
                 # token's top-k id.
                 # Cast the expert ID to a 16-bit integer to save space.
                 var top_k_idx = rebind[Int32](topk_ids[token_idx, tid])
-                curr_send_buf_ptr.store[
+                curr_send_buf_ptr.unsafe_store[
                     width=size_of[UInt16](),
                     alignment=align_of[DType.uint16](),
                 ](
@@ -3474,7 +3474,7 @@ struct EPDispatchKernel[
 
                 # Store the source token index in current token's message.
                 if tid == 0:
-                    curr_send_buf_ptr.store[
+                    curr_send_buf_ptr.unsafe_store[
                         width=size_of[Int32](),
                         alignment=align_of[DType.int32](),
                     ](
@@ -3821,7 +3821,7 @@ struct EPDispatchKernel[
                     Int(active_upto)
                     + Int(tiles_upto) * (n_comm_sms - n_active) // total_tiles
                 )
-            atomic_counter.store(Self.sm_schedule_offset + tid, bound)
+            atomic_counter.unsafe_store(Self.sm_schedule_offset + tid, bound)
 
     @staticmethod
     @inline(.always)
@@ -3948,7 +3948,7 @@ struct EPDispatchKernel[
             var within_expert_prefix = (
                 prefix_sum_arr[tid] - raw_expert_start_offset
             )
-            atomic_counter.store(
+            atomic_counter.unsafe_store(
                 Self.rank_prefix_offset + tid, Int32(within_expert_prefix)
             )
 
@@ -3959,7 +3959,9 @@ struct EPDispatchKernel[
 
         # Region C: initialize per-expert work-claiming counters to 0.
         if tid < Self.n_local_experts:
-            atomic_counter.store(Self.work_counter_offset + tid, Int32(0))
+            atomic_counter.unsafe_store(
+                Self.work_counter_offset + tid, Int32(0)
+            )
 
         Self._comm_barrier[n_comm_threads, comm_barrier_id]()
         # Round-robin is already optimal when no expert could outrun its own
@@ -3973,7 +3975,9 @@ struct EPDispatchKernel[
         )
         if worst_case_tiles <= n_active_offset_sms // Self.n_local_experts:
             if tid < Self.n_local_experts:
-                atomic_counter.store(Self.sm_schedule_offset + tid, Int32(-1))
+                atomic_counter.unsafe_store(
+                    Self.sm_schedule_offset + tid, Int32(-1)
+                )
         else:
             Self._publish_sm_schedule[
                 comm_thread_base, n_comm_threads, comm_barrier_id
@@ -3986,7 +3990,7 @@ struct EPDispatchKernel[
             # Use the runtime active comm-SM count so the cleanup-counter
             # countdown matches the actual launched grid (decode-fast-path
             # launches grid_dim < n_sms).
-            atomic_counter.store(
+            atomic_counter.unsafe_store(
                 Self.cleanup_counter_offset,
                 Int32(n_active_offset_sms),
             )
@@ -4017,7 +4021,7 @@ struct EPDispatchKernel[
             # Region A: combine_async-compatible per-expert-rank data.
             # Stores (flag + cumulative_end, per_pair_token_count) so that
             # combine_async can derive token_start and token_end.
-            atomic_counter.store(
+            atomic_counter.unsafe_store(
                 tid * 2,
                 Int32(
                     EP_DATA_READY_FLAG
@@ -4032,10 +4036,10 @@ struct EPDispatchKernel[
                 )
             else:
                 pair_token_count = prefix_sum_arr[tid] - prefix_sum_arr[tid - 1]
-            atomic_counter.store(tid * 2 + 1, Int32(pair_token_count))
+            atomic_counter.unsafe_store(tid * 2 + 1, Int32(pair_token_count))
 
             # Reset the receive count buffer.
-            recv_count_p.store(tid, UInt64.MAX_FINITE)
+            recv_count_p.unsafe_store(tid, UInt64.MAX_FINITE)
 
     @staticmethod
     @inline(.always)
@@ -4299,7 +4303,7 @@ struct EPDispatchKernel[
                 """
                 if lane_id() < Self.top_k:
                     var src_topk_idx = bitcast[.uint16, 1](
-                        token_ptr.load[
+                        token_ptr.unsafe_load[
                             width=size_of[UInt16](),
                             alignment=size_of[UInt16](),
                         ](
@@ -4308,7 +4312,7 @@ struct EPDispatchKernel[
                         )
                     )
                     var src_idx = bitcast[.int32, 1](
-                        token_ptr.load[
+                        token_ptr.unsafe_load[
                             width=size_of[Int32](),
                             alignment=size_of[Int32](),
                         ](Self.token_fmt_type.src_info_offset())
@@ -4414,7 +4418,7 @@ struct EPDispatchKernel[
                 Int32(-1),
             )
             if count == 1:
-                atomic_counter.store(Self.ready_flag_offset, Int32(0))
+                atomic_counter.unsafe_store(Self.ready_flag_offset, Int32(0))
 
     @staticmethod
     @inline(.always)
@@ -4470,8 +4474,8 @@ struct EPDispatchKernel[
                 ordering=Ordering.RELAXED
             ](fused_se_counter.unsafe_offset(1), 1)
             if started == Int32(n_sms_for_shared) - 1:
-                fused_se_counter.store(Int32(0))
-                fused_se_counter.store(1, Int32(0))
+                fused_se_counter.unsafe_store(Int32(0))
+                fused_se_counter.unsafe_store(1, Int32(0))
         barrier()
 
         for tile_id in range(sm_id, n_tiles, n_sms_for_shared):
@@ -4984,7 +4988,7 @@ struct EPCombineKernel[
             # there are enough of them. `dispatch_wait` left a cumulative count
             # in the last pair.
             run_legacy = (
-                Int(atomic_counter.load(2 * (Self.n_experts - 1)))
+                Int(atomic_counter.unsafe_load(2 * (Self.n_experts - 1)))
                 - EP_DATA_READY_FLAG
             ) < 4 * Self.n_experts
             if not run_legacy:
@@ -5024,7 +5028,7 @@ struct EPCombineKernel[
                         Int(tid), Self.n_local_experts
                     )
                     var t_pair = t_expert * Self.n_ranks + t_rank
-                    var tec = atomic_counter.load[
+                    var tec = atomic_counter.unsafe_load[
                         width=2, alignment=align_of[SIMD[.int32, 2]]()
                     ](2 * t_pair)
                     # Clamp: a corrupt count would otherwise size the unit
@@ -5114,7 +5118,7 @@ struct EPCombineKernel[
                                     ordering=Ordering.ACQUIRE,
                                     scope=DEVICE_SCOPE,
                                 ]()
-                                atomic_counter.store(
+                                atomic_counter.unsafe_store(
                                     Self.pair_done_offset + pr, Int32(0)
                                 )
                                 var e_l, d_r = divmod(pr, Self.n_ranks)
@@ -5209,7 +5213,7 @@ struct EPCombineKernel[
                 # and end are stored in the atomic counter by the
                 # `dispatch_wait_kernel`.
                 comptime DATA_READY_FLAG = 1024
-                var token_end_count = atomic_counter.load[
+                var token_end_count = atomic_counter.unsafe_load[
                     width=2,
                     alignment=align_of[SIMD[.int32, 2]](),
                     invariant=True,
@@ -5403,7 +5407,7 @@ struct EPCombineKernel[
                         )
 
                         comptime if not Self.use_balanced_send:
-                            atomic_counter.store[
+                            atomic_counter.unsafe_store[
                                 width=2, alignment=align_of[SIMD[.int32, 2]]()
                             ](expert_rank_offset * 2, 0)
 
@@ -5429,9 +5433,9 @@ struct EPCombineKernel[
         _scoped_barrier[Self.num_threads, comm_barrier_id]()
         if smem_done[0] == Int32(1):
             if tid == 0:
-                atomic_counter.store(Self.blocks_done_offset, Int32(0))
+                atomic_counter.unsafe_store(Self.blocks_done_offset, Int32(0))
             if Int(tid) < Self.n_experts:
-                atomic_counter.store[
+                atomic_counter.unsafe_store[
                     width=2, alignment=align_of[SIMD[.int32, 2]]()
                 ](2 * Int(tid), SIMD[.int32, 2](0, 0))
 
@@ -5556,7 +5560,7 @@ struct EPCombineKernel[
             )
 
             # Reset the atomic counter for the next round.
-            atomic_counter.store(sm_id, 0)
+            atomic_counter.unsafe_store(sm_id, 0)
         barrier()
 
         comptime n_chunk_elems = WARP_SIZE * dst_simd_width
@@ -5587,7 +5591,7 @@ struct EPCombineKernel[
             comptime for topk_idx in range(Self.top_k):
                 comptime if Self.skip_a2a:
                     var topk_ids_ptr = topk_ids_p.unsafe_value()
-                    var expert_id = topk_ids_ptr.load(
+                    var expert_id = topk_ids_ptr.unsafe_load(
                         token_idx * Self.top_k + topk_idx
                     )
 
@@ -5607,7 +5611,7 @@ struct EPCombineKernel[
                 )
                 # recv_buf is fresh peer data each round: not invariant.
                 var recv_chunk = bitcast[output_type, dst_simd_width](
-                    recv_buf_ptr.load[
+                    recv_buf_ptr.unsafe_load[
                         width=byte_simd_width,
                         alignment=_align,
                     ](

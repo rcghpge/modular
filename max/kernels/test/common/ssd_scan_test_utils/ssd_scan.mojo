@@ -71,16 +71,16 @@ def check_grouped_exact[
     pool_size: Int,
 ) raises:
     for i in range(y_size):
-        var a = y_base.load(i)
-        var b = y_new.load(i)
+        var a = y_base.unsafe_load(i)
+        var b = y_new.unsafe_load(i)
         if not isfinite(a) or not isfinite(b) or a.to_bits() != b.to_bits():
             raise Error(
                 "grouped SSD output bits differ or are nonfinite at "
                 + String(i)
             )
     for i in range(pool_size):
-        var a = pool_base.load(i)
-        var b = pool_new.load(i)
+        var a = pool_base.unsafe_load(i)
+        var b = pool_new.unsafe_load(i)
         if not isfinite(a) or not isfinite(b) or a.to_bits() != b.to_bits():
             raise Error(
                 "grouped SSD state bits differ or are nonfinite at " + String(i)
@@ -102,14 +102,17 @@ def check_preserved_slots[
     for slot in range(max_slots):
         var writes_slot = False
         for b in range(batch):
-            if slot == Int(slots.load(b)):
+            if slot == Int(slots.unsafe_load(b)):
                 writes_slot = update_state_size == 0 or Bool(
-                    update_state.load(b)
+                    update_state.unsafe_load(b)
                 )
         if writes_slot:
             continue
         for i in range(slot * state_size, (slot + 1) * state_size):
-            if pool.load(i).to_bits() != initial_pool.load(i).to_bits():
+            if (
+                pool.unsafe_load(i).to_bits()
+                != initial_pool.unsafe_load(i).to_bits()
+            ):
                 raise Error(
                     "SSD preserved pool slot overwritten at " + String(i)
                 )
@@ -128,22 +131,22 @@ def check_chunked_parity[
     """Checks chunked reductions against the serial kernel's bf16 tolerance."""
     var y_max = Float32(0)
     for i in range(y_size):
-        y_max = max(y_max, abs(Float32(y_serial.load(i))))
+        y_max = max(y_max, abs(Float32(y_serial.unsafe_load(i))))
     for i in range(y_size):
         assert_almost_equal(
-            Float32(y_serial.load(i)),
-            Float32(y_chunked.load(i)),
+            Float32(y_serial.unsafe_load(i)),
+            Float32(y_chunked.unsafe_load(i)),
             rtol=0.03,
             atol=Float64(0.01 * y_max),
             msg="chunked vs serial y mismatch at index " + String(i),
         )
     var s_max = Float32(0)
     for i in range(pool_size):
-        s_max = max(s_max, abs(Float32(pool_serial.load(i))))
+        s_max = max(s_max, abs(Float32(pool_serial.unsafe_load(i))))
     for i in range(pool_size):
         assert_almost_equal(
-            Float32(pool_serial.load(i)),
-            Float32(pool_chunked.load(i)),
+            Float32(pool_serial.unsafe_load(i)),
+            Float32(pool_chunked.unsafe_load(i)),
             rtol=0.03,
             atol=Float64(0.01 * s_max),
             msg="chunked vs serial state mismatch at pool index " + String(i),
@@ -450,7 +453,7 @@ def run_ssd_gpu[
         var pool_base_h = unsafe_alloc[Scalar[state_dtype]](pool_size)
         var pool_initial_h = unsafe_alloc[Scalar[state_dtype]](pool_size)
         for i in range(pool_size):
-            pool_initial_h.store(i, pool.load(i))
+            pool_initial_h.unsafe_store(i, pool.unsafe_load(i))
 
         ctx.enqueue_memset(y_d, nan[dtype]())
         comptime if grouped_pair:
@@ -498,7 +501,9 @@ def run_ssd_gpu[
             max_slots,
         )
         for i in range(y_size, y_size + 64):
-            if not isnan(y_base_h.load(i)) or not isnan(y_out.load(i)):
+            if not isnan(y_base_h.unsafe_load(i)) or not isnan(
+                y_out.unsafe_load(i)
+            ):
                 raise Error(
                     "grouped SSD output guard overwritten at " + String(i)
                 )
@@ -562,5 +567,5 @@ def run_ssd_gpu[
     ctx.synchronize()
     comptime if guard_output:
         for i in range(y_size, y_size + 64):
-            if not isnan(y_out.load(i)):
+            if not isnan(y_out.unsafe_load(i)):
                 raise Error("SSD output guard overwritten at " + String(i))

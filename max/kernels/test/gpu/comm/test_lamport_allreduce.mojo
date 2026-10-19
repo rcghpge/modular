@@ -104,7 +104,9 @@ def _set_lamport_flag(sig: MutPointer[Signal, MutAnyOrigin], flag: UInt32):
     Lets a test place the counter just below the uint32 wrap without issuing
     ~2^32 real allreduces to reach it.
     """
-    sig[].lamport_state_ptr().store[volatile=True](Lamport.STATE_FLAG, flag)
+    sig[].lamport_state_ptr().unsafe_store[volatile=True](
+        Lamport.STATE_FLAG, flag
+    )
 
 
 def lamport_allreduce_test[

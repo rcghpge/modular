@@ -586,7 +586,7 @@ def _reducescatter_relay_kernel[
                 accum += (
                     in_ptrs[i]
                     .unsafe_address_space_cast[_target_address_space]()
-                    .load[
+                    .unsafe_load[
                         width=simd_width,
                         alignment=alignment,
                     ](base + elem_idx)
@@ -602,14 +602,16 @@ def _reducescatter_relay_kernel[
                     + residual_ptr.unsafe_address_space_cast[
                         _target_address_space
                     ]()
-                    .load[width=simd_width, alignment=alignment](
+                    .unsafe_load[width=simd_width, alignment=alignment](
                         base + elem_idx
                     )
                     .cast[accum_type]()
                 ).cast[dtype]()
-            out_ptr.unsafe_address_space_cast[_target_address_space]().store[
-                width=simd_width, alignment=alignment
-            ](elem_idx, reduced)
+            out_ptr.unsafe_address_space_cast[
+                _target_address_space
+            ]().unsafe_store[width=simd_width, alignment=alignment](
+                elem_idx, reduced
+            )
     else:
         # Reduce-relay role: take a slice of one peer-group destination's
         # partition, pull it from ALL `ngpus` of that group's inputs --
@@ -683,7 +685,7 @@ def _reducescatter_relay_kernel[
                         data[u * ngpus + g] = (
                             src_ptrs[g]
                             .unsafe_address_space_cast[_target_address_space]()
-                            .load[
+                            .unsafe_load[
                                 width=simd_width,
                                 alignment=alignment,
                             ](base + elem_idx)
@@ -702,11 +704,11 @@ def _reducescatter_relay_kernel[
                         # values the destination would have folded itself.
                         reduced = (
                             reduced.cast[accum_type]()
-                            + dst_res_ptr.load[
+                            + dst_res_ptr.unsafe_load[
                                 width=simd_width, alignment=alignment
                             ](base + elem_idx).cast[accum_type]()
                         ).cast[dtype]()
-                    dst_ptr.store[width=simd_width, alignment=alignment](
+                    dst_ptr.unsafe_store[width=simd_width, alignment=alignment](
                         elem_idx, reduced
                     )
 
@@ -1081,7 +1083,9 @@ def _reducescatter_p2p[
     } -> None:
         comptime if has_residual:
             var local_flat = Int(output_buffer.layout(coords))
-            var res = res_ptr_local.load[width=_width](local_flat + res_base)
+            var res = res_ptr_local.unsafe_load[width=_width](
+                local_flat + res_base
+            )
             output_buffer.store[alignment=alignment](
                 coords,
                 (val.cast[_accum_type]() + res.cast[_accum_type]()).cast[

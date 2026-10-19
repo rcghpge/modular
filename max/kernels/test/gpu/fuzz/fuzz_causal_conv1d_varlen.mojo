@@ -193,17 +193,17 @@ def run_one_case(
     rand(bias_h, dim)
     rand(pool_h, pool_slots * dim * state_len)
     for i in range(pool_slots * dim * state_len):
-        pool_ref_h.store(i, pool_h.load(i))
+        pool_ref_h.unsafe_store(i, pool_h.unsafe_load(i))
     var cum = 0
-    qsl_h.store(0, Int32(0))
+    qsl_h.unsafe_store(0, Int32(0))
     for b in range(batch):
         cum += lens[b]
-        qsl_h.store(b + 1, Int32(cum))
-        slot_h.store(b, UInt32(slots[b]))
+        qsl_h.unsafe_store(b + 1, Int32(cum))
+        slot_h.unsafe_store(b, UInt32(slots[b]))
         var has_init = spec.init_mode == 1 or (
             spec.init_mode == 2 and random_ui64(0, 1) == 1
         )
-        his_h.store(b, Scalar[.bool](has_init))
+        his_h.unsafe_store(b, Scalar[.bool](has_init))
 
     # Mode 0 passes an empty has_initial_state tensor, which the kernels read
     # as "no sequence has an initial state".

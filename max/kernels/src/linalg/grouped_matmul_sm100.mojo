@@ -1196,7 +1196,7 @@ def multi_stage_store_C[
                     else:
                         c_ptr.unsafe_offset(Int(n) * cN).unsafe_offset(
                             Int(m)
-                        ).store[alignment=alignment](val_vec)
+                        ).unsafe_store[alignment=alignment](val_vec)
 
         comptime if stage > 0 or stage == num_stages - 1:
             # Guard the tma read from shared memory is done.
@@ -1279,7 +1279,7 @@ def zero_output[
                     ),
                     zero_vec,
                 )
-            (ptr.unsafe_offset(thread_idx.x * simd_size)).store[
+            (ptr.unsafe_offset(thread_idx.x * simd_size)).unsafe_store[
                 alignment=alignment
             ](val)
             ptr = ptr.unsafe_offset(c_stride)

@@ -78,7 +78,7 @@ def ordering_guard_kernel(
             scratch[c] = seed
 
         if tid == 0:
-            while flags.load[volatile=True](c) != DATA_READY:
+            while flags.unsafe_load[volatile=True](c) != DATA_READY:
                 pass
             fence[ordering=Ordering.ACQUIRE, scope=DEVICE_SCOPE]()
         barrier()

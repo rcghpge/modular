@@ -107,13 +107,13 @@ def _accum_bf16_to_fp32_kernel[
     var accum_idx = global_idx.x * output_simd_width
     if accum_idx >= _per_batch_elems:
         return
-    var src_val = src_bf16_ptr.load[
+    var src_val = src_bf16_ptr.unsafe_load[
         width=output_simd_width, alignment=bf16_alignment
     ](accum_idx).cast[.float32]()
-    var accum_val = accum_fp32_ptr.load[
+    var accum_val = accum_fp32_ptr.unsafe_load[
         width=output_simd_width, alignment=fp32_alignment
     ](accum_idx)
-    accum_fp32_ptr.store[alignment=fp32_alignment](
+    accum_fp32_ptr.unsafe_store[alignment=fp32_alignment](
         accum_idx, accum_val + src_val
     )
 
@@ -132,9 +132,9 @@ def _fp32_to_dtype_plain_kernel[
     var output_idx = global_idx.x * output_simd_width
     if output_idx >= _output_elems:
         return
-    dst_ptr.store[alignment=align_of[SIMD[dtype, output_simd_width]]()](
+    dst_ptr.unsafe_store[alignment=align_of[SIMD[dtype, output_simd_width]]()](
         output_idx,
-        src_fp32_ptr.load[
+        src_fp32_ptr.unsafe_load[
             width=output_simd_width,
             alignment=align_of[SIMD[.float32, output_simd_width]](),
         ](output_idx).cast[dtype](),
@@ -178,7 +178,7 @@ def _fp32_to_dtype_epilogue_kernel[
     var w: Int
     var c: Int
     w, c = udivmod(rem, C_out)
-    var val = src_fp32_ptr.load[
+    var val = src_fp32_ptr.unsafe_load[
         width=output_simd_width,
         alignment=align_of[SIMD[.float32, output_simd_width]](),
     ](output_idx).cast[dtype]()
@@ -221,11 +221,11 @@ def _fp32_to_dtype_compute_kernel[
     var w: Int
     var c: Int
     w, c = udivmod(rem, C_out)
-    var val = src_fp32_ptr.load[
+    var val = src_fp32_ptr.unsafe_load[
         width=output_simd_width,
         alignment=align_of[SIMD[.float32, output_simd_width]](),
     ](output_idx).cast[dtype]()
-    dst_ptr.store[alignment=align_of[SIMD[dtype, output_simd_width]]()](
+    dst_ptr.unsafe_store[alignment=align_of[SIMD[dtype, output_simd_width]]()](
         output_idx,
         compute_fn[alignment=output_simd_width]((b, d, h, w, c), val),
     )

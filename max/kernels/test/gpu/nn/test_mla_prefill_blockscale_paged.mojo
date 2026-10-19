@@ -458,12 +458,12 @@ def run_test_paged_prefill_blockscale[
         for s in range(seq_len):
             for h in range(num_heads):
                 for d in range(kv_depth):
-                    var actual = output_ptr.load(
+                    var actual = output_ptr.unsafe_load(
                         (b * seq_len + s) * num_heads * kv_depth
                         + h * kv_depth
                         + d
                     ).cast[.float64]()
-                    var expect = output_ref_host.load(
+                    var expect = output_ref_host.unsafe_load(
                         ((b * seq_len + s) * num_heads + h) * depth + d
                     ).cast[.float64]()
                     var abs_err = abs(actual - expect)

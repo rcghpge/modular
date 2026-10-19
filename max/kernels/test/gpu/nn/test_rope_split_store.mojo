@@ -291,7 +291,7 @@ def execute_test[
         var flat = (
             Int(idx[0]) * k_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
-        return k_ptr.unsafe_offset(flat).load[width=width]()
+        return k_ptr.unsafe_offset(flat).unsafe_load[width=width]()
 
     def v_load_fn[
         width: Int, alignment: Int
@@ -299,7 +299,7 @@ def execute_test[
         var flat = (
             Int(idx[0]) * v_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
-        return v_ptr.unsafe_offset(flat).load[width=width]()
+        return v_ptr.unsafe_offset(flat).unsafe_load[width=width]()
 
     kv_cache_store_ragged[target="gpu"](
         unfused_k_cache,
@@ -704,7 +704,7 @@ def execute_test_with_position_ids[
         var flat = (
             Int(idx[0]) * k_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
-        return k_ptr.unsafe_offset(flat).load[width=width]()
+        return k_ptr.unsafe_offset(flat).unsafe_load[width=width]()
 
     def v_load_fn[
         width: Int, alignment: Int
@@ -712,7 +712,7 @@ def execute_test_with_position_ids[
         var flat = (
             Int(idx[0]) * v_stride0 + Int(idx[1]) * head_dim + Int(idx[2])
         )
-        return v_ptr.unsafe_offset(flat).load[width=width]()
+        return v_ptr.unsafe_offset(flat).unsafe_load[width=width]()
 
     kv_cache_store_ragged[target="gpu"](
         unfused_k_cache,

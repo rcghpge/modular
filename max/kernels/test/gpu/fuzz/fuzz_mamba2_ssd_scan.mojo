@@ -230,21 +230,23 @@ def run_one_case(
     rand(dt_bias_h, nheads)
     rand(pool_h, pool_slots * head_row)
     for i in range(nheads):
-        A_h.store(i, Scalar[dtype](Float32(A_h.load(i)) * -1.0 - 0.1))
+        A_h.unsafe_store(
+            i, Scalar[dtype](Float32(A_h.unsafe_load(i)) * -1.0 - 0.1)
+        )
     for i in range(total * dt_row):
-        dt_h.store(i, Scalar[dtype](Float32(dt_h.load(i)) - 0.5))
+        dt_h.unsafe_store(i, Scalar[dtype](Float32(dt_h.unsafe_load(i)) - 0.5))
     for i in range(pool_slots * head_row):
-        pool_ref_h.store(i, pool_h.load(i))
+        pool_ref_h.unsafe_store(i, pool_h.unsafe_load(i))
     var cum = 0
-    qsl_h.store(0, Int32(0))
+    qsl_h.unsafe_store(0, Int32(0))
     for b in range(batch):
         cum += lens[b]
-        qsl_h.store(b + 1, Int32(cum))
-        slot_h.store(b, UInt32(slots[b]))
+        qsl_h.unsafe_store(b + 1, Int32(cum))
+        slot_h.unsafe_store(b, UInt32(slots[b]))
         var has_init = spec.init_mode == 1 or (
             spec.init_mode == 2 and random_ui64(0, 1) == 1
         )
-        his_h.store(b, Scalar[.bool](has_init))
+        his_h.unsafe_store(b, Scalar[.bool](has_init))
 
     # Mode 0 passes an empty has_initial_state tensor, which the kernels read
     # as "no sequence has an initial state".

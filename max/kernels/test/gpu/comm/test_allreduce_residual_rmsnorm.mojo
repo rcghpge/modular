@@ -300,7 +300,7 @@ def test_fused_allreduce_rmsnorm_fp8[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) {var ref_sum_ptr} -> SIMD[in_dtype, width]:
         var linear_idx = idx[0] * cols + idx[1]
-        return ref_sum_ptr.load[width=width, alignment=width](linear_idx)
+        return ref_sum_ptr.unsafe_load[width=width, alignment=width](linear_idx)
 
     var ref_fp8_tile = TileTensor(
         ref_fp8_dev,
@@ -673,7 +673,7 @@ def test_fused_allreduce_residual_rmsnorm_fp8[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) {var ref_sum_ptr} -> SIMD[in_dtype, width]:
         var linear_idx = idx[0] * cols + idx[1]
-        return ref_sum_ptr.load[width=width, alignment=width](linear_idx)
+        return ref_sum_ptr.unsafe_load[width=width, alignment=width](linear_idx)
 
     comptime shape = IndexList[2](rows, cols)
     var ref_fp8_tile = TileTensor(

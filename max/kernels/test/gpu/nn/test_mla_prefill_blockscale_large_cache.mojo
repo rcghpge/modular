@@ -279,7 +279,7 @@ def run_finite_check[
     # Finite-check every kernel-written output element.
     var num_nonfinite = 0
     for i in range(o_size):
-        var val = output_ptr.load(i).cast[.float32]()
+        var val = output_ptr.unsafe_load(i).cast[.float32]()
         if isnan(val) or isinf(val):
             num_nonfinite += 1
 

@@ -313,22 +313,22 @@ def _bench_ssd[
     rand(dt_bias_h, nheads)
     rand(is_h, batch * state_size)
     for i in range(nheads):
-        A_h.store(i, Scalar[dtype](-Float32(A_h.load(i)) - 0.1))
+        A_h.unsafe_store(i, Scalar[dtype](-Float32(A_h.unsafe_load(i)) - 0.1))
     for i in range(total_len * nheads):
-        dt_h.store(i, Scalar[dtype](Float32(dt_h.load(i)) - 0.5))
+        dt_h.unsafe_store(i, Scalar[dtype](Float32(dt_h.unsafe_load(i)) - 0.5))
     for i in range(pool_size):
-        pool_h.store(i, 0)
+        pool_h.unsafe_store(i, 0)
     var offset = 0
-    qsl_h.store(0, 0)
+    qsl_h.unsafe_store(0, 0)
     for b in range(batch):
-        his_h.store(b, True)
-        us_h.store(b, True)
-        slot_h.store(b, UInt32(b + 1))
+        his_h.unsafe_store(b, True)
+        us_h.unsafe_store(b, True)
+        slot_h.unsafe_store(b, UInt32(b + 1))
         offset += seq_lengths[b]
-        qsl_h.store(b + 1, Int32(offset))
+        qsl_h.unsafe_store(b + 1, Int32(offset))
         for i in range(state_size):
-            pool_h.store(
-                (b + 1) * state_size + i, is_h.load(b * state_size + i)
+            pool_h.unsafe_store(
+                (b + 1) * state_size + i, is_h.unsafe_load(b * state_size + i)
             )
     print(
         "SSD_SHAPE,nheads=",

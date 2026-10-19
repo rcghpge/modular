@@ -507,24 +507,24 @@ def _fp8_index_score_amd_kernel[
             # A fragment (M = 32 heads): lane L owns the 32 contiguous depth
             # bytes of head row L % 32 at depth offset (L // 32) * 32.
             var a_off = (m * 32 + col) * depth + s * 64 + half * 32
-            var a_frag = q_ptr.load[width=16](a_off).join(
-                q_ptr.load[width=16](a_off + 16)
+            var a_frag = q_ptr.unsafe_load[width=16](a_off).join(
+                q_ptr.unsafe_load[width=16](a_off + 16)
             )
             # B fragment (N = 32 keys): same lane rule on this wave's key rows.
             var b_off = s * 64 + half * 32
-            var b_frag = k_row_ptr.load[width=16](b_off).join(
-                k_row_ptr.load[width=16](b_off + 16)
+            var b_frag = k_row_ptr.unsafe_load[width=16](b_off).join(
+                k_row_ptr.unsafe_load[width=16](b_off + 16)
             )
             gpu_mma(acc, a_frag, b_frag, acc)
 
         # acc[p] = D[head = ACC_ROW_OFFSETS_32x32[p] + 4*half, key = col]: gather
         # this lane's 16 q_s in fragment order and reduce relu(acc) * q_s in-lane.
         var qs_vec = (
-            qs_ptr.load[width=4](m * 32 + half * 4)
-            .join(qs_ptr.load[width=4](m * 32 + 8 + half * 4))
+            qs_ptr.unsafe_load[width=4](m * 32 + half * 4)
+            .join(qs_ptr.unsafe_load[width=4](m * 32 + 8 + half * 4))
             .join(
-                qs_ptr.load[width=4](m * 32 + 16 + half * 4).join(
-                    qs_ptr.load[width=4](m * 32 + 24 + half * 4)
+                qs_ptr.unsafe_load[width=4](m * 32 + 16 + half * 4).join(
+                    qs_ptr.unsafe_load[width=4](m * 32 + 24 + half * 4)
                 )
             )
         )

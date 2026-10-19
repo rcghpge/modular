@@ -292,8 +292,8 @@ def _gemv_kernel_impl[
         var idx = i * WARP_SIZE + lane_id
         if idx < _k:
             accum += (
-                a.load(global_warp_id * _k + idx).cast[accum_type]()
-                * b.load(idx).cast[accum_type]()
+                a.unsafe_load(global_warp_id * _k + idx).cast[accum_type]()
+                * b.unsafe_load(idx).cast[accum_type]()
             )
 
     accum = warp.sum(accum)

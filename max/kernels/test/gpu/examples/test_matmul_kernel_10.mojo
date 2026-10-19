@@ -247,11 +247,11 @@ def sgemm_warp_tiling_kernel[
                         )
                     )
 
-                    var vec = alpha * result_vec + beta * C_interim.load[
+                    var vec = alpha * result_vec + beta * C_interim.unsafe_load[
                         width=4, alignment=16
                     ](c_idx)
 
-                    C_interim.store[alignment=16](c_idx, vec)
+                    C_interim.unsafe_store[alignment=16](c_idx, vec)
 
 
 def matmul_naive(

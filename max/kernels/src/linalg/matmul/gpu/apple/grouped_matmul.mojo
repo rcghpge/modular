@@ -329,7 +329,7 @@ def grouped_matmul_mma_kernel[
         var col = Int(idx[1])
         var row_idx = Coord(row, col)
         comptime if has_compute_fn:
-            c_ptr.unsafe_offset(row * N).unsafe_offset(col).store[
+            c_ptr.unsafe_offset(row * N).unsafe_offset(col).unsafe_store[
                 alignment=alignment
             ](
                 rebind[SIMD[c_type, width]](

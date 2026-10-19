@@ -356,7 +356,9 @@ struct Naive2dConvolution[
                             )
 
         # Store the computed output at the given output position..
-        self.output.store(f + F * (wo + WO * (ho + HO * (do + DO * n))), value)
+        self.output.unsafe_store(
+            f + F * (wo + WO * (ho + HO * (do + DO * n))), value
+        )
 
 
 # ===----------------------------------------------------------------------=== #
@@ -1111,7 +1113,7 @@ struct ConvDirectNHWC[
                 else:
                     output_micro_tile.store(
                         (i, j * simd_size),
-                        output_ptr.unsafe_offset(j * simd_size).load[
+                        output_ptr.unsafe_offset(j * simd_size).unsafe_load[
                             width=simd_size
                         ](),
                     )
@@ -1166,7 +1168,7 @@ struct ConvDirectNHWC[
                         output_vec,
                     )
                 else:
-                    output_ptr.store(j * simd_size, output_vec)
+                    output_ptr.unsafe_store(j * simd_size, output_vec)
 
             comptime if (
                 Self.output_layout.static_shape[Self.output_layout.rank - 1]
@@ -3233,7 +3235,7 @@ def pack_filter[
                         alignment=align_of[filter.dtype](),
                         invariant=False,
                     ](filter.layout.idx2crd(filter_offset + i * simd_size))
-                    packed_filter_ptr.store(
+                    packed_filter_ptr.unsafe_store(
                         i * simd_size, filter_vec.cast[packed_filter_dtype]()
                     )
 
@@ -3269,7 +3271,7 @@ def pack_filter[
                 var filter_vec = partial_simd_load[simd_size](
                     filter_ptr, 0, residual, 0
                 ).cast[packed_filter.dtype]()
-                packed_filter_ptr.store(filter_vec)
+                packed_filter_ptr.unsafe_store(filter_vec)
 
                 # Hence, packed filter is incremented by simd_size
                 packed_filter_ptr = packed_filter_ptr.unsafe_offset(simd_size)
@@ -3318,7 +3320,7 @@ def pack_filter_from_fcrs(
                             + c * dim_F
                             + f
                         )
-                        rscf_buf.store(dst, filter[f, c, r, s])
+                        rscf_buf.unsafe_store(dst, filter[f, c, r, s])
         # Reinterpret as int64 for pack_filter (matches existing convention).
         var rscf_tile = TileTensor(
             rscf_buf.unsafe_bitcast[Int64](),
@@ -3344,7 +3346,7 @@ def pack_filter_from_fcrs(
                                 + c * dim_F
                                 + f
                             )
-                            rscf_buf.store(dst, filter[f, c, q, r, s])
+                            rscf_buf.unsafe_store(dst, filter[f, c, q, r, s])
         var rscf_tile = TileTensor(
             rscf_buf.unsafe_bitcast[Int64](),
             row_major(
@@ -4552,7 +4554,7 @@ def _conv_miopen[
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
             )
-            filter_frsc_ptr.store(out_idx, val)
+            filter_frsc_ptr.unsafe_store(out_idx, val)
 
         elementwise[1, target="gpu"](
             transpose_fcrs_to_frsc, (F_dim, R_dim, S_dim, C_dim), ctx
@@ -4587,7 +4589,7 @@ def _conv_miopen[
             var out_idx = (
                 f * R_dim * S_dim * C_dim + r * S_dim * C_dim + s * C_dim + c
             )
-            filter_frsc_ptr.store(out_idx, val)
+            filter_frsc_ptr.unsafe_store(out_idx, val)
 
         elementwise[1, target="gpu"](
             transpose_rscf_to_frsc, (F_dim, R_dim, S_dim, C_dim), ctx
@@ -4632,7 +4634,7 @@ def _conv_miopen[
                 + s * C_dim
                 + c
             )
-            filter_frsc_ptr.store(out_idx, val)
+            filter_frsc_ptr.unsafe_store(out_idx, val)
 
         elementwise[1, target="gpu"](
             transpose_qrscf_to_fqrsc, (F_dim, Q_dim, R_dim, S_dim, C_dim), ctx

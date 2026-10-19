@@ -184,8 +184,8 @@ def check_ldmatrix_fp8[
     ctx.synchronize()
 
     for i in range(M * N):
-        var out_val = c_host.load(i)
-        var out_ref = c_host_ref.load(i)
+        var out_val = c_host.unsafe_load(i)
+        var out_ref = c_host_ref.unsafe_load(i)
         assert_almost_equal(out_val, out_ref)
 
     _ = a_device

@@ -204,7 +204,7 @@ def test_dynamic[
         for i in reversed(range(_rank)):
             linear_idx += idx[i] * stride
             stride *= shape[i]
-        return in_ptr.load[width=width, alignment=width](linear_idx)
+        return in_ptr.unsafe_load[width=width, alignment=width](linear_idx)
 
     var out_tile = TileTensor(out_device, row_major(Coord(shape)))
     var scale_tile = TileTensor(scales_device, row_major(Coord(scale_shape)))

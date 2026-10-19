@@ -1250,7 +1250,7 @@ def packA_i8mm[
                 var t0 = a_rows.load[
                     width=8, alignment=align_of[a_type](), invariant=False
                 ](Coord(j + idx, l))
-                a_packed_ptr.store(kh * j + 2 * l + 8 * idx, t0)
+                a_packed_ptr.unsafe_store(kh * j + 2 * l + 8 * idx, t0)
 
         comptime for idx in range(nrow):
             var t0 = partial_simd_load[8](

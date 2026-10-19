@@ -100,10 +100,10 @@ def p2p_copy_kernel[
 
     for idx in range(global_tid, num_vectors, stride):
         var elem_idx = idx * width
-        var data = src.unsafe_address_space_cast[_target_address_space]().load[
-            width=width, alignment=vec_align
-        ](elem_idx)
-        dst.unsafe_address_space_cast[_target_address_space]().store[
+        var data = src.unsafe_address_space_cast[
+            _target_address_space
+        ]().unsafe_load[width=width, alignment=vec_align](elem_idx)
+        dst.unsafe_address_space_cast[_target_address_space]().unsafe_store[
             width=width, alignment=vec_align
         ](elem_idx, data)
 

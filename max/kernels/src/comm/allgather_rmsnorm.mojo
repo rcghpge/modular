@@ -164,7 +164,7 @@ def _allgather_rmsnorm_kernel[
             gathered = (
                 src_ptrs[g]
                 .unsafe_address_space_cast[_target_address_space]()
-                .load[width=simd_width, alignment=align, invariant=True](
+                .unsafe_load[width=simd_width, alignment=align, invariant=True](
                     src_elem
                 )
             )

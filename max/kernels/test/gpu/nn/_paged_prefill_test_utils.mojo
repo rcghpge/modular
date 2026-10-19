@@ -841,12 +841,12 @@ def run_test_paged_prefill[
             for s in range(seq_len):
                 for h in range(num_heads):
                     for d in range(v_dim):
-                        var actual = output_ptr.load(
+                        var actual = output_ptr.unsafe_load(
                             (b * seq_len + s) * num_heads * v_dim
                             + h * v_dim
                             + d
                         ).cast[.float64]()
-                        var expect = output_ref_host.load(
+                        var expect = output_ref_host.unsafe_load(
                             ((b * seq_len + s) * num_heads + h) * depth + d
                         ).cast[.float64]()
                         var abs_err = abs(actual - expect)
@@ -892,12 +892,12 @@ def run_test_paged_prefill[
             for s in range(seq_len):
                 for h in range(num_heads):
                     for d in range(v_dim):
-                        var actual = output_ptr.load(
+                        var actual = output_ptr.unsafe_load(
                             (b * seq_len + s) * num_heads * v_dim
                             + h * v_dim
                             + d
                         ).cast[.float64]()
-                        var expect = output_ref_host.load(
+                        var expect = output_ref_host.unsafe_load(
                             ((b * seq_len + s) * num_heads + h) * depth + d
                         ).cast[.float64]()
                         assert_almost_equal(
@@ -910,12 +910,12 @@ def run_test_paged_prefill[
             for s in range(seq_len):
                 for h in range(num_heads):
                     for d in range(v_dim):
-                        var actual = output_ptr.load(
+                        var actual = output_ptr.unsafe_load(
                             (b * seq_len + s) * num_heads * v_dim
                             + h * v_dim
                             + d
                         ).cast[.float64]()
-                        var expect = output_ref_host.load(
+                        var expect = output_ref_host.unsafe_load(
                             ((b * seq_len + s) * num_heads + h) * depth + d
                         ).cast[.float64]()
                         var abs_err = abs(actual - expect)

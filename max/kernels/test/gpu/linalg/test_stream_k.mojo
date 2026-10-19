@@ -112,8 +112,12 @@ def mac_loop[
         for kk in range(BLOCK_K):
             var actual_k = k_offset + kk
             if global_r < M and actual_k < K and global_c < N:
-                var a_val = A.load(global_r * stride_am + actual_k * stride_ak)
-                var b_val = B.load(actual_k * stride_bk + global_c * stride_bn)
+                var a_val = A.unsafe_load(
+                    global_r * stride_am + actual_k * stride_ak
+                )
+                var b_val = B.unsafe_load(
+                    actual_k * stride_bk + global_c * stride_bn
+                )
                 accum += a_val.cast[c_type]() * b_val.cast[c_type]()
 
     var c_offset = global_r * stride_cm + global_c * stride_cn
@@ -276,8 +280,12 @@ def full_tiles_kernel[
         for kk in range(BLOCK_K):
             var actual_k = k_offset + kk
             if global_r < M and actual_k < K and global_c < N:
-                var a_val = A.load(global_r * stride_am + actual_k * stride_ak)
-                var b_val = B.load(actual_k * stride_bk + global_c * stride_bn)
+                var a_val = A.unsafe_load(
+                    global_r * stride_am + actual_k * stride_ak
+                )
+                var b_val = B.unsafe_load(
+                    actual_k * stride_bk + global_c * stride_bn
+                )
                 accum += a_val.cast[c_type]() * b_val.cast[c_type]()
 
     if global_r < M and global_c < N:

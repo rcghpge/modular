@@ -90,37 +90,37 @@ def run_varlen_selective_scan_fwd_gpu[
 
     # Scale A to be negative for stability
     for i in range(dim * dstate):
-        var val = A_h.load(i)
-        A_h.store(i, Scalar[dtype](Float32(val) * -0.5))
+        var val = A_h.unsafe_load(i)
+        A_h.unsafe_store(i, Scalar[dtype](Float32(val) * -0.5))
 
     # Scale delta to be positive
     for i in range(dim * total_length):
-        var val = delta_h.load(i)
-        delta_h.store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
+        var val = delta_h.unsafe_load(i)
+        delta_h.unsafe_store(i, Scalar[dtype](abs(Float32(val)) * 0.5))
 
     # Initialize query_start_loc (cumulative lengths)
     var cumsum = 0
-    query_start_loc_h.store(0, Int32(0))
+    query_start_loc_h.unsafe_store(0, Int32(0))
     for i in range(batch):
         cumsum += seq_lengths[i]
-        query_start_loc_h.store(i + 1, Int32(cumsum))
+        query_start_loc_h.unsafe_store(i + 1, Int32(cumsum))
 
     # Initialize cache_indices (identity mapping)
     for i in range(batch):
-        cache_indices_h.store(i, Int32(i))
+        cache_indices_h.unsafe_store(i, Int32(i))
 
     # Initialize has_initial_state (all False)
     for i in range(batch):
-        has_initial_state_h.store(i, Scalar[.bool](False))
+        has_initial_state_h.unsafe_store(i, Scalar[.bool](False))
 
     # Copy z for GPU
     if has_z:
         for i in range(dim * total_length):
-            z_gpu_h.store(i, z_cpu_h.load(i))
+            z_gpu_h.unsafe_store(i, z_cpu_h.unsafe_load(i))
 
     # Copy ssm_states for GPU
     for i in range(batch * dim * dstate):
-        ssm_states_gpu_h.store(i, ssm_states_cpu_h.load(i))
+        ssm_states_gpu_h.unsafe_store(i, ssm_states_cpu_h.unsafe_load(i))
 
     # Create TileTensors for CPU kernel
     var u_cpu_tt = TileTensor(u_h, row_major(dim, total_length))
@@ -359,8 +359,8 @@ def run_varlen_selective_scan_fwd_gpu[
     var output_size = dim * total_length
 
     for i in range(output_size):
-        var cpu_val = Float32(output_to_check_cpu.load(i))
-        var gpu_val = Float32(output_to_check_host.load(i))
+        var cpu_val = Float32(output_to_check_cpu.unsafe_load(i))
+        var gpu_val = Float32(output_to_check_host.unsafe_load(i))
         assert_almost_equal(cpu_val, gpu_val, rtol=rtol)
 
     # Cleanup
@@ -513,14 +513,16 @@ def run_varlen_selective_state_update_gpu[
     rand(z_h, n_x)
     rand(dt_bias_h, n_D)
     for i in range(n_state):
-        state_gpu_h.store(i, state_cpu_h.load(i))
+        state_gpu_h.unsafe_store(i, state_cpu_h.unsafe_load(i))
     for i in range(n_A):
-        A_h.store(i, Scalar[dtype](Float32(A_h.load(i)) * -0.5))
+        A_h.unsafe_store(i, Scalar[dtype](Float32(A_h.unsafe_load(i)) * -0.5))
     for i in range(n_x):
-        dt_h.store(i, Scalar[dtype](abs(Float32(dt_h.load(i))) * 0.5))
+        dt_h.unsafe_store(
+            i, Scalar[dtype](abs(Float32(dt_h.unsafe_load(i))) * 0.5)
+        )
     # Reversed mapping exercises the state_batch_indices indirection.
     for i in range(batch):
-        sbi_h.store(i, Int32(batch - 1 - i))
+        sbi_h.unsafe_store(i, Int32(batch - 1 - i))
 
     var state_cpu_tt = TileTensor(
         state_cpu_h, row_major(batch, nheads, dim, dstate)
@@ -641,14 +643,14 @@ def run_varlen_selective_state_update_gpu[
 
     for i in range(n_state):
         assert_almost_equal(
-            Float32(state_cpu_h.load(i)),
-            Float32(state_gpu_h.load(i)),
+            Float32(state_cpu_h.unsafe_load(i)),
+            Float32(state_gpu_h.unsafe_load(i)),
             rtol=rtol,
         )
     for i in range(n_x):
         assert_almost_equal(
-            Float32(out_cpu_h.load(i)),
-            Float32(out_gpu_h.load(i)),
+            Float32(out_cpu_h.unsafe_load(i)),
+            Float32(out_gpu_h.unsafe_load(i)),
             rtol=rtol,
         )
 

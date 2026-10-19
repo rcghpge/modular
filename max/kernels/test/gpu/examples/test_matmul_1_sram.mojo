@@ -127,9 +127,9 @@ def matmul_sram(
         barrier()
 
         for k in range(tile_size):
-            result += a_shared.load(localRow * tile_size + k) * b_shared.load(
-                k * tile_size + localCol
-            )
+            result += a_shared.unsafe_load(
+                localRow * tile_size + k
+            ) * b_shared.unsafe_load(k * tile_size + localCol)
 
         barrier()
 

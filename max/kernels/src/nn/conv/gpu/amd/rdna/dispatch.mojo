@@ -102,7 +102,7 @@ def _im2col_nhwc_kernel[
     if h_in >= 0 and h_in < _H and w_in >= 0 and w_in < _W:
         val = input_ptr[batch * _H * _W * _C + h_in * _W * _C + w_in * _C + c]
 
-    output_ptr.store(tid, val)
+    output_ptr.unsafe_store(tid, val)
 
 
 @__name(t"rdna_transpose_rscf_to_nk_{dtype}")
@@ -128,7 +128,7 @@ def _transpose_rscf_to_nk[
     if tid >= total:
         return
     var f, k = divmod(tid, K)
-    dst_ptr.store(tid, src_ptr.load(k * _F + f))
+    dst_ptr.unsafe_store(tid, src_ptr.unsafe_load(k * _F + f))
 
 
 @__name(t"rdna_transpose_fcrs_to_nk_{dtype}")
@@ -155,8 +155,8 @@ def _transpose_fcrs_to_nk[
     var f, k = divmod(tid, K)
     var r, sc = divmod(k, _S * _C)
     var s, c = divmod(sc, _C)
-    dst_ptr.store(
-        tid, src_ptr.load(f * _C * _R * _S + c * _R * _S + r * _S + s)
+    dst_ptr.unsafe_store(
+        tid, src_ptr.unsafe_load(f * _C * _R * _S + c * _R * _S + r * _S + s)
     )
 
 
@@ -475,7 +475,7 @@ def dispatch_rdna_conv2d[
                 comptime if has_residual:
                     var s = (
                         (resid_src.unsafe_offset(m_idx * N + n_idx))
-                        .load[width=_width]()
+                        .unsafe_load[width=_width]()
                         .cast[_dtype]()
                     )
                     out_val = out_val + s * resid_beta.cast[_dtype]()
@@ -525,7 +525,7 @@ def dispatch_rdna_conv2d[
                 comptime if has_residual:
                     var s = (
                         (resid_src.unsafe_offset(m_idx * N + n_idx))
-                        .load[width=_width]()
+                        .unsafe_load[width=_width]()
                         .cast[_dtype]()
                     )
                     out_val = out_val + s * resid_beta.cast[_dtype]()

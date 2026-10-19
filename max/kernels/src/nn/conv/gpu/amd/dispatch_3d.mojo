@@ -106,7 +106,7 @@ def _transpose_qrscf_to_fk_kpad[
     var f = tid // _K_padded
     var k = tid - f * _K_padded
     if k >= K_real:
-        dst_ptr.store(tid, Scalar[dtype](0))
+        dst_ptr.unsafe_store(tid, Scalar[dtype](0))
         return
     var q = k // (_R * _S * _C)
     var rsc = k - q * (_R * _S * _C)
@@ -114,7 +114,7 @@ def _transpose_qrscf_to_fk_kpad[
     var sc = rsc - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load((q, r, s, c, f))[0])
+    dst_ptr.unsafe_store(tid, src.load((q, r, s, c, f))[0])
 
 
 @__name(t"amd_4wave_3d_transpose_fcqrs_to_fk_kpad_{dtype}")
@@ -151,7 +151,7 @@ def _transpose_fcqrs_to_fk_kpad[
     var f = tid // _K_padded
     var k = tid - f * _K_padded
     if k >= K_real:
-        dst_ptr.store(tid, Scalar[dtype](0))
+        dst_ptr.unsafe_store(tid, Scalar[dtype](0))
         return
     var q = k // (_R * _S * _C)
     var rsc = k - q * (_R * _S * _C)
@@ -159,7 +159,7 @@ def _transpose_fcqrs_to_fk_kpad[
     var sc = rsc - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load((f, c, q, r, s))[0])
+    dst_ptr.unsafe_store(tid, src.load((f, c, q, r, s))[0])
 
 
 # ---------------------------------------------------------------------------

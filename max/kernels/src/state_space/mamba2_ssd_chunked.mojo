@@ -493,7 +493,7 @@ def ssd_state_passing[
 
 @always_inline
 def _ld2(ptr: Pointer[Scalar[.bfloat16], ...], off: Int) -> SIMD[.bfloat16, 2]:
-    return ptr.load[width=2, alignment=4](off)
+    return ptr.unsafe_load[width=2, alignment=4](off)
 
 
 @always_inline

@@ -244,7 +244,7 @@ def _allreduce_rmsnorm_fp8_kernel_warp_tiling[
                 vec_data += (
                     ptrs[gpu_idx]
                     .unsafe_address_space_cast[_target_address_space]()
-                    .load[
+                    .unsafe_load[
                         width=simd_width,
                         alignment=simd_width,
                         invariant=True,
@@ -550,7 +550,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     accum += (
                         ptrs[gpu_idx]
                         .unsafe_address_space_cast[_target_address_space]()
-                        .load[
+                        .unsafe_load[
                             width=simd_width,
                             alignment=simd_width,
                             invariant=True,
@@ -568,7 +568,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     var local_elem = local_row * _cols + col_idx
                     scratch_residual.unsafe_address_space_cast[
                         _target_address_space
-                    ]().store[width=simd_width, alignment=simd_width](
+                    ]().unsafe_store[width=simd_width, alignment=simd_width](
                         local_elem, accum.cast[in_dtype]()
                     )
 
@@ -604,7 +604,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                 if tid == 0:
                     scratch_scale.unsafe_address_space_cast[
                         _target_address_space
-                    ]().store(local_row, scale_factor)
+                    ]().unsafe_store(local_row, scale_factor)
 
                 # Quantize and write fp8 to local scratch.
                 if is_valid:
@@ -614,7 +614,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     var local_elem = local_row * _cols + col_idx
                     scratch_fp8.unsafe_address_space_cast[
                         _target_address_space
-                    ]().store[width=simd_width, alignment=simd_width](
+                    ]().unsafe_store[width=simd_width, alignment=simd_width](
                         local_elem, output_fp8
                     )
             else:
@@ -624,7 +624,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     var local_elem = local_row * _cols + col_idx
                     scratch_fp8.unsafe_address_space_cast[
                         _target_address_space
-                    ]().store[width=simd_width, alignment=simd_width](
+                    ]().unsafe_store[width=simd_width, alignment=simd_width](
                         local_elem, normalized.cast[out_dtype]()
                     )
 
@@ -653,7 +653,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                 var out_val = (
                     fp8_ptrs[gpu]
                     .unsafe_address_space_cast[_target_address_space]()
-                    .load[
+                    .unsafe_load[
                         width=simd_width,
                         alignment=simd_width,
                         invariant=True,
@@ -667,7 +667,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     scale_buffer[row] = (
                         scale_ptrs[gpu]
                         .unsafe_address_space_cast[_target_address_space]()
-                        .load[invariant=True](local_row)
+                        .unsafe_load[invariant=True](local_row)
                     )
 
             # Read bf16 residual from gpu's scratch (compile-time gated).
@@ -676,7 +676,7 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
                     var bf16_val = (
                         residual_ptrs[gpu]
                         .unsafe_address_space_cast[_target_address_space]()
-                        .load[
+                        .unsafe_load[
                             width=simd_width,
                             alignment=simd_width,
                             invariant=True,

@@ -1109,9 +1109,9 @@ def _sfb_cpasync_produce_tile[
                                 ).unsafe_address_space_cast[.SHARED](),
                             )
                         else:
-                            sfb_smem_tile_ptr.unsafe_offset(smem_offset).store(
-                                SIMD[sfb_dtype, SF_ATOM_K]()
-                            )
+                            sfb_smem_tile_ptr.unsafe_offset(
+                                smem_offset
+                            ).unsafe_store(SIMD[sfb_dtype, SF_ATOM_K]())
 
         # async_copy_arrive + mbar.arrive for each active position.
         # Multi-pass: same thread may arrive multiple times for MMA_N > 32.
@@ -1256,7 +1256,7 @@ def _sfb_cpasync_produce_tile_warpwide[
                         ).unsafe_address_space_cast[.SHARED](),
                     )
                 else:
-                    sfb_smem_tile_ptr.unsafe_offset(smem_offset).store(
+                    sfb_smem_tile_ptr.unsafe_offset(smem_offset).unsafe_store(
                         SIMD[sfb_dtype, SF_ATOM_K]()
                     )
 

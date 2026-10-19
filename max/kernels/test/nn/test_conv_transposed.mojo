@@ -237,12 +237,12 @@ def test_conv_transposed[
             def body0[
                 width: Int
             ](offset: Int) {var output_ref_ptr, var bias_ptr}:
-                output_ref_ptr.store(
+                output_ref_ptr.unsafe_store(
                     offset,
                     10.0
                     * (
-                        output_ref_ptr.load[width=width](offset)
-                        + bias_ptr.load[width=width](offset)
+                        output_ref_ptr.unsafe_load[width=width](offset)
+                        + bias_ptr.unsafe_load[width=width](offset)
                     ),
                 )
 
@@ -263,7 +263,7 @@ def test_conv_transposed[
             var vec = output.load[width=width](curr_coords)
 
             output.store(
-                curr_coords, 10.0 * (vec + bias_ptr.load[width=width](f))
+                curr_coords, 10.0 * (vec + bias_ptr.unsafe_load[width=width](f))
             )
 
         vectorize[simd_size](f_size, body1)

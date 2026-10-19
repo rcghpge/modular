@@ -99,7 +99,7 @@ def matmul(
     # Store the values into the output matrix.
     for out_idx in range(TILE_SZ_B):
         if row < m and col + out_idx < n:
-            c[row, col + out_idx] = c_reg.load(out_idx)
+            c[row, col + out_idx] = c_reg.unsafe_load(out_idx)
 
 
 def run_matmul(ctx: DeviceContext) raises:

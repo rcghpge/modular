@@ -177,7 +177,7 @@ def bench_rms_norm_fused_fp8[
                 width: Int, alignment: Int
             ](row: Int, col: Int) {var rms_ptr_offset} -> SIMD[in_dtype, width]:
                 var idx = row * cols + col
-                return rms_ptr_offset.load[width=width](idx)
+                return rms_ptr_offset.unsafe_load[width=width](idx)
 
             var fp8_output_tt = TileTensor(
                 cb_fp8_output.offset_ptr(iteration),
@@ -337,7 +337,7 @@ def bench_rms_norm_fused_fp8[
     ](row: Int, col: Int) {var rms_verify_base_ptr} -> SIMD[in_dtype, width]:
         var rms_ptr = rms_verify_base_ptr
         var idx = row * cols + col
-        return rms_ptr.load[width=width](idx)
+        return rms_ptr.unsafe_load[width=width](idx)
 
     var fp8_output_tt_verify = TileTensor(
         fp8_verify_base_ptr,

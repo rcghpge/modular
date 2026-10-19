@@ -142,7 +142,7 @@ def _verify_results[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) {var ar_ptr_v} -> SIMD[in_dtype, width]:
         var li = idx[0] * num_cols + idx[1]
-        return ar_ptr_v.load[width=width, alignment=width](li)
+        return ar_ptr_v.unsafe_load[width=width, alignment=width](li)
 
     rms_norm_fused_fp8[
         in_dtype,
@@ -377,10 +377,10 @@ def _verify_add_results[
         } -> None:
             var il = coord_to_index_list(coords)
             var flat_idx = il[0] * num_cols + il[1]
-            var res = residual_ptr.load[width=_width, alignment=alignment](
-                flat_idx
-            )
-            ar_ptr_i.store[width=_width, alignment=alignment](
+            var res = residual_ptr.unsafe_load[
+                width=_width, alignment=alignment
+            ](flat_idx)
+            ar_ptr_i.unsafe_store[width=_width, alignment=alignment](
                 flat_idx,
                 rebind[SIMD[in_dtype, _width]](
                     val + rebind[SIMD[_dtype, _width]](res)
@@ -408,7 +408,7 @@ def _verify_add_results[
         width: Int, _rank: Int
     ](idx: IndexList[_rank]) {var ar_ptr_v} -> SIMD[in_dtype, width]:
         var li = idx[0] * num_cols + idx[1]
-        return ar_ptr_v.load[width=width, alignment=width](li)
+        return ar_ptr_v.unsafe_load[width=width, alignment=width](li)
 
     rms_norm_fused_fp8[
         in_dtype,
@@ -841,7 +841,7 @@ def bench_allreduce_rmsnorm_fp8[
                     width: Int, _rank: Int
                 ](idx: IndexList[_rank]) {var ar_ptr} -> SIMD[in_dtype, width]:
                     var li = idx[0] * num_cols + idx[1]
-                    return ar_ptr.load[width=width, alignment=width](li)
+                    return ar_ptr.unsafe_load[width=width, alignment=width](li)
 
                 rms_norm_fused_fp8[
                     in_dtype,
@@ -960,10 +960,10 @@ def bench_allreduce_rmsnorm_fp8[
                 } -> None:
                     var il = coord_to_index_list(coords)
                     var flat_idx = il[0] * num_cols + il[1]
-                    var res = residual_ptr_base.load[
+                    var res = residual_ptr_base.unsafe_load[
                         width=_width, alignment=alignment
                     ](flat_idx)
-                    ar_ptr.store[width=_width, alignment=alignment](
+                    ar_ptr.unsafe_store[width=_width, alignment=alignment](
                         flat_idx,
                         rebind[SIMD[in_dtype, _width]](
                             val + rebind[SIMD[_dtype, _width]](res)
@@ -985,7 +985,7 @@ def bench_allreduce_rmsnorm_fp8[
                     width: Int, _rank: Int
                 ](idx: IndexList[_rank]) {var ar_ptr} -> SIMD[in_dtype, width]:
                     var li = idx[0] * num_cols + idx[1]
-                    return ar_ptr.load[width=width, alignment=width](li)
+                    return ar_ptr.unsafe_load[width=width, alignment=width](li)
 
                 rms_norm_fused_fp8[
                     in_dtype,

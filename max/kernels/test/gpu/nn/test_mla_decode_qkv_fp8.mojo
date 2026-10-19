@@ -824,12 +824,12 @@ def test_sw[
         for s in range(seq_len):
             for h in range(num_heads):
                 for d in range(v_depth):
-                    var expect = ref_full_output_ptr.load(
+                    var expect = ref_full_output_ptr.unsafe_load(
                         d
                         + depth * (h + s * num_heads)
                         + b * depth * num_heads * seq_len
                     ).cast[.float64]()
-                    var actual = flash_output_ptr.load(
+                    var actual = flash_output_ptr.unsafe_load(
                         d
                         + v_depth * (h + s * num_heads)
                         + b * v_depth * num_heads * seq_len

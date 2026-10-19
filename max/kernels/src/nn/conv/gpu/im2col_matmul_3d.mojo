@@ -163,7 +163,7 @@ def _im2col_ndhwc_kernel[
                 width=simd_width, alignment=align_of[input_dtype]()
             ](Coord(batch, d_in, h_in, w_in, c))
 
-        im2col_ptr.store(row_base + k, val)
+        im2col_ptr.unsafe_store(row_base + k, val)
         k += block_dim.x * simd_width
 
 
@@ -201,7 +201,7 @@ def _transpose_qrscf_to_nk[
     var r, sc = udivmod(rsc, SC)
     var s, c = udivmod(sc, C)
 
-    dst_ptr.store(tid, filter[q, r, s, c, f])
+    dst_ptr.unsafe_store(tid, filter[q, r, s, c, f])
 
 
 @__name(t"conv3d_transpose_fcqrs_to_nk_{dtype}")
@@ -238,7 +238,7 @@ def _transpose_fcqrs_to_nk[
     var r, sc = udivmod(rsc, SC)
     var s, c = udivmod(sc, C)
 
-    dst_ptr.store(tid, filter[f, c, q, r, s])
+    dst_ptr.unsafe_store(tid, filter[f, c, q, r, s])
 
 
 # =========================================================================

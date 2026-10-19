@@ -96,13 +96,13 @@ def _transpose_rscf_to_frsc_kpad[
     var f = tid // _K_padded
     var k = tid - f * _K_padded
     if k >= K_real:
-        dst_ptr.store(tid, Scalar[dtype](0))
+        dst_ptr.unsafe_store(tid, Scalar[dtype](0))
         return
     var r = k // (_S * _C)
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load((r, s, c, f))[0])
+    dst_ptr.unsafe_store(tid, src.load((r, s, c, f))[0])
 
 
 @__name(t"amd_4wave_transpose_fcrs_to_frsc_kpad_{dtype}")
@@ -137,13 +137,13 @@ def _transpose_fcrs_to_frsc_kpad[
     var f = tid // _K_padded
     var k = tid - f * _K_padded
     if k >= K_real:
-        dst_ptr.store(tid, Scalar[dtype](0))
+        dst_ptr.unsafe_store(tid, Scalar[dtype](0))
         return
     var r = k // (_S * _C)
     var sc = k - r * (_S * _C)
     var s = sc // _C
     var c = sc - s * _C
-    dst_ptr.store(tid, src.load((f, c, r, s))[0])
+    dst_ptr.unsafe_store(tid, src.load((f, c, r, s))[0])
 
 
 # ---------------------------------------------------------------------------
