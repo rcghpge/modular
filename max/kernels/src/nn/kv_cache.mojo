@@ -1288,7 +1288,7 @@ def fused_qk_rms_norm_rope_ragged_paged[
             input_row_offsets,
             Int32(q_num_heads),
             Int32(cols),
-            host_arg=q_input_fn,
+            host_args=(q_input_fn,),
             grid_dim=rows,
             block_dim=block_dim_value,
         )
@@ -1754,8 +1754,7 @@ def fused_dual_qk_rms_norm_rope_ragged_paged[
             Int32(q_main_num_heads),
             Int32(q_index_num_heads),
             Int32(cols),
-            host_arg=main_q_input_fn,
-            host_arg2=index_q_input_fn,
+            host_args=(main_q_input_fn, index_q_input_fn),
             grid_dim=rows,
             block_dim=block_dim_value,
         )
@@ -2520,11 +2519,13 @@ def fused_dual_qk_rms_norm_rope_nvfp4_ragged_paged[
             input_row_offsets,
             Int32(q_main_num_heads),
             Int32(q_index_num_heads),
-            host_arg=q_main_input_fn,
-            host_arg2=k_main_input_fn,
-            host_arg3=v_main_input_fn,
-            host_arg4=q_index_input_fn,
-            host_arg5=k_index_input_fn,
+            host_args=(
+                q_main_input_fn,
+                k_main_input_fn,
+                v_main_input_fn,
+                q_index_input_fn,
+                k_index_input_fn,
+            ),
             grid_dim=rows,
             block_dim=WARP_SIZE * warps_per_block,
         )

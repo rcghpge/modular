@@ -236,7 +236,7 @@ def run_matvec_with_epilogue_fn(
             Int32(M),
             Int32(N),
             Int32(K),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=ceildiv(M, WARPS_PER_BLOCK),
             block_dim=WARP_SIZE * WARPS_PER_BLOCK,
         )
@@ -257,7 +257,7 @@ def run_matvec_with_epilogue_fn(
             Int32(M),
             Int32(N),
             Int32(K),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=ceildiv(N, WARP_SIZE),
             block_dim=WARP_SIZE * WARPS_PER_BLOCK,
         )
@@ -319,7 +319,7 @@ def run_matvec_with_epilogue_fn(
             Int32(M),
             Int32(N),
             Int32(K),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=(ceildiv(M, BLOCK_DIM), ceildiv(N, BLOCK_DIM)),
             block_dim=(BLOCK_DIM, BLOCK_DIM),
         )
@@ -441,7 +441,7 @@ def run_split_k_gemm[
             Int32(M),
             Int32(N),
             Int32(K),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=(ceildiv(M, tile_m), ceildiv(N, tile_n)),
             block_dim=num_threads,
         )

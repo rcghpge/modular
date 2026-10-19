@@ -605,7 +605,7 @@ def mla_fused_rope_rmsnorm_quantization[
         gamma.as_imm(),
         k_cache,
         epsilon,
-        host_arg=kv_input_fn,
+        host_args=(kv_input_fn,),
         grid_dim=(n_rope_blocks + n_rms_blocks, num_workers, 1),
         block_dim=block_size,
         attributes=pdl_launch_attributes(PDLLevel.ON),

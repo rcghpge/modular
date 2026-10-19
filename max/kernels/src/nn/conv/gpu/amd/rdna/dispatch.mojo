@@ -345,8 +345,7 @@ def dispatch_rdna_conv2d[
                 Int32(fw),
                 Int32(symmetric_padding[0]),
                 Int32(symmetric_padding[1]),
-                host_arg=epilogue_fn,
-                host_arg2=compute_fn,
+                host_args=(epilogue_fn, compute_fn),
                 grid_dim=(ceildiv(N, BLOCK_N), ceildiv(M, BLOCK_M)),
                 block_dim=(NUM_WARPS * WARP_SIZE,),
             )

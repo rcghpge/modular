@@ -182,8 +182,7 @@ def _run_8x8_case[
         Int32(M),
         Int32(N),
         Int32(K),
-        host_arg=no_epilogue_fn,
-        host_arg2=no_compute_fn,
+        host_args=(no_epilogue_fn, no_compute_fn),
         grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
         block_dim=(NSG * WARP_SIZE,),
     )
@@ -295,8 +294,7 @@ def _run_8x8_bias_case[
         Int32(M),
         Int32(N),
         Int32(K),
-        host_arg=no_epilogue_fn,
-        host_arg2=bias_add,
+        host_args=(no_epilogue_fn, bias_add),
         grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
         block_dim=(NSG * WARP_SIZE,),
     )

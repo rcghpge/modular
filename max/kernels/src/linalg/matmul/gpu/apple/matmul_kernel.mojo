@@ -1282,7 +1282,7 @@ struct AppleM5MatMul[
     ):
         """Same as `run`, storing the output through `epilogue_fn`.
 
-        Launch with `host_arg=epilogue_fn`.
+        Launch with `host_args=(epilogue_fn,)`.
 
         Parameters:
             c_layout: `TensorLayout` of the output `C` operand.
@@ -1329,7 +1329,7 @@ struct AppleM5MatMul[
         """Same as `run`, mapping each output through `compute_fn` before it
         is stored to `c`.
 
-        Launch with `host_arg=compute_fn`.
+        Launch with `host_args=(compute_fn,)`.
 
         Parameters:
             c_layout: `TensorLayout` of the output `C` operand.
@@ -1616,7 +1616,7 @@ struct AppleM5MatMul[
     ):
         """Same as `run_conv`, storing the output through `epilogue_fn`.
 
-        Launch with `host_arg=epilogue_fn`.
+        Launch with `host_args=(epilogue_fn,)`.
 
         Parameters:
             c_layout: `TensorLayout` of the output `C` operand.
@@ -1955,7 +1955,7 @@ struct AppleM5MatMul[
         """Same as `run_split_k_reduce`, storing each output through
         `epilogue_fn` at its absolute `(row, col)`.
 
-        Launch with `host_arg=epilogue_fn`.
+        Launch with `host_args=(epilogue_fn,)`.
 
         Parameters:
             c_layout: `TensorLayout` of the output `C` operand.
@@ -1987,7 +1987,7 @@ struct AppleM5MatMul[
         """Same as `run_split_k_reduce`, mapping each output through
         `compute_fn` at its absolute `(row, col)` before it is stored.
 
-        Launch with `host_arg=compute_fn`.
+        Launch with `host_args=(compute_fn,)`.
 
         Parameters:
             c_layout: `TensorLayout` of the output `C` operand.
@@ -2295,7 +2295,7 @@ def enqueue_apple_matmul[
                 b,
                 log2_m,
                 log2_n,
-                host_arg=epilogue_fn,
+                host_args=(epilogue_fn,),
                 grid_dim=(grid_dim),
                 block_dim=(MM.THREADS_PER_BLOCK),
             )
@@ -2315,7 +2315,7 @@ def enqueue_apple_matmul[
                 b,
                 log2_m,
                 log2_n,
-                host_arg=compute_fn,
+                host_args=(compute_fn,),
                 grid_dim=(grid_dim),
                 block_dim=(MM.THREADS_PER_BLOCK),
             )
@@ -2491,7 +2491,7 @@ def enqueue_apple_conv2d[
                 conv,
                 log2_m,
                 log2_n,
-                host_arg=epilogue_fn,
+                host_args=(epilogue_fn,),
                 grid_dim=(grid_dim),
                 block_dim=(MM.THREADS_PER_BLOCK),
             )
@@ -2706,7 +2706,7 @@ def enqueue_apple_matmul_split_k[
             c,
             partials.unsafe_ptr(),
             Int32(actual_splits),
-            host_arg=epilogue_fn,
+            host_args=(epilogue_fn,),
             grid_dim=(ceildiv(n_elems, MM.REDUCE_BLOCK)),
             block_dim=(MM.REDUCE_BLOCK),
         )
@@ -2718,7 +2718,7 @@ def enqueue_apple_matmul_split_k[
             c,
             partials.unsafe_ptr(),
             Int32(actual_splits),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=(ceildiv(n_elems, MM.REDUCE_BLOCK)),
             block_dim=(MM.REDUCE_BLOCK),
         )

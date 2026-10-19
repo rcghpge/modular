@@ -460,7 +460,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
             cluster_dim,
             mnk,
             workspace,
-            host_arg=epilogue_fn,
+            host_args=(epilogue_fn,),
             grid_dim=grid_dim,
             block_dim=KernelType.NUM_THREADS,
             shared_mem_bytes=smem_size,
@@ -489,7 +489,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
                 idx, val, c_val
             )
 
-        # `host_arg` copies the closure at host layout: the kernel is
+        # `host_args` copies the closure at host layout: the kernel is
         # compiled against its type itself, not a device encoding.
         comptime kernel = matmul_kernel.run_with_compute_fn[
             type_of(compute_with_c)
@@ -505,7 +505,7 @@ def _blackwell_matmul_tma_umma_warp_specialized_impl[
             workspace,
             rank_sigs,
             Int32(0),
-            host_arg=compute_with_c,
+            host_args=(compute_with_c,),
             grid_dim=grid_dim,
             block_dim=KernelType.NUM_THREADS,
             shared_mem_bytes=smem_size,
@@ -1737,7 +1737,7 @@ def matmul_sm100_fallback[
             b_tma_op,
             c,
             Int32(ceildiv(K, BK)),
-            host_arg=compute_fn,
+            host_args=(compute_fn,),
             grid_dim=(ceildiv(N, BN), ceildiv(M, BM)),
             block_dim=(block_dim),
             shared_mem_bytes=smem_use,

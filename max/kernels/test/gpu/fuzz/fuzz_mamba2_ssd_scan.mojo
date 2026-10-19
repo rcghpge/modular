@@ -353,11 +353,7 @@ def run_one_case(
         qsl_g,
         his_g,
         us_g,
-        host_arg=x_fn,
-        host_arg2=dt_fn,
-        host_arg3=b_fn,
-        host_arg4=c_fn,
-        host_arg5=slot_fn,
+        host_args=(x_fn, dt_fn, b_fn, c_fn, slot_fn),
         grid_dim=(ceildiv(head_dim, CH_PER_BLOCK), nheads, batch),
         block_dim=(DSTATE_SPLIT, CH_PER_BLOCK, 1),
     )
