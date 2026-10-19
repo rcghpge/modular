@@ -457,11 +457,11 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     # past the Signal header to reach the scratch region of the buffer.
     var scratch_fp8 = (
         rank_sigs[_my_rank].address_space_cast[.GENERIC]() + 1
-    ).bitcast[Scalar[out_dtype]]()
-    var scratch_scale = (scratch_fp8 + fp8_per_rank).bitcast[
+    ).unsafe_bitcast[Scalar[out_dtype]]()
+    var scratch_scale = (scratch_fp8 + fp8_per_rank).unsafe_bitcast[
         Scalar[scales_dtype]
     ]()
-    var scratch_residual = (scratch_scale + scale_pad_elements).bitcast[
+    var scratch_residual = (scratch_scale + scale_pad_elements).unsafe_bitcast[
         Scalar[in_dtype]
     ]()
 
@@ -471,17 +471,17 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     var fp8_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> Fp8PtrType: (
             rank_sigs[i].address_space_cast[.GENERIC]() + 1
-        ).bitcast[Scalar[out_dtype]]()
+        ).unsafe_bitcast[Scalar[out_dtype]]()
     )
 
     comptime ScalePtrType = MutPointer[Scalar[scales_dtype], MutAnyOrigin]
     var scale_ptrs = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> ScalePtrType: (
-            (rank_sigs[i].address_space_cast[.GENERIC]() + 1).bitcast[
+            (rank_sigs[i].address_space_cast[.GENERIC]() + 1).unsafe_bitcast[
                 Scalar[out_dtype]
             ]()
             + fp8_per_rank
-        ).bitcast[Scalar[scales_dtype]]()
+        ).unsafe_bitcast[Scalar[scales_dtype]]()
     )
     var residual_ptrs = Array[
         MutPointer[Scalar[in_dtype], MutAnyOrigin], ngpus
@@ -489,9 +489,9 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
 
     comptime if has_residual:
         comptime for i in range(ngpus):
-            residual_ptrs[i] = (scale_ptrs[i] + scale_pad_elements).bitcast[
-                Scalar[in_dtype]
-            ]()
+            residual_ptrs[i] = (
+                scale_ptrs[i] + scale_pad_elements
+            ).unsafe_bitcast[Scalar[in_dtype]]()
 
     # Round-robin P2P input pointers for NVLink load-balancing.
     comptime PtrType = ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]

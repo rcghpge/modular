@@ -1932,16 +1932,16 @@ struct TileTensor[
             or src.LayoutType.static_product == num_vecs
         ), "copy_from_async requires matching total element count"
 
-        # The trailing `bitcast` materializes both pointee types as a concrete
+        # The trailing `unsafe_bitcast` materializes both pointee types as a concrete
         # `Scalar[Self.dtype]` so `async_copy`'s `dtype` parameter infers
         # cleanly; without it the inferred dtype is a comptime expression that
         # fails to unify across the two pointer arguments.
         var dst_ptr = (
             self.ptr.address_space_cast[.SHARED]()
             .unsafe_mut_cast[True]()
-            .bitcast[Scalar[Self.dtype]]()
+            .unsafe_bitcast[Scalar[Self.dtype]]()
         )
-        var src_ptr = src.ptr.address_space_cast[.GLOBAL]().bitcast[
+        var src_ptr = src.ptr.address_space_cast[.GLOBAL]().unsafe_bitcast[
             Scalar[Self.dtype]
         ]()
 

@@ -84,7 +84,9 @@ def cluster_launch_control(
 
             # Matches `cg::invoke_one`. Selects the first thread in the block.
             if elect_one_sync_with_mask(mask=1):
-                clusterlaunchcontrol_try_cancel(result, mbar.bitcast[Int64]())
+                clusterlaunchcontrol_try_cancel(
+                    result, mbar.unsafe_bitcast[Int64]()
+                )
 
             # Matches `ptx::mbarrier_arrive_expect_tx`.
             _ = mbar[0].expect_bytes_relaxed(Int32(2 * size_of[UInt64]()))
@@ -173,7 +175,7 @@ def pipeline_test_kernel[
             if elect_one_sync():
                 clusterlaunchcontrol_try_cancel[multicast=True](
                     clc_response + write_idx,
-                    (full_mbar + write_idx).bitcast[Int64](),
+                    (full_mbar + write_idx).unsafe_bitcast[Int64](),
                 )
 
             pipeline_state_write.step()

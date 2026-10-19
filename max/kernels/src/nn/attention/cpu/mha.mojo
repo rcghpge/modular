@@ -503,9 +503,9 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 Int32(c_stride),
                 Float32(1.0),
                 Float32(1.0) if accumulate else Float32(0.0),
-                c_ptr.bitcast[Float32](),
-                a_ptr.bitcast[Float32](),
-                packed_ptr.bitcast[Float32](),
+                c_ptr.unsafe_bitcast[Float32](),
+                a_ptr.unsafe_bitcast[Float32](),
+                packed_ptr.unsafe_bitcast[Float32](),
             )
 
         Self._matmul_packed(

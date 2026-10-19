@@ -569,14 +569,18 @@ def kernel_8[
     ].static_value * num_output_stages
 
     var a_smem_base = base_ptr_smem
-    var b_smem_base = (a_smem_base + a_smem_size).bitcast[Scalar[b_type]]()
-    var c_smem_base = (b_smem_base + b_smem_size).bitcast[Scalar[c_type]]()
+    var b_smem_base = (a_smem_base + a_smem_size).unsafe_bitcast[
+        Scalar[b_type]
+    ]()
+    var c_smem_base = (b_smem_base + b_smem_size).unsafe_bitcast[
+        Scalar[c_type]
+    ]()
 
     var a_smem = ATileArray(a_smem_base)
     var b_smem = BTileArray(b_smem_base)
     var c_smem_iter = CTileArray(c_smem_base)
 
-    var smem_pool = (c_smem_base + c_smem_size).bitcast[Int64]()
+    var smem_pool = (c_smem_base + c_smem_size).unsafe_bitcast[Int64]()
 
     var tma_mbar_ptr = smem_pool
     var mma_mbar_ptr = tma_mbar_ptr + num_pipeline_stages
@@ -594,26 +598,30 @@ def kernel_8[
 
     var clc_response_ptr = (
         clc_throttle_empty_mbar_ptr + num_clc_pipeline_stages
-    ).bitcast[Int128]()
+    ).unsafe_bitcast[Int128]()
 
     var tmem_dealloc_mbar_ptr = (
         clc_response_ptr + num_clc_pipeline_stages
-    ).bitcast[Int64]()
+    ).unsafe_bitcast[Int64]()
 
-    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).bitcast[UInt32]()
+    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).unsafe_bitcast[UInt32]()
 
-    var tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var accum_full_mbar = accum_full_mbar_ptr.bitcast[SharedMemBarrier]()
-    var accum_empty_mbar = accum_empty_mbar_ptr.bitcast[SharedMemBarrier]()
-    var clc_response = clc_response_ptr.bitcast[UInt128]()
-    var clc_full_mbar = clc_full_mbar_ptr.bitcast[SharedMemBarrier]()
-    var clc_empty_mbar = clc_empty_mbar_ptr.bitcast[SharedMemBarrier]()
-    var tmem_dealloc_mbar = tmem_dealloc_mbar_ptr.bitcast[SharedMemBarrier]()
-    var clc_throttle_full_mbar = clc_throttle_full_mbar_ptr.bitcast[
+    var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var accum_full_mbar = accum_full_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var accum_empty_mbar = accum_empty_mbar_ptr.unsafe_bitcast[
         SharedMemBarrier
     ]()
-    var clc_throttle_empty_mbar = clc_throttle_empty_mbar_ptr.bitcast[
+    var clc_response = clc_response_ptr.unsafe_bitcast[UInt128]()
+    var clc_full_mbar = clc_full_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var clc_empty_mbar = clc_empty_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var tmem_dealloc_mbar = tmem_dealloc_mbar_ptr.unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var clc_throttle_full_mbar = clc_throttle_full_mbar_ptr.unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var clc_throttle_empty_mbar = clc_throttle_empty_mbar_ptr.unsafe_bitcast[
         SharedMemBarrier
     ]()
 

@@ -1939,7 +1939,7 @@ struct DefaultEngine[*, element_width: Int = 1](TensorOps):
         # it to the scalar base pointer. For non-vectorized storage
         # (`element_width == 1`) this is the identity; for a vectorized view it
         # yields the scalar base address of the underlying storage.
-        return storage.bitcast[Scalar[dtype]]()
+        return storage.unsafe_bitcast[Scalar[dtype]]()
 
     @staticmethod
     @inline(.always)
@@ -2035,9 +2035,9 @@ struct DefaultEngine[*, element_width: Int = 1](TensorOps):
         # it as a scalar pointer so `+ offset` advances in scalar (not SIMD)
         # units, then `rebind` back to the original handle type.
         return (
-            storage.bitcast[Scalar[offset_dtype]]()
+            storage.unsafe_bitcast[Scalar[offset_dtype]]()
             + _offset_elements(offset_coord)
-        ).bitcast[SIMD[offset_dtype, Self.element_width]]()
+        ).unsafe_bitcast[SIMD[offset_dtype, Self.element_width]]()
 
     @staticmethod
     @inline(.always)
@@ -2508,10 +2508,10 @@ struct DefaultEngine[*, element_width: Int = 1](TensorOps):
 
         comptime for i in range(type_of(layout).static_product):
             var idx = layout(Idx[i])
-            storage.bitcast[Scalar[dtype]]().store(
+            storage.unsafe_bitcast[Scalar[dtype]]().store(
                 idx,
                 func(
-                    storage.bitcast[Scalar[dtype]]().load[
+                    storage.unsafe_bitcast[Scalar[dtype]]().load[
                         width=Self.element_width
                     ](idx)
                 ),
@@ -2622,10 +2622,10 @@ struct DefaultEngine[*, element_width: Int = 1](TensorOps):
         # during elaboration when passed as a function value.
         comptime for i in range(type_of(layout).static_product):
             var idx = layout(Idx[i])
-            storage.bitcast[Scalar[dtype]]().store(
+            storage.unsafe_bitcast[Scalar[dtype]]().store(
                 idx,
                 exp(
-                    storage.bitcast[Scalar[dtype]]().load[
+                    storage.unsafe_bitcast[Scalar[dtype]]().load[
                         width=Self.element_width
                     ](idx)
                     * scale.cast[dtype]()
@@ -3382,7 +3382,7 @@ def _device_leaf_ptr[
         # Reinterpret the handle's first bytes as the encoded device address.
         # The leaf must be `GLOBAL` (device), not `GENERIC` — see the docstring:
         # a `GENERIC` leaf silently misses device memory on Metal.
-        return Pointer(to=storage).bitcast[
+        return Pointer(to=storage).unsafe_bitcast[
             MutPointer[Scalar[dtype], MutAnyOrigin, address_space=.GLOBAL]
         ]()[]
     else:
@@ -3545,7 +3545,7 @@ struct DevicePointerEngine[*, element_width: Int = 1](TensorOps):
             A handle referring to the same storage, viewed with the new type
             parameters.
         """
-        result = Pointer(to=storage).bitcast[type_of(result)]()[]
+        result = Pointer(to=storage).unsafe_bitcast[type_of(result)]()[]
 
     comptime OffsetResultType[
         offset_types: TypeList[Trait=CoordLike, ...],
@@ -3601,7 +3601,7 @@ struct DevicePointerEngine[*, element_width: Int = 1](TensorOps):
         """
         comptime if is_gpu():
             var result = storage
-            var leaf = Pointer(to=result).bitcast[
+            var leaf = Pointer(to=result).unsafe_bitcast[
                 MutPointer[Scalar[type_of(storage).dtype], MutAnyOrigin]
             ]()
             leaf[] = leaf[] + _offset_elements(offset_coord)
@@ -5010,7 +5010,7 @@ struct StaticOffsetEngine[*, static_offset: Int, element_width: Int = 1](
             element the engine exposes, i.e. `static_offset` scalar elements
             past the handle.
         """
-        return storage.bitcast[Scalar[dtype]]() + Self.static_offset
+        return storage.unsafe_bitcast[Scalar[dtype]]() + Self.static_offset
 
     @staticmethod
     @inline(.always)

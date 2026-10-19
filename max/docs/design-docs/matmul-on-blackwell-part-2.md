@@ -682,10 +682,10 @@ comptime b_size = BN * BK
 var a_smem = external_memory[
     Scalar[a_type], address_space=.SHARED, alignment=128
 ]()
-var b_smem = (a_smem + a_size).bitcast[Scalar[b_type]]()
-var tma_mbar = (b_smem + b_size).bitcast[SharedMemBarrier]()
+var b_smem = (a_smem + a_size).unsafe_bitcast[Scalar[b_type]]()
+var tma_mbar = (b_smem + b_size).unsafe_bitcast[SharedMemBarrier]()
 var mma_mbar = tma_mbar + 1
-var ptr_tmem_addr = (mma_mbar + 1).bitcast[UInt32]()
+var ptr_tmem_addr = (mma_mbar + 1).unsafe_bitcast[UInt32]()
 var a_smem_tile = TileTensor[address_space=.SHARED](a_smem, a_smem_layout)
 var b_smem_tile = TileTensor[address_space=.SHARED](b_smem, b_smem_layout)
 ```

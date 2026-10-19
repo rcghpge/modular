@@ -602,7 +602,9 @@ struct MLAPrefillSparseCommon[
                             cta_group=Self.config.cta_group
                         ](
                             full_q_ptr + j * Q_PADDED_DEPTH_TILE_STRIDE,
-                            Pointer(to=q_tma_op.descriptor).bitcast[NoneType](),
+                            Pointer(to=q_tma_op.descriptor).unsafe_bitcast[
+                                NoneType
+                            ](),
                             prologue_q_ptr[].unsafe_ptr(),
                             Index(
                                 j * Q_SWIZZLE_COLS,

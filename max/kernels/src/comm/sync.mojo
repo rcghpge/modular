@@ -278,7 +278,9 @@ struct Signal:
             launched against the pointer.
         """
         return (
-            signal_buffer.unsafe_ptr().bitcast[Signal]().as_unsafe_any_origin()
+            signal_buffer.unsafe_ptr()
+            .unsafe_bitcast[Signal]()
+            .as_unsafe_any_origin()
         )
 
     @inline(.always)
@@ -293,7 +295,7 @@ struct Signal:
         """
         return (
             Pointer(to=self.lamport_state)
-            .bitcast[Scalar[Self.flag_t]]()
+            .unsafe_bitcast[Scalar[Self.flag_t]]()
             .as_unsafe_any_origin()
         )
 
@@ -311,7 +313,7 @@ struct Signal:
         """
         return (
             Pointer(to=self.lamport_region)
-            .bitcast[Scalar[dtype]]()
+            .unsafe_bitcast[Scalar[dtype]]()
             .as_unsafe_any_origin()
         )
 
@@ -453,7 +455,7 @@ def _multi_gpu_barrier[
             MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS
         )
         var internal_counter_ptr = (
-            self_sg.bitcast[Scalar[flag_t]]()
+            self_sg.unsafe_bitcast[Scalar[flag_t]]()
             + self_domain_offset
             + bid * MAX_GPUS
             + my_gpu
@@ -478,7 +480,7 @@ def _multi_gpu_barrier[
 
         # this line should compute &rank_sigs[my_gpu]->peer_counter[domain_id][val % 2][bid][my_rank]
         var peer_counter_ptr = (
-            rank_sigs[my_gpu].bitcast[Scalar[flag_t]]()
+            rank_sigs[my_gpu].unsafe_bitcast[Scalar[flag_t]]()
             + peer_counter_offset
             + peer_domain_offset
             + (val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS)
@@ -488,7 +490,7 @@ def _multi_gpu_barrier[
         # this line should compute
         # &self_sg->peer_counter[domain_id][val % 2][bid][my_gpu]
         var self_counter_ptr = (
-            self_sg.bitcast[Scalar[flag_t]]()
+            self_sg.unsafe_bitcast[Scalar[flag_t]]()
             + peer_counter_offset
             + peer_domain_offset
             + (val % 2) * (MAX_NUM_BLOCKS_UPPER_BOUND * MAX_GPUS)

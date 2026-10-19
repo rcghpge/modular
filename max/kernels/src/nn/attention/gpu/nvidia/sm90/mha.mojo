@@ -206,7 +206,7 @@ def mha_sm90_dispatch[
     comptime swizzle_mode = TensorMapSwizzle.SWIZZLE_128B
     var q = (
         q_arg.unsafe_ptr()
-        .bitcast[Scalar[KVType.dtype]]()
+        .unsafe_bitcast[Scalar[KVType.dtype]]()
         .unsafe_origin_cast[MutAnyOrigin]()
     )
 
@@ -1346,11 +1346,13 @@ def _mha_sm90[
             sink_weights.value()
         )
 
-    var produced_mbar_kv = (kv_smem + kv_smem_size).bitcast[SharedMemBarrier]()
+    var produced_mbar_kv = (kv_smem + kv_smem_size).unsafe_bitcast[
+        SharedMemBarrier
+    ]()
     var consumed_mbar_kv = produced_mbar_kv + pipeline_stages
     var produced_mbar_q = consumed_mbar_kv + pipeline_stages
     var consumed_mbar_q = produced_mbar_q + 2
-    var block_idx_ptr = (consumed_mbar_q + 2).bitcast[UInt32]()
+    var block_idx_ptr = (consumed_mbar_q + 2).unsafe_bitcast[UInt32]()
 
     # comptime USE_TMA = True
     comptime USE_TMA = False

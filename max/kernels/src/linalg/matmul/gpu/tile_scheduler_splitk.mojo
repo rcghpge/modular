@@ -269,7 +269,7 @@ struct SplitKTileScheduler[
 
         self.prob_shape = prob_shape
         self.block_id_in_cluster = block_id_in_cluster
-        self.locks_ptr = locks_ptr.bitcast[Int32]()
+        self.locks_ptr = locks_ptr.unsafe_bitcast[Int32]()
 
         var problem_blocks = Self.get_problem_blocks_shape(
             prob_shape, Self.tile_shape, Self.cluster_shape

@@ -1003,7 +1003,7 @@ struct Conv2dFpropKernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Create input pipeline with payload
         var tile_payload = Self.TilePayload(

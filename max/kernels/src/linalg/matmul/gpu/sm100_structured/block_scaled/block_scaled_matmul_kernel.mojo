@@ -939,7 +939,7 @@ struct BlackwellBlockScaledMatmulKernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Get typed tile arrays from SMEM accessors
         var a_tiles = smem.a_tiles()

@@ -110,7 +110,7 @@ def gather4_raw_smoke_kernel[
     ]()
 
     var mbar = unsafe_stack_allocation[1, Int64, address_space=.SHARED]()
-    var descriptor_ptr = Pointer(to=descriptor).bitcast[NoneType]()
+    var descriptor_ptr = Pointer(to=descriptor).unsafe_bitcast[NoneType]()
     mbarrier_init(mbar, 1)
 
     if thread_idx.x == 0:
@@ -859,7 +859,7 @@ def gather4_kernel[
 
     if thread_idx.x == 0:
         mbar[0].init(1)
-        var desc_ptr = Pointer(to=kv_tile.descriptor).bitcast[NoneType]()
+        var desc_ptr = Pointer(to=kv_tile.descriptor).unsafe_bitcast[NoneType]()
         prefetch_tma_descriptor(desc_ptr)
     barrier()
 
@@ -1565,8 +1565,8 @@ def gather4_tile_api_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var smem_ptr = smem_base.bitcast[Scalar[dtype]]()
-    var mbar = (smem_base + smem_bytes).bitcast[SharedMemBarrier]()
+    var smem_ptr = smem_base.unsafe_bitcast[Scalar[dtype]]()
+    var mbar = (smem_base + smem_bytes).unsafe_bitcast[SharedMemBarrier]()
 
     var tid = thread_idx.x
     var elect_one_thread = tid == 0

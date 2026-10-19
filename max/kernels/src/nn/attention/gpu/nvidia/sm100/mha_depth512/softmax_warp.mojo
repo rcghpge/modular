@@ -203,9 +203,9 @@ def depth512_scale_write_output[
                 var col = col_base + col_offset + base
                 var o_k_block = col // o_sw_K
                 var o_inner = Int(m_row) * o_sw_K + col % o_sw_K
-                (o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)).bitcast[
-                    UInt32
-                ]().store(packed)
+                (
+                    o_smem + o_k_block * BM * o_sw_K + o_swizzle(o_inner)
+                ).unsafe_bitcast[UInt32]().store(packed)
 
     comptime if config.split_o:
         comptime ov_quarter = config.ov_depth // 4
@@ -698,9 +698,9 @@ def depth512_softmax[
                 comptime assert effective_bn % p_sw_K == 0
                 comptime r = base % p_sw_K
                 var p_inner = Int(m_row) * p_sw_K + r
-                (p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)).bitcast[
-                    UInt32
-                ]().store(bitcast[.uint32, 4](vals))
+                (
+                    p_smem + p_k_block * BM * p_sw_K + p_swizzle(p_inner)
+                ).unsafe_bitcast[UInt32]().store(bitcast[.uint32, 4](vals))
 
         # Batch 0: compute exp.
         comptime for idx in range(p_batch):

@@ -604,7 +604,7 @@ def device_sampling_from_prob[
             var idx = (i * block_size + tx) * vec_size + j
             if (global_inclusive_cdf[j] + aggregate > u) and valid[j]:
                 # Atomic min to ensure we get the smallest index across all threads.
-                Atomic.min(sampled_id_sram.bitcast[Int32](), Int32(idx))
+                Atomic.min(sampled_id_sram.unsafe_bitcast[Int32](), Int32(idx))
                 break
 
         barrier()
@@ -3007,7 +3007,7 @@ def topk_softmax_sample_kernel[
         alignment=align_of[Float32](),
     ]()
 
-    var s_idxs = (s_vals + k_rounded).bitcast[Int]()
+    var s_idxs = (s_vals + k_rounded).unsafe_bitcast[Int]()
     var s_count = unsafe_stack_allocation[1, Int, address_space=.SHARED]()
 
     with PDL():

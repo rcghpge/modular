@@ -794,7 +794,9 @@ struct Shuffler[E: Int]:
                 var cell_byte_off = Self.scale_4d_slot_byte_off[
                     K_SCALES=K_SCALES, packed_mode=True
                 ](expert_slot, cell_mn_base, cell_k_base, _max_padded_M)
-                var dst_ptr = (sfa_pre.ptr + cell_byte_off).bitcast[Int32]()
+                var dst_ptr = (sfa_pre.ptr + cell_byte_off).unsafe_bitcast[
+                    Int32
+                ]()
                 dst_ptr[0] = bitcast[.int32, 1](cell_bytes)[0]
 
                 target_tile += _total_wg

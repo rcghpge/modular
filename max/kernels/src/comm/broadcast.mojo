@@ -320,7 +320,7 @@ def broadcast_pull_2stage_kernel[
     var payloads = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> PtrType: (
             rank_sigs[i].address_space_cast[.GENERIC]() + 1
-        ).bitcast[Scalar[dtype]]()
+        ).unsafe_bitcast[Scalar[dtype]]()
     )
 
     with PDL():

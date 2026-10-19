@@ -69,7 +69,7 @@ def _fill_pseudorandom[dtype: DType](buf: HostBuffer[dtype], n: Int):
 
 def _fnv1a64[dtype: DType](buf: HostBuffer[dtype], n: Int) -> UInt64:
     """FNV-1a over the buffer's raw bytes."""
-    var ptr = buf.unsafe_ptr().bitcast[UInt8]()
+    var ptr = buf.unsafe_ptr().unsafe_bitcast[UInt8]()
     var h = UInt64(0xCBF29CE484222325)
     for i in range(n * size_of[dtype]()):
         h = (h ^ UInt64(Int(ptr[i]))) * UInt64(0x100000001B3)

@@ -162,13 +162,13 @@ def tma_umma_kernel_sgs[
     comptime assert (
         (b_size * size_of[b_smem_type]()) % 16
     ) == 0, "preserve alignment"
-    var b_smem = (a_smem + a_size).bitcast[Scalar[b_smem_type]]()
+    var b_smem = (a_smem + a_size).unsafe_bitcast[Scalar[b_smem_type]]()
 
     var a_smem_tile = TileTensor(a_smem, a_smem_layout)
     var b_smem_tile = TileTensor(b_smem, b_smem_layout)
 
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (b_smem + b_size).bitcast[UInt32]()
+    var ptr_tmem_addr = (b_smem + b_size).unsafe_bitcast[UInt32]()
 
     comptime accum_type = get_accum_type[a_type]()
 
@@ -178,7 +178,7 @@ def tma_umma_kernel_sgs[
     comptime a_expected_bytes = a_size * size_of[a_type]()
     # B is loaded manually, not via TMA
 
-    var tma_mbar = (ptr_tmem_addr + 2).bitcast[SharedMemBarrier]()
+    var tma_mbar = (ptr_tmem_addr + 2).unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = tma_mbar + 1
 
     if thread_idx.x == 0:

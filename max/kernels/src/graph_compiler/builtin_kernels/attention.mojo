@@ -4312,13 +4312,13 @@ struct Struct_mla_prefill_sparse_paged:
             # which has the same bit pattern as `UInt32(0xFFFFFFFF)`; the
             # producer in the kernel reads them as int32 and rejects the
             # negative ones (cf. the `idx >= 0` check in the gather4 path),
-            # so reinterpreting the bits via `bitcast` is sound.
+            # so reinterpreting the bits via `unsafe_bitcast` is sound.
             var indices_tt = TileTensor(
-                gather_indices.bitcast[UInt32](),
+                gather_indices.unsafe_bitcast[UInt32](),
                 row_major(num_indices_sparse),
             )
             var topk_lengths_tt = TileTensor(
-                topk_lengths.unsafe_ptr().bitcast[UInt32](),
+                topk_lengths.unsafe_ptr().unsafe_bitcast[UInt32](),
                 row_major(Int(topk_lengths.dim_size(0))),
             )
 
@@ -4420,11 +4420,11 @@ struct Struct_mla_prefill_sparse_paged_fp8:
             )
 
             var indices_tt = TileTensor(
-                gather_indices.bitcast[UInt32](),
+                gather_indices.unsafe_bitcast[UInt32](),
                 row_major(num_indices_sparse),
             )
             var topk_lengths_tt = TileTensor(
-                topk_lengths.unsafe_ptr().bitcast[UInt32](),
+                topk_lengths.unsafe_ptr().unsafe_bitcast[UInt32](),
                 row_major(Int(topk_lengths.dim_size(0))),
             )
 

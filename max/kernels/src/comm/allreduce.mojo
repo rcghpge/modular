@@ -844,7 +844,7 @@ def _allreduce_2stage_kernel[
                     .GENERIC
                 ]()
                 + 1
-            ).bitcast[Scalar[dtype]]()
+            ).unsafe_bitcast[Scalar[dtype]]()
         )
 
         # Current rank's output buffer.

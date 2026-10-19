@@ -1936,7 +1936,7 @@ struct BlackwellMatmulSM100Kernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Create input pipeline for TMA→MMA synchronization (with payload)
         var tile_payload = Self.TilePayload(smem.a_tiles(), smem.b_tiles())
@@ -2501,7 +2501,7 @@ struct BlackwellMatmulSM100Kernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Create input pipeline for TMA→MMA synchronization (with payload)
         var tile_payload = Self.TilePayload(smem.a_tiles(), smem.b_tiles())
@@ -2713,7 +2713,7 @@ struct BlackwellMatmulSM100Kernel[
                 )
             else:
                 tile_counters = rebind[SplitKTileCounters](
-                    lock_ptr.bitcast[UInt32]().unsafe_address_space_cast[
+                    lock_ptr.unsafe_bitcast[UInt32]().unsafe_address_space_cast[
                         AddressSpace.GLOBAL
                     ]()
                 )
@@ -3008,7 +3008,9 @@ struct BlackwellMatmulSM100FallbackKernel[
             ]()
         )
 
-        var b_smem = (a_smem + Self.a_size).bitcast[Scalar[Self.b_type]]()
+        var b_smem = (a_smem + Self.a_size).unsafe_bitcast[
+            Scalar[Self.b_type]
+        ]()
 
         var a_smem_tile = Self.ATile(
             a_smem.as_unsafe_any_origin(), Self.a_smem_layout_typed
@@ -3018,7 +3020,7 @@ struct BlackwellMatmulSM100FallbackKernel[
         )
 
         # Shared memory pointer to hold tensor memory address
-        var ptr_tmem_addr = (b_smem + Self.b_size).bitcast[UInt32]()
+        var ptr_tmem_addr = (b_smem + Self.b_size).unsafe_bitcast[UInt32]()
 
         var c_frag: Array[Scalar[Self.accum_type], Self.c_frag_size]
 
@@ -3026,7 +3028,7 @@ struct BlackwellMatmulSM100FallbackKernel[
         comptime b_expected_bytes = Self.b_size * size_of[Self.b_type]()
         comptime expected_bytes = a_expected_bytes + b_expected_bytes
 
-        var tma_mbar = (ptr_tmem_addr + 2).bitcast[SharedMemBarrier]()
+        var tma_mbar = (ptr_tmem_addr + 2).unsafe_bitcast[SharedMemBarrier]()
         var mma_mbar = tma_mbar + 1
 
         var elect_one_warp = get_warp_id() == 0

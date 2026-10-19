@@ -2023,7 +2023,7 @@ struct TileWriter[
                                             p3_unswiz.ptr
                                             + UInt32(p3_tid)
                                             * UInt32(Self.stage_contiguous_size)
-                                        ).bitcast[UInt8](),
+                                        ).unsafe_bitcast[UInt8](),
                                         Int32(p3_row_bytes),
                                     )
                                     cp_async_bulk_commit_group()

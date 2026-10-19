@@ -139,8 +139,8 @@ def kernel_4[
         (c_size * size_of[c_type]()) % 128
     ) == 0, "preserve alignment"
 
-    var b_smem = (a_smem + a_size).bitcast[Scalar[b_type]]()
-    var c_smem = (b_smem + b_size).bitcast[Scalar[c_type]]()
+    var b_smem = (a_smem + a_size).unsafe_bitcast[Scalar[b_type]]()
+    var c_smem = (b_smem + b_size).unsafe_bitcast[Scalar[c_type]]()
 
     var a_smem_tile = TileTensor(a_smem, a_smem_layout)
     var b_smem_tile = TileTensor(b_smem, b_smem_layout)
@@ -155,11 +155,11 @@ def kernel_4[
     comptime b_expected_bytes = b_size * size_of[b_type]()
     comptime expected_bytes = a_expected_bytes + b_expected_bytes
 
-    var tma_mbar = (c_smem + c_size).bitcast[SharedMemBarrier]()
+    var tma_mbar = (c_smem + c_size).unsafe_bitcast[SharedMemBarrier]()
     var mma_mbar = tma_mbar + 1
 
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (mma_mbar + 1).bitcast[UInt32]()
+    var ptr_tmem_addr = (mma_mbar + 1).unsafe_bitcast[UInt32]()
 
     if thread_idx.x == 0:
         tma_mbar[0].init()

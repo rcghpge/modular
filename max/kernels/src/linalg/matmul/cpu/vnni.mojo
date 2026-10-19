@@ -106,7 +106,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
 
         var b_ptr = b_packed.ptr_at_offset(
             Coord(n_outer_idx, kl // 4, Idx[0])
-        ).bitcast[Scalar[c_type]]()
+        ).unsafe_bitcast[Scalar[c_type]]()
 
         comptime if not is_tail:
             # Prefetch B matrix.
@@ -163,7 +163,7 @@ struct Inner_matmul_vnni[saturated_vnni: Bool](InnerMatmulKernel, Movable):
                     ) if (is_tail and CompilationTarget.has_avx512f()) else (
                         a_ptr + idx0 * a_ptr_stride
                     )
-                    .bitcast[Scalar[c_type]]()
+                    .unsafe_bitcast[Scalar[c_type]]()
                     .load()
                 )
 

@@ -332,9 +332,9 @@ struct MLA_SM100_Decode_KV_BF16[
             alignment=128,
             name="mha_dynamic_shared_memory",
         ]()
-        var kv_smem = (q_smem + Self.BlockElems * Self.NumQKBlocks).bitcast[
-            Scalar[Self.kv_type]
-        ]()
+        var kv_smem = (
+            q_smem + Self.BlockElems * Self.NumQKBlocks
+        ).unsafe_bitcast[Scalar[Self.kv_type]]()
         comptime kv_total_stages = Self.config.num_kv_stages
         # to reuse the K for V as well, we break KV as 9 stages of 64x64 to cover 64x576
         comptime kv_smem_total = Self.BlockElems * Self.NumQKBlocks * kv_total_stages
@@ -351,11 +351,11 @@ struct MLA_SM100_Decode_KV_BF16[
         # MMA/load when max is valid.
         var out_smem_total = kv_smem_total
 
-        var out_smem = out_smem_start.bitcast[Scalar[Self.output_type]]()
+        var out_smem = out_smem_start.unsafe_bitcast[Scalar[Self.output_type]]()
 
         # max_smem is double-buffered (2 x 128 elements) to avoid a race
         # condition in softmax; li_smem is a single 128-element buffer.
-        var max_smem = (out_smem + out_smem_total).bitcast[
+        var max_smem = (out_smem + out_smem_total).unsafe_bitcast[
             Scalar[Self.AccumType]
         ]()
 
@@ -365,7 +365,7 @@ struct MLA_SM100_Decode_KV_BF16[
         #  Now we have to define MBARS for the kernel
         var mbar_base: MBarType = (
             (li_smem + WARPGROUP_SIZE)
-            .bitcast[SharedMemBarrier]()
+            .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
@@ -434,7 +434,7 @@ struct MLA_SM100_Decode_KV_BF16[
             out_pipeline.num_mbars()
         )  # barrier total [23 + (num_out_stages)*2]
         var warp_idx = UInt32(warp_id[broadcast=True]())
-        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
+        var ptr_tmem_addr = (mbar_base).unsafe_bitcast[UInt32]()
         var is_leader = elect() != 0
         if warp_idx == 8:
             if is_leader:
@@ -462,7 +462,9 @@ struct MLA_SM100_Decode_KV_BF16[
                 ptr_tmem_addr[0],
                 s_bars,
                 p_bars,
-                kv_smem.bitcast[Scalar[Self.q_type]]().as_unsafe_any_origin(),
+                kv_smem.unsafe_bitcast[
+                    Scalar[Self.q_type]
+                ]().as_unsafe_any_origin(),
                 max_smem.as_unsafe_any_origin(),
                 li_smem.as_unsafe_any_origin(),
                 out_smem.as_unsafe_any_origin(),
@@ -503,7 +505,7 @@ struct MLA_SM100_Decode_KV_BF16[
                     ptr_tmem_addr[0],
                     q_smem.as_unsafe_any_origin(),
                     (kv_smem)
-                    .bitcast[Scalar[Self.q_type]]()
+                    .unsafe_bitcast[Scalar[Self.q_type]]()
                     .as_unsafe_any_origin(),
                     mbar_q,
                     s_bars,
@@ -514,7 +516,7 @@ struct MLA_SM100_Decode_KV_BF16[
                 Self.mmaPV(
                     ptr_tmem_addr[0],
                     (kv_smem)
-                    .bitcast[Scalar[Self.q_type]]()
+                    .unsafe_bitcast[Scalar[Self.q_type]]()
                     .as_unsafe_any_origin(),
                     p_bars,
                     o_bars,

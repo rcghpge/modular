@@ -1041,7 +1041,7 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
         UInt8,
         address_space=.SHARED,
         alignment=128,
-    ]().bitcast[SmemType]()[]
+    ]().unsafe_bitcast[SmemType]()[]
 
     ref a_smem_storage = smem_storage.a_smem
     ref b_smem_storage = smem_storage.b_smem

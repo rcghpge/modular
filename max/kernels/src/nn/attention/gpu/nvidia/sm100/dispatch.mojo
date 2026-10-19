@@ -496,7 +496,7 @@ def mha_sm100_dispatch[
     # ragged one `ws_p_ceiling`'s over-subscription was tuned for.
     comptime splitk_oversubscribe = MaskType.sliding_window_size() == 0
 
-    var q = q_arg.bitcast[Scalar[KVType.dtype]]().unsafe_origin_cast[
+    var q = q_arg.unsafe_bitcast[Scalar[KVType.dtype]]().unsafe_origin_cast[
         q_arg.origin
     ]()
 

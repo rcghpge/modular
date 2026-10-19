@@ -306,7 +306,7 @@ __extension SM100MLA:
         comptime extra_barrier_offset = align_up(
             SmemType.smem_size(), size_of[SharedMemBarrier]()
         )
-        var extra_base = (attn_smem.base + extra_barrier_offset).bitcast[
+        var extra_base = (attn_smem.base + extra_barrier_offset).unsafe_bitcast[
             SharedMemBarrier
         ]()
         comptime num_rope_bufs = Self.config.fa4_config.num_rope_buffers()
@@ -876,7 +876,7 @@ __extension SM100MLA:
                     rope_smem_base
                     + tma_to_cvt_pipeline.state.index()
                     * UInt32(rope_stage_elems)
-                ).bitcast[Scalar[Self.KRopeType.dtype]]()
+                ).unsafe_bitcast[Scalar[Self.KRopeType.dtype]]()
 
             comptime produce_k_fused_paged_type = type_of(paged_rows)
             comptime produce_k_fused_rope_paged_type = type_of(rope_paged_rows)
@@ -1391,10 +1391,10 @@ __extension SM100MLA:
                 address_space=.SHARED,
             ]
             var tile_offset = Int(local_warp_idx) * tile_rows * Self.rope_depth
-            var fp8_base = k_rope_smem_ptr.bitcast[
+            var fp8_base = k_rope_smem_ptr.unsafe_bitcast[
                 Scalar[Self.KRopeType.dtype]
             ]()
-            var bf16_base = k_rope_smem_ptr.bitcast[
+            var bf16_base = k_rope_smem_ptr.unsafe_bitcast[
                 Scalar[Self.KVLUTType.dtype]
             ]()
             var k_rope_tile_fp8 = SmemFP8(fp8_base + tile_offset, tile_layout)

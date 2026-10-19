@@ -718,7 +718,7 @@ def multistage_qgemm_kernel[
     )
 
     # There is one pre-allocated shared buffer. Explicitly offset B after at A's end.
-    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).bitcast[
+    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).unsafe_bitcast[
         Scalar[b_type]
     ]()
     comptime b_smem_size = num_pipeline_stages * BK * BN // pack_factor
@@ -743,9 +743,9 @@ def multistage_qgemm_kernel[
     comptime num_scales_stages = ceildiv(
         (num_pipeline_stages - 1) * BK, group_size
     ) + 1
-    var scales_smem = (b_smem + num_warp_k_partitions * b_smem_size).bitcast[
-        Scalar[scales_type]
-    ]()
+    var scales_smem = (
+        b_smem + num_warp_k_partitions * b_smem_size
+    ).unsafe_bitcast[Scalar[scales_type]]()
     comptime scales_smem_size = num_scales_stages * BN * ceildiv(BK, group_size)
     comptime scales_smem_layout = row_major[ceildiv(BK, group_size), BN]()
 
@@ -932,7 +932,7 @@ def multistage_qgemm_kernel[
         ]()
 
         var accum_smem_warp_tile = TileTensor(
-            a_smem.bitcast[Scalar[c_type]]() + warp_id * WM * WN,
+            a_smem.unsafe_bitcast[Scalar[c_type]]() + warp_id * WM * WN,
             row_major[WM, WN](),
         )
 
@@ -1334,7 +1334,8 @@ def repack_GPTQ_for_sm8x[
         smem, row_major[BN, 2 * weights_bytes_per_group]()
     )
     var weights_smem_uint4 = TileTensor(
-        smem.bitcast[UInt32](), row_major[BN, 2 * group_size // pack_factor]()
+        smem.unsafe_bitcast[UInt32](),
+        row_major[BN, 2 * group_size // pack_factor](),
     )
 
     # We load 128x2 GPTQ blocks to smem.

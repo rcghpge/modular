@@ -239,8 +239,8 @@ def _block_scaled_matmul_fp8_ref(
     var bn_scales_ptr = b_scales_ptr + n * k_groups
 
     # One byte per element at MXFP8, so the row stride is K.
-    var am_ptr = (a_ptr + m * K).bitcast[Float8_e4m3fn]()
-    var bn_ptr = (b_ptr + n * K).bitcast[Float8_e4m3fn]()
+    var am_ptr = (a_ptr + m * K).unsafe_bitcast[Float8_e4m3fn]()
+    var bn_ptr = (b_ptr + n * K).unsafe_bitcast[Float8_e4m3fn]()
 
     var accum = Float32(0)
 
@@ -394,11 +394,11 @@ def bench_preb[
         # dispatcher signature. The kernel internally re-bitcasts to uint8 for
         # V# construction; the dtype is a wrapping convention.
         var sfa_tt = TileTensor[mut=False](
-            cb_a_sc.offset_ptr(iteration).bitcast[Float8_e8m0fnu](),
+            cb_a_sc.offset_ptr(iteration).unsafe_bitcast[Float8_e8m0fnu](),
             row_major(num_experts * max_padded_M, Idx[scale_K]),
         )
         var sfb_tt = TileTensor[mut=False](
-            cb_b_sc.offset_ptr(iteration).bitcast[Float8_e8m0fnu](),
+            cb_b_sc.offset_ptr(iteration).unsafe_bitcast[Float8_e8m0fnu](),
             row_major[num_experts, N, scale_K](),
         )
         var c_tt = TileTensor[mut=True](
@@ -501,11 +501,11 @@ def bench_preb[
                 verify_b_pre_dev, row_major[num_experts, N * packed_K]()
             )
             var sfa_tt_v = TileTensor[mut=False](
-                cb_a_sc.offset_ptr(0).bitcast[Float8_e8m0fnu](),
+                cb_a_sc.offset_ptr(0).unsafe_bitcast[Float8_e8m0fnu](),
                 row_major(num_experts * max_padded_M, Idx[scale_K]),
             )
             var sfb_tt_v = TileTensor[mut=False](
-                cb_b_sc.offset_ptr(0).bitcast[Float8_e8m0fnu](),
+                cb_b_sc.offset_ptr(0).unsafe_bitcast[Float8_e8m0fnu](),
                 row_major[num_experts, N, scale_K](),
             )
             var c_tt_v = TileTensor[mut=True](
@@ -538,10 +538,10 @@ def bench_preb[
                     (cb_a.offset_ptr(0) + tok_start * packed_K).as_imm(),
                     (cb_b.offset_ptr(0) + eid * N * packed_K).as_imm(),
                     (verify_sfa_natural_dev.unsafe_ptr() + tok_start * scale_K)
-                    .bitcast[Float8_e8m0fnu]()
+                    .unsafe_bitcast[Float8_e8m0fnu]()
                     .as_imm(),
                     (cb_b_sc.offset_ptr(0) + eid * N * scale_K)
-                    .bitcast[Float8_e8m0fnu]()
+                    .unsafe_bitcast[Float8_e8m0fnu]()
                     .as_imm(),
                     verify_c_ref_dev.unsafe_ptr() + tok_start * N,
                     Int32(m_slot),

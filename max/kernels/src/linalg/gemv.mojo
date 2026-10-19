@@ -3511,7 +3511,7 @@ struct _MmaCpAsyncMmaComputer[
             compute_fn: Maps each output index and value to the value to
                 store. Ignored unless `has_compute_fn`.
         """
-        var smem_epi = self.smem_a.ptr.bitcast[Scalar[Self.accum_type]]()
+        var smem_epi = self.smem_a.ptr.unsafe_bitcast[Scalar[Self.accum_type]]()
         var base_off = self.compute_warp * Self.tile_m * Self.tile_n
         var m0 = self.lane_idx // 4
         var n0 = (self.lane_idx % 4) * 2
@@ -3916,7 +3916,7 @@ def _gemm_mma_cpasync_kernel_impl[
         UInt8,
         address_space=.SHARED,
         alignment=128,
-    ]().bitcast[SmemType]()[]
+    ]().unsafe_bitcast[SmemType]()[]
     var smem_a = smem.a_tiles()
     var smem_b = smem.b_tiles()
     var smem_barrier = smem.barriers()

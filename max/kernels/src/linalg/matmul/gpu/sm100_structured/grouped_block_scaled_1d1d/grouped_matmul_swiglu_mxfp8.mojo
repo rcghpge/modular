@@ -142,7 +142,7 @@ def grouped_matmul_swiglu_mxfp8_dispatch[
     # The fused path never reads or writes C. It only carries `c_type` and `N`
     # and fills the kernel ABI, so alias `c_packed` rather than allocate.
     var dummy_c_tensor = TileTensor(
-        c_packed_ptr.bitcast[Scalar[c_type]](),
+        c_packed_ptr.unsafe_bitcast[Scalar[c_type]](),
         row_major(Idx[1], Idx[N]),
     )
     var c_swiglu_scales_ptr = rebind[

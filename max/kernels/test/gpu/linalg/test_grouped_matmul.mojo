@@ -215,7 +215,7 @@ def test[
             # The permdim tensor has the shape 3 x M x N, so the index is then
             # [new_j, i, new_k].
             var ptr = (
-                c_out_ptr.bitcast[Scalar[out_type]]()
+                c_out_ptr.unsafe_bitcast[Scalar[out_type]]()
                 + new_j * total_num_tokens * N
                 + i * N
                 + new_k
@@ -249,7 +249,9 @@ def test[
             comptime for i in range(width):
                 new_val[i] = test_epilogue(row, col + i, val[i])
 
-            var ptr = c_out_ptr.bitcast[Scalar[out_type]]() + row * N + col
+            var ptr = (
+                c_out_ptr.unsafe_bitcast[Scalar[out_type]]() + row * N + col
+            )
             ptr.store[width=width, alignment=alignment](
                 new_val.cast[out_type]()
             )

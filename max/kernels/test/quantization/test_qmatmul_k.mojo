@@ -132,7 +132,7 @@ struct qgemm_Q4_0(QuantizedGemm):
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
         var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q4_0]())
-        var block_ptr = b_ptr.bitcast[_block_Q4_0]()
+        var block_ptr = b_ptr.unsafe_bitcast[_block_Q4_0]()
 
         for _n in range(N):
             for _k in range(k_groups):
@@ -167,9 +167,9 @@ struct qgemm_Q4_0(QuantizedGemm):
         n: Int,
         k: Int,
     ) -> Float32:
-        var block_ptr = b.ptr_at_offset(Coord(n, 0)).bitcast[_block_Q4_0]() + (
-            k // Self.k_group_size()
-        )
+        var block_ptr = b.ptr_at_offset(Coord(n, 0)).unsafe_bitcast[
+            _block_Q4_0
+        ]() + (k // Self.k_group_size())
 
         var a_quant_data = Array[Int8, _block_Q4_0.group_size](fill={})
 
@@ -223,7 +223,7 @@ struct qgemm_Q4_K(QuantizedGemm):
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
         var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q4_K]())
-        var block_ptr = b_ptr.bitcast[_block_Q4_K]()
+        var block_ptr = b_ptr.unsafe_bitcast[_block_Q4_K]()
 
         for _n in range(N):
             for _k in range(k_groups):
@@ -260,9 +260,9 @@ struct qgemm_Q4_K(QuantizedGemm):
         n: Int,
         k: Int,
     ) -> Float32:
-        var block_ptr = b.ptr_at_offset(Coord(n, 0)).bitcast[_block_Q4_K]() + (
-            k // Self.k_group_size()
-        )
+        var block_ptr = b.ptr_at_offset(Coord(n, 0)).unsafe_bitcast[
+            _block_Q4_K
+        ]() + (k // Self.k_group_size())
 
         var a_quant_data = Array[Int8, _block_QK_K.quantized_k](fill={})
 
@@ -351,7 +351,7 @@ struct qgemm_Q6_K(QuantizedGemm):
     ) -> TileTensor[.uint8, MatrixLayout, MutUntrackedOrigin]:
         var k_groups = ceildiv(K, Self.k_group_size())
         var b_ptr = alloc[UInt8](N * k_groups * size_of[_block_Q6_K]())
-        var block_ptr = b_ptr.bitcast[_block_Q6_K]()
+        var block_ptr = b_ptr.unsafe_bitcast[_block_Q6_K]()
 
         for _n in range(N):
             for _k in range(k_groups):
@@ -388,9 +388,9 @@ struct qgemm_Q6_K(QuantizedGemm):
         n: Int,
         k: Int,
     ) -> Float32:
-        var block_ptr = b.ptr_at_offset(Coord(n, 0)).bitcast[_block_Q6_K]() + (
-            k // Self.k_group_size()
-        )
+        var block_ptr = b.ptr_at_offset(Coord(n, 0)).unsafe_bitcast[
+            _block_Q6_K
+        ]() + (k // Self.k_group_size())
 
         var a_quant_data = Array[Int8, _block_QK_K.quantized_k](fill={})
 

@@ -697,7 +697,7 @@ struct AttentionRDNA[
             type_of(Self._warp_scratch_layout),
             address_space=.SHARED,
         ](
-            self.k_smem_ptr.bitcast[Scalar[Self.accum_type]](),
+            self.k_smem_ptr.unsafe_bitcast[Scalar[Self.accum_type]](),
             Self._warp_scratch_layout,
         ).tile[
             2 * Self.num_warps_n, Self.WM

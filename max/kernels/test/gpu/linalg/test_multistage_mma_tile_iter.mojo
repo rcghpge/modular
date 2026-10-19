@@ -140,7 +140,7 @@ def global_pipeline_kernel[
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
+    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
 
     var a_rows = min(BM, M - block_idx.y * BM)
     var a_block = a_ptr + block_idx.y * BM * K
@@ -247,7 +247,7 @@ def smem_pipeline_kernel(
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
+    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
     _stage_tiles[BM, BK, smem_depth, num_threads](a_smem, a_ptr, num_tiles, BK)
     _stage_tiles[BN, BK, smem_depth, num_threads](b_smem, b_ptr, num_tiles, BK)
 
@@ -310,7 +310,7 @@ def local_a_kernel(
         address_space=AddressSpace.SHARED,
         alignment=16,
     ]()
-    var b_smem = (a_smem + a_smem_size).bitcast[Scalar[dtype]]()
+    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[dtype]]()
     _stage_tiles[BK, BN, BN, local_threads](b_smem, b_ptr, BN // BK, BK * BN)
 
     var p = stack_allocation[

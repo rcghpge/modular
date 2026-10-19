@@ -312,7 +312,7 @@ struct Q4sym[
         ), "Only support fully divisible dimensions right now."
 
         var blob_output_ptr = output_tt.ptr
-        var base_block_ptr = blob_output_ptr.bitcast[
+        var base_block_ptr = blob_output_ptr.unsafe_bitcast[
             Q4sym[Self.group_size, Self.float_dtype]
         ]()
 
@@ -389,7 +389,7 @@ struct Q4sym[
         # TODO: check contiguous inputs and outputs
 
         var uint8_input_ptr = input_tt.ptr
-        var base_block_ptr = uint8_input_ptr.bitcast[
+        var base_block_ptr = uint8_input_ptr.unsafe_bitcast[
             Q4sym[Self.group_size, Self.float_dtype]
         ]()
 
@@ -499,7 +499,7 @@ def q4_k_dequantize_impl(
     var num_blocks = input_tt.num_elements() // block_nbytes
     # The q_bits array is the last field of the block.
     comptime q_bits_offset = block_nbytes - block_QK_K.quantized_k // 2
-    var input_q4_k_ptr = input_tt.ptr.bitcast[block_Q4_K]()
+    var input_q4_k_ptr = input_tt.ptr.unsafe_bitcast[block_Q4_K]()
     var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
     var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):
@@ -595,7 +595,7 @@ def q6_k_dequantize_impl[
     var num_blocks = (output_shape[0] * output_shape[1]) // block_nelems
     # Block layout: low 4 bits, then high 2 bits, then scales and the base.
     comptime qh_offset = block_QK_K.quantized_k // 2
-    var input_q6_k_ptr = input_tt.ptr.bitcast[block_Q6_K]()
+    var input_q6_k_ptr = input_tt.ptr.unsafe_bitcast[block_Q6_K]()
     var input_flat = input_tt.reshape(row_major(input_tt.num_elements()))
     var output_flat = output_tt.reshape(row_major(output_tt.num_elements()))
     for block_idx in range(num_blocks):

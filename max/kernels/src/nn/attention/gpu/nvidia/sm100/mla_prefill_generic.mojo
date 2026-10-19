@@ -1026,7 +1026,7 @@ __extension SM100MLA:
                 `rope_smem_base` is already `KRopeType`-typed the bitcast
                 is a no-op.
                 """
-                return rope_smem_base.bitcast[
+                return rope_smem_base.unsafe_bitcast[
                     Scalar[KRopeType.dtype]
                 ]() + idx * UInt32(rope_stage_elems)
 
@@ -1839,9 +1839,9 @@ __extension SM100MLA:
                 # 2Q is non-shared-KV, never shared), so q1_rope is dead here;
                 # define it from the same base for type consistency.
                 q0_rope = Self.descriptor_q_rope(
-                    (q_smem.bitcast[UInt8]() + q_rope_off).bitcast[
-                        Scalar[Self.rope_mma_dtype]
-                    ]()
+                    (
+                        q_smem.unsafe_bitcast[UInt8]() + q_rope_off
+                    ).unsafe_bitcast[Scalar[Self.rope_mma_dtype]]()
                 )
                 q1_rope = q0_rope
 
@@ -2345,7 +2345,7 @@ __extension SM100MLA:
 
                 var q0_nope = Self.descriptor_q(q_smem)
                 q0_rope = Self.descriptor_q_rope(
-                    (q_smem + q_nope_bytes // Self.qkv_dt_size).bitcast[
+                    (q_smem + q_nope_bytes // Self.qkv_dt_size).unsafe_bitcast[
                         Scalar[Self.rope_mma_dtype]
                     ]()
                 )
@@ -2378,7 +2378,7 @@ __extension SM100MLA:
                 ](
                     (
                         k_smem_base + nope_stage_bytes // Self.qkv_dt_size
-                    ).bitcast[Scalar[Self.rope_mma_dtype]]()
+                    ).unsafe_bitcast[Scalar[Self.rope_mma_dtype]]()
                 )
 
                 # ---- single-O serial path (1Q wide-V), non-shared-KV, mixed ----

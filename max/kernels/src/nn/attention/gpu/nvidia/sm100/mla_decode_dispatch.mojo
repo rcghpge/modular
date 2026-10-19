@@ -842,7 +842,9 @@ struct MLADispatchScalarArgs[
         var output_buf = DeviceBuffer[.int64](
             ctx, self.gpu_buf.unsafe_ptr(), 3, owning=False
         )
-        output_buf.enqueue_copy_from(Pointer(to=host_args).bitcast[Int64]())
+        output_buf.enqueue_copy_from(
+            Pointer(to=host_args).unsafe_bitcast[Int64]()
+        )
 
     def gpu_tile_tensor(
         self,

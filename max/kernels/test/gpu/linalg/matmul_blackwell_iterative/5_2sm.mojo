@@ -134,15 +134,17 @@ def kernel_5[
     comptime b_smem_bytes = BN * BK * size_of[b_type]()
     comptime c_smem_bytes = BM * MMA_N * size_of[c_type]()
 
-    var a_smem = smem.bitcast[Scalar[a_type]]()
-    var b_smem = (smem + a_smem_bytes).bitcast[Scalar[b_type]]()
-    var c_smem = (smem + a_smem_bytes + b_smem_bytes).bitcast[Scalar[c_type]]()
+    var a_smem = smem.unsafe_bitcast[Scalar[a_type]]()
+    var b_smem = (smem + a_smem_bytes).unsafe_bitcast[Scalar[b_type]]()
+    var c_smem = (smem + a_smem_bytes + b_smem_bytes).unsafe_bitcast[
+        Scalar[c_type]
+    ]()
 
     var c_smem_tile = TileTensor(c_smem, row_major[BM, MMA_N]())
 
-    var smem_pool = (smem + a_smem_bytes + b_smem_bytes + c_smem_bytes).bitcast[
-        Int64
-    ]()
+    var smem_pool = (
+        smem + a_smem_bytes + b_smem_bytes + c_smem_bytes
+    ).unsafe_bitcast[Int64]()
 
     var a_smem_tile = TileTensor(a_smem, a_smem_layout)
     var b_smem_tile = TileTensor(b_smem, b_smem_layout)
@@ -157,13 +159,13 @@ def kernel_5[
     # Leader CTAs expect SMEM from itself and their peers
     comptime expected_bytes = cta_group * (a_expected_bytes + b_expected_bytes)
 
-    var tma_mbar_ptr = smem_pool.bitcast[Int64]()
+    var tma_mbar_ptr = smem_pool.unsafe_bitcast[Int64]()
     var mma_mbar_ptr = tma_mbar_ptr + 2
     # Shared memory pointer to hold tensor memory address
-    var ptr_tmem_addr = (mma_mbar_ptr + 2).bitcast[UInt32]()
+    var ptr_tmem_addr = (mma_mbar_ptr + 2).unsafe_bitcast[UInt32]()
 
-    var tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
+    var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
 
     var elect_one_warp = warp_id() == 0
     var elect_one_thread = elect_one_sync()

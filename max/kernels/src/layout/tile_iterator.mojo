@@ -345,7 +345,7 @@ struct TileTensorIter[
             An iterator over the same memory and position.
         """
         return Self.BitcastType[target_dtype](
-            self.ptr.bitcast[Scalar[target_dtype]](),
+            self.ptr.unsafe_bitcast[Scalar[target_dtype]](),
             self.tile_layout,
             bound=Int(self.bound),
             stride=Int(self.stride),

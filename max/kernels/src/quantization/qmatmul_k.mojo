@@ -305,7 +305,7 @@ def _quantize_a_Q8_K[
                 == size_of[_block_Q8_K_packed[group_size, tile_m]]()
             ), "tiled block size should be multiple of the single block size"
 
-            var block_ptr = packed_ptr.bitcast[
+            var block_ptr = packed_ptr.unsafe_bitcast[
                 _block_Q8_K_packed[group_size, tile_m]
             ]()
             var q_bits_ptr: MutPointer[
@@ -580,8 +580,8 @@ def matmul_Q4_K_pack_b(
     comptime simd_width = simd_width_of[DType.float32]()
     comptime block_n = simd_width * 2
 
-    var src_ptr = b_tt.ptr.bitcast[_block_Q4_K]()
-    var dst_ptr = b_packed_tt.ptr.bitcast[_block_Q4_K_packed[block_n]]()
+    var src_ptr = b_tt.ptr.unsafe_bitcast[_block_Q4_K]()
+    var dst_ptr = b_packed_tt.ptr.unsafe_bitcast[_block_Q4_K_packed[block_n]]()
 
     for _kb in range(k_blocks):
         var src_n_ptr = src_ptr
@@ -614,8 +614,8 @@ def matmul_Q6_K_pack_b(
     comptime simd_width = simd_width_of[DType.float32]()
     comptime block_n = simd_width * 2
 
-    var src_ptr = b_tt.ptr.bitcast[_block_Q6_K]()
-    var dst_ptr = b_packed_tt.ptr.bitcast[_block_Q6_K_packed[block_n]]()
+    var src_ptr = b_tt.ptr.unsafe_bitcast[_block_Q6_K]()
+    var dst_ptr = b_packed_tt.ptr.unsafe_bitcast[_block_Q6_K_packed[block_n]]()
 
     for _kb in range(k_blocks):
         var src_n_ptr = src_ptr
@@ -1030,8 +1030,10 @@ def _matmul_Q4_K_tile[
 
     comptime block_n = tile_n * simd_width
 
-    var a_tile_ptr = a_ptr.bitcast[_block_Q8_K_packed[group_size, tile_m]]()
-    var b_tile_ptr = b_ptr.bitcast[_block_Q4_K_packed[block_n]]()
+    var a_tile_ptr = a_ptr.unsafe_bitcast[
+        _block_Q8_K_packed[group_size, tile_m]
+    ]()
+    var b_tile_ptr = b_ptr.unsafe_bitcast[_block_Q4_K_packed[block_n]]()
 
     var b_q_scales_ptr = b_q_scales_and_mins_buf
     var b_q_mins_ptr = b_q_scales_and_mins_buf + group_count * block_n
@@ -1110,7 +1112,7 @@ def _matmul_Q4_K_columns[
     comptime alignment = align_of[SIMD[.float32, simd_width]]()
     comptime block_n = tile_n * simd_width
 
-    var b_tile_ptr = b_ptr.bitcast[_block_Q4_K_packed[block_n]]()
+    var b_tile_ptr = b_ptr.unsafe_bitcast[_block_Q4_K_packed[block_n]]()
 
     # Unpack the scales and minimums to uint8 values.
     var b_q_scales_and_mins_buf = unsafe_stack_allocation[
@@ -1273,8 +1275,10 @@ def _matmul_Q6_K_tile[
 
     comptime block_n = tile_n * simd_width
 
-    var a_tile_ptr = a_ptr.bitcast[_block_Q8_K_packed[group_size, tile_m]]()
-    var b_tile_ptr = b_ptr.bitcast[_block_Q6_K_packed[block_n]]()
+    var a_tile_ptr = a_ptr.unsafe_bitcast[
+        _block_Q8_K_packed[group_size, tile_m]
+    ]()
+    var b_tile_ptr = b_ptr.unsafe_bitcast[_block_Q6_K_packed[block_n]]()
 
     var c_int32_block = _Accumulator[.int32, tile_m, tile_n, simd_width]()
 
@@ -1360,7 +1364,7 @@ def _matmul_Q6_K_columns[
     comptime alignment = align_of[SIMD[.float32, simd_width]]()
     comptime block_n = tile_n * simd_width
 
-    var b_tile_ptr = b_ptr.bitcast[_block_Q6_K_packed[block_n]]()
+    var b_tile_ptr = b_ptr.unsafe_bitcast[_block_Q6_K_packed[block_n]]()
 
     # NEON has support for s8s8 dot products, so shift the quantized bits down
     # to avoid performing any zero point corrections.
@@ -1512,7 +1516,7 @@ def _matmul_Qb_K[
         var task_n_count = block_range[1] * grain_size
 
         var a_packed_ptr = a_packed_base_ptr
-        var b_packed_ptr = b.ptr.bitcast[b_type]()
+        var b_packed_ptr = b.ptr.unsafe_bitcast[b_type]()
 
         for k_block in range(k_blocks):
             var bn_packed_ptr = b_packed_ptr + task_n_start

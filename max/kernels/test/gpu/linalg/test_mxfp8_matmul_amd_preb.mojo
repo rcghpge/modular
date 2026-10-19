@@ -90,8 +90,8 @@ def block_scaled_matmul_fp8_ref(
     var bn_scales_ptr = b_scales_ptr + n * k_groups
 
     # One byte per element at MXFP8, so the row stride is K (not K // 2).
-    var am_ptr = (a_ptr + m * K).bitcast[Float8_e4m3fn]()
-    var bn_ptr = (b_ptr + n * K).bitcast[Float8_e4m3fn]()
+    var am_ptr = (a_ptr + m * K).unsafe_bitcast[Float8_e4m3fn]()
+    var bn_ptr = (b_ptr + n * K).unsafe_bitcast[Float8_e4m3fn]()
 
     var accum = Float32(0)
 
@@ -212,7 +212,7 @@ def _rand_e4m3_byte() -> UInt8:
 
 def _fnv1a64[dtype: DType](buf: HostBuffer[dtype], n: Int) -> UInt64:
     """FNV-1a over the buffer's raw bytes."""
-    var ptr = buf.unsafe_ptr().bitcast[UInt8]()
+    var ptr = buf.unsafe_ptr().unsafe_bitcast[UInt8]()
     var h = UInt64(0xCBF29CE484222325)
     for i in range(n * size_of[dtype]()):
         h = (h ^ UInt64(Int(ptr[i]))) * UInt64(0x100000001B3)
@@ -567,10 +567,10 @@ def _test_grouped_case[
             (a_d.unsafe_ptr() + tok_start * K_BYTES).as_imm(),
             (b_d.unsafe_ptr() + eid * N * K_BYTES).as_imm(),
             (sfa_d.unsafe_ptr() + tok_start * scale_K)
-            .bitcast[Float8_e8m0fnu]()
+            .unsafe_bitcast[Float8_e8m0fnu]()
             .as_imm(),
             (sfb_d.unsafe_ptr() + eid * N * scale_K)
-            .bitcast[Float8_e8m0fnu]()
+            .unsafe_bitcast[Float8_e8m0fnu]()
             .as_imm(),
             c_ref_d.unsafe_ptr() + tok_start * N,
             Int32(m_slot),
@@ -777,10 +777,10 @@ def _probe_grouped_determinism[
             (a_d.unsafe_ptr() + tok_start * K_BYTES).as_imm(),
             (b_d.unsafe_ptr() + eid * N * K_BYTES).as_imm(),
             (sfa_d.unsafe_ptr() + tok_start * scale_K)
-            .bitcast[Float8_e8m0fnu]()
+            .unsafe_bitcast[Float8_e8m0fnu]()
             .as_imm(),
             (sfb_d.unsafe_ptr() + eid * N * scale_K)
-            .bitcast[Float8_e8m0fnu]()
+            .unsafe_bitcast[Float8_e8m0fnu]()
             .as_imm(),
             c_ref_d.unsafe_ptr() + tok_start * N,
             Int32(m_slot),

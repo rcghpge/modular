@@ -328,7 +328,7 @@ struct MLAPrefillSparse[
 
         ref smem = external_memory[
             UInt8, address_space=.SHARED, alignment=128
-        ]().bitcast[Self.SMemType]()[]
+        ]().unsafe_bitcast[Self.SMemType]()[]
         ref qkvo_union = smem.qkvo_union
 
         var full_q_ptr = qkvo_union.unsafe_get[Self.FULL_Q_TYPE]().unsafe_ptr()
@@ -866,7 +866,7 @@ struct MLAPrefillSparse[
                 if elect_one_sync():
                     fence_async_view_proxy()
                     var o_smem_tile = TileTensor(
-                        o_ptr.bitcast[Scalar[Self.output_dtype]](),
+                        o_ptr.unsafe_bitcast[Scalar[Self.output_dtype]](),
                         row_major[
                             Self.NUM_Q_HEADS_PER_CTA, Self.config.v_depth
                         ](),

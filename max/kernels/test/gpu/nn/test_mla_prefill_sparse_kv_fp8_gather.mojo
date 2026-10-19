@@ -395,7 +395,7 @@ def _run_case[
         ),
     )
     var topk_lengths_tt = TileTensor(
-        topk_lengths_device.unsafe_ptr().bitcast[UInt32](),
+        topk_lengths_device.unsafe_ptr().unsafe_bitcast[UInt32](),
         row_major(total_q),
     )
     var padding_mask = PaddingMask(topk_lengths_tt)

@@ -625,18 +625,18 @@ def kernel_6[
     comptime c_smem_size = BM * MMA_N
 
     var a_smem_base = base_ptr_smem  # need space for 4096 (64 x 64) elements by 2 bytes or 8192 total, which is 0x2000
-    var b_smem_base = (a_smem_base + a_smem_size * num_pipeline_stages).bitcast[
-        Scalar[b_type]
-    ]()
-    var c_smem_base = (b_smem_base + b_smem_size * num_pipeline_stages).bitcast[
-        Scalar[c_type]
-    ]()
+    var b_smem_base = (
+        a_smem_base + a_smem_size * num_pipeline_stages
+    ).unsafe_bitcast[Scalar[b_type]]()
+    var c_smem_base = (
+        b_smem_base + b_smem_size * num_pipeline_stages
+    ).unsafe_bitcast[Scalar[c_type]]()
 
     var a_smem = ATileArray(a_smem_base)
     var b_smem = BTileArray(b_smem_base)
     var c_smem_tile = TileTensor(c_smem_base, row_major[BM, MMA_N]())
 
-    var smem_pool = (c_smem_base + c_smem_size).bitcast[Int64]()
+    var smem_pool = (c_smem_base + c_smem_size).unsafe_bitcast[Int64]()
 
     comptime accum_type = get_accum_type[a_type]()
 
@@ -645,11 +645,13 @@ def kernel_6[
     # + num_pipeline_stages is 1 * num_pipeline_stage so 8 bytes for each barrier at each stage
     var mma_mbar_ptr = tma_mbar_ptr + num_pipeline_stages
     var compute_barrier_base = mma_mbar_ptr + num_pipeline_stages
-    var ptr_tmem_addr = (compute_barrier_base + 1).bitcast[UInt32]()
+    var ptr_tmem_addr = (compute_barrier_base + 1).unsafe_bitcast[UInt32]()
 
-    var tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var compute_barrier = compute_barrier_base.bitcast[SharedMemBarrier]()
+    var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var compute_barrier = compute_barrier_base.unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     var warp_id = get_warp_id()
     var elect_one_warp = warp_id == 0

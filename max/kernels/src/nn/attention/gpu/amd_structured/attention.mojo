@@ -616,7 +616,7 @@ struct Attention[
             address_space=.SHARED,
             alignment=Self._smem_alignment,
         ]()
-        self.v_smem_ptr = self.k_smem_ptr.bitcast[
+        self.v_smem_ptr = self.k_smem_ptr.unsafe_bitcast[
             Scalar[Self.v_t.dtype]
         ]() if Self.amd_structured_config.shared_kv else unsafe_stack_allocation[
             Self._v_smem_size,

@@ -230,7 +230,7 @@ def test_expert_offset_beyond_int32[
     comptime if preshuffled:
         Shuffler[1].preshuffle_grouped_scale_4d_gpu[K_SCALES=SCALE_K](
             TileTensor(
-                a_scales_dev.unsafe_ptr().bitcast[UInt8](),
+                a_scales_dev.unsafe_ptr().unsafe_bitcast[UInt8](),
                 row_major(total_tokens, Idx[SCALE_K]),
             ).as_imm(),
             TileTensor(
@@ -261,7 +261,7 @@ def test_expert_offset_beyond_int32[
             row_major(tokens_per_expert, Idx[SCALE_K]),
         ).as_imm()
         var sfb_expert_tt = TileTensor(
-            b_scales_routed_dev.unsafe_ptr().bitcast[Float8_e8m0fnu]()
+            b_scales_routed_dev.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu]()
             + slot * SCALES_PER_EXPERT,
             row_major[N, SCALE_K](),
         ).as_imm()
@@ -285,7 +285,7 @@ def test_expert_offset_beyond_int32[
         a_dev, row_major(total_tokens, Idx[PACKED_K])
     ).as_imm()
     var b_scales_tt = TileTensor(
-        b_scales_dev.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        b_scales_dev.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major[NUM_EXPERTS, N, SCALE_K](),
     ).as_imm()
     var a_offsets_tt = TileTensor(a_offsets_dev, row_major(num_active + 1))
@@ -297,7 +297,7 @@ def test_expert_offset_beyond_int32[
             b_dev, row_major[NUM_EXPERTS, N * PACKED_K]()
         ).as_imm()
         var a_scales_pre_tt = TileTensor(
-            a_scales_pre_dev.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+            a_scales_pre_dev.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
             row_major(num_active * max_padded_M, Idx[SCALE_K]),
         ).as_imm()
         # The dispatcher's fallback tile for this shape, launched directly so

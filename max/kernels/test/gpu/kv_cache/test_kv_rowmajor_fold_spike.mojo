@@ -213,8 +213,12 @@ def _rowmajor_fold_spike_kernel[
         # Both paths land on this single barrier.
         mbar[].expect_bytes(Int32(expect_total))
 
-        var ref_desc_ptr = Pointer(to=ref_tma.descriptor).bitcast[NoneType]()
-        var test_desc_ptr = Pointer(to=test_tma.descriptor).bitcast[NoneType]()
+        var ref_desc_ptr = Pointer(to=ref_tma.descriptor).unsafe_bitcast[
+            NoneType
+        ]()
+        var test_desc_ptr = Pointer(to=test_tma.descriptor).unsafe_bitcast[
+            NoneType
+        ]()
 
         # ---- REFERENCE: one TMA per atom, landing at chunk-inner offset ------
         # gmem coord (CUDA fastest-first) for the rank-2 (head_size, BN)-like

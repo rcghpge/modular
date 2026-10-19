@@ -1251,7 +1251,9 @@ def _swiglu_epilogue_smem_tma[
                 if pair0_row < M_bound and out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         buf_base,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(out_col), Int(pair0_row)),
                     )
 
@@ -1259,7 +1261,9 @@ def _swiglu_epilogue_smem_tma[
                 if pair1_row < M_bound and out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         pair1_buf,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(out_col), Int(pair1_row)),
                     )
 
@@ -1274,7 +1278,9 @@ def _swiglu_epilogue_smem_tma[
                 if out_row < M_bound and out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         buf_base,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(out_col), Int(out_row)),
                     )
 
@@ -1289,7 +1295,9 @@ def _swiglu_epilogue_smem_tma[
                 if out_row < M_bound and out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         buf_base,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(out_col), Int(out_row)),
                     )
 
@@ -1307,7 +1315,9 @@ def _swiglu_epilogue_smem_tma[
                 if out_row < M_bound and top_out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         buf_base,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(top_out_col), Int(out_row)),
                     )
 
@@ -1315,7 +1325,9 @@ def _swiglu_epilogue_smem_tma[
                 if out_row < M_bound and bot_out_col < H_bound:
                     cp_async_bulk_tensor_global_shared_cta(
                         bot_buf,
-                        Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=c_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         Index(Int(bot_out_col), Int(out_row)),
                     )
 
@@ -1593,12 +1605,14 @@ def blackwell_swiglu_warp_specialized_kernel[
         address_space=.SHARED,
         alignment=128,
     ]()
-    ref smem = smem_bytes.bitcast[SmemType]()[]
+    ref smem = smem_bytes.unsafe_bitcast[SmemType]()[]
     var ptr_tmem_addr: MutPointer[
         UInt32, origin_of(smem.tmem_addr), address_space=.SHARED
     ] = smem.tmem_addr.unsafe_ptr()
     var tmem_dealloc_mbar = smem.tmem_dealloc_mbar.unsafe_ptr()
-    var c_out_smem = (smem_bytes + c_out_smem_offset).bitcast[Scalar[c_type]]()
+    var c_out_smem = (smem_bytes + c_out_smem_offset).unsafe_bitcast[
+        Scalar[c_type]
+    ]()
 
     # ===== A/B SMEM tile views =====
     var a_smem_tt = SMemTileArray2D[

@@ -2232,7 +2232,7 @@ def mla_decoding_single_batch[
     ](q_smem, q_smem_layout, bound=q_smem_size)
 
     comptime kv_smem_size = BN * depth
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
 
     # For MLA, We define V = K[:, :nope_dim], thus we split the K tensor
     # in two parts when storing it in the smem: K[:, :nope_dim] and
@@ -2311,7 +2311,7 @@ def mla_decoding_single_batch[
         rowsum[i] = 0.0
 
     # Shared memory for P = Q * K^t
-    var p_smem = (k_smem + kv_smem_size).bitcast[Scalar[k_type]]()
+    var p_smem = (k_smem + kv_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime p_smem_size = BM * BN
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
@@ -2320,7 +2320,7 @@ def mla_decoding_single_batch[
 
     # Each warp group needs separate maximum and sum slots.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN).bitcast[Scalar[accum_type]](),
+        (p_smem + BM * BN).unsafe_bitcast[Scalar[accum_type]](),
         row_major[2 * num_warps_n, BM](),
     )
 
@@ -2653,7 +2653,7 @@ def mla_decoding_single_batch[
         # Reuse a_smem for c tile in smem
         comptime accum_smem_layout = row_major[BM, nope_dim]()
         var accum_smem_tile = TileTensor(
-            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+            q_smem.unsafe_bitcast[Scalar[output_type]](), accum_smem_layout
         )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN_O](
@@ -3883,7 +3883,7 @@ def mla_prefill_single_batch[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = BN * q_depth
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -3894,7 +3894,7 @@ def mla_prefill_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = BN * depth
-    var v_smem = (k_smem + k_smem_size).bitcast[Scalar[v_type]]()
+    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime v_smem_layout = row_major[BK, depth]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -3971,7 +3971,7 @@ def mla_prefill_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).bitcast[Scalar[v_type]]()
+    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3983,7 +3983,7 @@ def mla_prefill_single_batch[
 
     # Each warp group needs separate maximum and sum slots.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).bitcast[
+        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[2 * num_warps_n, BM](),
@@ -4455,7 +4455,7 @@ def mla_prefill_single_batch[
         # Reuse a_smem for c tile in smem
         comptime accum_smem_layout = row_major[BM, depth]()
         var accum_smem_tile = TileTensor(
-            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+            q_smem.unsafe_bitcast[Scalar[output_type]](), accum_smem_layout
         )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, depth](

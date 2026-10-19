@@ -549,8 +549,8 @@ def _test_swiglu_dispatch[
     # left the pad rows untouched).
     var sf_garbage_ref_ptr = alloc[Scalar[scales_dtype]](S_size)
     var sf_garbage_test_ptr = alloc[Scalar[scales_dtype]](S_size)
-    var sf_garbage_ref_bytes = sf_garbage_ref_ptr.bitcast[UInt8]()
-    var sf_garbage_test_bytes = sf_garbage_test_ptr.bitcast[UInt8]()
+    var sf_garbage_ref_bytes = sf_garbage_ref_ptr.unsafe_bitcast[UInt8]()
+    var sf_garbage_test_bytes = sf_garbage_test_ptr.unsafe_bitcast[UInt8]()
     for i in range(S_size):
         sf_garbage_ref_bytes[i] = UInt8(0xAA)
         sf_garbage_test_bytes[i] = UInt8(0x55)

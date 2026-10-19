@@ -356,7 +356,9 @@ def bench_shape[
         )
         var asf = (
             TileTensor(
-                cb_asf.offset_ptr(iteration).bitcast[Scalar[SCALE_DTYPE]](),
+                cb_asf.offset_ptr(iteration).unsafe_bitcast[
+                    Scalar[SCALE_DTYPE]
+                ](),
                 row_major(total_seq, Idx[k_scales]),
             )
             .as_imm()
@@ -364,7 +366,9 @@ def bench_shape[
         )
         var bsf = (
             TileTensor(
-                cb_bsf.offset_ptr(iteration).bitcast[Scalar[SCALE_DTYPE]](),
+                cb_bsf.offset_ptr(iteration).unsafe_bitcast[
+                    Scalar[SCALE_DTYPE]
+                ](),
                 row_major(Idx[n_total], Idx[k_scales]),
             )
             .as_imm()
@@ -442,7 +446,7 @@ def bench_shape[
             row_major(total_seq, Idx[hidden]),
         ).bitcast[.uint8]()
         var asf_tt = TileTensor(
-            cb_asf.offset_ptr(iteration).bitcast[Scalar[SCALE_DTYPE]](),
+            cb_asf.offset_ptr(iteration).unsafe_bitcast[Scalar[SCALE_DTYPE]](),
             row_major(total_seq, Idx[k_scales]),
         )
 
@@ -461,7 +465,9 @@ def bench_shape[
                 row_major(Idx[band_n], Idx[hidden]),
             )
             var bsf = TileTensor(
-                cb_bsf.offset_ptr(iteration).bitcast[Scalar[SCALE_DTYPE]]()
+                cb_bsf.offset_ptr(iteration).unsafe_bitcast[
+                    Scalar[SCALE_DTYPE]
+                ]()
                 + col_off * k_scales,
                 row_major(Idx[band_n], Idx[k_scales]),
             )

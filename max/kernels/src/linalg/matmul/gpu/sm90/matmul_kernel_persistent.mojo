@@ -89,7 +89,7 @@ __extension HopperMatmulSM90Kernel:
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SMem]()[]
+        ]().unsafe_bitcast[Self.SMem]()[]
 
         # Common initialization
         var (
@@ -225,7 +225,7 @@ __extension HopperMatmulSM90Kernel:
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SMem]()[]
+        ]().unsafe_bitcast[Self.SMem]()[]
 
         # Common initialization
         var (

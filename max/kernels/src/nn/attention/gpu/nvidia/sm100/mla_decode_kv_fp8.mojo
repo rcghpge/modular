@@ -400,7 +400,7 @@ struct MLA_SM100_Decode_KV_FP8[
         ]()
         var kv_smem_bf16 = q_smem + Self.BlockElems * Self.NumQKBlocks
         var kv_smem_fp8_upper0 = (
-            kv_smem_bf16.bitcast[Scalar[Self.KVLUTType.dtype]]()
+            kv_smem_bf16.unsafe_bitcast[Scalar[Self.KVLUTType.dtype]]()
             + Self.BlockElems * Self.NumQKBlocks
         )
 
@@ -412,7 +412,9 @@ struct MLA_SM100_Decode_KV_FP8[
         # We move P to the last slot of KV pipeline SO now we have tile of 64x
         # 32 of float or 64x64 of FP16 to save output into
         # tiles in SMEM and smooth the pipeline for the next batch if we use splitk
-        var out_smem_start = kv_smem_bf16.bitcast[Scalar[Self.output_type]]()
+        var out_smem_start = kv_smem_bf16.unsafe_bitcast[
+            Scalar[Self.output_type]
+        ]()
         # there is potential to have two Tmem for S, because we have two K so we can
         # unblock the MMA while loading S to reg for softmax
         # if it was splitk we need to use the extra P slot. If not we need
@@ -420,11 +422,11 @@ struct MLA_SM100_Decode_KV_FP8[
         # MMA/load when max is valid.
         var out_smem_total = kv_smem_total
 
-        var out_smem = out_smem_start.bitcast[Scalar[Self.output_type]]()
+        var out_smem = out_smem_start.unsafe_bitcast[Scalar[Self.output_type]]()
 
         # max_smem is double-buffered (2 x 128 elements) to avoid a race
         # condition in softmax; li_smem is a single 128-element buffer.
-        var max_smem = (out_smem + out_smem_total).bitcast[
+        var max_smem = (out_smem + out_smem_total).unsafe_bitcast[
             Scalar[Self.AccumType]
         ]()
 
@@ -437,7 +439,7 @@ struct MLA_SM100_Decode_KV_FP8[
         # stage 1 at scale_smem_base + scale_smem_per_stage.
         # When scale_block_size == 0 (tensorwise), scale_smem_per_stage is 0
         # and this region is empty.
-        var scale_smem_base = (li_smem + WARPGROUP_SIZE).bitcast[UInt8]()
+        var scale_smem_base = (li_smem + WARPGROUP_SIZE).unsafe_bitcast[UInt8]()
 
         #  Now we have to define MBARS for the kernel
         var mbar_base: MBarType = (
@@ -445,7 +447,7 @@ struct MLA_SM100_Decode_KV_FP8[
                 scale_smem_base
                 + Self.config.scale_smem_per_stage * Self.config.num_kv_stages
             )
-            .bitcast[SharedMemBarrier]()
+            .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
@@ -524,7 +526,7 @@ struct MLA_SM100_Decode_KV_FP8[
         mbar_base += out_pipeline.num_mbars()
 
         # barrier total [27 + (num_out_stages)*2]
-        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
+        var ptr_tmem_addr = (mbar_base).unsafe_bitcast[UInt32]()
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
         var is_leader = elect() != 0
@@ -931,7 +933,9 @@ struct MLA_SM100_Decode_KV_FP8[
             kv_load_cons_cvt.wait()
             kv_cvt_prod.acquire()
 
-            var src_u8 = kv_load_cons_cvt.stage_base_ptr().bitcast[UInt8]()
+            var src_u8 = kv_load_cons_cvt.stage_base_ptr().unsafe_bitcast[
+                UInt8
+            ]()
             var dst = kv_cvt_prod.stage_base_ptr()
 
             # Compute the scale SMEM stage pointer for blockwise scaling.

@@ -427,18 +427,18 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             alignment=128,
             name="mha_dynamic_shared_memory",
         ]()
-        var kv_smem = (q_smem + Self.BlockElems * Self.NumQKBlocks).bitcast[
-            Scalar[Self.kv_type]
-        ]()
+        var kv_smem = (
+            q_smem + Self.BlockElems * Self.NumQKBlocks
+        ).unsafe_bitcast[Scalar[Self.kv_type]]()
         comptime kv_total_stages = Self.config.num_kv_stages
         comptime kv_smem_total = Self.BlockElems * Self.NumQKBlocks * kv_total_stages
 
         var out_smem_start = kv_smem
         var out_smem_total = kv_smem_total
 
-        var out_smem = out_smem_start.bitcast[Scalar[Self.output_type]]()
+        var out_smem = out_smem_start.unsafe_bitcast[Scalar[Self.output_type]]()
 
-        var max_smem = (out_smem + out_smem_total).bitcast[
+        var max_smem = (out_smem + out_smem_total).unsafe_bitcast[
             Scalar[Self.AccumType]
         ]()
 
@@ -446,7 +446,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
 
         var mbar_base: MBarType = (
             (li_smem + WARPGROUP_SIZE)
-            .bitcast[SharedMemBarrier]()
+            .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
@@ -503,12 +503,12 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
         ](mbar_base)
         mbar_base += out_pipeline.num_mbars()
 
-        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
+        var ptr_tmem_addr = (mbar_base).unsafe_bitcast[UInt32]()
 
         # Double-buffered idx SMEM (2 * BN_QK Int32 rows), indexed by the
         # KV stage: the gather WG stages tile N+1's indices while tile N's
         # gather4s are still in flight.
-        var idx_smem_base = (ptr_tmem_addr + 1).bitcast[Int32]()
+        var idx_smem_base = (ptr_tmem_addr + 1).unsafe_bitcast[Int32]()
 
         var warp_idx = UInt32(warp_id[broadcast=True]())
         var is_leader = elect() != 0
@@ -569,7 +569,9 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 ptr_tmem_addr[0],
                 s_bars,
                 p_bars,
-                kv_smem.bitcast[Scalar[Self.q_type]]().as_unsafe_any_origin(),
+                kv_smem.unsafe_bitcast[
+                    Scalar[Self.q_type]
+                ]().as_unsafe_any_origin(),
                 max_smem.as_unsafe_any_origin(),
                 li_smem.as_unsafe_any_origin(),
                 out_smem.as_unsafe_any_origin(),
@@ -628,7 +630,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                     ptr_tmem_addr[0],
                     q_smem.as_unsafe_any_origin(),
                     (kv_smem)
-                    .bitcast[Scalar[Self.q_type]]()
+                    .unsafe_bitcast[Scalar[Self.q_type]]()
                     .as_unsafe_any_origin(),
                     mbar_q,
                     s_bars,
@@ -639,7 +641,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
                 Self.mmaPV(
                     ptr_tmem_addr[0],
                     (kv_smem)
-                    .bitcast[Scalar[Self.q_type]]()
+                    .unsafe_bitcast[Scalar[Self.q_type]]()
                     .as_unsafe_any_origin(),
                     p_bars,
                     o_bars,
@@ -697,7 +699,7 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             * Self.config.input_q_depth
             * size_of[DType.bfloat16]()
         )
-        var kv_stage_ptr = kv_prod.stage_base_ptr[qk_stage=0]().bitcast[
+        var kv_stage_ptr = kv_prod.stage_base_ptr[qk_stage=0]().unsafe_bitcast[
             BFloat16
         ]()
         var k_mbar = kv_prod.producer_mbar[qk_stage=0]()
@@ -734,7 +736,9 @@ struct MLA_SM100_Decode_Sparse_KV_BF16[
             comptime assert (
                 chunks_per_warp * Self.num_gather_warps * 4 == Self.config.BN_QK
             )
-            var desc_ptr = Pointer(to=cur_k_tma.descriptor).bitcast[NoneType]()
+            var desc_ptr = Pointer(to=cur_k_tma.descriptor).unsafe_bitcast[
+                NoneType
+            ]()
             var mbar_ptr = k_mbar[].unsafe_ptr()
             comptime for g in range(chunks_per_warp):
                 var c = g * Self.num_gather_warps + warp_in_wg

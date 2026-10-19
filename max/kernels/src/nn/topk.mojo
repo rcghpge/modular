@@ -1346,7 +1346,7 @@ def _topk_stage2[
         alignment=align_of[Scalar[T]](),
     ]()
 
-    var idxs_sram = (vals_sram + vals_smem_size).bitcast[Int]()
+    var idxs_sram = (vals_sram + vals_smem_size).unsafe_bitcast[Int]()
 
     # SAFETY: Only dereferenced inside `comptime if sampling` blocks;
     # overwritten with real pointers before use when sampling is enabled.
@@ -1378,9 +1378,9 @@ def _topk_stage2[
 
         comptime if sampling:
             # Storing the top-K logits in shmem for sampling
-            s_id = (idxs_sram + vals_smem_size).bitcast[Int]()
+            s_id = (idxs_sram + vals_smem_size).unsafe_bitcast[Int]()
             # The 2* below is for warp align safety
-            s_val2 = (s_id + 2 * k_batch).bitcast[Scalar[T]]()
+            s_val2 = (s_id + 2 * k_batch).unsafe_bitcast[Scalar[T]]()
 
         var s_sum = unsafe_stack_allocation[
             1, Scalar[T], address_space=.SHARED
@@ -2761,8 +2761,8 @@ def _gumbel_argmax_fused_kernel[
                 var slot_ptr = (
                     partials.unsafe_value() + slot * _GUMBEL_PARTIAL_BYTES
                 )
-                slot_ptr.bitcast[Float32]()[0] = total.u.cast[.float32]()
-                (slot_ptr + 8).bitcast[Int64]()[0] = Int64(total.p)
+                slot_ptr.unsafe_bitcast[Float32]()[0] = total.u.cast[.float32]()
+                (slot_ptr + 8).unsafe_bitcast[Int64]()[0] = Int64(total.p)
                 var previous = Atomic[Int32].fetch_add[
                     ordering=Ordering.RELEASE
                 ](counters.unsafe_value() + batch_id, Int32(1))
@@ -2777,15 +2777,15 @@ def _gumbel_argmax_fused_kernel[
                 var first = (
                     partials.unsafe_value() + row_base * _GUMBEL_PARTIAL_BYTES
                 )
-                var best_value = first.bitcast[Float32]()[0]
-                var best_index = (first + 8).bitcast[Int64]()[0]
+                var best_value = first.unsafe_bitcast[Float32]()[0]
+                var best_index = (first + 8).unsafe_bitcast[Int64]()[0]
                 for block in range(1, blocks_per_row_int):
                     var slot_ptr = (
                         partials.unsafe_value()
                         + (row_base + block) * _GUMBEL_PARTIAL_BYTES
                     )
-                    var value = slot_ptr.bitcast[Float32]()[0]
-                    var index = (slot_ptr + 8).bitcast[Int64]()[0]
+                    var value = slot_ptr.unsafe_bitcast[Float32]()[0]
+                    var index = (slot_ptr + 8).unsafe_bitcast[Int64]()[0]
                     if value > best_value or (
                         value == best_value and index < best_index
                     ):

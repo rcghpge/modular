@@ -2910,7 +2910,7 @@ def mha_single_batch[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = config.k_smem_size()
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -2921,7 +2921,7 @@ def mha_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = config.v_smem_size()
-    var v_smem = (k_smem + k_smem_size).bitcast[Scalar[v_type]]()
+    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime v_smem_layout = row_major[BK, BN]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -3008,7 +3008,7 @@ def mha_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).bitcast[Scalar[v_type]]()
+    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3020,7 +3020,7 @@ def mha_single_batch[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).bitcast[
+        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[2 * num_warps_n, BM](),
@@ -3445,7 +3445,7 @@ def mha_single_batch[
         # Reuse a_smem for c tile in smem
         comptime accum_smem_layout = row_major[BM, depth]()
         var accum_smem_tile = TileTensor(
-            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+            q_smem.unsafe_bitcast[Scalar[output_type]](), accum_smem_layout
         )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN](
@@ -3594,7 +3594,7 @@ def mha_single_batch_pipelined[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = config.kv_smem_size()
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -3687,7 +3687,7 @@ def mha_single_batch_pipelined[
     # Shared memory for P = Q * K^t
     # Only use BN/BK tiles. Setting circular so that the prefetch in matmul
     # doesn't go OOB at the last tile.
-    var p_smem = (k_smem + k_smem_size).bitcast[Scalar[v_type]]()
+    var p_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type,
@@ -3699,7 +3699,7 @@ def mha_single_batch_pipelined[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + (BM * BN if num_warps_n > 1 else 0)).bitcast[
+        (p_smem + (BM * BN if num_warps_n > 1 else 0)).unsafe_bitcast[
             Scalar[accum_type]
         ](),
         row_major[p_frag_simdwidth * num_warps_n, BM](),
@@ -4091,7 +4091,7 @@ def mha_single_batch_pipelined[
         # Reuse a_smem for c tile in smem
         comptime accum_smem_layout = row_major[BM, depth]()
         var accum_smem_tile = TileTensor(
-            q_smem.bitcast[Scalar[output_type]](), accum_smem_layout
+            q_smem.unsafe_bitcast[Scalar[output_type]](), accum_smem_layout
         )
 
         var accum_smem_warp_tile = accum_smem_tile.tile[WM, WN](
@@ -4708,7 +4708,7 @@ def mha_decoding_single_batch[
     ](q_smem, q_smem_layout, bound=q_smem_size)
 
     comptime k_smem_size = BN * depth
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -4719,7 +4719,7 @@ def mha_decoding_single_batch[
     ](k_smem, k_smem_layout, bound=k_smem_size)
 
     comptime v_smem_size = BN * BN
-    var v_smem = (k_smem + k_smem_size).bitcast[Scalar[v_type]]()
+    var v_smem = (k_smem + k_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime v_smem_layout = row_major[BK, BN]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -4788,7 +4788,7 @@ def mha_decoding_single_batch[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).bitcast[Scalar[v_type]]()
+    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
         v_type, type_of(p_smem_layout), _, address_space=.SHARED
@@ -4796,7 +4796,7 @@ def mha_decoding_single_batch[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN).bitcast[Scalar[accum_type]](),
+        (p_smem + BM * BN).unsafe_bitcast[Scalar[accum_type]](),
         row_major[2 * num_warps_n, BM](),
     )
 
@@ -5128,7 +5128,7 @@ def mha_decoding_single_batch[
         ](0, 0).vectorize[1, p_frag_size // 2]()
         # offset on the pointer is to avoid possible races
         # with `accum_smem_warp_tile`.
-        var o_smem_ptr = q_smem.bitcast[Scalar[accum_type]]()
+        var o_smem_ptr = q_smem.unsafe_bitcast[Scalar[accum_type]]()
         var scratch = TileTensor[
             accum_type,
             type_of(row_major[2 * num_warps_n, BM]()),
@@ -5182,7 +5182,7 @@ def mha_decoding_single_batch[
 
     # Pack results in shared memory for wider simd width.
     var accum_smem_warp_ptr = (
-        q_smem.bitcast[Scalar[output_type]]() + warp_id * WM * WN
+        q_smem.unsafe_bitcast[Scalar[output_type]]() + warp_id * WM * WN
     )
 
     comptime if decoding_warp_split_k:
@@ -5366,7 +5366,7 @@ def mha_decoding_single_batch_pipelined[
     # There is one pre-allocated dynamic shared buffer.
     # Need to explicitly offset key after at query's end.
     comptime k_smem_size = num_pipeline_stages * BN * BK
-    var k_smem = (q_smem + q_smem_size).bitcast[Scalar[k_type]]()
+    var k_smem = (q_smem + q_smem_size).unsafe_bitcast[Scalar[k_type]]()
     comptime k_smem_layout = row_major[BN, BK]()
     var k_smem_iter = TileTensorIter[
         k_type,
@@ -5433,7 +5433,7 @@ def mha_decoding_single_batch_pipelined[
 
     # Share memory tile for Value, reuse K's shared memory tile.
     comptime v_smem_size = num_pipeline_stages * BN * BK
-    var v_smem = k_smem.bitcast[Scalar[v_type]]()
+    var v_smem = k_smem.unsafe_bitcast[Scalar[v_type]]()
     comptime v_smem_layout = row_major[BK, BN]()
     var v_smem_iter = TileTensorIter[
         v_type,
@@ -5445,7 +5445,7 @@ def mha_decoding_single_batch_pipelined[
 
     # Shared memory for P = Q * K^t
     # This overlaps key tile but are used at the same time i.e. no race condition.
-    var p_smem = (v_smem + v_smem_size).bitcast[Scalar[v_type]]()
+    var p_smem = (v_smem + v_smem_size).unsafe_bitcast[Scalar[v_type]]()
     comptime p_smem_size = BM * BN
     comptime p_smem_layout = row_major[BM, BK]()
     var p_smem_iter = TileTensorIter[
@@ -5458,7 +5458,9 @@ def mha_decoding_single_batch_pipelined[
 
     # Scratch shared memory for reduction across warps.
     var warp_scratch = TileTensor(
-        (p_smem + BM * BN).bitcast[Scalar[accum_type]]().as_unsafe_any_origin(),
+        (p_smem + BM * BN)
+        .unsafe_bitcast[Scalar[accum_type]]()
+        .as_unsafe_any_origin(),
         row_major[p_frag_simdwidth * num_warps_n, BM](),
     )
 
@@ -5671,7 +5673,7 @@ def mha_decoding_single_batch_pipelined[
     # Pack results in shared memory for wider simd width.
     comptime accum_smem_layout = row_major[WM, WN]()
     var accum_smem_warp_tile = TileTensor(
-        q_smem.bitcast[Scalar[output_type]]() + warp_id * WM * WN,
+        q_smem.unsafe_bitcast[Scalar[output_type]]() + warp_id * WM * WN,
         accum_smem_layout,
     )
 

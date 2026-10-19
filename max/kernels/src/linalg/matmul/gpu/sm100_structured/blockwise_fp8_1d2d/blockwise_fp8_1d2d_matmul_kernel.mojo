@@ -541,7 +541,7 @@ struct BlockwiseFP8_1D2DMatmulKernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Get typed tile arrays from SMEM
         var a_tiles = smem.a_tiles()

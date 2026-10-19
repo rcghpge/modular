@@ -390,7 +390,9 @@ def blasst_vote_unanimous(
     # (`kernel.mojo` zero-inits the region; `blasst_observe` writes 0/1), so
     # "all four nonzero" == "the word is 0x01010101".
     var base = (wg * UInt32(2) + phase) * UInt32(4)
-    return (blasst_vote + base).bitcast[UInt32]()[0] == UInt32(0x01010101)
+    return (blasst_vote + base).unsafe_bitcast[UInt32]()[0] == UInt32(
+        0x01010101
+    )
 
 
 @inline(.always)

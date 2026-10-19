@@ -1187,9 +1187,9 @@ __extension SM100MLA:
                     )
                     q_rope_tma_op.async_copy_elect(
                         QRopeType(
-                            (q_smem.bitcast[UInt8]() + q_nope_bytes).bitcast[
-                                Scalar[config.rope_gmem_dtype]
-                            ](),
+                            (
+                                q_smem.unsafe_bitcast[UInt8]() + q_nope_bytes
+                            ).unsafe_bitcast[Scalar[config.rope_gmem_dtype]](),
                             tt_row_major[q_rope_elems](),
                         ),
                         mbar[],
@@ -1470,10 +1470,10 @@ __extension SM100MLA:
                 q_nope_tma_op.async_copy_elect(
                     QNopeType(
                         (
-                            q_smem.bitcast[UInt8]()
+                            q_smem.unsafe_bitcast[UInt8]()
                             + q_nope_bytes
                             + q_rope_bytes
-                        ).bitcast[Scalar[Self.qkv_dtype]](),
+                        ).unsafe_bitcast[Scalar[Self.qkv_dtype]](),
                         tt_row_major[q_nope_elems](),
                     ),
                     q1_mbar[0],
@@ -1486,11 +1486,11 @@ __extension SM100MLA:
                 q_rope_tma_op.async_copy_elect(
                     QRopeType(
                         (
-                            q_smem.bitcast[UInt8]()
+                            q_smem.unsafe_bitcast[UInt8]()
                             + q_nope_bytes
                             + q_rope_bytes
                             + q_nope_bytes
-                        ).bitcast[Scalar[config.rope_gmem_dtype]](),
+                        ).unsafe_bitcast[Scalar[config.rope_gmem_dtype]](),
                         tt_row_major[q_rope_elems](),
                     ),
                     q1_mbar[0],
@@ -1726,9 +1726,9 @@ __extension SM100MLA:
                     )
                     q_rope_tma_op.async_copy_elect(
                         QRopeType(
-                            (q_smem.bitcast[UInt8]() + q_nope_bytes).bitcast[
-                                Scalar[config.rope_gmem_dtype]
-                            ](),
+                            (
+                                q_smem.unsafe_bitcast[UInt8]() + q_nope_bytes
+                            ).unsafe_bitcast[Scalar[config.rope_gmem_dtype]](),
                             tt_row_major[q_rope_elems](),
                         ),
                         mbar[],
@@ -1815,10 +1815,10 @@ __extension SM100MLA:
                 q_nope_tma_op.async_copy_elect(
                     QNopeType(
                         (
-                            q_smem.bitcast[UInt8]()
+                            q_smem.unsafe_bitcast[UInt8]()
                             + q_nope_bytes
                             + q_rope_bytes
-                        ).bitcast[Scalar[Self.qkv_dtype]](),
+                        ).unsafe_bitcast[Scalar[Self.qkv_dtype]](),
                         tt_row_major[q_nope_elems](),
                     ),
                     q1_mbar[0],
@@ -1831,11 +1831,11 @@ __extension SM100MLA:
                 q_rope_tma_op.async_copy_elect(
                     QRopeType(
                         (
-                            q_smem.bitcast[UInt8]()
+                            q_smem.unsafe_bitcast[UInt8]()
                             + q_nope_bytes
                             + q_rope_bytes
                             + q_nope_bytes
-                        ).bitcast[Scalar[config.rope_gmem_dtype]](),
+                        ).unsafe_bitcast[Scalar[config.rope_gmem_dtype]](),
                         tt_row_major[q_rope_elems](),
                     ),
                     q1_mbar[0],

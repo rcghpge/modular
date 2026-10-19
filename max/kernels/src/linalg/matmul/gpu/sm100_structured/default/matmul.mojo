@@ -1129,7 +1129,7 @@ def _splitk_context(ctx: DeviceContext) raises -> _SplitKContext:
     var state = alloc[_SplitKContext]({count = 1}).unsafe_leak()
     state.unsafe_write(_SplitKContext(workspace, slot))
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
-        StringSlice(key), state.bitcast[NoneType]()
+        StringSlice(key), state.unsafe_bitcast[NoneType]()
     )
     return state[]
 

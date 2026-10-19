@@ -752,7 +752,7 @@ struct TMAReduceExecutor[
                     reduction_kind=ReduceOp.ADD
                 ](
                     c_smem_split._storage,
-                    Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                    Pointer(to=c_tma_op.descriptor).unsafe_bitcast[NoneType](),
                     Index(
                         store_coords.coord_n,
                         store_coords.coord_m,
@@ -764,7 +764,7 @@ struct TMAReduceExecutor[
                     reduction_kind=ReduceOp.ADD
                 ](
                     c_smem_split._storage,
-                    Pointer(to=c_tma_op.descriptor).bitcast[NoneType](),
+                    Pointer(to=c_tma_op.descriptor).unsafe_bitcast[NoneType](),
                     Index(store_coords.coord_n, store_coords.coord_m),
                 )
 

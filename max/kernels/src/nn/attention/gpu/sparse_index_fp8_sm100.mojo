@@ -365,17 +365,17 @@ def _fp8_index_body[
     ]()
     var k_smem = smem
     var q_smem = smem + k_elems
-    var qs_smem = (smem + k_elems + q_elems).bitcast[Float32]()
+    var qs_smem = (smem + k_elems + q_elems).unsafe_bitcast[Float32]()
     var ks_smem = qs_smem + _N_Q_BUF * MMA_N
     # mbar[0] = K staging-done (one-shot); then one Q staging-done per Q buffer;
     # then the accumulator handshake, a (full, empty) pair per stage; the last
     # slot holds the tcgen05 TMEM base address.
-    var mbar = (ks_smem + BM_key).bitcast[SharedMemBarrier]()
+    var mbar = (ks_smem + BM_key).unsafe_bitcast[SharedMemBarrier]()
     var k_mbar = mbar
     var q_mbar = mbar + 1
     var s_full = mbar + 1 + _N_Q_BUF
     var s_empty = s_full + _N_S_STAGES
-    var ptr_tmem = (mbar + _N_MBARS - 1).bitcast[UInt32]()
+    var ptr_tmem = (mbar + _N_MBARS - 1).unsafe_bitcast[UInt32]()
     var q1_smem = smem + _Q1SmemOffset[dtype, BM_key, MMA_N, depth]
 
     comptime k_flat_layout = tt_row_major[k_elems]()

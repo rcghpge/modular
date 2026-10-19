@@ -1585,8 +1585,12 @@ def blackwell_tma_umma_warp_specialized_kernel[
     )
 
     var a_smem_base = base_ptr_smem
-    var b_smem_base = (a_smem_base + a_smem_size).bitcast[Scalar[b_type]]()
-    var c_smem_base = (b_smem_base + b_smem_size).bitcast[Scalar[c_type]]()
+    var b_smem_base = (a_smem_base + a_smem_size).unsafe_bitcast[
+        Scalar[b_type]
+    ]()
+    var c_smem_base = (b_smem_base + b_smem_size).unsafe_bitcast[
+        Scalar[c_type]
+    ]()
 
     # TileTensor views of shared memory for both TMA producer and MMA consumer.
     var a_smem_tt = SMemTileArray2D[
@@ -1604,7 +1608,7 @@ def blackwell_tma_umma_warp_specialized_kernel[
         swizzle_mode_to_bytes[b_swizzle],
     ](b_smem_base)
 
-    var smem_pool = (c_smem_base + c_smem_size).bitcast[Int64]()
+    var smem_pool = (c_smem_base + c_smem_size).unsafe_bitcast[Int64]()
 
     var tma_mbar_ptr = smem_pool
     var mma_mbar_ptr = tma_mbar_ptr + num_pipeline_stages
@@ -1613,15 +1617,19 @@ def blackwell_tma_umma_warp_specialized_kernel[
 
     var tmem_dealloc_mbar_ptr = (
         accum_empty_mbar_ptr + num_accum_pipeline_stages
-    ).bitcast[Int64]()
+    ).unsafe_bitcast[Int64]()
 
-    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).bitcast[UInt32]()
+    var ptr_tmem_addr = (tmem_dealloc_mbar_ptr + 1).unsafe_bitcast[UInt32]()
 
-    var tma_mbar = tma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var mma_mbar = mma_mbar_ptr.bitcast[SharedMemBarrier]()
-    var accum_full_mbar = accum_full_mbar_ptr.bitcast[SharedMemBarrier]()
-    var accum_empty_mbar = accum_empty_mbar_ptr.bitcast[SharedMemBarrier]()
-    var tmem_dealloc_mbar = tmem_dealloc_mbar_ptr.bitcast[SharedMemBarrier]()
+    var tma_mbar = tma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = mma_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var accum_full_mbar = accum_full_mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
+    var accum_empty_mbar = accum_empty_mbar_ptr.unsafe_bitcast[
+        SharedMemBarrier
+    ]()
+    var tmem_dealloc_mbar = tmem_dealloc_mbar_ptr.unsafe_bitcast[
+        SharedMemBarrier
+    ]()
 
     comptime accum_type = get_accum_type[a_type]()
 

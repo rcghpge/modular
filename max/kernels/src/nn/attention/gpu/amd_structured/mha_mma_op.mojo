@@ -641,9 +641,9 @@ struct MhaMmaOp[T: DType, config: MhaConfigV2]:
                     var swizzled_elts = (
                         swizzled_elts_odd if is_odd_col else swizzled_elts_even
                     )
-                    var smem_at_lane = (subtile.ptr + swizzled_elts).bitcast[
-                        BFloat16
-                    ]()
+                    var smem_at_lane = (
+                        subtile.ptr + swizzled_elts
+                    ).unsafe_bitcast[BFloat16]()
                     var frag = _load_from_lds[width=Self.FRAG_ELTS](
                         smem_at_lane
                     )

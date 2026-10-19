@@ -54,9 +54,9 @@ def scale_stream_kernel[
     var lane = thread_idx.x % WARP_SIZE
     var partition = thread_idx.x // WARP_SIZE
     # The BF16 suffix is reached through a byte pointer, as in packed weights.
-    var suffix = source.unsafe_ptr().bitcast[UInt8]() + 16
+    var suffix = source.unsafe_ptr().unsafe_bitcast[UInt8]() + 16
     var global_scales = TileTensor(
-        suffix.bitcast[BFloat16](), row_major[2 * GROUPS, N]()
+        suffix.unsafe_bitcast[BFloat16](), row_major[2 * GROUPS, N]()
     )
     var storage = stack_allocation[.bfloat16, address_space=.SHARED](
         row_major[2, RING, BN]()

@@ -316,8 +316,8 @@ def _test_case[
     ctx.enqueue_function[block_scaled_matmul_ref](
         a_d,
         b_d,
-        sfa_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
-        sfb_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfa_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
+        sfb_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         c_ref_d,
         Int32(M_static),
         Int32(N_static),
@@ -335,11 +335,11 @@ def _test_case[
     # layout — the kernel uses the underlying bytes through
     # `PreshuffledScaleLoader`, the TileTensor layout is unused.
     var sfa_tt = TileTensor(
-        sfa_pre_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfa_pre_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major[padded_M, scale_K](),
     ).as_imm()
     var sfb_tt = TileTensor(
-        sfb_pre_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfb_pre_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major[N_static, scale_K](),
     ).as_imm()
     var c_tt = TileTensor(c_d, row_major[M_static, N_static]())

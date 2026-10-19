@@ -314,7 +314,7 @@ struct MLAPrefillSparseFP8[
         comptime num_warps = 4
         comptime num_rows_per_warp = 4
 
-        var k_smem_i64 = k_smem_fp8_ptr.bitcast[Int64]()
+        var k_smem_i64 = k_smem_fp8_ptr.unsafe_bitcast[Int64]()
         var k_smem_tensor_i64 = TileTensor(
             k_smem_i64,
             row_major[Self.B_TOPK_PER_CTA, Self.k_tma_tile_width_fp8](),
@@ -447,7 +447,7 @@ struct MLAPrefillSparseFP8[
         var sw1_a = Int(sw_bf16(row_1 * UInt32(BN_QK) + col_bf16))
         var sw1_b = Int(sw_bf16(row_1 * UInt32(BN_QK) + col_bf16 + UInt32(8)))
 
-        var src_u8 = k_smem_fp8_ptr.bitcast[UInt8]()
+        var src_u8 = k_smem_fp8_ptr.unsafe_bitcast[UInt8]()
 
         var p0a_all = tt_stack_allocation[
             dtype=DType.uint32, address_space=.LOCAL
@@ -556,7 +556,7 @@ struct MLAPrefillSparseFP8[
             Self.config.B_TOPK
         ) // ROWS_PER_GATHER // num_warps
 
-        var v_smem_i64 = v_smem_fp8_ptr.bitcast[Int64]()
+        var v_smem_i64 = v_smem_fp8_ptr.unsafe_bitcast[Int64]()
         # gather4 writes its 4 gathered rows PACKED at the descriptor box
         # width (v_tma_tile_width_fp8 int64s per row) starting at dst.ptr;
         # the dst tile's row stride is NOT consulted. Stage atom-major --
@@ -707,7 +707,7 @@ struct MLAPrefillSparseFP8[
         var group_idx, idx_in_group = divmod(lane, UInt32(GROUP_SIZE))
         var col_bf16 = idx_in_group * UInt32(16)
 
-        var src_u8 = v_smem_fp8_ptr.bitcast[UInt8]()
+        var src_u8 = v_smem_fp8_ptr.unsafe_bitcast[UInt8]()
 
         # The SWIZZLE_128B BF16 writes clobber the aliased FP8 staging region,
         # so within a key-half every FP8 read must complete (barrier) before
@@ -901,7 +901,9 @@ struct MLAPrefillSparseFP8[
 
         ref smem_fp8 = external_memory[
             UInt8, address_space=.SHARED, alignment=128
-        ]().bitcast[MLASparseSharedMemoryFP8[Self.config, scale_block_size]]()[]
+        ]().unsafe_bitcast[
+            MLASparseSharedMemoryFP8[Self.config, scale_block_size]
+        ]()[]
         ref smem = smem_fp8.base
         ref qkvo_union = smem.qkvo_union
 
@@ -988,10 +990,10 @@ struct MLAPrefillSparseFP8[
         # FP8 K staging: upper half of K SMEM (k_smem_ptr + K_SIZE FP8 bytes).
         # FP8 V staging: upper half of V SMEM (v_smem_ptr + V_SIZE FP8 bytes).
         var k_smem_fp8_ptr = (
-            k_smem_ptr.bitcast[Float8_e4m3fn]() + Self.SMemType.K_SIZE
+            k_smem_ptr.unsafe_bitcast[Float8_e4m3fn]() + Self.SMemType.K_SIZE
         )
         var v_smem_fp8_ptr = (
-            v_smem_ptr.bitcast[Float8_e4m3fn]() + Self.SMemType.V_SIZE
+            v_smem_ptr.unsafe_bitcast[Float8_e4m3fn]() + Self.SMemType.V_SIZE
         )
 
         if warp_idx == 0:
@@ -1382,7 +1384,7 @@ struct MLAPrefillSparseFP8[
                 if elect_one_sync():
                     fence_async_view_proxy()
                     var o_smem_tile = TileTensor(
-                        o_ptr.bitcast[Scalar[Self.output_dtype]](),
+                        o_ptr.unsafe_bitcast[Scalar[Self.output_dtype]](),
                         row_major[
                             Self.NUM_Q_HEADS_PER_CTA, Self.config.v_depth
                         ](),

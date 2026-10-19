@@ -1035,7 +1035,7 @@ struct BF16TokenFormat[
     ) -> None:
         block_memcpy[Self.hid_dim * size_of[BFloat16](), block_size](
             buf_p,
-            src_p.bitcast[UInt8](),
+            src_p.unsafe_bitcast[UInt8](),
             thread_idx.x - thread_base,
         )
 
@@ -2055,7 +2055,7 @@ struct NVBlockScaledTokenFormat[
         # match `copy_msg_tile_to_output_tensor` so the mbars line up.
         comptime if smem_base_offset != 0:
             smem_base += smem_base_offset
-        var mbar_base = (smem_base + Self._mbar_smem_offset).bitcast[
+        var mbar_base = (smem_base + Self._mbar_smem_offset).unsafe_bitcast[
             SharedMemBarrier
         ]()
         # Index by the COMM-LOCAL warp (`warp_id() - warp_base`), matching the
@@ -2132,7 +2132,7 @@ struct NVBlockScaledTokenFormat[
         if not oob:
             var scales_base = (
                 recv_buf_ptr_functor(scales_tok) + Self.scales_offset()
-            ).bitcast[Scalar[Self.scales_dtype]]()
+            ).unsafe_bitcast[Scalar[Self.scales_dtype]]()
             scales_gmem_ptr = scales_base + n_scales_per_token * k_tile_idx
 
         comptime for i in range(0, n_scales_simd_per_token, sub_warp_size):
@@ -2187,16 +2187,18 @@ struct NVBlockScaledTokenFormat[
         comptime quant_bytes_per_ktile = Self.quant_size() // Self._n_k_tiles
         var k_byte_offset = k_tile_idx * quant_bytes_per_ktile
 
-        var smem_base = smem_ptr.bitcast[UInt8]()
+        var smem_base = smem_ptr.unsafe_bitcast[UInt8]()
         var warp_quant_smem = (
             smem_base
             + Self._n_warps * Self._scales_smem_per_warp
             + w * Self._quant_smem_per_warp
         )
-        var mbar_base = (smem_base + Self._mbar_smem_offset).bitcast[
+        var mbar_base = (smem_base + Self._mbar_smem_offset).unsafe_bitcast[
             SharedMemBarrier
         ]()
-        var output_tokens_base = self.output_tokens._storage.bitcast[UInt8]()
+        var output_tokens_base = self.output_tokens._storage.unsafe_bitcast[
+            UInt8
+        ]()
         var phase = UInt32(0)
 
         # Process the tokens in reverse order. This reduce latency when there
@@ -5099,7 +5101,7 @@ struct EPCombineKernel[
                                 ),
                                 input_tokens.ptr_at_offset(
                                     (ti, Idx[0])
-                                ).bitcast[UInt8](),
+                                ).unsafe_bitcast[UInt8](),
                                 lane,
                             )
 
@@ -5207,7 +5209,7 @@ struct EPCombineKernel[
                             dst_recv_buf_ptr,
                             input_tokens.ptr_at_offset(
                                 (token_idx, Idx[0])
-                            ).bitcast[UInt8](),
+                            ).unsafe_bitcast[UInt8](),
                             tid,
                         )
 
@@ -5243,7 +5245,7 @@ struct EPCombineKernel[
                                     curr_send_buf_ptr,
                                     input_tokens.ptr_at_offset(
                                         (token_idx, Idx[0])
-                                    ).bitcast[UInt8](),
+                                    ).unsafe_bitcast[UInt8](),
                                     lane_id(),
                                 )
 

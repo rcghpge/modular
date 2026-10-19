@@ -124,7 +124,7 @@ struct CoopRow[group_size: Int](TrivialRegisterPassable):
     def _slots(
         self, workspace: MutPointer[Int32, MutAnyOrigin]
     ) -> MutPointer[Float32, MutAnyOrigin]:
-        return (self._counter(workspace) + _COOP_CONTROL_WORDS).bitcast[
+        return (self._counter(workspace) + _COOP_CONTROL_WORDS).unsafe_bitcast[
             Float32
         ]()
 

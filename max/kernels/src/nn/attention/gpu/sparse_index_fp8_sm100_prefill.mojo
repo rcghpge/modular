@@ -1476,17 +1476,17 @@ def _fp8_index_score_prefill_kernel_sm100[
     comptime QSF_WORDS = (_SF_ATOM_BYTES // 4) if FP4 else 0
     var q_smem = smem
     var k_smem = smem + Q_SLOTS * q_elems
-    var ks_smem = (k_smem + NSTAGE * k_elems).bitcast[Scalar[KS_DTYPE]]()
-    var qsf_smem = (ks_smem + NSTAGE * KS_SLOT).bitcast[UInt32]()
-    var qs_smem = (qsf_smem + Q_SLOTS * QSF_WORDS).bitcast[Float32]()
-    var md_smem = (qs_smem + Q_SLOTS * MMA_N).bitcast[Int32]()
+    var ks_smem = (k_smem + NSTAGE * k_elems).unsafe_bitcast[Scalar[KS_DTYPE]]()
+    var qsf_smem = (ks_smem + NSTAGE * KS_SLOT).unsafe_bitcast[UInt32]()
+    var qs_smem = (qsf_smem + Q_SLOTS * QSF_WORDS).unsafe_bitcast[Float32]()
+    var md_smem = (qs_smem + Q_SLOTS * MMA_N).unsafe_bitcast[Int32]()
     # The CLC response, 16-byte aligned because the records before it are
     # 32 bytes each, then the entry steal's outcome.
-    var clc_resp = (md_smem + Q_SLOTS * _MD_WORDS).bitcast[UInt128]()
+    var clc_resp = (md_smem + Q_SLOTS * _MD_WORDS).unsafe_bitcast[UInt128]()
     var clc_found = md_smem + Q_SLOTS * _MD_WORDS + _CLC_RESP_WORDS
-    var mbar = (md_smem + Q_SLOTS * _MD_WORDS + _CLC_SCRATCH_WORDS).bitcast[
-        SharedMemBarrier
-    ]()
+    var mbar = (
+        md_smem + Q_SLOTS * _MD_WORDS + _CLC_SCRATCH_WORDS
+    ).unsafe_bitcast[SharedMemBarrier]()
     # Offsets are named because the lane-parallel init below maps a thread index
     # to an arrival count, which makes them part of the layout contract rather
     # than a one-off pointer bump.
@@ -1522,7 +1522,7 @@ def _fp8_index_score_prefill_kernel_sm100[
     var q_empty = mbar + Q_EMPTY_OFF
     var qs_ready = mbar + QS_READY_OFF
     var clc_full = mbar + CLC_FULL_OFF
-    var ptr_tmem = (mbar + N_MBAR).bitcast[UInt32]()
+    var ptr_tmem = (mbar + N_MBAR).unsafe_bitcast[UInt32]()
 
     comptime q_flat_layout = tt_row_major[q_elems]()
     comptime k_flat_layout = tt_row_major[k_elems]()
@@ -1643,7 +1643,9 @@ def _fp8_index_score_prefill_kernel_sm100[
         var e = elect()
         expect_bytes_pred(clc_full, Int32(size_of[UInt128]()), e)
         if e != 0:
-            clusterlaunchcontrol_try_cancel(clc_resp, clc_full.bitcast[Int64]())
+            clusterlaunchcontrol_try_cancel(
+                clc_resp, clc_full.unsafe_bitcast[Int64]()
+            )
 
     # Waits the cancel in flight and returns the first non-empty item it and
     # any re-issued cancels win, or an empty item once one fails. It returns
@@ -2176,9 +2178,9 @@ def _fp8_index_score_prefill_kernel_sm100[
                         # Key `m`'s word sits in copy `m // KS_KEYS` of the slot,
                         # past that copy's alignment residual. Staged ahead of
                         # the WAR wait, so it overlaps the consumers.
-                        var ks_atom = ks_smem.bitcast[UInt32]() + s * UInt32(
-                            KS_SLOT
-                        )
+                        var ks_atom = ks_smem.unsafe_bitcast[
+                            UInt32
+                        ]() + s * UInt32(KS_SLOT)
                         var row_off = md_smem[
                             qslot * UInt32(_MD_WORDS) + UInt32(_MD_KS_OFF)
                         ] + Int32(lane_id())
@@ -2214,7 +2216,7 @@ def _fp8_index_score_prefill_kernel_sm100[
                             ](
                                 sfa,
                                 _sf_atom_desc(
-                                    ks_smem.bitcast[UInt32]()
+                                    ks_smem.unsafe_bitcast[UInt32]()
                                     + s * UInt32(KS_SLOT)
                                 ),
                             )
@@ -2428,9 +2430,9 @@ def _fp8_index_score_prefill_kernel_sm100[
                             type_of(qs_flat_layout),
                             address_space=.SHARED,
                         ](
-                            (qsf_smem + qslot * UInt32(QSF_WORDS)).bitcast[
-                                Float32
-                            ](),
+                            (
+                                qsf_smem + qslot * UInt32(QSF_WORDS)
+                            ).unsafe_bitcast[Float32](),
                             qs_flat_layout,
                         ),
                         q_full[qslot],
@@ -2938,7 +2940,7 @@ def fp8_index_score_sm100_prefill[
         qsf_tma = create_tma_tile[N_TOKENS, num_heads](
             ctx,
             TileTensor(
-                q_sf.value().bitcast[Float32](),
+                q_sf.value().unsafe_bitcast[Float32](),
                 tt_row_major(num_q_tokens, num_heads),
             ),
         )

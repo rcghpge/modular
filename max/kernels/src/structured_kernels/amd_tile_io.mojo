@@ -178,7 +178,7 @@ def _load_to_lds[
     ].unsafe_dangling()
     var ptr_to_ptr = Pointer(to=desc_ptr)
     var ptr_to_simd = Pointer(to=bc.desc)
-    ptr_to_ptr[0] = ptr_to_simd.bitcast[
+    ptr_to_ptr[0] = ptr_to_simd.unsafe_bitcast[
         MutPointer[BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE]
     ]()[0]
     var desc_ptr_llvm = __mlir_op.`builtin.unrealized_conversion_cast`[
@@ -898,7 +898,7 @@ def _load_from_lds[
     """
     comptime if imm_offset_bytes != 0:
         comptime if dtype == .bfloat16 and width == 8:
-            var bf16_ptr = shared_ptr.bitcast[BFloat16]()
+            var bf16_ptr = shared_ptr.unsafe_bitcast[BFloat16]()
             var raw = ds_read_b128_imm_u32x4[offset_bytes=imm_offset_bytes](
                 bf16_ptr
             )
@@ -1964,7 +1964,7 @@ struct SubTileLoaderLDS[
             ].unsafe_dangling()
             var ptr_to_ptr = Pointer(to=desc_ptr_)
             var ptr_to_simd = Pointer(to=self.bc.desc)
-            ptr_to_ptr[0] = ptr_to_simd.bitcast[
+            ptr_to_ptr[0] = ptr_to_simd.unsafe_bitcast[
                 MutPointer[
                     BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
                 ]
@@ -2373,7 +2373,7 @@ struct SubTileLoaderLDS_st_8x32[
             ].unsafe_dangling()
             var ptr_to_ptr = Pointer(to=desc_ptr_)
             var ptr_to_simd = Pointer(to=self.bc.desc)
-            ptr_to_ptr[0] = ptr_to_simd.bitcast[
+            ptr_to_ptr[0] = ptr_to_simd.unsafe_bitcast[
                 MutPointer[
                     BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE
                 ]

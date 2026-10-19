@@ -304,7 +304,7 @@ struct TileScheduler[
         if elect_one_sync():
             clusterlaunchcontrol_try_cancel[multicast=multicast](
                 self.clc_response + clc_state.index(),
-                (self.full_mbar + clc_state.index()).bitcast[Int64](),
+                (self.full_mbar + clc_state.index()).unsafe_bitcast[Int64](),
             )
 
         return clc_state.next()

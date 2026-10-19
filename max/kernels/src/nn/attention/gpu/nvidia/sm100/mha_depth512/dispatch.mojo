@@ -167,7 +167,7 @@ def mha_sm100_depth512_dispatch[
     comptime PairBM_eff = d512_config.BM_eff() * 2
     comptime num_threads = d512_config.num_threads  # 384
 
-    var q = q_arg.bitcast[Scalar[KVType.dtype]]().unsafe_origin_cast[
+    var q = q_arg.unsafe_bitcast[Scalar[KVType.dtype]]().unsafe_origin_cast[
         q_arg.origin
     ]()
 

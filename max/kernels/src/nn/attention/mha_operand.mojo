@@ -1913,7 +1913,7 @@ struct TileTensorMHAOperand[
             tile_stride=tile_stride,
             swizzle_mode=swizzle_mode,
             l2_promotion=l2_promotion,
-        ](ctx, self.buffer.ptr.bitcast[Scalar[tma_dtype]](), rows)
+        ](ctx, self.buffer.ptr.unsafe_bitcast[Scalar[tma_dtype]](), rows)
 
     @inline(.always)
     def create_rope_gather4_tma_tile[
@@ -2394,7 +2394,7 @@ struct RaggedMHAOperand[
             tile_stride=tile_stride,
             swizzle_mode=swizzle_mode,
             l2_promotion=l2_promotion,
-        ](ctx, self.buffer.ptr.bitcast[Scalar[tma_dtype]](), rows)
+        ](ctx, self.buffer.ptr.unsafe_bitcast[Scalar[tma_dtype]](), rows)
 
     @inline(.always)
     def create_rope_gather4_tma_tile[

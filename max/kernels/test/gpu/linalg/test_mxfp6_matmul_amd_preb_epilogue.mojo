@@ -120,16 +120,16 @@ def _run_case[
         b_pre_d, row_major(Idx[N_static], Idx[K_BYTES])
     )
     var sfa_tt = TileTensor[mut=False](
-        sfa_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfa_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major(M_static, Idx[scale_K]),
     )
     var sfb_pre_tt = TileTensor[mut=False](
-        sfb_pre_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfb_pre_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major(Idx[N_static], Idx[scale_K]),
     )
 
     var sfb_raw_tt = TileTensor[mut=False](
-        sfb_raw_d.unsafe_ptr().bitcast[Float8_e8m0fnu](),
+        sfb_raw_d.unsafe_ptr().unsafe_bitcast[Float8_e8m0fnu](),
         row_major(Idx[N_static], Idx[scale_K]),
     )
     var b_row_tt = TileTensor[mut=False](

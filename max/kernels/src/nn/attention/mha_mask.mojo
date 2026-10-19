@@ -3180,7 +3180,7 @@ struct RelativeLogitsMask[
             # funnel shift can realign them by one element when `lo` is odd.
             var lo_even = lo & ~1
             if lo_even >= 0 and lo_even + BN + 2 <= extent:
-                var words = (row_ptr + lo_even).bitcast[UInt32]()
+                var words = (row_ptr + lo_even).unsafe_bitcast[UInt32]()
                 var shift = UInt32(lo & 1) * 16
                 var w = words[0]
                 comptime for m in range(BN // 2):

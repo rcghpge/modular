@@ -1223,18 +1223,18 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
 
         # Output SMEM aliases KV SMEM (same as Layout E).
         var out_smem_start = kv_smem
-        var out_smem = out_smem_start.bitcast[Scalar[Self.output_type]]()
+        var out_smem = out_smem_start.unsafe_bitcast[Scalar[Self.output_type]]()
 
-        var max_smem = (p_smem + Self.PStageElems * p_total_stages).bitcast[
-            Scalar[Self.AccumType]
-        ]()
+        var max_smem = (
+            p_smem + Self.PStageElems * p_total_stages
+        ).unsafe_bitcast[Scalar[Self.AccumType]]()
         var li_smem = max_smem + 2 * WARPGROUP_SIZE
 
         # Barrier layout (6N+11 fixed, N=num_kv_stages):
         # bar_q(1) + kv(2N) + s(2N) + p(2N) + o(4) + c(2) + corr_done(4)
         var mbar_base: MBarType = (
             (li_smem + WARPGROUP_SIZE)
-            .bitcast[SharedMemBarrier]()
+            .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
@@ -1291,7 +1291,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
         #   CORR_SCALE  = 448
         #   CORR_LI     = 449
         var warp_idx = UInt32(warp_id[broadcast=True]())
-        var ptr_tmem_addr = (mbar_base).bitcast[UInt32]()
+        var ptr_tmem_addr = (mbar_base).unsafe_bitcast[UInt32]()
         var is_leader = elect() != 0
 
         # Init: warp 8 inits barriers, warp 9 allocates TMEM.
@@ -1460,7 +1460,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
             num_k_tiles -= _tile_skip
 
         var kv_prod = DecodeKVProducer[Self.kv_type, Self.config](
-            kv_pipeline, kv_smem.bitcast[Scalar[Self.kv_type]]()
+            kv_pipeline, kv_smem.unsafe_bitcast[Scalar[Self.kv_type]]()
         )
         var elect_mask = elect()
         var is_leader = elect_mask != 0
@@ -1490,7 +1490,7 @@ struct MLA_SM100_Decode_QKV_FP8_Layout_G[
                 type_of(q_tt_layout),
                 MutAnyOrigin,
                 address_space=.SHARED,
-            ](q_smem.bitcast[Scalar[Self.kv_type]](), q_tt_layout)
+            ](q_smem.unsafe_bitcast[Scalar[Self.kv_type]](), q_tt_layout)
             q_tma.async_copy(q_smem_tensor, mbar_q[], (0, row))
 
         # First KV tile.

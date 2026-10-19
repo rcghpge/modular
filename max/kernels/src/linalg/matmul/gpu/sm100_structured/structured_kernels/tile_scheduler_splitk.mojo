@@ -460,7 +460,7 @@ struct TileScheduler[
                 Int(self.total_k_tiles), Self.num_split_k, k_group_size
             )
         )
-        self.locks_ptr = locks_ptr.bitcast[Int32]()
+        self.locks_ptr = locks_ptr.unsafe_bitcast[Int32]()
         self.throttle_pipeline = Self.ThrottlePipeline(clc_throttle.ptr)
 
     @inline(.always)

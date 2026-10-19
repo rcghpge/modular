@@ -868,7 +868,7 @@ def _mxfp4_index_k_cache[
         ),
     )
     var scales = TileTensor(
-        (base + page_size * MXFP4_INDEX_VALUE_BYTES).bitcast[UInt32](),
+        (base + page_size * MXFP4_INDEX_VALUE_BYTES).unsafe_bitcast[UInt32](),
         InternalLayout(
             Coord(num_pages, Idx[page_size], Idx[1], Idx[1]),
             Coord(page_stride // 4, Idx[1], Idx[1], Idx[1]),
@@ -1470,7 +1470,7 @@ def _mla_indexer_paged_impl[
                 scores_dt == .float32
             ), "the AMD scorer writes float32 scores"
             var scores_tile_f32 = TileTensor(
-                scores_buf.unsafe_ptr().bitcast[Float32](),
+                scores_buf.unsafe_ptr().unsafe_bitcast[Float32](),
                 row_major(chunk_rows, max_num_keys),
             )
             fp8_index_score_amd[

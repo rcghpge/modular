@@ -3483,7 +3483,11 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         var rank_sigs = Array[_, num_devices](
             fill_with_unrolled=lambda [i: Int]() -> Pointer[
                 Signal, MutAnyOrigin
-            ]: (signal_buffers[i]._ptr.bitcast[Signal]().as_unsafe_any_origin())
+            ]: (
+                signal_buffers[i]
+                ._ptr.unsafe_bitcast[Signal]()
+                .as_unsafe_any_origin()
+            )
         )
 
         comptime for i in range(num_devices):

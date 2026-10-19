@@ -928,7 +928,7 @@ struct PagedRowIndices[
             " an unfoldable issue-site geometry"
         )
 
-        var desc_ptr = Pointer(to=tma_op.descriptor).bitcast[NoneType]()
+        var desc_ptr = Pointer(to=tma_op.descriptor).unsafe_bitcast[NoneType]()
 
         comptime if needs_partial:
             # valid_pages is always in [1, pages_per_iter]; the dispatch loop
@@ -2515,7 +2515,7 @@ struct ContinuousBatchingKVCache[
             l2_promotion=l2_promotion,
         ](
             ctx,
-            self.blocks.ptr.bitcast[Scalar[tma_dtype]](),
+            self.blocks.ptr.unsafe_bitcast[Scalar[tma_dtype]](),
             self.num_kv_rows(),
         )
 
@@ -3579,7 +3579,7 @@ struct PagedKVCache[
             l2_promotion=l2_promotion,
         ](
             ctx,
-            self.blocks.ptr.bitcast[Scalar[tma_dtype]](),
+            self.blocks.ptr.unsafe_bitcast[Scalar[tma_dtype]](),
             self.num_kv_rows(),
         )
 
@@ -3626,7 +3626,9 @@ struct PagedKVCache[
         )
         # Offset past the FP8 content to reach the BF16 rope data,
         # then reinterpret the pointer as BF16.
-        var rope_ptr = (self.blocks.ptr + padded_depth).bitcast[BFloat16]()
+        var rope_ptr = (self.blocks.ptr + padded_depth).unsafe_bitcast[
+            BFloat16
+        ]()
         comptime smem_dim = coord[BN, 1, BK]
         comptime gmem_dim = coord[
             UNKNOWN_VALUE, Self.kv_params.num_heads, bf16_row_stride
@@ -3666,7 +3668,9 @@ struct PagedKVCache[
         reinterprets as BF16, and creates a gather4 TMA descriptor whose row
         stride is the full row width in BF16 elements.
         """
-        var rope_ptr = (self.blocks.ptr + padded_depth).bitcast[BFloat16]()
+        var rope_ptr = (self.blocks.ptr + padded_depth).unsafe_bitcast[
+            BFloat16
+        ]()
         return create_tma_tile_gather4[
             .bfloat16,
             tile_height=tile_height,

@@ -643,7 +643,9 @@ def run_test_prefill_sparse_fp8[
         ctx.synchronize()
         sink_host.free()
         attn_sink_ptr = Optional[ImmPointer[Float32, ImmutAnyOrigin]](
-            sink_device.unsafe_ptr().bitcast[Float32]().as_unsafe_any_origin()
+            sink_device.unsafe_ptr()
+            .unsafe_bitcast[Float32]()
+            .as_unsafe_any_origin()
         )
 
     mla_prefill_sparse_fp8[
@@ -658,7 +660,9 @@ def run_test_prefill_sparse_fp8[
         indices_tt,
         topk_lengths_tt,
         attn_sink_ptr,
-        scales_device.unsafe_ptr().bitcast[Float32]().as_unsafe_any_origin(),
+        scales_device.unsafe_ptr()
+        .unsafe_bitcast[Float32]()
+        .as_unsafe_any_origin(),
         scale,
         Int32(topk),
         ctx,

@@ -3299,7 +3299,7 @@ def pack_filter_from_fcrs(
                         rscf_buf.store(dst, filter[f, c, r, s])
         # Reinterpret as int64 for pack_filter (matches existing convention).
         var rscf_tile = TileTensor(
-            rscf_buf.bitcast[Int64](),
+            rscf_buf.unsafe_bitcast[Int64](),
             row_major((dim_R, dim_S, dim_C, dim_F)),
         )
         pack_filter(rscf_tile, packed_filter, num_groups)
@@ -3324,7 +3324,7 @@ def pack_filter_from_fcrs(
                             )
                             rscf_buf.store(dst, filter[f, c, q, r, s])
         var rscf_tile = TileTensor(
-            rscf_buf.bitcast[Int64](),
+            rscf_buf.unsafe_bitcast[Int64](),
             row_major(
                 (
                     dim_Q,
@@ -3859,7 +3859,7 @@ def _get_cudnn_meta(
 
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
         StringSlice(cache_key),
-        new_ptr_meta.bitcast[NoneType](),
+        new_ptr_meta.unsafe_bitcast[NoneType](),
     )
 
     return new_ptr_meta.as_unsafe_any_origin()
@@ -3987,7 +3987,7 @@ def _get_cached_cudnn_meta_nhwc_full(
 
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
         StringSlice(cache_key),
-        new_ptr_meta.bitcast[NoneType](),
+        new_ptr_meta.unsafe_bitcast[NoneType](),
     )
 
     check_cudnn_error(
@@ -4197,18 +4197,18 @@ def _conv_cudnn[
     check_cudnn_error(
         cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            Pointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
-            input.ptr.bitcast[NoneType](),
+            input.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
-            filter.ptr.bitcast[NoneType](),
+            filter.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].best_algo,
-            workspace_buffer.unsafe_ptr().bitcast[NoneType](),
+            workspace_buffer.unsafe_ptr().unsafe_bitcast[NoneType](),
             ptr_meta[].workspace_size,
-            Pointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
-            output.ptr.bitcast[NoneType](),
+            output.ptr.unsafe_bitcast[NoneType](),
         )
     )
     _ = workspace_buffer^
@@ -4293,34 +4293,34 @@ struct CachedMIOpenMeta[conv_rank: Int](Movable):
     def __init__(out self) raises:
         self.handle = MIOpenHandle()
         check_miopen_error(
-            miopenCreate(Pointer(to=self.handle).bitcast[NoneType]())
+            miopenCreate(Pointer(to=self.handle).unsafe_bitcast[NoneType]())
         )
 
         self.input_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                Pointer(to=self.input_desc).bitcast[NoneType]()
+                Pointer(to=self.input_desc).unsafe_bitcast[NoneType]()
             )
         )
 
         self.filter_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                Pointer(to=self.filter_desc).bitcast[NoneType]()
+                Pointer(to=self.filter_desc).unsafe_bitcast[NoneType]()
             )
         )
 
         self.output_desc = MIOpenTensorDescriptor()
         check_miopen_error(
             miopenCreateTensorDescriptor(
-                Pointer(to=self.output_desc).bitcast[NoneType]()
+                Pointer(to=self.output_desc).unsafe_bitcast[NoneType]()
             )
         )
 
         self.conv_desc = MIOpenConvolutionDescriptor()
         check_miopen_error(
             miopenCreateConvolutionDescriptor(
-                Pointer(to=self.conv_desc).bitcast[NoneType]()
+                Pointer(to=self.conv_desc).unsafe_bitcast[NoneType]()
             )
         )
 
@@ -4361,7 +4361,7 @@ def _get_cached_miopen_meta[
 
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
         StringSlice(cache_key),
-        new_ptr_meta.bitcast[NoneType](),
+        new_ptr_meta.unsafe_bitcast[NoneType](),
     )
 
     check_miopen_error(
@@ -4661,16 +4661,16 @@ def _conv_miopen[
             miopenFindConvolutionForwardAlgorithm(
                 ptr_meta[].handle,
                 ptr_meta[].input_desc,
-                input.ptr.bitcast[NoneType](),
+                input.ptr.unsafe_bitcast[NoneType](),
                 ptr_meta[].filter_desc,
-                filter_frsc_ptr.bitcast[NoneType](),
+                filter_frsc_ptr.unsafe_bitcast[NoneType](),
                 ptr_meta[].conv_desc,
                 ptr_meta[].output_desc,
-                output.ptr.bitcast[NoneType](),
+                output.ptr.unsafe_bitcast[NoneType](),
                 Int32(1),
                 Pointer(to=returned_count).as_unsafe_any_origin(),
                 Pointer(to=perf).as_unsafe_any_origin(),
-                find_workspace.unsafe_ptr().bitcast[NoneType](),
+                find_workspace.unsafe_ptr().unsafe_bitcast[NoneType](),
                 workspace_size,
                 False,  # non-exhaustive search
             )
@@ -4705,15 +4705,15 @@ def _conv_miopen[
             ptr_meta[].handle,
             Pointer(to=alpha).as_imm().as_unsafe_any_origin(),
             ptr_meta[].input_desc,
-            input.ptr.bitcast[NoneType](),
+            input.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].filter_desc,
-            filter_frsc_ptr.bitcast[NoneType](),
+            filter_frsc_ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].conv_desc,
             ptr_meta[].algo,
             Pointer(to=beta).as_imm().as_unsafe_any_origin(),
             ptr_meta[].output_desc,
-            output.ptr.bitcast[NoneType](),
-            forward_workspace.unsafe_ptr().bitcast[NoneType](),
+            output.ptr.unsafe_bitcast[NoneType](),
+            forward_workspace.unsafe_ptr().unsafe_bitcast[NoneType](),
             ptr_meta[].workspace_size,
         )
     )
@@ -6046,7 +6046,7 @@ def _conv3d_cudnn_depth_tiled[
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
             Int32(5),
-            filter_dims.bitcast[NoneType](),
+            filter_dims.unsafe_bitcast[NoneType](),
         )
     )
 
@@ -6112,7 +6112,7 @@ def _conv3d_cudnn_depth_tiled[
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[input_type](),
                 Int32(5),
-                input_dims.bitcast[NoneType](),
+                input_dims.unsafe_bitcast[NoneType](),
             )
         )
 
@@ -6129,7 +6129,7 @@ def _conv3d_cudnn_depth_tiled[
                 cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
                 get_cudnn_dtype[output_type](),
                 Int32(5),
-                output_dims.bitcast[NoneType](),
+                output_dims.unsafe_bitcast[NoneType](),
             )
         )
 
@@ -6142,9 +6142,9 @@ def _conv3d_cudnn_depth_tiled[
             cudnnSetConvolutionNdDescriptor(
                 ptr_meta[].ptr_conv_desc,
                 Int32(3),
-                pad_a.bitcast[NoneType](),
-                stride_a.bitcast[NoneType](),
-                dilation_a.bitcast[NoneType](),
+                pad_a.unsafe_bitcast[NoneType](),
+                stride_a.unsafe_bitcast[NoneType](),
+                dilation_a.unsafe_bitcast[NoneType](),
                 cudnnConvolutionMode_t.CUDNN_CROSS_CORRELATION,
                 cudnnDataType_t.CUDNN_DATA_FLOAT,
             )
@@ -6193,18 +6193,18 @@ def _conv3d_cudnn_depth_tiled[
 
         var fwd_status = cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            Pointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
-            in_ptr.bitcast[NoneType](),
+            in_ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
-            filter.ptr.bitcast[NoneType](),
+            filter.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_conv_desc,
             algo,
-            workspace_buffer.unsafe_ptr().bitcast[NoneType](),
+            workspace_buffer.unsafe_ptr().unsafe_bitcast[NoneType](),
             ws_size,
-            Pointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
-            out_ptr.bitcast[NoneType](),
+            out_ptr.unsafe_bitcast[NoneType](),
         )
         _ = workspace_buffer^
 
@@ -6299,7 +6299,7 @@ def _conv3d_cudnn[
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[input_type](),
             Int32(5),
-            input_dims.bitcast[NoneType](),
+            input_dims.unsafe_bitcast[NoneType](),
         )
     )
 
@@ -6318,7 +6318,7 @@ def _conv3d_cudnn[
             get_cudnn_dtype[filter_type](),
             cudnnTensorFormat_t.CUDNN_TENSOR_NCHW,
             Int32(5),
-            filter_dims.bitcast[NoneType](),
+            filter_dims.unsafe_bitcast[NoneType](),
         )
     )
 
@@ -6345,9 +6345,9 @@ def _conv3d_cudnn[
         cudnnSetConvolutionNdDescriptor(
             ptr_meta[].ptr_conv_desc,
             Int32(3),
-            pad_a.bitcast[NoneType](),
-            stride_a.bitcast[NoneType](),
-            dilation_a.bitcast[NoneType](),
+            pad_a.unsafe_bitcast[NoneType](),
+            stride_a.unsafe_bitcast[NoneType](),
+            dilation_a.unsafe_bitcast[NoneType](),
             cudnnConvolutionMode_t.CUDNN_CROSS_CORRELATION,
             cudnnDataType_t.CUDNN_DATA_FLOAT,
         )
@@ -6374,7 +6374,7 @@ def _conv3d_cudnn[
             cudnnTensorFormat_t.CUDNN_TENSOR_NHWC,
             get_cudnn_dtype[output_type](),
             Int32(5),
-            output_dims.bitcast[NoneType](),
+            output_dims.unsafe_bitcast[NoneType](),
         )
     )
 
@@ -6456,16 +6456,16 @@ def _conv3d_cudnn[
         var find_status = cudnnFindConvolutionForwardAlgorithmEx(
             ptr_meta[].ptr_handle,
             ptr_meta[].ptr_input_desc,
-            input.ptr.bitcast[NoneType](),
+            input.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
-            filter.ptr.bitcast[NoneType](),
+            filter.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_conv_desc,
             ptr_meta[].ptr_output_desc,
-            output.ptr.bitcast[NoneType](),
+            output.ptr.unsafe_bitcast[NoneType](),
             MAX_ALGOS,
             Pointer(to=returned_count),
             perf,
-            find_ws.unsafe_ptr().bitcast[NoneType](),
+            find_ws.unsafe_ptr().unsafe_bitcast[NoneType](),
             FIND_WS_CAP,
         )
         _ = find_ws^
@@ -6549,18 +6549,18 @@ def _conv3d_cudnn[
     var workspace_buffer = ctx.enqueue_create_buffer[.uint8](workspace_size_var)
     var fwd_status = cudnnConvolutionForward(
         ptr_meta[].ptr_handle,
-        Pointer(to=alpha).bitcast[NoneType](),
+        Pointer(to=alpha).unsafe_bitcast[NoneType](),
         ptr_meta[].ptr_input_desc,
-        input.ptr.bitcast[NoneType](),
+        input.ptr.unsafe_bitcast[NoneType](),
         ptr_meta[].ptr_filter_desc,
-        filter.ptr.bitcast[NoneType](),
+        filter.ptr.unsafe_bitcast[NoneType](),
         ptr_meta[].ptr_conv_desc,
         algo,
-        workspace_buffer.unsafe_ptr().bitcast[NoneType](),
+        workspace_buffer.unsafe_ptr().unsafe_bitcast[NoneType](),
         workspace_size_var,
-        Pointer(to=beta).bitcast[NoneType](),
+        Pointer(to=beta).unsafe_bitcast[NoneType](),
         ptr_meta[].ptr_output_desc,
-        output.ptr.bitcast[NoneType](),
+        output.ptr.unsafe_bitcast[NoneType](),
     )
     # Free workspace BEFORE sync to release the buffer back to the pool.
     _ = workspace_buffer^
@@ -6587,18 +6587,18 @@ def _conv3d_cudnn[
         var retry_workspace = ctx.enqueue_create_buffer[.uint8](0)
         fwd_status = cudnnConvolutionForward(
             ptr_meta[].ptr_handle,
-            Pointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_input_desc,
-            input.ptr.bitcast[NoneType](),
+            input.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_filter_desc,
-            filter.ptr.bitcast[NoneType](),
+            filter.ptr.unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_conv_desc,
             algo,
-            retry_workspace.unsafe_ptr().bitcast[NoneType](),
+            retry_workspace.unsafe_ptr().unsafe_bitcast[NoneType](),
             0,
-            Pointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).unsafe_bitcast[NoneType](),
             ptr_meta[].ptr_output_desc,
-            output.ptr.bitcast[NoneType](),
+            output.ptr.unsafe_bitcast[NoneType](),
         )
         _ = retry_workspace^
 

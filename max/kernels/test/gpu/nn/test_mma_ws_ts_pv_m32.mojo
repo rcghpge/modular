@@ -249,14 +249,14 @@ def pv_ts_batched_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var v_smem_ptr = smem_base.bitcast[Scalar[OP_TYPE]]()
+    var v_smem_ptr = smem_base.unsafe_bitcast[Scalar[OP_TYPE]]()
 
-    var metadata_ptr = (smem_base + v_bytes).bitcast[UInt32]()
+    var metadata_ptr = (smem_base + v_bytes).unsafe_bitcast[UInt32]()
     var ptr_tmem_addr = metadata_ptr
     # Per-tile TMA-done barriers (v_mbar[t]) and per-tile MMA-done barriers
     # (mma_mbar[t]). Fixed slots for up to 2 depth-tiles (8 B / barrier).
-    var v_mbar = (metadata_ptr + 2).bitcast[SharedMemBarrier]()
-    var mma_mbar = (metadata_ptr + 6).bitcast[SharedMemBarrier]()
+    var v_mbar = (metadata_ptr + 2).unsafe_bitcast[SharedMemBarrier]()
+    var mma_mbar = (metadata_ptr + 6).unsafe_bitcast[SharedMemBarrier]()
 
     var tid = thread_idx.x
     var wid = get_warp_id()

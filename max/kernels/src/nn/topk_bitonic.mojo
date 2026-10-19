@@ -2138,7 +2138,7 @@ def _histsel_topk_impl[
     ](
         sel_k,
         hist,
-        cand.bitcast[UInt32](),
+        cand.unsafe_bitcast[UInt32](),
         wor,
         hist,
         sel_k,

@@ -79,7 +79,7 @@ def im2col_load_kernel[
             name="im2col_smem",
         ]()
         + barrier_offset
-    ).bitcast[SharedMemBarrier]()
+    ).unsafe_bitcast[SharedMemBarrier]()
 
     # Thread 0 initializes barrier and issues TMA load
     if thread_idx.x == 0:

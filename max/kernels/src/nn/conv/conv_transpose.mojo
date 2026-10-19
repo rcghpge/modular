@@ -1888,20 +1888,20 @@ def _conv_transposed_cudnn[
     check_cudnn_error(
         cudnnConvolutionBackwardData(
             cudnn_handle[].ptr_handle,
-            Pointer(to=alpha).bitcast[NoneType](),
+            Pointer(to=alpha).unsafe_bitcast[NoneType](),
             cudnn_handle[].ptr_filter_desc,
-            filter.ptr.bitcast[NoneType](),
+            filter.ptr.unsafe_bitcast[NoneType](),
             cudnn_handle[].ptr_input_desc,
-            input.ptr.bitcast[NoneType](),
+            input.ptr.unsafe_bitcast[NoneType](),
             cudnn_handle[].ptr_conv_desc,
             algo,
             workspace_buffer.unsafe_ptr()
-            .bitcast[NoneType]()
+            .unsafe_bitcast[NoneType]()
             .as_unsafe_any_origin(),
             workspace_size,
-            Pointer(to=beta).bitcast[NoneType](),
+            Pointer(to=beta).unsafe_bitcast[NoneType](),
             cudnn_handle[].ptr_output_desc,
-            output.ptr.bitcast[NoneType](),
+            output.ptr.unsafe_bitcast[NoneType](),
         )
     )
     _ = workspace_buffer^

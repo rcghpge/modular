@@ -343,7 +343,7 @@ def _get_global_comms(ngpus: Int) raises -> Communicators:
     var ptr = alloc(AllocLayout[Communicators].single()).unsafe_leak()
     ptr.unsafe_write(c)
     external_call["KGEN_CompilerRT_InsertGlobal", NoneType](
-        StringSlice(NAME), ptr.bitcast[NoneType]()
+        StringSlice(NAME), ptr.unsafe_bitcast[NoneType]()
     )
     return ptr[]
 
@@ -414,8 +414,8 @@ def allreduce[
 
     _check_ccl_ok(
         _ccl_allreduce(
-            input_tensor._storage.bitcast[NoneType](),
-            output_tensor._storage.bitcast[NoneType](),
+            input_tensor._storage.unsafe_bitcast[NoneType](),
+            output_tensor._storage.unsafe_bitcast[NoneType](),
             count,
             dtype_ccl,
             op,
@@ -467,8 +467,8 @@ def allreduce[
 
     _check_ccl_ok(
         _ccl_allreduce(
-            input_tensors[device_rank]._storage.bitcast[NoneType](),
-            reduced._storage.bitcast[NoneType](),
+            input_tensors[device_rank]._storage.unsafe_bitcast[NoneType](),
+            reduced._storage.unsafe_bitcast[NoneType](),
             count,
             _dtype_to_ccl[dtype](),
             ncclRedOp_t.ncclSum,
@@ -618,8 +618,8 @@ def allgather[
             with list_of_ctx[i].push_context():
                 _check_ccl_ok(
                     _ccl_allgather(
-                        inputs[i]._storage.bitcast[NoneType](),
-                        recv_tmp[i].unsafe_ptr().bitcast[NoneType](),
+                        inputs[i]._storage.unsafe_bitcast[NoneType](),
+                        recv_tmp[i].unsafe_ptr().unsafe_bitcast[NoneType](),
                         count,
                         dtype_nccl,
                         comms.comms[i],
@@ -676,8 +676,8 @@ def broadcast[
 
     _check_ccl_ok(
         _ccl_broadcast(
-            input_tensor._storage.bitcast[NoneType](),
-            output_tensor._storage.bitcast[NoneType](),
+            input_tensor._storage.unsafe_bitcast[NoneType](),
+            output_tensor._storage.unsafe_bitcast[NoneType](),
             count,
             dtype_ccl,
             root,

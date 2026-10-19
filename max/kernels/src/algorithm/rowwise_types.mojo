@@ -396,7 +396,9 @@ struct Context[params: ContextParams](TrivialRegisterPassable):
         Returns:
             A pointer to the slot's state.
         """
-        return (self._partials_base + slot * _SPLITK_STATE_BYTES).bitcast[S]()
+        return (
+            self._partials_base + slot * _SPLITK_STATE_BYTES
+        ).unsafe_bitcast[S]()
 
     @inline(.always)
     def row_partial[

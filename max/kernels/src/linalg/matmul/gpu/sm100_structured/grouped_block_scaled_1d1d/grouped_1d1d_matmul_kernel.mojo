@@ -539,7 +539,7 @@ struct RealSwiGLUOutput[
     def store_packed_word(self, m: Int, byte_pos: Int, val: UInt32):
         # Caller guarantees `byte_pos` and `c_packed_row_stride` are
         # multiples of 4 so PTX lowers to one ST.GLOBAL.B32.
-        self.c_packed_ptr.bitcast[UInt32]().store(
+        self.c_packed_ptr.unsafe_bitcast[UInt32]().store(
             (m * Self.c_packed_row_stride + byte_pos) // 4, val
         )
 
@@ -593,7 +593,7 @@ struct RealSwiGLUOutput[
         if pad_total <= 0:
             return
         var total_writes = pad_total * Self.sf_dim1
-        var ptr_u32 = self.c_swiglu_scales_ptr.bitcast[UInt32]()
+        var ptr_u32 = self.c_swiglu_scales_ptr.unsafe_bitcast[UInt32]()
         for i in range(tid, total_writes, stride):
             var pad_idx, i1 = divmod(i, Self.sf_dim1)
             var m = tokens_e + pad_idx + sf_block_base
@@ -1606,7 +1606,7 @@ struct Grouped1D1DMatmulKernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         # Get typed tile arrays from SMEM
         var a_tiles = smem.a_tiles()
@@ -3466,7 +3466,10 @@ struct Grouped1D1DMatmulKernel[
                 MutAnyOrigin,
                 address_space=AddressSpace.SHARED,
                 linear_idx_type=DType.uint32,
-            ](c_tiles[0].unsafe_ptr().bitcast[Float32](), tok_rows_layout)
+            ](
+                c_tiles[0].unsafe_ptr().unsafe_bitcast[Float32](),
+                tok_rows_layout,
+            )
             var tok_warp = UInt32(warp_id_v)
             var tok_is_even = (lane_row & UInt32(1)) == UInt32(0)
             # A row's 4-float granule g sits at g ^ ((token >> 1) & 3): the
@@ -3634,7 +3637,7 @@ struct Grouped1D1DMatmulKernel[
             # MXFP8 cross-warp amax staging: 32 fp32 slots indexed
             # warp * 8 + token. Reuses the c_tiles SMEM, idle in this
             # path (no bf16 scatter).
-            var amax_smem = c_tiles[0]._storage.bitcast[Float32]()
+            var amax_smem = c_tiles[0]._storage.unsafe_bitcast[Float32]()
 
             comptime PartialType = Array[Scalar[Self.accum_type], rep_frag_size]
             var lane_row_is_even = (lane_row & UInt32(1)) == UInt32(0)
@@ -3976,7 +3979,7 @@ struct Grouped1D1DMatmulKernel[
         # GMEM); the GMEM round trip is replaced by a SMEM round trip. bf16
         # SMEM matches the unfused kernel's BF16-from-GMEM read pattern
         # exactly, so swiglu_match_bf16 precision is automatic.
-        var smem_bf16_ptr = c_tiles[0]._storage.bitcast[BFloat16]()
+        var smem_bf16_ptr = c_tiles[0]._storage.unsafe_bitcast[BFloat16]()
 
         comptime PartialType = Array[Scalar[Self.accum_type], rep_frag_size]
 

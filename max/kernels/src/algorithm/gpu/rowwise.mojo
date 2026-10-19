@@ -278,8 +278,8 @@ def _warp_shuffle_combine[S: ReduceOp](mut state: S):
     comptime for step in reversed(range(log2_floor(WARP_SIZE))):
         var stride = UInt32(1 << step)
         var partner = S()
-        var state_ptr = Pointer(to=state).bitcast[UInt32]()
-        var partner_ptr = Pointer(to=partner).bitcast[UInt32]()
+        var state_ptr = Pointer(to=state).unsafe_bitcast[UInt32]()
+        var partner_ptr = Pointer(to=partner).unsafe_bitcast[UInt32]()
 
         comptime for word in range(n_words):
             partner_ptr[word] = warp.shuffle_xor(state_ptr[word], stride)

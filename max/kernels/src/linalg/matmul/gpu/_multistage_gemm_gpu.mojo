@@ -146,7 +146,7 @@ def warp_split_k_reduction[
         barrier()
         var red_tb_smem = TileTensor(
             (
-                smem.bitcast[Scalar[c_type]]()
+                smem.unsafe_bitcast[Scalar[c_type]]()
                 + ((warp_k_part_id % i_red) * BM * BN)
             ).as_unsafe_any_origin(),
             row_major[1, BM * BN](),
@@ -1075,7 +1075,7 @@ def _multistage_gemm_kernel_impl[
     )
 
     # There is one pre-allocated shared buffer. Explicitly offset B after at A's end.
-    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).bitcast[
+    var b_smem = (a_smem + num_warp_k_partitions * a_smem_size).unsafe_bitcast[
         Scalar[b_type]
     ]()
     comptime b_smem_size: Int = num_pipeline_stages * BK * BN
@@ -1295,7 +1295,7 @@ def _multistage_gemm_kernel_impl[
         ]()
 
         var accum_smem_warp_tile = TileTensor(
-            a_smem.bitcast[Scalar[c_type]]() + Int(warp_id) * WM * WN,
+            a_smem.unsafe_bitcast[Scalar[c_type]]() + Int(warp_id) * WM * WN,
             row_major[WM, WN](),
         )
 

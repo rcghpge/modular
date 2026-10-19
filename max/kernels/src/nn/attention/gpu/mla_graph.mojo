@@ -1996,11 +1996,11 @@ def mla_prefill_branch_sparse_fp8[
     # invalid `-1` slots become 0xFFFFFFFF and are rejected by the kernel's
     # `idx >= 0` gather producer.
     var indices_tt = TileTensor(
-        d_indices.bitcast[UInt32](),
+        d_indices.unsafe_bitcast[UInt32](),
         row_major(seq_len * indices_stride),
     )
     var topk_lengths_tt = TileTensor(
-        topk_lengths.bitcast[UInt32](),
+        topk_lengths.unsafe_bitcast[UInt32](),
         row_major(seq_len),
     )
     var attn_sink_opt = Optional[ImmPointer[Float32, ImmutAnyOrigin]](None)
@@ -2056,7 +2056,7 @@ def mla_prefill_branch_sparse_fp8[
             topk_lengths,
             valid_lengths_buf.unsafe_ptr(),
             Int32(indices_stride),
-            zero_row_buf.unsafe_ptr().bitcast[UInt8](),
+            zero_row_buf.unsafe_ptr().unsafe_bitcast[UInt8](),
             Int32(k_cache_dim * size_of[type_of(k_cache).dtype]()),
             grid_dim=(batch_size, 1, 1),
             block_dim=(_AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS, 1, 1),
@@ -2153,7 +2153,7 @@ def mla_prefill_branch_sparse_fp8[
                 # scale_block_size=0 and scales_ptr is a non-null dummy).
                 var dummy_scales = (
                     raw_output_buf.unsafe_ptr()
-                    .bitcast[Float32]()
+                    .unsafe_bitcast[Float32]()
                     .as_unsafe_any_origin()
                 )
                 mla_sm100_prefill_sparse_fp8[
@@ -3517,11 +3517,11 @@ def mla_prefill_branch_sparse_bf16[
     # invalid `-1` slots become 0xFFFFFFFF and are rejected by the kernel's
     # `idx >= 0` gather producer.
     var indices_tt = TileTensor(
-        d_indices.bitcast[UInt32](),
+        d_indices.unsafe_bitcast[UInt32](),
         row_major(seq_len * indices_stride),
     )
     var topk_lengths_tt = TileTensor(
-        topk_lengths.bitcast[UInt32](),
+        topk_lengths.unsafe_bitcast[UInt32](),
         row_major(seq_len),
     )
     var attn_sink_opt = Optional[ImmPointer[Float32, ImmutAnyOrigin]](None)
@@ -3577,7 +3577,7 @@ def mla_prefill_branch_sparse_bf16[
             # scale_block_size=0 and scales_ptr is a non-null dummy).
             var dummy_scales = (
                 raw_output_buf.unsafe_ptr()
-                .bitcast[Float32]()
+                .unsafe_bitcast[Float32]()
                 .as_unsafe_any_origin()
             )
             mla_sm100_prefill_sparse_fp8[

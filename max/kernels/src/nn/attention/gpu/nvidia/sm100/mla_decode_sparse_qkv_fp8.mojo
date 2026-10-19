@@ -473,16 +473,16 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
         # Output SMEM reuses the SW64 KV region (same as the single-buffer
         # native FP8 kernel and the BF16 kernel).
-        var out_smem = kv_smem.bitcast[Scalar[Self.output_type]]()
+        var out_smem = kv_smem.unsafe_bitcast[Scalar[Self.output_type]]()
 
-        var max_smem = (p_smem + Self.PStageElems * Self.num_stages).bitcast[
-            Scalar[Self.AccumType]
-        ]()
+        var max_smem = (
+            p_smem + Self.PStageElems * Self.num_stages
+        ).unsafe_bitcast[Scalar[Self.AccumType]]()
         var li_smem = max_smem + 2 * WARPGROUP_SIZE
 
         var mbar_base: MBarType = (
             (li_smem + WARPGROUP_SIZE)
-            .bitcast[SharedMemBarrier]()
+            .unsafe_bitcast[SharedMemBarrier]()
             .as_unsafe_any_origin()
         )
 
@@ -562,8 +562,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         ](mbar_base8)
         var mbar_base9: MBarType = idx_bars.end()
 
-        var ptr_tmem_addr = (mbar_base9).bitcast[UInt32]()
-        var idx_smem_base = (ptr_tmem_addr + 1).bitcast[Int32]()
+        var ptr_tmem_addr = (mbar_base9).unsafe_bitcast[UInt32]()
+        var idx_smem_base = (ptr_tmem_addr + 1).unsafe_bitcast[Int32]()
         comptime if Self.idx_smem_align_pad > 0:
             idx_smem_base += ((16 - (Int(idx_smem_base) & 15)) & 15) // 4
         comptime idx_smem_stride = Self.config.BN_QK
@@ -632,7 +632,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 ptr_tmem_addr[0],
                 s_bars,
                 p_bars,
-                p_smem.bitcast[
+                p_smem.unsafe_bitcast[
                     Scalar[Self.Common_MLA_Op.q_type]
                 ]().as_unsafe_any_origin(),
                 max_smem.as_unsafe_any_origin(),
@@ -1008,7 +1008,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 type_of(q_tt_layout),
                 MutAnyOrigin,
                 address_space=.SHARED,
-            ](q_smem.bitcast[Scalar[Self.fp8_type]](), q_tt_layout)
+            ](q_smem.unsafe_bitcast[Scalar[Self.fp8_type]](), q_tt_layout)
             q_tma.async_copy(q_smem_tensor, mbar_q[], (0, row))
 
         # The row as stored: BN_QK * (input_q_depth / 8) INT64 bytes.
@@ -1088,7 +1088,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             comptime B = Self.gather4_idx_batch
             comptime assert num_chunks % B == 0
             if is_leader:
-                var idx_u8 = idx_smem.bitcast[UInt8]()
+                var idx_u8 = idx_smem.unsafe_bitcast[UInt8]()
                 comptime for b in range(num_chunks // B):
                     var rows = StaticTuple[SIMD[DType.uint32, 4], B]()
                     comptime for j in range(B):
@@ -1096,7 +1096,8 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                     comptime for j in range(B):
                         comptime c = b * B + j
                         var dst = TileTensor(
-                            kv_stage_ptr.bitcast[Int64]() + c * 4 * box_w,
+                            kv_stage_ptr.unsafe_bitcast[Int64]()
+                            + c * 4 * box_w,
                             tt_row_major[4, box_w](),
                         )
                         var r = rows[j].cast[DType.int32]()
@@ -1109,7 +1110,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                     tile_width=Self.config.input_q_depth // 8,
                     eviction_policy=CacheEviction.EVICT_LAST,
                 ](
-                    kv_stage_ptr.bitcast[Int64](),
+                    kv_stage_ptr.unsafe_bitcast[Int64](),
                     k_mbar[],
                     idx_smem,
                     start_idx=0,
@@ -1287,7 +1288,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             kv_gather_cons.wait()
             kv_mma_prod.acquire()
 
-            var src_u8 = kv_gather_cons.stage_base_ptr().bitcast[UInt8]()
+            var src_u8 = kv_gather_cons.stage_base_ptr().unsafe_bitcast[UInt8]()
             var dst = kv_mma_prod.stage_base_ptr()
 
             comptime for c in range(COLS_PER_GROUP):

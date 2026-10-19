@@ -186,7 +186,7 @@ def combine_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=1024
     ]()
-    var f32_base = smem_base.bitcast[Scalar[ACC_TYPE]]()
+    var f32_base = smem_base.unsafe_bitcast[Scalar[ACC_TYPE]]()
     var stage0 = f32_base
     var stage1 = stage0 + STAGE
     var maxsum0 = stage1 + STAGE
@@ -194,7 +194,7 @@ def combine_kernel[
     var l2_stage = maxsum1 + ML
     var l2_maxsum = l2_stage + L2STAGE
     var o_smem = f32_base + o_smem_offset[depth]()
-    var ptr_tmem_addr = (o_smem + OSMEM).bitcast[UInt32]()
+    var ptr_tmem_addr = (o_smem + OSMEM).unsafe_bitcast[UInt32]()
 
     var tid = thread_idx.x
     var wid = Int(tid >> 5)  # 0..7 : global warp

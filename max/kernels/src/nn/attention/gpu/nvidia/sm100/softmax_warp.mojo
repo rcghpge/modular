@@ -196,7 +196,7 @@ def fa4_scale_write_output[
             + o_smem_chunk_offset[output_type, output_swizzle_mode, BM](
                 Int(local_row), j
             )
-        ).bitcast[UInt32]().store(packed)
+        ).unsafe_bitcast[UInt32]().store(packed)
 
     @inline(.always)
     def write_blocks[lo: Int, hi: Int]() {imm}:
@@ -401,7 +401,7 @@ def fa4_lse_combine_write[
             + o_smem_chunk_offset[output_type, output_swizzle_mode, BM](
                 Int(local_row), j
             )
-        ).bitcast[UInt32]().store(packed)
+        ).unsafe_bitcast[UInt32]().store(packed)
 
     comptime if cross_wg:
         named_barrier[Int32(2 * WARPGROUP_SIZE)](2)
@@ -3611,7 +3611,7 @@ def fa4_softmax[
                     var ws_l2_stagee = ws_f32e + (2 * WS_STAGE + 2 * WS_ML)
                     var ws_o_e = (
                         ws_f32e + config.ws_epilogue_o_f32_offset()
-                    ).bitcast[Scalar[output_type]]()
+                    ).unsafe_bitcast[Scalar[output_type]]()
                     var o_band_zero = Array[
                         Float32,
                         config.ov_depth // config.m_pack,
@@ -4436,7 +4436,7 @@ def fa4_softmax[
             comptime assert (
                 2 * WS_STAGE + 2 * WS_ML + WS_L2STAGE + WS_L2MS <= WS_O_OFF
             )
-            var ws_o = (ws_f32 + WS_O_OFF).bitcast[Scalar[output_type]]()
+            var ws_o = (ws_f32 + WS_O_OFF).unsafe_bitcast[Scalar[output_type]]()
 
             var ws_row_sum = row_sum.reduce_add()
 

@@ -1001,8 +1001,8 @@ def run_fused_dual_qk_rms_norm_rope[
     with q_main_single_fp8_device.map_to_host() as single_host:
         with q_main_dual_fp8_device.map_to_host() as dual_host:
             # Raw bytes: an FP8 NaN never compares equal to itself.
-            var single_u8 = single_host.unsafe_ptr().bitcast[UInt8]()
-            var dual_u8 = dual_host.unsafe_ptr().bitcast[UInt8]()
+            var single_u8 = single_host.unsafe_ptr().unsafe_bitcast[UInt8]()
+            var dual_u8 = dual_host.unsafe_ptr().unsafe_bitcast[UInt8]()
             var live = 0
             for i in range(q_main_numel):
                 assert_equal(dual_u8[i], single_u8[i])

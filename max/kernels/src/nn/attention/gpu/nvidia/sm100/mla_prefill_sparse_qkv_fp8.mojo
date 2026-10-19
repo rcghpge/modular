@@ -658,7 +658,9 @@ struct MLAPrefillSparseQKVFP8[
                         cta_group=Self.config.cta_group
                     ](
                         q_smem + j * Q_PADDED_DEPTH_TILE_STRIDE,
-                        Pointer(to=q_tma_op.descriptor).bitcast[NoneType](),
+                        Pointer(to=q_tma_op.descriptor).unsafe_bitcast[
+                            NoneType
+                        ](),
                         prologue_q[].unsafe_ptr(),
                         Index(
                             j * Self.Q_SWIZZLE_COLS,
@@ -741,7 +743,7 @@ struct MLAPrefillSparseQKVFP8[
 
         ref smem = external_memory[
             UInt8, address_space=.SHARED, alignment=128
-        ]().bitcast[Self.SMemType]()[]
+        ]().unsafe_bitcast[Self.SMemType]()[]
 
         var q_ptr = smem.q.unsafe_ptr()
         var kv_ptr: MutPointer[
@@ -1439,7 +1441,7 @@ struct MLAPrefillSparseQKVFP8[
             Self.output_dtype, TensorMapSwizzle.SWIZZLE_128B
         ]()
 
-        var o_ptr = kv_ptr.bitcast[Scalar[Self.output_dtype]]()
+        var o_ptr = kv_ptr.unsafe_bitcast[Scalar[Self.output_dtype]]()
 
         comptime for atom_idx in range(Self.NUM_SV_ATOMS):
             comptime atom_o_tmem_addr = (

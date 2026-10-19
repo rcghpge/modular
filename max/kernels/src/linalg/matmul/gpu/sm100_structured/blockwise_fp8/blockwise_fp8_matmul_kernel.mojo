@@ -732,7 +732,7 @@ struct BlackwellBlockwiseFP8MatmulKernel[
             UInt8,
             address_space=.SHARED,
             alignment=128,
-        ]().bitcast[Self.SmemType]()[]
+        ]().unsafe_bitcast[Self.SmemType]()[]
 
         var a_tiles = smem.a_tiles()
         var b_tiles = smem.b_tiles()

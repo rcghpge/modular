@@ -115,9 +115,9 @@ def create_interleaved_q_data(
                 q_ref_bf16[ref_row_start + d] = fp8_val.cast[.bfloat16]()
 
             # Rope: BF16 stored as raw bytes in the FP8 buffer, and in ref
-            var rope_byte_ptr = (q_host_fp8 + fp8_row_start + V_DEPTH).bitcast[
-                BFloat16
-            ]()
+            var rope_byte_ptr = (
+                q_host_fp8 + fp8_row_start + V_DEPTH
+            ).unsafe_bitcast[BFloat16]()
             for d in range(ROPE_DIM):
                 rope_byte_ptr[d] = rope_bf16[rope_start + d]
                 q_ref_bf16[ref_row_start + V_DEPTH + d] = rope_bf16[
@@ -166,9 +166,9 @@ def create_interleaved_kv_block_data(
             ].cast[.float8_e4m3fn]()
 
         # Rope: store BF16 bytes in the FP8 buffer
-        var rope_byte_ptr = (blocks_host + fp8_row_start + V_DEPTH).bitcast[
-            BFloat16
-        ]()
+        var rope_byte_ptr = (
+            blocks_host + fp8_row_start + V_DEPTH
+        ).unsafe_bitcast[BFloat16]()
         for d in range(ROPE_DIM):
             rope_byte_ptr[d] = rope_bf16[rope_start + d]
 
@@ -200,7 +200,9 @@ def extract_bf16_kv_from_block(
             ]()
 
         # Copy BF16 rope
-        var rope_src = (blocks_host + src_row + V_DEPTH).bitcast[BFloat16]()
+        var rope_src = (blocks_host + src_row + V_DEPTH).unsafe_bitcast[
+            BFloat16
+        ]()
         for d in range(ROPE_DIM):
             k_bf16_out[dst_row + V_DEPTH + d] = rope_src[d]
 
@@ -929,7 +931,7 @@ def run_test_with_scales[
                         + tok_fp8_base
                         + kh * PHYSICAL_DIM
                         + V_DEPTH
-                    ).bitcast[BFloat16]()
+                    ).unsafe_bitcast[BFloat16]()
                     for d in range(ROPE_DIM):
                         rope_ptr[d] = (
                             rope_ptr[d].cast[.float32]() / sigma_kv_t
@@ -988,7 +990,7 @@ def run_test_with_scales[
             # Divide Q_rope BF16 in the interleaved FP8 buffer
             var fp8_rope_ptr = (
                 q_host_fp8.unsafe_ptr() + row_idx * PHYSICAL_DIM + V_DEPTH
-            ).bitcast[BFloat16]()
+            ).unsafe_bitcast[BFloat16]()
             for d in range(ROPE_DIM):
                 fp8_rope_ptr[d] = (
                     fp8_rope_ptr[d].cast[.float32]() / sigma_q_t

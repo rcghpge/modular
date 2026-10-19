@@ -949,12 +949,12 @@ def quantize_dynamic_scaled_async_fp4_kernel[
     ), "scales_dtype must be float8_e4m3fn"
 
     var input_smem_ptr = smem_storage
-    var output_smem_ptr = (smem_storage + input_smem_tile_size).bitcast[
+    var output_smem_ptr = (smem_storage + input_smem_tile_size).unsafe_bitcast[
         Scalar[output_dtype]
     ]()
-    var scales_smem_ptr = (output_smem_ptr + output_smem_tile_size).bitcast[
-        Scalar[scales_dtype]
-    ]()
+    var scales_smem_ptr = (
+        output_smem_ptr + output_smem_tile_size
+    ).unsafe_bitcast[Scalar[scales_dtype]]()
     var mbar_ptr = scales_smem_ptr + scales_smem_tile_size
 
     var output_smem = TileTensor(output_smem_ptr, row_major(output_tile_shape))
@@ -966,7 +966,7 @@ def quantize_dynamic_scaled_async_fp4_kernel[
         row_major[scales_smem_tile_size]()
     )
 
-    var tma_mbar = mbar_ptr.bitcast[SharedMemBarrier]()
+    var tma_mbar = mbar_ptr.unsafe_bitcast[SharedMemBarrier]()
 
     var local_row_idx = thread_idx.x
 

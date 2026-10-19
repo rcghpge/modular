@@ -255,25 +255,31 @@ def test_row_amax_quantization[
     for t in range(total_m_tiles):
         for i in range(scales_per_m_tile):
             assert_equal(
-                Int(host_scales.bitcast[UInt8]()[t * tile_stride + i]),
+                Int(host_scales.unsafe_bitcast[UInt8]()[t * tile_stride + i]),
                 Int(
-                    host_scales_ref.bitcast[UInt8]()[t * scales_per_m_tile + i]
+                    host_scales_ref.unsafe_bitcast[UInt8]()[
+                        t * scales_per_m_tile + i
+                    ]
                 ),
             )
         for i in range(scales_per_m_tile, tile_stride):
             assert_equal(
-                Int(host_scales.bitcast[UInt8]()[t * tile_stride + i]),
+                Int(host_scales.unsafe_bitcast[UInt8]()[t * tile_stride + i]),
                 Int(bitcast[DType.uint8, 1](Scalar[scales_dtype](1.0))),
             )
     for i in range(total):
         assert_equal(
-            Int(host_row_scales.bitcast[UInt16]()[i * row_scales_stride]),
-            Int(ref_row_scales.bitcast[UInt16]()[i]),
+            Int(
+                host_row_scales.unsafe_bitcast[UInt16]()[i * row_scales_stride]
+            ),
+            Int(ref_row_scales.unsafe_bitcast[UInt16]()[i]),
         )
         for j in range(1, row_scales_stride):
             assert_equal(
                 Int(
-                    host_row_scales.bitcast[UInt16]()[i * row_scales_stride + j]
+                    host_row_scales.unsafe_bitcast[UInt16]()[
+                        i * row_scales_stride + j
+                    ]
                 ),
                 Int(bitcast[DType.uint16, 1](_ROW_SCALE_SENTINEL)),
             )

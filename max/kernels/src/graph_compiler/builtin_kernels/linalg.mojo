@@ -1405,7 +1405,7 @@ struct Struct_grouped_matmul_block_scaled_amd_swiglu_quant[
             -1 if decode_grid_m_cap == 0 else Int(decode_grid_m_cap),
             Int(decode_grid_m_rows),
             c_scales.to_tile_tensor[.int64]()
-            .ptr.bitcast[UInt8]()
+            .ptr.unsafe_bitcast[UInt8]()
             .unsafe_origin_cast[MutAnyOrigin](),
             Self.scales_max_padded_m,
         )

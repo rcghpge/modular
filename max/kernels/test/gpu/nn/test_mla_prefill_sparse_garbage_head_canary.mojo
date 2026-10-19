@@ -546,7 +546,9 @@ def _run_prefill_sparse_diff[
         ctx.synchronize()
         sink_host.free()
         attn_sink_ptr = Optional[ImmPointer[Float32, ImmutAnyOrigin]](
-            sink_device.unsafe_ptr().bitcast[Float32]().as_unsafe_any_origin()
+            sink_device.unsafe_ptr()
+            .unsafe_bitcast[Float32]()
+            .as_unsafe_any_origin()
         )
 
     mla_prefill_sparse[

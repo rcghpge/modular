@@ -246,7 +246,7 @@ def b2b_gemm[
 
     # Each pipeline stage has its own buffer.
     # We reuse `b_smem` for both `B` and `C`
-    var b_smem = (a_smem + a_smem_size).bitcast[Scalar[in_type]]()
+    var b_smem = (a_smem + a_smem_size).unsafe_bitcast[Scalar[in_type]]()
     comptime b_smem_size = num_pipeline_stages * BK * BN
     comptime BD_0 = BN if transpose_b else BK
     comptime BD_1 = BK if transpose_b else BN
@@ -453,7 +453,7 @@ def b2b_gemm[
         ]()
 
         var accum_smem_warp_tile = TileTensor(
-            a_smem.bitcast[Scalar[d_type]]() + warp_id * WM * WN,
+            a_smem.unsafe_bitcast[Scalar[d_type]]() + warp_id * WM * WN,
             row_major[WM, WN](),
         )
 

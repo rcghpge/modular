@@ -97,7 +97,7 @@ def bulk_memcpy_kernel[
     var smem_base = external_memory[
         UInt8, address_space=.SHARED, alignment=128
     ]()
-    var mbar_base = (smem_base + DATA_BYTES).bitcast[SharedMemBarrier]()
+    var mbar_base = (smem_base + DATA_BYTES).unsafe_bitcast[SharedMemBarrier]()
 
     var w = Int(warp_id())
     var is_leader = elect_one_sync()
