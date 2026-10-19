@@ -60,6 +60,10 @@ This version is still a work in progress.
   `PipelineModel`, return the module from `graph_specs()` under
   `GraphRole.ENCODER`, and load it with `load_graphs()` instead.
 
+- `Buffer.to(device)` for a buffer on another queue of that device requires an
+  `after` event and no longer syncs implicitly. Mojo's `reassign_ownership_to()`
+  is removed; use `enqueue_wait_for()` and keep buffers alive until synced.
+
 ## Fixes
 
 - `max serve` now runs prompts given as token ids, with no images, on Gemma 3,

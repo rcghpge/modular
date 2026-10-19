@@ -809,30 +809,6 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Sized, Writable):
         comptime assert not is_gpu(), "HostBuffer is not supported on GPUs"
         self.context().enqueue_memset(self, val)
 
-    def reassign_ownership_to(self, ctx: DeviceContext) raises:
-        """Transfers ownership of this buffer to another device context.
-
-        This method changes the device context that owns this buffer. This can be
-        useful when sharing buffers between different contexts or when migrating
-        workloads between devices.
-
-        Args:
-            ctx: The new device context to take ownership of this buffer.
-
-        Raises:
-            If the operation fails.
-        """
-        comptime assert not is_gpu(), "HostBuffer is not supported on GPUs"
-        # const char * AsyncRT_DeviceBuffer_reassignOwnershipTo(const DeviceBuffer *buf, const DeviceContext *ctx)
-        _checked(
-            external_call[
-                "AsyncRT_DeviceBuffer_reassignOwnershipTo",
-                _CString[],
-                _DeviceBufferPtr[mut=True],
-                _DeviceContextPtr[mut=True],
-            ](self._handle, ctx._handle)
-        )
-
     def take_ptr(
         deinit self,
     ) -> Self._HostPtr:
@@ -2050,30 +2026,6 @@ struct DeviceBuffer[dtype: DType](
         """
         comptime assert not is_gpu(), "DeviceBuffer is not supported on GPUs"
         self.context().enqueue_memset(self, val)
-
-    def reassign_ownership_to(self, ctx: DeviceContext) raises:
-        """Transfers ownership of this buffer to another device context.
-
-        This method changes the device context that owns this buffer. This can be
-        useful when sharing buffers between different contexts or when migrating
-        workloads between devices.
-
-        Args:
-            ctx: The new device context to take ownership of this buffer.
-
-        Raises:
-            If the operation fails.
-        """
-        comptime assert not is_gpu(), "DeviceBuffer is not supported on GPUs"
-        # const char * AsyncRT_DeviceBuffer_reassignOwnershipTo(const DeviceBuffer *buf, const DeviceContext *ctx)
-        _checked(
-            external_call[
-                "AsyncRT_DeviceBuffer_reassignOwnershipTo",
-                _CString[],
-                _DeviceBufferPtr[mut=True],
-                _DeviceContextPtr[mut=True],
-            ](self._handle, ctx._handle)
-        )
 
     # NOTE: This is var self and not deinit self, since we still need
     # the destructor to run otherwise we hit memory leaks.
