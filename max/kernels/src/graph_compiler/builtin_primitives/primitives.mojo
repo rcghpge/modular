@@ -766,7 +766,7 @@ def mgp_buffer_alloc(
 @inline(.never)
 def mgp_device_graph_alloc[
     is_host: Bool
-](byte_size: Int, builder: DeviceGraphBuilder) raises -> OwnedByteBuffer:
+](byte_size: Int, mut builder: DeviceGraphBuilder) raises -> OwnedByteBuffer:
     return {builder.create_buffer[.int8](byte_size, is_host=is_host)}
 
 
