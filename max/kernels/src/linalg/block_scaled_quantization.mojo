@@ -1989,7 +1989,7 @@ comptime _NVFP4_ROW_RANGE = Float32(6.0 * 448.0)
 
 comptime nvfp4_row_input_fn_type = def[dtype: DType, width: SIMDLength](
     SIMD[dtype, width]
-) capturing -> SIMD[dtype, width]
+) thin -> SIMD[dtype, width]
 """Elementwise transform applied to each input vector before quantizing.
 
 `grouped_quantize_nvfp4_row_amax` quantizes `input_fn(x)` in place of `x`,

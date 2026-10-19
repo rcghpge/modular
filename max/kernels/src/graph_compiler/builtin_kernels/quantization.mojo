@@ -1085,11 +1085,10 @@ struct Struct_grouped_quantize_nvfp4_row_scaled:
             target
         ](), "grouped quantize nvfp4 row scaled only supports GPUs"
 
-        @__parameter
         @inline(.always)
         def input_fn[
             dtype: DType, width: SIMDLength
-        ](v: SIMD[dtype, width]) capturing -> SIMD[dtype, width]:
+        ](v: SIMD[dtype, width]) -> SIMD[dtype, width]:
             comptime if apply_relu2 != 0:
                 var r = relu(v)
                 return r * r
@@ -1143,11 +1142,10 @@ struct Struct_grouped_quantize_nvfp4_row_scaled_with_row_indices:
             target
         ](), "grouped quantize nvfp4 row scaled only supports GPUs"
 
-        @__parameter
         @inline(.always)
         def input_fn[
             dtype: DType, width: SIMDLength
-        ](v: SIMD[dtype, width]) capturing -> SIMD[dtype, width]:
+        ](v: SIMD[dtype, width]) -> SIMD[dtype, width]:
             comptime if apply_relu2 != 0:
                 var r = relu(v)
                 return r * r

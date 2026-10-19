@@ -29,11 +29,10 @@ from std.testing import assert_almost_equal
 
 comptime epilogue_func_type = def[
     dtype: DType, width: SIMDLength, *, alignment: Int = 1
-](SIMD[dtype, width]) capturing -> SIMD[dtype, width]
+](SIMD[dtype, width]) thin -> SIMD[dtype, width]
 
 
 @inline(.always)
-@__parameter
 def elementwise_epilogue_fn[
     dtype: DType,
     width: SIMDLength,

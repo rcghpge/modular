@@ -420,11 +420,10 @@ def _launch_fused[
     comptime scales_per_m_tile = K_tiles * SF_MN_GROUP_SIZE * SF_ATOM_K
     comptime output_N = N // 2
 
-    @__parameter
     @inline(.always)
     def input_fn[
         dtype: DType, width: SIMDLength
-    ](v: SIMD[dtype, width]) capturing -> SIMD[dtype, width]:
+    ](v: SIMD[dtype, width]) -> SIMD[dtype, width]:
         comptime if apply_relu2:
             var r = relu(v)
             return r * r
