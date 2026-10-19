@@ -933,7 +933,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     def compile_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
-        func: def(* args: * declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) capturing -> None,
         # Ignored; accepted for API parity with the legacy backend.
         compile_options: StaticString = "",
         link_options: StaticString = "",
@@ -983,7 +983,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         ExecutionConfigType: GridBlockExecutionConfig,
         //,
-        func: def(* args: * declared_arg_types) thin -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         *actual_arg_types: DevicePassable,
     ](
         self,
@@ -1159,7 +1159,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
-        func: def(* args: * declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) capturing -> None,
         *encoded_types: DevicePassable,
         # Ignored; accepted for API parity with the legacy backend.
         link_options: StaticString = "",
@@ -3764,7 +3764,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
     def enqueue_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
-        func: def(* args: * declared_arg_types) thin -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         *actual_arg_types: DevicePassable,
     ](
         self,
@@ -3821,7 +3821,7 @@ struct DeviceStream(ImplicitlyCopyable, Movable, _HALFunctionEnqueuer):
         declared_arg_types: TypeList[Trait=AnyType, ...],
         ExecutionConfigType: GridBlockExecutionConfig,
         //,
-        func: def(* args: * declared_arg_types) thin -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         *actual_arg_types: DevicePassable,
     ](
         self,

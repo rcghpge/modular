@@ -138,7 +138,7 @@ struct MemBuffer(GPUPassable):
 def compile[
     ArgTypes: TypeList[Trait=GPUPassable, ...],
     //,
-    func: def(* args: * ArgTypes) capturing -> Int,
+    func: def(*args: *ArgTypes) capturing -> Int,
 ]() -> DeviceFunction[*ArgTypes]:
     return DeviceFunction[*ArgTypes]()
 
