@@ -243,9 +243,9 @@ def main() raises:
         print("✗ FAILED: GPU results do not match CPU results!")
 
     # Cleanup
-    h_rgb_input.free()
-    h_gray_output_gpu.free()
-    h_gray_output_cpu.free()
+    h_rgb_input.unsafe_free()
+    h_gray_output_gpu.unsafe_free()
+    h_gray_output_cpu.unsafe_free()
 
     print("\n===========================================")
     if success:

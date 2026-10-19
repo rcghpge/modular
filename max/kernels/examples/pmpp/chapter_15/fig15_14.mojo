@@ -372,7 +372,7 @@ def main() raises:
         print("✗ FAILED: Results do not match!")
 
     # Cleanup
-    h_A.free()
-    h_B.free()
-    h_C_gpu.free()
-    h_C_cpu.free()
+    h_A.unsafe_free()
+    h_B.unsafe_free()
+    h_C_gpu.unsafe_free()
+    h_C_cpu.unsafe_free()

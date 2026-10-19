@@ -92,7 +92,7 @@ def test_tma_tile_copy(ctx: DeviceContext) raises:
         descriptor, grid_dim=(2, 2), block_dim=(1)
     )
     ctx.synchronize()
-    gmem_host.free()
+    gmem_host.unsafe_free()
 
 
 def main() raises:

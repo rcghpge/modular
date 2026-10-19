@@ -502,9 +502,9 @@ def run_ssd_gpu[
                 raise Error(
                     "grouped SSD output guard overwritten at " + String(i)
                 )
-        y_base_h.free()
-        pool_base_h.free()
-        pool_initial_h.free()
+        y_base_h.unsafe_free()
+        pool_base_h.unsafe_free()
+        pool_initial_h.unsafe_free()
         comptime if grouped_pair:
             print("SSD_GROUPED_EXACT_PASS")
             print("SSD_GROUPED_CANDIDATE_MODE,", grouped_mode, sep="")

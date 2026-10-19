@@ -196,11 +196,11 @@ def run_pathological_bscale[
         msg="Inf outside the deliberately-large b_scale column",
     )
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    a_scales_host_ptr.unsafe_free()
+    b_scales_host_ptr.unsafe_free()
     _ = a_device
     _ = b_device
     _ = c_device

@@ -194,7 +194,7 @@ def test_buffer[dtype: DType, width: Int](ctx: DeviceContext) raises:
     for i in range(size_clip, size):
         assert_equal(a_host_buf[i], Scalar[dtype](i + 1))
 
-    a_host_buf.free()
+    a_host_buf.unsafe_free()
 
 
 def test_buffer_lds[dtype: DType, width: Int](ctx: DeviceContext) raises:

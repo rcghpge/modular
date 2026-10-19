@@ -370,8 +370,8 @@ def bench_combine[
         ",busiest_gpu_share:",
         Float64(max_rank) / Float64(total),
     )
-    pair_counts.free()
-    rank_counts.free()
+    pair_counts.unsafe_free()
+    rank_counts.unsafe_free()
 
     # fmt: off
     # Dispatch buffers
@@ -1056,7 +1056,7 @@ def bench_combine[
     b_final.dump_report()
 
     for dev_idx in range(n_ranks):
-        host_topk_ids_list[dev_idx].free()
+        host_topk_ids_list[dev_idx].unsafe_free()
 
 
 def bench_all_dtypes[

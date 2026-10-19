@@ -96,7 +96,7 @@ def main() raises:
     for i in range(rows):
         h_y_zeros[i] = 0.0
     ctx.enqueue_copy(d_y_buf, h_y_zeros)
-    h_y_zeros.free()
+    h_y_zeros.unsafe_free()
 
     var d_cooMatrix = COOMatrix(
         numNonzeros,
@@ -127,8 +127,8 @@ def main() raises:
     else:
         print("COO Kernel Test Failed!")
 
-    h_rowIdx_ptr.free()
-    h_colIdx_ptr.free()
-    h_value_ptr.free()
-    h_x_ptr.free()
-    h_y_ptr.free()
+    h_rowIdx_ptr.unsafe_free()
+    h_colIdx_ptr.unsafe_free()
+    h_value_ptr.unsafe_free()
+    h_x_ptr.unsafe_free()
+    h_y_ptr.unsafe_free()

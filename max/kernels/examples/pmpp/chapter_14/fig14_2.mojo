@@ -230,6 +230,6 @@ def main() raises:
         print("ERROR: Found", errors, "mismatches between GPU and CPU")
 
     # Cleanup
-    h_data.free()
-    h_ref.free()
-    h_hasChanged.free()
+    h_data.unsafe_free()
+    h_ref.unsafe_free()
+    h_hasChanged.unsafe_free()

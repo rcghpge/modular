@@ -1555,11 +1555,11 @@ def run_varlen_states_padded(
                 assert_equal(cpu_h.load(off), expected.load(off))
                 assert_equal(gpu_h.load(off), expected.load(off))
 
-    x_h.free()
-    cu_h.free()
-    expected.free()
-    cpu_h.free()
-    gpu_h.free()
+    x_h.unsafe_free()
+    cu_h.unsafe_free()
+    expected.unsafe_free()
+    cpu_h.unsafe_free()
+    gpu_h.unsafe_free()
 
 
 def _nvidia_f32_silu_bits_kernel[
@@ -1652,9 +1652,9 @@ def test_nvidia_f32_silu_bit_exact() raises:
             else:
                 assert_true(not isnan(got) and not isinf(got))
                 assert_true(not isnan(exact) and not isinf(exact))
-        got_h.free()
-        ref_h.free()
-    vals_h.free()
+        got_h.unsafe_free()
+        ref_h.unsafe_free()
+    vals_h.unsafe_free()
 
 
 def test_varlen_states_padded() raises:

@@ -435,10 +435,10 @@ def main() raises:
             errors += 1
 
     # Free memory
-    h_A.free()
-    h_B.free()
-    h_C.free()
-    h_ref.free()
+    h_A.unsafe_free()
+    h_B.unsafe_free()
+    h_C.unsafe_free()
+    h_ref.unsafe_free()
 
     if errors == 0:
         print("SUCCESS: All values match!")

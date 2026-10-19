@@ -1101,17 +1101,17 @@ def bench_b2b[
 
     check_approx_equal[.float32](Dtile, Drm64)
 
-    Atile.ptr.free()
-    Btile.ptr.free()
-    Ctile.ptr.free()
-    Ctileb2b.ptr.free()
-    Dtile.ptr.free()
-    ABtile.ptr.free()
-    Arm64.ptr.free()
-    Brm64.ptr.free()
-    Crm64.ptr.free()
-    Drm64.ptr.free()
-    ABrm64.ptr.free()
+    Atile.ptr.unsafe_free()
+    Btile.ptr.unsafe_free()
+    Ctile.ptr.unsafe_free()
+    Ctileb2b.ptr.unsafe_free()
+    Dtile.ptr.unsafe_free()
+    ABtile.ptr.unsafe_free()
+    Arm64.ptr.unsafe_free()
+    Brm64.ptr.unsafe_free()
+    Crm64.ptr.unsafe_free()
+    Drm64.ptr.unsafe_free()
+    ABrm64.ptr.unsafe_free()
 
 
 def getMr() -> Int:

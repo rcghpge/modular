@@ -101,8 +101,8 @@ def test_bulk_g2s[NUM_ELEMS: Int](ctx: DeviceContext) raises:
     for i in range(NUM_ELEMS):
         assert_equal(out_host[i], Float32(i + 1))
 
-    in_host.free()
-    out_host.free()
+    in_host.unsafe_free()
+    out_host.unsafe_free()
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def test_bulk_s2g[NUM_ELEMS: Int](ctx: DeviceContext) raises:
     for i in range(NUM_ELEMS):
         assert_equal(out_host[i], Float32(i + 1))
 
-    out_host.free()
+    out_host.unsafe_free()
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ def test_bulk_reduce_s2g[NUM_ELEMS: Int](ctx: DeviceContext) raises:
     for i in range(NUM_ELEMS):
         assert_equal(out_host[i], init + Float32(i + 1))
 
-    out_host.free()
+    out_host.unsafe_free()
 
 
 # ---------------------------------------------------------------------------

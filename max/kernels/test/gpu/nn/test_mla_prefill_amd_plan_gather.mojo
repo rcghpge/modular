@@ -419,7 +419,7 @@ def test_plan_gather_decompress(ctx: DeviceContext, cache_length: Int) raises:
                         " expect=",
                         expect,
                     )
-        expect_row.free()
+        expect_row.unsafe_free()
 
     print(
         "  max_abs_err:",
@@ -453,15 +453,15 @@ def test_plan_gather_decompress(ctx: DeviceContext, cache_length: Int) raises:
 
     print("  RESULT: PASS")
 
-    blocks_host.free()
-    cache_lengths_host.free()
-    lookup_table_host.free()
-    input_row_offsets_host.free()
-    buffer_row_offsets_host.free()
-    cache_offsets_host.free()
-    buffer_lengths_host.free()
-    weight_host.free()
-    k_buffer_host.free()
+    blocks_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    input_row_offsets_host.unsafe_free()
+    buffer_row_offsets_host.unsafe_free()
+    cache_offsets_host.unsafe_free()
+    buffer_lengths_host.unsafe_free()
+    weight_host.unsafe_free()
+    k_buffer_host.unsafe_free()
 
     _ = blocks_device
     _ = cache_lengths_device

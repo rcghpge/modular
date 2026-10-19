@@ -647,14 +647,14 @@ def test_combine[
                         )
 
         # Free host buffers
-        host_output_2.free()
+        host_output_2.unsafe_free()
 
     sync_parallelize(verify_results, n_ranks)
     print("All results verified successfully!")
 
     for dev_idx in range(n_ranks):
-        host_topk_ids_list[dev_idx].free()
-        host_input_tokens_list[dev_idx].free()
+        host_topk_ids_list[dev_idx].unsafe_free()
+        host_input_tokens_list[dev_idx].unsafe_free()
 
 
 def main() raises:

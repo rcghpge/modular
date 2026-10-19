@@ -57,6 +57,6 @@ def main() raises:
     vec_add(a, b, c, n)
 
     # Clean up
-    a.free()
-    b.free()
-    c.free()
+    a.unsafe_free()
+    b.unsafe_free()
+    c.unsafe_free()

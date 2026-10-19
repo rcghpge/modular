@@ -381,8 +381,8 @@ def run_one_case(ctx: DeviceContext, spec: CaseSpec) raises:
     )
     ctx.synchronize()
 
-    host_topk.free()
-    host_tokens.free()
+    host_topk.unsafe_free()
+    host_tokens.unsafe_free()
     _ = dispatch_send
     _ = dispatch_recv
     _ = dispatch_recv_count

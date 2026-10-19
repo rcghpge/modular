@@ -158,9 +158,9 @@ def main() raises:
             errors += 1
 
     # Cleanup
-    h_image.free()
-    h_bins.free()
-    h_ref.free()
+    h_image.unsafe_free()
+    h_bins.unsafe_free()
+    h_ref.unsafe_free()
 
     if errors == 0:
         print("SUCCESS: All values match!")

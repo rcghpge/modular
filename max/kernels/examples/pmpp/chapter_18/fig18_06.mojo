@@ -142,10 +142,10 @@ def main() raises:
         ctx.synchronize()
 
         if h_flag[0] == 0:
-            h_flag.free()
+            h_flag.unsafe_free()
             break
 
-        h_flag.free()
+        h_flag.unsafe_free()
         curr_level += 1
 
     print("BFS completed at level", curr_level - 1)
@@ -165,6 +165,6 @@ def main() raises:
         print("Figure 18.6 BFS Failed!")
 
     # Cleanup
-    h_level.free()
-    h_src_ptrs.free()
-    h_dst.free()
+    h_level.unsafe_free()
+    h_src_ptrs.unsafe_free()
+    h_dst.unsafe_free()

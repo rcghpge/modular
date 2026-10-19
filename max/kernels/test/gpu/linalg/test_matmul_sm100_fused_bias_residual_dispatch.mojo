@@ -282,11 +282,11 @@ def run_case[
         rtol,
     )
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_ref_host_ptr.free()
-    resid_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_ref_host_ptr.unsafe_free()
+    resid_host_ptr.unsafe_free()
     _ = a_dev^
     _ = b_dev^
     _ = c_dev^

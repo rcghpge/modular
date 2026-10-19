@@ -102,5 +102,5 @@ def main() raises:
     print("Total Energy:", total_energy)
 
     # Cleanup
-    h_atoms.free()
-    h_energygrid.free()
+    h_atoms.unsafe_free()
+    h_energygrid.unsafe_free()

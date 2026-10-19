@@ -12,7 +12,6 @@ IGNORED_POINTER_DEPRECATIONS = [
     "Pointer.__getitem__",
     "Pointer.load",
     "Pointer.store",
-    "Pointer.free",
 ]
 
 IGNORED_POINTER_DEPRECATIONS_COPTS = [

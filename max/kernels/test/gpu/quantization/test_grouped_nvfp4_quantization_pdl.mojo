@@ -232,19 +232,19 @@ def test_operands_from_predecessor_kernel(ctx: DeviceContext) raises:
             host_ref_scales[i].cast[DType.float32](),
         )
 
-    row_offsets_host.free()
-    zeros_u32.free()
-    scales_offsets_host.free()
-    expert_ids_host.free()
-    sf_tensor_host.free()
-    zeros_i32.free()
-    zeros_f32.free()
-    host_input.free()
-    sentinel_host.free()
-    host_ref_output.free()
-    host_output.free()
-    host_ref_scales.free()
-    host_scales.free()
+    row_offsets_host.unsafe_free()
+    zeros_u32.unsafe_free()
+    scales_offsets_host.unsafe_free()
+    expert_ids_host.unsafe_free()
+    sf_tensor_host.unsafe_free()
+    zeros_i32.unsafe_free()
+    zeros_f32.unsafe_free()
+    host_input.unsafe_free()
+    sentinel_host.unsafe_free()
+    host_ref_output.unsafe_free()
+    host_output.unsafe_free()
+    host_ref_scales.unsafe_free()
+    host_scales.unsafe_free()
 
 
 def main() raises:

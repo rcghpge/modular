@@ -1027,7 +1027,7 @@ def bench_dispatch_common[
     b_final.dump_report()
 
     for dev_idx in range(n_ranks):
-        host_topk_ids_list[dev_idx].free()
+        host_topk_ids_list[dev_idx].unsafe_free()
 
 
 def bench_dispatch_nvfp4[

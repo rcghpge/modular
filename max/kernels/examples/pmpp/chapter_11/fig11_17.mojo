@@ -189,7 +189,7 @@ def main() raises:
         for i in range(num_blocks):
             h_flags[i] = 0
         ctx.enqueue_copy(d_flags, h_flags)
-        h_flags.free()
+        h_flags.unsafe_free()
 
         # Launch kernel
         ctx.enqueue_function[test_interblock_scan](
@@ -225,9 +225,9 @@ def main() raises:
             errors += 1
 
     # Cleanup
-    h_input.free()
-    h_output.free()
-    h_ref.free()
+    h_input.unsafe_free()
+    h_output.unsafe_free()
+    h_ref.unsafe_free()
 
     if errors == 0:
         print("SUCCESS: All values match!")

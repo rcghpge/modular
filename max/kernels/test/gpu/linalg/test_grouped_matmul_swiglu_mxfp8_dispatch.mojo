@@ -242,11 +242,11 @@ def _build_shared_b[
     ctx.enqueue_copy(expert_scales_device, expert_scales_host_ptr)
     ctx.synchronize()
 
-    b_host_ptr.free()
-    b_perm_host_ptr.free()
-    b_scales_host_ptr.free()
-    b_scales_perm_host_ptr.free()
-    expert_scales_host_ptr.free()
+    b_host_ptr.unsafe_free()
+    b_perm_host_ptr.unsafe_free()
+    b_scales_host_ptr.unsafe_free()
+    b_scales_perm_host_ptr.unsafe_free()
+    expert_scales_host_ptr.unsafe_free()
 
     return _SharedB(
         b_perm=b_perm_device^,
@@ -590,15 +590,15 @@ def _test_swiglu_mxfp8_dispatch[
                 first_bad_S = i
             S_mismatch += 1
 
-    a_host_ptr.free()
-    a_offsets_host_ptr.free()
-    a_scale_offsets_ptr.free()
-    expert_ids_host_ptr.free()
-    a_scales_host_ptr.free()
-    O_ref_host_ptr.free()
-    O_test_host_ptr.free()
-    S_ref_host_ptr.free()
-    S_test_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    a_offsets_host_ptr.unsafe_free()
+    a_scale_offsets_ptr.unsafe_free()
+    expert_ids_host_ptr.unsafe_free()
+    a_scales_host_ptr.unsafe_free()
+    O_ref_host_ptr.unsafe_free()
+    O_test_host_ptr.unsafe_free()
+    S_ref_host_ptr.unsafe_free()
+    S_test_host_ptr.unsafe_free()
 
     if O_mismatch != 0 or S_mismatch != 0:
         print(

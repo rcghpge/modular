@@ -67,4 +67,4 @@ def main() raises:
             )
         _ = src
         _ = dst
-        dst_host.free()
+        dst_host.unsafe_free()

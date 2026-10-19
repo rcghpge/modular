@@ -176,9 +176,9 @@ def test_micro_kernel[
     matmul_inner_loop[config](c, a, b_packed, m, n, k)
 
     assert_equal(Int(c_ptr[0]), k)
-    a_ptr.free()
-    b_packed_ptr.free()
-    c_ptr.free()
+    a_ptr.unsafe_free()
+    b_packed_ptr.unsafe_free()
+    c_ptr.unsafe_free()
 
 
 @export

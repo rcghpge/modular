@@ -223,9 +223,9 @@ def main() raises:
             )
 
     # free everything
-    h_a.free()
-    h_b.free()
-    h_c.free()
-    h_ref.free()
+    h_a.unsafe_free()
+    h_b.unsafe_free()
+    h_c.unsafe_free()
+    h_ref.unsafe_free()
 
     print("Success")

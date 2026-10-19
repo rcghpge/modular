@@ -112,7 +112,7 @@ def hash_positive_control() raises -> None:
 
     assert_true(h0 != h1, "positive control FAILED: hash blind to a bit flip")
     assert_equal(h0, h2)  # restoring the bit restores the hash
-    buf.free()
+    buf.unsafe_free()
     print("hash positive control PASS (single-bit flip detected)")
 
 
@@ -268,8 +268,8 @@ def allreduce_determinism_test[
             assert_equal(run_hash, ref_hash)
 
     for i in range(ngpus):
-        host_in[i].free()
-        host_out[i].free()
+        host_in[i].unsafe_free()
+        host_out[i].unsafe_free()
 
 
 def run_determinism_sweep() raises -> None:

@@ -531,11 +531,11 @@ struct GemmContext[qgemm: QuantizedGemm]:
         self.c_golden = Self._build_float_buffer(M, N)
 
     def free(mut self) raises:
-        self.a.ptr.free()
-        self.b.ptr.free()
-        self.b_packed.ptr.free()
-        self.c.ptr.free()
-        self.c_golden.ptr.free()
+        self.a.ptr.unsafe_free()
+        self.b.ptr.unsafe_free()
+        self.b_packed.ptr.unsafe_free()
+        self.c.ptr.unsafe_free()
+        self.c_golden.ptr.unsafe_free()
 
 
 def test_case[qgemm: QuantizedGemm](M: Int, N: Int, K: Int) raises:

@@ -157,7 +157,7 @@ def fill_paged_blocks_uniform[
     )
     for i in range(block_elems):
         blocks_host[i] = blocks_bf16[i].cast[kv_type]()
-    blocks_bf16.free()
+    blocks_bf16.unsafe_free()
 
     # Tail zero-fill in last page of each batch.
     var pstride = page_stride(page_size, head_size)
@@ -334,7 +334,7 @@ def fill_scattered_paged_blocks_and_lut[
         lookup_table_host[p] = UInt32(phys)
     for p in range(num_pages_per_batch, max_pages_per_batch):
         lookup_table_host[p] = UInt32(0)
-    real_page_bf16.free()
+    real_page_bf16.unsafe_free()
 
 
 def extract_k_rope_for_batch_via_lut[
@@ -945,19 +945,19 @@ def run_test_paged_prefill[
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
-    q_ptr.free()
-    k_ptr.free()
-    v_ptr.free()
-    output_ptr.free()
-    k_ref_host.free()
-    v_ref_host.free()
-    output_ref_host.free()
-    k_rope_one_batch.free()
-    blocks_host.free()
-    cache_lengths_host.free()
-    lookup_table_host.free()
-    input_row_offsets_host.free()
-    cache_row_offsets_host.free()
+    q_ptr.unsafe_free()
+    k_ptr.unsafe_free()
+    v_ptr.unsafe_free()
+    output_ptr.unsafe_free()
+    k_ref_host.unsafe_free()
+    v_ref_host.unsafe_free()
+    output_ref_host.unsafe_free()
+    k_rope_one_batch.unsafe_free()
+    blocks_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    input_row_offsets_host.unsafe_free()
+    cache_row_offsets_host.unsafe_free()
 
     _ = q_device_buf
     _ = k_device_buf

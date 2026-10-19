@@ -316,9 +316,9 @@ def run_variant[
             " store/load is NOT single-copy-atomic for this variant"
         )
 
-    init_host.free()
-    torn_host.free()
-    seen_host.free()
+    init_host.unsafe_free()
+    torn_host.unsafe_free()
+    seen_host.unsafe_free()
 
 
 def main() raises:

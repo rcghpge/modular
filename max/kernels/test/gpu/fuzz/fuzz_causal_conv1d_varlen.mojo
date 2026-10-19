@@ -320,16 +320,16 @@ def run_one_case(
         ):
             raise Error("causal_conv1d_varlen state pool mismatch")
 
-    proj_h.free()
-    weight_h.free()
-    bias_h.free()
-    his_h.free()
-    qsl_h.free()
-    slot_h.free()
-    pool_h.free()
-    pool_ref_h.free()
-    y_ref_h.free()
-    y_gpu_h.free()
+    proj_h.unsafe_free()
+    weight_h.unsafe_free()
+    bias_h.unsafe_free()
+    his_h.unsafe_free()
+    qsl_h.unsafe_free()
+    slot_h.unsafe_free()
+    pool_h.unsafe_free()
+    pool_ref_h.unsafe_free()
+    y_ref_h.unsafe_free()
+    y_gpu_h.unsafe_free()
     _ = proj_d
     _ = x_d
     _ = weight_d

@@ -298,7 +298,7 @@ def lamport_allreduce_test[
                     raise e^
 
     for i in range(ngpus):
-        host_buffers[i].free()
+        host_buffers[i].unsafe_free()
 
 
 def lamport_mixed_size_test[
@@ -492,7 +492,7 @@ def lamport_mixed_size_test[
             call_idx += 1
 
     for i in range(ngpus):
-        host[i].free()
+        host[i].unsafe_free()
 
 
 def _lamport_random_call[
@@ -595,8 +595,8 @@ def _lamport_random_call[
                 raise e^
 
     for i in range(ngpus):
-        host[i].free()
-    expected.free()
+        host[i].unsafe_free()
+    expected.unsafe_free()
 
 
 def lamport_mixed_dtype_test[
@@ -756,9 +756,9 @@ def _lamport_rmsnorm_random_call[
                 raise Error("fused Lamport RMSNorm output mismatch")
 
     for i in range(ngpus):
-        host[i].free()
-    gamma.free()
-    expected.free()
+        host[i].unsafe_free()
+    gamma.unsafe_free()
+    expected.unsafe_free()
 
 
 def lamport_rmsnorm_mixed_dtype_test[
@@ -1007,8 +1007,8 @@ def lamport_coexist_test[
         call_idx += 1
 
     for i in range(ngpus):
-        shost[i].free()
-    lfill.free()
+        shost[i].unsafe_free()
+    lfill.unsafe_free()
 
 
 def lamport_unsynced_skew_test[
@@ -1181,7 +1181,7 @@ def lamport_unsynced_skew_test[
                     raise e^
 
     for i in range(ngpus):
-        host[i].free()
+        host[i].unsafe_free()
 
 
 def lamport_wrap_test[
@@ -1350,7 +1350,7 @@ def lamport_wrap_test[
                     raise e^
 
     for i in range(ngpus):
-        host[i].free()
+        host[i].unsafe_free()
 
 
 def _case_str[

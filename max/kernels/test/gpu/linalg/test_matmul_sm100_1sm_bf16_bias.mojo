@@ -221,11 +221,11 @@ def test_blackwell_matmul_with_epilogue_tensor[
     print("\n=== TEST PASSED ===\n")
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    epilogue_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_host_ref_ptr.unsafe_free()
+    epilogue_host_ptr.unsafe_free()
     _ = a_device^
     _ = b_device^
     _ = c_device^

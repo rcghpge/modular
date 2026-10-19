@@ -181,11 +181,11 @@ def test_partial_n_tile_compute_epilogue[
 
     print("=== MXF-338 regression: TEST PASSED ===")
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    c_host_copy_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_host_ref_ptr.unsafe_free()
+    c_host_copy_ptr.unsafe_free()
 
 
 def main() raises:

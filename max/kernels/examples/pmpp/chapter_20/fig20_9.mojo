@@ -269,7 +269,7 @@ def cpu_attention(
                 out_val += (scores[j] / sum_exp) * h_V[j * D + k]
             h_O[i * D + k] = out_val
 
-        scores.free()
+        scores.unsafe_free()
 
 
 def main() raises:
@@ -346,9 +346,9 @@ def main() raises:
     else:
         print("TEST FAILED with", err_count, "errors")
 
-    h_Q.free()
-    h_K.free()
-    h_V.free()
-    h_O.free()
-    h_O_ref.free()
-    h_D.free()
+    h_Q.unsafe_free()
+    h_K.unsafe_free()
+    h_V.unsafe_free()
+    h_O.unsafe_free()
+    h_O_ref.unsafe_free()
+    h_D.unsafe_free()

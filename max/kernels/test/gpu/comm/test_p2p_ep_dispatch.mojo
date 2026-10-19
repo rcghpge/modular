@@ -191,7 +191,7 @@ struct BF16DispatchTest[
 
     def __deinit__(deinit self):
         for i in range(Self.n_ranks):
-            self.host_output_bufs_list[i].free()
+            self.host_output_bufs_list[i].unsafe_free()
 
     @inline(.always)
     def get_token_handler(
@@ -343,8 +343,8 @@ struct BlockwiseFP8DispatchTest[
 
     def __deinit__(deinit self):
         for i in range(Self.n_ranks):
-            self.host_output_bufs_list[i].free()
-            self.host_output_scales_bufs_list[i].free()
+            self.host_output_bufs_list[i].unsafe_free()
+            self.host_output_scales_bufs_list[i].unsafe_free()
 
     @inline(.always)
     def get_token_handler(
@@ -587,11 +587,11 @@ struct NVFP4DispatchTest[
 
     def __deinit__(deinit self):
         for i in range(Self.n_ranks):
-            self.host_output_bufs_list[i].free()
-            self.host_output_scales_bufs_list[i].free()
-            self.host_output_scales_offset_bufs_list[i].free()
+            self.host_output_bufs_list[i].unsafe_free()
+            self.host_output_scales_bufs_list[i].unsafe_free()
+            self.host_output_scales_offset_bufs_list[i].unsafe_free()
         for ptr in self.host_output_rowwise_scales_bufs_list:
-            ptr.free()
+            ptr.unsafe_free()
 
     @inline(.always)
     def rowwise_scale(
@@ -912,8 +912,8 @@ struct MXDispatchTest[
 
     def __deinit__(deinit self):
         for i in range(Self.n_ranks):
-            self.host_output_bufs_list[i].free()
-            self.host_output_scales_bufs_list[i].free()
+            self.host_output_bufs_list[i].unsafe_free()
+            self.host_output_scales_bufs_list[i].unsafe_free()
 
     @inline(.always)
     def get_token_handler(
@@ -1642,19 +1642,19 @@ def test_dispatch_common[
             )
 
         # Free host buffers
-        host_output.free()
-        host_row_offsets.free()
-        host_expert_ids.free()
-        host_src_token_info.free()
-        host_atomic_counter.free()
+        host_output.unsafe_free()
+        host_row_offsets.unsafe_free()
+        host_expert_ids.unsafe_free()
+        host_src_token_info.unsafe_free()
+        host_atomic_counter.unsafe_free()
 
     dispatch_test.save_outputs_to_host(list_of_ctx)
     sync_parallelize(verify_results, n_ranks)
     print("All results verified successfully!")
 
     for dev_idx in range(n_ranks):
-        host_topk_ids_list[dev_idx].free()
-        host_input_tokens_list[dev_idx].free()
+        host_topk_ids_list[dev_idx].unsafe_free()
+        host_input_tokens_list[dev_idx].unsafe_free()
 
 
 def test_dispatch_bf16[

@@ -135,7 +135,7 @@ def main() raises:
     for i in range(rows):
         h_y_zeros[i] = 0.0
     ctx.enqueue_copy(d_y_buf, h_y_zeros)
-    h_y_zeros.free()
+    h_y_zeros.unsafe_free()
 
     var d_cscMatrix = CSCMatrix(
         rows,
@@ -166,8 +166,8 @@ def main() raises:
     else:
         print("CSC Kernel Test Failed!")
 
-    h_colPtrs_ptr.free()
-    h_rowIdxs_ptr.free()
-    h_values_ptr.free()
-    h_x_ptr.free()
-    h_y_ptr.free()
+    h_colPtrs_ptr.unsafe_free()
+    h_rowIdxs_ptr.unsafe_free()
+    h_values_ptr.unsafe_free()
+    h_x_ptr.unsafe_free()
+    h_y_ptr.unsafe_free()

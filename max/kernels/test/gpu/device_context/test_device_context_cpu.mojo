@@ -35,7 +35,7 @@ def test_func_writes_to_memory(ctx: DeviceContext) raises:
     ctx.enqueue_cpu_function(write_42)
     ctx.synchronize()
     assert_equal(ptr[], 42)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_func_closure_writes_to_memory(ctx: DeviceContext) raises:
@@ -49,7 +49,7 @@ def test_func_closure_writes_to_memory(ctx: DeviceContext) raises:
     ctx.enqueue_cpu_function(write_val)
     ctx.synchronize()
     assert_equal(ptr[], 42)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_multiple_funcs_execute_in_order(ctx: DeviceContext) raises:
@@ -71,7 +71,7 @@ def test_multiple_funcs_execute_in_order(ctx: DeviceContext) raises:
     ctx.synchronize()
     # Stream semantics: functions execute in order, last write wins.
     assert_equal(ptr[], 3)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_func_accumulates(ctx: DeviceContext) raises:
@@ -86,7 +86,7 @@ def test_func_accumulates(ctx: DeviceContext) raises:
     ctx.enqueue_cpu_function(increment)
     ctx.synchronize()
     assert_equal(ptr[], 3)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_range_writes_indices(ctx: DeviceContext) raises:
@@ -102,7 +102,7 @@ def test_range_writes_indices(ctx: DeviceContext) raises:
     ctx.synchronize()
     for i in range(count):
         assert_equal(ptr[i], i)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_range_large(ctx: DeviceContext) raises:
@@ -118,7 +118,7 @@ def test_range_large(ctx: DeviceContext) raises:
     ctx.synchronize()
     for i in range(count):
         assert_equal(ptr[i], i * i)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_func_then_range(ctx: DeviceContext) raises:
@@ -140,7 +140,7 @@ def test_func_then_range(ctx: DeviceContext) raises:
     ctx.synchronize()
     for i in range(count):
         assert_equal(ptr[i], 1 + i)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_two_ranges_sequential(ctx: DeviceContext) raises:
@@ -160,7 +160,7 @@ def test_two_ranges_sequential(ctx: DeviceContext) raises:
     ctx.synchronize()
     for i in range(count):
         assert_equal(ptr[i], i * 2)
-    ptr.free()
+    ptr.unsafe_free()
 
 
 def test_device_context_array(ctx: DeviceContext) raises:

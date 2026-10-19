@@ -532,7 +532,7 @@ def fill_random_fp8[dtype: DType](t: TileTensor[mut=True, dtype, ...]):
         if v < -2.0:
             v = -2.0
         data[i] = Scalar[dtype](v)
-    f32_buf.free()
+    f32_buf.unsafe_free()
 
 
 def dequant_fp8_to_bf16[
@@ -727,9 +727,9 @@ def test_qk_smoke(ctx: DeviceContext) raises:
     )
     print("  QK SMOKE PASSED (M=32 N=64 K=576 .ws cta_group::1 kind::f8f6f4)")
 
-    a_ref_host.free()
-    b_ref_host.free()
-    c_ref_host.free()
+    a_ref_host.unsafe_free()
+    b_ref_host.unsafe_free()
+    c_ref_host.unsafe_free()
     _ = a_ref_dev
     _ = b_ref_dev
     _ = c_ref_dev
@@ -926,9 +926,9 @@ def test_pv_smoke(ctx: DeviceContext) raises:
         + " K=64 .ws cta_group::1 kind::f8f6f4)"
     )
 
-    a_ref_host.free()
-    b_ref_host.free()
-    c_ref_host.free()
+    a_ref_host.unsafe_free()
+    b_ref_host.unsafe_free()
+    c_ref_host.unsafe_free()
     _ = a_ref_dev
     _ = b_ref_dev
     _ = c_ref_dev

@@ -212,8 +212,8 @@ def main() raises:
     for i in range(NUM_IDX):
         assert_equal(Int(h_out[i]), Int(h_expected[i]), "gpu remap mismatch")
 
-    h_row_off.free()
-    h_log.free()
-    h_lut.free()
-    h_expected.free()
-    h_out.free()
+    h_row_off.unsafe_free()
+    h_log.unsafe_free()
+    h_lut.unsafe_free()
+    h_expected.unsafe_free()
+    h_out.unsafe_free()

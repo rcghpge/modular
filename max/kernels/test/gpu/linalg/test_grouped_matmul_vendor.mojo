@@ -202,12 +202,12 @@ def test_vendor[
     print("✓ Vendor grouped matmul test passed")
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_ref_host_ptr.free()
-    a_offsets_host_ptr.free()
-    expert_ids_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_ref_host_ptr.unsafe_free()
+    a_offsets_host_ptr.unsafe_free()
+    expert_ids_host_ptr.unsafe_free()
     _ = a_dev_buffer^
     _ = b_dev_buffer^
     _ = c_dev_buffer^
@@ -408,11 +408,11 @@ def test_negative_lora_id_vendor[
     )
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    a_offsets_host_ptr.free()
-    expert_ids_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    a_offsets_host_ptr.unsafe_free()
+    expert_ids_host_ptr.unsafe_free()
     _ = a_dev_buffer^
     _ = b_dev_buffer^
     _ = c_dev_buffer^

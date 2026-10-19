@@ -283,16 +283,16 @@ def run_finite_check[
         if isnan(val) or isinf(val):
             num_nonfinite += 1
 
-    q_ptr.free()
-    k_ptr.free()
-    v_ptr.free()
-    output_ptr.free()
-    blocks_host.free()
-    scales_host.free()
-    cache_lengths_host.free()
-    lookup_table_host.free()
-    input_row_offsets_host.free()
-    cache_row_offsets_host.free()
+    q_ptr.unsafe_free()
+    k_ptr.unsafe_free()
+    v_ptr.unsafe_free()
+    output_ptr.unsafe_free()
+    blocks_host.unsafe_free()
+    scales_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    input_row_offsets_host.unsafe_free()
+    cache_row_offsets_host.unsafe_free()
 
     _ = q_device_buf
     _ = k_device_buf

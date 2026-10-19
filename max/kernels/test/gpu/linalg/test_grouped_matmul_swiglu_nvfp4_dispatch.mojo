@@ -294,12 +294,12 @@ def _build_shared_b[
     ctx.enqueue_copy(input_scales_device, input_scales_host_ptr)
     ctx.synchronize()
 
-    b_host_ptr.free()
-    b_perm_host_ptr.free()
-    b_scales_host_ptr.free()
-    b_scales_perm_host_ptr.free()
-    expert_scales_host_ptr.free()
-    input_scales_host_ptr.free()
+    b_host_ptr.unsafe_free()
+    b_perm_host_ptr.unsafe_free()
+    b_scales_host_ptr.unsafe_free()
+    b_scales_perm_host_ptr.unsafe_free()
+    expert_scales_host_ptr.unsafe_free()
+    input_scales_host_ptr.unsafe_free()
 
     return _SharedB(
         b_perm=b_perm_device^,
@@ -936,18 +936,18 @@ def _test_swiglu_dispatch[
         print("    PASSED (within tolerance)")
 
     # ---- Cleanup (per-test only — shared B buffers are owned by main) ----
-    a_host_ptr.free()
-    a_scales_host_ptr.free()
-    a_offsets_host_ptr.free()
-    a_scale_offsets_ptr.free()
-    expert_ids_host_ptr.free()
-    O_ref_host_ptr.free()
-    O_test_host_ptr.free()
-    S_ref_host_ptr.free()
-    S_test_host_ptr.free()
-    sf_garbage_ref_ptr.free()
-    sf_garbage_test_ptr.free()
-    row_scales_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    a_scales_host_ptr.unsafe_free()
+    a_offsets_host_ptr.unsafe_free()
+    a_scale_offsets_ptr.unsafe_free()
+    expert_ids_host_ptr.unsafe_free()
+    O_ref_host_ptr.unsafe_free()
+    O_test_host_ptr.unsafe_free()
+    S_ref_host_ptr.unsafe_free()
+    S_test_host_ptr.unsafe_free()
+    sf_garbage_ref_ptr.unsafe_free()
+    sf_garbage_test_ptr.unsafe_free()
+    row_scales_host_ptr.unsafe_free()
     _ = row_scales_device^
     _ = a_device^
     _ = c_ref_device^

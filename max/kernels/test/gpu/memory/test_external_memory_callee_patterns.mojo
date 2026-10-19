@@ -84,7 +84,7 @@ def test_external_memory_in_callee(ctx: DeviceContext) raises:
         assert_equal(host_buf[i], Float32(EXPECTED_SUM))
 
     _ = dev_buf
-    host_buf.free()
+    host_buf.unsafe_free()
 
 
 # ── Pattern 2: external_memory used 2 levels below the kernel ─────────────────
@@ -152,7 +152,7 @@ def test_external_memory_deep_callgraph(ctx: DeviceContext) raises:
         assert_equal(host_buf[i], Float32(EXPECTED_SUM))
 
     _ = dev_buf
-    host_buf.free()
+    host_buf.unsafe_free()
 
 
 def main() raises:

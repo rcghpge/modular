@@ -160,8 +160,8 @@ def test_floyd_warshall() raises:
     else:
         raise Error("Tests failed!")
 
-    dist.free()
-    expected.free()
+    dist.unsafe_free()
+    expected.unsafe_free()
 
 
 def main() raises:

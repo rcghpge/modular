@@ -259,8 +259,8 @@ def test_grouped_nvfp4_quantization[
                                 ref_sc[c].cast[.float64](),
                             )
 
-        host_ref_output.free()
-        host_ref_scales.free()
+        host_ref_output.unsafe_free()
+        host_ref_scales.unsafe_free()
 
     # --- Fused gather variant ---
     # Shuffle the input rows and hand the kernel the inverse permutation
@@ -347,23 +347,23 @@ def test_grouped_nvfp4_quantization[
                 host_scales2[i].cast[.float64](),
                 host_scales[i].cast[.float64](),
             )
-        slots_host.free()
+        slots_host.unsafe_free()
 
-    shuffled_host.free()
-    indices_host.free()
-    perm.free()
-    host_output2.free()
-    host_scales2.free()
+    shuffled_host.unsafe_free()
+    indices_host.unsafe_free()
+    perm.unsafe_free()
+    host_output2.unsafe_free()
+    host_scales2.unsafe_free()
 
-    host_input.free()
-    host_output.free()
-    host_scales.free()
-    sentinel_host.free()
-    row_offsets_host.free()
-    scales_offsets_host.free()
-    expert_ids_host.free()
-    sf_tensor_host.free()
-    tile_starts.free()
+    host_input.unsafe_free()
+    host_output.unsafe_free()
+    host_scales.unsafe_free()
+    sentinel_host.unsafe_free()
+    row_offsets_host.unsafe_free()
+    scales_offsets_host.unsafe_free()
+    expert_ids_host.unsafe_free()
+    sf_tensor_host.unsafe_free()
+    tile_starts.unsafe_free()
 
 
 def main() raises:

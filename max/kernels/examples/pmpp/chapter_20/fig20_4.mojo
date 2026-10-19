@@ -230,7 +230,7 @@ def main() raises:
         else:
             print("FAILED")
 
-        h_S.free()
-        h_D.free()
-        h_P.free()
-        h_P_ref.free()
+        h_S.unsafe_free()
+        h_D.unsafe_free()
+        h_P.unsafe_free()
+        h_P_ref.unsafe_free()

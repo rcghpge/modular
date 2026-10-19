@@ -169,11 +169,11 @@ def test_matmul[
             else:
                 assert_equal(c[i, j], golden[i, j], msg)
 
-    a_ptr.free()
-    b_ptr.free()
-    bp_ptr.free()
-    c0_ptr.free()
-    c1_ptr.free()
+    a_ptr.unsafe_free()
+    b_ptr.unsafe_free()
+    bp_ptr.unsafe_free()
+    c0_ptr.unsafe_free()
+    c1_ptr.unsafe_free()
 
 
 def test_matmul[

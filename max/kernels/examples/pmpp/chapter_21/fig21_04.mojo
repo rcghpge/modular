@@ -99,5 +99,5 @@ def main() raises:
     var total_energy = compute_total_energy(h_energygrid, grid_size)
     print("Total Energy:", total_energy)
 
-    h_atoms.free()
-    h_energygrid.free()
+    h_atoms.unsafe_free()
+    h_energygrid.unsafe_free()

@@ -321,7 +321,7 @@ def main() raises:
         print("✗ FAILED: Found", errors, "errors")
 
     # Cleanup
-    h_in.free()
-    h_out.free()
-    h_ref.free()
-    h_c.free()
+    h_in.unsafe_free()
+    h_out.unsafe_free()
+    h_ref.unsafe_free()
+    h_c.unsafe_free()

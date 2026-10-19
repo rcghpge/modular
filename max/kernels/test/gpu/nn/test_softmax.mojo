@@ -287,9 +287,9 @@ def test_gpu_softmax_warp_short_axis[
             s += out_host_test_ptr[r * row_size + j].cast[ref_type]()
         assert_almost_equal(s, Scalar[ref_type](1), atol=1e-2)
 
-    in_host_test_ptr.free()
-    out_host_test_ptr.free()
-    out_ref_ptr.free()
+    in_host_test_ptr.unsafe_free()
+    out_host_test_ptr.unsafe_free()
+    out_ref_ptr.unsafe_free()
     _ = in_device_test_ptr
     _ = out_device_test_ptr
 
@@ -504,9 +504,9 @@ def test_gpu_softmax_masked_split[test_type: DType](ctx: DeviceContext) raises:
             s += out_host_ptr[r * row_size + j].cast[ref_type]()
         assert_almost_equal(s, Scalar[ref_type](1), atol=1e-2)
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    out_ref_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    out_ref_ptr.unsafe_free()
     _ = in_device_ptr
     _ = out_device_ptr
     _ = in_device

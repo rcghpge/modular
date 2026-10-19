@@ -113,7 +113,7 @@ def main() raises:
     var h_frontier = unsafe_alloc[UInt32](1)
     h_frontier[0] = UInt32(start_vertex)
     ctx.enqueue_copy(d_prev_frontier, h_frontier)
-    h_frontier.free()
+    h_frontier.unsafe_free()
 
     var num_prev_frontier = 1
     var curr_level: UInt32 = 1
@@ -123,7 +123,7 @@ def main() raises:
         var h_zero = unsafe_alloc[UInt32](1)
         h_zero[0] = 0
         ctx.enqueue_copy(d_num_curr_frontier, h_zero)
-        h_zero.free()
+        h_zero.unsafe_free()
 
         var grid_size = ceildiv(num_prev_frontier, BLOCK_SIZE)
         if grid_size == 0:
@@ -147,7 +147,7 @@ def main() raises:
         ctx.enqueue_copy(h_num, d_num_curr_frontier)
         ctx.synchronize()
         num_prev_frontier = Int(h_num[0])
-        h_num.free()
+        h_num.unsafe_free()
 
         var temp = d_prev_frontier
         d_prev_frontier = d_curr_frontier
@@ -169,6 +169,6 @@ def main() raises:
     else:
         print("Figure 18.12 BFS Failed!")
 
-    h_level.free()
-    h_src_ptrs.free()
-    h_dst.free()
+    h_level.unsafe_free()
+    h_src_ptrs.unsafe_free()
+    h_dst.unsafe_free()

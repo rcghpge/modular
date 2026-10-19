@@ -130,6 +130,6 @@ def main() raises:
         print("SUCCESS: CPU=", h_ref[0], ", GPU=", h_output[0], "match!")
 
     # Cleanup
-    h_input.free()
-    h_output.free()
-    h_ref.free()
+    h_input.unsafe_free()
+    h_output.unsafe_free()
+    h_ref.unsafe_free()

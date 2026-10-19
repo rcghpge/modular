@@ -159,7 +159,7 @@ def host_reference[
                         )
                     output_ptr[o_base + d] = acc.cast[q_type]()
 
-                s_buf.free()
+                s_buf.unsafe_free()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -501,7 +501,7 @@ def run_test_prefill_sparse_qkv_fp8[
             sink_host[i] = sink_values[i]
         ctx.enqueue_copy(sink_device, sink_host)
         ctx.synchronize()
-        sink_host.free()
+        sink_host.unsafe_free()
         attn_sink_ptr = Optional[ImmPointer[Float32, ImmutAnyOrigin]](
             sink_device.unsafe_ptr()
             .unsafe_bitcast[Float32]()
@@ -674,20 +674,20 @@ def run_test_prefill_sparse_qkv_fp8[
     _ = topk_lengths_device
     _ = sink_device
 
-    blocks_fp8_host.free()
-    kv_bf16_host.free()
-    kv_dequant_host.free()
-    lookup_table_host.free()
-    cache_lengths_host.free()
-    q_bf16_host.free()
-    q_fp8_host.free()
-    q_dequant_host.free()
-    kv_sparse.free()
-    selected_tokens.free()
-    ref_host.free()
-    out_host.free()
-    h_indices.free()
-    h_topk_lengths.free()
+    blocks_fp8_host.unsafe_free()
+    kv_bf16_host.unsafe_free()
+    kv_dequant_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    q_bf16_host.unsafe_free()
+    q_fp8_host.unsafe_free()
+    q_dequant_host.unsafe_free()
+    kv_sparse.unsafe_free()
+    selected_tokens.unsafe_free()
+    ref_host.unsafe_free()
+    out_host.unsafe_free()
+    h_indices.unsafe_free()
+    h_topk_lengths.unsafe_free()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1118,19 +1118,19 @@ def run_nope_native_512_prefill_fp8[
     _ = out_576_device
     _ = out_512_device
 
-    blocks_576_host.free()
-    blocks_512_host.free()
-    kv_bf16_host.free()
-    lookup_table_host.free()
-    cache_lengths_host.free()
-    q_bf16_host.free()
-    q_512_host.free()
-    q_576_host.free()
-    selected_tokens.free()
-    h_indices.free()
-    h_topk_lengths.free()
-    h576.free()
-    h512.free()
+    blocks_576_host.unsafe_free()
+    blocks_512_host.unsafe_free()
+    kv_bf16_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    q_bf16_host.unsafe_free()
+    q_512_host.unsafe_free()
+    q_576_host.unsafe_free()
+    selected_tokens.unsafe_free()
+    h_indices.unsafe_free()
+    h_topk_lengths.unsafe_free()
+    h576.unsafe_free()
+    h512.unsafe_free()
 
 
 def main() raises:

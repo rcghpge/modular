@@ -81,8 +81,8 @@ def run_copy_via_shared(ctx: DeviceContext) raises:
 
     _ = in_data_device
     _ = out_data_device
-    in_data.free()
-    out_data.free()
+    in_data.unsafe_free()
+    out_data.unsafe_free()
 
 
 def copy_with_src_size(
@@ -192,8 +192,8 @@ def test_copy_with_src_size(ctx: DeviceContext) raises:
 
     _ = a_device
     _ = b_device
-    a_host.free()
-    b_host.free()
+    a_host.unsafe_free()
+    b_host.unsafe_free()
 
 
 def test_copy_with_non_zero_fill(ctx: DeviceContext) raises:
@@ -248,8 +248,8 @@ def test_copy_with_non_zero_fill(ctx: DeviceContext) raises:
 
     _ = a_device
     _ = b_device
-    a_host.free()
-    b_host.free()
+    a_host.unsafe_free()
+    b_host.unsafe_free()
 
 
 def main() raises:

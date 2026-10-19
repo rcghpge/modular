@@ -128,6 +128,6 @@ def main():
         print("\nFigure 19.3 Test Failed!")
 
     # Cleanup
-    X.free()
-    F.free()
-    Y.free()
+    X.unsafe_free()
+    F.unsafe_free()
+    Y.unsafe_free()

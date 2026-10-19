@@ -86,8 +86,8 @@ def test_static_scaled_fp8_quant[
                 out_host[i, j][0].cast[.float64](),
             )
 
-    in_host_ptr.free()
-    out_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
 
 
 def test_dynamic_scaled_fp8_quant[
@@ -195,9 +195,9 @@ def test_dynamic_scaled_fp8_quant[
                 msg="At [" + String(i) + ", " + String(j) + "]",
             )
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def test_dynamic_fp8_quant[
@@ -305,9 +305,9 @@ def test_dynamic_fp8_quant[
                     + "]",
                 )
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def test_dynamic_fp8_quant_amax_floor[
@@ -464,11 +464,11 @@ def test_dynamic_fp8_quant_amax_floor[
                         base_out_host[i, col].cast[.float32](),
                     )
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    base_out_host_ptr.free()
-    scales_host_ptr.free()
-    base_scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    base_out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
+    base_scales_host_ptr.unsafe_free()
 
 
 def test_batched_dynamic_fp8_quant[
@@ -577,9 +577,9 @@ def test_batched_dynamic_fp8_quant[
                         + "]",
                     )
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def test_dynamic_fp8_quant_row_bounded[
@@ -737,14 +737,14 @@ def test_dynamic_fp8_quant_row_bounded[
         msg="unbounded run left the skipped rows zero, so the skip is untested",
     )
 
-    in_host_ptr.free()
-    ref_out_ptr.free()
-    ref_scales_ptr.free()
-    got_out_ptr.free()
-    got_scales_ptr.free()
-    zero_out_ptr.free()
-    zero_scales_ptr.free()
-    offsets_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    ref_out_ptr.unsafe_free()
+    ref_scales_ptr.unsafe_free()
+    got_out_ptr.unsafe_free()
+    got_scales_ptr.unsafe_free()
+    zero_out_ptr.unsafe_free()
+    zero_scales_ptr.unsafe_free()
+    offsets_host_ptr.unsafe_free()
 
 
 def test_dynamic_fp8_quant_near_zero[
@@ -832,9 +832,9 @@ def test_dynamic_fp8_quant_near_zero[
     assert_equal(n_nonfinite, 0)
     assert_equal(n_nonzero, 0)
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def test_dynamic_tensor_fp8_quant_near_zero[
@@ -922,9 +922,9 @@ def test_dynamic_tensor_fp8_quant_near_zero[
     assert_equal(n_nonfinite, 0)
     assert_equal(n_nonzero, 0)
 
-    in_host_ptr.free()
-    out_host_ptr.free()
-    scales_host_ptr.free()
+    in_host_ptr.unsafe_free()
+    out_host_ptr.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def main() raises:

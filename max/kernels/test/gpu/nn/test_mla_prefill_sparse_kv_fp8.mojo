@@ -210,7 +210,7 @@ def host_reference[
                         )
                     output_ptr[o_base + d] = acc.cast[q_type]()
 
-                s_buf.free()
+                s_buf.unsafe_free()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -642,7 +642,7 @@ def run_test_prefill_sparse_fp8[
             sink_host[i] = sink_values[i]
         ctx.enqueue_copy(sink_device, sink_host)
         ctx.synchronize()
-        sink_host.free()
+        sink_host.unsafe_free()
         attn_sink_ptr = Optional[ImmPointer[Float32, ImmutAnyOrigin]](
             sink_device.unsafe_ptr()
             .unsafe_bitcast[Float32]()
@@ -856,19 +856,19 @@ def run_test_prefill_sparse_fp8[
     _ = scales_device
     _ = sink_device
 
-    blocks_fp8_host.free()
-    kv_bf16_host.free()
-    kv_dequant_host.free()
-    lookup_table_host.free()
-    cache_lengths_host.free()
-    q_host.free()
-    kv_sparse.free()
-    selected_tokens.free()
-    ref_host.free()
-    out_host.free()
-    h_indices.free()
-    h_topk_lengths.free()
-    scales_host.free()
+    blocks_fp8_host.unsafe_free()
+    kv_bf16_host.unsafe_free()
+    kv_dequant_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    q_host.unsafe_free()
+    kv_sparse.unsafe_free()
+    selected_tokens.unsafe_free()
+    ref_host.unsafe_free()
+    out_host.unsafe_free()
+    h_indices.unsafe_free()
+    h_topk_lengths.unsafe_free()
+    scales_host.unsafe_free()
 
 
 # ===-----------------------------------------------------------------------===#

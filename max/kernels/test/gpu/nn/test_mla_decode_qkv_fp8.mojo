@@ -857,14 +857,14 @@ def test_sw[
     _ = output_ref_device_ptr
     _ = output_ref_full_device_ptr
 
-    q_bf16_ptr.free()
-    q_fp8_ptr.free()
-    q_bf16_dequant_ptr.free()
-    k_fp8_ptr.free()
-    k_bf16_ptr.free()
-    output_ptr.free()
-    flash_output_ptr.free()
-    ref_full_output_ptr.free()
+    q_bf16_ptr.unsafe_free()
+    q_fp8_ptr.unsafe_free()
+    q_bf16_dequant_ptr.unsafe_free()
+    k_fp8_ptr.unsafe_free()
+    k_bf16_ptr.unsafe_free()
+    output_ptr.unsafe_free()
+    flash_output_ptr.unsafe_free()
+    ref_full_output_ptr.unsafe_free()
 
 
 # SlidingWindowCausalMask helper that wraps `test_sw` with the standard

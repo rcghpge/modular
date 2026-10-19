@@ -122,7 +122,7 @@ def main() raises:
                 if isnan(got) or got != Float32(c):
                     stale += 1
 
-    host_output.free()
+    host_output.unsafe_free()
 
     assert_equal(
         stale,

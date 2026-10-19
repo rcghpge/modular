@@ -386,14 +386,14 @@ def test_gather_zeros_out_of_range_rows(ctx: DeviceContext) raises:
 
     print("  RESULT: PASS")
 
-    blocks_host.free()
-    cache_lengths_host.free()
-    lookup_table_host.free()
-    input_row_offsets_host.free()
-    buffer_lengths_host.free()
-    weight_host.free()
-    sentinel_host.free()
-    k_latent_host.free()
+    blocks_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    input_row_offsets_host.unsafe_free()
+    buffer_lengths_host.unsafe_free()
+    weight_host.unsafe_free()
+    sentinel_host.unsafe_free()
+    k_latent_host.unsafe_free()
 
     _ = blocks_device
     _ = cache_lengths_device

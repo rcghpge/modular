@@ -165,7 +165,7 @@ struct _KVCacheTestTensor[dtype: DType, rank: Int](Copyable):
         self.device_buf = None
 
     def __deinit__(deinit self):
-        self.host_ptr.free()
+        self.host_ptr.unsafe_free()
 
     def copy_to_device(mut self, ctx: DeviceContext) raises:
         self.device_buf = ctx.enqueue_create_buffer[Self.dtype](

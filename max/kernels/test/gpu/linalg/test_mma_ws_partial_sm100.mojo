@@ -636,7 +636,7 @@ def fill_random_fp8[dtype: DType](span: MutSpan[Scalar[dtype], _]):
         if v < -2.0:
             v = -2.0
         span[i] = Scalar[dtype](v)
-    f32_buf.free()
+    f32_buf.unsafe_free()
 
 
 def dequant_fp8_to_bf16[
@@ -1047,9 +1047,9 @@ def test_ss_partial(ctx: DeviceContext) raises:
         require_finite=False,
     )
 
-    a_ref_host.free()
-    b_ref_host.free()
-    c_ref_full.free()
+    a_ref_host.unsafe_free()
+    b_ref_host.unsafe_free()
+    c_ref_full.unsafe_free()
     _ = a_ref_dev
     _ = b_ref_dev
     _ = c_ref_full_dev
@@ -1234,9 +1234,9 @@ def test_ss_partial(ctx: DeviceContext) raises:
         " / v8 struct-partial-NaN / v9 struct-partial-3stage-NaN)"
     )
 
-    a_nan_ref_host.free()
-    b_nan_ref_host.free()
-    c_ref_v.free()
+    a_nan_ref_host.unsafe_free()
+    b_nan_ref_host.unsafe_free()
+    c_ref_v.unsafe_free()
     _ = a_nan_ref_dev
     _ = b_nan_ref_dev
     _ = c_ref_v_dev
@@ -1603,9 +1603,9 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
         require_finite=False,
     )
 
-    a_ref_host.free()
-    b_ref_host.free()
-    c_ref_full.free()
+    a_ref_host.unsafe_free()
+    b_ref_host.unsafe_free()
+    c_ref_full.unsafe_free()
     _ = a_ref_dev
     _ = b_ref_dev
     _ = c_ref_full_dev
@@ -1777,9 +1777,9 @@ def test_ss_nonws_partial(ctx: DeviceContext) raises:
         " / v5 struct-NaN / v6 struct-3stage-NaN)"
     )
 
-    a_nan_ref_host.free()
-    b_nan_ref_host.free()
-    c_ref_v.free()
+    a_nan_ref_host.unsafe_free()
+    b_nan_ref_host.unsafe_free()
+    c_ref_v.unsafe_free()
     _ = a_nan_ref_dev
     _ = b_nan_ref_dev
     _ = c_ref_v_dev

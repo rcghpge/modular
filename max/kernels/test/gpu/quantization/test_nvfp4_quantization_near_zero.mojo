@@ -179,9 +179,9 @@ def test_nvfp4_quant_near_zero[
     assert_equal(num_nonfinite, 0)
     assert_equal(num_nonfinite_scales, 0)
 
-    host_ptr.free()
-    host_ptr_output.free()
-    scales_host_ptr.free()
+    host_ptr.unsafe_free()
+    host_ptr_output.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def main() raises:

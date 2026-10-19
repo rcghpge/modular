@@ -343,12 +343,12 @@ def rmsnorm_test[
         print("  [ok] iter", it, "matches unfused reference")
 
     for g in range(ngpus):
-        act_host[g].free()
-    gamma_host.free()
-    expected_host.free()
-    expected.free()
-    host.free()
-    got.free()
+        act_host[g].unsafe_free()
+    gamma_host.unsafe_free()
+    expected_host.unsafe_free()
+    expected.unsafe_free()
+    host.unsafe_free()
+    got.unsafe_free()
     print("PASSED\n")
 
 
@@ -548,12 +548,12 @@ def unsynced_skew_test[
         )
 
     for g in range(ngpus):
-        act_host[g].free()
-    gamma_host.free()
-    unfused_host.free()
-    fused_host.free()
-    expected_f32.free()
-    got_f32.free()
+        act_host[g].unsafe_free()
+    gamma_host.unsafe_free()
+    unfused_host.unsafe_free()
+    fused_host.unsafe_free()
+    expected_f32.unsafe_free()
+    got_f32.unsafe_free()
     print("  [ok] all", NUM_UNSYNCED_ITERS, "unsynced slices match")
     print("PASSED\n")
 

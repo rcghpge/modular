@@ -144,12 +144,12 @@ def test_matmul_dynamic_scaled_fp8[
             )
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
-    c_host_ref_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    a_scales_host_ptr.unsafe_free()
+    b_scales_host_ptr.unsafe_free()
+    c_host_ref_ptr.unsafe_free()
 
 
 def test_matmul_dynamic_scaled_fp8_tensor[
@@ -303,14 +303,14 @@ def test_matmul_dynamic_scaled_fp8_tensor[
             )
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    a_scales_host_ptr.free()
-    b_scales_host_ptr.free()
-    c_host_ref_ptr.free()
-    a_ref_scales_host_ptr.free()
-    b_ref_scales_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    a_scales_host_ptr.unsafe_free()
+    b_scales_host_ptr.unsafe_free()
+    c_host_ref_ptr.unsafe_free()
+    a_ref_scales_host_ptr.unsafe_free()
+    b_ref_scales_host_ptr.unsafe_free()
 
 
 def main() raises:

@@ -545,7 +545,7 @@ def _run_prefill_sparse_diff[
             sink_host[i] = sink_values[i]
         ctx.enqueue_copy(sink_device, sink_host)
         ctx.synchronize()
-        sink_host.free()
+        sink_host.unsafe_free()
         attn_sink_ptr = Optional[ImmPointer[Float32, ImmutAnyOrigin]](
             sink_device.unsafe_ptr()
             .unsafe_bitcast[Float32]()
@@ -593,16 +593,16 @@ def _run_prefill_sparse_diff[
     _ = topk_lengths_device
     _ = sink_device
 
-    blocks_host.free()
-    kv_host.free()
-    lookup_table_host.free()
-    cache_lengths_host.free()
-    q_host.free()
-    kv_sparse.free()
-    selected_tokens.free()
-    out_host.free()
-    h_indices.free()
-    h_topk_lengths.free()
+    blocks_host.unsafe_free()
+    kv_host.unsafe_free()
+    lookup_table_host.unsafe_free()
+    cache_lengths_host.unsafe_free()
+    q_host.unsafe_free()
+    kv_sparse.unsafe_free()
+    selected_tokens.unsafe_free()
+    out_host.unsafe_free()
+    h_indices.unsafe_free()
+    h_topk_lengths.unsafe_free()
     return result^
 
 

@@ -43,7 +43,7 @@ def fibonacci_bottomup(n: Int) -> Int:
         table[i] = table[i - 1] + table[i - 2]
 
     var result = table[n]
-    table.free()
+    table.unsafe_free()
     return result
 
 
@@ -89,7 +89,7 @@ def fibonacci_topdown(n: Int) -> Int:
         hash_table[i] = -1
 
     var result = fibonacci_topdown_helper(n, hash_table)
-    hash_table.free()
+    hash_table.unsafe_free()
     return result
 
 
@@ -145,8 +145,8 @@ def test_fibonacci() raises:
 
     print("\nAll tests passed! ✓")
 
-    test_values.free()
-    expected.free()
+    test_values.unsafe_free()
+    expected.unsafe_free()
 
 
 def main() raises:

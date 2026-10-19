@@ -178,11 +178,11 @@ def test_blackwell_matmul_with_1d_bias[
     print("\n=== TEST PASSED ===\n")
 
     # Cleanup
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_host_ref_ptr.free()
-    bias_host_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_host_ref_ptr.unsafe_free()
+    bias_host_ptr.unsafe_free()
     _ = a_device^
     _ = b_device^
     _ = c_device^

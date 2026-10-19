@@ -125,7 +125,7 @@ def main() raises:
     print("Success")
 
     # Clean up
-    a.free()
-    b.free()
-    c.free()
-    c_ref.free()
+    a.unsafe_free()
+    b.unsafe_free()
+    c.unsafe_free()
+    c_ref.unsafe_free()

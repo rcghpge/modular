@@ -198,11 +198,11 @@ def run_case[
     print("    guard rows intact (no OOB row write)")
     print("    PASS")
 
-    a_host_ptr.free()
-    b_host_ptr.free()
-    c_host_ptr.free()
-    c_ref_host_ptr.free()
-    sentinel_ref_ptr.free()
+    a_host_ptr.unsafe_free()
+    b_host_ptr.unsafe_free()
+    c_host_ptr.unsafe_free()
+    c_ref_host_ptr.unsafe_free()
+    sentinel_ref_ptr.unsafe_free()
     _ = a_dev^
     _ = b_dev^
     _ = c_dev^

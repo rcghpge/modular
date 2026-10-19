@@ -125,7 +125,7 @@ def main() raises:
         for i in range(blocks * NUM_BINS):
             zeros[i] = 0
         ctx.enqueue_copy(d_bins_pool, zeros)
-        zeros.free()
+        zeros.unsafe_free()
 
         # Launch kernel
         ctx.enqueue_function[histogram_kernel](
@@ -156,9 +156,9 @@ def main() raises:
             errors += 1
 
     # Cleanup
-    h_image.free()
-    h_bins.free()
-    h_ref.free()
+    h_image.unsafe_free()
+    h_bins.unsafe_free()
+    h_ref.unsafe_free()
 
     if errors == 0:
         print("SUCCESS: All values match!")

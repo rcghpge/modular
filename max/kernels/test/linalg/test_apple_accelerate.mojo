@@ -107,7 +107,7 @@ def test_matmul(
         ),
     )
 
-    golden_ptr.free()
+    golden_ptr.unsafe_free()
 
 
 def test_matmul(m: Int, n: Int, k: Int) raises:
@@ -121,9 +121,9 @@ def test_matmul(m: Int, n: Int, k: Int) raises:
 
     test_matmul(c, a, b, m, n, k)
 
-    c_ptr.free()
-    b_ptr.free()
-    a_ptr.free()
+    c_ptr.unsafe_free()
+    b_ptr.unsafe_free()
+    a_ptr.unsafe_free()
 
 
 def test_matmul() raises:
@@ -233,7 +233,7 @@ def test_batched_matmul(
         ),
     )
 
-    golden_ptr.free()
+    golden_ptr.unsafe_free()
 
 
 def test_batched_matmul(batch: Int, m: Int, n: Int, k: Int) raises:
@@ -247,9 +247,9 @@ def test_batched_matmul(batch: Int, m: Int, n: Int, k: Int) raises:
 
     test_batched_matmul(c, a, b, batch, m, n, k)
 
-    c_ptr.free()
-    b_ptr.free()
-    a_ptr.free()
+    c_ptr.unsafe_free()
+    b_ptr.unsafe_free()
+    a_ptr.unsafe_free()
 
 
 def test_batched_matmul() raises:

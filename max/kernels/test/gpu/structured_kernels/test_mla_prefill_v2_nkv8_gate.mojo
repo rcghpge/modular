@@ -198,7 +198,7 @@ def _mla_naive_fp32_ref_chunked(
 
                 q_start = q_end
 
-    score_buf.free()
+    score_buf.unsafe_free()
 
 
 @inline(.always)
@@ -557,7 +557,7 @@ def test_mla_vs_fp32_ref[
             num_nonfinite,
         )
 
-    host_out_ref_fp32.free()
+    host_out_ref_fp32.unsafe_free()
     _ = host_q_src
     _ = host_knope_src
     _ = host_krope_src

@@ -237,7 +237,7 @@ def test_matmul[
                     ),
                 )
 
-    c1_ptr.free()
+    c1_ptr.unsafe_free()
     return errors
 
 
@@ -328,10 +328,10 @@ def test_matmul[
         return
     print("Success")
 
-    a_ptr.free()
-    b_ptr.free()
-    bp_ptr.free()
-    c0_ptr.free()
+    a_ptr.unsafe_free()
+    b_ptr.unsafe_free()
+    bp_ptr.unsafe_free()
+    c0_ptr.unsafe_free()
 
 
 def test_shapes[
@@ -572,7 +572,7 @@ def test_batched_matmul[
         ),
     )
 
-    golden_ptr.free()
+    golden_ptr.unsafe_free()
 
 
 def test_batched_matmul(batch: Int, m: Int, n: Int, k: Int) raises:
@@ -594,9 +594,9 @@ def test_batched_matmul(batch: Int, m: Int, n: Int, k: Int) raises:
     test_batched_matmul[False](c, a, b, batch, m, n, k)
     test_batched_matmul[True](c, a, b, batch, m, n, k)
 
-    c_ptr.free()
-    b_ptr.free()
-    a_ptr.free()
+    c_ptr.unsafe_free()
+    b_ptr.unsafe_free()
+    a_ptr.unsafe_free()
 
 
 def test_batched_matmul() raises:

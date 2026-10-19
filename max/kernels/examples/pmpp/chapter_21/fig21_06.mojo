@@ -135,7 +135,7 @@ def main() raises:
     for i in range(grid_size):
         h_zeros[i] = 0.0
     ctx.enqueue_copy(d_energygrid, h_zeros)
-    h_zeros.free()
+    h_zeros.unsafe_free()
 
     # Launch config: one thread per grid point (2D grid)
     comptime BLOCK_DIM_X = 16
@@ -169,6 +169,6 @@ def main() raises:
     else:
         print("Figure 21.6 (Gather) Failed!")
 
-    h_atoms.free()
-    h_energygrid_cpu.free()
-    h_energygrid_gpu.free()
+    h_atoms.unsafe_free()
+    h_energygrid_cpu.unsafe_free()
+    h_energygrid_gpu.unsafe_free()

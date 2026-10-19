@@ -167,7 +167,7 @@ def test_row_amax_quantization[
             scaled_host[i * N + c] = (row[c].cast[DType.float32]() * inv).cast[
                 DType.bfloat16
             ]()
-        row.free()
+        row.unsafe_free()
 
     var dev_src = ctx.enqueue_create_buffer[DType.bfloat16](src_rows * N)
     var dev_scaled = ctx.enqueue_create_buffer[DType.bfloat16](
@@ -289,21 +289,21 @@ def test_row_amax_quantization[
                 Int(bitcast[DType.uint16, 1](_ROW_SCALE_SENTINEL)),
             )
 
-    host_out_ref.free()
-    host_out.free()
-    host_scales_ref.free()
-    host_scales.free()
-    host_row_scales.free()
-    src_host.free()
-    indices_host.free()
-    source_of.free()
-    scaled_host.free()
-    ref_row_scales.free()
-    row_offsets_host.free()
-    scales_offsets_host.free()
-    expert_ids_host.free()
-    ones_host.free()
-    tile_starts.free()
+    host_out_ref.unsafe_free()
+    host_out.unsafe_free()
+    host_scales_ref.unsafe_free()
+    host_scales.unsafe_free()
+    host_row_scales.unsafe_free()
+    src_host.unsafe_free()
+    indices_host.unsafe_free()
+    source_of.unsafe_free()
+    scaled_host.unsafe_free()
+    ref_row_scales.unsafe_free()
+    row_offsets_host.unsafe_free()
+    scales_offsets_host.unsafe_free()
+    expert_ids_host.unsafe_free()
+    ones_host.unsafe_free()
+    tile_starts.unsafe_free()
 
 
 def _run_case[

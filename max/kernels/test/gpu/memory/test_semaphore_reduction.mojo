@@ -100,9 +100,9 @@ def run_vector_reduction[
     _ = c_device
     _ = lock_dev
 
-    a_host.free()
-    c_host.free()
-    c_host_ref.free()
+    a_host.unsafe_free()
+    c_host.unsafe_free()
+    c_host_ref.unsafe_free()
 
 
 def semaphore_matrix_reduce[
@@ -192,9 +192,9 @@ def run_matrix_reduction[
     _ = c_device
     _ = lock_dev
 
-    a_host.free()
-    c_host.free()
-    c_host_ref.free()
+    a_host.unsafe_free()
+    c_host.unsafe_free()
+    c_host_ref.unsafe_free()
 
 
 def main() raises:

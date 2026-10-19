@@ -63,7 +63,7 @@ def test_external_shared_mem(ctx: DeviceContext) raises:
         assert_equal(res_host_ptr[i], Float32(2 * i))
 
     _ = res_device
-    res_host_ptr.free()
+    res_host_ptr.unsafe_free()
 
 
 def main() raises:

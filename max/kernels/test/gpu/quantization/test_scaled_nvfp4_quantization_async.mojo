@@ -189,9 +189,9 @@ def test_nvfp4_quantization[
                 output_fp32_ref,
             )
 
-    host_ptr.free()
-    host_ptr_output.free()
-    scales_host_ptr.free()
+    host_ptr.unsafe_free()
+    host_ptr_output.unsafe_free()
+    scales_host_ptr.unsafe_free()
 
 
 def main() raises:

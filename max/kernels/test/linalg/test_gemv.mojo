@@ -162,10 +162,10 @@ def test_gemv() raises:
     matmul_perf.print()
     print("Matmul GEMV GFLOP/s", 1e-9 * ((2 * m * k) / matmul_perf.mean()))
 
-    lhs_storage.free()
-    rhs_storage.free()
-    out_storage.free()
-    ref_out_storage.free()
+    lhs_storage.unsafe_free()
+    rhs_storage.unsafe_free()
+    out_storage.unsafe_free()
+    ref_out_storage.unsafe_free()
 
 
 def main() raises:

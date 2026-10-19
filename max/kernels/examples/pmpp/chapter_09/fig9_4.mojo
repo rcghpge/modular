@@ -101,5 +101,5 @@ def main() raises:
         print("✗ Test FAILED")
 
     # Clean up
-    input.free()
-    output.free()
+    input.unsafe_free()
+    output.unsafe_free()

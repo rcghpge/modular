@@ -334,16 +334,16 @@ def test_skip_a2a[
     print("All results verified successfully!")
 
     # --- Cleanup ---
-    host_topk_ids.free()
-    host_input_tokens.free()
-    host_router_weights.free()
-    host_output.free()
-    dispatch_send_ptrs.free()
-    dispatch_recv_ptrs.free()
-    dispatch_recv_count_ptrs.free()
-    combine_send_ptrs.free()
-    combine_recv_ptrs.free()
-    combine_recv_count_ptrs.free()
+    host_topk_ids.unsafe_free()
+    host_input_tokens.unsafe_free()
+    host_router_weights.unsafe_free()
+    host_output.unsafe_free()
+    dispatch_send_ptrs.unsafe_free()
+    dispatch_recv_ptrs.unsafe_free()
+    dispatch_recv_count_ptrs.unsafe_free()
+    combine_send_ptrs.unsafe_free()
+    combine_recv_ptrs.unsafe_free()
+    combine_recv_count_ptrs.unsafe_free()
 
     # Extend the lifetime of the device buffers, as we directly use the pointers
     _ = dispatch_send_buf^

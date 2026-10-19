@@ -184,7 +184,7 @@ def main() raises:
         print("Figure 19.7 Kernel Failed!")
 
     # Cleanup
-    h_X.free()
-    h_F.free()
-    h_Y_cpu.free()
-    h_Y_gpu.free()
+    h_X.unsafe_free()
+    h_F.unsafe_free()
+    h_Y_cpu.unsafe_free()
+    h_Y_gpu.unsafe_free()

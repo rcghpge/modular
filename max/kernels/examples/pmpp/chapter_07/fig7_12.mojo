@@ -243,7 +243,7 @@ def main() raises:
         print("SUCCESS: All values match!")
 
     # Cleanup
-    h_in.free()
-    h_filter.free()
-    h_out.free()
-    h_ref.free()
+    h_in.unsafe_free()
+    h_filter.unsafe_free()
+    h_out.unsafe_free()
+    h_ref.unsafe_free()

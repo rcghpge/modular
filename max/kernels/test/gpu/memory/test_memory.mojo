@@ -33,7 +33,7 @@ def test_memset_async(ctx: DeviceContext) raises:
         for i in range(length):
             print(data[i])
 
-        data.free()
+        data.unsafe_free()
 
     # CHECK: 1.0
     # CHECK: 1.0

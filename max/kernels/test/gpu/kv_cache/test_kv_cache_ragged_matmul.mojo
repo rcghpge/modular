@@ -123,8 +123,8 @@ def _initialize_ragged_inputs[
     # Sync here so that HtoD transfers complete prior to host buffer dtor.
     ctx.synchronize()
 
-    hidden_state_ragged_host_ptr.free()
-    hidden_state_padded_host_ptr.free()
+    hidden_state_ragged_host_ptr.unsafe_free()
+    hidden_state_padded_host_ptr.unsafe_free()
 
     return (
         input_row_offsets_device,
@@ -379,9 +379,9 @@ def execute_matmul_kv_cache_ragged[
                 )
 
     # Cleanup host memory
-    input_row_offsets_host_ptr.free()
-    weight_host_ptr.free()
-    ref_output_host_ptr.free()
+    input_row_offsets_host_ptr.unsafe_free()
+    weight_host_ptr.unsafe_free()
+    ref_output_host_ptr.unsafe_free()
 
     # Cleanup device buffers
     _ = hidden_state_ragged_device^
@@ -583,9 +583,9 @@ def execute_matmul_k_cache_ragged[
                 )
 
     # Cleanup host memory
-    input_row_offsets_host_ptr.free()
-    weight_host_ptr.free()
-    ref_output_host_ptr.free()
+    input_row_offsets_host_ptr.unsafe_free()
+    weight_host_ptr.unsafe_free()
+    ref_output_host_ptr.unsafe_free()
 
     # Cleanup device buffers
     _ = hidden_state_ragged_device^
@@ -700,8 +700,8 @@ def generic_assert_output_equals[
         ragged_offset += prompt_len
 
     # Cleanup host memory
-    ref_output_host_ptr.free()
-    test_output_host_ptr.free()
+    ref_output_host_ptr.unsafe_free()
+    test_output_host_ptr.unsafe_free()
 
 
 # HACK: `k_cache` and `v_cache` use disjoint regions within each block
@@ -834,8 +834,8 @@ def generic_execute_fused_qkv_cache_ragged[
     )
 
     # Cleanup host memory
-    input_row_offsets_host_ptr.free()
-    weight_host_ptr.free()
+    input_row_offsets_host_ptr.unsafe_free()
+    weight_host_ptr.unsafe_free()
 
     # Cleanup device buffers that are no longer needed
     _ = hidden_state_ragged_device^
@@ -1142,9 +1142,9 @@ def execute_cont_batch_fused_qkv_matmul[
     )
 
     # Cleanup host memory
-    cache_lengths_host_ptr.free()
-    kv_block_host_ptr.free()
-    lookup_table_host_ptr.free()
+    cache_lengths_host_ptr.unsafe_free()
+    kv_block_host_ptr.unsafe_free()
+    lookup_table_host_ptr.unsafe_free()
 
     # Cleanup device buffers
     _ = kv_block_device^

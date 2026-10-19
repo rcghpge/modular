@@ -292,8 +292,8 @@ def test_tma_block_reduce[
         atol=1e-2,
     )
 
-    h_data.free()
-    result_host.free()
+    h_data.unsafe_free()
+    result_host.unsafe_free()
     _ = d_data
     _ = d_out
 

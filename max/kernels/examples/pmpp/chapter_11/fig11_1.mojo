@@ -78,5 +78,5 @@ def main() raises:
         print("FAILED: Found errors")
 
     # Cleanup
-    h_input.free()
-    h_output.free()
+    h_input.unsafe_free()
+    h_output.unsafe_free()

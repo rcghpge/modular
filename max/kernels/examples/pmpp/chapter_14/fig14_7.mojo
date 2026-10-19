@@ -132,9 +132,9 @@ def cpu_radix_sort(data: MutPointer[UInt32, _], N: Int, num_bits: Int):
         for i in range(ones):
             data[zeros + i] = count1[i]
 
-    tmp.free()
-    count0.free()
-    count1.free()
+    tmp.unsafe_free()
+    count0.unsafe_free()
+    count1.unsafe_free()
 
 
 def find_max(data: Pointer[UInt32, _], N: Int) -> UInt32:
@@ -341,6 +341,6 @@ def main() raises:
         print("ERROR: Found", errors, "mismatches between GPU and CPU")
 
     # Cleanup
-    h_data.free()
-    h_ref.free()
-    h_bits.free()
+    h_data.unsafe_free()
+    h_ref.unsafe_free()
+    h_bits.unsafe_free()

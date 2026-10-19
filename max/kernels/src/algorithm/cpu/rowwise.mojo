@@ -728,7 +728,7 @@ def launch[
                         )
 
                     sync_parallelize(phase_worker, total_workers)
-                phased_buf.free()
+                phased_buf.unsafe_free()
                 return
 
         if (
@@ -790,8 +790,8 @@ def launch[
                 body[params_splitk](Coord(row_coords.canonicalize()), ctx)
 
             sync_parallelize(split_worker, total_workers)
-            partials_buf.free()
-            counters_buf.free()
+            partials_buf.unsafe_free()
+            counters_buf.unsafe_free()
         else:
             # ---- cooperative tier (one worker per row) ----
             # Clamp worker count to `num_outputs` to avoid paying

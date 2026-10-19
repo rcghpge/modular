@@ -283,7 +283,7 @@ def allreduce_test[
 
     # Cleanup
     for i in range(ngpus):
-        host_buffers[i].free()
+        host_buffers[i].unsafe_free()
 
 
 def _get_test_str[
@@ -399,7 +399,7 @@ def allreduce_naive_test() raises -> None:
             assert_almost_equal(host_ptrs[i][j], expected)
 
     for i in range(ngpus):
-        host_ptrs[i].free()
+        host_ptrs[i].unsafe_free()
 
 
 def run_allreduce_sweep[use_multimem: Bool]() raises:

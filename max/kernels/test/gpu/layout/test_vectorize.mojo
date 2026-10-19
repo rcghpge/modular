@@ -106,7 +106,7 @@ def test_native_vectorize_dynamic[width: Int]() raises:
             var value = fragments[coordinate]
             for lane in range(width):
                 assert_equal(value[lane], Int32(offset + lane))
-    heap.free()
+    heap.unsafe_free()
 
 
 def main() raises:

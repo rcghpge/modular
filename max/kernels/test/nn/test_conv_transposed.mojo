@@ -304,12 +304,12 @@ def test_conv_transposed[
             print("flat output index:", i)
             print("Golden value: ", output_ref_flat[i])
             print("Actual value: ", output_flat[i])
-            bias_ptr.free()
+            bias_ptr.unsafe_free()
             return
 
     # CHECK: Succeed
     print("Succeed")
-    bias_ptr.free()
+    bias_ptr.unsafe_free()
     _ = output_ref_ptr^
     _ = output_ptr^
     _ = packed_filter_ptr^
