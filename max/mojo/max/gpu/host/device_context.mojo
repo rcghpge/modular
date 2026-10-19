@@ -5046,7 +5046,7 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
     def compile_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
-        func: def(* args: * declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) capturing -> None,
         *,
         compile_options: StaticString = (Self.target.default_compile_options()),
         link_options: StaticString = "",

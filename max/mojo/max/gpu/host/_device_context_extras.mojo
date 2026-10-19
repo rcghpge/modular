@@ -175,7 +175,7 @@ __extension DeviceContextBase:
         declared_arg_types: TypeList[Trait=AnyType, ...],
         HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
-        func: def(* args: * declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) capturing -> None,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
