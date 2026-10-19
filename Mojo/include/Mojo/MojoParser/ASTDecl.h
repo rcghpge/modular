@@ -854,13 +854,25 @@ public:
   /// Compute the `Self` type represented by a struct declaration operation.
   static Type computeSelfType(StructDeclOp structOp);
 
+  /// Return this struct's parameter declarations in signature order.
+  ArrayRef<ASTDecl *> getParamDecls() const { return paramDecls; }
+
+  /// Return the parameter declaration with the given internal name, if any.
+  ASTDecl *getParamByName(StringAttr name) const;
+
 private:
   friend class M::BumpAllocator;
   friend class DeclResolver;
+  friend class SharedState;
+
+  /// Copies parameter declarations into persistent AST storage.
+  void setParamDecls(ArrayRef<ASTDecl *> decls);
 
   StructASTDecl(SharedState &shared, StructDeclOp structOp, llvm::SMLoc loc,
                 ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
                 ssize_t indentation);
+
+  ArrayRef<ASTDecl *> paramDecls;
 };
 
 /// The AST representation of a trait declaration.

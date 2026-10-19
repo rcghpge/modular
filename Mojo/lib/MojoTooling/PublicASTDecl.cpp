@@ -1596,6 +1596,11 @@ static StructDocumentation getStructDocumentation(StructASTDecl &decl) {
       signature.getInputParamTypes(), paramListAttr, documentation.parameters,
       decl, /*selfType=*/std::nullopt, paramListAttr.getBodyConstraints(),
       /*bodyConstraints=*/nullptr);
+  ArrayRef<ASTDecl *> paramDecls = decl.getParamDecls();
+  for (auto [index, info] : llvm::enumerate(documentation.parameters)) {
+    assert(index < paramDecls.size() && "invalid index");
+    info.setDecl(*paramDecls[index]);
+  }
   collectConformanceConditions(structOp.getCanonicalTrait(), evaluator, shared,
                                documentation.conformanceConditions);
 

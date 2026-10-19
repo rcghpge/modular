@@ -487,6 +487,20 @@ void DefASTDecl::setArgDecls(ArrayRef<ASTDecl *> decls) {
   argDecls = shared.persistentAllocator.internElements(decls);
 }
 
+void StructASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {
+  paramDecls = shared.persistentAllocator.internElements(decls);
+}
+
+ASTDecl *StructASTDecl::getParamByName(StringAttr name) const {
+  for (ASTDecl *paramDecl : paramDecls) {
+    auto paramValue = paramDecl->getIfIRValue().getIfPValue();
+    if (paramValue && isa<ParamDeclRefAttr>(paramValue.get()) &&
+        cast<ParamDeclRefAttr>(paramValue.get()).getName() == name)
+      return paramDecl;
+  }
+  return nullptr;
+}
+
 /// Collect the struct/trait declaration and all visible extension declarations
 /// for the given type from this use-site context.
 llvm::SmallVector<ASTDecl *, 4>

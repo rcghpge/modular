@@ -4070,6 +4070,7 @@ LogicalResult StructASTDecl::resolveSignature(Lexer &lexer) {
 
   // Propagate signature errors and decls.
   takeDecls(sigDecl);
+  setParamDecls(paramSignature.paramASTDecls);
 
   // Capture the location of the `@explicit_destroy` decorator for more
   // accurate diagnostics later.
