@@ -64,6 +64,10 @@ This version is still a work in progress.
   `after` event and no longer syncs implicitly. Mojo's `reassign_ownership_to()`
   is removed; use `enqueue_wait_for()` and keep buffers alive until synced.
 
+- Removed `max.nn.FusedMLP`. Use `max.nn.MLP`, which takes the separate
+  `gate_proj` and `up_proj` weights a checkpoint ships and fuses their matmuls
+  in the graph.
+
 ## Fixes
 
 - `max serve` now runs prompts given as token ids, with no images, on Gemma 3,
