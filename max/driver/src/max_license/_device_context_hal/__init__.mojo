@@ -1157,9 +1157,9 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     @inline(.always)
     def enqueue_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
+        HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
         func: def(* args: * declared_arg_types) capturing -> None,
-        Host: Deinitable & ImplicitlyCopyable & RegisterPassable,
         *encoded_types: DevicePassable,
         link_options: StaticString = "",
         dump_asm: _DumpPath = False,
@@ -1169,7 +1169,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     ](
         self,
         *encoded_args: *encoded_types,
-        host_arg: Host,
+        host_args: Tuple[*HostArgs] = (),
         grid_dim: Dim,
         block_dim: Dim,
         cluster_dim: OptionalReg[Dim] = None,
@@ -1180,112 +1180,28 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         location: Optional[SourceLocation] = None,
     ) capturing raises:
         """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
-        passing the trailing host argument by host layout.
+        passing the trailing host arguments by host layout.
 
-        Put capturing closures in `host_arg`. The named kernel is compiled
-        against that host callable; encoding it would rewrite captures to a
-        synthesized `device_type` the kernel cannot read. Kernel parameters
-        must be encoded args first, then the host argument.
-
-        Parameters:
-            declared_arg_types: Types of the arguments to pass to the device function.
-            func: The function to compile and launch.
-            Host: The host-layout type of the trailing argument.
-            encoded_types: The `DevicePassable` argument types encoded to
-                device layout.
-            link_options: Additional linker flags and options as a string.
-            dump_asm: To dump the compiled assembly, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            dump_llvm: To dump the generated LLVM code, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            _dump_sass: Only runs on NVIDIA targets, and requires CUDA Toolkit
-                to be installed. Pass `True`, or a file path to dump to, or a
-                function returning a file path.
-            _ptxas_info_verbose: Only runs on NVIDIA targets, and requires CUDA
-                Toolkit to be installed. Changes `dump_asm` to output verbose
-                PTX assembly (default `False`).
-
-        Args:
-            encoded_args: The variadic `DevicePassable` arguments encoded to
-                device layout.
-            host_arg: The trailing argument passed by host layout.
-            grid_dim: The grid dimensions.
-            block_dim: The block dimensions.
-            cluster_dim: The cluster dimensions.
-            shared_mem_bytes: Per-block memory shared between blocks.
-            attributes: A `List` of launch attributes.
-            constant_memory: A `List` of constant memory mappings.
-            func_attribute: An attribute to use when compiling the code (such
-                as maximum shared memory size).
-            location: Source location for the function call.
-
-        Raises:
-            If the operation fails.
-        """
-        _check_dim["DeviceContext.enqueue_function", "grid_dim"](
-            grid_dim, location=call_location()
-        )
-        _check_dim["DeviceContext.enqueue_function", "block_dim"](
-            block_dim, location=call_location()
-        )
-        var gpu_kernel = self.compile_function[func](
-            func_attribute=self._func_attribute_for_launch(
-                func_attribute, shared_mem_bytes
-            )
-        )
-        gpu_kernel._call_with_pack_checked(
-            self,
-            *encoded_args,
-            host_args=(host_arg,),
-            grid_dim=grid_dim,
-            block_dim=block_dim,
-            cluster_dim=cluster_dim,
-            shared_mem_bytes=shared_mem_bytes,
-            attributes=attributes^,
-            constant_memory=constant_memory^,
-            location=location.or_else(call_location()),
-        )
-
-    @inline(.always)
-    def enqueue_function[
-        declared_arg_types: TypeList[Trait=AnyType, ...],
-        //,
-        func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        *encoded_types: DevicePassable,
-        link_options: StaticString = "",
-        dump_asm: _DumpPath = False,
-        dump_llvm: _DumpPath = False,
-        _dump_sass: _DumpPath = False,
-        _ptxas_info_verbose: Bool = False,
-    ](
-        self,
-        *encoded_args: *encoded_types,
-        host_arg: Host0,
-        host_arg2: Host1,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        func_attribute: OptionalReg[FuncAttribute] = None,
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
-        passing two trailing host arguments by host layout.
-
-        Put capturing closures in `host_arg` and `host_arg2`. The named kernel is compiled
-        against that host callable; encoding it would rewrite captures to a
+        Put capturing closures in `host_args`. The named kernel is compiled
+        against those host callables; encoding them would rewrite captures to a
         synthesized `device_type` the kernel cannot read. Kernel parameters
         must be encoded args first, then the host arguments.
 
+        Build `host_args` inline in the call with a tuple:
+
+        ```mojo
+        ctx.enqueue_function[kernel](
+            buffer,
+            host_args=(epilogue_fn,),
+            grid_dim=1,
+            block_dim=1,
+        )
+        ```
+
         Parameters:
             declared_arg_types: Types of the arguments to pass to the device function.
+            HostArgs: The host-layout types of the trailing arguments.
             func: The function to compile and launch.
-            Host0: The host-layout type of the first trailing argument.
-            Host1: The host-layout type of the second trailing argument.
             encoded_types: The `DevicePassable` argument types encoded to
                 device layout.
             link_options: Additional linker flags and options as a string.
@@ -1303,8 +1219,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         Args:
             encoded_args: The variadic `DevicePassable` arguments encoded to
                 device layout.
-            host_arg: The first trailing argument passed by host layout.
-            host_arg2: The second trailing argument passed by host layout.
+            host_args: The trailing arguments passed by host layout.
             grid_dim: The grid dimensions.
             block_dim: The block dimensions.
             cluster_dim: The cluster dimensions.
@@ -1332,319 +1247,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         gpu_kernel._call_with_pack_checked(
             self,
             *encoded_args,
-            host_args=(host_arg, host_arg2),
-            grid_dim=grid_dim,
-            block_dim=block_dim,
-            cluster_dim=cluster_dim,
-            shared_mem_bytes=shared_mem_bytes,
-            attributes=attributes^,
-            constant_memory=constant_memory^,
-            location=location.or_else(call_location()),
-        )
-
-    @inline(.always)
-    def enqueue_function[
-        declared_arg_types: TypeList[Trait=AnyType, ...],
-        //,
-        func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        *encoded_types: DevicePassable,
-        link_options: StaticString = "",
-        dump_asm: _DumpPath = False,
-        dump_llvm: _DumpPath = False,
-        _dump_sass: _DumpPath = False,
-        _ptxas_info_verbose: Bool = False,
-    ](
-        self,
-        *encoded_args: *encoded_types,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        func_attribute: OptionalReg[FuncAttribute] = None,
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
-        passing three trailing host arguments by host layout.
-
-        Put capturing closures in `host_arg`, `host_arg2`, and `host_arg3`. The
-        named kernel is compiled against that host callable; encoding it would
-        rewrite captures to a synthesized `device_type` the kernel cannot read.
-        Kernel parameters must be encoded args first, then the host arguments.
-
-        Parameters:
-            declared_arg_types: Types of the arguments to pass to the device function.
-            func: The function to compile and launch.
-            Host0: The host-layout type of the first trailing argument.
-            Host1: The host-layout type of the second trailing argument.
-            Host2: The host-layout type of the third trailing argument.
-            encoded_types: The `DevicePassable` argument types encoded to
-                device layout.
-            link_options: Additional linker flags and options as a string.
-            dump_asm: To dump the compiled assembly, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            dump_llvm: To dump the generated LLVM code, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            _dump_sass: Only runs on NVIDIA targets, and requires CUDA Toolkit
-                to be installed. Pass `True`, or a file path to dump to, or a
-                function returning a file path.
-            _ptxas_info_verbose: Only runs on NVIDIA targets, and requires CUDA
-                Toolkit to be installed. Changes `dump_asm` to output verbose
-                PTX assembly (default `False`).
-
-        Args:
-            encoded_args: The variadic `DevicePassable` arguments encoded to
-                device layout.
-            host_arg: The first trailing argument passed by host layout.
-            host_arg2: The second trailing argument passed by host layout.
-            host_arg3: The third trailing argument passed by host layout.
-            grid_dim: The grid dimensions.
-            block_dim: The block dimensions.
-            cluster_dim: The cluster dimensions.
-            shared_mem_bytes: Per-block memory shared between blocks.
-            attributes: A `List` of launch attributes.
-            constant_memory: A `List` of constant memory mappings.
-            func_attribute: An attribute to use when compiling the code (such
-                as maximum shared memory size).
-            location: Source location for the function call.
-
-        Raises:
-            If the operation fails.
-        """
-        _check_dim["DeviceContext.enqueue_function", "grid_dim"](
-            grid_dim, location=call_location()
-        )
-        _check_dim["DeviceContext.enqueue_function", "block_dim"](
-            block_dim, location=call_location()
-        )
-        var gpu_kernel = self.compile_function[func](
-            func_attribute=self._func_attribute_for_launch(
-                func_attribute, shared_mem_bytes
-            )
-        )
-        gpu_kernel._call_with_pack_checked(
-            self,
-            *encoded_args,
-            host_args=(host_arg, host_arg2, host_arg3),
-            grid_dim=grid_dim,
-            block_dim=block_dim,
-            cluster_dim=cluster_dim,
-            shared_mem_bytes=shared_mem_bytes,
-            attributes=attributes^,
-            constant_memory=constant_memory^,
-            location=location.or_else(call_location()),
-        )
-
-    @inline(.always)
-    def enqueue_function[
-        declared_arg_types: TypeList[Trait=AnyType, ...],
-        //,
-        func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host3: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        *encoded_types: DevicePassable,
-        link_options: StaticString = "",
-        dump_asm: _DumpPath = False,
-        dump_llvm: _DumpPath = False,
-        _dump_sass: _DumpPath = False,
-        _ptxas_info_verbose: Bool = False,
-    ](
-        self,
-        *encoded_args: *encoded_types,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        host_arg4: Host3,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        func_attribute: OptionalReg[FuncAttribute] = None,
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
-        passing four trailing host arguments by host layout.
-
-        Put capturing closures in `host_arg` through `host_arg4`. The
-        named kernel is compiled against that host callable; encoding it would
-        rewrite captures to a synthesized `device_type` the kernel cannot read.
-        Kernel parameters must be encoded args first, then the host arguments.
-
-        Parameters:
-            declared_arg_types: Types of the arguments to pass to the device function.
-            func: The function to compile and launch.
-            Host0: The host-layout type of the first trailing argument.
-            Host1: The host-layout type of the second trailing argument.
-            Host2: The host-layout type of the third trailing argument.
-            Host3: The host-layout type of the fourth trailing argument.
-            encoded_types: The `DevicePassable` argument types encoded to
-                device layout.
-            link_options: Additional linker flags and options as a string.
-            dump_asm: To dump the compiled assembly, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            dump_llvm: To dump the generated LLVM code, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            _dump_sass: Only runs on NVIDIA targets, and requires CUDA Toolkit
-                to be installed. Pass `True`, or a file path to dump to, or a
-                function returning a file path.
-            _ptxas_info_verbose: Only runs on NVIDIA targets, and requires CUDA
-                Toolkit to be installed. Changes `dump_asm` to output verbose
-                PTX assembly (default `False`).
-
-        Args:
-            encoded_args: The variadic `DevicePassable` arguments encoded to
-                device layout.
-            host_arg: The first trailing argument passed by host layout.
-            host_arg2: The second trailing argument passed by host layout.
-            host_arg3: The third trailing argument passed by host layout.
-            host_arg4: The third trailing argument passed by host layout.
-            grid_dim: The grid dimensions.
-            block_dim: The block dimensions.
-            cluster_dim: The cluster dimensions.
-            shared_mem_bytes: Per-block memory shared between blocks.
-            attributes: A `List` of launch attributes.
-            constant_memory: A `List` of constant memory mappings.
-            func_attribute: An attribute to use when compiling the code (such
-                as maximum shared memory size).
-            location: Source location for the function call.
-
-        Raises:
-            If the operation fails.
-        """
-        _check_dim["DeviceContext.enqueue_function", "grid_dim"](
-            grid_dim, location=call_location()
-        )
-        _check_dim["DeviceContext.enqueue_function", "block_dim"](
-            block_dim, location=call_location()
-        )
-        var gpu_kernel = self.compile_function[func](
-            func_attribute=self._func_attribute_for_launch(
-                func_attribute, shared_mem_bytes
-            )
-        )
-        gpu_kernel._call_with_pack_checked(
-            self,
-            *encoded_args,
-            host_args=(host_arg, host_arg2, host_arg3, host_arg4),
-            grid_dim=grid_dim,
-            block_dim=block_dim,
-            cluster_dim=cluster_dim,
-            shared_mem_bytes=shared_mem_bytes,
-            attributes=attributes^,
-            constant_memory=constant_memory^,
-            location=location.or_else(call_location()),
-        )
-
-    @inline(.always)
-    def enqueue_function[
-        declared_arg_types: TypeList[Trait=AnyType, ...],
-        //,
-        func: def(* args: * declared_arg_types) capturing -> None,
-        Host0: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host1: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host2: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host3: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        Host4: Deinitable & ImplicitlyCopyable & RegisterPassable,
-        *encoded_types: DevicePassable,
-        link_options: StaticString = "",
-        dump_asm: _DumpPath = False,
-        dump_llvm: _DumpPath = False,
-        _dump_sass: _DumpPath = False,
-        _ptxas_info_verbose: Bool = False,
-    ](
-        self,
-        *encoded_args: *encoded_types,
-        host_arg: Host0,
-        host_arg2: Host1,
-        host_arg3: Host2,
-        host_arg4: Host3,
-        host_arg5: Host4,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        func_attribute: OptionalReg[FuncAttribute] = None,
-        location: Optional[SourceLocation] = None,
-    ) capturing raises:
-        """Compiles and enqueues a capturing kernel, encoding `DevicePassable` args and
-        passing five trailing host arguments by host layout.
-
-        Put capturing closures in `host_arg` through `host_arg5`. The
-        named kernel is compiled against that host callable; encoding it would
-        rewrite captures to a synthesized `device_type` the kernel cannot read.
-        Kernel parameters must be encoded args first, then the host arguments.
-
-        Parameters:
-            declared_arg_types: Types of the arguments to pass to the device function.
-            func: The function to compile and launch.
-            Host0: The host-layout type of the first trailing argument.
-            Host1: The host-layout type of the second trailing argument.
-            Host2: The host-layout type of the third trailing argument.
-            Host3: The host-layout type of the fourth trailing argument.
-            Host4: The host-layout type of the fifth trailing argument.
-            encoded_types: The `DevicePassable` argument types encoded to
-                device layout.
-            link_options: Additional linker flags and options as a string.
-            dump_asm: To dump the compiled assembly, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            dump_llvm: To dump the generated LLVM code, pass `True`, or a file
-                path to dump to, or a function returning a file path.
-            _dump_sass: Only runs on NVIDIA targets, and requires CUDA Toolkit
-                to be installed. Pass `True`, or a file path to dump to, or a
-                function returning a file path.
-            _ptxas_info_verbose: Only runs on NVIDIA targets, and requires CUDA
-                Toolkit to be installed. Changes `dump_asm` to output verbose
-                PTX assembly (default `False`).
-
-        Args:
-            encoded_args: The variadic `DevicePassable` arguments encoded to
-                device layout.
-            host_arg: The first trailing argument passed by host layout.
-            host_arg2: The second trailing argument passed by host layout.
-            host_arg3: The third trailing argument passed by host layout.
-            host_arg4: The third trailing argument passed by host layout.
-            host_arg5: The third trailing argument passed by host layout.
-            grid_dim: The grid dimensions.
-            block_dim: The block dimensions.
-            cluster_dim: The cluster dimensions.
-            shared_mem_bytes: Per-block memory shared between blocks.
-            attributes: A `List` of launch attributes.
-            constant_memory: A `List` of constant memory mappings.
-            func_attribute: An attribute to use when compiling the code (such
-                as maximum shared memory size).
-            location: Source location for the function call.
-
-        Raises:
-            If the operation fails.
-        """
-        _check_dim["DeviceContext.enqueue_function", "grid_dim"](
-            grid_dim, location=call_location()
-        )
-        _check_dim["DeviceContext.enqueue_function", "block_dim"](
-            block_dim, location=call_location()
-        )
-        var gpu_kernel = self.compile_function[func](
-            func_attribute=self._func_attribute_for_launch(
-                func_attribute, shared_mem_bytes
-            )
-        )
-        gpu_kernel._call_with_pack_checked(
-            self,
-            *encoded_args,
-            host_args=(host_arg, host_arg2, host_arg3, host_arg4, host_arg5),
+            host_args=host_args,
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
