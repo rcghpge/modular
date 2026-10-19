@@ -36,10 +36,12 @@ capability inside its body, so the same argument type works whether it stays on
 the host or is projected to a device.
 """
 
+from std.memory import AddressSpace
+
 from layout import (
     Coord,
     CoordLike,
-    DefaultEngine,
+    CurrentTensorEngine,
     TensorEngine,
     TensorLayout,
     TileTensor,
@@ -186,7 +188,7 @@ trait DenseTensor(Tensor):
 
     comptime LayoutType: TensorLayout
     comptime alignment: Int
-    comptime Engine: TensorEngine = DefaultEngine[element_width=1]
+    comptime Engine: TensorEngine = CurrentTensorEngine[AddressSpace.GENERIC]
     """How the argument's backing memory is referenced.
 
     Per-target instantiation metadata like `alignment`, not part of the
