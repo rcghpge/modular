@@ -10,13 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""CPU/graph-build tests for pre-fused projection layers (DISTINF-194 v2).
+"""CPU/graph-build tests for pre-fused projection layers.
 
 A dedicated :class:`~max.nn.FusedMLP` declares one ``gate_up_proj_fused``
 weight, and ``StackedLinear(stacked=True)`` declares one qkv/qk weight; both
 expect the checkpoint to carry the pre-fused tensor. No process-global toggle.
-The gemma4 weight-adapter fusing + strict round-trip live in the gemma4
-integration tests (they depend on the pipeline package).
 """
 
 from __future__ import annotations
