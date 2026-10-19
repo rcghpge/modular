@@ -819,7 +819,7 @@ struct RepeatInterleave:
 
 @extensibility.register_shape_function("repeat_interleave")
 def repeat_interleave_kernel_shape(
-    input: Some[TileTensorable], repeats: Some[TileTensorable], axis: Scalar
+    input: Some[Tensor], repeats: Some[TileTensorable], axis: Scalar
 ) raises -> IndexList[type_of(input).rank]:
     """Computes the output shape for the `repeat_interleave` graph op.
 
@@ -837,13 +837,13 @@ def repeat_interleave_kernel_shape(
     comptime assert axis.dtype.is_integral(), "axis value must be integer type"
     comptime assert type_of(repeats).rank == 1, "repeats must be rank 1"
 
-    var interleave_shape = repeat_interleave_shape(
-        input.to_tile_tensor(),
+    return repeat_interleave_shape(
+        rebind[IndexList[type_of(input).rank]](
+            coord_to_index_list(input.shape().tuple())
+        ),
         repeats.to_tile_tensor(),
         Int(normalize_neg_index(axis, type_of(input).rank)),
     )
-
-    return rebind[IndexList[type_of(input).rank]](interleave_shape)
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1185,7 +1185,7 @@ def fold_kernel_shape[
     padding_h: Int,
     padding_w: Int,
 ](
-    input: Some[TileTensorable],
+    input: Some[Tensor],
     output_size: Some[TileTensorable],
     kernel_size: Some[TileTensorable],
 ) raises -> IndexList[4]:
@@ -1228,7 +1228,7 @@ def fold_kernel_shape[
         Int(kernel_size_tt[1]),
     )
     return fold_shape(
-        input.to_tile_tensor(),
+        rebind[IndexList[3]](coord_to_index_list(input.shape().tuple())),
         output_size_tuple,
         kernel_size_tuple,
     )
