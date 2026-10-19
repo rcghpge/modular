@@ -34,6 +34,7 @@
 namespace M {
 namespace KGEN {
 namespace LIT {
+class ASTDecl;
 class SharedState;
 } // namespace LIT
 
@@ -50,16 +51,42 @@ enum class ArgumentConvention {
 
 /// Everything needed to render one parameter of a Mojo signature.
 struct ParameterInfo {
+  ParameterInfo() = default;
+  ParameterInfo(LIT::ASTDecl &decl);
+
+  StringRef getName() const { return name; }
+  StringRef getDescription() const { return description; }
+  void setDescription(StringRef newDescription) {
+    description = newDescription;
+  }
+  std::string getMarkdownDocString() const;
+  LIT::ASTDecl *getDecl() const { return decl; }
+  void setDecl(LIT::ASTDecl &newDecl) { decl = &newDecl; }
+
   StringRef name;
   std::string type;
   PassingKind passingKind;
   VariadicKind variadicKind;
   mlir::TypedAttr defaultValue;
   std::string constraints;
+  std::string description;
+  LIT::ASTDecl *decl = nullptr;
 };
 
 /// Everything needed to render one argument of a Mojo signature.
 struct ArgumentInfo {
+  ArgumentInfo() = default;
+  ArgumentInfo(LIT::ASTDecl &decl);
+
+  StringRef getName() const { return name; }
+  StringRef getDescription() const { return description; }
+  void setDescription(StringRef newDescription) {
+    description = newDescription;
+  }
+  std::string getMarkdownDocString() const;
+  LIT::ASTDecl *getDecl() const { return decl; }
+  void setDecl(LIT::ASTDecl &newDecl) { decl = &newDecl; }
+
   StringRef name;
   std::string prefix; // e.g. `[origin]` for ref args
   std::string type;
@@ -68,6 +95,8 @@ struct ArgumentInfo {
   mlir::TypedAttr defaultValue;
   ArgumentConvention convention;
   bool isSelf;
+  std::string description;
+  LIT::ASTDecl *decl = nullptr;
 };
 
 //===----------------------------------------------------------------------===//

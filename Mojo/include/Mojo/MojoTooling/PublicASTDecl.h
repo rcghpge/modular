@@ -174,19 +174,19 @@ public:
   DocumentedParameter(ASTDecl &decl, KGEN::ParameterInfo info,
                       SharedState &sharedState);
 
-  StringRef getName() const { return info.name; }
+  StringRef getName() const { return info.getName(); }
   KGEN::PassingKind getPassingKind() const { return info.passingKind; }
 
   std::string getDeclarationSnippet(MojoParserContext &ctx) const;
 
   /// Get the description of this decl extracted from its docstring. It might be
   /// empty.
-  StringRef getDescription() const { return description; }
+  StringRef getDescription() const { return info.getDescription(); }
 
   std::string getMarkdownDocString() const;
 
   /// Set the description of this decl.
-  void setDescription(StringRef desc) { description = desc; }
+  void setDescription(StringRef desc) { info.setDescription(desc); }
 
   /// Get constraints of this declaration as string. It might be empty.
   StringRef getConstraints() const { return info.constraints; }
@@ -213,75 +213,6 @@ private:
   KGEN::ParameterInfo info;
   TypeMetadata typeMetadata;
   SmallVector<TypeMetadata, kTypicalTraitCompositionSize> traitMetadata;
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  std::string description;
-};
-
-/// Documentation for a function argument, including varargs arguments.
-class DocumentedArgument {
-public:
-  /// The convention this argument is passed with. Aliased to the shared
-  /// signature model's `ArgumentConvention` so callers can use either name.
-  using Convention = KGEN::ArgumentConvention;
-
-  /// Build a documented argument from an argument declaration.
-  DocumentedArgument(ASTDecl &decl);
-
-  /// Build a documented argument from a fully-resolved `ArgumentInfo`.
-  DocumentedArgument(ASTDecl &decl, KGEN::ArgumentInfo info);
-
-  StringRef getName() const { return info.name; }
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const;
-
-  /// Get the description of this decl extracted from its docstring. It might be
-  /// empty.
-  StringRef getDescription() const { return description; }
-
-  std::string getMarkdownDocString() const;
-
-  Convention getConvention() const { return info.convention; }
-
-  KGEN::PassingKind getPassingKind() const { return info.passingKind; }
-  void setPassingKind(KGEN::PassingKind kind) { info.passingKind = kind; }
-
-  /// Set the description of this decl.
-  void setDescription(StringRef desc) { description = desc; }
-
-  /// The underlying signature-shape view of this argument, used by both the
-  /// rendering algorithm and JSON serialization.
-  const KGEN::ArgumentInfo &getInfo() const { return info; }
-  KGEN::ArgumentInfo &getInfo() { return info; }
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  ///  {
-  ///    "kind": "argument",
-  ///    "name": string,
-  ///    "description": string,
-  ///    "convention": string, // "imm", "mut", "var"
-  ///    "type": string,
-  ///    "path": string,
-  ///    "passingKind": string,
-  ///    "defaultValue": string?
-  ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const;
-
-private:
-  void initializeTypeMetadata(ASTDecl &decl);
-
-  KGEN::ArgumentInfo info = {};
-  TypeMetadata typeMetadata;
-  SmallVector<TypeMetadata, kTypicalTraitCompositionSize> traitMetadata;
-
-  //===----------------------------------------------------------------------===//
-  // Parsed DocString
-  //===----------------------------------------------------------------------===//
-
-  std::string description;
 };
 
 /// Decl for functions of any kind, including closures, instance methods, fn
@@ -305,8 +236,8 @@ public:
   bool hasDefaultImplementation() const { return isDefaultImplFlag; }
 
   /// Return the list of arguments of this function.
-  ArrayRef<DocumentedArgument> getArguments() const { return args; }
-  const DocumentedArgument &getArgument(size_t i) const { return args[i]; }
+  ArrayRef<KGEN::ArgumentInfo> getArguments() const { return args; }
+  const KGEN::ArgumentInfo &getArgument(size_t i) const { return args[i]; }
 
   std::string getDeclarationSnippet(MojoParserContext &ctx) const override;
 
@@ -353,7 +284,7 @@ public:
   /// {
   ///   "kind": "function",
   ///   "name": string,
-  ///   "args": DocumentedArgument[],
+  ///   "args": ArgumentInfo[],
   ///   "constraints": string,
   ///   "description": string,
   ///   "hasDefaultImplementation": boolean,
@@ -395,7 +326,7 @@ private:
   /// parameters and args.
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
-  SmallVector<DocumentedArgument, kTypicalArgumentCount> args;
+  SmallVector<KGEN::ArgumentInfo, kTypicalArgumentCount> args;
   SmallVector<DocumentedParameter, kTypicalParameterCount> parameters;
   std::string fnConstraints;
   std::optional<std::string> returnType;
@@ -552,7 +483,6 @@ private:
 
 namespace M {
 using KGEN::LIT::ConformanceConditionMap;
-using KGEN::LIT::DocumentedArgument;
 using KGEN::LIT::DocumentedParameter;
 using KGEN::LIT::FunctionDeclOverloadSet;
 using KGEN::LIT::PublicDecl;

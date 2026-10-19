@@ -30,6 +30,14 @@ using namespace M::KGEN::LIT;
 
 namespace M::KGEN {
 
+std::string ParameterInfo::getMarkdownDocString() const {
+  return description.empty() ? std::string() : description + "\n";
+}
+
+std::string ArgumentInfo::getMarkdownDocString() const {
+  return description.empty() ? std::string() : description + "\n";
+}
+
 //===----------------------------------------------------------------------===//
 // Population
 //===----------------------------------------------------------------------===//
@@ -56,10 +64,13 @@ ParameterEvaluator populateParameterInfos(
     if (shouldExcludeParameterFromDocs(passingKind, paramName))
       continue;
 
-    params.push_back(ParameterInfo{
-        paramName,
-        generateTypeString(shared, reboundType, variadicKind, selfType),
-        passingKind, variadicKind, defaultValue, /*constraints=*/{}});
+    ParameterInfo info;
+    info.name = paramName;
+    info.type = generateTypeString(shared, reboundType, variadicKind, selfType);
+    info.passingKind = passingKind;
+    info.variadicKind = variadicKind;
+    info.defaultValue = defaultValue;
+    params.push_back(std::move(info));
   }
   return evaluator;
 }
@@ -141,9 +152,16 @@ void populateArgumentInfos(SharedState &shared, FnTypeGeneratorType signature,
     // Hide implicit auto-params of the form `arg.member` from the rendered
     // type - they're fully determined by the argument and noisy for humans.
     typeString = stripImplicitArgParams(typeString, pogAttr.getName());
-    args.push_back(ArgumentInfo{
-        pogAttr.getName(), std::move(prefix), std::move(typeString),
-        passingKind, variadicKind, defaultValue, declConvention, isSelf});
+    ArgumentInfo info;
+    info.name = pogAttr.getName();
+    info.prefix = std::move(prefix);
+    info.type = std::move(typeString);
+    info.passingKind = passingKind;
+    info.variadicKind = variadicKind;
+    info.defaultValue = defaultValue;
+    info.convention = declConvention;
+    info.isSelf = isSelf;
+    args.push_back(std::move(info));
   }
 }
 
