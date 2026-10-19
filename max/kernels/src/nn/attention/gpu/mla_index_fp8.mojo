@@ -1453,10 +1453,10 @@ def _mla_indexer_paged_impl[
     # and every stage after the scorer is row-parallel over a base pointer and a
     # count, so they slice by pointer arithmetic alone.
     #
-    # Only the SM100 scorers take a window, so the scalar fallback stays one
+    # The SM100 and gfx950 scorers take a window; the scalar fallback stays one
     # whole-batch chunk.
     var rows_per_chunk = total_seq_len
-    comptime if use_sm100_scorer:
+    comptime if use_sm100_scorer or use_amd_scorer:
         var row_bytes = max_num_keys * size_of[scores_dt]()
         # Largest window the budget allows, remainder to a short final chunk.
         # Spreading the rows evenly instead -- same chunk count, no runt --
@@ -1509,6 +1509,7 @@ def _mla_indexer_paged_impl[
                 max_new_tokens,
                 max_num_keys,
                 ctx,
+                chunk_begin,
             )
         elif use_sm100_scorer:
             # The split `(block, row_in_block)` descriptor: folding the block

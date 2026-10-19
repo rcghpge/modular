@@ -356,6 +356,8 @@ def _fp8_index_score_amd_kernel[
     k_operand: k_operand_type,
     ks_operand: ks_operand_type,
     valid_length_tt: TileTensor[.uint32, VLLT, ImmutAnyOrigin, Engine=VLEngine],
+    chunk_begin: Int32,
+    chunk_rows: Int32,
 ):
     """Computes the FP8 index score on gfx950 MFMA, streaming K from HBM to registers.
 
@@ -386,12 +388,12 @@ def _fp8_index_score_amd_kernel[
       dequant scales are arbitrary f32 and land in the epilogue, not in the
       power-of-two-only hardware scale path.
 
-    Grid `(batch, max_seq_len, ceil(num_keys / _AMD_BN_KEY))`, one token per
-    CTA (grid.y splits tokens exactly like the scalar kernel's grid.y), so K
-    is read once per token at decode. OOB key columns clamp their K-row load
-    to the last valid row (the load must not fault) and are dropped by the
-    store guard; a causal bound (when `causal`) drops keys past the token's
-    position the same way the SM100 scorer's fused mask does.
+    Grid `(batch, min(max_seq_len, chunk_rows), ceil(num_keys / _AMD_BN_KEY))`,
+    one token per CTA (grid.y splits tokens exactly like the scalar kernel's
+    grid.y), so K is read once per token at decode. OOB key columns clamp their
+    K-row load to the last valid row (the load must not fault) and are dropped
+    by the store guard; a causal bound (when `causal`) drops keys past the
+    token's position the same way the SM100 scorer's fused mask does.
 
     Parameters:
         dtype: Data type of the query and key tiles (float8_e4m3fn).
@@ -420,12 +422,14 @@ def _fp8_index_score_amd_kernel[
         VLEngine: Engine of the `valid_length_tt` tile.
 
     Args:
-        output_tt: Output score tensor of shape `[total_seq_len, max_num_keys]`.
+        output_tt: Output score tensor of shape `[chunk_rows, max_num_keys]`.
         q_tt: Query tensor of shape `[total_seq_len, num_heads, depth]`.
         q_s_tt: Per-query scale tensor of shape `[total_seq_len, num_heads]`.
         k_operand: Paged operand providing key rows.
         ks_operand: Paged operand providing per-key scales.
         valid_length_tt: Cumulative sequence offsets of shape `[batch_size + 1]`.
+        chunk_begin: Global row held in output row 0.
+        chunk_rows: Number of output rows in this window.
     """
     comptime assert (
         is_amd_gpu() and _cdna_4_or_newer()
@@ -449,13 +453,19 @@ def _fp8_index_score_amd_kernel[
     comptime assert valid_length_tt.flat_rank == 1
 
     var b = block_idx.x
-    var seq = block_idx.y
+    var start_of_seq = valid_length_tt[b]
+    var window_begin = Int(chunk_begin)
+    var seq = max(0, window_begin - Int(start_of_seq)) + block_idx.y
     var key_start = block_idx.z * _AMD_BN_KEY
 
-    var start_of_seq = valid_length_tt[b]
     var end_of_seq = valid_length_tt[b + 1]
     var seq_len = end_of_seq - start_of_seq
-    if seq >= Int(seq_len):
+    var global_row = Int(start_of_seq) + seq
+    if (
+        seq >= Int(seq_len)
+        or global_row < window_begin
+        or global_row >= window_begin + Int(chunk_rows)
+    ):
         return
 
     var num_keys = k_operand.cache_length(b)
@@ -480,7 +490,7 @@ def _fp8_index_score_amd_kernel[
     var q_ptr = q_tt.ptr_at_offset(Coord(start_of_seq + UInt32(seq), 0, 0))
     var qs_ptr = q_s_tt.ptr_at_offset(Coord(start_of_seq + UInt32(seq), 0))
     var o_ptr = output_tt.ptr_at_offset(
-        Coord(start_of_seq + UInt32(seq), UInt32(key_start))
+        Coord(UInt32(global_row - window_begin), UInt32(key_start))
     )
     # A pooled key's `depth` values sit contiguously from its first row:
     # pages hold a whole number of pools, so the rows never straddle a page.
@@ -559,11 +569,12 @@ def fp8_index_score_amd[
     max_seq_len: Int,
     max_num_keys: Int,
     ctx: DeviceContext,
+    chunk_begin: Int = 0,
 ) raises:
     """Enqueues the gfx950 MFMA FP8 indexer scorer (`_fp8_index_score_amd_kernel`).
 
     AMD counterpart of `fp8_index_score_sm100`: writes the same
-    `[total_seq, max_num_keys]` score buffer as the scalar
+    `[chunk_rows, max_num_keys]` score buffer as the scalar
     `fp8_index_kernel`, with OOB keys left untouched (the caller's `-inf` fill
     or bounded top-k covers them).
 
@@ -582,7 +593,7 @@ def fp8_index_score_amd[
             `_fp8_index_score_amd_kernel`.
 
     Args:
-        output: Score buffer `[total_seq, max_num_keys]`, f32.
+        output: Score buffer `[chunk_rows, max_num_keys]`, f32.
         q: Query tensor `[total_seq, num_heads, depth]`, fp8.
         q_s: Query scales `[total_seq, num_heads]`, f32.
         k_operand: K values as an `MHAOperand`.
@@ -592,6 +603,7 @@ def fp8_index_score_amd[
         max_seq_len: Upper bound on any batch entry's query-token count.
         max_num_keys: Row stride of `output` (>= every per-batch key count).
         ctx: Device context used to enqueue the kernel.
+        chunk_begin: Global row held in output row 0.
     """
     comptime assert (
         KOperand.page_size % pool_row_tokens == 0
@@ -626,6 +638,7 @@ def fp8_index_score_amd[
         VLEngine=valid_length.Engine,
     ]
 
+    var chunk_rows = Int(output.dim[0]())
     ctx.enqueue_function[kernel](
         output,
         q.as_imm(),
@@ -633,9 +646,11 @@ def fp8_index_score_amd[
         k_operand,
         ks_operand,
         valid_length.as_imm(),
+        Int32(chunk_begin),
+        Int32(chunk_rows),
         grid_dim=(
             batch_size,
-            max_seq_len,
+            min(max_seq_len, chunk_rows),
             ceildiv(max_num_keys, _AMD_BN_KEY),
         ),
         block_dim=(_AMD_BN_KEY // 32 * WARP_SIZE, 1, 1),

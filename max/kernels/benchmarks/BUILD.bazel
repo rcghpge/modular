@@ -571,7 +571,12 @@ mojo_test(
         "gpu",
         "manual",
     ],
-    target_compatible_with = ["//:b200_gpu"],  # tcgen05 / TMA / SS-UMMA
+    # SM100 tcgen05 / TMA / SS-UMMA scorer, or the gfx950 MFMA scorer.
+    target_compatible_with = select({
+        "//:b200_gpu": [],
+        "//:mi355_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "//max:internal_utils",
         "//max:layout",
