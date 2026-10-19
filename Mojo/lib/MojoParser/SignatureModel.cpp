@@ -17,6 +17,7 @@
 #include "Mojo/KGENDialect/ParameterEvaluator.h"
 #include "Mojo/LITDialect/LITTypes.h"
 #include "Mojo/LITDialect/LITUtils.h"
+#include "Mojo/MojoParser/ASTDecl.h"
 #include "Mojo/MojoParser/ASTType.h"
 #include "Mojo/MojoParser/DeclSignaturePrinter.h"
 #include "llvm/ADT/STLExtras.h"
@@ -43,8 +44,9 @@ std::string ArgumentInfo::getMarkdownDocString() const {
 //===----------------------------------------------------------------------===//
 
 ParameterEvaluator populateParameterInfos(
-    SharedState &shared, ArrayRef<Type> paramTypes, PogListAttr paramListAttr,
+    ASTDecl &decl, ArrayRef<Type> paramTypes, PogListAttr paramListAttr,
     SmallVectorImpl<ParameterInfo> &params, std::optional<ASTType> selfType) {
+  auto &shared = decl.getShared();
   ParameterEvaluator evaluator;
   for (auto [idx, paramType] : llvm::enumerate(paramTypes)) {
     TypedAttr defaultValue;
@@ -65,6 +67,7 @@ ParameterEvaluator populateParameterInfos(
       continue;
 
     ParameterInfo info;
+    info.setDecl(decl);
     info.name = paramName;
     info.type = generateTypeString(shared, reboundType, variadicKind, selfType);
     info.passingKind = passingKind;
@@ -75,12 +78,13 @@ ParameterEvaluator populateParameterInfos(
   return evaluator;
 }
 
-void populateArgumentInfos(SharedState &shared, FnTypeGeneratorType signature,
+void populateArgumentInfos(ASTDecl &decl, FnTypeGeneratorType signature,
                            ArrayRef<Type> userArgTypes,
                            std::optional<ASTType> selfType,
                            ParameterEvaluator &evaluator,
                            llvm::function_ref<bool()> hasSelfResultFn,
                            SmallVectorImpl<ArgumentInfo> &args) {
+  auto &shared = decl.getShared();
   ArrayRef<PogMetadataAttr> argPogs = signature.getArgListAttrs().getPogs();
   ArrayRef<Type> sigTypes = signature.getArguments();
   ArrayRef<ArgConvention> argConventions = signature.getArgConventions();
@@ -153,6 +157,7 @@ void populateArgumentInfos(SharedState &shared, FnTypeGeneratorType signature,
     // type - they're fully determined by the argument and noisy for humans.
     typeString = stripImplicitArgParams(typeString, pogAttr.getName());
     ArgumentInfo info;
+    info.setDecl(decl);
     info.name = pogAttr.getName();
     info.prefix = std::move(prefix);
     info.type = std::move(typeString);

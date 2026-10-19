@@ -60,7 +60,10 @@ struct ParameterInfo {
     description = newDescription;
   }
   std::string getMarkdownDocString() const;
-  LIT::ASTDecl *getDecl() const { return decl; }
+  LIT::ASTDecl &getDecl() const {
+    assert(decl && "ParameterInfo requires an AST declaration");
+    return *decl;
+  }
   void setDecl(LIT::ASTDecl &newDecl) { decl = &newDecl; }
 
   StringRef name;
@@ -70,6 +73,8 @@ struct ParameterInfo {
   mlir::TypedAttr defaultValue;
   std::string constraints;
   std::string description;
+
+private:
   LIT::ASTDecl *decl = nullptr;
 };
 
@@ -84,7 +89,10 @@ struct ArgumentInfo {
     description = newDescription;
   }
   std::string getMarkdownDocString() const;
-  LIT::ASTDecl *getDecl() const { return decl; }
+  LIT::ASTDecl &getDecl() const {
+    assert(decl && "ArgumentInfo requires an AST declaration");
+    return *decl;
+  }
   void setDecl(LIT::ASTDecl &newDecl) { decl = &newDecl; }
 
   StringRef name;
@@ -96,6 +104,8 @@ struct ArgumentInfo {
   ArgumentConvention convention;
   bool isSelf;
   std::string description;
+
+private:
   LIT::ASTDecl *decl = nullptr;
 };
 
@@ -108,16 +118,17 @@ struct ArgumentInfo {
 /// index -> name bindings so callers can also rebind argument-side attributes.
 /// `selfType` is honored only by the function path - struct/alias parameters
 /// don't get "Self"-substitution.
-ParameterEvaluator populateParameterInfos(
-    LIT::SharedState &shared, ArrayRef<mlir::Type> paramTypes,
-    PogListAttr paramListAttr, SmallVectorImpl<ParameterInfo> &params,
-    std::optional<LIT::ASTType> selfType = std::nullopt);
+ParameterEvaluator
+populateParameterInfos(LIT::ASTDecl &decl, ArrayRef<mlir::Type> paramTypes,
+                       PogListAttr paramListAttr,
+                       SmallVectorImpl<ParameterInfo> &params,
+                       std::optional<LIT::ASTType> selfType = std::nullopt);
 
 /// Populate `args` from a function signature. `selfResultFn`, when non-null
 /// and returning true, signals that the function's by-ref result represents
 /// `self` (the `__init__`/`__copyinit__`/`__moveinit__` family); the relevant
 /// out-arg is marked `isSelf`. Otherwise the first arg is treated as `self`.
-void populateArgumentInfos(LIT::SharedState &shared,
+void populateArgumentInfos(LIT::ASTDecl &decl,
                            LIT::FnTypeGeneratorType signature,
                            ArrayRef<mlir::Type> userArgTypes,
                            std::optional<LIT::ASTType> selfType,

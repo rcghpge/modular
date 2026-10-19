@@ -407,7 +407,7 @@ static ParameterEvaluator populateDocumentedParameters(
 
   SmallVector<ParameterInfo, 2> infos;
   ParameterEvaluator evaluator = populateParameterInfos(
-      shared, paramTypes, paramListAttr, infos, selfType);
+      parentDecl, paramTypes, paramListAttr, infos, selfType);
 
   if (!bodyConstraintAttrs.empty() && bodyConstraints) {
     *bodyConstraints = mergeConformsToConstraints(bodyConstraintAttrs,
@@ -793,16 +793,15 @@ ArgumentInfo::ArgumentInfo(ASTDecl &decl) {
 
 static llvm::json::Object serializeArgumentInfo(const ArgumentInfo &info,
                                                 MojoParserContext &ctx) {
-  ASTDecl *decl = info.getDecl();
-  assert(decl && "serialized arguments require an AST declaration");
+  ASTDecl &decl = info.getDecl();
   TypeMetadata typeMetadata =
-      extractLibraryInfo(info.type, decl, &decl->getShared());
+      extractLibraryInfo(info.type, &decl, &decl.getShared());
   SmallVector<std::string> traitNames = parseCompoundTraitType(info.type);
   SmallVector<TypeMetadata, kTypicalTraitCompositionSize> traitMetadata;
   if (traitNames.size() > 1) {
     for (const std::string &traitName : traitNames) {
       traitMetadata.push_back(
-          extractLibraryInfo(traitName, decl, &decl->getShared()));
+          extractLibraryInfo(traitName, &decl, &decl.getShared()));
     }
   }
 
@@ -848,7 +847,7 @@ populateAliasParameterInfos(AliasASTDecl &decl,
 
   auto &shared = decl.getShared();
   ParameterEvaluator evaluator =
-      populateParameterInfos(shared, generatorType.getInputParamTypes(),
+      populateParameterInfos(decl, generatorType.getInputParamTypes(),
                              generatorType.getParamListAttrs(), parameters);
   if (constraints)
     *constraints = mergeConformsToConstraints(
@@ -1115,14 +1114,13 @@ std::string PublicFunctionDecl::getSignature(
   // for diagnostics that have no source location.
   ASTDecl &decl = getDecl();
   if (auto *fnDecl = dyn_cast<DefASTDecl>(&decl)) {
-    FnOp fnOp = fnDecl->getOp();
     std::string out;
     llvm::raw_string_ostream os(out);
     SignatureOffsets so;
     so.parameters = parameterOffsets;
     so.arguments = argumentOffsets;
     so.returnTypeStart = returnOffset;
-    printFunctionSignature(fnOp, ctx.getSharedState(), os, &decl, so);
+    printFunctionSignature(*fnDecl, os, so);
     return out;
   }
 
@@ -1264,7 +1262,7 @@ void PublicFunctionDecl::initFromSignature(ASTDecl *decl,
   // Populate argument infos.
   SmallVector<ArgumentInfo, kTypicalArgumentCount> argInfos;
   populateArgumentInfos(
-      shared, signature, userArgTypes, selfType, evaluator,
+      *decl, signature, userArgTypes, selfType, evaluator,
       [&]() -> bool {
         if (auto *fnDecl = dyn_cast<DefASTDecl>(decl))
           if (auto fnOp = fnDecl->getOp())
