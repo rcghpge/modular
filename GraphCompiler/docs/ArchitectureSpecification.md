@@ -45,6 +45,10 @@ October 15, 2026, against revision
 [`ceaf9aea9ed8`][review-revision].
 Performance targets remain unverified by this source review.
 
+A requirement can also be wrong, rather than merely unmet. Where review
+establishes that a stated requirement overshoots what the team enforces, the
+requirement itself is amended rather than labeled.
+
 ## Table of contents
 
 - [Requirement status](#requirement-status)
@@ -125,13 +129,16 @@ resolve it or make the trade-off explicit.
    Status: Existing exception (do not expand). Compiler fusion patterns still
    select NVIDIA `sm_100a` implementations. See [QA-P3](#qa-p3).
 
-4. **A new backend must not require compiler changes.** A new backend within
-   an existing device class integrates through kernels, driver, and runtime.
-   If compiler changes are needed, treat it as a failure signal.
+4. **A new backend must not require architectural compiler changes.** A new
+   backend within an existing device class integrates through kernels,
+   driver, and runtime. Targeted graph compiler changes during a bring-up are
+   accepted. Restructuring passes or the pipeline to accommodate a backend is
+   the failure signal.
 
-   Status: Measurement required. Check a same-class backend bring-up diff and
-   its test results. Existing architecture gates make this a requirement to
-   verify, not an established guarantee.
+   Status: Measurement required. What separates a targeted change from an
+   architectural one is not defined, so the bound is unenforced rather than
+   met. Check a same-class backend bring-up diff and its test results. Don't
+   read the allowance for targeted changes as license for restructuring.
 
 5. **Custom ops and builtin ops follow the same rules.** The compiler does
    not distinguish between custom and builtin ops for any structural
@@ -159,13 +166,16 @@ resolve it or make the trade-off explicit.
    See [the preservation assumption][analysis-preservation].
 
 8. **Compilation cost scales with graph structure, not content.** Compile
-   time scales near-linearly with structural complexity. Repeated structures
-   (decoder layers) use caching; the cost of N identical layers is
-   approximately N times the cost of one layer.
+   time grows no faster than structural complexity. Repeated structures
+   (decoder layers) are deduplicated, and the kernels generated for them are
+   cached, so N identical layers cost substantially less than N times one
+   layer.
 
    Status: Existing exception (do not expand). Memory planning builds an
    allocation-pair matrix with quadratic space and work. See [the
-   planner][memory-planning]; QA-S4 still needs end-to-end measurements.
+   planner][memory-planning]. Most measured compilation time is Mojo kernel
+   generation, not graph compiler passes, so an unattributed end-to-end
+   number tests this principle poorly; see QA-S4.
 
 9. **Do not bind what the runtime should decide later.** If a decision
    depends on information available only at runtime, or if binding it at
@@ -227,21 +237,24 @@ numerical portability.
 
 **QA-P2. No architectural graph compiler changes for same-class backends.**
 Adding support for a new backend within an existing device class (for example,
-AMD GPU after NVIDIA GPU) requires no architectural or pass-level changes to
-the graph compiler; all integration work is confined to the Driver level.
-Isolated bug fixes that correct latent assumptions exposed by the new backend
-are acceptable.
+AMD GPU after NVIDIA GPU) restructures no graph compiler pass and does not
+change the shape of the pipeline. The bulk of integration work is confined to
+the Driver level. Targeted graph compiler changes are expected: bug fixes that
+correct latent assumptions the new backend exposes, and bounded additions
+within an existing pass.
 
 Status: Measurement required. This needs the backend bring-up diff and full
 test results. Compiler architecture gates remain an obstacle; see
-[QA-P3](#qa-p3).
+[QA-P3](#qa-p3). The boundary between a targeted change and an architectural
+one is not defined, so a bring-up diff needs that judgment made case by case.
 
 - *Stimulus*: a new backend within an existing device class is integrated.
 - *Response*: the graph compiler passes its full test suite without
   architectural modification.
-- *Measure*: the diff for backend bring-up contains no graph compiler pass
-  changes. Isolated bug fixes, if any, are tracked separately. Validated by
-  the Skye project's bring-up tracking.
+- *Measure*: the diff for backend bring-up restructures no graph compiler
+  pass and does not change the pipeline's shape. Targeted compiler changes,
+  if any, are enumerated and justified individually rather than counted
+  against the requirement. Validated by the Skye project's bring-up tracking.
 
 <a id="qa-p3"></a>**QA-P3. Kernel signature portability.** From the graph
 compiler's perspective, kernels are portable by signature. The graph compiler
@@ -383,9 +396,14 @@ time for models with repeated layer structure scales near-linearly with
 layer count. The target growth exponent is 1.0 (linear); the warning
 threshold is 1.2 and the hard ceiling is 1.5.
 
-Status: Measurement required. Measure the growth exponent across layer counts.
-The [quadratic allocation planner][memory-planning] is a known risk, not proof
-that the end-to-end ceiling is exceeded.
+Status: Measurement required. Measure the growth exponent across layer counts,
+and attribute it: most compilation time is Mojo kernel generation (EmitMojo,
+JitCompileKernels), which caches across repeated structure, so an exponent
+measured end to end says little about the graph compiler's own passes. Report
+the graph compiler's exponent separately from the Mojo one, or the number
+cannot settle this requirement. The [quadratic allocation
+planner][memory-planning] is a known risk, not proof that the end-to-end
+ceiling is exceeded.
 
 - *Stimulus*: a decoder-only transformer is compiled at three or more layer
   counts (for example, N, 2N, 4N) with the same per-layer structure and
@@ -980,8 +998,9 @@ architecture-specific compiler fusion gates. See [QA-P3](#qa-p3).
   - Per-device kernel registries in the graph compiler: adds device-specific
     logic to the compiler.
 - **Consequences**:
-  - (+) The graph compiler remains device-agnostic; adding a new backend
-    requires no compiler changes.
+  - (+) The graph compiler stays largely device-agnostic; a new backend is
+    mostly kernel, driver, and runtime work, with any compiler changes
+    targeted rather than structural (principle 4, QA-P2).
   - (+) Kernel authors have full freedom to specialize internally.
   - (-) The graph compiler cannot reason about kernel performance
     characteristics per device.
