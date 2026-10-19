@@ -26,9 +26,6 @@ namespace KGEN {
 namespace LIT {
 class ASTDecl;
 class ASTType;
-} // namespace LIT
-
-namespace TypeExtractionUtils {
 
 /// Extracts the leaf name from a symbol reference.
 /// For example, given "std.collections.List", returns "List".
@@ -42,12 +39,12 @@ std::string extractBaseTypeName(LIT::ASTType astType,
                                 llvm::StringRef fullTypeStr);
 
 /// Convenience for extracting base type names when no AST info is available.
-std::string extractBaseTypeName(llvm::StringRef fullTypeStr);
+std::string extractBaseTypeName(StringRef fullTypeStr);
 
 /// Extracts the fully qualified module path from an AST declaration reference.
 /// For example, a declaration in std.collections would return
 /// "std.collections".
-std::string extractModulePathFromDecl(M::KGEN::LIT::ASTDecl *decl);
+std::string extractModulePathFromDecl(ASTDecl *decl);
 
 /// Attempts to resolve a type name (e.g., "List", "Int") to its actual AST
 /// declaration. Uses two strategies:
@@ -56,9 +53,8 @@ std::string extractModulePathFromDecl(M::KGEN::LIT::ASTDecl *decl);
 /// 2) Falls back to builtin trait lookup via SharedState for compiler
 /// intrinsics
 std::optional<M::KGEN::LIT::ASTDecl *>
-tryResolveTypeToDecl(llvm::StringRef typeName,
-                     M::KGEN::LIT::SharedState &sharedState,
-                     const M::KGEN::LIT::ASTDecl *contextDecl);
+tryResolveTypeToDecl(StringRef typeName, SharedState &sharedState,
+                     const ASTDecl *contextDecl);
 
 /// Generates a documentation path from module info for cross-linking.
 /// Uses the docsBasePath and moduleStr to construct a path.
@@ -71,42 +67,19 @@ tryResolveTypeToDecl(llvm::StringRef typeName,
 /// "/std/collections/List"
 /// - generateDocPath("std.collections.__init__", "List", "") ->
 /// "/std/collections/List"
-std::string generateDocPath(llvm::StringRef module, llvm::StringRef typeName,
-                            llvm::StringRef docsBasePath, bool isAlias = false);
+std::string generateDocPath(StringRef module, StringRef typeName,
+                            StringRef docsBasePath, bool isAlias = false);
 
 /// The main function that extracts comprehensive type metadata from type names.
 /// Takes a type like "List[Int]" or "std.collections.Dict" and produces
 /// metadata including the clean type name, module path, and doc link path. Uses
 /// AST resolution when possible to get accurate paths, caches results for
 /// performance, and falls back to basic name for unresolvable types.
-TypeMetadata
-extractLibraryInfo(llvm::StringRef typeStr,
-                   const M::KGEN::LIT::ASTDecl *currentDeclContext = nullptr,
-                   M::KGEN::LIT::SharedState *sharedState = nullptr);
+TypeMetadata extractLibraryInfo(StringRef typeStr,
+                                const ASTDecl *currentDeclContext = nullptr,
+                                SharedState *sharedState = nullptr);
 
-/// Strip type parameters that are member-access references to `argName`
-/// (e.g. `output.origin` when the argument is `output`) from a printed type
-/// string.
-///
-/// Now that mojo-doc emits full parameterized type names, parameter values
-/// that the compiler synthesizes from the owning argument — the user wrote
-/// `_` or omitted the slot — are noise in user-facing docs. This function
-/// removes them.
-///
-/// Operates on the printer's string output and assumes the following
-/// invariants of `ASTType::print`:
-///  - all `[`/`]` are paired,
-///  - parameters within `[...]` are separated by `, ` at depth 1,
-///  - identifiers do not contain `[`, `]`, or `,`.
-///
-/// Scope: this is only intended for argument types. It does not strip from
-/// return types — there is no obvious "owning name" for a return — so a
-/// method returning `Container[self.T]` keeps its parameters. Extend later
-/// if a real case shows up.
-std::string stripImplicitArgParams(llvm::StringRef typeStr,
-                                   llvm::StringRef argName);
-
-} // namespace TypeExtractionUtils
+} // namespace LIT
 } // namespace KGEN
 } // namespace M
 

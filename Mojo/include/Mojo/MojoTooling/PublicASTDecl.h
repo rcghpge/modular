@@ -39,8 +39,6 @@ enum class VariadicKind : uint32_t;
 
 namespace M::KGEN::LIT {
 
-using M::KGEN::TypeMetadata;
-
 class ASTDecl;
 class AliasASTDecl;
 class MojoParserContext;
@@ -231,8 +229,7 @@ public:
   using Convention = KGEN::ArgumentConvention;
 
   /// Build a documented argument from a fully-resolved `ArgumentInfo`.
-  DocumentedArgument(ASTDecl &decl, KGEN::ArgumentInfo info,
-                     SharedState &sharedState);
+  DocumentedArgument(ASTDecl &decl, KGEN::ArgumentInfo info);
 
   StringRef getName() const { return info.name; }
   std::string getDeclarationSnippet(MojoParserContext &ctx) const;
