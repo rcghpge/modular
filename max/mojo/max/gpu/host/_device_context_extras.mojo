@@ -47,11 +47,11 @@ from .device_context import (
 )
 
 
-# const char *AsyncRT_DeviceContext_loadFunction(
+# const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
 #     const DeviceFunction **result, const DeviceContext *ctx,
 #     const char *moduleName, const char *functionName, const char *data,
 #     size_t dataLen, int32_t maxDynamicSharedBytes, const char *debugLevel,
-#     int32_t optimizationLevel)
+#     int32_t optimizationLevel, const char *debugName)
 @inline(.never)
 def _load_function(
     ctx: _DeviceContextPtr[mut=True],
@@ -60,6 +60,7 @@ def _load_function(
     function_name: StaticString,
     asm: StaticString,
     max_dynamic_shared_size_bytes: Int32,
+    debug_name: StaticString = "",
 ) raises -> _DeviceFunctionPtr[mut=True]:
     """Loads a compiled kernel into the context and returns its handle.
 
@@ -73,6 +74,8 @@ def _load_function(
         asm: The compiled module contents.
         max_dynamic_shared_size_bytes: The dynamic shared memory the kernel
             may request, or -1 for the default.
+        debug_name: A display name for the kernel. Backends that have no use
+            for it ignore it, and an empty name means the linkage name.
 
     Returns:
         The loaded function's handle, retained for the caller.
@@ -84,7 +87,7 @@ def _load_function(
     var result: _DeviceFunctionPtr[mut=True] = {}
     _checked(
         external_call[
-            "AsyncRT_DeviceContext_loadFunction",
+            "AsyncRT_DeviceContext_loadFunctionWithDebugName",
             _CString[],
             Pointer[_DeviceFunctionPtr[mut=True], origin_of(result)],
             _DeviceContextPtr[mut=True],
@@ -95,6 +98,7 @@ def _load_function(
             Int32,
             CStringSpan[ImmStaticOrigin],
             Int32,
+            CStringSpan[ImmStaticOrigin],
         ](
             Pointer(to=result),
             ctx,
@@ -105,6 +109,7 @@ def _load_function(
             max_dynamic_shared_size_bytes,
             debug_level.as_c_string_span(),
             Int32(Int(OptimizationLevel)),
+            debug_name.as_c_string_span(),
         ),
     )
     return result
@@ -118,12 +123,15 @@ __extension DeviceFunction:
         ctx: DeviceContext.Generic[Self.target],
         *,
         func_attribute: OptionalReg[FuncAttribute] = None,
+        name: StaticString = "",
     ) raises:
         """Initializes a new DeviceFunction by compiling the function for the specified device.
 
         Args:
             ctx: The device context to compile the function for.
             func_attribute: Optional attributes to apply to the function, such as shared memory size.
+            name: A display name for the kernel, such as for profiling. Empty
+                means the linkage name.
 
         Raises:
             If compilation fails or if an unsupported function attribute is provided.
@@ -150,6 +158,7 @@ __extension DeviceFunction:
             function_name=self._func_impl.function_name,
             asm=self._func_impl.asm,
             max_dynamic_shared_size_bytes=max_dynamic_shared_size_bytes,
+            debug_name=name,
         )
 
 
