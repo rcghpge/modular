@@ -233,7 +233,8 @@ IRASTDecl &DeclResolver::createUnlistedDecl(CValue value, SMLoc loc,
       shared, std::move(value), loc, parentDecl, cursor, endCursor,
       indentation);
   parsedDeclList.push_back(decl);
-  if (decl->getIfIRValue().getRValueType().isTypeCheckErrorType())
+  if (CValue value = decl->getIfIRValue();
+      value && value.getRValueType().isTypeCheckErrorType())
     decl->setErroneous();
   return *decl;
 }

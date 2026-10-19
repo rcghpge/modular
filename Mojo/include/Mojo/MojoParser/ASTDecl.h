@@ -538,20 +538,21 @@ public:
 
   /// Returns this function argument's number, or -1 for a non-argument.
   ssize_t getArgNumber() const {
-    if (value.getIfPValue())
+    if (isParameter)
       return -1;
     return argOrParamNumber;
   }
 
   /// Returns this parameter's number, or -1 for a non-parameter.
   ssize_t getParamNumber() const {
-    if (!value.getIfPValue()) // Might be an argument.
+    if (!isParameter)
       return -1;
     return argOrParamNumber;
   }
 
-  void setArgOrParamNumber(ssize_t newArgOrParamNumber) {
-    argOrParamNumber = newArgOrParamNumber;
+  void setArgOrParamNumber(ssize_t argOrParamNumber, bool isParameter) {
+    this->argOrParamNumber = argOrParamNumber;
+    this->isParameter = isParameter;
   }
   StringAttr getCapturedName() const { return capturedName; }
   void setCapturedName(StringAttr newCapturedName) {
@@ -570,6 +571,7 @@ private:
 
   CValue value;
   ssize_t argOrParamNumber;
+  bool isParameter;
   StringAttr capturedName;
 };
 
@@ -736,13 +738,33 @@ public:
   /// If this is a method of a struct, trait, or extension, return its parent.
   TypeScopeASTDecl *tryGetMethodParentDecl() const;
 
+  /// Return this function's parameter declarations in signature order.
+  ArrayRef<ASTDecl *> getParamDecls() const { return paramDecls; }
+
+  /// Return this function's argument declarations in signature order.
+  ArrayRef<ASTDecl *> getArgDecls() const { return argDecls; }
+
+  /// Create unlisted declarations for the parameters and arguments represented
+  /// only by this function's IR signature.
+  void createIRSignatureDecls(DeclResolver &resolver);
+
 private:
   friend class M::BumpAllocator;
   friend class DeclResolver;
+  friend class ClosureEmitter;
+
+  /// Copies parameter declarations into persistent AST storage.
+  void setParamDecls(ArrayRef<ASTDecl *> decls);
+
+  /// Copies argument declarations into persistent AST storage.
+  void setArgDecls(ArrayRef<ASTDecl *> decls);
 
   DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
              ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
              ssize_t indentation);
+
+  ArrayRef<ASTDecl *> paramDecls;
+  ArrayRef<ASTDecl *> argDecls;
 };
 
 /// An AST declaration that provides a `Self` type to its members.

@@ -91,6 +91,16 @@ std::optional<StringRef> ASTDecl::getName() {
   }
 
   if (auto irDecl = dyn_cast<IRASTDecl>(this);
+      irDecl && irDecl->getParamNumber() >= 0) {
+    auto *parentDecl = dyn_cast<DefASTDecl>(getParentDecl());
+    size_t paramNumber = static_cast<size_t>(irDecl->getParamNumber());
+    if (parentDecl && paramNumber < parentDecl->getOp().getParams().size())
+      return demangleParameterName(
+          parentDecl->getOp().getParams()[paramNumber].getName(),
+          /*forUser=*/true);
+  }
+
+  if (auto irDecl = dyn_cast<IRASTDecl>(this);
       irDecl && irDecl->getCapturedName())
     return irDecl->getCapturedName().getValue();
 
@@ -141,7 +151,39 @@ IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
                      LexerCursor endCursor, ssize_t indentation)
     : ASTDecl(Kind::IR, shared, loc, parentDecl, cursor, endCursor,
               indentation),
-      value(std::move(value)), argOrParamNumber(-1) {}
+      value(std::move(value)), argOrParamNumber(-1),
+      isParameter(this->value.getIfPValue()) {}
+
+void DefASTDecl::createIRSignatureDecls(DeclResolver &resolver) {
+  assert(paramDecls.empty() && argDecls.empty() &&
+         "signature declarations already created");
+  FnOp fnOp = getOp();
+  FnTypeGeneratorType signature = fnOp.getFuncTypeGenerator();
+
+  SmallVector<ASTDecl *> newParamDecls;
+  ArrayRef<ParamDeclAttr> params =
+      fnOp.getParams().drop_back(signature.getNumImplicitOriginDecls());
+  for (size_t paramIndex : llvm::seq(params.size())) {
+    auto &paramDecl =
+        resolver.addFullyResolvedDecl(CValue(), StringAttr(), getLoc(), this);
+    paramDecl.setArgOrParamNumber(static_cast<ssize_t>(paramIndex),
+                                  /*newIsParameter=*/true);
+    newParamDecls.push_back(&paramDecl);
+  }
+  setParamDecls(newParamDecls);
+
+  SmallVector<ASTDecl *> newArgDecls;
+  for (size_t argIndex : llvm::seq(signature.getNumArguments())) {
+    if (signature.getArgName(argIndex).strref().empty())
+      continue;
+    auto &argDecl =
+        resolver.addFullyResolvedDecl(CValue(), StringAttr(), getLoc(), this);
+    argDecl.setArgOrParamNumber(static_cast<ssize_t>(argIndex),
+                                /*newIsParameter=*/false);
+    newArgDecls.push_back(&argDecl);
+  }
+  setArgDecls(newArgDecls);
+}
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,
                                llvm::SMLoc loc, ASTDecl *parentDecl,
@@ -435,6 +477,14 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
 TypeScopeASTDecl *DefASTDecl::tryGetMethodParentDecl() const {
   // Don't return non-null for nested functions or module-level functions.
   return dyn_cast_if_present<TypeScopeASTDecl>(getParentDecl());
+}
+
+void DefASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {
+  paramDecls = shared.persistentAllocator.internElements(decls);
+}
+
+void DefASTDecl::setArgDecls(ArrayRef<ASTDecl *> decls) {
+  argDecls = shared.persistentAllocator.internElements(decls);
 }
 
 /// Collect the struct/trait declaration and all visible extension declarations
