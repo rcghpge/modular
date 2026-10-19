@@ -131,7 +131,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
         gamma: InputTensor[dtype=input_dtype, rank=1, ...],
         scale_ub: Float32,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         if output.shape() != input.shape():
             raise Error("Input and output buffers are not same shape")
 
@@ -1524,7 +1524,7 @@ struct QuantizeStaticScaledFloat8[*, scale_is_inverted: Bool]:
         input: FusedInputTensor[dtype=input_type, rank=2, ...],
         scale: Scalar[scale_type],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime assert is_gpu[target](), "only valid on GPUs"
         comptime assert output_type in (
             DType.float8_e4m3fn,

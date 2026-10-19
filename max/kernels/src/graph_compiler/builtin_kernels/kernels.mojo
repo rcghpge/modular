@@ -276,7 +276,7 @@ struct Range:
         stop: Scalar[dtype],
         step: Scalar[dtype],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[
             width: Int, element_alignment: Int
@@ -331,7 +331,7 @@ struct Copy:
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
         input: FusedInputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def func[
             width: Int, element_alignment: Int
@@ -361,7 +361,7 @@ struct NanCheckCountOp:
         inf_count_out: OutputTensor[dtype=.int32, rank=1, ...],
         input: InputTensor[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         from .nan_check import nan_check_count
 
         nan_check_count[dtype, rank, target](
@@ -386,7 +386,7 @@ struct NanCheckRaiseOp:
         nan_count: InputTensor[dtype=.int32, rank=1, ...],
         inf_count: InputTensor[dtype=.int32, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         from .nan_check import nan_check_raise
 
         nan_check_raise[label, type_str](nan_count, inf_count)
@@ -866,7 +866,7 @@ struct RandomNormal:
         variance: Float32,
         seed_value: InputTensor[dtype=.uint64, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def output_fn[
             _width: SIMDLength
@@ -941,7 +941,7 @@ struct RandomUniform:
         upper_bound: Scalar[dtype],
         seed_value: InputTensor[dtype=.uint64, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def output_fn[
             _width: SIMDLength
@@ -1761,7 +1761,7 @@ struct Struct_rope_ragged_paged[interleaved: Bool, rope_first: Bool]:
         start_pos: InputTensor[dtype=.uint32, rank=1, ...],
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def description_fn() {imm} -> String:
             return String(";").join(
@@ -1838,7 +1838,7 @@ struct Struct_rope_ragged_paged_with_position_id[interleaved: Bool]:
         freqs_cis: InputTensor[dtype=freq_dtype, rank=2, ...],
         position_ids: InputTensor[dtype=.uint32, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def description_fn() {imm} -> String:
             return String(";").join(
@@ -3248,7 +3248,7 @@ struct BundledAllReduceSum:
             dtype=DType.uint8, rank=1, ...
         ],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime assert signal_buffers.size == num_devices, (
             "expected allreduce inputs and signal buffers to have"
             " the same number of elements"
@@ -3309,7 +3309,7 @@ struct BundledAllReduceSum:
             dtype=DType.uint8, rank=1, ...
         ],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         """Per-device allreduce sum, for use with mo.parallel dispatch.
 
         This path does not take the kernel-load gate: `mo.parallel` emits N
@@ -3354,7 +3354,7 @@ struct BundledAllReduceSum:
             dtype=DType.uint8, rank=1, ...
         ],
         builder: DeviceGraphBuilder,
-    ) capturing raises:
+    ) raises:
         """Records the per-device allreduce sum into a device graph.
 
         The peers arrive as stable address slots: the recorded kernels read
@@ -3413,7 +3413,7 @@ struct BundledAllReduceAddRMSNormQuantFP8:
         gamma: InputTensor[dtype=dtype, rank=1, ...],
         scale_ub: InputTensor[dtype=DType.float32, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         """Per-device fused allreduce.sum + add + rms_norm + fp8 quantize.
 
         Single-device analog of `DistributedAllReduceAddRMSNormQuantFP8`, for
@@ -3742,7 +3742,7 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
         slot_idx: InputTensor[dtype=.uint32, rank=1, ...],
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         Self.launch[work_dtype, state_dtype, target, capture_input=False](
             conv_output_ragged,
             qkv_input_ragged,
@@ -3769,7 +3769,7 @@ struct GatedDeltaConv1dFwd[write_state: Bool = True]:
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         qkv_window: OutputTensor[dtype=work_dtype, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         """Launches the conv, also copying its input to `qkv_window` when
         `capture_input`. `qkv_window` then has the output's shape and is
         otherwise never touched.
@@ -3995,7 +3995,7 @@ struct GatedDeltaConv1dVerifyFwd[rollback: Bool]:
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         verify_width: InputTensor[dtype=.int64, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         var num_draft_tokens = verify_width.dim_size(0)
         var committed = num_draft_tokens == 0
         if Self.rollback and committed:
@@ -4202,7 +4202,7 @@ struct GatedDeltaRecurrenceFwd:
         slot_idx: InputTensor[dtype=.uint32, rank=1, ...],
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         var shape = _GatedDeltaRecurrenceShape.of["gated_delta_recurrence_fwd"](
             recurrence_output,
             qkv_conv_output,
@@ -4393,7 +4393,7 @@ struct GatedDeltaRecurrenceVerifyRingFwd:
         input_row_offsets: InputTensor[dtype=.uint32, rank=1, ...],
         verify_width: InputTensor[dtype=.int64, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         var num_draft_tokens = verify_width.dim_size(0)
         if num_draft_tokens == 0:
             GatedDeltaRecurrenceFwd.execute[work_dtype, state_dtype, target](
@@ -4598,7 +4598,7 @@ struct GatedDeltaStateFold:
         num_accepted: InputTensor[dtype=.uint32, rank=1, ...],
         verify_width: InputTensor[dtype=.int64, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         if verify_width.dim_size(0) == 0:
             return
         var num_layers = row_ids.dim_size(0)
@@ -4771,7 +4771,7 @@ struct Mamba2SSDChunkScanVarlenFwdInplace[dt_softplus: Bool = True]:
         cache_indices: FusedInputTensor[dtype=.uint32, ...],
         update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime if cache_indices.rank == 2:
             if cache_indices.dim_size(0) != 1:
                 raise Error(
@@ -5174,7 +5174,7 @@ struct CausalConv1DVarlenFwd[
         has_initial_state: InputTensor[dtype=.bool, rank=1, ...],
         update_state: InputTensor[dtype=.bool, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime if cache_indices.rank == 2:
             if cache_indices.dim_size(0) != 1:
                 raise Error(
@@ -5399,7 +5399,7 @@ struct GatedGroupRMSNorm[group_size: Int]:
         weight: InputTensor[dtype=.float32, rank=1, ...],
         eps: Float32,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         var n_rows = y.dim_size(0)
         var intermediate = y.dim_size(1)
         comptime gs = Self.group_size

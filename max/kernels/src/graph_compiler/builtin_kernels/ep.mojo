@@ -1535,7 +1535,7 @@ struct DistributedEPDispatchBlockScaledNV:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism NVFP4 dispatch.
 
         Launches the EP dispatch kernel on all devices simultaneously via
@@ -1704,7 +1704,7 @@ struct DistributedEPDispatchBlockScaledNVDynGlobalScales:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism NVFP4 dispatch with dynamic
         global scales.
 
@@ -1864,7 +1864,7 @@ struct DistributedEPDispatchMXFP4:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism MXFP4 dispatch.
 
         Launches the EP dispatch kernel on all devices simultaneously via
@@ -2019,7 +2019,7 @@ struct DistributedEPDispatch:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism BF16 dispatch.
 
         Parameters:
@@ -2147,7 +2147,7 @@ struct DistributedEPDispatchFP8:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism FP8 dispatch.
 
         Launches the EP dispatch kernel on all devices simultaneously via
@@ -2288,7 +2288,7 @@ struct DistributedEPCombine:
             dtype=DType.int32, rank=1, ...
         ],
         dev_ctxs: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Multi-device fused Expert Parallelism combine with output fusion.
 
         Parameters:

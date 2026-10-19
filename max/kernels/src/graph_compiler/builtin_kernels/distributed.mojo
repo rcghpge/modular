@@ -154,7 +154,7 @@ struct DistributedAllReduceSum:
             dtype=DType.uint8, rank=1, ...
         ],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Distributed allreduce operation implementation for sum reduction.
 
         Parameters:
@@ -341,7 +341,7 @@ struct DistributedReduceScatterSum:
             dtype=DType.uint8, rank=1, ...
         ],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Distributed reduce-scatter operation implementation for sum reduction.
 
         Parameters:
@@ -482,7 +482,7 @@ struct DistributedAllGather:
             dtype=DType.uint8, rank=1, ...
         ],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Distributed allgather operation implementation.
 
         Parameters:
@@ -613,7 +613,7 @@ struct DistributedBroadcast:
             dtype=DType.uint8, rank=1, ...
         ],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Execute distributed broadcast operation.
 
         Parameters:
@@ -720,7 +720,7 @@ struct DistributedScatter:
             dtype=DType.uint8, rank=1, ...
         ],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         comptime ngpus = signal_buffers.size
         comptime assert (
             root >= 0 and root < ngpus
@@ -812,7 +812,7 @@ struct DistributedAllReduceAddRMSNormQuantFP8:
         gammas: InputVariadicTensors[dtype=dtype, rank=1, ...],
         scales_ub: InputVariadicTensors[dtype=DType.float32, ...],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         comptime num_devices = inputs.size
         comptime assert signal_buffers.size == num_devices, (
             "expected allreduce inputs and signal buffers to have"
@@ -951,7 +951,7 @@ struct DistributedReduceScatterRMSNorm:
         gammas: InputVariadicTensors[dtype=dtype, rank=1, ...],
         residuals: InputVariadicTensors[dtype=dtype, rank=rank, ...],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Fused reduce-scatter sum + RMSNorm + residual add (bf16, no quant).
 
         Reduce-scatters `inputs` (one `[rows, cols]` tensor per device) along
@@ -1236,7 +1236,7 @@ struct DistributedAllGatherRMSNorm:
         ],
         gammas: InputVariadicTensors[dtype=dtype, rank=1, ...],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Fused all-gather + RMSNorm (bf16 in/out, no quantization).
 
         All-gathers `inputs` (per-device `[shard_i, cols]` row-shards) into the
@@ -1475,7 +1475,7 @@ struct DistributedAllGatherRMSNormQuantMXFP8:
         ],
         gammas: InputVariadicTensors[dtype=dtype, rank=1, ...],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Fused all-gather + RMSNorm that also emits an MXFP8 copy.
 
         `DistributedAllGatherRMSNorm` plus `outputs_quant`/`outputs_scale`. The
@@ -1792,7 +1792,7 @@ struct DistributedAllGatherRMSNormQuantMXFP6:
         ],
         gammas: InputVariadicTensors[dtype=dtype, rank=1, ...],
         dev_ctxs_input: DeviceContextArray,
-    ) capturing raises:
+    ) raises:
         """Fused all-gather + RMSNorm that also emits a packed MXFP6 copy.
 
         `DistributedAllGatherRMSNorm` plus `outputs_quant`/`outputs_scale`. The

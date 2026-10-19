@@ -442,7 +442,7 @@ struct ConvCPU:
         paddings: InputTensor,
         num_groups: Scalar,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
@@ -534,7 +534,7 @@ struct ConvGPU:
         paddings: InputTensor,
         num_groups: Scalar,
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @__parameter
         @inline(.always)
         @__copy_capture(output)
@@ -629,7 +629,7 @@ struct Conv2dResidualAdd:
         source: InputTensor[dtype=output.dtype, rank=4, ...],
         bias: InputTensor[dtype=output.dtype, rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @__parameter
         @inline(.always)
         @__copy_capture(output, bias)
@@ -750,7 +750,7 @@ struct ConvTransposeCPU:
         paddings: InputTensor[rank=1, ...],
         output_paddings: InputTensor[rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
@@ -818,7 +818,7 @@ struct ConvTransposeGPU:
         paddings: InputTensor[rank=1, ...],
         output_paddings: InputTensor[rank=1, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
