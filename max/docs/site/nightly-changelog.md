@@ -21,6 +21,10 @@ This version is still a work in progress.
 
 ## MAX framework
 
+- Added the ability to install `max-serve` and `max-benchmark` as Conda extras,
+  using `max[extras=[serve]]` and `max[extras=[benchmark]]` respectively.
+  `max[extras=[all]]` installs both plus `mojo`.
+
 ### Inference server
 
 ### Server metrics
