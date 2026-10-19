@@ -1009,15 +1009,18 @@ struct BF16TokenFormat[
         )
 
     @inline(.always)
-    def __init__(
+    def __init__[
+        OutputEngine: TensorEngine, //
+    ](
         out self,
         output_tokens: TileTensor[
-            .bfloat16, Self.output_layout, Engine=DefaultEngine[], ...
+            .bfloat16, Self.output_layout, Engine=OutputEngine, ...
         ],
     ):
+        # The field is raw-pointer addressed, so the owning handle stops here.
         self.output_tokens = {
             MutPointer[BFloat16, MutUntrackedOrigin](
-                unsafe_from_address=Int(output_tokens._storage)
+                unsafe_from_address=Int(output_tokens.ptr)
             ),
             output_tokens.layout,
         }
@@ -1166,13 +1169,13 @@ struct BlockwiseFP8TokenFormat[
     ):
         self.output_tokens = {
             MutPointer[Scalar[Self.fp8_dtype], MutUntrackedOrigin](
-                unsafe_from_address=Int(output_tokens._storage)
+                unsafe_from_address=Int(output_tokens.ptr)
             ),
             output_tokens.layout,
         }
         self.output_scales = {
             MutPointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
-                unsafe_from_address=Int(output_scales._storage)
+                unsafe_from_address=Int(output_scales.ptr)
             ),
             output_scales.layout,
         }
@@ -1558,13 +1561,13 @@ struct NVBlockScaledTokenFormat[
         """
         self.output_tokens = {
             MutPointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
-                unsafe_from_address=Int(output_tokens._storage)
+                unsafe_from_address=Int(output_tokens.ptr)
             ),
             output_tokens.layout,
         }
         self.output_scales_offset = {
             MutPointer[UInt32, MutUntrackedOrigin](
-                unsafe_from_address=Int(output_scales_offset._storage)
+                unsafe_from_address=Int(output_scales_offset.ptr)
             ),
             output_scales_offset.layout,
         }
@@ -2373,13 +2376,13 @@ struct MXTokenFormat[
     ):
         self.output_tokens = {
             MutPointer[Scalar[Self.quant_dtype], MutUntrackedOrigin](
-                unsafe_from_address=Int(output_tokens._storage)
+                unsafe_from_address=Int(output_tokens.ptr)
             ),
             output_tokens.layout,
         }
         self.output_scales = {
             MutPointer[Scalar[Self.scales_dtype], MutUntrackedOrigin](
-                unsafe_from_address=Int(output_scales._storage)
+                unsafe_from_address=Int(output_scales.ptr)
             ),
             output_scales.layout,
         }

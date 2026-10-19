@@ -161,6 +161,13 @@ def pack_ptrs_array[
 
 @inline(.always)
 def ep_dispatch_async_kernel_api[
+    AtomicCountersEngine: TensorEngine,
+    InputTokensEngine: TensorEngine,
+    TopkIdsEngine: TensorEngine,
+    SendPtrsEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
+    //,
     token_fmt_type: TokenFormat,
     n_experts: Int,
     max_token_per_rank: Int,
@@ -170,12 +177,12 @@ def ep_dispatch_async_kernel_api[
     input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
     use_shmem: Bool = (n_nodes > 1),
 ](
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    input_tokens: TileTensor[mut=False, Engine=DefaultEngine[], ...],
-    topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
-    send_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
+    input_tokens: TileTensor[mut=False, Engine=InputTokensEngine, ...],
+    topk_ids: TileTensor[mut=False, .int32, Engine=TopkIdsEngine, ...],
+    send_ptrs: TileTensor[.uint64, Engine=SendPtrsEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
     context: DeviceContext,
 ) raises:
     """Execute the Expert Parallelism async dispatch kernel.
@@ -186,6 +193,12 @@ def ep_dispatch_async_kernel_api[
     `shmem_malloc`.
 
     Parameters:
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        TopkIdsEngine: Storage engine backing the `topk_ids` tile.
+        SendPtrsEngine: Storage engine backing the `send_ptrs` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
         token_fmt_type: Token format type.
         n_experts: Total experts across all devices.
         max_token_per_rank: Maximum tokens any device can send.
@@ -319,6 +332,12 @@ def ep_dispatch_async_kernel_api[
 @inline(.always)
 def ep_dispatch_wait_kernel_api[
     token_fmt_type: TokenFormat,
+    RowOffsetsEngine: TensorEngine,
+    ExpertIdsEngine: TensorEngine,
+    SrcInfoEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
+    AtomicCountersEngine: TensorEngine,
     //,
     n_experts: Int,
     max_token_per_rank: Int,
@@ -328,12 +347,12 @@ def ep_dispatch_wait_kernel_api[
     input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
 ](
     token_handler: token_fmt_type,
-    row_offsets: TileTensor[.uint32, Engine=DefaultEngine[], ...],
-    expert_ids: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    src_info: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
+    row_offsets: TileTensor[.uint32, Engine=RowOffsetsEngine, ...],
+    expert_ids: TileTensor[.int32, Engine=ExpertIdsEngine, ...],
+    src_info: TileTensor[.int32, Engine=SrcInfoEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
     context: DeviceContext,
     num_input_tokens: Int = -1,
 ) raises:
@@ -346,6 +365,12 @@ def ep_dispatch_wait_kernel_api[
 
     Parameters:
         token_fmt_type: Token format type.
+        RowOffsetsEngine: Storage engine backing the `row_offsets` tile.
+        ExpertIdsEngine: Storage engine backing the `expert_ids` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
         n_experts: Total experts across all devices.
         max_token_per_rank: Maximum tokens any device can send.
         n_gpus_per_node: GPUs per physical node.
@@ -468,6 +493,15 @@ def ep_dispatch_wait_kernel_api[
 def ep_fused_dispatch_kernel_api[
     token_fmt_type: TokenFormat,
     dispatch_dtype: DType,
+    RowOffsetsEngine: TensorEngine,
+    ExpertIdsEngine: TensorEngine,
+    SrcInfoEngine: TensorEngine,
+    AtomicCountersEngine: TensorEngine,
+    InputTokensEngine: TensorEngine,
+    TopkIdsEngine: TensorEngine,
+    SendPtrsEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
     //,
     n_experts: Int,
     max_token_per_rank: Int,
@@ -481,17 +515,17 @@ def ep_fused_dispatch_kernel_api[
     allreduce_world_size: Int = 1,
 ](
     token_handler: token_fmt_type,
-    row_offsets: TileTensor[.uint32, Engine=DefaultEngine[], ...],
-    expert_ids: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    src_info: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
+    row_offsets: TileTensor[.uint32, Engine=RowOffsetsEngine, ...],
+    expert_ids: TileTensor[.int32, Engine=ExpertIdsEngine, ...],
+    src_info: TileTensor[.int32, Engine=SrcInfoEngine, ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
     input_tokens: TileTensor[
-        mut=False, dispatch_dtype, Engine=DefaultEngine[], ...
+        mut=False, dispatch_dtype, Engine=InputTokensEngine, ...
     ],
-    topk_ids: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
-    send_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
+    topk_ids: TileTensor[mut=False, .int32, Engine=TopkIdsEngine, ...],
+    send_ptrs: TileTensor[.uint64, Engine=SendPtrsEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
     context: DeviceContext,
 ) raises:
     """Execute the fused Expert Parallelism dispatch kernel.
@@ -505,6 +539,15 @@ def ep_fused_dispatch_kernel_api[
     Parameters:
         token_fmt_type: Token format type.
         dispatch_dtype: Data type of the dispatched tokens.
+        RowOffsetsEngine: Storage engine backing the `row_offsets` tile.
+        ExpertIdsEngine: Storage engine backing the `expert_ids` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        TopkIdsEngine: Storage engine backing the `topk_ids` tile.
+        SendPtrsEngine: Storage engine backing the `send_ptrs` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
         n_experts: Total experts across all devices.
         max_token_per_rank: Maximum tokens any device can send.
         n_gpus_per_node: GPUs per physical node.
@@ -683,6 +726,13 @@ def ep_fused_dispatch_kernel_api[
 
 @inline(.always)
 def ep_combine_async_kernel_api[
+    AtomicCountersEngine: TensorEngine,
+    InputTokensEngine: TensorEngine,
+    SrcInfoEngine: TensorEngine,
+    SendPtrsEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
+    //,
     combine_dtype: DType,
     hidden_size: Int,
     top_k: Int,
@@ -693,14 +743,14 @@ def ep_combine_async_kernel_api[
     target: StaticString,
     use_shmem: Bool = (n_nodes > 1),
 ](
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
     input_tokens: TileTensor[
-        mut=False, combine_dtype, Engine=DefaultEngine[], ...
+        mut=False, combine_dtype, Engine=InputTokensEngine, ...
     ],
-    src_info: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
-    send_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
+    src_info: TileTensor[mut=False, .int32, Engine=SrcInfoEngine, ...],
+    send_ptrs: TileTensor[.uint64, Engine=SendPtrsEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
     context: DeviceContext,
 ) raises:
     """Execute the Expert Parallelism combine kernel.
@@ -713,6 +763,12 @@ def ep_combine_async_kernel_api[
     allocated using `shmem_malloc`.
 
     Parameters:
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
+        SendPtrsEngine: Storage engine backing the `send_ptrs` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
         combine_dtype: Data type for tokens during combine phase.
         hidden_size: Model hidden dimension size.
         top_k: Number of experts each token was routed to.
@@ -840,6 +896,10 @@ def ep_combine_async_kernel_api[
 
 @inline(.always)
 def ep_combine_wait_kernel_api[
+    AtomicCountersEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
+    //,
     combine_dtype: DType,
     hidden_size: Int,
     top_k: Int,
@@ -852,9 +912,9 @@ def ep_combine_wait_kernel_api[
     router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
 ](
     num_tokens: Int,
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
     context: DeviceContext,
 ) raises:
     """Execute the Expert Parallelism combine completion kernel.
@@ -865,6 +925,9 @@ def ep_combine_wait_kernel_api[
     expert outputs for each token.
 
     Parameters:
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
         combine_dtype: Data type for tokens during combine phase.
         hidden_size: Model hidden dimension size.
         top_k: Number of experts each token was routed to.
@@ -1058,7 +1121,7 @@ def ep_fused_combine_kernel_api[
         allreduce_world_size: The world size of the allreduce operation. Only
             needed for skip_a2a. Used to calculate the workload distribution for
             the shared expert (if has one).
-        OutputTokensEngine: Storage engine backing the `output_tokens` tile.
+        OutputTokensEngine: Storage engine backing the output tokens tile.
 
     Arguments:
         num_tokens: Number of output tokens.
