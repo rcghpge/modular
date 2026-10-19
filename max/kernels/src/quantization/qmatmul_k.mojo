@@ -1455,14 +1455,12 @@ def _matmul_Q6_K_columns[
 def _matmul_Qb_K[
     group_size: Int,
     b_type: AnyType,
-    EpilogueFnType: ElementwiseEpilogueFn = type_of(no_epilogue_fn),
-    //,
-    columns_fn: def[
-        tile_n: Int,
-        simd_width: Int,
-        EpilogueFnType: ElementwiseEpilogueFn,
-        has_epilogue_fn: Bool,
-    ](
+    # TODO(MOCO-4720): Take a thin function pointer to the file-scope columns
+    # function instead, once functions with closure-trait parameters are no
+    # longer implicitly `capturing`.
+    ColumnsFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[tile_n: Int](
         var a_ptr: MutPointer[_block_Q8_K_packed[group_size], _],
         b_ptr: Pointer[b_type, _],
         var c_ptr: MutPointer[Float32, _],
@@ -1471,17 +1469,16 @@ def _matmul_Qb_K[
         accumulate: Bool,
         n: Int,
         is_last_k_iter: Bool,
-        epilogue_fn: EpilogueFnType,
-    ) capturing -> None,
+    ) -> None,
+    //,
     *,
     interleave_group_sums: Bool = False,
-    has_epilogue_fn: Bool = False,
 ](
     a: TileTensor[mut=False, .float32, address_space=.GENERIC, ...],
     b: TileTensor[mut=False, .uint8, address_space=.GENERIC, ...],
     c: TileTensor[mut=True, .float32, address_space=.GENERIC, ...],
+    columns_fn: ColumnsFnType,
     ctx: Optional[DeviceContext.CPU] = None,
-    epilogue_fn: EpilogueFnType = no_epilogue_fn,
 ):
     comptime assert a.rank == 2
     comptime assert b.rank == 2
@@ -1539,7 +1536,7 @@ def _matmul_Qb_K[
             ](n_idx: Int) {
                 mut a_packed_ptr, mut bn_packed_ptr, mut cn_ptr, imm
             }:
-                columns_fn[tile_n, simd_width, EpilogueFnType, has_epilogue_fn](
+                columns_fn[tile_n](
                     a_packed_ptr,
                     bn_packed_ptr,
                     cn_ptr,
@@ -1548,7 +1545,6 @@ def _matmul_Qb_K[
                     accumulate,
                     task_n_start + n_idx * simd_width,
                     is_last_k_iter,
-                    epilogue_fn,
                 )
 
                 bn_packed_ptr = bn_packed_ptr.unsafe_offset(tile_n * simd_width)
@@ -1590,12 +1586,41 @@ def matmul_Q4_K(
     comptime assert b_tt.rank == 2
     comptime assert c_tt.rank == 2
 
+    @inline(.always)
+    def columns_fn[
+        tile_n: Int
+    ](
+        var a_ptr: MutPointer[_block_Q8_K_packed[_block_Q4_K.group_size], _],
+        b_ptr: Pointer[_block_Q4_K_packed[], _],
+        var c_ptr: MutPointer[Float32, _],
+        M: Int,
+        N: Int,
+        accumulate: Bool,
+        n: Int,
+        is_last_k_iter: Bool,
+    ):
+        _matmul_Q4_K_columns[
+            tile_n,
+            simd_width_of[DType.float32](),
+            type_of(no_epilogue_fn),
+            False,
+        ](
+            a_ptr,
+            b_ptr,
+            c_ptr,
+            M,
+            N,
+            accumulate,
+            n,
+            is_last_k_iter,
+            no_epilogue_fn,
+        )
+
     _matmul_Qb_K[
         group_size=_block_Q4_K.group_size,
         b_type=_block_Q4_K_packed[],
-        columns_fn=_matmul_Q4_K_columns,
         interleave_group_sums=True,
-    ](a_tt, b_tt, c_tt, ctx)
+    ](a_tt, b_tt, c_tt, columns_fn, ctx)
 
 
 def matmul_Q4_K[
@@ -1626,13 +1651,28 @@ def matmul_Q4_K[
     comptime assert b_tt.rank == 2
     comptime assert c_tt.rank == 2
 
+    @inline(.always)
+    def columns_fn[
+        tile_n: Int
+    ](
+        var a_ptr: MutPointer[_block_Q8_K_packed[_block_Q4_K.group_size], _],
+        b_ptr: Pointer[_block_Q4_K_packed[], _],
+        var c_ptr: MutPointer[Float32, _],
+        M: Int,
+        N: Int,
+        accumulate: Bool,
+        n: Int,
+        is_last_k_iter: Bool,
+    ) {var epilogue_fn}:
+        _matmul_Q4_K_columns[
+            tile_n, simd_width_of[DType.float32](), EpilogueFnType, True
+        ](a_ptr, b_ptr, c_ptr, M, N, accumulate, n, is_last_k_iter, epilogue_fn)
+
     _matmul_Qb_K[
         group_size=_block_Q4_K.group_size,
         b_type=_block_Q4_K_packed[],
-        columns_fn=_matmul_Q4_K_columns,
         interleave_group_sums=True,
-        has_epilogue_fn=True,
-    ](a_tt, b_tt, c_tt, ctx, epilogue_fn)
+    ](a_tt, b_tt, c_tt, columns_fn, ctx)
 
 
 def matmul_Q6_K(
@@ -1656,11 +1696,40 @@ def matmul_Q6_K(
     comptime assert b_tt.rank == 2
     comptime assert c_tt.rank == 2
 
+    @inline(.always)
+    def columns_fn[
+        tile_n: Int
+    ](
+        var a_ptr: MutPointer[_block_Q8_K_packed[_block_Q6_K.group_size], _],
+        b_ptr: Pointer[_block_Q6_K_packed[], _],
+        var c_ptr: MutPointer[Float32, _],
+        M: Int,
+        N: Int,
+        accumulate: Bool,
+        n: Int,
+        is_last_k_iter: Bool,
+    ):
+        _matmul_Q6_K_columns[
+            tile_n,
+            simd_width_of[DType.float32](),
+            type_of(no_epilogue_fn),
+            False,
+        ](
+            a_ptr,
+            b_ptr,
+            c_ptr,
+            M,
+            N,
+            accumulate,
+            n,
+            is_last_k_iter,
+            no_epilogue_fn,
+        )
+
     _matmul_Qb_K[
         group_size=_block_Q6_K.group_size,
         b_type=_block_Q6_K_packed[],
-        columns_fn=_matmul_Q6_K_columns,
-    ](a_tt, b_tt, c_tt, ctx)
+    ](a_tt, b_tt, c_tt, columns_fn, ctx)
 
 
 def matmul_Q6_K[
@@ -1691,9 +1760,24 @@ def matmul_Q6_K[
     comptime assert b_tt.rank == 2
     comptime assert c_tt.rank == 2
 
+    @inline(.always)
+    def columns_fn[
+        tile_n: Int
+    ](
+        var a_ptr: MutPointer[_block_Q8_K_packed[_block_Q6_K.group_size], _],
+        b_ptr: Pointer[_block_Q6_K_packed[], _],
+        var c_ptr: MutPointer[Float32, _],
+        M: Int,
+        N: Int,
+        accumulate: Bool,
+        n: Int,
+        is_last_k_iter: Bool,
+    ) {var epilogue_fn}:
+        _matmul_Q6_K_columns[
+            tile_n, simd_width_of[DType.float32](), EpilogueFnType, True
+        ](a_ptr, b_ptr, c_ptr, M, N, accumulate, n, is_last_k_iter, epilogue_fn)
+
     _matmul_Qb_K[
         group_size=_block_Q6_K.group_size,
         b_type=_block_Q6_K_packed[],
-        columns_fn=_matmul_Q6_K_columns,
-        has_epilogue_fn=True,
-    ](a_tt, b_tt, c_tt, ctx, epilogue_fn)
+    ](a_tt, b_tt, c_tt, columns_fn, ctx)
