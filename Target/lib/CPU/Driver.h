@@ -21,9 +21,7 @@
 using M::Target::CustomStatus;
 
 struct M_driver_driver {
-  M_driver_driver() : device(this) {
-    status.messages[M_DRIVER_STATUS_UNIMPLEMENTED] = "Unimplemented";
-  }
+  M_driver_driver() : device(this) {}
 
   [[nodiscard]] static M_driver_driver_t create();
   static void destroy(M_driver_driver_t driver);

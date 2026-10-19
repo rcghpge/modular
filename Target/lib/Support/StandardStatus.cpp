@@ -30,4 +30,8 @@ const char *standardStatusMessages[M_DRIVER_NUM_STANDARD_STATUS_CODES] = {
     /*14*/ "Invalid argument",
     /*15*/ "Incompatible file type",
     /*16*/ "Bad bundle",
+    /*17*/ "Execute mode not supported",
+    /*18*/ "Unknown symbol",
+    /*19*/ "Unsupported",
+    /*20*/ "Unimplemented",
 };

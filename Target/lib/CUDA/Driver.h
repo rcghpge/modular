@@ -35,9 +35,7 @@ struct M_driver_driver {
 
   M_driver_driver(CUDALoader &&cuda, NVML &&nvml)
       : rawCuda(std::move(cuda)), rawNvml(std::move(nvml)),
-        status(M_DRIVER_NUM_CUSTOM_STATUS_CODES) {
-    status.messages[M_DRIVER_STATUS_UNIMPLEMENTED] = "Unimplemented";
-  }
+        status(M_DRIVER_NUM_CUSTOM_STATUS_CODES) {}
   ~M_driver_driver();
   M_driver_driver(const M_driver_driver &) = delete;
   M_driver_driver &operator=(const M_driver_driver &) = delete;

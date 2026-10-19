@@ -157,6 +157,12 @@ M_driver_status_t M_driver_status_message(M_driver_driver_t driver,
   case M_DRIVER_STATUS_EXECUTE_MODE_NOT_SUPPORTED:
     msg = "execute mode not supported";
     break;
+  case M_DRIVER_STATUS_UNSUPPORTED:
+    msg = "unsupported";
+    break;
+  case M_DRIVER_STATUS_UNIMPLEMENTED:
+    msg = "unimplemented";
+    break;
   default:
     return M_DRIVER_STATUS_ARGUMENT_OUT_OF_RANGE;
   }

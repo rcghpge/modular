@@ -24,7 +24,6 @@ using M::Target::CustomStatus;
 
 struct M_driver_driver {
   M_driver_driver() {
-    status.messages[M_DRIVER_STATUS_UNIMPLEMENTED] = "Unimplemented";
     status.messages[M_DRIVER_STATUS_UNINITIALIZED] = "Uninitialized";
   }
 

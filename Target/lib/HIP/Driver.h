@@ -38,9 +38,7 @@ public:
 
   M_driver_driver(HIPApi &&rawHipApi)
       : rawHipApi(std::move(rawHipApi)),
-        status(M_DRIVER_NUM_CUSTOM_STATUS_CODES) {
-    status.messages[M_DRIVER_STATUS_UNIMPLEMENTED] = "Unimplemented";
-  }
+        status(M_DRIVER_NUM_CUSTOM_STATUS_CODES) {}
 
   ~M_driver_driver() { rawHipApi.unload(); }
 

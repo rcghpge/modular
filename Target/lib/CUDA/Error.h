@@ -22,8 +22,7 @@
 #include <nvml.h>
 #include <tl/expected.hpp>
 
-#define M_DRIVER_STATUS_UNIMPLEMENTED (M_DRIVER_STATUS_CUSTOM_CODES_BASE - 0)
-#define M_DRIVER_NUM_CUSTOM_STATUS_CODES 1
+#define M_DRIVER_NUM_CUSTOM_STATUS_CODES 0
 
 struct M_driver_driver;
 

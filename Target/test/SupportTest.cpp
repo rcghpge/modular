@@ -135,6 +135,10 @@ TEST(SupportTest, StandardStatusMessagesKnownStrings) {
   EXPECT_STREQ(standardStatusMessages[14], "Invalid argument");
   EXPECT_STREQ(standardStatusMessages[15], "Incompatible file type");
   EXPECT_STREQ(standardStatusMessages[16], "Bad bundle");
+  EXPECT_STREQ(standardStatusMessages[17], "Execute mode not supported");
+  EXPECT_STREQ(standardStatusMessages[18], "Unknown symbol");
+  EXPECT_STREQ(standardStatusMessages[19], "Unsupported");
+  EXPECT_STREQ(standardStatusMessages[20], "Unimplemented");
 }
 
 TEST(SupportTest, StandardStatusMessagesNonEmpty) {

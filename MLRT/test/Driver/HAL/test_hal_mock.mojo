@@ -46,6 +46,8 @@ from _hal.status import (
     STATUS_INCOMPATIBLE,
     STATUS_BAD_BUNDLE,
     STATUS_EXECUTE_MODE_NOT_SUPPORTED,
+    STATUS_UNSUPPORTED,
+    STATUS_UNIMPLEMENTED,
 )
 from std.testing import assert_equal, assert_false, assert_raises, assert_true
 
@@ -78,6 +80,8 @@ def test_status_code_values() raises:
     assert_equal(Int(STATUS_INCOMPATIBLE), -15)
     assert_equal(Int(STATUS_BAD_BUNDLE), -16)
     assert_equal(Int(STATUS_EXECUTE_MODE_NOT_SUPPORTED), -17)
+    assert_equal(Int(STATUS_UNSUPPORTED), -19)
+    assert_equal(Int(STATUS_UNIMPLEMENTED), -20)
 
 
 # ===-----------------------------------------------------------------------===#
