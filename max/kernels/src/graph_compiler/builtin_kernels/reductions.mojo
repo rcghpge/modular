@@ -356,9 +356,11 @@ struct RowMeanOfSquares:
 
         @inline(.always)
         def input_fn[
-            width: Int
+            width: Int, alignment: Int
         ](coords: Coord) {var input} -> SIMD[input.dtype, width]:
-            return input._lambda_load[width=width](coords)
+            return input._lambda_load[width=width, element_alignment=alignment](
+                coords
+            )
 
         @inline(.always)
         def output_fn[
@@ -1637,17 +1639,19 @@ struct ReduceRMSNormFusedResidualAdd:
 
         @inline(.always)
         def input_fn[
-            width: Int
+            width: Int, alignment: Int
         ](coords: Coord) {var input} -> SIMD[dtype, width]:
-            return input._lambda_load[width=width, element_alignment=width](
+            return input._lambda_load[width=width, element_alignment=alignment](
                 coords
             )
 
         @inline(.always)
         def residual_input_fn[
-            width: Int
+            width: Int, alignment: Int
         ](coords: Coord) {var residual_input} -> SIMD[dtype, width]:
-            return residual_input._lambda_load[width=width](coords)
+            return residual_input._lambda_load[
+                width=width, element_alignment=alignment
+            ](coords)
 
         @inline(.always)
         def output_fn[
