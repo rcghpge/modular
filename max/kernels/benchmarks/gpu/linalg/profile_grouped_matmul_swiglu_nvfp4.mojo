@@ -707,6 +707,12 @@ def main() raises:
                     input_scales_immut.LayoutType,
                     hw_info.max_thread_block_size,
                     hw_info.sm_count,
+                    OutputEngine=o_tt.Engine,
+                    ScalesEngine=s_tt.Engine,
+                    InputEngine=c_immut.Engine,
+                    RowOffsetsEngine=a_offsets_immut.Engine,
+                    ScalesOffsetsEngine=a_scale_offsets_immut.Engine,
+                    InputScalesEngine=input_scales_immut.Engine,
                 ]
                 if not matmul_only:
                     if disable_pdl:

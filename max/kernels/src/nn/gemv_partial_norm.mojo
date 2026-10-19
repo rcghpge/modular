@@ -639,9 +639,9 @@ def _gemv_partial_norm_unfused_with_scratch[
     ](coords: Coord, val: SIMD[c_type, width]) -> None:
         normed_output.store[alignment=alignment](coords, val)
 
-    var gamma_c = rebind[TileTensor[c_type, gamma.LayoutType, gamma.origin]](
-        gamma
-    )
+    var gamma_c = rebind[
+        TileTensor[c_type, gamma.LayoutType, gamma.origin, Engine=gamma.Engine]
+    ](gamma)
     # `rms_norm_gpu` migrated to a `Coord` shape boundary (softmax PR #88203);
     # `[M, N_normed]` is built at runtime so an all-dynamic `Coord` is passed.
     rms_norm_gpu[

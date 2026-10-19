@@ -159,7 +159,7 @@ def test_concat_4_inputs_rank5[test_epilogue: Bool](ctx: DeviceContext) raises:
         ctx.enqueue_function[kernel](
             output_dyn.as_unsafe_any_origin(),
             StaticTuple[
-                TileTensor[dtype, input_0_dyn.LayoutType, ImmutAnyOrigin],
+                type_of(input_0_dyn.as_unsafe_any_origin().as_imm()),
                 4,
             ](
                 input_0_dyn.as_unsafe_any_origin().as_imm(),
@@ -237,7 +237,7 @@ def test_concat_4_inputs_rank5[test_epilogue: Bool](ctx: DeviceContext) raises:
             output_dyn.as_unsafe_any_origin(),
             4,
             StaticTuple[
-                TileTensor[dtype, input_0_dyn.LayoutType, ImmutAnyOrigin],
+                type_of(input_0_dyn.as_unsafe_any_origin().as_imm()),
                 4,
             ](
                 input_0_dyn.as_unsafe_any_origin().as_imm(),
@@ -368,9 +368,7 @@ def test_inner_most_single_dim_static_vs_dynamic(ctx: DeviceContext) raises:
         .as_unsafe_any_origin()
         .as_imm()
     )
-    var ins_dynamic = StaticTuple[
-        TileTensor[dtype, DynInLayout, ImmutAnyOrigin], num_inputs
-    ]()
+    var ins_dynamic = StaticTuple[DynInTile, num_inputs]()
 
     comptime for n in range(num_inputs):
         ins_dynamic[n] = (

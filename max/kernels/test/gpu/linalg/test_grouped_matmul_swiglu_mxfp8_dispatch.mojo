@@ -515,6 +515,11 @@ def _test_swiglu_mxfp8_dispatch[
         hw_info.max_thread_block_size,
         hw_info.sm_count,
         activation=activation,
+        OutputEngine=type_of(O_ref_tensor).Engine,
+        ScalesEngine=type_of(S_ref_tensor).Engine,
+        InputEngine=type_of(c_ref_immut).Engine,
+        RowOffsetsEngine=type_of(a_offsets_immut).Engine,
+        ScalesOffsetsEngine=type_of(a_scale_offsets_immut).Engine,
     ]
     ctx.enqueue_function[ref_silu_mxfp8](
         O_ref_tensor,

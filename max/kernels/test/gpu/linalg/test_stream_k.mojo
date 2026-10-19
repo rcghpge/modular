@@ -17,7 +17,7 @@ from std.math.uutils import umod
 from max.gpu import block_dim, block_idx, thread_idx
 from max.gpu.sync import Semaphore
 from max.gpu.host import DeviceBuffer, DeviceContext
-from layout import DefaultEngine, TileTensor, row_major
+from layout import DefaultEngine, TensorEngine, TileTensor, row_major
 from linalg.matmul.gpu import matmul_kernel_naive
 from std.memory import alloc
 from std.testing import assert_almost_equal
@@ -316,26 +316,15 @@ def matmul_stream_k[
     //,
     *,
     total_programs_streamk: Int,
+    CEngine: TensorEngine,
+    AEngine: TensorEngine,
+    BEngine: TensorEngine,
 ](
     c: TileTensor[
-        mut=True,
-        c_type,
-        address_space=.GENERIC,
-        ...,
-        Engine=DefaultEngine[element_width=1],
+        mut=True, c_type, address_space=.GENERIC, ..., Engine=CEngine
     ],
-    a: TileTensor[
-        a_type,
-        address_space=.GENERIC,
-        ...,
-        Engine=DefaultEngine[element_width=1],
-    ],
-    b: TileTensor[
-        b_type,
-        address_space=.GENERIC,
-        ...,
-        Engine=DefaultEngine[element_width=1],
-    ],
+    a: TileTensor[a_type, address_space=.GENERIC, ..., Engine=AEngine],
+    b: TileTensor[b_type, address_space=.GENERIC, ..., Engine=BEngine],
     M: Int,
     N: Int,
     K: Int,
@@ -391,15 +380,9 @@ def matmul_stream_k[
         total_partial_tiles_streamk,
     )
 
-    var c_buffer = DeviceBuffer[c_type](
-        ctx, c._storage, c.num_elements(), owning=False
-    )
-    var a_buffer = DeviceBuffer[a_type](
-        ctx, a._storage, a.num_elements(), owning=False
-    )
-    var b_buffer = DeviceBuffer[b_type](
-        ctx, b._storage, b.num_elements(), owning=False
-    )
+    var c_buffer = c.to_device_buffer(ctx)
+    var a_buffer = a.to_device_buffer(ctx)
+    var b_buffer = b.to_device_buffer(ctx)
 
     if total_programs_streamk > 0:
         comptime first_wave = first_wave_kernel[

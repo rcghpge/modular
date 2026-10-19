@@ -258,6 +258,11 @@ def _test_silu_mxfp8[
             alpha,
             limit if clamp_activation else 0.0,
         ],
+        OutputEngine=type_of(out_tensor).Engine,
+        ScalesEngine=type_of(scales_tensor).Engine,
+        InputEngine=type_of(in_immut).Engine,
+        RowOffsetsEngine=type_of(row_offsets_immut).Engine,
+        ScalesOffsetsEngine=type_of(scales_offsets_immut).Engine,
     ]
     ctx.enqueue_function[kernel](
         out_tensor,

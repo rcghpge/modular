@@ -247,13 +247,15 @@ def test_fused_allreduce_rmsnorm_fp8[
     )
 
     comptime in_layout = row_major(Idx[rows], Idx[cols])
-    comptime InputTileType = TileTensor[
-        in_dtype, type_of(in_layout), ImmutAnyOrigin
-    ]
+    comptime InputTileType = type_of(
+        TileTensor(in_dev[0], in_layout).as_unsafe_any_origin().as_imm()
+    )
     var in_tiles = Array[_, ngpus](
         fill_with=lambda (i: Int) -> InputTileType: TileTensor(
             in_dev[i], in_layout
-        ).as_imm()
+        )
+        .as_unsafe_any_origin()
+        .as_imm()
     )
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
@@ -452,13 +454,15 @@ def test_fused_allreduce_rmsnorm_noquant[
     )
 
     comptime in_layout = row_major(Idx[rows], Idx[cols])
-    comptime InputTileType = TileTensor[
-        dtype, type_of(in_layout), ImmutAnyOrigin
-    ]
+    comptime InputTileType = type_of(
+        TileTensor(in_dev[0], in_layout).as_unsafe_any_origin().as_imm()
+    )
     var in_tiles = Array[_, ngpus](
         fill_with=lambda (i: Int) -> InputTileType: TileTensor(
             in_dev[i], in_layout
-        ).as_imm()
+        )
+        .as_unsafe_any_origin()
+        .as_imm()
     )
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
@@ -609,13 +613,15 @@ def test_fused_allreduce_residual_rmsnorm_fp8[
     )
 
     comptime in_layout = row_major(Idx[rows], Idx[cols])
-    comptime InputTileType = TileTensor[
-        in_dtype, type_of(in_layout), ImmutAnyOrigin
-    ]
+    comptime InputTileType = type_of(
+        TileTensor(in_dev[0], in_layout).as_unsafe_any_origin().as_imm()
+    )
     var in_tiles = Array[_, ngpus](
         fill_with=lambda (i: Int) -> InputTileType: TileTensor(
             in_dev[i], in_layout
-        ).as_imm()
+        )
+        .as_unsafe_any_origin()
+        .as_imm()
     )
     for i in range(ngpus):
         list_of_ctx[i].synchronize()
@@ -877,13 +883,15 @@ def test_fused_allreduce_residual_rmsnorm_noquant[
     )
 
     comptime in_layout = row_major(Idx[rows], Idx[cols])
-    comptime InputTileType = TileTensor[
-        dtype, type_of(in_layout), ImmutAnyOrigin
-    ]
+    comptime InputTileType = type_of(
+        TileTensor(in_dev[0], in_layout).as_unsafe_any_origin().as_imm()
+    )
     var in_tiles = Array[_, ngpus](
         fill_with=lambda (i: Int) -> InputTileType: TileTensor(
             in_dev[i], in_layout
-        ).as_imm()
+        )
+        .as_unsafe_any_origin()
+        .as_imm()
     )
     for i in range(ngpus):
         list_of_ctx[i].synchronize()

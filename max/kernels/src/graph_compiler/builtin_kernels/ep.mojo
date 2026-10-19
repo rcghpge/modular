@@ -3307,6 +3307,12 @@ struct Struct_ep_fused_silu_nvfp4:
             hw_info.max_thread_block_size,
             hw_info.sm_count,
             activation=act,
+            OutputEngine=output_tensor.Engine,
+            ScalesEngine=scales_tensor.Engine,
+            InputEngine=input_tensor.Engine,
+            RowOffsetsEngine=row_offsets_tensor.Engine,
+            ScalesOffsetsEngine=scales_offsets_tensor.Engine,
+            InputScalesEngine=input_scales_tensor.Engine,
         ]
 
         @inline(.always)

@@ -96,6 +96,7 @@ from layout import (
     coord,
     Idx,
     DefaultEngine,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     row_major,
@@ -6413,15 +6414,38 @@ def fused_silu_nvfp4_kernel[
     num_threads: Int,
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
+    *,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ScalesOffsetsEngine: TensorEngine,
+    InputScalesEngine: TensorEngine,
 ](
-    output_tensor: TileTensor[fp4_dtype, output_layout, MutUntrackedOrigin],
-    scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
-    input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
-    row_offsets: TileTensor[.uint32, offsets_layout, ImmUntrackedOrigin],
-    scales_offsets: TileTensor[
-        .uint32, scales_offsets_layout, ImmUntrackedOrigin
+    output_tensor: TileTensor[
+        fp4_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
     ],
-    input_scales: TileTensor[.float32, input_scales_layout, ImmUntrackedOrigin],
+    scales_tensor: TileTensor[
+        scales_dtype, scales_layout, MutUntrackedOrigin, Engine=ScalesEngine
+    ],
+    input_tensor: TileTensor[
+        input_dtype, input_layout, ImmUntrackedOrigin, Engine=InputEngine
+    ],
+    row_offsets: TileTensor[
+        .uint32, offsets_layout, ImmUntrackedOrigin, Engine=RowOffsetsEngine
+    ],
+    scales_offsets: TileTensor[
+        .uint32,
+        scales_offsets_layout,
+        ImmUntrackedOrigin,
+        Engine=ScalesOffsetsEngine,
+    ],
+    input_scales: TileTensor[
+        .float32,
+        input_scales_layout,
+        ImmUntrackedOrigin,
+        Engine=InputScalesEngine,
+    ],
 ):
     """
     This kernel performs the gated activation for all the MLPs in the EP MoE
@@ -6597,15 +6621,38 @@ def fused_silu_nvfp4_interleaved_kernel[
     num_threads: Int,
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
+    *,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ScalesOffsetsEngine: TensorEngine,
+    InputScalesEngine: TensorEngine,
 ](
-    output_tensor: TileTensor[fp4_dtype, output_layout, MutUntrackedOrigin],
-    scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
-    input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
-    row_offsets: TileTensor[.uint32, offsets_layout, ImmUntrackedOrigin],
-    scales_offsets: TileTensor[
-        .uint32, scales_offsets_layout, ImmUntrackedOrigin
+    output_tensor: TileTensor[
+        fp4_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
     ],
-    input_scales: TileTensor[.float32, input_scales_layout, ImmUntrackedOrigin],
+    scales_tensor: TileTensor[
+        scales_dtype, scales_layout, MutUntrackedOrigin, Engine=ScalesEngine
+    ],
+    input_tensor: TileTensor[
+        input_dtype, input_layout, ImmUntrackedOrigin, Engine=InputEngine
+    ],
+    row_offsets: TileTensor[
+        .uint32, offsets_layout, ImmUntrackedOrigin, Engine=RowOffsetsEngine
+    ],
+    scales_offsets: TileTensor[
+        .uint32,
+        scales_offsets_layout,
+        ImmUntrackedOrigin,
+        Engine=ScalesOffsetsEngine,
+    ],
+    input_scales: TileTensor[
+        .float32,
+        input_scales_layout,
+        ImmUntrackedOrigin,
+        Engine=InputScalesEngine,
+    ],
 ):
     """SwiGLU + NVFP4 quantization for interleaved gate/up layout.
 
@@ -6965,13 +7012,30 @@ def fused_silu_mxfp8_interleaved_kernel[
     num_threads: Int,
     num_sms: Int,
     activation: swiglu_activation_type = swiglu[0.0],
+    *,
+    OutputEngine: TensorEngine,
+    ScalesEngine: TensorEngine,
+    InputEngine: TensorEngine,
+    RowOffsetsEngine: TensorEngine,
+    ScalesOffsetsEngine: TensorEngine,
 ](
-    output_tensor: TileTensor[fp8_dtype, output_layout, MutUntrackedOrigin],
-    scales_tensor: TileTensor[scales_dtype, scales_layout, MutUntrackedOrigin],
-    input_tensor: TileTensor[input_dtype, input_layout, ImmUntrackedOrigin],
-    row_offsets: TileTensor[.uint32, offsets_layout, ImmUntrackedOrigin],
+    output_tensor: TileTensor[
+        fp8_dtype, output_layout, MutUntrackedOrigin, Engine=OutputEngine
+    ],
+    scales_tensor: TileTensor[
+        scales_dtype, scales_layout, MutUntrackedOrigin, Engine=ScalesEngine
+    ],
+    input_tensor: TileTensor[
+        input_dtype, input_layout, ImmUntrackedOrigin, Engine=InputEngine
+    ],
+    row_offsets: TileTensor[
+        .uint32, offsets_layout, ImmUntrackedOrigin, Engine=RowOffsetsEngine
+    ],
     scales_offsets: TileTensor[
-        .uint32, scales_offsets_layout, ImmUntrackedOrigin
+        .uint32,
+        scales_offsets_layout,
+        ImmUntrackedOrigin,
+        Engine=ScalesOffsetsEngine,
     ],
 ):
     """SwiGLU + MXFP8 quantization for interleaved gate/up layout.

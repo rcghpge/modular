@@ -550,6 +550,12 @@ def _test_swiglu_interleave[
         input_scales_immut.LayoutType,
         hw_info.max_thread_block_size,
         hw_info.sm_count,
+        OutputEngine=type_of(O_ref_tensor).Engine,
+        ScalesEngine=type_of(S_ref_tensor).Engine,
+        InputEngine=type_of(c_ref_immut).Engine,
+        RowOffsetsEngine=type_of(a_offsets_immut).Engine,
+        ScalesOffsetsEngine=type_of(a_scale_offsets_immut).Engine,
+        InputScalesEngine=type_of(input_scales_immut).Engine,
     ]
     ctx.enqueue_function[fused_silu_nvfp4](
         O_ref_tensor,
@@ -575,6 +581,12 @@ def _test_swiglu_interleave[
         input_scales_immut.LayoutType,
         hw_info.max_thread_block_size,
         hw_info.sm_count,
+        OutputEngine=type_of(O_perm_tensor).Engine,
+        ScalesEngine=type_of(S_perm_tensor).Engine,
+        InputEngine=type_of(c_perm_immut).Engine,
+        RowOffsetsEngine=type_of(a_offsets_immut).Engine,
+        ScalesOffsetsEngine=type_of(a_scale_offsets_immut).Engine,
+        InputScalesEngine=type_of(input_scales_immut).Engine,
     ]
     ctx.enqueue_function[fused_silu_nvfp4_interleaved](
         O_perm_tensor,

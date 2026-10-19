@@ -47,6 +47,7 @@ from std.utils.coord import Coord, Idx, coord_to_index_list
 from layout import (
     Coord,
     Idx,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     row_major,
@@ -307,16 +308,38 @@ def fused_rope_rmsnorm_quantization_kernel[
     KVInputFnType: ImplicitlyCopyable
     & RegisterPassable
     & def[width: Int](IndexList[2]) -> SIMD[DType.bfloat16, width],
+    *,
+    QRopeOutputEngine: TensorEngine,
+    QRopeEngine: TensorEngine,
+    InputRowOffsetsEngine: TensorEngine,
+    FreqsCisEngine: TensorEngine,
+    GammaEngine: TensorEngine,
 ](
     q_rope_output: TileTensor[
-        mut=True, out_rope_dtype, QRopeOutputLayoutType, MutUntrackedOrigin
+        mut=True,
+        out_rope_dtype,
+        QRopeOutputLayoutType,
+        MutUntrackedOrigin,
+        Engine=QRopeOutputEngine,
     ],
-    q_rope: TileTensor[dtype, QRopeLayoutType, ImmUntrackedOrigin],
+    q_rope: TileTensor[
+        dtype, QRopeLayoutType, ImmUntrackedOrigin, Engine=QRopeEngine
+    ],
     input_row_offsets: TileTensor[
-        .uint32, InputRowOffsetsLayoutType, ImmUntrackedOrigin
+        .uint32,
+        InputRowOffsetsLayoutType,
+        ImmUntrackedOrigin,
+        Engine=InputRowOffsetsEngine,
     ],
-    freqs_cis: TileTensor[freq_dtype, FreqsCisLayoutType, ImmUntrackedOrigin],
-    gamma: TileTensor[gamma_dtype, GammaLayoutType, ImmUntrackedOrigin],
+    freqs_cis: TileTensor[
+        freq_dtype,
+        FreqsCisLayoutType,
+        ImmUntrackedOrigin,
+        Engine=FreqsCisEngine,
+    ],
+    gamma: TileTensor[
+        gamma_dtype, GammaLayoutType, ImmUntrackedOrigin, Engine=GammaEngine
+    ],
     k_cache: cache_t,
     epsilon: Float32,
     kv_input_fn: KVInputFnType,
@@ -346,6 +369,11 @@ def fused_rope_rmsnorm_quantization_kernel[
         n_rms_blocks: Number of blocks allocated for RMSNorm computation.
         out_rope_dtype: Data type of the RoPE output.
         KVInputFnType: Type of the closure that loads the KV latent values.
+        QRopeOutputEngine: Storage engine backing the `q_rope_output` tile.
+        QRopeEngine: Storage engine backing the `q_rope` tile.
+        InputRowOffsetsEngine: Storage engine backing the `input_row_offsets` tile.
+        FreqsCisEngine: Storage engine backing the `freqs_cis` tile.
+        GammaEngine: Storage engine backing the `gamma` tile.
 
     Args:
         q_rope_output: Output tensor for RoPE-applied query projections.
@@ -595,6 +623,11 @@ def mla_fused_rope_rmsnorm_quantization[
         n_rms_blocks,
         out_rope_dtype,
         KVInputFnType=KVInputFnType,
+        QRopeOutputEngine=q_rope_output.Engine,
+        QRopeEngine=q_rope.Engine,
+        InputRowOffsetsEngine=input_row_offsets.Engine,
+        FreqsCisEngine=freqs_cis.Engine,
+        GammaEngine=gamma.Engine,
     ]
 
     ctx.enqueue_function[kernel](

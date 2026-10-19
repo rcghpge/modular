@@ -79,6 +79,7 @@ from max.gpu.primitives import block
 from layout import (
     Coord,
     Idx,
+    TensorEngine,
     TensorLayout,
     TileTensor,
     coord_to_index_list,
@@ -139,11 +140,18 @@ def _allreduce_rmsnorm_fp8_kernel_warp_tiling[
     & DevicePassable
     & RegisterPassable
     & def[width: SIMDLength](Int, Int, SIMD[out_dtype, width]) -> None,
+    *,
+    GammaEngine: TensorEngine,
+    ScaleBufferEngine: TensorEngine,
 ](
     src_ptrs: Array[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin], ngpus],
-    gamma: TileTensor[in_dtype, LayoutType, origin],
+    gamma: TileTensor[in_dtype, LayoutType, origin, Engine=GammaEngine],
     scale_buffer: TileTensor[
-        mut=True, scales_dtype, ScaleLayoutType, scale_origin
+        mut=True,
+        scales_dtype,
+        ScaleLayoutType,
+        scale_origin,
+        Engine=ScaleBufferEngine,
     ],
     epsilon: Float32,
     weight_offset: Scalar[in_dtype],
@@ -330,11 +338,18 @@ def _allreduce_rmsnorm_fp8_kernel_2stage[
     & DevicePassable
     & RegisterPassable
     & def[width: SIMDLength](Int, Int, SIMD[out_dtype, width]) -> None,
+    *,
+    GammaEngine: TensorEngine,
+    ScaleBufferEngine: TensorEngine,
 ](
     src_ptrs: Array[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin], ngpus],
-    gamma: TileTensor[in_dtype, LayoutType, origin],
+    gamma: TileTensor[in_dtype, LayoutType, origin, Engine=GammaEngine],
     scale_buffer: TileTensor[
-        mut=True, scales_dtype, ScaleLayoutType, scale_origin
+        mut=True,
+        scales_dtype,
+        ScaleLayoutType,
+        scale_origin,
+        Engine=ScaleBufferEngine,
     ],
     epsilon: Float32,
     weight_offset: Scalar[in_dtype],
@@ -754,6 +769,8 @@ def _allreduce_rmsnorm_fp8_launch[
         threads_per_block=threads_per_block,
         has_residual=has_residual,
         OutputFnType=type_of(output_fn),
+        GammaEngine=gamma.Engine,
+        ScaleBufferEngine=scale_output.Engine,
     ]
     ctx.enqueue_function[kernel](
         src_ptrs,
@@ -912,6 +929,8 @@ def _allreduce_rmsnorm_fp8_launch_2stage[
         threads_per_block=threads_per_block,
         has_residual=has_residual,
         OutputFnType=type_of(output_fn),
+        GammaEngine=gamma.Engine,
+        ScaleBufferEngine=scale_output.Engine,
     ]
     ctx.enqueue_function[kernel](
         src_ptrs,
@@ -984,7 +1003,7 @@ def _launch_split_allreduce_rmsnorm_fp8[
 
     var shape = IndexList[2](rows, cols)
     var scale_output_2d = TileTensor(
-        scale_output_1d._storage, row_major(rows, Idx[1])
+        scale_output_1d.ptr, row_major(rows, Idx[1])
     )
 
     # Pre-compile the RMSNorm+FP8 kernel before launching allreduce.
@@ -1351,9 +1370,12 @@ def allreduce_rmsnorm[
     ngpus: Int,
     in_layout: TensorLayout,
     in_origin: Origin,
+    in_engine: TensorEngine,
     //,
 ](
-    input_buffers: Array[TileTensor[in_dtype, in_layout, in_origin], ngpus],
+    input_buffers: Array[
+        TileTensor[in_dtype, in_layout, in_origin, Engine=in_engine], ngpus
+    ],
     output: TileTensor[mut=True, out_dtype, ...],
     gamma: TileTensor[in_dtype, ...],
     epsilon: Float32,
@@ -1436,17 +1458,17 @@ def allreduce_rmsnorm[
     var src_ptrs = Array[_, ngpus](
         fill_with=lambda (i: Int) -> PtrType: rebind[
             ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]
-        ](input_buffers[i]._storage)
+        ](input_buffers[i].ptr)
     )
 
     # Create internal 2D/1D TileTensor views for _dispatch_fused_kernel.
     var output_2d = TileTensor(
-        rebind[MutPointer[Scalar[out_dtype], MutAnyOrigin]](output._storage),
+        rebind[MutPointer[Scalar[out_dtype], MutAnyOrigin]](output.ptr),
         row_major(rows, cols),
     )
     var scale_output_1d = TileTensor(
         rebind[MutPointer[Scalar[scales_dtype], MutAnyOrigin]](
-            scale_output._storage
+            scale_output.ptr
         ),
         row_major(rows),
     )
@@ -1473,9 +1495,12 @@ def allreduce_residual_rmsnorm[
     ngpus: Int,
     in_layout: TensorLayout,
     in_origin: Origin,
+    in_engine: TensorEngine,
     //,
 ](
-    input_buffers: Array[TileTensor[in_dtype, in_layout, in_origin], ngpus],
+    input_buffers: Array[
+        TileTensor[in_dtype, in_layout, in_origin, Engine=in_engine], ngpus
+    ],
     residual: TileTensor[mut=False, in_dtype, ...],
     output: TileTensor[mut=True, out_dtype, ...],
     residual_output: TileTensor[mut=True, in_dtype, ...],
@@ -1546,27 +1571,25 @@ def allreduce_residual_rmsnorm[
     var src_ptrs = Array[_, ngpus](
         fill_with=lambda (i: Int) -> PtrType: rebind[
             ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]
-        ](input_buffers[i]._storage)
+        ](input_buffers[i].ptr)
     )
 
     # Create internal 2D/1D TileTensor views for _dispatch_fused_kernel.
     var output_2d = TileTensor(
-        rebind[MutPointer[Scalar[out_dtype], MutAnyOrigin]](output._storage),
+        rebind[MutPointer[Scalar[out_dtype], MutAnyOrigin]](output.ptr),
         row_major(rows, cols),
     )
     var residual_2d = TileTensor(
-        rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](residual._storage),
+        rebind[ImmPointer[Scalar[in_dtype], ImmutAnyOrigin]](residual.ptr),
         row_major(rows, cols),
     )
     var residual_output_2d = TileTensor(
-        rebind[MutPointer[Scalar[in_dtype], MutAnyOrigin]](
-            residual_output._storage
-        ),
+        rebind[MutPointer[Scalar[in_dtype], MutAnyOrigin]](residual_output.ptr),
         row_major(rows, cols),
     )
     var scale_output_1d = TileTensor(
         rebind[MutPointer[Scalar[scales_dtype], MutAnyOrigin]](
-            scale_output._storage
+            scale_output.ptr
         ),
         row_major(rows),
     )

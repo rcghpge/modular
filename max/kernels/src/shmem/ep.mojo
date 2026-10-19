@@ -20,7 +20,7 @@ from max.gpu.primitives.grid_controls import PDLLevel, pdl_launch_attributes
 from max.gpu.host import DeviceContext, FuncAttribute
 from max.gpu.host.info import is_gpu
 from std.math import ceildiv
-from layout import DefaultEngine, TensorLayout, TileTensor
+from layout import DefaultEngine, TensorEngine, TensorLayout, TileTensor
 from max.runtime.tracing import Trace, TraceLevel, get_safe_task_id
 from std.sys.info import simd_width_of, size_of
 from max.gpu import WARP_SIZE
@@ -293,7 +293,7 @@ def ep_dispatch_async_kernel_api[
         )
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
@@ -426,7 +426,7 @@ def ep_dispatch_wait_kernel_api[
         )
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
@@ -640,7 +640,7 @@ def ep_fused_dispatch_kernel_api[
         ](recv_count_ptrs, my_rank)
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
@@ -815,7 +815,7 @@ def ep_combine_async_kernel_api[
         )
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
@@ -948,7 +948,7 @@ def ep_combine_wait_kernel_api[
         )
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
@@ -986,6 +986,12 @@ def ep_combine_wait_kernel_api[
 @inline(.always)
 def ep_fused_combine_kernel_api[
     combine_dtype: DType,
+    AtomicCountersEngine: TensorEngine,
+    InputTokensEngine: TensorEngine,
+    SrcInfoEngine: TensorEngine,
+    SendPtrsEngine: TensorEngine,
+    RecvPtrsEngine: TensorEngine,
+    RecvCountPtrsEngine: TensorEngine,
     //,
     hidden_size: Int,
     top_k: Int,
@@ -1000,16 +1006,20 @@ def ep_fused_combine_kernel_api[
     skip_a2a: Bool = False,
     use_shmem: Bool = (n_nodes > 1),
     allreduce_world_size: Int = 1,
+    *,
+    # Defaulted because the output is written through `store_fn`: there is no
+    # output tile argument for the engine to be inferred from.
+    OutputTokensEngine: TensorEngine = DefaultEngine[element_width=1],
 ](
     num_tokens: Int,
-    atomic_counters: TileTensor[.int32, Engine=DefaultEngine[], ...],
+    atomic_counters: TileTensor[.int32, Engine=AtomicCountersEngine, ...],
     input_tokens: TileTensor[
-        mut=False, combine_dtype, Engine=DefaultEngine[], ...
+        mut=False, combine_dtype, Engine=InputTokensEngine, ...
     ],
-    src_info: TileTensor[mut=False, .int32, Engine=DefaultEngine[], ...],
-    send_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
-    recv_count_ptrs: TileTensor[.uint64, Engine=DefaultEngine[], ...],
+    src_info: TileTensor[mut=False, .int32, Engine=SrcInfoEngine, ...],
+    send_ptrs: TileTensor[.uint64, Engine=SendPtrsEngine, ...],
+    recv_ptrs: TileTensor[.uint64, Engine=RecvPtrsEngine, ...],
+    recv_count_ptrs: TileTensor[.uint64, Engine=RecvCountPtrsEngine, ...],
     context: DeviceContext,
     topk_ids_p: Optional[ImmPointer[Int32, ImmUntrackedOrigin]] = None,
 ) raises:
@@ -1023,6 +1033,12 @@ def ep_fused_combine_kernel_api[
 
     Parameters:
         combine_dtype: Data type for tokens during combine phase.
+        AtomicCountersEngine: Storage engine backing the `atomic_counters` tile.
+        InputTokensEngine: Storage engine backing the `input_tokens` tile.
+        SrcInfoEngine: Storage engine backing the `src_info` tile.
+        SendPtrsEngine: Storage engine backing the `send_ptrs` tile.
+        RecvPtrsEngine: Storage engine backing the `recv_ptrs` tile.
+        RecvCountPtrsEngine: Storage engine backing the `recv_count_ptrs` tile.
         hidden_size: Model hidden dimension size.
         top_k: Number of experts each token was routed to.
         n_experts: Total experts across all devices.
@@ -1042,6 +1058,7 @@ def ep_fused_combine_kernel_api[
         allreduce_world_size: The world size of the allreduce operation. Only
             needed for skip_a2a. Used to calculate the workload distribution for
             the shared expert (if has one).
+        OutputTokensEngine: Storage engine backing the `output_tokens` tile.
 
     Arguments:
         num_tokens: Number of output tokens.
@@ -1152,7 +1169,7 @@ def ep_fused_combine_kernel_api[
         ](recv_count_ptrs, my_rank)
         var ep_counters = EPLocalSyncCounters[n_experts](
             MutPointer[Int32, MutUntrackedOrigin](
-                unsafe_from_address=Int(atomic_counters._storage)
+                unsafe_from_address=Int(atomic_counters.ptr)
             )
         )
 
