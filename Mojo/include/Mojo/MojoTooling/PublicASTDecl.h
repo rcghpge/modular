@@ -16,7 +16,6 @@
 
 #include "Mojo/MojoParser/ASTType.h"
 #include "Mojo/MojoParser/SignatureModel.h"
-#include "Mojo/MojoTooling/TypeMetadata.h"
 #include "Support/LLVMCompilerForwardDecls.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
@@ -51,10 +50,6 @@ class VarASTDecl;
 class FnTypeGeneratorType;
 
 namespace {
-/// Typical max trait composition size in Mojo APIs.
-/// Currently only 1 case exceeds this: builtin.Comparable with 5 traits.
-static constexpr size_t kTypicalTraitCompositionSize = 4;
-
 /// Typical max parameter count for Mojo functions, structs, and aliases.
 /// Currently about 98% of declarations use ≤2 parameters.
 static constexpr size_t kTypicalParameterCount = 2;
@@ -164,57 +159,6 @@ private:
   StringRef name;
 };
 
-/// Documentation for a parameter of a struct or function.
-class DocumentedParameter {
-public:
-  /// Build a documented parameter from a fully-resolved `ParameterInfo`
-  /// (which carries the type string with any conforms_to trait bounds
-  /// already merged in). Type metadata for doc cross-linking is computed
-  /// once during construction.
-  DocumentedParameter(ASTDecl &decl, KGEN::ParameterInfo info,
-                      SharedState &sharedState);
-
-  StringRef getName() const { return info.getName(); }
-  KGEN::PassingKind getPassingKind() const { return info.passingKind; }
-
-  std::string getDeclarationSnippet(MojoParserContext &ctx) const;
-
-  /// Get the description of this decl extracted from its docstring. It might be
-  /// empty.
-  StringRef getDescription() const { return info.getDescription(); }
-
-  std::string getMarkdownDocString() const;
-
-  /// Set the description of this decl.
-  void setDescription(StringRef desc) { info.setDescription(desc); }
-
-  /// Get constraints of this declaration as string. It might be empty.
-  StringRef getConstraints() const { return info.constraints; }
-
-  /// The underlying signature-shape view of this parameter, used by both the
-  /// rendering algorithm and JSON serialization.
-  const KGEN::ParameterInfo &getInfo() const { return info; }
-
-  /// The output of the generation is defined in the following schema:
-  ///
-  ///  {
-  ///    "kind": "parameter",
-  ///    "description": string,
-  ///    "name": string,
-  ///    "type": string,
-  ///    "path": string,
-  ///    "passingKind": string,
-  ///    "defaultValue": string?
-  ///    "constraints": string?
-  ///  }
-  llvm::json::Object toJSON(MojoParserContext &ctx) const;
-
-private:
-  KGEN::ParameterInfo info;
-  TypeMetadata typeMetadata;
-  SmallVector<TypeMetadata, kTypicalTraitCompositionSize> traitMetadata;
-};
-
 /// Decl for functions of any kind, including closures, instance methods, fn
 /// functions, def functions, etc.
 class PublicFunctionDecl : public PublicDecl {
@@ -258,7 +202,7 @@ public:
   std::string getMarkdownDocString() const override;
 
   /// Return the parameters of this function.
-  ArrayRef<DocumentedParameter> getParameters() const { return parameters; }
+  ArrayRef<KGEN::ParameterInfo> getParameters() const { return parameters; }
 
   // TODO: always return the type, including None. The doc and snippet
   // generation will need to be updated accordingly.
@@ -290,7 +234,7 @@ public:
   ///   "hasDefaultImplementation": boolean,
   ///   "isImplicitConversion", boolean,
   ///   "isStatic": boolean,
-  ///   "parameters": DocumentedParameter[],
+  ///   "parameters": ParameterInfo[],
   ///   "raises": boolean,
   ///   "raisesDoc": string,
   ///   "returns": {"type": string, "path": string?, "doc": string?},
@@ -327,7 +271,7 @@ private:
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
   SmallVector<KGEN::ArgumentInfo, kTypicalArgumentCount> args;
-  SmallVector<DocumentedParameter, kTypicalParameterCount> parameters;
+  SmallVector<KGEN::ParameterInfo, kTypicalParameterCount> parameters;
   std::string fnConstraints;
   std::optional<std::string> returnType;
 
@@ -415,7 +359,7 @@ public:
                                *parameterOffsets = nullptr) const;
 
   /// Return the parameters of this struct.
-  ArrayRef<DocumentedParameter> getParameters() const { return parameters; }
+  ArrayRef<KGEN::ParameterInfo> getParameters() const { return parameters; }
 
   /// The output of the generation is defined in the following schema:
   ///
@@ -425,7 +369,7 @@ public:
   ///   "aliases": PublicDecl[],
   ///   "description": string,
   ///   "functions": FunctionDeclOverloadSet[],
-  ///   "parameters": DocumentedParameter[],
+  ///   "parameters": ParameterInfo[],
   ///   "parentTraits": {
   ///     "name": string,
   ///     "path"?: string,
@@ -461,7 +405,7 @@ private:
   /// parameters.
   void augmentWithDocumentation(ArrayRef<StringRef> description);
 
-  SmallVector<DocumentedParameter, kTypicalParameterCount> parameters;
+  SmallVector<KGEN::ParameterInfo, kTypicalParameterCount> parameters;
   std::string structConstraints;
 
   ConformanceConditionMap conformanceConditions;
@@ -483,7 +427,6 @@ private:
 
 namespace M {
 using KGEN::LIT::ConformanceConditionMap;
-using KGEN::LIT::DocumentedParameter;
 using KGEN::LIT::FunctionDeclOverloadSet;
 using KGEN::LIT::PublicDecl;
 using KGEN::LIT::PublicDeclKind;
