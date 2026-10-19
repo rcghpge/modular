@@ -99,7 +99,9 @@ from max.algorithm import (
     sync_parallelize,
 )
 from linalg.utils import (
+    ElementwiseComputeFn,
     ElementwiseEpilogueFn,
+    no_compute_fn,
     no_epilogue_fn,
     partial_simd_load,
     partial_simd_store,
@@ -136,10 +138,10 @@ from .conv_utils import (
     ConvInfoStatic,
     ConvPartition,
     ConvShape,
+    ConvSimdComputeFn,
     ConvSimdEpilogueFn,
     NoConvEpilogue,
     align_down_residual,
-    elementwise_simd_epilogue_type,
     get_conv_num_partitions,
     get_conv_shape,
     get_conv_tile_shape,
@@ -147,6 +149,8 @@ from .conv_utils import (
     get_direct_conv_micro_kernel_width,
     get_micro_kernel_shape,
     get_partition,
+    no_conv_simd_compute_fn,
+    no_conv_simd_epilogue_fn,
     reorder_padding,
 )
 from .gpu.amd.dispatch_3d import dispatch_amd_4wave_conv3d
@@ -3644,7 +3648,6 @@ def conv2d_gpu_naive_nhwc_rscf[
     filter_type: DType,
     output_type: DType,
     block_size: Int,
-    maybe_epilogue_func: Optional[elementwise_simd_epilogue_type],
     InputEngine: TensorEngine,
     FilterEngine: TensorEngine,
     OutputEngine: TensorEngine,
@@ -3678,8 +3681,6 @@ def conv2d_gpu_naive_nhwc_rscf[
         output_type: Element type of the output tensor.
         block_size: Square thread block extent used for both the x and
             y block dimensions in the launch grid.
-        maybe_epilogue_func: Optional SIMD elementwise epilogue applied
-            to each output value before storing.
         InputEngine: Storage engine of the input tensor.
         FilterEngine: Storage engine of the filter tensor.
         OutputEngine: Storage engine of the output tensor.
@@ -3696,11 +3697,114 @@ def conv2d_gpu_naive_nhwc_rscf[
         num_groups: Number of convolution groups for grouped
             convolution.
     """
+    _conv2d_gpu_naive_nhwc_rscf_impl[has_epilogue_fn=False](
+        input,
+        filter,
+        output,
+        stride,
+        dilation,
+        padding,
+        num_groups,
+        no_conv_simd_epilogue_fn,
+    )
+
+
+@__name(
+    t"conv2d_gpu_naive_nhwc_rscf_epilogue_fn_{input_type}_{filter_type}_{output_type}",
+)
+def conv2d_gpu_naive_nhwc_rscf_epilogue_fn[
+    input_layout: TensorLayout,
+    filter_layout: TensorLayout,
+    output_layout: TensorLayout,
+    input_type: DType,
+    filter_type: DType,
+    output_type: DType,
+    block_size: Int,
+    EpilogueFnType: ConvSimdEpilogueFn,
+    InputEngine: TensorEngine,
+    FilterEngine: TensorEngine,
+    OutputEngine: TensorEngine,
+](
+    input: TileTensor[
+        input_type, input_layout, MutAnyOrigin, Engine=InputEngine
+    ],
+    filter: TileTensor[
+        filter_type, filter_layout, MutAnyOrigin, Engine=FilterEngine
+    ],
+    output: TileTensor[
+        output_type, output_layout, MutAnyOrigin, Engine=OutputEngine
+    ],
+    stride: IndexList[2],
+    dilation: IndexList[2],
+    padding: IndexList[2],
+    num_groups: Int32,
+    epilogue_fn: EpilogueFnType,
+):
+    """Naive GPU kernel for 2D NHWC convolution with a fused epilogue.
+
+    Each thread computes one output pixel across all output channels,
+    iterating over the R x S filter window and the per-group input
+    channels with scalar accumulation.
+
+    Parameters:
+        input_layout: Memory layout of the input tensor.
+        filter_layout: Memory layout of the filter tensor.
+        output_layout: Memory layout of the output tensor.
+        input_type: Element type of the input tensor.
+        filter_type: Element type of the filter tensor.
+        output_type: Element type of the output tensor.
+        block_size: Square thread block extent used for both the x and
+            y block dimensions in the launch grid.
+        EpilogueFnType: Type of `epilogue_fn`.
+        InputEngine: Storage engine of the input tensor.
+        FilterEngine: Storage engine of the filter tensor.
+        OutputEngine: Storage engine of the output tensor.
+
+    Args:
+        input: Input tensor in NHWC layout.
+        filter: Filter tensor in RSCF layout.
+        output: Output tensor in NHWC layout.
+        stride: Convolution stride `(stride_h, stride_w)`.
+        dilation: Filter dilation factors
+            `(dilation_h, dilation_w)`.
+        padding: Symmetric zero padding `(pad_h, pad_w)` applied to
+            the input H and W dimensions.
+        num_groups: Number of convolution groups for grouped
+            convolution.
+        epilogue_fn: SIMD elementwise epilogue that stores each output
+            value in place of the kernel.
+    """
+    _conv2d_gpu_naive_nhwc_rscf_impl[has_epilogue_fn=True](
+        input,
+        filter,
+        output,
+        stride,
+        dilation,
+        padding,
+        num_groups,
+        epilogue_fn,
+    )
+
+
+@inline(.always)
+def _conv2d_gpu_naive_nhwc_rscf_impl[
+    EpilogueFnType: ConvSimdEpilogueFn, //, has_epilogue_fn: Bool
+](
+    input: TileTensor[mut=True, ...],
+    filter: TileTensor[mut=True, ...],
+    output: TileTensor[mut=True, ...],
+    stride: IndexList[2],
+    dilation: IndexList[2],
+    padding: IndexList[2],
+    num_groups: Int32,
+    epilogue_fn: EpilogueFnType,
+):
+    comptime input_type = input.dtype
+    comptime filter_type = filter.dtype
+    comptime output_type = output.dtype
     var _num_groups = Int(num_groups)
-    var N = Int(input.dim[0]())
     var H = Int(input.dim[1]())
     var W = Int(input.dim[2]())
-    var C_in = Int(input.dim[3]())  # channel_in
     var R = Int(filter.dim[0]())
     var S = Int(filter.dim[1]())
     var C_per_group = Int(filter.dim[2]())  # C_in / num_groups
@@ -3742,8 +3846,8 @@ def conv2d_gpu_naive_nhwc_rscf[
                             ).cast[accum_type]()
                         )
 
-        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
-            epilogue_func(
+        comptime if has_epilogue_fn:
+            epilogue_fn(
                 (n, h, w, co),
                 value.cast[output_type](),
             )
@@ -4742,8 +4846,9 @@ def _conv_miopen[
     input_type: DType,
     filter_type: DType,
     output_type: DType,
+    EpilogueFnType: ConvSimdEpilogueFn,
     //,
-    maybe_epilogue_func: Optional[elementwise_simd_epilogue_type] = None,
+    has_epilogue_fn: Bool,
     filter_is_fcrs: Bool = False,
 ](
     input: TileTensor[mut=False, input_type, ...],
@@ -4754,8 +4859,9 @@ def _conv_miopen[
     padding: IndexList[conv_rank],
     num_groups: Int,
     ctx: DeviceContext,
+    epilogue_fn: EpilogueFnType,
 ) raises:
-    comptime if case .Some(epilogue) = maybe_epilogue_func:
+    comptime if has_epilogue_fn:
         # MIOpen doesn't support epilogues. Compute to temp buffer,
         # then apply epilogue.
         var output_tmp_data = ctx.enqueue_create_buffer[output_type](
@@ -4778,8 +4884,8 @@ def _conv_miopen[
         @inline(.always)
         def miopen_epilogue[
             _width: Int, alignment: Int = 1
-        ](coords: Coord) {var output_tmp}:
-            epilogue(
+        ](coords: Coord) {var output_tmp, var epilogue_fn}:
+            epilogue_fn(
                 coords,
                 output_tmp.load[width=_width](coords),
             )
@@ -4851,15 +4957,53 @@ def conv_miopen[
     )
 
 
+def _conv_compute_in_place[
+    ComputeFnType: ConvSimdComputeFn, //
+](
+    output: TileTensor[mut=True, address_space=.GENERIC, ...],
+    compute_fn: ComputeFnType,
+    ctx: DeviceContext,
+) raises:
+    """Replaces each element of `output` with `compute_fn` of it.
+
+    Parameters:
+        ComputeFnType: Type of `compute_fn` (inferred).
+
+    Args:
+        output: Tensor transformed in place.
+        compute_fn: Elementwise SIMD transform of each output value.
+        ctx: Device context for the kernel launch.
+    """
+    comptime output_type = output.dtype
+
+    @inline(.always)
+    def apply[
+        _width: Int, alignment: Int = 1
+    ](coords: Coord) {var output, var compute_fn}:
+        var vec = output.load[width=_width, alignment=align_of[output_type]()](
+            coords
+        )
+        output.store[width=_width, alignment=align_of[output_type]()](
+            coords, compute_fn(coords, vec)
+        )
+
+    elementwise[simd_width_of[output_type](), target="gpu"](
+        apply, output.layout.shape_coord(), ctx
+    )
+
+
 def conv_gpu[
     conv_rank: Int,
+    EpilogueFnType: ConvSimdEpilogueFn = type_of(no_conv_simd_epilogue_fn),
+    ComputeFnType: ConvSimdComputeFn = type_of(no_conv_simd_compute_fn),
     //,
     input_type: DType,
     filter_type: DType,
     output_type: DType,
-    maybe_epilogue_func: Optional[elementwise_simd_epilogue_type] = None,
+    has_epilogue_fn: Bool = False,
     filter_is_fcrs: Bool = False,
     has_residual: Bool = False,
+    has_compute_fn: Bool = False,
 ](
     input: TileTensor[mut=True, input_type, address_space=.GENERIC, ...],
     filter: TileTensor[filter_type, address_space=.GENERIC, ...],
@@ -4871,6 +5015,8 @@ def conv_gpu[
     ctx: DeviceContext,
     source_ptr: Optional[MutPointer[Scalar[output_type], MutAnyOrigin]] = None,
     beta: Float32 = 0.0,
+    epilogue_fn: EpilogueFnType = no_conv_simd_epilogue_fn,
+    compute_fn: ComputeFnType = no_conv_simd_compute_fn,
 ) raises:
     """Dispatches a GPU convolution to the best available backend for the
     current device and shape, including SM100 structured conv, im2col+matmul,
@@ -4881,15 +5027,20 @@ def conv_gpu[
     Parameters:
         conv_rank: Number of spatial dimensions in the convolution (1, 2,
             or 3) (inferred).
+        EpilogueFnType: Type of `epilogue_fn` (inferred).
+        ComputeFnType: Type of `compute_fn` (inferred).
         input_type: Element type of the input tensor.
         filter_type: Element type of the filter tensor.
         output_type: Element type of the output tensor.
-        maybe_epilogue_func: Optional elementwise SIMD epilogue applied to
-            the output (defaults to `None`).
+        has_epilogue_fn: True when `epilogue_fn` stores the output instead
+            of the convolution (defaults to `False`).
         filter_is_fcrs: True when the filter uses FCRS layout, otherwise
             RSCF (defaults to `False`).
         has_residual: True when fusing a residual add of the form
             `D = Conv(A, B) + beta * C` (defaults to `False`).
+        has_compute_fn: True when the convolution stores `compute_fn` of
+            each output value, after any residual add (defaults to
+            `False`).
 
     Args:
         input: Input activation tensor in NHWC or NDHWC layout.
@@ -4905,8 +5056,15 @@ def conv_gpu[
             when `has_residual` is true (defaults to `None`).
         beta: Residual scale factor in `D = Conv(A, B) + beta * C` (defaults
             to `0.0`).
+        epilogue_fn: Elementwise SIMD epilogue that stores each output
+            value; used only when `has_epilogue_fn` is true.
+        compute_fn: Elementwise SIMD transform of each output value; used
+            only when `has_compute_fn` is true.
     """
     comptime assert conv_rank == input.rank - 2
+    comptime assert not (
+        has_epilogue_fn and has_compute_fn
+    ), "a store epilogue excludes the compute epilogue"
 
     # Zero-sized output (e.g. a ``(B, 0, 0, C)`` input flowing through a
     # diffusion VAE encoder for the text-to-image placeholder): nothing
@@ -4982,9 +5140,10 @@ def conv_gpu[
             input_type,
             filter_type,
             output_type,
-            maybe_epilogue_func,
+            has_epilogue_fn,
             filter_is_fcrs,
             has_residual,
+            has_compute_fn,
         ](
             padded_input_tt,
             filter,
@@ -4996,6 +5155,8 @@ def conv_gpu[
             ctx,
             source_ptr,
             beta,
+            epilogue_fn,
+            compute_fn,
         )
 
         return
@@ -5014,7 +5175,19 @@ def conv_gpu[
         filter_type,
         output_type,
         block_size,
-        maybe_epilogue_func,
+        input.Engine,
+        filter.Engine,
+        output.Engine,
+    ]
+    comptime conv_gpu_n_epilogue = conv2d_gpu_naive_nhwc_rscf_epilogue_fn[
+        input.LayoutType,
+        filter.LayoutType,
+        output.LayoutType,
+        input_type,
+        filter_type,
+        output_type,
+        block_size,
+        EpilogueFnType,
         input.Engine,
         filter.Engine,
         output.Engine,
@@ -5028,7 +5201,19 @@ def conv_gpu[
         filter_type,
         output_type,
         block_size,
-        maybe_epilogue_func,
+        input.Engine,
+        filter.Engine,
+        output.Engine,
+    ]
+    comptime conv_gpu_3d_epilogue = conv3d_gpu_naive_ndhwc_qrscf_epilogue_fn[
+        input.LayoutType,
+        filter.LayoutType,
+        output.LayoutType,
+        input_type,
+        filter_type,
+        output_type,
+        block_size,
+        EpilogueFnType,
         input.Engine,
         filter.Engine,
         output.Engine,
@@ -5076,7 +5261,7 @@ def conv_gpu[
                     in_c, out_c
                 )
             ):
-                comptime if case .Some(epilogue) = maybe_epilogue_func:
+                comptime if has_epilogue_fn:
                     # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                     # store epilogue for the SM100 kernel. The kernel
                     # calls this with (m, n) coords where
@@ -5092,7 +5277,7 @@ def conv_gpu[
                         *,
                         alignment: Int,
                     ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
-                        var hw, var out_w
+                        var hw, var out_w, var epilogue_fn
                     }:
                         comptime assert (
                             coords_2d.rank == 2
@@ -5105,7 +5290,7 @@ def conv_gpu[
                         var w_idx: Int
                         batch_idx, rem = divmod(m, hw)
                         h_idx, w_idx = divmod(rem, out_w)
-                        epilogue(
+                        epilogue_fn(
                             (batch_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
@@ -5124,6 +5309,42 @@ def conv_gpu[
                         beta,
                         sm100_epilogue,
                     )
+                elif has_compute_fn and not has_residual:
+                    var out_h = Int(output.dim[1]())
+                    var out_w = Int(output.dim[2]())
+                    var hw = out_h * out_w
+
+                    @inline(.always)
+                    def sm100_compute[
+                        _dtype: DType,
+                        _width: SIMDLength,
+                        *,
+                        alignment: Int,
+                    ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                        var hw, var out_w, var compute_fn
+                    } -> SIMD[_dtype, _width]:
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0])
+                        var n = Int(coords_2d[1])
+                        var batch_idx, rem = divmod(m, hw)
+                        var h_idx, w_idx = divmod(rem, out_w)
+                        return rebind[SIMD[_dtype, _width]](
+                            compute_fn(
+                                (batch_idx, h_idx, w_idx, n),
+                                rebind[SIMD[output_type, _width]](val),
+                            )
+                        )
+
+                    dispatch_sm100_conv2d[filter_is_fcrs, has_compute_fn=True](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[2]](symmetric_padding),
+                        ctx,
+                        compute_fn=sm100_compute,
+                    )
                 else:
                     dispatch_sm100_conv2d[
                         filter_is_fcrs,
@@ -5137,6 +5358,10 @@ def conv_gpu[
                         source_ptr,
                         beta,
                     )
+
+                    # The residual kernel has no compute epilogue.
+                    comptime if has_compute_fn:
+                        _conv_compute_in_place(output, compute_fn, ctx)
                 return
 
         # SM100 im2col+matmul: route non-128-aligned channels through
@@ -5149,7 +5374,8 @@ def conv_gpu[
 
             if dispatch_im2col_matmul_conv2d[
                 filter_is_fcrs,
-                maybe_epilogue_func,
+                has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5159,6 +5385,8 @@ def conv_gpu[
                 rebind[IndexList[2]](symmetric_padding),
                 num_groups,
                 ctx,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
@@ -5181,7 +5409,8 @@ def conv_gpu[
 
             if dispatch_fused_im2col_conv2d_apple[
                 filter_is_fcrs,
-                maybe_epilogue_func,
+                has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5191,6 +5420,8 @@ def conv_gpu[
                 rebind[IndexList[2]](symmetric_padding),
                 num_groups,
                 ctx,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
@@ -5198,7 +5429,8 @@ def conv_gpu[
             # FMA / 8x8 GEMM, no M5-only fragment MMA). Handles FCRS filters.
             if dispatch_im2col_matmul_conv2d[
                 filter_is_fcrs,
-                maybe_epilogue_func,
+                has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5208,6 +5440,8 @@ def conv_gpu[
                 rebind[IndexList[2]](symmetric_padding),
                 num_groups,
                 ctx,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
@@ -5223,8 +5457,9 @@ def conv_gpu[
                 filter_type,
                 output_type,
                 filter_is_fcrs,
-                maybe_epilogue_func=maybe_epilogue_func,
+                has_epilogue_fn=has_epilogue_fn,
                 has_residual=has_residual,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5238,6 +5473,8 @@ def conv_gpu[
                     Scalar[output_type], MutAnyOrigin
                 ].unsafe_dangling(),
                 beta,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
@@ -5252,17 +5489,23 @@ def conv_gpu[
 
             @inline(.always)
             def _amd_4wave_dispatch[
-                EpilogueFnType: ElementwiseEpilogueFn,
+                GemmEpilogueFnType: ElementwiseEpilogueFn,
+                GemmComputeFnType: ElementwiseComputeFn,
                 //,
-                has_epilogue_fn: Bool,
-            ](epilogue_fn: EpilogueFnType) raises {imm} -> Bool:
+                has_gemm_epilogue_fn: Bool,
+                has_gemm_compute_fn: Bool = False,
+            ](
+                gemm_epilogue_fn: GemmEpilogueFnType,
+                gemm_compute_fn: GemmComputeFnType = no_compute_fn,
+            ) raises {imm} -> Bool:
                 return dispatch_amd_4wave_conv2d[
                     input_type,
                     filter_type,
                     output_type,
                     filter_is_fcrs,
                     has_residual=has_residual,
-                    has_epilogue_fn=has_epilogue_fn,
+                    has_epilogue_fn=has_gemm_epilogue_fn,
+                    has_compute_fn=has_gemm_compute_fn,
                 ](
                     input,
                     filter,
@@ -5274,7 +5517,8 @@ def conv_gpu[
                     ctx,
                     source_ptr=source_ptr,
                     beta=beta,
-                    epilogue_fn=epilogue_fn,
+                    epilogue_fn=gemm_epilogue_fn,
+                    compute_fn=gemm_compute_fn,
                 )
 
             # MIOpen-oracle audit. Gated on `MODULAR_CONV_AUDIT_MIOPEN=1`;
@@ -5282,8 +5526,8 @@ def conv_gpu[
             # with `max_abs / L1_rel / mean_abs` vs the just-produced
             # `output`.
             #
-            # Subtlety: the user-supplied `maybe_epilogue_func` is a
-            # `@__copy_capture(output, ...)` closure that writes its
+            # Subtlety: the user-supplied `epilogue_fn` is a
+            # closure capturing `output` that writes its
             # result into the *real* `output` tensor (see e.g.
             # `Conv2dResidualAdd.output_fn` in kernels) — its
             # write destination is captured, not derived from the
@@ -5316,7 +5560,7 @@ def conv_gpu[
                 # its captured `output`, so `output` now contains
                 # MIOpen+bias.
                 _conv_miopen[
-                    maybe_epilogue_func=maybe_epilogue_func,
+                    has_epilogue_fn=has_epilogue_fn,
                     filter_is_fcrs=filter_is_fcrs,
                 ](
                     input,
@@ -5327,6 +5571,7 @@ def conv_gpu[
                     symmetric_padding,
                     num_groups,
                     ctx,
+                    epilogue_fn,
                 )
 
                 # Pull both to host for elementwise diff.
@@ -5435,7 +5680,7 @@ def conv_gpu[
                 _ = host_mio^
                 _ = host_src^
 
-            comptime if case .Some(_amd_4wave_epi) = maybe_epilogue_func:
+            comptime if has_epilogue_fn:
                 # Wrap the 4D NHWC epilogue into a 2D GEMM-space
                 # epilogue for the AMD 4-wave kernel. The kernel calls
                 # this with (m, n) coords where
@@ -5452,7 +5697,7 @@ def conv_gpu[
                     *,
                     alignment: Int,
                 ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
-                    var _amd_4wave_hw, var _amd_4wave_out_w
+                    var _amd_4wave_hw, var _amd_4wave_out_w, var epilogue_fn
                 }:
                     comptime assert (
                         coords_2d.rank == 2
@@ -5465,25 +5710,66 @@ def conv_gpu[
                     var w_idx: Int
                     batch_idx, rem = divmod(m, _amd_4wave_hw)
                     h_idx, w_idx = divmod(rem, _amd_4wave_out_w)
-                    _amd_4wave_epi(
+                    epilogue_fn(
                         (batch_idx, h_idx, w_idx, n),
                         rebind[SIMD[output_type, _width]](val),
                     )
 
-                if _amd_4wave_dispatch[has_epilogue_fn=True](
+                if _amd_4wave_dispatch[has_gemm_epilogue_fn=True](
                     _amd_4wave_void_epilogue
                 ):
                     _audit_amd_4wave_vs_miopen()
                     return
+            elif has_compute_fn and not has_residual:
+                var _amd_4wave_out_h = Int(output.dim[1]())
+                var _amd_4wave_out_w = Int(output.dim[2]())
+                var _amd_4wave_hw = _amd_4wave_out_h * _amd_4wave_out_w
+
+                @inline(.always)
+                def _amd_4wave_compute[
+                    _dtype: DType,
+                    _width: SIMDLength,
+                    *,
+                    alignment: Int,
+                ](coords_2d: Coord, val: SIMD[_dtype, _width]) {
+                    var _amd_4wave_hw, var _amd_4wave_out_w, var compute_fn
+                } -> SIMD[_dtype, _width]:
+                    comptime assert (
+                        coords_2d.rank == 2
+                    ), "the matmul epilogue contract is rank 2"
+                    var m = Int(coords_2d[0])
+                    var n = Int(coords_2d[1])
+                    var batch_idx, rem = divmod(m, _amd_4wave_hw)
+                    var h_idx, w_idx = divmod(rem, _amd_4wave_out_w)
+                    return rebind[SIMD[_dtype, _width]](
+                        compute_fn(
+                            (batch_idx, h_idx, w_idx, n),
+                            rebind[SIMD[output_type, _width]](val),
+                        )
+                    )
+
+                # The MIOpen audit compares against a conv without
+                # `compute_fn`, so it is skipped here.
+                if _amd_4wave_dispatch[
+                    has_gemm_epilogue_fn=False, has_gemm_compute_fn=True
+                ](no_epilogue_fn, _amd_4wave_compute):
+                    return
             else:
-                if _amd_4wave_dispatch[has_epilogue_fn=False](no_epilogue_fn):
-                    _audit_amd_4wave_vs_miopen()
+                if _amd_4wave_dispatch[has_gemm_epilogue_fn=False](
+                    no_epilogue_fn
+                ):
+                    # The 4-wave compute epilogue runs before the residual
+                    # add, so a post-residual `compute_fn` runs here.
+                    comptime if has_compute_fn:
+                        _conv_compute_in_place(output, compute_fn, ctx)
+                    else:
+                        _audit_amd_4wave_vs_miopen()
                     return
 
         # AMD GPU path: fall back to MIOpen for conv2d.
         comptime if ctx.target.is_amd_gpu():
             _conv_miopen[
-                maybe_epilogue_func=maybe_epilogue_func,
+                has_epilogue_fn=has_epilogue_fn,
                 filter_is_fcrs=filter_is_fcrs,
             ](
                 input,
@@ -5494,7 +5780,10 @@ def conv_gpu[
                 symmetric_padding,
                 num_groups,
                 ctx,
+                epilogue_fn,
             )
+            comptime if has_compute_fn:
+                _conv_compute_in_place(output, compute_fn, ctx)
             return
 
         # Fallback paths for non-SM100, unsupported dtypes, or constraints
@@ -5534,7 +5823,7 @@ def conv_gpu[
                 )
             )
 
-            comptime if case .Some(epilogue) = maybe_epilogue_func:
+            comptime if has_epilogue_fn:
                 var output_tmp_data = ctx.enqueue_create_buffer[output_type](
                     output.num_elements()
                 )
@@ -5558,11 +5847,11 @@ def conv_gpu[
                 @inline(.always)
                 def epilogue_wrapper[
                     _width: Int, alignment: Int = 1
-                ](coords: Coord) {var output_tmp}:
+                ](coords: Coord) {var output_tmp, var epilogue_fn}:
                     var vec = output_tmp.load[
                         width=_width, alignment=align_of[output_type]()
                     ](coords)
-                    epilogue(coords, vec)
+                    epilogue_fn(coords, vec)
 
                 elementwise[simd_width_of[output_type](), target="gpu"](
                     epilogue_wrapper,
@@ -5595,22 +5884,40 @@ def conv_gpu[
                     num_groups,
                     ctx,
                 )
+                comptime if has_compute_fn:
+                    _conv_compute_in_place(output, compute_fn, ctx)
 
         else:
             var grid_dim_x = ceildiv(
                 Int(output.dim[2]()), block_size
             )  # w / block size for 2d
-            ctx.enqueue_function[conv_gpu_n](
-                input.as_unsafe_any_origin(),
-                filter.as_unsafe_any_origin(),
-                output.as_unsafe_any_origin(),
-                stride,
-                dilation,
-                symmetric_padding,
-                Int32(num_groups),
-                grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
-                block_dim=(block_size, block_size),
-            )
+            comptime if has_epilogue_fn:
+                ctx.enqueue_function[conv_gpu_n_epilogue](
+                    input.as_unsafe_any_origin(),
+                    filter.as_unsafe_any_origin(),
+                    output.as_unsafe_any_origin(),
+                    stride,
+                    dilation,
+                    symmetric_padding,
+                    Int32(num_groups),
+                    host_args=(epilogue_fn,),
+                    grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
+                    block_dim=(block_size, block_size),
+                )
+            else:
+                ctx.enqueue_function[conv_gpu_n](
+                    input.as_unsafe_any_origin(),
+                    filter.as_unsafe_any_origin(),
+                    output.as_unsafe_any_origin(),
+                    stride,
+                    dilation,
+                    symmetric_padding,
+                    Int32(num_groups),
+                    grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
+                    block_dim=(block_size, block_size),
+                )
+                comptime if has_compute_fn:
+                    _conv_compute_in_place(output, compute_fn, ctx)
 
     elif input.rank == 5:
         comptime if filter_is_fcrs:
@@ -5624,13 +5931,16 @@ def conv_gpu[
                 num_groups,
                 ctx,
             )
+            comptime if has_compute_fn:
+                _conv_compute_in_place(output, compute_fn, ctx)
         else:
             # Phase A (1x1x1 fast path): direct _matmul_gpu for bf16 1x1x1
             # convs with stride=1, dilation=1, zero padding, groups=1.
             # Covers WAN post_quant_conv and every conv_shortcut.
             if dispatch_1x1x1_matmul_conv3d[
                 filter_is_fcrs,
-                maybe_epilogue_func,
+                has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5640,6 +5950,8 @@ def conv_gpu[
                 rebind[IndexList[3]](symmetric_padding),
                 num_groups,
                 ctx,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
@@ -5657,7 +5969,8 @@ def conv_gpu[
             comptime if _is_sm100 and _is_supported_dtype:
                 if dispatch_qslice_conv3d_sm100[
                     filter_is_fcrs,
-                    maybe_epilogue_func,
+                    has_epilogue_fn,
+                    has_compute_fn=has_compute_fn,
                 ](
                     input,
                     filter,
@@ -5667,6 +5980,8 @@ def conv_gpu[
                     rebind[IndexList[3]](symmetric_padding),
                     num_groups,
                     ctx,
+                    epilogue_fn,
+                    compute_fn,
                 ):
                     return
 
@@ -5682,7 +5997,7 @@ def conv_gpu[
                 # void epilogue for the 4-wave kernel. The kernel
                 # calls this with (m, n) coords where m flattens
                 # batch*d*h*w and n is the channel.
-                comptime if case .Some(_amd_3d_epi_5d) = maybe_epilogue_func:
+                comptime if has_epilogue_fn:
                     var _amd_3d_D_out = Int(output.dim[1]())
                     var _amd_3d_H_out = Int(output.dim[2]())
                     var _amd_3d_W_out = Int(output.dim[3]())
@@ -5699,7 +6014,10 @@ def conv_gpu[
                         coords_2d: Coord,
                         val: SIMD[_dtype, _width],
                     ) {
-                        var _amd_3d_DHW, var _amd_3d_HW, var _amd_3d_W_out
+                        var _amd_3d_DHW,
+                        var _amd_3d_HW,
+                        var _amd_3d_W_out,
+                        var epilogue_fn,
                     }:
                         comptime assert (
                             coords_2d.rank == 2
@@ -5715,7 +6033,7 @@ def conv_gpu[
                         batch_idx, rem = divmod(m, _amd_3d_DHW)
                         d_idx, rem2 = divmod(rem, _amd_3d_HW)
                         h_idx, w_idx = divmod(rem2, _amd_3d_W_out)
-                        _amd_3d_epi_5d(
+                        epilogue_fn(
                             (batch_idx, d_idx, h_idx, w_idx, n),
                             rebind[SIMD[output_type, _width]](val),
                         )
@@ -5736,6 +6054,61 @@ def conv_gpu[
                         num_groups,
                         ctx,
                         amd_3d_void_epilogue,
+                    ):
+                        return
+                elif has_compute_fn:
+                    var _amd_3d_D_out = Int(output.dim[1]())
+                    var _amd_3d_H_out = Int(output.dim[2]())
+                    var _amd_3d_W_out = Int(output.dim[3]())
+                    var _amd_3d_HW = _amd_3d_H_out * _amd_3d_W_out
+                    var _amd_3d_DHW = _amd_3d_D_out * _amd_3d_HW
+
+                    @inline(.always)
+                    def amd_3d_compute[
+                        _dtype: DType,
+                        _width: SIMDLength,
+                        *,
+                        alignment: Int,
+                    ](
+                        coords_2d: Coord,
+                        val: SIMD[_dtype, _width],
+                    ) {
+                        var _amd_3d_DHW,
+                        var _amd_3d_HW,
+                        var _amd_3d_W_out,
+                        var compute_fn,
+                    } -> SIMD[_dtype, _width]:
+                        comptime assert (
+                            coords_2d.rank == 2
+                        ), "the matmul epilogue contract is rank 2"
+                        var m = Int(coords_2d[0])
+                        var n = Int(coords_2d[1])
+                        var batch_idx, rem = divmod(m, _amd_3d_DHW)
+                        var d_idx, rem2 = divmod(rem, _amd_3d_HW)
+                        var h_idx, w_idx = divmod(rem2, _amd_3d_W_out)
+                        return rebind[SIMD[_dtype, _width]](
+                            compute_fn(
+                                (batch_idx, d_idx, h_idx, w_idx, n),
+                                rebind[SIMD[output_type, _width]](val),
+                            )
+                        )
+
+                    if dispatch_amd_4wave_conv3d[
+                        input_type,
+                        filter_type,
+                        output_type,
+                        filter_is_fcqrs=filter_is_fcrs,
+                        has_compute_fn=True,
+                    ](
+                        input,
+                        filter,
+                        output,
+                        rebind[IndexList[3]](stride),
+                        rebind[IndexList[3]](dilation),
+                        rebind[IndexList[3]](symmetric_padding),
+                        num_groups,
+                        ctx,
+                        compute_fn=amd_3d_compute,
                     ):
                         return
                 else:
@@ -5761,7 +6134,8 @@ def conv_gpu[
             # shapes it can't handle (grouped, dilated, non-bf16, etc.).
             if dispatch_im2col_matmul_conv3d[
                 filter_is_fcrs,
-                maybe_epilogue_func,
+                has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
             ](
                 input,
                 filter,
@@ -5771,23 +6145,41 @@ def conv_gpu[
                 rebind[IndexList[3]](symmetric_padding),
                 num_groups,
                 ctx,
+                epilogue_fn,
+                compute_fn,
             ):
                 return
 
             var grid_dim_x = ceildiv(
                 Int(output.dim[2]()) * Int(output.dim[3]()), block_size
             )  # h * w / block size for 3d
-            ctx.enqueue_function[conv_gpu_3d](
-                input.as_unsafe_any_origin(),
-                filter.as_unsafe_any_origin(),
-                output.as_unsafe_any_origin(),
-                stride,
-                dilation,
-                symmetric_padding,
-                Int32(num_groups),
-                grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
-                block_dim=(block_size, block_size),
-            )
+            comptime if has_epilogue_fn:
+                ctx.enqueue_function[conv_gpu_3d_epilogue](
+                    input.as_unsafe_any_origin(),
+                    filter.as_unsafe_any_origin(),
+                    output.as_unsafe_any_origin(),
+                    stride,
+                    dilation,
+                    symmetric_padding,
+                    Int32(num_groups),
+                    host_args=(epilogue_fn,),
+                    grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
+                    block_dim=(block_size, block_size),
+                )
+            else:
+                ctx.enqueue_function[conv_gpu_3d](
+                    input.as_unsafe_any_origin(),
+                    filter.as_unsafe_any_origin(),
+                    output.as_unsafe_any_origin(),
+                    stride,
+                    dilation,
+                    symmetric_padding,
+                    Int32(num_groups),
+                    grid_dim=(grid_dim_x, grid_dim_y, grid_dim_z),
+                    block_dim=(block_size, block_size),
+                )
+                comptime if has_compute_fn:
+                    _conv_compute_in_place(output, compute_fn, ctx)
 
 
 @__name(
@@ -5801,7 +6193,6 @@ def conv3d_gpu_naive_ndhwc_qrscf[
     filter_type: DType,
     output_type: DType,
     block_size: Int,
-    maybe_epilogue_func: Optional[elementwise_simd_epilogue_type],
     InputEngine: TensorEngine,
     FilterEngine: TensorEngine,
     OutputEngine: TensorEngine,
@@ -5835,8 +6226,6 @@ def conv3d_gpu_naive_ndhwc_qrscf[
         output_type: Element type of the output tensor.
         block_size: Thread block size used for both `x` and `y` block
             dimensions.
-        maybe_epilogue_func: Optional elementwise SIMD epilogue applied to
-            each computed output value in place of a direct store.
         InputEngine: Storage engine of the input tensor.
         FilterEngine: Storage engine of the filter tensor.
         OutputEngine: Storage engine of the output tensor.
@@ -5853,12 +6242,115 @@ def conv3d_gpu_naive_ndhwc_qrscf[
             width)`.
         num_groups: Number of convolution groups for grouped convolution.
     """
+    _conv3d_gpu_naive_ndhwc_qrscf_impl[has_epilogue_fn=False](
+        input,
+        filter,
+        output,
+        stride,
+        dilation,
+        padding,
+        num_groups,
+        no_conv_simd_epilogue_fn,
+    )
+
+
+@__name(
+    t"conv3d_gpu_naive_ndhwc_qrscf_epilogue_fn_{input_type}_{filter_type}_{output_type}",
+)
+def conv3d_gpu_naive_ndhwc_qrscf_epilogue_fn[
+    input_layout: TensorLayout,
+    filter_layout: TensorLayout,
+    output_layout: TensorLayout,
+    input_type: DType,
+    filter_type: DType,
+    output_type: DType,
+    block_size: Int,
+    EpilogueFnType: ConvSimdEpilogueFn,
+    InputEngine: TensorEngine,
+    FilterEngine: TensorEngine,
+    OutputEngine: TensorEngine,
+](
+    input: TileTensor[
+        input_type, input_layout, MutAnyOrigin, Engine=InputEngine
+    ],
+    filter: TileTensor[
+        filter_type, filter_layout, MutAnyOrigin, Engine=FilterEngine
+    ],
+    output: TileTensor[
+        output_type, output_layout, MutAnyOrigin, Engine=OutputEngine
+    ],
+    stride: IndexList[3],
+    dilation: IndexList[3],
+    padding: IndexList[3],
+    num_groups: Int32,
+    epilogue_fn: EpilogueFnType,
+):
+    """Naive GPU kernel for 3D NDHWC convolution with a fused epilogue.
+
+    Each thread computes one output voxel across all output channels,
+    iterating over the Q x R x S filter window with vectorized input
+    loads and scalar filter accumulation.
+
+    Parameters:
+        input_layout: Memory layout of the input tensor (`NDHWC`).
+        filter_layout: Memory layout of the filter tensor (`QRSCF`).
+        output_layout: Memory layout of the output tensor (`NDHWC`).
+        input_type: Element type of the input tensor.
+        filter_type: Element type of the filter tensor.
+        output_type: Element type of the output tensor.
+        block_size: Thread block size used for both `x` and `y` block
+            dimensions.
+        EpilogueFnType: Type of `epilogue_fn`.
+        InputEngine: Storage engine of the input tensor.
+        FilterEngine: Storage engine of the filter tensor.
+        OutputEngine: Storage engine of the output tensor.
+
+    Arguments:
+        input: Input activation tensor in `NDHWC` layout.
+        filter: Convolution weight tensor in `QRSCF` layout.
+        output: Output activation tensor in `NDHWC` layout.
+        stride: Per-spatial-axis convolution stride as `(depth, height,
+            width)`.
+        dilation: Per-spatial-axis filter dilation as `(depth, height,
+            width)`.
+        padding: Per-spatial-axis symmetric padding as `(depth, height,
+            width)`.
+        num_groups: Number of convolution groups for grouped convolution.
+        epilogue_fn: Elementwise SIMD epilogue that stores each computed
+            output value in place of a direct store.
+    """
+    _conv3d_gpu_naive_ndhwc_qrscf_impl[has_epilogue_fn=True](
+        input,
+        filter,
+        output,
+        stride,
+        dilation,
+        padding,
+        num_groups,
+        epilogue_fn,
+    )
+
+
+@inline(.always)
+def _conv3d_gpu_naive_ndhwc_qrscf_impl[
+    EpilogueFnType: ConvSimdEpilogueFn, //, has_epilogue_fn: Bool
+](
+    input: TileTensor[mut=True, ...],
+    filter: TileTensor[mut=True, ...],
+    output: TileTensor[mut=True, ...],
+    stride: IndexList[3],
+    dilation: IndexList[3],
+    padding: IndexList[3],
+    num_groups: Int32,
+    epilogue_fn: EpilogueFnType,
+):
+    comptime input_type = input.dtype
+    comptime output_type = output.dtype
     var _num_groups = Int(num_groups)
     var N = Int(input.dim[0]())
     var D = Int(input.dim[1]())  # depth
     var H = Int(input.dim[2]())
     var W = Int(input.dim[3]())
-    var C_in = Int(input.dim[4]())  # channel_input
 
     var Q = Int(filter.dim[0]())
     var R = Int(filter.dim[1]())
@@ -5948,8 +6440,8 @@ def conv3d_gpu_naive_ndhwc_qrscf[
 
         var value = simd_value.reduce_add() + scalar_value
 
-        comptime if case .Some(epilogue_func) = maybe_epilogue_func:
-            epilogue_func(
+        comptime if has_epilogue_fn:
+            epilogue_fn(
                 (n, d_out_idx, h_out_idx, w_out_idx, co),
                 value.cast[output_type](),
             )

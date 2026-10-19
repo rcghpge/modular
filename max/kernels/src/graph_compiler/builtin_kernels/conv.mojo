@@ -535,12 +535,10 @@ struct ConvGPU:
         num_groups: Scalar,
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        @__copy_capture(output)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]):
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var output}:
             output._lambda_store[width=_width, element_alignment=_alignment](
                 coords, rebind[SIMD[output.dtype, _width]](val)
             )
@@ -561,8 +559,8 @@ struct ConvGPU:
             input.dtype,
             filter.dtype,
             output.dtype,
-            output_fn,
-            filter_layout == "FCRS",
+            has_epilogue_fn=True,
+            filter_is_fcrs=filter_layout == "FCRS",
         ](
             input.to_tile_tensor[.int64](),
             filter.to_tile_tensor[.int64](),
@@ -572,6 +570,7 @@ struct ConvGPU:
             _index_list[2 * (input.rank - 2)](paddings),
             Int(num_groups),
             ctx,
+            epilogue_fn=output_fn,
         )
 
 
@@ -630,12 +629,10 @@ struct Conv2dResidualAdd:
         bias: InputTensor[dtype=output.dtype, rank=1, ...],
         ctx: DeviceContext,
     ) raises:
-        @__parameter
         @inline(.always)
-        @__copy_capture(output, bias)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]):
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var output, var bias}:
             var result = val
 
             comptime if has_bias:
@@ -665,8 +662,8 @@ struct Conv2dResidualAdd:
             input.dtype,
             filter.dtype,
             output.dtype,
-            output_fn,
-            True,  # filter_is_fcrs
+            has_epilogue_fn=True,
+            filter_is_fcrs=True,
             has_residual=True,
         ](
             input_tt,
@@ -679,6 +676,7 @@ struct Conv2dResidualAdd:
             ctx,
             source.unsafe_ptr().as_unsafe_any_origin(),
             Float32(1.0),  # beta
+            output_fn,
         )
 
 
