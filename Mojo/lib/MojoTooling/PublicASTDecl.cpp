@@ -420,7 +420,7 @@ static ParameterEvaluator populateDocumentedParameters(
   return evaluator;
 }
 
-static std::string getVariableType(VarASTDecl &decl) {
+static std::string getVariableType(ASTDecl &decl) {
   ASTType type = decl.getToolingType().getReferenceElementType();
   return type.getAsString(ASTTypePrinterContext(&decl.getShared()));
 }
@@ -452,32 +452,25 @@ static FnTypeGeneratorType getSignatureFromDecl(ASTDecl *decl) {
   return nullptr;
 }
 
-static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
-  if (auto value = decl.getIfIRValue().getIfPValue())
-    return dyn_cast<ParamDeclRefAttr>(value.get());
-  return {};
-}
-
 static std::optional<DocumentedParameter>
 getDocumentedParameter(ASTDecl &decl) {
-  ParamDeclRefAttr param = getIfParameter(decl);
-  if (!param)
+  auto irDecl = dyn_cast<IRASTDecl>(&decl);
+  if (!irDecl || irDecl->getParamNumber() < 0)
     return std::nullopt;
 
-  StringRef name = demangleParameterName(param.getName(), /*forUser=*/true);
   std::unique_ptr<PublicDecl> parent = getPublicDecl(decl.getParentDecl());
   if (!parent)
     return std::nullopt;
   return TypeSwitch<PublicDecl *, std::optional<DocumentedParameter>>(&*parent)
       .Case<PublicFunctionDecl, PublicStructDecl>([&](auto *parent) {
-        for (const DocumentedParameter &candidate : parent->getParameters())
-          if (candidate.getName() == name) {
-            DocumentedParameter result(decl, candidate.getInfo(),
-                                       decl.getShared());
-            result.setDescription(candidate.getDescription());
-            return std::optional<DocumentedParameter>(std::move(result));
-          }
-        return std::optional<DocumentedParameter>();
+        size_t paramNumber = static_cast<size_t>(irDecl->getParamNumber());
+        if (parent->getParameters().size() <= paramNumber)
+          return std::optional<DocumentedParameter>();
+        const DocumentedParameter &candidate =
+            parent->getParameters()[paramNumber];
+        DocumentedParameter result(decl, candidate.getInfo(), decl.getShared());
+        result.setDescription(candidate.getDescription());
+        return std::optional<DocumentedParameter>(std::move(result));
       })
       .Default(std::nullopt);
 }
@@ -565,11 +558,14 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
 
   if (getSignatureFromDecl(decl))
     return PublicFunctionDecl::getKindStatic();
-  if (auto irDecl = dyn_cast<IRASTDecl>(decl);
-      irDecl && irDecl->getArgNumber() >= 0)
-    return PublicDeclKind::DK_PublicArgumentDecl;
-  if (getIfParameter(*decl))
-    return PublicDeclKind::DK_PublicParameterDecl;
+  if (auto irDecl = dyn_cast<IRASTDecl>(decl)) {
+    if (irDecl->getArgNumber() >= 0)
+      return PublicDeclKind::DK_PublicArgumentDecl;
+    if (irDecl->getParamNumber() >= 0)
+      return PublicDeclKind::DK_PublicParameterDecl;
+    if (irDecl->getCapturedName())
+      return PublicDeclKind::DK_PublicVariableDecl;
+  }
   return std::nullopt;
 }
 
@@ -621,8 +617,7 @@ std::string PublicDecl::getDeclarationSnippet(MojoParserContext &ctx) const {
         os, getName(), getStructFieldType(cast<StructFieldASTDecl>(getDecl())));
     return "var " + os.str();
   case PublicDeclKind::DK_PublicVariableDecl:
-    dumpIdentifierWithType(os, getName(),
-                           getVariableType(cast<VarASTDecl>(getDecl())));
+    dumpIdentifierWithType(os, getName(), getVariableType(getDecl()));
     return "var " + os.str();
   default:
     return {};
@@ -731,6 +726,29 @@ llvm::json::Object DocumentedParameter::toJSON(MojoParserContext &ctx) const {
 // DocumentedArgument
 //===----------------------------------------------------------------------===//
 
+/// Convert a signature argument index to its index in the documented argument
+/// list, omitting compiler-synthesized ABI arguments.
+static std::optional<size_t>
+getDocumentedArgumentIndex(FnTypeGeneratorType signature,
+                           size_t signatureArgIndex) {
+  if (!signature || signature.getNumArguments() <= signatureArgIndex)
+    return std::nullopt;
+
+  size_t documentedArgIndex = 0;
+  for (size_t index = 0; index <= signatureArgIndex; ++index) {
+    ArgConvention convention = signature.getArgConventions()[index];
+    bool isDocumented = convention != ArgConvention::ByRefError &&
+                        !(convention == ArgConvention::ByRefResult &&
+                          signature.getArgName(index) == "__result__");
+    if (index == signatureArgIndex)
+      return isDocumented ? std::optional<size_t>(documentedArgIndex)
+                          : std::nullopt;
+    if (isDocumented)
+      ++documentedArgIndex;
+  }
+  llvm_unreachable("signature argument index was range checked");
+}
+
 DocumentedArgument::DocumentedArgument(ASTDecl &decl) {
   ssize_t argNumber = -1;
   if (auto varDecl = dyn_cast<VarASTDecl>(&decl))
@@ -741,14 +759,20 @@ DocumentedArgument::DocumentedArgument(ASTDecl &decl) {
   if (argNumber < 0)
     return;
 
+  std::optional<size_t> documentedArgNumber =
+      getDocumentedArgumentIndex(getSignatureFromDecl(decl.getParentDecl()),
+                                 static_cast<size_t>(argNumber));
+  if (!documentedArgNumber)
+    return;
+
   auto functionView = llvm::unique_dyn_cast_or_null<PublicFunctionDecl>(
       getPublicDecl(decl.getParentDecl()));
   if (!functionView ||
-      functionView->getArguments().size() <= static_cast<size_t>(argNumber))
+      functionView->getArguments().size() <= *documentedArgNumber)
     return;
 
   const DocumentedArgument &argument =
-      functionView->getArgument(static_cast<size_t>(argNumber));
+      functionView->getArgument(*documentedArgNumber);
   info = argument.getInfo();
   description = argument.getDescription();
   initializeTypeMetadata(decl);
@@ -1695,7 +1719,7 @@ static llvm::json::Object serializeModuleDecl(ASTDecl &decl,
                             {"summary", decl.getDocumentationSummary()}};
 }
 
-static llvm::json::Object serializeVariableDecl(VarASTDecl &decl,
+static llvm::json::Object serializeVariableDecl(ASTDecl &decl,
                                                 MojoParserContext &ctx) {
   std::string type = getVariableType(decl);
   llvm::json::Object result{
@@ -1799,7 +1823,7 @@ llvm::json::Object PublicDecl::toJSON(MojoParserContext &ctx) const {
   case PublicDeclKind::DK_PublicTraitDecl:
     return serializeTraitDecl(cast<TraitASTDecl>(getDecl()), ctx);
   case PublicDeclKind::DK_PublicVariableDecl:
-    return serializeVariableDecl(cast<VarASTDecl>(getDecl()), ctx);
+    return serializeVariableDecl(getDecl(), ctx);
   case PublicDeclKind::DK_PublicModuleDecl:
     return serializeModuleDecl(getDecl(), ctx);
   case PublicDeclKind::DK_PublicPackageDecl:

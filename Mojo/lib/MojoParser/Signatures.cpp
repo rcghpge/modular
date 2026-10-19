@@ -1198,8 +1198,9 @@ TypeCheckedParamList::create(ParsedParamList &parsedParams,
     result.names.push_back(arg.name);
     result.variadicKinds.push_back(variadicKind);
 
-    ASTDecl &resolvedDecl = emitter.getDeclResolver().addFullyResolvedDecl(
+    auto &resolvedDecl = emitter.getDeclResolver().addFullyResolvedDecl(
         PValue(ParamDeclRefAttr::get(newDecl)), arg.name, arg.loc, &declScope);
+    resolvedDecl.setArgOrParamNumber(static_cast<ssize_t>(argIdx));
     emitter.shared.notifyListenerOnParameterDecl(resolvedDecl, arg.loc);
     remapper.appendParamDecl(newDecl);
   }
@@ -2259,7 +2260,7 @@ static void typeCheckOneArgument(size_t idx, DefASTDecl *fnDecl,
 
   auto &decl = typeEmitter.getDeclResolver().addFullyResolvedDecl(
       argIRValue, arg.name, arg.loc, &typeEmitter.declScope);
-  decl.setArgNumber(static_cast<ssize_t>(idx));
+  decl.setArgOrParamNumber(static_cast<ssize_t>(idx));
 
   // If we don't have a function decl, notify the listener immediately (function
   // arguments will be notified when they are fully resolved later).
@@ -2530,7 +2531,7 @@ static void typeCheckResult(ParsedArgument resultArg, DefASTDecl *fnDecl,
       // Add a decl so this will be found by name lookup within the body.
       auto &resultDecl = shared.getDeclResolver().addFullyResolvedDecl(
           MLValue(bbArg), resultArg.name, resultArg.loc, &declScope);
-      resultDecl.setArgNumber(
+      resultDecl.setArgOrParamNumber(
           static_cast<ssize_t>(tcSignature.argList.parsedArgs.size() - 1));
     }
 

@@ -1614,17 +1614,18 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
             auto &structDecl =
                 cast<StructASTDecl>(addDeclForOp(op, op.getSymNameAttr()));
             structDecl.setSelfType(StructASTDecl::computeSelfType(op));
-            for (ParamDeclAttr param : op.getParams()) {
+            for (auto [paramIndex, param] : llvm::enumerate(op.getParams())) {
               // Add the parameters as accessible member decls. Make sure
               // to only demangle user-visible names. Synthetic closure structs
               // use internal parameter names that should remain hidden.
               StringRef paramName =
                   op.isSynthetic() ? param.getName()
                                    : demangleParameterName(param.getName());
-              declResolver->addFullyResolvedDecl(
+              auto &paramDecl = declResolver->addFullyResolvedDecl(
                   PValue(ParamDeclRefAttr::get(param)),
                   StringAttr::get(getContext(), paramName), structDecl.getLoc(),
                   &structDecl);
+              paramDecl.setArgOrParamNumber(static_cast<ssize_t>(paramIndex));
             }
           })
           .Case([&](TraitDeclOp op) {

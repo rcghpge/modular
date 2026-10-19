@@ -1103,6 +1103,21 @@ ClosureEmitter::PromotedClosure ClosureEmitter::promoteClosure(
     entryBlock.insertArgument(static_cast<unsigned>(0), selfRuntimeArgType,
                               selfArgLoc);
 
+    DenseSet<ASTDecl *> adjustedDecls;
+    for (auto &[_, children] : nestedFnDecl.getDeclsInScope()) {
+      for (ASTDecl *child : children) {
+        if (!adjustedDecls.insert(child).second ||
+            child->getParentDecl() != &nestedFnDecl)
+          continue;
+        if (auto irDecl = dyn_cast<IRASTDecl>(child);
+            irDecl && irDecl->getArgNumber() >= 0)
+          irDecl->setArgOrParamNumber(irDecl->getArgNumber() + 1);
+        if (auto varDecl = dyn_cast<VarASTDecl>(child);
+            varDecl && varDecl->isArgument())
+          varDecl->setArgNumber(varDecl->getArgNumber() + 1);
+      }
+    }
+
     if (ArrayAttr argAttrs = function.getFnArgAttrs();
         argAttrs && !argAttrs.empty()) {
       SmallVector<Attribute> newArgAttrs;
@@ -2607,9 +2622,11 @@ ASTDecl *ClosureEmitter::addCaptureValue(DefASTDecl &closure, SMLoc location,
   assert(captureValue && "must set capture value");
   // Ensure the capture value we created is used when parsing the body of the
   // closure.
-  ASTDecl &captureValueDecl = shared.getDeclResolver().addFullyResolvedDecl(
-      captureValue, StringAttr::get(shared.getContext(), name),
-      closure.getLoc(), signatureDecl ? signatureDecl : &closure);
+  StringAttr captureName = StringAttr::get(shared.getContext(), name);
+  IRASTDecl &captureValueDecl = shared.getDeclResolver().addFullyResolvedDecl(
+      captureValue, captureName, closure.getLoc(),
+      signatureDecl ? signatureDecl : &closure);
+  captureValueDecl.setCapturedName(captureName);
   shared.addCaptureToScope(closure, result,
                            Capture(captureValue, convention, name));
   return &captureValueDecl;

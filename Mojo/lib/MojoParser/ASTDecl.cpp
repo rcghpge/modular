@@ -90,6 +90,10 @@ std::optional<StringRef> ASTDecl::getName() {
       return signature.getArgName(argNumber);
   }
 
+  if (auto irDecl = dyn_cast<IRASTDecl>(this);
+      irDecl && irDecl->getCapturedName())
+    return irDecl->getCapturedName().getValue();
+
   if (auto paramRef = getIfParameter(*this))
     return demangleParameterName(paramRef.getName(), /*forUser=*/true);
 
@@ -137,7 +141,7 @@ IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
                      LexerCursor endCursor, ssize_t indentation)
     : ASTDecl(Kind::IR, shared, loc, parentDecl, cursor, endCursor,
               indentation),
-      value(std::move(value)), argNumber(-1) {}
+      value(std::move(value)), argOrParamNumber(-1) {}
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,
                                llvm::SMLoc loc, ASTDecl *parentDecl,

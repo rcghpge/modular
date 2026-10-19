@@ -2224,10 +2224,11 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
       // If we found it, it must be a parameter declaration.
       assert(paramDecls.size() == 1 &&
              "expected exactly one parameter declaration");
-      ASTDecl *paramDecl = paramDecls.front();
-      resolver.addFullyResolvedDecl(paramDecl->getIfIRValue(),
-                                    StringAttr::get(getContext(), paramName),
-                                    paramDecl->getLoc(), &sigDecl);
+      auto &paramDecl = cast<IRASTDecl>(*paramDecls.front());
+      auto &copiedDecl = resolver.addFullyResolvedDecl(
+          paramDecl.getIfIRValue(), StringAttr::get(getContext(), paramName),
+          paramDecl.getLoc(), &sigDecl);
+      copiedDecl.setArgOrParamNumber(paramDecl.getParamNumber());
     }
   }
 
@@ -2773,14 +2774,10 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
                     : VarDeclKind::Arg;
     VarDeclOp varDecl = emitter.emitVarDecl(
         resultName, funcOp.getUserResultType(), funcOp.getLoc(), kind);
-    ssize_t argNumber =
-        kind == VarDeclKind::Arg
-            ? static_cast<ssize_t>(funcSignature.getNumArguments())
-            : -1;
+    ssize_t argNumber = static_cast<ssize_t>(funcSignature.getNumArguments());
     auto &argDecl = cast<VarASTDecl>(resolver.addFullyResolvedDecl(
         varDecl.getOperation(), resultName, getLoc(), this));
-    if (argNumber >= 0)
-      argDecl.setArgNumber(argNumber);
+    argDecl.setArgNumber(argNumber);
     shared.notifyListenerOnArgumentDecl(argDecl, resultName, argDecl.getLoc());
   }
 
@@ -5427,11 +5424,12 @@ LogicalResult ExtensionASTDecl::resolveBody(Lexer &lexer) {
 
   // Copy struct param decls into the extension, so extension methods and
   // aliases can reference the struct's param decls.
-  for (ParamDeclAttr param : structDeclOp.getParams()) {
+  for (auto [paramIndex, param] : llvm::enumerate(structDeclOp.getParams())) {
     StringAttr demangledName =
         StringAttr::get(getContext(), demangleParameterName(param.getName()));
-    resolver.addFullyResolvedDecl(PValue(ParamDeclRefAttr::get(param)),
-                                  demangledName, getLoc(), this);
+    auto &paramDecl = resolver.addFullyResolvedDecl(
+        PValue(ParamDeclRefAttr::get(param)), demangledName, getLoc(), this);
+    paramDecl.setArgOrParamNumber(static_cast<ssize_t>(paramIndex));
   }
   // Set extension's parameters to match target struct. This is to make it so
   // the verifier can see the param-decls and be aware of them when it's

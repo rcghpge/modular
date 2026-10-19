@@ -537,9 +537,27 @@ public:
   CValue getIfIRValue() const override { return value; }
 
   /// Returns this function argument's number, or -1 for a non-argument.
-  ssize_t getArgNumber() const { return argNumber; }
+  ssize_t getArgNumber() const {
+    if (value.getIfPValue())
+      return -1;
+    return argOrParamNumber;
+  }
 
-  void setArgNumber(ssize_t newArgNumber) { argNumber = newArgNumber; }
+  /// Returns this parameter's number, or -1 for a non-parameter.
+  ssize_t getParamNumber() const {
+    if (!value.getIfPValue()) // Might be an argument.
+      return -1;
+    return argOrParamNumber;
+  }
+
+  void setArgOrParamNumber(ssize_t newArgOrParamNumber) {
+    argOrParamNumber = newArgOrParamNumber;
+  }
+  StringAttr getCapturedName() const { return capturedName; }
+  void setCapturedName(StringAttr newCapturedName) {
+    assert(newCapturedName && "captured declarations require a name");
+    capturedName = newCapturedName;
+  }
   void setValue(CValue newValue) { value = std::move(newValue); }
 
 private:
@@ -551,7 +569,8 @@ private:
             ssize_t indentation);
 
   CValue value;
-  ssize_t argNumber;
+  ssize_t argOrParamNumber;
+  StringAttr capturedName;
 };
 
 /// An AST declaration backed by an operation without dedicated declaration
