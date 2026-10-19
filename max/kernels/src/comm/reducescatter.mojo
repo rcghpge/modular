@@ -103,9 +103,9 @@ def _load_reduce[
             consistency=Consistency.RELAXED,
             accum_type=accum_type,
         ](
-            (in_tiles[0].ptr_at_offset(Coord(elem_idx))).address_space_cast[
-                .GLOBAL
-            ]()
+            (
+                in_tiles[0].ptr_at_offset(Coord(elem_idx))
+            ).unsafe_address_space_cast[.GLOBAL]()
         )
     else:
         # Regular mode: manual accumulation
@@ -120,7 +120,7 @@ def _load_reduce[
         comptime for gpu_idx in range(1, ngpus):
             accum += (
                 in_tiles[gpu_idx]
-                .address_space_cast[_target_address_space]()
+                .unsafe_address_space_cast[_target_address_space]()
                 .load[width=simd_width, alignment=alignment]((elem_idx,))
                 .cast[accum_type]()
             )
@@ -566,7 +566,7 @@ def _reducescatter_relay_kernel[
             comptime for i in range(ngpus):
                 accum += (
                     in_ptrs[i]
-                    .address_space_cast[_target_address_space]()
+                    .unsafe_address_space_cast[_target_address_space]()
                     .load[
                         width=simd_width,
                         alignment=alignment,
@@ -580,13 +580,15 @@ def _reducescatter_relay_kernel[
             comptime if has_residual:
                 reduced = (
                     reduced.cast[accum_type]()
-                    + residual_ptr.address_space_cast[_target_address_space]()
+                    + residual_ptr.unsafe_address_space_cast[
+                        _target_address_space
+                    ]()
                     .load[width=simd_width, alignment=alignment](
                         base + elem_idx
                     )
                     .cast[accum_type]()
                 ).cast[dtype]()
-            out_ptr.address_space_cast[_target_address_space]().store[
+            out_ptr.unsafe_address_space_cast[_target_address_space]().store[
                 width=simd_width, alignment=alignment
             ](elem_idx, reduced)
     else:
@@ -627,10 +629,10 @@ def _reducescatter_relay_kernel[
         # destination inside the loop makes the compiler stage the whole
         # table through scratch memory.
         var base = Int(peer_starts[dst])
-        var dst_ptr = peer_out_ptrs[dst].address_space_cast[
+        var dst_ptr = peer_out_ptrs[dst].unsafe_address_space_cast[
             _target_address_space
         ]()
-        var dst_res_ptr = peer_residual_ptrs[dst].address_space_cast[
+        var dst_res_ptr = peer_residual_ptrs[dst].unsafe_address_space_cast[
             _target_address_space
         ]()
 
@@ -661,7 +663,7 @@ def _reducescatter_relay_kernel[
                     comptime for g in range(ngpus):
                         data[u * ngpus + g] = (
                             src_ptrs[g]
-                            .address_space_cast[_target_address_space]()
+                            .unsafe_address_space_cast[_target_address_space]()
                             .load[
                                 width=simd_width,
                                 alignment=alignment,

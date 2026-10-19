@@ -3505,11 +3505,13 @@ struct DevicePointerEngine[*, element_width: Int = 1](TensorOps):
         # space, so Metal is out of scope for this stopgap (see GPUA-6).
         comptime if is_gpu():
             return rebind[ResultPtr](
-                _device_leaf_ptr(storage).address_space_cast[address_space]()
+                _device_leaf_ptr(storage).unsafe_address_space_cast[
+                    address_space
+                ]()
             )
         else:
             return rebind[ResultPtr](
-                storage.unsafe_ptr().address_space_cast[address_space]()
+                storage.unsafe_ptr().unsafe_address_space_cast[address_space]()
             )
 
     @staticmethod

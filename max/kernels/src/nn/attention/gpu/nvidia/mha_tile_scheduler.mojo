@@ -899,7 +899,7 @@ struct QueuedTileScheduler[
         out self,
         gidx_ptr: MutPointer[UInt32, MutAnyOrigin],
     ):
-        self.gidx_ptr = gidx_ptr.address_space_cast[.GLOBAL]()
+        self.gidx_ptr = gidx_ptr.unsafe_address_space_cast[.GLOBAL]()
 
     @inline(.always)
     def get_current_work_info[

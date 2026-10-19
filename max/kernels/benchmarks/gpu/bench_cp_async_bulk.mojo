@@ -110,8 +110,8 @@ def bulk_memcpy_kernel[
     fence_mbarrier_init()
     barrier()
 
-    var src_g = src.address_space_cast[.GLOBAL]()
-    var dst_g = dst.address_space_cast[.GLOBAL]()
+    var src_g = src.unsafe_address_space_cast[.GLOBAL]()
+    var dst_g = dst.unsafe_address_space_cast[.GLOBAL]()
 
     var first = block_idx.x * NUM_WARPS + w
     var stride = Int(gpu_grid_dim.x) * NUM_WARPS

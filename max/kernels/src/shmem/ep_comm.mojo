@@ -2670,7 +2670,7 @@ struct EPLocalSyncCounters[n_experts: Int](
     def __init__(out self, ptr: MutPointer[Int32, ...]):
         self.ptr = ptr.unsafe_origin_cast[
             MutUntrackedOrigin
-        ]().address_space_cast[.GENERIC]()
+        ]().unsafe_address_space_cast[.GENERIC]()
 
     @inline(.always)
     def __init__(out self, mut buffer: DeviceBuffer[.int32]):

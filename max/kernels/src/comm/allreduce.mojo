@@ -841,7 +841,7 @@ def _allreduce_2stage_kernel[
         var tmps = Array[_, ngpus](
             fill_with_unrolled=lambda [i: Int]() -> PtrType: (
                 rank_sigs[circular_add[ngpus](_my_rank, i)]
-                .address_space_cast[.GENERIC]()
+                .unsafe_address_space_cast[.GENERIC]()
                 .unsafe_offset(1)
             ).unsafe_bitcast[Scalar[dtype]]()
         )
@@ -924,7 +924,7 @@ def _allreduce_2stage_kernel[
                 output_lambda[width=simd_width, alignment=alignment](
                     output_layout.idx2crd(dst_idx),
                     tmps[gpu_idx]
-                    .address_space_cast[_target_address_space]()
+                    .unsafe_address_space_cast[_target_address_space]()
                     .load[width=simd_width, alignment=alignment](idx),
                 )
 
@@ -939,7 +939,7 @@ def _allreduce_2stage_kernel[
                 output_lambda[width=simd_width, alignment=alignment](
                     output_layout.idx2crd(dst_idx),
                     tmps[global_tid]
-                    .address_space_cast[_target_address_space]()
+                    .unsafe_address_space_cast[_target_address_space]()
                     .load[width=simd_width, alignment=alignment](idx),
                 )
 

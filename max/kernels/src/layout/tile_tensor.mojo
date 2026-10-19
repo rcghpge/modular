@@ -1937,13 +1937,13 @@ struct TileTensor[
         # cleanly; without it the inferred dtype is a comptime expression that
         # fails to unify across the two pointer arguments.
         var dst_ptr = (
-            self.ptr.address_space_cast[.SHARED]()
+            self.ptr.unsafe_address_space_cast[.SHARED]()
             .unsafe_mut_cast[True]()
             .unsafe_bitcast[Scalar[Self.dtype]]()
         )
-        var src_ptr = src.ptr.address_space_cast[.GLOBAL]().unsafe_bitcast[
-            Scalar[Self.dtype]
-        ]()
+        var src_ptr = src.ptr.unsafe_address_space_cast[
+            .GLOBAL
+        ]().unsafe_bitcast[Scalar[Self.dtype]]()
 
         comptime for i in range(num_vecs):
             var src_idx = src.layout[linear_idx_type=src.linear_idx_type](

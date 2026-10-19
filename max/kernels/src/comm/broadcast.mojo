@@ -107,7 +107,7 @@ def broadcast_multimem_kernel[
             comptime alignment = align_of[SIMD[dtype, simd_width]]()
 
             # Get multicast output pointer and input pointer
-            var out_ptr = output.ptr.address_space_cast[.GLOBAL]()
+            var out_ptr = output.ptr.unsafe_address_space_cast[.GLOBAL]()
             var in_tensor = input.address_space_cast[
                 _target_address_space
             ]().reshape(row_major(num_elements))
@@ -319,7 +319,7 @@ def broadcast_pull_2stage_kernel[
     comptime PtrType = MutPointer[Scalar[dtype], MutAnyOrigin]
     var payloads = Array[_, ngpus](
         fill_with_unrolled=lambda [i: Int]() -> PtrType: (
-            rank_sigs[i].address_space_cast[.GENERIC]().unsafe_offset(1)
+            rank_sigs[i].unsafe_address_space_cast[.GENERIC]().unsafe_offset(1)
         ).unsafe_bitcast[Scalar[dtype]]()
     )
 
@@ -351,10 +351,10 @@ def broadcast_pull_2stage_kernel[
         for idx in range(
             my_chunk_start + thr_local_start, aligned_chunk_end, elem_stride
         ):
-            var data = root_input_ptr.address_space_cast[
+            var data = root_input_ptr.unsafe_address_space_cast[
                 _target_address_space
             ]().load[width=simd_width, alignment=alignment, invariant=True](idx)
-            my_payload.address_space_cast[_target_address_space]().store[
+            my_payload.unsafe_address_space_cast[_target_address_space]().store[
                 alignment=alignment
             ](idx - my_chunk_start, data)
             result_tt.store[alignment=alignment]((idx,), data)
@@ -362,10 +362,10 @@ def broadcast_pull_2stage_kernel[
         # Handle tail elements (spread across threads)
         var tail_idx = aligned_chunk_end + global_tid
         if tail_idx < my_chunk_end:
-            var data = root_input_ptr.address_space_cast[
+            var data = root_input_ptr.unsafe_address_space_cast[
                 _target_address_space
             ]().load[width=1, invariant=True](tail_idx)
-            my_payload.address_space_cast[_target_address_space]().store(
+            my_payload.unsafe_address_space_cast[_target_address_space]().store(
                 tail_idx - my_chunk_start, data
             )
             result_tt.store((tail_idx,), data)
@@ -405,7 +405,7 @@ def broadcast_pull_2stage_kernel[
 
                     # Check if idx is within this chunk's aligned bounds
                     if idx < chunk_size:
-                        var data = src_payload.address_space_cast[
+                        var data = src_payload.unsafe_address_space_cast[
                             _target_address_space
                         ]().load[width=simd_width, alignment=alignment](idx)
                         # Write to final position in result
@@ -423,7 +423,7 @@ def broadcast_pull_2stage_kernel[
             ):
                 var last_payload = payloads[ngpus - 1]
                 for i in range(last_aligned_size, last_chunk_size):
-                    var data = last_payload.address_space_cast[
+                    var data = last_payload.unsafe_address_space_cast[
                         _target_address_space
                     ]().load(i)
                     result_tt.store((last_chunk_start + i,), data)
@@ -431,14 +431,14 @@ def broadcast_pull_2stage_kernel[
         # Root: copy all elements from input to result (after Stage 2)
         # Skip if in-place (input and result point to same memory)
         var is_inplace = (
-            root_input_ptr.address_space_cast[_target_address_space]()
+            root_input_ptr.unsafe_address_space_cast[_target_address_space]()
             == result_tt.ptr
         )
         if is_root and not is_inplace:
             var num_simd_vectors = _num_elements // simd_width
             for idx in range(global_tid, num_simd_vectors, stride):
                 var elem_idx = idx * simd_width
-                var data = root_input_ptr.address_space_cast[
+                var data = root_input_ptr.unsafe_address_space_cast[
                     _target_address_space
                 ]().load[width=simd_width, alignment=alignment, invariant=True](
                     elem_idx
@@ -448,7 +448,7 @@ def broadcast_pull_2stage_kernel[
             # Handle tail elements (spread across threads)
             var root_tail_idx = tail_start + global_tid
             if root_tail_idx < _num_elements:
-                var data = root_input_ptr.address_space_cast[
+                var data = root_input_ptr.unsafe_address_space_cast[
                     _target_address_space
                 ]().load[width=1, invariant=True](root_tail_idx)
                 result_tt.store((root_tail_idx,), data)

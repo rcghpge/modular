@@ -1620,7 +1620,7 @@ struct BlackwellMatmulSM100Kernel[
                     var src_ptr = TileTensor(
                         bias_1d_tile._offset_storage(gmem_offset + lane_start),
                         bias_1d_tile.layout,
-                    ).ptr.address_space_cast[.GLOBAL]()
+                    ).ptr.unsafe_address_space_cast[.GLOBAL]()
                     var dst_ptr = smem_tile._storage.unsafe_offset(lane_start)
                     comptime for chunk in range(num_copies):
                         async_copy[

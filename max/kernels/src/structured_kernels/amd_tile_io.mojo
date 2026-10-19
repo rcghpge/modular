@@ -1963,7 +1963,9 @@ struct SubTileLoaderLDS[
             var src_dist = src_partitions.vectorize[1, load_width]().distribute[
                 thread_layout
             ](umod(swizzled_worker_idx, WARP_SIZE))
-            var dst_ptr = dst_partitions.ptr.address_space_cast[.SHARED]()
+            var dst_ptr = dst_partitions.ptr.unsafe_address_space_cast[
+                .SHARED
+            ]()
 
             var desc_ptr_ = MutPointer[
                 BFloat16, MutAnyOrigin, address_space=.BUFFER_RESOURCE

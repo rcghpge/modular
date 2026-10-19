@@ -42,7 +42,7 @@ def _raw[
     return (
         t.ptr.unsafe_mut_cast[True]()
         .unsafe_origin_cast[MutUntrackedOrigin]()
-        .address_space_cast[.GENERIC]()
+        .unsafe_address_space_cast[.GENERIC]()
     )
 
 

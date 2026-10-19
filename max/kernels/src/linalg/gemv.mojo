@@ -3194,7 +3194,7 @@ struct _MmaCpAsyncGmemLoaderA[
                     1 + next_stage * 2
                 ][].try_wait(next_phase)
 
-            var gmem_base = self.act.ptr.address_space_cast[.GLOBAL]()
+            var gmem_base = self.act.ptr.unsafe_address_space_cast[.GLOBAL]()
             var smem_tile_ptr = self.smem_a[self.stage].ptr
             comptime for v in range(Self.vec_per_iter):
                 var linear = (
@@ -3334,7 +3334,7 @@ struct _MmaCpAsyncGmemLoaderB[
                     1 + next_stage * 2
                 ][].try_wait(next_phase)
 
-            var gmem_base = self.weight.ptr.address_space_cast[.GLOBAL]()
+            var gmem_base = self.weight.ptr.unsafe_address_space_cast[.GLOBAL]()
             var smem_tile_ptr = self.smem_b[self.stage].ptr
             comptime for v in range(Self.vec_per_iter):
                 var linear = (

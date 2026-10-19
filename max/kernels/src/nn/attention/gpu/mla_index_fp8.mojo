@@ -400,7 +400,7 @@ struct BlockMaskScoreHook[block_size: Int](IndexerScoreHook):
                     + Int(block) if in_range else 0
                 )
             )
-            .address_space_cast[.GLOBAL]()
+            .unsafe_address_space_cast[.GLOBAL]()
             .unsafe_load[invariant=True]()
         )
         return value if in_range and kept != 0 else neg_inf[dtype]()
@@ -887,12 +887,16 @@ def _mxfp4_index_k_cache[
     )
     # The cache stores its 1D and 2D tensors on the default engine.
     var lengths = TileTensor(
-        cache_lengths.ptr.address_space_cast[.GENERIC]().as_unsafe_any_origin(),
+        cache_lengths.ptr.unsafe_address_space_cast[
+            .GENERIC
+        ]().as_unsafe_any_origin(),
         InternalLayout(Coord(Int64(cache_lengths.dim[0]())), Coord(Idx[1])),
     )
     var lut_cols = Int64(lookup_table.dim[1]())
     var lut = TileTensor(
-        lookup_table.ptr.address_space_cast[.GENERIC]().as_unsafe_any_origin(),
+        lookup_table.ptr.unsafe_address_space_cast[
+            .GENERIC
+        ]().as_unsafe_any_origin(),
         InternalLayout(
             Coord(Int64(lookup_table.dim[0]()), lut_cols),
             Coord(lut_cols, Idx[1]),
@@ -948,7 +952,7 @@ def mxfp4_index_k_cache[
     return _mxfp4_index_k_cache[page_size](
         cache.ptr.unsafe_mut_cast[True]()
         .unsafe_origin_cast[MutUntrackedOrigin]()
-        .address_space_cast[.GENERIC](),
+        .unsafe_address_space_cast[.GENERIC](),
         Int64(cache.dim[0]()),
         page_stride,
         lookup_table,

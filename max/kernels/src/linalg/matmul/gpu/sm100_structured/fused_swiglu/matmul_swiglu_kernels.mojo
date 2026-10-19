@@ -1903,7 +1903,7 @@ def blackwell_swiglu_warp_specialized_kernel[
                         bias_1d_tile.value()
                         .ptr.unsafe_offset(gmem_offset)
                         .unsafe_offset(lane_start)
-                    ).address_space_cast[.GLOBAL]()
+                    ).unsafe_address_space_cast[.GLOBAL]()
                     var bias_smem_base: MutPointer[
                         Scalar[c_type],
                         origin_of(smem.bias_smem),

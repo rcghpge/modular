@@ -199,7 +199,7 @@ def cpaysnc_producer_consumer_pipeline_kernel[
             async_copy[16](
                 src.unsafe_ptr()
                 .unsafe_offset(offset)
-                .address_space_cast[.GLOBAL](),
+                .unsafe_address_space_cast[.GLOBAL](),
                 smem.unsafe_offset(offset),
             )
             async_copy_arrive(produced_mbar[i].unsafe_ptr())

@@ -572,7 +572,7 @@ def async_copy_with_bound_check[
         # Calculate source pointer based on 2D coordinates
         var src_ptr = (
             src._storage.unsafe_bitcast[Scalar[dtype]]()
-            .address_space_cast[.GLOBAL]()
+            .unsafe_address_space_cast[.GLOBAL]()
             .unsafe_offset(dst_coord1)
             .unsafe_offset(dst_coord0 * Int32(src_stride0))
         )

@@ -2319,7 +2319,7 @@ struct TMATensorTile[
         var src_desc = (
             Pointer(to=self.descriptor)
             .unsafe_bitcast[UInt8]()
-            .address_space_cast[.GLOBAL]()
+            .unsafe_address_space_cast[.GLOBAL]()
         )
         var dst_desc = smem_tma_descriptor_ptr.unsafe_bitcast[
             UInt8
@@ -2944,7 +2944,7 @@ def create_tma_tile_gather4[
     return create_tma_descriptor[dtype, 2, swizzle_mode, l2_promotion](
         DeviceBuffer(
             ctx,
-            ptr.address_space_cast[.GENERIC](),
+            ptr.unsafe_address_space_cast[.GENERIC](),
             1,
             owning=False,
         ),
@@ -3045,7 +3045,7 @@ def create_tensor_tile[
             ](
                 DeviceBuffer(
                     ctx,
-                    tensor.ptr.address_space_cast[.GENERIC](),
+                    tensor.ptr.unsafe_address_space_cast[.GENERIC](),
                     1,
                     owning=False,
                 ),
@@ -3066,7 +3066,7 @@ def create_tensor_tile[
             ](
                 DeviceBuffer(
                     ctx,
-                    tensor.ptr.address_space_cast[.GENERIC](),
+                    tensor.ptr.unsafe_address_space_cast[.GENERIC](),
                     1,
                     owning=False,
                 ),
@@ -3087,7 +3087,7 @@ def create_tensor_tile[
             return create_tma_descriptor[dtype, 4, swizzle_mode](
                 DeviceBuffer(
                     ctx,
-                    tensor.ptr.address_space_cast[.GENERIC](),
+                    tensor.ptr.unsafe_address_space_cast[.GENERIC](),
                     1,
                     owning=False,
                 ),
@@ -3110,7 +3110,7 @@ def create_tensor_tile[
             return create_tma_descriptor[dtype, 5, swizzle_mode](
                 DeviceBuffer(
                     ctx,
-                    tensor.ptr.address_space_cast[.GENERIC](),
+                    tensor.ptr.unsafe_address_space_cast[.GENERIC](),
                     1,
                     owning=False,
                 ),
@@ -3327,7 +3327,7 @@ def _create_split_tma_folded[
     # rank-3/4/5 `TMATensorTile` are distinct nominal types).
     var device_buf = DeviceBuffer(
         ctx,
-        ptr.address_space_cast[.GENERIC](),
+        ptr.unsafe_address_space_cast[.GENERIC](),
         1,
         owning=False,
     )

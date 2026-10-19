@@ -270,7 +270,7 @@ def index_key_layer_pages[
     var base = (
         blocks.ptr.unsafe_mut_cast[True]()
         .unsafe_origin_cast[MutUntrackedOrigin]()
-        .address_space_cast[.GENERIC]()
+        .unsafe_address_space_cast[.GENERIC]()
     )
     return (
         base.unsafe_offset(layer * Int(blocks.dim[3]()) * record_bytes),

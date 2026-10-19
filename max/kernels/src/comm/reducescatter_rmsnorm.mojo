@@ -201,7 +201,7 @@ def _reducescatter_rmsnorm_kernel[
             comptime for gpu_idx in range(ngpus):
                 accum += (
                     ptrs[gpu_idx]
-                    .address_space_cast[_target_address_space]()
+                    .unsafe_address_space_cast[_target_address_space]()
                     .load[
                         width=simd_width,
                         alignment=align,

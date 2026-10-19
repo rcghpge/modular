@@ -14,7 +14,6 @@ IGNORED_POINTER_DEPRECATIONS = [
     "Pointer.load",
     "Pointer.store",
     "Pointer.free",
-    "Pointer.address_space_cast",
 ]
 
 IGNORED_POINTER_DEPRECATIONS_COPTS = [
