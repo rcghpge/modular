@@ -343,6 +343,8 @@ modular_py_test(
     srcs = ["test_eval_common.py"],
     deps = [
         ":eval_common",
+        requirement("httpx"),
+        requirement("openai"),
     ],
 )
 
