@@ -2371,9 +2371,9 @@ def group_norm_gpu_multi_block_norm[
                 # Vectorized gamma/beta: when all SIMD elements share the
                 # same channel (common case for large _spatial dims), load
                 # gamma/beta once and broadcast.
-                var c_first = c_base + offset // _spatial
-                var c_last = c_base + ceildiv(offset + simd_width - 1, _spatial)
-                if c_first == c_last:
+                var c_rel, in_channel = divmod(offset, _spatial)
+                var c_first = c_base + c_rel
+                if in_channel + simd_width <= _spatial:
                     var gamma_val = gamma_fn[1](Coord(c_first)).cast[
                         accum_type
                     ]()
@@ -2485,7 +2485,7 @@ def group_norm_gpu[
             # the thread's starting column lands near a boundary.  Fall back
             # to element-wise scalar loads in that case so each element's
             # full (n, c, h, w) index is recomputed independently.
-            if ceildiv(col + simd_width - 1, inner_volume) != c_offset:
+            if hw + simd_width > inner_volume or w + simd_width > last_dim:
                 var result = SIMD[dtype, simd_width]()
                 for i in range(simd_width):
                     var cur_col = col + i
@@ -2503,7 +2503,7 @@ def group_norm_gpu[
             var c_offset, l = divmod(col, inner_volume)
             c += c_offset
 
-            if ceildiv(col + simd_width - 1, inner_volume) != c_offset:
+            if l + simd_width > inner_volume:
                 var result = SIMD[dtype, simd_width]()
                 for i in range(simd_width):
                     var cur_col = col + i
