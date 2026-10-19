@@ -24,6 +24,7 @@ MOJO_DEPS = [
     "//Kernels/lib/mega_mhc",
     "//Kernels/lib/msa",
     "//Kernels/lib/qsa",
+    "//Kernels/lib/topk_coop",
     "//max:algorithm",
     "//max:builtin_kernels",
     "//max:builtin_primitives",

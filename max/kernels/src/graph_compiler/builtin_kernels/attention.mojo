@@ -83,7 +83,11 @@ from nn.attention.gpu.mla_graph import (
     mla_prefill_decode_graph_fp8,
     mla_prefill_decode_graph_bf16,
 )
-from nn.attention.gpu.mla_index_fp8 import mla_indexer_ragged_float8_paged
+from nn.attention.gpu.mla_index_fp8 import (
+    BlockSplitTopk,
+    IndexerTopk,
+    mla_indexer_ragged_float8_paged,
+)
 from nn.attention.compress_windows import compress_windows_ragged_paged
 from nn.attention.indexer_score import indexer_score_ragged_paged
 from nn.attention.latent_sparse_attention import (
@@ -518,6 +522,7 @@ struct MLAKPoolRingClose:
 @inline(.always)
 def _mla_indexer_ragged_float8_paged_execute[
     R: SparseIndexRemap,
+    Topk: IndexerTopk = BlockSplitTopk,
     //,
     *,
     num_heads: Int,
@@ -545,7 +550,11 @@ def _mla_indexer_ragged_float8_paged_execute[
     remap: R,
     ctx: DeviceContext,
 ) raises:
-    """Shared body of the indexer ops; `remap` is the optional second output."""
+    """Shared body of the indexer ops.
+
+    `remap` is the optional second output; `Topk` is the top-k dispatch,
+    which the op's registration picks.
+    """
     # Extract cache parameters from block shapes
     comptime page_size = Int(k_blocks.static_spec.shape_tuple[3])
     comptime head_dim = Int(k_blocks.static_spec.shape_tuple[5])
@@ -585,6 +594,7 @@ def _mla_indexer_ragged_float8_paged_execute[
         mask_str,
         kpool=kpool,
         write_logical=write_logical,
+        Topk=Topk,
     ](
         output_indices.to_tile_tensor[.int64](),
         q.to_tile_tensor[.int64](),

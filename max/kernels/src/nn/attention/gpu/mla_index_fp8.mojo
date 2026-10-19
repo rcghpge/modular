@@ -621,6 +621,7 @@ def mla_indexer_ragged_float8_paged[
     mask_str: StaticString,
     scores_dtype: DType = _SCORES_DTYPE,
     kpool: Int = 1,
+    Topk: IndexerTopk = BlockSplitTopk,
 ](
     output_indices: MutTileTensor[.int32, oi_layout, _],
     q: ImmTileTensor[dtype, q_layout, _],
@@ -650,6 +651,7 @@ def mla_indexer_ragged_float8_paged[
         mask_str: Name of the mask, `MaskName.NULL` or `MaskName.CAUSAL`.
         scores_dtype: Element type of the transient score matrix.
         kpool: Tokens per pooled cache row.
+        Topk: The top-k over the score rows.
 
     Args:
         output_indices: Dense `[total_seq_len, top_k]` top-k output.
@@ -671,6 +673,7 @@ def mla_indexer_ragged_float8_paged[
         scores_dtype,
         kpool,
         write_logical=True,
+        Topk=Topk,
     ](
         output_indices,
         q,
@@ -701,6 +704,7 @@ def mla_indexer_ragged_float8_paged[
     scores_dtype: DType = _SCORES_DTYPE,
     kpool: Int = 1,
     write_logical: Bool = False,
+    Topk: IndexerTopk = BlockSplitTopk,
 ](
     output_indices: MutTileTensor[.int32, oi_layout, _],
     q: ImmTileTensor[dtype, q_layout, _],
@@ -746,6 +750,7 @@ def mla_indexer_ragged_float8_paged[
         write_logical: Whether to write `output_indices` (defaults to
             `False`). `False` leaves it untouched, so it may be empty, and
             requires a remap: the remap output is then the only one.
+        Topk: The top-k over the score rows.
 
     Args:
         output_indices: Dense output tensor for top-k indices [total_seq_len, top_k].
@@ -792,6 +797,7 @@ def mla_indexer_ragged_float8_paged[
         scores_dtype,
         kpool,
         write_logical,
+        Topk=Topk,
     ](
         output_indices,
         q,
