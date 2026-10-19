@@ -51,7 +51,9 @@ prompt-and-draft token tensors inside the graph.
 class UnifiedDSparkDeepseekV41Inputs(UnifiedSpecDecodeInputs):
     """Graph inputs for one step of target-plus-drafter decoding.
 
-    :attr:`buffers` lists them in graph-input order: the ragged tokens, row
+    :attr:`buffers` lists them in graph-input order: the ragged tokens; the
+    per-device image span rows and their token rows (set by the pipeline's
+    vision encoder cache, zero rows on a step without images); the row
     offsets (and, under data parallelism, their host copy) and logit count;
     under data parallelism the replica splits; the signal buffers (only with
     more than one device); the KV cache buffers; under data parallelism each
@@ -109,6 +111,8 @@ class UnifiedDSparkDeepseekV41Inputs(UnifiedSpecDecodeInputs):
             splits = (self.data_parallel_splits,)
         return (
             self.tokens,
+            *self.vision_embeddings,
+            *self.vision_scatter_indices,
             self.input_row_offsets,
             *host_offsets,
             self.return_n_logits,

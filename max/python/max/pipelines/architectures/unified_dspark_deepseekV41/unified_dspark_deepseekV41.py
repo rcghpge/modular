@@ -94,6 +94,8 @@ class UnifiedDSparkDeepseekV41(BlockDriver[TrunkTaps, TensorValue]):
                 distributed=config.data_parallel_degree > 1,
                 data_parallel_degree=config.data_parallel_degree,
                 include_signal_buffers=len(config.devices) > 1,
+                enable_vision=True,
+                vision_hidden_size=config.hidden_size,
             ),
             speculative_config=speculative_config,
             enable_structured_output=enable_structured_output,

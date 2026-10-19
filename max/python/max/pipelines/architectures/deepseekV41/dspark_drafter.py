@@ -38,6 +38,7 @@ from .deepseekV41 import (
     DeepseekV41Trunk,
     HCStreams,
     ReplicaBatch,
+    VisionMerge,
 )
 from .layer_resolver import LayerInfo
 from .layer_resolver import resolve as resolve_layers
@@ -533,12 +534,14 @@ class DeepseekV41WithDSpark(DeepseekV41):
         split: ReplicaBatch,
         caches: Sequence[CSA2Cache],
         signal_buffers: Sequence[BufferValue],
+        visions: Sequence[VisionMerge] | None = None,
     ) -> tuple[list[TensorValue], list[TensorValue]]:
         """Runs :meth:`trunk_with_taps` with each device on its own requests.
 
         ``split`` is the batch cut per device
-        (:meth:`DeepseekV41.split_replicas`). Returns each device's pre-norm
-        ``[1, t_i, d]`` stream and its taps.
+        (:meth:`DeepseekV41.split_replicas`), and ``visions`` each device's
+        own image rows (:meth:`VisionMerge.for_rows`). Returns each device's
+        pre-norm ``[1, t_i, d]`` stream and its taps.
         """
         xs, taps = DeepseekV41Trunk.data_parallel_with_taps(
             [replica.trunk for replica in replicas],
@@ -559,6 +562,7 @@ class DeepseekV41WithDSpark(DeepseekV41):
                     strict=True,
                 )
             ],
+            visions=visions,
         )
         assert taps is not None
         return xs, taps

@@ -640,8 +640,7 @@ def max_images_per_request(pipeline_config: PipelineConfig) -> int | None:
     Set with ``--vision-config-overrides '{"max_images_per_request": N}'``,
     as vLLM's ``--limit-mm-per-prompt``. ``0`` serves text only: the vision
     model is neither loaded nor planned, and the router rejects any request
-    with an image. DSpark always serves text only, because its graph has no
-    vision inputs.
+    with an image.
 
     Raises:
         ValueError: On any other override key, or a cap that is not a
@@ -662,11 +661,6 @@ def max_images_per_request(pipeline_config: PipelineConfig) -> int | None:
             f"{MAX_IMAGES_PER_REQUEST} must be a non-negative integer, "
             f"got {cap!r}"
         )
-    if cap == 0:
-        return 0
-    speculative = pipeline_config.speculative
-    if speculative is not None and speculative.is_dspark():
-        return 0
     return cap
 
 

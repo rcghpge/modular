@@ -93,6 +93,8 @@ def driver_outputs(
         data_parallel_splits=inputs.data_parallel_splits,
         batch_context_lengths=inputs.batch_context_lengths,
         ep_inputs=inputs.ep_inputs or None,
+        vision_embeddings=inputs.vision_embeddings,
+        vision_scatter_indices=inputs.vision_scatter_indices,
         extra=(
             {ENGRAM_LOOKBACK: inputs.trailing[0].tensor} if has_engram else {}
         ),

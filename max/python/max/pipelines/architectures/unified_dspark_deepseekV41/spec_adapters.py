@@ -36,7 +36,12 @@ from max.pipelines.speculative.block_driver import (
 from max.pipelines.speculative.spec_target import Verified
 from max.pipelines.speculative.unified_graph_ops import broadcast_per_device
 
-from ..deepseekV41.deepseekV41 import DeepseekV41, gather_rows
+from ..deepseekV41.deepseekV41 import (
+    DeepseekV41,
+    DeepseekV41Trunk,
+    VisionMerge,
+    gather_rows,
+)
 from ..deepseekV41.dspark_drafter import (
     DeepseekV41DSparkDrafter,
     DeepseekV41WithDSpark,
@@ -125,8 +130,19 @@ class DeepseekV41BlockTarget:
         caches = leaf_caches(
             self.specs, batch.kv_collections, batch.passthrough_kv
         )
+        # Images only reach a step without drafts (the pipeline verifies no
+        # drafts while a request needs vision encoding), so the merged rows
+        # are the prompt rows the scatter indices were computed against.
+        visions = [
+            VisionMerge(embeddings, indices)
+            for embeddings, indices in zip(
+                batch.vision_embeddings,
+                batch.vision_scatter_indices,
+                strict=True,
+            )
+        ]
         if batch.data_parallel_degree > 1:
-            return self._verify_data_parallel(batch, caches)
+            return self._verify_data_parallel(batch, caches, visions)
         t = batch.merged_tokens.shape[0]
         rows = [
             RaggedRows.from_offsets(
@@ -146,28 +162,47 @@ class DeepseekV41BlockTarget:
         ]
         lookback = batch.extra.get(ENGRAM_LOOKBACK)
         lead = self.replicas[0]
+        tap_layer_ids = self.config.dspark_target_layer_ids
         if len(self.replicas) == 1:
-            x, taps = lead.trunk_with_taps(
-                tokens[0], rows[0], caches[0], lookback
+            x, taps = lead.trunk.forward_with_taps(
+                tokens[0],
+                rows[0],
+                caches[0],
+                tap_layer_ids=tap_layer_ids,
+                engram_operands=lead._engram_operands(
+                    tokens[0], rows[0], lookback
+                ),
+                vision=visions[0],
             )
+            assert taps is not None
             taps_per_dev = [taps]
         else:
-            x, taps_per_dev = (
-                DeepseekV41WithDSpark.trunk_with_taps_tensor_parallel(
-                    self.replicas,
+            x, tensor_parallel_taps = (
+                DeepseekV41Trunk.tensor_parallel_with_taps(
+                    [replica.trunk for replica in self.replicas],
                     tokens,
                     rows,
                     caches,
                     batch.signal_buffers,
-                    engram_lookback_ids=(
-                        broadcast_per_device(
-                            lookback, batch.signal_buffers, batch.n_devs
-                        )
-                        if lookback is not None
-                        else None
+                    tap_layer_ids=tap_layer_ids,
+                    engram_operands=DeepseekV41._engram_operands_tensor_parallel(
+                        self.replicas,
+                        tokens,
+                        rows,
+                        (
+                            broadcast_per_device(
+                                lookback, batch.signal_buffers, batch.n_devs
+                            )
+                            if lookback is not None
+                            else None
+                        ),
+                        batch.signal_buffers,
                     ),
+                    visions=visions,
                 )
             )
+            assert tensor_parallel_taps is not None
+            taps_per_dev = tensor_parallel_taps
         outputs = logits_postprocess(
             ops.reshape(x, [t, self.config.hidden_size]),
             batch.merged_offsets,
@@ -179,15 +214,21 @@ class DeepseekV41BlockTarget:
         return Verified(logits=outputs[1], hidden=(taps_per_dev, rows))
 
     def _verify_data_parallel(
-        self, batch: BlockBatch, caches: Sequence[CSA2Cache]
+        self,
+        batch: BlockBatch,
+        caches: Sequence[CSA2Cache],
+        visions: Sequence[VisionMerge],
     ) -> Verified[TrunkTaps]:
         """Runs :meth:`verify` with each device on its own replica's requests.
 
         The merged batch is replica-major; each device's taps and rows cover
         its own requests, and the logits cover the whole batch on device 0.
+        ``visions`` hold the whole batch's image rows on every device, and
+        each device merges its own.
         """
         assert batch.host_merged_offsets is not None
-        assert batch.data_parallel_splits is not None
+        splits = batch.data_parallel_splits
+        assert splits is not None
         manager = self.replicas[0].ep_batch_manager
         if manager is not None:
             assert batch.ep_inputs is not None
@@ -200,7 +241,7 @@ class DeepseekV41BlockTarget:
             ),
             batch.merged_offsets_per_dev,
             batch.host_merged_offsets,
-            batch.data_parallel_splits,
+            splits,
             caches,
             (
                 broadcast_per_device(
@@ -212,7 +253,16 @@ class DeepseekV41BlockTarget:
             prefix="verify",
         )
         xs, taps = DeepseekV41WithDSpark.trunk_with_taps_data_parallel(
-            self.replicas, split, caches, batch.signal_buffers
+            self.replicas,
+            split,
+            caches,
+            batch.signal_buffers,
+            visions=[
+                vision.for_rows(offsets, splits[i], splits[i + 1])
+                for i, (vision, offsets) in enumerate(
+                    zip(visions, batch.merged_offsets_per_dev, strict=True)
+                )
+            ],
         )
         lead = self.replicas[0]
         outputs = logits_postprocess(
