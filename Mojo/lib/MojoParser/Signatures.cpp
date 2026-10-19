@@ -2257,8 +2257,9 @@ static void typeCheckOneArgument(size_t idx, DefASTDecl *fnDecl,
   else // Everything else is passed in memory.
     argIRValue = CValue::getMValueForRef(bbArg);
 
-  ASTDecl &decl = typeEmitter.getDeclResolver().addFullyResolvedDecl(
+  auto &decl = typeEmitter.getDeclResolver().addFullyResolvedDecl(
       argIRValue, arg.name, arg.loc, &typeEmitter.declScope);
+  decl.setArgNumber(static_cast<ssize_t>(idx));
 
   // If we don't have a function decl, notify the listener immediately (function
   // arguments will be notified when they are fully resolved later).
@@ -2527,8 +2528,10 @@ static void typeCheckResult(ParsedArgument resultArg, DefASTDecl *fnDecl,
           body.addArgument(refType, shared.translateLocation(resultArg.loc));
 
       // Add a decl so this will be found by name lookup within the body.
-      shared.getDeclResolver().addFullyResolvedDecl(
+      auto &resultDecl = shared.getDeclResolver().addFullyResolvedDecl(
           MLValue(bbArg), resultArg.name, resultArg.loc, &declScope);
+      resultDecl.setArgNumber(
+          static_cast<ssize_t>(tcSignature.argList.parsedArgs.size() - 1));
     }
 
     // We know the ABI register result will be None now, which is trivial.

@@ -102,11 +102,11 @@ ASTDecl &DeclResolver::addDecl(Operation *operation, SMLoc loc,
   return decl;
 }
 
-ASTDecl &DeclResolver::addDecl(CValue value, SMLoc loc, StringAttr baseName,
-                               ASTDecl *parentDecl, LexerCursor cursor,
-                               LexerCursor endCursor, ssize_t indentation) {
-  ASTDecl &decl = createUnlistedDecl(value, loc, parentDecl, cursor, endCursor,
-                                     indentation);
+IRASTDecl &DeclResolver::addDecl(CValue value, SMLoc loc, StringAttr baseName,
+                                 ASTDecl *parentDecl, LexerCursor cursor,
+                                 LexerCursor endCursor, ssize_t indentation) {
+  auto &decl = createUnlistedDecl(value, loc, parentDecl, cursor, endCursor,
+                                  indentation);
   if (baseName)
     attachDeclToParentNameTable(&decl, baseName);
   return decl;
@@ -127,15 +127,15 @@ ASTDecl &DeclResolver::addFullyResolvedDecl(Operation *operation,
                                             StringAttr name, SMLoc loc,
                                             ASTDecl *parentDecl) {
   auto &decl = addDecl(operation, loc, name, parentDecl, LexerCursor(),
-                       LexerCursor(), 0);
+                       LexerCursor(), /*indentation=*/0);
   decl.resolvedness = DeclResolvedness::body;
   return decl;
 }
 
-ASTDecl &DeclResolver::addFullyResolvedDecl(CValue value, StringAttr name,
-                                            SMLoc loc, ASTDecl *parentDecl) {
-  auto &decl =
-      addDecl(value, loc, name, parentDecl, LexerCursor(), LexerCursor(), 0);
+IRASTDecl &DeclResolver::addFullyResolvedDecl(CValue value, StringAttr name,
+                                              SMLoc loc, ASTDecl *parentDecl) {
+  auto &decl = addDecl(value, loc, name, parentDecl, LexerCursor(),
+                       LexerCursor(), /*indentation=*/0);
   decl.resolvedness = DeclResolvedness::body;
   return decl;
 }
@@ -212,6 +212,7 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
     decl = shared.persistentAllocator.create<ASTDecl>(
         shared, loc, parentDecl, cursor, endCursor, indentation);
   }
+
   parsedDeclList.push_back(decl);
 
   // If this is a declaration which has a TypeCheckErrorType, then all
@@ -223,11 +224,11 @@ ASTDecl &DeclResolver::createUnlistedDecl(Operation *op, SMLoc loc,
   return *decl;
 }
 
-ASTDecl &DeclResolver::createUnlistedDecl(CValue value, SMLoc loc,
-                                          ASTDecl *parentDecl,
-                                          LexerCursor cursor,
-                                          LexerCursor endCursor,
-                                          ssize_t indentation) {
+IRASTDecl &DeclResolver::createUnlistedDecl(CValue value, SMLoc loc,
+                                            ASTDecl *parentDecl,
+                                            LexerCursor cursor,
+                                            LexerCursor endCursor,
+                                            ssize_t indentation) {
   auto *decl = shared.persistentAllocator.create<IRASTDecl>(
       shared, std::move(value), loc, parentDecl, cursor, endCursor,
       indentation);

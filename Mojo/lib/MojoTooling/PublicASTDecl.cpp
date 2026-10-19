@@ -452,74 +452,10 @@ static FnTypeGeneratorType getSignatureFromDecl(ASTDecl *decl) {
   return nullptr;
 }
 
-/// Return the index corresponding to a function argument declaration.
-static std::optional<size_t> getDeclArgIndex(ASTDecl &decl, BlockArgument arg) {
-  if (arg.getParentRegion())
-    return arg.getArgNumber();
-
-  size_t argIndex = 0;
-  for (auto [_, decls] : decl.getParentDecl()->getDeclsInScope()) {
-    if (decls.size() != 1)
-      continue;
-    if (auto value = decls.front()->getIfIRValue()) {
-      if (value.getIfPValue())
-        continue;
-      if (value.getMlirValue() == arg)
-        return argIndex;
-      ++argIndex;
-    }
-  }
-  return std::nullopt;
-}
-
-/// Return a function argument that is represented directly in the IR.
-static BlockArgument getIfNotOwnedFunctionArgument(ASTDecl &decl) {
-  Value value = decl.getIfIRValue().getMlirValue();
-  if (!value)
-    return {};
-  if (auto rebind = value.getDefiningOp<RebindOp>())
-    value = rebind.getInput();
-
-  if (auto arg = dyn_cast<BlockArgument>(value)) {
-    if (isa_and_nonnull<FnOp>(arg.getOwner()->getParentOp()) ||
-        !arg.getOwner()->getParentOp())
-      return arg;
-  }
-  return {};
-}
-
 static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
   if (auto value = decl.getIfIRValue().getIfPValue())
     return dyn_cast<ParamDeclRefAttr>(value.get());
   return {};
-}
-
-static std::optional<DocumentedArgument> getDocumentedArgument(ASTDecl &decl) {
-  auto getWithIndex = [&](unsigned idx) -> std::optional<DocumentedArgument> {
-    auto functionView = llvm::unique_dyn_cast_or_null<PublicFunctionDecl>(
-        getPublicDecl(decl.getParentDecl()));
-    if (!functionView || functionView->getArguments().size() <= idx)
-      return std::nullopt;
-    const DocumentedArgument &argument = functionView->getArgument(idx);
-    DocumentedArgument result(decl, argument.getInfo());
-    result.setDescription(argument.getDescription());
-    return result;
-  };
-
-  if (auto varDecl = dyn_cast_if_present<VarDeclOp>(decl.getIfOperation())) {
-    if (varDecl.getKind() != VarDeclKind::Arg)
-      return std::nullopt;
-    auto parentFn = varDecl->getParentOfType<FnOp>();
-    for (auto [idx, pogAttr] : llvm::enumerate(
-             parentFn.getFuncTypeGenerator().getArgListAttrs().getPogs()))
-      if (pogAttr.getName() == varDecl.getNameAttr())
-        return getWithIndex(idx);
-  }
-
-  if (BlockArgument arg = getIfNotOwnedFunctionArgument(decl))
-    if (std::optional<size_t> argIdx = getDeclArgIndex(decl, arg))
-      return getWithIndex(*argIdx);
-  return std::nullopt;
 }
 
 static std::optional<DocumentedParameter>
@@ -550,6 +486,12 @@ std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
   if (!decl)
     return nullptr;
 
+  if (auto varDecl = dyn_cast<VarASTDecl>(decl))
+    return std::unique_ptr<PublicDecl>(new PublicDecl(
+        varDecl->isArgument() ? PublicDeclKind::DK_PublicArgumentDecl
+                              : PublicDeclKind::DK_PublicVariableDecl,
+        *decl, decl->getName().value_or(StringRef())));
+
   if (Operation *declOp = decl->getIfOperation()) {
     if (isa<AliasDeclOp>(declOp))
       return std::unique_ptr<PublicDecl>(
@@ -567,20 +509,6 @@ std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
       return std::unique_ptr<PublicDecl>(
           new PublicDecl(PublicDeclKind::DK_PublicStructFieldDecl, *decl,
                          decl->getName().value_or(StringRef())));
-    if (auto varDecl = dyn_cast<VarDeclOp>(declOp)) {
-      if (varDecl.getKind() == VarDeclKind::Arg) {
-        auto parentFn = varDecl->getParentOfType<FnOp>();
-        for (auto [idx, pogAttr] : llvm::enumerate(
-                 parentFn.getFuncTypeGenerator().getArgListAttrs().getPogs()))
-          if (pogAttr.getName() == varDecl.getNameAttr())
-            return std::unique_ptr<PublicDecl>(
-                new PublicDecl(PublicDeclKind::DK_PublicArgumentDecl, *decl,
-                               decl->getName().value_or(StringRef())));
-      }
-      return std::unique_ptr<PublicDecl>(
-          new PublicDecl(PublicDeclKind::DK_PublicVariableDecl, *decl,
-                         decl->getName().value_or(StringRef())));
-    }
     if (isa<PackageOp>(declOp))
       return std::unique_ptr<PublicDecl>(
           new PublicDecl(PublicDeclKind::DK_PublicPackageDecl, *decl,
@@ -595,13 +523,11 @@ std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
     return std::unique_ptr<PublicFunctionDecl>(
         new PublicFunctionDecl(decl, signature));
 
-  if (BlockArgument arg = getIfNotOwnedFunctionArgument(*decl)) {
-    if (std::optional<size_t> argIdx = getDeclArgIndex(*decl, arg))
-      return std::unique_ptr<PublicDecl>(
-          new PublicDecl(PublicDeclKind::DK_PublicArgumentDecl, *decl,
-                         decl->getName().value_or(StringRef())));
-    return nullptr;
-  }
+  if (auto irDecl = dyn_cast<IRASTDecl>(decl);
+      irDecl && irDecl->getArgNumber() >= 0)
+    return std::unique_ptr<PublicDecl>(
+        new PublicDecl(PublicDeclKind::DK_PublicArgumentDecl, *decl,
+                       decl->getName().value_or(StringRef())));
 
   if (std::optional<DocumentedParameter> parameter =
           getDocumentedParameter(*decl))
@@ -616,6 +542,10 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
   if (!decl)
     return std::nullopt;
 
+  if (auto varDecl = dyn_cast<VarASTDecl>(decl))
+    return varDecl->isArgument() ? PublicDeclKind::DK_PublicArgumentDecl
+                                 : PublicDeclKind::DK_PublicVariableDecl;
+
   if (Operation *declOp = decl->getIfOperation()) {
     if (isa<AliasDeclOp>(declOp))
       return PublicDeclKind::DK_PublicAliasDecl;
@@ -627,10 +557,6 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
       return PublicStructDecl::getKindStatic();
     if (isa<StructFieldOp>(declOp))
       return PublicDeclKind::DK_PublicStructFieldDecl;
-    if (auto varDecl = dyn_cast<VarDeclOp>(declOp))
-      return varDecl.getKind() == VarDeclKind::Arg
-                 ? PublicDeclKind::DK_PublicArgumentDecl
-                 : PublicDeclKind::DK_PublicVariableDecl;
     if (isa<PackageOp>(declOp))
       return PublicDeclKind::DK_PublicPackageDecl;
     if (isa<TraitDeclOp>(declOp))
@@ -639,7 +565,8 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
 
   if (getSignatureFromDecl(decl))
     return PublicFunctionDecl::getKindStatic();
-  if (getIfNotOwnedFunctionArgument(*decl))
+  if (auto irDecl = dyn_cast<IRASTDecl>(decl);
+      irDecl && irDecl->getArgNumber() >= 0)
     return PublicDeclKind::DK_PublicArgumentDecl;
   if (getIfParameter(*decl))
     return PublicDeclKind::DK_PublicParameterDecl;
@@ -682,9 +609,7 @@ std::string PublicDecl::getDeclarationSnippet(MojoParserContext &ctx) const {
   case PublicDeclKind::DK_PublicAliasDecl:
     return getAliasDeclarationSnippet(cast<AliasASTDecl>(getDecl()), ctx);
   case PublicDeclKind::DK_PublicArgumentDecl:
-    if (auto argument = getDocumentedArgument(getDecl()))
-      return argument->getDeclarationSnippet(ctx);
-    return {};
+    return DocumentedArgument(getDecl()).getDeclarationSnippet(ctx);
   case PublicDeclKind::DK_PublicParameterDecl:
     if (auto parameter = getDocumentedParameter(getDecl()))
       return parameter->getDeclarationSnippet(ctx);
@@ -806,11 +731,39 @@ llvm::json::Object DocumentedParameter::toJSON(MojoParserContext &ctx) const {
 // DocumentedArgument
 //===----------------------------------------------------------------------===//
 
+DocumentedArgument::DocumentedArgument(ASTDecl &decl) {
+  ssize_t argNumber = -1;
+  if (auto varDecl = dyn_cast<VarASTDecl>(&decl))
+    argNumber = varDecl->getArgNumber();
+  else if (auto irDecl = dyn_cast<IRASTDecl>(&decl))
+    argNumber = irDecl->getArgNumber();
+
+  if (argNumber < 0)
+    return;
+
+  auto functionView = llvm::unique_dyn_cast_or_null<PublicFunctionDecl>(
+      getPublicDecl(decl.getParentDecl()));
+  if (!functionView ||
+      functionView->getArguments().size() <= static_cast<size_t>(argNumber))
+    return;
+
+  const DocumentedArgument &argument =
+      functionView->getArgument(static_cast<size_t>(argNumber));
+  info = argument.getInfo();
+  description = argument.getDescription();
+  initializeTypeMetadata(decl);
+}
+
 DocumentedArgument::DocumentedArgument(ASTDecl &decl, ArgumentInfo info)
-    : info(std::move(info)), typeMetadata(extractLibraryInfo(
-                                 this->info.type, &decl, &decl.getShared())) {
+    : info(std::move(info)) {
+  initializeTypeMetadata(decl);
+}
+
+void DocumentedArgument::initializeTypeMetadata(ASTDecl &decl) {
+  typeMetadata = extractLibraryInfo(info.type, &decl, &decl.getShared());
+
   // Pre-calculate per-trait metadata for compound types.
-  SmallVector<std::string> traitNames = parseCompoundTraitType(this->info.type);
+  SmallVector<std::string> traitNames = parseCompoundTraitType(info.type);
   if (traitNames.size() > 1) {
     for (const std::string &traitName : traitNames) {
       traitMetadata.push_back(
@@ -1836,9 +1789,7 @@ llvm::json::Object PublicDecl::toJSON(MojoParserContext &ctx) const {
   case PublicDeclKind::DK_PublicAliasDecl:
     return serializeAliasDecl(cast<AliasASTDecl>(getDecl()), ctx);
   case PublicDeclKind::DK_PublicArgumentDecl:
-    if (auto argument = getDocumentedArgument(getDecl()))
-      return argument->toJSON(ctx);
-    break;
+    return DocumentedArgument(getDecl()).toJSON(ctx);
   case PublicDeclKind::DK_PublicParameterDecl:
     if (auto parameter = getDocumentedParameter(getDecl()))
       return parameter->toJSON(ctx);
@@ -1867,9 +1818,7 @@ std::string PublicDecl::getMarkdownDocString() const {
   case PublicDeclKind::DK_PublicAliasDecl:
     return getAliasMarkdownDocString(cast<AliasASTDecl>(getDecl()));
   case PublicDeclKind::DK_PublicArgumentDecl:
-    if (auto argument = getDocumentedArgument(decl))
-      return argument->getMarkdownDocString();
-    break;
+    return DocumentedArgument(decl).getMarkdownDocString();
   case PublicDeclKind::DK_PublicParameterDecl:
     if (auto parameter = getDocumentedParameter(decl))
       return parameter->getMarkdownDocString();

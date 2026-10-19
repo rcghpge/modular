@@ -535,6 +535,11 @@ public:
   }
 
   CValue getIfIRValue() const override { return value; }
+
+  /// Returns this function argument's number, or -1 for a non-argument.
+  ssize_t getArgNumber() const { return argNumber; }
+
+  void setArgNumber(ssize_t newArgNumber) { argNumber = newArgNumber; }
   void setValue(CValue newValue) { value = std::move(newValue); }
 
 private:
@@ -546,6 +551,7 @@ private:
             ssize_t indentation);
 
   CValue value;
+  ssize_t argNumber;
 };
 
 /// An AST declaration backed by an operation without dedicated declaration
@@ -584,9 +590,14 @@ public:
   }
 
   VarDeclOp getOp() const { return cast<VarDeclOp>(getOperation()); }
-  bool isArgument() const {
-    VarDeclOp op = getOp();
-    return op && op.getKind() == VarDeclKind::Arg;
+  ssize_t getArgNumber() const { return argNumber; }
+  bool isArgument() const { return argNumber >= 0; }
+  void setArgNumber(ssize_t newArgNumber) { argNumber = newArgNumber; }
+  CValue getIfIRValue() const override {
+    VarDeclKind kind = getOp().getKind();
+    if (kind == VarDeclKind::Arg || kind == VarDeclKind::InitOutArg)
+      return MLValue(getOp());
+    return {};
   }
 
 private:
@@ -596,6 +607,8 @@ private:
   VarASTDecl(SharedState &shared, VarDeclOp varOp, llvm::SMLoc loc,
              ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
              ssize_t indentation);
+
+  ssize_t argNumber;
 };
 
 /// Base class for top-level, file, and package module declarations.

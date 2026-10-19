@@ -228,6 +228,9 @@ public:
   /// signature model's `ArgumentConvention` so callers can use either name.
   using Convention = KGEN::ArgumentConvention;
 
+  /// Build a documented argument from an argument declaration.
+  DocumentedArgument(ASTDecl &decl);
+
   /// Build a documented argument from a fully-resolved `ArgumentInfo`.
   DocumentedArgument(ASTDecl &decl, KGEN::ArgumentInfo info);
 
@@ -268,7 +271,9 @@ public:
   llvm::json::Object toJSON(MojoParserContext &ctx) const;
 
 private:
-  KGEN::ArgumentInfo info;
+  void initializeTypeMetadata(ASTDecl &decl);
+
+  KGEN::ArgumentInfo info = {};
   TypeMetadata typeMetadata;
   SmallVector<TypeMetadata, kTypicalTraitCompositionSize> traitMetadata;
 

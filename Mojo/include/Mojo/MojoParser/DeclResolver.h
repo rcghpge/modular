@@ -71,9 +71,9 @@ public:
   ASTDecl &addDecl(Operation *operation, llvm::SMLoc loc, StringAttr baseName,
                    ASTDecl *parentDecl, LexerCursor cursor,
                    LexerCursor endCursor, ssize_t indentation);
-  ASTDecl &addDecl(CValue value, llvm::SMLoc loc, StringAttr baseName,
-                   ASTDecl *parentDecl, LexerCursor cursor,
-                   LexerCursor endCursor, ssize_t indentation);
+  IRASTDecl &addDecl(CValue value, llvm::SMLoc loc, StringAttr baseName,
+                     ASTDecl *parentDecl, LexerCursor cursor,
+                     LexerCursor endCursor, ssize_t indentation);
 
   /// Add a declaration that was loaded from bytecode.
   ASTDecl &addBytecodeDecl(Operation *op, StringAttr baseName,
@@ -82,8 +82,8 @@ public:
   /// Add a declaration that is already fully resolved.
   ASTDecl &addFullyResolvedDecl(Operation *operation, StringAttr baseName,
                                 llvm::SMLoc loc, ASTDecl *parentDecl);
-  ASTDecl &addFullyResolvedDecl(CValue value, StringAttr baseName,
-                                llvm::SMLoc loc, ASTDecl *parentDecl);
+  IRASTDecl &addFullyResolvedDecl(CValue value, StringAttr baseName,
+                                  llvm::SMLoc loc, ASTDecl *parentDecl);
 
   /// Add a declaration that represents an erroneous declaration. The generated
   /// decl is treated as fully resolved, and in an error state. If `unlisted`
@@ -177,9 +177,9 @@ private:
   ASTDecl &createUnlistedDecl(Operation *operation, llvm::SMLoc loc,
                               ASTDecl *parentDecl, LexerCursor cursor,
                               LexerCursor endCursor, ssize_t indentation);
-  ASTDecl &createUnlistedDecl(CValue value, llvm::SMLoc loc,
-                              ASTDecl *parentDecl, LexerCursor cursor,
-                              LexerCursor endCursor, ssize_t indentation);
+  IRASTDecl &createUnlistedDecl(CValue value, llvm::SMLoc loc,
+                                ASTDecl *parentDecl, LexerCursor cursor,
+                                LexerCursor endCursor, ssize_t indentation);
 
   /// Add a pre-existing set of declarations, which may optionally be imported
   /// from a given module, as children of the specified context, using the

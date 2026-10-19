@@ -2720,17 +2720,14 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
 
     assert(argDeclList.size() == 1 &&
            "Argument should be added by signature resolution");
-    ASTDecl &argDecl = *argDeclList[0];
+    auto &argDecl = cast<IRASTDecl>(*argDeclList[0]);
 
     // The argDecl is already set up with a basic representation when the
-    // function signature was type checked.  We have to hack it a bit for
-    // variadics and other cases that aren't modeled right.
-    // TODO: Move variadics to be formed on the caller side not the callee side.
-
-    // This function sets the argument decl to be fully resolved with the
-    // specified IR representation.
+    // function signature was type checked.  Now that we have the body, this
+    // function sets the argument decl to be fully resolved with the
+    // correct IR representation.
     auto setDecl = [&](CValue value) {
-      cast<IRASTDecl>(argDecl).setValue(std::move(value));
+      argDecl.setValue(std::move(value));
       shared.notifyListenerOnArgumentDecl(argDecl, argName, argDecl.getLoc());
     };
 
@@ -2776,8 +2773,14 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
                     : VarDeclKind::Arg;
     VarDeclOp varDecl = emitter.emitVarDecl(
         resultName, funcOp.getUserResultType(), funcOp.getLoc(), kind);
-    ASTDecl &argDecl = resolver.addFullyResolvedDecl(
-        MLValue(varDecl), resultName, getLoc(), this);
+    ssize_t argNumber =
+        kind == VarDeclKind::Arg
+            ? static_cast<ssize_t>(funcSignature.getNumArguments())
+            : -1;
+    auto &argDecl = cast<VarASTDecl>(resolver.addFullyResolvedDecl(
+        varDecl.getOperation(), resultName, getLoc(), this));
+    if (argNumber >= 0)
+      argDecl.setArgNumber(argNumber);
     shared.notifyListenerOnArgumentDecl(argDecl, resultName, argDecl.getLoc());
   }
 

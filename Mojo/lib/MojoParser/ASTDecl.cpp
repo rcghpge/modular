@@ -37,42 +37,6 @@ static FnTypeGeneratorType getToolingSignature(ASTDecl *decl) {
   return nullptr;
 }
 
-static std::optional<size_t> getDeclArgIndex(ASTDecl &decl, BlockArgument arg) {
-  if (arg.getParentRegion())
-    return arg.getArgNumber();
-
-  size_t argIndex = 0;
-  for (auto [name, decls] : decl.getParentDecl()->getDeclsInScope()) {
-    if (decls.size() != 1)
-      continue;
-    if (auto cv = decls.front()->getIfIRValue()) {
-      if (decls.front()->getIfIRValue().getIfPValue())
-        continue;
-      if (cv.getMlirValue() == arg)
-        return argIndex;
-      ++argIndex;
-    }
-  }
-  return std::nullopt;
-}
-
-static BlockArgument getIfNotOwnedFunctionArgument(ASTDecl &decl) {
-  Value val = decl.getIfIRValue().getMlirValue();
-  if (!val)
-    return {};
-
-  if (auto rebind = val.getDefiningOp<RebindOp>())
-    val = rebind.getInput();
-
-  if (auto bbArg = dyn_cast<BlockArgument>(val)) {
-    if (isa_and_nonnull<FnOp>(bbArg.getOwner()->getParentOp()))
-      return bbArg;
-    if (!bbArg.getOwner()->getParentOp())
-      return bbArg;
-  }
-  return {};
-}
-
 static ParamDeclRefAttr getIfParameter(ASTDecl &decl) {
   if (auto val = decl.getIfIRValue().getIfPValue())
     return dyn_cast<ParamDeclRefAttr>(val.get());
@@ -118,14 +82,12 @@ std::optional<StringRef> ASTDecl::getName() {
   if (auto name = getFromOp(getIfOperation()))
     return name;
 
-  if (BlockArgument bbArg = getIfNotOwnedFunctionArgument(*this)) {
+  if (auto irDecl = dyn_cast<IRASTDecl>(this);
+      irDecl && irDecl->getArgNumber() >= 0) {
     FnTypeGeneratorType signature = getToolingSignature(getParentDecl());
-    if (!signature)
-      return std::nullopt;
-    std::optional<size_t> argNumber = getDeclArgIndex(*this, bbArg);
-    if (argNumber && *argNumber < signature.getNumArguments())
-      return signature.getArgName(*argNumber);
-    return std::nullopt;
+    size_t argNumber = static_cast<size_t>(irDecl->getArgNumber());
+    if (signature && argNumber < signature.getNumArguments())
+      return signature.getArgName(argNumber);
   }
 
   if (auto paramRef = getIfParameter(*this))
@@ -175,7 +137,7 @@ IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
                      LexerCursor endCursor, ssize_t indentation)
     : ASTDecl(Kind::IR, shared, loc, parentDecl, cursor, endCursor,
               indentation),
-      value(std::move(value)) {}
+      value(std::move(value)), argNumber(-1) {}
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,
                                llvm::SMLoc loc, ASTDecl *parentDecl,
@@ -188,7 +150,8 @@ VarASTDecl::VarASTDecl(SharedState &shared, VarDeclOp varOp, llvm::SMLoc loc,
                        ASTDecl *parentDecl, LexerCursor cursor,
                        LexerCursor endCursor, ssize_t indentation)
     : OpASTDecl(Kind::Var, shared, *varOp.getOperation(), loc, parentDecl,
-                cursor, endCursor, indentation) {}
+                cursor, endCursor, indentation),
+      argNumber(-1) {}
 
 ModuleASTDecl::ModuleASTDecl(Kind kind, SharedState &shared,
                              Operation &moduleOp, llvm::SMLoc loc,
