@@ -542,3 +542,68 @@ def test_batch_inplace_copy_pinned_poison_pill_parity() -> None:
             loop_dst.to_numpy(),
             err_msg=f"pinned-poison-pill batch vs per-copy mismatch at index {i}",
         )
+
+
+@pytest.mark.parametrize("usage", [Usage.DEFAULT, Usage.STAGING])
+def test_memset_device_slice(usage: Usage) -> None:
+    device = Accelerator()
+    buf = Buffer.zeros((3, 8), DType.uint8, device, usage=usage)
+    buf.memset(0x55)
+    row = buf[1, :]
+    row.memset(0)
+    # A staging view owns the completion of its writes; the parent's record
+    # contains only writes submitted through the parent.
+    np.testing.assert_array_equal(row.to_numpy(), np.zeros(8, dtype=np.uint8))
+    expected = np.full((3, 8), 0x55, dtype=np.uint8)
+    expected[1] = 0
+    np.testing.assert_array_equal(buf.to_numpy(), expected)
+
+
+@pytest.mark.parametrize(
+    "offset,length", [(0, 1), (1, 3), (3, 4097), (8189, 3), (0, 8192)]
+)
+def test_memset_device_unaligned_byte_ranges(offset: int, length: int) -> None:
+    host = np.full(8192, 0x55, dtype=np.uint8)
+    buf = Buffer.from_numpy(host).to(Accelerator())
+    buf[offset : offset + length].memset(0xA5)
+    expected = host.copy()
+    expected[offset : offset + length] = 0xA5
+    np.testing.assert_array_equal(buf.to_numpy(), expected)
+
+
+def test_memset_device_large_buffer() -> None:
+    # Large enough to span many memset blocks, odd so no tail is assumed away.
+    num_bytes = (64 << 20) + 3
+    buf = Buffer.zeros((num_bytes,), DType.uint8, Accelerator())
+    buf[1:].memset(0xFF)
+    data = buf.to_numpy()
+    assert data[0] == 0
+    assert (data[1:] == 0xFF).all()
+
+
+def test_memset_device_typed_buffer_is_a_byte_pattern() -> None:
+    buf = Buffer.zeros((4, 8), DType.bfloat16, Accelerator())
+    buf[2:, :].memset(0x7F)
+    raw = buf.view(DType.uint8, (4, 16)).to_numpy()
+    np.testing.assert_array_equal(raw[:2], 0)
+    np.testing.assert_array_equal(raw[2:], 0x7F)
+
+
+def test_memset_is_stream_ordered_with_copies() -> None:
+    device = Accelerator()
+    rows, cols = 4, 1 << 20
+    src = Buffer.from_numpy(np.full((rows, cols), 7, dtype=np.uint8)).to(device)
+    dst = Buffer.zeros((rows, cols), DType.uint8, device)
+    snapshot = Buffer.zeros((rows, cols), DType.uint8, device)
+    dst.inplace_copy_from(src)
+    # Lands after the copy into dst ...
+    dst[1, :].memset(0)
+    snapshot.inplace_copy_from(dst)
+    # ... and before this one, which the snapshot must not observe.
+    dst[2, :].memset(9)
+
+    expected = np.full((rows, cols), 7, dtype=np.uint8)
+    expected[1] = 0
+    np.testing.assert_array_equal(snapshot.to_numpy(), expected)
+    expected[2] = 9
+    np.testing.assert_array_equal(dst.to_numpy(), expected)

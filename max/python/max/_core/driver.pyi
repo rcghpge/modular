@@ -1460,6 +1460,23 @@ class Buffer:
         when no shape can be deduced.
         """
 
+    def memset(self, value: int) -> None:
+        """
+        Fills the buffer's bytes in place with a repeated byte value.
+
+        The fill is enqueued on the buffer's device stream. Contiguous slices
+        are supported and only their bytes are changed. The value is a byte
+        pattern, not a typed element value; zero clears every byte.
+
+        Args:
+            value: The byte value, between 0 and 255 inclusive.
+
+        Raises:
+            ValueError: If the buffer is not contiguous, is a sub-byte slice
+                that does not start and end on whole bytes, or the value is
+                outside the byte range.
+        """
+
     @staticmethod
     def zeros(
         shape: Sequence[int],
