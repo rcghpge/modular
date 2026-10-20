@@ -61,7 +61,7 @@ TAPS = [0]
 def _config() -> DeepseekV41Config:
     return DeepseekV41Config(
         dtype=DType.bfloat16,
-        kv_params=MagicMock(),
+        kv_params=MagicMock(num_draft_tokens=0),
         devices=[DeviceRef.CPU()],
         max_seq_len=64,
         vocab_size=VOCAB,

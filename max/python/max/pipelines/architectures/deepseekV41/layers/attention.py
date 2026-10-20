@@ -74,7 +74,7 @@ from .csa2 import (
 )
 from .indexer import (
     DeepseekV41Indexer,
-    candidate_blocks_active,
+    candidate_keep_blocks,
     index_key_slots,
     key_positions,
     quantize_queries,
@@ -526,9 +526,11 @@ class CSA2Attention(Module):
     Compressed caches hold one row per raw token; a group's entry sits on
     the row closing it and other rows are masked out. Each request's
     index-key history is gathered into a ``[max_seq_len]`` position-indexed
-    table, so scoring is ``O(max_seq_len)`` per query row. A candidate-source
-    layer also keeps its best-scoring blocks of positions, and later
-    candidate-consumer layers restrict their scores to those blocks.
+    table, so scoring is ``O(max_seq_len)`` per query row; ``max_seq_len``
+    here is the model's position capacity, which includes the speculative
+    slack. A candidate-source layer also keeps its best-scoring blocks of
+    positions, and later candidate-consumer layers restrict their scores to
+    those blocks.
     Selections pass between layers as graph values, so a "Reuse" layer
     depends on its source in the graph.
 
@@ -579,9 +581,15 @@ class CSA2Attention(Module):
         self.scale = head_dim**-0.5
         self.device = device
         self._selection_trace = trace
-        self.max_seq_len = max_seq_len
         self.candidate_topk_blocks = config.candidate_topk_blocks
         self.candidate_block_size = config.candidate_block_size
+        self.candidate_blocks = candidate_keep_blocks(
+            config.max_seq_len,
+            max_seq_len,
+            layer_info.compress_ratio,
+            block_size=config.candidate_block_size,
+            topk_blocks=config.candidate_topk_blocks,
+        )
         # A consumer row keeps its newest block, which may hold one key, and
         # ``candidate_topk_blocks - 1`` full blocks; the masked selection
         # needs at least ``index_topk`` of them.
@@ -1069,15 +1077,9 @@ class CSA2Attention(Module):
         ratio = layer.compress_ratio
         block_size = self.candidate_block_size
         top_k = self.num_comp
-        active = candidate_blocks_active(
-            self.max_seq_len,
-            ratio,
-            block_size=block_size,
-            topk_blocks=self.candidate_topk_blocks,
-        )
         leaf, q, offsets = state.index_leaf, state.index_q, rows.offsets
         pool: CandidateBlocks | None = None
-        if layer.candidate_role == "source" and active:
+        if layer.candidate_role == "source" and self.candidate_blocks:
             ids, kept = select_index_keys_block_topk(
                 leaf,
                 q,

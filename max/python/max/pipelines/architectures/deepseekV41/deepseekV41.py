@@ -79,7 +79,11 @@ from .layers.moe import (
 )
 from .layers.ragged import ReplicaTokens
 from .layers.ragged import V41RaggedRows as RaggedRows
-from .model_config import DeepseekV41Config, head_bf16_enabled
+from .model_config import (
+    DeepseekV41Config,
+    head_bf16_enabled,
+    position_capacity,
+)
 
 # Re-exports the V4 layers this model uses unchanged.
 __all__ = [
@@ -1148,7 +1152,7 @@ class DeepseekV41(Module):
         self.trunk = DeepseekV41Trunk(
             config,
             device,
-            config.max_seq_len,
+            position_capacity(config),
             attn_factory=attn_factory,
             ffn_factory=nvfp4_moe_ffn_factory,
             engram_factory=_engram_factory,

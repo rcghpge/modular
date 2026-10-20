@@ -464,6 +464,33 @@ def candidate_num_blocks(max_seq_len: int, ratio: int, block_size: int) -> int:
     return -(-(max_seq_len // ratio) // block_size)
 
 
+def candidate_keep_blocks(
+    max_seq_len: int,
+    position_capacity: int,
+    compress_ratio: int,
+    *,
+    block_size: int,
+    topk_blocks: int,
+) -> int:
+    """Returns the candidate keep step's blocks per row, or 0 to skip it.
+
+    The graph gates the keep step and the memory planner sizes it here. The
+    gate reads ``max_seq_len``: a row past it, in the speculative slack,
+    never commits a token, so blocks only such a row reaches are no reason
+    to run the pass. The blocks cover ``position_capacity``, since the
+    kernel sizes its scratch from the cached lengths, which reach into the
+    slack when the pass does run.
+    """
+    if not candidate_blocks_active(
+        max_seq_len,
+        compress_ratio,
+        block_size=block_size,
+        topk_blocks=topk_blocks,
+    ):
+        return 0
+    return candidate_num_blocks(position_capacity, compress_ratio, block_size)
+
+
 def key_positions(ids: TensorValue, ratio: int) -> TensorValue:
     """Maps key ids to the raw position of each key's group-closing token.
 

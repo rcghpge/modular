@@ -77,7 +77,7 @@ def _real_huggingface_config() -> AutoConfig:
 
 def _planner() -> DeepseekV41MemoryPlanner:
     config = MagicMock(spec=ModelConfigWithKVCache)
-    config.get_kv_params.return_value = MagicMock()
+    config.get_kv_params.return_value = MagicMock(num_draft_tokens=0)
     return DeepseekV41MemoryPlanner(config)
 
 

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from max.dtype import DType
+from max.nn.kv_cache import spec_decode_cache_slack
 from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.support.human_readable_formatter import to_human_readable_bytes
 
@@ -43,8 +44,7 @@ from .layers.csa2 import (
 )
 from .layers.indexer import (
     INDEXER_SCORES_BUDGET_BYTES,
-    candidate_blocks_active,
-    candidate_num_blocks,
+    candidate_keep_blocks,
     candidate_window_rows,
 )
 from .model_config import (
@@ -293,22 +293,25 @@ def kv_leaf_bytes_per_token(
     }
 
 
-def candidate_blocks_per_row(text_config: Any, max_length: int) -> int:
+def candidate_blocks_per_row(
+    text_config: Any, max_length: int, position_capacity: int
+) -> int:
     """Returns the candidate blocks a row scores, or 0 if none is dropped.
 
-    Sized for the smallest compress ratio, which gives the most blocks.
+    Sized for the smallest compress ratio, which gives the most blocks. As
+    in :func:`candidate_keep_blocks`, the gate reads ``max_length`` and the
+    blocks cover ``position_capacity``.
     """
-    block_size = getattr(text_config, "candidate_block_size", 0) or 0
-    topk_blocks = getattr(text_config, "candidate_topk_blocks", 0) or 0
     ratios = [r for r in text_config.compress_ratios if r > 0]
     if not ratios:
         return 0
-    ratio = min(ratios)
-    if not candidate_blocks_active(
-        max_length, ratio, block_size=block_size, topk_blocks=topk_blocks
-    ):
-        return 0
-    return candidate_num_blocks(max_length, ratio, block_size)
+    return candidate_keep_blocks(
+        max_length,
+        position_capacity,
+        min(ratios),
+        block_size=getattr(text_config, "candidate_block_size", 0) or 0,
+        topk_blocks=getattr(text_config, "candidate_topk_blocks", 0) or 0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -650,7 +653,11 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         )
         num_devices = max(1, len(pipeline_config.model.device_specs))
         dp = int(pipeline_config.model.data_parallel_degree)
-        blocks = candidate_blocks_per_row(text_config, max_length)
+        blocks = candidate_blocks_per_row(
+            text_config,
+            max_length,
+            max_length + spec_decode_cache_slack(self._config.get_kv_params()),
+        )
         kept_blocks = (
             getattr(text_config, "candidate_topk_blocks", 0) or 0
             if blocks

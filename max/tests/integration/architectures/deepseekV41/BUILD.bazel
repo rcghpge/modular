@@ -245,6 +245,26 @@ modular_py_test(
     ],
 )
 
+# Guards that the trunk and DSpark drafter rotary tables cover speculative
+# positions past max_seq_len (nn/kv_cache spec_decode_cache_slack), and that
+# memory_planner.py reserves the candidate keep step the graph builds. CPU only.
+modular_py_test(
+    name = "test_position_capacity",
+    srcs = ["test_position_capacity.py"],
+    data = ["//max/tests/integration/architectures/deepseekV41/testdata"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/architectures",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        requirement("numpy"),
+        requirement("transformers"),
+    ],
+)
+
 # Guards strict state-dict loading (nn/layer Module.load_state_dict).
 modular_py_test(
     name = "test_dspark_weight_adapter",
