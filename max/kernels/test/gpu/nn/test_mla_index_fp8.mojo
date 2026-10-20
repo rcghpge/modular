@@ -13,7 +13,10 @@
 """Tests for mla_indexer_ragged_float8_paged."""
 
 from max.gpu.host import DeviceContext, HostBuffer
-from kv_cache.paged_sparse_kv_index_remap import PagedKVRemap
+from kv_cache.paged_sparse_kv_index_remap import (
+    PagedKVRemap,
+    PagedKVScaleRemap,
+)
 from kv_cache.types import (
     KVCacheStaticParams,
     KVCollectionT,
@@ -209,6 +212,7 @@ def test_mla_index_fp8_paged_variable_lengths[
     layer_idx: Int = 0,
     check_remap: Bool = False,
     check_physical_only: Bool = False,
+    check_scale_remap: Bool = False,
 ](
     seq_lens: List[Int],
     cache_lens: List[Int],
@@ -276,6 +280,12 @@ def test_mla_index_fp8_paged_variable_lengths[
             again without writing the logical indices, and check that the
             physical rows match the first run's and the logical output is
             untouched.
+        check_scale_remap: When True (with `check_remap`), run the NVFP4
+            remap, which follows each row of physical rows with the rows in a
+            scale pool paged apart from the values (its own page table, page
+            count, and a block stride of three layers of pages), and compare
+            both halves slot by slot against a host remap of its own logical
+            output.
 
     Args:
         seq_lens: Length of each sequence (new tokens) per batch item.
@@ -717,6 +727,128 @@ def test_mla_index_fp8_paged_variable_lengths[
             )
             _ = phys_only_device
             _ = untouched_device
+
+        comptime if check_scale_remap:
+            # The scales' own block-id space: another page count, a table
+            # unrelated to both others, every fourth page unmapped, and blocks
+            # three layers of pages apart.
+            comptime scale_layers = 3
+            var scale_num_pages = num_blocks + 11
+            var scales_lut_host = List[UInt32](
+                capacity=batch_size * pages_per_seq
+            )
+            for i in range(batch_size * pages_per_seq):
+                scales_lut_host.append(
+                    UInt32(scale_num_pages) if i % 4
+                    == 3 else UInt32((i * 7 + 2) % scale_num_pages)
+                )
+            var scales_lut_device = ctx.enqueue_create_buffer[.uint32](
+                batch_size * pages_per_seq
+            )
+            with scales_lut_device.map_to_host() as buf:
+                for i in range(batch_size * pages_per_seq):
+                    buf[i] = scales_lut_host[i]
+            var logical2_device = ctx.enqueue_create_buffer[.int32](
+                total_output_size
+            )
+            logical2_device.enqueue_fill(Int32(-3))
+            var wide_device = ctx.enqueue_create_buffer[.int32](
+                2 * total_output_size
+            )
+            wide_device.enqueue_fill(Int32(-2))
+            mla_indexer_ragged_float8_paged[
+                DType.float8_e4m3fn,
+                type_of(k_collection),
+                num_heads,
+                depth,
+                top_k,
+                mask_name,
+                kpool=kpool,
+                write_logical=True,
+            ](
+                TileTensor(logical2_device, row_major(total_seq_len, top_k)),
+                q_tile,
+                qs_tile,
+                input_row_offsets_tile,
+                k_collection,
+                UInt32(layer_idx),
+                ctx,
+                PagedKVScaleRemap[page_size, top_k](
+                    wide_device.unsafe_ptr(),
+                    mla_lut_device.unsafe_ptr(),
+                    scales_lut_device.unsafe_ptr(),
+                    pages_per_seq,
+                    pages_per_seq,
+                    batch_size,
+                    UInt32(mla_num_pages),
+                    UInt32(scale_num_pages),
+                    scale_layers * page_size,
+                ),
+                scores_budget_bytes,
+            )
+            var wide_host = ctx.enqueue_create_host_buffer[.int32](
+                2 * total_output_size
+            )
+            var logical2_host = ctx.enqueue_create_host_buffer[.int32](
+                total_output_size
+            )
+            ctx.enqueue_copy(wide_host, wide_device)
+            ctx.enqueue_copy(logical2_host, logical2_device)
+            ctx.synchronize()
+            var tok2 = 0
+            var n_scaled = 0
+            for b in range(batch_size):
+                for _ in range(seq_lens[b]):
+                    for k_idx in range(top_k):
+                        var t = Int(logical2_host[tok2 * top_k + k_idx])
+                        var expected_value = Int32(-1)
+                        var expected_scale = Int32(-1)
+                        if t >= 0 and t // page_size < pages_per_seq:
+                            var blk = mla_lut_host[
+                                b * pages_per_seq + t // page_size
+                            ]
+                            if Int(blk) < mla_num_pages:
+                                expected_value = Int32(
+                                    Int(blk) * page_size + t % page_size
+                                )
+                            var sblk = scales_lut_host[
+                                b * pages_per_seq + t // page_size
+                            ]
+                            if Int(sblk) < scale_num_pages:
+                                expected_scale = Int32(
+                                    Int(sblk) * scale_layers * page_size
+                                    + t % page_size
+                                )
+                                n_scaled += 1
+                        var base = tok2 * 2 * top_k + k_idx
+                        assert_true(
+                            wide_host[base] == expected_value
+                            and wide_host[base + top_k] == expected_scale,
+                            String(
+                                "scale remap: token ",
+                                tok2,
+                                " slot ",
+                                k_idx,
+                                " logical ",
+                                t,
+                                " value ",
+                                wide_host[base],
+                                " expected ",
+                                expected_value,
+                                " scale ",
+                                wide_host[base + top_k],
+                                " expected ",
+                                expected_scale,
+                            ),
+                        )
+                    tok2 += 1
+            assert_true(
+                n_scaled > 0 or total_output_size == 0,
+                "scale remap check was vacuous",
+            )
+            _ = scales_lut_device
+            _ = logical2_device
+            _ = wide_device
         _ = phys_host
     _ = mla_lut_device
     _ = phys_device
@@ -1970,6 +2102,36 @@ def main() raises:
             mask_name=MaskName.CAUSAL.name,
             check_remap=True,
             check_physical_only=True,
+        ](
+            seq_lens=[40, 33, 24, 17],
+            cache_lens=[128, 192, 256, 320],
+            ctx=ctx,
+            scores_budget_bytes=23040,
+        )
+        # NVFP4 MLA cache: each row of physical rows is followed by the rows
+        # in the separately paged scale pool. Several row windows again, so the
+        # wide output is advanced a whole row per slot offset.
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=64,
+            depth=128,
+            page_size=128,
+            top_k=128,
+            mask_name=MaskName.CAUSAL.name,
+            check_remap=True,
+            check_scale_remap=True,
+        ](
+            seq_lens=[6, 1, 4, 1],
+            cache_lens=[300, 64, 500, 50],
+            ctx=ctx,
+        )
+        test_mla_index_fp8_paged_variable_lengths[
+            num_heads=64,
+            depth=128,
+            page_size=128,
+            top_k=128,
+            mask_name=MaskName.CAUSAL.name,
+            check_remap=True,
+            check_scale_remap=True,
         ](
             seq_lens=[40, 33, 24, 17],
             cache_lens=[128, 192, 256, 320],

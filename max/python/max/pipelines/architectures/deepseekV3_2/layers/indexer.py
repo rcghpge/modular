@@ -679,7 +679,10 @@ class Indexer(Module, Shardable):
                 of the top k Keys selected by the Indexer for MLA to attend to
                 (``None`` when ``write_logical`` is False), and their physical
                 rows in ``mla_collection`` (``None`` without one, or when
-                pooled).
+                pooled). For an NVFP4 ``mla_collection``, whose scales are
+                paged apart from its values, each row is ``2 * index_topk``
+                wide: the physical rows, then the selections' rows in the
+                scale pool.
         """
         if not write_logical and (
             mla_collection is None or self.index_kpool > 1

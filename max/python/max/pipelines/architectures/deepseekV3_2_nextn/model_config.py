@@ -24,6 +24,9 @@ from max.nn.kv_cache.cache_params import (
     KVCacheQuantizationConfig,
     MultiKVCacheParams,
 )
+from max.pipelines.architectures.deepseekV3.model_config import (
+    mla_kv_cache_quant_config,
+)
 from max.pipelines.architectures.deepseekV3_2.model_config import (
     DeepseekV3_2Config,
 )
@@ -72,14 +75,9 @@ class DeepseekV3_2NextNConfig(DeepseekV3_2Config):
         """
         data_parallel_degree = pipeline_config.model.data_parallel_degree
 
-        kvcache_quant_config = None
-        if cache_dtype in (
-            DType.float8_e4m3fn,
-            DType.float8_e4m3fnuz,
-        ):
-            kvcache_quant_config = KVCacheQuantizationConfig(
-                scale_dtype=DType.int8, quantization_granularity=32
-            )
+        kvcache_quant_config = mla_kv_cache_quant_config(
+            cache_dtype, huggingface_config.qk_rope_head_dim
+        )
 
         mla_kv_params = kv_cache_config.to_params(
             dtype=cache_dtype,

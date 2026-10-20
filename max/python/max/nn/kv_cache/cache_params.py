@@ -893,6 +893,13 @@ class KVCacheQuantizationConfig:
 
     Counted in logical elements, so a packed NVFP4 cache uses 16."""
 
+    fp8_tail_dim: int = 0
+    """Trailing elements of each head row that a packed NVFP4 cache stores as
+    raw FP8 bytes instead of E2M1 pairs.
+
+    They carry no scales. An MLA latent cache keeps its rope dims here, which
+    dominate the attention scores and lose accuracy in E2M1."""
+
 
 @dataclass(frozen=True)
 class BatchCharacteristics:
@@ -1629,10 +1636,8 @@ class KVCacheParams(KVCacheParamInterface):
         if self.quantized_kv_cache and self.kvcache_quant_config is not None:
             # Validate FP8 KVCache quantization granularity.
             if (
-                self.head_dim
-                % self.kvcache_quant_config.quantization_granularity
-                != 0
-            ):
+                self.head_dim - self._fp8_tail_dim
+            ) % self.kvcache_quant_config.quantization_granularity != 0:
                 raise ValueError(
                     "KVCache quantization granularity must evenly divide KV"
                     " head dimension."
@@ -1688,11 +1693,21 @@ class KVCacheParams(KVCacheParamInterface):
         """Returns the stored width of one head row in ``dtype`` elements.
 
         Equals :attr:`head_dim` except for packed NVFP4, which stores two
-        elements per byte.
+        elements per byte, apart from its trailing FP8 elements (see
+        :attr:`KVCacheQuantizationConfig.fp8_tail_dim`).
         """
         if self.is_nvfp4_kv_cache:
-            return self.head_dim // 2
+            tail = self._fp8_tail_dim
+            return (self.head_dim - tail) // 2 + tail
         return self.head_dim
+
+    @property
+    def _fp8_tail_dim(self) -> int:
+        """Trailing elements per row stored as unscaled FP8 (NVFP4 only)."""
+        if self.is_nvfp4_kv_cache:
+            assert self.kvcache_quant_config is not None
+            return self.kvcache_quant_config.fp8_tail_dim
+        return 0
 
     @property
     def quantized_kv_cache(self) -> bool:
@@ -1830,9 +1845,11 @@ class KVCacheParams(KVCacheParamInterface):
         assert self.kvcache_quant_config is not None
         shape_per_block = self.shape_per_block
         # The final dimension is ceil(head_dim / quantization_granularity),
-        # both in logical elements.
+        # both in logical elements; unscaled FP8 tail elements have no scale.
         granularity = self.kvcache_quant_config.quantization_granularity
-        shape_per_block[4] = math.ceil(self.head_dim / granularity)
+        shape_per_block[4] = math.ceil(
+            (self.head_dim - self._fp8_tail_dim) / granularity
+        )
         return shape_per_block
 
     @property

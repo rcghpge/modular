@@ -3127,6 +3127,33 @@ def generic_get_paged_cache[
     )
 
 
+# Bytes of a packed NVFP4 row that one E4M3 scale covers: 16 e2m1 elements.
+comptime _NVFP4_SCALE_GROUP_BYTES = 8
+
+
+def _scaled_cache_fp8_tail_size[
+    dtype: DType, scale_dtype: DType
+](head_size: Int, scales_per_row: Int) -> Int:
+    """The unscaled FP8 bytes at the end of a scaled cache row.
+
+    Only a packed NVFP4 cache (`uint8` values, E4M3 scales) has them: the
+    scales cover the leading packed e2m1 bytes, and any bytes past the last
+    scale hold FP8 values (an MLA cache's rope dims).
+    """
+    comptime if dtype == DType.uint8 and scale_dtype == DType.float8_e4m3fn:
+        return head_size - scales_per_row * _NVFP4_SCALE_GROUP_BYTES
+    return 0
+
+
+def _scaled_cache_granularity[
+    dtype: DType, scale_dtype: DType
+](head_size: Int, scales_per_row: Int) -> Int:
+    """The value bytes one scale covers."""
+    comptime if dtype == DType.uint8 and scale_dtype == DType.float8_e4m3fn:
+        return _NVFP4_SCALE_GROUP_BYTES
+    return head_size // scales_per_row
+
+
 def generic_get_paged_cache_with_scales[
     dtype: DType,
     scale_dtype: DType,
@@ -3146,6 +3173,10 @@ def generic_get_paged_cache_with_scales[
             Int(blocks.static_spec.shape_tuple[4]),
             Int(blocks.static_spec.shape_tuple[5]),
             Int(blocks.static_spec.shape_tuple[1]) == 1,
+            _scaled_cache_fp8_tail_size[dtype, scale_dtype](
+                Int(blocks.static_spec.shape_tuple[5]),
+                Int(scales.static_spec.shape_tuple[5]),
+            ),
         ),
         Int(blocks.static_spec.shape_tuple[3]),
         MutAnyOrigin,
@@ -3153,15 +3184,18 @@ def generic_get_paged_cache_with_scales[
         ImmutAnyOrigin,
         MutAnyOrigin,
         scale_dtype_=scale_dtype,
-        quantization_granularity_=Int(blocks.static_spec.shape_tuple[5])
-        // Int(scales.static_spec.shape_tuple[5]),
+        quantization_granularity_=_scaled_cache_granularity[dtype, scale_dtype](
+            Int(blocks.static_spec.shape_tuple[5]),
+            Int(scales.static_spec.shape_tuple[5]),
+        ),
     ],
 ):
     """Builds a scaled paged KV cache collection from graph operands.
 
     The operands come in the order `flatten_without_attention_dispatch_metadata`
     emits for quantized cache params. The quantization granularity is the
-    values' row width over the scales' row width, in value elements.
+    values' row width over the scales' row width, in value elements. A packed
+    NVFP4 row may end in FP8 bytes that carry no scales.
 
     Args:
         blocks: KV values `[num_blocks, kv_dim, num_layers, page_size,
@@ -3183,12 +3217,19 @@ def generic_get_paged_cache_with_scales[
         Int(blocks.static_spec.shape_tuple[4]),
         Int(blocks.static_spec.shape_tuple[5]),
         Int(blocks.static_spec.shape_tuple[1]) == 1,
+        _scaled_cache_fp8_tail_size[dtype, scale_dtype](
+            Int(blocks.static_spec.shape_tuple[5]),
+            Int(scales.static_spec.shape_tuple[5]),
+        ),
     )
     comptime page_size = Int(blocks.static_spec.shape_tuple[3])
-    comptime granularity = Int(blocks.static_spec.shape_tuple[5]) // Int(
-        scales.static_spec.shape_tuple[5]
+    comptime granularity = _scaled_cache_granularity[dtype, scale_dtype](
+        Int(blocks.static_spec.shape_tuple[5]),
+        Int(scales.static_spec.shape_tuple[5]),
     )
-    comptime assert granularity * Int(scales.static_spec.shape_tuple[5]) == Int(
+    comptime assert granularity * Int(
+        scales.static_spec.shape_tuple[5]
+    ) + kv_params.fp8_tail_size == Int(
         blocks.static_spec.shape_tuple[5]
     ), "the scales row must evenly divide the values row"
     return generic_get_paged_cache_with_scales[
