@@ -169,8 +169,6 @@ private:
 };
 
 /// Function tooling helpers operate on function signatures.
-SmallVector<KGEN::ArgumentInfo, kTypicalArgumentCount>
-getFunctionArguments(FnSignatureASTDecl &decl);
 SmallVector<KGEN::ParameterInfo, kTypicalParameterCount>
 getFunctionParameters(FnSignatureASTDecl &decl);
 std::string getFunctionDeclarationSnippet(

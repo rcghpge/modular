@@ -82,7 +82,6 @@ private:
 /// Everything needed to render one argument of a Mojo signature.
 struct ArgumentInfo {
   ArgumentInfo() = default;
-  ArgumentInfo(LIT::ASTDecl &decl);
 
   StringRef getName() const { return name; }
   static std::string getMarkdownDocString(LIT::ASTDecl &decl);
@@ -128,17 +127,13 @@ populateParameterInfos(LIT::FnSignatureASTDecl &decl,
                        SmallVectorImpl<ParameterInfo> &params,
                        std::optional<LIT::ASTType> selfType = std::nullopt);
 
-/// Populate `args` from a function signature. `selfResultFn`, when non-null
-/// and returning true, signals that the function's by-ref result represents
-/// `self` (the `__init__`/`__copyinit__`/`__moveinit__` family); the relevant
-/// out-arg is marked `isSelf`. Otherwise the first arg is treated as `self`.
-void populateArgumentInfos(LIT::ASTDecl &decl,
-                           LIT::FnTypeGeneratorType signature,
-                           ArrayRef<mlir::Type> userArgTypes,
-                           std::optional<LIT::ASTType> selfType,
-                           ParameterEvaluator &evaluator,
-                           function_ref<bool()> hasSelfResultFn,
-                           SmallVectorImpl<ArgumentInfo> &args);
+/// Return user-visible arguments for a function signature declaration. Each
+/// entry is associated with its corresponding AST declaration.
+SmallVector<ArgumentInfo, 2>
+getArgumentInfos(LIT::FnSignatureASTDecl &decl, ParameterEvaluator &evaluator,
+                 std::optional<LIT::ASTType> selfType = std::nullopt);
+SmallVector<ArgumentInfo, 2> getArgumentInfos(LIT::FnSignatureASTDecl &decl);
+std::optional<ArgumentInfo> getArgumentInfo(LIT::ASTDecl &decl);
 
 //===----------------------------------------------------------------------===//
 // Constraint merging
