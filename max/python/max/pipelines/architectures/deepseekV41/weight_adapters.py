@@ -74,9 +74,8 @@ _HC_SITE_TENSOR = re.compile(
 GATE_UP_PROJ = "gate_up_proj"
 DOWN_PROJ = "down_proj"
 
-# FP8 projections the model may run in bf16. The trunk's ``wo_a`` is
-# dequantized only when ``woa_mxfp8_enabled()`` is false; DSpark stages
-# always run it in bf16.
+# FP8 projections the model may run in bf16: ``wo_a`` (trunk and DSpark
+# stages) is dequantized only when ``woa_mxfp8_enabled()`` is false.
 _HOST_DEQUANT_PROJECTIONS = (".attn.wo_a",)
 
 # Checkpoint name prefix of the DSpark draft stages.
@@ -100,8 +99,6 @@ def is_host_dequantized(base: str, *, woa_mxfp8: bool | None = None) -> bool:
     """
     if not base.endswith(_HOST_DEQUANT_PROJECTIONS):
         return False
-    if base.startswith(DSPARK_CHECKPOINT_PREFIX):
-        return True
     if woa_mxfp8 is None:
         woa_mxfp8 = woa_mxfp8_enabled()
     return not woa_mxfp8
@@ -718,11 +715,11 @@ def _layer_max_input_scale(
 
 
 def interleave_nvfp4_scales(scales: np.ndarray) -> np.ndarray:
-    """Reorders ``[rows, cols]`` NVFP4 block scales into the tiled layout.
+    """Reorders ``[rows, cols]`` block scales into the tiled layout.
 
-    This is the scale layout the NVFP4 grouped matmul reads: entry
-    ``[r, c]`` lands at ``[r // 128, c // 4, r % 32, (r % 128) // 32,
-    c % 4]`` of ``[rows / 128, cols / 4, 32, 4, 4]``, flattened back to
+    This is the scale layout the block-scaled grouped matmul reads, for
+    NVFP4 and MXFP8 alike (only bytes move): entry ``[r, c]`` lands at
+    ``[r // 128, c // 4, r % 32, (r % 128) // 32, c % 4]`` of ``[rows / 128, cols / 4, 32, 4, 4]``, flattened back to
     ``[rows, cols]``.
 
     Raises:
@@ -1092,9 +1089,16 @@ def convert_weight_data(
                 and weight.dtype == DType.float8_e4m3fn
                 and data.dtype == DType.float8_e8m0fnu
             ):
-                new_state_dict[max_name] = expand_mxfp8_weight_scale(
-                    weight, data, max_name
-                )
+                expanded = expand_mxfp8_weight_scale(weight, data, max_name)
+                if base.endswith(_HOST_DEQUANT_PROJECTIONS):
+                    # The MXFP8 ``wo_a`` runs as a grouped block-scaled
+                    # matmul, which reads its scales tile-interleaved.
+                    expanded = with_dtype(
+                        interleave_nvfp4_scales(as_uint8(expanded.data)),
+                        DType.float8_e8m0fnu,
+                        max_name,
+                    )
+                new_state_dict[max_name] = expanded
                 continue
             new_state_dict[max_name] = data
             continue
