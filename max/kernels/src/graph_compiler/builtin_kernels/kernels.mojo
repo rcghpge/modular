@@ -137,6 +137,7 @@ from state_space.gated_group_rmsnorm import (
     gated_group_rmsnorm_cpu,
     gated_group_rmsnorm_gpu,
 )
+from state_space.mamba2_replay_fold import mamba2_replay_fold_launch
 from state_space.mamba2_ssd_chunked import (
     mamba2_ssd_chunked_fwd_inplace_gpu,
     use_chunked_ssd,
@@ -184,6 +185,7 @@ comptime logger = Logger()
 
 from std.utils import IndexList
 from std.utils.index import Index
+from std.utils.static_tuple import StaticTuple
 from nn.learnable_2d_interp_pos_emb import learnable_2d_interp_pos_emb
 from nn.spatial_merge import spatial_merge
 from nn.tpool_patch_merger import (
@@ -5116,6 +5118,148 @@ def mamba2_ssd_chunk_scan_varlen_fwd_inplace_shape(
     ), "x, dt, A, B, C, D, and dt_bias must share a dtype"
     # y has the same shape as x: (total_len, nheads, head_dim).
     return rebind[IndexList[3]](coord_to_index_list(x.shape().tuple()))
+
+
+@extensibility.register("mamba2_replay_fold")
+struct Mamba2ReplayFold[dt_softplus: Bool = True]:
+    """Commits a speculative verify's accepted rows to every Mamba-2 layer.
+
+    For each layer and request, sets the conv window to the last
+    `width - 1` accepted conv inputs and folds the accepted rows into the SSM
+    state, in one launch with no output. The SSM state lands bit-identical to
+    replaying the rows through `mamba2_ssd_chunk_scan_varlen_fwd_inplace`;
+    see `state_space.mamba2_replay_fold`. Every request continues its live
+    state. GPU only.
+
+    Parameters:
+        dt_softplus: If True (default), apply softplus to `dt + dt_bias`.
+
+    Tensor shapes:
+        - conv_pool: (max_slots, conv_dim, width - 1)  [MUT]
+        - ssm_pool: (max_slots, nheads, head_dim, dstate) fp32 or bf16  [MUT]
+        - conv_rows: (num_layers, batch) uint32
+        - ssm_rows: (num_layers, batch) uint32
+        - replay_bounds: (2 * batch,) int32, each request's accepted
+          `(start, end)` rows
+        - layers: `4 * num_layers` tensors, in four runs of `num_layers`:
+          each layer's `in_proj` output rows `(rows, nheads * head_dim +
+          conv_dim + nheads)`, its conv output rows `(rows, conv_dim)`, its
+          `A` as `(1, nheads)` and its `dt_bias` as `(1, nheads)`. Every
+          tensor's rows are contiguous.
+    """
+
+    @staticmethod
+    def execute[
+        dtype: DType,
+        conv_dtype: DType,
+        state_dtype: DType,
+        target: StaticString,
+    ](
+        conv_pool: MutableInputTensor[dtype=conv_dtype, rank=3, ...],
+        ssm_pool: MutableInputTensor[dtype=state_dtype, rank=4, ...],
+        conv_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        ssm_rows: InputTensor[dtype=.uint32, rank=2, ...],
+        replay_bounds: InputTensor[dtype=.int32, rank=1, ...],
+        layers: InputVariadicTensors[dtype=dtype, rank=2, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        comptime if not is_gpu[target]():
+            raise Error("mamba2_replay_fold runs on GPUs only")
+        else:
+            comptime assert (
+                layers.size % 4 == 0
+            ), "layers holds four tensors per layer"
+            comptime NUM_LAYERS = layers.size // 4
+            comptime assert (
+                state_dtype == .float32 or state_dtype == .bfloat16
+            ), "ssm_pool must be float32 or bfloat16"
+            if (
+                conv_rows.dim_size(0) != NUM_LAYERS
+                or ssm_rows.dim_size(0) != NUM_LAYERS
+            ):
+                raise Error(
+                    "conv_rows and ssm_rows need one row per layer, "
+                    + String(NUM_LAYERS)
+                )
+            # Each thread moves its dstate lanes of the pool as one vector.
+            if ssm_pool.strides()[3] != 1:
+                raise Error(
+                    "the replay fold needs a unit stride on the dstate axis"
+                    " of ssm_pool"
+                )
+            var nheads = ssm_pool.dim_size(1)
+            var head_dim = ssm_pool.dim_size(2)
+            var dstate = ssm_pool.dim_size(3)
+            var conv_dim = conv_pool.dim_size(1)
+            var ngroups = (conv_dim - nheads * head_dim) // (2 * dstate)
+            var projected_stride = layers[0].strides()[0]
+            var convolved_stride = layers[NUM_LAYERS].strides()[0]
+
+            comptime Ptr = ImmPointer[Scalar[dtype], ImmutAnyOrigin]
+            var projected = StaticTuple[Ptr, NUM_LAYERS]()
+            var convolved = StaticTuple[Ptr, NUM_LAYERS]()
+            var A = StaticTuple[Ptr, NUM_LAYERS]()
+            var dt_bias = StaticTuple[Ptr, NUM_LAYERS]()
+            comptime for i in range(NUM_LAYERS):
+                if (
+                    layers[i].dim_size(1)
+                    != nheads * head_dim + conv_dim + nheads
+                    or layers[i].strides()[0] != projected_stride
+                    or layers[i].strides()[1] != 1
+                ):
+                    raise Error(
+                        "every in_proj tensor must be (rows, intermediate +"
+                        " conv_dim + nheads) with one row stride"
+                    )
+                if (
+                    layers[NUM_LAYERS + i].dim_size(1) != conv_dim
+                    or layers[NUM_LAYERS + i].strides()[0] != convolved_stride
+                    or layers[NUM_LAYERS + i].strides()[1] != 1
+                ):
+                    raise Error(
+                        "every conv output must be (rows, conv_dim) with one"
+                        " row stride"
+                    )
+                comptime for k in range(2, 4):
+                    if (
+                        layers[k * NUM_LAYERS + i].dim_size(1) != nheads
+                        or layers[k * NUM_LAYERS + i].strides()[1] != 1
+                    ):
+                        raise Error("A and dt_bias must be (1, nheads)")
+                projected[i] = rebind[Ptr](
+                    layers[i].to_tile_tensor[.int64]().as_imm().ptr
+                )
+                convolved[i] = rebind[Ptr](
+                    layers[NUM_LAYERS + i].to_tile_tensor[.int64]().as_imm().ptr
+                )
+                A[i] = rebind[Ptr](
+                    layers[2 * NUM_LAYERS + i]
+                    .to_tile_tensor[.int64]()
+                    .as_imm()
+                    .ptr
+                )
+                dt_bias[i] = rebind[Ptr](
+                    layers[3 * NUM_LAYERS + i]
+                    .to_tile_tensor[.int64]()
+                    .as_imm()
+                    .ptr
+                )
+
+            mamba2_replay_fold_launch[dt_softplus=Self.dt_softplus](
+                projected,
+                convolved,
+                A,
+                dt_bias,
+                projected_stride,
+                convolved_stride,
+                ngroups,
+                conv_pool.to_tile_tensor(),
+                ssm_pool.to_tile_tensor(),
+                conv_rows.to_tile_tensor(),
+                ssm_rows.to_tile_tensor(),
+                replay_bounds.to_tile_tensor(),
+                ctx,
+            )
 
 
 @extensibility.register("causal_conv1d_varlen_fwd")
