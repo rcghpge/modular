@@ -2427,23 +2427,6 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         # driver version.
         return 0
 
-    def run_healthcheck(self) raises:
-        """Runs lightweight GPU health validation.
-
-        Checks for hardware throttling, uncorrectable ECC errors, and stuck
-        VRAM. Raises an error if the GPU is unhealthy. The healthcheck runs
-        automatically during device initialization; this method allows
-        re-running it explicitly.
-
-        Disable with `MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK=true`.
-
-        Raises:
-            Error: If the GPU is in an unhealthy state.
-        """
-        # TODO: HAL stub - no-op. Port AsyncRT's `evaluateGPUHealth` when
-        # the healthcheck signal is required.
-        pass
-
     def arch_name(self) raises -> String:
         """Returns the architecture name of this device.
 
