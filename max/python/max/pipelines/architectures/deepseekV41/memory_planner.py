@@ -65,15 +65,27 @@ logger = logging.getLogger("max.pipelines")
 # a row-independent part. It barely depends on the tensor-parallel degree
 # (MoE intermediates are ``T * top_k`` rows on every rank).
 _ARENA_ROW_BYTES = 2 << 20
+# Under expert-parallel dispatch the routed experts' intermediates live in the
+# statically sized receive tensors (:func:`ep_receive_pool_bytes`), not per
+# query row, so the per-row part is smaller: a DP4 8192-row prefill chunk
+# peaks at ~10.4 GiB of transients outside those tensors.
+_EP_ARENA_ROW_BYTES = 5 << 18  # 1.25 MiB
 # Upper bound on the MoE's transient bytes per row (gathered input, routed
 # top-k intermediates, float32 partial sum), for the other replicas' rows a
 # data-parallel device also runs the MoE on.
 _MOE_ROW_BYTES = 256 << 10
 
-# Upper bound on the routed experts' transient bytes per row of an
-# expert-parallel receive buffer: the rows arrive quantized, so this is the
-# bf16 down projection output plus slack.
-_EP_RECV_ROW_BYTES = 12 << 10
+# Device 0 runs the LM head and sampling for every data-parallel replica, so
+# its captured decode graphs hold extra bytes per ``[rows, vocab]`` entry: the
+# head's bfloat16 logits and their float32 cast (6 B), plus sampling and
+# draft verification working memory, measured at 4.33 B per entry and growing
+# exactly with the rows but not broken down further (rounded up to 4.5 B).
+_HEAD_LOGITS_BYTES = 6
+_HEAD_SAMPLING_BYTES = 4.5
+# NVFP4 block scales: one byte per 16 values, in 128-row x 4-column tiles.
+_NVFP4_SCALE_TILE_ROWS = 128
+_NVFP4_SCALE_TILE_BYTES = 512
+_NVFP4_SCALE_TILE_COLS = 64
 _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
 # The indexer kernel scores query rows in windows that fit this transient
 # budget, whatever the batch or context length.
@@ -124,14 +136,92 @@ def indexer_activation_bytes(
     return _mm_pages(_INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(window) + kept
 
 
-def graph_arena_bytes(*, live_rows: int) -> int:
+def graph_arena_bytes(
+    *, live_rows: int, row_bytes: int = _ARENA_ROW_BYTES
+) -> int:
     """Returns per-device bytes of the forward graph's planned arena.
 
     A fixed part plus a per-row part, rounded up to whole pages.
+
+    Args:
+        live_rows: Query rows in one forward.
+        row_bytes: Transient bytes per query row.
     """
     if live_rows <= 0:
         return 0
-    return _mm_pages(_ARENA_FIXED_BYTES + live_rows * _ARENA_ROW_BYTES)
+    return _mm_pages(_ARENA_FIXED_BYTES + live_rows * row_bytes)
+
+
+def ep_receive_pool_bytes(ep_config: Any) -> int:
+    """Returns the routed experts' statically sized receive-side bytes.
+
+    The dispatched NVFP4 rows, their block scales and source info stay live
+    while the fused expert kernel writes the bf16 down projection, all sized
+    for the most rows a device can receive, whatever the batch. This is the
+    largest single transient of a forward, and every forward and captured
+    graph holds one.
+
+    Args:
+        ep_config: The expert-parallel :class:`EPConfig`.
+    """
+    rows = int(ep_config.get_max_recv_tokens())
+    hidden = int(ep_config.hidden_size)
+    n_ranks = int(ep_config.n_gpus_per_node) * int(ep_config.n_nodes)
+    n_local_experts = int(ep_config.n_experts) // n_ranks
+    scale_tiles = -(
+        -(rows + n_local_experts * _NVFP4_SCALE_TILE_ROWS)
+        // _NVFP4_SCALE_TILE_ROWS
+    ) * -(-hidden // _NVFP4_SCALE_TILE_COLS)
+    tokens = rows * hidden // 2
+    src_info = rows * 2 * 4
+    down = rows * hidden * 2
+    return _mm_pages(
+        tokens + scale_tiles * _NVFP4_SCALE_TILE_BYTES + src_info + down
+    )
+
+
+def graph_capture_pool_bytes(
+    *,
+    capture_rows: int,
+    head_rows: int,
+    vocab_size: int,
+    row_bytes: int,
+    indexer_bytes: int,
+    ep_pool_bytes: int,
+) -> int:
+    """Returns per-device bytes of the captured device graphs' memory pool.
+
+    Captured graphs run one at a time and each capture reuses the previous
+    graph's working memory, so they share one pool sized by the largest
+    graph: the batch-independent receive tensors and indexer scratch plus the
+    largest decode batch's per-row transients. Device 0 also holds the LM
+    head's logits and the sampling working memory over ``[rows, vocab]`` for
+    every replica's rows. KV is the same size on every device, so every
+    device reserves device 0's pool.
+
+    Args:
+        capture_rows: Query rows per replica of the largest captured graph.
+        head_rows: Rows the LM head scores in that graph, over all replicas.
+        vocab_size: Vocabulary size.
+        row_bytes: Transient bytes per query row.
+        indexer_bytes: The indexer's transient bytes at ``capture_rows``.
+        ep_pool_bytes: :func:`ep_receive_pool_bytes`, or 0 without
+            expert-parallel dispatch.
+    """
+    if capture_rows <= 0:
+        return 0
+    return (
+        graph_arena_bytes(live_rows=capture_rows, row_bytes=row_bytes)
+        + indexer_bytes
+        + ep_pool_bytes
+        + _mm_pages(
+            ceil(
+                head_rows
+                * vocab_size
+                * (_HEAD_LOGITS_BYTES + _HEAD_SAMPLING_BYTES)
+            )
+        )
+    )
 
 
 def forward_activation_bytes(
@@ -412,9 +502,10 @@ def check_planned_max_length(
 class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
     """Reserves the forward's transient memory out of the KV budget.
 
-    The graph arena and indexer scratch (:func:`forward_activation_bytes`)
-    can reach tens of GiB per device, so they must be subtracted before the
-    KV leaves are sized.
+    The graph arena and indexer scratch (:func:`forward_activation_bytes`),
+    the captured device graphs' pool (:func:`graph_capture_pool_bytes`) and
+    fragmentation headroom can reach tens of GiB per device, so they must be
+    subtracted before the KV leaves are sized.
     """
 
     def estimate_weights_size(self, pipeline_config: Any) -> int:
@@ -474,8 +565,9 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
                 top-level config, with text fields under ``text_config``).
 
         Returns:
-            :func:`graph_arena_bytes` plus :func:`indexer_activation_bytes`
-            per device, summed over devices (free memory is summed the same
+            :func:`graph_arena_bytes`, :func:`indexer_activation_bytes`,
+            the expert-parallel buffers, :func:`graph_capture_pool_bytes`
+            with device graph capture, and fragmentation headroom per device, summed over devices (free memory is summed the same
             way), plus :func:`vision_activation_bytes` of one largest image
             on device 0. Excludes KV leaf storage (see module docstring).
         """
@@ -503,26 +595,31 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         num_devices = max(1, len(pipeline_config.model.device_specs))
         dp = int(pipeline_config.model.data_parallel_degree)
         blocks = candidate_blocks_per_row(text_config, max_length)
-        arena = graph_arena_bytes(live_rows=live_rows)
+        kept_blocks = (
+            getattr(text_config, "candidate_topk_blocks", 0) or 0
+            if blocks
+            else 0
+        )
+        block_size = getattr(text_config, "candidate_block_size", 0) or 0
         indexer = indexer_activation_bytes(
             live_rows=live_rows,
             candidate_blocks=blocks,
-            kept_blocks=(
-                getattr(text_config, "candidate_topk_blocks", 0) or 0
-                if blocks
-                else 0
-            ),
-            block_size=getattr(text_config, "candidate_block_size", 0) or 0,
+            kept_blocks=kept_blocks,
+            block_size=block_size,
         )
         ep_config = data_parallel_ep_config(pipeline_config, text_config)
+        row_bytes = (
+            _ARENA_ROW_BYTES if ep_config is None else _EP_ARENA_ROW_BYTES
+        )
+        arena = graph_arena_bytes(live_rows=live_rows, row_bytes=row_bytes)
+        ep_pool = 0
         if ep_config is not None:
             # Expert-parallel dispatch: the persistent communication buffers,
             # and the experts' intermediates over the statically sized
             # receive rows.
             ep_buffers = ep_config.estimate_memory_usage()
-            moe_rows = ep_buffers + _mm_pages(
-                ep_config.get_max_recv_tokens() * _EP_RECV_ROW_BYTES
-            )
+            ep_pool = ep_receive_pool_bytes(ep_config)
+            moe_rows = ep_buffers + ep_pool
             speculative = pipeline_config.speculative
             if speculative is not None and speculative.is_dspark():
                 # The drafter's experts still run every replica's draft
@@ -543,16 +640,47 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             # Each replica gets its own row budget; under data parallelism
             # without expert dispatch, the MoE runs on every replica's rows.
             moe_rows = _mm_pages((dp - 1) * live_rows * _MOE_ROW_BYTES)
-        per_device = arena + indexer + moe_rows
+        graph_pool = 0
+        if runtime.device_graph_capture is True:
+            # Captured graphs keep their own pool, which eager forwards never
+            # reuse. Each decode request carries its draft rows.
+            assert runtime.max_batch_size is not None
+            speculative = pipeline_config.speculative
+            draft_tokens = (
+                speculative.num_speculative_tokens or 0
+                if speculative is not None and speculative.is_dspark()
+                else 0
+            )
+            capture_rows = runtime.max_batch_size * (draft_tokens + 1)
+            graph_pool = graph_capture_pool_bytes(
+                capture_rows=capture_rows,
+                head_rows=max(1, dp) * capture_rows,
+                vocab_size=int(text_config.vocab_size),
+                row_bytes=row_bytes,
+                indexer_bytes=indexer_activation_bytes(
+                    live_rows=capture_rows,
+                    candidate_blocks=blocks,
+                    kept_blocks=kept_blocks,
+                    block_size=block_size,
+                ),
+                ep_pool_bytes=ep_pool,
+            )
+        # Freed transients are reused only in place, so a fragmented free
+        # list must still fit a fresh copy of the largest one.
+        headroom = max(ep_pool, _MM_PAGE_BYTES)
+        per_device = arena + indexer + moe_rows + graph_pool + headroom
 
         logger.info(
             "Estimated DeepSeek-V4.1-Flash forward activation memory: %s per "
-            "device x %d devices (graph arena %s + indexer %s; %d live rows, "
-            "%d candidate blocks)",
+            "device x %d devices (graph arena %s + indexer %s + device graph "
+            "pool %s + fragmentation headroom %s; %d live rows, %d candidate "
+            "blocks)",
             to_human_readable_bytes(per_device),
             num_devices,
             to_human_readable_bytes(arena),
             to_human_readable_bytes(indexer),
+            to_human_readable_bytes(graph_pool),
+            to_human_readable_bytes(headroom),
             live_rows,
             blocks,
         )
