@@ -62,12 +62,10 @@ def bench_1d1d_quantization[
     var in_device = ctx.enqueue_create_buffer[in_dtype](rows * cols)
     var input_tensor = TileTensor(in_device, row_major(rows, Idx[cols]))
 
-    var out_device = ctx.enqueue_create_buffer[out_dtype](
-        rows * ceildiv(cols, 2)
-    )
-    var output_tensor = TileTensor(
-        out_device, row_major(rows, Idx[ceildiv(cols, 2)])
-    )
+    # Packed FP4 holds two values a byte; MXFP8 one.
+    comptime out_cols = ceildiv(cols, 2) if is_fp4 else cols
+    var out_device = ctx.enqueue_create_buffer[out_dtype](rows * out_cols)
+    var output_tensor = TileTensor(out_device, row_major(rows, Idx[out_cols]))
 
     var scales_shape = IndexList[5](
         ceildiv(rows, SF_MN_GROUP_SIZE),
