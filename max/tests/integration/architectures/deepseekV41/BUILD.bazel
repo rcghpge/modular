@@ -153,6 +153,64 @@ modular_py_test(
     ],
 )
 
+# Guards the overlap spec-decode step order the DSpark verify lookback relies
+# on: pipelines/lib/pipeline_variants/overlap_text_generation.py (the
+# in-flight marks and the realized cache lengths) and
+# pipelines/lib/pipeline_variants/utils.py
+# (update_spec_decode_context_and_prepare_responses).
+modular_py_test(
+    name = "test_dspark_engram_lookback_overlap",
+    srcs = ["test_dspark_engram_lookback_overlap.py"],
+    args = [
+        "-k",
+        "cpu",
+    ],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        "//max/python/max/pipelines/architectures/unified_dspark_deepseekV41",
+        "//max/python/max/pipelines/context",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/modeling",
+        "//max/python/max/pipelines/speculative",
+        requirement("numpy"),
+    ],
+)
+
+# Runs the GPU cases of the same file: the lookback graph on the GPU and the
+# graph-capture replay. The CPU target above runs the CPU cases.
+modular_py_test(
+    name = "test_dspark_engram_lookback_overlap_gpu",
+    srcs = ["test_dspark_engram_lookback_overlap.py"],
+    args = [
+        "-k",
+        "'gpu or replay'",
+    ],
+    exec_properties = {
+        "test.resources:gpu-memory": "2",
+    },
+    gpu_constraints = ["//:b200_gpu"],
+    tags = ["gpu"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/nn",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        "//max/python/max/pipelines/architectures/unified_dspark_deepseekV41",
+        "//max/python/max/pipelines/context",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/modeling",
+        "//max/python/max/pipelines/speculative",
+        requirement("numpy"),
+    ],
+)
+
 # Guards graph capture and replay input binding in
 # pipelines/lib/graph_capture.py (ServeGraphCaptureRunner), and the
 # data-parallel splits from pipelines/lib/utils.py
