@@ -337,21 +337,25 @@ def select_index_keys(
             layer_idx,
         ],
         out_types=[TensorType(DType.int32, [t, top_k], packed.device)],
-        parameters={"num_heads": n_heads, "top_k": top_k, "kpool": ratio},
+        parameters={
+            "num_heads": n_heads,
+            "top_k": top_k,
+            "kpool": ratio,
+            "scores_budget_bytes": INDEXER_SCORES_BUDGET_BYTES,
+        },
     )[0].tensor
 
 
-# The candidate ops score as many rows per window as the scorer's 512 MiB
-# bfloat16 score budget holds. Their scratch is ``[rows, blocks]``, so it
-# takes at most a quarter of that budget at any key count.
-CANDIDATE_SCORES_BUDGET_BYTES = 512 << 20
+# The indexer ops score query rows in windows that fit this transient budget
+# of bfloat16 scores, whatever the batch or context length; every indexer op
+# takes it as a parameter. The candidate ops' ``[rows, blocks]`` scratch holds
+# as many rows as one score window, so it takes at most a quarter of it.
+INDEXER_SCORES_BUDGET_BYTES = 512 << 20
 
 
 def candidate_window_rows(rows: int, num_blocks: int, block_size: int) -> int:
     """Rows of the candidate ops' window scratch."""
-    budget = CANDIDATE_SCORES_BUDGET_BYTES // max(
-        1, num_blocks * block_size * 2
-    )
+    budget = INDEXER_SCORES_BUDGET_BYTES // max(1, num_blocks * block_size * 2)
     return max(1, min(rows, budget))
 
 
@@ -407,6 +411,7 @@ def select_index_keys_block_topk(
             "top_k": top_k,
             "kpool": ratio,
             "block_size": block_size,
+            "scores_budget_bytes": INDEXER_SCORES_BUDGET_BYTES,
         },
     )
     return ids.tensor, kept.tensor
@@ -449,6 +454,7 @@ def select_index_keys_masked(
             "top_k": top_k,
             "kpool": ratio,
             "block_size": block_size,
+            "scores_budget_bytes": INDEXER_SCORES_BUDGET_BYTES,
         },
     )[0].tensor
 

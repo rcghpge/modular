@@ -35,6 +35,7 @@ from max.support.human_readable_formatter import to_human_readable_bytes
 
 from . import kv_leaves
 from .layers.indexer import (
+    INDEXER_SCORES_BUDGET_BYTES,
     candidate_blocks_active,
     candidate_num_blocks,
     candidate_window_rows,
@@ -87,9 +88,6 @@ _NVFP4_SCALE_TILE_ROWS = 128
 _NVFP4_SCALE_TILE_BYTES = 512
 _NVFP4_SCALE_TILE_COLS = 64
 _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
-# The indexer kernel scores query rows in windows that fit this transient
-# budget, whatever the batch or context length.
-_INDEXER_SCORES_BUDGET_BYTES = 512 << 20
 # The candidate ops' window scratch holds one float32 block maximum (source)
 # or one flag byte (consumer) per block of a window row; they never overlap.
 _WINDOW_BYTES_PER_BLOCK = 4
@@ -133,7 +131,7 @@ def indexer_activation_bytes(
         else 0
     )
     kept = live_rows * max(0, kept_blocks) * _KEPT_ID_BYTES
-    return _mm_pages(_INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(window) + kept
+    return _mm_pages(INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(window) + kept
 
 
 def graph_arena_bytes(
