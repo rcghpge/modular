@@ -45,7 +45,7 @@ from max.gpu.host import DeviceContext
 def elementwise_kernel[
     dtype: DType,
     simd_width: Int,
-    func: def(SIMD[dtype, simd_width]) capturing[_] -> SIMD[dtype, simd_width],
+    func: def(SIMD[dtype, simd_width]) thin -> SIMD[dtype, simd_width],
 ](data: Pointer[Scalar[dtype], MutAnyOrigin], n: Int32):
     var idx = global_idx.x * simd_width
     if idx < Int(n):
@@ -61,11 +61,9 @@ def main() raises:
         buf_f32.enqueue_fill(0.0)
         buf_f16.enqueue_fill(0.0)
 
-        @__parameter
         def add_one(v: SIMD[.float32, 4]) -> SIMD[.float32, 4]:
             return v + 1
 
-        @__parameter
         def scale_two(v: SIMD[.float16, 8]) -> SIMD[.float16, 8]:
             return v * 2
 

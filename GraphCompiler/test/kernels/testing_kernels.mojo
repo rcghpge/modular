@@ -671,115 +671,6 @@ struct TraitFusedLoadHostUnifiedClosure:
             _fused_load_negate[target=target](ctx, z, n, gpu_load_fn)
 
 
-# Device entry for the PARAMETER-closure fused-load path: one thread per element
-# negates the value produced by the parameter closure. The closure is supplied
-# as a comptime parameter and copy-captures the projected view, so this rides
-# the same bit-copy launch route `Concat` uses.
-def _gpu_fused_load_negate_parameter_closure_kernel[
-    dtype: DType,
-    LayoutType: TensorLayout,
-    load_fn: def[dtype: DType, width: Int](i: Int) capturing -> SIMD[
-        dtype, width
-    ],
-](output: TileTensor[dtype, LayoutType, MutAnyOrigin], n_dev: Int32,):
-    var n = Int(n_dev)
-    var i = Int(global_idx.x)
-    if i >= n:
-        return
-    output.reshape(row_major(n))[i] = rebind[SIMD[dtype, 1]](
-        -load_fn[dtype, 1](i)
-    )
-
-
-@inline(.always)
-def _fused_load_negate_parameter_closure[
-    Z: Output & DenseTensor,
-    load_fn: def[dtype: DType, width: Int](Int) capturing -> SIMD[dtype, width],
-    *,
-    target: StaticString,
-](z: Z, n: Int, ctx: DeviceContext,) raises:
-    """Consumes a parameter closure on both CPU and GPU lanes.
-
-    Mirrors the `fused_concat` dispatch pattern used by real `execute` kernels:
-    the closures are built on the host, then the helper either invokes them
-    directly on CPU or passes them as comptime arguments to a device kernel on
-    GPU.
-    """
-    var zt = to_tile_tensor(z)
-    comptime if is_cpu[target]():
-        var zf = zt.reshape(row_major(n))
-        for i in range(n):
-            zf.store(
-                (i,),
-                rebind[SIMD[type_of(zt).dtype, 1]](
-                    -load_fn[type_of(zt).dtype, 1](i)
-                ),
-            )
-    else:
-        comptime block_size = 64
-        ctx.enqueue_function[
-            _gpu_fused_load_negate_parameter_closure_kernel[
-                type_of(zt).dtype, type_of(zt).LayoutType, load_fn
-            ]
-        ](
-            zt,
-            Int32(n),
-            grid_dim=(ceildiv(n, block_size),),
-            block_dim=(block_size,),
-        )
-
-
-# Parameter-closure fused-load variant: mirrors `Concat`'s `@__copy_capture`
-# route. The closure is a comptime parameter built on the host, projected on the
-# GPU lane, and copy-captured into a device kernel.
-@extensibility.register("trait_fused_load_capture_parameter_closure")
-struct TraitFusedLoadCaptureParameterClosure:
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & Fused & LoadAccess],
-        ctx: DeviceContext,
-    ) raises:
-        var n = Int(z.shape().product())
-        comptime if is_cpu[target]():
-            # CPU: arg already access-enabled, capture directly.
-            comptime assert conforms_to(
-                type_of(x),
-                Loadable & ImplicitlyCopyable & TrivialRegisterPassable,
-            )
-
-            @inline(.always)
-            @__parameter
-            @__copy_capture(x)
-            def cpu_load_fn[
-                dtype: DType, width: Int
-            ](i: Int) -> SIMD[dtype, width]:
-                return rebind[SIMD[dtype, width]](x.load[width]((i,)))
-
-            _fused_load_negate_parameter_closure[
-                type_of(z), cpu_load_fn, target=target
-            ](z, n, ctx)
-        else:
-            # GPU: project via accessor, parameter closure captures the view.
-            comptime assert conforms_to(type_of(x), UnsafeFusedView)
-            var xv = unsafe_fused_view(x)
-            comptime assert conforms_to(type_of(xv), Loadable)
-
-            @inline(.always)
-            @__parameter
-            @__copy_capture(xv)
-            def gpu_load_fn[
-                dtype: DType, width: Int
-            ](i: Int) -> SIMD[dtype, width]:
-                return rebind[SIMD[dtype, width]](xv.load[width]((i,)))
-
-            _fused_load_negate_parameter_closure[
-                type_of(z), gpu_load_fn, target=target
-            ](z, n, ctx)
-
-
 # NEGATIVE control: a host-built closure that captures the fused-load host
 # proxy directly must fail at launch because the closure body reaches the
 # `_access_enabled = False` proxy and trips the load gate. Exercised (expecting
@@ -1386,7 +1277,7 @@ def _gpu_fused_store_parameter_closure_kernel[
     LayoutType: TensorLayout,
     store_adapter: def[OutT: Storable, width: Int](
         OutT, Coord, SIMD[OutT.dtype, width]
-    ) capturing -> None,
+    ) thin -> None,
 ](
     output: ZDev,
     input: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
@@ -1411,7 +1302,7 @@ def _launch_fused_store_parameter_closure[
     LayoutType: TensorLayout,
     store_adapter: def[OutT: Storable, width: Int](
         OutT, Coord, SIMD[OutT.dtype, width]
-    ) capturing -> None,
+    ) thin -> None,
 ](output: ZHost, input: XHost, n: Int, ctx: DeviceContext,) raises:
     comptime block_size = 64
     ctx.enqueue_function[
@@ -1899,33 +1790,41 @@ def imposter_add_struct_param_shape(
     )
 
 
-def _matmul[
-    elementwise_lambda_fn: Optional[
-        def[
-            dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](IndexList[2], SIMD[dtype, width]) capturing -> None
-    ] = None,
-](
+def _matmul(
     c: ManagedTensorSlice[mut=True, ...],
     a: ManagedTensorSlice,
     b: ManagedTensorSlice,
 ) raises:
+    def store_c[
+        dtype: DType, width: SIMDLength, *, alignment: Int = 1
+    ](idx: IndexList[2], val: SIMD[dtype, width]) {var c}:
+        c.store[1](idx, rebind[Scalar[c.dtype]](val))
+
+    _matmul[c.dtype](a, b, store_c)
+
+
+def _matmul[
+    StoreFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[dtype: DType, width: SIMDLength, *, alignment: Int = 1](
+        IndexList[2], SIMD[dtype, width]
+    ) -> None,
+    //,
+    out_dtype: DType,
+](a: ManagedTensorSlice, b: ManagedTensorSlice, store_fn: StoreFnType) raises:
     var m = a.dim_size(0)
     var n = a.dim_size(1)
     var k = b.dim_size(1)
 
     for i in range(m):
         for j in range(n):
-            var c_val = Scalar[c.dtype](0)
+            var c_val = Scalar[out_dtype](0)
             for l in range(k):
-                var a_val = a.load[1]((i, l)).cast[c.dtype]()
-                var b_val = b.load[1]((l, j)).cast[c.dtype]()
+                var a_val = a.load[1]((i, l)).cast[out_dtype]()
+                var b_val = b.load[1]((l, j)).cast[out_dtype]()
                 c_val += a_val * b_val
 
-            comptime if case .Some(func) = elementwise_lambda_fn:
-                func((i, j), c_val)
-            else:
-                c.store[1]((i, j), c_val)
+            store_fn((i, j), c_val)
 
 
 # c = a @ b, should support CPU and GPU
@@ -2299,16 +2198,15 @@ struct MatmulFuseOut:
         comptime b_dtype = b.dtype
         comptime c_dtype = c.dtype
 
-        @__parameter
         @inline(.always)
         def out_func[
             dtype: DType, width: SIMDLength, *, alignment: Int = 1
-        ](idx: IndexList[2], val: SIMD[dtype, width]):
+        ](idx: IndexList[2], val: SIMD[dtype, width]) {var c}:
             c._fused_store(idx, rebind[SIMD[c.dtype, width]](val))
 
         print("has_epilogue_fusion =", has_epilogue_fusion)
 
-        _matmul[elementwise_lambda_fn=out_func](c, a, b)
+        _matmul[c.dtype](a, b, out_func)
 
 
 @extensibility.register_shape_function("matmul_fuse_out")

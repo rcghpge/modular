@@ -933,7 +933,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     def compile_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
-        func: def(*args: *declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         # Ignored; accepted for API parity with the legacy backend.
         compile_options: StaticString = "",
         link_options: StaticString = "",
@@ -1159,7 +1159,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         declared_arg_types: TypeList[Trait=AnyType, ...],
         HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
-        func: def(*args: *declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         *encoded_types: DevicePassable,
         # Ignored; accepted for API parity with the legacy backend.
         link_options: StaticString = "",
@@ -1983,10 +1983,11 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         # plain device-to-device copy already has the required semantics.
         self.enqueue_copy(dst_buf, src_buf)
 
+    @inline(.always)
     def enqueue_cpu_range[
-        func: def(count: Int) capturing -> None,
-    ](self, count: Int) raises:
-        """Runs a function over a 1D range on a CPU `DeviceContext`.
+        FuncType: def(Int) -> None,
+    ](self, func: FuncType, count: Int) raises:
+        """Runs a function closure over a 1D range on a CPU `DeviceContext`.
 
         The function is called as `func(i)` for each `i` in `range(count)`.
 
@@ -1994,31 +1995,6 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         runs serially and synchronously here; `synchronize()` is then a no-op
         for this work. Results match the legacy backend; only the parallelism
         differs.
-
-        Parameters:
-            func: The function to execute.
-
-        Args:
-            count: The number of instances of the function to run.
-
-        Raises:
-            If self is not a CPU DeviceContext.
-        """
-        if self.api() != "cpu":
-            raise Error(
-                "enqueue_cpu_range is only supported on CPU DeviceContexts"
-            )
-        for i in range(count):
-            func(i)
-
-    @inline(.always)
-    def enqueue_cpu_range[
-        FuncType: def(Int) -> None,
-    ](self, func: FuncType, count: Int) raises:
-        """Runs a function closure over a 1D range on a CPU `DeviceContext`.
-
-        See the parameterized overload; this runs serially and synchronously
-        under the HAL backend.
 
         Parameters:
             FuncType: The type of function to execute.
@@ -5179,7 +5155,7 @@ comptime _CString[origin: ImmOrigin = ImmUntrackedOrigin] = Optional[
     CStringSpan[origin]
 ]
 
-comptime _DumpPath = Variant[Bool, Path, StaticString, def() capturing -> Path]
+comptime _DumpPath = Variant[Bool, Path, StaticString, def() thin -> Path]
 
 
 def _string_from_owned_charptr(c_str: _CString) -> String:

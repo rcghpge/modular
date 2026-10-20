@@ -36,21 +36,18 @@ from max.gpu.host import DeviceContext, DeviceBuffer
 
 
 def launch_kernel[
-    dtype: DType, kernel_name: StaticString
+    dtype: DType, kernel_name: StaticString, width: Int
 ](ctx: DeviceContext, mut data: DeviceBuffer[dtype], n: Int) raises:
     var buf = data.unsafe_ptr()
+    var len = Int32(n)
 
     @__name(kernel_name + "_" + String(width))
-    @__parameter
-    def _kernel[*, width: Int]():
+    def _kernel() {var buf, var len}:
         var idx = global_idx.x * width
-        if idx < n:
+        if idx < Int(len):
             buf[unsafe_offset=idx] = buf[unsafe_offset=idx] + 1
 
-    comptime k4 = _kernel[width=4]
-    ctx.enqueue_function[k4](grid_dim=1, block_dim=n // 4)
-    comptime k8 = _kernel[width=8]
-    ctx.enqueue_function[k8](grid_dim=1, block_dim=n // 8)
+    ctx.enqueue_function(_kernel, grid_dim=1, block_dim=n // width)
 
 
 def main() raises:
@@ -61,8 +58,10 @@ def main() raises:
         buf_f32.enqueue_fill(0.0)
         buf_f16.enqueue_fill(0.0)
 
-        launch_kernel[.float32, "closure_kernel_float32"](ctx, buf_f32, n)
-        launch_kernel[.float16, "closure_kernel_float16"](ctx, buf_f16, n)
+        launch_kernel[.float32, "closure_kernel_float32", 4](ctx, buf_f32, n)
+        launch_kernel[.float32, "closure_kernel_float32", 8](ctx, buf_f32, n)
+        launch_kernel[.float16, "closure_kernel_float16", 4](ctx, buf_f16, n)
+        launch_kernel[.float16, "closure_kernel_float16", 8](ctx, buf_f16, n)
         ctx.synchronize()
 
 
