@@ -128,7 +128,7 @@ def verify_device_passable_interface[
     # Exercise host __call__ separately; device invocation is not supported yet.
     assert_equal(closure(4), 108)
 
-    var encoded = alloc[DeviceClosureType]({count = 1}).unsafe_leak()
+    var encoded = alloc[DeviceClosureType]({length = 1}).unsafe_leak()
     var encoder = DefaultDeviceTypeEncoder()
     closure._to_device_type(encoder, encoded.unsafe_bitcast[NoneType]())
 

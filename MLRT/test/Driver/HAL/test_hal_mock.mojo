@@ -286,8 +286,8 @@ def test_unified_copy_device_to_device_on_queue() raises:
     var queue = ctx[].create_queue()
 
     comptime n = 64
-    var src = alloc[UInt8]({count = n}).unsafe_leak()
-    var dst = alloc[UInt8]({count = n}).unsafe_leak()
+    var src = alloc[UInt8]({length = n}).unsafe_leak()
+    var dst = alloc[UInt8]({length = n}).unsafe_leak()
     for i in range(n):
         src[unsafe_offset=i] = UInt8(i)
         dst[unsafe_offset=i] = UInt8(0)
@@ -319,8 +319,8 @@ def test_unified_copy_sync_free_function() raises:
     var queue = ctx[].create_queue()
 
     comptime n = 32
-    var src = alloc[UInt8]({count = n}).unsafe_leak()
-    var dst = alloc[UInt8]({count = n}).unsafe_leak()
+    var src = alloc[UInt8]({length = n}).unsafe_leak()
+    var dst = alloc[UInt8]({length = n}).unsafe_leak()
     for i in range(n):
         src[unsafe_offset=i] = UInt8(i * 2)
         dst[unsafe_offset=i] = UInt8(0)
@@ -351,7 +351,7 @@ def test_sync_set_memory_and_fill_free_functions() raises:
     var queue = ctx[].create_queue()
 
     comptime n = 32
-    var out = alloc[UInt8]({count = n}).unsafe_leak()
+    var out = alloc[UInt8]({length = n}).unsafe_leak()
     var dev = ctx[].alloc_sync(UInt64(n))
 
     set_memory(dst=dev, value=UInt8(0x11))
@@ -378,8 +378,8 @@ def test_unified_copy_on_stream() raises:
     var stream = ctx[].create_stream()
 
     comptime n = 48
-    var src = alloc[UInt8]({count = n}).unsafe_leak()
-    var dst = alloc[UInt8]({count = n}).unsafe_leak()
+    var src = alloc[UInt8]({length = n}).unsafe_leak()
+    var dst = alloc[UInt8]({length = n}).unsafe_leak()
     for i in range(n):
         src[unsafe_offset=i] = UInt8(255 - i)
         dst[unsafe_offset=i] = UInt8(0)
@@ -429,8 +429,8 @@ def test_unified_copy_front_fill() raises:
     comptime small_n = 16
     var small = ctx[].alloc_sync(UInt64(small_n))
     var big = ctx[].alloc_sync(UInt64(big_n))
-    var host = alloc[UInt8]({count = small_n}).unsafe_leak()
-    var out = alloc[UInt8]({count = big_n}).unsafe_leak()
+    var host = alloc[UInt8]({length = small_n}).unsafe_leak()
+    var out = alloc[UInt8]({length = big_n}).unsafe_leak()
     for i in range(small_n):
         host[unsafe_offset=i] = UInt8(i + 1)
 
@@ -545,8 +545,8 @@ def test_unified_copy_inter_device_on_queue() raises:
     var queue1 = ctx1[].create_queue()
 
     comptime n = 64
-    var host_src = alloc[UInt8]({count = n}).unsafe_leak()
-    var host_out = alloc[UInt8]({count = n}).unsafe_leak()
+    var host_src = alloc[UInt8]({length = n}).unsafe_leak()
+    var host_out = alloc[UInt8]({length = n}).unsafe_leak()
     for i in range(n):
         host_src[unsafe_offset=i] = UInt8(i + 1)
         host_out[unsafe_offset=i] = UInt8(0)
@@ -588,8 +588,8 @@ def test_unified_copy_inter_device_free_function() raises:
     var queue1 = ctx1[].create_queue()
 
     comptime n = 40
-    var host_src = alloc[UInt8]({count = n}).unsafe_leak()
-    var host_out = alloc[UInt8]({count = n}).unsafe_leak()
+    var host_src = alloc[UInt8]({length = n}).unsafe_leak()
+    var host_out = alloc[UInt8]({length = n}).unsafe_leak()
     for i in range(n):
         host_src[unsafe_offset=i] = UInt8(i * 3)
         host_out[unsafe_offset=i] = UInt8(0)

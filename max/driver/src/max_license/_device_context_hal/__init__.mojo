@@ -185,7 +185,7 @@ struct _DeviceFunctionInner(Movable):
         dealloc(
             ThinAllocation(
                 unsafe_owned_ptr=self._capture_sizes
-            ).unsafe_with_layout({count = max(self._num_captures, 1)})
+            ).unsafe_with_layout({length = max(self._num_captures, 1)})
         )
         # Anchor the context refcount past the dealloc above.
         _ = self._context^
@@ -2603,7 +2603,7 @@ struct DeviceFunction[
         # stack storage that is not guaranteed to survive to launch time.
         var snap_num_captures = max(0, info.num_captures)
         var snap_capture_sizes = alloc(
-            Layout[UInt64](count=max(snap_num_captures, 1))
+            Layout[UInt64](length=max(snap_num_captures, 1))
         ).unsafe_leak()
         var info_capture_sizes: Pointer[
             UInt64, ImmUntrackedOrigin
@@ -2859,11 +2859,11 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = alloc(
                 Layout[OpaquePointer[MutAnyOrigin]](
-                    count=num_captures + num_passed_args
+                    length=num_captures + num_passed_args
                 )
             ).unsafe_leak()
             dense_args_sizes = alloc(
-                Layout[UInt64](count=num_captures + num_passed_args)
+                Layout[UInt64](length=num_captures + num_passed_args)
             ).unsafe_leak()
             for i in range(num_captures + num_passed_args):
                 dense_args_sizes[unsafe_offset=i] = 0
@@ -2898,7 +2898,7 @@ struct DeviceFunction[
             )
 
             var blob = alloc(
-                Layout[Byte](count=max(capture_blob_size, 1))
+                Layout[Byte](length=max(capture_blob_size, 1))
             ).unsafe_leak()
             var blob_off = 0
             for i in range(num_captures):
@@ -2992,18 +2992,18 @@ struct DeviceFunction[
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({count = max(capture_blob_size, 1)})
+                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({count = num_captures + num_passed_args})
+                ).unsafe_with_layout({length = num_captures + num_passed_args})
             )
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({count = num_captures + num_passed_args})
+                ).unsafe_with_layout({length = num_captures + num_passed_args})
             )
 
     @inline(.always)
@@ -3053,11 +3053,11 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = alloc(
                 Layout[OpaquePointer[MutAnyOrigin]](
-                    count=num_captures + num_args
+                    length=num_captures + num_args
                 )
             ).unsafe_leak()
             dense_args_sizes = alloc(
-                Layout[UInt64](count=num_captures + num_args)
+                Layout[UInt64](length=num_captures + num_args)
             ).unsafe_leak()
             for i in range(num_captures + num_args):
                 dense_args_sizes[unsafe_offset=i] = 0
@@ -3103,7 +3103,7 @@ struct DeviceFunction[
             )
 
             var blob = alloc(
-                Layout[Byte](count=max(capture_blob_size, 1))
+                Layout[Byte](length=max(capture_blob_size, 1))
             ).unsafe_leak()
             var blob_off = 0
             for i in range(num_captures):
@@ -3164,18 +3164,18 @@ struct DeviceFunction[
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({count = max(capture_blob_size, 1)})
+                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
 
     @inline(.always)
@@ -3211,11 +3211,11 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = alloc(
                 Layout[OpaquePointer[MutAnyOrigin]](
-                    count=num_captures + num_args
+                    length=num_captures + num_args
                 )
             ).unsafe_leak()
             dense_args_sizes = alloc(
-                Layout[UInt64](count=num_captures + num_args)
+                Layout[UInt64](length=num_captures + num_args)
             ).unsafe_leak()
             for i in range(num_captures + num_args):
                 dense_args_sizes[unsafe_offset=i] = 0
@@ -3261,7 +3261,7 @@ struct DeviceFunction[
             )
 
             var blob = alloc(
-                Layout[Byte](count=max(capture_blob_size, 1))
+                Layout[Byte](length=max(capture_blob_size, 1))
             ).unsafe_leak()
             var blob_off = 0
             for i in range(num_captures):
@@ -3296,18 +3296,18 @@ struct DeviceFunction[
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({count = max(capture_blob_size, 1)})
+                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
             )
         if num_captures > num_captures_static:
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
 
     @inline(.always)
@@ -4472,7 +4472,7 @@ struct DeviceBuffer[dtype: DType](
         """
         var ptr = self._device_ptr
         var byte_size = Int(self._inner[]._buffer.byte_size)
-        var box = alloc[DeviceBuffer[Self.dtype]]({count = 1}).unsafe_leak()
+        var box = alloc[DeviceBuffer[Self.dtype]]({length = 1}).unsafe_leak()
         box.unsafe_write(self^)
         return external_call[
             "AsyncRT_DeviceBuffer_adoptMojoBox", _DeviceBufferPtr[mut=True]

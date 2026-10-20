@@ -26,7 +26,7 @@ def do_queue_stream_sync_test[
 ](mut ctx: Context[device_spec]) raises:
     comptime n = 4096
     var device_buffer = ctx.alloc_sync(UInt64(n))
-    var host = alloc[UInt8]({count = n}).unsafe_leak()
+    var host = alloc[UInt8]({length = n}).unsafe_leak()
 
     var queue = ctx.create_queue()
     queue[].set_memory(device_buffer.view(), value=UInt8(0x5A))
@@ -72,7 +72,7 @@ def do_event_ordering_test[
     comptime stride = 64 * 1024
 
     var device_buffer = ctx.alloc_sync(UInt64(n))
-    var host = alloc[UInt8]({count = n}).unsafe_leak()
+    var host = alloc[UInt8]({length = n}).unsafe_leak()
 
     var producer = ctx.create_queue()
     var consumer = ctx.create_queue()

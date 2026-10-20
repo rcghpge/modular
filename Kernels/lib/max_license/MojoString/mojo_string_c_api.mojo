@@ -38,7 +38,7 @@ def create_mojo_string(
         s = String(unsafe_from_utf8=byte_span)
 
     # Allocate and initialize the pointer
-    var ptr = alloc[String]({count = 1}).unsafe_leak()
+    var ptr = alloc[String]({length = 1}).unsafe_leak()
     ptr.unsafe_write(s^)
 
     return ptr
@@ -73,7 +73,7 @@ def concat_mojo_strings(
     """
     var result = prefix[] + end[]
 
-    var ptr = alloc[String]({count = 1}).unsafe_leak()
+    var ptr = alloc[String]({length = 1}).unsafe_leak()
     ptr.unsafe_write(result^)
 
     return ptr

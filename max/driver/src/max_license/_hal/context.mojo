@@ -150,7 +150,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         self._self_ref = WeakPointer[Self]()
         self._function_cache = {}
         self._function_alias = {}
-        self._function_cache_lock = alloc(Layout[Int64](count=1)).unsafe_leak()
+        self._function_cache_lock = alloc(Layout[Int64](length=1)).unsafe_leak()
         self._function_cache_lock[] = 0
 
         ref raw = self._raw[]
@@ -185,7 +185,7 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
         dealloc(
             ThinAllocation(
                 unsafe_owned_ptr=self._function_cache_lock
-            ).unsafe_with_layout({count = 1})
+            ).unsafe_with_layout({length = 1})
         )
         try:
             self._raw[].destroy_context(self._handle)
