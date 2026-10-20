@@ -40,6 +40,7 @@ from max.graph import (
     BufferValue,
     DeviceRef,
     Dim,
+    StaticDim,
     TensorType,
     TensorValue,
     ops,
@@ -52,6 +53,10 @@ WINDOW_RECORD_BYTES = 528
 """Bytes of an MXFP8 window record."""
 COMPRESSED_RECORD_BYTES = 288
 """Bytes of an NVFP4 compressed record."""
+WINDOW_DATA_BYTES = HEAD_DIM
+"""Bytes of a window record's E4M3 values, before its scales."""
+COMPRESSED_DATA_BYTES = HEAD_DIM // 2
+"""Bytes of a compressed record's E2M1 values, before its scales."""
 INDEX_WIDTH = 640
 """Entries of a token's index list: 128 window slots, then 512 compressed."""
 WINDOW_ENTRIES = 128
@@ -248,6 +253,39 @@ def prefill_workspace_values(rows: Dim | int, slots: Dim | int) -> Dim:
     return Dim(rows) * (HEAD_DIM + 2) + 2 * (Dim(slots) + 1)
 
 
+def prefill_workspace_rows(
+    tokens: Dim | int,
+    entries: int,
+    slots: Dim | int,
+    max_distinct_rows: Dim | int | None = None,
+) -> Dim:
+    """Returns the rows a prefill's workspace holds.
+
+    A call's lists name at most one distinct slot per walked list entry,
+    and at most every slot of both caches, so by default the rows are the
+    lesser of the two when both are static.
+
+    Args:
+        tokens: Query tokens ``T``.
+        entries: List entries each token walks.
+        slots: The absolute slots of both caches.
+        max_distinct_rows: The rows to hold instead, if given.
+    """
+    if max_distinct_rows is not None:
+        return Dim(max_distinct_rows)
+    t, n = Dim(tokens), Dim(slots)
+    if isinstance(t, StaticDim) and isinstance(n, StaticDim):
+        return Dim(min(int(t) * entries, int(n)))
+    return t * entries
+
+
+def _check_dim(what: str, dim: Dim, want: int, *, least: bool = False) -> None:
+    if not isinstance(dim, StaticDim):
+        return
+    if int(dim) < want or (not least and int(dim) != want):
+        raise ValueError(f"CSA2 needs {want} {what}, got {int(dim)}")
+
+
 def csa2_attention(
     q: TensorValue,
     idx: TensorValue,
@@ -293,13 +331,16 @@ def csa2_attention(
             across both caches, the rows its workspace holds; a call naming
             more aborts. Defaults to a row per walked list entry,
             ``T * (W + C)`` with ``W`` the window entries and ``C`` from
-            :func:`compressed_entries`.
+            :func:`compressed_entries`, capped at the caches' slots when
+            both are static.
         window_entries: The window slots leading each list, a multiple of
             64; only a window-only call may name more than 128.
 
     Raises:
         ValueError: If ``window_entries`` is not a multiple of 64 within the
-            list, or exceeds 128 with a compressed cache.
+            list, or exceeds 128 with a compressed cache, or if a static
+            dimension of ``q`` or ``idx`` differs from the shapes above,
+            or ``sink`` has fewer logits than ``q`` has heads.
     """
     if (
         window_entries <= 0
@@ -312,6 +353,9 @@ def csa2_attention(
             + ("" if kv_comp is None else " with a compressed cache")
         )
     t, n_heads = q.shape[0], int(q.shape[1])
+    _check_dim("query channels", q.shape[2], HEAD_DIM)
+    _check_dim("index entries per token", idx.shape[1], INDEX_WIDTH)
+    _check_dim("sink logits", sink.shape[0], n_heads, least=True)
     device = q.device
     flag = None if isinstance(prefill, bool) else prefill
     if flag is None:
@@ -341,7 +385,7 @@ def csa2_attention(
         if kv_comp is not None:
             entries += compressed_entries(compressed_rows)
             slots = slots + cache_slots(kv_comp)
-        rows = t * entries if max_distinct_rows is None else max_distinct_rows
+        rows = prefill_workspace_rows(t, entries, slots, max_distinct_rows)
         values = prefill_workspace_values(rows, slots)
         if flag is not None:
             # Room for the decode too, which views the values as float32

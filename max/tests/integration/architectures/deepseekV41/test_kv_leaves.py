@@ -25,7 +25,9 @@ from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams
 from max.pipelines.architectures import hf_config_shims  # noqa: F401
 from max.pipelines.architectures.deepseekV41 import kv_leaves
 from max.pipelines.architectures.deepseekV41.layers.csa2 import (
+    COMPRESSED_DATA_BYTES,
     COMPRESSED_RECORD_BYTES,
+    WINDOW_DATA_BYTES,
     WINDOW_RECORD_BYTES,
     cache_page_bytes,
 )
@@ -190,6 +192,32 @@ def test_record_leaf_pages_hold_the_attention_cache_page(
     assert cache_page_bytes(slots, record, data) == slots * record
     assert leaf.bytes_per_block == spec.num_layers * slots * pitch
     assert leaf.bytes_per_block == spec.page_bytes(128, DType.bfloat16)
+
+
+@pytest.mark.parametrize("page_size", [2, 16, 32, 64, 128, 256])
+def test_record_leaf_pages_are_readable_at_every_page_size(
+    page_size: int,
+) -> None:
+    """At every page size, a layer's page of a record leaf is one the CSA2
+    ops read: 16-byte aligned, and a whole number of the records' value
+    rows when it holds two or more records."""
+    specs = kv_leaves.kv_leaf_specs(
+        _real_text_config(), kv_cache_page_size=page_size
+    )
+    for spec in specs:
+        if spec.kind not in ("swa", "comp"):
+            continue
+        assert spec.record_bytes is not None
+        assert spec.record_pitch is not None
+        assert spec.record_pitch >= spec.record_bytes
+        slots = spec.device_slots_per_page(page_size)
+        page = slots * spec.record_pitch
+        data = (
+            WINDOW_DATA_BYTES if spec.kind == "swa" else COMPRESSED_DATA_BYTES
+        )
+        assert page % 16 == 0, (spec.key, page_size, page)
+        if slots > 1:
+            assert page % data == 0, (spec.key, page_size, page)
 
 
 def test_record_leaves_leave_the_other_leaves_unchanged() -> None:

@@ -36,7 +36,12 @@ from max.pipelines.speculative.config import SpeculativeMethod
 from transformers import AutoConfig
 
 from . import layer_resolver, model_config
-from .layers.csa2 import COMPRESSED_RECORD_BYTES, WINDOW_RECORD_BYTES
+from .layers.csa2 import (
+    COMPRESSED_DATA_BYTES,
+    COMPRESSED_RECORD_BYTES,
+    WINDOW_DATA_BYTES,
+    WINDOW_RECORD_BYTES,
+)
 
 CSA_KV_RECORDS = True
 """Whether the window and compressed leaves hold quantized CSA records by
@@ -242,6 +247,22 @@ _MAX_PITCH_FACTOR = 2
 # Record pitches step in 8 bytes, which keeps a layer's page of two or more
 # slots 16-byte aligned.
 _PITCH_ALIGN = 8
+# Bytes of a record's values, the rows the attention reads a page in.
+_RECORD_DATA_BYTES = {"swa": WINDOW_DATA_BYTES, "comp": COMPRESSED_DATA_BYTES}
+
+
+def _readable_page(slots: int, pitch: int, data_bytes: int) -> bool:
+    """Returns whether the attention reads a page of ``slots`` records.
+
+    A page is 16-byte aligned, and a page of two or more records is a whole
+    number of ``data_bytes`` rows.
+
+    Args:
+        slots: Records a layer's page holds.
+        pitch: Bytes each record spans.
+        data_bytes: Bytes of a record's values.
+    """
+    return (slots * pitch) % (16 if slots == 1 else data_bytes) == 0
 
 
 def _pad_record_pitches(
@@ -255,7 +276,11 @@ def _pad_record_pitches(
     leaves' pages and of the padded leaves' layer counts. Each window and
     compressed record leaf takes the smallest aligned pitch whose page
     divides it, so the records add no factor to the huge page; a leaf with
-    no such pitch under ``_MAX_PITCH_FACTOR`` records stays packed.
+    no such pitch under ``_MAX_PITCH_FACTOR`` records takes the smallest
+    aligned pitch the attention accepts.
+
+    The attention reads a page of two or more records in rows of a record's
+    value bytes, so such a page must be a whole number of those rows.
     """
     padded_kinds = ("swa", "comp")
     target = math.lcm(
@@ -269,7 +294,8 @@ def _pad_record_pitches(
     out = []
     for spec in specs:
         if spec.kind in padded_kinds and spec.record_bytes is not None:
-            per_pitch = spec.num_layers * spec.device_slots_per_page(page_size)
+            slots = spec.device_slots_per_page(page_size)
+            data = _RECORD_DATA_BYTES[spec.kind]
             first = -(-spec.record_bytes // _PITCH_ALIGN) * _PITCH_ALIGN
             pitch = next(
                 (
@@ -279,10 +305,15 @@ def _pad_record_pitches(
                         _MAX_PITCH_FACTOR * spec.record_bytes,
                         _PITCH_ALIGN,
                     )
-                    if target % (per_pitch * p) == 0
+                    if _readable_page(slots, p, data)
+                    and target % (spec.num_layers * slots * p) == 0
                 ),
-                spec.record_bytes,
+                None,
             )
+            if pitch is None:
+                pitch = first
+                while not _readable_page(slots, pitch, data):
+                    pitch += _PITCH_ALIGN
             spec = dataclasses.replace(spec, record_pitch=pitch)
         out.append(spec)
     return out

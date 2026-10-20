@@ -312,7 +312,7 @@ class DSparkWindow:
 def dspark_window_slots(
     cache: PagedCacheValues, starts: TensorValue, window: int, layer: int
 ) -> TensorValue:
-    """The window-cache slots of the context each request's block reads.
+    """Returns the window-cache slots of the context each block reads.
 
     Args:
         cache: The window cache leaf.
