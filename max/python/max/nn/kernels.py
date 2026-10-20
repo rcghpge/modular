@@ -12294,7 +12294,7 @@ def scatter_nd_skip_oob_indices(
     assert_same_device(input=input, updates=updates, indices=indices)
 
     return ops.custom(
-        "mo.scatter_nd.skip_neg_indices",
+        "mo.scatter_nd.skip_oob_indices",
         device=input.device,
         values=[input, updates, indices],
         out_types=[TensorType(input.dtype, input.shape, device=input.device)],

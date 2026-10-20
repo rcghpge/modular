@@ -59,8 +59,7 @@ def merge_multimodal_embeddings(
         )
 
     # Scatter the multimodal embeddings into inputs_embeds at the specified
-    # indices. An index outside [-dim, dim) skips its update; other negative
-    # indices wrap (-1 is the last row).
+    # indices. An index outside [-dim, dim) skips its update.
     return scatter_nd_skip_oob_indices(
         input=inputs_embeds,
         updates=multimodal_embeddings,

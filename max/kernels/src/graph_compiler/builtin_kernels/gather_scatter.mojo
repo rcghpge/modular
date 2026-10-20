@@ -586,9 +586,9 @@ def scatter_nd_shape_fn(
     )
 
 
-@extensibility.register("mo.scatter_nd.skip_neg_indices")
-struct ScatterNDSkipNegIndices:
-    """Registers the `mo.scatter_nd.skip_neg_indices` graph op with the graph compiler.
+@extensibility.register("mo.scatter_nd.skip_oob_indices")
+struct ScatterNDSkipOobIndices:
+    """Registers the `mo.scatter_nd.skip_oob_indices` graph op with the graph compiler.
     """
 
     @staticmethod
@@ -601,20 +601,16 @@ struct ScatterNDSkipNegIndices:
         indices: InputTensor,
         ctx: DeviceContext,
     ) raises:
-        # This is identical to mo.scatter_nd except in how we handle negative indices.
-        # In mo.scatter_nd, it is well defined to pass indices between [-dim_size, dim_size).
-        # Negative indices will be normalized by incrementing them by dim_size.
-        # This allows the kernel to support negative relative indexing.
-        # eg: x[-1] == x[dim_size - 1]
-        #
-        # In mo.scatter_nd.skip_neg_indices, we skip the update for an index
-        # outside [-dim_size, dim_size). Negative indices inside that range are
-        # still normalized, so -1 writes the last row.
+        # Unlike mo.scatter_nd, which requires every index to lie in
+        # [-dim_size, dim_size), this skips the update for an index outside
+        # that range. Negative indices inside it still wrap, so -1 writes the
+        # last row; a caller marking rows to skip needs a value below
+        # -dim_size, such as the dtype's min.
         scatter_nd_generator[
             oob_index_strategy=ScatterOobIndexStrategy.SKIP,
             target=target,
             atomic_update_fn=None,
-            _trace_description="scatter_nd.skip_neg_indices",
+            _trace_description="scatter_nd.skip_oob_indices",
         ](
             input.to_tile_tensor[.int64](),
             indices.to_tile_tensor[.int64](),
