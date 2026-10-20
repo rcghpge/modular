@@ -70,6 +70,9 @@ This version is still a work in progress.
   with inline images into the `messages` and `images` that
   `AutoModel.generate()` takes.
 
+- `AutoPipeline` now takes a chat conversation, or a list of them, with
+  images inline, and returns only the new text for each one.
+
 ## C API
 
 ## Kernels and GPU programming
