@@ -1766,6 +1766,9 @@ DeviceContext::getOrCreate(StringRef api, int id) {
 
 MODULAR_CXX_EXPORT bool
 DeviceContext::operator==(const DeviceContext &other) const {
+  if (this == &other)
+    return true;
+
   ErrorOr<DeviceStreamRef> errStream = stream();
   if (errStream.isError())
     return false;
