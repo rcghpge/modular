@@ -1,6 +1,6 @@
 # Test for pipeline unit tests.
 
-load("//bazel:api.bzl", "modular_py_test", "requirement")
+load("//bazel:api.bzl", "modular_py_library", "modular_py_test", "requirement")
 load("//max/tests/integration/xarch_warm:eager_py_test.bzl", "modular_eager_py_test")
 
 package(default_visibility = [
@@ -249,6 +249,51 @@ modular_py_test(
         "//max/python/max/pipelines/architectures/llama3",
         "//max/python/max/pipelines/lib",
         requirement("numpy"),
+    ],
+)
+
+modular_py_library(
+    name = "auto_model_vision_checks",
+    testonly = True,
+    srcs = ["_auto_model_vision_gpu.py"],
+    imports = ["."],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/pipelines",
+        "//max/python/max/pipelines/context",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/modeling",
+        requirement("huggingface-hub"),
+        requirement("pytest"),
+    ],
+)
+
+# One model per test, so each test process compiles one. CI caps every test
+# at 800s.
+modular_py_test(
+    name = "test_auto_model_vision_internvl_gpu",
+    size = "large",
+    srcs = ["test_auto_model_vision_internvl_gpu.py"],
+    exec_properties = {
+        "test.resources:gpu-memory": "23",
+    },
+    gpu_constraints = ["//:has_gpu"] + select({
+        "//:apple_gpu": ["@platforms//:incompatible"],  # FIXME: MOCO-2411
+        "//conditions:default": [],
+    }),
+    ignore_extra_deps = [
+        # Resolves InternVL by name at runtime.
+        "//max/python/max/pipelines/architectures/internvl",
+    ],
+    tags = [
+        "gpu",
+        "no-sandbox",
+        "requires-network",
+    ],
+    deps = [
+        ":auto_model_vision_checks",
+        "//max/python/max/pipelines",
+        "//max/python/max/pipelines/architectures/internvl",
     ],
 )
 

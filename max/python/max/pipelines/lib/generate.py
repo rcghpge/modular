@@ -27,14 +27,16 @@ for bit-exact comparisons between MAX runs, use batch size 1 or
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import operator
 import shlex
 import weakref
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Coroutine, Iterable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -55,10 +57,14 @@ from max.pipelines.modeling.types import (
     PipelineOutputsDict,
     RequestID,
     TextGenerationInputs,
+    TextGenerationRequest,
 )
 
 from .config import PipelineConfig
 from .log_probabilities import _MAX_TOP_LOGPROBS
+from .pipeline_variants.block_diffusion_text_generation import (
+    BlockDiffusionTextGenerationPipeline,
+)
 from .registry import PIPELINE_REGISTRY
 
 __all__ = [
@@ -74,6 +80,8 @@ _ROW_SEED_STRIDE = 1 << 32
 _U64_MASK = (1 << 64) - 1
 
 _logger = logging.getLogger("max.pipelines")
+
+_T = TypeVar("_T")
 
 _warned_unwarmed_pipelines: weakref.WeakSet[BatchPipeline] = weakref.WeakSet()
 
@@ -106,6 +114,13 @@ class _EOSTokenSource(Protocol):
 class _VocabSizeSource(Protocol):
     @property
     def tokenizer_vocab_size(self) -> int: ...
+
+
+@runtime_checkable
+class _ContextSource(Protocol):
+    async def new_context(
+        self, request: TextGenerationRequest
+    ) -> TextContext: ...
 
 
 @runtime_checkable
@@ -159,10 +174,12 @@ class BatchPipeline(Protocol):
     ``execute`` returns the previous call's results also defines a boolean
     ``overlap_active`` property, read the way serve's schedulers read it. A
     pipeline that can replay captured device graphs defines a boolean
-    ``graph_capture_ready`` property, true once its graphs are captured.
-    GenerateIterator also reads the memory plan's max length, batch token
-    limits and LoRA adapters from the private ``_pipeline_model``, the only
-    place they live, so another implementation must define it as well.
+    ``graph_capture_ready`` property, true once its graphs are captured. On
+    an image-capable model, the tokenizer also defines ``new_context``,
+    which builds each row. GenerateIterator also reads the memory plan's max
+    length, batch token limits and LoRA adapters from the private
+    ``_pipeline_model``, the only place they live, so another
+    implementation must define it as well.
     """
 
     @property
@@ -292,14 +309,36 @@ def _resolve_sampling_params(
     )
 
 
+def _run_coroutine(coroutine: Coroutine[object, object, _T]) -> _T:
+    """Runs ``coroutine`` to completion from synchronous code.
+
+    It runs on a worker thread with its own loop, so it works inside a
+    running loop, as in Jupyter, and leaves the caller's loop alone.
+    """
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, coroutine).result()
+
+
+async def _new_contexts(
+    tokenizer: _ContextSource, requests: Sequence[TextGenerationRequest]
+) -> list[TextContext]:
+    return [await tokenizer.new_context(request) for request in requests]
+
+
 def _build_contexts(
     pipeline: BatchPipeline,
     prompts: Sequence[Sequence[int]],
     *,
     max_new_tokens: int,
     sampling_params: SamplingParams,
+    tokenizer_builds_rows: bool,
 ) -> list[TextContext]:
-    """Builds one context per prompt."""
+    """Builds one context per prompt.
+
+    With ``tokenizer_builds_rows``, the pipeline's tokenizer builds each row,
+    as image-capable models need, since their context classes carry fields
+    ``TextContext`` lacks.
+    """
     planned_max_length = pipeline._pipeline_model.max_seq_len
     if sampling_params.min_new_tokens > max_new_tokens:
         raise ValueError(
@@ -307,7 +346,58 @@ def _build_contexts(
             "arguments or the generation config, exceeds "
             f"max_new_tokens={max_new_tokens}. Raise max_new_tokens."
         )
+    min_new_tokens = max(sampling_params.min_new_tokens, 1)
+
+    def row_max_length(row: int, prompt_length: int) -> int:
+        if prompt_length + min_new_tokens > planned_max_length:
+            raise ValueError(
+                f"Row {row} needs at least {prompt_length + min_new_tokens} "
+                f"tokens ({prompt_length} prompt + {min_new_tokens} new), but "
+                f"the pipeline's planned max length is {planned_max_length}. "
+                "Raise max_length."
+            )
+        max_length = prompt_length + max_new_tokens
+        if sampling_params.ignore_eos and max_length > planned_max_length:
+            raise ValueError(
+                f"Row {row} needs {max_length} tokens, but the pipeline's "
+                f"planned max length is {planned_max_length}, and with "
+                "ignore_eos every row runs all max_new_tokens steps. Raise "
+                "max_length or lower max_new_tokens."
+            )
+        return min(planned_max_length, max_length)
+
+    row_sampling_params = [
+        dataclasses.replace(
+            sampling_params,
+            seed=(sampling_params.seed + row * _ROW_SEED_STRIDE) & _U64_MASK,
+        )
+        for row in range(len(prompts))
+    ]
     tokenizer = pipeline.tokenizer
+    if tokenizer_builds_rows:
+        assert isinstance(tokenizer, _ContextSource)
+        contexts = _run_coroutine(
+            _new_contexts(
+                tokenizer,
+                [
+                    TextGenerationRequest(
+                        request_id=RequestID(),
+                        model_name="",
+                        prompt=list(prompt),
+                        sampling_params=params,
+                    )
+                    for prompt, params in zip(
+                        prompts, row_sampling_params, strict=True
+                    )
+                ],
+            )
+        )
+        for row, context in enumerate(contexts):
+            # The tokenizer clamps to its own max length, which can exceed
+            # the memory plan's.
+            context.max_length = row_max_length(row, len(context.tokens))
+        return contexts
+
     # The same set serve's tokenizer builds for a request.
     eos_token_ids: set[int] = set()
     if not sampling_params.ignore_eos:
@@ -318,36 +408,15 @@ def _build_contexts(
         if isinstance(tokenizer, _VocabSizeSource)
         else None
     )
-
-    min_new_tokens = max(sampling_params.min_new_tokens, 1)
     contexts = []
     for row, prompt in enumerate(prompts):
-        if len(prompt) + min_new_tokens > planned_max_length:
-            raise ValueError(
-                f"Row {row} needs at least {len(prompt) + min_new_tokens} "
-                f"tokens ({len(prompt)} prompt + {min_new_tokens} new), but "
-                f"the pipeline's planned max length is {planned_max_length}. "
-                "Raise max_length."
-            )
-        max_length = len(prompt) + max_new_tokens
-        if sampling_params.ignore_eos and max_length > planned_max_length:
-            raise ValueError(
-                f"Row {row} needs {max_length} tokens, but the pipeline's "
-                f"planned max length is {planned_max_length}, and with "
-                "ignore_eos every row runs all max_new_tokens steps. Raise "
-                "max_length or lower max_new_tokens."
-            )
         contexts.append(
             TextContext(
                 request_id=RequestID(),
-                max_length=min(planned_max_length, max_length),
+                max_length=row_max_length(row, len(prompt)),
                 tokens=TokenBuffer(np.asarray(prompt, dtype=np.int64)),
                 eos_tracker=EOSTracker(eos_token_ids=set(eos_token_ids)),
-                sampling_params=dataclasses.replace(
-                    sampling_params,
-                    seed=(sampling_params.seed + row * _ROW_SEED_STRIDE)
-                    & _U64_MASK,
-                ),
+                sampling_params=row_sampling_params[row],
                 vocab_size=vocab_size,
             )
         )
@@ -403,16 +472,21 @@ def _unsupported(
     with a ``max serve`` command that rebuilds this pipeline with
     ``serve_flags`` added, then ``note`` if given.
     """
-    command = shlex.join(
+    main = pipeline_config.models.get("main")
+    model_flags = (
         [
-            "max",
-            "serve",
             "--model-path",
-            pipeline_config.model.model_path,
+            main.model_path,
             *_pipeline_serve_flags(pipeline_config),
-            *serve_flags,
+        ]
+        if main is not None
+        # A diffusion pipeline has only components, all from one repo.
+        else [
+            "--model-path",
+            next(iter(pipeline_config.models.values())).model_path,
         ]
     )
+    command = shlex.join(["max", "serve", *model_flags, *serve_flags])
     message = (
         f"{caller} does not support {feature}. {reason}.\n"
         f"{caller} runs the pipeline directly, outside max serve. "
@@ -425,26 +499,39 @@ def _unsupported(
 
 def _check_supported(
     pipeline_config: PipelineConfig, caller: str = "generate()"
-) -> None:
+) -> type[TextContext]:
     """Raises if ``caller`` cannot run the pipeline's model.
 
     The error names ``caller``, the class the user built. A feature only
     serve runs gets the ``max serve`` command to use instead.
+
+    Returns:
+        The context class the model's rows use.
     """
     context_type = PIPELINE_REGISTRY.retrieve_context_type(pipeline_config)
-    # TODO(katecaldwell): Support image inputs and image generation, the
-    # first follow-up once this API lands.
-    if issubclass(context_type, TextAndVisionContext):
-        raise ValueError(
-            f"{caller} does not support image inputs yet. The model needs "
-            f"{context_type.__name__} inputs, and {caller} builds text-only "
-            "rows from token ids."
-        )
+    arch = PIPELINE_REGISTRY.architecture_for_config(pipeline_config)
     if not issubclass(context_type, TextContext):
-        raise ValueError(
-            f"{caller} runs text generation models only, and this model "
-            f"uses {context_type.__name__}. Image generation and other model "
-            "types are not supported yet."
+        raise _unsupported(
+            pipeline_config,
+            f"{context_type.__name__} models"
+            if arch is None
+            else arch.task.value.replace("_", " "),
+            f"The model uses {context_type.__name__}, and {caller} generates "
+            "text",
+            caller=caller,
+        )
+    if (
+        arch is not None
+        and arch.pipeline_cls is not None
+        and issubclass(arch.pipeline_cls, BlockDiffusionTextGenerationPipeline)
+    ):
+        raise _unsupported(
+            pipeline_config,
+            "block diffusion models",
+            f"{arch.name} decodes a block of tokens per step with its own "
+            "sampling, so it ignores temperature, top_k and seed and returns "
+            "no logits",
+            caller=caller,
         )
     lora = pipeline_config.lora
     if lora is not None and lora.enable_lora:
@@ -453,6 +540,7 @@ def _check_supported(
             f"{caller} runs only the base model and never activates an adapter",
             caller=caller,
         )
+    return context_type
 
 
 def _lora_unsupported(
@@ -822,19 +910,20 @@ class GenerateIterator:
         TypeError: If ``input_ids`` or ``attention_mask`` is not a list of
             integer lists.
         ValueError: If the request needs a feature GenerateIterator leaves to
-            ``max serve``: LoRA, device graph capture with ``data_parallel_degree > 1`` on
-            a warmed-up pipeline, or a batch that only fits by scheduling or
-            chunked prefill (more rows than the planned max batch size, or a
-            replica's prompts over its per-replica prefill budget or the batch
-            total-token cap). Also raised for a prompt with no
+            ``max serve``: LoRA, a model that does not generate text, a block
+            diffusion model, device graph capture with
+            ``data_parallel_degree > 1`` on a warmed-up pipeline, or a batch
+            that only fits by scheduling or chunked prefill (more rows than
+            the planned max batch size, or a replica's prompts over its
+            per-replica prefill budget or the batch total-token cap). Also
+            raised for a prompt with no
             room to generate within the planned max length, an invalid
             sampling value, penalties on a pipeline built without
             ``enable_penalties``, ``max_new_tokens`` below 1 or below
             ``min_new_tokens``, ``attention_mask`` with a different shape
-            than ``input_ids``, ``ignore_eos`` with a row that does not fit
-            or with speculative decoding, image inputs, or a model that does
-            not generate text. Also raised for ``output_logprobs`` outside
-            ``[0, 7]``, ``output_logits`` on a pipeline that is not
+            than ``input_ids``, or ``ignore_eos`` with a row that does not fit
+            or with speculative decoding. Also raised for ``output_logprobs``
+            outside ``[0, 7]``, ``output_logits`` on a pipeline that is not
             synchronous, ``output_logits`` or ``output_logprobs`` with
             speculative decoding, or ``output_logprobs`` on an
             :class:`~max.pipelines.lib.OverlapTextGenerationPipeline`.
@@ -878,7 +967,7 @@ class GenerateIterator:
             )
             if value is not None and value != default
         }
-        _check_supported(pipeline_config, caller)
+        context_type = _check_supported(pipeline_config, caller)
         if ignore_eos and pipeline_config.speculative is not None:
             raise ValueError(
                 "ignore_eos cannot keep the batch size fixed with speculative "
@@ -915,6 +1004,9 @@ class GenerateIterator:
             prompts,
             max_new_tokens=max_new_tokens,
             sampling_params=sampling_params,
+            tokenizer_builds_rows=issubclass(
+                context_type, TextAndVisionContext
+            ),
         )
         # After the max length check: a too-long prompt also trips these
         # limits, and their advice cannot fix it.

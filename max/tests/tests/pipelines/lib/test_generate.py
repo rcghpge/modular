@@ -57,12 +57,17 @@ from max.pipelines.lib.generate import GenerateIterator, generate
 from max.pipelines.lib.log_probabilities import _MAX_TOP_LOGPROBS
 from max.pipelines.lib.pipeline_args import PipelineArgs
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
+from max.pipelines.lib.pipeline_variants.block_diffusion_text_generation import (
+    BlockDiffusionTextGenerationPipeline,
+)
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
 from max.pipelines.lora import LoRAConfig
 from max.pipelines.modeling.types import (
     BatchType,
+    PipelineTask,
     RequestID,
     TextGenerationInputs,
+    TextGenerationRequest,
 )
 from max.pipelines.sampling import SamplingConfig, request_row_seed
 from max.pipelines.speculative import SpeculativeConfig
@@ -75,6 +80,13 @@ VOCAB = 128
 DECOY = 1
 
 
+@dataclasses.dataclass
+class FakeArch:
+    name: str = "TextModel"
+    task: PipelineTask = PipelineTask.TEXT_GENERATION
+    pipeline_cls: type | None = None
+
+
 @pytest.fixture(autouse=True)
 def text_context_arch(monkeypatch: pytest.MonkeyPatch) -> None:
     """Resolves the fake config to a text-only architecture."""
@@ -82,6 +94,11 @@ def text_context_arch(monkeypatch: pytest.MonkeyPatch) -> None:
         PIPELINE_REGISTRY,
         "retrieve_context_type",
         lambda pipeline_config: TextContext,
+    )
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "architecture_for_config",
+        lambda pipeline_config: FakeArch(),
     )
 
 
@@ -140,6 +157,39 @@ class FakeKVManager:
 class FakeTokenizer:
     eos_token_ids: set[int] = dataclasses.field(default_factory=lambda: {EOS})
     tokenizer_vocab_size: int = 1000
+
+
+@dataclasses.dataclass
+class FakeVisionTokenizer(FakeTokenizer):
+    """Builds vision contexts as an image-capable model's tokenizer does.
+
+    Each context's max length is over any plan, as a tokenizer's own max
+    length can be.
+    """
+
+    requests: list[TextGenerationRequest] = dataclasses.field(
+        default_factory=list
+    )
+    error: Exception | None = None
+
+    async def new_context(
+        self, request: TextGenerationRequest
+    ) -> TextAndVisionContext:
+        if self.error is not None:
+            raise self.error
+        self.requests.append(request)
+        assert isinstance(request.prompt, list)
+        params = request.sampling_params
+        return TextAndVisionContext(
+            request_id=request.request_id,
+            max_length=10_000,
+            tokens=TokenBuffer(np.asarray(request.prompt, dtype=np.int64)),
+            eos_tracker=EOSTracker(
+                eos_token_ids=set() if params.ignore_eos else {EOS}
+            ),
+            sampling_params=params,
+            vision_token_ids=[],
+        )
 
 
 @dataclasses.dataclass
@@ -230,6 +280,7 @@ class FakePipeline:
         config.model.sampling_params_defaults = (
             generation_config or SamplingParamsGenerationConfigDefaults()
         )
+        config.models = {"main": config.model}
         config.runtime = MagicMock(
             spec=PipelineRuntimeConfig,
             temperature=runtime_temperature,
@@ -716,26 +767,120 @@ def test_prefill_over_a_replica_token_budget_raises() -> None:
     _assert_nothing_held(pipeline, 4)
 
 
-@pytest.mark.parametrize(
-    ("context_type", "message"),
-    [
-        (TextAndVisionContext, "does not support image inputs yet"),
-        (PixelContext, "runs text generation models only"),
-    ],
-)
-def test_models_that_take_or_make_images_are_not_supported_yet(
-    monkeypatch: pytest.MonkeyPatch, context_type: type, message: str
+def test_image_generation_models_point_to_serve(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
         PIPELINE_REGISTRY,
         "retrieve_context_type",
-        lambda pipeline_config: context_type,
+        lambda pipeline_config: PixelContext,
+    )
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "architecture_for_config",
+        lambda pipeline_config: FakeArch(task=PipelineTask.PIXEL_GENERATION),
     )
     pipeline = FakePipeline()
-    with pytest.raises(ValueError, match=message) as error:
+    config = pipeline.pipeline_config
+    assert isinstance(config, MagicMock)
+    # A diffusion pipeline has components and no main model.
+    config.models = {"transformer": MagicMock(model_path=MODEL_PATH)}
+    with pytest.raises(ValueError) as error:
         GenerateIterator(pipeline, _prompts(1), max_new_tokens=5)
-    assert context_type.__name__ in str(error.value)
-    assert "max serve" not in str(error.value)
+    _assert_points_to_serve(error, "pixel generation")
+    assert "The model uses PixelContext, and generate() generates text" in (
+        str(error.value)
+    )
+    assert pipeline.kv_manager.claimed == {}
+
+
+def test_block_diffusion_models_point_to_serve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "architecture_for_config",
+        lambda pipeline_config: FakeArch(
+            name="DiffusionGemmaForBlockDiffusion",
+            pipeline_cls=BlockDiffusionTextGenerationPipeline,
+        ),
+    )
+    pipeline = FakePipeline()
+    with pytest.raises(ValueError) as error:
+        GenerateIterator(pipeline, _prompts(1), max_new_tokens=5)
+    _assert_points_to_serve(error, "block diffusion models")
+    assert "it ignores temperature, top_k and seed" in str(error.value)
+    assert pipeline.kv_manager.claimed == {}
+
+
+def _vision_pipeline(monkeypatch: pytest.MonkeyPatch) -> FakePipeline:
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "retrieve_context_type",
+        lambda pipeline_config: TextAndVisionContext,
+    )
+    pipeline = FakePipeline()
+    pipeline.tokenizer = FakeVisionTokenizer()
+    return pipeline
+
+
+def test_image_capable_model_rows_come_from_its_tokenizer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    output = generate(pipeline, _prompts(1, 3), max_new_tokens=5, seed=5)
+
+    assert _new_tokens(output.sequences) == [[EOS], [101, 102, EOS]]
+    assert isinstance(pipeline.tokenizer, FakeVisionTokenizer)
+    requests = pipeline.tokenizer.requests
+    assert [request.prompt for request in requests] == _prompts(1, 3)
+    contexts = pipeline.kv_manager.contexts
+    assert [context.request_id for context in contexts] == [
+        request.request_id for request in requests
+    ]
+    assert all(isinstance(c, TextAndVisionContext) for c in contexts)
+    assert [c.sampling_params.seed for c in contexts] == [5, 5 + 2**32]
+    assert [c.max_length for c in contexts] == [8, 8]
+    _assert_nothing_held(pipeline, 2)
+
+
+def test_image_capable_model_rows_build_inside_a_running_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+
+    async def generate_in_loop() -> list[list[int]]:
+        return generate(pipeline, _prompts(2), max_new_tokens=5).sequences
+
+    assert _new_tokens(asyncio.run(generate_in_loop())) == [[101, EOS]]
+
+
+def test_image_capable_model_rows_keep_the_callers_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        generate(pipeline, _prompts(2), max_new_tokens=5)
+        assert asyncio.get_event_loop() is loop
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
+def test_tokenizer_error_inside_a_running_event_loop_claims_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    assert isinstance(pipeline.tokenizer, FakeVisionTokenizer)
+    pipeline.tokenizer.error = ValueError("bad prompt")
+
+    async def generate_in_loop() -> None:
+        generate(pipeline, _prompts(2), max_new_tokens=5)
+
+    with pytest.raises(ValueError, match=r"^bad prompt$"):
+        asyncio.run(generate_in_loop())
     assert pipeline.kv_manager.claimed == {}
 
 

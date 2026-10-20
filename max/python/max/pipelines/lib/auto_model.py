@@ -228,9 +228,9 @@ class AutoModel:
             ``model`` section, or a ``config_file``, instead of flat fields,
             or a ``model_override`` entry sets one of them whole.
         ValueError: If the config needs a feature that only ``max serve``
-            runs, such as LoRA, if the model takes image inputs or does not
-            generate text, or if ``device_graph_capture=True`` builds a
-            pipeline that cannot capture graphs.
+            runs, such as LoRA, a model that does not generate text or a
+            block diffusion model, or if ``device_graph_capture=True`` builds
+            a pipeline that cannot capture graphs.
     """
 
     def __init__(
