@@ -23,6 +23,13 @@ This version is still a work in progress.
 
 ### Server metrics
 
+- Added `maxserve_request_client_disconnect_cancellations_total`, which
+  counts streamed responses cut short by a client disconnect and completion
+  requests abandoned while waiting for a result, split by `phase`. A
+  mid-stream disconnect was previously invisible:
+  `maxserve_request_count_total` records it under the status code already
+  sent.
+
 ## `max` CLI
 
 ## Python API
