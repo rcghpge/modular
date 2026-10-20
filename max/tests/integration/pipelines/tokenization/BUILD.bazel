@@ -167,9 +167,13 @@ modular_py_test(
         requirement("jinja2"),
         requirement("torchvision"),
     ],
+    # The BuildBuddy macOS workers have no HF_TOKEN, so the gated
+    # google/gemma-3-4b-it download fails with a 401. Skip the CI job rather
+    # than the platform; it still runs locally on a Mac with a token.
     tags = [
         "no-sandbox",
         "requires-network",
+        "skip-ci-macos",
     ],
     deps = [
         "//max/python/max/pipelines/architectures/qwen2_5vl",
