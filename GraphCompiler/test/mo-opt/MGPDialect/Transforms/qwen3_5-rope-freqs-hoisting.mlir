@@ -55,7 +55,7 @@ module {
     %mask_bf16 = mo.cast(%mask_col) : (!mo.tensor<[total_seq_len, 1], bool, gpu:0>) -> !mo.tensor<[total_seq_len, 1], bf16, gpu:0>
     %embeds_masked = rmo.mul(%embeds, %mask_bf16) : (!hidden, !mo.tensor<[total_seq_len, 1], bf16, gpu:0>) -> !hidden
     %image_idx_col = rmo.reshape(%arg17) [newShape = #mosh<ape[total_image_tokens, 1]> : !mosh.ape] : (!mo.tensor<[total_image_tokens], si32, gpu:0>) -> !mo.tensor<[total_image_tokens, 1], si32, gpu:0>
-    %hidden_in = mo.custom [symbol = "mo.scatter_nd.skip_neg_indices", device = #M.device_ref<"gpu", 0>](%embeds_masked, %arg16, %image_idx_col) : (!hidden, !mo.tensor<[vision_merged_seq_len, 4096], bf16, gpu:0>, !mo.tensor<[total_image_tokens, 1], si32, gpu:0>) -> !hidden
+    %hidden_in = mo.custom [symbol = "mo.scatter_nd.skip_oob_indices", device = #M.device_ref<"gpu", 0>](%embeds_masked, %arg16, %image_idx_col) : (!hidden, !mo.tensor<[vision_merged_seq_len, 4096], bf16, gpu:0>, !mo.tensor<[total_image_tokens, 1], si32, gpu:0>) -> !hidden
     // RoPE cos/sin (freqs_cis) table: built on host, then transferred to the device.
     %dim_range = rmo.mo.range(%f64_zero, %f64_64, %f64_two) : (!mo.tensor<[], f64>, !mo.tensor<[], f64>, !mo.tensor<[], f64>) -> !mo.tensor<[32], f64>
     %dim_ratio = rmo.div(%dim_range, %f64_64) : (!mo.tensor<[32], f64>, !mo.tensor<[], f64>) -> !mo.tensor<[32], f64>
