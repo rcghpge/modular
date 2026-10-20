@@ -292,35 +292,66 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
+// The kernel argument `mapResult` binds on its single `map.call.opaque` use;
+// nullopt for any other use. `isOutput` picks the call's output vs input
+// operand list.
+static std::optional<MOGG::KernelDeclOperandAdaptor>
+consumingKernelArg(Value mapResult, bool isOutput, MAPToMOGGState &state) {
+  if (!mapResult.hasOneUse())
+    return std::nullopt;
+  auto callOp = dyn_cast<CallOpaqueOp>(*mapResult.getUsers().begin());
+  if (!callOp)
+    return std::nullopt;
+  ValueRange operands = isOutput ? callOp.getOutputs() : callOp.getInputs();
+  std::optional<unsigned> operandIdx;
+  for (auto [i, v] : llvm::enumerate(operands))
+    if (v == mapResult) {
+      operandIdx = i;
+      break;
+    }
+  if (!operandIdx)
+    return std::nullopt;
+  MOGG::KernelDeclAdaptor adaptor(
+      state.registry.lookupKernelBySymName(callOp.getCallee()));
+  if (!adaptor.executeFunction)
+    return std::nullopt;
+  // Not the operand's raw position: a variadic argument binds a run of
+  // operands, which shifts every argument after it. Mutable-to-immutable
+  // widening, as ConformCallOperands applies: an input fed by a fused
+  // `mo.mutable.load` arrives as a buffer for a read-only argument, and only
+  // positions are read here.
+  ErrorOr<MOGG::KernelDeclOperandMapping> mapping =
+      MOGG::mapToKernelImplementation(
+          callOp.getInputs(), callOp.getOutputs(), *adaptor.executeFunction,
+          callOp.getCallee(), callOp.getHasSameVariadicOperandSize(),
+          /*hasExtraOutputShapeArgument=*/false,
+          /*resultLeavesByValue=*/callOp.getOpaqueResult() != nullptr,
+          /*allowMutToImmut=*/true);
+  if (mapping.isError())
+    return std::nullopt;
+  const MOGG::KernelDeclIndexToOperandAdaptorMapping &argForOperand =
+      isOutput ? mapping->resultMapping : mapping->operandMapping;
+  auto arg = argForOperand.find(*operandIdx);
+  if (arg == argForOperand.end())
+    return std::nullopt;
+  return arg->second;
+}
+
 // Which fusion-lambda kind the kernel consuming `epilogueOp` wants. Resolved
 // at MAP level, where the epilogue -> `map.call.opaque` edge is still explicit.
 static ErrorOr<MOGG::KernelOutputFusionLambdaType>
 classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
   using Kind = MOGG::KernelOutputFusionLambdaType;
 
-  // Anything but a single `map.call.opaque` output use gets a store lambda.
+  // Anything but a single `map.call.opaque` output use gets a store lambda,
+  // as does a `TensorTuple` element (a variadic argument).
   Value result = epilogueOp.getResult();
-  if (!result.hasOneUse())
+  std::optional<MOGG::KernelDeclOperandAdaptor> arg =
+      consumingKernelArg(result, /*isOutput=*/true, state);
+  if (!arg)
     return Kind::Output;
-  auto callOp = dyn_cast<CallOpaqueOp>(*result.getUsers().begin());
-  if (!callOp)
-    return Kind::Output;
-  std::optional<unsigned> outputIdx;
-  for (auto [idx, out] : llvm::enumerate(callOp.getOutputs()))
-    if (out == result)
-      outputIdx = idx;
-  if (!outputIdx)
-    return Kind::Output;
-
-  MOGG::KernelDeclAdaptor adaptor(
-      state.registry.lookupKernelBySymName(callOp.getCallee()));
-  if (!adaptor.executeFunction)
-    return Kind::Output;
-  const auto &outputArgs = adaptor.executeFunction->outputArguments;
-  if (*outputIdx >= outputArgs.size())
-    return Kind::Output;
-  const auto *tensorArg = std::get_if<MOGG::KernelDeclTensorAdaptor>(
-      &outputArgs[*outputIdx].underlyingType);
+  const auto *tensorArg =
+      std::get_if<MOGG::KernelDeclTensorAdaptor>(&arg->underlyingType);
   if (!tensorArg)
     return Kind::Output;
 
@@ -330,12 +361,20 @@ classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
     return Error("MAP-driven epilogue fusion into a tile fused-output kernel "
                  "argument is not yet supported");
 
-  if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor)
+  // A trait-lane `_LegacyComputeOutput` slot (contract access `transform`)
+  // follows the same rules as a legacy `FusedComputeOutputTensor`. Its
+  // `ioSpec` is the plain `OutputTensor` the contract maps to, so check the
+  // contract.
+  bool isComputeOutputSlot =
+      tensorArg->traitContract &&
+      tensorArg->traitContract->hasAccess(MOGG::TensorArgAccess::transform);
+  if (tensorArg->ioSpec != MOGG::IOSpec::FusedComputeOutputTensor &&
+      !isComputeOutputSlot)
     return Kind::Output;
 
   // A compute lambda returns one value the kernel stores at one destination,
   // so an epilogue writing several has to own its stores. The kernel operand
-  // stays `FusedComputeOutputTensor` either way.
+  // stays a compute output either way.
   if (getOutputStores(epilogueOp.getBody().front()).size() > 1)
     return Kind::OutputLegacyForCompute;
 
@@ -362,48 +401,15 @@ classifyEpilogueLambdaKind(IterEpilogueOp epilogueOp, MAPToMOGGState &state) {
 // operand `mapResult` feeds. Present only for a trait-ABI fused argument
 // (`Fused & ... & Access`), whose functor emit wraps in a conforming trait
 // tensor; null for the legacy `FusedInput/OutputTensor` (MTS-API) lane, which
-// binds the functor onto a `ManagedTensorSlice`. `isOutput` picks the call's
-// output vs input operand list. Resolved at MAP level, like
-// `classifyEpilogueLambdaKind`.
+// binds the functor onto a `ManagedTensorSlice`. Resolved at MAP level,
+// like `classifyEpilogueLambdaKind`.
 static MOGG::TensorArgContractAttr
 consumingFusedContract(Value mapResult, bool isOutput, MAPToMOGGState &state) {
-  if (!mapResult.hasOneUse())
+  std::optional<MOGG::KernelDeclOperandAdaptor> arg =
+      consumingKernelArg(mapResult, isOutput, state);
+  if (!arg)
     return {};
-  auto callOp = dyn_cast<CallOpaqueOp>(*mapResult.getUsers().begin());
-  if (!callOp)
-    return {};
-  ValueRange operands = isOutput ? callOp.getOutputs() : callOp.getInputs();
-  std::optional<unsigned> operandIdx;
-  for (auto [i, v] : llvm::enumerate(operands))
-    if (v == mapResult) {
-      operandIdx = i;
-      break;
-    }
-  if (!operandIdx)
-    return {};
-  MOGG::KernelDeclAdaptor adaptor(
-      state.registry.lookupKernelBySymName(callOp.getCallee()));
-  if (!adaptor.executeFunction)
-    return {};
-  // Not the operand's raw position: a variadic argument binds a run of
-  // operands, which shifts every argument after it. No mutable-to-immutable
-  // widening: the inputs reaching here are prologue results, always
-  // immutable, and results ignore the flag.
-  ErrorOr<MOGG::KernelDeclOperandMapping> mapping =
-      MOGG::mapToKernelImplementation(
-          callOp.getInputs(), callOp.getOutputs(), *adaptor.executeFunction,
-          callOp.getCallee(), callOp.getHasSameVariadicOperandSize(),
-          /*hasExtraOutputShapeArgument=*/false,
-          /*resultLeavesByValue=*/callOp.getOpaqueResult() != nullptr);
-  if (mapping.isError())
-    return {};
-  const MOGG::KernelDeclIndexToOperandAdaptorMapping &argForOperand =
-      isOutput ? mapping->resultMapping : mapping->operandMapping;
-  auto arg = argForOperand.find(*operandIdx);
-  if (arg == argForOperand.end())
-    return {};
-  std::optional<MOGG::TensorArgContract> contract =
-      arg->second.getTraitContract();
+  std::optional<MOGG::TensorArgContract> contract = arg->getTraitContract();
   if (!contract)
     return {};
   return MOGG::tensorArgContractToAttr(state.builder.getContext(), *contract);
@@ -497,21 +503,14 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   if (kindOr.isError())
     return emitOpError() << kindOr.getError();
   MOGG::KernelOutputFusionLambdaType kind = *kindOr;
+  // A downgraded `_LegacyComputeOutput` slot (`OutputLegacyForCompute`) keeps
+  // a store body, which emit wraps as a store fusion.
   bool isCompute = kind == MOGG::KernelOutputFusionLambdaType::Compute;
 
-  // A trait-ABI fused output's contract (null for the legacy MTS API). A
-  // transform-access output runs the body as a value->value functor, so it must
-  // YIELD the value like a compute lambda, even with nothing fused.
+  // A trait-ABI fused output's contract (null for the legacy MTS API).
   MOGG::TensorArgContractAttr contractAttr =
       consumingFusedContract(getResult(), /*isOutput=*/true, state);
-  bool isTransform = contractAttr && MOGG::bitEnumContainsAny(
-                                         contractAttr.getAccess(),
-                                         MOGG::TensorArgAccessKind::transform);
-  bool yieldBody = isCompute || isTransform;
-  // A transform's wrapper stores the yielded value, so it counts as a compute
-  // output too.
-  bool computeOutputArg =
-      kind != MOGG::KernelOutputFusionLambdaType::Output || isTransform;
+  bool computeOutputArg = kind != MOGG::KernelOutputFusionLambdaType::Output;
 
   // Set by `AllocateAccumulatingBuffers`.
   Value intermediateTensor = getIntermediateTensor();
@@ -551,7 +550,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   // store to the store-target capture (found by tensor, not position). The
   // capture stays, since emit binds the functor onto its slice.
   Value yielded;
-  Value storeTarget = yieldBody ? epiBody.getArgument(numParams) : Value();
+  Value storeTarget = isCompute ? epiBody.getArgument(numParams) : Value();
   if (failed(state.lowerRegionBody(epiBody, [&](Operation *op) {
         auto storeOp = dyn_cast<StoreOp>(op);
         if (!storeOp || storeOp.getTensor() != storeTarget)
@@ -562,7 +561,7 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
         return false;
       })))
     return failure();
-  if (yieldBody) {
+  if (isCompute) {
     ASSERT_STREAM(yielded, "expected a MAP epilogue body to store to its "
                            "store-target capture");
     MOGG::YieldOp::create(state.builder, loc, yielded);

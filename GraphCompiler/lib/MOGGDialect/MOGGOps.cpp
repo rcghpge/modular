@@ -3194,13 +3194,24 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
       /*takesValue=*/true,
   };
 
-  // A trait-ABI fused output (`Some[Output & Fused & StoreAccess]`, `$contract`
-  // stamped at MAP lowering) wants the inline `OutputStoreFusion` functor shape
-  // (Coord `__call__`, `width: Int`) in `_MoggOutputStoreFusionTensor`; the MTS
-  // API binds the `managed_tensor_slice.OutputFusion` shape onto a base slice.
-  bool wrapStore =
+  // A `_LegacyComputeOutput` slot (`Some[Output & Fused &
+  // _LegacyComputeOutput]`) gets a compute lambda only when `MAPToMOGG` could
+  // build one, which it marks by yielding. Otherwise (a cast, reshape, or
+  // multi-store epilogue) the slot is downgraded to a store fusion, like a
+  // legacy `FusedComputeOutput`.
+  bool isComputeOutputSlot =
       getContract() && bitEnumContainsAny(getContract()->getAccess(),
-                                          MOGG::TensorArgAccessKind::store);
+                                          MOGG::TensorArgAccessKind::transform);
+
+  // A trait-ABI fused output (`Some[Output & Fused & StoreAccess]`, `$contract`
+  // stamped at MAP lowering), or a downgraded compute-output slot, wants the
+  // inline `OutputStoreFusion` functor shape (Coord `__call__`, `width: Int`)
+  // in `_MoggOutputStoreFusionTensor`; the MTS API binds the
+  // `managed_tensor_slice.OutputFusion` shape onto a base slice.
+  bool wrapStore =
+      (getContract() && bitEnumContainsAny(getContract()->getAccess(),
+                                           MOGG::TensorArgAccessKind::store)) ||
+      (isComputeOutputSlot && !isCompute);
   const FusionLambdaInfo traitStoreLane = {
       /*structName=*/"OutputStoreFunctor",
       /*traitName=*/MojoValue("OutputStoreFusion"),
@@ -3210,14 +3221,11 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
       /*coordIndex=*/true,
   };
 
-  // A transform-access trait output (`Some[Output & Fused & TransformAccess]`)
-  // wants the functor in the inline `TransformFusion` shape (Coord `__call__`
-  // RETURNING the transformed value) wrapped in `_MoggTransformFusionTensor`,
-  // which also holds the real output buffer (the wrapper stores the transformed
-  // value through it). Its body is a compute body, so `MAPToMOGG` yields.
-  bool wrapTransform =
-      getContract() && bitEnumContainsAny(getContract()->getAccess(),
-                                          MOGG::TensorArgAccessKind::transform);
+  // A compute-output slot that got a compute lambda wants the functor in the
+  // inline `TransformFusion` shape (Coord `__call__` RETURNING the transformed
+  // value) wrapped in `_MoggTransformFusionTensor`, which also holds the real
+  // output buffer for the kernel's own store.
+  bool wrapTransform = isComputeOutputSlot && isCompute;
   const FusionLambdaInfo traitTransformLane = {
       /*structName=*/"TransformFunctor",
       /*traitName=*/MojoValue("TransformFusion"),
@@ -3302,7 +3310,7 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
     MojoValue wrapper = MojoValue("_MoggOutputStoreFusionTensor")(
         {inputDtypeParam, MojoValue("type_of")({}, {layoutVar}), alignmentParam,
          MojoValue("type_of")({}, {functorInstance}), MojoValue(devicePassable),
-         MojoValue(!devicePassable)},
+         MojoValue(!devicePassable), MojoValue(isComputeOutputSlot)},
         {functorInstance, layoutVar});
     state.setMojoValueFor(getTensor(), state.builder.var(wrapper));
     return success();

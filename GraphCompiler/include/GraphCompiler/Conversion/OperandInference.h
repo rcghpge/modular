@@ -43,9 +43,9 @@ struct KernelDeclOperandMapping {
 /// extra-output-shape-argument op properties. Set `resultLeavesByValue` when
 /// the kernel returns its result rather than writing a destination, so
 /// `results` has no entry for it. `allowMutToImmut` lets a mutable operand
-/// satisfy an immutable kernel operand (never the converse); only
-/// ConformCallOperands opts in, for a `mogg.tensor.create` that MAPToMOGG built
-/// mutable for a fused mutable-load.
+/// satisfy an immutable kernel operand (never the converse), for an operand
+/// that a fused mutable-load made mutable; ConformCallOperands and MAPToMOGG's
+/// epilogue classification opt in.
 ErrorOr<KernelDeclOperandMapping> mapToKernelImplementation(
     ValueRange operands, ValueRange results,
     const KernelDeclFunctionAdaptor &adaptor, StringRef opName,

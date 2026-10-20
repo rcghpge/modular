@@ -89,15 +89,12 @@
 // Output + Fused + Storable (CAPABILITY leaf) -> output/store/fused, cap=store.
 // IMPORT-DAG: registration = "trait_fused_store_capability"{{.*}}[{access = 2 : i32, capabilities = 2 : i32, fused = true, role = "output"}, unit, unit, unit]
 
-// --- Fused transform (marker vs capability) --- //
+// --- Fused transform (compute-output slot) --- //
 
-// Output + Fused + TransformAccess (bare MARKER) -> output/transform/fused,
-// cap=0.
+// Output + Fused + _LegacyComputeOutput -> output/transform/fused, cap=0.
+// `_LegacyComputable` on a signature is rejected (see
+// infra-import-tensor-arg-traits-invalid.mlir).
 // IMPORT-DAG: registration = "trait_fused_transform_marker"{{.*}}[{access = 4 : i32, capabilities = 0 : i32, fused = true, role = "output"}, unit, unit, unit]
-
-// Output + Fused + Transformable (CAPABILITY leaf) -> output/transform/fused,
-// cap=transform.
-// IMPORT-DAG: registration = "trait_fused_transform_capability"{{.*}}[{access = 4 : i32, capabilities = 4 : i32, fused = true, role = "output"}, unit, unit, unit]
 
 // --- MutableInput can both load and store (one access form at a time) --- //
 

@@ -2,16 +2,16 @@
 // RUN: mt --execute %t.mlir --result-output-style=full --input-shapes=4 --model-inputs=ones | FileCheck %s
 
 // End-to-end proof of the trait FUSED-TRANSFORM (compute-output) emit path on
-// GPU (Phase 5 GPU slice). `trait_fused_transform_bias` declares its output with
-// the minimal markers `Output & Fused & TransformAccess` and refines the
-// capabilities in the body. For a GPU device the graph compiler emits the
+// GPU (Phase 5 GPU slice). `trait_fused_transform_bias` declares its output as
+// `Output & Fused & _LegacyComputeOutput` and, with no epilogue fused, refines
+// to the compute form in the body. For a GPU device the graph compiler emits the
 // `_MoggTransformFusionTensor` wrapper with `device_passable = True` and
 // `access_enabled = False`: the host proxy can cross to the device but cannot
 // transform or project to a tile directly. It holds the real output buffer as a
 // bare `Pointer` (so it translates to a device address; `to_tile_tensor`
 // rebuilds the tile) and `_to_device_type` projects the transform functor
 // field-by-field. The kernel's GPU arm binds the projected value by
-// `downcast[ZHost.device_type, Transformable & TileTensorable]`, computes
+// `downcast[ZHost.device_type, _LegacyComputable & TileTensorable]`, computes
 // `x[i] + 1`, applies the fused transform (identity here -- no consumer epilogue
 // is fused), and stores through the rebuilt output tile on-device.
 //
@@ -29,7 +29,7 @@ mo.graph @trait_fused_transform_bias_graph(%x: !mo.tensor<[4], f32>) -> !mo.tens
 
 // Same fused-transform boundary, but the transform + final store is performed by
 // a unified closure that captures the PROJECTED transform proxy
-// (`downcast[ZHost.device_type, Transformable & TileTensorable]`). The closure is
+// (`downcast[ZHost.device_type, _LegacyComputable & TileTensorable]`). The closure is
 // created after projection, so it captures the access-enabled `device_type` and
 // the transform/to_tile_tensor bodies' context gate passes; a host-side transform
 // fails to compile (see the host-negative test). Same `2` result.

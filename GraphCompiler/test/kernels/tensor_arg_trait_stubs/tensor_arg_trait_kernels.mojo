@@ -40,8 +40,7 @@ from extensibility import (
     Tensor,
     TensorTuple,
     TileTensorable,
-    TransformAccess,
-    Transformable,
+    _LegacyComputeOutput,
     _MutableInputTensor as MutableInputTensor,
 )
 
@@ -463,25 +462,16 @@ struct TraitFusedStoreCapability:
         pass
 
 
-# Fused transform via the bare `TransformAccess` MARKER on an Output:
+# Fused transform via the `_LegacyComputeOutput` slot on an Output:
 # output/transform/fused, capabilities = 0.
 @extensibility.register("trait_fused_transform_marker")
 struct TraitFusedTransformMarker:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: Some[Output & Fused & TransformAccess], ctx: DeviceContext) raises:
-        pass
-
-
-# Fused transform via the `Transformable` CAPABILITY leaf on an Output:
-# output/transform/fused, capabilities = transform.
-@extensibility.register("trait_fused_transform_capability")
-struct TraitFusedTransformCapability:
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](z: Some[Output & Fused & Transformable], ctx: DeviceContext) raises:
+    ](
+        z: Some[Output & Fused & _LegacyComputeOutput], ctx: DeviceContext
+    ) raises:
         pass
 
 

@@ -78,9 +78,9 @@ from extensibility import (
     Tensor,
     TensorTuple,
     TileTensorable,
-    TransformAccess,
-    Transformable,
     UnsafeFusedView,
+    _LegacyComputable,
+    _LegacyComputeOutput,
     to_tile_tensor,
     unsafe_fused_view,
 )
@@ -879,8 +879,8 @@ struct TraitInplaceIncrement:
 #     The callable `Loadable` view is used only where `x.load(idx)` is valid.
 #   * `Output & Fused & StoreAccess` -- epilogue (output-store) fusion.
 #     The callable `Storable` view is used only where `z.store(idx, v)` is valid.
-#   * `Output & Fused & Transformable` -- epilogue (transform / compute-output)
-#     fusion: `z.transform(idx, v)` runs the consumer and returns the value;
+#   * `Output & Fused & _LegacyComputable` -- epilogue (transform / compute-output)
+#     fusion: `z.compute(idx, v)` runs the consumer and returns the value;
 #     the GC output mechanism performs the final dense store.
 # For each, the GC emits an inline `_MoggInput*/Output*FusionArg` wrapper around
 # the existing fusion functor (`InputFusion`/`OutputFusion`/`ComputeOutputFusion`)
@@ -1590,23 +1590,25 @@ struct TraitFusedStoreHostNegative:
         z.store[1]((0,), SIMD[type_of(z).dtype, 1](0))
 
 
-# Output-transform (compute-output) fusion: the kernel computes `x[i] + 1`,
-# applies the fused transform via `z.transform`, then performs the final dense
-# store itself (per the design, a transform operand transforms a computed value
-# and leaves the parent responsible for the store). `Transformable` is the sole
-# access form; `TileTensorable` adds only the dense projection used for that
-# final store. `x` is a plain dense input.
+# Output-transform (compute-output) fusion: the kernel computes `x[i] + 1`.
+# In the compute form it applies the fused transform via `z.compute`, then
+# performs the final dense store itself (a compute-form operand transforms a
+# computed value and leaves the parent responsible for the store).
+# `_LegacyComputable` is the sole access form; `TileTensorable` adds only the
+# dense projection used for that final store. In the store form (the graph
+# compiler downgraded a cast, reshape, or multi-store epilogue) it calls
+# `z.store`, which runs the whole epilogue. `x` is a plain dense input.
 # Device entry for the fused-transform path: one thread per element computes
-# `x[i] + 1`, applies the fused transform via `z.transform`, and stores through
+# `x[i] + 1`, applies the fused transform via `z.compute`, and stores through
 # the output-buffer projection `z.to_tile_tensor()`. `z` is the device-projected
-# transform wrapper, bound by ONLY `Transformable & TileTensorable` via
-# `downcast[ZHost.device_type, Transformable & TileTensorable]`.
+# transform wrapper, bound by ONLY `_LegacyComputable & TileTensorable` via
+# `downcast[ZHost.device_type, _LegacyComputable & TileTensorable]`.
 def _gpu_fused_transform_bias_kernel[
     ZHost: DevicePassable,
     dtype: DType,
     LayoutType: TensorLayout,
 ](
-    z: downcast[ZHost.device_type, Transformable & TileTensorable],
+    z: downcast[ZHost.device_type, _LegacyComputable & TileTensorable],
     x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
     n_dev: Int32,
 ):
@@ -1616,11 +1618,31 @@ def _gpu_fused_transform_bias_kernel[
         return
     var coord = Coord(i)
     var raw = rebind[SIMD[type_of(z).dtype, 1]](x.reshape(row_major(n))[i] + 1)
-    var t = z.transform[1](coord, raw)
+    var t = z.compute[1](coord, raw)
     var zt = z.to_tile_tensor()
     # An Output edge is always writable; gives `TileTensor.store` its evidence.
     comptime assert type_of(z).mut
     zt.store(coord, rebind[SIMD[type_of(zt).dtype, 1]](t))
+
+
+# Device entry for the store form of a `_LegacyComputeOutput` slot: one thread
+# per element computes `x[i] + 1` and stores it through `z.store`, which runs
+# the whole downgraded epilogue.
+def _gpu_fused_transform_bias_store_form_kernel[
+    ZHost: DevicePassable,
+    dtype: DType,
+    LayoutType: TensorLayout,
+](
+    z: downcast[ZHost.device_type, Storable],
+    x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
+    n_dev: Int32,
+):
+    var n = Int(n_dev)
+    var i = Int(global_idx.x)
+    if i >= n:
+        return
+    var raw = rebind[SIMD[type_of(z).dtype, 1]](x.reshape(row_major(n))[i] + 1)
+    z.store[1](Coord(i), raw)
 
 
 @extensibility.register("trait_fused_transform_bias")
@@ -1629,51 +1651,71 @@ struct TraitFusedTransformBias:
     def execute[
         target: StaticString,
     ](
-        # The output carries ONLY the minimal graph-visible markers `Output &
-        # Fused & TransformAccess`. Everything the body uses -- `Transformable`
-        # (the transform) and `TileTensorable` (the output projection for the
-        # parent store, which refines `DenseTensor` so the layout metadata comes
-        # for free) -- is recovered via type refinement below.
-        z: Some[Output & Fused & TransformAccess],
+        # The output declares only `Output & Fused & _LegacyComputeOutput`.
+        # The body branches on the form the graph compiler delivered:
+        # `_LegacyComputable & TileTensorable` (the transform plus the output
+        # projection for the parent store) or `Storable`.
+        z: Some[Output & Fused & _LegacyComputeOutput],
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
+        var n = Int(z.shape().product())
         comptime if is_cpu[target]():
-            comptime assert conforms_to(type_of(z), Transformable)
-            comptime assert conforms_to(type_of(z), TileTensorable)
             comptime assert conforms_to(type_of(x), TileTensorable)
-            var zt = to_tile_tensor(z)
             var xt = to_tile_tensor(x)
-            var n = Int(z.shape().product())
-            var zf = zt.reshape(row_major(n))
             var xf = xt.reshape(row_major(n))
-            for i in range(n):
-                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xf.load((i,))) + 1
-                var t = z.transform[1](Coord(i), raw)
-                zf.store((i,), rebind[SIMD[type_of(zt).dtype, 1]](t))
+            comptime if conforms_to(type_of(z), _LegacyComputable):
+                comptime assert conforms_to(type_of(z), TileTensorable)
+                var zt = to_tile_tensor(z)
+                var zf = zt.reshape(row_major(n))
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(zt).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    var t = z.compute[1](Coord(i), raw)
+                    zf.store((i,), rebind[SIMD[type_of(zt).dtype, 1]](t))
+            else:
+                comptime assert conforms_to(type_of(z), Storable)
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(z).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    z.store[1](Coord(i), raw)
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
             comptime block_size = 64
-            var n = Int(z.shape().product())
-            ctx.enqueue_function[
-                _gpu_fused_transform_bias_kernel[
-                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
-                ]
-            ](
-                z,
-                x,
-                Int32(n),
-                grid_dim=(ceildiv(n, block_size),),
-                block_dim=(block_size,),
-            )
+            comptime if conforms_to(type_of(z), _LegacyComputable):
+                ctx.enqueue_function[
+                    _gpu_fused_transform_bias_kernel[
+                        type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                    ]
+                ](
+                    z,
+                    x,
+                    Int32(n),
+                    grid_dim=(ceildiv(n, block_size),),
+                    block_dim=(block_size,),
+                )
+            else:
+                ctx.enqueue_function[
+                    _gpu_fused_transform_bias_store_form_kernel[
+                        type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                    ]
+                ](
+                    z,
+                    x,
+                    Int32(n),
+                    grid_dim=(ceildiv(n, block_size),),
+                    block_dim=(block_size,),
+                )
 
 
 # UNIFIED-closure fused-transform variant: the device kernel binds the PROJECTED
-# transform proxy (`downcast[ZHost.device_type, Transformable & TileTensorable]`,
+# transform proxy (`downcast[ZHost.device_type, _LegacyComputable & TileTensorable]`,
 # access-enabled) and applies the transform + final store through a unified
 # closure that captures that projected value. Same context gate as store/load: the
-# closure captures `device_type`, so the `transform`/`to_tile_tensor` bodies'
+# closure captures `device_type`, so the `compute`/`to_tile_tensor` bodies'
 # `comptime assert _access_enabled` passes; a host-side transform is a compile
 # error (see `trait_fused_transform_host_negative`).
 def _gpu_fused_transform_bias_unified_closure_kernel[
@@ -1681,7 +1723,7 @@ def _gpu_fused_transform_bias_unified_closure_kernel[
     dtype: DType,
     LayoutType: TensorLayout,
 ](
-    z: downcast[ZHost.device_type, Transformable & TileTensorable],
+    z: downcast[ZHost.device_type, _LegacyComputable & TileTensorable],
     x: TileTensor[dtype, LayoutType, ImmutAnyOrigin],
     n_dev: Int32,
 ):
@@ -1695,7 +1737,7 @@ def _gpu_fused_transform_bias_unified_closure_kernel[
 
     @inline(.always)
     def transform_and_store(c: Coord, r: SIMD[type_of(z).dtype, 1]) {imm z}:
-        var t = z.transform[1](c, r)
+        var t = z.compute[1](c, r)
         var zt = z.to_tile_tensor()
         zt.store(c, rebind[SIMD[type_of(zt).dtype, 1]](t))
 
@@ -1708,44 +1750,115 @@ struct TraitFusedTransformBiasUnifiedClosure:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & Fused & TransformAccess],
+        z: Some[Output & Fused & _LegacyComputeOutput],
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
+        var n = Int(z.shape().product())
         comptime if is_cpu[target]():
-            comptime assert conforms_to(type_of(z), Transformable)
-            comptime assert conforms_to(type_of(z), TileTensorable)
             comptime assert conforms_to(type_of(x), TileTensorable)
-            var zt = to_tile_tensor(z)
             var xt = to_tile_tensor(x)
-            var n = Int(z.shape().product())
-            var zf = zt.reshape(row_major(n))
             var xf = xt.reshape(row_major(n))
-            for i in range(n):
-                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xf.load((i,))) + 1
-                var t = z.transform[1](Coord(i), raw)
-                zf.store((i,), rebind[SIMD[type_of(zt).dtype, 1]](t))
+            comptime if conforms_to(type_of(z), _LegacyComputable):
+                comptime assert conforms_to(type_of(z), TileTensorable)
+                var zt = to_tile_tensor(z)
+                var zf = zt.reshape(row_major(n))
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(zt).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    var t = z.compute[1](Coord(i), raw)
+                    zf.store((i,), rebind[SIMD[type_of(zt).dtype, 1]](t))
+            else:
+                comptime assert conforms_to(type_of(z), Storable)
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(z).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    z.store[1](Coord(i), raw)
         else:
             comptime assert conforms_to(type_of(z), DevicePassable)
             comptime assert conforms_to(type_of(x), DevicePassable)
             comptime block_size = 64
-            var n = Int(z.shape().product())
-            ctx.enqueue_function[
-                _gpu_fused_transform_bias_unified_closure_kernel[
-                    type_of(z), type_of(z).dtype, type_of(x).LayoutType
-                ]
-            ](
-                z,
-                x,
-                Int32(n),
-                grid_dim=(ceildiv(n, block_size),),
-                block_dim=(block_size,),
-            )
+            comptime if conforms_to(type_of(z), _LegacyComputable):
+                ctx.enqueue_function[
+                    _gpu_fused_transform_bias_unified_closure_kernel[
+                        type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                    ]
+                ](
+                    z,
+                    x,
+                    Int32(n),
+                    grid_dim=(ceildiv(n, block_size),),
+                    block_dim=(block_size,),
+                )
+            else:
+                ctx.enqueue_function[
+                    _gpu_fused_transform_bias_store_form_kernel[
+                        type_of(z), type_of(z).dtype, type_of(x).LayoutType
+                    ]
+                ](
+                    z,
+                    x,
+                    Int32(n),
+                    grid_dim=(ceildiv(n, block_size),),
+                    block_dim=(block_size,),
+                )
+
+
+# A fused-output `TensorTuple` declared before a `_LegacyComputeOutput` slot,
+# so each argument's position differs from its result position. Copies `x`
+# into every tuple element through its fused store, and computes `z` as in
+# `trait_fused_transform_bias`.
+@extensibility.register("trait_tuple_then_compute_output")
+struct TraitTupleThenComputeOutput:
+    @staticmethod
+    def execute[
+        Outs: TypeList[Trait=Output & Fused & StoreAccess, ...],
+        //,
+        target: StaticString,
+    ](
+        outputs: TensorTuple[*Outs],
+        z: Some[Output & Fused & _LegacyComputeOutput],
+        x: Some[Input & DenseTensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            var n = Int(x.shape().product())
+            var xt = to_tile_tensor(x)
+            var xf = xt.reshape(row_major(n))
+            comptime for k in range(len(Outs)):
+                comptime assert conforms_to(type_of(outputs[k]), Storable)
+                for j in range(n):
+                    var v = xf.load[width=1]((j,))
+                    outputs[k].store[1](
+                        (j,), v.cast[type_of(outputs[k]).dtype]()
+                    )
+            comptime if conforms_to(type_of(z), _LegacyComputable):
+                comptime assert conforms_to(type_of(z), TileTensorable)
+                var zt = to_tile_tensor(z)
+                var zf = zt.reshape(row_major(n))
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(zt).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    var t = z.compute[1](Coord(i), raw)
+                    zf.store((i,), rebind[SIMD[type_of(zt).dtype, 1]](t))
+            else:
+                comptime assert conforms_to(type_of(z), Storable)
+                for i in range(n):
+                    var raw = (
+                        rebind[SIMD[type_of(z).dtype, 1]](xf.load((i,))) + 1
+                    )
+                    z.store[1](Coord(i), raw)
+        else:
+            raise Error("trait_tuple_then_compute_output is CPU-only")
 
 
 # NEGATIVE control: transforms DIRECTLY on the fused-transform proxy at the host
 # entry. On a GPU device the emitted proxy is the device-passable HOST proxy
-# (`_access_enabled=False`), so the transform body's `comptime assert
+# (`_access_enabled=False`), so the compute body's `comptime assert
 # _access_enabled` fails at instantiation -- must NOT compile. Exercised
 # (expecting failure) by `mogg-kernel-api-e2e-trait-fused-transform-host-negative.mlir`.
 @extensibility.register("trait_fused_transform_host_negative")
@@ -1754,15 +1867,15 @@ struct TraitFusedTransformHostNegative:
     def execute[
         target: StaticString,
     ](
-        z: Some[Output & Fused & TransformAccess],
+        z: Some[Output & Fused & _LegacyComputeOutput],
         x: Some[Input & DenseTensor],
         ctx: DeviceContext,
     ) raises:
         comptime assert conforms_to(type_of(z), DevicePassable)
-        comptime assert conforms_to(type_of(z), Transformable)
+        comptime assert conforms_to(type_of(z), _LegacyComputable)
         # Direct host-side transform on the device-passable proxy: the context
-        # gate (`comptime assert _access_enabled` in the transform body) rejects it.
-        _ = z.transform[1](Coord(0), SIMD[type_of(z).dtype, 1](0))
+        # gate (`comptime assert _access_enabled` in the compute body) rejects it.
+        _ = z.compute[1](Coord(0), SIMD[type_of(z).dtype, 1](0))
 
 
 # Kernel with both a struct-level (`flip`) and fn-level (`dtype`) compile-time

@@ -45,7 +45,9 @@ from extensibility import (
     Storable,
     Tensor,
     TensorTuple,
-    Transformable,
+    TileTensorable,
+    _LegacyComputable,
+    _LegacyComputeOutput,
 )
 
 
@@ -181,26 +183,68 @@ struct TraitLoadOnOutput:
         pass
 
 
-# Transform access on a read-only Input: `Input & Fused & Transformable` --
-# transform requires an Output.
+# Transform access on a read-only Input: `Input & Fused & _LegacyComputeOutput`
+# -- transform requires an Output.
 @extensibility.register("trait_transform_on_input")
 struct TraitTransformOnInput:
     @staticmethod
     def execute[
         target: StaticString,
-    ](z: Some[Input & Fused & Transformable], ctx: DeviceContext) raises:
+    ](z: Some[Input & Fused & _LegacyComputeOutput], ctx: DeviceContext) raises:
         pass
 
 
-# Transform access on a MutableInput: `MutableInput & Fused & Transformable` --
-# transform requires an Output, so a mutable input is also rejected.
+# Transform access on a MutableInput: `MutableInput & Fused &
+# _LegacyComputeOutput` -- transform requires an Output, so a mutable input is
+# also rejected.
 @extensibility.register("trait_transform_on_mutable_input")
 struct TraitTransformOnMutableInput:
     @staticmethod
     def execute[
         target: StaticString,
     ](
-        z: Some[MutableInput & Fused & Transformable],
+        z: Some[MutableInput & Fused & _LegacyComputeOutput],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+# `_LegacyComputable` on the signature: `Output & Fused & _LegacyComputable`
+# demands the compute capability, but the graph compiler may deliver the slot
+# as a store fusion, so the kernel must declare `_LegacyComputeOutput` and
+# refine in its body.
+@extensibility.register("trait_computable_on_signature")
+struct TraitComputableOnSignature:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](z: Some[Output & Fused & _LegacyComputable], ctx: DeviceContext) raises:
+        pass
+
+
+# A data tier on a `_LegacyComputeOutput` signature:
+# `Output & Fused & _LegacyComputeOutput & TileTensorable` (and `DenseTensor`).
+# The store-fusion form the graph compiler may deliver conforms to neither, so
+# the kernel must refine in its body.
+@extensibility.register("trait_compute_output_tile_on_signature")
+struct TraitComputeOutputTileOnSignature:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & _LegacyComputeOutput & TileTensorable],
+        ctx: DeviceContext,
+    ) raises:
+        pass
+
+
+@extensibility.register("trait_compute_output_dense_on_signature")
+struct TraitComputeOutputDenseOnSignature:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & _LegacyComputeOutput & DenseTensor],
         ctx: DeviceContext,
     ) raises:
         pass

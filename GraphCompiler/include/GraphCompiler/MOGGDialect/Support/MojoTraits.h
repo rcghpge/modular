@@ -190,10 +190,14 @@ struct _MoggInputLoadFusionTensor[
 // The fused output-store argument (`Output & Fused & StoreAccess`), the
 // epilogue counterpart of `kInputLoadFusionDefs`. `OutputStoreFusion.__call__`
 // runs the fused consumer epilogue and writes. `Storable` is gated by
-// `_access_enabled` as for fused load.
+// `_access_enabled` as for fused load. The same wrapper fills a
+// `_LegacyComputeOutput` slot whose epilogue can't be a compute lambda (a cast,
+// reshape, or multi-store epilogue); `_compute_output_slot` adds that
+// conformance there and only there, so a plain fused store never claims to be
+// a compute-output slot.
 static constexpr llvm::StringLiteral kOutputStoreFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import Fused, Output, StoreAccess, Storable, Tensor, UnsafeFusedView
+from extensibility import Fused, Output, StoreAccess, Storable, Tensor, UnsafeFusedView, _LegacyComputeOutput
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -223,6 +227,7 @@ struct _MoggOutputStoreFusionTensor[
     _OutFusion: OutputStoreFusion,
     _device_passable: Bool,
     _access_enabled: Bool,
+    _compute_output_slot: Bool,
 ](
     Copyable,
     DevicePassable where _device_passable,
@@ -234,6 +239,7 @@ struct _MoggOutputStoreFusionTensor[
     Tensor,
     TrivialRegisterPassable,
     UnsafeFusedView,
+    _LegacyComputeOutput where _compute_output_slot,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
@@ -252,6 +258,7 @@ struct _MoggOutputStoreFusionTensor[
         Self._OutFusion,
         False,
         True,
+        Self._compute_output_slot,
     ]
 
     comptime FusedViewType: TrivialRegisterPassable = Self.device_type
@@ -315,14 +322,14 @@ struct _MoggOutputStoreFusionTensor[
 
 // The fused output-transform (compute-output) argument. The kernel both
 // transforms and writes one output edge, so a single operand composes
-// `Transformable` (pure value->value) and `TileTensorable` (projects the output
-// buffer for the parent's final store). The callable surfaces are gated by
-// `_access_enabled`; the device kernel refines via `downcast[...,
-// Transformable & TileTensorable]`. The buffer is a bare `Pointer` so it
+// `_LegacyComputable` (pure value->value) and `TileTensorable` (projects the
+// output buffer for the parent's final store). The callable surfaces are gated
+// by `_access_enabled`; the device kernel refines via `downcast[...,
+// _LegacyComputable & TileTensorable]`. The buffer is a bare `Pointer` so it
 // translates to a device address.
 static constexpr llvm::StringLiteral kTransformFusionDefs = R"mojo(
 from layout import Coord, TensorLayout, TileTensor
-from extensibility import DenseTensor, Fused, Output, TileTensorable, TransformAccess, Transformable, UnsafeFusedView
+from extensibility import DenseTensor, Fused, Output, TileTensorable, UnsafeFusedView, _LegacyComputable, _LegacyComputeOutput
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 
 
@@ -336,8 +343,8 @@ trait TransformFusion(TrivialRegisterPassable):
         ...
 
 
-# `TransformAccess`, `Transformable`, and `TileTensorable` are UNCONDITIONAL so a
-# closure that captures the proxy can type-check `.transform()` / `.to_tile_tensor()`.
+# `_LegacyComputeOutput`, `_LegacyComputable`, and `TileTensorable` are UNCONDITIONAL so a
+# closure that captures the proxy can type-check `.compute()` / `.to_tile_tensor()`.
 # The access gate is a `comptime assert Self._access_enabled` in each callable
 # body: `_access_enabled` is False on the device-passable HOST proxy and True on
 # the projected `device_type` (device_type flips it), so a direct host-side
@@ -360,10 +367,10 @@ struct _MoggTransformFusionTensor[
     Movable,
     Output,
     TileTensorable,
-    TransformAccess,
-    Transformable,
     TrivialRegisterPassable,
     UnsafeFusedView,
+    _LegacyComputable,
+    _LegacyComputeOutput,
 ):
     comptime dtype = Self._dtype
     comptime LayoutType = Self._LayoutType
@@ -466,7 +473,7 @@ struct _MoggTransformFusionTensor[
         ](ptr=self.handle, layout=self._layout)
 
     @inline(.always)
-    def transform[
+    def compute[
         width: Int,
         element_alignment: Int = 1,
     ](self, idx: Coord, value: SIMD[Self.dtype, width]) -> SIMD[

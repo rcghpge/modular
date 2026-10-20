@@ -2,11 +2,11 @@
 // RUN: mt --execute %t.mlir --result-output-style=full --input-shapes=4 --model-inputs=ones | FileCheck %s
 
 // End-to-end proof of the dense CPU trait FUSED-TRANSFORM (compute-output) emit
-// path (Phase 5): `trait_fused_transform_bias` declares its output with the
-// minimal graph-visible markers `Output & Fused & TransformAccess` and refines
-// `Transformable` / `TileTensorable` in the body. The graph compiler
+// path (Phase 5): `trait_fused_transform_bias` declares its output as
+// `Output & Fused & _LegacyComputeOutput` and, with no epilogue fused, refines
+// to the compute form `_LegacyComputable` / `TileTensorable` in the body. The graph compiler
 // emits a `TransformFusion` functor (pure value->value) wrapped in an inline
-// `_MoggTransformFusionTensor` that composes `Transformable` (the transform)
+// `_MoggTransformFusionTensor` that composes `_LegacyComputable` (the transform)
 // with `TileTensorable` (the real output buffer projection) on ONE operand. The
 // kernel computes `x[i] + 1`, applies the fused transform (identity here, since
 // no consumer epilogue is fused), and stores the result itself via

@@ -54,15 +54,28 @@
 // diagnostic in the same run).
 // CHECK-DAG: error: store access is not valid on a read-only Input argument
 
-// `Input & Fused & Transformable` (kernel `trait_transform_on_input`) --
-// transform access on a read-only Input.
+// `Input & Fused & _LegacyComputeOutput` (kernel `trait_transform_on_input`)
+// -- transform access on a read-only Input.
 // CHECK-DAG: error: transform access requires an Output argument
 
-// `MutableInput & Fused & Transformable`
+// `MutableInput & Fused & _LegacyComputeOutput`
 // (kernel `trait_transform_on_mutable_input`) -- transform access on a mutable
 // input; transform requires an Output (a second "transform access requires an
 // Output argument" diagnostic in the same run).
 // CHECK-DAG: error: transform access requires an Output argument
+
+// `Output & Fused & _LegacyComputable` (kernel `trait_computable_on_signature`)
+// -- the compute capability on a signature. The graph compiler may deliver a
+// `_LegacyComputeOutput` slot as a store fusion, so it can't promise
+// `_LegacyComputable` up front.
+// CHECK-DAG: error: declare _LegacyComputeOutput on the kernel signature and refine to _LegacyComputable in the body
+
+// `Output & Fused & _LegacyComputeOutput & TileTensorable` and `& DenseTensor`
+// (kernels `trait_compute_output_tile_on_signature`,
+// `trait_compute_output_dense_on_signature`) -- a data tier on the signature,
+// which the store-fusion form can't satisfy.
+// CHECK-DAG: error: a _LegacyComputeOutput argument cannot require DenseTensor or TileTensorable on the kernel signature
+// CHECK-DAG: error: a _LegacyComputeOutput argument cannot require DenseTensor or TileTensorable on the kernel signature
 
 // === Foreign trait ======================================================== //
 
@@ -84,8 +97,9 @@
 // A shape-function tensor argument may conform to `Tensor`, `DenseTensor`,
 // or `TileTensorable` (host execution makes data access safe), but the
 // shape-fn distill lane still rejects io-role markers, `Fused`, and the
-// fusion access traits (`Loadable`/`Storable`/`Transformable` and the
-// `*Access` markers) -- those stay execute-lane-only fusion machinery.
+// fusion access traits (`LoadAccess`/`Loadable`, `StoreAccess`/`Storable`,
+// `_LegacyComputeOutput`/`_LegacyComputable`) -- those stay execute-lane-only
+// fusion machinery.
 
 // `Input & DenseTensor` (shape fn `trait_shape_fn_with_role`) -- an io-role on
 // a shape-fn arg.
@@ -97,7 +111,7 @@
 
 // `Loadable & DenseTensor` (shape fn `trait_shape_fn_loadable`) -- a fusion
 // access capability on a shape-fn arg.
-// CHECK-DAG: error: Loadable, Storable, Transformable, and the *Access markers are fusion machinery
+// CHECK-DAG: error: LoadAccess, Loadable, StoreAccess, Storable, _LegacyComputeOutput, and _LegacyComputable are fusion machinery
 
 module {}
 

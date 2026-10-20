@@ -437,11 +437,13 @@ enum class TraitCategory {
   /// A storage marker (`Stable`): the argument's pointer lives in a stable
   /// address slot. Carries no payload; contributes `contract.stable`.
   storage,
-  /// An access-form marker (`LoadAccess` / `StoreAccess` / `TransformAccess`).
-  /// The row's `access` payload names the form it contributes.
+  /// An access-form marker (`LoadAccess` / `StoreAccess`), or the
+  /// `_LegacyComputeOutput` slot. The row's `access` payload names the form it
+  /// contributes. Unlike the markers, the slot's `transform` form doesn't
+  /// promise its capability: the slot may be delivered as a store fusion.
   accessMarker,
   /// An access-form callable capability (`Loadable` / `Storable` /
-  /// `Transformable`). The row's `access` payload names the form.
+  /// `_LegacyComputable`). The row's `access` payload names the form.
   accessCapability,
   /// Reserved for the deferred tile-transform fusion traits; always rejected.
   deferred,
@@ -517,9 +519,9 @@ constexpr VocabEntry kTensorArgVocab[] = {
     {"Loadable", TraitCategory::accessCapability, TensorArgAccess::load},
     {"StoreAccess", TraitCategory::accessMarker, TensorArgAccess::store},
     {"Storable", TraitCategory::accessCapability, TensorArgAccess::store},
-    {"TransformAccess", TraitCategory::accessMarker,
+    {"_LegacyComputeOutput", TraitCategory::accessMarker,
      TensorArgAccess::transform},
-    {"Transformable", TraitCategory::accessCapability,
+    {"_LegacyComputable", TraitCategory::accessCapability,
      TensorArgAccess::transform},
     {kTileTensorableLeaf, TraitCategory::dataCapability},
     {"Stable", TraitCategory::storage},
@@ -1001,10 +1003,10 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
         anyPresent(TraitCategory::accessCapability) ||
         anyPresent(TraitCategory::deferred)) {
       emitError(
-          "Loadable, Storable, Transformable, and the *Access markers are "
-          "fusion machinery. They are not allowed on a shape-function "
-          "tensor argument. Conform to Tensor, DenseTensor, or "
-          "TileTensorable instead");
+          "LoadAccess, Loadable, StoreAccess, Storable, _LegacyComputeOutput, "
+          "and _LegacyComputable are fusion machinery. They are not allowed "
+          "on a shape-function tensor argument. Conform to Tensor, "
+          "DenseTensor, or TileTensorable instead");
       return mlir::failure();
     }
     TensorArgContract contract;
@@ -1089,8 +1091,8 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   // A fused argument must declare exactly one access form.
   if (contract.fused && contract.accessCount() != 1) {
     emitError("a Fused tensor argument must declare exactly one access form "
-              "(one of LoadAccess/Loadable, StoreAccess/Storable, "
-              "TransformAccess/Transformable)");
+              "(one of LoadAccess/Loadable, StoreAccess/Storable, or "
+              "_LegacyComputeOutput)");
     return mlir::failure();
   }
 
@@ -1113,6 +1115,23 @@ mlir::FailureOr<TensorArgContract> distillTensorArgContract(
   if (contract.hasAccess(TensorArgAccess::transform) &&
       contract.role != TensorArgRole::output) {
     emitError("transform access requires an Output argument");
+    return mlir::failure();
+  }
+
+  // The graph compiler may deliver a `_LegacyComputeOutput` slot as a store
+  // fusion, so a signature can't demand the compute capability up front.
+  if (contract.hasCapability(TensorArgAccess::transform)) {
+    emitError("declare _LegacyComputeOutput on the kernel signature and "
+              "refine to _LegacyComputable in the body; the graph compiler "
+              "may deliver a store fusion instead");
+    return mlir::failure();
+  }
+  // The store-fusion wrapper conforms to neither data tier.
+  if (contract.hasAccess(TensorArgAccess::transform) &&
+      (isPresentLeaf(kDenseTensorLeaf) || isPresentLeaf(kTileTensorableLeaf))) {
+    emitError("a _LegacyComputeOutput argument cannot require DenseTensor or "
+              "TileTensorable on the kernel signature; refine in the body, "
+              "since the graph compiler may deliver a store fusion instead");
     return mlir::failure();
   }
 
