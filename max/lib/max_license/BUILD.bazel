@@ -63,6 +63,7 @@ modular_shared_library(
     ],
     deps = [
         ":MOFDriver",
+        "//:accel_registration",
         # Profiler host glue: attaches the dlopen loader for
         # libMAXProfilerPlugin.so to this DSO's //Support:ProfilingRanges copy, so
         # MLRT's activatePendingTrace() (device init) and AsyncRT's thread
