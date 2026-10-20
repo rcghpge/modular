@@ -188,9 +188,9 @@ std::string Symbol::getMarkdownDeclaration(MojoParserContext &ctx) const {
     return buff;
   };
 
-  if (decl->isCallableDecl()) {
-    std::string snippet = getFunctionDeclarationSnippet(*decl, ctx);
-    std::string docString = getFunctionMarkdownDocString(*decl);
+  if (auto *function = dyn_cast<DefASTDecl>(decl)) {
+    std::string snippet = getFunctionDeclarationSnippet(*function, ctx);
+    std::string docString = getFunctionMarkdownDocString(*function);
     return processDecl("function", snippet, docString,
                        /*includeKindInSnippet=*/true);
   }
@@ -1450,10 +1450,10 @@ void MojoDocument::getDocumentSymbols(
       addSymbol(structDecl->getName().value_or(StringRef{}),
                 lsp::SymbolKind::Struct, range,
                 getStructSignature(*structDecl));
-    } else if (decl->isCallableDecl()) {
-      addSymbol(decl->getName().value_or(StringRef{}),
+    } else if (auto *function = dyn_cast<DefASTDecl>(decl)) {
+      addSymbol(function->getName().value_or(StringRef{}),
                 lsp::SymbolKind::Function, range,
-                getFunctionSignature(*decl, *context->parserContext));
+                getFunctionSignature(*function, *context->parserContext));
     }
   }
 

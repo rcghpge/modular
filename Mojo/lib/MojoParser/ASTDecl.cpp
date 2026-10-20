@@ -20,6 +20,7 @@
 #include "Mojo/MojoParser/DocString.h"
 #include "Mojo/lib/MojoParser/Traits.h"
 #include "MojoUtils.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -174,7 +175,10 @@ void DefASTDecl::createIRSignatureDecls(DeclResolver &resolver) {
 
   SmallVector<ASTDecl *> newArgDecls;
   for (size_t argIndex : llvm::seq(signature.getNumArguments())) {
-    if (signature.getArgName(argIndex).strref().empty())
+    auto convention = signature.getArgConventions()[argIndex];
+    auto argName = signature.getArgListAttrs().getPogs()[argIndex].getName();
+    if (convention == ArgConvention::ByRefError ||
+        (convention == ArgConvention::ByRefResult && argName == "__result__"))
       continue;
     auto &argDecl =
         resolver.addFullyResolvedDecl(CValue(), StringAttr(), getLoc(), this);

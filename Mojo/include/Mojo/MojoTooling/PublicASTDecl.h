@@ -40,6 +40,7 @@ namespace M::KGEN::LIT {
 
 class ASTDecl;
 class AliasASTDecl;
+class DefASTDecl;
 class MojoParserContext;
 class PackageASTDecl;
 class SharedState;
@@ -166,25 +167,25 @@ private:
   StringRef name;
 };
 
-/// Function tooling helpers operate directly on ordinary and derived function
-/// declarations. Derived declarations retain their signature-only fallback.
+/// Function tooling helpers operate directly on function declarations.
 SmallVector<KGEN::ArgumentInfo, kTypicalArgumentCount>
-getFunctionArguments(ASTDecl &decl);
+getFunctionArguments(DefASTDecl &decl);
 SmallVector<KGEN::ParameterInfo, kTypicalParameterCount>
-getFunctionParameters(ASTDecl &decl);
+getFunctionParameters(DefASTDecl &decl);
 std::string getFunctionDeclarationSnippet(
-    ASTDecl &decl, MojoParserContext &ctx,
+    DefASTDecl &decl, MojoParserContext &ctx,
     SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets = nullptr,
     SmallVectorImpl<std::pair<unsigned, unsigned>> *argumentOffsets = nullptr);
 std::string getFunctionSignature(
-    ASTDecl &decl, MojoParserContext &ctx,
+    DefASTDecl &decl, MojoParserContext &ctx,
     SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets = nullptr,
     SmallVectorImpl<std::pair<unsigned, unsigned>> *argumentOffsets = nullptr,
     unsigned *returnOffset = nullptr);
-std::string getFunctionMarkdownDocString(ASTDecl &decl);
-std::string getFunctionFullMarkdownString(ASTDecl &decl,
+std::string getFunctionMarkdownDocString(DefASTDecl &decl);
+std::string getFunctionFullMarkdownString(DefASTDecl &decl,
                                           MojoParserContext &ctx);
-llvm::json::Object serializeFunctionDecl(ASTDecl &decl, MojoParserContext &ctx);
+llvm::json::Object serializeFunctionDecl(DefASTDecl &decl,
+                                         MojoParserContext &ctx);
 
 /// A collection of overloaded functions in the same scope.
 class FunctionDeclOverloadSet {
@@ -192,13 +193,13 @@ public:
   /// Create a list of function overload sets by grouping the given functions by
   /// their name. It's assumed that the input list is sorted by name.
   static SmallVector<FunctionDeclOverloadSet, 2>
-  fromSortedFunctions(SmallVector<ASTDecl *, 2> &&functions);
+  fromSortedFunctions(SmallVector<DefASTDecl *, 2> &&functions);
 
   /// Get the common name of the functions in this overload set.
   StringRef getBaseName() const { return baseName; }
 
   /// Get the functions in this overload set.
-  ArrayRef<ASTDecl *> getFunctions() const { return functions; }
+  ArrayRef<DefASTDecl *> getFunctions() const { return functions; }
 
   /// The output of the generation is defined in the following schema:
   ///
@@ -212,10 +213,10 @@ public:
 private:
   FunctionDeclOverloadSet(StringRef baseName) : baseName(baseName) {}
 
-  void append(ASTDecl *function) { functions.push_back(function); }
+  void append(DefASTDecl *function) { functions.push_back(function); }
 
   std::string baseName;
-  SmallVector<ASTDecl *, 2> functions;
+  SmallVector<DefASTDecl *, 2> functions;
 };
 
 } // namespace M::KGEN::LIT

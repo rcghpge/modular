@@ -84,10 +84,7 @@ struct ArgumentInfo {
   ArgumentInfo(LIT::ASTDecl &decl);
 
   StringRef getName() const { return name; }
-  StringRef getDescription() const { return description; }
-  void setDescription(StringRef newDescription) {
-    description = newDescription;
-  }
+  static std::string getMarkdownDocString(LIT::ASTDecl &decl);
   std::string getMarkdownDocString() const;
   LIT::ASTDecl &getDecl() const {
     assert(decl && "ArgumentInfo requires an AST declaration");
@@ -103,7 +100,6 @@ struct ArgumentInfo {
   mlir::TypedAttr defaultValue;
   ArgumentConvention convention;
   bool isSelf;
-  std::string description;
 
 private:
   LIT::ASTDecl *decl = nullptr;

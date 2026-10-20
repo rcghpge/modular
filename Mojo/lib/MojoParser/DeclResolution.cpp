@@ -2424,6 +2424,7 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   // Propagate errors and the parsed decls in the signature.
   takeDecls(sigDecl);
   setParamDecls(paramList.paramASTDecls);
+  setArgDecls(tcSignature.argASTDecls);
 
   // Now that all the structural properties are determined, perform any
   // name-binding specific checks over the declaration.  This happens after

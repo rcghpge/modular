@@ -322,9 +322,9 @@ struct CodeCompletionListener : public BaseCompletionListener {
     }
 
     CodeCompletionResult result(name, kind);
-    if (decl->isCallableDecl())
+    if (auto *function = dyn_cast<DefASTDecl>(decl))
       result.documentation =
-          getFunctionFullMarkdownString(*decl, *parserContext);
+          getFunctionFullMarkdownString(*function, *parserContext);
     else if (auto publicDecl = getPublicDecl(decl))
       result.documentation = publicDecl->getFullMarkdownString(*parserContext);
     results.emplace_back(result);
@@ -383,28 +383,28 @@ struct SignatureHelpListener : public BaseCompletionListener {
 
     // Collect the signatures for each of the decls.
     for (ASTDecl *decl : decls) {
-      if (!decl->isCallableDecl())
+      auto *function = dyn_cast<DefASTDecl>(decl);
+      if (!function)
         continue;
-      SmallVector<ArgumentInfo, kTypicalArgumentCount> arguments =
-          getFunctionArguments(*decl);
-      if (operands.size() > arguments.size())
+      ArrayRef<ASTDecl *> argumentDecls = function->getArgDecls();
+      if (operands.size() > argumentDecls.size())
         continue;
       if (result.signatures.empty()) {
-        if (auto *fnDecl = dyn_cast<DefASTDecl>(decl)) {
-          FnOp fnOp = fnDecl->getOp();
-          if (!fnOp.getIsStatic() && isa<StructDeclOp>(fnOp->getParentOp()))
-            ++result.activeParameter;
-        }
+        FnOp fnOp = function->getOp();
+        if (!fnOp.getIsStatic() && isa<StructDeclOp>(fnOp->getParentOp()))
+          ++result.activeParameter;
       }
       SignatureHelpResult::Signature signature;
       SmallVector<std::pair<unsigned, unsigned>> argOffsets;
       signature.label = getFunctionDeclarationSnippet(
-          *decl, *parserContext, /*parameterOffsets=*/nullptr, &argOffsets);
+          *function, *parserContext,
+          /*parameterOffsets=*/nullptr, &argOffsets);
       signature.documentation =
-          getFunctionFullMarkdownString(*decl, *parserContext);
-      for (const auto &[argument, offset] : llvm::zip(arguments, argOffsets))
+          getFunctionFullMarkdownString(*function, *parserContext);
+      for (const auto &[argumentDecl, offset] :
+           llvm::zip(argumentDecls, argOffsets))
         signature.parameters.push_back(
-            {offset, argument.getMarkdownDocString()});
+            {offset, ArgumentInfo::getMarkdownDocString(*argumentDecl)});
       result.signatures.emplace_back(std::move(signature));
     }
   }
@@ -430,17 +430,17 @@ struct SignatureHelpListener : public BaseCompletionListener {
 
     // Collect the signatures for each of the decls.
     for (ASTDecl *decl : decls) {
-      if (decl->isCallableDecl()) {
+      if (auto *function = dyn_cast<DefASTDecl>(decl)) {
         SmallVector<ParameterInfo, kTypicalParameterCount> functionParameters =
-            getFunctionParameters(*decl);
+            getFunctionParameters(*function);
         if (parameters.size() > functionParameters.size())
           continue;
         SignatureHelpResult::Signature signature;
         SmallVector<std::pair<unsigned, unsigned>> paramOffsets;
-        signature.label =
-            getFunctionDeclarationSnippet(*decl, *parserContext, &paramOffsets);
+        signature.label = getFunctionDeclarationSnippet(
+            *function, *parserContext, &paramOffsets);
         signature.documentation =
-            getFunctionFullMarkdownString(*decl, *parserContext);
+            getFunctionFullMarkdownString(*function, *parserContext);
         for (const auto &[parameter, offset] :
              llvm::zip(functionParameters, paramOffsets))
           signature.parameters.push_back(
