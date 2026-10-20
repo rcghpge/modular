@@ -58,6 +58,8 @@ _EXTRA_CONSTRAINTS = {
     # simdgroup MMA (prefill) vs the naive reference. Apple M5 only.
     "test_grouped_matmul_apple.mojo": ["//:apple_gpu"],
     "test_gemm_kernel.mojo": ["//:nvidia_gpu"],  # Requires 32-thread warps
+    # PDL (griddepcontrol) + llvm.nvvm.nanosleep: NVIDIA SM90+ only.
+    "test_gemv_pdl_race.mojo": ["//:nvidia_gpu"],
     "test_gemv.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
