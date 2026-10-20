@@ -228,9 +228,10 @@ def bench_matmul_1d_tma_epilogue[
     cb_b.init_on_device(init_type, ctx)
     cb_bias.init_on_device(init_type, ctx)
 
-    @__copy_capture(cb_a, cb_b, cb_c, cb_bias)
     @inline(.always)
-    def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
+    def kernel_launch(
+        ctx: DeviceContext, iteration: Int
+    ) raises {var cb_a, var cb_b, var cb_c, var cb_bias, imm}:
         var tensor_a = TileTensor(
             cb_a.offset_ptr(iteration), row_major(shape_a)
         )

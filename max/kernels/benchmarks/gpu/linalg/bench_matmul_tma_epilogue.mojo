@@ -248,9 +248,10 @@ def bench_matmul_tma_epilogue[
     # Initialize epilogue tensor with values in a narrow range (same as test files use rand).
     cb_epilogue.init_on_device(init_type, ctx)
 
-    @__copy_capture(cb_a, cb_b, cb_c, cb_epilogue)
     @inline(.always)
-    def kernel_launch(ctx: DeviceContext, iteration: Int) raises {imm}:
+    def kernel_launch(
+        ctx: DeviceContext, iteration: Int
+    ) raises {var cb_a, var cb_b, var cb_c, var cb_epilogue, imm}:
         var tensor_a = TileTensor(
             cb_a.offset_ptr(iteration), row_major(shape_a)
         )
