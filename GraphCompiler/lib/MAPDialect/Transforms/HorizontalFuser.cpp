@@ -33,6 +33,8 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 
 #include <tuple>
 
@@ -398,8 +400,10 @@ BlockArgument inputArgFor(IterForeachOp op, Value in) {
 // `slice`, when set, is how `b` reads `%x`, `%y = mo.relu(%x[:, 1::2])`: `b`'s
 // body then runs in a `map.index.slice.select` at `a`'s index, where the slice
 // selects the element, and stores at the slice's index.
-void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
-          SliceIndexOp slice = {}) {
+//
+// Returns the merged kernel, created where `b` was.
+IterForeachOp fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
+                   SliceIndexOp slice = {}) {
   assert((!slice || forwarded) && "a slice is how `b` reads `forwarded`");
   // Merged inputs: `a`'s, then the ones only `b` carries. A shared operand
   // keeps `a`'s slot, which is what collapses the duplicate load.
@@ -519,6 +523,7 @@ void fuse(IterForeachOp a, IterForeachOp b, Value forwarded = {},
   b.replaceAllUsesWith(fused.getResults().drop_front(split));
   b.erase();
   a.erase();
+  return fused;
 }
 
 // Whether `opaque` reads `value` only through prologues, where prologue
@@ -681,50 +686,99 @@ struct FuseHorizontalPass
 
   // Returns whether any pair was fused.
   bool fuseSiblings(Block &block) {
+    // Kernels with the same shape and device that load the same operand form
+    // a candidate group, and a kernel joins one group per operand it loads.
+    // The groups are built once. One sweep then visits the kernels in block
+    // order and fuses each with the first fusible later member of its groups.
+    // A fused pair empties `a`'s slot and puts the merged kernel in `b`'s,
+    // where `fuse` creates it, so slots stay in block order and the sweep
+    // reaches the merged kernel again, to try it against the members after
+    // it. Only the pair and the users of its results need new groups;
+    // rebuilding every kernel's groups after each pair would rescan the whole
+    // block once per fusion.
+    //
+    // For example, K0..K3 all load %x, so group %x = {K0, K1, K2, K3}, and
+    // every pair is fusible:
+    //
+    //   slot     0     1      2       3
+    //   start    K0    K1     K2      K3
+    //   i = 0    -     K01    K2      K3       fuse(K0, K1) into slot 1
+    //   i = 1    -     -      K012    K3       fuse(K01, K2) into slot 2
+    //   i = 2    -     -      -       K0123    fuse(K012, K3) into slot 3
+    //
+    // The sweep goes kernel by kernel, not group by group: kernels of other
+    // groups between these slots are visited as the sweep reaches them, and
+    // groups are patched after every fusion, not rebuilt once a group is
+    // done. The sweep never revisits earlier kernels: a merged kernel reads
+    // everything both members read, so every pair rejected before it is still
+    // rejected.
+    SmallVector<IterForeachOp> kernels =
+        llvm::to_vector(block.getOps<IterForeachOp>());
+    DenseMap<Operation *, unsigned> slotOf;
+
+    // A pair that shares no group fails `fusible`, so a kernel is tried only
+    // against the later kernels of its own groups. They are still visited in
+    // block order, which the greedy choice depends on.
+    SmallVector<SmallVector<FusionCandidateGroup>> groupsOf(kernels.size());
+    DenseMap<std::tuple<Attribute, Attribute, Value>, SmallVector<unsigned>>
+        members;
+    auto addGroups = [&](unsigned slot) {
+      groupsOf[slot] = fusionCandidateGroupsOf(kernels[slot]);
+      for (const FusionCandidateGroup &group : groupsOf[slot])
+        members[group.key()].push_back(slot);
+    };
+    auto dropGroups = [&](unsigned slot) {
+      for (const FusionCandidateGroup &group : groupsOf[slot])
+        llvm::erase(members[group.key()], slot);
+      groupsOf[slot].clear();
+    };
+    for (auto [slot, kernel] : llvm::enumerate(kernels)) {
+      slotOf[kernel] = slot;
+      addGroups(slot);
+    }
+
     bool fusedAny = false;
-    // Fusing rebuilds both kernels, so the kernel list and groups are rebuilt
-    // after each pair. The scan resumes at the merged pair's first kernel, not
-    // at the top: a merged kernel reads everything both members read, so
-    // every pair rejected before it is still rejected.
-    unsigned start = 0;
-    bool changed = true;
-    while (changed) {
-      changed = false;
-      auto kernels = llvm::to_vector(block.getOps<IterForeachOp>());
+    for (unsigned i = 0, e = kernels.size(); i < e; ++i) {
+      if (!kernels[i])
+        continue;
+      SmallVector<unsigned> candidates;
+      for (const FusionCandidateGroup &group : groupsOf[i])
+        for (unsigned j : members.at(group.key()))
+          if (j > i)
+            candidates.push_back(j);
+      llvm::sort(candidates);
+      candidates.erase(llvm::unique(candidates), candidates.end());
+      for (unsigned j : candidates) {
+        IterForeachOp a = kernels[i];
+        IterForeachOp b = kernels[j];
+        if (!fusible(a, b))
+          continue;
+        // Users of the pair's results load the merged kernel's results after
+        // the fusion, which changes their groups.
+        llvm::SetVector<unsigned> users;
+        for (IterForeachOp member : {a, b})
+          for (Operation *user : member->getUsers())
+            if (auto it = slotOf.find(user); it != slotOf.end())
+              users.insert(it->second);
+        users.remove(i);
+        users.remove(j);
+        for (unsigned slot : users)
+          dropGroups(slot);
+        dropGroups(i);
+        dropGroups(j);
+        slotOf.erase(a);
+        slotOf.erase(b);
 
-      // A pair that shares no group fails `fusible`, so a kernel is tried
-      // only against the later kernels of its own groups. They are still
-      // visited in block order, which the greedy choice depends on.
-      SmallVector<SmallVector<FusionCandidateGroup>> groupsOf;
-      DenseMap<std::tuple<Attribute, Attribute, Value>, SmallVector<unsigned>>
-          members;
-      for (auto [idx, kernel] : llvm::enumerate(kernels)) {
-        groupsOf.push_back(fusionCandidateGroupsOf(kernel));
-        for (const FusionCandidateGroup &group : groupsOf.back())
-          members[group.key()].push_back(idx);
-      }
-
-      for (unsigned i = start, e = kernels.size(); i < e && !changed; ++i) {
-        SmallVector<unsigned> candidates;
-        for (const FusionCandidateGroup &group : groupsOf[i])
-          for (unsigned j : members.at(group.key()))
-            if (j > i)
-              candidates.push_back(j);
-        llvm::sort(candidates);
-        candidates.erase(llvm::unique(candidates), candidates.end());
-        for (unsigned j : candidates) {
-          IterForeachOp a = kernels[i];
-          IterForeachOp b = kernels[j];
-          if (!fusible(a, b))
-            continue;
-          fuse(a, b);
-          ++numKernelsFused;
-          // `a` is gone, so the next kernel in block order now sits at `i`.
-          start = i;
-          changed = true;
-          fusedAny = true;
-          break;
-        }
+        IterForeachOp merged = fuse(a, b);
+        kernels[i] = nullptr;
+        kernels[j] = merged;
+        slotOf[merged] = j;
+        addGroups(j);
+        for (unsigned slot : users)
+          addGroups(slot);
+        ++numKernelsFused;
+        fusedAny = true;
+        break;
       }
     }
     return fusedAny;

@@ -22,12 +22,12 @@ using namespace MO;
 // Utils
 //===----------------------------------------------------------------------===//
 
-static DeviceRefAttr operator||(DeviceRefAttr lhs, DeviceRefAttr rhs) {
-  return lhs ? lhs : rhs;
-}
-
+// The host default is built only when needed: getHostDevice uniques an
+// attribute, and fusion passes call these once per kernel per scan.
 DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceInterface op) {
-  return op.getExecutionDevice() || getHostDevice(op.getContext());
+  if (DeviceRefAttr device = op.getExecutionDevice())
+    return device;
+  return getHostDevice(op.getContext());
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
@@ -38,7 +38,9 @@ DeviceRefAttr MO::getDeviceOrDefaultAny(Operation *op) {
 }
 
 DeviceRefAttr MO::getDeviceOrDefault(MOHasDeviceTypeInterface type) {
-  return type.getDeviceRef() || getHostDevice(type.getContext());
+  if (DeviceRefAttr device = type.getDeviceRef())
+    return device;
+  return getHostDevice(type.getContext());
 }
 
 DeviceRefAttr MO::getDeviceOrDefaultAny(Type type) {

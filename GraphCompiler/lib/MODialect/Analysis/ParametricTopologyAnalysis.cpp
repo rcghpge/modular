@@ -140,23 +140,52 @@ bool inline ParametricTopologyAnalysis::isOpReady(
 
 void ParametricTopologyAnalysis::computeTopologicalSortingImpl(
     mlir::MutableArrayRef<mlir::Operation *> ops) {
-  DenseSet<Operation *> unscheduledOps;
+  // In-degree (Kahn) scheduling: each op counts its blockers, the ops of `ops`
+  // it still waits on, which are the ones `isOpReady` would find unscheduled.
+  // Scheduling an op decrements the count of every op waiting on it, and an
+  // op whose count reaches 0 is ready, so a later step of this sweep or the
+  // next sweep schedules it. The blockers are collected once instead of
+  // re-walking every pending op on every sweep: a graph out of parametric
+  // order takes hundreds of sweeps. The sweeps and swaps are those of the
+  // repeated-scan sort, so the order matches it exactly.
+  DenseMap<Operation *, unsigned> idOf;
+  for (auto [id, op] : llvm::enumerate(ops))
+    idOf[op] = id;
 
-  for (Operation *op : ops)
-    unscheduledOps.insert(op);
+  SmallVector<unsigned> numBlockers(ops.size(), 0);
+  SmallVector<SmallVector<unsigned>> waitersOf(ops.size());
+  for (auto [id, op] : llvm::enumerate(ops)) {
+    DenseSet<unsigned> blockers;
+    op->walk([&](Operation *nestedOp) {
+      forEachProvider(nestedOp, [&](Operation *provider) {
+        for (Operation *parent = provider; parent && parent != op;
+             parent = parent->getParentOp())
+          if (auto it = idOf.find(parent); it != idOf.end())
+            blockers.insert(it->second);
+        return true;
+      });
+    });
+    numBlockers[id] = blockers.size();
+    for (unsigned blocker : blockers)
+      waitersOf[blocker].push_back(id);
+  }
 
+  // `ids` moves with `ops` so a ready check is an array read.
+  auto ids = llvm::to_vector(llvm::seq<unsigned>(0, ops.size()));
   unsigned nextScheduledOp = 0;
 
-  while (!unscheduledOps.empty()) {
+  while (nextScheduledOp < ops.size()) {
     [[maybe_unused]] bool scheduledAtLeastOnce = false;
 
     // Schedule each ready op by swapping it to `nextScheduledOp`.
     for (unsigned i = nextScheduledOp; i < ops.size(); ++i) {
-      if (!isOpReady(ops[i], unscheduledOps))
+      if (numBlockers[ids[i]])
         continue;
 
-      unscheduledOps.erase(ops[i]);
+      for (unsigned waiter : waitersOf[ids[i]])
+        --numBlockers[waiter];
       std::swap(ops[i], ops[nextScheduledOp]);
+      std::swap(ids[i], ids[nextScheduledOp]);
       scheduledAtLeastOnce = true;
       ++nextScheduledOp;
     }
