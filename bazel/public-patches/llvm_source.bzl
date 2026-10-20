@@ -31,14 +31,6 @@ PATCHES = [
     # ConstString is still enough to avoid the crash.
     # TODO(MOTO-1590): drop once the ownership is sound across DSO boundaries.
     "//bazel/public-patches:llvm-revert-lldb-elf-section-name-string.patch",
-    # Drop the overlay's @rules_cc//cc/libc:{musl,glibc} select()s: the
-    # config.bzl HAVE_BACKTRACE/BACKTRACE_HEADER/HAVE_MALLINFO defines
-    # (llvm/llvm-project#207295, #223549) and the Support musl stack-size
-    # linkopt (llvm/llvm-project#223989). Those labels need rules_cc >= 0.2.25;
-    # we pin 0.2.18, so they do not resolve. The unconditional glibc/macOS
-    # defines are correct for our builds (we do not target musl). Drop this
-    # once rules_cc is bumped to 0.2.25 or newer.
-    "//bazel/public-patches:llvm-config-musl-select.patch",
     # llvm/llvm-project#225158 gives the llvm_libxml2_enabled config_setting
     # group visibility to clang, lld/test and lldb, but leaves its match_any
     # members private. Bazel checks the members' visibility from the consuming
