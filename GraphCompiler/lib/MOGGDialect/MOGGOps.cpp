@@ -1789,14 +1789,10 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
     kernelOperands.push_back(state.getMojoValueFor(ctx));
 
   // There is no `mogg.bind` for `getHasEpilogueFusionValue` to detect, so
-  // force `has_epilogue_fusion` / `has_prologue_fusion` True to match the
-  // execute-call wiring.
+  // force `has_epilogue_fusion` True to match the execute-call wiring.
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (getHasEpilogueFusion() &&
         paramName == MOGG::kMoggHasEpilogueFusionParameterName)
-      return MojoValue(true);
-    if (getHasPrologueFusion() &&
-        paramName == MOGG::kMoggHasPrologueFusionParameterName)
       return MojoValue(true);
     return state.inferDefaultKernelParamValue(*this, paramName,
                                               getKernelParamAttr());

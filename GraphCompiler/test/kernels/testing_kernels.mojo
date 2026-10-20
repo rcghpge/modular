@@ -2084,20 +2084,6 @@ struct AddFuseLHS:
         foreach(func, z, ctx)
 
 
-@extensibility.register("imposter_has_prologue_fusion")
-struct ImposterHasPrologueFusion:
-    @staticmethod
-    def execute[
-        target: StaticString,
-        has_prologue_fusion: Bool,
-    ](output: OutputTensor, x: FusedInputTensor, ctx: DeviceContext,) raises:
-        @inline(.always)
-        def func[width: Int](idx: Coord) {var} -> SIMD[output.dtype, width]:
-            return rebind[SIMD[output.dtype, width]](x._fused_load[width](idx))
-
-        foreach(func, output, ctx)
-
-
 @extensibility.register("imposter_add_fuse_inputs")
 struct AddFuseInputs:
     @staticmethod

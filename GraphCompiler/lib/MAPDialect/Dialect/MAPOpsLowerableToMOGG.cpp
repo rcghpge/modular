@@ -635,21 +635,6 @@ LogicalResult IterPrologueOp::lowerToMOGG(MAPToMOGGState &state) {
   return success();
 }
 
-/// Whether a prologue computes the value the kernel reads, rather than merely
-/// loading it; every fusible input gets a load prologue.
-static bool prologueRecomputesValue(MOGG::TensorCreatePrologueOp prologue) {
-  mlir::Block &body = prologue.getBody().front();
-  // An unfused input yields a plain load of its capture at the index.
-  if (body.getNumArguments() < 2)
-    return true;
-  auto yield = dyn_cast<MOGG::YieldOp>(body.getTerminator());
-  if (!yield || yield.getOperands().size() != 1)
-    return true;
-  auto load = yield.getOperands().front().getDefiningOp<MOGG::TensorLoadOp>();
-  return !load || load.getIndex() != body.getArgument(0) ||
-         load.getTensor() != body.getArgument(1);
-}
-
 // map.call.opaque -> mogg.call.opaque. Inputs and outputs (output block args
 // or epilogue results) are already in `state.mapping`.
 LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
@@ -663,14 +648,10 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
   Value opaqueOut = getOpaqueResult();
   Type opaqueResultTy = opaqueOut ? opaqueOut.getType() : Type();
 
-  // Baked in so emit never inspects an operand's producer.
+  // Baked in so emit never inspects an output's producer.
   bool hasEpilogueFusion = llvm::any_of(callOutputs, [](Value out) {
     auto epilogue = out.getDefiningOp<MOGG::FusedEpilogueInterface>();
     return epilogue && epilogue.recomputesValue();
-  });
-  bool hasPrologueFusion = llvm::any_of(callInputs, [](Value in) {
-    auto prologue = in.getDefiningOp<MOGG::TensorCreatePrologueOp>();
-    return prologue && prologueRecomputesValue(prologue);
   });
 
   // Emit appends the contexts verbatim, so pass them only when execute
@@ -689,7 +670,6 @@ LogicalResult CallOpaqueOp::lowerToMOGG(MAPToMOGGState &state) {
       opaqueResultTy ? TypeRange{opaqueResultTy} : TypeRange{}, getCalleeAttr(),
       callInputs, callOutputs, contexts, getParams(),
       state.builder.getBoolAttr(hasEpilogueFusion),
-      state.builder.getBoolAttr(hasPrologueFusion),
       state.builder.getBoolAttr(getHasSameVariadicOperandSize()));
   if (opaqueOut)
     state.mapping.map(opaqueOut, call.getOpaqueResult());

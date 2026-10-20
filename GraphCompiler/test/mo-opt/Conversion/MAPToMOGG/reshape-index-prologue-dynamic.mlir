@@ -18,7 +18,7 @@
 // CHECK-SAME: capturing {%{{[^ ]+}} = %{{[^ ]+}} : !mogg.tensor, %{{[^ ]+}} = %{{[^ ]+}} : !mogg.tensor}
 // CHECK-SAME: shapes {%[[FROMARG:[^ ,)]+]] = %{{[^ ,}]+}}, %[[TOARG:[^ ,)]+]] = %{{[^ ,}]+}}}
 // CHECK:   mogg.index.reshape(%[[IDX]], %[[FROMARG]], %[[TOARG]]) <fromShape = #mosh<ape[2, D]> : !mosh.ape, toShape = #mosh<ape[D, 2]> : !mosh.ape>
-// CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs {{.*}}hasPrologueFusion = true
+// CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs
 mo.graph @dyn_reshape_into_prologue<D>(
   %x: !mo.tensor<[D, 2], f32>,
   %y: !mo.tensor<[2, D], f32>

@@ -20,10 +20,9 @@
 // CHECK:   %[[OSH:.*]] = mogg.shape.create() <shape = #mosh<ape[2, 2]> : !mosh.ape>
 // CHECK:   %[[OT:.*]] = mogg.tensor.create(%[[OP]], %[[OSH]]) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerOnePlainOutput inputs(%[[IT]] : !mogg.tensor) outputs(%[[OT]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
-// Nothing is fused here, so both flags keep their `false` default, which the
-// printer elides -- their absence is the assertion.
+// Nothing is fused here, so the epilogue flag keeps its `false` default, which
+// the printer elides -- its absence is the assertion.
 // CHECK-NOT: hasEpilogueFusion
-// CHECK-NOT: hasPrologueFusion
 mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom [symbol = "map_lower_one_plain_output", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
   mo.output %c : !mo.tensor<[2, 2], f32>

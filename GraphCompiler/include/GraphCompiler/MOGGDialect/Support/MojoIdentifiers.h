@@ -107,10 +107,6 @@ constexpr llvm::StringLiteral kTraitStubArgBoundsAttrName =
 constexpr llvm::StringLiteral kMoggHasEpilogueFusionParameterName =
     "has_epilogue_fusion";
 
-/// True iff a producer is fused into the kernel's input.
-constexpr llvm::StringLiteral kMoggHasPrologueFusionParameterName =
-    "has_prologue_fusion";
-
 constexpr llvm::StringLiteral kMoggTraceNameParameterName = "_trace_name";
 
 /// Package roots used to recognise `@register_internal` and friends without a

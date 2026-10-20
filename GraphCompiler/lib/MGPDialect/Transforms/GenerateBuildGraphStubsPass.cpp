@@ -142,8 +142,7 @@ FailureOr<RecordingStub> createRecordingStub(SymbolTable &symtab,
 
   // `mogg.call.build_graph` has no fusion flags and its emission never asks,
   // so recording a fused kernel through it would drop the fusion silently.
-  if (useBuildGraph && opaque &&
-      (opaque.getHasEpilogueFusion() || opaque.getHasPrologueFusion())) {
+  if (useBuildGraph && opaque && opaque.getHasEpilogueFusion()) {
     return original.emitError(
         "device-graph recording stub generation: cannot record a fused "
         "`mogg.call.opaque` through `mogg.call.build_graph`");

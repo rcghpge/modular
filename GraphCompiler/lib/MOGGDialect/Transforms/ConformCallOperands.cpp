@@ -245,14 +245,13 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   if (!changed)
     return success();
 
-  // Emit reads the fusion flags rather than the operand's producer, which
+  // Emit reads the epilogue flag rather than the output's producer, which
   // packing has just replaced. `hasSameVariadicOperandSize` is not carried
   // over: this pass is what consumes it.
   auto repacked = CallOpaqueOp::create(
       builder, call.getLoc(), call.getResultTypes(), call.getCalleeAttr(),
       packed->inputs, packed->outputs, contexts, call.getKernelParamAttr(),
-      builder.getBoolAttr(call.getHasEpilogueFusion()),
-      builder.getBoolAttr(call.getHasPrologueFusion()));
+      builder.getBoolAttr(call.getHasEpilogueFusion()));
   // A by-value opaque result carries the kernel's return out to the enclosing
   // `mogg.output`, so the repacked call inherits its uses.
   call.replaceAllUsesWith(repacked.getResults());

@@ -527,16 +527,6 @@ static MojoValue getHasEpilogueFusionValue(mlir::Operation *) {
   return false;
 }
 
-static MojoValue getHasPrologueFusionValue(mlir::Operation *callOp) {
-  auto kernelStubOp = callOp->getParentOfType<FuncOp>();
-  if (!kernelStubOp)
-    return true;
-  FusionInfoAttr fusionInfo = kernelStubOp.getFusionInfoAttr();
-  if (!fusionInfo)
-    return true;
-  return !mlir::isa<FusionLeafAttr>(fusionInfo.getRoot());
-}
-
 ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
     Operation *callOp, StringRef paramName, DictionaryAttr customParamDict) {
 
@@ -599,8 +589,6 @@ ErrorOr<MojoValue> EmitMojoState::inferDefaultKernelParamValue(
   }
   if (paramName == MOGG::kMoggHasEpilogueFusionParameterName)
     return getHasEpilogueFusionValue(callOp);
-  if (paramName == MOGG::kMoggHasPrologueFusionParameterName)
-    return getHasPrologueFusionValue(callOp);
 
   return Error(llvm::formatv("Failed to infer parameter `{}`", paramName));
 }

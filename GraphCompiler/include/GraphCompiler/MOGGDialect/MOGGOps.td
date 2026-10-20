@@ -1287,8 +1287,7 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     Invokes `$callee`'s `execute`. `$device_contexts` passes the device
     contexts explicitly: one for a single-device kernel, or one per device for
     a `DeviceContextArray`, which `ConformCallOperands` packs into a tuple.
-    `$hasEpilogueFusion` / `$hasPrologueFusion` spare emit from inspecting
-    operand producers.
+    `$hasEpilogueFusion` spares emit from inspecting output producers.
   }];
   let arguments = (ins
     FlatSymbolRefAttr:$callee,
@@ -1299,7 +1298,6 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     Variadic<AnyTypeOf<[MOGG_Context, MOGG_Tuple]>>:$device_contexts,
     OptionalAttr<DictionaryAttr>:$kernel_param,
     DefaultValuedAttr<BoolAttr, "false">:$hasEpilogueFusion,
-    DefaultValuedAttr<BoolAttr, "false">:$hasPrologueFusion,
     // The source op's `MO_SameVariadicOperandSize` trait, lost when it becomes
     // a call, so `ConformCallOperands` can split operands into equal-length
     // variadic groups (e.g. a collective's N inputs and N signal buffers).
@@ -1314,7 +1312,6 @@ def MOGG_CallOpaqueOp : MOGG_Op<"call.opaque", [
     (`outputs` `(` $outputs^ `:` type($outputs) `)`)?
     (`context` `(` $device_contexts^ `:` type($device_contexts) `)`)?
     (`hasEpilogueFusion` `=` $hasEpilogueFusion^)?
-    (`hasPrologueFusion` `=` $hasPrologueFusion^)?
     (`hasSameVariadicOperandSize` `=` $hasSameVariadicOperandSize^)?
     attr-dict (`->` type($opaqueResult)^)?
   }];
