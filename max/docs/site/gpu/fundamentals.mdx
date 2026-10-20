@@ -19,7 +19,7 @@ Key topics covered in this guide:
 - Organizing threads and thread blocks for optimal performance.
 
 Before diving into GPU programming, ensure you have a [compatible
-GPU](https://mojolang.org/docs/requirements#gpu-compatibility) and the necessary
+GPU](/gpu/hardware-compatibility/) and the necessary
 development environment installed. And if you're new to GPU programming, we
 suggest you read the [Intro to GPU architectures](/gpu/architecture/).
 
@@ -69,8 +69,8 @@ def main():
 :::note
 
 Mojo requires a
-[compatible GPU development environment](https://mojolang.org/docs/requirements/#gpu-compatibility)
-to compile kernel functions, otherwise it raises a compile-time error. In this
+[compatible GPU development environment](/gpu/hardware-compatibility/) to
+compile kernel functions, otherwise it raises a compile-time error. In this
 example, we're using the
 [`comptime if`](https://mojolang.org/docs/manual/metaprogramming/comptime-evaluation/#comptime-if)
 statement to evaluate the `has_accelerator()` function at compile time and

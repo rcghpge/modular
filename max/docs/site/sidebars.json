@@ -1003,6 +1003,7 @@
       "collapsed": false,
       "items": [
         "gpu/intro-tutorial",
+        "gpu/hardware-compatibility",
         "gpu/architecture",
         "gpu/fundamentals",
         "gpu/block-and-warp",
