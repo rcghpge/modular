@@ -259,6 +259,27 @@ trait IndexerScoreHook(DevicePassable, TrivialRegisterPassable):
         """
         ...
 
+    def window_rows(self) -> Int:
+        """Returns the most score rows one window may hold.
+
+        Returns:
+            The row cap; a hook with per-window scratch sizes it by this.
+        """
+        return Int.MAX
+
+    def after_window(
+        self, ctx: DeviceContext, first_row: Int, rows: Int
+    ) raises:
+        """Runs after a window of score rows is scored.
+
+        Args:
+            ctx: Device context; work enqueued here follows the scorer and
+                precedes the next window.
+            first_row: Query token of the window's row 0.
+            rows: Rows in the window.
+        """
+        pass
+
     def score[
         dtype: DType, lane_keys: Int
     ](

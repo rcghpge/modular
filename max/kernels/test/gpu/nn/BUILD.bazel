@@ -4,6 +4,11 @@ load("//max/kernels/src:deprecations.bzl", "IGNORED_POINTER_DEPRECATIONS_COPTS")
 package(default_visibility = ["//max:consumers"])
 
 _EXTRA_CONSTRAINTS = {
+    # The MXFP4 indexer's windowed kept-block score hooks; SM100 scorer only.
+    "test_mla_index_windowed_keep.mojo": select({
+        "//:b200_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     # MXFP4 packing uses SM100 conversion instructions.
     "test_indexer_k_store.mojo": select({
         "//:b200_gpu": [],
@@ -532,6 +537,7 @@ _EXTRA_CONSTRAINTS = {
 }
 
 _EXTRA_DEPS = {
+    "test_mla_index_windowed_keep.mojo": ["//max:kv_cache"],
     "attention/test_mha_sm100_depth512_sink.mojo": ["//max:kv_cache"],
     "test_mla_layout_g_mma_smoke.mojo": ["//max:max_mojo"],
     "test_mma_ws_ts.mojo": ["//max:max_mojo"],
