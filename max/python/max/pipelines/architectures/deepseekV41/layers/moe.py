@@ -93,10 +93,6 @@ def _use_fused_silu_quant(n_local_experts: int) -> bool:
 # tests `==` rather than a range.
 IMAGE_SENTINEL_BASE_ID = 129264
 
-# The side stream the shared expert overlaps the expert dispatch on; stream
-# 0 is the default one.
-_SHARED_EXPERT_STREAM_ID = 1
-
 
 class _PackedExpertWeightNvFp4(_PackedExpertWeight):
     """One stacked NVFP4 expert projection, stacked by expert id.
@@ -879,16 +875,9 @@ class DeepseekV41MoE(Module):
             w, i = moe.gate(x, tok)
             weights.append(ops.reshape(w, [-1, topk]))
             indices.append(ops.reshape(i, [-1, topk]))
-        # The replicated shared expert reads only each device's own rows, so
-        # it runs on a side stream, overlapping the dispatch and combine.
-        shared = ops.side_stream(
-            list(xs),
-            lambda *ins: [
-                moe.shared_experts(x) for moe, x in zip(moes, ins, strict=True)
-            ],
-            result_types=[x.type for x in xs],
-            stream_id=_SHARED_EXPERT_STREAM_ID,
-        )
+        shared = [
+            moe.shared_experts(x) for moe, x in zip(moes, xs, strict=True)
+        ]
         device_ids = [x.device.id for x in xs]
         # One global gate/up input scale, the same on every device; the
         # dispatch kernel reads the first element.
