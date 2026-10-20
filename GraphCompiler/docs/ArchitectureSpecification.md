@@ -254,7 +254,7 @@ one is not defined, so a bring-up diff needs that judgment made case by case.
 - *Measure*: the diff for backend bring-up restructures no graph compiler
   pass and does not change the pipeline's shape. Targeted compiler changes,
   if any, are enumerated and justified individually rather than counted
-  against the requirement. Validated by the Skye project's bring-up tracking.
+  against the requirement. Validated by the backend's bring-up tracking.
 
 <a id="qa-p3"></a>**QA-P3. Kernel signature portability.** From the graph
 compiler's perspective, kernels are portable by signature. The graph compiler
