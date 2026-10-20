@@ -344,9 +344,17 @@ def expand_repeats(
 RUN_CONFIG_FILE = "run_config.json"
 
 #: CLI options that change how a run executes but not what it asks the model,
-#: so a resumed run may change them (e.g. a redeployed endpoint's new URL).
+#: so a resumed run may change them (e.g. a redeployed endpoint's new URL, or
+#: a dataset copy downloaded to a different path).
 RESUME_NEUTRAL_OPTIONS = frozenset(
-    {"base_url", "workers", "out_dir", "resume", "metric_prefix"}
+    {
+        "base_url",
+        "workers",
+        "out_dir",
+        "resume",
+        "metric_prefix",
+        "dataset_file",
+    }
 )
 
 

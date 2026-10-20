@@ -19,8 +19,9 @@ The scoring core (:func:`grade`), the deterministic option shuffle
 an injected client, so they unit-test without a server or network. Shared
 scaffolding lives in :mod:`eval_common`.
 
-GPQA-diamond is gated on HuggingFace; the eval prints a ``::warning::`` and
-exits 0 when the HF token lacks access.
+GPQA-diamond is gated on HuggingFace; the eval exits nonzero when the HF
+token lacks access. ``--dataset-file`` reads a local copy of the dataset's
+``gpqa_diamond.csv`` instead, which needs no HF token.
 
 Run locally against a server on ``localhost:8000``::
 
@@ -164,8 +165,14 @@ def infer(
     }
 
 
-def load_gpqa_dataset() -> list[dict[str, Any]]:
-    """Loads the gated ``idavidrein/gpqa`` diamond split, skipping on no access."""
+def load_gpqa_dataset(dataset_file: str | None = None) -> list[dict[str, Any]]:
+    """Loads the GPQA-diamond split from ``dataset_file`` or the gated HF repo.
+
+    The HF repo's ``gpqa_diamond`` config is that same CSV, so both sources
+    go through the same ``csv`` builder and yield identical rows.
+    """
+    if dataset_file:
+        return list(load_dataset("csv", data_files=dataset_file, split="train"))
     return load_gated(
         lambda: list(
             load_dataset("idavidrein/gpqa", "gpqa_diamond", split="train")
@@ -260,6 +267,15 @@ def run_eval(
     "Mutually exclusive with --sample-size — use this to re-run exactly the "
     "rows that errored or looked wrong last time.",
 )
+@click.option(
+    "--dataset-file",
+    envvar="GPQA_DATASET_FILE",
+    show_envvar=True,
+    default=None,
+    help="Local copy of the HF dataset's gpqa_diamond.csv to read instead of "
+    "downloading the gated dataset from HuggingFace. The env var reaches "
+    "callers that wrap this eval, such as gpqa_logit_gate.",
+)
 @click.option("--repeats", type=int, default=5, help="Repeats per question.")
 @click.option(
     "--seed",
@@ -301,6 +317,7 @@ def main(
     model: str,
     sample_size: int | None,
     row_ids: str | None,
+    dataset_file: str | None,
     repeats: int,
     seed: int | None,
     workers: int,
@@ -321,7 +338,7 @@ def main(
         resume,
     )
     client = make_client(base_url)
-    dataset = load_gpqa_dataset()
+    dataset = load_gpqa_dataset(dataset_file)
     indexed_dataset = select_rows(dataset, sample_size, row_ids)
     params = GenParams(
         max_tokens=max_tokens,

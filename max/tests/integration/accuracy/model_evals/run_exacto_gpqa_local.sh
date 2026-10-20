@@ -116,7 +116,9 @@
 #   ./bazelw run //max/tests/integration/accuracy/model_evals:exacto_gpqa_local -- \
 #     --url https://<endpoint> --api-key "$MY_KEY" --model zai-org/GLM-5.3-Flash
 #
-# Env overrides: EXACTO_CACHE, EXACTO_OPENBENCH_VERSION, EXACTO_API_KEY.
+# Env overrides: EXACTO_CACHE, EXACTO_OPENBENCH_VERSION, EXACTO_API_KEY, and
+# GPQA_DATASET_FILE, a local copy of the dataset's gpqa_diamond.csv to read
+# instead of downloading it from HuggingFace (checked against its SHA-256).
 
 set -euo pipefail
 
