@@ -54,6 +54,7 @@ from max.pipelines.context import (
     TextGenerationOutput,
     TokenBuffer,
 )
+from max.pipelines.lib.auto_processor import _model_inputs
 from max.pipelines.lib.config import PipelineConfig
 from max.pipelines.lib.generate import (
     GenerateIterator,
@@ -1304,6 +1305,39 @@ def test_video_parts_on_a_text_only_model_are_rejected(
             max_new_tokens=5,
         )
     assert pipeline.kv_manager.claimed == {}
+
+
+def test_auto_processor_rows_build_through_the_tokenizer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline = _vision_pipeline(monkeypatch)
+    _image_arch(monkeypatch)
+    inputs = _model_inputs(
+        [
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": b"cat"},
+                        {"type": "text", "text": "7"},
+                    ],
+                }
+            ],
+            [{"role": "user", "content": "2 7"}],
+        ]
+    )
+    with GenerateIterator(pipeline, **inputs, max_new_tokens=5) as batch:
+        list(batch)
+
+    assert [
+        sequence[:length]
+        for sequence, length in zip(
+            batch.sequences, batch.prompt_lengths, strict=True
+        )
+    ] == [[IMAGE_TOKEN] * IMAGE_TOKENS + [7], [2, 7]]
+    assert isinstance(pipeline.tokenizer, FakeVisionTokenizer)
+    assert [r.images for r in pipeline.tokenizer.requests] == [[b"cat"], []]
+    _assert_nothing_held(pipeline, 2)
 
 
 def test_overlap_results_lag_one_step() -> None:

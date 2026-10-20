@@ -227,6 +227,22 @@ modular_py_test(
 )
 
 modular_py_test(
+    name = "test_auto_processor",
+    size = "medium",
+    srcs = ["test_auto_processor.py"],
+    tags = [
+        "no-sandbox",
+        "requires-network",
+    ],
+    deps = [
+        "//max/python/max/pipelines",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/modeling",
+        requirement("pillow"),
+    ],
+)
+
+modular_py_test(
     name = "test_auto_model_graph_capture_gpu",
     size = "large",
     srcs = ["test_auto_model_graph_capture_gpu.py"],
@@ -336,6 +352,7 @@ modular_py_test(
         "//max/python/max/pipelines",
         "//max/python/max/pipelines/architectures/gemma3multimodal",
         "//max/python/max/pipelines/architectures/gemma3multimodal_modulev3",
+        requirement("pillow"),
     ],
 )
 
@@ -389,6 +406,7 @@ modular_py_test(
             "test_model_manifest.py",
             "test_auto_model.py",
             "test_auto_pipeline.py",
+            "test_auto_processor.py",
             "test_video.py",
             "test_weight_loader.py",
         ],

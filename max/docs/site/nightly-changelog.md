@@ -66,6 +66,10 @@ This version is still a work in progress.
   `GenerateResult.prompt_lengths` gives each prompt's length. `AutoModel`
   turns the vision encoder cache off by default.
 
+- Added `AutoProcessor` to `max.pipelines`, which turns chat conversations
+  with inline images into the `messages` and `images` that
+  `AutoModel.generate()` takes.
+
 ## C API
 
 ## Kernels and GPU programming
