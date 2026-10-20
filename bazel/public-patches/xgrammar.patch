@@ -685,7 +685,48 @@ diff --git a/cpp/fsm_builder.h b/cpp/fsm_builder.h
 diff --git a/cpp/grammar.cc b/cpp/grammar.cc
 --- a/cpp/grammar.cc
 +++ b/cpp/grammar.cc
-@@ -48,7 +48,9 @@ Grammar Grammar::FromJSONSchema(
+@@ -6,6 +6,7 @@
+ #include <xgrammar/grammar.h>
+ 
+ #include <string>
++#include <unordered_set>
+ 
+ #include "grammar_functor.h"
+ #include "grammar_parser.h"
+@@ -25,9 +26,29 @@ std::size_t MemorySize(const Grammar::Impl& impl) {
+   /// TODO: Now, we evaluatve memory size of rule strings as sizeof(std::string),
+   /// with an assumption that the string is small.
+   /// This should be improved in the future.
+-  return impl.rules_.size() * sizeof(std::string) + MemorySize(impl.grammar_expr_data_) +
+-         MemorySize(impl.grammar_expr_indptr_) + MemorySize(impl.complete_fsm) +
+-         MemorySize(impl.per_rule_fsms) + MemorySize(impl.allow_empty_rule_ids);
++  std::size_t size = impl.rules_.size() * sizeof(std::string) +
++                     MemorySize(impl.grammar_expr_data_) + MemorySize(impl.grammar_expr_indptr_) +
++                     MemorySize(impl.allow_empty_rule_ids) + MemorySize(impl.per_rule_fsm_hashes) +
++                     MemorySize(impl.per_rule_fsm_new_state_ids);
++  // Every per-rule FSM is a view (start + end states) into one shared CompactFSM, normally
++  // complete_fsm. MemorySize(CompactFSMWithStartEnd) counts the FSM it points at, so summing it
++  // per rule counts the shared FSM once per rule: quadratic in grammar size, and tens of GB for a
++  // large tool schema whose real footprint is a few GB. Count each distinct FSM once.
++  std::unordered_set<const CompactFSM::Impl*> counted_fsms;
++  auto count_fsm = [&](const CompactFSM& fsm) {
++    if (!fsm.IsNull() && counted_fsms.insert(fsm.ImplPtr()).second) {
++      size += MemorySize(fsm);
++    }
++  };
++  count_fsm(impl.complete_fsm);
++  size += sizeof(impl.per_rule_fsms[0]) * impl.per_rule_fsms.size();
++  for (const auto& rule_fsm : impl.per_rule_fsms) {
++    if (rule_fsm.has_value()) {
++      count_fsm(rule_fsm->GetFsm().GetFsm());
++      size += MemorySize(rule_fsm->GetFsm().GetEnds());
++    }
++  }
++  return size;
+ }
+ 
+ /******************* Grammar *******************/
+@@ -48,7 +69,9 @@ Grammar Grammar::FromJSONSchema(
      bool strict_mode,
      std::optional<int> max_whitespace_cnt,
      bool print_converted_ebnf,
@@ -696,7 +737,7 @@ diff --git a/cpp/grammar.cc b/cpp/grammar.cc
  ) {
    auto ebnf_string = JSONSchemaToEBNF(
        schema,
-@@ -58,7 +60,10 @@ Grammar Grammar::FromJSONSchema(
+@@ -58,7 +81,10 @@ Grammar Grammar::FromJSONSchema(
        strict_mode,
        max_whitespace_cnt,
        JSONFormat::kJSON,
@@ -10224,6 +10265,30 @@ diff --git a/cpp/support/logging.h b/cpp/support/logging.h
    std::ostringstream stream_;
    static const char* level_strings_[];
  };
+diff --git a/cpp/support/memory_size.h b/cpp/support/memory_size.h
+--- a/cpp/support/memory_size.h
++++ b/cpp/support/memory_size.h
+@@ -12,6 +12,7 @@
+ #include <tuple>
+ #include <type_traits>
+ #include <utility>
++#include <vector>
+ 
+ #include "reflection.h"
+ 
+@@ -31,6 +32,12 @@ inline constexpr std::size_t MemorySize(const T& value);
+ template <typename T>
+ inline constexpr std::size_t MemorySize(const std::optional<T>& optional_value);
+ 
++/*!
++ * \brief Compute the memory consumption of a std::vector<bool>. It packs its elements into bits,
++ * so the generic container rule (sizeof(bool) per element) overstates it eightfold.
++ */
++inline std::size_t MemorySize(const std::vector<bool>& bits) { return (bits.size() + 7) / 8; }
++
+ /******************* MemorySize Implementations *******************/
+ 
+ namespace detail::memory_size {
 diff --git a/cpp/tokenizer_info.cc b/cpp/tokenizer_info.cc
 --- a/cpp/tokenizer_info.cc
 +++ b/cpp/tokenizer_info.cc
