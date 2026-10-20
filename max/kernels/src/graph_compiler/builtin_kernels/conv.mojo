@@ -519,7 +519,6 @@ struct ConvGPU:
     def execute[
         input_layout: StaticString,
         filter_layout: StaticString,
-        has_epilogue_fusion: Bool,
         static_strides: IntTuple,
         static_dilations: IntTuple,
         static_padding: IntTuple,
