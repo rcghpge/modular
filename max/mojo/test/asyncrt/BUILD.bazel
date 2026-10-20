@@ -70,3 +70,6 @@ _EXTRA_CONSTRAINTS = {
     )
     for src in _CPU_TESTS
 ]
+
+# Exported so tests of other DeviceContext backends can run these suites.
+exports_files(_TEST_DATA + _CPU_TESTS)
