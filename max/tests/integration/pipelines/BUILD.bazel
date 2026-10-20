@@ -269,6 +269,8 @@ modular_py_test(
     ],
     tags = [
         "gpu",
+        # Loads a full checkpoint, so it stays out of presubmit. Run it by name.
+        "manual",
         "no-sandbox",
         "requires-network",
     ],
@@ -352,6 +354,8 @@ modular_py_test(
     ],
     tags = [
         "gpu",
+        # Loads a full checkpoint, so it stays out of presubmit. Run it by name.
+        "manual",
         "no-sandbox",
         "requires-network",
     ],
@@ -383,6 +387,8 @@ modular_py_test(
     ],
     tags = [
         "gpu",
+        # Loads a full checkpoint, so it stays out of presubmit. Run it by name.
+        "manual",
         "no-sandbox",
         "requires-network",
     ],
@@ -416,6 +422,8 @@ modular_py_test(
     ],
     tags = [
         "gpu",
+        # Loads a full checkpoint, so it stays out of presubmit. Run it by name.
+        "manual",
         "no-sandbox",
         "requires-network",
     ],
