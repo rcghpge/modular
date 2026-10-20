@@ -227,7 +227,7 @@ class NemotronHBackbone(
                     assert capture_rows is not None, (
                         "capture_mamba_replay needs the rows to capture"
                     )
-                    h, replay = call(
+                    h, capture = call(
                         h,
                         access,
                         query_start_loc,
@@ -235,7 +235,12 @@ class NemotronHBackbone(
                         update_state,
                         capture_rows,
                     )
-                    replays.append(replay)
+                    # Sliced out here rather than in the subgraph, so the
+                    # slices fold into the replay kernels' loads instead of
+                    # being copied out of the subgraph.
+                    mixer = layer.mixer
+                    assert isinstance(mixer, NemotronHMamba2Mixer)
+                    replays.append(mixer.replay_rows(capture))
                 else:
                     h = call(
                         h,

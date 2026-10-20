@@ -165,6 +165,20 @@ class MambaReplayRows(Generic[_ReplayTensor]):
     C: _ReplayTensor
 
 
+@tree.dataclass(frozen=True)
+class MambaReplayCapture:
+    """The verify's rows of the two tensors a Mamba layer's replay reads.
+
+    Every per-token replay input is a column slice of one of them, so a verify
+    copies two tensors per layer rather than five.
+    """
+
+    projected: Tensor
+    """The captured rows of the ``in_proj`` output."""
+    convolved: Tensor
+    """The captured rows of the convolution's output."""
+
+
 class CausalConv1d(
     Module[[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor], Tensor]
 ):
@@ -345,7 +359,7 @@ class NemotronHMamba2Mixer(
         has_initial_state: Tensor,
         update_state: Tensor,
         capture_rows: Tensor | None = None,
-    ) -> tuple[Tensor, MambaReplayRows[Tensor] | None]:
+    ) -> tuple[Tensor, MambaReplayCapture | None]:
         """Returns the mixer output and the inputs needed to replay its state.
 
         Args:
@@ -358,12 +372,8 @@ class NemotronHMamba2Mixer(
             capture_rows: The ``[captured]`` token rows to return the replay
                 inputs of, or ``None`` to return none.
         """
-        gate, xbc, dt = F.split(
-            self.in_proj(x),
-            [self.intermediate, self.conv_dim, self.num_heads],
-            axis=1,
-        )
-        conv_input = xbc
+        projected = self.in_proj(x)
+        gate, xbc, dt = self._split_projected(projected)
         xbc = self.conv1d(
             xbc,
             state.conv_pool,
@@ -376,16 +386,10 @@ class NemotronHMamba2Mixer(
         # The conv, scan and norm kernels have no sharding rules. Each
         # device runs them on its own heads, so their outputs stay split on
         # the channel axis like their inputs.
-        xbc = xbc.rebind_mapping(NamedMapping(xbc.mesh, (None, TP)))
-        group_dim = self.n_groups * self.state_size
-        hidden, B, C = F.split(
-            xbc, [self.intermediate, group_dim, group_dim], axis=1
-        )
+        convolved = xbc.rebind_mapping(NamedMapping(xbc.mesh, (None, TP)))
+        hidden, B, C = self._split_convolved(convolved)
         # The kernel applies softplus to dt + dt_bias itself.
         A = self._decay(x.dtype)
-        hidden = hidden.reshape([-1, self.num_heads, self.head_dim])
-        B = B.reshape([-1, self.n_groups, self.state_size])
-        C = C.reshape([-1, self.n_groups, self.state_size])
         y = ssd_scan(
             hidden,
             dt,
@@ -404,18 +408,43 @@ class NemotronHMamba2Mixer(
         y = y.rebind_mapping(NamedMapping(y.mesh, (None, TP, None)))
         y = self.norm(y.reshape([-1, self.intermediate]), gate)
         y = y.rebind_mapping(NamedMapping(y.mesh, (None, TP)))
-        replay: MambaReplayRows[Tensor] | None = None
+        replay: MambaReplayCapture | None = None
         if capture_rows is not None:
-
-            def rows(t: Tensor) -> Tensor:
-                # Only the captured rows survive the layer, not every token's.
-                return F.gather(t, capture_rows, axis=0)
-
-            replay = MambaReplayRows(
-                conv_input=rows(conv_input),
-                x=rows(hidden),
-                dt=rows(dt),
-                B=rows(B),
-                C=rows(C),
+            # Only the captured rows survive the layer, not every token's.
+            replay = MambaReplayCapture(
+                projected=F.gather(projected, capture_rows, axis=0),
+                convolved=F.gather(convolved, capture_rows, axis=0),
             )
         return self.out_proj(y), replay
+
+    def _split_projected(self, projected: Tensor) -> list[Tensor]:
+        """Splits ``in_proj``'s output into ``(gate, conv input, dt)``."""
+        return F.split(
+            projected,
+            [self.intermediate, self.conv_dim, self.num_heads],
+            axis=1,
+        )
+
+    def _split_convolved(self, convolved: Tensor) -> tuple[Tensor, ...]:
+        """Splits the convolution's output into the scan's ``(x, B, C)``."""
+        group_dim = self.n_groups * self.state_size
+        hidden, B, C = F.split(
+            convolved, [self.intermediate, group_dim, group_dim], axis=1
+        )
+        return (
+            hidden.reshape([-1, self.num_heads, self.head_dim]),
+            B.reshape([-1, self.n_groups, self.state_size]),
+            C.reshape([-1, self.n_groups, self.state_size]),
+        )
+
+    def replay_rows(
+        self, capture: MambaReplayCapture
+    ) -> MambaReplayRows[Tensor]:
+        """Returns the replay inputs of a capture, sliced as the verify did.
+
+        Args:
+            capture: What :meth:`forward_with_replay` captured.
+        """
+        _, conv_input, dt = self._split_projected(capture.projected)
+        x, B, C = self._split_convolved(capture.convolved)
+        return MambaReplayRows(conv_input=conv_input, x=x, dt=dt, B=B, C=C)
