@@ -21,7 +21,6 @@
 #include "Mojo/MojoParser/ASTType.h"
 #include "Mojo/MojoParser/DeclSignaturePrinter.h"
 #include "Mojo/MojoParser/DocString.h"
-#include "Mojo/MojoParser/SharedState.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"

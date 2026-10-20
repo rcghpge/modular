@@ -320,8 +320,8 @@ public:
   /// Emit the argument types, default values, and result type and determine
   /// the argument conventions.
   ///
-  /// 'fnDecl' will be null when this is a function type, which doesn't have a
-  /// declaration.
+  /// 'fnDecl' will be null when this is a function type, whose declarations
+  /// are owned by `paramList.declScope`.
   TypeCheckedFnSignature(TypeCheckedParamList &paramList,
                          ParsedArgumentList &argList,
                          const ExprNode *originExpr, DefASTDecl *fnDecl,

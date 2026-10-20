@@ -33,6 +33,8 @@ static FnTypeGeneratorType getToolingSignature(ASTDecl *decl) {
     return nullptr;
   if (auto defDecl = dyn_cast<DefASTDecl>(decl))
     return defDecl->getOp().getFuncTypeGenerator();
+  if (auto functionTypeDecl = dyn_cast<FunctionTypeASTDecl>(decl))
+    return functionTypeDecl->getSignature();
   if (auto typeValue = decl->getIfTypeValue())
     return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
   return nullptr;
@@ -55,6 +57,8 @@ ASTType ASTDecl::getToolingType() {
     return varDecl->getOp().getType();
   if (auto *defDecl = dyn_cast<DefASTDecl>(this))
     return defDecl->getOp().getFullSignature();
+  if (auto *functionTypeDecl = dyn_cast<FunctionTypeASTDecl>(this))
+    return functionTypeDecl->getSignature();
   if (auto *structDecl = dyn_cast<StructASTDecl>(this))
     return StructASTDecl::computeSelfType(structDecl->getOp());
   if (auto *traitDecl = dyn_cast<TraitASTDecl>(this))
@@ -187,6 +191,22 @@ void DefASTDecl::createIRSignatureDecls(DeclResolver &resolver) {
     newArgDecls.push_back(&argDecl);
   }
   setArgDecls(newArgDecls);
+}
+
+FunctionTypeASTDecl::FunctionTypeASTDecl(SharedState &shared, llvm::SMLoc loc,
+                                         ASTDecl *parentDecl,
+                                         LexerCursor cursor,
+                                         LexerCursor endCursor,
+                                         ssize_t indentation)
+    : ASTDecl(Kind::FunctionType, shared, loc, parentDecl, cursor, endCursor,
+              indentation) {}
+
+void FunctionTypeASTDecl::setSignature(FnTypeGeneratorType newSignature,
+                                       ArrayRef<ASTDecl *> params,
+                                       ArrayRef<ASTDecl *> args) {
+  signature = newSignature;
+  paramDecls = shared.persistentAllocator.internElements(params);
+  argDecls = shared.persistentAllocator.internElements(args);
 }
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,

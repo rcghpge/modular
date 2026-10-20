@@ -2240,10 +2240,19 @@ static void typeCheckOneArgument(size_t idx, DefASTDecl *fnDecl,
   // SSA value.
   //
   // Names are always present for function bodies, but can be missing in
-  // function types.  In that case, there are obviously no dependent values on
-  // it, because they can't be named.
-  if (arg.name.empty())
+  // function types. Keep an anonymous declaration for the latter so the
+  // function-type owner's argument list remains aligned with its signature.
+  if (arg.name.empty()) {
+    if (!fnDecl && arg.kgenConvention != ArgConvention::ByRefError &&
+        arg.kgenConvention != ArgConvention::ByRefResult) {
+      auto &decl = typeEmitter.getDeclResolver().addFullyResolvedDecl(
+          CValue(), StringAttr(), arg.loc, &typeEmitter.declScope);
+      decl.setArgOrParamNumber(static_cast<ssize_t>(idx),
+                               /*isParameter=*/false);
+      tcSignature.argASTDecls.push_back(&decl);
+    }
     return;
+  }
 
   // Create the block argument that will eventually represent this function
   // argument.  If we're generating this argument for a function, put it into

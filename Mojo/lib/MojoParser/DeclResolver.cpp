@@ -140,6 +140,16 @@ IRASTDecl &DeclResolver::addFullyResolvedDecl(CValue value, StringAttr name,
   return decl;
 }
 
+FunctionTypeASTDecl &DeclResolver::createFunctionTypeDecl(SMLoc loc,
+                                                          ASTDecl &parentDecl) {
+  auto *decl = shared.persistentAllocator.create<FunctionTypeASTDecl>(
+      shared, loc, &parentDecl, LexerCursor(), LexerCursor(),
+      /*indentation=*/0);
+  decl->resolvedness = DeclResolvedness::body;
+  parsedDeclList.push_back(decl);
+  return *decl;
+}
+
 ASTDecl &DeclResolver::addErroneousDecl(StringRef baseName, llvm::SMLoc loc,
                                         ASTDecl *parentDecl, bool unlisted) {
   // Use a dummy attribute representation for the error.

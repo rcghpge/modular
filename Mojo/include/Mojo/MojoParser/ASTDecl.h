@@ -68,6 +68,7 @@ public:
     Conformance,
     Extension,
     Def,
+    FunctionType,
     EnumCase,
     Import,
     TopLevelModule,
@@ -763,6 +764,35 @@ private:
              ASTDecl *parentDecl, LexerCursor cursor, LexerCursor endCursor,
              ssize_t indentation);
 
+  ArrayRef<ASTDecl *> paramDecls;
+  ArrayRef<ASTDecl *> argDecls;
+};
+
+/// The AST representation of an anonymous function type.
+class FunctionTypeASTDecl final : public ASTDecl {
+public:
+  static bool classof(const ASTDecl *decl) {
+    return decl->getKind() == Kind::FunctionType;
+  }
+
+  FnTypeGeneratorType getSignature() const { return signature; }
+  ArrayRef<ASTDecl *> getParamDecls() const { return paramDecls; }
+  ArrayRef<ASTDecl *> getArgDecls() const { return argDecls; }
+
+  /// Stores the completed signature and copies its declarations into
+  /// persistent AST storage.
+  void setSignature(FnTypeGeneratorType signature, ArrayRef<ASTDecl *> params,
+                    ArrayRef<ASTDecl *> args);
+
+private:
+  friend class M::BumpAllocator;
+  friend class DeclResolver;
+
+  FunctionTypeASTDecl(SharedState &shared, llvm::SMLoc loc, ASTDecl *parentDecl,
+                      LexerCursor cursor, LexerCursor endCursor,
+                      ssize_t indentation);
+
+  FnTypeGeneratorType signature;
   ArrayRef<ASTDecl *> paramDecls;
   ArrayRef<ASTDecl *> argDecls;
 };
