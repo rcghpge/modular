@@ -1880,7 +1880,7 @@ static FnTypeGeneratorType
 finalizeResolvedFnOp(SharedState &shared, FnOp funcOp, DefASTDecl &decl,
                      TypeCheckedFnSignature &tcSignature,
                      TypeCheckedParamList &paramList, StringAttr baseName) {
-  OpBuilder builder = decl.getDeclEndBuilder();
+  OpBuilder builder = OpBuilder::atBlockEnd(funcOp.getBody());
   NamedAttrList attrs = funcOp->getAttrDictionary();
 
   FnTypeGeneratorType signature = tcSignature.getFnTypeGeneratorType();
@@ -1966,15 +1966,19 @@ AnyValue DeclResolver::resolveAnonymousClosure(const LambdaNode *node,
           node, "cannot use a capturing lambda");
       return {};
     }
-    // Anchor the synthetic def at the nearest enclosing decl op (a `def`,
-    // struct, alias, ...) -- the param-list scope isn't an op, so walk up.
-    OpASTDecl *anchor = parentScope.getNearestDeclOfType<OpASTDecl>();
+    // Anchor the synthetic def at the nearest enclosing declaration with an
+    // operation. The param-list scope isn't an op, so walk up through it.
+    Operation *anchor = nullptr;
+    for (ASTDecl *cur = &parentScope; cur; cur = cur->getParentDecl()) {
+      if ((anchor = cur->getIfOperation()))
+        break;
+    }
     if (!anchor) {
       emitter.emitErrorForDynamicValueInParameter(
           node, "cannot use a lambda expression");
       return {};
     }
-    paramBuilder.setInsertionPoint(anchor->getIfOperation());
+    paramBuilder.setInsertionPoint(anchor);
   }
   OpBuilder &builder = insideParamContext ? paramBuilder : *emitter.builder;
   MLIRContext *ctx = builder.getContext();

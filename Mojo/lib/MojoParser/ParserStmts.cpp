@@ -249,19 +249,23 @@ struct FromImportDecorators {
   bool docInline = false;
 };
 
+static OpBuilder getScopeEndBuilder(ASTDecl &decl) {
+  if (auto *functionDecl = dyn_cast<DefASTDecl>(&decl))
+    return OpBuilder::atBlockEnd(functionDecl->getOp().getBody());
+  return cast<OpASTDecl>(decl).getDeclEndBuilder();
+}
+
 struct StmtParser : public ParserBase {
   StmtParser(Lexer &lexer, ASTDecl &curDeclScope)
       : ParserBase(curDeclScope.getShared(), lexer), parentDecl(curDeclScope),
-        curDeclScope(&curDeclScope),
-        builder(cast<OpASTDecl>(curDeclScope).getDeclEndBuilder()) {
+        curDeclScope(&curDeclScope), builder(getScopeEndBuilder(curDeclScope)) {
     initializeBuilderForFunctions(curDeclScope, builder);
   }
   StmtParser(Lexer &lexer, IREmitter &emitter)
       : ParserBase(emitter.shared, lexer), parentDecl(emitter.getDeclScope()),
         curDeclScope(&emitter.getDeclScope()),
-        builder(emitter.builder
-                    ? emitter.builder.value()
-                    : cast<OpASTDecl>(curDeclScope)->getDeclEndBuilder()) {
+        builder(emitter.builder ? emitter.builder.value()
+                                : getScopeEndBuilder(*curDeclScope)) {
     if (!emitter.builder)
       initializeBuilderForFunctions(emitter.getDeclScope(), builder);
   }

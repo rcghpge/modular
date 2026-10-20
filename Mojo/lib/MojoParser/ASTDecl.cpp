@@ -31,12 +31,8 @@ using namespace LIT;
 static FnTypeGeneratorType getToolingSignature(ASTDecl *decl) {
   if (!decl)
     return nullptr;
-  if (auto defDecl = dyn_cast<DefASTDecl>(decl))
-    return defDecl->getOp().getFuncTypeGenerator();
-  if (auto functionTypeDecl = dyn_cast<FunctionTypeASTDecl>(decl))
-    return functionTypeDecl->getSignature();
-  if (auto typeValue = decl->getIfTypeValue())
-    return dyn_cast_or_null<FnTypeGeneratorType>(typeValue);
+  if (auto functionDecl = dyn_cast<FnSignatureASTDecl>(decl))
+    return functionDecl->getSignature();
   return nullptr;
 }
 
@@ -160,7 +156,7 @@ IRASTDecl::IRASTDecl(SharedState &shared, CValue value, llvm::SMLoc loc,
       isParameter(this->value.getIfPValue()) {}
 
 void DefASTDecl::createIRSignatureDecls(DeclResolver &resolver) {
-  assert(paramDecls.empty() && argDecls.empty() &&
+  assert(getParamDecls().empty() && getArgDecls().empty() &&
          "signature declarations already created");
   FnOp fnOp = getOp();
   FnTypeGeneratorType signature = fnOp.getFuncTypeGenerator();
@@ -193,20 +189,35 @@ void DefASTDecl::createIRSignatureDecls(DeclResolver &resolver) {
   setArgDecls(newArgDecls);
 }
 
+FnSignatureASTDecl::FnSignatureASTDecl(Kind kind, SharedState &shared,
+                                       llvm::SMLoc loc, ASTDecl *parentDecl,
+                                       LexerCursor cursor,
+                                       LexerCursor endCursor,
+                                       ssize_t indentation)
+    : ASTDecl(kind, shared, loc, parentDecl, cursor, endCursor, indentation) {}
+
+void FnSignatureASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {
+  paramDecls = shared.persistentAllocator.internElements(decls);
+}
+
+void FnSignatureASTDecl::setArgDecls(ArrayRef<ASTDecl *> decls) {
+  argDecls = shared.persistentAllocator.internElements(decls);
+}
+
 FunctionTypeASTDecl::FunctionTypeASTDecl(SharedState &shared, llvm::SMLoc loc,
                                          ASTDecl *parentDecl,
                                          LexerCursor cursor,
                                          LexerCursor endCursor,
                                          ssize_t indentation)
-    : ASTDecl(Kind::FunctionType, shared, loc, parentDecl, cursor, endCursor,
-              indentation) {}
+    : FnSignatureASTDecl(Kind::FnSignature, shared, loc, parentDecl, cursor,
+                         endCursor, indentation) {}
 
 void FunctionTypeASTDecl::setSignature(FnTypeGeneratorType newSignature,
                                        ArrayRef<ASTDecl *> params,
                                        ArrayRef<ASTDecl *> args) {
   signature = newSignature;
-  paramDecls = shared.persistentAllocator.internElements(params);
-  argDecls = shared.persistentAllocator.internElements(args);
+  setParamDecls(params);
+  setArgDecls(args);
 }
 
 OtherOpASTDecl::OtherOpASTDecl(SharedState &shared, Operation &op,
@@ -275,8 +286,9 @@ PackageASTDecl::PackageASTDecl(SharedState &shared, PackageOp packageOp,
 DefASTDecl::DefASTDecl(SharedState &shared, FnOp fnOp, llvm::SMLoc loc,
                        ASTDecl *parentDecl, LexerCursor cursor,
                        LexerCursor endCursor, ssize_t indentation)
-    : OpASTDecl(Kind::Def, shared, *fnOp.getOperation(), loc, parentDecl,
-                cursor, endCursor, indentation) {}
+    : FnSignatureASTDecl(Kind::Def, shared, loc, parentDecl, cursor, endCursor,
+                         indentation),
+      operation(fnOp) {}
 
 TypeScopeASTDecl::TypeScopeASTDecl(Kind kind, SharedState &shared,
                                    Operation &op, llvm::SMLoc loc,
@@ -501,14 +513,6 @@ ArrayRef<ASTDecl *> ASTDecl::lookupInCurrentScope(StringAttr name) const {
 TypeScopeASTDecl *DefASTDecl::tryGetMethodParentDecl() const {
   // Don't return non-null for nested functions or module-level functions.
   return dyn_cast_if_present<TypeScopeASTDecl>(getParentDecl());
-}
-
-void DefASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {
-  paramDecls = shared.persistentAllocator.internElements(decls);
-}
-
-void DefASTDecl::setArgDecls(ArrayRef<ASTDecl *> decls) {
-  argDecls = shared.persistentAllocator.internElements(decls);
 }
 
 void StructASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {

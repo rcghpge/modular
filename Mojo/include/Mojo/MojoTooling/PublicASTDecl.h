@@ -41,6 +41,7 @@ namespace M::KGEN::LIT {
 class ASTDecl;
 class AliasASTDecl;
 class DefASTDecl;
+class FnSignatureASTDecl;
 class MojoParserContext;
 class PackageASTDecl;
 class SharedState;
@@ -167,11 +168,11 @@ private:
   StringRef name;
 };
 
-/// Function tooling helpers operate directly on function declarations.
+/// Function tooling helpers operate on function signatures.
 SmallVector<KGEN::ArgumentInfo, kTypicalArgumentCount>
-getFunctionArguments(DefASTDecl &decl);
+getFunctionArguments(FnSignatureASTDecl &decl);
 SmallVector<KGEN::ParameterInfo, kTypicalParameterCount>
-getFunctionParameters(DefASTDecl &decl);
+getFunctionParameters(FnSignatureASTDecl &decl);
 std::string getFunctionDeclarationSnippet(
     DefASTDecl &decl, MojoParserContext &ctx,
     SmallVectorImpl<std::pair<unsigned, unsigned>> *parameterOffsets = nullptr,

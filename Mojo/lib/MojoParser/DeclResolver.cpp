@@ -2037,8 +2037,12 @@ void DeclResolver::registerAndCheckExport(StringRef aliasName, SMLoc loc) {
 void DeclResolver::exportMain(DefASTDecl &funcDecl) {
   FnOp userMainFn = funcDecl.getOp();
   FnTypeGeneratorType userMainSignature = userMainFn.getFuncTypeGenerator();
-  ASTDecl *containingDecl = funcDecl.getParentDecl();
   SMLoc loc = funcDecl.getLoc();
+  auto *containingModule = dyn_cast<ModuleASTDecl>(funcDecl.getParentDecl());
+  if (!containingModule) {
+    shared.emitError(loc, "'main()' must be declared at module scope");
+    return;
+  }
 
   // The type of main function described by the given func decl.
   enum MainKind {
@@ -2116,7 +2120,7 @@ void DeclResolver::exportMain(DefASTDecl &funcDecl) {
   // Generate a shim for main that handles parsing command line arguments,
   // capturing uncaught exceptions, and returning the exit code. The shim
   // defines a C-ABI compatible function that sets up the mojo runtime.
-  OpBuilder builder = cast<OpASTDecl>(containingDecl)->getDeclEndBuilder();
+  OpBuilder builder = containingModule->getDeclEndBuilder();
 
   // The Startup module provides a stubbed out shim for us to use, so pull that
   // in.
