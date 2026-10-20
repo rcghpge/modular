@@ -1528,17 +1528,53 @@ def test_to_cpu_from_another_cpu_queue_is_an_ordered_view() -> None:
     side = DeviceQueue(cpu)
     n = 1 << 20
     on_side = Buffer(DType.int32, (n,), stream=side)
-    # TODO(DRIV-554): Inline `ones` and `twos` once CPU queue copies keep their
-    # source alive; today a temporary source is freed mid-copy.
-    ones = Buffer.from_numpy(np.full(n, 1, np.int32))
-    on_side.inplace_copy_from(ones)
+    on_side.inplace_copy_from(Buffer.from_numpy(np.full(n, 1, np.int32)))
 
     view = on_side.to(cpu, after=side.record_event())
     assert view._data_ptr() == on_side._data_ptr()
     assert view.stream == cpu.default_queue
     assert (view.to_numpy() == 1).all()
 
-    twos = Buffer.from_numpy(np.full(n, 2, np.int32))
-    view.inplace_copy_from(twos)
+    view.inplace_copy_from(Buffer.from_numpy(np.full(n, 2, np.int32)))
     cpu.default_queue.synchronize()
     assert (on_side.to_numpy() == 2).all()
+
+
+# Large enough that freeing it unmaps the pages, so a late read faults.
+_TEMP_SOURCE_ELEMENTS = 1 << 20
+
+
+def _cpu_destination(side_queue: bool) -> tuple[Buffer, DeviceQueue]:
+    shape = (_TEMP_SOURCE_ELEMENTS,)
+    if side_queue:
+        queue = DeviceQueue(CPU())
+        return Buffer(DType.int32, shape, stream=queue), queue
+    return Buffer(DType.int32, shape, device=CPU()), CPU().default_queue
+
+
+@pytest.mark.parametrize("side_queue", [False, True])
+def test_cpu_inplace_copy_keeps_a_temporary_source_alive(
+    side_queue: bool,
+) -> None:
+    dst, queue = _cpu_destination(side_queue)
+
+    dst.inplace_copy_from(
+        Buffer.from_numpy(np.full(_TEMP_SOURCE_ELEMENTS, 1, np.int32))
+    )
+    queue.synchronize()
+
+    assert (dst.to_numpy() == 1).all()
+
+
+@pytest.mark.parametrize("side_queue", [False, True])
+def test_cpu_batch_inplace_copy_keeps_a_temporary_source_alive(
+    side_queue: bool,
+) -> None:
+    dst, queue = _cpu_destination(side_queue)
+
+    batch_inplace_copy(
+        [dst], [Buffer.from_numpy(np.full(_TEMP_SOURCE_ELEMENTS, 1, np.int32))]
+    )
+    queue.synchronize()
+
+    assert (dst.to_numpy() == 1).all()
