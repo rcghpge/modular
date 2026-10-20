@@ -371,8 +371,7 @@ static ErrorOr<ModelDeviceState> createModelDeviceState(const Model *model) {
         devices.push_back(it->second);
         continue;
       }
-      // NPUs share gpuAPI with GPUs; only the label differs. `getOrCreate`
-      // already checks isCompatible().
+      // `getOrCreate` already checks isCompatible().
       ErrorOr<M::Driver::DeviceContextRef> ctxOr =
           M::Driver::DeviceContext::getOrCreate(M::Driver::Device::gpuAPI,
                                                 ref.id);

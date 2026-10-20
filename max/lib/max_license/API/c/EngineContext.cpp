@@ -196,11 +196,10 @@ Engine::Context::create(const M::Engine::Config &config) {
   // consumers (notably the C-API M_HOST vs M_ACCELERATOR predicate in
   // M_getDeviceType / M_getDeviceTypeFromSpec) treat anything not rejected
   // here as a valid device, so this guard must stay in sync with the
-  // kCPULabel / kGPULabel / kNPULabel constants in Support/DeviceSpecs.h.
+  // kCPULabel / kGPULabel constants in Support/DeviceSpecs.h.
   for (const auto &device : config.getDevices()) {
     const DeviceSpec &spec = *device.spec;
-    if (spec.ref.label != kCPULabel && spec.ref.label != kGPULabel &&
-        spec.ref.label != kNPULabel) {
+    if (spec.ref.label != kCPULabel && spec.ref.label != kGPULabel) {
       return Error(Twine("unrecognized device '") + spec.ref.label + "'");
     }
     // else: no special extra device handling

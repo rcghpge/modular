@@ -4261,10 +4261,8 @@ LogicalResult TensorInitOp::emitMojo(EmitMojoState &state) {
 // serves every execute lane. `_Engine` names how the storage is referenced: a
 // raw pointer under `DefaultEngine`, a stable address slot under
 // `StableAddrEngine`. `_is_device_passable` selects whether it crosses to the
-// device (as the projected `TileTensor`, itself `DevicePassable`), and
-// `_can_project_tile_tensor` gates top-level `TileTensorable` conformance:
-// true for CPU and GPU kernels, false for accelerators whose handles can't be
-// reinterpreted as tiles. The `_MoggDenseTensorArg` and `_MoggStableTensorArg`
+// device (as the projected `TileTensor`, itself `DevicePassable`). The
+// `_MoggDenseTensorArg` and `_MoggStableTensorArg`
 // aliases bind the engine, so a stub names the lane rather than the engine.
 static constexpr llvm::StringLiteral kTensorArgDefs = R"mojo(
 from layout import Coord, DefaultEngine, TensorEngine, TensorLayout, TileTensor
@@ -4313,7 +4311,6 @@ struct _MoggTensorArg[
     _alignment: Int,
     _io: _MoggTensorIO,
     _is_device_passable: Bool,
-    _can_project_tile_tensor: Bool,
     _Engine: TensorEngine = DefaultEngine[element_width=1],
 ](
     # A storage handle and a layout, so copies alias the same buffer, as
@@ -4328,11 +4325,7 @@ struct _MoggTensorArg[
     Output where _io == _MoggTensorIO.OUTPUT
     and _Engine == DefaultEngine[element_width=1],
     Stable where _Engine == StableAddrEngine[element_width=1],
-    # Top-level `TileTensorable` projection is allowed only for CPU/GPU kernels,
-    # where the arg's storage can be directly viewed as a host or
-    # unified-memory `TileTensor`. On discrete-GPU targets the storage still
-    # crosses via the `TileTensor` value's own `DevicePassable` encoding.
-    TileTensorable where _can_project_tile_tensor,
+    TileTensorable,
 ):
     comptime mut = Self._io.is_mut()
     comptime dtype = Self._dtype
@@ -4417,7 +4410,7 @@ struct _MoggTensorArg[
     @inline(.always)
     def to_tile_tensor(
         self,
-    ) -> Self.TileTensorType where Self._can_project_tile_tensor:
+    ) -> Self.TileTensorType:
         return {self._storage, self._layout}
 
 
@@ -4425,11 +4418,9 @@ comptime _MoggDenseTensorArg = _MoggTensorArg[
     _Engine=DefaultEngine[element_width=1], ...
 ]
 
-# A `Stable` argument is GPU only, and the slot handle always projects to a
-# tile, so the alias pins both flags.
+# A `Stable` argument is GPU only, so the alias pins it device-passable.
 comptime _MoggStableTensorArg = _MoggTensorArg[
     _is_device_passable=True,
-    _can_project_tile_tensor=True,
     _Engine=StableAddrEngine[element_width=1],
     ...,
 ]
@@ -4510,13 +4501,6 @@ struct _MoggShapeTensorArg[
         ](ptr=self.handle, layout=self.layout())
 )mojo";
 
-/// Returns true when the device label supports top-level `TileTensorable`
-/// projection for dense tensor arguments: only CPU and GPU kernels'
-/// pointer-backed storage can be viewed as a `TileTensor`.
-static bool canProjectTileTensorForDeviceLabel(StringRef label) {
-  return label == kCPULabel || label == kGPULabel;
-}
-
 /// Emit `_MoggShapeTensorArg[dtype, layoutType, alignment, dataVisible](ptr,
 /// layout)`, the host-only shape-lane counterpart, defined once per module.
 static MojoValue emitShapeTensorArg(EmitMojoState &state, MojoValue dtype,
@@ -4534,7 +4518,7 @@ static MojoValue emitShapeTensorArg(EmitMojoState &state, MojoValue dtype,
 /// Emit `<alias>[params...](ptr, layout)` for an execute-lane trait tensor
 /// argument, defining the shared struct and its lane aliases once per module.
 /// `alias` is `kDenseTensorArgAlias` (`[dtype, layoutType, alignment, io,
-/// devicePassable, canProjectTileTensor]`) or `kStableTensorArgAlias`
+/// devicePassable]`) or `kStableTensorArgAlias`
 /// (`[dtype, layoutType, alignment, io]`). The runtime args are a
 /// `Pointer[NoneType, MutAnyOrigin]` and the layout; callers source them from
 /// a stub-bound capture or a codegen slice (via `mogg.trait.create`). For a
@@ -4682,12 +4666,10 @@ LogicalResult TraitCreateOp::emitMojo(EmitMojoState &state) {
   }
 
   bool devicePassable = deviceLabel != kCPULabel;
-  bool canProjectTileTensor = canProjectTileTensorForDeviceLabel(deviceLabel);
   state.setMojoValueFor(getResult(),
                         emitTensorArg(state, kDenseTensorArgAlias,
                                       {dTypeParam, layoutType, alignmentParam,
-                                       ioParam, MojoValue(devicePassable),
-                                       MojoValue(canProjectTileTensor)},
+                                       ioParam, MojoValue(devicePassable)},
                                       ptrArg, layoutArg));
   return success();
 }

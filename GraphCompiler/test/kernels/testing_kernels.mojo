@@ -439,29 +439,6 @@ struct TraitStableNegate:
         )
 
 
-# NEGATIVE control: projects dense trait args to `TileTensor` at the host entry.
-# On accelerator devices where `_can_project_tile_tensor` is false (e.g. NPU),
-# `to_tile_tensor()` must not compile. Exercised (expecting failure) by
-# `mogg-kernel-api-e2e-trait-tile-tensor-npu-negative.mlir`.
-@extensibility.register("trait_tile_tensor_projection_negative")
-struct TraitTileTensorProjectionNegative:
-    @staticmethod
-    def execute[
-        target: StaticString,
-    ](
-        z: Some[Output & DenseTensor],
-        x: Some[Input & DenseTensor],
-        ctx: DeviceContext,
-    ) raises:
-        # Negative control: must not be invocable where projection is allowed.
-        comptime assert not conforms_to(type_of(z), TileTensorable), (
-            "trait_tile_tensor_projection_negative is a negative control and"
-            " should only be exercised where dense args are not TileTensorable"
-        )
-        _ = to_tile_tensor(z)
-        _ = to_tile_tensor(x)
-
-
 # Top-level TileTensor projection variant of `trait_negate`: both CPU and GPU
 # arms project dense trait args to `TileTensor` before dispatching.
 @extensibility.register("trait_negate_tile_tensor")

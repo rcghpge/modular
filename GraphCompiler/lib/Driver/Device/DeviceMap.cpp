@@ -53,7 +53,7 @@ M::GraphCompiler::Driver::mapDeviceRefsToDevices(
             AnyAsyncValueRef::createReady<M::Driver::DeviceContextRef>(
                 cpuDevice, it->second));
       } else {
-        ASSERT_STREAM(devRef.label == kGPULabel || devRef.label == kNPULabel,
+        ASSERT_STREAM(devRef.label == kGPULabel,
                       "Only accelerator device context supported");
         // Uses the device ref id as the device id, unlike when the device is
         // passed to the graph.

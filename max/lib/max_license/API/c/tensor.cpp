@@ -41,7 +41,7 @@ M_newTensorSpec(const int64_t *shape, int64_t rankSize, M_Dtype dtype,
 MODULAR_API_EXPORT M_DeviceType
 M_getDeviceTypeFromSpec(const M_TensorSpec *spec) {
   // Any non-CPU label is treated as an accelerator. EngineContext::create
-  // guarantees only known labels (cpu/gpu/npu) reach this far.
+  // guarantees only known labels (cpu/gpu) reach this far.
   return spec->device.label == kCPULabel ? M_HOST : M_ACCELERATOR;
 }
 

@@ -33,7 +33,7 @@
 namespace M {
 
 /// Returns the preferred device
-///   - the first accelerator (GPU or NPU) in devices
+///   - the first accelerator in devices
 ///   - else the first CPU
 ///   — else nullptr if devices is empty
 inline const M::Engine::ConfiguredDevice *

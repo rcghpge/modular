@@ -89,7 +89,7 @@ MODULAR_API_EXPORT M_Device *M_newDevice(M_DeviceType type, int id,
 
 MODULAR_API_EXPORT M_DeviceType M_getDeviceType(const M_Device *device) {
   // Any non-CPU label is treated as an accelerator. EngineContext::create
-  // guarantees only known labels (cpu/gpu/npu) reach this far.
+  // guarantees only known labels (cpu/gpu) reach this far.
   return device->spec->ref.label == kCPULabel ? M_HOST : M_ACCELERATOR;
 }
 

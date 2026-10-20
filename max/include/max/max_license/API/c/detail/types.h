@@ -73,7 +73,7 @@ struct M_AsyncModel {
   M::AsyncExecutableModel modelOrError;
 };
 
-// Wraps an MLRT device context directly. `spec` carries the cpu/gpu/npu label
+// Wraps an MLRT device context directly. `spec` carries the cpu/gpu label
 // + id the C API surface exposes (M_getDeviceType, M_getDeviceLabel, ...);
 // `context` is the MLRT device context backing it.
 struct M_Device {
@@ -83,9 +83,8 @@ struct M_Device {
 
 // A device-resident tensor: the MLRT buffer holding it, the spec describing
 // its shape and dtype, and the device it lives on. The device is stored rather
-// than derived from the buffer: `DeviceBuffer::context()` reaches the MLRT api
-// and id, but NPUs and GPUs share `gpuAPI`, so the cpu/gpu/npu label the C API
-// reports (M_getTensorDevice, M_getTensorSpec) lives only on the DeviceSpec.
+// than derived from the buffer: the cpu/gpu label the C API reports
+// (M_getTensorDevice, M_getTensorSpec) lives on the DeviceSpec.
 // Shared rather than owned: every consumer but M_getTensorDevice reads only
 // `ref`, and the spec itself lives as long as the session's Engine::Config.
 struct M_TensorStorage {
