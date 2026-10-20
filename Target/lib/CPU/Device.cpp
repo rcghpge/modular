@@ -60,7 +60,9 @@ M_driver_status_t M_driver_device_property(M_driver_device_t device,
   if (property_name == nullptr || value == nullptr)
     return M_DRIVER_STATUS_INVALID_ARG;
   if (llvm::StringRef(property_name) == M_DRIVER_DEVICE_PROPERTY_NAME) {
-    llvm::StringRef name = "CPU";
+    // Matches the legacy CPU DeviceContext, so `DeviceContext.name()` is the
+    // same under both backends.
+    llvm::StringRef name = "cpu";
     char *out = static_cast<char *>(value);
     std::memcpy(out, name.data(), name.size());
     out[name.size()] = '\0';

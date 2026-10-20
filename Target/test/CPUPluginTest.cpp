@@ -56,6 +56,15 @@ TEST_F(DriverPluginDeviceTest, HostUnifiedPropertyIsTrue) {
   }
 }
 
+TEST_F(DriverPluginDeviceTest, NameMatchesLegacyCpuDevice) {
+  for (M_driver_device_t device : devices) {
+    char name[M_DRIVER_DEVICE_PROPERTY_MAX_LEN] = {};
+    ASSERT_SUCCESS(
+        device_property(device, M_DRIVER_DEVICE_PROPERTY_NAME, name));
+    EXPECT_STREQ(name, "cpu");
+  }
+}
+
 TEST_F(DriverPluginContextTest, CurrentDriverContextIsNull) {
   // The host tracks no driver-level context: set_current is a no-op and the
   // active handle always reads back null.
