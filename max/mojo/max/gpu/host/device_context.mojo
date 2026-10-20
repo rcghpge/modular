@@ -3126,6 +3126,9 @@ def _load_function(
         If the runtime fails to load the kernel.
     """
     comptime debug_level = DebugLevel.level
+    # An owned copy: a StaticString's C span is not guaranteed to be
+    # NUL-terminated, and the shim reads the name up to the first NUL.
+    var owned_debug_name = String(debug_name)
     var result: _DeviceFunctionPtr[mut=True] = {}
     _checked(
         external_call[
@@ -3140,7 +3143,7 @@ def _load_function(
             Int32,
             CStringSpan[ImmStaticOrigin],
             Int32,
-            CStringSpan[ImmStaticOrigin],
+            CStringSpan[origin_of(owned_debug_name)],
         ](
             Pointer(to=result),
             ctx,
@@ -3151,7 +3154,7 @@ def _load_function(
             max_dynamic_shared_size_bytes,
             debug_level.as_c_string_span(),
             Int32(Int(OptimizationLevel)),
-            debug_name.as_c_string_span(),
+            owned_debug_name.as_c_string_span(),
         ),
     )
     return result
