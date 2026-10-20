@@ -515,20 +515,27 @@ def MojoHAL_HostBuffer_createSubBuffer(
     byte_offset: UInt64,
     byte_size: UInt64,
 ) abi("C") -> _CString[]:
-    # Host boxes carry a `HostBuffer` (see MojoHAL_HostBuffer_release); the
-    # view it returns is a plain `DeviceBuffer` over the pinned host region,
-    # so the caller boxes it like any other sub-buffer view.
+    # Host boxes carry a `HostBuffer` (see MojoHAL_HostBuffer_release), but the
+    # C++ side boxes every sub-buffer as a `DeviceBuffer`, so the view is a
+    # plain `DeviceBuffer` over the pinned host region (host-pinned memory is
+    # device-visible) rather than `HostBuffer.create_sub_buffer`'s `HostBuffer`.
     ref parent_buf = parent.unsafe_bitcast[HostBuffer[.uint8]]()[]
-    try:
-        var view = parent_buf.create_sub_buffer[.uint8](
-            Int(byte_offset), Int(byte_size)
-        )
-        var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
-        boxed.unsafe_ptr().unsafe_write(view^)
-        out_buf[] = boxed^.unsafe_leak()
-        return None
-    except e:
-        return _err_cstr(String(e))
+    var parent_size = UInt64(len(parent_buf))
+    if byte_size > parent_size or parent_size - byte_size < byte_offset:
+        return _err_cstr("offset, len and elem_size are out of range")
+    var view = DeviceBuffer[.uint8](
+        parent_buf.context(),
+        parent_buf.unsafe_ptr().unsafe_offset(Int(byte_offset)),
+        Int(byte_size),
+        owning=False,
+    )
+    # The view's wrapper is non-owning; retaining the parent's inner keeps
+    # the pinned allocation alive for the view's lifetime.
+    view._inner[]._parent_host = [parent_buf._inner]
+    var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
+    boxed.unsafe_ptr().unsafe_write(view^)
+    out_buf[] = boxed^.unsafe_leak()
+    return None
 
 
 @export

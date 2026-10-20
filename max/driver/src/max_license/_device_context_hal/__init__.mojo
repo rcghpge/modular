@@ -1713,8 +1713,9 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 `dst`.
 
         Raises:
-            If the operation fails.
+            If the operation fails, or if `src_buf` is smaller than `dst_buf`.
         """
+        _check_copy_src_size(dst_buf._inner[]._buffer, src_buf._inner[]._buffer)
         self._stream[].copy_to_device(
             dst_buf._inner[]._buffer.view(),
             src_buf.unsafe_ptr().unsafe_bitcast[UInt8](),
@@ -1735,11 +1736,16 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 `dst`.
 
         Raises:
-            If the operation fails.
+            If the operation fails, or if `src_buf` is smaller than `dst_buf`.
         """
+        ref dst_mem = dst_buf._inner[]._buffer
+        ref src_mem = src_buf._inner[]._buffer
+        _check_copy_src_size(dst_mem, src_mem)
+        # `copy_from_device` copies the whole source view, so narrow it to the
+        # destination's size.
         self._stream[].copy_from_device(
             dst_buf.unsafe_ptr().unsafe_bitcast[UInt8](),
-            src_buf._inner[]._buffer.view(),
+            src_mem.view(byte_offset=0, byte_size=dst_mem.byte_size),
         )
 
     def enqueue_copy[
@@ -1808,8 +1814,9 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 `dst`.
 
         Raises:
-            If the operation fails.
+            If the operation fails, or if `src_buf` is smaller than `dst_buf`.
         """
+        _check_copy_src_size(dst_buf._inner[]._buffer, src_buf._inner[]._buffer)
         self._stream[].copy_intra_device(
             dst_buf._inner[]._buffer.view(),
             src_buf._inner[]._buffer.view(),
@@ -4214,8 +4221,8 @@ struct _HALBufferInner(Movable):
     # lifetime (a view's own `_buffer` is a non-owning wrapper). A `List` (heap
     # storage) rather than `Optional` so the struct does not embed itself.
     var _parent: List[ArcPointer[_HALBufferInner]]
-    # Same, for views over a `HostBuffer`'s pinned allocation (a different
-    # inner type; see `HostBuffer.create_sub_buffer`).
+    # Same, for `DeviceBuffer` views over a `HostBuffer`'s pinned allocation,
+    # which the HAL C exports create for the C++ `DeviceContext`.
     var _parent_host: List[ArcPointer[_HostBufferInner]]
 
     def __deinit__(deinit self):
@@ -4758,8 +4765,20 @@ struct _HostBufferInner(Movable):
     var _buffer: Buffer[get_device_spec[0]()]
     var _context: ArcPointer[Context[get_device_spec[0]()]]
     var _host_ptr: Pointer[UInt8, MutUntrackedOrigin]
+    # For sub-buffer views: keeps the parent allocation alive for the view's
+    # lifetime. A view's `_buffer` is a non-owning wrapper over the parent's
+    # pinned memory, so it is released with `free_sync`, not freed.
+    var _parent: List[ArcPointer[_HostBufferInner]]
 
     def __deinit__(deinit self):
+        if self._parent:
+            try:
+                self._context[].free_sync(self._buffer^)
+            except e:
+                print("warning: free_sync failed:", e)
+            # Release the parent only after the view's wrapper is freed.
+            _ = self._parent^
+            return
         try:
             self._context[].free_host_pinned(self._buffer^)
         except e:
@@ -4808,8 +4827,15 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Movable, Sized):
             )
         self._ctx = ctx
         self._inner = ArcPointer(
-            _HostBufferInner(buffer^, ctx._context, host_ptr)
+            _HostBufferInner(buffer^, ctx._context, host_ptr, [])
         )
+
+    @doc_hidden
+    def __init__(
+        out self, ctx: DeviceContext, var inner: ArcPointer[_HostBufferInner]
+    ):
+        self._ctx = ctx
+        self._inner = inner^
 
     # ===-------------------------------------------------------------------===#
     # Operator dunders
@@ -4911,7 +4937,7 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Movable, Sized):
 
     def create_sub_buffer[
         view_type: DType
-    ](self, offset: Int, size: Int) raises -> DeviceBuffer[view_type]:
+    ](self, offset: Int, size: Int) raises -> HostBuffer[view_type]:
         """Creates a sub-buffer view of this buffer with a different element dtype.
 
         This method creates a new buffer that references a subset of the memory in this
@@ -4926,32 +4952,41 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Movable, Sized):
             size: The number of elements in the new sub-buffer.
 
         Returns:
-            A new DeviceBuffer referencing the specified region with the specified element dtype.
+            A new HostBuffer referencing the specified region with the specified element dtype.
 
         Raises:
             If the operation fails.
         """
-        comptime assert not is_gpu(), "DeviceBuffer is not supported on GPUs"
+        comptime assert not is_gpu(), "HostBuffer is not supported on GPUs"
         comptime elem_size = size_of[view_type]()
+        # Check in elements so a huge `offset` or `size` can't wrap the byte
+        # arithmetic back into range.
+        var max_elems = Int(self._inner[]._buffer.byte_size) // elem_size
+        if (
+            offset < 0
+            or size < 0
+            or size > max_elems
+            or offset > max_elems - size
+        ):
+            raise Error("create_sub_buffer: view is out of range")
         var byte_offset = offset * elem_size
         var byte_size = size * elem_size
-        if byte_offset + byte_size > len(self) * size_of[Self.dtype]():
-            raise Error("create_sub_buffer: view is out of range")
-        # The view is a plain `DeviceBuffer` over the pinned host region
-        # (host-pinned memory is device-visible), mirroring the legacy
-        # implementation where host sub-buffers are `DeviceBuffer`s. The
-        # wrapper is non-owning; retaining this buffer's inner keeps the
-        # pinned allocation alive for the view's lifetime.
-        var view = DeviceBuffer[view_type](
+        var host_ptr = self._inner[]._host_ptr.unsafe_offset(byte_offset)
+        var addr = UInt64(Int(host_ptr))
+        # The view's buffer is a non-owning wrapper over the parent's pinned
+        # memory. The plugin rejects wrapping a null address, so an empty
+        # parent's view uses a zero-byte allocation instead, as `DeviceBuffer`
+        # does; both are released with `free_sync`.
+        var context = self._inner[]._context
+        var buffer = context[].alloc_sync(
+            0
+        ) if addr == 0 else context[].wrap_memory(addr, UInt64(byte_size))
+        return HostBuffer[view_type](
             self._ctx,
-            self._inner[]
-            ._host_ptr.unsafe_offset(byte_offset)
-            .unsafe_bitcast[Scalar[view_type]](),
-            size,
-            owning=False,
+            ArcPointer(
+                _HostBufferInner(buffer^, context, host_ptr, [self._inner])
+            ),
         )
-        view._inner[]._parent_host = [self._inner]
-        return view^
 
     def enqueue_copy_to(self, dst: DeviceBuffer[Self.dtype]) raises:
         """Enqueues an asynchronous copy from this buffer to a device buffer.
@@ -5173,6 +5208,19 @@ def _raise_checked_impl(
 ) raises:
     var err = _string_from_owned_charptr(err_msg)
     raise Error(location.prefix(err + ((" " + msg) if msg else "")))
+
+
+def _check_copy_src_size(
+    dst: Buffer[get_device_spec[0]()], src: Buffer[get_device_spec[0]()]
+) raises:
+    """Raises if `src` holds fewer bytes than a copy sized by `dst` reads."""
+    if src.byte_size < dst.byte_size:
+        raise Error(
+            String(
+                t"enqueue_copy: src is {src.byte_size} bytes but dst needs"
+                t" {dst.byte_size} bytes"
+            )
+        )
 
 
 def _memset_value_as_u64[dtype: DType](val: Scalar[dtype]) -> UInt64:
