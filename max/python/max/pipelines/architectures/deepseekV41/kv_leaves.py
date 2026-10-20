@@ -87,7 +87,7 @@ class V41KVLeafSpec:
     window_size: int | None
     head_dim: int
     kv_dim: int
-    """1 (K-only / MLA-shaped) or 2 (the state leaf: K and V)."""
+    """1 (K-only / MLA-shaped) or 2 (K and V planes)."""
     float32: bool
 
     @property
@@ -170,6 +170,9 @@ def kv_leaf_specs(
         if ratio > 1:
             # Ratio 1 compresses each token alone, so no partial group
             # carries over between steps and no compressor state is needed.
+            # Each slot holds a token's float32 projections, its KV row then
+            # its score row, so a layer's pages read as one
+            # ``[blocks, page_size, 2 * head_dim]`` array.
             specs.append(
                 V41KVLeafSpec(
                     key=f"{key}_state",
@@ -177,8 +180,8 @@ def kv_leaf_specs(
                     ratio=ratio,
                     owning_layer_ids=owning,
                     window_size=ratio,
-                    head_dim=head_dim,
-                    kv_dim=2,
+                    head_dim=2 * head_dim,
+                    kv_dim=1,
                     float32=True,
                 )
             )
@@ -227,9 +230,6 @@ def build_kv_params(
             data_parallel_degree=data_parallel_degree,
             is_mla=spec.kv_dim == 1,
             num_q_heads=num_q_heads,
-            # The MHA-shaped state leaf has one head, which every TP rank
-            # needs whole.
-            allow_kv_head_replication=spec.kv_dim == 2,
             speculative_method=speculative_method,
             num_draft_tokens=num_draft_tokens,
             slots_per_page=spec.device_slots_per_page(page_size),

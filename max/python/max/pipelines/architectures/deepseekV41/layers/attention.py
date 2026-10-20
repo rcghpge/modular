@@ -35,14 +35,10 @@ from max.graph import (
     ops,
 )
 from max.nn.kernels import (
-    KEY_CACHE_INDEX,
-    VALUE_CACHE_INDEX,
     ceildiv,
     grouped_matmul_block_scaled,
     grouped_quantize_dynamic_block_scaled,
-    kv_cache_gather_rows_ragged,
     store_k_cache_ragged,
-    store_v_cache_ragged,
 )
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.layer import Module
@@ -138,10 +134,9 @@ class CSA2Cache:
     state_by_layer: Mapping[int, PagedCacheValues] = field(default_factory=dict)
     """Owning layer id -> pair-carry cache (``c2a_state``) for ratio two.
 
-    Holds each token's raw float32 ``wkv`` row (key plane) and ``wgate`` row
-    (value plane) by position, so a forward starting at an odd position can
-    pool against row ``start - 1``. Required by every ratio-2 KV-source
-    layer.
+    Holds each token's raw float32 ``wkv`` row then ``wgate`` row by
+    position, so a forward starting at an odd position can pool against row
+    ``start - 1``. Required by every ratio-2 KV-source layer.
     """
 
 
@@ -427,8 +422,6 @@ class CompressedKV:
 
     Shared with the index keys.
     """
-    valid: TensorValue
-    """``[T]`` bool, whether the row closes a group (publishes an entry)."""
 
 
 @dataclass
@@ -795,14 +788,14 @@ class CSA2Attention(Module):
                     self.compressor.project(h_flat),
                     [-1, self.head_dim * layer.compress_ratio],
                 )
-                prior_row = prior_valid = None
+                state_leaf = None
+                state_layer = None
                 if layer.compress_ratio == 2:
-                    prior_row, prior_valid = self._pair_carry(
-                        cache, binding.kv_source_layer_id, rows, raw, layer_comp
+                    state_leaf = self._state_leaf(
+                        cache, binding.kv_source_layer_id
                     )
-                compressed = self.compress(
-                    raw, rows.positions, rows.offsets, prior_row, prior_valid
-                )
+                    state_layer = layer_comp
+                compressed = self.compress(raw, rows, state_leaf, state_layer)
                 # One row per raw token, so the stores reuse `rows.offsets`;
                 # non-closing rows hold zeros masked by visibility.
                 # Round the float32 rotated row onto the NVFP4 grid. Exact
@@ -841,39 +834,34 @@ class CSA2Attention(Module):
     def compress(
         self,
         raw: TensorValue,
-        positions: TensorValue,
-        offsets: TensorValue,
-        prior_row: TensorValue | None = None,
-        prior_valid: TensorValue | None = None,
+        rows: RaggedRows,
+        state: PagedCacheValues | None = None,
+        layer_idx: TensorValue | None = None,
     ) -> CompressedKV:
         """Pools ``raw`` and RoPEs the result at its compressed positions.
-
-        Uses no cache kernels, so it runs on any device.
 
         Args:
             raw: ``[T, head_dim * ratio]`` float32, this layer's
                 ``compressor.project`` output.
-            positions: ``[T]`` int32 absolute token positions.
-            offsets: ``[B + 1]`` uint32 request row offsets.
-            prior_row: Ratio two only: ``[B, 2 * head_dim]`` float32, each
-                request's raw row at position ``start - 1``.
-            prior_valid: Ratio two only: ``[B]`` bool, whether that row
-                exists.
+            rows: The forward's ragged rows.
+            state: Ratio two only: the layer's ``c2a_state`` leaf. Every
+                row of ``raw`` is saved there, and a request starting at an
+                odd position pools against the row saved before it.
+            layer_idx: Ratio two only: host uint32 index of the layer in
+                ``state``.
 
         Returns:
-            The pooled latent, its RoPE'd copies, cos/sin and validity.
+            The pooled latent, its RoPE'd copies and cos/sin.
         """
         assert self.compressor is not None
-        active = ops.broadcast_to(
-            ops.constant(True, DType.bool, raw.device), [raw.shape[0]]
-        )
-        latent, valid = self.compressor(
+        positions = rows.positions
+        latent = self.compressor(
             raw,
-            ops.cast(positions, DType.int64),
-            offsets,
-            active,
-            prior_row,
-            prior_valid,
+            positions,
+            rows.offsets,
+            state,
+            None if state is None else index_key_slots(state, rows, ratio=1),
+            layer_idx,
         )
         freqs_cis = ops.gather(
             self.rope.freqs_cis_base(),
@@ -897,27 +885,11 @@ class CSA2Attention(Module):
             latent_rope=ops.cast(latent_rope, DType.bfloat16),
             latent_rope_f32=latent_rope,
             freqs_cis=freqs_cis,
-            valid=valid,
         )
 
-    def _pair_carry(
-        self,
-        cache: CSA2Cache,
-        source_layer_id: int,
-        rows: RaggedRows,
-        raw: TensorValue,
-        layer_comp: TensorValue,
-    ) -> tuple[TensorValue, TensorValue]:
-        """Reads each request's predecessor raw row, then stores this step's.
-
-        Row ``start - 1`` of the ``c2a_state`` cache holds the raw
-        ``wkv``/``wgate`` row written by the previous forward; ``start > 0``
-        is assumed to imply it is present, which holds for append-only
-        forwards. A prefix-cache hit ending at an odd length is not handled.
-
-        Returns:
-            ``[B, 2 * head_dim]`` float32 predecessor rows and ``[B]`` bool
-            validity.
+    @staticmethod
+    def _state_leaf(cache: CSA2Cache, source_layer_id: int) -> PagedCacheValues:
+        """Returns a ratio-2 KV-source layer's ``c2a_state`` leaf.
 
         Raises:
             ValueError: If the source layer has no ``c2a_state`` cache.
@@ -930,42 +902,7 @@ class CSA2Attention(Module):
                 "it a forward starting at an odd position cannot pool its "
                 "first pair"
             )
-        width = self.head_dim
-        device = raw.device
-        prior_valid = rows.starts > 0
-        predecessor = ops.max(
-            rows.starts - 1, ops.constant(0, DType.int32, device)
-        )
-        # One gathered row per request.
-        per_request = ops.cast(
-            arange_to(rows.batch + 1, rows.batch + 1, device), DType.uint32
-        )
-        prior_kv, prior_score = (
-            ops.squeeze(
-                kv_cache_gather_rows_ragged(
-                    state_leaf,
-                    ops.unsqueeze(predecessor, -1),
-                    per_request,
-                    layer_comp,
-                    key_or_value=plane,
-                ),
-                1,
-            )
-            for plane in (KEY_CACHE_INDEX, VALUE_CACHE_INDEX)
-        )
-        store_k_cache_ragged(
-            state_leaf,
-            ops.unsqueeze(raw[:, :width], 1),
-            rows.offsets,
-            layer_comp,
-        )
-        store_v_cache_ragged(
-            state_leaf,
-            ops.unsqueeze(raw[:, width:], 1),
-            rows.offsets,
-            layer_comp,
-        )
-        return ops.concat([prior_kv, prior_score], axis=-1), prior_valid
+        return state_leaf
 
     def _select(
         self, state: PendingCSA2Attention, rows: RaggedRows

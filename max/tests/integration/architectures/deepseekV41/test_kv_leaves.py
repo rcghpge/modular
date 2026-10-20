@@ -84,3 +84,26 @@ def test_construct_kv_params_succeeds_with_four_gpu_devices() -> None:
     assert set(params.children) == set(_LEAF_KEYS)
     for key in _LEAF_KEYS:
         assert list(_leaf(params, key).devices) == devices
+
+
+def test_state_leaf_holds_one_float32_row_per_token() -> None:
+    """``c2a_state`` slots are 1024 float32s: a token's KV then score row.
+
+    The compressor reads a layer's pages as ``[blocks, page_size, 1024]``,
+    so the leaf has one plane and one head, and one slot per token.
+    """
+    state = _leaf(_build_params(), "c2a_state")
+    head_dim = _real_text_config().head_dim
+    page_size = KVCacheConfig().kv_cache_page_size
+    assert state.dtype == DType.float32
+    assert state.kv_dim == 1
+    assert state.shape_per_block == [
+        1,
+        state.num_layers,
+        page_size,
+        1,
+        2 * head_dim,
+    ]
+    assert state.bytes_per_block == (
+        state.num_layers * page_size * 2 * head_dim * 4
+    )
