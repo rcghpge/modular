@@ -5394,7 +5394,7 @@ def conv_gpu[
             ):
                 return
 
-        # Apple M5 (compute_capability == 5): fused online-im2col conv2d.
+        # Apple M5 (compute_capability >= 5): fused online-im2col conv2d.
         # `dispatch_fused_im2col_conv2d_apple` runs `AppleM5MatMul.run_conv`
         # (the structured simdgroup-tiled GEMM, 16x16x16 hardware MMA) with the
         # A operand gathered directly from the NHWC input per MMA-fragment -- the
@@ -5402,7 +5402,7 @@ def conv_gpu[
         # eliminates the materialised path's DRAM round-trip, so conv wins across
         # both compute- and memory-bound regimes (no memory-bound naive guard
         # needed). The dispatcher self-gates (bf16, groups=1, dilation=1,
-        # kernel > 1x1, K >= 16, N >= 16, compute_capability == 5); on decline
+        # kernel > 1x1, K >= 16, N >= 16, compute_capability >= 5); on decline
         # (incl. non-M5) it falls through to the materialised matmul below.
         # Hardware-agnostic path -- no SM100 TMA / swizzle machinery involved.
         comptime if ctx.target.is_apple_gpu():

@@ -66,8 +66,8 @@ def _check(buf: HostBuffer[.bfloat16]) raises:
 
 def main() raises:
     var ctx = DeviceContext()
-    if ctx.compute_capability() != 5:
-        print("SKIP: Apple M5 (compute_capability == 5) required")
+    if ctx.compute_capability() < 5:
+        print("SKIP: Apple M5 (compute_capability >= 5) required")
         return
 
     var in_host = ctx.enqueue_create_host_buffer[.bfloat16](ROWS * IN_COLS)

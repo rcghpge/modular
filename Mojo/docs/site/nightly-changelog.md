@@ -48,6 +48,11 @@ This version is still a work in progress.
 
 ## GPU programming
 
+- Added the `apple-m6` and `apple-m6-metal4` accelerator targets, and
+  `CompilationTarget.is_apple_m6()` to `std.sys`. Apple M6 GPUs are now
+  detected automatically, so you no longer need to pass
+  `--target-accelerator=apple-m5` on M6 hardware.
+
 ## Tooling changes
 
 ## Removed

@@ -1210,7 +1210,7 @@ def test_col_major_b_transpose_b(ctx: DeviceContext) raises:
 
 def _skip(name: String):
     print("==", name)
-    print("SKIP: requires Apple M5 + Metal 4")
+    print("SKIP: requires Apple M5 or newer + Metal 4")
 
 
 def _skip_all():

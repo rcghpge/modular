@@ -496,7 +496,7 @@ def dispatch_fused_im2col_conv2d_apple[
 ) raises -> Bool:
     """Apple M5 fused online-im2col conv2d (no `[M, K]` scratch materialised).
 
-    Apple silicon (`compute_capability == 5`). Mirrors the MI355 conv pattern:
+    Apple silicon (`compute_capability >= 5`). Mirrors the MI355 conv pattern:
     the filter is transposed to the `(C_out, K=R*S*C_in)` NK matrix once (the
     same kernel the materialised path uses), then `enqueue_apple_conv2d` runs the
     simdgroup-tiled GEMM with the A operand gathered from the NHWC input on the

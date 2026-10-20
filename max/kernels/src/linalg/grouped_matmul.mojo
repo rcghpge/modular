@@ -959,7 +959,7 @@ def grouped_matmul[
             var num_active_experts = stats[1]
             # M5 has the native fp8-operand simdgroup MMA; pre-M5 Apple falls
             # back to the dtype-generic naive kernel (still correct there).
-            if ctx.compute_capability() == 5:
+            if ctx.compute_capability() >= 5:
                 # The tiled launcher is hard-typed W8A16 (bf16 A, fp8 B); rebind
                 # the dispatch's abstract-dtype operands to the concrete types
                 # the guard already proves (mirrors the dense Apple matmul
@@ -1017,7 +1017,7 @@ def grouped_matmul[
             var stats = resolve_usage_stats()
             var max_num_tokens_per_expert = stats[0]
             var num_active_experts = stats[1]
-            if ctx.compute_capability() == 5:
+            if ctx.compute_capability() >= 5:
                 enqueue_apple_grouped_matmul[
                     has_epilogue_fn=has_epilogue_fn,
                     has_compute_fn=has_compute_fn,

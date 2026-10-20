@@ -102,6 +102,8 @@ from std._plugin.metal.metal_targets import (
     MetalM4Metal4,
     MetalM5,
     MetalM5Metal4,
+    MetalM6,
+    MetalM6Metal4,
 )
 
 from std._gpu.host.info import TargetAcceleratorCollection

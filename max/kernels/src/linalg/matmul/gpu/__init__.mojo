@@ -961,7 +961,7 @@ def _matmul_gpu_impl[
             # decode reaches this line on every matmul.
             if (
                 apple_gemv_small_batch_supported(m, k)
-                and ctx.compute_capability() == 5
+                and ctx.compute_capability() >= 5
             ):
                 logger.info("Executing: Apple M5 small-batch GEMV kernel")
                 enqueue_apple_gemv[
@@ -982,7 +982,7 @@ def _matmul_gpu_impl[
             m > 1
             and n >= 64
             and k >= 16
-            and ctx.compute_capability() == 5
+            and ctx.compute_capability() >= 5
             and (not f32_in or _apple_m5_allow_lossy_f32_matmul())
         ):
             logger.info("Executing: Apple M5 simdgroup-tiled MATMUL kernel")
@@ -1016,7 +1016,7 @@ def _matmul_gpu_impl[
                 and k >= 16
                 and k % 16 == 0
                 and (
-                    ctx.compute_capability() != 5
+                    ctx.compute_capability() < 5
                     or (f32_in and not _apple_m5_allow_lossy_f32_matmul())
                 )
             ):

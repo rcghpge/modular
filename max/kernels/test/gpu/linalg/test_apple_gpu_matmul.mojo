@@ -17,7 +17,7 @@ Covers three paths:
 - The 8x8 `simdgroup_matrix` GEMM (`gemm_kernel_apple_8x8`), the M1-M4 dispatch
   path in `_matmul_gpu`. These tests run on any Apple GPU.
 - The M5 hardware-MMA simdgroup-tiled kernel (`AppleM5MatMul.run` /
-  `enqueue_apple_matmul`), which requires `compute_capability() == 5`. This
+  `enqueue_apple_matmul`), which requires `compute_capability() >= 5`. This
   includes the split-K path (`enqueue_apple_matmul_split_k` and the
   `force_split_k` flag), folded in here from the former `test_apple_split_k`.
 - The M5 small-batch GEMV (`apple/gemv.mojo`), which `_matmul_gpu` routes
@@ -2741,10 +2741,10 @@ def main() raises:
     )
 
     # M5 hardware-MMA path (`AppleM5MatMul` / `enqueue_apple_matmul`): Apple M5.
-    if ctx.compute_capability() != 5:
+    if ctx.compute_capability() < 5:
         print(
             "SKIP: M5 hardware-MMA matmul tests require Apple M5"
-            " (compute_capability == 5)"
+            " (compute_capability >= 5)"
         )
         return
     test_kernel_single_tile_nn_fp16(ctx)

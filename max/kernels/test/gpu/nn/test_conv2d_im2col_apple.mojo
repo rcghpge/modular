@@ -18,7 +18,7 @@ Discovery / correctness harness for the FLUX.2 VAE decoder unblock. Drives
 each checked against a CPU naive fp32-accumulator reference narrowed to the
 kernel dtype.
 
-Target: Apple silicon M5 (compute_capability == 5), bf16/fp16.
+Target: Apple silicon M5 (compute_capability >= 5), bf16/fp16.
 Run with: `mojo max/kernels/test/gpu/nn/test_conv2d_im2col_apple.mojo`.
 """
 

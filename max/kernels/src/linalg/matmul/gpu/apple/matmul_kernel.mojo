@@ -2188,7 +2188,7 @@ def enqueue_apple_matmul[
         b: B operand matrix, `(K, N)` for `transpose_b=False` or `(N, K)` for
             `transpose_b=True`.
         ctx: Device context to enqueue the kernel on; must be Apple M5
-            (`compute_capability == 5`).
+            (`compute_capability >= 5`).
         force_split_k: K-reduction strategy override; `None` auto-routes
             under-occupied shapes to split-K, `True` always uses split-K,
             `False` always uses the single-pass kernel (defaults to None).
@@ -2196,9 +2196,10 @@ def enqueue_apple_matmul[
         compute_fn: Compute epilogue applied to each output.
 
     Raises:
-        If the attached GPU is not Apple M5 (`compute_capability != 5`).
-        M1-M4 lack GPU `neural accelerator`; future generations require
-        re-validation.
+        If the attached GPU is older than Apple M5 (`compute_capability < 5`).
+        M1-M4 lack GPU `neural accelerator`. M6 and newer run the M5 tile
+        configurations and split-K heuristics, which have not been validated
+        on that hardware.
     """
     # use_x2 needs transpose_b=True (K-contiguous B); k_unroll is the NN
     # equivalent win and the two regress badly combined (see AppleM5MatMul's
@@ -2221,18 +2222,17 @@ def enqueue_apple_matmul[
         k_unroll=k_unroll,
     ]
 
+    # TODO(HWB-694): M6 reuses the M5 tile configs and split-K heuristics
+    # without having run on M6; validate with the Apple kernel suite there.
     var cc = ctx.compute_capability()
-    if cc != 5:
+    if cc < 5:
         raise Error(
             (
-                "enqueue_apple_matmul requires Apple M5"
-                " (compute_capability == 5); got compute_capability="
+                "enqueue_apple_matmul requires Apple M5 or newer"
+                " (compute_capability >= 5); got compute_capability="
             ),
             cc,
-            (
-                ". Route M1-M4 to the naive matmul path; re-validate for"
-                " future generations."
-            ),
+            ". Route M1-M4 to the naive matmul path.",
         )
 
     comptime assert (
@@ -2448,7 +2448,7 @@ def enqueue_apple_conv2d[
 ) raises:
     """Enqueue the fused online-im2col conv2d (`AppleM5MatMul.run_conv`).
 
-    SM100/Apple M5 (`compute_capability == 5`). No `[M, K]` scratch is
+    SM100/Apple M5 (`compute_capability >= 5`). No `[M, K]` scratch is
     materialised: the A operand is gathered from `input` (4-D NHWC) on the fly.
     `filter_nk` is the filter pre-transposed to `(C_out, K=R*S*C_in)` row-major
     (the NK layout `dispatch_im2col_matmul_conv2d` already builds); the GEMM uses
@@ -2477,12 +2477,12 @@ def enqueue_apple_conv2d[
             (the NK layout); used with `transpose_b=True`.
         conv: Conv geometry for the im2col gather.
         ctx: Device context to enqueue the kernel on; must be Apple M5
-            (`compute_capability == 5`).
+            (`compute_capability >= 5`).
         epilogue_fn: Epilogue that stores each output.
         compute_fn: Transform applied to each output before it is stored.
 
     Raises:
-        If the attached GPU is not Apple M5 (`compute_capability != 5`).
+        If the attached GPU is older than Apple M5 (`compute_capability < 5`).
     """
     comptime assert not (
         has_epilogue_fn and has_compute_fn
@@ -2502,11 +2502,11 @@ def enqueue_apple_conv2d[
     ]
 
     var cc = ctx.compute_capability()
-    if cc != 5:
+    if cc < 5:
         raise Error(
             (
-                "enqueue_apple_conv2d requires Apple M5"
-                " (compute_capability == 5); got compute_capability="
+                "enqueue_apple_conv2d requires Apple M5 or newer"
+                " (compute_capability >= 5); got compute_capability="
             ),
             cc,
         )
@@ -2685,14 +2685,14 @@ def enqueue_apple_matmul_split_k[
         b: B operand matrix, `(K, N)` for `transpose_b=False` or `(N, K)` for
             `transpose_b=True`.
         ctx: Device context to enqueue the kernels on; must be Apple M5
-            (`compute_capability == 5`).
+            (`compute_capability >= 5`).
         num_splits_hint: Upper bound on the K-axis split count; the actual
             split count is capped so no split is empty (defaults to 4).
         epilogue_fn: Epilogue that stores each output.
         compute_fn: Compute epilogue applied to each output.
 
     Raises:
-        If the attached GPU is not Apple M5 (`compute_capability != 5`).
+        If the attached GPU is older than Apple M5 (`compute_capability < 5`).
     """
     # Same NT-x2 / NN-k_unroll dispatch as enqueue_apple_matmul, so split-K
     # gets the same measured wins as the single-pass kernel instead of
@@ -2715,11 +2715,11 @@ def enqueue_apple_matmul_split_k[
     ]
 
     var cc = ctx.compute_capability()
-    if cc != 5:
+    if cc < 5:
         raise Error(
             (
-                "enqueue_apple_matmul_split_k requires Apple M5"
-                " (compute_capability == 5); got "
+                "enqueue_apple_matmul_split_k requires Apple M5 or newer"
+                " (compute_capability >= 5); got "
             ),
             cc,
         )

@@ -124,8 +124,9 @@ _EXTRA_CONSTRAINTS = {
     "test_conv_transposed_cudnn.mojo": ["//:nvidia_gpu"],
     "test_irfft.mojo": ["//:nvidia_gpu"],
     "test_flash_attention_amd.mojo": ["//:amd_gpu"],
-    # Apple M5 (cc==5) FA2-prefill: the kernel uses the 16x16 simdgroup MMA
-    # (`MmaOpApple`) which only exists on M5, so these run on Apple GPU only.
+    # Apple M5+ (cc>=5) FA2-prefill: the kernel uses the 16x16 simdgroup MMA
+    # (`MmaOpApple`), which exists only on M5 and newer, so these run on Apple
+    # GPU only.
     "test_apple_fa_prefill.mojo": ["//:apple_gpu"],
     "test_apple_fa_softmax_unit.mojo": ["//:apple_gpu"],
     "test_mha_gemma4_global_decode_amd.mojo": ["//:amd_gpu"],
