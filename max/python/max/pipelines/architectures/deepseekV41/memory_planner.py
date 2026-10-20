@@ -30,6 +30,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any
 
+from max.dtype import DType
 from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.support.human_readable_formatter import to_human_readable_bytes
 
@@ -235,6 +236,34 @@ def forward_activation_bytes(
         kept_blocks=kept_blocks,
         block_size=block_size,
     )
+
+
+def kv_leaf_bytes_per_token(
+    text_config: Any,
+    *,
+    page_size: int,
+    cache_dtype: DType,
+    csa_records: bool = kv_leaves.CSA_KV_RECORDS,
+) -> dict[str, float]:
+    """Returns each KV leaf's device bytes per token a page covers.
+
+    A page's bytes over its ``page_size`` tokens, summed over the leaf's
+    owning layers, for one data-parallel replica. Sliding-window leaves
+    hold only a window's pages per request, so their bytes do not grow
+    with context length.
+
+    Args:
+        text_config: The model's ``text_config``.
+        page_size: Tokens a page covers.
+        cache_dtype: Element type of the leaves that store element rows.
+        csa_records: Passed to :func:`kv_leaves.kv_leaf_specs`.
+    """
+    return {
+        spec.key: spec.page_bytes(page_size, cache_dtype) / page_size
+        for spec in kv_leaves.kv_leaf_specs(
+            text_config, csa_records=csa_records
+        )
+    }
 
 
 def candidate_blocks_per_row(text_config: Any, max_length: int) -> int:

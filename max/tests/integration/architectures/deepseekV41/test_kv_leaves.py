@@ -12,15 +12,23 @@
 # ===----------------------------------------------------------------------=== #
 """Tests building the KV cache parameters from the real config."""
 
+import dataclasses
+import math
 from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams
 from max.pipelines.architectures import hf_config_shims  # noqa: F401
 from max.pipelines.architectures.deepseekV41 import kv_leaves
+from max.pipelines.architectures.deepseekV41.layers.csa2 import (
+    COMPRESSED_RECORD_BYTES,
+    WINDOW_RECORD_BYTES,
+    cache_page_bytes,
+)
 from max.pipelines.architectures.deepseekV41.model_config import (
     DeepseekV41Config,
 )
@@ -52,6 +60,7 @@ def _build_params(
     cache_dtype: DType = DType.bfloat16,
     *,
     devices: Sequence[DeviceRef] = (DeviceRef.CPU(),),
+    csa_records: bool = False,
 ) -> MultiKVCacheParams:
     params = kv_leaves.construct_kv_params(
         huggingface_config=_real_text_config(),
@@ -59,6 +68,7 @@ def _build_params(
         devices=list(devices),
         kv_cache_config=KVCacheConfig(),
         cache_dtype=cache_dtype,
+        csa_records=csa_records,
     )
     assert isinstance(params, MultiKVCacheParams)
     return params
@@ -107,3 +117,104 @@ def test_state_leaf_holds_one_float32_row_per_token() -> None:
     assert state.bytes_per_block == (
         state.num_layers * page_size * 2 * head_dim * 4
     )
+
+
+def _records_params(
+    csa_records: bool, devices: Sequence[DeviceRef] = (DeviceRef.CPU(),)
+) -> tuple[list[kv_leaves.V41KVLeafSpec], MultiKVCacheParams]:
+    specs = kv_leaves.kv_leaf_specs(
+        _real_text_config(), csa_records=csa_records
+    )
+    params = kv_leaves.build_kv_params(
+        specs,
+        kv_cache_config=KVCacheConfig(),
+        cache_dtype=DType.bfloat16,
+        devices=list(devices),
+        num_q_heads=64,
+    )
+    return specs, params
+
+
+def _huge_page_bytes(params: MultiKVCacheParams) -> int:
+    return math.lcm(*(leaf.bytes_per_page for leaf in params.leaves().values()))
+
+
+def test_default_leaves_store_bf16_rows() -> None:
+    """By default, the window and compressed leaves keep one bf16 row per
+    raw token."""
+    assert not kv_leaves.CSA_KV_RECORDS
+    params = _build_params()
+    for key in ("swa", "c2a", "c1a"):
+        leaf = _leaf(params, key)
+        assert leaf.dtype == DType.bfloat16
+        assert leaf.head_dim == 512
+        assert leaf.slots_per_page == 128
+
+
+def test_switch_selects_record_leaves() -> None:
+    params = _build_params(csa_records=True)
+    assert _leaf(params, "swa").dtype == DType.uint8
+    assert _leaf(params, "c2a").slots_per_page == 64
+
+
+@pytest.mark.parametrize(
+    ("key", "slots", "record", "data", "pitch"),
+    [
+        ("swa", 128, WINDOW_RECORD_BYTES, 512, 544),
+        ("c2a", 64, COMPRESSED_RECORD_BYTES, 256, 344),
+        ("c1a", 128, COMPRESSED_RECORD_BYTES, 256, 344),
+    ],
+)
+def test_record_leaf_pages_hold_the_attention_cache_page(
+    key: str, slots: int, record: int, data: int, pitch: int
+) -> None:
+    """Each layer's share of a record leaf page holds the page the CSA2 ops
+    address, ``slots`` records (one per token or compression group), padded
+    to ``slots * pitch`` bytes."""
+    specs, params = _records_params(True)
+    spec = next(s for s in specs if s.key == key)
+    leaf = _leaf(params, key)
+    assert spec.record_bytes == record
+    assert spec.record_pitch == pitch
+    assert leaf.dtype == DType.uint8
+    assert leaf.head_dim == pitch
+    assert leaf.slots_per_page == slots
+    assert cache_page_bytes(slots, record, data) == slots * record
+    assert leaf.bytes_per_block == spec.num_layers * slots * pitch
+    assert leaf.bytes_per_block == spec.page_bytes(128, DType.bfloat16)
+
+
+def test_record_leaves_leave_the_other_leaves_unchanged() -> None:
+    old_specs, old = _records_params(False)
+    _, new = _records_params(True)
+    for spec in old_specs:
+        if spec.kind in ("state", "idx_comp"):
+            assert (
+                _leaf(new, spec.key).bytes_per_block
+                == _leaf(old, spec.key).bytes_per_block
+            )
+
+
+def test_record_leaves_build_on_four_devices() -> None:
+    devices = [DeviceRef("gpu", i) for i in range(4)]
+    _, params = _records_params(True, devices)
+    for key in _LEAF_KEYS:
+        assert list(_leaf(params, key).devices) == devices
+
+
+def test_huge_page_bytes() -> None:
+    """The Jenga huge page, the least common multiple of the leaves' page
+    bytes: the padded records keep the bf16 layout's 1.07 GiB, where packed
+    records would take it to 106 GiB."""
+    _, old = _records_params(False)
+    specs, new = _records_params(True)
+    packed = kv_leaves.build_kv_params(
+        [dataclasses.replace(s, record_pitch=None) for s in specs],
+        kv_cache_config=KVCacheConfig(),
+        cache_dtype=DType.bfloat16,
+        devices=[DeviceRef.CPU()],
+        num_q_heads=64,
+    )
+    assert _huge_page_bytes(old) == 1_149_763_584
+    assert _huge_page_bytes(new) == 1_149_763_584
+    assert _huge_page_bytes(packed) == 113_826_594_816

@@ -21,6 +21,7 @@ from unittest.mock import MagicMock, NonCallableMock
 
 import pytest
 from max.driver import Device
+from max.dtype import DType
 from max.pipelines.architectures import hf_config_shims  # noqa: F401
 from max.pipelines.architectures.deepseekV41.layers.indexer import (
     candidate_window_rows,
@@ -33,6 +34,7 @@ from max.pipelines.architectures.deepseekV41.memory_planner import (
     ep_receive_pool_bytes,
     graph_arena_bytes,
     graph_capture_pool_bytes,
+    kv_leaf_bytes_per_token,
 )
 from max.pipelines.architectures.deepseekV41.model_config import (
     DeepseekV41Config,
@@ -396,3 +398,68 @@ def test_dp4_reserves_the_measured_graph_pool_and_eager_peak() -> None:
     # Arena and receive tensors alone, without the indexer or headroom.
     arena = -(-((5 << 28) + 8192 * (5 << 18)) // (256 << 20)) * (256 << 20)
     assert arena + pool >= _DP4_MEASURED_EAGER_PEAK
+
+
+def _bytes_per_token(csa_records: bool) -> dict[str, float]:
+    return kv_leaf_bytes_per_token(
+        DeepseekV41Config.get_text_config(_real_huggingface_config()),
+        page_size=128,
+        cache_dtype=DType.bfloat16,
+        csa_records=csa_records,
+    )
+
+
+def test_kv_bytes_per_token_per_leaf() -> None:
+    """bf16 rows take 1 KiB per layer per token in the window and every
+    compressed leaf; records take a 544-byte slot per token in the window
+    and a 344-byte slot per compression group."""
+    unchanged = {"c2a_state": 12288.0, "idx_c2a": 102.0, "idx_c1a": 68.0}
+    assert _bytes_per_token(False) == {
+        "swa": 43 * 1024.0,
+        "c2a": 3 * 1024.0,
+        "c1a": 1024.0,
+        **unchanged,
+    }
+    assert _bytes_per_token(True) == {
+        "swa": 43 * 544.0,
+        "c2a": 3 * 344 / 2,
+        "c1a": 344.0,
+        **unchanged,
+    }
+
+
+def test_dp4_kv_capacity_per_device() -> None:
+    """Context tokens a DP4 device's KV budget holds, counting only the
+    leaves that grow with context: about 4.1x more with records."""
+    hf_config = _real_huggingface_config()
+    config = _dp4_config(4)
+    config.model.kv_cache.device_memory_utilization = 0.97
+    weights, _ = device_weight_bytes(
+        _REAL_CHECKPOINT, 4, layout=_DEFAULT_LAYOUT, data_parallel=True
+    )
+    activation = _planner().estimate_activation_memory(config, hf_config)
+    devices: list[Device] = []
+    for _ in range(4):
+        device = MagicMock()
+        device.stats = {
+            "free_memory": _TP2_MM97_FREE,
+            "total_memory": _TP2_MM97_FREE,
+        }
+        devices.append(device)
+    budget = (
+        MemoryEstimator._available_kv_cache_memory(
+            4 * weights, activation, config.model, devices, _TP2_SIGNAL_BYTES
+        )
+        / 4
+    )
+    windowed = ("swa", "c2a_state")
+    capacity = {
+        records: budget
+        / sum(
+            v for k, v in _bytes_per_token(records).items() if k not in windowed
+        )
+        for records in (False, True)
+    }
+    assert 60 * GIB < budget < 61 * GIB
+    assert 15.2e6 < capacity[False] < 15.3e6
+    assert 63.1e6 < capacity[True] < 63.3e6

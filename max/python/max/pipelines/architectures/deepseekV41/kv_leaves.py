@@ -19,6 +19,8 @@ params from them.
 
 from __future__ import annotations
 
+import dataclasses
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -34,6 +36,11 @@ from max.pipelines.speculative.config import SpeculativeMethod
 from transformers import AutoConfig
 
 from . import layer_resolver, model_config
+from .layers.csa2 import COMPRESSED_RECORD_BYTES, WINDOW_RECORD_BYTES
+
+CSA_KV_RECORDS = False
+"""Whether the window and compressed leaves hold quantized CSA records by
+default (see :func:`kv_leaf_specs`)."""
 
 MXFP4_INDEX_KEY_BYTES = 68
 """Bytes of one MXFP4 index key: 128 E2M1 values in 64 bytes, then a 32-bit
@@ -45,14 +52,14 @@ def _storage_dtype_and_width(
 ) -> tuple[DType, int]:
     """Returns a leaf's stored element type and row width in elements.
 
-    An index-key leaf is opaque ``uint8`` records, one
-    ``MXFP4_INDEX_KEY_BYTES`` record per key slot; the indexer kernels lay
-    each page out as every key's value bytes, then every key's scale word.
-    The other leaves store ``head_dim`` elements of ``float32`` or the cache
-    dtype.
+    A record leaf is opaque ``uint8`` records of ``record_bytes`` each, one
+    per slot; its kernels lay each layer's page out as every record's value
+    bytes, then every record's scale bytes, and the page spans
+    ``record_pitch`` bytes per slot. The other leaves store ``head_dim``
+    elements of ``float32`` or the cache dtype.
     """
-    if spec.kind == "idx_comp":
-        return DType.uint8, MXFP4_INDEX_KEY_BYTES
+    if spec.record_bytes is not None:
+        return DType.uint8, spec.record_pitch or spec.record_bytes
     return (DType.float32 if spec.float32 else cache_dtype), spec.head_dim
 
 
@@ -89,6 +96,13 @@ class V41KVLeafSpec:
     kv_dim: int
     """1 (K-only / MLA-shaped) or 2 (K and V planes)."""
     float32: bool
+    record_bytes: int | None = None
+    """Bytes of the opaque ``uint8`` record each slot holds, or ``None`` for
+    a row of ``head_dim`` elements."""
+    record_pitch: int | None = None
+    """Bytes a record slot spans in the page, at least ``record_bytes``;
+    ``None`` means ``record_bytes``. The excess pads each layer's page at
+    its end, past the records' values and scales."""
 
     @property
     def num_layers(self) -> int:
@@ -105,30 +119,48 @@ class V41KVLeafSpec:
     def device_slots_per_page(self, page_size: int) -> int:
         """Slots per page the device buffer allocates.
 
-        Unlike :meth:`slots_per_page`, ``comp`` allocates one slot per token:
-        attention stores one row per raw token. ``idx_comp`` stores one slot
-        per key.
+        Unlike :meth:`slots_per_page`, a ``comp`` leaf of element rows
+        allocates one slot per token: attention stores one row per raw
+        token. A ``comp`` record leaf stores one record per compression
+        group, and ``idx_comp`` one slot per key.
         """
-        # TODO: honor ``ratio`` for ``comp`` once it is block-pooled.
-        if self.kind == "comp":
+        if self.kind == "comp" and self.record_bytes is None:
             return page_size
         return self.slots_per_page(page_size)
+
+    def page_bytes(self, page_size: int, cache_dtype: DType) -> int:
+        """Device bytes of one page across every owning layer."""
+        dtype, width = _storage_dtype_and_width(self, cache_dtype)
+        return (
+            self.kv_dim
+            * self.num_layers
+            * self.device_slots_per_page(page_size)
+            * width
+            * dtype.size_in_bytes
+        )
 
 
 def kv_leaf_specs(
     huggingface_config: AutoConfig,
     *,
     kv_cache_page_size: int = 128,
+    csa_records: bool = CSA_KV_RECORDS,
 ) -> list[V41KVLeafSpec]:
     """Returns the V4.1 KV cache leaves, in params-tree order.
 
     Every layer owns the sliding-window leaf. Each compression ratio used by
     a layer that computes its own KV and indexer results adds a compressed-KV
     leaf, an index-K leaf and, for ratios above 1, a compressor state leaf.
+
+    Args:
+        huggingface_config: The model's ``text_config``.
+        kv_cache_page_size: Tokens a page covers, which sizes the record
+            leaves' padding.
+        csa_records: Whether the window and compressed leaves hold quantized
+            CSA records (a 528-byte MXFP8 record per token and a 288-byte
+            NVFP4 record per compression group) instead of ``head_dim``
+            cache-dtype rows per token.
     """
-    del (
-        kv_cache_page_size
-    )  # only the shared config's page size matters at build time
     num_hidden_layers = huggingface_config.num_hidden_layers
     num_dspark_stages = model_config.num_dspark_stages(huggingface_config)
     head_dim = huggingface_config.head_dim
@@ -148,6 +180,7 @@ def kv_leaf_specs(
             head_dim=head_dim,
             kv_dim=1,
             float32=False,
+            record_bytes=WINDOW_RECORD_BYTES if csa_records else None,
         )
     ]
     for ratio in (2, 1):
@@ -165,6 +198,7 @@ def kv_leaf_specs(
                 head_dim=head_dim,
                 kv_dim=1,
                 float32=False,
+                record_bytes=COMPRESSED_RECORD_BYTES if csa_records else None,
             )
         )
         if ratio > 1:
@@ -195,9 +229,63 @@ def kv_leaf_specs(
                 head_dim=index_head_dim,
                 kv_dim=1,
                 float32=False,
+                record_bytes=MXFP4_INDEX_KEY_BYTES,
             )
         )
+    if csa_records:
+        specs = _pad_record_pitches(specs, kv_cache_page_size)
     return specs
+
+
+# The widest padding a record slot may take, as a multiple of the record.
+_MAX_PITCH_FACTOR = 2
+# Record pitches step in 8 bytes, which keeps a layer's page of two or more
+# slots 16-byte aligned.
+_PITCH_ALIGN = 8
+
+
+def _pad_record_pitches(
+    specs: list[V41KVLeafSpec], page_size: int
+) -> list[V41KVLeafSpec]:
+    """Pads the window and compressed record slots to Jenga-friendly pitches.
+
+    One Jenga huge page is the least common multiple of every leaf's page
+    bytes, so a record's odd factors (528 = 16 * 3 * 11, 288 = 32 * 9) would
+    multiply it. The target is the least common multiple of the other
+    leaves' pages and of the padded leaves' layer counts. Each window and
+    compressed record leaf takes the smallest aligned pitch whose page
+    divides it, so the records add no factor to the huge page; a leaf with
+    no such pitch under ``_MAX_PITCH_FACTOR`` records stays packed.
+    """
+    padded_kinds = ("swa", "comp")
+    target = math.lcm(
+        *(
+            spec.page_bytes(page_size, DType.uint8)
+            for spec in specs
+            if spec.kind not in padded_kinds
+        ),
+        *(spec.num_layers for spec in specs if spec.kind in padded_kinds),
+    )
+    out = []
+    for spec in specs:
+        if spec.kind in padded_kinds and spec.record_bytes is not None:
+            per_pitch = spec.num_layers * spec.device_slots_per_page(page_size)
+            first = -(-spec.record_bytes // _PITCH_ALIGN) * _PITCH_ALIGN
+            pitch = next(
+                (
+                    p
+                    for p in range(
+                        first,
+                        _MAX_PITCH_FACTOR * spec.record_bytes,
+                        _PITCH_ALIGN,
+                    )
+                    if target % (per_pitch * p) == 0
+                ),
+                spec.record_bytes,
+            )
+            spec = dataclasses.replace(spec, record_pitch=pitch)
+        out.append(spec)
+    return out
 
 
 def build_kv_params(
@@ -245,11 +333,16 @@ def construct_kv_params(
     devices: list[DeviceRef],
     kv_cache_config: KVCacheConfig,
     cache_dtype: DType,
+    csa_records: bool = CSA_KV_RECORDS,
 ) -> KVCacheParamInterface:
-    """Builds the V4.1 KV cache params from a raw ``text_config``."""
+    """Builds the V4.1 KV cache params from a raw ``text_config``.
+
+    ``csa_records`` is passed to :func:`kv_leaf_specs`.
+    """
     specs = kv_leaf_specs(
         huggingface_config,
         kv_cache_page_size=kv_cache_config.kv_cache_page_size,
+        csa_records=csa_records,
     )
     speculative_method: SpeculativeMethod | None = None
     num_draft_tokens = 0
