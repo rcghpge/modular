@@ -21,6 +21,8 @@
 #include "ClosureEmitter.h"
 #include "ExprNodes.h"
 #include "IREmitter.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/MojoParser/ASTType.h"
 #include "MojoUtils.h"
 #include "OverloadSet.h"
 #include "ParamInf.h"
@@ -2780,6 +2782,29 @@ void TypeCheckedFnSignature::verifyFunctionNameBinding(DefASTDecl &decl,
       // thereof.
       checkSelfArgument(decl, resultType, argList.resultArg,
                         /*isSelfResult*/ true);
+      if (!selfType.isEqualCanon(resultType) &&
+          !argList.resultArg.isErroneous) {
+        TypedAttr prop = SIMDAttr::getScalarBool(shared.getContext(), true);
+        for (auto [l, r] : llvm::zip_equal(resultType.getParamBindings(),
+                                           selfType.getParamBindings()))
+          prop = ParamOperatorAttr::get(POC::And, prop,
+                                        ParamIdenticalAttr::get(l, r));
+
+        std::string constraintMsg;
+        llvm::raw_string_ostream os(constraintMsg);
+        os << "Self type '";
+        selfType.print(os, {&shared});
+        os << "' is not identical to the declared type '";
+        resultType.print(os, {&shared});
+        os << "'";
+        os.flush();
+
+        auto bodyConstraint = ConstraintAttr::get(
+            prop, shared.diags.translateLocation(argList.resultArg.loc),
+            StringAttr::get(shared.getContext(), constraintMsg));
+        paramList.emittedBodyConstraints.push_back(bodyConstraint);
+        resultType = selfType;
+      }
     } else if (funcOp.getIsStatic()) {
       // Static methods don't have a self argument.
     } else if (argTypes.empty()) {
