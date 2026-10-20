@@ -8,7 +8,7 @@ This version is still a work in progress.
 
 ## Documentation
 
-## MAX models
+## Models
 
 - GLM-5.1, GLM-5.2, and GLM-5.3 now default `clear_thinking` to `False`, which
   keeps the `reasoning_content` a client sends back for earlier turns in the
@@ -19,19 +19,13 @@ This version is still a work in progress.
   recommends it for coding and agent workloads. Pass `clear_thinking=True` in
   the chat template options to drop earlier reasoning.
 
-## MAX framework
-
-- Added the ability to install `max-serve` and `max-benchmark` as Conda extras,
-  using `max[extras=[serve]]` and `max[extras=[benchmark]]` respectively.
-  `max[extras=[all]]` installs both plus `mojo`.
-
-### Inference server
+## Inference server
 
 ### Server metrics
 
-### `max` CLI
+## `max` CLI
 
-### Python API
+## Python API
 
 - Added the `ops.CoordinateTransformMode` and `ops.RoundMode` enums.
   `ops.resize_linear`, `ops.resize_nearest`, and their `max.experimental`
@@ -44,17 +38,6 @@ This version is still a work in progress.
   `max.driver.float32_array_to_buffer()` for moving bfloat16 data between
   NumPy and a `Buffer`. `max.pipelines.lib` still re-exports
   `float32_to_bfloat16_as_uint16()` and `float32_array_to_buffer()`.
-
-### C API
-
-## Kernels and GPU programming
-
-## Breaking changes
-
-- The deprecated `LayoutTensor` and `LayoutTensorIter` types have been removed
-  from the `layout` package, along with the `to_layout_tensor()` and
-  `lt_to_tt()` conversions. Use `TileTensor` and `TileTensorIter` instead.
-  `ThreadScope` now lives in `layout.tile_io`.
 
 - Removed the `max.pipelines.lib.bfloat16_utils` module. Import its functions
   from `max.driver` instead.
@@ -76,6 +59,21 @@ This version is still a work in progress.
   `DeviceContext`. On NVIDIA and AMD GPUs the health check still runs when a
   device context is created. Python's `Device.max_single_alloc_size` is
   unchanged.
+
+## C API
+
+## Kernels and GPU programming
+
+- The deprecated `LayoutTensor` and `LayoutTensorIter` types have been removed
+  from the `layout` package, along with the `to_layout_tensor()` and
+  `lt_to_tt()` conversions. Use `TileTensor` and `TileTensorIter` instead.
+  `ThreadScope` now lives in `layout.tile_io`.
+
+## Tools
+
+- Added the ability to install `max-serve` and `max-benchmark` as Conda extras,
+  using `max[extras=[serve]]` and `max[extras=[benchmark]]` respectively.
+  `max[extras=[all]]` installs both plus `mojo`.
 
 ## Fixes
 
