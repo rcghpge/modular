@@ -82,6 +82,15 @@ This version is still a work in progress.
   `lt_to_tt()` conversions. Use `TileTensor` and `TileTensorIter` instead.
   `ThreadScope` now lives in `layout.tile_io`.
 
+- `TileTensor.tile()` on a nested layout now indexes each mode first leaf
+  first, as `crd2idx` and the CuTe `local_tile` operation do: tile `c` of size
+  `t` starts at element `c * t` of the mode, and the tile keeps the leading
+  leaves it spans, with their strides. Before, it treated the first leaf of
+  each mode as the tile grid and the second as the fragment. To extract
+  fragments, put the fragment first in each mode, as `blocked_product()` does:
+  `((3, 2), (4, 2))` rather than `((2, 3), (2, 4))`. A tile size that doesn't
+  split a nested mode on leaf boundaries is now a compile-time error.
+
 ## Tools
 
 - Added the ability to install `max-serve` and `max-benchmark` as Conda extras,
