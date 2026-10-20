@@ -45,6 +45,26 @@ comptime PAD_SLOT_ID: Int32 = -1
 comptime _BLOCK_THREADS = 128
 
 
+@inline(.always)
+def _layer_pointer[
+    dtype: DType, N: Int
+](
+    pointers: StaticTuple[ImmPointer[Scalar[dtype], ImmutAnyOrigin], N],
+    layer: Int,
+) -> ImmPointer[Scalar[dtype], ImmutAnyOrigin]:
+    """Returns `pointers[layer]` without indexing the tuple at run time.
+
+    A run-time index into a kernel-argument tuple copies the whole tuple to
+    local memory in every thread, which kept L1 saturated: the fold ran at a
+    third of the speed of its DRAM traffic.
+    """
+    var pointer = pointers[0]
+    comptime for i in range(1, N):
+        if layer == i:
+            pointer = pointers[i]
+    return pointer
+
+
 @__llvm_metadata(
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(_BLOCK_THREADS))
 )
@@ -178,8 +198,8 @@ def mamba2_replay_fold_gpu[
 
     var tx = thread_idx.x
     var ty = thread_idx.y
-    var proj = projected[layer]
-    var conv = convolved[layer]
+    var proj = _layer_pointer(projected, layer)
+    var conv = _layer_pointer(convolved, layer)
     var proj_stride = Int(projected_stride)
     var conv_stride = Int(convolved_stride)
 
@@ -225,8 +245,8 @@ def mamba2_replay_fold_gpu[
     var heads_per_group = UInt32(nheads) // UInt32(ngroups)
     var group_id = Int(UInt32(h) // heads_per_group)
     var head = _HeadScalars(
-        A[layer][unsafe_offset=h].cast[.float32]() * LOG2E,
-        dt_bias[layer][unsafe_offset=h].cast[.float32](),
+        _layer_pointer(A, layer)[unsafe_offset=h].cast[.float32]() * LOG2E,
+        _layer_pointer(dt_bias, layer)[unsafe_offset=h].cast[.float32](),
         0,
     )
     var slot = Int(ssm_rows.load[width=1]((layer, b)))
