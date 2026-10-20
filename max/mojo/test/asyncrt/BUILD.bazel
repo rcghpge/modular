@@ -10,6 +10,7 @@ _CPU_TESTS = [
     "test_smoke.mojo",
     "test_copies.mojo",
     "test_host_mapped.mojo",
+    "test_host_sub_buffer.mojo",
     "test_timing.mojo",
     "test_memset.mojo",
     "test_device_pointer.mojo",
