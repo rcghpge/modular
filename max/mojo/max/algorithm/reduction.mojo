@@ -321,63 +321,6 @@ def _reduce_generator[
     )
 
 
-# TODO(MOCO-4885): Delete once `linalg/gemv.mojo` passes its closures as
-# values; it is the last caller.
-@inline(.always)
-def _reduce_generator[
-    input_0_fn: def[dtype: DType, width: Int](Coord) capturing[_] -> SIMD[
-        dtype, width
-    ],
-    output_0_fn: def[dtype: DType, width: SIMDLength](
-        Coord, SIMD[dtype, width]
-    ) capturing[_] -> None,
-    reduce_function: def[ty: DType, width: SIMDLength](
-        SIMD[ty, width], SIMD[ty, width]
-    ) capturing[_] -> SIMD[ty, width],
-    /,
-    target: StaticString = "cpu",
-    *,
-    reduce_dim: Int,
-](shape: Coord, init: Scalar, context: Optional[DeviceContext] = None,) raises:
-    """Reduce the given tensor using the given reduction function.
-
-    Constraints:
-        Target must be "cpu".
-
-    Parameters:
-        input_0_fn: The lambda to use to access the incoming tensor.
-        output_0_fn: The lambda to use to storing to the output tensor.
-        reduce_function: The lambda implementing the reduction.
-        target: The target to run on.
-        reduce_dim: The dimension we are reducing.
-
-    Args:
-        shape: The shape of the tensor we are reducing.
-        init: The value to start the reduction from.
-        context: The pointer to DeviceContext.
-    """
-
-    @inline(.always)
-    def input_value[dtype: DType, width: Int](idx: Coord) -> SIMD[dtype, width]:
-        return input_0_fn[dtype, width](idx)
-
-    @inline(.always)
-    def output_value[
-        dtype: DType, width: SIMDLength
-    ](idx: Coord, val: SIMD[dtype, width]):
-        output_0_fn[dtype, width](idx, val)
-
-    @inline(.always)
-    def reduce_value[
-        ty: DType, width: SIMDLength
-    ](lhs: SIMD[ty, width], rhs: SIMD[ty, width]) -> SIMD[ty, width]:
-        return reduce_function[ty, width](lhs, rhs)
-
-    return _reduce_generator[target=target, reduce_dim=reduce_dim](
-        shape, init, input_value, output_value, reduce_value, context
-    )
-
-
 # ===-----------------------------------------------------------------------===#
 # Dispatch overloads for max, min, sum, product, mean
 # ===-----------------------------------------------------------------------===#

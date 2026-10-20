@@ -3100,18 +3100,20 @@ def _gemv_cpu[
     var K = Int(a_buf.dim[1]())
 
     @inline(.always)
-    @__parameter
-    def input_fn[dtype: DType, width: Int](idx: Coord) -> SIMD[dtype, width]:
+    def input_fn[
+        dtype: DType, width: Int
+    ](idx: Coord) {var a_buf, var b_buf} -> SIMD[dtype, width]:
         return (
             a_buf.load[width=width](idx).cast[dtype]()
             * b_buf.load[width=width]((idx[1],)).cast[dtype]()
         )
 
     @inline(.always)
-    @__parameter
     def output_fn[
         out_type: DType, width: SIMDLength
-    ](idx: Coord, value: SIMD[out_type, width]):
+    ](idx: Coord, value: SIMD[out_type, width]) {
+        var c_buf, var epilogue_fn, var compute_fn
+    }:
         comptime if has_epilogue_fn:
             var m = Int(idx[0])
 
@@ -3134,14 +3136,12 @@ def _gemv_cpu[
     ](v1: SIMD[ty, width], v2: SIMD[ty, width]) -> SIMD[ty, width]:
         return v1 + v2
 
-    _reduce_generator[
+    _reduce_generator[reduce_dim=1](
+        Coord((M, K)),
+        Scalar[c_type](0),
         input_fn,
         output_fn,
         reduce_impl,
-        reduce_dim=1,
-    ](
-        Coord((M, K)),
-        init=Scalar[c_type](0),
     )
 
 

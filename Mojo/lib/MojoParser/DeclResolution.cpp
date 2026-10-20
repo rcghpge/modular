@@ -1644,7 +1644,7 @@ void FnSigDecorators::finalize() {
 /// Given the lexical context of a function, return true if the default bit
 /// for the function is capturing.
 static bool
-isCapturingByDefault(SharedState &shared, FnOp funcOp, TraitType canonicalTrait,
+isCapturingByDefault(FnOp funcOp, TraitType canonicalTrait,
                      std::optional<ArrayRef<ParamDeclAttr>> parentDecls,
                      ArrayRef<ParamDeclAttr> paramDecls) {
   // Any function that contains a capturing closure as a parameter is itself
@@ -1652,17 +1652,6 @@ isCapturingByDefault(SharedState &shared, FnOp funcOp, TraitType canonicalTrait,
   mlir::AttrTypeWalker walker;
   walker.addWalk([](FuncType sig) {
     if (sig.isCapturing())
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  // Temporary solution to supporting capturing parametric closures inside
-  // nested closures: propagate the capturing effect through the closure type.
-  walker.addWalk([&](SymbolRefAttr symbol) {
-    auto traitDecl = shared.declResolver->getDeclForTypeSymbolIfExists(symbol);
-    if (!traitDecl)
-      return WalkResult::advance();
-    if (isa<TraitASTDecl>(traitDecl) &&
-        shared.isUniversalParametricClosureTrait(traitDecl))
       return WalkResult::interrupt();
     return WalkResult::advance();
   });
@@ -2413,7 +2402,7 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   } else if (auto *traitDecl = dyn_cast<TraitASTDecl>(getParentDecl())) {
     traitType = traitDecl->getOp().getCanonicalTrait();
   }
-  if (isCapturingByDefault(shared, funcOp, traitType, parentParams,
+  if (isCapturingByDefault(funcOp, traitType, parentParams,
                            paramList.paramDeclAttrs))
     fnSignature.effects.setCapturing();
 

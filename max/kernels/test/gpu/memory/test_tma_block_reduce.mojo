@@ -91,10 +91,14 @@ def global_reduction_kernel[
     accum_type: DType,
     simd_width: Int,
     max_warps_per_block: Int,
-    input_fn: def[width: Int, _rank: Int](
-        idx: IndexList[_rank]
-    ) capturing -> SIMD[dtype, width],
-](d_out: MutPointer[Scalar[accum_type], MutAnyOrigin], num_cols_dev: Int32,):
+    InputFnType: ImplicitlyCopyable
+    & RegisterPassable
+    & def[width: Int, _rank: Int](idx: IndexList[_rank]) -> SIMD[dtype, width],
+](
+    d_out: MutPointer[Scalar[accum_type], MutAnyOrigin],
+    num_cols_dev: Int32,
+    input_fn: InputFnType,
+):
     # `Int` is not device-passable; widen the fixed-width arg.
     var num_cols = Int(num_cols_dev)
     var tid = thread_idx.x
@@ -200,7 +204,7 @@ def test_tma_block_reduce[
 
     # Define the kernel launch function for benchmarking
     @inline(.always)
-    def kernel_launch(ctx: DeviceContext) raises {imm} -> None:
+    def kernel_launch(ctx: DeviceContext) raises {mut d_data, imm} -> None:
         comptime if use_tma:
             var tma_desc = create_tma_descriptor[dtype, 2](
                 d_data,
@@ -227,12 +231,10 @@ def test_tma_block_reduce[
             var data_buf = TileTensor(d_data, row_major(rows, cols))
 
             # Change the input function to match RMS norm pattern
-            @__copy_capture(data_buf)
             @inline(.always)
-            @__parameter
             def input_fn_2d[
                 width: Int, _rank: Int
-            ](idx: IndexList[_rank]) -> SIMD[dtype, width]:
+            ](idx: IndexList[_rank]) {var data_buf} -> SIMD[dtype, width]:
                 var coord = Coord(idx)
                 comptime assert data_buf.flat_rank >= coord.flat_rank
                 return data_buf.load[width=width](coord)
@@ -242,12 +244,13 @@ def test_tma_block_reduce[
                 accum_type,
                 simd_width,
                 max_warps_per_block,
-                input_fn_2d,
+                type_of(input_fn_2d),
             ]
 
             ctx.enqueue_function[kernel](
                 d_out,
                 Int32(cols),  # num_cols
+                host_args=(input_fn_2d,),
                 grid_dim=grid_dim,
                 block_dim=block_dim,
             )

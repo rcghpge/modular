@@ -5606,18 +5606,15 @@ def kv_cache_2m_iadd_dispatch[
     var k_cache = cache.get_key_cache(layer_idx_cast)
     var v_cache = cache.get_value_cache(layer_idx_cast)
     var m = Int(lora_end_idx[0])
-    var M = Int(batch_seq_len[0])
 
     # [2m, N]
     var elementwise_shape = IndexList[2](2 * m, Int(kv.dim[1]()))
 
-    # TODO: This elementwise body captures KV cache views (`CacheType`), which
-    # fail codegen when stored into a unified closure ('pop.store' pointer
-    # element-type verification). Keep using the deprecated parameter-closure
-    # overload until cache captures in unified closures are supported.
-    @__parameter
-    @__copy_capture(kv, k_cache, v_cache, input_row_offsets, m, M)
-    def iadd[width: Int, alignment: Int = 1](idx: Coord):
+    def iadd[
+        width: Int, alignment: Int = 1
+    ](idx: Coord) {
+        var kv, var k_cache, var v_cache, var input_row_offsets, var m
+    }:
         comptime assert idx.rank == 2, "Rank must be 2"
 
         var cache: collection_t.CacheType
@@ -5661,13 +5658,13 @@ def kv_cache_2m_iadd_dispatch[
             comptime compile_target = ctx.target
             comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
-            elementwise[iadd, simd_width, target=target](
-                Coord(elementwise_shape), ctx
+            elementwise[simd_width, target=target](
+                iadd, Coord(elementwise_shape), ctx
             )
     else:
         comptime compile_target = CompilationTarget.current()
         comptime simd_width = simd_width_of[dtype, target=compile_target]()
 
-        elementwise[iadd, simd_width, target=target](
-            Coord(elementwise_shape), ctx
+        elementwise[simd_width, target=target](
+            iadd, Coord(elementwise_shape), ctx
         )

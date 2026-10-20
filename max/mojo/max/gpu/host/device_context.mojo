@@ -215,7 +215,7 @@ comptime _CString[origin: ImmOrigin = ImmUntrackedOrigin] = Optional[
     CStringSpan[origin]
 ]
 
-comptime _DumpPath = Variant[Bool, Path, StaticString, def() capturing -> Path]
+comptime _DumpPath = Variant[Bool, Path, StaticString, def() thin -> Path]
 
 # Define helper methods to call AsyncRT bindings.
 
@@ -3384,7 +3384,7 @@ struct DeviceFunction[
             return val.unsafe_get[StaticString]() != "", val
 
         else:
-            return val.isa[def() capturing -> Path](), val
+            return val.isa[def() thin -> Path](), val
 
     @staticmethod
     def _cleanup_asm(s: StringSlice) -> String:
@@ -3461,9 +3461,9 @@ struct DeviceFunction[
         comptime if do_dump_asm:
             var asm = self._cleanup_asm(get_asm())
 
-            comptime if dump_asm_val.isa[def() capturing -> Path]():
+            comptime if dump_asm_val.isa[def() thin -> Path]():
                 comptime dump_asm_fn = dump_asm_val.unsafe_get[
-                    def() capturing -> Path
+                    def() thin -> Path
                 ]()
                 dump_asm_fn().write_text(asm)
             elif dump_asm_val.isa[Path]():
@@ -3485,9 +3485,9 @@ struct DeviceFunction[
             var ptx = Self._cleanup_asm(get_asm())
             var sass = _to_sass[Self.target](ptx)
 
-            comptime if dump_sass_val.isa[def() capturing -> Path]():
+            comptime if dump_sass_val.isa[def() thin -> Path]():
                 comptime _dump_sass_fn = dump_sass_val.unsafe_get[
-                    def() capturing -> Path
+                    def() thin -> Path
                 ]()
                 _dump_sass_fn().write_text(sass)
             elif dump_sass_val.isa[Path]():
@@ -3514,9 +3514,9 @@ struct DeviceFunction[
                 link_options=Self.link_options,
             ]().asm
 
-            comptime if dump_llvm_val.isa[def() capturing -> Path]():
+            comptime if dump_llvm_val.isa[def() thin -> Path]():
                 comptime dump_llvm_fn = dump_llvm_val.unsafe_get[
-                    def() capturing -> Path
+                    def() thin -> Path
                 ]()
                 dump_llvm_fn().write_text(llvm)
             elif dump_llvm_val.isa[Path]():
@@ -5130,7 +5130,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     def compile_function[
         declared_arg_types: TypeList[Trait=AnyType, ...],
         //,
-        func: def(*args: *declared_arg_types) capturing -> None,
+        func: def(*args: *declared_arg_types) thin -> None,
         *,
         compile_options: StaticString = (Self.target.default_compile_options()),
         link_options: StaticString = "",
