@@ -57,7 +57,7 @@ def _check[
     largest: Bool,
     fill_fn: def[dtype: DType](
         MutPointer[Scalar[dtype], MutUntrackedOrigin], Int, Int
-    ) capturing[_] -> None,
+    ) thin -> None,
 ](ctx: DeviceContext, batch: Int, num_elements: Int, label: String) raises:
     var in_host = ctx.enqueue_create_host_buffer[dtype](batch * num_elements)
     var out_host = ctx.enqueue_create_host_buffer[out_idx_type](batch)

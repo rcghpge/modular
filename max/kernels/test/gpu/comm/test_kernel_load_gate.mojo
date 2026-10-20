@@ -332,12 +332,8 @@ def _run_round[call: Int](ctx0: DeviceContext, ctx1: DeviceContext) raises:
     # abandon it, and Coroutine is not implicitly destroyable.
     var loader_worker = task_id_for_device(Int(ctx1.id()))
 
-    @__copy_capture(a_tt)
-    @__copy_capture(b_tt)
-    @__copy_capture(c_tt)
     @inline(.always)
-    @__parameter
-    __async def loader() -> None:
+    __async def loader() {var} -> None:
         sleep(LOADER_DELAY_SEC)
         comptime if call == _HANDLE_BRING_UP:
             _bring_up_vendor_handle_on_busy_device(ctx0, clock)

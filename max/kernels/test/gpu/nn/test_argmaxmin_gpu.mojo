@@ -26,7 +26,7 @@ def test_argmaxmin_gpu[
     output_type: DType,
     fill_fn: def[rank: Int, dtype: DType](
         TileTensor[mut=True, dtype, ...]
-    ) capturing[_] -> None,
+    ) thin -> None,
     largest: Bool = True,
     rank: Int = 2,
 ](
@@ -139,7 +139,7 @@ def _test_argmaxmin_gpu_helper_2[
     idx_type: DType,
     fill_fn: def[rank: Int, dtype: DType](
         TileTensor[mut=True, dtype, ...]
-    ) capturing[_] -> None,
+    ) thin -> None,
     largest: Bool,
 ](ctx: DeviceContext) raises:
     test_argmaxmin_gpu[
@@ -157,7 +157,7 @@ def test_argmaxmin_gpu_helper[
     idx_type: DType,
     fill_fn: def[rank: Int, dtype: DType](
         TileTensor[mut=True, dtype, ...]
-    ) capturing[_] -> None,
+    ) thin -> None,
 ](ctx: DeviceContext) raises:
     # argmax
     _test_argmaxmin_gpu_helper_2[idx_type, fill_fn, largest=True](ctx)

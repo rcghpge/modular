@@ -274,8 +274,7 @@ def _run_round[call: Int](ctx0: DeviceContext, ctx1: DeviceContext) raises:
     var caller_worker = task_id_for_device(Int(ctx1.id()))
 
     @inline(.always)
-    @__parameter
-    __async def lane() -> None:
+    __async def lane() {var} -> None:
         sleep(CALLER_DELAY_SEC)
         comptime if call != _CONTROL:
             _make_call[call](ctx0, src, clock)

@@ -3567,12 +3567,11 @@ struct Grouped1D1DMatmulKernel[
             var lane_row_is_even = (lane_row & UInt32(1)) == UInt32(0)
 
             @inline(.always)
-            @__parameter
             def _ip_stage(
                 var upper_ip: PartialType,
                 var lower_ip: PartialType,
                 loop_stage: Int,
-            ):
+            ) {var}:
                 # Element `2 * r + j` scales the fragment pair `(4 * r + j,
                 # 4 * r + 2 + j)`.
                 var token_scales = tile_scales.pairs_at[ip_repeats](
@@ -3933,7 +3932,6 @@ struct Grouped1D1DMatmulKernel[
         # quarter-warp of the cooperative 128-bit reads (2 tokens x 4 hidden
         # groups) then both touch 8 distinct bank groups.
         @inline(.always)
-        @__parameter
         def SWIZZLE_BF(idx: UInt32) -> UInt32:
             var rot = ((idx >> 7) & 7) ^ (((idx >> 6) & 1) << 1)
             return idx ^ (rot << 3)
@@ -3953,13 +3951,12 @@ struct Grouped1D1DMatmulKernel[
             smem_bf16_ptr.unsafe_store(Int(SWIZZLE_BF(smem_idx_b)), pair_bf[1])
 
         @inline(.always)
-        @__parameter
         def _scatter_stage(
             upper_partial: PartialType,
             lower_partial: PartialType,
             base: UInt32,
             token_scales: SIMD[DType.float32, 2 * repeats],
-        ):
+        ) {var}:
             # Scatter (apply expert_scale + bf16 round-trip).
             # transpose_c maps (kernel-M, kernel-N) -> (output-N, output-M),
             # so out_m=k_n (token) and out_n=k_m+warp_offset (H position).

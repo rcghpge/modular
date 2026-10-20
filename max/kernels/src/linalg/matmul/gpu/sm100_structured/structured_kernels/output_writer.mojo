@@ -2376,8 +2376,7 @@ struct TileWriter[
         comptime assert expected_size == Self.rep_frag_size
 
         @inline(.always)
-        @__parameter
-        def _wg_sync():
+        def _wg_sync() {var}:
             if wg == 0:
                 WarpGroupBarrier[4 * WARP_SIZE, WG0_EPILOGUE_BARRIER_ID].sync()
             else:
