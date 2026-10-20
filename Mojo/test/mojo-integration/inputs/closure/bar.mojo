@@ -18,7 +18,7 @@ def takeIt[F: def[width: Int](idx: Int) -> Int](impl: F):
 
 
 def emitLoad(x: Int):
-    var ptr = alloc[Int]({count = 1}).unsafe_leak()
+    var ptr = alloc[Int]({length = 1}).unsafe_leak()
     ptr.unsafe_store(x)
     var count = Int(0)
 

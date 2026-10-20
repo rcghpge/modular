@@ -787,7 +787,7 @@ struct _FlashAttention[
             if max_seq_len != 1:
                 packed_alloc = alloc(
                     AllocLayout[Scalar[Self.dtype], alignment=packed_alignment](
-                        count=packed_size
+                        length=packed_size
                     )
                 ).into_managed()
                 packed_ptr = packed_alloc.unsafe_value().unsafe_ptr()

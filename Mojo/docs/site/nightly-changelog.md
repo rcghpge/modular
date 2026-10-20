@@ -34,6 +34,18 @@ This version is still a work in progress.
   var t = T(init_with=lambda [i: Int]() -> T.Ts[i]: Pinned(i * 10))
   ```
 
+- `Layout` now names its element count `length`, matching `Span` and `List`.
+  Construct one with `Layout[T](length=n)` and read the count back with
+  `len(layout)`: `Layout` and `ManagedAllocation` now conform to `Sized`. The
+  `Layout(count=)` initializer and the `Layout.count()` method are deprecated.
+
+  ```mojo
+  var allocation = alloc(Layout[Int32](length=4))
+  for i in range(len(allocation)):
+      allocation.unsafe_ptr().unsafe_offset(i).unsafe_write(Int32(i))
+  dealloc(allocation^)
+  ```
+
 ## GPU programming
 
 ## Tooling changes

@@ -297,7 +297,7 @@ def _quantize_a_Q8_K[
 
     var packed_base_alloc = alloc(
         AllocLayout[_block_Q8_K_packed[group_size]](
-            count=M * (K // quantized_k)
+            length=M * (K // quantized_k)
         )
     )
     var packed_ptr: MutPointer[

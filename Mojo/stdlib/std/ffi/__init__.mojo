@@ -1069,7 +1069,7 @@ struct _Global[
                     unsafe_owned_ptr=opaque_ptr.unsafe_bitcast[
                         Self.StorageType
                     ]()
-                ).unsafe_with_layout({count = 1})
+                ).unsafe_with_layout({length = 1})
             )
 
     @staticmethod

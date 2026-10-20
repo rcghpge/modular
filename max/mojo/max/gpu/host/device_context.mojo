@@ -3557,11 +3557,11 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = alloc(
                 Layout[OpaquePointer[MutAnyOrigin]](
-                    count=num_captures + num_args
+                    length=num_captures + num_args
                 )
             ).unsafe_leak()
             dense_args_sizes = alloc(
-                Layout[UInt64](count=num_captures + num_args)
+                Layout[UInt64](length=num_captures + num_args)
             ).unsafe_leak()
             for i in range(num_captures + num_args):
                 dense_args_sizes[unsafe_offset=i] = 0
@@ -3666,12 +3666,12 @@ struct DeviceFunction[
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({count = num_captures + num_args})
+                ).unsafe_with_layout({length = num_captures + num_args})
             )
 
     @inline(.always)
@@ -3838,7 +3838,7 @@ struct DeviceFunction[
         if num_captures > num_captures_static:
             dense_args_addrs = alloc(
                 Layout[OpaquePointer[MutAnyOrigin]](
-                    count=num_captures + num_passed_args
+                    length=num_captures + num_passed_args
                 )
             ).unsafe_leak()
         else:
@@ -3967,7 +3967,7 @@ struct DeviceFunction[
             dealloc(
                 ThinAllocation(
                     unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({count = num_captures + num_passed_args})
+                ).unsafe_with_layout({length = num_captures + num_passed_args})
             )
 
     @inline(.always)

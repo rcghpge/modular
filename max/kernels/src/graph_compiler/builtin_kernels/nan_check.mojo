@@ -103,8 +103,8 @@ def nan_check_count[
 
     comptime if is_cpu[target]():
         # CPU path: vectorized scan using elementwise with atomic accumulators.
-        var nan_acc = alloc(AllocLayout[Int32](count=1)).into_managed()
-        var inf_acc = alloc(AllocLayout[Int32](count=1)).into_managed()
+        var nan_acc = alloc(AllocLayout[Int32](length=1)).into_managed()
+        var inf_acc = alloc(AllocLayout[Int32](length=1)).into_managed()
 
         var nan_acc_ptr = nan_acc.unsafe_ptr()
         var inf_acc_ptr = inf_acc.unsafe_ptr()

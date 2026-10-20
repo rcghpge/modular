@@ -1647,7 +1647,7 @@ def conv_transposed_cpu[
                 packed_filter_shape[i] = Int(filter.dim[i]())
 
         var packed_filter_alloc_layout = AllocLayout[Scalar[filter.dtype]](
-            count=packed_filter_shape.flattened_length()
+            length=packed_filter_shape.flattened_length()
         )
         comptime if not filter_packed:
             packed_filter_ptr = alloc(packed_filter_alloc_layout).unsafe_leak()

@@ -429,7 +429,7 @@ def _batched_matmul_cpu_impl[
             comptime if use_i8mm:
                 var a_packed_alloc = alloc(
                     AllocLayout[Scalar[a_type], alignment=alignment](
-                        count=mh * kh
+                        length=mh * kh
                     )
                 )
                 var a_packed = TileTensor(
