@@ -34,7 +34,11 @@ from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.support.human_readable_formatter import to_human_readable_bytes
 
 from . import kv_leaves
-from .layers.indexer import candidate_blocks_active, candidate_num_blocks
+from .layers.indexer import (
+    candidate_blocks_active,
+    candidate_num_blocks,
+    candidate_window_rows,
+)
 from .model_config import (
     DeepseekV41Config,
     data_parallel_ep_config,
@@ -74,10 +78,13 @@ _ARENA_FIXED_BYTES = 5 << 28  # 1.25 GiB
 # The indexer kernel scores query rows in windows that fit this transient
 # budget, whatever the batch or context length.
 _INDEXER_SCORES_BUDGET_BYTES = 512 << 20
-# The candidate keep step's ``[T, blocks]`` tensors: two float32 (the block
-# maxima and their forced copy) and up to four one-byte masks; plus its
-# top-k's float32 values, int64 ids and int32 tie ids, at most one per block.
-_KEEP_BYTES_PER_ENTRY = 2 * 4 + 4 + 4 + 8 + 4
+# The candidate ops' window scratch holds one float32 block maximum (source)
+# or one flag byte (consumer) per block of a window row; they never overlap.
+_WINDOW_BYTES_PER_BLOCK = 4
+# The source's window scratch also holds one int32 live block count per row.
+_WINDOW_BYTES_PER_ROW = 4
+# Kept block ids pass from the candidate source to its consumers as int32.
+_KEPT_ID_BYTES = 4
 # The device MemoryManager allocates whole 256 MiB pages.
 _MM_PAGE_BYTES = 256 << 20
 
@@ -87,22 +94,34 @@ def _mm_pages(nbytes: int) -> int:
     return ceil(nbytes / _MM_PAGE_BYTES) * _MM_PAGE_BYTES if nbytes > 0 else 0
 
 
-def indexer_activation_bytes(*, live_rows: int, candidate_blocks: int) -> int:
+def indexer_activation_bytes(
+    *, live_rows: int, candidate_blocks: int, kept_blocks: int, block_size: int
+) -> int:
     """Returns per-device bytes of the indexer's transient memory.
 
-    The kernel's score window plus the candidate keep step's ``[T, blocks]``
-    tensors, each in whole MemoryManager pages.
+    The kernel's score window, the candidate ops' window scratch (at most a
+    quarter of the score window) and the ``[T, kept_blocks]`` kept block ids;
+    the scratch and score window each take whole MemoryManager pages.
 
     Args:
         live_rows: Query rows ``T`` in one forward.
         candidate_blocks: Candidate blocks per row, or 0 if no layer keeps
             candidate blocks.
+        kept_blocks: Blocks each row keeps, or 0 if no layer keeps candidate
+            blocks.
+        block_size: Keys per candidate block.
     """
     if live_rows <= 0:
         return 0
-    return _mm_pages(_INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(
-        live_rows * max(0, candidate_blocks) * _KEEP_BYTES_PER_ENTRY
+    blocks = max(0, candidate_blocks)
+    window = (
+        candidate_window_rows(live_rows, blocks, block_size)
+        * (blocks * _WINDOW_BYTES_PER_BLOCK + _WINDOW_BYTES_PER_ROW)
+        if blocks
+        else 0
     )
+    kept = live_rows * max(0, kept_blocks) * _KEPT_ID_BYTES
+    return _mm_pages(_INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(window) + kept
 
 
 def graph_arena_bytes(*, live_rows: int) -> int:
@@ -115,18 +134,23 @@ def graph_arena_bytes(*, live_rows: int) -> int:
     return _mm_pages(_ARENA_FIXED_BYTES + live_rows * _ARENA_ROW_BYTES)
 
 
-def forward_activation_bytes(*, live_rows: int, candidate_blocks: int) -> int:
+def forward_activation_bytes(
+    *, live_rows: int, candidate_blocks: int, kept_blocks: int, block_size: int
+) -> int:
     """Returns one forward's per-device transient peak bytes.
 
     The graph arena plus the indexer's transient memory.
     """
     return graph_arena_bytes(live_rows=live_rows) + indexer_activation_bytes(
-        live_rows=live_rows, candidate_blocks=candidate_blocks
+        live_rows=live_rows,
+        candidate_blocks=candidate_blocks,
+        kept_blocks=kept_blocks,
+        block_size=block_size,
     )
 
 
 def candidate_blocks_per_row(text_config: Any, max_length: int) -> int:
-    """Returns the candidate blocks per row the keep step builds, or 0.
+    """Returns the candidate blocks a row scores, or 0 if none is dropped.
 
     Sized for the smallest compress ratio, which gives the most blocks.
     """
@@ -469,8 +493,8 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
 
         runtime = pipeline_config.runtime
         max_length = pipeline_config.model.max_length
-        # Decode also runs the keep step over every block, so this is not
-        # zeroed for decode-only roles.
+        # Decode also keeps candidate blocks, so this is not zeroed for
+        # decode-only roles.
         live_rows = forward_row_bound(
             runtime.max_num_input_tokens,
             runtime.max_batch_input_tokens,
@@ -481,7 +505,14 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         blocks = candidate_blocks_per_row(text_config, max_length)
         arena = graph_arena_bytes(live_rows=live_rows)
         indexer = indexer_activation_bytes(
-            live_rows=live_rows, candidate_blocks=blocks
+            live_rows=live_rows,
+            candidate_blocks=blocks,
+            kept_blocks=(
+                getattr(text_config, "candidate_topk_blocks", 0) or 0
+                if blocks
+                else 0
+            ),
+            block_size=getattr(text_config, "candidate_block_size", 0) or 0,
         )
         ep_config = data_parallel_ep_config(pipeline_config, text_config)
         if ep_config is not None:

@@ -22,6 +22,9 @@ from unittest.mock import MagicMock, NonCallableMock
 import pytest
 from max.driver import Device
 from max.pipelines.architectures import hf_config_shims  # noqa: F401
+from max.pipelines.architectures.deepseekV41.layers.indexer import (
+    candidate_window_rows,
+)
 from max.pipelines.architectures.deepseekV41.memory_planner import (
     CheckpointTensor,
     DeepseekV41MemoryPlanner,
@@ -221,13 +224,22 @@ def test_reserve_grows_only_by_the_candidate_keep_step(
     max_length: int,
 ) -> None:
     """Past the arena, the reserve is the indexer's score window plus the
-    ``[T, blocks]`` keep step, never a ``[T, max_length]`` score."""
+    ``[T, kept]`` block ids and a fixed window scratch, never a
+    ``[T, blocks]`` or ``[T, max_length]`` tensor."""
     rows = 8192
     _, _, activation = _tp2_plan_inputs(
         chunk=rows, max_length=max_length, layout=_DEFAULT_LAYOUT
     )
-    keep = rows * -(-max_length // 8) * 28
+    kept_ids = rows * 2048 * 4
+    blocks = -(-max_length // 8)
+    window = candidate_window_rows(rows, blocks, 8) * (blocks * 4 + 4)
+    keep = kept_ids + -(-window // (256 << 20)) * (256 << 20)
     assert activation / 2 - keep <= (1.25 + 16 + 0.5 + 0.25) * GIB
+    # Only the window scratch grows with max_length, by at most one page.
+    _, _, short = _tp2_plan_inputs(
+        chunk=rows, max_length=40000, layout=_DEFAULT_LAYOUT
+    )
+    assert activation / 2 - short / 2 <= 256 << 20
 
 
 def test_tp2_8192_row_chunk_at_40k_fits_the_full_budget() -> None:

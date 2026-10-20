@@ -70,14 +70,12 @@ from .compressor import (
 from .indexer import (
     DeepseekV41Indexer,
     candidate_blocks_active,
-    candidate_keep_from_block_max,
-    candidate_num_blocks,
     index_key_slots,
     key_positions,
     quantize_queries,
     rope_cos_sin_table,
     select_index_keys,
-    select_index_keys_block_max,
+    select_index_keys_block_topk,
     select_index_keys_masked,
     store_index_keys,
 )
@@ -462,11 +460,11 @@ class CandidateBlocks:
     before their own per-token top-k.
     """
 
-    keep: TensorValue | None
-    """``[T, nblocks]`` bool keep mask; ``None`` if no block can be dropped.
+    kept: TensorValue | None
+    """``[T, candidate_topk_blocks]`` int32 kept block ids, ``-1``-padded.
 
     ``None`` when block selection is off or the score width holds at most
-    ``candidate_topk_blocks`` blocks.
+    ``candidate_topk_blocks`` blocks, so no block can be dropped.
     """
     compress_ratio: int
     """The source layer's compression ratio, which consumers must share.
@@ -994,37 +992,27 @@ class CSA2Attention(Module):
         leaf, q, offsets = state.index_leaf, state.index_q, rows.offsets
         pool: CandidateBlocks | None = None
         if layer.candidate_role == "source" and active:
-            ids, block_max = select_index_keys_block_max(
+            ids, kept = select_index_keys_block_topk(
                 leaf,
                 q,
                 offsets,
+                rows.positions,
                 state.layer_comp,
                 top_k=top_k,
                 ratio=ratio,
                 block_size=block_size,
-                num_blocks=candidate_num_blocks(
-                    self.max_seq_len, ratio, block_size
-                ),
+                topk_blocks=self.candidate_topk_blocks,
             )
-            pool = CandidateBlocks(
-                keep=candidate_keep_from_block_max(
-                    block_max,
-                    rows.positions,
-                    ratio=ratio,
-                    block_size=block_size,
-                    topk_blocks=self.candidate_topk_blocks,
-                ),
-                compress_ratio=ratio,
-            )
+            pool = CandidateBlocks(kept=kept, compress_ratio=ratio)
             return key_positions(ids, ratio), pool
         if layer.candidate_role == "source":
-            pool = CandidateBlocks(keep=None, compress_ratio=ratio)
-        keep = (
-            self._candidate_keep()
+            pool = CandidateBlocks(kept=None, compress_ratio=ratio)
+        kept_blocks = (
+            self._candidate_kept()
             if layer.candidate_role == "consumer"
             else None
         )
-        if keep is None:
+        if kept_blocks is None:
             ids = select_index_keys(
                 leaf, q, offsets, state.layer_comp, top_k=top_k, ratio=ratio
             )
@@ -1033,7 +1021,7 @@ class CSA2Attention(Module):
                 leaf,
                 q,
                 offsets,
-                keep,
+                kept_blocks,
                 state.layer_comp,
                 top_k=top_k,
                 ratio=ratio,
@@ -1041,8 +1029,8 @@ class CSA2Attention(Module):
             )
         return key_positions(ids, ratio), pool
 
-    def _candidate_keep(self) -> TensorValue | None:
-        """Returns the candidate source's keep mask, if it can drop a block."""
+    def _candidate_kept(self) -> TensorValue | None:
+        """Returns the candidate source's kept block ids, if it can drop one."""
         current = self.selection_box.current
         pool = None if current is None else current.candidate_pool
         # No pool only when the traced layers start past the source layer;
@@ -1050,7 +1038,7 @@ class CSA2Attention(Module):
         if pool is None:
             return None
         assert isinstance(pool, CandidateBlocks)
-        if pool.keep is None:
+        if pool.kept is None:
             return None
         if pool.compress_ratio != self.layer_info.compress_ratio:
             raise ValueError(
@@ -1058,7 +1046,7 @@ class CSA2Attention(Module):
                 f"(ratio {self.layer_info.compress_ratio}) cannot read blocks "
                 f"of a ratio-{pool.compress_ratio} source"
             )
-        return pool.keep
+        return pool.kept
 
     def end(self, state: PendingCSA2Attention, rows: RaggedRows) -> TensorValue:
         """Runs :meth:`__call__` from the indexer's top-k on.

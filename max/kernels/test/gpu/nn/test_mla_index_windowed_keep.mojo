@@ -12,35 +12,47 @@
 # ===----------------------------------------------------------------------=== #
 """Tests the MXFP4 indexer's windowed kept-block hooks.
 
-The kept block ids a row-windowed `BlockTopKScoreHook` writes must name a
-set of blocks the keep rule allows over the dense per-block maxima of
-`BlockMaxScoreHook`, and a selection masked through `BlockTopKMaskScoreHook`
-must equal one masked through the dense `BlockMaskScoreHook` with the same
-kept blocks. The keep rule under test: a row considers the blocks up to the
-block of its newest visible key, always keeps that block, never keeps a
-`-inf` block, and keeps every block above the k-th best value; which blocks
-tied with the k-th value are kept, and the order of the ids, are free, and
-unused slots hold `-1`. Each poison is a bug the checks must catch.
+A host reference reads the scores the scorer stores, takes each row's maximum
+over every block of keys, and applies the keep rule: the block of a row's
+newest visible key is always kept, `-inf` blocks never are, `-0.0` ties with
+`+0.0`, and every block above the k-th best value is kept; which blocks tied
+with the k-th value are kept, and the order of the ids, are free. A row
+considers only the blocks up to its pinned one. The ids a row-windowed
+`BlockTopKScoreHook` writes must be a set the reference allows, with `-1` in
+the unused slots, and a selection masked through `BlockTopKMaskScoreHook` must
+be an exact top-k of the scores with every block outside that set at `-inf`.
+Each poison is a bug the checks must catch.
 """
 
 from std.builtin.sort import sort
 from std.collections import Set
-from std.math import ceildiv
+from std.math import align_up, ceildiv
 from std.random import random_float64, random_ui64, seed
 from std.testing import assert_true
 from std.utils.numerics import inf, neg_inf
-from layout import TileTensor, row_major
+from layout import TensorLayout, TileTensor, row_major
+from layout.tile_tensor import ImmTileTensor, MutTileTensor
 from max.gpu.host import DeviceContext, HostBuffer
 from kv_cache.paged_sparse_kv_index_remap import NoRemap
 from nn.attention.gpu.mla_index_fp8 import (
+    _SCORES_DTYPE,
     BlockTopKMaskScoreHook,
-    BlockMaskScoreHook,
-    BlockMaxScoreHook,
     BlockTopKScoreHook,
+    MXFP4IndexKCache,
     mla_indexer_ragged_mxfp4_paged,
     mxfp4_index_k_cache,
 )
+from nn.attention.gpu.sparse_index_fp8_sm100 import (
+    _BM_KEY,
+    KTMATileT,
+    mxfp4_index_score_sm100,
+)
+from nn.attention.gpu.sparse_index_fp8_sm100_prefill import (
+    _index_swizzle,
+    _k_box_rows,
+)
 from nn.attention.mha_mask import MaskName
+from nn.attention.mha_operand import KVCacheMHAOperand, KVCacheScalesMHAOperand
 from nn.indexer_k_store import MXFP4_INDEX_RECORD_BYTES
 
 comptime NH = 32
@@ -119,6 +131,61 @@ def _kept_ids(ids: HostBuffer[.int32], row: Int, top_k: Int) -> List[Int]:
     return kept^
 
 
+def _score[
+    output_layout: TensorLayout,
+    q_layout: TensorLayout,
+    w_layout: TensorLayout,
+    iro_layout: TensorLayout,
+    //,
+    kpool: Int,
+    page_size: Int,
+](
+    output: MutTileTensor[_SCORES_DTYPE, output_layout, _],
+    q: ImmTileTensor[.uint8, q_layout, _],
+    weights: ImmTileTensor[.float32, w_layout, _],
+    q_sf: ImmPointer[UInt32, ImmutAnyOrigin],
+    input_row_offsets: ImmTileTensor[.uint32, iro_layout, _],
+    k_cache: MXFP4IndexKCache[page_size],
+    batch_size: Int,
+    max_seq_len: Int,
+    max_num_keys: Int,
+    ctx: DeviceContext,
+) raises:
+    """Runs the causal scorer alone into a matrix of the op's score dtype."""
+    var k_op = KVCacheMHAOperand(k_cache)
+    var ks_op = KVCacheScalesMHAOperand(k_cache)
+    comptime k_box = _k_box_rows[_BM_KEY, page_size, 1]()
+    var k_tma = rebind[KTMATileT[DType.uint8, k_box, ROW_BYTES]](
+        k_cache.create_paged_tma_tile[
+            _index_swizzle[DType.uint8, ROW_BYTES](),
+            BN=k_box,
+            BK=ROW_BYTES,
+        ](ctx)
+    )
+    mxfp4_index_score_sm100[
+        type_of(k_op),
+        type_of(ks_op),
+        NH,
+        _is_cache_length_accurate=False,
+        kpool=kpool,
+        k_box_rows=k_box,
+    ](
+        output,
+        q,
+        q_sf,
+        weights,
+        k_op,
+        ks_op,
+        k_tma,
+        input_row_offsets,
+        batch_size,
+        max_seq_len,
+        max_num_keys,
+        True,
+        ctx,
+    )
+
+
 def _selection_case[
     num_blocks: Int, top_k: Int
 ](
@@ -188,6 +255,50 @@ def _selection_case[
     return bad
 
 
+def _check_masked_selection(
+    picks: HostBuffer[.int32],
+    row: Int,
+    scores: HostBuffer[_SCORES_DTYPE],
+    stride: Int,
+    bound: Int,
+    keep: List[Bool],
+    num_blocks: Int,
+) -> Bool:
+    """Whether a row's picks are an exact top-k of its host-masked scores.
+
+    Keys below `bound` in a dropped block score `-inf`. Every key above the
+    k-th best masked score must be picked and every pick must reach it, so
+    only ties at the k-th value are free; a row keeping fewer keys than it
+    picks may fill the rest with any dropped keys.
+    """
+    var eff = min(TOKEN_TOP_K, bound)
+    var masked = List[Float32](capacity=bound)
+    for s in range(bound):
+        var kept = keep[row * num_blocks + s // BLOCK]
+        masked.append(
+            scores[row * stride + s].cast[.float32]() if kept else neg_inf[
+                DType.float32
+            ]()
+        )
+    var kth = inf[DType.float32]()
+    if eff > 0:
+        var sorted_masked = masked.copy()
+        sort(sorted_masked)
+        kth = sorted_masked[bound - eff]
+    var picked = Set[Int]()
+    for i in range(TOKEN_TOP_K):
+        var v = Int(picks[row * TOKEN_TOP_K + i])
+        if v == -1:
+            continue
+        if v < 0 or v >= bound or v in picked or masked[v] < kth:
+            return False
+        picked.add(v)
+    for s in range(bound):
+        if masked[s] > kth and s not in picked:
+            return False
+    return kth == neg_inf[DType.float32]() or len(picked) == eff
+
+
 def _indexer_case[
     kpool: Int, page_size: Int, topk_blocks: Int
 ](
@@ -198,7 +309,11 @@ def _indexer_case[
     scores_budget_bytes: Int,
     poison: Int = P_NONE,
 ) raises -> Int:
-    """Runs old and new hooks through the indexer; returns failed checks."""
+    """Runs the hooks through the indexer against the host reference.
+
+    Returns:
+        The number of failed checks.
+    """
     var batch_size = len(seq_lens)
     var total = 0
     var max_seq_len = 0
@@ -281,25 +396,26 @@ def _indexer_case[
     var iro_tt = TileTensor(d_iro, row_major(batch_size + 1))
     comptime mask = MaskName.CAUSAL.name
 
-    # Dense block maxima in one window, the reference's input.
-    var d_out = ctx.enqueue_create_buffer[.int32](total * TOKEN_TOP_K)
-    var d_bmax = ctx.enqueue_create_buffer[.float32](total * num_blocks)
-    mla_indexer_ragged_mxfp4_paged[
-        NH, TOKEN_TOP_K, mask, page_size, kpool=kpool, write_logical=True
-    ](
-        TileTensor(d_out, row_major(total, TOKEN_TOP_K)),
+    # The scores the op's top-k reads, scored alone.
+    var stride = align_up(max_rows + 1, 8)
+    var d_scores = ctx.enqueue_create_buffer[_SCORES_DTYPE](total * stride)
+    _score[kpool, page_size](
+        TileTensor(d_scores, row_major(total, stride)),
         q_tt,
-        q_sf_tt,
         w_tt,
+        d_q_sf.unsafe_ptr().as_imm().as_unsafe_any_origin(),
         iro_tt,
         k_cache,
+        batch_size,
+        max_seq_len,
+        stride,
         ctx,
-        NoRemap(),
-        BlockMaxScoreHook[BLOCK](
-            d_bmax.unsafe_ptr().as_unsafe_any_origin(), num_blocks
-        ),
     )
+    var scores = ctx.enqueue_create_host_buffer[_SCORES_DTYPE](len(d_scores))
+    ctx.enqueue_copy(dst_buf=scores, src_buf=d_scores)
+
     # Kept ids, a few rows per window.
+    var d_out = ctx.enqueue_create_buffer[.int32](total * TOKEN_TOP_K)
     var d_scratch = ctx.enqueue_create_buffer[.float32](
         window_rows * num_blocks
     )
@@ -330,24 +446,33 @@ def _indexer_case[
         ),
         scores_budget_bytes,
     )
-    var bmax = ctx.enqueue_create_host_buffer[.float32](len(d_bmax))
     var ids = ctx.enqueue_create_host_buffer[.int32](len(d_ids))
-    ctx.enqueue_copy(dst_buf=bmax, src_buf=d_bmax)
     ctx.enqueue_copy(dst_buf=ids, src_buf=d_ids)
     ctx.synchronize()
 
+    # The reference's block maxima: `-inf` for a block with no key below the
+    # row's bound.
+    var bounds = List[Int](capacity=total)
+    var bmax = ctx.enqueue_create_host_buffer[.float32](total * num_blocks)
+    for t in range(total):
+        var bound = (Int(pos[t]) + 1) // kpool
+        bounds.append(bound)
+        for j in range(num_blocks):
+            bmax[t * num_blocks + j] = neg_inf[DType.float32]()
+        for s in range(bound):
+            var i = t * num_blocks + s // BLOCK
+            bmax[i] = max(bmax[i], scores[t * stride + s].cast[.float32]())
+
     var failures = 0
     var id_bad = 0
-    var keep = ctx.enqueue_create_host_buffer[.uint8](total * num_blocks)
-    for i in range(total * num_blocks):
-        keep[i] = 0
+    var keep = List[Bool](length=total * num_blocks, fill=False)
     var min_kept = topk_blocks
     for t in range(total):
         var got = _kept_ids(ids, t, topk_blocks)
         min_kept = min(min_kept, len(got))
         for j in got:
             if j < num_blocks:
-                keep[t * num_blocks + j] = 1
+                keep[t * num_blocks + j] = True
         if not _check_kept(
             ids, t, topk_blocks, bmax, num_blocks, Int(pos[t]), kpool
         ):
@@ -357,32 +482,13 @@ def _indexer_case[
     if id_bad > 0:
         failures += 1
 
-    # The selection masked by the dense keep mask and by the ids.
-    var d_keep = ctx.enqueue_create_buffer[.uint8](len(keep))
-    ctx.enqueue_copy(dst_buf=d_keep, src_buf=keep)
-    var d_out_dense = ctx.enqueue_create_buffer[.int32](total * TOKEN_TOP_K)
-    var d_out_ids = ctx.enqueue_create_buffer[.int32](total * TOKEN_TOP_K)
+    # The selection masked by the ids.
     var d_flags = ctx.enqueue_create_buffer[.uint8](window_rows * num_blocks)
-    mla_indexer_ragged_mxfp4_paged[
-        NH, TOKEN_TOP_K, mask, page_size, kpool=kpool, write_logical=True
-    ](
-        TileTensor(d_out_dense, row_major(total, TOKEN_TOP_K)),
-        q_tt,
-        q_sf_tt,
-        w_tt,
-        iro_tt,
-        k_cache,
-        ctx,
-        NoRemap(),
-        BlockMaskScoreHook[BLOCK](
-            d_keep.unsafe_ptr().as_imm().as_unsafe_any_origin(), num_blocks
-        ),
-    )
     var row_shift = topk_blocks if poison == P_ROW else 0
     mla_indexer_ragged_mxfp4_paged[
         NH, TOKEN_TOP_K, mask, page_size, kpool=kpool, write_logical=True
     ](
-        TileTensor(d_out_ids, row_major(total, TOKEN_TOP_K)),
+        TileTensor(d_out, row_major(total, TOKEN_TOP_K)),
         q_tt,
         q_sf_tt,
         w_tt,
@@ -402,28 +508,14 @@ def _indexer_case[
         ),
         scores_budget_bytes,
     )
-    var out_dense = ctx.enqueue_create_host_buffer[.int32](total * TOKEN_TOP_K)
-    var out_ids = ctx.enqueue_create_host_buffer[.int32](total * TOKEN_TOP_K)
-    ctx.enqueue_copy(dst_buf=out_dense, src_buf=d_out_dense)
-    ctx.enqueue_copy(dst_buf=out_ids, src_buf=d_out_ids)
+    var out = ctx.enqueue_create_host_buffer[.int32](total * TOKEN_TOP_K)
+    ctx.enqueue_copy(dst_buf=out, src_buf=d_out)
     ctx.synchronize()
     var sel_bad = 0
     for t in range(total):
-        var a = List[Int32](capacity=TOKEN_TOP_K)
-        var b = List[Int32](capacity=TOKEN_TOP_K)
-        # A row keeping fewer keys than it selects fills the rest with
-        # dropped keys, which any `-inf` tie may supply, so only kept picks
-        # must agree.
-        for i in range(TOKEN_TOP_K):
-            var va = Int(out_dense[t * TOKEN_TOP_K + i])
-            var vb = Int(out_ids[t * TOKEN_TOP_K + i])
-            if va >= 0 and keep[t * num_blocks + va // BLOCK] != 0:
-                a.append(Int32(va))
-            if vb >= 0 and keep[t * num_blocks + vb // BLOCK] != 0:
-                b.append(Int32(vb))
-        sort(a)
-        sort(b)
-        if a != b:
+        if not _check_masked_selection(
+            out, t, scores, stride, bounds[t], keep, num_blocks
+        ):
             if sel_bad < 2:
                 print("  masked selection row", t)
             sel_bad += 1
