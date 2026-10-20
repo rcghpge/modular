@@ -300,3 +300,18 @@ modular_py_test(
         requirement("numpy"),
     ],
 )
+
+# Under data parallelism a device must skip other replicas' image rows; a
+# wrapped index overwrites its last token row.
+modular_py_test(
+    name = "test_vision_merge_rows",
+    srcs = ["test_vision_merge_rows.py"],
+    deps = [
+        "//max/python/max/driver",
+        "//max/python/max/dtype",
+        "//max/python/max/engine",
+        "//max/python/max/graph",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        requirement("numpy"),
+    ],
+)

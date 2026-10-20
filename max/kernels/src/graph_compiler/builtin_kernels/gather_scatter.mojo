@@ -607,8 +607,9 @@ struct ScatterNDSkipNegIndices:
         # This allows the kernel to support negative relative indexing.
         # eg: x[-1] == x[dim_size - 1]
         #
-        # In mo.scatter_nd.skip_neg_indices, we handle negative indices by skipping
-        # the update for that index instead.
+        # In mo.scatter_nd.skip_neg_indices, we skip the update for an index
+        # outside [-dim_size, dim_size). Negative indices inside that range are
+        # still normalized, so -1 writes the last row.
         scatter_nd_generator[
             oob_index_strategy=ScatterOobIndexStrategy.SKIP,
             target=target,

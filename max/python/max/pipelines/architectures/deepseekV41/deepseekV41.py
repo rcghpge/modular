@@ -133,7 +133,10 @@ class VisionMerge:
     """``[n, d]`` rows from the vision model."""
 
     indices: TensorValue
-    """``[n]`` int32 token row of each embedding; a negative one is skipped."""
+    """``[n]`` int32 token row of each embedding; ``int32`` min is skipped.
+
+    The scatter wraps any other negative index to a row from the end.
+    """
 
     def for_rows(
         self, offsets: TensorValue, first: TensorValue, past: TensorValue
@@ -162,7 +165,7 @@ class VisionMerge:
             ops.where(
                 inside,
                 self.indices - start,
-                ops.constant(-1, DType.int32, device),
+                ops.constant(np.iinfo(np.int32).min, DType.int32, device),
             ),
         )
 
