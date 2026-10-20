@@ -6932,30 +6932,6 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
             return False
 
     @inline(.always)
-    def run_healthcheck(self) raises:
-        """Runs lightweight GPU health validation.
-
-        Checks for hardware throttling, uncorrectable ECC errors, and stuck
-        VRAM. Raises an error if the GPU is unhealthy. The healthcheck runs
-        automatically during device initialization; this method allows
-        re-running it explicitly.
-
-        Disable with `MODULAR_DEVICE_CONTEXT_DISABLE_HEALTHCHECK=true`.
-
-        Raises:
-            Error: If the GPU is in an unhealthy state.
-        """
-        # const char *AsyncRT_DeviceContext_runHealthcheck(DeviceContext *ctx)
-        _checked(
-            external_call[
-                "AsyncRT_DeviceContext_runHealthcheck",
-                _CString[],
-                _DeviceContextPtr[mut=True],
-            ](self._handle),
-            location=call_location(),
-        )
-
-    @inline(.always)
     def id(self) raises -> Int64:
         """Returns the ID associated with this device.
 
@@ -7089,35 +7065,6 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
         )
 
         return (free, total)
-
-    @inline(.always)
-    def max_single_alloc_size(self) raises -> c_size_t:
-        """Returns the largest single contiguous allocation, in bytes.
-
-        On Metal this is `maxBufferLength`; on other backends it is the
-        device's total memory.
-
-        Returns:
-            The maximum size, in bytes, of a single contiguous allocation
-            supported by this device.
-
-        Raises:
-            If the underlying device query fails.
-        """
-        var result = c_size_t(0)
-        _checked(
-            external_call[
-                "AsyncRT_DeviceContext_maxSingleAllocationSize",
-                _CString[],
-                _DeviceContextPtr[mut=True],
-                Pointer[c_size_t, origin_of(result)],
-            ](
-                self._handle,
-                Pointer(to=result),
-            ),
-            location=call_location(),
-        )
-        return result
 
     @inline(.always)
     def can_access(self, peer: DeviceContext) raises -> Bool:

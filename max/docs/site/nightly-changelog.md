@@ -72,6 +72,11 @@ This version is still a work in progress.
   `gate_proj` and `up_proj` weights a checkpoint ships and fuses their matmuls
   in the graph.
 
+- Removed `max_single_alloc_size()` and `run_healthcheck()` from the Mojo
+  `DeviceContext`. On NVIDIA and AMD GPUs the health check still runs when a
+  device context is created. Python's `Device.max_single_alloc_size` is
+  unchanged.
+
 ## Fixes
 
 - `max serve` now runs prompts given as token ids, with no images, on Gemma 3,
