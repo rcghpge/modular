@@ -37,6 +37,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence, Sized
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from openai import BadRequestError, OpenAI, UnprocessableEntityError
@@ -446,6 +447,9 @@ def run_parallel(
     On error, ``on_error(item, exc)`` builds a row that is RECORDED (never
     dropped) so dropping the hardest items can't inflate accuracy.
 
+    Every row gets a ``timestamp``: when a worker picked up its item, which
+    is when its request was sent, as a UTC ISO 8601 string.
+
     When ``out_dir`` is set, each row is written to ``results.jsonl`` and
     flushed as soon as its future resolves, so a killed/crashed run still
     leaves every completed sample on disk rather than losing everything
@@ -499,17 +503,24 @@ def run_parallel(
         for r in results:
             out_f.write(json.dumps(r) + "\n")
         out_f.flush()
+    sent_at: dict[int, str] = {}
+
+    def send(i: int) -> dict[str, Any]:
+        sent_at[i] = datetime.now(timezone.utc).isoformat()
+        return fn(items[i])
+
     try:
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futures = {ex.submit(fn, it): it for it in items}
+            futures = {ex.submit(send, i): i for i in range(len(items))}
             for fut in tqdm(as_completed(futures), total=len(items), desc=desc):
-                it = futures[fut]
+                i = futures[fut]
                 try:
                     r = fut.result()
                 except Exception as e:
                     errors += 1
                     print(f"Error: {e}")
-                    r = on_error(it, e)
+                    r = on_error(items[i], e)
+                r["timestamp"] = sent_at[i]
                 results.append(r)
                 if out_f is not None:
                     out_f.write(json.dumps(r) + "\n")

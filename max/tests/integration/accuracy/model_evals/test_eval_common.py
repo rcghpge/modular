@@ -13,6 +13,7 @@
 """Tests for the shared eval scaffolding."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -400,6 +401,27 @@ def test_resume_skips_finished_rows_and_retries_errored_ones(
     assert len(results) == len(ITEMS)
     assert not any("error" in r for r in results)
     assert len(_lines(tmp_path)) == len(ITEMS)
+
+
+def test_every_row_records_when_its_request_was_sent(tmp_path: Path) -> None:
+    before = datetime.now(timezone.utc)
+    results, _, _ = _run(
+        ITEMS, tmp_path, resume=False, fail=frozenset({(1, 2)})
+    )
+    after = datetime.now(timezone.utc)
+
+    for row in results:
+        sent = datetime.fromisoformat(row["timestamp"])
+        assert sent.tzinfo == timezone.utc
+        assert before <= sent <= after
+    assert {r["timestamp"] for r in _lines(tmp_path)} == {
+        r["timestamp"] for r in results
+    }
+
+    resumed, _, _ = _run(ITEMS, tmp_path, resume=True)
+    # Finished rows keep the time they were first sent.
+    kept = {r["timestamp"] for r in results if "error" not in r}
+    assert kept <= {r["timestamp"] for r in resumed}
 
 
 def test_resume_counts_duplicate_rows(tmp_path: Path) -> None:
