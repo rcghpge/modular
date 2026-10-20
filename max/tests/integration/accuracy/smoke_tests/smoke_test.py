@@ -136,11 +136,6 @@ MODEL_RECIPES = CaseInsensitiveDict({
 })
 # fmt: on
 
-# Aliases whose eval cannot finish inside the runner's 600 s timer.
-# TODO(anand): drop the GLM-5.3 MI355 entry once device graph capture and
-# blockwise-FP8 tuning land (~3 s/question, ~17 min for 320 today).
-SLOW_EVAL_MODELS = frozenset({"zai-org/GLM-5.3__fp8_tpep_mi355"})
-
 
 class RecipeConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -740,8 +735,6 @@ def smoke_test(
     if output_path is not None:
         result_dir = output_path / safe_model_name(model)
         result_dir.mkdir(parents=True, exist_ok=True)
-
-    disable_timeouts = disable_timeouts or model in SLOW_EVAL_MODELS
 
     hf_model_path, recipe_path = resolve_model_path(model, recipe_path)
     cascade = recipe_path is not None and _load_recipe(recipe_path).cascade
