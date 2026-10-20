@@ -23,6 +23,7 @@
 #include "AsyncRT/Support/Chain.h"
 #include "Common.h"
 #include "Context.h"
+#include "Device.h"
 #include "Event.h"
 #include "HAL/M_driver_api.h"
 #include "Memory.h"
@@ -34,16 +35,21 @@
 M_driver_queue_t M_driver_queue::create(M_driver_context_t context) {
   // Seed the chain from the device's ready chain, mirroring
   // CpuDeviceContext's constructor.
-  return new (std::nothrow)
+  M_driver_queue_t queue = new (std::nothrow)
       M_driver_queue(context, context->cpu().getReadyChain().copy());
+  if (queue != nullptr)
+    context->device->registerQueue(queue);
+  return queue;
 }
 
 M_driver_status_t M_driver_queue::destroy(M_driver_queue_t queue) {
   if (queue == nullptr)
     return M_DRIVER_STATUS_BAD_QUEUE;
-  // Wait for pending work to finish, mirroring ~CpuDeviceContext.
+  // Wait for pending work to finish, mirroring ~CpuDeviceContext. The queue
+  // stays registered until then, so a concurrent free still waits on it.
   if (!queue->streamChain.isReady())
     queue->context->cpu().getWorkQueue()->await({&queue->streamChain, 1});
+  queue->context->device->unregisterQueue(queue);
   delete queue;
   return M_DRIVER_STATUS_SUCCESS;
 }

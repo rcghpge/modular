@@ -21,6 +21,7 @@
 #include "AsyncRT/Runtime/Allocator.h"
 #include "Common.h"
 #include "Context.h"
+#include "Device.h"
 #include "HAL/M_driver_memory.h"
 #include "Queue.h"
 
@@ -78,8 +79,20 @@ M_driver_status_t freeImpl(M_driver_context_t context,
   delete memory;
   // A non-owning handle wraps memory this plugin did not allocate, so it frees
   // only the handle above and leaves the region alone.
-  if (owning)
-    context->allocator()->deallocateBytes(ptr, size);
+  if (!owning)
+    return M_DRIVER_STATUS_SUCCESS;
+  // Work already enqueued may still read or write the region. A caller can
+  // drop its last reference to a buffer right after enqueueing a copy of it,
+  // so wait for that work instead of freeing under it.
+  // TODO(DRIV-579): This waits for every queue on the device, including
+  // ones that never touched this memory, so a free can stall behind unrelated
+  // long-running work. Remove it once resource lifetime management makes each
+  // free wait only on the queued work that uses the buffer.
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef, 4> pending =
+      context->device->pendingWork();
+  if (!pending.empty())
+    context->cpu().getWorkQueue()->await(pending);
+  context->allocator()->deallocateBytes(ptr, size);
   return M_DRIVER_STATUS_SUCCESS;
 }
 

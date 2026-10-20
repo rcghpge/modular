@@ -22,6 +22,7 @@
 #include "Common.h"
 #include "Driver.h"
 #include "HAL/M_driver_device.h"
+#include "Queue.h"
 
 namespace AsyncRT = M::AsyncRT;
 
@@ -29,6 +30,27 @@ namespace AsyncRT = M::AsyncRT;
 
 #include "llvm/ADT/StringRef.h"
 #include <cstring>
+
+void M_driver_device::registerQueue(M_driver_queue_t queue) {
+  std::lock_guard<std::mutex> lock(queuesMutex);
+  queues.insert(queue);
+}
+
+void M_driver_device::unregisterQueue(M_driver_queue_t queue) {
+  std::lock_guard<std::mutex> lock(queuesMutex);
+  queues.erase(queue);
+}
+
+llvm::SmallVector<AsyncRT::AnyAsyncValueRef, 4> M_driver_device::pendingWork() {
+  llvm::SmallVector<AsyncRT::AnyAsyncValueRef, 4> pending;
+  std::lock_guard<std::mutex> lock(queuesMutex);
+  for (M_driver_queue_t queue : queues) {
+    std::lock_guard<std::mutex> chainLock(queue->streamChainMutex);
+    if (!queue->streamChain.isReady())
+      pending.push_back(queue->streamChain.copy());
+  }
+  return pending;
+}
 
 M_driver_status_t M_driver_device_count(M_driver_driver_t driver,
                                         int64_t *count) {
