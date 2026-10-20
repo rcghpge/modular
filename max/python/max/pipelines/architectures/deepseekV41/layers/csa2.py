@@ -158,12 +158,13 @@ def csa2_attention(
     compressed_rows: int = MAX_COMPRESSED,
     prefill: bool = False,
     split_rows: int = DECODE_SPLIT_ROWS,
+    max_distinct_rows: int | None = None,
 ) -> TensorValue:
     """Returns ``[T, n_heads, 512]`` bf16 sparse attention outputs.
 
     Decode reads the records in place and suits up to 8 query tokens a
-    sequence. Prefill first dequantizes every slot of both caches to bf16,
-    so its scratch and time grow with the caches' size.
+    sequence. Prefill first dequantizes each distinct slot the lists name
+    to one bf16 row, so its scratch and time grow with the slots named.
 
     Args:
         q: ``[T, n_heads, 512]`` bf16 queries.
@@ -177,8 +178,13 @@ def csa2_attention(
         comp_page: Records a compressed cache page holds.
         compressed_rows: The most compressed entries any list names, at
             most 512; it sets the tiles each token walks.
-        prefill: Whether to dequantize the caches first.
+        prefill: Whether to dequantize the named cache slots first.
         split_rows: Partial rows a decode's split workspace holds.
+        max_distinct_rows: The most distinct slots a prefill's lists name
+            across both caches, the rows its workspace holds; a call naming
+            more aborts. Defaults to a row per walked list entry,
+            ``T * (128 + C)``, ``C`` the ``compressed_rows`` rounded up to
+            64.
     """
     t, n_heads = q.shape[0], int(q.shape[1])
     device = q.device
@@ -194,10 +200,19 @@ def csa2_attention(
         parameters["compressed_rows"] = compressed_rows
         parameters["comp_page"] = comp_page
     if prefill:
-        values = kv_window.shape[0] * window_page
+        # the rows, then int32 words, two bf16 values each: the slot maps,
+        # each row's slot and the row count
+        entries = INDEX_WIDTH - MAX_COMPRESSED
+        slots = kv_window.shape[0] * window_page
         if kv_comp is not None:
-            values = values + kv_comp.shape[0] * comp_page
-        workspace = TensorType(DType.bfloat16, [values * HEAD_DIM], device)
+            entries += -(-min(compressed_rows, MAX_COMPRESSED) // 64) * 64
+            slots = slots + kv_comp.shape[0] * comp_page
+        rows = t * entries if max_distinct_rows is None else max_distinct_rows
+        workspace = TensorType(
+            DType.bfloat16,
+            [rows * (HEAD_DIM + 2) + 2 * (slots + 1)],
+            device,
+        )
     else:
         workspace = TensorType(
             DType.float32, [split_rows * n_heads * (HEAD_DIM + 1)], device
