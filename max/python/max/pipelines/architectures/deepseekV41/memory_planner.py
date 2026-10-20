@@ -35,6 +35,12 @@ from max.pipelines.kv_cache.memory_planner import PagedMemoryPlanner
 from max.support.human_readable_formatter import to_human_readable_bytes
 
 from . import kv_leaves
+from .layers.csa2 import (
+    DECODE_SPLIT_ROWS,
+    HEAD_DIM,
+    PREFILL_ROWS,
+    decode_workspace_floats,
+)
 from .layers.indexer import (
     INDEXER_SCORES_BUDGET_BYTES,
     candidate_blocks_active,
@@ -135,6 +141,24 @@ def indexer_activation_bytes(
     return _mm_pages(INDEXER_SCORES_BUDGET_BYTES) + _mm_pages(window) + kept
 
 
+def csa2_activation_bytes(*, live_rows: int, num_heads: int) -> int:
+    """Returns per-device bytes of the CSA2 attention's workspaces.
+
+    The decode's split partials plus the prefill's ``PREFILL_ROWS``
+    dequantized rows, in whole MemoryManager pages. The prefill's per-slot
+    map (four bytes per slot of the caches it reads) grows with the KV pool
+    and is not counted.
+
+    Args:
+        live_rows: Query rows ``T`` in one forward.
+        num_heads: Query heads a device attends.
+    """
+    if live_rows <= 0:
+        return 0
+    decode = decode_workspace_floats(num_heads, DECODE_SPLIT_ROWS) * 4
+    return _mm_pages(decode + PREFILL_ROWS * (HEAD_DIM + 2) * 2)
+
+
 def graph_arena_bytes(
     *, live_rows: int, row_bytes: int = _ARENA_ROW_BYTES
 ) -> int:
@@ -186,17 +210,18 @@ def graph_capture_pool_bytes(
     vocab_size: int,
     row_bytes: int,
     indexer_bytes: int,
+    attention_bytes: int,
     ep_pool_bytes: int,
 ) -> int:
     """Returns per-device bytes of the captured device graphs' memory pool.
 
     Captured graphs run one at a time and each capture reuses the previous
     graph's working memory, so they share one pool sized by the largest
-    graph: the batch-independent receive tensors and indexer scratch plus the
-    largest decode batch's per-row transients. Device 0 also holds the LM
-    head's logits and the sampling working memory over ``[rows, vocab]`` for
-    every replica's rows. KV is the same size on every device, so every
-    device reserves device 0's pool.
+    graph: the batch-independent receive tensors, indexer scratch and CSA2
+    workspaces plus the largest decode batch's per-row transients. Device 0
+    also holds the LM head's logits and the sampling working memory over
+    ``[rows, vocab]`` for every replica's rows. KV is the same size on every
+    device, so every device reserves device 0's pool.
 
     Args:
         capture_rows: Query rows per replica of the largest captured graph.
@@ -204,6 +229,7 @@ def graph_capture_pool_bytes(
         vocab_size: Vocabulary size.
         row_bytes: Transient bytes per query row.
         indexer_bytes: The indexer's transient bytes at ``capture_rows``.
+        attention_bytes: :func:`csa2_activation_bytes` at ``capture_rows``.
         ep_pool_bytes: :func:`ep_receive_pool_bytes`, or 0 without
             expert-parallel dispatch.
     """
@@ -212,6 +238,7 @@ def graph_capture_pool_bytes(
     return (
         graph_arena_bytes(live_rows=capture_rows, row_bytes=row_bytes)
         + indexer_bytes
+        + attention_bytes
         + ep_pool_bytes
         + _mm_pages(
             ceil(
@@ -594,9 +621,11 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
         Returns:
             :func:`graph_arena_bytes`, :func:`indexer_activation_bytes`,
             the expert-parallel buffers, :func:`graph_capture_pool_bytes`
-            with device graph capture, and fragmentation headroom per device, summed over devices (free memory is summed the same
-            way), plus :func:`vision_activation_bytes` of one largest image
-            on device 0. Excludes KV leaf storage (see module docstring).
+            with device graph capture, :func:`csa2_activation_bytes`, and
+            fragmentation headroom per device, summed over devices (free
+            memory is summed the same way), plus
+            :func:`vision_activation_bytes` of one largest image on device 0.
+            Excludes KV leaf storage (see module docstring).
         """
         text_config = DeepseekV41Config.get_text_config(huggingface_config)
         specs = kv_leaves.kv_leaf_specs(text_config)
@@ -633,6 +662,9 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             candidate_blocks=blocks,
             kept_blocks=kept_blocks,
             block_size=block_size,
+        )
+        attention = csa2_activation_bytes(
+            live_rows=live_rows, num_heads=text_config.num_attention_heads
         )
         ep_config = data_parallel_ep_config(pipeline_config, text_config)
         row_bytes = (
@@ -690,22 +722,29 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
                     kept_blocks=kept_blocks,
                     block_size=block_size,
                 ),
+                attention_bytes=csa2_activation_bytes(
+                    live_rows=capture_rows,
+                    num_heads=text_config.num_attention_heads,
+                ),
                 ep_pool_bytes=ep_pool,
             )
         # Freed transients are reused only in place, so a fragmented free
         # list must still fit a fresh copy of the largest one.
         headroom = max(ep_pool, _MM_PAGE_BYTES)
-        per_device = arena + indexer + moe_rows + graph_pool + headroom
+        per_device = (
+            arena + indexer + attention + moe_rows + graph_pool + headroom
+        )
 
         logger.info(
             "Estimated DeepSeek-V4.1-Flash forward activation memory: %s per "
-            "device x %d devices (graph arena %s + indexer %s + device graph "
-            "pool %s + fragmentation headroom %s; %d live rows, %d candidate "
-            "blocks)",
+            "device x %d devices (graph arena %s + indexer %s + attention %s "
+            "+ device graph pool %s + fragmentation headroom %s; %d live "
+            "rows, %d candidate blocks)",
             to_human_readable_bytes(per_device),
             num_devices,
             to_human_readable_bytes(arena),
             to_human_readable_bytes(indexer),
+            to_human_readable_bytes(attention),
             to_human_readable_bytes(graph_pool),
             to_human_readable_bytes(headroom),
             live_rows,

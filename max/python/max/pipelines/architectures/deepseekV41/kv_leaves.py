@@ -38,9 +38,9 @@ from transformers import AutoConfig
 from . import layer_resolver, model_config
 from .layers.csa2 import COMPRESSED_RECORD_BYTES, WINDOW_RECORD_BYTES
 
-CSA_KV_RECORDS = False
+CSA_KV_RECORDS = True
 """Whether the window and compressed leaves hold quantized CSA records by
-default (see :func:`kv_leaf_specs`)."""
+default (see :func:`kv_leaf_specs`); the attention reads only records."""
 
 MXFP4_INDEX_KEY_BYTES = 68
 """Bytes of one MXFP4 index key: 128 E2M1 values in 64 bytes, then a 32-bit

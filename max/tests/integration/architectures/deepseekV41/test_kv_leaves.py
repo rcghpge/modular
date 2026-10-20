@@ -139,10 +139,18 @@ def _huge_page_bytes(params: MultiKVCacheParams) -> int:
     return math.lcm(*(leaf.bytes_per_page for leaf in params.leaves().values()))
 
 
-def test_default_leaves_store_bf16_rows() -> None:
-    """By default, the window and compressed leaves keep one bf16 row per
-    raw token."""
-    assert not kv_leaves.CSA_KV_RECORDS
+def test_default_leaves_store_csa_records() -> None:
+    """By default, the window and compressed leaves hold CSA records, the
+    only layout the attention reads."""
+    assert kv_leaves.CSA_KV_RECORDS
+    for spec in kv_leaves.kv_leaf_specs(_real_text_config()):
+        if spec.kind in ("swa", "comp"):
+            assert spec.record_bytes is not None
+
+
+def test_bf16_leaves_store_rows() -> None:
+    """Without records, the window and compressed leaves keep one bf16 row
+    per raw token."""
     params = _build_params()
     for key in ("swa", "c2a", "c1a"):
         leaf = _leaf(params, key)

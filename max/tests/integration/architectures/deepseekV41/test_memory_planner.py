@@ -30,6 +30,7 @@ from max.pipelines.architectures.deepseekV41.memory_planner import (
     CheckpointTensor,
     DeepseekV41MemoryPlanner,
     DeviceWeightLayout,
+    csa2_activation_bytes,
     device_weight_bytes,
     ep_receive_pool_bytes,
     graph_arena_bytes,
@@ -229,9 +230,9 @@ def test_tp2_4096_row_chunk_at_40k_leaves_the_kv_pool_room(
 def test_reserve_grows_only_by_the_candidate_keep_step(
     max_length: int,
 ) -> None:
-    """Past the arena, the reserve is the indexer's score window plus the
-    ``[T, kept]`` block ids and a fixed window scratch, never a
-    ``[T, blocks]`` or ``[T, max_length]`` tensor."""
+    """Past the arena and the attention's fixed workspaces, the reserve is
+    the indexer's score window plus the ``[T, kept]`` block ids and a fixed
+    window scratch, never a ``[T, blocks]`` or ``[T, max_length]`` tensor."""
     rows = 8192
     _, _, activation = _tp2_plan_inputs(
         chunk=rows, max_length=max_length, layout=_DEFAULT_LAYOUT
@@ -240,8 +241,13 @@ def test_reserve_grows_only_by_the_candidate_keep_step(
     blocks = -(-max_length // 8)
     window = candidate_window_rows(rows, blocks, 8) * (blocks * 4 + 4)
     keep = kept_ids + -(-window // (256 << 20)) * (256 << 20)
+    attention = csa2_activation_bytes(live_rows=rows, num_heads=64)
+    assert attention == GIB // 2
     # Arena, score window, window scratch page and one page of headroom.
-    assert activation / 2 - keep <= (1.25 + 16 + 0.5 + 0.25 + 0.25) * GIB
+    assert (
+        activation / 2 - keep - attention
+        <= (1.25 + 16 + 0.5 + 0.25 + 0.25) * GIB
+    )
     # Only the window scratch grows with max_length, by at most one page.
     _, _, short = _tp2_plan_inputs(
         chunk=rows, max_length=40000, layout=_DEFAULT_LAYOUT
@@ -391,6 +397,7 @@ def test_dp4_reserves_the_measured_graph_pool_and_eager_peak() -> None:
         vocab_size=129280,
         row_bytes=0,
         indexer_bytes=0,
+        attention_bytes=0,
         ep_pool_bytes=0,
     ) - graph_arena_bytes(live_rows=1, row_bytes=0)
     assert _DP4_MEASURED_HEAD_BYTES <= head
@@ -398,6 +405,26 @@ def test_dp4_reserves_the_measured_graph_pool_and_eager_peak() -> None:
     # Arena and receive tensors alone, without the indexer or headroom.
     arena = -(-((5 << 28) + 8192 * (5 << 18)) // (256 << 20)) * (256 << 20)
     assert arena + pool >= _DP4_MEASURED_EAGER_PEAK
+
+
+def test_graph_capture_pool_holds_the_csa2_workspaces() -> None:
+    """Captured decode graphs run the CSA2 attention, so the pool holds its
+    workspaces on top of the other terms."""
+    attention = csa2_activation_bytes(live_rows=128 * 6, num_heads=64)
+    assert attention > 0
+
+    def pool(attention_bytes: int) -> int:
+        return graph_capture_pool_bytes(
+            capture_rows=128 * 6,
+            head_rows=4 * 128 * 6,
+            vocab_size=129280,
+            row_bytes=0,
+            indexer_bytes=0,
+            attention_bytes=attention_bytes,
+            ep_pool_bytes=0,
+        )
+
+    assert pool(attention) == pool(0) + attention
 
 
 def _bytes_per_token(csa_records: bool) -> dict[str, float]:
@@ -430,7 +457,8 @@ def test_kv_bytes_per_token_per_leaf() -> None:
 
 def test_dp4_kv_capacity_per_device() -> None:
     """Context tokens a DP4 device's KV budget holds, counting only the
-    leaves that grow with context: about 4.1x more with records."""
+    leaves that grow with context: about 4.1x more with records, less the
+    record attention's workspaces."""
     hf_config = _real_huggingface_config()
     config = _dp4_config(4)
     config.model.kv_cache.device_memory_utilization = 0.97
@@ -461,5 +489,5 @@ def test_dp4_kv_capacity_per_device() -> None:
         for records in (False, True)
     }
     assert 60 * GIB < budget < 61 * GIB
-    assert 15.2e6 < capacity[False] < 15.3e6
-    assert 63.1e6 < capacity[True] < 63.3e6
+    assert 15.1e6 < capacity[False] < 15.2e6
+    assert 62.6e6 < capacity[True] < 62.8e6

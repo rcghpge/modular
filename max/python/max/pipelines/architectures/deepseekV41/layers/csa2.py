@@ -12,14 +12,19 @@
 # ===----------------------------------------------------------------------=== #
 """CSA2 sparse attention over quantized, paged window and compressed caches.
 
-A layer keeps two byte caches of ``[pages, page_bytes]`` uint8. The window
-cache holds a 528-byte MXFP8 record per token: 512 E4M3 values, then 16
-UE8M0 scales of 32 channels each. The compressed cache holds a 288-byte
-NVFP4 record per group of ``ratio`` tokens: 256 bytes of E2M1 pairs, then 32
-E4M3 scales of 16 channels each. Both rotate the last 64 channels with
-interleaved RoPE before quantizing. A page holds ``page_size`` records, all
-of their values and then all of their scales; slot ``s`` is offset
-``s % page_size`` of page ``s // page_size``.
+A layer keeps two byte caches. The window cache holds a 528-byte MXFP8
+record per token: 512 E4M3 values, then 16 UE8M0 scales of 32 channels
+each. The compressed cache holds a 288-byte NVFP4 record per group of
+``ratio`` tokens: 256 bytes of E2M1 pairs, then 32 E4M3 scales of 16
+channels each. Both rotate the last 64 channels with interleaved RoPE before
+quantizing.
+
+Each cache is a paged cache leaf whose ``uint8`` blocks,
+``[blocks, 1, layers, slots, 1, pitch]``, several layers share. The ops view
+it as pages of ``slots * pitch`` bytes, one per (block, layer): page
+``block * layers + layer``. A page holds ``slots`` records, all of their
+values and then all of their scales, so absolute slot ``s`` is offset
+``s % slots`` of page ``s // slots``.
 
 Each query token names up to 128 window slots and up to 512 compressed
 slots in a ``[T, 640]`` int32 list, ``-1`` for none, and its heads attend
@@ -33,10 +38,12 @@ from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    Dim,
     TensorType,
     TensorValue,
     ops,
 )
+from max.nn.kv_cache import PagedCacheValues
 
 HEAD_DIM = 512
 """Channels of a query head, a latent and a dequantized record."""
@@ -46,8 +53,13 @@ COMPRESSED_RECORD_BYTES = 288
 """Bytes of an NVFP4 compressed record."""
 INDEX_WIDTH = 640
 """Entries of a token's index list: 128 window slots, then 512 compressed."""
+WINDOW_ENTRIES = 128
+"""The window slots a token's list names."""
 MAX_COMPRESSED = 512
 """The most compressed slots a token's list names."""
+PREFILL_ROWS = 1 << 18
+"""Distinct named slots a model's prefill workspace holds: a forward whose
+lists may name more runs the decode attention instead."""
 DECODE_SPLIT_ROWS = 296
 """Partial rows (``splits * tokens``) a decode workspace holds by default,
 two waves of a B200's CTAs; a decode splits a token's work only while its
@@ -75,6 +87,68 @@ def _host_f32(value: float) -> TensorValue:
     return ops.constant([value], DType.float32, DeviceRef.CPU())
 
 
+def _packed_stride() -> TensorValue:
+    return ops.constant([-1], DType.int64, DeviceRef.CPU())
+
+
+def records_per_page(cache: BufferValue) -> int:
+    """Returns the records a page of a cache leaf's blocks holds."""
+    if cache.rank != 6:
+        raise ValueError(
+            "a CSA cache is a leaf's [blocks, 1, layers, slots, 1, pitch] "
+            f"blocks, got rank {cache.rank}"
+        )
+    return int(cache.shape[3])
+
+
+def cache_slots(cache: BufferValue) -> Dim:
+    """Returns the absolute slots of every page of a cache leaf's blocks."""
+    shape = cache.shape
+    return shape[0] * shape[1] * shape[2] * shape[3]
+
+
+def leaf_slots(
+    leaf: PagedCacheValues,
+    request: TensorValue,
+    entry: TensorValue,
+    layer: int,
+) -> TensorValue:
+    """Returns the absolute slots of a layer's logical entries in a leaf.
+
+    Entry ``e`` of request ``r`` sits at offset ``e % slots`` of the
+    request's block ``lookup_table[r, e // slots]``, so its slot is
+    ``(block * layers + layer) * slots + e % slots``. Negative entries map
+    to ``-1``.
+
+    Args:
+        leaf: The window or compressed cache leaf.
+        request: Each entry's request row in the lookup table,
+            broadcastable against ``entry``.
+        entry: Logical entries: token positions in the window leaf, group
+            ids in a compressed leaf.
+        layer: The layer's index among the leaf's layers.
+
+    Returns:
+        int32 absolute slots, ``entry``'s shape.
+    """
+    blocks = leaf.kv_blocks
+    slots = records_per_page(blocks)
+    layers = int(blocks.shape[2])
+    entry = ops.cast(entry, DType.int32)
+    valid = entry >= 0
+    e = ops.max(entry, ops.constant(0, DType.int32, entry.device))
+    request = ops.broadcast_to(ops.cast(request, DType.int32), e.shape)
+    block = ops.gather_nd(
+        leaf.lookup_table,
+        ops.stack(
+            [request, ops.floor_div(e, slots)],
+            axis=-1,
+        ),
+    )
+    slot = (ops.cast(block, DType.int32) * layers + layer) * slots + e % slots
+    return ops.where(valid, slot, ops.constant(-1, DType.int32, entry.device))
+
+
 def store_window_kv(
     cache: BufferValue,
     latent: TensorValue,
@@ -82,29 +156,32 @@ def store_window_kv(
     rope_table: TensorValue,
     slots: TensorValue,
     *,
-    page_size: int,
+    block_stride: TensorValue | None = None,
 ) -> None:
     """RoPEs, quantizes to MXFP8 and stores each row's window record.
 
     Args:
-        cache: The window cache, ``[pages, page_bytes]`` uint8.
+        cache: The window cache leaf's blocks.
         latent: ``[T, 512]`` bf16 KV latents before RoPE.
         positions: ``[T]`` token positions.
         rope_table: ``[rows, 64]`` float32 cosines then sines per position.
-        slots: ``[T]`` int64 slots, negative to skip a row.
-        page_size: Records a cache page holds.
+        slots: ``[T]`` absolute slots, negative to skip a row.
+        block_stride: Host ``[1]`` int64 block stride in bytes, ``-1`` when
+            the blocks are packed (the default); the op requires packed
+            blocks.
     """
     ops.inplace_custom(
         "mo.csa.window_kv_store",
         device=latent.device,
         values=[
-            latent,
+            ops.cast(latent, DType.bfloat16),
             ops.cast(positions, DType.int64),
             rope_table,
             ops.cast(slots, DType.int64),
             cache,
+            _packed_stride() if block_stride is None else block_stride,
         ],
-        parameters={"page_size": page_size},
+        parameters={"page_size": records_per_page(cache)},
     )
 
 
@@ -115,34 +192,59 @@ def store_compressed_kv(
     rope_table: TensorValue,
     slots: TensorValue,
     *,
-    page_size: int,
     ratio: int,
+    block_stride: TensorValue | None = None,
 ) -> None:
     """RoPEs, quantizes to NVFP4 and stores each group-closing row's record.
 
     The trailing 64 channels rotate at the group's first position.
 
     Args:
-        cache: The compressed cache, ``[pages, page_bytes]`` uint8.
+        cache: The compressed cache leaf's blocks.
         latent: ``[T, 512]`` bf16 pooled latents before RoPE.
         positions: ``[T]`` token positions.
         rope_table: ``[rows, 64]`` float32 cosines then sines per position.
-        slots: ``[T]`` int64 slots, negative to skip a row.
-        page_size: Records a cache page holds.
+        slots: ``[T]`` absolute slots, negative to skip a row.
         ratio: Positions pooled into one record, 1 or 2.
+        block_stride: As for :func:`store_window_kv`.
     """
     ops.inplace_custom(
         "mo.csa.compressed_kv_store",
         device=latent.device,
         values=[
-            latent,
+            ops.cast(latent, DType.bfloat16),
             ops.cast(positions, DType.int64),
             rope_table,
             ops.cast(slots, DType.int64),
             cache,
+            _packed_stride() if block_stride is None else block_stride,
         ],
-        parameters={"page_size": page_size, "ratio": ratio},
+        parameters={"page_size": records_per_page(cache), "ratio": ratio},
     )
+
+
+def compressed_entries(compressed_rows: int) -> int:
+    """Returns the compressed list entries a token walks, a multiple of 64."""
+    return -(-min(compressed_rows, MAX_COMPRESSED) // 64) * 64
+
+
+def decode_workspace_floats(n_heads: int, split_rows: int) -> int:
+    """Returns the float32 values of a decode's split workspace."""
+    return split_rows * n_heads * (HEAD_DIM + 1)
+
+
+def prefill_workspace_values(rows: Dim | int, slots: Dim | int) -> Dim:
+    """Returns the bf16 values of a prefill's workspace.
+
+    The dequantized rows, then int32 words (two bf16 values each): a map
+    entry per absolute slot of both caches, each row's slot and the row
+    count.
+
+    Args:
+        rows: The most distinct slots the call's lists name.
+        slots: The absolute slots of both caches.
+    """
+    return Dim(rows) * (HEAD_DIM + 2) + 2 * (Dim(slots) + 1)
 
 
 def csa2_attention(
@@ -153,70 +255,79 @@ def csa2_attention(
     kv_comp: BufferValue | None,
     *,
     scale: float,
-    window_page: int,
-    comp_page: int = 1,
+    window_stride: TensorValue | None = None,
+    comp_stride: TensorValue | None = None,
     compressed_rows: int = MAX_COMPRESSED,
-    prefill: bool = False,
+    prefill: bool | TensorValue = False,
     split_rows: int = DECODE_SPLIT_ROWS,
-    max_distinct_rows: int | None = None,
+    max_distinct_rows: Dim | int | None = None,
 ) -> TensorValue:
     """Returns ``[T, n_heads, 512]`` bf16 sparse attention outputs.
 
     Decode reads the records in place and suits up to 8 query tokens a
     sequence. Prefill first dequantizes each distinct slot the lists name
     to one bf16 row, so its scratch and time grow with the slots named.
+    A host ``prefill`` flag picks between them per call, inside the op, so
+    a graph serving both needs no branch; its workspace fits either.
 
     Args:
         q: ``[T, n_heads, 512]`` bf16 queries.
-        idx: ``[T, 640]`` int32 window then compressed slots, ``-1`` for
-            none, the compressed ones packed first.
+        idx: ``[T, 640]`` int32 window then compressed absolute slots,
+            ``-1`` for none, the compressed ones packed first.
         sink: ``[n_heads]`` float32 sink logits.
-        kv_window: The window cache.
-        kv_comp: The compressed cache, ``None`` on a window-only layer.
+        kv_window: The window cache leaf's blocks.
+        kv_comp: The compressed cache leaf's blocks, ``None`` on a
+            window-only layer.
         scale: Softmax scale.
-        window_page: Records a window cache page holds.
-        comp_page: Records a compressed cache page holds.
+        window_stride: Host ``[1]`` int64 block stride of ``kv_window``,
+            ``-1`` (the default) when packed; the op requires packed blocks.
+        comp_stride: The same for ``kv_comp``.
         compressed_rows: The most compressed entries any list names, at
             most 512; it sets the tiles each token walks.
-        prefill: Whether to dequantize the named cache slots first.
+        prefill: Whether to dequantize the named cache slots first: a
+            constant, or a host bool scalar read when the op runs.
         split_rows: Partial rows a decode's split workspace holds.
         max_distinct_rows: The most distinct slots a prefill's lists name
             across both caches, the rows its workspace holds; a call naming
             more aborts. Defaults to a row per walked list entry,
-            ``T * (128 + C)``, ``C`` the ``compressed_rows`` rounded up to
-            64.
+            ``T * (128 + C)`` with ``C`` from :func:`compressed_entries`.
     """
     t, n_heads = q.shape[0], int(q.shape[1])
     device = q.device
-    window_only = kv_comp is None
-    name = "mo.csa2." + ("prefill" if prefill else "decode")
+    flag = None if isinstance(prefill, bool) else prefill
+    if flag is None:
+        name = "mo.csa2." + ("prefill" if prefill else "decode")
+    else:
+        name = "mo.csa2.attention"
     parameters: dict[str, bool | int | float | str | DType] = {
         "num_heads": n_heads,
-        "window_page": window_page,
+        "window_page": records_per_page(kv_window),
     }
-    if window_only:
+    if flag is not None:
+        parameters["split_rows"] = split_rows
+    strides = [_packed_stride() if window_stride is None else window_stride]
+    if kv_comp is None:
         name += ".window_only"
     else:
         parameters["compressed_rows"] = compressed_rows
-        parameters["comp_page"] = comp_page
-    if prefill:
-        # the rows, then int32 words, two bf16 values each: the slot maps,
-        # each row's slot and the row count
-        entries = INDEX_WIDTH - MAX_COMPRESSED
-        slots = kv_window.shape[0] * window_page
-        if kv_comp is not None:
-            entries += -(-min(compressed_rows, MAX_COMPRESSED) // 64) * 64
-            slots = slots + kv_comp.shape[0] * comp_page
-        rows = t * entries if max_distinct_rows is None else max_distinct_rows
-        workspace = TensorType(
-            DType.bfloat16,
-            [rows * (HEAD_DIM + 2) + 2 * (slots + 1)],
-            device,
-        )
+        parameters["comp_page"] = records_per_page(kv_comp)
+        strides.append(_packed_stride() if comp_stride is None else comp_stride)
+    decode_floats = decode_workspace_floats(n_heads, split_rows)
+    if prefill is False:
+        workspace = TensorType(DType.float32, [decode_floats], device)
     else:
-        workspace = TensorType(
-            DType.float32, [split_rows * n_heads * (HEAD_DIM + 1)], device
-        )
+        entries = WINDOW_ENTRIES
+        slots = cache_slots(kv_window)
+        if kv_comp is not None:
+            entries += compressed_entries(compressed_rows)
+            slots = slots + cache_slots(kv_comp)
+        rows = t * entries if max_distinct_rows is None else max_distinct_rows
+        values = prefill_workspace_values(rows, slots)
+        if flag is not None:
+            # Room for the decode too, which views the values as float32
+            # partials.
+            values = values + 2 * decode_floats
+        workspace = TensorType(DType.bfloat16, [values], device)
     caches = [kv_window] if kv_comp is None else [kv_window, kv_comp]
     return ops.inplace_custom(
         name,
@@ -227,10 +338,43 @@ def csa2_attention(
             ops.cast(idx, DType.int32),
             ops.cast(sink, DType.float32),
             _host_f32(scale),
+            *strides,
+            *(
+                []
+                if flag is None
+                else [ops.reshape(ops.cast(flag, DType.bool), [1])]
+            ),
         ],
         out_types=[
             TensorType(DType.bfloat16, [t, n_heads, HEAD_DIM], device),
             workspace,
         ],
         parameters=parameters,
+    )[0].tensor
+
+
+def load_window_kv(
+    cache: BufferValue,
+    slots: TensorValue,
+    *,
+    block_stride: TensorValue | None = None,
+) -> TensorValue:
+    """Returns ``[N, 512]`` bf16 window records, dequantized and rotated.
+
+    Args:
+        cache: The window cache leaf's blocks.
+        slots: ``[N]`` absolute slots; a negative slot gives a zero row.
+        block_stride: As for :func:`store_window_kv`.
+    """
+    return ops.inplace_custom(
+        "mo.csa.window_kv_load",
+        device=slots.device,
+        values=[
+            ops.cast(slots, DType.int64),
+            cache,
+            _packed_stride() if block_stride is None else block_stride,
+        ],
+        out_types=[
+            TensorType(DType.bfloat16, [slots.shape[0], HEAD_DIM], slots.device)
+        ],
     )[0].tensor

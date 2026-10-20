@@ -16,6 +16,10 @@ Each layer attends over a sliding window of recent tokens plus a top-k
 selection of compressed KV entries chosen by an indexer. Layers can share
 work: a layer may read another layer's compressed KV and index keys, or
 reuse the top-k selection an earlier layer computed in the same forward.
+
+The window and compressed caches hold quantized records (MXFP8 per token,
+NVFP4 per compression group) that the store ops rotate and quantize; the
+attention names each record by its absolute slot in its cache leaf.
 """
 
 from __future__ import annotations
@@ -38,7 +42,6 @@ from max.nn.kernels import (
     ceildiv,
     grouped_matmul_block_scaled,
     grouped_quantize_dynamic_block_scaled,
-    store_k_cache_ragged,
 )
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.layer import Module
@@ -54,14 +57,20 @@ from max.nn.quant_config import (
 )
 from max.nn.quant_ops import _matmul_float8_mxfp8
 
-from ...deepseekV4.layers.quantization import fp8_qat_quantize
 from ...deepseekV4.layers.ragged import arange_to, host_scalar
 from ...deepseekV4.layers.rope import apply_rope_tail
 from ..layer_resolver import LayerInfo
 from ..model_config import DeepseekV41Config, woa_mxfp8_enabled
-from .compressor import (
-    DeepseekV41Compressor,
-    compressed_rope_positions,
+from .compressor import DeepseekV41Compressor
+from .csa2 import (
+    HEAD_DIM,
+    MAX_COMPRESSED,
+    PREFILL_ROWS,
+    WINDOW_ENTRIES,
+    csa2_attention,
+    leaf_slots,
+    store_compressed_kv,
+    store_window_kv,
 )
 from .indexer import (
     DeepseekV41Indexer,
@@ -75,15 +84,53 @@ from .indexer import (
     select_index_keys_masked,
     store_index_keys,
 )
-from .quantization import nvfp4_qat_quantize
 from .query import DeepseekV41Query
 from .ragged import V41RaggedRows as RaggedRows
 from .reuse import ForwardSelection, bind_cache_sources, selection_for_layer
 from .rope import rope_for_layer
-from .sparse_attention import sparse_attention
 
 # MXFP8 block size: one E8M0 scale per 32 elements.
 _MXFP8_BLOCK_SIZE = 32
+# A forward whose requests each bring at most this many query tokens runs
+# the decode attention, which reads the records in place; a longer one
+# dequantizes the records it names once, first.
+_DECODE_MAX_QUERY_TOKENS = 8
+
+
+def prefill_rows_bound(
+    tokens: TensorValue,
+    batch: TensorValue,
+    longest: TensorValue,
+    cached: TensorValue,
+    ratio: int | None,
+) -> TensorValue:
+    """Returns the most distinct slots a forward's CSA2 lists can name.
+
+    ``T + 128 * B`` window slots (each request's tokens and the 127 before
+    them), plus each request's compressed slots: at most 512 a token and
+    every group of its context. The longest request's ``L`` tokens name at
+    most ``min(512 * L, G)`` of them and the other ``T - L`` tokens at most
+    ``min(512 * (T - L), (B - 1) * G)``, with ``G`` the groups of the
+    longest context.
+
+    Args:
+        tokens: Host int64 scalar ``T``, the forward's query tokens.
+        batch: Host int64 scalar ``B``, its requests.
+        longest: Host int64 scalar ``L``, the most query tokens a request
+            brings.
+        cached: Host int64 scalar, the most tokens a request has cached.
+        ratio: The layer's compression ratio, ``None`` without a
+            compressed cache.
+    """
+    named = tokens + batch * WINDOW_ENTRIES
+    if ratio is None:
+        return named
+    groups = ops.floor_div(longest + cached + (ratio - 1), ratio)
+    return (
+        named
+        + ops.min(longest * MAX_COMPRESSED, groups)
+        + ops.min((tokens - longest) * MAX_COMPRESSED, (batch - 1) * groups)
+    )
 
 
 def _output_projection_quant_config() -> QuantConfig:
@@ -120,9 +167,11 @@ class CSA2Cache:
     """
 
     swa_collection: PagedCacheValues
-    """Sliding-window cache shared by every layer, indexed by ``layer_id``."""
+    """Sliding-window record leaf shared by every layer, indexed by
+    ``layer_id``: an MXFP8 record per token."""
     main_kv_by_layer: Mapping[int, PagedCacheValues]
-    """Owning layer id -> compressed KV cache."""
+    """Owning layer id -> compressed record leaf: an NVFP4 record per
+    compression group."""
     index_k_by_layer: Mapping[int, PagedCacheValues]
     """Owning layer id -> indexer key cache.
 
@@ -408,20 +457,11 @@ class CompressedKV:
     latent: TensorValue
     """``[T, head_dim]`` bf16 pooled, normalized latent, before RoPE.
 
-    Zero on rows that do not close a group. Input to the index keys.
+    Zero on rows that do not close a group. Input to the compressed record
+    and the index keys, whose stores apply RoPE.
     """
-    latent_rope: TensorValue
-    """bf16 ``latent`` with RoPE applied at the group's first position."""
-    latent_rope_f32: TensorValue
-    """``latent_rope`` before bf16 rounding.
-
-    Rounded onto the NVFP4 grid before it is stored in the compressed cache.
-    """
-    freqs_cis: TensorValue
-    """``[T, rope_head_dim // 2, 2]`` cos/sin at each compressed position.
-
-    Shared with the index keys.
-    """
+    valid: TensorValue
+    """``[T]`` bool, whether the row closes a group (publishes an entry)."""
 
 
 @dataclass
@@ -436,9 +476,11 @@ class PendingCSA2Attention:
     out_shape: list[Dim]
     freqs_cis: TensorValue
     swa_collection: PagedCacheValues
-    layer_swa: TensorValue
     comp_collection: PagedCacheValues | None
+    comp_index: int | None
+    """This layer's index among the compressed leaf's layers."""
     layer_comp: TensorValue | None
+    """``comp_index`` as a host uint32 scalar, for the indexer ops."""
     index_q: tuple[TensorValue, TensorValue, TensorValue] | None = None
     """MXFP4 index queries, scale words and weights ("Full"/"Reindex")."""
     index_leaf: PagedCacheValues | None = None
@@ -522,6 +564,17 @@ class CSA2Attention(Module):
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.window = window
+        if window != WINDOW_ENTRIES or head_dim != HEAD_DIM:
+            raise ValueError(
+                f"CSA2 attends {WINDOW_ENTRIES}-token windows of "
+                f"{HEAD_DIM}-wide records, got window={window}, "
+                f"head_dim={head_dim}"
+            )
+        if num_comp > MAX_COMPRESSED:
+            raise ValueError(
+                f"CSA2 attends at most {MAX_COMPRESSED} compressed entries, "
+                f"got num_comp={num_comp}"
+            )
         self.num_comp = num_comp
         self.scale = head_dim**-0.5
         self.device = device
@@ -728,28 +781,25 @@ class CSA2Attention(Module):
             out_shape=[b, s, hidden],
             freqs_cis=freqs_cis,
             swa_collection=cache.swa_collection,
-            layer_swa=ops.constant(
-                layer.layer_id, DType.uint32, DeviceRef.CPU()
-            ),
             comp_collection=None,
+            comp_index=None,
             layer_comp=None,
         )
-        # The SWA record: full-width RMSNorm of the KV latent, then RoPE on
-        # its trailing `qk_rope_head_dim` dims.
-        kv_latent = apply_rope_tail(
-            self.kv_norm(kv_raw), freqs_cis, int(freqs_cis.shape[-2]) * 2
-        )
-        # Round the bf16 row onto the MXFP8 grid over all dims.
-        kv_latent = fp8_qat_quantize(
-            ops.cast(kv_latent, DType.bfloat16),
-            block_size=_MXFP8_BLOCK_SIZE,
-        )
+        rope_table = rope_cos_sin_table(self.rope.freqs_cis_base())
+        # The window record: full-width RMSNorm of the KV latent; the store
+        # applies RoPE to its trailing dims and quantizes it to MXFP8.
         # Every layer, including "SWA-only", owns its sliding-window slot.
-        store_k_cache_ragged(
-            cache.swa_collection,
-            ops.reshape(kv_latent, [-1, 1, self.head_dim]),
-            rows.offsets,
-            state.layer_swa,
+        swa = cache.swa_collection
+        store_window_kv(
+            swa.kv_blocks,
+            ops.reshape(
+                ops.cast(self.kv_norm(kv_raw), DType.bfloat16),
+                [-1, self.head_dim],
+            ),
+            rows.positions,
+            rope_table,
+            leaf_slots(swa, rows.bid, rows.positions, layer.layer_id),
+            block_stride=swa.page_stride,
         )
         if layer.attention_mode == "SWA-only":
             return state
@@ -763,12 +813,12 @@ class CSA2Attention(Module):
             binding.kv_source_layer_id
         ]
         layer_comp = ops.constant(comp_index, DType.uint32, DeviceRef.CPU())
+        state.comp_index = comp_index
         state.layer_comp = layer_comp
 
         if layer.attention_mode in ("Full", "Reindex"):
             indexer = self.indexer
             assert indexer is not None
-            rope_table = rope_cos_sin_table(self.rope.freqs_cis_base())
             index_queries, index_weights = indexer(qr, h_flat)
             state.index_q = quantize_queries(
                 index_queries,
@@ -781,8 +831,8 @@ class CSA2Attention(Module):
             state.index_leaf = binding.index_k_leaf
             if indexer.owns_k:
                 # A "Full" layer is its own KV source: the pre-RoPE pooled
-                # latent feeds the index key; the RoPE'd copy is stored in
-                # the compressed cache.
+                # latent feeds both the compressed record and the index key,
+                # whose stores rotate it.
                 assert self.compressor is not None
                 raw = ops.reshape(
                     self.compressor.project(h_flat),
@@ -796,19 +846,23 @@ class CSA2Attention(Module):
                     )
                     state_layer = layer_comp
                 compressed = self.compress(raw, rows, state_leaf, state_layer)
-                # One row per raw token, so the stores reuse `rows.offsets`;
-                # non-closing rows hold zeros masked by visibility.
-                # Round the float32 rotated row onto the NVFP4 grid. Exact
-                # in bf16: E2M1 x E4M3 has at most 6 significant bits.
-                stored = ops.cast(
-                    nvfp4_qat_quantize(compressed.latent_rope_f32),
-                    DType.bfloat16,
+                # Group `p // ratio` closes on row `p`; other rows skip.
+                comp = binding.main_kv_leaf
+                group = ops.floor_div(
+                    ops.cast(rows.positions, DType.int32), layer.compress_ratio
                 )
-                store_k_cache_ragged(
-                    binding.main_kv_leaf,
-                    ops.unsqueeze(stored, 1),
-                    rows.offsets,
-                    layer_comp,
+                store_compressed_kv(
+                    comp.kv_blocks,
+                    compressed.latent,
+                    rows.positions,
+                    rope_table,
+                    ops.where(
+                        compressed.valid,
+                        leaf_slots(comp, rows.bid, group, comp_index),
+                        ops.constant(-1, DType.int32, group.device),
+                    ),
+                    ratio=layer.compress_ratio,
+                    block_stride=comp.page_stride,
                 )
                 # Stored before selection so this forward's keys are in the
                 # history read below and by dependent Reindex layers.
@@ -838,7 +892,7 @@ class CSA2Attention(Module):
         state: PagedCacheValues | None = None,
         layer_idx: TensorValue | None = None,
     ) -> CompressedKV:
-        """Pools ``raw`` and RoPEs the result at its compressed positions.
+        """Pools ``raw`` into one latent per closed compression group.
 
         Args:
             raw: ``[T, head_dim * ratio]`` float32, this layer's
@@ -851,7 +905,7 @@ class CSA2Attention(Module):
                 ``state``.
 
         Returns:
-            The pooled latent, its RoPE'd copies and cos/sin.
+            The pooled latent and whether its row closes a group.
         """
         assert self.compressor is not None
         positions = rows.positions
@@ -863,28 +917,15 @@ class CSA2Attention(Module):
             None if state is None else index_key_slots(state, rows, ratio=1),
             layer_idx,
         )
-        freqs_cis = ops.gather(
-            self.rope.freqs_cis_base(),
-            compressed_rope_positions(
-                positions, self.layer_info.compress_ratio
-            ),
-            axis=0,
-        )
-        # RoPE in float32, then round to bf16. `apply_rope_tail` needs a
-        # sequence axis at 1.
-        latent_rope = ops.reshape(
-            apply_rope_tail(
-                ops.unsqueeze(ops.cast(latent, DType.float32), 0),
-                freqs_cis,
-                int(freqs_cis.shape[-2]) * 2,
-            ),
-            [-1, self.head_dim],
+        # Group ``p // ratio`` closes on the row where ``(p + 1) % ratio`` is
+        # zero; only that row publishes an entry.
+        ratio = self.layer_info.compress_ratio
+        valid = ops.equal(
+            ops.cast(positions + 1, DType.int64) % ratio,
+            ops.constant(0, DType.int64, positions.device),
         )
         return CompressedKV(
-            latent=latent,
-            latent_rope=ops.cast(latent_rope, DType.bfloat16),
-            latent_rope_f32=latent_rope,
-            freqs_cis=freqs_cis,
+            latent=ops.cast(latent, DType.bfloat16), valid=valid
         )
 
     @staticmethod
@@ -903,6 +944,114 @@ class CSA2Attention(Module):
                 "first pair"
             )
         return state_leaf
+
+    def _index_list(
+        self,
+        state: PendingCSA2Attention,
+        rows: RaggedRows,
+        selected: TensorValue | None,
+    ) -> TensorValue:
+        """Builds each row's ``[T, 640]`` absolute-slot index list.
+
+        The window slots of positions ``p, p - 1, ..., p - 127`` come first
+        (``-1`` below position 0), then the compressed slots of the
+        ``selected`` groups' records, ``-1``-padded to 512.
+
+        Args:
+            state: :meth:`begin`'s state.
+            rows: The forward's bookkeeping.
+            selected: ``[T, num_comp]`` int32 raw positions of the selected
+                groups' closing tokens, ``-1`` for none; ``None`` on a
+                window-only layer.
+        """
+        device = state.q.device
+        t = state.q.shape[0]
+        request = ops.unsqueeze(ops.cast(rows.bid, DType.int32), -1)
+        back = ops.range(
+            0,
+            -WINDOW_ENTRIES,
+            -1,
+            out_dim=WINDOW_ENTRIES,
+            dtype=DType.int32,
+            device=device,
+        )
+        window = leaf_slots(
+            state.swa_collection,
+            request,
+            ops.unsqueeze(ops.cast(rows.positions, DType.int32), -1)
+            + ops.unsqueeze(back, 0),
+            self.layer_info.layer_id,
+        )
+        none = ops.constant(-1, DType.int32, device)
+        if selected is None:
+            return ops.concat(
+                [window, ops.broadcast_to(none, [t, MAX_COMPRESSED])], axis=1
+            )
+        assert state.comp_collection is not None
+        assert state.comp_index is not None
+        ratio = self.layer_info.compress_ratio
+        group = ops.where(selected >= 0, ops.floor_div(selected, ratio), none)
+        lists = [
+            window,
+            leaf_slots(state.comp_collection, request, group, state.comp_index),
+        ]
+        pad = MAX_COMPRESSED - int(selected.shape[-1])
+        if pad:
+            lists.append(ops.broadcast_to(none, [t, pad]))
+        return ops.concat(lists, axis=1)
+
+    def _attend(
+        self,
+        state: PendingCSA2Attention,
+        rows: RaggedRows,
+        idx: TensorValue,
+    ) -> TensorValue:
+        """Runs the CSA2 attention over ``idx``'s slots.
+
+        A forward where some request brings more than
+        ``_DECODE_MAX_QUERY_TOKENS`` query tokens runs the prefill attention
+        if its lists cannot name more than ``PREFILL_ROWS`` distinct slots
+        (:func:`prefill_rows_bound`). Every other forward runs the decode
+        attention: a prefill naming more slots than its workspace holds
+        would abort. The op makes the choice from a host flag rather than a
+        graph branch: a decode attention inside an ``ops.cond`` branch read
+        the window cache before this forward's window stores landed.
+        """
+        swa = state.swa_collection
+        comp = state.comp_collection
+        q = state.q
+        t = q.shape[0]
+        sink = ops.cast(self.attn_sink, DType.float32)
+        host = DeviceRef.CPU()
+        tokens, batch = (
+            ops.reshape(ops.shape_to_tensor([dim]), [])
+            for dim in (t, rows.batch)
+        )
+        longest = ops.cast(ops.reshape(swa.max_prompt_length, []), DType.int64)
+        named = prefill_rows_bound(
+            tokens,
+            batch,
+            longest,
+            ops.cast(ops.reshape(swa.max_cache_length, []), DType.int64),
+            None if comp is None else self.layer_info.compress_ratio,
+        )
+        use_prefill = (
+            longest > ops.constant(_DECODE_MAX_QUERY_TOKENS, DType.int64, host)
+        ) & (named <= ops.constant(PREFILL_ROWS, DType.int64, host))
+
+        return csa2_attention(
+            q,
+            idx,
+            sink,
+            swa.kv_blocks,
+            None if comp is None else comp.kv_blocks,
+            scale=self.scale,
+            window_stride=swa.page_stride,
+            comp_stride=None if comp is None else comp.page_stride,
+            compressed_rows=self.num_comp,
+            prefill=use_prefill,
+            max_distinct_rows=PREFILL_ROWS,
+        )
 
     def _select(
         self, state: PendingCSA2Attention, rows: RaggedRows
@@ -995,18 +1144,7 @@ class CSA2Attention(Module):
         if layer.attention_mode == "SWA-only":
             selection_for_layer(layer, self.selection_box.current)
             self.selection_box.current = None
-            out = sparse_attention(
-                state.q,
-                rows.offsets,
-                None,
-                self.attn_sink,
-                state.swa_collection,
-                None,
-                state.layer_swa,
-                None,
-                scale=self.scale,
-                window=self.window,
-            )
+            out = self._attend(state, rows, self._index_list(state, rows, None))
             if self._selection_trace is not None:
                 self._selection_trace.append((layer.layer_id, None))
             return ops.reshape(
@@ -1032,18 +1170,7 @@ class CSA2Attention(Module):
             )
 
         self.selection_box.current = selection
-        out = sparse_attention(
-            state.q,
-            rows.offsets,
-            produced,
-            self.attn_sink,
-            state.swa_collection,
-            state.comp_collection,
-            state.layer_swa,
-            state.layer_comp,
-            scale=self.scale,
-            window=self.window,
-        )
+        out = self._attend(state, rows, self._index_list(state, rows, produced))
         if self._selection_trace is not None:
             self._selection_trace.append((layer.layer_id, selection))
         return ops.reshape(

@@ -28,11 +28,6 @@ from typing import TypeVar
 from max.dtype import DType
 from max.graph import DeviceRef, ShardingStrategy, TensorValue, Weight, ops
 from max.nn.embedding import Embedding
-from max.nn.kernels import (
-    KEY_CACHE_INDEX,
-    kv_cache_gather_rows_ragged,
-    store_k_cache_ragged,
-)
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.layer import Module
 from max.nn.linear import Linear
@@ -59,6 +54,8 @@ from .attention import (
     mxfp8_grouped_projection,
     wo_a_linear,
 )
+from .csa2 import leaf_slots, load_window_kv, store_window_kv
+from .indexer import rope_cos_sin_table
 from .query import DeepseekV41Query
 from .ragged import V41RaggedRows as RaggedRows
 from .rope import rope_for_layer
@@ -525,12 +522,6 @@ class DeepseekV41DSparkAttention(Module):
         kv = self._kv(self._kv_raw(main_x), freqs_cis)
         return ops.reshape(kv, [-1, self.head_dim])
 
-    def _swa_layer(self) -> TensorValue:
-        """This stage's layer index in the sliding-window cache."""
-        return ops.constant(
-            self.layer_info.layer_id, DType.uint32, DeviceRef.CPU()
-        )
-
     def store_context(
         self,
         main_x: TensorValue,
@@ -547,16 +538,23 @@ class DeepseekV41DSparkAttention(Module):
                 lengths), so token ``i`` of request ``r`` lands at position
                 ``starts[r] + i``.
             swa_collection: The sliding-window KV cache.
+
+        The store rotates and quantizes the normed latent itself, onto the
+        same MXFP8 grid as :meth:`context_kv`.
         """
-        kv = self.context_kv(main_x, rows.positions)
-        store_k_cache_ragged(
-            swa_collection,
-            ops.reshape(
-                ops.cast(kv, swa_collection.kv_blocks.dtype),
-                [-1, 1, self.head_dim],
+        latent = self.kv_norm(self._kv_raw(main_x))
+        store_window_kv(
+            swa_collection.kv_blocks,
+            ops.reshape(ops.cast(latent, DType.bfloat16), [-1, self.head_dim]),
+            rows.positions,
+            rope_cos_sin_table(self.rope.freqs_cis_base()),
+            leaf_slots(
+                swa_collection,
+                rows.bid,
+                rows.positions,
+                self.layer_info.layer_id,
             ),
-            rows.offsets,
-            self._swa_layer(),
+            block_stride=swa_collection.page_stride,
         )
 
     def read_window(
@@ -576,17 +574,21 @@ class DeepseekV41DSparkAttention(Module):
             The window: ``[b, window, head_dim]`` KV rows and their validity.
         """
         positions, valid = dspark_window_positions(starts, self.window)
-        device = starts.device
         b = starts.shape[0]
-        per_request = ops.cast(arange_to(b + 1, b + 1, device), DType.uint32)
-        kv = kv_cache_gather_rows_ragged(
+        slots = leaf_slots(
             swa_collection,
+            ops.unsqueeze(arange_to(b, b, starts.device), -1),
             positions,
-            per_request,
-            self._swa_layer(),
-            key_or_value=KEY_CACHE_INDEX,
+            self.layer_info.layer_id,
         )
-        return DSparkWindow(kv=kv, valid=valid)
+        kv = load_window_kv(
+            swa_collection.kv_blocks,
+            ops.reshape(slots, [-1]),
+            block_stride=swa_collection.page_stride,
+        )
+        return DSparkWindow(
+            kv=ops.reshape(kv, [b, self.window, self.head_dim]), valid=valid
+        )
 
     def shard_heads(self, num_devices: int) -> None:
         """Declares how the attention heads split across devices.
