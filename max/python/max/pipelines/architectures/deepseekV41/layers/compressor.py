@@ -23,6 +23,9 @@ from max.nn.layer import Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
 
+_KERNEL_HEAD_DIM = 512
+"""The only latent width the pooling ops support."""
+
 
 def workspace_bytes(compress_ratio: int, head_dim: int = 512) -> int:
     """Returns the pooling op's scratch bytes per token row.
@@ -45,7 +48,9 @@ class DeepseekV41Compressor(Module):
     one latent, written on the row of the token closing the group. At ratio
     two a pair can straddle forwards: every token's ``raw`` row is saved to a
     paged state leaf, and a request starting at an odd position pools its
-    first pair with the row saved at the position before it.
+    first pair with the row saved at the position before it. Nothing checks
+    that row's origin, so a request may resume at an odd position only when
+    the same request wrote that row.
 
     Args:
         compress_ratio: One for plain normalization, or two for gated pairs.
@@ -55,11 +60,11 @@ class DeepseekV41Compressor(Module):
             omit both to supply ``raw`` directly.
         device: Device of the projection weights; paired with
             ``hidden_size``.
-        head_dim: Latent width.
+        head_dim: Latent width; the pooling ops support only 512.
 
     Raises:
-        ValueError: If ``compress_ratio`` is not 1 or 2, or only one of
-            ``hidden_size`` and ``device`` is given.
+        ValueError: If ``compress_ratio`` is not 1 or 2, ``head_dim`` is not
+            512, or only one of ``hidden_size`` and ``device`` is given.
     """
 
     def __init__(
@@ -74,6 +79,11 @@ class DeepseekV41Compressor(Module):
         super().__init__()
         if compress_ratio not in (1, 2):
             raise ValueError("CSA2 compression ratio must be 1 or 2")
+        if head_dim != _KERNEL_HEAD_DIM:
+            raise ValueError(
+                f"CSA2 compressor head_dim must be {_KERNEL_HEAD_DIM}, got"
+                f" {head_dim}"
+            )
         if (hidden_size is None) != (device is None):
             raise ValueError("hidden_size and device must be given together")
         self.compress_ratio = compress_ratio
