@@ -75,9 +75,7 @@ void M::KGEN::printFunctionSignature(LIT::DefASTDecl &decl,
     selfType = ASTType(TraitASTDecl::computeSelfType(parentTrait));
 
   SmallVector<ParameterInfo, 2> params;
-  ParameterEvaluator evaluator =
-      populateParameterInfos(decl, signature.getInputParamTypes(),
-                             signature.getParamListAttrs(), params, selfType);
+  ParameterEvaluator evaluator = populateParameterInfos(decl, params, selfType);
 
   // Function-level constraints (the trailing "where ...").
   std::string fnConstraints;

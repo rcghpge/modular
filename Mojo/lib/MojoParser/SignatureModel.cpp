@@ -21,6 +21,7 @@
 #include "Mojo/MojoParser/ASTType.h"
 #include "Mojo/MojoParser/DeclSignaturePrinter.h"
 #include "Mojo/MojoParser/DocString.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -127,6 +128,28 @@ ParameterEvaluator populateParameterInfos(
     info.variadicKind = variadicKind;
     info.defaultValue = defaultValue;
     params.push_back(std::move(info));
+  }
+  return evaluator;
+}
+
+ParameterEvaluator
+populateParameterInfos(FnSignatureASTDecl &decl,
+                       SmallVectorImpl<ParameterInfo> &params,
+                       std::optional<ASTType> selfType) {
+  FnTypeGeneratorType signature = decl.getSignature();
+  ParameterEvaluator evaluator = populateParameterInfos(
+      static_cast<ASTDecl &>(decl), signature.getInputParamTypes(),
+      signature.getParamListAttrs(), params, selfType);
+
+  DenseMap<StringRef, ASTDecl *> declsByName;
+  for (ASTDecl *paramDecl : decl.getParamDecls()) {
+    if (auto name = paramDecl->getName())
+      declsByName.try_emplace(*name, paramDecl);
+  }
+  for (ParameterInfo &parameter : params) {
+    if (auto it = declsByName.find(parameter.getName());
+        it != declsByName.end())
+      parameter.setDecl(*it->second);
   }
   return evaluator;
 }

@@ -452,6 +452,29 @@ static ParameterEvaluator populatePublicParameterInfos(
   return evaluator;
 }
 
+static ParameterEvaluator
+populatePublicParameterInfos(FnSignatureASTDecl &parentDecl,
+                             SmallVectorImpl<ParameterInfo> &parameters,
+                             std::optional<ASTType> selfType = std::nullopt,
+                             ArrayRef<ConstraintAttr> bodyConstraintAttrs = {},
+                             std::string *bodyConstraints = nullptr) {
+  DeclResolver::DiagnosticDeclContextChanger scope(&parentDecl);
+  auto &shared = parentDecl.getShared();
+
+  SmallVector<ParameterInfo, 2> infos;
+  ParameterEvaluator evaluator =
+      populateParameterInfos(parentDecl, infos, selfType);
+
+  if (!bodyConstraintAttrs.empty() && bodyConstraints) {
+    *bodyConstraints = mergeConformsToConstraints(bodyConstraintAttrs,
+                                                  &evaluator, shared, infos);
+  }
+
+  parameters.reserve(parameters.size() + infos.size());
+  llvm::append_range(parameters, std::move(infos));
+  return evaluator;
+}
+
 static std::string getVariableType(ASTDecl &decl) {
   ASTType type = decl.getToolingType().getReferenceElementType();
   return type.getAsString(ASTTypePrinterContext(&decl.getShared()));
@@ -488,27 +511,28 @@ static std::string getAliasMarkdownDocString(AliasASTDecl &decl);
 // PublicDecl
 //===----------------------------------------------------------------------===//
 
-/// Return the signature type contained by a declaration, if any.
-static FnTypeGeneratorType getSignatureFromDecl(ASTDecl *decl) {
-  if (!decl)
-    return nullptr;
-  if (auto functionDecl = dyn_cast<FnSignatureASTDecl>(decl))
-    return functionDecl->getSignature();
-  return nullptr;
-}
-
 static SmallVector<ParameterInfo, kTypicalParameterCount>
 getFunctionTypeParameters(FnSignatureASTDecl &decl) {
+  SmallVector<ParameterInfo, kTypicalParameterCount> parameters;
+  populatePublicParameterInfos(decl, parameters);
+  return parameters;
+}
+
+static SmallVector<ArgumentInfo, kTypicalArgumentCount>
+getFunctionTypeArguments(FnSignatureASTDecl &decl) {
   FnTypeGeneratorType signature = decl.getSignature();
   SmallVector<ParameterInfo, kTypicalParameterCount> parameters;
-  populatePublicParameterInfos(signature.getInputParamTypes(),
-                               signature.getParamListAttrs(), parameters, decl);
-  ArrayRef<ASTDecl *> paramDecls = decl.getParamDecls();
-  assert(parameters.size() == paramDecls.size() &&
-         "function type parameter declarations must match its signature");
-  for (auto [info, paramDecl] : llvm::zip(parameters, paramDecls))
-    info.setDecl(*paramDecl);
-  return parameters;
+  ParameterEvaluator evaluator = populatePublicParameterInfos(decl, parameters);
+  SmallVector<ArgumentInfo, kTypicalArgumentCount> arguments;
+  populateArgumentInfos(
+      decl, signature, signature.getArguments(),
+      /*selfType=*/std::nullopt, evaluator, [] { return false; }, arguments);
+  ArrayRef<ASTDecl *> argDecls = decl.getArgDecls();
+  assert(arguments.size() == argDecls.size() &&
+         "function type argument declarations must match its signature");
+  for (auto [info, argDecl] : llvm::zip(arguments, argDecls))
+    info.setDecl(*argDecl);
+  return arguments;
 }
 
 /// Return the rendered parameter information corresponding to `decl`, if its
@@ -529,30 +553,10 @@ static std::optional<ParameterInfo> getParameterInfo(ASTDecl &decl) {
     return result;
   }
 
-  ASTDecl *parent = decl.getParentDecl();
-  FnTypeGeneratorType signature =
-      parent ? getSignatureFromDecl(parent) : nullptr;
-  if (!signature)
-    return std::nullopt;
-
-  auto *parentFunction = dyn_cast<FnSignatureASTDecl>(parent);
+  auto *parentFunction =
+      dyn_cast_or_null<FnSignatureASTDecl>(decl.getParentDecl());
   if (!parentFunction)
     return std::nullopt;
-  if (auto *functionType = dyn_cast<FunctionTypeASTDecl>(parent)) {
-    SmallVector<ParameterInfo, kTypicalParameterCount> parameters;
-    populatePublicParameterInfos(
-        functionType->getSignature().getInputParamTypes(),
-        functionType->getSignature().getParamListAttrs(), parameters,
-        *functionType);
-    ArrayRef<ASTDecl *> paramDecls = functionType->getParamDecls();
-    assert(parameters.size() == paramDecls.size() &&
-           "function type parameter declarations must match its signature");
-    if (parameters.size() <= paramNumber)
-      return std::nullopt;
-    ParameterInfo result = parameters[paramNumber];
-    result.setDecl(decl);
-    return result;
-  }
   SmallVector<ParameterInfo, kTypicalParameterCount> parameters =
       getFunctionParameters(*parentFunction);
   if (parameters.size() <= paramNumber)
@@ -806,39 +810,17 @@ ArgumentInfo::ArgumentInfo(ASTDecl &decl) {
   if (argNumber < 0)
     return;
 
-  std::optional<size_t> documentedArgNumber =
-      getDocumentedArgumentIndex(getSignatureFromDecl(decl.getParentDecl()),
-                                 static_cast<size_t>(argNumber));
+  auto *parentFunction =
+      dyn_cast_or_null<FnSignatureASTDecl>(decl.getParentDecl());
+  if (!parentFunction)
+    return;
+  std::optional<size_t> documentedArgNumber = getDocumentedArgumentIndex(
+      parentFunction->getSignature(), static_cast<size_t>(argNumber));
   if (!documentedArgNumber)
     return;
 
-  ASTDecl *parent = decl.getParentDecl();
-  FnTypeGeneratorType signature =
-      parent ? getSignatureFromDecl(parent) : nullptr;
-  if (!signature)
-    return;
-
-  auto *parentFunction = dyn_cast<FnSignatureASTDecl>(parent);
-  if (!parentFunction)
-    return;
   SmallVector<ArgumentInfo, kTypicalArgumentCount> arguments;
-  if (auto *functionType = dyn_cast<FunctionTypeASTDecl>(parent)) {
-    FnTypeGeneratorType signature = functionType->getSignature();
-    SmallVector<ParameterInfo, kTypicalParameterCount> parameters;
-    ParameterEvaluator evaluator = populatePublicParameterInfos(
-        signature.getInputParamTypes(), signature.getParamListAttrs(),
-        parameters, *functionType);
-    populateArgumentInfos(
-        *functionType, signature, signature.getArguments(),
-        /*selfType=*/std::nullopt, evaluator, [] { return false; }, arguments);
-    ArrayRef<ASTDecl *> argDecls = functionType->getArgDecls();
-    assert(arguments.size() == argDecls.size() &&
-           "function type argument declarations must match its signature");
-    for (auto [info, argDecl] : llvm::zip(arguments, argDecls))
-      info.setDecl(*argDecl);
-  } else {
-    arguments = getFunctionArguments(*parentFunction);
-  }
+  arguments = getFunctionArguments(*parentFunction);
   if (arguments.size() <= *documentedArgNumber)
     return;
   *this = arguments[*documentedArgNumber];
@@ -1167,8 +1149,7 @@ static FunctionDocumentation getFunctionDocumentation(DefASTDecl &decl) {
   // internally), then fold in function-level constraints. After this block
   // each `ParameterInfo` carries the final user-facing type string.
   ParameterEvaluator evaluator = populatePublicParameterInfos(
-      signature.getInputParamTypes(), signature.getParamListAttrs(),
-      documentation.parameters, decl, selfType,
+      decl, documentation.parameters, selfType,
       signature.getParamListAttrs().getBodyConstraints(),
       &documentation.fnConstraints);
 
@@ -1219,10 +1200,7 @@ SmallVector<ArgumentInfo, kTypicalArgumentCount>
 M::KGEN::LIT::getFunctionArguments(FnSignatureASTDecl &decl) {
   if (auto *defDecl = dyn_cast<DefASTDecl>(&decl))
     return getFunctionDocumentation(*defDecl).arguments;
-  SmallVector<ArgumentInfo, kTypicalArgumentCount> arguments;
-  for (ASTDecl *argDecl : decl.getArgDecls())
-    arguments.emplace_back(*argDecl);
-  return arguments;
+  return getFunctionTypeArguments(decl);
 }
 
 SmallVector<ParameterInfo, kTypicalParameterCount>

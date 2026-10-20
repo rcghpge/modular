@@ -35,6 +35,7 @@ namespace M {
 namespace KGEN {
 namespace LIT {
 class ASTDecl;
+class FnSignatureASTDecl;
 class SharedState;
 } // namespace LIT
 
@@ -117,6 +118,13 @@ private:
 ParameterEvaluator
 populateParameterInfos(LIT::ASTDecl &decl, ArrayRef<mlir::Type> paramTypes,
                        PogListAttr paramListAttr,
+                       SmallVectorImpl<ParameterInfo> &params,
+                       std::optional<LIT::ASTType> selfType = std::nullopt);
+
+/// Populate user-visible parameters for a function signature declaration.
+/// Associates each rendered parameter with its corresponding AST declaration.
+ParameterEvaluator
+populateParameterInfos(LIT::FnSignatureASTDecl &decl,
                        SmallVectorImpl<ParameterInfo> &params,
                        std::optional<LIT::ASTType> selfType = std::nullopt);
 
