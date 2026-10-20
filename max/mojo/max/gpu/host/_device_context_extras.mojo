@@ -23,8 +23,6 @@ from . import (
     FuncAttribute,
 )
 
-from ._device_context_metal import MetalEnqueueFunctionArgs
-
 from .device_context import (
     DeviceContext,
     DeviceContextBase,
@@ -39,131 +37,8 @@ from .device_context import (
 
 
 __extension DeviceExternalFunction:
-    @inline(.always)
-    def _call_with_pack[
-        *Ts: AnyType,
-    ](
-        imm self,
-        ctx: Some[_FunctionEnqueuer],
-        *args: *Ts,
-        grid_dim: Dim,
-        block_dim: Dim,
-        cluster_dim: OptionalReg[Dim] = None,
-        shared_mem_bytes: OptionalReg[Int] = None,
-        var attributes: List[LaunchAttribute] = [],
-        var constant_memory: List[ConstantMemoryMapping] = [],
-        location: Optional[SourceLocation] = None,
-    ) raises:
-        """Launches the device function with the specified arguments and configuration.
-
-        Parameters:
-            Ts: Types of the arguments to pass to the device function.
-
-        Args:
-            self: The DeviceExternalFunction.
-            ctx: The enqueuer to launch the function on.
-            args: Arguments to pass to the device function.
-            grid_dim: Grid dimensions for the kernel launch.
-            block_dim: Block dimensions for the kernel launch.
-            cluster_dim: Optional cluster dimensions for multi-GPU execution.
-            shared_mem_bytes: Optional amount of shared memory to allocate.
-            attributes: Optional list of additional launch attributes.
-            constant_memory: Optional list of constant memory mappings.
-            location: Source location for the function call.
-
-        Raises:
-            If the function launch fails.
-        """
-        comptime num_args = Ts.length
-
-        var dense_args_addrs = Array[OpaquePointer[MutAnyOrigin], num_args](
-            uninitialized=True
-        )
-
-        comptime for i in range(num_args):
-            # TODO(MSTDL-1904): Validate the safety of this.
-            dense_args_addrs[i] = (
-                Pointer(to=args[i])
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-
-        if case .Some(cluster_dim) = cluster_dim:
-            attributes.append(LaunchAttribute.from_cluster_dim(cluster_dim))
-
-        if constant_memory:
-            for i in range(len(constant_memory)):
-                self._copy_to_constant_memory(constant_memory[i])
-
-        # External functions carry no argument-size metadata, so no per-arg
-        # sizes are passed to the enqueuer (matching the previous direct call).
-        var no_arg_sizes = OptionalPointer[UInt64, MutAnyOrigin](None)
-
-        comptime if Self.target.is_apple_gpu():
-            # Metal takes the launch payload via `args[0]`; see
-            # `MetalDeviceContext::enqueueFunctionExecDirect`.
-            var dense_args_sizes = Array[UInt64, num_args](fill=0)
-
-            comptime for i in range(num_args):
-                dense_args_sizes[i] = UInt64(size_of[Ts[i]]())
-
-            # TODO(GEX-3761): Unchecked path — no argument is encoded as a
-            # device pointer, so this launch marks no used buffers resident.
-            var dense_args_is_device_ptr = Array[Bool, num_args](fill=False)
-
-            var metal_args = MetalEnqueueFunctionArgs(
-                dense_args_addrs.unsafe_ptr()
-                .unsafe_origin_cast[MutUntrackedOrigin]()
-                .unsafe_bitcast[OpaquePointer[MutUntrackedOrigin]](),
-                dense_args_sizes.unsafe_ptr().unsafe_origin_cast[
-                    MutUntrackedOrigin
-                ](),
-                dense_args_is_device_ptr.unsafe_ptr().unsafe_origin_cast[
-                    MutUntrackedOrigin
-                ](),
-                None,
-                Int32(0),
-            )
-
-            var ptr = (
-                Pointer(to=metal_args)
-                .unsafe_bitcast[NoneType]()
-                .unsafe_mut_cast[True]()
-                .as_unsafe_any_origin()
-            )
-            var metal_args_addrs = [ptr]
-
-            _checked(
-                ctx.enqueue(
-                    self._handle,
-                    grid_dim,
-                    block_dim,
-                    shared_mem_bytes.or_else(0),
-                    attributes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                    len(attributes),
-                    metal_args_addrs.unsafe_ptr().as_unsafe_any_origin(),
-                    UInt32(num_args),
-                    no_arg_sizes,
-                ),
-                location=location.or_else(call_location()),
-            )
-            return
-
-        _checked(
-            ctx.enqueue(
-                self._handle,
-                grid_dim,
-                block_dim,
-                shared_mem_bytes.or_else(0),
-                attributes.unsafe_ptr().unsafe_origin_cast[MutAnyOrigin](),
-                len(attributes),
-                dense_args_addrs.unsafe_ptr().as_unsafe_any_origin(),
-                UInt32(num_args),
-                no_arg_sizes,
-            ),
-            location=location.or_else(call_location()),
-        )
+    def _check_supports_default_call_with_pack(self):
+        pass
 
 
 __extension DeviceContextBase:
