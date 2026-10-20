@@ -87,13 +87,19 @@ from max.gpu import (
     block_idx,
     warp_id,
     lane_id,
+    WARP_SIZE,
 )
-from max.gpu.sync import barrier
+from max.gpu.sync import async_copy_arrive, barrier
 from max.gpu.globals import WARPGROUP_SIZE
 from max.gpu.primitives.grid_controls import launch_dependent_grids
-from max.gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from max.gpu.intrinsics import (
+    byte_permute,
+    warpgroup_reg_alloc,
+    warpgroup_reg_dealloc,
+)
 from max.gpu.memory import (
     CacheEviction,
+    async_copy,
     external_memory,
     fence_async_view_proxy,
 )
@@ -1249,33 +1255,44 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
         kv_stage_ptr: SharedMemPointer[Scalar[Self.fp8_type]],
         idx_smem: SharedMemPointer[Int32],
         scales_ptr: MutPointer[Float32, origin=MutAnyOrigin],
+        k_mbar: MBarType,
     ):
         """Copies a tile's E4M3 scales next to its packed rows in the stage.
 
-        Runs on all 32 lanes of the load warp, two rows per lane. `idx_smem`
-        holds the value-pool TMA rows, then the scale-pool rows the indexer
-        resolved through the scales lookup table; a row's scales sit at
-        `scale_row * nvfp4_sf_row_bytes`. An unused slot (-1) gets zero scales,
-        and its TMA-zeroed packed row dequantizes to zeros.
+        Runs on all 32 lanes of the load warp, two lanes per row: each issues
+        four 16-byte `cp.async` copies straight into the stage and then makes
+        the gather barrier track them, so the warp does not wait for the
+        scales to land before it moves on. `idx_smem` holds the value-pool TMA
+        rows, then the scale-pool rows the indexer resolved through the scales
+        lookup table; a row's scales sit at `scale_row * nvfp4_sf_row_bytes`.
+        An unused slot (-1) copies zero bytes and is zero-filled, and its
+        TMA-zeroed packed row dequantizes to zeros.
         """
-        comptime sf_words = Self.nvfp4_sf_row_bytes // 4
-        var sf_gmem = scales_ptr.unsafe_bitcast[UInt32]()
-        var sf_smem = (
-            kv_stage_ptr.unsafe_bitcast[UInt8]().unsafe_offset(
-                Self.nvfp4_sf_offset
-            )
-        ).unsafe_bitcast[UInt32]()
+        comptime assert (
+            Self.nvfp4_sf_row_bytes == 32
+        ), "two lanes per scale row, 16 B each"
+        var sf_gmem = scales_ptr.unsafe_bitcast[UInt8]()
+        var sf_smem = kv_stage_ptr.unsafe_bitcast[UInt8]().unsafe_offset(
+            Self.nvfp4_sf_offset
+        )
         var lane = Int(thread_idx.x) & 31
-        comptime for rp in range(Self.config.BN_QK // 32):
-            var r = lane + rp * 32
+        var half = lane % 2
+        comptime RP = Self.config.BN_QK // 16
+        comptime for rp in range(RP):
+            var r = rp * 16 + lane // 2
             var row = idx_smem[Self.config.BN_QK + r]
-            var live = row >= 0
-            var src = sf_gmem.unsafe_offset(Int(max(row, Int32(0))) * sf_words)
-            comptime for w in range(sf_words):
-                var v = src.unsafe_offset(w).unsafe_load[
-                    width=1, invariant=True
-                ]()
-                sf_smem[r * sf_words + w] = v if live else UInt32(0)
+            var src = sf_gmem.unsafe_offset(
+                Int(max(row, Int32(0))) * Self.nvfp4_sf_row_bytes + half * 16
+            )
+            var dst = sf_smem.unsafe_offset(
+                r * Self.nvfp4_sf_row_bytes + half * 16
+            )
+            async_copy[16, fill=UInt8(0)](
+                src.unsafe_address_space_cast[.GLOBAL](),
+                dst.unsafe_address_space_cast[.SHARED](),
+                src_size=Int32(16) if row >= 0 else Int32(0),
+            )
+        async_copy_arrive[noinc=True](k_mbar)
 
     @staticmethod
     @inline(.always)
@@ -1310,8 +1327,7 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             cur_k_tma, kv_stage_ptr, k_mbar, idx_smem, is_leader
         )
         comptime if Self.is_nvfp4_kv:
-            Self._stage_nvfp4_scales(kv_stage_ptr, idx_smem, scales_ptr)
-            _ = k_mbar[].arrive()
+            Self._stage_nvfp4_scales(kv_stage_ptr, idx_smem, scales_ptr, k_mbar)
 
         idx_cons.release()
         kv_prod.commit_step()
@@ -1357,8 +1373,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
                 cur_k_tma, kv_stage_ptr, k_mbar, idx_smem, is_leader
             )
             comptime if Self.is_nvfp4_kv:
-                Self._stage_nvfp4_scales(kv_stage_ptr, idx_smem, scales_ptr)
-                _ = k_mbar[].arrive()
+                Self._stage_nvfp4_scales(
+                    kv_stage_ptr, idx_smem, scales_ptr, k_mbar
+                )
 
             idx_cons.release()
             kv_prod.commit_step()
@@ -1511,13 +1528,20 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
     ):
         """Dequantizes one packed-NVFP4 tile per iteration to the SW64 FP8 tile.
 
-        Same thread mapping as `reswizzleFP8` (4 threads per row, 2 rows per
-        group), so each thread's 16-byte FP8 chunk is exactly one 16-element
-        scale group: 8 packed bytes and one E4M3 scale in the linear stage.
         The product `e2m1 * sf` is rounded once to e4m3 and written straight to
         the swizzled destination, so the MMA sees the same bytes an FP8 cache
         holding the dequantized values would give it. The rope dims after the
         packed latent are FP8 already and are copied unchanged.
+
+        Shared memory serves a 16 B access one quarter-warp (eight lanes) at
+        a time, so the lanes of a quarter must hit eight different 16 B bank
+        slots, on both the loads and the swizzled stores. A thread owns one
+        row and the chunks (16 packed bytes: 32 elements, two scale groups) of
+        one parity. A quarter covers four adjacent rows by the two chunks of
+        one column block: rows differ in parity, and a row pair `cg` takes the
+        chunks of block `i ^ cg` at step `i`, which moves its loads by two
+        slots and, through the SW64 swizzle's dependence on `row // 2`, its
+        stores by one.
         """
         var num_k_tiles = ceildiv(
             offset_position.num_keys_this_split, Self.config.BN_QK
@@ -1526,15 +1550,22 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             return
 
         comptime BN_QK: Int = Self.config.BN_QK
-        comptime GROUP_SIZE: Int = 4
-        comptime NUM_GROUPS: Int = WARPGROUP_SIZE // GROUP_SIZE
-        comptime COLS_PER_GROUP: Int = (
+        comptime LATENT_DIM: Int = (
             Self.config.input_q_depth - NVFP4_MLA_ROPE_DIM
-        ) // (GROUP_SIZE * 16)
+        )
         # Packed bytes of the latent, where the FP8 rope bytes start.
-        comptime ROPE_OFF: Int = (
-            Self.config.input_q_depth - NVFP4_MLA_ROPE_DIM
-        ) // 2
+        comptime ROPE_OFF: Int = LATENT_DIM // 2
+        # Column blocks of 64 FP8 columns the latent spans.
+        comptime LATENT_BLOCKS: Int = LATENT_DIM // 64
+        # A chunk is 16 packed bytes: 32 elements, two scale groups.
+        comptime QCHUNKS: Int = Self.nvfp4_sf_row_bytes // 2
+        comptime ITEMS: Int = BN_QK * QCHUNKS // WARPGROUP_SIZE
+        comptime assert (
+            BN_QK == 64
+            and QCHUNKS == 16
+            and ITEMS == 8
+            and NVFP4_MLA_ROPE_DIM == 64
+        )
 
         var kv_gather_cons = DecodeKVConsumer[
             Self.fp8_type,
@@ -1550,39 +1581,34 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             num_stages=Self.num_mma_stages,
         ](kv_pipeline_mma, kv_smem_sw64)
 
-        var lane: Int = thread_idx.x & 0x7F
-        var group_idx: Int = lane // GROUP_SIZE
-        var idx_in_group: Int = lane % GROUP_SIZE
-
-        var row_0: Int = group_idx
-        var row_1: Int = NUM_GROUPS + group_idx
-
-        # Byte offsets into the linear stage: this thread's packed bytes and
-        # scale in column iteration 0 (iteration `c` adds `c * 32` packed
-        # bytes and `c * 4` scales).
-        var pk_base_0: Int = row_0 * Self.nvfp4_row_bytes + idx_in_group * 8
-        var pk_base_1: Int = row_1 * Self.nvfp4_row_bytes + idx_in_group * 8
-        var sf_base_0: Int = (
-            Self.nvfp4_sf_offset
-            + row_0 * Self.nvfp4_sf_row_bytes
-            + idx_in_group
+        var tid: Int = thread_idx.x & 0x7F
+        var j: Int = (tid % WARP_SIZE) % 8
+        var cp: Int = j % 2
+        var cg: Int = (j // 2) % 2
+        var row: Int = (
+            16 * (tid // WARP_SIZE)
+            + 4 * ((tid % WARP_SIZE) // 8)
+            + (2 * cg + j // 4)
         )
-        var sf_base_1: Int = (
-            Self.nvfp4_sf_offset
-            + row_1 * Self.nvfp4_sf_row_bytes
-            + idx_in_group
+        var pk_base: Int = row * Self.nvfp4_row_bytes + cp * 16
+        var sf_base: Int = Self.nvfp4_sf_offset + row * Self.nvfp4_sf_row_bytes
+        # `byte_permute` selectors for the scale byte of the chunk's group 0 / 1
+        # among the words of blocks `i` and `i ^ 1` (bytes 0..3 and 4..7).
+        var sel0: UInt32 = UInt32(4 * cg + 2 * cp)
+        var sel1: UInt32 = UInt32(4 * cg + 2 * cp + 1)
+        var d0: Int = Self.sw_fp8(row * BN_QK + cp * 32)
+        var d1: Int = Self.sw_fp8(row * BN_QK + cp * 32 + 16)
+        # The rope chunk `rc` of a row lands at column `LATENT_DIM + 16 * rc`.
+        var rope_chunk0: Int = cp + 2 * cg
+        var rope_chunk1: Int = cp + 2 * (1 - cg)
+        var rope_src0: Int = (
+            row * Self.nvfp4_row_bytes + ROPE_OFF + 16 * rope_chunk0
         )
-        # This thread's 16 FP8 rope bytes in the linear stage.
-        var rope_base_0: Int = row_0 * Self.nvfp4_row_bytes + (
-            ROPE_OFF + idx_in_group * 16
+        var rope_src1: Int = (
+            row * Self.nvfp4_row_bytes + ROPE_OFF + 16 * rope_chunk1
         )
-        var rope_base_1: Int = row_1 * Self.nvfp4_row_bytes + (
-            ROPE_OFF + idx_in_group * 16
-        )
-
-        var col: Int = idx_in_group * 16
-        var sw_off_0: Int = Self.sw_fp8(row_0 * BN_QK + col)
-        var sw_off_1: Int = Self.sw_fp8(row_1 * BN_QK + col)
+        var rope_dst0: Int = Self.sw_fp8(row * BN_QK + 16 * rope_chunk0)
+        var rope_dst1: Int = Self.sw_fp8(row * BN_QK + 16 * rope_chunk1)
 
         var tile_idx: Int = 0
         while tile_idx < num_k_tiles:
@@ -1592,50 +1618,42 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var src_u8 = kv_gather_cons.stage_base_ptr().unsafe_bitcast[UInt8]()
             var dst = kv_mma_prod.stage_base_ptr()
 
-            comptime for c in range(COLS_PER_GROUP):
-                var p0 = src_u8.unsafe_offset(pk_base_0 + c * 32).unsafe_load[
-                    width=8, alignment=8
-                ]()
-                var p1 = src_u8.unsafe_offset(pk_base_1 + c * 32).unsafe_load[
-                    width=8, alignment=8
-                ]()
-                var sf0 = bitcast[Self.fp8_type, 1](
-                    SIMD[DType.uint8, 1](
-                        src_u8.unsafe_offset(sf_base_0 + c * 4).unsafe_load()
+            # The row's scales: word `b` holds the two groups of each of the
+            # chunks of block `b`; the lane's chunk of block `i ^ cg` is the
+            # `cp`-th half of word `i ^ cg`.
+            var sf_a = ld_shared_v4_u32(src_u8, sf_base)
+            var sf_b = ld_shared_v4_u32(src_u8, sf_base + 16)
+            comptime for i in range(ITEMS):
+                var blk = i + cg if i % 2 == 0 else i - cg
+                var q = ld_shared_v4_u32(src_u8, pk_base + 32 * blk)
+                var sf_even = sf_a[i] if i < 4 else sf_b[i - 4]
+                var sf_odd = sf_a[i ^ 1] if i < 4 else sf_b[(i - 4) ^ 1]
+                var dst_block = dst.unsafe_offset(blk * Self.BlockElems)
+                comptime for g in range(2):
+                    var sf_byte = (
+                        byte_permute(sf_even, sf_odd, sel1 if g == 1 else sel0)
+                        & 0xFF
                     )
-                ).cast[DType.float32]()[0]
-                var sf1 = bitcast[Self.fp8_type, 1](
-                    SIMD[DType.uint8, 1](
-                        src_u8.unsafe_offset(sf_base_1 + c * 4).unsafe_load()
+                    var scale = bitcast[Self.fp8_type, 1](
+                        SIMD[DType.uint8, 1](UInt8(sf_byte))
+                    ).cast[DType.float32]()[0]
+                    var words = SIMD[DType.uint32, 2](q[2 * g], q[2 * g + 1])
+                    st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
+                        dst_block,
+                        d1 if g == 1 else d0,
+                        nvfp4_dequant_group(
+                            bitcast[DType.uint8, 8](words), scale
+                        ),
                     )
-                ).cast[DType.float32]()[0]
-                var q0 = nvfp4_dequant_group(p0, sf0)
-                var q1 = nvfp4_dequant_group(p1, sf1)
-                var dst_block = dst.unsafe_offset(c * Self.BlockElems)
-                st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
-                    dst_block, sw_off_0, q0
-                )
-                st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
-                    dst_block, sw_off_1, q1
-                )
 
-            var rope_block = dst.unsafe_offset(COLS_PER_GROUP * Self.BlockElems)
-            var rope_0 = bitcast[DType.uint32, 4](
-                src_u8.unsafe_offset(rope_base_0).unsafe_load[
-                    width=16, alignment=16
-                ]()
-            )
-            var rope_1 = bitcast[DType.uint32, 4](
-                src_u8.unsafe_offset(rope_base_1).unsafe_load[
-                    width=16, alignment=16
-                ]()
-            )
-            st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
-                rope_block, sw_off_0, rope_0
-            )
-            st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
-                rope_block, sw_off_1, rope_1
-            )
+            var rope_block = dst.unsafe_offset(LATENT_BLOCKS * Self.BlockElems)
+            comptime for r in range(2):
+                var rope = ld_shared_v4_u32(
+                    src_u8, rope_src1 if r == 1 else rope_src0
+                )
+                st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
+                    rope_block, rope_dst1 if r == 1 else rope_dst0, rope
+                )
 
             fence_async_view_proxy()
             kv_gather_cons.release_all()
