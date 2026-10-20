@@ -31,6 +31,8 @@ from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from layout import Coord, TileTensor, Idx
 from layout.tile_layout import row_major
 from shmem.ep_comm import (
+    EP_NO_INPUT_SCALES,
+    EP_NO_ROUTER_WEIGHTS,
     BF16TokenFormat,
     EPLocalSyncCounters,
     combine_wait_kernel,
@@ -345,6 +347,7 @@ def test_combine[
         n_tokens_per_rank,
         n_ranks,  # p2p world size
         token_fmt_type,
+        InputScalesFnType=type_of(EP_NO_INPUT_SCALES),
         use_shmem=False,
     ]
 
@@ -388,6 +391,7 @@ def test_combine[
             dispatch_recv_count_bufs_inputs[slot_idx],
             get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
+            host_args=(EP_NO_INPUT_SCALES,),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )
@@ -434,11 +438,11 @@ def test_combine[
         var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
 
         @inline(.always)
-        @__parameter
-        @__copy_capture(output_2_tensor)
         def store_output_2[
             dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+        ](coords: IndexList[rank], val: SIMD[dtype, width]) {
+            var output_2_tensor
+        }:
             output_2_tensor.store[
                 width=width, alignment=alignment * size_of[dtype]()
             ](Coord(coords), rebind[SIMD[input_type, width]](val))
@@ -452,7 +456,9 @@ def test_combine[
             n_ranks,
             combine_msg_bytes,
             n_tokens_per_rank,
-            store_output_2,
+            type_of(store_output_2),
+            type_of(EP_NO_ROUTER_WEIGHTS),
+            has_router_weights=False,
         ]
         ctx.enqueue_function[combine_wait](
             Int32(n_tokens_per_rank),
@@ -460,6 +466,7 @@ def test_combine[
             get_combine_recv_count_ptr(dev_idx, slot_idx),
             get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
+            host_args=(store_output_2, EP_NO_ROUTER_WEIGHTS),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )

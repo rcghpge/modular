@@ -28,6 +28,8 @@ from std.memory import Pointer
 from std.memory.alloc import unsafe_alloc
 from shmem import *
 from shmem.ep_comm import (
+    EP_NO_INPUT_SCALES,
+    EP_NO_ROUTER_WEIGHTS,
     BF16TokenFormat,
     EPLocalSyncCounters,
     combine_wait_kernel,
@@ -211,6 +213,7 @@ def test_combine[
         n_tokens_per_rank,
         1,  # p2p_world_size
         token_fmt_type,
+        InputScalesFnType=type_of(EP_NO_INPUT_SCALES),
     ]
     var func = ctx.compile_function[dispatch_async]()
     shmem_module_init(func)
@@ -245,11 +248,9 @@ def test_combine[
     shmem_module_init(func_combine_async)
 
     @inline(.always)
-    @__parameter
-    @__copy_capture(output_2_tensor)
     def store_output_2[
         dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
-    ](coords: IndexList[rank], val: SIMD[dtype, width]):
+    ](coords: IndexList[rank], val: SIMD[dtype, width]) {var output_2_tensor}:
         output_2_tensor.store[
             width=width, alignment=alignment * size_of[dtype]()
         ](Coord(coords), rebind[SIMD[input_type, width]](val))
@@ -263,7 +264,9 @@ def test_combine[
         n_ranks,
         combine_msg_bytes,
         n_tokens_per_rank,
-        store_output_2,
+        type_of(store_output_2),
+        type_of(EP_NO_ROUTER_WEIGHTS),
+        has_router_weights=False,
     ]
     var func_combine_async_wait = ctx.compile_function[combine_wait]()
 
@@ -283,8 +286,8 @@ def test_combine[
             recv_count
         ]
 
-        ctx.enqueue_function(
-            func,
+        func._call_with_pack_checked(
+            ctx,
             input_tokens_tensor,
             topk_ids_tensor,
             send_buf,
@@ -292,6 +295,7 @@ def test_combine[
             recv_count_ptrs,
             EPLocalSyncCounters[n_experts](atomic_counter),
             Int32(my_rank),
+            host_args=(EP_NO_INPUT_SCALES,),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )
@@ -337,13 +341,14 @@ def test_combine[
     def run_combine_async_wait(
         ctx: DeviceContext,
     ) raises {var atomic_counter, imm}:
-        ctx.enqueue_function(
-            func_combine_async_wait,
+        func_combine_async_wait._call_with_pack_checked(
+            ctx,
             Int32(n_tokens_per_rank),
             send_buf,
             recv_count,
             EPLocalSyncCounters[n_experts](atomic_counter),
             Int32(my_rank),
+            host_args=(store_output_2, EP_NO_ROUTER_WEIGHTS),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )

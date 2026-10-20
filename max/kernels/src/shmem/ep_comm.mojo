@@ -125,18 +125,101 @@ from structured_kernels.trace_buf import (
     ring_emit,
 )
 
-comptime ep_combine_store_type = def[
+comptime _ep_combine_store_sig = def[
     dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
-](IndexList[rank], SIMD[dtype, width]) capturing -> None
+](IndexList[rank], SIMD[dtype, width]) -> None
 
-comptime router_weights_wrapper_type = def[width: Int](
+comptime EPCombineStoreFn = (
+    ImplicitlyCopyable & RegisterPassable & _ep_combine_store_sig
+)
+"""Combine output store: `(coords, value) -> None`.
+
+Kernels receive it as a trailing host-layout argument (`host_args`), so it
+runs on the device and must copy (`{var}`) what it captures.
+"""
+
+comptime _router_weights_sig = def[width: Int](
     token_idx: Int, topk_id: Int
-) capturing -> SIMD[.float32, width]
+) -> SIMD[.float32, width]
+
+comptime RouterWeightsFn = (
+    ImplicitlyCopyable & RegisterPassable & _router_weights_sig
+)
+"""Router weight of a `(token, top-k slot)` pair for the combine reduction.
+
+Kernels receive it as a trailing host-layout argument (`host_args`), so it
+runs on the device and must copy (`{var}`) what it captures.
+"""
+
+comptime _input_scales_sig = def[dtype: DType](Int) -> Scalar[dtype]
+
+comptime InputScalesFn = (
+    ImplicitlyCopyable & RegisterPassable & _input_scales_sig
+)
+"""Dispatch input scale of an expert: `(expert_id) -> scale`.
+
+Kernels receive it as a trailing host-layout argument (`host_args`), so it
+runs on the device and must copy (`{var}`) what it captures.
+"""
 
 
-comptime input_scales_wrapper_type = def[dtype: DType](
-    Int,
-) capturing -> Scalar[dtype]
+@inline(.always)
+def _unit_input_scale[dtype: DType](expert_id: Int) -> Scalar[dtype]:
+    return Scalar[dtype](1)
+
+
+@inline(.always)
+def _unit_router_weight[
+    width: Int
+](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
+    return SIMD[.float32, width](1)
+
+
+@inline(.always)
+def _as_input_scales_fn[
+    InputScalesFnType: InputScalesFn
+](input_scales_fn: InputScalesFnType) -> InputScalesFnType:
+    """Binds a parametric function to its `InputScalesFn` closure type.
+
+    A bare parametric function only converts where a function-type bound gives
+    it context, so neither `type_of` nor a `host_args` slot accepts it
+    directly.
+
+    Parameters:
+        InputScalesFnType: Type of the input scales function (inferred).
+
+    Args:
+        input_scales_fn: The input scales function to bind.
+
+    Returns:
+        `input_scales_fn` as a value of its closure type.
+    """
+    return input_scales_fn
+
+
+@inline(.always)
+def _as_router_weights_fn[
+    RouterWeightsFnType: RouterWeightsFn
+](router_weights_fn: RouterWeightsFnType) -> RouterWeightsFnType:
+    """Binds a parametric function to its `RouterWeightsFn` closure type.
+
+    Parameters:
+        RouterWeightsFnType: Type of the router weights function (inferred).
+
+    Args:
+        router_weights_fn: The router weights function to bind.
+
+    Returns:
+        `router_weights_fn` as a value of its closure type.
+    """
+    return router_weights_fn
+
+
+comptime EP_NO_INPUT_SCALES = _as_input_scales_fn(_unit_input_scale)
+"""Stands in for `input_scales_fn` when a dispatch has no input scales."""
+
+comptime EP_NO_ROUTER_WEIGHTS = _as_router_weights_fn(_unit_router_weight)
+"""Stands in for `router_weights_fn` when a combine has no router weights."""
 
 comptime EP_DATA_READY_FLAG = 1 << 10
 
@@ -3313,8 +3396,9 @@ struct EPDispatchKernel[
         InputTokensEngine: TensorEngine,
         TopkIdsEngine: TensorEngine,
         input_type: DType,
+        InputScalesFnType: InputScalesFn,
         //,
-        input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
+        has_input_scales: Bool = False,
         comm_thread_base: Int = 0,
         n_comm_threads: Int = Self.num_threads,
         comm_barrier_id: Int = -1,
@@ -3333,6 +3417,7 @@ struct EPDispatchKernel[
         my_rank: Int32,
         sm_id: Int,
         n_active_send_sms: Int,
+        input_scales_fn: InputScalesFnType,
         # Source-local block-base mailbox: [0, n_experts) bases,
         # [n_experts, 2*n_experts) generation tags. Inert when defaulted.
         prod_gen_p: MutPointer[Int32, MutUntrackedOrigin] = MutPointer[
@@ -3349,8 +3434,9 @@ struct EPDispatchKernel[
 
         Parameters:
             input_type: `DType` of the input token elements (inferred).
-            input_scales_wrapper: Optional wrapper supplying the input's
-                block scaling factors; `None` for an unquantized input.
+            InputScalesFnType: The type of `input_scales_fn` (inferred).
+            has_input_scales: Whether `input_scales_fn` supplies the input's
+                scale; `False` for an unquantized input (unit scale).
             comm_thread_base: Absolute ``thread_idx.x`` of the first thread in
                 the comm thread-class (0 in the standalone kernels, the FFN
                 thread count inside the fused megakernel). Comm-local indices
@@ -3377,6 +3463,8 @@ struct EPDispatchKernel[
                 SM mapping inside a fused persistent kernel.
             n_active_send_sms: Count of send communication SMs
                 (``grid_dim.x - n_signal_sms`` in the standalone kernels).
+            input_scales_fn: Supplies the input's scale, called only when
+                `has_input_scales`.
             prod_gen_p: Source-local block-base mailbox. Entries
                 `[0, n_experts)` hold the reserved base for each expert and
                 `[n_experts, 2 * n_experts)` hold the matching generation
@@ -3405,8 +3493,8 @@ struct EPDispatchKernel[
 
         var input_scale = Float32(1.0)
 
-        comptime if case .Some(input_scale_fn) = input_scales_wrapper:
-            input_scale = input_scale_fn[.float32](0)
+        comptime if has_input_scales:
+            input_scale = input_scales_fn[.float32](0)
 
         var n_active_async_comm_sms = n_active_send_sms
         # Dispatch-phase trace state (comptime-dead unless `TraceT.enabled`).
@@ -4528,7 +4616,8 @@ def dispatch_async_kernel[
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
     token_fmt_type: TokenFormat,
-    input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
+    InputScalesFnType: InputScalesFn,
+    has_input_scales: Bool = False,
     use_shmem: Bool = True,
 ](
     input_tokens: TileTensor[
@@ -4542,6 +4631,7 @@ def dispatch_async_kernel[
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
+    input_scales_fn: InputScalesFnType,
 ):
     """
     Dispatch tokens to experts on remote ranks based on the top-k expert IDs.
@@ -4561,7 +4651,8 @@ def dispatch_async_kernel[
         p2p_world_size: Size of a High-speed GPU interconnect group.
         token_fmt_type: Type conforming to TokenFormat trait that defines the
             token encoding scheme.
-        input_scales_wrapper: The wrapper for the input scales.
+        InputScalesFnType: The type of `input_scales_fn`.
+        has_input_scales: Whether `input_scales_fn` supplies the input scale.
         use_shmem: Whether to use the SHMEM API for the communication.
 
     Args:
@@ -4580,6 +4671,7 @@ def dispatch_async_kernel[
             `shmem_alloc` if `use_shmem` is True.
         ep_counters: EP atomic counters for kernel synchronization.
         my_rank: The rank of the current device.
+        input_scales_fn: Input scale supplier, passed by host layout.
     """
 
     comptime dispatch_impl = EPDispatchKernel[
@@ -4617,7 +4709,7 @@ def dispatch_async_kernel[
 
     # All the other SMs are used for sending the tokens to the experts.
     else:
-        dispatch_impl.copy_and_send_tokens[input_scales_wrapper](
+        dispatch_impl.copy_and_send_tokens[has_input_scales](
             input_tokens,
             topk_ids,
             send_buf_p,
@@ -4627,6 +4719,7 @@ def dispatch_async_kernel[
             my_rank,
             block_idx.x,
             grid_dim.x - dispatch_impl.n_signal_sms,
+            input_scales_fn,
         )
 
 
@@ -4647,7 +4740,6 @@ def dispatch_wait_kernel[
     n_ranks: Int,
     max_tokens_per_rank: Int,
     token_fmt_type: TokenFormat,
-    input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
 ](
     format_handler: token_fmt_type,
     row_offsets: TileTensor[.uint32, row_offsets_layout, MutUntrackedOrigin],
@@ -4678,7 +4770,6 @@ def dispatch_wait_kernel[
         max_tokens_per_rank: The maximum number of tokens per rank.
         token_fmt_type: Type conforming to TokenFormat trait that defines the
             token encoding scheme.
-        input_scales_wrapper: The wrapper for the input scales.
 
     Args:
         format_handler: Instance of token_fmt_type that performs token decoding
@@ -5090,7 +5181,7 @@ struct EPCombineKernel[
                 var n_pend = 0
 
                 @inline(.always)
-                def flush_pending() capturing -> None:
+                def flush_pending() {mut n_pend, imm} -> None:
                     if n_pend == 0:
                         return
                     # Publish this warp's copies before anyone counts them.
@@ -5493,9 +5584,11 @@ struct EPCombineKernel[
     @staticmethod
     @inline(.always)
     def reduce_and_copy_to_output[
+        StoreFnType: EPCombineStoreFn,
+        RouterWeightsFnType: RouterWeightsFn,
+        //,
         output_type: DType,
-        store_fn: ep_combine_store_type,
-        router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
+        has_router_weights: Bool,
         *,
         # The output goes through `store_fn`, so there is no output tile to
         # infer the engine from.
@@ -5507,6 +5600,8 @@ struct EPCombineKernel[
         my_rank: Int32,
         reduce_sm_id: Int,
         n_active_reduce_sms: Int,
+        store_fn: StoreFnType,
+        router_weights_fn: RouterWeightsFnType,
         topk_ids_p: Optional[ImmPointer[Int32, ImmUntrackedOrigin]] = None,
     ) -> None:
         """Communication SM logic for combine_wait_kernel.
@@ -5515,13 +5610,11 @@ struct EPCombineKernel[
         applying router weights and reduction across top-k experts.
 
         Parameters:
+            StoreFnType: The type of `store_fn` (inferred).
+            RouterWeightsFnType: The type of `router_weights_fn` (inferred).
             output_type: The type of the output tokens.
-            store_fn: Stores one output vector. Called with
-                `(token_idx, elem)` when `router_weights_wrapper` is set, and
-                with `(token_idx, topk_idx, elem)` otherwise.
-            router_weights_wrapper: The wrapper for the router weights. If
-                provided, the routed experts' outputs for a token are weighted
-                and summed.
+            has_router_weights: Whether the routed experts' outputs for a
+                token are weighted by `router_weights_fn` and summed.
             OutputTokensEngine: Storage engine backing the output tokens tile.
 
         Args:
@@ -5534,6 +5627,11 @@ struct EPCombineKernel[
                 different SM mapping inside a fused persistent kernel.
             n_active_reduce_sms: Count of reduce communication SMs
                 (``grid_dim.x - n_wait_sms`` in the standalone kernels).
+            store_fn: Stores one output vector. Called with
+                `(token_idx, elem)` when `has_router_weights`, and with
+                `(token_idx, topk_idx, elem)` otherwise.
+            router_weights_fn: The router weights, called only when
+                `has_router_weights`.
             topk_ids_p: Pointer to the top-k IDs for each token, only required
                 if skip_a2a is True.
         """
@@ -5619,8 +5717,8 @@ struct EPCombineKernel[
                     )
                 )
 
-                comptime if case .Some(weights_fn) = router_weights_wrapper:
-                    var weight = weights_fn[1](token_idx, topk_idx)
+                comptime if has_router_weights:
+                    var weight = router_weights_fn[1](token_idx, topk_idx)
                     accum += weight * recv_chunk.cast[.float32]()
 
                 else:
@@ -5633,7 +5731,7 @@ struct EPCombineKernel[
                         Index(token_idx, topk_idx, elem_offset), recv_chunk
                     )
 
-            comptime if router_weights_wrapper:
+            comptime if has_router_weights:
                 store_fn[alignment=store_align](
                     Index(
                         token_idx,
@@ -5774,14 +5872,17 @@ def combine_wait_kernel[
     n_ranks: Int,
     msg_bytes: Int,
     max_tokens_per_rank: Int,
-    store_fn: ep_combine_store_type,
-    router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
+    StoreFnType: EPCombineStoreFn,
+    RouterWeightsFnType: RouterWeightsFn,
+    has_router_weights: Bool,
 ](
     num_tokens: Int32,
     recv_buf_p: MutPointer[UInt8, MutUntrackedOrigin],
     recv_count_p: MutPointer[UInt64, MutUntrackedOrigin],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
+    store_fn: StoreFnType,
+    router_weights_fn: RouterWeightsFnType,
 ):
     """
     This kernel is called after the `combine_kernel` to complete the
@@ -5798,11 +5899,10 @@ def combine_wait_kernel[
         n_ranks: The number of ranks.
         msg_bytes: The number of bytes in the message for each token.
         max_tokens_per_rank: The maximum number of tokens per rank.
-        store_fn: Stores the output tokens. Called with
-            `(token_idx, elem)` when `router_weights_wrapper` is set, and
-            with `(token_idx, topk_idx, elem)` otherwise.
-        router_weights_wrapper: The wrapper for the router weights. If provided,
-            all routed experts' outputs for a token will be weighted and summed.
+        StoreFnType: The type of `store_fn`.
+        RouterWeightsFnType: The type of `router_weights_fn`.
+        has_router_weights: Whether all routed experts' outputs for a token
+            are weighted by `router_weights_fn` and summed.
 
     Args:
         num_tokens: The number of output tokens.
@@ -5814,6 +5914,11 @@ def combine_wait_kernel[
             buffer is of shape `(n_local_experts, n_ranks)`.
         ep_counters: EP atomic counters for kernel synchronization.
         my_rank: The rank of the current device.
+        store_fn: Stores the output tokens, passed by host layout. Called with
+            `(token_idx, elem)` when `has_router_weights`, and with
+            `(token_idx, topk_idx, elem)` otherwise.
+        router_weights_fn: The router weights, passed by host layout and
+            called only when `has_router_weights`.
     """
 
     comptime combine_impl = EPCombineKernel[
@@ -5842,17 +5947,15 @@ def combine_wait_kernel[
 
     # All the other SMs are used for copying the tokens to the output tensor.
     else:
-        combine_impl.reduce_and_copy_to_output[
-            output_type,
-            store_fn,
-            router_weights_wrapper,
-        ](
+        combine_impl.reduce_and_copy_to_output[output_type, has_router_weights](
             Int(num_tokens),
             recv_buf_p,
             atomic_counter,
             my_rank,
             block_idx.x,
             grid_dim.x - combine_impl.n_wait_sms,
+            store_fn,
+            router_weights_fn,
         )
 
 
@@ -5882,8 +5985,9 @@ def dispatch_kernel[
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
     token_fmt_type: TokenFormat,
+    InputScalesFnType: InputScalesFn,
     fused_shared_expert: Bool = False,
-    input_scales_wrapper: Optional[input_scales_wrapper_type] = None,
+    has_input_scales: Bool = False,
     skip_a2a: Bool = False,
     use_shmem: Bool = True,
     allreduce_world_size: Int = 1,
@@ -5922,6 +6026,7 @@ def dispatch_kernel[
     ],
     ep_counters: EPLocalSyncCounters[n_experts],
     my_rank: Int32,
+    input_scales_fn: InputScalesFnType,
 ):
     """
     Fused dispatch kernel that combines dispatch_async and dispatch_wait
@@ -5946,10 +6051,11 @@ def dispatch_kernel[
         p2p_world_size: Size of a High-speed GPU interconnect group.
         token_fmt_type: Type conforming to TokenFormat trait that defines the
             token encoding scheme.
+        InputScalesFnType: The type of `input_scales_fn`.
         fused_shared_expert: Whether to pack the shared expert inputs with the
             routed experts' inputs. When enabled, input_tokens is used as the
             shared expert inputs.
-        input_scales_wrapper: The wrapper for the input scales.
+        has_input_scales: Whether `input_scales_fn` supplies the input scale.
         skip_a2a: Whether to skip the A2A communication. If true, we will only
             send tokens within the current device.
         use_shmem: Whether to use the SHMEM API for the communication.
@@ -5983,6 +6089,7 @@ def dispatch_kernel[
             each device in the p2p world.
         ep_counters: EP atomic counters for kernel synchronization.
         my_rank: The rank of the current device.
+        input_scales_fn: Input scale supplier, passed by host layout.
     """
 
     comptime dispatch_impl = EPDispatchKernel[
@@ -6032,7 +6139,7 @@ def dispatch_kernel[
                 block_idx.x,
             )
         else:
-            dispatch_impl.copy_and_send_tokens[input_scales_wrapper](
+            dispatch_impl.copy_and_send_tokens[has_input_scales](
                 input_tokens,
                 topk_ids,
                 send_buf_p,
@@ -6042,6 +6149,7 @@ def dispatch_kernel[
                 my_rank,
                 block_idx.x,
                 grid_dim.x - dispatch_impl.n_signal_sms,
+                input_scales_fn,
             )
             comptime if fused_shared_expert:
                 # This RELEASE ensures that all previous writes to the send
@@ -6131,8 +6239,9 @@ def combine_kernel[
     msg_bytes: Int,
     max_tokens_per_rank: Int,
     p2p_world_size: Int,
-    store_fn: ep_combine_store_type,
-    router_weights_wrapper: Optional[router_weights_wrapper_type] = None,
+    StoreFnType: EPCombineStoreFn,
+    RouterWeightsFnType: RouterWeightsFn,
+    has_router_weights: Bool,
     fused_shared_expert: Bool = False,
     skip_a2a: Bool = False,
     use_shmem: Bool = True,
@@ -6161,6 +6270,8 @@ def combine_kernel[
     ep_counters: EPLocalSyncCounters[n_experts],
     topk_ids_p: Optional[ImmPointer[Int32, ImmUntrackedOrigin]],
     my_rank: Int32,
+    store_fn: StoreFnType,
+    router_weights_fn: RouterWeightsFnType,
 ):
     """
     Fused combine kernel that combines combine_async and combine_wait
@@ -6172,7 +6283,7 @@ def combine_kernel[
 
     For fused_shared_expert mode, the shared expert outputs are added to the
     reduced routed expert outputs before `store_fn` is called. This requires
-    router_weights_wrapper to be provided (output must be reduced).
+    `has_router_weights` (output must be reduced).
 
     Parameters:
         input_type: The type of the input/output tokens.
@@ -6186,14 +6297,13 @@ def combine_kernel[
         msg_bytes: The number of bytes per token message.
         max_tokens_per_rank: The maximum number of tokens per rank.
         p2p_world_size: Size of a High-speed GPU interconnect group.
-        store_fn: Stores the combined output tokens. Called with
-            `(token_idx, elem)` when `router_weights_wrapper` is set, and
-            with `(token_idx, topk_idx, elem)` otherwise.
-        router_weights_wrapper: The wrapper for the router weights. If provided,
-            all routed experts' outputs for a token will be weighted and summed.
-            REQUIRED when fused_shared_expert is True.
+        StoreFnType: The type of `store_fn`.
+        RouterWeightsFnType: The type of `router_weights_fn`.
+        has_router_weights: Whether all routed experts' outputs for a token
+            are weighted by `router_weights_fn` and summed. REQUIRED when
+            fused_shared_expert is True.
         fused_shared_expert: Whether to add the shared expert's output to the
-            combined output. Requires router_weights_wrapper to be provided.
+            combined output. Requires `has_router_weights`.
         skip_a2a: Whether to skip the A2A communication. If true, we will only
             send tokens within the current device.
         use_shmem: Whether to use the SHMEM API for the communication.
@@ -6219,13 +6329,18 @@ def combine_kernel[
         topk_ids_p: Pointer to the top-k IDs for each token, only required if
             skip_a2a is True.
         my_rank: The rank of the current device.
+        store_fn: Stores the combined output tokens, passed by host layout.
+            Called with `(token_idx, elem)` when `has_router_weights`, and
+            with `(token_idx, topk_idx, elem)` otherwise.
+        router_weights_fn: The router weights, passed by host layout and
+            called only when `has_router_weights`.
 
     """
 
     comptime if fused_shared_expert:
-        comptime assert router_weights_wrapper, (
+        comptime assert has_router_weights, (
             "EP combine_kernel: fused_shared_expert requires "
-            "router_weights_wrapper to be provided. Cannot add shared expert "
+            "has_router_weights. Cannot add shared expert "
             "output to non-reduced routed expert outputs."
         )
     comptime _allreduce_world_size = UInt32(allreduce_world_size)
@@ -6281,16 +6396,13 @@ def combine_kernel[
                 ), "input_tokens expects rank >= 2"
 
                 @inline(.always)
-                @__parameter
                 def add_shared_expert_output[
                     dtype: DType,
                     rank: Int,
                     width: SIMDLength,
                     *,
                     alignment: Int = 1,
-                ](
-                    idx: IndexList[rank], combined_val: SIMD[dtype, width]
-                ) capturing:
+                ](idx: IndexList[rank], combined_val: SIMD[dtype, width]) {var}:
                     comptime assert rank == 2, "expects a reduced output"
                     var shared_expert_val = SIMD[dtype, width]()
 
@@ -6327,9 +6439,7 @@ def combine_kernel[
                     )
 
                 combine_impl.reduce_and_copy_to_output[
-                    input_type,
-                    add_shared_expert_output,
-                    router_weights_wrapper,
+                    input_type, has_router_weights
                 ](
                     Int(num_tokens),
                     recv_buf_ptrs[my_p2p_rank],
@@ -6337,14 +6447,14 @@ def combine_kernel[
                     my_rank,
                     block_idx.x,
                     grid_dim.x - combine_impl.n_wait_sms,
+                    add_shared_expert_output,
+                    router_weights_fn,
                     topk_ids_p,
                 )
 
             else:
                 combine_impl.reduce_and_copy_to_output[
-                    input_type,
-                    store_fn,
-                    router_weights_wrapper,
+                    input_type, has_router_weights
                 ](
                     Int(num_tokens),
                     recv_buf_ptrs[my_p2p_rank],
@@ -6352,6 +6462,8 @@ def combine_kernel[
                     my_rank,
                     block_idx.x,
                     grid_dim.x - combine_impl.n_wait_sms,
+                    store_fn,
+                    router_weights_fn,
                     topk_ids_p,
                 )
 

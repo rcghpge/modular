@@ -64,6 +64,7 @@ from shmem.ep import (
     ep_fused_combine_kernel_api,
 )
 from shmem.ep_comm import (
+    EP_NO_INPUT_SCALES,
     BF16TokenFormat,
     EPLocalSyncCounters,
     combine_async_kernel,
@@ -576,6 +577,7 @@ def bench_combine[
         n_ranks,  # p2p world size
         token_fmt_type,
         use_shmem=False,
+        InputScalesFnType=type_of(EP_NO_INPUT_SCALES),
     ]
 
     # Dispatch callback kernel
@@ -618,6 +620,7 @@ def bench_combine[
             dispatch_recv_count_bufs_inputs[slot_idx],
             get_atomic_counters(dev_idx, slot_idx),
             Int32(dev_idx),
+            host_args=(EP_NO_INPUT_SCALES,),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )
@@ -682,7 +685,7 @@ def bench_combine[
     @inline(.always)
     def unit_router_weight[
         width: Int
-    ](token_idx: Int, topk_id: Int) capturing -> SIMD[.float32, width]:
+    ](token_idx: Int, topk_id: Int) -> SIMD[.float32, width]:
         return SIMD[.float32, width](1.0)
 
     @inline(.always)
@@ -714,11 +717,11 @@ def bench_combine[
         var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
 
         @inline(.always)
-        @__parameter
-        @__copy_capture(output_2_tensor)
         def store_output_2[
             dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+        ](coords: IndexList[rank], val: SIMD[dtype, width]) {
+            var output_2_tensor
+        }:
             output_2_tensor.store[
                 width=width, alignment=alignment * size_of[dtype]()
             ](Coord(coords), rebind[SIMD[input_type, width]](val))
@@ -732,14 +735,14 @@ def bench_combine[
             n_ranks,
             1,
             "gpu",
-            store_output_2,
-            router_weights_wrapper=unit_router_weight,
         ](
             n_tokens_per_rank,
             get_atomic_counters_tt(dev_idx, slot_idx),
             get_c_recv_ptrs(slot_idx),
             get_c_recv_count_ptrs(slot_idx),
             ctx,
+            store_output_2,
+            unit_router_weight,
         )
 
     @inline(.always)
@@ -753,11 +756,11 @@ def bench_combine[
         var output_2_tensor = get_output_2_tensor(dev_idx, slot_idx)
 
         @inline(.always)
-        @__parameter
-        @__copy_capture(output_2_tensor)
         def store_output_2[
             dtype: DType, rank: Int, width: SIMDLength, *, alignment: Int = 1
-        ](coords: IndexList[rank], val: SIMD[dtype, width]):
+        ](coords: IndexList[rank], val: SIMD[dtype, width]) {
+            var output_2_tensor
+        }:
             output_2_tensor.store[
                 width=width, alignment=alignment * size_of[dtype]()
             ](Coord(coords), rebind[SIMD[input_type, width]](val))
@@ -770,8 +773,6 @@ def bench_combine[
             n_ranks,
             1,
             "gpu",
-            store_output_2,
-            router_weights_wrapper=unit_router_weight,
             use_shmem=False,
         ](
             n_tokens_per_rank,
@@ -782,6 +783,8 @@ def bench_combine[
             get_c_recv_ptrs(slot_idx),
             get_c_recv_count_ptrs(slot_idx),
             ctx,
+            store_output_2,
+            unit_router_weight,
         )
 
     @inline(.always)

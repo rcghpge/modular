@@ -28,6 +28,7 @@ from std.memory import Pointer
 from std.memory.alloc import unsafe_alloc
 from shmem import *
 from shmem.ep_comm import (
+    EP_NO_INPUT_SCALES,
     BlockwiseFP8TokenFormat,
     EP_DATA_READY_FLAG,
     EPLocalSyncCounters,
@@ -220,6 +221,7 @@ def test_dispatch[
         n_tokens_per_rank,
         1,  # p2p world size
         token_fmt_type,
+        InputScalesFnType=type_of(EP_NO_INPUT_SCALES),
     ]
 
     var func = ctx.compile_function[dispatch_async]()
@@ -255,8 +257,8 @@ def test_dispatch[
             recv_count
         ]
 
-        ctx.enqueue_function(
-            func,
+        func._call_with_pack_checked(
+            ctx,
             input_tokens_tensor,
             topk_ids_tensor,
             send_buf,
@@ -264,6 +266,7 @@ def test_dispatch[
             recv_count_ptrs,
             EPLocalSyncCounters[n_experts](atomic_counter),
             Int32(my_rank),
+            host_args=(EP_NO_INPUT_SCALES,),
             grid_dim=hw_info.sm_count,
             block_dim=hw_info.max_thread_block_size,
         )

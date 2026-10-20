@@ -52,6 +52,7 @@ from std.sys.defines import get_defined_int
 from layout import Idx, TileTensor
 from layout.tile_layout import row_major
 from shmem.ep_comm import (
+    EP_NO_INPUT_SCALES,
     BF16TokenFormat,
     EPLocalSyncCounters,
     combine_async_kernel,
@@ -301,6 +302,7 @@ def run_one_case(ctx: DeviceContext, spec: CaseSpec) raises:
         n_ranks,  # p2p world size
         token_fmt_type,
         use_shmem=False,
+        InputScalesFnType=type_of(EP_NO_INPUT_SCALES),
     ]
     comptime dispatch_wait = dispatch_wait_kernel[
         hw_info.max_thread_block_size,
@@ -337,6 +339,7 @@ def run_one_case(ctx: DeviceContext, spec: CaseSpec) raises:
         recv_count_bufs,
         counters,
         Int32(0),
+        host_args=(EP_NO_INPUT_SCALES,),
         grid_dim=hw_info.sm_count,
         block_dim=hw_info.max_thread_block_size,
     )
