@@ -1272,7 +1272,9 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var live = row >= 0
             var src = sf_gmem.unsafe_offset(Int(max(row, Int32(0))) * sf_words)
             comptime for w in range(sf_words):
-                var v = src.unsafe_offset(w).load[width=1, invariant=True]()
+                var v = src.unsafe_offset(w).unsafe_load[
+                    width=1, invariant=True
+                ]()
                 sf_smem[r * sf_words + w] = v if live else UInt32(0)
 
     @staticmethod
@@ -1591,20 +1593,20 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
             var dst = kv_mma_prod.stage_base_ptr()
 
             comptime for c in range(COLS_PER_GROUP):
-                var p0 = src_u8.unsafe_offset(pk_base_0 + c * 32).load[
+                var p0 = src_u8.unsafe_offset(pk_base_0 + c * 32).unsafe_load[
                     width=8, alignment=8
                 ]()
-                var p1 = src_u8.unsafe_offset(pk_base_1 + c * 32).load[
+                var p1 = src_u8.unsafe_offset(pk_base_1 + c * 32).unsafe_load[
                     width=8, alignment=8
                 ]()
                 var sf0 = bitcast[Self.fp8_type, 1](
                     SIMD[DType.uint8, 1](
-                        src_u8.unsafe_offset(sf_base_0 + c * 4).load()
+                        src_u8.unsafe_offset(sf_base_0 + c * 4).unsafe_load()
                     )
                 ).cast[DType.float32]()[0]
                 var sf1 = bitcast[Self.fp8_type, 1](
                     SIMD[DType.uint8, 1](
-                        src_u8.unsafe_offset(sf_base_1 + c * 4).load()
+                        src_u8.unsafe_offset(sf_base_1 + c * 4).unsafe_load()
                     )
                 ).cast[DType.float32]()[0]
                 var q0 = nvfp4_dequant_group(p0, sf0)
@@ -1619,10 +1621,14 @@ struct MLA_SM100_Decode_Sparse_QKV_FP8[
 
             var rope_block = dst.unsafe_offset(COLS_PER_GROUP * Self.BlockElems)
             var rope_0 = bitcast[DType.uint32, 4](
-                src_u8.unsafe_offset(rope_base_0).load[width=16, alignment=16]()
+                src_u8.unsafe_offset(rope_base_0).unsafe_load[
+                    width=16, alignment=16
+                ]()
             )
             var rope_1 = bitcast[DType.uint32, 4](
-                src_u8.unsafe_offset(rope_base_1).load[width=16, alignment=16]()
+                src_u8.unsafe_offset(rope_base_1).unsafe_load[
+                    width=16, alignment=16
+                ]()
             )
             st_shared_v4_b32_at_bf16_elem_off[out_dtype=Self.fp8_type](
                 rope_block, sw_off_0, rope_0

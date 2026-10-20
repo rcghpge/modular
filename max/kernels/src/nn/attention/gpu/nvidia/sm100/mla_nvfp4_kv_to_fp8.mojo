@@ -118,20 +118,22 @@ def _convert_row(
     The 32 lanes read 256 contiguous packed bytes and write 512 contiguous
     FP8 bytes; lanes 0-3 then copy the 64 rope bytes unchanged.
     """
-    var packed = packed_row.unsafe_offset(lane * 8).load[width=8, alignment=8]()
+    var packed = packed_row.unsafe_offset(lane * 8).unsafe_load[
+        width=8, alignment=8
+    ]()
     var scale = bitcast[DType.float8_e4m3fn, 1](
         SIMD[DType.uint8, 1](scale_row[lane])
     ).cast[DType.float32]()[0]
     fp8_row.unsafe_offset(lane * 16).unsafe_bitcast[
         Scalar[DType.uint32]
-    ]().store[width=4, alignment=16](nvfp4_dequant_group(packed, scale))
+    ]().unsafe_store[width=4, alignment=16](nvfp4_dequant_group(packed, scale))
     if lane < NVFP4_MLA_ROPE_DIM // 16:
         fp8_row.unsafe_offset(_LATENT_DIM + lane * 16).unsafe_bitcast[
             Scalar[DType.uint32]
-        ]().store[width=4, alignment=16](
+        ]().unsafe_store[width=4, alignment=16](
             packed_row.unsafe_offset(_LATENT_DIM // 2 + lane * 16)
             .unsafe_bitcast[Scalar[DType.uint32]]()
-            .load[width=4, alignment=16]()
+            .unsafe_load[width=4, alignment=16]()
         )
 
 
@@ -195,9 +197,9 @@ def _remap_kernel[
         return
     var out = SIMD[DType.int32, _REMAP_WIDTH](-1)
     if slot < Int(top_k):
-        var rows = indices.unsafe_offset(tok * Int(src_stride) + slot).load[
-            width=_REMAP_WIDTH, alignment=16
-        ]()
+        var rows = indices.unsafe_offset(
+            tok * Int(src_stride) + slot
+        ).unsafe_load[width=_REMAP_WIDTH, alignment=16]()
         comptime for j in range(_REMAP_WIDTH):
             var row = Int(rows[j])
             if row >= 0:
@@ -206,7 +208,7 @@ def _remap_kernel[
                     var page = page_slots[block]
                     if page != _NO_PAGE:
                         out[j] = Int32(Int(page) * page_size + offset)
-    dense.unsafe_offset(i).store[alignment=16](out)
+    dense.unsafe_offset(i).unsafe_store[alignment=16](out)
 
 
 def mla_prefill_sparse_nvfp4_via_fp8[

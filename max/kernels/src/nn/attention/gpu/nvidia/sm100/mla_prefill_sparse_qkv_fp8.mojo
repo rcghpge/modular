@@ -862,7 +862,7 @@ struct MLAPrefillSparseQKVFP8[
                 comptime for qg in range(4):
                     sf[4 * m + qg] = src.unsafe_offset(
                         live_row * (Self.NVFP4_SF_ROW_BYTES // 2) + 4 * qg + qc0
-                    ).load[width=1, alignment=2]()[0]
+                    ).unsafe_load[width=1, alignment=2]()[0]
         return sf
 
     @inline(.always)
@@ -991,7 +991,7 @@ struct MLAPrefillSparseQKVFP8[
                 comptime for w in range(WORDS):
                     sf[a * WORDS + w] = src.unsafe_offset(
                         a * (Self.SV_ATOM_MMA_N // 16 // 4) + w
-                    ).load[width=1, alignment=4]()[0]
+                    ).unsafe_load[width=1, alignment=4]()[0]
         return sf
 
     @inline(.always)
