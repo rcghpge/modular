@@ -76,8 +76,7 @@ from std.utils.static_tuple import StaticTuple
 
 from .info import _device_type_encoder_target, is_cpu
 
-from max.gpu.host.info import get_gpu_target, get_gpu_info
-from max._plugin._overlay import max_default_accelerator
+from max.gpu.host.info import get_gpu_info, default_accelerator
 
 
 from .compile import (
@@ -1784,7 +1783,7 @@ struct DeviceBuffer[dtype: DType](
         """Encodes a tiled TMA descriptor for this buffer via AsyncRT."""
 
         comptime assert (
-            max_default_accelerator().is_nvidia_gpu()
+            default_accelerator().is_nvidia_gpu()
         ), "TMA descriptors are only supported on NVIDIA GPUs"
 
         _checked(
@@ -1825,7 +1824,7 @@ struct DeviceBuffer[dtype: DType](
         `max.gpu.host._tensormap.create_tensormap_im2col`."""
 
         comptime assert (
-            max_default_accelerator().is_nvidia_gpu()
+            default_accelerator().is_nvidia_gpu()
         ), "TMA descriptors are only supported on NVIDIA GPUs"
 
         _checked(
@@ -3164,7 +3163,7 @@ struct DeviceFunction[
     func: func_type,
     declared_arg_types: TypeList[Trait=AnyType, ...],
     *,
-    target: CompilationTarget = max_default_accelerator(),
+    target: CompilationTarget = default_accelerator(),
     compile_options: StaticString = target.default_compile_options(),
     link_options: StaticString = "",
     _ptxas_info_verbose: Bool = False,
@@ -4060,7 +4059,7 @@ struct DeviceFunction[
 
 struct DeviceExternalFunction[
     *,
-    target: CompilationTarget = get_gpu_target(),
+    target: CompilationTarget = default_accelerator(),
 ]:
     """Represents an external device function loaded from PTX/SASS assembly.
 
@@ -4416,7 +4415,7 @@ See `DeviceContextBase` for additional documentation.
 """
 
 
-struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
+struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
     ImplicitlyCopyable, RegisterPassable, _FunctionEnqueuer
 ):
     """Represents a single stream of execution on a particular accelerator
@@ -4737,7 +4736,7 @@ struct DeviceContextBase[target: CompilationTarget = max_default_accelerator()](
             This device context cast to the default target.
         """
         comptime assert Self.target._eq_triple_and_arch[
-            max_default_accelerator()
+            default_accelerator()
         ](), String(
             t"using DeviceContext with non-default target is not supported fro"
             t"m: {call_location()}"
