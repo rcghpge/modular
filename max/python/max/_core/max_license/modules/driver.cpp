@@ -1486,6 +1486,21 @@ void M::Graph::Python::bindDriverModule(nb::module_ m) {
         ``()`` and only accepts a dtype of the same size. A ``ValueError`` is raised
         when no shape can be deduced.
       )nbdoc")
+      .def("memset", &Python::Buffer::memset, "value"_a, R"nbdoc(
+        Fills the buffer's bytes in place with a repeated byte value.
+
+        The fill is enqueued on the buffer's device stream. Contiguous slices
+        are supported and only their bytes are changed. The value is a byte
+        pattern, not a typed element value; zero clears every byte.
+
+        Args:
+            value: The byte value, between 0 and 255 inclusive.
+
+        Raises:
+            ValueError: If the buffer is not contiguous, is a sub-byte slice
+                that does not start and end on whole bytes, or the value is
+                outside the byte range.
+      )nbdoc")
       .def_static(
           "zeros",
           [](const std::vector<size_t> &shape, M::DType dtype,

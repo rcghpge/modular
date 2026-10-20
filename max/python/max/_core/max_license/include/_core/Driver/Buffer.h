@@ -197,6 +197,9 @@ struct Buffer {
   /// Initializes all elements in the buffer to 0.
   void zeros();
 
+  /// Fills a contiguous buffer with a repeated byte value.
+  void memset(int64_t value);
+
   //===--------------------------------------------------------------------===//
   // Copies and transfers
   //===--------------------------------------------------------------------===//
