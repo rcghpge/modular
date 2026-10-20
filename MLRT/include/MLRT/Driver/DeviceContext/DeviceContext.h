@@ -1075,12 +1075,8 @@ public:
 
   virtual ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize,
                                           uint64_t val, size_t valSize) = 0;
-  inline ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
-                                         size_t valSize) {
-    if (dst.context().device().api() != device().api())
-      RETURN_ERROR("API mismatch between buffer and context");
-    return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
-  }
+  ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                  size_t valSize);
 
   ErrorOr<Driver::DeviceBufferRef>
   memmapFile(const std::filesystem::path &filename);

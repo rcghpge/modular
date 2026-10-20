@@ -23,13 +23,18 @@
 #include "MLRT/Driver/DeviceContext/BinaryID.h"
 #include "Support/BinaryID.h"
 #include "Support/Configuration.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include <atomic>
+#include <functional>
+#include <initializer_list>
 #include <memory>
 #include <mutex>
+#include <utility>
 
 extern "C" {
 void MojoHAL_strfree(const char *s);
@@ -459,6 +464,25 @@ void *DeviceBuffer::releasePtr() {
   return tmp;
 }
 
+// Mirrors enqueueOnCpuKeepingAlive in the legacy DeviceContext.cpp.
+//
+// TODO(DRIV-579): remove once resource lifetime management lands; until then
+// a queue dropped with no later poll leaks these (DRIV-555).
+static ErrorOrSuccess
+enqueueOnCpuKeepingAlive(DeviceContext &ctx,
+                         std::initializer_list<const DeviceBuffer *> buffers,
+                         llvm::function_ref<ErrorOrSuccess()> enqueue) {
+  if (ErrorOrSuccess polled = ctx.pollPendingEvents(); polled.isError())
+    return polled;
+  if (ErrorOrSuccess enqueued = enqueue(); enqueued.isError())
+    return enqueued;
+  auto keepAlive = std::make_shared<llvm::SmallVector<DeviceBufferRef, 2>>();
+  for (const DeviceBuffer *buffer : buffers)
+    keepAlive->push_back(
+        DeviceBufferRef::copy(const_cast<DeviceBuffer *>(buffer)));
+  return ctx.enqueueEventHandler([keepAlive = std::move(keepAlive)]() {});
+}
+
 ErrorOrSuccess DeviceBuffer::copyTo(DeviceBuffer &dst, size_t srcByteOffset,
                                     size_t srcByteSize) {
   // Mirror DeviceContext::enqueueCopyDeviceToDevice (the legacy impl):
@@ -476,7 +500,12 @@ ErrorOrSuccess DeviceBuffer::copyTo(DeviceBuffer &dst, size_t srcByteOffset,
       if (sync.isError())
         return sync;
     }
-    return dst.context().enqueueCopyToDevice(dst.ptr_, srcAt, srcByteSize);
+    auto copy = [&] {
+      return dst.context().enqueueCopyToDevice(dst.ptr_, srcAt, srcByteSize);
+    };
+    if (dstApi == Device::cpuAPI)
+      return enqueueOnCpuKeepingAlive(dst.context(), {&src, &dst}, copy);
+    return copy();
   }
   if (dst.isHost() || dstApi == Device::cpuAPI) {
     // Device -> host.
@@ -732,6 +761,16 @@ ErrorOrSuccess DeviceContext::enqueueSetMemory(void *dst, size_t byteSize,
   return {};
 }
 
+ErrorOrSuccess DeviceContext::enqueueSetMemory(const DeviceBuffer &dst,
+                                               uint64_t val, size_t valSize) {
+  auto fill = [&] {
+    return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
+  };
+  if (device_->api() != Device::cpuAPI)
+    return fill();
+  return enqueueOnCpuKeepingAlive(*this, {&dst}, fill);
+}
+
 ErrorOrSuccess DeviceContext::synchronize(void *external_stream) {
   if (external_stream != nullptr)
     return Error("HAL DeviceContext::synchronize: external streams are not "
@@ -740,7 +779,37 @@ ErrorOrSuccess DeviceContext::synchronize(void *external_stream) {
     return {};
   if (const char *err = MojoHAL_DeviceContext_synchronize(mojoCtx_))
     return takeError(err);
+  return pollPendingEvents();
+}
+
+ErrorOrSuccess
+DeviceContext::enqueueEventHandler(std::function<void()> handler) {
+  ErrorOr<DeviceEventRef> event = enqueueEvent();
+  if (event.isError())
+    return event.takeError();
+  std::lock_guard<std::mutex> lock(pendingMu_);
+  pending_.emplace_back(event.takeValue(), std::move(handler));
   return {};
+}
+
+ErrorOrSuccess DeviceContext::pollPendingEvents() {
+  while (true) {
+    std::function<void()> handler;
+    {
+      std::lock_guard<std::mutex> lock(pendingMu_);
+      if (pending_.empty())
+        return {};
+      ErrorOr<bool> ready = pending_.front().first->isReady();
+      if (ready.isError())
+        return ready.takeError();
+      if (!*ready)
+        return {};
+      handler = std::move(pending_.front().second);
+      pending_.pop_front();
+    }
+    // Outside the lock: a handler's releases can re-enter this context.
+    handler();
+  }
 }
 
 ErrorOr<Device::MemInfo> DeviceContext::getMemoryInfo() const {

@@ -46,11 +46,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Opaque handles to the heap allocated wrapped Mojo values the MojoHAL_*
@@ -704,10 +707,8 @@ public:
 
   ErrorOrSuccess enqueueSetMemory(void *dst, size_t byteSize, uint64_t value,
                                   size_t valueSize);
-  inline ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
-                                         size_t valSize) {
-    return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
-  }
+  ErrorOrSuccess enqueueSetMemory(const DeviceBuffer &dst, uint64_t val,
+                                  size_t valSize);
 
   // ===-- Synchronization ----------------------------------------------=== //
 
@@ -746,10 +747,10 @@ public:
     return Error("wrapHostMemory is not supported on this device");
   }
 
-  /// Drains completed event handlers. The HAL shim queues none, so this is a
-  /// no-op. TODO(MXF-673): drain for real once the shim gains
-  /// `enqueueEventHandler`, after which success here would be a lie.
-  ErrorOrSuccess pollPendingEvents() { return success(); }
+  /// Runs `handler` on a later poll, once the work enqueued so far completes.
+  ErrorOrSuccess enqueueEventHandler(std::function<void()> handler);
+  /// Runs the handlers whose work has completed, in enqueue order.
+  ErrorOrSuccess pollPendingEvents();
 
   // ===-- Identity / Mojo interop ---------------------------------------=== //
 
@@ -807,6 +808,9 @@ private:
   std::shared_ptr<StreamPool> streamPool_;
   DeviceRef device_;
   mutable std::string archName_;
+
+  std::mutex pendingMu_;
+  std::deque<std::pair<DeviceEventRef, std::function<void()>>> pending_;
 };
 
 } // namespace Driver

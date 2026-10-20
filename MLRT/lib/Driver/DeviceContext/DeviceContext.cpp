@@ -50,7 +50,9 @@ static_assert(
 #include "Virtual/VirtualDeviceContext.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Format.h"
@@ -61,8 +63,11 @@ static_assert(
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <string.h>
+#include <utility>
 
 namespace M::Driver {
 
@@ -1615,6 +1620,38 @@ ErrorOr<DeviceBufferRef> DeviceContext::allocBuffer(size_t byteSize,
       *this, errPtr.takeValue(), byteSize, mode == Device::AllocMode::HOST));
 }
 
+// The CPU worker runs after this returns, but a buffer's free doesn't wait:
+// a wrapped buffer frees on release, an owned one on its own queue. The refs
+// drop on poll, not on the worker, since a numpy release needs the GIL.
+//
+// TODO(DRIV-579): remove once resource lifetime management lands; until then
+// a queue dropped with no later poll leaks these (DRIV-555).
+static ErrorOrSuccess
+enqueueOnCpuKeepingAlive(DeviceContext &ctx,
+                         std::initializer_list<const DeviceBuffer *> buffers,
+                         llvm::function_ref<ErrorOrSuccess()> enqueue) {
+  // Without this, a loop of enqueues holds every buffer until a synchronize.
+  RETURN_IF_ERROR(ctx.pollPendingEvents());
+  RETURN_IF_ERROR(enqueue());
+  auto keepAlive = std::make_shared<llvm::SmallVector<DeviceBufferRef, 2>>();
+  for (const DeviceBuffer *buffer : buffers)
+    keepAlive->push_back(
+        DeviceBufferRef::copy(const_cast<DeviceBuffer *>(buffer)));
+  return ctx.enqueueEventHandler([keepAlive = std::move(keepAlive)]() {});
+}
+
+MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueSetMemory(
+    const DeviceBuffer &dst, uint64_t val, size_t valSize) {
+  if (dst.context().device().api() != device().api())
+    RETURN_ERROR("API mismatch between buffer and context");
+  auto fill = [&] {
+    return enqueueSetMemory(dst.ptr(), dst.byteSize(), val, valSize);
+  };
+  if (device().api() != Device::cpuAPI)
+    return fill();
+  return enqueueOnCpuKeepingAlive(*this, {&dst}, fill);
+}
+
 MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     DeviceBuffer &dst, DeviceBuffer &src, size_t srcByteOffset,
     size_t srcByteSize, bool crossStreamSync) {
@@ -1639,6 +1676,11 @@ MODULAR_CXX_EXPORT ErrorOrSuccess DeviceContext::enqueueCopyDeviceToDevice(
     // recording here: the copy runs on dst's own owning context, and dst's
     // destructor already orders its free against that context.
     src.recordUsedOnContext(dst.context());
+    if (dstApi == Device::cpuAPI)
+      return enqueueOnCpuKeepingAlive(dst.context(), {&src, &dst}, [&] {
+        return dst.context().enqueueCopyToDevice(
+            dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
+      });
     return dst.context().enqueueCopyToDevice(
         dst.ptr(), (uint8_t *)src.ptr() + srcByteOffset, srcByteSize);
   } else if (dst.isHost() || (dstApi == Device::cpuAPI)) {

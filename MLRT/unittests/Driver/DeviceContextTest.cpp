@@ -20,15 +20,18 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <future>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace M::Driver;
 using namespace M::AsyncRT;
@@ -184,6 +187,81 @@ TEST(DeviceContextTest, DeviceBuffers) {
 
     free(dPtr);
   }
+}
+
+class QueueGate {
+public:
+  explicit QueueGate(DeviceContext &ctx)
+      : opened_(openPromise_.get_future().share()) {
+    EXPECT_NO_ERR(ctx.enqueueHostFunction(
+        [](int8_t *opened) {
+          reinterpret_cast<std::shared_future<void> *>(opened)->wait();
+        },
+        [](int8_t *) {}, reinterpret_cast<int8_t *>(&opened_)));
+  }
+  // A failed expectation must not leave the worker blocked forever.
+  ~QueueGate() { open(); }
+
+  void open() {
+    if (!isOpen_)
+      openPromise_.set_value();
+    isOpen_ = true;
+  }
+
+private:
+  std::promise<void> openPromise_;
+  std::shared_future<void> opened_;
+  bool isOpen_ = false;
+};
+
+struct WrappedHostBuffer {
+  WrappedHostBuffer(DeviceContext &ctx, size_t byteSize, uint8_t fill)
+      : bytes(byteSize, fill),
+        ref(ctx.createBufferOwning(bytes.data(), byteSize, /*owning=*/true)) {
+    ref->setDestructorFn([this] {
+      bytesAtFree = bytes;
+      // Scrub, so a read after free sees zeros.
+      std::fill(bytes.begin(), bytes.end(), 0);
+    });
+  }
+
+  std::vector<uint8_t> bytes;
+  std::vector<uint8_t> bytesAtFree;
+  DeviceBufferRef ref;
+};
+
+TEST(DeviceContextTest, CPUCopyKeepsBuffersAliveUntilItRuns) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  constexpr size_t n = 4096;
+  QueueGate gate(*ctx);
+  WrappedHostBuffer src(*ctx, n, 0x5A);
+  WrappedHostBuffer dst(*ctx, n, 0);
+
+  EXPECT_NO_ERR(src.ref->copyTo(*dst.ref));
+  src.ref.reset();
+  dst.ref.reset();
+  EXPECT_TRUE(src.bytesAtFree.empty());
+  EXPECT_TRUE(dst.bytesAtFree.empty());
+
+  gate.open();
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_EQ(src.bytesAtFree, std::vector<uint8_t>(n, 0x5A));
+  EXPECT_EQ(dst.bytesAtFree, std::vector<uint8_t>(n, 0x5A));
+}
+
+TEST(DeviceContextTest, CPUSetMemoryKeepsBufferAliveUntilItRuns) {
+  ASSIGN_NO_ERR(DeviceContextRef, ctx, DeviceContext::create(Device::cpuAPI));
+  constexpr size_t n = 4096;
+  QueueGate gate(*ctx);
+  WrappedHostBuffer buf(*ctx, n, 0);
+
+  EXPECT_NO_ERR(ctx->enqueueSetMemory(*buf.ref, 0xA5, 1));
+  buf.ref.reset();
+  EXPECT_TRUE(buf.bytesAtFree.empty());
+
+  gate.open();
+  EXPECT_NO_ERR(ctx->synchronize());
+  EXPECT_EQ(buf.bytesAtFree, std::vector<uint8_t>(n, 0xA5));
 }
 
 TEST(DeviceContextTest, FailDeviceBuffers) {
