@@ -157,37 +157,6 @@ populateParameterInfos(FnSignatureASTDecl &decl,
   return evaluator;
 }
 
-/// Convert a signature argument index to an index in the user-visible argument
-/// list, omitting compiler-synthesized ABI arguments.
-static std::optional<size_t>
-getDocumentedArgumentIndex(FnTypeGeneratorType signature,
-                           size_t signatureArgIndex) {
-  if (!signature || signature.getNumArguments() <= signatureArgIndex)
-    return std::nullopt;
-
-  size_t documentedArgIndex = 0;
-  for (size_t index = 0; index <= signatureArgIndex; ++index) {
-    ArgConvention convention = signature.getArgConventions()[index];
-    bool isDocumented = convention != ArgConvention::ByRefError &&
-                        !(convention == ArgConvention::ByRefResult &&
-                          signature.getArgName(index) == "__result__");
-    if (index == signatureArgIndex)
-      return isDocumented ? std::optional<size_t>(documentedArgIndex)
-                          : std::nullopt;
-    if (isDocumented)
-      ++documentedArgIndex;
-  }
-  llvm_unreachable("signature argument index was range checked");
-}
-
-static ssize_t getArgumentNumber(const ASTDecl &decl) {
-  if (auto *varDecl = dyn_cast<VarASTDecl>(&decl))
-    return varDecl->getArgNumber();
-  if (auto *irDecl = dyn_cast<IRASTDecl>(&decl))
-    return irDecl->getArgNumber();
-  return -1;
-}
-
 static std::optional<ASTType> getSelfType(FnSignatureASTDecl &decl) {
   auto *defDecl = dyn_cast<DefASTDecl>(&decl);
   if (!defDecl)
@@ -297,15 +266,11 @@ SmallVector<ArgumentInfo, 2> getArgumentInfos(FnSignatureASTDecl &decl,
     args.push_back(std::move(info));
   }
 
-  for (ASTDecl *argDecl : decl.getArgDecls()) {
-    ssize_t argNumber = getArgumentNumber(*argDecl);
-    if (argNumber < 0)
-      continue;
-    if (std::optional<size_t> documentedArgIndex =
-            getDocumentedArgumentIndex(signature, argNumber);
-        documentedArgIndex && *documentedArgIndex < args.size())
-      args[*documentedArgIndex].setDecl(*argDecl);
-  }
+  SmallVector<ASTDecl *> argDecls = decl.getUserArgDecls();
+  assert(args.size() == argDecls.size() &&
+         "user argument declarations must match the rendered signature");
+  for (auto [info, argDecl] : llvm::zip(args, argDecls))
+    info.setDecl(*argDecl);
   return args;
 }
 
@@ -319,23 +284,23 @@ SmallVector<ArgumentInfo, 2> getArgumentInfos(FnSignatureASTDecl &decl) {
 }
 
 std::optional<ArgumentInfo> getArgumentInfo(ASTDecl &decl) {
-  ssize_t argNumber = getArgumentNumber(decl);
-  if (argNumber < 0)
+  if (decl.getArgNumber() < 0 || !decl.isUserArgument())
     return std::nullopt;
 
   auto *parentFunction =
       dyn_cast_or_null<FnSignatureASTDecl>(decl.getParentDecl());
   if (!parentFunction)
     return std::nullopt;
-  std::optional<size_t> documentedArgNumber = getDocumentedArgumentIndex(
-      parentFunction->getSignature(), static_cast<size_t>(argNumber));
-  if (!documentedArgNumber)
+  SmallVector<ASTDecl *> argDecls = parentFunction->getUserArgDecls();
+  auto argDecl = llvm::find(argDecls, &decl);
+  if (argDecl == argDecls.end())
     return std::nullopt;
 
   SmallVector<ArgumentInfo, 2> arguments = getArgumentInfos(*parentFunction);
-  if (arguments.size() <= *documentedArgNumber)
+  size_t argIndex = std::distance(argDecls.begin(), argDecl);
+  if (arguments.size() <= argIndex)
     return std::nullopt;
-  ArgumentInfo result = arguments[*documentedArgNumber];
+  ArgumentInfo result = arguments[argIndex];
   result.setDecl(decl);
   return result;
 }

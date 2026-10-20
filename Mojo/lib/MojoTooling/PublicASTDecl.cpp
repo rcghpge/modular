@@ -514,11 +514,10 @@ static std::string getAliasMarkdownDocString(AliasASTDecl &decl);
 /// Return the rendered parameter information corresponding to `decl`, if its
 /// parent includes the parameter in its public signature.
 static std::optional<ParameterInfo> getParameterInfo(ASTDecl &decl) {
-  auto irDecl = dyn_cast<IRASTDecl>(&decl);
-  if (!irDecl || irDecl->getParamNumber() < 0)
+  if (decl.getParamNumber() < 0)
     return std::nullopt;
 
-  size_t paramNumber = static_cast<size_t>(irDecl->getParamNumber());
+  size_t paramNumber = static_cast<size_t>(decl.getParamNumber());
   if (auto *structDecl = dyn_cast<StructASTDecl>(decl.getParentDecl())) {
     SmallVector<ParameterInfo, kTypicalParameterCount> parameters =
         getStructParameters(*structDecl);
@@ -586,8 +585,7 @@ std::unique_ptr<PublicDecl> M::KGEN::LIT::getPublicDecl(ASTDecl *decl) {
                          decl->getName().value_or(StringRef())));
   }
 
-  if (auto irDecl = dyn_cast<IRASTDecl>(decl);
-      irDecl && irDecl->getArgNumber() >= 0)
+  if (decl->getArgNumber() >= 0)
     return std::unique_ptr<PublicDecl>(
         new PublicDecl(PublicDeclKind::DK_PublicArgumentDecl, *decl,
                        decl->getName().value_or(StringRef())));
@@ -623,14 +621,13 @@ M::KGEN::LIT::getApproximatePublicDeclKind(ASTDecl *decl) {
       return PublicDeclKind::DK_PublicTraitDecl;
   }
 
-  if (auto irDecl = dyn_cast<IRASTDecl>(decl)) {
-    if (irDecl->getArgNumber() >= 0)
-      return PublicDeclKind::DK_PublicArgumentDecl;
-    if (irDecl->getParamNumber() >= 0)
-      return PublicDeclKind::DK_PublicParameterDecl;
+  if (decl->getArgNumber() >= 0)
+    return PublicDeclKind::DK_PublicArgumentDecl;
+  if (decl->getParamNumber() >= 0)
+    return PublicDeclKind::DK_PublicParameterDecl;
+  if (auto irDecl = dyn_cast<IRASTDecl>(decl))
     if (irDecl->getCapturedName())
       return PublicDeclKind::DK_PublicVariableDecl;
-  }
   return std::nullopt;
 }
 

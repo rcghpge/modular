@@ -62,6 +62,35 @@ ASTType ASTDecl::getToolingType() {
   return {};
 }
 
+/// Returns this argument's ABI convention. Asserts if this is not an
+/// argument declaration.
+ArgConvention ASTDecl::getArgConvention() const {
+  ssize_t argNumber = getArgNumber();
+  assert(argNumber >= 0 && "argument convention requested for non-argument");
+  auto *parent = cast<FnSignatureASTDecl>(getParentDecl());
+  FnTypeGeneratorType signature = parent->getSignature();
+  assert(signature && "function argument must have a resolved signature");
+  assert(static_cast<size_t>(argNumber) < signature.getNumArguments() &&
+         "argument number is out of range");
+  return signature.getArgConventions()[argNumber];
+}
+
+/// Returns whether this argument appears in the user-visible signature.  This
+/// filters out implicitly declared error slots and result slots, but keeps
+/// user-declared "out" argument slots.
+bool ASTDecl::isUserArgument() const {
+  ArgConvention convention = getArgConvention();
+  if (convention == ArgConvention::ByRefError)
+    return false;
+  // Result slots are considered user arguments if they were explicitly
+  // declared.
+  if (convention != ArgConvention::ByRefResult)
+    return true;
+
+  auto *parent = cast<FnSignatureASTDecl>(getParentDecl());
+  return parent->getSignature().getArgName(getArgNumber()) != "__result__";
+}
+
 std::optional<StringRef> ASTDecl::getName() {
   auto getFromOp = [&](Operation *op) -> std::optional<StringRef> {
     if (!op)
@@ -83,18 +112,16 @@ std::optional<StringRef> ASTDecl::getName() {
   if (auto name = getFromOp(getIfOperation()))
     return name;
 
-  if (auto irDecl = dyn_cast<IRASTDecl>(this);
-      irDecl && irDecl->getArgNumber() >= 0) {
+  if (getArgNumber() >= 0) {
     FnTypeGeneratorType signature = getToolingSignature(getParentDecl());
-    size_t argNumber = static_cast<size_t>(irDecl->getArgNumber());
+    size_t argNumber = static_cast<size_t>(getArgNumber());
     if (signature && argNumber < signature.getNumArguments())
       return signature.getArgName(argNumber);
   }
 
-  if (auto irDecl = dyn_cast<IRASTDecl>(this);
-      irDecl && irDecl->getParamNumber() >= 0) {
+  if (getParamNumber() >= 0) {
     auto *parentDecl = dyn_cast<DefASTDecl>(getParentDecl());
-    size_t paramNumber = static_cast<size_t>(irDecl->getParamNumber());
+    size_t paramNumber = static_cast<size_t>(getParamNumber());
     if (parentDecl && paramNumber < parentDecl->getOp().getParams().size())
       return demangleParameterName(
           parentDecl->getOp().getParams()[paramNumber].getName(),
@@ -202,6 +229,18 @@ void FnSignatureASTDecl::setParamDecls(ArrayRef<ASTDecl *> decls) {
 
 void FnSignatureASTDecl::setArgDecls(ArrayRef<ASTDecl *> decls) {
   argDecls = shared.persistentAllocator.internElements(decls);
+}
+
+/// Return a list of user-declared argument declarations that we'd want to
+/// show in document generation, for example.  This filters out implicitly
+/// declared error slots and result slots, but keeps user-declared "out"
+/// argument slots.
+SmallVector<ASTDecl *> FnSignatureASTDecl::getUserArgDecls() const {
+  SmallVector<ASTDecl *> result;
+  for (ASTDecl *decl : getArgDecls())
+    if (decl->isUserArgument())
+      result.push_back(decl);
+  return result;
 }
 
 FunctionTypeASTDecl::FunctionTypeASTDecl(SharedState &shared, llvm::SMLoc loc,

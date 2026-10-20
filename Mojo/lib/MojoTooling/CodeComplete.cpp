@@ -386,7 +386,7 @@ struct SignatureHelpListener : public BaseCompletionListener {
       auto *function = dyn_cast<DefASTDecl>(decl);
       if (!function)
         continue;
-      ArrayRef<ASTDecl *> argumentDecls = function->getArgDecls();
+      SmallVector<ASTDecl *> argumentDecls = function->getUserArgDecls();
       if (operands.size() > argumentDecls.size())
         continue;
       if (result.signatures.empty()) {

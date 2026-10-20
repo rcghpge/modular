@@ -2785,11 +2785,8 @@ LogicalResult DefASTDecl::resolveBody(Lexer &lexer) {
                     : VarDeclKind::Arg;
     VarDeclOp varDecl = emitter.emitVarDecl(
         resultName, funcOp.getUserResultType(), funcOp.getLoc(), kind);
-    ssize_t argNumber = static_cast<ssize_t>(funcSignature.getNumArguments());
     auto &argDecl = cast<VarASTDecl>(resolver.addFullyResolvedDecl(
         varDecl.getOperation(), resultName, getLoc(), this));
-    argDecl.setArgNumber(argNumber);
-    argumentDecls.push_back(&argDecl);
     shared.notifyListenerOnArgumentDecl(argDecl, resultName, argDecl.getLoc());
   }
   setArgDecls(argumentDecls);

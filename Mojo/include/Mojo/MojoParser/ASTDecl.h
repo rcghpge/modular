@@ -107,6 +107,21 @@ public:
 
   virtual CValue getIfIRValue() const { return {}; }
 
+  /// Returns this function argument's number, or -1 for a non-argument.
+  virtual ssize_t getArgNumber() const { return -1; }
+
+  /// Returns this parameter's number, or -1 for a non-parameter.
+  virtual ssize_t getParamNumber() const { return -1; }
+
+  /// Returns this argument's ABI convention. Asserts if this is not an
+  /// argument declaration.
+  ArgConvention getArgConvention() const;
+
+  /// Returns whether this argument appears in the user-visible signature.  This
+  /// filters out implicitly declared error slots and result slots, but keeps
+  /// user-declared "out" argument slots.
+  bool isUserArgument() const;
+
   /// Return the operation backing this decl, or null if it does not have one.
   /// Callers that know the decl kind should downcast and use the typed
   /// getOp() accessors instead.
@@ -558,14 +573,14 @@ public:
   CValue getIfIRValue() const override { return value; }
 
   /// Returns this function argument's number, or -1 for a non-argument.
-  ssize_t getArgNumber() const {
+  ssize_t getArgNumber() const override {
     if (isParameter)
       return -1;
     return argOrParamNumber;
   }
 
   /// Returns this parameter's number, or -1 for a non-parameter.
-  ssize_t getParamNumber() const {
+  ssize_t getParamNumber() const override {
     if (!isParameter)
       return -1;
     return argOrParamNumber;
@@ -632,8 +647,12 @@ public:
   }
 
   VarDeclOp getOp() const { return cast<VarDeclOp>(getOperation()); }
-  ssize_t getArgNumber() const { return argNumber; }
-  bool isArgument() const { return argNumber >= 0; }
+  ssize_t getArgNumber() const override { return argNumber; }
+  bool isArgument() const {
+    VarDeclKind kind = getOp().getKind();
+    return argNumber >= 0 || kind == VarDeclKind::Arg ||
+           kind == VarDeclKind::InitOutArg;
+  }
   void setArgNumber(ssize_t newArgNumber) { argNumber = newArgNumber; }
   CValue getIfIRValue() const override {
     VarDeclKind kind = getOp().getKind();
@@ -753,6 +772,12 @@ public:
 
   ArrayRef<ASTDecl *> getParamDecls() const { return paramDecls; }
   ArrayRef<ASTDecl *> getArgDecls() const { return argDecls; }
+
+  /// Return a list of user-declared argument declarations that we'd want to
+  /// show in document generation, for example.  This filters out implicitly
+  /// declared error slots and result slots, but keeps user-declared "out"
+  /// argument slots.
+  SmallVector<ASTDecl *> getUserArgDecls() const;
 
 protected:
   FnSignatureASTDecl(Kind kind, SharedState &shared, llvm::SMLoc loc,
