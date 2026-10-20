@@ -2181,7 +2181,6 @@ struct Softmax:
     def execute[
         target: StaticString,
         axis: Int,
-        has_prologue_fusion: Bool,
     ](
         output: OutputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
@@ -2192,7 +2191,6 @@ struct Softmax:
         Parameters:
             target: Compilation target string.
             axis: Dimension along which to reduce.
-            has_prologue_fusion: See the graph op signature.
 
         Args:
             output: Output tensor receiving the result.
@@ -2245,7 +2243,6 @@ struct LogSoftmax:
     def execute[
         target: StaticString,
         axis: Int,
-        has_prologue_fusion: Bool,
     ](
         output: OutputTensor,
         input: FusedInputTensor[dtype=output.dtype, rank=output.rank, ...],
@@ -2256,7 +2253,6 @@ struct LogSoftmax:
         Parameters:
             target: Compilation target string.
             axis: Dimension along which to reduce.
-            has_prologue_fusion: See the graph op signature.
 
         Args:
             output: Output tensor receiving the result.
