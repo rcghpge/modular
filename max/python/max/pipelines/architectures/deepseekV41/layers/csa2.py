@@ -27,7 +27,8 @@ values and then all of their scales, so absolute slot ``s`` is offset
 ``s % slots`` of page ``s // slots``.
 
 Each query token names up to 128 window slots and up to 512 compressed
-slots in a ``[T, 640]`` int32 list, ``-1`` for none, and its heads attend
+slots in a ``[T, 640]`` int32 list, ``-1`` for none (a window-only call
+may lead with more window slots, in whole tiles of 64), and its heads attend
 over those records through one softmax, with a per-head sink logit that
 joins the denominator only. Each record is both key and value.
 """
@@ -261,6 +262,7 @@ def csa2_attention(
     prefill: bool | TensorValue = False,
     split_rows: int = DECODE_SPLIT_ROWS,
     max_distinct_rows: Dim | int | None = None,
+    window_entries: int = WINDOW_ENTRIES,
 ) -> TensorValue:
     """Returns ``[T, n_heads, 512]`` bf16 sparse attention outputs.
 
@@ -290,8 +292,25 @@ def csa2_attention(
         max_distinct_rows: The most distinct slots a prefill's lists name
             across both caches, the rows its workspace holds; a call naming
             more aborts. Defaults to a row per walked list entry,
-            ``T * (128 + C)`` with ``C`` from :func:`compressed_entries`.
+            ``T * (W + C)`` with ``W`` the window entries and ``C`` from
+            :func:`compressed_entries`.
+        window_entries: The window slots leading each list, a multiple of
+            64; only a window-only call may name more than 128.
+
+    Raises:
+        ValueError: If ``window_entries`` is not a multiple of 64 within the
+            list, or exceeds 128 with a compressed cache.
     """
+    if (
+        window_entries <= 0
+        or window_entries % 64
+        or window_entries > INDEX_WIDTH
+        or (kv_comp is not None and window_entries != WINDOW_ENTRIES)
+    ):
+        raise ValueError(
+            f"{window_entries} window entries do not fit a CSA2 list"
+            + ("" if kv_comp is None else " with a compressed cache")
+        )
     t, n_heads = q.shape[0], int(q.shape[1])
     device = q.device
     flag = None if isinstance(prefill, bool) else prefill
@@ -308,6 +327,7 @@ def csa2_attention(
     strides = [_packed_stride() if window_stride is None else window_stride]
     if kv_comp is None:
         name += ".window_only"
+        parameters["window_tiles"] = window_entries // 64
     else:
         parameters["compressed_rows"] = compressed_rows
         parameters["comp_page"] = records_per_page(kv_comp)
@@ -316,7 +336,7 @@ def csa2_attention(
     if prefill is False:
         workspace = TensorType(DType.float32, [decode_floats], device)
     else:
-        entries = WINDOW_ENTRIES
+        entries = window_entries
         slots = cache_slots(kv_window)
         if kv_comp is not None:
             entries += compressed_entries(compressed_rows)
@@ -350,31 +370,4 @@ def csa2_attention(
             workspace,
         ],
         parameters=parameters,
-    )[0].tensor
-
-
-def load_window_kv(
-    cache: BufferValue,
-    slots: TensorValue,
-    *,
-    block_stride: TensorValue | None = None,
-) -> TensorValue:
-    """Returns ``[N, 512]`` bf16 window records, dequantized and rotated.
-
-    Args:
-        cache: The window cache leaf's blocks.
-        slots: ``[N]`` absolute slots; a negative slot gives a zero row.
-        block_stride: As for :func:`store_window_kv`.
-    """
-    return ops.inplace_custom(
-        "mo.csa.window_kv_load",
-        device=slots.device,
-        values=[
-            ops.cast(slots, DType.int64),
-            cache,
-            _packed_stride() if block_stride is None else block_stride,
-        ],
-        out_types=[
-            TensorType(DType.bfloat16, [slots.shape[0], HEAD_DIM], slots.device)
-        ],
     )[0].tensor

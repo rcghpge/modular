@@ -154,22 +154,6 @@ class DeepseekV41DSparkDrafter(Module):
         """
         return self.main_norm(self.main_proj(taps))
 
-    def context_kv(
-        self, main_x: TensorValue, positions: TensorValue
-    ) -> list[TensorValue]:
-        """Every stage's context KV for ``main_x``'s tokens, in stage order.
-
-        Args:
-            main_x: ``[1, T, hidden]``, :meth:`combine`'s output.
-            positions: ``[T]`` int32 absolute positions of those tokens.
-
-        Returns:
-            One ``[T, head_dim]`` tensor per stage.
-        """
-        return [
-            attn.context_kv(main_x, positions) for attn in self._attentions()
-        ]
-
     def store_context(
         self,
         taps: TensorValue,
@@ -193,7 +177,7 @@ class DeepseekV41DSparkDrafter(Module):
     def windows(
         self, starts: TensorValue, swa_collection: PagedCacheValues
     ) -> list[DSparkWindow]:
-        """Reads every stage's :class:`DSparkWindow` from the KV cache.
+        """Names every stage's :class:`DSparkWindow` in the KV cache.
 
         Args:
             starts: ``[b]`` int32 start position of each draft block.
