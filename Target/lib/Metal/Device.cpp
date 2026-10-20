@@ -133,6 +133,9 @@ DriverResult<int> M_driver_device::getComputeCapability(StringRef name) {
   if (name.empty())
     return 3;
 
+  if (name.contains_insensitive("M6"))
+    return 6;
+
   if (name.contains_insensitive("M5"))
     return 5;
 

@@ -31,6 +31,8 @@ static constexpr TargetTraits::AcceleratorArch kMetalAcceleratorArchs[] = {
     {"apple-m4-metal4", "Apple M4 (Metal 4.0 / macOS 26+)"},
     {"apple-m5", "Apple M5"},
     {"apple-m5-metal4", "Apple M5 (Metal 4.0 / macOS 26+)"},
+    {"apple-m6", "Apple M6"},
+    {"apple-m6-metal4", "Apple M6 (Metal 4.0 / macOS 26+)"},
 };
 
 llvm::ArrayRef<TargetTraits::AcceleratorArch>

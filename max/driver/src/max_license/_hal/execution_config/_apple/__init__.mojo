@@ -33,6 +33,7 @@ from .m2 import M2ExecutionConfiguration
 from .m3 import M3ExecutionConfiguration
 from .m4 import M4ExecutionConfiguration
 from .m5 import M5ExecutionConfiguration
+from .m6 import M6ExecutionConfiguration
 
 comptime _ExecutionConfigDictForTarget = TypeDict[
     T=StaticString,
@@ -43,12 +44,14 @@ comptime _ExecutionConfigDictForTarget = TypeDict[
         "metal:3",
         "metal:4",
         "metal:5",
+        "metal:6",
     ],
     M1ExecutionConfiguration,
     M2ExecutionConfiguration,
     M3ExecutionConfiguration,
     M4ExecutionConfiguration,
     M5ExecutionConfiguration,
+    M6ExecutionConfiguration,
 ]
 
 comptime ExecutionConfigForTarget[
