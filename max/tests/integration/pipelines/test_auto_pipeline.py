@@ -126,7 +126,10 @@ def test_passes_every_sampling_argument(
 
     def record(*args: object, **kwargs: object) -> GenerateResult:
         calls.append((args, kwargs))
-        return GenerateResult(sequences=[[*prompt_ids, prompt_ids[-1]]])
+        return GenerateResult(
+            sequences=[[*prompt_ids, prompt_ids[-1]]],
+            prompt_lengths=[len(prompt_ids)],
+        )
 
     monkeypatch.setattr(auto_pipeline, "generate", record)
     pipe(

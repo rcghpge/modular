@@ -60,6 +60,12 @@ This version is still a work in progress.
   device context is created. Python's `Device.max_single_alloc_size` is
   unchanged.
 
+- `generate()`, `GenerateIterator`, `AutoModel.generate()` and
+  `AutoModel.generate_iter()` take `messages` and `images`, so they run chat
+  and image prompts on models such as Gemma 3 and InternVL.
+  `GenerateResult.prompt_lengths` gives each prompt's length. `AutoModel`
+  turns the vision encoder cache off by default.
+
 ## C API
 
 ## Kernels and GPU programming

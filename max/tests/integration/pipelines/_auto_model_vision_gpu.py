@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Checks AutoModel's rows on an image-capable model.
+"""Checks AutoModel's text and image rows on an image-capable model.
 
 Each ``test_auto_model_vision_*_gpu.py`` file loads one model, so each test
 process compiles one. The oracle is ``max generate``'s row path, the
@@ -21,9 +21,11 @@ pipeline's tokenizer building each row, run through
 from __future__ import annotations
 
 import asyncio
+import io
 from collections.abc import Iterator
 
 import huggingface_hub
+import numpy as np
 import pytest
 from max.driver import DeviceSpec
 from max.pipelines import AutoModel, AutoTokenizer
@@ -33,7 +35,14 @@ from max.pipelines.context import (
     TextContext,
 )
 from max.pipelines.lib.generate import GenerateIterator
-from max.pipelines.modeling.types import RequestID, TextGenerationRequest
+from max.pipelines.modeling.types import (
+    ImageContentPart,
+    RequestID,
+    TextContentPart,
+    TextGenerationRequest,
+    TextGenerationRequestMessage,
+)
+from PIL import Image
 
 PROMPTS = ["The capital of France is", "Water is made of"]
 MAX_NEW_TOKENS = 16
@@ -87,6 +96,12 @@ def _from_contexts(
     return batch.sequences
 
 
+def _red_png() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (448, 448), (255, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def check_text_rows(model: AutoModel) -> None:
     """Checks token-id rows against the tokenizer-built rows."""
     repo_id = model.pipeline_config.model.model_path
@@ -109,6 +124,7 @@ def check_text_rows(model: AutoModel) -> None:
     )
 
     assert outputs.sequences == expected
+    assert outputs.prompt_lengths == [len(ids) for ids in inputs["input_ids"]]
     for sequence, prompt_ids in zip(
         outputs.sequences, inputs["input_ids"], strict=True
     ):
@@ -118,3 +134,71 @@ def check_text_rows(model: AutoModel) -> None:
         outputs.sequences[0][len(inputs["input_ids"][0]) :]
     )
     assert "Paris" in new_text
+
+
+def check_image_rows(model: AutoModel) -> None:
+    """Checks a red image row and a text row against the oracle."""
+    repo_id = model.pipeline_config.model.model_path
+    messages = [
+        [
+            TextGenerationRequestMessage(
+                role="user",
+                content=[
+                    ImageContentPart(),
+                    TextContentPart(
+                        text="What color is this image? Answer in one word."
+                    ),
+                ],
+            )
+        ],
+        [TextGenerationRequestMessage(role="user", content="What is 2 + 2?")],
+    ]
+    images = [[_red_png()], []]
+    outputs = model.generate(
+        messages=messages,
+        images=images,
+        max_new_tokens=MAX_NEW_TOKENS,
+        top_k=1,
+        output_logits=True,
+    )
+
+    sampling_params = _greedy_sampling_params(model)
+    expected = _from_contexts(
+        model,
+        [
+            TextGenerationRequest(
+                request_id=RequestID(),
+                model_name=repo_id,
+                messages=conversation,
+                images=row_images,
+                sampling_params=sampling_params,
+            )
+            for conversation, row_images in zip(messages, images, strict=True)
+        ],
+    )
+    assert outputs.sequences == expected
+
+    new_tokens = [
+        sequence[length:]
+        for sequence, length in zip(
+            outputs.sequences, outputs.prompt_lengths, strict=True
+        )
+    ]
+    assert all(new_tokens)
+    assert outputs.logits is not None
+    for tokens, logits in zip(new_tokens, outputs.logits, strict=True):
+        assert logits.shape[0] == len(tokens)
+        assert np.argmax(logits, axis=-1).tolist() == tokens
+    answer = AutoTokenizer(repo_id, trust_remote_code=True).decode(
+        new_tokens[0], skip_special_tokens=True
+    )
+    assert "red" in answer.lower()
+
+    # These models do not compute log probabilities.
+    with pytest.raises(ValueError, match="does not compute log probabilities"):
+        model.generate(
+            messages=messages,
+            images=images,
+            max_new_tokens=MAX_NEW_TOKENS,
+            output_logprobs=1,
+        )
