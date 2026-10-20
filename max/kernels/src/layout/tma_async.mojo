@@ -285,13 +285,13 @@ struct SharedMemBarrier(TrivialRegisterPassable):
             o: Origin of self.
         """
 
-        comptime asm = """
-        .reg .pred p;
-        .reg .b32 remAddr32;
-        setp.eq.u32 p, $2, 1;
-        @p mapa.shared::cluster.u32  remAddr32, $0, $1;
-        @p mbarrier.arrive.expect_tx.shared::cluster.b64  _, [remAddr32], $3;
-        """
+        comptime asm = """{
+            .reg .pred p;
+            .reg .b32 remAddr32;
+            setp.eq.u32 p, $2, 1;
+            @p mapa.shared::cluster.u32  remAddr32, $0, $1;
+            @p mbarrier.arrive.expect_tx.shared::cluster.b64  _, [remAddr32], $3;
+        }"""
 
         inlined_assembly[asm, NoneType, constraints="r,r,r,r"](
             Int32(Int(self.unsafe_ptr())), cta_id, pred, bytes

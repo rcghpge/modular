@@ -318,9 +318,12 @@ def _publish_peer_stores[scope: StaticString = ""]() -> None:
     """Completes this wave's stores into peer memory ahead of a counter bump
     the caller then does RELAXED.
 
-    Pair with `block_memcpy[..., bypass_l2=True]`. Use `scope=DEVICE_SCOPE` when
-    another SM on this device reads the counter and signals the peer, and
-    system scope when this warp signals the peer itself.
+    Pair with `block_memcpy[..., bypass_l2=True]`, and call it after the wave
+    has joined so one lane's fence covers every lane's copies. System scope
+    waits for the stores to reach the peer. Device scope orders them only on
+    this device and leaves their delivery to whoever signals the peer, and on
+    NVIDIA that signaller's system-scope release does not wait for another
+    SM's stores.
 
     On MI355X, where `block_memcpy` issues system-scope stores, this covers
     only those stores: plain stores stay dirty in the issuing XCD's L2, so
@@ -770,9 +773,12 @@ def ep_signal_completion[
             )
             return -1
 
-        var old_count = _counter_atomic.fetch_add[ordering=Ordering.RELAXED](
-            rank_completion_counter.unsafe_offset(Int(dst_p2p_rank)), 1
-        )
+        # Acquire-release, as in the ORD-R branch, so the last producer
+        # happens-after every other one and its system-scope release below
+        # carries every expert's payload, not only its own.
+        var old_count = _counter_atomic.fetch_add[
+            ordering=Ordering.ACQUIRE_RELEASE
+        ](rank_completion_counter.unsafe_offset(Int(dst_p2p_rank)), 1)
 
         # If this is the last expert for this destination rank,
         # use a release store to flush all pending stores.
@@ -791,11 +797,8 @@ def ep_signal_completion[
                     dst_p2p_ptr, signal
                 )
         else:
-            # Technically, this release store only guarantees the arrival of
-            # all experts' messages to the target device. It doesn't guarantee
-            # the arrival of the previous experts' signals to the target
-            # device. However, this does not matter as we will check the
-            # arrival signal individually in the dispatch_wait/combine_wait kernel.
+            # The waiting kernels acquire every expert's word before reading
+            # any payload, so this one release covers the whole rank.
             Atomic[scope=scope].store[ordering=Ordering.RELEASE](
                 dst_p2p_ptr, signal
             )
@@ -3511,6 +3514,38 @@ struct EPDispatchKernel[
                 _tr_pi = Roles.publisher_role_index()
             if _tr_pi >= 0 and _tr_pi < Roles.n_publisher_warps:
                 _tr_pub = _tr_pi
+        # Whether the first pair's counter bump is still to be stamped.
+        var _tr_finish_due = False
+
+        # Pairs this warp copied, counted in batches: one system-scope publish
+        # per batch instead of one per token keeps several tokens' stores in
+        # flight at once.
+        comptime FLUSH = 8
+        var pend = Array[Int32, FLUSH](uninitialized=True)
+        var n_pend = 0
+
+        @inline(.always)
+        def flush_pending() {mut n_pend, mut _tr_finish_due, imm} -> None:
+            if n_pend == 0:
+                return
+            # Publish this warp's copies before anyone counts them. System
+            # scope, because the warp that signals the peer sits on another
+            # SM.
+            syncwarp()
+            _publish_peer_stores()
+            if lane_id() == 0:
+                for i in range(n_pend):
+                    _ = _counter_atomic.fetch_add[ordering=Ordering.RELAXED](
+                        expert_finished_counter.unsafe_offset(pend[i]), 1
+                    )
+                comptime if TraceT.enabled:
+                    if _tr_finish_due:
+                        trace.stamp[DISPATCH_PAIR_FINISHED](
+                            _tr_pub, UInt64(global_perf_counter_ns())
+                        )
+            _tr_finish_due = False
+            n_pend = 0
+
         for token_idx in range(
             sm_id - Self.n_signal_sms,
             Int(num_tokens),
@@ -3736,29 +3771,20 @@ struct EPDispatchKernel[
                                 _tr_pub, UInt64(global_perf_counter_ns())
                             )
 
-                    _publish_peer_stores[scope=DEVICE_SCOPE]()
-                    if lane_id() == 0:
-                        _ = _counter_atomic.fetch_add[
-                            ordering=Ordering.RELAXED
-                        ](
-                            expert_finished_counter.unsafe_offset(
-                                counter_offset
-                            ),
-                            1,
-                        )
-                        comptime if TraceT.enabled:
-                            if _tr_pairs == 0 and _tr_pub >= 0:
-                                trace.stamp[DISPATCH_PAIR_FINISHED](
-                                    _tr_pub, UInt64(global_perf_counter_ns())
-                                )
-                                _tr_info = (
-                                    UInt64(token_idx)
-                                    | (UInt64(Int(dst_rank)) << 16)
-                                    | (UInt64(Int(dst_expert_local_idx)) << 24)
-                                    | (UInt64(Int(slot_idx)) << 32)
-                                )
                     comptime if TraceT.enabled:
+                        if _tr_pairs == 0 and _tr_pub >= 0:
+                            _tr_finish_due = True
+                            _tr_info = (
+                                UInt64(token_idx)
+                                | (UInt64(Int(dst_rank)) << 16)
+                                | (UInt64(Int(dst_expert_local_idx)) << 24)
+                                | (UInt64(Int(slot_idx)) << 32)
+                            )
                         _tr_pairs += 1
+                    pend[n_pend] = counter_offset
+                    n_pend += 1
+                    if n_pend == FLUSH:
+                        flush_pending()
 
             # We set up `n_rcs` Reliable Communications (RCs) for each
             # remote device. We would like to use the same RC for each expert.
@@ -3826,6 +3852,8 @@ struct EPDispatchKernel[
                             ),
                             1,
                         )
+
+        flush_pending()
 
         comptime if TraceT.enabled:
             # CTA info (comm thread 0) and each publisher's first-pair info.
@@ -5184,14 +5212,11 @@ struct EPCombineKernel[
                 def flush_pending() {mut n_pend, imm} -> None:
                     if n_pend == 0:
                         return
-                    # Publish this warp's copies before anyone counts them.
-                    # That is what lets a different warp signal the pair:
-                    # completion no longer depends on the signaller sharing an
-                    # L2 with the copier. Device scope: this pairs with the
-                    # signalling warp's acquire on this device, whose own
-                    # release store carries the copies to the peer.
-                    _publish_peer_stores[scope=DEVICE_SCOPE]()
+                    # Publish this warp's copies before anyone counts them,
+                    # which is what lets a different warp signal the pair.
+                    # System scope, because that warp may sit on another SM.
                     syncwarp()
+                    _publish_peer_stores()
                     if lane == 0:
                         for i in range(n_pend):
                             var pr = Int(pend[i])

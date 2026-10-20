@@ -244,6 +244,9 @@ modular_py_test(
     mojo_deps = [
         "//max:shmem",
     ],
+    # Each test compiles its own graphs, and together they outlast the
+    # timeout of a single run.
+    shard_count = 8,
     tags = [
         "gpu",
         "manual",
