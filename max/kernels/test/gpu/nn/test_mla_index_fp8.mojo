@@ -120,6 +120,7 @@ def _score_paged_amd[
     num_heads: Int,
     depth: Int,
     kpool: Int,
+    pool_row_tokens: Int,
     causal: Bool,
     KCollectionT: KVCollectionT,
 ](
@@ -147,6 +148,7 @@ def _score_paged_amd[
         _is_cache_length_accurate=False,
         causal=causal,
         kpool=kpool,
+        pool_row_tokens=pool_row_tokens,
     ](
         output,
         q,
@@ -202,6 +204,7 @@ def test_mla_index_fp8_paged_variable_lengths[
     check_selection: Bool = False,
     exp_score_tail: Bool = False,
     kpool: Int = 1,
+    pool_row_tokens: Int = 1,
     num_layers: Int = 1,
     layer_idx: Int = 0,
     check_remap: Bool = False,
@@ -256,6 +259,10 @@ def test_mla_index_fp8_paged_variable_lengths[
         kpool: Tokens per pooled cache row. With `kpool > 1` the cache rows are
             pooled keys, so the indexer selects pool ids and each token's
             candidate count is its visible-token count floored by `kpool`.
+        pool_row_tokens: Cache rows a pooled key spans. 1 holds one
+            `depth`-wide row per pool; `kpool` lays the cache out as
+            GLM-5.3-Flash does, one `depth / kpool`-wide row per token with
+            each pool's scale replicated on its rows.
         num_layers: Layers the cache's parent tensor holds. The scale pool's
             block stride is `num_layers * page_size`, so at one layer it
             equals `page_size` and the flat scale descriptor degenerates to
@@ -342,9 +349,10 @@ def test_mla_index_fp8_paged_variable_lengths[
             not use_causal_mask
         ), "check_selection's host reference is NULL-mask only"
 
+    comptime assert pool_row_tokens == 1 or pool_row_tokens == kpool
     comptime kv_params = KVCacheStaticParams(
         num_heads=1,  # MLA uses single head for K
-        head_size=depth,
+        head_size=depth // pool_row_tokens,
         is_mla=True,
     )
 
@@ -418,6 +426,11 @@ def test_mla_index_fp8_paged_variable_lengths[
     )
     with ks_block_device.map_to_host() as ks_block_host:
         rand(ks_block_host.as_span())
+        comptime if pool_row_tokens > 1:
+            # Page size is a multiple of `pool_row_tokens`, so the flat index
+            # shares each token row's position within its pool.
+            for i in range(ks_shape.flattened_length()):
+                ks_block_host[i] = ks_block_host[i - i % pool_row_tokens]
 
     comptime if exp_score_tail:
         # `rand` gives U[0,1), and a score is (relu-summed heads) x this scale,
@@ -794,6 +807,9 @@ def test_mla_index_fp8_paged_variable_lengths[
         # tcgen05-only, so B200 only; on H100 this case still ran the scalar
         # fallback + the index checks above.
         comptime if ctx.target._has_blackwell_tcgen05():
+            comptime assert (
+                pool_row_tokens == 1
+            ), "the SM100 host reference reads depth-wide rows"
             var sc_size = total_seq_len * total_num_keys_max
             var sc_buf = ctx.enqueue_create_buffer[.float32](sc_size)
             sc_buf.enqueue_fill(-Float32.MAX)
@@ -966,7 +982,12 @@ def test_mla_index_fp8_paged_variable_lengths[
         )
         for begin in range(0, total_seq_len, window):
             _score_paged_amd[
-                num_heads, depth, kpool, use_causal_mask, type_of(k_collection)
+                num_heads,
+                depth,
+                kpool,
+                pool_row_tokens,
+                use_causal_mask,
+                type_of(k_collection),
             ](
                 TileTensor(
                     amd_buf.unsafe_ptr().unsafe_offset(begin * stride),
@@ -996,8 +1017,13 @@ def test_mla_index_fp8_paged_variable_lengths[
         with k_block_device.map_to_host() as k_host:
             with ks_block_device.map_to_host() as ks_host:
                 with k_lut_device.map_to_host() as lut_host:
+                    # A pool's rows are adjacent in its page, so its key is
+                    # one `depth`-wide row of this view.
                     var k_rows = TileTensor(
-                        k_host, row_major(num_blocks * page_size, depth)
+                        k_host,
+                        row_major(
+                            num_blocks * page_size // pool_row_tokens, depth
+                        ),
                     )
                     var g = 0
                     for b in range(batch_size):
@@ -1016,7 +1042,9 @@ def test_mla_index_fp8_paged_variable_lengths[
                                         ),
                                     )
                                     continue
-                                var page, off = divmod(key, page_size)
+                                var page, off = divmod(
+                                    key * pool_row_tokens, page_size
+                                )
                                 var row = (
                                     Int(lut_host[b * pages_per_seq + page])
                                     * page_size
@@ -1024,7 +1052,11 @@ def test_mla_index_fp8_paged_variable_lengths[
                                 )
                                 var want = (
                                     _host_index_score[num_heads, depth](
-                                        q_rows, qs_rows, g, k_rows, row
+                                        q_rows,
+                                        qs_rows,
+                                        g,
+                                        k_rows,
+                                        row // pool_row_tokens,
                                     )
                                     * ks_host[row]
                                 )
@@ -2897,6 +2929,141 @@ def main() raises:
                 cache_lens=[65, 127],
                 ctx=ctx,
                 score_window_rows=1,
+            )
+            # Past 8192 keys a row's keys split across CTAs: empty requests
+            # beside a row that ends on 65536 keys, and windows that cut
+            # split rows.
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+            ](
+                seq_lens=[1, 1, 1, 1, 1, 3],
+                cache_lens=[0, 0, 0, 0, 0, 65533],
+                ctx=ctx,
+            )
+            # More requests than one wave scans at a time: the scorer finds a
+            # row group's request 64 requests per step, carrying the count
+            # across steps, and a row window restarts that count mid-batch.
+            var many_seq_lens = List[Int]()
+            var many_cache_lens = List[Int]()
+            for i in range(130):
+                many_seq_lens.append(2 if i % 3 == 0 else 1)
+                many_cache_lens.append(0 if i % 5 == 0 else (i * 37) % 900)
+            for window_rows in range(0, 100, 50):
+                test_mla_index_fp8_paged_variable_lengths[
+                    num_heads=32,
+                    depth=128,
+                    page_size=128,
+                    top_k=64,
+                    mask_name=MaskName.CAUSAL.name,
+                    check_scores=True,
+                ](
+                    seq_lens=many_seq_lens.copy(),
+                    cache_lens=many_cache_lens.copy(),
+                    ctx=ctx,
+                    score_window_rows=window_rows,
+                )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+            ](
+                seq_lens=[3, 1],
+                cache_lens=[16382, 32768],
+                ctx=ctx,
+                score_window_rows=3,
+            )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+            ](
+                seq_lens=[1, 3],
+                cache_lens=[0, 32768],
+                ctx=ctx,
+                score_window_rows=2,
+            )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+            ](
+                seq_lens=[129, 1],
+                cache_lens=[8320, 0],
+                ctx=ctx,
+                score_window_rows=128,
+            )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+                kpool=4,
+            ](
+                seq_lens=[3, 5, 1],
+                cache_lens=[509, 511, 1023],
+                ctx=ctx,
+                score_window_rows=2,
+            )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+                kpool=4,
+            ](
+                seq_lens=[1, 5],
+                cache_lens=[0, 511],
+                ctx=ctx,
+                score_window_rows=3,
+            )
+            # GLM-5.3-Flash's layout: each pool's key spreads over its tokens'
+            # 32-wide rows, so the scorer stages the Q tail through LDS.
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=128,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+                kpool=4,
+                pool_row_tokens=4,
+            ](
+                seq_lens=[19, 7, 1],
+                cache_lens=[521, 259, 1023],
+                ctx=ctx,
+            )
+            test_mla_index_fp8_paged_variable_lengths[
+                num_heads=32,
+                depth=128,
+                page_size=512,
+                top_k=64,
+                mask_name=MaskName.CAUSAL.name,
+                check_scores=True,
+                kpool=4,
+                pool_row_tokens=4,
+            ](
+                seq_lens=[3, 5, 1],
+                cache_lens=[509, 2047, 0],
+                ctx=ctx,
+                score_window_rows=2,
             )
 
         # ===== Chunked score matrix (SM100 and gfx950 -- the scalar fallback

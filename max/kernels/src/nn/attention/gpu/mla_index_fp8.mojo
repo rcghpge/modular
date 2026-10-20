@@ -41,6 +41,7 @@ from kv_cache.types import (
 )
 
 from nn.index_fp8 import (
+    _AMD_DMA_PASS_BYTES,
     IndexSmemStorage,
     _has_gfx950_accelerator,
     fp8_index_kernel,
@@ -1378,6 +1379,7 @@ def _mla_indexer_paged_impl[
         _has_gfx950_accelerator()
         and num_heads % 32 == 0
         and depth % 64 == 0
+        and _AMD_DMA_PASS_BYTES % depth == 0
         and dtype == .float8_e4m3fn
         and type_of(k_operand).dtype == .float8_e4m3fn
     )
@@ -1401,6 +1403,12 @@ def _mla_indexer_paged_impl[
         cache_row_width == depth or cache_row_width * kpool == depth
     ), "the indexer cache row must hold a whole key or one token's share of it"
     comptime pool_row_tokens = 1 if cache_row_width == depth else kpool
+    # The gfx950 scorer DMAs a wave's 32 keys from one page at a fixed
+    # `head_size` row stride, which holds only for a single-head cache.
+    comptime assert not use_amd_scorer or CacheType.kv_params.num_heads == 1, (
+        "the gfx950 scorer reads a page's key rows at a head_size stride, so"
+        " the indexer cache must hold one head"
+    )
 
     # The scalar fallback is f32-only, so `scores_dtype` is
     # a preference, not a contract: no caller can observe which arm ran, and an
