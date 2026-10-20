@@ -88,7 +88,10 @@ from nn.attention.gpu.mla import (
     mla_decode_max_seq_len,
 )
 from nn.attention.mha_operand import KVCacheMHAOperand, SparseRowsMHAOperand
-from nn.attention.gpu.nvidia.sm100.mla_decode_utils import SparseRowLayout
+from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
+    SparseRowLayout,
+    assert_sparse_row_packed,
+)
 from nn.attention.mha_mask import PaddingMask
 from nn.attention.mha_utils import (
     MHAConfig,
@@ -1346,6 +1349,7 @@ def _amd_sparse_mla_gather_kv_rows[
     CacheT: KVCacheT,
     k_cache_dim: Int,
     rows_per_block: Int,
+    has_topk_lengths: Bool = True,
 ](
     k_cache: CacheT,
     blocks_base: MutPointer[Scalar[CacheT.dtype], MutAnyOrigin],
@@ -1364,7 +1368,8 @@ def _amd_sparse_mla_gather_kv_rows[
     instead of 64 scalar bytes. Slots at or past `topk_lengths[batch]`,
     and any `-1` (invalid) index, are zero-filled -- correctness relies on
     the caller masking these columns out (a zero row participates in, and
-    would corrupt, an unmasked softmax).
+    would corrupt, an unmasked softmax). Without `has_topk_lengths`, every
+    token keeps the full `indices_stride` and `topk_lengths` is not read.
     """
     comptime assert CacheT.kv_params.num_heads == 1, (
         "AMD sparse MLA gather only supports a single-head (absorbed"
@@ -1385,7 +1390,10 @@ def _amd_sparse_mla_gather_kv_rows[
         )
 
         var encoded = d_indices[slot]
-        if col < Int(topk_lengths[batch_idx]) and encoded >= 0:
+        var topk_len = indices_stride_i
+        comptime if has_topk_lengths:
+            topk_len = Int(topk_lengths[batch_idx])
+        if col < topk_len and encoded >= 0:
             var virtual_row = Int(k_cache.get_tma_row(encoded))
             var src = blocks_base.unsafe_offset(
                 virtual_row * k_cache_dim
@@ -1395,6 +1403,62 @@ def _amd_sparse_mla_gather_kv_rows[
             )
         else:
             dst.unsafe_store(SIMD[CacheT.dtype, _AMD_SPARSE_MLA_GATHER_VEC](0))
+
+
+@__name(t"amd_sparse_mla_gather_kv_rows_lengths_{k_cache_dim}_{rows_per_block}")
+def _amd_sparse_mla_gather_kv_rows_and_lengths[
+    CacheT: KVCacheT,
+    k_cache_dim: Int,
+    rows_per_block: Int,
+    has_topk_lengths: Bool = True,
+](
+    k_cache: CacheT,
+    blocks_base: MutPointer[Scalar[CacheT.dtype], MutAnyOrigin],
+    d_indices: MutPointer[Int32, MutAnyOrigin],
+    topk_lengths: MutPointer[Int32, MutAnyOrigin],
+    scratch: MutPointer[Scalar[CacheT.dtype], MutAnyOrigin],
+    valid_lengths: MutPointer[UInt32, MutAnyOrigin],
+    indices_stride: Int32,
+    selection_lag: Int32,
+):
+    """Gathers like `_amd_sparse_mla_gather_kv_rows` and writes each token's
+    valid length for `PaddingMask`, replacing a separate scan launch.
+
+    The length is closed-form, as in SM100 sparse decode: a plain top-k row
+    holds `min(top_k, visible)` valid slots followed by `-1` padding, so a
+    row selected `selection_lag` tokens earlier holds
+    `min(top_k, visible - selection_lag)`. As on SM100,
+    `assert_sparse_row_packed` checks that contract in assert-enabled builds
+    only for a lagged row; at lag 0 it relies on the indexer's packed-row
+    contract. One thread per token writes the length.
+    """
+    _amd_sparse_mla_gather_kv_rows[
+        CacheT,
+        k_cache_dim,
+        rows_per_block,
+        has_topk_lengths=has_topk_lengths,
+    ](k_cache, blocks_base, d_indices, topk_lengths, scratch, indices_stride)
+
+    if block_idx.x == 0 and thread_idx.x == 0 and thread_idx.y == 0:
+        var batch_idx = block_idx.y
+        var stride = Int(indices_stride)
+        var topk_len = stride
+        comptime if has_topk_lengths:
+            topk_len = min(max(Int(topk_lengths[batch_idx]), 0), stride)
+        # Decode reads one new token per sequence, so it sees the cached
+        # keys plus itself.
+        var visible = k_cache.cache_length(batch_idx) + 1
+        assert_sparse_row_packed[SparseRowLayout()](
+            d_indices,
+            stride,
+            batch_idx,
+            visible,
+            Int(selection_lag),
+            topk_len,
+        )
+        valid_lengths[batch_idx] = UInt32(
+            min(topk_len, max(visible - Int(selection_lag), 0))
+        )
 
 
 comptime _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS = 256
@@ -1417,7 +1481,7 @@ def _amd_sparse_mla_row_valid_lengths[
     graph broadcasts it, which is exact for SM100 -- see
     `mla_decode_sparse_kv_fp8`'s causal slot bound -- but names no real
     count), so masking with it leaves every zero-filled invalid slot visible
-    to the softmax. `fill_invalid_topk_kernel` writes the invalid slots as a
+    to the softmax. The indexer's bounded top-k writes the invalid slots as a
     `-1` suffix, so the first negative index is the row's true length.
 
     Taking the FIRST negative rather than counting the non-negatives matters:
@@ -1878,18 +1942,13 @@ def mla_decode_branch_fp8[
         var k_cache = kv_collection.get_key_cache(Int(layer_idx))
 
         # The graph omits `topk_lengths` when every token keeps the full top-k
-        # stride; the gather reads a per-token length, so hand it that form.
-        var full_topk: Optional[DeviceBuffer[DType.int32]] = None
-        var decode_topk_lengths: MutPointer[Int32, MutAnyOrigin]
-        comptime if TopkLengthsPtrType.is_null:
-            full_topk = ctx.enqueue_create_buffer[DType.int32](batch_size)
-            full_topk.value().enqueue_fill(Int32(indices_stride))
-            decode_topk_lengths = (
-                full_topk.value()
-                .unsafe_ptr()
-                .unsafe_origin_cast[MutAnyOrigin]()
-            )
-        else:
+        # stride. The kernels then cap at the stride and never read the
+        # pointer, which saves a fill launch per layer.
+        comptime has_topk_lengths = not TopkLengthsPtrType.is_null
+        var decode_topk_lengths = MutPointer[
+            Int32, MutAnyOrigin
+        ].unsafe_dangling()
+        comptime if has_topk_lengths:
             decode_topk_lengths = rebind[MutPointer[Int32, MutAnyOrigin]](
                 as_optional_reg(topk_lengths).value()
             )
@@ -1904,9 +1963,17 @@ def mla_decode_branch_fp8[
         # (4 wavefronts); grid.x shrinks 7x vs one block per row.
         comptime GATHER_ROWS_PER_BLOCK = 7
         var k_cache_blocks_base = k_cache.blocks_raw_ptr()
+        # `topk_lengths` is the constant `index_topk`, so masking with it marks
+        # every tile NO_MASK; the gather writes each row's real length.
+        var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
+            batch_size
+        )
         ctx.enqueue_function[
-            _amd_sparse_mla_gather_kv_rows[
-                type_of(k_cache), k_cache_dim, GATHER_ROWS_PER_BLOCK
+            _amd_sparse_mla_gather_kv_rows_and_lengths[
+                type_of(k_cache),
+                k_cache_dim,
+                GATHER_ROWS_PER_BLOCK,
+                has_topk_lengths=has_topk_lengths,
             ]
         ](
             k_cache,
@@ -1914,7 +1981,9 @@ def mla_decode_branch_fp8[
             d_indices.value(),
             decode_topk_lengths,
             scratch_buf.unsafe_ptr(),
+            valid_lengths_buf.unsafe_ptr(),
             Int32(indices_stride),
+            Int32(selection_lag),
             grid_dim=(
                 ceildiv(indices_stride, GATHER_ROWS_PER_BLOCK),
                 batch_size,
@@ -1956,25 +2025,6 @@ def mla_decode_branch_fp8[
             )
         )
 
-        # `topk_lengths` is the constant `index_topk`, so masking with it marks
-        # every tile NO_MASK; derive the row's real length from the `-1` suffix.
-        var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
-            batch_size
-        )
-        ctx.enqueue_function[
-            _amd_sparse_mla_row_valid_lengths[
-                _AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS
-            ]
-        ](
-            d_indices.value(),
-            decode_topk_lengths,
-            valid_lengths_buf.unsafe_ptr(),
-            Int32(indices_stride),
-            MutPointer[UInt8, MutAnyOrigin].unsafe_dangling(),
-            Int32(0),
-            grid_dim=(batch_size, 1, 1),
-            block_dim=(_AMD_SPARSE_MLA_ROW_VALID_LENGTHS_THREADS, 1, 1),
-        )
         var amd_lengths_tt = TileTensor(
             valid_lengths_buf.unsafe_ptr(), row_major(batch_size)
         )
