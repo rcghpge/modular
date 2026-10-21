@@ -87,7 +87,6 @@ from max.runtime.async_value import AnyAsyncValueRef, _AsyncValuePtr
 from .buffer_plan import BufferPlanState
 
 comptime MutByteBuffer = DynamicTensor[.int8, 1]
-comptime ImmutByteBuffer = DynamicTensor[.int8, 1]
 comptime logger = Logger()
 
 # ===-----------------------------------------------------------------------===#
@@ -468,11 +467,6 @@ struct OwnedTensor[
                 return Self(view, AnyAsyncValueRef(storage_buf=buffer^))
 
 
-@export
-def empty_destructor(ptr: Pointer[UInt8, MutUntrackedOrigin]) abi("Mojo"):
-    pass
-
-
 @inline(.never)
 def unpack_state_ctx(
     async_ref: AnyAsyncValueRef,
@@ -559,13 +553,6 @@ def unpack_tensor_spec[
         shape[i] = storage[i]
 
     return shape
-
-
-@inline(.always)
-def get_buffer_data(
-    buffer: MutByteBuffer,
-) -> Pointer[Int8, MutAnyOrigin]:
-    return buffer.unsafe_ptr()
 
 
 # ===-----------------------------------------------------------------------===#
@@ -1252,12 +1239,6 @@ def mgp_tensor_spec_get_dim[
 # ===-----------------------------------------------------------------------===#
 
 
-@export
-def mgp_device_context_destroy(dev_ctx: DeviceContext) abi("Mojo"):
-    # DeviceContext is refcounted, we don't need to explicitly destroy it
-    pass
-
-
 @register_internal("mgp.sync")
 @inline(.never)
 def mgp_sync(ctx: StateContext, dev_ctx: DeviceContext) raises:
@@ -1341,33 +1322,6 @@ def get_simd_width_for_dtypes[
     return width
 
 
-# TODO: this should take IOSpec as a param -- will require graph compiler changes
-# Used by the graph compiler to construct tensors from MGP repr. of tensor
-@inline(.always)
-def to_managed_tensor_slice[
-    dtype: DType, rank: Int, mut: Bool, input: IO
-](
-    data: Pointer[Scalar[dtype], MutAnyOrigin],
-    shape: Pointer[Int, ImmutAnyOrigin],
-) -> ManagedTensorSlice[
-    io_spec=IOSpec[mut, input](),
-    static_spec=StaticTensorSpec[dtype, rank, ...].get_unknown(),
-]:
-    var shape_ptr = shape
-    var shape_tuple = IndexList[rank]()
-
-    var stride_tuple = IndexList[rank]()
-    var stride: Int = 1
-
-    comptime for i in reversed(range(rank)):
-        # Start from the back so we can accumulate the strides.
-        shape_tuple[i] = shape_ptr[unsafe_offset=i]
-        stride_tuple[i] = stride
-        stride *= shape_tuple[i]
-
-    return {data, shape_tuple, stride_tuple}
-
-
 # Extract a scalar from a managed tensor slice.
 @inline(.always)
 def _get_scalar_from_managed_tensor_slice[
@@ -1378,10 +1332,6 @@ def _get_scalar_from_managed_tensor_slice[
     # does not work with `register_internal` out of the box.
     return tensor.load[width=1]((0,))
 
-
-# ===-----------------------------------------------------------------------===#
-# Mojo generation hooks
-# ===-----------------------------------------------------------------------===#
 
 # ===-----------------------------------------------------------------------===#
 # Mojo-C++ interop aliases
@@ -1396,25 +1346,6 @@ def _get_scalar_from_managed_tensor_slice[
 # Therefore, we alias it to OpaquePointer which will have the same bitwidth as
 # C++'s pointers.
 comptime AnyAsyncValueRefPtr = OpaquePointer[MutAnyOrigin]
-
-
-# Opaque stand-in for the C++ `M::MLRT::TensorBufferRef` type. Mojo never sees
-# the layout of the C++ struct; this only gives the C pointer a distinct pointee
-# type so it can't be confused with other opaque handles (e.g. the async-value
-# storage handle), mirroring how `DeviceContext` uses `_DeviceContextCpp`.
-struct _TensorBufferRefCpp:
-    pass
-
-
-# Typed C pointer to the C++ tensor-buffer ref. Primitives only ever manipulate
-# a reference to it (never its layout); the default `UntrackedOrigin` marks the
-# pointee as living outside the Mojo program (its lifetime is managed by the C++
-# runtime), mirroring `_DeviceContextPtr`.
-comptime TensorBufferRefPtr[
-    mut: Bool,
-    //,
-    origin: Origin[mut=mut] = UntrackedOrigin[mut=mut],
-] = OptionalPointer[_TensorBufferRefCpp, origin]
 
 
 # Opaque stand-in for the C++ `M::MLRT::StateContext` type. Mojo never sees the
@@ -1844,27 +1775,6 @@ def mogg_format_region_error(
         + '":\n'
         + String(error)
     )
-
-
-@register_internal("mogg.tensor.reshape")
-@inline(.always)
-def reshape_contiguous_buffer[
-    static_layout: TensorLayout, new_rank: Int
-](
-    buffer: ManagedTensorSlice,
-    shape: IndexList[new_rank],
-) -> ManagedTensorSlice[
-    io_spec=buffer.io_spec,
-    static_spec=StaticTensorSpec[
-        buffer.dtype,
-        new_rank,
-        static_layout=static_layout,
-    ](1, .GENERIC),
-]:
-    """
-    Constructs a new ManagedTensorSlice with a new shape and static spec.
-    """
-    return {buffer._ptr, shape}
 
 
 # ===-----------------------------------------------------------------------===#
