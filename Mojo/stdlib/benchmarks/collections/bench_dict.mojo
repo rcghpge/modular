@@ -285,7 +285,7 @@ def bench_dict_eq[size: Int](mut b: Bencher) raises:
 def total_bytes_used[
     H: Hasher & Defaultable & Deinitable
 ](items: Dict[Int, Int, H]) -> Int:
-    # The SIMD group width used internally by Dict's Swiss Table.
+    # The SIMD group width used internally by Dict's SwissTable.
     comptime _BENCH_GROUP_WIDTH: Int = 16
     # ctrl bytes: capacity + GROUP_WIDTH for SIMD mirroring
     var ctrl_bytes = (items._reserved() + _BENCH_GROUP_WIDTH) * size_of[UInt8]()
