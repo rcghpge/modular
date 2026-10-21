@@ -2276,13 +2276,13 @@ def targets():
     )
 
     native.alias(
-        name = "_wheel_certifi@2024.7.4",
-        actual = "@pycross_lock_file_wheel_certifi_2024.7.4_py3_none_any//file",
+        name = "_wheel_certifi@2026.10.19",
+        actual = "@pycross_lock_file_wheel_certifi_2026.10.19_py3_none_any//file",
     )
 
     pycross_wheel_library(
-        name = "certifi@2024.7.4",
-        wheel = ":_wheel_certifi@2024.7.4",
+        name = "certifi@2026.10.19",
+        wheel = ":_wheel_certifi@2026.10.19",
         testonly = "certifi" in _TESTONLY_DEPS,
     )
 
@@ -2385,7 +2385,7 @@ def targets():
     )
 
     _clickhouse_connect_0_14_1_deps = [
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":lz4@4.4.5",
         ":pytz@2024.1",
         ":urllib3@1.26.19",
@@ -5076,7 +5076,7 @@ def targets():
 
     _geventhttpclient_2_3_4_deps = [
         ":brotli@1.2.0",
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":gevent@24.10.1",
         ":urllib3@1.26.19",
     ]
@@ -5654,7 +5654,7 @@ def targets():
     )
 
     _httpcore_1_0_9_deps = [
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":h11@0.16.0",
     ]
 
@@ -5719,7 +5719,7 @@ def targets():
 
     _httpx_0_27_2_deps = [
         ":anyio@4.15.1",
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":httpcore@1.0.9",
         ":idna@multiple",
         ":sniffio@1.3.1",
@@ -13096,7 +13096,7 @@ def targets():
     )
 
     _requests_2_32_3_deps = [
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":charset-normalizer@3.3.2",
         ":idna@multiple",
         ":urllib3@1.26.19",
@@ -13891,7 +13891,7 @@ def targets():
     )
 
     _sentry_sdk_2_48_0_deps = [
-        ":certifi@2024.7.4",
+        ":certifi@2026.10.19",
         ":urllib3@1.26.19",
     ]
 
@@ -21190,12 +21190,12 @@ def repositories():
 
     maybe(
         http_file,
-        name = "pycross_lock_file_wheel_certifi_2024.7.4_py3_none_any",
+        name = "pycross_lock_file_wheel_certifi_2026.10.19_py3_none_any",
         urls = [
-            "https://files.pythonhosted.org/packages/1c/d5/c84e1a17bf61d4df64ca866a1c9a913874b4e9bdc131ec689a0ad013fb36/certifi-2024.7.4-py3-none-any.whl",
+            "https://files.pythonhosted.org/packages/c4/51/29046e48f693c54e5b7412216d447a1d8362c9653148d98c02cdf65fa733/certifi-2026.10.19-py3-none-any.whl",
         ],
-        sha256 = "c198e21b1289c2ab85ee4e67bb4b4ef3ead0892059901a8d5b622f24a1101e90",
-        downloaded_file_path = "certifi-2024.7.4-py3-none-any.whl",
+        sha256 = "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b",
+        downloaded_file_path = "certifi-2026.10.19-py3-none-any.whl",
     )
 
     maybe(
