@@ -96,6 +96,10 @@ This version is still a work in progress.
   A function passed as a compile-time parameter must now be `thin`, for
   example `[f: def(Int) thin -> Int]`.
 
+- `CompiledFunctionInfo` no longer has `num_captures`, `capture_sizes`, or
+  `populate` members. Kernels can no longer capture implicitly, so these
+  were always empty.
+
 ## Fixed
 
 - `SIMD.slice()` no longer passes `llvm.vector.extract` an offset that is not

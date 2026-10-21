@@ -993,40 +993,6 @@ def KGEN_GetWitnessAttr : KGEN_ExprAttr<"GetWitness", "get_witness",
 }
 
 //===----------------------------------------------------------------------===//
-// CompileOffloadClosureAttr
-//===----------------------------------------------------------------------===//
-
-def KGEN_CompileOffloadClosureAttr : KGEN_ExprAttr<"CompileOffloadClosure",
-    "compile_offload_closure", [ContextuallyEvaluatedAttrInterface]> {
-  let summary = "Compile offload closure for a given target.";
-  let description = [{
-    The `#kgen.compile_offload_closure` attribute is used to compile offload
-    closures for a given target.
-
-    Example:
-
-    ```mlir
-    #kgen.compile_offload_closure<
-      #kgen.target<triple="", arch="", features="", data_layout="", simd_bit_width=128> : !kgen.target,
-      #kgen.symbol.constant<@kernel> : !kgen.generator<() -> ()>
-    > : !kgen.string
-    ```
-  }];
-
-  let parameters = (ins
-    "TypedAttr":$target,
-    "TypedAttr":$func,
-    AttributeSelfTypeParameter<"", "Type">:$type
-  );
-
-  let assemblyFormat = [{
-    `<` custom<ParamValue>($target, "TargetType::get($_ctxt)") `,` $func `>`
-  }];
-
-  let genVerifyDecl = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // GetLinkageNameAttr
 //===----------------------------------------------------------------------===//
 

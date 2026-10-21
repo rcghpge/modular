@@ -2307,65 +2307,6 @@ PointerToIndexOp::parametric_interpret(ArrayRef<Attribute> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// CompilerGlobalLoadOp
-//===----------------------------------------------------------------------===//
-
-ErrorTreeOrSuccess CompilerGlobalLoadOp::interpret(ArrayRef<Attribute> operands,
-                                                   InterpreterState &state) {
-  Attribute value = state.getNamedGlobal(getNameAttr());
-  if (!value)
-    return ErrorTree(
-        getLoc(),
-        "cannot evaluate standalone capturing closure at compile time");
-  // The global map is keyed by name, and one parametric generator's
-  // instantiations share a name while their capture types can differ.
-  if (!isAttributeTypeCompatible(value, getResult().getType())) {
-    return ErrorTree(getLoc(),
-                     "internal error: compiler global '" + getName().str() +
-                         "' holds a value whose type does not match the type "
-                         "it is loaded as");
-  }
-  return state.mapResults(value);
-}
-
-ErrorTreeOrSuccess
-CompilerGlobalLoadOp::parametric_interpret(ArrayRef<Attribute> operands,
-                                           ParametricInterpreterState &state) {
-  Attribute value = state.getNamedGlobal(getNameAttr());
-  if (!value)
-    return ErrorTree(
-        getLoc(),
-        "cannot evaluate standalone capturing closure at compile time");
-  // The global map is keyed by name, and one parametric generator's
-  // instantiations share a name while their capture types can differ.
-  if (!isAttributeTypeCompatible(value, getResult().getType())) {
-    return ErrorTree(getLoc(),
-                     "internal error: compiler global '" + getName().str() +
-                         "' holds a value whose type does not match the type "
-                         "it is loaded as");
-  }
-  return state.mapResults(value);
-}
-
-//===----------------------------------------------------------------------===//
-// CompilerGlobalStoreOp
-//===----------------------------------------------------------------------===//
-
-ErrorTreeOrSuccess
-CompilerGlobalStoreOp::interpret(ArrayRef<Attribute> operands,
-                                 InterpreterState &state) {
-  state.setNamedGlobal(getNameAttr(), operands.front());
-  return success();
-}
-
-ErrorTreeOrSuccess
-CompilerGlobalStoreOp::parametric_interpret(ArrayRef<Attribute> operands,
-                                            ParametricInterpreterState &state) {
-  state.setNamedGlobal(getNameAttr(), operands.front());
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // CastToBuiltinOp
 //===----------------------------------------------------------------------===//
 

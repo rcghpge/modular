@@ -68,7 +68,7 @@ kgen.func @top2() -> index {
 // -----
 
 kgen.func @async_fn(%arg0: index) async -> index always_inline {
-  %0 = pop.compiler.global_load "cond" : !kgen.scalar<bool>
+  %0 = "test.cond"() : () -> !kgen.scalar<bool>
   hlcf.if %0 {
     %idx1 = index.constant 1
     hlcf.return %idx1 : index
@@ -81,10 +81,8 @@ kgen.func @async_fn(%arg0: index) async -> index always_inline {
 // CHECK-LABEL: kgen.func @call_it
 kgen.func @call_it() -> !co.routine {
   %idx2 = index.constant 2
-  %true = kgen.param.constant: scalar<bool> = <true>
-  pop.compiler.global_store "cond", %true : !kgen.scalar<bool>
   // CHECK: %0 = co.execute : index
-  // CHECK:   %1 = pop.compiler.global_load
+  // CHECK:   %1 = "test.cond"
   // CHECK:   hlcf.if %1
   // CHECK:     hlcf.return %idx1
   // CHECK:   hlcf.return %idx2
@@ -158,22 +156,6 @@ kgen.func @call_it() {
   // CHECK-NEXT: }
   // CHECK-NEXT: hlcf.return
   kgen.call @unreachable_and_early_ret() : () -> ()
-  hlcf.return
-}
-
-// -----
-
-kgen.func @capturing_closure() capturing -> index always_inline {
-  %0 = pop.compiler.global_load "var" : index
-  hlcf.return %0 : index
-}
-
-// CHECK-LABEL: kgen.func @caller
-kgen.func @caller() {
-  %0 = index.constant 0
-  pop.compiler.global_store "var", %0 : index
-  // CHECK: pop.compiler.global_load "var"
-  %1 = kgen.call @capturing_closure() : () capturing -> index
   hlcf.return
 }
 

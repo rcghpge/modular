@@ -62,7 +62,6 @@ def LIT_FnOp : LITOp<"fn", [
   let arguments = (ins
     OptionalAttr<SymbolNameAttr>:$sym_name,
     OptionalAttr<StrAttr>:$sym_visibility,
-    OptionalAttr<KGEN_ParamDeclAttr>:$paramDecl,
     TypeAttrOf<LIT_FnTypeGeneratorType>:$funcTypeGenerator,
     TypeAttrOf<FunctionType>:$functionType,
     KGEN_ParamDeclArrayAttr:$params,
@@ -116,7 +115,6 @@ def LIT_FnOp : LITOp<"fn", [
     ArrayRef<ParamDeclAttr> getInputParams() { return getParams(); }
     Block *getBody() { return &getFunctionBody().back(); }
     Region *getCallableRegion() { return &getBodyRegion(); }
-    bool isOptionalSymbol() { return getParamDecl().has_value(); }
 
     /// Returns the result type of the MLIR function (not the user defined
     /// result type).  This is guaranteed to be present.

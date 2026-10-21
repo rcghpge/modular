@@ -129,26 +129,17 @@ void populateKGENToArithConversionPatterns(const mlir::TypeConverter &converter,
 // Elaborator
 //===----------------------------------------------------------------------===//
 
-/// This struct represents the result of a cross-device compilation, which is a
-/// function or closure reference.
+/// This struct represents the result of a cross-device compilation.
 struct CrossDeviceFunction {
   /// The compiled cross-device function contents, which can be assembly, object
   /// code, or something else.
   StringAttr contents;
-  /// The number of captures that need to be propagated to the cross-device
-  /// closure.
-  unsigned numCaptures;
-  /// A function for populating the captured values opaquely.
-  /// FIXME(#22670): The expected API is tightly bound with the GPU module in
-  /// the standard library.
-  OwningOpRef<Operation *> populateCapturesFn;
 };
 
 struct OffloadInfo {
   struct KernelInfo {
     StringAttr name;
     uint64_t kernelId;
-    FuncTypeGeneratorType populateFnType;
     llvm::SmallSet<EmitAs, 4> emissionKinds;
     /// The source-level name of the kernel function (e.g. "add_one_kernel"),
     /// used to name the GPU ASM output file when --emit=asm is requested.
@@ -189,10 +180,6 @@ struct OffloadInfo {
 };
 
 struct OffloadCompilationResult {
-  OwningOpRef<Operation *> func;
-  IntegerAttr numCaptures;
-  mlir::DenseI64ArrayAttr captureSizes;
-  SymbolConstantAttr populate;
   DenseMap<EmitAs, StringAttr> contents;
 
   /// Hashed module name based on contents.

@@ -91,8 +91,6 @@ from ._device_context_metal import (
 )
 
 from . import _launch_args
-from ._launch_args import _compact_zero_sized_capture_slots
-
 from ._device_context_extras import *
 
 
@@ -2930,9 +2928,7 @@ def _enqueue_packed_checked(
     func_name: StaticString,
     dense_args_addrs: Pointer[OpaquePointer[MutAnyOrigin], MutUntrackedOrigin],
     dense_args_sizes: Optional[Pointer[UInt64, MutUntrackedOrigin]],
-    capture_sizes: Pointer[UInt64, ImmUntrackedOrigin],
-    num_leading_args: Int,
-    num_captures: Int,
+    num_args: Int,
     grid_dim: Dim,
     block_dim: Dim,
     shared_mem_bytes: Int,
@@ -2940,20 +2936,13 @@ def _enqueue_packed_checked(
     num_attributes: Int,
     location: SourceLocation,
 ) raises:
-    """Compacts the packed argument slots and enqueues the launch.
+    """Enqueues a launch from packed argument slots.
 
     This is the kernel-independent tail of `DeviceFunction._call_with_pack`
     and `_call_with_pack_checked`. Those wrappers are inlined into every
     launch site, so everything after argument encoding lives here and is
     emitted once per enqueuer type instead of once per kernel.
     """
-    var effective_argc = _compact_zero_sized_capture_slots(
-        dense_args_addrs,
-        capture_sizes,
-        num_leading_args,
-        num_captures,
-        dense_args_sizes=dense_args_sizes,
-    )
     var err = ctx.enqueue(
         func_handle,
         grid_dim,
@@ -2962,7 +2951,7 @@ def _enqueue_packed_checked(
         attributes_ptr,
         num_attributes,
         dense_args_addrs.as_unsafe_any_origin(),
-        UInt32(effective_argc),
+        UInt32(num_args),
         dense_args_sizes,
     )
     if err:
@@ -2976,43 +2965,6 @@ def _enqueue_packed_checked(
 
 def _is_path_like(ss: StringSlice) -> Bool:
     return ss.startswith("/") or ss.startswith("~") or ss.startswith("./")
-
-
-comptime _MAX_KERNEL_CAPTURES = 16
-
-
-@inline(.never)
-def _snapshot_capture_sizes(
-    num_captures: Int, capture_sizes: Pointer[UInt64, ImmUntrackedOrigin]
-) raises -> Array[UInt64, _MAX_KERNEL_CAPTURES]:
-    """Copies the compiler's capture sizes into owned storage.
-
-    Shared by every kernel, so the copy loop and its error path are emitted
-    once instead of inlined into each launch site.
-
-    Args:
-        num_captures: The number of values the kernel captures.
-        capture_sizes: The compiler's per-capture byte sizes.
-
-    Returns:
-        The capture sizes, zero past `num_captures`.
-
-    Raises:
-        If the function captures more values than the snapshot holds.
-    """
-    var count = max(0, num_captures)
-    if count > _MAX_KERNEL_CAPTURES:
-        raise Error(
-            "kernel captures ",
-            count,
-            " values; at most ",
-            _MAX_KERNEL_CAPTURES,
-            " are supported",
-        )
-    var sizes = Array[UInt64, _MAX_KERNEL_CAPTURES](fill=0)
-    for i in range(count):
-        sizes[i] = capture_sizes[unsafe_offset=i]
-    return sizes^
 
 
 # const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
@@ -3135,8 +3087,6 @@ struct DeviceFunction[
         _cross_compilation() and Self.target.is_nvidia_gpu()
     ) else "object"
 
-    comptime _max_captures = _MAX_KERNEL_CAPTURES
-
     # ===-------------------------------------------------------------------===#
     # Fields
     # ===-------------------------------------------------------------------===#
@@ -3146,11 +3096,6 @@ struct DeviceFunction[
 
     var _func_impl: CompiledFunctionInfo[Self.func_type, Self.func, Self.target]
     """Compilation information for the function."""
-
-    # MOCO-5026: `_func_impl.capture_sizes` points at stack storage that dies
-    # with the frame that compiled the function, so launches read this copy.
-    var _capture_sizes: Array[UInt64, Self._max_captures]
-    """Byte size of each captured value, copied at construction."""
 
     var _context: DeviceContext.Generic[Self.target]
     """The device context backing the function."""
@@ -3192,9 +3137,6 @@ struct DeviceFunction[
             compile_options=Self.compile_options,
             link_options=Self.link_options,
         ]()
-        self._capture_sizes = _snapshot_capture_sizes(
-            self._func_impl.num_captures, self._func_impl.capture_sizes
-        )
         self._handle = _load_function(
             ctx._handle,
             module_name=self._func_impl.module_name,
@@ -3222,7 +3164,6 @@ struct DeviceFunction[
         ](copy._handle)
         self._handle = copy._handle
         self._func_impl = copy._func_impl
-        self._capture_sizes = copy._capture_sizes.copy()
         self._context = copy._context
 
     def __deinit__(deinit self):
@@ -3242,14 +3183,6 @@ struct DeviceFunction[
     # ===-------------------------------------------------------------------===#
     # Methods
     # ===-------------------------------------------------------------------===#
-
-    @inline(.always)
-    def _capture_sizes_ptr(self) -> Pointer[UInt64, ImmUntrackedOrigin]:
-        return (
-            self._capture_sizes.unsafe_ptr()
-            .as_imm()
-            .unsafe_origin_cast[ImmUntrackedOrigin]()
-        )
 
     def _copy_to_constant_memory(
         imm self, mapping: ConstantMemoryMapping
@@ -3473,37 +3406,13 @@ struct DeviceFunction[
         location: Optional[SourceLocation] = None,
     ) raises:
         comptime num_args = Ts.length
-        var num_captures = max(0, self._func_impl.num_captures)
-        comptime populate = type_of(self._func_impl).populate
-        comptime num_captures_static = 16
+        # A kernel may take no arguments; keep the buffers non-empty.
+        comptime num_slots = max(num_args, 1)
 
-        # NOTE: Manual short buffer optimization. We could use a
-        # Variant[List, Array] instead, but it would look a lot more
-        # verbose. This way, however, we need to conditionally free at the end.
-        var dense_args_addrs: Pointer[
-            OpaquePointer[MutAnyOrigin], MutUntrackedOrigin
-        ]
-        var dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin]
-        if num_captures > num_captures_static:
-            dense_args_addrs = alloc(
-                Layout[OpaquePointer[MutAnyOrigin]](
-                    length=num_captures + num_args
-                )
-            ).unsafe_leak()
-            dense_args_sizes = alloc(
-                Layout[UInt64](length=num_captures + num_args)
-            ).unsafe_leak()
-            for i in range(num_captures + num_args):
-                dense_args_sizes[unsafe_offset=i] = 0
-        else:
-            dense_args_addrs = unsafe_stack_allocation[
-                num_captures_static + num_args, OpaquePointer[MutAnyOrigin]
-            ]()
-            dense_args_sizes = unsafe_stack_allocation[
-                num_captures_static + num_args, UInt64
-            ]()
-            for i in range(num_captures_static + num_args):
-                dense_args_sizes[unsafe_offset=i] = 0
+        var dense_args_addrs = unsafe_stack_allocation[
+            num_slots, OpaquePointer[MutAnyOrigin]
+        ]()
+        var dense_args_sizes = unsafe_stack_allocation[num_slots, UInt64]()
 
         comptime for i in range(num_args):
             # TODO(MSTDL-1904): Validate the safety of this.
@@ -3523,42 +3432,11 @@ struct DeviceFunction[
         for i in range(len(constant_memory)):
             self._copy_to_constant_memory(constant_memory[i])
 
-        if num_captures > 0:
-            # Call the populate function to initialize the captured values in
-            # the arguments array. The captured values are always at the end of
-            # the argument list. This function (generated by the compiler) is
-            # inlined here and stack-allocates storage for each capture in this
-            # frame, storing pointers to those slots into `dense_args_addrs`.
-            # The storage lives until this function returns, which covers the
-            # enqueue calls below.
-            var capture_args_start = dense_args_addrs.unsafe_offset(num_args)
-            populate(
-                capture_args_start.unsafe_bitcast[
-                    NoneType
-                ]().as_unsafe_any_origin()
-            )
-
         comptime if Self.target.is_apple_gpu():
-            # Drop zero-sized captures so the packed slots (and their sizes)
-            # match the device kernel's declared parameter order; see
-            # `_compact_zero_sized_capture_slots` for why.
-            var effective_argc = _compact_zero_sized_capture_slots(
-                dense_args_addrs,
-                self._capture_sizes_ptr(),
-                num_args,
-                num_captures,
-                dense_args_sizes=dense_args_sizes,
-            )
-            call_with_pack_metal[
-                Self.func,
-                num_args=num_args,
-                num_captures_static=num_captures_static,
-            ](
+            call_with_pack_metal[Self.func, num_args=num_args](
                 ctx,
                 func_handle=self._handle,
                 device_context=self._context.assert_default_target(),
-                num_captures=num_captures,
-                effective_argc=effective_argc,
                 dense_args_addrs=dense_args_addrs,
                 dense_args_sizes=dense_args_sizes,
                 grid_dim=grid_dim,
@@ -3579,9 +3457,7 @@ struct DeviceFunction[
                 func_name=func_name,
                 dense_args_addrs=dense_args_addrs,
                 dense_args_sizes=Optional(dense_args_sizes),
-                capture_sizes=self._capture_sizes_ptr(),
-                num_leading_args=num_args,
-                num_captures=num_captures,
+                num_args=num_args,
                 grid_dim=grid_dim,
                 block_dim=block_dim,
                 shared_mem_bytes=shared_mem_bytes.or_else(0),
@@ -3590,18 +3466,6 @@ struct DeviceFunction[
                 ](),
                 num_attributes=len(attributes),
                 location=location.or_else(call_location()),
-            )
-
-        if num_captures > num_captures_static:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({length = num_captures + num_args})
-            )
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({length = num_captures + num_args})
             )
 
     @inline(.always)
@@ -3667,10 +3531,6 @@ struct DeviceFunction[
 
         var translated_arg_offsets = validated_args[1].copy()
 
-        var num_captures = max(0, self._func_impl.num_captures)
-        comptime populate = type_of(self._func_impl).populate
-        comptime num_captures_static = 16
-
         # We need the total byte size of arguments as a compile time constant,
         # so we break out the calculation into a function executed at compile
         # time.
@@ -3703,40 +3563,10 @@ struct DeviceFunction[
             for i in range(len(constant_memory)):
                 self._copy_to_constant_memory(constant_memory[i])
 
-        # NOTE: Manual short buffer optimization. We could use a
-        # Variant[List, Array] instead, but it would look a lot more
-        # verbose. This way, however, we need to conditionally free at the end.
-        var dense_args_addrs: Pointer[
-            OpaquePointer[MutAnyOrigin], MutUntrackedOrigin
-        ]
-        if num_captures > num_captures_static:
-            dense_args_addrs = alloc(
-                Layout[OpaquePointer[MutAnyOrigin]](
-                    length=num_captures + num_passed_args
-                )
-            ).unsafe_leak()
-        else:
-            dense_args_addrs = unsafe_stack_allocation[
-                num_captures_static + num_passed_args,
-                OpaquePointer[MutAnyOrigin],
-            ]()
-
-        if num_captures > 0:
-            # The captured values are always at the end of the argument list.
-            # `populate` is generated by the compiler and inlined here; it
-            # stack-allocates storage for each capture and stores pointers to
-            # those slots into `dense_args_addrs[num_translated_args..]`. The
-            # allocations live for the rest of this function, so it is safe
-            # to call `populate` here even though the enqueue happens in the
-            # per-backend branch below, out of line for the non-Metal path.
-            var capture_args_start = dense_args_addrs.unsafe_offset(
-                num_translated_args
-            )
-            populate(
-                capture_args_start.unsafe_bitcast[
-                    NoneType
-                ]().as_unsafe_any_origin()
-            )
+        # A kernel may take no arguments; keep the buffer non-empty.
+        var dense_args_addrs = unsafe_stack_allocation[
+            max(num_passed_args, 1), OpaquePointer[MutAnyOrigin]
+        ]()
 
         comptime if Self.target.is_apple_gpu():
             # `num_passed_args` sizes the offsets array, which covers encoded
@@ -3745,16 +3575,12 @@ struct DeviceFunction[
             call_with_pack_checked_metal[
                 Self.func,
                 num_passed_args=num_encoded,
-                num_captures_static=num_captures_static,
             ](
                 ctx,
                 *args,
                 host_args=host_args,
                 func_handle=self._handle,
                 device_context=self._context.assert_default_target(),
-                capture_sizes=self._capture_sizes_ptr(),
-                num_captures=num_captures,
-                num_translated_args=num_translated_args,
                 translated_arg_offsets=translated_arg_offsets,
                 extra_align=extra_align,
                 translated_args_ptr=translated_args.unsafe_ptr().unsafe_origin_cast[
@@ -3824,9 +3650,7 @@ struct DeviceFunction[
                 func_name=func_name,
                 dense_args_addrs=dense_args_addrs,
                 dense_args_sizes=None,
-                capture_sizes=self._capture_sizes_ptr(),
-                num_leading_args=num_translated_args,
-                num_captures=num_captures,
+                num_args=num_translated_args,
                 grid_dim=grid_dim,
                 block_dim=block_dim,
                 shared_mem_bytes=shared_mem_bytes.or_else(0),
@@ -3835,13 +3659,6 @@ struct DeviceFunction[
                 ](),
                 num_attributes=len(attributes),
                 location=location.or_else(call_location()),
-            )
-
-        if num_captures > num_captures_static:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({length = num_captures + num_passed_args})
             )
 
     @inline(.always)

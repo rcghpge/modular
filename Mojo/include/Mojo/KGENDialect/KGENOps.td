@@ -94,7 +94,6 @@ def KGEN_FuncOp : KGENOp<"func", [
     UnitAttr:$external, UnitAttr:$convergent,
     DefaultValuedAttr<DictionaryAttr, "{}">:$fnAttrs,
     DefaultValuedAttr<DictArrayAttr, "{}">:$fnArgAttrs,
-    DefaultValuedAttr<StringArrayAttr, "ArrayRef<StringAttr>{}">:$crossDeviceCaptures,
     OptionalAttr<TypeAttr>:$coroutineType,
     OptionalAttr<KGEN_LinkageNameAttr>:$linkageName
   );
@@ -145,7 +144,7 @@ def KGEN_FuncOp : KGENOp<"func", [
       build($_builder, $_state, name, /*sym_visibility=*/nullptr, sigGen,
             decorators, KGEN::getInlineLevelAttr($_builder.getContext(), inlineLevel),
             exportKind, external, convergent, fnAttrs, fnArgAttrs,
-            /*crossDeviceCaptures=*/{}, /*coroutineType=*/{}, linkageName);
+            /*coroutineType=*/{}, linkageName);
     }]>,
   ];
 
@@ -704,9 +703,7 @@ def KGEN_CallParamOp : KGEN_CallOpBase<"call_param",
 
 def KGEN_ParamConstantOp : KGENOp<"param.constant", [ConstantLike,
     BytecodeOpInterface,
-    // TODO(MOCO-1101): Replace two lines below with Pure
-    DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-    AlwaysSpeculatable,
+    Pure,
     DeclareOpInterfaceMethods<ParamOpInterface, ["isImplicitlyParametric"]>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]>,
     NoParamDecls {
@@ -836,98 +833,6 @@ def KGEN_ParamDeclareOp : KGENOp<"param.declare",
   let extraClassDeclaration = [{
     StringAttr getName() { return getParamDecl().getName(); }
     Type getType() { return getParamDecl().getType(); }
-  }];
-
-  let hasVerifier = 1;
-}
-
-//===----------------------------------------------------------------------===//
-// ParamDeclareRegionOp
-//===----------------------------------------------------------------------===//
-
-def KGEN_ParamDeclareRegionOp : KGENOp<"param.declare.region", [
-    DeclInterface, FuncInterface, FunctionOpInterface, FunctionLike,
-    SymbolName, SymbolVisibility,
-    DeclareOpInterfaceMethods<ParamOpInterface, ["collectParameterUses"]>,
-    SingleBlock
-  ]>, OneParamDecl {
-  let summary = "declare a region parameter";
-  let description = [{
-    The `kgen.param.declare.region` operation declares a signature-type
-    parameter whose value is an MLIR region (a closure). The region can be
-    isolated from above, in which case it is treated by the elaborator as a
-    stateless closure and inlined at wherever it ends up being called. The
-    region can also capture values from above, in which case the elaborator
-    treats it as a stateful closure and processes it by inlining every call that
-    forwards this parameter down to all callsites.
-
-    Parameters defined by a `kgen.param.declare.region` that are not isolated
-    from above can only be used by function calls. They cannot be used, for
-    example, by `kgen.addressof`.
-
-    Example:
-
-    ```mlir
-    kgen.param.declare.region AddIt[my_add] = <N>(%arg0: index) -> index {
-      %0 = kgen.param.constant = <N>
-      %1 = index.add %0, %arg0
-      hlcf.return %1 : index
-    }
-
-    kgen.param.declare.region SubtractIt = <N>(%arg0: index) -> index {
-      %0 = kgen.param.constant = <N>
-      %1 = index.sub %0, %arg0
-      hlcf.return %1 : index
-    }
-    ```
-
-    The operation carries an extra bit `isolated` to indicate that they are
-    parametrically isolated from above.
-  }];
-
-  let arguments = (ins
-    // `kgen.param.declare.region` is anonymous: it satisfies SymbolOpInterface
-    // through FunctionOpInterface but never carries a name of its own.
-    OptionalAttr<SymbolNameAttr>:$sym_name,
-    OptionalAttr<StrAttr>:$sym_visibility,
-    KGEN_ParamDeclAttr:$paramDecl,
-    StrAttr:$sourceName,
-    TypeAttrOf<KGEN_FuncTypeGeneratorType>:$funcTypeGenerator,
-    TypeAttrOf<FunctionType>:$functionType,
-    KGEN_ParamDeclArrayAttr:$inputParams,
-    TypedAttrInterface:$inlineLevel,
-    OptionalAttr<KGEN_LinkageNameAttr>:$linkageName,
-    // To be able to store pre-elaborated names of the `llvm_metadata`,
-    // decompose LLVM metadata into array of attributes of even size.
-    // Each even attribute corresponds to the name of in `llvm_metadata`,
-    // each odd corresponds to its value (zero index based)
-    DefaultValuedAttr<ArrayAttr, "{}">:$fnAttrs,
-    DefaultValuedAttr<ArrayAttr, "{}">:$fnArgAttrs,
-    UnitAttr:$isolated
-  );
-  let regions = (region SizedRegion<1>:$bodyRegion);
-
-  let assemblyFormat = [{
-    custom<RegionDeclaration>($paramDecl, $sourceName, $inputParams,
-                              $functionType, $funcTypeGenerator, $inlineLevel,
-                              $bodyRegion)
-    attr-dict
-  }];
-
-  let extraClassDeclaration = [{
-    bool isIsolatedFromAbove(unsigned regionNum);
-    void notifyKnownIsolatedFromAbove(unsigned regionNum);
-    Region *getCallableRegion() { return &getBodyRegion(); }
-
-    /// Region body op doesn't form a symbol.
-    bool isOptionalSymbol() { return true; }
-
-    ArrayAttr getArgAttrsAttr() { return nullptr; }
-    ArrayAttr getResAttrsAttr() { return nullptr; }
-    void setArgAttrsAttr(ArrayAttr attrs) {}
-    void setResAttrsAttr(ArrayAttr attrs) {}
-    Attribute removeArgAttrsAttr() { return nullptr; }
-    Attribute removeResAttrsAttr() { return nullptr; }
   }];
 
   let hasVerifier = 1;

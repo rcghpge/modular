@@ -17,13 +17,7 @@ from std.builtin.device_passable import (
     DeviceTypeEncoder,
 )
 from std.collections.optional import Optional
-from std.memory import (
-    Layout,
-    unsafe_stack_allocation,
-    alloc,
-    dealloc,
-    ThinAllocation,
-)
+from std.memory import unsafe_stack_allocation
 from std.reflection import SourceLocation
 from std.sys import size_of
 from .info import _device_type_encoder_target
@@ -37,7 +31,6 @@ from .device_context import (
 )
 
 from . import Dim, LaunchAttribute
-from ._launch_args import _compact_zero_sized_capture_slots
 
 
 @doc_hidden
@@ -95,13 +88,10 @@ def call_with_pack_metal[
     func: Some[TrivialRegisterPassable],
     ContextT: _FunctionEnqueuer,
     num_args: Int,
-    num_captures_static: Int,
 ](
     ctx: ContextT,
     func_handle: _DeviceFunctionPtr[mut=True],
     device_context: DeviceContext,
-    num_captures: Int,
-    effective_argc: Int,
     dense_args_addrs: Pointer[OpaquePointer[MutAnyOrigin], MutUntrackedOrigin],
     dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin],
     grid_dim: Dim,
@@ -121,26 +111,18 @@ def call_with_pack_metal[
     Parameters:
         func: The function symbol used by `_checked_call` for error messages.
         ContextT: The `_FunctionEnqueuer` implementation receiving the launch.
-        num_args: The compile-time count of caller-supplied arguments (the
-            slots preceding captures in `dense_args_addrs`).
-        num_captures_static: The static capture-count threshold for stack
-            allocation. Heap allocation is used when `num_captures` exceeds it.
+        num_args: The compile-time count of caller-supplied arguments in
+            `dense_args_addrs`.
 
     Args:
         ctx: The enqueuer that dispatches the kernel.
         func_handle: Handle to the compiled `DeviceFunction` to launch.
         device_context: The device context backing the function, used for
             error reporting in `_checked_call`.
-        num_captures: The runtime number of captured values, used to size the
-            backing allocations (must match the caller's allocation size).
-        effective_argc: The number of argument slots the device actually reads
-            (`num_args` plus the non-zero-sized captures). Zero-sized captures
-            are compacted out of `dense_args_addrs`/`dense_args_sizes` by the
-            caller, so this is the count validated against the packed arrays.
-        dense_args_addrs: Pre-populated per-argument value pointers (args
-            followed by the non-zero-sized captures), owned by the caller.
-        dense_args_sizes: Pre-populated per-argument sizes in bytes (args
-            followed by captures), owned by the caller.
+        dense_args_addrs: Pre-populated per-argument value pointers, owned by
+            the caller.
+        dense_args_sizes: Pre-populated per-argument sizes in bytes, owned by
+            the caller.
         grid_dim: Grid dimensions for the kernel launch.
         block_dim: Block dimensions for the kernel launch.
         shared_mem_bytes: Bytes of dynamic shared memory per block.
@@ -157,18 +139,10 @@ def call_with_pack_metal[
     # stack slot can be reused for `metal_args` below — `metal_args`'s
     # `arg_is_device_ptr` field still points at the old slot, which now
     # holds part of the `metal_args` struct rather than the bool array.
-    var is_dev_inline = Array[Bool, num_captures_static + num_args](fill=False)
-    var dense_args_is_device_ptr: Pointer[Bool, MutUntrackedOrigin]
-    if num_captures > num_captures_static:
-        dense_args_is_device_ptr = alloc(
-            Layout[Bool](length=num_captures + num_args)
-        ).unsafe_leak()
-        for i in range(num_captures + num_args):
-            dense_args_is_device_ptr[unsafe_offset=i] = False
-    else:
-        dense_args_is_device_ptr = (
-            is_dev_inline.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+    var is_dev_inline = Array[Bool, max(num_args, 1)](fill=False)
+    var dense_args_is_device_ptr = (
+        is_dev_inline.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+    )
 
     var metal_args = MetalEnqueueFunctionArgs(
         dense_args_addrs.unsafe_bitcast[OpaquePointer[MutUntrackedOrigin]](),
@@ -192,19 +166,12 @@ def call_with_pack_metal[
             attributes_ptr,
             num_attributes,
             metal_args_addrs,
-            UInt32(effective_argc),
+            UInt32(num_args),
             Optional[Pointer[UInt64, MutUntrackedOrigin]](),
         ),
         device_context=device_context,
         location=location,
     )
-
-    if num_captures > num_captures_static:
-        dealloc(
-            ThinAllocation(
-                unsafe_owned_ptr=dense_args_is_device_ptr
-            ).unsafe_with_layout({length = num_captures + num_args})
-        )
 
 
 @inline(.always)
@@ -215,16 +182,12 @@ def call_with_pack_checked_metal[
     *Ts: DevicePassable,
     ContextT: _FunctionEnqueuer,
     num_passed_args: Int,
-    num_captures_static: Int,
 ](
     ctx: ContextT,
     *args: *Ts,
     host_args: Tuple[*HostArgs],
     func_handle: _DeviceFunctionPtr[mut=True],
     device_context: DeviceContext,
-    capture_sizes: Pointer[UInt64, ImmUntrackedOrigin],
-    num_captures: Int,
-    num_translated_args: Int,
     translated_arg_offsets: Array[Int, num_passed_args],
     extra_align: Int,
     translated_args_ptr: Pointer[Byte, MutAnyOrigin],
@@ -243,8 +206,6 @@ def call_with_pack_checked_metal[
         Ts: The host argument types being passed to the kernel.
         ContextT: The `_FunctionEnqueuer` implementation receiving the launch.
         num_passed_args: The compile-time count of arguments in `args`.
-        num_captures_static: The static capture-count threshold for stack
-            allocation. Heap allocation is used when `num_captures` exceeds it.
 
     Args:
         ctx: The enqueuer that dispatches the kernel.
@@ -253,10 +214,6 @@ def call_with_pack_checked_metal[
         func_handle: Handle to the compiled `DeviceFunction` to launch.
         device_context: The device context backing the function, used for
             error reporting in `_checked_call`.
-        capture_sizes: Per-capture sizes copied into the dense sizes array.
-        num_captures: The runtime number of captured values.
-        num_translated_args: The number of arguments that survive translation
-            (zero-sized device types are skipped).
         translated_arg_offsets: Per-argument offsets into `translated_args_ptr`,
             or `-1` for zero-sized arguments that should be skipped.
         extra_align: Alignment padding to add to each `translated_arg_offset`.
@@ -273,43 +230,22 @@ def call_with_pack_checked_metal[
             messages.
     """
     comptime extra_host_count = host_args.Ts.length
+    comptime num_slots = max(num_passed_args + extra_host_count, 1)
 
-    # Stack-allocated backing storage for the small-capture path. Using
-    # `Array` (rather than `unsafe_stack_allocation`) gives the compiler a
-    # named local whose origin flows into the `MetalEnqueueFunctionArgs`
+    # Using `Array` (rather than `unsafe_stack_allocation`) gives the compiler
+    # a named local whose origin flows into the `MetalEnqueueFunctionArgs`
     # pointer fields below — that origin dependency keeps the storage
     # alive across the `ctx.enqueue` call, preventing stack-slot reuse
     # for `metal_args` from clobbering the sizes/is-device-ptr arrays.
-    var sizes_inline = Array[
-        UInt64, num_captures_static + num_passed_args + extra_host_count
-    ](fill=0)
-    var is_dev_inline = Array[
-        Bool, num_captures_static + num_passed_args + extra_host_count
-    ](fill=False)
+    var sizes_inline = Array[UInt64, num_slots](fill=0)
+    var is_dev_inline = Array[Bool, num_slots](fill=False)
 
-    var dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin]
-    var dense_args_is_device_ptr: Pointer[Bool, MutUntrackedOrigin]
-    if num_captures > num_captures_static:
-        dense_args_sizes = alloc(
-            Layout[UInt64](
-                length=num_captures + num_passed_args + extra_host_count
-            )
-        ).unsafe_leak()
-        dense_args_is_device_ptr = alloc(
-            Layout[Bool](
-                length=num_captures + num_passed_args + extra_host_count
-            )
-        ).unsafe_leak()
-        for i in range(num_captures + num_passed_args + extra_host_count):
-            dense_args_sizes[unsafe_offset=i] = 0
-            dense_args_is_device_ptr[unsafe_offset=i] = False
-    else:
-        dense_args_sizes = sizes_inline.unsafe_ptr().unsafe_origin_cast[
-            MutUntrackedOrigin
-        ]()
-        dense_args_is_device_ptr = (
-            is_dev_inline.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+    var dense_args_sizes = sizes_inline.unsafe_ptr().unsafe_origin_cast[
+        MutUntrackedOrigin
+    ]()
+    var dense_args_is_device_ptr = (
+        is_dev_inline.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+    )
 
     # Since we skip over zero sized declared dtypes when passing arguments
     # we need to know the current count of arguments pushed.
@@ -370,19 +306,6 @@ def call_with_pack_checked_metal[
         dense_args_sizes[unsafe_offset=translated_arg_idx] = UInt64(arg_size)
         translated_arg_idx += 1
 
-    # Drop zero-sized captures so the packed slots (and their sizes) match the
-    # device kernel's declared parameter order; see
-    # `_compact_zero_sized_capture_slots` for why. The surviving capture slots
-    # keep the `False` their `dense_args_is_device_ptr` entries were
-    # initialized with above — captures are raw values, never device buffers.
-    var effective_argc = _compact_zero_sized_capture_slots(
-        dense_args_addrs,
-        capture_sizes,
-        num_translated_args,
-        num_captures,
-        dense_args_sizes=dense_args_sizes,
-    )
-
     var metal_args = MetalEnqueueFunctionArgs(
         dense_args_addrs.unsafe_bitcast[OpaquePointer[MutUntrackedOrigin]](),
         dense_args_sizes,
@@ -416,25 +339,9 @@ def call_with_pack_checked_metal[
             attributes_ptr,
             num_attributes,
             metal_args_addrs,
-            UInt32(effective_argc),
+            UInt32(translated_arg_idx),
             Optional[Pointer[UInt64, MutUntrackedOrigin]](),
         ),
         device_context=device_context,
         location=location,
     )
-
-    if num_captures > num_captures_static:
-        dealloc(
-            ThinAllocation(
-                unsafe_owned_ptr=dense_args_sizes
-            ).unsafe_with_layout(
-                {length = num_captures + num_passed_args + extra_host_count}
-            )
-        )
-        dealloc(
-            ThinAllocation(
-                unsafe_owned_ptr=dense_args_is_device_ptr
-            ).unsafe_with_layout(
-                {length = num_captures + num_passed_args + extra_host_count}
-            )
-        )

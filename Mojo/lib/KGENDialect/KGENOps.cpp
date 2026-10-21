@@ -106,20 +106,6 @@ bool ParamConstantOp::isImplicitlyParametric() {
 void ParamConstantOp::walkDefinitions(
     function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
 
-void ParamConstantOp::getEffects(
-    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
-
-  // This is a hack designed to stop the CSE of "none" in closures.
-  //
-  // See MSTDL-1123 for more context, but until cross-device compilation is
-  // more robust, we need this to avoid some edge case behavior around None.
-  //
-  // TODO(MOCO-1101): remove the need for this and make op Pure again.
-  if (isa<KGEN::NoneType>(getValue().getType()) &&
-      getOperation()->getParentOfType<KGEN::ParamDeclareRegionOp>())
-    effects.emplace_back(mlir::MemoryEffects::Allocate::get());
-}
-
 //===----------------------------------------------------------------------===//
 // ParamMaterializeOp
 //===----------------------------------------------------------------------===//
@@ -167,121 +153,6 @@ LogicalResult ParamDeclareOp::verify() {
   return emitOpError("declares a parameter with type ")
          << getParamDecl().getType() << " but parameter expression has type "
          << getValue().getType();
-}
-
-//===----------------------------------------------------------------------===//
-// ParamDeclareRegionOp
-//===----------------------------------------------------------------------===//
-
-static ParseResult parseRegionOnly(OpAsmParser &p,
-                                   ParamDeclArrayAttr &inputParams,
-                                   TypeAttr &functionType, TypeAttr &type,
-                                   Attribute &inlineLevel, Region &body) {
-  SmallVector<OpAsmParser::Argument> args;
-  FunctionType functionTypeValue;
-  FuncTypeGeneratorType sigGenType;
-  llvm::SMLoc bodyLoc;
-  ParamDeclArrayAttr resultParams;
-  if (parseFunctionFuncTypeGenerator(p, args, inputParams, resultParams,
-                                     functionTypeValue, sigGenType) ||
-      parseOptionalInline(p, inlineLevel) || p.getCurrentLocation(&bodyLoc) ||
-      p.parseRegion(body, args))
-    return failure();
-  if (!resultParams.empty())
-    return p.emitError(p.getCurrentLocation(), "invalid result parameters");
-
-  // Form the Signature.
-  SmallVector<Type> argTypes;
-  for (const OpAsmParser::Argument &arg : args)
-    argTypes.push_back(arg.type);
-  functionType = TypeAttr::get(functionTypeValue);
-  type = TypeAttr::get(sigGenType);
-  return success();
-}
-
-static ParseResult
-parseRegionDeclaration(OpAsmParser &p, ParamDeclAttr &paramDecl,
-                       StringAttr &sourceName, ParamDeclArrayAttr &inputParams,
-                       TypeAttr &functionType, TypeAttr &type,
-                       Attribute &inlineLevel, Region &body) {
-  StringAttr paramName;
-  if (parseParamName(p, paramName))
-    return failure();
-
-  if (p.parseOptionalLSquare()) {
-    sourceName = paramName;
-  } else {
-    std::string str;
-    if (p.parseKeywordOrString(&str) || p.parseRSquare())
-      return failure();
-    sourceName = StringAttr::get(p.getContext(), str);
-  }
-
-  if (p.parseEqual() ||
-      parseRegionOnly(p, inputParams, functionType, type, inlineLevel, body))
-    return failure();
-  paramDecl = ParamDeclAttr::get(paramName, type.getValue());
-  return success();
-}
-
-static void printRegionOnly(OpAsmPrinter &p, Operation *op,
-                            ParamDeclArrayAttr inputParams,
-                            TypeAttr functionType, TypeAttr type,
-                            Attribute inlineLevel, Region &body) {
-  printFunctionFuncTypeGenerator(p, &body, inputParams, {},
-                                 cast<FunctionType>(functionType.getValue()),
-                                 cast<FuncTypeGeneratorType>(type.getValue()));
-  printOptionalInline(p, inlineLevel);
-  p << ' ';
-  p.printRegion(body, /*printEntryBlockArgs=*/false);
-}
-
-static void printRegionDeclaration(OpAsmPrinter &p, Operation *op,
-                                   ParamDeclAttr paramDecl,
-                                   StringAttr sourceName,
-                                   ParamDeclArrayAttr inputParams,
-                                   TypeAttr functionType, TypeAttr type,
-                                   Attribute inlineLevel, Region &body) {
-  printParamName(p, paramDecl.getName());
-  if (paramDecl.getName() != sourceName) {
-    p << "[";
-    p.printKeywordOrString(sourceName.getValue());
-    p << "]";
-  }
-  p << " = ";
-  printRegionOnly(p, op, inputParams, functionType, type, inlineLevel, body);
-}
-
-bool ParamDeclareRegionOp::isIsolatedFromAbove(unsigned regionNum) {
-  assert(regionNum == 0);
-  return getIsolated();
-}
-
-void ParamDeclareRegionOp::notifyKnownIsolatedFromAbove(unsigned regionNum) {
-  assert(regionNum == 0);
-  setIsolated(true);
-}
-
-void ParamDeclareRegionOp::walkDefinitions(
-    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
-  walkDef(getParamDecl(), &getBodyRegion());
-}
-
-/// This operation has no uses to collect in its current scope.
-void ParamDeclareRegionOp::collectParameterUses(
-    function_ref<void(Attribute)> scanAttr, function_ref<void(Type)> scanType) {
-}
-
-LogicalResult ParamDeclareRegionOp::verify() {
-  if (failed(verifyInlineLevel(*this, getInlineLevelAttr())))
-    return failure();
-
-  if (ArrayAttr fnArgAttrs = getFnArgAttrs();
-      !fnArgAttrs.empty() && fnArgAttrs.size() != getNumArguments())
-    return emitOpError("fnArgAttrs size does not equal number of "
-                       "arguments, got ")
-           << fnArgAttrs.size();
-  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -561,9 +432,6 @@ static void printFuncOp(OpAsmPrinter &p, Operation *op,
   if (attrs.get(func.getFnArgAttrsAttrName()) ==
       ArrayAttr::get(op->getContext(), {}))
     elidedAttrs.push_back(func.getFnArgAttrsAttrName());
-  if (attrs.get(func.getCrossDeviceCapturesAttrName()) ==
-      StringArrayAttr::get(func.getContext(), {}))
-    elidedAttrs.push_back(func.getCrossDeviceCapturesAttrName());
   p.printOptionalAttrDictWithKeyword(attrs.getValue(), elidedAttrs);
 
   p << ' ';
@@ -574,8 +442,7 @@ LogicalResult FuncOp::verify() {
   if (failed(verifyInlineLevel(*this, getInlineLevelAttr())))
     return failure();
 
-  // Skip body-based checks for functions whose body has not been filled in yet
-  // (e.g. populate_captures stubs created before offload compilation).
+  // External declarations have no body to check.
   if (getBodyRegion().empty())
     return success();
   FunctionType type = getFunctionType();

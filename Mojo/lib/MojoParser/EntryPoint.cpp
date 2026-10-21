@@ -230,12 +230,9 @@ static void eraseUnreachableDecls(Operation *declOp, ModuleOp module) {
     }
 
     // Collect symbol references between this symbol table and any child symbol
-    // tables. Nested `lit.fn` operations are trickier, however.
+    // tables.
     cur->walk<mlir::WalkOrder::PreOrder>([&](Operation *op) {
       if (op != cur) {
-        // Mark nested functions as live, which also recurses on them.
-        if (auto func = dyn_cast<FnOp>(op); func && func.getParamDeclAttr())
-          markLive(func);
         // Witness tables & witness entries are part of the struct type spec, so
         // they need to be live for elaboration time generics.
         if (isa<ConformanceOp, WitnessOp>(op))

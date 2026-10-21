@@ -150,9 +150,6 @@ IREvaluator::evaluateContextSpecific(ContextuallyEvaluatedAttrInterface attr) {
     return evaluateFnTypeIsCABIAttr(fnTypeIsCABIAttr);
   if (auto getBaseTypeNameAttr = dyn_cast<GetBaseTypeNameAttr>(attr))
     return evaluateGetBaseTypeNameAttr(getBaseTypeNameAttr);
-  if (auto compileOffloadClosureAttr =
-          dyn_cast<CompileOffloadClosureAttr>(attr))
-    return evaluateCompileOffloadClosureAttr(compileOffloadClosureAttr);
   if (auto compileAssemblyAttr = dyn_cast<CompileAssemblyAttr>(attr))
     return evaluateCompileAssemblyAttr(compileAssemblyAttr);
 

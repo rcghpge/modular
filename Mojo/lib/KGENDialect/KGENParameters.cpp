@@ -794,9 +794,6 @@ LogicalResult ParameterUseDefGraph::calculateOrVerify(
         return scope->getParentOp()->getName().getStringRef().str();
       });
 
-  // Defer the processing of the use-def node for region declarations until
-  // after nested scopes have been analyzed.
-  SmallVector<std::pair<ParamDeclAttr, SmallVector<Region *, 0>>> regionValues;
   // The parameter collector to use.
   VerifyingParameterCollector c(evaluationContext, cache);
 
@@ -869,10 +866,6 @@ LogicalResult ParameterUseDefGraph::calculateOrVerify(
           c.collectUsesFromAttr(expr, (*def)->uses, unusedHasConstExpr,
                                 unusedRequiredSignatureDepth);
         }
-        // If the definition of this parameter depends on a region, defer
-        // processing of the nested region uses.
-        if (!value.regions.empty())
-          regionValues.emplace_back(decl, value.regions);
       });
       if (hadError)
         return WalkResult::interrupt();
@@ -968,18 +961,6 @@ LogicalResult ParameterUseDefGraph::calculateOrVerify(
     }
 
     nestedScopes.try_emplace(nestedScope, std::move(nested));
-  }
-
-  // The parameter uses that a region parameter declaration depend on are
-  // computed after the walk, since the walk is performed pre-order. Now that
-  // we have the uses in the nested scopes, compute their dependent parameters.
-  for (auto &[decl, regions] : regionValues) {
-    ParamDefinition &def = defs.find(decl.getName())->second;
-    for (Region *region : regions) {
-      auto it = nestedScopes.find(region);
-      assert(it != nestedScopes.end() && "didn't visit nested body?");
-      llvm::append_range(def.uses, it->second.usesFromAbove);
-    }
   }
 
   // Check that there is a definite partial ordering between parameters and emit

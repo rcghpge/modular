@@ -226,19 +226,6 @@ kgen.generator @ref_pack_from_pointer_pack(
   hlcf.return
 }
 
-// CHECK-LABEL: lit.fn @nested_function_region
-lit.fn @nested_function_region() {
-  // CHECK-NEXT: hlcf.loop
-  hlcf.loop {
-    // CHECK-NEXT: lit.fn nested_fn()
-    lit.fn nested_fn() {
-      hlcf.return
-    }
-    hlcf.continue
-  }
-  hlcf.return
-}
-
 // -----
 
 // CHECK-LABEL: lit.struct.decl @A

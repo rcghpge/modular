@@ -683,26 +683,6 @@ TypedAttr FnOp::getBoundReference(ParameterEvaluationContext &evalContext,
   if (!bindings) // We allow null for convenience.
     bindings = ParameterExprArrayAttr::get(getContext(), {});
 
-  if (ParamDeclAttr decl = getParamDeclAttr()) {
-    // KGEN expects different binding types than Lit can provide.
-    SmallVector<TypedAttr> reboundBindings;
-    ParameterEvaluator evaluator;
-    evaluator.setEvaluationContext(&evalContext);
-    for (auto [binding, type] :
-         llvm::zip(bindings, getFullSignature().getInputParamTypes())) {
-      TypedAttr value = binding;
-      Type unboundType = evaluator.getReboundType(type);
-      if (unboundType != value.getType())
-        value = ParamOperatorAttr::getRebind(value, unboundType);
-      evaluator.appendIndexBinding(value);
-      reboundBindings.push_back(value);
-    }
-
-    TypedAttr generator = ParamDeclRefAttr::get(decl);
-    return BindParamsAttr::get(generator.getContext(), generator,
-                               reboundBindings, &evalContext);
-  }
-
   SymbolRefAttr symbol = getFullyResolvedSymbolRef(*this);
   auto unboundSymbol = SymbolConstantAttr::get(symbol, getFullSignature());
   auto resultType = cast<FuncTypeGeneratorType>(
@@ -720,10 +700,6 @@ FnOp::getBoundSymbolRef(ParameterEvaluationContext &evalContext,
 TypedAttr FnOp::getFuncLiteralGenerator(
     ParameterEvaluationContext &evalContext, ParameterExprArrayAttr bindings,
     const llvm::BitVector &dischargedBodyConstraints) {
-  // legacy @__parameter closure is not a function literal.
-  if (getParamDeclAttr())
-    return getBoundReference(evalContext, bindings);
-
   SmallVector<TypedAttr> paramValues;
   FnTypeGeneratorType fullSig = getFullSignature();
   SymbolRefAttr symbol = getFullyResolvedSymbolRef(*this);
@@ -790,10 +766,11 @@ static void printImplicitOriginMutability(AsmPrinter &p, OriginType type) {
 // These FuncOp attributes are disallowed while parsing since they can
 // be inferred. Likewise while printing we ignore them.
 static StringRef disallowedAttrNames[] = {
-    "sym_name",          "exportKind",   "constraints", "implements",
-    "funcTypeGenerator", "functionType", "sym_name",    "argNames",
-    "paramNames",        "evaluator",    "defaultImpl", "inlineLevel",
-    "paramDecl",         "params",       "decorators",  "argPassingKinds"};
+    "sym_name",   "exportKind",        "constraints",
+    "implements", "funcTypeGenerator", "functionType",
+    "sym_name",   "argNames",          "paramNames",
+    "evaluator",  "defaultImpl",       "inlineLevel",
+    "params",     "decorators",        "argPassingKinds"};
 
 static ParseResult parseLITFunctionSignature(
     OpAsmParser &p, SmallVectorImpl<OpAsmParser::Argument> &args,
@@ -1017,16 +994,10 @@ ParseResult FnOp::parse(OpAsmParser &parser, OperationState &result) {
     return failure();
   result.addAttribute(getExportKindAttrName(result.name), exportKind);
 
-  // Parse the name as a symbol or a parameter declaration.
   StringAttr nameAttr;
-  bool isParamDecl = false;
-  if (parser.parseOptionalSymbolName(nameAttr)) {
-    if (parseParamName(parser, nameAttr))
-      return failure();
-    isParamDecl = true;
-  }
-  if (!isParamDecl)
-    result.addAttribute(getSymNameAttrName(result.name), nameAttr);
+  if (parser.parseSymbolName(nameAttr))
+    return failure();
+  result.addAttribute(getSymNameAttrName(result.name), nameAttr);
 
   // Parse the function signature.
   SmallVector<OpAsmParser::Argument> entryArgs;
@@ -1048,9 +1019,6 @@ ParseResult FnOp::parse(OpAsmParser &parser, OperationState &result) {
   result.addAttribute(getParamsAttrName(result.name), params);
   result.addAttribute(getFunctionTypeAttrName(result.name),
                       TypeAttr::get(functionType));
-  if (isParamDecl)
-    result.addAttribute(getParamDeclAttrName(result.name),
-                        ParamDeclAttr::get(nameAttr, signature));
 
   // If function attributes are present, parse them.
   NamedAttrList parsedAttributes;
@@ -1087,10 +1055,7 @@ void FnOp::print(OpAsmPrinter &p) {
   // Print the operation and the function name.
   printSymbolExport(p, *this, getExportKindAttr());
   p << ' ';
-  if (ParamDeclAttr decl = getParamDeclAttr())
-    printParamName(p, decl.getName());
-  else
-    p.printSymbolName(*getSymName());
+  p.printSymbolName(*getSymName());
 
   // Print the function arguments. Here we need all the use defined names.
   printLITFunctionSignature(p, &getBodyRegion(), getParams(), getFunctionType(),
@@ -1160,24 +1125,13 @@ LogicalResult FnOp::verify() {
   return success();
 }
 
-void FnOp::walkDeclarations(function_ref<void(ParamDeclAttr)> walkDecl) {
-  if (auto decl = getParamDeclAttr())
-    walkDecl(decl);
-}
+void FnOp::walkDeclarations(function_ref<void(ParamDeclAttr)> walkDecl) {}
 
 void FnOp::walkDefinitions(
-    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {
-  if (auto decl = getParamDeclAttr())
-    walkDef(decl, &getBodyRegion());
-}
+    function_ref<void(ParamDeclAttr, const ParamDefValue &)> walkDef) {}
 
 void FnOp::renameDeclarations(ArrayRef<ParamDeclAttr> decls) {
-  if (getParamDecl()) {
-    assert(decls.size() == 1);
-    setParamDeclAttr(decls.front());
-  } else {
-    assert(decls.empty());
-  }
+  assert(decls.empty());
 }
 
 /// This operation has no uses to collect in its current scope.
@@ -1212,7 +1166,7 @@ void FnOp::build(OpBuilder &builder, OperationState &result, StringAttr name,
                  StringAttr sourceName, FuncTypeGeneratorType signature) {
   MLIRContext *ctx = builder.getContext();
   UnitAttr none;
-  build(builder, result, name, /*sym_visibility=*/nullptr, ParamDeclAttr(),
+  build(builder, result, name, /*sym_visibility=*/nullptr,
         TypeAttr::get(signature),
         TypeAttr::get(signature.getBody().getValues()),
         ParamDeclArrayAttr::get(ctx, {}), DecoratorsAttr::get(ctx, {}),

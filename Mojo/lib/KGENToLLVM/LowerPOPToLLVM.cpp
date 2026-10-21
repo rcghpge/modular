@@ -2469,8 +2469,7 @@ void LowerGlobalPOPToLLVMPass::runOnOperation() {
   };
   auto mustConvert = [&](Operation *op) {
     return isa<GlobalAllocOp, GlobalConstantOp, ExternalCallOp,
-               ExternPointerSymbolOp, CompilerGlobalLoadOp,
-               CompilerGlobalStoreOp, POP::MaxOp, POP::MinOp, POP::AtomicRMWOp,
+               ExternPointerSymbolOp, POP::MaxOp, POP::MinOp, POP::AtomicRMWOp,
                POP::AtomicCmpXchgOp, POP::CastOp, POP::FenceOp,
                CallLLVMIntrinsicOp>(op);
   };

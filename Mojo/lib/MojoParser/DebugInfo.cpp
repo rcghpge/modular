@@ -186,11 +186,7 @@ void SharedState::setLocationDebugScope(FnOp funcOp) {
       llvm::map_to_vector(funcOp.getArgumentTypes(), mapUnresolvedType),
       llvm::map_to_vector(funcOp.getResultTypes(), mapUnresolvedType));
 
-  // The linkage name is derived either from the symbol name or the param decl
-  // name, if it's a nested function.
   StringAttr linkageName = funcOp.getSymNameAttr();
-  if (!linkageName)
-    linkageName = funcOp.getParamDeclAttr().getName();
 
   DebugInfo::DIBuilder::ScopeGuard diScopeGuard = diBuilder->pushSubprogram(
       getSourceName(funcOp), linkageName, diBuilder->createFile(fileLineCol),

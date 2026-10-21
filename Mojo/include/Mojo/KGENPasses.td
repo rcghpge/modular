@@ -209,25 +209,6 @@ def LowerAsyncFunctions : Pass<"lower-async-functions", "ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
-// OutlineClosures
-//===----------------------------------------------------------------------===//
-
-def OutlineClosures : Pass<"outline-closures", "ModuleOp"> {
-  let summary = "Outlines region parameters into explicit closures.";
-  let description = [{
-    This pass outlines region parameters into functions that are called with
-    a struct that contains all captures.
-  }];
-
-  let dependentDialects = ["KGENDialect", "POP::POPDialect"];
-
-  let options = [
-    Option<"debugBuild", "debug-build", "bool", "false",
-           "Whether to check locations for parameter uses.">
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // LowerKGENToLLVM
 //===----------------------------------------------------------------------===//
 
@@ -579,23 +560,6 @@ def ApplyInliner : Pass<"apply-inliner", "ModuleOp"> {
     parameter calls to functions that just return an argument or a constant. The
     primary goal of this pass is to simplify parameter expressions in the IR.
   }];
-}
-
-//===----------------------------------------------------------------------===//
-// ResolveCompilerPromises
-//===----------------------------------------------------------------------===//
-
-def ResolveCompilerPromises : Pass<"resolve-compiler-promises", "ModuleOp"> {
-  let summary = "reverse callgraph specialization to resolve promises";
-  let description = [{
-    TODO
-  }];
-
-  let dependentDialects = [
-    "MDialect",
-    "mlir::index::IndexDialect",
-    "mlir::ub::UBDialect",
-  ];
 }
 
 //===----------------------------------------------------------------------===//

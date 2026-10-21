@@ -49,19 +49,6 @@ kgen.generator @rebind_canonicalize<dt1: dtype, dt2: dtype, dt3: dtype>(%arg0: !
   hlcf.return %2 : !kgen.scalar<si32>
 }
 
-// CHECK-LABEL: @rebind_across_scopes
-kgen.generator @rebind_across_scopes<dt: dtype>(%arg0: !kgen.scalar<dt>) {
-  kgen.param.declare dt1: dtype = <dt>
-  %0 = kgen.rebind %arg0 : !kgen.scalar<dt> to !kgen.scalar<dt1>
-  // CHECK: param.declare.region
-  kgen.param.declare.region F = <dt2: dtype>() -> !kgen.scalar<dt2> {
-    // CHECK: rebind %arg0 : !kgen.scalar<dt> to !kgen.scalar<dt2>
-    %1 = kgen.rebind %0 : !kgen.scalar<dt1> to !kgen.scalar<dt2>
-    hlcf.return %1 : !kgen.scalar<dt2>
-  }
-  hlcf.return
-}
-
 // CHECK-LABEL: @param_materialize
 kgen.generator @param_materialize() -> (i32, !kgen.pointer<i32>) {
   // CHECK-NEXT: kgen.param.constant: i32 = <2>
@@ -132,24 +119,6 @@ kgen.generator @param_declare<simd_width, unroll_factor>() -> index {
   hlcf.return %result : index
 }
 
-
-// Hoisting constants that reference parameters.
-// https://github.com/modularml/modular/issues/4518
-
-kgen.generator @callee<fn: <index>()->index>() {
-  hlcf.return
-}
-
-// CHECK-LABEL: @hoist_constant
-kgen.generator @hoist_constant() {
-  // CHECK-NEXT: kgen.param.declare.region fn
-  kgen.param.declare.region fn = <N>() -> index {
-    // CHECK-NEXT: kgen.param.constant = <N>
-    %0 = kgen.param.constant = <N>
-    hlcf.return %0 : index
-  }
-  hlcf.return
-}
 
 kgen.generator @call_me() {
   hlcf.return

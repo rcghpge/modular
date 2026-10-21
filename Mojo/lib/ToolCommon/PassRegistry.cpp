@@ -60,7 +60,6 @@ void KGEN::registerDefaultKGENPasses(const std::string &cacheBaseExtra) {
   KGEN::registerLowerRuntimeClosures();
   KGEN::registerLowerSemanticCF();
   KGEN::registerMem2Reg();
-  KGEN::registerOutlineClosures();
   KGEN::registerRaiseForLoops();
   KGEN::registerRemoveUnusedParams();
   KGEN::registerReorderParamOps();
@@ -87,7 +86,6 @@ void KGEN::registerDefaultKGENPasses(const std::string &cacheBaseExtra) {
   KGEN::registerInlineParametric();
   KGEN::registerAutomaticInline();
   KGEN::registerDeadArgumentElimination();
-  KGEN::registerResolveCompilerPromises();
   KGEN::registerUpdateMaterialization();
   KGEN::registerInferFunctionAttrs();
 }

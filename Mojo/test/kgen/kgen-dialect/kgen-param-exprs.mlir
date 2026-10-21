@@ -845,10 +845,7 @@ kgen.generator @indexParamRef<
 }
 
 // CHECK-LABEL: kgen.generator @partial_bind_index
-kgen.generator @partial_bind_index<c>() {
-  kgen.param.declare.region fn = <a, b: type>(%arg0: !pop.array<a, b>) {
-    hlcf.return
-  }
+kgen.generator @partial_bind_index<c, fn: <index, type>(!pop.array<*(0,0), *(0,1)>) -> ()>() {
   kgen.param.declare callable: <index, type>(!pop.array<*(0,0), *(0,1)>) -> () = <fn>
   // CHECK: declare callable: <index, type>(!pop.array<*(0,0), *(0,1)>) -> () = <fn>
   kgen.param.declare partial_bound: <type>(!pop.array<c, *(0,0)>) -> () =
@@ -857,11 +854,7 @@ kgen.generator @partial_bind_index<c>() {
 }
 
 // CHECK-LABEL: @bindParams
-kgen.generator @bindParams<c, d: type>() {
-  kgen.param.declare.region fn = <a, b: type>(%arg0: !pop.array<a, b>) {
-    hlcf.return
-  }
-
+kgen.generator @bindParams<c, d: type, fn: <index, type>(!pop.array<*(0,0), *(0,1)>) -> ()>() {
   // CHECK: declare bind0: <type>(!pop.array<c, *(0,0)>) -> () = <bind_params(:<index, type>(!pop.array<*(0,0), *(0,1)>) -> () fn, c, ?)>
   kgen.param.declare bind0: <type>(!pop.array<c, *(0,0)>) -> () =
     <#kgen.bind_params<:!kgen.generator<<index, type>(!pop.array<*(0,0), *(0,1)>) -> ()> fn, c, ?>>

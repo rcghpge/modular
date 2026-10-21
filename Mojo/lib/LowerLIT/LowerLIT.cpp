@@ -138,9 +138,6 @@ struct LITLowerer {
         typeType(TypeType::get(
             symbolTables.getTopLevelSymbolTable().getOp()->getContext())) {}
 
-  /// Given a function, check to see if it is a top-level function.  If not,
-  /// lower it to a ParamDeclareRegionOp.
-  void lowerNestedFunction(FnOp func);
   /// Lower LIT dialect operations in a function body.
   void lowerLITOps(FnOp func, bool &hadErrors);
 
@@ -240,8 +237,6 @@ void LITLowerer::lowerLITOps(FnOp func, bool &hadErrors) {
                                          call.getOperands());
     } else if (auto returnOp = dyn_cast<ErrorReturnOp>(op)) {
       b.replaceOpWithNewOp<HLCF::ReturnOp>(returnOp, returnOp.getResult());
-    } else if (auto funcOp = dyn_cast<FnOp>(op)) {
-      lowerNestedFunction(funcOp);
     }
   });
 }
@@ -381,35 +376,6 @@ LITLowerer::lowerFunction(FnOp func, ArrayRef<ParamDeclAttr> parentInputParams,
   getTopLevelSymbolTable().insert(newFunc, mainSymbolTablePosIter);
   func.erase();
   return success();
-}
-
-void LITLowerer::lowerNestedFunction(FnOp func) {
-  // Process a nested function by lowering it straight to a
-  // `kgen.param.declare.region`. Nested functions are denoted with an
-  // parameter declaration on the function declaration.
-  ParamDeclAttr decl = func.getParamDeclAttr();
-  assert(decl && "expected nested function to declare a parameter");
-
-  ImplicitLocOpBuilder b(func.getLoc(), func);
-
-  // The new param.declare.region will drop implicit lifetimes.
-  SmallVector<ParamDeclAttr> inputParams;
-  llvm::append_range(inputParams, extractImplicitOriginParams(func));
-  removeSingletonParamDecls(singletonTypeHelper, inputParams);
-
-  StringAttr sourceName = func.getSourceNameAttr();
-  if (!sourceName)
-    sourceName = decl.getName();
-  auto region = ParamDeclareRegionOp::create(
-      b, /*sym_name=*/nullptr, /*sym_visibility=*/nullptr, decl, sourceName,
-      func.getFuncTypeGenerator(), func.getFunctionType(), inputParams,
-      func.getInlineLevelAttr(), func.getLinkageNameAttr(), func.getFnAttrs(),
-      func.getFnArgAttrs());
-  // The convenience builder only takes a level, so an unfolded
-  // `@inline(expr)` has to be carried over separately.
-  region.setInlineLevelAttr(func.getInlineLevelAttr());
-  region.getBodyRegion().takeBody(func.getBodyRegion());
-  func.erase();
 }
 
 LogicalResult
