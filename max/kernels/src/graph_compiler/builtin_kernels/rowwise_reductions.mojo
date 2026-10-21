@@ -435,9 +435,9 @@ def reduce_mean[
 
         var acc = row.reduce[ReduceSum[dtype, params.simd_width]](add, load).acc
 
-        # Emit: per-row output — mean = sum / axis_size. Match legacy
-        # `mean` scaling: floats multiply by an f64 (f32 on Apple) reciprocal
-        # cast to `dtype`; ints integer-divide by the axis length.
+        # Emit: per-row output — mean = sum / axis_size. Floats multiply by
+        # an f64 reciprocal (f32 on targets without float64) cast to
+        # `dtype`; ints integer-divide by the axis length.
         # Accumulation stays in `dtype` (no upcast).
         @inline(.always)
         def write(
@@ -446,7 +446,7 @@ def reduce_mean[
             var total = acc.slice[params.emit_tile_width]()
 
             comptime if dtype.is_floating_point():
-                comptime float_type = DType.float32 if context.T.target.is_apple_gpu() else DType.float64
+                comptime float_type = DType.float64 if context.T.target.stdlib_plugin.supports_float64 else DType.float32
                 # `axis_size == 0` gives `recip = inf` and `total` (the
                 # `ReduceSum` identity) is `0`, so `total * recip` is the
                 # IEEE-754 `0 * inf = NaN` — the same "no data" signal
