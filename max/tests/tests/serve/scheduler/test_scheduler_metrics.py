@@ -486,9 +486,11 @@ def test_dkv_peer_counters_report_zero_while_a_tier_is_attached() -> None:
     mock_metrics.dkv_peer_transfer_failures.assert_called_once_with(0)
     mock_metrics.dkv_peer_metadata_refreshes.assert_called_once_with(0)
     mock_metrics.dkv_peer_metadata_refresh_failures.assert_called_once_with(0)
+    mock_metrics.dkv_touches_deduplicated.assert_called_once_with(0)
 
     extra = metrics.to_log_extra()
     assert extra["dkv_peer_loads"] == 0
+    assert extra["dkv_touches_deduplicated"] == 0
     assert extra["dkv_peer_transfer_failures"] == 0
     assert extra["dkv_peer_metadata_refresh_failures"] == 0
     assert extra["dkv_hints_rejected"] == 0
@@ -507,9 +509,11 @@ def test_dkv_peer_counters_are_silent_without_a_tier() -> None:
     mock_metrics.dkv_peer_attaches.assert_not_called()
     mock_metrics.dkv_peer_loads.assert_not_called()
     mock_metrics.dkv_hints_rejected.assert_not_called()
+    mock_metrics.dkv_touches_deduplicated.assert_not_called()
 
     extra = metrics.to_log_extra()
     assert "dkv_peer_loads" not in extra
+    assert "dkv_touches_deduplicated" not in extra
     assert "dkv_hints_rejected" not in extra
 
 
@@ -531,12 +535,15 @@ def test_dkv_peer_counters_carry_their_values_to_every_surface() -> None:
         dkv_peer_transfer_failures=7,
         dkv_peer_metadata_refreshes=8,
         dkv_peer_metadata_refresh_failures=9,
+        dkv_touches_deduplicated=11,
         dkv_hints_rejected_by_reason={"chain_mismatch": 5, "unparseable": 0},
         dkv_rpc_calls={"read_blocks": 3, "heartbeat": 0},
         dkv_rpc_time_ms={"read_blocks": 2.5, "heartbeat": 0.0},
         dkv_rpc_socket_wait_ms={"read_blocks": 0.5},
         dkv_lock_waits={"prepare_load": 2, "offload": 0},
         dkv_lock_wait_ms={"prepare_load": 1.25},
+        dkv_blocked_calls={"start_prepare_load": 4, "offload": 0},
+        dkv_blocked_ms={"start_prepare_load": 0.75},
     )
 
     assert (
@@ -555,14 +562,19 @@ def test_dkv_peer_counters_carry_their_values_to_every_surface() -> None:
     assert extra["dkv_peer_transfer_failures"] == 7
     assert extra["dkv_peer_metadata_refreshes"] == 8
     assert extra["dkv_peer_metadata_refresh_failures"] == 9
+    assert extra["dkv_touches_deduplicated"] == 11
     assert {
-        k: v for k, v in extra.items() if "_rpc_" in k or "_lock_" in k
+        k: v
+        for k, v in extra.items()
+        if "_rpc_" in k or "_lock_" in k or "_blocked_" in k
     } == {
         "dkv_rpc_calls_read_blocks": 3,
         "dkv_rpc_time_ms_read_blocks": 2.5,
         "dkv_rpc_socket_wait_ms_read_blocks": 0.5,
         "dkv_lock_waits_prepare_load": 2,
         "dkv_lock_wait_ms_prepare_load": 1.25,
+        "dkv_blocked_calls_start_prepare_load": 4,
+        "dkv_blocked_ms_start_prepare_load": 0.75,
     }
     assert extra["dkv_hints_rejected_chain_mismatch"] == 5
     assert "dkv_hints_rejected_unparseable" not in extra
@@ -579,6 +591,7 @@ def test_dkv_peer_counters_carry_their_values_to_every_surface() -> None:
     mock_metrics.dkv_peer_transfer_failures.assert_called_once_with(7)
     mock_metrics.dkv_peer_metadata_refreshes.assert_called_once_with(8)
     mock_metrics.dkv_peer_metadata_refresh_failures.assert_called_once_with(9)
+    mock_metrics.dkv_touches_deduplicated.assert_called_once_with(11)
     mock_metrics.dkv_hints_rejected_by_reason.assert_called_once_with(
         5, reason="chain_mismatch"
     )
@@ -590,6 +603,12 @@ def test_dkv_peer_counters_carry_their_values_to_every_surface() -> None:
     mock_metrics.dkv_lock_waits.assert_called_once_with(2, entry="prepare_load")
     mock_metrics.dkv_lock_wait_ms.assert_called_once_with(
         1.25, entry="prepare_load"
+    )
+    mock_metrics.dkv_blocked_calls.assert_called_once_with(
+        4, entry="start_prepare_load"
+    )
+    mock_metrics.dkv_blocked_ms.assert_called_once_with(
+        0.75, entry="start_prepare_load"
     )
 
 
@@ -611,6 +630,8 @@ def test_dkv_per_call_counters_publish_one_series_per_label() -> None:
         dkv_rpc_socket_wait_ms={"read_blocks": 0.5, "touch_blocks": 0.0},
         dkv_lock_waits={"poll_transfers": 6, "offload": 0},
         dkv_lock_wait_ms={"poll_transfers": 1.25, "offload": 0.0},
+        dkv_blocked_calls={"poll_transfers": 6, "offload": 0},
+        dkv_blocked_ms={"poll_transfers": 2.5, "offload": 0.0},
         dkv_hints_rejected_by_reason={"chain_mismatch": 7, "unparseable": 0},
     )
 
@@ -634,6 +655,12 @@ def test_dkv_per_call_counters_publish_one_series_per_label() -> None:
     )
     mock_metrics.dkv_lock_wait_ms.assert_called_once_with(
         1.25, entry="poll_transfers"
+    )
+    mock_metrics.dkv_blocked_calls.assert_called_once_with(
+        6, entry="poll_transfers"
+    )
+    mock_metrics.dkv_blocked_ms.assert_called_once_with(
+        2.5, entry="poll_transfers"
     )
     mock_metrics.dkv_hints_rejected_by_reason.assert_called_once_with(
         7, reason="chain_mismatch"

@@ -25,7 +25,7 @@ from contextlib import (
     contextmanager,
 )
 from dataclasses import dataclass, field
-from typing import Literal, get_args
+from typing import Literal, cast, get_args
 
 from max.serve.config import Settings
 from opentelemetry import context
@@ -82,6 +82,19 @@ SDK_INSTRUMENTS = (
 )
 
 SupportedInstruments = API_PROXIES | SDK_INSTRUMENTS
+
+
+def _create_counter(name: str, description: str) -> SupportedInstruments:
+    """Creates a counter, typed as the instrument the meter usually returns.
+
+    ``create_counter`` is annotated with the abstract counter, but the meter
+    hands back a proxy counter, or the SDK one once a provider is set. A
+    no-op or disabled provider hands back neither, and a runtime check here
+    would fail the import, so the type is asserted statically and
+    ``_commit_measurement`` skips such a counter as it does any other.
+    """
+    counter = _meter.create_counter(name, description=description)
+    return cast(SupportedInstruments, counter)
 
 
 # Sorry for the type ignores, OTEL goes out of its way to obscure its types.
@@ -507,6 +520,18 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         "maxserve.dkv.lock_wait_ms",
         description="Cumulative milliseconds dKV connector entry points waited for the connector lock, split by `entry`.",
     ),  # type: ignore
+    "maxserve.dkv.touches_deduplicated": _create_counter(
+        "maxserve.dkv.touches_deduplicated",
+        description="Recency touches the dKV client dropped because a touch it sent within the last second already covered their keys. Each one is a touch RPC the dKV server did not have to serve.",
+    ),
+    "maxserve.dkv.blocked_calls": _create_counter(
+        "maxserve.dkv.blocked_calls",
+        description="Calls into each dKV connector entry point, split by `entry`. Divide maxserve.dkv.blocked_ms by this for the time the scheduler thread spent per call.",
+    ),
+    "maxserve.dkv.blocked_ms": _create_counter(
+        "maxserve.dkv.blocked_ms",
+        description="Cumulative milliseconds the scheduler thread spent inside each dKV connector entry point, lock wait and any RPC included, split by `entry`.",
+    ),
     "maxserve.spec_decode.acceptance_rate_per_position": _meter.create_histogram(
         "maxserve.spec_decode.acceptance_rate_per_position",
         unit="percent",
@@ -2011,6 +2036,33 @@ class _AsyncMetrics:
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.dkv.lock_wait_ms",
+                value,
+                {**self.extra_attributes, "entry": entry},
+            ),
+        )
+
+    def dkv_touches_deduplicated(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.touches_deduplicated",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_blocked_calls(self, value: int, entry: str) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.blocked_calls",
+                value,
+                {**self.extra_attributes, "entry": entry},
+            ),
+        )
+
+    def dkv_blocked_ms(self, value: float, entry: str) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.blocked_ms",
                 value,
                 {**self.extra_attributes, "entry": entry},
             ),

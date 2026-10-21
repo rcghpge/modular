@@ -40,9 +40,11 @@ from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.connectors import tier_connector
 from max.pipelines.kv_cache.kv_connector import (
     ByteCount,
+    CompletedLookup,
     KVConnectorTransfer,
     KVLoadFailed,
     KVLoadRefused,
+    KVLookup,
     KVTransfer,
 )
 from max.pipelines.kv_cache.paged_kv_cache import (
@@ -137,6 +139,44 @@ class ScriptedConnector:
             leaf: [h in held for h in block_hashes]
             for leaf, held in self.held.items()
         }
+
+    # The asynchronous surface answers from the synchronous calls, the way
+    # the protocol defaults do, so the manager runs the same paths as before.
+    def start_lookup(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> KVLookup:
+        return CompletedLookup(
+            self.lookup(block_hashes, replica_idx=replica_idx, hint=hint)
+        )
+
+    def defers_lookup(self, replica_idx: int = 0) -> bool:
+        return False
+
+    def load_lookup(
+        self,
+        lookup: KVLookup,
+        block_ids: Mapping[str, Sequence[int]],
+        block_hashes: Mapping[str, Sequence[bytes]],
+        replica_idx: int = 0,
+        hint: bytes | None = None,
+    ) -> KVTransfer:
+        return self.load(
+            block_ids, block_hashes, replica_idx=replica_idx, hint=hint
+        )
+
+    def abandon_lookup(self, lookup: KVLookup) -> None:
+        return
+
+    def probe(
+        self,
+        block_hashes: Sequence[bytes],
+        replica_idxs: Sequence[int],
+        hint: bytes | None = None,
+    ) -> Sequence[Mapping[str, Sequence[bool]]] | None:
+        return None
 
     def load(
         self,

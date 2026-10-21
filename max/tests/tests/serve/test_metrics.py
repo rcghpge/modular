@@ -18,7 +18,11 @@ import pytest
 from max.serve.config import Settings
 from max.serve.telemetry import common, metrics
 from max.support._telemetry import drop_metrics_matching
-from opentelemetry.metrics import get_meter_provider
+from opentelemetry.metrics import (
+    NoOpCounter,
+    NoOpMeterProvider,
+    get_meter_provider,
+)
 from opentelemetry.metrics._internal.instrument import (
     _ProxyGauge,
     _ProxyHistogram,
@@ -675,3 +679,18 @@ def test_batch_metrics_with_batch_type_attribute() -> None:
         4.9,
         attributes={"batch_type": "TG"},
     ).commit()
+
+
+def test_create_counter_accepts_a_no_op_meter() -> None:
+    """A no-op provider's counter does not fail the import of serve metrics.
+
+    The dKV counters are created at import, so a host that installs a no-op
+    or disabled meter provider first gets a counter that is neither the
+    proxy nor the SDK one, and recording through it is skipped later.
+    """
+    with mock.patch.object(
+        metrics, "_meter", NoOpMeterProvider().get_meter("t")
+    ):
+        counter = metrics._create_counter("test.counter", "A test counter.")
+
+    assert isinstance(counter, NoOpCounter)

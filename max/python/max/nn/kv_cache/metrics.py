@@ -199,6 +199,9 @@ class KVCacheMetrics:
     """Cache hints that were present but the connector could not use."""
     dkv_hints_rejected_by_reason: dict[str, int] = field(default_factory=dict)
     """``dkv_hints_rejected`` split by why each hint went unused."""
+    dkv_touches_deduplicated: int = 0
+    """Recency touches the client dropped because a touch it sent within the
+    last second already covered their keys, each an RPC the store was spared."""
 
     # Per-call dKV client counters, per-window deltas keyed by RPC (or, for the
     # lock waits, by connector entry point). Time over calls is the per-call
@@ -213,6 +216,12 @@ class KVCacheMetrics:
     """Times each connector entry point took the connector lock."""
     dkv_lock_wait_ms: dict[str, float] = field(default_factory=dict)
     """Milliseconds each entry point waited for the connector lock."""
+    dkv_blocked_calls: dict[str, int] = field(default_factory=dict)
+    """Calls into each connector entry point."""
+    dkv_blocked_ms: dict[str, float] = field(default_factory=dict)
+    """Milliseconds the calling thread spent inside each entry point, lock
+    wait and any RPC included. Near zero for an entry that returns at once,
+    which is how the scheduler thread is shown to have stopped waiting."""
 
     @property
     def prompt_tokens(self) -> int:
@@ -377,6 +386,8 @@ class KVCacheMetrics:
                 self.dkv_hints_rejected_by_reason,
                 other.dkv_hints_rejected_by_reason,
             ),
+            dkv_touches_deduplicated=self.dkv_touches_deduplicated
+            + other.dkv_touches_deduplicated,
             dkv_rpc_calls=_add_by_key(self.dkv_rpc_calls, other.dkv_rpc_calls),
             dkv_rpc_time_ms=_add_by_key(
                 self.dkv_rpc_time_ms, other.dkv_rpc_time_ms
@@ -389,5 +400,11 @@ class KVCacheMetrics:
             ),
             dkv_lock_wait_ms=_add_by_key(
                 self.dkv_lock_wait_ms, other.dkv_lock_wait_ms
+            ),
+            dkv_blocked_calls=_add_by_key(
+                self.dkv_blocked_calls, other.dkv_blocked_calls
+            ),
+            dkv_blocked_ms=_add_by_key(
+                self.dkv_blocked_ms, other.dkv_blocked_ms
             ),
         )

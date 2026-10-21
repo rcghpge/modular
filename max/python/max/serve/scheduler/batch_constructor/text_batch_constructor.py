@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import time
@@ -62,6 +63,22 @@ TG_PRIORITY_KV_PERCENTAGE_ENV_VAR = "MAX_SERVE_TG_PRIORITY_KV_PERCENTAGE"
 
 Set it above 100 to disable the rule.
 """
+
+MAX_PENDING_LOOKUPS_ENV_VAR = "MAX_SERVE_MAX_PENDING_CONNECTOR_LOOKUPS"
+"""Unanswered deferred connector lookups one replica may have out at once.
+
+Each one is a leased read over the request's whole uncached prompt that the
+store stages behind the others, so a deep prefill queue must not start one
+per queued request. 0 defers no lookup, so every one runs synchronously on
+the scheduler thread as it did before lookups were deferred.
+"""
+
+# How long a request out on a connector lookup keeps the prompts behind it
+# waiting, counted from its first cordon. Set to the 5 s the Jenga manager
+# waits on one lookup before serving it as a miss, so a lookup that never
+# answers holds them no longer than it holds the request, and an onload that
+# never settles holds no request but its own past that.
+_LOOKUP_HOLD_S = 5.0
 
 
 @dataclass
@@ -114,16 +131,43 @@ class _GrammarPendingRequest:
 
 @dataclass
 class _OnloadingRequest:
-    """A CE request cordoned out of the batch while its KV onload is in flight.
+    """A CE request cordoned out of the batch until its KV cache is ready.
 
-    The request is already bound to ``replica_idx`` and fully allocated (its
-    blocks are pinned by ``event``); it is held here, out of any run queue,
-    until ``event`` polls complete, then re-admitted to the replica's CE queue.
+    The request is already bound to ``replica_idx`` and held here, out of any
+    run queue, until ``event`` polls complete, then re-admitted to the
+    replica's CE queue. Cordoned on an onload, it is fully allocated and
+    ``event`` pins its blocks while the copy lands. Cordoned on a connector
+    lookup the cache manager is still waiting on, it holds no blocks at all,
+    and the ``alloc`` after re-admission takes them. ``awaiting_lookup`` marks
+    such a request, which counts against the replica's bound on unanswered
+    lookups.
     """
 
     ctx: TextContext
     replica_idx: int
     event: KVTransfer
+    awaiting_lookup: bool = False
+
+
+@dataclass(frozen=True)
+class _LookupHold:
+    """A request whose turn on its replica outlasts its connector lookup.
+
+    Taken when the request is first cordoned on a lookup and kept through
+    the readmissions, onloads and lookups asked again that follow, until the
+    request is admitted to a batch, released or sent back to the DP pool.
+    While it lasts, and for ``_LOOKUP_HOLD_S`` from ``since`` at most, a
+    prompt first bound after the request is not admitted ahead of it unless
+    it has started or holds pages. Such a prompt may still start its own
+    lookup and wait cordoned on it. A request cordoned only on an
+    onload, its lookup answered inside the ``alloc``, holds nothing back.
+    ``seq`` is the request's place in bind order, and ``since`` is on
+    ``time.monotonic``.
+    """
+
+    replica_idx: int
+    seq: int
+    since: float
 
 
 def _onload_settled(event: KVTransfer) -> bool:
@@ -136,6 +180,14 @@ def _onload_settled(event: KVTransfer) -> bool:
         return event.is_complete()
     except KVLoadFailed:
         return True
+
+
+def _onload_landed(event: KVTransfer) -> bool:
+    """Whether a cordoned request's onload filled its pages."""
+    try:
+        return event.is_complete()
+    except KVLoadFailed:
+        return False
 
 
 @dataclass
@@ -496,6 +548,14 @@ class TextBatchConstructor:
         self.tg_priority_kv_percentage = float(
             os.getenv(TG_PRIORITY_KV_PERCENTAGE_ENV_VAR, "90")
         )
+        self.max_pending_lookups = int(
+            os.getenv(MAX_PENDING_LOOKUPS_ENV_VAR, "4")
+        )
+        if self.max_pending_lookups < 0:
+            raise ValueError(
+                f"{MAX_PENDING_LOOKUPS_ENV_VAR} must be 0 or more, got "
+                f"{self.max_pending_lookups}"
+            )
 
         self._lora_manager: LoRAManagerV3 | None = get_lora_manager(pipeline)
 
@@ -527,6 +587,19 @@ class TextBatchConstructor:
         # flight, keyed by request id. Re-admitted to their replica's CE queue
         # once the onload completes (see ``_readmit_completed_onloads``).
         self._onloading_reqs: dict[RequestID, _OnloadingRequest] = {}
+        # Requests readmitted from a lookup cordon and not yet popped,
+        # released or handed back, with their replica, and the replicas whose
+        # admission popped a request this pass. An answered lookup is handed
+        # back only on a pass whose admission ran on its replica and stopped
+        # before it.
+        self._readmitted_lookups: dict[RequestID, tuple[TextContext, int]] = {}
+        self._ce_popped_replicas: set[int] = set()
+        # Each request's place in bind order, kept when it is preempted and
+        # bound again, so a lookup hold can tell the prompts that arrived
+        # after the request it holds them for.
+        self._bind_seq: dict[RequestID, int] = {}
+        self._next_bind_seq = itertools.count()
+        self._lookup_holds: dict[RequestID, _LookupHold] = {}
 
         # DP-balanced CE deferral state. New CE requests wait in
         # ``_ce_pending`` unbound to any replica (insertion order == arrival
@@ -761,6 +834,8 @@ class TextBatchConstructor:
         self._bound_requests[ctx.request_id] = _BoundRequest(
             ctx, replica_idx, ce_weight
         )
+        if ctx.request_id not in self._bind_seq:
+            self._bind_seq[ctx.request_id] = next(self._next_bind_seq)
         self._request_id_to_lora_name[ctx.request_id] = (
             ctx.model_name
             if self._lora_manager and is_lora(ctx, self._lora_manager)
@@ -958,6 +1033,7 @@ class TextBatchConstructor:
         if request_id in self._ce_pending:
             del self._ce_pending[request_id]
             self._ce_arrival.pop(request_id, None)
+            self._bind_seq.pop(request_id, None)
             self.pipeline.release(request_id)
             return
 
@@ -967,6 +1043,9 @@ class TextBatchConstructor:
         # release path below (its pending onload keeps them pinned until it
         # completes, after which poll_transfers unpins them).
         self._onloading_reqs.pop(request_id, None)
+        self._readmitted_lookups.pop(request_id, None)
+        self._lookup_holds.pop(request_id, None)
+        self._bind_seq.pop(request_id, None)
 
         bound = self._bound_requests[request_id]
         replica = self.replicas[bound.replica_idx]
@@ -1023,6 +1102,7 @@ class TextBatchConstructor:
             for request_id in replica.tg_reqs:
                 del self._bound_requests[request_id]
                 self._ce_arrival.pop(request_id, None)
+                self._bind_seq.pop(request_id, None)
 
             replica.tg_reqs.clear()
 
@@ -1084,6 +1164,7 @@ class TextBatchConstructor:
         # Release from paged cache if it was claimed (scheduler manages primary KV cache lifecycle)
         if self.kv_cache.contains(context):
             self.kv_cache.release(context)
+        self._readmitted_lookups.pop(context.request_id, None)
 
         # Pipeline release handles special cases (spec decoding draft model KV cache)
         # For regular pipelines, release() is a no-op
@@ -1111,6 +1192,7 @@ class TextBatchConstructor:
         ):
             replica_requests.ce_reqs.pop(context.request_id, None)
             del self._bound_requests[context.request_id]
+            self._lookup_holds.pop(context.request_id, None)
             self._request_id_to_lora_name.pop(context.request_id, None)
             self._ce_pending[context.request_id] = _PendingCERequest(
                 ctx=context, weights=self._post_cache_weights(context)
@@ -1122,6 +1204,32 @@ class TextBatchConstructor:
         # its full prompt, so its carried CE weight has to be taken again.
         self._bind_request(context, replica_idx)
         replica_requests.ce_reqs.move_to_end(context.request_id, last=False)
+
+    def _requeue_lookup_holder(
+        self, ctx: TextContext, replica_idx: int
+    ) -> bool:
+        """Puts a request that holds no pages back at the head of its queue.
+
+        Such a request was claimed for a connector lookup, so releasing it
+        frees nothing and throws away an answer still fresh enough to load,
+        along with the hand backs and re-asks that bound how often it asks
+        again. An answer it holds stays eligible for hand back under the
+        same rule as one readmitted behind a prefill.
+
+        Returns ``False``, changing nothing, for a request that holds pages
+        or was never claimed, which the caller resets as before.
+        """
+        if (
+            not self.kv_cache.contains(ctx)
+            or self.kv_cache.num_req_blocks(ctx) > 0
+        ):
+            return False
+        ce_reqs = self.replicas[replica_idx].ce_reqs
+        ce_reqs[ctx.request_id] = ctx
+        ce_reqs.move_to_end(ctx.request_id, last=False)
+        if self.kv_cache.awaits_lookup(ctx):
+            self._readmitted_lookups[ctx.request_id] = (ctx, replica_idx)
+        return True
 
     @traced
     def _preempt_request(
@@ -1244,6 +1352,35 @@ class TextBatchConstructor:
         """
         return no_other_work and not self._is_anything_inflight(replica_idx)
 
+    def _pending_lookup_count(self, replica_idx: int) -> int:
+        """Counts the requests held out on an unanswered lookup on a replica."""
+        return sum(
+            1
+            for onloading in self._onloading_reqs.values()
+            if onloading.awaiting_lookup
+            and onloading.replica_idx == replica_idx
+        )
+
+    def _held_behind_lookup(self, ctx: TextContext, replica_idx: int) -> bool:
+        """Whether a request waits for an earlier one's lookup on its replica.
+
+        See ``_LookupHold`` for what is held and for how long.
+        """
+        seq = self._bind_seq.get(ctx.request_id)
+        if seq is None:
+            return False
+        now = time.monotonic()
+        return (
+            any(
+                hold.replica_idx == replica_idx
+                and hold.seq < seq
+                and now - hold.since < _LOOKUP_HOLD_S
+                for hold in self._lookup_holds.values()
+            )
+            and ctx.tokens.processed_length == 0
+            and self.kv_cache.num_req_blocks(ctx) == 0
+        )
+
     def _ce_admission_seats(self, replica_idx: int) -> int:
         """How many CE requests ``_add_ce_requests`` can seat here this step.
 
@@ -1285,13 +1422,21 @@ class TextBatchConstructor:
         # The in-flight backfill runs under a TG priority, so it also slips
         # past the KV-pressure check in _identify_priority. Above that
         # threshold a new prefill takes blocks the running generations need
-        # next, so only prefills that already hold KV continue.
+        # next, so only prefills that already hold KV continue. A request
+        # back from a connector lookup cordon is claimed but holds no blocks
+        # yet, so it waits like a new one.
         admit_new = not (
             starting_tg_reqs_count > 0
             and self.kv_cache.pressure_pct(replica_idx)
             > self.tg_priority_kv_percentage
         )
         max_batch_size = self.scheduler_config.max_batch_size
+
+        # A deferred lookup is charged the tokens its request would take from
+        # the batch, so one pass starts no more lookups than it could have
+        # run. It is kept apart from the batch budget, which only work that
+        # runs this step draws on.
+        lookup_budget = batch.token_budget.remaining
         while (
             len(batch) < max_batch_size
             # At a high level, active ce requests + tg_requests should not exceed the total max batch size.
@@ -1303,9 +1448,15 @@ class TextBatchConstructor:
         ):
             # Pop new request off the queue.
             req_id, ctx = replica_requests.ce_reqs.popitem(last=False)
+            self._ce_popped_replicas.add(replica_idx)
+            self._readmitted_lookups.pop(req_id, None)
 
-            if not admit_new and not self.kv_cache.contains(ctx):
-                self._return_to_request_queue(ctx, replica_idx)
+            if not admit_new and not (
+                self.kv_cache.contains(ctx)
+                and self.kv_cache.num_req_blocks(ctx) > 0
+            ):
+                if not self._requeue_lookup_holder(ctx, replica_idx):
+                    self._return_to_request_queue(ctx, replica_idx)
                 break
 
             # Check LoRA budget before resource allocation
@@ -1316,7 +1467,8 @@ class TextBatchConstructor:
 
             # Exit early if the budget is already exhausted
             if batch.token_budget.remaining <= 0:
-                self._return_to_request_queue(ctx, replica_idx)
+                if not self._requeue_lookup_holder(ctx, replica_idx):
+                    self._return_to_request_queue(ctx, replica_idx)
                 return
 
             # Check if the request fits in memory
@@ -1325,8 +1477,38 @@ class TextBatchConstructor:
                 if not self.kv_cache.contains(ctx):
                     self.kv_cache.claim(ctx, replica_idx=replica_idx)
 
+                # Every lookup is a leased read the store stages behind the
+                # others, so past this pass's share or the replica's bound the
+                # request waits at the head of the queue with nothing asked.
+                # One held behind an earlier request's lookup waits there too,
+                # so it cannot start a prefill the earlier request is then
+                # readmitted behind, but a lookup it needs starts now and it
+                # waits cordoned on that, holding no pages.
+                defers_lookups = self.max_pending_lookups > 0
+                starts_lookup = defers_lookups and self.kv_cache.starts_lookup(
+                    ctx
+                )
+                held = self._held_behind_lookup(ctx, replica_idx)
+                if (
+                    starts_lookup
+                    and (
+                        lookup_budget <= 0
+                        or self._pending_lookup_count(replica_idx)
+                        >= self.max_pending_lookups
+                    )
+                ) or (held and not starts_lookup):
+                    replica_requests.ce_reqs[req_id] = ctx
+                    replica_requests.ce_reqs.move_to_end(req_id, last=False)
+                    break
+
                 try:
-                    onload_event = self.kv_cache.alloc(ctx)
+                    onload_event = (
+                        self.kv_cache.start_lookup(ctx)
+                        if held
+                        else self.kv_cache.alloc(
+                            ctx, defer_lookup=defers_lookups
+                        )
+                    )
                 except InsufficientBlocksError as e:
                     # Only fatal with no other work (no TG, no
                     # already-admitted CE this iteration) and nothing in
@@ -1339,6 +1521,14 @@ class TextBatchConstructor:
                     fatal = self._is_insufficient_blocks_fatal(
                         replica_idx, no_other_work
                     )
+                    # A prefill parked in the queue between chunks holds
+                    # blocks that neither check above counts, so before the
+                    # shortage is fatal it is preempted the way the decode
+                    # path reclaims blocks and this request retries next
+                    # pass. While anything is in flight the request waits
+                    # instead, so computed KV is not thrown away under load.
+                    if fatal and self._preempt_ce_block_holder(replica_idx):
+                        fatal = False
                     if fatal:
                         held_blocks = held_blocks_per_leaf(self.kv_cache, ctx)
                         raise InsufficientBlocksError(
@@ -1351,21 +1541,42 @@ class TextBatchConstructor:
                         ) from e
                     self._return_to_request_queue(ctx, replica_idx)
                     break
+                if held and not self.kv_cache.awaits_lookup(ctx):
+                    replica_requests.ce_reqs[req_id] = ctx
+                    replica_requests.ce_reqs.move_to_end(req_id, last=False)
+                    break
 
                 # Cordon the request if its KV onload has not landed: hold it
                 # out of the batch (keeping its allocated/pinned blocks) so the
                 # GPU runs other ready work while the H2D completes. A copy
                 # that already failed is cordoned too, since its pages hold no
                 # valid KV; the sweep re-admits it to an alloc that rolls them
-                # back.
+                # back. A connector lookup the cache manager is still waiting
+                # on reads the same way, and the alloc after re-admission
+                # finishes the reuse.
                 try:
                     landed = onload_event.is_complete()
                 except KVLoadFailed:
                     landed = False
                 if not landed:
+                    # Tagged from what the alloc did, so a lookup that
+                    # answered in place and went on to an onload is not
+                    # counted, while a re-ask the alloc started is.
+                    awaiting_lookup = self.kv_cache.awaits_lookup(ctx)
                     self._onloading_reqs[req_id] = _OnloadingRequest(
-                        ctx=ctx, replica_idx=replica_idx, event=onload_event
+                        ctx=ctx,
+                        replica_idx=replica_idx,
+                        event=onload_event,
+                        awaiting_lookup=awaiting_lookup,
                     )
+                    if awaiting_lookup:
+                        lookup_budget -= ctx.tokens.active_length
+                        if req_id not in self._lookup_holds:
+                            self._lookup_holds[req_id] = _LookupHold(
+                                replica_idx=replica_idx,
+                                seq=self._bind_seq[req_id],
+                                since=time.monotonic(),
+                            )
                     continue
 
             # Check if it fits within the token budget. Under DP, a decode row
@@ -1394,6 +1605,7 @@ class TextBatchConstructor:
                         self._return_to_request_queue(ctx, replica_idx)
                         return
                     batch.batch[req_id] = ctx
+                    self._lookup_holds.pop(req_id, None)
                     replica_requests.add_active_lora(ctx, self._lora_manager)
                     batch.token_budget.add_to_budget(
                         ctx, request_type=RequestType.CE
@@ -1401,6 +1613,7 @@ class TextBatchConstructor:
                     break
                 case BudgetStatus.BUDGET_AVAILABLE:
                     batch.batch[req_id] = ctx
+                    self._lookup_holds.pop(req_id, None)
                     batch.token_budget.add_to_budget(
                         ctx, request_type=RequestType.CE
                     )
@@ -1880,11 +2093,13 @@ class TextBatchConstructor:
     def _readmit_completed_onloads(self) -> None:
         """Re-admits cordoned requests whose KV onload has completed or failed.
 
-        Runs once per iteration. Completed requests return to the front of their
-        replica's CE queue (FIFO by arrival) so the next batch pass can schedule
-        them; their onloaded prefix is now device-resident. A request whose
-        copy failed returns the same way, and its next ``alloc`` rolls the
-        onloaded prefix back so it recomputes it.
+        Runs once per iteration. A request whose onload landed returns to the
+        head of its replica's CE queue (FIFO by bind order) with its onloaded
+        prefix device-resident, so the next batch pass can schedule it. One
+        whose copy failed, or one back from a lookup, returns behind any
+        prefill already under way there, in bind order with every queued
+        prompt that has not started. The next ``alloc`` rolls a failed
+        prefix back so the request recomputes it.
         """
         if not self._onloading_reqs:
             return
@@ -1893,11 +2108,87 @@ class TextBatchConstructor:
             for req_id, onloading in self._onloading_reqs.items()
             if _onload_settled(onloading.event)
         ]
+        touched: set[int] = set()
+        loaded: set[RequestID] = set()
         for req_id in completed:
             onloading = self._onloading_reqs.pop(req_id)
-            replica = self.replicas[onloading.replica_idx]
-            replica.ce_reqs[req_id] = onloading.ctx
-            replica.ce_reqs.move_to_end(req_id, last=False)
+            self.replicas[onloading.replica_idx].ce_reqs[req_id] = onloading.ctx
+            touched.add(onloading.replica_idx)
+            if onloading.awaiting_lookup:
+                self._readmitted_lookups[req_id] = (
+                    onloading.ctx,
+                    onloading.replica_idx,
+                )
+            elif _onload_landed(onloading.event):
+                loaded.add(req_id)
+
+        # A prefill under way keeps its place ahead of a request back from a
+        # lookup, because it holds blocks for work already paid for. A
+        # readmitted request too big for what is left would otherwise fail
+        # its alloc at the head of the queue every pass while the prefill
+        # behind it never runs to free anything, and so would one whose copy
+        # failed, since its alloc takes the whole prompt again. One whose
+        # onload landed holds its pages and takes nothing more, so it goes
+        # first. Every prompt that has not started follows the landed onloads
+        # and the prefills under way in bind order. A later one a lookup hold
+        # keeps at the head of the queue ends the pass there, so an earlier
+        # one behind it, readmitted with it or preempted back to the queue,
+        # would wait out the hold.
+        readmitted = set(completed)
+        for replica_idx in touched:
+            ce_reqs = self.replicas[replica_idx].ce_reqs
+            under_way = [
+                req_id
+                for req_id, ctx in ce_reqs.items()
+                if req_id not in readmitted and ctx.tokens.processed_length > 0
+            ]
+            waiting = [
+                req_id
+                for req_id, ctx in ce_reqs.items()
+                if req_id not in loaded
+                and (req_id in readmitted or ctx.tokens.processed_length == 0)
+            ]
+            front = (
+                sorted(
+                    loaded.intersection(ce_reqs), key=self._bind_seq.__getitem__
+                )
+                + under_way
+                + sorted(waiting, key=self._bind_seq.__getitem__)
+            )
+            for req_id in reversed(front):
+                ce_reqs.move_to_end(req_id, last=False)
+
+    def _hand_back_queued_lookups(self) -> None:
+        """Hands back the answered lookups admission passed over this pass.
+
+        An answered lookup holds its blocks pinned and staged on the store
+        until it is loaded, and only for the store's lease. A request
+        readmitted behind a prefill under way can wait out every remaining
+        chunk, and its load is then refused and the whole prompt computed.
+        Handed back, it asks again once it reaches the head of its queue.
+        The cache manager keeps an answer still fresh enough to load, since
+        asking again costs another leased read, so a request passed over for
+        a pass or two still loads the answer it has.
+        A readmitted request stays eligible until it is popped, released or
+        handed back, but only a replica whose admission popped a request
+        this pass hands back. One whose admission did not run, on an off
+        cadence step, a deferred replica or a decode priority pass, would
+        otherwise hand back every answer it readmits and never prefill it.
+        """
+        popped, self._ce_popped_replicas = self._ce_popped_replicas, set()
+        for req_id, (ctx, replica_idx) in list(
+            self._readmitted_lookups.items()
+        ):
+            if replica_idx not in popped:
+                continue
+
+            if (
+                req_id not in self._onloading_reqs
+                and self.kv_cache.contains(ctx)
+                and not self.kv_cache.hand_back_lookup(ctx)
+            ):
+                continue
+            del self._readmitted_lookups[req_id]
 
     def construct_batch(self) -> TextGenerationInputs[TextContext]:
         """Constructs Pipeline Inputs which includes a batch for each replica."""
@@ -1980,6 +2271,8 @@ class TextBatchConstructor:
                 )
                 for replica_idx in range(self.num_replicas)
             ]
+
+        self._hand_back_queued_lookups()
 
         inputs = TextGenerationInputs[TextContext](
             batches=[

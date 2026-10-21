@@ -260,6 +260,9 @@ class BatchMetrics:
     dkv_peer_metadata_refresh_failures: int = 0
     dkv_hints_rejected: int = 0
     dkv_hints_rejected_by_reason: dict[str, int] = field(default_factory=dict)
+    # Recency touches the dKV client dropped because a recent one covered
+    # them. A per-window delta, 0 against an extension that predates it.
+    dkv_touches_deduplicated: int = 0
 
     # Per-call dKV client counters this batch, keyed by RPC or by connector
     # entry point. Published as labeled counters, so a dashboard derives the
@@ -269,6 +272,12 @@ class BatchMetrics:
     dkv_rpc_socket_wait_ms: dict[str, float] = field(default_factory=dict)
     dkv_lock_waits: dict[str, int] = field(default_factory=dict)
     dkv_lock_wait_ms: dict[str, float] = field(default_factory=dict)
+    # Calls into each entry point and the wall time the scheduler thread spent
+    # inside it, lock wait and any RPC included. Near zero for an entry that
+    # returns at once, which is how the thread is shown to have stopped
+    # waiting. Empty against an extension that predates them.
+    dkv_blocked_calls: dict[str, int] = field(default_factory=dict)
+    dkv_blocked_ms: dict[str, float] = field(default_factory=dict)
 
     # Host/disk tier refusals, from the tiered connector. Always 0 without one.
     connector_loads_refused: int = 0
@@ -409,11 +418,14 @@ class BatchMetrics:
         dkv_peer_metadata_refresh_failures = 0
         dkv_hints_rejected = 0
         dkv_hints_rejected_by_reason: dict[str, int] = {}
+        dkv_touches_deduplicated = 0
         dkv_rpc_calls: dict[str, int] = {}
         dkv_rpc_time_ms: dict[str, float] = {}
         dkv_rpc_socket_wait_ms: dict[str, float] = {}
         dkv_lock_waits: dict[str, int] = {}
         dkv_lock_wait_ms: dict[str, float] = {}
+        dkv_blocked_calls: dict[str, int] = {}
+        dkv_blocked_ms: dict[str, float] = {}
         connector_loads_refused = 0
         connector_offload_blocks_dropped = 0
         connector_load_failures = 0
@@ -532,11 +544,14 @@ class BatchMetrics:
             dkv_hints_rejected_by_reason = (
                 metrics_agg.dkv_hints_rejected_by_reason
             )
+            dkv_touches_deduplicated = metrics_agg.dkv_touches_deduplicated
             dkv_rpc_calls = metrics_agg.dkv_rpc_calls
             dkv_rpc_time_ms = metrics_agg.dkv_rpc_time_ms
             dkv_rpc_socket_wait_ms = metrics_agg.dkv_rpc_socket_wait_ms
             dkv_lock_waits = metrics_agg.dkv_lock_waits
             dkv_lock_wait_ms = metrics_agg.dkv_lock_wait_ms
+            dkv_blocked_calls = metrics_agg.dkv_blocked_calls
+            dkv_blocked_ms = metrics_agg.dkv_blocked_ms
 
         # Capture per-request KV cache hit rates for newly admitted requests.
         # The block manager set ``cached_prefix_length`` on each context's
@@ -666,11 +681,14 @@ class BatchMetrics:
             dkv_peer_metadata_refresh_failures=dkv_peer_metadata_refresh_failures,
             dkv_hints_rejected=dkv_hints_rejected,
             dkv_hints_rejected_by_reason=dkv_hints_rejected_by_reason,
+            dkv_touches_deduplicated=dkv_touches_deduplicated,
             dkv_rpc_calls=dkv_rpc_calls,
             dkv_rpc_time_ms=dkv_rpc_time_ms,
             dkv_rpc_socket_wait_ms=dkv_rpc_socket_wait_ms,
             dkv_lock_waits=dkv_lock_waits,
             dkv_lock_wait_ms=dkv_lock_wait_ms,
+            dkv_blocked_calls=dkv_blocked_calls,
+            dkv_blocked_ms=dkv_blocked_ms,
             connector_loads_refused=connector_loads_refused,
             connector_offload_blocks_dropped=connector_offload_blocks_dropped,
             connector_load_failures=connector_load_failures,
@@ -1125,6 +1143,7 @@ class BatchMetrics:
                 self.dkv_peer_metadata_refresh_failures
             )
             extra["dkv_hints_rejected"] = self.dkv_hints_rejected
+            extra["dkv_touches_deduplicated"] = self.dkv_touches_deduplicated
             # One scalar key per label that moved, as publish_metrics sends.
             labeled: tuple[tuple[str, Mapping[str, float]], ...] = (
                 ("dkv_hints_rejected", self.dkv_hints_rejected_by_reason),
@@ -1133,6 +1152,8 @@ class BatchMetrics:
                 ("dkv_rpc_socket_wait_ms", self.dkv_rpc_socket_wait_ms),
                 ("dkv_lock_waits", self.dkv_lock_waits),
                 ("dkv_lock_wait_ms", self.dkv_lock_wait_ms),
+                ("dkv_blocked_calls", self.dkv_blocked_calls),
+                ("dkv_blocked_ms", self.dkv_blocked_ms),
             )
             for prefix, counts in labeled:
                 for label, count in _moved(counts):
@@ -1310,6 +1331,7 @@ class BatchMetrics:
                 self.dkv_peer_metadata_refresh_failures
             )
             METRICS.dkv_hints_rejected(self.dkv_hints_rejected)
+            METRICS.dkv_touches_deduplicated(self.dkv_touches_deduplicated)
             # Labeled counters only move by their increment, so a zero would
             # cost a trip through the telemetry queue and change nothing.
             for reason, count in _moved(self.dkv_hints_rejected_by_reason):
@@ -1324,6 +1346,10 @@ class BatchMetrics:
                 METRICS.dkv_lock_waits(waits, entry=entry)
             for entry, ms in _moved(self.dkv_lock_wait_ms):
                 METRICS.dkv_lock_wait_ms(ms, entry=entry)
+            for entry, calls in _moved(self.dkv_blocked_calls):
+                METRICS.dkv_blocked_calls(calls, entry=entry)
+            for entry, ms in _moved(self.dkv_blocked_ms):
+                METRICS.dkv_blocked_ms(ms, entry=entry)
 
         if self.draft_tokens_generated > 0:
             METRICS.spec_decode_avg_acceptance_length(
