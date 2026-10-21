@@ -22,10 +22,11 @@ layer-level lazy-trace tests.
 from __future__ import annotations
 
 import dataclasses
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from max.driver import CPU
+from max.driver import CPU, Device
 from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn.common_layers import quant_ops
@@ -465,3 +466,181 @@ def test_payload_nvfp4_tokens_require_the_uniform_scale(
 
         with pytest.raises(AssertionError, match="uniform scale"):
             payload.per_device_tokens()
+
+
+# --------------------------------------------------------------------------- #
+# SwiGLU route
+# --------------------------------------------------------------------------- #
+
+
+def _stacked_nvfp4(rows: int, cols: int, device: Device) -> NVFP4Tensor:
+    return NVFP4Tensor(
+        weight=Tensor.zeros(
+            (_NUM_EXPERTS, rows, cols // 2), dtype=DType.uint8, device=device
+        ),
+        weight_scale=Tensor.zeros(
+            (_NUM_EXPERTS, rows, cols // 16),
+            dtype=DType.float8_e4m3fn,
+            device=device,
+        ),
+        weight_scale_2=Tensor.zeros(
+            (_NUM_EXPERTS,), dtype=DType.float32, device=CPU()
+        ),
+        input_scale=Tensor.zeros(
+            (_NUM_EXPERTS,), dtype=DType.float32, device=CPU()
+        ),
+        block_size=(1, 16),
+    )
+
+
+def _stacked_fp8(rows: int, cols: int, device: Device) -> FP8BlockTensor:
+    return FP8BlockTensor(
+        weight=Tensor.zeros(
+            (_NUM_EXPERTS, rows, cols),
+            dtype=DType.float8_e4m3fn,
+            device=device,
+        ),
+        weight_scale_inv=Tensor.zeros(
+            (_NUM_EXPERTS, max(rows // 128, 1), max(cols // 128, 1)),
+            dtype=DType.float32,
+            device=device,
+        ),
+        block_size=(128, 128),
+    )
+
+
+def _swiglu_route(
+    encoding: str,
+    prequantized: bool,
+    accum_dtype: DType | None,
+    swiglu_limit: float,
+    device: Device,
+    quant_config: QuantConfig,
+) -> str:
+    """Traces ``grouped_matmul_silu`` and names the activation it returns."""
+    nvfp4 = encoding == "nvfp4"
+    build = _stacked_nvfp4 if nvfp4 else _stacked_fp8
+    offsets = Tensor.zeros((_NUM_EXPERTS,), dtype=DType.uint32, device=device)
+    if not prequantized:
+        tokens: quant_ops.QuantAwareTensor = Tensor.zeros(
+            (_NUM_EXPERTS, _HIDDEN_DIM), dtype=DType.bfloat16, device=device
+        )
+    elif nvfp4:
+        tokens = NVFP4Activation(
+            data=Tensor.zeros(
+                (_NUM_EXPERTS, _HIDDEN_DIM // 2),
+                dtype=DType.uint8,
+                device=device,
+            ),
+            scales=Tensor.zeros(
+                (_NUM_EXPERTS + 1, _HIDDEN_DIM // 64, 32, 4, 4),
+                dtype=DType.float8_e4m3fn,
+                device=device,
+            ),
+            input_scale=Tensor.zeros(
+                (_NUM_EXPERTS,), dtype=DType.float32, device=CPU()
+            ),
+            scales_offset=offsets,
+        )
+    else:
+        tokens = FP8BlockActivation(
+            data=Tensor.zeros(
+                (_NUM_EXPERTS, _HIDDEN_DIM),
+                dtype=DType.float8_e4m3fn,
+                device=device,
+            ),
+            scales=Tensor.zeros(
+                (_NUM_EXPERTS, _HIDDEN_DIM // 128),
+                dtype=DType.float32,
+                device=device,
+            ),
+        )
+    out = quant_ops.grouped_matmul_silu(
+        tokens,
+        build(2 * _MOE_DIM, _HIDDEN_DIM, device),
+        build(_HIDDEN_DIM, _MOE_DIM, device),
+        Tensor.zeros((_NUM_EXPERTS + 1,), dtype=DType.uint32, device=device),
+        Tensor.zeros((_NUM_EXPERTS,), dtype=DType.int32, device=device),
+        Tensor.zeros((2,), dtype=DType.uint32, device=device),
+        quant_config,
+        scales_offset=offsets if nvfp4 else None,
+        accum_dtype=accum_dtype,
+        swiglu_limit=swiglu_limit,
+    )
+    return type(out).__name__
+
+
+@pytest.mark.parametrize(
+    ("arch", "encoding", "prequantized", "accum_dtype", "limit", "expected"),
+    [
+        # deepseekV3_modulev3 and kimik2_5_modulev3 share one MoE: no
+        # gate/up accumulation dtype and no activation clamp.
+        ("deepseekV3/kimik2_5 TP", "fp8", False, None, 0.0, "Tensor"),
+        ("deepseekV3/kimik2_5 TP", "nvfp4", False, None, 0.0, "Tensor"),
+        (
+            "deepseekV3/kimik2_5 EP",
+            "fp8",
+            True,
+            None,
+            0.0,
+            "FP8BlockActivation",
+        ),
+        (
+            "deepseekV3/kimik2_5 EP",
+            "nvfp4",
+            True,
+            None,
+            0.0,
+            "NVFP4Activation",
+        ),
+        # deepseekV3_2_modulev3 accumulates the gate/up in float32 off the EP
+        # dispatch; glm5_next_modulev3 does too, and clamps the activation.
+        ("deepseekV3_2 TP", "fp8", False, DType.float32, 0.0, "Tensor"),
+        ("deepseekV3_2 EP", "fp8", True, None, 0.0, "FP8BlockActivation"),
+        ("glm5_next TP", "fp8", False, DType.float32, 10.0, "Tensor"),
+        (
+            "glm5_next EP",
+            "fp8",
+            True,
+            DType.float32,
+            10.0,
+            "FP8BlockActivation",
+        ),
+        # A float32 SwiGLU output over an NVFP4 down weight is the one case
+        # that must take the fused quantized SiLU: the down matmul quantizes
+        # from bf16 only.
+        (
+            "float32 SwiGLU, NVFP4 down",
+            "nvfp4",
+            False,
+            DType.float32,
+            0.0,
+            "NVFP4Activation",
+        ),
+    ],
+)
+def test_swiglu_route_per_architecture(
+    mock_accelerator: MagicMock,
+    nvfp4_quant_config: QuantConfig,
+    fp8_quant_config: QuantConfig,
+    sm100_arch: None,
+    arch: str,
+    encoding: str,
+    prequantized: bool,
+    accum_dtype: DType | None,
+    limit: float,
+    expected: str,
+) -> None:
+    """Pins the SwiGLU each shipped MoE configuration asks for.
+
+    Off the EP dispatch a bf16 SwiGLU output is left for the down matmul to
+    quantize, because the fused quantized SiLU cannot be built for a device
+    holding more experts than the GPU has SMs.
+    """
+    device = mock_accelerator()
+    config = nvfp4_quant_config if encoding == "nvfp4" else fp8_quant_config
+    with F.lazy():
+        got = _swiglu_route(
+            encoding, prequantized, accum_dtype, limit, device, config
+        )
+    assert got == expected, arch

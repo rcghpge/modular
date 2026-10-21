@@ -1181,10 +1181,16 @@ def grouped_matmul_silu(
     # pre-quantized upstream (EP dispatch); otherwise emit bf16 and let the
     # down matmul quantize.
     prequantized = isinstance(tokens, (FP8BlockActivation, NVFP4Activation))
-    # NVFP4's down matmul quantizes from bf16 only, so a float32 SwiGLU output
-    # has to be packed by the fused quantized SiLU instead.
+    # The down matmul quantizes from bf16 only, so a float32 SwiGLU output has
+    # to be packed by the fused quantized SiLU. A bf16 output does not need it
+    # and must not take it. That kernel gives each expert group a share of the
+    # GPU's SMs, so it cannot be built for a model with more experts than the
+    # GPU has SMs.
     requant_weight = (
-        down if prequantized or isinstance(down, NVFP4Tensor) else None
+        down
+        if prequantized
+        or (isinstance(down, NVFP4Tensor) and accum_dtype is not None)
+        else None
     )
     if accum_dtype is not None:
         gate_up_out = gate_up_out.cast(accum_dtype)
