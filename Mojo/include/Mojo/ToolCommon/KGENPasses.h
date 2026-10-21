@@ -105,6 +105,9 @@ void registerDefaultKGENPasses(const std::string &cacheBaseExtra);
 
 //===----------------------------------------------------------------------===//
 // Lowering to Arith
+//
+// Scalar values and arithmetic. Independent of the control-flow lowering
+// below, which only borrows the type converter.
 //===----------------------------------------------------------------------===//
 
 /// `KGENDType` → builtin MLIR element type. `nullopt` if unsupported.
@@ -114,7 +117,8 @@ std::optional<mlir::Type> dtypeToBuiltin(mlir::MLIRContext *ctx,
 /// Maps `!pop.scalar<T>` to its builtin type and bridges values whose
 /// producer and consumer are lowered by different passes with
 /// `unrealized_conversion_cast`s, which fold once both sides are converted.
-/// A target extends it with its own conversions for the SIMD forms.
+/// A target extends it with its own conversions for the SIMD forms. Both
+/// lowerings here use it.
 class POPScalarTypeConverter : public mlir::TypeConverter {
 public:
   explicit POPScalarTypeConverter(mlir::MLIRContext *ctx);
@@ -124,6 +128,23 @@ public:
 /// compare, select, and builtin-cast ops to `arith`/`index`.
 void populateKGENToArithConversionPatterns(const mlir::TypeConverter &converter,
                                            mlir::RewritePatternSet &patterns);
+
+//===----------------------------------------------------------------------===//
+// Lowering to SCF
+//
+// Structured control flow. Values crossing a region boundary are bridged with
+// the type converter above.
+//===----------------------------------------------------------------------===//
+
+/// Patterns lowering `hlcf.for` and its yield to `scf.for`.
+void populateHLCFForToSCFConversionPatterns(
+    const mlir::TypeConverter &converter, mlir::RewritePatternSet &patterns);
+
+/// Patterns lowering all HLCF structured control flow (`for`, `if`, `switch`,
+/// `loop`, and their terminators) to SCF. `hlcf.return` is left for the
+/// function conversion.
+void populateHLCFToSCFConversionPatterns(const mlir::TypeConverter &converter,
+                                         mlir::RewritePatternSet &patterns);
 
 //===----------------------------------------------------------------------===//
 // Elaborator

@@ -1036,6 +1036,88 @@ def RaiseForLoops: Pass<"raise-for-loops", "KGEN::FuncOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// LowerHLCFToSCF
+//===----------------------------------------------------------------------===//
+
+def LowerHLCFToSCF : Pass<"lower-hlcf-to-scf", "ModuleOp"> {
+  let summary = "Lower HLCF structured control flow to SCF";
+  let description = [{
+    The `lower-hlcf-to-scf` pass lowers `hlcf.for`, `hlcf.if`, `hlcf.switch`,
+    and `hlcf.loop` with their terminators to their SCF equivalents. An
+    `hlcf.if` holding `elif` regions becomes one `scf.if` per condition, each
+    nested in the previous one's `else` region.
+
+    A region's own ops are still POP-typed when the region is converted, so a
+    value crossing a region boundary — a `!pop.scalar` operand or result — is
+    bridged with an `unrealized_conversion_cast` that a later lowering
+    resolves.
+
+    A function-terminating `hlcf.return` or `hlcf.unreachable` is left for the
+    function conversion. An `hlcf.unreachable` that ends a converted region
+    becomes a yield of `ub.poison`, since control never reaches it.
+
+    Run `raise-for-loops` first. A Mojo `for i in range(...)` arrives as an
+    `hlcf.loop`; without the raise it reaches SCF as `scf.while` rather than
+    `scf.for`.
+
+    `scf` has no branch that leaves more than the region it sits in, and
+    `scf.while` carries its state out through a single after-region
+    `scf.yield`. So an `hlcf.loop` lowers only when its `continue`/`break`
+    terminates the loop body itself:
+
+    ```mlir
+    // Lowered: the exits terminate the body.
+    hlcf.loop {
+      "work"() : () -> ()
+      hlcf.continue
+    }
+    ```
+
+    An exit one region deeper does not lower, including the `hlcf.if` exit
+    test that a Mojo `while ...: ... break` produces. Reaching the loop's
+    yield from there means threading the loop state out through the
+    `scf.if` results, which this pass does not do at this moment:
+
+    ```mlir
+    // Rejected: the `break` would have to leave both the `hlcf.if`
+    // and the loop body.
+    hlcf.loop {
+      hlcf.if %c {
+        hlcf.break
+      } else {
+        hlcf.yield
+      }
+      hlcf.continue
+    }
+    ```
+
+    A `continue`/`break` inside a *nested* loop belongs to that loop and is
+    lowered with it.
+
+    Rejected the same way: a loop whose bound is inclusive (`sle`/`sge`),
+    which `scf.for` would run one iteration short; a `for` whose yielded
+    induction variable is not its own `step` advance, which would change the
+    trip count; and an `hlcf.return` nested in a region, which needs an exit
+    `scf` has no form for. Rejected means the op fails to legalize: the pass
+    reports the op and fails, rather than lowering it to something that
+    behaves differently.
+
+    With `for-only`, only `hlcf.for` is lowered and any other HLCF control
+    flow is rejected.
+  }];
+
+  let options = [
+    Option<"forOnly", "for-only", "bool", "false",
+           "Lower only `hlcf.for`; other HLCF control flow fails to legalize.">,
+  ];
+
+  let dependentDialects = [
+    "HLCF::HLCFDialect", "mlir::arith::ArithDialect",
+    "mlir::index::IndexDialect", "mlir::scf::SCFDialect", "mlir::ub::UBDialect"
+  ];
+}
+
+//===----------------------------------------------------------------------===//
 // LowerKGENToArith
 //===----------------------------------------------------------------------===//
 

@@ -1246,7 +1246,9 @@ modular_cc_library(
         "@llvm-project//mlir:IndexDialect",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:ROCDLDialect",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:UBDialect",
     ],
 )
 
