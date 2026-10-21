@@ -49,10 +49,15 @@ from max.pipelines.context import (
 from max.pipelines.context.exceptions import InputError, PromptTooLongError
 from max.pipelines.lib import (
     PIPELINE_REGISTRY,
+    ModelManifest,
     PipelineConfig,
+    PipelineModel,
     PipelineRuntimeConfig,
 )
-from max.pipelines.lib.log_probabilities import _MAX_TOP_LOGPROBS
+from max.pipelines.lib.log_probabilities import (
+    _MAX_TOP_LOGPROBS,
+    LogProbabilitiesMixin,
+)
 from max.pipelines.lib.tokenizer import ALLOWED_IMAGE_FORMATS, open_image
 from max.pipelines.modeling.types import (
     ImageContentPart,
@@ -4147,6 +4152,96 @@ async def test_completion_logprobs_with_speculative_decoding_rejected(
         )
 
     _assert_speculative_logprobs_error(response)
+
+
+@pytest_asyncio.fixture(scope="function")
+def enable_echo_app(mock_pipeline_config: PipelineConfig) -> FastAPI:
+    model = mock_pipeline_config.model.model_copy(update={"enable_echo": True})
+    serving_settings = ServingTokenGeneratorSettings(
+        model_factory=EchoTokenGenerator,
+        pipeline_config=mock_pipeline_config.model_copy(
+            update={"models": ModelManifest({"main": model})}
+        ),
+        tokenizer=EchoPipelineTokenizer(),
+    )
+    return fastapi_app(
+        Settings(api_types=[APIType.OPENAI], use_heartbeat=False),
+        serving_settings,
+    )
+
+
+@pytest.mark.parametrize(
+    ("pipeline_model", "status_code"),
+    [(LogProbabilitiesMixin, 400), (PipelineModel, 200)],
+)
+@pytest.mark.asyncio
+async def test_completion_echo_logprobs_without_enable_echo(
+    app: FastAPI,
+    monkeypatch: pytest.MonkeyPatch,
+    pipeline_model: type,
+    status_code: int,
+) -> None:
+    """Without ``--enable-echo`` a model has no prompt logits to score.
+
+    Only a model that computes log probabilities fails on that, so a model
+    that returns none serves the request.
+    """
+    monkeypatch.setattr(
+        PIPELINE_REGISTRY,
+        "architecture_for_config",
+        lambda *args, **kwargs: SimpleNamespace(pipeline_model=pipeline_model),
+    )
+    async with AsyncTestClient(app) as client:
+        response = await client.post(
+            "/v1/completions",
+            json={"model": "echo", "prompt": "hi", "echo": True, "logprobs": 1},
+        )
+
+    assert response.status_code == status_code
+    if status_code == 400:
+        body = response.json()
+        assert "--enable-echo" in body["error"]["message"]
+        assert body["error"]["type"] == "invalid_request_error"
+
+
+@pytest.mark.asyncio
+async def test_completion_echo_logprobs_with_enable_echo_succeeds(
+    enable_echo_app: FastAPI,
+) -> None:
+    async with AsyncTestClient(enable_echo_app) as client:
+        response = await client.post(
+            "/v1/completions",
+            json={"model": "echo", "prompt": "hi", "echo": True, "logprobs": 1},
+        )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("logprobs", [None, 0])
+@pytest.mark.asyncio
+async def test_completion_echo_without_logprobs_is_not_forwarded(
+    app: FastAPI, logprobs: int | None
+) -> None:
+    """An echo row without logprobs must not ask the worker for prompt logits.
+
+    It would otherwise fail a batch it shares with a logprobs row.
+    """
+    async with AsyncTestClient(app) as client:
+        all_tokens = AsyncMock(side_effect=app.state.pipeline.all_tokens)
+        app.state.pipeline.all_tokens = all_tokens
+        body: dict[str, object] = {
+            "model": "echo",
+            "prompt": "hi",
+            "echo": True,
+        }
+        if logprobs is not None:
+            body["logprobs"] = logprobs
+        response = await client.post("/v1/completions", json=body)
+
+    assert response.status_code == 200
+    request = all_tokens.call_args.args[0]
+    assert isinstance(request, TextGenerationRequest)
+    assert not request.echo
 
 
 @pytest.mark.asyncio

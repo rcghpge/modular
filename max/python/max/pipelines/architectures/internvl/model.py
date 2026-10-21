@@ -38,6 +38,7 @@ from max.pipelines.lib import (
     PipelineModelWithKVCache,
 )
 from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
+from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
 
 from .batch_processor import InternVLBatchProcessor
@@ -107,6 +108,7 @@ def assert_image_embeddings_invariant(
 
 
 class InternVLModel(
+    LogProbabilitiesMixin,
     AlwaysSignalBuffersMixin,
     PipelineModelWithKVCache[TextAndVisionContext, InternVLConfig, Model],
 ):

@@ -43,9 +43,11 @@ from max.pipelines.modeling.types import (
     TextGenerationRequestMessage,
 )
 from PIL import Image
+from test_common.numerics import log_softmax
 
 PROMPTS = ["The capital of France is", "Water is made of"]
 MAX_NEW_TOKENS = 16
+NUM_TOP_LOG_PROBS = 3
 
 
 def load(repo_id: str, prefer_module_v3: bool = False) -> Iterator[AutoModel]:
@@ -137,8 +139,16 @@ def check_text_rows(model: AutoModel) -> None:
 
 
 def check_image_rows(model: AutoModel) -> None:
-    """Checks a red image row and a text row against the oracle."""
+    """Checks a red image row and a text row against the oracle.
+
+    Each row's log probs must match ``log_softmax`` of its recorded logits.
+    """
     repo_id = model.pipeline_config.model.model_path
+    # The sampler's penalties and min-tokens mask edit the logits that log
+    # probs read, so log probs match log_softmax only with both off.
+    sampling = model.pipeline_config.sampling
+    assert not sampling.enable_penalties
+    assert not sampling.enable_min_tokens
     messages = [
         [
             TextGenerationRequestMessage(
@@ -160,6 +170,7 @@ def check_image_rows(model: AutoModel) -> None:
         max_new_tokens=MAX_NEW_TOKENS,
         top_k=1,
         output_logits=True,
+        output_logprobs=NUM_TOP_LOG_PROBS,
     )
 
     sampling_params = _greedy_sampling_params(model)
@@ -186,19 +197,34 @@ def check_image_rows(model: AutoModel) -> None:
     ]
     assert all(new_tokens)
     assert outputs.logits is not None
-    for tokens, logits in zip(new_tokens, outputs.logits, strict=True):
+    assert outputs.log_probs is not None
+    for tokens, logits, log_probs in zip(
+        new_tokens, outputs.logits, outputs.log_probs, strict=True
+    ):
         assert logits.shape[0] == len(tokens)
         assert np.argmax(logits, axis=-1).tolist() == tokens
+        expected_log_probs = log_softmax(logits, axis=-1)
+        assert log_probs.sampled_token_ids == tokens
+        assert len(log_probs.top_log_probabilities) == len(tokens)
+        for t, (token, log_prob, top) in enumerate(
+            zip(
+                tokens,
+                log_probs.token_log_probabilities,
+                log_probs.top_log_probabilities,
+                strict=True,
+            )
+        ):
+            assert len(top) == NUM_TOP_LOG_PROBS
+            assert top[token] == pytest.approx(log_prob)
+            assert log_prob == pytest.approx(max(top.values()))
+            assert log_prob == pytest.approx(
+                expected_log_probs[t, token], abs=1e-3
+            )
+            expected_top = np.sort(expected_log_probs[t])[::-1]
+            assert sorted(top.values(), reverse=True) == pytest.approx(
+                expected_top[:NUM_TOP_LOG_PROBS].tolist(), abs=1e-3
+            )
     answer = AutoTokenizer(repo_id, trust_remote_code=True).decode(
         new_tokens[0], skip_special_tokens=True
     )
     assert "red" in answer.lower()
-
-    # These models do not compute log probabilities.
-    with pytest.raises(ValueError, match="does not compute log probabilities"):
-        model.generate(
-            messages=messages,
-            images=images,
-            max_new_tokens=MAX_NEW_TOKENS,
-            output_logprobs=1,
-        )

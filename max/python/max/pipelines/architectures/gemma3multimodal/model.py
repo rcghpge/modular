@@ -35,6 +35,7 @@ from max.pipelines.lib import (
     PipelineModelWithKVCache,
 )
 from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
+from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from transformers import AutoConfig
 
@@ -100,6 +101,7 @@ class Gemma3MultiModalModelInputs(ModelInputs):
 
 
 class Gemma3_MultiModalModel(
+    LogProbabilitiesMixin,
     AlwaysSignalBuffersMixin,
     PipelineModelWithKVCache[
         TextAndVisionContext, Gemma3ForConditionalGenerationConfig, Model

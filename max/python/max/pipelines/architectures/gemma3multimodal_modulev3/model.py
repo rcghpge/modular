@@ -38,6 +38,7 @@ from max.pipelines.lib import (
     ModuleV3MultiGraphPipelineModelWithKVCache,
     PipelineConfig,
 )
+from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.modeling.eager_validation import eager_validator
 from transformers import AutoConfig
@@ -58,6 +59,7 @@ logger = logging.getLogger("max.pipelines")
 
 
 class Gemma3MultiModalModelV3(
+    LogProbabilitiesMixin,
     ModuleV3MultiGraphPipelineModelWithKVCache[TextAndVisionContext],
 ):
     """Gemma 3 multimodal pipeline model using the ModuleV3 API."""

@@ -54,7 +54,7 @@ from max.pipelines.context import (
 )
 from max.pipelines.context.exceptions import InputError
 from max.pipelines.context.outputs import GenerationOutput
-from max.pipelines.lib import PipelineConfig
+from max.pipelines.lib import PIPELINE_REGISTRY, PipelineConfig, PipelineModel
 from max.pipelines.lib.log_probabilities import _MAX_TOP_LOGPROBS
 from max.pipelines.lib.tool_parsing import (
     StructuralTagToolParser,
@@ -293,6 +293,11 @@ _SPECULATIVE_LOGPROBS_ERROR = (
     "Log probabilities are not supported with speculative decoding. Start"
     " the server with --allow-unsupported-logprobs to silently ignore the"
     " field."
+)
+
+_ECHO_LOGPROBS_ERROR = (
+    "`echo` with `logprobs` scores the prompt tokens, which needs the prompt"
+    " logits. Start the server with --enable-echo to use them together."
 )
 
 # Standard OpenAI message roles; a tokenizer may allow more via ``extra_chat_roles``.
@@ -2673,6 +2678,19 @@ def _convert_chat_completion_tools_to_token_generator_tools(
     return token_generator_tools
 
 
+def _computes_log_probabilities(pipeline_config: PipelineConfig) -> bool:
+    """Returns whether the served model overrides the base log probabilities.
+
+    The base implementation raises ``NotImplementedError``, which the pipeline
+    turns into a response with no log probabilities.
+    """
+    arch = PIPELINE_REGISTRY.architecture_for_config(pipeline_config)
+    return arch is not None and (
+        getattr(arch.pipeline_model, "compute_log_probabilities", None)
+        is not PipelineModel.compute_log_probabilities
+    )
+
+
 def _validate_logprobs_count(count: int, field_name: str) -> None:
     """Validate a requested top-k logprobs count against the graph's ceiling.
 
@@ -3672,6 +3690,18 @@ async def openai_create_completion(
                     else _OVERLAP_LOGPROBS_ERROR
                 )
 
+        # A model that computes log probabilities raises on an echo row it has
+        # no prompt logits for, which kills the worker. An echo row without
+        # logprobs has nothing to score, yet it would still trip that check in
+        # a batch it shares with a logprobs row.
+        echo = bool(completion_request.echo and completion_request.logprobs)
+        if (
+            echo
+            and not pipeline_config.model.enable_echo
+            and _computes_log_probabilities(pipeline_config)
+        ):
+            raise InputError(_ECHO_LOGPROBS_ERROR)
+
         response_generator = OpenAICompletionResponseGenerator(
             pipeline,
             stream_options=completion_request.stream_options,
@@ -3729,7 +3759,7 @@ async def openai_create_completion(
                     if completion_request.logprobs is not None
                     else 0
                 ),
-                echo=completion_request.echo or False,
+                echo=echo,
                 sampling_params=sampling_params,
                 target_endpoint=_get_target_endpoint(
                     request, completion_request.target_endpoint

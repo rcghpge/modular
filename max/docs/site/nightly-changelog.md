@@ -19,7 +19,17 @@ This version is still a work in progress.
   recommends it for coding and agent workloads. Pass `clear_thinking=True` in
   the chat template options to drop earlier reasoning.
 
+- InternVL and Gemma 3 multimodal models now return log probabilities, so
+  `logprobs` in `max serve` and `output_logprobs` in `generate()` work for
+  them.
+
 ## Inference server
+
+- `/v1/completions` now returns a 400 error for `echo` with `logprobs` on a
+  server started without `--enable-echo`, when the model computes log
+  probabilities. The request used to crash the model worker. Other models
+  still return no log probabilities, and `echo` without `logprobs` has no
+  effect.
 
 ### Server metrics
 
