@@ -82,6 +82,7 @@ from .indexer import (
     select_index_keys_masked,
     store_index_keys,
 )
+from .mxfp8_matmul import mxfp8_linear
 from .query import DeepseekV41Query
 from .ragged import V41RaggedRows as RaggedRows
 from .reuse import ForwardSelection, bind_cache_sources, selection_for_layer
@@ -679,21 +680,23 @@ class CSA2Attention(Module):
         out = ops.reshape(out, [out.shape[0], self.num_heads * self.head_dim])
         if self.woa_mxfp8:
             assert self.wo_a.weight_scale is not None
-            return self.wo_b(
+            return mxfp8_linear(
+                self.wo_b,
                 mxfp8_grouped_projection(
                     out,
                     self.wo_a.weight,
                     self.wo_a.weight_scale,
                     self.o_groups,
                     rope=(freqs_cis, self.head_dim),
-                )
+                ),
             )
-        return self.wo_b(
+        return mxfp8_linear(
+            self.wo_b,
             bf16_grouped_projection(
                 undo_rope_tail(out, freqs_cis, self.head_dim),
                 self.wo_a.weight,
                 self.o_groups,
-            )
+            ),
         )
 
     def __call__(

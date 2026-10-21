@@ -409,7 +409,11 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     )
     var num_sf_threads = num_sf_cols // UInt32(ELEMENTS_PER_THREAD)
 
-    with PDL():
+    # Releasing at entry lets the block-scaled GEMM that consumes this output
+    # stream its weights while the quantize runs. A quantize that follows
+    # another one directly gets packed onto fewer SMs this way, but models
+    # place a GEMM after each quantize.
+    with PDL[overlap_at_beginning=True]():
         var row = UInt32(block_idx.x)
         while row < num_rows_padded:
             # A block keeps one row's loads in flight, too few to hide DRAM

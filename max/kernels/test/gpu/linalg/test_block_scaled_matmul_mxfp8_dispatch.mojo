@@ -25,11 +25,15 @@ reference:
   * a heuristic-covered shape (M <= 8192) that hits the Mojo kernel, and
   * the KERN-3024 large-M shape that must now fall back to the vendor
     (cuBLASLt) MXFP8 block-scaled matmul.
+
+It also runs every decode shape with tuning-table rows at M values inside
+and at the edges of each row.
 """
 
 from std.math import ceildiv, align_up
 from std.random import rand, random_ui64
 from max.gpu.host import DeviceContext
+from max.gpu.primitives.grid_controls import PDLLevel
 from max.gpu.compute.arch.mma_nvidia_sm100 import UMMAKind
 
 from internal_utils import assert_almost_equal
@@ -67,6 +71,7 @@ def test_mxfp8_dispatch[
     //,
     input_type: DType,
     output_type: DType,
+    pdl_level: PDLLevel = PDLLevel.OFF,
 ](
     ctx: DeviceContext,
     m: Int,
@@ -195,6 +200,7 @@ def test_mxfp8_dispatch[
     block_scaled_matmul[
         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
         transpose_b=True,
+        pdl_level=pdl_level,
         target="gpu",
     ](c, a, b, a_scales, b_scales, Float32(1.0), ctx)
 
@@ -284,8 +290,27 @@ def test_mxfp8_dispatch[
     _ = b_scales_device^
 
 
+def test_tuned_decode_shape[N: Int, K: Int](ctx: DeviceContext) raises:
+    # M inside and at the edges of the shape's tuning-table rows, plus one
+    # past the last row. PDL on turns on the rows' weight prefetch.
+    for m in [17, 61, 96, 127, 129, 151, 191, 193]:
+        test_mxfp8_dispatch[.float8_e4m3fn, .bfloat16](
+            ctx, m, Idx[N], Idx[K], expect_heuristic_hit=True
+        )
+        test_mxfp8_dispatch[.float8_e4m3fn, .bfloat16, PDLLevel.ON](
+            ctx, m, Idx[N], Idx[K], expect_heuristic_hit=False
+        )
+
+
 def main() raises:
     with DeviceContext() as ctx:
+        test_tuned_decode_shape[1792, 5120](ctx)
+        test_tuned_decode_shape[4096, 1280](ctx)
+        test_tuned_decode_shape[4608, 5120](ctx)
+        test_tuned_decode_shape[5120, 2304](ctx)
+        test_tuned_decode_shape[5120, 8192](ctx)
+        test_tuned_decode_shape[32768, 1280](ctx)
+
         # Heuristic-covered shape (M <= 8192): exercises the Mojo block-scaled
         # kernel path and guards against a regression there.
         test_mxfp8_dispatch[.float8_e4m3fn, .bfloat16](

@@ -524,6 +524,75 @@ def load_AB_SFA[
 
 
 @inline(.always)
+def _prefetch_weight_tiles_l2_sbn[
+    a_type: DType,
+    b_type: DType,
+    sfa_tma_dtype: DType,
+    a_tile_shape: Coord,
+    a_desc_shape: Coord,
+    b_tile_shape: Coord,
+    b_desc_shape: Coord,
+    sfa_tile_shape: Coord,
+    sfa_desc_shape: Coord,
+    /,
+    *,
+    block_tile_shape: IndexList[3],
+    mma_shape: IndexList[3],
+    num_sf_k_tiles: Int,
+    k_group_size: Int = 1,
+    AB_swapped: Bool = False,
+](
+    a_tma_op: TMATensorTile[a_type, a_tile_shape, a_desc_shape],
+    b_tma_op: TMATensorTile[b_type, b_tile_shape, b_desc_shape],
+    sfa_tma_op: TMATensorTile[sfa_tma_dtype, sfa_tile_shape, sfa_desc_shape],
+    peer_cta_coord: Tuple[Int, Int, Int],
+    work_tile_coord: Tuple[Int, Int, Int],
+    iter_idx: UInt32,
+):
+    """Prefetches into L2 the weight tiles `load_AB_SFA` loads for the
+    k-group at `iter_idx`. Call from one thread.
+
+    AB_swapped=False: weight = B. AB_swapped=True: weight = A + SFA.
+    """
+    comptime BM = block_tile_shape[0]
+    comptime BN = block_tile_shape[1]
+    comptime BK = block_tile_shape[2]
+    comptime MMA_N = mma_shape[1]
+    comptime a_tma_rows = a_desc_shape.element_types[1].static_value
+    comptime b_tma_rows = b_desc_shape.element_types[1].static_value
+    var batch_coord = work_tile_coord[2]
+
+    comptime for j in range(k_group_size):
+        var k = Int(iter_idx) + j
+        comptime if AB_swapped:
+            a_tma_op.prefetch_l2_3d(
+                (
+                    k * BK,
+                    peer_cta_coord[2] * a_tma_rows + work_tile_coord[0] * BM,
+                    batch_coord,
+                )
+            )
+            sfa_tma_op.prefetch_l2_4d(
+                (
+                    0,
+                    k * num_sf_k_tiles,
+                    work_tile_coord[0] * (BM // SF_MN_GROUP_SIZE),
+                    batch_coord,
+                )
+            )
+        else:
+            b_tma_op.prefetch_l2_3d(
+                (
+                    k * BK,
+                    peer_cta_coord[1] * b_tma_rows
+                    + peer_cta_coord[0] * BN
+                    + work_tile_coord[1] * MMA_N,
+                    batch_coord,
+                )
+            )
+
+
+@inline(.always)
 def _prefetch_weight_tiles_sbn[
     a_type: DType,
     b_type: DType,
@@ -1857,6 +1926,29 @@ def blackwell_block_scaled_tma_umma_warp_specialized_kernel[
                     first_tile_pf_done,
                     num_iters // UInt32(config.k_group_size),
                 ):
+                    comptime if config.l2_prefetch_k_groups > 0:
+                        var pf_iter = (
+                            i + UInt32(config.l2_prefetch_k_groups)
+                        ) * UInt32(config.k_group_size)
+                        if pf_iter < num_iters and elect_one_sync():
+                            _prefetch_weight_tiles_l2_sbn[
+                                block_tile_shape=config.block_tile_shape,
+                                mma_shape=config.mma_shape,
+                                num_sf_k_tiles=config.num_sf_k_tiles,
+                                k_group_size=config.k_group_size,
+                                AB_swapped=config.AB_swapped,
+                            ](
+                                a_tma_op,
+                                b_tma_op,
+                                sfa_tma_op,
+                                peer_cta_coord,
+                                (
+                                    Int(work_info.m),
+                                    Int(work_info.n),
+                                    Int(work_info.k_start),
+                                ),
+                                pf_iter,
+                            )
                     load_AB_SFA[
                         block_tile_shape=config.block_tile_shape,
                         mma_shape=config.mma_shape,

@@ -1151,6 +1151,74 @@ def cp_async_bulk_prefetch[
 
 
 @inline(.nodebug)
+def cp_async_bulk_prefetch_tensor[
+    rank: Int
+](tma_descriptor: OpaquePointer[mut=False, _], coords: IndexList[rank]):
+    """Initiates an asynchronous prefetch of a tensor tile into the L2 cache.
+
+    Reads the box that the TMA descriptor places at `coords` from global
+    memory into L2. There is no shared memory destination and no barrier.
+    This is a hint to the memory subsystem: a later TMA load of the same box
+    may hit L2.
+
+    Requires sm_90 or higher.
+
+    Parameters:
+        rank: The dimensionality of the tensor (1 to 5).
+
+    Args:
+        tma_descriptor: Pointer to the TMA descriptor of the tensor.
+        coords: The coordinates of the box, innermost dimension first.
+    """
+    comptime assert _is_sm_9x_or_newer(), "TMA prefetch requires sm_90 or newer"
+    comptime assert rank >= 1 and rank <= 5, "rank must be 1 to 5"
+    comptime asm = String(
+        "cp.async.bulk.prefetch.tensor.", rank, "d.L2.global.tile [$0, {"
+    )
+
+    comptime if rank == 1:
+        inlined_assembly[asm + "$1}];", NoneType, constraints="l,r"](
+            tma_descriptor, Int32(coords[0])
+        )
+    elif rank == 2:
+        inlined_assembly[asm + "$1, $2}];", NoneType, constraints="l,r,r"](
+            tma_descriptor, Int32(coords[0]), Int32(coords[1])
+        )
+    elif rank == 3:
+        inlined_assembly[
+            asm + "$1, $2, $3}];", NoneType, constraints="l,r,r,r"
+        ](
+            tma_descriptor,
+            Int32(coords[0]),
+            Int32(coords[1]),
+            Int32(coords[2]),
+        )
+    elif rank == 4:
+        inlined_assembly[
+            asm + "$1, $2, $3, $4}];", NoneType, constraints="l,r,r,r,r"
+        ](
+            tma_descriptor,
+            Int32(coords[0]),
+            Int32(coords[1]),
+            Int32(coords[2]),
+            Int32(coords[3]),
+        )
+    else:
+        inlined_assembly[
+            asm + "$1, $2, $3, $4, $5}];",
+            NoneType,
+            constraints="l,r,r,r,r,r",
+        ](
+            tma_descriptor,
+            Int32(coords[0]),
+            Int32(coords[1]),
+            Int32(coords[2]),
+            Int32(coords[3]),
+            Int32(coords[4]),
+        )
+
+
+@inline(.nodebug)
 def cp_async_bulk_reduce_global_shared_cta[
     dtype: DType,
     /,

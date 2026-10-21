@@ -28,6 +28,9 @@ result against the host values:
 Store tests cover a flat shared-memory source across ranks 2–5, direct and
 rank-dispatched APIs, both descriptor box orders, and nonzero global
 coordinates. Rank-4/5 tiles contain multiple descriptor boxes.
+
+Prefetch tests issue the rank-3 and rank-4 L2 prefetch of a multi-box tile
+at nonzero coordinates, then load the same tile and check every element.
 """
 
 from std.math import align_up
@@ -319,6 +322,101 @@ def test_tma_store_ranks(ctx: DeviceContext) raises:
             ](ctx)
 
 
+@__llvm_arg_metadata(tma_tile, `nvvm.grid_constant`)
+def tma_prefetch_load_kernel[
+    tile_shape: Coord,
+    desc_shape: Coord,
+](
+    dst: TileTensor[
+        .float32,
+        RowMajorLayout[ComptimeInt[_idx_product[tile_shape]()]],
+        MutAnyOrigin,
+    ],
+    tma_tile: TMATensorTile[.float32, tile_shape, desc_shape],
+):
+    comptime rank = tile_shape.rank
+    comptime size = _idx_product[tile_shape]()
+    var tile = TileTensor(
+        unsafe_stack_allocation[
+            size, Float32, address_space=.SHARED, alignment=128
+        ](),
+        row_major[size](),
+    )
+    var mbar = unsafe_stack_allocation[
+        1,
+        SharedMemBarrier,
+        address_space=.SHARED,
+        alignment=8,
+    ]()
+
+    if thread_idx.x == 0:
+        mbar[0].init()
+        mbar[0].expect_bytes(Int32(size * size_of[Float32]()))
+        comptime if rank == 3:
+            tma_tile.prefetch_l2_3d((4, 1, 1))
+            tma_tile.async_copy_3d(tile, mbar[0], (4, 1, 1))
+        else:
+            tma_tile.prefetch_l2_4d((4, 1, 1, 1))
+            tma_tile.async_copy_4d(tile, mbar[0], (4, 1, 1, 1))
+    barrier()
+    mbar[0].wait()
+
+    for i in range(thread_idx.x, size, 32):
+        dst[i] = tile[i]
+
+
+def test_tma_prefetch_load[
+    tile_shape: Coord,
+    desc_shape: Coord,
+    global_shape: Coord,
+](ctx: DeviceContext) raises:
+    comptime rank = tile_shape.rank
+    comptime size = _idx_product[tile_shape]()
+    comptime global_size = _idx_product[global_shape]()
+    var src = HostDeviceTileTensor[.float32](
+        row_major(Coord[*global_shape.element_types]()), ctx
+    )
+    var src_host = src.host_tensor().reshape(row_major[global_size]())
+    for i in range(global_size):
+        src_host[i] = Float32(i + 1)
+    src.to_device()
+    var tma = create_tensor_tile[tile_shape, __desc_shape=desc_shape](
+        ctx, src.device_tensor()
+    )
+    var dst = HostDeviceTileTensor[.float32](row_major[size](), ctx)
+    ctx.enqueue_function[tma_prefetch_load_kernel[tile_shape, desc_shape]](
+        dst.device_tensor(), tma, grid_dim=1, block_dim=32
+    )
+    dst.to_host()
+    _ = src^
+    var host = dst.host_tensor()
+
+    # Shared memory holds the boxes in row-major box order, each box
+    # row-major; the tile starts at 4 on the innermost dim and 1 elsewhere.
+    comptime box_size = _idx_product[desc_shape]()
+    for s in range(size):
+        var box, inner = divmod(s, box_size)
+        var global_coord = StaticTuple[Int, rank]()
+        comptime for r in range(rank):
+            comptime dim = rank - 1 - r
+            comptime copies = Int(tile_shape[dim]) // Int(desc_shape[dim])
+            var box_rest, box_dim = divmod(box, copies)
+            var inner_rest, inner_dim = divmod(inner, Int(desc_shape[dim]))
+            box = box_rest
+            inner = inner_rest
+            global_coord[dim] = (
+                box_dim * Int(desc_shape[dim])
+                + inner_dim
+                + (4 if dim == rank - 1 else 1)
+            )
+        var linear = 0
+        comptime for dim in range(rank):
+            linear = linear * Int(global_shape[dim]) + global_coord[dim]
+        assert_equal(host[s], Float32(linear + 1))
+
+    print("TMA prefetch + load passed: rank=", rank)
+
+
 def main() raises:
     with DeviceContext() as ctx:
         test_tma_store_ranks(ctx)
@@ -340,4 +438,11 @@ def main() raises:
         print("test_tma_load_tile_tensor_padded_stride_bf16")
         test_tma_load_tile_tensor[
             dtype=DType.bfloat16, M=4, N=16, tileM=4, tileN=8, row_stride=24
+        ](ctx)
+
+        test_tma_prefetch_load[
+            coord[2, 2, 16], coord[1, 2, 16], coord[4, 4, 32]
+        ](ctx)
+        test_tma_prefetch_load[
+            coord[2, 2, 2, 8], coord[1, 2, 2, 8], coord[4, 4, 4, 16]
         ](ctx)

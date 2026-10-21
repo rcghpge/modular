@@ -52,6 +52,7 @@ from max.gpu.host.nvidia.tma import (
 from max.gpu.intrinsics import Scope
 from max.gpu.memory import (
     async_copy,
+    cp_async_bulk_prefetch_tensor,
     cp_async_bulk_tensor_global_shared_cta,
     cp_async_bulk_tensor_global_shared_cta_elect,
     cp_async_bulk_tensor_shared_cluster_global,
@@ -1806,6 +1807,83 @@ struct TMATensorTile[
                     ),
                     multicast_mask,
                 )
+
+    @inline(.always)
+    def prefetch_l2_3d(self, coords: Tuple[Int, Int, Int]):
+        """Prefetches the 3D tile at `coords` from global memory into L2.
+
+        Covers the same boxes as a 3D load of the tile at `coords`, with no
+        shared memory destination and no barrier.
+
+        Args:
+            coords: The 3D coordinates of the tile, as for the 3D loads.
+        """
+        comptime copy_dim0 = Self.desc_shape.element_types[0].static_value
+        comptime copy_dim1 = Self.desc_shape.element_types[1].static_value
+        comptime copy_dim2 = Self.desc_shape.element_types[2].static_value
+        comptime num_copies_dim0 = ceildiv(
+            Self.tile_shape.element_types[0].static_value, copy_dim0
+        )
+        comptime num_copies_dim1 = ceildiv(
+            Self.tile_shape.element_types[1].static_value, copy_dim1
+        )
+        comptime num_copies_dim2 = ceildiv(
+            Self.tile_shape.element_types[2].static_value, copy_dim2
+        )
+
+        comptime for m in range(num_copies_dim0):
+            comptime for i in range(num_copies_dim1):
+                comptime for j in range(num_copies_dim2):
+                    cp_async_bulk_prefetch_tensor(
+                        Pointer(to=self.descriptor).unsafe_bitcast[NoneType](),
+                        Index(
+                            coords[0] + j * copy_dim2,
+                            coords[1] + i * copy_dim1,
+                            coords[2] + m * copy_dim0,
+                        ),
+                    )
+
+    @inline(.always)
+    def prefetch_l2_4d(self, coords: Tuple[Int, Int, Int, Int]):
+        """Prefetches the 4D tile at `coords` from global memory into L2.
+
+        Covers the same boxes as a 4D load of the tile at `coords`, with no
+        shared memory destination and no barrier.
+
+        Args:
+            coords: The 4D coordinates of the tile, as for the 4D loads.
+        """
+        comptime copy_dim0 = Self.desc_shape.element_types[0].static_value
+        comptime copy_dim1 = Self.desc_shape.element_types[1].static_value
+        comptime copy_dim2 = Self.desc_shape.element_types[2].static_value
+        comptime copy_dim3 = Self.desc_shape.element_types[3].static_value
+        comptime num_copies_dim0 = ceildiv(
+            Self.tile_shape.element_types[0].static_value, copy_dim0
+        )
+        comptime num_copies_dim1 = ceildiv(
+            Self.tile_shape.element_types[1].static_value, copy_dim1
+        )
+        comptime num_copies_dim2 = ceildiv(
+            Self.tile_shape.element_types[2].static_value, copy_dim2
+        )
+        comptime num_copies_dim3 = ceildiv(
+            Self.tile_shape.element_types[3].static_value, copy_dim3
+        )
+        comptime for n in range(num_copies_dim0):
+            comptime for m in range(num_copies_dim1):
+                comptime for i in range(num_copies_dim2):
+                    comptime for j in range(num_copies_dim3):
+                        cp_async_bulk_prefetch_tensor(
+                            Pointer(to=self.descriptor).unsafe_bitcast[
+                                NoneType
+                            ](),
+                            Index(
+                                coords[0] + j * copy_dim3,
+                                coords[1] + i * copy_dim2,
+                                coords[2] + m * copy_dim1,
+                                coords[3] + n * copy_dim0,
+                            ),
+                        )
 
     @inline(.always)
     def async_multicast_load_3d[

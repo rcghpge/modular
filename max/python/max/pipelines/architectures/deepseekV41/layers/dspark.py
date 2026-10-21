@@ -57,6 +57,7 @@ from .csa2 import (
     store_window_kv,
 )
 from .indexer import rope_cos_sin_table
+from .mxfp8_matmul import mxfp8_linear
 from .query import DeepseekV41Query
 from .ragged import V41RaggedRows as RaggedRows
 from .rope import rope_for_layer
@@ -387,19 +388,21 @@ def grouped_output_projection(
     """
     out = ops.reshape(out, [out.shape[0], num_heads * head_dim])
     if wo_a.weight_scale is not None:
-        return wo_b(
+        return mxfp8_linear(
+            wo_b,
             mxfp8_grouped_projection(
                 out,
                 wo_a.weight,
                 wo_a.weight_scale,
                 o_groups,
                 rope=(freqs_cis, head_dim),
-            )
+            ),
         )
-    return wo_b(
+    return mxfp8_linear(
+        wo_b,
         bf16_grouped_projection(
             undo_rope_tail(out, freqs_cis, head_dim), wo_a.weight, o_groups
-        )
+        ),
     )
 
 

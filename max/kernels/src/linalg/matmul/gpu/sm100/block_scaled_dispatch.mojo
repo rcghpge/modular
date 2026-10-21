@@ -345,7 +345,7 @@ def _heuristic_and_outliers_dispatch_impl[
 
     comptime for tuning_config in outlier_configs:
         if m >= tuning_config.M and m < tuning_config.M_end:
-            comptime matmul_config = BlockScaledMatmulConfig[
+            comptime table_config = BlockScaledMatmulConfig[
                 a_type, b_type, c_type, scales_dtype, scales_dtype, transpose_b
             ](
                 scaling_kind=scaling_kind,
@@ -365,6 +365,18 @@ def _heuristic_and_outliers_dispatch_impl[
                 > 0 else None,
                 is_small_bn=tuning_config.is_small_bn,
             )
+            # At decode M the GEMM is resident while its producer drains, so
+            # it can start the weight stream before the PDL wait. A long K loop
+            # also gains from prefetching its weights into L2 ahead of their
+            # loads, which keeps more DRAM reads in flight than the ring does.
+            comptime matmul_config = table_config.with_weight_prefetch(
+                l2_depth=4 if tuning_config.is_small_bn
+                and static_K >= 8192 else 0
+            ) if (
+                pdl_level > PDLLevel.OFF
+                and scaling_kind == UMMAKind.KIND_MXF8F6F4
+                and tuning_config.M_end <= 256
+            ) else table_config
 
             logger.info("Using tuning config: ", matmul_config)
 

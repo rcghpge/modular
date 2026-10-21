@@ -1249,6 +1249,9 @@ struct BlockScaledMatmulConfig[
     var is_small_bn: Bool
     var gemm_kind: GEMMKind
     var prefetch_tiles_n: Int
+    # How many k-groups ahead of its TMA loads the load warp prefetches the
+    # weights into L2. 0 disables it.
+    var l2_prefetch_k_groups: Int
     # Epilogue warpgroups, each owning its own output band, staging buffer and
     # barrier id. 1 (default) is the single-pipeline epilogue every existing
     # caller has; 2 gives a second, independent store-block pipeline.
@@ -1274,6 +1277,7 @@ struct BlockScaledMatmulConfig[
         register_based_epilogue: Bool = True,
         gemm_kind: GEMMKind = GEMMKind.GEMM,
         prefetch_tiles_n: Int = 0,
+        l2_prefetch_k_groups: Int = 0,
         num_epilogue_warpgroups: Int = 1,
         # Fixed SMEM (bytes) reserved out of the pipeline budget for a
         # co-resident non-matmul warp-class (persistent megakernel). 0
@@ -1307,6 +1311,7 @@ struct BlockScaledMatmulConfig[
         self.gemm_kind = gemm_kind
         self.num_epilogue_warpgroups = num_epilogue_warpgroups
         self.prefetch_tiles_n = prefetch_tiles_n
+        self.l2_prefetch_k_groups = l2_prefetch_k_groups
 
         # Scaling factors configuration (SFA, SFB)
         self.scaling_kind = scaling_kind
@@ -1397,6 +1402,25 @@ struct BlockScaledMatmulConfig[
             self.num_pipeline_stages, self.k_group_size
         )
 
+    def with_weight_prefetch(self, depth: Int = 4, l2_depth: Int = 0) -> Self:
+        """Returns this config loading up to `depth` weight k-groups before
+        the PDL wait, capped by the ring, and prefetching the weights into L2
+        `l2_depth` k-groups ahead of their loads.
+
+        Args:
+            depth: Most k-groups to prefetch.
+            l2_depth: K-groups the L2 prefetch runs ahead; 0 disables it.
+
+        Returns:
+            The config with `prefetch_tiles_n` and `l2_prefetch_k_groups` set.
+        """
+        var config = self
+        config.prefetch_tiles_n = min(
+            depth, config.num_pipeline_stages // config.k_group_size
+        )
+        config.l2_prefetch_k_groups = l2_depth
+        return config
+
     def swap_AB_type(
         self,
     ) -> BlockScaledMatmulConfig[
@@ -1431,6 +1455,7 @@ struct BlockScaledMatmulConfig[
             register_based_epilogue=self.register_based_epilogue,
             gemm_kind=self.gemm_kind,
             prefetch_tiles_n=self.prefetch_tiles_n,
+            l2_prefetch_k_groups=self.l2_prefetch_k_groups,
         )
 
     def write_to[W: Writer](self, mut writer: W):

@@ -55,7 +55,6 @@ from max.nn.quant_config import (
     ScaleOrigin,
     WeightScaleSpec,
 )
-from max.nn.quant_ops import _matmul_float8_mxfp8
 
 from ...deepseekV4.layers.moe import (
     DeepseekV4Gate,
@@ -73,6 +72,7 @@ from ..model_config import (
     gate_up_rows_interleaved,
     nvfp4_sf_preinterleaved,
 )
+from .mxfp8_matmul import mxfp8_linear
 from .ragged import ReplicaTokens
 
 # Routed experts' down-proj input: the fused SwiGLU + NVFP4 quantize kernel
@@ -632,7 +632,7 @@ class DeepseekV41SharedExpert(Module):
     def __call__(self, x: TensorValue) -> TensorValue:
         """``[..., hidden]`` -> ``[..., hidden]``, no routing weight applied."""
         inter = self.moe_intermediate_size
-        gate_up = self.gate_up_proj(x)
+        gate_up = mxfp8_linear(self.gate_up_proj, x)
         if _is_sm10x_gpu():
             return self._fused_down(gate_up)
         # Slices, not `ops.split`: `ops.split` slows the fused GEMM ~25% at
@@ -660,13 +660,7 @@ class DeepseekV41SharedExpert(Module):
             scales_type=DType.float8_e8m0fnu,
             out_type=DType.float8_e4m3fn,
         )
-        assert self.w2.weight_scale is not None
-        out = _matmul_float8_mxfp8(
-            h,
-            self.w2.weight.to(h.device),
-            self.w2.weight_scale,
-            x_scales=h_scales,
-        )
+        out = mxfp8_linear(self.w2, h, x_scales=h_scales)
         return ops.reshape(out, [*leading_dims, out.shape[-1]])
 
 

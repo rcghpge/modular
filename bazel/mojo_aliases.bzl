@@ -55,6 +55,7 @@ INTERNAL_PACKAGES = [
     "//Kernels/lib/mega_ffn",
     "//Kernels/lib/mega_mhc",
     "//Kernels/lib/msa",
+    "//Kernels/lib/mxfp8_splitk",
     "//Kernels/lib/qsa",
     "//Kernels/lib/topk_coop",
     "//max/driver/src/max_license/_hal",

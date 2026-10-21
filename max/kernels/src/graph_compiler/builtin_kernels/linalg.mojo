@@ -35,6 +35,7 @@ from max.gpu.host import DeviceContext
 from max.gpu.primitives.grid_controls import PDLLevel
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu, _is_sm10x_gpu
+from max.gpu.primitives.grid_controls import PDLLevel
 from layout import (
     Coord,
     Idx,
@@ -1535,6 +1536,7 @@ struct Struct_matmul_dynamic_block_scaled:
             transpose_b=True,
             has_epilogue_fn=has_epilogue_fusion and not has_compute_lambda,
             has_compute_fn=has_epilogue_fusion and has_compute_lambda,
+            pdl_level=PDLLevel.ON,
             target=target,
         ](
             c.to_tile_tensor[.int64](),

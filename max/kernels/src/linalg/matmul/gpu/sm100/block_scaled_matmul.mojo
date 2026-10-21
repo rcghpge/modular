@@ -2164,6 +2164,9 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
     ), "Only support cta_group == 1 or 2"
 
     comptime assert config.num_split_k == 1, "Only support split_k == 1"
+    comptime assert (
+        config.l2_prefetch_k_groups == 0
+    ), "the L2 weight prefetch is implemented in the small-BN kernel only"
 
     comptime assert (
         config.num_pipeline_stages % config.k_group_size == 0

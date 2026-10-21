@@ -76,6 +76,21 @@ def woa_mxfp8_enabled() -> bool:
     return _env_switch(WOA_MXFP8_ENV)
 
 
+# MXFP8 projections on the cluster split-K matmul (default on).
+MXFP8_SPLITK_ENV = "MAX_DSV41_MXFP8_SPLITK"
+
+
+def mxfp8_splitk_enabled() -> bool:
+    """Whether ``attn.wo_b`` and the shared expert run on the cluster
+    split-K MXFP8 matmul.
+
+    On (default): at decode sizes each 128-row weight tile's K splits over
+    a cluster of CTAs, and other sizes take the production block-scaled
+    matmul. Off (``MAX_DSV41_MXFP8_SPLITK=0``): production at every size.
+    """
+    return _env_switch(MXFP8_SPLITK_ENV)
+
+
 # Interleave routed-expert NVFP4 block scales on the host (default on). "0"
 # interleaves in-graph, which the compiler hoists into a second resident copy.
 NVFP4_SF_PREINTERLEAVE_ENV = "MAX_DSV41_NVFP4_SF_PREINTERLEAVE"
