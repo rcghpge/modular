@@ -25,8 +25,14 @@ from urllib.parse import urlparse
 
 from prometheus_client.parser import text_string_to_metric_families
 
+from .backend_metric_names import (
+    BatchPhase,
+    MetricAvailability,
+    resolve_batch_metric,
+    resolve_spec_decode_metric,
+)
 from .config import Backend
-from .metrics import SpecDecodeMetrics
+from .metrics import HistogramMetric, SpecDecodeMetrics
 from .prometheus_fetch import fetch_metrics
 
 if TYPE_CHECKING:
@@ -94,6 +100,15 @@ class ParsedMetrics:
     """Dictionary of histogram metrics with bucket distributions."""
     raw_text: str
     """Raw Prometheus text format for debugging."""
+    backend: Backend | None = None
+    """Backend these metrics were scraped from.
+
+    Set by the collection helpers (:func:`collect_benchmark_metrics` /
+    :func:`fetch_and_parse_metrics`) so consumers can resolve metric names
+    and ``batch_type`` label values per engine through
+    ``backend_metric_names``. ``None`` (metrics built directly) keeps the
+    MAX Serve names.
+    """
 
     def get_histogram(
         self, metric_name: str, labels: dict[str, str] | None = None
@@ -299,8 +314,9 @@ def fetch_and_parse_metrics(backend: Backend, base_url: str) -> ParsedMetrics:
     """
     metrics_url = get_metrics_url(backend, base_url)
     raw_text = fetch_metrics(metrics_url)
-    # TODO: Add backend-specific metric name normalization here if needed
-    return parse_metrics(raw_text)
+    parsed = parse_metrics(raw_text)
+    parsed.backend = backend
+    return parsed
 
 
 def compute_metrics_delta(
@@ -354,6 +370,7 @@ def compute_metrics_delta(
         gauges=delta_gauges,
         histograms=delta_histograms,
         raw_text="",  # Delta doesn't have raw text
+        backend=final.backend,
     )
 
 
@@ -381,6 +398,7 @@ def collect_benchmark_metrics(
         try:
             raw_text = fetch_metrics(url)
             final = parse_metrics(raw_text)
+            final.backend = backend
             if baseline and label in baseline:
                 final = compute_metrics_delta(
                     baseline=baseline[label], final=final
@@ -407,24 +425,39 @@ def _extract_position(metric_key: str) -> int | None:
         return None
 
 
-def parse_spec_decode_metrics(raw_text: str) -> SpecDecodeMetrics | None:
+def parse_spec_decode_metrics(
+    raw_text: str, backend: Backend | None = None
+) -> SpecDecodeMetrics | None:
     """Parse speculative decoding metrics from Prometheus text output.
 
-    Recognizes backend shapes:
+    Metric names are resolved per backend through ``backend_metric_names``:
 
-    - vLLM-style counters under ``vllm:spec_decode_*``.
-    - MAX-style histogram ``maxserve_spec_decode_acceptance_rate_per_position``
+    - vLLM-style counters under ``vllm:spec_decode_*`` (not emitted by mach;
+      declared unavailable there).
+    - Histogram ``maxserve_spec_decode_acceptance_rate_per_position`` on MAX
+      Serve, ``mach_spec_decode_acceptance_rate_per_position`` on mach
       (per-position acceptance-rate observations, 0--100).
-    - MAX-style histogram ``maxserve_spec_decode_avg_acceptance_length`` (batch
-      mean acceptance length in tokens).
+    - Histogram ``maxserve_spec_decode_avg_acceptance_length`` on MAX Serve,
+      ``mach_spec_decode_avg_acceptance_length`` on mach (batch mean
+      acceptance length in tokens).
 
     Args:
         raw_text: Raw Prometheus text-format payload.
+        backend: Backend the payload was scraped from. ``None`` keeps the
+            MAX Serve names.
 
     Returns:
         Parsed metrics, or ``None`` when no spec-decode families are present.
     """
     parsed = parse_metrics(raw_text)
+
+    draft_counters = resolve_spec_decode_metric(backend, "draft_counters")
+    acceptance_rate = resolve_spec_decode_metric(
+        backend, "acceptance_rate_per_position"
+    )
+    avg_acceptance_length = resolve_spec_decode_metric(
+        backend, "avg_acceptance_length"
+    )
 
     num_drafts = 0
     num_draft_tokens = 0
@@ -436,39 +469,44 @@ def parse_spec_decode_metrics(raw_text: str) -> SpecDecodeMetrics | None:
     avg_acceptance_length_sum = 0.0
     avg_acceptance_length_count = 0.0
 
-    for key, value in parsed.counters.items():
-        if not key.startswith("vllm:spec_decode"):
-            continue
-        found = True
-        if "num_accepted_tokens_per_pos" in key:
+    if (
+        draft_counters.availability is not MetricAvailability.UNAVAILABLE
+        and draft_counters.name is not None
+    ):
+        for key, value in parsed.counters.items():
+            if not key.startswith(draft_counters.name):
+                continue
+            found = True
+            if "num_accepted_tokens_per_pos" in key:
+                pos = _extract_position(key)
+                if pos is not None:
+                    accepted_per_pos[pos] = accepted_per_pos.get(pos, 0) + int(
+                        value
+                    )
+            elif "num_drafts" in key:
+                num_drafts += int(value)
+            elif "num_draft_tokens" in key:
+                num_draft_tokens += int(value)
+            elif "num_accepted_tokens" in key:
+                num_accepted_tokens += int(value)
+
+    if acceptance_rate.name is not None:
+        for key, hist in parsed.histograms.items():
+            if not key.startswith(acceptance_rate.name):
+                continue
             pos = _extract_position(key)
-            if pos is not None:
-                accepted_per_pos[pos] = accepted_per_pos.get(pos, 0) + int(
-                    value
-                )
-        elif "num_drafts" in key:
-            num_drafts += int(value)
-        elif "num_draft_tokens" in key:
-            num_draft_tokens += int(value)
-        elif "num_accepted_tokens" in key:
-            num_accepted_tokens += int(value)
+            if pos is None:
+                continue
+            found = True
+            per_pos_rate_sum[pos] = per_pos_rate_sum.get(pos, 0.0) + hist.sum
+            per_pos_rate_count[pos] = per_pos_rate_count.get(pos, 0) + int(
+                hist.count
+            )
 
-    for key, hist in parsed.histograms.items():
-        if not key.startswith(
-            "maxserve_spec_decode_acceptance_rate_per_position"
-        ):
-            continue
-        pos = _extract_position(key)
-        if pos is None:
-            continue
-        found = True
-        per_pos_rate_sum[pos] = per_pos_rate_sum.get(pos, 0.0) + hist.sum
-        per_pos_rate_count[pos] = per_pos_rate_count.get(pos, 0) + int(
-            hist.count
-        )
-
-    al_hist = parsed.histograms.get(
-        "maxserve_spec_decode_avg_acceptance_length"
+    al_hist = (
+        parsed.histograms.get(avg_acceptance_length.name)
+        if avg_acceptance_length.name is not None
+        else None
     )
     if al_hist is not None and al_hist.count > 0:
         found = True
@@ -518,7 +556,7 @@ def fetch_spec_decode_metrics(
                 "Failed to fetch spec-decode metrics from %s (%s)", label, url
             )
             continue
-        parsed = parse_spec_decode_metrics(metrics_text)
+        parsed = parse_spec_decode_metrics(metrics_text, backend)
         if parsed is None:
             continue
         if merged is None:
@@ -561,24 +599,46 @@ def print_server_metrics(metrics: ParsedMetrics) -> None:
                 print(f"    Sum: {hist.sum:.2f}")
                 print(f"    Mean: {hist.mean:.2f}")
 
-        # Special handling for batch_execution_time - show prefill/decode breakdown
-        prefill = metrics.get_histogram(
-            "maxserve_batch_execution_time_milliseconds", {"batch_type": "CE"}
+        # Special handling for batch_execution_time - show prefill/decode
+        # breakdown, resolving the metric name and batch_type labels for the
+        # scraped backend (MAX Serve CE/TG, mach prefill/decode).
+        prefill_resolved = resolve_batch_metric(
+            metrics.backend,
+            HistogramMetric.MAXSERVE_BATCH_EXECUTION_TIME_MILLISECONDS.value,
+            BatchPhase.PREFILL,
         )
-        decode = metrics.get_histogram(
-            "maxserve_batch_execution_time_milliseconds", {"batch_type": "TG"}
+        decode_resolved = resolve_batch_metric(
+            metrics.backend,
+            HistogramMetric.MAXSERVE_BATCH_EXECUTION_TIME_MILLISECONDS.value,
+            BatchPhase.DECODE,
+        )
+        prefill = (
+            metrics.get_histogram(
+                prefill_resolved.name, dict(prefill_resolved.labels)
+            )
+            if prefill_resolved
+            else None
+        )
+        decode = (
+            metrics.get_histogram(
+                decode_resolved.name, dict(decode_resolved.labels)
+            )
+            if decode_resolved
+            else None
         )
 
         if prefill or decode:
             print("\n  Batch Execution Time Breakdown:")
-            if prefill:
+            if prefill and prefill_resolved:
                 print(
-                    f"    Mean Prefill (CE) Time: {prefill.mean:.2f} ms "
+                    f"    Mean Prefill ({prefill_resolved.labels['batch_type']})"
+                    f" Time: {prefill.mean:.2f} ms "
                     f"(count={int(prefill.count)}, sum={prefill.sum:.2f} ms)"
                 )
-            if decode:
+            if decode and decode_resolved:
                 print(
-                    f"    Mean Decode (TG) Time:  {decode.mean:.2f} ms "
+                    f"    Mean Decode ({decode_resolved.labels['batch_type']})"
+                    f" Time:  {decode.mean:.2f} ms "
                     f"(count={int(decode.count)}, sum={decode.sum:.2f} ms)"
                 )
 
