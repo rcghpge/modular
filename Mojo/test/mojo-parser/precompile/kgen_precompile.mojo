@@ -29,7 +29,7 @@
 
 ## With -S, the package prints under its directory's name. The auto-imported
 ## builtin package comes from the fixture std on the include path.
-# RUN: kgen -precompile -S -I %S/../../test-packages %t.dir/pkg \
+# RUN: %precompile-mojo-isolated -S %t.dir/pkg \
 # RUN:   | FileCheck %s --check-prefix=PRINT
 # PRINT:      lit.package @pkg {
 # PRINT-NOT:  dependencies
@@ -38,8 +38,7 @@
 # PRINT:      lit.call tail @pkg::@a::@"afn()"()
 
 ## Written to a `.mojoc` file, the package takes the file's name.
-# RUN: kgen -precompile -I %S/../../test-packages %t.dir/pkg \
-# RUN:   -o %t.dir/deps/dep.mojoc
+# RUN: %precompile-mojo-isolated %t.dir/pkg -o %t.dir/deps/dep.mojoc
 # RUN: kgen-opt %t.dir/deps/dep.mojoc \
 # RUN:   | FileCheck %s --check-prefix=RENAMED --implicit-check-not '@pkg::'
 # RENAMED:      lit.package @dep {
@@ -48,8 +47,8 @@
 
 ## A precompiled package imported by the package under compilation is
 ## recorded as its link dependency.
-# RUN: kgen -precompile -S -I %S/../../test-packages -I %t.dir/deps \
-# RUN:   %t.dir/user | FileCheck %s --check-prefix=DEPS
+# RUN: %precompile-mojo-isolated -S -I %t.dir/deps %t.dir/user \
+# RUN:   | FileCheck %s --check-prefix=DEPS
 # DEPS: lit.package @user attributes {dependencies = #kgen<link.dependencies[@dep]>}
 
 # RUN: not kgen -precompile %t.dir/user/u.mojo 2>&1 \

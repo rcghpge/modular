@@ -22,8 +22,8 @@
 # hits a recursive self-reference (MOCO-1946).
 
 # RUN: mkdir -p %t.reexport-gate-dup
-# RUN: mojo precompile %S/inputs/reexport_gate_dup -o %t.reexport-gate-dup/reexport_gate_dup.mojoc
-# RUN: kgen-translate --mojo-enable-prebuilt-packages -import-mojo -I %t.reexport-gate-dup %s | FileCheck %s
+# RUN: %precompile-mojo-isolated %S/inputs/reexport_gate_dup -o %t.reexport-gate-dup/reexport_gate_dup.mojoc
+# RUN: %parse-mojo-isolated -I %t.reexport-gate-dup %s | FileCheck %s
 
 from reexport_gate_dup import use_foo
 

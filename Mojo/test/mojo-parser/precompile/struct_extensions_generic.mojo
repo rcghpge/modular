@@ -12,8 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 
 # RUN: mkdir -p %t.generic-struct
-# RUN: mojo precompile %S/inputs/simple_struct_package -o %t.generic-struct/simple_struct_package.mojoc
-# RUN: kgen-translate --mojo-enable-prebuilt-packages -import-mojo -I %t.generic-struct %s --kgen-print-inline-type-values | kgen-opt -lower-semantic-cf -check-lifetimes -lower-lit | FileCheck %s
+# RUN: %precompile-mojo-isolated %S/inputs/simple_struct_package -o %t.generic-struct/simple_struct_package.mojoc
+# RUN: %parse-mojo-isolated -I %t.generic-struct %s --kgen-print-inline-type-values | kgen-opt -lower-semantic-cf -check-lifetimes -lower-lit | FileCheck %s
 
 from simple_struct_package.simple import GenericBox
 

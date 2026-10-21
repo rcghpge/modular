@@ -12,9 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 
 # RUN: mkdir -p %t.cross-package-extension
-# RUN: mojo precompile %S/inputs/simple_struct_package -o %t.cross-package-extension/simple_struct_package.mojoc
-# RUN: mojo precompile -I %t.cross-package-extension %S/inputs/extension_only_package -o %t.cross-package-extension/extension_only_package.mojoc
-# RUN: kgen-translate --mojo-enable-prebuilt-packages -import-mojo -I %t.cross-package-extension %s --kgen-print-inline-type-values | kgen-opt -lower-semantic-cf -check-lifetimes -lower-lit | FileCheck %s
+# RUN: %precompile-mojo-isolated %S/inputs/simple_struct_package -o %t.cross-package-extension/simple_struct_package.mojoc
+# RUN: %precompile-mojo-isolated -I %t.cross-package-extension %S/inputs/extension_only_package -o %t.cross-package-extension/extension_only_package.mojoc
+# RUN: %parse-mojo-isolated -I %t.cross-package-extension %s --kgen-print-inline-type-values | kgen-opt -lower-semantic-cf -check-lifetimes -lower-lit | FileCheck %s
 
 from simple_struct_package import MyStruct
 from extension_only_package import MyStruct

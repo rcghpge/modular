@@ -28,7 +28,7 @@
 # RUN: echo "struct Holder[T: Nameable]:" >> %t.dir/pkg/t.mojo
 # RUN: echo "    def get(self) -> Int:" >> %t.dir/pkg/t.mojo
 # RUN: echo "        return 0" >> %t.dir/pkg/t.mojo
-# RUN: mojo precompile %t.dir/pkg -o %t.dir/renamed_pkg.mojoc
+# RUN: %precompile-mojo-isolated %t.dir/pkg -o %t.dir/renamed_pkg.mojoc
 # RUN: kgen-opt --mlir-print-debuginfo %t.dir/renamed_pkg.mojoc \
 # RUN:   | FileCheck %s --implicit-check-not '(pkg)"pkg"' --implicit-check-not '@pkg::'
 

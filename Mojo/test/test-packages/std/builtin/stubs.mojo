@@ -1401,6 +1401,12 @@ struct AddressSpace(EnumLike, TrivialRegisterPassable):
     def __mlir_index__(self) -> __mlir_type.index:
         return self._value.__mlir_index__()
 
+    @always_inline("builtin")
+    def __eq__(self, other: Self) -> Bool:
+        return __mlir_op.`index.cmp`[
+            pred=__mlir_attr.`#index.cmp_predicate<eq>`
+        ](self.__mlir_index__(), other.__mlir_index__())
+
 
 struct Pointer[
     mut: Bool,
@@ -1511,10 +1517,16 @@ struct Pointer[
         )
 
     @always_inline
-    def unsafe_take_pointee[
-        U: Movable, //
-    ](self: Pointer[U, _]) -> U where type_of(self).mut:
-        return __get_address_as_owned_value(self._mlir_value)
+    def unsafe_take_pointee(
+        self,
+    ) -> Self.T where (
+        Self.mut
+        and Self.address_space == .GENERIC
+        and conforms_to(Self.T, Movable)
+    ):
+        return __get_address_as_owned_value(
+            self.unsafe_address_space_cast[.GENERIC]()._mlir_value
+        )
 
     @always_inline("builtin")
     def unsafe_bitcast[
@@ -1523,6 +1535,16 @@ struct Pointer[
         return __mlir_op.`pop.pointer.bitcast`[
             _type=Pointer[
                 U, Self.origin, address_space=Self.address_space
+            ]._mlir_type,
+        ](self._mlir_value)
+
+    @always_inline("builtin")
+    def unsafe_address_space_cast[
+        target_address_space: AddressSpace = Self.address_space,
+    ](self) -> Pointer[Self.T, Self.origin, address_space=target_address_space]:
+        return __mlir_op.`pop.pointer.bitcast`[
+            _type=Pointer[
+                Self.T, Self.origin, address_space=target_address_space
             ]._mlir_type,
         ](self._mlir_value)
 
@@ -1623,6 +1645,8 @@ comptime MutOpaquePointer[
 
 
 struct _StridedRangeIterator(Iterator, TrivialRegisterPassable):
+    comptime Element = Int
+
     var start: Int
     var end: Int
     var step: Int

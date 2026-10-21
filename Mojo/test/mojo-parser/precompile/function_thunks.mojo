@@ -13,12 +13,12 @@
 
 # RUN: rm -rf %t.function-thunks
 # RUN: mkdir -p %t.function-thunks
-# RUN: mojo precompile %S/inputs/func_package_foo -o %t.function-thunks/func_package_foo.mojoc
-# RUN: mojo precompile %S/inputs/func_package_bar -o %t.function-thunks/func_package_bar.mojoc
+# RUN: %precompile-mojo-isolated %S/inputs/func_package_foo -o %t.function-thunks/func_package_foo.mojoc
+# RUN: %precompile-mojo-isolated %S/inputs/func_package_bar -o %t.function-thunks/func_package_bar.mojoc
 # RUN: kgen-opt %t.function-thunks/func_package_foo.mojoc | FileCheck %s --check-prefix=THUNK
 # RUN: kgen-opt %t.function-thunks/func_package_bar.mojoc | FileCheck %s --check-prefix=THUNK
-# RUN: kgen-translate -import-mojo %s --mojo-enable-prebuilt-packages -I %t.function-thunks | FileCheck %s
-# RUN: mojo doc -Werror %s -o /dev/null -I %t.function-thunks
+# RUN: %parse-mojo-isolated %s -I %t.function-thunks | FileCheck %s
+# RUN: %mojo-docs-isolated -Werror -mojo-search-paths=%t.function-thunks %s -o /dev/null
 
 # THUNK-COUNT-1: lit.fn @"def
 

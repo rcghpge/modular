@@ -11,17 +11,16 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: mkdir -p %t.lazy-test
-# RUN: mojo precompile %S/inputs/struct_and_extension_lazy -o %t.lazy-test/lazy_test.mojoc
-# RUN: kgen-translate --mojo-enable-prebuilt-packages -import-mojo -I %t.lazy-test %s | FileCheck %s
+# A package never records itself as a link dependency, even when a module
+# absolutely imports its own package (which materializes a duplicate
+# package op during precompilation).
 
-# This imports a precompiled file's sub-package's extension.
-# That extension's file loads a struct from yet another package.
-# This will load the extension before its target struct.
-from lazy_test import simple_extension
-import lazy_test.simple_struct
+# RUN: rm -rf %t.dir && mkdir -p %t.dir/pkg
+# RUN: echo "# pkg" > %t.dir/pkg/__init__.mojo
+# RUN: echo "def afn():" > %t.dir/pkg/a.mojo
+# RUN: echo "    pass" >> %t.dir/pkg/a.mojo
+# RUN: echo "from pkg.a import afn" > %t.dir/pkg/b.mojo
+# RUN: %precompile-mojo-isolated %t.dir/pkg -o %t.dir/renamed_pkg.mojoc
+# RUN: kgen-opt %t.dir/renamed_pkg.mojoc | FileCheck %s --implicit-check-not link.dependencies
 
-
-def main():
-    # CHECK: lit.call @lazy_test::@simple_struct::@BaseType::@"__init__()"
-    var x = lazy_test.simple_struct.BaseType()
+# CHECK: lit.package @renamed_pkg

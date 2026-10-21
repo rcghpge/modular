@@ -28,8 +28,8 @@
 # failures are retried once the package is ready.
 
 # RUN: mkdir -p %t.moco-3889
-# RUN: mojo precompile %S/inputs/moco_3889_package -o %t.moco-3889/moco_3889_package.mojoc
-# RUN: kgen-translate --mojo-enable-prebuilt-packages -import-mojo -I %t.moco-3889 %s | FileCheck %s
+# RUN: %precompile-mojo-isolated %S/inputs/moco_3889_package -o %t.moco-3889/moco_3889_package.mojoc
+# RUN: %parse-mojo-isolated -I %t.moco-3889 %s | FileCheck %s
 
 from moco_3889_package import Factory
 

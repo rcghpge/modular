@@ -31,7 +31,7 @@
 # RUN: echo "from ..a import afn" > %t.dir/pkg/sub/m.mojo
 # RUN: echo "def mfn():" >> %t.dir/pkg/sub/m.mojo
 # RUN: echo "    afn()" >> %t.dir/pkg/sub/m.mojo
-# RUN: mojo precompile %t.dir/pkg -o %t.dir/renamed_pkg.mojoc
+# RUN: %precompile-mojo-isolated %t.dir/pkg -o %t.dir/renamed_pkg.mojoc
 # RUN: kgen-opt %t.dir/renamed_pkg.mojoc \
 # RUN:   | FileCheck %s --implicit-check-not '["pkg"' --implicit-check-not '@pkg::'
 

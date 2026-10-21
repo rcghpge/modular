@@ -11,5 +11,5 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: not mojo precompile %S/test_package_moco_773 -o test_package_moco_773.mojoc 2>&1 | FileCheck %s
+# RUN: not %precompile-mojo-isolated %S/inputs/test_package_moco_773 -o %t.mojoc 2>&1 | FileCheck %s
 # CHECK: foo.mojo:19:31: error: functions must not declare both an 'out' argument and a return type
