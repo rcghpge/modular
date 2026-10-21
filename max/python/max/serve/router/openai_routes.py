@@ -270,9 +270,9 @@ def _set_batch_id_attributes(
     first_id = _batch_id(chunks)
     last_id = _batch_id(chunks, last=True)
     if first_id is not None:
-        span.set_attribute("max.first_batch_id", first_id)
+        span.set_attribute("max.request.first_batch_id", first_id)
     if last_id is not None:
-        span.set_attribute("max.last_batch_id", last_id)
+        span.set_attribute("max.request.last_batch_id", last_id)
 
 
 # Default tool-name charset (OpenAI's); a parser may widen it via VALID_TOOL_NAME_RE.
@@ -737,7 +737,7 @@ class OpenAIChatResponseGenerator(
             context=request_trace_ctx.get(),
             attributes={
                 "gen_ai.request.model": request.model_name,
-                "max.request_id": str(request.request_id),
+                "max.request.id": str(request.request_id),
             },
         )
         set_phase_parent(request_span)
@@ -1194,10 +1194,12 @@ class OpenAIChatResponseGenerator(
                 )
             if _first_batch_id is not None:
                 request_span.set_attribute(
-                    "max.first_batch_id", _first_batch_id
+                    "max.request.first_batch_id", _first_batch_id
                 )
             if _last_batch_id is not None:
-                request_span.set_attribute("max.last_batch_id", _last_batch_id)
+                request_span.set_attribute(
+                    "max.request.last_batch_id", _last_batch_id
+                )
             request_span.end()
             record_request_end(
                 request.request_path,
@@ -1222,7 +1224,7 @@ class OpenAIChatResponseGenerator(
             context=request_trace_ctx.get(),
             attributes={
                 "gen_ai.request.model": request.model_name,
-                "max.request_id": str(request.request_id),
+                "max.request.id": str(request.request_id),
             },
         )
         set_phase_parent(request_span)
@@ -1567,7 +1569,7 @@ class OpenAIEmbeddingsResponseGenerator:
             context=request_trace_ctx.get(),
             attributes={
                 "gen_ai.request.model": self.pipeline.model_name,
-                "max.request_id": str(metrics_req.request_id),
+                "max.request.id": str(metrics_req.request_id),
             },
         )
         request_timer = StopWatch(start_ns=metrics_req.timestamp_ns)
@@ -3253,7 +3255,7 @@ class OpenAICompletionResponseGenerator(
             context=request_trace_ctx.get(),
             attributes={
                 "gen_ai.request.model": request.model_name,
-                "max.request_id": str(request.request_id),
+                "max.request.id": str(request.request_id),
             },
         )
         set_phase_parent(request_span)
@@ -3462,10 +3464,12 @@ class OpenAICompletionResponseGenerator(
                 )
             if _first_batch_id is not None:
                 request_span.set_attribute(
-                    "max.first_batch_id", _first_batch_id
+                    "max.request.first_batch_id", _first_batch_id
                 )
             if _last_batch_id is not None:
-                request_span.set_attribute("max.last_batch_id", _last_batch_id)
+                request_span.set_attribute(
+                    "max.request.last_batch_id", _last_batch_id
+                )
             request_span.end()
             record_request_end(
                 request.request_path,
@@ -3485,7 +3489,7 @@ class OpenAICompletionResponseGenerator(
             context=request_trace_ctx.get(),
             attributes={
                 "gen_ai.request.model": requests[0].model_name,
-                "max.request_id": str(requests[0].request_id),
+                "max.request.id": str(requests[0].request_id),
             },
         )
         set_phase_parent(request_span)

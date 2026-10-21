@@ -1104,8 +1104,8 @@ def test_set_batch_id_attributes_tags_both_bounds() -> None:
 
     _set_batch_id_attributes(span, [_chunk(10), _chunk(11), _chunk(12)])
 
-    span.set_attribute.assert_any_call("max.first_batch_id", 10)
-    span.set_attribute.assert_any_call("max.last_batch_id", 12)
+    span.set_attribute.assert_any_call("max.request.first_batch_id", 10)
+    span.set_attribute.assert_any_call("max.request.last_batch_id", 12)
 
 
 def test_set_batch_id_attributes_skips_unknown_bounds() -> None:

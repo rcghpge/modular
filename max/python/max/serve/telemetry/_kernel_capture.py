@@ -523,8 +523,8 @@ def _child_spans(
                     min(a.start_us for a in same),
                     max(a.end_us for a in same),
                     {
-                        "max.batch_id": batch_id,
-                        "max.kernel.name": name,
+                        "max.batch.id": batch_id,
+                        "max.kernel.op": name,
                         "max.kernel.count": len(same),
                         "max.kernel.total_us": total,
                         "max.kernel.mean_us": round(total / len(same), 3),
@@ -538,7 +538,7 @@ def _child_spans(
     kernels: list[_ChildSpan] = []
     for a in group:
         attrs: dict[str, str | int | float] = {
-            "max.batch_id": batch_id,
+            "max.batch.id": batch_id,
             "max.kernel.name": a.name,
             "max.kernel.kind": a.kind,
         }
@@ -727,7 +727,7 @@ def replay_kernel_capture(
             context=set_span_in_context(NonRecordingSpan(p.batch_span_context)),
             start_time=gpu_start_ns,
             attributes={
-                "max.batch_id": p.batch_id,
+                "max.batch.id": p.batch_id,
                 # In whole ns from the same rounding as the span's bounds, so
                 # busy time never exceeds the span's duration.
                 "max.batch.busy_ns": _covered_ns(

@@ -78,7 +78,7 @@ def capture(fixture_testdatadirectory: Path) -> str:
 def _batch_span(batch_id: int) -> SpanContext:
     assert _kernel_capture._replay_provider is not None
     tracer = _kernel_capture._replay_provider.get_tracer("test")
-    span = tracer.start_span("max.batch", attributes={"max.batch_id": batch_id})
+    span = tracer.start_span("max.batch", attributes={"max.batch.id": batch_id})
     span.end()
     return span.get_span_context()
 
@@ -134,7 +134,7 @@ def test_kernel_level_groups_by_launch_time(
     assert gpu.parent.span_id == traced.batch_span_context.span_id
     assert gpu.context.trace_id == traced.batch_span_context.trace_id
     assert gpu.attributes == {
-        "max.batch_id": 5,
+        "max.batch.id": 5,
         "max.batch.busy_ns": 145_000,
         "max.batch.start_after_host_ns": 465_000,
         "max.batch.activity_spans": True,
@@ -155,7 +155,7 @@ def test_kernel_level_groups_by_launch_time(
     assert matmul.parent is not None
     assert matmul.parent.span_id == gpu.context.span_id
     assert matmul.attributes == {
-        "max.batch_id": 5,
+        "max.batch.id": 5,
         "max.kernel.name": "matmul_sm100_bf16_deadbeef",
         "max.kernel.kind": "kernel",
     }
@@ -177,7 +177,7 @@ def test_batch_level_emits_only_the_gpu_window(
     # The figures a batch trace needs ride on the GPU span: 10, 78 and 40 µs
     # of kernels, with gaps, in a 135 µs window.
     assert gpu.attributes == {
-        "max.batch_id": 7,
+        "max.batch.id": 7,
         "max.batch.busy_ns": 128_000,
         "max.batch.start_after_host_ns": 415_000,
         "max.batch.activity_spans": False,
@@ -267,8 +267,8 @@ def test_op_level_aggregates_each_kernel_name(
     assert matmul.parent.span_id == gpu.context.span_id
     assert (matmul.start_time, matmul.end_time) == (_us(2312.0), _us(2435.0))
     assert matmul.attributes == {
-        "max.batch_id": 7,
-        "max.kernel.name": "matmul_sm100_bf16_deadbeef",
+        "max.batch.id": 7,
+        "max.kernel.op": "matmul_sm100_bf16_deadbeef",
         "max.kernel.count": 2,
         "max.kernel.total_us": 118.0,
         "max.kernel.mean_us": 59.0,
@@ -308,12 +308,12 @@ def test_kernel_sampled_takes_one_pass_in_stride(
     assert len(gpu_spans) == 3
     # Unsampled passes emit nothing beneath max.batch.gpu.
     assert {
-        dict(span.attributes or {})["max.batch_id"]
+        dict(span.attributes or {})["max.batch.id"]
         for named in spans.values()
         for span in named
     } == with_kernels
     assert {
-        dict(span.attributes or {})["max.batch_id"]
+        dict(span.attributes or {})["max.batch.id"]
         for span in gpu_spans
         if dict(span.attributes or {})["max.batch.activity_spans"]
     } == with_kernels
@@ -327,7 +327,7 @@ def test_full_adds_what_the_capture_has(
     spans = _replayed(exporter)
     [matmul] = spans["matmul_sm100_bf16"]
     assert matmul.attributes == {
-        "max.batch_id": 5,
+        "max.batch.id": 5,
         "max.kernel.name": "matmul_sm100_bf16_deadbeef",
         "max.kernel.kind": "kernel",
         "max.kernel.registers_per_thread": 168,
@@ -336,7 +336,7 @@ def test_full_adds_what_the_capture_has(
     }
     [memcpy] = spans["Memcpy DtoD (Device -> Device)"]
     assert memcpy.attributes == {
-        "max.batch_id": 5,
+        "max.batch.id": 5,
         "max.kernel.name": "Memcpy DtoD (Device -> Device)",
         "max.kernel.kind": "memcpy",
     }
@@ -358,7 +358,7 @@ def test_untraced_passes_are_dropped(
 
     spans = _replayed(exporter)
     assert {
-        dict(span.attributes or {})["max.batch_id"]
+        dict(span.attributes or {})["max.batch.id"]
         for span in spans["max.batch.gpu"]
     } == {5, 7}
     assert "warmup_fill" not in spans
@@ -385,7 +385,7 @@ def test_range_ids_match_truncated_to_32_bits(
 
     [gpu] = _replayed(exporter)["max.batch.gpu"]
     assert gpu.attributes is not None
-    assert gpu.attributes["max.batch_id"] == batch_id
+    assert gpu.attributes["max.batch.id"] == batch_id
     assert (gpu.start_time, gpu.end_time) == tuple(_us(t) for t in window_us)
 
 
@@ -446,7 +446,7 @@ def test_pass_without_captured_activity_emits_nothing(
 
     [gpu] = _replayed(exporter)["max.batch.gpu"]
     assert gpu.attributes == {
-        "max.batch_id": 7,
+        "max.batch.id": 7,
         "max.batch.busy_ns": 128_000,
         "max.batch.start_after_host_ns": 415_000,
         "max.batch.activity_spans": True,
@@ -636,7 +636,7 @@ def test_real_b200_capture(
     [[kernel]] = spans.values()
     assert kernel.name == "mogg_foreach_r2_w8_b128_gs_False"
     assert kernel.attributes == {
-        "max.batch_id": 7,
+        "max.batch.id": 7,
         "max.kernel.name": "mogg_foreach_r2_w8_b128_gs_False_73fac3ef",
         "max.kernel.kind": "kernel",
     }
@@ -676,7 +676,7 @@ def test_real_b200_device_graph_capture(
     by_pass: dict[int, list[str]] = {}
     for name, named in spans.items():
         for span in named:
-            batch_id = dict(span.attributes or {})["max.batch_id"]
+            batch_id = dict(span.attributes or {})["max.batch.id"]
             assert isinstance(batch_id, int)
             by_pass.setdefault(batch_id, []).append(name)
     # Every activity in the capture is placed.
@@ -749,7 +749,7 @@ def test_activity_after_the_last_launch_record(
     assert sorted(spans) == ["graph_matmul", "max.batch.gpu", "rms_norm_gpu"]
     [graph_kernel] = spans["graph_matmul"]
     assert graph_kernel.attributes == {
-        "max.batch_id": 6,
+        "max.batch.id": 6,
         "max.kernel.name": "graph_matmul",
         "max.kernel.kind": "kernel",
     }
@@ -862,11 +862,7 @@ def test_cut_off_pass_activity_without_a_launch_record_is_dropped(
     spans = _replayed(exporter)
     [gpu] = spans.pop("max.batch.gpu")
     assert (gpu.start_time, gpu.end_time) == (_us(1450.0), _us(1455.0))
-    assert {
-        dict(span.attributes or {})["max.kernel.name"]
-        for named in spans.values()
-        for span in named
-    } <= {"rms_norm_gpu"}
+    assert {n.removeprefix("kernel_agg:") for n in spans} <= {"rms_norm_gpu"}
 
 
 def test_capture_without_a_sampled_pass_is_not_read(

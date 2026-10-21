@@ -31,6 +31,13 @@ This version is still a work in progress.
   still return no log probabilities, and `echo` without `logprobs` has no
   effect.
 
+- MAX Serve's span attributes now sit under the entity they describe:
+  `max.request_id` is now `max.request.id`, `max.batch_id` is `max.batch.id`,
+  and the other request and batch attributes move under `max.request.*` and
+  `max.batch.*`. `kernel_agg:<name>` spans carry the kernel name in
+  `max.kernel.op` instead of `max.kernel.name`; per-kernel spans keep
+  `max.kernel.name`. Update trace queries that filter on the old names.
+
 ### Server metrics
 
 - Added `maxserve_request_client_disconnect_cancellations_total`, which

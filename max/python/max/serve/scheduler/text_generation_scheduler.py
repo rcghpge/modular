@@ -219,7 +219,7 @@ class TokenGenerationScheduler(Scheduler):
                             "max.phase.prefill",
                             context=parent,
                             attributes={
-                                "max.request_id": str(context.request_id)
+                                "max.request.id": str(context.request_id)
                             },
                         )
                     )
@@ -392,9 +392,11 @@ class TokenGenerationScheduler(Scheduler):
                     capture.is_traced if capture is not None else None,
                 ),
                 attributes={
-                    "max.batch_id": batch_id,
-                    "max.ce_count": len(ce_ids_before),
-                    "max.tg_count": inputs.batch_size - len(ce_ids_before),
+                    "max.batch.id": batch_id,
+                    "max.batch.ce_count": len(ce_ids_before),
+                    "max.batch.tg_count": (
+                        inputs.batch_size - len(ce_ids_before)
+                    ),
                 },
             )
 
@@ -453,7 +455,7 @@ class TokenGenerationScheduler(Scheduler):
                 for req_id in ce_ids_before & tg_reqs_after.keys():
                     if req_id in self._prefill_spans:
                         span = self._prefill_spans.pop(req_id)
-                        span.set_attribute("max.batch_id", batch_id)
+                        span.set_attribute("max.batch.id", batch_id)
                         span.end()
                     if req_id in self._decode_spans:
                         # Preempted back to CE and now decoding again: the
@@ -465,8 +467,8 @@ class TokenGenerationScheduler(Scheduler):
                         "max.phase.decode",
                         context=_parent_trace_context(tg_reqs_after[req_id]),
                         attributes={
-                            "max.request_id": str(req_id),
-                            "max.batch_id": batch_id,
+                            "max.request.id": str(req_id),
+                            "max.batch.id": batch_id,
                         },
                     )
 
@@ -491,7 +493,7 @@ class TokenGenerationScheduler(Scheduler):
                 )
 
             batch_span.set_attribute(
-                "max.terminated_count", num_terminated_requests
+                "max.batch.terminated_count", num_terminated_requests
             )
             return num_terminated_requests
         finally:

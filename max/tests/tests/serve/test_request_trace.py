@@ -363,6 +363,7 @@ def test_logs_and_spans_share_the_server_spans_trace(
     assert server.name == "GET /work"
     assert server.attributes is not None
     assert server.attributes["http.response.status_code"] == 200
+    assert (request_span.attributes or {})["max.request.id"] == "test"
     assert server.context is not None and request_span.context is not None
     trace_id = server.context.trace_id
     if headers:

@@ -138,7 +138,7 @@ _request_id_ctx: ContextVar[str | None] = ContextVar(
     "max.serve.request_id_ctx", default=None
 )
 """The HTTP request's ID. ``/v1/completions`` and ``/v1/embeddings`` take one
-pipeline request per prompt, whose ``RequestID`` and ``max.request_id`` span
+pipeline request per prompt, whose ``RequestID`` and ``max.request.id`` span
 attribute append ``_<index>`` to this."""
 
 _batch_id_ctx: ContextVar[int | None] = ContextVar(

@@ -350,13 +350,13 @@ def test_a_root_with_a_sampled_link_is_sampled(
             trace.NonRecordingSpan(_span_context(1, parent))
         ),
         links=None if link is None else [trace.Link(_span_context(2, link))],
-        attributes={"max.batch_id": 1},
+        attributes={"max.batch.id": 1},
     )
     assert span.get_span_context().trace_flags.sampled is sampled
     if sampled:
         # The SDK takes a span's attributes from the sampling result only.
         assert isinstance(span, ReadableSpan)
-        assert span.attributes == {"max.batch_id": 1}
+        assert span.attributes == {"max.batch.id": 1}
 
 
 @pytest.mark.parametrize(
