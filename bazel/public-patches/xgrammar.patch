@@ -1686,7 +1686,7 @@ diff --git a/cpp/grammar_matcher.cc b/cpp/grammar_matcher.cc
        auto byte_states = GetLatestScanableStates();
        std::vector<ParserState> merged = byte_states;
        StateEqualForParsing state_eq;
-@@ -853,8 +885,26 @@ bool GrammarMatcher::Impl::FillNextTokenBitmask(
+@@ -853,8 +885,51 @@ bool GrammarMatcher::Impl::FillNextTokenBitmask(
      }
    }
  
@@ -1707,13 +1707,49 @@ diff --git a/cpp/grammar_matcher.cc b/cpp/grammar_matcher.cc
 +    tmp_rejected_indices_.clear();
 +  }
 +
++  // A kRejected-stored state accepts every token outside its rejected and
++  // uncertain lists. Its accepted set never reaches tmp_accepted_bitset_, so
++  // without this another state's uncertain token that it already accepts is
++  // re-walked through the parser anyway: a whitespace state beside a free-text
++  // value re-walks every space-led token in the vocabulary.
++  std::vector<const AdaptiveTokenMask*> accepting_rejected_stores;
++  for (const auto& state_with_mask : latest_states_with_masks) {
++    const auto& mask = state_with_mask.second->second;
++    if (mask.store_type == StoreType::kRejected &&
++        mask.rejected_indices.size() + mask.uncertain_indices.size() <= 4096) {
++      accepting_rejected_stores.push_back(&mask);
++    }
++  }
++  auto accepted_by_a_rejected_store = [&](int32_t idx) {
++    for (const AdaptiveTokenMask* mask : accepting_rejected_stores) {
++      if (!std::binary_search(mask->rejected_indices.begin(), mask->rejected_indices.end(), idx) &&
++          !std::binary_search(
++              mask->uncertain_indices.begin(), mask->uncertain_indices.end(), idx
++          )) {
++        return true;
++      }
++    }
++    return false;
++  };
++
    for (const auto& [state, adaptive_token_mask_it] : latest_states_with_masks) {
      const auto& adaptive_token_mask = adaptive_token_mask_it->second;
 +    if (some_state_accepts_all) break;
  
      // For each ParserState, we will check every uncertain token and put them into the accepted or
      // rejected list.
-@@ -955,12 +1005,52 @@ bool GrammarMatcher::Impl::FillNextTokenBitmask(
+@@ -882,6 +957,10 @@ bool GrammarMatcher::Impl::FillNextTokenBitmask(
+       if (tmp_accepted_bitset_[sorted_decoded_vocab[cur_token_idx].first]) {
+         continue;
+       }
++      if (!accepting_rejected_stores.empty() && accepted_by_a_rejected_store(cur_token_idx)) {
++        tmp_accepted_bitset_.Set(sorted_decoded_vocab[cur_token_idx].first, true);
++        continue;
++      }
+ 
+       // Check if the current token is in the rejected range. i.e. check if the current token
+       // is on the subtree of the rejected token.
+@@ -955,12 +1034,52 @@ bool GrammarMatcher::Impl::FillNextTokenBitmask(
    SetTokenBitmask(
        bitmask_data_ptr, tmp_accepted_bitset_, tmp_rejected_indices_, can_reach_end, false
    );
