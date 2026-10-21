@@ -64,12 +64,10 @@ from std.sys import (
     llvm_intrinsic,
     size_of,
 )
-from std.sys._assembly import inlined_assembly
 from std.sys.info import (
     _cdna_4_or_newer,
     _is_amd_mi300x,
     _is_sm_9x_or_newer,
-    _is_sm_100x_or_newer,
     _is_sm_120x_or_newer,
     is_32bit,
 )
@@ -2328,11 +2326,11 @@ struct SIMD[dtype: DType, length: SIMDLength](
         comptime if Self.dtype == target:
             return self._refine[target]()
 
-        comptime if is_nvidia_gpu():
-            comptime if Self.dtype == DType.bfloat16 and target == DType.float64:
-                # Convert to F64 via a Float32 pathway. This would allow us to
-                # use the optimizations defined above.
-                return self.cast[DType.float32]().cast[target]()
+        if not __is_run_in_comptime_interpreter:
+            comptime if case .Some(f) = CurrentPlugin.cast_fn[
+                Self.dtype, target
+            ]:
+                return f(self)
 
         comptime if target in (
             DType.float8_e4m3fn,
@@ -2344,7 +2342,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
             return _convert_f32_to_float8[target](self.cast[DType.float32]())
 
         comptime if target == DType.float8_e8m0fnu:
-            return _convert_f32_to_float8_ue8m0[target, rounding_mode="rp"](
+            return _convert_f32_to_float8_ue8m0[target](
                 self.cast[DType.float32]()
             )
 
@@ -2382,11 +2380,6 @@ struct SIMD[dtype: DType, length: SIMDLength](
             return self.select[target](1, 0)
         elif target == DType.bool:
             return self.ne(0)._refine[target]()
-
-        comptime if Self.dtype == DType.bfloat16 and is_amd_gpu():
-            return _bfloat16_to_f32(
-                self._refine[DType.bfloat16](),
-            ).cast[target]()
 
         comptime if Self.dtype in (DType._uint1, DType._uint2, DType._uint4):
             # `pop.cast` doesn't support some conversions from `ui1`, `ui2`, or `ui4`
@@ -3840,6 +3833,12 @@ def _powi(base: Scalar, exp: Int32) -> type_of(base):
     return res
 
 
+comptime _CastPluginHookFnType[target: DType] = def[
+    dtype: DType, width: SIMDLength, //
+](SIMD[dtype, width]) thin -> SIMD[target, width]
+"""Plugin-hook signature for `PluginHooks.cast_fn`."""
+
+
 # ===----------------------------------------------------------------------=== #
 # float8
 # ===----------------------------------------------------------------------=== #
@@ -4115,25 +4114,12 @@ def _convert_f32_to_float8_ue8m0_scalar[
     dtype: DType,
     //,
     target: DType,
-    *,
-    satfinite: Bool = False,
-    rounding_mode: String = "rp",
 ](x: Scalar[dtype]) -> Scalar[target]:
     """Convert float32 to float8_e8m0fnu (UE8M0).
 
-    This follows CUTLASS and uses `rounding_mode="rp"` (round toward +infinity)
-    when mapping float32 to a biased exponent byte. Other rounding modes are
-    currently unsupported in the CPU fallback.
+    This follows CUTLASS and rounds toward +infinity when mapping float32 to a
+    biased exponent byte.
     """
-    comptime assert not satfinite, (
-        "satfinite is not implemented for CPU path. Extend this function to"
-        " support it."
-    )
-    comptime assert rounding_mode == "rp", (
-        "Only rounding mode 'rp' is supported for CPU path. Extend this"
-        " function to support other rounding modes."
-    )
-
     if _isnan(x) or _isinf(x):
         return bitcast[target, 1](UInt8(0xFF))
 
@@ -4155,57 +4141,28 @@ def _convert_f32_to_float8_ue8m0[
     size: SIMDLength,
     //,
     target: DType,
-    *,
-    satfinite: Bool = False,
-    rounding_mode: String = "rp",
 ](val: SIMD[dtype, size],) -> SIMD[target, size]:
     """Convert float32 to float8_e8m0fnu (UE8M0).
 
-    The default rounding mode is `rounding_mode="rp"` (round toward +infinity),
-    matching CUTLASS. On SM100+ this lowers to `cvt.rp[.satfinite].ue8m0x2.f32`.
+    Rounds toward +infinity, matching CUTLASS.
     """
     comptime assert dtype == DType.float32 and target == DType.float8_e8m0fnu, (
         "this conversion is only supported for float32 -> float8_e8m0fnu."
         " Exnted it if you need bfloat16 -> float8_e8m0fnu."
     )
 
-    comptime if is_nvidia_gpu() and _is_sm_100x_or_newer():
-        comptime satfinite_suffix = ".satfinite" if satfinite else ""
-        comptime asm_prefix = "cvt." + rounding_mode + satfinite_suffix + ".ue8m0x2.f32"
+    # Kernels call this directly rather than through `SIMD.cast`.
+    if not __is_run_in_comptime_interpreter:
+        comptime if case .Some(f) = CurrentPlugin.cast_fn[dtype, target]:
+            return f(val)
 
-        comptime if size > 1:
-            var res = SIMD[target, size]()
+    @inline(.always)
+    def wrapper_fn[
+        input_dtype: DType, result_dtype: DType
+    ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
+        return _convert_f32_to_float8_ue8m0_scalar[result_dtype](val)
 
-            comptime for i in range(0, size, 2):
-                var f8x2_f32x2 = inlined_assembly[
-                    asm_prefix + " $0, $1, $2;",
-                    UInt16,
-                    constraints="=h,f,f",
-                    has_side_effect=False,
-                ](val[i + 1], val[i])
-                var ui8x2 = bitcast[target, 2](f8x2_f32x2)
-                res = res.insert[offset=i](ui8x2)
-            return res
-        else:
-            var f8x2_f32x2 = inlined_assembly[
-                asm_prefix + " $0, $1, $2;",
-                UInt16,
-                constraints="=h,f,f",
-                has_side_effect=False,
-            ](Float32(0.0), val[0])
-            var ui8x2 = bitcast[target, 2](f8x2_f32x2)
-            return ui8x2[0]
-    else:
-
-        @inline(.always)
-        def wrapper_fn[
-            input_dtype: DType, result_dtype: DType
-        ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
-            return _convert_f32_to_float8_ue8m0_scalar[
-                result_dtype, satfinite=satfinite, rounding_mode=rounding_mode
-            ](val)
-
-        return _simd_apply[wrapper_fn, result_dtype=target](val)
+    return _simd_apply[wrapper_fn, result_dtype=target](val)
 
 
 @inline(.always)
@@ -4228,88 +4185,20 @@ def _convert_float8_ue8m0_to_f32[
         dtype == DType.float8_e8m0fnu and target == DType.float32
     ), "this conversion is only supported for float8_e8m0fnu -> float32."
 
-    comptime if is_nvidia_gpu() and _is_sm_100x_or_newer():
-        comptime asm_prefix = "cvt.rn.bf16x2.ue8m0x2"
+    # `SIMD.cast` converts to other dtypes through this helper.
+    if not __is_run_in_comptime_interpreter:
+        comptime if case .Some(f) = CurrentPlugin.cast_fn[dtype, target]:
+            return f(val)
 
-        comptime if size > 1:
-            var res = SIMD[target, size]()
+    var exp = val.to_bits[DType.uint8]()
+    var f32_bits = exp.cast[DType.uint32]() << 23
 
-            comptime for i in range(0, size, 2):
-                var ue8m0x2 = SIMD[.uint8, 2](
-                    bitcast[DType.uint8, 1](val[i]),
-                    bitcast[DType.uint8, 1](val[i + 1]),
-                )
-                var bf16x2 = inlined_assembly[
-                    asm_prefix + " $0, $1;",
-                    UInt32,
-                    constraints="=r,h",
-                    has_side_effect=False,
-                ](bitcast[DType.uint16, 1](ue8m0x2))
-                var f32x2 = bitcast[DType.bfloat16, 2](bf16x2).cast[target]()
-                res = res.insert[offset=i](f32x2)
-            return res
-        else:
-            var ue8m0x2 = SIMD[.uint8, 2](
-                bitcast[DType.uint8, 1](val[0]), UInt8(0)
-            )
-            var bf16x2 = inlined_assembly[
-                asm_prefix + " $0, $1;",
-                UInt32,
-                constraints="=r,h",
-                has_side_effect=False,
-            ](bitcast[DType.uint16, 1](ue8m0x2))
-            var f32x2 = bitcast[DType.bfloat16, 2](bf16x2).cast[target]()
-            return f32x2[0]
+    # 0x00 represents 2**-127, which is a float32 subnormal.
+    f32_bits = exp.eq(0).select(SIMD[.uint32, size](0x00400000), f32_bits)
+    # 0xFF is NaN for this format; avoid creating +inf in float32.
+    f32_bits = exp.eq(0xFF).select(SIMD[.uint32, size](0x7FFFFFFF), f32_bits)
 
-    else:
-        var exp = val.to_bits[DType.uint8]()
-        var f32_bits = exp.cast[DType.uint32]() << 23
-
-        # 0x00 represents 2**-127, which is a float32 subnormal.
-        f32_bits = exp.eq(0).select(SIMD[.uint32, size](0x00400000), f32_bits)
-        # 0xFF is NaN for this format; avoid creating +inf in float32.
-        f32_bits = exp.eq(0xFF).select(
-            SIMD[.uint32, size](0x7FFFFFFF), f32_bits
-        )
-
-        return SIMD[target, size](from_bits=f32_bits)
-
-
-# ===----------------------------------------------------------------------=== #
-# bfloat16
-# ===----------------------------------------------------------------------=== #
-
-
-@inline(.always)
-def _bfloat16_to_f32_scalar(
-    val: BFloat16,
-) -> Float32:
-    # For bfloat16, we can just do an unsafe_memcpy to perform the cast to
-    # float32.
-    comptime if is_nvidia_gpu():
-        return inlined_assembly[
-            "cvt.f32.bf16 $0, $1;" if _is_sm_9x_or_newer() else "mov.b32 $0, {0, $1};",
-            Float32,
-            constraints="=f,h",
-            has_side_effect=False,
-        ](bitcast[DType.int16](val))
-
-    return bitcast[DType.float32, 1](SIMD[.bfloat16, 2](0, val))
-
-
-@inline(.always)
-def _bfloat16_to_f32[
-    size: SIMDLength
-](val: SIMD[.bfloat16, size]) -> SIMD[.float32, size]:
-    @inline(.always)
-    def wrapper_fn[
-        input_dtype: DType, result_dtype: DType
-    ](val: Scalar[input_dtype]) -> Scalar[result_dtype]:
-        return _bfloat16_to_f32_scalar(
-            val._refine[DType.bfloat16](),
-        )._refine[result_dtype]()
-
-    return _simd_apply[wrapper_fn, result_dtype=DType.float32](val)
+    return SIMD[target, size](from_bits=f32_bits)
 
 
 # ===----------------------------------------------------------------------=== #

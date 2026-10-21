@@ -22,6 +22,7 @@ from std._plugin._trait import (
     _UnaryMathPluginHookFnType,
 )
 from std.collections import OptionalReg
+from std.simd import _CastPluginHookFnType
 from std.sys.info import CompilationTarget
 from std.collections.string.string_span import (
     _get_kgen_string,
@@ -35,6 +36,7 @@ from std.reflection.location import SourceLocation
 from std.sys._assembly import inlined_assembly
 from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 
+from .cuda_cast import _nvptx_cast_fn
 from .cuda_gpu_id import _nvptx_gpu_id
 from .cuda_math import _nvptx_unary_math_fn
 from .cuda_time import _global_perf_counter_ns, _sleep
@@ -160,3 +162,7 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
         _GPUIdPluginHookFnType
     ] = _nvptx_gpu_id[name, dim]
+
+    comptime cast_fn[src: DType, dst: DType]: OptionalReg[
+        _CastPluginHookFnType[dst]
+    ] = _nvptx_cast_fn[src, dst, Self.target]()

@@ -24,6 +24,7 @@ from std.math.math import (
     _UnaryMathPluginHookFnType,
 )
 from std.memory.stack_allocation import _StackAllocationPluginHookFnType
+from std.simd import _CastPluginHookFnType
 from std.memory.unsafe_pointer import _UnsafeDanglingPluginHookFnType
 from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 from std._gpu.primitives.id import _GPUIdPluginHookFnType
@@ -183,6 +184,29 @@ trait PluginHooks:
     `SIMD.rotate_{left,right}`, and `SIMD.shift_{left,right}` use. Where this
     is `False`, those methods build the result from element accesses and
     `shuffle` instead.
+    """
+
+    comptime cast_fn[src: DType, dst: DType]: OptionalReg[
+        _CastPluginHookFnType[dst]
+    ] = None
+    """Override for converting `src` elements to `dst` with `SIMD.cast`.
+
+    Consulted before the stdlib's own conversion, so the hook sees the
+    caller's `src` and `dst`. The float8_e8m0fnu conversion helpers that
+    kernels call directly consult it too. Returning `None` for a `src` and
+    `dst` keeps the stdlib's own conversion. The hook is not called when the
+    cast is evaluated at compile time, because the compile-time interpreter
+    cannot run backend instructions.
+
+    Parameters:
+        src: The `dtype` of the input SIMD vector.
+        dst: The `dtype` of the output SIMD vector.
+
+    Args:
+        x: The input SIMD vector.
+
+    Returns:
+        `x` converted elementwise to `dst` on the vendor backend.
     """
 
     # ===------------------------------------------------------------------=== #
