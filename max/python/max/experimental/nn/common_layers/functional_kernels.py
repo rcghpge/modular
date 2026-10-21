@@ -124,8 +124,17 @@ def grouped_matmul_ragged_rule(
     sharded, matching output axis) and row-parallel (weight's contraction
     ``K`` axis sharded, together with ``hidden_states``' matching axis,
     producing a partial sum). ``expert_start_indices`` / ``expert_ids`` /
-    ``expert_usage_stats`` are small per-call metadata, always ``Replicated``.
+    ``expert_usage_stats`` are small per-call metadata, always ``Replicated``
+    under tensor parallelism.
+
+    Under expert parallelism, each device already holds its own experts
+    (``weight``'s leading axis) and the tokens dispatched to them, so
+    ``hidden_states`` and ``weight`` share a device-opaque split instead of a
+    global one; ``expert_start_indices`` / ``expert_ids`` are each device's
+    own (``Unknown``), while ``expert_usage_stats`` stays the same value on
+    every device.
     """
+    split = Sharded(0)
     return [
         AxisAssignment((R, R, R, R, R), (R,)),
         # Column-parallel: weight's N (out) axis sharded -> output's N axis.
@@ -133,6 +142,8 @@ def grouped_matmul_ragged_rule(
         # Row-parallel: weight's K (contraction) axis sharded, matched by
         # hidden_states' K axis -> partial sum.
         AxisAssignment((Sharded(1), Sharded(2), R, R, R), (P,)),
+        # Expert-parallel: each device's own tokens against its own experts.
+        AxisAssignment((split, split, Unknown(), Unknown(), R), (split,)),
     ]
 
 
