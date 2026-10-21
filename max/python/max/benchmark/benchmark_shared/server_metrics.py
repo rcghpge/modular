@@ -26,8 +26,10 @@ from urllib.parse import urlparse
 from prometheus_client.parser import text_string_to_metric_families
 
 from .backend_metric_names import (
+    BATCH_METRIC_NAMES,
     BatchPhase,
     MetricAvailability,
+    engine_family,
     resolve_batch_metric,
     resolve_spec_decode_metric,
 )
@@ -39,6 +41,16 @@ if TYPE_CHECKING:
     from prometheus_client.metrics_core import Metric
 
 logger = logging.getLogger(__name__)
+
+
+class MissingEngineMetricsError(RuntimeError):
+    """A successful scrape lacked a metric the backend always emits.
+
+    Raised by :func:`collect_benchmark_metrics` (and surfaced by the
+    benchmark run) instead of silently nulling every engine-side
+    ``BenchmarkResult`` field. A failed scrape keeps the warning behavior.
+    """
+
 
 # Import MAX metrics port from SDK config, with fallback
 try:
@@ -379,16 +391,39 @@ def collect_benchmark_metrics(
     backend: Backend,
     base_url: str,
     baseline: Mapping[str, ParsedMetrics] | None = None,
+    verify_required_metrics: bool = False,
 ) -> dict[str, ParsedMetrics]:
     """Scrape Prometheus metrics from the given endpoints.
 
     When *urls* is empty, a single endpoint is synthesised from *backend* and
     *base_url* via :func:`get_metrics_url` and stored under the ``"server"``
-    label — preserving the auto-derive behaviour that existed before explicit
+    label, preserving the auto-derive behaviour that existed before explicit
     URLs were supported.
 
     When *baseline* is provided and contains a matching label, the returned
     metrics for that label are the delta from baseline.
+
+    Args:
+        urls: Explicit metrics endpoint URLs, keyed by label.
+        backend: Backend the endpoints belong to.
+        base_url: Base API URL, used to derive the metrics URL when *urls* is
+            empty.
+        baseline: Optional earlier snapshot to compute deltas against.
+        verify_required_metrics: Verify each successful scrape contains the
+            metrics this backend always emits (only for the final collection,
+            see below).
+
+    Raises:
+        MissingEngineMetricsError: When a scrape succeeds but lacks a metric
+            the backend always emits (see
+            :func:`verify_always_emitted_metrics`). A scrape that itself
+            fails stays a logged warning with the endpoint dropped.
+
+    Verification runs only when the caller asks for it, never on a baseline
+    collection. Mach exports through the OpenTelemetry Prometheus exporter,
+    which omits a histogram until its first data point, so a fresh idle
+    engine legitimately has no batch families yet at baseline time; the final
+    scrape runs after the benchmark and must have them.
     """
     if not urls:
         urls = {"server": get_metrics_url(backend, base_url)}
@@ -399,16 +434,70 @@ def collect_benchmark_metrics(
             raw_text = fetch_metrics(url)
             final = parse_metrics(raw_text)
             final.backend = backend
+            if verify_required_metrics:
+                verify_always_emitted_metrics(backend, final, url)
             if baseline and label in baseline:
                 final = compute_metrics_delta(
                     baseline=baseline[label], final=final
                 )
             results[label] = final
+        except MissingEngineMetricsError:
+            # A reachable endpoint without the metrics this backend always
+            # emits nulls every engine-side field; fail the run loudly rather
+            # than warn (the classic cause is scraping the wrong server).
+            raise
         except Exception as exc:
             logger.warning(
                 "Failed to collect metrics from %s (%s): %s", label, url, exc
             )
     return results
+
+
+def verify_always_emitted_metrics(
+    backend: Backend, parsed: ParsedMetrics, metrics_url: str
+) -> None:
+    """Check a successful scrape contains the metrics it always should.
+
+    Only the always-emitted batch metrics count (see
+    ``backend_metric_names``): for mach, every constructed batch records
+    ``mach_batch_size`` and every executed batch records
+    ``mach_batch_execution_time_milliseconds``. Optional families (the
+    spec-decode histograms when speculative decoding is off) and metrics
+    declared unavailable never fail a run.
+
+    Args:
+        backend: Backend the metrics were scraped from.
+        parsed: Metrics parsed from a successful scrape of *metrics_url*.
+        metrics_url: The endpoint that was scraped, named in the error.
+
+    Raises:
+        MissingEngineMetricsError: When an always-emitted metric is absent
+            from a successful scrape (usually a wrong-endpoint problem).
+    """
+    family = engine_family(backend)
+    missing: list[str] = []
+    for per_family in BATCH_METRIC_NAMES.values():
+        spec = per_family[family]
+        if (
+            spec.availability is not MetricAvailability.ALWAYS_EMITTED
+            or spec.name is None
+        ):
+            continue
+        if not any(
+            key == spec.name or key.startswith(f"{spec.name}{{")
+            for key in parsed.histograms
+        ):
+            missing.append(spec.name)
+    if missing:
+        names = ", ".join(f"'{name}'" for name in missing)
+        raise MissingEngineMetricsError(
+            f"Scrape of {metrics_url} succeeded, but required engine "
+            f"metric(s) {names} on backend '{backend}' are missing from "
+            f"the payload. Backend '{backend}' always emits them while "
+            f"serving, so this is usually a wrong-endpoint problem: check "
+            f"that {metrics_url} is the engine's /metrics endpoint and not "
+            f"another server's."
+        )
 
 
 _POSITION_LABEL_RE = re.compile(r'position="([^"]*)"')

@@ -112,6 +112,7 @@ from max.benchmark.benchmark_shared.request import (
     progressbar_request_driver,
 )
 from max.benchmark.benchmark_shared.server_metrics import (
+    MissingEngineMetricsError,
     collect_benchmark_metrics,
     fetch_spec_decode_metrics,
 )
@@ -499,6 +500,9 @@ async def benchmark(
             )
             logger.info("Captured baseline server metrics")
         except Exception as e:
+            # No required-metric verification on the baseline: the exporter
+            # omits a histogram until its first data point, so a fresh idle
+            # engine has no batch families yet.
             logger.warning(f"Failed to capture baseline server metrics: {e}")
 
     if session.benchmark_task == "text-generation":
@@ -771,8 +775,13 @@ async def benchmark(
                 backend,
                 session.base_url,
                 baseline=baseline_endpoints,
+                verify_required_metrics=True,
             )
             logger.info("Collected server metrics (final)")
+        except MissingEngineMetricsError:
+            # A reachable endpoint missing the metrics this backend always
+            # emits must fail the run, not degrade to null fields.
+            raise
         except Exception as e:
             logger.warning(f"Failed to collect server metrics: {e}")
 

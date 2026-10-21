@@ -32,6 +32,7 @@ from max.benchmark.benchmark_shared.metrics import (
 )
 from max.benchmark.benchmark_shared.server_metrics import (
     HistogramData,
+    MissingEngineMetricsError,
     ParsedMetrics,
     _format_metric_key,
     collect_benchmark_metrics,
@@ -1257,3 +1258,182 @@ def test_collect_benchmark_metrics_stamps_backend_and_mach_url(
     )
     assert delta_hist is not None
     assert delta_hist.sum == 400.0
+
+
+# The orchestrator's /metrics: reachable, but exposes none of the mach
+# engine's families. That is the exact shape of the wrong-endpoint bug.
+ORCHESTRATOR_METRICS = """# TYPE mammoth_requests counter
+mammoth_requests 42
+# TYPE proxy_active_requests gauge
+proxy_active_requests 1
+"""
+
+
+class TestVerifyAlwaysEmittedMetrics:
+    """A successful scrape that lacks a metric the backend always emits
+    raises; optional and unavailable families never do."""
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_missing_always_emitted_metric_raises(
+        self, mock_fetch: MagicMock
+    ) -> None:
+        """Scraping the orchestrator with backend=mach succeeds but carries
+        none of the engine's metrics: the run must fail naming the metric
+        and the endpoint, not silently null every engine-side field."""
+        mock_fetch.return_value = ORCHESTRATOR_METRICS
+
+        with pytest.raises(
+            MissingEngineMetricsError,
+            match=r"mach_batch_size.*http://localhost:8001/metrics",
+        ) as excinfo:
+            collect_benchmark_metrics(
+                urls={},
+                backend="mach",
+                base_url="http://localhost:8091",
+                verify_required_metrics=True,
+            )
+        # Every always-emitted metric that is missing is named, not just the
+        # first one the validator reached.
+        assert "mach_batch_execution_time_milliseconds" in str(excinfo.value)
+        assert "backend 'mach'" in str(excinfo.value)
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_partial_absence_still_raises(self, mock_fetch: MagicMock) -> None:
+        """mach_batch_size present but the executed-batch histogram missing
+        (an engine that never executed a batch) still raises."""
+        mock_fetch.return_value = """
+# TYPE mach_batch_size histogram
+mach_batch_size_bucket{batch_type="decode",le="+Inf"} 1.0
+mach_batch_size_sum{batch_type="decode"} 1.0
+mach_batch_size_count{batch_type="decode"} 1.0
+"""
+
+        with pytest.raises(MissingEngineMetricsError) as excinfo:
+            collect_benchmark_metrics(
+                urls={},
+                backend="mach",
+                base_url="http://localhost:8091",
+                verify_required_metrics=True,
+            )
+        assert "mach_batch_execution_time_milliseconds" in str(excinfo.value)
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_missing_optional_metric_does_not_raise(
+        self, mock_fetch: MagicMock
+    ) -> None:
+        """The mach fixture carries no spec-decode families (speculative
+        decoding off): a complete engine scrape must pass untouched."""
+        mock_fetch.return_value = MACH_ENGINE_METRICS
+
+        result = collect_benchmark_metrics(
+            urls={},
+            backend="mach",
+            base_url="http://localhost:8091",
+            verify_required_metrics=True,
+        )
+
+        assert result["server"].backend == "mach"
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_baseline_scrape_is_never_verified(
+        self, mock_fetch: MagicMock
+    ) -> None:
+        """Mach exports through the OpenTelemetry Prometheus exporter, which
+        omits a histogram until its first data point: a fresh idle engine has
+        no mach_batch_* families yet. The baseline collection must not raise
+        against that payload; the final one (after the benchmark ran batches)
+        must."""
+        mock_fetch.return_value = ORCHESTRATOR_METRICS.replace(
+            "mammoth_requests", "engine_started"
+        )
+
+        baseline = collect_benchmark_metrics(
+            urls={}, backend="mach", base_url="http://localhost:8091"
+        )
+        assert baseline["server"].backend == "mach"
+
+        mock_fetch.return_value = MACH_ENGINE_METRICS
+        final = collect_benchmark_metrics(
+            urls={},
+            backend="mach",
+            base_url="http://localhost:8091",
+            baseline=baseline,
+            verify_required_metrics=True,
+        )
+        assert final["server"].backend == "mach"
+
+        # Same idle payload again, but as the verified final collection: now
+        # it raises.
+        mock_fetch.return_value = ORCHESTRATOR_METRICS.replace(
+            "mammoth_requests", "engine_started"
+        )
+        with pytest.raises(MissingEngineMetricsError):
+            collect_benchmark_metrics(
+                urls={},
+                backend="mach",
+                base_url="http://localhost:8091",
+                baseline=baseline,
+                verify_required_metrics=True,
+            )
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_unavailable_metric_missing_does_not_raise(
+        self, mock_fetch: MagicMock
+    ) -> None:
+        """The five mach histograms declared UNAVAILABLE (unlabeled) are
+        absent from the payload; only the two always-emitted labeled
+        families need to be there."""
+        mock_fetch.return_value = """
+# TYPE mach_batch_size histogram
+mach_batch_size_bucket{batch_type="prefill",le="+Inf"} 1.0
+mach_batch_size_sum{batch_type="prefill"} 1.0
+mach_batch_size_count{batch_type="prefill"} 1.0
+# TYPE mach_batch_execution_time_milliseconds histogram
+mach_batch_execution_time_milliseconds_bucket{batch_type="prefill",le="+Inf"} 1.0
+mach_batch_execution_time_milliseconds_sum{batch_type="prefill"} 10.0
+mach_batch_execution_time_milliseconds_count{batch_type="prefill"} 1.0
+"""
+
+        result = collect_benchmark_metrics(
+            urls={},
+            backend="mach",
+            base_url="http://localhost:8091",
+            verify_required_metrics=True,
+        )
+
+        assert result["server"].backend == "mach"
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_other_backends_never_enforce(self, mock_fetch: MagicMock) -> None:
+        """MAX Serve's families are not declared always-emitted, so a
+        modular scrape missing every maxserve_batch_* histogram keeps the
+        historical silent-null behavior (no run failures for other
+        backends)."""
+        mock_fetch.return_value = "# TYPE other counter\nother 1\n"
+
+        result = collect_benchmark_metrics(
+            urls={},
+            backend="modular",
+            base_url="http://localhost:8000",
+            verify_required_metrics=True,
+        )
+
+        assert result["server"].counters["other"] == 1.0
+
+    @patch("max.benchmark.benchmark_shared.server_metrics.fetch_metrics")
+    def test_failed_scrape_keeps_warning_behavior(
+        self, mock_fetch: MagicMock
+    ) -> None:
+        """A scrape that fails outright is a warning plus a dropped
+        endpoint, exactly as before; the loud failure is only for scrapes
+        that succeed without the required metrics."""
+        mock_fetch.side_effect = ConnectionError("refused")
+
+        result = collect_benchmark_metrics(
+            urls={},
+            backend="mach",
+            base_url="http://localhost:8091",
+            verify_required_metrics=True,
+        )
+
+        assert result == {}
