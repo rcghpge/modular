@@ -186,7 +186,7 @@ def rope_ragged[
     ), "rope_ragged: rope_first partial RoPE requires interleaved layout"
 
     # Extract the position_ids raw pointer + row stride into primitive locals so
-    # they can be `@__copy_capture`'d into the device kernel closure. Capturing
+    # they can be copy-captured (`{var}`) into the device kernel closure. Capturing
     # the `OptionalReg[TileTensor]` directly does not marshal its device pointer
     # into the Metal kernel arg struct -- the closure then reads a null/stale
     # pointer, so every token reads freqs row 0 and RoPE collapses to identity

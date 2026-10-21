@@ -630,7 +630,7 @@ struct _QuantizeFp8Kernel[
             return compute_dynamic_fp8_scale[Self.out_type](group_max, scale_ub)
 
     @inline(.always)
-    def _quantize_warp_groups(self) capturing:
+    def _quantize_warp_groups(self):
         """Quantizes with a warp per several groups, one row per lane slice.
 
         A group is `lanes_per_group` consecutive lanes, so a warp quantizes
@@ -713,7 +713,7 @@ struct _QuantizeFp8Kernel[
     @__name(
         t"fp8_quantize_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}{'_rb' if Self.row_bounded else ''}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         comptime if _groups_per_warp[Self.group_size, Self.simd_width]() > 0:
             self._quantize_warp_groups()
             return
@@ -837,7 +837,7 @@ struct _ComputeScalesFp8Kernel[
     @__name(
         t"fp8_compute_scales_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         """Compute per-group FP8 scale factors without quantizing.
 
         Each block scans its (row, group) tile via ``input_fn``, computes the
@@ -920,7 +920,7 @@ struct _ReducePerTensorScaleFp8Kernel[
     @__name(
         t"fp8_reduce_per_tensor_scale_{Self.scales_type}_{Self.out_type}_g{Self.num_groups}_t{Self.num_threads}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         """Reduces the per-group maxes to one per-tensor FP8 scale.
 
         Runs as a single block. It reads every group max that
@@ -1002,7 +1002,7 @@ struct _QuantizeFp8KernelPerTensor[
     @__name(
         t"fp8_quantize_per_tensor_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         """Quantizes one (row, group) tile with the per-tensor FP8 scale.
 
         Reads the scale that `_ReducePerTensorScaleFp8Kernel` wrote to
@@ -1163,7 +1163,7 @@ struct _BatchedQuantizeFp8Kernel[
     @__name(
         t"fp8_batched_quantize_{Self.out_type}_{Self.scales_type}_gs{Self.group_size}_w{Self.simd_width}_t{Self.num_threads}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var input_fn = self.input_fn
         var output = self.output
         var scales = self.scales

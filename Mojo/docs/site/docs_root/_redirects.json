@@ -55,6 +55,16 @@
     "status": 302
   },
   {
+    "source": "/docs/reference/decorators/parameter/",
+    "dest": "/docs/manual/functions/closures/",
+    "status": 301
+  },
+  {
+    "source": "/docs/reference/decorators/copy-capture/",
+    "dest": "/docs/manual/functions/closures/",
+    "status": 301
+  },
+  {
     "source": "/docs/reference/decorators/extensibility-register/",
     "dest": "https://max.modular.com/api/mojo/extensibility/decorators/register/",
     "status": 302

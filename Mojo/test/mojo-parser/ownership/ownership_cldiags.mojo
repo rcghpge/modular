@@ -307,7 +307,7 @@ def testClosure(a: Bool):
         return
 
     @always_inline
-    def thing() capturing -> MemExample:
+    def thing() {imm} -> MemExample:
         var x: MemExample  # expected-note {{'x' declared here}}
         return x  # expected-error {{use of uninitialized value 'x'}}
 
@@ -512,18 +512,6 @@ def test38421():
 @fieldwise_init
 struct MovableStuff(Movable):
     pass
-
-
-def test_cannot_consume_indirect_references():
-    # expected-warning @+1 {{assignment to 'a' was never used}}
-    var a = MovableStuff()
-    # expected-warning @+1 {{assignment to 'b' was never used}}
-    var b = MovableStuff()
-
-    @__parameter
-    def callback():
-        # expected-error @+1 {{cannot consume indirect references to values}}
-        b = a^
 
 
 # ===----------------------------------------------------------------------=== #

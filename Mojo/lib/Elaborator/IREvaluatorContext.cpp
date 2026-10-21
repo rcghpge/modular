@@ -381,7 +381,7 @@ IREvaluatorContext::evaluateCompileAssemblyAttr(CompileAssemblyAttr attr) {
   auto populateFnType = FuncTypeGeneratorType::get(
       /*inputParamTypes=*/{},
       b.getFunctionType(PointerType::get(noneType), noneType),
-      {ArgConvention::ImmReg}, FnEffects().setCapturing());
+      {ArgConvention::ImmReg}, FnEffects());
 
   // Specialize the generator with another target by slicing it and its
   // transitive dependencies out of the IR and re-invoking the elaborator. If it
@@ -675,11 +675,11 @@ FailureOr<TypedAttr> IREvaluatorContext::evaluateCompileOffloadClosureAttr(
   // The location to use for generated code. Remove all debuginfo from it.
   Location loc = DebugInfo::stripDebugScopesRecursively(*errorLoc);
 
-  // The expected signature is `fn(Pointer[None]) capturing -> None`.
+  // The expected signature is `def(Pointer[None]) thin -> None`.
   ImplicitLocOpBuilder bb(loc, ctx);
   auto nonePtr = PointerType::get(noneType);
   auto sig = FuncType::get(bb.getFunctionType(nonePtr, noneType),
-                           ArgConvention::ImmReg, FnEffects().setCapturing());
+                           ArgConvention::ImmReg, FnEffects());
 
   // Use the auto-mangled sym_name (NOT @__name) for the stub name. Each
   // distinct closure instantiation gets its own stub keyed by the pre-rename

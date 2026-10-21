@@ -174,7 +174,7 @@ struct _ClcKernel[
     @__name(
         t"{Self.trace_description}_r{Self.rank}_w{Self.simd_width}_b{Self.block_size}.clc.{Self.handle_uneven_simd}"
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var result = unsafe_stack_allocation[
             1,
             UInt128,
@@ -423,7 +423,7 @@ struct _GridStrideKernel[
     @__name(
         t"{Self.trace_description}_r{Self.rank}_w{Self.simd_width}_b{Self.block_size}.gs.{Self.handle_uneven_simd}"
     )
-    def __call__(self) capturing:
+    def __call__(self):
         # process the packed region — each thread handles multiple packed
         # elements at stride block_size for coalesced access and ILP.
         var tid = thread_idx.x + Self.block_size * block_idx.x
@@ -618,7 +618,7 @@ struct _DualGridStrideKernel[
     @__name(
         t"{Self.trace_description}_r{Self.rank}_w{Self.simd_width}_b{Self.block_size}.dual_gs.{Self.handle_uneven_simd}"
     )
-    def __call__(self) capturing:
+    def __call__(self):
         comptime assert Self.shape_0_types.length == Self.shape_1_types.length
         var tid = thread_idx.x + Self.block_size * block_idx.x
         var stride = Self.block_size * grid_dim.x

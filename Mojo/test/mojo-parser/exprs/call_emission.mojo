@@ -398,13 +398,11 @@ def test_byref_slot_with_references():
 
 # CHECK-LABEL: lit.fn @"test_byref_slot_closure_capture
 def test_byref_slot_closure_capture(var x: String):
-    # CHECK: lit.fn *"capture
-    @__parameter
-    def capture() -> String:
+    def capture() {imm} -> String:
         return x
 
-    # CHECK: %__call_result_tmp__
-    # CHECK-NEXT: lit.call[{{.*}}: *"capture{{.*}}(%__call_result_tmp__)
+    # CHECK: %__call_result_tmp__ = lit.var.decl
+    # CHECK-NEXT: lit.call {{.*}}capture::__storage"::@"__call__{{.*}}(%{{.*}}, %__call_result_tmp__)
     x = capture()
     # CHECK-NEXT: lit.call {{.*}}@String::@"__init__{{.*}}"{{.*}}(%__call_result_tmp__, %x){{.*}}*, "move"
 

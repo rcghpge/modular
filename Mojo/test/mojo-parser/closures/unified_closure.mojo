@@ -354,7 +354,7 @@ def s17_bindIt(z: Int, mem: String):
 
 
 struct custom(def(x: Int) -> Int):
-    def __call__(self, x: Int) capturing -> Int:
+    def __call__(self, x: Int) -> Int:
         return x
 
 

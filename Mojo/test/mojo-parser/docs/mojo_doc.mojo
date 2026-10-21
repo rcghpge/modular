@@ -333,13 +333,13 @@ def fn_with_params_and_return(arg: Int) -> Int:
 # CHECK: "overloads":
 # CHECK:     "args":
 # CHECK:         "name": "arg_fn"
-# CHECK:         "type": "def(S, S) capturing thin -> Bool"
+# CHECK:         "type": "def(S, S) -> Bool"
 # CHECK:     "parameters":
 # CHECK:         "name": "T"
 # CHECK:         "path": "{{.*}}"
 # CHECK:         "type": "AnyType"
 # CHECK:         "name": "param_fn"
-# CHECK:         "type": "def(T, T) capturing thin -> Bool"
+# CHECK:         "type": "def(T, T) -> Bool"
 # CHECK:         "default": "T"
 # CHECK:         "name": "S"
 # CHECK:         "path": "{{.*}}"
@@ -347,14 +347,14 @@ def fn_with_params_and_return(arg: Int) -> Int:
 # CHECK:     "returns": {
 # CHECK:       "type": "S"
 # CHECK:     },
-# CHECK:     "signature": "def fn_with_fn_param_and_arg[T: AnyType, param_fn: def(T, T) capturing thin -> Bool, S: AnyType = T](arg_fn: def(S, S) capturing thin -> Bool) -> S"
+# CHECK:     "signature": "def fn_with_fn_param_and_arg[T: AnyType, param_fn: def(T, T) -> Bool, S: AnyType = T](arg_fn: def(S, S) -> Bool) -> S"
 
 
 def fn_with_fn_param_and_arg[
     T: AnyType,
-    param_fn: def(T, T) capturing[_] -> Bool,
+    param_fn: def(T, T) -> Bool,
     S: AnyType = T,
-](arg_fn: def(S, S) capturing[_] -> Bool) -> S:
+](arg_fn: def(S, S) -> Bool) -> S:
     pass
 
 
@@ -367,7 +367,7 @@ def fn_with_fn_param_and_arg[
 # CHECK:         "name": "origins"
 # CHECK:         "type": "OriginSet"
 # CHECK:         "name": "input_fn_1d"
-# CHECK:         "type": "def[_simd_width: Int](Int) capturing thin -> SIMD[dtype, _simd_width]"
+# CHECK:         "type": "def[_simd_width: Int](Int) -> SIMD[dtype, _simd_width]"
 
 
 def logsoftmax[
@@ -375,7 +375,7 @@ def logsoftmax[
     buffer_size: Int,
     dtype: DType,
     origins: OriginSet,
-    input_fn_1d: def[_simd_width: Int](Int) capturing[origins] -> SIMD[
+    input_fn_1d: def[_simd_width: Int](Int) -> SIMD[
         dtype, _simd_width
     ],
 ](output: Pointer[Scalar[dtype], _]) raises:
@@ -392,7 +392,7 @@ def vectorize_unified[func: def[width: Int](idx: Int) -> None](closure: func):
 
 
 # FIXME(MOCO-3730): sugar regression.
-# CHECK: "signature": "def tile_and_unswitch[workgroup_function: def[width: Int, sw: Bool](Int, Int) capturing thin -> None, *tile_size_list: Int](offset: Int, upperbound: Int)",
+# CHECK: "signature": "def tile_and_unswitch[workgroup_function: Static1DTileUnswitchUnitFunc, *tile_size_list: Int](offset: Int, upperbound: Int)",
 
 
 def tile_and_unswitch[
@@ -404,7 +404,7 @@ def tile_and_unswitch[
 
 comptime Static1DTileUnswitchUnitFunc = def[width: Int, sw: Bool](
     Int, Int
-) capturing[_] -> None
+) -> None
 
 
 @fieldwise_init
@@ -935,17 +935,17 @@ struct StructWithAutoParamScalar[a: Scalar]:
 # CHECK:      "path": "{{.*}}"
 # CHECK:      "type": "AnyType"
 # CHECK:      "name": "param_fn"
-# CHECK:      "type": "def(T, T) capturing thin -> Bool"
+# CHECK:      "type": "def(T, T) -> Bool"
 # CHECK:      "default": "T",
 # CHECK:      "name": "S"
 # CHECK:      "path": "{{.*}}"
 # CHECK:      "type": "AnyType"
-# CHECK: "signature": "struct StructWithFnParam[T: AnyType, param_fn: def(T, T) capturing thin -> Bool, S: AnyType = T]",
+# CHECK: "signature": "struct StructWithFnParam[T: AnyType, param_fn: def(T, T) -> Bool, S: AnyType = T]",
 
 
 struct StructWithFnParam[
     T: AnyType,
-    param_fn: def(T, T) capturing[_] -> Bool,
+    param_fn: def(T, T) -> Bool,
     S: AnyType = T,
 ]:
     pass

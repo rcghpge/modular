@@ -71,6 +71,25 @@ This version is still a work in progress.
 
 ## Removed
 
+- Legacy closures are removed. The `capturing` function effect and the
+  `@__parameter` (and `@parameter`), `@__copy_capture`, and
+  `@__move_capture` decorators are now errors. Declare a nested function's
+  captures in a capture list instead, and pass the closure as a value:
+
+  ```mojo
+  def apply[F: def(Int) -> Int](f: F, x: Int) -> Int:
+      return f(x)
+
+  def main():
+      var offset = 10
+      def add(x: Int) {var offset} -> Int:  # was @__copy_capture(offset)
+          return x + offset
+      print(apply(add, 1))
+  ```
+
+  A function passed as a compile-time parameter must now be `thin`, for
+  example `[f: def(Int) thin -> Int]`.
+
 ## Fixed
 
 - `SIMD.slice()` no longer passes `llvm.vector.extract` an offset that is not

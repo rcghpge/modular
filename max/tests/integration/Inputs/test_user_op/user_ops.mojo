@@ -86,7 +86,7 @@ struct ConcatOpaque:
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime assert 0 <= axis < rank, "axis out of range"
         var input_shapes = StaticTuple[IndexList[rank], inputs.size]()
         comptime for i in range(inputs.size):

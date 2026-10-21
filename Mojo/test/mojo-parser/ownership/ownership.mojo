@@ -655,8 +655,7 @@ struct GenericRegType(RegisterPassable, SomeTrait):
 
 # CHECK-LABEL: lit.fn @"destruct_generic_return
 def destruct_generic_return():
-    @__parameter
-    def return_generic_type[T: SomeTrait]() -> T:
+    def return_generic_type[T: SomeTrait]() {imm} -> T:
         while True:
             pass
 

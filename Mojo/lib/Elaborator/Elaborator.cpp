@@ -1992,7 +1992,7 @@ ErrorTreeOrSuccess Elaborator::bundleCompileOffloadOp(CompileOffloadOp op,
   auto noneType = KGEN::NoneType::get(ctx);
   auto populateFnType = FuncTypeGeneratorType::get(
       {}, b.getFunctionType(PointerType::get(noneType), noneType),
-      {ArgConvention::ImmReg}, FnEffects().setCapturing());
+      {ArgConvention::ImmReg}, FnEffects());
 
   // Specialize the generator with another target by slicing it and its
   // transitive dependencies out of the IR and re-invoking the elaborator. If it

@@ -2995,7 +2995,7 @@ struct _RMSNormQuantizeFp8GroupKernel[
             Int32(Self.num_threads)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         comptime accum = get_accum_type[Self.in_dtype]()
         comptime assert (
             Self.num_cols % Self.group_size == 0

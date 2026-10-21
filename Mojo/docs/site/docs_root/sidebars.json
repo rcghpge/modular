@@ -171,7 +171,6 @@
       "items": [
         "docs/reference/decorators/align",
         "docs/reference/decorators/always-inline",
-        "docs/reference/decorators/copy-capture",
         "docs/reference/decorators/deprecated",
         "docs/reference/decorators/doc-hidden",
         "docs/reference/decorators/export",
@@ -179,7 +178,6 @@
         "docs/reference/decorators/implicit",
         "docs/reference/decorators/inline",
         "docs/reference/decorators/no-inline",
-        "docs/reference/decorators/parameter",
         "docs/reference/decorators/staticmethod"
       ]
     }

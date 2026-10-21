@@ -318,26 +318,6 @@ def autoparam_of_dependent_params[dp: DependentParams]():
     pass
 
 
-# CHECK-LABEL: lit.fn @"function_autoparam
-# CHECK-SAME: :{mut |*(0,0)|, mut |*(0,1)|}:<["f.__origins__`"][[F_LT:.*]]: origin.set, ["g.__origins__`1"][[G_LT:.*]]: origin.set, +
-# CHECK-SAME: f: !lit.generator<:[[F_LT]]:() capturing -> !kgen.none>
-# CHECK-SAME: g: !lit.generator<:[[G_LT]]:() capturing -> !kgen.none>
-def function_autoparam[f: def () capturing [_] -> None, g: def () capturing [_] -> None]():
-    @__parameter
-    def function():
-        pass
-
-    # CHECK: lit.alias.decl *"bind_one{{.*}}": !lit.generator<<>!kgen.func.literal<:!lit.fn<() capturing -> !kgen.none>
-    # CHECK-SAME: function_autoparam{{.*}}<:origin.set {}, :origin.set {}, :{{.*}} *"function()", :{{.*}} *"function()">
-    comptime bind_one = function_autoparam[function, function]
-
-
-# CHECK-LABEL: lit.fn @"nonprop_capture_set
-# CHECK-SAME: ()"<f: !lit.generator<<"g.__origins__`2x": origin.set, +, "g": !lit.generator<:*(1,0):() capturing -> !kgen.none>>:*(0,0):() -> !kgen.none>>()
-def nonprop_capture_set[f: def[g: def () capturing [_] -> None] () thin -> None]():
-    pass
-
-
 # CHECK-LABEL: lit.fn @"autoparam_param_vararg
 # CHECK-SAME: <["f.__origins__`"]*"f.__origins__`": origin.set, {{.*}} +, f: {{.*}}, x: !lit.struct<#ParameterList{{.*}} pos_vararg>
 def autoparam_param_vararg[f: def () thin [_] -> None, *x: Int]():
@@ -1052,20 +1032,6 @@ def signature_inference[dt: DType, rank: Int]():
     # CHECK-SAME: :!lit.generator<<"width": !Int>(!lit.struct<#Abstraction <:!Int rank>
     # CHECK-SAME: -> !lit.struct<#SIMD <:!DType dt, :!SIMDLength sugar_builtin(apply(:!lit.generator<("value": !Int, |) -> !SIMDLength> @std::@builtin::@stubs::@SIMDLength::@"__init__(::SIMD[DType.int, 1])", *(0,0)), {_mlir_value = to_builtin(:scalar<index> #lit.struct.extract<:!Int *(0,0), "_mlir_value">)})>>
     implicit_signature[func]()
-
-
-struct ClosureParam[lt: Origin[mut=True], f: def () capturing [lt._mlir_origin] -> None](Movable):
-  pass
-
-
-# CHECK-LABEL: lit.fn @"infer_implicit_params
-def infer_implicit_params(var p: ClosureParam):
-    # CHECK: lit.call {{.*}}ClosureParam::@"__init__
-    # CHECK-SAME: *, "move"
-    # CHECK-SAME: <:origin<true> *"p.lt._mlir_origin``",
-    # CHECK-SAME: :!lit.generator<:{mut *"p.lt._mlir_origin``"}:() capturing -> !kgen.none> *"p.f`2">
-    var tmp = p^
-    _ = tmp^
 
 
 trait ToInt:

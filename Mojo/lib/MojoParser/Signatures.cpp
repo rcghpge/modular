@@ -1627,7 +1627,7 @@ ParseResult ParsedArgumentList::parseArgumentListAndEffects(ParserBase &p,
 
       // Otherwise maybe it was misspelled, just eat it.
       p.emitError(loc, "unknown function effect '")
-          << spelling << "', expected 'raises', 'capturing', or 'thin'";
+          << spelling << "', expected 'raises' or 'thin'";
     } else if (spelling == "raises") {
       handleEffect(&FnEffects::isThrows, &FnEffects::setThrows);
       p.consumeIdentifier();
@@ -1661,7 +1661,10 @@ ParseResult ParsedArgumentList::parseArgumentListAndEffects(ParserBase &p,
       continue; // Don't consume the identifier again.
 
     } else if (spelling == "capturing") {
-      handleEffect(&FnEffects::isCapturing, &FnEffects::setCapturing);
+      p.emitError(loc, "the 'capturing' function effect is no longer "
+                       "supported; use a closure capture list like '{var}' or "
+                       "'{mut x}' instead");
+      return failure();
     } else if (spelling == "escaping") {
       p.emitError(loc, "the 'escaping' function effect is no longer supported");
       return failure();

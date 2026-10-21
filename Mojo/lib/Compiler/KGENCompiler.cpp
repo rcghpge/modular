@@ -206,11 +206,11 @@ writeCaptureArgs(ModuleOp module, FuncOp sliced, StringAttr preRenameSym) {
   // memory with the capture values.
   ImplicitLocOpBuilder b(loc, OpBuilder(name.getContext()));
 
-  // The expected signature is `fn(Pointer[None]) capturing -> None`.
+  // The expected signature is `def(Pointer[None]) thin -> None`.
   auto noneType = b.getType<KGEN::NoneType>();
   auto nonePtr = PointerType::get(noneType);
   auto sig = FuncType::get(b.getFunctionType(nonePtr, noneType),
-                           ArgConvention::ImmReg, FnEffects().setCapturing());
+                           ArgConvention::ImmReg, FnEffects());
   OwningOpRef<FuncOp> func =
       FuncOp::create(b, b.getStringAttr(name.getValue() + "_populate_captures"),
                      sig, InlineLevel::Always);

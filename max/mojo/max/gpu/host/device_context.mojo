@@ -133,6 +133,18 @@ struct _DeviceContextScopeCpp:
     pass
 
 
+# The host task runs after `enqueue_cpu_*` returns, so it holds a pointer to the
+# caller's function rather than a closure local to the enqueue call.
+__async def _run_cpu_function[F: def() -> None](func: Pointer[F, _]):
+    func[]()
+
+
+__async def _run_cpu_range_function[
+    F: def(Int) -> None
+](func: Pointer[F, _], idx: Int):
+    func[](idx)
+
+
 comptime _DeviceContextPtr[
     mut: Bool,
     //,
@@ -3446,7 +3458,6 @@ struct DeviceFunction[
 
     # Enqueue function on a stream
     @inline(.always)
-    @__parameter
     def _call_with_pack[
         *Ts: AnyType,
     ](
@@ -3607,7 +3618,6 @@ struct DeviceFunction[
         )
 
     @inline(.always)
-    @__parameter
     def _call_with_pack_checked[
         HostArgs: TypeList[Trait=RegisterPassable, ...],
         //,
@@ -5479,10 +5489,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 "enqueue_cpu_function is only supported on CPU DeviceContexts"
             )
 
-        __async def wrapper() capturing -> None:
-            func()
-
-        var coro = wrapper()
+        var coro = _run_cpu_function(Pointer(to=func))
         coro._set_noop_callback()
         _checked(
             external_call[
@@ -5525,11 +5532,8 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
         var handles = List[AnyCoroutine](capacity=count)
 
-        __async def wrapper(idx: Int) capturing -> None:
-            func(idx)
-
         for j in range(count):
-            var coro = wrapper(j)
+            var coro = _run_cpu_range_function(Pointer(to=func), j)
             coro._set_noop_callback()
             handles.append(coro^._take_handle())
 

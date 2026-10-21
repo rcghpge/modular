@@ -5249,7 +5249,7 @@ struct Mamba2ReplayFold[dt_softplus: Bool = True]:
         replay_bounds: InputTensor[dtype=.int32, rank=1, ...],
         layers: InputVariadicTensors[dtype=dtype, rank=2, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         comptime if not is_gpu[target]():
             raise Error("mamba2_replay_fold runs on GPUs only")
         else:

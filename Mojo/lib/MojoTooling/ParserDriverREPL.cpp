@@ -31,6 +31,7 @@
 #include "mlir/Support/IndentedOstream.h"
 #include "llvm/ADT/IntervalMap.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -387,6 +388,36 @@ static std::string getPersistentVariableTypeName(StringRef name) {
   return llvm::formatv("__mojo_repl_persistent_var_type_{0}", name).str();
 }
 
+/// Return the names bound by top-level `var`/`ref` declarations in the main
+/// body code, e.g. `a` and `b` for `var a, b = f()` or `^ x` for
+/// ``var `^ x`: Int``.
+static llvm::StringSet<> getRedeclaredNames(ArrayRef<StringRef> mainBodyCode) {
+  llvm::StringSet<> names;
+  for (StringRef code : mainBodyCode) {
+    StringRef decl = code.take_until([](char c) { return c == '\n'; }).trim();
+    if (!decl.consume_front("var ") && !decl.consume_front("ref "))
+      continue;
+    decl = decl.ltrim(" (");
+    while (!decl.empty()) {
+      StringRef name;
+      if (decl.consume_front("`")) {
+        std::tie(name, decl) = decl.split('`');
+      } else {
+        size_t end = decl.find_first_of(" ,:=)");
+        name = decl.take_front(end);
+        decl = decl.drop_front(name.size());
+      }
+      if (!name.empty())
+        names.insert(name);
+      decl = decl.ltrim(" )");
+      if (!decl.consume_front(","))
+        break;
+      decl = decl.ltrim(" (");
+    }
+  }
+  return names;
+}
+
 /// Wrap the provided expression text in a function so that it can be executed.
 /// The generated function uses the provided name, and the provided variables
 /// are passed via fields to a generated struct that is used as the first
@@ -442,12 +473,18 @@ wrapExpressionText(MojoParserContext::REPLLocMapper::ExprLocMapper &locMapper,
 
   // Generate a wrapper function to handle the extracting function arguments as
   // references.
+  // A variable the expression redeclares is a fresh local of the expression
+  // function rather than one of its arguments, which would be a redefinition.
+  llvm::StringSet<> redeclared = getRedeclaredNames(mainBodyCode);
+  auto isPassedIn = [&](StringRef name) { return !redeclared.contains(name); };
+
   exprOS << "def " << wrappedFnName
          << "(mut __mojo_repl_arg: __mojo_repl_context__):\n"
             "  try:\n"
             "    __mojo_repl_expr_impl__(__mojo_repl_arg";
   for (auto &[name, type] : variables)
-    exprOS << formatv(", __mojo_repl_arg.`{0}`[][]", name);
+    if (isPassedIn(name))
+      exprOS << formatv(", __mojo_repl_arg.`{0}`[][]", name);
 
   exprOS << ")\n"
             "  except error:\n"
@@ -457,26 +494,21 @@ wrapExpressionText(MojoParserContext::REPLLocMapper::ExprLocMapper &locMapper,
   exprOS << "def __mojo_repl_expr_impl__(mut __mojo_repl_arg: "
             "__mojo_repl_context__";
   for (auto &[name, type] : variables)
-    exprOS << llvm::formatv(", mut `{0}`: {1}", name,
-                            getPersistentVariableTypeName(name));
+    if (isPassedIn(name))
+      exprOS << llvm::formatv(", mut `{0}`: {1}", name,
+                              getPersistentVariableTypeName(name));
   exprOS << ") raises -> None:\n";
 
-  // Splat out the main body code inside of a nested def. This will allow for us
-  // to redefine previous variables transparently.
-  exprOS << "  var __mojo_repl_expr_failed = True\n"
-            "  @__parameter\n"
-            "  def __mojo_repl_expr_body__() raises -> None:\n";
+  exprOS << "  var __mojo_repl_expr_failed = True\n";
 
   // The following is the other chunk of code just written by the user.
   for (StringRef code : mainBodyCode) {
-    exprOS << "    ";
+    exprOS << "  ";
     emitAndMapCode(code);
   }
-  exprOS << "    pass\n";
 
   // If the code succeeded, reset the failure flag.
-  exprOS << "  __mojo_repl_expr_body__()\n"
-            "  __mojo_repl_expr_failed = False\n";
+  exprOS << "  __mojo_repl_expr_failed = False\n";
 
   // Emit a marker separating the top-level code from the forthcoming entry
   // point logic.
@@ -521,7 +553,6 @@ static void processVariablesForPersistence(MojoParserREPLListener &listener,
           variables.emplace_back(name, varDecl);
   };
   addVars(exprFnDecl);
-  addVars(lookupSingleDecl(exprFnDecl, "__mojo_repl_expr_body__"));
 
   llvm::sort(variables, [](const auto &lhs, const auto &rhs) {
     return lhs.first.getValue() < rhs.first.getValue();

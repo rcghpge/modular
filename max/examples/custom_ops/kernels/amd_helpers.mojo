@@ -25,7 +25,6 @@ from std.utils.index import IndexList
 
 
 @inline(.always)
-# @__parameter
 def amd_scheduling_hints[
     input_type: DType,
     output_type: DType,

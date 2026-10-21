@@ -2743,7 +2743,7 @@ struct _ElementwiseFusionTileAdapter[
     ]
 
     @inline(.always)
-    def __call__(self) capturing:
+    def __call__(self):
         # One block per output tile: `block_idx.(y, x)` selects the tile row and
         # column. Carried into the kernel as a closure (the adapter is not
         # `DevicePassable`, so its captures cross via the same mechanism

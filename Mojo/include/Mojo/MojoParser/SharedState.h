@@ -86,7 +86,7 @@ enum class CaptureConvention : uint8_t;
 /// Capture represents a nested function value whose declaration is in the
 /// parent function.
 ///
-/// In the case of a __move_capture/__copy_capture, the 'value' of the capture
+/// In the case of a `{var x}` or `{var x^}` capture, the 'value' of the capture
 /// is an RValue defined in parent function, which is transferred into the
 /// closure struct.
 ///

@@ -58,8 +58,7 @@ def reduce_sum[
     body layer: one `ReduceSum` phase plus a per-row `emit`.
 
     `input_fn` / `output_fn` are value-based closures (a type parameter
-    bound to a callable trait + a value argument), not comptime
-    `capturing[_]` parameters."""
+    bound to a callable trait + a value argument)."""
     comptime op_name = name if name != "" else "reduce_sum"
     comptime simd_width = rowwise.pick_simd_width[
         ReduceSum[dtype, 1], target, 64, dtype

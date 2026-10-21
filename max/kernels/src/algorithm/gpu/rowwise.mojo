@@ -1144,7 +1144,7 @@ struct _BlockKernel[
             Int32(Self.params.BLOCK_SIZE)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         with PDL():
@@ -1182,7 +1182,7 @@ struct _WarpKernel[
             Int32(Self.params.BLOCK_SIZE)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         comptime warps_per_block = Self.params.BLOCK_SIZE // WARP_SIZE
         var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
@@ -1228,7 +1228,7 @@ struct _TiledKernel[
             Int32(Self.params.BLOCK_SIZE)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         # The body needs one of these to take the one-thread-per-output
         # branches; without either it compiles fine and reduces across
         # output rows.
@@ -1297,7 +1297,7 @@ struct _SplitkKernel[
             Int32(Self.params.BLOCK_SIZE)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         var qr = udivmod(block_idx.x, Int(self.blocks_per_row))
@@ -1361,7 +1361,7 @@ struct _PointwiseSplitkKernel[
             Int32(Self.params.BLOCK_SIZE)
         )
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var num_rows = _num_outputs_excluding_axis[Self.params.axis](self.shape)
 
         var qr = udivmod(block_idx.x, Int(self.num_splits))

@@ -505,7 +505,7 @@ struct _FusedResidualBlockKernel[
     @__name(
         t"rms_norm_fused_residual_gpu_block_{Self.dtype}_{Self.multiply_before_cast}",
     )
-    def __call__(self) capturing:
+    def __call__(self):
         var _num_cols = Int(self.num_cols)
         var _weight_offset = Scalar[Self.dtype](self.weight_offset)
         var _dropout_p = Scalar[Self.dtype](self.dropout_p)

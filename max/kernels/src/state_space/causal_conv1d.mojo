@@ -148,7 +148,7 @@ def causal_conv1d_channel_first_fwd_cpu[
         if b >= batch or c >= dim:
             return
 
-        # Validate bias tensor has valid dimensions (use debug_assert since we can't raise in @__parameter fn)
+        # Validate bias tensor has valid dimensions (use debug_assert since process_bc can't raise)
         assert (
             Int(bias.dim[0]()) > 0
         ), "Bias tensor must have at least one element"

@@ -798,8 +798,6 @@ struct FnSigDecorators : public SharedStateUser {
 
 private:
   void applyImplicitDecorator(SMLoc decoratorLoc, const CallNode *callNode);
-  void applyCopyOrMoveCapture(SMLoc decoratorLoc, const CallNode *callNode,
-                              bool isMove, StringRef decorator);
   void applyExtern(SMLoc decoratorLoc, const CallNode *node);
   void applyExportLike(SMLoc loc, bool isExport, const CallNode *node,
                        IREmitter &emitter);
@@ -933,16 +931,10 @@ LogicalResult FnSigDecorators::applyOne(ExprNode *decorator) {
           getInlineLevelAttr(funcOp.getContext(), InlineLevel::Never));
     });
   } else if (spelling == "__parameter" || spelling == "parameter") {
-    // Temporarily accept the legacy `@parameter` spelling with a deprecation
-    // warning so the rename to `@__parameter` can land without breaking
-    // out-of-tree and late-landing code in the same change.
-    if (spelling == "parameter") {
-      emitWarning(declRef->getLoc(),
-                  "'@parameter' is deprecated; use '@__parameter'")
-          << FixIt::replaceToken(declRef->getLoc(), "__parameter");
-    }
-    applyArgumentless(spelling, callNode,
-                      [&]() { tcSignature.argList.effects.setCapturing(); });
+    emitError(declRef->getLoc(), "'@")
+        << spelling
+        << "' closures are no longer supported; remove the decorator and "
+           "declare the captures in a capture list like '{var}' or '{mut x}'";
   } else if (spelling == "__unsafe_nested_origins_read_only") {
     applyArgumentless(spelling, callNode,
                       [&]() { tcSignature.isNestedOriginsReadOnly = true; });
@@ -953,12 +945,11 @@ LogicalResult FnSigDecorators::applyOne(ExprNode *decorator) {
     applyImplicitDecorator(decorator->getLoc(), callNode);
   } else if (spelling == "extern") {
     applyExtern(decorator->getLoc(), callNode);
-  } else if (spelling == "__move_capture") {
-    applyCopyOrMoveCapture(decorator->getLoc(), callNode, /*isMove=*/true,
-                           spelling);
-  } else if (spelling == "__copy_capture") {
-    applyCopyOrMoveCapture(decorator->getLoc(), callNode, /*isMove=*/false,
-                           spelling);
+  } else if (spelling == "__move_capture" || spelling == "__copy_capture") {
+    emitError(declRef->getLoc(), "'@")
+        << spelling
+        << "' is no longer supported; list the captures in a capture list "
+           "like '{var x}' instead";
   } else if (spelling == "__llvm_metadata") {
     applyLLVMMetadata(decorator->getLoc(), callNode);
   } else if (spelling == "__llvm_arg_metadata") {
@@ -1034,113 +1025,6 @@ void FnSigDecorators::applyImplicitDecorator(SMLoc decoratorLoc,
     return;
   }
   funcOp.setImplicitConversion(conversionKind);
-}
-
-void FnSigDecorators::applyCopyOrMoveCapture(SMLoc decoratorLoc,
-                                             const CallNode *callNode,
-                                             bool isMove,
-                                             StringRef decoratorSpelling) {
-  if (!callNode || callNode->operands.empty()) {
-    emitError(decoratorLoc, "'@")
-        << decoratorSpelling << "' must have arguments";
-    return;
-  }
-
-  const CallNode &node = *callNode;
-  // HACK(#16110): Need to implement proper capture list syntax rather than rely
-  // on a special decorator.
-  for (const Operand &operand : node.operands) {
-    auto *declRef = dyn_cast<DeclRefNode>(operand.expr);
-    if (!declRef) {
-      emitError(operand.getLoc(), "'@")
-          << decoratorSpelling << "' expected a declaration";
-      continue;
-    }
-    LookupResult lookup = shared.lookupAndResolveDecl(
-        declRef->spelling, declRef->getLoc(), *decl.getParentDecl(),
-        /*searchParentScopes=*/true);
-    if (lookup.isErroneous())
-      continue;
-
-    ArrayRef<ASTDecl *> decls = lookup.getIfSuccess();
-    if (decls.empty()) {
-      emitError(declRef->getLoc(), "cannot capture unknown value '")
-          << declRef->spelling << "'";
-      continue;
-    }
-    if (decls.size() != 1) {
-      emitError(declRef->getLoc(), "cannot capture overloaded value '")
-          << declRef->spelling << "'";
-      continue;
-    }
-
-    // Emit an immutable copy of the captured declaration.
-    FnOp parentOp = funcOp->getParentOfType<FnOp>();
-    if (!parentOp) {
-      emitError(declRef->getLoc(), "'@")
-          << decoratorSpelling
-          << "' decorator only applies to nested functions";
-      return;
-    }
-
-    IREmitter emitter(*decl.getParentDecl(), OpBuilder(funcOp));
-    RValue captureRVal;
-    if (!isMove) {
-      // For a copy capture, just emit the value reference as an RValue, which
-      // will make sure to copy it.
-      captureRVal = emitter.emitExprRValue(declRef, EC_Capture);
-      if (!captureRVal)
-        return;
-      // HACK: This only has the intended effect of "immortalizing" a
-      // register-passable value by creating an SRValue.
-      if (!captureRVal.getType().isTrivial(node.getLoc(), shared)) {
-        emitError(node.getLoc(), "TODO: @__copy_capture only works as intended "
-                                 "with trivial register-passable types");
-      }
-    } else {
-      // For a move capture, we emit this with an implicit transfer.
-      // HACK(#16110): This transfers ownership without an explicit `^` from
-      // the user, because we don't have capture list syntax.
-      UnaryOpNode transfer(ExprNode::kTransfer, declRef->getLoc(), declRef);
-      captureRVal = emitter.emitExprRValue(&transfer, EC_Capture);
-    }
-
-    // We can only capture dynamic values so materialize param expressions.
-    if (auto pval = captureRVal.getIfPValue()) {
-      if (pval.getType().isRegisterPassable(decl.getLoc(), shared))
-        captureRVal = emitter.emitSRValue({captureRVal, declRef}, EC_Capture);
-      else
-        captureRVal = emitter.emitMRValue({captureRVal, declRef}, EC_Capture);
-    }
-    if (!captureRVal)
-      return;
-
-    // How is this transferring the RValue into the closure?
-    CValue resultVal;
-    if (auto srVal = captureRVal.getIfSRValue())
-      resultVal = srVal;
-    else {
-      assert(captureRVal.getIfMRValue() && "Unknown RValue kind");
-      resultVal = captureRVal.getIfMRValue();
-    }
-
-    // Bind the name in the scope so further references don't look like
-    // reference captures.
-    // FIXME: It would be cleaner to have an explicit representation of this,
-    // e.g. an op that produces a ref to the value in the capture list.  Instead
-    // we are still forming references outside the closure for things that are
-    // copied and moved into the closure.
-    emitter.getDeclResolver().addFullyResolvedDecl(
-        resultVal, StringAttr::get(sigDecl.getContext(), declRef->spelling),
-        sigDecl.getLoc(), &sigDecl);
-
-    // Both move and copy captures are the same here - a move capture just does
-    // the transfer above to generate its RValue.
-    shared.addCaptureToScope(decl, decls.front(),
-                             Capture(captureRVal,
-                                     CaptureConvention::kConventionCopy,
-                                     declRef->spelling));
-  }
 }
 
 void FnSigDecorators::applyExtern(SMLoc decoratorLoc,
@@ -1639,33 +1523,6 @@ void FnSigDecorators::finalize() {
     // NOTE: @llvm_metadata are processed and added in reverse order
     funcOp.setFnAttrsAttr(ArrayAttr::get(getContext(), fnAttributes));
   }
-}
-
-/// Given the lexical context of a function, return true if the default bit
-/// for the function is capturing.
-static bool
-isCapturingByDefault(FnOp funcOp, TraitType canonicalTrait,
-                     std::optional<ArrayRef<ParamDeclAttr>> parentDecls,
-                     ArrayRef<ParamDeclAttr> paramDecls) {
-  // Any function that contains a capturing closure as a parameter is itself
-  // capturing, include parent struct parameters.
-  mlir::AttrTypeWalker walker;
-  walker.addWalk([](FuncType sig) {
-    if (sig.isCapturing())
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  bool isInterrupted = false;
-  if (canonicalTrait)
-    isInterrupted = walker.walk(canonicalTrait).wasInterrupted();
-  return isInterrupted ||
-         llvm::any_of(llvm::concat<const ParamDeclAttr>(
-                          paramDecls, parentDecls
-                                          ? parentDecls.value()
-                                          : SmallVector<ParamDeclAttr>()),
-                      [&](ParamDeclAttr decl) {
-                        return walker.walk(decl).wasInterrupted();
-                      });
 }
 
 std::pair<SmallVector<ParamDeclRefAttr>, FnTypeGeneratorType>
@@ -2296,29 +2153,8 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   if (fnSignature.parseArgumentListAndEffects(p, ArgListKind::kArgList))
     return failure();
 
-  auto hasParameterDecorator = [&]() {
-    return llvm::any_of(
-        decoratorExprs,
-        [](const std::pair<ExprNode *, LexerCursor> &decorator) {
-          auto isParameterSpelling = [](StringRef spelling) {
-            return spelling == "__parameter" || spelling == "parameter";
-          };
-          auto *expr = decorator.first->getWithoutParens();
-          if (auto *declRef = dyn_cast<DeclRefNode>(expr))
-            return isParameterSpelling(declRef->spelling);
-          auto *call = dyn_cast<CallNode>(expr);
-          if (!call)
-            return false;
-          auto *callee =
-              dyn_cast<DeclRefNode>(call->callee->getWithoutParens());
-          return callee && isParameterSpelling(callee->spelling);
-        });
-  };
-  if (hasParameterDecorator())
-    fnSignature.effects.setCapturing();
-  bool isNonlegacyClosure =
-      funcOp->getParentOfType<FnOp>() && !fnSignature.effects.isCapturing();
-  fnSignature.isParsingClosure = isNonlegacyClosure;
+  bool isClosure = funcOp->getParentOfType<FnOp>() != nullptr;
+  fnSignature.isParsingClosure = isClosure;
 
   // Keep the provisional FnOp signature in sync with early effect decisions so
   // signature typechecking for nested defs classifies the current function
@@ -2333,14 +2169,14 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   }
 
   // TODO: effects parsing must be moved after captures parsing.
-  // Non-legacy nested closures may have an optional `{...}` capture list.
+  // Nested closures may have an optional `{...}` capture list.
   ParsedCaptureList captureSignature;
-  if (isNonlegacyClosure && captureSignature.parseCaptureList(p))
+  if (isClosure && captureSignature.parseCaptureList(p))
     return failure();
 
   // Emit copies/casts for captures. Otherwise the incorrect lifetime rules will
   // be applied to the values in the closure.
-  if (isNonlegacyClosure) {
+  if (isClosure) {
     if (captureSignature.hasExplicitCaptureList &&
         failed(createCaptureValues(p, sigDecl, captureSignature, *this)))
       return failure();
@@ -2391,20 +2227,8 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
                    [](ParsedArgument &arg) { return arg.isErroneous; }))
     setErroneous();
 
-  TraitType traitType;
-  std::optional<ArrayRef<ParamDeclAttr>> parentParams;
   StructASTDecl *structDecl =
       getStructOrTargetStruct(*getParentDecl(), resolver);
-  if (structDecl) {
-    StructDeclOp structOp = structDecl->getOp();
-    traitType = structOp.getCanonicalTrait();
-    parentParams = structOp.getParams();
-  } else if (auto *traitDecl = dyn_cast<TraitASTDecl>(getParentDecl())) {
-    traitType = traitDecl->getOp().getCanonicalTrait();
-  }
-  if (isCapturingByDefault(funcOp, traitType, parentParams,
-                           paramList.paramDeclAttrs))
-    fnSignature.effects.setCapturing();
 
   // Now that we have figured out the lexical structure, allow decorators to
   // take a crack at the signature.
@@ -2517,53 +2341,8 @@ LogicalResult DefASTDecl::resolveSignature(Lexer &lexer) {
   SmallVector<Capture> &captures = bodyCaptures.values;
   SmallVector<ParamDeclRefAttr> &paramCaptures = bodyCaptures.paramRefs;
 
-  // If this is a `@__parameter` closure, attach the capture origins.
-  if (signature.isCapturing()) {
-    SmallVector<Type> captureTypes;
-    for (const Capture &cap : captures)
-      captureTypes.push_back(cap.getValue().getType());
-    for (ParamDeclRefAttr param : paramCaptures)
-      captureTypes.push_back(param.getType());
-
-    SmallVector<TypedAttr> origins =
-        shared.cachedOriginFinder.findOriginsIn(captureTypes);
-    signature = signature.getWithBody(signature.getBody().getWithMetadata(
-        signature.getFnMetaOriginData().addCaptureOrigins(
-            OriginSetAttr::get(getContext(), origins)),
-        signature.getBody().getArgListAttrs()));
-    funcOp.setFuncTypeGenerator(signature);
-    funcOp.removeResolvedFullSignatureAttr();
-
-    funcOp.setParamDeclAttr(
-        ParamDeclAttr::get(funcOp.getSymNameAttr(), signature));
-    funcOp.removeSymNameAttr();
-    return success();
-  }
-
-  if (isNonlegacyClosure)
-    return constructClosure(shared, *this, funcOp, captures, paramCaptures,
-                            captureSignature, signature);
-
-  if (captures.empty() && captureSignature.parsedCaptures.empty() &&
-      !captureSignature.captureAllByConvention) {
-    funcOp.setParamDeclAttr(
-        ParamDeclAttr::get(funcOp.getSymNameAttr(), signature));
-    funcOp.removeSymNameAttr();
-    return success();
-  }
-
-  // abi("C") functions must be bare function pointers with no captured
-  // state.  C calling convention has no closure mechanism, so a capturing
-  // abi("C") function would silently pass the wrong values in argument
-  // registers.
-  if (signature.getFnEffects().isCABI() && !captures.empty())
-    return shared.emitError(funcOp.getLoc(),
-                            "a abi(\"C\") function cannot capture variables");
-
-  return shared.emitError(
-      funcOp.getLoc(),
-      "capturing nested functions cannot capture variables; omit "
-      "'capturing' to form a closure");
+  return constructClosure(shared, *this, funcOp, captures, paramCaptures,
+                          captureSignature, signature);
 }
 
 LogicalResult DefASTDecl::resolveSyntheticBody() {

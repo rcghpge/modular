@@ -169,7 +169,7 @@ struct _NaiveMatmulTileAdapter[
     var tile_consumer: Self.TileConsumerType
 
     @inline(.always)
-    def __call__(self) capturing:
+    def __call__(self):
         comptime TM = Self.tile_shape[0]
         comptime TN = Self.tile_shape[1]
 

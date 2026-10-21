@@ -1087,8 +1087,8 @@ def function_types():
   # CHECK: lit.var.decl "float5"{{.*}}(!Int, |, ?, "__error__": !lit.ref<!Error, mut *[0,0]> byref_error, "__result__": !lit.ref<none, mut *[0,1]> byref_result) throws -> !kgen.scalar<bool>
   var float5: def(Int) thin raises -> None
 
-  # CHECK: lit.var.decl "float6"{{.*}}(!Int, |, ?, "__result__": !lit.ref<none, mut *[0,0]> byref_result) async|capturing -> !kgen.none
-  var float6: __async def(Int) capturing thin -> None
+  # CHECK: lit.var.decl "float6"{{.*}}(!Int, |, ?, "__result__": !lit.ref<none, mut *[0,0]> byref_result) async -> !kgen.none
+  var float6: __async def(Int) thin -> None
 
   # CHECK: lit.var.decl "float7"{{.*}}(!lit.ref<!lit.struct<#VariadicList <:!Bool {:scalar<bool> false}, :origin<false> *(0,0), :!lit.struct<#Origin <:!Bool {:scalar<bool> false}, :origin<false> *(0,0)>> *(0,1), :!AnyType !Int, :!Bool {:scalar<bool> false}>>, imm *[0,0]> imm_mem|pos_vararg, ?, {{.*}}) throws -> !kgen.scalar<bool>
   var float7: def(*Int) thin raises -> None
