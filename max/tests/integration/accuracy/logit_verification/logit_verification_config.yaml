@@ -642,6 +642,28 @@ logit_verification_pipelines:
     cos_dist_threshold: 1.0e-01
     kl_div_threshold: 2.5e+00
 
+  # The DSpark recipe's target (`lightning_nvfp4_dspark.yaml`): the unscaled
+  # FP8 KV cache, at TP=2 on the 2x B200 job. A DSpark verify reads the same
+  # target logits, so the goldens are the BF16 source's above; the FP8 cache
+  # is the only difference. --find-tolerances on 2x B200 (TP=2) measured max
+  # cosine distance 6.1e-02 (BF16 KV: 4.8e-02) and max KL 1.2e+00, the same
+  # long-prompt maximum as the BF16-KV entry. The BF16-KV thresholds keep
+  # ~1.6x / ~2x headroom over that, the widening the entry above uses.
+  nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-fp8kv:
+    pre_submit_agents: []
+    pipeline: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+    compatible_with: [gpu]
+    encoding: float4_e2m1fnx2
+    tags: [nvidia-only, nvidia-multi, no-h100]
+    torch_reference_is_unquantized_source: true
+    config_params_override:
+      kv_cache_format: float8_e4m3fn
+    pregenerated_torch_goldens:
+      tar_file: "s3://modular-bazel-artifacts-public/artifacts/nvidia_NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4_golden/1/2b31a05956691e1d5a61ca1f7bc0b019a8406b81ea8ec3cabe5146e7961a8e6c/nvidia_NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4_golden.tar.gz"
+      json_file: "torch_nvidia_NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4_float4_e2m1fnx2_golden.json"
+    cos_dist_threshold: 1.0e-01
+    kl_div_threshold: 2.5e+00
+
   Qwen/Qwen3-Embedding-0.6B-bfloat16:
     pre_submit_agents: []
     pipeline: "Qwen/Qwen3-Embedding-0.6B"
