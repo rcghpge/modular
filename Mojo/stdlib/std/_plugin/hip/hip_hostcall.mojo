@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+"""AMD hostcall support, which `HIPPlugin` uses to implement device `printf`."""
 
 from std.collections import Array
 from std.atomic import Atomic, Ordering

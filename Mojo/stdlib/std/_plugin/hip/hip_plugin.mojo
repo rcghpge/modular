@@ -33,14 +33,14 @@ from std.io.file_descriptor import RawFileDescriptor
 from std.math.math import _UnaryMathOp
 from std.memory import bitcast
 from std.reflection.location import SourceLocation
-from std.sys._amdgpu import (
+
+from .hip_cast import _amdgcn_cast_fn, _amdgcn_native_float8_cast
+from .hip_gpu_id import _amdgcn_gpu_id_fn
+from .hip_hostcall import (
     printf_append_args,
     printf_append_string_n,
     printf_begin,
 )
-
-from .hip_cast import _amdgcn_cast_fn, _amdgcn_native_float8_cast
-from .hip_gpu_id import _amdgcn_gpu_id_fn
 from .hip_math import _amdgcn_unary_math_fn
 from .hip_time import _global_perf_counter_ns, _sleep
 
