@@ -18,6 +18,7 @@ from std.math import ceildiv
 from std.math.uutils import umod, ufloordiv
 from std.memory import bitcast
 from std.sys import align_of, simd_width_of, size_of
+from std.sys.intrinsics import assume
 from std.bit import next_power_of_two
 from max.gpu import WARP_SIZE
 from max.gpu.sync import barrier
@@ -57,7 +58,14 @@ from layout import (
     IntTuple,
     Layout,
     TensorLayout,
+    TMemEngine,
+    TMem16x256bRegisters,
+    TMemStorage,
+    TMEM_NUM_COLS,
+    TMEM_NUM_LANES,
     row_major,
+    tmem_copy_async,
+    tmem_16x256b,
 )
 from layout.tile_tensor import TileTensor, LTToTTLayout
 
@@ -95,6 +103,24 @@ from .matmul.gpu.sm100_structured.structured_kernels.epilogue_components import 
 )
 from .utils_gpu import MatmulConfig
 from .grouped_matmul_tile_scheduler import TileScheduler
+
+comptime ACCUM_LAYOUT = TileLayout(
+    shape=coord[TMEM_NUM_LANES, TMEM_NUM_COLS],
+    stride=coord[1, TMEM_NUM_LANES],
+)
+"""The whole TMEM allocation as a lane-by-column grid."""
+# 32-bit indices: TMEM addresses are 32-bit, so the layout math that
+# produces view offsets should not widen them.
+comptime AccumTile[accum_type: DType] = TileTensor[
+    accum_type,
+    type_of(ACCUM_LAYOUT),
+    MutAnyOrigin,
+    Engine=TMemEngine,
+    linear_idx_type=DType.uint32,
+]
+comptime AccumStorage[accum_type: DType] = TMemStorage[accum_type, MutAnyOrigin]
+comptime FRAGMENT_LANES = 16
+"""Lanes of the block a `tmem_16x256b` view covers."""
 
 
 @fieldwise_init
@@ -946,10 +972,24 @@ def multi_stage_store_C[
     var index = accum_pipeline_consumer_state.index()
     var phase = accum_pipeline_consumer_state.phase()
     accum_full_mbar[index].wait(phase)
-    # this is the column offset for all the stages of THIS load, where one load takes (num_stages iterations)
-    var tmem_offset = index * UInt32(stage_stride_cols) + tmem_addr
+    var accum = AccumTile[accum_type](
+        AccumStorage[accum_type](tmem_addr), ACCUM_LAYOUT
+    )
+    # Taking the warp's quadrant before the stage keeps its lane offset in
+    # the loop-invariant base address.
+    var warp_tile = accum.tile[WARP_SIZE, TMEM_NUM_COLS](
+        Coord(Int(warp_id), Idx[0])
+    )
+    # Without the bound, encoding the stage column masks the high bits of
+    # the product on every tile.
+    assume(index < UInt32(num_accum_pipeline_stages))
+    var stage_tile = warp_tile.tile[WARP_SIZE, stage_stride_cols](
+        Coord(Idx[0], Int(index))
+    )
 
     comptime frag_width = rep * data_paths * (bits // 32) // WARP_SIZE
+    comptime FragRegs = TMem16x256bRegisters[stageN]
+    comptime assert FragRegs.static_product == frag_width
 
     comptime assert not (
         has_epilogue_fn and has_compute_fn
@@ -961,27 +1001,27 @@ def multi_stage_store_C[
         )
 
     comptime for stage in range(num_stages):
-        # column offset, moving right by 32 columns each time, since each num_stage stores two, 16 column submatrices
-        # MMA has result in 32 rows per warp's data paths.
-        # upper_frag is for rows 0-15, lower is for 16-31.
-        var stage_tmem_addr = tmem_offset + UInt32(stage * stageN)
-        var upper_frag = tcgen05_ld[
-            datapaths=data_paths,
-            bits=bits,
-            repeat=rep,
-            dtype=accum_type,
-            pack=False,
-        ](stage_tmem_addr)
-
-        var lower_frag = tcgen05_ld[
-            datapaths=data_paths,
-            bits=bits,
-            repeat=rep,
-            dtype=accum_type,
-            pack=False,
-        ](stage_tmem_addr + (16 << 16))
-
-        tcgen05_load_wait()
+        # The fragments stay `Array`s for `stsm_helper` and the compute
+        # epilogue; the register tiles only give the copies their layout.
+        var upper_frag = Array[Scalar[accum_type], frag_width](
+            uninitialized=True
+        )
+        var lower_frag = Array[Scalar[accum_type], frag_width](
+            uninitialized=True
+        )
+        tmem_copy_async(
+            TileTensor(upper_frag.unsafe_ptr(), FragRegs),
+            tmem_16x256b(
+                stage_tile.tile[FRAGMENT_LANES, stageN](coord[0, stage])
+            ),
+        )
+        tmem_copy_async(
+            TileTensor(lower_frag.unsafe_ptr(), FragRegs),
+            tmem_16x256b(
+                stage_tile.tile[FRAGMENT_LANES, stageN](coord[1, stage])
+            ),
+        )
+        TMemEngine.wait_load()
 
         comptime if stage == num_stages - 1:
             umma_arrive_leader_cta(accum_empty_mbar.unsafe_offset(index))
