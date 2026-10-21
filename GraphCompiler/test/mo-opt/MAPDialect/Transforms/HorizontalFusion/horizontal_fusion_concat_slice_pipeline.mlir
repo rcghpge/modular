@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels | FileCheck %s
 
 // The concat+slice merge inside the whole fusion pipeline, where every other
 // fuser reaches its fixpoint before horizontal fusion sees what is left. The
@@ -17,7 +17,7 @@
 // CHECK-NEXT:  map.store %{{.*}}[%[[IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 16], f32>
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  map.call.opaque @{{.*}}.Concat
+// CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
@@ -27,7 +27,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %concat, %slice : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>
 }
@@ -38,11 +38,11 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 // CHECK:       %[[K:[a-z0-9]+]]:2 = map.iter.opaque
 // CHECK:       map.index.slice.select{{.*}} -> (%[[K_IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[K_IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 16], f32>
-// CHECK:       map.call.opaque @{{.*}}.Concat
+// CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
 // CHECK:       %[[V:[a-z0-9]+]]:2 = map.iter.opaque
 // CHECK:       map.index.slice.select{{.*}} -> (%[[V_IOUT:[a-z0-9]+]]) : !map.index<3> {
 // CHECK-NEXT:  map.store %{{.*}}[%[[V_IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 16], f32>
-// CHECK:       map.call.opaque @{{.*}}.Concat
+// CHECK:       map.call.opaque @{{.*}}.FusedVariadicInputs
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       mo.output<B, T> %[[K]]#0, %[[K]]#1, %[[V]]#0, %[[V]]#1
 mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
@@ -54,8 +54,8 @@ mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>, !mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %k = mo.concat[1] (%k_cache, %k_new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
-  %v = mo.concat[1] (%v_cache, %v_new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %k = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%k_cache, %k_new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %v = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%v_cache, %v_new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %k_win = mo.slice(%k, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   %v_win = mo.slice(%v, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %k, %k_win, %v, %v_win : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>
@@ -79,7 +79,7 @@ mo.graph @concat_slice_kv_windows<B, S, T -> OB, OT>(
 // CHECK-NEXT:  map.store %{{.*}}[%[[IOUT]]] = %{{.*}} : !mo.tensor<[B, 8, 2, 16], bf16>
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  map.call.opaque @{{.*}}.Concat
+// CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_projection_window<B, S, T -> OB, OT>(
@@ -93,7 +93,7 @@ mo.graph @concat_slice_projection_window<B, S, T -> OB, OT>(
   %steps = mo.constant <#M.dense_array<1, 1, 1, 1> : tensor<4xsi64>> : !mo.tensor<[4], si64>
   %heads = mo.static.reshape(%proj) : !mo.tensor<[B, S, 96], bf16> -> !mo.tensor<[B, S, 6, 16], bf16>
   %new = mo.slice(%heads, %head_starts, %head_stops, %steps) : (!mo.tensor<[B, S, 6, 16], bf16>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, S, 2, 16], bf16>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 2, 16], bf16>, !mo.tensor<[B, S, 2, 16], bf16>) -> !mo.tensor<[B, T, 2, 16], bf16>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[B, 8, 2, 16], bf16>, !mo.tensor<[B, S, 2, 16], bf16>) -> !mo.tensor<[B, T, 2, 16], bf16>
   %window = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 2, 16], bf16>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>, !mo.tensor<[4], si64>) -> !mo.tensor<[B, 8, 2, 16], bf16>
   mo.output<B, T> %concat, %window : !mo.tensor<[B, T, 2, 16], bf16>, !mo.tensor<[B, 8, 2, 16], bf16>
 }
@@ -111,7 +111,7 @@ mo.graph @concat_slice_projection_window<B, S, T -> OB, OT>(
 // CHECK-NEXT:  map.store %{{.*}}[%[[IOUT]]] = %[[RELU]] : !mo.tensor<[B, 8, 16], f32>
 // CHECK-NEXT:  }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  map.call.opaque @{{.*}}.Concat
+// CHECK-NEXT:  map.call.opaque @{{.*}}.FusedVariadicInputs
 // CHECK-NOT:   map.iter.foreach
 // CHECK:       mo.output<B, T> %[[OUT]]#0, %[[OUT]]#1
 mo.graph @concat_slice_relu_window<B, S, T -> OB, OT>(
@@ -121,7 +121,7 @@ mo.graph @concat_slice_relu_window<B, S, T -> OB, OT>(
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   %relu = mo.relu(%slice) : !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %concat, %relu : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>
@@ -142,7 +142,7 @@ mo.graph @concat_slice_add_window<B, S, T -> OB, OT>(
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   %sum = mo.add(%slice, %bias) : !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %concat, %sum : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>

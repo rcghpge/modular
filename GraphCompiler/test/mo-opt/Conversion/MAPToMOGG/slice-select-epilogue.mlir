@@ -1,4 +1,4 @@
-// RUN: mo-opt %s --mogg-import-packages --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg | FileCheck %s
+// RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map --map-fuse-kernels --map-allocate-accumulating-buffers --map-to-mogg | FileCheck %s
 
 // A concat returned whole and as a trailing window, through the full fusion
 // pipeline: horizontal fusion puts the window's store in a select beside the
@@ -25,7 +25,7 @@
 // CHECK-NEXT:      mogg.tensor.store %[[CAP1]][%[[IOUT]]] = %[[VAL]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  mogg.call.opaque @{{.*}}.Concat[axis = 1 : index] inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) context({{.*}}) hasEpilogueFusion = true
+// CHECK-NEXT:  mogg.call.opaque @{{.*}}.FusedVariadicInputs[axis = 1 : i64] inputs({{.*}}) outputs(%[[EPI]] : !mogg.tensor) context({{.*}}) hasEpilogueFusion = true
 // CHECK-NOT:   mogg.routine
 mo.graph @concat_slice_window<B, S, T -> OB, OT>(
   %cache: !mo.tensor<[B, 8, 16], f32>,
@@ -34,7 +34,7 @@ mo.graph @concat_slice_window<B, S, T -> OB, OT>(
 ) -> (!mo.tensor<[OB, OT, 16], f32>, !mo.tensor<[OB, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[B, 8, 16], f32>, !mo.tensor<[B, S, 16], f32>) -> !mo.tensor<[B, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[B, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[B, 8, 16], f32>
   mo.output<B, T> %concat, %slice : !mo.tensor<[B, T, 16], f32>, !mo.tensor<[B, 8, 16], f32>
 }
@@ -122,7 +122,7 @@ mo.graph @concat_window_dynamic_in<S, T>(
 ) -> (!mo.tensor<[2, T, 16], f32>, !mo.tensor<[2, 8, 16], f32>) {
   %starts = mo.constant <#M.dense_array<0, -8, 0> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %steps = mo.constant <#M.dense_array<1, 1, 1> : tensor<3xsi64>> : !mo.tensor<[3], si64>
-  %concat = mo.concat[1] (%cache, %new) : (!mo.tensor<[2, 8, 16], f32>, !mo.tensor<[2, S, 16], f32>) -> !mo.tensor<[2, T, 16], f32>
+  %concat = mo.custom [symbol = "fused_variadic_inputs", device = #M.device_ref<"cpu", 0>, parameters = {axis = 1}](%cache, %new) : (!mo.tensor<[2, 8, 16], f32>, !mo.tensor<[2, S, 16], f32>) -> !mo.tensor<[2, T, 16], f32>
   %slice = mo.slice(%concat, %starts, %stops, %steps) : (!mo.tensor<[2, T, 16], f32>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>, !mo.tensor<[3], si64>) -> !mo.tensor<[2, 8, 16], f32>
   mo.output %concat, %slice : !mo.tensor<[2, T, 16], f32>, !mo.tensor<[2, 8, 16], f32>
 }

@@ -2291,6 +2291,25 @@ struct VariadicAdd:
         foreach(func, output, ctx)
 
 
+# Shaped like `mo.concat`, which the graph compiler fuses as a view: an opaque
+# kernel taking fused inputs and a fused output, for lit tests of prologue and
+# epilogue fusion into one. They never run it, so it computes nothing.
+@extensibility.register("fused_variadic_inputs")
+struct FusedVariadicInputs:
+    @staticmethod
+    def execute[
+        dtype: DType,
+        rank: Int,
+        target: StaticString,
+        axis: Int,
+    ](
+        output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
+        inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
+        ctx: DeviceContext,
+    ) capturing raises:
+        pass
+
+
 @extensibility.register("print_shape_fused")
 struct ElementwisePrintShape:
     @staticmethod
