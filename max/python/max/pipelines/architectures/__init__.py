@@ -288,6 +288,9 @@ def register_all_models() -> None:
             ".mtp_deepseekV3",
             "mtp_deepseekV3_draft_arch",
         ),
+        _LazyArch(
+            "MTPQwen3_5DraftModel", ".mtp_qwen3_5", "mtp_qwen3_5_draft_arch"
+        ),
         _LazyArch("MiMoV2ForCausalLM", ".mimo_v2", "mimo_v2_arch"),
         _LazyArch("MiniMaxM2ForCausalLM", ".minimax_m2", "minimax_m2_arch"),
         _LazyArch(
@@ -376,11 +379,6 @@ def register_all_models() -> None:
         ),
         _LazyArch("Step3p5ForCausalLM", ".step3p5", "step3p5_arch"),
         _LazyArch(
-            "UnifiedDflash2Qwen3_5ForConditionalGeneration",
-            ".unified_dflash2_qwen3_5",
-            "unified_dflash2_qwen3_5_arch",
-        ),
-        _LazyArch(
             "UnifiedDSparkDeepseekV41ForCausalLM",
             ".unified_dspark_deepseekV41",
             "unified_dspark_deepseekV41_speculator",
@@ -390,11 +388,6 @@ def register_all_models() -> None:
             "UnifiedDSparkNemotronHForCausalLM_ModuleV3",
             ".unified_dspark_nemotron_h",
             "unified_dspark_nemotron_h_arch",
-        ),
-        _LazyArch(
-            "UnifiedMTPGemma4ForCausalLM",
-            ".unified_mtp_gemma4",
-            "unified_mtp_gemma4_arch",
         ),
         _LazyArch(
             "UnifiedMTPGemma4ForCausalLM_ModuleV3",
@@ -416,11 +409,6 @@ def register_all_models() -> None:
             ".unified_mtp_hy_v4",
             "unified_mtp_hy_v4_speculator",
             speculates_on="HYV4ForCausalLM",
-        ),
-        _LazyArch(
-            "UnifiedMTPQwen3_5ForConditionalGeneration",
-            ".unified_mtp_qwen3_5",
-            "unified_mtp_qwen3_5_arch",
         ),
         _LazyArch("WanPipeline", ".wan", "wan_arch"),
         _LazyArch("WanImageToVideoPipeline", ".wan", "wan_i2v_arch"),

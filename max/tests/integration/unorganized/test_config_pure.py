@@ -493,14 +493,6 @@ class TestSpeculativeArchitectureOverride:
             cfg = self._make_config(target, is_dflash2=True)
             assert self._resolved_arch(cfg) == target
 
-    def test_gemma4_mtp(self) -> None:
-        cfg = self._make_config(
-            "Gemma4ForConditionalGeneration",
-            draft_arch="Gemma4AssistantForCausalLM",
-        )
-        cfg.speculative.speculative_method = "mtp"
-        assert self._resolved_arch(cfg) == "UnifiedMTPGemma4ForCausalLM"
-
     def test_gemma4_unified_without_dspark_draft_is_noop(self) -> None:
         cfg = self._make_config(
             "Gemma4UnifiedForConditionalGeneration", draft_arch=None

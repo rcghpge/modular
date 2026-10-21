@@ -16,8 +16,10 @@ The modules MAX architectures build share no calling convention: each takes its
 inputs in an order of its own and returns its outputs by position. A driver
 can't call a target without knowing which architecture built it, so each
 target's package holds a target adapter, its ``spec_adapters`` module, that
-holds its call. ``_TARGET_ADAPTERS`` names each target architecture's adapter
-module. A target adapter takes what it leaves out from Llama 3's.
+holds its call. ``_TARGET_ADAPTERS`` names the module of each target
+architecture's :class:`TargetAdapter`, which takes what it leaves out from
+Llama 3's and holds a target's differences under one speculative method in
+``by_method``.
 
 A target whose checkpoint ships its draft names the draft's architecture by
 method, as vLLM's ``hf_config_override`` names an MTP draft from its target's
@@ -31,12 +33,14 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, TypeVar
 
-import numpy.typing as npt
+from max.driver import Buffer, Device
 from max.graph import BufferType, TensorType, Value
+from max.nn.kv_cache import RecurrentStateInputsPerDevice
 from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates
+from max.pipelines.context import TextContext
 
 from ..block_driver import BlockBatch, BlockProposer
 from ..config import SpeculativeConfig
@@ -47,13 +51,17 @@ from .target_adapter import TargetAdapter
 __all__ = [
     "VerifyFn",
     "block_proposer",
+    "check",
     "ep_input_types",
     "extra",
     "primary_kv",
-    "trailing_arrays",
+    "tail_buffers",
+    "tail_kv",
+    "trailing_buffers",
     "trailing_input_types",
     "verify_for",
 ]
+
 
 VerifyFn = Callable[[SequentialBatch | BlockBatch], Verified[Any]]
 """Verifies a driver batch on the target."""
@@ -67,6 +75,8 @@ _TARGET_ADAPTERS: Mapping[str, str] = {
     "KimiK25ForConditionalGeneration": ".kimik2_5.spec_adapters",
     "LlamaForCausalLM": ".llama3.spec_adapters",
     "MiMoV2ForCausalLM": ".mimo_v2.spec_adapters",
+    "Qwen3_5ForCausalLM": ".qwen3_5.spec_adapters",
+    "Qwen3_5ForConditionalGeneration": ".qwen3_5.spec_adapters",
 }
 
 
@@ -83,9 +93,9 @@ def _target_adapter(target_arch: str) -> TargetAdapter:
 
 
 def _adapter(target_arch: str, method: str | None = None) -> TargetAdapter:
-    """Returns the target's adapter."""
-    del method
-    return _target_adapter(target_arch)
+    """Returns the target's adapter, or its adapter under ``method``."""
+    adapter = _target_adapter(target_arch)
+    return adapter.by_method.get(method, adapter) if method else adapter
 
 
 def verify_for(
@@ -109,14 +119,14 @@ def verify_for(
     )
 
 
-def primary_kv(target_arch: str) -> str:
+def primary_kv(target_arch: str, method: str) -> str:
     """Returns the name of the KV leaf a driver dispatches the target over.
 
     The target's other leaves ride in the driver batch's ``passthrough_kv``,
     under their names in the KV tree. A target with one leaf has the name
     ``""``.
     """
-    return _target_adapter(target_arch).primary_kv
+    return _adapter(target_arch, method).primary_kv
 
 
 def ep_input_types(
@@ -126,36 +136,77 @@ def ep_input_types(
     return _adapter(target_arch).ep_input_types(target)
 
 
+def tail_kv(target_arch: str) -> str | None:
+    """Returns the target's KV child the graph declares past the canonical
+    tail rather than among its KV inputs, if any."""
+    return _adapter(target_arch).tail_kv
+
+
+def tail_buffers(
+    target_arch: str,
+    tail: Sequence[RecurrentStateInputsPerDevice[Buffer, Buffer]],
+) -> list[Buffer]:
+    """Returns the inputs of the :func:`tail_kv` child, in the order the
+    graph's tail declares them."""
+    return _adapter(target_arch).tail_buffers(tail)
+
+
+def check(
+    target_arch: str, speculative: SpeculativeConfig, structured_output: bool
+) -> None:
+    """Raises if the target can't verify under the speculative config."""
+    _adapter(target_arch).check(speculative, structured_output)
+
+
 def trailing_input_types(
-    target_arch: str, target_config: Any
+    target_arch: str, method: str, target_config: Any
 ) -> Sequence[TensorType | BufferType]:
     """Returns the inputs the target's call takes past the canonical tail."""
-    return _adapter(target_arch).trailing_input_types(target_config)
+    return _adapter(target_arch, method).trailing_input_types(target_config)
 
 
-def trailing_arrays(
-    target_arch: str, target_config: Any, lengths: Sequence[int]
-) -> list[npt.NDArray[Any]]:
-    """Returns the host values of :func:`trailing_input_types`.
+def trailing_buffers(
+    target_arch: str,
+    method: str,
+    target_config: Any,
+    contexts: Sequence[TextContext],
+    devices: Sequence[Device],
+) -> list[Buffer]:
+    """Returns a batch's values of :func:`trailing_input_types` that no KV
+    child holds.
 
     Args:
         target_arch: The target checkpoint's architecture name.
+        method: The speculative method.
         target_config: The config the target was built from.
-        lengths: Each request's verify-forward length: its tokens and the
-            drafts it verifies.
+        contexts: The batch, in the order its tokens are merged in.
+        devices: The devices the target runs on.
     """
-    return _adapter(target_arch).trailing_arrays(target_config, lengths)
+    return _adapter(target_arch, method).trailing_buffers(
+        target_config, contexts, devices
+    )
 
 
 def extra(
-    target_arch: str, target_config: Any, trailing: Sequence[Value[Any]]
+    target_arch: str,
+    method: str,
+    target_config: Any,
+    trailing: Sequence[Value[Any]],
 ) -> dict[str, Any]:
     """Returns what the target's call reads of the trailing graph inputs.
 
     The driver hands it to the verify and the proposer as the batch's
     ``extra``.
     """
-    return _adapter(target_arch).extra(target_config, trailing)
+    return _adapter(target_arch, method).extra(target_config, trailing)
+
+
+def takes_vision_outputs(
+    target_arch: str, method: str, target_config: Any
+) -> bool:
+    """Returns whether the graph takes a vision encoder's output that MAX
+    doesn't compute, for an engine that runs the encoder itself."""
+    return _adapter(target_arch, method).takes_vision_outputs(target_config)
 
 
 def block_proposer(

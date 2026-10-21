@@ -28,6 +28,7 @@ share, until each moves onto :class:`SpecDecodePipelineModel`.
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cached_property
@@ -55,8 +56,13 @@ from max.nn.kv_cache import (
     KVCacheParams,
     MultiKVCacheParams,
 )
+from max.nn.sampling.penalties import LogitPenalties
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
-from max.pipelines.context import ImageMetadata, TextContext
+from max.pipelines.context import (
+    ImageMetadata,
+    TextAndVisionContext,
+    TextContext,
+)
 from max.pipelines.kv_cache.memory_planner import MemoryPlanner
 from max.pipelines.modeling.types import InputModality
 from max.pipelines.speculative import proposers, spec_adapters
@@ -180,9 +186,18 @@ def _builds_module(arch: SupportedArchitecture) -> bool:
     ) and ("build_module" in vars(builder))
 
 
-def _encodes_images(arch: SupportedArchitecture) -> bool:
-    """Returns whether ``arch``'s own pipeline model builds a vision graph."""
-    return "build_vision_graph" in vars(arch.pipeline_model)
+def _takes_images(
+    target: SupportedArchitecture, draft: SupportedArchitecture
+) -> bool:
+    """Returns whether a pairing takes images.
+
+    It does when its target's own pipeline model builds a vision graph and
+    its draft takes images too.
+    """
+    return (
+        "build_vision_graph" in vars(target.pipeline_model)
+        and InputModality.IMAGE in draft.input_modalities
+    )
 
 
 def spec_decode_architecture(
@@ -200,11 +215,14 @@ def spec_decode_architecture(
 
     The fused architecture is the target's own, changed only where the
     unified graph differs: it takes text only unless the target builds a
-    vision graph, sizes one KV tree for the target and the draft and counts
-    the draft's weights beside the target's, and drafts at the width the
-    draft checkpoint was trained for. It runs on more than one device only
-    where both architectures do, and is captured as a device graph only
-    where the draft's graph allows it.
+    vision graph and the draft takes images, sizes one KV tree for the target
+    and the draft and counts the draft's weights beside the target's, and
+    drafts at the width the draft checkpoint was trained for. It runs on
+    more than one device only where both architectures do, and is captured
+    as a device graph only where the draft's graph allows it. A target that
+    checkpoints a recurrent state serves with prefix caching off: the state
+    checkpoints only at a page boundary, which a step's accepted drafts move
+    past.
     """
     if (
         method is None
@@ -223,7 +241,7 @@ def spec_decode_architecture(
     draft = ARCH_LOOKUP.find(base.draft_architecture(method, draft_arch))
     if draft is None or not _builds_module(draft):
         return None
-    vision = _encodes_images(base)
+    vision = _takes_images(base, draft)
     return replace(
         base,
         name=f"{base.name}+{method}",
@@ -235,6 +253,11 @@ def spec_decode_architecture(
         batching=_BatchProcessor,
         cascade_pipeline_factory=None,
         supports_device_graph_capture=draft.supports_device_graph_capture,
+        required_arguments=(
+            {**base.required_arguments, "enable_prefix_caching": False}
+            if base.checkpoints_recurrent_state
+            else base.required_arguments
+        ),
         config=(
             _SpecDecodeVisionArchConfig if vision else SpecDecodeArchConfig
         ),
@@ -344,10 +367,14 @@ def _draft_width(pipeline_config: PipelineConfig) -> int:
 def _with_num_draft_tokens(
     params: CacheLeafParamInterface, num_draft_tokens: int
 ) -> CacheLeafParamInterface:
-    """Stamps ``num_draft_tokens`` on every leaf of a KV params tree."""
+    """Stamps ``num_draft_tokens`` on every attention leaf of a KV params tree.
+
+    A recurrent state has no draft slots.
+    """
     if isinstance(params, KVCacheParams):
         return replace(params, num_draft_tokens=num_draft_tokens)
-    assert isinstance(params, MultiKVCacheParams)
+    if not isinstance(params, MultiKVCacheParams):
+        return params
     return MultiKVCacheParams.from_params(
         {
             name: _with_num_draft_tokens(child, num_draft_tokens)
@@ -371,17 +398,19 @@ def _kv_tree(
 ) -> MultiKVCacheParams:
     """Returns the KV tree the target and the draft share.
 
-    The draft's params are its own config's, on the target's devices and
-    cache dtype, which the shared pool requires. A draft whose config has
-    none reads and writes the target's leaves, so the tree has no draft
-    child.
+    The draft's params are its own config's, on the target's devices, page
+    size and cache dtype, which the shared pool requires. A draft whose
+    config has none reads and writes the target's leaves, so the tree has
+    no draft child.
     """
     pool = _first_leaf(target_kv)
     draft_kv = _config_cls(pairing.draft).construct_kv_params(
         _draft_checkpoint(pipeline_config).huggingface_config,
         pipeline_config,
         list(pool.devices),
-        pipeline_config.model.kv_cache,
+        pipeline_config.model.kv_cache.model_copy(
+            update={"kv_cache_page_size": pool.page_size}
+        ),
         pool.dtype,
     )
     # Every leaf is stamped with the draft width; the pool adds a block
@@ -407,10 +436,11 @@ def _check_pairing(
     """Raises if the draft can't run beside the target.
 
     A draft embeds the target's tokens and drafts in the target's hidden
-    space. A block draft also reads the target layers its config names, and
-    fills its block with a mask token from the target's vocabulary. A draft
-    that embeds and projects only through its target's has no vocabulary of
-    its own to check.
+    space. A block draft also reads the target layers its config names, off
+    a target as deep as the one it was trained against when its config says,
+    and fills its block with a mask token from the target's vocabulary. A
+    draft that embeds and projects only through its target's has no
+    vocabulary of its own to check.
 
     Args:
         speculative: The speculative config.
@@ -424,6 +454,15 @@ def _check_pairing(
         raise ValueError(
             f"The {method} draft's target_layer_ids must index the target's"
             f" layers, [0, {num_layers}). Got {list(layers)}."
+        )
+    # The tap ids stay in range whenever the target is deep enough, so a
+    # draft trained on another depth would read the same indices off a
+    # different residual stream.
+    trained_on = getattr(draft_config, "num_target_layers", None)
+    if trained_on is not None and trained_on != num_layers:
+        raise ValueError(
+            f"The {method} draft was trained against a target of"
+            f" {trained_on} layers, but this target has {num_layers}."
         )
     if draft_config.hidden_size != target_config.hidden_size:
         raise ValueError(
@@ -458,6 +497,7 @@ class SpecDecodeArchConfig:
     target: Any
     target_arch: str
     """The target checkpoint's architecture name."""
+    draft_architecture: SupportedArchitecture
     kv_params: MultiKVCacheParams
     target_memory_planner: type[MemoryPlanner] | None = None
     """The target architecture's memory planner."""
@@ -481,6 +521,7 @@ class SpecDecodeArchConfig:
         return cls(
             target=target,
             target_arch=pairing.target_arch,
+            draft_architecture=pairing.draft,
             kv_params=_kv_tree(
                 pipeline_config, pairing, target.get_kv_params()
             ),
@@ -582,7 +623,7 @@ class _MemoryPlanner(MemoryPlanner):
         super().__init__(config)
         assert isinstance(config, SpecDecodeArchConfig)
         planner = config.target_memory_planner or MemoryPlanner
-        self._target = planner(config)
+        self._target = planner(config.target)
 
     def estimate_weights_size(self, pipeline_config: Any) -> int:
         """Returns the target's weights plus the draft checkpoint's."""
@@ -698,6 +739,10 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
     ) -> None:
         super().__init__(config, runtime)
         self.spec_config = config
+        speculative = runtime.pipeline_config.speculative
+        assert speculative is not None
+        assert speculative.speculative_method is not None
+        self._method = speculative.speculative_method
 
     @cached_property
     def _target_batching(self) -> Any:
@@ -757,7 +802,35 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None = None,
         return_n_logits: int = 1,
     ) -> _Inputs:
-        """Prepares the ragged inputs, and any the target's call adds."""
+        """Prepares the ragged inputs, and any the target's call adds.
+
+        Raises:
+            ValueError: If a text-only pairing's batch carries images.
+        """
+        config = self.spec_config
+        arch, target = config.target_arch, config.target
+        assert config.input_spec is not None
+        # Any image in context, not only one still to encode: a later
+        # prefill chunk of an image prompt encodes nothing.
+        # TODO(kevinbi): this error ends the model worker instead of failing
+        # one request, because `SchedulerResult.failed` does not cover batch
+        # preparation.
+        encodes_images = isinstance(config, _SpecDecodeVisionArchConfig)
+        if not encodes_images and any(
+            isinstance(ctx, TextAndVisionContext) and ctx.images
+            for batch in replica_batches
+            for ctx in batch
+        ):
+            raise ValueError(
+                "This speculative pairing serves text only: its fused graph"
+                " encodes no images. Drop --speculative-method to serve"
+                " images."
+            )
+        tail_key = spec_adapters.tail_kv(arch)
+        tail = None
+        if tail_key is not None:
+            assert kv_cache_inputs is not None
+            kv_cache_inputs, tail = _split_tail(kv_cache_inputs, tail_key)
         if self._target_batching is None:
             inputs = super().prepare_initial_token_inputs(
                 replica_batches, kv_cache_inputs, return_n_logits
@@ -766,25 +839,35 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
             inputs = self._distributed_inputs(
                 replica_batches, kv_cache_inputs, return_n_logits
             )
-        config = self.spec_config
-        arch, target = config.target_arch, config.target
-        if spec_adapters.trailing_input_types(arch, target):
-            # The verify forward runs over each request's tokens and the
-            # drafts it verifies, which the pipeline stages on the context
-            # before this.
-            lengths = [
-                ctx.tokens.active_length
-                + len(ctx.spec_decoding_state.draft_tokens_to_verify)
-                for batch in replica_batches
-                for ctx in batch
-            ]
-            inputs.trailing = [
-                Buffer.from_numpy(array)
-                for array in spec_adapters.trailing_arrays(
-                    arch, target, lengths
-                )
-            ]
+        if tail is not None:
+            inputs.trailing = spec_adapters.tail_buffers(arch, tail)
+        inputs.trailing += spec_adapters.trailing_buffers(
+            arch,
+            self._method,
+            target,
+            [ctx for batch in replica_batches for ctx in batch],
+            self.runtime.devices,
+        )
+        if config.input_spec.enable_vision and not encodes_images:
+            embeddings, indices = self._no_images
+            inputs.vision_embeddings = embeddings
+            inputs.vision_scatter_indices = indices
         return inputs
+
+    @cached_property
+    def _no_images(self) -> tuple[list[Buffer], list[Buffer]]:
+        """Returns zero-row vision inputs, for an encoder MAX doesn't run."""
+        spec = self.spec_config.input_spec
+        assert spec is not None and spec.vision_hidden_size is not None
+        embeddings = Buffer.zeros(
+            shape=[0, spec.vision_hidden_size], dtype=DType.bfloat16
+        )
+        indices = Buffer.zeros(shape=[0], dtype=DType.int32)
+        devices = self.runtime.devices
+        return (
+            [embeddings.to(device) for device in devices],
+            [indices.to(device) for device in devices],
+        )
 
     def _distributed_inputs(
         self,
@@ -797,6 +880,8 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         target = self._target_batching.prepare_initial_token_inputs(
             replica_batches, kv_cache_inputs, return_n_logits
         )
+        if not hasattr(target, "host_input_row_offsets"):
+            return self._one_replica_inputs(target, replica_batches, spec)
         return _Inputs(
             tokens=target.tokens,
             input_row_offsets=target.input_row_offsets,
@@ -806,6 +891,40 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
             data_parallel_splits=target.data_parallel_splits,
             batch_context_lengths=list(target.batch_context_lengths),
             ep_inputs=tuple(target.ep_inputs),
+            kv_cache_inputs=target.kv_cache_inputs,
+            seed=self._next_seed(self.runtime.devices[0]),
+            structured_output=spec.enable_structured_output,
+            spec=spec,
+        )
+
+    def _one_replica_inputs(
+        self,
+        target: Any,
+        replica_batches: Sequence[Sequence[TextContext]],
+        spec: SpecDecodeInputTypeSpec,
+    ) -> _Inputs:
+        """Adds one replica's distributed inputs to a target's inputs.
+
+        For a target whose batch processor takes none, as Gemma 4's doesn't.
+        """
+        lengths = [
+            ctx.tokens.active_length for b in replica_batches for ctx in b
+        ]
+        return _Inputs(
+            tokens=target.tokens,
+            input_row_offsets=target.input_row_offsets,
+            return_n_logits=target.return_n_logits,
+            signal_buffers=list(target.signal_buffers),
+            host_input_row_offsets=Buffer.from_numpy(
+                np.cumsum([0, *lengths], dtype=np.uint32)
+            ),
+            data_parallel_splits=Buffer.from_numpy(
+                np.array([0, len(lengths)], dtype=np.int64)
+            ),
+            batch_context_lengths=[
+                Buffer.zeros(shape=[1], dtype=DType.int32)
+                for _ in self.runtime.devices
+            ],
             kv_cache_inputs=target.kv_cache_inputs,
             seed=self._next_seed(self.runtime.devices[0]),
             structured_output=spec.enable_structured_output,
@@ -939,6 +1058,8 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
         config = self.arch_config_as(SpecDecodeArchConfig)
         speculative = self.pipeline_config.speculative
         assert speculative is not None
+        method = speculative.speculative_method
+        assert method is not None
         pairing = self.pairing
 
         ep = _EPRuntime(session)
@@ -955,7 +1076,10 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 adapter=pairing.draft.weight_adapters.get(
                     weights_format(draft_paths)
                 ),
-                kv_params=config.kv_params.children.get("draft"),
+                # A draft without a leaf of its own runs on the target's.
+                kv_params=config.kv_params.children.get(
+                    "draft", config.kv_params.children["target"]
+                ),
             )
         )
         _check_pairing(
@@ -988,6 +1112,7 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                     speculative, draft_config
                 ),
                 kv_params=config.kv_params.children["target"],
+                encodes_images=_takes_images(pairing.target, pairing.draft),
             )
         )
         # The planner sized the cache from this config before finalizing.
@@ -1044,10 +1169,17 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 " bitmasks. Pass --tool-parser none and leave"
                 " --enable-structured-output off to benchmark it."
             )
+        spec_adapters.check(target_arch, speculative, structured_output)
         # A reasoning model's drafts may be accepted under the relaxed
         # in-thinking rule.
         thinking = self.pipeline_config.runtime.reasoning_parser is not None
-        vision = _encodes_images(self.pairing.target)
+        # A graph may take an encoder's output that MAX doesn't compute, for
+        # an engine that runs the encoder itself.
+        vision = _takes_images(
+            pairing.target, pairing.draft
+        ) or spec_adapters.takes_vision_outputs(
+            target_arch, method, target_config
+        )
         verify = spec_adapters.verify_for(
             target_arch, target, target_config, hidden_states, draft_config
         )
@@ -1084,6 +1216,17 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 else None
             ),
         )
+        # Last of all, so an export without them keeps every slot above.
+        penalties = (
+            LogitPenalties.input_types(self.device_refs[0])
+            if speculative.logit_penalties
+            else []
+        )
+        if penalties and speculative.is_block_draft():
+            raise ValueError(
+                "Logit penalties apply only to the verify of a draft that"
+                f" proposes one token a step, and {method} drafts a block."
+            )
         driver_kwargs: dict[str, Any] = dict(
             target_model=target,
             draft_model=draft,
@@ -1094,6 +1237,12 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
             # Sizes the draft distributions under draft_proposal="sampled".
             vocab_size=self.huggingface_config.get_text_config().vocab_size,
             ep_input_types=spec_adapters.ep_input_types(target_arch, target),
+            trailing_input_types=[
+                *spec_adapters.trailing_input_types(
+                    target_arch, method, target_config
+                ),
+                *penalties,
+            ],
         )
         nn_model: SequentialDriver[Any] | BlockDriver[Any, Any]
         if speculative.is_block_draft():
@@ -1105,9 +1254,6 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 num_speculative_tokens=speculative.draft_width,
                 ctx_at_draft_cache_length=getattr(
                     proposer, "ctx_at_draft_cache_length", False
-                ),
-                trailing_input_types=spec_adapters.trailing_input_types(
-                    target_arch, target_config
                 ),
                 **driver_kwargs,
             )
@@ -1131,8 +1277,10 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
             weight.name = f"target.{name}"
         weights_registry = {**target_registry, **draft_registry}
 
-        kv_params = self.kv_params
-        primary = spec_adapters.primary_kv(target_arch)
+        kv_params = _without_tail(
+            self.kv_params, spec_adapters.tail_kv(target_arch)
+        )
+        primary = spec_adapters.primary_kv(target_arch, method)
         with Graph(
             _graph_name(pairing, method),
             input_types=nn_model.input_types(kv_params),
@@ -1173,11 +1321,15 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 vision_embeddings=graph_inputs.vision_embeddings,
                 vision_scatter_indices=graph_inputs.vision_scatter_indices,
                 extra=spec_adapters.extra(
-                    target_arch, target_config, graph_inputs.trailing
+                    target_arch, method, target_config, graph_inputs.trailing
                 ),
             )
             if graph_inputs.draft_probs_full is not None:
                 call_kwargs["draft_probs_full"] = graph_inputs.draft_probs_full
+            if penalties:
+                call_kwargs["penalties"] = LogitPenalties.from_inputs(
+                    [v.tensor for v in graph_inputs.trailing[-len(penalties) :]]
+                )
             graph.output(*nn_model(**call_kwargs))
 
         model_config.input_spec = nn_model.input_spec
@@ -1263,6 +1415,47 @@ class _EPRuntime:
                 "EP node ID is not set. Please check if the EP initialization"
                 " is successful."
             )
+
+
+def _without_tail(
+    kv_params: KVCacheParamInterface, tail: str | None
+) -> MultiKVCacheParams:
+    """Returns the KV tree the graph declares among its KV inputs.
+
+    All of it but the target's child it declares in its tail.
+    """
+    assert isinstance(kv_params, MultiKVCacheParams)
+    if tail is None:
+        return kv_params
+    target = kv_params.children["target"]
+    assert isinstance(target, MultiKVCacheParams)
+    return MultiKVCacheParams.from_params(
+        {
+            **kv_params.children,
+            "target": MultiKVCacheParams.from_params(
+                {k: v for k, v in target.children.items() if k != tail}
+            ),
+        }
+    )
+
+
+def _split_tail(
+    kv_inputs: KVCacheInputs[Buffer, Buffer], tail: str
+) -> tuple[KVCacheInputs[Buffer, Buffer], Any]:
+    """Splits the target's ``tail`` child off a batch's KV inputs.
+
+    The rest stays an ``OrderedDict``, which flattens in declaration order.
+    """
+    assert isinstance(kv_inputs, Mapping)
+    target = kv_inputs["target"]
+    assert isinstance(target, Mapping)
+    rest = OrderedDict((k, v) for k, v in target.items() if k != tail)
+    return (
+        OrderedDict(
+            (k, rest if k == "target" else v) for k, v in kv_inputs.items()
+        ),
+        target[tail],
+    )
 
 
 def _named_leaves(node: Any) -> dict[str, list[Any]]:

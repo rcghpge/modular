@@ -403,6 +403,9 @@ class Gemma4Assistant(Module):
     back to the backbone dimension for logits computation.
     """
 
+    has_own_lm_head = True
+    """Its head is tied to its own embedding, not the target's head."""
+
     def __init__(
         self,
         config: Gemma4AssistantConfig,

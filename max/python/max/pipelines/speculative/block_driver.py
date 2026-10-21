@@ -852,6 +852,8 @@ class BlockDriver(
         # Every phase below runs after the accept, so each sees the count
         # rather than re-deriving it.
         batch = replace(batch, num_accepted=accepted.num_accepted)
+        if verified.roll_forward is not None:
+            verified.roll_forward(batch)
 
         caches = self._block_caches(
             batch, pre_cache_lengths, accepted.commit_lengths

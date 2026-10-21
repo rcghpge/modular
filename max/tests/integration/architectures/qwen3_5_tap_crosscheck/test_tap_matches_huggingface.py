@@ -12,10 +12,9 @@
 # ===----------------------------------------------------------------------=== #
 """Qwen3.5's DFlash2 tap, checked against HuggingFace rather than itself.
 
-`unified_dflash2_qwen3_5/test_tap_capture.py` pins the tap against MAX's own
-final hidden state. That rules out a hook firing at the wrong point in the
-loop, but it cannot see a disagreement between MAX's layer `i` and
-HuggingFace's layer `i` -- and the DFlash2 reference reads
+Pinning the tap against MAX's own final hidden state rules out a hook firing
+at the wrong point in the loop, but it cannot see a disagreement between
+MAX's layer `i` and HuggingFace's layer `i` -- and the DFlash2 reference reads
 `hidden_states[layer_id + 1]` from HuggingFace, so that correspondence is
 what the drafter's context actually rests on.
 

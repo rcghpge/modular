@@ -102,7 +102,7 @@ You can also see the
       </td>
       <td className='modality'>text-to-text</td>
       <td className='encodings'>bfloat16, float32</td>
-      <td className='gpus'>Yes</td>
+      <td className='gpus'>No</td>
     </tr>
     <tr>
       <td className='arch'><a href="https://github.com/modular/modular/tree/main/max/python/max/pipelines/architectures/dflash_llama3"><code>DFlashDraftModel</code></a></td>
@@ -118,7 +118,7 @@ You can also see the
       <td className='models'>
         <a href="https://huggingface.co/nvidia/Kimi-K2.5-NVFP4">nvidia/Kimi-K2.5-NVFP4</a>
       </td>
-      <td className='modality'>text-to-text</td>
+      <td className='modality'>image-to-text,<br/>text-to-text</td>
       <td className='encodings'>bfloat16</td>
       <td className='gpus'>Yes</td>
     </tr>
@@ -213,7 +213,7 @@ You can also see the
         <a href="https://huggingface.co/google/gemma-4-31B-it-assistant">google/gemma-4-31B-it-assistant</a>,<br/>
         <a href="https://huggingface.co/google/gemma-4-26B-A4B-it-assistant">google/gemma-4-26B-A4B-it-assistant</a>
       </td>
-      <td className='modality'>text-to-text</td>
+      <td className='modality'>image-to-text,<br/>text-to-text</td>
       <td className='encodings'>bfloat16</td>
       <td className='gpus'>Yes</td>
     </tr>
@@ -230,9 +230,7 @@ You can also see the
       <td className='arch'><a href="https://github.com/modular/modular/tree/main/max/python/max/pipelines/architectures/gemma4"><code>Gemma4ForConditionalGeneration</code></a></td>
       <td className='models'>
         <a href="https://huggingface.co/google/gemma-4-31B-it">google/gemma-4-31B-it</a>,<br/>
-        <a href="https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4">nvidia/Gemma-4-31B-IT-NVFP4</a>,<br/>
-        <a href="https://huggingface.co/nvidia/Gemma-4-26B-A4B-NVFP4">nvidia/Gemma-4-26B-A4B-NVFP4</a>,<br/>
-        <a href="https://huggingface.co/google/gemma-4-26B-A4B-it">google/gemma-4-26B-A4B-it</a>
+        <a href="https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4">nvidia/Gemma-4-31B-IT-NVFP4</a>
       </td>
       <td className='modality'>image-to-text,<br/>text-to-text,<br/>video-to-text</td>
       <td className='encodings'>bfloat16, float16, float4_e2m1fnx2</td>
@@ -493,6 +491,15 @@ You can also see the
       <td className='gpus'>Yes</td>
     </tr>
     <tr>
+      <td className='arch'><a href="https://github.com/modular/modular/tree/main/max/python/max/pipelines/architectures/mtp_qwen3_5"><code>MTPQwen3_5DraftModel</code></a></td>
+      <td className='models'>
+        <a href="https://huggingface.co/RadixArk/Qwen3.8-27B-NVFP4">RadixArk/Qwen3.8-27B-NVFP4</a>
+      </td>
+      <td className='modality'>text-to-text</td>
+      <td className='encodings'>bfloat16, float32, float4_e2m1fnx2, float8_e4m3fn</td>
+      <td className='gpus'>Yes</td>
+    </tr>
+    <tr>
       <td className='arch'><a href="https://github.com/modular/modular/tree/main/max/python/max/pipelines/architectures/muse_glimmer"><code>MuseGlimmerForConditionalGeneration</code></a></td>
       <td className='models'>
         <a href="https://huggingface.co/meta-models/Muse-Glimmer-30B">meta-models/Muse-Glimmer-30B</a>
@@ -587,8 +594,7 @@ You can also see the
       <td className='arch'><a href="https://github.com/modular/modular/tree/main/max/python/max/pipelines/architectures/qwen3_5"><code>Qwen3_5ForConditionalGeneration</code></a></td>
       <td className='models'>
         <a href="https://huggingface.co/Qwen/Qwen3.5-27B">Qwen/Qwen3.5-27B</a>,<br/>
-        <a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen/Qwen3.8-27B</a>,<br/>
-        <a href="https://huggingface.co/RadixArk/Qwen3.8-27B-NVFP4">RadixArk/Qwen3.8-27B-NVFP4</a>
+        <a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen/Qwen3.8-27B</a>
       </td>
       <td className='modality'>image-to-text,<br/>text-to-text</td>
       <td className='encodings'>bfloat16, float32, float4_e2m1fnx2, float8_e4m3fn</td>

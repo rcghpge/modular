@@ -423,6 +423,9 @@ class ModelLoadContext:
     ep_runtime: Callable[[EPConfig], None] | None = None
     """Starts expert parallelism's runtime, for a caller that shares it
     across the modules it builds."""
+    encodes_images: bool = True
+    """Whether the module encodes images. ``False`` builds a multimodal
+    checkpoint's language model alone."""
 
     @classmethod
     def from_pipeline_model(cls, model: PipelineModel[Any]) -> ModelLoadContext:

@@ -38,9 +38,7 @@ _FLAG = "enable_prefix_caching"
 
 _KNOWN_RECURRENT_SPEC_ARCHES = frozenset(
     {
-        "unified_dflash2_qwen3_5",
         "unified_mtp_inkling",
-        "unified_mtp_qwen3_5",
     }
 )
 """Architectures that speculate over a recurrent state.

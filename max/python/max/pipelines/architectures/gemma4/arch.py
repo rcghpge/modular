@@ -60,6 +60,7 @@ gemma4_arch = SupportedArchitecture(
     supports_device_graph_capture=False,
     cascade_pipeline_factory=CommonTextGenPipeline,
     supports_spec_decode_mixed_batches=True,
+    spec_decode_graph_names={"mtp": "gemma4_with_mtp_graph"},
 )
 
 

@@ -733,7 +733,9 @@ def _require_dspark(speculative: SpeculativeConfig, draft_arch: str) -> None:
 
 
 def _apply_speculative_target_architecture(
-    speculative: SpeculativeConfig | None, models: Mapping[str, MAXModelConfig]
+    speculative: SpeculativeConfig | None,
+    models: Mapping[str, MAXModelConfig],
+    prefer_module_v3: bool = False,
 ) -> SupportedArchitecture | None:
     """Selects the unified spec-decode architecture for the target.
 
@@ -745,9 +747,9 @@ def _apply_speculative_target_architecture(
     """
     if not speculative:
         return None
-    if _is_gemma4_assistant_pair(models):
-        # TODO(MXSERV-698): run Gemma 4 MTP through SpecDecodePipelineModel
-        # once its proposer exists; until then it keeps its fused graph.
+    if prefer_module_v3 and _is_gemma4_assistant_pair(models):
+        # TODO(MXSERV-698): run ModuleV3 Gemma 4 MTP through
+        # SpecDecodePipelineModel; until then it keeps its fused graph.
         models["main"].huggingface_config.architectures[0] = (
             "UnifiedMTPGemma4ForCausalLM"
         )
@@ -773,9 +775,9 @@ def _apply_speculative_target_architecture(
             _require_dspark(speculative, draft_archs[0])
             target_archs[0] = "UnifiedDSparkNemotronHForCausalLM"
     # Kimi K3's speculators-format DSpark drafter (
-    # RedHatAI/Kimi-K3-speculator.dspark) declares the same generic
-    # architectures: ["DSparkDraftModel"] the Gemma4 arm keys on; the
-    # verifier it names is what picks the fused graph apart.
+    # RedHatAI/Kimi-K3-speculator.dspark) declares the generic
+    # architectures: ["DSparkDraftModel"]; the verifier it names is what
+    # picks the fused graph apart.
     if target_archs[0] == "KimiK3ForConditionalGeneration":
         draft_archs = (
             draft_model.huggingface_config.architectures
@@ -804,35 +806,6 @@ def _apply_speculative_target_architecture(
             target_archs[0] = (
                 "UnifiedDSparkMiniMaxM3SparseForConditionalGeneration"
             )
-    if target_archs[0] == "Qwen3_5ForConditionalGeneration":
-        # Qwen3.8 bakes a NextN MTP head into the target checkpoint, so
-        # there is no separate draft model. Qwen3.5 shares the arch name
-        # but ships no head; only override when the head exists. Unlike
-        # the other in-checkpoint MTP overrides this one also waits for an
-        # explicit `--speculative-method mtp`: the fused graph it selects
-        # is served by Mach rather than MAX, so a plain `max serve` of a
-        # Qwen3.8 checkpoint must keep landing on the base architecture.
-        text_config = getattr(
-            models["main"].huggingface_config,
-            "text_config",
-            models["main"].huggingface_config,
-        )
-        has_mtp = (getattr(text_config, "mtp_num_hidden_layers", 0) or 0) > 0
-        draft_archs = (
-            draft_model.huggingface_config.architectures
-            if draft_model is not None
-            else None
-        )
-        if speculative.is_mtp() and models.get("draft") is None and has_mtp:
-            target_archs[0] = "UnifiedMTPQwen3_5ForConditionalGeneration"
-        elif (
-            speculative.is_dflash2()
-            and draft_archs
-            # "DFlash2DraftModel" is a registered placeholder arch, so only
-            # the one spelling reaches here.
-            and draft_archs[0] == "DFlash2DraftModel"
-        ):
-            target_archs[0] = "UnifiedDflash2Qwen3_5ForConditionalGeneration"
     if target_archs[0] == "GlmMoeDsaForCausalLM":
         # GLM-5.2 bakes a NextN MTP layer into the target checkpoint, so
         # there is no separate draft model. GLM-5.1 shares the arch name
@@ -1620,7 +1593,7 @@ class PipelineConfig(ConfigFileModel):
         spec_arch: SupportedArchitecture | None = None
         if args.speculative is not None and "main" in models:
             spec_arch = _apply_speculative_target_architecture(
-                args.speculative, models
+                args.speculative, models, args.runtime.prefer_module_v3
             )
         for model in models.values():
             model.validate_repo_access()

@@ -601,6 +601,7 @@
                 "api/python/pipelines.architectures.mistral3",
                 "api/python/pipelines.architectures.mpnet",
                 "api/python/pipelines.architectures.mtp_deepseekV3",
+                "api/python/pipelines.architectures.mtp_qwen3_5",
                 "api/python/pipelines.architectures.muse_glimmer",
                 "api/python/pipelines.architectures.nemotron_h",
                 "api/python/pipelines.architectures.olmo",
@@ -617,13 +618,10 @@
                 "api/python/pipelines.architectures.qwen_image",
                 "api/python/pipelines.architectures.qwen_image_edit",
                 "api/python/pipelines.architectures.step3p5",
-                "api/python/pipelines.architectures.unified_dflash2_qwen3_5",
                 "api/python/pipelines.architectures.unified_dspark_deepseekV41",
                 "api/python/pipelines.architectures.unified_dspark_nemotron_h",
-                "api/python/pipelines.architectures.unified_mtp_gemma4",
                 "api/python/pipelines.architectures.unified_mtp_glm5_2",
                 "api/python/pipelines.architectures.unified_mtp_inkling",
-                "api/python/pipelines.architectures.unified_mtp_qwen3_5",
                 "api/python/pipelines.architectures.wan"
               ]
             },

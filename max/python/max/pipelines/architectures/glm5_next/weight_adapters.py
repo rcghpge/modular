@@ -255,9 +255,9 @@ def convert_glm5_next_state_dict(
     # TODO(GLM53-MTP): the MTP draft layer's weights are dropped here, matching
     # DeepSeek-V3.2 and GLM-5.2, whose MTP lives in a separate registered
     # architecture (`unified_mtp_glm5_2`) that consumes them. The GLM-5.3-Flash
-    # equivalent needs the KDA state rollback from `unified_mtp_qwen3_5`, so
-    # until that lands these weights have no consumer and a strict load would
-    # reject them.
+    # equivalent needs the KDA state rollback from
+    # `speculative/gated_delta_rollback.py`, so until that lands these weights
+    # have no consumer and a strict load would reject them.
     # TODO(GLM53-VISION): the graph is text-only -- the architecture is
     # registered as TEXT_GENERATION with a `TextContext`, and no vision tower
     # or placeholder substitution is wired. Dropping these keeps a strict load

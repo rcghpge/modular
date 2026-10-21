@@ -32,8 +32,6 @@ still **moves** with the tokens.
 
 from __future__ import annotations
 
-import functools
-
 import ml_dtypes
 import numpy as np
 import pytest
@@ -44,13 +42,10 @@ from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import BufferValue, DeviceRef, Graph, TensorType, TensorValue
 from max.nn.comm import Signals
-from max.nn.embedding import VocabParallelEmbedding
 from max.nn.kv_cache import (
     KVCacheParams,
     MHAKVCacheParams,
 )
-from max.nn.norm import RMSNorm
-from max.nn.rotary_embedding import Llama3RotaryEmbedding
 from max.pipelines.architectures.qwen3_5.model_config import Qwen3_5Config
 from max.pipelines.architectures.qwen3_5.mtp import Qwen3_5MTP
 from max.pipelines.kv_cache import PagedKVCacheManager
@@ -107,33 +102,6 @@ def _config(device: DeviceRef) -> Qwen3_5Config:
     )
 
 
-def _head(config: Qwen3_5Config, device: DeviceRef) -> Qwen3_5MTP:
-    return Qwen3_5MTP(
-        config,
-        embed_tokens=VocabParallelEmbedding(
-            VOCAB, HIDDEN, DType.bfloat16, [device]
-        ),
-        rope=Llama3RotaryEmbedding(
-            dim=HIDDEN,
-            n_heads=HEADS,
-            theta=1e7,
-            max_seq_len=512,
-            head_dim=int(HEAD_DIM * 0.25),
-            interleaved=True,
-            scaling_params=None,
-        ),
-        create_norm=functools.partial(
-            RMSNorm,
-            HIDDEN,
-            dtype=DType.bfloat16,
-            eps=EPS,
-            weight_offset=1.0,
-            multiply_before_cast=False,
-        ),
-        kv_layer_idx=0,
-    )
-
-
 def _embedding_first_selector() -> np.ndarray:
     """``[I | 0]``: keeps the embedding half of the concatenation.
 
@@ -175,7 +143,7 @@ def compiled():  # noqa: ANN201
     accelerator = Accelerator(0)
     session = InferenceSession(devices=[accelerator])
     config = _config(device)
-    head = _head(config, device)
+    head = Qwen3_5MTP(config)
     _load_weights(head, np.random.default_rng(7))
 
     # The head is exercised on its own, so the config carries the attention

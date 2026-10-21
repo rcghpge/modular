@@ -111,9 +111,7 @@ modular_py_test(
     ignore_extra_deps = [
         "//max/python/max/pipelines/architectures/inkling",
         "//max/python/max/pipelines/architectures/qwen3_5",
-        "//max/python/max/pipelines/architectures/unified_dflash2_qwen3_5",
         "//max/python/max/pipelines/architectures/unified_mtp_inkling",
-        "//max/python/max/pipelines/architectures/unified_mtp_qwen3_5",
     ],
     target_compatible_with = select({
         "@platforms//os:macos": ["@platforms//:incompatible"],
@@ -122,8 +120,6 @@ modular_py_test(
     deps = [
         "//max/python/max/pipelines/architectures/inkling",
         "//max/python/max/pipelines/architectures/qwen3_5",
-        "//max/python/max/pipelines/architectures/unified_dflash2_qwen3_5",
         "//max/python/max/pipelines/architectures/unified_mtp_inkling",
-        "//max/python/max/pipelines/architectures/unified_mtp_qwen3_5",
     ],
 )

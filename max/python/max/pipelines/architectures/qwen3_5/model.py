@@ -24,7 +24,7 @@ from max.driver import Buffer, Device, is_virtual_device_mode
 from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph.buffer_utils import cast_tensors_to
-from max.nn.kv_cache import recurrent_leaf
+from max.nn.kv_cache import KVCacheParamInterface, recurrent_leaf
 from max.pipelines.context import ImageMetadata
 from max.pipelines.lib import (
     ModelInputs,
@@ -32,6 +32,8 @@ from max.pipelines.lib import (
 )
 from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
 from max.pipelines.lib.interfaces import AlwaysSignalBuffersMixin
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
+from max.pipelines.lib.utils import parse_state_dict_from_weights
 from max.pipelines.lib.vision_encoder_cache import VisionEncodeResult
 from max.pipelines.modeling.types import RequestID
 from max.profiler import traced
@@ -158,6 +160,23 @@ def _check_weights_match(expected: set[str], provided: set[str]) -> None:
         )
 
 
+def _loaded_module(
+    config: Qwen3_5Config, state_dict: dict[str, Any]
+) -> Qwen3_5:
+    module = Qwen3_5(config)
+    _check_weights_match(
+        expected=set(module.raw_state_dict().keys()),
+        provided=set(state_dict.keys()),
+    )
+    module.load_state_dict(
+        state_dict,
+        override_quantization_encoding=True,
+        weight_alignment=1,
+        strict=False,
+    )
+    return module
+
+
 class Qwen3_5Model(AlwaysSignalBuffersMixin, LlamaModelBase):
     """Qwen3.5 pipeline model implementation.
 
@@ -199,6 +218,60 @@ class Qwen3_5Model(AlwaysSignalBuffersMixin, LlamaModelBase):
     # Zero-row vision embeddings for decode / text-only steps, so buffers()
     # always has the right input count. Cached: see empty_vision_embeddings.
     _empty_vision_embeddings: list[Buffer] | None = None
+
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[Qwen3_5, Qwen3_5Config]:
+        """Builds the hybrid model from the checkpoint ``context`` names.
+
+        A caller that sized the cache passes its KV params. A module that
+        encodes no images builds no vision tower, but keeps the 3-axis
+        positions of a checkpoint that has one.
+        """
+        state_dict = parse_state_dict_from_weights(
+            context.pipeline_config, context.weights, context.adapter
+        )
+        config = cls._finalized_config(context, state_dict)
+        return _loaded_module(config, state_dict), config
+
+    @classmethod
+    def _finalized_config(
+        cls, context: ModelLoadContext, state_dict: dict[str, Any]
+    ) -> Qwen3_5Config:
+        huggingface_config = context.huggingface_config
+        config = Qwen3_5Config.initialize_from_config(
+            context.pipeline_config,
+            huggingface_config,
+            max_seq_len=context.max_seq_len,
+        )
+        if context.kv_params is not None:
+            assert isinstance(context.kv_params, KVCacheParamInterface)
+            config.kv_params = context.kv_params
+        if not context.encodes_images:
+            # Tokens after an image still take its positions.
+            config.mrope_without_encoder = config.vision_config is not None
+            config.vision_config = None
+        config.finalize(
+            huggingface_config=Qwen3_5Config._get_text_config(
+                huggingface_config
+            ),
+            state_dict=state_dict,
+            return_logits=context.return_logits,
+            return_hidden_states=context.return_hidden_states,
+            norm_method=cls.norm_method,
+            attention_bias=cls.attention_bias,
+        )
+        if context.target_layer_ids:
+            config.target_layer_ids = list(context.target_layer_ids)
+
+        # finalize() reads tie_word_embeddings from the text sub-config,
+        # which inherits PretrainedConfig's default of True.  The correct
+        # value lives on the top-level config.
+        config.tie_word_embeddings = getattr(
+            huggingface_config, "tie_word_embeddings", False
+        )
+        return config
 
     @traced
     def load_model(self, session: InferenceSession) -> Model:
@@ -330,48 +403,16 @@ class Qwen3_5Model(AlwaysSignalBuffersMixin, LlamaModelBase):
         return self._checkpoint
 
     def _create_model_config(self, state_dict: dict[str, Any]) -> Qwen3_5Config:
-        model_config = Qwen3_5Config.initialize_from_config(
-            self.pipeline_config,
-            self.huggingface_config,
-            max_seq_len=self.max_seq_len,
+        return self._finalized_config(
+            ModelLoadContext.from_pipeline_model(self), state_dict
         )
-        model_config.finalize(
-            huggingface_config=Qwen3_5Config._get_text_config(
-                self.huggingface_config
-            ),
-            state_dict=state_dict,
-            return_logits=self.return_logits,
-            norm_method=self.norm_method,
-            attention_bias=self.attention_bias,
-        )
-
-        # finalize() reads tie_word_embeddings from the text sub-config,
-        # which inherits PretrainedConfig's default of True.  The correct
-        # value lives on the top-level config.
-        model_config.tie_word_embeddings = getattr(
-            self.huggingface_config, "tie_word_embeddings", False
-        )
-        return model_config
 
     def graph_specs(self, model_config: Qwen3_5Config) -> dict[str, GraphSpec]:
         """Returns the decoder, and the vision encoder unless the checkpoint
         is text-only, in one compile group."""
-        nn_model = Qwen3_5(model_config)
-
+        nn_model = _loaded_module(model_config, self._checkpoint)
         input_types = self._bind_graph_inputs(
             nn_model.input_tree(self.kv_params)
-        )
-
-        _check_weights_match(
-            expected=set(nn_model.raw_state_dict().keys()),
-            provided=set(self._checkpoint.keys()),
-        )
-
-        nn_model.load_state_dict(
-            self._checkpoint,
-            override_quantization_encoding=True,
-            weight_alignment=1,
-            strict=False,
         )
 
         # Split the processed state dict into vision and LM parts. Vision

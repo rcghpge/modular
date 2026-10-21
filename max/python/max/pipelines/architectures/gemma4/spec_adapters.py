@@ -10,10 +10,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Gemma 4's language-model call."""
+"""Gemma 4's language-model call.
+
+A block draft verifies over the full-attention cache on one device, text
+only. The MTP assistant cross-attends into the target's sliding-window cache
+on every device the target spans, and its pairing takes images.
+"""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -34,9 +40,11 @@ from max.pipelines.speculative.spec_target import Verified
 if TYPE_CHECKING:
     from max.pipelines.speculative.spec_adapters import VerifyFn
 
-PRIMARY_KV = "full_attention"
-
 _SLIDING_KV = "sliding_attention"
+
+_FULL_KV = "full_attention"
+
+PRIMARY_KV = _FULL_KV
 
 
 def verify(
@@ -45,17 +53,21 @@ def verify(
     hidden_states: ReturnHiddenStates,
     draft_config: Any,
 ) -> VerifyFn:
-    """Returns the verify of a single-device Gemma 4 language model.
+    """Returns the verify of a Gemma 4 language model.
 
     Raises:
-        ValueError: If the target wasn't built to return selected layers,
-            which only block drafts read.
+        ValueError: If the target wasn't built to return the selected
+            layers a block draft reads, or the last normalized layer the
+            MTP assistant reads.
     """
     del draft_config
-    if hidden_states != ReturnHiddenStates.SELECTED_LAYERS:
+    if hidden_states not in (
+        ReturnHiddenStates.SELECTED_LAYERS,
+        ReturnHiddenStates.ALL_NORMALIZED,
+    ):
         raise ValueError(
-            "A Gemma 4 target verifies only for block drafts, which read"
-            f" selected layers. Got {hidden_states.value}."
+            "A Gemma 4 target verifies only for drafts that read its selected"
+            f" layers or its last normalized one. Got {hidden_states.value}."
         )
     return partial(
         _verify,
@@ -73,9 +85,23 @@ def _verify(
 ) -> Verified[list[TensorValue]]:
     # Gemma 4's embedding and head use collectives unconditionally, so the
     # entry point is the distributed one: every argument arrives as a
-    # one-element list, beside the sliding-window cache and the vision
-    # inputs a text-only forward still declares.
-    assert isinstance(batch, BlockBatch)
+    # per-device list, beside the vision inputs a text-only forward still
+    # declares.
+    if isinstance(batch, SequentialBatch):
+        # Images arrive only in prefill, which merges no drafts into a row.
+        outputs = target(
+            batch.merged_tokens,
+            batch.signal_buffers,
+            batch.kv_collections,
+            batch.passthrough_kv[_FULL_KV],
+            batch.return_n_logits,
+            batch.merged_offsets_per_dev,
+            batch.vision_embeddings,
+            batch.vision_scatter_indices,
+        )
+        return Verified(
+            logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
+        )
     device = batch.device0
     # The vision merge scatters nothing on an empty index set, but the
     # signature still takes both operands.
@@ -101,4 +127,7 @@ def _verify(
     return Verified(logits=outputs[1], hidden=hidden)
 
 
-ADAPTER = TargetAdapter(primary_kv=PRIMARY_KV, verify=verify)
+_BASE = TargetAdapter(primary_kv=PRIMARY_KV, verify=verify)
+ADAPTER = replace(
+    _BASE, by_method={"mtp": replace(_BASE, primary_kv=_SLIDING_KV)}
+)

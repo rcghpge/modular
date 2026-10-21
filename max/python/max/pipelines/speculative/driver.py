@@ -640,10 +640,12 @@ class SequentialDriver(
         num_draft_steps: int | None = None,
         vocab_size: int | None = None,
         ep_input_types: Sequence[TensorType | BufferType] = (),
+        trailing_input_types: Sequence[TensorType | BufferType] = (),
     ) -> None:
         super().__init__()
         self._verify = verify
         self._ep_input_types = tuple(ep_input_types)
+        self._trailing_input_types = tuple(trailing_input_types)
         self._proposer = proposer
         draft_proposal: Literal["argmax", "sampled"] = (
             speculative_config.draft_proposal
@@ -1087,6 +1089,10 @@ class SequentialDriver(
         with Graph.current.profile_scope(
             "draft_forward", color=ProfileScopeColor.ORANGE
         ):
+            # A target with state the verify advanced lands it on the
+            # accepted prefix before the draft runs.
+            if verified.roll_forward is not None:
+                verified.roll_forward(replace(batch, num_accepted=num_accepted))
             shifted_corrected = shift_corrected_tokens(
                 self.merger, tokens, input_row_offsets, recovered, bonus
             )
@@ -1742,3 +1748,7 @@ class SequentialDriver(
     @override
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
         return self._ep_input_types
+
+    @override
+    def trailing_input_types(self) -> Sequence[TensorType | BufferType]:
+        return self._trailing_input_types

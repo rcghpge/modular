@@ -19,6 +19,7 @@ the driver hands its verify callable.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from typing import Any, Generic
 
@@ -48,6 +49,10 @@ class Verified(Generic[_TargetHiddenT, _LogitsT]):
 
     logits: _LogitsT
     hidden: _TargetHiddenT
+    roll_forward: Callable[[Any], None] | None = None
+    """Lands state no cache length rewinds on the accepted prefix, for a
+    target that keeps any. The driver calls it with its batch once the
+    accepted count is set, before the draft runs."""
 
 
 class DistributedVerify(partial[Verified[Any]]):

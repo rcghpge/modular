@@ -43,9 +43,9 @@ from collections.abc import Sequence
 from max.dtype import DType
 from max.graph import BufferValue, DeviceRef, Dim, TensorValue, ops
 from max.nn.state_space import mamba2_replay_fold
+from max.pipelines.speculative.gated_delta_rollback import accepted_lengths
 from max.pipelines.speculative.ragged_token_merger import _shape_to_scalar
 
-from ..unified_mtp_qwen3_5.state_rollback import accepted_lengths
 from .layers.mamba2 import MambaReplayInputs
 
 __all__ = [

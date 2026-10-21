@@ -23,13 +23,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from max.nn.kv_cache import MLAKVCacheParams
+from max.nn.kv_cache import MHAKVCacheParams, MLAKVCacheParams
 from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates
 
 from .block_driver import BlockProposer
 from .config import SpeculativeConfig, SpeculativeMethod
+from .cross_attention import CrossAttentionDraft, CrossAttentionMTPProposer
 from .dflash import DFlashDraft, DFlashProposer
+from .dflash2 import DFlash2Draft, DFlash2Proposer
 from .driver import SequentialProposer
 from .dspark import (
     DSparkDraft,
@@ -39,6 +41,7 @@ from .dspark import (
 )
 from .eagle import EagleProposer
 from .mla import Eagle3MHAProposer, Eagle3MLAProposer, MLADraft, MTPProposer
+from .shared_head import SharedHeadMTPDraft, SharedHeadMTPProposer
 
 __all__ = [
     "BLOCK_METHODS",
@@ -52,7 +55,9 @@ __all__ = [
 SEQUENTIAL_METHODS: frozenset[SpeculativeMethod] = frozenset({"eagle", "mtp"})
 """The one-token-per-step methods :func:`sequential_proposer` runs."""
 
-BLOCK_METHODS: frozenset[SpeculativeMethod] = frozenset({"dflash", "dspark"})
+BLOCK_METHODS: frozenset[SpeculativeMethod] = frozenset(
+    {"dflash", "dflash2", "dspark"}
+)
 """The block-drafting methods :func:`block_proposer` runs."""
 
 
@@ -109,6 +114,14 @@ def sequential_proposer(
             return Eagle3MHAProposer(draft)
         return EagleProposer(draft, draft_config.hidden_size)
     if speculative.is_mtp():
+        # A head without a cache of its own attends into its target's.
+        if getattr(draft_config, "kv_params", None) is None:
+            assert isinstance(draft, CrossAttentionDraft)
+            return CrossAttentionMTPProposer(draft, draft_config.hidden_size)
+        # A head over an attention cache projects through its target's head.
+        if isinstance(draft_config.kv_params, MHAKVCacheParams):
+            assert isinstance(draft, SharedHeadMTPDraft)
+            return SharedHeadMTPProposer(draft, draft_config.hidden_size)
         assert isinstance(draft, MLADraft)
         return MTPProposer(draft)
     raise ValueError(
@@ -132,6 +145,16 @@ def block_proposer(
         ValueError: If no proposer runs the configured method.
     """
     text_config = target_huggingface_config.get_text_config()
+    if speculative.is_dflash2():
+        assert isinstance(draft, DFlash2Draft)
+        return DFlash2Proposer(
+            draft,
+            block_size=draft_config.block_size,
+            # The selector walks a path through every slot after the anchor.
+            num_drafts=draft_config.block_size - 1,
+            mask_token_id=draft_config.mask_token_id,
+            hidden_size=draft_config.hidden_size,
+        )
     if speculative.speculative_method == "dflash":
         assert isinstance(draft, DFlashDraft)
         return DFlashProposer(

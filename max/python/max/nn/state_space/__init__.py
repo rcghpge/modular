@@ -20,6 +20,7 @@ architecture (their sole consumer) to keep ``max.nn`` from depending on
 """
 
 from .gated_delta import (
+    GatedDeltaReplayInputs,
     gated_delta_conv1d_fwd,
     gated_delta_conv1d_verify_fwd,
     gated_delta_recurrence_fwd,
@@ -40,6 +41,7 @@ from .short_conv_ring import short_conv_ring
 from .varlen_causal_conv1d import causal_conv1d_varlen_fwd
 
 __all__ = [
+    "GatedDeltaReplayInputs",
     "causal_conv1d_varlen_fwd",
     "gated_delta_conv1d_fwd",
     "gated_delta_conv1d_verify_fwd",

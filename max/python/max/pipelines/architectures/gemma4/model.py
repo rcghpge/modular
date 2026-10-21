@@ -54,11 +54,7 @@ from max.pipelines.lib.vision_encoder_cache import VisionEncodeResult
 from max.profiler import traced
 
 from .batch_processor import Gemma4BatchProcessor
-from .batch_vision_inputs import (
-    VisionRawInputs,
-    create_empty_embeddings,
-    pack_uncached_images,
-)
+from .batch_vision_inputs import VisionRawInputs
 from .context import Gemma4Context
 from .gemma4 import Gemma4TextModel, language_input_tree
 from .model_config import Gemma4ForConditionalGenerationConfig
@@ -241,6 +237,10 @@ class Gemma3_MultiModalModel(
         if self._batch_processor is not None:
             assert isinstance(self._batch_processor, Gemma4BatchProcessor)
             self._batch_processor.bind_model_state(config=self.config)
+            if self.vision_model is not None:
+                self._batch_processor.bind_vision_encoder(
+                    vision_model=self.vision_model, session=session
+                )
 
     @property
     def language_model(self) -> Model:
@@ -263,24 +263,18 @@ class Gemma3_MultiModalModel(
         """
         return self.language_model
 
+    @property
+    def _batching(self) -> Gemma4BatchProcessor:
+        assert isinstance(self._batch_processor, Gemma4BatchProcessor)
+        return self._batch_processor
+
     def pack_vision_inputs(
         self,
         selection: Sequence[tuple[Gemma4Context, Sequence[ImageMetadata]]],
         devices: list[Device],
     ) -> VisionRawInputs | None:
-        """Pack the pipeline-selected uncached image pixels to device.
-
-        Runs in the pipeline's prep-ahead window (pinned host-to-device copy)
-        so it overlaps the prior batch, delegating to the shared
-        :func:`pack_uncached_images`.
-        """
-        assert self.config.vision_config is not None
-        return pack_uncached_images(
-            selection,
-            devices,
-            self.config.vision_config.pooling_kernel_size,
-            self.config.unquantized_dtype,
-        )
+        """Packs the selected images, as the batch processor does."""
+        return self._batching.pack_vision_inputs(selection, devices)
 
     def vision_execute(
         self,
@@ -288,32 +282,13 @@ class Gemma3_MultiModalModel(
         devices: list[Device],
         packed: VisionRawInputs | None,
     ) -> VisionEncodeResult:
-        """Run the vision encoder on the pixels packed by ``pack_vision_inputs``.
-
-        Returns embeddings only; the pipeline derives per-image counts from its
-        selection. When ``pack_vision_inputs`` had no packable patches
-        (``packed is None``), returns an empty result so the pipeline assembles
-        from the cache.
-        """
-        if packed is None:
-            return VisionEncodeResult(
-                embeddings=self.empty_vision_embeddings(self.devices)
-            )
-        return VisionEncodeResult(embeddings=self._run_vision_encoder(packed))
+        """Encodes the selected images, as the batch processor does."""
+        return self._batching.vision_execute(selection, devices, packed)
 
     def empty_vision_embeddings(self, devices: list[Device]) -> list[Buffer]:
-        """Per-device zero-row image embeddings for cached / text-only batches.
-
-        Cached: hit on every text-only / decode step, so it must not allocate
-        per call.
-        """
-        if not hasattr(self, "_cached_empty_embeddings"):
-            self._cached_empty_embeddings = create_empty_embeddings(
-                devices,
-                self.huggingface_config.text_config.hidden_size,
-                self.config.unquantized_dtype,
-            )
-        return self._cached_empty_embeddings
+        """Returns the batch processor's embeddings for a batch with no new
+        images."""
+        return self._batching.empty_vision_embeddings(devices)
 
     def graph_specs(
         self, model_config: Gemma4ForConditionalGenerationConfig
@@ -358,6 +333,26 @@ class Gemma3_MultiModalModel(
         )
         language_weights = convert_safetensor_language_state_dict(weights)
         return cls._language_module(config, language_weights), config
+
+    @classmethod
+    def build_vision_graph(
+        cls, context: ModelLoadContext
+    ) -> tuple[Graph, dict[str, DLPackArray]]:
+        """Builds the vision tower's graph.
+
+        Raises:
+            ValueError: If the checkpoint has no vision tower.
+        """
+        weights = dict(context.weights.items())
+        config = cls._finalized_config(
+            context, {name: value.data() for name, value in weights.items()}
+        )
+        if config.vision_config is None:
+            raise ValueError("This Gemma 4 checkpoint has no vision tower.")
+        spec = cls._vision_spec(
+            config, convert_safetensor_vision_state_dict(weights)
+        )
+        return spec.trace(), dict(spec.weights_registry())
 
     @classmethod
     def _finalized_config(
@@ -438,20 +433,18 @@ class Gemma3_MultiModalModel(
         self._bind_graph_inputs(spec.module.input_tree())
         return spec
 
+    @classmethod
     def _vision_spec(
-        self,
+        cls,
         config: Gemma4ForConditionalGenerationConfig,
         state_dict: dict[str, WeightData],
     ) -> GraphSpec:
-        vision_model = Gemma4VisionModel(
-            config,
-            device=DeviceRef.from_device(self.devices[0]),
-        )
+        vision_model = Gemma4VisionModel(config, device=config.devices[0])
         vision_model.load_state_dict(
             state_dict=state_dict,
             override_quantization_encoding=True,
             weight_alignment=1,
-            strict=self._strict_state_dict_loading,
+            strict=cls._strict_state_dict_loading,
         )
         return GraphSpec(
             vision_model,
@@ -470,20 +463,6 @@ class Gemma3_MultiModalModel(
         """Build the vision model with our input types and graph"""
         spec = self._vision_spec(config, state_dict)
         return spec.trace(module), spec.weights_registry()
-
-    def _run_vision_encoder(self, raw: VisionRawInputs) -> list[Buffer]:
-        if self.vision_model is None:
-            raise ValueError(
-                "This checkpoint is served text-only (no vision encoder"
-                " is loaded); image and video inputs are not supported."
-            )
-        return self.vision_model(
-            *raw.patches_flat,
-            *raw.pixel_position_ids,
-            *raw.cu_seqlens,
-            *raw.pool_gather_index,
-            raw.max_seq_len,
-        )
 
     @traced
     def execute(self, model_inputs: ModelInputs) -> ModelOutputs:

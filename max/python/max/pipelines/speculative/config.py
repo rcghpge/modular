@@ -396,8 +396,8 @@ class SpeculativeConfig(ConfigFileModel):
             "Declares presence/frequency penalty inputs on the fused "
             "speculative graph and applies them to the verified logits "
             "before acceptance. For engines that feed those inputs (Mach); "
-            "MAX Serve's speculative pipeline does not, and only the "
-            "Qwen3.5 MTP graph declares them."
+            "MAX Serve's speculative pipeline does not, and a block draft "
+            "refuses them."
         ),
     )
 

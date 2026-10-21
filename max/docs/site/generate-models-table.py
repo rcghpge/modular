@@ -73,12 +73,9 @@ UNLISTED_MODULES: frozenset[str] = frozenset({"hy_v4", "unified_mtp_hy_v4"})
 # architecture's row. merge_architectures() raises on an unmapped
 # ``Unified*`` name, so new variants must be added here.
 SPEC_DECODE_VARIANT_BASE_ARCH: dict[str, str] = {
-    "UnifiedDflash2Qwen3_5ForConditionalGeneration": "Qwen3_5ForConditionalGeneration",
     "UnifiedDSparkDeepseekV41ForCausalLM": "DeepseekV41ForCausalLM",
-    "UnifiedMTPGemma4ForCausalLM": "Gemma4ForConditionalGeneration",
     "UnifiedMTPGlmMoeDsaForCausalLM": "GlmMoeDsaForCausalLM",
     "UnifiedMTPInklingForConditionalGeneration": "InklingForConditionalGeneration",
-    "UnifiedMTPQwen3_5ForConditionalGeneration": "Qwen3_5ForConditionalGeneration",
 }
 
 
@@ -370,8 +367,8 @@ def parse_arch_file(arch_path: Path) -> list[dict[str, Any]]:
     for class_tree in (
         tree,
         _parse_optional(arch_path.parent / "model_config.py"),
-        # An arch that reuses another architecture's config (unified_mtp_qwen3_5
-        # on qwen3_5) names it through a relative import, so the constant is in
+        # An arch that reuses another architecture's config (mtp_qwen3_5 on
+        # qwen3_5) names it through a relative import, so the constant is in
         # neither file above and the encodings column would render empty.
         *(
             _parse_optional(module)

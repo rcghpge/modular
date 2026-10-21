@@ -69,7 +69,7 @@ into a long-lived pool, no per-step pool allocation.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import NamedTuple, cast
 
 from max.dtype import DType
 from max.graph import (
@@ -81,6 +81,39 @@ from max.graph import (
     TensorValue,
     ops,
 )
+
+
+class GatedDeltaReplayInputs(NamedTuple):
+    """One layer's per-token inputs to the two state kernels.
+
+    Speculative decoding runs the verify pass over K+1 positions and then has
+    to land the pools on the accepted prefix instead. Every op feeding these
+    tensors is causal or pointwise, so re-running the two kernels over the
+    accepted rows from the pre-verify state reproduces the state the verify
+    pass held at that length. Captured only when the caller asks for it; see
+    ``mach/docs/qwen38_27b/mtp-serving.md``.
+    """
+
+    qkv: TensorValue
+    """``[total_seq_len, conv_dim]`` float32 conv input."""
+    conv_weight: TensorValue
+    """``[conv_dim, kernel_size]`` float32 depthwise weights."""
+    decay: TensorValue
+    """``[total_seq_len, num_value_heads]`` float32 decays."""
+    beta: TensorValue
+    """``[total_seq_len, num_value_heads]`` float32 beta gates."""
+    conv_output: TensorValue
+    """``[total_seq_len, conv_dim]`` float32 activated conv output.
+
+    The conv is causal and a verify reads the window as it was before it
+    ran, so a replay of the recurrence reads its rows here instead of running
+    the conv again.
+    """
+    qkv_window: TensorValue | None = None
+    """``[batch_size * (1 + K), conv_dim]`` float32 copy of ``qkv`` that a
+    verify's conv kernel writes when there are drafts, or ``None`` outside a
+    verify. A conv replay that reads this instead of ``qkv`` lets the next
+    layer reuse ``qkv``'s memory."""
 
 
 def _as_uint32(value: TensorValue) -> TensorValue:

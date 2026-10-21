@@ -246,8 +246,19 @@ class DFlashProposer:
     ) -> TensorValue:
         """Scores the drafted slots through the head and samples them."""
         del accepted
+        return sampler.sample_all(
+            self._logits(batch, self._drafted(batch, block_hs))
+        )
+
+    def _drafted(
+        self, batch: BlockBatch, block_hs: list[TensorValue]
+    ) -> list[TensorValue]:
+        """Returns ``[seqs, num_drafts, hidden]`` per device.
+
+        The slots after each block's anchor, which carries the committed
+        token, not a proposal.
+        """
         k, n, hidden = self.block_size, self.num_drafts, self.hidden_size
-        # Skip the anchor slot: it carries the committed token, not a proposal.
         drafted = []
         for hs in block_hs:
             rows = hs.shape[0] // k
@@ -257,6 +268,14 @@ class DFlashProposer:
             # The head is replicated, so every device needs the whole batch
             # back.
             drafted = ops.allgather(drafted, batch.signal_buffers, axis=0)
+        # The head's logits carry the batch's row count, which the selector
+        # reads these beside.
+        return [d.rebind([batch.num_draft_seqs, n, hidden]) for d in drafted]
+
+    def _logits(
+        self, batch: BlockBatch, drafted: list[TensorValue]
+    ) -> TensorValue:
+        """Returns the target head's float32 logits at each drafted slot."""
         lm_head = self.draft.lm_head
         if isinstance(lm_head, ColumnParallelLinear):
             logits = lm_head(drafted, batch.signal_buffers)[0]
@@ -274,6 +293,4 @@ class DFlashProposer:
         logits = mask_padded_tail(
             logits, int(vocab), self.sampleable_vocab_size
         )
-        return sampler.sample_all(
-            logits.rebind([batch.num_draft_seqs, n, vocab])
-        )
+        return logits.rebind([batch.num_draft_seqs, self.num_drafts, vocab])

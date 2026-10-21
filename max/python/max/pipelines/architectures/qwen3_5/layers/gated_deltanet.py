@@ -52,7 +52,6 @@ gather/scatter loop.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import NamedTuple
 
 import numpy as np
 from max.driver import accelerator_api, accelerator_architecture_name
@@ -73,6 +72,7 @@ from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
 from max.nn.stacked_linear import StackedLinear
 from max.nn.state_space import (
+    GatedDeltaReplayInputs,
     gated_delta_conv1d_fwd,
     gated_delta_conv1d_verify_fwd,
     gated_delta_recurrence_fwd,
@@ -97,39 +97,6 @@ def _nvidia_compute_capability() -> int:
     name = accelerator_architecture_name()
     digits = name.removeprefix("sm_").rstrip("abcdefghijklmnopqrstuvwxyz")
     return int(digits) if name.startswith("sm_") and digits.isdigit() else 0
-
-
-class GatedDeltaReplayInputs(NamedTuple):
-    """One layer's per-token inputs to the two state kernels.
-
-    Speculative decoding runs the verify pass over K+1 positions and then has
-    to land the pools on the accepted prefix instead. Every op feeding these
-    tensors is causal or pointwise, so re-running the two kernels over the
-    accepted rows from the pre-verify state reproduces the state the verify
-    pass held at that length. Captured only when the caller asks for it; see
-    ``mach/docs/qwen38_27b/mtp-serving.md``.
-    """
-
-    qkv: TensorValue
-    """``[total_seq_len, conv_dim]`` float32 conv input."""
-    conv_weight: TensorValue
-    """``[conv_dim, kernel_size]`` float32 depthwise weights."""
-    decay: TensorValue
-    """``[total_seq_len, num_value_heads]`` float32 decays."""
-    beta: TensorValue
-    """``[total_seq_len, num_value_heads]`` float32 beta gates."""
-    conv_output: TensorValue
-    """``[total_seq_len, conv_dim]`` float32 activated conv output.
-
-    The conv is causal and a verify reads the window as it was before it
-    ran, so a replay of the recurrence reads its rows here instead of running
-    the conv again.
-    """
-    qkv_window: TensorValue | None = None
-    """``[batch_size * (1 + K), conv_dim]`` float32 copy of ``qkv`` that a
-    verify's conv kernel writes when there are drafts, or ``None`` outside a
-    verify. A conv replay that reads this instead of ``qkv`` lets the next
-    layer reuse ``qkv``'s memory."""
 
 
 def _projection(stack: StackedLinear, name: str) -> Linear:

@@ -51,6 +51,7 @@ from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.state_space import GatedDeltaReplayInputs
 from max.nn.transformer import ReturnHiddenStates, forward_sequential_layers
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
@@ -65,7 +66,7 @@ from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
 from max.tree import Tree
 
 from .layers.attention import Qwen3_5Attention
-from .layers.gated_deltanet import GatedDeltaNet, GatedDeltaReplayInputs
+from .layers.gated_deltanet import GatedDeltaNet
 from .layers.text_rotary import Qwen3_5TextRotaryEmbedding
 from .layers.visual_transformer import Qwen3_5VisionTransformer
 from .model_config import Qwen3_5Config
@@ -335,6 +336,59 @@ class Qwen3_5LinearAttentionBlock(Module):
         return [h + mlp_out for h, mlp_out in zip(hs, mlp_outs, strict=True)]
 
 
+def rotary_embedding(
+    config: Qwen3_5Config, *, mrope: bool
+) -> Llama3RotaryEmbedding:
+    """Returns the full-attention layers' rotary embedding, which rotates
+    only the partial rotary dims, over 3-axis positions under ``mrope``."""
+    rotary_dim = int(
+        config.attn_kv_params.head_dim * config.partial_rotary_factor
+    )
+    if mrope:
+        assert config.mrope_section is not None
+        return Qwen3_5TextRotaryEmbedding(
+            dim=config.hidden_size,
+            n_heads=config.num_attention_heads,
+            theta=config.rope_theta,
+            max_seq_len=config.max_seq_len,
+            mrope_section=config.mrope_section,
+            head_dim=rotary_dim,
+            interleaved=config.interleaved_rope_weights,
+            scaling_params=config.rope_scaling_params,
+        )
+    return Llama3RotaryEmbedding(
+        dim=config.hidden_size,
+        n_heads=config.num_attention_heads,
+        theta=config.rope_theta,
+        max_seq_len=config.max_seq_len,
+        head_dim=rotary_dim,
+        interleaved=config.interleaved_rope_weights,
+        scaling_params=config.rope_scaling_params,
+    )
+
+
+def norm_factory(config: Qwen3_5Config) -> Callable[..., RMSNorm]:
+    """Returns the factory of Qwen3.5's RMSNorms, which scale by
+    ``1 + weight``.
+
+    Raises:
+        ValueError: If the config doesn't name RMSNorm and its epsilon.
+    """
+    if config.norm_method != "rms_norm" or config.rms_norm_eps is None:
+        raise ValueError(
+            "Qwen3.5 requires RMSNorm. Set norm_method='rms_norm' "
+            "and provide rms_norm_eps."
+        )
+    return functools.partial(
+        RMSNorm,
+        config.hidden_size,
+        dtype=config.norm_dtype or DType.float32,
+        eps=config.rms_norm_eps,
+        weight_offset=1.0,
+        multiply_before_cast=False,
+    )
+
+
 class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
     """Qwen3.5 hybrid attention model.
 
@@ -354,11 +408,6 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         if config.model_quantization_encoding is not None:
             raise NotImplementedError("GGUFQ Qwen3.5 is not implemented yet")
 
-        # Create RoPE embedding for full attention layers
-        # Only the partial rotary dimension gets rotation
-        rotary_dim = int(
-            config.attn_kv_params.head_dim * config.partial_rotary_factor
-        )
         # An image compresses many soft-token patches into far fewer
         # position steps on each of three axes, so every token after it needs
         # an explicit 3-axis position rather than the kernels' default
@@ -368,56 +417,10 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         #
         # The KV cache dtype does not enter into this: rope is applied to K
         # before the value is cast into the cache.
-        # `vision_config` stands in for "an image can appear in context". The
-        # fused speculative graph compiles no encoder yet still verifies
-        # tokens that follow one, so it sets `mrope_without_encoder` to keep
-        # the 3-axis positions without the tower.
-        self.mrope_enabled = config.mrope_section is not None and (
-            config.vision_config is not None or config.mrope_without_encoder
-        )
-        rope: Llama3RotaryEmbedding
-        if self.mrope_enabled:
-            assert config.mrope_section is not None
-            rope = Qwen3_5TextRotaryEmbedding(
-                dim=config.hidden_size,
-                n_heads=config.num_attention_heads,
-                theta=config.rope_theta,
-                max_seq_len=config.max_seq_len,
-                mrope_section=config.mrope_section,
-                head_dim=rotary_dim,
-                interleaved=config.interleaved_rope_weights,
-                scaling_params=config.rope_scaling_params,
-            )
-        else:
-            rope = Llama3RotaryEmbedding(
-                dim=config.hidden_size,
-                n_heads=config.num_attention_heads,
-                theta=config.rope_theta,
-                max_seq_len=config.max_seq_len,
-                head_dim=rotary_dim,
-                interleaved=config.interleaved_rope_weights,
-                scaling_params=config.rope_scaling_params,
-            )
+        self.mrope_enabled = config.mrope_enabled
+        rope = rotary_embedding(config, mrope=self.mrope_enabled)
         self.rope = rope
-
-        # Norm factory (uses (1 + weight) offset for Qwen3.5)
-        if config.norm_method != "rms_norm" or config.rms_norm_eps is None:
-            raise ValueError(
-                "Qwen3.5 requires RMSNorm. Set norm_method='rms_norm' "
-                "and provide rms_norm_eps."
-            )
-
-        create_norm = functools.partial(
-            RMSNorm,
-            config.hidden_size,
-            dtype=config.norm_dtype or DType.float32,
-            eps=config.rms_norm_eps,
-            weight_offset=1.0,
-            multiply_before_cast=False,
-        )
-        # Kept so the MTP draft head builds its norms from the same factory
-        # rather than a copy that could drift from the (1 + w) convention.
-        self.create_norm = create_norm
+        create_norm = norm_factory(config)
 
         # Quantization is per module, not per model: this checkpoint's MLPs are
         # NVFP4 while its attention and GDN projections are per-tensor FP8, so
@@ -493,6 +496,7 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
 
         self.kv_params = config.kv_params
         self.return_logits = config.return_logits
+        self.return_hidden_states = config.return_hidden_states
 
         # Vision encoder (only present in multimodal checkpoints)
         self.vision_encoder: Qwen3_5VisionTransformer | None = (
