@@ -391,6 +391,12 @@ class MiMoV2Config(ArchConfigWithStoredKVParams, ArchConfigWithKVCache):
                 f"split into whole 128-row scale granules over {num_devices} "
                 "devices."
             )
+        if hf.intermediate_size % (128 * num_devices):
+            raise ValueError(
+                f"MiMo-V2: dense width {hf.intermediate_size} does not split "
+                f"into whole 128-row scale granules over {num_devices} "
+                "devices."
+            )
         rotary_dim = int(hf.head_dim * hf.partial_rotary_factor)
         if rotary_dim % 2:
             raise ValueError(f"MiMo-V2: rotary dim {rotary_dim} is odd.")

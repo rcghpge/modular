@@ -642,13 +642,18 @@ def _apply_speculative_draft_architecture(
 
 
 def _select_spec_decode_architecture(
-    speculative: SpeculativeConfig | None, models: Mapping[str, MAXModelConfig]
+    speculative: SpeculativeConfig | None,
+    models: Mapping[str, MAXModelConfig],
+    prefer_module_v3: bool = False,
 ) -> SupportedArchitecture | None:
     """Selects the architecture of the target's declared speculator.
 
     A target's speculators keep the method and draft pairs they declare.
     Any other pair gets the unified architecture for the target and its
     draft, if the two pair.
+
+    ``prefer_module_v3`` keeps the speculator in lockstep with the
+    architecture variant the same flag selects.
 
     Raises:
         ValueError: If the target offers speculators but none accepts the
@@ -670,8 +675,11 @@ def _select_spec_decode_architecture(
         else None
     )
     # Keyed by target name, so a target that declares no speculators never
-    # imports a spec-decode package.
-    declared = ARCH_LOOKUP.speculators_for(target)
+    # imports a spec-decode package. The prefer flag keeps the lookup in
+    # lockstep with the architecture variant the same flag selects.
+    declared = ARCH_LOOKUP.speculators_for(
+        target, prefer_module_v3=prefer_module_v3
+    )
     draft_name = draft_archs[0] if draft_archs else None
     if not any(
         speculator.method == speculative.speculative_method
@@ -696,7 +704,10 @@ def _select_spec_decode_architecture(
         draft_arch = draft_archs[0]
 
     speculator = select_speculator(
-        target, speculative.speculative_method, draft_arch
+        target,
+        speculative.speculative_method,
+        draft_arch,
+        prefer_module_v3=prefer_module_v3,
     )
     return None if speculator is None else speculator.derive()
 
@@ -743,6 +754,9 @@ def _apply_speculative_target_architecture(
     draft in a unified graph, returns the unified architecture, leaving its
     ``architectures`` untouched.
 
+    ``prefer_module_v3`` selects the speculator in lockstep with the
+    architecture variant the same flag selects.
+
     It is a no-op when speculative decoding is disabled.
     """
     if not speculative:
@@ -754,7 +768,9 @@ def _apply_speculative_target_architecture(
             "UnifiedMTPGemma4ForCausalLM"
         )
         return None
-    spec_arch = _select_spec_decode_architecture(speculative, models)
+    spec_arch = _select_spec_decode_architecture(
+        speculative, models, prefer_module_v3=prefer_module_v3
+    )
     if spec_arch is not None:
         return spec_arch
 
@@ -1618,11 +1634,15 @@ class PipelineConfig(ConfigFileModel):
                     exc_info=True,
                 )
                 draft_arch_name = None
-            # Mirrors the registry's draft lookup, which passes no task.
-            draft_arch = find_architecture(
-                draft_arch_name,
-                prefer_module_v3=runtime.prefer_module_v3,
-            )
+            # Mirrors the registry's draft lookup, which passes no task. The
+            # prefer flag is deliberately not forwarded either: it selects
+            # the target's build, while this lookup only resolves the draft's
+            # validation alias. A draft's rename target can name a real
+            # architecture with a `_ModuleV3` namesake of a different shape;
+            # forwarding the flag would reject the TP pairs the graph-API
+            # alias accepts. The drafter itself runs inside the fused model,
+            # never through this name.
+            draft_arch = find_architecture(draft_arch_name)
             if draft_arch_name is not None and draft_arch is None:
                 raise ValueError(
                     "MAX-Optimized architecture not found for `draft_model`"

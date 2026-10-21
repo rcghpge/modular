@@ -828,24 +828,46 @@ class ArchLookup:
                 continue
             self.register(declaration)
 
-    def speculators_for(self, target: str) -> list[Speculator]:
+    def speculators_for(
+        self, target: str, prefer_module_v3: bool = False
+    ) -> list[Speculator]:
         """Returns the speculators declared against ``target``.
 
         Imports their packages, so it costs nothing until speculation is
         actually being configured. An empty result means ``target`` offers no
         speculator at all and the caller should leave the architecture alone.
 
-        Declaration order is preserved, so it is also the tie-break when two
-        speculators would accept the same draft.
+        ``prefer_module_v3`` mirrors :meth:`find`'s variant preference with
+        one difference the two-list case needs: the ``<target>_ModuleV3``
+        speculators are *offered first*, and the raw name's stay on the
+        list, rather than the first non-empty list shadowing the other. A
+        method or draft only the raw registration covers then still
+        selects; an unregistered in both, an out-of-tree speculator
+        registered against the raw name included, raises in
+        :func:`select_speculator` instead of silently switching builds.
+
+        Declaration order is preserved within each list, so it is also the
+        tie-break when two speculators would accept the same draft.
         """
+        if prefer_module_v3:
+            collected: list[Speculator] = []
+            for name in (f"{target}_ModuleV3", target):
+                for module, symbol, package in self._lazy_speculators.pop(
+                    name, []
+                ):
+                    imported = importlib.import_module(module, package)
+                    self.register(getattr(imported, symbol))
+                collected.extend(self._speculators.get(name, ()))
+            return collected
         names = [target]
         if (
             target not in self.architectures
             and target not in self._lazy_architectures
         ):
-            # Speculators are filed under their base's registered name, which
-            # for a ModuleV3-only target is "<target>_ModuleV3". Matched by
-            # name so that resolving it never imports the target.
+            # Speculators are filed under their base's registered name,
+            # which for a ModuleV3-only target is "<target>_ModuleV3".
+            # Matched by name so that resolving it never imports the
+            # target.
             names.append(f"{target}_ModuleV3")
         for name in names:
             for module, symbol, package in self._lazy_speculators.pop(name, []):
@@ -1014,12 +1036,16 @@ def select_speculator(
     target: str,
     method: SpeculativeMethod | None,
     draft_arch: str | None,
+    prefer_module_v3: bool = False,
 ) -> Speculator | None:
     """Returns the speculator ``target`` declares for ``method``/``draft_arch``.
 
     ``None`` when ``target`` declares no speculators at all, which is every
     target still routed by the legacy override chain -- so a caller that
     applies the result leaves those untouched.
+
+    ``prefer_module_v3`` selects the speculator in lockstep with the
+    architecture variant the same flag selects elsewhere.
 
     Both halves have to agree. Matching the draft alone runs whichever
     mechanism the draft checkpoint happens to fit rather than the one asked
@@ -1030,7 +1056,9 @@ def select_speculator(
         ValueError: If ``target`` declares speculators but none accepts this
             method and draft together.
     """
-    declared = ARCH_LOOKUP.speculators_for(target)
+    declared = ARCH_LOOKUP.speculators_for(
+        target, prefer_module_v3=prefer_module_v3
+    )
     if not declared:
         return None
     speculator = next(

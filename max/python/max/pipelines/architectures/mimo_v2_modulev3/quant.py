@@ -1,0 +1,36 @@
+# ===----------------------------------------------------------------------=== #
+# Copyright (c) 2026, Modular Inc. All rights reserved.
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+"""Quantization scheme of Xiaomi's MiMo-V2.6-Flash checkpoint.
+
+The checkpoint's quantization does not differ between the graph-API and
+ModuleV3 ports, so this package re-exports the graph-API architecture's
+scheme.
+"""
+
+from __future__ import annotations
+
+from ..mimo_v2.quant import (  # re-export
+    FP8_BLOCK,
+    MXFP4_BLOCK,
+    MiMoV2QuantScheme,
+    moe_layers,
+    parse_quant_scheme,
+)
+
+__all__ = [
+    "FP8_BLOCK",
+    "MXFP4_BLOCK",
+    "MiMoV2QuantScheme",
+    "moe_layers",
+    "parse_quant_scheme",
+]

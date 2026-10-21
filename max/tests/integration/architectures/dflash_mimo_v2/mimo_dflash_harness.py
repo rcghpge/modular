@@ -269,7 +269,11 @@ class VerifyLogitsDriver(BlockDriver[Any, Any]):
         )
         self.acceptance_sampler = self.recording
 
-    def __call__(self, *args: Any, **kwargs: Any) -> tuple[TensorValue, ...]:
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        # Pass-through return: BlockDriver's __call__ is generic over the
+        # value type, which an override cannot restate from *args; the
+        # appended verify logits and the base outputs are documented above
+        # and splatted into graph.output by the caller.
         outputs = super().__call__(*args, **kwargs)
         assert self.recording.target_logits is not None
         return (*outputs, self.recording.target_logits)

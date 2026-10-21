@@ -291,6 +291,11 @@ def register_all_models() -> None:
             "MTPQwen3_5DraftModel", ".mtp_qwen3_5", "mtp_qwen3_5_draft_arch"
         ),
         _LazyArch("MiMoV2ForCausalLM", ".mimo_v2", "mimo_v2_arch"),
+        _LazyArch(
+            "MiMoV2ForCausalLM_ModuleV3",
+            ".mimo_v2_modulev3",
+            "mimo_v2_modulev3_arch",
+        ),
         _LazyArch("MiniMaxM2ForCausalLM", ".minimax_m2", "minimax_m2_arch"),
         _LazyArch(
             "MiniMaxMusic3ModularPipeline",
@@ -377,6 +382,17 @@ def register_all_models() -> None:
             "qwen_image_edit_plus_arch",
         ),
         _LazyArch("Step3p5ForCausalLM", ".step3p5", "step3p5_arch"),
+        _LazyArch(
+            "UnifiedDflashMiMoV2ForCausalLM_ModuleV3",
+            ".unified_dflash_mimo_v2_modulev3",
+            "unified_dflash_mimo_v2_modulev3_arch",
+        ),
+        _LazyArch(
+            "UnifiedDflashMiMoV2ForCausalLM_ModuleV3",
+            ".unified_dflash_mimo_v2_modulev3",
+            "unified_dflash_mimo_v2_modulev3_speculator",
+            speculates_on="MiMoV2ForCausalLM_ModuleV3",
+        ),
         _LazyArch(
             "UnifiedDSparkDeepseekV41ForCausalLM",
             ".unified_dspark_deepseekV41",

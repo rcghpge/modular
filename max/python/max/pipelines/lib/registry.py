@@ -515,12 +515,19 @@ class PipelineRegistry:
         )
         method = pipeline_config.speculative.speculative_method
         draft_arch = draft_archs[0] if draft_archs else None
-        # A target's speculators keep only the methods they declare.
+        prefer_v3 = pipeline_config.runtime.prefer_module_v3
+        # A target's speculators keep only the methods they declare; the
+        # prefer flag keeps the speculator in lockstep with the
+        # architecture variant the same flag selects.
         if any(
             speculator.method == method
-            for speculator in ARCH_LOOKUP.speculators_for(name)
+            for speculator in ARCH_LOOKUP.speculators_for(
+                name, prefer_module_v3=prefer_v3
+            )
         ):
-            speculator = select_speculator(name, method, draft_arch)
+            speculator = select_speculator(
+                name, method, draft_arch, prefer_module_v3=prefer_v3
+            )
             assert speculator is not None
             return speculator.derive()
         return spec_decode_architecture(name, method, draft_arch) or arch

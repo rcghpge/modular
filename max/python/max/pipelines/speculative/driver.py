@@ -142,6 +142,20 @@ def _for_adapter(adapter: object, value: Any) -> Any:
     return as_tensors(value) if isinstance(adapter, TensorAdapter) else value
 
 
+def _from_adapter(adapter: object, value: Any) -> Any:
+    """Converts ``value`` from the value type ``adapter`` runs on.
+
+    The mirror of :func:`_for_adapter`: a ``TensorAdapter``'s results come
+    back as Tensors, which the driver's graph ops need as graph values;
+    any other adapter already runs on graph values, and converting those
+    results (a mesh-distributed one among them) either no-ops or raises,
+    so they pass through untouched, as they did before TensorAdapters.
+    """
+    return (
+        as_graph_values(value) if isinstance(adapter, TensorAdapter) else value
+    )
+
+
 @tree.dataclass(frozen=True)
 class DistributedInputs(Generic[_T]):
     """The CPU-side inputs only a ``distributed=True`` signature declares.
@@ -1221,12 +1235,13 @@ class SequentialDriver(
         sampled = self._draft_proposal == "sampled"
         with Graph.current.profile_scope("draft_step_0"):
             proposer = self._proposer
-            prefill: Proposed = as_graph_values(
+            prefill: Proposed = _from_adapter(
+                proposer,
                 proposer.prefill(
                     _for_adapter(proposer, batch),
                     _for_adapter(proposer, shifted_corrected),
                     _for_adapter(proposer, target_hidden),
-                )
+                ),
             )
 
             splits = (
@@ -1512,12 +1527,13 @@ class SequentialDriver(
                     batch_context_lengths=batch_context_lengths,
                 )
 
-                proposed: Proposed = as_graph_values(
+                proposed: Proposed = _from_adapter(
+                    self._proposer,
                     self._proposer.step(
                         _for_adapter(self._proposer, step_batch),
                         _for_adapter(self._proposer, draft_input),
                         index,
-                    )
+                    ),
                 )
 
                 assert proposed.logits is not None, (
