@@ -418,6 +418,13 @@ static ErrorOr<CompiledStandaloneKernel> compileStandaloneKernel(
     sliced.setFnAttrsAttr(ArrayAttr::get(sliced.getContext(), fnAttrs));
   }
 
+  // Lets a target annotate its own entry arguments before elaboration.
+  if (backend) {
+    if (auto entry = dyn_cast_or_null<GeneratorOp>(
+            mlir::SymbolTable::lookupSymbolIn(*module, name)))
+      backend->preprocessGenerator(entry, func, symbol, *module);
+  }
+
   // Run elaboration through to the end of the optimization pipeline.
   mlir::PassManager pm(target.getContext());
   // Ignore potential error that could happen when `mojo` tool is called, which
