@@ -533,6 +533,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"max.gpu.host.device_context", ""},
         {"max.gpu.host.device_graph", ""},
         {"std.utils", ""},
+        {"std.utils.coord", ""},
         {"std.utils.numerics", ""},
         {"std.math", ""},
         {"std.runtime", ""},
@@ -541,6 +542,7 @@ constexpr std::pair<llvm::StringLiteral, llvm::StringLiteral>
         {"std.collections", ""},
         {"max.runtime.tracing", ""},
         {"max.runtime.async_value", ""},
+        {"max.runtime.asyncrt", ""},
         {"layout", ""},
         // For `layout.tile_io.TileCopier`.
         {"layout.tile_io", ""},
