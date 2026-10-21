@@ -414,14 +414,10 @@ AsyncRT_DeviceContext_enqueue_wait_for_context(DeviceContext *ctx,
 }
 
 MODULAR_EXPORT const char *
-AsyncRT_DeviceContext_eventCreate(DeviceEvent **result, DeviceContext *ctx,
-                                  unsigned int flags) {
+AsyncRT_DeviceContext_eventCreate(DeviceEvent **result, DeviceContext *ctx) {
   TRACY_ZONE_SCOPED_NC("AsyncRT_DeviceContext_eventCreate", TRACY_COLOR_GRAY);
-  // Decode Mojo's EventFlags bitmask (disable_timing = 0x02); truncating it
-  // to bool inverted the timing default and broke Metal.
-  constexpr unsigned int kDisableTiming = 0x2;
-  return checkRef(
-      result, ctx->eventCreate(/*enableTiming=*/(flags & kDisableTiming) == 0));
+  // Mojo events have no elapsed-time query, so timing would be pure overhead.
+  return checkRef(result, ctx->eventCreate(/*enableTiming=*/false));
 }
 
 MODULAR_EXPORT const char *AsyncRT_DeviceContext_HtoD_async(DeviceContext *ctx,
