@@ -228,12 +228,12 @@ def test_nvfp4_kv_reserves_the_convert_once_prefill_scratch(
             config, huggingface_config
         )
 
-    assert NVFP4_MLA_PREFILL_CONVERT_MAX_ROWS == 262144
+    assert NVFP4_MLA_PREFILL_CONVERT_MAX_ROWS == 524288
     assert NVFP4_MLA_PREFILL_CONVERT_RATIO == 150
-    # 262144 rows of 576 FP8 bytes, 8192 tokens x 2048 int32 indices, and a
+    # 524288 rows of 576 FP8 bytes, 8192 tokens x 2048 int32 indices, and a
     # uint32 for each 128-row block an int32 index can address.
-    per_device = 262144 * 576 + 8192 * 2048 * 4 + (2**31 // 128) * 4
-    assert per_device == 285212672
+    per_device = 524288 * 576 + 8192 * 2048 * 4 + (2**31 // 128) * 4
+    assert per_device == 436207616
     fp8 = plan("float8_e4m3fn")
     assert plan("float4_e2m1fn") - fp8 == NUM_RANKS * per_device
 

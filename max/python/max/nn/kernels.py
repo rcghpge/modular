@@ -5521,10 +5521,11 @@ an NVFP4 cache converts the context to FP8 once instead of expanding each
 selected row per query token. Override with
 ``MODULAR_MLA_NVFP4_PREFILL_CONVERT_RATIO``; 0 turns the conversion off."""
 
-NVFP4_MLA_PREFILL_CONVERT_MAX_ROWS = 262144
+NVFP4_MLA_PREFILL_CONVERT_MAX_ROWS = 524288
 """Default most context rows that conversion converts (576 bytes each). Past
-it the NVFP4 kernel runs. Override with
-``MODULAR_MLA_NVFP4_PREFILL_CONVERT_MAX_ROWS``."""
+it the NVFP4 kernel runs. Sized so a single request's prefill converts up to a
+512k-token context, where converting stays well ahead of the NVFP4 kernel.
+Override with ``MODULAR_MLA_NVFP4_PREFILL_CONVERT_MAX_ROWS``."""
 
 
 def nvfp4_mla_prefill_convert_ratio() -> int:
