@@ -4426,7 +4426,7 @@ struct _MoggTensorArg[
         return self._layout
 
     @inline(.always)
-    def to_tile_tensor(
+    def _to_tile_tensor(
         self,
     ) -> Self.TileTensorType:
         return {self._storage, self._layout}
@@ -4505,7 +4505,7 @@ struct _MoggShapeTensorArg[
         return self._layout
 
     @inline(.always)
-    def to_tile_tensor(
+    def _to_tile_tensor(
         self,
     ) -> TileTensor[
         dtype = Self.dtype,

@@ -454,7 +454,7 @@ struct _MoggTransformFusionTensor[
     # `TileTensorable`: the parent kernel stores the transformed value through
     # this projection (rebuilt from the bare output-buffer pointer).
     @inline(.always)
-    def to_tile_tensor(
+    def _to_tile_tensor(
         self,
     ) -> TileTensor[
         dtype = Self.dtype,
