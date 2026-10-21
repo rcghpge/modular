@@ -908,6 +908,13 @@ def MOGG_KernelDeclOp
     `DeviceGraphBuilder` in place of the `DeviceContext`.
 
     `reduction` marks a `ReduceOp` monoid (see `#mogg.kernel_reduction`).
+
+    `supports_unfused_execute` records a second `execute` overload that takes
+    every fused output as a plain `Tensor` output, which the graph compiler
+    calls when nothing is fused into any of them. The overload is not stored:
+    `ImportPackages` checks it against `execute` and drops it, and
+    `ConformCallOperands` derives the plain output contracts from `execute`.
+    Grandfathered kernels only; see `kUnfusedExecuteRegistrations`.
   }];
 
   let arguments = (ins
@@ -921,6 +928,7 @@ def MOGG_KernelDeclOp
     OptionalAttr<MOGG_KernelReductionAttr>:$reduction,
     ArrayAttr:$struct_params,
     BoolAttr:$is_user_defined,
+    UnitAttr:$supports_unfused_execute,
     OptionalAttr<StrAttr>:$sym_visibility
   );
 
@@ -935,6 +943,7 @@ def MOGG_KernelDeclOp
     (`reduction` `=` $reduction^)?
     `struct_params` `=` $struct_params
     `is_user_defined` `=` $is_user_defined
+    (`supports_unfused_execute` $supports_unfused_execute^)?
     attr-dict
   }];
 }

@@ -808,6 +808,7 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
   if (KernelReductionAttr reductionAttr = decl.getReductionAttr())
     reduction = reductionAttr;
   structParams = decl.getStructParams();
+  supportsUnfusedExecute = decl.getSupportsUnfusedExecute();
 }
 
 const KernelDeclFunctionAdaptor *

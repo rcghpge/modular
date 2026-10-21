@@ -515,6 +515,11 @@ struct KernelDeclAdaptor {
   std::optional<KernelReductionAttr> reduction;
   /// Struct-level ParamDeclAttrs shared by all functions (e.g. `dtype`).
   mlir::ArrayAttr structParams;
+  /// The kernel also declares an `execute` overload taking its fused outputs
+  /// as plain outputs, for a call with no epilogue fusion (see
+  /// `KernelDeclOp::supports_unfused_execute`). Not a stored signature:
+  /// `ConformCallOperands` derives it from `executeFunction`.
+  bool supportsUnfusedExecute = false;
 
   explicit KernelDeclAdaptor(KernelDeclOp decl);
 

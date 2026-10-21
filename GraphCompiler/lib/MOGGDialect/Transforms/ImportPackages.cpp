@@ -305,12 +305,180 @@ struct ScannedKernel {
   mlir::StringAttr registration;
   mlir::StringAttr mojoName;
   DeviceInfoAttr deviceInfo;
+  /// Every method named `execute`; `resolveExecuteOverloads` picks the one
+  /// the decl records.
+  llvm::SmallVector<KGEN::LIT::FnOp, 2> executeOverloads;
   KGEN::LIT::FnOp executeFn;
+  bool supportsUnfusedExecute = false;
   KGEN::LIT::FnOp elementwiseFn;       // SIMD overload, may be null
   KGEN::LIT::FnOp tileElementwiseFn;   // TileTensor overload, may be null
   KGEN::LIT::FnOp buildGraphFn;        // may be null
   MOGG::KernelReductionAttr reduction; // null unless a `ReduceOp` monoid
 };
+
+/// One registration allowed a second `execute` overload: the op name and the
+/// device fields exactly as its `@extensibility.register` declares them, so
+/// an entry covers one registration and never a sibling on another device.
+struct UnfusedExecuteRegistration {
+  llvm::StringLiteral registration;
+  llvm::StringLiteral type = "";
+  llvm::StringLiteral api = "";
+  llvm::StringLiteral arch = "";
+  llvm::StringLiteral model = "";
+
+  bool matches(llvm::StringRef name, DeviceInfoAttr device) const {
+    return name == registration && device.getLabel() == type &&
+           device.getApi() == api && device.getArch() == arch &&
+           device.getModel() == model;
+  }
+};
+
+/// Spells a registration the way `@extensibility.register` declares it, e.g.
+/// `'mo.matmul' (type="gpu", api="cuda")`, omitting unset device fields.
+static std::string formatRegistration(llvm::StringRef name,
+                                      DeviceInfoAttr device) {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  os << "'" << name << "'";
+  std::pair<llvm::StringRef, llvm::StringRef> fields[] = {
+      {"type", device.getLabel()},
+      {"api", device.getApi()},
+      {"arch", device.getArch()},
+      {"model", device.getModel()}};
+  bool anySet = false;
+  for (auto [key, value] : fields) {
+    if (value.empty())
+      continue;
+    os << (anySet ? ", " : " (") << key << "=\"" << value << "\"";
+    anySet = true;
+  }
+  if (anySet)
+    os << ")";
+  return result;
+}
+
+/// Registrations allowed a second `execute` overload that takes every fused
+/// output as a plain output (`KernelDeclOp::supports_unfused_execute`).
+///
+/// DO NOT ADD TO THIS LIST. It is a stopgap for grandfathered kernels that
+/// kept a separate unfused output path behind `has_epilogue_fusion`, not a
+/// feature, and it only shrinks. A new kernel declares one `execute` with a
+/// `Some[Output & Fused & StoreAccess]` output and stores through it. If a
+/// kernel really seems to need the overload, ping Kenan Nalbant before
+/// writing it. This applies to agents as much as to people: an entry added
+/// here without that conversation is a review blocker, whatever the diff
+/// says about why it was needed.
+static constexpr UnfusedExecuteRegistration kUnfusedExecuteRegistrations[] = {
+    {"mo.conv_transpose", "cpu"},
+    // Graph compiler test kernels (`GraphCompiler/test/kernels`).
+    {"trait_unfused_execute"},
+    {"unfused_invalid_both_fused"},
+    {"unfused_invalid_three"},
+    {"unfused_invalid_input"},
+    {"unfused_invalid_output_count"},
+    {"unfused_invalid_raises"},
+    {"unfused_invalid_params"},
+    {"unfused_invalid_legacy"},
+};
+
+/// Checks that the unfused `execute` overload is the fused one with every
+/// fused output taken as a plain output. Everything downstream derives the
+/// unfused form from the fused signature: `ConformCallOperands` strips the
+/// fusion off its output contracts and emit infers parameters from it, so the
+/// two must agree everywhere else.
+static mlir::LogicalResult verifyUnfusedExecuteAligns(
+    KGEN::LIT::FnOp fusedFn, const KernelDeclFunctionAdaptor &fused,
+    KGEN::LIT::FnOp unfusedFn, const KernelDeclFunctionAdaptor &unfused) {
+  auto error = [&]() {
+    return mlir::emitError(unfusedFn.getLoc()) << "unfused `execute` overload ";
+  };
+
+  KGEN::LIT::FnTypeGeneratorType fusedSig = fusedFn.getFullSignature();
+  KGEN::LIT::FnTypeGeneratorType unfusedSig = unfusedFn.getFullSignature();
+  if (fusedSig.isThrows() != unfusedSig.isThrows())
+    return error() << "must raise iff the fused overload does";
+
+  // Declared parameters only: a backtick marks one the compiler inferred, such
+  // as a `Some[...]` argument's type (as `inferOpaqueParameters` reads them).
+  auto declaredParams = [](KGEN::LIT::FnOp fn) {
+    llvm::SmallVector<llvm::StringRef> names;
+    for (KGEN::ParamDeclAttr param : fn.getInputParams())
+      if (!param.getName().strref().contains('`'))
+        names.push_back(param.getName().strref());
+    return names;
+  };
+  if (declaredParams(fusedFn) != declaredParams(unfusedFn))
+    return error() << "must declare the same parameters as the fused "
+                      "overload, in the same order";
+
+  auto position = [](const KernelDeclOperandAdaptor &arg) -> uint64_t {
+    return arg.sourceDescriptor ? arg.sourceDescriptor->position : 0;
+  };
+  auto requireTraitTensor = [&](const KernelDeclOperandAdaptor &arg,
+                                KGEN::LIT::FnOp fn) -> mlir::LogicalResult {
+    if (arg.isTensorType() && !arg.isTraitTensorType())
+      return mlir::emitError(fn.getLoc())
+             << "an `execute` overload pair must bind every tensor argument "
+                "by tensor traits (argument at position "
+             << position(arg) << ")";
+    return mlir::success();
+  };
+
+  if (fused.inputArguments.size() != unfused.inputArguments.size())
+    return error() << "takes " << unfused.inputArguments.size()
+                   << " input(s) but the fused overload takes "
+                   << fused.inputArguments.size();
+  for (auto [a, b] :
+       llvm::zip_equal(fused.inputArguments, unfused.inputArguments)) {
+    if (failed(requireTraitTensor(a, fusedFn)) ||
+        failed(requireTraitTensor(b, unfusedFn)))
+      return mlir::failure();
+    bool same = a.isTraitTensorType()
+                    ? b.isTraitTensorType() &&
+                          *a.getTraitContract() == *b.getTraitContract()
+                    : a == b;
+    if (!same)
+      return error() << "input at position " << position(b)
+                     << " differs from the fused overload's";
+  }
+
+  if (fused.outputArguments.size() != unfused.outputArguments.size())
+    return error() << "takes " << unfused.outputArguments.size()
+                   << " output(s) but the fused overload takes "
+                   << fused.outputArguments.size();
+  for (auto [a, b] :
+       llvm::zip_equal(fused.outputArguments, unfused.outputArguments)) {
+    if (failed(requireTraitTensor(a, fusedFn)) ||
+        failed(requireTraitTensor(b, unfusedFn)))
+      return mlir::failure();
+    if (!a.isTraitTensorType() || !b.isTraitTensorType()) {
+      if (!(a == b))
+        return error() << "output at position " << position(b)
+                       << " differs from the fused overload's";
+      continue;
+    }
+    TensorArgContract p = *a.getTraitContract();
+    TensorArgContract o = *b.getTraitContract();
+    if (p.fused) {
+      bool plain = o.role == p.role && !o.fused && o.accessMask == 0 &&
+                   o.capabilityMask == 0 && o.stable == p.stable;
+      if (!plain)
+        return error() << "output at position " << position(b)
+                       << " must be the plain `Tensor` form of the fused "
+                          "overload's fused output";
+    } else if (p != o) {
+      return error() << "output at position " << position(b)
+                     << " differs from the fused overload's";
+    }
+  }
+
+  // A raising function's `outputResult` is the raises ABI, not a return value.
+  if (!fusedSig.isThrows() &&
+      (fused.outputResult.has_value() != unfused.outputResult.has_value() ||
+       (fused.outputResult && !(*fused.outputResult == *unfused.outputResult))))
+    return error() << "must return what the fused overload returns";
+  return mlir::success();
+}
 
 /// Returns true if `decl` conforms to `algorithm.reduce_op.ReduceOp`.
 static bool conformsToReduceOp(KGEN::LIT::StructDeclOp decl) {
@@ -444,7 +612,7 @@ static mlir::LogicalResult scanForKernelDecls(
       llvm::StringRef srcName = *srcNameOpt;
       bool recognized = true;
       if (srcName == kMoggExecuteFuncName)
-        kernel.executeFn = func;
+        kernel.executeOverloads.push_back(func);
       else if (srcName == kMoggShapeFuncName) {
         func.emitError()
             << "shape functions defined as methods of a kernel struct are no "
@@ -811,6 +979,68 @@ struct ImportPackagesPass
           argParams, resultParams, tensorArgContracts);
     };
 
+    // A second `execute` overload takes every fused output as a plain output,
+    // for a call with nothing fused into them. It is checked against the
+    // fused one here, the only place both are in hand, and then dropped: the
+    // decl records the fused signature plus `supports_unfused_execute`.
+    auto resolveExecuteOverloads =
+        [&](ScannedKernel &kernel) -> mlir::LogicalResult {
+      auto &overloads = kernel.executeOverloads;
+      llvm::StringRef registration = kernel.registration.strref();
+      if (overloads.size() <= 1) {
+        if (!overloads.empty())
+          kernel.executeFn = overloads.front();
+        return mlir::success();
+      }
+      if (overloads.size() > 2)
+        return mlir::emitError(kernel.structDeclOp.getLoc())
+               << "kernel '" << registration << "' declares "
+               << overloads.size()
+               << " `execute` overloads; declare a single `execute`";
+      if (llvm::none_of(kUnfusedExecuteRegistrations,
+                        [&](const UnfusedExecuteRegistration &allowed) {
+                          return allowed.matches(registration,
+                                                 kernel.deviceInfo);
+                        }))
+        return mlir::emitError(kernel.structDeclOp.getLoc())
+               << "kernel "
+               << formatRegistration(registration, kernel.deviceInfo)
+               << " declares a second `execute` overload; the only supported "
+                  "second `execute` receives the kernel's outputs unfused "
+                  "when nothing is fused into them, and it is a stopgap that "
+                  "only a specific set of pre-existing kernels may declare";
+
+      llvm::SmallVector<KernelDeclFunctionAdaptor, 2> fns;
+      for (KGEN::LIT::FnOp fn : overloads) {
+        auto attr = buildFunctionAttr(fn, /*computeResultParams=*/true,
+                                      /*strictResultParams=*/false,
+                                      /*distillTraitArgs=*/true);
+        if (failed(attr))
+          return mlir::failure();
+        fns.emplace_back(attr->getSignature(), attr->getTensorArgContracts());
+      }
+      auto hasFusedOutput = [](const KernelDeclFunctionAdaptor &fn) {
+        return llvm::any_of(fn.outputArguments,
+                            [](const KernelDeclOperandAdaptor &arg) {
+                              return arg.isFusedTensorType();
+                            });
+      };
+      bool firstFused = hasFusedOutput(fns[0]);
+      if (firstFused == hasFusedOutput(fns[1]))
+        return mlir::emitError(kernel.structDeclOp.getLoc())
+               << "kernel '" << registration
+               << "' declares two `execute` overloads, so exactly one must "
+                  "declare a fused output";
+      unsigned primary = firstFused ? 0 : 1;
+      if (failed(verifyUnfusedExecuteAligns(overloads[primary], fns[primary],
+                                            overloads[1 - primary],
+                                            fns[1 - primary])))
+        return mlir::failure();
+      kernel.executeFn = overloads[primary];
+      kernel.supportsUnfusedExecute = true;
+      return mlir::success();
+    };
+
     bool sawFailure = false;
 
     for (auto kernel : kernels) {
@@ -822,6 +1052,11 @@ struct ImportPackagesPass
             << "' is registered multiple times with the same device infos";
         signalPassFailure();
         return;
+      }
+
+      if (failed(resolveExecuteOverloads(kernel))) {
+        sawFailure = true;
+        continue;
       }
 
       // Always attach the struct decl loc; verification of missing entry
@@ -872,6 +1107,9 @@ struct ImportPackagesPass
           *elementwiseAttr, *tileElementwiseAttr, *buildGraphAttr,
           kernel.reduction, structParams,
           mlir::BoolAttr::get(ctx, isUserDefined),
+          /*supports_unfused_execute=*/
+          kernel.supportsUnfusedExecute ? mlir::UnitAttr::get(ctx)
+                                        : mlir::UnitAttr(),
           /*sym_visibility=*/nullptr);
       symbolTable.insert(declOp);
     }

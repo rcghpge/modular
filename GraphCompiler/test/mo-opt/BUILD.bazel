@@ -16,6 +16,7 @@ lit_tests(
         "%tensor_arg_trait_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs)",
         "%reduction_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/reduction_invalid_stubs:ReductionInvalidStubs)",
         "%stable_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/stable_invalid_stubs:StableInvalidStubs)",
+        "%unfused_execute_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/unfused_execute_invalid_stubs:UnfusedExecuteInvalidStubs)",
     },
     data = [
         "//GraphCompiler/test/kernels:testing_kernels",
@@ -23,6 +24,7 @@ lit_tests(
         "//GraphCompiler/test/kernels/stable_invalid_stubs:StableInvalidStubs",
         "//GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
         "//GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs",
+        "//GraphCompiler/test/kernels/unfused_execute_invalid_stubs:UnfusedExecuteInvalidStubs",
     ],
     mojo_deps = [
         "//max:builtin_kernels",

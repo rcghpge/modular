@@ -203,6 +203,58 @@ static M::DeviceRefAttr enclosingKernelDevice(Operation *call) {
   return {};
 }
 
+// Strips the fusion off a fused output's contract: the plain `Tensor` output
+// the kernel's unfused `execute` overload takes in that position.
+static void stripOutputFusion(KernelDeclOperandAdaptor &arg) {
+  // The contract is the source of truth for a trait argument; the adaptor's
+  // own `fused` bit is only set for the legacy lane.
+  auto strip = [](auto &tensor) {
+    tensor.fused = false;
+    if (tensor.traitContract) {
+      tensor.traitContract->fused = false;
+      tensor.traitContract->accessMask = 0;
+      tensor.traitContract->capabilityMask = 0;
+    }
+  };
+  if (auto *t = std::get_if<KernelDeclTensorAdaptor>(&arg.underlyingType))
+    strip(*t);
+  else if (auto *v = std::get_if<KernelDeclVariadicTensorAdaptor>(
+               &arg.underlyingType))
+    strip(*v);
+}
+
+// Routes a call with no epilogue fusion to the kernel's unfused `execute`
+// overload: each fused output comes off the pass-through epilogue `MOToMAP`
+// gave it, so the kernel is handed the epilogue's store target (its first
+// capture, which the pass-through wrote unchanged) in the plain output form.
+// Mojo then resolves the plain overload from the emitted operand types.
+// All-or-nothing: the call keeps its fused form unless every fused output is a
+// pass-through `mogg.tensor.create.epilogue` that only this call consumes.
+// Rewrites `outputs` and `fn`'s output contracts on success.
+static bool selectUnfusedExecute(KernelDeclFunctionAdaptor &fn,
+                                 SmallVectorImpl<Value> &outputs,
+                                 SmallVectorImpl<Operation *> &dropped) {
+  SmallVector<std::pair<unsigned, TensorCreateEpilogueOp>> passThroughs;
+  for (auto [i, out] : llvm::enumerate(outputs)) {
+    auto producer = out.getDefiningOp<FusedEpilogueInterface>();
+    if (!producer)
+      continue;
+    auto epilogue = dyn_cast<TensorCreateEpilogueOp>(producer.getOperation());
+    if (!epilogue || !out.hasOneUse() || epilogue.recomputesValue())
+      return false;
+    passThroughs.emplace_back(i, epilogue);
+  }
+  if (passThroughs.empty())
+    return false;
+  for (auto &[i, epilogue] : passThroughs) {
+    outputs[i] = epilogue.getCaptures().front();
+    dropped.push_back(epilogue);
+  }
+  for (KernelDeclOperandAdaptor &arg : fn.outputArguments)
+    stripOutputFusion(arg);
+  return true;
+}
+
 LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   KernelDeclOp decl = registry.lookupKernelBySymName(call.getCallee());
   if (!decl)
@@ -213,17 +265,25 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   if (!adaptor.executeFunction)
     return success();
 
+  // The call-wide fusion flag is final here, so this is where a kernel with an
+  // unfused `execute` overload gets its plain outputs.
+  KernelDeclFunctionAdaptor fn = *adaptor.executeFunction;
+  SmallVector<Value> outputs(call.getOutputs());
+  SmallVector<Operation *> droppedEpilogues;
+  bool selectedUnfused = adaptor.supportsUnfusedExecute &&
+                         !call.getHasEpilogueFusion() &&
+                         selectUnfusedExecute(fn, outputs, droppedEpilogues);
+
   // A kernel returning an `!mo.opaque` returns it by value, so the call carries
   // no output operand standing in for it.
   FailureOr<PackedCall> packed = packAgainstSignature(
-      call, *adaptor.executeFunction, call.getCallee(), call.getInputs(),
-      call.getOutputs(), enclosingKernelDevice(call),
-      call.getHasSameVariadicOperandSize(),
+      call, fn, call.getCallee(), call.getInputs(), outputs,
+      enclosingKernelDevice(call), call.getHasSameVariadicOperandSize(),
       /*resultLeavesByValue=*/call.getOpaqueResult() != nullptr,
       /*allowMutToImmut=*/true);
   if (failed(packed))
     return failure();
-  bool changed = packed->changed;
+  bool changed = packed->changed || selectedUnfused;
 
   OpBuilder builder(call);
 
@@ -256,6 +316,19 @@ LogicalResult packCall(CallOpaqueOp call, const MojoRegistry &registry) {
   // `mogg.output`, so the repacked call inherits its uses.
   call.replaceAllUsesWith(repacked.getResults());
   call.erase();
+
+  // The dropped epilogues' pointer operands die with them; the pipeline's next
+  // canonicalizer is after outlining and emit may run without one.
+  for (Operation *epilogue : droppedEpilogues) {
+    SmallVector<Operation *> operandOps;
+    for (Value operand : epilogue->getOperands())
+      if (Operation *op = operand.getDefiningOp())
+        operandOps.push_back(op);
+    epilogue->erase();
+    for (Operation *op : operandOps)
+      if (op->use_empty() && mlir::isMemoryEffectFree(op))
+        op->erase();
+  }
   return success();
 }
 

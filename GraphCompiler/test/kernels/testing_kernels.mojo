@@ -3939,3 +3939,68 @@ struct TraitTensorTupleFusedConcatUnifiedClosure:
                 grid_dim=(ceildiv(Int(n_dev), block_size),),
                 block_dim=(block_size,),
             )
+
+
+# A kernel with two `execute` overloads under one registration
+# (`supports_unfused_execute`). The graph compiler calls the fused one when
+# any output has a fused epilogue, with an identity epilogue on the others, and
+# the plain one when none has, so the kernel keeps a direct store path without
+# branching on `has_epilogue_fusion`. The plain overload needs its `where`
+# clause: a fused output wrapper is a `Tensor` too, and Mojo does not rank the
+# fused overload's bound as more specific. `z` is `x + 1` through either
+# overload; `w` records which ran: 1 fused, 0 plain.
+@extensibility.register("trait_unfused_execute")
+struct TraitUnfusedExecute:
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Fused & StoreAccess],
+        w: Some[Output & Fused & StoreAccess],
+        x: Some[Input & Tensor],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert (
+            type_of(x).rank == 1
+            and type_of(z).rank == 1
+            and type_of(w).rank == 1
+        )
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            comptime assert conforms_to(type_of(z), Storable)
+            comptime assert conforms_to(type_of(w), Storable)
+            var xt = to_tile_tensor(x)
+            for i in range(Int(xt.dim[0]())):
+                var raw = rebind[SIMD[type_of(z).dtype, 1]](xt.load((i,))) + 1
+                z.store[1](Coord(i), raw)
+                w.store[1](Coord(i), SIMD[type_of(w).dtype, 1](1))
+        else:
+            raise Error("trait_unfused_execute is CPU-only")
+
+    @staticmethod
+    def execute[
+        target: StaticString,
+    ](
+        z: Some[Output & Tensor],
+        w: Some[Output & Tensor],
+        x: Some[Input & Tensor],
+        ctx: DeviceContext,
+    ) raises where not conforms_to(type_of(z), Fused):
+        comptime assert (
+            type_of(x).rank == 1
+            and type_of(z).rank == 1
+            and type_of(w).rank == 1
+        )
+        comptime if is_cpu[target]():
+            comptime assert conforms_to(type_of(x), TileTensorable)
+            comptime assert conforms_to(type_of(z), TileTensorable)
+            comptime assert conforms_to(type_of(w), TileTensorable)
+            var xt = to_tile_tensor(x)
+            var zt = to_tile_tensor(z)
+            var wt = to_tile_tensor(w)
+            for i in range(Int(xt.dim[0]())):
+                var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.load((i,))) + 1
+                zt.store((i,), raw)
+                wt.store((i,), SIMD[type_of(wt).dtype, 1](0))
+        else:
+            raise Error("trait_unfused_execute is CPU-only")
