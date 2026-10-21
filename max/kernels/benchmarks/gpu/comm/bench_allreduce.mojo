@@ -41,6 +41,7 @@ from max.gpu.host import (
     DeviceBuffer,
     DeviceContext,
     DeviceMulticastBuffer,
+    default_accelerator,
     get_gpu_target,
 )
 from internal_utils import (
@@ -404,10 +405,14 @@ def main() raises:
         print("P2P not enabled, skipping benchmark.")
         return
 
-    bench_reduce[
-        dtype=dtype,
-        ngpus=num_gpus,
-        use_multimem=use_multimem,
-        cache_busting=cache_busting,
-        use_vendor_ccl=use_vendor_ccl,
-    ](m, ctx, num_bytes, max_num_blocks, ragged)
+    # multimem is NVLink multicast (SM90+); AMD has no equivalent.
+    comptime if use_multimem and default_accelerator().is_amd_gpu():
+        print("multimem is not supported on AMD GPUs, skipping benchmark.")
+    else:
+        bench_reduce[
+            dtype=dtype,
+            ngpus=num_gpus,
+            use_multimem=use_multimem,
+            cache_busting=cache_busting,
+            use_vendor_ccl=use_vendor_ccl,
+        ](m, ctx, num_bytes, max_num_blocks, ragged)
