@@ -89,7 +89,7 @@ from nn.kv_cache_ragged import (
     generic_fused_qkv_matmul_kv_cache_paged_ragged_bias,
 )
 from nn.attention.gpu.mha import MHADecodeDispatchMetadata
-from nn.mhc import hyper_connection_gates
+from nn.mhc import hyper_connection_gates, mhc_post
 from nn.moe import (
     eplb_remap,
     moe_create_indices,
@@ -2535,6 +2535,36 @@ struct Struct_hyper_connection_gates:
             pre_post_comb_b.to_tile_tensor[.int64]().as_imm(),
             pre_post_comb_scale.to_tile_tensor[.int64]().as_imm(),
             hc_eps,
+            context,
+        )
+
+
+@extensibility.register("mo.mhc.post")
+struct Struct_mhc_post:
+    """Registers the `mo.mhc.post` graph op with the graph compiler."""
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        dtype: DType,
+        //,
+        hc_mult: Int,
+        hidden_size: Int,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=dtype, rank=3, ...],
+        streams: InputTensor[dtype=dtype, rank=3, ...],
+        y: InputTensor[dtype=dtype, rank=2, ...],
+        post: InputTensor[dtype=.float32, rank=2, ...],
+        comb: InputTensor[dtype=.float32, rank=3, ...],
+        context: DeviceContext,
+    ) raises:
+        mhc_post[hc_mult=hc_mult, hidden_size=hidden_size, target=target](
+            output.to_tile_tensor[.int64](),
+            streams.to_tile_tensor[.int64]().as_imm(),
+            y.to_tile_tensor[.int64]().as_imm(),
+            post.to_tile_tensor[.int64]().as_imm(),
+            comb.to_tile_tensor[.int64]().as_imm(),
             context,
         )
 

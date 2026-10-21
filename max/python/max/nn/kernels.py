@@ -14362,3 +14362,124 @@ def hyper_connection_gates(
         },
     )
     return (results[0].tensor, results[1].tensor, results[2].tensor)
+
+
+def _mhc_post_block_width(dtype: DType) -> int:
+    # A block of 256 threads covers 256 16-byte vectors of the hidden axis.
+    threads_per_block = 256
+    vector_bytes = 16
+    return threads_per_block * vector_bytes // dtype.size_in_bytes
+
+
+def mhc_post_supports(hc_mult: int, hidden_size: int, dtype: DType) -> bool:
+    """Returns whether :func:`mhc_post` accepts streams of this shape.
+
+    The kernel loads each token's ``post`` and ``comb`` coefficients as one
+    vector, so ``hc_mult`` must be a power of two, and splits the hidden axis
+    into whole thread blocks.
+
+    Args:
+        hc_mult: The number of residual streams.
+        hidden_size: The width of one stream.
+        dtype: The streams' dtype.
+
+    Returns:
+        True if :func:`mhc_post` accepts the shape.
+    """
+    return (
+        hc_mult > 0
+        and hc_mult & (hc_mult - 1) == 0
+        and hidden_size % _mhc_post_block_width(dtype) == 0
+    )
+
+
+def mhc_post(
+    streams: TensorValue,
+    y: TensorValue,
+    post: TensorValue,
+    comb: TensorValue,
+) -> TensorValue:
+    r"""Writes a sublayer output back into the mHC residual streams.
+
+    Computes ``streams'[t, k] = post[t, k] * y[t] + sum_j comb[t, j, k] *
+    streams[t, j]``, i.e. ``post * y + comb^T @ streams`` per token, in float32
+    with one rounding to the streams' dtype. ``post`` and ``comb`` are the
+    float32 outputs of :func:`hyper_connection_gates`, with ``comb`` reshaped
+    to ``[total_seq_len, hc_mult, hc_mult]``.
+
+    The kernel moves 16-byte vectors along the hidden axis and rejects inputs
+    that are not laid out for that at execution time, as it does a token count
+    that differs between inputs.
+
+    Args:
+        streams: The incoming residual streams. Shape: ``[total_seq_len,
+            hc_mult, hidden_size]``.
+        y: The sublayer output, in the streams' dtype. Shape:
+            ``[total_seq_len, hidden_size]``.
+        post: The weight of ``y`` in each output stream, float32. Shape:
+            ``[total_seq_len, hc_mult]``.
+        comb: The stream mixer, float32; ``comb[t, j, k]`` weighs input stream
+            ``j`` in output stream ``k``. Shape: ``[total_seq_len, hc_mult,
+            hc_mult]``.
+
+    Returns:
+        The updated streams, same shape and dtype as ``streams``.
+
+    Raises:
+        ValueError: If a dtype, rank or device does not match, ``hc_mult`` or
+            ``hidden_size`` is not static or disagrees between inputs,
+            ``hc_mult`` is not a power of two, or ``hidden_size`` is not a
+            multiple of the kernel's block width.
+    """
+    _check_rank(3, streams=streams, comb=comb)
+    _check_rank(2, y=y, post=post)
+    _check_same_dtype(streams=streams, y=y)
+    _check_dtype(DType.float32, post=post, comb=comb)
+    _check_same_device(streams=streams, y=y, post=post, comb=comb)
+    if not streams.device.is_gpu():
+        raise ValueError(f"mhc_post runs on GPU only, got {streams.device}")
+
+    hc_dim, hidden_dim = streams.shape[1], streams.shape[2]
+    if not isinstance(hc_dim, StaticDim) or not isinstance(
+        hidden_dim, StaticDim
+    ):
+        raise ValueError(
+            "expected static hc_mult and hidden_size in streams, got"
+            f" {streams.shape}"
+        )
+    hc_mult, hidden_size = int(hc_dim), int(hidden_dim)
+    if (
+        y.shape[1] != hidden_size
+        or post.shape[1] != hc_mult
+        or comb.shape[1] != hc_mult
+        or comb.shape[2] != hc_mult
+    ):
+        raise ValueError(
+            f"expected y [T, {hidden_size}], post [T, {hc_mult}] and comb"
+            f" [T, {hc_mult}, {hc_mult}] for streams {streams.shape}, got"
+            f" {y.shape}, {post.shape} and {comb.shape}"
+        )
+    if hc_mult <= 0 or hc_mult & (hc_mult - 1):
+        raise ValueError(
+            f"expected hc_mult to be a power of two, got {hc_mult}"
+        )
+    block_width = _mhc_post_block_width(streams.dtype)
+    if hidden_size % block_width:
+        raise ValueError(
+            f"expected hidden_size to be a multiple of {block_width} for"
+            f" {streams.dtype}, got {hidden_size}"
+        )
+
+    return ops.custom(
+        "mo.mhc.post",
+        device=streams.device,
+        values=[streams, y, post, comb],
+        out_types=[
+            TensorType(
+                dtype=streams.dtype,
+                shape=streams.shape,
+                device=streams.device,
+            )
+        ],
+        parameters={"hc_mult": hc_mult, "hidden_size": hidden_size},
+    )[0].tensor
