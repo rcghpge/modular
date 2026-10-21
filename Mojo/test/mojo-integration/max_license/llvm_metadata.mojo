@@ -13,7 +13,7 @@
 # RUN: kgen -emit=llvm %s -o - | FileCheck %s
 
 
-# CHECK: define internal void @[[KERNEL2:.*llvm_metadata::kernel2.*_nested_kernel2.*]]()
+# CHECK: define internal void @[[KERNEL2:.*llvm_metadata::nested_kernel2.*]]()
 # CHECK: define internal void @[[KERNEL1:.*llvm_metadata::kernel1.*]]()
 # CHECK: define internal void @[[KERNEL:.*llvm_metadata::kernel.*]]()
 
@@ -41,7 +41,7 @@ def kernel2[x: Int, y: Int, z: Int]():
     @__llvm_metadata(
         mname=__mlir_attr.`#pop.array<8, 8, 16> : !pop.array<3, i32>`
     )
-    def nested_kernel2[x: Int, y: Int, z: Int]() capturing:
+    def nested_kernel2[x: Int, y: Int, z: Int]():
         pass
 
     nested_kernel2[8, 8, 16]()

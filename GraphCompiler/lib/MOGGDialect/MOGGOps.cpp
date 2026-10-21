@@ -3550,7 +3550,6 @@ LogicalResult CallForeachOp::emitMojo(EmitMojoState &state) {
                                 MojoValue(1))},
       {NamedMojoDef::asVerbatim("idx", kStructCoord)},
       /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kAutomatic,
-      /*isParameter=*/false,
       /*isAsync=*/false, /*raises=*/false, /*captureConvention=*/"var",
       [&](const FunctionBody &fb) {
         EmitMojoState::LambdaInfosGuard lambdaInfosGuard(
@@ -4823,12 +4822,20 @@ LogicalResult CallAsyncOp::emitMojo(EmitMojoState &state) {
   SmallVector<MojoValue> stubArgs = getStubCallOperands(state, getOperands());
   MojoValue stubFunc(getCallee().getSymNameAttr().str());
 
+  // TODO(MOCO-5158): an async closure whose captures are all
+  // register-passable is invoked with a pointer to a by-value context.
+  // Capturing a String makes the context memory-only; drop it with the fix.
+  MojoValue memoryOnly =
+      state.builder.var(MojoValue(kStructString)({}, {}), /*cache=*/false);
+  std::string captures =
+      llvm::formatv("var {0}, mut {1}, imm", memoryOnly.text, errorVar.text)
+          .str();
   MojoValue wrapper = state.builder.lambda(
       "wrapper", /*parameters=*/{}, /*arguments=*/{},
       /*returnType=*/MojoValue(kComptimeNone),
-      MojoBuilder::LambdaInline::kAlways, /*isParameter=*/true,
-      /*isAsync=*/true,
-      /*raises=*/false, /*captureConvention=*/"", [&](const FunctionBody &) {
+      MojoBuilder::LambdaInline::kAlways, /*isAsync=*/true,
+      /*raises=*/false, captures, [&](const FunctionBody &) {
+        state.builder.keepAlive(memoryOnly);
         state.builder
             .try_([&]() {
               state.builder.call(stubFunc, /*parameters=*/{}, stubArgs);
@@ -4868,7 +4875,7 @@ LogicalResult CallAsyncOp::emitMojo(EmitMojoState &state) {
   }
 
   // 4. Record task handle info for AsyncJoinOp to consume
-  state.taskHandleInfos[getTaskHandle()] = {taskVar, errorVar};
+  state.taskHandleInfos[getTaskHandle()] = {taskVar, errorVar, wrapper};
 
   state.builder.newline();
   return success();
@@ -4900,6 +4907,8 @@ LogicalResult AsyncJoinOp::emitMojo(EmitMojoState &state) {
       return emitOpError("missing TaskHandleInfo for operand");
     state.builder.keepAlive(MojoTaskRef(it->second.task).wait());
   }
+  for (Value taskHandle : getTaskHandles())
+    state.builder.keepAlive(state.taskHandleInfos[taskHandle].wrapper);
 
   auto checkTaskErrPrimDecl =
       state.registry.lookupPrimitive(getOperationName());

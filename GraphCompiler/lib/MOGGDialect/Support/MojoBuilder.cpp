@@ -210,14 +210,12 @@ MojoValue
 MojoBuilder::lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                     ArrayRef<NamedMojoDef> arguments,
                     std::optional<MojoValue> returnType,
-                    LambdaInline inlineKind, bool isParameter, bool isAsync,
-                    bool raises, llvm::StringRef captureConvention,
+                    LambdaInline inlineKind, bool isAsync, bool raises,
+                    llvm::StringRef captureConvention,
                     std::function<void(const FunctionBody &)> &&lambdaBody) {
   MojoValue lambdaParam = newVar(lambdaName.str());
   FunctionBody body;
 
-  if (isParameter)
-    statement("@__parameter");
   if (inlineKind == LambdaInline::kAlways)
     statement(kDecoratorAlwaysInline);
   else if (inlineKind == LambdaInline::kNever)

@@ -76,7 +76,7 @@ def world():
     pass
 
 
-def hello_capture[op: def() capturing[_]]():
+def hello_capture[op: def() thin]():
     op()
     pass
 
@@ -115,7 +115,6 @@ def main():
     ]()
     print(t5.kernel)
 
-    @__parameter
     def inner_world():
         pass
 

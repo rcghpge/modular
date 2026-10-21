@@ -63,15 +63,15 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
   %1 = kgen.compile_offload<nvptx, 2, "", "",
                             :() capturing -> !kgen.none @HELLO<:() capturing -> index *"foo()">>
                             : !kgen.struct<(string, index)>
-  // CHECK-NEXT: kgen.call @"HELLO,x=FOO_populate_captures"(%arg0) : (!kgen.pointer<none>) capturing -> !kgen.none
-  kgen.param.declare x: (!kgen.pointer<none>) capturing -> !kgen.none = <#kgen.compile_offload_closure<
+  // CHECK-NEXT: kgen.call @"HELLO,x=FOO_populate_captures"(%arg0) : (!kgen.pointer<none>) -> !kgen.none
+  kgen.param.declare x: (!kgen.pointer<none>) -> !kgen.none = <#kgen.compile_offload_closure<
     nvptx, #kgen.symbol.constant<@HELLO<:() capturing -> index *"foo()">> : !kgen.generator<() capturing -> !kgen.none>>>
-  %2 = kgen.call_param[(!kgen.pointer<none>) capturing -> !kgen.none: x](%arg0)
+  %2 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: x](%arg0)
   hlcf.return
 }
 
 // COM: populate_captures must be an inlined
-// CHECK: kgen.func @"HELLO,x=FOO_populate_captures"(%arg0: !kgen.pointer<none>) capturing -> !kgen.none always_inline {
+// CHECK: kgen.func @"HELLO,x=FOO_populate_captures"(%arg0: !kgen.pointer<none>) -> !kgen.none always_inline {
 // CHECK-NEXT: [[V0:%.*]] = pop.compiler.global_load "CAPTURE_0" : !kgen.pointer<index>
 // CHECK-NEXT: [[V1:%.*]] = pop.stack_allocation 1 x pointer<index>
 // CHECK-NEXT: pop.store [[V0]], [[V1]] : !kgen.pointer<pointer<index>>

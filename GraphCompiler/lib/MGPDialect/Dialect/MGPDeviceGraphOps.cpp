@@ -342,7 +342,7 @@ LogicalResult DeviceGraphDependenciesOp::emitMojo(MOGG::EmitMojoState &state) {
       /*returnType=*/std::nullopt,
       // Never inline: single-use per-kernel bodies otherwise merge into the
       // build closure (see the build lambda in DeviceGraphCreateOp).
-      MojoBuilder::LambdaInline::kNever, /*isParameter=*/false,
+      MojoBuilder::LambdaInline::kNever,
       /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/workConvention,
       [&](const FunctionBody &functionBody) {
         state.setMojoValueFor(builderArg, functionBody.arguments.front());
@@ -1629,7 +1629,7 @@ emitCollectiveBuildForClosure(MOGG::EmitMojoState &state,
       "collective_build_for", /*parameters=*/{nParam},
       /*arguments=*/{builderParam},
       /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kNever,
-      /*isParameter=*/false, /*isAsync=*/false, /*raises=*/true,
+      /*isAsync=*/false, /*raises=*/true,
       /*captureConvention=*/"imm", [&](const FunctionBody &buildBody) {
         MojoValue n = buildBody.parameters.front();
         MojoValue builderArgMojo = buildBody.arguments.front();
@@ -1714,7 +1714,7 @@ emitCollectiveKeyForClosure(MOGG::EmitMojoState &state,
       "collective_key_for", /*parameters=*/{nParam},
       /*arguments=*/{},
       /*returnType=*/MojoValue(kStructString),
-      MojoBuilder::LambdaInline::kNever, /*isParameter=*/false,
+      MojoBuilder::LambdaInline::kNever,
       /*isAsync=*/false, /*raises=*/true, /*captureConvention=*/"imm",
       [&](const FunctionBody &keyBody) {
         MojoValue n = keyBody.parameters.front();
@@ -1837,7 +1837,7 @@ DeviceGraphCollectiveCreateOp::emitMojo(MOGG::EmitMojoState &state) {
           "collective_build_device", /*parameters=*/{},
           /*arguments=*/{builderParam},
           /*returnType=*/std::nullopt, MojoBuilder::LambdaInline::kNever,
-          /*isParameter=*/false, /*isAsync=*/false, /*raises=*/true,
+          /*isAsync=*/false, /*raises=*/true,
           /*captureConvention=*/"var", [&](const FunctionBody &bd) {
             state.builder.call(*buildFor, /*parameters=*/{MojoValue(idx)},
                                /*operands=*/{bd.arguments.front()});

@@ -240,14 +240,13 @@ public:
   enum class LambdaInline { kAutomatic, kAlways, kNever };
 
   /// Returns the lambda's name. `raises` and `captureConvention` are
-  /// independent. A non-empty `captureConvention` (e.g. "var") emits a blanket
+  /// independent. A non-empty `captureConvention` (e.g. "var") emits a
   /// `{<captureConvention>}` clause, which Mojo requires for closures that
-  /// capture by name; empty emits none (e.g. `@__parameter` closures).
+  /// capture by name; empty emits none.
   MojoValue lambda(StringLiteral lambdaName, ArrayRef<NamedMojoDef> parameters,
                    ArrayRef<NamedMojoDef> arguments,
                    std::optional<MojoValue> returnType, LambdaInline inlineKind,
-                   bool isParameter, bool isAsync, bool raises,
-                   llvm::StringRef captureConvention,
+                   bool isAsync, bool raises, llvm::StringRef captureConvention,
                    std::function<void(const FunctionBody &)> &&lambdaBody);
 
   [[nodiscard]] MojoBuilder &try_(std::function<void()> &&tryBlock);

@@ -125,7 +125,7 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
           nvptx, 2, "", "",
           :() capturing -> !kgen.none @HELLO<:() capturing -> index *"foo()">
        > : !kgen.struct<(string, index)>
-  kgen.param.declare x: (!kgen.pointer<none>) capturing -> !kgen.none
+  kgen.param.declare x: (!kgen.pointer<none>) -> !kgen.none
       = <#kgen.compile_offload_closure<
           nvptx,
           #kgen.symbol.constant<
@@ -137,8 +137,8 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
   // so each closure instantiation gets a unique stub even when multiple
   // instantiations share the same @__name value.
   // CHECK: kgen.call @{{.*}}_populate_captures{{.*}}(%arg0)
-  // CHECK-SAME: : (!kgen.pointer<none>) capturing -> !kgen.none
-  %2 = kgen.call_param[(!kgen.pointer<none>) capturing -> !kgen.none: x](%arg0)
+  // CHECK-SAME: : (!kgen.pointer<none>) -> !kgen.none
+  %2 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: x](%arg0)
 
   // Check that inside the offloaded module, the PTX kernel is given the right name.
   // @FLIP has mangle=false with a digit-leading name ("1bar"), which the
@@ -150,7 +150,7 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
           nvptx, 2, "", "",
           :() capturing -> !kgen.none @HELLO<:() capturing -> index *"flip()">
        > : !kgen.struct<(string, index)>
-  kgen.param.declare y: (!kgen.pointer<none>) capturing -> !kgen.none
+  kgen.param.declare y: (!kgen.pointer<none>) -> !kgen.none
       = <#kgen.compile_offload_closure<
           nvptx,
           #kgen.symbol.constant<
@@ -158,7 +158,7 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
           > : !kgen.generator<() capturing -> !kgen.none>>
         >
   // CHECK: kgen.call @{{.*}}_populate_captures{{.*}}(%arg0)
-  // CHECK-SAME: : (!kgen.pointer<none>) capturing -> !kgen.none
-  %4 = kgen.call_param[(!kgen.pointer<none>) capturing -> !kgen.none: y](%arg0)
+  // CHECK-SAME: : (!kgen.pointer<none>) -> !kgen.none
+  %4 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: y](%arg0)
   hlcf.return
 }

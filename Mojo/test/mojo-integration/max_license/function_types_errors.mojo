@@ -139,14 +139,13 @@ struct NDBuffer(GPUPassable):
 def compile[
     ArgTypes: TypeList[Trait=GPUPassable, ...],
     //,
-    func: def(*args: *ArgTypes) capturing -> Int,
+    func: def(*args: *ArgTypes) thin -> Int,
 ]() -> DeviceFunction[*ArgTypes]:
     return DeviceFunction[*ArgTypes]()
 
 
 # expected-note @+1{{function instantiation failed}}
 def foo():
-    @__parameter
     def kernel(t: ZTileTensor, p: ZPointer[ZInt], n: NDBuffer) -> Int:
         return Int()
 

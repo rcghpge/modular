@@ -2306,7 +2306,7 @@ struct FusedVariadicInputs:
         output: FusedOutputTensor[dtype=dtype, rank=rank, ...],
         inputs: FusedInputVariadicTensors[dtype=dtype, rank=rank, ...],
         ctx: DeviceContext,
-    ) capturing raises:
+    ) raises:
         pass
 
 

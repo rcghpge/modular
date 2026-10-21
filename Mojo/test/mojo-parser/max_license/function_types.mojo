@@ -427,31 +427,6 @@ def test_infer_nonempty_trailing_variadic():
 
 # // -----
 
-# Tests that we properly support @__parameter captures.
-
-
-@fieldwise_init
-struct Spaceship(ImplicitlyCopyable):
-    pass
-
-
-def non_max_suppression(per_class_scores: Spaceship):
-    @__parameter
-    @always_inline
-    def _greater_than(lhs: Spaceship):
-        _ = per_class_scores
-
-    sort[_greater_than]()
-
-
-def sort[
-    cmp_fn: def(mut Spaceship) capturing[_] -> None,
-]():
-    ...
-
-
-# // -----
-
 # Capture Arguments Into A Struct's Variadic (CAIASV)
 # In this test, `compile` captures a given `func` parameter-value's arguments
 # into an `ArgTypes` `kgen.variadic` (see IFAIAV), and then returns a struct

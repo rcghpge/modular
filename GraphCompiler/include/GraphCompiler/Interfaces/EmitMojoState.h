@@ -99,6 +99,9 @@ struct EmitMojoState {
   struct TaskHandleInfo {
     MojoValue task;  // The Task variable from create_task()
     MojoValue error; // The Optional[Error] variable
+    // The task's coroutine points into this closure, so it must outlive the
+    // task's wait.
+    MojoValue wrapper;
   };
   llvm::DenseMap<Value, TaskHandleInfo> taskHandleInfos;
 

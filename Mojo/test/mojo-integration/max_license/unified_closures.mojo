@@ -86,30 +86,12 @@ def takesThinPromotedParam[
     print(FuncType("here"))
 
 
-@no_inline
-def takesCapturingThinPromotedParam[
-    FuncType: def[U: AnyType, //](impl: U) thin capturing -> Int
-]():
-    print(FuncType("here"))
-
-
 def thinWithPromotedParam[XX: Int]():
     @no_inline
     def myclosure[U: AnyType, //](impl: U) {} -> Int:
         return XX
 
     takesThinPromotedParam[myclosure]()
-
-
-def thinWithPromotedCapturingParam[
-    XX: Int, legacy: def(Int) capturing -> Int
-]():
-    @no_inline
-    def myclosure[U: AnyType, //](impl: U) {} -> Int:
-        print(legacy(3))
-        return XX
-
-    takesCapturingThinPromotedParam[myclosure]()
 
 
 @no_inline
@@ -345,15 +327,6 @@ def main() raises:
     # COM: thin generic constraints.
     # CHECK: 4
     thinWithPromotedParam[4]()
-
-    # COM: Promoted stateless closures can capture legacy closures
-    # CHECK: 7
-    # CHECK: 4
-    @__parameter
-    def legacy(arg0: Int) -> Int:
-        return arg0 + y
-
-    thinWithPromotedCapturingParam[4, legacy]()
 
     try:
         # CHECK: NOT THREE!
