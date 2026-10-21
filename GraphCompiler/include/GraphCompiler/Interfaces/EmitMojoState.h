@@ -384,22 +384,6 @@ public:
         .str();
   }
 
-  /// Dims as an IndexList Mojo value, with kDynamic as -1.
-  static MojoValue getAsIndexListMojoValue(ArrayRef<int64_t> dims) {
-    SmallVector<MojoValue> dimsAsMojoValues;
-    for (auto dim : dims) {
-      if (dim == mlir::ShapedType::kDynamic)
-        dimsAsMojoValues.push_back(-1);
-      else
-        dimsAsMojoValues.push_back(std::to_string(dim));
-    }
-    // Rank-0 tensors become rank-1.
-    if (dimsAsMojoValues.empty())
-      dimsAsMojoValues.push_back(1);
-    MojoValue rank = dimsAsMojoValues.size();
-    return MojoValue(kStructIndexList)[rank]({}, dimsAsMojoValues);
-  }
-
   /// Dims as an IntTuple Mojo value, with kDynamic as -1 (UNKNOWN_VALUE).
   static MojoValue getAsIntTupleMojoValue(ArrayRef<int64_t> dims) {
     SmallVector<MojoValue> dimsAsMojoValues;
@@ -413,16 +397,6 @@ public:
     if (dimsAsMojoValues.empty())
       dimsAsMojoValues.push_back(1);
     return MojoValue(kStructIntTuple)({}, dimsAsMojoValues);
-  }
-
-  /// A tensor type's static layout as a TileLayout, via
-  /// `_IndexListToTileLayout`.
-  static MojoValue
-  getStaticTileLayoutFromIndexListsMojoValue(MO::TensorType type) {
-    MojoValue shapeIL = getAsIndexListMojoValue(type.getIntDims());
-    MojoValue stridesIL = getAsIndexListMojoValue(
-        MO::getStridesForTensor(type, /*unknown=*/false));
-    return MojoValue(kAliasIndexListToTileLayout)[{shapeIL, stridesIL}];
   }
 
   MojoValue getShapeAsIndexListMojoValue(MOSH::ShapeAttr shapeAttr,

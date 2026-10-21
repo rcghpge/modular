@@ -671,27 +671,6 @@ def MOGG_EmptyBufferOp : MOGG_Op<"empty_buffer", [
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
-def MOGG_TensorReshapeOp : MOGG_Op<"tensor.reshape", [
-  DeclareOpInterfaceMethods<EmitsMojoInterface>,
-  Pure,
-]> {
-  let summary = "Reshape a ManagedTensorSlice object into a new aliased tensor with a different shape";
-  let description = [{
-    Dynamic output dimensions come from `dynamic_dims`. Represents the reshape
-    before a kernel call whose fused output lambda applies an affine op.
-  }];
-
-  let arguments = (ins
-    AnyTypeOf<[MO_Tensor, MO_Buffer]>:$tensor,
-    Variadic<SI64Scalar>:$dynamic_dims
-  );
-  let results = (outs AnyTypeOf<[MO_Tensor, MO_Buffer]>:$result);
-
-  let assemblyFormat = [{
-    `(` $tensor (`,` $dynamic_dims^)? `)` attr-dict `:` qualified(type($tensor)) `->` qualified(type($result))
-  }];
-}
-
 def MOGG_YieldOp : MOGG_Op<"yield", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
   ReturnLike,

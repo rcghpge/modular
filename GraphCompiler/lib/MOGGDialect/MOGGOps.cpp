@@ -5574,31 +5574,6 @@ LogicalResult AsyncErrorOp::emitMojo(EmitMojoState &state) {
 }
 
 //===----------------------------------------------------------------------===//
-// TensorReshapeOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TensorReshapeOp::emitMojo(EmitMojoState &state) {
-  // Call "reshape_contiguous_buffer" primitive with the output shape /
-  // strides.
-  MO::TensorType toType = MO::castFromTensorLike(getResult().getType());
-  MojoValue tensorValue = state.getMojoValueFor(getTensor());
-  MojoValue shapeValue =
-      state.getShapeAsIndexListMojoValue(toType.getShape(), getDynamicDims());
-  MojoValue layoutParam =
-      state.getStaticTileLayoutFromIndexListsMojoValue(toType);
-  auto primDecl = state.registry.lookupPrimitive(getOperationName());
-  ASSERT_STREAM(primDecl,
-                "Primitive not found for " << getOperationName().str());
-  MojoValue reshapeFunc(primitiveMojoName(primDecl));
-  state.setMojoValueFor(
-      getResult(),
-      state.builder.var(reshapeFunc(
-          {MojoValue(StaticTensorSpecRef::kStaticLayout).equal(layoutParam)},
-          {tensorValue, shapeValue})));
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // ShapeInitOp
 //===----------------------------------------------------------------------===//
 

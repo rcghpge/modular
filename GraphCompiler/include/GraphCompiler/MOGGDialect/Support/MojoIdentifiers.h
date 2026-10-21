@@ -322,9 +322,6 @@ constexpr llvm::StringLiteral kStructCoord = "layout.Coord";
 constexpr llvm::StringLiteral kAliasIdx = "layout.Idx";
 constexpr llvm::StringLiteral kFnRowMajor = "layout.row_major";
 
-constexpr llvm::StringLiteral kAliasIndexListToTileLayout =
-    "managed_tensor_slice._IndexListToTileLayout";
-
 //===----------------------------------------------------------------------===//
 // Mojo enum values
 //===----------------------------------------------------------------------===//
@@ -347,8 +344,6 @@ constexpr llvm::StringLiteral kFnStackAllocation =
 /// For special float values with no Mojo literal spelling.
 constexpr llvm::StringLiteral kFnNumericsNan = "std.utils.numerics.nan";
 constexpr llvm::StringLiteral kFnNumericsInf = "std.utils.numerics.inf";
-constexpr llvm::StringLiteral kFnToManagedTensorSlice =
-    "builtin_primitives.primitives.to_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromManagedTensorSlice =
     "managed_tensor_slice.simd_load_from_managed_tensor_slice";
 constexpr llvm::StringLiteral kFnSimdLoadFromTensorPointer =
@@ -363,8 +358,6 @@ constexpr llvm::StringLiteral kFnGetSimdWidthForDtypes =
     "builtin_primitives.primitives.get_simd_width_for_dtypes";
 constexpr llvm::StringLiteral kFnUnpackBufferRef =
     "builtin_primitives.primitives.unpack_buffer_ref";
-constexpr llvm::StringLiteral kFnBufferConstant =
-    "builtin_primitives.primitives.mgp_buffer_constant";
 constexpr llvm::StringLiteral kFnUnpackDeviceCtx =
     "builtin_primitives.primitives.unpack_device_ctx";
 constexpr llvm::StringLiteral kFnUnpackStateCtx =
@@ -383,14 +376,6 @@ constexpr llvm::StringLiteral kFnMoggAsyncErrorValue =
     "builtin_primitives.primitives.mogg_async_error_value";
 constexpr llvm::StringLiteral kFnMoggAssignAsyncValue =
     "builtin_primitives.primitives.mogg_assign_async_value";
-constexpr llvm::StringLiteral kFnCreateIndexAsyncValue =
-    "builtin_primitives.primitives.create_index_async_value";
-constexpr llvm::StringLiteral kFnCreateSi64AsyncValue =
-    "builtin_primitives.primitives.create_si64_async_value";
-constexpr llvm::StringLiteral kFnCreateI1AsyncValue =
-    "builtin_primitives.primitives.create_i1_async_value";
-constexpr llvm::StringLiteral kFnCreateTensorSpecAsyncValue =
-    "builtin_primitives.primitives.create_tensor_spec_async_value";
 constexpr llvm::StringLiteral kFnMsSimdLoadFromTensorPointer =
     "managed_tensor_slice.simd_load_from_tensor_pointer";
 constexpr llvm::StringLiteral kFnMsSimdStoreIntoTensorPointer =

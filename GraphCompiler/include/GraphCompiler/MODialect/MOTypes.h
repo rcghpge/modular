@@ -85,11 +85,6 @@ TensorType dynCastFromTensorLike(Type ty);
 /// BufferType.
 TensorType castFromTensorLike(Type ty);
 
-/// Returns strides from the tensor's static shape. If `unknown`, all strides
-/// are dynamic; otherwise at least the innermost stride is 1.
-llvm::SmallVector<int64_t> getStridesForTensor(MO::TensorType tensor,
-                                               bool unknown);
-
 /// Print device refs as `mo.bundle`'s compact `label:first[-last]` form when
 /// homogeneous and contiguous, otherwise as comma-separated `label:id`.
 ///
