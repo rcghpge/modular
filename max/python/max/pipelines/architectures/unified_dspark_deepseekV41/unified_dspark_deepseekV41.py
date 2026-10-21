@@ -18,12 +18,10 @@ from collections.abc import Sequence
 from typing import Any
 
 from max.graph import BufferType, DeviceRef, TensorType, TensorValue
-from max.nn.kv_cache import KVCacheParamInterface
 from max.nn.layer import Module
 from max.pipelines.speculative.block_driver import BlockDriver
 from max.pipelines.speculative.config import SpeculativeConfig
 from max.pipelines.speculative.spec_input_types import SpecDecodeInputTypeSpec
-from typing_extensions import override
 
 from ..deepseekV41.dspark_drafter import DeepseekV41WithDSpark
 from ..deepseekV41.kv_leaves import V41KVLeafSpec
@@ -101,23 +99,11 @@ class UnifiedDSparkDeepseekV41(BlockDriver[TrunkTaps, TensorValue]):
             enable_structured_output=enable_structured_output,
             vocab_size=config.vocab_size,
             ep_input_types=verifier.ep_input_types(),
+            trailing_input_types=trailing_input_types,
         )
         self.config = config
         self._verifier = verifier
         self._drafter = drafter
-        self._trailing_input_types = tuple(trailing_input_types)
-
-    @override
-    @property
-    def has_trailing_inputs(self) -> bool:
-        return bool(self._trailing_input_types)
-
-    @override
-    def input_types(
-        self, kv_params: KVCacheParamInterface | None = None
-    ) -> tuple[TensorType | BufferType, ...]:
-        """The driver's standard inputs, then the trailing input types."""
-        return (*super().input_types(kv_params), *self._trailing_input_types)
 
     def shard(
         self,

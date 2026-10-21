@@ -165,7 +165,10 @@ def test_unified_dspark_graph_traces(
     with Graph(
         "unified_dspark_deepseekV41_trace", input_types=input_types
     ) as graph:
-        values = signature.decode_inputs(graph.inputs, kv_params).trailing[1:]
+        trailing = signature.decode_inputs(graph.inputs, kv_params).trailing
+        # The model's own inputs follow the standard ones exactly once.
+        assert len(trailing) == len(trailing_types)
+        values = trailing[1:]
         per_device: list[dict[int, tuple[TensorValue, TensorValue]]] = []
         idx = 0
         for _ in devices:
