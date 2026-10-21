@@ -288,14 +288,15 @@ Value CABICallHelper::finishCall(CallOp call, const CABICallPrep &prep,
   assert(sigClass.getResultAttrs(ctx).empty() &&
          "Not expecting call-side result attrs");
 
-  // A tail call is only safe when the callee does not write through any
-  // pointer that lives in the caller's stack frame.  The sret alloca
-  // created by prepareCall lives in the caller's frame, so a tail call
-  // would free that frame before the callee stores its return value,
-  // producing a silent memory corruption (MOCO-3841).  Suppress the tail
-  // marker whenever sret is in use; non-sret returns are register-passed
-  // and remain eligible for tail-call optimization.
-  if (!sigClass.ret.useSRet)
+  // A tail call frees the caller's frame before the callee runs. The sret
+  // alloca and the copy behind a plain indirect argument live there; a
+  // `byval` pointee does not, since the attribute makes the call sequence
+  // copy it. See the requirements of `tail` in LLVM's LangRef.
+  bool usesCallerFrame = sigClass.ret.useSRet ||
+                         llvm::any_of(sigClass.args, [](const CoercionInfo &c) {
+                           return c.useIndirect && !c.useByval;
+                         });
+  if (!usesCallerFrame)
     applyTailKind(call, tailKind);
 
   if (!prep.retType)

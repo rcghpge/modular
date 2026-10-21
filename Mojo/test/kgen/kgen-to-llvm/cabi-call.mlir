@@ -8,8 +8,9 @@
 //   Mojo/lib/KGENToLLVM/LowerKGENClosuresToLLVM.cpp  — CallIndirectOpConversion
 //   Mojo/lib/KGENToLLVM/CABICallHelpers.cpp  — CABICallHelper
 //
-// Focus: interaction between TailKind and the sret return convention (T1-T4),
-// and the extension of narrow integers (T5-T6).
+// Focus: interaction between TailKind and the sret return convention (T1-T4)
+// and by-memory arguments (T4a-T4b), and the extension of narrow integers
+// (T5-T6).
 //
 // On aarch64 AAPCS:
 //   {i64,i64,i64} (24 bytes) → sret (hidden pointer in x8)
@@ -116,6 +117,77 @@ kgen.func @caller_indirect_reg(
   // CHECK: llvm.call tail %arg0
   %r = kgen.call_indirect tail %callee(%s) : (!llvm.struct<(i32)>) cabi -> !llvm.struct<(i32)>
   hlcf.return %r : !llvm.struct<(i32)>
+}
+
+} // module
+
+//===----------------------------------------------------------------------===//
+// T4a: by-memory argument passed as a plain pointer — tail call suppressed.
+//
+// {i64,i64,i64} (24 bytes) is passed on aarch64 as a pointer to a copy in the
+// caller's frame, with no `byval`, even though the result comes back in a
+// register. The callee reads that copy, so a tail call would free it first.
+//===----------------------------------------------------------------------===//
+
+// -----
+
+module attributes {M.target_info = #M.target<triple="aarch64-unknown-linux-gnu", arch="", features="", data_layout="e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128", simd_bit_width=128>} {
+
+kgen.func @callee_mem_arg(%s: !llvm.struct<(i64, i64, i64)>) cabi -> i64 {
+  %r = llvm.extractvalue %s[0] : !llvm.struct<(i64, i64, i64)>
+  hlcf.return %r : i64
+}
+
+// The pointer the callee receives is this `alloca`, and it carries no `byval`,
+// so the copy belongs to this frame.
+// CHECK-LABEL: llvm.func internal @caller_mem_arg
+// CHECK:         %[[SLOT:.*]] = llvm.alloca %{{.*}} x !llvm.struct<(i64, i64, i64)>
+// CHECK:         llvm.store %arg0, %[[SLOT]]
+// CHECK-NOT:     llvm.call tail
+// CHECK:         llvm.call @callee_mem_arg(%[[SLOT]]) : (!llvm.ptr) -> i64
+kgen.func @caller_mem_arg(%s: !llvm.struct<(i64, i64, i64)>) -> i64 {
+  %r = kgen.call tail @callee_mem_arg(%s) : (!llvm.struct<(i64, i64, i64)>) -> i64
+  hlcf.return %r : i64
+}
+
+// CHECK-LABEL: llvm.func internal @caller_indirect_mem_arg
+// CHECK:         %[[SLOT:.*]] = llvm.alloca %{{.*}} x !llvm.struct<(i64, i64, i64)>
+// CHECK-NOT:     llvm.call tail
+// CHECK:         llvm.call %arg0(%[[SLOT]]) : !llvm.ptr, (!llvm.ptr) -> i64
+kgen.func @caller_indirect_mem_arg(
+    %callee: !kgen.generator<(!llvm.struct<(i64, i64, i64)>) cabi -> i64>,
+    %s: !llvm.struct<(i64, i64, i64)>
+) -> i64 {
+  %r = kgen.call_indirect tail %callee(%s) : (!llvm.struct<(i64, i64, i64)>) cabi -> i64
+  hlcf.return %r : i64
+}
+
+} // module
+
+//===----------------------------------------------------------------------===//
+// T4b: the same argument on x86_64 SystemV, where it is `byval` — tail call
+// kept. `byval` makes the call sequence copy the pointee, so the callee reads
+// that copy rather than the caller's frame.
+//===----------------------------------------------------------------------===//
+
+// -----
+
+module attributes {M.target_info = #M.target<triple="x86_64-unknown-linux-gnu", arch="", features="", data_layout="e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128", simd_bit_width=128>} {
+
+kgen.func @callee_byval_x86(%s: !llvm.struct<(i64, i64, i64)>) cabi -> i64 {
+  %r = llvm.extractvalue %s[0] : !llvm.struct<(i64, i64, i64)>
+  hlcf.return %r : i64
+}
+
+// Same `alloca`-and-store shape as T4a; the `llvm.byval` on the call argument
+// is the whole difference, so the CHECK pins it.
+// CHECK-LABEL: llvm.func internal @caller_byval_x86
+// CHECK:         %[[SLOT:.*]] = llvm.alloca %{{.*}} x !llvm.struct<(i64, i64, i64)>
+// CHECK:         llvm.store %arg0, %[[SLOT]]
+// CHECK:         llvm.call tail @callee_byval_x86(%[[SLOT]]) : (!llvm.ptr {llvm.byval = !llvm.struct<(i64, i64, i64)>}) -> i64
+kgen.func @caller_byval_x86(%s: !llvm.struct<(i64, i64, i64)>) -> i64 {
+  %r = kgen.call tail @callee_byval_x86(%s) : (!llvm.struct<(i64, i64, i64)>) -> i64
+  hlcf.return %r : i64
 }
 
 } // module
