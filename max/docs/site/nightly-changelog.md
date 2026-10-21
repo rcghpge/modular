@@ -83,6 +83,10 @@ This version is still a work in progress.
 - `AutoPipeline` now takes a chat conversation, or a list of them, with
   images inline, and returns only the new text for each one.
 
+- Removed the `blocking_sync`, `disable_timing` and `interprocess` parameters
+  from the Mojo `DeviceContext.create_event()`, along with `EventFlags`. Events
+  never record timing; use `DeviceContext.execution_time()` to time kernels.
+
 ## C API
 
 ## Kernels and GPU programming

@@ -2712,68 +2712,6 @@ struct DeviceStream(ImplicitlyCopyable, _FunctionEnqueuer):
         )
 
 
-struct EventFlags(TrivialRegisterPassable):
-    """Provides flags for creating events.
-
-    These flags can be combined using the bitwise OR operator (`|`, `|=`).
-    """
-
-    # ===-------------------------------------------------------------------===#
-    # Aliases
-    # ===-------------------------------------------------------------------===#
-
-    comptime default = Self(0x00)
-    """Default event flags, with timing enabled."""
-    comptime blocking_sync = Self(0x01)
-    """Allows `event.synchronize()` to block until the event has been recorded."""
-    comptime disable_timing = Self(0x02)
-    """Removes timing overhead."""
-    comptime interprocess = Self(0x04)
-    """Enable interprocess synchronization, currently unimplemented."""
-
-    # ===-------------------------------------------------------------------===#
-    # Fields
-    # ===-------------------------------------------------------------------===#
-
-    var _flags: c_uint
-    """The flags to pass when creating an event."""
-
-    # ===-------------------------------------------------------------------===#
-    # Life cycle methods
-    # ===-------------------------------------------------------------------===#
-
-    def __init__(out self, flags: c_uint):
-        """Initializes a new EventFlags.
-
-        Args:
-            flags: The flags to initialize the EventFlags with.
-        """
-        self._flags = flags
-
-    # ===-------------------------------------------------------------------===#
-    # Operator dunders
-    # ===-------------------------------------------------------------------===#
-
-    def __ior__(mut self, other: Self):
-        """Combines the current flags with another flag in-place.
-
-        Args:
-            other: The flag to combine with the current flags.
-        """
-        self._flags |= other._flags
-
-    def __or__(self, other: Self) -> Self:
-        """Returns the current flags combined with another flag.
-
-        Args:
-            other: The flag to combine with the current flags.
-
-        Returns:
-            A new EventFlags instance with the combined flags.
-        """
-        return Self(self._flags | other._flags)
-
-
 struct CompletionFlag(ImplicitlyCopyable):
     """Non-owning handle to an MLRT ``CompletionFlag``.
 
@@ -6482,26 +6420,11 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         return DeviceStream(self.assert_default_target())
 
     @inline(.always)
-    def create_event[
-        *,
-        blocking_sync: Bool = False,
-        disable_timing: Bool = True,
-        interprocess: Bool = False,
-    ](self) raises -> DeviceEvent:
+    def create_event(self) raises -> DeviceEvent:
         """Creates a new event for synchronization between streams.
 
-        Provides the best performance by default, disabling timing and blocking sync.
-        `DeviceContext.execution_time()` provides the functionality required for
-        timing kernels by passing it a closure, and is functionally equivalent to
-        recording start and end events, then calculating the elapsed time.
-
-        Parameters:
-            blocking_sync: Enable `event.synchronize()` to block until the event
-                has been recorded. Incurs overhead compared to
-                `stream.enqueue_wait_for(event)` (default: False).
-            disable_timing: Remove timing overhead (default: True).
-            interprocess: Enable interprocess synchronization, currently
-                unimplemented. (default: False).
+        Events don't record timing, which keeps them cheap to record and wait
+        on. To time kernels, use `DeviceContext.execution_time()`.
 
         Returns:
             A DeviceEvent that can be used for synchronization.
@@ -6531,26 +6454,14 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         ```
         """
         var result: _DeviceEventPtr[mut=True] = {}
-        var flags = EventFlags.default
-
-        comptime if blocking_sync:
-            flags |= EventFlags.blocking_sync
-
-        comptime if disable_timing:
-            flags |= EventFlags.disable_timing
-
-        comptime if interprocess:
-            flags |= EventFlags.interprocess
-
-        # const char *AsyncRT_DeviceContext_eventCreate(const DeviceEvent **result, const DeviceContext *ctx, unsigned int flags)
+        # const char *AsyncRT_DeviceContext_eventCreate(const DeviceEvent **result, const DeviceContext *ctx)
         _checked(
             external_call[
                 "AsyncRT_DeviceContext_eventCreate",
                 _CString[],
                 Pointer[_DeviceEventPtr[mut=True], origin_of(result)],
                 _DeviceContextPtr[mut=True],
-                EventFlags,
-            ](Pointer(to=result), self._handle, flags)
+            ](Pointer(to=result), self._handle)
         )
         return DeviceEvent(result)
 
