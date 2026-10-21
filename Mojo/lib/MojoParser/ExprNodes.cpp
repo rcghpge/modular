@@ -1386,11 +1386,6 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
 
   ArrayRef<ASTDecl *> declsRef = lookup.getIfSuccess();
 
-  // Backs `declsRef` when we resolve a deprecated intra-package reference
-  // below. A LookupResult points into a scope's symbol table; the decls we
-  // resolve here (a sibling module, or a name exposed by __init__) are not in
-  // the empty package scope, so we need our own stable storage.
-  SmallVector<ASTDecl *, 1> deprecatedDeclStorage;
   if (declsRef.empty()) {
     if (lookup.isErroneous())
       return {}; // Error already diagnosed.
@@ -1502,15 +1497,6 @@ DeclRefNode::emitUnqualLookup(StringRef spelling, const ExprNode *expr,
   // own symbol. The ImportOp gates child access via allowedChildren.
   if (auto *importDecl = dyn_cast<ImportASTDecl>(decl);
       importDecl && importDecl->isResolved()) {
-    PValue result(ModuleAttr::get(LIT::ModuleType::get(decl->getSymbolRef())));
-    return emitter.emitCResult(result, expr, dest);
-  }
-
-  // If this is a module or package declaration, form a module reference.
-  // Cross-package access goes through an ImportOp (handled above); this is
-  // reached for a sibling module resolved via the deprecated intra-package
-  // fallback above (a bare sibling reference with no explicit import).
-  if (isa<FileModuleASTDecl, PackageASTDecl>(decl)) {
     PValue result(ModuleAttr::get(LIT::ModuleType::get(decl->getSymbolRef())));
     return emitter.emitCResult(result, expr, dest);
   }
@@ -2247,7 +2233,7 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     // up there. For a package this resolves through its __init__'s scope (the
     // package's public surface), so only names that __init__ defines or
     // re-exports are reachable.
-    ASTDecl &realDecl = shared.importModule(
+    ModuleASTDecl &realDecl = shared.importModule(
         SharedState::ImportPath::fromAttr(importOp.getModulePath()),
         /*currentPackage=*/nullptr,
         shared.diags.convertLocToSMLoc(importOp->getLoc()));
@@ -2264,39 +2250,12 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
             ModuleAttr::get(LIT::ModuleType::get(memberDecl->getSymbolRef())));
         return emitter.emitCResult(result, this, dest);
       }
-      if (isa_and_nonnull<PackageASTDecl, FileModuleASTDecl>(memberDecl)) {
-        // A raw submodule bound in __init__'s scope. It is reachable precisely
-        // because __init__ bound it, so access is allowed. Bind a child
-        // ImportOp over it and hand that back (not the raw module) so deeper
-        // access stays gated.
-        OpBuilder gateBuilder =
-            cast<ImportASTDecl>(typeDecl)->getDeclEndBuilder();
-        SharedState::ImportPath childPath =
-            SharedState::ImportPath::fromAttr(importOp.getModulePath());
-        childPath.components.push_back(spelling);
-        ASTDecl &childGate = shared.declResolver->createImportOp(
-            *typeDecl, gateBuilder,
-            StringAttr::get(shared.getContext(), spelling),
-            childPath.toAttr(shared.getContext()), importOp->getLoc());
-        return emitter.emitCResult(PValue(ModuleAttr::get(LIT::ModuleType::get(
-                                       childGate.getSymbolRef()))),
-                                   this, dest);
-      }
     }
 
     // Non-module member - delegate to the real module.
     return DeclRefNode::emitUnqualLookup(spelling, this, realDecl, dest,
                                          emitter, false);
   }
-
-  // Member access on a raw module/package. This is reached for intra-package
-  // references - a file naming a sibling submodule registered by the directory
-  // scan in an ancestor package scope. (Cross-package access goes through an
-  // ImportOp, handled above.)
-  // FIXME: Can we remove this?
-  if (isa_and_nonnull<PackageASTDecl, FileModuleASTDecl>(typeDecl))
-    return DeclRefNode::emitUnqualLookup(spelling, this, *typeDecl, dest,
-                                         emitter, false);
 
   // We can only look up in something of struct or trait type.
   if (!isa_and_nonnull<TypeASTDecl>(typeDecl) &&
