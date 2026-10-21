@@ -28,6 +28,7 @@ from max.dtype import DType
 from max.graph import (
     BufferValue,
     DeviceRef,
+    Dim,
     ShardingStrategy,
     TensorValue,
     Weight,
@@ -37,10 +38,12 @@ from max.nn.activation import GatedActivation
 from max.nn.comm.ep import EPBatchManager
 from max.nn.comm.ep.ep_kernels import fused_silu_quantized
 from max.nn.kernels import (
+    _is_sm10x_gpu,
     block_scales_interleave,
     grouped_matmul_block_scaled,
     grouped_matmul_blocked_swiglu,
     grouped_quantize_dynamic_block_scaled,
+    swiglu_quantize_dynamic_block_scaled,
 )
 from max.nn.layer import Module
 from max.nn.linear import Linear
@@ -52,6 +55,7 @@ from max.nn.quant_config import (
     ScaleOrigin,
     WeightScaleSpec,
 )
+from max.nn.quant_ops import _matmul_float8_mxfp8
 
 from ...deepseekV4.layers.moe import (
     DeepseekV4Gate,
@@ -361,7 +365,7 @@ class DeepseekV41NvFp4RoutedExperts(DeepseekV4RoutedExperts):
 
     def _activation(self) -> GatedActivation:
         """The clamped SwiGLU the fused kernels apply."""
-        return GatedActivation("silu", limit=max(float(self.swiglu_limit), 0.0))
+        return _clamped_swiglu(self.swiglu_limit)
 
     def _nvfp4_matmul(
         self,
@@ -556,6 +560,11 @@ class DeepseekV41Gate(DeepseekV4Gate):
 _MXFP8_BLOCK_SIZE = 32
 
 
+def _clamped_swiglu(swiglu_limit: float) -> GatedActivation:
+    """The SwiGLU with the checkpoint's clamp; ``<= 0`` disables the clamp."""
+    return GatedActivation("silu", limit=max(float(swiglu_limit), 0.0))
+
+
 def _shared_expert_quant_config() -> QuantConfig:
     """The MXFP8 ``QuantConfig`` for the shared expert's projections.
 
@@ -624,6 +633,8 @@ class DeepseekV41SharedExpert(Module):
         """``[..., hidden]`` -> ``[..., hidden]``, no routing weight applied."""
         inter = self.moe_intermediate_size
         gate_up = self.gate_up_proj(x)
+        if _is_sm10x_gpu():
+            return self._fused_down(gate_up)
         # Slices, not `ops.split`: `ops.split` slows the fused GEMM ~25% at
         # prefill sizes.
         gate = ops.cast(gate_up[..., :inter], DType.float32)
@@ -635,6 +646,28 @@ class DeepseekV41SharedExpert(Module):
             gate = ops.min(gate, limit)
         h = ops.silu(gate) * up
         return self.w2(ops.cast(h, x.dtype))
+
+    def _fused_down(self, gate_up: TensorValue) -> TensorValue:
+        """The clamped SwiGLU fused into ``w2``'s MXFP8 quantize, then ``w2``."""
+        leading_dims = list(gate_up.shape[:-1])
+        rows = Dim(1)
+        for d in leading_dims:
+            rows = rows * d
+        h, h_scales = swiglu_quantize_dynamic_block_scaled(
+            ops.reshape(gate_up, [rows, gate_up.shape[-1]]),
+            _clamped_swiglu(self.swiglu_limit),
+            sf_vector_size=_MXFP8_BLOCK_SIZE,
+            scales_type=DType.float8_e8m0fnu,
+            out_type=DType.float8_e4m3fn,
+        )
+        assert self.w2.weight_scale is not None
+        out = _matmul_float8_mxfp8(
+            h,
+            self.w2.weight.to(h.device),
+            self.w2.weight_scale,
+            x_scales=h_scales,
+        )
+        return ops.reshape(out, [*leading_dims, out.shape[-1]])
 
 
 class ExpertParallelFFN(Protocol):

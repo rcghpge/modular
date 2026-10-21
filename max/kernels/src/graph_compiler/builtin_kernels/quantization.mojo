@@ -51,7 +51,9 @@ from linalg.block_scaled_quantization import (
     grouped_quantize_nvfp4_row_amax,
     block_scales_interleave,
     quantize_dynamic_block_scaled_mxfp4,
+    swiglu_quantize_dynamic_block_scaled,
 )
+from linalg.swiglu_activation import get_swiglu_activation
 from linalg.matmul.gpu.amd import (
     Shuffler,
     block_scaled_grouped_matmul_amd,
@@ -943,6 +945,69 @@ struct Struct_quantize_dynamic_block_scaled:
             output.to_tile_tensor[.int64](),
             scales.to_tile_tensor[.int64](),
             input.to_tile_tensor[.int64](),
+            tensor_sf,
+            context,
+        )
+
+
+@extensibility.register("mo.swiglu.quantize.dynamic.block.scaled")
+struct Struct_swiglu_quantize_dynamic_block_scaled:
+    """Registers the `mo.swiglu.quantize.dynamic.block.scaled` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        out_dtype: DType,
+        scales_type: DType,
+        in_dtype: DType,
+        //,
+        SF_VECTOR_SIZE: Int,
+        activation: StaticString,
+        swiglu_alpha: Float32,
+        swiglu_limit: Float32,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=out_dtype, rank=2, ...],
+        scales: OutputTensor[dtype=scales_type, rank=5, ...],
+        gate_up: InputTensor[dtype=in_dtype, rank=2, ...],
+        tensor_sf: Float32,
+        context: DeviceContext,
+    ) raises:
+        """Quantizes `activation(gate, up)` of a `[gate | up]` input to a block-scaled format.
+
+        Parameters:
+            out_dtype: The quantized output data type.
+            scales_type: The block scale data type.
+            in_dtype: The input data type.
+            SF_VECTOR_SIZE: Elements per block scale.
+            activation: Activation name, bound from the op's same-named
+                attribute; the activation is built at compile time.
+            swiglu_alpha: The activation's alpha constant.
+            swiglu_limit: The activation's clamp limit.
+            target: The target GPU device.
+
+        Args:
+            output: The quantized activation of shape `[M, N]` (or `N // 2`
+                packed FP4).
+            scales: The block scales in the 5D TCGEN interleaved layout.
+            gate_up: The input of shape `[M, 2 * N]`, `gate` then `up`.
+            tensor_sf: The tensor-wise scale factor.
+            context: The device context.
+        """
+        comptime assert is_gpu[target](), (
+            "gated block-scaled quantization only supports GPUs with native"
+            " block scaled support"
+        )
+        comptime act = get_swiglu_activation[
+            activation, swiglu_alpha, swiglu_limit
+        ]
+        swiglu_quantize_dynamic_block_scaled[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE, activation=act
+        ](
+            output.to_tile_tensor[.int64](),
+            scales.to_tile_tensor[.int64](),
+            gate_up.to_tile_tensor[.int64](),
             tensor_sf,
             context,
         )

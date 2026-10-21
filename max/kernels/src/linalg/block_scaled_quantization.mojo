@@ -45,6 +45,11 @@ from max.gpu.primitives import warp
 from max.gpu.primitives.warp import lane_group_max, shuffle_down, shuffle_xor
 from std.math import recip
 from .block_scaled_utils import compute_mxfp8_block_scale
+from .swiglu_activation import (
+    apply_swiglu_activation,
+    swiglu,
+    swiglu_activation_type,
+)
 from .fp4_utils import (
     cast_float_to_fp4e2m1_amd,
     cast_fp32_to_fp4e2m1,
@@ -130,6 +135,8 @@ def quantize_dynamic_scaled_fp4fp8[
     *,
     SF_VECTOR_SIZE: Int = 16,
     num_max_threads: Int = 512,
+    gated: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     ctx: DeviceContext,
     output_tile: TileTensor[mut=True, out_dtype, address_space=.GENERIC, ...],
@@ -161,6 +168,10 @@ def quantize_dynamic_scaled_fp4fp8[
             (defaults to 16).
         num_max_threads: Maximum number of threads per block for the
             launch grid (defaults to 512).
+        gated: Whether each input row is `[gate | up]`, twice the output
+            width, and the kernel quantizes `activation(gate, up)` rounded
+            to `in_dtype` in place of the input.
+        activation: The gated activation; read only when `gated`.
     Args:
         ctx: Device context used to enqueue the kernel.
         output_tile: Output tile for the quantized elements of shape
@@ -168,7 +179,8 @@ def quantize_dynamic_scaled_fp4fp8[
             `[num_rows, num_cols]` for MXFP8.
         scales_tile: Output tile for the per-block scale factors.
         input_tile: Input `bfloat16` activation tile of shape
-            `[num_rows, num_cols]`.
+            `[num_rows, num_cols]`, or `[num_rows, 2 * num_cols]` when
+            `gated`.
         num_cols: Number of columns in the input tensor before
             padding.
         num_cols_padded: Number of columns in the input tensor after
@@ -202,7 +214,7 @@ def quantize_dynamic_scaled_fp4fp8[
         )
     ), "output dtype should be uint8 for NVFP4/MXFP4 or float8_e4m3fn for MXFP8"
 
-    comptime N = input_tile.LayoutType.static_shape[1]
+    comptime N = input_tile.LayoutType.static_shape[1] // (2 if gated else 1)
 
     comptime if SF_VECTOR_SIZE == MXFP8_SF_VECTOR_SIZE:
         comptime assert N % SF_VECTOR_SIZE == 0, "N must be a multiple of 32"
@@ -239,6 +251,8 @@ def quantize_dynamic_scaled_fp4fp8[
         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
         ELEMENTS_PER_THREAD=ELEMENTS_PER_THREAD,
         num_max_threads=num_max_threads,
+        gated=gated,
+        activation=activation,
     ]
 
     ctx.enqueue_function[kernel](
@@ -258,7 +272,7 @@ def quantize_dynamic_scaled_fp4fp8[
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
 @__name(
-    t"quantize_dynamic_scaled_fp4fp8_{out_dtype}_{scales_dtype}_{in_dtype}_sf{SF_VECTOR_SIZE}",
+    t"quantize_dynamic_scaled_fp4fp8_{out_dtype}_{scales_dtype}_{in_dtype}_sf{SF_VECTOR_SIZE}{"_gated" if gated else ""}",
 )
 def quantize_dynamic_scaled_fp4fp8_kernel[
     out_dtype: DType,
@@ -271,6 +285,8 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     SF_VECTOR_SIZE: Int = 16,
     ELEMENTS_PER_THREAD: Int = 8,
     num_max_threads: Int = 512,
+    gated: Bool = False,
+    activation: swiglu_activation_type = swiglu[0.0],
 ](
     output: TileTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: TileTensor[scales_dtype, scales_layout, MutAnyOrigin],
@@ -354,9 +370,21 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                     if owns_scale:
                         scales.raw_store(sf_offset, Scalar[scales_dtype](0.0))
                 else:
-                    var input_vector = input.load[width=ELEMENTS_PER_THREAD](
-                        (Int(row), Int(col))
-                    )
+                    var input_vector: SIMD[in_dtype, ELEMENTS_PER_THREAD]
+                    comptime if gated:
+                        comptime up_offset = input_layout.static_shape[1] // 2
+                        input_vector = apply_swiglu_activation[activation](
+                            input.load[width=ELEMENTS_PER_THREAD](
+                                (Int(row), Int(col))
+                            ),
+                            input.load[width=ELEMENTS_PER_THREAD](
+                                (Int(row), up_offset + Int(col))
+                            ),
+                        )
+                    else:
+                        input_vector = input.load[width=ELEMENTS_PER_THREAD](
+                            (Int(row), Int(col))
+                        )
 
                     # each thread finds maximum value in its local 8 elements
                     var thread_max = abs(input_vector).reduce_max()
@@ -3351,6 +3379,104 @@ def quantize_dynamic_block_scaled[
             "Unsupported hardware/format combination for block-scaled"
             " quantization"
         )
+
+
+def swiglu_quantize_dynamic_block_scaled[
+    out_dtype: DType,
+    scales_dtype: DType,
+    in_dtype: DType,
+    //,
+    *,
+    SF_VECTOR_SIZE: Int,
+    activation: swiglu_activation_type,
+](
+    output_device: TileTensor[mut=True, out_dtype, address_space=.GENERIC, ...],
+    scales_device: TileTensor[
+        mut=True, scales_dtype, address_space=.GENERIC, ...
+    ],
+    gate_up_device: TileTensor[
+        mut=False, in_dtype, address_space=.GENERIC, ...
+    ],
+    tensor_sf: Float32,
+    ctx: DeviceContext,
+) raises:
+    """Quantizes the gated activation of a `[gate | up]` input to NVFP4 or MXFP8 with block scales.
+
+    One kernel computes what `activation(gate, up)` rounded to `in_dtype`
+    and then `quantize_dynamic_block_scaled` would, without writing the
+    activation out. SM100 and SM120 only.
+
+    Parameters:
+        out_dtype: Element type of the quantized output (inferred). `uint8`
+            for NVFP4 or `float8_e4m3fn` for MXFP8.
+        scales_dtype: Element type of the block scales (inferred).
+            `float8_e4m3fn` for NVFP4 or `float8_e8m0fnu` for MXFP8.
+        in_dtype: Element type of the input (inferred). Must be `bfloat16`.
+        SF_VECTOR_SIZE: Elements per block scale: 16 for NVFP4, 32 for
+            MXFP8.
+        activation: The gated activation, applied to each `(gate, up)`
+            pair.
+
+    Args:
+        output_device: Quantized output of shape `[M, N // 2]` for packed
+            FP4 or `[M, N]` for MXFP8.
+        scales_device: Block scales in the 5D TCGEN interleaved layout.
+        gate_up_device: Input of shape `[M, 2 * N]`: `gate` in the first
+            `N` columns, `up` in the last `N`.
+        tensor_sf: Tensor-wise scale factor multiplied into each block
+            scale.
+        ctx: Device context used to enqueue the kernel.
+
+    Raises:
+        Error: If `output_device` is not `[M, N]` for MXFP8 or `[M, N // 2]`
+            for packed FP4.
+    """
+    comptime assert _is_sm10x_gpu(ctx.default_device_info) or _is_sm12x_gpu(
+        ctx.default_device_info
+    ), "gated block-scaled quantization only runs on SM100 or SM120"
+    comptime assert (
+        output_device.rank == 2 and gate_up_device.rank == 2
+    ), "output and gate_up must be rank 2"
+    comptime assert (
+        scales_device.rank == 5 and scales_device.flat_rank == 5
+    ), "scales must be rank 5"
+    comptime assert (
+        gate_up_device.static_shape[1] % 2 == 0
+    ), "gate_up must hold equal gate and up halves"
+    # The kernel reduces each block's max across the lanes that hold it, so
+    # a partial last block would read a lane outside the row.
+    comptime assert (
+        gate_up_device.static_shape[1] // 2 % SF_VECTOR_SIZE == 0
+    ), "each gate_up half must be a whole number of scale blocks"
+
+    comptime is_fp8 = out_dtype == .float8_e4m3fn
+    var num_cols = Int(gate_up_device.dim(1)) // 2
+    var output_cols = num_cols if is_fp8 else num_cols // 2
+    if (
+        Int(output_device.dim(0)) != Int(gate_up_device.dim(0))
+        or Int(output_device.dim(1)) != output_cols
+    ):
+        raise Error(
+            "output must be [M, N] for MXFP8 or [M, N // 2] for packed FP4,"
+            " where gate_up is [M, 2 * N]"
+        )
+    if Int(gate_up_device.dim(0)) == 0 or num_cols == 0:
+        return
+
+    quantize_dynamic_scaled_fp4fp8[
+        SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+        num_max_threads=1024 if is_fp8 else 512,
+        gated=True,
+        activation=activation,
+    ](
+        ctx,
+        output_device.as_unsafe_any_origin(),
+        scales_device.as_unsafe_any_origin(),
+        gate_up_device.as_unsafe_any_origin(),
+        num_cols=num_cols,
+        num_cols_padded=num_cols,
+        tensor_sf=tensor_sf,
+    )
 
 
 @inline(.always)

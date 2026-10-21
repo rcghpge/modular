@@ -10878,6 +10878,90 @@ def _is_amd_gpu() -> bool:
         return False
 
 
+def _block_scaled_quantize_out_types(
+    rows: Dim,
+    cols: Dim,
+    name: str,
+    sf_vector_size: int,
+    scales_type: DType,
+    out_type: DType,
+    device: DeviceRef,
+) -> list[TensorType]:
+    """Validates a block-scaled quantize format and returns its output types.
+
+    ``rows`` by ``cols`` is the shape that gets quantized, and ``name`` names
+    ``cols`` in the alignment error.
+    """
+    # Select the quantization format from the output dtype.
+    if out_type == DType.uint8:
+        # NVFP4 / MXFP4: two e2m1 values packed per output byte.
+        if scales_type not in (DType.float8_e4m3fn, DType.float8_e8m0fnu):
+            raise ValueError(
+                "scales_type must be float8_e4m3fn (NVFP4) or float8_e8m0fnu"
+                " (MXFP4)"
+            )
+        if sf_vector_size not in (16, 32):
+            raise ValueError("sf_vector_size must be 16 (NVFP4) or 32 (MXFP4)")
+        is_packed = True
+    elif out_type == DType.float8_e4m3fn:
+        # MXFP8: float8 data, not packed.
+        if scales_type != DType.float8_e8m0fnu:
+            raise ValueError("scales_type must be float8_e8m0fnu for MXFP8")
+        if sf_vector_size != 32:
+            raise ValueError("sf_vector_size must be 32 for MXFP8")
+        is_packed = False
+    else:
+        raise ValueError(
+            "out_type must be uint8 (FP4) or float8_e4m3fn (MXFP8), got"
+            f" {out_type}"
+        )
+
+    # MXFP4/MXFP8 (sf_vector_size=32) requires K % 32 because the kernel's
+    # 4-thread cooperative scale reduction operates on 32-element groups.
+    # NVFP4 (sf_vector_size=16) only requires K % 8.
+    k_alignment = (
+        sf_vector_size if sf_vector_size == 32 else sf_vector_size // 2
+    )
+    if int(cols) % k_alignment != 0:
+        raise ValueError(f"{name} must be a multiple of {k_alignment}")
+
+    if _is_sm10x_gpu() or _is_sm12x_gpu():
+        # SM100 / SM120 TCGEN05: rank-5 interleaved scales layout.
+        SF_ATOM_M = [32, 4]
+        SF_ATOM_K = 4
+        SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
+        SF_K_GROUP_SIZE = SF_ATOM_K * sf_vector_size
+        scales_shape: list[Dim | int] = [
+            ceildiv(rows, Dim(SF_MN_GROUP_SIZE)),
+            ceildiv(cols, Dim(SF_K_GROUP_SIZE)),
+            SF_ATOM_M[0],
+            SF_ATOM_M[1],
+            SF_ATOM_K,
+        ]
+    else:
+        # Default: rank-2 scales [M, K // sf_vector_size].
+        # TODO: 2D is a proxy for CDNA4. The optimized layout is likely
+        # 6D (32x32 tiles) or 7D (16x16 tiles).
+        scales_shape = [
+            rows,
+            ceildiv(cols, Dim(sf_vector_size)),
+        ]
+
+    # FP4 packs two values per output byte; MXFP8 stores one value per element.
+    quantized_k = cols // 2 if is_packed else cols
+    return [
+        TensorType(dtype=out_type, shape=[rows, quantized_k], device=device),
+        TensorType(dtype=scales_type, shape=scales_shape, device=device),
+    ]
+
+
+def _tensor_sf_value(tensor_sf: TensorValue | float) -> TensorValue:
+    """The tensor-wise scale factor as the quantize ops' operand."""
+    if isinstance(tensor_sf, float):
+        return ops.constant(tensor_sf, DType.float32, device=DeviceRef.CPU())
+    return TensorValue(tensor_sf)
+
+
 def quantize_dynamic_block_scaled(
     input: TensorValue,
     tensor_sf: TensorValue | float = 1.0,
@@ -10919,90 +11003,105 @@ def quantize_dynamic_block_scaled(
     if input.dtype != DType.bfloat16:
         raise ValueError("input tensor dtype must be bfloat16")
 
-    # Select the quantization format from the output dtype.
-    if out_type == DType.uint8:
-        # NVFP4 / MXFP4: two e2m1 values packed per output byte.
-        if scales_type not in (DType.float8_e4m3fn, DType.float8_e8m0fnu):
-            raise ValueError(
-                "scales_type must be float8_e4m3fn (NVFP4) or float8_e8m0fnu"
-                " (MXFP4)"
-            )
-        if sf_vector_size not in (16, 32):
-            raise ValueError("sf_vector_size must be 16 (NVFP4) or 32 (MXFP4)")
-        is_packed = True
-    elif out_type == DType.float8_e4m3fn:
-        # MXFP8: float8 data, not packed.
-        if scales_type != DType.float8_e8m0fnu:
-            raise ValueError("scales_type must be float8_e8m0fnu for MXFP8")
-        if sf_vector_size != 32:
-            raise ValueError("sf_vector_size must be 32 for MXFP8")
-        is_packed = False
-    else:
-        raise ValueError(
-            "out_type must be uint8 (FP4) or float8_e4m3fn (MXFP8), got"
-            f" {out_type}"
-        )
-
-    # MXFP4/MXFP8 (sf_vector_size=32) requires K % 32 because the kernel's
-    # 4-thread cooperative scale reduction operates on 32-element groups.
-    # NVFP4 (sf_vector_size=16) only requires K % 8.
-    k_alignment = (
-        sf_vector_size if sf_vector_size == 32 else sf_vector_size // 2
-    )
-    if int(input.shape[1]) % k_alignment != 0:
-        raise ValueError(f"input.shape[1] must be a multiple of {k_alignment}")
-
-    if _is_sm10x_gpu() or _is_sm12x_gpu():
-        # SM100 / SM120 TCGEN05: rank-5 interleaved scales layout.
-        SF_ATOM_M = [32, 4]
-        SF_ATOM_K = 4
-        SF_MN_GROUP_SIZE = SF_ATOM_M[0] * SF_ATOM_M[1]  # 128
-        SF_K_GROUP_SIZE = SF_ATOM_K * sf_vector_size
-        scales_shape: list[Dim | int] = [
-            ceildiv(input.shape[0], Dim(SF_MN_GROUP_SIZE)),
-            ceildiv(input.shape[1], Dim(SF_K_GROUP_SIZE)),
-            SF_ATOM_M[0],
-            SF_ATOM_M[1],
-            SF_ATOM_K,
-        ]
-    else:
-        # Default: rank-2 scales [M, K // sf_vector_size].
-        # TODO: 2D is a proxy for CDNA4. The optimized layout is likely
-        # 6D (32x32 tiles) or 7D (16x16 tiles).
-        scales_shape = [
-            input.shape[0],
-            ceildiv(input.shape[1], Dim(sf_vector_size)),
-        ]
-
-    # FP4 packs two values per output byte; MXFP8 stores one value per element.
-    quantized_k = input.shape[1] // 2 if is_packed else input.shape[1]
-
-    tensor_sf_value: TensorValue
-    if isinstance(tensor_sf, float):
-        tensor_sf_value = ops.constant(
-            tensor_sf, DType.float32, device=DeviceRef.CPU()
-        )
-    else:
-        tensor_sf_value = TensorValue(tensor_sf)
-
     result = ops.custom(
         "mo.quantize.dynamic.block.scaled",
         device=input.device,
-        values=[input, tensor_sf_value],
-        out_types=[
-            TensorType(
-                dtype=out_type,
-                shape=[input.shape[0], quantized_k],
-                device=input.device,
-            ),
-            TensorType(
-                dtype=scales_type,
-                shape=scales_shape,
-                device=input.device,
-            ),
-        ],
+        values=[input, _tensor_sf_value(tensor_sf)],
+        out_types=_block_scaled_quantize_out_types(
+            input.shape[0],
+            input.shape[1],
+            "input.shape[1]",
+            sf_vector_size,
+            scales_type,
+            out_type,
+            input.device,
+        ),
         parameters={
             "SF_VECTOR_SIZE": sf_vector_size,
+        },
+    )
+
+    return result[0].tensor, result[1].tensor
+
+
+def swiglu_quantize_dynamic_block_scaled(
+    gate_up: TensorValue,
+    activation: GatedActivation | None = None,
+    tensor_sf: TensorValue | float = 1.0,
+    sf_vector_size: int = 16,
+    scales_type: DType = DType.float8_e4m3fn,
+    out_type: DType = DType.uint8,
+) -> tuple[TensorValue, TensorValue]:
+    """Quantizes the gated activation of a ``[gate | up]`` tensor with block scales.
+
+    One kernel computes what applying ``activation`` to each ``(gate, up)``
+    pair, rounding to bfloat16, and then
+    :func:`quantize_dynamic_block_scaled` would, without writing the
+    activation out. ``gate`` is the first half of each row and ``up`` the
+    second. The formats and arguments match
+    :func:`quantize_dynamic_block_scaled`. Runs on NVIDIA SM100 and SM120.
+
+    Args:
+        gate_up: The bfloat16 input. Shape: ``[M, 2 * N]``.
+        activation: The gated activation, from
+            :class:`~max.nn.activation.GatedActivation`'s
+            ``fused_activation``, ``alpha`` and ``limit``. Defaults to plain
+            SiLU.
+        tensor_sf: The tensor-wise scale factor (inverted for NVFP4;
+            identity for MXFP8).
+        sf_vector_size: The block size for the scaling factors.
+            16 for NVFP4, 32 for MXFP4/MXFP8.
+        scales_type: The type of the scales tensor.
+            ``float8_e4m3fn`` for NVFP4, ``float8_e8m0fnu`` for MXFP4/MXFP8.
+        out_type: The type of the output tensor. ``uint8`` for packed FP4 or
+            ``float8_e4m3fn`` for MXFP8.
+
+    Returns:
+        The quantized ``[M, N]`` activation (``[M, N // 2]`` packed FP4) and
+        its rank-5 interleaved scales.
+
+    Raises:
+        ValueError: If the GPU is not SM100 or SM120, ``gate_up`` is not a
+            rank-2 bfloat16 tensor with a static even width whose halves
+            are whole scale blocks, or the format arguments do not name a
+            supported format.
+    """
+    if not (_is_sm10x_gpu() or _is_sm12x_gpu()):
+        raise ValueError(
+            "swiglu_quantize_dynamic_block_scaled requires an NVIDIA SM100 or"
+            " SM120 GPU"
+        )
+    if gate_up.rank != 2:
+        raise ValueError("gate_up must be a rank 2 tensor")
+    if gate_up.dtype != DType.bfloat16:
+        raise ValueError("gate_up dtype must be bfloat16")
+    width = gate_up.shape[1]
+    if not isinstance(width, StaticDim) or int(width) % 2:
+        raise ValueError(
+            f"gate_up.shape[1] must be static and even, got {width}"
+        )
+    if int(width) // 2 % sf_vector_size:
+        raise ValueError(
+            "gate_up.shape[1] // 2 must be a multiple of sf_vector_size"
+            f" ({sf_vector_size}), got {int(width) // 2}"
+        )
+
+    result = ops.custom(
+        "mo.swiglu.quantize.dynamic.block.scaled",
+        device=gate_up.device,
+        values=[gate_up, _tensor_sf_value(tensor_sf)],
+        out_types=_block_scaled_quantize_out_types(
+            gate_up.shape[0],
+            width // 2,
+            "gate_up.shape[1] // 2",
+            sf_vector_size,
+            scales_type,
+            out_type,
+            gate_up.device,
+        ),
+        parameters={
+            "SF_VECTOR_SIZE": sf_vector_size,
+            **(activation or GatedActivation()).kernel_parameters(),
         },
     )
 
