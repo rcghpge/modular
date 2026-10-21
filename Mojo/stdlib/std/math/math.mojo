@@ -1442,12 +1442,9 @@ def mulhi(a: UInt32, b: UInt32) -> UInt32:
         The high 32 bits of the product a * b
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MULHI.U32 PTX instruction.
-        On others, it performs multiplication using 64-bit arithmetic.
+        The product is computed in 64-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.hi.u32` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return llvm_intrinsic["llvm.umulh", UInt32, has_side_effect=False](a, b)
 
     var au64 = a.cast[.uint64]()
     var bu64 = b.cast[.uint64]()
@@ -1470,12 +1467,9 @@ def mulhi(a: Int32, b: Int32) -> Int32:
         The high 32 bits of the product a * b
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MULHI.S32 PTX instruction.
-        On others, it performs multiplication using 64-bit arithmetic.
+        The product is computed in 64-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.hi.s32` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return llvm_intrinsic["llvm.smulh", Int32, has_side_effect=False](a, b)
 
     var ai64 = a.cast[.int64]()
     var bi64 = b.cast[.int64]()
@@ -1498,12 +1492,9 @@ def mulhi(a: UInt64, b: UInt64) -> UInt64:
         The high 64 bits of the product a * b.
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MULHI.U64 PTX instruction.
-        On others, it performs multiplication using 128-bit arithmetic.
+        The product is computed in 128-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.hi.u64` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return llvm_intrinsic["llvm.umulh", UInt64, has_side_effect=False](a, b)
 
     var au128 = a.cast[.uint128]()
     var bu128 = b.cast[.uint128]()
@@ -1526,12 +1517,9 @@ def mulhi(a: Int64, b: Int64) -> Int64:
         The high 64 bits of the product a * b.
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MULHI.S64 PTX instruction.
-        On others, it performs multiplication using 128-bit arithmetic.
+        The product is computed in 128-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.hi.s64` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return llvm_intrinsic["llvm.smulh", Int64, has_side_effect=False](a, b)
 
     var ai128 = a.cast[.int128]()
     var bi128 = b.cast[.int128]()
@@ -1558,17 +1546,9 @@ def mulwide(a: UInt32, b: UInt32) -> UInt64:
         The full 64-bit product of a * b
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MUL.WIDE.U32 PTX instruction.
-        On others, it performs multiplication using 64-bit casts.
+        The product is computed in 64-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.wide.u32` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return inlined_assembly[
-            "mul.wide.u32 $0, $1, $2;",
-            UInt64,
-            constraints="=l,r,r",
-            has_side_effect=False,
-        ](a, b)
 
     var au64 = a.cast[.uint64]()
     var bu64 = b.cast[.uint64]()
@@ -1590,17 +1570,9 @@ def mulwide(a: Int32, b: Int32) -> Int64:
         The full 64-bit signed product of a * b
 
     Note:
-        On NVIDIA GPUs, this maps directly to the MUL.WIDE.S32 PTX instruction.
-        On others, it performs multiplication using 64-bit casts.
+        The product is computed in 64-bit arithmetic, which NVIDIA GPUs
+        compile to a single `mul.wide.s32` instruction.
     """
-
-    comptime if is_nvidia_gpu():
-        return inlined_assembly[
-            "mul.wide.s32 $0, $1, $2;",
-            Int64,
-            constraints="=l,r,r",
-            has_side_effect=False,
-        ](a, b)
 
     var ai64 = a.cast[.int64]()
     var bi64 = b.cast[.int64]()
