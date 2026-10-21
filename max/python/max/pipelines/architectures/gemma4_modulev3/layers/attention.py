@@ -216,6 +216,9 @@ class Gemma4Attention(Module[..., Tensor]):
             layer_idx=layer_idx,
             n_heads=per_device_n_heads,
             interleaved=rope.interleaved,
+            # flash_attention_ragged reads Q in the cache dtype (FP8 under
+            # an FP8 KV cache).
+            q_out_dtype=self.kv_params.dtype,
         ).rebind_mapping(qkv.mapping)
         xq = xq.reshape((-1, self.n_heads, head_dim))
 
@@ -233,6 +236,7 @@ class Gemma4Attention(Module[..., Tensor]):
             mask_variant=mask_variant,
             scale=self.scale,
             local_window_size=self.local_window_size if self.use_local else -1,
+            output_dtype=x.dtype,
         ).rebind_mapping(xq.mapping)
         attn_out = attn_out.reshape((-1, self.n_heads * head_dim))
         return self.o_proj(attn_out)
