@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Gemma4 ModuleV3's NVFP4 quantization: config parsing, weight remap, TP
+"""Gemma4 ModuleV3's NVFP4 quantization: config parsing, weight names, TP
 scale sharding.
 
 Mirrors ``nvidia/Gemma-4-31B-IT-NVFP4``: modelopt NVFP4 with every
@@ -348,9 +348,9 @@ def test_nvfp4_checkpoint_keys_match_module_tree() -> None:
 
     ``Module.compile(weights=...)`` silently ignores unmatched entries, so
     a misnamed scale would leave a quantized leaf serving its zero
-    initialization. The quantized MLP keys must land on the
-    ``NVFP4Tensor`` leaves (``<proj>.weight.data`` and friends) while the
-    BF16 attention/norm keys keep their plain paths.
+    initialization. The quantized MLP keys keep the checkpoint's names,
+    which the ``NVFP4Tensor`` leaves expose, as the BF16 attention and norm
+    keys do.
     """
     quant_config = _nvfp4_quant_config()
     config = _make_model_config([DeviceRef.CPU()], quant_config)
@@ -366,23 +366,11 @@ def test_nvfp4_checkpoint_keys_match_module_tree() -> None:
     expected = {f"language_model.{name}" for name, _ in model.parameters}
     assert converted == expected
 
-    # Spot-check the NVFP4 remap itself.
-    assert "language_model.layers.0.mlp.gate_proj.weight.data" in converted
-    assert (
-        "language_model.layers.0.mlp.gate_proj.weight.weight_scale" in converted
-    )
-    assert (
-        "language_model.layers.0.mlp.gate_proj.weight.weight_scale_2"
-        in converted
-    )
-    assert (
-        "language_model.layers.0.mlp.gate_proj.weight.input_scale" in converted
-    )
-    # The bare checkpoint names must not survive.
-    assert not any(
-        name.endswith(".weight_scale_2") and ".weight." not in name
-        for name in converted
-    )
+    proj = "language_model.layers.0.mlp.gate_proj"
+    for leaf in ("weight", "weight_scale", "weight_scale_2", "input_scale"):
+        assert f"{proj}.{leaf}" in converted
+    # Nothing nests under a projection's ``weight``.
+    assert not any(".weight." in name for name in converted)
 
 
 # ---------------------------------------------------------------------------
@@ -409,14 +397,14 @@ def test_nvfp4_mlp_weights_shard_their_scales_too() -> None:
 
     mlp = "layers.0.mlp"
     for proj in ("gate_proj", "up_proj"):
-        data = weights[f"{mlp}.{proj}.weight.data"]
+        data = weights[f"{mlp}.{proj}.weight"]
         assert data.dtype == DType.uint8
         assert [int(d) for d in data.shape] == [
             _INTERMEDIATE,
             _HIDDEN // 2,
         ]
         assert data.placements == (Sharded(0),)
-        block = weights[f"{mlp}.{proj}.weight.weight_scale"]
+        block = weights[f"{mlp}.{proj}.weight_scale"]
         assert block.dtype == DType.float8_e4m3fn
         assert [int(d) for d in block.shape] == [
             _INTERMEDIATE,
@@ -424,15 +412,15 @@ def test_nvfp4_mlp_weights_shard_their_scales_too() -> None:
         ]
         assert block.placements == (Sharded(0),)
 
-    data = weights[f"{mlp}.down_proj.weight.data"]
+    data = weights[f"{mlp}.down_proj.weight"]
     assert [int(d) for d in data.shape] == [_HIDDEN, _INTERMEDIATE // 2]
     assert data.placements == (Sharded(1),)
-    block = weights[f"{mlp}.down_proj.weight.weight_scale"]
+    block = weights[f"{mlp}.down_proj.weight_scale"]
     assert [int(d) for d in block.shape] == [_HIDDEN, _INTERMEDIATE // 16]
     assert block.placements == (Sharded(1),)
 
     for scale in ("weight_scale_2", "input_scale"):
-        tensor = weights[f"{mlp}.gate_proj.weight.{scale}"]
+        tensor = weights[f"{mlp}.gate_proj.{scale}"]
         assert tensor.dtype == DType.float32
         assert tensor.placements == (Replicated(),)
 
@@ -454,10 +442,10 @@ def test_quantized_attention_keeps_bf16_placements() -> None:
 
     attn = "layers.0.self_attn"
     for proj, placement in (("q_proj", Sharded(0)), ("o_proj", Sharded(1))):
-        data = weights[f"{attn}.{proj}.weight.data"]
+        data = weights[f"{attn}.{proj}.weight"]
         assert data.dtype == DType.uint8
         assert data.placements == (placement,)
-        block = weights[f"{attn}.{proj}.weight.weight_scale"]
+        block = weights[f"{attn}.{proj}.weight_scale"]
         assert block.dtype == DType.float8_e4m3fn
         # The scale shards with the data's axis (0 col-parallel rows,
         # 1 row-parallel cols).
@@ -465,11 +453,7 @@ def test_quantized_attention_keeps_bf16_placements() -> None:
 
 
 def test_bf16_checkpoint_keys_still_match_module_tree() -> None:
-    """The bf16 path is unchanged by the NVFP4 branch.
-
-    Without any ``.weight_scale_2`` entry the adapter must not apply the
-    NVFP4 suffix remap (a bf16 ``.weight`` must keep its plain name).
-    """
+    """A bf16 checkpoint's keys exactly cover the BF16 module tree."""
     config = _make_model_config([DeviceRef.CPU()], None)
     model = _model_on_devices(config, n=1)
 

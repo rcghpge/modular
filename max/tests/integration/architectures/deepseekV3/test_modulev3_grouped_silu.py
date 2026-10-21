@@ -25,6 +25,7 @@ from max.driver import Accelerator, LaunchTraceEntry, accelerator_count
 from max.dtype import DType
 from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.quant_tensor import (
+    FP8BlockActivation,
     FP8BlockTensor,
 )
 from max.experimental.tensor import Tensor
@@ -54,11 +55,11 @@ def test_grouped_silu_fp8_is_one_bounded_kernel(live_rows: int) -> None:
     )
     down = FP8BlockTensor.zeros((256, _MOE_DIM)).to(device)
 
-    def run() -> FP8BlockTensor:
+    def run() -> FP8BlockActivation:
         out = quant_ops.grouped_silu(gate_up, expert_start, down)
-        assert isinstance(out, FP8BlockTensor)
+        assert isinstance(out, FP8BlockActivation)
         # Reading a result realizes the pending eager graph.
-        torch.from_dlpack(out.weight_scale_inv)
+        torch.from_dlpack(out.scales)
         return out
 
     result = run()
@@ -73,7 +74,7 @@ def test_grouped_silu_fp8_is_one_bounded_kernel(live_rows: int) -> None:
     assert not any("silu" in name.lower() for name in kernels), kernels
 
     codes = torch.from_dlpack(result.data.cast(DType.float32)).cpu()
-    scales = torch.from_dlpack(result.weight_scale_inv).cpu()
+    scales = torch.from_dlpack(result.scales).cpu()
     gate = gate_up_host[:live_rows, :_MOE_DIM].float()
     up = gate_up_host[:live_rows, _MOE_DIM:].float()
     groups = (torch.nn.functional.silu(gate) * up).view(

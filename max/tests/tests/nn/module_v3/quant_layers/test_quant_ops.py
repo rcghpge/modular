@@ -30,6 +30,7 @@ from max.dtype import DType
 from max.experimental import functional as F
 from max.experimental.nn.common_layers import quant_ops
 from max.experimental.nn.common_layers.quant_tensor import (
+    FP8BlockActivation,
     FP8BlockTensor,
     NVFP4Activation,
     NVFP4Tensor,
@@ -109,7 +110,7 @@ def test_quantized_weight_nvfp4(nvfp4_quant_config: QuantConfig) -> None:
 
         assert isinstance(weight, NVFP4Tensor)
         assert weight.block_size == (1, 16)
-        assert list(weight.data.shape) == [_MOE_DIM, _HIDDEN_DIM // 2]
+        assert list(weight.weight.shape) == [_MOE_DIM, _HIDDEN_DIM // 2]
         assert list(weight.weight_scale.shape) == [_MOE_DIM, _HIDDEN_DIM // 16]
 
 
@@ -147,7 +148,7 @@ def test_quantized_weight_nvfp4_fake(
         assert isinstance(weight, NVFP4TensorQuantizer)
         assert weight.block_size == (1, 16)
         assert list(weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
-        assert weight._tensor.dtype == DType.bfloat16
+        assert weight.weight.dtype == DType.bfloat16
 
 
 def test_quantized_weight_rejects_unsupported_format(
@@ -175,7 +176,7 @@ def test_stack_nvfp4_adds_expert_axis_to_every_leaf() -> None:
         stacked = quant_ops.stack([_nvfp4_weight() for _ in range(4)], axis=0)
 
         assert isinstance(stacked, NVFP4Tensor)
-        assert list(stacked.data.shape) == [4, _MOE_DIM, _HIDDEN_DIM // 2]
+        assert list(stacked.weight.shape) == [4, _MOE_DIM, _HIDDEN_DIM // 2]
         assert list(stacked.weight_scale.shape) == [
             4,
             _MOE_DIM,
@@ -198,7 +199,7 @@ def test_concat_nvfp4_shares_the_global_scales() -> None:
         fused = quant_ops.concat_weights(gate, up, axis=0)
 
         assert isinstance(fused, NVFP4Tensor)
-        assert list(fused.data.shape) == [2 * _MOE_DIM, _HIDDEN_DIM // 2]
+        assert list(fused.weight.shape) == [2 * _MOE_DIM, _HIDDEN_DIM // 2]
         assert list(fused.weight_scale.shape) == [
             2 * _MOE_DIM,
             _HIDDEN_DIM // 16,
@@ -247,7 +248,7 @@ def test_sigma_permute_interleaves_gate_and_up_rows() -> None:
     )
 
     weight = NVFP4Tensor(
-        data=Tensor(data, device=CPU()),
+        weight=Tensor(data, device=CPU()),
         weight_scale=Tensor(scales, device=CPU()),
         weight_scale_2=Tensor(np.ones(num_experts, np.float32), device=CPU()),
         input_scale=Tensor(np.ones(num_experts, np.float32), device=CPU()),
@@ -257,7 +258,7 @@ def test_sigma_permute_interleaves_gate_and_up_rows() -> None:
 
     # sigma(2i) = i (gate row i), sigma(2i + 1) = gate_rows + i (up row i).
     order = [i // 2 if i % 2 == 0 else gate_rows + i // 2 for i in range(rows)]
-    np.testing.assert_array_equal(permuted.data.to_numpy(), data[:, order])
+    np.testing.assert_array_equal(permuted.weight.to_numpy(), data[:, order])
     np.testing.assert_array_equal(
         permuted.weight_scale.to_numpy(), scales[:, order]
     )
@@ -354,13 +355,13 @@ def test_payload_bf16_has_no_scales() -> None:
         # The bf16 grouped matmul reads num_active_experts off the host.
         assert payload.usage_stats[0].device.is_host
 
-        assert payload.per_device_tokens(None) == payload.tokens
+        assert payload.per_device_tokens() == payload.tokens
 
 
 def test_payload_fp8_carries_activation_scales(
     fp8_quant_config: QuantConfig,
 ) -> None:
-    """An FP8 dispatch yields pre-quantized FP8BlockTensor activations."""
+    """An FP8 dispatch yields pre-quantized FP8BlockActivation tokens."""
     with F.lazy():
         config = _ep_config(DType.float8_e4m3fn, fp8_quant_config)
         payload = quant_ops.EPDispatchPayload.from_dispatch(
@@ -371,15 +372,12 @@ def test_payload_fp8_carries_activation_scales(
         assert payload.scales_offset is None
         assert payload.usage_stats is not None
 
-        tokens = payload.per_device_tokens(fp8_quant_config)
+        tokens = payload.per_device_tokens()
         assert len(tokens) == 2
         first = tokens[0]
-        assert isinstance(first, FP8BlockTensor)
-        # Activations are quantized per-token along K, not on the weight grid.
-        assert first.block_size == (
-            1,
-            fp8_quant_config.weight_scale.block_size[1],  # type: ignore[index]
-        )
+        assert isinstance(first, FP8BlockActivation)
+        assert first.data is payload.tokens[0]
+        assert first.scales is payload.scales[0]
 
 
 def test_payload_nvfp4_carries_scales_and_offsets(
@@ -398,9 +396,7 @@ def test_payload_nvfp4_carries_scales_and_offsets(
         assert payload.usage_stats is None
 
         global_scale = Tensor.zeros((), dtype=DType.float32, device=CPU())
-        tokens = payload.per_device_tokens(
-            nvfp4_quant_config, nvfp4_global_scale=global_scale
-        )
+        tokens = payload.per_device_tokens(nvfp4_global_scale=global_scale)
         assert len(tokens) == 2
         first = tokens[0]
         assert isinstance(first, NVFP4Activation)
@@ -421,4 +417,4 @@ def test_payload_nvfp4_tokens_require_the_uniform_scale(
         )
 
         with pytest.raises(AssertionError, match="uniform scale"):
-            payload.per_device_tokens(nvfp4_quant_config)
+            payload.per_device_tokens()

@@ -27,7 +27,10 @@ import torch
 from max.driver import CPU, Accelerator
 from max.dtype import DType
 from max.experimental.nn.common_layers import quant_ops
-from max.experimental.nn.common_layers.quant_tensor import FP8BlockTensor
+from max.experimental.nn.common_layers.quant_tensor import (
+    FP8BlockActivation,
+    FP8BlockTensor,
+)
 from max.experimental.tensor import Tensor
 
 _ROWS = 64
@@ -78,7 +81,7 @@ def test_fp8_silu_quantize_applies_the_limit() -> None:
     # Only the down weight's block size is read: it sets the re-quant's K
     # block.
     down = FP8BlockTensor(
-        data=Tensor.zeros(
+        weight=Tensor.zeros(
             [_MOE_DIM, _MOE_DIM], dtype=DType.float8_e4m3fn, device=device
         ),
         weight_scale_inv=Tensor.ones(
@@ -89,10 +92,10 @@ def test_fp8_silu_quantize_applies_the_limit() -> None:
         block_size=(_BLOCK_K, _BLOCK_K),
     )
     got = quant_ops.grouped_silu(*_inputs(x), down, swiglu_limit=_LIMIT)
-    assert isinstance(got, FP8BlockTensor)
+    assert isinstance(got, FP8BlockActivation)
 
     data = torch.from_dlpack(got.data.cast(DType.float32).to(CPU()))
-    scales = torch.from_dlpack(got.weight_scale_inv.to(CPU()))
+    scales = torch.from_dlpack(got.scales.to(CPU()))
     k_blocks = _MOE_DIM // _BLOCK_K
     if tuple(scales.shape) != (_ROWS, k_blocks):
         scales = scales.T

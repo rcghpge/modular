@@ -157,7 +157,7 @@ def _expected_parameters(
 ) -> set[str]:
     def proj(name: str) -> set[str]:
         if quantized:
-            return {f"{name}.data", f"{name}.weight_scale_inv"}
+            return {f"{name}.weight", f"{name}.weight_scale_inv"}
         return {name}
 
     names: set[str] = set()
@@ -171,8 +171,9 @@ def _expected_parameters(
     names.add("kv_a_proj_layernorm")
     names |= proj("kv_a_proj_with_mqa")
     names |= proj("kv_b_proj")
-    # o_proj is a QuantizedLinear (bias=False) -> nested under "o_proj".
-    names |= {f"o_proj.{p}" for p in proj("weight")}
+    # o_proj is a QuantizedLinear (bias=False). It adds no segment for a
+    # quantized weight, so its names match a raw projection's.
+    names |= proj("o_proj") if quantized else {"o_proj.weight"}
     return names
 
 
@@ -278,9 +279,9 @@ def test_mla_fp8_weight_types(
             kv_params, q_lora_rank=None, quant_config=fp8_quant_config
         ).to(device)
         assert isinstance(layer.q_proj, FP8BlockTensor)
-        assert layer.q_proj.data.dtype == DType.float8_e4m3fn
+        assert layer.q_proj.weight.dtype == DType.float8_e4m3fn
         assert layer.q_proj.weight_scale_inv.dtype == DType.float32
-        assert list(layer.q_proj.data.shape) == [
+        assert list(layer.q_proj.weight.shape) == [
             _N_HEADS * _QK_HEAD_DIM,
             _HIDDEN_SIZE,
         ]
@@ -317,7 +318,7 @@ def test_mla_wqkv_fp8(
         ).to(device)
         wqkv = layer.wqkv
         assert isinstance(wqkv, FP8BlockTensor)
-        assert list(wqkv.data.shape) == [
+        assert list(wqkv.weight.shape) == [
             _N_HEADS * _QK_HEAD_DIM + _CACHE_HEAD_DIM,
             _HIDDEN_SIZE,
         ]
@@ -449,13 +450,13 @@ def test_mla_fp8_tensor_parallel(
 
         # Rowwise weights co-shard data and scales on axis 0.
         assert isinstance(layer.kv_b_proj, FP8BlockTensor)
-        assert layer.kv_b_proj.data.mapping.placements == (Sharded(0),)
+        assert layer.kv_b_proj.weight.mapping.placements == (Sharded(0),)
         assert layer.kv_b_proj.weight_scale_inv.mapping.placements == (
             Sharded(0),
         )
         # o_proj is columnwise: data and scales shard the contraction (axis 1).
         assert isinstance(layer.o_proj.weight, FP8BlockTensor)
-        assert layer.o_proj.weight.data.mapping.placements == (Sharded(1),)
+        assert layer.o_proj.weight.weight.mapping.placements == (Sharded(1),)
         assert layer.o_proj.weight.weight_scale_inv.mapping.placements == (
             Sharded(1),
         )
@@ -565,7 +566,7 @@ def test_sparse_mla_fp8_tensor_parallel_ragged_scale_placement(
         assert layer._ragged_scales
 
         assert isinstance(layer.kv_b_proj, FP8BlockTensor)
-        assert layer.kv_b_proj.data.mapping.placements == (Sharded(0),)
+        assert layer.kv_b_proj.weight.mapping.placements == (Sharded(0),)
         assert layer.kv_b_proj.weight_scale_inv.mapping.placements == (
             Replicated(),
         )
@@ -641,14 +642,13 @@ def test_sparse_mla_fp8_tensor_parallel_ragged_scale_values(
 # NVFP4
 # --------------------------------------------------------------------------- #
 
-_NVFP4_LEAVES = ("data", "weight_scale", "weight_scale_2", "input_scale")
+_NVFP4_LEAVES = ("weight", "weight_scale", "weight_scale_2", "input_scale")
 
 
 def _expected_nvfp4_parameters(*, q_lora_rank: int | None) -> set[str]:
     """NVFP4 checkpoints quantize only ``o_proj``; q/kv stay bf16."""
     names = _expected_parameters(q_lora_rank=q_lora_rank, quantized=False)
-    names.discard("o_proj.weight")
-    return names | {f"o_proj.weight.{leaf}" for leaf in _NVFP4_LEAVES}
+    return names | {f"o_proj.{leaf}" for leaf in _NVFP4_LEAVES}
 
 
 def test_mla_nvfp4_leaves_latent_projections_bf16(
@@ -669,7 +669,7 @@ def test_mla_nvfp4_leaves_latent_projections_bf16(
         assert isinstance(layer.kv_b_proj, Tensor)
         # Only the output projection runs on the FP4 kernels.
         assert isinstance(layer.o_proj.weight, NVFP4Tensor)
-        assert list(layer.o_proj.weight.data.shape) == [
+        assert list(layer.o_proj.weight.weight.shape) == [
             _HIDDEN_SIZE,
             _N_HEADS * _V_HEAD_DIM // 2,
         ]
@@ -779,7 +779,7 @@ def test_mla_nvfp4_tensor_parallel(
         weight = layer.o_proj.weight
         assert isinstance(weight, NVFP4Tensor)
         # o_proj is columnwise: the contraction axis (1) is sharded.
-        assert weight.data.mapping.placements == (Sharded(1),)
+        assert weight.weight.mapping.placements == (Sharded(1),)
         assert weight.weight_scale.mapping.placements == (Sharded(1),)
         # A per-tensor scale cannot be split, so both globals are replicated.
         assert weight.weight_scale_2.mapping.placements == (Replicated(),)

@@ -78,14 +78,15 @@ def test_mixed_precision_names() -> None:
         # A BF16 KDA projection is a plain linear, whatever its name.
         f"{lm}layers.0.self_attn.q_proj.weight",
         f"{lm}layers.0.self_attn.q_conv1d",
-        f"{lm}layers.0.mlp.gate_proj.weight.data",
-        f"{lm}layers.0.mlp.gate_proj.weight.weight_scale_inv",
-        # Raw MLA projections drop `.weight`; the FP8 ones gain two leaves.
-        f"{lm}layers.3.self_attn.q_a_proj.data",
+        f"{lm}layers.0.mlp.gate_proj.weight",
+        f"{lm}layers.0.mlp.gate_proj.weight_scale_inv",
+        # A BF16 raw MLA projection drops `.weight`; an FP8 one keeps its
+        # checkpoint names, as a linear does.
+        f"{lm}layers.3.self_attn.q_a_proj.weight",
         f"{lm}layers.3.self_attn.q_a_proj.weight_scale_inv",
         f"{lm}layers.3.self_attn.kv_b_proj",
-        f"{lm}layers.3.self_attn.o_proj.weight.data",
-        f"{lm}layers.3.self_attn.o_proj.weight.weight_scale_inv",
+        f"{lm}layers.3.self_attn.o_proj.weight",
+        f"{lm}layers.3.self_attn.o_proj.weight_scale_inv",
         f"{lm}layers.3.self_attn.kv_a_proj_layernorm",
         f"{lm}layers.3.self_attn.indexer.index_kpool_compress_gate.weight",
         f"{lm}layers.3.mlp.gate.gate_score.weight",

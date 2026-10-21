@@ -136,15 +136,11 @@ def convert_glm5_next_state_dict(
             base = checkpoint_name[: -len(".weight")]
 
         if base is not None and base in scaled:
-            # An FP8 weight: data and scale land on the FP8BlockTensor's
-            # leaves, directly for a raw MLA projection, under `.weight` for
-            # a linear.
+            # An FP8 weight keeps its checkpoint name: the FP8BlockTensor keys
+            # its packed data `weight` beside `weight_scale_inv`, for a raw
+            # MLA projection and a linear alike.
             module = _rename(_lm_name(base) or base)
-            leaf = "weight_scale_inv" if is_scale else "data"
-            if module.rsplit(".", 1)[-1] in _MLA_RAW:
-                name = f"{module}.{leaf}"
-            else:
-                name = f"{module}.weight.{leaf}"
+            name = f"{module}.{'weight_scale_inv' if is_scale else 'weight'}"
         else:
             name = _rename(name)
             stem = name.removesuffix(".weight")

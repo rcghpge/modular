@@ -22,13 +22,9 @@ from transformers import AutoConfig
 from ..gemma4.weight_adapters import (
     convert_safetensor_language_state_dict,
 )
-from ..gemma4_modulev3.weight_adapters import (
-    _convert_nvfp4_language_state_dict,
-)
 
 __all__ = [
     "convert_draft_state_dict",
-    "convert_language_state_dict_for_mtp",
     "convert_safetensor_state_dict",
 ]
 
@@ -42,30 +38,9 @@ def convert_safetensor_state_dict(
     """Registry adapter: converts target language weights only.
 
     Identical to the graph-API MTP arch's adapter: the draft checkpoint is
-    loaded separately in ``model.py`` from the draft model's own files, and
-    the NVFP4 remap onto the module tree's ``NVFP4Tensor`` leaves happens
-    there (the registry's keys never reach the module tree directly).
+    loaded separately in ``model.py`` from the draft model's own files.
     """
     return convert_safetensor_language_state_dict(state_dict)
-
-
-def convert_language_state_dict_for_mtp(
-    state_dict: dict[str, WeightData],
-) -> dict[str, WeightData]:
-    """Converts the target's language slice for the MTP module tree.
-
-    The V2 pipeline's language adapter yields bare paths (no
-    ``language_model.`` prefix), which is what this fused module's target
-    subtree expects: the target nests directly under ``target.*`` rather
-    than under ``target.language_model.*``. NVFP4 checkpoints (any
-    ``*.weight_scale_2`` entry) additionally remap their packed weights
-    and scales onto ``NVFP4Tensor`` leaves, as the ModuleV3 Gemma4 arch
-    does.
-    """
-    is_nvfp4 = any(name.endswith(".weight_scale_2") for name in state_dict)
-    if is_nvfp4:
-        state_dict = _convert_nvfp4_language_state_dict(state_dict)
-    return state_dict
 
 
 def convert_draft_state_dict(

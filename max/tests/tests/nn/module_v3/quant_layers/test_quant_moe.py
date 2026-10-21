@@ -37,12 +37,7 @@ _SHARED_EXPERTS_DIM = 128
 _SEQ_LEN = 4
 
 
-_NVFP4_LEAVES = (
-    "weight.data",
-    "weight.weight_scale",
-    "weight.weight_scale_2",
-    "weight.input_scale",
-)
+_NVFP4_LEAVES = ("weight", "weight_scale", "weight_scale_2", "input_scale")
 
 
 def _expected_expert_param_names(
@@ -50,11 +45,7 @@ def _expected_expert_param_names(
 ) -> set[str]:
     """Per-expert MLP parameter names for the routed experts."""
     if leaves is None:
-        leaves = (
-            ("weight.data", "weight.weight_scale_inv")
-            if quantized
-            else ("weight",)
-        )
+        leaves = ("weight", "weight_scale_inv") if quantized else ("weight",)
     names = set()
     for i in range(_NUM_EXPERTS):
         for proj in ("gate_proj", "up_proj", "down_proj"):
@@ -189,9 +180,9 @@ def test_moe_stacked_weights_fp8(
         gate_up = layer.gate_up_proj
         assert len(gate_up) == 1
         assert isinstance(gate_up[0], FP8BlockTensor)
-        assert gate_up[0].data.dtype == DType.float8_e4m3fn
+        assert gate_up[0].weight.dtype == DType.float8_e4m3fn
         assert gate_up[0].weight_scale_inv.dtype == DType.float32
-        assert list(gate_up[0].data.shape) == [
+        assert list(gate_up[0].weight.shape) == [
             _NUM_EXPERTS,
             2 * _MOE_DIM,
             _HIDDEN_DIM,
@@ -200,7 +191,11 @@ def test_moe_stacked_weights_fp8(
         down = layer.down_proj
         assert len(down) == 1
         assert isinstance(down[0], FP8BlockTensor)
-        assert list(down[0].data.shape) == [_NUM_EXPERTS, _HIDDEN_DIM, _MOE_DIM]
+        assert list(down[0].weight.shape) == [
+            _NUM_EXPERTS,
+            _HIDDEN_DIM,
+            _MOE_DIM,
+        ]
 
 
 # --------------------------------------------------------------------------- #
@@ -311,9 +306,9 @@ def test_moe_stacked_weights_nvfp4(
         gate_up = layer.gate_up_proj
         assert len(gate_up) == 1
         assert isinstance(gate_up[0], NVFP4Tensor)
-        assert gate_up[0].data.dtype == DType.uint8
+        assert gate_up[0].weight.dtype == DType.uint8
         assert gate_up[0].weight_scale.dtype == DType.float8_e4m3fn
-        assert list(gate_up[0].data.shape) == [
+        assert list(gate_up[0].weight.shape) == [
             _NUM_EXPERTS,
             2 * _MOE_DIM,
             _HIDDEN_DIM // 2,
@@ -330,7 +325,7 @@ def test_moe_stacked_weights_nvfp4(
         down = layer.down_proj
         assert len(down) == 1
         assert isinstance(down[0], NVFP4Tensor)
-        assert list(down[0].data.shape) == [
+        assert list(down[0].weight.shape) == [
             _NUM_EXPERTS,
             _HIDDEN_DIM,
             _MOE_DIM // 2,

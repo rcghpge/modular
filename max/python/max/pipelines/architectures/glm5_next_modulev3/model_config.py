@@ -64,12 +64,10 @@ from ..deepseekV3_2_modulev3.model_config import DeepseekV3_2Config
 
 __all__ = ["Glm5NextConfig"]
 
-# A ModuleV3 FP8 weight's scale, as the adapter names it: either a raw MLA
-# projection's ``<proj>.weight_scale_inv`` or a linear's
-# ``<proj>.weight.weight_scale_inv``.
+# A ModuleV3 FP8 weight's scale, as the adapter names it.
 _V3_SCALE = re.compile(
     r"^language_model\.(layers\.\d+\.(?:mlp|self_attn)\..+?)"
-    r"(?:\.weight)?\.weight_scale_inv$"
+    r"\.weight_scale_inv$"
 )
 
 

@@ -82,14 +82,14 @@ def test_linear_fp8_parameters(
         assert (
             layer.weight.block_size == fp8_quant_config.weight_scale.block_size
         )
-        assert layer.weight.data.dtype == DType.float8_e4m3fn
+        assert layer.weight.weight.dtype == DType.float8_e4m3fn
         assert layer.weight.weight_scale_inv.dtype == DType.float32
-        assert list(layer.weight.data.shape) == [_FFN_DIM, _HIDDEN_DIM]
+        assert list(layer.weight.weight.shape) == [_FFN_DIM, _HIDDEN_DIM]
         # 512 / 128 == 4, 256 / 128 == 2
         assert list(layer.weight.weight_scale_inv.shape) == [4, 2]
 
         names = {name for name, _ in layer.parameters}
-        assert names == {"weight.data", "weight.weight_scale_inv", "bias"}
+        assert names == {"weight", "weight_scale_inv", "bias"}
 
 
 def test_linear_bf16_forward(mock_accelerator: MagicMock) -> None:
@@ -159,12 +159,12 @@ def test_mlp_fp8_parameters(
 
         names = {name for name, _ in layer.parameters}
         assert names == {
-            "gate_proj.weight.data",
-            "gate_proj.weight.weight_scale_inv",
-            "up_proj.weight.data",
-            "up_proj.weight.weight_scale_inv",
-            "down_proj.weight.data",
-            "down_proj.weight.weight_scale_inv",
+            "gate_proj.weight",
+            "gate_proj.weight_scale_inv",
+            "up_proj.weight",
+            "up_proj.weight_scale_inv",
+            "down_proj.weight",
+            "down_proj.weight_scale_inv",
         }
 
 
@@ -225,10 +225,10 @@ def test_linear_nvfp4_parameters(
             layer.weight.block_size
             == nvfp4_quant_config.weight_scale.block_size
         )
-        assert layer.weight.data.dtype == DType.uint8
+        assert layer.weight.weight.dtype == DType.uint8
         assert layer.weight.weight_scale.dtype == DType.float8_e4m3fn
         # Two FP4 values per byte along K; one scale per 16-element block.
-        assert list(layer.weight.data.shape) == [_FFN_DIM, _HIDDEN_DIM // 2]
+        assert list(layer.weight.weight.shape) == [_FFN_DIM, _HIDDEN_DIM // 2]
         assert list(layer.weight.weight_scale.shape) == [
             _FFN_DIM,
             _HIDDEN_DIM // 16,
@@ -236,10 +236,10 @@ def test_linear_nvfp4_parameters(
 
         names = {name for name, _ in layer.parameters}
         assert names == {
-            "weight.data",
-            "weight.weight_scale",
-            "weight.weight_scale_2",
-            "weight.input_scale",
+            "weight",
+            "weight_scale",
+            "weight_scale_2",
+            "input_scale",
             "bias",
         }
 
@@ -276,7 +276,7 @@ def test_linear_nvfp4_fake_quant_parameters(
 
         assert isinstance(layer.weight, NVFP4TensorQuantizer)
         assert list(layer.weight.shape) == [_FFN_DIM, _HIDDEN_DIM]
-        assert layer.weight._tensor.dtype == DType.bfloat16
+        assert layer.weight.weight.dtype == DType.bfloat16
         assert {name for name, _ in layer.parameters} == {"weight", "bias"}
 
 
@@ -317,6 +317,7 @@ def test_linear_nvfp4_fake_quant_forward_uses_packed_weight(
 
     The stored parameter stays bf16. It is an input of the weight quantize
     op, and the matmul consumes that op's uint8 data plus the float8 scales.
+    A second forward reuses the quantization rather than quantizing again.
     """
     device = mock_accelerator()
     with F.lazy(), default_dtype(DType.bfloat16):
@@ -327,6 +328,7 @@ def test_linear_nvfp4_fake_quant_forward_uses_packed_weight(
             [_SEQ_LEN, _HIDDEN_DIM], dtype=DType.bfloat16, device=device
         )
         out = layer(x)
+        layer(x)
         ir = str(Graph.current._mlir_op)
 
     assert list(out.shape) == [_SEQ_LEN, _FFN_DIM]
@@ -335,8 +337,9 @@ def test_linear_nvfp4_fake_quant_forward_uses_packed_weight(
 
     bf16_weight = f"!mo.tensor<[{_FFN_DIM}, {_HIDDEN_DIM}], bf16"
     packed_weight = f"!mo.tensor<[{_FFN_DIM}, {_HIDDEN_DIM // 2}], ui8"
-    (matmul_inputs,) = _custom_signatures(ir, "mo.matmul.dynamic.block.scaled")
-    matmul_operands, _ = matmul_inputs
+    matmuls = _custom_signatures(ir, "mo.matmul.dynamic.block.scaled")
+    assert len(matmuls) == 2
+    matmul_operands, _ = matmuls[0]
     assert packed_weight in matmul_operands
     assert bf16_weight not in matmul_operands
     assert matmul_operands.count("f8e4m3fn") == 2
@@ -367,10 +370,10 @@ def test_mlp_nvfp4_parameters(
 
         names = {name for name, _ in layer.parameters}
         assert names == {
-            f"{proj}.weight.{leaf}"
+            f"{proj}.{leaf}"
             for proj in ("gate_proj", "up_proj", "down_proj")
             for leaf in (
-                "data",
+                "weight",
                 "weight_scale",
                 "weight_scale_2",
                 "input_scale",

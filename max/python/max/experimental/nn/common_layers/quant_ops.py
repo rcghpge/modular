@@ -73,6 +73,7 @@ from max.nn.quant_config import (
 )
 
 from .quant_tensor import (
+    FP8BlockActivation,
     FP8BlockTensor,
     NVFP4Activation,
     NVFP4Tensor,
@@ -419,15 +420,12 @@ class EPDispatchPayload:
 
     def per_device_tokens(
         self,
-        quant_config: QuantConfig | None,
         *,
         nvfp4_global_scale: Tensor | None = None,
     ) -> Sequence[QuantAwareTensor]:
         """Wrap the raw per-device token columns into activations.
 
         Args:
-            quant_config: Routed-expert quant config (supplies the FP8 block
-                size).
             nvfp4_global_scale: Uniform NVFP4 activation scale the dispatch
                 quantized with (the max static ``input_scale`` across experts);
                 required when the payload carries NVFP4 tokens.
@@ -448,15 +446,8 @@ class EPDispatchPayload:
                 )
             ]
         if self.scales is not None:
-            assert quant_config is not None
-            weight_block = quant_config.weight_scale.block_size
-            assert weight_block is not None
             return [
-                FP8BlockTensor(
-                    data=d,
-                    weight_scale_inv=s,
-                    block_size=(1, weight_block[1]),
-                )
+                FP8BlockActivation(data=d, scales=s)
                 for d, s in zip(self.tokens, self.scales, strict=True)
             ]
         return self.tokens
@@ -533,7 +524,7 @@ def quantized_weight(
 def stack(items: list[QuantAwareTensor], axis: int = 0) -> QuantAwareTensor:
     """Stack a homogeneous bundle along ``axis``, dispatching on quant type.
 
-    For FP8 items, both leaves (``data`` and ``weight_scale_inv``) are stacked and
+    For FP8 items, both leaves (``weight`` and ``weight_scale_inv``) are stacked and
     rewrapped in an :class:`FP8BlockTensor`; for plain tensors the list is
     stacked directly. Companion to :func:`concat_weights`.
 
@@ -550,7 +541,7 @@ def stack(items: list[QuantAwareTensor], axis: int = 0) -> QuantAwareTensor:
     if isinstance(first, FP8BlockTensor):
         assert all_fp8_block(items)
         return FP8BlockTensor(
-            data=F.stack([w.data for w in items], axis=axis),
+            weight=F.stack([w.weight for w in items], axis=axis),
             weight_scale_inv=F.stack(
                 [w.weight_scale_inv for w in items], axis=axis
             ),
@@ -559,7 +550,7 @@ def stack(items: list[QuantAwareTensor], axis: int = 0) -> QuantAwareTensor:
     if isinstance(first, NVFP4Tensor):
         assert all_nvfp4(items)
         return NVFP4Tensor(
-            data=F.stack([w.data for w in items], axis=axis),
+            weight=F.stack([w.weight for w in items], axis=axis),
             weight_scale=F.stack([w.weight_scale for w in items], axis=axis),
             weight_scale_2=F.stack(
                 [w.weight_scale_2 for w in items], axis=axis
@@ -581,9 +572,9 @@ def combine_quant_per_device(
 
     ``combine`` merges all items' tensors for one leaf into a per-device list
     (one tensor per mesh device) — for example, a TP shard-and-stack.  For FP8 input,
-    ``combine`` is applied to the ``data`` and ``weight_scale_inv`` leaves
+    ``combine`` is applied to the ``weight`` and ``weight_scale_inv`` leaves
     independently and the per-device leaves are zipped back into one
-    :class:`FP8BlockTensor` per device, so the FP8 invariant (``data`` and
+    :class:`FP8BlockTensor` per device, so the FP8 invariant (``weight`` and
     ``weight_scale_inv`` are each a single :class:`~max.experimental.tensor.Tensor`)
     is preserved without the caller transposing a struct-of-lists into a
     list-of-structs.  For plain tensors the per-device list is returned as-is.
@@ -605,17 +596,17 @@ def combine_quant_per_device(
 
     Returns:
         One :class:`QuantAwareTensor` per device. For FP8 input, each is an
-        :class:`FP8BlockTensor` whose ``data``/``weight_scale_inv`` are that device's
+        :class:`FP8BlockTensor` whose ``weight``/``weight_scale_inv`` are that device's
         leaves; for plain tensors, the per-device list is returned directly.
     """
     first = items[0]
     if isinstance(first, FP8BlockTensor):
         assert all_fp8_block(items)
-        data = combine([w.data for w in items])
+        data = combine([w.weight for w in items])
         weight_scale_inv = combine([w.weight_scale_inv for w in items])
         return [
             FP8BlockTensor(
-                data=d, weight_scale_inv=s, block_size=first.block_size
+                weight=d, weight_scale_inv=s, block_size=first.block_size
             )
             for d, s in zip(data, weight_scale_inv, strict=True)
         ]
@@ -625,7 +616,7 @@ def combine_quant_per_device(
             items if global_scale_items is None else global_scale_items
         )
         assert all_nvfp4(scale_items)
-        data = combine([w.data for w in items])
+        data = combine([w.weight for w in items])
         weight_scale = combine([w.weight_scale for w in items])
         weight_scale_2 = F.stack(
             [w.weight_scale_2 for w in scale_items], axis=0
@@ -633,7 +624,7 @@ def combine_quant_per_device(
         input_scale = F.stack([w.input_scale for w in scale_items], axis=0)
         return [
             NVFP4Tensor(
-                data=d,
+                weight=d,
                 weight_scale=s,
                 weight_scale_2=weight_scale_2,
                 input_scale=input_scale,
@@ -657,8 +648,8 @@ def stack_device_shards(
     if isinstance(first, FP8BlockTensor):
         assert all_fp8_block(shards)
         return FP8BlockTensor(
-            data=Tensor.from_shard_values(
-                [TensorValue(s.data) for s in shards], mapping
+            weight=Tensor.from_shard_values(
+                [TensorValue(s.weight) for s in shards], mapping
             ),
             weight_scale_inv=Tensor.from_shard_values(
                 [TensorValue(s.weight_scale_inv) for s in shards], mapping
@@ -668,8 +659,8 @@ def stack_device_shards(
     if isinstance(first, NVFP4Tensor):
         assert all_nvfp4(shards)
         return NVFP4Tensor(
-            data=Tensor.from_shard_values(
-                [TensorValue(s.data) for s in shards], mapping
+            weight=Tensor.from_shard_values(
+                [TensorValue(s.weight) for s in shards], mapping
             ),
             weight_scale=Tensor.from_shard_values(
                 [TensorValue(s.weight_scale) for s in shards], mapping
@@ -738,7 +729,11 @@ def matmul(x: Tensor, weight: QuantAwareTensor) -> Tensor:
     - :class:`NVFP4Tensor` weight: normalizes ``x`` by the static
       ``input_scale``, dynamically block-quantizes it to FP4, then runs the
       SM100 block-scaled FP4 matmul and returns bf16.
+    - :class:`NVFP4TensorQuantizer` weight: as :class:`NVFP4Tensor`, on its
+      cached quantization.
     """
+    if isinstance(weight, NVFP4TensorQuantizer):
+        weight = weight.quant_tensor
     if isinstance(weight, FP8BlockTensor):
         return _matmul_fp8_block(x, weight)
     if isinstance(weight, NVFP4Tensor):
@@ -761,7 +756,7 @@ def _matmul_nvfp4(x: Tensor, weight: NVFP4Tensor) -> Tensor:
     )
     return dynamic_block_scaled_matmul(
         x_fp4,
-        weight.data,
+        weight.weight,
         x_scales,
         weight_scale,
         tensor_sf=weight.weight_scale_2 * weight.input_scale,
@@ -771,7 +766,7 @@ def _matmul_nvfp4(x: Tensor, weight: NVFP4Tensor) -> Tensor:
 
 
 def _matmul_fp8_block(x: Tensor, weight: FP8BlockTensor) -> Tensor:
-    """Block-scaled FP8 matmul ``x @ weight.data.T``.
+    """Block-scaled FP8 matmul ``x @ weight.T``.
 
     Activations are quantized dynamically.
     The activation block is ``(1, block_k)`` and the weight block is
@@ -793,7 +788,7 @@ def _matmul_fp8_block(x: Tensor, weight: FP8BlockTensor) -> Tensor:
 
     return dynamic_scaled_matmul(
         x_fp8,
-        weight.data,
+        weight.weight,
         x_scales,
         weight.weight_scale_inv,
         input_spec,
@@ -881,10 +876,10 @@ def grouped_matmul(
             out_type=out_type,
         )
     if isinstance(weight, FP8BlockTensor):
-        if isinstance(x, FP8BlockTensor):
+        if isinstance(x, FP8BlockActivation):
             # Activations already block-quantized (e.g. by the EP FP8 dispatch
             # or a quantized SiLU); pass them through directly.
-            x_fp8, x_scales = x.data, x.weight_scale_inv
+            x_fp8, x_scales = x.data, x.scales
         else:
             assert isinstance(x, Tensor)
             x_fp8, x_scales = _quantize_activation_fp8(x, weight.block_size)
@@ -954,7 +949,7 @@ def _nvfp4_grouped_matmul(
     )
     return grouped_matmul_block_scaled(
         x_fp4,
-        weight.data,
+        weight.weight,
         x_scales,
         b_scales,
         expert_start_indices,
@@ -990,7 +985,7 @@ def sigma_permute_gate_up_nvfp4(weight: NVFP4Tensor) -> NVFP4Tensor:
         )
 
     return NVFP4Tensor(
-        data=_perm(weight.data),
+        weight=_perm(weight.weight),
         weight_scale=_perm(weight.weight_scale),
         weight_scale_2=weight.weight_scale_2,
         input_scale=weight.input_scale,
@@ -1022,7 +1017,7 @@ def grouped_matmul_swiglu_nvfp4_ep(
     c_input_scales = 1.0 / down_input_scale
     c_packed, c_scales = _grouped_matmul_blocked_swiglu(
         TensorValue(tokens),
-        TensorValue(weight.data),
+        TensorValue(weight.weight),
         TensorValue(token_scales),
         TensorValue(b_scales),
         TensorValue(expert_start_indices),
@@ -1114,7 +1109,7 @@ def grouped_matmul_silu(
     # Fuse the down-proj re-quant into the SiLU only when the activation was
     # pre-quantized upstream (EP dispatch); otherwise emit bf16 and let the
     # down matmul quantize.
-    prequantized = isinstance(tokens, (FP8BlockTensor, NVFP4Activation))
+    prequantized = isinstance(tokens, (FP8BlockActivation, NVFP4Activation))
     # NVFP4's down matmul quantizes from bf16 only, so a float32 SwiGLU output
     # has to be packed by the fused quantized SiLU instead.
     requant_weight = (
@@ -1182,7 +1177,7 @@ def _grouped_fp8_matmul(
             usage_stats = _bound_grid_y(usage_stats, estimated_total_m)
     return grouped_dynamic_scaled_fp8_matmul(
         x_fp8,
-        weight.data,
+        weight.weight,
         x_scales,
         weight.weight_scale_inv,
         expert_start_indices,
@@ -1201,7 +1196,7 @@ def _amd_tiled_grouped_fp8(x_scales: Tensor, weight: FP8BlockTensor) -> bool:
     Mirrors the kernel's ``amd_tiled`` predicate: only that kernel accepts
     the capture-safe grid controls, and the other arms reject them.
     """
-    n, k = int(weight.data.shape[1]), int(weight.data.shape[2])
+    n, k = int(weight.weight.shape[1]), int(weight.weight.shape[2])
     return (
         accelerator_api() == "hip"
         and accelerator_architecture_name().startswith("gfx950")
@@ -1302,7 +1297,7 @@ def grouped_silu(
         input_spec, weight_spec = _fp8_block_specs(
             (block_m, block_k), input_block=(1, block_k)
         )
-        data, weight_scale_inv = _silu_quantize_fp8(
+        data, scales = _silu_quantize_fp8(
             x,
             expert_start_indices,
             input_spec,
@@ -1310,10 +1305,9 @@ def grouped_silu(
             block_k,
             swiglu_limit,
         )
-        return FP8BlockTensor(
+        return FP8BlockActivation(
             data=data.rebind_mapping(x.mapping),
-            weight_scale_inv=weight_scale_inv.rebind_mapping(x.mapping),
-            block_size=(1, block_k),
+            scales=scales.rebind_mapping(x.mapping),
         )
     # Exhaustive: a new quantized down-weight must not silently skip its
     # re-quant by taking the plain bf16 SiLU.
@@ -1337,17 +1331,17 @@ def concat_fp8_block(*tensors: FP8BlockTensor, axis: int = 0) -> FP8BlockTensor:
                 f"concat; got {block_size} and {q.block_size}"
             )
 
-    data = F.concat([q.data for q in tensors], axis=0)
+    data = F.concat([q.weight for q in tensors], axis=0)
     weight_scale_inv = F.concat([q.weight_scale_inv for q in tensors], axis=0)
     return FP8BlockTensor(
-        data=data, weight_scale_inv=weight_scale_inv, block_size=block_size
+        weight=data, weight_scale_inv=weight_scale_inv, block_size=block_size
     )
 
 
 def concat_nvfp4(*tensors: NVFP4Tensor, axis: int = 0) -> NVFP4Tensor:
     """Concatenate two or more :class:`NVFP4Tensor`s along the row axis.
 
-    Concatenates the packed ``data`` and per-block ``weight_scale`` along
+    Concatenates the packed ``weight`` and per-block ``weight_scale`` along
     ``axis`` (the ``N``/row axis). The per-tensor ``weight_scale_2`` and static
     ``input_scale`` are taken from the first tensor: modelopt emits a shared
     global scale for the fused ``gate``/``up`` projections.
@@ -1366,7 +1360,7 @@ def concat_nvfp4(*tensors: NVFP4Tensor, axis: int = 0) -> NVFP4Tensor:
                 f"got {block_size} and {q.block_size}"
             )
     return NVFP4Tensor(
-        data=F.concat([q.data for q in tensors], axis=0),
+        weight=F.concat([q.weight for q in tensors], axis=0),
         weight_scale=F.concat([q.weight_scale for q in tensors], axis=0),
         weight_scale_2=tensors[0].weight_scale_2,
         input_scale=tensors[0].input_scale,

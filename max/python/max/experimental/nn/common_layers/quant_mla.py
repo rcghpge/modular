@@ -47,9 +47,9 @@ from .quant_tensor import FP8BlockTensor, NVFP4Tensor, QuantAwareTensor
 
 
 def _data(weight: QuantAwareTensor) -> Tensor:
-    """Underlying data tensor of a weight (``.data`` when quantized, else itself)."""
+    """The packed ``weight`` of a quantized weight, else the weight itself."""
     if isinstance(weight, (FP8BlockTensor, NVFP4Tensor)):
-        return weight.data
+        return weight.weight
     assert isinstance(weight, Tensor)
     return weight
 

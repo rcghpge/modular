@@ -230,7 +230,7 @@ def test_tensor_parallel_moe_fp8_weights(
         gate_up = layer.gate_up_proj
         assert isinstance(gate_up, list)
         assert isinstance(gate_up[0], FP8BlockTensor)
-        assert list(gate_up[0].data.shape) == [
+        assert list(gate_up[0].weight.shape) == [
             _NUM_EXPERTS,
             2 * _FP8_MOE_DIM // num_devices,
             _FP8_HIDDEN_DIM,
@@ -245,7 +245,7 @@ def test_tensor_parallel_moe_fp8_weights(
         down = layer.down_proj
         assert isinstance(down, list)
         assert isinstance(down[0], FP8BlockTensor)
-        assert list(down[0].data.shape) == [
+        assert list(down[0].weight.shape) == [
             _NUM_EXPERTS,
             _FP8_HIDDEN_DIM,
             _FP8_MOE_DIM // num_devices,
@@ -521,18 +521,18 @@ def test_expert_parallel_moe_fp8_weights(
         assert len(gate_up) == num_devices
         for i, shard in enumerate(gate_up):
             assert isinstance(shard, FP8BlockTensor)
-            assert list(shard.data.shape) == [
+            assert list(shard.weight.shape) == [
                 num_local_experts,
                 2 * _MOE_DIM,
                 _HIDDEN_DIM,
             ]
-            assert shard.data.device == devices[i]
+            assert shard.weight.device == devices[i]
 
         down = layer.down_proj
         assert len(down) == num_devices
         for shard in down:
             assert isinstance(shard, FP8BlockTensor)
-            assert list(shard.data.shape) == [
+            assert list(shard.weight.shape) == [
                 num_local_experts,
                 _HIDDEN_DIM,
                 _MOE_DIM,
@@ -560,7 +560,7 @@ def test_tensor_parallel_moe_nvfp4_weights(
         gate_up = layer.gate_up_proj
         assert len(gate_up) == num_devices
         assert isinstance(gate_up[0], NVFP4Tensor)
-        assert list(gate_up[0].data.shape) == [
+        assert list(gate_up[0].weight.shape) == [
             _NUM_EXPERTS,
             2 * _MOE_DIM // num_devices,
             _HIDDEN_DIM // 2,
@@ -578,7 +578,7 @@ def test_tensor_parallel_moe_nvfp4_weights(
         down = layer.down_proj
         assert len(down) == num_devices
         assert isinstance(down[0], NVFP4Tensor)
-        assert list(down[0].data.shape) == [
+        assert list(down[0].weight.shape) == [
             _NUM_EXPERTS,
             _HIDDEN_DIM,
             _MOE_DIM // 2 // num_devices,
@@ -658,7 +658,7 @@ def test_expert_parallel_moe_nvfp4_weights(
         assert len(gate_up) == num_devices
         for i, shard in enumerate(gate_up):
             assert isinstance(shard, NVFP4Tensor)
-            assert list(shard.data.shape) == [
+            assert list(shard.weight.shape) == [
                 num_local_experts,
                 2 * _MOE_DIM,
                 _HIDDEN_DIM // 2,
@@ -670,13 +670,13 @@ def test_expert_parallel_moe_nvfp4_weights(
             ]
             # gate and up share one global scale per expert.
             assert list(shard.weight_scale_2.shape) == [num_local_experts]
-            assert shard.data.device == devices[i]
+            assert shard.weight.device == devices[i]
 
         down = layer.down_proj
         assert len(down) == num_devices
         for shard in down:
             assert isinstance(shard, NVFP4Tensor)
-            assert list(shard.data.shape) == [
+            assert list(shard.weight.shape) == [
                 num_local_experts,
                 _HIDDEN_DIM,
                 _MOE_DIM // 2,
@@ -736,7 +736,7 @@ def test_expert_parallel_moe_nvfp4_fused_swiglu_permutes_gate_up(
         gate_up = layer.gate_up_proj
         for shard in gate_up:
             assert isinstance(shard, NVFP4Tensor)
-            assert list(shard.data.shape) == [
+            assert list(shard.weight.shape) == [
                 num_local_experts,
                 2 * _MOE_DIM,
                 _HIDDEN_DIM // 2,

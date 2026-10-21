@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from max.driver import Device
 from max.experimental.nn import Module
@@ -23,13 +23,14 @@ from max.experimental.nn.common_layers.activation import (
     activation_function_from_name,
 )
 from max.experimental.nn.common_layers.linear import col_parallel, row_parallel
+from max.experimental.nn.module import _TransparentKey
 from max.experimental.sharding import DeviceMapping, DeviceMesh
 from max.experimental.tensor import Tensor
 from max.nn.quant_config import QuantConfig
 from typing_extensions import Self
 
 from . import quant_ops
-from .quant_tensor import QuantAwareTensor
+from .quant_tensor import QTensor, QuantAwareTensor
 
 
 class QuantizedLinear(Module[[Tensor], Tensor]):
@@ -52,6 +53,21 @@ class QuantizedLinear(Module[[Tensor], Tensor]):
         self.out_dim = out_dim
         self.weight = quant_ops.quantized_weight(out_dim, in_dim, quant_config)
         self.bias = Tensor.zeros((out_dim,)) if bias else 0
+
+    def __tree_flatten__(self) -> tuple[dict[Any, Any], None]:
+        """Returns the children, with no path segment for a quantized weight.
+
+        A :class:`~.quant_tensor.QTensor` already names its fields as the
+        checkpoint names this projection's tensors, ``weight`` beside
+        ``weight_scale`` and so on, so it adds no segment of its own.
+        """
+        children, meta = super().__tree_flatten__()
+        return {
+            _TransparentKey(key)
+            if key == "weight" and isinstance(value, QTensor)
+            else key: value
+            for key, value in children.items()
+        }, meta
 
     def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
         """Moves the weight and any tensor bias to ``target`` in place."""

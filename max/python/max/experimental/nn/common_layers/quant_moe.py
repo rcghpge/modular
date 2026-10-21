@@ -634,9 +634,7 @@ class ExpertParallelMoE(QuantizedMoE):
         """Runs the per-device expert matmuls on dispatched tokens."""
         # The EP dispatch hands back one bundle per device, so each device's
         # expert matmuls run on its own entries.
-        tokens = payload.per_device_tokens(
-            self.quant_config, nvfp4_global_scale=global_scale
-        )
+        tokens = payload.per_device_tokens(nvfp4_global_scale=global_scale)
         gate_up = self.gate_up_proj
         down = self.down_proj
         usage_stats = payload.usage_stats

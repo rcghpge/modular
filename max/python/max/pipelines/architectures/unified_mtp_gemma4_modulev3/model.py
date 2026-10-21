@@ -49,10 +49,7 @@ from .unified_mtp_gemma4_modulev3 import (
     UnifiedMTPGemma4ModuleV3,
     UnifiedMTPGemma4ModuleV3Target,
 )
-from .weight_adapters import (
-    convert_draft_state_dict,
-    convert_language_state_dict_for_mtp,
-)
+from .weight_adapters import convert_draft_state_dict
 
 
 class UnifiedMTPGemma4ModuleV3Model(UnifiedMTPGemma4Model):
@@ -161,9 +158,9 @@ class UnifiedMTPGemma4ModuleV3Model(UnifiedMTPGemma4Model):
                 ),
             )
 
-        target_weights = convert_language_state_dict_for_mtp(
-            self._target_state_dict
-        )
+        # The V2 language adapter yields bare paths, which the fused module's
+        # target subtree expects: it nests under ``target.*`` directly.
+        target_weights = self._target_state_dict
         draft_weights = convert_draft_state_dict(self._draft_state_dict)
         shared_embedding = target_weights["embed_tokens.weight"]
         weights = {
