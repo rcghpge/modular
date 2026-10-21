@@ -62,7 +62,6 @@ from std.sys import (
     is_gpu,
     is_nvidia_gpu,
     llvm_intrinsic,
-    simd_width_of,
     size_of,
 )
 from std.sys._assembly import inlined_assembly
@@ -1249,8 +1248,7 @@ struct SIMD[dtype: DType, length: SIMDLength](
         var mod = self - div * denominator
         var mask = (denominator.lt(0) ^ self.lt(0)) & mod.ne(0)
 
-        if any(mask):
-            div = div - mask.cast[Self.dtype]()
+        div = div - mask.cast[Self.dtype]()
 
         var div_res = is_zero_mask.select(Self(0), div)
         var mod_res = mod + mask.select(denominator, Self(0))
@@ -2947,7 +2945,9 @@ struct SIMD[dtype: DType, length: SIMDLength](
 
         comptime if output_width == 1:
             return self[offset]
-        elif offset % simd_width_of[Self.dtype]():
+        elif offset % output_width:
+            # `llvm.vector.extract` wants an index that is a multiple of the
+            # result element count, which is what `insert` asserts as well.
             return slice_body()
 
         if __is_run_in_comptime_interpreter:
@@ -4543,17 +4543,6 @@ def _write_scalar[
             writer.write_string("True")
         else:
             writer.write_string("False")
-
-    elif dtype.is_half_float():
-        # `_write_float` widens everything but `float64` and the `float8`
-        # variants to `Float32` before running dragonbox, so a half float and
-        # its `Float32` widening already format to identical text. Widening here
-        # instead lets `float16` and `bfloat16` share one `_write_float`
-        # instantiation with `float32` rather than each getting their own copy of
-        # the formatter, which dominates the compile cost of printing SIMD
-        # values. `test_simd.test_write_half_float_matches_float32` pins the
-        # equivalence.
-        _write_float(writer, value.cast[DType.float32]())
 
     elif dtype.is_half_float():
         # `_write_float` widens everything but `float64` and the `float8`

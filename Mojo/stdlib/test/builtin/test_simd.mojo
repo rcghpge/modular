@@ -2597,6 +2597,38 @@ def test_slice() raises:
     assert_equal(slice1_5, expected1_5)
 
 
+def test_slice_aligned_offsets() raises:
+    # `llvm.vector.extract` takes any offset that is a multiple of the output
+    # width, whatever the target's native vector width happens to be.
+    var f8 = SIMD[DType.float32, 8](1, 2, 3, 4, 5, 6, 7, 8)
+    assert_equal(f8.slice[4, offset=4](), SIMD[DType.float32, 4](5, 6, 7, 8))
+    assert_equal(f8.slice[2, offset=6](), SIMD[DType.float32, 2](7, 8))
+    assert_equal(f8.slice[8, offset=0](), f8)
+
+    var lo, hi = f8.split()
+
+    comptime for i in range(4):
+        assert_equal(lo[i], Float32(i + 1))
+        assert_equal(hi[i], Float32(i + 5))
+
+    # Wider than any native vector, at an offset that is not a multiple of the
+    # output width. The old check compared against the native width, so this
+    # reached the intrinsic with an index it rejects.
+    var f32 = SIMD[DType.float32, 32]()
+
+    comptime for i in range(32):
+        f32[i] = Float32(i)
+
+    var wide = f32.slice[16, offset=8]()
+
+    comptime for i in range(16):
+        assert_equal(wide[i], Float32(i + 8))
+
+    # Unaligned offsets still take the element-wise path.
+    assert_equal(f8.slice[4, offset=3](), SIMD[DType.float32, 4](4, 5, 6, 7))
+    assert_equal(f8.slice[2, offset=5](), SIMD[DType.float32, 2](6, 7))
+
+
 def test_hash() raises:
     # Test hash function for SIMD values
     var simd1 = SIMD[.int32, 4](1, 2, 3, 4)

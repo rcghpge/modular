@@ -58,3 +58,10 @@ This version is still a work in progress.
 ## Removed
 
 ## Fixed
+
+- `SIMD.slice()` no longer passes `llvm.vector.extract` an offset that is not
+  a multiple of the output width, which LLVM rejects. A wide slice at such an
+  offset, like `slice[16, offset=8]()` on a 32-element vector, now takes the
+  element-wise path, and aligned slices narrower than the target's native
+  vector width, such as the halves `split()` returns for small vectors, now
+  use the intrinsic.
