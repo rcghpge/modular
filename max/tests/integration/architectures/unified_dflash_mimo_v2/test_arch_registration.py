@@ -31,7 +31,7 @@ from max.pipelines.architectures.unified_dflash_mimo_v2.model_config import (
     UnifiedDflashMiMoV2Config,
     mimo_dflash_draft_width,
 )
-from max.pipelines.lib import Speculator, SupportedArchitecture
+from max.pipelines.lib import SupportedArchitecture
 from max.pipelines.lib.arch_lookup import select_speculator
 from max.pipelines.lib.config.config import (
     _apply_speculative_target_architecture,
@@ -70,7 +70,7 @@ def test_the_speculator_derives_the_fused_architecture(draft_arch: str) -> None:
 
 def _selected(
     speculative: SpeculativeConfig | None, draft_arch: str = "LlamaForCausalLM"
-) -> Speculator | None:
+) -> SupportedArchitecture | None:
     models: dict[str, Any] = {
         "main": SimpleNamespace(
             huggingface_config=SimpleNamespace(

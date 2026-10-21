@@ -33,7 +33,7 @@ from max.nn.transformer import ReturnLogits
 from max.pipelines.lib import ModelInputs
 from max.pipelines.lib.interfaces.batch_processor import BatchProcessor
 from max.pipelines.lib.interfaces.pipeline_model import UnifiedEagleOutputs
-from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
+from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
     _UnifiedSpecDecodeModelMixin,
 )
 from max.pipelines.speculative.spec_input_types import SpecDecodeGraphInputs

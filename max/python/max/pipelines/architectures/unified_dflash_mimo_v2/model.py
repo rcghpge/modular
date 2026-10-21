@@ -33,7 +33,7 @@ from max.pipelines.lib import (
 )
 from max.pipelines.lib.graph_specs import GraphRole
 from max.pipelines.lib.memory_estimation import MemoryPlan
-from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
+from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
     _UnifiedSpecDecodeModelMixin,
 )
 

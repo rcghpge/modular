@@ -47,7 +47,7 @@ from max.pipelines.lib import CompilationTimer
 from max.pipelines.lib.interfaces import (
     UnifiedSpecDecodeInputs,
 )
-from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
+from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
     _UnifiedSpecDecodeModelMixin,
 )
 from max.pipelines.lib.pipeline_variants.utils import get_rope_theta

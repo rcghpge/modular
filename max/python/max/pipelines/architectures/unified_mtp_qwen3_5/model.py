@@ -31,7 +31,7 @@ from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.lib.interfaces.pipeline_model import (
     GraphPipelineModelWithKVCache,
 )
-from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
+from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
     _UnifiedSpecDecodeModelMixin,
 )
 from typing_extensions import override

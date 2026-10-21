@@ -32,7 +32,7 @@ from max.nn.kv_cache import (
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.lib import UnifiedSpecDecodeInputs
 from max.pipelines.lib.graph_specs import GraphRole
-from max.pipelines.lib.pipeline_variants.unified_spec_decode_model import (
+from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
     _UnifiedSpecDecodeModelMixin,
 )
 from max.pipelines.speculative import (

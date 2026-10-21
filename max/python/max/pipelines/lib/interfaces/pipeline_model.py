@@ -36,6 +36,7 @@ from max.experimental.tensor import Tensor, default_dtype
 from max.graph import DeviceRef, Graph, Value
 from max.graph.weights import Weights, WeightsAdapter
 from max.nn.kv_cache import (
+    CacheLeafParamInterface,
     KVCacheInputs,
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
@@ -409,6 +410,15 @@ class ModelLoadContext:
     weights: Weights
     adapter: WeightsAdapter | None
     memory_plan: MemoryPlan
+    return_logits: ReturnLogits
+    return_hidden_states: ReturnHiddenStates
+    target_layer_ids: tuple[int, ...] = ()
+    """Layers whose outputs ``SELECTED_LAYERS`` hidden states return."""
+    kv_params: CacheLeafParamInterface | None = None
+    """The KV params the module runs on, when the caller sized its cache.
+
+    ``None`` derives them from the config, as serving does.
+    """
 
     @classmethod
     def from_pipeline_model(cls, model: PipelineModel[Any]) -> ModelLoadContext:
@@ -418,6 +428,8 @@ class ModelLoadContext:
             weights=model.weights,
             adapter=model.adapter,
             memory_plan=model.memory_plan,
+            return_logits=model.return_logits,
+            return_hidden_states=model.return_hidden_states,
         )
 
     @property

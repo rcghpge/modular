@@ -71,6 +71,20 @@ def _call_layer_directly(
     return result if isinstance(result, list) else [result]
 
 
+def _named_weight_prefix(layer: Module, prefix: str) -> str:
+    """Returns ``prefix`` as it appears in ``layer``'s weight names.
+
+    A model built into a larger one, such as a speculative decoding target,
+    names its weights under its place there (``target.layers.0.``), which its
+    own ``weight_prefix_for_layer`` doesn't include.
+    """
+    for weight in layer.raw_state_dict().values():
+        start = weight.name.find(prefix)
+        if start == 0 or (start > 0 and weight.name[start - 1] == "."):
+            return weight.name[:start] + prefix
+    return prefix
+
+
 def forward_sequential_layers(
     layers: Sequence[Module],
     *,
@@ -155,18 +169,20 @@ def forward_sequential_layers(
             h = _call_layer_directly(layer, values)
         else:
             group_idx = layer_idx_to_group_idx[layer_idx]
+            # Read before build_subgraph strips it from the names.
+            prefix = _named_weight_prefix(
+                layer, weight_prefix_for_layer(layer_idx)
+            )
             if group_idx not in group_idx_to_subgraph:
                 group_idx_to_subgraph[group_idx] = layer.build_subgraph(
                     name=name_for_subgraph(group_idx),
                     inputs=values,
-                    weight_prefix=weight_prefix_for_layer(layer_idx),
+                    weight_prefix=prefix,
                 )
 
             flat_args = tree.leaves(values)
             call_results = ops.call(
-                group_idx_to_subgraph[group_idx],
-                *flat_args,
-                prefix=weight_prefix_for_layer(layer_idx),
+                group_idx_to_subgraph[group_idx], *flat_args, prefix=prefix
             )
             h = [x.tensor for x in call_results]
 

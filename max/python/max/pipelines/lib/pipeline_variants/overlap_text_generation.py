@@ -168,13 +168,16 @@ from max.profiler import Tracer, traced
 
 from ..memory_estimation import MemoryPlan
 from ._label_scoring import BatchLabelScorer
+from .spec_decode_pipeline_model import (
+    SpecDecodePipelineModel,
+    _UnifiedSpecDecodeModelMixin,
+)
 from .structured_output_overlap import StructuredOutputOverlapState
 from .text_generation import (
     TextGenerationPipelineInterface,
     load_kv_manager,
     load_sampler_graphs,
 )
-from .unified_spec_decode_model import _UnifiedSpecDecodeModelMixin
 from .utils import (
     CommittedSpanSnapshot,
     StructuredOutputHelper,
@@ -253,7 +256,9 @@ def _sampled_draft_vocab_size(
     """
     vocab_size = (
         model.sampled_draft_vocab_size
-        if isinstance(model, _UnifiedSpecDecodeModelMixin)
+        if isinstance(
+            model, (_UnifiedSpecDecodeModelMixin, SpecDecodePipelineModel)
+        )
         else None
     )
     sampled = speculative.draft_proposal == "sampled"
