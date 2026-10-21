@@ -1072,6 +1072,23 @@ def RaiseForLoops: Pass<"raise-for-loops", "KGEN::FuncOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// LowerKGENToArith
+//===----------------------------------------------------------------------===//
+
+def LowerKGENToArith : Pass<"lower-kgen-to-arith", "ModuleOp"> {
+  let summary = "Lower scalar KGEN/POP arithmetic to Arith/Index";
+  let description = [{
+    The `lower-kgen-to-arith` pass lowers scalar `kgen.param.constant` and
+    the scalar POP arithmetic, compare, select, and builtin-cast ops to
+    `arith`/`index`, bridging the still-`!pop.scalar` boundaries with
+    `unrealized_conversion_cast`s. SIMD forms (`!pop.simd<N, T>`, N > 1) are
+    left untouched for a target lowering.
+  }];
+
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::index::IndexDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // LoopUnrolling
 //===----------------------------------------------------------------------===//
 

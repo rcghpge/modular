@@ -22,6 +22,7 @@
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/SmallSet.h"
 
 #include <optional>
@@ -101,6 +102,28 @@ enum class InlinerDebugInfoUpdateTime {
 
 /// Register all passes with default options.
 void registerDefaultKGENPasses(const std::string &cacheBaseExtra);
+
+//===----------------------------------------------------------------------===//
+// Lowering to Arith
+//===----------------------------------------------------------------------===//
+
+/// `KGENDType` → builtin MLIR element type. `nullopt` if unsupported.
+std::optional<mlir::Type> dtypeToBuiltin(mlir::MLIRContext *ctx,
+                                         KGENDType dtype);
+
+/// Maps `!pop.scalar<T>` to its builtin type and bridges values whose
+/// producer and consumer are lowered by different passes with
+/// `unrealized_conversion_cast`s, which fold once both sides are converted.
+/// A target extends it with its own conversions for the SIMD forms.
+class POPScalarTypeConverter : public mlir::TypeConverter {
+public:
+  explicit POPScalarTypeConverter(mlir::MLIRContext *ctx);
+};
+
+/// Patterns lowering scalar `kgen.param.constant` and the scalar POP arith,
+/// compare, select, and builtin-cast ops to `arith`/`index`.
+void populateKGENToArithConversionPatterns(const mlir::TypeConverter &converter,
+                                           mlir::RewritePatternSet &patterns);
 
 //===----------------------------------------------------------------------===//
 // Elaborator

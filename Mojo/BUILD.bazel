@@ -1240,6 +1240,7 @@ modular_cc_library(
         "//Support:Context",
         "//Support:DebugInfoDialect",
         "//Support:DebugInfoTransforms",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:CAPIIRHeaders",
         "@llvm-project//mlir:CAPITransformsHeaders",
         "@llvm-project//mlir:IndexDialect",
