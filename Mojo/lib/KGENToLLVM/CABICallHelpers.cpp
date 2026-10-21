@@ -41,8 +41,9 @@ std::unique_ptr<CABIInfo> CABICallHelper::createABIHandler() const {
   return M::KGEN::createCABIInfo(triple, ctx, dataLayout);
 }
 
-Value CABICallHelper::createEntryBlockAlloca(
-    ConversionPatternRewriter &rewriter, Location loc, Type elemType) const {
+Value CABICallHelper::createEntryBlockAlloca(DirectRewriter &rewriter,
+                                             Location loc,
+                                             Type elemType) const {
   auto ptrType = LLVMPointerType::get(ctx);
 
   // Find the enclosing LLVM function.
@@ -61,25 +62,26 @@ Value CABICallHelper::createEntryBlockAlloca(
                           /*alignment=*/0);
 }
 
-Value CABICallHelper::bitcastViaMemory(
-    Value sourceValue, Type destType, Type allocType, Location loc,
-    ConversionPatternRewriter &rewriter) const {
+Value CABICallHelper::bitcastViaMemory(Value sourceValue, Type destType,
+                                       Type allocType, Location loc,
+                                       DirectRewriter &rewriter) const {
   Value alloca = createEntryBlockAlloca(rewriter, loc, allocType);
   StoreOp::create(rewriter, loc, sourceValue, alloca);
   return LoadOp::create(rewriter, loc, destType, alloca);
 }
 
-Value CABICallHelper::createOffsetGEP(
-    Value basePtr, int64_t byteOffset, Location loc,
-    ConversionPatternRewriter &rewriter) const {
+Value CABICallHelper::createOffsetGEP(Value basePtr, int64_t byteOffset,
+                                      Location loc,
+                                      DirectRewriter &rewriter) const {
   auto ptrType = LLVMPointerType::get(ctx);
   return GEPOp::create(rewriter, loc, ptrType, rewriter.getI8Type(), basePtr,
                        GEPArg(byteOffset), GEPNoWrapFlags::inbounds);
 }
 
-SmallVector<Value> CABICallHelper::prepareTwoRegisterArgument(
-    Value originalArg, Type firstType, Type secondType, Location loc,
-    ConversionPatternRewriter &rewriter) const {
+SmallVector<Value>
+CABICallHelper::prepareTwoRegisterArgument(Value originalArg, Type firstType,
+                                           Type secondType, Location loc,
+                                           DirectRewriter &rewriter) const {
   // Allocate struct containing both register types
   Type allocType = LLVMStructType::getLiteral(ctx, {firstType, secondType});
   Value alloca = createEntryBlockAlloca(rewriter, loc, allocType);
@@ -102,9 +104,11 @@ SmallVector<Value> CABICallHelper::prepareTwoRegisterArgument(
   return {first, second};
 }
 
-Value CABICallHelper::handleTwoRegisterReturn(
-    Value callResult, Type firstType, Type secondType, Type originalReturnType,
-    Location loc, ConversionPatternRewriter &rewriter) const {
+Value CABICallHelper::handleTwoRegisterReturn(Value callResult, Type firstType,
+                                              Type secondType,
+                                              Type originalReturnType,
+                                              Location loc,
+                                              DirectRewriter &rewriter) const {
   // Allocate struct containing both register types
   Type allocType = LLVMStructType::getLiteral(ctx, {firstType, secondType});
   Value alloca = createEntryBlockAlloca(rewriter, loc, allocType);
@@ -124,10 +128,9 @@ Value CABICallHelper::handleTwoRegisterReturn(
   return LoadOp::create(rewriter, loc, originalReturnType, alloca);
 }
 
-SmallVector<Value>
-CABICallHelper::prepareArg(const CoercionInfo &coercion, Value originalArg,
-                           Location loc,
-                           ConversionPatternRewriter &rewriter) const {
+SmallVector<Value> CABICallHelper::prepareArg(const CoercionInfo &coercion,
+                                              Value originalArg, Location loc,
+                                              DirectRewriter &rewriter) const {
   SmallVector<Value> result;
 
   if (coercion.isIdentity()) {
@@ -170,10 +173,11 @@ CABICallHelper::prepareArg(const CoercionInfo &coercion, Value originalArg,
   return result;
 }
 
-std::pair<SmallVector<Value>, Value> CABICallHelper::buildCallArgs(
-    ArrayRef<CoercionInfo> argClass, const CoercionInfo &retClass,
-    ValueRange originalArgs, Type origRetTy, Location loc,
-    ConversionPatternRewriter &rewriter) const {
+std::pair<SmallVector<Value>, Value>
+CABICallHelper::buildCallArgs(ArrayRef<CoercionInfo> argClass,
+                              const CoercionInfo &retClass,
+                              ValueRange originalArgs, Type origRetTy,
+                              Location loc, DirectRewriter &rewriter) const {
   SmallVector<Value> callArgs;
   Value sretPointer = nullptr;
 
@@ -196,7 +200,7 @@ std::pair<SmallVector<Value>, Value> CABICallHelper::buildCallArgs(
 Value CABICallHelper::extractReturn(const CoercionInfo &retClass,
                                     Value callResult, Value sretPointer,
                                     Type origRetTy, Location loc,
-                                    ConversionPatternRewriter &rewriter) const {
+                                    DirectRewriter &rewriter) const {
   if (retClass.useSRet) {
     // Load from sret pointer
     return LoadOp::create(rewriter, loc, origRetTy, sretPointer);
@@ -226,8 +230,7 @@ Value CABICallHelper::extractReturn(const CoercionInfo &retClass,
 
 CABICallPrep CABICallHelper::prepareCall(TypeRange argTypes,
                                          ValueRange argValues, Type origRetTy,
-                                         Location loc,
-                                         ConversionPatternRewriter &rewriter,
+                                         Location loc, DirectRewriter &rewriter,
                                          size_t numFixedArgs,
                                          bool isVariadic) const {
   auto handler = createABIHandler();
@@ -269,7 +272,7 @@ static size_t getNumCallArgs(CallOp call) {
 
 Value CABICallHelper::finishCall(CallOp call, const CABICallPrep &prep,
                                  TailKind tailKind, Location loc,
-                                 ConversionPatternRewriter &rewriter) const {
+                                 DirectRewriter &rewriter) const {
   const SignatureClassification &sigClass = prep.classification;
 
   // A direct call lowers from the call-site attributes, so they must be set

@@ -96,9 +96,8 @@ private:
   SymbolTable &symtab;
   unsigned nameIndex = 0;
 
-  LLVM::LLVMFuncOp
-  generateWrapperFunction(CreateClosureOp op,
-                          ConversionPatternRewriter &rewriter) const {
+  LLVM::LLVMFuncOp generateWrapperFunction(CreateClosureOp op,
+                                           DirectRewriter &rewriter) const {
     FuncTypeGeneratorType calleeSignature = op.getCalleeType();
     FunctionType calleeType = calleeSignature.getBody().getValues();
     MLIRContext *context = getContext();
@@ -173,9 +172,9 @@ private:
   /// opaque pointer to the captured state and unpacking the members in order to
   /// call the original lifted function.
   LogicalResult populateBodyOfWrapperFunction(
-      LLVM::LLVMFuncOp wrapperFn, CreateClosureOp op,
-      ConversionPatternRewriter &rewriter, CreateClosureOpAdaptor adaptor,
-      SymbolTable &symbolTable, CreateClosureTypes const &types) const {
+      LLVM::LLVMFuncOp wrapperFn, CreateClosureOp op, DirectRewriter &rewriter,
+      CreateClosureOpAdaptor adaptor, SymbolTable &symbolTable,
+      CreateClosureTypes const &types) const {
     Block &wrapperFnBody = wrapperFn.getBody().front();
     rewriter.setInsertionPointToStart(&wrapperFnBody);
 
@@ -222,7 +221,7 @@ private:
   }
 
   /// Replace the CreateClosureOp with the construction of a closure struct.
-  LogicalResult generateClosureStruct(ConversionPatternRewriter &rewriter,
+  LogicalResult generateClosureStruct(DirectRewriter &rewriter,
                                       CreateClosureOp op,
                                       CreateClosureOpAdaptor adaptor,
                                       LLVM::LLVMFuncOp wrapperFn,
@@ -270,9 +269,9 @@ private:
   }
 
 public:
-  LogicalResult
-  matchAndRewrite(CreateClosureOp op, CreateClosureOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CreateClosureOp op,
+                                CreateClosureOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     if (!op.getType().getBody().isCapturing() && op.getCaptures().empty()) {
       rewriter.replaceOpWithNewOp<LLVM::AddressOfOp>(
           op, convertType(op.getType()),
@@ -310,9 +309,9 @@ public:
 struct CallIndirectOpConversion
     : public ConvertPOPToLLVMPattern<CallIndirectOp> {
   using ConvertPOPToLLVMPattern<CallIndirectOp>::ConvertPOPToLLVMPattern;
-  LogicalResult
-  matchAndRewrite(CallIndirectOp op, CallIndirectOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CallIndirectOp op,
+                                CallIndirectOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     // If there are no result types, set it to void. Otherwise, set the result
     // type to the packed result types.
     Type resultType;
@@ -431,7 +430,6 @@ void LowerRuntimeClosuresPass::runOnOperation() {
   SymbolTable &symtab =
       getAnalysis<mlir::SymbolTableAnalysis>().getTopLevelSymbolTable();
 
-  mlir::ConversionTarget target(getContext());
   mlir::RewritePatternSet patterns(&getContext());
   TargetInfoAttr targetInfo = lookupTargetInfo(theModule);
   if (!targetInfo) {
@@ -441,17 +439,14 @@ void LowerRuntimeClosuresPass::runOnOperation() {
   }
   POPToLLVMTypeConverter typeConverter(targetInfo);
 
-  target.addLegalDialect<mlir::LLVM::LLVMDialect>();
-  target.addLegalDialect<KGENDialect>();
-  target.addLegalDialect<POP::POPDialect>();
-  target.addLegalOp<mlir::UnrealizedConversionCastOp>();
-
-  target.addIllegalOp<CreateClosureOp>();
-  target.addIllegalOp<CallIndirectOp>();
   patterns.insert<CreateRuntimeClosureOpConversion>(symtab, typeConverter);
   patterns.insert<CallIndirectOpConversion>(typeConverter);
 
-  if (failed(
-          mlir::applyPartialConversion(theModule, target, std::move(patterns))))
+  auto mustConvert = [](Operation *op) {
+    return isa<CreateClosureOp, CallIndirectOp>(op);
+  };
+  if (failed(M::applyDirectConversion(theModule, &typeConverter,
+                                      std::move(patterns), /*skipOp=*/nullptr,
+                                      mustConvert)))
     return signalPassFailure();
 }

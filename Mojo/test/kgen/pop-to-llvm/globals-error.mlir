@@ -20,4 +20,20 @@ kgen.func @variadic_too_many_fixed_args(%a: !kgen.simd<1, ui32>) {
   hlcf.return
 }
 
+
+// `pop.compiler.global_load`/`store` are compile-time only and have no
+// lowering pattern at all, so nothing rewrites them; the pass lists them as
+// necessarily-converted and the leftover must still be reported.
+kgen.func @compiler_global_load() -> !kgen.scalar<ui32> {
+  // expected-error @below {{failed to legalize operation 'pop.compiler.global_load' that was explicitly marked illegal}}
+  %0 = pop.compiler.global_load "foo" : !kgen.scalar<ui32>
+  hlcf.return %0 : !kgen.scalar<ui32>
+}
+
+kgen.func @compiler_global_store(%v: !kgen.scalar<ui32>) {
+  // expected-error @below {{failed to legalize operation 'pop.compiler.global_store' that was explicitly marked illegal}}
+  pop.compiler.global_store "foo", %v : !kgen.scalar<ui32>
+  hlcf.return
+}
+
 }

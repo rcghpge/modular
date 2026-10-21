@@ -91,7 +91,7 @@ struct CABICallHelper {
   /// Create an alloca in the entry block of the enclosing function.
   /// This ensures stack allocations don't grow unboundedly when the
   /// external_call is inside a loop.
-  mlir::Value createEntryBlockAlloca(mlir::ConversionPatternRewriter &rewriter,
+  mlir::Value createEntryBlockAlloca(M::DirectRewriter &rewriter,
                                      mlir::Location loc,
                                      mlir::Type elemType) const;
 
@@ -103,13 +103,13 @@ struct CABICallHelper {
   /// coercion rounds up (e.g., 3-byte struct -> i32 = 4 bytes).
   mlir::Value bitcastViaMemory(mlir::Value src, mlir::Type destType,
                                mlir::Type allocType, mlir::Location loc,
-                               mlir::ConversionPatternRewriter &rewriter) const;
+                               M::DirectRewriter &rewriter) const;
 
   /// Create a GEP to access memory at a byte offset from a pointer.
   /// Used for accessing the second register in two-register struct coercion.
   mlir::Value createOffsetGEP(mlir::Value basePtr, int64_t byteOffset,
                               mlir::Location loc,
-                              mlir::ConversionPatternRewriter &rewriter) const;
+                              M::DirectRewriter &rewriter) const;
 
   /// Prepare a two-register argument for C ABI calling convention.
   /// Allocates a struct of both types, stores the original value, then loads
@@ -117,21 +117,21 @@ struct CABICallHelper {
   llvm::SmallVector<mlir::Value>
   prepareTwoRegisterArgument(mlir::Value orig, mlir::Type firstTy,
                              mlir::Type secondTy, mlir::Location loc,
-                             mlir::ConversionPatternRewriter &rewriter) const;
+                             M::DirectRewriter &rewriter) const;
 
   /// Handle a two-register return value from C ABI call.
   /// Extracts both values from the call result, stores them at the correct
   /// offsets, then loads as the original struct type.
-  mlir::Value
-  handleTwoRegisterReturn(mlir::Value callResult, mlir::Type firstTy,
-                          mlir::Type secondTy, mlir::Type origRetTy,
-                          mlir::Location loc,
-                          mlir::ConversionPatternRewriter &rewriter) const;
+  mlir::Value handleTwoRegisterReturn(mlir::Value callResult,
+                                      mlir::Type firstTy, mlir::Type secondTy,
+                                      mlir::Type origRetTy, mlir::Location loc,
+                                      M::DirectRewriter &rewriter) const;
 
   /// Coerce a single argument and return the LLVM value(s) to pass.
-  llvm::SmallVector<mlir::Value>
-  prepareArg(const CoercionInfo &coercion, mlir::Value orig, mlir::Location loc,
-             mlir::ConversionPatternRewriter &rewriter) const;
+  llvm::SmallVector<mlir::Value> prepareArg(const CoercionInfo &coercion,
+                                            mlir::Value orig,
+                                            mlir::Location loc,
+                                            M::DirectRewriter &rewriter) const;
 
   /// Build the actual call arguments with C ABI coercion applied.
   /// Handles sret pointer preparation if needed.
@@ -140,7 +140,7 @@ struct CABICallHelper {
   buildCallArgs(llvm::ArrayRef<CoercionInfo> argClass,
                 const CoercionInfo &retClass, mlir::ValueRange originalArgs,
                 mlir::Type origRetTy, mlir::Location loc,
-                mlir::ConversionPatternRewriter &rewriter) const;
+                M::DirectRewriter &rewriter) const;
 
   /// Handle the return value from C ABI call.
   /// Applies reverse coercion (bitcast from integer back to struct).
@@ -148,7 +148,7 @@ struct CABICallHelper {
   mlir::Value extractReturn(const CoercionInfo &retClass,
                             mlir::Value callResult, mlir::Value sretPtr,
                             mlir::Type origRetTy, mlir::Location loc,
-                            mlir::ConversionPatternRewriter &rewriter) const;
+                            M::DirectRewriter &rewriter) const;
 
   /// Classify arguments and return type, build the coerced LLVM function
   /// signature, and prepare coerced call arguments in one step.
@@ -162,7 +162,7 @@ struct CABICallHelper {
   /// arguments, then passes it to finishCall.
   CABICallPrep prepareCall(mlir::TypeRange argTypes, mlir::ValueRange argValues,
                            mlir::Type origRetTy, mlir::Location loc,
-                           mlir::ConversionPatternRewriter &rewriter,
+                           M::DirectRewriter &rewriter,
                            size_t numFixedArgs = SIZE_MAX,
                            bool isVariadic = false) const;
 
@@ -174,7 +174,7 @@ struct CABICallHelper {
   /// result.
   mlir::Value finishCall(mlir::LLVM::CallOp call, const CABICallPrep &prep,
                          TailKind tailKind, mlir::Location loc,
-                         mlir::ConversionPatternRewriter &rewriter) const;
+                         M::DirectRewriter &rewriter) const;
 };
 
 } // namespace M::KGEN

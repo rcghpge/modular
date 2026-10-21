@@ -1207,6 +1207,7 @@ modular_cc_library(
         ":ObjectCompiler.headers",  # For MetalAddressSpace.h
         ":TargetLowering",
         ":ToolCommon",
+        "//Support:Compiler",
         "//Support:DebugInfoTransforms",
         "@llvm-project//llvm:Support",  # For llvm/ADT/Triple.h
         "@llvm-project//mlir:IR",

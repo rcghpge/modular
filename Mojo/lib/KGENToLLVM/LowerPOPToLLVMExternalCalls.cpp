@@ -44,11 +44,10 @@ private:
   /// LLVM's float→double promotion. This ensures raw bits are placed in GPRs
   /// for va_arg struct reads. On x86-64, floats go in XMM registers and
   /// must NOT be bitcast.
-  void
-  applyARM64VariadicFloatBitcast(SmallVectorImpl<Value> &callArgs,
-                                 const SignatureClassification &sigClass,
-                                 size_t numFixedArgs, Location loc,
-                                 ConversionPatternRewriter &rewriter) const {
+  void applyARM64VariadicFloatBitcast(SmallVectorImpl<Value> &callArgs,
+                                      const SignatureClassification &sigClass,
+                                      size_t numFixedArgs, Location loc,
+                                      DirectRewriter &rewriter) const {
     unsigned varStart = sigClass.getLLVMParamIndex(numFixedArgs);
     for (unsigned i = varStart; i < callArgs.size(); ++i) {
       if (auto floatTy = dyn_cast<FloatType>(callArgs[i].getType())) {
@@ -95,7 +94,7 @@ private:
   mlir::ArrayAttr buildLLVMArgAttrs(mlir::ArrayAttr argAttrs,
                                     const SignatureClassification &sigClass,
                                     ExternalCallOp op, size_t numFixedArgs,
-                                    ConversionPatternRewriter &rewriter) const {
+                                    DirectRewriter &rewriter) const {
     SmallVector<Type> llvmArgTypes;
     for (Type t : op.getOperandTypes())
       llvmArgTypes.push_back(getTypeConverter()->convertType(t));
@@ -182,9 +181,9 @@ public:
   /// identity (no coercion needed), the same code path runs — identity
   /// classifications simply produce pass-through behavior identical to
   /// standard LLVM type conversion.
-  LogicalResult
-  matchAndRewrite(ExternalCallOp op, ExternalCallOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ExternalCallOp op,
+                                ExternalCallOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     Location loc = op.getLoc();
     const llvm::Triple &triple = getTypeConverter()->getTarget().getTriple();
     CABICallHelper cabi(getTypeConverter(), getContext(), op.getOperation());

@@ -23,9 +23,14 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 Value DirectRewriter::remap(Value value) {
-  Type target =
-      typeConverter ? typeConverter->convertType(value.getType()) : Type();
-  if (!target || target == value.getType())
+  if (!typeConverter)
+    return value;
+  // A type the converter rejects has no converted form, so handing the
+  // original back would let a pattern build on an unconverted operand.
+  Type target = typeConverter->convertType(value.getType());
+  if (!target)
+    return {};
+  if (target == value.getType())
     return value;
 
   // A bridge cast created by replaceOp already carries the converted value.
@@ -56,10 +61,10 @@ LogicalResult
 DirectRewriter::getRemappedValues(ValueRange values,
                                   SmallVectorImpl<Value> &result) {
   for (Value value : values) {
-    if (typeConverter && !typeConverter->convertType(value.getType())) {
+    Value remapped = remap(value);
+    if (!remapped)
       return failure();
-    }
-    result.push_back(remap(value));
+    result.push_back(remapped);
   }
   return success();
 }

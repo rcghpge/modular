@@ -43,6 +43,7 @@ public:
   /// Return `value` converted to its target type: `value` itself if the type
   /// converter leaves the type unchanged, the bridged original if `value` is
   /// a bridge cast result, or a cached unrealized_conversion_cast otherwise.
+  /// Null if the converter rejects the type, as upstream's spelling does.
   mlir::Value remap(mlir::Value value);
 
   /// ConversionPatternRewriter-compatible spellings.
