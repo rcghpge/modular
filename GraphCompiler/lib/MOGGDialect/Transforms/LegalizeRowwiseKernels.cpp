@@ -101,7 +101,7 @@ LogicalResult selectPrimaryInput(CallRowwiseOp op) {
       OpBuilder builder(load);
       auto value =
           RowwisePrimaryOp::create(builder, load.getLoc(), load.getType());
-      dtype = value.getType();
+      dtype = value.getType().getElementType();
       load.replaceAllUsesWith(value.getResult());
       load.erase();
     }
@@ -135,7 +135,8 @@ LogicalResult bindMonoid(RowwiseReduceOp fold) {
   MLIRContext *ctx = fold.getContext();
   llvm::StringMap<Type> bound;
   SmallVector<StringRef> fields;
-  for (auto [attr, type] : llvm::zip(outputs, fold.getResultTypes())) {
+  for (auto [attr, resultType] : llvm::zip(outputs, fold.getResultTypes())) {
+    Type type = cast<SimdType>(resultType).getElementType();
     auto output = cast<KernelReductionOutputAttr>(attr);
     fields.push_back(output.getName().getValue());
     Attribute dtype = output.getDtype();
@@ -168,10 +169,12 @@ LogicalResult bindMonoids(CallRowwiseOp op) {
     if (failed(bindMonoid(fold)))
       return failure();
     auto yield = cast<YieldOp>(fold.getBody().front().getTerminator());
-    for (Type type : yield.getOperandTypes())
+    for (Type yieldType : yield.getOperandTypes()) {
+      Type type = cast<SimdType>(yieldType).getElementType();
       if (!accum ||
           type.getIntOrFloatBitWidth() > accum.getIntOrFloatBitWidth())
         accum = type;
+    }
   }
   if (accum)
     op.setAccum(accum);

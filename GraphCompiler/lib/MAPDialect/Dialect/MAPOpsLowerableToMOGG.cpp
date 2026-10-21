@@ -213,7 +213,8 @@ LogicalResult ConstantOp::lowerToMOGG(MAPToMOGGState &state) {
 // map.constant.scalar -> mogg.constant.scalar.
 LogicalResult ConstantScalarOp::lowerToMOGG(MAPToMOGGState &state) {
   auto constant = MOGG::ConstantScalarOp::create(
-      state.builder, getLoc(), getResult().getType(), getValue());
+      state.builder, getLoc(), MOGG::SimdType::get(getResult().getType()),
+      getValue());
   state.mapping.map(getResult(), constant.getResult());
   return success();
 }
@@ -221,7 +222,7 @@ LogicalResult ConstantScalarOp::lowerToMOGG(MAPToMOGGState &state) {
 // map.load -> mogg.tensor.load.
 LogicalResult LoadOp::lowerToMOGG(MAPToMOGGState &state) {
   Value result = MOGG::TensorLoadOp::create(
-      state.builder, getLoc(), getResult().getType(),
+      state.builder, getLoc(), MOGG::SimdType::get(getResult().getType()),
       state.mapping.lookup(getTensor()), state.mapping.lookup(getIndex()));
   state.mapping.map(getResult(), result);
   return success();
@@ -286,8 +287,9 @@ LogicalResult CallElementwiseOp::lowerToMOGG(MAPToMOGGState &state) {
   // `kernelSymName` is a plain name; the builder wraps it into the op's
   // `$callee` `FlatSymbolRefAttr`.
   auto moggCall = MOGG::CallElementwiseOp::create(
-      state.builder, getLoc(), getResult().getType(), kernelSymName,
-      adaptor.registeredOpName.strref(), inputs, index, getParamsAttr());
+      state.builder, getLoc(), MOGG::SimdType::get(getResult().getType()),
+      kernelSymName, adaptor.registeredOpName.strref(), inputs, index,
+      getParamsAttr());
   state.mapping.map(getResult(), moggCall.getOutputs()[0]);
   return success();
 }
@@ -533,9 +535,12 @@ LogicalResult IterEpilogueOp::lowerToMOGG(MAPToMOGGState &state) {
   // Block args mirror the old ones, with captures retyped to `!mogg.tensor`
   // and shape captures trailing.
   Block *body = state.builder.createBlock(&epilogueOp.getBody());
+  // The value param is the SIMD vector the kernel hands in.
   for (size_t i = 0; i < numParams; ++i) {
-    BlockArgument p =
-        body->addArgument(epiArgs[i].getType(), epiArgs[i].getLoc());
+    Type type = epiArgs[i].getType();
+    if (i == 0)
+      type = MOGG::SimdType::get(type);
+    BlockArgument p = body->addArgument(type, epiArgs[i].getLoc());
     state.mapping.map(epiArgs[i], p);
   }
   for (size_t j = 0; j < numCaptures; ++j) {
@@ -870,8 +875,10 @@ LogicalResult IterRowwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
 // map.iter.reduce -> mogg.rowwise.reduce.
 LogicalResult IterReduceOp::lowerToMOGG(MAPToMOGGState &state) {
   Location loc = getLoc();
+  SmallVector<Type> resultTypes = llvm::map_to_vector(
+      getResultTypes(), [](Type t) -> Type { return MOGG::SimdType::get(t); });
   auto reduce = MOGG::RowwiseReduceOp::create(
-      state.builder, loc, getResultTypes(), getMonoidAttr(),
+      state.builder, loc, resultTypes, getMonoidAttr(),
       /*params=*/nullptr, /*fields=*/nullptr);
 
   Block *reduceBlock = state.builder.createBlock(&reduce.getBody());

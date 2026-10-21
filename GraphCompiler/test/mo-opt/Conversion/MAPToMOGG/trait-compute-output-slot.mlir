@@ -28,8 +28,8 @@ mo.graph @slot_add(%x: !mo.tensor<[4], f32>, %y: !mo.tensor<[4], f32>) -> !mo.te
 // With nothing fused, the slot still gets the compute form, with an identity
 // body.
 // CHECK-LABEL: mo.graph @slot_no_epilogue
-// CHECK:       mogg.tensor.create.epilogue %{{[^ ]+}} (%[[V:[^ ]+]] : f32, %{{[^ ]+}} : !map.index<1>) {{.*}}access = transform
-// CHECK-NEXT:    mogg.yield %[[V]] : f32
+// CHECK:       mogg.tensor.create.epilogue %{{[^ ]+}} (%[[V:[^ ]+]] : !mogg.simd<f32>, %{{[^ ]+}} : !map.index<1>) {{.*}}access = transform
+// CHECK-NEXT:    mogg.yield %[[V]] : !mogg.simd<f32>
 mo.graph @slot_no_epilogue(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
   %z = mo.custom [symbol = "trait_fused_transform_bias", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>
   mo.output %z : !mo.tensor<[4], f32>
@@ -38,8 +38,8 @@ mo.graph @slot_no_epilogue(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f32> {
 // A dtype-changing epilogue is downgraded: `compute` returns the dtype it was
 // handed, so the cast has to happen in a store.
 // CHECK-LABEL: mo.graph @slot_cast
-// CHECK:       mogg.tensor.create.epilogue %{{[^ ]+}} (%{{[^ ]+}} : f32, %[[I:[^ ]+]] : !map.index<1>) capturing {%[[C:[^ ]+]] = {{.*}}access = transform{{.*}}elementType = f64
-// CHECK:         mogg.tensor.store %[[C]][%[[I]]] = %{{[^ ]+}} : !mogg.tensor, !map.index<1>, f64
+// CHECK:       mogg.tensor.create.epilogue %{{[^ ]+}} (%{{[^ ]+}} : !mogg.simd<f32>, %[[I:[^ ]+]] : !map.index<1>) capturing {%[[C:[^ ]+]] = {{.*}}access = transform{{.*}}elementType = f64
+// CHECK:         mogg.tensor.store %[[C]][%[[I]]] = %{{[^ ]+}} : !mogg.tensor, !map.index<1>, !mogg.simd<f64>
 // CHECK-NOT:     mogg.yield
 mo.graph @slot_cast(%x: !mo.tensor<[4], f32>) -> !mo.tensor<[4], f64> {
   %z = mo.custom [symbol = "trait_fused_transform_bias", device = #M.device_ref<"cpu", 0>] (%x) : (!mo.tensor<[4], f32>) -> !mo.tensor<[4], f32>

@@ -29,6 +29,8 @@
 // ODS-Generated Declarations
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/MOGGDialect/MOGGTypeInterfaces.h.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "GraphCompiler/MOGGDialect/MOGGTypes.h.inc"
 

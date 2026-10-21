@@ -8,8 +8,8 @@
 // CHECK: %[[A:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = false{{.*}}> : !mogg.tensor
 // CHECK: %[[B:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = false{{.*}}> : !mogg.tensor
 // CHECK: %[[PRO:[^ ,)]+]] = mogg.tensor.create.prologue %{{.*}} (%[[I:[^ ,)]+]] : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %[[A]] : !mogg.tensor} device = "cpu", elementType = f32, io = Input, mut = false {
-// CHECK:   %[[V:.*]] = mogg.tensor.load %[[CAP]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK:   mogg.yield %[[V]] : f32
+// CHECK:   %[[V:.*]] = mogg.tensor.load %[[CAP]][%[[I]]] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+// CHECK:   mogg.yield %[[V]] : !mogg.simd<f32>
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %[[B]] : !mogg.tensor, !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context)
 mo.graph @partial_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
   %c = mo.custom [symbol = "map_lower_partial_fused_inputs", device = #M.device_ref<"cpu", 0>](%a, %b) : (!mo.tensor<[2, 2], f32>, !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32>
@@ -28,10 +28,10 @@ mo.graph @two_fused(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) ->
 // CHECK-LABEL: mo.graph @fused_producer
 // CHECK: fusionInfo = #mogg.fusion<#mogg.fusion_prologue<[#mogg.fusion_leaf<"mo.add"{{.*}}, #mogg.fusion_leaf<"custom__map_lower_partial_fused_inputs"{{.*}}], operandIndices = [0]>>
 // CHECK: %[[PRO:[^ ,)]+]] = mogg.tensor.create.prologue %{{.*}} (%[[I:[^ ,)]+]] : !map.index<2>) capturing {%[[A0:[^ ,)]+]] = %[[C0:[^ ,)]+]] : !mogg.tensor, %[[A1:[^ ,)]+]] = %[[C1:[^ ,)]+]] : !mogg.tensor}
-// CHECK:   %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK:   %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]] : !mogg.tensor, !map.index<2> -> f32
-// CHECK:   %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]]) moOpName = "mo.add" : f32, f32 -> f32
-// CHECK:   mogg.yield %[[ADD]] : f32
+// CHECK:   %[[L0:.*]] = mogg.tensor.load %[[A0]][%[[I]]] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+// CHECK:   %[[L1:.*]] = mogg.tensor.load %[[A1]][%[[I]]] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+// CHECK:   %[[ADD:.*]] = mogg.call.elementwise @{{.*}}Add(%[[L0]], %[[L1]]) moOpName = "mo.add" : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+// CHECK:   mogg.yield %[[ADD]] : !mogg.simd<f32>
 // CHECK: mogg.call.opaque @{{.*}}MapLowerPartialFusedInputs inputs(%[[PRO]], %{{.*}} : !mogg.tensor, !mogg.tensor)
 // CHECK-NOT: map.iter.prologue
 mo.graph @fused_producer(%a: !mo.tensor<[2, 2], f32>, %b: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {

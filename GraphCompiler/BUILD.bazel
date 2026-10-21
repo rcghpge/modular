@@ -856,6 +856,26 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "MOGGDialectTypeInterfacesIncGen",
+    includes = ["include"],
+    tbl_outs = [
+        (
+            ["-gen-type-interface-decls"],
+            "include/GraphCompiler/MOGGDialect/MOGGTypeInterfaces.h.inc",
+        ),
+        (
+            ["-gen-type-interface-defs"],
+            "include/GraphCompiler/MOGGDialect/MOGGTypeInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "include/GraphCompiler/MOGGDialect/MOGGTypeInterfaces.td",
+    deps = [
+        ":MOGGDialectTdFiles",
+    ],
+)
+
+gentbl_cc_library(
     name = "MOGGDialectEnumsIncGen",
     includes = ["include"],
     tbl_outs = [
@@ -906,6 +926,7 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        ":MOGGDialectTypeInterfacesIncGen",
         "//Mojo:KGENDialect",
         "//Mojo:LITDialect",
         "//Mojo:POPDialect",
@@ -949,6 +970,7 @@ modular_cc_library(
         ":MOGGDialectIncGen",
         ":MOGGDialectInterfacesIncGen",
         ":MOGGDialectPassesIncGen",
+        ":MOGGDialectTypeInterfacesIncGen",
         ":MOGGFusionSupport",
         ":MOSHDialect",
         ":OperandInference",

@@ -2991,6 +2991,23 @@ LogicalResult RowwiseReduceOp::verify() {
   auto yield = body.empty() ? YieldOp() : dyn_cast<YieldOp>(body.back());
   if (!yield || yield.getNumOperands() == 0)
     return emitOpError("body must yield at least one contribution");
+  for (Type type : yield.getOperandTypes())
+    if (!isa<SimdType>(type))
+      return emitOpError("body must yield !mogg.simd contributions, got ")
+             << type;
+  return success();
+}
+
+LogicalResult TensorCreatePrologueOp::verify() {
+  Block &body = getBody().front();
+  auto yield = body.empty() ? YieldOp() : dyn_cast<YieldOp>(body.back());
+  if (!yield)
+    return success();
+  for (Type type : yield.getOperandTypes())
+    if (!isa<SimdType>(type))
+      return emitOpError("body must yield the !mogg.simd value the kernel "
+                         "reads, got ")
+             << type;
   return success();
 }
 
@@ -3006,6 +3023,9 @@ LogicalResult TensorCreateEpilogueOp::verify() {
       2 + getCaptures().size() + getShapeCaptures().size())
     return emitOpError("body takes a value, an index, one arg per capture, and "
                        "one arg per shape capture");
+  if (!isa<SimdType>(body.getArgument(0).getType()))
+    return emitOpError("the value argument must be a !mogg.simd, got ")
+           << body.getArgument(0).getType();
 
   // `mogg.yield` is a terminator, so it can only be the last op: its presence
   // is what makes this a compute lambda rather than a store one.
@@ -3060,7 +3080,7 @@ static bool isCaptureArgOf(Block &body, unsigned firstCapture, Value value) {
 
 /// A tile body addresses whole tiles at its own index, so every load reads a
 /// capture at `index`, and there is no index transform to read through.
-/// Interim: bodies are scalar-typed (`tensor.load` / `tensor.store`) until the
+/// Interim: bodies are SIMD-typed (`tensor.load` / `tensor.store`) until the
 /// tile vocabulary lands.
 static LogicalResult verifyTileBodyLoads(Block &body, unsigned firstCapture,
                                          Value index, StringRef container) {
@@ -3157,8 +3177,8 @@ LogicalResult TensorCreateEpilogueOp::emitMojo(EmitMojoState &state) {
   // The dtype the kernel hands in, which after a dtype-changing epilogue
   // fusion (`mo.cast`) is not the output dtype; rebinding to `dtypeParam` would
   // emit `rebind[SIMD[si32, w]](SIMD[f32, w])`, which Mojo rejects.
-  ErrorOr<DType> inDtypeOr =
-      M::MO::fromMLIRType(getBody().getArgument(0).getType());
+  ErrorOr<DType> inDtypeOr = M::MO::fromMLIRType(
+      cast<SimdType>(getBody().getArgument(0).getType()).getElementType());
   if (inDtypeOr.isError())
     return emitOpError("failed to convert epilogue input type to Mojo");
   MojoValue inputDtypeParam = state.mlirDTypeToMojoType(*inDtypeOr);
@@ -3465,9 +3485,12 @@ static FailureOr<MojoValue> collectDtypesTuple(EmitMojoState &state,
   body.walk([&](Operation *op) {
     for (Type t :
          llvm::concat<Type>(op->getOperandTypes(), op->getResultTypes())) {
-      ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(t);
-      if (!dtypeOr.isError())
-        dtypes.insert(*dtypeOr);
+      auto element = dyn_cast<ElementTypeInterface>(t);
+      if (!element)
+        continue;
+      ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(element.getElementType());
+      ASSERT_STREAM(!dtypeOr.isError(), "verified element type " << t);
+      dtypes.insert(*dtypeOr);
     }
   });
   if (dtypes.empty())
@@ -4931,14 +4954,20 @@ LogicalResult CallElementwiseOp::verify() {
   if (llvm::none_of(getOutputs(), isTile)) {
     if (llvm::any_of(getInputs(), isTile))
       return emitOpError("a tile input requires a tile result");
+    for (Value v : llvm::concat<Value>(getInputs(), getOutputs()))
+      if (!isa<SimdType>(v.getType()))
+        return emitOpError("a SIMD call takes and returns !mogg.simd values, "
+                           "got ")
+               << v.getType();
     return success();
   }
   // The `TileTensor` overload computes on whole tiles. A literal is the one
   // scalar it takes, which emit passes alongside the tiles.
   if (!llvm::all_of(getOutputs(), isTile))
-    return emitOpError("cannot mix tile and scalar results");
+    return emitOpError("cannot mix tile and SIMD results");
   for (Value input : getInputs())
-    if (!isTile(input) && !input.getDefiningOp<ConstantScalarOp>())
+    if (!isTile(input) && (!input.getDefiningOp<ConstantScalarOp>() ||
+                           isa<SimdType>(input.getType())))
       return emitOpError("a tile call takes tiles or mogg.constant.scalar "
                          "literals, got ")
              << input.getType();
@@ -4989,7 +5018,8 @@ LogicalResult CallElementwiseOp::emitMojo(EmitMojoState &state) {
       EmitMojoState::getResultParamNameFor(ewFnAdaptor, kParameterDType);
   auto inferParam = [&](StringRef paramName) -> ErrorOr<MojoValue> {
     if (maybeDtypeParamName.has_value() && paramName == *maybeDtypeParamName) {
-      ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(outputVal.getType());
+      ErrorOr<DType> resultTyOr = M::MO::fromMLIRType(
+          cast<ElementTypeInterface>(outputVal.getType()).getElementType());
       if (resultTyOr.isError())
         return Error("invalid output type can't be converted to mojo dtype");
       return state.mlirDTypeToMojoType(*resultTyOr);
@@ -5143,10 +5173,24 @@ scalarConstantAttrToMojoLiteral(TypedAttr attr) {
 }
 
 LogicalResult ConstantScalarOp::verify() {
-  if (getValue().getType() != getResult().getType())
+  Type resultType = getResult().getType();
+  auto simd = dyn_cast<SimdType>(resultType);
+  Type elementType = simd ? simd.getElementType() : resultType;
+  if (getValue().getType() != elementType)
     return emitOpError("value attribute type ")
-           << getValue().getType() << " does not match result type "
-           << getResult().getType();
+           << getValue().getType() << " does not match element type "
+           << elementType;
+  if (simd)
+    return success();
+  // Only the literal a tile call takes next to its tiles stays a scalar.
+  for (Operation *user : getResult().getUsers()) {
+    auto call = dyn_cast<CallElementwiseOp>(user);
+    if (!call || !llvm::all_of(call.getOutputs(), [](Value v) {
+          return isa<TileType>(v.getType());
+        }))
+      return emitOpError("a scalar result may only feed a tile call; use "
+                         "!mogg.simd in a SIMD body");
+  }
   return success();
 }
 
@@ -5156,13 +5200,15 @@ LogicalResult ConstantScalarOp::emitMojo(EmitMojoState &state) {
   if (!literal)
     return emitError("TODO: unsupported scalar type");
 
-  // Splat to the closure's SIMD width (as `resolveScalarCaptureInput` does for
-  // `!mo.scalar`): Mojo infers an elementwise call's width from its SIMD
-  // operands, so an unsplatted first-operand constant would fail inference.
-  // Outside a closure the bare literal stands.
-  const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
-  ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(getResult().getType());
-  if (lambdaInfo.lambdaBuilder && !dtypeOr.isError()) {
+  // Splat a SIMD constant to the closure's width: Mojo infers an elementwise
+  // call's width from its SIMD operands, so an unsplatted first-operand
+  // constant would fail inference. A tile call's literal stays bare.
+  if (auto simd = dyn_cast<SimdType>(getResult().getType())) {
+    const EmitMojoState::MojoLambdaInfos &lambdaInfo = state.currentLambdaInfo;
+    ASSERT_STREAM(lambdaInfo.lambdaBuilder,
+                  "a !mogg.simd constant is emitted outside a closure");
+    ErrorOr<DType> dtypeOr = M::MO::fromMLIRType(simd.getElementType());
+    ASSERT_STREAM(!dtypeOr.isError(), "verified element type " << simd);
     MojoValue simdTy =
         EmitMojoState::getSIMDType(*dtypeOr, lambdaInfo.widthParameter);
     literal = simdTy({}, {*literal});

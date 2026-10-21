@@ -4,11 +4,11 @@
 
 // CHECK-LABEL: mo.graph @sumOfSquaresPlusBias
 // CHECK:       mogg.call.rowwise {{.*}} attributes {accum = f32, dtype = bf16, is_cached = false, primary = 0 : i64} {
-// CHECK-NEXT:    %[[ACC:.*]] = mogg.rowwise.reduce @builtin_kernels.monoids.ReduceSum (%i : !map.index<2>) -> f32 {
-// CHECK-NEXT:      %[[P:.*]] = mogg.rowwise.primary : bf16
+// CHECK-NEXT:    %[[ACC:.*]] = mogg.rowwise.reduce @builtin_kernels.monoids.ReduceSum (%i : !map.index<2>) -> !mogg.simd<f32> {
+// CHECK-NEXT:      %[[P:.*]] = mogg.rowwise.primary : !mogg.simd<bf16>
 // CHECK-NEXT:      %[[A:.*]] = mogg.call.elementwise @builtin_kernels.elementwise.Cast(%[[P]])
 // CHECK-NEXT:      %[[SQ:.*]] = mogg.call.elementwise @builtin_kernels.elementwise.Mul(%[[A]], %[[A]])
-// CHECK-NEXT:      mogg.yield %[[SQ]] : f32
+// CHECK-NEXT:      mogg.yield %[[SQ]] : !mogg.simd<f32>
 // CHECK-NEXT:    } {fields = ["acc"], params = {dtype = f32}}
 // CHECK-NEXT:    %[[B:.*]] = mogg.tensor.load %cap1[%row]
 // CHECK-NEXT:    %[[Y:.*]] = mogg.call.elementwise @builtin_kernels.elementwise.Add(%[[ACC]], %[[B]])

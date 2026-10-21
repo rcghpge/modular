@@ -15,7 +15,7 @@ mogg.kernel.decl @builtin_kernels.monoids.Welford registration = "mo.reduce.mean
 // CHECK-LABEL: func.func @argMax
 // CHECK:       %[[F:.*]]:2 = mogg.rowwise.reduce @builtin_kernels.monoids.ArgMax
 // CHECK:       }
-// CHECK-NEXT:  %[[N:.*]] = arith.negf %[[F]]#0 : f32
+// CHECK-NEXT:  %[[N:.*]] = builtin.unrealized_conversion_cast %[[F]]#0 : !mogg.simd<f32> to !mogg.simd<f32>
 // CHECK-NEXT:  mogg.rowwise.emit {
 // CHECK-NEXT:    mogg.tensor.store %{{.*}}[%row] = %[[F]]#1
 // CHECK-NEXT:    mogg.tensor.store %{{.*}}[%row] = %[[N]]
@@ -23,13 +23,13 @@ mogg.kernel.decl @builtin_kernels.monoids.Welford registration = "mo.reduce.mean
 // CHECK-NEXT: }
 func.func @argMax(%shape: !mogg.shape, %ctx: !mogg.context, %x: !mogg.tensor, %oi: !mogg.tensor, %on: !mogg.tensor) {
   mogg.call.rowwise shape(%shape) axis(1) context(%ctx) (%row : !map.index<2>) capturing {%cx = %x : !mogg.tensor, %ci = %oi : !mogg.tensor, %cn = %on : !mogg.tensor} device = "cpu" {
-    %v, %i = mogg.rowwise.reduce @builtin_kernels.monoids.ArgMax (%i : !map.index<2>) -> (f32, si64) {
-      %xv = mogg.tensor.load %cx[%i] : !mogg.tensor, !map.index<2> -> f32
-      mogg.yield %xv : f32
+    %v, %i = mogg.rowwise.reduce @builtin_kernels.monoids.ArgMax (%i : !map.index<2>) -> (!mogg.simd<f32>, !mogg.simd<si64>) {
+      %xv = mogg.tensor.load %cx[%i] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+      mogg.yield %xv : !mogg.simd<f32>
     }
-    mogg.tensor.store %ci[%row] = %i : !mogg.tensor, !map.index<2>, si64
-    %n = arith.negf %v : f32
-    mogg.tensor.store %cn[%row] = %n : !mogg.tensor, !map.index<2>, f32
+    mogg.tensor.store %ci[%row] = %i : !mogg.tensor, !map.index<2>, !mogg.simd<si64>
+    %n = builtin.unrealized_conversion_cast %v : !mogg.simd<f32> to !mogg.simd<f32>
+    mogg.tensor.store %cn[%row] = %n : !mogg.tensor, !map.index<2>, !mogg.simd<f32>
   }
   return
 }

@@ -1112,8 +1112,9 @@ def MOGG_TensorCreateEpilogueOp : MOGG_Op<"tensor.create.epilogue", [
   let summary = "A fused-output tensor bound to its own epilogue body.";
   let description = [{
     A `!mogg.tensor` that writes through its own epilogue body, lowered from
-    `map.iter.epilogue`. The body's entry-block arguments are its scalar
-    parameters. `$device` (cpu vs gpu) lets emit pick the preferred alignment.
+    `map.iter.epilogue`. The body's entry-block arguments are the
+    `!mogg.simd` value and its index, then the captures. `$device` (cpu vs
+    gpu) lets emit pick the preferred alignment.
 
     A store body ends with `mogg.tensor.store` into the store-target capture.
     A compute body ends with `mogg.yield` of the value to store, leaving the
@@ -1168,14 +1169,14 @@ def MOGG_TileCreateEpilogueOp : MOGG_Op<"tile.create.epilogue", [
 
     Example:
     ```mlir
-    %epi = mogg.tile.create.epilogue %shape (%val : f32, %idx : !map.index<2>)
+    %epi = mogg.tile.create.epilogue %shape (%val : !mogg.simd<f32>, %idx : !map.index<2>)
              capturing {%cout = %out : !mogg.tensor, %cz = %z : !mogg.tensor}
              ptr %ptr lane = compute, device = "gpu", elementType = f32,
              io = Output, mut = true {
-      %zv = mogg.tensor.load %cz[%idx] : !mogg.tensor, !map.index<2> -> f32
+      %zv = mogg.tensor.load %cz[%idx] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
       %sum = mogg.call.elementwise @builtin_kernels.elementwise.Add(%val, %zv)
-               moOpName = "mo.add" : f32, f32 -> f32
-      mogg.yield %sum : f32
+               moOpName = "mo.add" : !mogg.simd<f32>, !mogg.simd<f32> -> !mogg.simd<f32>
+      mogg.yield %sum : !mogg.simd<f32>
     }
     ```
   }];
@@ -1243,13 +1244,14 @@ def MOGG_TensorCreatePrologueOp : MOGG_Op<"tensor.create.prologue", [
   let results = (outs MOGG_Tensor:$tensor);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 def MOGG_TensorStoreOp : MOGG_Op<"tensor.store", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
-  let summary = "Store a scalar value into a codegen tensor at an index.";
-  let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index, AnyType:$value);
+  let summary = "Store a SIMD value into a codegen tensor at an index.";
+  let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index, MOGG_Simd:$value);
   let assemblyFormat = [{
     $tensor `[` $index `]` `=` $value attr-dict `:`
     qualified(type($tensor)) `,` qualified(type($index)) `,` qualified(type($value))
@@ -1399,12 +1401,12 @@ def MOGG_BufferConstantOp : MOGG_Op<"buffer.constant", [Pure]> {
 def MOGG_TensorLoadOp : MOGG_Op<"tensor.load", [
   DeclareOpInterfaceMethods<EmitsMojoInterface>,
 ]> {
-  let summary = "Load a scalar value from a codegen tensor at an index.";
+  let summary = "Load a SIMD value from a codegen tensor at an index.";
   let description = [{
     Not `Pure`, so it is not reordered across a store to the same tensor.
   }];
   let arguments = (ins MOGG_TensorLike:$tensor, AnyType:$index);
-  let results = (outs AnyType:$result);
+  let results = (outs MOGG_Simd:$result);
   let assemblyFormat = [{
     $tensor `[` $index `]` attr-dict `:`
     qualified(type($tensor)) `,` qualified(type($index)) `->` qualified(type($result))
@@ -1465,19 +1467,20 @@ def MOGG_ConstantScalarOp : MOGG_Op<"constant.scalar", [
 ]> {
   let summary = "A scalar constant inlined into a fusion body as a literal.";
   let description = [{
-    The result is a builtin scalar, as `mogg.tensor.load` produces, so it can
-    replace a load. Emitted as a Mojo literal at each use, splatted to the
-    closure's SIMD width. Not `ConstantLike`, since that hoisting is wanted
-    only on `map.constant.scalar`.
+    In a SIMD body the result is a `!mogg.simd`, as `mogg.tensor.load`
+    produces, so it can replace a load; it is emitted as a literal splatted to
+    the closure's SIMD width. The one builtin scalar result is the literal a
+    tile call takes next to its tiles. Not `ConstantLike`, since that hoisting
+    is wanted only on `map.constant.scalar`.
 
     Example:
     ```mlir
-    %cst = mogg.constant.scalar 2.000000e+00 : f32 : f32
+    %cst = mogg.constant.scalar 2.000000e+00 : f32 : !mogg.simd<f32>
     ```
   }];
 
   let arguments = (ins TypedAttrInterface:$value);
-  let results = (outs AnyTypeOf<[AnyFloat, AnyInteger]>:$result);
+  let results = (outs AnyTypeOf<[MOGG_Simd, AnyFloat, AnyInteger]>:$result);
   let assemblyFormat = [{
     $value attr-dict `:` qualified(type($result))
   }];
@@ -1531,8 +1534,8 @@ def MOGG_CallForeachTileOp : MOGG_Op<"call.foreach.tile", [
         shape(%s) context(%ctx) (%idx : !map.index<2>)
         capturing {%co = %out : !mogg.tensor, %cx = %x : !mogg.tensor}
         device = "gpu" {
-      %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> f32
-      mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, f32
+      %xv = mogg.tensor.load %cx[%idx] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+      mogg.tensor.store %co[%idx] = %xv : !mogg.tensor, !map.index<2>, !mogg.simd<f32>
     }
     ```
   }];
@@ -1601,11 +1604,11 @@ def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
         capturing {%x = %X : !mogg.tensor, %out = %OUT : !mogg.tensor}
         device = "cpu" {
       %acc = mogg.rowwise.reduce @builtin_kernels.monoids.ReduceSum
-          (%i : !map.index<2>) -> f32 {
-        %v = mogg.tensor.load %x[%i] : !mogg.tensor, !map.index<2> -> f32
-        mogg.yield %v : f32
+          (%i : !map.index<2>) -> !mogg.simd<f32> {
+        %v = mogg.tensor.load %x[%i] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+        mogg.yield %v : !mogg.simd<f32>
       }
-      mogg.tensor.store %out[%row] = %acc : !mogg.tensor, !map.index<2>, f32
+      mogg.tensor.store %out[%row] = %acc : !mogg.tensor, !map.index<2>, !mogg.simd<f32>
     }
     ```
   }];
@@ -1633,8 +1636,8 @@ def MOGG_RowwisePrimaryOp : MOGG_Op<"rowwise.primary", [
     Stands for a load of the `primary` capture at the fold's own index. The
     row is loaded once and handed to each fold.
   }];
-  let results = (outs AnyType:$result);
-  let assemblyFormat = "attr-dict `:` type($result)";
+  let results = (outs MOGG_Simd:$result);
+  let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
 def MOGG_RowwiseEmitOp : MOGG_Op<"rowwise.emit", [
@@ -1669,7 +1672,7 @@ def MOGG_RowwiseReduceOp : MOGG_Op<"rowwise.reduce", [
     OptionalAttr<DictionaryAttr>:$params,
     OptionalAttr<StrArrayAttr>:$fields
   );
-  let results = (outs Variadic<AnyType>:$results);
+  let results = (outs Variadic<MOGG_Simd>:$results);
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
@@ -1916,7 +1919,7 @@ def MOGG_IndexSliceSelectOp : MOGG_Op<"index.slice.select", [
     ```mlir
     mogg.index.slice.select(%i) <inShape = #mosh<ape[2, 9, 16]> : !mosh.ape, outShape = #mosh<ape[2, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, 1, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3> {
     ^bb0(%j: !map.index<3>):
-      mogg.tensor.store %window[%j] = %val : !mogg.tensor, !map.index<3>, f32
+      mogg.tensor.store %window[%j] = %val : !mogg.tensor, !map.index<3>, !mogg.simd<f32>
     }
     ```
   }];

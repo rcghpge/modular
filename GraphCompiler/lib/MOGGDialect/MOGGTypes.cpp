@@ -70,22 +70,36 @@ static void printDimName(mlir::AsmPrinter &printer,
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/MOGGDialect/MOGGTypeInterfaces.cpp.inc"
+
 #define GET_TYPEDEF_CLASSES
 #include "GraphCompiler/MOGGDialect/MOGGTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
-// TileType
+// SimdType and TileType
 //===----------------------------------------------------------------------===//
 
-LogicalResult
-MOGG::TileType::verify(function_ref<InFlightDiagnostic()> emitError,
-                       Type elementType) {
+static LogicalResult
+verifyScalarElementType(function_ref<InFlightDiagnostic()> emitError,
+                        Type elementType) {
   // `fromMLIRType` maps `none` to the unknown dtype, so it is excluded first.
   if (!isa<IntegerType, FloatType>(elementType) ||
       MO::fromMLIRType(elementType).isError())
     return emitError() << "expected a scalar dtype element type, got "
                        << elementType;
   return success();
+}
+
+LogicalResult
+MOGG::SimdType::verify(function_ref<InFlightDiagnostic()> emitError,
+                       Type elementType) {
+  return verifyScalarElementType(emitError, elementType);
+}
+
+LogicalResult
+MOGG::TileType::verify(function_ref<InFlightDiagnostic()> emitError,
+                       Type elementType) {
+  return verifyScalarElementType(emitError, elementType);
 }
 
 //===----------------------------------------------------------------------===//

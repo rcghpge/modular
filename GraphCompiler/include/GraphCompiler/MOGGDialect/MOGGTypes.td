@@ -19,6 +19,7 @@
 #define GENERICML_GRAPHCOMPILER_MOGGDIALECT_MOGGTYPES_TD
 
 include "GraphCompiler/MOGGDialect/MOGGDialect.td"
+include "GraphCompiler/MOGGDialect/MOGGTypeInterfaces.td"
 include "GraphCompiler/MODialect/MOTypes.td"
 
 class MOGG_Type<string name, string typeMnemonic, list<Trait> traits = []>
@@ -116,14 +117,42 @@ def MOGG_Async : MOGG_Type<"Async", "async"> {
 }
 
 //===----------------------------------------------------------------------===//
-// Tile fusion types
+// Fusion body value types
 //===----------------------------------------------------------------------===//
 
-def MOGG_Tile : MOGG_Type<"Tile", "tile"> {
+def MOGG_Simd : MOGG_Type<"Simd", "simd", [MOGG_ElementTypeInterface]> {
+  let summary = "A SIMD vector of elements inside a fusion body";
+  let description = [{
+    The value a SIMD fusion body computes on: `mogg.tensor.load` reads one,
+    `mogg.call.elementwise` maps them, `mogg.rowwise.reduce` folds them and
+    `mogg.tensor.store` writes one back.
+
+    The closure that runs the body picks the width at Mojo compile time. The
+    type therefore carries only the element type, which must be a scalar
+    dtype.
+
+    Example:
+    ```mlir
+    !mogg.simd<f32>
+    ```
+  }];
+
+  let parameters = (ins "Type":$elementType);
+  let assemblyFormat = "`<` $elementType `>`";
+  let genVerifyDecl = 1;
+
+  let builders = [
+    TypeBuilderWithInferredContext<(ins "Type":$elementType), [{
+      return $_get(elementType.getContext(), elementType);
+    }]>,
+  ];
+}
+
+def MOGG_Tile : MOGG_Type<"Tile", "tile", [MOGG_ElementTypeInterface]> {
   let summary = "A tile of a captured tensor inside a tile fusion body";
   let description = [{
     One tile of a captured tensor. A tile fusion body computes on tiles, where
-    a SIMD body computes on single elements.
+    a SIMD body computes on `!mogg.simd` values.
 
     `mogg.tile.load` reads a tile from a capture at a `!mogg.tile_coord<N>`.
     `mogg.call.elementwise` runs the kernel's `TileTensor` overload on it.

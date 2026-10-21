@@ -32,10 +32,10 @@ func.func @codegen_ops(%ptr: !mogg.pointer, %dim: !mogg.dim,
   // holding its own body (block args + a store), and the call that writes into
   // it (with an explicit device context).
   // CHECK: mogg.tensor.create.epilogue %{{.*}} ({{[^)]*}}) capturing {%{{[^ ]+}} = %{{.*}} : !mogg.tensor} ptr %{{.*}}
-  %epi = mogg.tensor.create.epilogue %s0 (%val : f32, %i : !mogg.dim) capturing {%cap = %t1 : !mogg.tensor} ptr %cp
+  %epi = mogg.tensor.create.epilogue %s0 (%val : !mogg.simd<f32>, %i : !mogg.dim) capturing {%cap = %t1 : !mogg.tensor} ptr %cp
       device = "gpu", elementType = f32, io = Input, mut = true {
-    // CHECK: mogg.tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor, !mogg.dim, f32
-    mogg.tensor.store %cap[%i] = %val : !mogg.tensor, !mogg.dim, f32
+    // CHECK: mogg.tensor.store %{{.*}}[%{{.*}}] = %{{.*}} : !mogg.tensor, !mogg.dim, !mogg.simd<f32>
+    mogg.tensor.store %cap[%i] = %val : !mogg.tensor, !mogg.dim, !mogg.simd<f32>
   }
   // CHECK: mogg.call.opaque @kernel inputs(%{{.*}} : !mogg.tensor) outputs(%{{.*}} : !mogg.tensor) context(%{{.*}} : !mogg.context)
   mogg.call.opaque @kernel inputs(%t0 : !mogg.tensor) outputs(%epi : !mogg.tensor) context(%ctx : !mogg.context)

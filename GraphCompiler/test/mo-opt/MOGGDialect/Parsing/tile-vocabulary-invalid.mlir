@@ -75,9 +75,9 @@ func.func @store_dtype_mismatch(%p: !mogg.pointer, %coord: !mogg.tile_coord<2>, 
 // -----
 
 func.func @tile_call_loaded_scalar(%x: !mogg.tensor, %t: !mogg.tile<f32>, %idx: !map.index<2>) {
-  %v = mogg.tensor.load %x[%idx] : !mogg.tensor, !map.index<2> -> f32
-  // expected-error @+1 {{a tile call takes tiles or mogg.constant.scalar literals, got 'f32'}}
-  %sum = mogg.call.elementwise @builtin_kernels.elementwise.Add(%t, %v) moOpName = "mo.add" : !mogg.tile<f32>, f32 -> !mogg.tile<f32>
+  %v = mogg.tensor.load %x[%idx] : !mogg.tensor, !map.index<2> -> !mogg.simd<f32>
+  // expected-error @+1 {{a tile call takes tiles or mogg.constant.scalar literals, got '!mogg.simd<f32>'}}
+  %sum = mogg.call.elementwise @builtin_kernels.elementwise.Add(%t, %v) moOpName = "mo.add" : !mogg.tile<f32>, !mogg.simd<f32> -> !mogg.tile<f32>
   return
 }
 

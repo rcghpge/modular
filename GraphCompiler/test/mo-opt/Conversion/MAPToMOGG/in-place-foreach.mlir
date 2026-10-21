@@ -9,8 +9,8 @@
 // CHECK: [[RHS:%[^ ]+]] = mogg.tensor.create({{.*}}) <{{.*}}mut = false{{.*}}> : !mogg.tensor
 // CHECK: [[OUT:%[^ ]+]] = mogg.tensor.create({{.*}}) <{{.*}}mut = true{{.*}}> : !mogg.buffer
 // CHECK: mogg.call.foreach {{.*}} ([[IDX:%[^ :,]+]] : !map.index<2>) capturing {[[BIN:%[^ :,]+]] = [[IN]] : !mogg.buffer, [[BRHS:%[^ :,]+]] = [[RHS]] : !mogg.tensor, [[BOUT:%[^ :,]+]] = [[OUT]] : !mogg.buffer}
-// CHECK-NEXT:   mogg.tensor.load [[BIN]][[[IDX]]] : !mogg.buffer, !map.index<2> -> f32
-// CHECK: mogg.tensor.store [[BOUT]][[[IDX]]] = {{%[^ ]+}} : !mogg.buffer, !map.index<2>, f32
+// CHECK-NEXT:   mogg.tensor.load [[BIN]][[[IDX]]] : !mogg.buffer, !map.index<2> -> !mogg.simd<f32>
+// CHECK: mogg.tensor.store [[BOUT]][[[IDX]]] = {{%[^ ]+}} : !mogg.buffer, !map.index<2>, !mogg.simd<f32>
 mo.graph @in_place_add(%buf: !mo.buffer<[2, 2], f32>, %rhs: !mo.tensor<[2, 2], f32>) -> (!mo.buffer<[2, 2], f32>, !mo.chain) {
   %ch0 = mo.chain.create(%buf) : !mo.buffer<[2, 2], f32>
   %vbuf, %ch1 = mo.mutable.load(%buf, %ch0) : (!mo.buffer<[2, 2], f32>, !mo.chain) -> (!mo.tensor<[2, 2], f32>, !mo.chain)

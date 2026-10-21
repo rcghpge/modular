@@ -18,7 +18,7 @@
 // CHECK:       %[[IN_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]], %[[T]]) <shape = #mosh<ape[dyn, dyn, 16]> : !mosh.ape>
 // CHECK-NEXT:  %[[OUT_SHAPE:[0-9]+]] = mogg.shape.create(%[[B]]) <shape = #mosh<ape[dyn, 8, 16]> : !mosh.ape>
 // CHECK:       %[[PTR:.*]] = mogg.tensor.get_ptr(%[[CONCAT]])
-// CHECK:       %[[EPI:[^ ,)]+]] = mogg.tensor.create.epilogue %{{.*}} (%[[VAL:[a-z0-9]+]] : f32, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing {%[[CAP0:[a-z0-9]+]] = %[[CONCAT]] : !mogg.tensor, %[[CAP1:[a-z0-9]+]] = %[[WINDOW]] : !mogg.tensor} shapes {%[[IN:[a-z0-9]+]] = %[[IN_SHAPE]], %[[OUT:[a-z0-9]+]] = %[[OUT_SHAPE]]} ptr %[[PTR]]
+// CHECK:       %[[EPI:[^ ,)]+]] = mogg.tensor.create.epilogue %{{.*}} (%[[VAL:[a-z0-9]+]] : !mogg.simd<f32>, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing {%[[CAP0:[a-z0-9]+]] = %[[CONCAT]] : !mogg.tensor, %[[CAP1:[a-z0-9]+]] = %[[WINDOW]] : !mogg.tensor} shapes {%[[IN:[a-z0-9]+]] = %[[IN_SHAPE]], %[[OUT:[a-z0-9]+]] = %[[OUT_SHAPE]]} ptr %[[PTR]]
 // CHECK-NEXT:    mogg.tensor.store %[[CAP0]][%[[IDX]]] = %[[VAL]]
 // CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[B, T, 16]> : !mosh.ape, outShape = #mosh<ape[B, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>> : !map.index<3> {
 // CHECK-NEXT:    ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):
@@ -110,7 +110,7 @@ mo.graph @conv_window(
 // runtime.
 
 // CHECK-LABEL: mo.graph @concat_window_dynamic_in
-// CHECK:       mogg.tensor.create.epilogue %{{.*}} (%[[VAL:[a-z0-9]+]] : f32, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing {%{{[a-z0-9]+}} = %{{.*}} : !mogg.tensor, %[[CAP1:[a-z0-9]+]] = %{{.*}} : !mogg.tensor} shapes {%[[IN:[a-z0-9]+]] = %{{[0-9]+}}, %[[OUT:[a-z0-9]+]] = %{{[0-9]+}}}
+// CHECK:       mogg.tensor.create.epilogue %{{.*}} (%[[VAL:[a-z0-9]+]] : !mogg.simd<f32>, %[[IDX:[a-z0-9]+]] : !map.index<3>) capturing {%{{[a-z0-9]+}} = %{{.*}} : !mogg.tensor, %[[CAP1:[a-z0-9]+]] = %{{.*}} : !mogg.tensor} shapes {%[[IN:[a-z0-9]+]] = %{{[0-9]+}}, %[[OUT:[a-z0-9]+]] = %{{[0-9]+}}}
 // CHECK-NEXT:    mogg.tensor.store
 // CHECK-NEXT:    mogg.index.slice.select(%[[IDX]], %[[IN]], %[[OUT]]) <inShape = #mosh<ape[2, T, 16]> : !mosh.ape, outShape = #mosh<ape[2, 8, 16]> : !mosh.ape, staticStart = array<i64: 0, -8, 0>, staticStep = array<i64: 1, 1, 1>>
 // CHECK-NEXT:    ^bb0(%[[IOUT:[a-z0-9]+]]: !map.index<3>):

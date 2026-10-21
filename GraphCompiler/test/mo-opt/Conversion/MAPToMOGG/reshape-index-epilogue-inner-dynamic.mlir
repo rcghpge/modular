@@ -11,7 +11,7 @@
 // CHECK: mogg.tensor.get_ptr
 // The epilogue body carries the two shape captures as trailing block args after
 // the tensor captures; the store-index reshape reads them as dynamic shapes.
-// CHECK: mogg.tensor.create.epilogue %{{[^ ]+}} (%[[V:[^ ,)]+]] : f32, %[[I:[^ ,)]+]] : !map.index<2>)
+// CHECK: mogg.tensor.create.epilogue %{{[^ ]+}} (%[[V:[^ ,)]+]] : !mogg.simd<f32>, %[[I:[^ ,)]+]] : !map.index<2>)
 // CHECK-SAME: capturing {%[[CAP0:[^ ,)]+]] = %{{[^ ]+}} : !mogg.tensor, %[[CAP1:[^ ,)]+]] = %{{[^ ]+}} : !mogg.tensor}
 // CHECK-SAME: shapes {%[[SFROM:[^ ,)]+]] = %{{[^ ,}]+}}, %[[STO:[^ ,)]+]] = %{{[^ ,}]+}}}
 // CHECK: %[[SIDX:.*]] = mogg.index.reshape(%[[I]], %[[SFROM]], %[[STO]]) <fromShape = {{.*}}, toShape = {{.*}}> : !map.index<2> -> !map.index<2>

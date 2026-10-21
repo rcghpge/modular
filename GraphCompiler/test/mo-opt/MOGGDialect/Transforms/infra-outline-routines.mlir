@@ -37,7 +37,7 @@ mo.graph @one_plain(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
 // CHECK:   context (%[[C:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK:     mogg.call @[[STUB1:__[A-Za-z0-9_]+]] %[[IP]], %[[OP]], %[[C]] : !mogg.pointer, !mogg.pointer, !mogg.context
 // CHECK: mogg.func @[[STUB1]] private {{.*}} attributes {abi = #mogg.abi<MOGG>,
-// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} (%{{.*}} : f32, %{{.*}} : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %{{.*}} : !mogg.tensor} ptr %{{.*}} {{.*}} {
+// CHECK:   %{{.*}} = mogg.tensor.create.epilogue %{{.*}} (%{{.*}} : !mogg.simd<f32>, %{{.*}} : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %{{.*}} : !mogg.tensor} ptr %{{.*}} {{.*}} {
 // CHECK:     mogg.tensor.store %[[CAP]][%{{.*}}] = %{{.*}}
 // CHECK:   }
 // CHECK:   mogg.call.opaque @{{.*}}MapLowerOneFusedOutput

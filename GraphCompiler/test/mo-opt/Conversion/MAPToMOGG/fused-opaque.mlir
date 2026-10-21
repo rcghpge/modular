@@ -19,8 +19,8 @@
 // CHECK: context (%[[CTX:[^ ,)]+]]) attributes {device = #M.device_ref<"cpu", 0>, fusionInfo = {{.*}}} {
 // CHECK: %[[OT:.*]] = mogg.tensor.create(%{{.*}}, %{{.*}}) <device = "cpu",{{.*}}mut = true{{.*}}> : !mogg.tensor
 // CHECK: %[[ESH:.*]] = mogg.shape.create()
-// CHECK: %[[EPI:[^ ,)]+]] = mogg.tensor.create.epilogue %[[ESH]] (%[[V:[^ ,)]+]] : f32, %[[I:[^ ,)]+]] : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %[[OT]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
-// CHECK:   mogg.tensor.store %[[CAP]][%[[I]]] = %[[V]] : !mogg.tensor, !map.index<2>, f32
+// CHECK: %[[EPI:[^ ,)]+]] = mogg.tensor.create.epilogue %[[ESH]] (%[[V:[^ ,)]+]] : !mogg.simd<f32>, %[[I:[^ ,)]+]] : !map.index<2>) capturing {%[[CAP:[^ ,)]+]] = %[[OT]] : !mogg.tensor} ptr %{{.*}} device = "cpu",{{.*}}mut = true {
+// CHECK:   mogg.tensor.store %[[CAP]][%[[I]]] = %[[V]] : !mogg.tensor, !map.index<2>, !mogg.simd<f32>
 // CHECK: mogg.call.opaque @{{.*}}MapLowerOneFusedOutput inputs(%{{.*}} : !mogg.tensor) outputs(%[[EPI]] : !mogg.tensor) context(%[[CTX]] : !mogg.context)
 // CHECK-NOT: hasEpilogueFusion
 mo.graph @one_fused(%a: !mo.tensor<[2, 2], f32>) -> !mo.tensor<[2, 2], f32> {
