@@ -112,8 +112,8 @@ public:
 
   /// Determine whether the specified signature can be invoked with the
   /// parameter bindings specified in `callable`.
-  static OverloadFitness
-  evaluate(ASTDecl *candidate, const OverloadSet &callable, PValue selfPValue);
+  static OverloadFitness evaluate(ASTDecl *candidate,
+                                  const OverloadSet &callable);
 
   /// Build a fitness for a candidate already known to be valid. For callers
   /// that decide validity themselves.

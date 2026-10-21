@@ -1012,20 +1012,6 @@ LogicalResult ParamInf::inferFromDefaults() {
         return failure();
       continue;
     }
-
-    // FIXME: this need a more systematical fix.
-    // Determine if we can use a default parameter for CTAD
-    if (paramBindings.ctadPogs.size() > idx) {
-      if (TypedAttr defaultCTAD =
-              paramBindings.ctadPogs[idx].getDefaultValue()) {
-        defaultCTAD = evaluator.getReboundAttribute(defaultCTAD);
-        if (!paramFinder.hasReferences(defaultCTAD)) {
-          if (failed(setDefault(defaultCTAD, idx)))
-            return failure();
-          continue;
-        }
-      }
-    }
   }
 
   // Do another pass to fill in empty variadic, we need to do it after user

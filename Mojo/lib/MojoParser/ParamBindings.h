@@ -135,11 +135,6 @@ private:
   /// This contains the values that are bound into this parameter list.
   CallOperands parameters;
 
-  /// FIXME: When parameterization is rebuilt remove this field.
-  /// Store the passing kind of the original parameter so we can search the
-  /// corresponding defaults array.
-  SmallVector<PogMetadataAttr> ctadPogs;
-
   /// This is a list of additional constraints that need to be satisfied by the
   /// bindings, consider:
   /// ```
@@ -167,11 +162,6 @@ TypedAttr getBoundConstAttrForFn(ASTDecl &fnDecl,
 TypedAttr getBoundConstAttrForFn(ASTDecl &fnDecl, SharedState &shared,
                                  const VerifiedParamBindings &verifiedBindings,
                                  ASTDecl &useScope, SMLoc useLoc);
-
-// FIXME: we should create the correct signature upon constructing the trait.
-FnTypeGeneratorType substituteTraitAliasesIntoSignature(
-    DeclResolver &declResolver, TraitSymbolAttr traitSymbol,
-    FnTypeGeneratorType desiredSignature, PValue selfPValue);
 
 } // namespace M::KGEN::LIT
 

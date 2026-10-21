@@ -395,9 +395,8 @@ PValue OverloadSet::filterOverloadSetForParamBindings(
       evaluations;
   bool allInvalid = true;
   for (ASTDecl *candidate : fnDecls) {
-    evaluations.emplace_back(
-        candidate, OverloadFitness::evaluate(candidate, *this,
-                                             baseValue.ir.getIfPValue()));
+    evaluations.emplace_back(candidate,
+                             OverloadFitness::evaluate(candidate, *this));
     OverloadFitness::Validity validity =
         evaluations.back().second.getValidity();
     allInvalid &= validity == OverloadFitness::Validity::kInvalid;

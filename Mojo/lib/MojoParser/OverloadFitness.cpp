@@ -246,18 +246,9 @@ bool OverloadFitness::isBetter(const OverloadFitness &other) const {
 }
 
 OverloadFitness OverloadFitness::evaluate(ASTDecl *candidate,
-                                          const OverloadSet &callable,
-                                          PValue selfPValue) {
-  DeclResolver &resolver = *callable.getShared().declResolver;
+                                          const OverloadSet &callable) {
   FnTypeGeneratorType signature =
       candidate->getDeclFullSignature(callable.contextualType);
-
-  if (auto *witness = dyn_cast<WitnessASTDecl>(candidate);
-      witness && selfPValue) {
-    // TODO(MOCO-1259): Support static methods with associated aliases
-    signature = substituteTraitAliasesIntoSignature(
-        resolver, witness->traitSymbol, signature, selfPValue);
-  }
 
   ParamBindings paramBindings = callable.getParamBindings();
   ParamInf inference(paramBindings, signature.getInputParamTypes(),
@@ -316,21 +307,6 @@ OverloadFitness OverloadFitness::evaluate(FnTypeGeneratorType signature,
       diag << " " << fromType;
     diag << " to " << callable.selfResultType << ": add an explicit cast";
     return std::move(diag);
-  }
-
-  if (!operands.empty() && funcIfDirect) {
-    if (auto selfCValue = operands[0].ir.getIfCValue()) {
-      if (auto selfPValue = PValue(selfCValue.getRValueType().mlirType)) {
-        // TODO(MOCO-1259): Support static methods with associated aliases
-        if (auto *witness = dyn_cast<WitnessASTDecl>(funcIfDirect);
-            witness &&
-            isa<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType)) {
-          signature = substituteTraitAliasesIntoSignature(
-              *shared.declResolver, witness->traitSymbol, signature,
-              selfPValue);
-        }
-      }
-    }
   }
 
   // If a variadic keyword arg is expected, we collect the unknown kw operands.

@@ -58,55 +58,6 @@ void LIT::emitUnprovableConstraintsFromFitness(
     LIT::emitConstraintInconclusive(shared.getDeclResolver(), diag, constraint);
 }
 
-/// If we're trying to call `foo.lork()`, like this:
-///
-///     def callTraitMethodWithAliasArg[X: MyTrait](t: X, thing: MyStruct[X.T]):
-///         t.lork(thing)
-///
-/// and lork happens to be a trait method with an alias, like:
-///
-///     trait MyTrait:
-///         alias T: OtherTrait
-///         def lork(self, thing: MyStruct[T]): ...
-///
-/// Then we'll need to adjust our desired signature from:
-///     def lork(self, thing: MyStruct[T])
-/// to:
-///     def lork(self, thing: MyStruct[get_witness(X, MyTrait, T)])
-///
-/// This function will do that conversion. If we aren't calling a trait method
-/// with an alias, it'll return the given desiredSignature unmodified.
-///
-/// For more context, see
-/// https://www.notion.so/modularai/verifyConformance-Arcana-13e1044d37bb80e88cb5c285a232784e?pvs=4#13e1044d37bb80bf8b42f3953af880f8
-///
-/// TODO(MOCO-1259): Support static methods with associated aliases
-///
-/// FIXME: why do we need a substitution here? shouldn't we just generate the
-/// right signature during parsing??
-FnTypeGeneratorType LIT::substituteTraitAliasesIntoSignature(
-    DeclResolver &declResolver, TraitSymbolAttr traitSymbol,
-    FnTypeGeneratorType desiredSignature, PValue selfPValue) {
-  auto &traitDecl = declResolver.getDeclForTypeSymbol(traitSymbol.getSymbol());
-  ParameterEvaluator traitAliasReplacer =
-      declResolver.shared.getParameterEvaluator();
-  for (auto &[name, decls] : traitDecl.getDeclsInScope()) {
-    for (ASTDecl *decl : decls) {
-      auto *traitAliasDecl = dyn_cast<AliasASTDecl>(decl);
-      if (!traitAliasDecl)
-        continue;
-      AliasDeclOp traitAlias = traitAliasDecl->getOp();
-      StringAttr nameStringAttr =
-          StringAttr::get(traitDecl.getContext(), name.str());
-      TypedAttr aliasRef =
-          declResolver.shared.getEvaluationContext().getAndFold<GetWitnessAttr>(
-              selfPValue, traitSymbol, nameStringAttr, traitAlias.getType());
-      traitAliasReplacer.setDeclBinding(traitAlias.getParamDecl(), aliasRef);
-    }
-  }
-  return traitAliasReplacer.replace(desiredSignature);
-}
-
 //===----------------------------------------------------------------------===//
 // ParamBindings
 //===----------------------------------------------------------------------===//
@@ -120,7 +71,6 @@ ParamBindings::ParamBindings(ASTDecl &declScope, const ExprNode *expr)
 void ParamBindings::operator=(ParamBindings &&other) {
   parameters = std::move(other.parameters);
   additionalConstraints = std::move(other.additionalConstraints);
-  ctadPogs = std::move(other.ctadPogs);
   bindingKind = other.bindingKind;
 }
 
@@ -141,15 +91,7 @@ ParamBindings ParamBindings::getForDeclaredType(ASTDecl &declScope,
   if (auto genType = sugarDynCast<GeneratorType>(type.extractMetaType()))
     paramBindings.additionalConstraints.assign(genType.getBodyConstraints());
 
-  // TODO: this will not work with arbitrary parametric ancestors.
-  // Default params need to come from the original declaration, instead of
-  // TypeSignatureType, as the latter won't contain the full defaults list if
-  // any have been bound already (when `type` is partially specified).
   ASTDecl *decl = type.getDecl(declScope.getShared());
-  if (auto *structDecl = dyn_cast_if_present<StructASTDecl>(decl))
-    llvm::append_range(
-        paramBindings.ctadPogs,
-        structDecl->getOp().getSignature().getParamListAttrs().getPogs());
 
   auto traitSelfName = StringAttr::get(decl->getContext(), "_Self");
   // When binding a trait function, add the self type bindings.
@@ -224,7 +166,6 @@ void ParamBindings::add(const ExprNode *expr, AnyValue value, StringAttr name) {
 
 void ParamBindings::append(const ParamBindings &other) {
   llvm::append_range(parameters.values, other.parameters.values);
-  llvm::append_range(ctadPogs, other.ctadPogs);
   llvm::append_range(additionalConstraints, other.additionalConstraints);
   bindingKind = other.bindingKind;
 }
@@ -284,8 +225,6 @@ TypedAttr LIT::getBoundConstAttrForFn(ASTDecl &fnDecl, SharedState &shared,
     paramValues.push_back(UnboundAttr::get(t));
 
   TraitSymbolAttr witnessFor = witnessEntry->traitSymbol;
-  signature = substituteTraitAliasesIntoSignature(
-      *shared.declResolver, witnessFor, signature, selfExpr);
 
   // Get the signature with only `_Self` bound.
   signature = signature.getSpecializedGenerator(paramValues,

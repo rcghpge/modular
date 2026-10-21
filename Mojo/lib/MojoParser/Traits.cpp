@@ -779,28 +779,10 @@ LIT::verifyAndBuildConformance(ConformanceASTDecl &conformanceDecl,
         structDecl, traitDecl, *structAliasDecl, *traitAliasDecl, shared);
 
     WitnessOp::create(b, name, /*sym_visibility=*/nullptr, aliasValue.get());
-    traitAliasReplacer.setDeclBinding(traitAlias.getParamDecl(), aliasValue);
 
     return success();
   };
 
-  // TODO(MOCO-1143): this loop needs a ParameterEvaluator that is
-  // populated with the mappings of trait alias requirements to their matched
-  // values on the implementing struct, then you call getReboundType/Attribute
-  // when checking both the function and future alias requirements
-  // ```
-  // trait Foo:
-  //     alias N: Int
-  //     # lit.fn @foo(%self: !kgen.param<Self>,
-  //     #               %x: SIMD[float32, #kgen.param.decl.ref<"N">])
-  //     def foo(self, x: SIMD[DType.float32, N]):
-  //         ...
-  // struct Impl(Foo):
-  //     alias N: Int = 4
-  //     # lit.fn @foo(%self: !kgen.param<Self>, %x: SIMD[float32,  4])
-  //     def foo(self, x: SIMD[DType.float32, 4]):
-  //         pass
-  // ```
   bool allMatchFound = true;
   if (shared.isUniversalParametricClosureTrait(&traitDecl)) {
     assert(traitDecl.getDeclsInScope().size() == 1);
@@ -1487,7 +1469,6 @@ LIT::getTraitBoundFromAssumptions(TypedAttr typeAttr, SharedState &shared,
 /// Resolving the *(0,0) into the Movable type, as well as the first param type.
 static FnTypeGeneratorType
 createRequirementSignature(FnTypeGeneratorType signature, ASTType newSelfType,
-                           ParameterEvaluator *traitAliasReplacer,
                            DeclResolver &declResolver) {
   // Get the selfType as a TypedAttr since we'll be using it as a parameter
   // value below.
@@ -1513,24 +1494,6 @@ createRequirementSignature(FnTypeGeneratorType signature, ASTType newSelfType,
   // At this point, the first parameter is gone:
   //    !lit.generator<[1]("self":
   //        !lit.ref<:trait<@Movable> MTT>, mut *[0,0]> owned_in_mem) -> none>>
-
-  // Next we'll replace trait aliases that appear in the trait methods, such
-  // as:
-  //
-  //     trait MyTrait:
-  //         alias T: ATrait
-  //         def bork(self) -> Something[T]: ...
-  //         def zork(self) -> Something[Self.T]: ...
-  //
-  // We'll replace them with the struct's trait value, like the int in:
-  //
-  //     struct MyStruct(MyTrait):
-  //         alias T: ATrait = int
-  //         def bork(self) -> SIMD[int]: ...
-
-  // bork's `T` is a regular paramRef, we use traitAliasReplacer to replace it.
-  if (traitAliasReplacer)
-    signature = traitAliasReplacer->replace(signature);
 
   // At this point, signature's `self` argument's type is the struct or
   // trait.  For example when binding Self down to some "MTT: Movable", we have:
@@ -1562,7 +1525,7 @@ createRequirementSignature(FnTypeGeneratorType signature, ASTType newSelfType,
 FnTypeGeneratorType
 LIT::specializeSignature(FnTypeGeneratorType traitFnSignature,
                          ASTType newSelfType, DeclResolver &declResolver) {
-  return createRequirementSignature(traitFnSignature, newSelfType, nullptr,
+  return createRequirementSignature(traitFnSignature, newSelfType,
                                     declResolver);
 }
 
@@ -1632,9 +1595,8 @@ FailureOr<TypedAttr> LIT::getUniqueWitnessForTypeIfConforms(
     // name.
     if (failed(shared.declResolver->resolveSignature(entry, errorLoc)))
       return failure();
-    resultType =
-        createRequirementSignature(fnDecl->getOp().getFullSignature(), type,
-                                   nullptr, *shared.declResolver);
+    resultType = createRequirementSignature(fnDecl->getOp().getFullSignature(),
+                                            type, *shared.declResolver);
     // Use the mangled name from the trait declaration for function witnesses.
     witnessName = *fnDecl->getOp().getSymName();
   } else {

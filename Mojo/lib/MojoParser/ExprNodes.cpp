@@ -433,18 +433,10 @@ static PValue resolveAliasReference(AliasDeclOp decl, StringRef declName,
   // If the param is declared in a function, then just directly use it.
   Operation *parent = decl->getParentOp();
   while (parent && !isa<FileModuleOp, FnOp>(parent)) {
-
-    // If this reference is within a trait then keep it symbolic since the
-    // conforming type will ultimately provide the value to use.
-    // TODO: What does it mean to write "SomeTrait.alias"?  This handles a
-    // reference from within the body of the trait, but wouldn't a reference
-    // from outside of it be an error?
-    if (isa<TraitDeclOp>(parent)) {
-      SyntheticNode synthNode(refLoc);
-      SimpleLiteralNode selfNode(ExprNode::kSelfLiteral, refLoc);
-      AttributeRefNode refNode(&selfNode, refLoc, declName);
-      return emitter.emitExprPValue(&refNode, EC_AttributeRefBase);
-    }
+    // Trait aliases are only reachable as `Self.X`, which member access lowers
+    // to a get_witness.
+    assert(!isa<TraitDeclOp>(parent) &&
+           "trait alias must be referenced through a witness");
 
     // If this is in a struct, then the value may refer to parameters declared
     // on the struct, whose values come through 'bindings'.  Remap.
