@@ -494,7 +494,7 @@ StructEmitter::StructEmitter(StructASTDecl &structDecl)
   structDeclOp = structDecl.getOp();
 }
 
-std::pair<FnOp, ASTDecl *> StructEmitter::synthesizeMethodInStruct(
+std::pair<FnOp, DefASTDecl *> StructEmitter::synthesizeMethodInStruct(
     StringRef name, ArrayRef<Type> argTypes,
     ArrayRef<ArgConvention> argConventions, PogListAttr argListAttrs,
     Type resultType, SpecialFunctionKind specialFnID, FnEffects fnEffects,
@@ -505,7 +505,7 @@ std::pair<FnOp, ASTDecl *> StructEmitter::synthesizeMethodInStruct(
       fnEffects, suffix, synthetic);
 }
 
-std::pair<FnOp, ASTDecl *> StructEmitter::synthesizeMethodInStruct(
+std::pair<FnOp, DefASTDecl *> StructEmitter::synthesizeMethodInStruct(
     StringRef name, ArrayRef<ParamDeclAttr> params, PogListAttr paramListAttrs,
     ArrayRef<Type> argTypes, ArrayRef<ArgConvention> argConventions,
     PogListAttr argListAttrs, Type resultType, SpecialFunctionKind specialFnID,
@@ -684,7 +684,25 @@ FnOp StructEmitter::synthesizeFieldwiseInit(
   return funcOp;
 }
 
+static SmallVector<ConstraintAttr>
+getDtorConstraints(ConstraintAttr conformanceConstraint) {
+  SmallVector<ConstraintAttr> constraints;
+  if (conformanceConstraint &&
+      !isTriviallyTrueConstraint(conformanceConstraint))
+    constraints.push_back(conformanceConstraint);
+  return constraints;
+}
+
 FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
+  DefASTDecl *dtorDecl = synthesizeEmptyDtorStub(conformanceConstraint);
+  if (!dtorDecl)
+    return {};
+  diagnoseNonDeinitableFields(*dtorDecl, conformanceConstraint);
+  return dtorDecl->getOp();
+}
+
+DefASTDecl *
+StructEmitter::synthesizeEmptyDtorStub(ConstraintAttr conformanceConstraint) {
   auto builder = ImplicitLocOpBuilder::atBlockEnd(
       structDeclOp.getLoc(), &structDeclOp.getFields().front());
 
@@ -697,10 +715,8 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
   selfType = selfType.getRefForArgument("self", /*isMut*/ true);
   StringAttr selfName = builder.getStringAttr("self");
 
-  SmallVector<ConstraintAttr> constraints;
-  if (conformanceConstraint &&
-      !isTriviallyTrueConstraint(conformanceConstraint))
-    constraints.push_back(conformanceConstraint);
+  SmallVector<ConstraintAttr> constraints =
+      getDtorConstraints(conformanceConstraint);
 
   // Create the FnOp and ASTDecl for the method.
   auto [funcOp, funcDecl] = synthesizeMethodInStruct(
@@ -724,7 +740,11 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
   // Finish off the function with a return + lit.endfunc.
   builder = ImplicitLocOpBuilder::atBlockEnd(funcOp.getLoc(), funcOp.getBody());
   IREmitter::emitNormalReturn(builder);
+  return funcDecl;
+}
 
+void StructEmitter::diagnoseNonDeinitableFields(
+    DefASTDecl &dtorDecl, ConstraintAttr conformanceConstraint) {
   // Perform semantic analysis to make sure all the fields are implicitly
   // deletable. We would rather error in the parser than in check lifetimes.
   // We do this after creating the function so we don't emit a redundant error
@@ -732,7 +752,7 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
   // Deinitable.
   SmallVector<ConstraintAttr> assumptions;
   structDecl.getKnownAssumptionsIncludingParents(assumptions);
-  assumptions.append(constraints);
+  assumptions.append(getDtorConstraints(conformanceConstraint));
   for (StructFieldOp fieldOp : structDeclOp.getFieldDecls()) {
     ASTType fieldType = fieldOp.getType();
     TriBool confResult =
@@ -747,12 +767,10 @@ FnOp StructEmitter::synthesizeEmptyDtor(ConstraintAttr conformanceConstraint) {
       emitError(fieldOp.getLoc())
           << "field '" << fieldOp.getName() << "' has non-'Deinitable' type "
           << fieldType;
-      funcDecl->setErroneous();
+      dtorDecl.setErroneous();
       break;
     }
   }
-
-  return funcOp;
 }
 
 FnOp StructEmitter::synthesizeEmptyMoveOrCopyInit(

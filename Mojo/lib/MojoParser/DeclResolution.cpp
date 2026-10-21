@@ -4484,31 +4484,22 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
   if (structOp.isEnum() && failed(StructEmitter(*this).synthesizeEnumMembers()))
     hasBadMember = true;
 
-  // Iterate over all the parsed decls.  in general these won't be signature
-  // resolved, and we don't want to resolve functions.  We do need to resolve
-  // struct fields signatures to understand their type.
-  for (std::pair<StringAttr, TinyPtrVector<ASTDecl *>> decls :
-       getDeclsInScope()) {
-    for (ASTDecl *decl : decls.second) {
-      if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(decl)) {
-        if (failed(resolver.resolveSignature(*decl, decl->getLoc()))) {
-          hasBadMember = true;
-          continue;
-        }
-        structFields.push_back(fieldDecl);
-      }
-    }
-  }
+  // Synthesize the special members before resolving any field: a field type
+  // can reach back into this struct and expect to find them.
 
   // Determine if there is an explicit conformance to Deinitable.
-  if (std::optional<ConstraintAttr> deinitableConstraint =
-          getConformanceCondition(*this, "Deinitable")) {
+  std::optional<ConstraintAttr> deinitableConstraint =
+      getConformanceCondition(*this, "Deinitable");
+  DefASTDecl *synthesizedDtorDecl = nullptr;
+  if (deinitableConstraint) {
     // Synthesize an empty __deinit__ when the type conforms to
     // Deinitable
     // ([mojo-lang] Accept '__deinit__' as the canonical destructor spelling)
-    // Deinitable but has no explicit destructor.
+    // Deinitable but has no explicit destructor. Its fields are checked once
+    // they are resolved, below.
     if (!shared.typeHasMember(*this, "__deinit__", getLoc()))
-      (void)StructEmitter(*this).synthesizeEmptyDtor(*deinitableConstraint);
+      synthesizedDtorDecl =
+          StructEmitter(*this).synthesizeEmptyDtorStub(*deinitableConstraint);
 
     // If the structure conforms to "Deinitable", we populate the
     // trivial flag.
@@ -4542,6 +4533,26 @@ LogicalResult StructASTDecl::resolveBody(Lexer &lexer) {
           copyFn.getBoundSymbolRef(shared.getEvaluationContext()));
     }
   }
+
+  // Iterate over all the parsed decls.  in general these won't be signature
+  // resolved, and we don't want to resolve functions.  We do need to resolve
+  // struct fields signatures to understand their type.
+  for (std::pair<StringAttr, TinyPtrVector<ASTDecl *>> decls :
+       getDeclsInScope()) {
+    for (ASTDecl *decl : decls.second) {
+      if (auto *fieldDecl = dyn_cast<StructFieldASTDecl>(decl)) {
+        if (failed(resolver.resolveSignature(*decl, decl->getLoc()))) {
+          hasBadMember = true;
+          continue;
+        }
+        structFields.push_back(fieldDecl);
+      }
+    }
+  }
+
+  if (synthesizedDtorDecl)
+    StructEmitter(*this).diagnoseNonDeinitableFields(*synthesizedDtorDecl,
+                                                     *deinitableConstraint);
 
   // If the struct is RegisterPassable, check invariants imposed by it before
   // checking other decorators.  This ensures that we reject invalid

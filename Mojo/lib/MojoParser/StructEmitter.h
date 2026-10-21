@@ -88,6 +88,12 @@ public:
   /// where-clause so that overload resolution rejects calls when the
   /// conditional conformance cannot be proven.
   FnOp synthesizeEmptyDtor(ConstraintAttr conformanceConstraint = {});
+  /// The two halves of synthesizeEmptyDtor, for a caller that must create the
+  /// destructor before the struct's field types are resolved.
+  DefASTDecl *
+  synthesizeEmptyDtorStub(ConstraintAttr conformanceConstraint = {});
+  void diagnoseNonDeinitableFields(DefASTDecl &dtorDecl,
+                                   ConstraintAttr conformanceConstraint = {});
   /// Add an empty move/copy ctor stub for this struct, to be filled in later.
   /// When \p conformanceConstraint is non-null, it is attached as a
   /// where-clause so that overload resolution rejects calls when the
@@ -120,7 +126,7 @@ public:
 
   /// Create a FnOp within the scope of the given Struct. The body is not
   /// populated. `suffix` is appended to the mangled function name.
-  std::pair<FnOp, ASTDecl *> synthesizeMethodInStruct(
+  std::pair<FnOp, DefASTDecl *> synthesizeMethodInStruct(
       StringRef name, ArrayRef<ParamDeclAttr> params,
       PogListAttr paramListAttrs, ArrayRef<Type> argTypes,
       ArrayRef<ArgConvention> argConventions, PogListAttr argListAttrs,
@@ -128,7 +134,7 @@ public:
       SpecialFunctionKind specialFnID = SpecialFunctionKind::kNormal,
       FnEffects fnEffects = FnEffects(), StringRef suffix = "",
       bool synthetic = true);
-  std::pair<FnOp, ASTDecl *> synthesizeMethodInStruct(
+  std::pair<FnOp, DefASTDecl *> synthesizeMethodInStruct(
       StringRef name, ArrayRef<Type> argTypes,
       ArrayRef<ArgConvention> argConventions, PogListAttr argListAttrs,
       Type resultType,
