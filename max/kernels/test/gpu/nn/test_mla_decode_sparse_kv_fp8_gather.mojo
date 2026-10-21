@@ -44,7 +44,7 @@ covered by `test_mla_decode_sparse_kv_fp8.mojo` and friends.
 from std.math import ceildiv, exp, isnan
 from std.memory import bitcast
 
-from max.gpu.host import DeviceContext, default_accelerator
+from max.gpu.host import DeviceAttribute, DeviceContext, default_accelerator
 from internal_utils.fp8_utils import cast_saturating
 from kv_cache.types import KVCacheStaticParams, PagedKVCacheCollection
 from layout import (
@@ -54,6 +54,9 @@ from layout import (
     row_major,
 )
 from layout.tile_layout import Layout as TileLayout
+from nn.attention.gpu.mha_decode_partition_heuristic import (
+    amd_sparse_mla_decode_num_partitions,
+)
 from nn.attention.gpu.mla import flare_mla_decoding, flare_mla_decoding_rows
 from nn.attention.gpu.mla_graph import (
     _AMD_SPARSE_MLA_GATHER_VEC,
@@ -147,6 +150,7 @@ def _run_case[
     indices_stride: Int,
     out_host: MutPointer[BFloat16, MutAnyOrigin],
     ctx: DeviceContext,
+    num_partitions: Optional[Int] = None,
 ) raises:
     """Runs the gather-to-scratch + dense-decode composition once (S=1) and
     copies the output to the host. `sparse_mla=False` is the RED-control
@@ -423,6 +427,7 @@ def _run_case[
             scale,
             ctx,
             scalar_args_buf_tt,
+            num_partitions=num_partitions,
         )
         _ = scratch_buf
     else:
@@ -539,6 +544,7 @@ def _check[
     ctx: DeviceContext,
     *,
     expect_pass: Bool,
+    num_partitions: Optional[Int] = None,
 ) raises:
     var out_size = batch_size * num_heads * KV_LATENT_DIM
 
@@ -551,6 +557,7 @@ def _check[
         indices_stride,
         got.unsafe_ptr().as_unsafe_any_origin(),
         ctx,
+        num_partitions,
     )
 
     var ref_vals = List[Float64](length=out_size, fill=0.0)
@@ -2032,6 +2039,40 @@ def main() raises:
                 indices_stride=2048,
                 ctx=ctx,
             )
+            # The production split, `amd_sparse_mla_decode_num_partitions`:
+            # 16 splits of 128 rows, so the 1200- and 530-row tokens leave 6
+            # and 11 splits wholly past their valid length.
+            var sm_count = ctx.get_attribute(
+                DeviceAttribute.MULTIPROCESSOR_COUNT
+            )
+            var topk_split = amd_sparse_mla_decode_num_partitions(
+                3, 2048, 8, sm_count
+            )
+            _check[num_heads=8, sparse_mla=True](
+                "sparse_gather_topk_split",
+                batch_size=3,
+                cache_len=4096,
+                topk_lengths_list=topk_lengths,
+                indices_stride=2048,
+                ctx=ctx,
+                expect_pass=True,
+                num_partitions=topk_split,
+            )
+            # Contexts of 1, 64 and 130 tokens: all but the first one or two
+            # splits are empty, so an empty split must neither produce a NaN
+            # nor reach the reduce. 256 splits leave up to 255 empty.
+            var short_contexts: List[Int] = [1, 64, 130]
+            for num_partitions in [topk_split, 256]:
+                _check[num_heads=8, sparse_mla=True](
+                    String(t"sparse_gather_short_context_np{num_partitions}"),
+                    batch_size=3,
+                    cache_len=4096,
+                    topk_lengths_list=short_contexts,
+                    indices_stride=2048,
+                    ctx=ctx,
+                    expect_pass=True,
+                    num_partitions=num_partitions,
+                )
             # RED control: identical (poisoned) cache, dense NullMask
             # decode over the whole cache -- must fail.
             _check[num_heads=8, sparse_mla=False](

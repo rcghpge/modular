@@ -2626,6 +2626,11 @@ class MLAKVCacheParams(KVCacheParams):
     """Number of query attention heads, required so the MLA decode kernel can
     resolve its dispatch metadata."""
 
+    sparse_indices_stride: int | None = None
+    """Selected cache rows per token for sparse MLA, the row stride of the
+    indexer's selection; ``None`` for dense MLA. AMD sparse decode splits
+    these rows rather than the context, so the dispatch key follows them."""
+
     def __post_init__(self) -> None:
         super().__post_init__()
         tp_degree = self.tensor_parallel_degree
@@ -2696,6 +2701,7 @@ class MLAKVCacheParams(KVCacheParams):
                 self.num_q_heads_per_device,
                 self.is_fp8_kv_dtype,
                 device,
+                sparse_indices_stride=self.sparse_indices_stride or 0,
             )
         )
         return MLAAttnKey(

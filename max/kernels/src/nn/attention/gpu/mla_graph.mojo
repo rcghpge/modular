@@ -43,7 +43,7 @@ from max.gpu.primitives.grid_controls import (
     PDLLevel,
     pdl_launch_attributes,
 )
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceAttribute, DeviceBuffer, DeviceContext
 from max.gpu.host.info import _is_sm10x_gpu
 from max.gpu.primitives.warp import shuffle_xor
 from std.utils.coord import Coord, Idx, coord_to_index_list
@@ -86,6 +86,9 @@ from nn.attention.gpu.mla import (
     flare_mla_decoding,
     flare_mla_decoding_rows,
     mla_decode_max_seq_len,
+)
+from nn.attention.gpu.mha_decode_partition_heuristic import (
+    amd_sparse_mla_decode_num_partitions,
 )
 from nn.attention.mha_operand import KVCacheMHAOperand, SparseRowsMHAOperand
 from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
@@ -2041,7 +2044,14 @@ def mla_decode_branch_fp8[
             scale,
             ctx,
             scalar_args_buf,
-            num_partitions=num_partitions_in,
+            num_partitions=num_partitions_in.or_else(
+                amd_sparse_mla_decode_num_partitions(
+                    batch_size,
+                    indices_stride,
+                    num_heads,
+                    ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
+                )
+            ),
         )
     else:
         generic_flare_mla_decode_kv_cache_ragged[
@@ -3588,8 +3598,8 @@ def mla_decode_branch_bf16[
                 valid_lengths_buf.unsafe_ptr().unsafe_offset(token0),
                 row_major(tokens),
             )
-            # The partition count from the graph is sized for the request
-            # batch, not this token chunk, so let the AMD heuristic pick.
+            # Sized for this token chunk rather than taken from the graph; at
+            # decode the chunk is the whole batch, matching the capture key.
             flare_mla_decoding[
                 config=MHAConfig[mla_decode_input_dtype](
                     num_heads, k_cache_dim
@@ -3603,7 +3613,12 @@ def mla_decode_branch_bf16[
                 scale,
                 ctx,
                 scalar_args_buf,
-                num_partitions=None,
+                num_partitions=amd_sparse_mla_decode_num_partitions(
+                    tokens,
+                    indices_stride,
+                    num_heads,
+                    ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
+                ),
             )
         _ = compact_buf^
         _ = valid_lengths_buf^
