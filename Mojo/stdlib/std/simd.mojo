@@ -50,7 +50,7 @@ from std.collections.string.string import (
 )
 from std.hash.hasher import Hasher
 from std.math import Ceilable, CeilDivable, Floorable, Truncable
-from std.math.math import _call_ptx_intrinsic, trunc
+from std.math.math import trunc
 from std._plugin import CurrentPlugin
 from std.sys import (
     CompilationTarget,

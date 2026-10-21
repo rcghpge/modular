@@ -16,13 +16,80 @@ from std.collections import OptionalReg
 from std.math.math import (
     _UnaryMathOp,
     _UnaryMathPluginHookFnType,
-    _call_ptx_intrinsic,
     _llvm_unary_fn,
 )
+from std.sys._assembly import inlined_assembly
 from std.sys.info import CompilationTarget, _is_sm_9x_or_newer
 
 
 comptime _MathFn = OptionalReg[_UnaryMathPluginHookFnType]
+
+
+def _call_ptx_intrinsic_scalar[
+    dtype: DType,
+    //,
+    *,
+    instruction: StaticString,
+    constraints: StaticString,
+](arg: Scalar[dtype]) -> Scalar[dtype]:
+    return inlined_assembly[
+        instruction + " $0, $1;",
+        Scalar[dtype],
+        constraints=constraints,
+        has_side_effect=False,
+    ](arg)
+
+
+def _call_ptx_intrinsic[
+    dtype: DType,
+    width: SIMDLength,
+    //,
+    *,
+    instruction: StaticString,
+    constraints: StaticString,
+](arg: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    comptime if width == 1:
+        return _call_ptx_intrinsic_scalar[
+            instruction=instruction, constraints=constraints
+        ](arg[0])
+
+    var res = SIMD[dtype, width]()
+
+    comptime for i in range(width):
+        res[i] = _call_ptx_intrinsic_scalar[
+            instruction=instruction, constraints=constraints
+        ](arg[i])
+    return res
+
+
+def _call_ptx_intrinsic[
+    dtype: DType,
+    width: SIMDLength,
+    //,
+    *,
+    scalar_instruction: StaticString,
+    vector2_instruction: StaticString,
+    scalar_constraints: StaticString,
+    vector_constraints: StaticString,
+](arg: SIMD[dtype, width]) -> SIMD[dtype, width]:
+    comptime if width == 1:
+        return _call_ptx_intrinsic_scalar[
+            instruction=scalar_instruction, constraints=scalar_constraints
+        ](arg[0])
+
+    var res = SIMD[dtype, width]()
+
+    comptime for i in range(0, width, 2):
+        res = res.insert[offset=i](
+            inlined_assembly[
+                vector2_instruction + " $0, $1;",
+                SIMD[dtype, 2],
+                constraints=vector_constraints,
+                has_side_effect=False,
+            ](arg.slice[2, offset=i]())
+        )
+
+    return res
 
 
 def _nvptx_unary_math_fn[

@@ -23,12 +23,10 @@ from std.sys import (
     CompilationTarget,
     bit_width_of,
     is_gpu,
-    is_nvidia_gpu,
     llvm_intrinsic,
     simd_width_of,
     size_of,
 )
-from std.sys._assembly import inlined_assembly
 from std.ffi import _external_call_const
 from std.sys.info import is_32bit
 
@@ -3044,118 +3042,6 @@ def _call_libm[
     return res
 
 
-def _call_ptx_intrinsic_scalar[
-    dtype: DType,
-    //,
-    *,
-    instruction: StaticString,
-    constraints: StaticString,
-](arg: Scalar[dtype]) -> Scalar[dtype]:
-    return inlined_assembly[
-        instruction + " $0, $1;",
-        Scalar[dtype],
-        constraints=constraints,
-        has_side_effect=False,
-    ](arg)
-
-
-def _call_ptx_intrinsic_scalar[
-    dtype: DType,
-    //,
-    *,
-    instruction: StaticString,
-    constraints: StaticString,
-](arg0: Scalar[dtype], arg1: Scalar[dtype]) -> Scalar[dtype]:
-    return inlined_assembly[
-        instruction + " $0, $1, $2;",
-        Scalar[dtype],
-        constraints=constraints,
-        has_side_effect=False,
-    ](arg0, arg1)
-
-
-def _call_ptx_intrinsic[
-    dtype: DType,
-    width: SIMDLength,
-    //,
-    *,
-    instruction: StaticString,
-    constraints: StaticString,
-](arg: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    comptime if width == 1:
-        return _call_ptx_intrinsic_scalar[
-            instruction=instruction, constraints=constraints
-        ](arg[0])
-
-    var res = SIMD[dtype, width]()
-
-    comptime for i in range(width):
-        res[i] = _call_ptx_intrinsic_scalar[
-            instruction=instruction, constraints=constraints
-        ](arg[i])
-    return res
-
-
-def _call_ptx_intrinsic[
-    dtype: DType,
-    width: SIMDLength,
-    //,
-    *,
-    scalar_instruction: StaticString,
-    vector2_instruction: StaticString,
-    scalar_constraints: StaticString,
-    vector_constraints: StaticString,
-](arg: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    comptime if width == 1:
-        return _call_ptx_intrinsic_scalar[
-            instruction=scalar_instruction, constraints=scalar_constraints
-        ](arg[0])
-
-    var res = SIMD[dtype, width]()
-
-    comptime for i in range(0, width, 2):
-        res = res.insert[offset=i](
-            inlined_assembly[
-                vector2_instruction + " $0, $1;",
-                SIMD[dtype, 2],
-                constraints=vector_constraints,
-                has_side_effect=False,
-            ](arg.slice[2, offset=i]())
-        )
-
-    return res
-
-
-def _call_ptx_intrinsic[
-    dtype: DType,
-    width: SIMDLength,
-    //,
-    *,
-    scalar_instruction: StaticString,
-    vector2_instruction: StaticString,
-    scalar_constraints: StaticString,
-    vector_constraints: StaticString,
-](arg0: SIMD[dtype, width], arg1: SIMD[dtype, width]) -> SIMD[dtype, width]:
-    comptime if width == 1:
-        return _call_ptx_intrinsic_scalar[
-            instruction=scalar_instruction, constraints=scalar_constraints
-        ](arg0[0], arg1[0])
-
-    var res = SIMD[dtype, width]()
-
-    comptime for i in range(0, width, 2):
-        res = res.insert[offset=i](
-            inlined_assembly[
-                vector2_instruction + " $0, $1; $2;",
-                SIMD[dtype, 2],
-                constraints=vector_constraints,
-                has_side_effect=False,
-            ](arg0.slice[2, offset=i](), arg1.slice[2, offset=i]())
-        )
-
-    return res
-
-
 # ===----------------------------------------------------------------------=== #
 # Ceilable
 # ===----------------------------------------------------------------------=== #
@@ -3735,25 +3621,15 @@ def round[T: Roundable, //](number: T, ndigits: Int) -> T:
 # Pure-Mojo libm implementations
 # ===----------------------------------------------------------------------=== #
 # These run unchanged on CPU and GPU, so they avoid the target-dependent
-# approximations above (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA)
-# and keep float32 paths free of float64 values, which Apple GPUs reject.
-# Algorithm provenance is documented with each implementation.
-# GPU backends contract a*b + c into fma where CPU code generation does not, so
-# CPU and GPU results may differ in the last ulp outside paths that use
-# explicit fma.
+# approximations the GPU plugins lower to (`sqrt.approx`, `lg2.approx`,
+# `ex2.approx` on NVIDIA) and keep float32 paths free of float64 values, which
+# Apple GPUs reject. Algorithm provenance is documented with each
+# implementation. GPU backends contract a*b + c into fma where CPU code
+# generation does not, so CPU and GPU results may differ in the last ulp
+# outside paths that use explicit fma. Apple GPUs may also flush subnormals and
+# carry no correct-rounding guarantee for sqrt.
 
 comptime _SQRT2 = 1.41421356237309504880168872420969807856967187537694
-
-# approximations (`sqrt.approx`, `lg2.approx`, `ex2.approx` on NVIDIA) and
-# keep float32 paths free of float64 values, which Apple GPUs reject.
-# Sources are cited per function. Compilers may contract a*b + c into an
-# fma depending on target and flags, so results can differ between targets
-# in the last ulp outside paths that use explicit fma. Apple GPUs may flush
-# subnormals and carry no correct-rounding guarantee for sqrt.
-# Sources are cited per function. Compilers may contract a*b + c into an fma
-# depending on target and flags, so results can differ between targets in the
-# last ulp outside paths that use explicit fma. Apple GPUs may flush subnormals
-# and carry no correct-rounding guarantee for sqrt.
 
 comptime _LN2 = 0.69314718055994530941723212145817656807550013436026
 
