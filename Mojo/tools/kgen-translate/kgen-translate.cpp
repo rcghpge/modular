@@ -25,6 +25,7 @@
 #include "Mojo/ToolCommon/InitAllDialects.h"
 #include "Mojo/ToolCommon/KGENPasses.h"
 #include "Support/Driver/DiagnosticFormat.h"
+#include "Support/Driver/DriverSupport.h"
 #include "Support/MDialect/MDialect.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -64,7 +65,10 @@ private:
 };
 
 std::optional<int> tryEmitMojoDoc(int argc, char *argv[], ContextRef &ctxRef) {
-  std::optional<std::filesystem::path> inputPath;
+  SmallVector<StringRef> inputPaths;
+  // Only an error once -emit-mojo-doc is known to be present: every other
+  // kgen-translate invocation also passes through this loop.
+  SmallVector<StringRef> unknownArguments;
   std::vector<std::string> includePaths;
   std::vector<std::string> ignoredDeprecations;
   bool emitMojoDoc = false;
@@ -130,14 +134,33 @@ std::optional<int> tryEmitMojoDoc(int argc, char *argv[], ContextRef &ctxRef) {
       outputPath = argv[++i];
       continue;
     }
-    if (!argument.starts_with('-'))
-      inputPath = argument.str();
+    if (argument.starts_with('-'))
+      unknownArguments.push_back(argument);
+    else
+      inputPaths.push_back(argument);
   }
 
   if (!emitMojoDoc)
     return std::nullopt;
-  if (!inputPath) {
+  if (!unknownArguments.empty()) {
+    llvm::errs() << "kgen-translate: error: unsupported argument '"
+                 << unknownArguments.front() << "' with -emit-mojo-doc\n";
+    return 1;
+  }
+  if (inputPaths.empty()) {
     llvm::errs() << "kgen-translate: error: no input file provided\n";
+    return 1;
+  }
+  if (inputPaths.size() > 1) {
+    llvm::errs() << "kgen-translate: error: -emit-mojo-doc takes a single "
+                    "input, got '"
+                 << inputPaths[0] << "' and '" << inputPaths[1] << "'\n";
+    return 1;
+  }
+  ErrorOr<std::filesystem::path> inputPath =
+      resolveMojoInputFileOrPackage(inputPaths.front());
+  if (inputPath.isError()) {
+    llvm::errs() << "kgen-translate: error: " << inputPath.getError() << "\n";
     return 1;
   }
   if (validateDocStrings && !hasExplicitWarningPolicy) {
@@ -159,7 +182,11 @@ std::optional<int> tryEmitMojoDoc(int argc, char *argv[], ContextRef &ctxRef) {
   config.stripFilePrefix = std::move(stripFilePrefix);
   config.diagnosticFormat = diagnosticFormat;
   llvm::raw_ostream &output = outputPath.empty() ? llvm::outs() : llvm::nulls();
-  return generateMojoDocJSON(*inputPath, context, config, output) ? 0 : 1;
+  if (!generateMojoDocJSON(*inputPath, context, config, output)) {
+    llvm::errs() << "kgen-translate: error: could not generate documentation\n";
+    return 1;
+  }
+  return 0;
 }
 } // namespace
 
