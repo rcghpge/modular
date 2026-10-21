@@ -111,10 +111,15 @@ def _validate_parallelism_config(config: DeepseekV3Config) -> None:
       - DP attention + EP MoE: ``data_parallel_degree == num_devices``
       - TP attention + EP MoE: ``data_parallel_degree == 1``
       - TP attention + TP MoE: ``data_parallel_degree == 1``, no EP
-    ``DeepseekV3Config.__post_init__`` already enforces
-    ``data_parallel_degree in (1, num_devices)``.
     """
     num_devices = len(config.devices)
+    # The pipeline sets the degree after `DeepseekV3Config.__post_init__`
+    # has checked it, so check it again here.
+    if config.data_parallel_degree not in (1, num_devices):
+        raise ValueError(
+            f"data_parallel_degree for DeepseekV3 ({config.data_parallel_degree})"
+            f" must be 1 (TP attention) or the number of devices ({num_devices})."
+        )
     # TP+TP (data_parallel_degree == 1, no ep_config) is valid.
     # Only require EP when using data-parallel attention on multiple GPUs.
     # Skip EP validation in virtual device mode (compilation-only) since EP
