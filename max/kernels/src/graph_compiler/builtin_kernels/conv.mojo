@@ -26,7 +26,7 @@ import extensibility
 
 from max.gpu.host import DeviceContext
 from max.gpu.host.info import is_cpu, is_gpu
-from layout import Coord, IntTuple, TileTensor, coord_to_index_list
+from layout import Coord, IntTuple, TileTensor, coord_to_index_list, row_major
 from linalg.fp8_quantization import convert_e4m3fn_to_e4m3fnuz
 from nn.conv.conv import ConvInfoStatic, conv_gpu, conv_nhwc_direct, conv_shape
 from nn.conv.conv import pack_filter_shape as pack_filter_shape_conv
@@ -35,6 +35,7 @@ from nn.conv.conv_transpose import (
     conv_transposed_cpu,
     conv_transposed_gpu,
 )
+from nn.conv.conv_utils import ConvSimdEpilogueFn, no_conv_simd_epilogue_fn
 from nn.pad import pad_constant, pad_reflect, pad_repeat, pad_shape
 from nn.pad_gpu import (
     pad_constant as pad_constant_gpu,
@@ -43,10 +44,16 @@ from nn.pad_gpu import (
 )
 from nn.pool import avg_pool, pool_shape, pool_shape_ceil
 from extensibility import (
+    Fused,
+    Input,
     InputTensor,
+    Output,
     OutputTensor,
+    Storable,
+    StoreAccess,
     Tensor,
     TileTensorable,
+    to_tile_tensor,
 )
 from extensibility import (
     _FusedOutputTensor as FusedOutputTensor,
@@ -730,71 +737,195 @@ def _check_conv_transpose_attrs[
         )
 
 
+def _check_conv_transpose_attrs[
+    spatial_rank: Int
+](
+    strides: TileTensor,
+    dilation: TileTensor,
+    paddings: TileTensor,
+    output_paddings: TileTensor,
+) raises:
+    comptime assert (
+        strides.rank == 1
+        and dilation.rank == 1
+        and paddings.rank == 1
+        and output_paddings.rank == 1
+    )
+    comptime assert (
+        strides.dtype.is_integral()
+        and dilation.dtype.is_integral()
+        and output_paddings.dtype.is_integral()
+    )
+
+    if strides.num_elements() != spatial_rank:
+        raise Error("(input_rank-2) values expected in convTranspose stride")
+
+    if dilation.num_elements() != spatial_rank:
+        raise Error("(input_rank-2) values expected in convTranspose dilation")
+
+    if output_paddings.num_elements() != spatial_rank:
+        raise Error(
+            "(input_rank-2) values expected in convTranspose output paddings"
+        )
+
+    if paddings.num_elements() != 2 * spatial_rank:
+        raise Error(
+            "(2*(input_rank-2)) value expected in convTranspose paddings"
+        )
+
+
+def _index_list[size: Int](values: TileTensor) -> IndexList[size]:
+    var result = IndexList[size](0)
+
+    comptime for i in range(size):
+        result[i] = Int(values.load((i,)))
+    return result
+
+
+# Shared by both `ConvTransposeCPU.execute` overloads: `output` is the buffer
+# the kernel accumulates into and applies `epilogue_fn` over.
+@inline(.always)
+def _conv_transpose_cpu[
+    EpilogueFnType: ConvSimdEpilogueFn,
+    //,
+    filter_layout: StaticString,
+    has_epilogue_fusion: Bool,
+](
+    output: TileTensor[mut=True, address_space=.GENERIC, ...],
+    input: TileTensor[mut=False, address_space=.GENERIC, ...],
+    filter: TileTensor[address_space=.GENERIC, ...],
+    strides: TileTensor,
+    dilation: TileTensor,
+    paddings: TileTensor,
+    output_paddings: TileTensor,
+    epilogue_fn: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    comptime spatial_rank = input.rank - 2
+
+    _check_conv_transpose_attrs[spatial_rank](
+        strides, dilation, paddings, output_paddings
+    )
+
+    var pads = _index_list[2 * spatial_rank](paddings)
+    var pad_d = IndexList[2](0)
+    var pad_h = IndexList[2](0)
+    var pad_w = IndexList[2](0)
+
+    comptime if input.rank == 3:
+        pad_w = Index(pads[0], pads[1])
+    elif input.rank == 4:
+        pad_h = Index(pads[0], pads[1])
+        pad_w = Index(pads[2], pads[3])
+    elif input.rank == 5:
+        pad_d = Index(pads[0], pads[1])
+        pad_h = Index(pads[2], pads[3])
+        pad_w = Index(pads[4], pads[5])
+
+    conv_transposed_cpu[
+        filter_layout == "FRSCf" or filter_layout == "FQRSCf",
+        filter_layout == "CFRS",
+        has_epilogue_fusion,
+    ](
+        output,
+        input,
+        filter,
+        _index_list[spatial_rank](strides),
+        _index_list[spatial_rank](dilation),
+        pad_d,
+        pad_h,
+        pad_w,
+        epilogue_fn,
+        Optional(ctx.assert_cpu_target()),
+    )
+
+
 @extensibility.register("mo.conv_transpose", type="cpu")
 struct ConvTransposeCPU:
-    """Registers the `mo.conv_transpose` graph op for CPU devices."""
+    """Registers the `mo.conv_transpose` graph op for CPU devices.
+
+    Two `execute` overloads under one registration: the graph compiler calls
+    the fused one when any output has a fused epilogue and the plain one when
+    none has. The CPU kernel accumulates in its output buffer and applies the
+    epilogue in a pass over it, so the fused form accumulates in scratch and
+    stores into the fused output, while the plain form writes the output
+    directly. The pair is grandfathered on the graph compiler's allow list;
+    new kernels declare one `execute` with a `StoreAccess` output.
+    """
 
     @staticmethod
     def execute[
         input_layout: StaticString,
         filter_layout: StaticString,
-        has_epilogue_fusion: Bool,
         target: StaticString,
     ](
-        output: FusedOutputTensor[...],
-        input: InputTensor[rank=output.rank, ...],
-        filter: InputTensor,
-        strides: InputTensor[rank=1, ...],
-        dilation: InputTensor[rank=1, ...],
-        paddings: InputTensor[rank=1, ...],
-        output_paddings: InputTensor[rank=1, ...],
+        output: Some[Output & Fused & StoreAccess],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilation: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
+        output_paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert conforms_to(type_of(output), Storable)
+        comptime assert type_of(input).rank == type_of(output).rank
+        comptime dtype = type_of(output).dtype
+
+        # The epilogue closure copies its capture into the kernel's loops, so
+        # refine the output to the register-passable value it arrives as.
+        comptime assert conforms_to(type_of(output), TrivialRegisterPassable)
+
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
         ](coords: Coord, val: SIMD[_dtype, _width]) {var output}:
-            output._lambda_store[width=_width, element_alignment=_alignment](
-                coords, rebind[SIMD[output.dtype, _width]](val)
+            output.store[width=Int(_width), element_alignment=_alignment](
+                coords, rebind[SIMD[dtype, Int(_width)]](val)
             )
 
-        _check_conv_transpose_attrs[input.rank - 2](
-            strides, dilation, paddings, output_paddings
+        var scratch_buf = ctx.enqueue_create_buffer[dtype](
+            Int(output.shape().product())
+        )
+        var scratch = TileTensor(scratch_buf, row_major(output.shape()))
+        _conv_transpose_cpu[filter_layout, has_epilogue_fusion=True](
+            scratch,
+            to_tile_tensor(input),
+            to_tile_tensor(filter),
+            to_tile_tensor(strides),
+            to_tile_tensor(dilation),
+            to_tile_tensor(paddings),
+            to_tile_tensor(output_paddings),
+            output_fn,
+            ctx,
         )
 
-        var pad_d = IndexList[2](0)
-        var pad_h = IndexList[2](0)
-        var pad_w = IndexList[2](0)
-
-        comptime if input.rank == 3:
-            pad_w = Index(paddings[0], paddings[1])
-        elif input.rank == 4:
-            pad_h = Index(paddings[0], paddings[1])
-            pad_w = Index(paddings[2], paddings[3])
-        elif input.rank == 5:
-            pad_d = Index(paddings[0], paddings[1])
-            pad_h = Index(paddings[2], paddings[3])
-            pad_w = Index(paddings[4], paddings[5])
-
-        conv_transposed_cpu[
-            filter_layout == "FRSCf" or filter_layout == "FQRSCf",
-            filter_layout == "CFRS",
-            has_epilogue_fusion,
-        ](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            _index_list[type_of(input.to_tile_tensor[.int64]()).rank - 2](
-                strides
-            ),
-            _index_list[type_of(input.to_tile_tensor[.int64]()).rank - 2](
-                dilation
-            ),
-            pad_d,
-            pad_h,
-            pad_w,
-            output_fn,
-            Optional(ctx.assert_cpu_target()),
+    @staticmethod
+    def execute[
+        input_layout: StaticString,
+        filter_layout: StaticString,
+        target: StaticString,
+    ](
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilation: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
+        output_paddings: Some[Input & Tensor],
+        ctx: DeviceContext,
+    ) raises where not conforms_to(type_of(output), Fused):
+        comptime assert type_of(input).rank == type_of(output).rank
+        _conv_transpose_cpu[filter_layout, has_epilogue_fusion=False](
+            to_tile_tensor(output),
+            to_tile_tensor(input),
+            to_tile_tensor(filter),
+            to_tile_tensor(strides),
+            to_tile_tensor(dilation),
+            to_tile_tensor(paddings),
+            to_tile_tensor(output_paddings),
+            no_conv_simd_epilogue_fn,
+            ctx,
         )
 
 

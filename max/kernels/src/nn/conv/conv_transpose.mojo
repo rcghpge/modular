@@ -1571,7 +1571,7 @@ def conv_transposed_cpu[
 ](
     output: TileTensor[mut=True, address_space=.GENERIC, ...],
     input: TileTensor[mut=False, address_space=.GENERIC, ...],
-    filter: TileTensor[mut=True, address_space=.GENERIC, ...],
+    filter: TileTensor[address_space=.GENERIC, ...],
     stride: IndexList[input.rank - 2],
     dilation: IndexList[input.rank - 2],
     pad_d: IndexList[2],
@@ -1629,9 +1629,9 @@ def conv_transposed_cpu[
     ):
         comptime packed_filter_rank = filter.rank if filter_packed else filter.rank + 1
 
-        var packed_filter_ptr = filter.ptr.unsafe_origin_cast[
-            MutUntrackedOrigin
-        ]()
+        var packed_filter_ptr = filter.ptr.unsafe_mut_cast[
+            True
+        ]().unsafe_origin_cast[MutUntrackedOrigin]()
         var packed_filter_shape: IndexList[packed_filter_rank]
 
         # If filter is not packed, we have to pack it before the kernel.
