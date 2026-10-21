@@ -3969,7 +3969,7 @@ struct TraitUnfusedExecute:
             comptime assert conforms_to(type_of(x), TileTensorable)
             comptime assert conforms_to(type_of(z), Storable)
             comptime assert conforms_to(type_of(w), Storable)
-            var xt = to_tile_tensor(x)
+            var xt = x.to_tile_tensor()
             for i in range(Int(xt.dim[0]())):
                 var raw = rebind[SIMD[type_of(z).dtype, 1]](xt.load((i,))) + 1
                 z.store[1](Coord(i), raw)
@@ -3995,9 +3995,9 @@ struct TraitUnfusedExecute:
             comptime assert conforms_to(type_of(x), TileTensorable)
             comptime assert conforms_to(type_of(z), TileTensorable)
             comptime assert conforms_to(type_of(w), TileTensorable)
-            var xt = to_tile_tensor(x)
-            var zt = to_tile_tensor(z)
-            var wt = to_tile_tensor(w)
+            var xt = x.to_tile_tensor()
+            var zt = z.to_tile_tensor()
+            var wt = w.to_tile_tensor()
             for i in range(Int(xt.dim[0]())):
                 var raw = rebind[SIMD[type_of(zt).dtype, 1]](xt.load((i,))) + 1
                 zt.store((i,), raw)
