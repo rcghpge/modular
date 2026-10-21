@@ -1337,6 +1337,21 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
     name = declOp.getDeclName();
   }
 
+  // Packages and modules are reached through the module-state tree, where
+  // source and precompiled packages alike register them. Neither flow needs to
+  // list them in a name table for this.
+  if (isa<FileModuleOp, PackageOp>(declOp.getOperation())) {
+    ModuleState *state = getModuleLoader().lookupState(&container);
+    ModuleState *child = state ? state->nestedModules.lookup(name) : nullptr;
+    if (!child || !child->decl || child->decl->getIfOperation() != declOp)
+      llvm::report_fatal_error(
+          "expected module in symbol table to appear in module states: " +
+          name.getValue());
+    if (failed(declResolver->resolve(*child->decl, howResolved, loc)))
+      return nullptr;
+    return child->decl;
+  }
+
   // If the container is loaded from bytecode, the decl should already be
   // defined within the container decl, look it up directly. This avoids going
   // through the more complex resolution paths (which also resolve other things
@@ -1357,22 +1372,6 @@ SharedState::lookupAndResolveMangledDecl(StringAttr leafRef, SMLoc loc,
     if (failed(declResolver->resolve(*decl, howResolved, loc)))
       return nullptr;
     return decl;
-  }
-
-  // The scope lookup above only surfaces a package's *public* interface (its
-  // __init__, via the redirect in lookupAndResolveDecl). A mangled symbol,
-  // however, can reference an *internal* submodule - one that is a child of the
-  // package but unlisted (navigable only through the module-state cache, not
-  // the importable scope). Resolving an IR symbol is internal access, so fall
-  // back to the nested-module cache for it.
-  if (ModuleState *state = getModuleLoader().lookupState(&container)) {
-    auto it = state->nestedModules.find(name);
-    if (it != state->nestedModules.end() && it->second->decl &&
-        it->second->decl->getIfOperation() == declOp) {
-      if (failed(declResolver->resolve(*it->second->decl, howResolved, loc)))
-        return nullptr;
-      return it->second->decl;
-    }
   }
 
   llvm::report_fatal_error(
@@ -1652,30 +1651,11 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
                                                  op.getParamDecl().getName())));
           })
           .Case([&](StructFieldOp op) { addDeclForOp(op, op.getNameAttr()); })
-          .Case<FileModuleOp, PackageOp>([&](auto op) {
+          .Case<FileModuleOp, PackageOp>([&](Operation *op) {
             assert(packageState &&
                    "FileModule or Package nested in non-package");
-            StringAttr name = op.getSymNameAttr();
-            // Record the import location *before* materializing the bytecode
-            // decl, as in the process of translating the loc to an SMLoc we
-            // resolve/register a buffer ID. After that happens we're unable to
-            // stamp on an import loc.
-            diags.recordImportedFileIncludeLoc(op->getLoc(), packageImportLoc);
-            ASTDecl &decl = addDeclForOp(op, name);
-            auto &moduleDecl = cast<ModuleASTDecl>(decl);
-
-            // Record a nested module state for this decl. The child is a
-            // module inside the artifact's one file, so it shares the
-            // enclosing package's origin and holds no spec of its own: it was
-            // never resolved, so there is no candidate to describe.
-            auto childState = std::make_unique<ModuleState>(&moduleDecl);
-            childState->origin = packageState->origin;
-            ModuleState &moduleState =
-                packageState->insertNestedModule(name, std::move(childState));
-
-            getModuleLoader().setState(moduleDecl, moduleState);
-            if constexpr (std::is_same_v<decltype(op), PackageOp>)
-              getModuleLoader().setPackageState(op, moduleState);
+            getModuleLoader().createArtifactChildState(op, *packageState,
+                                                       packageImportLoc);
           })
           .Case([&](ConformanceOp op) {
             // Witness tables are considered signature-resolved from the start

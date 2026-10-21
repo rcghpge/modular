@@ -1331,6 +1331,30 @@ ModuleState &ModuleLoader::createBinaryPackageState(SMLoc loc,
   return moduleState;
 }
 
+ModuleState &ModuleLoader::createArtifactChildState(Operation *op,
+                                                    ModuleState &parentState,
+                                                    SMLoc importLoc) {
+  assert((isa<FileModuleOp, PackageOp>(op)) && "expected a module or package");
+  StringAttr name = SymbolTable::getSymbolName(op);
+  // Record the import location *before* creating the decl: translating the
+  // op's location to an SMLoc registers its buffer, after which no import
+  // location can be stamped on it.
+  shared.diags.recordImportedFileIncludeLoc(op->getLoc(), importLoc);
+  // An empty binding name keeps the child unlisted, as for source children.
+  auto &decl = cast<ModuleASTDecl>(shared.declResolver->addBytecodeDecl(
+      op, StringAttr(), parentState.decl, DeclResolvedness::unparsed));
+  shared.declResolver->registerDeclSymbol(&decl);
+
+  auto childState = std::make_unique<ModuleState>(&decl);
+  childState->origin = parentState.origin;
+  ModuleState &state =
+      parentState.insertNestedModule(name, std::move(childState));
+  setState(decl, state);
+  if (auto packageOp = dyn_cast<PackageOp>(op))
+    setPackageState(packageOp, state);
+  return state;
+}
+
 ModuleState &ModuleLoader::createErrorModuleState(SMLoc loc, StringAttr name,
                                                   ModuleASTDecl &errorContext,
                                                   const Twine &errorMsg,

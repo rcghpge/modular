@@ -29,7 +29,7 @@ from max.gpu.memory import CacheEviction, Fill, async_copy
 from layout._fillers import BATCH_SIZE
 from std.sys import prefetch
 from std.sys.intrinsics import PrefetchOptions
-from std.utils import IndexList, StaticTuple
+from std.utils import IndexList, StaticTuple, Variant
 from std.utils.coord import _coerce_dynamic
 
 from .swizzle import Swizzle
@@ -111,9 +111,7 @@ struct _IndexOrSlice[static: Int = -1](
 
     comptime static_index = Self.static
 
-    var _value: std.utils.Variant[
-        Int, ContiguousSlice, ComptimeInt[Self.static]
-    ]
+    var _value: Variant[Int, ContiguousSlice, ComptimeInt[Self.static]]
     """The wrapped index (`Int` or `ComptimeInt`) or subrange
     (`ContiguousSlice`)."""
 

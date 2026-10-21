@@ -18,6 +18,17 @@ This version is still a work in progress.
 
 ## Language changes
 
+- Precompiled packages now no longer leak names and provide the same surface as
+  the same packages compiled from source. This may break your code (especially
+  from `std`):
+
+  ```mojo
+  from std.os import rmdir
+
+  def main():
+    std.os.rmdir(...) # This no longer works - use rmdir, or import std.os.
+  ```
+
 ## Library stabilizations
 
 - `List.insert`

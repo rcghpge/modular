@@ -237,6 +237,14 @@ public:
   ModuleState &createBinaryPackageState(SMLoc loc, const ModuleSpec &spec,
                                         ModuleState &parentState);
 
+  /// Create the state for a module or package nested in an already-loaded
+  /// precompiled artifact. Like a child found by scanning a source package, its
+  /// decl is unlisted. It shares the artifact's origin and has no spec, since
+  /// resolution never produced a candidate for it. `importLoc` is where the
+  /// artifact was imported.
+  ModuleState &createArtifactChildState(Operation *op, ModuleState &parentState,
+                                        SMLoc importLoc);
+
   /// Create an error module state and emit the given error message. If
   /// `unlisted` is set, the erroneous decl is not registered in
   /// `errorContext`'s name table. A non-empty `note` is attached to the error.
