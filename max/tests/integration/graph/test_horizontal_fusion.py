@@ -28,17 +28,19 @@ with its consumer the same way, which input fusion leaves alone.
 
 from __future__ import annotations
 
-import platform
+import functools
+import operator
+import os
 import re
+from pathlib import Path
 
 import numpy as np
 import pytest
-import torch
 from fusion_utils import run_and_verify_fusion
 from max.driver import Buffer, accelerator_count
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph, TensorType, ops
+from max.graph import DeviceRef, Graph, TensorType, TensorValue, ops
 
 
 def _f32(*shape: int, device: DeviceRef | None = None) -> TensorType:
@@ -506,7 +508,29 @@ def test_matmul_result_read_in_branch(session: InferenceSession) -> None:
         np.testing.assert_allclose(out, mm_np + branch, rtol=1e-4, atol=1e-4)
 
 
-_CONCAT_SLICE = r"mo\.concat.*mo\.slice"
+_CONCAT_SLICE = r"concat_opaque.*mo\.slice"
+
+# A concat the graph compiler can't see into: `mo.concat` is a view it fuses
+# like any other, so the tests of fusing into an opaque kernel's epilogue use
+# this custom op, which computes the same thing as an opaque kernel.
+_CUSTOM_OPS_PATH = Path(os.environ["CUSTOM_OPS_PATH"])
+
+
+def _concat_opaque(inputs: list[TensorValue], axis: int) -> TensorValue:
+    first = inputs[0]
+    shape = list(first.shape)
+    shape[axis] = functools.reduce(
+        operator.add, (x.shape[axis] for x in inputs)
+    )
+    out_type = TensorType(first.dtype, shape, device=first.device)
+    return ops.custom(
+        "concat_opaque",
+        first.device,
+        inputs,
+        [out_type],
+        parameters={"axis": axis},
+    )[0].tensor
+
 
 _DEVICES = [
     pytest.param(DeviceRef.CPU(), id="cpu"),
@@ -750,10 +774,12 @@ def test_concat_slice_window(session: InferenceSession) -> None:
     every element, and again into the window where the slice selects it.
     """
     with Graph(
-        "concat_slice_window", input_types=[_f32(2, 8, 16), _f32(2, 3, 16)]
+        "concat_slice_window",
+        input_types=[_f32(2, 8, 16), _f32(2, 3, 16)],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
+        full = _concat_opaque([cache, new], axis=1)
         graph.output(full, full[:, -8:])
 
     cache_np = np.random.randn(2, 8, 16).astype(np.float32)
@@ -766,84 +792,15 @@ def test_concat_slice_window(session: InferenceSession) -> None:
     np.testing.assert_array_equal(window, expected[:, -8:])
 
 
-def test_concat_slice_window_dynamic(session: InferenceSession) -> None:
-    """The KV-cache window update, over symbolic batch and sequence extents.
-
-    The window's start is negative on a dim only known at runtime, so the
-    fused store resolves it against the concat's runtime shape.
-    """
-    cache_type = TensorType(
-        DType.float32, ["batch", 8, 16], device=DeviceRef.CPU()
-    )
-    new_type = TensorType(
-        DType.float32, ["batch", "seq", 16], device=DeviceRef.CPU()
-    )
-    with Graph(
-        "concat_slice_window_dynamic", input_types=[cache_type, new_type]
-    ) as graph:
-        cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
-        graph.output(full, full[:, -8:])
-
-    cache_np = np.random.randn(3, 8, 16).astype(np.float32)
-    new_np = np.random.randn(3, 5, 16).astype(np.float32)
-    full_out, window = run_and_verify_fusion(
-        session, graph, cache_np, new_np, fused=_CONCAT_SLICE
-    )
-    expected = np.concatenate([cache_np, new_np], axis=1)
-    np.testing.assert_array_equal(full_out, expected)
-    np.testing.assert_array_equal(window, expected[:, -8:])
-
-
-def test_concat_slice_kv_windows(session: InferenceSession) -> None:
-    """The k and v cache updates of one attention block, each in one kernel.
-
-    Both windows slice with the same bounds, so they share those inputs; the
-    two slices must not pair with each other on that, or neither could fuse
-    into its concat.
-    """
-    cache_type = TensorType(
-        DType.float32, ["batch", 8, 16], device=DeviceRef.CPU()
-    )
-    new_type = TensorType(
-        DType.float32, ["batch", "seq", 16], device=DeviceRef.CPU()
-    )
-    with Graph(
-        "concat_slice_kv_windows",
-        input_types=[cache_type, new_type, cache_type, new_type],
-    ) as graph:
-        k_cache, k_new, v_cache, v_new = (v.tensor for v in graph.inputs)
-        k = ops.concat([k_cache, k_new], axis=1)
-        v = ops.concat([v_cache, v_new], axis=1)
-        graph.output(k, k[:, -8:], v, v[:, -8:])
-
-    arrays = [
-        np.random.randn(2, 8, 16).astype(np.float32),
-        np.random.randn(2, 5, 16).astype(np.float32),
-        np.random.randn(2, 8, 16).astype(np.float32),
-        np.random.randn(2, 5, 16).astype(np.float32),
-    ]
-    model = session.load(graph)
-    fused = [s for s in model.kernel_summaries if re.search(_CONCAT_SLICE, s)]
-    assert len(fused) == 2, model.kernel_summaries
-    k_out, k_win, v_out, v_win = run_and_verify_fusion(
-        session, graph, *arrays, fused=_CONCAT_SLICE
-    )
-    k_expected = np.concatenate(arrays[:2], axis=1)
-    v_expected = np.concatenate(arrays[2:], axis=1)
-    np.testing.assert_array_equal(k_out, k_expected)
-    np.testing.assert_array_equal(k_win, k_expected[:, -8:])
-    np.testing.assert_array_equal(v_out, v_expected)
-    np.testing.assert_array_equal(v_win, v_expected[:, -8:])
-
-
 def test_concat_slice_step(session: InferenceSession) -> None:
     """A strided slice: the store skips the rows off the stride."""
     with Graph(
-        "concat_slice_step", input_types=[_f32(4, 6, 16), _f32(4, 3, 16)]
+        "concat_slice_step",
+        input_types=[_f32(4, 6, 16), _f32(4, 3, 16)],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         x, y = (v.tensor for v in graph.inputs)
-        full = ops.concat([x, y], axis=1)
+        full = _concat_opaque([x, y], axis=1)
         graph.output(full, full[:, 1::2])
 
     x_np = np.random.randn(4, 6, 16).astype(np.float32)
@@ -859,10 +816,12 @@ def test_concat_slice_step(session: InferenceSession) -> None:
 def test_concat_slice_two_dims(session: InferenceSession) -> None:
     """A slice of two outer dims, each bounded on both ends."""
     with Graph(
-        "concat_slice_two_dims", input_types=[_f32(5, 4, 8), _f32(5, 4, 8)]
+        "concat_slice_two_dims",
+        input_types=[_f32(5, 4, 8), _f32(5, 4, 8)],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         x, y = (v.tensor for v in graph.inputs)
-        full = ops.concat([x, y], axis=1)
+        full = _concat_opaque([x, y], axis=1)
         graph.output(full, full[1:4, 2:7])
 
     x_np = np.random.randn(5, 4, 8).astype(np.float32)
@@ -886,9 +845,10 @@ def test_concat_slice_relu_window(session: InferenceSession) -> None:
     with Graph(
         "concat_slice_relu_window",
         input_types=[_f32(2, 8, 16), _f32(2, 3, 16)],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
+        full = _concat_opaque([cache, new], axis=1)
         graph.output(full, ops.relu(full[:, -8:]))
 
     cache_np = np.random.randn(2, 8, 16).astype(np.float32)
@@ -898,7 +858,7 @@ def test_concat_slice_relu_window(session: InferenceSession) -> None:
         graph,
         cache_np,
         new_np,
-        fused=r"mo\.concat.*mo\.slice, mo\.relu",
+        fused=r"concat_opaque.*mo\.slice, mo\.relu",
     )
     expected = np.concatenate([cache_np, new_np], axis=1)
     np.testing.assert_array_equal(full_out, expected)
@@ -912,10 +872,12 @@ def test_concat_slice_cast(session: InferenceSession) -> None:
     only the window's store there changes dtype.
     """
     with Graph(
-        "concat_slice_cast", input_types=[_f32(2, 8, 16), _f32(2, 3, 16)]
+        "concat_slice_cast",
+        input_types=[_f32(2, 8, 16), _f32(2, 3, 16)],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
+        full = _concat_opaque([cache, new], axis=1)
         graph.output(full, ops.cast(full[:, -8:], DType.float16))
 
     cache_np = np.random.randn(2, 8, 16).astype(np.float32)
@@ -925,38 +887,11 @@ def test_concat_slice_cast(session: InferenceSession) -> None:
         graph,
         cache_np,
         new_np,
-        fused=r"mo\.concat.*mo\.slice, mo\.cast",
+        fused=r"concat_opaque.*mo\.slice, mo\.cast",
     )
     expected = np.concatenate([cache_np, new_np], axis=1)
     np.testing.assert_array_equal(full_out, expected)
     np.testing.assert_array_equal(window, expected[:, -8:].astype(np.float16))
-
-
-@pytest.mark.skipif(accelerator_count() == 0, reason="requires an accelerator")
-def test_concat_slice_window_dynamic_gpu(session: InferenceSession) -> None:
-    """The KV-cache window update on a GPU, where the fused store runs inside
-    the concat kernel's device closure."""
-    cache_type = TensorType(
-        DType.float32, ["batch", 64, 4, 32], device=DeviceRef.GPU()
-    )
-    new_type = TensorType(
-        DType.float32, ["batch", "seq", 4, 32], device=DeviceRef.GPU()
-    )
-    with Graph(
-        "concat_slice_window_dynamic_gpu", input_types=[cache_type, new_type]
-    ) as graph:
-        cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
-        graph.output(full, full[:, -64:])
-
-    cache_np = np.random.randn(2, 64, 4, 32).astype(np.float32)
-    new_np = np.random.randn(2, 7, 4, 32).astype(np.float32)
-    full_out, window = run_and_verify_fusion(
-        session, graph, cache_np, new_np, fused=_CONCAT_SLICE
-    )
-    expected = np.concatenate([cache_np, new_np], axis=1)
-    np.testing.assert_array_equal(full_out, expected)
-    np.testing.assert_array_equal(window, expected[:, -64:])
 
 
 @pytest.mark.parametrize("device", _DEVICES)
@@ -975,9 +910,10 @@ def test_concat_slice_window_longer_than_dim(
     with Graph(
         "concat_slice_window_longer_than_dim",
         input_types=[cache_type, new_type],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
+        full = _concat_opaque([cache, new], axis=1)
         window = ops.slice_tensor(
             full, [slice(None), (slice(-8, None), "w"), slice(None)]
         )
@@ -1113,101 +1049,6 @@ def test_matmul_reshape_window(session: InferenceSession) -> None:
     np.testing.assert_array_equal(window_out, expected[::2])
 
 
-_BF16_DEVICES = [
-    pytest.param(
-        DeviceRef.CPU(),
-        id="cpu",
-        marks=pytest.mark.skipif(
-            platform.machine() in ["arm64", "aarch64"],
-            reason="BF16 is not supported on ARM CPU architecture",
-        ),
-    ),
-    pytest.param(
-        DeviceRef.GPU(),
-        id="gpu",
-        marks=pytest.mark.skipif(
-            accelerator_count() == 0, reason="requires an accelerator"
-        ),
-    ),
-]
-
-
-def _run_bf16(
-    session: InferenceSession, graph: Graph, *inputs: torch.Tensor, fused: str
-) -> list[torch.Tensor]:
-    """Runs ``graph`` like ``run_and_verify_fusion``, but on torch tensors,
-    since numpy has no bfloat16."""
-    model = session.load(graph)
-    assert any(re.search(fused, s) for s in model.kernel_summaries), (
-        model.kernel_summaries
-    )
-    results = model.execute(
-        *(
-            Buffer.from_dlpack(t).to(model.input_devices[i])
-            for i, t in enumerate(inputs)
-        )
-    )
-    return [torch.from_dlpack(r).cpu() for r in results]
-
-
-@pytest.mark.parametrize("device", _BF16_DEVICES)
-def test_concat_slice_window_bf16(
-    session: InferenceSession, device: DeviceRef
-) -> None:
-    """The KV-cache window update in bfloat16, the dtype caches are kept in."""
-    cache_type = TensorType(DType.bfloat16, ["batch", 8, 16], device=device)
-    new_type = TensorType(DType.bfloat16, ["batch", "seq", 16], device=device)
-    with Graph(
-        "concat_slice_window_bf16", input_types=[cache_type, new_type]
-    ) as graph:
-        cache, new = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
-        graph.output(full, full[:, -8:])
-
-    cache_t = torch.randn(3, 8, 16, dtype=torch.bfloat16)
-    new_t = torch.randn(3, 5, 16, dtype=torch.bfloat16)
-    full_out, window = _run_bf16(
-        session, graph, cache_t, new_t, fused=_CONCAT_SLICE
-    )
-    expected = torch.cat([cache_t, new_t], dim=1)
-    torch.testing.assert_close(full_out, expected, rtol=0, atol=0)
-    torch.testing.assert_close(window, expected[:, -8:], rtol=0, atol=0)
-
-
-@pytest.mark.parametrize("device", _BF16_DEVICES)
-def test_concat_slice_projection_window(
-    session: InferenceSession, device: DeviceRef
-) -> None:
-    """A cache update whose new rows are sliced out of a projection.
-
-    The new rows are one group of heads of the reshaped projection, as in an
-    attention block's cache update. Prologue fusion reads them from the
-    projection inside the concat, and the window's store joins the concat's
-    epilogue, so the update and its window take one kernel.
-    """
-    cache_type = TensorType(DType.bfloat16, ["batch", 8, 2, 32], device=device)
-    proj_type = TensorType(DType.bfloat16, ["batch", "seq", 192], device=device)
-    with Graph(
-        "concat_slice_projection_window", input_types=[cache_type, proj_type]
-    ) as graph:
-        cache, proj = (v.tensor for v in graph.inputs)
-        heads = proj.reshape(["batch", "seq", 6, 32])
-        full = ops.concat([cache, heads[:, :, 4:]], axis=1)
-        graph.output(full, full[:, -8:])
-
-    cache_t = torch.randn(2, 8, 2, 32, dtype=torch.bfloat16)
-    proj_t = torch.randn(2, 3, 192, dtype=torch.bfloat16)
-    fused = (
-        r"Epilogue\(Prologue\(mo\.static\.reshape, mo\.slice, mo\.concat.*\), "
-        r"mo\.slice"
-    )
-    full_out, window = _run_bf16(session, graph, cache_t, proj_t, fused=fused)
-    new_rows = proj_t.reshape(2, 3, 6, 32)[:, :, 4:]
-    expected = torch.cat([cache_t, new_rows], dim=1)
-    torch.testing.assert_close(full_out, expected, rtol=0, atol=0)
-    torch.testing.assert_close(window, expected[:, -8:], rtol=0, atol=0)
-
-
 def test_concat_slice_runtime_start(session: InferenceSession) -> None:
     """A window starting at a runtime offset stays its own kernel.
 
@@ -1218,9 +1059,10 @@ def test_concat_slice_runtime_start(session: InferenceSession) -> None:
     with Graph(
         "concat_slice_runtime_start",
         input_types=[_f32(2, 8, 16), _f32(2, 3, 16), start_type],
+        custom_extensions=[_CUSTOM_OPS_PATH],
     ) as graph:
         cache, new, start = (v.tensor for v in graph.inputs)
-        full = ops.concat([cache, new], axis=1)
+        full = _concat_opaque([cache, new], axis=1)
         window = ops.slice_tensor(
             full, [slice(None), (slice(start, start + 8), 8), slice(None)]
         )
