@@ -295,14 +295,21 @@ def MergeIdenticalFuncs: Pass<"mogg-merge-identical-funcs", "ModuleOp"> {
   ];
 }
 
-def CanonicalizeFuncDeviceIds:
-    Pass<"mogg-canonicalize-func-device-ids", "ModuleOp"> {
-  let summary = "Erase device ids inside kernel stubs so per-device copies merge";
+def CanonicalizeFuncsForMerge:
+    Pass<"mogg-canonicalize-funcs-for-merge", "ModuleOp"> {
+  let summary = "Erase what emission ignores inside kernel stubs so copies merge";
   let description = [{
-    Rewrites every `#M.device_ref<label, id>` inside each `mogg.func`
-    body (attributes and `!mgp.tensor` types) to id 0. Emission reads only the
-    label, so per-device copies of a kernel (e.g. an EP-sharded MoE) then merge
-    in `MergeIdenticalFuncs`. Call sites keep real ids. See GEX-4239.
+    Inside each `mogg.func` body, rewrites what emission does not read, so
+    copies of a kernel that differ only there merge in `MergeIdenticalFuncs`:
+
+    - every `#M.device_ref<label, id>` (attributes and `!mgp.tensor` types) to
+      id 0, since emission reads only the label (e.g. an EP-sharded MoE's
+      per-device copies). See GEX-4239.
+    - every dynamic dim of a `#mosh.ape` op attribute to `dyn`, since emission
+      reads only the rank and static dims; runtime dims come from operands
+      (e.g. per-layer copies that differ only in a symbolic dim name).
+
+    Call sites keep real ids and names.
   }];
 
   let dependentDialects = ["MGP::MGPDialect", "MOGG::MOGGDialect"];

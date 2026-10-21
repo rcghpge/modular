@@ -793,8 +793,9 @@ shards), cutting kernel count and Mojo compile time.
 
 #### Additional notes
 
-`CanonicalizeFuncDeviceIds` (erases device ids inside stubs) and
-`LiftBufferCacheSlots` run first so otherwise-identical stubs hash equal.
+`CanonicalizeFuncsForMerge` (erases device ids and symbolic dim names inside
+stubs) and `LiftBufferCacheSlots` run first so otherwise-identical stubs hash
+equal.
 `SymbolDCE` later removes the stubs this pass leaves without callers. These
 passes run in `buildMgpPipeline` just before `EmitMojo`; they were previously
 nested inside it.
@@ -1094,7 +1095,7 @@ EmitMojo is the last step of the MO to MGP pipeline before JIT compilation, and
 it now only emits Mojo text. The stub-preparation work it used to do nested
 inside itself has been hoisted into `buildMgpPipeline` as its own passes that
 run before EmitMojo (see `GraphCompiler/lib/GraphCompiler.cpp`):
-`LiftBufferCacheSlots`, `CanonicalizeFuncDeviceIds`,
+`LiftBufferCacheSlots`, `CanonicalizeFuncsForMerge`,
 `MergeIdenticalFuncs`, `RaiseBackIndexConstant`, `FixupOverhangsPass`,
 `SymbolDCE`, `AddProfileScopeTracing`, and `AddTryExceptBlocks`. By the time
 EmitMojo runs, the kernel stubs are already deduplicated and finalized.

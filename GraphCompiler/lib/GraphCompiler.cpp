@@ -166,7 +166,7 @@ void M::MO::registerPasses() {
   MOGG::registerOutlineRoutinesPass();
   MGP::registerMOGGToMGP();
 
-  MOGG::registerCanonicalizeFuncDeviceIds();
+  MOGG::registerCanonicalizeFuncsForMerge();
   MOGG::registerMergeIdenticalFuncs();
   MOGG::registerAddProfileScopeTracingPass();
   MOGG::registerWrapFuncsWithTracePass();
@@ -444,9 +444,9 @@ void M::MO::buildMgpPipeline(mlir::OpPassManager &pm,
   // only in those indices merge below.
   pm.addPass(MOGG::createLiftBufferCacheSlots());
 
-  // The emitted Mojo reads the device label, not the id, so erasing ids lets
-  // per-device copies (e.g. across EP shards) merge below.
-  pm.addPass(MOGG::createCanonicalizeFuncDeviceIds());
+  // The emitted Mojo reads neither device ids nor symbolic dim names, so
+  // erasing them lets per-device and per-layer copies merge below.
+  pm.addPass(MOGG::createCanonicalizeFuncsForMerge());
 
   // Stubs that differ only by a redundant op merge once it is gone.
   pm.addPass(mlir::createCanonicalizerPass());
