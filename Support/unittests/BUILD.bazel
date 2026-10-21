@@ -231,7 +231,11 @@ modular_cc_test(
     deps = [
         "//Support:Compiler",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Rewrite",
     ],
 )
 
