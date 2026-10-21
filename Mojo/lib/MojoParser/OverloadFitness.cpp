@@ -19,6 +19,7 @@
 #include "ClosureEmitter.h"
 #include "ExprNodes.h"
 #include "IREmitter.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Mojo/MojoParser/ASTDecl.h"
 #include "Mojo/MojoParser/DeclResolver.h"
 #include "MojoUtils.h"
@@ -248,7 +249,8 @@ OverloadFitness OverloadFitness::evaluate(ASTDecl *candidate,
                                           const OverloadSet &callable,
                                           PValue selfPValue) {
   DeclResolver &resolver = *callable.getShared().declResolver;
-  FnTypeGeneratorType signature = candidate->getDeclFullSignature();
+  FnTypeGeneratorType signature =
+      candidate->getDeclFullSignature(callable.contextualType);
 
   if (auto *witness = dyn_cast<WitnessASTDecl>(candidate);
       witness && selfPValue) {
@@ -257,7 +259,8 @@ OverloadFitness OverloadFitness::evaluate(ASTDecl *candidate,
         resolver, witness->traitSymbol, signature, selfPValue);
   }
 
-  ParamInf inference(callable.paramBindings, signature.getInputParamTypes(),
+  ParamBindings paramBindings = callable.getParamBindings();
+  ParamInf inference(paramBindings, signature.getInputParamTypes(),
                      signature.getParamListAttrs(),
                      /*allowImplicitConversions=*/true, candidate,
                      /*discardError=*/true,
@@ -345,8 +348,9 @@ OverloadFitness OverloadFitness::evaluate(FnTypeGeneratorType signature,
 
   // Check that the signature can be rebound with this set of bindings.
   OperandsNeedingOriginsList operandsNeedingOrigins;
+  ParamBindings paramBindings = callable.getParamBindings();
   CallParamInf inference(
-      callable.paramBindings, signature.getInputParamTypes(),
+      paramBindings, signature.getInputParamTypes(),
       signature.getParamListAttrs(), allowImplicitConversions, funcIfDirect,
       /*discardError=*/false, signature, operands, pogAssignment,
       operandsNeedingOrigins, callable.additionalAssumptions);
@@ -364,6 +368,21 @@ OverloadFitness OverloadFitness::evaluate(FnTypeGeneratorType signature,
   signature =
       cast<GeneratorType>(verifiedBindings.specializeGeneratorType(signature));
 
+  if (callable.contextualType) {
+    if (auto genAttr =
+            sugarDynCast<GeneratorAttr>(PValue(callable.contextualType));
+        genAttr && sugarIsa<StructType>(ASTType(genAttr.getBody()))) {
+      auto genNumParams = genAttr.getInputParamTypes().size();
+      ArrayRef binding = verifiedBindings.getValues().take_front(genNumParams);
+      auto bound = BindParamsAttr::get(genAttr.getContext(), genAttr, binding,
+                                       &shared.getEvaluationContext());
+      SmallVector<TypedAttr> remappedBinding(ASTType(bound).getParamBindings());
+      llvm::append_range(remappedBinding,
+                         verifiedBindings.getValues().drop_front(genNumParams));
+      verifiedBindings.setBindings(
+          ParameterExprArrayAttr::get(genAttr.getContext(), remappedBinding));
+    }
+  }
   // This is the result we will return if we succeed.
   OverloadFitness result(std::move(verifiedBindings),
                          std::move(operandsNeedingOrigins));

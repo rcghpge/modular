@@ -18,6 +18,7 @@
 #include "OverloadSet.h"
 #include "ExprNodes.h"
 #include "IREmitter.h"
+#include "Mojo/lib/MojoParser/ParamBindings.h"
 #include "MojoUtils.h"
 #include "OverloadFitness.h"
 #include "ParamInf.h"
@@ -58,10 +59,10 @@ static constexpr unsigned kBestOverloadCandidatesInlineSize = 1;
 
 OverloadSet::OverloadSet(StringRef baseName, ArrayRef<ASTDecl *> fnDecls,
                          ParamBindings &&paramBindings, CallSyntax syntax,
-                         bool erroneous)
+                         ASTType contextualType, bool erroneous)
     : baseName(baseName), fnDecls(fnDecls.begin(), fnDecls.end()),
-      paramBindings(std::move(paramBindings)), syntax(syntax),
-      erroneous(erroneous) {
+      explicitParamBindings(std::move(paramBindings)),
+      contextualType(contextualType), syntax(syntax), erroneous(erroneous) {
   assert(llvm::all_of(fnDecls,
                       [](ASTDecl *decl) {
                         return decl->resolvedness >=
@@ -71,6 +72,34 @@ OverloadSet::OverloadSet(StringRef baseName, ArrayRef<ASTDecl *> fnDecls,
 }
 
 SMLoc OverloadSet::getExprLoc() const { return getExpr()->getLoc(); }
+
+ParamBindings OverloadSet::getParamBindings() const {
+  ParamBindings result(getDeclScope(), getExpr());
+  /// FIXME: this is very bad, this has to be keep in sync with how full
+  /// signature is computed during overload resolution.
+  if (contextualType) {
+    if (auto genAttr = sugarDynCast<GeneratorAttr>(PValue(contextualType));
+        genAttr && sugarIsa<StructType>(ASTType(genAttr.getBody()))) {
+      auto genType = cast<GeneratorType>(genAttr.getType());
+      auto pogs = genType.getParamListAttrs().getPogs();
+      // The generator's inputs are prepended to the callee's full signature,
+      // so its constraints (e.g. `comptime A[c: Bool] where c = S[c]`) index
+      // them without adjustment.
+      result.addConstraints(genType.getBodyConstraints());
+      for (auto [type, pog] :
+           llvm::zip_equal(genAttr.getInputParamTypes(), pogs)) {
+        // TODO: We really should unify `getForDeclaredType` with `getFullSig`.
+        result.add(getExpr(), UnboundAttr::get(type), pog.getName());
+      }
+    } else {
+      result = ParamBindings::getForDeclaredType(getDeclScope(), contextualType,
+                                                 getExpr());
+    }
+  }
+
+  result.append(explicitParamBindings);
+  return result;
+}
 
 /// For method and static method calls, extract the location of the method
 /// name identifier from the expression. This is used for fixit suggestions
@@ -360,6 +389,7 @@ static void emitInconclusiveCandidatesError(
 /// diagnostic and return null.
 PValue OverloadSet::filterOverloadSetForParamBindings(
     DeferredTypingContext *deferredTypingContext) const {
+  ParamBindings paramBindings = getParamBindings();
   SmallVector<std::pair<ASTDecl *, OverloadFitness>,
               kOverloadEvaluationsInlineSize>
       evaluations;
@@ -611,6 +641,7 @@ CalleeResult OverloadSet::filterOverloadSet(
   // We allow implicit conversion of the operands to this call unless it is
   // itself an implicit conversion.  We don't want to allow A->B->C conversions.
   bool allowImplicitConversions = syntax != CallSyntax::kImplicitConvert;
+  ParamBindings paramBindings = getParamBindings();
 
   std::optional<OperandValue> savedSelfOperand;
 
@@ -643,7 +674,8 @@ CalleeResult OverloadSet::filterOverloadSet(
       operands.hasSelfOperand = false;
     }
 
-    FnTypeGeneratorType desiredSignature = candidate->getDeclFullSignature();
+    FnTypeGeneratorType desiredSignature =
+        candidate->getDeclFullSignature(contextualType);
     if (isa<WitnessASTDecl>(candidate)) {
       auto sig = cast<FnTypeGeneratorType>(getCanonicalType(desiredSignature));
       ArrayRef<Type> inputParamTypes = sig.getInputParamTypes();
@@ -954,6 +986,8 @@ CalleeAndDeclResult OverloadSet::filterOverloadSetForValueType(
     return CalleeAndDeclResult::no();
   }
 
+  ParamBindings paramBindings = getParamBindings();
+
   // We do parameter inference to support cases like:
   //
   //    def foo[Type: mlirtype]() -> Type
@@ -1112,7 +1146,8 @@ CalleeAndDeclResult OverloadSet::filterOverloadSetForValueType(
 
   for (ASTDecl *candidate : declsToReport) {
     diag.attachNote(*candidate) << "candidate declared here with type ";
-    FnTypeGeneratorType candidateType = candidate->getDeclFullSignature();
+    FnTypeGeneratorType candidateType =
+        candidate->getDeclFullSignature(contextualType);
     // If there are bindings, specialize the candidate type and print the
     // specialized type.
     bool hadCandidate = false;
@@ -1139,7 +1174,7 @@ CalleeAndDeclResult OverloadSet::filterOverloadSetForValueType(
 /// function without the parameters specified.  They can be bound later.
 TypedAttr OverloadSet::getBoundConstantAttr() const {
   if (fnDecls.size() == 1)
-    return getCallee(fnDecls[0], paramBindings, syntax);
+    return getCallee(fnDecls[0], getParamBindings(), syntax);
 
   // If we have multiple candidates, emit an ambiguity error.
   assert(!fnDecls.empty() && "DirectCallable malformed");
@@ -1163,11 +1198,12 @@ TypedAttr OverloadSet::getBoundConstantAttr() const {
 /// failure.
 OverloadSet OverloadSet::lookup(ASTDecl &declScope, ASTType type,
                                 StringRef methodName, const ExprNode *expr,
-                                CallSyntax syntax,
+                                CallSyntax syntax, ASTType contextualType,
                                 function_ref<void()> errorHandler) {
   SharedState &shared = declScope.getShared();
 
-  OverloadSet result(declScope, expr, syntax, /*isErroneous=*/false);
+  OverloadSet result(declScope, expr, syntax, /*isErroneous=*/false,
+                     contextualType);
   result.baseName = methodName;
 
   // If this is a previously-reported error, ignore and don't report an
@@ -1284,9 +1320,10 @@ PValue OverloadSet::lookupAndResolve(
     ASTType type, StringRef methodName, CallOperands &callOperands,
     function_ref<void()> lookupFailureErrorHandler,
     bool shouldPrintOverloadErrors, IREmitter &emitter) {
-  auto ovSet = OverloadSet::lookup(emitter.getDeclScope(), type, methodName,
-                                   callOperands.callExpr, callOperands.syntax,
-                                   lookupFailureErrorHandler);
+  auto ovSet =
+      OverloadSet::lookup(emitter.getDeclScope(), type, methodName,
+                          callOperands.callExpr, callOperands.syntax,
+                          /*contextualType=*/{}, lookupFailureErrorHandler);
 
   // If the core lookup failed, don't filter.
   if (ovSet.isNull())
@@ -1330,7 +1367,7 @@ PValue OverloadSet::getDirectSymbol(
 
   // If the overload set has parameter bindings, try to resolve the candidates
   // using them.
-  if (!paramBindings.empty())
+  if (!getParamBindings().empty())
     return filterOverloadSetForParamBindings(deferredTypingContext);
 
   // Otherwise, emit the "cannot form a reference to overloaded decl" error.
@@ -1344,7 +1381,7 @@ PValue OverloadSet::getIfPValue() const {
   if (baseValue || fnDecls.size() != 1)
     return {};
 
-  return getBoundConstAttrForFn(*fnDecls.front(), paramBindings);
+  return getBoundConstAttrForFn(*fnDecls.front(), getParamBindings());
 }
 
 /// Emit this as a RValue if it can be resolved, otherwise emit an ambiguity
@@ -1553,9 +1590,9 @@ CValue IREmitter::emitIndirectCall(CValue callee, CallOperands &&operands) {
   OverloadSet bindings{"callee", /*fnDecls=*/{},
                        ParamBindings(getDeclScope(), callExpr),
                        operands.syntax};
-  auto fitness = OverloadFitness::evaluate(calleeSig, /*indirect*/ nullptr,
-                                           bindings, operands,
-                                           /*allowImplicitConversions=*/true);
+  auto fitness =
+      OverloadFitness::evaluate(calleeSig, /*indirect*/ nullptr, bindings,
+                                operands, /*allowImplicitConversions=*/true);
   if (fitness.getValidity() != OverloadFitness::Validity::kValid) {
     // If not, diagnose it with an error.
     if (fitness.isInconclusive()) {
@@ -1733,8 +1770,11 @@ CValue IREmitter::emitConstructorCall(ASTType type,
   // Check to see if we can invoke an __init__ method to convert it.
   const ExprNode *expr = callOperands.getExpr();
   type = getConstructorLookupType(type, getDeclScope());
+  // Bind the parameters of the type we're creating from the contextual type,
+  // since they can't be inferred from the result type.
   OverloadSet callee = OverloadSet::lookup(getDeclScope(), type, "__init__",
-                                           expr, callOperands.syntax);
+                                           expr, callOperands.syntax,
+                                           /*contextualType=*/type);
 
   shared.notifyListenerOnCall(callee.fnDecls, expr->getRangeEnd(),
                               callOperands.syntax, callOperands);
@@ -1797,10 +1837,6 @@ CValue IREmitter::emitConstructorCall(ASTType type,
     }
   }
 
-  // Set the parameter bindings for the type we're creating - they can't be
-  // inferred from the result type.
-  callee.paramBindings =
-      ParamBindings::getForDeclaredType(getDeclScope(), type, expr);
   callee.selfResultType = type;
   return callee.emitCall(std::move(callOperands), *this);
 }
@@ -1822,19 +1858,17 @@ FailureOr<CalleeResult> OverloadSet::canConstructType(
   // Check to see if we can do an implicit conversion by invoking a `__init__`
   // method on the expected type.
   requiredType = getConstructorLookupType(requiredType, declScope);
+  // Bind the Self type parameters from the contextual type, since they cannot
+  // be inferred from the result.
   OverloadSet callee = OverloadSet::lookup(
       declScope, requiredType, "__init__", operands.getExpr(), operands.syntax,
-      /*no error emission on failure */ {});
+      /*contextualType=*/requiredType, /*no error emission on failure */ {});
 
   // If there are no viable candidates for the construction, we fail.
   if (!callee)
     return callee.isErroneous() ? FailureOr<CalleeResult>(failure())
                                 : CalleeResult::no();
 
-  // Install the Self type parameters on the callee directly, since they cannot
-  // be inferred from the result.
-  callee.paramBindings = ParamBindings::getForDeclaredType(
-      declScope, requiredType, operands.getExpr());
   callee.selfResultType = requiredType;
 
   // Determine if we can emit this using an IREmitter in the parameter domain.
@@ -1881,11 +1915,13 @@ void OverloadSet::dump() const {
     f->dump();
     os << "\n";
   }
-  if (paramBindings.empty()) {
-    os << "no bound params, ";
+  if (contextualType)
+    os << "contextual type: " << contextualType << ", ";
+  if (explicitParamBindings.empty()) {
+    os << "no explicitly bound params, ";
   } else {
-    os << "param bindings: ";
-    paramBindings.dump();
+    os << "explicit param bindings: ";
+    explicitParamBindings.dump();
   }
   os << syntax << " call syntax";
   if (erroneous)

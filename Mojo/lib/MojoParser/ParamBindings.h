@@ -105,6 +105,15 @@ public:
   /// responsible for ensuring the keyword is not already present.
   void add(const ExprNode *expr, AnyValue value, StringAttr name);
 
+  /// Append the bindings in `other` after ours and adopt its binding kind.
+  void append(const ParamBindings &other);
+
+  /// Require `constraints` to be satisfied by the bindings, in addition to the
+  /// callee's own.
+  void addConstraints(ArrayRef<ConstraintAttr> constraints) {
+    llvm::append_range(additionalConstraints, constraints);
+  }
+
   /// Ensure the binding kind is at least the given kind.
   void relaxBindingKindTo(BindingKind kind) {
     this->bindingKind = std::max(this->bindingKind, kind);

@@ -1357,8 +1357,9 @@ findCommonType(ASTExprAnd<CValue> val1, ASTExprAnd<CValue> val2,
     OverloadSet os =
         OverloadSet::lookup(emitter.declScope, srcType, "__merge_with__",
                             srcValue.expr, CallSyntax::kMethodCall);
-    os.paramBindings.add(srcValue.expr, PValue(otherType),
-                         StringAttr::get(emitter.getContext(), "other_type"));
+    os.explicitParamBindings.add(
+        srcValue.expr, PValue(otherType),
+        StringAttr::get(emitter.getContext(), "other_type"));
     CallOperands operands(CallSyntax::kMethodCall, srcValue.expr, EC_MergeWith,
                           {srcValue});
     auto res = os.filterOverloadSet(

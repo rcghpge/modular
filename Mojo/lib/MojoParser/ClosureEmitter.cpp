@@ -2974,8 +2974,9 @@ void ClosureEmitter::addStorageConformanceToDevicePassable(
     OverloadSet overloads = OverloadSet::lookup(
         structDecl, encoderValue.getRValueType(), "encode_closure_state",
         &syntheticNode, CallSyntax::kMethodCall);
-    overloads.paramBindings.add(&syntheticNode, PValue(deviceTypeValue),
-                                StringAttr::get(ctx, "DeviceStructType"));
+    overloads.explicitParamBindings.add(
+        &syntheticNode, PValue(deviceTypeValue),
+        StringAttr::get(ctx, "DeviceStructType"));
     auto calleeResult = overloads.filterOverloadSet(
         callOperands, /*emitDiagnosticOnFailure=*/true, emitter);
     if (!calleeResult.isYes())

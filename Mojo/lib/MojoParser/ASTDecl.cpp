@@ -12,9 +12,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "Mojo/MojoParser/ASTDecl.h"
+#include "Mojo/KGENDialect/KGENAttrs.h"
+#include "Mojo/KGENDialect/KGENEnums.h"
+#include "Mojo/KGENDialect/KGENParameters.h"
+#include "Mojo/KGENDialect/KGENTypes.h"
+#include "Mojo/KGENDialect/ParameterEvaluator.h"
 #include "Mojo/LITDialect/LITAttrs.h"
 #include "Mojo/LITDialect/LITInterfaces.h"
 #include "Mojo/LITDialect/LITOps.h"
+#include "Mojo/LITDialect/LITTypes.h"
 #include "Mojo/LITDialect/LITUtils.h"
 #include "Mojo/MojoParser/DeclResolver.h"
 #include "Mojo/MojoParser/DocString.h"
@@ -466,10 +472,54 @@ bool ASTDecl::isCallableDecl() const {
   return isa<DefASTDecl>(this);
 }
 
-FnTypeGeneratorType ASTDecl::getDeclFullSignature() const {
+FnTypeGeneratorType
+ASTDecl::getDeclFullSignature(ASTType contextualType) const {
   if (auto *witness = dyn_cast<WitnessASTDecl>(this)) // already expanded.
     return cast<FnTypeGeneratorType>(witness->getWitnessEntry().witnessType);
-  return cast<DefASTDecl>(this)->getOp().getFullSignature();
+  FnOp fnOp = cast<DefASTDecl>(this)->getOp();
+  auto genAttr = sugarDynCastIfPresent<GeneratorAttr>(PValue(contextualType));
+  if (!genAttr)
+    return fnOp.getFullSignature();
+
+  // The struct's parameters come from the contextual generator, e.g. `A` in
+  // `comptime A[T: AnyType] = S[0, T]`. Build the full signature with the
+  // generator's inputs parameter.
+  auto structBody = sugarCast<StructType>(ASTType(genAttr.getBody()));
+  // Name the generator's inputs, the name does not matter, it is shortlived.
+  ParamRefRemapper nameRemapper;
+  SmallVector<ParamDeclAttr> genDecls;
+  for (auto [i, type] : llvm::enumerate(genAttr.getInputParamTypes())) {
+    auto decl = ParamDeclAttr::get(("Gen#" + Twine(i)).str(),
+                                   nameRemapper.replace(type));
+    nameRemapper.appendParamDecl(decl);
+    genDecls.push_back(decl);
+  }
+
+  // The method's own signature refers to the struct's parameters by name;
+  // replace them with the struct body's values.
+  auto structDecl = cast<DeclInterface>(fnOp->getParentOp());
+  ArrayRef<ParamDeclAttr> structParams = structDecl.getInputParams();
+  ArrayRef<TypedAttr> structValues = structBody.getParamValues();
+  assert(structParams.size() == structValues.size() &&
+         "struct body doesn't bind every struct parameter");
+  SmallVector<TypedAttr> namedStructValues;
+  for (TypedAttr value : structValues)
+    namedStructValues.push_back(cast<TypedAttr>(nameRemapper.replace(value)));
+  ParameterEvaluator evaluator(structParams, namedStructValues);
+
+  // Get the fnSig name, but with name remapped to the generator's parameter.
+  auto fnSig = cast<FnTypeGeneratorType>(
+      evaluator.getReboundType(fnOp.getFuncTypeGenerator()));
+
+  SmallVector<StringAttr> genPogNames;
+  SmallVector<TypedAttr> genDefaults;
+  for (PogMetadataAttr pog : genAttr.getMetadata().getPogs()) {
+    genPogNames.push_back(pog.getName());
+    genDefaults.push_back(pog.getDefaultValue());
+  }
+
+  return FnTypeGeneratorType::prependParams(fnSig, genDecls, genPogNames,
+                                            genDefaults);
 }
 
 bool ASTDecl::isStaticMethodDecl() const {

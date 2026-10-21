@@ -179,7 +179,6 @@ struct TypeList[
 
     comptime _IndexToIntTypeTabulateWrap[
         Trait: type_of(AnyType),
-        ToT: Trait,
         //,
         ToWrap: __generator_type[Idx: Int] Trait,
         idx: __mlir_type.index,
@@ -187,7 +186,6 @@ struct TypeList[
 
     comptime tabulate[
         Trait: type_of(AnyType),
-        ToT: Trait,
         //,
         count: Int,
         Mapper: __generator_type[Idx: Int] Trait,
@@ -197,7 +195,7 @@ struct TypeList[
             `#kgen.param_list.tabulate<`,
             count.__mlir_index__(),
             `,`,
-            Self._IndexToIntTypeTabulateWrap[Trait=Trait, ToT=ToT, Mapper, ...],
+            Self._IndexToIntTypeTabulateWrap[Trait=Trait, Mapper, ...],
             `> : `,
             _MLIR.KGENParamListType[Trait],
         ],
@@ -206,7 +204,6 @@ struct TypeList[
 
     Parameters:
         Trait: The trait of the generated TypeList.
-        ToT: The type of the values in the generated TypeList.
         count: The number of times to apply the generator, the length of the result..
         Mapper: The generator to apply, mapping from Int to ToT.
     """

@@ -231,7 +231,7 @@ comptime SMemTile[
     layout: Layout,
     *,
     alignment: Int = 128,
-    Engine: TensorEngine,
+    Engine: TensorEngine = DefaultEngine[element_width=1],
 ] = TileTensor[
     dtype,
     Layout[
@@ -566,7 +566,7 @@ comptime SMemTile2D[
     dim1: Int,
     *,
     alignment: Int = 128,
-    Engine: TensorEngine,
+    Engine: TensorEngine = DefaultEngine[element_width=1],
 ] = SMemTile[dtype, row_major[dim0, dim1](), alignment=alignment, Engine=Engine]
 """Backward-compatible alias for SMemTile with explicit 2D dimensions."""
 

@@ -130,8 +130,9 @@ public:
   /// Return true if this decl is callable: a `FnOp`, or a witness for one.
   bool isCallableDecl() const;
 
-  /// Return the full signature of this callable decl.
-  FnTypeGeneratorType getDeclFullSignature() const;
+  /// Return the full signature of this callable decl. `contextualType` is the
+  /// type the decl is referenced through (e.g. the type of `x` in `x.foo`).
+  FnTypeGeneratorType getDeclFullSignature(ASTType contextualType = {}) const;
 
   /// Return true if this decl is a static method.
   bool isStaticMethodDecl() const;

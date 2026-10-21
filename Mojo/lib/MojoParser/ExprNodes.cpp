@@ -2338,13 +2338,13 @@ auto AttributeRefNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     //
     // When fixing this, remember to check out SubscriptNode::emitLCVIR as well,
     // as it uses similar logic.
-    auto bindings = ParamBindings::getForDeclaredType(emitter.getDeclScope(),
-                                                      baseRVType, this);
+    ParamBindings bindings(emitter.getDeclScope(), this);
     /// Only bind the `Self`, leave the rest unbound.
     bindings.relaxBindingKindTo(ParamBindings::kWithEllipsis);
 
     auto result = OverloadSetUValue::create(
-        spelling, memberDecls, std::move(bindings), CallSyntax::kDirectCall);
+        spelling, memberDecls, std::move(bindings), CallSyntax::kDirectCall,
+        /*contextualType=*/baseRVType);
 
     // If the callee is a static method, we can directly reference it
     // without binding a self parameter.  If this is an instance method, we
@@ -3393,14 +3393,14 @@ auto SubscriptNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
 
         auto callOv =
             OverloadSet::lookup(emitter.getDeclScope(), ty, "__call__", base,
-                                CallSyntax::kMethodCallSynthetic);
+                                CallSyntax::kMethodCallSynthetic,
+                                /*contextualType=*/ty);
 
         if (!callOv.isNull()) {
-          auto bindings = ParamBindings::getForDeclaredType(
-              emitter.getDeclScope(), ty, this);
-          assert(callOv.paramBindings.empty() &&
+          assert(callOv.explicitParamBindings.empty() &&
                  "parameter bindings should be empty at this point");
-          callOv.paramBindings = std::move(bindings);
+          callOv.explicitParamBindings =
+              ParamBindings(emitter.getDeclScope(), this);
           auto callValue = OverloadSetUValue::create(std::move(callOv));
           callValue->baseValue = {baseAnyValue, base};
           overloads = std::move(callValue);
@@ -3417,7 +3417,7 @@ auto SubscriptNode::emitLCVIR(ExprDest &dest, IREmitter &emitter,
     // Mutate the OverloadSet directly.  This is a bit gross, but we know we're
     // the only user of it.
     if (failed(parseParameterBindings(operands, emitter,
-                                      overloads->paramBindings)))
+                                      overloads->explicitParamBindings)))
       return {};
 
     return emitter.emitResult(overloads, this, dest);

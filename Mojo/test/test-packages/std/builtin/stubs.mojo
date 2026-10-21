@@ -1167,7 +1167,6 @@ struct TypeList[
 
     comptime tabulate[
         Trait: type_of(AnyType),
-        ToT: Trait,
         //,
         count: Int,
         Mapper: __generator_type[Idx: Int] Trait,
@@ -1177,7 +1176,7 @@ struct TypeList[
             `#kgen.param_list.tabulate<`,
             count.__mlir_index__(),
             `,`,
-            _IndexToIntTypeTabulateWrap[Trait=Trait, ToT=ToT, Mapper, ...],
+            _IndexToIntTypeTabulateWrap[Trait=Trait, Mapper, ...],
             `> : `,
             _MLIR.KGENParamListType[Trait],
         ],
@@ -1190,7 +1189,7 @@ struct TypeList[
     comptime splat[
         Trait: type_of(AnyType), //, count: Int, type: Trait
     ] = TypeList.tabulate[
-        Trait=Trait, ToT=type, count, Self._SplatTypeTabulator[Trait, type, _]
+        Trait=Trait, count, Self._SplatTypeTabulator[Trait, type, _]
     ]
 
     comptime _MapTabulator[
@@ -1212,7 +1211,6 @@ struct TypeList[
 
 comptime _IndexToIntTypeTabulateWrap[
     Trait: type_of(AnyType),
-    ToT: Trait,
     //,
     ToWrap: __generator_type[Idx: Int] Trait,
     idx: __mlir_type.index,

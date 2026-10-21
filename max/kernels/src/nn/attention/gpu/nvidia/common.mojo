@@ -104,7 +104,7 @@ comptime _LocalTT[
     dtype: DType,
     layout: InternalLayout,
     *,
-    Engine: TensorEngine,
+    Engine: TensorEngine = DefaultEngine[element_width=1],
 ] = TileTensor[
     dtype,
     InternalLayout[
@@ -119,7 +119,7 @@ comptime _SharedMemTT[
     dtype: DType,
     layout: InternalLayout,
     *,
-    Engine: TensorEngine,
+    Engine: TensorEngine = DefaultEngine[element_width=1],
 ] = TileTensor[
     dtype,
     InternalLayout[

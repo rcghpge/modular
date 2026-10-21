@@ -134,6 +134,13 @@ ParamBindings ParamBindings::getForDeclaredType(ASTDecl &declScope,
                                                 const ExprNode *expr,
                                                 Type optionalParentTraitType) {
   ParamBindings paramBindings(declScope, expr);
+
+  // Since we are peeling off a generator type to extract the binding, we need
+  // to propagate the body constraints as well, we don't need to adjust index
+  // offset here since Self parameter are always prepended.
+  if (auto genType = sugarDynCast<GeneratorType>(type.extractMetaType()))
+    paramBindings.additionalConstraints.assign(genType.getBodyConstraints());
+
   // TODO: this will not work with arbitrary parametric ancestors.
   // Default params need to come from the original declaration, instead of
   // TypeSignatureType, as the latter won't contain the full defaults list if
@@ -204,12 +211,6 @@ ParamBindings ParamBindings::getForDeclaredType(ASTDecl &declScope,
     }
   }
 
-  // Since we are peeling off a generator type to extract the binding, we need
-  // to propagate the body constraints as well, we don't need to adjust index
-  // offset here since Self parameter are always prepended.
-  if (auto genType = sugarDynCast<GeneratorType>(type.extractMetaType()))
-    paramBindings.additionalConstraints.assign(genType.getBodyConstraints());
-
   return paramBindings;
 }
 
@@ -219,6 +220,13 @@ void ParamBindings::add(const ExprNode *expr, AnyValue value, StringAttr name) {
          "kWithEllipsis instead");
   parameters.add(name, {value, expr},
                  name ? ArgUnpackStyle::kKeyword : ArgUnpackStyle::kPositional);
+}
+
+void ParamBindings::append(const ParamBindings &other) {
+  llvm::append_range(parameters.values, other.parameters.values);
+  llvm::append_range(ctadPogs, other.ctadPogs);
+  llvm::append_range(additionalConstraints, other.additionalConstraints);
+  bindingKind = other.bindingKind;
 }
 
 static bool isReferenceFromOwnFnBody(ASTDecl &fnDecl, ASTDecl &useScope) {

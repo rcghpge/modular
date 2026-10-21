@@ -1565,20 +1565,17 @@ static CValue emitEnumInitCall(IREmitter &emitter, ASTDecl &enumDecl,
   TypedAttr caseType = getEnumCaseTypeValue(enumDecl, caseIndex);
   if (!indexValue || !caseType)
     return fail();
-  OverloadSet overloads =
-      OverloadSet::lookup(enumDecl, selfType, kEnumInitName, node,
-                          CallSyntax::kMethodCallSynthetic);
+  OverloadSet overloads = OverloadSet::lookup(
+      enumDecl, selfType, kEnumInitName, node, CallSyntax::kMethodCallSynthetic,
+      /*contextualType=*/selfType);
   if (!overloads) {
     emitter.shared.emitError(node->getLoc())
         << "internal error: enum has no '" << kEnumInitName
         << "' member from '__Enum'";
     return fail();
   }
-  overloads.paramBindings =
-      ParamBindings::getForDeclaredType(enumDecl, selfType, node);
-  overloads.paramBindings.relaxBindingKindTo(ParamBindings::kWithEllipsis);
-  overloads.paramBindings.add(node, PValue(indexValue));
-  overloads.paramBindings.add(node, PValue(caseType));
+  overloads.explicitParamBindings.add(node, PValue(indexValue));
+  overloads.explicitParamBindings.add(node, PValue(caseType));
   auto callee = overloads.filterOverloadSet(
       operands, /*emitDiagnosticOnFailure=*/true, emitter);
   if (!callee.isYes())
