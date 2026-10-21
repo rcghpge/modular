@@ -119,6 +119,18 @@ LogicalResult buildDependenciesBody(OpBuilder &builder, Location loc,
   return success();
 }
 
+/// The value whose producer orders a consumer of `operand`. `stable.place`
+/// lives on the same device as the producer of the tensor being placed.
+/// Ordering must be preserved on the same device, so derive the ordering source
+/// from the producer of the placed tensor.
+Value orderingSource(Value operand) {
+  if (auto stableTensor = operand.getDefiningOp<DeviceGraphStableTensorOp>())
+    if (auto place =
+            stableTensor.getAddr().getDefiningOp<DeviceGraphStablePlaceOp>())
+      return place.getTensor();
+  return operand;
+}
+
 /// Replaces every `mogg.routine.async` in `collectiveOp` with a
 /// `mgp.device_graph.dependencies` op, preserving per-device ordering.
 LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
@@ -154,7 +166,7 @@ LogicalResult convertCollectiveRegions(DeviceGraphCollectiveOp collectiveOp) {
   for (auto [region, dependencies] : oldToNew) {
     llvm::SmallSetVector<Value, 8> edges;
     for (Value operand : region.getOperands()) {
-      Operation *def = operand.getDefiningOp();
+      Operation *def = orderingSource(operand).getDefiningOp();
       if (auto producer = dyn_cast_if_present<AsyncRoutineOp>(def))
         if (auto it = oldToNew.find(producer); it != oldToNew.end())
           edges.insert(it->second.getNode());
