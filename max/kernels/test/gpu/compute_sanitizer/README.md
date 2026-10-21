@@ -114,6 +114,11 @@ Knobs: `CS_JOBS` (local parallelism), `CS_GPU` (pin to one physical GPU),
   real grader of the no-initialization contract: a dropped select or a missing
   `-inf` LSE write now propagates NaN into the output and trips the test's own
   assert.
+- **`initcheck` runs with `-D VENDOR_BLAS_ZERO_WORKSPACE=true`.** cuBLAS's
+  split-K reduction reads workspace bytes it never wrote, so the vendor-BLAS
+  matmul (`linalg/matmul/vendor/blas.mojo`) hands it a zeroed workspace in
+  this lane only. Other builds keep cuBLAS's own workspace, because zeroing
+  costs a 32 MiB memset on every call.
 - **`synccheck` cannot report usefully on SM100.** A warp-specialized kernel
   rendezvouses two warpgroups with `named_barrier[2 * WARPGROUP_SIZE](id)` —
   `bar.sync id, 256` — and PTX lets the participating warps arrive at

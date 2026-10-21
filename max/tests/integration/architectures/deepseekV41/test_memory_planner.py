@@ -16,6 +16,7 @@ The planner's weight and activation estimates feed the estimator's KV cache
 budget. Measured constants come from device memory traces on B200 GPUs.
 """
 
+import dataclasses
 from pathlib import Path
 from unittest.mock import MagicMock, NonCallableMock
 
@@ -126,7 +127,7 @@ _REAL_CHECKPOINT = [
     CheckpointTensor("layers.0.attn.wq_a.scale", "F8_E8M0", 256_000),
     CheckpointTensor("layers.0.attn.wkv.weight", "F8_E4M3", 104_857_600),
     CheckpointTensor("layers.0.attn.wkv.scale", "F8_E8M0", 102_400),
-    # The router gate (float32 on device), other bf16, mHC, norms.
+    # The router gate (bf16 on the fused route), other bf16, mHC, norms.
     CheckpointTensor("layers.0.ffn.gate.weight", "BF16", 157_286_400),
     CheckpointTensor("layers.0.attn.q_norm.weight", "BF16", 524_288),
     CheckpointTensor("layers.0.hc_attn_fn", "F32", 157_417_920),
@@ -145,6 +146,7 @@ _DEFAULT_LAYOUT = DeviceWeightLayout(
     head_bf16=True,
     host_dequantized=lambda base: False,
     expert_scales_preinterleaved=True,
+    router_gate_float32=False,
 )
 
 
@@ -291,6 +293,23 @@ def test_tp2_in_graph_interleave_layout_is_refused_at_plan_time() -> None:
             activation,
             _TP2_SIGNAL_BYTES,
         )
+
+
+def test_router_gate_doubles_only_on_the_graph_route() -> None:
+    """The fused route reads the bf16 gate as is; the graph route holds a
+    float32 copy."""
+    gates = [
+        CheckpointTensor("layers.0.ffn.gate.weight", "BF16", 3_932_160),
+        CheckpointTensor("layers.1.ffn.gate.weight", "BF16", 3_932_160),
+    ]
+    fused, _ = device_weight_bytes(gates, 2, layout=_DEFAULT_LAYOUT)
+    graph, _ = device_weight_bytes(
+        gates,
+        2,
+        layout=dataclasses.replace(_DEFAULT_LAYOUT, router_gate_float32=True),
+    )
+    assert fused == 2 * 3_932_160
+    assert graph == 2 * fused
 
 
 def test_dp4_splits_only_the_routed_experts() -> None:
@@ -490,4 +509,4 @@ def test_dp4_kv_capacity_per_device() -> None:
     }
     assert 60 * GIB < budget < 61 * GIB
     assert 15.1e6 < capacity[False] < 15.2e6
-    assert 62.6e6 < capacity[True] < 62.8e6
+    assert 62.7e6 < capacity[True] < 62.9e6

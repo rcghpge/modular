@@ -20,7 +20,8 @@ from nn.moe import (
     single_group_router,
     single_group_router_eplb,
 )
-from std.testing import assert_equal
+from std.math import iota
+from std.testing import assert_almost_equal, assert_equal, assert_true
 
 
 def test_warp_bitonic_sort_interleaved[
@@ -304,12 +305,10 @@ def test_single_group_router_fused_scores[
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
-        var token = Int(coords[0])
-        var expert = Int(coords[1])
-        var score = Float32(expert)
-        if token == 0:
-            score = Float32(n_experts - expert)
-        return SIMD[.float32, width](score)
+        var score = iota[.float32, width](Float32(Int(coords[1])))
+        if Int(coords[0]) == 0:
+            score = Float32(n_experts) - score
+        return score
 
     single_group_router[
         n_experts,
@@ -685,8 +684,11 @@ def test_single_group_router_scores_from_layout_and_lambda[
         comptime assert (
             coords.rank == 2
         ), "the expert-scores lambda contract is rank 2"
-        var rotated = (Int(coords[1]) - Int(coords[0]) + n_experts) % n_experts
-        return SIMD[.float32, width](Float32(n_experts - rotated))
+        var expert = iota[.int32, width](Int32(Int(coords[1])))
+        var rotated = (
+            expert - Int32(Int(coords[0])) + Int32(n_experts)
+        ) % Int32(n_experts)
+        return (Int32(n_experts) - rotated).cast[.float32]()
 
     single_group_router[n_experts, topk_experts, True, "gpu"](
         indices_tensor,
@@ -858,6 +860,168 @@ def test_router_group_limited_ties[
             )
 
 
+def test_single_group_router_token_bias[
+    n_experts: Int,
+    topk_experts: Int,
+](ctx: DeviceContext) raises:
+    """Verifies the per-token `bias_input_fn` of `single_group_router`.
+
+    Token 0's bias lifts the first `topk_experts` experts and token 1's the
+    last, over scores that favor neither, so a bias lambda that dropped
+    `coords[0]` hands both tokens one set. Token 2's scores are all zero:
+    its weights must stay zero instead of 0 / 0.
+    """
+    comptime num_tokens = 3
+    var indices_dev = ctx.enqueue_create_buffer[.int32](
+        num_tokens * topk_experts
+    )
+    var weights_dev = ctx.enqueue_create_buffer[.float32](
+        num_tokens * topk_experts
+    )
+    var indices_tensor = TileTensor(
+        indices_dev, row_major[num_tokens, topk_experts]()
+    )
+    var weights_tensor = TileTensor(
+        weights_dev, row_major[num_tokens, topk_experts]()
+    )
+
+    @inline(.always)
+    def scores_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        if Int(coords[0]) == 2:
+            return SIMD[.float32, width](0)
+        return 1.0 + iota[.float32, width](Float32(Int(coords[1]))) * 1e-3
+
+    @inline(.always)
+    def bias_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-bias lambda contract is rank 2"
+        var expert = iota[.int32, width](Int32(Int(coords[1])))
+        var lifted = expert.lt(Int32(topk_experts))
+        if Int(coords[0]) == 1:
+            lifted = expert.ge(Int32(n_experts - topk_experts))
+        return lifted.select(
+            SIMD[.float32, width](10.0), SIMD[.float32, width](0.0)
+        )
+
+    single_group_router[n_experts, topk_experts, True, "gpu"](
+        indices_tensor,
+        weights_tensor,
+        row_major[num_tokens, n_experts](),
+        scores_input_fn,
+        bias_input_fn,
+        Float32(1.0),
+        ctx,
+    )
+    ctx.synchronize()
+
+    with indices_dev.map_to_host() as indices_map:
+        with weights_dev.map_to_host() as weights_map:
+            for t in range(num_tokens):
+                var first = n_experts - topk_experts if t == 1 else 0
+                var picked = List[Bool](length=topk_experts, fill=False)
+                var total: Float32 = 0
+                for i in range(topk_experts):
+                    var e = Int(indices_map[t * topk_experts + i]) - first
+                    assert_true(
+                        e >= 0 and e < topk_experts,
+                        msg=String("token ", t, " picked expert ", e + first),
+                    )
+                    picked[e] = True
+                    var w = weights_map[t * topk_experts + i]
+                    if t == 2:
+                        assert_equal(
+                            w, Float32(0), msg="an all-zero token's weight"
+                        )
+                    total += w
+                for i in range(topk_experts):
+                    assert_true(
+                        picked[i], msg=String("token ", t, " missed ", i)
+                    )
+                if t < 2:
+                    assert_almost_equal(total, Float32(1.0), atol=1e-6)
+
+
+def test_single_group_router_image_bias[
+    n_experts: Int,
+    topk_experts: Int,
+](ctx: DeviceContext) raises:
+    """Verifies the image-bias `single_group_router`: text tokens select
+    with `expert_bias`, which lifts the first `topk_experts` experts, and
+    image tokens with `image_bias`, which lifts the last, over scores that
+    favor neither. Image and text tokens alternate irregularly, so a select
+    that ignored the token id, or read another token's id, misroutes one.
+    """
+    comptime num_tokens = 7
+    comptime image_token_id = 1000003
+    var ids = [5, image_token_id, image_token_id, 0, image_token_id, 9, 1]
+
+    var bias_dev = ctx.enqueue_create_buffer[.float32](n_experts)
+    var image_bias_dev = ctx.enqueue_create_buffer[.float32](n_experts)
+    var ids_dev = ctx.enqueue_create_buffer[.int64](num_tokens)
+    with bias_dev.map_to_host() as bias_map:
+        with image_bias_dev.map_to_host() as image_map:
+            for e in range(n_experts):
+                bias_map[e] = 10.0 if e < topk_experts else 0.0
+                image_map[e] = 10.0 if e >= n_experts - topk_experts else 0.0
+    with ids_dev.map_to_host() as ids_map:
+        for t in range(num_tokens):
+            ids_map[t] = Int64(ids[t])
+
+    var indices_dev = ctx.enqueue_create_buffer[.int32](
+        num_tokens * topk_experts
+    )
+    var weights_dev = ctx.enqueue_create_buffer[.float32](
+        num_tokens * topk_experts
+    )
+    indices_dev.enqueue_fill(-1)
+
+    @inline(.always)
+    def scores_input_fn[width: Int](coords: Coord) -> SIMD[.float32, width]:
+        comptime assert (
+            coords.rank == 2
+        ), "the expert-scores lambda contract is rank 2"
+        return 1.0 + iota[.float32, width](Float32(Int(coords[1]))) * 1e-3
+
+    single_group_router[n_experts, topk_experts, True, "gpu"](
+        TileTensor(indices_dev, row_major[num_tokens, topk_experts]()),
+        TileTensor(weights_dev, row_major[num_tokens, topk_experts]()),
+        row_major[num_tokens, n_experts](),
+        scores_input_fn,
+        TileTensor(bias_dev, row_major[n_experts]()).as_imm(),
+        TileTensor(image_bias_dev, row_major[n_experts]()).as_imm(),
+        TileTensor(ids_dev, row_major[num_tokens]()).as_imm(),
+        Int64(image_token_id),
+        Float32(1.0),
+        ctx,
+    )
+    ctx.synchronize()
+
+    with indices_dev.map_to_host() as indices_map:
+        with weights_dev.map_to_host() as weights_map:
+            for t in range(num_tokens):
+                var image = ids[t] == image_token_id
+                var first = n_experts - topk_experts if image else 0
+                var picked = List[Bool](length=topk_experts, fill=False)
+                var total: Float32 = 0
+                for i in range(topk_experts):
+                    var e = Int(indices_map[t * topk_experts + i]) - first
+                    assert_true(
+                        e >= 0 and e < topk_experts,
+                        msg=String("token ", t, " picked expert ", e + first),
+                    )
+                    picked[e] = True
+                    total += weights_map[t * topk_experts + i]
+                for i in range(topk_experts):
+                    assert_true(
+                        picked[i], msg=String("token ", t, " missed ", i)
+                    )
+                assert_almost_equal(total, Float32(1.0), atol=1e-6)
+
+
 def main() raises:
     with DeviceContext() as ctx:
         # academic-ds-9b: 64 experts, 8 groups, 8 experts/group
@@ -879,6 +1043,8 @@ def main() raises:
         # Fused `scores_input_fn` branch of each router that offers one.
         test_router_group_limited_fused_scores[64, 8, 8, 4](ctx)
         test_single_group_router_fused_scores[384, 8](ctx)
+        test_single_group_router_token_bias[384, 6](ctx)
+        test_single_group_router_image_bias[384, 6](ctx)
         test_single_group_router_eplb_fused_scores[384, 8](ctx)
 
         # Exact ties pick the lower expert index on every router path.

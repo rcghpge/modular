@@ -7170,6 +7170,95 @@ def moe_router_group_limited(
     return (results[0].tensor, results[1].tensor)
 
 
+def moe_router_image_bias(
+    expert_scores: TensorValue,
+    expert_bias: TensorValue,
+    image_bias: TensorValue,
+    token_ids: TensorValue,
+    image_token_id: int,
+    n_routed_experts: int,
+    n_experts_per_tok: int,
+    routed_scaling_factor: float,
+) -> tuple[TensorValue, TensorValue]:
+    """Routes tokens with a selection bias that depends on the token id.
+
+    Selects ``n_experts_per_tok`` experts for each token by score plus
+    bias, where the bias is ``image_bias`` for tokens whose id is
+    ``image_token_id`` and ``expert_bias`` for the rest. The weights are the
+    unbiased scores of the selected experts, normalized to sum to 1 (a token
+    whose selected scores are all zero keeps zero weights), then scaled by
+    ``routed_scaling_factor``. Runs one GPU kernel.
+
+    Args:
+        expert_scores: The scores for each expert for each token. Shape:
+            ``[num_tokens, n_routed_experts]``.
+        expert_bias: The selection bias of the other tokens. Shape:
+            ``[n_routed_experts]``.
+        image_bias: The selection bias of the image tokens. Shape:
+            ``[n_routed_experts]``.
+        token_ids: The token ids. Shape: ``[num_tokens]``.
+        image_token_id: The id that marks an image token.
+        n_routed_experts: The total number of experts.
+        n_experts_per_tok: The number of experts selected per token.
+        routed_scaling_factor: The scalar multiplied into every weight.
+
+    Returns:
+        A tuple of the routed experts' indices and weights, each of shape
+        ``[num_tokens, n_experts_per_tok]``.
+
+    Raises:
+        ValueError: If a bias or the token ids do not match the scores'
+            shape.
+    """
+    for name, bias in (
+        ("expert_bias", expert_bias),
+        ("image_bias", image_bias),
+    ):
+        if list(bias.shape) != [expert_scores.shape[1]]:
+            raise ValueError(
+                f"expected {name} of shape [{expert_scores.shape[1]}] but got"
+                f" {bias.shape}"
+            )
+    if list(token_ids.shape) != [expert_scores.shape[0]]:
+        raise ValueError(
+            f"expected token_ids of shape [{expert_scores.shape[0]}] but got"
+            f" {token_ids.shape}"
+        )
+
+    results = ops.custom(
+        "mo.moe.single.group.router.image.bias",
+        device=expert_scores.device,
+        values=[
+            expert_scores,
+            expert_bias,
+            image_bias,
+            token_ids,
+            ops.constant(
+                routed_scaling_factor, DType.float32, device=DeviceRef.CPU()
+            ),
+        ],
+        out_types=[
+            TensorType(
+                dtype=DType.int32,
+                shape=[expert_scores.shape[0], n_experts_per_tok],
+                device=expert_scores.device,
+            ),
+            TensorType(
+                dtype=expert_scores.dtype,
+                shape=[expert_scores.shape[0], n_experts_per_tok],
+                device=expert_scores.device,
+            ),
+        ],
+        parameters={
+            "n_routed_experts": n_routed_experts,
+            "n_experts_per_tok": n_experts_per_tok,
+            "norm_weights": True,
+            "image_token_id": image_token_id,
+        },
+    )
+    return (results[0].tensor, results[1].tensor)
+
+
 def _moe_sigmoid_gemv_router_unsupported(
     n_routed_experts: int,
     n_experts_per_tok: int,
@@ -7507,6 +7596,46 @@ def moe_sink_gate_router(
     )
 
     return (results[0].tensor, results[1].tensor, results[2].tensor)
+
+
+def matmul_float32_out(a: TensorValue, b: TensorValue) -> TensorValue:
+    """Computes ``a @ b^T`` from 16-bit float inputs into a float32 output.
+
+    :func:`~max.graph.ops.matmul` returns its inputs' dtype, which rounds
+    the float32 accumulator. Use this op when that rounding matters, such as
+    for router logits whose top-k selection must not change: the result
+    equals widening both inputs to float32 before the product. GPU only.
+
+    Args:
+        a: The ``[M, K]`` left-hand side, ``bfloat16`` or ``float16``.
+        b: The ``[N, K]`` right-hand side, the same dtype as ``a``.
+
+    Returns:
+        The ``[M, N]`` float32 product.
+    """
+    _check_rank(2, a=a, b=b)
+    _check_same_device(a=a, b=b)
+    if a.dtype not in (DType.bfloat16, DType.float16) or b.dtype != a.dtype:
+        raise ValueError(
+            "matmul_float32_out takes bfloat16 or float16 inputs of one"
+            f" dtype, got {a.dtype} and {b.dtype}"
+        )
+    if a.shape[1] != b.shape[1]:
+        raise ValueError(
+            f"expected a and b to share K, got {a.shape} and {b.shape}"
+        )
+    return ops.custom(
+        "mo.matmul.float32.out",
+        device=a.device,
+        values=[a, b],
+        out_types=[
+            TensorType(
+                dtype=DType.float32,
+                shape=[a.shape[0], b.shape[0]],
+                device=a.device,
+            )
+        ],
+    )[0].tensor
 
 
 def _router_gate_mixed_gemv(

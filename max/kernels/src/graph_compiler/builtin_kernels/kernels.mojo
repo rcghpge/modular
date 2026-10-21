@@ -2376,6 +2376,64 @@ struct Struct_moe_single_group_router:
         )
 
 
+@extensibility.register("mo.moe.single.group.router.image.bias")
+struct Struct_moe_single_group_router_image_bias:
+    """Registers the `mo.moe.single.group.router.image.bias` graph op.
+
+    The single-group router selecting with `image_bias` for tokens whose id
+    is `image_token_id` and with `expert_bias` for the rest.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        scores_type: DType,
+        bias_type: DType,
+        ids_type: DType,
+        //,
+        n_routed_experts: Int,
+        n_experts_per_tok: Int,
+        norm_weights: Bool,
+        image_token_id: Int,
+        target: StaticString,
+    ](
+        expert_indices: OutputTensor[dtype=.int32, rank=2, ...],
+        expert_weights: OutputTensor[dtype=scores_type, rank=2, ...],
+        expert_scores: FusedInputTensor[dtype=scores_type, rank=2, ...],
+        expert_bias: InputTensor[dtype=bias_type, rank=1, ...],
+        image_bias: InputTensor[dtype=bias_type, rank=1, ...],
+        token_ids: InputTensor[dtype=ids_type, rank=1, ...],
+        routed_scaling_factor: Float32,
+        context: DeviceContext,
+    ) raises:
+        @inline(.always)
+        def scores_input_fn[
+            width: Int
+        ](coords: Coord) {var expert_scores} -> SIMD[scores_type, width]:
+            comptime assert (
+                coords.rank == 2
+            ), "the expert-scores lambda contract is rank 2"
+            return expert_scores._lambda_load[width=width](coords)
+
+        single_group_router[
+            n_routed_experts,
+            n_experts_per_tok,
+            norm_weights=norm_weights,
+            target=target,
+        ](
+            expert_indices.to_tile_tensor[.int64](),
+            expert_weights.to_tile_tensor[.int64](),
+            expert_scores.runtime_layout(),
+            scores_input_fn,
+            expert_bias.to_tile_tensor[.int64]().as_imm(),
+            image_bias.to_tile_tensor[.int64]().as_imm(),
+            token_ids.to_tile_tensor[.int64]().as_imm(),
+            Int64(image_token_id),
+            routed_scaling_factor,
+            context,
+        )
+
+
 @extensibility.register("mo.moe.sigmoid.gemv.single.group.router")
 struct Struct_moe_sigmoid_gemv_single_group_router:
     """Registers the `mo.moe.sigmoid.gemv.single.group.router` graph op.

@@ -47,6 +47,7 @@ from .layers.indexer import (
     candidate_keep_blocks,
     candidate_window_rows,
 )
+from .layers.moe import router_reads_bf16_gate
 from .model_config import (
     DeepseekV41Config,
     data_parallel_ep_config,
@@ -342,8 +343,9 @@ _SHARDED_MARKERS = (
 _FUSED_BF16_PROJECTIONS = tuple(
     f".attn.{projection}" for projection in FUSED_QUERY_PROJECTIONS
 )
-# The router gate's bf16 weight is held in float32.
-_FLOAT32_GATE_SUFFIX = ".ffn.gate.weight"
+# The router gate's bf16 weight, held in float32 unless the fused route
+# reads it as is.
+_ROUTER_GATE_SUFFIX = ".ffn.gate.weight"
 # Routed-expert NVFP4 block scales. Unless pre-interleaved on the host, the
 # compiler hoists the in-graph interleave into a second resident copy (2x).
 _ROUTED_EXPERT_SCALE_MARKER = ".ffn.experts."
@@ -385,9 +387,11 @@ class DeviceWeightLayout:
     host_dequantized: Callable[[str], bool]
     """Whether a projection base (no ``.weight``) is dequantized to bf16."""
     expert_scales_preinterleaved: bool
+    router_gate_float32: bool = True
+    """Whether the router holds a float32 copy of its bf16 gate weight."""
 
     @classmethod
-    def current(cls) -> DeviceWeightLayout:
+    def current(cls, *, router_gate_float32: bool = True) -> DeviceWeightLayout:
         """The layout the weight adapter uses under the current env switches."""
         return cls(
             head_bf16=head_bf16_enabled(),
@@ -397,6 +401,7 @@ class DeviceWeightLayout:
             # Assumes every expert scale shape tiles the interleave tile
             # exactly, so the env switch alone decides.
             expert_scales_preinterleaved=nvfp4_sf_preinterleave_enabled(),
+            router_gate_float32=router_gate_float32,
         )
 
 
@@ -413,10 +418,10 @@ def _device_bytes_factor(
     name, dtype = tensor.name, tensor.dtype
     if name == HEAD_WEIGHT:
         return 1.0 if layout.head_bf16 else 2.0
-    if dtype == "BF16" and name.endswith(
-        (*FLOAT32_WEIGHT_SUFFIXES, _FLOAT32_GATE_SUFFIX)
-    ):
+    if dtype == "BF16" and name.endswith(FLOAT32_WEIGHT_SUFFIXES):
         return 2.0
+    if dtype == "BF16" and name.endswith(_ROUTER_GATE_SUFFIX):
+        return 2.0 if layout.router_gate_float32 else 1.0
     if dtype == "F8_E4M3" and name.endswith(".weight"):
         base = name[: -len(".weight")]
         if _ROUTED_EXPERT_SCALE_MARKER not in name and (
@@ -589,9 +594,19 @@ class DeepseekV41MemoryPlanner(PagedMemoryPlanner):
             return model_config.weights_size()
         if not tensors:
             return model_config.weights_size()
+        text_config = DeepseekV41Config.get_text_config(
+            model_config.huggingface_config
+        )
+        layout = DeviceWeightLayout.current(
+            router_gate_float32=not router_reads_bf16_gate(
+                model_config.device_specs[0].device_type == "gpu",
+                int(text_config.n_routed_experts),
+            )
+        )
         per_device, host = device_weight_bytes(
             tensors,
             num_devices,
+            layout,
             data_parallel=int(model_config.data_parallel_degree) > 1,
         )
         vision = (

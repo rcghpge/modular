@@ -372,6 +372,43 @@ struct MatmulGPU:
             )
 
 
+@extensibility.register("mo.matmul.float32.out", type="gpu")
+struct MatmulFloat32Out:
+    """Registers the `mo.matmul.float32.out` graph op for GPU devices:
+    `c = a @ b^T` with 16-bit float inputs and a float32 output.
+
+    The graph API's matmul (`rmo.matmul`) writes its inputs' dtype. A product
+    whose rounding changes a later decision, such as router logits, needs the
+    float32 accumulator itself; the products and accumulation match widening
+    both inputs first.
+    """
+
+    @staticmethod
+    def execute[
+        a_type: DType,
+        //,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=.float32, rank=2, ...],
+        a: InputTensor[dtype=a_type, rank=2, ...],
+        b: InputTensor[dtype=a_type, rank=2, ...],
+        ctx: DeviceContext,
+    ) raises:
+        comptime assert (
+            a_type.is_half_float()
+        ), "float32-out matmul takes 16-bit float inputs"
+        matmul[
+            transpose_a=False,
+            transpose_b=True,
+            target=target,
+        ](
+            c.to_tile_tensor[.int64](),
+            a.to_tile_tensor[.int64](),
+            b.to_tile_tensor[.int64](),
+            ctx,
+        )
+
+
 @extensibility.register("mo.batch_matmul", type="cpu")
 struct BatchMatmulCPU:
     """Registers the `mo.batch_matmul` graph op for CPU devices."""

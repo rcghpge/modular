@@ -18,7 +18,7 @@ types that abstract over the NVIDIA and AMD vendor libraries so callers can
 dispatch GEMM operations without binding to a specific vendor API.
 """
 
-from std.sys import size_of
+from std.sys import get_defined_bool, size_of
 from std.math import ceildiv
 from std.ffi import _get_global_or_null, external_call
 
@@ -94,7 +94,7 @@ from _rocblas.rocblas import (
     rocblas_create_handle,
     rocblas_destroy_handle,
 )
-from max.gpu.host import DeviceContext, default_accelerator
+from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from max.gpu.host._kernel_load_gate import KernelLoadScope
 from max.gpu.host._amdgpu_hip import HIP
 from max.gpu.host._nvidia_cuda import CUDA
@@ -636,6 +636,11 @@ def matmul[
 # ===----------------------------------------------------------------------===#
 
 
+comptime _VENDOR_BLAS_ZERO_WORKSPACE = get_defined_bool[
+    "VENDOR_BLAS_ZERO_WORKSPACE", False
+]()
+
+
 def _cublas_matmul[
     c_type: DType,
     a_type: DType,
@@ -703,21 +708,24 @@ def _cublas_matmul[
     # transformation. To be rigorous though, we should set `c_is_row_major = True`
     # for accuracy validations and uses default column-major in benchmark.
 
-    # cuBLAS's default internal workspace pool is uninitialized memory that
-    # its split-K reduction kernel reads from, which trips initcheck. Supply
-    # our own zeroed workspace instead to pass in.
-    var workspace_size = 32 * 1024 * 1024
-    var workspace = ctx.enqueue_create_buffer[.uint8](workspace_size)
-    ctx.enqueue_memset(workspace, UInt8(0))
-    check_cublas_error(
-        cublasSetWorkspace(
-            handle,
-            workspace.unsafe_ptr()
-            .unsafe_bitcast[NoneType]()
-            .as_unsafe_any_origin(),
-            workspace_size,
+    # cuBLAS's split-K reduction reads workspace bytes it never wrote, which
+    # trips initcheck. The initcheck lane hands it a zeroed workspace. Other
+    # builds keep cuBLAS's own, since zeroing costs a 32 MiB memset a call.
+    var workspace = Optional[DeviceBuffer[DType.uint8]]()
+    comptime if _VENDOR_BLAS_ZERO_WORKSPACE:
+        var workspace_size = 32 * 1024 * 1024
+        var buffer = ctx.enqueue_create_buffer[.uint8](workspace_size)
+        ctx.enqueue_memset(buffer, UInt8(0))
+        check_cublas_error(
+            cublasSetWorkspace(
+                handle,
+                buffer.unsafe_ptr()
+                .unsafe_bitcast[NoneType]()
+                .as_unsafe_any_origin(),
+                workspace_size,
+            )
         )
-    )
+        workspace = buffer^
 
     if c_row_major:
         # Forward each operand's row stride as the leading dimension; a

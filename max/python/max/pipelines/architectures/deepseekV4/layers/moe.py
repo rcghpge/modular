@@ -87,12 +87,15 @@ def sqrt_softplus(x: TensorValue) -> TensorValue:
     """``F.softplus(x).sqrt()`` -- ``scoring_func: sqrtsoftplus``.
 
     MAX has no ``softplus``, so it is written in the numerically stable form:
-    ``max(x, 0) + log1p(exp(-|x|))``. The naive ``log(1 + exp(x))`` overflows
-    for large positive scores, which is exactly where a routed expert's score
-    lives.
+    ``max(x, 0) + log(1 + exp(-|x|))``. The naive ``log(1 + exp(x))``
+    overflows for large positive scores, which is exactly where a routed
+    expert's score lives. ``log1p`` would add digits only for very negative
+    ``x``, where the score is near 0, and on GPUs it costs two exact divides
+    an element, more than the rest of the router kernel it fuses into.
     """
     zero = ops.constant(0.0, DType.float32, x.device)
-    softplus = ops.max(x, zero) + ops.log1p(ops.exp(-ops.abs(x)))
+    one = ops.constant(1.0, DType.float32, x.device)
+    softplus = ops.max(x, zero) + ops.log(one + ops.exp(-ops.abs(x)))
     return ops.sqrt(softplus)
 
 
@@ -217,10 +220,9 @@ class DeepseekV4Gate(Module):
             ops.cast(x, DType.float32),
             ops.transpose(ops.cast(self.weight, DType.float32), 0, 1),
         )
-        # The router kernel runs one thread per expert in whole warps (64
-        # also covers AMD wavefronts); the minimized checkpoint's 8 experts
-        # take the graph path, as does Metal, whose warp bitonic top-k is
-        # wrong (GEX-3342).
+        # The fused router runs full-size expert counts; the minimized
+        # checkpoint's 8 experts take the graph path, as does Metal, whose
+        # warp top-k is wrong (GEX-3342).
         if (
             not self.is_hash_routed
             and x.device.is_gpu()

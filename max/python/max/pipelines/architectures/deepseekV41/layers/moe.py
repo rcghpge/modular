@@ -38,11 +38,14 @@ from max.nn.activation import GatedActivation
 from max.nn.comm.ep import EPBatchManager
 from max.nn.comm.ep.ep_kernels import fused_silu_quantized
 from max.nn.kernels import (
+    _is_apple_gpu,
     _is_sm10x_gpu,
     block_scales_interleave,
     grouped_matmul_block_scaled,
     grouped_matmul_blocked_swiglu,
     grouped_quantize_dynamic_block_scaled,
+    matmul_float32_out,
+    moe_router_image_bias,
     swiglu_quantize_dynamic_block_scaled,
 )
 from max.nn.layer import Module
@@ -473,6 +476,19 @@ class DeepseekV41NvFp4RoutedExperts(DeepseekV4RoutedExperts):
         )
 
 
+def router_reads_bf16_gate(on_gpu: bool, n_routed_experts: int) -> bool:
+    """Returns whether the router reads its bf16 gate weight as is.
+
+    The fused route does. The graph route widens the weight to float32,
+    which the compiler keeps resident.
+
+    Args:
+        on_gpu: Whether the router runs on a GPU.
+        n_routed_experts: The number of routed experts.
+    """
+    return on_gpu and not _is_apple_gpu() and n_routed_experts % 64 == 0
+
+
 class DeepseekV41Gate(DeepseekV4Gate):
     """Scored top-k routing gate with a separate bias for image tokens.
 
@@ -533,6 +549,8 @@ class DeepseekV41Gate(DeepseekV4Gate):
             ``(weights, indices)``: ``[b, s, k]`` float32 and ``[b, s, k]``
             int32.
         """
+        if router_reads_bf16_gate(x.device.is_gpu(), self.n_routed_experts):
+            return self._fused_route(x, token_ids)
         scores = sqrt_softplus(
             ops.matmul(
                 ops.cast(x, DType.float32),
@@ -554,6 +572,35 @@ class DeepseekV41Gate(DeepseekV4Gate):
             ops.constant(1.0, DType.float32, weight_sum.device),
         )
         return weights * (self.route_scale / denom), indices
+
+    def _fused_route(
+        self, x: TensorValue, token_ids: TensorValue
+    ) -> tuple[TensorValue, TensorValue]:
+        """The path of :meth:`__call__` as a GEMM and one router kernel.
+
+        The GEMM writes float32 logits from the bf16 operands. The scores
+        fuse into the router kernel's loads, and the kernel picks each
+        token's bias from its id, so neither is materialized.
+        """
+        batch, seq = x.shape[0], x.shape[1]
+        rows = batch * seq
+        logits = matmul_float32_out(
+            ops.reshape(x, [rows, x.shape[2]]), self.weight
+        )
+        indices, weights = moe_router_image_bias(
+            sqrt_softplus(logits),
+            self.bias,
+            self.bias_vl,
+            ops.reshape(token_ids, [rows]),
+            image_token_id=IMAGE_SENTINEL_BASE_ID,
+            n_routed_experts=self.n_routed_experts,
+            n_experts_per_tok=self.topk,
+            routed_scaling_factor=self.route_scale,
+        )
+        return (
+            ops.reshape(weights, [batch, seq, self.topk]),
+            ops.reshape(indices, [batch, seq, self.topk]),
+        )
 
 
 # One E8M0 scale per 32 elements (MXFP8).

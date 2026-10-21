@@ -588,3 +588,24 @@ params:
   K_GROUP_SIZE: 4
   NUM_ACCUM_PIPELINE_STAGES: 1
   NUM_CLC_PIPELINE_STAGES: 0
+# Logits GEMM with fp32 output at decode M. Sixteen K splits put 144 CTAs on
+# the weight stream, and the split-K reduction replaces the vendor kernel's
+# separate reduce launch.
+- <<: *defaults
+  M: 1
+  M_END: 193
+  N: 384
+  K: 5120
+  MMA_M: 128
+  MMA_N: 64
+  CTA_GROUP: 1
+  CLUSTER_X: 1
+  CLUSTER_Y: 1
+  BLOCK_SWIZZLE_SIZE: 0
+  RASTERIZE_ORDER: 1
+  SWAP_AB: true
+  K_GROUP_SIZE: 1
+  NUM_ACCUM_PIPELINE_STAGES: 1
+  NUM_CLC_PIPELINE_STAGES: 0
+  NUM_SPLIT_K: 16
+  NUM_PIPELINE_STAGES: 5

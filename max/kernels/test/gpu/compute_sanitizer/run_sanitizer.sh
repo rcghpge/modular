@@ -112,8 +112,12 @@ case "$TOOL" in
   # initialized) and GRADES the no-initialization contract: a dropped select or
   # a missing `-inf` LSE write now propagates NaN into the output and trips the
   # test's own assert. See KERN-3535.
+  # `VENDOR_BLAS_ZERO_WORKSPACE` hands cuBLAS a zeroed workspace: its split-K
+  # reduction reads workspace bytes it never wrote. Other builds skip the
+  # zeroing, which costs a 32 MiB memset a call.
   initcheck) EXTRA=""; POOL="--//:gpu_disable_memory_manager"
-             MOJOCOPTS=(--mojocopt=-D --mojocopt=FA4_WS_POISON=1) ;;
+             MOJOCOPTS=(--mojocopt=-D --mojocopt=FA4_WS_POISON=1
+                        --mojocopt=-D --mojocopt=VENDOR_BLAS_ZERO_WORKSPACE=true) ;;
   synccheck) EXTRA="" ;;
   redzone)   EXTRA="" ;;
   *) usage ;;
