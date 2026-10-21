@@ -60,6 +60,12 @@ This version is still a work in progress.
   dealloc(allocation^)
   ```
 
+- Added `FileDescriptor` to `std.io`, an owning wrapper around
+  `RawFileDescriptor`. It is a linear type: close it explicitly with
+  `fd^.close()`, which raises if the close fails. It is movable but not
+  copyable, and `Optional[FileDescriptor]` is the size of a single
+  descriptor. `RawFileDescriptor` gains a raising `close()` method.
+
 ## GPU programming
 
 - Added the `apple-m6` and `apple-m6-metal4` accelerator targets, and

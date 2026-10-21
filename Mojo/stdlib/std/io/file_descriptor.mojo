@@ -35,6 +35,7 @@ from std.ffi import (
 from std.collections import Span
 from std.memory import MaybeUninit
 from std.os import abort
+from std.sys._libc import close as libc_close
 from std.utils._nicheable import UnsafeSingleNicheable
 
 
@@ -195,6 +196,17 @@ struct RawFileDescriptor(
             return False
         return external_call["isatty", c_int](self._value) != 0
 
+    def close(self) raises:
+        """Closes the file descriptor.
+
+        Raises:
+            If the descriptor is not open, or if the close fails. A failed
+            close can mean buffered writes never reached the file.
+        """
+        # TODO: Raise `IOError` once it exists.
+        if libc_close(self._value) != 0:
+            raise Error("close failed err: ", String(get_errno()))
+
     def fchdir(self) raises:
         """Changes the current working directory to the one
            represented by this fd.
@@ -207,3 +219,126 @@ struct RawFileDescriptor(
         if result < 0:
             var err = get_errno()
             raise Error("fchdir failed err: ", String(err))
+
+
+struct FileDescriptor(
+    not Deinitable else "close it with `fd^.close()`, since closing can fail",
+    Movable,
+    UnsafeSingleNicheable,
+    Writer,
+):
+    """Owning file descriptor that is closed explicitly with `close()`.
+
+    Movable but not copyable, so exactly one value owns the descriptor. `-1`
+    is the niche, so `Optional[FileDescriptor]` is the size of a descriptor.
+
+    Examples:
+        ```mojo
+        from std.io import FileDescriptor
+
+        def write_greeting(var fd: FileDescriptor) raises:
+            fd.write_string("hello\\n")
+            fd^.close()
+        ```
+    """
+
+    var _value: RawFileDescriptor
+
+    def __init__(out self, *, unsafe_raw_fd: RawFileDescriptor):
+        """Takes ownership of a raw file descriptor.
+
+        Args:
+            unsafe_raw_fd: The descriptor to own. Nothing else may close it,
+                so never pass `stdin`, `stdout`, `stderr` or the descriptor
+                behind a `FileHandle`.
+        """
+        self._value = unsafe_raw_fd
+
+    def close(deinit self) raises:
+        """Closes the owned file descriptor.
+
+        Raises:
+            If the close fails. A failed close can mean buffered writes never
+            reached the file.
+        """
+        self._value.close()
+
+    # ===------------------------------------------------------------------===#
+    # UnsafeSingleNicheable
+    # ===------------------------------------------------------------------===#
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def write_niche(memory: MutPointer[MaybeUninit[Self], _]):
+        memory.unsafe_bitcast[c_int]().write(RawFileDescriptor._InvalidFd)
+
+    @staticmethod
+    @inline(.always)
+    @doc_hidden
+    def isa_niche(memory: ImmPointer[MaybeUninit[Self], _]) -> Bool:
+        return memory.unsafe_bitcast[c_int]()[] == RawFileDescriptor._InvalidFd
+
+    def write_bytes(mut self, bytes: Span[Byte, _]) raises -> Int:
+        """Writes at most `len(bytes)` bytes to the file.
+
+        A single call may write fewer bytes than requested. Use
+        `write_bytes_exact()` to write the whole span.
+
+        Args:
+            bytes: The bytes to write.
+
+        Returns:
+            The number of bytes written.
+
+        Raises:
+            If the write fails.
+        """
+        var written = external_call["write", c_ssize_t](
+            self._value._value, bytes.unsafe_ptr(), len(bytes)
+        )
+        if written < 0:
+            raise Error("write failed err: ", String(get_errno()))
+        return Int(written)
+
+    def write_bytes_exact(mut self, bytes: Span[Byte, _]) raises:
+        """Writes all of `bytes` to the file.
+
+        Args:
+            bytes: The bytes to write.
+
+        Raises:
+            If a write fails before every byte is written.
+        """
+        var remaining = bytes
+        while len(remaining) > 0:
+            remaining = remaining[self.write_bytes(remaining) :]
+
+    def write_string(mut self, string: StringSpan):
+        """Writes a string to the file.
+
+        `Writer` requires this method to be non-raising; use
+        `write_bytes_exact()` to observe write errors.
+
+        Args:
+            string: The string to write.
+        """
+        self._value.write_bytes(string.as_bytes())
+
+    @inline(.always)
+    def read_bytes(mut self, buffer: MutSpan[Byte, _]) raises -> Int:
+        """Reads at most `len(buffer)` bytes into `buffer`.
+
+        A single call may read fewer bytes than requested. A return value of
+        `0` means the end of the file was reached.
+
+        Args:
+            buffer: The buffer to read bytes into.
+
+        Returns:
+            The number of bytes read.
+
+        Raises:
+            If the read fails.
+        """
+        return self._value.read_bytes(buffer)
