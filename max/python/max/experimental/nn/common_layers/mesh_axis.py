@@ -23,4 +23,7 @@ TP = "tp"
 #: Mesh axis name for data parallelism.
 DP = "dp"
 
-__all__ = ["DP", "TP"]
+#: Mesh axis name for expert parallelism.
+EP = "ep"
+
+__all__ = ["DP", "EP", "TP"]
