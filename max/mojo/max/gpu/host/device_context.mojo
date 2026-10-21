@@ -92,6 +92,7 @@ from ._device_context_metal import (
     call_with_pack_metal,
 )
 
+from . import _launch_args
 from ._launch_args import _compact_zero_sized_capture_slots
 
 from ._device_context_extras import *
@@ -3681,64 +3682,6 @@ struct DeviceFunction[
 
     @inline(.always)
     @staticmethod
-    def _validate_arguments[
-        *Ts: DevicePassable,
-        num_args: Int,
-        extra_declared: Int = 0,
-    ]() -> Tuple[Int, Array[Int, num_args]]:
-        comptime declared_num_args = Self.declared_arg_types.length
-
-        comptime assert (
-            declared_num_args == num_args + extra_declared
-        ), "Wrong number of arguments to enqueue"
-
-        # For each argument determine the size of the device dtype and
-        # calculate the offset into a contiguous memory area which will
-        # be used to remap the passed arguments into the device dtypes.
-        var tmp_arg_offset = 0
-        var translated_arg_offsets = Array[Int, num_args](uninitialized=True)
-        var num_translated_args = 0
-
-        comptime for i in range(num_args):
-            comptime declared_arg_type = Self.declared_arg_types[i]
-            comptime actual_arg_type = Ts[i]
-
-            def declared_arg_type_name() -> String:
-                comptime if conforms_to(declared_arg_type, DevicePassable):
-                    return declared_arg_type.get_type_name()
-                else:
-                    return reflect[declared_arg_type].name()
-
-            # Check that the given argument can occupy the kernel's declared
-            # argument slot after device encoding.
-            comptime is_convertible: Bool = actual_arg_type._is_implicitly_encodable_to[
-                declared_arg_type
-            ]()
-
-            comptime assert is_convertible, String(
-                "argument #",
-                i,
-                " of type '",
-                actual_arg_type.get_type_name(),
-                "' is not encodable as the declared function argument type '",
-                declared_arg_type_name(),
-                "'",
-            )
-            var aligned_type_size = align_up(
-                size_of[actual_arg_type.device_type, target=Self.target](),
-                8,
-            )
-            if aligned_type_size != 0:
-                num_translated_args += 1
-                translated_arg_offsets[i] = tmp_arg_offset
-                tmp_arg_offset += aligned_type_size
-            else:
-                translated_arg_offsets[i] = -1
-
-        return (num_translated_args, translated_arg_offsets^)
-
-    @inline(.always)
-    @staticmethod
     def _check_trailing_host[Host: RegisterPassable, index: Int]():
         """Require `Host` to be the declared kernel argument at `index`."""
         comptime declared_host_type = Self.declared_arg_types[index]
@@ -3785,8 +3728,11 @@ struct DeviceFunction[
 
         # Validate that all actual arguments do remap to the declared device
         # dtype in the kernel.
-        var validated_args = Self._validate_arguments[
-            *Ts, num_args=num_encoded, extra_declared=HostArgs.length
+        var validated_args = _launch_args._validate_encodable_arguments[
+            Self.target,
+            DeclaredArgTypes=Self.declared_arg_types,
+            ActualArgTypes=Ts,
+            host_args_count=HostArgs.length,
         ]()
 
         var num_translated_args = validated_args[0]
