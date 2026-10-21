@@ -60,8 +60,9 @@ public:
   bool containsShapeFunction(llvm::StringRef name) const;
 
   /// Among candidates whose non-empty device-info fields all match `device`,
-  /// picks the one with the most non-empty fields; user-defined beats
-  /// built-in on a tie. Errors if none matches.
+  /// picks a user-defined kernel over a built-in one, then the one with the
+  /// most non-empty fields. Errors if none matches, and asserts if two
+  /// candidates tie for the pick.
   ErrorOr<KernelDeclOp> getResolvedKernel(llvm::StringRef name,
                                           DeviceRefAttr device) const;
 

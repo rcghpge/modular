@@ -40,6 +40,8 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <tuple>
+
 using namespace M;
 using namespace M::MOGG;
 
@@ -153,6 +155,13 @@ static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
   return false;
 }
 
+// The order candidates win in, compared lexicographically: a user-defined
+// kernel beats a built-in one, then more matching device fields beat fewer.
+static std::tuple<bool, int> resolutionRank(KernelDeclOp decl) {
+  return {decl.getIsUserDefined(),
+          deviceInfoSpecificity(decl.getRegistrationDeviceInfo())};
+}
+
 ErrorOr<KernelDeclOp>
 MojoRegistry::getResolvedKernel(llvm::StringRef name,
                                 DeviceRefAttr device) const {
@@ -161,47 +170,18 @@ MojoRegistry::getResolvedKernel(llvm::StringRef name,
   ASSERT_STREAM(it != kernelByName.end(),
                 "no kernel registered for '" << name << "'");
 
-  KernelDeclOp bestBuiltin;
-  KernelDeclOp bestUser;
-  int bestBuiltinSpecificity = -1;
-  int bestUserSpecificity = -1;
-
+  llvm::SmallVector<KernelDeclOp> candidates;
   for (KernelDeclOp decl : it->second) {
-    DeviceInfoAttr kernelInfo = decl.getRegistrationDeviceInfo();
-    if (!deviceInfoMatches(kernelInfo, deviceInfo))
+    if (!deviceInfoMatches(decl.getRegistrationDeviceInfo(), deviceInfo))
       continue;
     // TODO(GEX-3941): on non-tile devices, skip tile-output candidates so the
     // generic (SIMD) registration is selected.
     if (!deviceInfo.getTileBasedFusion() && kernelDeclaresTileOutput(decl))
       continue;
-    int specificity = deviceInfoSpecificity(kernelInfo);
-    if (decl.getIsUserDefined()) {
-      if (specificity > bestUserSpecificity) {
-        bestUser = decl;
-        bestUserSpecificity = specificity;
-      } else if (specificity == bestUserSpecificity && bestUser) {
-        ASSERT_STREAM(false, "ambiguous kernel resolution for '"
-                                 << name
-                                 << "': multiple user-defined registrations "
-                                    "match the runtime device with equal "
-                                    "specificity");
-      }
-    } else {
-      if (specificity > bestBuiltinSpecificity) {
-        bestBuiltin = decl;
-        bestBuiltinSpecificity = specificity;
-      } else if (specificity == bestBuiltinSpecificity && bestBuiltin) {
-        ASSERT_STREAM(false, "ambiguous kernel resolution for '"
-                                 << name
-                                 << "': multiple built-in registrations "
-                                    "match the runtime device with equal "
-                                    "specificity");
-      }
-    }
+    candidates.push_back(decl);
   }
 
-  auto best = bestUser ? bestUser : bestBuiltin;
-  if (!best) {
+  if (candidates.empty()) {
     std::string msg;
     llvm::raw_string_ostream os(msg);
     os << "no kernel matching device info for '" << name << "' on device "
@@ -211,6 +191,21 @@ MojoRegistry::getResolvedKernel(llvm::StringRef name,
          << " (" << decl.getSymName() << ")";
     return Error(os.str());
   }
+
+  KernelDeclOp best =
+      *llvm::max_element(candidates, [](KernelDeclOp a, KernelDeclOp b) {
+        return resolutionRank(a) < resolutionRank(b);
+      });
+  ASSERT_STREAM(llvm::count_if(candidates,
+                               [&](KernelDeclOp decl) {
+                                 return resolutionRank(decl) ==
+                                        resolutionRank(best);
+                               }) == 1,
+                "ambiguous kernel resolution for '"
+                    << name << "': multiple "
+                    << (best.getIsUserDefined() ? "user-defined" : "built-in")
+                    << " registrations match the runtime device with equal "
+                       "specificity");
   return best;
 }
 
