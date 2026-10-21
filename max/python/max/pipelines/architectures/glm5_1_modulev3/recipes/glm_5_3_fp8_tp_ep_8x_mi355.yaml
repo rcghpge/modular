@@ -36,8 +36,8 @@ model:
 
 runtime:
   ep_size: 8
-  max_batch_input_tokens: 2048  # 8192 is OOM-safe but regresses AMD serving (large-prefill-tile cliff)
-  max_batch_size: 8
+  max_batch_input_tokens: 8192
+  max_batch_size: 32
   prefer_module_v3: true
 
 sampling:
