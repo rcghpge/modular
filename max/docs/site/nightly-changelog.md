@@ -101,6 +101,13 @@ This version is still a work in progress.
   `((3, 2), (4, 2))` rather than `((2, 3), (2, 4))`. A tile size that doesn't
   split a nested mode on leaf boundaries is now a compile-time error.
 
+- Removed the `max`, `min`, `sum`, `product` and `mean` overloads in
+  `max.algorithm` that take an input shape, an `input_fn`, an `output_fn` and
+  a `reduce_dim`. To reduce along an axis, use the graph ops (`ops.sum`,
+  `ops.max`, `ops.min`, `ops.mean`, `ops.prod`), or call `map_reduce` once
+  per row. The `Span` overloads and the 1-D `sum` and `mean` overloads that
+  take a length and an `input_fn` are unchanged.
+
 ## Tools
 
 - Added the ability to install `max-serve` and `max-benchmark` as Conda extras,

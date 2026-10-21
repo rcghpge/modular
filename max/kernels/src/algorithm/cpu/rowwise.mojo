@@ -795,11 +795,10 @@ def launch[
         else:
             # ---- cooperative tier (one worker per row) ----
             # Clamp worker count to `num_outputs` to avoid paying
-            # sync_parallelize per-worker setup for empty slots (legacy
-            # `_argn` does this too). Without it, (32, 128256) on a
-            # 96-thread pool launches 96 workers, 64 of which return
-            # immediately — ~700μs of empty-worker setup, larger than
-            # the reduction itself.
+            # sync_parallelize per-worker setup for empty slots. Without
+            # it, (32, 128256) on a 96-thread pool launches 96 workers, 64
+            # of which return immediately — ~700μs of empty-worker setup,
+            # larger than the reduction itself.
             var actual_workers = min(num_workers, num_outputs)
             var chunk = ceildiv(num_outputs, actual_workers)
 

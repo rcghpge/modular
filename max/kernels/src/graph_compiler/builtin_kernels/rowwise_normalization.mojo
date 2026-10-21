@@ -18,7 +18,6 @@ from std.math import rsqrt
 from std.sys import size_of
 from std.sys.info import align_of
 
-from max.algorithm import mean
 from max.gpu.host import DeviceContext
 from layout import Coord, CoordLike, TileTensor
 from std.utils.numerics import get_accum_type

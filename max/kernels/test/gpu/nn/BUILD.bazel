@@ -312,18 +312,10 @@ _EXTRA_CONSTRAINTS = {
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),  # FIXME: KERN-3062 — flash attention numerically diverges on Metal
-    "test_argmaxmin_gpu.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2397
     "test_argmax_with_bias.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],
-    }),  # FIXME: MOCO-2397 — same argmax path as test_argmaxmin_gpu.mojo
-    "test_argmax_streaming_gpu.mojo": select({
-        "//:apple_gpu": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),  # FIXME: MOCO-2397 — same argmax path as test_argmaxmin_gpu.mojo
+    }),  # FIXME: MOCO-2397
     "test_gather_nd_oob.mojo": select({
         "//:apple_gpu": ["@platforms//:incompatible"],
         "//conditions:default": [],

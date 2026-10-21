@@ -17,11 +17,9 @@ from std.sys.info import align_of, simd_width_of, size_of
 
 import max.gpu.primitives.warp as warp
 from std.algorithm import vectorize
-from max.algorithm import map_reduce, mean, variance
 from max.algorithm.functional import (
     sync_parallelize,
 )
-from max.algorithm.reduction import _simd_sum, _simd_sum_elementwise
 from std.bit import log2_floor
 from max.gpu import (
     MAX_THREADS_PER_BLOCK_METADATA,

@@ -27,7 +27,6 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
-from max.algorithm import mean
 from comm.allreduce import allreduce
 from internal_utils.fp8_utils import cast_saturating
 
