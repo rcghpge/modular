@@ -110,10 +110,28 @@ def _prefetch[
     address_space: AddressSpace
 ](addr: Pointer[NoneType, ImmUntrackedOrigin, address_space=address_space]):
     """Prefetches `addr` into the L2 cache."""
+    # PTX `prefetch` takes a global, local, or generic address. Other address
+    # spaces, such as shared memory, have no form, and dropping a hint keeps
+    # the program correct.
+    comptime match address_space:
+        case .GLOBAL:
+            _prefetch_l2["prefetch.global.L2 [$0];", "l,~{memory}"](addr)
+        case .LOCAL:
+            _prefetch_l2["prefetch.local.L2 [$0];", "r,~{memory}"](addr)
+        case .GENERIC:
+            _prefetch_l2["prefetch.L2 [$0];", "l,~{memory}"](addr)
+        case _:
+            pass
+
+
+@inline(.always)
+def _prefetch_l2[
+    asm: StaticString, constraints: StaticString
+](addr: Pointer[NoneType, ImmUntrackedOrigin, address_space=_]):
     inlined_assembly[
-        "prefetch.global.L2 [$0];",
+        asm,
         NoneType,
-        constraints="l,~{memory}",
+        constraints=constraints,
         has_side_effect=True,
     ](addr)
 
