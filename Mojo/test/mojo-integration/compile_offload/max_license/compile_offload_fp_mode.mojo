@@ -25,14 +25,12 @@ from std.sys.info import _TargetType
 struct _Info(TrivialRegisterPassable):
     var kernel: __mlir_type.`!kgen.string`
     var name: __mlir_type.`!kgen.string`
-    var num_captures: __mlir_type.index
 
 
 @fieldwise_init
 struct Info(TrivialRegisterPassable):
     var kernel: StaticString
     var name: StaticString
-    var num_captures: Int
 
 
 def a100_target() -> _TargetType:
@@ -67,7 +65,6 @@ def _compile_llvm[
     return Info(
         StaticString(info.kernel),
         StaticString(info.name),
-        Int(mlir_value=info.num_captures),
     )
 
 

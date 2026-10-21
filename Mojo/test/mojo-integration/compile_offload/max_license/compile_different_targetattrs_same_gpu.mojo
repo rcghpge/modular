@@ -26,14 +26,12 @@ from std.collections.string.string_span import _get_kgen_string
 struct _Info(TrivialRegisterPassable):
     var kernel: __mlir_type.`!kgen.string`
     var name: __mlir_type.`!kgen.string`
-    var num_captures: __mlir_type.index
 
 
 @fieldwise_init
 struct Info(TrivialRegisterPassable):
     var kernel: StaticString
     var name: StaticString
-    var num_captures: Int
 
 
 def get_a100_target() -> _TargetType:
@@ -81,7 +79,6 @@ def _compile_info[
     return Info(
         kernel=StaticString(info.kernel),
         name=StaticString(info.name),
-        num_captures=Int(mlir_value=info.num_captures),
     )
 
 

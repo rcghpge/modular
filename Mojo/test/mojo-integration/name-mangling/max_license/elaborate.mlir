@@ -85,23 +85,19 @@ kgen.generator @HELLO<x: () capturing -> index>() capturing -> !kgen.none
 
 kgen.generator @FOO() capturing -> index
     attributes { linkageName = #kgen.linkage_name<"bar" : !kgen.string, false> } {
-  %0 = pop.compiler.global_load "CAPTURE_0" : !kgen.pointer<index>
-  %1 = pop.load %0 : !kgen.pointer<index>
-  hlcf.return %1 : index
+  %0 = index.constant 1
+  hlcf.return %0 : index
 }
 
 // This linkage name needs sanitization for the nvptx target
 kgen.generator @FLIP() capturing -> index
     attributes { linkageName = #kgen.linkage_name<"1bar" : !kgen.string, false> } {
-  %0 = pop.compiler.global_load "CAPTURE_0" : !kgen.pointer<index>
-  %1 = pop.load %0 : !kgen.pointer<index>
-  hlcf.return %1 : index
+  %0 = index.constant 1
+  hlcf.return %0 : index
 }
 
 // CHECK-LABEL: kgen.func export @entry
-kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
-  %0 = pop.stack_allocation 1 x index marked
-  pop.compiler.global_store "CAPTURE_0", %0 : !kgen.pointer<index>
+kgen.generator export @entry() {
   kgen.param.declare *"foo()": () capturing -> index = <@FOO>
   kgen.param.declare *"flip()": () capturing -> index = <@FLIP>
 
@@ -124,21 +120,7 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
   %1 = kgen.compile_offload<
           nvptx, 2, "", "",
           :() capturing -> !kgen.none @HELLO<:() capturing -> index *"foo()">
-       > : !kgen.struct<(string, index)>
-  kgen.param.declare x: (!kgen.pointer<none>) -> !kgen.none
-      = <#kgen.compile_offload_closure<
-          nvptx,
-          #kgen.symbol.constant<
-            @HELLO<:() capturing -> index *"foo()">
-          > : !kgen.generator<() capturing -> !kgen.none>>
-        >
-  // Check that the populate_captures stub is present and called.
-  // The stub is named after the pre-rename sym (not the @__name linkage name)
-  // so each closure instantiation gets a unique stub even when multiple
-  // instantiations share the same @__name value.
-  // CHECK: kgen.call @{{.*}}_populate_captures{{.*}}(%arg0)
-  // CHECK-SAME: : (!kgen.pointer<none>) -> !kgen.none
-  %2 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: x](%arg0)
+       > : !kgen.struct<(string, string)>
 
   // Check that inside the offloaded module, the PTX kernel is given the right name.
   // @FLIP has mangle=false with a digit-leading name ("1bar"), which the
@@ -146,19 +128,9 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
   // concatenates that with "_hello" → "_1bar_hello", no hash suffix.
   // CHECK: ModuleID =
   // CHECK-SAME: define dso_local ptx_kernel void @_1bar_hello(
-  %3 = kgen.compile_offload<
+  %2 = kgen.compile_offload<
           nvptx, 2, "", "",
           :() capturing -> !kgen.none @HELLO<:() capturing -> index *"flip()">
-       > : !kgen.struct<(string, index)>
-  kgen.param.declare y: (!kgen.pointer<none>) -> !kgen.none
-      = <#kgen.compile_offload_closure<
-          nvptx,
-          #kgen.symbol.constant<
-            @HELLO<:() capturing -> index *"flip()">
-          > : !kgen.generator<() capturing -> !kgen.none>>
-        >
-  // CHECK: kgen.call @{{.*}}_populate_captures{{.*}}(%arg0)
-  // CHECK-SAME: : (!kgen.pointer<none>) -> !kgen.none
-  %4 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: y](%arg0)
+       > : !kgen.struct<(string, string)>
   hlcf.return
 }

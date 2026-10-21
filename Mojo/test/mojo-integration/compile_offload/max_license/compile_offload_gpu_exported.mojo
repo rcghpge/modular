@@ -22,14 +22,12 @@ from std.sys.info import CompilationTarget
 struct _Info(TrivialRegisterPassable):
     var kernel: __mlir_type.`!kgen.string`
     var name: __mlir_type.`!kgen.string`
-    var num_captures: __mlir_type.index
 
 
 @fieldwise_init
 struct Info(TrivialRegisterPassable):
     var kernel: StaticString
     var name: StaticString
-    var num_captures: Int
 
 
 @always_inline
@@ -54,7 +52,6 @@ def _compile_info[
     return Info(
         StaticString(info.kernel),
         StaticString(info.name),
-        Int(mlir_value=info.num_captures),
     )
 
 

@@ -190,46 +190,6 @@ kgen.generator @call_param
   hlcf.return
 }
 
-// CHECK-LABEL: @param_declare_region_source_name
-kgen.generator @param_declare_region_source_name() {
-  // CHECK: kgen.param.declare.region f0[source_name]
-  kgen.param.declare.region f0[source_name] = () {
-    hlcf.return
-  }
-  // CHECK: kgen.param.declare.region f1 =
-  kgen.param.declare.region f1[f1] = () {
-    hlcf.return
-  }
-  // CHECK: kgen.param.declare.region f2["weird_name[]"]
-  kgen.param.declare.region f2["weird_name[]"] = () {
-    hlcf.return
-  }
-
-  hlcf.return
-}
-
-// CHECK-LABEL: @region_captured_params<value
-kgen.generator @region_captured_params<value>() {
-  // CHECK: kgen.param.declare.region fn
-  kgen.param.declare.region fn = <N>() -> index {
-    // CHECK: kgen.param.constant = <to_builtin(:scalar<index> add(from_builtin(N), from_builtin(value)))>
-    %1 = kgen.param.constant = <add(N, value)>
-    hlcf.return %1 : index
-  }
-  hlcf.return
-}
-
-// CHECK-LABEL: @open_body_input_params<value
-kgen.generator @open_body_input_params<value> () {
-  // CHECK: kgen.param.declare.region fn
-  kgen.param.declare.region fn = <N>() -> index {
-    // CHECK: kgen.param.constant = <to_builtin(:scalar<index> add(from_builtin(N), from_builtin(value)))>
-    %1 = kgen.param.constant = <add(N, value)>
-    hlcf.return %1 : index
-  }
-  hlcf.return
-}
-
 // CHECK-LABEL: @rebind
 kgen.generator @rebind<type1: type, type2: type, dtype1: dtype, dtype2: dtype>(%a: !kgen.param<type1>) {
   // CHECK: kgen.rebind %{{.*}} : !kgen.param<type1> to !kgen.param<type2>
@@ -356,55 +316,6 @@ kgen.generator @signature_types_with_convention<
   hlcf.return
 }
 
-// CHECK-LABEL: kgen.generator @use_regions
-kgen.generator @use_regions<
-  fn0: <index>(index) -> index,
-  fn1: <index>() -> (),
-  fn2: (!kgen.pointer<index> mut) throws -> !kgen.variant<!lit.struct<@Error>, index>
->() {
-  hlcf.return
-}
-
-// CHECK-LABEL: kgen.generator @region_declare
-kgen.generator @region_declare(%arg0: index) {
-  // CHECK-NEXT: kgen.param.declare.region Fn0 = <A>(%{{.*}}: index) -> index {
-  kgen.param.declare.region Fn0 = <A>(%arg1: index) -> index {
-    // CHECK-NEXT: kgen.param.constant = <A>
-    %0 = kgen.param.constant = <A>
-    %1 = index.add %0, %arg1
-    // CHECK: hlcf.return %{{.*}} : index
-    hlcf.return %1 : index
-  }
-  // CHECK: kgen.param.declare.region Fn1 = <A>()
-  kgen.param.declare.region Fn1 = <A>() {
-    hlcf.return
-  }
-  // CHECK: kgen.param.declare.region Fn2 = (%{{.*}} mut) throws
-  kgen.param.declare.region Fn2 = (%arg1: !kgen.pointer<index> mut) throws -> !kgen.variant<!lit.struct<@Error>, index> {
-    %0 = kgen.variant.create %arg0, 1 : <!lit.struct<@Error>, index>
-    hlcf.return %0 : !kgen.variant<!lit.struct<@Error>, index>
-  }
-  // CHECK: kgen.call @use_regions
-  kgen.call @use_regions<
-    // CHECK-SAME: :{{.*}} Fn0
-    :<index>(index) -> index Fn0,
-    // CHECK-SAME: :{{.*}} Fn1
-    :<index>() -> () Fn1,
-    // CHECK-SAME: :{{.*}} Fn2
-    :(!kgen.pointer<index> mut) throws -> !kgen.variant<!lit.struct<@Error>, index> Fn2
-  >() : () -> ()
-  hlcf.return
-}
-
-// CHECK-LABEL: kgen.generator @use_itself
-kgen.generator @use_itself() {
-  // CHECK-NEXT: kgen.param.declare.region F = <F>()
-  kgen.param.declare.region F = <F>() {
-    hlcf.return
-  }
-  hlcf.return
-}
-
 // CHECK-LABEL: kgen.generator @forceInline() always_inline
 kgen.generator @forceInline() always_inline {
   hlcf.return
@@ -485,11 +396,7 @@ kgen.generator @always_dead_function() -> index {
 }
 
 // CHECK-LABEL: kgen.generator @param_declare_dependent
-kgen.generator @param_declare_dependent() {
-  // CHECK-NEXT: declare.region fn = <a>(%arg0: !pop.array<a, i1>)
-  kgen.param.declare.region fn = <a>(%arg0: !pop.array<a, i1>) {
-    hlcf.return
-  }
+kgen.generator @param_declare_dependent<fn: <index>(!pop.array<*(0,0), i1>) -> ()>() {
   // CHECK: ref: <index>(!pop.array<*(0,0), i1>) -> () = <fn>
   kgen.param.declare ref: <index>(!pop.array<*(0,0), i1>) -> () = <fn>
   // CHECK: bound: (!pop.array<2, i1>) -> () =
@@ -528,15 +435,6 @@ kgen.generator @create_create_closure<fn: (index) -> index>(%arg0: index) {
   %2 = kgen.create_closure[(index) -> index: fn](%arg0)
   // CHECK: call_indirect %2() : () capturing -> index
   kgen.call_indirect %2() : () capturing -> index
-
-  kgen.param.declare.region f0 = (%arg1: index) -> index {
-    hlcf.unreachable
-  }
-
-  // CHECK: kgen.create_closure[(index) -> index: f0](%arg0)
-  %4 = kgen.create_closure[(index) -> index: f0](%arg0)
-  // CHECK: call_indirect %4() : () capturing -> index
-  kgen.call_indirect %4() : () capturing -> index
 
   hlcf.return
 }

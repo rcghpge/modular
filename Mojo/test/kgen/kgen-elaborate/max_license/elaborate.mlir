@@ -23,9 +23,8 @@ kgen.generator @kernel(%a: i32, %b: i32) {
 
 // -----
 
-// COM: Given a compile_offload op over a capturing function FOO,
-// verify that the populate captures function is generated and accessible
-// for calls via the compile_offload_closure operator.
+// COM: A compile_offload op over a function HELLO lowers to a struct of the
+// compiled assembly and the module name.
 kgen.generator @HELLO<x: () capturing -> index>() capturing -> !kgen.none {
   %none = kgen.param.constant: none = <#kgen.none>
   %0 = kgen.call_param[() capturing -> index: x]()
@@ -33,26 +32,17 @@ kgen.generator @HELLO<x: () capturing -> index>() capturing -> !kgen.none {
 }
 
 kgen.generator @FOO() capturing -> index {
-  %0 = pop.compiler.global_load "CAPTURE_0" : !kgen.pointer<index>
-  %1 = pop.load %0 : !kgen.pointer<index>
-  hlcf.return %1 : index
+  %0 = index.constant 1
+  hlcf.return %0 : index
 }
 
 // CHECK-LABEL: kgen.func export @entry
-kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
-  %0 = pop.stack_allocation 1 x index marked
-  pop.compiler.global_store "CAPTURE_0", %0 : !kgen.pointer<index>
+kgen.generator export @entry() {
   kgen.param.declare *"foo()": () capturing -> index = <@FOO>
   // CHECK: [[STR:%.*]] = kgen.param.constant: string = <"; Mod{{.*}}">
   // CHECK-NEXT: [[STR1:%.*]] = kgen.param.constant: string = <"{{.*}}">
-  // CHECK-NEXT: [[NUM_CAPTURES:%.*]] = kgen.param.constant = <1>
-  // CHECK-NEXT: [[CAPTURE_SIZES:%.*]] = pop.stack_allocation 1 x i64
-  // CHECK-NEXT: [[INDEX0:%.*]] = kgen.param.constant = <0>
-  // CHECK-NEXT: [[GEP0:%.*]] = pop.offset [[CAPTURE_SIZES]][[[INDEX0]]] : !kgen.pointer<i64>
-  // CHECK-NEXT: [[CAPTURE_SIZE:%.*]] = kgen.param.constant: i64 = <8>
-  // CHECK-NEXT: pop.store [[CAPTURE_SIZE]], [[GEP0]] : !kgen.pointer<i64>
-  // CHECK-NEXT: [[OPAQUE_CAPTURE_SIZES:%.*]] = pop.pointer.bitcast [[CAPTURE_SIZES]] : !kgen.pointer<i64> to !kgen.pointer<none>
-  // CHECK: kgen.struct.create([[STR]], [[STR1]], [[NUM_CAPTURES]], [[OPAQUE_CAPTURE_SIZES]]) : !kgen.struct<(string, string, index, pointer<none>)>
+  // CHECK-NEXT: kgen.struct.create([[STR]], [[STR1]]) : !kgen.struct<(string, string)>
+  // CHECK-NOT: populate_captures
 
   kgen.param.declare nvptx: target = <#kgen.target<triple = "nvptx64-nvidia-cuda",
                                          arch = "sm_80",
@@ -62,26 +52,9 @@ kgen.generator export @entry(%arg0: !kgen.pointer<none>) {
                                          data_layout = "e-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64">>
   %1 = kgen.compile_offload<nvptx, 2, "", "",
                             :() capturing -> !kgen.none @HELLO<:() capturing -> index *"foo()">>
-                            : !kgen.struct<(string, index)>
-  // CHECK-NEXT: kgen.call @"HELLO,x=FOO_populate_captures"(%arg0) : (!kgen.pointer<none>) -> !kgen.none
-  kgen.param.declare x: (!kgen.pointer<none>) -> !kgen.none = <#kgen.compile_offload_closure<
-    nvptx, #kgen.symbol.constant<@HELLO<:() capturing -> index *"foo()">> : !kgen.generator<() capturing -> !kgen.none>>>
-  %2 = kgen.call_param[(!kgen.pointer<none>) -> !kgen.none: x](%arg0)
+                            : !kgen.struct<(string, string)>
   hlcf.return
 }
-
-// COM: populate_captures must be an inlined
-// CHECK: kgen.func @"HELLO,x=FOO_populate_captures"(%arg0: !kgen.pointer<none>) -> !kgen.none always_inline {
-// CHECK-NEXT: [[V0:%.*]] = pop.compiler.global_load "CAPTURE_0" : !kgen.pointer<index>
-// CHECK-NEXT: [[V1:%.*]] = pop.stack_allocation 1 x pointer<index>
-// CHECK-NEXT: pop.store [[V0]], [[V1]] : !kgen.pointer<pointer<index>>
-// CHECK-NEXT: [[V2:%.*]] = pop.pointer.bitcast %arg0 : !kgen.pointer<none> to !kgen.pointer<pointer<none>>
-// CHECK-NEXT: [[IDX0:%.*]] = kgen.param.constant = <0>
-// CHECK-NEXT: [[V3:%.*]] = pop.offset [[V2]][[[IDX0]]] : !kgen.pointer<pointer<none>>
-// CHECK-NEXT: [[V4:%.*]] = pop.pointer.bitcast [[V1]] : !kgen.pointer<pointer<index>> to !kgen.pointer<none>
-// CHECK-NEXT: pop.store [[V4]], [[V3]] : !kgen.pointer<pointer<none>>
-// CHECK-NEXT: [[NONE:%.*]] = kgen.param.constant: none = <#kgen.none>
-// CHECK-NEXT: hlcf.return [[NONE]] : !kgen.none
 
 // -----
 

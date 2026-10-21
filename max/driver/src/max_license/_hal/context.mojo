@@ -337,8 +337,6 @@ struct Context[device_spec: DeviceSpec](Deinitable, Movable):
             asm=StaticString(offload.asm),
             function_name=get_linkage_name[func, target=target](),
             module_name=StaticString(offload.module_name),
-            num_captures=Int(mlir_value=offload.num_captures),
-            capture_sizes=offload.capture_sizes,
             emission_kind="object",
         )
 

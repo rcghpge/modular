@@ -29,7 +29,6 @@ from std._gpu.host._builtin_targets import _7900_target, _9070_target
 struct _Info(TrivialRegisterPassable):
     var kernel: __mlir_type.`!kgen.string`
     var name: __mlir_type.`!kgen.string`
-    var num_captures: __mlir_type.index
 
 
 def gfx1201_target() -> _TargetType:

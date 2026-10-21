@@ -24,18 +24,12 @@ from std.sys import get_defined_string
 struct _Info(TrivialRegisterPassable):
     var kernel: __mlir_type.`!kgen.string`
     var name: __mlir_type.`!kgen.string`
-    var num_captures: __mlir_type.index
-    var capture_sizes: __mlir_type.`!kgen.pointer<ui64>`
 
 
 @fieldwise_init
 struct Info(TrivialRegisterPassable):
     var kernel: StaticString
     var name: StaticString
-    var num_captures: Int
-
-    @__allow_legacy_any_origin_fields
-    var capture_sizes: Pointer[__mlir_type.ui64, ImmUnsafeAnyOrigin]
 
 
 @always_inline
@@ -56,17 +50,10 @@ def _compile_info[
         func=func,
         _type=_Info,
     ]()
-    var num_captures_ptr_ui64 = Pointer[__mlir_type.ui64, ImmUnsafeAnyOrigin](
-        _mlir_value=__mlir_op.`pop.pointer.bitcast`[
-            _type=Pointer[__mlir_type.ui64, ImmUnsafeAnyOrigin]._mlir_type,
-        ](info.capture_sizes)
-    )
 
     return Info(
         StaticString(info.kernel),
         StaticString(info.name),
-        Int(mlir_value=info.num_captures),
-        num_captures_ptr_ui64,
     )
 
 

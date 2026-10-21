@@ -85,16 +85,9 @@ using DeclMapScope =
 //  kgen.param.declare A = ...
 //  kgen.param.declare B = A + 1 // A is in scope
 //
-// Or if they are declared for the region under the current operation.
-//
-//  kgen.param.declare X = ...
-//  kgen.param.declare.region A1 = <B>(){
-//    kgen.param.declare C = X + B // both X and B are in scope.
-//  }
-//  kgen.param.declare.region A2 = <B>(){
-//    // This C is difference from the C in A1
-//    kgen.param.declare C = X * B // both X and B are in scope.
-//  }
+// Or if they are declared as input parameters of an enclosing operation, such
+// as a `mo.graph`. Each such operation opens its own scope, so two sibling
+// graphs may declare parameters of the same name independently.
 static void uniqueAllParamsHelper(Operation *current, DeclMap &paramRenaming,
                                   size_t &totalParamsSeen) {
 
@@ -118,11 +111,7 @@ static void uniqueAllParamsHelper(Operation *current, DeclMap &paramRenaming,
 
   // Pre-order: an op's declared input parameters are in scope for it. Ideally
   // any DeclInterface op, but the interface can't update its declared params.
-  if (auto op = dyn_cast<KGEN::ParamDeclareRegionOp>(current)) {
-    auto inputDecls = op.getInputParams();
-    auto newInputDecls = getNewDecls(inputDecls);
-    op.setInputParams(newInputDecls);
-  } else if (auto op = dyn_cast<MO::GraphOp>(current)) {
+  if (auto op = dyn_cast<MO::GraphOp>(current)) {
     auto inputDecls = op.getInputParameters();
     auto newInputDecls = getNewDecls(inputDecls);
     op.setInputParameters(newInputDecls);

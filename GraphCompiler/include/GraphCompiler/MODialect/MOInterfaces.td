@@ -190,7 +190,8 @@ def MO_ParamDeclaration : MO_TensorOpInterfaceBase<"ParamDeclarationInterface",
         walker.walk(t);
 
       auto paramDeclItf = cast<ParamDeclarationInterface>(op);
-      KGEN::ParamDefValue deps(refs, {});
+      KGEN::ParamDefValue deps;
+      deps.exprs.assign(refs.begin(), refs.end());
       for (KGEN::ParamDeclAttr decl : paramDeclItf.getOutputParamDecls())
         walkDef(decl, deps);
     }

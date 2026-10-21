@@ -34,10 +34,6 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
-namespace M::KGEN {
-class ParamDeclareRegionOp;
-} // namespace M::KGEN
-
 // Needed because ODS-generated build methods for mogg.kernel.decl use the
 // unqualified name.
 using M::KGEN::LIT::FnTypeGeneratorType;

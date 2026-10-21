@@ -12,11 +12,8 @@
 # ===----------------------------------------------------------------------=== #
 #
 # Regression test: a GPU kernel whose @__name starts with a digit must be
-# correctly sanitized to a valid PTX identifier in both the kernel entry point
-# and the `_populate_captures` stub. Before the fix, getExpectedMangledName
-# returned the unsanitized name ("1kernel") while renameFunctions produced the
-# sanitized name ("_1kernel"), causing the stub to reference a non-existent
-# symbol at link time.
+# correctly sanitized to a valid PTX identifier ("_1kernel") in the kernel
+# entry point.
 #
 # Cross-compiled to NVPTX without requiring GPU hardware.
 #

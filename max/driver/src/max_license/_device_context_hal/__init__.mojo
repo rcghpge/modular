@@ -175,21 +175,6 @@ struct _DeviceFunctionInner(Movable):
 
     var _func_handle: FunctionHandle
     var _context: ArcPointer[Context[get_device_spec[0]()]]
-    # Stable copy of the kernel's per-capture byte sizes, taken at
-    # `DeviceFunction.__init__`. `CompiledFunctionInfo.capture_sizes` points at
-    # elaborator stack storage that may be clobbered by the time the  HAL launch
-    # path reads it.
-    var _capture_sizes: Pointer[UInt64, MutUntrackedOrigin]
-    var _num_captures: Int
-
-    def __deinit__(deinit self):
-        dealloc(
-            ThinAllocation(
-                unsafe_owned_ptr=self._capture_sizes
-            ).unsafe_with_layout({length = max(self._num_captures, 1)})
-        )
-        # Anchor the context refcount past the dealloc above.
-        _ = self._context^
 
 
 def _driver_satisfies_api(driver_name: String, api: String) -> Bool:
@@ -2567,20 +2552,6 @@ struct DeviceFunction[
             function attribute is provided.
         """
         var info = ctx._context[]._compile_inner[Self.func_type, Self.func]()
-        # Snapshot the per-capture byte sizes into stable heap storage now,
-        # while `info.capture_sizes` is still valid. It points at elaborator
-        # stack storage that is not guaranteed to survive to launch time.
-        var snap_num_captures = max(0, info.num_captures)
-        var snap_capture_sizes = alloc(
-            Layout[UInt64](length=max(snap_num_captures, 1))
-        ).unsafe_leak()
-        var info_capture_sizes: Pointer[
-            UInt64, ImmUntrackedOrigin
-        ] = info.capture_sizes
-        for i in range(snap_num_captures):
-            snap_capture_sizes.unsafe_store(
-                i, info_capture_sizes[unsafe_offset=i]
-            )
         var attr_code = OptionalReg[Int32](None)
         var attr_value = Int32(0)
         if case .Some(func_attribute) = func_attribute:
@@ -2613,12 +2584,7 @@ struct DeviceFunction[
         self._handle = None
         self._func_info = info
         self._inner = ArcPointer(
-            _DeviceFunctionInner(
-                func_handle,
-                ctx._context,
-                snap_capture_sizes,
-                snap_num_captures,
-            )
+            _DeviceFunctionInner(func_handle, ctx._context)
         )
 
     # ===-------------------------------------------------------------------===#
@@ -2741,11 +2707,6 @@ struct DeviceFunction[
 
         var translated_arg_offsets = validated_args[1].copy()
 
-        ref func_info = self._func_info
-        var num_captures = max(0, func_info.num_captures)
-        comptime populate = type_of(func_info).populate
-        comptime num_captures_static = 16
-
         def calculate_args_size() -> Int:
             var tmp_args_size = 8  # reserve 8 extra bytes for alignment
             comptime for i in range(num_encoded):
@@ -2762,79 +2723,18 @@ struct DeviceFunction[
         var extra_align = align_up(start_addr, 8) - start_addr
 
         # Allocation made at function scope to outlive the enqueue, otherwise
-        # otherwise the stack bytes were free to be reused immediately.
-        var stack_addrs = Array[_, num_captures_static + num_passed_args](
+        # the stack bytes are free to be reused immediately. A kernel may take
+        # no arguments; keep the arrays non-empty.
+        var stack_addrs = Array[_, max(num_passed_args, 1)](
             fill=OpaquePointer[MutAnyOrigin].unsafe_dangling()
         )
-        var stack_sizes = Array[UInt64, num_captures_static + num_passed_args](
-            fill=0
-        )
-        var dense_args_addrs: Pointer[
-            OpaquePointer[MutAnyOrigin], MutUntrackedOrigin
-        ]
-        var dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin]
-        if num_captures > num_captures_static:
-            dense_args_addrs = alloc(
-                Layout[OpaquePointer[MutAnyOrigin]](
-                    length=num_captures + num_passed_args
-                )
-            ).unsafe_leak()
-            dense_args_sizes = alloc(
-                Layout[UInt64](length=num_captures + num_passed_args)
-            ).unsafe_leak()
-            for i in range(num_captures + num_passed_args):
-                dense_args_sizes[unsafe_offset=i] = 0
-        else:
-            dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
-            dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
-
-        # `populate` writes capture pointers into stack storage that does not
-        # survive HAL's non-inlined launch chain; copy the values into a heap
-        # blob, with byte sizes from the `_DeviceFunctionInner` snapshot.
-        var capture_blob = Optional[Pointer[Byte, MutUntrackedOrigin]]()
-        var capture_blob_size = 0
-        if num_captures > 0:
-            for i in range(num_captures):
-                dense_args_sizes[
-                    unsafe_offset=num_passed_args + i
-                ] = self._inner[]._capture_sizes[unsafe_offset=i]
-                capture_blob_size = align_up(capture_blob_size, 16) + Int(
-                    self._inner[]._capture_sizes[unsafe_offset=i]
-                )
-            var capture_args_start = dense_args_addrs.unsafe_offset(
-                num_translated_args
-            )
-            populate(
-                capture_args_start.unsafe_bitcast[
-                    NoneType
-                ]().as_unsafe_any_origin()
-            )
-
-            var blob = alloc(
-                Layout[Byte](length=max(capture_blob_size, 1))
-            ).unsafe_leak()
-            var blob_off = 0
-            for i in range(num_captures):
-                blob_off = align_up(blob_off, 16)
-                var sz = Int(self._inner[]._capture_sizes[unsafe_offset=i])
-                unsafe_memcpy(
-                    dest=blob.unsafe_offset(blob_off),
-                    src=dense_args_addrs[
-                        unsafe_offset=num_translated_args + i
-                    ].unsafe_bitcast[Byte](),
-                    count=sz,
-                )
-                dense_args_addrs[unsafe_offset=num_translated_args + i] = (
-                    blob.unsafe_offset(blob_off)
-                    .unsafe_bitcast[NoneType]()
-                    .as_unsafe_any_origin()
-                )
-                blob_off += sz
-            capture_blob = Optional(blob)
+        var stack_sizes = Array[UInt64, max(num_passed_args, 1)](fill=0)
+        var dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
+        var dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
 
         var translated_arg_idx = 0
 
@@ -2896,7 +2796,7 @@ struct DeviceFunction[
                 Pointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]
             ](dense_args_addrs),
             arg_sizes=rebind[Pointer[UInt64, MutAnyOrigin]](dense_args_sizes),
-            num_args=UInt32(num_translated_args + num_captures),
+            num_args=UInt32(num_translated_args),
             attributes=attr_ptr,
             num_attributes=UInt32(len(attributes)),
         )
@@ -2904,24 +2804,8 @@ struct DeviceFunction[
         # Keep these alive until the plugin has read them.
         _ = attributes^
         _ = translated_args^
-
-        if case .Some(capture_blob) = capture_blob:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
-            )
-        if num_captures > num_captures_static:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({length = num_captures + num_passed_args})
-            )
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({length = num_captures + num_passed_args})
-            )
+        _ = stack_addrs^
+        _ = stack_sizes^
 
     @inline(.always)
     def _call_with_pack[
@@ -2953,38 +2837,18 @@ struct DeviceFunction[
             )
 
         comptime num_args = Ts.length
-        ref func_info = self._func_info
-        var num_captures = max(0, func_info.num_captures)
-        comptime populate = type_of(func_info).populate
-        comptime num_captures_static = 16
-
-        # Function scope, not the `else` branch; see `_call_with_pack_checked`.
-        var stack_addrs = Array[_, num_captures_static + num_args](
+        # Function scope so the storage outlives the enqueue; see
+        # `_call_with_pack_checked`.
+        var stack_addrs = Array[_, max(num_args, 1)](
             fill=OpaquePointer[MutAnyOrigin].unsafe_dangling()
         )
-        var stack_sizes = Array[UInt64, num_captures_static + num_args](fill=0)
-        var dense_args_addrs: Pointer[
-            OpaquePointer[MutAnyOrigin], MutUntrackedOrigin
-        ]
-        var dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin]
-        if num_captures > num_captures_static:
-            dense_args_addrs = alloc(
-                Layout[OpaquePointer[MutAnyOrigin]](
-                    length=num_captures + num_args
-                )
-            ).unsafe_leak()
-            dense_args_sizes = alloc(
-                Layout[UInt64](length=num_captures + num_args)
-            ).unsafe_leak()
-            for i in range(num_captures + num_args):
-                dense_args_sizes[unsafe_offset=i] = 0
-        else:
-            dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
-            dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
+        var stack_sizes = Array[UInt64, max(num_args, 1)](fill=0)
+        var dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
+        var dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
 
         comptime for i in range(num_args):
             dense_args_addrs[unsafe_offset=i] = (
@@ -2999,47 +2863,6 @@ struct DeviceFunction[
 
         comptime for i in range(num_args):
             _populate_arg_sizes[i]()
-
-        # Same capture-lifetime hazard as `_call_with_pack_checked`: copy the
-        # captures into a heap allocation.
-        var capture_blob = Optional[Pointer[Byte, MutUntrackedOrigin]]()
-        var capture_blob_size = 0
-        if num_captures > 0:
-            for i in range(num_captures):
-                dense_args_sizes[
-                    unsafe_offset=num_args + i
-                ] = self._inner[]._capture_sizes[unsafe_offset=i]
-                capture_blob_size = align_up(capture_blob_size, 16) + Int(
-                    self._inner[]._capture_sizes[unsafe_offset=i]
-                )
-            var capture_args_start = dense_args_addrs.unsafe_offset(num_args)
-            populate(
-                capture_args_start.unsafe_bitcast[
-                    NoneType
-                ]().as_unsafe_any_origin()
-            )
-
-            var blob = alloc(
-                Layout[Byte](length=max(capture_blob_size, 1))
-            ).unsafe_leak()
-            var blob_off = 0
-            for i in range(num_captures):
-                blob_off = align_up(blob_off, 16)
-                var sz = Int(self._inner[]._capture_sizes[unsafe_offset=i])
-                unsafe_memcpy(
-                    dest=blob.unsafe_offset(blob_off),
-                    src=dense_args_addrs[
-                        unsafe_offset=num_args + i
-                    ].unsafe_bitcast[Byte](),
-                    count=sz,
-                )
-                dense_args_addrs[unsafe_offset=num_args + i] = (
-                    blob.unsafe_offset(blob_off)
-                    .unsafe_bitcast[NoneType]()
-                    .as_unsafe_any_origin()
-                )
-                blob_off += sz
-            capture_blob = Optional(blob)
 
         # Kernels that use `with PDL()` emit `griddepcontrol` instructions and
         # require the launch to be configured with the matching attribute;
@@ -3068,7 +2891,7 @@ struct DeviceFunction[
                 Pointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]
             ](dense_args_addrs),
             arg_sizes=rebind[Pointer[UInt64, MutAnyOrigin]](dense_args_sizes),
-            num_args=UInt32(num_args + num_captures),
+            num_args=UInt32(num_args),
             shared_mem_bytes=UInt32(shared_mem_bytes.or_else(0)),
             attributes=attr_ptr,
             num_attributes=UInt32(len(attributes)),
@@ -3076,24 +2899,8 @@ struct DeviceFunction[
 
         # Keep attributes alive until the plugin has read them.
         _ = attributes^
-
-        if case .Some(capture_blob) = capture_blob:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
-            )
-        if num_captures > num_captures_static:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({length = num_captures + num_args})
-            )
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({length = num_captures + num_args})
-            )
+        _ = stack_addrs^
+        _ = stack_sizes^
 
     @inline(.always)
     def _call_with_pack[
@@ -3111,38 +2918,18 @@ struct DeviceFunction[
         _check_device_context_hal_only_supported_exec_config(execution_config)
 
         comptime num_args = Ts.length
-        ref func_info = self._func_info
-        var num_captures = max(0, func_info.num_captures)
-        comptime populate = type_of(func_info).populate
-        comptime num_captures_static = 16
-
-        # Function scope, not the `else` branch; see `_call_with_pack_checked`.
-        var stack_addrs = Array[_, num_captures_static + num_args](
+        # Function scope so the storage outlives the enqueue; see
+        # `_call_with_pack_checked`.
+        var stack_addrs = Array[_, max(num_args, 1)](
             fill=OpaquePointer[MutAnyOrigin].unsafe_dangling()
         )
-        var stack_sizes = Array[UInt64, num_captures_static + num_args](fill=0)
-        var dense_args_addrs: Pointer[
-            OpaquePointer[MutAnyOrigin], MutUntrackedOrigin
-        ]
-        var dense_args_sizes: Pointer[UInt64, MutUntrackedOrigin]
-        if num_captures > num_captures_static:
-            dense_args_addrs = alloc(
-                Layout[OpaquePointer[MutAnyOrigin]](
-                    length=num_captures + num_args
-                )
-            ).unsafe_leak()
-            dense_args_sizes = alloc(
-                Layout[UInt64](length=num_captures + num_args)
-            ).unsafe_leak()
-            for i in range(num_captures + num_args):
-                dense_args_sizes[unsafe_offset=i] = 0
-        else:
-            dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
-            dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
-                MutUntrackedOrigin
-            ]()
+        var stack_sizes = Array[UInt64, max(num_args, 1)](fill=0)
+        var dense_args_addrs = stack_addrs.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
+        var dense_args_sizes = stack_sizes.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
 
         comptime for i in range(num_args):
             dense_args_addrs[unsafe_offset=i] = (
@@ -3158,47 +2945,6 @@ struct DeviceFunction[
         comptime for i in range(num_args):
             _populate_arg_sizes[i]()
 
-        # Same capture-lifetime hazard as `_call_with_pack_checked`: heap-blob
-        # the captures, sizes from the `_DeviceFunctionInner` snapshot.
-        var capture_blob = Optional[Pointer[Byte, MutUntrackedOrigin]]()
-        var capture_blob_size = 0
-        if num_captures > 0:
-            for i in range(num_captures):
-                dense_args_sizes[
-                    unsafe_offset=num_args + i
-                ] = self._inner[]._capture_sizes[unsafe_offset=i]
-                capture_blob_size = align_up(capture_blob_size, 16) + Int(
-                    self._inner[]._capture_sizes[unsafe_offset=i]
-                )
-            var capture_args_start = dense_args_addrs.unsafe_offset(num_args)
-            populate(
-                capture_args_start.unsafe_bitcast[
-                    NoneType
-                ]().as_unsafe_any_origin()
-            )
-
-            var blob = alloc(
-                Layout[Byte](length=max(capture_blob_size, 1))
-            ).unsafe_leak()
-            var blob_off = 0
-            for i in range(num_captures):
-                blob_off = align_up(blob_off, 16)
-                var sz = Int(self._inner[]._capture_sizes[unsafe_offset=i])
-                unsafe_memcpy(
-                    dest=blob.unsafe_offset(blob_off),
-                    src=dense_args_addrs[
-                        unsafe_offset=num_args + i
-                    ].unsafe_bitcast[Byte](),
-                    count=sz,
-                )
-                dense_args_addrs[unsafe_offset=num_args + i] = (
-                    blob.unsafe_offset(blob_off)
-                    .unsafe_bitcast[NoneType]()
-                    .as_unsafe_any_origin()
-                )
-                blob_off += sz
-            capture_blob = Optional(blob)
-
         ctx._hal_stream()[].execute(
             self._inner[]._func_handle,
             execution_config,
@@ -3206,26 +2952,10 @@ struct DeviceFunction[
                 Pointer[OpaquePointer[MutUntrackedOrigin], MutAnyOrigin]
             ](dense_args_addrs),
             arg_sizes=rebind[Pointer[UInt64, MutAnyOrigin]](dense_args_sizes),
-            num_args=UInt32(num_args + num_captures),
+            num_args=UInt32(num_args),
         )
-
-        if case .Some(capture_blob) = capture_blob:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=capture_blob
-                ).unsafe_with_layout({length = max(capture_blob_size, 1)})
-            )
-        if num_captures > num_captures_static:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_addrs
-                ).unsafe_with_layout({length = num_captures + num_args})
-            )
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=dense_args_sizes
-                ).unsafe_with_layout({length = num_captures + num_args})
-            )
+        _ = stack_addrs^
+        _ = stack_sizes^
 
     @inline(.always)
     def occupancy_max_active_blocks_per_multiprocessor(
