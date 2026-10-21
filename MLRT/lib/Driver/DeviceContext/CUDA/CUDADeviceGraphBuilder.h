@@ -20,6 +20,7 @@
 
 #include "CUDADeviceContext.h"
 #include "MLRT/Driver/DeviceContext/DeviceGraphBuilder.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace M::Driver {
@@ -92,6 +93,9 @@ private:
   CUDADeviceContextRef ctx_;
   CUgraph graph_;
   llvm::SmallVector<CUgraphNode> nodes_;
+  // Ids of the kernel nodes: only a kernel predecessor can release its
+  // dependents early, through a programmatic edge.
+  llvm::DenseSet<DeviceGraphNodeId> kernelNodes_;
 
   // Dedicated builder-owned stream backing recordingStream(). Created armed
   // (in capture mode) on first request and kept armed for the builder's

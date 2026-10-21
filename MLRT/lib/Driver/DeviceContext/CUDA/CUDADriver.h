@@ -291,6 +291,27 @@ struct CUDA_MEMSET_NODE_PARAMS {
   size_t height;
 };
 
+/// Dependency type of a graph edge.
+using CUgraphDependencyType = enum CUgraphDependencyType_enum {
+  CU_GRAPH_DEPENDENCY_TYPE_DEFAULT = 0,
+  CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC = 1,
+};
+
+/// Kernel node output port that fires once every block of the kernel has
+/// triggered its dependents or exited.
+constexpr unsigned char CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC = 1;
+
+/// Edge data for cuGraphAddDependencies_v2 (CUDA 12.3+).
+/// Layout matches CUgraphEdgeData from the CUDA driver.
+struct CUgraphEdgeData {
+  unsigned char from_port;
+  unsigned char to_port;
+  unsigned char type;
+  unsigned char reserved[5];
+};
+static_assert(sizeof(CUgraphEdgeData) == 8,
+              "CUgraphEdgeData must match the driver's 8-byte layout");
+
 using CUpointer_attribute = enum CUpointer_attribute_enum {
   CU_POINTER_ATTRIBUTE_CONTEXT = 1,
   CU_POINTER_ATTRIBUTE_MEMORY_TYPE = 2,
@@ -524,6 +545,12 @@ public:
   /// loaded from the driver library at initialization time. Callers should
   /// check this before invoking cuMemcpyBatchAsync directly.
   bool hasCuMemcpyBatchAsync() const { return cuMemcpyBatchAsync_ != nullptr; }
+
+  /// Returns true when cuGraphAddDependencies_v2 (CUDA 12.3+) was loaded, so
+  /// device graphs can carry programmatic edges.
+  bool hasCuGraphAddDependenciesV2() const {
+    return cuGraphAddDependencies_v2_ != nullptr;
+  }
 
   // CUDADriver object lifetime is tied to a static unique_ptr.
   CUDADriver() = default;

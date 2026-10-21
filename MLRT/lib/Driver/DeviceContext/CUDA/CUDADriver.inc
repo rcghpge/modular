@@ -101,6 +101,11 @@ CUDA_FUNC(cuGraphAddEmptyNode, Result, CUgraphNode *, CUgraph,
 // node-creation time; the caller still owns and must destroy it.
 CUDA_FUNC(cuGraphAddChildGraphNode, Result, CUgraphNode *, CUgraph,
           const CUgraphNode *, size_t, CUgraph)
+// cuGraphAddDependencies_v2: introduced in CUDA 12.3, the variant that takes
+// per-edge data. Loaded optionally so the driver still initializes on older
+// hosts; device graphs then add full edges only.
+CUDA_OPT_FUNC(cuGraphAddDependencies_v2, Result, CUgraph, const CUgraphNode *,
+              const CUgraphNode *, const CUgraphEdgeData *, size_t)
 // Third parameter is const CUkernelNodeAttrValue * in the driver — a 64-byte
 // union passed here as the CUlaunchAttribute::value bytes.
 CUDA_FUNC(cuGraphKernelNodeSetAttribute, Result, CUgraphNode,

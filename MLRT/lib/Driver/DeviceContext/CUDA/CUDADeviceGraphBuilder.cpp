@@ -20,7 +20,10 @@
 #include "CUDADriver.h"
 #include "MLRT/Driver/DeviceContext/ErrorMacros.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Twine.h"
+
+#include <cstring>
 
 using namespace M;
 using namespace M::Driver;
@@ -121,28 +124,65 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
       .extra = nullptr,
   };
 
+  ArrayRef<CUlaunchAttribute_st> attrs(
+      static_cast<const CUlaunchAttribute *>(params.attrs), params.numAttrs);
+
+  // A launch that allows programmatic stream serialization gets the edges
+  // stream capture would give it: a programmatic edge from each kernel
+  // predecessor, so the node may launch once that kernel's blocks trigger
+  // their dependents or exit. The kernel's griddepcontrol.wait still waits
+  // for the predecessors' completion. Edges from other node types stay full,
+  // and the driver may then serialize the node anyway.
+  bool programmatic = false;
+  for (const CUlaunchAttribute &attr : attrs) {
+    if (attr.id == CUlaunchAttributeID::
+                       CU_LAUNCH_ATTRIBUTE_PROGRAMMATIC_STREAM_SERIALIZATION) {
+      int allowed = 0;
+      std::memcpy(&allowed, attr.value, sizeof(allowed));
+      programmatic = allowed != 0;
+    }
+  }
+  programmatic = programmatic &&
+                 ctx_->cudaDriver().hasCuGraphAddDependenciesV2() &&
+                 llvm::any_of(dependencies, [&](const DeviceGraphNode &dep) {
+                   return kernelNodes_.contains(dep.id);
+                 });
+
   DEFINE_OR_RETURN_ERROR(llvm::SmallVector<CUgraphNode>, deps,
                          resolveDeps(dependencies));
   CUgraphNode node = nullptr;
-  CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
-      &node, graph_, deps.data(), deps.size(), &nodeParams));
+  if (!programmatic) {
+    CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
+        &node, graph_, deps.data(), deps.size(), &nodeParams));
+  } else {
+    CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddKernelNode(
+        &node, graph_, nullptr, 0, &nodeParams));
+    llvm::SmallVector<CUgraphNode> to(deps.size(), node);
+    llvm::SmallVector<CUgraphEdgeData> edges;
+    edges.reserve(deps.size());
+    for (const DeviceGraphNode &dep : dependencies) {
+      CUgraphEdgeData edge = {};
+      if (kernelNodes_.contains(dep.id)) {
+        edge.from_port = CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC;
+        edge.type = CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC;
+      }
+      edges.push_back(edge);
+    }
+    CUDA_GRAPH_CHECK_ERR(ctx_->cudaDriver().cuGraphAddDependencies_v2(
+        graph_, deps.data(), to.data(), edges.data(), deps.size()));
+  }
 
   // cuGraphAddKernelNode has no launch-attribute parameter, so attributes are
   // applied to the created node one by one. Only a subset of launch attributes
   // is valid on a kernel node; the rest describe stream-launch scheduling and
   // have no device-graph node equivalent:
   //  - The programmatic-dependent-launch family (PROGRAMMATIC_STREAM_
-  //    SERIALIZATION, PROGRAMMATIC_EVENT, LAUNCH_COMPLETION_EVENT) expresses
-  //    launch overlap. Graph dependency edges already order this node after
-  //    its predecessors' full completion — strictly stronger than PDL's
-  //    contract — so skipping them preserves correctness and only forgoes the
-  //    overlap.
+  //    SERIALIZATION, PROGRAMMATIC_EVENT, LAUNCH_COMPLETION_EVENT) is not a
+  //    node attribute. Programmatic stream serialization became the edges
+  //    above; the event attributes have no graph form.
   //  - SYNCHRONIZATION_POLICY is a stream-scheduling hint with no node
   //    meaning.
   // An attribute outside the vendored enum is an error, not a silent drop.
-  ArrayRef<CUlaunchAttribute_st> attrs(
-      static_cast<const CUlaunchAttribute *>(params.attrs), params.numAttrs);
-
   for (const CUlaunchAttribute &attr : attrs) {
     switch (attr.id) {
     case CUlaunchAttributeID::CU_LAUNCH_ATTRIBUTE_IGNORE:
@@ -174,6 +214,7 @@ ErrorOr<DeviceGraphNode> CUDADeviceGraphBuilder::addFunctionDirect(
 
   DeviceGraphNodeId id = static_cast<DeviceGraphNodeId>(nodes_.size());
   nodes_.push_back(node);
+  kernelNodes_.insert(id);
 
   return DeviceGraphNode{id};
 }
