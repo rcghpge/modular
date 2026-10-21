@@ -877,10 +877,26 @@ static ASTType addImplicitTypeParams(StringAttr argName, ASTType type,
   // the just-declared parameters) so they are still checked once the
   // generator's parameters are inferred; must be called after those parameters
   // are declared.
-  auto propagateBodyConstraints = [&](PogListAttr srcParamList) {
+  //
+  // If `onlyOverNewParams` is set, constraints that don't mention any of the
+  // just-declared parameters are skipped: they constrain parameters the user
+  // bound explicitly, so the user must write the trailing `where` clause
+  // explicitly.
+  auto propagateBodyConstraints = [&](PogListAttr srcParamList,
+                                      bool onlyOverNewParams = false) {
+    auto mentionsNewParam = [&](TypedAttr prop) {
+      bool found = false;
+      prop.walk([&](ParamDeclRefAttr ref) {
+        if (llvm::is_contained(names, ref.getName()))
+          found = true;
+      });
+      return found;
+    };
     for (ConstraintAttr bodyConstraint : srcParamList.getBodyConstraints()) {
       TypedAttr remappedProp =
           evaluator.getReboundAttribute(bodyConstraint.getProposition());
+      if (onlyOverNewParams && !mentionsNewParam(remappedProp))
+        continue;
       auto remapped = ConstraintAttr::get(remappedProp, bodyConstraint.getLoc(),
                                           bodyConstraint.getMessage());
       paramList.emittedBodyConstraints.push_back(remapped);
@@ -1044,9 +1060,10 @@ static ASTType addImplicitTypeParams(StringAttr argName, ASTType type,
     ArrayRef<PogMetadataAttr> pogs = paramList.getPogs();
     for (auto [idx, type] : llvm::enumerate(sig.getParamTypes()))
       declareAndAddParam(type, pogs[idx].getName());
-    if (!hadFailure)
-      return metatype.bindUnbound(paramValues);
-    return {};
+    if (hadFailure)
+      return {};
+    propagateBodyConstraints(paramList, /*onlyOverNewParams=*/true);
+    return metatype.bindUnbound(paramValues);
   };
 
   if (auto metatype =

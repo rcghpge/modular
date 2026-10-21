@@ -1562,9 +1562,10 @@ def use_constraint_struct[x: Int, cs: ConstraintStruct[x]]() where x > 0:
     need_positive_int[x]()
 
 # CHECK-LABEL: lit.fn @"use_constraint_struct
-# CHECK-SAME: <["cs.a`"]*"cs.a`": !Int, +, cs: !lit.struct<#ConstraintStruct <:!Int *"cs.a`">, <{<sugar_preserved(#lit.struct.extract<:!Bool apply(:!lit.generator<("self": !Int, "rhs": !Int) -> !Bool> @std::@builtin::@stubs::@SIMD::@"__gt__(::SIMD[$0, $1],::SIMD[$0, $1])"<:!DType {:dtype index}, :!SIMDLength {1}>, *"cs.a`", {:scalar<index> 0}), "_mlir_value">, ge(:scalar<index> #lit.struct.extract<:!Int *"cs.a`", "_mlir_value">, 1)), {{.*}}>}>>>() -> !kgen.none attributes {sourceName = "use_constraint_struct_autoparam", specialFnKind = 0 : i8} {
+# CHECK-SAME: <["cs.a`"]*"cs.a`": !Int, +, cs: !lit.struct<#ConstraintStruct <:!Int *"cs.a`">, <{<sugar_preserved(#lit.struct.extract<:!Bool apply(:!lit.generator<("self": !Int, "rhs": !Int) -> !Bool> @std::@builtin::@stubs::@SIMD::@"__gt__(::SIMD[$0, $1],::SIMD[$0, $1])"<:!DType {:dtype index}, :!SIMDLength {1}>, *"cs.a`", {:scalar<index> 0}), "_mlir_value">, ge(:scalar<index> #lit.struct.extract<:!Int *"cs.a`", "_mlir_value">, 1)), {{.*}}>}>>, {<sugar_preserved({{.*}}ge(:scalar<index> #lit.struct.extract<:!Int *"cs.a`", "_mlir_value">, 1)), {{.*}}>}>() -> !kgen.none attributes {sourceName = "use_constraint_struct_autoparam", specialFnKind = 0 : i8} {
+# CHECK: lit.call {{.*}}need_positive_int{{.*}}<:!Int *"cs.a`">
 def use_constraint_struct_autoparam[cs: ConstraintStruct[_]]():
-    pass
+    need_positive_int[cs.a]()
 
 # CHECK-LABEL: lit.fn @"use_constraint_struct_in_constraint
 # CHECK-SAME: <x: !Int, {<sugar_preserved({{.*}}ge(:scalar<index> #lit.struct.extract<:!Int x, "_mlir_value">, 1)){{.*}}>, <sugar_preserved({{.*}}ge(:scalar<index> add(#lit.struct.extract<:!Int x, "_mlir_value">, 1), 2)){{.*}}>}
