@@ -263,6 +263,12 @@ class BatchMetrics:
     # Recency touches the dKV client dropped because a recent one covered
     # them. A per-window delta, 0 against an extension that predates it.
     dkv_touches_deduplicated: int = 0
+    # Loads the dKV connector answered as misses because it was degraded or
+    # a lease expired. Per-window deltas, published on the peer counters'
+    # guard so a tier serving every load as a miss is visible.
+    dkv_prepare_load_degraded: int = 0
+    dkv_load_with_plan_degraded: int = 0
+    dkv_load_with_plan_expired: int = 0
 
     # Per-call dKV client counters this batch, keyed by RPC or by connector
     # entry point. Published as labeled counters, so a dashboard derives the
@@ -279,7 +285,8 @@ class BatchMetrics:
     dkv_blocked_calls: dict[str, int] = field(default_factory=dict)
     dkv_blocked_ms: dict[str, float] = field(default_factory=dict)
 
-    # Host/disk tier refusals, from the tiered connector. Always 0 without one.
+    # Loads a connector refused, from the tiered connector's host and disk
+    # tiers or from dKV. Always 0 without either.
     connector_loads_refused: int = 0
     connector_offload_blocks_dropped: int = 0
 
@@ -419,6 +426,9 @@ class BatchMetrics:
         dkv_hints_rejected = 0
         dkv_hints_rejected_by_reason: dict[str, int] = {}
         dkv_touches_deduplicated = 0
+        dkv_prepare_load_degraded = 0
+        dkv_load_with_plan_degraded = 0
+        dkv_load_with_plan_expired = 0
         dkv_rpc_calls: dict[str, int] = {}
         dkv_rpc_time_ms: dict[str, float] = {}
         dkv_rpc_socket_wait_ms: dict[str, float] = {}
@@ -545,6 +555,11 @@ class BatchMetrics:
                 metrics_agg.dkv_hints_rejected_by_reason
             )
             dkv_touches_deduplicated = metrics_agg.dkv_touches_deduplicated
+            dkv_prepare_load_degraded = metrics_agg.dkv_prepare_load_degraded
+            dkv_load_with_plan_degraded = (
+                metrics_agg.dkv_load_with_plan_degraded
+            )
+            dkv_load_with_plan_expired = metrics_agg.dkv_load_with_plan_expired
             dkv_rpc_calls = metrics_agg.dkv_rpc_calls
             dkv_rpc_time_ms = metrics_agg.dkv_rpc_time_ms
             dkv_rpc_socket_wait_ms = metrics_agg.dkv_rpc_socket_wait_ms
@@ -682,6 +697,9 @@ class BatchMetrics:
             dkv_hints_rejected=dkv_hints_rejected,
             dkv_hints_rejected_by_reason=dkv_hints_rejected_by_reason,
             dkv_touches_deduplicated=dkv_touches_deduplicated,
+            dkv_prepare_load_degraded=dkv_prepare_load_degraded,
+            dkv_load_with_plan_degraded=dkv_load_with_plan_degraded,
+            dkv_load_with_plan_expired=dkv_load_with_plan_expired,
             dkv_rpc_calls=dkv_rpc_calls,
             dkv_rpc_time_ms=dkv_rpc_time_ms,
             dkv_rpc_socket_wait_ms=dkv_rpc_socket_wait_ms,
@@ -1040,10 +1058,13 @@ class BatchMetrics:
             extra["used_host_kv_pct"] = self.used_host_kv_pct
             extra["h2d_bytes_copied"] = self.h2d_bytes_copied
             extra["d2h_bytes_copied"] = self.d2h_bytes_copied
-            extra["connector_loads_refused"] = self.connector_loads_refused
             extra["connector_offload_blocks_dropped"] = (
                 self.connector_offload_blocks_dropped
             )
+
+        # dKV reports no host tier but refuses loads too.
+        if self.total_host_kv_bytes != 0 or self.dkv_total_clients > 0:
+            extra["connector_loads_refused"] = self.connector_loads_refused
 
         # Outside the host tier's guard: dKV reports no host tier.
         if self.connector_load_failures:
@@ -1144,6 +1165,13 @@ class BatchMetrics:
             )
             extra["dkv_hints_rejected"] = self.dkv_hints_rejected
             extra["dkv_touches_deduplicated"] = self.dkv_touches_deduplicated
+            extra["dkv_prepare_load_degraded"] = self.dkv_prepare_load_degraded
+            extra["dkv_load_with_plan_degraded"] = (
+                self.dkv_load_with_plan_degraded
+            )
+            extra["dkv_load_with_plan_expired"] = (
+                self.dkv_load_with_plan_expired
+            )
             # One scalar key per label that moved, as publish_metrics sends.
             labeled: tuple[tuple[str, Mapping[str, float]], ...] = (
                 ("dkv_hints_rejected", self.dkv_hints_rejected_by_reason),
@@ -1273,10 +1301,13 @@ class BatchMetrics:
             METRICS.cache_used_host_kv_pct(self.used_host_kv_pct * 100)
             METRICS.cache_h2d_bytes_copied(self.h2d_bytes_copied)
             METRICS.cache_d2h_bytes_copied(self.d2h_bytes_copied)
-            METRICS.cache_connector_loads_refused(self.connector_loads_refused)
             METRICS.cache_connector_offload_blocks_dropped(
                 self.connector_offload_blocks_dropped
             )
+
+        # dKV reports no host tier but refuses loads too.
+        if self.total_host_kv_bytes != 0 or self.dkv_total_clients > 0:
+            METRICS.cache_connector_loads_refused(self.connector_loads_refused)
 
         # Outside the host tier's guard: dKV reports no host tier.
         if self.connector_load_failures:
@@ -1332,6 +1363,11 @@ class BatchMetrics:
             )
             METRICS.dkv_hints_rejected(self.dkv_hints_rejected)
             METRICS.dkv_touches_deduplicated(self.dkv_touches_deduplicated)
+            METRICS.dkv_prepare_load_degraded(self.dkv_prepare_load_degraded)
+            METRICS.dkv_load_with_plan_degraded(
+                self.dkv_load_with_plan_degraded
+            )
+            METRICS.dkv_load_with_plan_expired(self.dkv_load_with_plan_expired)
             # Labeled counters only move by their increment, so a zero would
             # cost a trip through the telemetry queue and change nothing.
             for reason, count in _moved(self.dkv_hints_rejected_by_reason):

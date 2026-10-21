@@ -73,7 +73,7 @@ class KVCacheMetrics:
     inflight_disk_ops: int = 0
     """Number of in-flight disk operations."""
     connector_loads_refused: int = 0
-    """Number of loads the connector's host and disk tiers refused.
+    """Number of loads the connector refused: its host and disk tiers, or dKV.
 
     A refused load is served by recomputing its blocks, so a steady rate of
     these is hit rate the tiers reported and then could not deliver.
@@ -202,6 +202,16 @@ class KVCacheMetrics:
     dkv_touches_deduplicated: int = 0
     """Recency touches the client dropped because a touch it sent within the
     last second already covered their keys, each an RPC the store was spared."""
+
+    # dKV fail-opens: loads answered as misses without a transfer. Per-window
+    # deltas like the peer counters, so a tier serving every load as a miss
+    # reads as one rather than as a cold cache.
+    dkv_prepare_load_degraded: int = 0
+    """Lookups that found the connector degraded and planned nothing."""
+    dkv_load_with_plan_degraded: int = 0
+    """Loads whose connector degraded between the lookup and the post."""
+    dkv_load_with_plan_expired: int = 0
+    """Leases that aged past their deadline before the load posted them."""
 
     # Per-call dKV client counters, per-window deltas keyed by RPC (or, for the
     # lock waits, by connector entry point). Time over calls is the per-call
@@ -388,6 +398,12 @@ class KVCacheMetrics:
             ),
             dkv_touches_deduplicated=self.dkv_touches_deduplicated
             + other.dkv_touches_deduplicated,
+            dkv_prepare_load_degraded=self.dkv_prepare_load_degraded
+            + other.dkv_prepare_load_degraded,
+            dkv_load_with_plan_degraded=self.dkv_load_with_plan_degraded
+            + other.dkv_load_with_plan_degraded,
+            dkv_load_with_plan_expired=self.dkv_load_with_plan_expired
+            + other.dkv_load_with_plan_expired,
             dkv_rpc_calls=_add_by_key(self.dkv_rpc_calls, other.dkv_rpc_calls),
             dkv_rpc_time_ms=_add_by_key(
                 self.dkv_rpc_time_ms, other.dkv_rpc_time_ms

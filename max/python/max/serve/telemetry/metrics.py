@@ -493,6 +493,20 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="hints",
         description="Cache hints that arrived but were unusable: bytes that did not parse, an unknown version, a chain that does not describe the request, no entry for the requested group, or a source instance record that failed validation. Counted per entry on the two-phase load path and per call on the fused one.",
     ),  # type: ignore
+    # Fail-opens: loads the connector answered as misses without a transfer.
+    # Counters, since take_metrics clears them every batch like the peer set.
+    "maxserve.dkv.prepare_load_degraded": _create_counter(
+        "maxserve.dkv.prepare_load_degraded",
+        description="dKV lookups that found the connector degraded and planned nothing, so the request was served as a cache miss. Read with maxserve.dkv.load_with_plan_degraded and maxserve.dkv.load_with_plan_expired, which count an outage that starts after the lookup.",
+    ),
+    "maxserve.dkv.load_with_plan_degraded": _create_counter(
+        "maxserve.dkv.load_with_plan_degraded",
+        description="dKV loads whose connector degraded between the lookup and the post, so the leased blocks were released and the request was served as a cache miss.",
+    ),
+    "maxserve.dkv.load_with_plan_expired": _create_counter(
+        "maxserve.dkv.load_with_plan_expired",
+        description="dKV read leases that aged past their deadline before the load posted them, released as a miss rather than read. Counted per lease, so one load spanning several dKV instances can count more than one.",
+    ),
     # Per-call dKV client counters. Counters, not histograms, so a dashboard
     # derives the per-call mean as time over calls; the rpc_*_latency
     # histograms above record one per-batch mean each.
@@ -652,7 +666,8 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         "maxserve.cache.connector_loads_refused",
         unit="loads",
         description=(
-            "Cumulative loads the KV connector's host and disk tiers refused. "
+            "Cumulative loads the KV connector refused, from its host and "
+            "disk tiers or from dKV. "
             "Each refused load is served by recomputing its blocks, so a "
             "steady rate is hit rate the tiers reported and could not "
             "deliver."
@@ -2045,6 +2060,33 @@ class _AsyncMetrics:
         self.client.send_measurement(
             MaxMeasurement(
                 "maxserve.dkv.touches_deduplicated",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_prepare_load_degraded(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.prepare_load_degraded",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_load_with_plan_degraded(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.load_with_plan_degraded",
+                value,
+                self.extra_attributes,
+            ),
+        )
+
+    def dkv_load_with_plan_expired(self, value: int) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.dkv.load_with_plan_expired",
                 value,
                 self.extra_attributes,
             ),

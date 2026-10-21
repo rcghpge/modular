@@ -2175,3 +2175,93 @@ def test_connector_load_failures_are_silent_while_none_fail() -> None:
 
     mock_metrics.cache_connector_load_failures.assert_not_called()
     assert "connector_load_failures" not in metrics.to_log_extra()
+
+
+def test_create_carries_dkv_fail_open_counters_through() -> None:
+    """The connector's fail-open counts reach the batch, with no host tier."""
+    kv_cache = MagicMock()
+    kv_cache.block_count.return_value = BlockCount(free=60, total=100)
+    kv_cache.pressure_pct.return_value = 40.0
+    kv_cache.host_byte_count.return_value = ByteCount(free=0, total=0)
+    kv_cache.disk_byte_count.return_value = ByteCount(free=0, total=0)
+    kv_cache.take_metrics_aggregated.return_value = KVCacheMetrics(
+        dkv_total_clients=1,
+        dkv_prepare_load_degraded=1,
+        dkv_load_with_plan_degraded=2,
+        dkv_load_with_plan_expired=3,
+    )
+
+    metrics = BatchMetrics.create(
+        sch_config=_mock_sch_config(),
+        inputs=_mock_inputs(batch_size=1, batch_type=BatchType.TG),
+        kv_cache=kv_cache,
+        batch_creation_time_s=0.001,
+        batch_execution_time_s=0.1,
+        num_pending_reqs=0,
+        num_terminated_reqs=0,
+        total_preemption_count=0,
+    )
+
+    assert metrics.dkv_prepare_load_degraded == 1
+    assert metrics.dkv_load_with_plan_degraded == 2
+    assert metrics.dkv_load_with_plan_expired == 3
+
+
+def test_dkv_fail_open_counters_reach_the_log_and_the_counters() -> None:
+    """Published while a tier is attached, so a tier serving misses shows."""
+    metrics = _make_metrics(
+        dkv_connected_clients=0,
+        dkv_total_clients=1,
+        dkv_prepare_load_degraded=4,
+        dkv_load_with_plan_degraded=5,
+        dkv_load_with_plan_expired=6,
+    )
+
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+
+    mock_metrics.dkv_prepare_load_degraded.assert_called_once_with(4)
+    mock_metrics.dkv_load_with_plan_degraded.assert_called_once_with(5)
+    mock_metrics.dkv_load_with_plan_expired.assert_called_once_with(6)
+    extra = metrics.to_log_extra()
+    assert extra["dkv_prepare_load_degraded"] == 4
+    assert extra["dkv_load_with_plan_degraded"] == 5
+    assert extra["dkv_load_with_plan_expired"] == 6
+
+
+def test_dkv_fail_open_counters_are_silent_without_a_tier() -> None:
+    metrics = _make_metrics()
+
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+
+    mock_metrics.dkv_prepare_load_degraded.assert_not_called()
+    mock_metrics.dkv_load_with_plan_degraded.assert_not_called()
+    mock_metrics.dkv_load_with_plan_expired.assert_not_called()
+    assert "dkv_prepare_load_degraded" not in metrics.to_log_extra()
+
+
+def test_connector_loads_refused_publish_for_a_dkv_tier() -> None:
+    """dKV reports no host tier, so its refusals publish on the tier's guard."""
+    metrics = _make_metrics(
+        total_host_kv_bytes=0,
+        dkv_connected_clients=1,
+        dkv_total_clients=1,
+        connector_loads_refused=3,
+    )
+
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+
+    mock_metrics.cache_connector_loads_refused.assert_called_once_with(3)
+    assert metrics.to_log_extra()["connector_loads_refused"] == 3
+
+
+def test_connector_loads_refused_are_silent_without_a_connector() -> None:
+    metrics = _make_metrics(total_host_kv_bytes=0)
+
+    with patch("max.serve.scheduler.utils.METRICS") as mock_metrics:
+        metrics.publish_metrics()
+
+    mock_metrics.cache_connector_loads_refused.assert_not_called()
+    assert "connector_loads_refused" not in metrics.to_log_extra()

@@ -1247,6 +1247,9 @@ class DKVConnector(KVConnector):
         # One entry per replica at most: a replica's lookup is answered before
         # the next one is asked, on the one scheduler thread.
         self._leased_depths: dict[int, dict[int, int]] = {}
+        # Loads refused since the last take_metrics, as TierConnector counts
+        # its own, so both reach connector_loads_refused.
+        self._loads_refused = 0
         # Each client registers its replica's FULL TP GPU set (that leaf's units
         # concatenated per shard by _make_client). For MLA this restores
         # device_buffers.len() == tp, so the Rust client's NVLink broadcast +
@@ -1486,9 +1489,10 @@ class DKVConnector(KVConnector):
         derived shape cannot drift from the real one.
         """
         # Reset here rather than only in __init__: this is the hook a test
-        # that bypasses __init__ calls to finish construction, and `lookup`
-        # and `load` both assume it exists.
+        # that bypasses __init__ calls to finish construction, and `lookup`,
+        # `load` and the metrics reads all assume these exist.
         self._leased_depths = {}
+        self._loads_refused = 0
         self._full_leaf_ids = [
             leaf_id
             for leaf_id, group_id in self._leaves.items()
@@ -1967,6 +1971,7 @@ class DKVConnector(KVConnector):
                 isinstance(lookup, _DkvSyncLookup)
                 and self._leased_depths.get(replica_idx) is not lookup.depths
             ):
+                self._loads_refused += 1
                 raise KVLoadRefused(
                     "dkv lookup lease was superseded by a later lookup on "
                     f"replica {replica_idx} before it was loaded"
@@ -2113,6 +2118,7 @@ class DKVConnector(KVConnector):
                 # again, since a failed transfer re-raises on every drain.
                 drained, posted_transfers = posted_transfers, []
                 _drain(drained)
+                self._loads_refused += 1
                 raise KVLoadRefused(
                     "dkv load_prepared fell short of its own lease: leaves "
                     f"{short_leaves} delivered "
@@ -2321,12 +2327,14 @@ class DKVConnector(KVConnector):
         return self._aggregate_metrics(lambda client: client.metrics())
 
     def take_metrics(self) -> KVCacheMetrics:
-        return self._aggregate_metrics(lambda client: client.take_metrics())
+        metrics = self._aggregate_metrics(lambda client: client.take_metrics())
+        self._loads_refused = 0
+        return metrics
 
     def _aggregate_metrics(
         self, snapshot: Callable[[_DkvClient], Mapping[str, Any]]
     ) -> KVCacheMetrics:
-        total = KVCacheMetrics()
+        total = KVCacheMetrics(connector_loads_refused=self._loads_refused)
         for clients in self._clients:
             leaf_clients = list(clients.values())
             # One snapshot per client. It crosses into Rust and the scheduler
@@ -2406,6 +2414,12 @@ class DKVConnector(KVConnector):
                     # predating it reports none, which folds as nothing
                     # dropped rather than as a missing key.
                     dkv_touches_deduplicated=m.get("touches_deduplicated", 0),
+                    # Fail-opens, per-window deltas the same way: answered
+                    # as misses, so a hit rate alone cannot tell them from a
+                    # cold cache.
+                    dkv_prepare_load_degraded=m["prepare_load_degraded"],
+                    dkv_load_with_plan_degraded=m["load_with_plan_degraded"],
+                    dkv_load_with_plan_expired=m["load_with_plan_expired"],
                     # Per-call counters: summed per leaf client, since each
                     # client issues its own RPCs on its own socket and lock.
                     dkv_rpc_calls=dict(m["rpc_calls"]),

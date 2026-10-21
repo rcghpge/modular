@@ -24,6 +24,7 @@ from opentelemetry.metrics import (
     get_meter_provider,
 )
 from opentelemetry.metrics._internal.instrument import (
+    _ProxyCounter,
     _ProxyGauge,
     _ProxyHistogram,
     _ProxyInstrument,
@@ -561,6 +562,18 @@ def test_connector_refusal_counters_record() -> None:
         "maxserve.cache.connector_offload_blocks_dropped",
     ):
         assert name in metrics.SERVE_METRICS
+        metrics.MaxMeasurement(name, 7).commit()  # Should not raise
+
+
+def test_dkv_fail_open_counters_are_counters() -> None:
+    """The dKV fail-open meters are counters, since each publish is a delta."""
+    common.configure_metrics(Settings())
+    for name in (
+        "maxserve.dkv.prepare_load_degraded",
+        "maxserve.dkv.load_with_plan_degraded",
+        "maxserve.dkv.load_with_plan_expired",
+    ):
+        assert isinstance(metrics.SERVE_METRICS[name], _ProxyCounter), name
         metrics.MaxMeasurement(name, 7).commit()  # Should not raise
 
 
