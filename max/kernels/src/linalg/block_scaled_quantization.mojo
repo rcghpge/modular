@@ -83,7 +83,11 @@ from layout.tma_async import (
     _idx_product,
     create_tensor_tile,
 )
-from max.gpu.memory import external_memory, fence_async_view_proxy
+from max.gpu.memory import (
+    cp_async_bulk_prefetch,
+    external_memory,
+    fence_async_view_proxy,
+)
 from max.gpu.sync import barrier
 from std.sys import size_of, align_of, get_defined_int
 from layout.swizzle import make_swizzle
@@ -275,8 +279,6 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     num_cols_padded: Int32,
     tensor_sf: Float32,
 ):
-    var _num_cols = Int(num_cols)
-    var _num_cols_padded = Int(num_cols_padded)
     comptime assert SF_VECTOR_SIZE in (16, 32) and ELEMENTS_PER_THREAD == 8, (
         "Currently only supports NVFP4 (SF_VECTOR_SIZE = 16) and MXFP8"
         " (SF_VECTOR_SIZE = 32) with 8 elements per thread"
@@ -293,127 +295,129 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
         input_layout.static_shape[1] % ELEMENTS_PER_THREAD == 0
     ), "num_cols must be a multiple of ELEMENTS_PER_THREAD (8 for NVFP4/MXFP8)"
 
-    var num_rows = Int(input.dim[0]())
-    var num_rows_padded = align_up(num_rows, SF_MN_GROUP_SIZE)
-    var num_sf_cols = align_up(_num_cols_padded, SF_VECTOR_SIZE * SF_ATOM_K)
+    # Unsigned 32-bit indices: with signed 64-bit Int, every loop bound,
+    # division and scale-offset term costs a multi-instruction sequence.
+    var num_rows = input.dim[0]().cast[DType.uint32]()
+    var num_rows_padded = align_up(num_rows, UInt32(SF_MN_GROUP_SIZE))
+    var num_sf_cols = align_up(
+        num_cols_padded.cast[DType.uint32](), UInt32(SF_VECTOR_SIZE * SF_ATOM_K)
+    )
 
-    var num_col_threads = _num_cols // ELEMENTS_PER_THREAD
-    var num_padded_col_threads = _num_cols_padded // ELEMENTS_PER_THREAD
-    var num_sf_threads = num_sf_cols // ELEMENTS_PER_THREAD
+    var num_col_threads = num_cols.cast[DType.uint32]() // UInt32(
+        ELEMENTS_PER_THREAD
+    )
+    var num_padded_col_threads = num_cols_padded.cast[DType.uint32]() // UInt32(
+        ELEMENTS_PER_THREAD
+    )
+    var num_sf_threads = num_sf_cols // UInt32(ELEMENTS_PER_THREAD)
 
     with PDL():
-        for global_row_idx in range(block_idx.x, num_rows_padded, grid_dim.x):
-            var is_padded_row = global_row_idx >= num_rows
+        var row = UInt32(block_idx.x)
+        while row < num_rows_padded:
+            # A block keeps one row's loads in flight, too few to hide DRAM
+            # latency at large M, so it pulls its next row into L2.
+            var pf_row = row + UInt32(grid_dim.x)
+            if thread_idx.x == 0 and pf_row < num_rows:
+                cp_async_bulk_prefetch(
+                    input.ptr.unsafe_offset(
+                        Int(pf_row) * Int(input_layout.static_shape[1])
+                    ),
+                    Int32(input_layout.static_shape[1] * size_of[in_dtype]()),
+                )
+            var is_padded_row = row >= num_rows
+            var col_thread = UInt32(thread_idx.x)
+            while col_thread < num_sf_threads:
+                var col = col_thread * UInt32(ELEMENTS_PER_THREAD)
+                var owns_scale = col % UInt32(SF_VECTOR_SIZE) == 0
+                var sf_offset = scales.layout[linear_idx_type=.uint32](
+                    Coord(
+                        row // UInt32(SF_MN_GROUP_SIZE),
+                        col // UInt32(SF_VECTOR_SIZE * SF_ATOM_K),
+                        row % UInt32(SF_ATOM_M[0]),
+                        row % UInt32(SF_MN_GROUP_SIZE) // UInt32(SF_ATOM_M[0]),
+                        col // UInt32(SF_VECTOR_SIZE) % UInt32(SF_ATOM_K),
+                    )
+                )
 
-            for col_idx in range(thread_idx.x, num_sf_threads, block_dim.x):
-                var global_col_idx = col_idx * ELEMENTS_PER_THREAD
-
-                if is_padded_row:
-                    # This row is entirely padding, so zero out scale factors.
-                    # Note: Padding rows do NOT exist in the output tensor (which is sized [num_rows, K]),
-                    # they only exist in the scale factor tensor. Tensor cores expects these scale factors to be 0.
-                    # there will be accuracy issues if we don't zero out the scale factors for padding rows.
-                    if global_col_idx % SF_VECTOR_SIZE == 0:
-                        set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
-                            scales,
-                            global_row_idx,
-                            global_col_idx,
-                            Scalar[scales_dtype](0.0),
-                        )
-
-                else:
-                    # this is only needed if we do padding in the output tensor N dimension
+                if is_padded_row or col_thread >= num_col_threads:
+                    # Tensor cores read the scales of padding rows and
+                    # columns, so they must be 0. Padding rows only exist in
+                    # the scales tensor.
                     if (
-                        col_idx >= num_col_threads
-                        and col_idx < num_padded_col_threads
+                        not is_padded_row
+                        and col_thread < num_padded_col_threads
                     ):
                         output.store(
-                            (Int(global_row_idx), col_idx * OUTPUT_WIDTH),
+                            (Int(row), Int(col_thread * UInt32(OUTPUT_WIDTH))),
                             SIMD[out_dtype, OUTPUT_WIDTH](0),
                         )
+                    if owns_scale:
+                        scales.raw_store(sf_offset, Scalar[scales_dtype](0.0))
+                else:
+                    var input_vector = input.load[width=ELEMENTS_PER_THREAD](
+                        (Int(row), Int(col))
+                    )
 
-                    if col_idx >= num_col_threads:
-                        if global_col_idx % SF_VECTOR_SIZE == 0:
-                            set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
-                                scales,
-                                global_row_idx,
-                                global_col_idx,
-                                Scalar[scales_dtype](0.0),
+                    # each thread finds maximum value in its local 8 elements
+                    var thread_max = abs(input_vector).reduce_max()
+                    # find the maximum value among all 16 elements (two threads for 16)
+                    thread_max = max(shuffle_xor(thread_max, 1), thread_max)
+
+                    comptime if NUM_THREADS_PER_SF == 4:
+                        thread_max = max(shuffle_xor(thread_max, 2), thread_max)
+
+                    var group_max = thread_max.cast[.float32]()
+
+                    var fp8_scale_factor: Scalar[scales_dtype]
+                    var output_scale = Float32(0.0)
+                    var block_is_dead = False
+                    comptime if out_dtype == .uint8:
+                        # get the scale factor for these 16 elements by dividing it by the maximum value of fp4-e2m1
+                        # NOTE: NVFP4 uses FP8-UE4M3 format for the scale factor but we know that scale_factor is always positive, so we can use E4M3 instead of UE4M3.
+                        fp8_scale_factor = (
+                            tensor_sf * (group_max * recip(Float32(6.0)))
+                        ).cast[scales_dtype]()
+
+                        # find the quantization scale factor for these 16 elements (scale_factor = scale_factor / tensor_sf)
+                        # we divide input by this scale factor which is same as multiplying by the reciprocal of the scale factor
+                        if group_max != 0:
+                            output_scale = recip(
+                                fp8_scale_factor.cast[.float32]()
+                                * recip(tensor_sf)
                             )
-
-                    # This row contains actual data
                     else:
-                        var input_vector = input.load[
-                            width=ELEMENTS_PER_THREAD
-                        ]((Int(global_row_idx), Int(global_col_idx)))
-
-                        # each thread finds maximum value in its local 8 elements
-                        var thread_max = abs(input_vector).reduce_max()
-                        # find the maximum value among all 16 elements (two threads for 16)
-                        thread_max = max(shuffle_xor(thread_max, 1), thread_max)
-
-                        comptime if NUM_THREADS_PER_SF == 4:
-                            thread_max = max(
-                                shuffle_xor(thread_max, 2), thread_max
-                            )
-
-                        var group_max = thread_max.cast[.float32]()
-
-                        var fp8_scale_factor: Scalar[scales_dtype]
-                        var output_scale = Float32(0.0)
-                        var block_is_dead = False
-                        comptime if out_dtype == .uint8:
-                            # get the scale factor for these 16 elements by dividing it by the maximum value of fp4-e2m1
-                            # NOTE: NVFP4 uses FP8-UE4M3 format for the scale factor but we know that scale_factor is always positive, so we can use E4M3 instead of UE4M3.
-                            fp8_scale_factor = (
-                                tensor_sf * (group_max * recip(Float32(6.0)))
-                            ).cast[scales_dtype]()
-
-                            # find the quantization scale factor for these 16 elements (scale_factor = scale_factor / tensor_sf)
-                            # we divide input by this scale factor which is same as multiplying by the reciprocal of the scale factor
-                            if group_max != 0:
-                                output_scale = recip(
-                                    fp8_scale_factor.cast[.float32]()
-                                    * recip(tensor_sf)
-                                )
-                        else:
-                            fp8_scale_factor, output_scale, block_is_dead = (
-                                compute_mxfp8_block_scale[scales_dtype](
-                                    group_max
-                                )
-                            )
-
-                        # write back the scale factor
-                        if global_col_idx % SF_VECTOR_SIZE == 0:
-                            set_scale_factor[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
-                                scales,
-                                global_row_idx,
-                                global_col_idx,
-                                fp8_scale_factor,
-                            )
-
-                        # A dead MXFP8 block's multiplier is 0; zeroing avoids
-                        # storing `inf * 0.0 = NaN`.
-                        var data = type_of(input_vector)(
-                            0
-                        ) if block_is_dead else input_vector
-                        var input_f32 = data.cast[.float32]() * output_scale
-
-                        var output_vector: SIMD[out_dtype, OUTPUT_WIDTH]
-
-                        comptime if out_dtype == .uint8:
-                            output_vector = bitcast[out_dtype, OUTPUT_WIDTH](
-                                cast_fp32_to_fp4e2m1(input_f32)
-                            )
-                        else:
-                            output_vector = rebind[
-                                SIMD[out_dtype, OUTPUT_WIDTH]
-                            ](input_f32.cast[out_dtype]())
-
-                        output.store(
-                            (Int(global_row_idx), col_idx * OUTPUT_WIDTH),
-                            output_vector,
+                        fp8_scale_factor, output_scale, block_is_dead = (
+                            compute_mxfp8_block_scale[scales_dtype](group_max)
                         )
+
+                    if owns_scale:
+                        scales.raw_store(sf_offset, fp8_scale_factor)
+
+                    var input_f32 = input_vector.cast[.float32]() * output_scale
+
+                    var output_vector: SIMD[out_dtype, OUTPUT_WIDTH]
+
+                    comptime if out_dtype == .uint8:
+                        output_vector = bitcast[out_dtype, OUTPUT_WIDTH](
+                            cast_fp32_to_fp4e2m1(input_f32)
+                        )
+                    else:
+                        output_vector = rebind[SIMD[out_dtype, OUTPUT_WIDTH]](
+                            input_f32.cast[out_dtype]()
+                        )
+
+                    # A dead MXFP8 block's multiplier is 0; storing zeros
+                    # avoids `inf * 0.0 = NaN`.
+                    if block_is_dead:
+                        output_vector = SIMD[out_dtype, OUTPUT_WIDTH](0)
+
+                    output.store(
+                        (Int(row), Int(col_thread * UInt32(OUTPUT_WIDTH))),
+                        output_vector,
+                    )
+
+                col_thread += UInt32(block_dim.x)
+            row += UInt32(grid_dim.x)
 
 
 @inline(.always)
@@ -3274,13 +3278,14 @@ def quantize_dynamic_block_scaled[
         ), "SM100 requires rank-5 interleaved scales"
 
         comptime if (is_nvfp4 or is_fp8) and static_input_N % 32 == 0:
-            # A small MXFP8 input finishes sooner as one block per row than
-            # as 128-row TMA tiles, which leave most SMs idle.
-            comptime if is_fp8 and static_input_N <= 4096:
-                if num_rows * num_cols <= 655360:
+            # One block a row keeps every SM busy at small M, where 128-row
+            # TMA tiles leave most SMs idle. Past this size the TMA kernel
+            # streams faster.
+            comptime if is_fp8 and static_input_N <= 8192:
+                if num_rows * num_cols <= 3 * 2**23:
                     quantize_dynamic_scaled_fp4fp8[
                         SF_VECTOR_SIZE=SF_VECTOR_SIZE,
-                        num_max_threads=512,
+                        num_max_threads=1024,
                     ](
                         ctx,
                         output_tensor,

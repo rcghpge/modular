@@ -259,7 +259,9 @@ def test_dynamic_mxfp8_quant_degenerate_blocks(
                         raise Error("E8M0-floor MXFP8 block dequantized wrong")
 
 
-def test_mxfp8_async_matches_sync[N: Int](ctx: DeviceContext, m: Int) raises:
+def test_mxfp8_async_matches_sync[
+    N: Int, num_max_threads: Int = 512
+](ctx: DeviceContext, m: Int) raises:
     """Checks the TMA-async MXFP8 quantize writes the sync kernel's bytes.
 
     Rows span 2^-8..2^8 and include an all-zero block, an E8M0-floor block
@@ -308,7 +310,9 @@ def test_mxfp8_async_matches_sync[N: Int](ctx: DeviceContext, m: Int) raises:
                 t[row, col] = v.cast[in_dtype]()
 
     var input_tensor = TileTensor(in_device, input_layout)
-    quantize_dynamic_scaled_fp4fp8[SF_VECTOR_SIZE=SF_VECTOR_SIZE](
+    quantize_dynamic_scaled_fp4fp8[
+        SF_VECTOR_SIZE=SF_VECTOR_SIZE, num_max_threads=num_max_threads
+    ](
         ctx,
         TileTensor(
             out_sync.unsafe_ptr().unsafe_bitcast[Scalar[out_dtype]](),
@@ -382,3 +386,6 @@ def main() raises:
             test_mxfp8_async_matches_sync[4096](ctx, m)
             test_mxfp8_async_matches_sync[5120](ctx, m)
             test_mxfp8_async_matches_sync[8192](ctx, m)
+            test_mxfp8_async_matches_sync[2304, 1024](ctx, m)
+            test_mxfp8_async_matches_sync[5120, 1024](ctx, m)
+            test_mxfp8_async_matches_sync[8192, 1024](ctx, m)
