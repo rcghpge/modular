@@ -72,6 +72,27 @@ mojo_test(
     ],
 )
 
+# Kernel profiling ranges compile in only with a profiling define and only for
+# NVIDIA and AMD GPUs, the two vendors with a range library.
+mojo_test(
+    name = "test_tracing_missing_library.mojo.test",
+    srcs = ["test_tracing_missing_library.mojo"],
+    copts = [
+        "-D",
+        "MODULAR_ENABLE_GPU_PROFILING_DETAILED=1",
+    ],
+    tags = ["gpu"],
+    target_compatible_with = select({
+        "//:amd_gpu": [],
+        "//:nvidia_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//max:max_mojo",
+        "@mojo//:std",
+    ],
+)
+
 # Real by-value GPU launch test for `Coord`'s `DevicePassable` conformance.
 # Vendor-agnostic: `//:has_gpu` excludes CPU-only build configs (where
 # `DeviceContext` fails the compile-time GPU-arch constraint) without pinning

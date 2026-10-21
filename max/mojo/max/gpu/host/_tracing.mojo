@@ -37,6 +37,7 @@ comptime ROCTX_LIBRARY_PATHS: List[Path] = [
 ]
 
 comptime LIBRARY_PATHS = CUDA_NVTX_LIBRARY_PATHS if default_accelerator().is_nvidia_gpu() else ROCTX_LIBRARY_PATHS
+comptime _RANGE_START_SYMBOL: StaticString = "nvtxRangeStartEx" if default_accelerator().is_nvidia_gpu() else "roctxRangeStartA"
 
 
 comptime _TraceType_OTHER = 0
@@ -84,25 +85,39 @@ comptime GPU_TRACING_LIBRARY = _Global[
 ]()
 
 
+def _load_library(paths: List[Path]) -> OwnedDLHandle:
+    try:
+        return _try_find_dylib["GPU tracing library"](paths)
+    except:
+        pass
+
+    # Another library may already have loaded the range API into the process
+    # from a path not listed here. Use it from there, as symbol lookups
+    # through a null handle used to.
+    try:
+        var process = OwnedDLHandle()
+        if process.check_symbol(String(_RANGE_START_SYMBOL)):
+            return process^
+    except:
+        pass
+    return OwnedDLHandle(unsafe_uninitialized=True)
+
+
 def _init_dylib() -> OwnedDLHandle:
     comptime if _is_disabled():
         abort("cannot load dylib when disabled")
 
-    try:
-        var dylib = _try_find_dylib["GPU tracing library"](
-            materialize[LIBRARY_PATHS]()
-        )
+    var dylib = _load_library(materialize[LIBRARY_PATHS]())
 
-        comptime if default_accelerator().is_nvidia_gpu():
+    comptime if default_accelerator().is_nvidia_gpu():
+        if dylib:
             _setup_categories(
                 dylib._handle.get_function[
                     def(UInt32, CStringSpan[_]) thin abi("C") -> NoneType
                 ]("nvtxNameCategoryA")
             )
 
-        return dylib^
-    except e:
-        return OwnedDLHandle(unsafe_uninitialized=True)
+    return dylib^
 
 
 @inline(.always)
@@ -454,6 +469,18 @@ def _is_disabled() -> Bool:
     return not _is_enabled()
 
 
+def _is_library_loaded() -> Bool:
+    # `_has_annotation_library` picks a vendor at compile time; this checks at
+    # run time that its library loaded. When neither the library paths nor
+    # the process provide the range API (the CUDA base image ships no NVTX
+    # library), `_init_dylib` stores a null handle, and looking up a range
+    # symbol through it aborts the process.
+    try:
+        return Bool(GPU_TRACING_LIBRARY.get_or_create_ptr()[])
+    except:
+        return False
+
+
 @inline(.always)
 def _start_range(
     *,
@@ -462,6 +489,8 @@ def _start_range(
     color: Optional[Color] = None,
 ) raises -> RangeID:
     comptime if _is_disabled():
+        return 0
+    if not _is_library_loaded():
         return 0
 
     comptime if default_accelerator().is_nvidia_gpu():
@@ -478,6 +507,8 @@ def _start_range(
 def _end_range(id: RangeID) raises:
     comptime if _is_disabled():
         return
+    if not _is_library_loaded():
+        return
     _RangeEnd()(id)
 
 
@@ -489,6 +520,8 @@ def _mark(
     category: Int = _TraceType_MAX,
 ) raises:
     comptime if _is_disabled():
+        return
+    if not _is_library_loaded():
         return
 
     comptime if default_accelerator().is_nvidia_gpu():
