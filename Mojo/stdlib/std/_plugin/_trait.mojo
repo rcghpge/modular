@@ -333,13 +333,16 @@ trait PluginHooks:
     ] = None
     """Reads a GPU execution index or size.
 
-    `lane_id`, `thread_idx`, `block_idx`, `block_dim`, and `grid_dim` read
-    through this hook, and raise an unsupported-target error on a GPU where it
-    is `None`. The hook must inline into the kernel.
+    `lane_id`, `thread_idx`, `block_idx`, `block_dim`, `grid_dim`,
+    `cluster_dim`, `cluster_idx`, and `block_id_in_cluster` read through this
+    hook, and raise an unsupported-target error on a GPU where it is `None`.
+    A plugin returns `None` for the cluster ids when its GPU has no thread
+    block clusters. The hook must inline into the kernel.
 
     Parameters:
         name: One of `"lane_id"`, `"thread_idx"`, `"block_idx"`,
-            `"block_dim"`, or `"grid_dim"`.
+            `"block_dim"`, `"grid_dim"`, `"cluster_dim"`, `"cluster_idx"`,
+            or `"block_id_in_cluster"`.
         dim: `"x"`, `"y"`, or `"z"`; empty for `"lane_id"`.
     """
 

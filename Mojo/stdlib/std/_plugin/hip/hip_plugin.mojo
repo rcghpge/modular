@@ -40,7 +40,7 @@ from std.sys._amdgpu import (
 )
 
 from .hip_cast import _amdgcn_cast_fn, _amdgcn_native_float8_cast
-from .hip_gpu_id import _amdgcn_gpu_id
+from .hip_gpu_id import _amdgcn_gpu_id_fn
 from .hip_math import _amdgcn_unary_math_fn
 from .hip_time import _global_perf_counter_ns, _sleep
 
@@ -245,7 +245,7 @@ struct HIPPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
         _GPUIdPluginHookFnType
-    ] = _amdgcn_gpu_id[name, dim]
+    ] = _amdgcn_gpu_id_fn[name, dim]()
 
     comptime cast_fn[src: DType, dst: DType]: OptionalReg[
         _CastPluginHookFnType[dst]

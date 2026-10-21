@@ -12,8 +12,23 @@
 # ===----------------------------------------------------------------------=== #
 """AMDGCN reads of the GPU indices and sizes `HIPPlugin` provides."""
 
+from std._gpu.primitives.id import _GPUIdPluginHookFnType, _is_cluster_id
+from std.collections import OptionalReg
 from std.collections.string.string_span import get_static_string
 from std.sys import llvm_intrinsic
+
+
+def _amdgcn_gpu_id_fn[
+    name: StaticString, dim: StaticString
+]() -> OptionalReg[_GPUIdPluginHookFnType]:
+    """Returns the AMDGCN read of `name` along `dim`, or `None` for a thread
+    block cluster id, which AMD GPUs do not have."""
+    comptime if _is_cluster_id(name):
+        return None
+    else:
+        return comptime (
+            OptionalReg[_GPUIdPluginHookFnType](_amdgcn_gpu_id[name, dim])
+        )
 
 
 @inline(.always)

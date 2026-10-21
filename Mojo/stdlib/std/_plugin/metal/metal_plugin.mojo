@@ -11,7 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std._gpu.primitives.id import _GPUIdPluginHookFnType
+from std._gpu.primitives.id import _GPUIdPluginHookFnType, _is_cluster_id
 from std.math.uutils import ufloordiv
 from std._plugin._trait import (
     PluginHooks,
@@ -57,6 +57,19 @@ def _air_read[intrinsic: StaticString, dtype: DType]() -> Int:
     return Int(
         llvm_intrinsic[intrinsic, Scalar[dtype], has_side_effect=False]()
     )
+
+
+def _air_gpu_id_fn[
+    name: StaticString, dim: StaticString
+]() -> OptionalReg[_GPUIdPluginHookFnType]:
+    """Returns the AIR read of `name` along `dim`, or `None` for a thread
+    block cluster id, which Metal does not have."""
+    comptime if _is_cluster_id(name):
+        return None
+    else:
+        return comptime (
+            OptionalReg[_GPUIdPluginHookFnType](_air_gpu_id[name, dim])
+        )
 
 
 @inline(.always)
@@ -178,7 +191,7 @@ struct MetalPlugin(StdPlugin):
 struct MetalPluginHooks[target: CompilationTarget](PluginHooks):
     comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
         _GPUIdPluginHookFnType
-    ] = _air_gpu_id[name, dim]
+    ] = _air_gpu_id_fn[name, dim]()
 
     comptime print_emit_fn: OptionalReg[
         _PrintEmitPluginHookFnType

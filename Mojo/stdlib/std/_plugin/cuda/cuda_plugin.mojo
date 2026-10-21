@@ -41,7 +41,7 @@ from .cuda_cast import (
     _nvptx_has_native_float8,
     _nvptx_native_float8_cast,
 )
-from .cuda_gpu_id import _nvptx_gpu_id
+from .cuda_gpu_id import _nvptx_gpu_id_fn
 from .cuda_math import _nvptx_unary_math_fn
 from .cuda_time import _global_perf_counter_ns, _sleep
 
@@ -165,7 +165,7 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
 
     comptime gpu_id_fn[name: StaticString, dim: StaticString]: OptionalReg[
         _GPUIdPluginHookFnType
-    ] = _nvptx_gpu_id[name, dim]
+    ] = _nvptx_gpu_id_fn[name, dim, Self.target]()
 
     comptime cast_fn[src: DType, dst: DType]: OptionalReg[
         _CastPluginHookFnType[dst]

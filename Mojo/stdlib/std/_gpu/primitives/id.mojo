@@ -22,16 +22,24 @@ The module is designed to work seamlessly across different GPU architectures whi
 optimal performance through hardware-specific optimizations where applicable."""
 
 from std._plugin import CurrentPlugin
-from std.sys import llvm_intrinsic
 from std.sys.info import (
     CompilationTarget,
-    _is_sm_9x_or_newer,
     is_gpu,
 )
 
 
 comptime _GPUIdPluginHookFnType = def() thin -> Int
 """Plugin-hook signature for `PluginHooks.gpu_id_fn`."""
+
+
+def _is_cluster_id(name: StaticString) -> Bool:
+    """Returns whether `gpu_id_fn` key `name` reads a thread block cluster id,
+    which only some GPUs have."""
+    return (
+        name == "cluster_dim"
+        or name == "cluster_idx"
+        or name == "block_id_in_cluster"
+    )
 
 
 # ===-----------------------------------------------------------------------===#
@@ -48,6 +56,11 @@ def _verify_xyz[dim: StaticString]():
         dim == "x" or dim == "y" or dim == "z"
     ), "the dimension must be x, y, or z"
 
+
+comptime _NO_CLUSTER_ID_NOTE = (
+    "the target has no thread block clusters, or its stdlib plugin does not"
+    " read them. NVIDIA GPUs have clusters from SM90."
+)
 
 comptime _NO_GPU_ID_HOOK_NOTE = (
     "the target's stdlib plugin does not provide `gpu_id_fn`. A GPU target"
@@ -283,15 +296,14 @@ struct _ClusterDim(Defaultable, TrivialRegisterPassable):
         Returns:
             The `x`, `y`, or `z` dimension of the cluster.
         """
-        comptime assert (
-            _is_sm_9x_or_newer()
-        ), "cluster_id is only supported on NVIDIA SM90+ GPUs"
         _verify_xyz[dim]()
-
-        comptime intrinsic_name = "llvm.nvvm.read.ptx.sreg.cluster.nctaid." + dim
-        return Int(
-            llvm_intrinsic[intrinsic_name, Int32, has_side_effect=False]()
-        )
+        comptime if case .Some(f) = CurrentPlugin.gpu_id_fn["cluster_dim", dim]:
+            return f()
+        else:
+            CompilationTarget.unsupported_target_error[
+                operation=String("cluster_dim.", dim),
+                note=_NO_CLUSTER_ID_NOTE,
+            ]()
 
 
 comptime cluster_dim = _ClusterDim()
@@ -312,25 +324,20 @@ struct _ClusterIdx(Defaultable, TrivialRegisterPassable):
         return
 
     @inline(.nodebug)
-    @staticmethod
-    def _get_intrinsic_name[dim: StringLiteral]() -> StaticString:
-        return "llvm.nvvm.read.ptx.sreg.clusterid." + dim
-
-    @inline(.nodebug)
     def __getattr_param__[dim: StringLiteral](self) -> Int:
         """Gets the `x`, `y`, or `z` coordinates of a cluster within a grid.
 
         Returns:
             The `x`, `y`, or `z` coordinates of a cluster within a grid.
         """
-        comptime assert (
-            _is_sm_9x_or_newer()
-        ), "cluster_id is only supported on NVIDIA SM90+ GPUs"
         _verify_xyz[dim]()
-        comptime intrinsic_name = Self._get_intrinsic_name[dim]()
-        return Int(
-            llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
-        )
+        comptime if case .Some(f) = CurrentPlugin.gpu_id_fn["cluster_idx", dim]:
+            return f()
+        else:
+            CompilationTarget.unsupported_target_error[
+                operation=String("cluster_idx.", dim),
+                note=_NO_CLUSTER_ID_NOTE,
+            ]()
 
 
 comptime cluster_idx = _ClusterIdx()
@@ -351,25 +358,22 @@ struct _ClusterBlockIdx(Defaultable, TrivialRegisterPassable):
         return
 
     @inline(.nodebug)
-    @staticmethod
-    def _get_intrinsic_name[dim: StringLiteral]() -> StaticString:
-        return "llvm.nvvm.read.ptx.sreg.cluster.ctaid." + dim
-
-    @inline(.nodebug)
     def __getattr_param__[dim: StringLiteral](self) -> Int:
         """Gets the `x`, `y`, or `z` coordinates of a threadblock within a cluster.
 
         Returns:
             The `x`, `y`, or `z` coordinates of a threadblock within a cluster.
         """
-        comptime assert (
-            _is_sm_9x_or_newer()
-        ), "cluster_id is only supported on NVIDIA SM90+ GPUs"
         _verify_xyz[dim]()
-        comptime intrinsic_name = Self._get_intrinsic_name[dim]()
-        return Int(
-            llvm_intrinsic[intrinsic_name, UInt32, has_side_effect=False]()
-        )
+        comptime if case .Some(f) = CurrentPlugin.gpu_id_fn[
+            "block_id_in_cluster", dim
+        ]:
+            return f()
+        else:
+            CompilationTarget.unsupported_target_error[
+                operation=String("block_id_in_cluster.", dim),
+                note=_NO_CLUSTER_ID_NOTE,
+            ]()
 
 
 comptime block_id_in_cluster = _ClusterBlockIdx()

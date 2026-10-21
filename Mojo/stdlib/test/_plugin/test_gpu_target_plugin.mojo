@@ -74,6 +74,12 @@ def test_gpu_plugin_hooks() raises:
     comptime assert not metal.has_native_float8
 
     comptime assert cuda.gpu_id_fn["thread_idx", "x"]
+    comptime assert cuda.gpu_id_fn["cluster_idx", "x"]
+    comptime assert not CUDAPluginHooks[_a100_target].gpu_id_fn[
+        "cluster_idx", "x"
+    ]
+    comptime assert not hip.gpu_id_fn["cluster_dim", "y"]
+    comptime assert not metal.gpu_id_fn["block_id_in_cluster", "z"]
     comptime assert hip.gpu_id_fn["lane_id", ""]
     comptime assert not _host_target.stdlib_plugin.gpu_id_fn["block_idx", "x"]
 
