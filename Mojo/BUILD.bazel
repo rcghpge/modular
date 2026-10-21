@@ -1462,6 +1462,17 @@ modular_cc_library(
 )
 
 modular_cc_library(
+    name = "Precompile",
+    srcs = glob(["lib/Precompile/*.cpp"]),
+    hdrs = glob(["include/Mojo/Precompile/*.h"]),
+    deps = [
+        ":LITDialect",
+        "//Support:Compiler",
+        "//Support:DebugInfoDialect",
+    ],
+)
+
+modular_cc_library(
     name = "ExecutionEngine.headers",
     hdrs = glob(["include/Mojo/ExecutionEngine/*.h"]),
     tags = ["no-clang-tidy-headers"],
