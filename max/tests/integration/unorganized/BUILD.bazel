@@ -151,6 +151,7 @@ modular_py_test(
 _SPEC_TARGET_ARCHITECTURES = [
     "//max/python/max/pipelines/architectures/gemma4",
     "//max/python/max/pipelines/architectures/gemma4_assistant",
+    "//max/python/max/pipelines/architectures/inkling",
     "//max/python/max/pipelines/architectures/nemotron_h",
     "//max/python/max/pipelines/architectures/nemotron_h_modulev3",
 ]

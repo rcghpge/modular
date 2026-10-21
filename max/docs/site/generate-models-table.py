@@ -75,10 +75,7 @@ UNLISTED_MODULES: frozenset[str] = frozenset({"hy_v4", "unified_mtp_hy_v4"})
 SPEC_DECODE_VARIANT_BASE_ARCH: dict[str, str] = {
     "UnifiedDflash2Qwen3_5ForConditionalGeneration": "Qwen3_5ForConditionalGeneration",
     "UnifiedDflashKimiK25ForCausalLM": "KimiK25ForConditionalGeneration",
-    "UnifiedDflashMiMoV2ForCausalLM": "MiMoV2ForCausalLM",
-    "UnifiedDSparkDeepseekV4ForCausalLM": "DeepseekV4ForCausalLM",
     "UnifiedDSparkDeepseekV41ForCausalLM": "DeepseekV41ForCausalLM",
-    "UnifiedMTPDeepseekV3ForCausalLM": "DeepseekV3ForCausalLM",
     "UnifiedMTPGemma4ForCausalLM": "Gemma4ForConditionalGeneration",
     "UnifiedMTPGlmMoeDsaForCausalLM": "GlmMoeDsaForCausalLM",
     "UnifiedMTPInklingForConditionalGeneration": "InklingForConditionalGeneration",

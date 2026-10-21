@@ -19,13 +19,14 @@ the driver hands its verify callable.
 
 from __future__ import annotations
 
-from typing import Generic
+from functools import partial
+from typing import Any, Generic
 
 from max import tree
 from max.graph import TensorValue
 from typing_extensions import TypeVar
 
-__all__ = ["Verified"]
+__all__ = ["DistributedVerify", "Verified"]
 
 _TargetHiddenT = TypeVar("_TargetHiddenT")
 """The target's hidden-state payload, opaque to whichever driver carries it."""
@@ -47,3 +48,14 @@ class Verified(Generic[_TargetHiddenT, _LogitsT]):
 
     logits: _LogitsT
     hidden: _TargetHiddenT
+
+
+class DistributedVerify(partial[Verified[Any]]):
+    """A verify that reads the distributed inputs.
+
+    Those are the host row offsets, data-parallel splits, per-device context
+    lengths and expert-parallel buffers. A fused graph declares them only
+    when its verify or its proposer reads them.
+    """
+
+    takes_distributed_inputs = True

@@ -59,6 +59,7 @@ gemma4_arch = SupportedArchitecture(
     memory_planner=Gemma4MemoryPlanner,
     supports_device_graph_capture=False,
     cascade_pipeline_factory=CommonTextGenPipeline,
+    supports_spec_decode_mixed_batches=True,
 )
 
 

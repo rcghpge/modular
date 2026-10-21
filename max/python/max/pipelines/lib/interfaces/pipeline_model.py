@@ -35,6 +35,7 @@ from max.experimental.nn.module import Module as _ModuleV3
 from max.experimental.tensor import Tensor, default_dtype
 from max.graph import DeviceRef, Graph, Value
 from max.graph.weights import Weights, WeightsAdapter
+from max.nn.comm.ep import EPConfig
 from max.nn.kv_cache import (
     CacheLeafParamInterface,
     KVCacheInputs,
@@ -419,6 +420,9 @@ class ModelLoadContext:
 
     ``None`` derives them from the config, as serving does.
     """
+    ep_runtime: Callable[[EPConfig], None] | None = None
+    """Starts expert parallelism's runtime, for a caller that shares it
+    across the modules it builds."""
 
     @classmethod
     def from_pipeline_model(cls, model: PipelineModel[Any]) -> ModelLoadContext:
@@ -432,6 +436,17 @@ class ModelLoadContext:
             return_hidden_states=model.return_hidden_states,
         )
 
+    def start_ep(self, ep_config: EPConfig | None) -> None:
+        """Starts expert parallelism's runtime for ``ep_config``.
+
+        Starting it sets the node ID ``MoE.shard`` picks each device's
+        experts by, so a module calls this before it shards them. A
+        no-op without expert parallelism, or for a caller that starts the
+        runtime itself.
+        """
+        if ep_config is not None and self.ep_runtime is not None:
+            self.ep_runtime(ep_config)
+
     @property
     def max_seq_len(self) -> int:
         """The memory plan's maximum sequence length."""
@@ -440,6 +455,11 @@ class ModelLoadContext:
             "building a module requires a memory plan with a max length"
         )
         return max_length
+
+    @property
+    def max_batch_total_tokens(self) -> int | None:
+        """The batch token budget that sizes expert-parallel buffers."""
+        return self.memory_plan.planned_max_batch_total_tokens
 
     @property
     def huggingface_config(self) -> AutoConfig:

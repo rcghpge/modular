@@ -646,12 +646,14 @@ def _select_spec_decode_architecture(
 ) -> SupportedArchitecture | None:
     """Selects the architecture of the target's declared speculator.
 
-    A target that declares none gets the unified architecture for its draft,
-    if the two pair.
+    A target's speculators keep the method and draft pairs they declare.
+    Any other pair gets the unified architecture for the target and its
+    draft, if the two pair.
 
     Raises:
         ValueError: If the target offers speculators but none accepts the
-            configured draft.
+            configured method and draft, and the unified model can't pair
+            them either.
     """
     if not speculative:
         return None
@@ -669,12 +671,20 @@ def _select_spec_decode_architecture(
     )
     # Keyed by target name, so a target that declares no speculators never
     # imports a spec-decode package.
-    if not ARCH_LOOKUP.speculators_for(target):
-        return spec_decode_architecture(
-            target,
-            speculative.speculative_method,
-            draft_archs[0] if draft_archs else None,
+    declared = ARCH_LOOKUP.speculators_for(target)
+    draft_name = draft_archs[0] if draft_archs else None
+    if not any(
+        speculator.method == speculative.speculative_method
+        and speculator.draft_arch == draft_name
+        for speculator in declared
+    ):
+        unified = spec_decode_architecture(
+            target, speculative.speculative_method, draft_name
         )
+        # A target with speculators for other pairs only still refuses a
+        # pair nothing runs, below.
+        if unified is not None or not declared:
+            return unified
 
     draft_arch: str | None = None
     if draft_model is not None:
@@ -689,6 +699,23 @@ def _select_spec_decode_architecture(
         target, speculative.speculative_method, draft_arch
     )
     return None if speculator is None else speculator.derive()
+
+
+def _is_gemma4_assistant_pair(models: Mapping[str, MAXModelConfig]) -> bool:
+    """Whether the target is Gemma 4 and the draft its MTP assistant."""
+    target_archs = models["main"].huggingface_config.architectures
+    draft_model = models.get("draft")
+    draft_archs = (
+        draft_model.huggingface_config.architectures
+        if draft_model is not None
+        else None
+    )
+    return bool(
+        target_archs
+        and target_archs[0] == "Gemma4ForConditionalGeneration"
+        and draft_archs
+        and draft_archs[0] == "Gemma4AssistantForCausalLM"
+    )
 
 
 def _require_dspark(speculative: SpeculativeConfig, draft_arch: str) -> None:
@@ -718,6 +745,13 @@ def _apply_speculative_target_architecture(
     """
     if not speculative:
         return None
+    if _is_gemma4_assistant_pair(models):
+        # TODO(MXSERV-698): run Gemma 4 MTP through SpecDecodePipelineModel
+        # once its proposer exists; until then it keeps its fused graph.
+        models["main"].huggingface_config.architectures[0] = (
+            "UnifiedMTPGemma4ForCausalLM"
+        )
+        return None
     spec_arch = _select_spec_decode_architecture(speculative, models)
     if spec_arch is not None:
         return spec_arch
@@ -727,11 +761,11 @@ def _apply_speculative_target_architecture(
     if not target_archs:
         # Nothing to rewrite; the lookup below reports the real problem.
         return None
-    # The Kimi arm below names DFlash v1 and Eagle graphs, and neither can
+    # The Kimi arm below names DFlash v1 and Eagle graphs, which can't
     # verify a DFlash2 block draft. ``is_dflash()`` is true for v2, so
-    # without this the arm would happily rewrite a DFlash2 pairing onto
-    # a graph that silently mismatches the drafter. A v2 target selects its
-    # own fused arch from its own arm; leaving the name alone here lets the
+    # without this it would happily rewrite a DFlash2 pairing onto a graph
+    # that silently mismatches the drafter. A v2 target selects its own
+    # fused arch from its own arm; leaving the name alone here lets the
     # lookup reject a pairing no arm claims.
     v1_or_eagle = not speculative.is_dflash2()
     if target_archs[0] == "KimiK25ForConditionalGeneration" and v1_or_eagle:
@@ -748,14 +782,6 @@ def _apply_speculative_target_architecture(
         else:
             # MLA target + MLA Eagle3 draft (existing path).
             target_archs[0] = "Eagle3DeepseekV2ForCausalLM"
-    if target_archs[0] == "Gemma4ForConditionalGeneration":
-        draft_archs = (
-            draft_model.huggingface_config.architectures
-            if draft_model is not None
-            else None
-        )
-        if draft_archs and draft_archs[0] == "Gemma4AssistantForCausalLM":
-            target_archs[0] = "UnifiedMTPGemma4ForCausalLM"
     # Nemotron-H's DSpark block drafter declares architectures:
     # ["Qwen3DSparkModel"], the dense Qwen3-style DSpark draft.
     if target_archs[0] == "NemotronHForCausalLM":

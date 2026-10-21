@@ -515,8 +515,13 @@ class PipelineRegistry:
         )
         method = pipeline_config.speculative.speculative_method
         draft_arch = draft_archs[0] if draft_archs else None
-        speculator = select_speculator(name, method, draft_arch)
-        if speculator is not None:
+        # A target's speculators keep only the methods they declare.
+        if any(
+            speculator.method == method
+            for speculator in ARCH_LOOKUP.speculators_for(name)
+        ):
+            speculator = select_speculator(name, method, draft_arch)
+            assert speculator is not None
             return speculator.derive()
         return spec_decode_architecture(name, method, draft_arch) or arch
 

@@ -24,6 +24,7 @@ from max import tree
 from max.driver import Buffer, Device
 from max.engine import InferenceSession, Model
 from max.graph.weights import Weights, WeightsAdapter
+from max.nn.kv_cache import MultiKVCacheParams, spec_decode_cache_slack
 from max.nn.transformer import ReturnLogits
 from max.pipelines.architectures.gpt_oss.batch_processor import (
     GptOssBatchProcessor,
@@ -40,6 +41,7 @@ from max.pipelines.lib import (
     PipelineConfig,
 )
 from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.weights import HuggingFaceRepo
 
@@ -86,8 +88,6 @@ def text_model_weights(
     return {name: w for name, w in weights.items() if name in names}
 
 
-# Still a GraphPipelineModelWithKVCache: the DFlash subclass builds its fused
-# graph through load_model until it registers graph specs of its own.
 class MiMoV2Model(
     AlwaysSignalBuffersMixin, GraphPipelineModelWithKVCache[TextContext]
 ):
@@ -143,16 +143,53 @@ class MiMoV2Model(
         The adapter must see exactly those to prove every one is consumed or
         ignored.
         """
-        assert self.adapter is not None
-        self._language_weights_dict = self.adapter(
-            text_model_weights(
-                self.pipeline_config.model.huggingface_weight_repo,
-                self.weights,
-            ),
-            huggingface_config=self.huggingface_config,
-            pipeline_config=self.pipeline_config,
+        self._language_weights_dict = _adapted_state_dict(
+            self.pipeline_config, self.weights, self.adapter
         )
         return self._language_weights_dict
+
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[MiMoV2, MiMoV2Config]:
+        """Builds the MiMo-V2 module, sharded over the config's devices.
+
+        A caller that sized the cache passes its KV params, and the RoPE
+        table then reaches the positions a speculative step writes past the
+        last committed one.
+
+        Raises:
+            ValueError: If the selected layers aren't in layer order, the
+                order the module captures them in.
+        """
+        layers = list(context.target_layer_ids)
+        if layers != sorted(layers):
+            raise ValueError(
+                "MiMo-V2 captures its layers in layer order; got"
+                f" target_layer_ids {layers}."
+            )
+        max_seq_len = context.max_seq_len
+        kv_params = context.kv_params
+        if kv_params is not None:
+            assert isinstance(kv_params, MultiKVCacheParams)
+            max_seq_len += spec_decode_cache_slack(kv_params)
+        config = MiMoV2Config.initialize(
+            context.pipeline_config, max_seq_len=max_seq_len
+        )
+        if kv_params is not None:
+            config.kv_params = kv_params
+        config.return_logits = context.return_logits
+        config.return_hidden_states = context.return_hidden_states
+        config.target_layer_ids = layers or None
+        module = MiMoV2(config)
+        module.load_state_dict(
+            _adapted_state_dict(
+                context.pipeline_config, context.weights, context.adapter
+            ),
+            weight_alignment=1,
+            strict=cls._strict_state_dict_loading,
+        )
+        return module, config
 
     def _create_model_config(self, state_dict: dict[str, Any]) -> MiMoV2Config:
         del state_dict
@@ -206,3 +243,18 @@ class MiMoV2Model(
         logits = outputs[0]
         assert isinstance(logits, Buffer)
         return ModelOutputs(logits=logits, next_token_logits=logits)
+
+
+def _adapted_state_dict(
+    pipeline_config: PipelineConfig,
+    weights: Weights,
+    adapter: WeightsAdapter | None,
+) -> dict[str, Any]:
+    assert adapter is not None
+    return adapter(
+        text_model_weights(
+            pipeline_config.model.huggingface_weight_repo, weights
+        ),
+        huggingface_config=pipeline_config.model.huggingface_config,
+        pipeline_config=pipeline_config,
+    )

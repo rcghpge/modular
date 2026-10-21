@@ -576,10 +576,12 @@ class BlockDriver(
         use_greedy_acceptance: bool = False,
         vocab_size: int | None = None,
         ep_input_types: Sequence[TensorType | BufferType] = (),
+        trailing_input_types: Sequence[TensorType | BufferType] = (),
     ) -> None:
         super().__init__()
         self._verify = verify
         self._ep_input_types = tuple(ep_input_types)
+        self._trailing_input_types = tuple(trailing_input_types)
         self._proposer = proposer
         self._input_spec = replace(
             input_spec,
@@ -1183,3 +1185,7 @@ class BlockDriver(
     @override
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
         return self._ep_input_types
+
+    @override
+    def trailing_input_types(self) -> Sequence[TensorType | BufferType]:
+        return self._trailing_input_types

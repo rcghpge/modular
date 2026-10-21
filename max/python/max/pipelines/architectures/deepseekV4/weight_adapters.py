@@ -335,19 +335,19 @@ def convert_dspark_safetensor_state_dict(
     huggingface_config: PretrainedConfig,
     **unused_kwargs,
 ) -> dict[str, WeightData]:
-    """The trunk's weights and the DSpark stages', under the same rules.
+    """The DSpark stages' weights (``mtp.*``), under the trunk's rules.
 
-    The stages' projections need no rule of their own: ``mtp.0.main_proj``
-    is an fp8 weight with a 128x128 block scale like the attention
-    projections, in the minimized checkpoint as in the real one.
+    For the draft beside the trunk, which loads the same checkpoint through
+    :func:`convert_safetensor_state_dict`. The stages' projections need no
+    rule of their own: ``mtp.0.main_proj`` is an fp8 weight with a 128x128
+    block scale like the attention projections, in the minimized checkpoint
+    as in the real one.
     """
     return convert_weight_data(
         {
             name: value.data()
             for name, value in state_dict.items()
-            if not (
-                name.startswith(_DSPARK_PREFIX)
-                and any(part in name for part in _UNUSED_DSPARK)
-            )
+            if name.startswith(_DSPARK_PREFIX)
+            and not any(part in name for part in _UNUSED_DSPARK)
         }
     )

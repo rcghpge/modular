@@ -46,4 +46,12 @@ mimo_v2_arch = SupportedArchitecture(
     ),
     supports_overlap_scheduler=False,
     supports_device_graph_capture=False,
+    # MiMo-V2's DFlash drafter declares the Llama 3 draft's name, but it is
+    # sharded like its target and stored in a format of its own.
+    draft_architectures={
+        "dflash": {"DFlashDraftModel": "DFlashMiMoV2DraftModel"}
+    },
+    # Mach finds the fused graph by this name.
+    spec_decode_graph_names={"dflash": "unified_dflash_mimo_v2"},
+    supports_spec_decode_mixed_batches=True,
 )

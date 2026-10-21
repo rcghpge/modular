@@ -27,7 +27,9 @@ family.
    pipelines.architectures.deepseekV41
    pipelines.architectures.dflash2_qwen3_5
    pipelines.architectures.dflash_llama3
+   pipelines.architectures.dflash_mimo_v2
    pipelines.architectures.diffusion_gemma
+   pipelines.architectures.dspark_deepseekV4
    pipelines.architectures.dspark_draft
    pipelines.architectures.dspark_gemma4
    pipelines.architectures.eagle3_deepseekV3
@@ -58,6 +60,7 @@ family.
    pipelines.architectures.mistral
    pipelines.architectures.mistral3
    pipelines.architectures.mpnet
+   pipelines.architectures.mtp_deepseekV3
    pipelines.architectures.muse_glimmer
    pipelines.architectures.nemotron_h
    pipelines.architectures.olmo
@@ -76,11 +79,8 @@ family.
    pipelines.architectures.step3p5
    pipelines.architectures.unified_dflash2_qwen3_5
    pipelines.architectures.unified_dflash_kimi_k25
-   pipelines.architectures.unified_dflash_mimo_v2
-   pipelines.architectures.unified_dspark_deepseekV4
    pipelines.architectures.unified_dspark_deepseekV41
    pipelines.architectures.unified_dspark_nemotron_h
-   pipelines.architectures.unified_mtp_deepseekV3
    pipelines.architectures.unified_mtp_gemma4
    pipelines.architectures.unified_mtp_glm5_2
    pipelines.architectures.unified_mtp_inkling
@@ -101,7 +101,9 @@ Text generation
    ~max.pipelines.architectures.deepseekV41
    ~max.pipelines.architectures.dflash2_qwen3_5
    ~max.pipelines.architectures.dflash_llama3
+   ~max.pipelines.architectures.dflash_mimo_v2
    ~max.pipelines.architectures.diffusion_gemma
+   ~max.pipelines.architectures.dspark_deepseekV4
    ~max.pipelines.architectures.dspark_draft
    ~max.pipelines.architectures.dspark_gemma4
    ~max.pipelines.architectures.eagle3_deepseekV3
@@ -128,6 +130,7 @@ Text generation
    ~max.pipelines.architectures.minimax_m2
    ~max.pipelines.architectures.mistral
    ~max.pipelines.architectures.mistral3
+   ~max.pipelines.architectures.mtp_deepseekV3
    ~max.pipelines.architectures.muse_glimmer
    ~max.pipelines.architectures.nemotron_h
    ~max.pipelines.architectures.olmo
@@ -143,11 +146,8 @@ Text generation
    ~max.pipelines.architectures.step3p5
    ~max.pipelines.architectures.unified_dflash2_qwen3_5
    ~max.pipelines.architectures.unified_dflash_kimi_k25
-   ~max.pipelines.architectures.unified_dflash_mimo_v2
-   ~max.pipelines.architectures.unified_dspark_deepseekV4
    ~max.pipelines.architectures.unified_dspark_deepseekV41
    ~max.pipelines.architectures.unified_dspark_nemotron_h
-   ~max.pipelines.architectures.unified_mtp_deepseekV3
    ~max.pipelines.architectures.unified_mtp_gemma4
    ~max.pipelines.architectures.unified_mtp_glm5_2
    ~max.pipelines.architectures.unified_mtp_inkling

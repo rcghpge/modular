@@ -23,6 +23,7 @@ from typing import Any, ClassVar, cast
 import numpy as np
 from max import tree
 from max.driver import Buffer, Device
+from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import BufferType, DeviceRef, TensorType
 from max.graph.weights import Weights, WeightsAdapter
@@ -45,7 +46,9 @@ from max.pipelines.lib.interfaces.batch_processor import (
     ragged_kv_symbolic_inputs,
     single_replica_context_batch,
 )
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
 from max.pipelines.lib.memory_estimation import MemoryPlan
+from max.pipelines.lib.utils import parse_state_dict_from_weights
 
 from .deepseekV4 import DeepseekV4
 from .layers.quantization import fp8_block_quant_config
@@ -131,8 +134,49 @@ class DeepseekV4BatchProcessor(
         )
 
 
-# Still a GraphPipelineModelWithKVCache: the DSpark subclass builds its fused
-# graph through load_model until it registers graph specs of its own.
+def set_checkpoint_dtypes(
+    config: DeepseekV4Config,
+    huggingface_config: Any,
+    *,
+    norm_dtype: DType,
+    embed_dtype: DType,
+) -> None:
+    """Sets what the config reads off the adapted checkpoint.
+
+    Args:
+        config: The config to finish.
+        huggingface_config: The checkpoint's HuggingFace config.
+        norm_dtype: The adapted dtype of the checkpoint's norm weights.
+        embed_dtype: The stored dtype of the checkpoint's bf16 weights,
+            ``embed`` among them.
+
+    Raises:
+        ValueError: If the encoding is fp8 but the checkpoint declares no fp8
+            ``quantization_config``.
+    """
+    config.norm_dtype = norm_dtype
+    if config.quantization_encoding == "float8_e4m3fn":
+        # The encoding names the fp8 projections only. The activation dtype
+        # is the reference's default dtype, bf16, which is also what the
+        # checkpoint stores ``embed`` / ``ffn.gate`` /
+        # ``indexer.weights_proj`` in and the reference declares them as;
+        # those follow ``config.dtype``, and so does ``head`` (bf16 GEMM, see
+        # ``head_logits``). The other weights the reference declares float32
+        # (norms, compressor ``wkv`` / ``wgate``) are declared so by the
+        # modules and upcast by the adapter.
+        quant_config = fp8_block_quant_config(
+            getattr(huggingface_config, "quantization_config", None),
+            config.num_hidden_layers,
+        )
+        if quant_config is None:
+            raise ValueError(
+                "quantization_encoding float8_e4m3fn needs a checkpoint "
+                "that declares its fp8 quantization_config"
+            )
+        config.quant_config = quant_config
+        config.dtype = embed_dtype
+
+
 class DeepseekV4Model(GraphPipelineModelWithKVCache[TextContext]):
     """A DeepSeek-V4-Flash pipeline model for text generation."""
 
@@ -181,37 +225,63 @@ class DeepseekV4Model(GraphPipelineModelWithKVCache[TextContext]):
         self._language_weights_dict = super()._load_state_dict()
         return self._language_weights_dict
 
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[DeepseekV4, DeepseekV4Config]:
+        """Builds the trunk, without the DSpark stages its adapter drops.
+
+        A caller that sized the cache passes its KV params. Under
+        ``SELECTED_LAYERS`` the trunk returns the state DSpark reads, which
+        is collected at the checkpoint's ``dspark_target_layer_ids``.
+
+        Raises:
+            ValueError: If ``target_layer_ids`` names other layers.
+        """
+        config = DeepseekV4Config.initialize(
+            context.pipeline_config, max_seq_len=context.max_seq_len
+        )
+        layers = list(context.target_layer_ids)
+        if layers and layers != config.dspark_target_layer_ids:
+            raise ValueError(
+                "DeepSeek-V4 collects the states at its"
+                f" dspark_target_layer_ids {config.dspark_target_layer_ids};"
+                f" got target_layer_ids {layers}."
+            )
+        if context.kv_params is not None:
+            assert isinstance(context.kv_params, KVCacheParamInterface)
+            config.kv_params = context.kv_params
+        config.return_logits = context.return_logits
+        config.return_hidden_states = context.return_hidden_states
+        state_dict = parse_state_dict_from_weights(
+            context.pipeline_config, context.weights, context.adapter
+        )
+        set_checkpoint_dtypes(
+            config,
+            context.huggingface_config,
+            norm_dtype=state_dict["norm.weight"].dtype,
+            embed_dtype=state_dict["embed.weight"].dtype,
+        )
+        module = DeepseekV4(config)
+        module.load_state_dict(
+            state_dict,
+            weight_alignment=1,
+            strict=cls._strict_state_dict_loading,
+        )
+        return module, config
+
     def _create_model_config(
         self, state_dict: dict[str, Any]
     ) -> DeepseekV4Config:
         model_config = self.arch_config_as(DeepseekV4Config)
         model_config.return_logits = self.return_logits
         model_config.return_hidden_states = self.return_hidden_states
-        # ``norm.weight`` is the one norm every V4 checkpoint has, hash-routed
-        # or not, so it is the safe probe for the norm storage dtype.
-        model_config.norm_dtype = state_dict["norm.weight"].dtype
-        if model_config.quantization_encoding == "float8_e4m3fn":
-            # The encoding names the fp8 projections only. The activation
-            # dtype is the reference's default dtype, bf16, which is also
-            # what the checkpoint stores ``embed`` / ``ffn.gate`` /
-            # ``indexer.weights_proj`` in and the reference declares them as;
-            # those follow ``config.dtype``, and so does ``head`` (bf16 GEMM,
-            # see ``head_logits``). The other weights the reference declares
-            # float32 (norms, compressor ``wkv`` / ``wgate``) are declared so
-            # by the modules and upcast by the adapter.
-            quant_config = fp8_block_quant_config(
-                getattr(self.huggingface_config, "quantization_config", None),
-                model_config.num_hidden_layers,
-            )
-            if quant_config is None:
-                raise ValueError(
-                    "quantization_encoding float8_e4m3fn needs a checkpoint "
-                    "that declares its fp8 quantization_config"
-                )
-            model_config.quant_config = quant_config
-            model_config.dtype = state_dict["embed.weight"].dtype
-        # Not a speculative graph: the adapter drops the ``mtp.*`` weights.
-        model_config.dspark_stages = False
+        set_checkpoint_dtypes(
+            model_config,
+            self.huggingface_config,
+            norm_dtype=state_dict["norm.weight"].dtype,
+            embed_dtype=state_dict["embed.weight"].dtype,
+        )
         return model_config
 
     def graph_specs(

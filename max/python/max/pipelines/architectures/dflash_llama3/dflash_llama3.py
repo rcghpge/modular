@@ -33,6 +33,9 @@ from ..llama3.model_config import Llama3Config, create_rope_embedding
 class DFlashLlama3(Module):
     """DFlash draft transformer for a Llama3 target."""
 
+    supports_zero_draft_rows = True
+    ctx_at_draft_cache_length = False
+
     def __init__(
         self,
         config: Llama3Config,
@@ -233,6 +236,12 @@ class DFlashLlama3(Module):
         return self.forward_block(
             input_embeds, kv_collections, input_row_offsets, signal_buffers
         )
+
+    def mask_embeddings(
+        self, target_mask: Sequence[TensorValue]
+    ) -> list[TensorValue]:
+        """Returns the target's embedding of the mask token, as trained."""
+        return list(target_mask)
 
     def forward_block(
         self,

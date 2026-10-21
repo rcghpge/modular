@@ -46,7 +46,7 @@ else.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -269,4 +269,18 @@ class DeepseekV4Cache:
             },
             idx_comp=leaves.get("idx_c4a"),
             idx_state=leaves.get("idx_c4a_state"),
+        )
+
+    @classmethod
+    def from_leaves(
+        cls,
+        config: DeepseekV4Config,
+        leaves: Mapping[str, Sequence[PagedCacheValues]],
+        device_idx: int = 0,
+    ) -> DeepseekV4Cache:
+        """Bundles the leaves by key, each one entry per device."""
+        return cls.from_groups(
+            config,
+            [leaves[spec.key] for spec in config.kv_leaf_specs()],
+            device_idx,
         )

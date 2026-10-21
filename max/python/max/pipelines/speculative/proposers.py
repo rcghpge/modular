@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from max.graph import TensorValue
+from max.nn.kv_cache import MLAKVCacheParams
 from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates
 
@@ -38,6 +38,7 @@ from .dspark import (
     DSparkTargetHeadProposer,
 )
 from .eagle import EagleProposer
+from .mla import Eagle3MHAProposer, Eagle3MLAProposer, MLADraft, MTPProposer
 
 __all__ = [
     "BLOCK_METHODS",
@@ -48,20 +49,22 @@ __all__ = [
     "target_hidden_states",
 ]
 
-SEQUENTIAL_METHODS: frozenset[SpeculativeMethod] = frozenset({"eagle"})
+SEQUENTIAL_METHODS: frozenset[SpeculativeMethod] = frozenset({"eagle", "mtp"})
 """The one-token-per-step methods :func:`sequential_proposer` runs."""
 
 BLOCK_METHODS: frozenset[SpeculativeMethod] = frozenset({"dflash", "dspark"})
 """The block-drafting methods :func:`block_proposer` runs."""
 
 
-def target_hidden_states(speculative: SpeculativeConfig) -> ReturnHiddenStates:
-    """Returns the target hidden states the configured method's draft reads.
+def target_hidden_states(
+    speculative: SpeculativeConfig, draft_config: Any
+) -> ReturnHiddenStates:
+    """Returns the target hidden states the configured draft reads.
 
-    A block draft reads the outputs of the target layers it names. A
+    A draft that names target layers reads their outputs. Any other
     one-token-per-step draft reads the target's last normalized layer.
     """
-    if speculative.is_block_draft():
+    if capture_layers(speculative, draft_config):
         return ReturnHiddenStates.SELECTED_LAYERS
     return ReturnHiddenStates.ALL_NORMALIZED
 
@@ -69,13 +72,15 @@ def target_hidden_states(speculative: SpeculativeConfig) -> ReturnHiddenStates:
 def capture_layers(
     speculative: SpeculativeConfig, draft_config: Any
 ) -> tuple[int, ...]:
-    """Returns the target layers a block draft reads, as MAX indices.
+    """Returns the target layers a draft reads, as MAX indices.
 
-    Every block draft's config names them in ``target_layer_ids``.
+    Every block draft's config names them in ``target_layer_ids``, and an
+    EAGLE3 draft's names its auxiliary layers there, as vLLM's
+    ``eagle_aux_hidden_state_layer_ids`` does.
     """
-    if not speculative.is_block_draft():
-        return ()
-    return tuple(draft_config.target_layer_ids)
+    if speculative.is_block_draft():
+        return tuple(draft_config.target_layer_ids)
+    return tuple(getattr(draft_config, "target_layer_ids", None) or ())
 
 
 def sequential_proposer(
@@ -83,15 +88,29 @@ def sequential_proposer(
     draft: Module,
     draft_config: Any,
     target_huggingface_config: Any,
-) -> SequentialProposer[TensorValue]:
+    *,
+    distributed: bool = False,
+) -> SequentialProposer[Any]:
     """Returns the proposer for a one-token-per-step method.
+
+    A draft beside a target that takes the distributed signature takes it
+    too, as every DeepSeek-family draft does. An EAGLE3 head there caches
+    MLA latents or its own heads.
 
     Raises:
         ValueError: If no proposer runs the configured method.
     """
     del target_huggingface_config
     if speculative.is_eagle():
+        if distributed:
+            assert isinstance(draft, MLADraft)
+            if isinstance(draft_config.kv_params, MLAKVCacheParams):
+                return Eagle3MLAProposer(draft)
+            return Eagle3MHAProposer(draft)
         return EagleProposer(draft, draft_config.hidden_size)
+    if speculative.is_mtp():
+        assert isinstance(draft, MLADraft)
+        return MTPProposer(draft)
     raise ValueError(
         f"No proposer runs {speculative.speculative_method!r} one token at a"
         " time."
@@ -103,7 +122,7 @@ def block_proposer(
     draft: Module,
     draft_config: Any,
     target_huggingface_config: Any,
-) -> BlockProposer[list[TensorValue], Any]:
+) -> BlockProposer[Any, Any]:
     """Returns the proposer for a block-drafting method.
 
     The draft's config names the mask token and the draft's width. A draft
@@ -117,8 +136,13 @@ def block_proposer(
         assert isinstance(draft, DFlashDraft)
         return DFlashProposer(
             draft,
-            # The anchor slot plus the drafted tokens.
-            block_size=speculative.draft_width + 1,
+            # A draft trained at a fixed width drafts at it; any other drafts
+            # the anchor slot plus the drafted tokens.
+            block_size=(
+                getattr(draft_config, "block_size", None)
+                or speculative.draft_width + 1
+            ),
+            num_drafts=speculative.draft_width,
             mask_token_id=draft_config.mask_token_id,
             hidden_size=draft_config.hidden_size,
             embedding_multiplier=getattr(
@@ -127,6 +151,9 @@ def block_proposer(
             logits_scaling=getattr(text_config, "logits_scaling", 1.0),
             final_logit_softcapping=getattr(
                 text_config, "final_logit_softcapping", None
+            ),
+            sampleable_vocab_size=getattr(
+                draft_config, "sampleable_vocab_size", None
             ),
         )
     if speculative.is_dspark():

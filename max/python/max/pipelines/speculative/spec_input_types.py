@@ -669,10 +669,18 @@ class SpecDecodeGraphSignature:
         """
         return ()
 
+    def trailing_input_types(self) -> Sequence[TensorType | BufferType]:
+        """This model's own group past the canonical tail; empty for most.
+
+        :meth:`decode_inputs` returns it as
+        :attr:`SpecDecodeGraphInputs.trailing`.
+        """
+        return ()
+
     @property
     def has_trailing_inputs(self) -> bool:
         """Whether this model appends its own group past the canonical tail."""
-        return False
+        return bool(self.trailing_input_types())
 
     def _signature_kv(
         self, kv_params: KVCacheParamInterface | None
@@ -694,11 +702,14 @@ class SpecDecodeGraphSignature:
         and extends the result. See :func:`build_spec_decode_input_types`
         for the ordering.
         """
-        return build_spec_decode_input_types(
-            self.input_spec,
-            kv_params=self._signature_kv(kv_params),
-            ep_input_types=self.ep_input_types(),
-            leading_input_types=self.leading_input_types(),
+        return (
+            *build_spec_decode_input_types(
+                self.input_spec,
+                kv_params=self._signature_kv(kv_params),
+                ep_input_types=self.ep_input_types(),
+                leading_input_types=self.leading_input_types(),
+            ),
+            *self.trailing_input_types(),
         )
 
     @overload

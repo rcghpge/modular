@@ -17,6 +17,7 @@ from __future__ import annotations
 from max.graph import TensorValue
 from max.pipelines.speculative.config import SpeculativeConfig
 from max.pipelines.speculative.driver import SequentialDriver
+from max.pipelines.speculative.mla import Eagle3MHAProposer
 from max.pipelines.speculative.spec_input_types import SpecDecodeInputTypeSpec
 
 from ..deepseekV3.deepseekV3 import DeepseekV3
@@ -25,14 +26,14 @@ from ..eagle_common.eagle_mha_draft import (
     Eagle3MHADraft,
     Eagle3MHADraftConfig,
 )
-from .spec_adapters import Eagle3MHAKimiK25Proposer, KimiK25Target
+from .spec_adapters import KimiK25Target
 
 
 class Eagle3MHAKimiK25Unified(SequentialDriver[list[list[TensorValue]]]):
     """Eagle3 + Kimi K2.5 with an MHA draft, wired to the spec-decode driver.
 
     Differs from the MLA-draft variant only in the draft it builds and the
-    three declarations on :class:`Eagle3MHAKimiK25Proposer`; the loop lives in
+    three declarations on :class:`Eagle3MHAProposer`; the loop lives in
     :class:`SequentialDriver`.
     """
 
@@ -52,7 +53,7 @@ class Eagle3MHAKimiK25Unified(SequentialDriver[list[list[TensorValue]]]):
         target_adapter = KimiK25Target(target, enable_vision=enable_vision)
         super().__init__(
             target_adapter.verify,
-            Eagle3MHAKimiK25Proposer(draft),
+            Eagle3MHAProposer(draft),
             target_model=target,
             draft_model=draft,
             input_spec=SpecDecodeInputTypeSpec(

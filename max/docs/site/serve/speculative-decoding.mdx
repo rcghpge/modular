@@ -199,7 +199,7 @@ print(response.choices[0].message.content)
 When you serve a model with a draft, MAX loads a dedicated speculative
 decoding architecture for the pair and prints its name in the startup
 banner. For example, serving `deepseek-ai/DeepSeek-V3` with
-`--speculative-method mtp` resolves to `UnifiedMTPDeepseekV3ForCausalLM`.
+`--speculative-method mtp` resolves to `DeepseekV3ForCausalLM+mtp`.
 The name comes from the target's architecture and the draft checkpoint's
 declared architecture:
 
@@ -211,7 +211,7 @@ declared architecture:
 | Gemma 4 31B | DFlash draft                                   | `Gemma4ForConditionalGeneration+dflash`        |
 | Gemma 4 31B | DSpark draft                                   | `Gemma4ForConditionalGeneration+dspark`        |
 | Gemma 4 12B | DSpark draft                                   | `Gemma4UnifiedForConditionalGeneration+dspark` |
-| DeepSeek V3 | None (built-in MTP head)                       | `UnifiedMTPDeepseekV3ForCausalLM`              |
+| DeepSeek V3 | None (built-in MTP head)                       | `DeepseekV3ForCausalLM+mtp`                    |
 | GLM-5.2     | None (built-in MTP head)                       | `UnifiedMTPGlmMoeDsaForCausalLM`               |
 | Kimi K2.5   | DFlash draft                                   | `UnifiedDflashKimiK25ForCausalLM`              |
 

@@ -29,7 +29,7 @@ embedding before a single MHA attention block. Layout matches
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from max.dtype import DType
@@ -101,6 +101,9 @@ class Eagle3MHADraftConfig:
     fc_input_multiplier: int
     """Number of fused target hidden states (2 or 3). Set from the
     ``fc.weight`` shape in the draft checkpoint at load time."""
+
+    target_layer_ids: list[int] = field(default_factory=list)
+    """The target layers the draft fuses, as MAX indices."""
 
     sliding_window: int | None = None
     """If set, the draft attention uses a sliding-window causal mask of
@@ -245,6 +248,10 @@ class Eagle3MHADraft(Module):
 
     See :meth:`__call__` for the full argument types.
     """
+
+    has_own_lm_head = True
+    """Whether the draft scores through its own ``lm_head``. One whose
+    checkpoint ships none scores through its target's."""
 
     def __init__(
         self,

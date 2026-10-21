@@ -29,6 +29,7 @@ from .block_driver import (
     DraftSampler,
     block_kv_with_dispatch,
 )
+from .unified_graph_ops import broadcast_per_device, mask_padded_tail
 
 __all__ = ["DFlashDraft", "DFlashProposer"]
 
@@ -41,6 +42,13 @@ class DFlashDraft(Protocol):
     and returns lists of one. The draft has no embedding or head of its own;
     it holds its target's.
     """
+
+    supports_zero_draft_rows: bool
+    """Whether the draft runs on the runtime row count rather than on
+    ``batch_size``. See :class:`~.block_driver.BlockProposer`."""
+    ctx_at_draft_cache_length: bool
+    """Whether the draft's own cache lengths place its context, as they do
+    in an engine that sizes each cache's claim separately."""
 
     @property
     def embed_tokens(self) -> object:
@@ -66,6 +74,15 @@ class DFlashDraft(Protocol):
         """
         ...
 
+    def mask_embeddings(
+        self, target_mask: Sequence[TensorValue], /
+    ) -> list[TensorValue]:
+        """Returns the ``[1, hidden]`` row every mask slot of a block takes.
+
+        ``target_mask`` is the target's embedding of the mask token.
+        """
+        ...
+
     def forward_block(
         self,
         input_embeds: Sequence[TensorValue],
@@ -81,31 +98,39 @@ class DFlashDraft(Protocol):
 class DFlashProposer:
     """Drafts a block through the target's embedding and head.
 
-    The target's scales are applied here, since neither its embedding nor
-    its head applies them.
+    The block is ``block_size`` wide, and the head reads the ``num_drafts``
+    slots after the anchor, so a step may verify fewer proposals than the
+    block holds. The target's scales are applied here, since neither its
+    embedding nor its head applies them, and a head padded past its
+    tokenizer never proposes a padding id, which no verify accepts.
     """
 
     samples_from_anchor = False
-    supports_zero_draft_rows = True
 
     def __init__(
         self,
         draft: DFlashDraft,
         *,
         block_size: int,
+        num_drafts: int,
         mask_token_id: int,
         hidden_size: int,
         embedding_multiplier: float = 1.0,
         logits_scaling: float = 1.0,
         final_logit_softcapping: float | None = None,
+        sampleable_vocab_size: int | None = None,
     ) -> None:
         self.draft = draft
         self.block_size = block_size
+        self.num_drafts = num_drafts
         self.mask_token_id = mask_token_id
         self.hidden_size = hidden_size
         self.embedding_multiplier = embedding_multiplier
         self.logits_scaling = logits_scaling
         self.final_logit_softcapping = final_logit_softcapping
+        self.sampleable_vocab_size = sampleable_vocab_size
+        self.supports_zero_draft_rows = draft.supports_zero_draft_rows
+        self.ctx_at_draft_cache_length = draft.ctx_at_draft_cache_length
 
     def materialize(
         self,
@@ -124,13 +149,43 @@ class DFlashProposer:
     def embed_block(
         self, batch: BlockBatch, block_ids: TensorValue
     ) -> list[TensorValue]:
-        """Embeds the block, scaled as the target scales its own."""
+        """Embeds each anchor, then fills its mask slots with the draft's row.
+
+        The mask token and the anchors embed in one call, so a target
+        embedding with collectives runs them once.
+        """
+        k, hidden = self.block_size, self.hidden_size
+        mask_id = ops.constant(
+            self.mask_token_id, DType.int64, device=batch.device0
+        ).reshape((1,))
+        embeds = self._embed(
+            batch, ops.concat([mask_id, block_ids.reshape((-1, k))[:, 0]])
+        )
+        masks = self.draft.mask_embeddings(
+            [ops.slice_tensor(e, [(slice(0, 1), 1)]) for e in embeds]
+        )
+        blocks = []
+        for e, mask in zip(embeds, masks, strict=True):
+            anchors = ops.slice_tensor(e, [(slice(1, None), "dflash_anchors")])
+            tail = ops.broadcast_to(
+                mask.reshape((1, 1, hidden)), (anchors.shape[0], k - 1, hidden)
+            )
+            block = ops.concat([ops.unsqueeze(anchors, 1), tail], axis=1)
+            blocks.append(block.reshape((-1, hidden)))
+        return blocks
+
+    def _embed(self, batch: BlockBatch, ids: TensorValue) -> list[TensorValue]:
+        """Returns the target's embedding of ``ids``, scaled, per device."""
         embed = self.draft.embed_tokens
         if isinstance(embed, VocabParallelEmbedding):
-            embeds = embed(block_ids, batch.signal_buffers)
+            embeds = embed(ids, batch.signal_buffers)
         else:
             assert isinstance(embed, Embedding)
-            embeds = [embed(block_ids)]
+            # A broadcast over the signal buffers, not a GPU-to-GPU transfer,
+            # which device graph capture cannot record.
+            embeds = broadcast_per_device(
+                embed(ids), batch.signal_buffers, batch.n_devs
+            )
         if self.embedding_multiplier != 1.0:
             embeds = [e * float(self.embedding_multiplier) for e in embeds]
         return embeds
@@ -159,11 +214,13 @@ class DFlashProposer:
     ) -> TensorValue:
         """Scores the drafted slots through the head and samples them."""
         del accepted
-        k, hidden = self.block_size, self.hidden_size
+        k, n, hidden = self.block_size, self.num_drafts, self.hidden_size
         seqs = batch.num_draft_seqs
-        # Drop the anchor slot: it carries the committed token, not a proposal.
+        # Skip the anchor slot: it carries the committed token, not a proposal.
         drafted = [
-            hs.rebind([seqs * k, hidden]).reshape((seqs, k, hidden))[:, 1:, :]
+            hs.rebind([seqs * k, hidden]).reshape((seqs, k, hidden))[
+                :, 1 : 1 + n, :
+            ]
             for hs in block_hs
         ]
         lm_head = self.draft.lm_head
@@ -179,4 +236,8 @@ class DFlashProposer:
         cap = self.final_logit_softcapping
         if cap is not None:
             logits = ops.tanh(logits / cap) * cap
-        return sampler.sample_all(logits)
+        return sampler.sample_all(
+            mask_padded_tail(
+                logits, int(logits.shape[-1]), self.sampleable_vocab_size
+            )
+        )

@@ -380,6 +380,20 @@ class SupportedArchitecture:
     the draft whose module it can call. A name not listed stands for itself.
     """
 
+    checkpoint_drafts: Mapping[str, str] = field(default_factory=dict)
+    """The draft architecture this target's own checkpoint ships, by
+    speculative method, as vLLM's ``hf_config_override`` names an MTP draft
+    from its target's model type."""
+
+    spec_decode_graph_names: Mapping[str, str] = field(default_factory=dict)
+    """The names an engine looks the fused graph up by, under the draft's
+    architecture name or the speculative method. A pairing not listed is named
+    ``unified_{method}``.
+
+    Kept for Mach, whose engine finds a fused graph in the compiled MEF by
+    these names; renaming one needs the matching change in Mach.
+    """
+
     supports_overlap_scheduler: bool = True
     """Whether this architecture supports auto-enabling the overlap scheduler.
 

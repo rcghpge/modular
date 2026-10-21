@@ -118,6 +118,16 @@ def register_all_models() -> None:
             "DFlash2DraftModel", ".dflash2_qwen3_5", "dflash2_qwen3_5_arch"
         ),
         _LazyArch(
+            "DFlashMiMoV2DraftModel",
+            ".dflash_mimo_v2",
+            "dflash_mimo_v2_draft_arch",
+        ),
+        _LazyArch(
+            "DSparkDeepseekV4DraftModel",
+            ".dspark_deepseekV4",
+            "dspark_deepseekV4_draft_arch",
+        ),
+        _LazyArch(
             "DSparkDraftModel", ".dspark_draft", "dspark_speculators_draft_arch"
         ),
         _LazyArch(
@@ -126,16 +136,14 @@ def register_all_models() -> None:
             "diffusion_gemma_arch",
         ),
         _LazyArch(
-            "Eagle3DeepseekV3ForCausalLM",
+            "Eagle3DeepseekV3DraftModel",
             ".eagle3_deepseekV3",
-            "eagle3_deepseekV3_speculator",
-            speculates_on="DeepseekV3ForCausalLM",
+            "eagle3_deepseekV3_draft_arch",
         ),
         _LazyArch(
-            "Eagle3MHADeepseekV3ForCausalLM",
+            "Eagle3MHADeepseekV3DraftModel",
             ".eagle3_deepseekV3",
-            "eagle3_mha_deepseekV3_speculator",
-            speculates_on="DeepseekV3ForCausalLM",
+            "eagle3_mha_deepseekV3_draft_arch",
         ),
         _LazyArch(
             "LlamaForCausalLMEagle3", ".eagle_llama3", "eagle3_llama_arch"
@@ -278,6 +286,11 @@ def register_all_models() -> None:
             "llama4_conditional_arch",
         ),
         _LazyArch("MambaForCausalLM", ".mamba", "mamba_arch"),
+        _LazyArch(
+            "MTPDeepseekV3DraftModel",
+            ".mtp_deepseekV3",
+            "mtp_deepseekV3_draft_arch",
+        ),
         _LazyArch("MiMoV2ForCausalLM", ".mimo_v2", "mimo_v2_arch"),
         _LazyArch("MiniMaxM2ForCausalLM", ".minimax_m2", "minimax_m2_arch"),
         _LazyArch(
@@ -376,24 +389,6 @@ def register_all_models() -> None:
             "unified_dflash_kimi_k25_arch",
         ),
         _LazyArch(
-            "UnifiedDflashMiMoV2ForCausalLM",
-            ".unified_dflash_mimo_v2",
-            "unified_dflash_mimo_v2_speculator",
-            speculates_on="MiMoV2ForCausalLM",
-        ),
-        _LazyArch(
-            "UnifiedDflashMiMoV2ForCausalLM",
-            ".unified_dflash_mimo_v2",
-            "unified_dflash_mimo_v2_renamed_draft_speculator",
-            speculates_on="MiMoV2ForCausalLM",
-        ),
-        _LazyArch(
-            "UnifiedDSparkDeepseekV4ForCausalLM",
-            ".unified_dspark_deepseekV4",
-            "unified_dspark_deepseekV4_speculator",
-            speculates_on="DeepseekV4ForCausalLM",
-        ),
-        _LazyArch(
             "UnifiedDSparkDeepseekV41ForCausalLM",
             ".unified_dspark_deepseekV41",
             "unified_dspark_deepseekV41_speculator",
@@ -403,12 +398,6 @@ def register_all_models() -> None:
             "UnifiedDSparkNemotronHForCausalLM_ModuleV3",
             ".unified_dspark_nemotron_h",
             "unified_dspark_nemotron_h_arch",
-        ),
-        _LazyArch(
-            "UnifiedMTPDeepseekV3ForCausalLM",
-            ".unified_mtp_deepseekV3",
-            "unified_mtp_deepseekV3_speculator",
-            speculates_on="DeepseekV3ForCausalLM",
         ),
         _LazyArch(
             "UnifiedMTPGemma4ForCausalLM",

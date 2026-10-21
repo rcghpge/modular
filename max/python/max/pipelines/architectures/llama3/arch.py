@@ -56,4 +56,5 @@ llama_arch = SupportedArchitecture(
     draft_architectures={
         "eagle": {"LlamaForCausalLM": "LlamaForCausalLMEagle"}
     },
+    supports_spec_decode_mixed_batches=True,
 )

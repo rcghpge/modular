@@ -370,30 +370,28 @@ def test_block_attention_sinks_and_window(
         assert _rel(got, reference) > 10 * tolerance, wrong
 
 
-def test_block_embeddings_use_mask_embedding(
+def test_mask_embeddings_are_trained(
     setup: tuple[DFlashMiMoV2Config, dict[str, np.ndarray]],
 ) -> None:
     config, w = setup
-    anchors = _round(
-        np.random.default_rng(3).standard_normal((2, HIDDEN)).astype(np.float32)
-    )
     drafter = DFlashMiMoV2(config)
     drafter.load_state_dict(_state(w), strict=True)
     with Graph(
         "embeddings",
-        input_types=[TensorType(DType.bfloat16, [2, HIDDEN], DeviceRef.GPU())],
+        input_types=[TensorType(DType.bfloat16, [1, HIDDEN], DeviceRef.GPU())],
     ) as graph:
-        (rows,) = drafter.block_embeddings([graph.inputs[0].tensor])
-        graph.output(ops.cast(rows, DType.float32))
+        (row,) = drafter.mask_embeddings([graph.inputs[0].tensor])
+        graph.output(ops.cast(row, DType.float32))
 
     device = Accelerator()
     model = InferenceSession(devices=[device]).load(
         graph, weights_registry=drafter.state_dict()
     )
-    (result,) = model.execute(_buffer(anchors).to(device))
+    # The target's row for the mask token is untrained padding; the drafter
+    # never reads it.
+    padding = _buffer(np.zeros((1, HIDDEN), dtype=np.float32))
+    (result,) = model.execute(padding.to(device))
     assert isinstance(result, Buffer)
-    got = np.from_dlpack(result.to(CPU())).reshape(2, BLOCK, HIDDEN)
-    np.testing.assert_array_equal(got[:, 0], anchors)
     np.testing.assert_array_equal(
-        got[:, 1:], np.broadcast_to(w[MASK_EMBEDDING], (2, BLOCK - 1, HIDDEN))
+        np.from_dlpack(result.to(CPU())), w[MASK_EMBEDDING].reshape(1, HIDDEN)
     )

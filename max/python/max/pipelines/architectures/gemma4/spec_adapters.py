@@ -40,7 +40,10 @@ _SLIDING_KV = "sliding_attention"
 
 
 def verify(
-    target: Module, target_config: Any, hidden_states: ReturnHiddenStates
+    target: Module,
+    target_config: Any,
+    hidden_states: ReturnHiddenStates,
+    draft_config: Any,
 ) -> VerifyFn:
     """Returns the verify of a single-device Gemma 4 language model.
 
@@ -48,6 +51,7 @@ def verify(
         ValueError: If the target wasn't built to return selected layers,
             which only block drafts read.
     """
+    del draft_config
     if hidden_states != ReturnHiddenStates.SELECTED_LAYERS:
         raise ValueError(
             "A Gemma 4 target verifies only for block drafts, which read"

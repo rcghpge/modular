@@ -34,10 +34,13 @@ if TYPE_CHECKING:
 
 
 def verify(
-    target: Module, target_config: Any, hidden_states: ReturnHiddenStates
+    target: Module,
+    target_config: Any,
+    hidden_states: ReturnHiddenStates,
+    draft_config: Any,
 ) -> VerifyFn:
     """Returns the verify of a single-device target called as Llama 3 is."""
-    del target_config
+    del target_config, draft_config
     return partial(_verify, target, hidden_states)
 
 
