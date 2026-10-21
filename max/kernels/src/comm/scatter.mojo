@@ -180,6 +180,11 @@ def scatter[
         if chunk_num_elems_int[i] > max_elems:
             max_elems = chunk_num_elems_int[i]
 
+    # Every GPU sees the same chunk sizes, so all of them skip together and
+    # no peer is left waiting on a barrier.
+    if max_elems == 0:
+        return
+
     comptime BLOCK_SIZE = 256
     comptime simd_width = simd_width_of[dtype, target=ctx.target]()
     var grid_size = ceildiv(ceildiv(max_elems, simd_width), BLOCK_SIZE)
