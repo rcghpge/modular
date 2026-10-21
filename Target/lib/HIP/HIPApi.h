@@ -49,7 +49,6 @@
   HIP_FN(hipFree)                                                              \
   HIP_FN(hipHostMalloc)                                                        \
   HIP_FN(hipHostFree)                                                          \
-  HIP_FN(hipHostGetDevicePointer)                                              \
   HIP_FN(hipModuleLoadData)                                                    \
   HIP_FN(hipModuleGetFunction)                                                 \
   HIP_FN(hipModuleLaunchKernel)                                                \
