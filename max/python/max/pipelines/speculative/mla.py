@@ -85,7 +85,7 @@ class MLAProposer(Generic[TargetHiddenT]):
     Their drafts take one positional call, the MTP NextN head's and the MLA
     and MHA Eagle3 heads' alike. Generic in the target's hidden payload,
     which the draft takes as an opaque argument: a flat per-device list for
-    the DeepseekV3 targets, one list of aux layers per device for Kimi's.
+    an MTP head, one list of captured layers per device for an Eagle3 head.
     """
 
     decode_swaps: tuple[DecodeKVSwap, ...] = (
@@ -99,7 +99,7 @@ class MLAProposer(Generic[TargetHiddenT]):
     split_prefix: str
     carry_dim_names: CarryDimNames
     step_hidden_mode: ReturnHiddenStates
-    uses_thinking_phase: bool = False
+    uses_thinking_phase: bool = True
     supports_zero_draft_rows: bool = False
     draft_takes_ep_inputs: bool = False
     """Whether the draft's ``__call__`` accepts the target's EP inputs."""
@@ -179,7 +179,6 @@ class MTPProposer(MLAProposer[list[TensorValue]]):
     # graph capture. LAST_PER_DEVICE returns the post-allgather full-batch
     # tensors, so the driver slices each replica's rows back out under DP.
     step_hidden_mode = ReturnHiddenStates.LAST_PER_DEVICE
-    uses_thinking_phase = True
     supports_zero_draft_rows = True
     draft_takes_ep_inputs = True
 
@@ -208,7 +207,6 @@ class Eagle3MHAProposer(MLAProposer[list[list[TensorValue]]]):
 
     split_prefix = "eagle3_mha"
     carry_dim_names = CarryDimNames(prefix="draft_mha_step", per_device=True)
-    uses_thinking_phase = True
     step_hidden_mode = ReturnHiddenStates.ALL
     decode_swaps: tuple[DecodeKVSwap, ...] = (
         DecodeKVSwap.MAX_PROMPT_LENGTH_ONE,

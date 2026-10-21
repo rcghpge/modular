@@ -26,6 +26,7 @@ family.
    pipelines.architectures.deepseekV4
    pipelines.architectures.deepseekV41
    pipelines.architectures.dflash2_qwen3_5
+   pipelines.architectures.dflash_kimi_k25
    pipelines.architectures.dflash_llama3
    pipelines.architectures.dflash_mimo_v2
    pipelines.architectures.diffusion_gemma
@@ -78,7 +79,6 @@ family.
    pipelines.architectures.qwen_image_edit
    pipelines.architectures.step3p5
    pipelines.architectures.unified_dflash2_qwen3_5
-   pipelines.architectures.unified_dflash_kimi_k25
    pipelines.architectures.unified_dspark_deepseekV41
    pipelines.architectures.unified_dspark_nemotron_h
    pipelines.architectures.unified_mtp_gemma4
@@ -100,6 +100,7 @@ Text generation
    ~max.pipelines.architectures.deepseekV4
    ~max.pipelines.architectures.deepseekV41
    ~max.pipelines.architectures.dflash2_qwen3_5
+   ~max.pipelines.architectures.dflash_kimi_k25
    ~max.pipelines.architectures.dflash_llama3
    ~max.pipelines.architectures.dflash_mimo_v2
    ~max.pipelines.architectures.diffusion_gemma
@@ -145,7 +146,6 @@ Text generation
    ~max.pipelines.architectures.qwen3vl_moe
    ~max.pipelines.architectures.step3p5
    ~max.pipelines.architectures.unified_dflash2_qwen3_5
-   ~max.pipelines.architectures.unified_dflash_kimi_k25
    ~max.pipelines.architectures.unified_dspark_deepseekV41
    ~max.pipelines.architectures.unified_dspark_nemotron_h
    ~max.pipelines.architectures.unified_mtp_gemma4

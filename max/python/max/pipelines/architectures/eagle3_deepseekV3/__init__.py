@@ -19,14 +19,12 @@ from .model import (
     Eagle3DeepseekV3DraftConfig,
     Eagle3MHADeepseekV3DraftArchConfig,
 )
-from .weight_adapters import convert_eagle3_draft_state_dict
 
 __all__ = [
     "Eagle3DeepseekV3",
     "Eagle3DeepseekV3DraftArchConfig",
     "Eagle3DeepseekV3DraftConfig",
     "Eagle3MHADeepseekV3DraftArchConfig",
-    "convert_eagle3_draft_state_dict",
     "eagle3_deepseekV3_draft_arch",
     "eagle3_mha_deepseekV3_draft_arch",
 ]

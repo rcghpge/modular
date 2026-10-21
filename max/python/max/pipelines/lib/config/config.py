@@ -761,27 +761,6 @@ def _apply_speculative_target_architecture(
     if not target_archs:
         # Nothing to rewrite; the lookup below reports the real problem.
         return None
-    # The Kimi arm below names DFlash v1 and Eagle graphs, which can't
-    # verify a DFlash2 block draft. ``is_dflash()`` is true for v2, so
-    # without this it would happily rewrite a DFlash2 pairing onto a graph
-    # that silently mismatches the drafter. A v2 target selects its own
-    # fused arch from its own arm; leaving the name alone here lets the
-    # lookup reject a pairing no arm claims.
-    v1_or_eagle = not speculative.is_dflash2()
-    if target_archs[0] == "KimiK25ForConditionalGeneration" and v1_or_eagle:
-        draft_archs = (
-            draft_model.huggingface_config.architectures
-            if draft_model is not None
-            else None
-        )
-        if speculative.is_dflash():
-            target_archs[0] = "UnifiedDflashKimiK25ForCausalLM"
-        elif draft_archs and draft_archs[0] == "LlamaForCausalLMEagle3":
-            # MLA target + MHA (Llama-style) Eagle3 draft.
-            target_archs[0] = "Eagle3MHAKimiK25ForCausalLM"
-        else:
-            # MLA target + MLA Eagle3 draft (existing path).
-            target_archs[0] = "Eagle3DeepseekV2ForCausalLM"
     # Nemotron-H's DSpark block drafter declares architectures:
     # ["Qwen3DSparkModel"], the dense Qwen3-style DSpark draft.
     if target_archs[0] == "NemotronHForCausalLM":

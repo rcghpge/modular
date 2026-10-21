@@ -261,7 +261,7 @@ def convert_kimivl_safetensor_state_dict(
 # Eagle3 draft checkpoint adapter
 # ---------------------------------------------------------------------------
 
-# Eagle3 checkpoint key prefix -> Eagle3KimiK25 module path.
+# Eagle3 checkpoint key prefix -> Eagle3DeepseekV3 module path.
 _EAGLE3_KEY_MAP: dict[str, str] = {
     "layers.0.hidden_norm.": "hidden_norm.",
     "layers.0.input_layernorm.": "decoder_layer.input_layernorm.",
@@ -275,20 +275,22 @@ def convert_eagle3_draft_state_dict(
     state_dict: dict[str, Weights],
     **unused_kwargs,
 ) -> dict[str, WeightData]:
-    """Convert an Eagle3 draft checkpoint to Eagle3KimiK25 module keys.
+    """Convert an Eagle3 draft checkpoint to Eagle3DeepseekV3 module keys.
 
     The Eagle3 checkpoint (``nvidia/Kimi-K2.5-Thinking-Eagle3``) has keys:
     ``fc.*``, ``layers.0.*``, ``norm.*``, ``lm_head.*``.
 
     All weights are loaded; ``norm`` and ``lm_head`` are kept independent
     from the target model.  Only ``embed_tokens``
-    is shared from the target.
+    is shared from the target. Float weights are cast to bfloat16, the
+    head's dtype: some drafts ship float32 (``nvidia/Kimi-K2.6-Eagle3``
+    before its 2026-06-11 revision).
 
     Args:
         state_dict: Raw Eagle3 checkpoint.
 
     Returns:
-        State dict with keys matching ``Eagle3KimiK25`` module hierarchy.
+        State dict with keys matching ``Eagle3DeepseekV3`` module hierarchy.
     """
     result: dict[str, WeightData] = {}
 

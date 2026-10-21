@@ -19,12 +19,14 @@ from max.pipelines.lib import SupportedArchitecture, TextTokenizer
 from max.pipelines.modeling.types import PipelineTask
 
 from ..deepseekV3.model_config import DeepseekV3Config
-from ..kimik2_5.weight_adapters import convert_llama_eagle3_draft_state_dict
+from ..kimik2_5.weight_adapters import (
+    convert_eagle3_draft_state_dict,
+    convert_llama_eagle3_draft_state_dict,
+)
 from .model import (
     Eagle3DeepseekV3DraftArchConfig,
     Eagle3MHADeepseekV3DraftArchConfig,
 )
-from .weight_adapters import convert_eagle3_draft_state_dict
 
 # The MLA head's checkpoint names Kimi K2.5's fused Eagle3 architecture, so
 # spec decoding renames it to this one beside a DeepseekV3 target. It has

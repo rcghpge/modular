@@ -56,7 +56,7 @@ from max.nn.kv_cache import (
     MultiKVCacheParams,
 )
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
-from max.pipelines.context import TextContext
+from max.pipelines.context import ImageMetadata, TextContext
 from max.pipelines.kv_cache.memory_planner import MemoryPlanner
 from max.pipelines.modeling.types import InputModality
 from max.pipelines.speculative import proposers, spec_adapters
@@ -71,6 +71,7 @@ from max.profiler import traced
 from transformers import AutoConfig
 
 from ..arch_lookup import ARCH_LOOKUP, SupportedArchitecture
+from ..interfaces.arch_config import ArchConfigWithVisionCache
 from ..interfaces.batch_processor import (
     BatchProcessorRuntime,
     UnifiedSpecDecodeBatchProcessor,
@@ -86,6 +87,7 @@ from ..interfaces.pipeline_model import (
 )
 from ..memory_estimation import MemoryPlan
 from ..utils import CompilationTimer
+from ..vision_encoder_cache import SupportsVisionEncoding, VisionEncodeResult
 
 if TYPE_CHECKING:
     from ..config import KVCacheConfig, MAXModelConfig, PipelineConfig
@@ -178,6 +180,11 @@ def _builds_module(arch: SupportedArchitecture) -> bool:
     ) and ("build_module" in vars(builder))
 
 
+def _encodes_images(arch: SupportedArchitecture) -> bool:
+    """Returns whether ``arch``'s own pipeline model builds a vision graph."""
+    return "build_vision_graph" in vars(arch.pipeline_model)
+
+
 def spec_decode_architecture(
     target: str,
     method: SpeculativeMethod | None,
@@ -192,11 +199,12 @@ def spec_decode_architecture(
     legacy override chain.
 
     The fused architecture is the target's own, changed only where the
-    unified graph differs: it takes text only, sizes one KV tree for the
-    target and the draft and counts the draft's weights beside the target's,
-    and drafts at the width the draft checkpoint was trained for. It runs on
-    more than one device only where both architectures do, and is captured as
-    a device graph only where the draft's graph allows it.
+    unified graph differs: it takes text only unless the target builds a
+    vision graph, sizes one KV tree for the target and the draft and counts
+    the draft's weights beside the target's, and drafts at the width the
+    draft checkpoint was trained for. It runs on more than one device only
+    where both architectures do, and is captured as a device graph only
+    where the draft's graph allows it.
     """
     if (
         method is None
@@ -215,17 +223,26 @@ def spec_decode_architecture(
     draft = ARCH_LOOKUP.find(base.draft_architecture(method, draft_arch))
     if draft is None or not _builds_module(draft):
         return None
+    vision = _encodes_images(base)
     return replace(
         base,
         name=f"{base.name}+{method}",
-        pipeline_model=SpecDecodePipelineModel,
+        pipeline_model=(
+            _SpecDecodeVisionPipelineModel
+            if vision
+            else SpecDecodePipelineModel
+        ),
         batching=_BatchProcessor,
         cascade_pipeline_factory=None,
         supports_device_graph_capture=draft.supports_device_graph_capture,
-        config=SpecDecodeArchConfig,
+        config=(
+            _SpecDecodeVisionArchConfig if vision else SpecDecodeArchConfig
+        ),
         memory_planner=_MemoryPlanner,
-        context_type=TextContext,
-        input_modalities={InputModality.TEXT},
+        context_type=base.context_type if vision else TextContext,
+        input_modalities=(
+            base.input_modalities if vision else {InputModality.TEXT}
+        ),
         multi_gpu_supported=(
             base.multi_gpu_supported and draft.multi_gpu_supported
         ),
@@ -513,11 +530,45 @@ class SpecDecodeArchConfig:
         cls, huggingface_config: Any, model_config: MAXModelConfig
     ) -> int:
         """Returns the target architecture's maximum sequence length."""
-        target = ARCH_LOOKUP.find(huggingface_config.architectures[0])
-        assert target is not None
-        return _config_cls(target).calculate_max_seq_len(
+        return _target_config_cls(huggingface_config).calculate_max_seq_len(
             huggingface_config, model_config
         )
+
+
+class _SpecDecodeVisionArchConfig(SpecDecodeArchConfig):
+    """The config of a pairing that takes images.
+
+    It reports the target's vision-cache facts, so the memory planner
+    reserves the cache. A text-only pairing reports none, whatever its
+    target encodes alone.
+    """
+
+    @classmethod
+    def estimate_vision_cache_entry_bytes(
+        cls, huggingface_config: AutoConfig
+    ) -> int:
+        """Returns the target's vision cache entry size, or ``0`` if none."""
+        target = _target_config_cls(huggingface_config)
+        if not issubclass(target, ArchConfigWithVisionCache):
+            return 0
+        return target.estimate_vision_cache_entry_bytes(huggingface_config)
+
+    @classmethod
+    def get_vision_cache_row_spec(
+        cls, huggingface_config: AutoConfig
+    ) -> tuple[int, DType] | None:
+        """Returns the target's vision cache row, or ``None`` if none."""
+        target = _target_config_cls(huggingface_config)
+        if not issubclass(target, ArchConfigWithVisionCache):
+            return None
+        return target.get_vision_cache_row_spec(huggingface_config)
+
+
+def _target_config_cls(huggingface_config: Any) -> type[Any]:
+    """Returns the arch config class of the named target."""
+    target = ARCH_LOOKUP.find(huggingface_config.architectures[0])
+    assert target is not None
+    return _config_cls(target)
 
 
 class _MemoryPlanner(MemoryPlanner):
@@ -590,14 +641,21 @@ class _Inputs(UnifiedSpecDecodeInputs):
         """Returns the buffers in the order the graph's signature declares."""
         spec = self.spec
         assert spec is not None
-        assert not spec.enable_vision
         kv = tree.leaves(self.kv_cache_inputs) if self.kv_cache_inputs else ()
+        # The pipeline sets the images' embeddings and merge positions on
+        # every batch of a target that encodes images.
+        vision = (
+            (*self.vision_embeddings, *self.vision_scatter_indices)
+            if spec.enable_vision
+            else ()
+        )
         prefix: tuple[Buffer, ...]
         if spec.distributed:
             assert self.host_input_row_offsets is not None
             assert self.data_parallel_splits is not None
             prefix = (
                 self.tokens,
+                *vision,
                 self.input_row_offsets,
                 self.host_input_row_offsets,
                 self.return_n_logits,
@@ -611,6 +669,7 @@ class _Inputs(UnifiedSpecDecodeInputs):
             signals = self.signal_buffers if spec.include_signal_buffers else []
             prefix = (
                 self.tokens,
+                *vision,
                 self.input_row_offsets,
                 self.return_n_logits,
                 *signals,
@@ -662,6 +721,35 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         bind = getattr(self._target_batching, "bind_ep_comm_initializer", None)
         if bind is not None:
             bind(initializer)
+
+    def bind_vision_encoder(
+        self, vision_model: Model, session: InferenceSession
+    ) -> None:
+        """Hands the compiled vision graph to the target's batching.
+
+        A batching that encodes with the target's whole config, as Kimi
+        K2.5's does, gets it too: the pairing keeps only the finalized
+        language config, which has no vision half.
+        """
+        bind_config = getattr(self._target_batching, "bind_model_config", None)
+        if bind_config is not None:
+            target = ARCH_LOOKUP.find(self.spec_config.target_arch)
+            assert target is not None
+            bind_config(
+                _config_cls(target).initialize(
+                    self.runtime.pipeline_config,
+                    max_seq_len=self.runtime.max_seq_len,
+                )
+            )
+        self._target_batching.bind_vision_encoder(
+            vision_model=vision_model, session=session
+        )
+
+    @property
+    def vision(self) -> SupportsVisionEncoding[Any]:
+        """Returns the target's batching, which encodes a batch's images."""
+        assert isinstance(self._target_batching, SupportsVisionEncoding)
+        return self._target_batching
 
     def prepare_initial_token_inputs(
         self,
@@ -959,6 +1047,7 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
         # A reasoning model's drafts may be accepted under the relaxed
         # in-thinking rule.
         thinking = self.pipeline_config.runtime.reasoning_parser is not None
+        vision = _encodes_images(self.pairing.target)
         verify = spec_adapters.verify_for(
             target_arch, target, target_config, hidden_states, draft_config
         )
@@ -988,6 +1077,12 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
             ),
             include_signal_buffers=bool(self.signal_buffers),
             include_in_thinking_phase=thinking,
+            enable_vision=vision,
+            vision_hidden_size=(
+                self.huggingface_config.get_text_config().hidden_size
+                if vision
+                else None
+            ),
         )
         driver_kwargs: dict[str, Any] = dict(
             target_model=target,
@@ -1075,6 +1170,8 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 pinned_bitmask=graph_inputs.pinned_bitmask,
                 wait_payload=graph_inputs.wait_payload,
                 device_bitmask_scratch=graph_inputs.device_bitmask_scratch,
+                vision_embeddings=graph_inputs.vision_embeddings,
+                vision_scatter_indices=graph_inputs.vision_scatter_indices,
                 extra=spec_adapters.extra(
                     target_arch, target_config, graph_inputs.trailing
                 ),
@@ -1085,6 +1182,59 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
 
         model_config.input_spec = nn_model.input_spec
         return graph, weights_registry
+
+
+class _SpecDecodeVisionPipelineModel(SpecDecodePipelineModel):
+    """Serves the fused graph of a target that encodes images.
+
+    The target builds its vision graph, which compiles beside the fused
+    graph, and the target's batching runs it on each batch's new images, as
+    it does when the target serves alone.
+    """
+
+    model_config_cls: ClassVar[type[Any]] = _SpecDecodeVisionArchConfig
+    vision_model: Model
+
+    @traced
+    def load_model(self, session: InferenceSession) -> Model:
+        """Compiles the fused graph, then the target's vision graph."""
+        model = super().load_model(session)
+        with CompilationTimer("vision model") as timer:
+            graph, weights_registry = _pipeline_model(
+                self.pairing.target
+            ).build_vision_graph(ModelLoadContext.from_pipeline_model(self))
+            timer.mark_build_complete()
+            self.vision_model = session.load(
+                graph, weights_registry=weights_registry
+            )
+        self._batching.bind_vision_encoder(self.vision_model, session)
+        return model
+
+    @property
+    def _batching(self) -> _BatchProcessor:
+        assert isinstance(self._batch_processor, _BatchProcessor)
+        return self._batch_processor
+
+    def pack_vision_inputs(
+        self,
+        selection: Sequence[tuple[Any, Sequence[ImageMetadata]]],
+        devices: list[Device],
+    ) -> object | None:
+        """Packs the selected images as the target's batching does."""
+        return self._batching.vision.pack_vision_inputs(selection, devices)
+
+    def vision_execute(
+        self,
+        selection: Sequence[tuple[Any, Sequence[ImageMetadata]]],
+        devices: list[Device],
+        packed: object | None,
+    ) -> VisionEncodeResult:
+        """Encodes the selected images as the target's batching does."""
+        return self._batching.vision.vision_execute(selection, devices, packed)
+
+    def empty_vision_embeddings(self, devices: list[Device]) -> list[Buffer]:
+        """Returns the target's embeddings for a batch with no new images."""
+        return self._batching.vision.empty_vision_embeddings(devices)
 
 
 @dataclass

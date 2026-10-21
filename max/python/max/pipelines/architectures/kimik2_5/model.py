@@ -34,7 +34,7 @@ from max.graph import Module as GraphModule
 from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.nn.comm.ep import EPCommInitializer, EPConfig
 from max.nn.comm.ep.ep_config import calculate_ep_max_tokens_per_rank
-from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface
+from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface, KVCacheParams
 from max.nn.quant_config import (
     InputScaleSpec,
     QuantConfig,
@@ -65,6 +65,7 @@ from max.pipelines.lib.graph_specs import (
     GraphSpec,
     compile_and_init_graphs,
 )
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.lib.vision_encoder_cache import VisionEncodeResult
 from max.pipelines.modeling.config_enums import is_float4_encoding
@@ -73,6 +74,7 @@ from max.profiler import traced
 from transformers import AutoConfig
 from typing_extensions import override
 
+from ..deepseekV3.deepseekV3 import DeepseekV3
 from ..deepseekV3.model import DeepseekV3Inputs
 from .batch_processor import (
     KimiK2_5BatchProcessor,
@@ -81,7 +83,9 @@ from .batch_processor import (
 from .context import KimiK2_5TextAndVisionContext
 from .kimi_nvfp4_policy import infer_kimi_nvfp4_weight_flags
 from .kimik2_5 import KimiK2_5
+from .layers.vision.transformer import Transformer
 from .model_config import KimiK2_5Config, KimiK2_5TextConfig
+from .weight_adapters import _VISION_PREFIXES
 
 logger = logging.getLogger("max.pipelines")
 
@@ -304,35 +308,128 @@ class KimiK2_5Model(
             cache_dtype=cache_dtype,
         )
 
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[DeepseekV3, KimiK2_5TextConfig]:
+        """Builds the language model over the config's devices.
+
+        It embeds tokens only; a caller that runs it beside the vision
+        encoder :meth:`build_vision_graph` builds merges the images in. A
+        caller that sized the cache passes its KV params, and one that reads
+        selected layers names them. It starts expert parallelism's runtime
+        through ``context`` before it shards the experts.
+        """
+        state_dict = _state_dict_under(context, ("language_model.",))
+        config = cls.finalized_config(
+            context.pipeline_config,
+            state_dict,
+            max_seq_len=context.max_seq_len,
+            max_batch_total_tokens=context.max_batch_total_tokens,
+            return_logits=context.return_logits,
+            return_hidden_states=context.return_hidden_states,
+        )
+        if context.kv_params is not None:
+            assert isinstance(context.kv_params, KVCacheParams)
+            config.kv_params = context.kv_params
+        if context.target_layer_ids:
+            config.eagle_aux_hidden_state_layer_ids = list(
+                context.target_layer_ids
+            )
+        context.start_ep(config.ep_config)
+        module = DeepseekV3(config)
+        module.load_state_dict(
+            {
+                name.removeprefix("language_model."): value
+                for name, value in state_dict.items()
+            },
+            weight_alignment=1,
+            strict=True,
+        )
+        return module, config
+
+    @classmethod
+    def build_vision_graph(
+        cls, context: ModelLoadContext
+    ) -> tuple[Graph, dict[str, Any]]:
+        """Builds the vision encoder's graph and the weights it loads, for a
+        caller that runs the language model itself."""
+        state_dict = _state_dict_under(context, _VISION_PREFIXES)
+        config = KimiK2_5Config.initialize(
+            context.pipeline_config, max_seq_len=context.max_seq_len
+        )
+        vision_encoder = Transformer(config.vision_config)
+        vision_encoder.load_state_dict(
+            {
+                name.removeprefix("vision_encoder."): value
+                for name, value in state_dict.items()
+            },
+            weight_alignment=1,
+            strict=True,
+        )
+        spec = GraphSpec(
+            vision_encoder,
+            "kimik2_5_vision_graph",
+            vision_encoder.input_types(),
+            weights=vision_encoder.state_dict(),
+        )
+        return spec.trace(), dict(spec.weights_registry())
+
     def _create_model_config(
         self, state_dict: dict[str, WeightData]
     ) -> KimiK2_5TextConfig:
         """Create model configuration from huggingface config."""
-        config = self.huggingface_config.text_config
+        return self.finalized_config(
+            self.pipeline_config,
+            state_dict,
+            max_seq_len=self.max_seq_len,
+            max_batch_total_tokens=self.planned_max_batch_total_tokens,
+            return_logits=self.return_logits,
+            return_hidden_states=self.return_hidden_states,
+        )
+
+    @classmethod
+    def finalized_config(
+        cls,
+        pipeline_config: PipelineConfig,
+        state_dict: dict[str, WeightData],
+        *,
+        max_seq_len: int,
+        max_batch_total_tokens: int | None,
+        return_logits: ReturnLogits,
+        return_hidden_states: ReturnHiddenStates,
+    ) -> KimiK2_5TextConfig:
+        """Builds the language model's config, finalized against
+        ``state_dict``, which it may preshuffle in place."""
+        huggingface_config = pipeline_config.model.huggingface_config
+        config = huggingface_config.text_config
+        num_devices = len(pipeline_config.model.device_specs)
 
         # quantization_config lives at the top level of the HF config, not
         # under text_config. Propagate it so parse_quant_config() finds it.
-        if hasattr(self.huggingface_config, "quantization_config"):
-            config.quantization_config = (
-                self.huggingface_config.quantization_config
-            )
+        if hasattr(huggingface_config, "quantization_config"):
+            config.quantization_config = huggingface_config.quantization_config
 
         # data_parallel_degree controls the attention strategy:
         #   == num_devices  ->  DP attention  (each device owns a batch shard)
         #   == 1            ->  TP attention  (heads sharded, tokens replicated)
-        data_parallel_degree = self.pipeline_config.model.data_parallel_degree
-        max_batch_total_tokens = self.planned_max_batch_total_tokens
+        data_parallel_degree = pipeline_config.model.data_parallel_degree
         # PipelineConfig would automatically resolve it if not set by user.
         assert max_batch_total_tokens is not None, "max_length must be set"
 
-        if self.pipeline_config.runtime.pipeline_role == "prefill_only":
+        if pipeline_config.runtime.pipeline_role == "prefill_only":
             graph_mode = "prefill"
-        elif self.pipeline_config.runtime.pipeline_role == "decode_only":
+        elif pipeline_config.runtime.pipeline_role == "decode_only":
             graph_mode = "decode"
         else:
             graph_mode = "auto"
 
-        dtype = self.dtype
+        # Initialize config with parameters from pipeline_config
+        model_config = KimiK2_5TextConfig.initialize(
+            pipeline_config, max_seq_len=max_seq_len
+        )
+
+        dtype = model_config.dtype
         quant_config = parse_quant_config(config, state_dict, dtype)
 
         shared_experts_weight_dtype, dense_mlp_layers_without_quant = (
@@ -349,24 +446,25 @@ class KimiK2_5Model(
             )
 
         # Check if EP should be configured
-        ep_size = self.pipeline_config.runtime.ep_size
+        ep_size = pipeline_config.runtime.ep_size
         if ep_size == 1:
             ep_config = None
         else:
-            if ep_size % len(self.devices) != 0:
+            if ep_size % num_devices != 0:
                 raise ValueError(
                     f"ep_size={ep_size} is not divisible by the number of GPUs"
-                    f" on this node ({len(self.devices)}). ep_size must equal"
+                    f" on this node ({num_devices}). ep_size must equal"
                     f" n_gpus_per_node * n_nodes. For a single-node deployment"
-                    f" set ep_size={len(self.devices)}."
+                    f" set ep_size={num_devices}."
                 )
-            n_nodes = ep_size // len(self.devices)
+            n_nodes = ep_size // num_devices
 
+            runtime = pipeline_config.runtime
             ep_max_rank_send_tokens = calculate_ep_max_tokens_per_rank(
-                max_batch_input_tokens=self.pipeline_config.runtime.max_batch_input_tokens,
+                max_batch_input_tokens=runtime.max_batch_input_tokens,
                 ep_size=ep_size,
                 data_parallel_degree=data_parallel_degree,
-                use_allreduce=self.pipeline_config.runtime.ep_use_allreduce,
+                use_allreduce=runtime.ep_use_allreduce,
             )
 
             is_mxfp4 = quant_config is not None and quant_config.is_mxfp4
@@ -379,10 +477,10 @@ class KimiK2_5Model(
                 top_k=config.num_experts_per_tok,
                 n_experts=config.n_routed_experts,
                 max_tokens_per_rank=ep_max_rank_send_tokens,
-                n_gpus_per_node=len(self.devices),
+                n_gpus_per_node=num_devices,
                 n_nodes=n_nodes,
                 dispatch_quant_config=None,
-                use_allreduce=self.pipeline_config.runtime.ep_use_allreduce,
+                use_allreduce=runtime.ep_use_allreduce,
             )
 
             if (
@@ -416,11 +514,6 @@ class KimiK2_5Model(
         else:
             correction_bias_dtype = None
 
-        # Initialize config with parameters from pipeline_config
-        model_config = KimiK2_5TextConfig.initialize(
-            self.pipeline_config, max_seq_len=self.max_seq_len
-        )
-
         # Finalize config with state_dict-dependent parameters
         model_config.norm_dtype = norm_dtype
         model_config.correction_bias_dtype = correction_bias_dtype
@@ -435,10 +528,9 @@ class KimiK2_5Model(
         model_config.dense_mlp_layers_without_quant = (
             dense_mlp_layers_without_quant
         )
-        model_config.return_logits = self.return_logits
-        model_config.return_hidden_states = self.return_hidden_states
+        model_config.return_logits = return_logits
+        model_config.return_hidden_states = return_hidden_states
 
-        num_devices = len(self.devices)
         if num_devices > 1:
             if ep_size > 1:
                 attn_strategy = "TP" if data_parallel_degree == 1 else "DP"
@@ -451,9 +543,7 @@ class KimiK2_5Model(
                 f" ep_size={ep_size}. Use {attn_strategy}-attention +"
                 f" {moe_strategy}-MoE strategy."
             )
-        model_config.eplb_profile_enabled = (
-            self.pipeline_config.runtime.eplb_profile
-        )
+        model_config.eplb_profile_enabled = pipeline_config.runtime.eplb_profile
         return model_config
 
     def _load_state_dict(self) -> dict[str, Any]:
@@ -633,12 +723,7 @@ class KimiK2_5Model(
         only ever sees the per-image-ordered output.
         """
         assert isinstance(self._batch_processor, KimiK2_5BatchProcessorBase)
-        embeddings, token_counts = (
-            self._batch_processor.encode_uncached_chunked(selection)
-        )
-        return VisionEncodeResult(
-            embeddings=embeddings, per_image_token_counts=token_counts
-        )
+        return self._batch_processor.vision_execute(selection, devices, packed)
 
     def empty_vision_embeddings(self, devices: list[Device]) -> list[Buffer]:
         """Per-device ``[0, hidden]`` image embeddings for non-vision steps.
@@ -720,3 +805,20 @@ class KimiK2_5Model(
             num_logical_experts=text.n_routed_experts,
             num_experts_per_token=text.num_experts_per_tok,
         )
+
+
+def _state_dict_under(
+    context: ModelLoadContext, prefixes: tuple[str, ...]
+) -> dict[str, WeightData]:
+    """Adapts only the checkpoint's weights whose names start with
+    ``prefixes``."""
+    assert context.adapter is not None
+    return context.adapter(
+        {
+            name: weight
+            for name, weight in context.weights.items()
+            if name.startswith(prefixes)
+        },
+        huggingface_config=context.huggingface_config,
+        pipeline_config=context.pipeline_config,
+    )

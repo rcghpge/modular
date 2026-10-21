@@ -118,6 +118,11 @@ def register_all_models() -> None:
             "DFlash2DraftModel", ".dflash2_qwen3_5", "dflash2_qwen3_5_arch"
         ),
         _LazyArch(
+            "DFlashKimiK25DraftModel",
+            ".dflash_kimi_k25",
+            "dflash_kimi_k25_draft_arch",
+        ),
+        _LazyArch(
             "DFlashMiMoV2DraftModel",
             ".dflash_mimo_v2",
             "dflash_mimo_v2_draft_arch",
@@ -250,14 +255,6 @@ def register_all_models() -> None:
         ),
         _LazyArch("InternVLChatModel", ".internvl", "internvl_arch"),
         _LazyArch(
-            "Eagle3DeepseekV2ForCausalLM", ".kimik2_5", "eagle3_kimik25_arch"
-        ),
-        _LazyArch(
-            "Eagle3MHAKimiK25ForCausalLM",
-            ".kimik2_5",
-            "eagle3_mha_kimik25_arch",
-        ),
-        _LazyArch(
             "KimiK25ForConditionalGeneration", ".kimik2_5", "kimik2_5_arch"
         ),
         _LazyArch("KimiVLForConditionalGeneration", ".kimik2_5", "kimivl_arch"),
@@ -382,11 +379,6 @@ def register_all_models() -> None:
             "UnifiedDflash2Qwen3_5ForConditionalGeneration",
             ".unified_dflash2_qwen3_5",
             "unified_dflash2_qwen3_5_arch",
-        ),
-        _LazyArch(
-            "UnifiedDflashKimiK25ForCausalLM",
-            ".unified_dflash_kimi_k25",
-            "unified_dflash_kimi_k25_arch",
         ),
         _LazyArch(
             "UnifiedDSparkDeepseekV41ForCausalLM",

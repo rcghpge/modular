@@ -28,6 +28,7 @@ from .block_driver import (
     BlockBatch,
     DraftSampler,
     block_kv_with_dispatch,
+    local_row_offsets,
 )
 from .unified_graph_ops import broadcast_per_device, mask_padded_tail
 
@@ -102,7 +103,9 @@ class DFlashProposer:
     slots after the anchor, so a step may verify fewer proposals than the
     block holds. The target's scales are applied here, since neither its
     embedding nor its head applies them, and a head padded past its
-    tokenizer never proposes a padding id, which no verify accepts.
+    tokenizer never proposes a padding id, which no verify accepts. Under
+    data parallelism each replica writes and drafts only the rows it holds,
+    and the replicated head reads the whole batch back.
     """
 
     samples_from_anchor = False
@@ -141,10 +144,26 @@ class DFlashProposer:
         """Writes the target's context K/V into the draft's cache."""
         self.draft.materialize(
             target_hidden,
-            batch.merged_offsets_per_dev,
+            self._ctx_offsets(batch),
             ctx_kv,
             batch.signal_buffers,
         )
+
+    def _ctx_offsets(self, batch: BlockBatch) -> list[TensorValue]:
+        """The context offsets, over the rows each replica actually holds."""
+        if batch.data_parallel_degree == 1:
+            return list(batch.merged_offsets_per_dev)
+        splits = batch.data_parallel_splits
+        assert splits is not None
+        return [
+            local_row_offsets(
+                batch.merged_offsets_per_dev[i],
+                splits,
+                replica,
+                f"dflash_ctx_offset_split_{i}",
+            )
+            for i, replica in enumerate(batch.replica_of)
+        ]
 
     def embed_block(
         self, batch: BlockBatch, block_ids: TensorValue
@@ -165,8 +184,21 @@ class DFlashProposer:
             [ops.slice_tensor(e, [(slice(0, 1), 1)]) for e in embeds]
         )
         blocks = []
-        for e, mask in zip(embeds, masks, strict=True):
+        for i, (e, mask) in enumerate(zip(embeds, masks, strict=True)):
             anchors = ops.slice_tensor(e, [(slice(1, None), "dflash_anchors")])
+            if batch.data_parallel_degree > 1:
+                splits = batch.data_parallel_splits
+                assert splits is not None
+                replica = batch.replica_of[i]
+                anchors = ops.slice_tensor(
+                    anchors,
+                    [
+                        (
+                            slice(splits[replica], splits[replica + 1]),
+                            f"dflash_anchor_split_{i}",
+                        )
+                    ],
+                )
             tail = ops.broadcast_to(
                 mask.reshape((1, 1, hidden)), (anchors.shape[0], k - 1, hidden)
             )
@@ -215,14 +247,16 @@ class DFlashProposer:
         """Scores the drafted slots through the head and samples them."""
         del accepted
         k, n, hidden = self.block_size, self.num_drafts, self.hidden_size
-        seqs = batch.num_draft_seqs
         # Skip the anchor slot: it carries the committed token, not a proposal.
-        drafted = [
-            hs.rebind([seqs * k, hidden]).reshape((seqs, k, hidden))[
-                :, 1 : 1 + n, :
-            ]
-            for hs in block_hs
-        ]
+        drafted = []
+        for hs in block_hs:
+            rows = hs.shape[0] // k
+            blocks = hs.rebind([rows * k, hidden]).reshape((rows, k, hidden))
+            drafted.append(blocks[:, 1 : 1 + n, :])
+        if batch.data_parallel_degree > 1:
+            # The head is replicated, so every device needs the whole batch
+            # back.
+            drafted = ops.allgather(drafted, batch.signal_buffers, axis=0)
         lm_head = self.draft.lm_head
         if isinstance(lm_head, ColumnParallelLinear):
             logits = lm_head(drafted, batch.signal_buffers)[0]
@@ -236,8 +270,10 @@ class DFlashProposer:
         cap = self.final_logit_softcapping
         if cap is not None:
             logits = ops.tanh(logits / cap) * cap
+        vocab = logits.shape[-1]
+        logits = mask_padded_tail(
+            logits, int(vocab), self.sampleable_vocab_size
+        )
         return sampler.sample_all(
-            mask_padded_tail(
-                logits, int(logits.shape[-1]), self.sampleable_vocab_size
-            )
+            logits.rebind([batch.num_draft_seqs, n, vocab])
         )

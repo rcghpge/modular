@@ -787,6 +787,25 @@ class PipelineModel(
             f"{cls.__qualname__} builds its module only inside its own graph."
         )
 
+    @classmethod
+    def build_vision_graph(
+        cls, context: ModelLoadContext
+    ) -> tuple[Graph, dict[str, Any]]:
+        """Builds the vision encoder's graph and the weights it loads.
+
+        A caller that runs the module :meth:`build_module` builds compiles it
+        beside its own graph, and the architecture's batch processor runs it
+        on each batch's new images.
+
+        Raises:
+            NotImplementedError: If the architecture encodes no images, or
+                only inside its own pipeline model.
+        """
+        del context
+        raise NotImplementedError(
+            f"{cls.__qualname__} builds no vision graph of its own."
+        )
+
     @abstractmethod
     def execute(
         self,

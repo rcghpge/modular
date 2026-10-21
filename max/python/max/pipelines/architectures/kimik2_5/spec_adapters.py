@@ -10,114 +10,104 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Speculative-decoding adapters for a Kimi K2.5 target.
-
-The target is a :class:`DeepseekV3`, but it differs from a bare DeepseekV3
-target in that it may scatter vision embeddings into the merged sequence
-before running its stack. Its MLA draft's proposer only declares its
-names; its MHA draft runs through
-:class:`~max.pipelines.speculative.mla.Eagle3MHAProposer`.
-"""
+"""Kimi K2.5's call: DeepseekV3's, with the batch's images merged in first."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
-from max.graph import (
-    BufferType,
-    TensorType,
-    TensorValue,
-)
+from max.graph import TensorValue, ops
+from max.nn.kernels import scatter_nd_skip_oob_indices
+from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates
-from max.nn.transformer.transformer import captures_by_device
-from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
-from max.pipelines.speculative.driver import (
-    CarryDimNames,
-    SequentialBatch,
+from max.nn.transformer.transformer import (
+    captures_by_device,
+    fuse_captured_hidden_states,
 )
-from max.pipelines.speculative.mla import MLAProposer
-from max.pipelines.speculative.spec_target import Verified
+from max.pipelines.speculative.block_driver import BlockBatch
+from max.pipelines.speculative.driver import SequentialBatch
+from max.pipelines.speculative.spec_adapters.target_adapter import TargetAdapter
+from max.pipelines.speculative.spec_target import DistributedVerify, Verified
 
-from ..deepseekV3.deepseekV3 import DeepseekV3
+from ..deepseekV3.spec_adapters import ep_input_types
 
-__all__ = [
-    "Eagle3KimiK25Proposer",
-    "KimiK25Target",
-]
+if TYPE_CHECKING:
+    from max.pipelines.speculative.spec_adapters import VerifyFn
 
-_TargetHidden = list[list[TensorValue]]
-"""Kimi's Eagle3 captures: one list of aux layers per device."""
+__all__ = ["ep_input_types"]
+
+PRIMARY_KV = ""
 
 
-class KimiK25Target:
-    """The Kimi K2.5 target entry point, optionally scattering vision."""
+def verify(
+    target: Module,
+    target_config: Any,
+    hidden_states: ReturnHiddenStates,
+    draft_config: Any,
+) -> VerifyFn:
+    """Returns the verify of a Kimi K2.5 language model, on every device.
 
-    def __init__(self, target: DeepseekV3, *, enable_vision: bool) -> None:
-        self.target = target
-        self.enable_vision = enable_vision
+    Prefill merges no draft tokens into a row, so the images' merge
+    positions hold in the merged sequence; decode brings no new images. A
+    block draft reads each device's captured layers fused into one tensor.
 
-    def verify(self, batch: SequentialBatch) -> Verified[_TargetHidden]:
-        if self.enable_vision:
-            # Embed, scatter the image embeddings at their merge positions,
-            # then run the rest of the stack. Prefill merges zero draft tokens
-            # per row, so positions stay valid without remapping; decode
-            # introduces no new images.
-            h_per_dev = self.target.embed_tokens(
-                batch.merged_tokens, batch.signal_buffers
-            )
-            h_per_dev = [
-                merge_multimodal_embeddings(
-                    inputs_embeds=h_d,
-                    multimodal_embeddings=img_emb_d,
-                    image_token_indices=img_idx_d,
-                )
-                for h_d, img_emb_d, img_idx_d in zip(
-                    h_per_dev,
-                    batch.vision_embeddings,
-                    batch.vision_scatter_indices,
-                    strict=True,
-                )
-            ]
-            outputs = self.target._process_hidden_states(
-                h_per_dev,
-                batch.signal_buffers,
-                batch.kv_collections,
-                batch.return_n_logits,
-                list(batch.merged_offsets_per_dev),
-                batch.dist.host_merged_offsets,
-                batch.dist.data_parallel_splits,
-                batch.batch_context_lengths,
-                batch.ep_inputs,
-            )
-        else:
-            outputs = self.target(
-                batch.merged_tokens,
-                batch.signal_buffers,
-                batch.kv_collections,
-                batch.return_n_logits,
-                batch.merged_offsets_per_dev,
-                batch.dist.host_merged_offsets,
-                batch.dist.data_parallel_splits,
-                batch.batch_context_lengths,
-                batch.ep_inputs,
-            )
-        return Verified(
-            logits=outputs[1],
-            hidden=captures_by_device(outputs[3:], batch.n_devs),
+    Raises:
+        ValueError: If the target wasn't built to return the layers its
+            draft names.
+    """
+    del target_config, draft_config
+    if hidden_states != ReturnHiddenStates.SELECTED_LAYERS:
+        raise ValueError(
+            "A Kimi K2.5 target verifies only for drafts that read its"
+            f" selected layers. Got {hidden_states.value}."
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        if self.target.ep_manager is None:
-            return ()
-        return self.target.ep_manager.input_types()
+    return DistributedVerify(_verify, target)
 
 
-class Eagle3KimiK25Proposer(MLAProposer[_TargetHidden]):
-    """The MLA-draft Eagle3 proposer."""
+def _verify(
+    target: Any, batch: SequentialBatch | BlockBatch
+) -> Verified[list[list[TensorValue]] | list[TensorValue]]:
+    if isinstance(batch, SequentialBatch):
+        host_offsets = batch.dist.host_merged_offsets
+        splits = batch.dist.data_parallel_splits
+    else:
+        # A distributed signature always declares both.
+        assert batch.host_merged_offsets is not None
+        assert batch.data_parallel_splits is not None
+        host_offsets = batch.host_merged_offsets
+        splits = batch.data_parallel_splits
+    h = [
+        scatter_nd_skip_oob_indices(
+            input=h_dev,
+            updates=ops.cast(images, h_dev.dtype),
+            indices=ops.unsqueeze(positions, -1),
+        )
+        for h_dev, images, positions in zip(
+            target.embed_tokens(batch.merged_tokens, batch.signal_buffers),
+            batch.vision_embeddings,
+            batch.vision_scatter_indices,
+            strict=True,
+        )
+    ]
+    outputs = target._process_hidden_states(
+        h,
+        batch.signal_buffers,
+        batch.kv_collections,
+        batch.return_n_logits,
+        list(batch.merged_offsets_per_dev),
+        host_offsets,
+        splits,
+        batch.batch_context_lengths,
+        batch.ep_inputs,
+    )
+    captures = captures_by_device(outputs[3:], batch.n_devs)
+    if isinstance(batch, BlockBatch):
+        return Verified(
+            logits=outputs[1], hidden=fuse_captured_hidden_states(captures)
+        )
+    return Verified(logits=outputs[1], hidden=captures)
 
-    split_prefix = "eagle3"
-    carry_dim_names = CarryDimNames(prefix="draft_step", per_device=True)
-    uses_thinking_phase = True
-    # In decode mode ALL-hs == LAST-hs, and ALL returns per-device hidden
-    # states directly, avoiding the LAST path's allgather.
-    step_hidden_mode = ReturnHiddenStates.ALL
+
+ADAPTER = TargetAdapter(
+    primary_kv=PRIMARY_KV, ep_input_types=ep_input_types, verify=verify
+)
