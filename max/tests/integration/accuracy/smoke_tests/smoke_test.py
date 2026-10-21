@@ -35,7 +35,8 @@ import logging
 import os
 import shlex
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from functools import cache
 from pathlib import Path
 from pprint import pformat
@@ -56,7 +57,7 @@ from eval_runner import (
     write_github_output,
     write_results,
 )
-from inference_server_harness import start_server
+from inference_server_harness import RunningServer, start_server
 from pydantic import BaseModel, ConfigDict, Field
 from requests.structures import CaseInsensitiveDict
 
@@ -77,8 +78,8 @@ logger = logging.getLogger(__name__)
 
 
 def _metrics_url(framework: str) -> str:
-    """Prometheus ``/metrics`` URL for the given framework (MAX uses port 8001, others 8000)."""
-    port = 8001 if framework in ("max", "max-ci", "max-nightly") else 8000
+    """Prometheus ``/metrics`` URL for the given framework (vLLM and SGLang use port 8000, others 8001)."""
+    port = 8000 if framework in ("vllm", "sglang") else 8001
     return f"http://127.0.0.1:{port}/metrics"
 
 
@@ -186,6 +187,14 @@ class RecipeConfig(BaseModel):
 class ServerCommand(NamedTuple):
     cmd: list[str]
     env: dict[str, str]
+
+
+# Servers for frameworks whose serving code is internal. Their internal
+# entrypoint registers them here before running the smoke test. Each takes the
+# model and the startup timeout in seconds.
+SERVERS: dict[
+    str, Callable[[str, int], AbstractContextManager[RunningServer]]
+] = {}
 
 
 # TODO Refactor this to a model list/matrix specifying type of model
@@ -429,6 +438,11 @@ def get_server_cmd(
     autoscale_devices: bool = True,
     gpu_spec: tuple[str, int],
 ) -> ServerCommand:
+    if framework == "mach-ci":
+        raise click.UsageError(
+            "mach-ci runs only through its internal entrypoint"
+        )
+
     gpu_name, gpu_count = gpu_spec
     env: dict[str, str] = {}
     if recipe_path is None:
@@ -606,7 +620,7 @@ def valid_tasks() -> set[str]:
 )
 @click.option(
     "--framework",
-    type=click.Choice(["sglang", "vllm", "max", "max-ci"]),
+    type=click.Choice(["sglang", "vllm", "max", "max-ci", "mach-ci"]),
     default="max-ci",
     required=False,
     help="Framework to use for the smoke test. Only max-ci is supported when running in bazel.",
@@ -745,37 +759,45 @@ def smoke_test(
     served = hf_model_path
     if recipe_path:
         served = _load_recipe(recipe_path).model.served_model_name or served
-    cmd, server_env = get_server_cmd(
-        framework,
-        hf_model_path,
-        serve_image=serve_image,
-        serve_extra_args=serve_extra_args,
-        recipe_path=recipe_path,
-        autoscale_devices=autoscale_devices,
-        gpu_spec=get_gpu_name_and_count(),
-    )
-
-    if override_tasks:
-        tasks = list(override_tasks)
-    # TODO(SERVSYS-1330): Run the vision task with Cascade once it accepts images.
-    elif is_vision_model(model) and not cascade:
-        tasks = [VISION_TASK, TEXT_TASK]
-    else:
-        tasks = [TEXT_TASK]
-
-    logger.info(f"Starting server with command:\n {' '.join(cmd)}")
-    results = []
-    all_samples = []
     if disable_timeouts:
         timeout = sys.maxsize
     else:
         # TODO(GEX-3508): Reduce timeout once model build time is optimized
         timeout = 2700
+    if framework in SERVERS:
+        if recipe_path:
+            raise ValueError(f"{framework} does not support recipes")
+        serving = SERVERS[framework](hf_model_path, timeout)
+    else:
+        cmd, server_env = get_server_cmd(
+            framework,
+            hf_model_path,
+            serve_image=serve_image,
+            serve_extra_args=serve_extra_args,
+            recipe_path=recipe_path,
+            autoscale_devices=autoscale_devices,
+            gpu_spec=get_gpu_name_and_count(),
+        )
+        logger.info(f"Starting server with command:\n {shlex.join(cmd)}")
+        serving = start_server(cmd, timeout, env_overrides=server_env)
+
+    if override_tasks:
+        tasks = list(override_tasks)
+    # TODO(SERVSYS-1330): Run the vision task with Cascade once it accepts images.
+    # Mach serves text-only here: without a vision MEF the engine refuses
+    # image requests, and the smoke test does not export one yet.
+    elif is_vision_model(model) and not cascade and framework != "mach-ci":
+        tasks = [VISION_TASK, TEXT_TASK]
+    else:
+        tasks = [TEXT_TASK]
+
+    results = []
+    all_samples = []
 
     # TODO(SERVSYS-1318): Cascade serves no /metrics, so Cascade runs report
     # no generated-token count.
     metrics_url = _metrics_url(framework)
-    with start_server(cmd, timeout, env_overrides=server_env) as server:
+    with serving as server:
         logger.info(f"Server started in {server.startup_time:.2f} seconds")
         write_github_output("startup_time", f"{server.startup_time:.2f}")
 

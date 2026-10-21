@@ -159,3 +159,35 @@ def test_8xmi355_stays_opt_in() -> None:
             job["model"] for job in json.loads(result.output)["include"]
         }
         assert scheduled == models, f"{framework} on 8xMI355"
+
+
+def test_mach_skips_variants() -> None:
+    """Mach serves the base repo, so a variant would run without its recipe."""
+    result = CliRunner().invoke(
+        smoke_test_github_matrix.main,
+        ["--framework", "mach-ci", "--run-on-b200"],
+    )
+    assert result.exit_code == 0
+    scheduled = {job["model"] for job in json.loads(result.output)["include"]}
+    assert scheduled
+    assert not {m for m in scheduled if "__" in m}
+
+
+def test_mach_runs_on_b200_only() -> None:
+    result = CliRunner().invoke(
+        smoke_test_github_matrix.main,
+        [
+            "--framework",
+            "mach-ci",
+            "--run-on-b200",
+            "--run-on-mi355",
+            "--run-on-2xb200",
+            "--models-override",
+            "meta-llama/Llama-3.1-8B-Instruct",
+        ],
+    )
+    assert result.exit_code == 0
+    jobs = json.loads(result.output)["include"]
+    assert [job["display_name"] for job in jobs] == [
+        "B200 - meta-llama/Llama-3.1-8B-Instruct"
+    ]

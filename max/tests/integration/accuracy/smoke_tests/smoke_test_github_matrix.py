@@ -170,8 +170,8 @@ def excluded(framework: str, gpu: str, model: str) -> bool:
     A model only runs on the HW listed for it in ``MODELS``.
     """
     tags = MODELS.get(model, set())
-    # Variants run MAX recipes; vLLM/SGLang have no equivalent.
-    if "VARIANT" in tags and framework in {"vllm", "sglang"}:
+    # Variants run MAX recipes; vLLM, SGLang and Mach have no equivalent.
+    if "VARIANT" in tags and framework in {"vllm", "sglang", "mach-ci"}:
         return True
     return gpu not in tags
 
@@ -187,7 +187,7 @@ def parse_override(raw: str | None) -> list[str]:
 @click.command()
 @click.option(
     "--framework",
-    type=click.Choice(["sglang", "vllm", "max-ci", "max"]),
+    type=click.Choice(["sglang", "vllm", "max-ci", "max", "mach-ci"]),
     required=True,
 )
 @click.option(
@@ -234,6 +234,9 @@ def main(
         "8xMI355": run_on_8xmi355,
     }
     gpus = [gpu for gpu, ok in flags.items() if ok]
+    # Mach serves single-GPU models on B200 only, even with --models-override.
+    if framework == "mach-ci":
+        gpus = [gpu for gpu in gpus if gpu == "B200"]
     models = parse_override(models_override) or tier_models(tier)
     ignore_exclusions = models_override is not None
 
