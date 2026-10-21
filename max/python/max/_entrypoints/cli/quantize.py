@@ -28,7 +28,7 @@ from max.experimental.nn.common_layers.quant_linear import (
     QuantizedLinear,
 )
 from max.experimental.tensor import Tensor
-from max.nn.quant_config import QuantConfig, QuantFormat
+from max.nn.quant_config import QuantConfig, WeightSource
 from max.pipelines import (
     PIPELINE_REGISTRY,
 )
@@ -55,17 +55,18 @@ MODEL_NAME = "model"
 
 
 def insert_quantized_linears(
-    module: Module[Any, Any], targets: Iterable[str]
+    module: Module[Any, Any],
+    targets: Iterable[str],
+    quant_config: QuantConfig,
 ) -> None:
+    """Replaces every ``Linear`` matching ``targets`` with a quantized one.
+
+    The config is supplied rather than built here: it is the caller's
+    statement of intent.
+    """
     count = 0
     for key, value in tree.nodes(module, Linear).items():
         if any(re.compile(pattern).search(key) for pattern in targets):
-            quant_config = QuantConfig.nvfp4(
-                mlp_quantized_layers=(),
-                attn_quantized_layers=(),
-            )
-            quant_config.format = QuantFormat.FAKE_QUANT_NVFP4
-
             wrapped = QuantizedLinear(
                 int(value.in_dim),
                 int(value.out_dim),
@@ -81,8 +82,52 @@ def insert_quantized_linears(
     logger.info(f"Quantizing {count} weight tensors.")
 
 
+#: The config each ``--quantization-format`` value selects.
+#:
+#: ``source`` is set here rather than by the caller: the command exists to
+#: quantize a native-precision checkpoint, so CHECKPOINT would describe
+#: bytes that are not there.
+#:
+#: The layer tuples are empty because ``QuantConfig`` selects layers by
+#: index and this command selects them by name instead:
+#: ``insert_quantized_linears`` wraps whatever matches ``--targets``.
+#:
+#: A row here is necessary but not sufficient -- ``quant_ops`` must have a
+#: quantizer registered for the format too, or building the weight raises.
+_ON_THE_FLY: dict[str, QuantConfig] = {
+    "nvfp4": dataclasses.replace(
+        QuantConfig.nvfp4(mlp_quantized_layers=(), attn_quantized_layers=()),
+        source=WeightSource.QUANTIZE,
+    ),
+}
+
+
+def quant_formats() -> tuple[str, ...]:
+    """The values ``--quantization-format`` accepts."""
+    return tuple(sorted(_ON_THE_FLY))
+
+
+def on_the_fly_config(name: str) -> QuantConfig:
+    """The config ``--quantization-format`` selects.
+
+    Raises:
+        ValueError: if ``name`` is not a format this command can produce.
+    """
+    try:
+        config = _ON_THE_FLY[name]
+    except KeyError:
+        raise ValueError(
+            f"unknown quantization format {name!r}; this command can "
+            f"produce {', '.join(quant_formats())}"
+        ) from None
+    # A copy, because QuantConfig is mutable and the table is shared.
+    return dataclasses.replace(config)
+
+
 def _factory_with_layer_quantizers(
-    factory: Callable[[], Any], targets: Iterable[str]
+    factory: Callable[[], Any],
+    targets: Iterable[str],
+    quant_config: QuantConfig,
 ) -> Callable[[], Any]:
     """Returns a factory that quantizes layers before the module is compiled.
 
@@ -114,7 +159,7 @@ def _factory_with_layer_quantizers(
     class QuantizingPipelineModel(pipeline_model_base):
         def _instantiate_module(self, model_config: Any) -> Any:
             nn_model = super()._instantiate_module(model_config)
-            insert_quantized_linears(nn_model, targets)
+            insert_quantized_linears(nn_model, targets, quant_config)
             return nn_model
 
     QuantizingPipelineModel.__name__ = f"Quantizing{model_cls.__name__}"
@@ -128,15 +173,19 @@ def quantize_pipeline(
     sampling_params: SamplingParams,
     targets: Iterable[str],
     prompt: str,
+    quantization_format: str,
     image_urls: Iterable[str] = (),
     num_warmups: int = 0,
     profile: bool = False,
     profile_top_n: int = 15,
 ) -> None:
+    quant_config = on_the_fly_config(quantization_format)
     pipeline_config = PipelineConfig.from_args(pipeline_args)
     retrieved = PIPELINE_REGISTRY.retrieve_factory(pipeline_config)
     tokenizer = retrieved.tokenizer
-    pipeline = _factory_with_layer_quantizers(retrieved.factory, targets)()
+    pipeline = _factory_with_layer_quantizers(
+        retrieved.factory, targets, quant_config
+    )()
     assert isinstance(pipeline, Pipeline)
     log_basic_config(pipeline_config, memory_plan=retrieved.memory_plan)
     logger.info("max_batch_size: %d", pipeline.max_batch_size)

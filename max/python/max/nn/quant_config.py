@@ -94,9 +94,6 @@ class QuantFormat(Enum):
     NVFP4 = "nvfp4"
     """NVIDIA FP4 quantization format."""
 
-    FAKE_QUANT_NVFP4 = "fake-quant-nvfp4"
-    """Checkpoint weights in bf16 precision, quantized to NVFP4 on the fly."""
-
     MXFP4 = "mxfp4"
     """Microscaling FP4 (MX) quantization format."""
 
@@ -114,6 +111,26 @@ class QuantFormat(Enum):
     absmax/127. Weights are RTN-quantized at load (no pre-quantized checkpoint).
     Apple M5 only: routes to the int8 widening-MMA GEMM
     (``int8_matmul.mojo``)."""
+
+
+class WeightSource(Enum):
+    """Where a quantized weight's bytes come from.
+
+    Orthogonal to :class:`QuantFormat`. The format says what a weight *is*
+    once quantized -- its grid, scales and byte layout. The source says how
+    it got that way, which decides only what the checkpoint holds and who
+    does the quantizing.
+
+    Keeping them apart matters because they are read by different code for
+    different reasons. A kernel asks about the format; a weight loader asks
+    about the source.
+    """
+
+    CHECKPOINT = "checkpoint"
+    """Pre-quantized on disk: the checkpoint holds packed data and scales."""
+
+    QUANTIZE = "quantize"
+    """Native precision on disk, quantized on the fly at first use."""
 
 
 @dataclass
@@ -306,6 +323,9 @@ class QuantConfig:
     to 2D ``[M, K//16]`` in the checkpoint."""
 
     _mxfp6_element_format: str = "e2m3"
+
+    source: WeightSource = WeightSource.CHECKPOINT
+    """Where the weight's bytes come from. See :class:`WeightSource`."""
     """Which OCP FP6 encoding an MXFP6 checkpoint holds. Read through
     :attr:`mxfp6_format`, which rejects the question for non-MXFP6 configs."""
 
@@ -506,6 +526,15 @@ class QuantConfig:
     def is_dynamic(self) -> bool:
         """``True`` if this input scale is dynamic."""
         return self.input_scale.origin == ScaleOrigin.DYNAMIC
+
+    @property
+    def quantizes_on_load(self) -> bool:
+        """Whether weights arrive in native precision and are quantized here.
+
+        The format says what weights become; this says whether the
+        checkpoint already holds them that way.
+        """
+        return self.source is WeightSource.QUANTIZE
 
     @property
     def is_nvfp4(self) -> bool:

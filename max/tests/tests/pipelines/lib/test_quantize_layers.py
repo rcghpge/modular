@@ -10,16 +10,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""``insert_quantized_linears`` swaps matched linears for on-the-fly NVFP4."""
+"""Layer substitution, and the format ``--quantization-format`` resolves to."""
 
 from __future__ import annotations
 
-from max._entrypoints.cli.quantize import insert_quantized_linears
+import pytest
+from max._entrypoints.cli.quantize import (
+    insert_quantized_linears,
+    on_the_fly_config,
+    quant_formats,
+)
 from max.experimental import functional as F
 from max.experimental.nn import Linear, Module
 from max.experimental.nn.common_layers.quant_linear import QuantizedLinear
 from max.experimental.nn.common_layers.quant_tensor import NVFP4TensorQuantizer
 from max.experimental.tensor import Tensor
+from max.nn.quant_config import WeightSource
 
 
 class _Block(Module[[Tensor], Tensor]):
@@ -37,7 +43,9 @@ def test_insert_quantized_linears_wraps_only_matching_layers() -> None:
     """Name patterns become fake-quant NVFP4 linears; other linears stay put."""
     with F.lazy():
         block = _Block()
-        insert_quantized_linears(block, [r"q_proj", r"k_proj"])
+        insert_quantized_linears(
+            block, [r"q_proj", r"k_proj"], on_the_fly_config("nvfp4")
+        )
 
         assert isinstance(block.q_proj, QuantizedLinear)
         assert isinstance(block.k_proj, QuantizedLinear)
@@ -60,3 +68,27 @@ def test_insert_quantized_linears_wraps_only_matching_layers() -> None:
             "bias",
         }
         assert {name for name, _ in block.k_proj.parameters} == {"weight"}
+
+
+@pytest.mark.parametrize("name", quant_formats())
+def test_every_offered_format_builds_a_quantize_on_load_config(
+    name: str,
+) -> None:
+    """``--quantization-format`` accepts exactly what it can deliver.
+
+    The source is the point: a config this command hands out must say the
+    bytes arrive in native precision, or the weight loader would look for
+    packed data that the checkpoint does not hold.
+    """
+    config = on_the_fly_config(name)
+    assert config.source is WeightSource.QUANTIZE
+    assert config.quantizes_on_load
+    assert config.format.value == name
+
+
+def test_an_unknown_format_names_the_ones_that_work() -> None:
+    """A typo should not surface as a KeyError from a private dict."""
+    with pytest.raises(ValueError, match="unknown quantization format") as exc:
+        on_the_fly_config("fp4-but-faster")
+    for name in quant_formats():
+        assert name in str(exc.value)

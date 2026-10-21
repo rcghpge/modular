@@ -36,6 +36,7 @@ from max.nn.quant_config import (
     ScaleGranularity,
     ScaleOrigin,
     WeightScaleSpec,
+    WeightSource,
 )
 
 # FP8 block-scaled weight block size, matching the deepseekV3 FP8 checkpoint.
@@ -144,6 +145,4 @@ def nvfp4_quant_config() -> QuantConfig:
 @pytest.fixture
 def nvfp4_fake_quant_config(nvfp4_quant_config: QuantConfig) -> QuantConfig:
     """NVFP4 config whose weights are quantized from bf16 at runtime."""
-    return dataclasses.replace(
-        nvfp4_quant_config, format=QuantFormat.FAKE_QUANT_NVFP4
-    )
+    return dataclasses.replace(nvfp4_quant_config, source=WeightSource.QUANTIZE)

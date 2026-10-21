@@ -310,52 +310,71 @@ class NVFP4Tensor(_QuantizedWeight):
         )
 
 
-class NVFP4TensorQuantizer(QTensor):
-    """FakeQuant-style weight that quantizes to NVFP4 on first use.
+class _Quantizer(QTensor):
+    """Wraps a native-precision weight, quantizing it on first use.
 
-    Unlike :class:`NVFP4Tensor`, which holds a checkpoint's pre-quantized
+    Unlike the containers above, which hold a checkpoint's pre-quantized
     weight and scales, this holds the checkpoint's native-precision
-    ``weight``. :attr:`quant_tensor` quantizes it on first use and caches the
-    :class:`NVFP4Tensor`, which quant ops dispatch on, so repeated matmuls,
-    eager or traced, quantize once.
+    ``weight``. :attr:`quant_tensor` quantizes it on first use and caches
+    the container, which quant ops dispatch on, so repeated matmuls --
+    eager or traced -- quantize once. A subclass wanting to re-quantize
+    under different parameters invalidates ``quant_tensor`` instead.
+
+    Everything here is format-independent; a subclass supplies only
+    ``_quantize``.
     """
 
     weight: Tensor
+    _block_size: tuple[int, int]
 
-    def __init__(
-        self,
-        tensor: Tensor,
-        block_size: tuple[int, int] = (1, 16),
-    ):
+    def __init__(self, tensor: Tensor, block_size: tuple[int, int]):
         if int(tensor.shape[-1]) % block_size[-1]:
             raise ValueError(
-                f"NVFP4 needs a K that is a multiple of {block_size[-1]}, got "
-                f"{tensor.shape[-1]}"
+                f"{type(self).__name__} needs a K that is a multiple of "
+                f"{block_size[-1]}, got {tensor.shape[-1]}"
             )
         self.weight = tensor
         self._block_size = block_size
+
+    def _quantize(self) -> QTensor:
+        """Produces the quantized container. The only format-specific part."""
+        raise NotImplementedError
+
+    @cached_property
+    def quant_tensor(self) -> Any:
+        """Holds a cached quantized tensor."""
+        return self._quantize()
 
     @property
     def shape(self) -> Shape:
         """Delegates shape to underlying tensor."""
         return self.weight.shape
 
+    @property
+    def block_size(self) -> tuple[int, int]:
+        """Quantization block shape as ``(rows, cols)``."""
+        return self._block_size
+
     def __tree_flatten__(self) -> tuple[dict[str, Any], None]:
         # Not vars(self): that also holds the cached quant_tensor once it is
         # computed, which is no weight to load.
         return {"weight": self.weight, "_block_size": self._block_size}, None
 
-    def to(
-        self, target: Device | DeviceMesh | DeviceMapping
-    ) -> NVFP4TensorQuantizer:
+    def to(self, target: Device | DeviceMesh | DeviceMapping) -> Self:
         """Delegates placement to underlying tensor."""
         self.weight = self.weight.to(target)
         return self
 
-    @property
-    def block_size(self) -> tuple[int, int]:
-        """Quantization block shape as ``(rows, cols)``."""
-        return self._block_size
+
+class NVFP4TensorQuantizer(_Quantizer):
+    """On-the-fly NVFP4 quantization of a bf16 weight."""
+
+    def __init__(
+        self,
+        tensor: Tensor,
+        block_size: tuple[int, int] = (1, 16),
+    ):
+        super().__init__(tensor, block_size)
 
     def _quantize(self) -> NVFP4Tensor:
         amax = (

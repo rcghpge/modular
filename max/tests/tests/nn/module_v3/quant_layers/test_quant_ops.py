@@ -71,16 +71,31 @@ def test_predicates_separate_fp8_from_nvfp4(
     assert not quant_ops.is_nvfp4_quantized(None)
 
 
-def test_fake_quant_is_not_checkpoint_nvfp4(
+def test_source_is_orthogonal_to_format(
     nvfp4_quant_config: QuantConfig, nvfp4_fake_quant_config: QuantConfig
 ) -> None:
-    """Runtime NVFP4 quantization is a separate format from packed checkpoints."""
-    assert quant_ops.is_nvfp4_fake_quantized(nvfp4_fake_quant_config)
-    assert not quant_ops.is_nvfp4_fake_quantized(nvfp4_quant_config)
-    assert not quant_ops.is_nvfp4_fake_quantized(None)
+    """On-the-fly NVFP4 is still NVFP4; only its source differs.
 
-    assert not quant_ops.is_nvfp4_quantized(nvfp4_fake_quant_config)
+    The format answers what the weight becomes, so both configs say NVFP4.
+    The source answers what the checkpoint holds, and only there do they
+    diverge.
+    """
     assert quant_ops.is_nvfp4_quantized(nvfp4_quant_config)
+    assert quant_ops.is_nvfp4_quantized(nvfp4_fake_quant_config)
+
+    assert not nvfp4_quant_config.quantizes_on_load
+    assert nvfp4_fake_quant_config.quantizes_on_load
+
+
+def test_storage_dtype_follows_the_source_not_the_format(
+    nvfp4_quant_config: QuantConfig, nvfp4_fake_quant_config: QuantConfig
+) -> None:
+    """A weight quantized on load is bf16 on disk, whatever it becomes."""
+    assert quant_ops.routed_weight_dtype(nvfp4_quant_config) == DType.uint8
+    assert (
+        quant_ops.routed_weight_dtype(nvfp4_fake_quant_config) == DType.bfloat16
+    )
+    assert quant_ops.routed_weight_dtype(None) == DType.bfloat16
 
 
 def test_only_nvfp4_needs_dispatch_scales_and_offsets(
@@ -94,6 +109,33 @@ def test_only_nvfp4_needs_dispatch_scales_and_offsets(
     assert quant_ops.moe_requires_scales_offsets(nvfp4_quant_config)
     assert not quant_ops.moe_requires_scales_offsets(fp8_quant_config)
     assert not quant_ops.moe_requires_scales_offsets(None)
+
+
+def test_dispatch_predicates_refuse_on_the_fly_weights(
+    nvfp4_fake_quant_config: QuantConfig,
+) -> None:
+    """A quantize-on-load config is refused rather than silently answered.
+
+    Returning ``False`` would decide by default a case nobody has reasoned
+    about, and would surface as a wrong unpack arity in ``from_dispatch``
+    well below the decision that caused it.
+    """
+    for predicate in (
+        quant_ops.ep_requires_dispatch_scales,
+        quant_ops.moe_requires_scales_offsets,
+    ):
+        with pytest.raises(NotImplementedError, match="quantized on load"):
+            predicate(nvfp4_fake_quant_config)
+
+
+def test_dispatch_predicates_answer_checkpoint_weights(
+    nvfp4_quant_config: QuantConfig, fp8_quant_config: QuantConfig
+) -> None:
+    """Checkpoint-sourced configs still get an ordinary answer."""
+    assert quant_ops.ep_requires_dispatch_scales(nvfp4_quant_config)
+    assert quant_ops.moe_requires_scales_offsets(nvfp4_quant_config)
+    assert not quant_ops.ep_requires_dispatch_scales(fp8_quant_config)
+    assert not quant_ops.ep_requires_dispatch_scales(None)
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +190,12 @@ def test_quantized_weight_nvfp4_fake(
         assert isinstance(weight, NVFP4TensorQuantizer)
         assert weight.block_size == (1, 16)
         assert list(weight.shape) == [_MOE_DIM, _HIDDEN_DIM]
+        # The dtype the checkpoint holds, not whatever device happens to be
+        # available: this matches what `routed_weight_dtype` promises.
         assert weight.weight.dtype == DType.bfloat16
+        assert weight.weight.dtype == quant_ops.routed_weight_dtype(
+            nvfp4_fake_quant_config
+        )
 
 
 def test_quantized_weight_rejects_unsupported_format(

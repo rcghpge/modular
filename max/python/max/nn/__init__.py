@@ -77,6 +77,7 @@ from .quant_config import (
     ScaleGranularity,
     ScaleOrigin,
     WeightScaleSpec,
+    WeightSource,
 )
 from .rotary_embedding import (
     DynamicRotaryEmbedding,
@@ -169,6 +170,7 @@ __all__ = [
     "VocabParallelEmbedding",
     "WeightNormConvTranspose1d",
     "WeightScaleSpec",
+    "WeightSource",
     "YarnRotaryEmbedding",
     "YarnScalingParams",
     "build_max_lengths_tensors",

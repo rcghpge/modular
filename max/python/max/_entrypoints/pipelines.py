@@ -721,6 +721,17 @@ def cli_pipeline(
     help="Tensor-name regex to quantize (repeatable)",
 )
 @click.option(
+    "--quantization-format",
+    type=str,
+    default="nvfp4",
+    show_default=True,
+    help=(
+        "Format the targeted weights are quantized into on load. Only"
+        " formats that can be produced on the fly are accepted; the error"
+        " lists them."
+    ),
+)
+@click.option(
     "--prompt",
     type=str,
     default="I believe the meaning of life is",
@@ -775,6 +786,7 @@ def cli_pipeline(
 )
 def quantize(
     targets: list[str],
+    quantization_format: str,
     prompt: str,
     image_url: list[str],
     num_warmups: int,
@@ -845,6 +857,7 @@ def quantize(
         ),
         targets=targets,
         prompt=prompt,
+        quantization_format=quantization_format,
         image_urls=image_url,
         num_warmups=num_warmups,
         profile=profile,

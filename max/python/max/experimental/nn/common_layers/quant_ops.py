@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from max.driver import CPU, accelerator_api, accelerator_architecture_name
 from max.dtype import DType
@@ -36,15 +36,11 @@ from max.experimental.tensor import Tensor
 from max.graph import TensorValue, ops
 from max.nn.activation import GatedActivation
 from max.nn.comm.ep import EPConfig
-from max.nn.kernels import (
-    block_scales_interleave as _block_scales_interleave,
-)
+from max.nn.kernels import block_scales_interleave as _block_scales_interleave
 from max.nn.kernels import (
     dynamic_block_scaled_matmul as _dynamic_block_scaled_matmul,
 )
-from max.nn.kernels import (
-    dynamic_scaled_matmul as _dynamic_scaled_matmul,
-)
+from max.nn.kernels import dynamic_scaled_matmul as _dynamic_scaled_matmul
 from max.nn.kernels import (
     grouped_dynamic_scaled_fp8_matmul as _grouped_dynamic_scaled_fp8_matmul,
 )
@@ -343,14 +339,6 @@ def is_nvfp4_quantized(quant_config: QuantConfig | None) -> bool:
     return quant_config is not None and quant_config.is_nvfp4
 
 
-def is_nvfp4_fake_quantized(quant_config: QuantConfig | None) -> bool:
-    """Return ``True`` if ``quant_config`` selects Fake Quant NVFP4 block-scaled weights."""
-    return (
-        quant_config is not None
-        and quant_config.format == QuantFormat.FAKE_QUANT_NVFP4
-    )
-
-
 @dataclass(frozen=True)
 class EPDispatchPayload:
     """Named, per-device view of the fused EP dispatch outputs.
@@ -390,10 +378,7 @@ class EPDispatchPayload:
             list(column) for column in zip(*dispatch_results, strict=True)
         ]
 
-        if (
-            quant_config is not None
-            and quant_config.format == QuantFormat.NVFP4
-        ):
+        if _dispatch_format(quant_config) == QuantFormat.NVFP4:
             tokens, scales, expert_start, scales_offset, expert_ids, _ = columns
             return cls(
                 tokens=tokens,
@@ -453,34 +438,111 @@ class EPDispatchPayload:
         return self.tokens
 
 
+def _dispatch_format(quant_config: QuantConfig | None) -> QuantFormat | None:
+    """The weight format a dispatch kernel will see, or ``None`` if unquantized.
+
+    Routed-expert weights are stacked tensors rather than ``Linear``
+    submodules, and on-the-fly quantization only replaces ``Linear``, so it
+    cannot produce one through :func:`insert_quantized_linears`. Nothing
+    stops a QUANTIZE-sourced config reaching a MoE layer by another route,
+    though, and that case has not been reasoned about: whether such a
+    dispatch should carry scales is a real question, since its activations
+    still need quantizing for an FP4 matmul.
+
+    Answering it here would decide it by default, and the answer sets how
+    many columns :meth:`EPDispatchPayload.from_dispatch` unpacks -- so a
+    wrong one surfaces as a tuple-arity error well below the cause. Refuse
+    instead, at the point the assumption breaks.
+
+    Raises:
+        NotImplementedError: if the config quantizes weights on load.
+    """
+    if quant_config is None:
+        return None
+    if quant_config.quantizes_on_load:
+        raise NotImplementedError(
+            "Dispatch does not support weights quantized on load; got "
+            f"source={quant_config.source.value} for "
+            f"{quant_config.format.value}. Load a pre-quantized checkpoint "
+            "for routed-expert weights."
+        )
+    return quant_config.format
+
+
 def ep_requires_dispatch_scales(quant_config: QuantConfig | None) -> bool:
-    """Return ``True`` if the EP dispatch kernel needs input scales."""
-    return quant_config is not None and quant_config.format == QuantFormat.NVFP4
+    """Return ``True`` if the EP dispatch kernel needs input scales.
+
+    Takes a routed-expert config. The answer decides how many columns
+    :meth:`EPDispatchPayload.from_dispatch` unpacks, so it describes the
+    kernel's output shape rather than a preference.
+
+    Refuses a quantize-on-load config rather than answering -- see
+    :func:`_dispatch_format`.
+    """
+    return _dispatch_format(quant_config) == QuantFormat.NVFP4
 
 
 def moe_requires_scales_offsets(quant_config: QuantConfig | None) -> bool:
     """Return ``True`` if the MoE dispatch kernel needs scales offsets.
 
-    Note, currently matches `ep_requires_dispatch_scales` but may diverge
-    in the future.
+    Note, currently matches :func:`ep_requires_dispatch_scales` but may
+    diverge. Refuses a quantize-on-load config rather than answering -- see
+    :func:`_dispatch_format`.
     """
-    return quant_config is not None and quant_config.format == QuantFormat.NVFP4
+    return _dispatch_format(quant_config) == QuantFormat.NVFP4
 
 
-_SUPPORTED_FORMATS = (
-    QuantFormat.BLOCKSCALED_FP8,
-    QuantFormat.NVFP4,
-    QuantFormat.FAKE_QUANT_NVFP4,
-)
+#: The container a pre-quantized checkpoint loads into, per format. Adding a
+#: format is an entry here, not a branch in :func:`quantized_weight`.
+class _ContainerFactory(Protocol):
+    """Builds a zero-filled container for a pre-quantized checkpoint.
+
+    The registries hold classes, so this describes the class object rather
+    than the instance. What a format must supply is the ability to build an
+    unloaded parameter -- not a common base class, which is why this is a
+    protocol and not ``type[QTensor]``.
+    """
+
+    def zeros(
+        self, shape: tuple[int, int], *, block_size: tuple[int, int]
+    ) -> QuantAwareTensor: ...
+
+
+class _QuantizerFactory(Protocol):
+    """Wraps a native-precision tensor, quantizing it on first use."""
+
+    def __call__(
+        self, tensor: Tensor, block_size: tuple[int, int]
+    ) -> QuantAwareTensor: ...
+
+
+_CONTAINERS: dict[QuantFormat, _ContainerFactory] = {
+    QuantFormat.BLOCKSCALED_FP8: FP8BlockTensor,
+    QuantFormat.NVFP4: NVFP4Tensor,
+}
+
+#: The wrapper that quantizes a native-precision weight on first use. Only
+#: formats that can be produced on the fly appear here, which is why this is
+#: a separate mapping rather than a field on the container.
+_QUANTIZERS: dict[QuantFormat, _QuantizerFactory] = {
+    QuantFormat.NVFP4: NVFP4TensorQuantizer,
+}
+
+#: Dtype of the weight as the CHECKPOINT holds it, per format.
+_STORAGE_DTYPES: dict[QuantFormat, DType] = {
+    QuantFormat.BLOCKSCALED_FP8: DType.float8_e4m3fn,
+    QuantFormat.NVFP4: DType.uint8,
+}
 
 
 def routed_weight_dtype(quant_config: QuantConfig | None) -> DType:
-    """The storage dtype :func:`quantized_weight` picks for ``quant_config``."""
-    if is_nvfp4_quantized(quant_config):
-        return DType.uint8
-    if is_fp8_block_quantized(quant_config):
-        return DType.float8_e4m3fn
-    return DType.bfloat16
+    """The storage dtype :func:`quantized_weight` picks for ``quant_config``.
+
+    Weights quantized on the fly are bf16 on disk whatever they will become.
+    """
+    if quant_config is None or quant_config.quantizes_on_load:
+        return DType.bfloat16
+    return _STORAGE_DTYPES.get(quant_config.format, DType.bfloat16)
 
 
 def quantized_weight(
@@ -490,35 +552,44 @@ def quantized_weight(
 ) -> QuantAwareTensor:
     """Build a Linear-shaped ``[out_dim, in_dim]`` weight parameter.
 
-    Returns an :class:`FP8BlockTensor` for FP8 block scaling, an
-    :class:`NVFP4Tensor` for NVFP4, otherwise a plain bf16 :class:`Tensor`.
+    The result is the *unloaded* parameter the weight loader binds into, so
+    its dtype has to match what the checkpoint holds: a quantized container
+    when the bytes are pre-quantized, a float tensor wrapped in a quantizer
+    when they are not.
+
+    There are three cases to consider: no config, a pre-quantized checkpoint,
+    and quantize-on-load.
     """
-    if quant_config and quant_config.format not in _SUPPORTED_FORMATS:
+    shape = (int(out_dim), int(in_dim))
+    if quant_config is None:
+        return Tensor.zeros(shape)
+
+    registry = _QUANTIZERS if quant_config.quantizes_on_load else _CONTAINERS
+    if quant_config.format not in registry:
+        known = ", ".join(sorted(f.value for f in registry))
         raise ValueError(
-            f"Quant type {quant_config.format} is not yet supported."
+            f"Quant type {quant_config.format} is not yet supported"
+            + (
+                " for on-the-fly quantization"
+                if quant_config.quantizes_on_load
+                else ""
+            )
+            + f"; known: {known}."
         )
-    if is_nvfp4_quantized(quant_config):
-        assert quant_config is not None
-        block_size = quant_config.weight_scale.block_size
-        assert block_size is not None
-        return NVFP4Tensor.zeros(
-            (int(out_dim), int(in_dim)), block_size=block_size
+
+    block_size = quant_config.weight_scale.block_size
+    assert block_size is not None
+    if quant_config.quantizes_on_load:
+        # Pinned, not left to the ambient default. `Tensor.zeros` picks
+        # float32 on CPU and bfloat16 on an accelerator, which would make a
+        # parameter's dtype depend on the hardware present when it is built
+        # -- and disagree with what `routed_weight_dtype` tells callers the
+        # checkpoint holds.
+        return _QUANTIZERS[quant_config.format](
+            Tensor.zeros(shape, dtype=routed_weight_dtype(quant_config)),
+            block_size=block_size,
         )
-    if is_nvfp4_fake_quantized(quant_config):
-        assert quant_config is not None
-        block_size = quant_config.weight_scale.block_size
-        assert block_size is not None
-        return NVFP4TensorQuantizer(
-            Tensor.zeros((int(out_dim), int(in_dim))), block_size=block_size
-        )
-    if is_fp8_block_quantized(quant_config):
-        assert quant_config is not None
-        block_size = quant_config.weight_scale.block_size
-        assert block_size is not None
-        return FP8BlockTensor.zeros(
-            (int(out_dim), int(in_dim)), block_size=block_size
-        )
-    return Tensor.zeros((int(out_dim), int(in_dim)))
+    return _CONTAINERS[quant_config.format].zeros(shape, block_size=block_size)
 
 
 def stack(items: list[QuantAwareTensor], axis: int = 0) -> QuantAwareTensor:

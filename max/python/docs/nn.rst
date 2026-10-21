@@ -191,6 +191,7 @@ Quantization
 
    QuantConfig
    QuantFormat
+   WeightSource
    InputScaleSpec
    ScaleGranularity
    ScaleOrigin
@@ -227,4 +228,3 @@ Functions
    forward_moe_sharded_layers
    split_batch
    split_batch_replicated
-
