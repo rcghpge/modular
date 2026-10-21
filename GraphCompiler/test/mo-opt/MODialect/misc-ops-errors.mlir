@@ -813,6 +813,17 @@ mo.graph @squeeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tenso
   mo.output %res : !mo.tensor<[2], si32>
 }
 
+// -----
+
+mo.graph @squeeze_index_out_of_range(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[3], si32> {
+  %indices = mo.constant <#M.dense_array<-10> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+
+  // -10 is outside [-4, 4); canonicalization must not wrap it onto a valid axis.
+  // expected-error@+1 {{'mo.squeeze_shape' op Squeeze index not in [-in_rank, in_rank)}}
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[3], si32>
+  mo.output %res : !mo.tensor<[3], si32>
+}
+
 
 //===----------------------------------------------------------------------===//
 // UnsqueezeOp
@@ -838,6 +849,17 @@ mo.graph @unsqueeze_same_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.ten
   // expected-error@+1 {{'mo.unsqueeze_shape' op Padding indices pad the same dimension twice}}
   %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[7], si32>
   mo.output %res : !mo.tensor<[7], si32>
+}
+
+// -----
+
+mo.graph @unsqueeze_index_out_of_range(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[5], si32> {
+  %indices = mo.constant <#M.dense_array<5> : tensor<1xsi32>> : !mo.tensor<[1], si32>
+
+  // 5 is outside [-5, 5) for the rank-5 output.
+  // expected-error@+1 {{'mo.unsqueeze_shape' op Unsqueeze index not in [-out_rank, out_rank)}}
+  %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[1], si32>) -> !mo.tensor<[5], si32>
+  mo.output %res : !mo.tensor<[5], si32>
 }
 
 // -----

@@ -1563,18 +1563,20 @@ LogicalResult SqueezeShapeOp::canonicalize(SqueezeShapeOp op,
     return failure();
 
   SmallVector<int64_t> &indices = maybeIndices.value();
+  int64_t inputRank = inputShapeType.getNumElements().value();
   bool changedIndices = false;
   for (int64_t &index : indices) {
+    // Leave an out-of-range index for the verifier to reject; normalizing it
+    // would land on a valid axis after enough rewrites.
+    if (index < -inputRank || index >= inputRank)
+      return failure();
     if (index < 0) {
-      index += inputShapeType.getNumElements().value();
+      index += inputRank;
       changedIndices = true;
     }
   }
 
-  bool isSorted = true;
-  for (size_t i = 0, e = indices.size() - 1; i < e; ++i)
-    isSorted = indices[i] <= indices[i + 1];
-  if (!isSorted) {
+  if (!llvm::is_sorted(indices)) {
     llvm::sort(indices);
     changedIndices = true;
   }
@@ -2166,17 +2168,19 @@ LogicalResult UnsqueezeShapeOp::canonicalize(UnsqueezeShapeOp op,
   if (!maybeIndices || !inputShapeType.getNumElements().has_value())
     return failure();
   SmallVector<int64_t> &indices = maybeIndices.value();
+  int64_t outputRank = inputShapeType.getNumElements().value() + indices.size();
   bool changedIndices = false;
   for (int64_t &index : indices) {
+    // Leave an out-of-range index for the verifier to reject; normalizing it
+    // would land on a valid axis after enough rewrites.
+    if (index < -outputRank || index >= outputRank)
+      return failure();
     if (index < 0) {
-      index += inputShapeType.getNumElements().value() + indices.size();
+      index += outputRank;
       changedIndices = true;
     }
   }
-  bool isSorted = true;
-  for (size_t i = 0; i < indices.size() - 1 && isSorted; ++i)
-    isSorted = indices[i] <= indices[i + 1];
-  if (!isSorted) {
+  if (!llvm::is_sorted(indices)) {
     llvm::sort(indices);
     changedIndices = true;
   }

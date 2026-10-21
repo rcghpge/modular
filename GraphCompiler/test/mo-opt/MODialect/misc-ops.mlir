@@ -393,11 +393,11 @@ mo.graph @reshape_fold_multi_dims() -> !mo.tensor<[2, 2], si32> {
 //===----------------------------------------------------------------------===//
 
 // CHECK: mo.graph @squeeze_shape
-// CHECK-NEXT: %[[RESULT1:.*]] = mo.constant <#M.dense_array<0, 2, 6> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+// CHECK-NEXT: %[[RESULT1:.*]] = mo.constant <#M.dense_array<0, 2, 3> : tensor<3xsi64>> : !mo.tensor<[3], si64>
 // CHECK-NEXT: %[[RESULT2:.*]] = mo.squeeze_shape(%[[___:.*]], %[[RESULT1]]) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
 // CHECK-NEXT: mo.output %1 : !mo.tensor<[1], si32>
 mo.graph @squeeze_shape(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[1], si32> {
-  %indices = mo.constant <#M.dense_array<0, 2, 6> : tensor<3xsi64>> : !mo.tensor<[3], si64>
+  %indices = mo.constant <#M.dense_array<0, 2, 3> : tensor<3xsi64>> : !mo.tensor<[3], si64>
   %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si64>) -> !mo.tensor<[1], si32>
   mo.output %res : !mo.tensor<[1], si32>
 }
@@ -415,6 +415,23 @@ mo.graph @squeeze_shape_canonicalize(%input_shape: !mo.tensor<[4], si32>) -> !mo
   %indices = mo.constant <#M.dense_array<-1, -3, 0> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[1], si32>
   mo.output %res : !mo.tensor<[1], si32>
+}
+
+// Indices whose last pair is already in order still get sorted.
+// CHECK: mo.graph @squeeze_shape_canonicalize_unsorted
+// CHECK-NEXT: %[[RESULT1:.*]] = mo.constant <#M.dense_array<0, 1, 3> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+mo.graph @squeeze_shape_canonicalize_unsorted(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[1], si32> {
+  %indices = mo.constant <#M.dense_array<3, 0, 1> : tensor<3xsi32>> : !mo.tensor<[3], si32>
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[1], si32>
+  mo.output %res : !mo.tensor<[1], si32>
+}
+
+// An empty constant index set is valid and removes nothing.
+// CHECK: mo.graph @squeeze_shape_empty_indices
+mo.graph @squeeze_shape_empty_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32> {
+  %indices = mo.constant <#M.dense_array<> : !M.array<0xsi64>> : !mo.tensor<[0], si64>
+  %res = mo.squeeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[0], si64>) -> !mo.tensor<[4], si32>
+  mo.output %res : !mo.tensor<[4], si32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -444,6 +461,14 @@ mo.graph @unsqueeze_shape_canonicalize(%input_shape: !mo.tensor<[4], si32>) -> !
   %indices = mo.constant <#M.dense_array<-1, -7, 2> : tensor<3xsi32>> : !mo.tensor<[3], si32>
   %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[3], si32>) -> !mo.tensor<[7], si32>
   mo.output %res : !mo.tensor<[7], si32>
+}
+
+// An empty constant index set is valid and inserts nothing.
+// CHECK: mo.graph @unsqueeze_shape_empty_indices
+mo.graph @unsqueeze_shape_empty_indices(%input_shape: !mo.tensor<[4], si32>) -> !mo.tensor<[4], si32> {
+  %indices = mo.constant <#M.dense_array<> : !M.array<0xsi64>> : !mo.tensor<[0], si64>
+  %res = mo.unsqueeze_shape(%input_shape, %indices) : (!mo.tensor<[4], si32>, !mo.tensor<[0], si64>) -> !mo.tensor<[4], si32>
+  mo.output %res : !mo.tensor<[4], si32>
 }
 
 //===----------------------------------------------------------------------===//

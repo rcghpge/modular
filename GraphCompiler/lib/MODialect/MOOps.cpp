@@ -3083,20 +3083,31 @@ LogicalResult UnsqueezeShapeOp::verify() {
   if (getInputShape().getType().getDtype() != getResult().getType().getDtype())
     return emitOpError("Expect in and out DTypes to be the same type");
 
-  // Check indices don't point to the same index
+  std::optional<int64_t> inputShapeSize =
+      getInputShape().getType().getNumElements();
+
+  // Check indices don't point to the same index. Negative indices are
+  // normalized first, so that -1 and 5 on a rank-6 output count as the same.
   std::optional<SmallVector<int64_t>> maybeIndices =
       tryGetConstantIntVector(getPaddingIndices());
   if (maybeIndices) {
     SmallVector<int64_t> &indices = maybeIndices.value();
+    if (inputShapeSize) {
+      int64_t outputRank = *inputShapeSize + indices.size();
+      for (int64_t &index : indices) {
+        if (index < -outputRank || index >= outputRank)
+          return emitOpError("Unsqueeze index not in [-out_rank, out_rank)");
+        if (index < 0)
+          index += outputRank;
+      }
+    }
     llvm::sort(indices);
-    for (size_t i = 0; i < indices.size() - 1; ++i) {
-      if (indices[i] == indices[i + 1])
+    for (size_t i = 1; i < indices.size(); ++i) {
+      if (indices[i - 1] == indices[i])
         return emitOpError("Padding indices pad the same dimension twice");
     }
   }
 
-  std::optional<int64_t> inputShapeSize =
-      getInputShape().getType().getNumElements();
   std::optional<int64_t> paddingIndicesSize =
       getPaddingIndices().getType().getNumElements();
   std::optional<int64_t> outputSize = getResult().getType().getNumElements();
@@ -3118,23 +3129,30 @@ LogicalResult SqueezeShapeOp::verify() {
   if (getInputShape().getType().getDtype() != getResult().getType().getDtype())
     return emitOpError("Expect in and out DTypes to be the same type");
 
-  // Check indices don't point to the same index
+  std::optional<int64_t> inputShapeSize =
+      getInputShape().getType().getNumElements();
+
+  // Check indices don't point to the same index. Negative indices are
+  // normalized first, so that -1 and 3 on a rank-4 input count as the same.
   std::optional<SmallVector<int64_t>> maybeIndices =
       tryGetConstantIntVector(getRemoveIndices());
   if (maybeIndices) {
     SmallVector<int64_t> &indices = maybeIndices.value();
+    if (inputShapeSize) {
+      int64_t inputRank = *inputShapeSize;
+      for (int64_t &index : indices) {
+        if (index < -inputRank || index >= inputRank)
+          return emitOpError("Squeeze index not in [-in_rank, in_rank)");
+        if (index < 0)
+          index += inputRank;
+      }
+    }
     llvm::sort(indices);
-
-    // Note: canonicalize will change negative indices into positive if possible
-    // which will catch the case where negative and positive indices point to
-    // the same index.
-    for (size_t i = 0, e = indices.size() - 1; i < e; ++i)
-      if (indices[i] == indices[i + 1])
+    for (size_t i = 1, e = indices.size(); i < e; ++i)
+      if (indices[i - 1] == indices[i])
         return emitOpError("Padding indices pad the same dimension twice");
   }
 
-  std::optional<int64_t> inputShapeSize =
-      getInputShape().getType().getNumElements();
   std::optional<int64_t> paddingIndicesSize =
       getRemoveIndices().getType().getNumElements();
   std::optional<int64_t> outputSize = getResult().getType().getNumElements();
