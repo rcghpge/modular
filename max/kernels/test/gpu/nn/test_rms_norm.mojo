@@ -19,7 +19,8 @@ from max.gpu.host import DeviceContext
 from layout import Coord, Idx, TileTensor, row_major
 from nn.normalization import *
 from builtin_kernels.rowwise_normalization import rms_norm
-from std.testing import assert_almost_equal
+from std.testing import assert_almost_equal, assert_equal
+from std.utils.coord import ComptimeInt
 
 from std.utils.index import Index, IndexList
 
@@ -248,13 +249,19 @@ def run_rms_norm_gpu_zero_rows[dtype: DType](ctx: DeviceContext) raises:
 
 
 def run_rms_norm_row_based[
-    dtype: DType, rank: Int, *, multiply_before_cast: Bool = True
+    dtype: DType,
+    rank: Int,
+    *,
+    multiply_before_cast: Bool = True,
+    static_cols: Int = 0,
 ](ctx: DeviceContext, shape: IndexList[rank], rtol: Float64 = 0.01) raises:
     """Drives the row-based `rms_norm` entry point, not `rms_norm_gpu`.
 
     `mo.reduce.rms_norm` lowers through this overload, so its epilogue-closure
     contract needs coverage of its own; the `run_rms_norm_gpu` cases above
-    exercise a different function.
+    exercise a different function. A positive `static_cols` passes the row
+    width as a `ComptimeInt`, as the graph compiler does for a static hidden
+    size; that is the register-cached path.
     """
     print("== run_rms_norm_row_based")
 
@@ -305,21 +312,39 @@ def run_rms_norm_row_based[
     ](coords: Coord, val: SIMD[dtype, width]) {var out_buf}:
         out_buf.store[alignment=alignment * align_of[dtype]()](coords, val)
 
-    rms_norm[
-        dtype,
-        rank,
-        target="gpu",
-        epsilon=eps_f32,
-        weight_offset=weight_offset,
-        multiply_before_cast=multiply_before_cast,
-    ](
-        input_fn,
-        output_fn,
-        Coord(shape),
-        Scalar[DType.int](cols),
-        gamma,
-        ctx,
-    )
+    comptime if static_cols > 0:
+        assert_equal(cols, static_cols)
+        rms_norm[
+            dtype,
+            rank,
+            target="gpu",
+            epsilon=eps_f32,
+            weight_offset=weight_offset,
+            multiply_before_cast=multiply_before_cast,
+        ](
+            input_fn,
+            output_fn,
+            Coord(shape),
+            ComptimeInt[static_cols](),
+            gamma,
+            ctx,
+        )
+    else:
+        rms_norm[
+            dtype,
+            rank,
+            target="gpu",
+            epsilon=eps_f32,
+            weight_offset=weight_offset,
+            multiply_before_cast=multiply_before_cast,
+        ](
+            input_fn,
+            output_fn,
+            Coord(shape),
+            Scalar[DType.int](cols),
+            gamma,
+            ctx,
+        )
     ctx.enqueue_copy(res, out_d)
     ctx.synchronize()
 
@@ -471,6 +496,35 @@ def main() raises:
         run_rms_norm_row_based[DType.bfloat16, multiply_before_cast=False](
             ctx, Index(4, 4096), rtol=2e-2
         )
+
+        # Static row width (the register-cached `_fuse` path) under a rank-3
+        # `[B, S, H]` shape with dynamic outer dims: exercises the row -> n-d
+        # decode over two outer dims, a chunk count that does not divide the
+        # block, and the warp, block and ragged-tail tiers.
+        run_rms_norm_row_based[DType.bfloat16, static_cols=4096](
+            ctx, Index(3, 41, 4096), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.bfloat16, static_cols=7168](
+            ctx, Index(2, 7, 7168), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.bfloat16, static_cols=2880](
+            ctx, Index(1, 513, 2880), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.bfloat16, static_cols=1024](
+            ctx, Index(5, 1000, 1024), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.bfloat16, static_cols=2050](
+            ctx, Index(2, 33, 2050), rtol=2e-2
+        )
+        run_rms_norm_row_based[DType.float32, static_cols=557](
+            ctx, Index(3, 5, 557)
+        )
+        run_rms_norm_row_based[DType.float32, static_cols=8192](
+            ctx, Index(2, 3, 5, 8192)
+        )
+        run_rms_norm_row_based[
+            DType.bfloat16, multiply_before_cast=False, static_cols=4096
+        ](ctx, Index(4, 4096), rtol=2e-2)
 
         # Few rows of at least `_SPLITK_MIN_ROW_BYTES` take the phase-aware
         # split-K tier: one row, the 16-row cap, an odd width, and both
