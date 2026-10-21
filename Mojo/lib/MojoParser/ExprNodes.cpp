@@ -5233,6 +5233,10 @@ AnyValue MagicFunctionNode::emitFunctionsInModule(ExprDest &dest,
   SmallVector<SyntheticNode> funcValues;
   if (FileModuleASTDecl *fileModuleDecl =
           emitter.getDeclScope().getNearestDeclOfType<FileModuleASTDecl>()) {
+    // Snapshot the functions first: resolving a signature can lazily resolve
+    // imports into this module's scope, which reallocates the storage behind
+    // `getDeclsInScope()` and would leave the loop reading freed memory.
+    SmallVector<std::pair<StringAttr, ASTDecl *>> moduleFuncs;
     for (auto &[name, decls] : fileModuleDecl->getDeclsInScope()) {
       for (ASTDecl *decl : decls) {
         // TODO: consider allowing imported functions. This could be a feature,
@@ -5250,25 +5254,27 @@ AnyValue MagicFunctionNode::emitFunctionsInModule(ExprDest &dest,
         if (name == "main")
           continue;
 
-        // We need to resolve the signature, otherwise if the intrinsic is
-        // called before the function is declared, the emission will crash.
-        if (failed(
-                emitter.getDeclResolver().resolveSignature(*decl, getLoc()))) {
-          emitter.emitError(decl->getLoc(),
-                            "failed to resolve signature for function ");
-          return {};
-        }
-
-        // To handle overloads, we form a singleton overload set (since we have
-        // the ASTDecl for each overload), emit it, and wrap the result in a
-        // SyntheticNode, which will be passed to the `Tuple` constructor.
-        auto singletonOverloadSet = OverloadSetUValue::create(
-            name.strref(), ArrayRef<ASTDecl *>{decl},
-            ParamBindings(emitter.getDeclScope(), this),
-            CallSyntax::kDirectCall);
-        auto funcValue = emitter.emitResult(singletonOverloadSet, this, dest);
-        funcValues.emplace_back(SyntheticNode(getLoc(), funcValue));
+        moduleFuncs.emplace_back(name, decl);
       }
+    }
+
+    for (auto [name, decl] : moduleFuncs) {
+      // We need to resolve the signature, otherwise if the intrinsic is
+      // called before the function is declared, the emission will crash.
+      if (failed(emitter.getDeclResolver().resolveSignature(*decl, getLoc()))) {
+        emitter.emitError(decl->getLoc(),
+                          "failed to resolve signature for function ");
+        return {};
+      }
+
+      // To handle overloads, we form a singleton overload set (since we have
+      // the ASTDecl for each overload), emit it, and wrap the result in a
+      // SyntheticNode, which will be passed to the `Tuple` constructor.
+      auto singletonOverloadSet = OverloadSetUValue::create(
+          name.strref(), ArrayRef<ASTDecl *>{decl},
+          ParamBindings(emitter.getDeclScope(), this), CallSyntax::kDirectCall);
+      auto funcValue = emitter.emitResult(singletonOverloadSet, this, dest);
+      funcValues.emplace_back(SyntheticNode(getLoc(), funcValue));
     }
   }
 
