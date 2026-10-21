@@ -1678,6 +1678,10 @@ def choose_block_scaled_config[
     )
 
 
+comptime BLOCK_SCALED_CONFIGS_MAX_M = 8192
+"""The largest M that `build_block_scaled_configs` sweeps."""
+
+
 def build_block_scaled_configs[
     a_type: DType,
     b_type: DType,
@@ -1728,7 +1732,7 @@ def build_block_scaled_configs[
         if _kernel_supported(config) and config not in set:
             set.add(config)
 
-    for m in range(128, 8193, 64):  # [128, 8192]
+    for m in range(128, BLOCK_SCALED_CONFIGS_MAX_M + 1, 64):
         var config = choose_block_scaled_config[
             a_type, b_type, c_type, sfa_dtype, sfb_dtype, transpose_b
         ](m, N, K)

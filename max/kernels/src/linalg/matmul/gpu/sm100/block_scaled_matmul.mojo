@@ -51,7 +51,7 @@ from max.gpu.sync import (
 from max.gpu.compute.arch.tcgen05 import *
 from layout import Coord, TileTensor, coord
 from layout.coord import ComptimeInt, Idx
-from layout.tile_layout import row_major as tt_row_major
+from layout.tile_layout import Layout as TileLayout
 from layout.tma_async import (
     PipelineState,
     SharedMemBarrier,
@@ -1915,7 +1915,15 @@ def _create_tma_and_launch[
         Int64(sfa_5d_tensor.dim[2]()),
         Idx[sf_atom_u16],
     )
-    var sfa_4d_layout = tt_row_major(sfa_4d_shape)
+    var sfa_4d_layout = TileLayout(
+        sfa_4d_shape,
+        Coord(
+            Int64(sfa_5d_tensor.dynamic_stride(0) // 2),
+            Int64(sfa_5d_tensor.dynamic_stride(1) // 2),
+            Int64(sfa_5d_tensor.dynamic_stride(2) // 2),
+            Idx[1],
+        ),
+    )
     var sfa_4d_tensor = sfa_5d_tensor.bitcast[.uint16]().reshape(sfa_4d_layout)
     var sfb_4d_shape = Coord(
         Int64(sfb_5d_tensor.dim[0]()),
@@ -1923,7 +1931,15 @@ def _create_tma_and_launch[
         Int64(sfb_5d_tensor.dim[2]()),
         Idx[sf_atom_u16],
     )
-    var sfb_4d_layout = tt_row_major(sfb_4d_shape)
+    var sfb_4d_layout = TileLayout(
+        sfb_4d_shape,
+        Coord(
+            Int64(sfb_5d_tensor.dynamic_stride(0) // 2),
+            Int64(sfb_5d_tensor.dynamic_stride(1) // 2),
+            Int64(sfb_5d_tensor.dynamic_stride(2) // 2),
+            Idx[1],
+        ),
+    )
     var sfb_4d_tensor = sfb_5d_tensor.bitcast[.uint16]().reshape(sfb_4d_layout)
 
     comptime sfa_tma_tile_shape = coord[
@@ -2230,11 +2246,41 @@ def _blackwell_block_scaled_matmul_tma_umma_warp_specialized[
                 Idx[SF_ATOM_M[1] * SF_ATOM_K],
             )
 
-    var sfa_5d_shape = _scales_5d_shape(a_scales_tensor)
-    var sfa_5d_layout = tt_row_major(sfa_5d_shape)
+    # The views keep the scales' own strides, so a batch may be a strided
+    # slice of a larger scale tensor.
+    def _scales_5d_stride(
+        scales: TileTensor,
+    ) -> Coord[
+        Int64,
+        Int64,
+        Int64,
+        ComptimeInt[SF_ATOM_M[1] * SF_ATOM_K],
+        ComptimeInt[1],
+    ]:
+        comptime if is_batched_matmul:
+            return Coord(
+                Int64(scales.dynamic_stride(0)),
+                Int64(scales.dynamic_stride(1)),
+                Int64(scales.dynamic_stride(2)),
+                Idx[SF_ATOM_M[1] * SF_ATOM_K],
+                Idx[1],
+            )
+        else:
+            return Coord(
+                Int64(scales.dim[0]() * scales.dynamic_stride(0)),
+                Int64(scales.dynamic_stride(0)),
+                Int64(scales.dynamic_stride(1)),
+                Idx[SF_ATOM_M[1] * SF_ATOM_K],
+                Idx[1],
+            )
+
+    var sfa_5d_layout = TileLayout(
+        _scales_5d_shape(a_scales_tensor), _scales_5d_stride(a_scales_tensor)
+    )
     var sfa_5d_tensor = a_scales_tensor.as_imm().reshape(sfa_5d_layout)
-    var sfb_5d_shape = _scales_5d_shape(b_scales_tensor)
-    var sfb_5d_layout = tt_row_major(sfb_5d_shape)
+    var sfb_5d_layout = TileLayout(
+        _scales_5d_shape(b_scales_tensor), _scales_5d_stride(b_scales_tensor)
+    )
     var sfb_5d_tensor = b_scales_tensor.as_imm().reshape(sfb_5d_layout)
 
     comptime if is_batched_matmul:

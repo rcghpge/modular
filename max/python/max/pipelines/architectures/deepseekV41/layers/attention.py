@@ -33,15 +33,14 @@ from max.graph import (
     DeviceRef,
     Dim,
     ShardingStrategy,
-    TensorType,
     TensorValue,
     Weight,
     ops,
 )
 from max.nn.kernels import (
-    ceildiv,
-    grouped_matmul_block_scaled,
-    grouped_quantize_dynamic_block_scaled,
+    block_diagonal_block_scaled_matmul,
+    quantize_dynamic_block_scaled,
+    rope_quantize_dynamic_block_scaled,
 )
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.layer import Module
@@ -57,7 +56,6 @@ from max.nn.quant_config import (
 )
 from max.nn.quant_ops import _matmul_float8_mxfp8
 
-from ...deepseekV4.layers.ragged import arange_to, host_scalar
 from ...deepseekV4.layers.rope import apply_rope_tail
 from ..layer_resolver import LayerInfo
 from ..model_config import DeepseekV41Config, woa_mxfp8_enabled
@@ -250,36 +248,16 @@ def bf16_grouped_projection(
     return ops.reshape(ops.transpose(projected, 0, 1), [t, groups * r])
 
 
-# Rows per scale tile of the block-scaled grouped matmul; each group's
-# activation scales start on a fresh tile.
+# Rows per tile of the interleaved block-scale layout.
 _SCALE_TILE_ROWS = 128
 
 
 def _grouped_mxfp8_supported() -> bool:
-    """Whether the build target runs the grouped MXFP8 matmul (SM100)."""
+    """Whether the build target runs the block-diagonal MXFP8 matmul (SM100)."""
     try:
         return accelerator_architecture_name().startswith("sm_10")
     except Exception:
         return False
-
-
-def _multiples(step: Dim, count: int, device: DeviceRef) -> TensorValue:
-    """``[0, step, ..., (count - 1) * step]`` int32, valid for ``step == 0``.
-
-    ``ops.range`` rejects a zero step, which an empty batch would give, so
-    this offsets a ``step + 1`` range by ``[0, count)``.
-    """
-    shifted = ops.range(
-        0,
-        host_scalar((step + 1) * count),
-        host_scalar(step + 1),
-        out_dim=count,
-        device=device,
-        dtype=DType.int32,
-    )
-    return shifted - ops.range(
-        0, count, 1, out_dim=count, device=device, dtype=DType.int32
-    )
 
 
 def _deinterleave_scales(scale: TensorValue) -> TensorValue:
@@ -316,28 +294,46 @@ def _mxfp8_projection_per_group(
     return outs[0] if groups == 1 else ops.concat(outs, axis=1)
 
 
+def undo_rope_tail(
+    x: TensorValue, freqs_cis: TensorValue, head_dim: int
+) -> TensorValue:
+    """Rotates each head's trailing dims back by the conjugate RoPE.
+
+    Args:
+        x: ``[t, heads * head_dim]``.
+        freqs_cis: ``[t, rope_dim // 2, 2]`` cos/sin at each row's position.
+        head_dim: Columns per head.
+
+    Returns:
+        ``x`` with each head's last ``rope_dim`` dims rotated back.
+    """
+    t, heads = x.shape[0], int(x.shape[1]) // head_dim
+    return ops.reshape(
+        apply_rope_tail(
+            ops.reshape(x, [1, t, heads, head_dim]),
+            freqs_cis,
+            int(freqs_cis.shape[-2]) * 2,
+            inverse=True,
+        ),
+        [t, heads * head_dim],
+    )
+
+
 def mxfp8_grouped_projection(
     x: TensorValue,
     weight: TensorValue,
     weight_scale: TensorValue,
     groups: int,
+    rope: tuple[TensorValue, int] | None = None,
 ) -> TensorValue:
     """Block-diagonal MXFP8 projection (the grouped einsum ``bgk,grk->bgr``).
 
     Group ``g``'s ``k`` input columns multiply ``weight`` rows
-    ``[g * r, (g + 1) * r)``, with ``r = weight.shape[0] // groups``. Runs as
-    one grouped block-scaled matmul in which each group is an expert over
-    all ``t`` tokens.
-
-    The activations are quantized group-major: row ``g * t + i`` of the
-    ``[groups * t, k]`` ``float8_e4m3fn`` operand is token ``i``'s group
-    ``g`` slice, with one ``float8_e8m0fnu`` scale per 32 columns. The
-    scales are tile-interleaved like ``weight_scale``, as
-    ``[tiles, k / 128, 32, 4, 4]``, and group ``g``'s start at tile
-    ``g * ceil(t / 128)``. The product comes back group-major and is
-    transposed to token-major. Off SM100, where the grouped matmul does not
-    run, each group takes a dense MXFP8 matmul instead. An empty batch
-    returns ``[0, groups * r]`` without launching the grouped kernels.
+    ``[g * r, (g + 1) * r)``, with ``r = weight.shape[0] // groups``. On
+    SM100 the activations are quantized once, token-major, and one
+    block-diagonal block-scaled matmul reads each group's columns and
+    writes each group's output columns in place. Elsewhere each group takes
+    a dense MXFP8 matmul.
 
     Args:
         x: ``[t, groups * k]`` activations; cast to bf16 for the quantizer.
@@ -349,104 +345,50 @@ def mxfp8_grouped_projection(
             ``[groups * r / 128, k / 128, 32, 4, 4]``. ``r`` and ``k`` must
             be multiples of 128.
         groups: The number of (local) groups.
+        rope: Optional ``(freqs_cis, head_dim)``. Each ``head_dim`` head of
+            ``x`` first has its trailing dims rotated back by the conjugate
+            of its row of ``freqs_cis`` (``[t, rope_dim // 2, 2]``). On
+            SM100 the quantizer applies the rotation.
 
     Returns:
         ``[t, groups * r]`` bf16.
     """
-    t = x.shape[0]
-    r = int(weight.shape[0]) // groups
     # ``Linear`` declares its weight scale on the host; move it beside ``x``.
     weight_scale = weight_scale.to(x.device)
     if not _grouped_mxfp8_supported():
+        if rope is not None:
+            x = undo_rope_tail(x, *rope)
         return _mxfp8_projection_per_group(
             x, weight, _deinterleave_scales(weight_scale), groups
         )
-    # The grouped quantizer cannot launch on zero rows, which an idle data
-    # parallel replica passes every step.
-    out_type = TensorType(DType.bfloat16, [t, groups * r], x.device)
-    return ops.cond(
-        ops.equal(ops.shape_to_tensor([t])[0], 0),
-        [out_type],
-        lambda: ops.broadcast_to(
-            ops.constant(0.0, DType.bfloat16, device=x.device),
-            [t, groups * r],
-        ),
-        lambda: _mxfp8_grouped_gemm(x, weight, weight_scale, groups),
-    )[0]
-
-
-def _mxfp8_grouped_gemm(
-    x: TensorValue,
-    weight: TensorValue,
-    weight_scale: TensorValue,
-    groups: int,
-) -> TensorValue:
-    """The grouped matmul body of :func:`mxfp8_grouped_projection`."""
-    t = x.shape[0]
-    k = int(weight.shape[1])
-    r = int(weight.shape[0]) // groups
-    device = x.device
-    rows = t * groups
-    # Group-major row g * t + i reads row i * groups + g of the token-major
-    # ``[t * groups, k]`` view, so the quantizer gathers the transpose.
-    gather = ops.reshape(
-        ops.transpose(
-            ops.reshape(arange_to(rows, rows, device), [t, groups]), 0, 1
-        ),
-        [rows],
-    )
-    starts = _multiples(t, groups + 1, device)
-    # A group's scale tile is ``starts[g] // 128 + offsets[g]``; its padded
-    # start is tile ``g * ceil(t / 128)``. Float floor is exact below 2**24.
-    padded = _multiples(ceildiv(t, Dim(_SCALE_TILE_ROWS)), groups, device)
-    unpadded = ops.cast(
-        ops.floor(
-            ops.cast(starts[:groups], DType.float32) / float(_SCALE_TILE_ROWS)
-        ),
-        DType.int32,
-    )
-    offsets = ops.cast(padded - unpadded, DType.uint32)
-    starts = ops.cast(starts, DType.uint32)
-    expert_ids = ops.range(
-        0, groups, 1, out_dim=groups, device=device, dtype=DType.int32
-    )
-    ones = ops.broadcast_to(
-        ops.constant(1.0, DType.float32, device=device), [groups]
-    )
-    x_q, x_scales = grouped_quantize_dynamic_block_scaled(
-        ops.reshape(ops.cast(x, DType.bfloat16), [rows, k]),
-        row_offsets=starts,
-        scales_offsets=offsets,
-        expert_ids=expert_ids,
-        sf_tensor=ones,
-        sf_vector_size=32,
-        scales_type=DType.float8_e8m0fnu,
-        out_type=DType.float8_e4m3fn,
-        indices=gather,
-    )
-    usage_stats = ops.concat(
-        [
-            ops.reshape(ops.cast(host_scalar(t), DType.uint32), [1]),
-            ops.constant([groups], DType.uint32, DeviceRef.CPU()),
-        ]
-    )
-    out = grouped_matmul_block_scaled(
+    x = ops.cast(x, DType.bfloat16)
+    if rope is None:
+        x_q, x_scales = quantize_dynamic_block_scaled(
+            x,
+            sf_vector_size=32,
+            scales_type=DType.float8_e8m0fnu,
+            out_type=DType.float8_e4m3fn,
+        )
+    else:
+        freqs_cis, head_dim = rope
+        x_q, x_scales = rope_quantize_dynamic_block_scaled(
+            x,
+            freqs_cis,
+            head_dim,
+            inverse=True,
+            sf_vector_size=32,
+            scales_type=DType.float8_e8m0fnu,
+            out_type=DType.float8_e4m3fn,
+        )
+    rows, k = (int(d) for d in weight.shape)
+    return block_diagonal_block_scaled_matmul(
         x_q,
-        ops.reshape(weight, [groups, r, k]),
+        weight,
         x_scales,
         ops.reshape(
-            weight_scale,
-            [groups, r // _SCALE_TILE_ROWS, k // 128, 32, 4, 4],
+            weight_scale, [rows // _SCALE_TILE_ROWS, k // 128, 32, 4, 4]
         ),
-        starts,
-        offsets,
-        expert_ids,
-        ones,
-        usage_stats,
-    )
-    return ops.reshape(
-        ops.transpose(ops.reshape(out, [groups, t, r]), 0, 1),
-        [t, groups * r],
+        groups,
     )
 
 
@@ -734,29 +676,21 @@ class CSA2Attention(Module):
         Returns:
             ``[t, hidden_size]``.
         """
-        t = out.shape[0]
-        out = ops.reshape(
-            apply_rope_tail(
-                ops.reshape(out, [1, t, self.num_heads, self.head_dim]),
-                freqs_cis,
-                int(freqs_cis.shape[-2]) * 2,
-                inverse=True,
-            ),
-            [t, self.num_heads, self.head_dim],
-        )
+        out = ops.reshape(out, [out.shape[0], self.num_heads * self.head_dim])
         if self.woa_mxfp8:
             assert self.wo_a.weight_scale is not None
             return self.wo_b(
                 mxfp8_grouped_projection(
-                    ops.reshape(out, [t, self.num_heads * self.head_dim]),
+                    out,
                     self.wo_a.weight,
                     self.wo_a.weight_scale,
                     self.o_groups,
+                    rope=(freqs_cis, self.head_dim),
                 )
             )
         return self.wo_b(
             bf16_grouped_projection(
-                ops.reshape(out, [t, self.num_heads * self.head_dim]),
+                undo_rope_tail(out, freqs_cis, self.head_dim),
                 self.wo_a.weight,
                 self.o_groups,
             )

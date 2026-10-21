@@ -18,11 +18,13 @@
 from std.math import ceildiv
 from max.gpu.host import DeviceContext
 from max.gpu.primitives.grid_controls import PDLLevel
-from layout import Coord, TileTensor
+from layout import Coord, Idx, TileTensor
+from layout.tile_layout import Layout as TileLayout
 from std.logger import Logger
 from linalg.fp4_utils import (
     SF_ATOM_M,
     SF_ATOM_K,
+    SF_MN_GROUP_SIZE,
     NVFP4_SF_VECTOR_SIZE,
     MXFP4_SF_VECTOR_SIZE,
     MXFP8_SF_VECTOR_SIZE,
@@ -53,6 +55,7 @@ from linalg.matmul.gpu.sm100_structured.default.tuning_configs import (
 )
 from internal_utils import Table
 from linalg.matmul.gpu.sm100_structured.structured_kernels.config import (
+    BLOCK_SCALED_CONFIGS_MAX_M,
     build_block_scaled_configs,
     choose_block_scaled_config,
 )
@@ -262,6 +265,7 @@ def _heuristic_and_outliers_dispatch_impl[
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool,
     has_compute_fn: Bool,
+    groups: Int = 1,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[a_type, ...],
@@ -285,9 +289,12 @@ def _heuristic_and_outliers_dispatch_impl[
 
     comptime MMA_K = 32
     comptime BK = (TensorMapSwizzle.SWIZZLE_128B.bytes() // size_of[a_type]())
-    comptime num_k_iters = ceildiv(a.static_shape[1], BK)
+    # Config choice treats `groups` block-diagonal blocks of [M, N/groups,
+    # K/groups] as one [M, N, K/groups] problem: the same tiles and K loop.
+    comptime group_K_phys = a.static_shape[1] // groups
+    comptime num_k_iters = ceildiv(group_K_phys, BK)
     comptime static_N = c.static_shape[1]
-    comptime static_K = a.static_shape[1] * 2 if is_fp4 else a.static_shape[1]
+    comptime static_K = group_K_phys * 2 if is_fp4 else group_K_phys
 
     comptime assert _is_sm10x_gpu(
         ctx.default_device_info
@@ -311,7 +318,7 @@ def _heuristic_and_outliers_dispatch_impl[
     ), "Only support NVFP4, MXFP4, or MXFP8 scale/dtype combinations."
 
     comptime assert (
-        a_scales.static_shape[1] == b_scales.static_shape[1]
+        a_scales.static_shape[1] == groups * b_scales.static_shape[1]
     ), "Both A and B scales must have the same shape in K dimension"
     comptime assert (
         a_scales.static_shape[2] == b_scales.static_shape[2] == SF_ATOM_M[0]
@@ -368,6 +375,7 @@ def _heuristic_and_outliers_dispatch_impl[
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
+                groups=groups,
             ](
                 c,
                 a,
@@ -427,6 +435,7 @@ def _heuristic_and_outliers_dispatch_impl[
             pdl_level=pdl_level,
             has_epilogue_fn=has_epilogue_fn,
             has_compute_fn=has_compute_fn,
+            groups=groups,
         ](
             c,
             a,
@@ -466,6 +475,36 @@ def _heuristic_and_outliers_dispatch_impl[
                 pdl_level=pdl_level,
                 has_epilogue_fn=has_epilogue_fn,
                 has_compute_fn=has_compute_fn,
+                groups=groups,
+            ](
+                c,
+                a,
+                b,
+                a_scales,
+                b_scales,
+                tensor_sf,
+                epilogue_fn,
+                compute_fn,
+                ctx,
+            )
+            return DISPATCH_HIT
+
+    # A block-diagonal matmul has no vendor fallback. Every prebuilt config
+    # runs any M, so a miss runs the one chosen at the end of the M sweep.
+    comptime if groups > 1:
+        comptime fallback = choose_block_scaled_config[
+            a_type, b_type, c_type, scales_dtype, scales_dtype, transpose_b
+        ](BLOCK_SCALED_CONFIGS_MAX_M, static_N, static_K)
+        comptime if fallback in configs:
+            logger.info("Using fallback config: ", fallback)
+            _block_scaled_matmul_with_epilogue[
+                SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+                transpose_b=transpose_b,
+                config=fallback,
+                pdl_level=pdl_level,
+                has_epilogue_fn=has_epilogue_fn,
+                has_compute_fn=has_compute_fn,
+                groups=groups,
             ](
                 c,
                 a,
@@ -480,6 +519,97 @@ def _heuristic_and_outliers_dispatch_impl[
             return DISPATCH_HIT
 
     return DISPATCH_MISS
+
+
+def block_scaled_matmul_block_diagonal[
+    c_type: DType,
+    a_type: DType,
+    b_type: DType,
+    scales_dtype: DType,
+    //,
+    *,
+    groups: Int,
+    SF_VECTOR_SIZE: Int,
+    pdl_level: PDLLevel = PDLLevel(),
+](
+    c: TileTensor[mut=True, c_type, ...],
+    a: TileTensor[a_type, ...],
+    b: TileTensor[b_type, ...],
+    a_scales: TileTensor[scales_dtype, ...],
+    b_scales: TileTensor[scales_dtype, ...],
+    tensor_sf: Float32,
+    ctx: DeviceContext,
+) raises:
+    """Computes a block-diagonal block-scaled matmul on SM100.
+
+    Block `g` of `groups` multiplies A's columns `[g * K, (g + 1) * K)` by
+    B's rows `[g * N, (g + 1) * N)` and writes C's columns
+    `[g * N, (g + 1) * N)`, where `K = b.dim[1]` and
+    `N = c.dim[1] / groups`. The blocks run as one batched matmul over
+    strided views, so A and C stay token-major and the scales stay in the
+    layouts the dense quantize and the weights already use.
+
+    Parameters:
+        c_type: Element type of `c` (inferred).
+        a_type: Element type of `a` (inferred).
+        b_type: Element type of `b` (inferred).
+        scales_dtype: Element type of both scale tensors (inferred).
+        groups: The number of diagonal blocks.
+        SF_VECTOR_SIZE: Elements per scale factor.
+        pdl_level: Programmatic dependent launch level.
+
+    Args:
+        c: Output `[M, groups * N]`.
+        a: `[M, groups * K]` operand.
+        b: `[groups * N, K]` operand, K-major.
+        a_scales: `a`'s scales in the 5D SF-atom layout of the whole
+            `[M, groups * K]` operand.
+        b_scales: `b`'s scales in the 5D SF-atom layout.
+        tensor_sf: Scalar multiplier applied to the product.
+        ctx: Device context used to launch the kernel.
+
+    Raises:
+        If no SM100 kernel config covers the shape.
+    """
+    comptime assert c.rank == 2 and a.rank == 2 and b.rank == 2
+    comptime assert a_scales.rank == 5 and b_scales.rank == 5
+    comptime N_g = c.static_shape[1] // groups
+    comptime assert (
+        c.static_shape[1] == groups * N_g
+        and b.static_shape[0] == groups * N_g
+        and a.static_shape[1] == groups * b.static_shape[1]
+    ), "c, a and b must hold `groups` equal blocks"
+    comptime assert N_g % SF_MN_GROUP_SIZE == 0, (
+        "each block's N must be a multiple of the scale tile rows, so its"
+        " B scales start on a tile"
+    )
+    comptime assert (
+        a_scales.static_shape[1] == groups * b_scales.static_shape[1]
+    ), "each block's K must be a whole number of scale tiles"
+
+    if c.dim[0]() == 0:
+        return
+
+    var status = _heuristic_and_outliers_dispatch_impl[
+        SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+        transpose_b=True,
+        pdl_level=pdl_level,
+        has_epilogue_fn=False,
+        has_compute_fn=False,
+        groups=groups,
+    ](
+        c,
+        a,
+        b,
+        a_scales,
+        b_scales,
+        tensor_sf,
+        no_epilogue_fn,
+        no_compute_fn,
+        ctx,
+    )
+    if status != DISPATCH_HIT:
+        raise Error("no SM100 block-scaled config for the block-diagonal shape")
 
 
 ########################################################
@@ -504,6 +634,7 @@ def _block_scaled_matmul_with_epilogue[
     pdl_level: PDLLevel = PDLLevel(),
     has_epilogue_fn: Bool = False,
     has_compute_fn: Bool = False,
+    groups: Int = 1,
 ](
     c: TileTensor[mut=True, c_type, ...],
     a: TileTensor[a_type, ...],
@@ -532,7 +663,95 @@ def _block_scaled_matmul_with_epilogue[
     if m == 0 or n == 0:
         return
 
-    comptime K_phys = a.static_shape[1]
+    comptime K_phys = a.static_shape[1] // groups
+
+    comptime if groups > 1:
+        comptime assert not (
+            has_epilogue_fn or has_compute_fn
+        ), "a block-diagonal matmul stores c directly"
+        # Block g is a batch of strided views: A columns and C columns
+        # [g * K, (g + 1) * K) and [g * N, (g + 1) * N), B rows
+        # [g * N, (g + 1) * N), and the matching scale tiles.
+        comptime N_g = c.static_shape[1] // groups
+        comptime sf_k = b_scales.static_shape[1]
+        comptime sf_atom = SF_ATOM_M[0] * SF_ATOM_M[1] * SF_ATOM_K
+        var a_3d = a.reshape(
+            TileLayout(
+                Coord(Idx[groups], Int64(m), Idx[K_phys]),
+                Coord(Idx[K_phys], Idx[groups * K_phys], Idx[1]),
+            )
+        )
+        var b_3d = b.reshape(
+            TileLayout(
+                Coord(Idx[groups], Idx[N_g], Idx[K_phys]),
+                Coord(Idx[N_g * K_phys], Idx[K_phys], Idx[1]),
+            )
+        )
+        var c_3d = c.reshape(
+            TileLayout(
+                Coord(Idx[groups], Int64(m), Idx[N_g]),
+                Coord(Idx[N_g], Idx[groups * N_g], Idx[1]),
+            )
+        )
+        var a_scales_6d = a_scales.reshape(
+            TileLayout(
+                Coord(
+                    Idx[groups],
+                    Int64(a_scales.dim[0]()),
+                    Idx[sf_k],
+                    Idx[SF_ATOM_M[0]],
+                    Idx[SF_ATOM_M[1]],
+                    Idx[SF_ATOM_K],
+                ),
+                Coord(
+                    Idx[sf_k * sf_atom],
+                    Idx[groups * sf_k * sf_atom],
+                    Idx[sf_atom],
+                    Idx[SF_ATOM_M[1] * SF_ATOM_K],
+                    Idx[SF_ATOM_K],
+                    Idx[1],
+                ),
+            )
+        )
+        var b_scales_6d = b_scales.reshape(
+            TileLayout(
+                Coord(
+                    Idx[groups],
+                    Idx[N_g // SF_MN_GROUP_SIZE],
+                    Idx[sf_k],
+                    Idx[SF_ATOM_M[0]],
+                    Idx[SF_ATOM_M[1]],
+                    Idx[SF_ATOM_K],
+                ),
+                Coord(
+                    Idx[N_g // SF_MN_GROUP_SIZE * sf_k * sf_atom],
+                    Idx[sf_k * sf_atom],
+                    Idx[sf_atom],
+                    Idx[SF_ATOM_M[1] * SF_ATOM_K],
+                    Idx[SF_ATOM_K],
+                    Idx[1],
+                ),
+            )
+        )
+        _blackwell_block_scaled_matmul_impl[
+            transpose_b=transpose_b,
+            K=K_phys,
+            config=config,
+            pdl_level=pdl_level,
+            has_epilogue_fn=False,
+            has_compute_fn=False,
+        ](
+            c_3d,
+            a_3d,
+            b_3d,
+            a_scales_6d,
+            b_scales_6d,
+            epilogue_fn,
+            compute_fn,
+            ctx,
+            tensor_sf,
+        )
+        return
 
     # At decode-sized M the compute closure runs inside the single-tile
     # mainloop tail, once per scalar element behind dependent global loads, and

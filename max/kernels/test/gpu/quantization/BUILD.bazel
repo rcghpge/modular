@@ -13,6 +13,8 @@ _DEPS = [
 _EXTRA_DEPS = {
     # The graph op's relu2 comes from nn.activations; the test builds the same.
     "test_grouped_nvfp4_row_amax_quantization.mojo": ["//max:nn"],
+    # The reference rotates with nn.rope's rope_ragged.
+    "test_rope_block_scaled_quantization.mojo": ["//max:nn"],
 }
 
 _FP8_FP4_TESTS = [
@@ -28,6 +30,7 @@ _FP8_FP4_TESTS = [
     "test_grouped_nvfp4_quantization_pdl.mojo",
     "test_grouped_nvfp4_row_amax_quantization.mojo",
     "test_swiglu_block_scaled_quantization.mojo",
+    "test_rope_block_scaled_quantization.mojo",
 ]
 
 _EXTRA_CONSTRAINTS = {
@@ -78,6 +81,10 @@ _EXTRA_CONSTRAINTS = {
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     "test_swiglu_block_scaled_quantization.mojo": select({
+        "//:b200_gpu": ["//:b200_gpu"],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    "test_rope_block_scaled_quantization.mojo": select({
         "//:b200_gpu": ["//:b200_gpu"],
         "//conditions:default": ["@platforms//:incompatible"],
     }),

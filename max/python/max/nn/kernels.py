@@ -10254,6 +10254,98 @@ def dynamic_block_scaled_matmul(
     return result
 
 
+def block_diagonal_block_scaled_matmul(
+    a: TensorValue,
+    b: TensorValue,
+    a_scales: TensorValue,
+    b_scales: TensorValue,
+    groups: int,
+    tensor_sf: TensorValue | float = 1.0,
+    out_type: DType = DType.bfloat16,
+) -> TensorValue:
+    """Performs a block-diagonal MXFP8 block-scaled matmul on SM100.
+
+    Block ``g`` of ``groups`` multiplies ``a``'s columns
+    ``[g * k, (g + 1) * k)`` by ``b``'s rows ``[g * n, (g + 1) * n)`` and
+    writes the output's columns ``[g * n, (g + 1) * n)``: the grouped einsum
+    ``bgk,gnk->bgn`` with token-major operands. The blocks run as one batched
+    kernel over strided views, so no operand is gathered or transposed.
+
+    Args:
+        a: ``[m, groups * k]`` ``float8_e4m3fn``, as
+            :func:`quantize_dynamic_block_scaled` produces it.
+        b: ``[groups * n, k]`` ``float8_e4m3fn``.
+        a_scales: ``a``'s ``float8_e8m0fnu`` scales in the rank-5 SF-atom
+            layout ``[ceildiv(m, 128), groups * k / 128, 32, 4, 4]``.
+        b_scales: ``b``'s scales in the rank-5 SF-atom layout
+            ``[groups * n / 128, k / 128, 32, 4, 4]``.
+        groups: The number of diagonal blocks.
+        tensor_sf: Scalar multiplier applied to the product.
+        out_type: The output dtype.
+
+    Returns:
+        The ``[m, groups * n]`` product.
+
+    Raises:
+        ValueError: If the operands are not MXFP8 or their shapes do not
+            split into ``groups`` blocks of whole scale tiles.
+    """
+    if a.rank != 2 or b.rank != 2:
+        raise ValueError("a and b must be rank 2 tensors")
+    if a_scales.rank != 5 or b_scales.rank != 5:
+        raise ValueError("a_scales and b_scales must be rank 5 tensors")
+    if a.dtype != DType.float8_e4m3fn or b.dtype != DType.float8_e4m3fn:
+        raise TypeError(
+            f"a and b must be float8_e4m3fn, got {a.dtype}, {b.dtype}"
+        )
+    if (
+        a_scales.dtype != DType.float8_e8m0fnu
+        or b_scales.dtype != DType.float8_e8m0fnu
+    ):
+        raise TypeError("a_scales and b_scales must be float8_e8m0fnu")
+    k = int(b.shape[1])
+    n_total = int(b.shape[0])
+    if groups < 1 or n_total % groups or (n_total // groups) % 128:
+        raise ValueError(
+            f"b's {n_total} rows must split into {groups} blocks of a"
+            " multiple of 128 rows"
+        )
+    if k % 128 or int(a.shape[1]) != groups * k:
+        raise ValueError(
+            f"a must have {groups} x {k} columns with {k} a multiple of 128,"
+            f" got {a.shape}"
+        )
+    # The row-tile count is symbolic in m, so only the static dims are checked.
+    a_scales_shape = [Dim(d) for d in (groups * k // 128, 32, 4, 4)]
+    b_scales_shape = [Dim(d) for d in (n_total // 128, k // 128, 32, 4, 4)]
+    if list(a_scales.shape)[1:] != a_scales_shape:
+        raise ValueError(
+            f"a_scales shape must be [*, {groups * k // 128}, 32, 4, 4], got"
+            f" {a_scales.shape}"
+        )
+    if list(b_scales.shape) != b_scales_shape:
+        raise ValueError(
+            f"b_scales shape must be {b_scales_shape}, got {b_scales.shape}"
+        )
+
+    tensor_sf_value = (
+        ops.constant(tensor_sf, DType.float32, device=DeviceRef.CPU())
+        if isinstance(tensor_sf, float)
+        else TensorValue(tensor_sf)
+    )
+    return ops.custom(
+        "mo.matmul.dynamic.block.scaled.block.diagonal",
+        device=a.device,
+        values=[a, b, a_scales, b_scales, tensor_sf_value],
+        out_types=[
+            TensorType(
+                dtype=out_type, shape=[a.shape[0], n_total], device=a.device
+            )
+        ],
+        parameters={"groups": groups, "SF_VECTOR_SIZE": 32},
+    )[0].tensor
+
+
 def _apple_weight_only_block_scaled_matmul(
     a: TensorValue,
     b: TensorValue,
@@ -11102,6 +11194,111 @@ def swiglu_quantize_dynamic_block_scaled(
         parameters={
             "SF_VECTOR_SIZE": sf_vector_size,
             **(activation or GatedActivation()).kernel_parameters(),
+        },
+    )
+
+    return result[0].tensor, result[1].tensor
+
+
+def rope_quantize_dynamic_block_scaled(
+    x: TensorValue,
+    freqs: TensorValue,
+    head_dim: int,
+    inverse: bool = False,
+    tensor_sf: TensorValue | float = 1.0,
+    sf_vector_size: int = 16,
+    scales_type: DType = DType.float8_e4m3fn,
+    out_type: DType = DType.uint8,
+) -> tuple[TensorValue, TensorValue]:
+    """Rotates each head's trailing columns by RoPE and quantizes with block scales.
+
+    Each row of ``x`` holds whole heads of ``head_dim`` columns. One kernel
+    rotates the last ``rope_dim`` columns of every head as interleaved
+    ``(re, im)`` pairs by the row's ``freqs``, rounds them to bfloat16 and
+    quantizes the row as :func:`quantize_dynamic_block_scaled` would,
+    without writing the rotated input out. The rotation is
+    :func:`rope_ragged`'s interleaved arithmetic. The formats and the
+    remaining arguments match :func:`quantize_dynamic_block_scaled`. Runs on
+    NVIDIA SM100 and SM120.
+
+    Args:
+        x: The bfloat16 input. Shape: ``[M, N]`` with ``N`` a multiple of
+            ``head_dim``.
+        freqs: The float32 ``(cos, sin)`` pairs of each row. Shape:
+            ``[M, rope_dim // 2, 2]`` or ``[M, rope_dim]``.
+        head_dim: Columns per head.
+        inverse: Rotate by the conjugate of each frequency, which undoes a
+            forward rotation.
+        tensor_sf: The tensor-wise scale factor (inverted for NVFP4;
+            identity for MXFP8).
+        sf_vector_size: The block size for the scaling factors.
+            16 for NVFP4, 32 for MXFP4/MXFP8.
+        scales_type: The type of the scales tensor.
+            ``float8_e4m3fn`` for NVFP4, ``float8_e8m0fnu`` for MXFP4/MXFP8.
+        out_type: The type of the output tensor. ``uint8`` for packed FP4 or
+            ``float8_e4m3fn`` for MXFP8.
+
+    Returns:
+        The quantized ``[M, N]`` input (``[M, N // 2]`` packed FP4) and its
+        rank-5 interleaved scales.
+
+    Raises:
+        ValueError: If the GPU is not SM100 or SM120, ``x`` is not a rank-2
+            bfloat16 tensor of whole heads, ``freqs`` does not hold one
+            float32 row per row of ``x`` with a static width of whole
+            8-column chunks, or the format arguments do not name a
+            supported format.
+    """
+    if not (_is_sm10x_gpu() or _is_sm12x_gpu()):
+        raise ValueError(
+            "rope_quantize_dynamic_block_scaled requires an NVIDIA SM100 or"
+            " SM120 GPU"
+        )
+    if x.rank != 2 or x.dtype != DType.bfloat16:
+        raise ValueError("x must be a rank 2 bfloat16 tensor")
+    width = x.shape[1]
+    if not isinstance(width, StaticDim) or int(width) % head_dim:
+        raise ValueError(
+            f"x.shape[1] must be a static multiple of head_dim, got {width}"
+        )
+    if freqs.dtype != DType.float32:
+        raise ValueError("freqs dtype must be float32")
+    if freqs.rank == 3:
+        freqs = ops.reshape(
+            freqs, [freqs.shape[0], freqs.shape[1] * freqs.shape[2]]
+        )
+    if freqs.rank != 2:
+        raise ValueError("freqs must be a rank 2 or rank 3 tensor")
+    rope_dim = freqs.shape[1]
+    if (
+        not isinstance(rope_dim, StaticDim)
+        or int(rope_dim) % 8
+        or head_dim % 8
+        or int(rope_dim) > head_dim
+    ):
+        raise ValueError(
+            "freqs must cover a static rope_dim of whole 8-column chunks"
+            f" within head_dim {head_dim}, got {rope_dim}"
+        )
+    freqs = freqs.rebind([x.shape[0], rope_dim])
+
+    result = ops.custom(
+        "mo.rope.quantize.dynamic.block.scaled",
+        device=x.device,
+        values=[x, freqs, _tensor_sf_value(tensor_sf)],
+        out_types=_block_scaled_quantize_out_types(
+            x.shape[0],
+            width,
+            "x.shape[1]",
+            sf_vector_size,
+            scales_type,
+            out_type,
+            x.device,
+        ),
+        parameters={
+            "SF_VECTOR_SIZE": sf_vector_size,
+            "head_dim": head_dim,
+            "inverse": inverse,
         },
     )
 

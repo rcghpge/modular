@@ -42,12 +42,12 @@ from max.nn.quant_config import (
 )
 
 from ...deepseekV4.layers.ragged import arange_to
-from ...deepseekV4.layers.rope import apply_rope_tail
 from ..layer_resolver import LayerInfo
 from ..model_config import DeepseekV41Config, woa_mxfp8_enabled
 from .attention import (
     bf16_grouped_projection,
     mxfp8_grouped_projection,
+    undo_rope_tail,
     wo_a_linear,
 )
 from .csa2 import (
@@ -385,23 +385,22 @@ def grouped_output_projection(
     over ``o_groups`` (MXFP8 when it carries a ``weight_scale``, else bf16),
     then ``wo_b``.
     """
-    t = out.shape[0]
-    out = ops.reshape(
-        apply_rope_tail(
-            ops.reshape(out, [1, t, num_heads, head_dim]),
-            freqs_cis,
-            int(freqs_cis.shape[-2]) * 2,
-            inverse=True,
-        ),
-        [t, num_heads * head_dim],
-    )
+    out = ops.reshape(out, [out.shape[0], num_heads * head_dim])
     if wo_a.weight_scale is not None:
         return wo_b(
             mxfp8_grouped_projection(
-                out, wo_a.weight, wo_a.weight_scale, o_groups
+                out,
+                wo_a.weight,
+                wo_a.weight_scale,
+                o_groups,
+                rope=(freqs_cis, head_dim),
             )
         )
-    return wo_b(bf16_grouped_projection(out, wo_a.weight, o_groups))
+    return wo_b(
+        bf16_grouped_projection(
+            undo_rope_tail(out, freqs_cis, head_dim), wo_a.weight, o_groups
+        )
+    )
 
 
 class DeepseekV41DSparkAttention(Module):

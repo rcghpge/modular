@@ -51,6 +51,7 @@ from linalg.block_scaled_quantization import (
     grouped_quantize_nvfp4_row_amax,
     block_scales_interleave,
     quantize_dynamic_block_scaled_mxfp4,
+    rope_quantize_dynamic_block_scaled,
     swiglu_quantize_dynamic_block_scaled,
 )
 from linalg.swiglu_activation import get_swiglu_activation
@@ -1008,6 +1009,67 @@ struct Struct_swiglu_quantize_dynamic_block_scaled:
             output.to_tile_tensor[.int64](),
             scales.to_tile_tensor[.int64](),
             gate_up.to_tile_tensor[.int64](),
+            tensor_sf,
+            context,
+        )
+
+
+@extensibility.register("mo.rope.quantize.dynamic.block.scaled")
+struct Struct_rope_quantize_dynamic_block_scaled:
+    """Registers the `mo.rope.quantize.dynamic.block.scaled` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        out_dtype: DType,
+        scales_type: DType,
+        in_dtype: DType,
+        //,
+        SF_VECTOR_SIZE: Int,
+        head_dim: Int,
+        inverse: Bool,
+        target: StaticString,
+    ](
+        output: OutputTensor[dtype=out_dtype, rank=2, ...],
+        scales: OutputTensor[dtype=scales_type, rank=5, ...],
+        input: InputTensor[dtype=in_dtype, rank=2, ...],
+        freqs: InputTensor[dtype=DType.float32, rank=2, ...],
+        tensor_sf: Float32,
+        context: DeviceContext,
+    ) raises:
+        """Rotates each head's trailing columns by RoPE, then quantizes to a block-scaled format.
+
+        Parameters:
+            out_dtype: The quantized output data type.
+            scales_type: The block scale data type.
+            in_dtype: The input data type.
+            SF_VECTOR_SIZE: Elements per block scale.
+            head_dim: Columns per head.
+            inverse: Whether to rotate by the conjugate of each frequency.
+            target: The target GPU device.
+
+        Args:
+            output: The quantized input of shape `[M, N]` (or `N // 2`
+                packed FP4).
+            scales: The block scales in the 5D TCGEN interleaved layout.
+            input: The input of shape `[M, N]`, a whole number of heads a
+                row.
+            freqs: `[M, rope_dim]` interleaved `(cos, sin)` pairs.
+            tensor_sf: The tensor-wise scale factor.
+            context: The device context.
+        """
+        comptime assert is_gpu[target](), (
+            "RoPE block-scaled quantization only supports GPUs with native"
+            " block scaled support"
+        )
+        rope_quantize_dynamic_block_scaled[
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE, head_dim=head_dim, inverse=inverse
+        ](
+            output.to_tile_tensor[.int64](),
+            scales.to_tile_tensor[.int64](),
+            input.to_tile_tensor[.int64](),
+            freqs.to_tile_tensor[.int64](),
             tensor_sf,
             context,
         )

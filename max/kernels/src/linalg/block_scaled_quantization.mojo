@@ -43,6 +43,7 @@ from std.collections import OptionalReg
 from std.logger import Logger
 from max.gpu.primitives import warp
 from max.gpu.primitives.warp import lane_group_max, shuffle_down, shuffle_xor
+from std.complex import ComplexSIMD
 from std.math import recip
 from .block_scaled_utils import compute_mxfp8_block_scale
 from .swiglu_activation import (
@@ -119,6 +120,28 @@ from linalg.matmul.gpu.sm100.block_scaled_matmul import (
     blackwell_block_scaled_matmul_tma_umma_warp_specialized,
 )
 
+
+@inline(.always)
+def _rope_rotate[
+    dtype: DType, width: SIMDLength, //, *, inverse: Bool
+](val: SIMD[dtype, width], freq: SIMD[DType.float32, width]) -> SIMD[
+    dtype, width
+]:
+    """Rotates the interleaved `(re, im)` pairs of `val` by the `(cos, sin)`
+    pairs of `freq`, or by their conjugates when `inverse`, in fp32.
+
+    The arithmetic matches `rope_ragged`, so a rotation followed by a
+    quantize gives the same bytes as the two kernels in sequence.
+    """
+    var x_re, x_im = val.cast[DType.float32]().deinterleave()
+    var f_re, f_im = freq.deinterleave()
+    var f = ComplexSIMD(f_re, f_im)
+    comptime if inverse:
+        f = f.conj()
+    var r = ComplexSIMD(x_re, x_im) * f
+    return rebind[SIMD[dtype, width]](r.re.interleave(r.im).cast[dtype]())
+
+
 ########################################################
 # Dynamic scaled NVFP4 quantization
 ########################################################
@@ -137,6 +160,12 @@ def quantize_dynamic_scaled_fp4fp8[
     num_max_threads: Int = 512,
     gated: Bool = False,
     activation: swiglu_activation_type = swiglu[0.0],
+    rope_dim: Int = 0,
+    rope_head_dim: Int = 0,
+    rope_inverse: Bool = False,
+    rope_layout: TensorLayout = RowMajorLayout[
+        *Coord[Int64, Int64].element_types
+    ],
 ](
     ctx: DeviceContext,
     output_tile: TileTensor[mut=True, out_dtype, address_space=.GENERIC, ...],
@@ -147,6 +176,9 @@ def quantize_dynamic_scaled_fp4fp8[
     num_cols: Int,
     num_cols_padded: Int,
     tensor_sf: Float32 = 1.0,  # tensor-wise scale factor
+    rope_freqs: OptionalReg[
+        TileTensor[.float32, rope_layout, ImmUnsafeAnyOrigin]
+    ] = None,
 ) raises:
     """Launches the SM100 kernel that quantizes BF16 input to NVFP4, MXFP4, or MXFP8 with per-block scale factors.
 
@@ -172,6 +204,11 @@ def quantize_dynamic_scaled_fp4fp8[
             width, and the kernel quantizes `activation(gate, up)` rounded
             to `in_dtype` in place of the input.
         activation: The gated activation; read only when `gated`.
+        rope_dim: Trailing columns of each head that the kernel rotates by
+            `rope_freqs` before it quantizes; 0 rotates nothing.
+        rope_head_dim: Columns per head; read only when `rope_dim > 0`.
+        rope_inverse: Whether to rotate by the conjugate of `rope_freqs`.
+        rope_layout: Layout of `rope_freqs` (inferred).
     Args:
         ctx: Device context used to enqueue the kernel.
         output_tile: Output tile for the quantized elements of shape
@@ -188,6 +225,10 @@ def quantize_dynamic_scaled_fp4fp8[
             are zeroed in the output and scales.
         tensor_sf: Tensor-wise scale factor applied to the
             quantization (defaults to 1.0).
+        rope_freqs: `[num_rows, rope_dim]` `float32` interleaved
+            `(cos, sin)` pairs, one row per input row; required when
+            `rope_dim > 0`. Each head's rotated columns are rounded to
+            `in_dtype` before they are quantized.
     """
     comptime assert _is_sm10x_gpu(ctx.default_device_info) or _is_sm12x_gpu(
         ctx.default_device_info
@@ -239,7 +280,24 @@ def quantize_dynamic_scaled_fp4fp8[
     var num_blocks_per_SM = max(
         1, B200.gpu_info.threads_per_multiprocessor // block_dim[0]
     )
-    var grid_dim = (min(num_rows_padded, num_SMs * num_blocks_per_SM), 1, 1)
+    var num_slots = num_SMs * num_blocks_per_SM
+    var grid_x = min(num_rows_padded, num_slots)
+    # A row wider than one block's pass loops over its columns one load
+    # latency at a time. With few rows, more blocks per row issue those loads
+    # at once. Blocks past the real rows zero the padding rows' scales, so no
+    # block walks the padding alone. Up to one block per SM: with two, the
+    # pair on an SM can be one row's blocks, leaving half the SMs idle.
+    var col_blocks = min(
+        ceildiv(
+            align_up(num_cols_padded, SF_VECTOR_SIZE * SF_ATOM_K)
+            // ELEMENTS_PER_THREAD,
+            block_dim[0],
+        ),
+        max(1, num_slots // num_rows),
+    )
+    if col_blocks > 1:
+        grid_x = min(num_rows_padded, max(num_rows, num_SMs // col_blocks))
+    var grid_dim = (grid_x, col_blocks, 1)
 
     comptime kernel = quantize_dynamic_scaled_fp4fp8_kernel[
         out_dtype,
@@ -253,6 +311,10 @@ def quantize_dynamic_scaled_fp4fp8[
         num_max_threads=num_max_threads,
         gated=gated,
         activation=activation,
+        rope_dim=rope_dim,
+        rope_head_dim=rope_head_dim,
+        rope_inverse=rope_inverse,
+        rope_layout=rope_layout,
     ]
 
     ctx.enqueue_function[kernel](
@@ -262,6 +324,7 @@ def quantize_dynamic_scaled_fp4fp8[
         Int32(num_cols),
         Int32(num_cols_padded),
         tensor_sf,
+        rope_freqs,
         block_dim=block_dim,
         grid_dim=grid_dim,
         attributes=pdl_launch_attributes(PDLLevel.ON),
@@ -272,7 +335,7 @@ def quantize_dynamic_scaled_fp4fp8[
     MAX_THREADS_PER_BLOCK_METADATA=StaticTuple[Int32, 1](Int32(num_max_threads))
 )
 @__name(
-    t"quantize_dynamic_scaled_fp4fp8_{out_dtype}_{scales_dtype}_{in_dtype}_sf{SF_VECTOR_SIZE}{"_gated" if gated else ""}",
+    t"quantize_dynamic_scaled_fp4fp8_{out_dtype}_{scales_dtype}_{in_dtype}_sf{SF_VECTOR_SIZE}{"_gated" if gated else ""}{"_rope" if rope_dim > 0 else ""}",
 )
 def quantize_dynamic_scaled_fp4fp8_kernel[
     out_dtype: DType,
@@ -287,6 +350,12 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     num_max_threads: Int = 512,
     gated: Bool = False,
     activation: swiglu_activation_type = swiglu[0.0],
+    rope_dim: Int = 0,
+    rope_head_dim: Int = 0,
+    rope_inverse: Bool = False,
+    rope_layout: TensorLayout = RowMajorLayout[
+        *Coord[Int64, Int64].element_types
+    ],
 ](
     output: TileTensor[out_dtype, output_layout, MutAnyOrigin],
     scales: TileTensor[scales_dtype, scales_layout, MutAnyOrigin],
@@ -294,6 +363,9 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     num_cols: Int32,
     num_cols_padded: Int32,
     tensor_sf: Float32,
+    rope_freqs: OptionalReg[
+        TileTensor[.float32, rope_layout, ImmUnsafeAnyOrigin]
+    ] = None,
 ):
     comptime assert SF_VECTOR_SIZE in (16, 32) and ELEMENTS_PER_THREAD == 8, (
         "Currently only supports NVFP4 (SF_VECTOR_SIZE = 16) and MXFP8"
@@ -310,6 +382,16 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
     comptime assert (
         input_layout.static_shape[1] % ELEMENTS_PER_THREAD == 0
     ), "num_cols must be a multiple of ELEMENTS_PER_THREAD (8 for NVFP4/MXFP8)"
+    comptime if rope_dim > 0:
+        comptime assert not gated, "the gated and RoPE modes are exclusive"
+        # A thread's elements then lie all inside or all outside a head's
+        # rotated columns.
+        comptime assert (
+            rope_dim % ELEMENTS_PER_THREAD == 0
+            and rope_head_dim % ELEMENTS_PER_THREAD == 0
+            and rope_dim <= rope_head_dim
+            and input_layout.static_shape[1] % rope_head_dim == 0
+        ), "RoPE columns must split into whole heads of whole thread chunks"
 
     # Unsigned 32-bit indices: with signed 64-bit Int, every loop bound,
     # division and scale-offset term costs a multi-instruction sequence.
@@ -333,7 +415,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
             # A block keeps one row's loads in flight, too few to hide DRAM
             # latency at large M, so it pulls its next row into L2.
             var pf_row = row + UInt32(grid_dim.x)
-            if thread_idx.x == 0 and pf_row < num_rows:
+            if thread_idx.x == 0 and block_idx.y == 0 and pf_row < num_rows:
                 cp_async_bulk_prefetch(
                     input.ptr.unsafe_offset(
                         Int(pf_row) * Int(input_layout.static_shape[1])
@@ -341,7 +423,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                     Int32(input_layout.static_shape[1] * size_of[in_dtype]()),
                 )
             var is_padded_row = row >= num_rows
-            var col_thread = UInt32(thread_idx.x)
+            var col_thread = UInt32(block_idx.y * block_dim.x + thread_idx.x)
             while col_thread < num_sf_threads:
                 var col = col_thread * UInt32(ELEMENTS_PER_THREAD)
                 var owns_scale = col % UInt32(SF_VECTOR_SIZE) == 0
@@ -385,6 +467,20 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                         input_vector = input.load[width=ELEMENTS_PER_THREAD](
                             (Int(row), Int(col))
                         )
+                        comptime if rope_dim > 0:
+                            comptime rope_start = UInt32(
+                                rope_head_dim - rope_dim
+                            )
+                            var head_col = col % UInt32(rope_head_dim)
+                            if head_col >= rope_start:
+                                input_vector = _rope_rotate[
+                                    inverse=rope_inverse
+                                ](
+                                    input_vector,
+                                    rope_freqs.value().load[
+                                        width=ELEMENTS_PER_THREAD
+                                    ]((Int(row), Int(head_col - rope_start))),
+                                )
 
                     # each thread finds maximum value in its local 8 elements
                     var thread_max = abs(input_vector).reduce_max()
@@ -444,7 +540,7 @@ def quantize_dynamic_scaled_fp4fp8_kernel[
                         output_vector,
                     )
 
-                col_thread += UInt32(block_dim.x)
+                col_thread += UInt32(grid_dim.y * block_dim.x)
             row += UInt32(grid_dim.x)
 
 
@@ -3476,6 +3572,118 @@ def swiglu_quantize_dynamic_block_scaled[
         num_cols=num_cols,
         num_cols_padded=num_cols,
         tensor_sf=tensor_sf,
+    )
+
+
+def rope_quantize_dynamic_block_scaled[
+    out_dtype: DType,
+    scales_dtype: DType,
+    in_dtype: DType,
+    //,
+    *,
+    SF_VECTOR_SIZE: Int,
+    head_dim: Int,
+    inverse: Bool,
+](
+    output_device: TileTensor[mut=True, out_dtype, address_space=.GENERIC, ...],
+    scales_device: TileTensor[
+        mut=True, scales_dtype, address_space=.GENERIC, ...
+    ],
+    input_device: TileTensor[mut=False, in_dtype, address_space=.GENERIC, ...],
+    freqs_device: TileTensor[
+        mut=False, DType.float32, address_space=.GENERIC, ...
+    ],
+    tensor_sf: Float32,
+    ctx: DeviceContext,
+) raises:
+    """Rotates the trailing columns of each head by RoPE and quantizes the result to NVFP4 or MXFP8 with block scales.
+
+    One kernel computes what rotating each row's heads with `rope_ragged`'s
+    interleaved arithmetic and then `quantize_dynamic_block_scaled` would,
+    without writing the rotated input out. SM100 and SM120 only.
+
+    Parameters:
+        out_dtype: Element type of the quantized output (inferred). `uint8`
+            for NVFP4 or `float8_e4m3fn` for MXFP8.
+        scales_dtype: Element type of the block scales (inferred).
+            `float8_e4m3fn` for NVFP4 or `float8_e8m0fnu` for MXFP8.
+        in_dtype: Element type of the input (inferred). Must be `bfloat16`.
+        SF_VECTOR_SIZE: Elements per block scale: 16 for NVFP4, 32 for
+            MXFP8.
+        head_dim: Columns per head. The input's width is a whole number of
+            heads.
+        inverse: Whether to rotate by the conjugate of each frequency.
+
+    Args:
+        output_device: Quantized output of shape `[M, N // 2]` for packed
+            FP4 or `[M, N]` for MXFP8.
+        scales_device: Block scales in the 5D TCGEN interleaved layout.
+        input_device: Input of shape `[M, N]`.
+        freqs_device: `[M, rope_dim]` interleaved `(cos, sin)` pairs, one
+            row per input row. Each head's last `rope_dim` columns are
+            rotated.
+        tensor_sf: Tensor-wise scale factor multiplied into each block
+            scale.
+        ctx: Device context used to enqueue the kernel.
+
+    Raises:
+        Error: If `freqs_device` does not hold one row per input row, or
+            `output_device` is not `[M, N]` for MXFP8 or `[M, N // 2]` for
+            packed FP4.
+    """
+    comptime assert _is_sm10x_gpu(ctx.default_device_info) or _is_sm12x_gpu(
+        ctx.default_device_info
+    ), "RoPE block-scaled quantization only runs on SM100 or SM120"
+    comptime assert (
+        output_device.rank == 2
+        and input_device.rank == 2
+        and freqs_device.rank == 2
+    ), "output, input and freqs must be rank 2"
+    comptime assert (
+        scales_device.rank == 5 and scales_device.flat_rank == 5
+    ), "scales must be rank 5"
+
+    # A dynamic width reads as -1, which would skip the rotation.
+    comptime assert (
+        freqs_device.static_shape[1] > 0 and head_dim > 0
+    ), "freqs must have a static width and head_dim must be positive"
+
+    comptime is_fp8 = out_dtype == .float8_e4m3fn
+    var num_cols = Int(input_device.dim(1))
+    var output_cols = num_cols if is_fp8 else num_cols // 2
+    if (
+        Int(output_device.dim(0)) != Int(input_device.dim(0))
+        or Int(output_device.dim(1)) != output_cols
+    ):
+        raise Error(
+            "output must be [M, N] for MXFP8 or [M, N // 2] for packed FP4,"
+            " where input is [M, N]"
+        )
+    if Int(input_device.dim(0)) == 0 or num_cols == 0:
+        return
+    if Int(freqs_device.dim(0)) != Int(input_device.dim(0)):
+        raise Error("freqs must hold one row per input row")
+
+    comptime FreqsTensor = TileTensor[
+        DType.float32, freqs_device.LayoutType, ImmUnsafeAnyOrigin
+    ]
+    var freqs = rebind[FreqsTensor](freqs_device.as_unsafe_any_origin())
+    quantize_dynamic_scaled_fp4fp8[
+        SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+        num_max_threads=1024 if is_fp8 else 512,
+        rope_dim=freqs_device.static_shape[1],
+        rope_head_dim=head_dim,
+        rope_inverse=inverse,
+        rope_layout=freqs_device.LayoutType,
+    ](
+        ctx,
+        output_device.as_unsafe_any_origin(),
+        scales_device.as_unsafe_any_origin(),
+        input_device.as_unsafe_any_origin(),
+        num_cols=num_cols,
+        num_cols_padded=num_cols,
+        tensor_sf=tensor_sf,
+        rope_freqs=freqs,
     )
 
 

@@ -32,6 +32,7 @@ import extensibility
 # ===-----------------------------------------------------------------------===#
 
 from max.gpu.host import DeviceContext
+from max.gpu.primitives.grid_controls import PDLLevel
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_gpu, _is_sm10x_gpu
 from layout import (
@@ -47,6 +48,9 @@ from layout import (
 from linalg.bmm import batched_matmul, batched_matmul_shape
 from linalg.fp8_quantization import matmul_dynamic_scaled_fp8
 from linalg.block_scaled_quantization import block_scaled_matmul
+from linalg.matmul.gpu.sm100.block_scaled_dispatch import (
+    block_scaled_matmul_block_diagonal,
+)
 from linalg.arch.amd.block_scaled_mma import CDNA4F8F6F4MatrixFormat
 from linalg.matmul.gpu.amd.block_scaled_matmul_amd import (
     mxfp6_block_scaled_matmul_amd,
@@ -1542,6 +1546,49 @@ struct Struct_matmul_dynamic_block_scaled:
             context,
             epilogue_fn,
             output_compute_fn,
+        )
+
+
+@extensibility.register("mo.matmul.dynamic.block.scaled.block.diagonal")
+struct Struct_matmul_dynamic_block_scaled_block_diagonal:
+    """Registers the `mo.matmul.dynamic.block.scaled.block.diagonal` graph op with the graph compiler.
+    """
+
+    @inline(.always)
+    @staticmethod
+    def execute[
+        c_type: DType,
+        a_type: DType,
+        b_type: DType,
+        scales_type: DType,
+        //,
+        groups: Int,
+        SF_VECTOR_SIZE: Int,
+        target: StaticString,
+    ](
+        c: OutputTensor[dtype=c_type, rank=2, ...],
+        a: InputTensor[dtype=a_type, rank=2, ...],
+        b: InputTensor[dtype=b_type, rank=2, ...],
+        a_scales: InputTensor[dtype=scales_type, rank=5, ...],
+        b_scales: InputTensor[dtype=scales_type, rank=5, ...],
+        tensor_sf: Float32,
+        context: DeviceContext,
+    ) raises:
+        comptime assert is_gpu[target]() and _is_sm10x_gpu(
+            context.default_device_info
+        ), "the block-diagonal block-scaled matmul runs on SM100 only"
+        block_scaled_matmul_block_diagonal[
+            groups=groups,
+            SF_VECTOR_SIZE=SF_VECTOR_SIZE,
+            pdl_level=PDLLevel.ON,
+        ](
+            c.to_tile_tensor[.int64](),
+            a.to_tile_tensor[.int64](),
+            b.to_tile_tensor[.int64](),
+            a_scales.to_tile_tensor[.int64](),
+            b_scales.to_tile_tensor[.int64](),
+            tensor_sf,
+            context,
         )
 
 
