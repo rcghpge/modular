@@ -282,6 +282,34 @@ BundledAllReduceSumOp::fold(FoldAdaptor adaptor,
 }
 
 //===----------------------------------------------------------------------===//
+// BundledBroadcastOp
+//===----------------------------------------------------------------------===//
+LogicalResult BundledBroadcastOp::fold(FoldAdaptor adaptor,
+                                       SmallVectorImpl<OpFoldResult> &results) {
+  if (getSignalBuffers().size() == 1 &&
+      getInput().getType() == getOutput().getType()) {
+    results.push_back(getInput());
+    results.push_back(getInChain());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// BundledAllGatherOp
+//===----------------------------------------------------------------------===//
+LogicalResult BundledAllGatherOp::fold(FoldAdaptor adaptor,
+                                       SmallVectorImpl<OpFoldResult> &results) {
+  if (getInputs().size() == 1 && getSignalBuffers().size() == 1 &&
+      getInputs()[0].getType() == getOutputs()[0].getType()) {
+    results.push_back(getInputs()[0]);
+    results.push_back(getInChain());
+    return success();
+  }
+  return failure();
+}
+
+//===----------------------------------------------------------------------===//
 // BundledExpandOp
 //===----------------------------------------------------------------------===//
 LogicalResult BundledExpandOp::fold(FoldAdaptor adaptor,

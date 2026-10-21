@@ -320,6 +320,24 @@ mo.graph @broadcast_dtype_mismatch(
 
 // -----
 
+// Test broadcast with the input on a device other than the root's: the
+// input is the root's copy of the tensor, so it must live on
+// `signalBuffers[root]`'s device.
+mo.graph @broadcast_input_not_on_root_device(
+    %in: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>) {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{the input must be on the root's device, #M.device_ref<"gpu", 0>, but is on #M.device_ref<"gpu", 1>}}
+  %0:3 = "mo.distributed.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
+}
+
+// -----
+
 // Test scatter with empty inputs (no tensors, no signal buffers).
 // NOTE: signal buffer count mismatch (condition 3) cannot be triggered
 // independently because the SameVariadicOperandSize trait enforces
@@ -381,6 +399,169 @@ mo.graph @scatter_root_out_of_range(
   %0:3 = "mo.distributed.scatter"(%arg0, %arg1, %sig0, %sig1, %ch) {root = 5 : i64} :
     (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:0>,
      !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
+}
+
+// -----
+
+// Bundled-collective op verifiers are exercised inside isDeviceGraph graphs,
+// the home that mo-mark-stable-tensors produces them in.
+
+// Test bundled broadcast with no signal buffers.
+mo.graph @bundled_broadcast_no_signal_buffers(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %ch: !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+    attributes {isDeviceGraph} {
+  // expected-error@+1 {{bundled broadcast requires at least one signal buffer}}
+  %0:2 = "mo.bundled.broadcast"(%in, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.chain
+}
+
+// -----
+
+// Test bundled broadcast with root index out of range.
+mo.graph @bundled_broadcast_root_out_of_range(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>) attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{root index 5 out of range for 2 devices}}
+  %0:2 = "mo.bundled.broadcast"(%in, %sig0, %sig1, %ch) {root = 5 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test bundled broadcast with output shape mismatch.
+mo.graph @bundled_broadcast_shape_mismatch(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[4, 3], f32, gpu:0>) attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{the output must have the same shape as the input}}
+  %0:2 = "mo.bundled.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[4, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[4, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test bundled broadcast with output element type mismatch.
+mo.graph @bundled_broadcast_dtype_mismatch(
+    %in: !mo.tensor<[2, 3], f32, gpu:0>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f16, gpu:0>) attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{the output must have the same element type as the input}}
+  %0:2 = "mo.bundled.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f16, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f16, gpu:0>
+}
+
+// -----
+
+// Test bundled broadcast with the input on a device other than the root's:
+// the input is the root's copy of the tensor, so it must live on
+// `signalBuffers[root]`'s device.
+mo.graph @bundled_broadcast_input_not_on_root_device(
+    %in: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>) attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{the input must be on the root's device, #M.device_ref<"gpu", 0>, but is on #M.device_ref<"gpu", 1>}}
+  %0:2 = "mo.bundled.broadcast"(%in, %sig0, %sig1, %ch) {root = 0 : i64} :
+    (!mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+
+// -----
+
+// NOTE: an input/signal-buffer count mismatch for bundled allgather cannot
+// reach the custom verifier: the operand type map rejects the op first (the
+// buffer after the last mapped input lands on the chain operand). A fully
+// empty op is likewise rejected by MO_SingleDevice first, so the verifier's
+// "requires at least one input" is unreachable from parsed IR.
+
+// Test bundled allgather with an output count mismatch: one gathered piece
+// per peer, so two peers need two outputs.
+mo.graph @bundled_allgather_wrong_output_count(
+    %in0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %in1: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>) attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{number of outputs must match number of inputs (one gathered piece per peer); expected 2 outputs but got 1}}
+  %0:2 = "mo.bundled.allgather"(%in0, %in1, %sig0, %sig1, %ch) :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0 : !mo.tensor<[2, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test bundled allgather with output 1 shape mismatch.
+mo.graph @bundled_allgather_shape_mismatch(
+    %in0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %in1: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:0>)
+    attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{output 1 must have the same shape as input 1}}
+  %0:3 = "mo.bundled.allgather"(%in0, %in1, %sig0, %sig1, %ch) :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:0>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[4, 3], f32, gpu:0>
+}
+
+// -----
+
+// Test bundled allgather with output 1 element type mismatch.
+mo.graph @bundled_allgather_dtype_mismatch(
+    %in0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %in1: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:0>)
+    attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{output 1 must have the same element type as input 1}}
+  %0:3 = "mo.bundled.allgather"(%in0, %in1, %sig0, %sig1, %ch) :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:0>, !mo.chain)
+  mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f16, gpu:0>
+}
+
+// -----
+
+// Test bundled allgather with output 1 on the wrong device: every gathered
+// piece lands on this device's output device.
+mo.graph @bundled_allgather_wrong_output_device(
+    %in0: !mo.tensor<[2, 3], f32, gpu:0>,
+    %in1: !mo.tensor<[2, 3], f32, gpu:1>,
+    %sig0: !mo.buffer<[1], ui8, gpu:0>,
+    %sig1: !mo.buffer<[1], ui8, gpu:1>)
+    -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>)
+    attributes {isDeviceGraph} {
+  %ch = mo.chain.create()
+  // expected-error@+1 {{output 1 must be on this device's output device, #M.device_ref<"gpu", 0>, but is on #M.device_ref<"gpu", 1>}}
+  %0:3 = "mo.bundled.allgather"(%in0, %in1, %sig0, %sig1, %ch) :
+    (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.buffer<[1], ui8, gpu:0>, !mo.buffer<[1], ui8, gpu:1>, !mo.chain)
     -> (!mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>, !mo.chain)
   mo.output %0#0, %0#1 : !mo.tensor<[2, 3], f32, gpu:0>, !mo.tensor<[2, 3], f32, gpu:1>
 }

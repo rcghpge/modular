@@ -3775,6 +3775,87 @@ void BundledAllReduceSumOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
+// BundledBroadcastOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BundledBroadcastOp::verify() {
+  auto signalBuffers = getSignalBuffers();
+  if (signalBuffers.empty())
+    return emitError("bundled broadcast requires at least one signal buffer");
+
+  int64_t root = getRoot();
+  int64_t numDevices = signalBuffers.size();
+  if (root < 0 || root >= numDevices)
+    return emitError(llvm::formatv(
+        "root index {0} out of range for {1} devices", root, numDevices));
+
+  auto inputType = cast<TensorType>(getInput().getType());
+  // The input is the root's copy of the tensor, so it must already live on
+  // the root's device. Devices can still be unassigned in graphs built in
+  // memory, so only compare when both are known.
+  auto rootDevice =
+      cast<BufferType>(signalBuffers[root].getType()).getDeviceRef();
+  auto inputDevice = inputType.getDeviceRef();
+  if (inputDevice && rootDevice && inputDevice != rootDevice)
+    return emitError(llvm::formatv(
+        "the input must be on the root's device, {0}, but is on {1}",
+        rootDevice, inputDevice));
+  auto outputType = cast<TensorType>(getOutput().getType());
+  if (outputType.getShape() != inputType.getShape())
+    return emitError("the output must have the same shape as the input");
+  if (outputType.getElementType() != inputType.getElementType())
+    return emitError("the output must have the same element type as the input");
+  return success();
+}
+
+void BundledBroadcastOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  for (auto &sig : getSignalBuffersMutable())
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
+// BundledAllGatherOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BundledAllGatherOp::verify() {
+  auto inputs = getInputs();
+  auto outputs = getOutputs();
+  if (inputs.empty())
+    return emitError("bundled allgather requires at least one input");
+  if (outputs.size() != inputs.size())
+    return emitError(llvm::formatv(
+        "number of outputs must match number of inputs (one gathered piece "
+        "per peer); expected {0} outputs but got {1}",
+        inputs.size(), outputs.size()));
+
+  auto device = cast<TensorType>(outputs[0].getType()).getDeviceRef();
+  for (auto [i, pair] : llvm::enumerate(llvm::zip(inputs, outputs))) {
+    auto [input, output] = pair;
+    auto inputType = cast<TensorType>(input.getType());
+    auto outputType = cast<TensorType>(output.getType());
+    if (outputType.getShape() != inputType.getShape())
+      return emitError(
+          llvm::formatv("output {0} must have the same shape as input {0}", i));
+    if (outputType.getElementType() != inputType.getElementType())
+      return emitError(llvm::formatv(
+          "output {0} must have the same element type as input {0}", i));
+    if (outputType.getDeviceRef() != device)
+      return emitError(
+          llvm::formatv("output {0} must be on this device's output device, "
+                        "{1}, but is on {2}",
+                        i, device, outputType.getDeviceRef()));
+  }
+  return success();
+}
+
+void BundledAllGatherOp::getEffects(
+    SmallVectorImpl<mlir::MemoryEffects::EffectInstance> &effects) {
+  for (auto &sig : getSignalBuffersMutable())
+    effects.emplace_back(mlir::MemoryEffects::Write::get(), &sig);
+}
+
+//===----------------------------------------------------------------------===//
 // BundledAllReduceAddRMSNormQuantFP8Op
 //===----------------------------------------------------------------------===//
 
@@ -4378,6 +4459,17 @@ LogicalResult DistributedBroadcastOp::verify() {
         "root index {0} out of range for {1} devices", root, numDevices));
 
   auto inputType = cast<TensorType>(getInput().getType());
+  // The input is the root's copy of the tensor, so it must already live on
+  // the root's device. Devices can still be unassigned in graphs built in
+  // memory, so only compare when both are known.
+  auto rootDevice =
+      cast<BufferType>(signalBuffers[root].getType()).getDeviceRef();
+  auto inputDevice = inputType.getDeviceRef();
+  if (inputDevice && rootDevice && inputDevice != rootDevice)
+    return emitError(llvm::formatv(
+        "the input must be on the root's device, {0}, but is on {1}",
+        rootDevice, inputDevice));
+
   for (size_t i = 0; i < outputs.size(); ++i) {
     auto outputType = getOutputTensor(i).getType();
     if (outputType.getShape() != inputType.getShape())

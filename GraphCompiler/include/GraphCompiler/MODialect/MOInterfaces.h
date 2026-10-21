@@ -172,6 +172,10 @@ DeviceRefAttr getFirstResultDevice(Operation *op);
 
 LogicalResult verifyExplicitDevice(Operation *op);
 
+/// Bundled collectives must live inside `mo.parallel` or inside an
+/// `isDeviceGraph` `mo.graph`.
+LogicalResult verifyBundledCollectiveInterface(Operation *op);
+
 ShapeMaterializeResult
 materializeReductionShapeDefs(Reduction op, ArrayRef<TypedAttr> inputAttrs);
 

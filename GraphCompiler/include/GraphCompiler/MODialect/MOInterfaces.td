@@ -581,16 +581,20 @@ def MO_PreservedDuringKernelLowering : OpInterface<"PreservedDuringKernelLowerin
 }
 
 // Bundled collectives (e.g. `mo.bundled.expand`, `mo.bundled.allreduce.sum`)
-// coordinate across launches with signal buffers from the parallel's
-// `buffers(...)` clause. `ParallelOp::verify` allows them unconditionally.
-// Apply via `MO_BundledCollective`, which also adds the parent constraint.
+// coordinate across launches with signal buffers: inside `mo.parallel`, from
+// the parallel's `buffers(...)` clause; inside a device graph, captured from
+// graph scope. `ParallelOp::verify` allows them unconditionally, and this
+// interface's verifier enforces one of the two valid homes. Apply via
+// `MO_BundledCollective`.
 def MO_BundledCollectiveInterface
     : OpInterface<"MOBundledCollectiveInterface"> {
   let description = [{
     Marks a per-launch bundled-collective entry point, valid only inside an
-    `mo.parallel` body.
+    `mo.parallel` body or an `isDeviceGraph` `mo.graph` body.
   }];
   let cppNamespace = "::M::MO";
+
+  let verify = [{ return Impl::verifyBundledCollectiveInterface($_op); }];
 }
 
 def MO_BundledCollective : TraitList<[MO_BundledCollectiveInterface]>;

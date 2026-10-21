@@ -671,6 +671,17 @@ LogicalResult Impl::verifyExplicitDevice(Operation *op) {
       "Missing device attribute for op with explicit device trait");
 }
 
+LogicalResult Impl::verifyBundledCollectiveInterface(Operation *op) {
+  if (op->getParentOfType<ParallelOp>())
+    return success();
+  if (auto graph = op->getParentOfType<GraphOp>())
+    if (graph.getIsDeviceGraph())
+      return success();
+  return op->emitOpError(
+      "must be inside a mo.parallel region or a mo.graph with the "
+      "isDeviceGraph attribute");
+}
+
 //===----------------------------------------------------------------------===//
 // ODS-Generated Definitions
 //===----------------------------------------------------------------------===//

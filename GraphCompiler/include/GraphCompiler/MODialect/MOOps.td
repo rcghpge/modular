@@ -5085,6 +5085,81 @@ def MO_BundledAllReduceSumOp : MO_TensorOp<"bundled.allreduce.sum", [
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// BundledBroadcastOp
+//===----------------------------------------------------------------------===//
+
+def MO_BundledBroadcastOp : MO_TensorOp<"bundled.broadcast", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_BundledCollective,
+  MO_SingleDeviceWithPeerInputs<>,
+]> {
+  let summary = "Per-device broadcast of the root device's tensor.";
+  let description = [{
+    The per-device form of `mo.distributed.broadcast`, one op per
+    participating device: copies `input`, the root device's tensor, into
+    this device's output. Every copy, the root's included, reads `input`,
+    which the device-graph lowering routes through a stable address slot.
+    `root` is the root's index in the signal buffer list, which holds one
+    buffer per device.
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+  let arguments = (ins
+    MO_Tensor:$input,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain,
+    DefaultValuedAttr<I64Attr, "0">:$root
+  );
+  let results = (outs
+    MO_Tensor:$output,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` (` ` `[` `root` `=` $root^ `]`)? attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// BundledAllGatherOp
+//===----------------------------------------------------------------------===//
+
+def MO_BundledAllGatherOp : MO_TensorOp<"bundled.allgather", [
+  DeclareOpInterfaceMethods<MO_MutableOpInterface>,
+  DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+  MO_BundledCollective,
+  MO_SameVariadicOperandSize,
+  MO_SameVariadicResultSize,
+  MO_SingleDeviceWithPeerInputs<>,
+]> {
+  let summary = "Per-device allgather over every peer's tensor.";
+  let description = [{
+    The per-device form of `mo.distributed.allgather`, one op per device and
+    full world only: takes every peer's tensor, which the device-graph
+    lowering routes through stable address slots, and one signal buffer per
+    device, and produces this device's gathered pieces, one per peer in peer
+    order, each with the peer's shape on this device. A grouped allgather
+    routes part of a shard through a paired group's buffers, which a device
+    graph cannot express, so `group_size` has no per-device form.
+  }];
+  let hasVerifier = 1;
+  let hasFolder = 1;
+  let arguments = (ins
+    Variadic<MO_Tensor>:$inputs,
+    Variadic<MO_Buffer>:$signalBuffers,
+    MO_Chain:$inChain
+  );
+  let results = (outs
+    Variadic<MO_Tensor>:$outputs,
+    MO_Chain:$outChain
+  );
+  let assemblyFormat = [{
+    `(` operands `)` attr-dict `:` functional-type(operands, results)
+  }];
+}
+
 def MO_ReduceScatterSumOp : MO_DistributedOp<"distributed.reducescatter.sum", [
   MO_MultiDevice,
 ]> {
