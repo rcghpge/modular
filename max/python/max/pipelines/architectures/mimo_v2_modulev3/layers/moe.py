@@ -74,7 +74,7 @@ class _Fp8Weights(Module[[], None]):
         partial sum of the output.
         """
         quant = FP8BlockTensor(
-            data=self.weight,
+            weight=self.weight,
             weight_scale_inv=self.weight_scale,
             block_size=(FP8_BLOCK, FP8_BLOCK),
         )

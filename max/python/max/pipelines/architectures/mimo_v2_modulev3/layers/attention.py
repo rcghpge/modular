@@ -107,7 +107,7 @@ class ChunkedQkvProj(Module[[], None]):
                 [layout.chunks * layout.padded_rows, self.hidden_size]
             )
         quant = FP8BlockTensor(
-            data=weight,
+            weight=weight,
             weight_scale_inv=self.weight_scale,
             block_size=(FP8_BLOCK, FP8_BLOCK),
         )
