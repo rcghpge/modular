@@ -1550,8 +1550,8 @@ SharedState::resolveDeclFromBytecode(ASTDecl &decl,
 
   // If this isn't a container op, we don't need to resolve any nested decls,
   // simply materialize everything nested within.
-  if (!isa<FileModuleOp, PackageOp, StructDeclOp, TraitDeclOp, ExtensionDeclOp>(
-          declOp)) {
+  if (!isa<FileModuleOp, PackageOp, StructDeclOp, TraitDeclOp, ExtensionDeclOp,
+           ImportOp>(declOp)) {
     return failure(declOp->walk<mlir::WalkOrder::PreOrder>(resolveSingleOp)
                        .wasInterrupted());
   }
