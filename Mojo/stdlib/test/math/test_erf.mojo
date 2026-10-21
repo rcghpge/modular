@@ -62,7 +62,7 @@ def test_erf_libm() raises:
     def erf_libm[
         dtype: DType, simd_width: SIMDLength
     ](arg: SIMD[dtype, simd_width]) -> SIMD[dtype, simd_width]:
-        return libm_call["erff", "err"](arg)
+        return libm_call["erff", "erf"](arg)
 
     var libm_out_allocation = alloc[Scalar[test_dtype]](
         {length = N}
