@@ -66,9 +66,8 @@ bool isAMDGPU(TargetInfoAttr target,
 struct AMDGPUCastToLLVM : public ConvertPOPToLLVMPattern<POP::CastOp> {
   using ConvertPOPToLLVMPattern::ConvertPOPToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     TargetInfoAttr target = getTypeConverter()->getTarget();
     if (!target || !target.getTriple().isAMDGPU())
       return failure();
@@ -94,7 +93,7 @@ private:
   ///   - reduce compile time as stdlib's code won't be parsed and will simply
   ///   be represented by `pop.cast`
   LogicalResult
-  convertF32ToBF16OnAMDGPU(ConversionPatternRewriter &rewriter, POP::CastOp op,
+  convertF32ToBF16OnAMDGPU(DirectRewriter &rewriter, POP::CastOp op,
                            Value value, APFloat::Semantics fromFloatSemantics,
                            APFloat::Semantics toFloatSemantics) const {
     assert(getTypeConverter()->getTarget().getTriple().isAMDGPU() &&
@@ -178,7 +177,7 @@ private:
     return success();
   }
 
-  Value getClampedFloatValue(ConversionPatternRewriter &rewriter, Location loc,
+  Value getClampedFloatValue(DirectRewriter &rewriter, Location loc,
                              Value value, APFloat::Semantics floatSemantics,
                              size_t size, Type outType) const {
     APFloat m = APFloat::getLargest(APFloat::EnumToSemantics(floatSemantics));
@@ -208,7 +207,7 @@ private:
     return clamped;
   }
 
-  Value getIsNaN(ConversionPatternRewriter &rewriter, Location loc, Value value,
+  Value getIsNaN(DirectRewriter &rewriter, Location loc, Value value,
                  APFloat::Semantics floatSemantics, size_t size) const {
     // Using FCmp with predicate of FCMP_UNO to check nan
     // FCMP_UNO 	True if unordered: isnan(X) | isnan(Y)
@@ -223,8 +222,8 @@ private:
   /// Helper function to convert scalar of F32 to F8 (F8E4M3FNUZ or F8E5M2FNUZ)
   /// on AMDGPU without replacing the operation
   Value
-  convertF32ToF8OnAMDGPUHelper(ConversionPatternRewriter &rewriter,
-                               POP::CastOp op, Value value, Type outType,
+  convertF32ToF8OnAMDGPUHelper(DirectRewriter &rewriter, POP::CastOp op,
+                               Value value, Type outType,
                                APFloat::Semantics fromFloatSemantics,
                                APFloat::Semantics toFloatSemantics) const {
     assert(getTypeConverter()->getTarget().getTriple().isAMDGPU() &&
@@ -332,8 +331,8 @@ private:
   }
 
   LogicalResult
-  convertF32ToF8OnAMDGPU(ConversionPatternRewriter &rewriter, POP::CastOp op,
-                         Value value, APFloat::Semantics fromFloatSemantics,
+  convertF32ToF8OnAMDGPU(DirectRewriter &rewriter, POP::CastOp op, Value value,
+                         APFloat::Semantics fromFloatSemantics,
                          APFloat::Semantics toFloatSemantics) const {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
@@ -348,8 +347,8 @@ private:
   }
 
   Value
-  convertF8ToF32OnAMDGPUHelper(ConversionPatternRewriter &rewriter,
-                               POP::CastOp op, Value value, Type outType,
+  convertF8ToF32OnAMDGPUHelper(DirectRewriter &rewriter, POP::CastOp op,
+                               Value value, Type outType,
                                APFloat::Semantics fromFloatSemantics,
                                APFloat::Semantics toFloatSemantics) const {
     assert(getTypeConverter()->getTarget().getTriple().isAMDGPU() &&
@@ -461,8 +460,8 @@ private:
   }
 
   LogicalResult
-  convertF8ToF32OnAMDGPU(ConversionPatternRewriter &rewriter, POP::CastOp op,
-                         Value value, APFloat::Semantics fromFloatSemantics,
+  convertF8ToF32OnAMDGPU(DirectRewriter &rewriter, POP::CastOp op, Value value,
+                         APFloat::Semantics fromFloatSemantics,
                          APFloat::Semantics toFloatSemantics) const {
 
     Value converted = convertF8ToF32OnAMDGPUHelper(
@@ -476,7 +475,7 @@ private:
   /// Convert a `pop.cast` into optimized sequence of asm instructions that
   /// are known to be more efficient for a target than general LLVM's
   /// conversion.
-  LogicalResult convertToTargetSpecificCast(ConversionPatternRewriter &rewriter,
+  LogicalResult convertToTargetSpecificCast(DirectRewriter &rewriter,
                                             POP::CastOp cast,
                                             Value value) const {
     TargetInfoAttr target = getTypeConverter()->getTarget();

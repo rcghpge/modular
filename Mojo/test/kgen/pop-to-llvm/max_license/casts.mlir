@@ -23,13 +23,14 @@ module attributes {M.target_info = #M.target<triple = "amdgpu9.42-amd-amdhsa", a
 
   // CHECK-LABEL: simd_cast_f32_bf16
   kgen.func @simd_cast_f32_bf16(%f32: !kgen.simd<2, f32>) -> (!kgen.simd<2, bf16>, !kgen.simd<2, bf16>) {
-    // CHECK: %[[ONE:.*]] = llvm.mlir.constant(1 : i32) : i32
-    // CHECK-NEXT: %[[MANTISSA_DIFF:.*]] = llvm.mlir.constant(16 : i32) : i32
-    // CHECK-NEXT: %[[NAN:.*]] = llvm.mlir.constant(0x7FC00000 : f32) : f32
-    // CHECK-NEXT: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
-    // CHECK-NEXT: %[[UNDEF_BF16x2:.*]] = llvm.mlir.undef : vector<2xbf16>
-    // CHECK-NEXT: %[[ROUNDED_BIAS:.*]] = llvm.mlir.constant(32767 : i32) : i32
-    // CHECK-NEXT: %[[F32_0:.*]] = llvm.extractelement %arg0[%[[ZERO]] : i32] : vector<2xf32>
+    // The constant prologue's emission order is not fixed.
+    // CHECK-DAG: %[[ONE:.*]] = llvm.mlir.constant(1 : i32) : i32
+    // CHECK-DAG: %[[MANTISSA_DIFF:.*]] = llvm.mlir.constant(16 : i32) : i32
+    // CHECK-DAG: %[[NAN:.*]] = llvm.mlir.constant(0x7FC00000 : f32) : f32
+    // CHECK-DAG: %[[ZERO:.*]] = llvm.mlir.constant(0 : i32) : i32
+    // CHECK-DAG: %[[UNDEF_BF16x2:.*]] = llvm.mlir.undef : vector<2xbf16>
+    // CHECK-DAG: %[[ROUNDED_BIAS:.*]] = llvm.mlir.constant(32767 : i32) : i32
+    // CHECK: %[[F32_0:.*]] = llvm.extractelement %arg0[%[[ZERO]] : i32] : vector<2xf32>
     // CHECK-NEXT: %[[UNORDERED_MASK_0:.*]] = llvm.inline_asm asm_dialect = att "v_cmp_u_f32 $0, $1, $1", "=s,v" %[[F32_0]] : (f32) -> i64
     // CHECK-NEXT: %[[LSB_0:.*]] = llvm.inline_asm asm_dialect = att "v_bfe_u32 $0, $1, 16, 1", "=v,v" %[[F32_0]] : (f32) -> i32
     // CHECK-NEXT: %[[ROUNDED_VALUE_0:.*]] = llvm.inline_asm asm_dialect = att "v_add3_u32 $0, $1, $2, $3", "=v,v,v,s" %[[F32_0]], %[[LSB_0]], %[[ROUNDED_BIAS]] : (f32, i32, i32) -> i32
@@ -173,7 +174,7 @@ module attributes {M.target_info = #M.target<triple = "amdgpu9.42-amd-amdhsa", a
   // CHECK-LABEL: scalar_cast_f8_f32
   kgen.func @scalar_cast_f8_f32(%f8: !kgen.scalar<f8e4m3fnuz>) -> !kgen.scalar<f32> {
     // CHECK-DAG: %[[ZERO:.+]] = llvm.mlir.constant(0 : i32) : i32
-    // CHECK: %[[INPUT0:.+]] = llvm.mlir.undef : vector<4xi8>
+    // CHECK-DAG: %[[INPUT0:.+]] = llvm.mlir.undef : vector<4xi8>
     // CHECK: %[[INPUT1:.+]] = llvm.insertelement %arg0, %[[INPUT0]][%[[ZERO]] : i32] : vector<4xi8>
     // CHECK: %[[INPUT2:.+]] = llvm.bitcast %[[INPUT1]] : vector<4xi8> to i32
     // CHECK: %[[RES:.+]] = llvm.call_intrinsic "llvm.amdgcn.cvt.f32.fp8"(%[[INPUT2]], %[[ZERO]]) : (i32, i32) -> f32

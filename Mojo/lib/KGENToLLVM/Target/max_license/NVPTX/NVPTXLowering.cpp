@@ -75,9 +75,8 @@ bool isHopperAndAbove(TargetInfoAttr target) {
 struct NVPTXCastToLLVM : public ConvertPOPToLLVMPattern<POP::CastOp> {
   using ConvertPOPToLLVMPattern::ConvertPOPToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     TargetInfoAttr target = getTypeConverter()->getTarget();
     // These conversions rely on NVPTX instructions available on Hopper+.
     if (!target || !isHopperAndAbove(target))
@@ -124,8 +123,8 @@ private:
   /// The conversion relies on NVPTX-specific instructions to perform the
   /// conversion, therefore no need to rely on `fast` attribute on a `pop.cast`.
   LogicalResult
-  convertF32ToF8OnNVPTX(ConversionPatternRewriter &rewriter, POP::CastOp op,
-                        Value value, APFloat::Semantics fromFloatSemantics,
+  convertF32ToF8OnNVPTX(DirectRewriter &rewriter, POP::CastOp op, Value value,
+                        APFloat::Semantics fromFloatSemantics,
                         APFloat::Semantics toFloatSemantics) const {
     assert(isHopperAndAbove(getTypeConverter()->getTarget()) &&
            "lowering of f32 to f8 is only supported on NVIDIA Hopper "
@@ -174,8 +173,8 @@ private:
 
   /// Helper function to convert vector of F8 (F8E4M3FN or F8E5M2) to F16 on
   /// NVPTX without replacing the operation
-  Value convertF8ToF16OnNVPTXHelper(ConversionPatternRewriter &rewriter,
-                                    POP::CastOp op, Value value,
+  Value convertF8ToF16OnNVPTXHelper(DirectRewriter &rewriter, POP::CastOp op,
+                                    Value value,
                                     APFloat::Semantics fromFloatSemantics,
                                     APFloat::Semantics toFloatSemantics) const {
     assert(isHopperAndAbove(getTypeConverter()->getTarget()) &&
@@ -237,8 +236,8 @@ private:
   /// perform the conversion, therefore no need to rely on `fast` attribute on a
   /// `pop.cast`.
   LogicalResult
-  convertF8ToF16OnNVPTX(ConversionPatternRewriter &rewriter, POP::CastOp op,
-                        Value value, APFloat::Semantics fromFloatSemantics,
+  convertF8ToF16OnNVPTX(DirectRewriter &rewriter, POP::CastOp op, Value value,
+                        APFloat::Semantics fromFloatSemantics,
                         APFloat::Semantics toFloatSemantics) const {
     rewriter.replaceOp(op, convertF8ToF16OnNVPTXHelper(rewriter, op, value,
                                                        fromFloatSemantics,
@@ -257,9 +256,8 @@ private:
 struct NVPTXAbsToLLVM : public ConvertPOPToLLVMPattern<POP::AbsOp> {
   using ConvertPOPToLLVMPattern::ConvertPOPToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(POP::AbsOp op, POP::AbsOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::AbsOp op, POP::AbsOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     TargetInfoAttr target = getTypeConverter()->getTarget();
     if (!target || !target.getTriple().isNVPTX())
       return failure();

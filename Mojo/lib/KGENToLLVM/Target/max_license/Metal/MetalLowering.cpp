@@ -63,9 +63,8 @@ namespace {
 
 /// Expand any KGEN struct operands into their (remapped) LLVM field values, so
 /// AIR intrinsic calls receive the individual scalar/vector arguments.
-static SmallVector<Value> expandOperands(ConversionPatternRewriter &rewriter,
-                                         Location loc, ValueRange args,
-                                         TypeRange origTypes,
+static SmallVector<Value> expandOperands(DirectRewriter &rewriter, Location loc,
+                                         ValueRange args, TypeRange origTypes,
                                          const POPToLLVMTypeConverter &tc) {
   SmallVector<Value> operands;
   operands.reserve(args.size());
@@ -155,9 +154,8 @@ bool doesMetalRequireAIRIntrinsicForCast(POP::CastOp cast) {
 struct MetalRoundToLLVM : public ConvertPOPToLLVMPattern<POP::RoundOp> {
   using ConvertPOPToLLVMPattern::ConvertPOPToLLVMPattern;
 
-  LogicalResult
-  matchAndRewrite(POP::RoundOp op, POP::RoundOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::RoundOp op, POP::RoundOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     KGENDType dtype = *op.getType().getResolvedDType();
     if (!dtype.isFloat()) {
       rewriter.replaceOp(op, adaptor.getOperand());
@@ -247,9 +245,8 @@ struct ConvertSymbolOpToAIR : public ConvertSymbolOpToLLVM<OpT> {
     }
   }
 
-  LLVM::LLVMFuncOp createAIRFunction(ConversionPatternRewriter &rewriter,
-                                     ModuleOp module, Location loc,
-                                     AIRIntrinsicName &airName,
+  LLVM::LLVMFuncOp createAIRFunction(DirectRewriter &rewriter, ModuleOp module,
+                                     Location loc, AIRIntrinsicName &airName,
                                      ValueRange operands,
                                      TypeRange resultTypes) const {
     SmallVector<Type> argTypes;
@@ -303,10 +300,9 @@ struct ConvertPOPCallToAIRIntrinsic
   using BaseT::BaseT;
   using BaseT::createAIRFunction;
 
-  LogicalResult
-  matchAndRewrite(POP::CallLLVMIntrinsicOp op,
-                  POP::CallLLVMIntrinsicOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::CallLLVMIntrinsicOp op,
+                                POP::CallLLVMIntrinsicOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op.getResultTypes(), types)))
       return failure();
@@ -365,7 +361,7 @@ private:
   // not by all argument types.
   // For read_texture: mangle by the result type's vector element
   // For write_texture: mangle by the data argument type (3rd operand)
-  LLVM::LLVMFuncOp createTextureAIRFunction(ConversionPatternRewriter &rewriter,
+  LLVM::LLVMFuncOp createTextureAIRFunction(DirectRewriter &rewriter,
                                             ModuleOp module, Location loc,
                                             StringRef airName,
                                             ValueRange operands,
@@ -408,10 +404,11 @@ private:
   }
 
   // Create AIR function for simdgroup_matrix intrinsics with custom mangling.
-  ErrorOr<LLVM::LLVMFuncOp> createSimdgroupMatrixAIRFunction(
-      ConversionPatternRewriter &rewriter, ModuleOp module, Location loc,
-      StringRef airName, ValueRange operands, TypeRange resultTypes,
-      TypeRange origOpTypes) const {
+  ErrorOr<LLVM::LLVMFuncOp>
+  createSimdgroupMatrixAIRFunction(DirectRewriter &rewriter, ModuleOp module,
+                                   Location loc, StringRef airName,
+                                   ValueRange operands, TypeRange resultTypes,
+                                   TypeRange origOpTypes) const {
     enum class SimdgroupMatrixKind {
       k8x8,
       k16x16,
@@ -495,9 +492,8 @@ struct ConvertPOPMinToAIR : public ConvertSymbolOpToAIR<POP::MinOp> {
   using BaseT::BaseT;
   using BaseT::createAIRFunction;
 
-  LogicalResult
-  matchAndRewrite(POP::MinOp op, POP::MinOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::MinOp op, POP::MinOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
       return failure();
@@ -541,9 +537,8 @@ struct ConvertPOPMaxToAIR : public ConvertSymbolOpToAIR<POP::MaxOp> {
   using BaseT::BaseT;
   using BaseT::createAIRFunction;
 
-  LogicalResult
-  matchAndRewrite(POP::MaxOp op, POP::MaxOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::MaxOp op, POP::MaxOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
       return failure();
@@ -588,9 +583,8 @@ struct ConvertPOPCastToAIR : public ConvertSymbolOpToAIR<POP::CastOp> {
   using BaseT::createAIRFunction;
   using BaseT::mangleType;
 
-  LogicalResult
-  matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::CastOp op, POP::CastOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
       return failure();
@@ -706,9 +700,9 @@ public:
   using BaseT::createAIRFunction;
   using BaseT::mangleType;
 
-  LogicalResult
-  matchAndRewrite(POP::AtomicRMWOp op, POP::AtomicRMWOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::AtomicRMWOp op,
+                                POP::AtomicRMWOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
       return failure();
@@ -826,9 +820,9 @@ public:
   using BaseT::createAIRFunction;
   using BaseT::mangleType;
 
-  LogicalResult
-  matchAndRewrite(POP::AtomicCmpXchgOp op, POP::AtomicCmpXchgOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::AtomicCmpXchgOp op,
+                                POP::AtomicCmpXchgOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     SmallVector<Type> types;
     if (failed(getTypeConverter()->convertTypes(op->getResultTypes(), types)))
       return failure();
@@ -1008,9 +1002,8 @@ public:
   using BaseT::BaseT;
   using BaseT::createAIRFunction;
 
-  LogicalResult
-  matchAndRewrite(POP::FenceOp op, POP::FenceOpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(POP::FenceOp op, POP::FenceOpAdaptor adaptor,
+                                DirectRewriter &rewriter) const override {
     auto module = op->getParentOfType<mlir::ModuleOp>();
     if (!module)
       return failure();
