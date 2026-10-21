@@ -142,6 +142,14 @@ def test_get_metrics_url_supported_backends() -> None:
     assert url == "http://localhost:8000/metrics"
 
 
+def test_get_metrics_url_mach_uses_engine_metrics_port() -> None:
+    """The mach backend scrapes the engine's Prometheus endpoint, which the
+    CI launch exposes on the same dedicated port MAX Serve uses — not the
+    orchestrator's HTTP port the base URL points at."""
+    url = get_metrics_url("mach", "http://localhost:8091")
+    assert url == "http://localhost:8001/metrics"
+
+
 def test_get_metrics_url_ipv6() -> None:
     """Bracketed IPv6 base_url must produce bracketed metrics URL."""
     url = get_metrics_url("modular", "http://[fdc3:5d58:ceb7::8:91fa]:8000")

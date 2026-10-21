@@ -162,9 +162,12 @@ def get_metrics_url(backend: Backend, base_url: str) -> str:
     if ":" in host:
         host = f"[{host}]"
 
-    # For MAX backends, use dedicated metrics port from SDK config
-    # For other backends, use the same port as the base URL
-    if backend in ("modular", "modular-chat"):
+    # MAX engines expose Prometheus metrics on a dedicated port: MAX Serve
+    # via its own metrics server and the Mach engine via its
+    # ``--metrics-address`` flag (the benchmark CI passes the same port the
+    # SDK config uses; see benchmarkServingRun.yaml). Other backends are
+    # scraped on the same port as the base URL.
+    if backend in ("modular", "modular-chat", "mach"):
         metrics_port = _MAX_METRICS_PORT
     else:
         metrics_port = parsed_url.port or 8000
