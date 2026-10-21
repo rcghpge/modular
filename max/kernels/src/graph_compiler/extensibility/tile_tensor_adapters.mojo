@@ -10,7 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Helpers for projecting dense tensor arguments to `TileTensor` views."""
+"""Helpers for projecting dense tensor arguments to `TileTensor` views.
+
+The `to_tile_tensor` free functions are deprecated: call the
+`TileTensorable.to_tile_tensor` method instead.
+"""
 
 from layout import TileTensor
 from std.builtin.rebind import downcast
@@ -63,6 +67,9 @@ def to_tile_tensor[
 ](tensor: TensorType) -> _TileProjection[mut, TensorType]:
     """Projects a tensor argument to a `TileTensor` view.
 
+    Deprecated: call `tensor.to_tile_tensor()`, the `TileTensorable` method,
+    instead. Refine a `Tensor`-bound argument with `conforms_to` first.
+
     Parameters:
         TensorType: The tensor-argument type (inferred).
         mut: Whether to project a mutable view (defaults to immutable).
@@ -83,7 +90,9 @@ def to_tile_tensor[
     ), _not_tile_tensorable_message[TensorType]()
     comptime if mut:
         comptime assert TensorType.mut
-    return rebind[_TileProjection[mut, TensorType]](tensor.to_tile_tensor())
+    return rebind[_TileProjection[mut, TensorType]](
+        tensor.to_tile_tensor[mut=mut]()
+    )
 
 
 @inline(.always)
@@ -91,6 +100,9 @@ def to_tile_tensor[
     TensorType: Output & Tensor, //
 ](tensor: TensorType) -> _TileProjection[True, TensorType]:
     """Projects an output tensor argument to a mutable `TileTensor` view.
+
+    Deprecated: call `tensor.to_tile_tensor()`, the `TileTensorable` method,
+    instead. Refine a `Tensor`-bound argument with `conforms_to` first.
 
     Output tensors are writable by construction, so the trait bound selects the
     mutable projection without call sites passing `mut=True`.
@@ -111,7 +123,9 @@ def to_tile_tensor[
         TensorType, TileTensorable
     ), _not_tile_tensorable_message[TensorType]()
     comptime assert TensorType.mut
-    return rebind[_TileProjection[True, TensorType]](tensor.to_tile_tensor())
+    return rebind[_TileProjection[True, TensorType]](
+        tensor.to_tile_tensor[mut=True]()
+    )
 
 
 @inline(.always)
@@ -119,6 +133,9 @@ def to_tile_tensor[
     TensorType: MutableInput & Tensor, //
 ](tensor: TensorType) -> _TileProjection[True, TensorType]:
     """Projects a mutable-input tensor argument to a mutable `TileTensor` view.
+
+    Deprecated: call `tensor.to_tile_tensor()`, the `TileTensorable` method,
+    instead. Refine a `Tensor`-bound argument with `conforms_to` first.
 
     Mutable inputs are read-write by construction, so the trait bound selects
     the mutable projection without call sites passing `mut=True`.
@@ -139,4 +156,6 @@ def to_tile_tensor[
         TensorType, TileTensorable
     ), _not_tile_tensorable_message[TensorType]()
     comptime assert TensorType.mut
-    return rebind[_TileProjection[True, TensorType]](tensor.to_tile_tensor())
+    return rebind[_TileProjection[True, TensorType]](
+        tensor.to_tile_tensor[mut=True]()
+    )

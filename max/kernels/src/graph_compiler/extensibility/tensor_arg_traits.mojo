@@ -41,6 +41,7 @@ is legacy machinery; read its docstring before using it.
 """
 
 from std.memory import AddressSpace
+from std.reflection import reflect
 
 from layout import (
     Coord,
@@ -368,9 +369,11 @@ trait _LegacyComputable(_LegacyComputeOutput):
 trait TileTensorable(DenseTensor):
     """A `DenseTensor` that can project to a `TileTensor` view over its storage.
 
-    Lets the kernel work on a non-fused argument directly as a `TileTensor` (via
-    `to_tile_tensor`) instead of going through the fused load/store/transform
-    access.
+    Lets the kernel work on a non-fused argument directly as a `TileTensor`
+    (via `to_tile_tensor`) instead of going through the fused
+    load/store/transform access. Bind it in the signature when the kernel
+    projects the argument on every target it supports, or refine to it in the
+    body with `conforms_to` when that varies by target.
 
     The projection's origin is `UntrackedOrigin` because the backing memory
     belongs to the graph executor: its liveness guarantee is invisible to the
@@ -380,7 +383,7 @@ trait TileTensorable(DenseTensor):
 
     comptime mut: Bool
 
-    def to_tile_tensor(
+    def _to_tile_tensor(
         self,
     ) -> TileTensor[
         Self.dtype,
@@ -390,7 +393,72 @@ trait TileTensorable(DenseTensor):
     ]:
         """Projects the argument to a `TileTensor` over its storage.
 
+        Conformers implement this; kernels call `to_tile_tensor`. The two
+        names are distinct so a call without parameters always reaches the
+        method with role-aware mutability.
+
         Returns:
             A `TileTensor` view with the argument's dtype, layout, and `mut`.
         """
         ...
+
+    # The role test only makes `mut` foldable through an `Output` or
+    # `MutableInput` bound, so the view reaches `mut=True` parameters; it is
+    # `Self.mut` in every case. It uses `|` because `or` lowers to
+    # `a if a else b`, which folds only when `a` is provable. Elsewhere the
+    # default stays symbolic: an input still reaches immutable parameters
+    # through `TileTensor`'s implicit `Immut` conversion, and a role-less
+    # writer passes `mut=True`.
+    @inline(.always)
+    def to_tile_tensor[
+        dtype: DType = Self.dtype,
+        *,
+        mut: Bool = True if conforms_to(Self, Output)
+        | conforms_to(Self, MutableInput) else Self.mut,
+    ](
+        self,
+        out result: TileTensor[
+            mut=mut,
+            dtype,
+            LayoutType=Self.LayoutType,
+            origin=UntrackedOrigin[mut=mut],
+            Engine=Self.Engine,
+        ],
+    ):
+        """Projects the argument to a `TileTensor` view over its storage.
+
+        Treat this method as final: conformers implement `_to_tile_tensor`
+        and must not override `to_tile_tensor`. The role-based `mut` default
+        and the dtype and mutability checks live here, so an override would
+        bypass them, and Mojo cannot mark a default method final.
+
+        Parameters:
+            dtype: The argument's dtype, restated so the projection unifies
+                with another argument's dtype parameter (defaults to the
+                argument's own dtype). It must equal the argument's dtype; it
+                does not convert or reinterpret.
+            mut: Whether to project a mutable view (defaults to the
+                argument's own `mut`).
+
+        Returns:
+            A `TileTensor` view over the argument's storage.
+
+        Constraints:
+            `dtype` must equal the argument's dtype, and a mutable view needs
+            a mutable argument.
+        """
+        comptime assert dtype == Self.dtype, _dtype_mismatch_message[
+            Self, dtype
+        ]()
+        comptime if mut:
+            comptime assert Self.mut, "a mutable view needs a mutable argument"
+        return rebind[type_of(result)](self._to_tile_tensor())
+
+
+def _dtype_mismatch_message[TensorType: Tensor, dtype: DType]() -> String:
+    return String(
+        t"to_tile_tensor[{dtype}] restates the argument's dtype for the type"
+        t" checker and does not convert, but '{reflect[TensorType].name()}'"
+        t" has dtype {TensorType.dtype}; use TileTensor.bitcast to reinterpret"
+        t" the storage"
+    )
