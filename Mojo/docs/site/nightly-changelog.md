@@ -20,6 +20,9 @@ This version is still a work in progress.
 
 ## Library stabilizations
 
+- `List.insert`
+- `List.clear`
+
 ## Library performance improvements
 
 ## Library changes

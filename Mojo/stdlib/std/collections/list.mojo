@@ -906,6 +906,7 @@ struct List[T: AnyType, /](
         self._len += 1
 
     @inline(.always)
+    @stable(since="1.2")
     def insert(
         mut self, i: Int, var value: Self.T, /
     ) where conforms_to(Self.T, Movable):
@@ -1355,6 +1356,7 @@ struct List[T: AnyType, /](
             raise "ValueError: Given element is not in list"
         return result.value()
 
+    @stable(since="1.2")
     def clear(
         mut self,
     ) where conforms_to(Self.T, Deinitable):
