@@ -19,9 +19,7 @@ plain tensors where the sharded targets take per-device lists.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from max.graph import BufferType, DimLike, TensorType, TensorValue
+from max.graph import DimLike, TensorValue
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.speculative.driver import (
     CarryDimNames,
@@ -56,9 +54,6 @@ class Llama3Target:
         # VARIABLE logits + ALL_NORMALIZED hidden states -> (last_logits,
         # logits, offsets, hidden). One device, so a single trailing entry.
         return Verified(logits=outputs[1], hidden=outputs[3])
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class EagleLlama3Proposer:

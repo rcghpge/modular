@@ -17,15 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from max.dtype import DType
-from max.graph import (
-    BufferType,
-    DeviceRef,
-    Dim,
-    DimLike,
-    TensorType,
-    TensorValue,
-    ops,
-)
+from max.graph import DeviceRef, Dim, DimLike, TensorValue, ops
 from max.nn.kernels import merge_ragged_tensors
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
@@ -220,9 +212,6 @@ class InklingTarget:
         return Verified(
             logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class InklingMTPProposer:

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from max.graph import BufferType, TensorType, TensorValue
+from max.graph import TensorValue
 from max.nn.kv_cache import PagedCacheValues, RecurrentStateRegion
 from max.nn.transformer.transformer import (
     captures_by_device,
@@ -83,9 +83,6 @@ class Qwen3_5BlockTarget:
                 captures_by_device(outputs[3:], batch.n_devs)
             )[0],
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class DFlash2Qwen3_5Proposer:

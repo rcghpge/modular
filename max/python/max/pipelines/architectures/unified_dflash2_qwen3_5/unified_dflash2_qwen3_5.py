@@ -97,7 +97,7 @@ class UnifiedDflash2Qwen3_5(BlockDriver[TensorValue, TensorValue]):
 
         target_adapter = Qwen3_5BlockTarget(target, state_regions)
         super().__init__(
-            target_adapter,
+            target_adapter.verify,
             DFlash2Qwen3_5Proposer(
                 draft,
                 target_adapter,

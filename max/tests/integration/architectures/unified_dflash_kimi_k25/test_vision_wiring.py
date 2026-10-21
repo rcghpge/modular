@@ -117,8 +117,8 @@ def _graph_input_types(
     (matching the ``kv_cache_inputs=None`` model inputs on the buffers side).
 
     ``dflash_kimi_k25_input_spec`` reads only the target's device list, DP
-    degree and hidden size, and the driver forwards ``ep_input_types`` to its
-    target adapter, which reads only the EP manager -- so duck-typed stand-ins
+    degree and hidden size, and the driver returns the ``ep_input_types`` its
+    target adapter declared, which read only the EP manager -- so duck-typed stand-ins
     reach both without building the target + draft modules. Those two are the whole of what the architecture contributes to
     its signature -- ``build_spec_decode_input_types`` builds the rest, which
     is what this calls directly below.
@@ -136,9 +136,9 @@ def _graph_input_types(
     stand_in = cast(
         UnifiedDflashKimiK25,
         SimpleNamespace(
-            _target=DFlashKimiK25Target(
+            _ep_input_types=DFlashKimiK25Target(
                 cast(Any, SimpleNamespace(ep_manager=None))
-            )
+            ).ep_input_types()
         ),
     )
     kv_params = MagicMock()

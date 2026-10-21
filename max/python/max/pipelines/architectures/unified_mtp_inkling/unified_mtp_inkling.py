@@ -65,7 +65,7 @@ class UnifiedMTPInkling(SequentialDriver[list[TensorValue]]):
         )
         target_adapter = InklingTarget(target, target_config)
         super().__init__(
-            target_adapter,
+            target_adapter.verify,
             InklingMTPProposer(draft, target_adapter),
             target_model=target,
             draft_model=draft,

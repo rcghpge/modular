@@ -55,7 +55,7 @@ class UnifiedDSparkGemma4_12B(Gemma4BlockDriver):
                 target,
                 hidden_size=config.target.text_config.hidden_size,
                 dtype=config.target.unquantized_dtype,
-            ),
+            ).verify,
             DSparkGemma4_12BProposer(
                 draft,
                 target,

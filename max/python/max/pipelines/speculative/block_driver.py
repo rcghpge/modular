@@ -21,7 +21,7 @@ state, no per-step cache advance, no token shift and no stack at the end.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Generic, Literal, Protocol, TypeVar
 
@@ -56,7 +56,7 @@ from .spec_input_types import (
     SpecDecodeGraphSignature,
     SpecDecodeInputTypeSpec,
 )
-from .spec_target import SpecDecodeTarget
+from .spec_target import Verified
 from .spec_width_policy import declares_skippable_draft
 from .unified_graph_ops import apply_overlap_bitmask, broadcast_per_device
 
@@ -144,7 +144,7 @@ def local_row_offsets(
 _TargetHiddenT = TypeVar("_TargetHiddenT", contravariant=True)
 """The target's captured-hidden payload, opaque to the driver.
 
-Handed from :meth:`SpecDecodeTarget.verify` straight to
+Handed from the verify callable straight to
 :meth:`BlockProposer.materialize`. Contravariant because it is only ever
 consumed here -- nothing on this side hands it back out.
 """
@@ -562,7 +562,7 @@ class BlockDriver(
 
     def __init__(
         self,
-        target: SpecDecodeTarget[BlockBatch, _TargetHiddenT],
+        verify: Callable[[BlockBatch], Verified[_TargetHiddenT]],
         proposer: BlockProposer[_TargetHiddenT, _BlockHiddenT],
         *,
         target_model: Module,
@@ -575,9 +575,11 @@ class BlockDriver(
         num_speculative_tokens: int | None = None,
         use_greedy_acceptance: bool = False,
         vocab_size: int | None = None,
+        ep_input_types: Sequence[TensorType | BufferType] = (),
     ) -> None:
         super().__init__()
-        self._target = target
+        self._verify = verify
+        self._ep_input_types = tuple(ep_input_types)
         self._proposer = proposer
         self._input_spec = replace(
             input_spec,
@@ -820,7 +822,7 @@ class BlockDriver(
 
         pre_cache_lengths = self._pre_cache_lengths(batch)
 
-        verified = self._target.verify(batch)
+        verified = self._verify(batch)
         target_logits, target_hidden = verified.logits, verified.hidden
 
         effective_bitmasks = apply_overlap_bitmask(
@@ -1180,4 +1182,4 @@ class BlockDriver(
 
     @override
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return self._target.ep_input_types()
+        return self._ep_input_types

@@ -14,9 +14,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from max.graph import BufferType, TensorType, TensorValue
+from max.graph import TensorValue
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer.transformer import (
     captures_by_device,
@@ -53,9 +51,6 @@ class DFlashLlama3Target:
             captures_by_device(outputs[3:], 1)
         )[0]
         return Verified(logits=outputs[1], hidden=hidden)
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class DFlashLlama3Proposer:

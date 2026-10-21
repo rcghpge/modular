@@ -23,17 +23,15 @@ lives here while each arch keeps its own proposer.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from max.dtype import DType
 from max.graph import (
-    BufferType,
     DeviceRef,
     Graph,
-    TensorType,
     TensorValue,
     Type,
     Value,
@@ -121,9 +119,6 @@ class Gemma4BlockTarget:
             captures_by_device(outputs[3:], 1)
         )[0]
         return Verified(logits=outputs[1], hidden=hidden)
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class Gemma4BlockDriver(BlockDriver[TensorValue, TensorValue]):

@@ -10,29 +10,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""The target-side contract a spec-decode driver verifies through.
+"""What a spec-decode driver's verify callable returns.
 
 A target is the model being verified, so nothing here depends on how the draft
 proposes. The drafting strategy shows up in one place only: which batch type
-the driver hands :meth:`SpecDecodeTarget.verify`.
+the driver hands its verify callable.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Generic, Protocol
+from typing import Generic
 
 from max import tree
-from max.graph import BufferType, TensorType, TensorValue
+from max.graph import TensorValue
 from typing_extensions import TypeVar
 
-__all__ = ["SpecDecodeTarget", "Verified"]
+__all__ = ["Verified"]
 
 _TargetHiddenT = TypeVar("_TargetHiddenT")
 """The target's hidden-state payload, opaque to whichever driver carries it."""
-
-_BatchT = TypeVar("_BatchT", contravariant=True)
-"""The driver's batch type. Contravariant: ``verify`` only consumes it."""
 
 _LogitsT = TypeVar("_LogitsT", default=TensorValue)
 """The logits' value type: a graph value, or an experimental ``Tensor``."""
@@ -51,15 +47,3 @@ class Verified(Generic[_TargetHiddenT, _LogitsT]):
 
     logits: _LogitsT
     hidden: _TargetHiddenT
-
-
-class SpecDecodeTarget(Protocol[_BatchT, _TargetHiddenT, _LogitsT]):
-    """The target model's entry point and output layout."""
-
-    def verify(self, batch: _BatchT) -> Verified[_TargetHiddenT, _LogitsT]:
-        """Runs the target over the merged prompt + draft tokens."""
-        ...
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        """Expert-parallel input types to append to the graph signature."""
-        ...

@@ -67,8 +67,9 @@ class UnifiedMTPDeepseekV3(SequentialDriver[list[TensorValue]]):
         assert draft_config is not None
         target = DeepseekV3(config)
         draft = DeepseekV3NextN(draft_config)
+        target_adapter = DeepseekV3Target(target)
         super().__init__(
-            DeepseekV3Target(target),
+            target_adapter.verify,
             MTPDeepseekV3Proposer(draft),
             target_model=target,
             draft_model=draft,
@@ -79,5 +80,6 @@ class UnifiedMTPDeepseekV3(SequentialDriver[list[TensorValue]]):
             ),
             speculative_config=speculative_config,
             enable_structured_output=enable_structured_output,
+            ep_input_types=target_adapter.ep_input_types(),
         )
         self.config = config

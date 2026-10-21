@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from max.graph import BufferType, TensorType, TensorValue, ops
+from max.graph import TensorValue, ops
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer import ReturnLogits, logits_postprocess
 from max.pipelines.speculative.block_driver import (
@@ -126,9 +126,6 @@ class DeepseekV4BlockTarget:
             return_logits=ReturnLogits.VARIABLE,
         )
         return Verified(logits=outputs[1], hidden=(hidden, rows))
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class DSparkDeepseekV4Proposer:

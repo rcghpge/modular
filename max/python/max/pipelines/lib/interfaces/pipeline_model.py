@@ -41,6 +41,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
     PagedCacheValues,
 )
+from max.nn.layer import Module as LayerModule
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import BaseContextType, LogProbabilities
 from max.pipelines.kv_cache.config import (
@@ -400,6 +401,46 @@ class UnifiedSpecDecodeInputs(ModelInputs):
         return tail
 
 
+@dataclass(frozen=True)
+class ModelLoadContext:
+    """What a pipeline model reads to build its module from a checkpoint."""
+
+    pipeline_config: PipelineConfig
+    weights: Weights
+    adapter: WeightsAdapter | None
+    memory_plan: MemoryPlan
+
+    @classmethod
+    def from_pipeline_model(cls, model: PipelineModel[Any]) -> ModelLoadContext:
+        """Returns the context a pipeline model was constructed with."""
+        return cls(
+            pipeline_config=model.pipeline_config,
+            weights=model.weights,
+            adapter=model.adapter,
+            memory_plan=model.memory_plan,
+        )
+
+    @property
+    def max_seq_len(self) -> int:
+        """The memory plan's maximum sequence length."""
+        max_length = self.memory_plan.planned_max_length
+        assert max_length is not None, (
+            "building a module requires a memory plan with a max length"
+        )
+        return max_length
+
+    @property
+    def huggingface_config(self) -> AutoConfig:
+        """Returns the main model's HuggingFace config."""
+        config = self.pipeline_config.model.huggingface_config
+        if config is None:
+            raise ValueError(
+                "HuggingFace config is required but could not be loaded for"
+                f" '{self.pipeline_config.model.model_path}'."
+            )
+        return config
+
+
 class PipelineModel(
     ABC, Generic[BaseContextType, _ModelConfigT, _CompiledModelT]
 ):
@@ -694,6 +735,25 @@ class PipelineModel(
     def sampler_custom_extensions(self) -> Sequence[Path]:
         """Custom-op extension paths to compile the sampler graph with."""
         return ()
+
+    @classmethod
+    def build_module(cls, context: ModelLoadContext) -> tuple[LayerModule, Any]:
+        """Builds this architecture's module and config, compiling no graph.
+
+        Both come from the checkpoint ``context`` names, with the config
+        finalized against it. A caller that builds one graph from several
+        modules builds each this way. An architecture that supports it
+        builds its own graph through the same steps, so the two load the
+        checkpoint alike.
+
+        Raises:
+            NotImplementedError: If the architecture builds its module only
+                inside its own graph.
+        """
+        del context
+        raise NotImplementedError(
+            f"{cls.__qualname__} builds its module only inside its own graph."
+        )
 
     @abstractmethod
     def execute(

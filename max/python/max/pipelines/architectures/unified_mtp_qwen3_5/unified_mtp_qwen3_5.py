@@ -124,7 +124,7 @@ class UnifiedMTPQwen3_5(SequentialDriver[list[TensorValue]]):
 
         target_adapter = Qwen3_5Target(target, state_regions)
         super().__init__(
-            target_adapter,
+            target_adapter.verify,
             Qwen3_5MTPProposer(draft, target_adapter, config.hidden_size),
             target_model=target,
             draft_model=draft,

@@ -37,6 +37,7 @@ from max.pipelines.speculative.config import SpeculativeConfig
 from max.pipelines.speculative.driver import (
     SequentialDriver,
     gather_variable_rows,
+    tensor_compat_verify,
 )
 from max.pipelines.speculative.spec_input_types import SpecDecodeInputTypeSpec
 
@@ -186,7 +187,7 @@ class UnifiedMTPGemma4ModuleV3(Module[..., tuple[Tensor, ...]]):
         """
         config = self.config
         return SequentialDriver(
-            Gemma4ModuleV3Target(self.target),
+            tensor_compat_verify(Gemma4ModuleV3Target(self.target).verify),
             Gemma4ModuleV3MTPProposer(
                 self.draft, config.text_config.hidden_size
             ),

@@ -89,7 +89,7 @@ class UnifiedDSparkGemma4_31B(Gemma4BlockDriver):
                 target,
                 hidden_size=config.target.text_config.hidden_size,
                 dtype=config.target.unquantized_dtype,
-            ),
+            ).verify,
             DSparkGemma4_31BProposer(
                 draft,
                 block_size=block_size,

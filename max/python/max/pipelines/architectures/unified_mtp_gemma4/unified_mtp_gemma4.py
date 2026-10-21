@@ -80,7 +80,7 @@ class UnifiedMTPGemma4(SequentialDriver[list[TensorValue]]):
     ) -> None:
         target = Gemma4TextModel(config)
         super().__init__(
-            Gemma4Target(target),
+            Gemma4Target(target).verify,
             Gemma4MTPProposer(draft, draft_config.backbone_hidden_size),
             target_model=target,
             draft_model=draft,

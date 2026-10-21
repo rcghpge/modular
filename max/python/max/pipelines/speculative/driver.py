@@ -16,7 +16,7 @@ Every sequential unified spec-decode module in the tree runs the same seven
 phases -- merge, verify, mask, accept, shift, propose, pack -- and differs only
 in how it calls its target, how it calls its draft, and what per-step cache
 bookkeeping the draft needs. :class:`SequentialDriver` owns the phases; a model
-contributes a :class:`SpecDecodeTarget` and a :class:`SequentialProposer`.
+contributes a verify callable and a :class:`SequentialProposer`.
 
 The two adapters are deliberately not ``Module`` subclasses. The driver
 registers the target and draft modules under the same attribute names the
@@ -25,14 +25,15 @@ weights registry are unchanged.
 
 The driver runs on graph values, but nothing outside it has to. A caller may
 pass experimental :class:`~max.experimental.tensor.Tensor` inputs, one per
-device, and gets ``Tensor`` outputs back; an adapter that subclasses
-:class:`TensorAdapter` reads and returns ``Tensor`` values too. Both convert at
-the boundary, so a ModuleV3 model never reaches for the graph API.
+device, and gets ``Tensor`` outputs back; a proposer that subclasses
+:class:`TensorAdapter`, and a verify wrapped in :func:`tensor_compat_verify`, read and
+return ``Tensor`` values too. Both convert at the boundary, so a ModuleV3
+model never reaches for the graph API.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Generic, Literal, Protocol
@@ -79,7 +80,7 @@ from .spec_input_types import (
     SpecDecodeGraphSignature,
     SpecDecodeInputTypeSpec,
 )
-from .spec_target import SpecDecodeTarget, Verified
+from .spec_target import Verified
 from .spec_width_policy import declares_skippable_draft
 from .unified_graph_ops import (
     accept_and_pick_next_tokens,
@@ -104,6 +105,7 @@ __all__ = [
     "SequentialProposer",
     "TensorAdapter",
     "gather_variable_rows",
+    "tensor_compat_verify",
 ]
 
 _T = TypeVar("_T", TensorValue, Tensor, default=TensorValue)
@@ -125,7 +127,7 @@ BufferLike = TypeVar("BufferLike", BufferValue, Tensor)
 
 
 class TensorAdapter:
-    """Marks a target or proposer that runs on experimental ``Tensor`` values.
+    """Marks a proposer that runs on experimental ``Tensor`` values.
 
     The driver hands such an adapter its batch and carries as single-device
     ``Tensor`` values, one per device where it holds a list, and accepts
@@ -298,9 +300,9 @@ class SequentialBatch(Generic[_T, _B, _V]):
 _TargetHiddenT = TypeVar("_TargetHiddenT", contravariant=True)
 """The target's hidden-state payload.
 
-Opaque to the driver, which passes it from :meth:`SpecDecodeTarget.verify`
-straight to :meth:`SequentialProposer.prefill`. Contravariant because it is
-only ever consumed here -- nothing on this side hands it back out.
+Opaque to the driver, which passes it from the verify callable straight to
+:meth:`SequentialProposer.prefill`. Contravariant because it is only ever
+consumed here -- nothing on this side hands it back out.
 """
 
 
@@ -582,6 +584,38 @@ def gather_variable_rows(
     return variable_h, offsets
 
 
+_VerifiedHiddenT = TypeVar("_VerifiedHiddenT")
+"""The hidden-state payload a wrapped verify returns."""
+
+
+def tensor_compat_verify(
+    verify: Callable[
+        [SequentialBatch[Tensor, Tensor, Tensor]],
+        Verified[_VerifiedHiddenT, Tensor],
+    ],
+) -> Callable[[SequentialBatch], Verified[_VerifiedHiddenT]]:
+    """Adapts a verify that runs on experimental ``Tensor`` values.
+
+    The driver hands its verify callable graph values; the returned callable
+    passes ``verify`` its batch as single-device ``Tensor`` values and converts
+    the result back.
+
+    Args:
+        verify: The target's verify, reading and returning ``Tensor`` values.
+
+    Returns:
+        A verify callable the driver accepts.
+    """
+
+    def on_graph_values(batch: SequentialBatch) -> Verified[_VerifiedHiddenT]:
+        verified: Verified[_VerifiedHiddenT] = as_graph_values(
+            verify(as_tensors(batch))
+        )
+        return verified
+
+    return on_graph_values
+
+
 class SequentialDriver(
     SpecDecodeGraphSignature, Module, Generic[_TargetHiddenT]
 ):
@@ -593,10 +627,7 @@ class SequentialDriver(
 
     def __init__(
         self,
-        target: SpecDecodeTarget[SequentialBatch, _TargetHiddenT]
-        | SpecDecodeTarget[
-            SequentialBatch[Tensor, Tensor, Tensor], Any, Tensor
-        ],
+        verify: Callable[[SequentialBatch], Verified[_TargetHiddenT]],
         proposer: SequentialProposer[_TargetHiddenT]
         | SequentialProposer[Any, Tensor, Tensor, Tensor],
         *,
@@ -608,9 +639,11 @@ class SequentialDriver(
         use_greedy_acceptance: bool = False,
         num_draft_steps: int | None = None,
         vocab_size: int | None = None,
+        ep_input_types: Sequence[TensorType | BufferType] = (),
     ) -> None:
         super().__init__()
-        self._target = target
+        self._verify = verify
+        self._ep_input_types = tuple(ep_input_types)
         self._proposer = proposer
         draft_proposal: Literal["argmax", "sampled"] = (
             speculative_config.draft_proposal
@@ -1009,9 +1042,7 @@ class SequentialDriver(
                 draft_block_offsets=draft_block_offsets,
             )
 
-            verified: Verified[Any] = as_graph_values(
-                self._target.verify(_for_adapter(self._target, batch))
-            )
+            verified = self._verify(batch)
 
         with Graph.current.profile_scope(
             "verify_and_sample", color=ProfileScopeColor.ORANGE
@@ -1710,4 +1741,4 @@ class SequentialDriver(
 
     @override
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return self._target.ep_input_types()
+        return self._ep_input_types

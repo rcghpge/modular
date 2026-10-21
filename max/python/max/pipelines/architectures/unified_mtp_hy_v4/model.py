@@ -130,7 +130,7 @@ class UnifiedMTPHYV4(Module[..., tuple[Tensor, ...]]):
 
     def driver(self) -> SequentialDriver[list[TensorValue]]:
         return SequentialDriver(
-            HYV4Target(self.language_model),
+            HYV4Target(self.language_model).verify,
             HYV4MTPProposer(self.draft, self.language_model),
             target_model=ModuleV3Handle(self.language_model),
             draft_model=ModuleV3Handle(self.draft),

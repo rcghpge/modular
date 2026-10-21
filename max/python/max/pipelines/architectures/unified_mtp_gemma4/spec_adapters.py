@@ -14,17 +14,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from max.dtype import DType
-from max.graph import (
-    BufferType,
-    DeviceRef,
-    DimLike,
-    TensorType,
-    TensorValue,
-    ops,
-)
+from max.graph import DeviceRef, DimLike, TensorValue, ops
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.speculative.driver import (
     CarryDimNames,
@@ -81,9 +72,6 @@ class Gemma4Target:
             logits=outputs[1],
             hidden=list(outputs[3 : 3 + batch.n_devs]),
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class Gemma4MTPProposer:

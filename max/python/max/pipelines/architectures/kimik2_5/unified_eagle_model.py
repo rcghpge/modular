@@ -47,8 +47,9 @@ class Eagle3KimiK25Unified(SequentialDriver[list[list[TensorValue]]]):
         assert draft_config is not None
         target = DeepseekV3(config)
         draft = Eagle3KimiK25(draft_config)
+        target_adapter = KimiK25Target(target, enable_vision=enable_vision)
         super().__init__(
-            KimiK25Target(target, enable_vision=enable_vision),
+            target_adapter.verify,
             Eagle3KimiK25Proposer(draft),
             target_model=target,
             draft_model=draft,
@@ -64,6 +65,7 @@ class Eagle3KimiK25Unified(SequentialDriver[list[list[TensorValue]]]):
             ),
             speculative_config=speculative_config,
             enable_structured_output=enable_structured_output,
+            ep_input_types=target_adapter.ep_input_types(),
         )
         self.config = config
         self.enable_vision = enable_vision

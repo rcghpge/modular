@@ -79,7 +79,7 @@ class UnifiedDSparkNemotronH(BlockDriver[list[TensorValue], list[TensorValue]]):
         check_speculative_config(speculative)
         target_adapter = NemotronHBlockTarget(target)
         super().__init__(
-            target_adapter,
+            target_adapter.verify,
             DSparkNemotronHProposer(
                 draft,
                 target_adapter,

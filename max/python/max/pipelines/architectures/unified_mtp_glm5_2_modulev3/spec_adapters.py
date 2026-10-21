@@ -12,9 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 """Speculative-decoding adapters for a ModuleV3 GLM-5.x target and draft.
 
-Both are :class:`~max.pipelines.speculative.driver.TensorAdapter` values, so
-the driver hands them ``Tensor`` values, one per device where it holds a
-list. They build the distributed tensors the modules take from those shards.
+Both run on ``Tensor`` values: the proposer is a
+:class:`~max.pipelines.speculative.driver.TensorAdapter`, and the target's
+verify goes through :func:`~max.pipelines.speculative.driver.tensor_compat_verify`.
+The driver hands them ``Tensor`` values, one per device where it holds a
+list, and they build the distributed tensors the modules take from those
+shards.
 """
 
 from __future__ import annotations
@@ -68,7 +71,7 @@ def _replicate(tokens: Tensor, mesh: DeviceMesh) -> Tensor:
     return tokens.to(mesh)
 
 
-class Glm5_2ModuleV3Target(TensorAdapter):
+class Glm5_2ModuleV3Target:
     """The ModuleV3 DeepSeek-V3.2 target entry point and its output layout.
 
     Verification reads VARIABLE logits and every token's normalized hidden

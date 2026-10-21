@@ -42,7 +42,7 @@ class UnifiedEagleLlama3(SequentialDriver[TensorValue]):
         target = Llama3(config.target)
         draft = EagleLlama3(config.draft)
         super().__init__(
-            Llama3Target(target),
+            Llama3Target(target).verify,
             EagleLlama3Proposer(draft, config.draft.hidden_size),
             target_model=target,
             draft_model=draft,

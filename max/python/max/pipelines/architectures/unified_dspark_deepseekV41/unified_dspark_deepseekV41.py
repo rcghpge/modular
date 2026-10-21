@@ -82,7 +82,7 @@ class UnifiedDSparkDeepseekV41(BlockDriver[TrunkTaps, TensorValue]):
         verifier = DeepseekV41BlockTarget(model, config, specs)
         drafter = DSparkDeepseekV41Proposer(model, config)
         super().__init__(
-            verifier,
+            verifier.verify,
             drafter,
             target_model=model if model is not None else _SignatureOnly(),
             draft_model=model.dspark if model is not None else _SignatureOnly(),
@@ -100,6 +100,7 @@ class UnifiedDSparkDeepseekV41(BlockDriver[TrunkTaps, TensorValue]):
             speculative_config=speculative_config,
             enable_structured_output=enable_structured_output,
             vocab_size=config.vocab_size,
+            ep_input_types=verifier.ep_input_types(),
         )
         self.config = config
         self._verifier = verifier

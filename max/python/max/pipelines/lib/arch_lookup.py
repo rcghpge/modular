@@ -146,12 +146,15 @@ class SupportedArchitecture:
     supported_encodings: set[SupportedEncoding]
     """A dictionary of supported quantization encodings."""
 
-    pipeline_model: PipelineModelType
+    pipeline_model: PipelineModelType | None
     """The model class that defines the graph structure and execution logic.
 
     Accepts either a :class:`PipelineModel` subclass (for LLM and other
     token-generation architectures) or a :class:`PipelineExecutor` subclass
     (for newer executor-based architectures such as diffusion pipelines).
+    ``None`` for a draft architecture that only runs beside a target, inside
+    a unified spec-decode graph: it registers for config resolution, and
+    builds its module through its config class.
     """
 
     task: PipelineTask

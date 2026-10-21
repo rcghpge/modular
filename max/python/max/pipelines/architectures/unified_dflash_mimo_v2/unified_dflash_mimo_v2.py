@@ -99,7 +99,7 @@ class UnifiedDflashMiMoV2(
                 target,
                 vocab_size=target_config.vocab_size,
                 sampleable_vocab_size=spec.sampleable_vocab_size,
-            ),
+            ).verify,
             DFlashMiMoV2Proposer(
                 drafter,
                 target,

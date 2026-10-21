@@ -625,6 +625,11 @@ class PipelineRegistry:
             raise ValueError(
                 f"No architecture found for {pipeline_config.models.main_architecture_name}"
             )
+        if arch.pipeline_model is None:
+            raise ValueError(
+                f"{arch.name} is a draft architecture that only runs beside a"
+                " target model."
+            )
 
         # Calculate Max Length
         huggingface_config = pipeline_config.model.huggingface_config
@@ -716,6 +721,11 @@ class PipelineRegistry:
         if arch is None:
             raise ValueError(
                 f"No architecture found for {pipeline_config.models.main_architecture_name}"
+            )
+        if arch.pipeline_model is None:
+            raise ValueError(
+                f"{arch.name} is a draft architecture that only runs beside a"
+                " target model."
             )
 
         # For speculative decoding, pre-resolve the draft architecture for

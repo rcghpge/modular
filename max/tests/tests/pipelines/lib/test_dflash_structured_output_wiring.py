@@ -96,17 +96,17 @@ def test_dflash_kimi_k25_input_types_bitmask_triple(
                 hidden_size=128,
             )
         ),
-        _target=DFlashKimiK25Target(
+        _ep_input_types=DFlashKimiK25Target(
             cast(Any, SimpleNamespace(ep_manager=None))
-        ),
+        ).ep_input_types(),
         enable_structured_output=enable_structured_output,
     )
     kv_params = MultiKVCacheParams.from_params(
         {"target": _kv_params(), "draft": _kv_params()}
     )
     # Built from the config alone: ``input_types`` reads ``self.input_spec``,
-    # which a duck-typed stand-in cannot supply. The driver forwards
-    # ``ep_input_types`` on, so the stand-in carries a real adapter.
+    # which a duck-typed stand-in cannot supply. The driver returns the EP
+    # types its adapter declared, so the stand-in carries a real adapter's.
     types = build_spec_decode_input_types(
         dflash_kimi_k25_input_spec(
             stub.config, enable_structured_output=enable_structured_output

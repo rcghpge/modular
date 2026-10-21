@@ -45,7 +45,7 @@ class UnifiedDflashLlama3(BlockDriver[TensorValue, TensorValue]):
         )
         block_size = config.resolve_block_size()
         super().__init__(
-            DFlashLlama3Target(target),
+            DFlashLlama3Target(target).verify,
             DFlashLlama3Proposer(
                 draft,
                 target,

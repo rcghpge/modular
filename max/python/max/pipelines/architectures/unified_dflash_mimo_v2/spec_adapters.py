@@ -14,9 +14,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from max.graph import BufferType, TensorType, TensorValue
+from max.graph import TensorValue
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer.transformer import captures_by_device
 from max.pipelines.speculative.block_driver import (
@@ -69,9 +67,6 @@ class MiMoV2BlockTarget:
             ),
             hidden=captures_by_device(outputs[3:], batch.n_devs),
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class DFlashMiMoV2Proposer:

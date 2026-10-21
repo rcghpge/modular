@@ -64,8 +64,9 @@ class UnifiedDflashKimiK25(BlockDriver[list[TensorValue], list[TensorValue]]):
         block_size = config.resolve_block_size()
         target = DeepseekV3(config.target)
         draft = DFlashKimiK25(config.draft)
+        target_adapter = DFlashKimiK25Target(target)
         super().__init__(
-            DFlashKimiK25Target(target),
+            target_adapter.verify,
             DFlashKimiK25Proposer(
                 draft,
                 target,
@@ -82,6 +83,7 @@ class UnifiedDflashKimiK25(BlockDriver[list[TensorValue], list[TensorValue]]):
             enable_structured_output=enable_structured_output,
             ctx_at_draft_cache_length=True,
             vocab_size=config.target.vocab_size,
+            ep_input_types=target_adapter.ep_input_types(),
         )
         self.config = config
         self.target_layer_ids = list(config.target_layer_ids)

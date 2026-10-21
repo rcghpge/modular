@@ -55,7 +55,7 @@ class UnifiedDSparkDeepseekV4(BlockDriver[TrunkHidden, TensorValue]):
         verifier = DeepseekV4BlockTarget(model, config)
         drafter = DSparkDeepseekV4Proposer(model, config)
         super().__init__(
-            verifier,
+            verifier.verify,
             drafter,
             target_model=model,
             draft_model=model.mtp,

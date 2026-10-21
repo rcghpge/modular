@@ -14,16 +14,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
-from max.graph import (
-    BufferType,
-    BufferValue,
-    DimLike,
-    TensorType,
-    TensorValue,
-    ops,
-)
+from max.graph import BufferValue, DimLike, TensorValue, ops
 from max.nn.kv_cache import RecurrentStateRegion
 from max.nn.transformer import ReturnHiddenStates
 from max.pipelines.speculative.driver import (
@@ -89,9 +80,6 @@ class Qwen3_5Target:
         return Verified(
             logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
         )
-
-    def ep_input_types(self) -> Sequence[TensorType | BufferType]:
-        return ()
 
 
 class Qwen3_5MTPProposer:
