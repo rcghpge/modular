@@ -549,18 +549,18 @@ def _verify(
             image_token_indices=batch.vision_scatter_indices or None,
         )
     roll_forward = partial(_roll_forward, state)
-    # VARIABLE logits -> (last_logits, logits, offsets, then each device's
-    # normalized hidden states, or the taps device-major).
     if isinstance(batch, SequentialBatch):
         return Verified(
-            logits=outputs[1],
-            hidden=list(outputs[3 : 3 + batch.n_devs]),
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
             roll_forward=roll_forward,
         )
     return Verified(
-        logits=outputs[1],
+        logits=outputs.logits["logits"],
         hidden=fuse_captured_hidden_states(
-            captures_by_device(outputs[3:], batch.n_devs)
+            captures_by_device(
+                list(outputs.hidden_states.tensors()), batch.n_devs
+            )
         ),
         roll_forward=roll_forward,
     )

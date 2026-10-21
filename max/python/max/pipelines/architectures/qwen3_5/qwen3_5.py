@@ -52,7 +52,11 @@ from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
 from max.nn.state_space import GatedDeltaReplayInputs
-from max.nn.transformer import ReturnHiddenStates, forward_sequential_layers
+from max.nn.transformer import (
+    DecoderOutputs,
+    ReturnHiddenStates,
+    forward_sequential_layers,
+)
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -516,7 +520,7 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         image_embeddings: list[TensorValue] | None = None,
         image_token_indices: list[TensorValue] | None = None,
         position_ids: TensorValue | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Forward pass through the hybrid model.
 
         The state pools are mutable graph inputs the SSM kernels write in
@@ -698,14 +702,13 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
             weight_prefix_for_layer=lambda i: f"layers.{i}.",
         )
 
-        logits = self._postprocess_logits(
+        return self._postprocess_logits(
             hs,
             row_offsets,
             return_n_logits,
             signal_buffers,
             capture_hidden_states=capture_hidden_states,
         )
-        return tuple(logits)
 
     def input_tree(
         self, kv_params: KVCacheParamInterface
@@ -779,7 +782,7 @@ class Qwen3_5(DistributedLogitsPostprocessMixin, Module):
         """
         treedef = tree.flatten(self.input_tree(self.kv_params))[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             named = tree.unflatten(treedef, iter(inputs))
             assert isinstance(named, OrderedDict)
             batch, kv = named["batch"], named["kv"]

@@ -52,6 +52,11 @@ from max.nn.moe import MoE, MoEQuantized
 from max.nn.moe.expert_parallel import forward_moe_sharded_layers
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.transformer import (
+    DecoderOutputs,
+    ReturnHiddenStates,
+    logits_outputs,
+)
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     ReturnLogits,
@@ -258,7 +263,7 @@ def _dp_logits_postprocess(
     signal_buffers: list[BufferValue],
     devices: list[DeviceRef],
     return_logits: ReturnLogits,
-) -> tuple[TensorValue, ...]:
+) -> DecoderOutputs:
     """Logits postprocessing for DP mode.
 
     In DP mode each device has hidden states for its own batch shard. We gather
@@ -280,7 +285,7 @@ def _dp_logits_postprocess(
         DType.float32,
     )
 
-    return (last_logits,)
+    return logits_outputs(last_logits, None, None, ReturnHiddenStates.NONE, ())
 
 
 class Qwen3(DistributedLogitsPostprocessMixin, Module):
@@ -387,7 +392,7 @@ class Qwen3(DistributedLogitsPostprocessMixin, Module):
         signal_buffers: list[BufferValue],
         host_input_row_offsets: TensorValue | None = None,
         data_parallel_splits: TensorValue | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Forward pass through the model.
 
         Args:
@@ -539,7 +544,7 @@ class Qwen3(DistributedLogitsPostprocessMixin, Module):
         """
         n_devices = len(self.devices)
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             if self.use_dp:
                 (
                     tokens,

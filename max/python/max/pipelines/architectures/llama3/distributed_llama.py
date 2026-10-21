@@ -28,7 +28,6 @@ from max.graph import (
     DeviceRef,
     Graph,
     TensorType,
-    TensorValue,
     Type,
     Value,
 )
@@ -40,6 +39,7 @@ from max.nn.kv_cache import KVCacheInputsPerDevice, KVCacheParamInterface
 from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.norm import RMSNorm
 from max.nn.transformer import (
+    DecoderOutputs,
     DistributedTransformer,
     DistributedTransformerBlock,
 )
@@ -260,7 +260,7 @@ class DistributedLlama3(DistributedTransformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             signal_buffers = [v.buffer for v in variadic_args[:n_devices]]
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(

@@ -88,6 +88,7 @@ modular_py_test(
     name = "test_graph_specs",
     srcs = ["test_graph_specs.py"],
     deps = [
+        "//max/python/max/_artifact",
         "//max/python/max/driver",
         "//max/python/max/dtype",
         "//max/python/max/engine",

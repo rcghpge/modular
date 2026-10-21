@@ -26,7 +26,6 @@ from max.graph import (
     DeviceRef,
     Graph,
     TensorType,
-    TensorValue,
     Type,
     Value,
 )
@@ -49,7 +48,7 @@ from max.nn.rotary_embedding import (
     DeepseekYarnRopeScalingParams,
     DeepseekYarnRotaryEmbedding,
 )
-from max.nn.transformer import Transformer, TransformerBlock
+from max.nn.transformer import DecoderOutputs, Transformer, TransformerBlock
 from max.pipelines.architectures.deepseekV2.layers.moe_gate import (
     DeepSeekV2MoEGate,
 )
@@ -221,7 +220,7 @@ class DeepseekV2(Transformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *kv_inputs: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = unflatten_kv_collections(self.kv_params, kv_inputs)
             return self(
                 tokens.tensor,

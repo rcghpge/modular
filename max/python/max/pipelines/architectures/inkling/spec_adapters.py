@@ -240,10 +240,11 @@ class _Verify:
             {PRIMARY_KV: batch.kv_collections, **batch.passthrough_kv},
             batch.passthrough_kv[_STATE_KV],
         )
-        # VARIABLE logits + ALL_NORMALIZED hidden states ->
-        # (last_logits, logits, offsets, hidden per device...).
         return Verified(
-            logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
+            logits=outputs.logits["logits"],
+            hidden=list(
+                outputs.hidden_states[ReturnHiddenStates.ALL_NORMALIZED.value]
+            ),
         )
 
 
@@ -346,9 +347,7 @@ class _MTPProposer:
                 return_logits,
                 logits_scaling=logits_scaling,
             )
-        # VARIABLE emits (last_token_logits, logits, offsets); LAST_TOKEN emits
-        # the single logits tensor first.
-        return outputs[1] if variable else outputs[0]
+        return outputs.logits["logits" if variable else "next_token_logits"]
 
     def prefill(
         self,

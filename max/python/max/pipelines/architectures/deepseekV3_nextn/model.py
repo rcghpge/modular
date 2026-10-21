@@ -272,7 +272,7 @@ class DeepseekV3NextNModel(AlwaysSignalBuffersMixin, DeepseekV2Model):
                 ep_model_inputs,
             )
 
-            graph.output(*outputs)
+            graph.output(outputs)
             return graph, weights_registry
 
     def execute(

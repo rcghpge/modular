@@ -70,7 +70,12 @@ from max.nn.rotary_embedding import (
     Llama3RopeScalingParams,
     Llama3RotaryEmbedding,
 )
-from max.nn.transformer import forward_sequential_layers
+from max.nn.transformer import (
+    DecoderOutputs,
+    ReturnHiddenStates,
+    forward_sequential_layers,
+    logits_outputs,
+)
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     forward_sharded_layers,
@@ -791,7 +796,7 @@ class Step3p5(DistributedLogitsPostprocessMixin, Module):
         host_input_row_offsets: TensorValue | None = None,
         data_parallel_splits: TensorValue | None = None,
         ep_inputs: list[Value[Any]] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         # Embeddings
         h = self.embed_tokens(tokens, signal_buffers)
 
@@ -889,7 +894,7 @@ class Step3p5(DistributedLogitsPostprocessMixin, Module):
         ],
         signal_buffers: list[BufferValue],
         devices: list[DeviceRef],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Logits post-processing for DP mode.
 
         Each device holds the hidden states for its own batch shard. We
@@ -915,7 +920,9 @@ class Step3p5(DistributedLogitsPostprocessMixin, Module):
             DType.float32,
         )
 
-        return (last_logits,)
+        return logits_outputs(
+            last_logits, None, None, ReturnHiddenStates.NONE, ()
+        )
 
     def input_types(
         self, kv_params: KVCacheParamInterface
@@ -1007,7 +1014,7 @@ class Step3p5(DistributedLogitsPostprocessMixin, Module):
         n_devices = len(self.devices)
         kv_params = self.config.kv_params
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             inputs_iter = iter(inputs)
             tokens = next(inputs_iter)
             input_row_offsets = next(inputs_iter)

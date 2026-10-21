@@ -114,6 +114,7 @@ modular_eager_py_test(
         "//max/python/max/experimental",
         "//max/python/max/graph",
         "//max/python/max/mlir",
+        "//max/python/max/nn",
         requirement("numpy"),
     ],
 )

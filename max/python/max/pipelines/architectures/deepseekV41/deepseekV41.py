@@ -42,7 +42,7 @@ from max.nn.hyper_connection import HyperConnection
 from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
-from max.nn.transformer import logits_postprocess
+from max.nn.transformer import DecoderOutputs, logits_postprocess
 from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
 from typing_extensions import Self
 
@@ -1297,7 +1297,7 @@ class DeepseekV41(Module):
         cache: object,
         engram_lookback_ids: TensorValue | None = None,
         vision: VisionMerge | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Builds the serving graph body: ragged tokens in, logits out.
 
         ``engram_lookback_ids``: see :func:`engram_tokens`.
@@ -1446,7 +1446,7 @@ class DeepseekV41(Module):
         signal_buffers: Sequence[BufferValue],
         engram_lookback_ids: Sequence[TensorValue] | None = None,
         visions: Sequence[VisionMerge] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs :meth:`serve` with one replica per device.
 
         ``tokens``, ``input_row_offsets``, ``caches``,
@@ -1569,7 +1569,7 @@ class DeepseekV41(Module):
         signal_buffers: Sequence[BufferValue],
         engram_lookback_ids: Sequence[TensorValue] | None = None,
         visions: Sequence[VisionMerge] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs :meth:`serve` with each device on its own replica's requests.
 
         The arguments are as in :meth:`split_replicas`; ``visions`` hold the

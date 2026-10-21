@@ -29,6 +29,7 @@ from max.graph import (
 from max.tree import Tree
 
 from ..embedding import Embedding
+from ..graph_groups import DecoderOutputs, HiddenStates, Logits
 from ..kv_cache import KVCacheParams, PagedCacheValues
 from ..layer import (
     Layer,
@@ -369,6 +370,46 @@ class ReturnHiddenStates(str, Enum):
     """Return hidden states captured at specific layer indices."""
 
 
+def logits_outputs(
+    next_token_logits: TensorValue | None,
+    logits: TensorValue | None,
+    logit_offsets: TensorValue | None,
+    return_hidden_states: ReturnHiddenStates,
+    hidden_states: Sequence[TensorValue],
+) -> DecoderOutputs:
+    """Names a decoder's outputs, in the order the graph returns them.
+
+    Args:
+        next_token_logits: Each sequence's last-token logits, or ``None`` when
+            the caller only wants the variable logits.
+        logits: The requested logits beyond the last token, if any.
+        logit_offsets: Where each sequence's rows start in ``logits``.
+        return_hidden_states: Which hidden states ``hidden_states`` holds,
+            which names them.
+        hidden_states: The hidden states :func:`extract_hs` returned.
+
+    Returns:
+        The ``logits`` group, then a ``hidden_states`` group when there are
+        any.
+    """
+    if logit_offsets is not None:
+        assert logits is not None
+    else:
+        logits = None
+    outputs = DecoderOutputs(
+        logits=Logits(
+            next_token_logits=next_token_logits,
+            logits=logits,
+            logit_offsets=logit_offsets,
+        )
+    )
+    if hidden_states:
+        outputs["hidden_states"] = HiddenStates(
+            {return_hidden_states.value: tuple(hidden_states)}
+        )
+    return outputs
+
+
 def logits_postprocess(
     h: TensorValue,
     input_row_offsets: TensorValue,
@@ -379,7 +420,7 @@ def logits_postprocess(
     return_hidden_states: ReturnHiddenStates = ReturnHiddenStates.NONE,
     logits_scaling: float = 1.0,
     capture_hidden_states: list[list[TensorValue]] | None = None,
-) -> tuple[TensorValue, ...]:
+) -> DecoderOutputs:
     """Performs common logits postprocessing for single-device models.
 
     Handles last-token gathering, logits computation, optional logits
@@ -402,12 +443,7 @@ def logits_postprocess(
             See :func:`extract_hs`.
 
     Returns:
-        A tuple of ``(last_logits,)``, optionally extended with
-        ``(logits, offsets)`` when returning multiple logits, and further
-        extended with hidden states when requested. Hidden-state entries
-        for ``ALL`` / ``ALL_NORMALIZED`` / ``SELECTED_LAYERS`` modes are returned as
-        a ``list[TensorValue]`` (one entry per device); other entries are
-        single ``TensorValue``.
+        The named outputs; see :func:`logits_outputs`.
     """
     last_h = ops.gather(h, input_row_offsets[1:] - 1, axis=0)
     last_logits = ops.cast(lm_head(norm(last_h)), DType.float32)
@@ -446,20 +482,19 @@ def logits_postprocess(
         if logits is not None:
             logits = logits / logits_scaling
 
-    ret_val: tuple[TensorValue, ...] = (last_logits,)
-    if offsets is not None:
-        assert logits is not None
-        ret_val += (logits, offsets)
-
-    ret_val += extract_hs(
-        return_hidden_states=return_hidden_states,
-        last_token_hs_distributed=[last_h],
-        all_hs_distributed=[h],
-        normalizer=[norm],
-        capture_hidden_states=capture_hidden_states,
+    return logits_outputs(
+        last_logits,
+        logits,
+        offsets,
+        return_hidden_states,
+        extract_hs(
+            return_hidden_states=return_hidden_states,
+            last_token_hs_distributed=[last_h],
+            all_hs_distributed=[h],
+            normalizer=[norm],
+            capture_hidden_states=capture_hidden_states,
+        ),
     )
-
-    return ret_val
 
 
 class LogitsPostprocessMixin:
@@ -492,7 +527,7 @@ class LogitsPostprocessMixin:
         input_row_offsets: TensorValue,
         return_n_logits: TensorValue,
         capture_hidden_states: list[list[TensorValue]] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         return logits_postprocess(
             h,
             input_row_offsets,
@@ -585,7 +620,7 @@ class Transformer(LogitsPostprocessMixin, Module):
         kv_collection: PagedCacheValues,
         return_n_logits: TensorValue,
         input_row_offsets: TensorValue,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         freqs_cis = self.rope.freqs_cis
 
         capture_layer_set: set[int] | None = None
@@ -626,7 +661,7 @@ class Transformer(LogitsPostprocessMixin, Module):
         return_n_logits: TensorValue,
         input_row_offsets: TensorValue,
         hidden_states: TensorValue | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens)
 
         if self.embedding_multiplier != 1.0:

@@ -14,10 +14,13 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import numpy as np
 import pytest
+from max._artifact.value_types import ArtifactError
 from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.engine import InferenceSession, Model
@@ -28,6 +31,8 @@ from max.experimental.sharding.types import as_layout
 from max.experimental.tensor import Tensor
 from max.graph import DeviceRef, TensorType, TensorValue, Weight
 from max.nn import Module
+from max.nn.graph_groups import HiddenStates, Logits
+from max.nn.transformer import DecoderOutputs
 from max.pipelines.lib import GraphRole, GraphSpec, compile_and_init_graphs
 
 X = TensorType(DType.float32, [2], device=DeviceRef.CPU())
@@ -42,6 +47,37 @@ class Scale(Module):
 
     def __call__(self, x: TensorValue) -> TensorValue:
         return x * self.weight
+
+
+def _logits(x: TensorValue) -> DecoderOutputs:
+    return DecoderOutputs(logits=Logits(next_token_logits=x))
+
+
+class Unkinded(OrderedDict[str, object]):
+    """A tree node no exported graph can name."""
+
+    def __tree_flatten__(self) -> tuple[Mapping[str, object], None]:
+        return self, None
+
+    @classmethod
+    def __tree_unflatten__(
+        cls, meta: None, children: Mapping[str, object]
+    ) -> Unkinded:
+        return cls(children)
+
+
+class Outputs(Module):
+    """Traces ``wrap(scale(x))``, for a graph whose outputs are a tree."""
+
+    def __init__(
+        self, scale: Scale, wrap: Callable[[TensorValue], object]
+    ) -> None:
+        super().__init__()
+        self.scale = scale
+        self.wrap = wrap
+
+    def __call__(self, x: TensorValue) -> object:
+        return self.wrap(self.scale(x))
 
 
 @module_dataclass
@@ -64,9 +100,15 @@ def _v3_spec(name: str, value: float, group: str | None = None) -> GraphSpec:
     )
 
 
-def _spec(name: str, value: float, group: str | None = None) -> GraphSpec:
+def _spec(
+    name: str,
+    value: float,
+    group: str | None = None,
+    wrap: Callable[[TensorValue], object] | None = None,
+) -> GraphSpec:
+    scale = Scale(f"{name}_weight")
     return GraphSpec(
-        Scale(f"{name}_weight"),
+        scale if wrap is None else Outputs(scale, wrap),
         name,
         [X],
         weights={f"{name}_weight": np.full(2, value, dtype=np.float32)},
@@ -75,7 +117,7 @@ def _spec(name: str, value: float, group: str | None = None) -> GraphSpec:
 
 
 SPECS: dict[str, GraphSpec] = {
-    GraphRole.DECODER: _spec("language", 2.0, group="model"),
+    GraphRole.DECODER: _spec("language", 2.0, group="model", wrap=_logits),
     GraphRole.VISION: _spec("vision", 3.0, group="model"),
     GraphRole.SAMPLER: _spec("sampler", 5.0),
 }
@@ -127,6 +169,50 @@ def test_a_role_is_callable_on_tensors(
     assert out.to_numpy().tolist() == [5.0, 5.0]
     # The host weights stay releasable.
     assert dict(sampler.weights) == {}
+
+
+def test_a_decoder_names_its_logits(
+    graphs: dict[str, CompiledCallable[..., Any]],
+) -> None:
+    decoder = graphs[GraphRole.DECODER]
+    assert decoder.out_tree.leaf_paths == ("logits.next_token_logits",)
+
+
+def test_a_decoder_without_named_logits_fails_to_compile(
+    session: InferenceSession,
+) -> None:
+    with pytest.raises(ValueError, match=r"decoder.*logits"):
+        compile_and_init_graphs(
+            session, {GraphRole.DECODER: _spec("positional", 1.0)}
+        )
+
+
+def test_a_pipeline_stage_decoder_hands_on_hidden_states(
+    session: InferenceSession,
+) -> None:
+    def boundary(x: TensorValue) -> DecoderOutputs:
+        return DecoderOutputs(hidden_states=HiddenStates(stage_boundary=(x,)))
+
+    graphs = compile_and_init_graphs(
+        session, {GraphRole.DECODER: _spec("stage", 1.0, wrap=boundary)}
+    )
+    assert graphs[GraphRole.DECODER].out_tree.leaf_paths == (
+        "hidden_states.stage_boundary.0",
+    )
+
+
+def test_an_output_tree_that_cannot_be_exported_fails_to_compile(
+    session: InferenceSession,
+) -> None:
+    with pytest.raises(ArtifactError, match=r"VISION.*Unkinded"):
+        compile_and_init_graphs(
+            session,
+            {
+                GraphRole.VISION: _spec(
+                    "unkinded", 1.0, wrap=lambda x: Unkinded(scaled=x)
+                )
+            },
+        )
 
 
 def test_weights_default_to_the_state_dict(session: InferenceSession) -> None:

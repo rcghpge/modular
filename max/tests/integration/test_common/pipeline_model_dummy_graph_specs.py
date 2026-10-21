@@ -26,6 +26,8 @@ from max.dtype import DType
 from max.engine import InferenceSession, Model
 from max.graph import DeviceRef, TensorType, Value
 from max.nn import Module
+from max.nn.graph_groups import Logits
+from max.nn.transformer import DecoderOutputs
 from max.pipelines import PipelineConfig
 from max.pipelines.lib import GraphRole, GraphSpec
 from test_common.pipeline_model_dummy import (
@@ -35,12 +37,12 @@ from test_common.pipeline_model_dummy import (
 
 
 class _EchoTokens(Module):
-    """Returns the tokens, ignoring the KV cache inputs."""
+    """Returns the tokens as the logits, ignoring the KV cache inputs."""
 
     def __call__(
         self, tokens: Value[Any], *kv_inputs: Value[Any]
-    ) -> Value[Any]:
-        return tokens
+    ) -> DecoderOutputs:
+        return DecoderOutputs(logits=Logits(next_token_logits=tokens.tensor))
 
 
 class DummyGraphSpecsPipelineModel(DummyLlamaPipelineModel):

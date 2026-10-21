@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from max.graph import BufferType, DimLike, TensorType, TensorValue
+from max.nn.graph_groups import SparseIndices
 from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.nn.transformer.distributed_transformer import forward_sharded_layers
@@ -70,11 +71,11 @@ class Glm5_2Target:
             batch.batch_context_lengths,
             batch.ep_inputs,
         )
-        # ``emit_last_token_logits`` is off, so the tuple is
-        # [logits, offsets, hidden per device...].
         return Verified(
-            logits=outputs[0],
-            hidden=list(outputs[2 : 2 + batch.n_devs]),
+            logits=outputs.logits["logits"],
+            hidden=list(
+                outputs.hidden_states[self.target.return_hidden_states.value]
+            ),
         )
 
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
@@ -142,11 +143,10 @@ class Glm5_2MTPProposer:
         self.draft.return_logits = ReturnLogits.LAST_TOKEN
         self.draft.emit_last_token_logits = True
 
-        n = batch.n_devs
         return Proposed(
-            logits=outputs[0],
-            hidden=list(outputs[2 : 2 + n]),
-            reuse=list(outputs[2 + n : 2 + 2 * n]),
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states[ReturnHiddenStates.ALL.value]),
+            reuse=list(outputs.group("topk_indices", SparseIndices)["rows"]),
         )
 
     def step(
@@ -178,6 +178,6 @@ class Glm5_2MTPProposer:
             split_prefix=f"{self.split_prefix}_draft_step{index}",
         )
         return Proposed(
-            logits=outputs[0],
-            hidden=list(outputs[1 : 1 + batch.n_devs]),
+            logits=outputs.logits["next_token_logits"],
+            hidden=list(outputs.hidden_states[self.step_hidden_mode.value]),
         )

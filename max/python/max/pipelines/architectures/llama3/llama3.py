@@ -44,7 +44,7 @@ from max.nn.kv_cache import KVCacheInputsPerDevice, KVCacheParamInterface
 from max.nn.layer import Module
 from max.nn.linear import MLP, GPTQLinear, Linear
 from max.nn.norm import ConstantLayerNorm, RMSNorm
-from max.nn.transformer import Transformer, TransformerBlock
+from max.nn.transformer import DecoderOutputs, Transformer, TransformerBlock
 from max.pipelines.lib.interfaces.batch_processor import (
     ragged_kv_symbolic_input_tree,
 )
@@ -303,7 +303,7 @@ class Llama3(Transformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *kv_inputs: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(iter(kv_inputs)),
                 leaf=KVCacheInputsPerDevice,

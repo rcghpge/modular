@@ -115,7 +115,7 @@ def language_spec(
         is_device_graph=is_device_graph,
     )
     if stage is not None and stage.trace_only:
-        raise_stage_traced(tuple(spec.trace().output_types))
+        raise_stage_traced(spec.trace().output_tree)
     return spec
 
 

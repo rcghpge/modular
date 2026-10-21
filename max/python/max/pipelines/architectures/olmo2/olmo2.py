@@ -24,7 +24,6 @@ from max.graph import (
     DeviceRef,
     Graph,
     TensorType,
-    TensorValue,
     Type,
     Value,
 )
@@ -36,7 +35,7 @@ from max.nn.layer import Module
 from max.nn.linear import MLP, Linear
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
-from max.nn.transformer import Transformer
+from max.nn.transformer import DecoderOutputs, Transformer
 from max.pipelines.architectures.llama3.llama3 import StackedMLP
 from max.pipelines.architectures.llama3.model_config import Llama3Config
 from max.pipelines.architectures.olmo2.layers.attention import Olmo2Attention
@@ -244,7 +243,7 @@ class Olmo2(Transformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *kv_inputs: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(iter(kv_inputs)),
                 leaf=KVCacheInputsPerDevice,

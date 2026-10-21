@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from max import tree
+from max._artifact.value_types import ArtifactError, treedef_to_json
 from max.driver import DLPackArray
 from max.engine import CompiledModel, InferenceSession, Model
 from max.experimental.compilation import CompiledCallable, StagedGraph
@@ -42,6 +43,7 @@ from max.experimental.tensor import Tensor
 from max.graph import Graph, Type
 from max.graph import Module as GraphModule
 from max.nn import Module
+from max.nn.graph_groups import HiddenStates, Logits
 
 
 class GraphRole(str, Enum):
@@ -188,8 +190,9 @@ def compile_and_init_graphs(
     :func:`compile_roles_separately`, groups are ignored.
 
     Each callable is called with one argument per input type, positionally,
-    and returns a tuple of the graph's outputs. It keeps no weight registry,
-    so the host weights can be released after initialization. A ModuleV3
+    and returns the graph's outputs in the tree its ``forward`` returned. It
+    keeps no weight registry, so the host weights can be released after
+    initialization. A ModuleV3
     role's callable instead takes and returns what the module's ``forward``
     does, adds the signal buffers a multi-device graph takes, and keeps its
     weight registry.
@@ -238,8 +241,8 @@ def compile_and_init_graphs(
                 for role in members
                 for path in specs[role].custom_extensions
             ]
-        output_types = {
-            role: graph.output_types for role, graph in graphs.items()
+        output_trees = {
+            role: graph.output_tree for role, graph in graphs.items()
         }
         # Not session.load_all, which drops the compiled model a callable
         # keeps to export its MEF.
@@ -273,23 +276,55 @@ def compile_and_init_graphs(
                 )
             else:
                 callables[role] = _callable(
-                    compiled, model, spec.input_types, output_types[role]
+                    compiled, model, spec.input_types, output_trees[role]
                 )
+                _check_outputs(role, callables[role].out_tree)
     return callables
+
+
+def _check_outputs(role: str, out_tree: tree.TreeDef) -> None:
+    """Fails a load whose outputs an exported artifact could not name.
+
+    Raises:
+        ArtifactError: If the output structure can't be serialized.
+        ValueError: If a decoder has neither a ``logits`` group nor, as a
+            pipeline stage before the last, ``hidden_states``.
+    """
+    try:
+        treedef_to_json(out_tree)
+    except ArtifactError as e:
+        raise ArtifactError(f"{role} graph outputs: {e}") from e
+    # A pipeline stage before the last hands on hidden states, not logits.
+    # TODO(MXSERV-682): ModuleV3 decoders still return positional outputs.
+    if role == GraphRole.DECODER and not (
+        _has_kind(out_tree, Logits) or _has_kind(out_tree, HiddenStates)
+    ):
+        raise ValueError(
+            "the decoder graph's outputs have no logits group: return"
+            " max.nn.transformer.logits_outputs(...) or a DecoderOutputs"
+            " with a Logits group"
+        )
+
+
+def _has_kind(treedef: tree.TreeDef, cls: type) -> bool:
+    if treedef.kind == "node" and treedef.meta[0] is cls:
+        return True
+    return any(_has_kind(child, cls) for child in treedef.children)
 
 
 def _callable(
     compiled: CompiledModel,
     model: Model,
     input_types: Sequence[Type[Any]],
-    output_types: Sequence[Type[Any]],
+    output_types: tree.Tree[Type[Any]],
 ) -> CompiledCallable[..., Any]:
     # TODO(MXSERV-766): as_layout opens each GPU DeviceRef as a device
     # (DeviceRef.to_device), so building a layout needs the physical GPU.
     in_layouts = [as_layout(t) for t in input_types]
-    out_layouts = [as_layout(t) for t in output_types]
     _, in_tree = tree.flatten((tuple(in_layouts), {}), leaf=TensorLayout)
-    _, out_tree = tree.flatten(tuple(out_layouts), leaf=TensorLayout)
+    out_layouts, out_tree = tree.flatten(
+        tree.map(as_layout, output_types), leaf=TensorLayout
+    )
     return CompiledCallable.from_compiled(
         compiled, model, in_layouts, in_tree, out_layouts, out_tree
     )

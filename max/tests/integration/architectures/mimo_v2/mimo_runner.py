@@ -228,23 +228,25 @@ class Runner:
                     ]
                     for group, rope in model.ropes.items()
                 }
-                outputs = [
-                    layer(
-                        ops.constant(
-                            model.kv_layer_indices[i],
-                            DType.uint32,
-                            device=DeviceRef.CPU(),
-                        ),
-                        [inputs[i].tensor.to(r) for r in refs],
-                        signal_buffers,
-                        kv[config.layer_types[i]],
-                        freqs[config.layer_types[i]],
-                        offsets,
-                    )[0]
-                    for i, layer in enumerate(model.layers)
-                ]
+                graph.output(
+                    [
+                        layer(
+                            ops.constant(
+                                model.kv_layer_indices[i],
+                                DType.uint32,
+                                device=DeviceRef.CPU(),
+                            ),
+                            [inputs[i].tensor.to(r) for r in refs],
+                            signal_buffers,
+                            kv[config.layer_types[i]],
+                            freqs[config.layer_types[i]],
+                            offsets,
+                        )[0]
+                        for i, layer in enumerate(model.layers)
+                    ]
+                )
             else:
-                outputs = list(
+                graph.output(
                     model(
                         tokens=inputs[0].tensor,
                         signal_buffers=signal_buffers,
@@ -254,7 +256,6 @@ class Runner:
                         input_row_offsets=offsets,
                     )
                 )
-            graph.output(*outputs)
         self.fused_qkv_count = graph.module.mlir_module.asm().count(
             "mo.chunked_qkv_rope_store.ragged.paged"
         )

@@ -211,7 +211,9 @@ class DeepseekV41BlockTarget:
             lm_head=lead._lm_head,
             return_logits=ReturnLogits.VARIABLE,
         )
-        return Verified(logits=outputs[1], hidden=(taps_per_dev, rows))
+        return Verified(
+            logits=outputs.logits["logits"], hidden=(taps_per_dev, rows)
+        )
 
     def _verify_data_parallel(
         self,
@@ -273,7 +275,9 @@ class DeepseekV41BlockTarget:
             lm_head=lead._lm_head,
             return_logits=ReturnLogits.VARIABLE,
         )
-        return Verified(logits=outputs[1], hidden=(taps, split.rows))
+        return Verified(
+            logits=outputs.logits["logits"], hidden=(taps, split.rows)
+        )
 
     def ep_input_types(self) -> Sequence[TensorType | BufferType]:
         if self.config.ep_config is None:

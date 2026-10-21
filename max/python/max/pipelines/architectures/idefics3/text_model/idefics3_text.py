@@ -27,6 +27,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
     PagedCacheValues,
 )
+from max.nn.transformer import DecoderOutputs
 from max.pipelines.architectures.llama3.llama3 import Llama3
 from max.pipelines.architectures.llama3.model_config import Llama3Config
 from max.pipelines.lib.interfaces.batch_processor import (
@@ -140,7 +141,7 @@ class Idefics3LanguageModel(Llama3):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -175,7 +176,7 @@ class Idefics3LanguageModel(Llama3):
         input_row_offsets: TensorValue,
         image_embeddings: TensorValue,
         image_token_indices: TensorValue,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Executes the language model forward pass with multimodal embedding merging.
 
         Args:

@@ -321,7 +321,7 @@ def _compile_taps(
             signal_buffers,
             tree.leaves(state_inputs, leaf=RecurrentStateInputsPerDevice),
         )
-        graph.output(*outputs)
+        graph.output(outputs)
 
     kv_params = config.kv_params
     assert isinstance(kv_params, MultiKVCacheParams)

@@ -65,9 +65,11 @@ from max.nn.rotary_embedding import (
     RotaryEmbedding,
 )
 from max.nn.transformer import (
+    DecoderOutputs,
     ReturnHiddenStates,
     ReturnLogits,
     forward_sequential_layers,
+    logits_outputs,
 )
 from max.nn.transformer.distributed_transformer import (
     extract_hs,
@@ -167,7 +169,7 @@ def deepseek_logits_postprocess(
     emit_last_token_logits: bool = True,
     unpadded_vocab_size: int | None = None,
     vocab_size: int | None = None,
-) -> tuple[TensorValue, ...]:
+) -> DecoderOutputs:
     """Logits postprocessing for DeepseekV3 and DeepseekV3NextN.
 
     Handles last-token gathering, DP-attention-specific allgather (needed
@@ -182,8 +184,7 @@ def deepseek_logits_postprocess(
     avoid an unused vocab-sized GEMM + collective per step.
 
     Returns:
-        ``([last_logits], [logits, offsets], [hidden_states])`` — the optional
-        segments are present only when the corresponding mode is active.
+        The named outputs; see :func:`~max.nn.transformer.logits_outputs`.
     """
     if is_data_parallel_attention:
         last_token_per_dev: list[TensorValue] = []
@@ -302,21 +303,19 @@ def deepseek_logits_postprocess(
     assert last_logits is not None or logits is not None, (
         "skipping last_logits requires VARIABLE/ALL logits to be emitted"
     )
-    ret_val: tuple[TensorValue, ...] = (
-        () if last_logits is None else (last_logits,)
+    return logits_outputs(
+        last_logits,
+        logits,
+        offsets,
+        return_hidden_states,
+        extract_hs(
+            return_hidden_states=return_hidden_states,
+            last_token_hs_distributed=last_token_distributed,
+            all_hs_distributed=h,
+            normalizer=norm_shards,
+            capture_hidden_states=capture_hidden_states,
+        ),
     )
-    if logits is not None and offsets is not None:
-        ret_val += (logits, offsets)
-
-    ret_val += extract_hs(
-        return_hidden_states=return_hidden_states,
-        last_token_hs_distributed=last_token_distributed,
-        all_hs_distributed=h,
-        normalizer=norm_shards,
-        capture_hidden_states=capture_hidden_states,
-    )
-
-    return ret_val
 
 
 class DeepseekV3DecoderLayer(Module):
@@ -868,7 +867,7 @@ class DeepseekV3(Module):
         batch_context_lengths: list[TensorValue],
         ep_inputs: list[Value[Any]] | None = None,
         eplb_counter_buffers_per_layer: list[list[BufferValue]] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
 
         return self._process_hidden_states(
@@ -897,7 +896,7 @@ class DeepseekV3(Module):
         ep_inputs: list[Value[Any]] | None = None,
         eplb_counter_buffers_per_layer: list[list[BufferValue]]
         | None = None,  # (num_layers, num_devices)
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         if not host_input_row_offsets.device == DeviceRef.CPU():
             raise ValueError("input_row_offsets must be located on CPU")
         if not data_parallel_splits.device == DeviceRef.CPU():
@@ -1087,7 +1086,7 @@ class DeepseekV3(Module):
             return_n_logits: Value[Any],
             data_parallel_splits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             remaining = iter(variadic_args)
             signal_buffers = [next(remaining).buffer for _ in range(n_devices)]
             kv_collections = tree.leaves(

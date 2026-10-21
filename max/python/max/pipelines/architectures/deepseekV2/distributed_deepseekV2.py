@@ -24,7 +24,6 @@ from max.graph import (
     Graph,
     ShardingStrategy,
     TensorType,
-    TensorValue,
     Type,
     Value,
 )
@@ -41,6 +40,7 @@ from max.nn.rotary_embedding import (
     DeepseekYarnRotaryEmbedding,
 )
 from max.nn.transformer import (
+    DecoderOutputs,
     DistributedTransformer,
     DistributedTransformerBlock,
 )
@@ -183,7 +183,7 @@ class DistributedDeepseekV2(DistributedTransformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             n_devices = len(self.devices)
             return self(
                 tokens.tensor,

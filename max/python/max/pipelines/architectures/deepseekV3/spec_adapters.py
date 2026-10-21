@@ -82,15 +82,16 @@ def _verify(
         batch.batch_context_lengths,
         batch.ep_inputs,
     )
-    # [last_logits, logits, offsets, then each device's hidden states, or
-    # each device's captured layers in turn].
     if hidden_states == ReturnHiddenStates.SELECTED_LAYERS:
         return Verified(
-            logits=outputs[1],
-            hidden=captures_by_device(outputs[3:], batch.n_devs),
+            logits=outputs.logits["logits"],
+            hidden=captures_by_device(
+                list(outputs.hidden_states.tensors()), batch.n_devs
+            ),
         )
     return Verified(
-        logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
+        logits=outputs.logits["logits"],
+        hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
     )
 
 

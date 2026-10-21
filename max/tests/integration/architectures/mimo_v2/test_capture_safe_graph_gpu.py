@@ -156,7 +156,7 @@ def _build(
             return_n_logits=return_n_logits.tensor,
             input_row_offsets=[v.tensor for v in rest[:n]],
         )
-        graph.output(*outputs)
+        graph.output(outputs)
     return graph
 
 

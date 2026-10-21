@@ -38,6 +38,8 @@ modular_py_test(
         "test_ep_config.py": REQUIRES_INTERNAL_KERNELS,
     },
     deps = _COMMON_DEPS + [
+        "//max/python/max:tree",
+        "//max/python/max/_artifact",
         "//max/python/max/mlir",
         requirement("torch"),
     ],

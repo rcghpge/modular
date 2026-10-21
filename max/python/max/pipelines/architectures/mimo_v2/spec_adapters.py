@@ -74,7 +74,6 @@ def _verify(
     batch: SequentialBatch | BlockBatch,
 ) -> Verified[list[TensorValue]]:
     assert isinstance(batch, BlockBatch)
-    # (last-token logits, logits, offsets, then the taps device-major).
     outputs = target(
         tokens=batch.merged_tokens,
         signal_buffers=batch.signal_buffers,
@@ -84,9 +83,13 @@ def _verify(
         input_row_offsets=list(batch.merged_offsets_per_dev),
     )
     return Verified(
-        logits=mask_padded_tail(outputs[1], vocab_size, sampleable_vocab_size),
+        logits=mask_padded_tail(
+            outputs.logits["logits"], vocab_size, sampleable_vocab_size
+        ),
         hidden=fuse_captured_hidden_states(
-            captures_by_device(outputs[3:], batch.n_devs)
+            captures_by_device(
+                list(outputs.hidden_states.tensors()), batch.n_devs
+            )
         ),
     )
 

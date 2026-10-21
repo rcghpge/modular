@@ -64,7 +64,12 @@ from max.nn.linear import ColumnParallelLinear, Linear
 from max.nn.moe import MoE, MoEQuantized, forward_moe_sharded_layers
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.nn.transformer import forward_sequential_layers
+from max.nn.transformer import (
+    DecoderOutputs,
+    ReturnHiddenStates,
+    forward_sequential_layers,
+    logits_outputs,
+)
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     forward_sharded_layers,
@@ -428,7 +433,7 @@ class Laguna(DistributedLogitsPostprocessMixin, Module):
         ep_inputs: list[TensorValue | BufferValue] | None = None,
         data_parallel_splits: TensorValue | None = None,
         host_input_row_offsets: TensorValue | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs the forward pass through the model.
 
         Args:
@@ -508,7 +513,9 @@ class Laguna(DistributedLogitsPostprocessMixin, Module):
             self.lm_head(norm_last_token, signal_buffers)[0],
             DType.float32,
         )
-        return (last_logits,)
+        return logits_outputs(
+            last_logits, None, None, ReturnHiddenStates.NONE, []
+        )
 
     def input_types(
         self, kv_params: KVCacheParamInterface
@@ -598,7 +605,7 @@ class Laguna(DistributedLogitsPostprocessMixin, Module):
         """
         n_devices = len(self.devices)
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             inputs_iter = iter(inputs)
             tokens = next(inputs_iter)
             input_row_offsets = next(inputs_iter)

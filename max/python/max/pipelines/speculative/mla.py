@@ -26,7 +26,7 @@ from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 from max.dtype import DType
 from max.graph import DimLike, TensorValue, Value, ops
 from max.nn.kv_cache import PagedCacheValues
-from max.nn.transformer import ReturnHiddenStates, ReturnLogits
+from max.nn.transformer import DecoderOutputs, ReturnHiddenStates, ReturnLogits
 
 from .driver import (
     CarryDimNames,
@@ -74,7 +74,7 @@ class MLADraft(Protocol):
         """The draft's config."""
         ...
 
-    def __call__(self, *args: Any, **kwargs: Any) -> tuple[TensorValue, ...]:
+    def __call__(self, *args: Any, **kwargs: Any) -> DecoderOutputs:
         """Runs the draft on one step's inputs."""
         ...
 
@@ -140,8 +140,8 @@ class MLAProposer(Generic[TargetHiddenT]):
         self.draft.return_hidden_states = self.step_hidden_mode
         self.draft.return_logits = ReturnLogits.LAST_TOKEN
         return Proposed(
-            logits=outputs[1],
-            hidden=list(outputs[3 : 3 + batch.n_devs]),
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
         )
 
     def step(
@@ -162,8 +162,8 @@ class MLAProposer(Generic[TargetHiddenT]):
             split_prefix=f"{self.split_prefix}_draft_step{index}",
         )
         return Proposed(
-            logits=outputs[0],
-            hidden=list(outputs[1 : 1 + batch.n_devs]),
+            logits=outputs.logits["next_token_logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
         )
 
 

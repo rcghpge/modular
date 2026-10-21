@@ -392,7 +392,7 @@ def _max_layer_output_captures(
             [empty_embeds],
             [empty_indices],
         )
-        graph.output(*outputs)
+        graph.output(outputs)
 
     compiled = session.load(graph, weights_registry=model.state_dict())
 

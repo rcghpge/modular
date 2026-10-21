@@ -34,7 +34,7 @@ from max.nn.layer import Module
 from max.nn.linear import MLP, Linear
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.nn.transformer import TransformerBlock
+from max.nn.transformer import DecoderOutputs, TransformerBlock
 from max.pipelines.lib.interfaces.batch_processor import (
     ragged_batch_inputs,
     vision_merge_inputs,
@@ -261,7 +261,7 @@ class PixtralLanguage(Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -296,7 +296,7 @@ class PixtralLanguage(Module):
         input_row_offsets: TensorValue,
         image_embeddings: TensorValue,
         image_token_indices: TensorValue,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.language_model.embed_tokens(tokens)
 
         h = merge_multimodal_embeddings(

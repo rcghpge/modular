@@ -48,6 +48,7 @@ from max.nn.rotary_embedding import (
     Llama3RopeScalingParams,
     Llama3RotaryEmbedding,
 )
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -284,7 +285,7 @@ class Gemma3LanguageModel(DistributedLogitsPostprocessMixin, Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -324,7 +325,7 @@ class Gemma3LanguageModel(DistributedLogitsPostprocessMixin, Module):
         signal_buffers: Sequence[BufferValue],
         sliding_kv_collections: Sequence[PagedCacheValues],
         global_kv_collections: Sequence[PagedCacheValues],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
 
         # Replace image placeholder tokens with vision embeddings

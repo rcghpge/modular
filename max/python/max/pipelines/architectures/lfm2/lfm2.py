@@ -33,6 +33,7 @@ from max.graph import (
 )
 from max.graph import Module as GraphModule
 from max.nn.embedding import Embedding
+from max.nn.graph_groups import ConvStates
 from max.nn.kv_cache import (
     KVCacheInputsPerDevice,
     KVCacheParamInterface,
@@ -42,6 +43,7 @@ from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.transformer import logits_postprocess
 
 from ..llama3.model_config import create_rope_embedding
@@ -422,7 +424,7 @@ class LFM2(Module):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = tree.leaves(
                 kv_params.unflatten_kv_inputs(iter(variadic[:num_kv_inputs])),
                 leaf=KVCacheInputsPerDevice,
@@ -451,7 +453,7 @@ class LFM2(Module):
         return_n_logits: TensorValue,
         input_row_offsets: TensorValue,
         conv_states: list[TensorValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens)
         freqs_cis = self.rope.freqs_cis.to(h.device)
         conv_idx = 0
@@ -481,4 +483,5 @@ class LFM2(Module):
             return_hidden_states=self.config.return_hidden_states,
             logits_scaling=self.config.logits_scaling,
         )
-        return outputs + tuple(new_states)
+        outputs["conv_states"] = ConvStates(states=tuple(new_states))
+        return outputs

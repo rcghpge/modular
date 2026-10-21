@@ -37,6 +37,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
     PagedCacheValues,
 )
+from max.nn.transformer import DecoderOutputs
 from max.pipelines.lib.vlm_utils import merge_multimodal_embeddings
 
 from ...deepseekV3.deepseekV3 import (
@@ -68,7 +69,7 @@ class KimiK2_5MoEDecoder(DeepseekV3):
         batch_context_lengths: list[TensorValue],
         ep_inputs: list[Value[Any]] | None = None,
         eplb_counter_buffers_per_layer: list[list[BufferValue]] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
 
         # Merge image embeddings into text embeddings
@@ -177,7 +178,7 @@ class KimiK2_5MoEDecoder(DeepseekV3):
             else 0
         )
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             tokens, all_inputs = inputs[0], inputs[1:]
             image_embeddings, all_inputs = all_inputs[:n], all_inputs[n:]
             image_token_indices, all_inputs = all_inputs[:n], all_inputs[n:]

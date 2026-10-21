@@ -72,6 +72,7 @@ from max.nn.layer import LayerList, Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
 from max.nn.transformer import (
+    DecoderOutputs,
     ReturnHiddenStates,
     forward_sequential_layers,
     logits_postprocess,
@@ -821,7 +822,7 @@ class DeepseekV4(Module):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             if n_dev == 1:
                 cache = DeepseekV4Cache.from_groups(
                     config,
@@ -873,7 +874,7 @@ class DeepseekV4(Module):
         input_row_offsets: TensorValue,
         return_n_logits: TensorValue,
         cache: DeepseekV4Cache,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """The serving graph body: ragged tokens in, the pipeline's logits out.
 
         Args:
@@ -943,7 +944,7 @@ class DeepseekV4(Module):
         return_n_logits: TensorValue,
         caches: Sequence[DeepseekV4Cache],
         signal_buffers: Sequence[BufferValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """:meth:`serve` over :meth:`tensor_parallel_replicas`, one per device.
 
         ``tokens``, ``input_row_offsets`` and ``caches`` are per device; the
@@ -987,7 +988,7 @@ class DeepseekV4(Module):
         return_n_logits: TensorValue,
         leaves: Mapping[str, Sequence[PagedCacheValues]],
         signal_buffers: Sequence[BufferValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """:meth:`serve` on one device, or across the replicas' devices.
 
         Args:

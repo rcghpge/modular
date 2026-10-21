@@ -44,6 +44,14 @@ This version is still a work in progress.
 
 ## Python API
 
+- `max.nn.Transformer`, `DistributedTransformer`, `logits_postprocess()` and
+  `distributed_logits_postprocess()` return a
+  `max.nn.graph_groups.DecoderOutputs` of named groups instead of a tuple.
+  Read the logits as
+  `outputs.logits["logits"]` rather than `outputs[1]`, and pass the outputs to
+  `Graph.output(outputs)` rather than unpacking them. The graph's outputs keep
+  their order, and `Graph.output_tree` returns them by name.
+
 - Added `max.driver.Buffer.memset(value)` to fill a contiguous buffer or
   slice in place with a byte value, without allocating a source buffer.
 

@@ -29,6 +29,8 @@ from max.graph import (
     Type,
     Value,
 )
+from max.nn.graph_groups import HiddenStates
+from max.nn.transformer import DecoderOutputs
 from max.pipelines.context import BaseContextType
 from max.tree import Tree
 
@@ -175,7 +177,8 @@ def stage_outputs(stage: PipelineStage | None, outputs: Any) -> Any:
     """Returns what a stage graph outputs, from what its decoder returned.
 
     On the last stage, and without a stage, that is ``outputs``. A stage
-    before the last outputs the leaves of what its decoder returned.
+    before the last outputs the leaves of what its decoder returned, as its
+    ``hidden_states.stage_boundary``.
 
     Args:
         stage: The stage being built, or ``None`` for the whole model.
@@ -190,7 +193,9 @@ def stage_outputs(stage: PipelineStage | None, outputs: Any) -> Any:
         return outputs
     if stage.trace_only:
         raise_stage_traced(tree.map(_crossing_type, outputs))
-    return tree.flatten(outputs)[0]
+    return DecoderOutputs(
+        hidden_states=HiddenStates(stage_boundary=tuple(tree.leaves(outputs)))
+    )
 
 
 class PipelinedModel(PipelineModel[BaseContextType]):

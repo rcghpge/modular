@@ -120,7 +120,6 @@ class _Verify:
         self, batch: SequentialBatch | BlockBatch
     ) -> Verified[list[TensorValue]]:
         assert isinstance(batch, BlockBatch)
-        # (last-token logits, logits, offsets, then each device's states).
         outputs = self.target.serve_paged(
             self.replicas(batch.devices),
             broadcast_per_device(
@@ -131,7 +130,10 @@ class _Verify:
             _leaves(batch, batch.kv_collections),
             batch.signal_buffers,
         )
-        return Verified(logits=outputs[1], hidden=list(outputs[3:]))
+        return Verified(
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors()),
+        )
 
 
 class _DSparkProposer:

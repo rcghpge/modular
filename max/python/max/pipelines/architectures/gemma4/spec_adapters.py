@@ -100,7 +100,8 @@ def _verify(
             batch.vision_scatter_indices,
         )
         return Verified(
-            logits=outputs[1], hidden=list(outputs[3 : 3 + batch.n_devs])
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
         )
     device = batch.device0
     # The vision merge scatters nothing on an empty index set, but the
@@ -123,8 +124,10 @@ def _verify(
         [empty_embeds],
         [empty_indices],
     )
-    hidden = fuse_captured_hidden_states(captures_by_device(outputs[3:], 1))
-    return Verified(logits=outputs[1], hidden=hidden)
+    hidden = fuse_captured_hidden_states(
+        captures_by_device(list(outputs.hidden_states.tensors()), 1)
+    )
+    return Verified(logits=outputs.logits["logits"], hidden=hidden)
 
 
 _BASE = TargetAdapter(primary_kv=PRIMARY_KV, verify=verify)

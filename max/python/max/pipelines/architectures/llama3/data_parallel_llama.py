@@ -35,6 +35,7 @@ from max.graph import Module as GraphModule
 from max.nn.data_parallelism import split_batch
 from max.nn.kv_cache import KVCacheInputsPerDevice, KVCacheParamInterface
 from max.nn.layer import LayerList, Module
+from max.nn.transformer import DecoderOutputs
 
 from .llama3 import Llama3
 from .model_config import Llama3Config
@@ -64,16 +65,24 @@ class DataParallelLlama(Module):
 
     def __call__(
         self, all_model_args: Sequence[Sequence[Any]]
-    ) -> tuple[TensorValue, ...]:
-        all_outputs: list[list[TensorValue]] = [[] for _ in range(3)]
+    ) -> DecoderOutputs:
+        replicas: list[DecoderOutputs] = []
         for args, model in zip(all_model_args, self.models, strict=True):
-            outputs = model(*args)
-            for i, output in enumerate(outputs):
-                all_outputs[i].append(output.to(self.devices[0]))
-        if all_outputs[1] and all_outputs[2]:
-            return tuple(ops.concat(output, axis=0) for output in all_outputs)
-        else:
-            return (ops.concat(all_outputs[0], axis=0),)
+            replica = model(*args)
+            assert isinstance(replica, DecoderOutputs)
+            replicas.append(replica)
+        # Every replica returns the same structure, so each output joins its
+        # replicas' values along the batch, on the first device.
+        joined = [
+            ops.concat([v.to(self.devices[0]) for v in values], axis=0)
+            for values in zip(
+                *(tree.leaves(r, leaf=TensorValue) for r in replicas),
+                strict=True,
+            )
+        ]
+        outputs = tree.unflatten(tree.flatten(replicas[0])[1], joined)
+        assert isinstance(outputs, DecoderOutputs)
+        return outputs
 
     # Graph helpers.
     def input_types(
@@ -133,7 +142,7 @@ class DataParallelLlama(Module):
 
     def _call_flat(
         self, kv_params: KVCacheParamInterface, *args: Value[Any]
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         (
             tokens,
             input_row_offsets,

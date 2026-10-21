@@ -485,6 +485,17 @@
             "api/python/nn.kernels",
             {
               "type": "category",
+              "label": "graph_groups",
+              "link": {
+                "type": "doc",
+                "id": "api/python/nn.graph_groups"
+              },
+              "items": [
+                "__AUTOGEN:max.nn.graph_groups__"
+              ]
+            },
+            {
+              "type": "category",
               "label": "kv_cache",
               "link": {
                 "type": "doc",

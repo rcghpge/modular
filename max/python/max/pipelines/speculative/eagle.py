@@ -74,7 +74,10 @@ class EagleProposer:
         )
         self.draft.return_hidden_states = self.step_hidden_mode
         self.draft.return_logits = ReturnLogits.LAST_TOKEN
-        return Proposed(logits=outputs[1], hidden=[outputs[3]])
+        return Proposed(
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors())[:1],
+        )
 
     def step(
         self, batch: SequentialBatch, draft_input: DraftStepInput, index: int
@@ -88,4 +91,7 @@ class EagleProposer:
             batch.query_offsets_per_dev[0],
             draft_input.hidden[0],
         )
-        return Proposed(logits=outputs[0], hidden=[outputs[1]])
+        return Proposed(
+            logits=outputs.logits["next_token_logits"],
+            hidden=list(outputs.hidden_states.tensors())[:1],
+        )

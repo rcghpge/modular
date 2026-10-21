@@ -58,6 +58,7 @@ from max.nn.layer import LayerList, Module, Shardable
 from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.norm import LayerNorm, RMSNorm
 from max.nn.rotary_embedding import DynamicRotaryEmbedding
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -412,7 +413,7 @@ class InternVLLanguageModel(DistributedLogitsPostprocessMixin, Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             # Stages the RoPE frequencies before anything else, where building
             # the module inside the graph used to put them.
             _ = self.rope.original_inv_freq
@@ -454,7 +455,7 @@ class InternVLLanguageModel(DistributedLogitsPostprocessMixin, Module):
         input_row_offsets: Sequence[TensorValue],
         image_embeddings: Sequence[TensorValue],
         image_token_indices: Sequence[TensorValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Executes the language model forward pass.
 
         Args:

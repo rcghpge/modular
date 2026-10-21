@@ -256,7 +256,7 @@ class AutoencoderKLWanModel(ComponentModel):
             "wan_vae_first_frame", input_types=first_input_types
         ) as first_graph:
             outputs = first_module(first_graph.inputs[0].tensor)
-            first_graph.output(*outputs)
+            first_graph.output(outputs)
         self.first_frame_model = self._session.load(
             first_graph, weights_registry=first_module.state_dict()
         )
@@ -327,7 +327,7 @@ class AutoencoderKLWanModel(ComponentModel):
             z_input = rest_graph.inputs[0].tensor
             cache_inputs = tuple(inp.tensor for inp in rest_graph.inputs[1:])
             outputs = rest_module(z_input, *cache_inputs)
-            rest_graph.output(*outputs)
+            rest_graph.output(outputs)
         self.rest_frame_model = self._session.load(
             rest_graph, weights_registry=rest_module.state_dict()
         )
@@ -421,7 +421,7 @@ class AutoencoderKLWanModel(ComponentModel):
             "wan_vae_enc_first", input_types=[first_input_type]
         ) as first_graph:
             outputs = first_module(first_graph.inputs[0].tensor)
-            first_graph.output(*outputs)
+            first_graph.output(outputs)
         self.first_chunk_encoder = self._session.load(
             first_graph, weights_registry=first_module.state_dict()
         )
@@ -470,7 +470,7 @@ class AutoencoderKLWanModel(ComponentModel):
         ) as rest_graph:
             rest_inputs = [inp.tensor for inp in rest_graph.inputs]
             outputs = rest_module(rest_inputs[0], *rest_inputs[1:])
-            rest_graph.output(*outputs)
+            rest_graph.output(outputs)
         self.rest_chunk_encoder = self._session.load(
             rest_graph, weights_registry=rest_module.state_dict()
         )

@@ -23,7 +23,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from max.dtype import DType
 from max.graph import DeviceRef, DimLike, TensorValue, ops
-from max.nn.transformer import ReturnHiddenStates, ReturnLogits
+from max.nn.transformer import DecoderOutputs, ReturnHiddenStates, ReturnLogits
 
 from .driver import (
     CarryDimNames,
@@ -49,7 +49,7 @@ class CrossAttentionDraft(Protocol):
     return_hidden_states: ReturnHiddenStates
     return_logits: ReturnLogits
 
-    def __call__(self, **kwargs: Any) -> tuple[TensorValue, ...]:
+    def __call__(self, **kwargs: Any) -> DecoderOutputs:
         """Runs the draft on one step's inputs."""
         ...
 
@@ -103,8 +103,8 @@ class CrossAttentionMTPProposer:
         self.draft.return_hidden_states = self.step_hidden_mode
         self.draft.return_logits = ReturnLogits.LAST_TOKEN
         return Proposed(
-            logits=outputs[1],
-            hidden=list(outputs[3 : 3 + batch.n_devs]),
+            logits=outputs.logits["logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
         )
 
     def step(
@@ -129,6 +129,6 @@ class CrossAttentionMTPProposer:
             rope_cache_lengths=batch.draft_cache_lengths,
         )
         return Proposed(
-            logits=outputs[0],
-            hidden=list(outputs[1 : 1 + batch.n_devs]),
+            logits=outputs.logits["next_token_logits"],
+            hidden=list(outputs.hidden_states.tensors())[: batch.n_devs],
         )

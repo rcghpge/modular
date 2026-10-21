@@ -46,6 +46,7 @@ from max.nn.layer import LayerList, Module
 from max.nn.linear import MLP, ColumnParallelLinear
 from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     forward_sharded_layers,
@@ -432,7 +433,7 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -521,7 +522,7 @@ class Qwen3VLMoEDecoder(DistributedLogitsPostprocessMixin, Module):
         input_row_offsets: list[TensorValue],
         signal_buffers: list[BufferValue],
         deepstack_visual_embeds: list[list[TensorValue]],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Forward pass of the Qwen3VL MoE decoder.
 
         Args:

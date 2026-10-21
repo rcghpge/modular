@@ -182,7 +182,7 @@ class DiffusionGemmaForBlockDiffusionModel(Gemma3_MultiModalModel):
                 image_embeddings=image_embeddings,
                 image_token_indices=image_token_indices,
             )
-            graph.output(*outputs)
+            graph.output(outputs)
         return graph, encoder.state_dict()
 
     def _decoder_input_types(
@@ -274,7 +274,7 @@ class DiffusionGemmaForBlockDiffusionModel(Gemma3_MultiModalModel):
                 sc_enabled=sc_enabled,
                 temperature=temperature,
             )
-            graph.output(*outputs)
+            graph.output(outputs)
         return graph, decoder.state_dict()
 
     def execute_decoder_step(

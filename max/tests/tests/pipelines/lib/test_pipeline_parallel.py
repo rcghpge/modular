@@ -171,7 +171,7 @@ class ToyModel(PipelinedModel[TextContext]):
             outputs = self.decoder(
                 tokens, scale, bias, boundary_inputs=boundary_inputs
             )
-            graph.output(*stage_outputs(stage, outputs))
+            graph.output(stage_outputs(stage, outputs))
         return graph, dict(self.decoder.state_dict())
 
 

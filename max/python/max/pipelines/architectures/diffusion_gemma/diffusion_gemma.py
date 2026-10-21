@@ -44,12 +44,14 @@ from collections.abc import Sequence
 from max.dtype import DType
 from max.graph import BufferValue, DeviceRef, ShardingStrategy, TensorValue, ops
 from max.nn.attention import MHAMaskVariant
+from max.nn.graph_groups import LogitsName
 from max.nn.kernels import flash_attention_ragged, rope_split_store_ragged
 from max.nn.kv_cache import KVCacheParams, MultiKVCacheParams, PagedCacheValues
 from max.nn.layer import LayerList, Module
 from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.moe import GatedActivation, MoE, MoEQuantized
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -524,7 +526,7 @@ class DiffusionGemmaEncoderTextModel(_DiffusionGemmaTextModelBase):
         image_embeddings: Sequence[TensorValue],
         image_token_indices: Sequence[TensorValue],
         **kwargs: object,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
         h = [
             merge_multimodal_embeddings(
@@ -546,11 +548,12 @@ class DiffusionGemmaEncoderTextModel(_DiffusionGemmaTextModelBase):
         outputs = self._postprocess_logits(
             h, input_row_offsets, return_n_logits, signal_buffers
         )
-        # Softcap the logit tensors; the optional third output is offsets.
-        out = list(outputs)
-        for i in range(min(2, len(out))):
-            out[i] = self._softcap(out[i])
-        return tuple(out)
+        logits = outputs.logits
+        names: tuple[LogitsName, ...] = ("next_token_logits", "logits")
+        for name in names:
+            if name in logits:
+                logits[name] = self._softcap(logits[name])
+        return outputs
 
 
 class DiffusionGemmaDecoderTextModel(_DiffusionGemmaTextModelBase):

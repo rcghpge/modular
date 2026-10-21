@@ -45,8 +45,15 @@ from max.experimental.sharding import (
 from max.experimental.sharding.types import as_layout
 from max.experimental.tensor import Tensor
 from max.graph import BufferType, DeviceRef, Graph, TensorType
+from max.nn.graph_groups import GraphGroup
 
 X = TensorType(DType.float32, ["batch", 4], device=DeviceRef.CPU())
+
+
+class _Pair(GraphGroup[str, int]):
+    """A kinded group of ints, standing in for a graph's named outputs."""
+
+    kind = "_test_pair"
 
 
 def _scale(x: Tensor) -> Tensor:
@@ -207,6 +214,8 @@ def test_a_sharded_layout_records_its_mesh(
         ((1, [2, {"a": 3}]), {"gain": 0.5, "flag": True, "none": None}),
         [],
         {"x": "static"},
+        OrderedDict(b=1, a=[2, 3]),
+        [_Pair(logits=1, offsets=2)],
     ],
 )
 def test_treedef_json_round_trip(value: Any) -> None:
@@ -214,9 +223,14 @@ def test_treedef_json_round_trip(value: Any) -> None:
     assert treedef_from_json(treedef_to_json(treedef)) == treedef
 
 
+@tree.dataclass
+class _Unkinded:
+    x: int
+
+
 def test_treedef_json_rejects_what_json_cannot_hold() -> None:
     point = namedtuple("point", ["x"])
-    for value in [point(1), OrderedDict(a=1), {1: 1}, (object(),)]:
+    for value in [point(1), _Unkinded(1), {1: 1}, (object(),)]:
         _, treedef = tree.flatten(value, leaf=int)
         with pytest.raises(ArtifactError):
             treedef_to_json(treedef)

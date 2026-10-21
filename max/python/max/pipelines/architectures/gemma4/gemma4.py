@@ -34,6 +34,7 @@ from max.graph import (
     ops,
 )
 from max.graph import Module as GraphModule
+from max.nn.graph_groups import HiddenStates
 from max.nn.kv_cache import (
     KVCacheParamInterface,
     KVCacheParams,
@@ -44,7 +45,7 @@ from max.nn.layer import LayerList, MissingLayer, Module
 from max.nn.linear import MLP, ColumnParallelLinear
 from max.nn.moe import GatedActivation, MoE, MoEQuantized
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
-from max.nn.transformer import ReturnHiddenStates
+from max.nn.transformer import DecoderOutputs, ReturnHiddenStates
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -369,7 +370,7 @@ class Gemma4TextModel(DistributedLogitsPostprocessMixin, Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -421,7 +422,7 @@ class Gemma4TextModel(DistributedLogitsPostprocessMixin, Module):
         *,
         boundary_inputs: Sequence[TensorValue] | None = None,
         **kwargs: object,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs this model's decoder layers.
 
         A pipeline stage after the first starts from ``boundary_inputs``,
@@ -486,7 +487,9 @@ class Gemma4TextModel(DistributedLogitsPostprocessMixin, Module):
                 capture_hidden_states.append(list(h))
 
         if not self.holds_last:
-            return tuple(h)
+            return DecoderOutputs(
+                hidden_states=HiddenStates(stage_boundary=tuple(h))
+            )
         return self._postprocess_logits(
             h,
             input_row_offsets,

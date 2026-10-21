@@ -33,6 +33,8 @@ from max.engine import InferenceSession, Model
 from max.experimental.compilation import CompiledCallable
 from max.graph import DeviceRef, TensorType, TensorValue
 from max.nn import Module
+from max.nn.graph_groups import Logits
+from max.nn.transformer import DecoderOutputs
 from max.pipelines.lib import (
     GraphRole,
     GraphSpec,
@@ -51,8 +53,8 @@ class _Scale(Module):
         super().__init__()
         self.factor = factor
 
-    def __call__(self, x: TensorValue) -> TensorValue:
-        return x * self.factor
+    def __call__(self, x: TensorValue) -> DecoderOutputs:
+        return DecoderOutputs(logits=Logits(next_token_logits=x * self.factor))
 
 
 _factors = itertools.count(2)

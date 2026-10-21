@@ -40,7 +40,11 @@ from max.nn.linear import MLP, ColumnParallelLinear
 from max.nn.moe import MoEQuantized
 from max.nn.norm.rms_norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.nn.transformer import ReturnHiddenStates, forward_sequential_layers
+from max.nn.transformer import (
+    DecoderOutputs,
+    ReturnHiddenStates,
+    forward_sequential_layers,
+)
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     forward_sharded_layers,
@@ -293,7 +297,7 @@ class MiMoV2(DistributedLogitsPostprocessMixin, Module):
             tokens: Value[Any],
             return_n_logits: Value[Any],
             *rest: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             sliding_kv, full_kv = self.kv_params.unflatten_basic_kv_tree(
                 iter(rest[2 * n :])
             )
@@ -335,7 +339,7 @@ class MiMoV2(DistributedLogitsPostprocessMixin, Module):
         full_kv_collections: Sequence[PagedCacheValues],
         return_n_logits: TensorValue,
         input_row_offsets: Sequence[TensorValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h_embed = self.embed_tokens(tokens)
         # A broadcast over the signal buffers, not a GPU-to-GPU transfer: the
         # transfer makes one device's stream wait on another's, which device

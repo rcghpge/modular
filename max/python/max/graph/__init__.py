@@ -19,6 +19,7 @@ from .graph import (
     Graph,
     GraphBlock,
     GraphDebugConfig,
+    GraphOutputs,
     KernelLibrary,
     Module,
     ProfileScopeColor,

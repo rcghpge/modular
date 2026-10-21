@@ -26,7 +26,6 @@ from max.graph import (
     DeviceRef,
     Graph,
     TensorType,
-    TensorValue,
     Type,
     Value,
 )
@@ -39,7 +38,7 @@ from max.nn.moe import StackedMoE
 from max.nn.moe.stacked_moe import GateUpFormat
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
-from max.nn.transformer import Transformer, TransformerBlock
+from max.nn.transformer import DecoderOutputs, Transformer, TransformerBlock
 
 from .layers import Llama4TextAttention, Llama4TextMoEGate
 from .model_config import Llama4Config
@@ -235,7 +234,7 @@ class Llama4(Transformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *kv_inputs: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(iter(kv_inputs)),
                 leaf=KVCacheInputsPerDevice,

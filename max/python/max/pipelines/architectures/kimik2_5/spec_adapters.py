@@ -100,12 +100,15 @@ def _verify(
         batch.batch_context_lengths,
         batch.ep_inputs,
     )
-    captures = captures_by_device(outputs[3:], batch.n_devs)
+    captures = captures_by_device(
+        list(outputs.hidden_states.tensors()), batch.n_devs
+    )
     if isinstance(batch, BlockBatch):
         return Verified(
-            logits=outputs[1], hidden=fuse_captured_hidden_states(captures)
+            logits=outputs.logits["logits"],
+            hidden=fuse_captured_hidden_states(captures),
         )
-    return Verified(logits=outputs[1], hidden=captures)
+    return Verified(logits=outputs.logits["logits"], hidden=captures)
 
 
 ADAPTER = TargetAdapter(

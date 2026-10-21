@@ -56,7 +56,7 @@ from max.nn.rotary_embedding import (
     DeepseekYarnRotaryEmbedding,
     RotaryEmbedding,
 )
-from max.nn.transformer import forward_sequential_layers
+from max.nn.transformer import DecoderOutputs, forward_sequential_layers
 from max.nn.transformer.distributed_transformer import (
     forward_sharded_layers,
 )
@@ -739,7 +739,7 @@ class DeepseekV3_2(Module):
         data_parallel_splits: TensorValue,
         batch_context_lengths: list[TensorValue],
         ep_inputs: list[Value[Any]] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         if not host_input_row_offsets.device == DeviceRef.CPU():
             raise ValueError("input_row_offsets must be located on CPU")
         if not data_parallel_splits.device == DeviceRef.CPU():
@@ -959,7 +959,7 @@ class DeepseekV3_2(Module):
             return_n_logits: Value[Any],
             data_parallel_splits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             remaining = iter(variadic_args)
             signal_buffers = [next(remaining).buffer for _ in range(n_devices)]
             mla_kv_collections, indexer_kv_collections = (

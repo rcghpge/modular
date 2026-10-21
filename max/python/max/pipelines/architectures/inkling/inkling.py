@@ -51,6 +51,7 @@ from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
 from max.nn.transformer import (
+    DecoderOutputs,
     ReturnHiddenStates,
     ReturnLogits,
     forward_sequential_layers,
@@ -597,7 +598,7 @@ class Inkling(Module):
         signal_buffers: list[BufferValue],
         kv_collections: dict[str, list[PagedCacheValues]],
         state: list[RecurrentStateInputsPerDevice[TensorValue, BufferValue]],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs the whole text model over one ragged batch."""
         if self.num_devices > 1:
             assert isinstance(self.embed, VocabParallelEmbedding)
@@ -875,7 +876,7 @@ class Inkling(Module):
             The traced :class:`~max.graph.Graph`.
         """
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             return self(*self.unpack_inputs(inputs))
 
         return Graph(

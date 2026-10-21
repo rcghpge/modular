@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from max import tree
-from max.graph import Graph, TensorValue, Type, Value
+from max.graph import Graph, Type, Value
 from max.graph import Module as GraphModule
 from max.nn.attention import TensorParallelAttentionWithRope
 from max.nn.embedding import VocabParallelEmbedding
@@ -32,6 +32,7 @@ from max.nn.linear import MLP, ColumnParallelLinear
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
 from max.nn.transformer import (
+    DecoderOutputs,
     DistributedTransformer,
     DistributedTransformerBlock,
 )
@@ -167,7 +168,7 @@ class DistributedMistral(DistributedTransformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             signal_buffers = [v.buffer for v in variadic_args[:n_devices]]
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(

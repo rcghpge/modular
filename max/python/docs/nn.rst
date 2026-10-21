@@ -19,6 +19,7 @@ Submodules
 
    max.nn.attention
    max.nn.comm
+   max.nn.graph_groups
    max.nn.kernels
    max.nn.kv_cache
    max.nn.moe
@@ -31,6 +32,7 @@ Submodules
 
    nn.attention
    nn.comm
+   nn.graph_groups
    nn.kernels
    nn.kv_cache
    nn.moe
@@ -126,6 +128,7 @@ Transformer
 
    ~max.nn.transformer.distributed_logits_postprocess
    ~max.nn.transformer.forward_sequential_layers
+   ~max.nn.transformer.logits_outputs
    ~max.nn.transformer.logits_postprocess
 
 Convolution

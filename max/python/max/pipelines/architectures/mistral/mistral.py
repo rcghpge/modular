@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from max import tree
-from max.graph import Graph, TensorValue, Type, Value
+from max.graph import Graph, Type, Value
 from max.graph import Module as GraphModule
 from max.nn.attention import AttentionWithRope
 from max.nn.embedding import Embedding
@@ -28,7 +28,7 @@ from max.nn.kv_cache import KVCacheInputsPerDevice
 from max.nn.linear import MLP, Linear
 from max.nn.norm import RMSNorm
 from max.nn.rotary_embedding import RotaryEmbedding
-from max.nn.transformer import Transformer, TransformerBlock
+from max.nn.transformer import DecoderOutputs, Transformer, TransformerBlock
 from max.pipelines.lib.interfaces.batch_processor import (
     ragged_kv_symbolic_input_tree,
 )
@@ -163,7 +163,7 @@ class Mistral(Transformer):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *kv_inputs: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             kv_collections = tree.leaves(
                 self.kv_params.unflatten_kv_inputs(iter(kv_inputs)),
                 leaf=KVCacheInputsPerDevice,

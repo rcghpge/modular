@@ -44,6 +44,7 @@ from max.nn.rotary_embedding import (
     Llama3RopeScalingParams,
     Llama3RotaryEmbedding,
 )
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -206,7 +207,7 @@ class Gemma3TextModel(DistributedLogitsPostprocessMixin, Module):
         return_n_logits: TensorValue,
         input_row_offsets: Sequence[TensorValue],
         **kwargs,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
 
         kv_collections_by_type = {
@@ -295,7 +296,7 @@ class Gemma3(Module):
             tokens: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             input_row_offsets = [v.tensor for v in variadic_args[:n_devices]]
             signal_buffers = [
                 v.buffer for v in variadic_args[n_devices : 2 * n_devices]
@@ -331,7 +332,7 @@ class Gemma3(Module):
         global_kv_collections: Sequence[PagedCacheValues],
         return_n_logits: TensorValue,
         input_row_offsets: Sequence[TensorValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         return self.language_model(
             tokens,
             signal_buffers,

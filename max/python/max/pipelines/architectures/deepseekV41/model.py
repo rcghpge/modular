@@ -66,7 +66,7 @@ from max.nn.kv_cache import (
     PagedCacheValues,
 )
 from max.nn.layer import Module
-from max.nn.transformer import ReturnLogits
+from max.nn.transformer import DecoderOutputs, ReturnLogits
 from max.pipelines.context import (
     ImageMetadata,
     TextAndVisionContext,
@@ -941,11 +941,11 @@ class DeepseekV41BatchProcessor(
 class _GraphBody(Module):
     """Traces ``build``, which emits a graph's body from its inputs."""
 
-    def __init__(self, build: Callable[..., tuple[TensorValue, ...]]) -> None:
+    def __init__(self, build: Callable[..., DecoderOutputs]) -> None:
         super().__init__()
         self._build = build
 
-    def __call__(self, *inputs: Value[Any]) -> tuple[TensorValue, ...]:
+    def __call__(self, *inputs: Value[Any]) -> DecoderOutputs:
         return self._build(*inputs)
 
 
@@ -1437,7 +1437,7 @@ class DeepseekV41Model(
         n_trailing = len(vision_types) + len(engram_input_types)
         weights_registry: dict[str, Any] = {}
 
-        def build(*graph_inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def build(*graph_inputs: Value[Any]) -> DecoderOutputs:
             all_inputs = list(graph_inputs)
             tokens, input_row_offsets, return_n_logits = all_inputs[:3]
             # The Engram lookback window follows `return_n_logits`, then the

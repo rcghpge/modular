@@ -17,12 +17,13 @@ from __future__ import annotations
 import hashlib
 import shutil
 import tempfile
+from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Protocol, TypeAlias, TypeVar, runtime_checkable
 
-from max.tree import TreeDef
+from max.tree import TreeDef, kind_of, node_of_kind
 from typing_extensions import Self
 
 _T = TypeVar("_T")
@@ -196,17 +197,20 @@ def treedef_to_json(treedef: TreeDef) -> dict[str, ArtifactType]:
     """Returns a tree structure as a JSON-compatible value.
 
     Only structures that JSON can describe are supported: leaves, references,
-    lists, tuples, plain ``dict`` nodes with string keys, and static values
-    that are ``None``, a ``bool``, an ``int``, a ``float`` or a ``str``.
+    lists, tuples, ``dict`` and ``OrderedDict`` nodes with string keys, nodes
+    of a class :func:`max.tree.kind` names, and static values that are
+    ``None``, a ``bool``, an ``int``, a ``float`` or a ``str``. A named node
+    records its kind under ``type``, so a reader such as the serving engine
+    learns what the node holds without the class.
     :func:`treedef_from_json` rebuilds the structure.
 
     Args:
         treedef: The structure, as :func:`max.tree.flatten` returns it.
 
     Raises:
-        ArtifactError: If the structure holds a named tuple, a custom node, a
-            ``dict`` subclass or non-string key, or a static value of another
-            type.
+        ArtifactError: If the structure holds a named tuple, a node of an
+            unnamed class or with metadata, another ``dict`` subclass or a
+            non-string key, or a static value of another type.
     """
     if treedef.kind == "leaf":
         return {"kind": "leaf"}
@@ -227,15 +231,43 @@ def treedef_to_json(treedef: TreeDef) -> dict[str, ArtifactType]:
     if treedef.kind in ("list", "tuple"):
         return {"kind": treedef.kind, "children": children}
     if treedef.kind == "dict" and treedef.meta is None:
-        keys: list[ArtifactType] = []
-        for key in treedef.keys:
-            if not isinstance(key, str):
-                raise ArtifactError(
-                    f"dict keys {list(treedef.keys)} are not all strings"
-                )
-            keys.append(key)
-        return {"kind": "dict", "keys": keys, "children": children}
+        return {
+            "kind": "dict",
+            "keys": _str_keys(treedef),
+            "children": children,
+        }
+    if treedef.kind == "dict" and treedef.meta == (OrderedDict, ()):
+        return {
+            "kind": "ordered_dict",
+            "keys": _str_keys(treedef),
+            "children": children,
+        }
+    if treedef.kind == "node":
+        cls, meta = treedef.meta
+        name = kind_of(cls)
+        if name is None or meta is not None:
+            raise ArtifactError(
+                f"a {cls.__qualname__} node is not JSON-encodable: its class"
+                " needs a tree kind and no metadata"
+            )
+        return {
+            "kind": "node",
+            "type": name,
+            "keys": _str_keys(treedef),
+            "children": children,
+        }
     raise ArtifactError(f"a {treedef.kind!r} node is not JSON-encodable")
+
+
+def _str_keys(treedef: TreeDef) -> list[ArtifactType]:
+    keys: list[ArtifactType] = []
+    for key in treedef.keys:
+        if not isinstance(key, str):
+            raise ArtifactError(
+                f"keys {list(treedef.keys)} are not all strings"
+            )
+        keys.append(key)
+    return keys
 
 
 def treedef_from_json(value: ArtifactType) -> TreeDef:
@@ -260,17 +292,26 @@ def treedef_from_json(value: ArtifactType) -> TreeDef:
         if meta is not None and not isinstance(meta, (bool, int, float, str)):
             raise TypeError(f"static value {meta!r} is not a JSON scalar")
         return TreeDef("static", meta=meta)
-    if kind not in ("list", "tuple", "dict"):
+    if kind not in ("list", "tuple", "dict", "ordered_dict", "node"):
         raise ValueError(f"unknown tree structure kind {kind!r}")
     children = tuple(
         treedef_from_json(child) for child in expect(fields["children"], list)
     )
-    if kind != "dict":
+    if kind in ("list", "tuple"):
         return TreeDef(kind, children)
-    keys = [expect(key, str) for key in expect(fields["keys"], list)]
+    keys = tuple(expect(key, str) for key in expect(fields["keys"], list))
     if len(keys) != len(children):
-        raise ValueError("a dict node needs one key per child")
-    return TreeDef("dict", children, tuple(keys))
+        raise ValueError(f"a {kind} node needs one key per child")
+    if kind == "dict":
+        return TreeDef("dict", children, keys)
+    if kind == "ordered_dict":
+        return TreeDef("dict", children, keys, (OrderedDict, ()))
+    name = expect(fields["type"], str)
+    try:
+        cls = node_of_kind(name)
+    except KeyError:
+        raise ValueError(f"unknown tree node type {name!r}") from None
+    return TreeDef("node", children, keys, (cls, None))
 
 
 def expect(value: object, type_: type[_T]) -> _T:

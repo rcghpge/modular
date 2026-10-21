@@ -81,7 +81,7 @@ from max.nn.state_space import (
     gated_group_rmsnorm,
     mamba2_ssd_chunk_scan_varlen_fwd_inplace,
 )
-from max.nn.transformer import ReturnLogits, logits_postprocess
+from max.nn.transformer import DecoderOutputs, ReturnLogits, logits_postprocess
 
 from .model_config import NemotronHConfig
 
@@ -1020,7 +1020,7 @@ class NemotronH(Module):
         conv_pools: list[BufferValue],
         ssm_pools: list[BufferValue],
         has_initial_state: TensorValue,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Run the hybrid stack.
 
         Returns the logits tuple from :func:`logits_postprocess`. The conv and
@@ -1178,7 +1178,7 @@ class NemotronH(Module):
             input_row_offsets: Value[Any],
             return_n_logits: Value[Any],
             *variadic: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             # The KV inputs come first, then slot_idx, the conv pools, the
             # SSM pools and has_initial_state.
             kv_count = len(variadic) - 1 - num_mamba * 2 - 1

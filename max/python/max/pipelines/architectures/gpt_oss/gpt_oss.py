@@ -42,6 +42,7 @@ from max.nn.rotary_embedding import (
     YarnRotaryEmbedding,
     YarnScalingParams,
 )
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
 )
@@ -189,7 +190,7 @@ class GptOssTextModel(DistributedLogitsPostprocessMixin, Module):
         return_n_logits: TensorValue,
         input_row_offsets: Sequence[TensorValue],
         **kwargs,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h_embed = self.embed_tokens(tokens)
         if self.embedding_output_dtype is not None:
             h_embed = ops.cast(h_embed, self.embedding_output_dtype)
@@ -282,7 +283,7 @@ class GptOss(Module):
             tokens: Value[Any],
             return_n_logits: Value[Any],
             *variadic_args: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             input_row_offsets = [v.tensor for v in variadic_args[:n_devices]]
             signal_buffers = [
                 v.buffer for v in variadic_args[n_devices : 2 * n_devices]
@@ -318,7 +319,7 @@ class GptOss(Module):
         global_kv_collections: Sequence[PagedCacheValues],
         return_n_logits: TensorValue,
         input_row_offsets: Sequence[TensorValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         return self.language_model(
             tokens,
             signal_buffers,

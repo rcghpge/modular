@@ -248,7 +248,7 @@ def _build(
             signal_buffers,
             tree.leaves(state, leaf=RecurrentStateInputsPerDevice),
         )
-        graph.output(*outputs)
+        graph.output(outputs)
 
     compiled = session.load(graph, weights_registry=registry)
 

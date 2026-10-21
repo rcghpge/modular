@@ -77,6 +77,7 @@ from max.nn.kv_cache import (
 from max.nn.layer import LayerList, Module
 from max.nn.linear import ColumnParallelLinear
 from max.nn.norm import RMSNorm
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.transformer import forward_sequential_layers
 from max.pipelines.architectures.deepseekV3.deepseekV3 import (
     deepseek_logits_postprocess,
@@ -543,7 +544,7 @@ class Glm5Next(Module):
             return_n_logits: Value[Any],
             _data_parallel_splits: Value[Any],
             *variadic: Value[Any],
-        ) -> tuple[TensorValue, ...]:
+        ) -> DecoderOutputs:
             it = iter(variadic)
             signal_buffers = [next(it).buffer for _ in range(num_devices)]
             # The recurrent state is a child of the multi-cache, so one
@@ -609,7 +610,7 @@ class Glm5Next(Module):
         host_input_row_offsets: TensorValue,
         state: list[RecurrentStateInputsPerDevice[TensorValue, BufferValue]],
         ep_inputs: Sequence[Any] | None = None,
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         """Runs the decoder and returns the logits tuple.
 
         The residual is widened to ``hc_mult`` streams once after the embedding

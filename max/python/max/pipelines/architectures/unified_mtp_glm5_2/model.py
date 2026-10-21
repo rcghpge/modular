@@ -318,7 +318,7 @@ class UnifiedMTPGlm5_2Model(_UnifiedSpecDecodeModelMixin, Glm5_1Model):
                 draft_probs_full=graph_inputs.draft_probs_full,
             )
 
-            graph.output(*outputs)
+            graph.output(outputs)
 
         return graph, weights_registry
 

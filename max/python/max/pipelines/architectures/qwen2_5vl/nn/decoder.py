@@ -61,6 +61,7 @@ from max.nn.linear import MLP, ColumnParallelLinear, Linear
 from max.nn.norm import RMSNorm
 from max.nn.quant_config import QuantConfig
 from max.nn.rotary_embedding import Llama3RotaryEmbedding
+from max.nn.transformer import DecoderOutputs
 from max.nn.transformer.distributed_transformer import (
     DistributedLogitsPostprocessMixin,
     ShardableCallable,
@@ -674,7 +675,7 @@ class Qwen25VLDecoder(DistributedLogitsPostprocessMixin, Module):
         )
         head_treedef = tree.flatten(head)[1]
 
-        def forward(*inputs: Value[Any]) -> tuple[TensorValue, ...]:
+        def forward(*inputs: Value[Any]) -> DecoderOutputs:
             remaining = iter(inputs)
             named = tree.unflatten(head_treedef, remaining, exact=False)
             assert isinstance(named, OrderedDict)
@@ -717,7 +718,7 @@ class Qwen25VLDecoder(DistributedLogitsPostprocessMixin, Module):
         kv_collections: list[PagedCacheValues],
         input_row_offsets: list[TensorValue],
         signal_buffers: list[BufferValue],
-    ) -> tuple[TensorValue, ...]:
+    ) -> DecoderOutputs:
         h = self.embed_tokens(tokens, signal_buffers)
 
         # Merge image embeddings into text embeddings.
