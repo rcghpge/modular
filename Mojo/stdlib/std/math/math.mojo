@@ -4403,11 +4403,9 @@ def _remainder_lifted_impl[
 def _sqrt_ieee[
     dtype: DType, width: SIMDLength, //
 ](x: SIMD[dtype, width]) -> type_of(x):
-    # `sqrt` is `sqrt.approx.ftz` for float32 on NVIDIA. float64 needs no
-    # special case: its sqrt lowers to the IEEE round-to-nearest instruction.
-    comptime if is_nvidia_gpu() and dtype == .float32:
-        return _llvm_unary_fn["llvm.sqrt"](x)
-    return sqrt(x)
+    # A plugin may lower `sqrt` to an approximation, but `llvm.sqrt` is
+    # correctly rounded on every target.
+    return _llvm_unary_fn["llvm.sqrt"](x)
 
 
 @inline(.always)
