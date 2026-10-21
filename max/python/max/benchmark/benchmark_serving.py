@@ -486,6 +486,7 @@ async def benchmark(
             disable_tqdm=args.disable_tqdm,
             max_concurrency=args.warmup_concurrency,
             use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
+            max_output_len=args.max_output_len,
         )
 
     # Capture baseline server metrics after priming so priming requests
@@ -691,6 +692,7 @@ async def benchmark(
                 est_tpot_ms=args.warmup_delay_estimated_tpot_ms,
                 use_session_id_as_cache_salt=args.use_session_id_as_cache_salt,
                 disable_ignore_eos=args.disable_ignore_eos,
+                max_output_len=args.max_output_len,
             )
             all_outputs = [
                 out for outs in outputs_by_session.values() for out in outs

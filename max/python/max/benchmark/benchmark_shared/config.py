@@ -548,6 +548,7 @@ class ServingBenchmarkConfig(BaseServingBenchmarkConfig):
 
     max_output_len: int | None = Field(
         default=None,
+        gt=0,
         description="Maximum output length per request.",
         json_schema_extra={"group": "Output Control"},
     )

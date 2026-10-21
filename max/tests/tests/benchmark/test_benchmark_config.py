@@ -1012,3 +1012,12 @@ class TestImageFlags:
         assert config.image_count == "DU(1,3)"
         assert config.image_long_side == "U(256,1024)"
         assert config.image_turn == "last"
+
+
+@pytest.mark.parametrize("value", [0, -1])
+def test_max_output_len_must_be_positive(value: int) -> None:
+    # Single-turn once read 0 as "no cap" while the fitted path rejected it.
+    with pytest.raises(ValidationError, match="max_output_len"):
+        ServingBenchmarkConfig.model_validate(
+            {"model": "m", "max_output_len": value}
+        )
