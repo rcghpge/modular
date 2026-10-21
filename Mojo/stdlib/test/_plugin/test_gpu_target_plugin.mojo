@@ -51,11 +51,27 @@ def test_gpu_plugin_hooks() raises:
     comptime assert hip.unary_math_fn[.rsqrt, DType.bfloat16, 1]
     comptime assert not hip.unary_math_fn[.sqrt, DType.float32, 1]
     comptime assert not hip.unary_math_fn[.log2, DType.float64, 1]
+    comptime assert cuda.native_float8_cast[DType.float32, DType.float8_e4m3fn]
+    comptime assert cuda.native_float8_cast[DType.float8_e5m2, DType.float16]
+    comptime assert not cuda.native_float8_cast[
+        DType.float8_e4m3fn, DType.float32
+    ]
+    comptime assert not CUDAPluginHooks[_a100_target].native_float8_cast[
+        DType.float32, DType.float8_e4m3fn
+    ]
+    comptime assert hip.native_float8_cast[DType.float8_e4m3fnuz, DType.float32]
+    comptime assert not hip.native_float8_cast[
+        DType.float8_e4m3fn, DType.float32
+    ]
+    comptime assert cuda.has_native_float8
+    comptime assert not CUDAPluginHooks[_a100_target].has_native_float8
+    comptime assert hip.has_native_float8
     comptime metal = _metal_m1_target.stdlib_plugin
     comptime assert metal.unary_math_fn[.sqrt, DType.float32, 1]
     comptime assert not metal.unary_math_fn[.exp2, DType.bfloat16, 1]
     comptime assert not metal.unary_math_fn[.log, DType.float32, 1]
     comptime assert metal.binary_math_fn[.pow, DType.float32, 1]
+    comptime assert not metal.has_native_float8
 
     comptime assert cuda.gpu_id_fn["thread_idx", "x"]
     comptime assert hip.gpu_id_fn["lane_id", ""]

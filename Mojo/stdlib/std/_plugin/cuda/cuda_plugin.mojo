@@ -36,7 +36,11 @@ from std.reflection.location import SourceLocation
 from std.sys._assembly import inlined_assembly
 from std.sys.intrinsics import PrefetchOptions, _PrefetchPluginHookFnType
 
-from .cuda_cast import _nvptx_cast_fn
+from .cuda_cast import (
+    _nvptx_cast_fn,
+    _nvptx_has_native_float8,
+    _nvptx_native_float8_cast,
+)
 from .cuda_gpu_id import _nvptx_gpu_id
 from .cuda_math import _nvptx_unary_math_fn
 from .cuda_time import _global_perf_counter_ns, _sleep
@@ -166,3 +170,9 @@ struct CUDAPluginHooks[target: CompilationTarget](PluginHooks):
     comptime cast_fn[src: DType, dst: DType]: OptionalReg[
         _CastPluginHookFnType[dst]
     ] = _nvptx_cast_fn[src, dst, Self.target]()
+
+    comptime native_float8_cast[
+        src: DType, dst: DType
+    ]: Bool = _nvptx_native_float8_cast[src, dst, Self.target]()
+
+    comptime has_native_float8: Bool = _nvptx_has_native_float8[Self.target]()

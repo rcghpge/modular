@@ -22,6 +22,26 @@ from std.sys.info import CompilationTarget
 comptime _CastFn[dst: DType] = OptionalReg[_CastPluginHookFnType[dst]]
 
 
+def _nvptx_native_float8_cast[
+    src: DType, dst: DType, target: CompilationTarget
+]() -> Bool:
+    """Returns whether `target` converts `src` to `dst` with a native `cvt`:
+    float8 to float16, and float32 to float8, for e4m3 and e5m2 from SM90.
+    SM120 and newer use the software conversion."""
+    # Match the dtypes before querying `target`, as `_nvptx_cast_fn` does.
+    comptime ocp_float8 = (DType.float8_e4m3fn, DType.float8_e5m2)
+    comptime if (src in ocp_float8 and dst == DType.float16) or (
+        src == DType.float32 and dst in ocp_float8
+    ):
+        return target._is_sm_9x_or_newer() and not target._is_sm_120x_or_newer()
+    return False
+
+
+def _nvptx_has_native_float8[target: CompilationTarget]() -> Bool:
+    """Returns whether `target` supports float8, from SM89."""
+    return target._is_sm_9x_or_newer() or target.is_nvidia_gpu["sm_89"]()
+
+
 def _nvptx_cast_fn[
     src: DType, dst: DType, target: CompilationTarget
 ]() -> _CastFn[dst]:

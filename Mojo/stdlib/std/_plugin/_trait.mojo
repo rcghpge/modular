@@ -209,6 +209,24 @@ trait PluginHooks:
         `x` converted elementwise to `dst` on the vendor backend.
     """
 
+    comptime native_float8_cast[src: DType, dst: DType]: Bool = False
+    """Whether the backend converts `src` to `dst` with a native instruction,
+    where one of them is a float8 type.
+
+    Where this is `True`, `SIMD.cast` lowers the conversion directly, and
+    the backend selects the instruction. Elsewhere the stdlib converts in
+    software. A conversion from float8 to float32 that is not native goes
+    through float16 when that one is.
+
+    Parameters:
+        src: The `dtype` converted from.
+        dst: The `dtype` converted to.
+    """
+
+    comptime has_native_float8: Bool = False
+    """Whether the GPU supports float8 natively, for example in its matrix
+    instructions."""
+
     # ===------------------------------------------------------------------=== #
     # Memory Operations
     # ===------------------------------------------------------------------=== #

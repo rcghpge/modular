@@ -58,19 +58,11 @@ from std.sys import (
     _RegisterPackType,
     align_of,
     bit_width_of,
-    is_amd_gpu,
     is_gpu,
-    is_nvidia_gpu,
     llvm_intrinsic,
     size_of,
 )
-from std.sys.info import (
-    _cdna_4_or_newer,
-    _is_amd_mi300x,
-    _is_sm_9x_or_newer,
-    _is_sm_120x_or_newer,
-    is_32bit,
-)
+from std.sys.info import is_32bit
 
 from std.bit import bit_width, byte_swap, pop_count
 from std.builtin._format_float import _write_float
@@ -297,7 +289,7 @@ def _has_native_bf16_support() -> Bool:
 
 @inline(.nodebug)
 def _has_native_f8_support() -> Bool:
-    return _is_sm_9x_or_newer() or is_nvidia_gpu["sm_89"]() or is_amd_gpu()
+    return CurrentPlugin.has_native_float8
 
 
 # Shuffle masks for `SIMD.{rotate,shift}_{left,right}` on backends that do
@@ -3910,31 +3902,14 @@ def _convert_float8_to_f32[
     dtype: DType,
     size: SIMDLength,
 ](val: SIMD[dtype, size]) -> SIMD[.float32, size]:
-    comptime if _is_sm_9x_or_newer() and not _is_sm_120x_or_newer() and dtype in (
-        DType.float8_e4m3fn,
-        DType.float8_e5m2,
-    ):
-        return _convert_float8_to_f16(val).cast[DType.float32]()
-
-    elif (
-        _is_amd_mi300x()
-        and dtype
-        in (
-            DType.float8_e4m3fnuz,
-            DType.float8_e5m2fnuz,
-        )
-    ) or (
-        _cdna_4_or_newer()
-        and dtype
-        in (
-            DType.float8_e4m3fn,
-            DType.float8_e5m2,
-        )
-    ):
+    comptime if CurrentPlugin.native_float8_cast[dtype, DType.float32]:
         var res = __mlir_op.`pop.cast`[_type=SIMD[.float32, size]._mlir_type](
             val._mlir_value
         )
         return SIMD[.float32, size](mlir_value=res)
+
+    elif CurrentPlugin.native_float8_cast[dtype, DType.float16]:
+        return _convert_float8_to_f16(val).cast[DType.float32]()
 
     else:
 
@@ -3952,10 +3927,7 @@ def _convert_float8_to_f16[
     dtype: DType,
     size: SIMDLength,
 ](val: SIMD[dtype, size]) -> SIMD[.float16, size]:
-    comptime if _is_sm_9x_or_newer() and not _is_sm_120x_or_newer() and dtype in (
-        DType.float8_e4m3fn,
-        DType.float8_e5m2,
-    ):
+    comptime if CurrentPlugin.native_float8_cast[dtype, DType.float16]:
         # do not call `SIMD.cast` here; the inliner will diverge
         var res = __mlir_op.`pop.cast`[_type=SIMD[.float16, size]._mlir_type](
             val._mlir_value
@@ -3972,21 +3944,8 @@ def _convert_f32_to_float8[
     //,
     target: DType,
 ](val: SIMD[dtype, size]) -> SIMD[target, size]:
-    comptime if (
-        _is_sm_9x_or_newer() or _cdna_4_or_newer()
-    ) and not _is_sm_120x_or_newer() and target in (
-        DType.float8_e4m3fn,
-        DType.float8_e5m2,
-    ):
+    comptime if CurrentPlugin.native_float8_cast[dtype, target]:
         # do not call `SIMD.cast` here; the inliner will diverge
-        var res = __mlir_op.`pop.cast`[_type=SIMD[target, size]._mlir_type](
-            val._mlir_value
-        )
-        return SIMD(mlir_value=res)
-    elif _is_amd_mi300x() and target in (
-        DType.float8_e4m3fnuz,
-        DType.float8_e5m2fnuz,
-    ):
         var res = __mlir_op.`pop.cast`[_type=SIMD[target, size]._mlir_type](
             val._mlir_value
         )
