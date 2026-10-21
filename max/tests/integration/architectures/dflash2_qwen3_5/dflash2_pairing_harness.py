@@ -15,9 +15,9 @@
 """A tiny Qwen3.5 target beside a tiny DFlash2 draft, fused as served.
 
 The pairing tests share this. It builds the fused graph through
-``SpecDecodePipelineModel._build_spec_graph``, the code a served pairing runs,
-over modules small enough to compile in seconds, so the graph under test is
-the production one and not a restatement of it.
+``build_spec_graph``, the code a served pairing runs, over modules small
+enough to compile in seconds, so the graph under test is the production one
+and not a restatement of it.
 """
 
 from __future__ import annotations
@@ -54,11 +54,10 @@ from max.pipelines.architectures.qwen3_5.state_cache import (
     linear_state_regions,
     ring_len_for_window,
 )
+from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
-    SpecDecodeArchConfig,
-    SpecDecodePipelineModel,
-    _Pairing,
     _with_num_draft_tokens,
+    build_spec_graph,
 )
 from max.pipelines.speculative import SpeculativeConfig
 from max.pipelines.speculative.spec_input_types import SpecDecodeInputTypeSpec
@@ -322,37 +321,38 @@ def fused_graph(
         if hasattr(target, slot):
             setattr(draft, slot, getattr(target, slot))
 
-    target_arch = PIPELINE_REGISTRY.retrieve_architecture(TARGET_ARCH)
-    draft_arch = PIPELINE_REGISTRY.retrieve_architecture(DRAFT_ARCH)
-    assert target_arch is not None and draft_arch is not None
+    assert PIPELINE_REGISTRY.retrieve_architecture(TARGET_ARCH) is not None
+    assert PIPELINE_REGISTRY.retrieve_architecture(DRAFT_ARCH) is not None
     tree = kv_tree(g, target_cfg)
     text_config = SimpleNamespace(hidden_size=g.hidden, vocab_size=g.vocab)
-    owner = SimpleNamespace(
-        pairing=_Pairing(TARGET_ARCH, target_arch, draft_arch),
-        pipeline_config=SimpleNamespace(
-            speculative=speculative,
-            needs_bitmask_constraints=structured_output,
-            runtime=SimpleNamespace(reasoning_parser="qwen3_5"),
-            model=SimpleNamespace(data_parallel_degree=1),
+    pipeline_config = SimpleNamespace(
+        models=SimpleNamespace(main_architecture_name=TARGET_ARCH),
+        draft_model=SimpleNamespace(
+            huggingface_config=SimpleNamespace(architectures=[DRAFT_ARCH])
         ),
-        huggingface_config=SimpleNamespace(get_text_config=lambda: text_config),
+        speculative=speculative,
+        needs_bitmask_constraints=structured_output,
+        runtime=SimpleNamespace(reasoning_parser="qwen3_5"),
+        model=SimpleNamespace(
+            data_parallel_degree=1,
+            huggingface_config=SimpleNamespace(
+                get_text_config=lambda: text_config
+            ),
+        ),
+    )
+    spec = build_spec_graph(
+        cast("PipelineConfig", pipeline_config),
+        tree,
+        [g.device],
         # Qwen3.5 declares signal buffers whatever its device count.
-        signal_buffers=[object()],
-        device_refs=[g.device],
-        kv_params=tree,
+        include_signal_buffers=True,
+        target=target,
+        target_config=target_cfg,
+        draft=draft,
+        draft_config=draft_cfg,
+        hidden_states=ReturnHiddenStates.SELECTED_LAYERS,
+        draft_weights=draft_weights,
     )
-    model_config = SimpleNamespace(input_spec=None)
-    graph, registry = SpecDecodePipelineModel._build_spec_graph(
-        cast("SpecDecodePipelineModel", owner),
-        cast("SpecDecodeArchConfig", model_config),
-        target,
-        target_cfg,
-        draft,
-        draft_cfg,
-        draft_weights,
-        ReturnHiddenStates.SELECTED_LAYERS,
-    )
-    assert isinstance(model_config.input_spec, SpecDecodeInputTypeSpec)
     return FusedGraph(
-        graph, registry, model_config.input_spec, target_cfg, tree
+        spec.graph, spec.weights_registry, spec.input_spec, target_cfg, tree
     )

@@ -21,12 +21,9 @@ architecture's :class:`TargetAdapter`, which takes what it leaves out from
 Llama 3's and holds a target's differences under one speculative method in
 ``by_method``.
 
-A target whose checkpoint ships its draft names the draft's architecture by
-method, as vLLM's ``hf_config_override`` names an MTP draft from its target's
-model type.
-
 A module is imported only when one of its targets runs, so spec decoding
-imports no architecture it doesn't run.
+imports no architecture it doesn't run, and a build that doesn't ship a private
+target's package never imports it.
 """
 
 from __future__ import annotations
@@ -37,24 +34,28 @@ from typing import Any, TypeVar
 
 from max.driver import Buffer, Device
 from max.graph import BufferType, TensorType, Value
-from max.nn.kv_cache import RecurrentStateInputsPerDevice
+from max.nn.kv_cache import MultiKVCacheParams, RecurrentStateInputsPerDevice
 from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates
 from max.pipelines.context import TextContext
 
 from ..block_driver import BlockBatch, BlockProposer
 from ..config import SpeculativeConfig
-from ..driver import SequentialBatch
+from ..driver import SequentialBatch, SequentialProposer
 from ..spec_target import Verified
 from .target_adapter import TargetAdapter
 
 __all__ = [
     "VerifyFn",
+    "batch_distributed_buffers",
+    "batch_trailing_buffers",
     "block_proposer",
     "check",
     "ep_input_types",
+    "export_contract",
     "extra",
     "primary_kv",
+    "sequential_proposer",
     "tail_buffers",
     "tail_kv",
     "trailing_buffers",
@@ -72,11 +73,14 @@ _TARGET_ADAPTERS: Mapping[str, str] = {
     "Gemma4ForConditionalGeneration": ".gemma4.spec_adapters",
     "Gemma4UnifiedForConditionalGeneration": ".gemma4.spec_adapters",
     "GraniteForCausalLM": ".llama3.spec_adapters",
+    "InklingForConditionalGeneration": ".inkling.spec_adapters",
     "KimiK25ForConditionalGeneration": ".kimik2_5.spec_adapters",
+    "KimiK3ForConditionalGeneration": "kimi_k3_spec",
     "LlamaForCausalLM": ".llama3.spec_adapters",
     "MiMoV2ForCausalLM": ".mimo_v2.spec_adapters",
     "Qwen3_5ForCausalLM": ".qwen3_5.spec_adapters",
     "Qwen3_5ForConditionalGeneration": ".qwen3_5.spec_adapters",
+    "Qwen4ExpForConditionalGeneration": "qwen4_exp_spec",
 }
 
 
@@ -136,6 +140,41 @@ def ep_input_types(
     return _adapter(target_arch).ep_input_types(target)
 
 
+def batch_distributed_buffers(
+    target_arch: str, target_inputs: object
+) -> tuple[Sequence[Buffer] | None, Sequence[Buffer]]:
+    """Returns the per-device context lengths and the buffers of
+    :func:`ep_input_types` that the target's batch processor prepared.
+
+    ``None`` context lengths when it prepares none.
+    """
+    return _adapter(target_arch).batch_distributed_buffers(target_inputs)
+
+
+def export_contract(
+    target_arch: str,
+    speculative: SpeculativeConfig,
+    draft_config: Any,
+    target_config: Any,
+    kv_params: MultiKVCacheParams,
+    input_types: Sequence[TensorType | BufferType],
+    structured_output: bool,
+) -> Mapping[str, object] | None:
+    """Returns the record an engine that serves the fused graph checks its
+    inputs against, for a target whose engine keeps one.
+
+    Mach's ``gen_mef`` writes it to the export's sidecar.
+    """
+    return _adapter(target_arch).export_contract(
+        speculative,
+        draft_config,
+        target_config,
+        kv_params,
+        input_types,
+        structured_output,
+    )
+
+
 def tail_kv(target_arch: str) -> str | None:
     """Returns the target's KV child the graph declares past the canonical
     tail rather than among its KV inputs, if any."""
@@ -187,6 +226,15 @@ def trailing_buffers(
     )
 
 
+def batch_trailing_buffers(
+    target_arch: str, method: str, target_inputs: object
+) -> list[Buffer]:
+    """Returns the batch's values of :func:`trailing_input_types` that the
+    target's own batch processor prepared, for a target whose batch
+    processor prepares the pairing's batches."""
+    return _adapter(target_arch, method).batch_trailing_buffers(target_inputs)
+
+
 def extra(
     target_arch: str,
     method: str,
@@ -221,5 +269,22 @@ def block_proposer(
     ``None`` for every other draft, which its method's proposer runs.
     """
     return _adapter(target_arch).block_proposer(
+        verify, draft, draft_config, speculative
+    )
+
+
+def sequential_proposer(
+    target_arch: str,
+    verify: VerifyFn,
+    draft: Module,
+    draft_config: Any,
+    speculative: SpeculativeConfig,
+) -> SequentialProposer[Any] | None:
+    """Returns the proposer of a one-token-per-step draft that runs on its
+    target's own module.
+
+    ``None`` for every other draft, which its method's proposer runs.
+    """
+    return _adapter(target_arch).sequential_proposer(
         verify, draft, draft_config, speculative
     )

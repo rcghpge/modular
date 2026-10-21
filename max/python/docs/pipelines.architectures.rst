@@ -62,6 +62,7 @@ family.
    pipelines.architectures.mistral3
    pipelines.architectures.mpnet
    pipelines.architectures.mtp_deepseekV3
+   pipelines.architectures.mtp_inkling
    pipelines.architectures.mtp_qwen3_5
    pipelines.architectures.muse_glimmer
    pipelines.architectures.nemotron_h
@@ -82,7 +83,6 @@ family.
    pipelines.architectures.unified_dspark_deepseekV41
    pipelines.architectures.unified_dspark_nemotron_h
    pipelines.architectures.unified_mtp_glm5_2
-   pipelines.architectures.unified_mtp_inkling
    pipelines.architectures.wan
 
 Text generation
@@ -130,6 +130,7 @@ Text generation
    ~max.pipelines.architectures.mistral
    ~max.pipelines.architectures.mistral3
    ~max.pipelines.architectures.mtp_deepseekV3
+   ~max.pipelines.architectures.mtp_inkling
    ~max.pipelines.architectures.mtp_qwen3_5
    ~max.pipelines.architectures.muse_glimmer
    ~max.pipelines.architectures.nemotron_h
@@ -147,7 +148,6 @@ Text generation
    ~max.pipelines.architectures.unified_dspark_deepseekV41
    ~max.pipelines.architectures.unified_dspark_nemotron_h
    ~max.pipelines.architectures.unified_mtp_glm5_2
-   ~max.pipelines.architectures.unified_mtp_inkling
 
 Embeddings
 ----------

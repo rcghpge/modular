@@ -601,6 +601,7 @@
                 "api/python/pipelines.architectures.mistral3",
                 "api/python/pipelines.architectures.mpnet",
                 "api/python/pipelines.architectures.mtp_deepseekV3",
+                "api/python/pipelines.architectures.mtp_inkling",
                 "api/python/pipelines.architectures.mtp_qwen3_5",
                 "api/python/pipelines.architectures.muse_glimmer",
                 "api/python/pipelines.architectures.nemotron_h",
@@ -621,7 +622,6 @@
                 "api/python/pipelines.architectures.unified_dspark_deepseekV41",
                 "api/python/pipelines.architectures.unified_dspark_nemotron_h",
                 "api/python/pipelines.architectures.unified_mtp_glm5_2",
-                "api/python/pipelines.architectures.unified_mtp_inkling",
                 "api/python/pipelines.architectures.wan"
               ]
             },

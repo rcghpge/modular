@@ -19,6 +19,7 @@ an architecture's module lazily, the first time that architecture is
 requested.
 """
 
+import importlib
 from dataclasses import dataclass
 
 from max.pipelines.lib.registry import PIPELINE_REGISTRY
@@ -248,11 +249,6 @@ def register_all_models() -> None:
         _LazyArch(
             "InklingForConditionalGeneration", ".inkling", "inkling_arch"
         ),
-        _LazyArch(
-            "UnifiedMTPInklingForConditionalGeneration",
-            ".unified_mtp_inkling",
-            "unified_mtp_inkling_arch",
-        ),
         _LazyArch("InternVLChatModel", ".internvl", "internvl_arch"),
         _LazyArch(
             "KimiK25ForConditionalGeneration", ".kimik2_5", "kimik2_5_arch"
@@ -287,6 +283,9 @@ def register_all_models() -> None:
             "MTPDeepseekV3DraftModel",
             ".mtp_deepseekV3",
             "mtp_deepseekV3_draft_arch",
+        ),
+        _LazyArch(
+            "MTPInklingDraftModel", ".mtp_inkling", "mtp_inkling_draft_arch"
         ),
         _LazyArch(
             "MTPQwen3_5DraftModel", ".mtp_qwen3_5", "mtp_qwen3_5_draft_arch"
@@ -438,13 +437,10 @@ def register_all_models() -> None:
     except ModuleNotFoundError:
         pass
 
-    # Optional: import the unified Kimi K3 + DSpark draft model if available.
+    # Optional: import the Kimi K3 DSpark draft if available.
     try:
-        from unified_dspark_kimi_k3 import (  # type: ignore[import-not-found]
-            unified_dspark_kimi_k3_arch,
-        )
-
-        PIPELINE_REGISTRY.register(unified_dspark_kimi_k3_arch)
+        kimi_k3_dspark = importlib.import_module("kimi_k3_spec.dspark")
+        PIPELINE_REGISTRY.register(kimi_k3_dspark.dspark_kimi_k3_draft_arch)
     except ModuleNotFoundError:
         pass
 
@@ -456,13 +452,10 @@ def register_all_models() -> None:
     except ModuleNotFoundError:
         pass
 
-    # Optional: import the unified Qwen4-Exp + MTP model if available.
+    # Optional: import the Qwen4-Exp MTP head if available.
     try:
-        from unified_mtp_qwen4_exp import (  # type: ignore[import-not-found]
-            unified_mtp_qwen4_exp_arch,
-        )
-
-        PIPELINE_REGISTRY.register(unified_mtp_qwen4_exp_arch)
+        qwen4_exp_mtp = importlib.import_module("qwen4_exp_spec.mtp")
+        PIPELINE_REGISTRY.register(qwen4_exp_mtp.mtp_qwen4_exp_draft_arch)
     except ModuleNotFoundError:
         pass
 

@@ -38,6 +38,8 @@ from .dspark import (
     DSparkProposer,
     DSparkTargetHeadDraft,
     DSparkTargetHeadProposer,
+    TensorParallelDSparkDraft,
+    TensorParallelDSparkProposer,
 )
 from .eagle import EagleProposer
 from .mla import Eagle3MHAProposer, Eagle3MLAProposer, MLADraft, MTPProposer
@@ -135,6 +137,8 @@ def block_proposer(
     draft: Module,
     draft_config: Any,
     target_huggingface_config: Any,
+    *,
+    distributed: bool = False,
 ) -> BlockProposer[Any, Any]:
     """Returns the proposer for a block-drafting method.
 
@@ -180,6 +184,18 @@ def block_proposer(
             ),
         )
     if speculative.is_dspark():
+        # A DSpark draft sharded like its distributed target drafts at every
+        # slot when its checkpoint samples from the anchor.
+        if distributed:
+            assert isinstance(draft, TensorParallelDSparkDraft)
+            anchor = draft_config.sample_from_anchor
+            return TensorParallelDSparkProposer(
+                draft,
+                block_size=speculative.draft_width + (0 if anchor else 1),
+                mask_token_id=draft_config.mask_token_id,
+                hidden_size=draft_config.hidden_size,
+                samples_from_anchor=anchor,
+            )
         # A DSpark draft with its own head drops the anchor slot; one that
         # holds its target's drafts at every slot.
         if getattr(draft, "has_own_lm_head", False):

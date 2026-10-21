@@ -36,7 +36,7 @@ _FP4_E2M1_MAX = 6.0
 _TEXT = "model.llm."
 _VISION = "model.visual."
 _SKIP = {
-    "model.mtp.": "MTP draft heads, which this architecture does not implement",
+    "model.mtp.": "MTP depths, which load as their own draft",
     "model.audio.": "the audio tower, which this architecture does not serve",
 }
 

@@ -39,7 +39,7 @@ from max import tree
 from max.driver import Buffer, Device, is_virtual_device_mode
 from max.dtype import DType
 from max.engine import InferenceSession, Model
-from max.graph import DeviceRef, Graph
+from max.graph import BufferType, DeviceRef, Graph, TensorType
 from max.graph.weights import (
     Weights,
     WeightsAdapter,
@@ -55,6 +55,7 @@ from max.nn.kv_cache import (
     KVCacheParamInterface,
     KVCacheParams,
     MultiKVCacheParams,
+    RecurrentStateInputsPerDevice,
 )
 from max.nn.sampling.penalties import LogitPenalties
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
@@ -64,7 +65,7 @@ from max.pipelines.context import (
     TextContext,
 )
 from max.pipelines.kv_cache.memory_planner import MemoryPlanner
-from max.pipelines.modeling.types import InputModality
+from max.pipelines.modeling.types import InputModality, RequestID
 from max.pipelines.speculative import proposers, spec_adapters
 from max.pipelines.speculative.block_driver import BlockDriver
 from max.pipelines.speculative.config import (
@@ -101,7 +102,9 @@ if TYPE_CHECKING:
 __all__ = [
     "SpecDecodeArchConfig",
     "SpecDecodePipelineModel",
+    "SpecGraph",
     "_UnifiedSpecDecodeModelMixin",
+    "build_spec_graph",
     "spec_decode_architecture",
 ]
 
@@ -200,6 +203,27 @@ def _takes_images(
     )
 
 
+def _batching(arch: SupportedArchitecture) -> type[Any]:
+    """Returns the batch processor ``arch``'s pipeline model batches with."""
+    batching = arch.batching or _pipeline_model(arch).batch_processor_cls
+    assert batching is not None
+    return batching
+
+
+def _encodes_in_batching(
+    target: SupportedArchitecture, draft: SupportedArchitecture
+) -> bool:
+    """Returns whether a pairing's target encodes images in its batching.
+
+    It does so in its own batch processor rather than through the pipeline's
+    vision cache, and that batch processor then prepares each batch of the
+    pairing.
+    """
+    return _takes_images(target, draft) and not issubclass(
+        _batching(target), SupportsVisionEncoding
+    )
+
+
 def spec_decode_architecture(
     target: str,
     method: SpeculativeMethod | None,
@@ -242,11 +266,16 @@ def spec_decode_architecture(
     if draft is None or not _builds_module(draft):
         return None
     vision = _takes_images(base, draft)
+    # A target that encodes its images in its own batching reserves no
+    # vision cache.
+    vision_cache = vision and not _encodes_in_batching(base, draft)
     return replace(
         base,
         name=f"{base.name}+{method}",
         pipeline_model=(
-            _SpecDecodeVisionPipelineModel
+            _SpecDecodeVisionCachePipelineModel
+            if vision_cache
+            else _SpecDecodeVisionPipelineModel
             if vision
             else SpecDecodePipelineModel
         ),
@@ -259,7 +288,9 @@ def spec_decode_architecture(
             else base.required_arguments
         ),
         config=(
-            _SpecDecodeVisionArchConfig if vision else SpecDecodeArchConfig
+            _SpecDecodeVisionArchConfig
+            if vision_cache
+            else SpecDecodeArchConfig
         ),
         memory_planner=_MemoryPlanner,
         context_type=base.context_type if vision else TextContext,
@@ -577,11 +608,11 @@ class SpecDecodeArchConfig:
 
 
 class _SpecDecodeVisionArchConfig(SpecDecodeArchConfig):
-    """The config of a pairing that takes images.
+    """The config of a pairing whose images go through the vision cache.
 
     It reports the target's vision-cache facts, so the memory planner
-    reserves the cache. A text-only pairing reports none, whatever its
-    target encodes alone.
+    reserves the cache. Any other pairing reports none, whatever its target
+    encodes alone.
     """
 
     @classmethod
@@ -731,7 +762,9 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
     Under a distributed signature the target batches the inputs ahead of the
     spec-decode tail itself, since its row offsets on the host,
     data-parallel splits, context lengths and expert-parallel buffers are
-    its own to compute.
+    its own to compute. A target that encodes its images in its own batching
+    prepares the whole batch, the inputs its call takes past the tail
+    included.
     """
 
     def __init__(
@@ -743,17 +776,22 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         assert speculative is not None
         assert speculative.speculative_method is not None
         self._method = speculative.speculative_method
+        target = ARCH_LOOKUP.find(config.target_arch)
+        assert target is not None
+        draft = config.draft_architecture
+        self._takes_images = _takes_images(target, draft)
+        self._encodes_in_batching = _encodes_in_batching(target, draft)
 
     @cached_property
     def _target_batching(self) -> Any:
-        """The target's own batching, under a distributed signature."""
+        """The target's batching for distributed or image-encoding targets."""
         config = self.spec_config
         assert config.input_spec is not None, "the graph has not been built"
-        if not config.input_spec.distributed:
+        if not (config.input_spec.distributed or self._encodes_in_batching):
             return None
         target = ARCH_LOOKUP.find(config.target_arch)
-        assert target is not None and target.batching is not None
-        return target.batching(config.target, self.runtime)
+        assert target is not None
+        return _batching(target)(config.target, self.runtime)
 
     def bind_ep_comm_initializer(
         self, initializer: EPCommInitializer | None
@@ -815,8 +853,7 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         # TODO(kevinbi): this error ends the model worker instead of failing
         # one request, because `SchedulerResult.failed` does not cover batch
         # preparation.
-        encodes_images = isinstance(config, _SpecDecodeVisionArchConfig)
-        if not encodes_images and any(
+        if not self._takes_images and any(
             isinstance(ctx, TextAndVisionContext) and ctx.images
             for batch in replica_batches
             for ctx in batch
@@ -826,21 +863,27 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
                 " encodes no images. Drop --speculative-method to serve"
                 " images."
             )
-        tail_key = spec_adapters.tail_kv(arch)
-        tail = None
-        if tail_key is not None:
-            assert kv_cache_inputs is not None
-            kv_cache_inputs, tail = _split_tail(kv_cache_inputs, tail_key)
         if self._target_batching is None:
             inputs = super().prepare_initial_token_inputs(
+                replica_batches, kv_cache_inputs, return_n_logits
+            )
+        elif self._encodes_in_batching:
+            inputs = self._target_inputs(
                 replica_batches, kv_cache_inputs, return_n_logits
             )
         else:
             inputs = self._distributed_inputs(
                 replica_batches, kv_cache_inputs, return_n_logits
             )
-        if tail is not None:
-            inputs.trailing = spec_adapters.tail_buffers(arch, tail)
+        # Split off after the target's batching, which may read the tail
+        # child's leaves into the inputs it prepares.
+        tail_key = spec_adapters.tail_kv(arch)
+        if tail_key is not None:
+            assert inputs.kv_cache_inputs is not None
+            inputs.kv_cache_inputs, tail = _split_tail(
+                inputs.kv_cache_inputs, tail_key
+            )
+            inputs.trailing[:0] = spec_adapters.tail_buffers(arch, tail)
         inputs.trailing += spec_adapters.trailing_buffers(
             arch,
             self._method,
@@ -848,7 +891,7 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
             [ctx for batch in replica_batches for ctx in batch],
             self.runtime.devices,
         )
-        if config.input_spec.enable_vision and not encodes_images:
+        if config.input_spec.enable_vision and not self._takes_images:
             embeddings, indices = self._no_images
             inputs.vision_embeddings = embeddings
             inputs.vision_scatter_indices = indices
@@ -869,6 +912,34 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
             [indices.to(device) for device in devices],
         )
 
+    def _target_inputs(
+        self,
+        replica_batches: Sequence[Sequence[TextContext]],
+        kv_cache_inputs: KVCacheInputs[Buffer, Buffer] | None,
+        return_n_logits: int,
+    ) -> _Inputs:
+        config = self.spec_config
+        spec = config.input_spec
+        assert spec is not None, "the unified graph has not been built"
+        target = self._target_batching.prepare_initial_token_inputs(
+            replica_batches, kv_cache_inputs, return_n_logits
+        )
+        return _Inputs(
+            tokens=target.tokens,
+            input_row_offsets=target.input_row_offsets,
+            return_n_logits=target.return_n_logits,
+            signal_buffers=list(target.signal_buffers),
+            kv_cache_inputs=target.kv_cache_inputs,
+            seed=self._next_seed(self.runtime.devices[0]),
+            structured_output=spec.enable_structured_output,
+            spec=spec,
+            trailing=spec_adapters.batch_trailing_buffers(
+                config.target_arch,
+                self._method,
+                target,
+            ),
+        )
+
     def _distributed_inputs(
         self,
         replica_batches: Sequence[Sequence[TextContext]],
@@ -880,56 +951,60 @@ class _BatchProcessor(UnifiedSpecDecodeBatchProcessor[_Inputs]):
         target = self._target_batching.prepare_initial_token_inputs(
             replica_batches, kv_cache_inputs, return_n_logits
         )
-        if not hasattr(target, "host_input_row_offsets"):
-            return self._one_replica_inputs(target, replica_batches, spec)
-        return _Inputs(
-            tokens=target.tokens,
-            input_row_offsets=target.input_row_offsets,
-            return_n_logits=target.return_n_logits,
-            signal_buffers=list(target.signal_buffers),
-            host_input_row_offsets=target.host_input_row_offsets,
-            data_parallel_splits=target.data_parallel_splits,
-            batch_context_lengths=list(target.batch_context_lengths),
-            ep_inputs=tuple(target.ep_inputs),
-            kv_cache_inputs=target.kv_cache_inputs,
-            seed=self._next_seed(self.runtime.devices[0]),
-            structured_output=spec.enable_structured_output,
-            spec=spec,
+        context_lengths, ep_inputs = spec_adapters.batch_distributed_buffers(
+            self.spec_config.target_arch, target
         )
-
-    def _one_replica_inputs(
-        self,
-        target: Any,
-        replica_batches: Sequence[Sequence[TextContext]],
-        spec: SpecDecodeInputTypeSpec,
-    ) -> _Inputs:
-        """Adds one replica's distributed inputs to a target's inputs.
-
-        For a target whose batch processor takes none, as Gemma 4's doesn't.
-        """
+        # Under one replica a target's batch processor may take none of the
+        # distributed inputs, as Gemma 4's doesn't, or only some.
         lengths = [
             ctx.tokens.active_length for b in replica_batches for ctx in b
         ]
+        host_offsets = getattr(target, "host_input_row_offsets", None)
+        if host_offsets is None:
+            host_offsets = Buffer.from_numpy(
+                np.cumsum([0, *lengths], dtype=np.uint32)
+            )
+        splits = getattr(target, "data_parallel_splits", None)
+        if splits is None:
+            splits = Buffer.from_numpy(
+                np.array([0, len(lengths)], dtype=np.int64)
+            )
+        if context_lengths is None:
+            context_lengths = [
+                Buffer.zeros(shape=[1], dtype=DType.int32)
+                for _ in self.runtime.devices
+            ]
         return _Inputs(
             tokens=target.tokens,
             input_row_offsets=target.input_row_offsets,
             return_n_logits=target.return_n_logits,
             signal_buffers=list(target.signal_buffers),
-            host_input_row_offsets=Buffer.from_numpy(
-                np.cumsum([0, *lengths], dtype=np.uint32)
-            ),
-            data_parallel_splits=Buffer.from_numpy(
-                np.array([0, len(lengths)], dtype=np.int64)
-            ),
-            batch_context_lengths=[
-                Buffer.zeros(shape=[1], dtype=DType.int32)
-                for _ in self.runtime.devices
-            ],
+            host_input_row_offsets=host_offsets,
+            data_parallel_splits=splits,
+            batch_context_lengths=list(context_lengths),
+            ep_inputs=tuple(ep_inputs),
             kv_cache_inputs=target.kv_cache_inputs,
             seed=self._next_seed(self.runtime.devices[0]),
             structured_output=spec.enable_structured_output,
             spec=spec,
+            trailing=spec_adapters.batch_trailing_buffers(
+                self.spec_config.target_arch,
+                self._method,
+                target,
+            ),
         )
+
+    def release(self, request_id: RequestID) -> None:
+        """Frees what the target's batching holds for a finished request."""
+        release = getattr(self._target_batching, "release", None)
+        if release is not None:
+            release(request_id)
+
+    def release_warmup_state(self, request_ids: list[RequestID]) -> None:
+        """Frees what the target's batching claimed for a capture probe."""
+        release = getattr(self._target_batching, "release_warmup_state", None)
+        if release is not None:
+            release(request_ids)
 
     def _make_inputs(
         self,
@@ -967,6 +1042,12 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
     drafter_export: object | None = None
     """What the graph bakes in of a draft that records it, which an export's
     sidecar carries (Mach's ``gen_mef`` reads it)."""
+    export_input_types: Sequence[TensorType | BufferType] = ()
+    """The fused graph's declared inputs. The compiled graph drops their
+    devices and symbolic dimensions, which an export's sidecar keeps."""
+    export_contract: Mapping[str, object] | None = None
+    """What the target's engine checks the export's inputs against, if it
+    keeps a record of its own."""
 
     def __init__(
         self,
@@ -1035,6 +1116,28 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
             if len(model_outputs) == 4
             else None,
         )
+
+    @property
+    def routed_expert_row_bound(self) -> int | None:
+        """The target's compiled routed-expert row grid, if it sizes one.
+
+        It an export's sidecar records.
+        """
+        config = self.arch_config_as(SpecDecodeArchConfig)
+        return getattr(config.target, "routed_expert_row_bound", None)
+
+    def release(self, request_id: RequestID) -> None:
+        """Frees what the target's batching holds for a finished request."""
+        self._batching.release(request_id)
+
+    def release_warmup_state(self, request_ids: list[RequestID]) -> None:
+        """Frees what the target's batching claimed for a capture probe."""
+        self._batching.release_warmup_state(request_ids)
+
+    @property
+    def _batching(self) -> _BatchProcessor:
+        assert isinstance(self._batch_processor, _BatchProcessor)
+        return self._batch_processor
 
     @cached_property
     def pairing(self) -> _Pairing:
@@ -1125,141 +1228,191 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
                 setattr(draft, slot, getattr(target, slot))
 
         with CompilationTimer("model") as timer:
-            graph, weights_registry = self._build_spec_graph(
-                config,
-                target,
-                target_config,
-                draft,
-                draft_config,
-                draft_weights,
-                hidden_states,
+            spec = build_spec_graph(
+                self.pipeline_config,
+                config.kv_params,
+                self.device_refs,
+                include_signal_buffers=bool(self.signal_buffers),
+                target=target,
+                target_config=target_config,
+                draft=draft,
+                draft_config=draft_config,
+                hidden_states=hidden_states,
+                draft_weights=draft_weights,
             )
             timer.mark_build_complete()
-            model = session.load(graph, weights_registry=weights_registry)
+            model = session.load(
+                spec.graph, weights_registry=spec.weights_registry
+            )
+        config.input_spec = spec.input_spec
+        self.export_input_types = spec.input_types
+        self.export_contract = spec.export_contract
 
         self._maybe_release_host_weights(model)
         self._wire_batch_processor(model, config)
         return model
 
-    def _build_spec_graph(
-        self,
-        model_config: SpecDecodeArchConfig,
-        target: Any,
-        target_config: Any,
-        draft: Any,
-        draft_config: Any,
-        draft_weights: Mapping[str, Any],
-        hidden_states: ReturnHiddenStates,
-    ) -> tuple[Graph, dict[str, Any]]:
-        """Fuses the target, the draft and a driver into one graph."""
-        pairing = self.pairing
-        target_arch = pairing.target_arch
-        speculative = self.pipeline_config.speculative
-        assert speculative is not None
-        method = speculative.speculative_method
-        assert method is not None
-        structured_output = self.pipeline_config.needs_bitmask_constraints
-        if (
-            structured_output
-            and speculative.synthetic_acceptance_rate is not None
-        ):
-            raise ValueError(
-                "synthetic_acceptance_rate is incompatible with structured"
-                " output: the synthetic acceptance path ignores token"
-                " bitmasks. Pass --tool-parser none and leave"
-                " --enable-structured-output off to benchmark it."
-            )
-        spec_adapters.check(target_arch, speculative, structured_output)
-        # A reasoning model's drafts may be accepted under the relaxed
-        # in-thinking rule.
-        thinking = self.pipeline_config.runtime.reasoning_parser is not None
-        # A graph may take an encoder's output that MAX doesn't compute, for
-        # an engine that runs the encoder itself.
-        vision = _takes_images(
-            pairing.target, pairing.draft
-        ) or spec_adapters.takes_vision_outputs(
-            target_arch, method, target_config
-        )
-        verify = spec_adapters.verify_for(
-            target_arch, target, target_config, hidden_states, draft_config
-        )
-        proposer: Any
-        if speculative.is_block_draft():
-            proposer = spec_adapters.block_proposer(
-                target_arch, verify, draft, draft_config, speculative
-            ) or proposers.block_proposer(
-                speculative, draft, draft_config, self.huggingface_config
-            )
-        else:
-            proposer = proposers.sequential_proposer(
-                speculative,
-                draft,
-                draft_config,
-                self.huggingface_config,
-                distributed=_takes_distributed_inputs(verify),
-            )
-        distributed = _takes_distributed_inputs(verify, proposer)
-        input_spec = SpecDecodeInputTypeSpec(
-            devices=self.device_refs,
-            distributed=distributed,
-            data_parallel_degree=(
-                self.pipeline_config.model.data_parallel_degree
-                if distributed
-                else 1
-            ),
-            include_signal_buffers=bool(self.signal_buffers),
-            include_in_thinking_phase=thinking,
-            enable_vision=vision,
-            vision_hidden_size=(
-                self.huggingface_config.get_text_config().hidden_size
-                if vision
-                else None
-            ),
-        )
-        # Last of all, so an export without them keeps every slot above.
-        penalties = (
-            LogitPenalties.input_types(self.device_refs[0])
-            if speculative.logit_penalties
-            else []
-        )
-        if penalties and speculative.is_block_draft():
-            raise ValueError(
-                "Logit penalties apply only to the verify of a draft that"
-                f" proposes one token a step, and {method} drafts a block."
-            )
-        driver_kwargs: dict[str, Any] = dict(
-            target_model=target,
-            draft_model=draft,
-            input_spec=input_spec,
-            speculative_config=speculative,
-            enable_structured_output=structured_output,
-            use_greedy_acceptance=speculative.use_greedy_acceptance,
-            # Sizes the draft distributions under draft_proposal="sampled".
-            vocab_size=self.huggingface_config.get_text_config().vocab_size,
-            ep_input_types=spec_adapters.ep_input_types(target_arch, target),
-            trailing_input_types=[
-                *spec_adapters.trailing_input_types(
-                    target_arch, method, target_config
-                ),
-                *penalties,
-            ],
-        )
-        nn_model: SequentialDriver[Any] | BlockDriver[Any, Any]
-        if speculative.is_block_draft():
-            nn_model = BlockDriver(
-                verify,
-                proposer,
-                relaxed_acceptance=thinking,
-                # A block may hold more proposals than a step verifies.
-                num_speculative_tokens=speculative.draft_width,
-                ctx_at_draft_cache_length=getattr(
-                    proposer, "ctx_at_draft_cache_length", False
-                ),
-                **driver_kwargs,
-            )
-        else:
-            nn_model = SequentialDriver(verify, proposer, **driver_kwargs)
 
+@dataclass(frozen=True)
+class SpecGraph:
+    """A fused spec-decode graph and what its export records."""
+
+    graph: Graph
+    weights_registry: dict[str, Any]
+    """The loaded weights, empty for a graph built without them."""
+    input_spec: SpecDecodeInputTypeSpec
+    input_types: Sequence[TensorType | BufferType]
+    """The declared inputs. The compiled graph drops their devices and
+    symbolic dimensions."""
+    export_contract: Mapping[str, object] | None
+    """What the target's engine checks the export's inputs against, if it
+    keeps a record of its own."""
+
+
+def build_spec_graph(
+    pipeline_config: PipelineConfig,
+    kv_params: MultiKVCacheParams,
+    devices: Sequence[DeviceRef],
+    *,
+    include_signal_buffers: bool,
+    target: Any,
+    target_config: Any,
+    draft: Any,
+    draft_config: Any,
+    hidden_states: ReturnHiddenStates,
+    draft_weights: Mapping[str, Any] | None,
+) -> SpecGraph:
+    """Fuses the target, the draft and a driver into one graph.
+
+    Args:
+        pipeline_config: The pipeline config the two were built from.
+        kv_params: The KV tree the target and the draft share.
+        devices: The devices the target runs on.
+        include_signal_buffers: Whether the graph takes signal buffers.
+        target: The target's built module.
+        target_config: The config it was built from.
+        draft: The draft's built module.
+        draft_config: The config it was built from.
+        hidden_states: The hidden states the target returns.
+        draft_weights: The draft's weights, which load beside the target's.
+            ``None`` names every weight without loading any, for a graph
+            whose weights stay unbound.
+    """
+    pairing = _Pairing.from_pipeline_config(pipeline_config)
+    target_arch = pairing.target_arch
+    speculative = pipeline_config.speculative
+    assert speculative is not None
+    method = speculative.speculative_method
+    assert method is not None
+    structured_output = pipeline_config.needs_bitmask_constraints
+    if structured_output and speculative.synthetic_acceptance_rate is not None:
+        raise ValueError(
+            "synthetic_acceptance_rate is incompatible with structured"
+            " output: the synthetic acceptance path ignores token"
+            " bitmasks. Pass --tool-parser none and leave"
+            " --enable-structured-output off to benchmark it."
+        )
+    spec_adapters.check(target_arch, speculative, structured_output)
+    # A reasoning model's drafts may be accepted under the relaxed
+    # in-thinking rule.
+    thinking = pipeline_config.runtime.reasoning_parser is not None
+    # A target that encodes its images in its own batching passes them
+    # past the tail, so only one that encodes through the vision cache
+    # takes the pipeline's vision inputs. A graph may also take an encoder's
+    # output that MAX doesn't compute, for an engine that runs the encoder
+    # itself.
+    vision = (
+        _takes_images(pairing.target, pairing.draft)
+        and not _encodes_in_batching(pairing.target, pairing.draft)
+    ) or spec_adapters.takes_vision_outputs(target_arch, method, target_config)
+    huggingface_config = pipeline_config.model.huggingface_config
+    verify = spec_adapters.verify_for(
+        target_arch, target, target_config, hidden_states, draft_config
+    )
+    proposer: Any
+    if speculative.is_block_draft():
+        proposer = spec_adapters.block_proposer(
+            target_arch, verify, draft, draft_config, speculative
+        ) or proposers.block_proposer(
+            speculative,
+            draft,
+            draft_config,
+            huggingface_config,
+            distributed=_takes_distributed_inputs(verify),
+        )
+    else:
+        proposer = spec_adapters.sequential_proposer(
+            target_arch, verify, draft, draft_config, speculative
+        ) or proposers.sequential_proposer(
+            speculative,
+            draft,
+            draft_config,
+            huggingface_config,
+            distributed=_takes_distributed_inputs(verify),
+        )
+    distributed = _takes_distributed_inputs(verify, proposer)
+    input_spec = SpecDecodeInputTypeSpec(
+        devices=list(devices),
+        distributed=distributed,
+        data_parallel_degree=(
+            pipeline_config.model.data_parallel_degree if distributed else 1
+        ),
+        include_signal_buffers=include_signal_buffers,
+        include_in_thinking_phase=thinking,
+        enable_vision=vision,
+        vision_hidden_size=(
+            huggingface_config.get_text_config().hidden_size if vision else None
+        ),
+    )
+    # Last of all, so an export without them keeps every slot above.
+    penalties = (
+        LogitPenalties.input_types(devices[0])
+        if speculative.logit_penalties
+        else []
+    )
+    if penalties and speculative.is_block_draft():
+        raise ValueError(
+            "Logit penalties apply only to the verify of a draft that"
+            f" proposes one token a step, and {method} drafts a block."
+        )
+    driver_kwargs: dict[str, Any] = dict(
+        target_model=target,
+        draft_model=draft,
+        input_spec=input_spec,
+        speculative_config=speculative,
+        enable_structured_output=structured_output,
+        use_greedy_acceptance=speculative.use_greedy_acceptance,
+        # Sizes the draft distributions under draft_proposal="sampled".
+        vocab_size=huggingface_config.get_text_config().vocab_size,
+        ep_input_types=spec_adapters.ep_input_types(target_arch, target),
+        trailing_input_types=[
+            *spec_adapters.trailing_input_types(
+                target_arch, method, target_config
+            ),
+            *penalties,
+        ],
+    )
+    nn_model: SequentialDriver[Any] | BlockDriver[Any, Any]
+    if speculative.is_block_draft():
+        nn_model = BlockDriver(
+            verify,
+            proposer,
+            relaxed_acceptance=thinking,
+            # A block may hold more proposals than a step verifies.
+            num_speculative_tokens=speculative.draft_width,
+            ctx_at_draft_cache_length=getattr(
+                proposer, "ctx_at_draft_cache_length", False
+            ),
+            **driver_kwargs,
+        )
+    else:
+        nn_model = SequentialDriver(verify, proposer, **driver_kwargs)
+
+    weights_registry: dict[str, Any] = {}
+    if draft_weights is None:
+        for name, weight in nn_model.raw_state_dict().items():
+            weight.name = name
+    else:
         # The graph names its weights under ``target.`` and ``draft.``, which
         # Mach binds an exported spec MEF's weights by. The draft loads
         # through the driver, apart from the target's names.
@@ -1277,63 +1430,84 @@ class SpecDecodePipelineModel(PipelineModelWithKVCache[TextContext]):
             weight.name = f"target.{name}"
         weights_registry = {**target_registry, **draft_registry}
 
-        kv_params = _without_tail(
-            self.kv_params, spec_adapters.tail_kv(target_arch)
-        )
-        primary = spec_adapters.primary_kv(target_arch, method)
-        with Graph(
-            _graph_name(pairing, method),
-            input_types=nn_model.input_types(kv_params),
-        ) as graph:
-            graph_inputs = nn_model.decode_inputs(graph.inputs, kv_params)
-            kv_tree = graph_inputs.kv_tree
-            assert isinstance(kv_tree, Mapping)
-            target_leaves = _named_leaves(kv_tree["target"])
-            primary_leaf = target_leaves.pop(primary)
-            call_kwargs: dict[str, Any] = dict(
-                tokens=graph_inputs.tokens,
-                input_row_offsets=graph_inputs.input_row_offsets,
-                draft_tokens=graph_inputs.draft_tokens,
-                kv_collections=primary_leaf,
-                # A draft without a leaf of its own reads the target's.
-                draft_kv_collections=(
-                    graph_inputs.kv("draft")
-                    if "draft" in kv_tree
-                    else primary_leaf
-                ),
-                passthrough_kv=target_leaves,
-                return_n_logits=graph_inputs.return_n_logits,
-                signal_buffers=graph_inputs.signal_buffers,
-                host_input_row_offsets=graph_inputs.host_input_row_offsets,
-                data_parallel_splits=graph_inputs.data_parallel_splits,
-                batch_context_lengths=graph_inputs.batch_context_lengths,
-                ep_inputs=graph_inputs.ep_inputs or None,
-                seed=graph_inputs.seed,
-                temperature=graph_inputs.temperature,
-                top_k=graph_inputs.top_k,
-                max_k=graph_inputs.max_k,
-                top_p=graph_inputs.top_p,
-                min_top_p=graph_inputs.min_top_p,
-                in_thinking_phase=graph_inputs.in_thinking_phase,
-                pinned_bitmask=graph_inputs.pinned_bitmask,
-                wait_payload=graph_inputs.wait_payload,
-                device_bitmask_scratch=graph_inputs.device_bitmask_scratch,
-                vision_embeddings=graph_inputs.vision_embeddings,
-                vision_scatter_indices=graph_inputs.vision_scatter_indices,
-                extra=spec_adapters.extra(
-                    target_arch, method, target_config, graph_inputs.trailing
-                ),
+    kv_params = _without_tail(kv_params, spec_adapters.tail_kv(target_arch))
+    primary = spec_adapters.primary_kv(target_arch, method)
+    input_types = nn_model.input_types(kv_params)
+    export_contract = spec_adapters.export_contract(
+        target_arch,
+        speculative,
+        draft_config,
+        target_config,
+        kv_params,
+        input_types,
+        structured_output,
+    )
+    with Graph(
+        _graph_name(pairing, method),
+        input_types=input_types,
+    ) as graph:
+        graph_inputs = nn_model.decode_inputs(graph.inputs, kv_params)
+        kv_tree = graph_inputs.kv_tree
+        assert isinstance(kv_tree, Mapping)
+        passthrough = _named_leaves(kv_tree["target"])
+        primary_leaf = passthrough.pop(primary)
+        # A draft without a leaf of its own reads the target's. A draft
+        # with several drives the one the target's primary is named for,
+        # or its first, and reads the rest under ``draft_``.
+        draft_leaf = primary_leaf
+        if "draft" in kv_tree:
+            draft_leaves = _named_leaves(kv_tree["draft"])
+            draft_leaf = draft_leaves.pop(
+                primary if primary in draft_leaves else next(iter(draft_leaves))
             )
-            if graph_inputs.draft_probs_full is not None:
-                call_kwargs["draft_probs_full"] = graph_inputs.draft_probs_full
-            if penalties:
-                call_kwargs["penalties"] = LogitPenalties.from_inputs(
-                    [v.tensor for v in graph_inputs.trailing[-len(penalties) :]]
-                )
-            graph.output(*nn_model(**call_kwargs))
+            passthrough.update(
+                (f"draft_{name}", leaves)
+                for name, leaves in draft_leaves.items()
+            )
+        call_kwargs: dict[str, Any] = dict(
+            tokens=graph_inputs.tokens,
+            input_row_offsets=graph_inputs.input_row_offsets,
+            draft_tokens=graph_inputs.draft_tokens,
+            kv_collections=primary_leaf,
+            draft_kv_collections=draft_leaf,
+            passthrough_kv=passthrough,
+            return_n_logits=graph_inputs.return_n_logits,
+            signal_buffers=graph_inputs.signal_buffers,
+            host_input_row_offsets=graph_inputs.host_input_row_offsets,
+            data_parallel_splits=graph_inputs.data_parallel_splits,
+            batch_context_lengths=graph_inputs.batch_context_lengths,
+            ep_inputs=graph_inputs.ep_inputs or None,
+            seed=graph_inputs.seed,
+            temperature=graph_inputs.temperature,
+            top_k=graph_inputs.top_k,
+            max_k=graph_inputs.max_k,
+            top_p=graph_inputs.top_p,
+            min_top_p=graph_inputs.min_top_p,
+            in_thinking_phase=graph_inputs.in_thinking_phase,
+            pinned_bitmask=graph_inputs.pinned_bitmask,
+            wait_payload=graph_inputs.wait_payload,
+            device_bitmask_scratch=graph_inputs.device_bitmask_scratch,
+            vision_embeddings=graph_inputs.vision_embeddings,
+            vision_scatter_indices=graph_inputs.vision_scatter_indices,
+            extra=spec_adapters.extra(
+                target_arch, method, target_config, graph_inputs.trailing
+            ),
+        )
+        if graph_inputs.draft_probs_full is not None:
+            call_kwargs["draft_probs_full"] = graph_inputs.draft_probs_full
+        if penalties:
+            call_kwargs["penalties"] = LogitPenalties.from_inputs(
+                [v.tensor for v in graph_inputs.trailing[-len(penalties) :]]
+            )
+        graph.output(*nn_model(**call_kwargs))
 
-        model_config.input_spec = nn_model.input_spec
-        return graph, weights_registry
+    return SpecGraph(
+        graph=graph,
+        weights_registry=weights_registry,
+        input_spec=nn_model.input_spec,
+        input_types=input_types,
+        export_contract=export_contract,
+    )
 
 
 class _SpecDecodeVisionPipelineModel(SpecDecodePipelineModel):
@@ -1344,7 +1518,6 @@ class _SpecDecodeVisionPipelineModel(SpecDecodePipelineModel):
     it does when the target serves alone.
     """
 
-    model_config_cls: ClassVar[type[Any]] = _SpecDecodeVisionArchConfig
     vision_model: Model
 
     @traced
@@ -1362,10 +1535,14 @@ class _SpecDecodeVisionPipelineModel(SpecDecodePipelineModel):
         self._batching.bind_vision_encoder(self.vision_model, session)
         return model
 
-    @property
-    def _batching(self) -> _BatchProcessor:
-        assert isinstance(self._batch_processor, _BatchProcessor)
-        return self._batch_processor
+
+class _SpecDecodeVisionCachePipelineModel(_SpecDecodeVisionPipelineModel):
+    """Serves a fused graph whose images go through the vision cache.
+
+    The pipeline's vision cache encodes them with the target's batching.
+    """
+
+    model_config_cls: ClassVar[type[Any]] = _SpecDecodeVisionArchConfig
 
     def pack_vision_inputs(
         self,
@@ -1418,13 +1595,12 @@ class _EPRuntime:
 
 
 def _without_tail(
-    kv_params: KVCacheParamInterface, tail: str | None
+    kv_params: MultiKVCacheParams, tail: str | None
 ) -> MultiKVCacheParams:
     """Returns the KV tree the graph declares among its KV inputs.
 
     All of it but the target's child it declares in its tail.
     """
-    assert isinstance(kv_params, MultiKVCacheParams)
     if tail is None:
         return kv_params
     target = kv_params.children["target"]
@@ -1460,9 +1636,10 @@ def _split_tail(
 
 def _named_leaves(node: Any) -> dict[str, list[Any]]:
     """A KV subtree's per-device leaves, keyed by their name in it."""
+    leaf = (KVCacheInputsPerDevice, RecurrentStateInputsPerDevice)
     if not isinstance(node, Mapping):
-        return {"": list(tree.leaves(node, leaf=KVCacheInputsPerDevice))}
+        return {"": list(tree.leaves(node, leaf=leaf))}
     return {
-        name: list(tree.leaves(child, leaf=KVCacheInputsPerDevice))
+        name: list(tree.leaves(child, leaf=leaf))
         for name, child in node.items()
     }

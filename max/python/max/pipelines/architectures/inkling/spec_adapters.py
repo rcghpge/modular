@@ -10,14 +10,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Inkling's target and chained MTP draft, as sequential driver adapters."""
+"""Inkling's call, and the chained MTP depths its checkpoint ships.
+
+Inkling's own batch processor prepares each batch: it stages the tokens'
+positions and encodes the batch's new images, as when Inkling serves alone.
+Both ride past the canonical tail. The depths embed and project through the
+target's embedding and head, and each depth runs one full decoder block.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
+from max.driver import Buffer
 from max.dtype import DType
-from max.graph import DeviceRef, Dim, DimLike, TensorValue, ops
+from max.graph import (
+    BufferType,
+    DeviceRef,
+    Dim,
+    DimLike,
+    TensorType,
+    TensorValue,
+    Value,
+    ops,
+)
 from max.nn.kernels import merge_ragged_tensors
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
@@ -25,6 +42,7 @@ from max.nn.transformer.distributed_transformer import (
     distributed_logits_postprocess,
 )
 from max.nn.transformer.transformer import logits_postprocess
+from max.pipelines.speculative.block_driver import BlockBatch
 from max.pipelines.speculative.driver import (
     CarryDimNames,
     DecodeKVSwap,
@@ -35,85 +53,104 @@ from max.pipelines.speculative.driver import (
     SequentialBatch,
 )
 from max.pipelines.speculative.ragged_token_merger import _shape_to_scalar
+from max.pipelines.speculative.spec_adapters.target_adapter import TargetAdapter
 from max.pipelines.speculative.spec_target import Verified
 
-from ..inkling.inkling import Inkling
-from ..inkling.model_config import InklingConfig
-from ..inkling.state_cache import ConvSite
-from .inkling_mtp import InklingMultiTokenPredictor
+if TYPE_CHECKING:
+    from max.pipelines.speculative.config import SpeculativeConfig
+    from max.pipelines.speculative.driver import SequentialProposer
+    from max.pipelines.speculative.spec_adapters import VerifyFn
 
-__all__ = [
-    "DRAFT_CONV_POOLS",
-    "DRAFT_PRIMARY_KV",
-    "IMAGE_EMBEDDINGS",
-    "IMAGE_INDICES",
-    "POSITIONS",
-    "TARGET_AUX_KV",
-    "TARGET_PRIMARY_KV",
-    "TARGET_STATE",
-    "InklingMTPProposer",
-    "InklingTarget",
-    "split_kv_by_flavor",
-]
+PRIMARY_KV = "full_attention"
+
+_STATE_KV = "conv_state"
+
 
 POSITIONS = "positions"
 IMAGE_EMBEDDINGS = "image_embeddings"
 IMAGE_INDICES = "image_indices"
-TARGET_STATE = "target_state"
-"""The backbone's conv-state leaves, drawn from the recurrent cache group."""
-DRAFT_CONV_POOLS = "draft_conv_pools"
-TARGET_AUX_KV = "target_passthrough_kv"
-"""Every target cache leaf but the primary one, which rides ``kv_collections``.
+"""Keys the inputs Inkling's batch processor prepares ride under in a driver
+batch's ``extra``."""
 
-Inkling splits attention across a global and a local cache, and the driver
-carries exactly one target leaf; the rest reach the target through
-:attr:`SequentialBatch.extra` so the adapter can hand back the by-flavor
-dict its decoder layers index into.
-"""
-TARGET_PRIMARY_KV = "target_primary_kv"
-"""Which flavor ``kv_collections`` holds."""
-DRAFT_PRIMARY_KV = "draft_primary_kv"
-"""Which flavor ``draft_kv_collections`` holds."""
-
-_TargetHidden = list[TensorValue]
-"""Per-device normalized hidden states, one entry per rank."""
+_DRAFT = "draft_"
+"""Prefixes the draft's leaves beside its primary one in ``passthrough_kv``."""
 
 
-def split_kv_by_flavor(
-    by_flavor: dict[str, list[PagedCacheValues]],
-) -> tuple[str, list[PagedCacheValues], dict[str, list[PagedCacheValues]]]:
-    """Splits a by-flavor cache dict into the driver's primary leaf and the rest.
+def trailing_input_types(target_config: Any) -> list[TensorType | BufferType]:
+    """Returns the positions and image inputs Inkling's own graph declares.
 
-    The driver carries one cache leaf plus an aux mapping, while Inkling's
-    decoder layers index a leaf per attention flavor. Returns the primary's
-    name alongside it so the adapters rejoin the dict by name rather than by
-    reproducing which flavor came first.
+    That is the positions, the image rows the tower encoded and the token
+    rows they replace.
     """
-    keys = list(by_flavor)
-    return (
-        keys[0],
-        by_flavor[keys[0]],
-        {key: by_flavor[key] for key in keys[1:]},
-    )
+    device = target_config.devices[0]
+    return [
+        TensorType(DType.uint32, shape=["total_seq_len"], device=device),
+        TensorType(
+            target_config.dtype,
+            shape=["total_image_tokens", target_config.text_config.hidden_size],
+            device=device,
+        ),
+        TensorType(DType.int32, shape=["total_image_tokens"], device=device),
+    ]
 
 
-def draft_row_inputs(
-    row_offsets: Sequence[TensorValue],
-) -> tuple[list[list[TensorValue]], list[TensorValue]]:
-    """Returns the draft's slot tables and layer rows: every batch item reads
-    the single zero slot of :class:`InklingConvScratchPools`."""
-    tables: list[list[TensorValue]] = []
-    for offsets in row_offsets:
-        table = ops.broadcast_to(
-            ops.constant(0, DType.uint32, device=offsets.device),
-            [1, offsets.shape[0] - 1],
+def extra(target_config: Any, trailing: Sequence[Value[Any]]) -> dict[str, Any]:
+    """Names the inputs :func:`trailing_input_types` declares."""
+    del target_config
+    positions, embeddings, indices = (value.tensor for value in trailing[:3])
+    return {
+        POSITIONS: positions,
+        IMAGE_EMBEDDINGS: embeddings,
+        IMAGE_INDICES: indices,
+    }
+
+
+def batch_trailing_buffers(target_inputs: Any) -> list[Buffer]:
+    """Returns the :func:`trailing_input_types` inputs Inkling prepared."""
+    return [
+        target_inputs.positions,
+        target_inputs.image_embeddings,
+        target_inputs.image_indices,
+    ]
+
+
+def verify(
+    target: Any,
+    target_config: Any,
+    hidden_states: ReturnHiddenStates,
+    draft_config: Any,
+) -> VerifyFn:
+    """Returns the verify of an Inkling model, on every device it spans.
+
+    Raises:
+        ValueError: If the target wasn't built to return its last
+            normalized layer, which the MTP depths read.
+    """
+    del draft_config
+    if hidden_states != ReturnHiddenStates.ALL_NORMALIZED:
+        raise ValueError(
+            "An Inkling target verifies only for drafts that read its last"
+            f" normalized layer. Got {hidden_states.value}."
         )
-        tables.append([table] * len(ConvSite))
-    zero_row = ops.constant(0, DType.uint32, device=DeviceRef.CPU())
-    return tables, [zero_row] * len(ConvSite)
+    # A layer subgraph takes its weights by a prefix from the module's root,
+    # and the fused graph nests the module under ``target.``.
+    target.use_subgraphs = False
+    return _Verify(target, target_config)
 
 
-def merge_positions(
+def sequential_proposer(
+    verify: VerifyFn,
+    draft: Any,
+    draft_config: Any,
+    speculative: SpeculativeConfig,
+) -> SequentialProposer[list[TensorValue]]:
+    """Returns the proposer of the MTP depths, on the verify's target."""
+    del draft_config, speculative
+    assert isinstance(verify, _Verify)
+    return _MTPProposer(draft, verify)
+
+
+def _merge_positions(
     positions: TensorValue,
     input_row_offsets: TensorValue,
     draft_tokens: TensorValue,
@@ -163,10 +200,10 @@ def _last_accepted_idx(
     )
 
 
-class InklingTarget:
+class _Verify:
     """Inkling's verify pass, and the merged position ramp both phases read."""
 
-    def __init__(self, target: Inkling, config: InklingConfig) -> None:
+    def __init__(self, target: Any, config: Any) -> None:
         self.target = target
         self.config = config
         self._merged_positions: TensorValue | None = None
@@ -179,23 +216,19 @@ class InklingTarget:
         can be the one that asks for it first.
         """
         if self._merged_positions is None:
-            self._merged_positions = merge_positions(
+            self._merged_positions = _merge_positions(
                 batch.extra[POSITIONS],
                 batch.input_row_offsets,
                 batch.draft_tokens,
             )
         return self._merged_positions
 
-    def kv_by_flavor(
-        self, batch: SequentialBatch
-    ) -> dict[str, list[PagedCacheValues]]:
-        """The target's caches keyed the way its decoder layers index them."""
-        return {
-            batch.extra[TARGET_PRIMARY_KV]: batch.kv_collections,
-            **batch.extra[TARGET_AUX_KV],
-        }
-
-    def verify(self, batch: SequentialBatch) -> Verified[_TargetHidden]:
+    def __call__(
+        self, batch: SequentialBatch | BlockBatch
+    ) -> Verified[list[TensorValue]]:
+        assert isinstance(batch, SequentialBatch)
+        # The decoder layers index the target's caches by flavor, and read
+        # the conv state's leaves per device.
         outputs = self.target(
             batch.merged_tokens,
             batch.merged_offsets,
@@ -204,8 +237,8 @@ class InklingTarget:
             batch.extra[IMAGE_EMBEDDINGS],
             batch.extra[IMAGE_INDICES],
             batch.signal_buffers,
-            self.kv_by_flavor(batch),
-            batch.extra[TARGET_STATE],
+            {PRIMARY_KV: batch.kv_collections, **batch.passthrough_kv},
+            batch.passthrough_kv[_STATE_KV],
         )
         # VARIABLE logits + ALL_NORMALIZED hidden states ->
         # (last_logits, logits, offsets, hidden per device...).
@@ -214,11 +247,14 @@ class InklingTarget:
         )
 
 
-class InklingMTPProposer:
+class _MTPProposer:
     """The chained MTP depths: one full decoder block per speculative step."""
 
     reuse: ReuseSpec | None = None
     decode_swaps: tuple[DecodeKVSwap, ...] = ()
+    # TODO(thomas.borstad): give the draft its own dispatch metadata instead
+    # of replaying the verify metadata over zeroed cache lengths; that
+    # changes the graph's input signature.
     draft_cache = DraftCache.PER_DEPTH
     split_prefix = "mtp"
     carry_dim_names = CarryDimNames(prefix="mtp_step")
@@ -227,14 +263,19 @@ class InklingMTPProposer:
     uses_thinking_phase = True
     supports_zero_draft_rows = False
 
-    def __init__(
-        self, draft: InklingMultiTokenPredictor, target: InklingTarget
-    ) -> None:
+    def __init__(self, draft: Any, verify: _Verify) -> None:
         self.draft = draft
-        self.target = target
-        self.hidden_dim: DimLike = target.config.text_config.hidden_size
+        self.verify = verify
+        target = verify.target
+        draft.embed = target.embed
+        draft.backbone_embed_norm_shards = target.embed_norm_shards
+        self.hidden_dim: DimLike = verify.config.text_config.hidden_size
+        flavors = list(draft.kv_params.children)
+        # The unified model drives the draft's leaf of the target's primary
+        # flavor, or its first when the depths have none of that flavor.
+        self._primary = PRIMARY_KV if PRIMARY_KV in flavors else flavors[0]
         self.passthrough_decode_swaps: tuple[str, ...] = tuple(
-            list(draft.kv_params.children)[1:]
+            f"{_DRAFT}{flavor}" for flavor in flavors if flavor != self._primary
         )
         self._decode_base: TensorValue | None = None
 
@@ -242,8 +283,12 @@ class InklingMTPProposer:
         self, batch: SequentialBatch
     ) -> dict[str, list[PagedCacheValues]]:
         return {
-            batch.extra[DRAFT_PRIMARY_KV]: batch.draft_kv_collections,
-            **batch.passthrough_kv,
+            self._primary: batch.draft_kv_collections,
+            **{
+                name.removeprefix(_DRAFT): leaves
+                for name, leaves in batch.passthrough_kv.items()
+                if name.startswith(_DRAFT)
+            },
         }
 
     def _decode_positions(
@@ -253,7 +298,7 @@ class InklingMTPProposer:
         if self._decode_base is None:
             assert batch.num_accepted is not None
             self._decode_base = ops.gather(
-                self.target.merged_positions(batch),
+                self.verify.merged_positions(batch),
                 _last_accepted_idx(
                     batch.merged_offsets,
                     batch.num_accepted,
@@ -265,15 +310,20 @@ class InklingMTPProposer:
         return self._decode_base + index
 
     def _depth_logits(
-        self, batch: SequentialBatch, hidden: _TargetHidden, *, variable: bool
+        self,
+        batch: SequentialBatch,
+        hidden: list[TensorValue],
+        *,
+        variable: bool,
     ) -> TensorValue:
         """LM-head over a depth's hidden states, through the target's head."""
-        config = self.target.config
-        target = self.target.target
+        target = self.verify.target
         return_logits = (
             ReturnLogits.VARIABLE if variable else ReturnLogits.LAST_TOKEN
         )
-        logits_scaling = config.text_config.logits_mup_width_multiplier
+        logits_scaling = (
+            self.verify.config.text_config.logits_mup_width_multiplier
+        )
         if batch.n_devs > 1:
             outputs = distributed_logits_postprocess(
                 hidden,
@@ -304,21 +354,15 @@ class InklingMTPProposer:
         self,
         batch: SequentialBatch,
         tokens: TensorValue,
-        target_hidden: _TargetHidden,
+        target_hidden: list[TensorValue],
     ) -> Proposed:
-        draft_rows, draft_layer_rows = draft_row_inputs(
-            batch.query_offsets_per_dev
-        )
         hidden = self.draft.forward_depth(
             0,
             self.draft.embed_tokens(tokens, batch.signal_buffers),
             target_hidden,
             self._kv_by_flavor(batch),
             batch.query_offsets_per_dev,
-            self.target.merged_positions(batch),
-            batch.extra[DRAFT_CONV_POOLS],
-            draft_rows,
-            draft_layer_rows,
+            self.verify.merged_positions(batch),
             batch.signal_buffers,
         )
         return Proposed(
@@ -330,9 +374,6 @@ class InklingMTPProposer:
         self, batch: SequentialBatch, draft_input: DraftStepInput, index: int
     ) -> Proposed:
         step_dim = f"{self.carry_dim_names.prefix}{index}_batch"
-        draft_rows, draft_layer_rows = draft_row_inputs(
-            batch.query_offsets_per_dev
-        )
         embeds = [
             embed.rebind([step_dim, self.hidden_dim])
             for embed in self.draft.embed_tokens(
@@ -346,12 +387,19 @@ class InklingMTPProposer:
             self._kv_by_flavor(batch),
             batch.query_offsets_per_dev,
             self._decode_positions(batch, index).rebind([step_dim]),
-            batch.extra[DRAFT_CONV_POOLS],
-            draft_rows,
-            draft_layer_rows,
             batch.signal_buffers,
         )
         return Proposed(
             logits=self._depth_logits(batch, hidden, variable=False),
             hidden=hidden,
         )
+
+
+ADAPTER = TargetAdapter(
+    primary_kv=PRIMARY_KV,
+    verify=verify,
+    trailing_input_types=trailing_input_types,
+    batch_trailing_buffers=batch_trailing_buffers,
+    extra=extra,
+    sequential_proposer=sequential_proposer,
+)

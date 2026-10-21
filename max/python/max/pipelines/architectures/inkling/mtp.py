@@ -18,6 +18,7 @@ from collections.abc import Sequence
 
 from max.dtype import DType
 from max.graph import (
+    BufferType,
     BufferValue,
     DeviceRef,
     ShardingStrategy,
@@ -35,14 +36,10 @@ from max.nn.linear import Linear
 from max.nn.norm import RMSNorm
 from max.nn.transformer.distributed_transformer import forward_sharded_layers
 
-from ..inkling.inkling import InklingDecoderLayer
-from ..inkling.layers.attention import log_scaling_tau
-from ..inkling.model_config import (
-    GLOBAL_ATTENTION,
-    LOCAL_ATTENTION,
-    InklingConfig,
-)
-from ..inkling.state_cache import ConvSite, InklingConvStateLayout
+from .inkling import InklingDecoderLayer
+from .layers.attention import log_scaling_tau
+from .model_config import GLOBAL_ATTENTION, LOCAL_ATTENTION, InklingConfig
+from .state_cache import CONV_STATE_DTYPE, ConvSite, InklingConvStateLayout
 
 
 class InklingMTPDepthLayer(Module):
@@ -232,15 +229,44 @@ class InklingMultiTokenPredictor(Module):
             n_floor=text_config.log_scaling_n_floor,
         )
 
-    def depth_conv_pools(
-        self,
-        conv_pools: Sequence[Sequence[BufferValue]],
-        depth_idx: int,
-    ) -> list[list[BufferValue]]:
-        """Slices the four conv sites of one depth out of the draft pool list."""
-        n_sites = len(ConvSite)
-        start = depth_idx * n_sites
-        return [list(rank[start : start + n_sites]) for rank in conv_pools]
+    def _zero_slot(
+        self, depth_idx: int, input_row_offsets: Sequence[TensorValue]
+    ) -> tuple[
+        list[list[BufferValue]], list[list[TensorValue]], list[TensorValue]
+    ]:
+        """Returns one depth's conv pools, slot tables and layer rows: a
+        single zeroed slot that every row reads.
+
+        The depths never commit their conv state, so their taps before a
+        chunk read zero, which a pool the graph creates zeroed holds.
+        """
+        ring_len = self.conv_layout.ring_len
+        pools = [
+            [
+                ops.buffer_create(
+                    BufferType(
+                        CONV_STATE_DTYPE,
+                        [1, ring_len, channels],
+                        device=device,
+                    ),
+                    init_value=0.0,
+                )
+                for channels in self.conv_layout.layers[depth_idx]
+            ]
+            for device in self.devices
+        ]
+        tables = [
+            [
+                ops.broadcast_to(
+                    ops.constant(0, DType.uint32, device=offsets.device),
+                    [1, offsets.shape[0] - 1],
+                )
+            ]
+            * len(ConvSite)
+            for offsets in input_row_offsets
+        ]
+        zero_row = ops.constant(0, DType.uint32, device=DeviceRef.CPU())
+        return pools, tables, [zero_row] * len(ConvSite)
 
     def forward_depth(
         self,
@@ -250,9 +276,6 @@ class InklingMultiTokenPredictor(Module):
         kv_collections: dict[str, list[PagedCacheValues]],
         input_row_offsets: Sequence[TensorValue],
         positions: TensorValue,
-        conv_pools: Sequence[Sequence[BufferValue]],
-        conv_rows: Sequence[Sequence[TensorValue]],
-        layer_rows: Sequence[TensorValue],
         signal_buffers: Sequence[BufferValue],
     ) -> list[TensorValue]:
         """Runs MTP depth ``depth_idx`` and optionally applies chain_norm."""
@@ -265,6 +288,9 @@ class InklingMultiTokenPredictor(Module):
         else:
             positions_per_rank = [positions]
         log_scaling = [self.log_scaling(p) for p in positions_per_rank]
+        conv_pools, conv_rows, layer_rows = self._zero_slot(
+            depth_idx, input_row_offsets
+        )
         hs = depth(
             token_embeds,
             hidden,
@@ -272,7 +298,7 @@ class InklingMultiTokenPredictor(Module):
             input_row_offsets,
             positions_per_rank,
             log_scaling,
-            self.depth_conv_pools(conv_pools, depth_idx),
+            conv_pools,
             conv_rows,
             layer_rows,
             signal_buffers,

@@ -10,13 +10,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Inkling multi-token prediction for unified speculative decoding."""
+"""The MTP depths an Inkling checkpoint ships beside its trunk."""
 
-from .arch import unified_mtp_inkling_arch
-from .model import UnifiedMTPInklingInputs, UnifiedMTPInklingModel
+from .arch import mtp_inkling_draft_arch
+from .model import MTPInklingDraftArchConfig
+from .weight_adapters import convert_inkling_mtp_state_dict
 
 __all__ = [
-    "UnifiedMTPInklingInputs",
-    "UnifiedMTPInklingModel",
-    "unified_mtp_inkling_arch",
+    "MTPInklingDraftArchConfig",
+    "convert_inkling_mtp_state_dict",
+    "mtp_inkling_draft_arch",
 ]

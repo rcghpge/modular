@@ -10,42 +10,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Unified Inkling MTP architecture registration."""
-
-from __future__ import annotations
 
 from max.graph.weights import WeightsFormat
 from max.pipelines.context import TextAndVisionContext
 from max.pipelines.lib import SupportedArchitecture
 from max.pipelines.modeling.types import InputModality, PipelineTask
 
-from ..inkling.memory_planner import InklingMemoryPlanner
 from ..inkling.model_config import InklingConfig
 from ..inkling.tokenizer import InklingTokenizer
-from .model import UnifiedMTPInklingModel
-from .weight_adapters import convert_with_mtp_state_dict
+from .model import (
+    MTPInklingDraftArchConfig,
+    inkling_mtp_draft_width,
+)
+from .weight_adapters import convert_inkling_mtp_state_dict
 
-unified_mtp_inkling_arch = SupportedArchitecture(
-    name="UnifiedMTPInklingForConditionalGeneration",
+__all__ = ["mtp_inkling_draft_arch"]
+
+# The MTP depths ship in the target's checkpoint, which has no config of its
+# own, so spec decoding names this architecture from the target's. It has
+# no pipeline model of its own.
+mtp_inkling_draft_arch = SupportedArchitecture(
+    name="MTPInklingDraftModel",
     task=PipelineTask.TEXT_GENERATION,
-    input_modalities={InputModality.TEXT, InputModality.IMAGE},
     example_repo_ids=["thinkingmachines/Inkling"],
-    default_weights_format=WeightsFormat.safetensors,
     default_encoding=InklingConfig.DEFAULT_ENCODING,
-    supported_encodings={"bfloat16", "float4_e2m1fnx2"},
-    pipeline_model=UnifiedMTPInklingModel,
-    tokenizer=InklingTokenizer,
-    context_type=TextAndVisionContext,
-    config=InklingConfig,
-    tool_parser="inkling",
-    reasoning_parser="inkling",
-    weight_adapters={
-        WeightsFormat.safetensors: convert_with_mtp_state_dict,
-    },
-    required_arguments={"enable_prefix_caching": False},
+    supported_encodings=InklingConfig.SUPPORTED_ENCODINGS,
+    # Split over the target's devices, as the target is.
     multi_gpu_supported=True,
     supports_device_graph_capture=True,
-    supports_empty_batches=True,
-    requires_max_batch_context_length=True,
-    memory_planner=InklingMemoryPlanner,
+    pipeline_model=None,
+    tokenizer=InklingTokenizer,
+    context_type=TextAndVisionContext,
+    default_weights_format=WeightsFormat.safetensors,
+    weight_adapters={
+        WeightsFormat.safetensors: convert_inkling_mtp_state_dict,
+    },
+    config=MTPInklingDraftArchConfig,
+    checkpoint_draft_width=inkling_mtp_draft_width,
+    input_modalities={InputModality.TEXT, InputModality.IMAGE},
 )

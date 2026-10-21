@@ -3,16 +3,11 @@ load("//bazel:api.bzl", "modular_py_library", "requirement")
 package(default_visibility = ["//max:consumers"])
 
 modular_py_library(
-    name = "unified_mtp_inkling",
+    name = "mtp_inkling",
     srcs = glob(["**/*.py"]),
     deps = [
         requirement("transformers"),
-        requirement("typing-extensions"),
-        "//max/python/max:_core",
-        "//max/python/max:tree",
-        "//max/python/max/driver",
         "//max/python/max/dtype",
-        "//max/python/max/engine",
         "//max/python/max/graph",
         "//max/python/max/nn",
         "//max/python/max/pipelines/architectures/inkling",

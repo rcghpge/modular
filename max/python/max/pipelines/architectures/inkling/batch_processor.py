@@ -22,7 +22,7 @@ import numpy.typing as npt
 from max import tree
 from max.driver import Buffer, Device, Usage
 from max.dtype import DType
-from max.engine import Model
+from max.engine import InferenceSession, Model
 from max.nn.kv_cache import KVCacheInputs
 from max.pipelines.context import TextAndVisionContext
 from max.pipelines.graph_input_stager import InputDescriptor
@@ -111,8 +111,12 @@ class InklingBatchProcessor(
         self._return_n_logits_buffers: dict[int, Buffer] = {}
         self._no_images: tuple[Buffer, Buffer] | None = None
 
-    def bind_runtime_state(self, vision_model: Model) -> None:
-        """Hands over what only exists once the model is compiled and loaded."""
+    def bind_vision_encoder(
+        self, *, vision_model: Model, session: InferenceSession | None = None
+    ) -> None:
+        """Wires the compiled vision tower, which encodes each batch's new
+        images."""
+        del session
         self._vision_model = vision_model
 
     def prepare_initial_token_inputs(

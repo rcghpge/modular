@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Safetensors adapter for unified Inkling MTP: ``target.*`` and ``draft.*``."""
+"""Weight adapter for the MTP depths an Inkling checkpoint ships."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from max.pipelines.lib.config import PipelineConfig
 from transformers import AutoConfig
 
 from ..inkling.model_config import parse_inkling_mtp_config
-from ..inkling.weight_adapters import _SKIP, _TEXT, _VISION, _convert, _rename
+from ..inkling.weight_adapters import _TEXT, _convert, _rename
 
 logger = logging.getLogger("max.pipelines")
 
@@ -56,55 +56,33 @@ def _beyond_depth_cap(name: str, n_depths: int | None) -> bool:
     return int(parts[1]) >= n_depths
 
 
-def convert_with_mtp_state_dict(
+def convert_inkling_mtp_state_dict(
     state_dict: Mapping[str, Weights],
     huggingface_config: AutoConfig | None,
     pipeline_config: PipelineConfig | None = None,
     **unused_kwargs: object,
 ) -> dict[str, WeightData]:
-    """Maps an Inkling checkpoint onto the fused target+draft module names.
+    """Keeps an Inkling checkpoint's MTP depths, under the draft's names.
 
-    Shared embedding and LM-head weights are emitted only under ``target.*``.
-    Weights for MTP depths past the requested speculative width are dropped
-    without being read.
+    The depths embed and project through the target's table and head, so
+    only their own weights load here. Weights for depths past the requested
+    speculative width are dropped without being read.
     """
     del unused_kwargs
     n_depths = _resolved_mtp_depths(huggingface_config, pipeline_config)
     converted: dict[str, WeightData] = {}
-    skipped: dict[str, int] = {}
+    skipped = 0
     for name, value in state_dict.items():
-        reason: str | None = None
-        if name.endswith(".original_shape"):
-            reason = "NVFP4 original_shape metadata"
-        elif not name.startswith(_MTP):
-            # _SKIP also lists the MTP prefix, whose weights load here.
-            reason = next(
-                (r for p, r in _SKIP.items() if name.startswith(p)), None
-            )
-        elif _beyond_depth_cap(name, n_depths):
-            reason = f"MTP depths past the {n_depths} the draft builds"
-        if reason is not None:
-            skipped[reason] = skipped.get(reason, 0) + 1
+        if not name.startswith(_MTP) or name.endswith(".original_shape"):
             continue
-        data = value.data()
-        if name.startswith(_TEXT):
-            for key, weight in _convert(name, data).items():
-                converted[f"target.{key}"] = _rename(weight, f"target.{key}")
+        if _beyond_depth_cap(name, n_depths):
+            skipped += 1
             continue
-        if name.startswith(_VISION):
-            converted |= _convert(name, data)
-            continue
-        if name.startswith(_MTP):
-            converted |= _convert_mtp(name, data)
-            continue
-        raise ValueError(
-            f"unrecognized Inkling checkpoint weight {name!r}: expected "
-            f"{_TEXT!r}, {_VISION!r}, {_MTP!r}, or one of "
-            f"{sorted(set(_SKIP) - {_MTP})}"
-        )
-    for reason, count in sorted(skipped.items()):
+        converted |= _convert_mtp(name, value.data())
+    if skipped:
         logger.info(
-            f"Inkling MTP: skipped {count} checkpoint weights: {reason}"
+            f"Inkling MTP: skipped {skipped} checkpoint weights of depths past"
+            f" the {n_depths} the draft builds"
         )
     return converted
 
@@ -112,13 +90,12 @@ def convert_with_mtp_state_dict(
 def _convert_mtp(name: str, data: WeightData) -> dict[str, WeightData]:
     rest = name[len(_MTP) :]
     if rest.startswith("chain_norm."):
-        key = f"draft.{rest}"
-        return {key: _rename(data, key)}
+        return {rest: _rename(data, rest)}
     parts = rest.split(".", 2)
     if len(parts) != 3 or parts[0] != "layers":
         raise ValueError(f"unrecognized Inkling MTP weight {name!r}")
     _, depth_idx, suffix = parts
-    prefix = f"draft.layers.{depth_idx}."
+    prefix = f"layers.{depth_idx}."
     if suffix.startswith("transformer_block."):
         block = suffix[len("transformer_block.") :]
         fake = f"{_TEXT}layers.{depth_idx}.{block}"

@@ -14,11 +14,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Protocol, runtime_checkable
 
 from max.dtype import DType
-from max.graph import TensorValue, Weight, ops
+from max.graph import BufferValue, TensorValue, Weight, ops
 from max.nn.embedding import Embedding, VocabParallelEmbedding
 from max.nn.kv_cache import PagedCacheValues
 from max.nn.linear import ColumnParallelLinear, Linear
@@ -35,6 +35,8 @@ __all__ = [
     "DSparkProposer",
     "DSparkTargetHeadDraft",
     "DSparkTargetHeadProposer",
+    "TensorParallelDSparkDraft",
+    "TensorParallelDSparkProposer",
 ]
 
 
@@ -331,4 +333,140 @@ class DSparkTargetHeadProposer:
         assert markov_head is not None
         return markov_head(
             base_logits, accepted.next_tokens, sampler=sampler.sample_next
+        )
+
+
+@runtime_checkable
+class TensorParallelDSparkDraft(Protocol):
+    """What the tensor-parallel DSpark proposer calls on its draft.
+
+    The draft is sharded over every device its target runs on and brings
+    its own embedding and head over the target's whole vocabulary.
+    """
+
+    @property
+    def embed_tokens(self) -> Callable[..., list[TensorValue]]:
+        """The draft's own vocabulary-parallel embedding."""
+        ...
+
+    def project_target_hidden(
+        self, target_hidden: Sequence[TensorValue], /
+    ) -> list[TensorValue]:
+        """Projects each device's captured target layers to draft width."""
+        ...
+
+    def materialize_kv(
+        self,
+        ctx_hidden: Sequence[TensorValue],
+        input_row_offsets: Sequence[TensorValue],
+        kv_collections: Sequence[PagedCacheValues],
+    ) -> None:
+        """Writes the context's K/V into the draft's cache, per device."""
+        ...
+
+    def forward_block(
+        self,
+        input_embeds: Sequence[TensorValue],
+        signal_buffers: Sequence[BufferValue],
+        kv_collections: Sequence[PagedCacheValues],
+        input_row_offsets: Sequence[TensorValue],
+    ) -> list[TensorValue]:
+        """Runs the draft over one embedded block, per device."""
+        ...
+
+    def block_logits(
+        self,
+        block_hidden: Sequence[TensorValue],
+        signal_buffers: Sequence[BufferValue],
+    ) -> TensorValue:
+        """Scores every block slot over the whole vocabulary, on device 0."""
+        ...
+
+    def sample_draft_tokens(
+        self,
+        base_logits: TensorValue,
+        anchor_tokens: TensorValue,
+        sampler: Callable[[TensorValue, int], TensorValue],
+    ) -> TensorValue:
+        """Samples the Markov-corrected draft tokens, slot by slot."""
+        ...
+
+
+class TensorParallelDSparkProposer:
+    """Drafts a block on a DSpark draft sharded like its target.
+
+    The draft's context K/V sits at its own cache length. Whether the anchor
+    slot proposes is the checkpoint's ``sample_from_anchor``.
+    """
+
+    supports_zero_draft_rows = False
+    ctx_at_draft_cache_length = True
+
+    def __init__(
+        self,
+        draft: TensorParallelDSparkDraft,
+        *,
+        block_size: int,
+        mask_token_id: int,
+        hidden_size: int,
+        samples_from_anchor: bool,
+    ) -> None:
+        self.draft = draft
+        self.block_size = block_size
+        self.mask_token_id = mask_token_id
+        self.hidden_size = hidden_size
+        self.samples_from_anchor = samples_from_anchor
+
+    def materialize(
+        self,
+        batch: BlockBatch,
+        target_hidden: list[TensorValue],
+        ctx_kv: list[PagedCacheValues],
+    ) -> None:
+        """Writes the context K/V into the draft's cache, per device."""
+        # Every device holds every row: tensor parallelism only.
+        assert batch.data_parallel_degree == 1
+        self.draft.materialize_kv(
+            ctx_hidden=self.draft.project_target_hidden(target_hidden),
+            input_row_offsets=batch.merged_offsets_per_dev,
+            kv_collections=ctx_kv,
+        )
+
+    def embed_block(
+        self, batch: BlockBatch, block_ids: TensorValue
+    ) -> list[TensorValue]:
+        """Embeds the block through the draft's own embedding."""
+        return self.draft.embed_tokens(block_ids, batch.signal_buffers)
+
+    def forward_block(
+        self,
+        batch: BlockBatch,
+        embeds: list[TensorValue],
+        offsets: list[TensorValue],
+        block_kv: list[PagedCacheValues],
+    ) -> list[TensorValue]:
+        """Runs the sharded draft over the embedded block."""
+        return self.draft.forward_block(
+            input_embeds=embeds,
+            signal_buffers=batch.signal_buffers,
+            kv_collections=block_kv_with_dispatch(block_kv, self.block_size),
+            input_row_offsets=offsets,
+        )
+
+    def head(
+        self,
+        batch: BlockBatch,
+        block_hs: list[TensorValue],
+        accepted: Accepted,
+        sampler: DraftSampler,
+    ) -> TensorValue:
+        """Scores the drafted slots and samples the Markov chain."""
+        logits = self.draft.block_logits(block_hs, batch.signal_buffers)
+        logits = logits.reshape(
+            ("batch_size", self.block_size, logits.shape[-1])
+        )
+        if not self.samples_from_anchor:
+            logits = logits[:, 1:, :]
+        return self.draft.sample_draft_tokens(
+            logits, accepted.next_tokens, sampler=sampler.sample_next
         )

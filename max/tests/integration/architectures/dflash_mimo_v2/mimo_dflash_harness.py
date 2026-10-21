@@ -13,7 +13,7 @@
 """A tiny random-weight MiMo-V2 target beside a tiny DFlash drafter, fused as
 served.
 
-The fused graph comes from ``SpecDecodePipelineModel._build_spec_graph``, the
+The fused graph comes from ``build_spec_graph``, the
 code a served pairing runs, so the graph under test is the production one. The
 caches are paged pools whose pages the caller assigns, and the runners drive
 the compiled graphs by hand on one device.
@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 from unittest import mock
 
 import ml_dtypes
@@ -64,10 +64,10 @@ from max.pipelines.architectures.mimo_v2.model_config import (
     FULL,
     SLIDING,
 )
+from max.pipelines.lib import PipelineConfig
 from max.pipelines.lib.pipeline_variants import spec_decode_pipeline_model
 from max.pipelines.lib.pipeline_variants.spec_decode_pipeline_model import (
-    SpecDecodePipelineModel,
-    _Pairing,
+    build_spec_graph,
 )
 from max.pipelines.lib.pipeline_variants.structured_output_overlap import (
     StructuredOutputOverlapState,
@@ -350,42 +350,42 @@ def fused_graph(
     kv_tree = MultiKVCacheParams.from_params(
         {"target": target_cfg.kv_params, "draft": module_cfg.kv_params}
     )
-    target_arch = PIPELINE_REGISTRY.retrieve_architecture(TARGET_ARCH)
-    draft_arch = PIPELINE_REGISTRY.retrieve_architecture(DRAFT_ARCH)
-    assert target_arch is not None and draft_arch is not None
-    owner: Any = SimpleNamespace(
-        pairing=_Pairing(TARGET_ARCH, target_arch, draft_arch),
-        pipeline_config=SimpleNamespace(
-            speculative=speculative,
-            needs_bitmask_constraints=True,
-            runtime=SimpleNamespace(
-                reasoning_parser="mimo" if in_thinking_phase else None
-            ),
-            model=SimpleNamespace(data_parallel_degree=1),
+    assert PIPELINE_REGISTRY.retrieve_architecture(TARGET_ARCH) is not None
+    assert PIPELINE_REGISTRY.retrieve_architecture(DRAFT_ARCH) is not None
+    pipeline_config = SimpleNamespace(
+        models=SimpleNamespace(main_architecture_name=TARGET_ARCH),
+        draft_model=SimpleNamespace(
+            huggingface_config=SimpleNamespace(architectures=[DRAFT_ARCH])
         ),
-        huggingface_config=model.hf,
-        # MiMo-V2 declares signal buffers whatever its device count.
-        signal_buffers=[object()],
-        device_refs=devices,
-        kv_params=kv_tree,
+        speculative=speculative,
+        needs_bitmask_constraints=True,
+        runtime=SimpleNamespace(
+            reasoning_parser="mimo" if in_thinking_phase else None
+        ),
+        model=SimpleNamespace(
+            data_parallel_degree=1, huggingface_config=model.hf
+        ),
     )
-    model_config: Any = SimpleNamespace(input_spec=None)
     driver = (
         partial(VerifyLogitsDriver, accept_one_extra=accept_one_extra)
         if verify_logits
         else BlockDriver
     )
     with mock.patch.object(spec_decode_pipeline_model, "BlockDriver", driver):
-        graph, registry = SpecDecodePipelineModel._build_spec_graph(
-            owner,
-            model_config,
-            target,
-            target_cfg,
-            draft,
-            draft_cfg,
-            draft_weights,
-            ReturnHiddenStates.SELECTED_LAYERS,
+        spec = build_spec_graph(
+            cast("PipelineConfig", pipeline_config),
+            kv_tree,
+            devices,
+            # MiMo-V2 declares signal buffers whatever its device count.
+            include_signal_buffers=True,
+            target=target,
+            target_config=target_cfg,
+            draft=draft,
+            draft_config=draft_cfg,
+            hidden_states=ReturnHiddenStates.SELECTED_LAYERS,
+            draft_weights=draft_weights,
         )
+    graph, registry = spec.graph, spec.weights_registry
     groups: dict[str, KVCacheParams] = {}
     for name in (SLIDING, FULL):
         leaf = target_cfg.kv_params.children[name]

@@ -774,19 +774,6 @@ def _apply_speculative_target_architecture(
         if draft_archs and draft_archs[0] == "Qwen3DSparkModel":
             _require_dspark(speculative, draft_archs[0])
             target_archs[0] = "UnifiedDSparkNemotronHForCausalLM"
-    # Kimi K3's speculators-format DSpark drafter (
-    # RedHatAI/Kimi-K3-speculator.dspark) declares the generic
-    # architectures: ["DSparkDraftModel"]; the verifier it names is what
-    # picks the fused graph apart.
-    if target_archs[0] == "KimiK3ForConditionalGeneration":
-        draft_archs = (
-            draft_model.huggingface_config.architectures
-            if draft_model is not None
-            else None
-        )
-        if draft_archs and draft_archs[0] == "DSparkDraftModel":
-            _require_dspark(speculative, draft_archs[0])
-            target_archs[0] = "UnifiedDSparkKimiK3ForCausalLM"
     if target_archs[0] == "MiniMaxM3SparseForConditionalGeneration":
         draft_archs = (
             draft_model.huggingface_config.architectures
@@ -820,18 +807,6 @@ def _apply_speculative_target_architecture(
         ) > 0
         if models.get("draft") is None and has_mtp:
             target_archs[0] = "UnifiedMTPGlmMoeDsaForCausalLM"
-    if target_archs[0] == "InklingForConditionalGeneration":
-        # Inkling bakes chained MTP depths into the target checkpoint.
-        mtp_config = getattr(
-            models["main"].huggingface_config, "mtp_config", None
-        )
-        n_mtp = (
-            mtp_config.get("num_nextn_predict_layers")
-            if isinstance(mtp_config, dict)
-            else getattr(mtp_config, "num_nextn_predict_layers", None)
-        )
-        if models.get("draft") is None and (n_mtp or 0) > 0:
-            target_archs[0] = "UnifiedMTPInklingForConditionalGeneration"
 
     # The legacy branches above rewrote the name in place; there is no
     # unified architecture to hand back.

@@ -75,7 +75,6 @@ UNLISTED_MODULES: frozenset[str] = frozenset({"hy_v4", "unified_mtp_hy_v4"})
 SPEC_DECODE_VARIANT_BASE_ARCH: dict[str, str] = {
     "UnifiedDSparkDeepseekV41ForCausalLM": "DeepseekV41ForCausalLM",
     "UnifiedMTPGlmMoeDsaForCausalLM": "GlmMoeDsaForCausalLM",
-    "UnifiedMTPInklingForConditionalGeneration": "InklingForConditionalGeneration",
 }
 
 

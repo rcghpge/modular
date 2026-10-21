@@ -27,6 +27,7 @@ from max.pipelines.context import TextContext
 if TYPE_CHECKING:
     from ..block_driver import BlockProposer
     from ..config import SpeculativeConfig
+    from ..driver import SequentialProposer
     from . import VerifyFn
 
 
@@ -34,6 +35,32 @@ def _default_ep_input_types(target: Any) -> Sequence[TensorType | BufferType]:
     """Returns no expert-parallel inputs."""
     del target
     return ()
+
+
+def _default_batch_distributed_buffers(
+    target_inputs: Any,
+) -> tuple[Sequence[Buffer] | None, Sequence[Buffer]]:
+    """Returns the context lengths and EP buffers the target's batching made.
+
+    It reads them under the names DeepseekV3's batch inputs carry them.
+    """
+    return (
+        getattr(target_inputs, "batch_context_lengths", None),
+        tuple(getattr(target_inputs, "ep_inputs", None) or ()),
+    )
+
+
+def _default_export_contract(
+    speculative: SpeculativeConfig,
+    draft_config: Any,
+    target_config: Any,
+    kv_params: Any,
+    input_types: Sequence[TensorType | BufferType],
+    structured_output: bool,
+) -> None:
+    """Returns no engine contract."""
+    del speculative, draft_config, target_config, kv_params
+    del input_types, structured_output
 
 
 def _default_tail_buffers(tail: Sequence[object]) -> list[Buffer]:
@@ -68,6 +95,12 @@ def _default_trailing_buffers(
     return []
 
 
+def _default_batch_trailing_buffers(target_inputs: object) -> list[Buffer]:
+    """Returns no batch inputs from the target's own batch processor."""
+    del target_inputs
+    return []
+
+
 def _default_extra(
     target_config: Any, trailing: Sequence[Value[Any]]
 ) -> dict[str, Any]:
@@ -87,6 +120,17 @@ def _default_block_proposer(
     draft_config: Any,
     speculative: SpeculativeConfig,
 ) -> BlockProposer[Any, Any] | None:
+    """Returns ``None``: the method's own proposer runs the draft."""
+    del verify, draft, draft_config, speculative
+    return None
+
+
+def _default_sequential_proposer(
+    verify: VerifyFn,
+    draft: Module,
+    draft_config: Any,
+    speculative: SpeculativeConfig,
+) -> SequentialProposer[Any] | None:
     """Returns ``None``: the method's own proposer runs the draft."""
     del verify, draft, draft_config, speculative
     return None
@@ -129,6 +173,17 @@ class TargetAdapter:
     )
     """Returns a built target module's expert-parallel inputs."""
 
+    batch_distributed_buffers: Callable[
+        [Any], tuple[Sequence[Buffer] | None, Sequence[Buffer]]
+    ] = _default_batch_distributed_buffers
+    """Returns the per-device context lengths and the expert-parallel
+    buffers the target's batch processor prepared."""
+
+    export_contract: Callable[..., Mapping[str, object] | None] = (
+        _default_export_contract
+    )
+    """Returns the record an engine checks the export's inputs against."""
+
     tail_buffers: Callable[[Sequence[Any]], list[Buffer]] = (
         _default_tail_buffers
     )
@@ -147,6 +202,11 @@ class TargetAdapter:
     ] = _default_trailing_buffers
     """Returns a batch's trailing values that no KV child holds."""
 
+    batch_trailing_buffers: Callable[[object], list[Buffer]] = (
+        _default_batch_trailing_buffers
+    )
+    """Returns the trailing values the target's batch processor prepared."""
+
     extra: Callable[[Any, Sequence[Value[Any]]], dict[str, Any]] = (
         _default_extra
     )
@@ -162,6 +222,13 @@ class TargetAdapter:
     ] = _default_block_proposer
     """Returns the proposer of a draft that runs on the target's own state,
     or ``None`` for a draft its method's proposer runs."""
+
+    sequential_proposer: Callable[
+        [VerifyFn, Module, Any, SpeculativeConfig],
+        SequentialProposer[Any] | None,
+    ] = _default_sequential_proposer
+    """Returns the proposer of a one-token-per-step draft that runs on the
+    target's own module, or ``None``."""
 
     by_method: Mapping[str, TargetAdapter] = field(default_factory=dict)
     """The adapter to use under a speculative method, where it differs."""
