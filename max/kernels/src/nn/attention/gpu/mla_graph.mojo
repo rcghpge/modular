@@ -95,7 +95,7 @@ from nn.attention.gpu.nvidia.sm100.mla_decode_utils import (
     SparseRowLayout,
     assert_sparse_row_packed,
 )
-from nn.attention.mha_mask import PaddingMask
+from nn.attention.mha_mask import PaddingMask, SparseRowsDecodeMask
 from nn.attention.mha_utils import (
     MHAConfig,
     NullPointer,
@@ -1340,7 +1340,9 @@ def quantize_and_bmm_fp8_helper[
 
 
 # AMD sparse MLA decode gathers each token's top-k rows into scratch with the
-# kernel below; prefill reads them in place through `SparseRowsMHAOperand`.
+# kernel below unless the caller supplies a split-K partition count, in which
+# case it reads them in place, as prefill always does, through
+# `SparseRowsMHAOperand`.
 comptime _AMD_SPARSE_MLA_GATHER_VEC = 16
 # Tokens gathered per pass on the BF16 AMD sparse MLA arm: 256 tokens of
 # 2051 x 576 BF16 rows is ~600 MB of scratch.
@@ -1956,53 +1958,6 @@ def mla_decode_branch_fp8[
                 as_optional_reg(topk_lengths).value()
             )
 
-        # Unlike prefill, decode gathers first: with one query token per
-        # sequence, reading rows in place runs too few CTAs to hide the
-        # scattered loads (+3.6 us per layer on GLM-5.3, MI355X).
-        var scratch_buf = ctx.enqueue_create_buffer[mla_decode_input_dtype](
-            batch_size * indices_stride * k_cache_dim
-        )
-        # 576 / 16 = 36 vector lanes per row x 7 rows = 252 threads
-        # (4 wavefronts); grid.x shrinks 7x vs one block per row.
-        comptime GATHER_ROWS_PER_BLOCK = 7
-        var k_cache_blocks_base = k_cache.blocks_raw_ptr()
-        # `topk_lengths` is the constant `index_topk`, so masking with it marks
-        # every tile NO_MASK; the gather writes each row's real length.
-        var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
-            batch_size
-        )
-        ctx.enqueue_function[
-            _amd_sparse_mla_gather_kv_rows_and_lengths[
-                type_of(k_cache),
-                k_cache_dim,
-                GATHER_ROWS_PER_BLOCK,
-                has_topk_lengths=has_topk_lengths,
-            ]
-        ](
-            k_cache,
-            k_cache_blocks_base,
-            d_indices.value(),
-            decode_topk_lengths,
-            scratch_buf.unsafe_ptr(),
-            valid_lengths_buf.unsafe_ptr(),
-            Int32(indices_stride),
-            Int32(selection_lag),
-            grid_dim=(
-                ceildiv(indices_stride, GATHER_ROWS_PER_BLOCK),
-                batch_size,
-                1,
-            ),
-            block_dim=(
-                k_cache_dim // _AMD_SPARSE_MLA_GATHER_VEC,
-                GATHER_ROWS_PER_BLOCK,
-                1,
-            ),
-        )
-
-        var k_scratch = TileTensor(
-            scratch_buf,
-            row_major(batch_size, indices_stride, Idx[1], Idx[k_cache_dim]),
-        )
         # View decode input/output as rank-4 [batch,1,heads,depth]; decode has
         # q_seq_len==1 (batch==seq_len), so a size-1 axis, no data movement.
         var q_padded = mla_decode_input.reshape(
@@ -2028,31 +1983,110 @@ def mla_decode_branch_fp8[
             )
         )
 
-        var amd_lengths_tt = TileTensor(
-            valid_lengths_buf.unsafe_ptr(), row_major(batch_size)
-        )
-        var padding_mask = PaddingMask(amd_lengths_tt)
+        # With a split-K partition count from the caller, read the selected
+        # rows in place. A decode workgroup's time is a fixed chain (index
+        # reads, row reads, softmax, store) more than row bandwidth, so
+        # partitions of a few dozen rows run one sequence on many CUs at once.
+        # The valid length is derived in-kernel, so the decode and its split-K
+        # reduce are the only launches. Without a count the dispatcher would
+        # split a 2048-row selection only 8 ways, where in place loses to
+        # gather-then-decode (+3.6 us per layer on GLM-5.3, MI355X), so keep
+        # the gather.
+        if case .Some(num_partitions) = num_partitions_in:
+            var k_rows = SparseRowsMHAOperand[
+                row_width=k_cache_dim, predicated=True
+            ](
+                KVCacheMHAOperand(k_cache),
+                k_cache.blocks_raw_ptr(),
+                d_indices.value(),
+                indices_stride,
+                decode_topk_lengths,
+                has_topk_lengths,
+                selection_lag,
+            )
+            flare_mla_decoding_rows[
+                config=MHAConfig[mla_decode_input_dtype](num_heads, k_cache_dim)
+            ](
+                raw_output_padded,
+                q_padded,
+                k_rows,
+                indices_stride,
+                SparseRowsDecodeMask(k_rows),
+                scale,
+                ctx,
+                scalar_args_buf,
+                num_partitions=num_partitions,
+            )
+        else:
+            var scratch_buf = ctx.enqueue_create_buffer[mla_decode_input_dtype](
+                batch_size * indices_stride * k_cache_dim
+            )
+            # 576 / 16 = 36 vector lanes per row x 7 rows = 252 threads
+            # (4 wavefronts); grid.x shrinks 7x vs one block per row.
+            comptime GATHER_ROWS_PER_BLOCK = 7
+            var k_cache_blocks_base = k_cache.blocks_raw_ptr()
+            # `topk_lengths` is the constant `index_topk`, so masking with it marks
+            # every tile NO_MASK; the gather writes each row's real length.
+            var valid_lengths_buf = ctx.enqueue_create_buffer[DType.uint32](
+                batch_size
+            )
+            ctx.enqueue_function[
+                _amd_sparse_mla_gather_kv_rows_and_lengths[
+                    type_of(k_cache),
+                    k_cache_dim,
+                    GATHER_ROWS_PER_BLOCK,
+                    has_topk_lengths=has_topk_lengths,
+                ]
+            ](
+                k_cache,
+                k_cache_blocks_base,
+                d_indices.value(),
+                decode_topk_lengths,
+                scratch_buf.unsafe_ptr(),
+                valid_lengths_buf.unsafe_ptr(),
+                Int32(indices_stride),
+                Int32(selection_lag),
+                grid_dim=(
+                    ceildiv(indices_stride, GATHER_ROWS_PER_BLOCK),
+                    batch_size,
+                    1,
+                ),
+                block_dim=(
+                    k_cache_dim // _AMD_SPARSE_MLA_GATHER_VEC,
+                    GATHER_ROWS_PER_BLOCK,
+                    1,
+                ),
+            )
 
-        flare_mla_decoding[
-            config=MHAConfig[mla_decode_input_dtype](num_heads, k_cache_dim),
-            decoding_warp_split_k=False,
-        ](
-            raw_output_padded,
-            q_padded,
-            k_scratch,
-            padding_mask,
-            scale,
-            ctx,
-            scalar_args_buf,
-            num_partitions=num_partitions_in.or_else(
-                amd_sparse_mla_decode_num_partitions(
+            var k_scratch = TileTensor(
+                scratch_buf,
+                row_major(batch_size, indices_stride, Idx[1], Idx[k_cache_dim]),
+            )
+            var amd_lengths_tt = TileTensor(
+                valid_lengths_buf.unsafe_ptr(), row_major(batch_size)
+            )
+            var padding_mask = PaddingMask(amd_lengths_tt)
+
+            flare_mla_decoding[
+                config=MHAConfig[mla_decode_input_dtype](
+                    num_heads, k_cache_dim
+                ),
+                decoding_warp_split_k=False,
+            ](
+                raw_output_padded,
+                q_padded,
+                k_scratch,
+                padding_mask,
+                scale,
+                ctx,
+                scalar_args_buf,
+                num_partitions=amd_sparse_mla_decode_num_partitions(
                     batch_size,
                     indices_stride,
                     num_heads,
                     ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
-                )
-            ),
-        )
+                ),
+            )
     else:
         generic_flare_mla_decode_kv_cache_ragged[
             target=target,

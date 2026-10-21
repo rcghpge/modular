@@ -25,7 +25,7 @@ import extensibility
 # Kernel imports
 # ===-----------------------------------------------------------------------===#
 
-from max.gpu.host import DeviceBuffer, DeviceContext
+from max.gpu.host import DeviceAttribute, DeviceBuffer, DeviceContext
 from layout.tile_tensor import row_major
 from max.gpu.host.info import is_cpu, is_gpu
 from kv_cache.paged_sparse_kv_index_remap import (
@@ -71,6 +71,7 @@ from nn.attention.gpu.nvidia.common import (
     immut_tile_tensor_1d,
 )
 from nn.attention.gpu.mha_decode_partition_heuristic import (
+    amd_sparse_mla_inplace_decode_num_partitions,
     mha_decoding_num_partitions,
 )
 from nn.attention.mha_mask import MHAMask
@@ -3635,6 +3636,28 @@ def _sparse_prefill_indices[
     return None
 
 
+def _amd_sparse_decode_partitions(
+    batch_size: Int, indices_stride: Int, num_heads: Int, ctx: DeviceContext
+) raises -> Optional[Int]:
+    """Returns the split-K count an FP8 sparse MLA decode op forwards.
+
+    AMD reads the selected rows in place at a count the op sizes itself
+    rather than the graph's scalar, so a host whose heuristic follows the
+    context (Mach's SM100 port gives 2 below 1.5k tokens, 4x slower) still
+    gets the tuned split. MAX's capture key resolves the same function, so
+    it equals the launched split. SM100 caps the split by the top-k mask
+    itself, which a count would override, so it gets none.
+    """
+    comptime if DeviceContext.target.is_amd_gpu():
+        return amd_sparse_mla_inplace_decode_num_partitions(
+            batch_size,
+            indices_stride,
+            num_heads,
+            ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
+        )
+    return None
+
+
 @extensibility.register("mo.mla.graph.decode.paged.fp8.sparse")
 struct Struct_mla_decode_graph_paged_fp8_sparse:
     """Registers the `mo.mla.graph.decode.paged.fp8.sparse` graph op with the graph compiler.
@@ -3795,10 +3818,12 @@ struct Struct_mla_decode_graph_paged_fp8_sparse:
                 indices_stride,
                 topk_lengths_ptr,
                 attn_sink_ptr,
-                # Sparse path: kernel caps effective_split_len via topk mask;
-                # passing num_partitions would override that. Let the kernel
-                # compute its own values.
-                num_partitions_in=None,
+                num_partitions_in=_amd_sparse_decode_partitions(
+                    q.dim_size(0),
+                    indices_stride,
+                    Int(q.static_spec.shape_tuple[1]),
+                    context,
+                ),
                 logical_indices=logical_indices_ptr,
                 selection_lag=Int(selection_lag),
             )
@@ -4516,8 +4541,12 @@ struct Struct_mla_prefill_graph_decode_paged_fp8_sparse:
                 indices_stride,
                 topk_lengths_ptr,
                 attn_sink_ptr,
-                # Sparse path: let kernel use its own mask-aware computation.
-                num_partitions_in=None,
+                num_partitions_in=_amd_sparse_decode_partitions(
+                    q.dim_size(0),
+                    indices_stride,
+                    Int(q.static_spec.shape_tuple[1]),
+                    context,
+                ),
                 prefill_d_indices=prefill_indices,
                 selection_lag=Int(selection_lag),
             )

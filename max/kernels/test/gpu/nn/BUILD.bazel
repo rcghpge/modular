@@ -185,6 +185,10 @@ _EXTRA_CONSTRAINTS = {
         "//:mi355_gpu": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    "test_mla_decode_sparse_rows_inplace_amd.mojo": select({
+        "//:mi355_gpu": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     "test_mla_prefill_sparse_kv_fp8_gather.mojo": select({
         "//:b200_gpu": [],
         "//:mi355_gpu": [],

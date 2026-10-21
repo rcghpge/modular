@@ -413,6 +413,58 @@ def amd_sparse_mla_decode_num_partitions(
     return min(prev_power_of_two(min(two_wave, tiles)), MAX_HIP_PARTITIONS)
 
 
+def amd_sparse_mla_inplace_decode_num_partitions(
+    batch_size: Int,
+    topk: Int,
+    num_heads: Int,
+    sm_count: Int,
+) -> Int:
+    """Returns the split-K partition count for AMD sparse MLA decode that
+    reads the selected rows in place (the FP8 cache arm).
+
+    Like `amd_sparse_mla_decode_num_partitions` the count depends only on
+    `(batch_size, topk, num_heads, sm_count)`. Reading in place aligns
+    partitions to 16-row strips rather than 128-row tiles, and a workgroup's
+    time is mostly a fixed chain of index reads, row reads, softmax and
+    store, so the split wants smaller partitions than the gather arm but
+    only one wave of them. With `num_heads <= 16` the count is the smaller
+    of two bounds, rounded down to a power of two, measured on MI355X
+    (GLM-5.3, top-k 2048 and 2051, 8 heads, batch 1-128):
+
+    - One wave of CTAs, `sm_count // batch_size`. A second wave costs more
+      than it hides: at batch 32, 16 partitions is 1.9 us slower than 8 at
+      top-k 2048 and 5.3 us slower at 2051.
+    - At least 32 rows per partition, `topk // 32`: at batch 1, 128
+      partitions is no faster than 64.
+
+    At top-k 2048 or 2051 this gives 64 partitions at batch 1-4, 32 at
+    batch 8, and half as many per doubling of the batch, down to 2 at batch
+    128: the fastest count at each measured batch (1, 4, 8, 16, 32, 64 and
+    128) but batch 4, which is 0.3 us off its best (32).
+
+    More than 16 heads is unmeasured and keeps the dense MLA heuristic over
+    `topk` keys.
+
+    Args:
+        batch_size: Query tokens in the decode batch (one per sequence).
+        topk: Selected rows per token, the sparse index row stride.
+        num_heads: Query heads on this device.
+        sm_count: Device compute-unit count.
+
+    Returns:
+        A power-of-two partition count, at most `MAX_HIP_PARTITIONS`, for
+        `num_heads <= 16`.
+    """
+    comptime ROWS_PER_PARTITION = 32
+    if num_heads > 16:
+        return hip_mha_decoding_num_partitions(
+            batch_size, topk, num_heads, sm_count, is_mla=True
+        )
+    var one_wave = max(1, sm_count // max(1, batch_size))
+    var rows = max(1, topk // ROWS_PER_PARTITION)
+    return min(prev_power_of_two(min(one_wave, rows)), MAX_HIP_PARTITIONS)
+
+
 def mha_decoding_num_partitions(
     batch_size: Int,
     num_keys: Int,

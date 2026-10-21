@@ -343,6 +343,31 @@ struct _IndexedSubTileLayout[
             dst_ptr.unsafe_address_space_cast[.SHARED](),
         )
 
+    @staticmethod
+    @inline(.always)
+    def zero_strip(
+        dst: TileTensor[mut=True, Self.dtype, _, _, address_space=.SHARED, ...],
+        strip: Int,
+    ):
+        """Writes zeros where this lane's `load_strip` chunk would land.
+
+        Lets a lane whose row is not loaded leave a finite chunk behind:
+        `P = 0` times an fp8 NaN pattern in stale LDS is still NaN.
+
+        Args:
+            dst: Destination `(rows, cols)` LDS sub-tile, row-major.
+            strip: Strip index in `[0, num_strips)`.
+        """
+        comptime assert type_of(dst).static_stride[1] == 1
+        comptime assert type_of(dst).static_stride[0] == Self.cols
+        var dst_ptr = dst.ptr.unsafe_offset(
+            strip * Self.sub_rows * Self.cols
+            + Int(lane_id()) * Self.chunk_width
+        )
+        dst_ptr.unsafe_store[alignment=16](
+            SIMD[Self.dtype, Self.chunk_width](0)
+        )
+
 
 # ===----------------------------------------------------------------------=== #
 # LDS transposed reads

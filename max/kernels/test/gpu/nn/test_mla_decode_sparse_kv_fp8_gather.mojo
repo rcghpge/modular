@@ -904,9 +904,11 @@ def _run_lagged_decode[
     topk_lengths_list: List[Int],
     out_host: MutPointer[BFloat16, MutAnyOrigin],
     ctx: DeviceContext,
+    num_partitions_in: Optional[Int] = None,
 ) raises:
     """Runs the AMD sparse decode arm end to end on rows selected two tokens
     early, through `mla_decode_branch_fp8`, with deterministic non-zero data.
+    A partition count takes the in-place arm, as the production op does.
 
     Row `b` holds the `cache_len + 1 - 2` keys its token saw two positions
     ago, then `-1`. `selection_lag` and `topk_lengths` are the knobs under
@@ -923,7 +925,8 @@ def _run_lagged_decode[
     comptime row_lag = 2
     comptime indices_stride = 128
 
-    var cache_lens: List[Int] = [20, 5]
+    # The last row sees no key at all two tokens early.
+    var cache_lens: List[Int] = [20, 5, 1]
     var batch_size = len(cache_lens)
     var seq_len = batch_size
     var max_cache_len = 0
@@ -1151,6 +1154,7 @@ def _run_lagged_decode[
             d_indices=d_indices_device.unsafe_ptr().as_unsafe_any_origin(),
             indices_stride=indices_stride,
             topk_lengths=NonNullPointer[DType.int32](topk_device),
+            num_partitions_in=num_partitions_in,
             selection_lag=selection_lag,
         )
     else:
@@ -1181,6 +1185,7 @@ def _run_lagged_decode[
             ctx,
             d_indices=d_indices_device.unsafe_ptr().as_unsafe_any_origin(),
             indices_stride=indices_stride,
+            num_partitions_in=num_partitions_in,
             selection_lag=selection_lag,
         )
 
@@ -1218,9 +1223,9 @@ def _check_selection_lag_end_to_end(ctx: DeviceContext) raises:
     same lengths a second way), and dropping the lag must not: it admits two
     `-1` slots per row as zero keys.
     """
-    comptime out_size = 2 * 8 * KV_LATENT_DIM
-    var true_lengths: List[Int] = [19, 4]
-    var unused: List[Int] = [0, 0]
+    comptime out_size = 3 * 8 * KV_LATENT_DIM
+    var true_lengths: List[Int] = [19, 4, 0]
+    var unused: List[Int] = [0, 0, 0]
     var lagged = ctx.enqueue_create_host_buffer[.bfloat16](out_size)
     var capped = ctx.enqueue_create_host_buffer[.bfloat16](out_size)
     var dropped = ctx.enqueue_create_host_buffer[.bfloat16](out_size)
@@ -1250,6 +1255,47 @@ def _check_selection_lag_end_to_end(ctx: DeviceContext) raises:
     )
     assert_true(vs_capped == 0, "selection_lag does not reach the valid length")
     assert_true(vs_dropped > 0, "RED control: dropping the lag changed nothing")
+
+    # The in-place arm, with both ways of bounding the rows, attends the same
+    # keys as the gather, including the keyless row at one partition, where no
+    # reduce runs.
+    var in_place = ctx.enqueue_create_host_buffer[.bfloat16](out_size)
+    for num_partitions in [1, 4]:
+        for with_topk_lengths in [False, True]:
+            if with_topk_lengths:
+                _run_lagged_decode[with_topk_lengths=True](
+                    0,
+                    true_lengths,
+                    in_place.unsafe_ptr().as_unsafe_any_origin(),
+                    ctx,
+                    num_partitions_in=num_partitions,
+                )
+            else:
+                _run_lagged_decode[with_topk_lengths=False](
+                    2,
+                    unused,
+                    in_place.unsafe_ptr().as_unsafe_any_origin(),
+                    ctx,
+                    num_partitions_in=num_partitions,
+                )
+            var bad = 0
+            for i in range(out_size):
+                if _mismatch(
+                    Float64(in_place[i].cast[DType.float64]()),
+                    Float64(lagged[i].cast[DType.float64]()),
+                ):
+                    bad += 1
+            print(
+                "  [selection_lag] in place (np=",
+                num_partitions,
+                " topk_lengths=",
+                with_topk_lengths,
+                ") vs gather mismatches:",
+                bad,
+            )
+            assert_true(
+                bad == 0, "the in-place decode arm differs from the gather"
+            )
 
 
 def _run_sentinel_case[

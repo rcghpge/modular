@@ -554,7 +554,102 @@ struct KVBuffer[
         self._next_srcs_ready = True
 
     @inline(.always)
+    def _load_predicated_from_dram[buffer_idx: Int](mut self):
+        """Loads the next tile's valid rows; zeros the LDS of the rest.
+
+        For `kv_t.rows_predicated` operands, whose split-K partitions are a
+        few dozen keys, so a tile is usually a partition's only one. Each
+        wave owns whole `warp_tile_rows` row groups and copies all of their
+        column blocks, so a lane resolves each of its keys once per tile
+        instead of once per sub-tile, and there is no next-tile lookahead to
+        waste. A key at or past `kv_cache_iter.end` (the partition end) or
+        the operand's `indexed_valid_length`, or naming no row (`-1`), is
+        not read; its lane writes zeros to the LDS slot instead, so no stale
+        or uninitialized bytes reach the MMAs. The LDS image is the same one
+        `_load_indexed_from_dram` produces.
+        """
+        comptime assert Self.full_kv, "indexed K rows need a full-depth stage"
+        comptime assert (
+            Self.kv_num_heads == 1
+        ), "indexed K rows need a single KV head"
+        comptime _stage_block_base = buffer_idx * Self._blocks_per_stage
+        comptime num_strips = Self._IndexedLanes.num_strips
+        comptime num_row_groups = Self.BN // Self.warp_tile_rows
+        comptime groups_per_warp = ceildiv(num_row_groups, Self._num_warps)
+
+        var tile_start_row = self.kv_cache_iter.tile_start_row
+        self.kv_cache_iter.increment()
+        var cache = self.kv_cache_iter.cache
+        var batch_idx = UInt32(self.kv_cache_iter.batch_idx)
+        var end = min(
+            self.kv_cache_iter.end, cache.indexed_valid_length(batch_idx)
+        )
+
+        comptime for g in range(groups_per_warp):
+            var row_group = g * Self._num_warps + Int(self.warp_id)
+            if row_group < num_row_groups:
+                var group_start = (
+                    tile_start_row + row_group * Self.warp_tile_rows
+                )
+                var srcs = StaticTuple[
+                    ImmPointer[Scalar[Self.kv_t.dtype], ImmUntrackedOrigin],
+                    num_strips,
+                ]()
+                var valid = StaticTuple[Bool, num_strips]()
+                comptime for strip in range(num_strips):
+                    var row, col = Self._IndexedLanes.lane_row_col(strip)
+                    var key = group_start + row
+                    var row_ptr, named = cache.indexed_row(
+                        batch_idx, UInt32(key)
+                    )
+                    srcs[strip] = row_ptr.unsafe_offset(
+                        Self.head_dim_offset + col
+                    ).unsafe_origin_cast[ImmUntrackedOrigin]()
+                    valid[strip] = named & (key < end)
+
+                @inline(.always)
+                def copy_strip[strip: Int]() {imm}:
+                    comptime for warp_col in range(Self._dma_col_groups):
+                        Self._IndexedLanes.load_strip(
+                            self.smem_block_tile[Self.warp_tile_rows](
+                                row_group, _stage_block_base + warp_col
+                            ),
+                            strip,
+                            srcs[strip].unsafe_offset(warp_col * Self.bk_smem),
+                        )
+
+                @inline(.always)
+                def zero_strip[strip: Int]() {imm}:
+                    comptime for warp_col in range(Self._dma_col_groups):
+                        Self._IndexedLanes.zero_strip(
+                            self.smem_block_tile[Self.warp_tile_rows](
+                                row_group, _stage_block_base + warp_col
+                            ),
+                            strip,
+                        )
+
+                # One divergent branch per lane, testing every strip's
+                # validity at once: the index loads all issue before it, and
+                # in the common case (every key valid) the wave runs one
+                # straight run of copies.
+                var all_valid = valid[0]
+                comptime for strip in range(1, num_strips):
+                    all_valid = all_valid & valid[strip]
+                if all_valid:
+                    comptime for strip in range(num_strips):
+                        copy_strip[strip]()
+                else:
+                    comptime for strip in range(num_strips):
+                        if valid[strip]:
+                            copy_strip[strip]()
+                        else:
+                            zero_strip[strip]()
+
+    @inline(.always)
     def load_from_dram[buffer_idx: Int](mut self):
+        comptime if Self.kv_t.rows_predicated:
+            self._load_predicated_from_dram[buffer_idx]()
+            return
         comptime if Self.kv_t.rows_indexed:
             self._load_indexed_from_dram[buffer_idx]()
             return

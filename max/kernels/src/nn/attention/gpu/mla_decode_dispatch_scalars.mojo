@@ -33,6 +33,7 @@ from max.gpu.host import DeviceAttribute, DeviceContext
 
 from nn.attention.gpu.mha_decode_partition_heuristic import (
     amd_sparse_mla_decode_num_partitions,
+    amd_sparse_mla_inplace_decode_num_partitions,
     mha_decoding_num_partitions,
 )
 from nn.attention.gpu.nvidia.sm100.mla_decode_dispatch import (
@@ -65,8 +66,10 @@ def mla_decode_dispatch_scalars(
       adjustment. Sparse MLA (`sparse_indices_stride > 0`) instead splits
       each token's `sparse_indices_stride` selected rows, independent of
       context: one query token per sequence takes
-      `amd_sparse_mla_decode_num_partitions`, as the sparse decode arms of
-      `mla_graph` do; more than one takes the sparse prefill arm, whose
+      `amd_sparse_mla_inplace_decode_num_partitions` for an FP8 cache, the
+      count its decode op computes for the in-place arm, and
+      `amd_sparse_mla_decode_num_partitions` otherwise, as the BF16 gather
+      arm computes; more than one takes the sparse prefill arm, whose
       operand-form kernel runs the dense heuristic over the flattened
       tokens and the same rows.
     - **CUDA (NVIDIA/SM100):** delegate to the SM100 runtime heuristic
@@ -91,12 +94,16 @@ def mla_decode_dispatch_scalars(
     if ctx.api() == "hip":
         var np: Int
         if sparse_indices_stride > 0:
-            if q_max_seq_len == 1:
+            var sm_count = ctx.get_attribute(
+                DeviceAttribute.MULTIPROCESSOR_COUNT
+            )
+            if q_max_seq_len == 1 and is_fp8_kv:
+                np = amd_sparse_mla_inplace_decode_num_partitions(
+                    batch_size, sparse_indices_stride, num_heads, sm_count
+                )
+            elif q_max_seq_len == 1:
                 np = amd_sparse_mla_decode_num_partitions(
-                    batch_size,
-                    sparse_indices_stride,
-                    num_heads,
-                    ctx.get_attribute(DeviceAttribute.MULTIPROCESSOR_COUNT),
+                    batch_size, sparse_indices_stride, num_heads, sm_count
                 )
             else:
                 np = mha_decoding_num_partitions(
