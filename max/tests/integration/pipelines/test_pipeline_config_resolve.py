@@ -1352,7 +1352,7 @@ class TestConstructionResolution:
 
         The target is Gemma3 (outside the unified spec-decode override
         mapping) so the target arch name survives construction; a Llama
-        target would be rewritten to UnifiedEagleLlama3ForCausalLM.
+        target would be paired with its draft.
         """
         PIPELINE_REGISTRY.register(DUMMY_GEMMA_ARCH)
         PIPELINE_REGISTRY.register(DUMMY_LLAMA_ARCH)

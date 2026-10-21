@@ -19,9 +19,6 @@ pack the same triple so the buffer list lines up with the compiled graph
 signature. These tests fail without the bitmask wiring: the graph used
 to compile without bitmask inputs, silently serving structured-output
 requests unconstrained.
-
-The dflash Llama3 graph is deliberately still unwired, so it is covered
-here only by a guard that it keeps omitting the triple.
 """
 
 from __future__ import annotations
@@ -42,9 +39,6 @@ from max.pipelines.architectures.unified_dflash_kimi_k25.spec_adapters import (
 from max.pipelines.architectures.unified_dflash_kimi_k25.unified_dflash_kimi_k25 import (
     UnifiedDflashKimiK25,
     dflash_kimi_k25_input_spec,
-)
-from max.pipelines.architectures.unified_dflash_llama3.model import (
-    UnifiedDflashLlama3Inputs,
 )
 from max.pipelines.lib.interfaces.pipeline_model import UnifiedSpecDecodeInputs
 from max.pipelines.speculative.spec_input_types import (
@@ -161,20 +155,6 @@ def test_dflash_kimi_k25_buffers_tail_packs_bitmask_triple(
         )
     else:
         assert not set(_BITMASK_SENTINELS.values()) & set(buffers)
-
-
-def test_dflash_llama3_buffers_omit_bitmask_triple() -> None:
-    """The Llama3 dflash graph declares no bitmask inputs, so its ABI
-    tail must omit the triple even when the pipeline binds one."""
-    inputs = UnifiedDflashLlama3Inputs(
-        tokens=object(),  # type: ignore[arg-type]
-        input_row_offsets=object(),  # type: ignore[arg-type]
-        return_n_logits=object(),  # type: ignore[arg-type]
-        structured_output=True,
-        **_tail_sentinels(),  # type: ignore[arg-type]
-        **_BITMASK_SENTINELS,  # type: ignore[arg-type]
-    )
-    assert not set(_BITMASK_SENTINELS.values()) & set(inputs.buffers)
 
 
 @pytest.mark.parametrize("include_in_thinking_phase", [False, True])

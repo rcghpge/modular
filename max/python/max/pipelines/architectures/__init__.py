@@ -177,7 +177,7 @@ def register_all_models() -> None:
         ),
         _LazyArch(
             "Gemma4DSparkModel",
-            ".unified_dspark_gemma4_12b",
+            ".dspark_gemma4",
             "gemma4_dspark_draft_arch",
         ),
         _LazyArch(
@@ -376,16 +376,6 @@ def register_all_models() -> None:
             "unified_dflash_kimi_k25_arch",
         ),
         _LazyArch(
-            "UnifiedDflashGemma4_31BForCausalLM",
-            ".unified_dflash_gemma4_31b",
-            "unified_dflash_gemma4_31b_arch",
-        ),
-        _LazyArch(
-            "UnifiedDflashLlama3ForCausalLM",
-            ".unified_dflash_llama3",
-            "unified_dflash_llama3_arch",
-        ),
-        _LazyArch(
             "UnifiedDflashMiMoV2ForCausalLM",
             ".unified_dflash_mimo_v2",
             "unified_dflash_mimo_v2_speculator",
@@ -410,24 +400,9 @@ def register_all_models() -> None:
             speculates_on="DeepseekV41ForCausalLM",
         ),
         _LazyArch(
-            "UnifiedDSparkGemma4_12BForCausalLM",
-            ".unified_dspark_gemma4_12b",
-            "unified_dspark_gemma4_12b_arch",
-        ),
-        _LazyArch(
-            "UnifiedDSparkGemma4_31BForCausalLM",
-            ".unified_dspark_gemma4_31b",
-            "unified_dspark_gemma4_31b_arch",
-        ),
-        _LazyArch(
             "UnifiedDSparkNemotronHForCausalLM_ModuleV3",
             ".unified_dspark_nemotron_h",
             "unified_dspark_nemotron_h_arch",
-        ),
-        _LazyArch(
-            "UnifiedEagleLlama3ForCausalLM",
-            ".unified_eagle_llama3",
-            "unified_eagle_llama3_arch",
         ),
         _LazyArch(
             "UnifiedMTPDeepseekV3ForCausalLM",

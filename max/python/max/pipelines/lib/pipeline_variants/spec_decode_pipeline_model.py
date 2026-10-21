@@ -204,7 +204,7 @@ def spec_decode_architecture(
     # A draft-only architecture has no pipeline model to serve as the target.
     if base is None or base.pipeline_model is None or not _builds_module(base):
         return None
-    draft = ARCH_LOOKUP.find(draft_arch)
+    draft = ARCH_LOOKUP.find(base.draft_architecture(method, draft_arch))
     if draft is None or not _builds_module(draft):
         return None
     return replace(
@@ -236,13 +236,19 @@ class _Pairing:
     @classmethod
     def from_pipeline_config(cls, pipeline_config: PipelineConfig) -> _Pairing:
         target_arch = pipeline_config.models.main_architecture_name
+        speculative = pipeline_config.speculative
         draft_model = pipeline_config.draft_model
-        assert draft_model is not None
+        assert speculative is not None and draft_model is not None
+        method = speculative.speculative_method
+        assert method is not None
         target = ARCH_LOOKUP.find(target_arch)
+        assert target is not None
         draft = ARCH_LOOKUP.find(
-            draft_model.huggingface_config.architectures[0]
+            target.draft_architecture(
+                method, draft_model.huggingface_config.architectures[0]
+            )
         )
-        assert target is not None and draft is not None
+        assert draft is not None
         return cls(target_arch, target, draft)
 
 

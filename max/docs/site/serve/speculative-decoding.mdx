@@ -203,17 +203,17 @@ banner. For example, serving `deepseek-ai/DeepSeek-V3` with
 The name comes from the target's architecture and the draft checkpoint's
 declared architecture:
 
-| Target      | Draft                                          | Resolved architecture                |
-|-------------|------------------------------------------------|--------------------------------------|
-| Llama 3     | EAGLE draft                                    | `UnifiedEagleLlama3ForCausalLM`      |
-| Llama 3     | DFlash draft                                   | `UnifiedDflashLlama3ForCausalLM`     |
-| Gemma 4     | Assistant draft (`Gemma4AssistantForCausalLM`) | `UnifiedMTPGemma4ForCausalLM`        |
-| Gemma 4 31B | DFlash draft                                   | `UnifiedDflashGemma4_31BForCausalLM` |
-| Gemma 4 31B | DSpark draft                                   | `UnifiedDSparkGemma4_31BForCausalLM` |
-| Gemma 4 12B | DSpark draft                                   | `UnifiedDSparkGemma4_12BForCausalLM` |
-| DeepSeek V3 | None (built-in MTP head)                       | `UnifiedMTPDeepseekV3ForCausalLM`    |
-| GLM-5.2     | None (built-in MTP head)                       | `UnifiedMTPGlmMoeDsaForCausalLM`     |
-| Kimi K2.5   | DFlash draft                                   | `UnifiedDflashKimiK25ForCausalLM`    |
+| Target      | Draft                                          | Resolved architecture                          |
+|-------------|------------------------------------------------|------------------------------------------------|
+| Llama 3     | EAGLE draft                                    | `LlamaForCausalLM+eagle`                       |
+| Llama 3     | DFlash draft                                   | `LlamaForCausalLM+dflash`                      |
+| Gemma 4     | Assistant draft (`Gemma4AssistantForCausalLM`) | `UnifiedMTPGemma4ForCausalLM`                  |
+| Gemma 4 31B | DFlash draft                                   | `Gemma4ForConditionalGeneration+dflash`        |
+| Gemma 4 31B | DSpark draft                                   | `Gemma4ForConditionalGeneration+dspark`        |
+| Gemma 4 12B | DSpark draft                                   | `Gemma4UnifiedForConditionalGeneration+dspark` |
+| DeepSeek V3 | None (built-in MTP head)                       | `UnifiedMTPDeepseekV3ForCausalLM`              |
+| GLM-5.2     | None (built-in MTP head)                       | `UnifiedMTPGlmMoeDsaForCausalLM`               |
+| Kimi K2.5   | DFlash draft                                   | `UnifiedDflashKimiK25ForCausalLM`              |
 
 ## Monitor acceptance rates
 

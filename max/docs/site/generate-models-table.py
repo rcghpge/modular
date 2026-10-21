@@ -74,14 +74,10 @@ UNLISTED_MODULES: frozenset[str] = frozenset({"hy_v4", "unified_mtp_hy_v4"})
 # ``Unified*`` name, so new variants must be added here.
 SPEC_DECODE_VARIANT_BASE_ARCH: dict[str, str] = {
     "UnifiedDflash2Qwen3_5ForConditionalGeneration": "Qwen3_5ForConditionalGeneration",
-    "UnifiedDflashGemma4_31BForCausalLM": "Gemma4ForConditionalGeneration",
     "UnifiedDflashKimiK25ForCausalLM": "KimiK25ForConditionalGeneration",
-    "UnifiedDflashLlama3ForCausalLM": "LlamaForCausalLM",
     "UnifiedDflashMiMoV2ForCausalLM": "MiMoV2ForCausalLM",
     "UnifiedDSparkDeepseekV4ForCausalLM": "DeepseekV4ForCausalLM",
     "UnifiedDSparkDeepseekV41ForCausalLM": "DeepseekV41ForCausalLM",
-    "UnifiedDSparkGemma4_12BForCausalLM": "Gemma4UnifiedForConditionalGeneration",
-    "UnifiedDSparkGemma4_31BForCausalLM": "Gemma4ForConditionalGeneration",
     "UnifiedMTPDeepseekV3ForCausalLM": "DeepseekV3ForCausalLM",
     "UnifiedMTPGemma4ForCausalLM": "Gemma4ForConditionalGeneration",
     "UnifiedMTPGlmMoeDsaForCausalLM": "GlmMoeDsaForCausalLM",

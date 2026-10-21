@@ -31,7 +31,7 @@ from max.graph import (
 )
 from max.graph.weights import WeightData, Weights, WeightsAdapter
 from max.nn.kv_cache import MultiKVCacheParams
-from max.nn.transformer import ReturnLogits
+from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import ImageMetadata
 from max.pipelines.lib import (
     AlwaysSignalBuffersMixin,
@@ -42,6 +42,7 @@ from max.pipelines.lib import (
     PipelineModelWithKVCache,
 )
 from max.pipelines.lib.graph_specs import GraphRole, GraphSpec
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
 from max.pipelines.lib.memory_estimation import MemoryPlan
 from max.pipelines.lib.pipeline_parallel import (
     PipelinedModel,
@@ -343,16 +344,62 @@ class Gemma3_MultiModalModel(
         )
         return {k: v.data() for k, v in weights_dict.items()}
 
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[Gemma4TextModel, Gemma4ForConditionalGenerationConfig]:
+        """Builds the language model, without its vision tower.
+
+        The vision tower builds in its own graph, which only serving runs.
+        """
+        weights = dict(context.weights.items())
+        config = cls._finalized_config(
+            context, {name: value.data() for name, value in weights.items()}
+        )
+        language_weights = convert_safetensor_language_state_dict(weights)
+        return cls._language_module(config, language_weights), config
+
+    @classmethod
+    def _finalized_config(
+        cls, context: ModelLoadContext, state_dict: dict[str, Any]
+    ) -> Gemma4ForConditionalGenerationConfig:
+        # Quantization is declared per checkpoint name, so ``state_dict`` is
+        # the unconverted checkpoint rather than the language weights.
+        config = Gemma4ForConditionalGenerationConfig.initialize(
+            context.pipeline_config, max_seq_len=context.max_seq_len
+        )
+        config.finalize(
+            huggingface_config=context.huggingface_config,
+            state_dict=state_dict,
+            return_logits=context.return_logits,
+        )
+        if context.return_hidden_states != ReturnHiddenStates.NONE:
+            config.text_config.return_hidden_states = (
+                context.return_hidden_states
+            )
+        if context.target_layer_ids:
+            config.text_config.target_layer_ids = list(context.target_layer_ids)
+        return config
+
+    @classmethod
+    def _language_module(
+        cls,
+        config: Gemma4ForConditionalGenerationConfig,
+        state_dict: dict[str, WeightData],
+    ) -> Gemma4TextModel:
+        language_model = Gemma4TextModel(config)
+        language_model.load_state_dict(
+            state_dict,
+            weight_alignment=1,
+            strict=cls._strict_state_dict_loading,
+        )
+        return language_model
+
     def _create_model_config(
         self, state_dict: dict[str, Any]
     ) -> Gemma4ForConditionalGenerationConfig:
-        model_config = Gemma4ForConditionalGenerationConfig.initialize(
-            self.pipeline_config, max_seq_len=self.max_seq_len
-        )
-        model_config.finalize(
-            huggingface_config=self.huggingface_config,
-            state_dict=state_dict,
-            return_logits=self.return_logits,
+        model_config = self._finalized_config(
+            ModelLoadContext.from_pipeline_model(self), state_dict
         )
         self.config = model_config
         return model_config

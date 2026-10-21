@@ -1,0 +1,26 @@
+load("//bazel:api.bzl", "modular_py_test")
+
+package(default_visibility = [
+    "//:__pkg__",
+    "//max/tests:__subpackages__",
+    "//oss/modular/max/tests:__subpackages__",
+])
+
+modular_py_test(
+    name = "test_spec_decode_architecture",
+    srcs = ["test_spec_decode_architecture.py"],
+    ignore_extra_deps = [
+        "//max/python/max/pipelines",
+        # Resolve the Llama target and its EAGLE and DFlash drafts by name.
+        "//max/python/max/pipelines/architectures/dflash_llama3",
+        "//max/python/max/pipelines/architectures/eagle_llama3",
+        "//max/python/max/pipelines/architectures/llama3",
+    ],
+    deps = [
+        "//max/python/max/pipelines",
+        "//max/python/max/pipelines/architectures/dflash_llama3",
+        "//max/python/max/pipelines/architectures/eagle_llama3",
+        "//max/python/max/pipelines/architectures/llama3",
+        "//max/python/max/pipelines/lib",
+    ],
+)

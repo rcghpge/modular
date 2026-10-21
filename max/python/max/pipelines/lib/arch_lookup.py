@@ -369,6 +369,17 @@ class SupportedArchitecture:
     Set it when the checkpoint fixes the width rather than the user.
     """
 
+    draft_architectures: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict
+    )
+    """The draft architecture registered for a draft checkpoint served beside
+    this target, by speculative method and then by the architecture name the
+    checkpoint declares.
+
+    A checkpoint may declare a name several drafts share, so the target picks
+    the draft whose module it can call. A name not listed stands for itself.
+    """
+
     supports_overlap_scheduler: bool = True
     """Whether this architecture supports auto-enabling the overlap scheduler.
 
@@ -472,6 +483,17 @@ class SupportedArchitecture:
     :class:`~max.pipelines.lib.pipeline_variants.text_generation.TextGenerationPipeline`
     subclass (or compatible) selected in ``retrieve_factory``.
     """
+
+    def draft_architecture(self, method: str, checkpoint_name: str) -> str:
+        """Returns the registered draft architecture of a draft checkpoint.
+
+        Args:
+            method: The speculative method.
+            checkpoint_name: The architecture name the checkpoint declares.
+        """
+        return self.draft_architectures.get(method, {}).get(
+            checkpoint_name, checkpoint_name
+        )
 
     @property
     def tokenizer_cls(self) -> type[PipelineTokenizer[Any, Any, Any]]:

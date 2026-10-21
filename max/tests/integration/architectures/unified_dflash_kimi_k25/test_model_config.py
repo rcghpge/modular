@@ -13,8 +13,8 @@
 """Draft-width checks for the unified DFlash Kimi K2.5 config.
 
 Validation never writes back to the caller's ``SpeculativeConfig``; the
-trained width is resolved as a plain int through the shared
-:func:`resolve_dflash_num_speculative_tokens` helper and threaded by the
+trained width is resolved as a plain int through
+:func:`resolve_dflash_num_speculative_tokens` and threaded by the
 model.
 """
 
@@ -34,18 +34,10 @@ from max.pipelines.architectures.dflash_kimi_k25 import (
 )
 from max.pipelines.architectures.unified_dflash_kimi_k25.model_config import (
     UnifiedDflashKimiK25Config,
-    resolve_dflash_num_speculative_tokens,
-)
-from max.pipelines.architectures.unified_dflash_llama3.model_config import (
-    resolve_dflash_num_speculative_tokens as _llama3_resolve,
 )
 from max.pipelines.lib import SpeculativeConfig
 
 BLOCK_SIZE = 7
-
-
-def test_resolve_helper_is_the_shared_dflash_one() -> None:
-    assert resolve_dflash_num_speculative_tokens is _llama3_resolve
 
 
 @dataclass

@@ -34,7 +34,7 @@ from transformers import AutoConfig
 
 # Break circular import by importing PipelineConfig under TYPE_CHECKING.
 if TYPE_CHECKING:
-    from max.pipelines.lib.config import PipelineConfig
+    from max.pipelines.lib.config import MAXModelConfig, PipelineConfig
 
 logger = logging.getLogger("max.pipelines")
 
@@ -124,14 +124,21 @@ def parse_state_dict_from_weights(
     weights: Weights,
     adapter: WeightsAdapter | None = None,
     hf_config: AutoConfig | None = None,
+    model_config: MAXModelConfig | None = None,
 ) -> dict[str, WeightData]:
-    """Parse the state dict from the weights, using the adapter if provided."""
+    """Parse the state dict from the weights, using the adapter if provided.
+
+    A draft's checkpoint passes its own ``model_config``, which an adapter
+    that reads the encoding takes in place of the target's.
+    """
     if adapter:
         if hf_config is None:
             hf_config = pipeline_config.model.huggingface_config
+        extra = {} if model_config is None else {"model_config": model_config}
         return adapter(
             dict(weights.items()),
             huggingface_config=hf_config,
             pipeline_config=pipeline_config,
+            **extra,
         )
     return {key: value.data() for key, value in weights.items()}

@@ -480,23 +480,14 @@ class TestSpeculativeArchitectureOverride:
         _apply_speculative_target_architecture(cfg.speculative, cfg.manifest)
         return cfg.manifest["main"].huggingface_config.architectures[0]
 
-    def test_llama_eagle(self) -> None:
-        cfg = self._make_config("LlamaForCausalLM")
-        assert self._resolved_arch(cfg) == "UnifiedEagleLlama3ForCausalLM"
-
-    def test_llama_dflash(self) -> None:
-        cfg = self._make_config("LlamaForCausalLM", is_dflash=True)
-        assert self._resolved_arch(cfg) == "UnifiedDflashLlama3ForCausalLM"
-
     def test_dflash2_does_not_take_a_v1_or_eagle_rewrite(self) -> None:
         """DFlash2 shares ``is_dflash()`` but not the graphs it selects.
 
-        The Llama and Kimi arms name v1 and Eagle graphs, neither of which
-        can verify a DFlash2 block draft, so rewriting to one would load a
-        graph that silently mismatches the drafter. The exclusion is
-        deliberately limited to those arms: a target with its own DFlash2
-        arm must still reach it, so this must not become a blanket
-        "return early for v2".
+        The Kimi arm names v1 and Eagle graphs, neither of which can verify a
+        DFlash2 block draft, so rewriting to one would load a graph that
+        silently mismatches the drafter. The exclusion is deliberately
+        limited to that arm: a target with its own DFlash2 arm must still
+        reach it, so this must not become a blanket "return early for v2".
         """
         for target in ("LlamaForCausalLM", "KimiK25ForConditionalGeneration"):
             cfg = self._make_config(target, is_dflash2=True)
@@ -507,15 +498,8 @@ class TestSpeculativeArchitectureOverride:
             "Gemma4ForConditionalGeneration",
             draft_arch="Gemma4AssistantForCausalLM",
         )
+        cfg.speculative.speculative_method = "mtp"
         assert self._resolved_arch(cfg) == "UnifiedMTPGemma4ForCausalLM"
-
-    def test_gemma4_unified_dspark(self) -> None:
-        cfg = self._make_config(
-            "Gemma4UnifiedForConditionalGeneration",
-            is_dspark=True,
-            draft_arch="Gemma4DSparkModel",
-        )
-        assert self._resolved_arch(cfg) == "UnifiedDSparkGemma4_12BForCausalLM"
 
     def test_gemma4_unified_without_dspark_draft_is_noop(self) -> None:
         cfg = self._make_config(
@@ -1469,7 +1453,7 @@ class TestSamplingConfig:
         ("DeepseekV32ForCausalLM", True, True, 16, False, True, True),
         ("DeepseekV3ForCausalLMNextN", True, True, 16, False, True, True),
         ("KimiK25ForConditionalGeneration", True, True, 16, False, True, True),
-        ("UnifiedEagleLlama3ForCausalLM", True, True, 16, False, True, True),
+        ("LlamaForCausalLM+eagle", True, True, 16, False, True, True),
         ("LlamaForCausalLM", True, True, 16, False, False, False),
         ("LlamaForCausalLM", True, True, None, False, True, True),
         ("LlamaForCausalLM", True, True, 16, True, True, False),
@@ -1944,7 +1928,7 @@ def test_auto_device_graph_capture_eagle_gating(
     """
     monkeypatch.setattr(MAXModelConfig, "huggingface_model_repo", Mock())
     arch = SimpleNamespace(
-        name="UnifiedEagleLlama3ForCausalLM",
+        name="LlamaForCausalLM+eagle",
         task=PipelineTask.TEXT_GENERATION,
         supports_overlap_scheduler=True,
         supports_device_graph_capture=True,

@@ -40,13 +40,13 @@ from max.pipelines.lib.config import (
 )
 from max.pipelines.lib.interfaces.arch_config import ArchConfigWithKVCache
 from max.pipelines.modeling.config_enums import SupportedEncoding
+from max.pipelines.speculative._dflash import parse_dflash_draft_hf_config
 from transformers import AutoConfig
 from typing_extensions import Self
 
 from ..llama3.model_config import Llama3Config
 from ..qwen3_5.model_config import Qwen3_5Config
 from ..qwen3_5.state_cache import STATE_CACHE_KEY, attn_cache
-from ..unified_dflash_llama3.model_config import parse_dflash_draft_hf_config
 from ..unified_mtp_qwen3_5.model_config import UnifiedMTPQwen3_5Config
 
 __all__ = [

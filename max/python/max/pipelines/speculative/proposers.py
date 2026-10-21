@@ -29,7 +29,15 @@ from max.nn.transformer import ReturnHiddenStates
 
 from .block_driver import BlockProposer
 from .config import SpeculativeConfig, SpeculativeMethod
+from .dflash import DFlashDraft, DFlashProposer
 from .driver import SequentialProposer
+from .dspark import (
+    DSparkDraft,
+    DSparkProposer,
+    DSparkTargetHeadDraft,
+    DSparkTargetHeadProposer,
+)
+from .eagle import EagleProposer
 
 __all__ = [
     "BLOCK_METHODS",
@@ -40,10 +48,10 @@ __all__ = [
     "target_hidden_states",
 ]
 
-SEQUENTIAL_METHODS: frozenset[SpeculativeMethod] = frozenset()
+SEQUENTIAL_METHODS: frozenset[SpeculativeMethod] = frozenset({"eagle"})
 """The one-token-per-step methods :func:`sequential_proposer` runs."""
 
-BLOCK_METHODS: frozenset[SpeculativeMethod] = frozenset()
+BLOCK_METHODS: frozenset[SpeculativeMethod] = frozenset({"dflash", "dspark"})
 """The block-drafting methods :func:`block_proposer` runs."""
 
 
@@ -81,7 +89,9 @@ def sequential_proposer(
     Raises:
         ValueError: If no proposer runs the configured method.
     """
-    del draft, draft_config, target_huggingface_config
+    del target_huggingface_config
+    if speculative.is_eagle():
+        return EagleProposer(draft, draft_config.hidden_size)
     raise ValueError(
         f"No proposer runs {speculative.speculative_method!r} one token at a"
         " time."
@@ -93,13 +103,51 @@ def block_proposer(
     draft: Module,
     draft_config: Any,
     target_huggingface_config: Any,
-) -> BlockProposer[TensorValue, TensorValue]:
+) -> BlockProposer[list[TensorValue], Any]:
     """Returns the proposer for a block-drafting method.
+
+    The draft's config names the mask token and the draft's width. A draft
+    that projects through its target's head applies the target's scales.
 
     Raises:
         ValueError: If no proposer runs the configured method.
     """
-    del draft, draft_config, target_huggingface_config
+    text_config = target_huggingface_config.get_text_config()
+    if speculative.speculative_method == "dflash":
+        assert isinstance(draft, DFlashDraft)
+        return DFlashProposer(
+            draft,
+            # The anchor slot plus the drafted tokens.
+            block_size=speculative.draft_width + 1,
+            mask_token_id=draft_config.mask_token_id,
+            hidden_size=draft_config.hidden_size,
+            embedding_multiplier=getattr(
+                text_config, "embedding_multiplier", 1.0
+            ),
+            logits_scaling=getattr(text_config, "logits_scaling", 1.0),
+            final_logit_softcapping=getattr(
+                text_config, "final_logit_softcapping", None
+            ),
+        )
+    if speculative.is_dspark():
+        # A DSpark draft with its own head drops the anchor slot; one that
+        # holds its target's drafts at every slot.
+        if getattr(draft, "has_own_lm_head", False):
+            assert isinstance(draft, DSparkDraft)
+            return DSparkProposer(
+                draft,
+                block_size=speculative.draft_width + 1,
+                mask_token_id=draft_config.mask_token_id,
+                hidden_size=draft_config.hidden_size,
+            )
+        assert isinstance(draft, DSparkTargetHeadDraft)
+        return DSparkTargetHeadProposer(
+            draft,
+            block_size=speculative.draft_width,
+            mask_token_id=draft_config.mask_token_id,
+            hidden_size=draft_config.hidden_size,
+            final_logit_softcapping=draft_config.final_logit_softcapping,
+        )
     raise ValueError(
         f"No proposer runs {speculative.speculative_method!r} a block at a"
         " time."

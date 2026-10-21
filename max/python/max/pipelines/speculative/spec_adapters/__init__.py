@@ -43,6 +43,8 @@ VerifyFn = Callable[[SequentialBatch | BlockBatch], Verified[Any]]
 """Verifies a driver batch on the target."""
 
 _TARGET_ADAPTERS: Mapping[str, str] = {
+    "Gemma4ForConditionalGeneration": ".gemma4.spec_adapters",
+    "Gemma4UnifiedForConditionalGeneration": ".gemma4.spec_adapters",
     "GraniteForCausalLM": ".llama3.spec_adapters",
     "LlamaForCausalLM": ".llama3.spec_adapters",
 }

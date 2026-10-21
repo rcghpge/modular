@@ -45,7 +45,7 @@ def _verify(
     target: Module,
     hidden_states: ReturnHiddenStates,
     batch: SequentialBatch | BlockBatch,
-) -> Verified[TensorValue]:
+) -> Verified[TensorValue | list[TensorValue]]:
     # Under VARIABLE logits the outputs lead with (last_logits, logits,
     # offsets), and the hidden states follow: one tensor, or one per captured
     # layer under SELECTED_LAYERS.
@@ -55,13 +55,13 @@ def _verify(
         batch.return_n_logits,
         batch.merged_offsets,
     )
-    if hidden_states == ReturnHiddenStates.SELECTED_LAYERS:
-        hidden = fuse_captured_hidden_states(
-            captures_by_device(outputs[3:], 1)
-        )[0]
-    else:
-        hidden = outputs[3]
-    return Verified(logits=outputs[1], hidden=hidden)
+    if hidden_states != ReturnHiddenStates.SELECTED_LAYERS:
+        return Verified(logits=outputs[1], hidden=outputs[3])
+    captures = fuse_captured_hidden_states(captures_by_device(outputs[3:], 1))
+    # A block draft reads its captures per device, an EAGLE3 head one tensor.
+    if isinstance(batch, BlockBatch):
+        return Verified(logits=outputs[1], hidden=captures)
+    return Verified(logits=outputs[1], hidden=captures[0])
 
 
 ADAPTER = TargetAdapter(verify=verify)

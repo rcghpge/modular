@@ -609,40 +609,36 @@ def _resolved_runtime_and_sampling(
 
 
 def _apply_speculative_draft_architecture(
-    speculative: SpeculativeConfig | None, draft_model: MAXModelConfig | None
+    speculative: SpeculativeConfig | None, models: Mapping[str, MAXModelConfig]
 ) -> None:
     """Rewrite the draft model's HuggingFace architecture for the method.
 
-    Runs after the models are built, since it edits the draft's loaded
-    HuggingFace config rather than any MAX config field.
+    The target's family picks the registered draft architecture. Runs after
+    the models are built, since it edits the draft's loaded HuggingFace
+    config rather than any MAX config field.
     """
     if speculative is None:
         return
-    # We need to set the architecture to LlamaForCausalLMEagle for Eagle speculative decoding
+    draft_model = models.get("draft")
+    main = models.get("main")
+    method = speculative.speculative_method
     if speculative.is_eagle() and draft_model is not None:
         if len(draft_model.huggingface_config.architectures) != 1:
             raise ValueError(
                 f"Expected exactly 1 architecture in draft model config, "
                 f"got {len(draft_model.huggingface_config.architectures)}"
             )
-        hf_arch = draft_model.huggingface_config.architectures[0]
-        if hf_arch == "LlamaForCausalLM":
-            draft_model.huggingface_config.architectures[0] = (
-                "LlamaForCausalLMEagle"
-            )
-    # DFlash drafts ship with architectures: ["DFlashDraftModel"],
-    # which isn't registered as a standalone MAX architecture (the draft
-    # is only ever invoked through UnifiedDflashLlama3). Override to
-    # LlamaForCausalLM.
-    if speculative.is_dflash() and draft_model is not None:
-        if len(draft_model.huggingface_config.architectures) != 1:
-            raise ValueError(
-                f"Expected exactly 1 architecture in draft model config, "
-                f"got {len(draft_model.huggingface_config.architectures)}"
-            )
-        hf_arch = draft_model.huggingface_config.architectures[0]
-        if hf_arch == "DFlashDraftModel":
-            draft_model.huggingface_config.architectures[0] = "LlamaForCausalLM"
+    if (
+        draft_model is not None
+        and main is not None
+        and method is not None
+        and main.huggingface_config.architectures
+        and draft_model.huggingface_config.architectures
+    ):
+        target = find_architecture(main.huggingface_config.architectures[0])
+        if target is not None:
+            draft_archs = draft_model.huggingface_config.architectures
+            draft_archs[0] = target.draft_architecture(method, draft_archs[0])
 
 
 def _select_spec_decode_architecture(
@@ -731,18 +727,13 @@ def _apply_speculative_target_architecture(
     if not target_archs:
         # Nothing to rewrite; the lookup below reports the real problem.
         return None
-    # The Llama and Kimi arms below name DFlash v1 and Eagle graphs, and
-    # neither can verify a DFlash2 block draft. ``is_dflash()`` is true for
-    # v2, so without this both would happily rewrite a DFlash2 pairing onto
+    # The Kimi arm below names DFlash v1 and Eagle graphs, and neither can
+    # verify a DFlash2 block draft. ``is_dflash()`` is true for v2, so
+    # without this the arm would happily rewrite a DFlash2 pairing onto
     # a graph that silently mismatches the drafter. A v2 target selects its
     # own fused arch from its own arm; leaving the name alone here lets the
     # lookup reject a pairing no arm claims.
     v1_or_eagle = not speculative.is_dflash2()
-    if target_archs[0] == "LlamaForCausalLM" and v1_or_eagle:
-        if speculative.is_dflash():
-            target_archs[0] = "UnifiedDflashLlama3ForCausalLM"
-        else:
-            target_archs[0] = "UnifiedEagleLlama3ForCausalLM"
     if target_archs[0] == "KimiK25ForConditionalGeneration" and v1_or_eagle:
         draft_archs = (
             draft_model.huggingface_config.architectures
@@ -765,34 +756,6 @@ def _apply_speculative_target_architecture(
         )
         if draft_archs and draft_archs[0] == "Gemma4AssistantForCausalLM":
             target_archs[0] = "UnifiedMTPGemma4ForCausalLM"
-        elif draft_archs and draft_archs[0] == "DSparkDraftModel":
-            # Speculators-format DSpark drafters (e.g.
-            # RedHatAI/gemma-4-31B-it-speculator.dspark) declare the
-            # generic architectures: ["DSparkDraftModel"].
-            _require_dspark(speculative, draft_archs[0])
-            target_archs[0] = "UnifiedDSparkGemma4_31BForCausalLM"
-        elif (
-            speculative.is_dflash()
-            and draft_archs
-            # z-lab DFlash drafters (e.g. z-lab/gemma-4-31B-it-DFlash)
-            # declare architectures: ["DFlashDraftModel"], which
-            # ``_create_speculative_config_if_needed`` rewrites to
-            # "LlamaForCausalLM" on the CLI-kwargs path (but not the
-            # recipe path) before this runs. Accept both spellings.
-            and draft_archs[0] in ("DFlashDraftModel", "LlamaForCausalLM")
-        ):
-            target_archs[0] = "UnifiedDflashGemma4_31BForCausalLM"
-    # Gemma 4 12B ships as the "gemma4_unified" model line; its DSpark
-    # block drafter declares architectures: ["Gemma4DSparkModel"].
-    if target_archs[0] == "Gemma4UnifiedForConditionalGeneration":
-        draft_archs = (
-            draft_model.huggingface_config.architectures
-            if draft_model is not None
-            else None
-        )
-        if draft_archs and draft_archs[0] == "Gemma4DSparkModel":
-            _require_dspark(speculative, draft_archs[0])
-            target_archs[0] = "UnifiedDSparkGemma4_12BForCausalLM"
     # Nemotron-H's DSpark block drafter declares architectures:
     # ["Qwen3DSparkModel"], the dense Qwen3-style DSpark draft.
     if target_archs[0] == "NemotronHForCausalLM":
@@ -860,9 +823,8 @@ def _apply_speculative_target_architecture(
         elif (
             speculative.is_dflash2()
             and draft_archs
-            # "DFlash2DraftModel" is a registered placeholder arch, so
-            # unlike v1's "DFlashDraftModel" it is never rewritten to
-            # "LlamaForCausalLM" and only the one spelling reaches here.
+            # "DFlash2DraftModel" is a registered placeholder arch, so only
+            # the one spelling reaches here.
             and draft_archs[0] == "DFlash2DraftModel"
         ):
             target_archs[0] = "UnifiedDflash2Qwen3_5ForConditionalGeneration"
@@ -1647,9 +1609,7 @@ class PipelineConfig(ConfigFileModel):
         )
         lora = args.lora.model_copy(deep=True) if args.lora else None
 
-        _apply_speculative_draft_architecture(
-            args.speculative, models.get("draft")
-        )
+        _apply_speculative_draft_architecture(args.speculative, models)
         # Must precede the arch lookups so every consumer resolves the
         # overridden arch (#88511).
         spec_arch: SupportedArchitecture | None = None

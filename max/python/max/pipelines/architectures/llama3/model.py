@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
@@ -24,6 +24,7 @@ from max.driver import Buffer, Device
 from max.engine import InferenceSession, Model
 from max.graph.weights import Weights, WeightsAdapter
 from max.nn.kv_cache import KVCacheInputs
+from max.nn.layer import Module
 from max.nn.transformer import ReturnHiddenStates, ReturnLogits
 from max.pipelines.context import TextContext
 from max.pipelines.lib import (
@@ -39,8 +40,10 @@ from max.pipelines.lib.graph_specs import (
     GraphSpec,
     compile_and_init_graphs,
 )
+from max.pipelines.lib.interfaces.pipeline_model import ModelLoadContext
 from max.pipelines.lib.log_probabilities import LogProbabilitiesMixin
 from max.pipelines.lib.memory_estimation import MemoryPlan
+from max.pipelines.lib.utils import parse_state_dict_from_weights
 from max.profiler import traced
 
 from .batch_processor import Llama3BatchProcessor
@@ -113,6 +116,15 @@ class Llama3Inputs(ModelInputs):
                 else ()
             ),
         )
+
+
+def _load_weights(module: Module, state_dict: Mapping[str, Any]) -> None:
+    module.load_state_dict(
+        state_dict,
+        override_quantization_encoding=True,
+        weight_alignment=1,
+        strict=False,  # TODO(MODELS-550) `rope_freqs.weight` not used
+    )
 
 
 class LlamaModelBase(
@@ -194,19 +206,29 @@ class LlamaModelBase(
         assert self.batch_processor is not None
         return self.batch_processor.process_outputs(model_outputs)
 
-    def _create_model_config(self, state_dict: dict[str, Any]) -> Any:
-        model_config = Llama3Config.initialize(
-            self.pipeline_config, max_seq_len=self.max_seq_len
+    @classmethod
+    def _finalized_config(
+        cls, context: ModelLoadContext, state_dict: dict[str, Any]
+    ) -> Llama3Config:
+        config = Llama3Config.initialize(
+            context.pipeline_config, max_seq_len=context.max_seq_len
         )
-        model_config.finalize(
-            huggingface_config=self.huggingface_config,
+        config.finalize(
+            huggingface_config=context.huggingface_config,
             state_dict=state_dict,
-            norm_method=self.norm_method,
-            attention_bias=self.attention_bias,
-            return_logits=self.return_logits,
-            return_hidden_states=self.return_hidden_states,
+            norm_method=cls.norm_method,
+            attention_bias=cls.attention_bias,
+            return_logits=context.return_logits,
+            return_hidden_states=context.return_hidden_states,
         )
-        return model_config
+        if context.target_layer_ids:
+            config.target_layer_ids = list(context.target_layer_ids)
+        return config
+
+    def _create_model_config(self, state_dict: dict[str, Any]) -> Any:
+        return self._finalized_config(
+            ModelLoadContext.from_pipeline_model(self), state_dict
+        )
 
     @traced
     def load_model(self, session: InferenceSession) -> Model:
@@ -283,12 +305,7 @@ class LlamaModelBase(
 
     def _tensor_parallel_spec(self, model_config: Llama3Config) -> GraphSpec:
         dist_model = DistributedLlama3(model_config)
-        dist_model.load_state_dict(
-            self.state_dict,
-            override_quantization_encoding=True,
-            weight_alignment=1,
-            strict=False,  # TODO(MODELS-550) `rope_freqs.weight` not used
-        )
+        _load_weights(dist_model, self.state_dict)
         return GraphSpec(
             dist_model,
             getattr(self.huggingface_config, "model_type", "llama3"),
@@ -298,12 +315,7 @@ class LlamaModelBase(
 
     def _single_device_spec(self, model_config: Llama3Config) -> GraphSpec:
         single_model = Llama3(model_config)
-        single_model.load_state_dict(
-            self.state_dict,
-            override_quantization_encoding=True,
-            weight_alignment=1,
-            strict=False,  # TODO(MODELS-550) `rope_freqs.weight` not used
-        )
+        _load_weights(single_model, self.state_dict)
         return GraphSpec(
             single_model,
             "llama3",
@@ -345,3 +357,33 @@ class Llama3Model(LlamaModelBase):
             max_batch_size=max_batch_size,
             memory_plan=memory_plan,
         )
+
+    @classmethod
+    def build_module(
+        cls, context: ModelLoadContext
+    ) -> tuple[Module, Llama3Config]:
+        """Builds the Llama 3 module on one device or tensor-parallel.
+
+        Defined here rather than on :class:`LlamaModelBase`, whose other
+        subclasses build modules of their own.
+
+        Raises:
+            ValueError: If the config is data-parallel, whose replicas the
+                data-parallel graph builds itself.
+        """
+        state_dict = parse_state_dict_from_weights(
+            context.pipeline_config, context.weights, context.adapter
+        )
+        config = cls._finalized_config(context, state_dict)
+        if config.data_parallel_degree > 1:
+            raise ValueError(
+                "Llama 3 builds data-parallel replicas inside its graph;"
+                " there is no single module to return."
+            )
+        module: Module = (
+            DistributedLlama3(config)
+            if len(config.devices) > 1
+            else Llama3(config)
+        )
+        _load_weights(module, state_dict)
+        return module, config

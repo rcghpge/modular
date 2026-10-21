@@ -43,9 +43,6 @@ from typing_extensions import Self
 from ..deepseekV3.model_config import DeepseekV3Config
 from ..dflash_kimi_k25 import DFlashKimiK25DraftConfig
 from ..kimik2_5.model_config import KimiK2_5TextConfig
-from ..unified_dflash_llama3.model_config import (
-    resolve_dflash_num_speculative_tokens,
-)
 
 __all__ = [
     "DflashDraftHFConfig",
@@ -55,6 +52,27 @@ __all__ = [
 ]
 
 logger = logging.getLogger("max.pipelines")
+
+
+def resolve_dflash_num_speculative_tokens(
+    pipeline_config: PipelineConfig,
+    *,
+    warn: bool = True,
+) -> int:
+    """Returns the resolved DFlash draft width.
+
+    The DFlash drafter's behavior is only defined at its trained
+    ``block_size``, so the width is ``block_size - 1``; a mismatching
+    explicit ``num_speculative_tokens`` is overridden with a warning. When
+    the draft checkpoint declares no ``block_size``, an explicit
+    ``--num-speculative-tokens`` is required and returned as-is. Pure: the
+    caller's config is never mutated or copied.
+    """
+    assert pipeline_config.speculative is not None
+    assert pipeline_config.draft_model is not None
+    return parse_dflash_draft_hf_config(
+        pipeline_config.draft_model.huggingface_config
+    ).draft_width(pipeline_config.speculative, warn=warn)
 
 
 @dataclass(kw_only=True)
