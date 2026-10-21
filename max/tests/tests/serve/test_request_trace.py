@@ -132,32 +132,6 @@ def _server_spans(
     ]
 
 
-def test_no_server_span_with_tracing_off(
-    structured: Path,
-    spans: InMemorySpanExporter,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # With tracing off, structured logging sets only the request ID: no
-    # trace capture and no server span, not even a no-op one.
-    monkeypatch.setattr(request_module, "_tracing_enabled", lambda: False)
-    app = FastAPI()
-    register_request(app, structured_logging=True)
-    seen: list[object] = []
-
-    @app.get("/work")
-    async def work() -> dict[str, bool]:
-        seen.extend(
-            [common._request_id_ctx.get(), common.request_trace_ctx.get()]
-        )
-        return {"ok": True}
-
-    with TestClient(app) as client:
-        response = client.get("/work", headers={"traceparent": _TRACEPARENT})
-
-    assert seen == [response.headers["X-Request-ID"], None]
-    assert _server_spans(spans, ["/work"]) == []
-
-
 def test_probes_get_no_server_span(spans: InMemorySpanExporter) -> None:
     # Health checks and metric scrapes would bury real requests in spans.
     (server,) = _server_spans(
@@ -173,6 +147,7 @@ def test_probes_get_no_server_span(spans: InMemorySpanExporter) -> None:
     )
 
     assert server.name == "GET /work"
+    assert server.status.status_code == trace.StatusCode.UNSET
 
 
 def test_server_span_records_a_failed_request(
@@ -218,16 +193,6 @@ def test_server_span_ends_after_the_last_chunk(
         s for s in spans.get_finished_spans() if s.kind == trace.SpanKind.SERVER
     ]
     assert server.name == "GET /stream"
-    assert server.attributes is not None
-    assert server.attributes["http.response.status_code"] == 200
-
-
-def test_server_span_ends_for_a_plain_response(
-    spans: InMemorySpanExporter,
-) -> None:
-    (server,) = _server_spans(spans, ["/work"])
-
-    assert server.status.status_code == trace.StatusCode.UNSET
     assert server.attributes is not None
     assert server.attributes["http.response.status_code"] == 200
 

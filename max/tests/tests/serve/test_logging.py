@@ -450,10 +450,12 @@ def test_otlp_export_without_tracing_carries_no_request_id(
         )
     )
     common._request_id_ctx.set("req-1234")
+    common._batch_id_ctx.set(7)
     _emit("max.serve", logging.WARNING, "handled")
 
     rendered = json.loads(log_path.read_text().splitlines()[0])
     assert rendered["request_id"] == "req-1234"
+    assert "batch_id" not in rendered
     assert "dd.trace_id" not in rendered
     assert exported, "expected the handler to export a record"
     for attributes in exported:

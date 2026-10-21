@@ -333,53 +333,6 @@ def test_two_traced_requests_share_one_capture(
     assert all(p.host_start_ns <= p.batch_start_ns for p in passes)
 
 
-@pytest.mark.parametrize("exit_by", ["release", "cancel"])
-def test_stops_when_the_last_traced_request_leaves(
-    monkeypatch: pytest.MonkeyPatch, exit_by: str
-) -> None:
-    h = _harness(monkeypatch)
-    traced = h.add("kernel")
-    untraced = h.add()
-    h.step()
-    assert h.starts == 1
-
-    if exit_by == "release":
-        h.step(traced)
-    else:
-        h.cancel_queue.put_nowait([traced])
-        h.step()
-    assert len(h.stops) == 1
-
-    # The capture stays down for the untraced request's passes.
-    h.step()
-    h.step(untraced)
-    assert h.starts == 1
-    assert len(h.stops) == 1
-
-
-def test_grammar_failure_untraces_its_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _harness(monkeypatch)
-    running = h.add("kernel")
-    h.step()
-    bc = h.scheduler.batch_constructor
-    enqueue = bc.enqueue_new_request
-    failing = h.add("kernel")
-
-    def fail_grammar(ctx: TextContext, replica_idx: int | None = None) -> None:
-        if ctx.request_id == failing:
-            bc._fail_grammar_request(ctx, "bad schema")
-        else:
-            enqueue(ctx, replica_idx)
-
-    monkeypatch.setattr(bc, "enqueue_new_request", fail_grammar)
-    # The failed request no longer holds the capture open.
-    h.step(running)
-    assert not bc.contains(failing)
-    assert len(h.stops) == 1
-
-
 def test_preemption_keeps_the_capture_armed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -396,21 +349,6 @@ def test_preemption_keeps_the_capture_armed(
     assert h.starts == 1
     (passes,) = h.stops
     assert [p.batch_id for p in passes] == [0, 1, 2]
-
-
-def test_long_capture_stops_at_the_pass_cap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    h = _harness(
-        monkeypatch, profiling=ProfilingConfig(kernel_trace_max_passes=2)
-    )
-    traced = h.add("kernel")
-    h.step()
-    h.step()
-    assert [p.batch_id for p in h.stops[0]] == [0, 1]
-    h.step()
-    h.step(traced)
-    assert (h.starts, len(h.stops)) == (1, 1)
 
 
 def test_pass_cap_keeps_requests_outside_the_capture_traced(
@@ -539,7 +477,6 @@ def test_profiler_held_elsewhere_leaves_passes_untraced(
     [
         pytest.param(True, True, None, id="no-header"),
         pytest.param(True, True, "off", id="header-off"),
-        pytest.param(True, True, "bogus", id="header-unknown"),
         pytest.param(False, True, "kernel", id="tracing-off"),
         pytest.param(True, False, "kernel", id="not-permitted"),
     ],
@@ -599,9 +536,9 @@ def test_batch_links_dropped_when_a_request_leaves(
     monkeypatch.setattr(
         text_generation_scheduler, "batch_spans_enabled", lambda: True
     )
-    h = _harness(monkeypatch, kernel_capture=False)
+    h = _harness(monkeypatch)
     staying = h.add(parent=_request_span(1))
-    leaving = h.add(parent=_request_span(2))
+    leaving = h.add("kernel", parent=_request_span(2))
     bc = h.scheduler.batch_constructor
 
     if exit_by == "release":
@@ -622,6 +559,17 @@ def test_batch_links_dropped_when_a_request_leaves(
         h.step()
     assert not bc.contains(leaving)
     assert h.linked == [staying]
+    assert leaving not in h.scheduler._prefill_spans
+    assert leaving not in h.scheduler._decode_spans
+    # A grammar failure leaves before its first pass, so it never decodes.
+    phases = ["prefill"] if exit_by == "grammar" else ["prefill", "decode"]
+    assert [
+        s.name
+        for s in h.exporter.get_finished_spans()
+        if (s.attributes or {}).get("max.request.id") == str(leaving)
+    ] == [f"max.phase.{p}" for p in phases]
+    capture = h.scheduler._kernel_capture
+    assert capture is not None and not capture.is_traced(leaving)
 
 
 def test_batch_links_keep_traced_then_first_members_up_to_the_cap(

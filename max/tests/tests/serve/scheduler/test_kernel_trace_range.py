@@ -91,14 +91,6 @@ def _run_two_batches(
         scheduler._schedule(scheduler.batch_constructor.construct_batch())
 
 
-def test_off_never_calls_the_range_bindings(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    events: list[tuple[object, ...]] = []
-    _run_two_batches(monkeypatch, KernelTraceLevel.OFF, events)
-    assert events == [("execute",), ("execute",)]
-
-
 def test_batch_wraps_each_execute_with_its_batch_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

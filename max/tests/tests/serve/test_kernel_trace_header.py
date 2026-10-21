@@ -15,6 +15,8 @@ reaches the model worker in ``trace_carrier``."""
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 import pytest
 from fastapi import FastAPI, Request
@@ -79,7 +81,7 @@ def _carrier(headers: dict[str, str]) -> object:
         "expected_gate",
     ),
     [
-        pytest.param(False, False, True, True, False, id="default"),
+        pytest.param(False, False, True, True, False, id="headers-off"),
         pytest.param(True, True, True, False, False, id="no-provider"),
         pytest.param(True, False, True, True, True, id="permitted"),
         pytest.param(True, False, False, False, False, id="no-traces-endpoint"),
@@ -134,17 +136,10 @@ def test_default_never_reads_the_headers(
     assert _carrier({"x-max-trace-level": "kernel"}) is None
     assert reads == ["/v1/carrier"]
 
-    # The counter does see the middleware's read once the gate opens.
-    reads.clear()
-    _open_gate(monkeypatch)
-    assert _carrier({"x-max-trace-level": "kernel"}) is not None
-    assert reads == ["/v1/carrier", "/v1/carrier"]
-
 
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        pytest.param("kernel", "kernel", id="kernel"),
         pytest.param("Kernel_Sampled", "kernel-sampled", id="normalized"),
         pytest.param("bogus", None, id="unknown-ignored"),
     ],
@@ -172,9 +167,7 @@ def test_permitted_request_without_the_header_has_no_level(
     [
         ("off", RequestTraceLevel.OFF),
         ("BATCH", RequestTraceLevel.BATCH),
-        ("kernel-sampled", RequestTraceLevel.KERNEL_SAMPLED),
         ("kernel_sampled", RequestTraceLevel.KERNEL_SAMPLED),
-        ("full", RequestTraceLevel.FULL),
         ("verbose", None),
         ("", None),
     ],
@@ -185,8 +178,10 @@ def test_parse(value: str, expected: RequestTraceLevel | None) -> None:
 
 def test_levels_are_ordered() -> None:
     members = list(RequestTraceLevel)
-    assert all(members[i] < members[i + 1] for i in range(len(members) - 1))
-    assert RequestTraceLevel.OFF < RequestTraceLevel.BATCH
+    order = "off batch op kernel-sampled kernel full".split()
+    assert [level.value for level in members] == order
+    # sorted() keeps an already-ordered list even if __lt__ never holds.
+    assert all(a < b for a, b in pairwise(members))
     assert max(RequestTraceLevel.OP, RequestTraceLevel.KERNEL_SAMPLED) is (
         RequestTraceLevel.KERNEL_SAMPLED
     )

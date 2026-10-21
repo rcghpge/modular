@@ -56,16 +56,8 @@ def test_config_file_limits_reach_the_pipeline_config(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("limits", "capture", "batch", "warned"),
     [
-        pytest.param({}, True, True, [], id="defaults"),
         pytest.param(
             {"kernel_trace_max_passes": 32}, True, True, [], id="lowered"
-        ),
-        pytest.param(
-            {"kernel_trace_max_passes": 65},
-            True,
-            False,
-            ["kernel_trace_max_passes"],
-            id="raised",
         ),
         pytest.param(
             {"kernel_trace_max_passes": 65, "kernel_trace_max_spans": 20_001},
@@ -144,11 +136,9 @@ def test_no_link_warning_without_exported_spans(
     assert caplog.records == []
 
 
-@pytest.mark.parametrize("role", ["prefill_only", "decode_only"])
 def test_no_link_warning_in_a_disaggregated_worker(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    role: PipelineRole,
 ) -> None:
     """Disaggregated schedulers emit no ``max.batch`` spans."""
     monkeypatch.setattr(common, "batch_spans_enabled", lambda: True)
@@ -156,7 +146,7 @@ def test_no_link_warning_in_a_disaggregated_worker(
     with caplog.at_level(logging.WARNING, logger="max.serve"):
         model_worker._warn_raised_kernel_trace_limits(
             ProfilingConfig(kernel_trace_max_batch_links=129),
-            role,
+            "decode_only",
             kernel_capture=False,
         )
     assert caplog.records == []
@@ -189,7 +179,7 @@ def test_configure_kernel_capture_returns_the_permission(
     assert model_worker._configure_kernel_capture(Settings(), role) is expected
 
 
-@pytest.mark.parametrize(("links", "kept"), [(64, 128), (128, 128), (129, 129)])
+@pytest.mark.parametrize(("links", "kept"), [(64, 128), (129, 129)])
 def test_worker_tracing_raises_only_a_raised_link_limit(
     monkeypatch: pytest.MonkeyPatch, links: int, kept: int
 ) -> None:

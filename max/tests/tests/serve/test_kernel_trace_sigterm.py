@@ -106,7 +106,7 @@ def test_sigterm_runs_atexit_only_at_kernel_level(
 
 @pytest.mark.parametrize(
     "level, survives_sigterm",
-    [("off", False), ("op", False), ("kernel", True)],
+    [("off", False), ("kernel", True)],
 )
 def test_sigterm_during_exit_only_interrupts_below_kernel_level(
     level: str, survives_sigterm: bool

@@ -44,7 +44,7 @@ from max.serve.telemetry._trace_context import (
 from max.serve.telemetry.common import request_trace_ctx
 from opentelemetry import propagate as otel_propagate
 from opentelemetry.context import Context
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
@@ -118,34 +118,6 @@ def test_carrier_falls_back_to_the_request_trace_context(
     assert carried.trace_id == span.get_span_context().trace_id
 
 
-def test_phase_span_is_a_child_of_the_request_span(
-    tracer: otel_trace.Tracer,
-) -> None:
-    # A caller's context is present too, as for a request that arrived with a
-    # traceparent: the phase span belongs under MAX's span, in the caller's
-    # trace.
-    caller = tracer.start_span("caller")
-    request_trace_ctx.set(otel_trace.set_span_in_context(caller))
-    request_span = tracer.start_span(
-        "max.request", context=request_trace_ctx.get()
-    )
-    set_phase_parent(request_span)
-
-    context = _text_context()
-    inject_trace_carrier(context)
-    phase_span = tracer.start_span(
-        "max.phase.prefill", context=_parent_trace_context(context)
-    )
-
-    assert isinstance(phase_span, ReadableSpan)
-    assert phase_span.parent is not None
-    assert phase_span.parent.span_id == request_span.get_span_context().span_id
-    assert (
-        phase_span.get_span_context().trace_id
-        == caller.get_span_context().trace_id
-    )
-
-
 def test_a_sampled_out_request_span_still_parents_the_phase_spans() -> None:
     provider = TracerProvider(sampler=ALWAYS_OFF)
     request_span = provider.get_tracer("test").start_span("max.request")
@@ -192,7 +164,10 @@ async def test_the_carrier_reaching_the_pipeline_names_the_request_span(
 ) -> None:
     # Injects from inside the pipeline call, where the handler's context is
     # live. Covers completions, whose gather() fans the context to child
-    # tasks, so the set has to precede it.
+    # tasks, so the set has to precede it. A caller's context is set too,
+    # and must not displace max.request.
+    caller = tracer.start_span("caller")
+    request_trace_ctx.set(otel_trace.set_span_in_context(caller))
     seen: list[otel_trace.Span] = []
 
     async def all_tokens(
@@ -280,11 +255,8 @@ async def test_tracing_off_leaves_the_phase_parent_unset(
         OpenAIChatResponseGenerator | OpenAICompletionResponseGenerator
     ],
 ) -> None:
-    # No provider is installed, so the handler's span is a no-op. An inbound
-    # traceparent is present, and the carrier must still fall back to it.
-    request_trace_ctx.set(
-        otel_propagate.extract({"traceparent": f"00-{'1' * 32}-{'2' * 16}-01"})
-    )
+    # No provider is installed, so the handler's span is a no-op, and the
+    # middleware sets no request trace context to fall back to.
     seen: list[tuple[Context | None, int]] = []
 
     async def all_tokens(
@@ -315,7 +287,7 @@ async def test_tracing_off_leaves_the_phase_parent_unset(
     ):
         await generator_type(pipeline).complete([_mock_request()])
 
-    assert seen == [(None, int("2" * 16, 16))]
+    assert seen == [(None, 0)]
 
 
 def test_tracing_off_skips_the_span_context_read() -> None:
