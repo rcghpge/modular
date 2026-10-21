@@ -60,7 +60,7 @@ from std.builtin.device_passable import (
 )
 from std.compile.compile import CompiledFunctionInfo
 from std.reflection import reflect, reflect_fn
-from std.memory import Pointer, unsafe_memcpy, unsafe_stack_allocation
+from std.memory import Pointer, unsafe_stack_allocation
 from std.memory import alloc, dealloc, ThinAllocation, Layout, MaybeUninit
 from std.memory.unsafe import bitcast
 
@@ -72,8 +72,6 @@ from std.builtin._coroutine import (
 
 from std.utils import Variant
 from std.utils._serialize import _serialize_elements
-from std.utils.static_tuple import StaticTuple
-
 from .info import _device_type_encoder_target, is_cpu
 
 from max.gpu.host.info import get_gpu_info, default_accelerator
@@ -133,29 +131,6 @@ struct _CompletionFlagCpp:
 
 struct _DeviceContextScopeCpp:
     pass
-
-
-# Callable structs parameterized by a capturing function type cannot implement
-# `DevicePassable` in user code: that bound makes every method `capturing thin`.
-# Bit-copy those kernels into a size/alignment bag (no function-type parameter)
-# so the RegisterPassable `enqueue_function` overload can encode the bag.
-@align(alignment)
-@fieldwise_init
-struct _LaunchBits[size: Int, alignment: Int](
-    DevicePassable, ImplicitlyCopyable, RegisterPassable
-):
-    var storage: StaticTuple[UInt8, Self.size]
-
-    comptime device_type: AnyType = Self
-
-    def _to_device_type(
-        self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
-    ):
-        encoder.encode(self, target)
-
-    @staticmethod
-    def get_type_name() -> String:
-        return "_LaunchBits"
 
 
 comptime _DeviceContextPtr[
@@ -5392,7 +5367,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
     @inline(.always)
     def enqueue_function[
-        FuncType: RegisterPassable & def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         //,
         dump_asm: _DumpPath = False,
         dump_llvm: _DumpPath = False,
@@ -5414,10 +5389,9 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
         Callable structs that store a capturing function value cannot implement
         `DevicePassable` (that generic bound makes every method `capturing
-        thin`). This overload bit-copies the kernel into a `DevicePassable` bag
-        and compiles `FuncType.__call__`, matching the previous raw-bytes
-        launch. Capturing closures that do conform to `DevicePassable` use the
-        encoding overload instead.
+        thin`). This overload compiles `FuncType.__call__` and passes `func`
+        by its host layout as the kernel's single argument. Capturing closures
+        that do conform to `DevicePassable` use the encoding overload instead.
 
         Parameters:
             FuncType: The type of the function to launch (usually inferred).
@@ -5454,18 +5428,10 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         )
 
         comptime launch_target = Self.target
-        comptime n = size_of[FuncType, target=launch_target]()
-        comptime a = align_of[FuncType, target=launch_target]()
-        var bits = _LaunchBits[n, a](StaticTuple[UInt8, n]())
-        unsafe_memcpy(
-            dest=Pointer(to=bits.storage).unsafe_bitcast[FuncType](),
-            src=Pointer(to=func),
-            count=1,
-        )
 
         var gpu_kernel = DeviceFunction[
             FuncType.__call__,
-            TypeList.of[Trait=AnyType, _LaunchBits[n, a]](),
+            TypeList.of[Trait=AnyType, FuncType](),
             target=launch_target,
             _ptxas_info_verbose=_ptxas_info_verbose,
         ](
@@ -5482,7 +5448,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
 
         gpu_kernel._call_with_pack_checked(
             self,
-            bits,
+            host_args=(func,),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,

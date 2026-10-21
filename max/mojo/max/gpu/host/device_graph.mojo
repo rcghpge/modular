@@ -33,11 +33,9 @@ from std.collections.optional import OptionalReg
 from std.ffi import c_size_t, external_call
 from std.logger import Logger
 from std.sys import align_of, bit_width_of, size_of
-from std.memory import unsafe_memcpy
 from std.memory.unsafe import bitcast
 from std.reflection import call_location, SourceLocation
 from std.utils.lock import BlockingScopedLock, BlockingSpinLock
-from std.utils.static_tuple import StaticTuple
 from std.builtin.device_passable import DevicePassable
 
 from max.runtime.async_value import AnyAsyncValueRef
@@ -56,7 +54,6 @@ from max.gpu.host.device_context import (
     _DeviceFunctionPtr,
     _DumpPath,
     _FunctionEnqueuer,
-    _LaunchBits,
 )
 
 comptime _logger = Logger()
@@ -1818,7 +1815,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
 
     @inline(.never)
     def add_function[
-        FuncType: RegisterPassable & def() -> None,
+        FuncType: ImplicitlyCopyable & RegisterPassable & def() -> None,
         //,
         dump_asm: _DumpPath = False,
         dump_llvm: _DumpPath = False,
@@ -1837,21 +1834,19 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         func_attribute: OptionalReg[FuncAttribute] = None,
         location: Optional[SourceLocation] = None,
     ) raises -> Self.Node where not conforms_to(FuncType, DevicePassable):
-        """Bit-copies a register-passable capturing closure and adds it as a
-        node.
+        """Adds a register-passable capturing closure as a node.
 
         Callable values parameterized by a capturing function type cannot
         implement `DevicePassable` (that bound makes every method `capturing
-        thin`). This overload is for such closures: it bit-copies the closure
-        into a `DevicePassable` bag (`_LaunchBits`), compiles
-        `FuncType.__call__`, and launches the bag as the single argument.
-        Capturing closures that do conform to `DevicePassable` use the
-        encoding overload above instead.
+        thin`). This overload is for such closures: it compiles
+        `FuncType.__call__` and passes `func` by its host layout as the single
+        argument. Capturing closures that do conform to `DevicePassable` use
+        the encoding overload above instead.
 
         Parameters:
             FuncType: The closure type (usually inferred). Must conform to
-                `RegisterPassable` and be callable with no arguments, and must
-                not conform to `DevicePassable`.
+                `ImplicitlyCopyable` and `RegisterPassable` and be callable
+                with no arguments, and must not conform to `DevicePassable`.
             dump_asm: To dump the compiled assembly, pass `True`, or a file
                 path to dump to, or a function returning a file path.
             dump_llvm: To dump the generated LLVM code, pass `True`, or a file
@@ -1894,18 +1889,10 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         dependencies = self._merge_implicit(dependencies^)
 
         comptime launch_target = DeviceContext.target
-        comptime n = size_of[FuncType, target=launch_target]()
-        comptime a = align_of[FuncType, target=launch_target]()
-        var bits = _LaunchBits[n, a](StaticTuple[UInt8, n]())
-        unsafe_memcpy(
-            dest=Pointer(to=bits.storage).unsafe_bitcast[FuncType](),
-            src=Pointer(to=func),
-            count=1,
-        )
 
         var gpu_kernel = DeviceFunction[
             FuncType.__call__,
-            TypeList.of[Trait=AnyType, _LaunchBits[n, a]](),
+            TypeList.of[Trait=AnyType, FuncType](),
             target=launch_target,
             _ptxas_info_verbose=_ptxas_info_verbose,
         ](self._ctx, func_attribute=func_attribute)
@@ -1920,7 +1907,7 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         var enqueuer = _DeviceGraphBuilderEnqueuer(self, dependencies^)
         gpu_kernel._call_with_pack_checked(
             enqueuer,
-            bits,
+            host_args=(func,),
             grid_dim=grid_dim,
             block_dim=block_dim,
             cluster_dim=cluster_dim,
