@@ -2622,9 +2622,11 @@ struct Struct_router_gate_mixed_gemv:
         def _cast_bf16_to_fp32[
             width: Int, alignment: Int = 1
         ](idx: Coord) {var a_bf16_tt, var a_f32_tt}:
-            var il = coord_to_index_list(idx)
-            a_f32_tt.store_linear(
-                il, a_bf16_tt.load_linear[width](il).cast[.float32]()
+            var a_vec = a_bf16_tt.load[
+                width, alignment=align_of[SIMD[.bfloat16, width]]()
+            ](idx)
+            a_f32_tt.store[alignment=align_of[SIMD[.float32, width]]()](
+                idx, a_vec.cast[.float32]()
             )
 
         elementwise[

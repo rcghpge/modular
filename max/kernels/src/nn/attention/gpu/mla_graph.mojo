@@ -46,7 +46,6 @@ from max.gpu.primitives.grid_controls import (
 from max.gpu.host import DeviceAttribute, DeviceBuffer, DeviceContext
 from max.gpu.host.info import _is_sm10x_gpu
 from max.gpu.primitives.warp import shuffle_xor
-from std.utils.coord import Coord, Idx, coord_to_index_list
 from layout import (
     Coord,
     Idx,
@@ -2930,33 +2929,24 @@ def convert_bf16_to_fp8_e4m3fn(
     ), "Input and output must have the same rank"
 
     @inline(.always)
-    def convert_kernel[
-        width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]) {var}:
-        comptime assert rank == 2 or rank == 3, "rank should be 2 or 3"
+    def convert_kernel[width: Int, alignment: Int = 1](idx: Coord) {var}:
+        comptime assert idx.rank == 2 or idx.rank == 3, "rank should be 2 or 3"
 
-        output_buffer.store_linear(
+        output_buffer.store(
             idx,
-            cast_saturating[.float8_e4m3fn](
-                input_buffer.load_linear[width](idx)
-            ),
+            cast_saturating[.float8_e4m3fn](input_buffer.load[width](idx)),
         )
 
     comptime target_simd_width = simd_width_of[
         DType.bfloat16, target=context.target
     ]()
 
-    def convert_kernel_unified[
-        width: Int, alignment: Int = 1
-    ](idx: Coord) {var convert_kernel}:
-        convert_kernel[width, idx.rank, alignment](coord_to_index_list(idx))
-
     comptime if input_buffer.rank == 2:
         _elementwise_impl_gpu[
             simd_width=target_simd_width,
             trace_description="mla_bf16_to_fp8_convert",
         ](
-            convert_kernel_unified,
+            convert_kernel,
             shape=(
                 Int(input_buffer.dim[0]()),
                 Int(input_buffer.dim[1]()),
@@ -2968,7 +2958,7 @@ def convert_bf16_to_fp8_e4m3fn(
             simd_width=target_simd_width,
             trace_description="mla_bf16_to_fp8_convert",
         ](
-            convert_kernel_unified,
+            convert_kernel,
             shape=(
                 Int(input_buffer.dim[0]()),
                 Int(input_buffer.dim[1]()),

@@ -51,9 +51,8 @@ from std.collections import Optional
 from std.math import ceildiv, round
 from std.sys import align_of
 from std.memory import unsafe_stack_allocation
-from std.utils import IndexList
 
-from layout import TensorEngine, TileTensor, row_major
+from layout import Coord, TensorEngine, TileTensor, row_major
 from layout.tile_layout import TensorLayout
 
 from linalg.arch.apple.mma import MmaOpApple
@@ -261,7 +260,7 @@ struct AppleM5Int8MatMul[
         BN: Threadgroup N-tile width (multiple of `SG_N`).
         BK: K-strip depth per accumulate step (multiple of `MMA_K` = 16;
             default 64 = four 16-wide K-blocks).
-        TTI32: If True, use int32 `load_linear` for the interior A/B loads (faster
+        TTI32: If True, use int32 indexing for the interior A/B loads (faster
             on NA-bound shapes, numerically identical). Auto-selected by
             `enqueue_apple_int8_matmul` when `max(M*K, N*K) < 2^31`, else i64.
 
@@ -422,15 +421,13 @@ struct AppleM5Int8MatMul[
         abs_row: Int,
         abs_k: Int,
     ) -> Array[SIMD[.int8, 8], 4]:
-        """Int32-indexed `_load_frag_x4_int8`: `<16 x i8>` load via absolute
-        `load_linear`. `align=16` keeps the vector load (needs `abs_k % 16 == 0`).
+        """Int32-indexed `_load_frag_x4_int8`: `<16 x i8>` load at an absolute
+        coordinate. `align=16` keeps the vector load (needs `abs_k % 16 == 0`).
         """
         comptime align = 16
-        var lo16 = t32.load_linear[width=16, alignment=align](
-            IndexList[2](abs_row, abs_k)
-        )
-        var hi16 = t32.load_linear[width=16, alignment=align](
-            IndexList[2](abs_row + 8, abs_k)
+        var lo16 = t32.load[width=16, alignment=align](Coord(abs_row, abs_k))
+        var hi16 = t32.load[width=16, alignment=align](
+            Coord(abs_row + 8, abs_k)
         )
         var out = Array[SIMD[.int8, 8], 4](
             fill_with_unrolled=lambda [j: Int]() -> SIMD[.int8, 8]: lo16.slice[

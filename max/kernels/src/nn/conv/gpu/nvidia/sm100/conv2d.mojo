@@ -50,7 +50,7 @@ from layout.tma_async import create_tensor_tile_im2col
 from structured_kernels.tile_types import (
     create_tma_tile,
 )
-from layout import TileTensor, coord
+from layout import Coord, TileTensor, coord
 from layout.tile_layout import row_major
 from linalg.utils import (
     ElementwiseComputeFn,
@@ -58,7 +58,6 @@ from linalg.utils import (
     identity_compute_fn,
     no_epilogue_fn,
 )
-from std.utils.index import IndexList
 from std.utils.static_tuple import StaticTuple
 
 from .conv_config import Conv2dConfig, Conv2dProblemShape
@@ -843,13 +842,12 @@ def im2col[
                                 and iw >= 0
                                 and iw < problem.in_width
                             ):
-                                output.store_linear(
-                                    IndexList[2](m_idx, k_idx),
+                                output.store(
+                                    Coord(m_idx, k_idx),
                                     activation[b, ih, iw, c],
                                 )
                             else:
                                 # Zero padding
-                                output.store_linear(
-                                    IndexList[2](m_idx, k_idx),
-                                    Scalar[dtype](0),
+                                output.store(
+                                    Coord(m_idx, k_idx), Scalar[dtype](0)
                                 )

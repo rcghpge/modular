@@ -26,8 +26,6 @@ from layout._fillers import arange
 from layout.tensor_engine import DefaultEngine
 from std.testing import assert_equal
 
-from std.utils.index import IndexList
-
 
 def test_runtime_and_compile_time_dim_and_stride[
     MType: CoordLike, KType: CoordLike, //
@@ -259,17 +257,13 @@ def test_reshape() raises:
 
 
 def test_aligned_load() raises:
-    """Tests aligned SIMD loads with coordinate and index-list arguments."""
+    """Tests aligned SIMD loads."""
     var tensor = stack_allocation[.float32, alignment=16](row_major[4, 16]())
 
     for column in range(0, 16, 4):
         var expected = SIMD[.float32, 4](Float32(column // 4 + 1))
         tensor.store[alignment=16]((0, column), expected)
         var value = tensor.load[width=4, alignment=16]((0, column))
-        var linear_value = tensor.load_linear[width=4, alignment=16](
-            IndexList[2](0, column)
-        )
-        assert_equal(value, linear_value)
         assert_equal(value, expected)
 
 
@@ -286,11 +280,7 @@ def test_unaligned_load() raises:
             comptime for lane in range(4):
                 expected[lane] = Float32(row * 16 + column + lane)
             var value = tensor.load[width=4, alignment=4]((row, column))
-            var linear_value = tensor.load_linear[width=4, alignment=4](
-                IndexList[2](row, column)
-            )
             assert_equal(value, expected)
-            assert_equal(linear_value, expected)
 
 
 def main() raises:

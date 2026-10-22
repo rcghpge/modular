@@ -4821,7 +4821,7 @@ def _k_cache_to_buffer[
             buffer_row_offsets[buffer_row_offsets.num_elements() - 1]
         )
         if global_token_idx >= real_total_rows:
-            buffer.store_linear(idx, SIMD[dtype, width](0))
+            buffer.store(Coord(idx), SIMD[dtype, width](0))
             return
 
         var batch_idx: Int = get_batch_from_row_offsets(
@@ -4842,7 +4842,7 @@ def _k_cache_to_buffer[
             ).cast[dtype]()
         )
 
-        buffer.store_linear(idx, cache_val)
+        buffer.store(Coord(idx), cache_val)
 
     var launch_shape = Coord(Int(length), Int(buffer.dim[1]()))
     comptime target_simd_width = simd_width_of[dtype, target=context.target]()

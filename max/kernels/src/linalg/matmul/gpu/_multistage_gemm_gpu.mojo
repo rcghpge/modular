@@ -1225,7 +1225,7 @@ def _multistage_gemm_kernel_impl[
             var out = compute_fn[
                 c_type, width, alignment=alignment // size_of[c_type]()
             ]((m, n), vec.cast[c_type]())
-            c_tt.store_linear[alignment=alignment](Index(m, n), out)
+            c_tt.store[alignment=alignment](Coord(m, n), out)
         else:
             epilogue_fn[dtype, width, alignment=alignment]((m, n), vec)
 

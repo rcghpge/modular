@@ -20,7 +20,7 @@ from max.gpu.host import DeviceContext
 from layout import TileTensor
 
 
-from std.utils.coord import Coord
+from std.utils.coord import Coord, coord
 from std.utils.index import IndexList
 
 
@@ -70,8 +70,8 @@ def matrix_band_part[
         output: Mutable output tensor receiving the band-part result.
         ctx: Device context used to launch the elementwise kernel.
     """
-    var lower_diagonal_index = Int(num_lower.load_linear[1](IndexList[1](0)))
-    var upper_diagonal_index = Int(num_upper.load_linear[1](IndexList[1](0)))
+    var lower_diagonal_index = Int(num_lower.load[1](coord[0]))
+    var upper_diagonal_index = Int(num_upper.load[1](coord[0]))
 
     def dispatch[
         exclude: Bool
@@ -100,7 +100,7 @@ def matrix_band_part[
             ctx,
         )
 
-    unswitch(exclude.load_linear[1](IndexList[1](0)) != 0, dispatch)
+    unswitch(exclude.load[1](coord[0]) != 0, dispatch)
 
 
 @inline(.always)

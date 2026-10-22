@@ -749,10 +749,8 @@ struct AMDPingPongMatmul[
                                     )
                                     if col < N:
                                         comptime if has_compute_fn:
-                                            c.store_linear[
-                                                alignment=scalar_align
-                                            ](
-                                                IndexList[2](m, col),
+                                            c.store[alignment=scalar_align](
+                                                Coord(m, col),
                                                 compute_fn[
                                                     Self.c_type, 1, alignment=1
                                                 ](
@@ -777,8 +775,8 @@ struct AMDPingPongMatmul[
                                 )
                                 if n < N:
                                     comptime if has_compute_fn:
-                                        c.store_linear[alignment=scalar_align](
-                                            IndexList[2](m, n),
+                                        c.store[alignment=scalar_align](
+                                            Coord(m, n),
                                             compute_fn[
                                                 Self.c_type,
                                                 c_frag_size,

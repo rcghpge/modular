@@ -15,9 +15,8 @@ from std.math import *
 from std.math.math import _exp_taylor, _ldexp_impl
 from std.math.polynomial import polynomial_evaluate
 from std.ffi import external_call
-from std.sys import llvm_intrinsic, simd_width_of, size_of
+from std.sys import align_of, llvm_intrinsic, simd_width_of, size_of
 from std.sys.arg import argv
-from std.utils import IndexList
 from std.algorithm.functional import vectorize
 from std.benchmark import (
     Bench,
@@ -27,7 +26,7 @@ from std.benchmark import (
     ThroughputMeasure,
     keep,
 )
-from layout import TileTensor, row_major
+from layout import Coord, TileTensor, row_major
 from std.builtin.range import _StridedRange
 from std.compile import compile_info
 from std.memory import (
@@ -53,9 +52,10 @@ def apply[
     output: TileTensor[mut=True, dtype, ...],
 ):
     def _func[width: Int](idx: Int) {imm}:
-        output.store_linear[width=width](
-            IndexList[1](idx),
-            func(input.load_linear[width=width](IndexList[1](idx))),
+        comptime alignment = align_of[SIMD[dtype, width]]()
+        output.store[alignment=alignment](
+            Coord(idx),
+            func(input.load[width=width, alignment=alignment](Coord(idx))),
         )
 
     vectorize[simd_width_of[dtype]()](input.num_elements(), _func)

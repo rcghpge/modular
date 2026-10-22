@@ -2946,7 +2946,7 @@ struct MutableStore:
             )
             idx[0] += 1
             idx[1] += 1
-            buffer.store_linear[width=width](idx, val)
+            buffer.store[width=width](Coord(idx), val)
 
         foreach_out_func[target=target, _trace_name=_trace_name](
             out_func, tensor, ctx

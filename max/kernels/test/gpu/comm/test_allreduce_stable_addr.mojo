@@ -44,11 +44,11 @@ from extensibility.stable_addr_engine import (
     StableTileTensor,
     stable_tile_tensor,
 )
-from layout import Coord, TileTensor, coord_to_index_list, row_major
+from layout import Coord, TileTensor, row_major
 from max.gpu.host import DeviceBuffer, DeviceContext, StableAddr, get_gpu_target
 from max.gpu.primitives.grid_controls import PDLLevel
 from std.testing import assert_almost_equal, assert_true
-from std.utils import IndexList, StaticTuple
+from std.utils import StaticTuple
 
 comptime dtype = DType.float32
 
@@ -183,11 +183,8 @@ def stable_allreduce_test[
                 ](coords: Coord, val: SIMD[_dtype, _width]) {
                     var out_capture
                 } -> None:
-                    out_capture[i].store_linear[
-                        width=_width, alignment=alignment
-                    ](
-                        rebind[IndexList[1]](coord_to_index_list(coords)),
-                        rebind[SIMD[dtype, _width]](val),
+                    out_capture[i].store[width=_width, alignment=alignment](
+                        coords, rebind[SIMD[dtype, _width]](val)
                     )
 
                 _allreduce_p2p[ngpus=ngpus, pdl_level=PDLLevel()](

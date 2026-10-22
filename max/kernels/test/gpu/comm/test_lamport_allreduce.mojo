@@ -45,7 +45,6 @@ from std.random import random_float64, random_si64
 from layout import (
     Coord,
     TileTensor,
-    coord_to_index_list,
     row_major,
 )
 from comm import Signal
@@ -66,7 +65,7 @@ from max.gpu.primitives.grid_controls import PDLLevel
 from std.memory import bitcast
 from std.memory.alloc import unsafe_alloc
 from std.testing import assert_equal, assert_true
-from std.utils import IndexList, StaticTuple
+from std.utils import StaticTuple
 
 # Sizes through the small (Lamport) regime. All must be whole 128-bit packs
 # (simd_width multiples on every target) and within
@@ -238,9 +237,8 @@ def lamport_allreduce_test[
             ](coords: Coord, val: SIMD[_dtype, _width]) {
                 var out_capture
             } -> None:
-                out_capture[i].store_linear[width=_width, alignment=alignment](
-                    rebind[IndexList[1]](coord_to_index_list(coords)),
-                    rebind[SIMD[dtype, _width]](val),
+                out_capture[i].store[width=_width, alignment=alignment](
+                    coords, rebind[SIMD[dtype, _width]](val)
                 )
 
             _allreduce_lamport_p2p[
@@ -434,11 +432,8 @@ def lamport_mixed_size_test[
                 ](coords: Coord, val: SIMD[_dtype, _width]) {
                     var out_capture
                 } -> None:
-                    out_capture[i].store_linear[
-                        width=_width, alignment=alignment
-                    ](
-                        rebind[IndexList[1]](coord_to_index_list(coords)),
-                        rebind[SIMD[dtype, _width]](val),
+                    out_capture[i].store[width=_width, alignment=alignment](
+                        coords, rebind[SIMD[dtype, _width]](val)
                     )
 
                 _allreduce_lamport_p2p[
@@ -952,9 +947,8 @@ def lamport_coexist_test[
             ](coords: Coord, val: SIMD[_dtype, _width]) {
                 var out_capture
             } -> None:
-                out_capture[i].store_linear[width=_width, alignment=alignment](
-                    rebind[IndexList[1]](coord_to_index_list(coords)),
-                    rebind[SIMD[dtype, _width]](val),
+                out_capture[i].store[width=_width, alignment=alignment](
+                    coords, rebind[SIMD[dtype, _width]](val)
                 )
 
             _allreduce_lamport_p2p[
@@ -1123,9 +1117,8 @@ def lamport_unsynced_skew_test[
             ](coords: Coord, val: SIMD[_dtype, _width]) {
                 var out_capture
             } -> None:
-                out_capture[i].store_linear[width=_width, alignment=alignment](
-                    rebind[IndexList[1]](coord_to_index_list(coords)),
-                    rebind[SIMD[dtype, _width]](val),
+                out_capture[i].store[width=_width, alignment=alignment](
+                    coords, rebind[SIMD[dtype, _width]](val)
                 )
 
             _allreduce_lamport_p2p[
@@ -1292,9 +1285,8 @@ def lamport_wrap_test[
             ](coords: Coord, val: SIMD[_dtype, _width]) {
                 var out_capture
             } -> None:
-                out_capture[i].store_linear[width=_width, alignment=alignment](
-                    rebind[IndexList[1]](coord_to_index_list(coords)),
-                    rebind[SIMD[dtype, _width]](val),
+                out_capture[i].store[width=_width, alignment=alignment](
+                    coords, rebind[SIMD[dtype, _width]](val)
                 )
 
             _allreduce_lamport_p2p[

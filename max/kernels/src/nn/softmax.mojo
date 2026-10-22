@@ -267,9 +267,7 @@ def _softmax_3_pass_step_2[
         var elem = vin - SIMD[dtype, simd_width](max_val)
 
         elem = pre_update_func[dtype, simd_width](elem)
-        output.store_linear[width=simd_width, alignment=1](
-            IndexList[1](idx), elem
-        )
+        output.store[width=simd_width, alignment=1](Coord(idx), elem)
         elem = post_update_func[dtype, simd_width](elem)
         reduce_add_simd[outer_simd_width, simd_width, dtype](
             accum_scalar, accum_simd, elem
@@ -304,13 +302,9 @@ def _softmax_3_pass_step_3[
     @inline(.always)
     def step_3[simd_width: Int](idx: Int) {var accum_proc, output}:
         var accum_simd = SIMD[dtype, simd_width](accum_proc)
-        var elem = output.load_linear[width=simd_width, alignment=1](
-            IndexList[1](idx)
-        )
+        var elem = output.load[width=simd_width, alignment=1](Coord(idx))
         elem = accum_apply_func[dtype, simd_width](elem, accum_simd)
-        output.store_linear[width=simd_width, alignment=1](
-            IndexList[1](idx), elem
-        )
+        output.store[width=simd_width, alignment=1](Coord(idx), elem)
 
     vectorize[simd_width, unroll_factor=unroll_factor](
         output.num_elements(), step_3
@@ -646,8 +640,8 @@ def softmax_kernel[
                 # by the outermost coordinate so `coord % num_sinks == head`
                 # holds for any `prompt_len`. For rank-2 inputs
                 # `row_coords[0] == row_idx`, so this is a no-op there.
-                sink_val = sink_weights.load_linear[width=1](
-                    IndexList[1](
+                sink_val = sink_weights.load[width=1](
+                    Coord(
                         umod(
                             Int(row_coords[0]),
                             Int(sink_weights.dim[0]()),

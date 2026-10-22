@@ -31,7 +31,7 @@ from max.gpu import (
 )
 from max.gpu.sync import barrier
 from max.gpu.compute.mma import mma as _mma_intrinsic
-from layout import TensorEngine, TensorLayout, TileTensor
+from layout import Coord, TensorEngine, TensorLayout, TileTensor
 from std.math import ceildiv
 from std.memory import unsafe_stack_allocation
 from std.utils import IndexList
@@ -171,8 +171,8 @@ def _load_b_tile_to_smem[
             var global_row = block_n_offset + row
 
             if global_row < max_n:
-                var vec = tile.load_linear[width=VECTOR_WIDTH](
-                    IndexList[2](global_row, k_offset + col)
+                var vec = tile.load[width=VECTOR_WIDTH](
+                    Coord(global_row, k_offset + col)
                 )
                 smem.unsafe_store(row * SMEM_STRIDE + col, vec)
             else:

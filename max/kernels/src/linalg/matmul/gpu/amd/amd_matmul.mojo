@@ -47,7 +47,7 @@ from layout.swizzle import Swizzle
 from layout.tile_layout import row_major, col_major
 from layout.tile_tensor import stack_allocation
 
-from std.utils import IndexList, StaticTuple
+from std.utils import StaticTuple
 from std.utils.numerics import get_accum_type
 
 from ....utils import (
@@ -611,8 +611,8 @@ struct AMDMatmul[
                                 )
                                 if col < N:
                                     comptime if has_compute_fn:
-                                        c.store_linear[alignment=scalar_align](
-                                            IndexList[2](m, col),
+                                        c.store[alignment=scalar_align](
+                                            Coord(m, col),
                                             compute_fn[
                                                 Self.c_type, 1, alignment=1
                                             ](
@@ -637,8 +637,8 @@ struct AMDMatmul[
                             )
                             if n < N:
                                 comptime if has_compute_fn:
-                                    c.store_linear[alignment=scalar_align](
-                                        IndexList[2](m, n),
+                                    c.store[alignment=scalar_align](
+                                        Coord(m, n),
                                         compute_fn[
                                             Self.c_type,
                                             c_frag_size,

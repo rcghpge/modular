@@ -140,6 +140,13 @@ This version is still a work in progress.
   `((3, 2), (4, 2))` rather than `((2, 3), (2, 4))`. A tile size that doesn't
   split a nested mode on leaf boundaries is now a compile-time error.
 
+- `TileTensor.load_linear()` and `TileTensor.store_linear()` have been removed.
+  Use `TileTensor.load()` and `TileTensor.store()` with a `Coord`, which also
+  work on nested layouts: `t.load_linear[4](IndexList[2](r, c))` becomes
+  `t.load[4](Coord(r, c))`. On CPU, `load()` and `store()` default to the
+  element's alignment rather than the full vector's, so pass `alignment=` to
+  keep a wider one.
+
 - Removed the `max`, `min`, `sum`, `product` and `mean` overloads in
   `max.algorithm` that take an input shape, an `input_fn`, an `output_fn` and
   a `reduce_dim`. To reduce along an axis, use the graph ops (`ops.sum`,

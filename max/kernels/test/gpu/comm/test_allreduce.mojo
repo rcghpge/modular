@@ -18,7 +18,6 @@ from std.memory.alloc import unsafe_alloc
 from layout import (
     Coord,
     TileTensor,
-    coord_to_index_list,
     row_major,
 )
 from comm import Signal, group_start, group_end
@@ -34,7 +33,7 @@ from max.gpu.host import (
 )
 from std.testing import assert_almost_equal, assert_true
 
-from std.utils import IndexList, StaticTuple
+from std.utils import StaticTuple
 
 # Shared test configurations
 comptime test_lengths = (
@@ -192,10 +191,8 @@ def allreduce_test[
             ](coords: Coord, val: SIMD[_dtype, _width]) {
                 var out_tensors_capture
             } -> None:
-                out_tensors_capture[i].store_linear[
-                    width=_width, alignment=alignment
-                ](
-                    rebind[IndexList[1]](coord_to_index_list(coords)),
+                out_tensors_capture[i].store[width=_width, alignment=alignment](
+                    coords,
                     rebind[SIMD[dtype, _width]](
                         -val  # Negate to distinguish from default epilogue
                     ),
@@ -372,11 +369,8 @@ def allreduce_naive_test() raises -> None:
         ](coords: Coord, val: SIMD[_dtype, _width]) {
             var out_tensors_capture
         } -> None:
-            out_tensors_capture[i].store_linear[
-                width=_width, alignment=alignment
-            ](
-                rebind[IndexList[1]](coord_to_index_list(coords)),
-                rebind[SIMD[.float32, _width]](val),
+            out_tensors_capture[i].store[width=_width, alignment=alignment](
+                coords, rebind[SIMD[.float32, _width]](val)
             )
 
         _allreduce_naive_single[dtype=DType.float32, ngpus=ngpus](

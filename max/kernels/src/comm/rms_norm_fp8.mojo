@@ -27,6 +27,7 @@ from max.gpu.host import DeviceContext
 from max.gpu.primitives import block
 from max.gpu.primitives.grid_controls import PDL, pdl_launch_attributes
 from layout import (
+    Coord,
     TensorLayout,
     TensorEngine,
     TileTensor,
@@ -553,7 +554,7 @@ def _rms_norm_fused_fp8_gpu_launch[
         width: Int
     ](row: Int, col: Int, val: SIMD[out_dtype, width]) {var output}:
         """Write output to buffer."""
-        output.store_linear[width=width](IndexList[2](row, col), val)
+        output.store[width=width](Coord(row, col), val)
 
     comptime if use_warp_tiling:
         comptime kernel = _rms_norm_fused_fp8_kernel_warp_tiling[

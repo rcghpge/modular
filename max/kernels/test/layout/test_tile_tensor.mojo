@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.utils.index import IndexList
 from layout import (
     ComptimeInt,
     Coord,
@@ -869,7 +868,7 @@ def test_coalesce_element_size() raises:
         assert_equal(coalesced[i], Int32(i))
 
 
-def test_load_store_linear_row_major() raises:
+def test_load_store_row_major() raises:
     # 3x4 row-major: strides are (4, 1)
     var data = Array[Int32, 12](fill=0)
     for i in range(12):
@@ -877,28 +876,28 @@ def test_load_store_linear_row_major() raises:
 
     var tensor = TileTensor(data, row_major(Idx[3], Idx[4]))
 
-    # Verify load_linear at known positions.
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 0))), 0)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 3))), 30)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](1, 0))), 40)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](2, 3))), 110)
+    # Verify load at known positions.
+    assert_equal(Int(tensor.load[1](coord[0, 0])), 0)
+    assert_equal(Int(tensor.load[1](coord[0, 3])), 30)
+    assert_equal(Int(tensor.load[1](coord[1, 0])), 40)
+    assert_equal(Int(tensor.load[1](coord[2, 3])), 110)
 
     # Verify vectorized load (width=2).
-    var vec = tensor.load_linear[2](IndexList[2](1, 0))
+    var vec = tensor.load[2](coord[1, 0])
     assert_equal(Int(vec[0]), 40)
     assert_equal(Int(vec[1]), 50)
 
-    # Verify store_linear.
-    tensor.store_linear(IndexList[2](0, 1), Int32(999))
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 1))), 999)
+    # Verify store.
+    tensor.store(coord[0, 1], Int32(999))
+    assert_equal(Int(tensor.load[1](coord[0, 1])), 999)
 
     # Verify vectorized store (width=2).
-    tensor.store_linear(IndexList[2](2, 0), SIMD[.int32, 2](77, 88))
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](2, 0))), 77)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](2, 1))), 88)
+    tensor.store(coord[2, 0], SIMD[.int32, 2](77, 88))
+    assert_equal(Int(tensor.load[1](coord[2, 0])), 77)
+    assert_equal(Int(tensor.load[1](coord[2, 1])), 88)
 
 
-def test_load_store_linear_non_trivial_stride() raises:
+def test_load_store_non_trivial_stride() raises:
     # 2x3 column-major: shape (2,3), strides (1,2) — non-contiguous access
     var data = Array[Int32, 6](fill=0)
     for i in range(6):
@@ -924,16 +923,16 @@ def test_load_store_linear_non_trivial_stride() raises:
     # (1,1) -> offset 3 -> data[3] = 3
     # (0,2) -> offset 4 -> data[4] = 4
     # (1,2) -> offset 5 -> data[5] = 5
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 0))), 0)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](1, 0))), 1)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 1))), 2)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](1, 1))), 3)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](0, 2))), 4)
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](1, 2))), 5)
+    assert_equal(Int(tensor.load[1](coord[0, 0])), 0)
+    assert_equal(Int(tensor.load[1](coord[1, 0])), 1)
+    assert_equal(Int(tensor.load[1](coord[0, 1])), 2)
+    assert_equal(Int(tensor.load[1](coord[1, 1])), 3)
+    assert_equal(Int(tensor.load[1](coord[0, 2])), 4)
+    assert_equal(Int(tensor.load[1](coord[1, 2])), 5)
 
     # Store and verify.
-    tensor.store_linear(IndexList[2](1, 1), Int32(42))
-    assert_equal(Int(tensor.load_linear[1](IndexList[2](1, 1))), 42)
+    tensor.store(coord[1, 1], Int32(42))
+    assert_equal(Int(tensor.load[1](coord[1, 1])), 42)
     # Verify underlying data: offset 3 should be 42.
     assert_equal(Int(data[3]), 42)
 
@@ -1230,12 +1229,12 @@ def test_tile_nested_row_pair_grid() raises:
                     assert_equal(Int(a[Coord(r, c)]), expected)
                     assert_equal(Int(b[Coord(r, c)]), expected)
     assert_equal(
-        String(static_grid.tile[32, 32](Coord(1, 1)).layout),
+        String(static_grid.tile[32, 32](coord[1, 1]).layout),
         "(((2, 16), 32):((1, 64), 2))",
     )
 
     # A tile can end inside a leaf: 16 rows keep (2, 8) of (2, 16, 3).
-    var half = static_grid.tile[16, 32](Coord(3, 1))
+    var half = static_grid.tile[16, 32](coord[3, 1])
     assert_equal(String(half.layout), "(((2, 8), 32):((1, 64), 2))")
     for r in range(16):
         for c in range(32):
@@ -1244,7 +1243,7 @@ def test_tile_nested_row_pair_grid() raises:
             )
 
     # Flat indices address the leaves of a nested tile.
-    var tile = static_grid.tile[32, 32](Coord(2, 0))
+    var tile = static_grid.tile[32, 32](coord[2, 0])
     tile[1, 3, 5] = -1
     assert_equal(data[_row_pair_offset(64 + 7, 5)], -1)
     # One index per mode works too.

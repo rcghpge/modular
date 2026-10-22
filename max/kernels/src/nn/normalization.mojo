@@ -63,7 +63,6 @@ from max.runtime.tracing import Trace, TraceLevel, trace_arg
 from std.builtin.device_passable import DevicePassable, DeviceTypeEncoder
 from std.reflection import reflect
 from std.utils.coord import ComptimeInt, CoordLike
-from std.utils.index import Index
 from std.utils.static_tuple import StaticTuple
 from std.utils.numerics import get_accum_type, max_finite, min_finite
 from comm.rms_norm_fp8 import rms_norm_fused_fp8
@@ -3068,9 +3067,9 @@ struct _RMSNormQuantizeFp8GroupKernel[
             ](group_max, self.scale_ub)
 
             if lane_in_group == 0:
-                scales.store_linear(Index(group_idx, row), scale_factor)
-            output.store_linear(
-                Index(row, col),
+                scales.store(Coord(group_idx, row), scale_factor)
+            output.store(
+                Coord(row, col),
                 fp8_quantize[Self.out_dtype](normed, scale_recip),
             )
 

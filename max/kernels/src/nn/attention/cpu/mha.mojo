@@ -36,6 +36,7 @@ from layout import (
     Coord,
     TileTensor,
     UNKNOWN_VALUE,
+    coord,
     row_major,
 )
 from layout.coord import coord_to_index_list
@@ -286,16 +287,17 @@ struct _Matmul[dtype: DType, simd_width: Int]:
                 # input tensor.
                 comptime for i in range(transpose_width):
                     var val = input_b_fn[simd_width=transpose_width](n + i, k)
-                    transpose_buffer.store_linear[width=transpose_width](
-                        Index(i, 0), val
+                    transpose_buffer.store[alignment=align_of[type_of(val)]()](
+                        coord[i, 0], val
                     )
 
                 transpose_inplace[4, 4](transpose_buffer)
 
                 comptime for i in range(transpose_width):
-                    var val = transpose_buffer.load_linear[
-                        width=transpose_width
-                    ](Index(i, 0))
+                    var val = transpose_buffer.load[
+                        width=transpose_width,
+                        alignment=align_of[SIMD[Self.dtype, transpose_width]](),
+                    ](coord[i, 0])
                     packed_ptr.unsafe_store((k + i) * aligned_n + n, val)
 
             else:

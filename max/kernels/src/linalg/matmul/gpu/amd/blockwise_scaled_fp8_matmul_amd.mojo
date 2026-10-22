@@ -365,15 +365,13 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                     var tid = Int(warp_id()) * WARP_SIZE + Int(lane_id())
                     for i in range(tid, BM * n_oob, num_threads):
                         var row, col = divmod(i, n_oob)
-                        a_tail.store_linear(
-                            Index(row, c_valid + col),
-                            Scalar[a_type](0),
+                        a_tail.store(
+                            Coord(row, c_valid + col), Scalar[a_type](0)
                         )
                     for i in range(tid, BN * n_oob, num_threads):
                         var row, col = divmod(i, n_oob)
-                        b_tail.store_linear(
-                            Index(row, c_valid + col),
-                            Scalar[a_type](0),
+                        b_tail.store(
+                            Coord(row, c_valid + col), Scalar[a_type](0)
                         )
                     barrier()
 
@@ -409,7 +407,7 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                     var m = warp_tile_m + m_mma * MMA_M + lane_row
                     var m_idx = min(m, M - 1)
                     var a_s = rebind[Scalar[a_scales_type]](
-                        a_scales.load_linear(Index(k_blk, a_scale_col + m_idx))
+                        a_scales.load(Coord(k_blk, a_scale_col + m_idx))
                     ).cast[accum_type]()
 
                     comptime for n_mma in range(num_n_mmas):
@@ -420,7 +418,7 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                         )
                         var nb = min(n0, N - 1) // N_SCALE
                         var b_s = rebind[Scalar[b_scales_type]](
-                            b_scales.load_linear(Index(nb, k_blk))
+                            b_scales.load(Coord(nb, k_blk))
                         ).cast[accum_type]()
                         var scale = a_s * b_s
 
@@ -452,7 +450,7 @@ def blockwise_scaled_fp8_matmul_amd_tile[
                 comptime for e in range(c_frag_size):
                     var col = n0 + e
                     if col < N:
-                        c.store_linear(Index(c_row_base + m, col), v[e])
+                        c.store(Coord(c_row_base + m, col), v[e])
 
 
 @__llvm_metadata(

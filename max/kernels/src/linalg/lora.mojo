@@ -16,7 +16,7 @@
 from max.gpu.host import DeviceContext
 from linalg.grouped_matmul import grouped_matmul, naive_grouped_matmul
 
-from std.utils import Index, IndexList
+from std.utils import Index
 from layout.tensor_engine import DefaultEngine, DevicePointerEngine
 from layout import (
     Coord,
@@ -135,8 +135,8 @@ def shrink_qkv_permute_3mn_sm100(
         # tensor.
         # The permdim tensor has the shape 3 x M x N, so the index is then
         # [new_j, i, new_k].
-        c_lora.store_linear[width=width, alignment=alignment](
-            IndexList[3](new_j, i, new_k), val.cast[c_type]()
+        c_lora.store[width=width, alignment=alignment](
+            Coord(new_j, i, new_k), val.cast[c_type]()
         )
 
     # Run grouped_matmul and apply permute_dim_lora as the elementwise epilogue.
@@ -359,17 +359,16 @@ def expand_qkv_sm100(
         var token = Int(idx[0])
         var j = Int(idx[1])
         if j < q_dim:
-            q_out.store_linear[width=width, alignment=alignment](
-                IndexList[2](token, j), val.cast[q_type]()
+            q_out.store[width=width, alignment=alignment](
+                Coord(token, j), val.cast[q_type]()
             )
         elif j < q_dim + kv_dim:
-            kv_out.store_linear[width=width, alignment=alignment](
-                IndexList[2](token, j - q_dim), val.cast[kv_type]()
+            kv_out.store[width=width, alignment=alignment](
+                Coord(token, j - q_dim), val.cast[kv_type]()
             )
         else:
-            kv_out.store_linear[width=width, alignment=alignment](
-                IndexList[2](M + token, j - q_dim - kv_dim),
-                val.cast[kv_type](),
+            kv_out.store[width=width, alignment=alignment](
+                Coord(M + token, j - q_dim - kv_dim), val.cast[kv_type]()
             )
 
     # The SM100 tensor-core path selects the P-plane once per output-D tile, so a

@@ -47,7 +47,7 @@ from std.logger import Logger
 from std.memory import bitcast
 from max.runtime.tracing import Trace, TraceLevel, trace_arg
 from max.algorithm import elementwise
-from std.utils.coord import Coord, Idx, coord_to_index_list
+from std.utils.coord import Coord, Idx
 from std.utils.index import Index, IndexList, StaticTuple
 from std.utils.numerics import get_accum_type, max_finite
 
@@ -121,14 +121,12 @@ def quantize_static_scaled_fp8[
     ), "output dtype should be float8_e4m3fn or float8_e4m3fnuz"
 
     @inline(.always)
-    def scaled_fp8_quant[
-        width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]) {var}:
-        comptime assert rank == 2, "rank should be equal to 2"
+    def scaled_fp8_quant[width: Int, alignment: Int = 1](idx: Coord) {var}:
+        comptime assert idx.rank == 2, "rank should be equal to 2"
 
-        var in_vec_f32 = in_tensor.load_linear[width](idx).cast[.float32]()
+        var in_vec_f32 = in_tensor.load[width](idx).cast[.float32]()
         var inversed_scale: Float32 = 1.0 / scale
-        out_tensor.store_linear(
+        out_tensor.store(
             idx,
             fp8_quantize[out_dtype, use_clamp=True](in_vec_f32, inversed_scale),
         )
@@ -137,16 +135,11 @@ def quantize_static_scaled_fp8[
         in_dtype, target=context.target
     ]()
 
-    def scaled_fp8_quant_unified[
-        width: Int, alignment: Int = 1
-    ](idx: Coord) {var scaled_fp8_quant}:
-        scaled_fp8_quant[width, idx.rank, alignment](coord_to_index_list(idx))
-
     _elementwise_impl_gpu[
         simd_width=target_simd_width,
         trace_description="scaled_fp8_quant",
     ](
-        scaled_fp8_quant_unified,
+        scaled_fp8_quant,
         shape=(Int(in_tensor.dim[0]()), Int(in_tensor.dim[1]())),
         ctx=context,
     )
@@ -205,7 +198,7 @@ def max_reduction_scale_kernel[
     with PDL():
         for e in range(tid, hidden_size, num_threads):
             var v = abs(
-                input_tensor.load_linear(Index(row, e)).cast[.float32]()
+                input_tensor.load(Coord(row, e)).cast[.float32]()
             ).reduce_max()
             thread_max = max(thread_max, v)
 
@@ -778,7 +771,7 @@ struct _QuantizeFp8Kernel[
                 )
 
                 if tid == 0:
-                    scales.store_linear(Index(group_idx, row), scale_factor)
+                    scales.store(Coord(group_idx, row), scale_factor)
 
                 for i in range(
                     tid, Self.group_size // Self.simd_width, Self.num_threads
@@ -795,8 +788,8 @@ struct _QuantizeFp8Kernel[
                             alignment=Self.simd_width,
                         ](row, idx).cast[accum_type]()
 
-                    output.store_linear(
-                        Index(row, idx),
+                    output.store(
+                        Coord(row, idx),
                         fp8_quantize[Self.out_type](
                             input_vec, scale_factor_recip
                         ),
@@ -884,8 +877,8 @@ struct _ComputeScalesFp8Kernel[
             ](thread_max)
 
             if tid == 0:
-                scales.store_linear(
-                    Index(group_idx, row), group_max.cast[Self.scales_type]()
+                scales.store(
+                    Coord(group_idx, row), group_max.cast[Self.scales_type]()
                 )
 
 
@@ -939,7 +932,7 @@ struct _ReducePerTensorScaleFp8Kernel[
                     thread_max = max(
                         thread_max,
                         rebind[Scalar[Self.scales_type]](
-                            scales.load_linear(Index(g, r))
+                            scales.load(Coord(g, r))
                         ),
                     )
 
@@ -954,7 +947,7 @@ struct _ReducePerTensorScaleFp8Kernel[
 
             comptime for g in range(Self.num_groups):
                 for r in range(tid, num_rows, Self.num_threads):
-                    scales.store_linear(Index(g, r), scale_factor)
+                    scales.store(Coord(g, r), scale_factor)
 
 
 @fieldwise_init
@@ -1022,7 +1015,7 @@ struct _QuantizeFp8KernelPerTensor[
             # near-zero tensor quantizes to fp8 zero instead of 0 * Inf.
             var scale_factor_recip = guarded_inv_scale(
                 rebind[Scalar[Self.scales_type]](
-                    scales.load_linear(Index(group_idx, row))
+                    scales.load(Coord(group_idx, row))
                 ).cast[accum_type]()
             )
 
@@ -1034,8 +1027,8 @@ struct _QuantizeFp8KernelPerTensor[
                     width=Self.simd_width,
                     alignment=Self.simd_width,
                 ](row, idx).cast[accum_type]()
-                output.store_linear(
-                    Index(row, idx),
+                output.store(
+                    Coord(row, idx),
                     fp8_quantize[Self.out_type](input_vec, scale_factor_recip),
                 )
 
@@ -1199,9 +1192,7 @@ struct _BatchedQuantizeFp8Kernel[
             ](group_max, scale_ub)
 
             if tid == 0:
-                scales.store_linear(
-                    Index(batch_idx, group_idx, row), scale_factor
-                )
+                scales.store(Coord(batch_idx, group_idx, row), scale_factor)
 
             for i in range(
                 tid, Self.group_size // Self.simd_width, Self.num_threads
@@ -1216,8 +1207,8 @@ struct _BatchedQuantizeFp8Kernel[
                         alignment=Self.simd_width,
                     ](batch_idx, row, idx).cast[accum_type]()
 
-                output.store_linear(
-                    Index(batch_idx, row, idx),
+                output.store(
+                    Coord(batch_idx, row, idx),
                     fp8_quantize[Self.out_type](input_vec, scale_factor_recip),
                 )
 
@@ -1869,12 +1860,12 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
 
     var accum = Scalar[accum_type](0)
     for k in range(K):
-        var a_val = rebind[Scalar[a_type]](a.load_linear(Index(x, k))).cast[
+        var a_val = rebind[Scalar[a_type]](a.load(Coord(x, k))).cast[
             accum_type
         ]()
         var a_scale_factor = rebind[Scalar[a_scales_type]](
-            a_scales.load_linear(
-                Index(
+            a_scales.load(
+                Coord(
                     k // MAT_A_ROWS_SCALE_SIZE,
                     ufloordiv(x, MAT_A_COLS_SCALE_SIZE),
                 )
@@ -1885,24 +1876,24 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
         var b_scale_factor: Scalar[accum_type]
 
         comptime if transpose_b:
-            b_val = rebind[Scalar[b_type]](b.load_linear(Index(y, k))).cast[
+            b_val = rebind[Scalar[b_type]](b.load(Coord(y, k))).cast[
                 accum_type
             ]()
             b_scale_factor = rebind[Scalar[b_scales_type]](
-                b_scales.load_linear(
-                    Index(
+                b_scales.load(
+                    Coord(
                         ufloordiv(y, MAT_B_ROWS_SCALE_SIZE),
                         k // MAT_B_COLS_SCALE_SIZE,
                     )
                 )
             ).cast[accum_type]()
         else:
-            b_val = rebind[Scalar[b_type]](b.load_linear(Index(k, y))).cast[
+            b_val = rebind[Scalar[b_type]](b.load(Coord(k, y))).cast[
                 accum_type
             ]()
             b_scale_factor = rebind[Scalar[b_scales_type]](
-                b_scales.load_linear(
-                    Index(
+                b_scales.load(
+                    Coord(
                         k // MAT_B_ROWS_SCALE_SIZE,
                         ufloordiv(y, MAT_B_COLS_SCALE_SIZE),
                     )
@@ -1914,7 +1905,7 @@ def naive_blockwise_scaled_fp8_matmul_kernel[
     comptime if has_epilogue_fn:
         epilogue_fn[c_type, 1, alignment=1]((x, y), accum.cast[c_type]())
     else:
-        c.store_linear(Index(x, y), accum.cast[c_type]())
+        c.store(Coord(x, y), accum.cast[c_type]())
 
 
 def naive_blockwise_scaled_fp8_grouped_matmul[
@@ -2188,12 +2179,10 @@ def convert_e4m3fn_to_e4m3fnuz(
     )
 
     @inline(.always)
-    def convert_kernel[
-        width: Int, rank: Int, alignment: Int = 1
-    ](idx: IndexList[rank]) {var}:
-        comptime assert rank == 2, "rank should be equal to 2"
+    def convert_kernel[width: Int, alignment: Int = 1](idx: Coord) {var}:
+        comptime assert idx.rank == 2, "rank should be equal to 2"
 
-        var input_vec_e4m3fn = input_buffer.load_linear[width](idx)
+        var input_vec_e4m3fn = input_buffer.load[width](idx)
         var input_vec_int8 = bitcast[.int8](input_vec_e4m3fn)
 
         comptime ROCM_FP8_NAN_AS_INT = -128
@@ -2202,22 +2191,17 @@ def convert_e4m3fn_to_e4m3fnuz(
             Int8(0), input_vec_int8
         )
         var output_vec = bitcast[.float8_e4m3fnuz](input_vec_int8)
-        output_buffer.store_linear(idx, output_vec)
+        output_buffer.store(idx, output_vec)
 
     comptime target_simd_width = simd_width_of[
         DType.float8_e4m3fn, target=context.target
     ]()
 
-    def convert_kernel_unified[
-        width: Int, alignment: Int = 1
-    ](idx: Coord) {var convert_kernel}:
-        convert_kernel[width, idx.rank, alignment](coord_to_index_list(idx))
-
     _elementwise_impl_gpu[
         simd_width=target_simd_width,
         trace_description="fp8_e4m3fn_to_e4m3fnuz_convert",
     ](
-        convert_kernel_unified,
+        convert_kernel,
         shape=(
             Int(input_buffer.dim[0]()),
             Int(input_buffer.dim[1]()),

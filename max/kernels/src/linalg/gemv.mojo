@@ -67,7 +67,6 @@ from std.logger import Logger
 from std.memory import bitcast, unsafe_stack_allocation
 from std.utils import IndexList
 from std.utils.coord import Coord
-from std.utils.index import Index
 from std.utils.numerics import get_accum_type
 from std.utils.static_tuple import StaticTuple
 
@@ -3293,9 +3292,9 @@ struct _MmaCpAsyncGmemLoaderA[
                 var m_idx, k_idx = divmod(linear, Self.tile_k)
                 var gmem_k = self._k_project(k_idx) + gmem_a_off
                 if self.preds[v]:
-                    var offset = self.act._linear_offset(
-                        Index(self.batch_idx, self.cta_m + m_idx, gmem_k)
-                    )
+                    var offset = self.act.layout[
+                        linear_idx_type=type_of(self.act).linear_idx_type
+                    ](Coord(self.batch_idx, self.cta_m + m_idx, gmem_k))
                     async_copy[16, bypass_L1_16B=True, l2_prefetch=128](
                         gmem_base.unsafe_offset(Int(offset)),
                         smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),
@@ -3433,9 +3432,9 @@ struct _MmaCpAsyncGmemLoaderB[
                 var n_idx, k_idx = divmod(linear, Self.tile_k)
                 var gmem_k = self._k_project(k_idx) + gmem_b_off
                 if self.preds[v]:
-                    var offset = self.weight._linear_offset(
-                        Index(self.batch_idx, self.cta_n + n_idx, gmem_k)
-                    )
+                    var offset = self.weight.layout[
+                        linear_idx_type=type_of(self.weight).linear_idx_type
+                    ](Coord(self.batch_idx, self.cta_n + n_idx, gmem_k))
                     async_copy[16, bypass_L1_16B=True, l2_prefetch=128](
                         gmem_base.unsafe_offset(Int(offset)),
                         smem_tile_ptr.unsafe_offset(self.smem_offsets[v]),

@@ -24,7 +24,6 @@ from layout import Idx, TensorLayout, TensorEngine, TileTensor
 from layout.coord import Coord
 from std.math import ceildiv
 from std.sys import size_of
-from std.utils import IndexList
 from std.utils.numerics import get_accum_type
 
 from ....utils import (
@@ -85,9 +84,9 @@ def _mma8_k_block[
     comptime for mi in range(NT_M):
         var row = mi * MMA8_DIM + frow
         if INTERIOR or row_base + row < m:
-            a_runs[mi] = a_slab.load_linear[
+            a_runs[mi] = a_slab.load[
                 width=A_W, alignment=A_W * size_of[a_type]()
-            ](IndexList[2](row, kb + fcol * KW))
+            ](Coord(row, kb + fcol * KW))
         else:
             a_runs[mi] = SIMD[a_type, A_W](0)
 
@@ -97,9 +96,9 @@ def _mma8_k_block[
             comptime for e in range(FRAG8):
                 var col = ni * MMA8_DIM + fcol + e
                 if INTERIOR or col_base + col < n:
-                    b_runs[2 * ni + e] = b_slab.load_linear[
+                    b_runs[2 * ni + e] = b_slab.load[
                         width=KW, alignment=KW * size_of[b_type]()
-                    ](IndexList[2](col, kb + frow * KW))
+                    ](Coord(col, kb + frow * KW))
                 else:
                     b_runs[2 * ni + e] = SIMD[b_type, KW](0)
 
@@ -118,15 +117,13 @@ def _mma8_k_block[
                 var krow = kb + frow * KW + s
                 var col = ni * MMA8_DIM + fcol
                 if INTERIOR or col_base + col + 1 < n:
-                    bfrag[ni] = b_slab.load_linear[
+                    bfrag[ni] = b_slab.load[
                         width=FRAG8, alignment=size_of[b_type]()
-                    ](IndexList[2](krow, col))
+                    ](Coord(krow, col))
                 else:
                     var bf = SIMD[b_type, FRAG8](0)
                     if col_base + col < n:
-                        bf[0] = b_slab.load_linear[width=1](
-                            IndexList[2](krow, col)
-                        )
+                        bf[0] = b_slab.load[width=1](Coord(krow, col))
                     bfrag[ni] = bf
         comptime for mi in range(NT_M):
             comptime for ni in range(NT_N):
@@ -224,8 +221,8 @@ def _mma8_store[
             comptime if INTERIOR:
                 # Odd `n` allows only element alignment.
                 comptime if has_compute_fn:
-                    c.store_linear[alignment=size_of[c_type]()](
-                        IndexList[2](row, col),
+                    c.store[alignment=size_of[c_type]()](
+                        Coord(row, col),
                         compute_fn[c_type, FRAG8, alignment=size_of[c_type]()](
                             (row, col), frag
                         ),
@@ -235,16 +232,14 @@ def _mma8_store[
                         (row, col), frag
                     )
                 else:
-                    c.store_linear[alignment=size_of[c_type]()](
-                        IndexList[2](row, col), frag
-                    )
+                    c.store[alignment=size_of[c_type]()](Coord(row, col), frag)
             else:
                 comptime for s in range(FRAG8):
                     if row < m and col + s < n:
                         var y = SIMD[c_type, 1](frag[s])
                         comptime if has_compute_fn:
-                            c.store_linear[alignment=size_of[c_type]()](
-                                IndexList[2](row, col + s),
+                            c.store[alignment=size_of[c_type]()](
+                                Coord(row, col + s),
                                 compute_fn[c_type, 1, alignment=1](
                                     (row, col + s), y
                                 ),
@@ -254,8 +249,8 @@ def _mma8_store[
                                 (row, col + s), y
                             )
                         else:
-                            c.store_linear[alignment=size_of[c_type]()](
-                                IndexList[2](row, col + s), y
+                            c.store[alignment=size_of[c_type]()](
+                                Coord(row, col + s), y
                             )
 
 

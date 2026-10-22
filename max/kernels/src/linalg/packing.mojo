@@ -227,9 +227,9 @@ struct PackMatrixRows[
                     # This is fastest path where both row and col bounds
                     #  are skipped so the code path is simd-in and simd-out
                     #  without any predicate.
-                    row_data = self.original_matrix.load_linear[
+                    row_data = self.original_matrix.load[
                         width=Self.simd_size, alignment=1
-                    ](row_global_index)
+                    ](Coord(row_global_index))
                 else:
                     # Not skipping col bound, need to do a partial fill of
                     #  the transpose buffer row.
@@ -247,16 +247,13 @@ struct PackMatrixRows[
                         0,
                     )
 
-                transpose_buffer.store_linear[
-                    width=Self.simd_size, alignment=1
-                ](Index(inner_row_idx, 0), row_data)
+                transpose_buffer.store[width=Self.simd_size, alignment=1](
+                    Coord(inner_row_idx, 0), row_data
+                )
             else:
                 # Row out of defined bound, fill the transpose buffer with zero
-                transpose_buffer.store_linear[
-                    width=Self.simd_size, alignment=1
-                ](
-                    Index(inner_row_idx, 0),
-                    SIMD[Self.dtype, Self.simd_size](0),
+                transpose_buffer.store[width=Self.simd_size, alignment=1](
+                    Coord(inner_row_idx, 0), SIMD[Self.dtype, Self.simd_size](0)
                 )
 
         # Transpose the buffered data
@@ -267,19 +264,17 @@ struct PackMatrixRows[
         # Write to packed space:
         #  transposed_inner_row_idx now corresponds to the original column idx.
         comptime for idx in range(Self.simd_size):
-            var transposed_data = transpose_buffer.load_linear[
+            var transposed_data = transpose_buffer.load[
                 width=Self.simd_size, alignment=1
-            ](Index(idx, 0))
+            ](Coord(idx, 0))
             # compute the packed index
             var _row_outer, _row_inner = divmod(
                 local_off_set[0], Self.row_inner_size
             )
 
             if skip_col_bound or (idx < write_bound[1]):
-                self.packed_matrix.store_linear[
-                    width=Self.simd_size, alignment=1
-                ](
-                    Index(
+                self.packed_matrix.store[width=Self.simd_size, alignment=1](
+                    Coord(
                         _row_outer,
                         local_off_set[1] + idx,
                         _row_inner,
@@ -466,9 +461,9 @@ struct PackMatrixCols[
             var valid_cols = Int(self.valid_data_dim[1])
             var data = SIMD[Self.dtype, Self.simd_size](0)
             if skip_col_bound or (col_idx + Self.simd_size <= valid_cols):
-                data = self.original_matrix.load_linear[
+                data = self.original_matrix.load[
                     width=Self.simd_size, alignment=1
-                ](global_idx)
+                ](Coord(global_idx))
             elif col_idx < valid_cols:
                 # Starting point within bound but cannot load a whole
                 #  vector. Do a partial load.
@@ -487,8 +482,8 @@ struct PackMatrixCols[
             var col_idx_outer, col_idx_inner = divmod(
                 col_idx, Self.column_inner_size
             )
-            self.packed_matrix.store_linear[width=Self.simd_size, alignment=1](
-                Index(
+            self.packed_matrix.store[width=Self.simd_size, alignment=1](
+                Coord(
                     col_idx_outer,
                     row_idx,
                     col_idx_inner,
@@ -544,14 +539,14 @@ struct PackMatrixCols[
                         var local_idx = Index(i + l, p + nr * j)
                         var val = 0 if local_idx[0] >= kc or local_idx[
                             1
-                        ] >= nc else self.original_matrix.load_linear[width=1](
-                            Index(
+                        ] >= nc else self.original_matrix.load[width=1](
+                            Coord(
                                 Int(self.global_offset[0]) + local_idx[0],
                                 Int(self.global_offset[1]) + local_idx[1],
                             )
                         )
-                        self.packed_matrix.store_linear[width=1](
-                            Index(
+                        self.packed_matrix.store[width=1](
+                            Coord(
                                 j,
                                 i // vnni_cols,
                                 vnni_cols * p + l,
@@ -575,16 +570,14 @@ struct PackMatrixCols[
                             var local_idx = Index(i + i2, nr * j + p + p2)
                             var val = 0 if local_idx[0] >= kc or local_idx[
                                 1
-                            ] >= nc else self.original_matrix.load_linear[
-                                width=1
-                            ](
-                                Index(
+                            ] >= nc else self.original_matrix.load[width=1](
+                                Coord(
                                     Int(self.global_offset[0]) + local_idx[0],
                                     Int(self.global_offset[1]) + local_idx[1],
                                 )
                             )
-                            self.packed_matrix.store_linear[width=1](
-                                Index(
+                            self.packed_matrix.store[width=1](
+                                Coord(
                                     j,
                                     i // i8mm_cols,
                                     i8mm_cols * p + i8mm_cols * p2 + i2,

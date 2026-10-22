@@ -31,6 +31,7 @@ from max.gpu.host.info import is_cpu, is_gpu
 from internal_utils.fp8_utils import fp8_quantize
 from builtin_primitives.primitives import foreach
 from layout import (
+    Coord,
     TileTensor,
     UNKNOWN_VALUE,
     coord_to_index_list,
@@ -170,7 +171,7 @@ struct RMSNormFusedQuantizeDynamicScaledFP8:
             var row = 0
             comptime for i in range(rank - 1):
                 row = row * in_shape[i] + Int(coords[i])
-            scale_t.store_linear[width=1, alignment=1](IndexList[1](row), val)
+            scale_t.store[width=1, alignment=1](Coord(row), val)
 
         # Static row width (when known) enables the register-cached row path.
         comptime cols = Int(input.static_spec.shape_tuple[rank - 1])
