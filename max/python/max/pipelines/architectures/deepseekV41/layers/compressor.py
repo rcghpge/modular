@@ -23,6 +23,8 @@ from max.nn.layer import Module
 from max.nn.linear import Linear
 from max.nn.norm.rms_norm import RMSNorm
 
+from .ragged import V41RaggedRows as RaggedRows
+
 _KERNEL_HEAD_DIM = 512
 """The only latent width the pooling ops support."""
 
@@ -41,16 +43,31 @@ def workspace_bytes(compress_ratio: int, head_dim: int = 512) -> int:
     )
 
 
+def ring_slots(state: PagedCacheValues, rows: RaggedRows) -> TensorValue:
+    """Returns each row's ``[T]`` int32 slot in its request's state ring,
+    ``block * ring_rows + position % ring_rows``, where the block is column
+    zero of the ring leaf's lookup table."""
+    ring_rows = int(state.kv_blocks.shape[3])
+    bid = ops.cast(rows.bid, DType.int32)
+    first_col = ops.constant(0, DType.int32, bid.device).broadcast_to(bid.shape)
+    block = ops.gather_nd(
+        state.lookup_table, ops.stack([bid, first_col], axis=-1)
+    )
+    return ops.cast(block, DType.int32) * ring_rows + ops.cast(
+        rows.positions % ring_rows, DType.int32
+    )
+
+
 class DeepseekV41Compressor(Module):
     """Pools packed token rows and returns pre-RoPE BF16 latents.
 
     A group of ``compress_ratio`` consecutive tokens of a request pools into
     one latent, written on the row of the token closing the group. At ratio
-    two a pair can straddle forwards: every token's ``raw`` row is saved to a
-    paged state leaf, and a request starting at an odd position pools its
-    first pair with the row saved at the position before it. Nothing checks
-    that row's origin, so a request may resume at an odd position only when
-    the same request wrote that row.
+    two a pair can straddle forwards: a request's last rows are saved to its
+    state ring, and a request starting at an odd position pools its first
+    pair with the row saved at the position before it. Nothing checks that
+    row's origin, so a request may resume at an odd position only when the
+    same request's last forward wrote that row.
 
     Args:
         compress_ratio: One for plain normalization, or two for gated pairs.
@@ -142,10 +159,10 @@ class DeepseekV41Compressor(Module):
             positions: Absolute token positions, ``[T]``; each request's rows
                 are consecutive.
             offsets: Packed uint32 request boundaries, ``[B + 1]``.
-            state: Ratio two only: the float32 state leaf, one
-                ``2 * head_dim`` row per token slot.
-            slots: Ratio two only: ``[T]`` int32 state slot of each row,
-                ``block * page_size + position % page_size``.
+            state: Ratio two only: the float32 state ring leaf, one
+                ``2 * head_dim`` row per ring slot.
+            slots: Ratio two only: ``[T]`` int32 ring slot of each row
+                (:func:`ring_slots`).
             layer_idx: Ratio two only: host uint32 index of this layer in
                 ``state``.
 

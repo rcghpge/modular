@@ -2234,3 +2234,39 @@ def test_lookup_serves_a_cross_replica_window() -> None:
     assert len(row) == 3
     assert row[0] is bm.pools[0].null_little_blocks[SLIDING]
     assert not any(block.is_null for block in row[1:])
+
+
+def test_occupancy_adds_up_to_the_pool_counts() -> None:
+    bm = make_manager(
+        {VALUES: full(ratio=1), SCALES: full(ratio=4)},
+        num_huge_blocks=16,
+        enable_prefix_caching=True,
+    )
+    # A finished request leaves its prefix committed but unreferenced.
+    finished = make_ctx_with_tokens([1, 2, 3, 4])
+    bm.claim(finished)
+    decode(bm, finished)
+    bm.release(finished)
+    running = make_ctx_with_tokens([9, 8])
+    bm.claim(running)
+    bm.alloc(running)
+
+    occupancy = bm.occupancy()
+    held = bm.get_req_blocks_per_leaf(running)
+    little = bm.little_block_count()
+    pool = bm.pools[0]
+    for leaf_id, leaf in occupancy.leaves.items():
+        assert leaf.referenced == len(held[leaf_id])
+        assert leaf.cached == len(pool.prefix_caches[leaf_id]) > 0
+        assert leaf.cached + leaf.free == little[leaf_id].free
+        assert leaf.total == little[leaf_id].total
+        assert leaf.used_pct == little[leaf_id].used_pct
+
+    huge = bm.huge_block_count()
+    parked = sum(leaf.parked_huge_blocks for leaf in occupancy.leaves.values())
+    claimed = sum(
+        leaf.claimed_huge_blocks for leaf in occupancy.leaves.values()
+    )
+    assert claimed > 0 and parked > 0
+    assert parked + occupancy.pristine_huge_blocks == huge.free
+    assert claimed + parked + occupancy.pristine_huge_blocks == huge.total

@@ -74,6 +74,7 @@ from .jenga_block_pool import (
     JengaGeometry,
     _pristine_pool_can_satisfy,
     plan_jenga_geometry,
+    stranding_warning,
 )
 from .kv_group_coordinator import KVGroupCoordinatorInterface
 
@@ -98,15 +99,14 @@ class JengaKVCacheManager(JengaBlockManager, PagedKVCacheManagerInterface):
         bytes_per_page = {
             leaf_id: leaf.bytes_per_page for leaf_id, leaf in leaves.items()
         }
-        # A row-addressed leaf reports 1 and so constrains nothing.
-        row_bytes = {
-            leaf_id: leaf.row_bytes for leaf_id, leaf in leaves.items()
+        stride_alignments = {
+            leaf_id: leaf.stride_alignment for leaf_id, leaf in leaves.items()
         }
         n_devices = len(params.devices)
         if n_devices < 1:
             raise ValueError("Jenga KV cache requires at least one device")
         return plan_jenga_geometry(
-            available_bytes // n_devices, bytes_per_page, row_bytes
+            available_bytes // n_devices, bytes_per_page, stride_alignments
         )
 
     @classmethod
@@ -254,6 +254,12 @@ class JengaKVCacheManager(JengaBlockManager, PagedKVCacheManagerInterface):
                     f" (+{geometry.padding_fraction(leaf_id, bytes_per_page[leaf_id]):.2%})"
                 )
             )
+
+        warning = stranding_warning(
+            geometry, len(leaves), available_bytes // len(params.devices)
+        )
+        if warning is not None:
+            logger.warning(warning)
 
         devices = [d.to_device() for d in params.devices]
         slabs = [

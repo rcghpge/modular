@@ -457,9 +457,9 @@ def _bytes_per_token(csa_records: bool) -> dict[str, float]:
 
 def test_kv_bytes_per_token_per_leaf() -> None:
     """bf16 rows take 1 KiB per layer per token in the window and every
-    compressed leaf; records take a 544-byte slot per token in the window
-    and a 344-byte slot per compression group."""
-    unchanged = {"c2a_state": 12288.0, "idx_c2a": 102.0, "idx_c1a": 68.0}
+    compressed leaf; records take a 528-byte slot per token in the window
+    and a 288-byte slot per compression group."""
+    unchanged = {"c2a_state": 192.0, "idx_c2a": 102.0, "idx_c1a": 68.0}
     assert _bytes_per_token(False) == {
         "swa": 43 * 1024.0,
         "c2a": 3 * 1024.0,
@@ -467,16 +467,16 @@ def test_kv_bytes_per_token_per_leaf() -> None:
         **unchanged,
     }
     assert _bytes_per_token(True) == {
-        "swa": 43 * 544.0,
-        "c2a": 3 * 344 / 2,
-        "c1a": 344.0,
+        "swa": 43 * 528.0,
+        "c2a": 3 * 288 / 2,
+        "c1a": 288.0,
         **unchanged,
     }
 
 
 def test_dp4_kv_capacity_per_device() -> None:
     """Context tokens a DP4 device's KV budget holds, counting only the
-    leaves that grow with context: about 4.1x more with records, less the
+    leaves that grow with context: about 4.8x more with records, less the
     record attention's workspaces."""
     hf_config = _real_huggingface_config()
     config = _dp4_config(4)
@@ -509,4 +509,4 @@ def test_dp4_kv_capacity_per_device() -> None:
     }
     assert 60 * GIB < budget < 61 * GIB
     assert 15.1e6 < capacity[False] < 15.2e6
-    assert 62.7e6 < capacity[True] < 62.9e6
+    assert 72.6e6 < capacity[True] < 72.8e6

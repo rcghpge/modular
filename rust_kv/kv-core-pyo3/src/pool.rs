@@ -356,6 +356,29 @@ impl PyJengaBlockPool {
         Ok(self.shared.lock(py).num_free_blocks(cache))
     }
 
+    /// Returns `(referenced, cached, free, claimed_huge_blocks,
+    /// parked_huge_blocks)` for `cache_id`, as `kv_core`'s `CacheOccupancy`.
+    fn occupancy(
+        &self,
+        py: Python<'_>,
+        cache_id: &str,
+    ) -> PyResult<(usize, usize, usize, usize, usize)> {
+        let cache = self.cache(cache_id)?;
+        let occupancy = self.shared.lock(py).occupancy(cache);
+        Ok((
+            occupancy.referenced,
+            occupancy.cached,
+            occupancy.free,
+            occupancy.claimed_huge_blocks,
+            occupancy.parked_huge_blocks,
+        ))
+    }
+
+    #[getter]
+    fn num_pristine_huge_blocks(&self, py: Python<'_>) -> usize {
+        self.shared.lock(py).num_pristine_huge_blocks()
+    }
+
     #[pyo3(signature = (demand, at_capacity = false))]
     fn can_satisfy_demand(
         &self,

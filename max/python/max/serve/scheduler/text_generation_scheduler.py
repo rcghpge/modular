@@ -271,6 +271,10 @@ class TokenGenerationScheduler(Scheduler):
             and self.pipeline.has_pending_outputs()
         )
         if not (inputs or self.support_empty_batches or has_pending_outputs):
+            self.scheduler_logger.log_idle(
+                self.batch_constructor.kv_cache,
+                self.scheduler_config.data_parallel_degree,
+            )
             return SchedulerProgress.NO_PROGRESS
 
         # When the overlap pipeline is actually overlapping, the wall-clock

@@ -204,6 +204,11 @@ class PagedKVCacheManager(PagedKVCacheManagerInterface):
                 "PagedKVCacheManager cannot hold a recurrent state leaf; use"
                 " JengaKVCacheManager, whose slab the state shares."
             )
+        if any(leaf.group_id.is_scratch() for leaf in params.leaves().values()):
+            raise ValueError(
+                "PagedKVCacheManager cannot hold a scratch leaf; use"
+                " JengaKVCacheManager."
+            )
 
         connector_type = params.kv_connector_config.type
         if connector_type != KVConnectorType.null:

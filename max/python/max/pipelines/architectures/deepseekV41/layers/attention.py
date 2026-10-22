@@ -59,7 +59,7 @@ from max.nn.quant_ops import _matmul_float8_mxfp8
 from ...deepseekV4.layers.rope import apply_rope_tail
 from ..layer_resolver import LayerInfo
 from ..model_config import DeepseekV41Config, woa_mxfp8_enabled
-from .compressor import DeepseekV41Compressor
+from .compressor import DeepseekV41Compressor, ring_slots
 from .csa2 import (
     HEAD_DIM,
     MAX_COMPRESSED,
@@ -180,11 +180,12 @@ class CSA2Cache:
     comp_layer_index_by_layer_id: Mapping[int, int]
     """Owning layer id -> its slot index in the main KV and index key caches."""
     state_by_layer: Mapping[int, PagedCacheValues] = field(default_factory=dict)
-    """Owning layer id -> pair-carry cache (``c2a_state``) for ratio two.
+    """Owning layer id -> pair-carry ring (``c2a_state``) for ratio two.
 
-    Holds each token's raw float32 ``wkv`` row then ``wgate`` row by
-    position, so a forward starting at an odd position can pool against row
-    ``start - 1``. Required by every ratio-2 KV-source layer.
+    A request's scratch block of raw float32 ``wkv`` row then ``wgate`` row
+    by ``position % ring_rows``, holding its last forward's rows, so a
+    forward starting at an odd position can pool against row ``start - 1``.
+    Required by every ratio-2 KV-source layer.
     """
 
 
@@ -843,8 +844,8 @@ class CSA2Attention(Module):
             raw: ``[T, head_dim * ratio]`` float32, this layer's
                 ``compressor.project`` output.
             rows: The forward's ragged rows.
-            state: Ratio two only: the layer's ``c2a_state`` leaf. Every
-                row of ``raw`` is saved there, and a request starting at an
+            state: Ratio two only: the layer's ``c2a_state`` ring. The last
+                rows of ``raw`` are saved there, and a request starting at an
                 odd position pools against the row saved before it.
             layer_idx: Ratio two only: host uint32 index of the layer in
                 ``state``.
@@ -859,7 +860,7 @@ class CSA2Attention(Module):
             positions,
             rows.offsets,
             state,
-            None if state is None else index_key_slots(state, rows, ratio=1),
+            None if state is None else ring_slots(state, rows),
             layer_idx,
         )
         # Group ``p // ratio`` closes on the row where ``(p + 1) % ratio`` is

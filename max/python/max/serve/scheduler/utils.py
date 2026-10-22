@@ -23,7 +23,13 @@ from typing import TypeVar
 
 from max.nn.kv_cache.metrics import dkv_tier_degraded
 from max.pipelines.context import TextContext
-from max.pipelines.kv_cache import PagedKVCacheManagerInterface
+from max.pipelines.kv_cache import (
+    JengaKVCacheManager,
+    PagedKVCacheManagerInterface,
+)
+from max.pipelines.kv_cache.paged_kv_cache.jenga_block_manager import (
+    JengaOccupancy,
+)
 from max.pipelines.lib.vision_encoder_cache import (
     VideoEncoderMetrics,
     VisionEncoderMetrics,
@@ -162,6 +168,73 @@ def _format_spec_decode_clause(
         f"incl bonus)"
         f"{per_pos_str} | "
     )
+
+
+def _format_fullest_leaves(
+    occupancy: Sequence[JengaOccupancy], limit: int = 3
+) -> str:
+    """Formats the fullest Jenga leaves across replicas, which admission
+    pressure follows."""
+    ranked = sorted(
+        (
+            (replica_idx, leaf_id, leaf)
+            for replica_idx, snapshot in enumerate(occupancy)
+            for leaf_id, leaf in snapshot.leaves.items()
+        ),
+        key=lambda entry: entry[2].used_pct,
+        reverse=True,
+    )
+    replica_prefix = len(occupancy) > 1
+    leaves = ", ".join(
+        f"{f'r{replica_idx}/' if replica_prefix else ''}{leaf_id} "
+        f"{leaf.used_pct:.1f}% ({leaf.referenced} ref, {leaf.cached} cached, "
+        f"{leaf.free} free of {leaf.total}; {leaf.claimed_huge_blocks} huge "
+        f"claimed, {leaf.parked_huge_blocks} parked)"
+        for replica_idx, leaf_id, leaf in ranked[:limit]
+    )
+    return f"Fullest KV leaves: {leaves} | "
+
+
+def _format_leaf_dump(replica_idx: int, snapshot: JengaOccupancy) -> str:
+    leaves = " | ".join(
+        f"{leaf_id}: {leaf.used_pct:.1f}% used, {leaf.referenced} referenced"
+        f" / {leaf.cached} cached / {leaf.free} free of {leaf.total} pages,"
+        f" {leaf.claimed_huge_blocks} huge blocks claimed /"
+        f" {leaf.parked_huge_blocks} parked"
+        for leaf_id, leaf in snapshot.leaves.items()
+    )
+    return (
+        f"KV leaf occupancy, replica {replica_idx}: "
+        f"{snapshot.pristine_huge_blocks} pristine huge blocks | {leaves}"
+    )
+
+
+def _publish_jenga_occupancy(occupancy: Sequence[JengaOccupancy]) -> None:
+    with METRICS.transaction():
+        for replica_idx, snapshot in enumerate(occupancy):
+            replica = str(replica_idx)
+            for leaf_id, leaf in snapshot.leaves.items():
+                for state, pages in (
+                    ("referenced", leaf.referenced),
+                    ("cached", leaf.cached),
+                    ("free", leaf.free),
+                ):
+                    METRICS.cache_jenga_leaf_pages(
+                        pages, replica=replica, leaf=leaf_id, state=state
+                    )
+                for state, blocks in (
+                    ("claimed", leaf.claimed_huge_blocks),
+                    ("parked", leaf.parked_huge_blocks),
+                ):
+                    METRICS.cache_jenga_huge_blocks(
+                        blocks, replica=replica, leaf=leaf_id, state=state
+                    )
+            METRICS.cache_jenga_huge_blocks(
+                snapshot.pristine_huge_blocks,
+                replica=replica,
+                leaf="none",
+                state="pristine",
+            )
 
 
 @dataclass
@@ -357,6 +430,10 @@ class BatchMetrics:
     # when the batch did no video encoding. The video log clause and video
     # metrics are gated on this being non-None.
     video_metrics: VideoEncoderMetrics | None = None
+
+    # Per-replica Jenga pool snapshots. Each scans its pool, so they are
+    # taken only for batches that log. None otherwise, and for other caches.
+    jenga_occupancy: list[JengaOccupancy] | None = None
 
     @classmethod
     def create(
@@ -768,6 +845,8 @@ class BatchMetrics:
                 )
             else:
                 kv_str = f"{usage_str} | "
+        if self.jenga_occupancy:
+            kv_str += _format_fullest_leaves(self.jenga_occupancy)
 
         host_kv_str = ""
         if self.total_host_kv_bytes != 0:
@@ -1453,11 +1532,17 @@ def publish_completed_batch_metrics(
 class SchedulerLogger:
     """Class to periodically log batch-level metrics to console."""
 
-    def __init__(self, log_interval_s: float | None = None):
+    def __init__(
+        self,
+        log_interval_s: float | None = None,
+        leaf_dump_interval_s: float | None = None,
+    ):
         """Initializes the SchedulerLogger.
 
         Args:
             log_interval_s: How frequently to log CE and TG batches, in seconds.
+            leaf_dump_interval_s: How frequently to log every Jenga leaf's
+                occupancy, busy or idle, in seconds.
         """
 
         if log_interval_s is None:
@@ -1474,6 +1559,42 @@ class SchedulerLogger:
 
         # The last time we last logged a CE or TG batch.
         self.time_of_last_log = 0.0
+
+        if leaf_dump_interval_s is None:
+            leaf_dump_interval_s = float(
+                os.getenv("MAX_SERVE_KV_LEAF_DUMP_INTERVAL_S", "60")
+            )
+        self.leaf_dump_interval_s = leaf_dump_interval_s
+        self.time_of_last_leaf_dump = 0.0
+
+    def _sample_jenga(
+        self,
+        kv_cache: PagedKVCacheManagerInterface | None,
+        num_replicas: int,
+        now: float,
+    ) -> list[JengaOccupancy] | None:
+        """Publishes the per-leaf gauges, logging every leaf when due."""
+        if not isinstance(kv_cache, JengaKVCacheManager):
+            return None
+        occupancy = [kv_cache.occupancy(r) for r in range(num_replicas)]
+        _publish_jenga_occupancy(occupancy)
+        if self.leaf_dump_interval_s < now - self.time_of_last_leaf_dump:
+            self.time_of_last_leaf_dump = now
+            for replica_idx, snapshot in enumerate(occupancy):
+                logger.info(_format_leaf_dump(replica_idx, snapshot))
+        return occupancy
+
+    def log_idle(
+        self, kv_cache: PagedKVCacheManagerInterface | None, num_replicas: int
+    ) -> None:
+        """Logs every Jenga leaf while no batch runs, at the dump interval.
+
+        Pages an idle pool still holds have no running request to explain
+        them, so this is where a leak or a pinned huge block shows.
+        """
+        now = time.monotonic()
+        if self.leaf_dump_interval_s < now - self.time_of_last_leaf_dump:
+            self._sample_jenga(kv_cache, num_replicas, now)
 
     def log_metrics(
         self,
@@ -1563,6 +1684,9 @@ class SchedulerLogger:
         if self.log_interval_s < time_since_last_log:
             # Reset the time of the last log.
             self.time_of_last_log = now
+            metrics.jenga_occupancy = self._sample_jenga(
+                kv_cache, sch_config.data_parallel_degree, now
+            )
             if batch_id is not None:
                 # Not ``extra``: the OTLP log handler exports extras.
                 batch_id_token = _batch_id_ctx.set(batch_id)

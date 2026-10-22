@@ -407,17 +407,15 @@ def _validate_is_2d_uint8_buffer(buffer: Buffer) -> None:
         raise ValueError("KVCacheMemory buffer must have 2 dimensions")
     if buffer.dtype != DType.uint8:
         raise ValueError("KVCacheMemory buffer must have dtype uint8")
-    # TODO(MXSERV-502): the offload path addresses a page as
-    # `base + idx * bytes_per_page`, so a padded leaf needs the stride and the
-    # copy length separated before it can be offloaded.
+    # The offload and transfer paths address a page as
+    # `base + idx * bytes_per_page` and copy `bytes_per_page`, so a padded leaf
+    # must hand them its whole padded grid, pad included.
     if not buffer.is_contiguous:
         raise ValueError(
             "KVCacheMemory buffer must be contiguous, but this one has "
             f"shape {tuple(buffer.shape)} with strides "
-            f"{tuple(buffer.strides)}: its pages are padded, and the offload "
-            "and transfer paths cannot yet stride by a distance that differs "
-            "from the page they copy. Serve without a KVConnector, or without "
-            "disaggregation, until MXSERV-502 lands."
+            f"{tuple(buffer.strides)}. A padded leaf's memory is its "
+            "contiguous [num_pages, page_stride] grid, not its strided view."
         )
 
 
@@ -503,6 +501,24 @@ def page_view(
     )
     return grid[:, : data_bytes // dtype.size_in_bytes].view(
         dtype=dtype, shape=(num_pages, *shape)
+    )
+
+
+def padded_page_grid(slab: Buffer, padded_page_bytes: int) -> Buffer:
+    """Views ``slab`` as contiguous ``[num_pages, padded_page_bytes]`` bytes,
+    the whole padded pages that byte movers copy.
+
+    Args:
+        slab: The backing allocation, typically the raw ``uint8`` arena.
+        padded_page_bytes: The pool's padded page size.
+
+    Returns:
+        The page grid.
+    """
+    total_bytes = slab.num_elements * slab.dtype.size_in_bytes
+    return slab.view(
+        dtype=DType.uint8,
+        shape=(total_bytes // padded_page_bytes, padded_page_bytes),
     )
 
 
@@ -711,6 +727,12 @@ class KVCacheBuffer(KVCacheBufferInterface):
     unquantized."""
     scales_packed: list[Buffer] | None = None
     """Contiguous aliases of :attr:`scales`; see :attr:`values_packed`."""
+    values_padded_grid: list[Buffer] | None = None
+    """Contiguous ``[num_pages, page_stride]`` ``uint8`` grids under
+    :attr:`values`, pad included, for :meth:`to_memory`. ``None`` when the
+    pool did not pad this leaf."""
+    scales_padded_grid: list[Buffer] | None = None
+    """The same as :attr:`values_padded_grid`, for :attr:`scales`."""
     values_per_layer: list[list[Buffer]] | None = None
     """Per-TP-shard, per-layer value buffers when the pool uses
     :attr:`~max.nn.kv_cache.KVCacheParams.per_layer_buffers`.
@@ -825,7 +847,8 @@ class KVCacheBuffer(KVCacheBufferInterface):
         """Converts to offload-ready memory units, keyed by pool leaf id.
 
         Every buffer is re-viewed as 2-D ``uint8`` pages so consumers can treat
-        all caches uniformly regardless of dtype or shape.
+        all caches uniformly regardless of dtype or shape. A padded leaf hands
+        over its padded grid instead, so a page's pad travels with it.
 
         Per-layer buffers are deliberately not enumerated -- only each shard's
         layer-0 alias -- which is why ``allocate_buffers`` rejects
@@ -834,13 +857,18 @@ class KVCacheBuffer(KVCacheBufferInterface):
         Returns:
             This cache's values leaf, plus its scales leaf when quantized.
         """
-        shards_by_leaf: dict[str, list[Buffer]] = {self.leaf_id: self.values}
+        shards_by_leaf: dict[str, list[Buffer]] = {
+            self.leaf_id: self.values_padded_grid
+            or [_view_as_uint8_pages(b) for b in self.values]
+        }
         if self.scales is not None:
-            shards_by_leaf[_scales_leaf_id(self.leaf_id)] = self.scales
+            shards_by_leaf[_scales_leaf_id(self.leaf_id)] = (
+                self.scales_padded_grid
+                or [_view_as_uint8_pages(b) for b in self.scales]
+            )
         return {
             leaf_id: KVCacheMemory(
-                replicated=self.replicates_kv_across_tp,
-                buffers=[_view_as_uint8_pages(b) for b in shards],
+                replicated=self.replicates_kv_across_tp, buffers=shards
             )
             for leaf_id, shards in shards_by_leaf.items()
         }
@@ -958,12 +986,13 @@ class KVLeafRegion:
     leaf_id: str
     group_id: KVCacheGroupId
     bytes_per_page: int
-    row_bytes: int = field(default=1, kw_only=True)
-    """The granularity a padded page of this leaf must be a multiple of.
+    stride_alignment: int | None = field(default=None, kw_only=True)
+    """The bytes a padded page stride of this leaf must be a multiple of, or
+    ``None`` if some reader needs packed pages.
 
-    One row, ``num_heads * head_size * dtype_size``, widened where a kernel
-    needs more alignment than a row gives. Defaults to 1 for leaves not
-    addressed by row."""
+    Setting it promises every kernel reading the leaf takes a page stride, so
+    the pool may pad the page to tile a smaller huge block. A leaf read
+    through ``PagedKVCache`` must declare a multiple of its row."""
 
     @property
     def cacheable(self) -> bool:
@@ -1123,6 +1152,18 @@ class RecurrentStateRegion:
         """Returns the rows a page's layers occupy, layer ``l`` at index ``l``."""
         base = page * self.num_layers
         return range(base, base + self.num_layers)
+
+
+@dataclass(frozen=True)
+class ScratchPagedKVLeafRegion(PagedKVLeafRegion):
+    """A paged leaf a request holds one block of for its whole life and never
+    publishes; the kernel addresses the block's slots as a ring."""
+
+    def blocks_to_reserve(
+        self, num_blocks: int, *, enable_prefix_caching: bool
+    ) -> int:
+        """Returns one: the block the request holds for its whole life."""
+        return 1
 
 
 @dataclass(frozen=True)
@@ -1574,12 +1615,25 @@ class KVCacheParams(KVCacheParamInterface):
     window_size: int | None = None
     """Window size for the sliding window attention. None for global attention."""
 
+    stride_alignment: int | None = None
+    """The page stride alignment this cache's leaves declare, or ``None`` to
+    keep them packed. See :attr:`KVLeafRegion.stride_alignment`."""
+    scratch: bool = False
+    """Whether the cache is one block a request, kept until release and never
+    published (see :class:`ScratchPagedKVLeafRegion`). Excludes
+    :attr:`window_size`."""
+
     def __post_init__(self):
         """Validates configuration and computes derived fields after initialization.
 
         Raises:
             ValueError: If configuration parameters are invalid or incompatible.
         """
+        if self.stride_alignment is not None and self.stride_alignment <= 0:
+            raise ValueError(
+                f"Stride alignment ({self.stride_alignment}) must be positive"
+            )
+
         if self.data_parallel_degree < 1:
             raise ValueError(
                 f"Data parallelism degree ({self.data_parallel_degree})"
@@ -1599,6 +1653,9 @@ class KVCacheParams(KVCacheParamInterface):
                 " data parallelism degree"
                 f" ({self.data_parallel_degree})"
             )
+
+        if self.scratch and self.window_size is not None:
+            raise ValueError("A scratch cache has no window size.")
 
         if self.slots_per_page is None:
             self.slots_per_page = self.page_size
@@ -2193,12 +2250,18 @@ class KVCacheParams(KVCacheParamInterface):
                 )
                 tp_shards.append(
                     self._build_kvcache_inputs_per_device(
-                        blocks,
+                        # A padded leaf binds its contiguous alias, since
+                        # model execution rejects the strided view.
+                        buffer.values_packed[i]
+                        if buffer.values_packed is not None
+                        else blocks,
                         cl,
                         lut,
                         assignment.max_prompt_length,
                         assignment.max_cache_length,
-                        kv_scales,
+                        buffer.scales_packed[i]
+                        if buffer.scales_packed is not None
+                        else kv_scales,
                         scales_lut,
                         target_key,
                         draft_key,
@@ -2237,8 +2300,11 @@ class KVCacheParams(KVCacheParamInterface):
 
     @property
     def group_id(self) -> KVCacheGroupId:
-        """Returns the group id this cache pools under: ``sliding_window``
-        with the window size when one is set, else ``full``."""
+        """Returns the group id this cache pools under: ``scratch`` for a
+        scratch cache, ``sliding_window`` with the window size when one is
+        set, else ``full``."""
+        if self.scratch:
+            return KVCacheGroupId.scratch()
         if self.window_size is not None:
             return KVCacheGroupId(
                 type="sliding_window", window_size=self.window_size
@@ -2258,13 +2324,16 @@ class KVCacheParams(KVCacheParamInterface):
         division is exact: that figure is this one times the degree.
         """
         leaf_id = self.leaf_id(_prefix)
+        region_cls = (
+            ScratchPagedKVLeafRegion if self.scratch else PagedKVLeafRegion
+        )
         leaves = {
-            leaf_id: PagedKVLeafRegion(
+            leaf_id: region_cls(
                 leaf_id=leaf_id,
                 group_id=self.group_id,
                 bytes_per_page=self.bytes_per_value_block
                 // self.tensor_parallel_degree,
-                row_bytes=self.row_bytes,
+                stride_alignment=self.stride_alignment,
                 page_size=self.page_size,
             )
         }
@@ -2276,8 +2345,14 @@ class KVCacheParams(KVCacheParamInterface):
                 group_id=self.group_id,
                 bytes_per_page=self.bytes_per_scale_block
                 // self.tensor_parallel_degree,
-                row_bytes=math.lcm(
-                    self.scale_row_bytes, _SCALE_TMA_ALIGN_BYTES
+                # The scales' page stride is a whole number of scale rows and
+                # keeps the flat scale TMA's 16-byte start.
+                stride_alignment=None
+                if self.stride_alignment is None
+                else math.lcm(
+                    self.stride_alignment,
+                    self.scale_row_bytes,
+                    _SCALE_TMA_ALIGN_BYTES,
                 ),
                 page_size=self.page_size,
             )
@@ -2319,28 +2394,31 @@ class KVCacheParams(KVCacheParamInterface):
 
         def views(
             shape: Sequence[int], dtype: DType, leaf_id: str
-        ) -> tuple[list[Buffer], list[Buffer] | None]:
+        ) -> tuple[list[Buffer], list[Buffer] | None, list[Buffer] | None]:
             page_bytes = padded.get(leaf_id)
             strided = [page_view(b, shape, dtype, page_bytes) for b in buffers]
             if page_bytes is None:
-                return strided, None
+                return strided, None, None
             packed = [
                 contiguous_page_view_and_stride(b, shape, dtype, page_bytes)[0]
                 for b in buffers
             ]
-            return strided, packed
+            if page_bytes == math.prod(shape) * dtype.size_in_bytes:
+                return strided, packed, None
+            grid = [padded_page_grid(b, page_bytes) for b in buffers]
+            return strided, packed, grid
 
-        values, values_packed = views(
+        values, values_packed, values_grid = views(
             self.shape_per_block, self.dtype, values_id
         )
-        scales, scales_packed = (
+        scales, scales_packed, scales_grid = (
             views(
                 self.shape_per_scale_block,
                 quant_config.scale_dtype,
                 scales_id,
             )
             if quantized and quant_config is not None
-            else (None, None)
+            else (None, None, None)
         )
         return KVCacheBuffer(
             leaf_id=values_id,
@@ -2349,6 +2427,8 @@ class KVCacheParams(KVCacheParamInterface):
             values_packed=values_packed,
             scales=scales,
             scales_packed=scales_packed,
+            values_padded_grid=values_grid,
+            scales_padded_grid=scales_grid,
         )
 
 

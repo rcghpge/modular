@@ -137,7 +137,7 @@ def test_lightning_state_tiles_one_huge_page_exactly(n_devices: int) -> None:
     geometry = plan_jenga_geometry(
         100 * 1024 * MIB,
         page_bytes,
-        {key: leaf.row_bytes for key, leaf in leaves.items()},
+        {key: leaf.stride_alignment for key, leaf in leaves.items()},
     )
 
     assert geometry.huge_page_bytes == 414 * MIB // n_devices

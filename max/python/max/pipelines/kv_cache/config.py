@@ -437,6 +437,8 @@ class KVCacheConfig(ConfigFileModel):
         page_size: int | None = None,
         slots_per_page: int | None = None,
         window_size: int | None = None,
+        stride_alignment: int | None = None,
+        scratch: bool = False,
     ) -> KVCacheParams:
         """Returns :class:`~max.nn.kv_cache.cache_params.KVCacheParams` built from this config.
 
@@ -474,6 +476,13 @@ class KVCacheConfig(ConfigFileModel):
                 An architecture whose attention compresses a run of tokens into
                 one cached entry passes the entries a page compresses into.
             window_size: Window size for the attention layer.
+            stride_alignment: The page stride alignment the cache's kernels
+                honor, letting the pool pad its pages, or ``None`` to keep
+                them packed. See
+                :attr:`~max.nn.kv_cache.cache_params.KVLeafRegion.stride_alignment`.
+            scratch: Whether the cache is per-request scratch: one block a
+                request, never published (see
+                :attr:`~max.nn.kv_cache.cache_params.KVCacheParams.scratch`).
 
         Returns:
             The constructed KV cache parameters.
@@ -502,6 +511,8 @@ class KVCacheConfig(ConfigFileModel):
             kv_hash_algo=self.kv_cache_hash_algo,
             kv_hash_seed=kv_hash_seed,
             window_size=window_size,
+            stride_alignment=stride_alignment,
+            scratch=scratch,
         )
         if is_mla:
             if num_q_heads is None:

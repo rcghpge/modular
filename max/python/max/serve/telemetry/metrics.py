@@ -358,6 +358,20 @@ SERVE_METRICS: dict[str, SupportedInstruments] = {
         unit="blocks",
         description="Total number of KV cache blocks.",
     ),  # type: ignore
+    "maxserve.cache.jenga_leaf_pages": _meter.create_gauge(
+        "maxserve.cache.jenga_leaf_pages",
+        unit="pages",
+        description=(
+            "A Jenga KV leaf's pages on one replica, by `state`: `referenced` by a request, `cached` (unreferenced but still in the prefix cache, so evictable), or `free` to allocate without evicting. The leaf's remaining pages are bytes other leaves hold. Sampled at the scheduler's log interval."
+        ),
+    ),  # type: ignore
+    "maxserve.cache.jenga_huge_blocks": _meter.create_gauge(
+        "maxserve.cache.jenga_huge_blocks",
+        unit="blocks",
+        description=(
+            "Jenga huge blocks on one replica, by `leaf` and `state`: `claimed` (a request holds pages in it) or `parked` (idle but still typed to the leaf), plus `leaf=none, state=pristine` for those no leaf has claimed. Sums to the replica's allocatable huge blocks."
+        ),
+    ),  # type: ignore
     "maxserve.cache.request_prefix_coverage": _meter.create_histogram(
         "maxserve.cache.request_prefix_coverage",
         unit="percent",
@@ -1556,6 +1570,38 @@ class _AsyncMetrics:
                 "maxserve.cache.num_total_blocks",
                 total_blocks,
                 self.extra_attributes,
+            ),
+        )
+
+    def cache_jenga_leaf_pages(
+        self, pages: int, *, replica: str, leaf: str, state: str
+    ) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.cache.jenga_leaf_pages",
+                pages,
+                {
+                    **self.extra_attributes,
+                    "replica": replica,
+                    "leaf": leaf,
+                    "state": state,
+                },
+            ),
+        )
+
+    def cache_jenga_huge_blocks(
+        self, blocks: int, *, replica: str, leaf: str, state: str
+    ) -> None:
+        self.client.send_measurement(
+            MaxMeasurement(
+                "maxserve.cache.jenga_huge_blocks",
+                blocks,
+                {
+                    **self.extra_attributes,
+                    "replica": replica,
+                    "leaf": leaf,
+                    "state": state,
+                },
             ),
         )
 

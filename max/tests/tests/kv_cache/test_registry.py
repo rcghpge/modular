@@ -219,6 +219,24 @@ class TestUseJengaKvCache:
                 with_state, is_di_enabled=True, model_name="FAKE"
             )
 
+    def test_legacy_env_rejects_scratch_leaf(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MODULAR_USE_LEGACY_KV_CACHE", "1")
+        params = MultiKVCacheParams.from_params(
+            {
+                "attn": create_kv_params(),
+                "scratch": replace(
+                    create_kv_params(num_layers=2), scratch=True
+                ),
+            }
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"scratch KV cache leaf.*Unset MODULAR_USE_LEGACY_KV_CACHE",
+        ):
+            _use_jenga_kv_cache(params, is_di_enabled=False, model_name="FAKE")
+
     def test_nvfp4_mla_cache_selects_jenga(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -584,6 +602,17 @@ def test_legacy_manager_rejects_kv_connector(
         kv_connector_config=NullKVConnectorConfig(type=connector),
     )
     with pytest.raises(ValueError, match="incompatible with the legacy"):
+        PagedKVCacheManager(
+            params=params,
+            session=MagicMock(),
+            total_num_pages=8,
+            max_batch_size=1,
+        )
+
+
+def test_legacy_manager_rejects_scratch_leaf() -> None:
+    params = replace(create_kv_params(), scratch=True)
+    with pytest.raises(ValueError, match="cannot hold a scratch leaf"):
         PagedKVCacheManager(
             params=params,
             session=MagicMock(),

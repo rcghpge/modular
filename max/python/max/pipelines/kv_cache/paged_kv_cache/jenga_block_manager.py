@@ -449,6 +449,46 @@ class KVLeafInfo:
     group_id: KVCacheGroupId
 
 
+@dataclass(frozen=True, slots=True)
+class LeafOccupancy:
+    """What one leaf holds of a replica's pool, in its own pages."""
+
+    referenced: int
+    """Pages a request holds."""
+
+    cached: int
+    """Unreferenced pages still in the prefix cache, which allocation evicts."""
+
+    free: int
+    """Pages the leaf can allocate without evicting one of its own commits."""
+
+    total: int
+    """Pages the leaf would have if it held every allocatable huge block."""
+
+    claimed_huge_blocks: int
+    """Huge blocks typed to the leaf that a request holds."""
+
+    parked_huge_blocks: int
+    """Huge blocks no request holds that are still typed to the leaf."""
+
+    @property
+    def used_pct(self) -> float:
+        """Returns the leaf's page occupancy, as :meth:`pressure_pct` reads it."""
+        return BlockCount(
+            free=self.cached + self.free, total=self.total
+        ).used_pct
+
+
+@dataclass(frozen=True, slots=True)
+class JengaOccupancy:
+    """A snapshot of one replica's pool, per leaf."""
+
+    leaves: dict[str, LeafOccupancy]
+
+    pristine_huge_blocks: int
+    """Parked huge blocks no leaf has ever claimed."""
+
+
 class JengaBlockManager:
     """Assigns blocks to requests and manages prefix cache hits."""
 
@@ -1438,6 +1478,28 @@ class JengaBlockManager:
             )
             for leaf_id in self._leaf_ids
         }
+
+    def occupancy(self, replica_idx: int = 0) -> JengaOccupancy:
+        """Returns each leaf's pages and huge blocks on the given replica.
+
+        Scans the whole pool, so call it for periodic logging, not per batch.
+        """
+        pool = self.pools[replica_idx]
+        total_huge_blocks = pool.num_allocatable_huge_blocks
+        leaves = {}
+        for leaf_id in self._leaf_ids:
+            referenced, cached, free, claimed, parked = pool.occupancy(leaf_id)
+            leaves[leaf_id] = LeafOccupancy(
+                referenced=referenced,
+                cached=cached,
+                free=free,
+                total=total_huge_blocks * pool.cache_ratios[leaf_id],
+                claimed_huge_blocks=claimed,
+                parked_huge_blocks=parked,
+            )
+        return JengaOccupancy(
+            leaves=leaves, pristine_huge_blocks=pool.num_pristine_huge_blocks
+        )
 
     # ============================================================================
     # Internal

@@ -70,6 +70,22 @@ pub struct PoolOptions {
     pub skip_prefix_cache: bool,
 }
 
+/// What one cache holds of a [`JengaBlockPool`], for observability.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CacheOccupancy {
+    /// Little blocks a request references.
+    pub referenced: usize,
+    /// Unreferenced little blocks still committed, which allocation evicts.
+    pub cached: usize,
+    /// The rest of the cache's free blocks, allocatable without evicting
+    /// one of its own commits.
+    pub free: usize,
+    /// Huge blocks typed to the cache that a request references.
+    pub claimed_huge_blocks: usize,
+    /// Huge blocks parked while still typed to the cache.
+    pub parked_huge_blocks: usize,
+}
+
 /// A pool of huge blocks, each subdividable into one cache's little blocks.
 ///
 /// Every cache tiles the same bytes at its own page size, so a huge block is
@@ -157,6 +173,9 @@ pub struct JengaBlockPool<H> {
     /// `free_little_blocks`, so `num_free_blocks` must not also count the huge
     /// block itself for that same cache.
     parked_and_typed: Vec<usize>,
+    /// How many of each cache's committed blocks no request references, kept
+    /// up to date so [`Self::occupancy`] need not scan the prefix cache.
+    num_cached: Vec<usize>,
     options: PoolOptions,
 }
 
@@ -220,6 +239,7 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             free_little_blocks: (0..num_caches).map(|_| FreeList::default()).collect(),
             prefix_caches: (0..num_caches).map(|_| HashMap::new()).collect(),
             parked_and_typed: vec![0; num_caches],
+            num_cached: vec![0; num_caches],
             cache_ratios,
             huge_blocks,
             free_huge_blocks,
@@ -313,6 +333,10 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             .pop_front(&mut self.little_blocks[cache])
             .expect("a claimed huge block puts its little blocks in circulation");
 
+        // Handing out a committed block evicts it: its bytes are about to be
+        // overwritten, so it can no longer serve its hash.
+        self.uncommit_block(cache, bid);
+
         let ratio = self.cache_ratios[cache];
 
         // A block handed out directly from `free_little_blocks[cache]` (not
@@ -330,10 +354,6 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
                 .remove(&mut self.huge_blocks, bid / ratio);
             self.parked_and_typed[cache] -= 1;
         }
-
-        // Handing out a committed block evicts it: its bytes are about to be
-        // overwritten, so it can no longer serve its hash.
-        self.uncommit_block(cache, bid);
         Ok(bid)
     }
 
@@ -345,6 +365,9 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
         let blocks = &mut self.little_blocks[cache];
         if let Some(hash) = blocks[bid].block_hash.take() {
             self.prefix_caches[cache].remove(&hash);
+            if blocks[bid].ref_cnt == 0 {
+                self.num_cached[cache] -= 1;
+            }
         }
     }
 
@@ -366,6 +389,9 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             "block {bid} of {cache} is already committed"
         );
         blocks[bid].block_hash = Some(hash);
+        if blocks[bid].ref_cnt == 0 {
+            self.num_cached[cache] += 1;
+        }
 
         let prefix_cache = self.prefix_caches.get_mut(cache).unwrap();
         let previous = prefix_cache.insert(hash, bid);
@@ -391,6 +417,7 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             free_little_blocks,
             free_huge_blocks,
             parked_and_typed,
+            num_cached,
             ..
         } = self;
         let blocks = &mut little_blocks[cache];
@@ -413,6 +440,7 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             free.append_front(blocks, bid);
         } else {
             free.append_back(blocks, bid);
+            num_cached[cache] += 1;
         }
 
         if huge_blocks[huge_bid].num_referenced > 0 {
@@ -497,6 +525,9 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
             let free = self.free_little_blocks.get_mut(cache).unwrap();
             let blocks = self.little_blocks.get_mut(cache).unwrap();
             free.remove(blocks, bid);
+            if blocks[bid].block_hash.is_some() {
+                self.num_cached[cache] -= 1;
+            }
             // Only a 0 -> 1 transition adds a newly-referenced little block to
             // the huge block's count; a second reference to one already held
             // must not double-count it.
@@ -527,6 +558,39 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
     #[must_use]
     pub fn num_used_blocks(&self, cache: usize) -> usize {
         self.cache_ratios[cache] * self.allocatable_huge_bids().len() - self.num_free_blocks(cache)
+    }
+
+    /// Returns what `cache` holds, scanning every huge block.
+    ///
+    /// # Panics
+    /// If the pool does not serve `cache`.
+    #[must_use]
+    pub fn occupancy(&self, cache: usize) -> CacheOccupancy {
+        let mut referenced = 0;
+        let mut claimed_huge_blocks = 0;
+        for huge in &self.huge_blocks {
+            if huge.little_block_type == Some(cache) && !huge.is_free() {
+                claimed_huge_blocks += 1;
+                referenced += huge.num_referenced;
+            }
+        }
+        // Retyping evicts the outgoing cache's commits, so every commit sits
+        // in a huge block typed to `cache`, and an unreferenced one is on its
+        // free list.
+        let cached = self.num_cached[cache];
+        CacheOccupancy {
+            referenced,
+            cached,
+            free: self.num_free_blocks(cache) - cached,
+            claimed_huge_blocks,
+            parked_huge_blocks: self.parked_and_typed[cache],
+        }
+    }
+
+    /// Returns how many parked huge blocks no cache has ever claimed.
+    #[must_use]
+    pub fn num_pristine_huge_blocks(&self) -> usize {
+        self.free_huge_blocks.len - self.parked_and_typed.iter().sum::<usize>()
     }
 
     /// Returns whether the pool can allocate `demand[cache]` more little
@@ -585,6 +649,7 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
         let JengaBlockPool {
             little_blocks,
             prefix_caches,
+            num_cached,
             ..
         } = self;
         let mut purged = Vec::with_capacity(prefix_caches.len());
@@ -598,7 +663,10 @@ impl<H: Copy + Eq + Hash> JengaBlockPool<H> {
                 }
                 referenced
             });
-            purged.push(before - prefix_cache.len());
+            // Every purged commit was unreferenced, so all of them were cached.
+            let num_purged = before - prefix_cache.len();
+            num_cached[cache] -= num_purged;
+            purged.push(num_purged);
         }
         purged
     }
@@ -775,6 +843,14 @@ mod tests {
                     Some(cache)
                 );
             }
+            let cached = prefix_cache
+                .values()
+                .filter(|&&bid| p.little_blocks[cache][bid].ref_cnt == 0)
+                .count();
+            assert_eq!(
+                p.num_cached[cache], cached,
+                "cache {cache}'s cached count drifted"
+            );
         }
 
         // The running per-huge-block counts must match a fresh walk, and must be
@@ -1323,6 +1399,32 @@ mod tests {
             // A commit a request still references survives.
             assert_eq!(p.prefix_caches[0], HashMap::from([("apple", bids[0])]));
             assert_eq!(p.prefix_caches[1], HashMap::from([("apple", sliding_bid)]));
+            check_invariants(&p);
+        }
+    }
+
+    #[test]
+    fn occupancy_counts_unreferenced_commits_as_cached() {
+        for null_block in [false, true] {
+            let mut p = pool(2, &[2], null_block);
+            let cached = |p: &Pool| p.occupancy(0).cached;
+
+            let bids = alloc_n(&mut p, 0, 2);
+            p.commit_into_prefix_cache(0, "apple", bids[0]);
+            assert_eq!(cached(&p), 0);
+            p.free_block(0, bids[0]);
+            assert_eq!(cached(&p), 1);
+            p.touch(0, bids[0]);
+            assert_eq!(cached(&p), 0);
+            p.free_block(0, bids[0]);
+            p.free_block(0, bids[1]);
+            // Nothing stops a caller committing a block no request holds.
+            p.commit_into_prefix_cache(0, "banana", bids[1]);
+            assert_eq!(cached(&p), 2);
+            check_invariants(&p);
+
+            p.reset_prefix_cache();
+            assert_eq!(cached(&p), 0);
             check_invariants(&p);
         }
     }

@@ -425,6 +425,18 @@ class JengaBlockPool:
         not add up; ask :meth:`can_satisfy_demand` for a joint answer.
         """
 
+    def occupancy(self, cache_id: str) -> tuple[int, int, int, int, int]:
+        """Returns what ``cache_id`` holds, scanning the whole pool.
+
+        Returns:
+            ``(referenced, cached, free, claimed_huge_blocks,
+            parked_huge_blocks)``.
+        """
+
+    @property
+    def num_pristine_huge_blocks(self) -> int:
+        """How many parked huge blocks no cache has ever claimed."""
+
     def can_satisfy_demand(
         self, demand: Mapping[str, int], at_capacity: bool = False
     ) -> bool:

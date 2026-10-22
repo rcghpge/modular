@@ -55,6 +55,9 @@ from max.pipelines.kv_cache import InsufficientBlocksError
 from max.pipelines.kv_cache.config import KVConnectorConfig
 from max.pipelines.kv_cache.connectors import NullConnector
 from max.pipelines.kv_cache.paged_kv_cache import (
+    jenga_block_pool,
+)
+from max.pipelines.kv_cache.paged_kv_cache import (
     jenga_cache_manager as jenga_mod,
 )
 from max.pipelines.kv_cache.paged_kv_cache.jenga_cache_manager import (
@@ -268,7 +271,9 @@ def test_create_logs_the_pool_geometry(
         "\tsliding.sliding_window_group(4): 30 pages of 0.01 KiB  (3 per huge page)\n"
         "\tfull.full_group                : 10 pages of 0.02 KiB  (1 per huge page)"
     )
-    assert "\n".join(r.message for r in caplog.records) == expected
+    # A pool this small also warns that its huge blocks strand the budget.
+    info = [r.message for r in caplog.records if r.levelno == logging.INFO]
+    assert "\n".join(info) == expected
 
 
 def test_num_draft_tokens_per_step_threaded_from_params() -> None:
@@ -1123,3 +1128,53 @@ def test_derived_row_state_matches_a_full_walk_of_the_rows() -> None:
                     continue
                 (plan,) = group.forward_blocks([ctx], [len(row)])[group.leaf_id]
                 assert list(plan) == [block.bid for block in row]
+
+
+def make_padded_params() -> MultiKVCacheParams:
+    """A 512 B packed leaf, and a 248 B one the pool pads to 256 B under a
+    1 KiB huge block ceiling."""
+
+    def leaf(head_dim: int, stride_alignment: int | None) -> MHAKVCacheParams:
+        return MHAKVCacheParams(
+            dtype=DType.float32,
+            num_layers=1,
+            n_kv_heads=1,
+            head_dim=head_dim,
+            page_size=1,
+            devices=[DeviceRef.CPU()],
+            stride_alignment=stride_alignment,
+        )
+
+    return MultiKVCacheParams.from_params(
+        {"packed": leaf(64, None), "strided": leaf(31, 16)}
+    )
+
+
+def test_a_padded_leaf_binds_its_packed_alias_and_stride(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the opted-in leaf pads, and it binds a contiguous alias with the
+    padded stride beside it, since model execution rejects strided inputs."""
+    monkeypatch.setattr(jenga_block_pool, "_MAX_HUGE_PAGE_BYTES", 1024)
+    mgr = JengaKVCacheManager.create(
+        params=make_padded_params(),
+        available_bytes=16 * 512,
+        max_batch_size=4,
+        max_seq_len=4,
+    )
+    ctx = make_ctx(num_tokens=3)
+    mgr.claim(ctx)
+    mgr.alloc(ctx)
+
+    inputs = mgr.runtime_inputs([[ctx]])
+
+    assert isinstance(inputs, dict)
+    strides: dict[str, list[int]] = {}
+    for child, child_inputs in inputs.items():
+        assert isinstance(child_inputs, tuple)
+        (device_inputs,) = child_inputs
+        assert isinstance(device_inputs, KVCacheInputsPerDevice)
+        assert device_inputs.kv_blocks.is_contiguous
+        strides[child] = device_inputs.page_stride.to_numpy().tolist()
+    # 256 B of float32 between pages; -1 is the packed sentinel.
+    assert strides == {"packed": [-1], "strided": [64]}

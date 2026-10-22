@@ -12,8 +12,6 @@
 # ===----------------------------------------------------------------------=== #
 """Tests building the KV cache parameters from the real config."""
 
-import dataclasses
-import math
 from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import Mock
@@ -35,6 +33,7 @@ from max.pipelines.architectures.deepseekV41.model_config import (
     DeepseekV41Config,
 )
 from max.pipelines.lib import KVCacheConfig
+from max.pipelines.speculative.config import SpeculativeConfig
 from transformers import AutoConfig
 
 TESTDATA = Path(__file__).parent / "testdata"
@@ -98,27 +97,61 @@ def test_construct_kv_params_succeeds_with_four_gpu_devices() -> None:
         assert list(_leaf(params, key).devices) == devices
 
 
-def test_state_leaf_holds_one_float32_row_per_token() -> None:
-    """``c2a_state`` slots are 1024 float32s: a token's KV then score row.
-
-    The compressor reads a layer's pages as ``[blocks, page_size, 1024]``,
-    so the leaf has one plane and one head, and one slot per token.
-    """
+def test_state_leaf_is_a_per_request_float32_ring() -> None:
+    """``c2a_state`` is a scratch block a request of ``ring_rows`` slots,
+    each a token's float32 KV then score row."""
     state = _leaf(_build_params(), "c2a_state")
     head_dim = _real_text_config().head_dim
-    page_size = KVCacheConfig().kv_cache_page_size
     assert state.dtype == DType.float32
     assert state.kv_dim == 1
+    assert state.scratch
     assert state.shape_per_block == [
         1,
         state.num_layers,
-        page_size,
+        kv_leaves.state_ring_rows(0),
         1,
         2 * head_dim,
     ]
     assert state.bytes_per_block == (
-        state.num_layers * page_size * 2 * head_dim * 4
+        state.num_layers * kv_leaves.state_ring_rows(0) * 2 * head_dim * 4
     )
+
+
+@pytest.mark.parametrize(
+    ("drafts", "rows"),
+    [(0, 2), (1, 4), (2, 4), (3, 8), (5, 8), (6, 8), (7, 16)],
+)
+def test_state_ring_rows(drafts: int, rows: int) -> None:
+    """The ring holds a verify step's ``drafts + 1`` rows with a row of
+    margin, in a power of two, and never fewer than a pair."""
+    assert kv_leaves.state_ring_rows(drafts) == rows
+    assert rows >= drafts + 2
+
+
+def _spec_params(num_speculative_tokens: int | None) -> object:
+    speculative = SpeculativeConfig(
+        speculative_method="dspark",
+        num_speculative_tokens=num_speculative_tokens,
+    )
+    return kv_leaves.construct_kv_params(
+        huggingface_config=_real_text_config(),
+        pipeline_config=_mock_pipeline_config(speculative=speculative),
+        devices=[DeviceRef.CPU()],
+        kv_cache_config=KVCacheConfig(),
+        cache_dtype=DType.bfloat16,
+    )
+
+
+def test_state_ring_follows_the_speculative_draft_count() -> None:
+    params = _spec_params(5)
+    assert isinstance(params, MultiKVCacheParams)
+    assert _leaf(params, "c2a_state").slots_per_page == 8
+
+
+def test_unresolved_draft_count_is_rejected() -> None:
+    """An unset width would size a two-row ring that verify steps overrun."""
+    with pytest.raises(ValueError, match="num_speculative_tokens"):
+        _spec_params(None)
 
 
 def _records_params(
@@ -135,10 +168,6 @@ def _records_params(
         num_q_heads=64,
     )
     return specs, params
-
-
-def _huge_page_bytes(params: MultiKVCacheParams) -> int:
-    return math.lcm(*(leaf.bytes_per_page for leaf in params.leaves().values()))
 
 
 def test_default_leaves_store_csa_records() -> None:
@@ -168,56 +197,49 @@ def test_switch_selects_record_leaves() -> None:
 
 
 @pytest.mark.parametrize(
-    ("key", "slots", "record", "data", "pitch"),
+    ("key", "slots", "record", "data"),
     [
-        ("swa", 128, WINDOW_RECORD_BYTES, 512, 544),
-        ("c2a", 64, COMPRESSED_RECORD_BYTES, 256, 344),
-        ("c1a", 128, COMPRESSED_RECORD_BYTES, 256, 344),
+        ("swa", 128, WINDOW_RECORD_BYTES, 512),
+        ("c2a", 64, COMPRESSED_RECORD_BYTES, 256),
+        ("c1a", 128, COMPRESSED_RECORD_BYTES, 256),
     ],
 )
 def test_record_leaf_pages_hold_the_attention_cache_page(
-    key: str, slots: int, record: int, data: int, pitch: int
+    key: str, slots: int, record: int, data: int
 ) -> None:
-    """Each layer's share of a record leaf page holds the page the CSA2 ops
-    address, ``slots`` records (one per token or compression group), padded
-    to ``slots * pitch`` bytes."""
+    """Each layer's share of a record leaf page is exactly the packed page
+    the CSA2 ops address, ``slots`` records (one per token or compression
+    group) of ``record`` bytes."""
     specs, params = _records_params(True)
     spec = next(s for s in specs if s.key == key)
     leaf = _leaf(params, key)
     assert spec.record_bytes == record
-    assert spec.record_pitch == pitch
     assert leaf.dtype == DType.uint8
-    assert leaf.head_dim == pitch
+    assert leaf.head_dim == record
     assert leaf.slots_per_page == slots
     assert cache_page_bytes(slots, record, data) == slots * record
-    assert leaf.bytes_per_block == spec.num_layers * slots * pitch
+    assert leaf.bytes_per_block == spec.num_layers * slots * record
     assert leaf.bytes_per_block == spec.page_bytes(128, DType.bfloat16)
 
 
-@pytest.mark.parametrize("page_size", [2, 16, 32, 64, 128, 256])
+@pytest.mark.parametrize("page_size", [128, 256, 512])
 def test_record_leaf_pages_are_readable_at_every_page_size(
     page_size: int,
 ) -> None:
-    """At every page size, a layer's page of a record leaf is one the CSA2
-    ops read: 16-byte aligned, and a whole number of the records' value
-    rows when it holds two or more records."""
-    specs = kv_leaves.kv_leaf_specs(
-        _real_text_config(), kv_cache_page_size=page_size
-    )
-    for spec in specs:
+    """At every page size the KV cache accepts, a multiple of 128, a layer's
+    page of a record leaf is one the CSA2 ops read: 16-byte aligned and a
+    whole number of the records' value rows."""
+    for spec in kv_leaves.kv_leaf_specs(_real_text_config()):
         if spec.kind not in ("swa", "comp"):
             continue
         assert spec.record_bytes is not None
-        assert spec.record_pitch is not None
-        assert spec.record_pitch >= spec.record_bytes
         slots = spec.device_slots_per_page(page_size)
-        page = slots * spec.record_pitch
+        page = slots * spec.record_bytes
         data = (
             WINDOW_DATA_BYTES if spec.kind == "swa" else COMPRESSED_DATA_BYTES
         )
         assert page % 16 == 0, (spec.key, page_size, page)
-        if slots > 1:
-            assert page % data == 0, (spec.key, page_size, page)
+        assert page % data == 0, (spec.key, page_size, page)
 
 
 def test_record_leaves_leave_the_other_leaves_unchanged() -> None:
@@ -238,19 +260,13 @@ def test_record_leaves_build_on_four_devices() -> None:
         assert list(_leaf(params, key).devices) == devices
 
 
-def test_huge_page_bytes() -> None:
-    """The Jenga huge page, the least common multiple of the leaves' page
-    bytes: the padded records keep the bf16 layout's 1.07 GiB, where packed
-    records would take it to 106 GiB."""
-    _, old = _records_params(False)
-    specs, new = _records_params(True)
-    packed = kv_leaves.build_kv_params(
-        [dataclasses.replace(s, record_pitch=None) for s in specs],
-        kv_cache_config=KVCacheConfig(),
-        cache_dtype=DType.bfloat16,
-        devices=[DeviceRef.CPU()],
-        num_q_heads=64,
-    )
-    assert _huge_page_bytes(old) == 1_149_763_584
-    assert _huge_page_bytes(new) == 1_149_763_584
-    assert _huge_page_bytes(packed) == 113_826_594_816
+def test_only_csa2_leaves_stay_packed() -> None:
+    """The CSA2 ops raise on strided blocks; the indexer and compressor
+    take a stride."""
+    _, params = _records_params(True)
+    for leaf_id, leaf in params.leaves().items():
+        key = leaf_id.split(".")[0]
+        if key in ("swa", "c2a", "c1a"):
+            assert leaf.stride_alignment is None, key
+        else:
+            assert leaf.stride_alignment == 16, key

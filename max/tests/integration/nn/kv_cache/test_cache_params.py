@@ -15,12 +15,13 @@ from typing import get_args
 
 import numpy as np
 import pytest
-from max.driver import CPU
+from max.driver import CPU, Buffer
 from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache import (
     AttnKey,
     BatchCharacteristics,
+    KVCacheBuffer,
     KVCacheQuantizationConfig,
     MHAAttnKey,
     MHAKVCacheParams,
@@ -30,6 +31,9 @@ from max.nn.kv_cache import (
 )
 from max.nn.kv_cache.cache_params import (
     SpeculativeMethod as CacheSpeculativeMethod,
+)
+from max.nn.kv_cache.cache_params import (
+    page_stride_of,
 )
 from max.pipelines.speculative import SpeculativeMethod
 
@@ -678,3 +682,39 @@ def test_graph_capture_probe_cache_lengths_no_draft_keeps_length_one() -> None:
         page_size=16,
     )
     assert 1 in params.graph_capture_probe_cache_lengths(1000, 1)
+
+
+def test_a_padded_leaf_hands_byte_movers_its_padded_grid() -> None:
+    """Offload and transfer copy ``bytes_per_page`` from
+    ``base + idx * bytes_per_page``, so a padded leaf hands them its
+    contiguous padded grid, not the strided view its kernels read."""
+    params = MHAKVCacheParams(
+        dtype=DType.float8_e4m3fn,
+        n_kv_heads=1,
+        head_dim=64,
+        num_layers=1,
+        devices=[DeviceRef.CPU()],
+        page_size=1,
+        kvcache_quant_config=KVCacheQuantizationConfig(
+            scale_dtype=DType.float32, quantization_granularity=64
+        ),
+    )
+    values_id, scales_id = params.leaves()
+    slab_bytes = np.arange(4 * 192, dtype=np.uint8)
+    buffer = params.slab_to_buffer_views(
+        [Buffer.from_numpy(slab_bytes)], {values_id: 192, scales_id: 16}
+    )
+    memory = buffer.to_memory()
+
+    values = memory[values_id]
+    assert (values.total_num_pages, values.bytes_per_page) == (4, 192)
+    np.testing.assert_array_equal(
+        values.buffers[0].to_numpy(), slab_bytes.reshape(4, 192)
+    )
+    scales = memory[scales_id]
+    assert (scales.total_num_pages, scales.bytes_per_page) == (48, 16)
+    np.testing.assert_array_equal(
+        scales.buffers[0].to_numpy(), slab_bytes.reshape(48, 16)
+    )
+    assert isinstance(buffer, KVCacheBuffer)
+    assert page_stride_of(buffer.values[0]) == 192
