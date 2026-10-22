@@ -178,20 +178,18 @@ def _validate_dkv_leaves(leaves: Mapping[str, KVCacheGroupId]) -> None:
     cache manager repeats the check -- a cache manager especially should not,
     since it would have to know which connector is configured.
 
-    The single-window restriction is :meth:`touch`'s, not :meth:`load`'s. The
-    cache manager sizes each leaf's share off that leaf's own group, so
-    differing widths are fine by the time they reach here. ``touch`` still
-    windows every sliding leaf by the one ``_window_blocks`` it reads off
-    ``_sliding_leaf_ids[0]``, so a second width would silently refresh the
-    wrong range. Lifting this gate means fixing ``touch`` first.
+    Sliding-window leaves may mix widths (DISTINF-792: MiMo-V2 DFlash serves
+    the target's 128-token window beside the drafter's 1,024): the cache
+    manager sizes each leaf's share off that leaf's own group, and
+    :meth:`touch` windows each sliding leaf by its own ``_window_blocks``
+    entry, so no width is shared on either side of the store.
 
     Args:
         leaves: Leaf id to attention group, as ``params.leaves()`` names them.
 
     Raises:
-        ValueError: If the tree is empty, holds a group that is neither full
-            attention nor sliding window, or mixes sliding-window leaves with
-            different ``window_size`` values.
+        ValueError: If the tree is empty, or holds a group that is neither
+            full attention nor sliding window.
     """
     if not leaves:
         raise ValueError("DKVConnector requires at least one KV cache leaf")
@@ -202,16 +200,6 @@ def _validate_dkv_leaves(leaves: Mapping[str, KVCacheGroupId]) -> None:
         raise ValueError(
             "DKVConnector supports full-attention and sliding-window leaves "
             f"only. Found: {leaves}"
-        )
-    windows = {
-        group_id.window_size
-        for group_id in leaves.values()
-        if group_id.is_sliding_window()
-    }
-    if len(windows) > 1:
-        raise ValueError(
-            "DKVConnector requires all sliding-window leaves to share one "
-            f"window_size; found {windows} in {leaves}"
         )
 
 
@@ -1508,16 +1496,14 @@ class DKVConnector(KVConnector):
         self._probe_leaf_id: str | None = (
             self._full_leaf_ids[0] if self._full_leaf_ids else None
         )
-        # One window for every sliding leaf (``_validate_dkv_leaves`` rejects a
-        # tree with two), so resolve it once. 0 only when there is no sliding
-        # leaf at all, per the note below.
-        self._window_blocks = (
-            self._leaves[self._sliding_leaf_ids[0]].blocks_in_window(
-                self._page_size
-            )
-            if self._sliding_leaf_ids
-            else 0
-        )
+        # Each sliding leaf's own window, in blocks: a tree may mix widths
+        # (DISTINF-792), and ``touch`` posts every sliding leaf its own-width
+        # tail of the root-anchored chain. Empty only when there is no sliding
+        # leaf at all.
+        self._window_blocks = {
+            leaf_id: self._leaves[leaf_id].blocks_in_window(self._page_size)
+            for leaf_id in self._sliding_leaf_ids
+        }
         # A sliding leaf always spans a whole block: ``KVCacheGroupId``
         # refuses ``window_size <= 1`` (SERVOPT-1627), and every window above
         # that leaves at least one block once the query token's own page comes
@@ -2282,15 +2268,13 @@ class DKVConnector(KVConnector):
                     block_hashes=dkv_hashes,
                 )
             # The active window only, per the contract above. The window is the
-            # sequence TAIL, and dkv_hashes is root-anchored, so the last
-            # ``_window_blocks`` entries are it. Guarded because ``[-0:]`` is
-            # the whole list, which is the bug this fixes.
-            window = (
-                dkv_hashes[-self._window_blocks :]
-                if self._window_blocks
-                else []
-            )
+            # sequence TAIL, and dkv_hashes is root-anchored, so each leaf's
+            # last ``_window_blocks[leaf_id]`` entries are its window. Never 0
+            # for a sliding leaf (see ``_derive_leaf_shape``), but guarded
+            # because ``[-0:]`` is the whole list.
             for leaf_id in self._sliding_leaf_ids:
+                blocks = self._window_blocks[leaf_id]
+                window = dkv_hashes[-blocks:] if blocks else []
                 clients[leaf_id].touch(
                     group_id=self._wire_ids[leaf_id],
                     block_hashes=window,

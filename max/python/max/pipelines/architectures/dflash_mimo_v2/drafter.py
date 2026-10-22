@@ -283,16 +283,13 @@ class DFlashMiMoV2DraftArchConfig(ArchConfigWithBoundedMaxSeqLen):
             ValueError: If the cache is configured for dKV.
         """
         del huggingface_config, cache_dtype
-        # The drafter's 1,024-key window gives the tree a second sliding
-        # width beside the target's, which DKVConnector refuses: its touch
-        # windows every sliding group by one width. The window saves real
-        # memory, since the drafter's context is 20 KB a token, so DFlash on
-        # MAX runs MiMo without dKV.
+        # The connector itself serves this tree per leaf; the graph-API
+        # build keeps the refusal by policy (all model work is
+        # ModuleV3-only).
         if kv_cache_config.kv_connector_config.type == KVConnectorType.dkv:
             raise ValueError(
-                "MiMo-V2 DFlash cannot use the dKV connector: the drafter's"
-                " context window and the target's sliding window are two"
-                " sliding widths, and dKV serves one."
+                "MiMo-V2 DFlash supports the dKV connector only on its "
+                "ModuleV3 build. Pass --prefer-module-v3 to use it."
             )
         draft_model = pipeline_config.draft_model
         assert draft_model is not None

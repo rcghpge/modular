@@ -35,7 +35,9 @@ suite's GPU lane, not here.
 
 from __future__ import annotations
 
-from typing import Any
+import json
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from max.driver import CPU
@@ -45,16 +47,91 @@ from max.experimental.compilation import StagedGraph
 from max.experimental.tensor import default_device, default_dtype
 from max.graph import DeviceRef
 from max.nn import kernels
+from max.nn.kv_cache import KVConnectorType
+from max.pipelines.architectures.unified_dflash_mimo_v2_modulev3.model_config import (
+    UnifiedDflashMiMoV2Config,
+)
 from max.pipelines.architectures.unified_dflash_mimo_v2_modulev3.unified_dflash_mimo_v2 import (
     GRAPH_NAME,
 )
-from mimo_dflash_v3_fixtures import build_module, build_spec, fused_weights
+from max.pipelines.kv_cache.config import KVCacheConfig, KVConnectorConfig
+from max.pipelines.kv_cache.connectors.dkv.connector import (
+    _validate_dkv_leaves,
+)
+from max.pipelines.speculative import SpeculativeConfig
+from max.pipelines.weights import HuggingFaceRepo
+from mimo_dflash_v3_fixtures import (
+    DFLASH_CONFIG,
+    _FakeAttrConfig,
+    build_module,
+    build_spec,
+    fused_weights,
+)
 
 N_INPUTS_1DEV = 35
 """Inputs at 1 device without the bitmask triple (38 with it): the fused
 signature's tokens, offsets, return_n_logits, the self-declared signal
 buffer, the 24 KV leaves (8 per group over 3 groups), the draft tokens, the
 6 sampling tails. The grammar bitmask is off: its host-wait op is GPU-only."""
+
+
+def test_construct_kv_params_builds_a_tree_the_dkv_connector_serves(
+    tmp_path: Any,
+) -> None:
+    """The dKV-configured KV tree the real export path builds is servable.
+
+    Calls ``construct_kv_params`` with a dKV-typed connector config (the
+    refusal this module used to raise is gone) and hands the built tree to
+    the connector's own validation: the target's sliding window (128) beside
+    the drafter's context window (1024) is the mixed-width tree, and a leaf
+    kind the connector cannot serve (a scratch or recurrent leaf joining
+    the tree) fails here rather than at a served boot.
+    """
+    # The draft repo, on disk: construct_kv_params reads its config.json
+    # through repo_file, which resolves a local HuggingFaceRepo directly.
+    draft_dir = tmp_path / "dflash"
+    draft_dir.mkdir()
+    (draft_dir / "config.json").write_text(json.dumps(DFLASH_CONFIG))
+
+    devices = [DeviceRef.GPU(0)]
+    pipeline_config = cast(
+        Any,
+        SimpleNamespace(
+            draft_model=SimpleNamespace(
+                huggingface_weight_repo=HuggingFaceRepo(repo_id=str(draft_dir))
+            ),
+            model=SimpleNamespace(data_parallel_degree=1),
+            speculative=SpeculativeConfig(speculative_method="dflash"),
+        ),
+    )
+    kv_cache_config = KVCacheConfig(
+        kv_cache_page_size=128,
+        kv_connector_config=KVConnectorConfig(type=KVConnectorType.dkv),
+    )
+
+    params = UnifiedDflashMiMoV2Config.construct_kv_params(
+        _FakeAttrConfig(),
+        pipeline_config,
+        devices,
+        kv_cache_config,
+        DType.bfloat16,
+    )
+    leaves = {
+        region.leaf_id: region.group_id for region in params.leaves().values()
+    }
+    assert len(leaves) == 3, f"the mixed tree holds three leaves: {leaves}"
+    widths = {
+        group.window_size
+        for group in leaves.values()
+        if group.is_sliding_window()
+    }
+    assert widths == {128, 1024}, (
+        "the target's sliding window beside the drafter's context window"
+    )
+    # The connector's own gate: no refusal, and every leaf is a kind it
+    # serves. A restored refusal, or a leaf kind dKV cannot serve, fails
+    # here.
+    _validate_dkv_leaves(leaves)
 
 
 @pytest.fixture(scope="module")

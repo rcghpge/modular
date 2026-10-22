@@ -27,7 +27,6 @@ from max.dtype import DType
 from max.graph import DeviceRef
 from max.nn.kv_cache import (
     KVCacheParams,
-    KVConnectorType,
     MultiKVCacheParams,
 )
 from max.pipelines.lib import (
@@ -98,22 +97,7 @@ class UnifiedDflashMiMoV2Config(MiMoV2Config):
         *,
         allow_kv_head_replication: bool = False,
     ) -> MultiKVCacheParams:
-        """Builds ``{"target": {sliding, full}, "draft": ...}``.
-
-        Raises:
-            ValueError: If the cache is configured for dKV.
-        """
-        # The drafter's 1,024-key window gives the tree a second sliding
-        # width beside the target's, which DKVConnector refuses: its touch
-        # windows every sliding group by one width. The window saves real
-        # memory, since the drafter's context is 20 KB a token, so DFlash on
-        # MAX runs MiMo without dKV.
-        if kv_cache_config.kv_connector_config.type == KVConnectorType.dkv:
-            raise ValueError(
-                "MiMo-V2 DFlash cannot use the dKV connector: the drafter's"
-                " context window and the target's sliding window are two"
-                " sliding widths, and dKV serves one."
-            )
+        """Builds ``{"target": {sliding, full}, "draft": ...}``."""
         draft_model = pipeline_config.draft_model
         assert draft_model is not None
         dflash = read_dflash_config(
