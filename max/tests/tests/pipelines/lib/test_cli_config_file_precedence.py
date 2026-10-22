@@ -556,7 +556,13 @@ def test_model_path_matching_recipe_does_not_warn(
             )
         )
 
-    assert caplog.records == []
+    # Other libraries may warn here, e.g. huggingface_hub retrying a download
+    # when the sandbox has no network.
+    assert [
+        rec
+        for rec in caplog.records
+        if rec.name == "max.pipelines" or rec.name.startswith("max.pipelines.")
+    ] == []
 
 
 _KV_CACHE_RECIPE = (
