@@ -252,9 +252,12 @@ class Indexer(
             ],
         )
 
+        # DeepSeek projects the scoring weights in float32.
+        proj = self.weights_proj.weight
+        assert isinstance(proj, Tensor)
         weights = (
-            self.weights_proj(F.cast(x, DType.float32)) * self.n_heads**-0.5
-        )  # dim -> n_heads
+            F.cast(x, DType.float32) @ F.cast(proj, DType.float32).T
+        ) * self.n_heads**-0.5  # dim -> n_heads
         weights = F.unsqueeze(weights, axis=-1) * q_scale * self.softmax_scale
 
         return mla_fp8_index_top_k_physical(

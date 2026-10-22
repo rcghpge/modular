@@ -124,7 +124,9 @@ class LagunaTopKRouter(MoEGate):
         # Route in float32, as the reference does. The bias dtype is not
         # always precise enough to rank experts: in bfloat16 the scores tie
         # and top-k picks among them arbitrarily.
-        logits = self.gate_score(hidden_states).cast(DType.float32)
+        logits = self.gate_score(hidden_states.cast(self.gate_dtype)).cast(
+            DType.float32
+        )
         # Optional tanh softcap on router logits — HF reference:
         #   if router_logit_softcapping > 0.0:
         #       router_logits = tanh(router_logits / softcap) * softcap

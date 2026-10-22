@@ -1239,6 +1239,10 @@ class TensorValue(Value[mo.TensorType]):
     def __matmul__(self, rhs: TensorValueLike) -> TensorValue:
         """Performs matrix multiplication.
 
+        Both operands must share a dtype, which the result keeps. Use
+        :func:`~max.graph.ops.matmul` with ``out_dtype`` to pick a different
+        result dtype.
+
         Args:
             rhs: The right-hand side operand for matrix multiplication. Must be tensor-like.
         """

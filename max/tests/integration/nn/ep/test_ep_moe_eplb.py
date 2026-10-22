@@ -103,7 +103,7 @@ class _SigmoidRouter(MoEGate):
         )
 
     def compute_scores(self, hidden_states: TensorValue) -> TensorValue:
-        return ops.sigmoid(self.gate_score(hidden_states).cast(DType.float32))
+        return ops.sigmoid(self.gate_score(hidden_states.cast(DType.float32)))
 
     def __call__(
         self, hidden_states: TensorValue

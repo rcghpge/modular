@@ -1519,7 +1519,9 @@ matmul.__doc__ = """Performs matrix multiplication between two tensors.
 Treats the innermost two dimensions of each input as a matrix: ``lhs``
 of shape ``(..., M, K)`` and ``rhs`` of shape ``(..., K, N)`` produce
 an output of shape ``(..., M, N)``. The ``K`` dimensions must match.
-Any outer batch dimensions are broadcast.
+Any outer batch dimensions are broadcast. Both inputs must share a dtype,
+which the result keeps; use :func:`max.graph.ops.matmul` with ``out_dtype``
+to pick a different result dtype.
 
 When inputs are distributed across devices, the operation is sharded
 according to the matmul sharding rule.
@@ -1544,6 +1546,9 @@ Args:
 
 Returns:
     A tensor representing the matrix product of ``lhs`` and ``rhs``.
+
+Raises:
+    ValueError: If ``lhs`` and ``rhs`` have different dtypes.
 """
 
 #: Applies layer normalization. Distributed via SPMD.

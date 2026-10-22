@@ -182,8 +182,10 @@ class HYV4Indexer(Module[..., Tensor]):
             quantization_granularity=self.head_dim,
         )
 
+        # The scoring weights are projected in float32.
+        proj = F.cast(self.weights_proj.weight, DType.float32)
         weights = (
-            self.weights_proj(F.cast(x, DType.float32))
+            (F.cast(x, DType.float32) @ proj.T)
             * self.n_heads**-0.5
             * q_scale
             * self.head_dim**-0.5

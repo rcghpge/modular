@@ -822,14 +822,16 @@ def _handle_matmul(
     """Routes eager matmul and batch_matmul through a GC model.
 
     Looks up the rank-3 batched-matmul :class:`~max.engine.Model` for the
-    realized input's device and dtype (see :func:`matmul_gc.matmul_model`),
-    view-shims the two operands to canonical rank 3, executes the model, and
-    view-shims the output back to the result rank. All views are zero-copy.
+    operands' device, their dtypes and the result dtype (see
+    :func:`matmul_gc.matmul_model`), view-shims the two operands to canonical
+    rank 3, executes the model, and view-shims the output back to the result
+    rank. All views are zero-copy.
 
     The same handler serves both ``mo.matmul`` (rank 2) and ``mo.batch_matmul``
-    (rank 3+). The RMO->MO lowering already casts both operands to a common
-    dtype and broadcasts them to equal batch/rank before these ops are created,
-    so reading device, dtype, and the equal-batch shape from ``lhs`` is exact.
+    (rank 3+). The RMO->MO lowering broadcasts both operands to equal batch and
+    rank before these ops are created, so reading the device and the
+    equal-batch shape from ``lhs`` is exact. The operands and the result each
+    keep their own dtype.
 
     Args:
         op: The ``mo.matmul`` or ``mo.batch_matmul`` operation being handled.
@@ -842,7 +844,11 @@ def _handle_matmul(
     assert isinstance(lhs, Buffer)
     assert isinstance(rhs, Buffer)
 
-    model = matmul_gc.matmul_model(lhs.device, lhs.dtype)
+    result_type = graph.Type.from_mlir(list(op.results)[0].type)
+    assert isinstance(result_type, graph.TensorType)
+    model = matmul_gc.matmul_model(
+        lhs.device, lhs.dtype, rhs.dtype, result_type.dtype
+    )
 
     # Forward rank shim: flatten leading dims to one batch dim (zero-copy).
     lhs_view = lhs.view(lhs.dtype, matmul_gc.canonical_shape(lhs.shape))

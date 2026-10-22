@@ -59,6 +59,16 @@ This version is still a work in progress.
   `Graph.output(outputs)` rather than unpacking them. The graph's outputs keep
   their order, and `Graph.output_tree` returns them by name.
 
+- `ops.matmul()` takes an `out_dtype` keyword argument that sets the result
+  dtype. The inputs keep their own dtypes and are no longer cast to a common
+  one, so `bfloat16` inputs with `out_dtype=DType.float32` keep the float32
+  accumulator. Without `out_dtype`, `ops.matmul()`, the `@` operator and
+  `max.experimental.functional`'s `matmul()` require both inputs to share a
+  dtype, which the result keeps, so `max.nn.Linear` raises when its input and
+  weight dtypes differ.
+  `max.experimental.nn.Linear` casts its input to the weight's dtype, so a
+  float32 input to a bfloat16 `Linear` now gives bfloat16 instead of float32.
+
 - Added `max.driver.Buffer.memset(value)` to fill a contiguous buffer or
   slice in place with a byte value, without allocating a source buffer.
 

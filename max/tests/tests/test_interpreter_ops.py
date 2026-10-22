@@ -71,6 +71,7 @@ from max.experimental.functional import (
 from max.experimental.functional import (
     transfer_to as df_shard,
 )
+from max.experimental.nn import Linear as ExperimentalLinear
 from max.experimental.realization_context import set_seed
 from max.experimental.sharding import (
     DeviceMapping,
@@ -81,6 +82,7 @@ from max.experimental.sharding import (
 )
 from max.experimental.tensor import Tensor, realization_context
 from max.graph import BufferType, DeviceRef, Graph, Module, TensorType
+from max.graph import ops as graph_ops
 from max.graph.ops import CoordinateTransformMode, RoundMode
 
 
@@ -1942,6 +1944,63 @@ class TestTransposeOp:
 
 class TestMatmulOp:
     """Tests for matmul Mojo op."""
+
+    @pytest.mark.parametrize(
+        "matmul", [lambda a, b: a @ b, F.matmul], ids=["operator", "functional"]
+    )
+    def test_matmul_rejects_mixed_dtypes(
+        self, matmul: Callable[[Tensor, Tensor], Tensor]
+    ) -> None:
+        """``@`` and ``F.matmul`` need one dtype; they never promote."""
+        a = Tensor.from_dlpack(np.ones((2, 3), dtype=np.float32))
+        b = Tensor.from_dlpack(np.ones((3, 2), dtype=np.float64))
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+            pytest.raises(ValueError, match="different dtypes"),
+        ):
+            matmul(a, b)
+
+    def test_linear_casts_input_to_weight_dtype(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A float64 input to a float32 ``Linear`` computes in float32."""
+        monkeypatch.setenv("MAX_EAGER_ALLOW_LAZY_COMPILE", "1")
+        layer = ExperimentalLinear(3, 2, bias=False)
+        x_np = np.arange(6, dtype=np.float64).reshape(2, 3)
+        x = Tensor.from_dlpack(x_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            y = layer(x)
+
+        assert y.dtype == layer.weight.dtype
+        weight_np = np.from_dlpack(layer.weight)
+        expected = x_np.astype(weight_np.dtype) @ weight_np.T
+        np.testing.assert_allclose(np.from_dlpack(y), expected, rtol=1e-6)
+
+    def test_matmul_out_dtype(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An eager matmul writes ``out_dtype``, not the inputs' dtype.
+
+        The sweep covers one-dtype matmuls only, so this one compiles lazily.
+        """
+        monkeypatch.setenv("MAX_EAGER_ALLOW_LAZY_COMPILE", "1")
+        a_np = np.arange(12, dtype=np.float32).reshape(3, 4) % 10
+        b_np = np.arange(20, dtype=np.float32).reshape(4, 5) % 10
+        matmul = F.functional(graph_ops.matmul)
+
+        a = Tensor.from_dlpack(a_np)
+        b = Tensor.from_dlpack(b_np)
+        with (
+            rc.EagerRealizationContext() as ctx,
+            realization_context(ctx),
+        ):
+            c = matmul(a, b, out_dtype=DType.float64)
+
+        assert c.dtype == DType.float64
+        expected = np.matmul(a_np.astype(np.float64), b_np.astype(np.float64))
+        np.testing.assert_array_equal(np.from_dlpack(c), expected)
 
     @pytest.mark.parametrize("dtype", MATMUL_DTYPES)
     def test_matmul_basic(self, dtype: DType) -> None:
@@ -9781,8 +9840,12 @@ class TestLazyGCModelCompilation:
     def test_matmul_model_compiles_once_and_reuses(self) -> None:
         """A second call for the same (device, dtype) returns the cached model."""
         cpu = CPU()
-        first = matmul_gc.matmul_model(cpu, DType.float32)
-        second = matmul_gc.matmul_model(cpu, DType.float32)
+        first = matmul_gc.matmul_model(
+            cpu, DType.float32, DType.float32, DType.float32
+        )
+        second = matmul_gc.matmul_model(
+            cpu, DType.float32, DType.float32, DType.float32
+        )
         assert first is second
 
     def test_unary_model_compiles_once_and_reuses(self) -> None:
@@ -9824,7 +9887,9 @@ class TestLazyGCModelCompilation:
         [
             (
                 matmul_gc._FAMILY,
-                lambda: matmul_gc.matmul_model(CPU(), DType.float32),
+                lambda: matmul_gc.matmul_model(
+                    CPU(), DType.float32, DType.float32, DType.float32
+                ),
             ),
             (
                 select_gc._FAMILY,
@@ -9885,7 +9950,9 @@ class TestLazyGCModelCompilation:
             gc_compile.EAGER_OP_PRECOMPILE_ENV_VAR, raising=False
         )
         monkeypatch.setattr(matmul_gc._FAMILY, "cache", {})
-        model = matmul_gc.matmul_model(CPU(), DType.float32)
+        model = matmul_gc.matmul_model(
+            CPU(), DType.float32, DType.float32, DType.float32
+        )
         assert model is not None
 
     def test_select_model_compiles_once_and_reuses(self) -> None:

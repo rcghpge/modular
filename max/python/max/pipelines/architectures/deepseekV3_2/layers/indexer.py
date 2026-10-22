@@ -207,7 +207,7 @@ class Indexer(Module, Shardable):
             out_dim=self.n_heads,
             dtype=DType.bfloat16,
             device=devices[0],
-        )  # DS casts to f32
+        )
 
         self.hadamard_transform = HadamardTransform(
             scale=self.softmax_scale, device=devices[0]
@@ -738,9 +738,11 @@ class Indexer(Module, Shardable):
         q_fp8, q_scale = act_quant(q, self.quant_config)
         k_fp8, k_scale = act_quant(k, self.quant_config)
 
+        # DeepSeek projects the scoring weights in float32.
+        proj = self.weights_proj.weight.to(x.device).cast(DType.float32)
         weights_for_scoring = (
             ops.unsqueeze(
-                self.weights_proj(x.cast(DType.float32)) * self.n_heads**-0.5,
+                (x.cast(DType.float32) @ proj.T) * self.n_heads**-0.5,
                 axis=-1,
             )
             * q_scale

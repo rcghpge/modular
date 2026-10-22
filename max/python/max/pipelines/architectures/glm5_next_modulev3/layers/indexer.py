@@ -336,9 +336,12 @@ class PooledIndexer(Module[..., Tensor]):
         q = self.wq_b(qr).reshape((-1, self.n_heads, self.head_dim))
         k = self.k_norm(self.wk(x))
         q_fp8, q_scale = act_quant(q, self.quant_config)
+        # The scoring weights are projected in float32.
+        proj = self.weights_proj.weight
+        assert isinstance(proj, Tensor)
         weights = (
-            self.weights_proj(F.cast(x, DType.float32)) * self.n_heads**-0.5
-        )
+            F.cast(x, DType.float32) @ F.cast(proj, DType.float32).T
+        ) * self.n_heads**-0.5
         weights = F.unsqueeze(weights, axis=-1) * q_scale * self.softmax_scale
         selection = _select_pooled(
             k,
