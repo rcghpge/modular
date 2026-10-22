@@ -1,7 +1,7 @@
 load("@mojo//:mojo.bzl", "INTERNAL_KERNEL_MOJOPKGS")
 load("//bazel:api.bzl", "modular_cc_binary")
 
-# gazelle:default_visibility //GraphCompiler:__subpackages__,//:__pkg__,//Kernels:__subpackages__,//max/internal:__subpackages__
+# gazelle:default_visibility //GraphCompiler:__subpackages__,//:__pkg__,//Kernels:__subpackages__,//max/internal:__subpackages__,//plugins:__subpackages__
 
 package(default_visibility = [
     "//:__pkg__",
@@ -9,6 +9,7 @@ package(default_visibility = [
     "//Kernels:__subpackages__",
     # compile_all_graphs drives mo-opt over a dumped graph tree.
     "//max/internal:__subpackages__",
+    "//plugins:__subpackages__",
 ])
 
 modular_cc_binary(
