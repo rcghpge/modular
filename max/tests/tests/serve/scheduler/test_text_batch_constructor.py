@@ -11,6 +11,7 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
+import dataclasses
 import time
 from collections.abc import Callable, Mapping, Sequence
 from types import SimpleNamespace
@@ -4833,6 +4834,366 @@ def test_text_batch_constructor__a_readmitted_lookup_stays_behind_an_earlier_pro
     assert latest.request_id not in batch_constructor._onloading_reqs
     assert [ctx.request_id for ctx in inputs.batches[0]] == [earlier.request_id]
     assert list(batch_constructor.replicas[0].ce_reqs) == [latest.request_id]
+
+
+def _preempt_to_the_pool_warm_on_replica_0(
+    batch_constructor: TextBatchConstructor,
+    earlier: TextContext,
+) -> None:
+    """Makes a prompt pool-managed and preempts it back to the DP pool.
+
+    Its arrival has expired, so the next pass binds it first, and its
+    cached prefix on replica 0 makes that the cheaper replica to bind to.
+    """
+    _stub_per_request_hits(
+        batch_constructor,
+        {
+            earlier.request_id: [
+                PrefixCacheHits(device_blocks=2),
+                PrefixCacheHits(),
+            ]
+        },
+    )
+    batch_constructor._ce_arrival[earlier.request_id] = time.monotonic() - 60.0
+    batch_constructor._preempt_request(
+        earlier, 0, reason=PreemptionReason.KV_CACHE_MEMORY
+    )
+    assert earlier.request_id in batch_constructor._ce_pending
+
+
+def _only_starts_a_lookup(
+    batch_constructor: TextBatchConstructor, holder: TextContext
+) -> None:
+    """Has ``holder`` alone start a connector lookup, one that never answers."""
+    kv_cache = _mock_kv_cache_of(batch_constructor)
+    lookup = _IncompleteOnload()
+    kv_cache.num_req_blocks = Mock(return_value=0)
+    kv_cache.starts_lookup = Mock(side_effect=lambda ctx: ctx is holder)
+    kv_cache.awaits_lookup = Mock(side_effect=lambda ctx: ctx is holder)
+    kv_cache.alloc = Mock(
+        side_effect=lambda ctx, defer_lookup=False: (
+            lookup if ctx is holder else CompletedTransfer()
+        )
+    )
+
+
+@pytest.mark.parametrize("later_under_way", [False, True])
+def test_dp_ce_balance__a_rebound_prompt_keeps_its_turn_under_a_lookup_hold(
+    later_under_way: bool,
+) -> None:
+    """A preempted prompt bound again goes ahead of the prompts held after it.
+
+    It was bound before the request out on a lookup, so the hold does not
+    keep it waiting. Bound again at the tail of the queue, it would sit
+    behind a later prompt the hold keeps at the head, which ends every pass
+    there until the hold runs out or a readmission on the replica sorts the
+    queue. A later prefill already under way is not held and keeps its
+    place.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    later = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    for ctx in (earlier, holder, later):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    inputs = batch_constructor.construct_batch()
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [earlier.request_id]
+    assert holder.request_id in batch_constructor._lookup_holds
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+    if later_under_way:
+        later.tokens.skip_processing(2)
+
+    inputs = batch_constructor.construct_batch()
+
+    if later_under_way:
+        assert [ctx.request_id for ctx in inputs.batches[0]] == [
+            later.request_id,
+            earlier.request_id,
+        ]
+    else:
+        assert [ctx.request_id for ctx in inputs.batches[0]] == [
+            earlier.request_id
+        ]
+        assert list(batch_constructor.replicas[0].ce_reqs) == [later.request_id]
+
+
+def test_dp_ce_balance__a_rebound_prompt_queues_last_without_a_lookup_hold() -> (
+    None
+):
+    """With no lookup hold a preempted prompt bound again still queues last.
+
+    Nothing waits on bind order without a connector lookup out, so the
+    prompts queued on the replica keep the order they have always had.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    later = create_lora_context(seq_len=10)
+    batch_constructor.enqueue_new_request(earlier, replica_idx=0)
+    batch_constructor.construct_batch()
+    batch_constructor.enqueue_new_request(later, replica_idx=0)
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        later.request_id,
+        earlier.request_id,
+    ]
+
+
+def test_dp_ce_balance__a_hold_on_another_replica_leaves_a_rebind_last() -> (
+    None
+):
+    """A lookup hold on one replica does not reorder a rebind on another.
+
+    Bind order only matters where a hold keeps prompts waiting, so the
+    rebound prompt on a replica with no hold of its own queues last.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    later = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    batch_constructor.enqueue_new_request(earlier, replica_idx=0)
+    batch_constructor.enqueue_new_request(holder, replica_idx=1)
+    batch_constructor.construct_batch()
+    assert batch_constructor._lookup_holds[holder.request_id].replica_idx == 1
+    batch_constructor.enqueue_new_request(later, replica_idx=0)
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        later.request_id,
+        earlier.request_id,
+    ]
+
+
+def test_dp_ce_balance__an_expired_hold_leaves_a_rebind_last() -> None:
+    """A hold past ``_LOOKUP_HOLD_S`` does not reorder a rebind.
+
+    It no longer keeps any prompt waiting, so the rebound prompt queues
+    last as it does with no hold.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    later = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    for ctx in (earlier, holder, later):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    batch_constructor.construct_batch()
+    hold = batch_constructor._lookup_holds[holder.request_id]
+    batch_constructor._lookup_holds[holder.request_id] = dataclasses.replace(
+        hold, since=hold.since - text_batch_constructor._LOOKUP_HOLD_S
+    )
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        later.request_id,
+        earlier.request_id,
+    ]
+
+
+def test_dp_ce_balance__a_rebind_stays_behind_an_earlier_queued_prompt() -> (
+    None
+):
+    """A rebound prompt goes only ahead of prompts bound after it.
+
+    The first prompt was bound before it and preempted back to the head of
+    the queue on its pinned replica, so it keeps its place in front.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    first = create_lora_context(seq_len=10)
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    later = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    for ctx in (first, earlier, holder, later):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    inputs = batch_constructor.construct_batch()
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        first.request_id,
+        earlier.request_id,
+    ]
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+    batch_constructor._preempt_request(
+        first, 0, reason=PreemptionReason.KV_CACHE_MEMORY
+    )
+    assert next(iter(batch_constructor.replicas[0].ce_reqs)) == first.request_id
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        first.request_id,
+        earlier.request_id,
+    ]
+    assert list(batch_constructor.replicas[0].ce_reqs) == [later.request_id]
+
+
+def test_dp_ce_balance__a_held_rebind_stays_behind_a_later_lookup() -> None:
+    """A rebound prompt the hold keeps waiting too does not move up.
+
+    It was bound after the request out on a lookup, so at the head of the
+    queue it would end the pass with nothing to do. A later prompt behind
+    it that starts its own lookup would then never get to ask, and its
+    lookup would wait on the first one's instead of running beside it.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    holder = create_lora_context(seq_len=10)
+    earlier = create_lora_context(seq_len=40)
+    later = create_lora_context(seq_len=10)
+    kv_cache = _mock_kv_cache_of(batch_constructor)
+    lookup = _IncompleteOnload()
+    kv_cache.num_req_blocks = Mock(return_value=0)
+    kv_cache.starts_lookup = Mock(
+        side_effect=lambda ctx: ctx is holder or ctx is later
+    )
+    kv_cache.awaits_lookup = Mock(
+        side_effect=lambda ctx: ctx is holder or ctx is later
+    )
+    kv_cache.start_lookup = Mock(return_value=_IncompleteOnload())
+    kv_cache.alloc = Mock(
+        side_effect=lambda ctx, defer_lookup=False: (
+            lookup if ctx is holder else CompletedTransfer()
+        )
+    )
+    batch_constructor.enqueue_new_request(holder, replica_idx=0)
+    batch_constructor.enqueue_new_request(earlier, replica_idx=1)
+    inputs = batch_constructor.construct_batch()
+    assert [ctx.request_id for ctx in inputs.batches[1]] == [earlier.request_id]
+    assert holder.request_id in batch_constructor._lookup_holds
+    batch_constructor.enqueue_new_request(later, replica_idx=0)
+    _stub_per_request_hits(
+        batch_constructor,
+        {
+            earlier.request_id: [
+                PrefixCacheHits(device_blocks=2),
+                PrefixCacheHits(),
+            ]
+        },
+    )
+    batch_constructor._ce_arrival[earlier.request_id] = time.monotonic() - 60.0
+    batch_constructor._preempt_request(
+        earlier, 1, reason=PreemptionReason.KV_CACHE_MEMORY
+    )
+    assert earlier.request_id in batch_constructor._ce_pending
+
+    batch_constructor.construct_batch()
+
+    assert later.request_id in batch_constructor._onloading_reqs
+    assert list(batch_constructor.replicas[0].ce_reqs) == [earlier.request_id]
+
+
+def test_dp_ce_balance__a_rebind_keeps_the_held_prompts_in_order() -> None:
+    """A rebound prompt goes ahead of every held prompt, not just the first.
+
+    The held prompts behind it keep the order they had.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    first_later = create_lora_context(seq_len=10)
+    second_later = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    for ctx in (earlier, holder, first_later, second_later):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    batch_constructor.construct_batch()
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+    ce_reqs = batch_constructor.replicas[0].ce_reqs
+
+    batch_constructor._plan_ce_step()
+
+    assert list(ce_reqs) == [
+        earlier.request_id,
+        first_later.request_id,
+        second_later.request_id,
+    ]
+
+
+def test_dp_ce_balance__a_rebind_puts_earlier_queued_prompts_in_bind_order() -> (
+    None
+):
+    """An earlier prompt queued behind a held one moves up with the rebind.
+
+    It was bound back while no hold was live, so it queued last behind a
+    later prompt the hold now keeps waiting. Neither it nor the rebound
+    prompt is held, so both go ahead of the held prompt in bind order, the
+    rebound prompt first since it was bound first.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    later = create_lora_context(seq_len=10)
+    first = create_lora_context(seq_len=10)
+    _only_starts_a_lookup(batch_constructor, holder)
+    for ctx in (earlier, holder, later):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    batch_constructor.construct_batch()
+    batch_constructor.enqueue_new_request(first, replica_idx=0)
+    # Both were bound before the hold, the rebound prompt first, and a
+    # prompt bound again from the pool keeps its place in bind order.
+    batch_constructor._bind_seq[earlier.request_id] = -2
+    batch_constructor._bind_seq[first.request_id] = -1
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        earlier.request_id,
+        first.request_id,
+    ]
+    assert list(batch_constructor.replicas[0].ce_reqs) == [later.request_id]
+
+
+def test_dp_ce_balance__a_rebind_stays_behind_a_later_landed_onload() -> None:
+    """A rebound prompt does not pass a later prompt that holds pages.
+
+    The later prompt was bound after the request out on a lookup, but its
+    onload landed, so it holds every page its next forward needs and the
+    hold does not keep it waiting. A rebound prompt still has to allocate
+    its whole prompt, so it stays behind it, as a readmission orders them.
+    """
+    batch_constructor = create_dp_balance_constructor()
+    earlier = create_lora_context(seq_len=40)
+    holder = create_lora_context(seq_len=10)
+    loaded = create_lora_context(seq_len=10)
+    kv_cache = _mock_kv_cache_of(batch_constructor)
+    lookup = _IncompleteOnload()
+    onload = _IncompleteOnload()
+    kv_cache.contains = Mock(side_effect=lambda ctx: ctx is loaded)
+    kv_cache.num_req_blocks = Mock(
+        side_effect=lambda ctx: 2 if ctx is loaded else 0
+    )
+    kv_cache.starts_lookup = Mock(side_effect=lambda ctx: ctx is holder)
+    kv_cache.awaits_lookup = Mock(side_effect=lambda ctx: ctx is holder)
+
+    def alloc(ctx: TextContext, defer_lookup: bool = False) -> KVTransfer:
+        if ctx is holder:
+            return lookup
+        if ctx is loaded and not onload.complete:
+            return onload
+        return CompletedTransfer()
+
+    kv_cache.alloc = Mock(side_effect=alloc)
+    for ctx in (earlier, holder, loaded):
+        batch_constructor.enqueue_new_request(ctx, replica_idx=0)
+    inputs = batch_constructor.construct_batch()
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [earlier.request_id]
+    assert loaded.request_id in batch_constructor._onloading_reqs
+    assert holder.request_id in batch_constructor._lookup_holds
+    _preempt_to_the_pool_warm_on_replica_0(batch_constructor, earlier)
+    onload.synchronize()
+
+    inputs = batch_constructor.construct_batch()
+
+    assert [ctx.request_id for ctx in inputs.batches[0]] == [
+        loaded.request_id,
+        earlier.request_id,
+    ]
 
 
 def test_text_batch_constructor__readmits_a_landed_onload_ahead_of_a_prefill(

@@ -842,6 +842,60 @@ class TextBatchConstructor:
             else None
         )
 
+    def _restore_bind_order(
+        self, request_id: RequestID, replica_idx: int
+    ) -> None:
+        """Moves a rebound prompt ahead of later prompts a hold keeps waiting.
+
+        Only while a lookup hold is live on the replica, since a held later
+        prompt at the head would otherwise end each pass in front of it.
+        From the first held prompt on, the prompts that have started or hold
+        pages go first, then the ones no hold keeps waiting in bind order,
+        then the held ones in the order they had. A rebound prompt the hold
+        keeps waiting too is one of those, so it stays behind them and a
+        held prompt ahead of it can still start its own lookup.
+        """
+        now = time.monotonic()
+        hold_seqs = [
+            hold.seq
+            for hold in self._lookup_holds.values()
+            if hold.replica_idx == replica_idx
+            and now - hold.since < _LOOKUP_HOLD_S
+        ]
+        if not hold_seqs:
+            return
+
+        first_hold = min(hold_seqs)
+        ce_reqs = self.replicas[replica_idx].ce_reqs
+
+        def waiting(other: RequestID) -> bool:
+            ctx = ce_reqs[other]
+            return ctx.tokens.processed_length == 0 and not (
+                self.kv_cache.contains(ctx)
+                and self.kv_cache.num_req_blocks(ctx) > 0
+            )
+
+        def held(other: RequestID) -> bool:
+            return self._bind_seq[other] > first_hold and waiting(other)
+
+        queued = list(ce_reqs)
+        first_held = next(
+            (i for i, other in enumerate(queued) if held(other)), None
+        )
+        if first_held is None:
+            return
+
+        tail = queued[first_held:]
+        for other in (
+            [other for other in tail if not waiting(other)]
+            + sorted(
+                (other for other in tail if waiting(other) and not held(other)),
+                key=self._bind_seq.__getitem__,
+            )
+            + [other for other in tail if held(other)]
+        ):
+            ce_reqs.move_to_end(other)
+
     def _bind_pooled_request(
         self, request_id: RequestID, replica_idx: int
     ) -> None:
@@ -850,9 +904,13 @@ class TextBatchConstructor:
         METRICS.ce_pool_wait_time(
             (time.monotonic() - pending.entered_at) * 1000
         )
+        # Only a preempted request returns to the pool with its bind seq.
+        rebind = request_id in self._bind_seq
         self._bind_request(
             pending.ctx, replica_idx, ce_weight=pending.weights[replica_idx]
         )
+        if rebind:
+            self._restore_bind_order(request_id, replica_idx)
 
     def _ce_weight(self, ctx: TextContext) -> int:
         """Prices a bound CE request in post-prefix-cache tokens.
@@ -1961,6 +2019,9 @@ class TextBatchConstructor:
                 continue
             weights = self._ce_pending[req_id].weights
             replica_idx = min(seated, key=lambda i: sum(queues[i]) + weights[i])
+            # Only a replica with a free seat takes the bind, so its whole
+            # queue stays inside the seats the floor prices below, and a
+            # rebind moved up to its bind-order turn is priced the same.
             queues[replica_idx].append(weights[replica_idx])
             self._bind_pooled_request(req_id, replica_idx)
 
