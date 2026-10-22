@@ -10,7 +10,14 @@
 /.bazel* @modular/sdlc
 /bazel* @modular/sdlc
 /BUILD.bazel @modular/sdlc
+/bazel/public-patches/hello_imgui.patch @modular/sdlc
 /bazel/internal/rules_rust_extra_exec_triple.patch @modular/sdlc
+/bazel/public-patches/cufile.patch @modular/sdlc
+/bazel/public-patches/llvm-amd-relax-alloca-verifier.patch @modular/sdlc
+/bazel/public-patches/llvm-amd.patch @modular/sdlc
+/bazel/public-patches/llvm-mfma-allow-non-mai-users.patch @modular/sdlc
+/bazel/public-patches/llvm-nvptx-fsetp-no-ftz.patch @modular/sdlc
+/bazel/public-patches/llvm-revert-mfma-rewrite-disable.patch @modular/sdlc
 /bazel/public-patches/llvm-elf-extractor-local-copy.patch @modular/sdlc
 /bazel/public-patches/llvm-machinefunction-sti-ref-to-ptr.patch @modular/sdlc
 /bazel/public-patches/llvm-revert-lldb-elf-section-name-string.patch @modular/sdlc
@@ -20,6 +27,7 @@
 /bazel/public-patches/tcmalloc-local-dynamic.patch @modular/sdlc
 /bazel/public-patches/tcmalloc-numa.patch @modular/sdlc
 /bazel/public-patches/tcmalloc-visibility.patch @modular/sdlc
+/bazel/public-patches/glfw-cc-loads.patch @modular/sdlc
 /bazel/public-patches/crashpad.patch @modular/sdlc
 /bazel/public-patches/grpc-loads.patch @modular/sdlc
 /bazel/public-patches/grpc-no-macos-x86.patch @modular/sdlc
@@ -46,7 +54,13 @@
 /bazel/public-patches/llvm-fix-lldb-dap-console.patch @modular/mojo-tooling
 /bazel/public-patches/llvm-lldb-exports.patch @modular/mojo-tooling
 /bazel/public-patches/rules_mojo_bitcode_libs.patch @modular/stdlib
+/bazel/public-patches/libkineto-record-window-end-track.patch @modular/max-sdk
+/bazel/public-patches/tracy-cuda-kernel-annotations.patch @modular/max-sdk
+/bazel/public-patches/tracy-port-logging.patch @modular/max-sdk
+/bazel/public-patches/tracy-rocm-no-default-counters.patch @modular/max-sdk
+/bazel/public-patches/tracy-tls-fix.patch @modular/max-sdk
 /bazel/public-patches/xgrammar.patch @modular/max-serve
+/bazel/public-patches/llvm-mlir-timing-recycled-key.patch @modular/mojo-compiler
 /AsyncRT/ @modular/runtime
 /max/docs/site/ @modular/mojo-docs
 /max/docs/site/nightly-changelog.md @modular/public-repo-maintainers
@@ -178,6 +192,7 @@
 /max/tests/integration/interfaces/ @modular/max-sdk
 /max/tests/integration/kv_cache/ @modular/max-serve
 /max/tests/integration/nn/ @modular/max-sdk
+/max/tests/integration/readme/ @modular/mojo-docs
 /max/tests/integration/serve/ @modular/max-serve
 /max/tests/integration/tensor @modular/max-sdk
 /max/tests/integration/unorganized/sampling @modular/max-serve
