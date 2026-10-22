@@ -220,6 +220,10 @@ public:
 };
 
 template <typename ConcreteType>
+class MOExpensiveElementwise
+    : public mlir::OpTrait::TraitBase<ConcreteType, MOExpensiveElementwise> {};
+
+template <typename ConcreteType>
 class MOHostOnly : public mlir::OpTrait::TraitBase<ConcreteType, MOHostOnly> {
 public:
   static LogicalResult verifyTrait(Operation *op) {

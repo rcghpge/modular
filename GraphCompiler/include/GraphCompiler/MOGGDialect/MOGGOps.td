@@ -1603,9 +1603,20 @@ def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
     the `$axis` coordinate pinned to 0. Lowered from a `map.iter.opaque`
     wrapping a `map.iter.rowwise.body`.
 
-    `$primary` is the capture the folds read element by element, `$dtype`
-    its element type, `$accum` the widest contribution type, and
-    `$is_cached` whether more than one fold reads the row.
+    `mogg-legalize-rowwise-kernels` sets the rest, which the Row API needs:
+
+    - `$primary`: the capture the folds walk along `$axis`.
+    - `$dtype`: `$primary`'s element type.
+    - `$accum`: the type the folds' contributions are computed in.
+    - `$is_cached`: whether more than one fold reads the row.
+    - `$cols`: the static size of `$axis`.
+    - `$num_phases`: 1 when the body is reduce-shaped.
+    - `$dtype_size`: `$primary`'s byte size when the body may split the
+      row, else 0.
+    - `$computationally_expensive`: whether the folds' per-element work
+      reaches the pass's cost threshold.
+    - `$simd_monoid`: the fold monoid that picks the SIMD width, the one
+      with the largest state.
 
     Example:
     ```mlir
@@ -1630,7 +1641,12 @@ def MOGG_CallRowwiseOp : MOGG_Op<"call.rowwise", [
     OptionalAttr<I64Attr>:$primary,
     OptionalAttr<TypeAttr>:$dtype,
     OptionalAttr<TypeAttr>:$accum,
-    OptionalAttr<BoolAttr>:$is_cached
+    UnitAttr:$is_cached,
+    OptionalAttr<I64Attr>:$cols,
+    OptionalAttr<I64Attr>:$num_phases,
+    OptionalAttr<I64Attr>:$dtype_size,
+    UnitAttr:$computationally_expensive,
+    OptionalAttr<FlatSymbolRefAttr>:$simd_monoid
   );
   let regions = (region SizedRegion<1>:$body);
   let hasCustomAssemblyFormat = 1;

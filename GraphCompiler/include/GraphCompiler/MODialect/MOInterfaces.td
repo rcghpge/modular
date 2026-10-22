@@ -450,6 +450,10 @@ def MO_ExecutesOnHost : MO_OpTrait<"MOExecutesOnHost">;
 // Marks a `mo.composite.*` fused-subgraph op (see MOCompositeOps.td).
 def MO_CompositeOpTrait : MO_OpTrait<"MOComposite">;
 
+// Marks an elementwise op with heavy per-element work: a division or a
+// transcendental. Kernel launch heuristics key off it.
+def MO_ExpensiveElementwise : MO_OpTrait<"MOExpensiveElementwise">;
+
 class getOperandNumbers<list<string> operandNames> {
   string ret = !interleave(!foreach(name, operandNames,
     "get" # snakeCaseToCamelCase<name>.ret

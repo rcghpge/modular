@@ -854,7 +854,9 @@ LogicalResult IterRowwiseBodyOp::lowerToMOGG(MAPToMOGGState &state) {
       state.builder, loc, rowShape, getAxisAttr(), state.contextArgs.front(),
       capturing, state.builder.getStringAttr(state.device.getLabel()),
       /*primary=*/nullptr, /*dtype=*/nullptr, /*accum=*/nullptr,
-      /*is_cached=*/nullptr);
+      /*is_cached=*/nullptr, /*cols=*/nullptr, /*num_phases=*/nullptr,
+      /*dtype_size=*/nullptr, /*computationally_expensive=*/nullptr,
+      /*simd_monoid=*/nullptr);
 
   // One arg per capture, then the row index.
   Block *rowwiseBlock = state.builder.createBlock(&callRowwise.getBody());

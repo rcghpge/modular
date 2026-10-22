@@ -227,12 +227,20 @@ def LegalizeRowwiseKernels
     : Pass<"mogg-legalize-rowwise-kernels", "ModuleOp"> {
   let summary = "Fill in what each rowwise kernel needs to print as Mojo.";
   let description = [{
-    Runs `mogg-rowwise-select-primary-input`, `mogg-rowwise-bind-monoids` and
-    `mogg-rowwise-group-row-stores`, in that order, on every
-    `mogg.call.rowwise`.
+    Runs `mogg-rowwise-select-primary-input`, `mogg-rowwise-bind-monoids`,
+    `mogg-rowwise-group-row-stores` and `mogg-rowwise-set-launch-params`, in
+    that order, on every `mogg.call.rowwise`.
   }];
 
-  let dependentDialects = ["MOGG::MOGGDialect"];
+  let options = [
+    Option<"expensiveCostThreshold", "expensive-cost-threshold", "unsigned",
+           /*default=*/"16",
+           "Per-element cost at which a kernel is computationally expensive. "
+           "An op that divides or calls a transcendental costs 16, any other "
+           "op 1.">,
+  ];
+
+  let dependentDialects = ["MOGG::MOGGDialect", "M::MO::MODialect"];
 }
 
 def RowwiseSelectPrimaryInput
@@ -268,6 +276,28 @@ def RowwiseGroupRowStores: Pass<"mogg-rowwise-group-row-stores", "ModuleOp"> {
   }];
 
   let dependentDialects = ["MOGG::MOGGDialect"];
+}
+
+def RowwiseSetLaunchParams
+    : Pass<"mogg-rowwise-set-launch-params", "ModuleOp"> {
+  let summary = "Set each rowwise kernel's launch parameters. For testing "
+                "only.";
+  let description = [{
+    Sets the launch parameters of each `mogg.call.rowwise`, and `cols` when
+    the reduced axis is static. Runs after `mogg-rowwise-group-row-stores`: a
+    body is reduce-shaped when all its stores are in the emit. Only
+    reduce-shaped bodies are supported.
+  }];
+
+  let options = [
+    Option<"expensiveCostThreshold", "expensive-cost-threshold", "unsigned",
+           /*default=*/"16",
+           "Per-element cost at which a kernel is computationally expensive. "
+           "An op that divides or calls a transcendental costs 16, any other "
+           "op 1.">,
+  ];
+
+  let dependentDialects = ["MOGG::MOGGDialect", "M::MO::MODialect"];
 }
 
 def AnonymizeDimNames: Pass<"mogg-anonymize-dim-names", "ModuleOp"> {

@@ -3,7 +3,7 @@
 // A fused reduction, from MO to a rowwise kernel ready to print as Mojo.
 
 // CHECK-LABEL: mo.graph @sumOfSquaresPlusBias
-// CHECK:       mogg.call.rowwise {{.*}} attributes {accum = f32, dtype = bf16, is_cached = false, primary = 0 : i64} {
+// CHECK:       mogg.call.rowwise {{.*}} attributes {accum = f32, cols = 128 : i64, dtype = bf16, dtype_size = 0 : i64, num_phases = 1 : i64, primary = 0 : i64, simd_monoid = @builtin_kernels.monoids.ReduceSum} {
 // CHECK-NEXT:    %[[ACC:.*]] = mogg.rowwise.reduce @builtin_kernels.monoids.ReduceSum (%i : !map.index<2>) -> !mogg.simd<f32> {
 // CHECK-NEXT:      %[[P:.*]] = mogg.rowwise.primary : !mogg.simd<bf16>
 // CHECK-NEXT:      %[[A:.*]] = mogg.call.elementwise @builtin_kernels.elementwise.Cast(%[[P]])
@@ -22,4 +22,14 @@ mo.graph @sumOfSquaresPlusBias(%x: !mo.tensor<[8, 128], bf16>, %b: !mo.tensor<[8
   %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %y = mo.add(%r, %b) : !mo.tensor<[8, 1], f32>
   mo.output %y : !mo.tensor<[8, 1], f32>
+}
+
+// An exp in the fold makes the kernel computationally expensive.
+// CHECK-LABEL: mo.graph @sumOfExp
+// CHECK:       mogg.call.rowwise {{.*}} computationally_expensive,
+// CHECK:         mogg.call.elementwise @builtin_kernels.elementwise.Exp
+mo.graph @sumOfExp(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
+  %e = mo.exp(%x) : !mo.tensor<[8, 128], f32>
+  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%e) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  mo.output %r : !mo.tensor<[8, 1], f32>
 }

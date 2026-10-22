@@ -17,9 +17,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "GraphCompiler/MODialect/MODialect.h"
+#include "GraphCompiler/MODialect/MOInterfaces.h"
 #include "GraphCompiler/MODialect/MOTypes.h"
 #include "GraphCompiler/MOGGDialect/MOGGOps.h"
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h"
+#include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "Mojo/KGENDialect/KGENAttrs.h"
 #include "Mojo/LITDialect/LITAttrs.h"
 
@@ -37,6 +40,7 @@ namespace M::MOGG {
 #define GEN_PASS_DEF_ROWWISESELECTPRIMARYINPUT
 #define GEN_PASS_DEF_ROWWISEBINDMONOIDS
 #define GEN_PASS_DEF_ROWWISEGROUPROWSTORES
+#define GEN_PASS_DEF_ROWWISESETLAUNCHPARAMS
 #include "GraphCompiler/MOGGDialect/MOGGPasses.h.inc"
 
 namespace {
@@ -197,6 +201,62 @@ LogicalResult groupRowStores(CallRowwiseOp op) {
   return success();
 }
 
+// An op that divides or calls a transcendental costs about 16 cheap ones.
+constexpr unsigned kCheapOpCost = 1;
+constexpr unsigned kExpensiveOpCost = 16;
+
+unsigned cost(CallElementwiseOp call) {
+  std::optional<RegisteredOperationName> name =
+      RegisteredOperationName::lookup(call.getMoOpName(), call.getContext());
+  return name && name->hasTrait<MO::MOExpensiveElementwise>() ? kExpensiveOpCost
+                                                              : kCheapOpCost;
+}
+
+unsigned stateBits(RowwiseReduceOp fold) {
+  unsigned bits = 0;
+  for (Type type : fold.getResultTypes())
+    bits += cast<SimdType>(type).getElementType().getIntOrFloatBitWidth();
+  return bits;
+}
+
+LogicalResult setLaunchParams(CallRowwiseOp op,
+                              unsigned expensiveCostThreshold) {
+  SmallVector<RowwiseReduceOp> rowFolds = llvm::to_vector(folds(op));
+  if (rowFolds.empty())
+    return op.emitOpError("has no fold");
+
+  // TODO(GEX-3348): a normalize-shaped body writes every element. It needs
+  // `num_phases` = folds + 1, and `dtype_size` when it may split the row.
+  WalkResult strayStore = op.getBody().walk([](TensorStoreOp store) {
+    return isa<RowwiseEmitOp>(store->getParentOp()) ? WalkResult::advance()
+                                                    : WalkResult::interrupt();
+  });
+  if (strayStore.wasInterrupted())
+    return op.emitOpError("stores outside its emit; only reduce-shaped "
+                          "bodies are supported");
+
+  RowwiseReduceOp widest = rowFolds.front();
+  for (RowwiseReduceOp fold : rowFolds)
+    if (stateBits(fold) > stateBits(widest))
+      widest = fold;
+
+  // Per-element work only: ops after the folds run once per row.
+  unsigned elementCost = 0;
+  for (RowwiseReduceOp fold : rowFolds)
+    fold.getBody().walk(
+        [&](CallElementwiseOp call) { elementCost += cost(call); });
+
+  op.setNumPhases(1);
+  op.setDtypeSize(0);
+  op.setComputationallyExpensive(elementCost >= expensiveCostThreshold);
+  op.setSimdMonoidAttr(widest.getMonoidAttr());
+  if (auto shape = op.getShape().getDefiningOp<ShapeCreateOp>())
+    if (std::optional<int64_t> cols =
+            MOSH::ShapeAttr::getStaticDim(shape.getShape()[op.getAxis()]))
+      op.setCols(*cols);
+  return success();
+}
+
 LogicalResult forEachRowwise(ModuleOp module,
                              function_ref<LogicalResult(CallRowwiseOp)> fn) {
   SmallVector<CallRowwiseOp> ops;
@@ -235,13 +295,30 @@ struct RowwiseGroupRowStoresPass
   }
 };
 
+struct RowwiseSetLaunchParamsPass
+    : public impl::RowwiseSetLaunchParamsBase<RowwiseSetLaunchParamsPass> {
+  using Base::Base;
+
+  void runOnOperation() override {
+    auto set = [&](CallRowwiseOp op) {
+      return setLaunchParams(op, expensiveCostThreshold);
+    };
+    if (failed(forEachRowwise(getOperation(), set)))
+      signalPassFailure();
+  }
+};
+
 struct LegalizeRowwiseKernelsPass
     : public impl::LegalizeRowwiseKernelsBase<LegalizeRowwiseKernelsPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     OpPassManager pm(ModuleOp::getOperationName());
     pm.addPass(createRowwiseSelectPrimaryInput());
     pm.addPass(createRowwiseBindMonoids());
     pm.addPass(createRowwiseGroupRowStores());
+    pm.addPass(createRowwiseSetLaunchParams(
+        RowwiseSetLaunchParamsOptions{expensiveCostThreshold}));
     if (failed(runPipeline(pm, getOperation())))
       signalPassFailure();
   }

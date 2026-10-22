@@ -1241,6 +1241,7 @@ def MO_AbsOp : MO_ElementWiseUnaryMonoTypeOp<"abs", [Idempotent]> {
 }
 
 def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div", [
+  MO_ExpensiveElementwise,
   DeclareOpInterfaceMethods<MO_Staticization>,
 ]> {
   let summary = "Divide operation";
@@ -1257,7 +1258,7 @@ def MO_DivOp : MO_ElementWiseBinaryMonoTypeOp<"div", [
   }];
 }
 
-def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp"> {
+def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp", [MO_ExpensiveElementwise]> {
   let summary = "Exponential function operation";
   let description = [{
     Returns `exp(x)`, where `x` is the input tensor.
@@ -1271,7 +1272,7 @@ def MO_ExpOp : MO_ElementWiseUnaryMonoTypeOp<"exp"> {
   }];
 }
 
-def MO_ErfOp : MO_ElementWiseUnaryMonoTypeOp<"erf"> {
+def MO_ErfOp : MO_ElementWiseUnaryMonoTypeOp<"erf", [MO_ExpensiveElementwise]> {
   let summary = "(Gaussian) error function operation";
   let description = [{
     Computes the Gauss error function of the input tensor elements.
@@ -1286,7 +1287,7 @@ def MO_ErfOp : MO_ElementWiseUnaryMonoTypeOp<"erf"> {
 }
 
 
-def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
+def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log", [MO_ExpensiveElementwise]> {
   let summary = "Natural logarithm operation";
   let description = [{
     Returns the natural logarithm, `log(x)`.
@@ -1300,7 +1301,7 @@ def MO_LogOp : MO_ElementWiseUnaryMonoTypeOp<"log"> {
   }];
 }
 
-def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p"> {
+def MO_Log1pOp : MO_ElementWiseUnaryMonoTypeOp<"log1p", [MO_ExpensiveElementwise]> {
   let summary = "Natural logarithm of `1 + x` operation ";
   let description = [{
     Returns `log(1 + x)`, accurate for small `x` where `1 + x` rounds to 1.
@@ -1350,7 +1351,7 @@ def MO_MinOp : MO_ElementWiseBinaryMonoTypeOp<"min", [
   }];
 }
 
-def MO_ModOp : MO_ElementWiseBinaryMonoTypeOp<"mod"> {
+def MO_ModOp : MO_ElementWiseBinaryMonoTypeOp<"mod", [MO_ExpensiveElementwise]> {
   let summary = "Modulus operation";
   let description = [{
     Returns `x mod y`, where `x` and `y` are input tensors.
@@ -1403,7 +1404,8 @@ def MO_NegativeOp : MO_ElementWiseUnaryMonoTypeOp<"negative", [
   let arguments = (ins MO_SignedTensor:$input);
 }
 
-def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [Pure]> {
+def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [
+  MO_ExpensiveElementwise, Pure]> {
   let summary = "Power operation";
   let description = [{
     Computes `x ** y`, where `x` and `y` are input tensors.
@@ -1438,7 +1440,7 @@ def MO_PowOp : MO_ElementWiseBinaryOp<"pow", [Pure]> {
 }
 
 // TODO(#22958): Consider relaxing constraints on trig. functions
-def MO_SinOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sin"> {
+def MO_SinOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sin", [MO_ExpensiveElementwise]> {
   let summary = "Sine operation";
   let description = [{
     Returns `sin(x)`, where `x` is input tensor.
@@ -1452,7 +1454,7 @@ def MO_SinOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sin"> {
   let arguments = (ins MO_FloatTensor:$input);
 }
 
-def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
+def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos", [MO_ExpensiveElementwise]> {
   let summary = "Cosine operation";
   let description = [{
     Returns `cos(x)`, where `x` is input tensor.
@@ -1466,7 +1468,7 @@ def MO_CosOp : MO_ElementWiseUnaryFloatMonoTypeOp<"cos"> {
   let arguments = (ins MO_FloatTensor:$input);
 }
 
-def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh"> {
+def MO_AtanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"atanh", [MO_ExpensiveElementwise]> {
   let summary = "Atanh operation";
   let description = [{
     Returns `atanh(x)`, where `x` is input tensor.
@@ -1597,7 +1599,7 @@ def MO_ReluOp : MO_ElementWiseUnaryMonoTypeOp<"relu", [Idempotent]> {
   }];
 }
 
-def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu"> {
+def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu", [MO_ExpensiveElementwise]> {
   let summary = "Gaussian error linear unit operation";
   let description = [{
     Returns the exact GELU activation `0.5 * x * (1 + erf(x / sqrt(2)))`, where
@@ -1612,7 +1614,7 @@ def MO_GeluOp : MO_ElementWiseUnaryMonoTypeOp<"gelu"> {
   }];
 }
 
-def MO_GeluTanhOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_tanh"> {
+def MO_GeluTanhOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_tanh", [MO_ExpensiveElementwise]> {
   let summary = "Tanh approximation of the GELU operation";
   let description = [{
     Returns the tanh approximation of GELU
@@ -1628,7 +1630,7 @@ def MO_GeluTanhOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_tanh"> {
   }];
 }
 
-def MO_GeluQuickOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_quick"> {
+def MO_GeluQuickOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_quick", [MO_ExpensiveElementwise]> {
   let summary = "Quick (sigmoid) approximation of the GELU operation";
   let description = [{
     Returns the quick approximation of GELU `x * sigmoid(1.702 * x)`, where `x`
@@ -1643,7 +1645,7 @@ def MO_GeluQuickOp : MO_ElementWiseUnaryMonoTypeOp<"gelu_quick"> {
   }];
 }
 
-def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid"> {
+def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid", [MO_ExpensiveElementwise]> {
   let summary = "Sigmoid operation";
   let description = [{
     Returns the sigmoid activation `1 / (1 + exp(-x))`, where `x` is the input
@@ -1658,7 +1660,7 @@ def MO_SigmoidOp : MO_ElementWiseUnaryMonoTypeOp<"sigmoid"> {
   }];
 }
 
-def MO_SiluOp : MO_ElementWiseUnaryMonoTypeOp<"silu"> {
+def MO_SiluOp : MO_ElementWiseUnaryMonoTypeOp<"silu", [MO_ExpensiveElementwise]> {
   let summary = "SiLU (Swish) operation";
   let description = [{
     Returns the SiLU (Swish) activation `x * sigmoid(x)`, where `x` is the input
@@ -1673,7 +1675,7 @@ def MO_SiluOp : MO_ElementWiseUnaryMonoTypeOp<"silu"> {
   }];
 }
 
-def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt"> {
+def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt", [MO_ExpensiveElementwise]> {
   let summary = "Reciprocal square root operation";
   let description = [{
     Returns `1/sqrt(x)`, where `x` is the input tensor.
@@ -1687,7 +1689,7 @@ def MO_RsqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"rsqrt"> {
   }];
 }
 
-def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt"> {
+def MO_SqrtOp : MO_ElementWiseUnaryFloatMonoTypeOp<"sqrt", [MO_ExpensiveElementwise]> {
   let summary = "Square root operation";
   let description = [{
     Returns `sqrt(x)`, where `x` is the input tensor.
@@ -2009,7 +2011,7 @@ def MO_SubOp : MO_ElementWiseBinaryMonoTypeOp<"sub", [
   }];
 }
 
-def MO_TanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"tanh"> {
+def MO_TanhOp : MO_ElementWiseUnaryFloatMonoTypeOp<"tanh", [MO_ExpensiveElementwise]> {
   let summary = "Hyperbolic tangent operation";
   let description = [{
     Computes `tanh(x)`, where `x` is input tensor.
