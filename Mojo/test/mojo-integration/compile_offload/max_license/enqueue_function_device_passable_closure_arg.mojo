@@ -64,8 +64,8 @@ struct HostTensorSlice(
         return "HostTensorSlice"
 
 
-# Nested-closure captures whose device_type is not Self. HostString's device
-# layout drops host_padding.
+# Nested-closure captures whose device_type is not Self. The kernel reads each
+# capture as its host type, so host and device layouts must match.
 @fieldwise_init
 struct HostInt(DevicePassable, ImplicitlyCopyable, TrivialRegisterPassable):
     comptime device_type: AnyType = Int
@@ -85,7 +85,6 @@ struct HostInt(DevicePassable, ImplicitlyCopyable, TrivialRegisterPassable):
 struct HostString(DevicePassable, ImplicitlyCopyable, TrivialRegisterPassable):
     comptime device_type: AnyType = SIMD[.int32, 4]
     var value: SIMD[.int32, 4]
-    var host_padding: SIMD[.int32, 4]
 
     def _to_device_type(
         self, mut encoder: Some[DeviceTypeEncoder], target: MutOpaquePointer[_]
@@ -172,9 +171,9 @@ def main() raises:
         block_dim=1,
     )
 
-    var capture1 = HostString(SIMD[.int32, 4](1), SIMD[.int32, 4](0))
+    var capture1 = HostString(SIMD[.int32, 4](1))
     var capture2 = HostInt(21)
-    var capture3 = HostString(SIMD[.int32, 4](3), SIMD[.int32, 4](0))
+    var capture3 = HostString(SIMD[.int32, 4](3))
 
     def another_closure(argument: Int32) {var}:
         _ = capture1

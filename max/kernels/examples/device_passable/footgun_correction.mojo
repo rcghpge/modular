@@ -10,7 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# The corrected launches for `footgun.mojo` (via `host_args=`).
+# The corrected launch for `footgun.mojo` (via `host_args=`), plus a capture
+# that is already device-valid.
 # See max/docs/internal/max-serve/device-passable-closures.md.
 
 from extensibility import InputFusion, InputTensor, StaticTensorSpec

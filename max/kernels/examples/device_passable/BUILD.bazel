@@ -16,7 +16,7 @@ _DEPS = [
 
 # `footgun.mojo` intentionally faults at runtime (it is the "here is the broken
 # code" reference), so it is built but never run: a `mojo_binary`, not a test.
-# Building it still proves the key claim that both misuses typecheck.
+# Building it still proves the key claim that the misuse typechecks.
 mojo_binary(
     name = "footgun",
     srcs = ["footgun.mojo"],

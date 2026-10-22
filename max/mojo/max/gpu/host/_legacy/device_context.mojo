@@ -40,7 +40,6 @@ from std.ffi import (
     CStringSpan,
 )
 from std.sys import (
-    align_of,
     bit_width_of,
     get_defined_bool,
     get_defined_string,
@@ -5137,36 +5136,11 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
             block_dim, location=call_location()
         )
 
-        # The compiled kernel is FuncType.__call__; the launch argument is the
-        # encoded FuncType.device_type instance. Layout punning is only safe
-        # while those sizes and alignments coincide on the launch target.
         comptime launch_target = Self.target
-        comptime host_size = size_of[FuncType, target=launch_target]()
-        comptime device_size = size_of[
-            FuncType.device_type, target=launch_target
-        ]()
-        comptime host_align = align_of[FuncType, target=launch_target]()
-        comptime device_align = align_of[
-            FuncType.device_type, target=launch_target
-        ]()
-        comptime assert host_size == device_size, String(
-            "capturing enqueue_function requires size_of[FuncType] to match",
-            " size_of[FuncType.device_type] on the launch target; host=",
-            host_size,
-            " device=",
-            device_size,
-        )
-        comptime assert host_align == device_align, String(
-            "capturing enqueue_function requires align_of[FuncType] to match",
-            " align_of[FuncType.device_type] on the launch target; host=",
-            host_align,
-            " device=",
-            device_align,
-        )
 
         var gpu_kernel = DeviceFunction[
             FuncType.__call__,
-            TypeList.of[Trait=AnyType, FuncType.device_type](),
+            TypeList.of[Trait=AnyType, FuncType](),
             target=launch_target,
             _ptxas_info_verbose=_ptxas_info_verbose,
         ](

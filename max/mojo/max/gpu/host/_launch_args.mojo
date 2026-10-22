@@ -17,7 +17,7 @@ These are implementation details of `DeviceFunction`'s launch paths (see
 the public API.
 """
 
-from std.sys import CompilationTarget, size_of
+from std.sys import CompilationTarget, align_of, size_of
 
 from std.math import align_up
 
@@ -78,6 +78,50 @@ def _validate_encodable_arguments[
             declared_arg_type_name(),
             "'",
         )
+
+        # The kernel reads the slot as `declared_arg_type`, but the bytes
+        # written are `actual_arg_type.device_type`. Field-wise encodability
+        # compares field types, not layouts, so check the layouts agree.
+        comptime host_args_hint = (
+            ". If the argument's host bytes are already valid on the device,"
+            " pass it via `host_args=` to skip encoding"
+        )
+        comptime declared_size = size_of[declared_arg_type, target=target]()
+        comptime device_size = size_of[
+            actual_arg_type.device_type, target=target
+        ]()
+        comptime assert declared_size == device_size, String(
+            "argument #",
+            i,
+            " of type '",
+            actual_arg_type.get_type_name(),
+            "' encodes to ",
+            device_size,
+            " bytes but the declared function argument type '",
+            declared_arg_type_name(),
+            "' is ",
+            declared_size,
+            " bytes",
+            host_args_hint,
+        )
+        comptime declared_align = align_of[declared_arg_type, target=target]()
+        comptime device_align = align_of[
+            actual_arg_type.device_type, target=target
+        ]()
+        comptime assert declared_align == device_align, String(
+            "argument #",
+            i,
+            " of type '",
+            actual_arg_type.get_type_name(),
+            "' encodes with alignment ",
+            device_align,
+            " but the declared function argument type '",
+            declared_arg_type_name(),
+            "' has alignment ",
+            declared_align,
+            host_args_hint,
+        )
+
         var aligned_type_size = align_up(
             size_of[actual_arg_type.device_type, target=target](), 8
         )

@@ -30,7 +30,7 @@ from .launch_attribute import LaunchAttribute
 from std.collections.optional import OptionalReg
 from std.ffi import c_size_t, external_call
 from std.logger import Logger
-from std.sys import align_of, bit_width_of, size_of
+from std.sys import bit_width_of, size_of
 from std.memory.unsafe import bitcast
 from std.reflection import call_location, SourceLocation
 from std.utils.lock import BlockingScopedLock, BlockingSpinLock
@@ -1756,36 +1756,11 @@ struct DeviceGraphBuilder[arena_origin: ImmOrigin](Movable):
         )
         dependencies = self._merge_implicit(dependencies^)
 
-        # The compiled kernel is `FuncType.__call__`; the launch argument is
-        # the encoded `FuncType.device_type` instance. Layout punning is only
-        # safe while those sizes and alignments coincide on the launch target.
         comptime launch_target = DeviceContext.target
-        comptime host_size = size_of[FuncType, target=launch_target]()
-        comptime device_size = size_of[
-            FuncType.device_type, target=launch_target
-        ]()
-        comptime host_align = align_of[FuncType, target=launch_target]()
-        comptime device_align = align_of[
-            FuncType.device_type, target=launch_target
-        ]()
-        comptime assert host_size == device_size, String(
-            "capturing add_function requires size_of[FuncType] to match",
-            " size_of[FuncType.device_type] on the launch target; host=",
-            host_size,
-            " device=",
-            device_size,
-        )
-        comptime assert host_align == device_align, String(
-            "capturing add_function requires align_of[FuncType] to match",
-            " align_of[FuncType.device_type] on the launch target; host=",
-            host_align,
-            " device=",
-            device_align,
-        )
 
         var gpu_kernel = DeviceFunction[
             FuncType.__call__,
-            TypeList.of[Trait=AnyType, FuncType.device_type](),
+            TypeList.of[Trait=AnyType, FuncType](),
             target=launch_target,
             _ptxas_info_verbose=_ptxas_info_verbose,
         ](self._ctx, func_attribute=func_attribute)
