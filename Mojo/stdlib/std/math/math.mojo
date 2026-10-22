@@ -3963,8 +3963,9 @@ def _scale_down_bits[
     dtype: DType, width: SIMDLength, //, shift: Int
 ](y: SIMD[dtype, width]) -> type_of(y) where dtype.is_floating_point():
     """Returns `y * 2^-shift`, correctly rounded (to nearest even) even when
-    the result is subnormal, for finite normal `y`. Uses integer operations
-    only, so flush-to-zero targets keep subnormal results."""
+    the result is subnormal, for finite normal `y`, or for zero `y` when
+    `shift >= mantissa_width`. Uses integer operations only, so flush-to-zero
+    targets keep subnormal results."""
     comptime TInt = SIMD[_integral_type_of[dtype](), width]
     comptime mantissa_width = FPUtils[dtype].mantissa_width()
     comptime bits = bit_width_of[dtype]()

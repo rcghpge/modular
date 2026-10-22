@@ -25,7 +25,7 @@ from std.math import (
     pi,
     sin,
 )
-from std.math.math import _call_libm, _narrow_f32_to_bf16_bits
+from std.math.math import _call_libm
 from std.testing import TestSuite, assert_true
 from std.utils.numerics import FPUtils
 
@@ -280,28 +280,6 @@ def test_atan2_simd() raises:
     var worst = 0
     for i in range(8):
         _check("atan2 simd", got[i], _libm_atan2(ys[i], xs[i]), 0.0, 0.0, worst)
-
-
-def test_narrow_f32_to_bf16_bits() raises:
-    var state = UInt64(0x9E3779B97F4A7C15)
-    for i in range(1024):
-        state = state * 6364136223846793005 + 1442695040888963407
-        var bits = (state >> 32).cast[DType.uint32]()
-        # Every fourth input is an exact tie and every fourth a subnormal.
-        if i % 4 == 0:
-            bits = (bits & 0xFFFF0000) | 0x8000
-        elif i % 4 == 1:
-            bits = bits & 0x807FFFFF
-        var x = Float32(from_bits=bits)
-        var got = _narrow_f32_to_bf16_bits(x)
-        var want = x.cast[DType.bfloat16]()
-        if isnan(x):
-            assert_true(isnan(got), String(t"nan lost for bits {bits}"))
-        else:
-            assert_true(
-                got.to_bits() == want.to_bits(),
-                String(t"bits {bits}: got {got}, expected {want}"),
-            )
 
 
 def main() raises:

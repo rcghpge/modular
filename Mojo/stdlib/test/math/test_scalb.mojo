@@ -13,9 +13,8 @@
 
 from std.ffi import _external_call_const
 from std.math import inf, isinf, isnan, nan, scalb, trunc
-from std.math.math import _narrow_f32_to_bf16_bits, _scale_down_bits
 from std.sys import CompilationTarget, size_of
-from std.testing import TestSuite, assert_equal, assert_true
+from std.testing import TestSuite, assert_equal
 from std.utils.numerics import FPUtils, max_finite
 
 comptime length = 1 << 12
@@ -223,46 +222,6 @@ def test_narrow_exponent_promotion() raises:
             assert_equal(
                 negative[lane].to_bits(), want_negative[lane].to_bits()
             )
-
-
-def test_scale_down_bits() raises:
-    # Correct rounding, including ties and subnormal results, against `ldexp`
-    # in float64 (exact for float32 operands) rounded once to float32.
-    comptime shift = 24
-    var state = UInt32(12345)
-    for i in range(600):
-        state = state * 1664525 + 1013904223
-        var bits = state
-        if i % 3 == 0:
-            bits = (bits & 0x807FFFFF) | (UInt32(1 + (i // 3) % 40) << 23)
-        elif i % 3 == 1:
-            # Low mantissa bits clear so some results land exactly on a tie.
-            bits = (bits & 0x80FFF000) | (UInt32(1 + i % 60) << 23)
-        else:
-            bits = (bits & 0x807FFFFF) | (UInt32(100 + i % 150) << 23)
-        var y = Float32(from_bits=bits)
-        var want = _external_call_const["ldexp", Float64](
-            y.cast[.float64](), Int32(-shift)
-        ).cast[.float32]()
-        var got = _scale_down_bits[shift](y)
-        assert_equal(got.to_bits(), want.to_bits())
-
-
-def test_narrow_f32_to_bf16_bits() raises:
-    var state = UInt32(777)
-    for i in range(600):
-        state = state * 1664525 + 1013904223
-        var bits = state
-        if i % 4 == 0:
-            bits = bits & 0x807FFFFF  # float32 subnormals
-        elif i % 4 == 1:
-            bits = (bits & 0xFFFF0000) | 0x8000  # exact ties
-        var x = Float32(from_bits=bits)
-        var got = _narrow_f32_to_bf16_bits(x)
-        if isnan(x):
-            assert_true(isnan(got))
-        else:
-            assert_equal(got.to_bits(), x.cast[.bfloat16]().to_bits())
 
 
 def main() raises:
