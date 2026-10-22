@@ -35,7 +35,9 @@
 #     GLM-5.3 the chat template renders a missing effort as "Max", so leaving
 #     it unset asks for longer reasoning than the harness does;
 #   * no client timeout and no output-token cap, so a repetition loop runs to
-#     the server's max_length and scores 0 at any serving speed;
+#     the server's max_length and scores 0 at any serving speed. A Mach engine
+#     caps a request without max_tokens at its --max-new-tokens (256 unless
+#     set), so serve it with that raised to the max length;
 #   * streamed responses, as the harness always streams. A non-streaming request
 #     is silent until it finishes, so a proxy idle timeout on the path would cut
 #     exactly the long answers and Inspect would re-sample them instead of
@@ -288,10 +290,10 @@ print("\n".join(str(m.get("id")) for m in data if m.get("id")))
     cat >&2 <<MSG
 ERROR: could not auto-detect a model from $url/v1/models.
 
-       The list came back empty, which has two usual causes: the credential
-       is missing or rejected (the endpoint 401s and the list reads empty),
-       or this is a mach engine behind the Mammoth orchestrator, which never
-       populates the list. Either way, pass --model with the served name.
+       The list came back empty, which usually means the credential is
+       missing or rejected (the endpoint 401s and the list reads empty), or
+       the server does not list what it serves. Either way, pass --model with
+       the served name.
 MSG
     exit 1
   fi
