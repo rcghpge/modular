@@ -53,6 +53,7 @@ class JSONSchemaFormat(BaseModel):
         "qwen_xml",
         "minimax_xml",
         "deepseek_xml",
+        "deepseek_v41_xml",
         "glm_xml",
         "minimax_m3_xml",
     ] = "json"
@@ -66,6 +67,8 @@ class JSONSchemaFormat(BaseModel):
       style name for MiniMax M2 models.
     - ``"deepseek_xml"`` — DeepSeek XML (no MAX architecture selects this style today):
       ``<{dsml_token}parameter name="key" string="true|false">value</{dsml_token}parameter>``.
+    - ``"deepseek_v41_xml"`` — DeepSeek-V4.1 XML:
+      ``<{dsml_token} parameter name="key" string="true|false">value</{dsml_token} parameter>``.
     - ``"glm_xml"`` — GLM 5 / 5.1 / 5.2 XML:
       ``<arg_key>key</arg_key><arg_value>value</arg_value>``.
     - ``"minimax_m3_xml"`` — MiniMax M3 tag-prefixed XML:

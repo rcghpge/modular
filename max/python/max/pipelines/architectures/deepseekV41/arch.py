@@ -24,6 +24,7 @@ from .memory_planner import DeepseekV41MemoryPlanner
 from .model import DeepseekV41Model
 from .model_config import DeepseekV41Config, dspark_draft_width
 from .tokenizer import DeepseekV41Tokenizer
+from .tool_parser import DeepseekV41ToolParser  # noqa: F401
 
 deepseekV41_arch = SupportedArchitecture(
     name="DeepseekV41ForCausalLM",
@@ -48,4 +49,5 @@ deepseekV41_arch = SupportedArchitecture(
     # reserves room for them.
     checkpoint_draft_width=dspark_draft_width,
     reasoning_parser="deepseekv4",
+    tool_parser="deepseekv41",
 )

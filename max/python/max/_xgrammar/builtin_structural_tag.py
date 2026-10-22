@@ -2362,6 +2362,145 @@ def get_deepseek_v4_structural_tag(
     return StructuralTag(format=sequence_format)
 
 
+@register_model_structural_tag("deepseek_v41")
+def get_deepseek_v41_structural_tag(
+    tools: Optional[List[FunctionToolParam]] = None,
+    builtin_tools: Optional[List[BuiltinToolParam]] = None,
+    tool_choice: Literal["auto", "required", "forced"] = "auto",
+    reasoning: bool = True,
+    reject_unsupported: bool = False,
+    **kwargs: Any,
+) -> StructuralTag:
+    """Get DeepSeek-V4.1 style structural tag format.
+
+    Corresponding model key: ``"deepseek_v41"``.
+
+    Same layout as ``"deepseek_v4"``, but V4.1 renamed every DSML tag and
+    gave each a leading space (``<｜DSML｜ calls>``, ``<｜DSML｜ invoke``,
+    ``<｜DSML｜ parameter``), so V4's tag can never match V4.1 output.
+
+    Supported models:
+
+    - DeepSeek-V4.1-Flash
+    """
+    INVOKE_BEGIN_PREFIX = '<｜DSML｜ invoke name="'
+    INVOKE_BEGIN_SUFFIX = '">\n'
+    INVOKE_END = "</｜DSML｜ invoke>\n"
+    INVOKE_SEPARATOR = ""
+    TOOL_CALLS_PREFIX = "\n\n"
+    FUNCTION_CALLS_BEGIN = "<｜DSML｜ calls>\n"
+    FUNCTION_CALLS_END = "</｜DSML｜ calls>"
+    FUNCTION_CALLS_TRIGGER = "<｜DSML｜ calls>"
+    THINK_TAG_END = "</think>"
+    THINK_EXCLUDE_TOKENS = ["<think>", "</think>"]
+    XML_STYLE = "deepseek_v41_xml"
+
+    tools = tools or []
+    builtin_tools = builtin_tools or []
+    if tool_choice == "auto":
+        tags = []
+        for tool in tools:
+            function = tool.function
+            parameters = _get_function_parameters(function)
+            name = function.name
+            tags.append(
+                TagFormat(
+                    begin=(INVOKE_BEGIN_PREFIX + name + INVOKE_BEGIN_SUFFIX),
+                    content=JSONSchemaFormat(
+                        json_schema=parameters,
+                        style=XML_STYLE,
+                        reject_unsupported=reject_unsupported,
+                        # DSML frames arguments as named parameters, so a
+                        # non-object root has no wire form and must not compile.
+                        require_object_root=True,
+                        # Omitted items / additionalProperties allow anything
+                        # in JSON Schema; strict mode would forbid them.
+                        strict_mode=False,
+                    ),
+                    end=INVOKE_END,
+                )
+            )
+
+        # generate function calling triggered tag
+        if len(tags) > 0:
+            function_calling_tags = TagsWithSeparatorFormat(
+                tags=tags, separator=INVOKE_SEPARATOR, at_least_one=True
+            )
+
+            suffix_tag = TriggeredTagsFormat(
+                triggers=[FUNCTION_CALLS_TRIGGER],
+                tags=[
+                    TagFormat(
+                        begin=FUNCTION_CALLS_BEGIN,
+                        content=function_calling_tags,
+                        end=FUNCTION_CALLS_END,
+                    )
+                ],
+                excludes=THINK_EXCLUDE_TOKENS,
+                # The reader takes one calls block, and nothing after it.
+                stop_after_first=True,
+            )
+        else:
+            suffix_tag = AnyTextFormat(excludes=THINK_EXCLUDE_TOKENS)
+
+    elif tool_choice == "forced":
+        if not tools:
+            raise ValueError("Forced tool choice must resolve to exactly one tool.")
+        function = tools[0].function
+        suffix_tag = SequenceFormat(
+            elements=[
+                ConstStringFormat(value=TOOL_CALLS_PREFIX + FUNCTION_CALLS_BEGIN),
+                TagFormat(
+                    begin=(INVOKE_BEGIN_PREFIX + function.name + INVOKE_BEGIN_SUFFIX),
+                    content=JSONSchemaFormat(
+                        json_schema=_get_function_parameters(function),
+                        style=XML_STYLE,
+                        reject_unsupported=reject_unsupported,
+                        require_object_root=True,
+                        strict_mode=False,
+                    ),
+                    end=INVOKE_END,
+                ),
+                ConstStringFormat(value=FUNCTION_CALLS_END),
+            ]
+        )
+    elif tool_choice == "required":
+        tags = []
+        for tool in tools:
+            function = tool.function
+            parameters = _get_function_parameters(function)
+            name = function.name
+            tags.append(
+                TagFormat(
+                    begin=(INVOKE_BEGIN_PREFIX + name + INVOKE_BEGIN_SUFFIX),
+                    content=JSONSchemaFormat(
+                        json_schema=parameters,
+                        style=XML_STYLE,
+                        reject_unsupported=reject_unsupported,
+                        require_object_root=True,
+                        strict_mode=False,
+                    ),
+                    end=INVOKE_END,
+                )
+            )
+        assert len(tags) > 0
+        suffix_tag = SequenceFormat(
+            elements=[
+                ConstStringFormat(value=TOOL_CALLS_PREFIX + FUNCTION_CALLS_BEGIN),
+                TagsWithSeparatorFormat(tags=tags, separator=INVOKE_SEPARATOR, at_least_one=True),
+                ConstStringFormat(value=FUNCTION_CALLS_END),
+            ]
+        )
+
+    if not reasoning:
+        return StructuralTag(format=suffix_tag)
+
+    prefix_tag = TagFormat(begin="", content=AnyTextFormat(), end=THINK_TAG_END)
+
+    sequence_format = SequenceFormat(elements=[prefix_tag, suffix_tag])
+    return StructuralTag(format=sequence_format)
+
+
 # A history tool name the invoke header can carry. Excluding the envelope's own
 # punctuation keeps a caller-supplied name from spelling ``]<]minimax[>[``, so
 # it cannot close the invoke, close or reopen the tool-call section, or run past

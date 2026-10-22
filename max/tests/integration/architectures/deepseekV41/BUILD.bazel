@@ -1,4 +1,4 @@
-load("//bazel:api.bzl", "modular_py_test", "requirement")
+load("//bazel:api.bzl", "modular_py_library", "modular_py_test", "requirement")
 load("//bazel:config.bzl", "REQUIRES_INTERNAL_KERNELS")
 
 package(default_visibility = [
@@ -79,6 +79,46 @@ modular_py_test(
         "//max/python/max/pipelines/kv_cache",
         "//max/python/max/pipelines/lib",
         requirement("transformers"),
+    ],
+)
+
+modular_py_library(
+    name = "dsml_fixtures",
+    testonly = True,
+    srcs = ["dsml_fixtures.py"],
+    imports = ["."],
+    deps = ["//max/python/max/pipelines/architectures/deepseekV41"],
+)
+
+# Guards the streaming section/call scanner in pipelines/lib/tool_parsing.py
+# (StructuralTagToolParser) and the deepseekV4 DSML parser
+# (pipelines/architectures/deepseekV4/tool_parser.py) that V4.1 subclasses.
+modular_py_test(
+    name = "test_tool_parser",
+    srcs = ["test_tool_parser.py"],
+    deps = [
+        ":dsml_fixtures",
+        "//max/python/max/pipelines/architectures/deepseekV4",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        "//max/python/max/pipelines/lib",
+    ],
+)
+
+# Guards the tool-call grammar route in pipelines/lib (generate_tool_call_grammar
+# -> structured_output_backend.build_xgrammar_tool_grammar, the _xgrammar
+# deepseek_v41 tag and the xgrammar.patch deepseek_v41_xml style), the
+# region markers from pipeline_variants/utils.py, and GrammarEnforcementState
+# in pipelines/context.
+modular_py_test(
+    name = "test_tool_call_grammar",
+    srcs = ["test_tool_call_grammar.py"],
+    deps = [
+        ":dsml_fixtures",
+        "//max/python/max/pipelines/architectures/deepseekV4",
+        "//max/python/max/pipelines/architectures/deepseekV41",
+        "//max/python/max/pipelines/context",
+        "//max/python/max/pipelines/lib",
+        "//max/python/max/pipelines/modeling",
     ],
 )
 
