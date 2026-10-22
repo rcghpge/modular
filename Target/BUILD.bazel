@@ -60,7 +60,7 @@ modular_cc_library(
     copts = ["-Wno-global-constructors"],
     visibility = [
         "//MLRT:__subpackages__",
-        "//plugins:device_backend_plugins",
+        "//plugins:__subpackages__",
     ],
     deps = [
         "//SDK:HAL",
