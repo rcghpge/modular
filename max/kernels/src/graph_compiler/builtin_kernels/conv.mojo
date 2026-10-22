@@ -858,7 +858,9 @@ struct ConvTransposeCPU:
         var scratch_buf = ctx.enqueue_create_buffer[dtype](
             Int(output.shape().product())
         )
-        var scratch = TileTensor(scratch_buf, row_major(output.shape()))
+        # A trait-bound shape is only `CoordLike` here, which `row_major` reads
+        # as a single nested mode; `tuple()` gives it the dims as a `Coord`.
+        var scratch = TileTensor(scratch_buf, row_major(output.shape().tuple()))
         _conv_transpose_cpu[filter_layout, has_epilogue_fusion=True](
             scratch,
             to_tile_tensor(input),
@@ -1002,7 +1004,7 @@ struct ConvTransposeGPU:
             output_paddings.to_tile_tensor(),
         )
         conv_transposed_gpu[type_of(input).dtype, type_of(filter).dtype, dtype](
-            row_major(output.shape()),
+            row_major(output.shape().tuple()),
             input_tt,
             filter_tt,
             attrs[0],
