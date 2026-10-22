@@ -4589,11 +4589,7 @@ struct HostBuffer[dtype: DType](ImplicitlyCopyable, Movable, Sized):
         Returns:
             The raw device pointer owned by this buffer.
         """
-        return (
-            self._inner[]
-            ._host_ptr.unsafe_bitcast[Scalar[Self.dtype]]()
-            .unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+        return self._inner[]._host_ptr.unsafe_bitcast[Scalar[Self.dtype]]()
 
     def as_span[
         mut: Bool, origin: Origin[mut=mut], //
@@ -5091,8 +5087,9 @@ struct DevicePointer[
         # the buffer; force mutable to preserve this helper's `MutAnyOrigin`
         # contract.
         return (
-            (self._buffer[].unsafe_ptr().unsafe_offset(self._offset))
-            .unsafe_mut_cast[True]()
+            self._buffer[]
+            .unsafe_ptr()
+            .unsafe_offset(self._offset)
             .as_unsafe_any_origin()
         )
 

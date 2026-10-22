@@ -91,11 +91,7 @@ def _err_cstr(msg: String) -> _CString[]:
     var p = alloc[UInt8]({length = n + 1}).unsafe_leak()
     unsafe_memcpy(dest=p, src=msg.unsafe_ptr(), count=n)
     p[unsafe_offset=n] = 0
-    return CStringSpan(
-        unsafe_from_ptr=p.unsafe_bitcast[c_char]()
-        .as_imm()
-        .unsafe_origin_cast[ImmUntrackedOrigin]()
-    )
+    return CStringSpan(unsafe_from_ptr=p.unsafe_bitcast[c_char]().as_imm())
 
 
 @export
@@ -190,7 +186,7 @@ def MojoHAL_DeviceContext_createBuffer(
 ) abi("C") -> _CString[]:
     try:
         var buf = DeviceBuffer[.uint8](ctx[], Int(byte_size))
-        out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+        out_ptr[] = buf.unsafe_ptr()
         var boxed = alloc(Layout[DeviceBuffer[.uint8]].single())
         boxed.unsafe_ptr().unsafe_write(buf^)
         out_buf[] = boxed^.unsafe_leak()
@@ -251,7 +247,7 @@ def MojoHAL_DeviceContext_createHostBuffer(
 ) abi("C") -> _CString[]:
     try:
         var buf = HostBuffer[.uint8](ctx[], Int(byte_size))
-        out_ptr[] = buf.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+        out_ptr[] = buf.unsafe_ptr()
         var boxed = alloc(Layout[HostBuffer[.uint8]].single())
         boxed.unsafe_ptr().unsafe_write(buf^)
         # Host-buffer boxes travel through the same buffer handle; the C++
@@ -740,12 +736,7 @@ def MojoHAL_DeviceStream_nativeHandle(
     stream: _DeviceStreamBoxPtr,
 ) abi("C") -> _CString[]:
     try:
-        out_handle[] = (
-            stream[]
-            ._native_stream()
-            .unsafe_bitcast[Byte]()
-            .unsafe_origin_cast[MutUntrackedOrigin]()
-        )
+        out_handle[] = stream[]._native_stream().unsafe_bitcast[Byte]()
         return None
     except e:
         return _err_cstr(String(e))
