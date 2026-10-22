@@ -82,7 +82,7 @@ Mojo and its contributions are licensed under the Apache License v2.0
 with LLVM Exceptions. See [Licenses/APACHE_LICENSE](Licenses/APACHE_LICENSE).
 
 Portions of the MAX source code and its binary distribution are licensed
-under the [MAX License](Licenses/MAX_LICENSE), with the
+under the [Licenses/MAX_LICENSE](Licenses/MAX_LICENSE), with the
 remainder of the source under the Apache License v2.0 with LLVM
 Exceptions. See [Licenses/APACHE_LICENSE](Licenses/APACHE_LICENSE).
 
