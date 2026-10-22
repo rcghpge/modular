@@ -907,7 +907,7 @@ modular_cc_library(
     # runfiles rather than becoming a NEEDED entry on everything that can
     # compile PTX.
     data = select({
-        "@platforms//os:linux": ["//bazel/third-party:NVPTX"],
+        "@platforms//os:linux": ["//bazel/public-patches:NVPTX"],
         "//conditions:default": [],
     }),
     local_defines = select({

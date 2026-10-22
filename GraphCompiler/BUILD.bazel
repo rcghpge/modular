@@ -1,7 +1,6 @@
 load("//bazel:api.bzl", "modular_cc_library", "modular_shared_library", "pkg_files")
 load("//bazel:config.bzl", "ALLOW_UNUSED_TAG", "CONFIG_SECTION_LOCAL_DEFINES", "KERNEL_PROFILING_LOCAL_DEFINES")
-load("//bazel:tablegen.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "td_library")
-load("//max/python/max/_core/max_license/mlir_nanobind:tblgen.bzl", "mlir_nanobind")  # buildifier: disable=bzl-visibility
+load("//bazel:tablegen.bzl", "gentbl_cc_library", "gentbl_filegroup", "gentbl_mlir_dialect", "gentbl_modular_passes", "mlir_nanobind", "td_library")
 
 # gazelle:default_visibility //GraphCompiler:consumers
 
@@ -1288,7 +1287,7 @@ modular_cc_library(
         ":Support",
         "//AsyncRT:Runtime",
         "//AsyncRT:RuntimeGlobals",
-        "//Kernels:WeightsRegistry",
+        "//Kernels/lib/max_license:WeightsRegistry",
         "//MLRT:Core",
         "//MLRT:Core/Tensor",
         "//MLRT:Driver/KernelLoadGate",
@@ -1321,9 +1320,9 @@ modular_cc_library(
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
         "//Init",
-        "//Kernels:Tracing",
-        "//Kernels:mojo_string_c_api",
-        "//Kernels:weights_registry_c_api",
+        "//Kernels/lib/max_license:Tracing",
+        "//Kernels/lib/max_license:mojo_string_c_api",
+        "//Kernels/lib/max_license:weights_registry_c_api",
         "//MLRT:Driver/DeviceAffinity",
     ],
 )
@@ -1344,9 +1343,9 @@ modular_cc_library(
         ":MGPDialect",
         "//AsyncRT:RuntimeGlobals",
         "//Init",
-        "//Kernels:Tracing",
-        "//Kernels:mojo_string_c_api",
-        "//Kernels:weights_registry_c_api",
+        "//Kernels/lib/max_license:Tracing",
+        "//Kernels/lib/max_license:mojo_string_c_api",
+        "//Kernels/lib/max_license:weights_registry_c_api",
         "//MLRT:Driver/DeviceAffinity",
     ],
 )

@@ -38,26 +38,13 @@ _MAX_PACKAGES = {
     "max_mojo": "mojo/max",
 }
 
-# Packages the open-source build substitutes with their prebuilt equivalents
-# from `@modular_wheel`, via `_process_mojo_deps` in //bazel:api.bzl. A target
-# that depends on one of these builds publicly, but only against the wheel.
+# Packages outside the `@mojo` aliases above that `ALL_MOJOPKGS` and
+# `PROD_MOJOPKGS` include. Both build from source in the open-source tree.
 #
-# Prefer the `internal_kernel_packages` attribute below for anything new: a
-# package listed there is simply absent from the open-source build, which keeps
-# that build standalone.
+# Kernel packages that exist only in the internal build go in the
+# `internal_kernel_packages` attribute instead: a package listed there is
+# simply absent from the open-source build, which keeps that build standalone.
 INTERNAL_PACKAGES = [
-    "//Kernels/lib/attn_res",
-    "//Kernels/lib/csa",
-    "//Kernels/lib/dsv4_1_flash",
-    "//Kernels/lib/engram",
-    "//Kernels/lib/kda",
-    "//Kernels/lib/matmul_rs",
-    "//Kernels/lib/mega_ffn",
-    "//Kernels/lib/mega_mhc",
-    "//Kernels/lib/msa",
-    "//Kernels/lib/mxfp8_splitk",
-    "//Kernels/lib/qsa",
-    "//Kernels/lib/topk_coop",
     "//max/driver/src/max_license/_hal",
     "//max/driver/src/max_license/machine",
 ]

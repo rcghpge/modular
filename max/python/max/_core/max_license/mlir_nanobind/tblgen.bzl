@@ -1,7 +1,5 @@
 """Generate tblgen source from the tblgen json dumps."""
 
-load("//oss/modular/bazel/internal:tablegen.bzl", "gentbl_filegroup")  # buildifier: disable=bzl-visibility
-
 def _tblgen_nanobind_impl(ctx):
     defined_in = ["--defined-in", ctx.attr.defined_in] if ctx.attr.defined_in else []
     dialect = ["--dialect", ctx.attr.dialect] if ctx.attr.dialect else []
@@ -44,7 +42,7 @@ tblgen_nanobind = rule(
     },
 )
 
-def mlir_nanobind(name, srcs, deps, output_dir, dialect = None, allowlist = None, **kwargs):
+def mlir_nanobind(name, srcs, deps, output_dir, gentbl_filegroup, dialect = None, allowlist = None, **kwargs):
     """Generate nanobind bindings for multiple dialect files.
 
     Args:
@@ -53,6 +51,9 @@ def mlir_nanobind(name, srcs, deps, output_dir, dialect = None, allowlist = None
         deps: .td dependencies.
         output_dir: The path where generated files will go. These will
             be used to specify the include paths.
+        gentbl_filegroup: The TableGen filegroup rule to use. Passed in by
+            //bazel:tablegen.bzl, whose path differs between the internal
+            and open-source trees, so this file can't load it itself.
         dialect: If specified, limit generation to these specific dialects.
         allowlist: A file naming the symbols to generate, one per line. It has
             to name everything those bindings refer to as well; generation

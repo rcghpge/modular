@@ -44,8 +44,8 @@ modular_cc_binary(
     deps = [
         ":Support",
         "//SDK:HAL",
-        "//bazel/third-party:CUDAHeaders",
-        "//bazel/third-party:NVMLHeaders",
+        "//bazel/public-patches:CUDAHeaders",
+        "//bazel/public-patches:NVMLHeaders",
         "@dlpack",
         "@llvm-project//llvm:Support",
         "@tl_expected",
@@ -86,8 +86,8 @@ modular_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":DriverPluginTests",
-        "//bazel/third-party:CUDAHeaders",
-        "//bazel/third-party:NVMLHeaders",
+        "//bazel/public-patches:CUDAHeaders",
+        "//bazel/public-patches:NVMLHeaders",
         "@tl_expected",
     ],
 )
