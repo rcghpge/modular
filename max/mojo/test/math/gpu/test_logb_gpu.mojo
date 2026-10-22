@@ -20,12 +20,12 @@ from std.sys import bit_width_of, simd_width_of
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceContext, default_accelerator
 from std.testing import assert_equal, assert_true, TestSuite
+from test_utils.math import f64_min_subnormal_bits, xorshift64
 from std.utils.numerics import FPUtils
 
 from std.utils.coord import Coord
 
 comptime length = 16384
-comptime f64_min_subnormal_bits: UInt64 = 1
 # 2^64 / golden ratio, the Fibonacci-hashing multiplier.
 comptime golden_ratio_u64: UInt64 = 0x9E37_79B9_7F4A_7C15
 
@@ -69,13 +69,6 @@ def run_on_gpu[
     return out^
 
 
-def _xorshift(mut state: UInt64) -> UInt64:
-    state ^= state << 13
-    state ^= state >> 7
-    state ^= state << 17
-    return state
-
-
 def _logb_inputs[
     dtype: DType
 ]() -> List[Scalar[dtype]] where dtype.is_floating_point():
@@ -110,7 +103,7 @@ def _logb_inputs[
     # Pseudo-random bit patterns over the whole encoding space.
     var state = golden_ratio_u64
     while len(v) < length:
-        v.append(bitcast[dtype](_xorshift(state).cast[I]()))
+        v.append(bitcast[dtype](xorshift64(state).cast[I]()))
     return v^
 
 
@@ -166,7 +159,7 @@ def _test_logb_subnormal[
     while len(inputs) < length:
         var i = len(inputs) % mantissa_width
         var b = Scalar[I](1) << Scalar[I](i)
-        var bits = b | (_xorshift(state).cast[I]() & (b - 1))
+        var bits = b | (xorshift64(state).cast[I]() & (b - 1))
         if len(inputs) % 2 == 1:
             bits |= sign_bit
         inputs.append(bitcast[dtype](bits))

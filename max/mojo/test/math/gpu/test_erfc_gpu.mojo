@@ -12,12 +12,12 @@
 # ===----------------------------------------------------------------------=== #
 
 from std.math import erfc, inf, isinf, isnan, nan
-from std.math.math import _call_libm
 from std.sys import bit_width_of, simd_width_of
 
 from max.algorithm.functional import elementwise
 from max.gpu.host import DeviceBuffer, DeviceContext, default_accelerator
 from std.testing import assert_true, TestSuite
+from test_utils.math import libm_call_f64
 
 from std.utils.coord import Coord
 
@@ -54,15 +54,6 @@ def _ulp_diff[
     if ((a ^ b) & sign) != 0:
         return Int(ma + mb) if ma == 0 or mb == 0 else Int.MAX
     return Int(max(ma, mb) - min(ma, mb))
-
-
-def _reference[
-    dtype: DType
-](x: Scalar[dtype]) -> Scalar[dtype] where dtype.is_floating_point():
-    """Returns erfc from host libm, rounded to `dtype`."""
-    comptime if dtype == .float64:
-        return _call_libm["erfc"](x)
-    return _call_libm["erfc"](x.cast[.float64]()).cast[dtype]()
 
 
 def _special_values[
@@ -132,7 +123,7 @@ def _run_erfc[
     with in_device.map_to_host() as in_host, out_device.map_to_host() as out_host:
         for i in range(length):
             var x = in_host[i]
-            var want = _reference(x)
+            var want = libm_call_f64["erfc"](x)
             var gpu = _ulp_diff(out_host[i], want)
             var cpu = _ulp_diff(erfc(x), want)
             if gpu > gpu_worst:

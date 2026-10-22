@@ -11,7 +11,6 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-from std.ffi import _external_call_const
 from std.math import (
     atan,
     atan2,
@@ -29,7 +28,10 @@ from std.math.math import _call_libm
 from std.testing import TestSuite, assert_true
 from std.utils.numerics import FPUtils
 
+from test_utils.math import libm_call_binary
+
 comptime log2_10 = 3.321928094887362
+comptime atan2_libm = libm_call_binary["atan2f", "atan2"]
 
 
 def _ulp_diff[
@@ -55,18 +57,6 @@ def _max_ulp[dtype: DType](name: StaticString) -> Int:
     comptime if dtype in (DType.float32, DType.float64):
         return 2 if name.startswith("atan2") else 1
     return 1
-
-
-def _libm_atan2[
-    dtype: DType
-](y: Scalar[dtype], x: Scalar[dtype]) -> Scalar[
-    dtype
-] where dtype.is_floating_point():
-    comptime if dtype == .float64:
-        return _external_call_const["atan2", Float64](y, x).cast[dtype]()
-    return _external_call_const["atan2f", Float32](
-        y.cast[.float32](), x.cast[.float32]()
-    ).cast[dtype]()
 
 
 def _check[
@@ -216,7 +206,7 @@ def _check_atan2[dtype: DType]() raises where dtype.is_floating_point():
     for i in range(len(ys)):
         var y = ys[i].cast[dtype]()
         var x = xs[i].cast[dtype]()
-        _check("atan2", atan2(y, x), _libm_atan2(y, x), ys[i], xs[i], worst)
+        _check("atan2", atan2(y, x), atan2_libm(y, x), ys[i], xs[i], worst)
     print(t"atan2 {dtype} max ulp vs libm: {worst}")
 
 
@@ -279,7 +269,7 @@ def test_atan2_simd() raises:
     var got = atan2(ys, xs)
     var worst = 0
     for i in range(8):
-        _check("atan2 simd", got[i], _libm_atan2(ys[i], xs[i]), 0.0, 0.0, worst)
+        _check("atan2 simd", got[i], atan2_libm(ys[i], xs[i]), 0.0, 0.0, worst)
 
 
 def main() raises:
