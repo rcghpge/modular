@@ -68,6 +68,10 @@ constexpr llvm::StringLiteral kMoggElementwiseFunctionLabel =
 constexpr llvm::StringLiteral kMoggTileElementwiseFunctionLabel =
     "tile_elementwise";
 constexpr llvm::StringLiteral kMoggBuildGraphFunctionLabel = "mogg.build_graph";
+constexpr llvm::StringLiteral kMoggExecuteDeviceFunctionLabel =
+    "mogg.execute_device";
+constexpr llvm::StringLiteral kMoggExecuteConfigurationFunctionLabel =
+    "mogg.execute_configuration";
 
 /// Method names of `@register`-decorated kernel structs. Some are owned by
 /// KGEN's `LITUtils.h`, which the Mojo parser also uses.
@@ -77,6 +81,9 @@ using KGEN::kMoggExecuteFuncName;
 constexpr llvm::StringLiteral kMoggShapeFuncName = "shape";
 constexpr llvm::StringLiteral kMoggElementwiseFuncName = "elementwise";
 constexpr llvm::StringLiteral kMoggBuildGraphFuncName = "build_graph";
+constexpr llvm::StringLiteral kMoggExecuteDeviceFuncName = "execute_device";
+constexpr llvm::StringLiteral kMoggExecuteConfigurationFuncName =
+    "execute_configuration";
 
 /// Indices into `getDecoratorLambdaArgument` for `@extensibility.register`.
 constexpr size_t kRegisterDecoratorArgName = 0;

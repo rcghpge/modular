@@ -510,6 +510,8 @@ struct KernelDeclAdaptor {
   std::optional<KernelDeclFunctionAdaptor> elementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> tileElementwiseFunction;
   std::optional<KernelDeclFunctionAdaptor> buildGraphFunction;
+  std::optional<KernelDeclFunctionAdaptor> executeDeviceFunction;
+  std::optional<KernelDeclFunctionAdaptor> executeConfigurationFunction;
   /// Set for a `ReduceOp` monoid.
   std::optional<KernelReductionAttr> reduction;
   /// Struct-level ParamDeclAttrs shared by all functions (e.g. `dtype`).
@@ -519,6 +521,10 @@ struct KernelDeclAdaptor {
   /// `KernelDeclOp::supports_unfused_execute`). Not a stored signature:
   /// `ConformCallOperands` derives it from `executeFunction`.
   bool supportsUnfusedExecute = false;
+  /// Whether calls launch `execute_device` rather than call `execute`.
+  /// `executeFunction` is then `execute_device`'s signature, so callers that
+  /// map operands through it work for either entry point.
+  bool isDeclarative() const { return executeDeviceFunction.has_value(); }
 
   explicit KernelDeclAdaptor(KernelDeclOp decl);
 

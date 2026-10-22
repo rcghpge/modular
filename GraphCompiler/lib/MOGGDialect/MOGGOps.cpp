@@ -1780,6 +1780,9 @@ LogicalResult CallOpaqueOp::emitMojo(EmitMojoState &state) {
   KernelDeclOp execKernelDecl =
       state.registry.lookupKernelBySymName(getCallee());
   KernelDeclAdaptor execAdaptor(execKernelDecl);
+  // TODO(GEX-4299): Launch declarative kernels.
+  if (execAdaptor.isDeclarative())
+    return emitOpError("launching a declarative kernel is not supported yet");
   const KernelDeclFunctionAdaptor &execFnAdaptor = *execAdaptor.executeFunction;
 
   // DPS: outputs, then inputs, then `$device_contexts` (wired by `MAPToMOGG`)

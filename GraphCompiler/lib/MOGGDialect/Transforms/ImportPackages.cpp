@@ -310,10 +310,12 @@ struct ScannedKernel {
   llvm::SmallVector<KGEN::LIT::FnOp, 2> executeOverloads;
   KGEN::LIT::FnOp executeFn;
   bool supportsUnfusedExecute = false;
-  KGEN::LIT::FnOp elementwiseFn;       // SIMD overload, may be null
-  KGEN::LIT::FnOp tileElementwiseFn;   // TileTensor overload, may be null
-  KGEN::LIT::FnOp buildGraphFn;        // may be null
-  MOGG::KernelReductionAttr reduction; // null unless a `ReduceOp` monoid
+  KGEN::LIT::FnOp elementwiseFn;          // SIMD overload, may be null
+  KGEN::LIT::FnOp tileElementwiseFn;      // TileTensor overload, may be null
+  KGEN::LIT::FnOp buildGraphFn;           // may be null
+  KGEN::LIT::FnOp executeDeviceFn;        // device code, may be null
+  KGEN::LIT::FnOp executeConfigurationFn; // launch config, may be null
+  MOGG::KernelReductionAttr reduction;    // null unless a `ReduceOp` monoid
 };
 
 /// One registration allowed a second `execute` overload: the op name and the
@@ -644,6 +646,10 @@ static mlir::LogicalResult scanForKernelDecls(
           kernel.elementwiseFn = func;
       } else if (srcName == kMoggBuildGraphFuncName)
         kernel.buildGraphFn = func;
+      else if (srcName == kMoggExecuteDeviceFuncName)
+        kernel.executeDeviceFn = func;
+      else if (srcName == kMoggExecuteConfigurationFuncName)
+        kernel.executeConfigurationFn = func;
       else
         recognized = false;
       if (recognized && !func.getIsStatic()) {
@@ -1072,6 +1078,10 @@ struct ImportPackagesPass
         fnLocs.push_back(kernel.tileElementwiseFn.getLoc());
       if (kernel.buildGraphFn)
         fnLocs.push_back(kernel.buildGraphFn.getLoc());
+      if (kernel.executeDeviceFn)
+        fnLocs.push_back(kernel.executeDeviceFn.getLoc());
+      if (kernel.executeConfigurationFn)
+        fnLocs.push_back(kernel.executeConfigurationFn.getLoc());
 
       // execute / build_graph may return user-defined parameterised opaque
       // structs (e.g. `SIMDPair[P0, P1]`) that `inferOpaqueParameters` needs,
@@ -1089,8 +1099,19 @@ struct ImportPackagesPass
       auto buildGraphAttr = buildFunctionAttr(
           kernel.buildGraphFn, /*computeResultParams=*/true,
           /*strictResultParams=*/false, /*distillTraitArgs=*/true);
+      auto executeDeviceAttr = buildFunctionAttr(
+          kernel.executeDeviceFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/true);
+      // `execute_configuration` is a host function that reads only shapes, so
+      // its operands are bound by `Tensor` with no io role, like a shape
+      // function's.
+      auto executeConfigurationAttr = buildFunctionAttr(
+          kernel.executeConfigurationFn, /*computeResultParams=*/true,
+          /*strictResultParams=*/false, /*distillTraitArgs=*/true,
+          /*isShapeFunc=*/true);
       if (failed(executeAttr) || failed(elementwiseAttr) ||
-          failed(tileElementwiseAttr) || failed(buildGraphAttr)) {
+          failed(tileElementwiseAttr) || failed(buildGraphAttr) ||
+          failed(executeDeviceAttr) || failed(executeConfigurationAttr)) {
         // Diagnostics already emitted; keep going so every kernel is reported
         // rather than aborting on the first invalid one.
         sawFailure = true;
@@ -1106,8 +1127,8 @@ struct ImportPackagesPass
           builder, mlir::FusedLoc::get(ctx, fnLocs), kernel.mojoName,
           kernel.registration, kernel.deviceInfo, *executeAttr,
           *elementwiseAttr, *tileElementwiseAttr, *buildGraphAttr,
-          kernel.reduction, structParams,
-          mlir::BoolAttr::get(ctx, isUserDefined),
+          *executeDeviceAttr, *executeConfigurationAttr, kernel.reduction,
+          structParams, mlir::BoolAttr::get(ctx, isUserDefined),
           /*supports_unfused_execute=*/
           kernel.supportsUnfusedExecute ? mlir::UnitAttr::get(ctx)
                                         : mlir::UnitAttr(),

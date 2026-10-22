@@ -915,6 +915,14 @@ def MOGG_KernelDeclOp
     `build_graph` has the same tensor signature as `execute` but takes a
     `DeviceGraphBuilder` in place of the `DeviceContext`.
 
+    `execute_device` and `execute_configuration` make a declarative kernel:
+    `execute_device` is the device code, taking the operands but no context,
+    and `execute_configuration` is a host function over the same operands
+    returning its launch configuration: any value with `get_grid_dim()` and
+    `get_block_dim()`, as NeoDriver's `GridBlockExecutionConfig` has. The graph
+    compiler writes the launch itself. A kernel has either `execute` or
+    `execute_device`.
+
     `reduction` marks a `ReduceOp` monoid (see `#mogg.kernel_reduction`).
 
     `supports_unfused_execute` records a second `execute` overload that takes
@@ -933,6 +941,8 @@ def MOGG_KernelDeclOp
     OptionalAttr<MOGG_KernelFunctionAttr>:$elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$tile_elementwise,
     OptionalAttr<MOGG_KernelFunctionAttr>:$build_graph,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$execute_device,
+    OptionalAttr<MOGG_KernelFunctionAttr>:$execute_configuration,
     OptionalAttr<MOGG_KernelReductionAttr>:$reduction,
     ArrayAttr:$struct_params,
     BoolAttr:$is_user_defined,
@@ -948,6 +958,8 @@ def MOGG_KernelDeclOp
     (`elementwise` `=` $elementwise^)?
     (`tile_elementwise` `=` $tile_elementwise^)?
     (`build_graph` `=` $build_graph^)?
+    (`execute_device` `=` $execute_device^)?
+    (`execute_configuration` `=` $execute_configuration^)?
     (`reduction` `=` $reduction^)?
     `struct_params` `=` $struct_params
     `is_user_defined` `=` $is_user_defined

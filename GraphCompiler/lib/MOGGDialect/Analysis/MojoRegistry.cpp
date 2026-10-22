@@ -137,9 +137,10 @@ static int deviceInfoSpecificity(DeviceInfoAttr infos) {
          !infos.getArch().empty() + !infos.getModel().empty();
 }
 
-// Whether the kernel's `execute` declares a tile-based fused output
-// (_FusedComputeOutputTileTensor or _FusedOutputTileTensor), which only
-// lowers on a tile_based_fusion device. Transitional, remove per GEX-3941.
+// Whether the kernel's `execute` (or `execute_device`, for a declarative
+// kernel) declares a tile-based fused output (_FusedComputeOutputTileTensor or
+// _FusedOutputTileTensor), which only lowers on a tile_based_fusion device.
+// Transitional, remove per GEX-3941.
 static bool kernelDeclaresTileOutput(KernelDeclOp decl) {
   KernelDeclAdaptor adaptor(decl);
   if (!adaptor.executeFunction.has_value())

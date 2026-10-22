@@ -793,6 +793,13 @@ KernelDeclAdaptor::KernelDeclAdaptor(KernelDeclOp decl) {
       buildFn(decl.getElementwise(), kMoggElementwiseFuncName);
   tileElementwiseFunction =
       buildFn(decl.getTileElementwise(), kMoggElementwiseFuncName);
+  executeDeviceFunction =
+      buildFn(decl.getExecuteDevice(), kMoggExecuteDeviceFuncName);
+  executeConfigurationFunction = buildFn(decl.getExecuteConfiguration(),
+                                         kMoggExecuteConfigurationFuncName);
+
+  if (executeDeviceFunction)
+    executeFunction = executeDeviceFunction;
 
   if (elementwiseFunction && !executeFunction) {
     // When there is no explicit execute, synthesise one from the elementwise
@@ -818,6 +825,11 @@ KernelDeclAdaptor::getFunctionByLabel(llvm::StringRef label) const {
     return tileElementwiseFunction ? &*tileElementwiseFunction : nullptr;
   if (label == kMoggBuildGraphFunctionLabel)
     return buildGraphFunction ? &*buildGraphFunction : nullptr;
+  if (label == kMoggExecuteDeviceFunctionLabel)
+    return executeDeviceFunction ? &*executeDeviceFunction : nullptr;
+  if (label == kMoggExecuteConfigurationFunctionLabel)
+    return executeConfigurationFunction ? &*executeConfigurationFunction
+                                        : nullptr;
   return nullptr;
 }
 

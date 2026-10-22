@@ -450,9 +450,10 @@ LogicalResult declVerifyTensorArgsAreBorrowed(
 }
 
 // Per-function-kind policy for trait-bound tensor arguments: only `execute`
-// accepts them. Kind-specific rules go here (e.g. build_graph forbidding
-// `TileTensorable`); shape functions, primitives and universal well-formedness
-// are checked at import.
+// and the declarative `execute_device` / `execute_configuration` accept them.
+// Kind-specific rules go here (e.g. build_graph forbidding `TileTensorable`);
+// shape functions, primitives and universal well-formedness are checked at
+// import.
 LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
                                               KernelDeclAdaptor &adaptor) {
   auto rejectTraitArgs = [&decl](std::optional<KernelDeclFunctionAdaptor> &func,
@@ -465,7 +466,8 @@ LogicalResult declVerifyTraitArgFunctionKinds(KernelDeclOp decl,
       if (isTraitBoundTensorArg(sig.getArgument(i))) {
         decl->emitError()
             << "trait-bound tensor arguments are not supported on " << kind
-            << " functions yet (only `execute`)";
+            << " functions yet (only `execute`, `execute_device` and "
+               "`execute_configuration`)";
         ok = false;
       }
     }
@@ -549,6 +551,95 @@ LogicalResult declVerifyHasEntryPoint(KernelDeclOp decl,
       !adaptor.elementwiseFunction.has_value() && !adaptor.isReduction()) {
     decl->emitError() << "The kernel must have an entry point named execute";
     return failure();
+  }
+  return success();
+}
+
+// Whether the generated launch can pass `operand` to a declarative entry point:
+// a trait-bound tensor crosses as its `TileTensor` projection and is rebuilt on
+// the device, and a scalar crosses as is.
+static bool isDeclarativeOperand(const KernelDeclOperandAdaptor &operand) {
+  if (std::holds_alternative<KernelDeclScalarAdaptor>(operand.underlyingType))
+    return true;
+  const auto *tensor =
+      std::get_if<KernelDeclTensorAdaptor>(&operand.underlyingType);
+  // TODO(GEX-4429): Accept mutable inputs, which reach the launch as buffers.
+  return tensor && tensor->traitContract && !tensor->traitContract->fused &&
+         tensor->traitContract->role != TensorArgRole::mutableInput;
+}
+
+// `execute_device` and `execute_configuration` come as a pair over the same
+// operands: the generated launch passes each the call's operands,
+// `execute_configuration` on the host and `execute_device` on the device.
+LogicalResult declVerifyDeclarative(KernelDeclOp decl,
+                                    const KernelDeclAdaptor &adaptor) {
+  if (!adaptor.executeDeviceFunction && !adaptor.executeConfigurationFunction)
+    return success();
+  // A package's kernels are verified together, so each error names its kernel.
+  auto error = [&] {
+    return decl->emitError() << "kernel '" << decl.getRegistration() << "': ";
+  };
+  if (adaptor.executeDeviceFunction && decl.getExecute()) {
+    return error() << "a kernel has either 'execute' or 'execute_device'";
+  }
+  if (!adaptor.executeDeviceFunction || !adaptor.executeConfigurationFunction) {
+    return error() << "a declarative kernel needs both 'execute_device' and "
+                      "'execute_configuration'";
+  }
+
+  const KernelDeclFunctionAdaptor &executeDevice =
+      *adaptor.executeDeviceFunction;
+  if (executeDevice.attr.getSignature().isThrows())
+    return error() << "'execute_device' runs on the device and must not raise";
+  if (executeDevice.outputResult)
+    return error() << "'execute_device' must not return a value";
+
+  // `execute_configuration` takes its operands by `Tensor`, which has no io
+  // role, so all of them count as inputs; compare the operands in order.
+  const KernelDeclFunctionAdaptor &executeConfiguration =
+      *adaptor.executeConfigurationFunction;
+  auto operandsOf = [](const KernelDeclFunctionAdaptor &fn) {
+    SmallVector<const KernelDeclOperandAdaptor *> operands;
+    for (const KernelDeclOperandAdaptor &arg : fn.outputArguments)
+      operands.push_back(&arg);
+    for (const KernelDeclOperandAdaptor &arg : fn.inputArguments)
+      operands.push_back(&arg);
+    return operands;
+  };
+  auto deviceOperands = operandsOf(executeDevice);
+  auto configurationOperands = operandsOf(executeConfiguration);
+  auto checkOperands = [&](StringRef function,
+                           ArrayRef<const KernelDeclOperandAdaptor *> operands)
+      -> LogicalResult {
+    for (auto [i, operand] : llvm::enumerate(operands)) {
+      if (!isDeclarativeOperand(*operand)) {
+        return error() << "'" << function << "' operand " << i
+                       << " must be a trait-bound tensor (not fused or a "
+                          "mutable input) or a scalar";
+      }
+    }
+    return success();
+  };
+  if (failed(checkOperands("execute_device", deviceOperands)) ||
+      failed(checkOperands("execute_configuration", configurationOperands)))
+    return failure();
+
+  if (deviceOperands.size() != configurationOperands.size()) {
+    return error() << "'execute_configuration' takes "
+                   << configurationOperands.size()
+                   << " argument(s) but 'execute_device' takes "
+                   << deviceOperands.size()
+                   << "; both take the kernel's operands";
+  }
+  for (size_t i = 0, e = deviceOperands.size(); i < e; ++i) {
+    bool deviceTensor = deviceOperands[i]->isTensorType();
+    if (deviceTensor != configurationOperands[i]->isTensorType()) {
+      return error() << "operand " << i << " is a "
+                     << (deviceTensor ? "tensor" : "scalar")
+                     << " in 'execute_device' but a "
+                     << (deviceTensor ? "scalar" : "tensor")
+                     << " in 'execute_configuration'";
+    }
   }
   return success();
 }
@@ -837,6 +928,12 @@ LogicalResult crossVerifyKernels(ModuleOp moduleOp) {
         continue;
       }
 
+      // `execute_device` takes trait-bound operands, which never compare equal
+      // to an `execute`'s tensor types, so a declarative kernel beside an
+      // `execute` kernel is checked by count only.
+      if (adaptor.isDeclarative() != refAdaptor.isDeclarative())
+        continue;
+
       // Per-operand type check.
       auto emitOperandError = [&](size_t pos, llvm::StringRef kind,
                                   const KernelDeclOperandAdaptor &refOp,
@@ -890,6 +987,13 @@ struct VerifyKernelsPass : public impl::VerifyKernelsBase<VerifyKernelsPass> {
         shapeFnAdaptor = KernelDeclFunctionAdaptor(
             registry.lookupShapeFunction(decl.getRegistration()));
       KernelDeclAdaptor adaptor(decl);
+
+      // The declarative check runs first, so that a lone
+      // `execute_configuration` reports its missing `execute_device` rather
+      // than a missing `execute`.
+      if (setFlagIfFailed(failed, declVerifyDeclarative, decl, adaptor)
+              .failed())
+        continue;
 
       if (setFlagIfFailed(failed, declVerifyHasEntryPoint, decl, adaptor)
               .failed())

@@ -27,7 +27,7 @@ from layout.coord import DynamicCoord
 from layout.tile_layout import Layout as TileLayout
 from extensibility import StaticTensorSpec
 from algorithm.reduce_op import ReduceOp
-from max.gpu.host import DeviceContext, DeviceContextArray
+from max.gpu.host import DeviceContext, DeviceContextArray, Dim
 from max.gpu.host import DeviceGraphBuilder
 from extensibility import (
     InputTensor,
@@ -3578,6 +3578,38 @@ struct MapLowerNoContext:
     def execute[
         target: StaticString,
     ](res: OutputTensor, a: InputTensor,) raises:
+        pass
+
+
+# What a declarative kernel's `execute_configuration` returns: the graph
+# compiler calls only `get_grid_dim()` and `get_block_dim()`.
+@fieldwise_init
+struct DeclarativeLaunchConfig(Copyable):
+    var grid_dim: Dim
+    var block_dim: Dim
+
+    def get_grid_dim(self) -> Dim:
+        return self.grid_dim
+
+    def get_block_dim(self) -> Dim:
+        return self.block_dim
+
+
+# A declarative kernel: `execute_device` is the device code and
+# `execute_configuration`, which has a defaulted parameter, its host-side launch
+# configuration. The graph compiler writes the launch.
+@extensibility.register("map_lower_declarative")
+struct MapLowerDeclarative:
+    @staticmethod
+    def execute_configuration[
+        block: Int = 4
+    ](res: Some[Tensor], a: Some[Tensor]) -> DeclarativeLaunchConfig:
+        return DeclarativeLaunchConfig(grid_dim=Dim(1), block_dim=Dim(block))
+
+    @staticmethod
+    def execute_device(
+        res: Some[Output & TileTensorable], a: Some[Input & TileTensorable]
+    ):
         pass
 
 

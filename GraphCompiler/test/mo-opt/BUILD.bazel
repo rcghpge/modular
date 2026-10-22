@@ -10,6 +10,7 @@ lit_tests(
         ["**/*.mlir"],
     ),
     custom_substitutions = {
+        "%declarative_invalid_pkg": "$(rlocationpath //GraphCompiler/test/kernels/declarative_invalid_stubs:DeclarativeInvalidStubs)",
         "%kernel_api_test_lib": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
         "%kernel_api_test_pkg": "$(rlocationpath //GraphCompiler/test/kernels:testing_kernels)",
         "%tensor_arg_trait_pkg": "$(rlocationpath //GraphCompiler/test/kernels/tensor_arg_trait_stubs:TensorArgTraitStubs)",
@@ -20,6 +21,7 @@ lit_tests(
     },
     data = [
         "//GraphCompiler/test/kernels:testing_kernels",
+        "//GraphCompiler/test/kernels/declarative_invalid_stubs:DeclarativeInvalidStubs",
         "//GraphCompiler/test/kernels/reduction_invalid_stubs:ReductionInvalidStubs",
         "//GraphCompiler/test/kernels/stable_invalid_stubs:StableInvalidStubs",
         "//GraphCompiler/test/kernels/tensor_arg_trait_invalid_stubs:TensorArgTraitInvalidStubs",
