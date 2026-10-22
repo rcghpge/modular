@@ -10675,3 +10675,1070 @@ diff --git a/include/xgrammar/tokenizer_info.h b/include/xgrammar/tokenizer_info
    );
  
    VocabType GetVocabType() const;
+diff --git a/cpp/grammar_functor.cc b/cpp/grammar_functor.cc
+--- a/cpp/grammar_functor.cc
++++ b/cpp/grammar_functor.cc
+@@ -750,6 +750,7 @@
+       return grammar;
+     }
+     BuildRuleLookaheadInfo();
++    ComputeFollows(grammar->GetRootRuleId());
+     for (int i = 0; i < static_cast<int>(grammar->NumRules()); ++i) {
+       auto rule = grammar->GetRule(i);
+       if (i == grammar->GetRootRuleId()) {
+@@ -768,13 +769,18 @@
+     return builder_->Get(grammar->GetRootRuleId());
+   }
+ 
++  // A written lookahead can be looser than what follows the rule, so it is
++  // trusted as exact only for a rule with a single occurrence.
+   bool IsExactLookaheadAssertion(int32_t rule_id) {
+     XGRAMMAR_DCHECK(base_grammar_->GetRule(rule_id).lookahead_assertion_id != -1);
+-    return CanUseDerivedLookahead(rule_id);
++    const auto& info = rule_lookahead_infos_[rule_id];
++    return !info.is_triggered_by_dispatch && !info.appears_as_last_in_other_rule &&
++           info.non_last_occurrence_count == 1;
+   }
+ 
+   int32_t DetectLookaheadAssertion(int32_t rule_id) {
+-    if (!CanUseDerivedLookahead(rule_id)) {
++    const auto& follow = follows_[rule_id];
++    if (follow.state != Follow::kExact) {
+       return -1;
+     }
+     // The lookahead assertion is matched by EarleyParser::Predict/Scan on the expr path, which
+@@ -782,7 +788,7 @@
+     // non-normalized rule body may leave inside a sequence) would abort the parser, so skip
+     // deriving a lookahead in that case. The derived lookahead is only an optimization, so
+     // skipping it never changes the accepted language.
+-    for (int32_t element_id : rule_lookahead_infos_[rule_id].suffix_after_first_occurrence) {
++    for (int32_t element_id : follow.elements) {
+       switch (base_grammar_->GetGrammarExpr(element_id).type) {
+         case GrammarExprType::kByteString:
+         case GrammarExprType::kCharacterClass:
+@@ -796,7 +802,7 @@
+           return -1;
+       }
+     }
+-    return builder_->AddSequence(rule_lookahead_infos_[rule_id].suffix_after_first_occurrence);
++    return builder_->AddSequence(follow.elements);
+   }
+ 
+  private:
+@@ -804,17 +810,117 @@
+     bool is_triggered_by_dispatch = false;
+     bool appears_as_last_in_other_rule = false;
+     int non_last_occurrence_count = 0;
+-    std::vector<int32_t> suffix_after_first_occurrence;
+   };
+ 
+-  bool CanUseDerivedLookahead(int32_t rule_id) const {
+-    const auto& info = rule_lookahead_infos_[rule_id];
+-    return !info.is_triggered_by_dispatch && !info.appears_as_last_in_other_rule &&
+-           info.non_last_occurrence_count == 1;
++  // What follows a rule, over every place it occurs. kExact holds the
++  // sequence of elements that follows every occurrence; kConflict means the
++  // occurrences disagree, or one of them is in a place with no single follow
++  // (the root, a dispatch trigger, a repeat, a nested expression).
++  struct Follow {
++    enum State { kUnknown, kExact, kConflict };
++    State state = kUnknown;
++    std::vector<int32_t> elements;
++  };
++
++  // A rule followed by S in one place and ending rule P in another is followed
++  // by S if P is; a rule ending P only inherits P's follow. One fixpoint over
++  // both kinds of occurrence finds every rule whose follow is a single exact
++  // sequence, so a short rule such as an optional whitespace character gets
++  // a lookahead and its tokens are decided when the mask cache is built.
++  void ComputeFollows(int32_t root_rule_id) {
++    MarkConflict(root_rule_id);
++    bool changed = true;
++    while (changed) {
++      changed = false;
++      for (const auto& [rule_id, parent_rule_id] : tail_occurrences_) {
++        const auto& parent = follows_[parent_rule_id];
++        if (parent.state == Follow::kConflict) {
++          changed |= MarkConflict(rule_id);
++        } else if (parent.state == Follow::kExact) {
++          changed |= Merge(rule_id, parent.elements);
++        }
++      }
++      // A parent still unknown at the fixpoint lies on a cycle of tail
++      // occurrences that no other occurrence reaches, so it says nothing
++      // reliable about what follows its tail rules.
++      if (!changed) {
++        for (const auto& [rule_id, parent_rule_id] : tail_occurrences_) {
++          if (follows_[parent_rule_id].state == Follow::kUnknown) {
++            changed |= MarkConflict(rule_id);
++          }
++        }
++      }
++    }
++  }
++
++  bool Merge(int32_t rule_id, const std::vector<int32_t>& elements) {
++    auto& follow = follows_[rule_id];
++    if (follow.state == Follow::kUnknown) {
++      follow.state = Follow::kExact;
++      follow.elements = elements;
++      return true;
++    }
++    if (follow.state == Follow::kExact && !SameElements(follow.elements, elements)) {
++      return MarkConflict(rule_id);
++    }
++    return false;
++  }
++
++  bool MarkConflict(int32_t rule_id) {
++    auto& follow = follows_[rule_id];
++    if (follow.state == Follow::kConflict) {
++      return false;
++    }
++    follow.state = Follow::kConflict;
++    follow.elements.clear();
++    return true;
++  }
++
++  // Equal ids, or equal type and data, so the elements match the same text.
++  // Composite elements with different ids compare unequal, which only costs
++  // a lookahead, never adds a wrong one.
++  bool SameElements(const std::vector<int32_t>& lhs, const std::vector<int32_t>& rhs) const {
++    return std::equal(
++        lhs.begin(),
++        lhs.end(),
++        rhs.begin(),
++        rhs.end(),
++        [this](int32_t lhs_id, int32_t rhs_id) {
++          if (lhs_id == rhs_id) {
++            return true;
++          }
++          auto lhs_expr = base_grammar_->GetGrammarExpr(lhs_id);
++          auto rhs_expr = base_grammar_->GetGrammarExpr(rhs_id);
++          return lhs_expr.type == rhs_expr.type &&
++                 std::equal(lhs_expr.begin(), lhs_expr.end(), rhs_expr.begin(), rhs_expr.end());
++        }
++    );
++  }
++
++  // Any rule referenced from inside a repeat or a nested expression is in a
++  // place with no single follow.
++  void MarkNestedReferencesConflict(int32_t grammar_expr_id) {
++    auto grammar_expr = base_grammar_->GetGrammarExpr(grammar_expr_id);
++    switch (grammar_expr.type) {
++      case GrammarExprType::kRuleRef:
++      case GrammarExprType::kRepeat:
++        MarkConflict(grammar_expr[0]);
++        break;
++      case GrammarExprType::kSequence:
++      case GrammarExprType::kChoices:
++        for (auto element_id : grammar_expr) {
++          MarkNestedReferencesConflict(element_id);
++        }
++        break;
++      default:
++        break;
++    }
+   }
+ 
+   void BuildRuleLookaheadInfo() {
+     rule_lookahead_infos_.assign(base_grammar_->NumRules(), RuleLookaheadInfo{});
++    follows_.assign(base_grammar_->NumRules(), Follow{});
++    tail_occurrences_.clear();
+     for (int i = 0; i < static_cast<int>(base_grammar_->NumRules()); ++i) {
+       auto rule = base_grammar_->GetRule(i);
+       auto grammar_expr = base_grammar_->GetGrammarExpr(rule.body_expr_id);
+@@ -822,6 +928,7 @@
+         auto tag_dispatch = base_grammar_->GetTagDispatch(grammar_expr);
+         for (const auto& [trigger, rule_id] : tag_dispatch.tag_rule_pairs) {
+           rule_lookahead_infos_[rule_id].is_triggered_by_dispatch = true;
++          MarkConflict(rule_id);
+         }
+         continue;
+       }
+@@ -829,37 +936,44 @@
+         auto token_tag_dispatch = base_grammar_->GetTokenTagDispatch(grammar_expr);
+         for (const auto& [token_id, rule_id] : token_tag_dispatch.trigger_rule_pairs) {
+           rule_lookahead_infos_[rule_id].is_triggered_by_dispatch = true;
++          MarkConflict(rule_id);
+         }
+         continue;
+       }
+       XGRAMMAR_DCHECK(grammar_expr.type == GrammarExprType::kChoices);
+       for (auto sequence_id : grammar_expr) {
+         auto sequence_expr = base_grammar_->GetGrammarExpr(sequence_id);
+-        if (sequence_expr.type != GrammarExprType::kSequence || sequence_expr.size() == 0) {
++        if (sequence_expr.type != GrammarExprType::kSequence) {
++          MarkNestedReferencesConflict(sequence_id);
+           continue;
+         }
+-        auto last_element = base_grammar_->GetGrammarExpr(sequence_expr.end()[-1]);
+-        if (last_element.type == GrammarExprType::kRuleRef && i != last_element[0]) {
+-          rule_lookahead_infos_[last_element[0]].appears_as_last_in_other_rule = true;
+-        }
+-        for (int j = 0; j < sequence_expr.size() - 1; ++j) {
++        for (int j = 0; j < sequence_expr.size(); ++j) {
+           auto element_expr = base_grammar_->GetGrammarExpr(sequence_expr[j]);
+           if (element_expr.type != GrammarExprType::kRuleRef) {
++            MarkNestedReferencesConflict(sequence_expr[j]);
+             continue;
+           }
+-          auto& info = rule_lookahead_infos_[element_expr[0]];
+-          if (info.non_last_occurrence_count == 0) {
+-            info.suffix_after_first_occurrence.assign(
+-                sequence_expr.begin() + j + 1, sequence_expr.end()
+-            );
++          int32_t rule_id = element_expr[0];
++          if (j + 1 == sequence_expr.size()) {
++            // A rule ending itself adds nothing to what follows it.
++            if (rule_id != i) {
++              rule_lookahead_infos_[rule_id].appears_as_last_in_other_rule = true;
++              tail_occurrences_.emplace_back(rule_id, i);
++            }
++            continue;
+           }
+-          ++info.non_last_occurrence_count;
++          ++rule_lookahead_infos_[rule_id].non_last_occurrence_count;
++          Merge(rule_id, std::vector<int32_t>(sequence_expr.begin() + j + 1, sequence_expr.end()));
+         }
+       }
+     }
+   }
+ 
+   std::vector<RuleLookaheadInfo> rule_lookahead_infos_;
++  std::vector<Follow> follows_;
++  // (rule, parent) for each occurrence of a rule as the last element of a
++  // sequence in its parent.
++  std::vector<std::pair<int32_t, int32_t>> tail_occurrences_;
+ };
+ 
+ /*!
+diff --git a/cpp/grammar_compiler.cc b/cpp/grammar_compiler.cc
+--- a/cpp/grammar_compiler.cc
++++ b/cpp/grammar_compiler.cc
+@@ -13,9 +13,14 @@
+ #include <cstdint>
+ #include <cstdlib>
+ #include <cstring>
++#include <map>
++#include <memory>
++#include <mutex>
+ #include <optional>
+ #include <stdexcept>
+ #include <string>
++#include <string_view>
++#include <tuple>
+ #include <unordered_map>
+ #include <utility>
+ #include <variant>
+@@ -40,6 +45,52 @@
+ 
+ /************** AdaptiveTokenMaskCache Generator **************/
+ 
++/*!
++ * \brief How a rule matches token suffixes, shared by every state of one compile.
++ * \details Many states have lookaheads that start with the same rule (say, a string value) and
++ * differ only in what follows it. Matching that rule against each token suffix is the expensive
++ * part of a lookahead check, so it is done once per (rule FSM, suffix offset, first byte) and
++ * reused. Rules are keyed by GrammarFSMHasher::HashRule, the identity a hashed lookahead uses.
++ */
++class FirstElementMatchStore {
++ public:
++  struct Chunk {
++    int32_t begin = 0;
++    // For sorted token begin + t, flags[start[t] .. start[t + 1]) holds, for each j from 0 to the
++    // number of suffix characters the rule accepts, whether the rule can end after j of them.
++    std::vector<uint32_t> start;
++    std::vector<uint8_t> flags;
++  };
++  using Key = std::tuple<uint64_t, int32_t, int32_t, int32_t, int32_t>;
++
++  /*!
++   * \brief Get the chunk for key, calling build on it exactly once on first use.
++   * \note The store is used only with the rule-level cache, which locks a std::mutex too.
++   */
++  template <typename BuildFunc>
++  std::shared_ptr<const Chunk> GetOrBuild(const Key& key, BuildFunc&& build) {
++    std::shared_ptr<Entry> entry;
++    {
++      std::lock_guard<std::mutex> lock(mutex_);
++      auto& slot = entries_[key];
++      if (slot == nullptr) {
++        slot = std::make_shared<Entry>();
++      }
++      entry = slot;
++    }
++    std::call_once(entry->built, [&]() { build(&entry->chunk); });
++    return std::shared_ptr<const Chunk>(entry, &entry->chunk);
++  }
++
++ private:
++  struct Entry {
++    std::once_flag built;
++    Chunk chunk;
++  };
++  std::mutex mutex_;
++  std::map<Key, std::shared_ptr<Entry>> entries_;
++};
++
+ /*! \brief The concrete implementation of GrammarMatcherNode. */
+ class GrammarMatcherForTokenMaskCache : public EarleyParser {
+  public:
+@@ -66,6 +117,8 @@
+    */
+   AdaptiveTokenMask GetAdaptiveTokenMask(bool is_root_rule);
+ 
++  void SetFirstElementMatchStore(FirstElementMatchStore* store) { first_element_store_ = store; }
++
+   /*!
+    * \brief Get the token mask for the given ParserState.
+    * \param first_char_mask The first character mask.
+@@ -90,7 +143,7 @@
+  private:
+   /*! \brief Check if a token can pass the lookahead assertion. */
+   std::pair</*acceptable*/ bool, /*can reach end*/ bool> IsTokenPassLookaheadAssertion(
+-      const std::string& token, const std::vector<bool>& can_reach_end_stack
++      int32_t sorted_index, const std::string& token, const std::vector<bool>& can_reach_end_stack
+   );
+ 
+   /*!
+@@ -147,6 +200,46 @@
+   // Temporary data for GetTokenEdgeAcceptedIndices.
+   std::vector<int32_t> tmp_token_edge_accepted_;
+   std::vector<int32_t> tmp_token_edge_excluded_;
++
++  // Matches the lookahead against token suffixes that start at one fixed offset. Tokens arrive in
++  // sorted order, so consecutive suffixes share long prefixes; the parser keeps the states of the
++  // previous suffix and only re-advances past the common prefix, the way the main mask loop does.
++  struct LookaheadSuffixMatcher {
++    enum class Result { kRejected, kCompleted, kConsumed };
++    std::unique_ptr<EarleyParser> parser;
++    std::string_view prev_suffix;
++    // Characters of prev_suffix the parser has advanced over.
++    int matched = 0;
++    Result prev_result = Result::kConsumed;
++  };
++
++  LookaheadSuffixMatcher::Result MatchLookaheadSuffix(int offset, std::string_view suffix);
++
++  // Per-offset matchers for the lookahead of init_rule_id_, created on first use.
++  std::vector<LookaheadSuffixMatcher> lookahead_suffix_matchers_;
++  // -1 unknown, 0 no, 1 yes: whether the lookahead accepts the empty string.
++  int lookahead_is_nullable_ = -1;
++
++  // The lookahead split as a first rule E and the rest R: a suffix matches E R exactly when E
++  // matches it, or E ends after some j characters and R matches from there. E's part comes from
++  // the shared store; R is matched here, only from positions whose byte R can start with.
++  bool InitFirstElementSplit();
++  LookaheadSuffixMatcher::Result MatchBySplit(
++      int32_t sorted_index, int offset, const std::string& token
++  );
++  const FirstElementMatchStore::Chunk& GetFirstElementChunk(int offset, uint8_t first_byte);
++
++  FirstElementMatchStore* first_element_store_ = nullptr;
++  // -1 unknown, 0 not applicable, 1 applicable.
++  int split_state_ = -1;
++  int32_t split_first_rule_id_ = -1;
++  uint64_t split_first_rule_hash_ = 0;
++  std::unique_ptr<EarleyParser> split_rest_parser_;
++  std::bitset<256> split_rest_first_bytes_;
++  bool split_rest_is_nullable_ = false;
++  std::shared_ptr<const FirstElementMatchStore::Chunk> split_last_chunk_;
++  int split_last_offset_ = -1;
++  int split_last_first_byte_ = -1;
+ };
+ 
+ void GrammarMatcherForTokenMaskCache::AdaptCacheWithLookahead(
+@@ -228,7 +321,7 @@
+       XGRAMMAR_DCHECK(!accepted) << "All the tokens are at least uncertain!";
+       if (can_reach_end && prev_matched_size > 0) {
+         auto [lookahead_accepted, lookahead_completed] =
+-            IsTokenPassLookaheadAssertion(token, tmp_can_reach_end_stack_);
++            IsTokenPassLookaheadAssertion(uncertain_index, token, tmp_can_reach_end_stack_);
+         if ((!is_root_rule) && lookahead_accepted) {
+           if (lookahead_completed || !is_exact_lookahead) {
+             tmp_uncertain_indices_.push_back(uncertain_index);
+@@ -313,59 +406,273 @@
+   }
+ }
+ 
++GrammarMatcherForTokenMaskCache::LookaheadSuffixMatcher::Result
++GrammarMatcherForTokenMaskCache::MatchLookaheadSuffix(int offset, std::string_view suffix) {
++  using Result = LookaheadSuffixMatcher::Result;
++  if (static_cast<int>(lookahead_suffix_matchers_.size()) <= offset) {
++    lookahead_suffix_matchers_.resize(offset + 1);
++  }
++  auto& m = lookahead_suffix_matchers_[offset];
++  if (m.parser == nullptr) {
++    auto lookahead_assertion_id = grammar_->GetRule(init_rule_id_).lookahead_assertion_id;
++    m.parser = std::make_unique<EarleyParser>(
++        grammar_,
++        ParserState(/*rule_id*/ -1, lookahead_assertion_id, 0, ParserState::kNoPrevInputPos, 0)
++    );
++  }
++  int lcp_len =
++      std::mismatch(suffix.begin(), suffix.end(), m.prev_suffix.begin(), m.prev_suffix.end())
++          .first -
++      suffix.begin();
++  m.prev_suffix = suffix;
++  // The outcome is fixed by the first `matched` characters when the previous suffix completed
++  // the lookahead there, or by the first `matched + 1` when its next character was rejected.
++  if (m.prev_result == Result::kCompleted && lcp_len >= m.matched) {
++    return Result::kCompleted;
++  }
++  if (m.prev_result == Result::kRejected && lcp_len > m.matched) {
++    return Result::kRejected;
++  }
++  if (lcp_len < m.matched) {
++    m.parser->PopLastStates(m.matched - lcp_len);
++    m.matched = lcp_len;
++  }
++  // No prefix of length <= matched completes the lookahead: a completion would have stopped the
++  // previous suffix there.
++  m.prev_result = Result::kConsumed;
++  for (int pos = m.matched; pos < static_cast<int>(suffix.size()); ++pos) {
++    if (!m.parser->Advance(suffix[pos])) {
++      m.prev_result = Result::kRejected;
++      break;
++    }
++    ++m.matched;
++    if (m.parser->IsCompleted()) {
++      m.prev_result = Result::kCompleted;
++      break;
++    }
++  }
++  return m.prev_result;
++}
++
++bool GrammarMatcherForTokenMaskCache::InitFirstElementSplit() {
++  using GrammarExprType = Grammar::Impl::GrammarExprType;
++  if (split_state_ != -1) {
++    return split_state_ == 1;
++  }
++  split_state_ = 0;
++  if (first_element_store_ == nullptr) {
++    return false;
++  }
++  auto lookahead_assertion_id = grammar_->GetRule(init_rule_id_).lookahead_assertion_id;
++  auto lookahead = grammar_->GetGrammarExpr(lookahead_assertion_id);
++  if (lookahead.type != GrammarExprType::kSequence || lookahead.size() == 0) {
++    return false;
++  }
++  auto first = grammar_->GetGrammarExpr(lookahead[0]);
++  if (first.type != GrammarExprType::kRuleRef) {
++    return false;
++  }
++  int32_t rule_id = first[0];
++  auto rule_hash = GrammarFSMHasher::HashRule(grammar_, rule_id);
++  if (!rule_hash.has_value() || !grammar_->per_rule_fsms[rule_id].has_value()) {
++    return false;
++  }
++  split_first_rule_id_ = rule_id;
++  split_first_rule_hash_ = rule_hash.value();
++  split_rest_parser_ = std::make_unique<EarleyParser>(
++      grammar_,
++      ParserState(/*rule_id*/ -1, lookahead_assertion_id, 1, ParserState::kNoPrevInputPos, 0)
++  );
++  split_rest_is_nullable_ = split_rest_parser_->IsCompleted();
++  for (int ch = 0; ch < 256; ++ch) {
++    if (split_rest_parser_->Advance(static_cast<uint8_t>(ch))) {
++      split_rest_first_bytes_.set(ch);
++      split_rest_parser_->PopLastStates(1);
++    }
++  }
++  split_state_ = 1;
++  return true;
++}
++
++const FirstElementMatchStore::Chunk& GrammarMatcherForTokenMaskCache::GetFirstElementChunk(
++    int offset, uint8_t first_byte
++) {
++  const auto& fsm = grammar_->per_rule_fsms[split_first_rule_id_].value();
++  // Consecutive lookups at the same offset and first byte reuse the last chunk without taking the
++  // store's lock.
++  if (split_last_chunk_ != nullptr && split_last_offset_ == offset &&
++      split_last_first_byte_ == first_byte) {
++    return *split_last_chunk_;
++  }
++  auto build = [&](FirstElementMatchStore::Chunk* chunk) {
++    // Suffixes at a fixed offset of tokens with one first byte arrive in sorted order, so the
++    // parser only re-advances past the prefix shared with the previous suffix.
++    const auto& sorted_decoded_vocab = tokenizer_info_.GetSortedDecodedVocab();
++    auto before = [](const std::pair<int32_t, std::string>& entry, int byte) {
++      return entry.second.empty() || static_cast<uint8_t>(entry.second[0]) < byte;
++    };
++    int32_t begin =
++        std::lower_bound(
++            sorted_decoded_vocab.begin(), sorted_decoded_vocab.end(), first_byte, before
++        ) -
++        sorted_decoded_vocab.begin();
++    int32_t end = std::lower_bound(
++                      sorted_decoded_vocab.begin() + begin,
++                      sorted_decoded_vocab.end(),
++                      first_byte + 1,
++                      before
++                  ) -
++                  sorted_decoded_vocab.begin();
++    chunk->begin = begin;
++    chunk->start.reserve(end - begin + 1);
++    EarleyParser parser(
++        grammar_,
++        ParserState(
++            split_first_rule_id_,
++            ParserState::kUnexpandedRuleStartSequenceId,
++            0,
++            ParserState::kNoPrevInputPos,
++            0
++        )
++    );
++    std::vector<uint8_t> can_end = {static_cast<uint8_t>(parser.IsCompleted())};
++    std::string_view prev_suffix;
++    int matched = 0;
++    bool prev_rejected = false;
++    for (int32_t i = begin; i < end; ++i) {
++      std::string_view token(sorted_decoded_vocab[i].second);
++      std::string_view suffix =
++          static_cast<int>(token.size()) >= offset ? token.substr(offset) : std::string_view();
++      int lcp_len =
++          std::mismatch(suffix.begin(), suffix.end(), prev_suffix.begin(), prev_suffix.end())
++              .first -
++          suffix.begin();
++      prev_suffix = suffix;
++      // A suffix that shares the character the previous one was rejected at is rejected there too.
++      if (!(prev_rejected && lcp_len > matched)) {
++        if (lcp_len < matched) {
++          parser.PopLastStates(matched - lcp_len);
++          can_end.resize(lcp_len + 1);
++          matched = lcp_len;
++        }
++        prev_rejected = false;
++        for (int pos = matched; pos < static_cast<int>(suffix.size()); ++pos) {
++          if (!parser.Advance(suffix[pos])) {
++            prev_rejected = true;
++            break;
++          }
++          can_end.push_back(parser.IsCompleted());
++          ++matched;
++        }
++      }
++      chunk->start.push_back(chunk->flags.size());
++      chunk->flags.insert(chunk->flags.end(), can_end.begin(), can_end.begin() + matched + 1);
++    }
++    chunk->start.push_back(chunk->flags.size());
++  };
++  split_last_chunk_ = first_element_store_->GetOrBuild(
++      {split_first_rule_hash_, fsm.GetNodeNum(), fsm.GetEdgeNum(), offset, first_byte}, build
++  );
++  split_last_offset_ = offset;
++  split_last_first_byte_ = first_byte;
++  return *split_last_chunk_;
++}
++
++GrammarMatcherForTokenMaskCache::LookaheadSuffixMatcher::Result
++GrammarMatcherForTokenMaskCache::MatchBySplit(
++    int32_t sorted_index, int offset, const std::string& token
++) {
++  using Result = LookaheadSuffixMatcher::Result;
++  const auto& chunk = GetFirstElementChunk(offset, static_cast<uint8_t>(token[0]));
++  int32_t local = sorted_index - chunk.begin;
++  XGRAMMAR_DCHECK(local >= 0 && local + 1 < static_cast<int32_t>(chunk.start.size()));
++  const uint8_t* can_end = chunk.flags.data() + chunk.start[local];
++  int first_matched = static_cast<int>(chunk.start[local + 1] - chunk.start[local]) - 1;
++  std::string_view suffix = std::string_view(token).substr(offset);
++  int suffix_len = static_cast<int>(suffix.size());
++  bool consumed = first_matched == suffix_len;
++  for (int j = 0; j <= first_matched; ++j) {
++    if (!can_end[j]) {
++      continue;
++    }
++    // j == 0 with an empty rest would make the lookahead nullable, which the caller handles.
++    if (split_rest_is_nullable_ && j > 0) {
++      return Result::kCompleted;
++    }
++    if (j == suffix_len) {
++      consumed = true;
++      continue;
++    }
++    if (!split_rest_first_bytes_[static_cast<uint8_t>(suffix[j])]) {
++      continue;
++    }
++    int advanced = 0;
++    bool completed = false;
++    for (int pos = j; pos < suffix_len; ++pos) {
++      if (!split_rest_parser_->Advance(suffix[pos])) {
++        break;
++      }
++      ++advanced;
++      if (split_rest_parser_->IsCompleted()) {
++        completed = true;
++        break;
++      }
++    }
++    if (advanced > 0) {
++      split_rest_parser_->PopLastStates(advanced);
++    }
++    if (completed) {
++      return Result::kCompleted;
++    }
++    if (j + advanced == suffix_len) {
++      consumed = true;
++    }
++  }
++  return consumed ? Result::kConsumed : Result::kRejected;
++}
++
+ std::pair<bool, bool> GrammarMatcherForTokenMaskCache::IsTokenPassLookaheadAssertion(
+-    const std::string& token, const std::vector<bool>& can_reach_end_stack
++    int32_t sorted_index, const std::string& token, const std::vector<bool>& can_reach_end_stack
+ ) {
+-  bool accepted = true;
+-  bool can_reach_end = true;
++  using Result = LookaheadSuffixMatcher::Result;
+   auto lookahead_assertion_id = grammar_->GetRule(init_rule_id_).lookahead_assertion_id;
+   if (lookahead_assertion_id == -1) {
+-    return {accepted, can_reach_end};
++    return {true, true};
+   }
+-  auto lookahead_state =
+-      ParserState(/*rule_id*/ -1, lookahead_assertion_id, 0, ParserState::kNoPrevInputPos, 0);
+-  PushStateAndExpand(lookahead_state);
+-  int token_len = token.size();
+-  if (IsCompleted()) {
+-    // If the lookahead assertion is already completed, we can accept the token.
+-    PopLastStates(1);
+-    return {accepted, can_reach_end};
++  if (lookahead_is_nullable_ == -1) {
++    EarleyParser probe(
++        grammar_,
++        ParserState(/*rule_id*/ -1, lookahead_assertion_id, 0, ParserState::kNoPrevInputPos, 0)
++    );
++    lookahead_is_nullable_ = probe.IsCompleted() ? 1 : 0;
+   }
+-
+-  // Find all positions that can come to and end. Then check if the suffix from that position
+-  // can be accepted by the lookahead assertion.
++  if (lookahead_is_nullable_ == 1) {
++    return {true, true};
++  }
++  // Try every position where the rule can end, latest first. The first suffix the lookahead
++  // completes on or consumes whole decides the result.
++  std::string_view token_view(token);
+   for (int i = static_cast<int>(can_reach_end_stack.size()) - 1; i >= 0; --i) {
+     if (!can_reach_end_stack[i]) {
+       continue;
+     }
+-    int last_accept_pos = i - 1;
+-    for (int pos = i; pos < token_len; ++pos) {
+-      if (!Advance(token[pos])) {
++    // The lookahead is not nullable, so the empty suffix is a viable prefix of it.
++    if (i == static_cast<int>(token.size())) {
++      return {true, false};
++    }
++    auto result = i > 0 && InitFirstElementSplit()
++                      ? MatchBySplit(sorted_index, i, token)
++                      : MatchLookaheadSuffix(i, token_view.substr(i));
++    switch (result) {
++      case Result::kCompleted:
++        return {true, true};
++      case Result::kConsumed:
++        return {true, false};
++      case Result::kRejected:
+         break;
+-      }
+-      last_accept_pos = pos;
+-      // Case 1. The whole rule is finished.
+-      if (IsCompleted()) {
+-        // accepted chars: pos - i + 1
+-        // we need to rollback the pushed initial state as well
+-        PopLastStates(pos - i + 2);
+-        return {accepted, can_reach_end};
+-      }
+-    }
+-    // Case 2. The whole token is accepted
+-    if (last_accept_pos == token_len - 1) {
+-      PopLastStates(last_accept_pos - i + 2);
+-      can_reach_end = false;
+-      return {accepted, can_reach_end};
+-    }
+-    // Case 3. The token is not accepted. Check the next position.
+-    PopLastStates(last_accept_pos - i + 1);
+-  }
+-
+-  PopLastStates(1);
+-  can_reach_end = false;
+-  accepted = false;
+-  return {accepted, can_reach_end};
++    }
++  }
++  return {false, false};
+ }
+ 
+ // Comparator for std::pair<int32_t, std::string> based on the string value.
+@@ -644,7 +951,7 @@
+         tmp_accepted_indices_.push_back(i);
+       } else if (can_reach_end && prev_matched_size > 0) {
+         auto [lookahead_accepted, lookahead_completed] =
+-            IsTokenPassLookaheadAssertion(token, tmp_can_reach_end_stack_);
++            IsTokenPassLookaheadAssertion(i, token, tmp_can_reach_end_stack_);
+         if ((!is_root_rule) && lookahead_accepted) {
+           if (lookahead_completed || !is_exact_lookahead) {
+             tmp_uncertain_indices_.push_back(i);
+@@ -833,6 +1140,17 @@
+     // If the rule doesn't have a lookahead, then it is exactly the same fsm.
+     if (crossing_cache.has_value()) {
+       AdaptCacheWithLookahead(&crossing_cache.value(), is_root_rule);
++      // The adapted mask is what a full computation under the lookahead key would produce, so
++      // store it there for later compiles that share the FSM and the lookahead.
++      if (lookahead_hash.has_value() && !is_root_rule) {
++        rule_level_cache_->AddCache(
++            HashCombine(fsm_hash.value(), lookahead_hash.value(), is_exact_lookahead),
++            new_state_id,
++            fsm.GetNodeNum(),
++            fsm.GetEdgeNum(),
++            crossing_cache.value()
++        );
++      }
+       return std::move(crossing_cache.value());
+     }
+   }
+@@ -1108,6 +1426,7 @@
+     adaptive_token_mask_cache_mutex.emplace();
+   }
+ 
++  FirstElementMatchStore first_element_match_store;
+   auto add_adaptive_token_mask = [&](const ParserState& state, bool is_root_rule) {
+     auto grammar_matcher = GrammarMatcherForTokenMaskCache(
+         compiled_grammar_impl->grammar,
+@@ -1117,6 +1436,7 @@
+         rule_level_cache_,
+         false
+     );
++    grammar_matcher.SetFirstElementMatchStore(&first_element_match_store);
+     auto cur_adaptive_token_mask_cache = grammar_matcher.GetAdaptiveTokenMask(is_root_rule);
+     if (max_threads_ > 1) {
+       std::lock_guard<std::mutex> lock(adaptive_token_mask_cache_mutex.value());
+diff --git a/cpp/grammar_functor.cc b/cpp/grammar_functor.cc
+--- a/cpp/grammar_functor.cc
++++ b/cpp/grammar_functor.cc
+@@ -19,6 +19,7 @@
+ #include <stack>
+ #include <string>
+ #include <tuple>
++#include <unordered_map>
+ #include <vector>
+ 
+ #include "compiled_grammar_impl.h"
+@@ -2394,6 +2395,25 @@
+   int32_t FindSimpleFsmCanBeHashed();
+ 
+   std::pair<bool, uint64_t> IsPartialHashable(int fsm_index);
++
++  /*!
++   * \brief Give a content hash to each rule that a lookahead assertion names
++   * but that has no complete FSM hash, such as a rule on a recursive cycle or
++   * one whose start state refers to such a rule.
++   */
++  void HashLookaheadReferences();
++
++  /*!
++   * \brief Hash an encoding of every rule reachable from root_rule_id: each
++   * one's FSM, lookahead and exactness. A rule with a complete FSM hash is
++   * encoded by that hash; every other rule is numbered in the order the walk
++   * first reaches it and encoded in full. The encoding decodes back to the
++   * rules, so equal hashes mean equal rules up to a 64-bit collision. The
++   * same rules numbered differently can hash differently where two edges tie,
++   * which costs only a cache hit. Returns nullopt if a reachable rule has no
++   * FSM or is a tag dispatch.
++   */
++  std::optional<uint64_t> HashReachableRules(int32_t root_rule_id);
+ };
+ 
+ bool GrammarFSMHasherImpl::FindSimpleCycle() {
+@@ -2579,11 +2599,189 @@
+       partial_hashed_list.emplace_back(i, hash_value);
+     }
+   }
++  grammar->ImplPtr()->per_rule_fsm_hash_is_partial.assign((*grammar)->NumRules(), false);
+   for (const auto& [rule_id, hash_value] : partial_hashed_list) {
+     grammar->ImplPtr()->per_rule_fsm_hashes[rule_id] = hash_value;
++    grammar->ImplPtr()->per_rule_fsm_hash_is_partial[rule_id] = true;
++  }
++  HashLookaheadReferences();
++}
++
++// The rule's FSM hash, if it is complete. Two rules whose start states refer to different unhashed
++// rules can share a partial hash, so only a complete one can stand for the strings a rule matches.
++static std::optional<uint64_t> CompleteFsmHash(const Grammar::Impl& impl, int32_t rule_id) {
++  if (static_cast<size_t>(rule_id) >= impl.per_rule_fsm_hashes.size() ||
++      (static_cast<size_t>(rule_id) < impl.per_rule_fsm_hash_is_partial.size() &&
++       impl.per_rule_fsm_hash_is_partial[rule_id])) {
++    return std::nullopt;
++  }
++  return impl.per_rule_fsm_hashes[rule_id];
++}
++
++void GrammarFSMHasherImpl::HashLookaheadReferences() {
++  using GrammarExprType = Grammar::Impl::GrammarExprType;
++  auto& impl = *grammar_->ImplPtr();
++  const int32_t num_rules = impl.NumRules();
++  impl.per_rule_content_hashes.assign(num_rules, std::nullopt);
++  std::vector<bool> attempted(num_rules, false);
++  for (int32_t i = 0; i < num_rules; ++i) {
++    int32_t lookahead_id = impl.GetRule(i).lookahead_assertion_id;
++    if (lookahead_id == -1) {
++      continue;
++    }
++    for (int32_t element_id : impl.GetGrammarExpr(lookahead_id)) {
++      auto element = impl.GetGrammarExpr(element_id);
++      if (element.type != GrammarExprType::kRuleRef && element.type != GrammarExprType::kRepeat) {
++        continue;
++      }
++      int32_t ref_rule_id = element[0];
++      if (CompleteFsmHash(impl, ref_rule_id).has_value() || attempted[ref_rule_id]) {
++        continue;
++      }
++      attempted[ref_rule_id] = true;
++      impl.per_rule_content_hashes[ref_rule_id] = HashReachableRules(ref_rule_id);
++    }
+   }
+ }
+ 
++std::optional<uint64_t> GrammarFSMHasherImpl::HashReachableRules(int32_t root_rule_id) {
++  using GrammarExprType = Grammar::Impl::GrammarExprType;
++  // Distinct tags keep the parts of the encoding from aliasing one another.
++  constexpr uint64_t kRuleTag = 0x5255'4c45'0000'0001ull;
++  constexpr uint64_t kHashedRefTag = 0x5255'4c45'0000'0002ull;
++  constexpr uint64_t kLocalRefTag = 0x5255'4c45'0000'0003ull;
++  constexpr uint64_t kStateTag = 0x5255'4c45'0000'0004ull;
++  constexpr uint64_t kLookaheadTag = 0x5255'4c45'0000'0005ull;
++  const auto& impl = *grammar_->ImplPtr();
++  const auto& complete_fsm = impl.complete_fsm;
++
++  std::vector<int32_t> order{root_rule_id};
++  std::unordered_map<int32_t, int32_t> local_ids{{root_rule_id, 0}};
++  auto label_rule = [&](int32_t rule_id) -> uint64_t {
++    if (auto fsm_hash = CompleteFsmHash(impl, rule_id); fsm_hash.has_value()) {
++      return HashCombine(kHashedRefTag, fsm_hash.value());
++    }
++    auto [it, inserted] = local_ids.emplace(rule_id, static_cast<int32_t>(order.size()));
++    if (inserted) {
++      order.push_back(rule_id);
++    }
++    return HashCombine(kLocalRefTag, static_cast<uint64_t>(it->second));
++  };
++
++  uint64_t hash_result = 0;
++  for (size_t i = 0; i < order.size(); ++i) {
++    const int32_t rule_id = order[i];
++    if (!impl.per_rule_fsms[rule_id].has_value()) {
++      return std::nullopt;
++    }
++    const auto& rule = impl.GetRule(rule_id);
++    auto body_type = impl.GetGrammarExpr(rule.body_expr_id).type;
++    if (body_type == GrammarExprType::kTagDispatch ||
++        body_type == GrammarExprType::kTokenTagDispatch) {
++      return std::nullopt;
++    }
++    hash_result = HashCombine(
++        hash_result,
++        kRuleTag,
++        static_cast<uint64_t>(i),
++        static_cast<uint64_t>(rule.is_exact_lookahead)
++    );
++
++    if (rule.lookahead_assertion_id == -1) {
++      hash_result = HashCombine(hash_result, kLookaheadTag, uint64_t{0});
++    } else {
++      auto lookahead = impl.GetGrammarExpr(rule.lookahead_assertion_id);
++      hash_result =
++          HashCombine(hash_result, kLookaheadTag, static_cast<uint64_t>(lookahead.size() + 1));
++      for (int32_t element_id : lookahead) {
++        auto element = impl.GetGrammarExpr(element_id);
++        hash_result = HashCombine(
++            hash_result, static_cast<uint64_t>(element.type), static_cast<uint64_t>(element.size())
++        );
++        switch (element.type) {
++          case GrammarExprType::kRuleRef:
++            hash_result = HashCombine(hash_result, label_rule(element[0]));
++            break;
++          case GrammarExprType::kRepeat:
++            hash_result = HashCombine(
++                hash_result,
++                label_rule(element[0]),
++                static_cast<uint64_t>(element[1]),
++                static_cast<uint64_t>(element[2])
++            );
++            break;
++          case GrammarExprType::kByteString:
++          case GrammarExprType::kCharacterClass:
++          case GrammarExprType::kCharacterClassStar:
++          case GrammarExprType::kEmptyStr:
++          case GrammarExprType::kToken:
++          case GrammarExprType::kExcludeToken:
++            for (int32_t value : element) {
++              hash_result = HashCombine(hash_result, static_cast<uint64_t>(value));
++            }
++            break;
++          default:
++            return std::nullopt;
++        }
++      }
++    }
++
++    const auto& fsm = impl.per_rule_fsms[rule_id]->GetFsm();
++    std::unordered_map<int32_t, int32_t> new_state_ids{{fsm.GetStart(), 0}};
++    std::vector<int32_t> bfs_order{fsm.GetStart()};
++    auto new_state_id = [&](int32_t state) -> uint64_t {
++      auto [it, inserted] = new_state_ids.emplace(state, static_cast<int32_t>(bfs_order.size()));
++      if (inserted) {
++        bfs_order.push_back(state);
++      }
++      return static_cast<uint64_t>(it->second);
++    };
++    for (size_t j = 0; j < bfs_order.size(); ++j) {
++      const int32_t state = bfs_order[j];
++      const auto& edges = sorted_edges_[state];
++      hash_result = HashCombine(
++          hash_result,
++          kStateTag,
++          static_cast<uint64_t>(j),
++          static_cast<uint64_t>(fsm.IsEndState(state)),
++          static_cast<uint64_t>(edges.size())
++      );
++      for (const auto& edge : edges) {
++        const uint64_t edge_type = static_cast<uint64_t>(edge.min);
++        if (edge.IsRuleRef()) {
++          hash_result = HashCombine(
++              hash_result, edge_type, label_rule(edge.GetRefRuleId()), new_state_id(edge.target)
++          );
++        } else if (edge.IsRepeatRef()) {
++          auto info = complete_fsm.GetRepeatEdgeInfo(edge.GetAuxIndex());
++          hash_result = HashCombine(
++              hash_result,
++              edge_type,
++              label_rule(info.RuleId()),
++              static_cast<uint64_t>(info.Lower()),
++              static_cast<uint64_t>(info.Upper()),
++              new_state_id(edge.target)
++          );
++        } else if (edge.IsToken() || edge.IsExcludeToken()) {
++          const int32_t* data =
++              edge.IsToken() ? complete_fsm.GetTokenEdgeInfo(edge.GetAuxIndex()).data
++                             : complete_fsm.GetExcludeTokenEdgeInfo(edge.GetAuxIndex()).data;
++          hash_result = HashCombine(hash_result, edge_type, static_cast<uint64_t>(data[0]));
++          for (int32_t k = 1; k <= data[0]; ++k) {
++            hash_result = HashCombine(hash_result, static_cast<uint64_t>(data[k]));
++          }
++          hash_result = HashCombine(hash_result, new_state_id(edge.target));
++        } else {
++          hash_result = HashCombine(
++              hash_result, edge_type, static_cast<uint64_t>(edge.max), new_state_id(edge.target)
++          );
++        }
++      }
++    }
++  }
++  return hash_result;
++}
++
+ std::pair<bool, uint64_t> GrammarFSMHasherImpl::IsPartialHashable(int fsm_index) {
+   uint64_t hash_result = 0;
+   XGRAMMAR_DCHECK(fsm_index >= 0 && fsm_index < (*grammar_)->NumRules())
+@@ -2801,6 +2999,18 @@
+   return hash_result;
+ }
+ 
++// A content hash is tagged so it does not reuse the value space of FSM hashes.
++static std::optional<uint64_t> RuleHashForSequence(const Grammar& grammar, int32_t rule_id) {
++  if (auto fsm_hash = CompleteFsmHash(*grammar.ImplPtr(), rule_id); fsm_hash.has_value()) {
++    return fsm_hash;
++  }
++  if (static_cast<size_t>(rule_id) < grammar->per_rule_content_hashes.size() &&
++      grammar->per_rule_content_hashes[rule_id].has_value()) {
++    return HashCombine(0x434f'4e54'454e'5400ull, grammar->per_rule_content_hashes[rule_id].value());
++  }
++  return std::nullopt;
++}
++
+ std::optional<uint64_t> GrammarFSMHasherImpl::HashSequence(
+     const Grammar& grammar, int32_t sequence_id
+ ) {
+@@ -2826,19 +3036,19 @@
+         break;
+       }
+       case (GrammarExprType::kRuleRef): {
+-        if (grammar->per_rule_fsm_hashes[expr[0]].has_value()) {
+-          hash_result = HashCombine(hash_result, grammar->per_rule_fsm_hashes[expr[0]].value());
+-        } else {
++        auto rule_hash = RuleHashForSequence(grammar, expr[0]);
++        if (!rule_hash.has_value()) {
+           return std::nullopt;
+         }
++        hash_result = HashCombine(hash_result, rule_hash.value());
+         break;
+       }
+       case (GrammarExprType::kRepeat): {
+-        if (grammar->per_rule_fsm_hashes[expr[0]].has_value()) {
+-          hash_result = HashCombine(hash_result, grammar->per_rule_fsm_hashes[expr[0]].value());
+-        } else {
++        auto rule_hash = RuleHashForSequence(grammar, expr[0]);
++        if (!rule_hash.has_value()) {
+           return std::nullopt;
+         }
++        hash_result = HashCombine(hash_result, rule_hash.value());
+         hash_result = HashCombine(hash_result, expr[1]);
+         hash_result = HashCombine(hash_result, expr[2]);
+         break;
+@@ -3061,6 +3271,10 @@
+ 
+ void GrammarFSMHasher::Apply(Grammar* grammar) { GrammarFSMHasherImpl().Apply(grammar); }
+ 
++std::optional<uint64_t> GrammarFSMHasher::HashRule(const Grammar& grammar, int32_t rule_id) {
++  return RuleHashForSequence(grammar, rule_id);
++}
++
+ std::optional<uint64_t> GrammarFSMHasher::HashSequence(
+     const Grammar& grammar, int32_t sequence_id
+ ) {
+diff --git a/cpp/grammar_functor.h b/cpp/grammar_functor.h
+--- a/cpp/grammar_functor.h
++++ b/cpp/grammar_functor.h
+@@ -434,6 +434,12 @@
+  public:
+   static void Apply(Grammar* grammar);
+   static std::optional<uint64_t> HashSequence(const Grammar& grammar, int32_t sequence_id);
++  /*!
++   * \brief The hash that stands for a rule in a hashed sequence: its FSM hash if that is complete,
++   * else its content hash. Rules with equal hashes match the same strings, up to a 64-bit
++   * collision.
++   */
++  static std::optional<uint64_t> HashRule(const Grammar& grammar, int32_t rule_id);
+ };
+ 
+ /*!
+diff --git a/cpp/grammar_impl.h b/cpp/grammar_impl.h
+--- a/cpp/grammar_impl.h
++++ b/cpp/grammar_impl.h
+@@ -344,6 +344,22 @@
+   std::vector<std::optional<uint64_t>> per_rule_fsm_hashes;
+ 
+   /*!
++   * \brief Whether each rule's FSM hash is partial. A partial hash stands in
++   * for one unhashed rule referenced from the start state without saying which
++   * rule it is. So it does not identify the strings the rule matches, and must
++   * not stand for the rule inside another cache key.
++   */
++  std::vector<bool> per_rule_fsm_hash_is_partial;
++
++  /*!
++   * \brief A content hash for each rule that is named in a lookahead assertion
++   * but has no FSM hash, or only a partial one, so the lookahead can still be
++   * hashed. It covers every rule reachable from the rule, together with their
++   * lookaheads.
++   */
++  std::vector<std::optional<uint64_t>> per_rule_content_hashes;
++
++  /*!
+    * \brief The new state ids of each FSM's states.
+    */
+   std::vector<std::vector<std::pair<int32_t, int32_t>>> per_rule_fsm_new_state_ids;
