@@ -179,6 +179,7 @@ PINS = {
     "vllm": "vllm@multiple",
     "weasyprint": "weasyprint@70.0",
     "wheel": "wheel@0.45.1",
+    "z3-solver": "z3-solver@4.15.4.0",
     "zstandard": "zstandard@0.25.0",
 }
 

@@ -105,6 +105,7 @@ dependencies = [
   "uvicorn",
   "weasyprint>=70.0",
   "wheel",
+  "z3-solver", # SMT solver for kernel synchronization checks
   "zstandard",
 
   # modeltool
