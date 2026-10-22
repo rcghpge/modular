@@ -7,7 +7,7 @@ mo.graph @reduce_fused_cst() -> (!mo.tensor<[1, 3], f32>) {
   %0 = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>> : !mo.tensor<[3, 2], f32>
   %perm  = mo.constant <#M.dense_array<1, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %1 = mo.transpose(%0, %perm) : (!mo.tensor<[3, 2], f32>, !mo.tensor<[2], si64>) -> !mo.tensor<[2, 3], f32>
-  %2 = mo.reduce.add(%1) [axis = 0] : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 3], f32>
+  %2 = mo.reduce.add(%1) : (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[1, 3], f32>
   mo.output %2 : !mo.tensor<[1, 3], f32>
 }
 

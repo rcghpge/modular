@@ -2107,25 +2107,56 @@ class MO_ReductionOp<string name, list<Trait> traits = []> :
       CArg<"TensorType", "{}">:$outputTy
     )>,
   ];
+
+  let extraClassDeclaration = [{
+    /// `axis`, made non-negative.
+    std::optional<int64_t> getReductionAxis();
+    ::mlir::IntegerAttr getAxisAttribute() { return getAxisAttr(); }
+    void setAxisAttribute(int64_t axis) {
+      setAxisAttr(::mlir::IntegerAttr::get(
+          ::mlir::IndexType::get(getContext()), axis));
+    }
+  }];
 }
 
 // Reduction operations where the input and result type match
 class MO_MonotypeReductionOp<string name, list<Trait> traits = []> :
   MO_ReductionOp<name, traits # [AllDTypesMatch<["input", "result"]>]>;
 
-def MO_MeanOp : MO_MonotypeReductionOp<"reduce.mean"> {
-  let summary = "Mean reduction operation";
-  let description = [{
-    Reduces `input` across `axis` (numpy semantics) to its mean,
-    keeping that axis as size 1.
+// A reduction whose axis is the one input dimension that becomes a static 1
+// in the result. When no dimension changes, it's the identity.
+// TODO(GEX-3348): delete `MO_ReductionOp` once every reduction is one of
+// these, then rename this class to `MO_ReductionOp`.
+class MO_ImplicitAxisReductionOp<string name, list<Trait> traits = []> :
+  MO_TensorOp<name, traits # [
+    MO_ReductionTraits,
+    MO_SingleDevice,
+    AllDTypesMatch<["input", "result"]>,
+  ]> {
+  let arguments = (ins
+    MO_Tensor:$input,
+    MO_ParamDecls:$outputParamDecls
+  );
+  let results = (outs MO_Tensor:$result);
 
-    Example:
+  let assemblyFormat = [{
+    `` custom<ParamDecls>($outputParamDecls) `(` operands `)` attr-dict `:`
+    functional-type(operands, results)
+  }];
 
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.mean(%arg) [axis = 1] : (
-        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
-    ```
+  let hasFolder = 1;
+
+  let builders = [
+    /// Reduces `axis` of `input`, keeping it as size 1.
+    OpBuilder<(ins "TensorValue":$input, "int64_t":$axis)>,
+  ];
+
+  let extraClassDeclaration = [{
+    /// The axis that becomes 1, or none for the identity.
+    std::optional<int64_t> getReductionAxis();
+    // The axis comes from the result type, not an attribute.
+    ::mlir::IntegerAttr getAxisAttribute() { return {}; }
+    void setAxisAttribute(int64_t) {}
   }];
 }
 
@@ -2147,50 +2178,49 @@ def MO_ReduceMulOp : MO_MonotypeReductionOp<"reduce.mul", [
   }];
 }
 
-def MO_ReduceAddOp : MO_MonotypeReductionOp<"reduce.add"> {
+def MO_ReduceAddOp : MO_ImplicitAxisReductionOp<"reduce.add"> {
   let summary = "Sum reduction operation";
   let description = [{
-    Reduces `input` across `axis` (numpy semantics) to its sum,
-    keeping that axis as size 1.
+    Reduces `input` to its sum along the one dimension that is a static 1
+    in the result.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.add(%arg) [axis = 1] : (
+      %res = mo.reduce.add(%arg) : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
-  let hasFolder = 1;
 }
 
-def MO_ReduceMinOp : MO_MonotypeReductionOp<"reduce.min"> {
+def MO_ReduceMinOp : MO_ImplicitAxisReductionOp<"reduce.min"> {
   let summary = "Minimum reduction operation";
   let description = [{
-    Reduces `input` across `axis` (numpy semantics) to its minimum,
-    keeping that axis as size 1.
+    Reduces `input` to its minimum along the one dimension that is a static 1
+    in the result.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.min(%arg) [axis = 1] : (
+      %res = mo.reduce.min(%arg) : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];
 }
 
-def MO_ReduceMaxOp : MO_MonotypeReductionOp<"reduce.max"> {
+def MO_ReduceMaxOp : MO_ImplicitAxisReductionOp<"reduce.max"> {
   let summary = "Maximum reduction operation";
   let description = [{
-    Reduces `input` across `axis` (numpy semantics) to its maximum,
-    keeping that axis as size 1.
+    Reduces `input` to its maximum along the one dimension that is a static 1
+    in the result.
 
     Example:
 
     ```mlir
       %arg: !mo.tensor<[2, 3], f32>
-      %res = mo.reduce.max(%arg) [axis = 1] : (
+      %res = mo.reduce.max(%arg) : (
         !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
     ```
   }];

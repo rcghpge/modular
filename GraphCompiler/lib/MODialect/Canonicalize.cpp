@@ -94,13 +94,15 @@ canonicalizeStaticNegativeIndicesInPlace(Reduction op, int operandIndex,
   if (!inputTy.hasRank())
     return failure();
 
-  int64_t axis = op.getAxisAttr().getInt();
+  IntegerAttr axisAttr = op.getAxisAttribute();
+  if (!axisAttr)
+    return failure();
+  int64_t axis = axisAttr.getInt();
   if (axis >= 0)
     return failure();
 
   int64_t newAxis = axis + inputTy.getRank();
-  rewriter.modifyOpInPlace(
-      op, [&] { op->setAttr("axis", rewriter.getIndexAttr(newAxis)); });
+  rewriter.modifyOpInPlace(op, [&] { op.setAxisAttribute(newAxis); });
   return success();
 }
 
@@ -1048,13 +1050,6 @@ LogicalResult MatmulOp::canonicalize(MatmulOp op, PatternRewriter &rewriter) {
 }
 
 //===----------------------------------------------------------------------===//
-// MeanOp
-//===----------------------------------------------------------------------===//
-LogicalResult MeanOp::canonicalize(MeanOp op, PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
-}
-
-//===----------------------------------------------------------------------===//
 // MulOp
 //===----------------------------------------------------------------------===//
 LogicalResult MulOp::canonicalize(MulOp op, PatternRewriter &rewriter) {
@@ -1241,46 +1236,6 @@ OpFoldResult RangeOp::fold(FoldAdaptor adaptor) {
   auto rebindOp =
       RebindOp::create(builder, loc, outTy, constantOp, getOutputParamDecls());
   return rebindOp.getResult();
-}
-
-//===----------------------------------------------------------------------===//
-// ReduceAddOp
-//===----------------------------------------------------------------------===//
-OpFoldResult ReduceAddOp::fold(FoldAdaptor adaptor) {
-  TensorType inputTy = getInput().getType();
-
-  if (!inputTy.hasRank())
-    return {};
-
-  int64_t axis = getAxisAttr().getInt();
-  int64_t rank = inputTy.getRank();
-  axis = (axis + rank) % rank;
-
-  if (inputTy.getIntDim(axis) == 1 &&
-      getInput().getType() == getResult().getType())
-    return getInput();
-  return {};
-}
-
-LogicalResult ReduceAddOp::canonicalize(ReduceAddOp op,
-                                        PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
-}
-
-//===----------------------------------------------------------------------===//
-// ReduceMaxOp
-//===----------------------------------------------------------------------===//
-LogicalResult ReduceMaxOp::canonicalize(ReduceMaxOp op,
-                                        PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
-}
-
-//===----------------------------------------------------------------------===//
-// ReduceMinOp
-//===----------------------------------------------------------------------===//
-LogicalResult ReduceMinOp::canonicalize(ReduceMinOp op,
-                                        PatternRewriter &rewriter) {
-  return canonicalizeStaticNegativeIndicesInPlace(op, 1, rewriter);
 }
 
 //===----------------------------------------------------------------------===//

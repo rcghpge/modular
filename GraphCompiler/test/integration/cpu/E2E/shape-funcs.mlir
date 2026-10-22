@@ -116,10 +116,10 @@ mo.graph @unsqueeze_shape_func_success() -> !mo.tensor<[D0], si64> {
 
 // CHECK-LABEL: --- Running 'reduce_add_shape_func_success':
 // CHECK-NEXT: 'reduce_add_shape_func_success' returned tensor<2x1xf32>
-mo.graph @reduce_add_shape_func_success() -> !mo.tensor<[D0, D1], f32> {
+mo.graph @reduce_add_shape_func_success() -> !mo.tensor<[2, 1], f32> {
   %input = mo.constant <#M.dense_array<1.0, 2.0, 3.0, 4.0, 5.0, 6.0> : tensor<6xf32>> : !mo.tensor<[2, 3], f32>
-  %result = mo.reduce.add<() -> D0, D1>(%input) [axis = 1] :
-    (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[D0, D1], f32>
+  %result = mo.reduce.add(%input) :
+    (!mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
 
-  mo.output %result : !mo.tensor<[D0, D1], f32>
+  mo.output %result : !mo.tensor<[2, 1], f32>
 }

@@ -20,6 +20,7 @@
 #include "GraphCompiler/MODialect/MODevices.h"
 #include "GraphCompiler/MODialect/MODialect.h"
 #include "GraphCompiler/MODialect/MOOps.h"
+#include "GraphCompiler/MODialect/MOUtils.h"
 #include "GraphCompiler/MODialect/ShapeFunctions.h"
 #include "GraphCompiler/MOSHDialect/MOSHAttrs.h"
 #include "GraphCompiler/MOSHDialect/MOSHTypes.h"
@@ -122,17 +123,22 @@ LogicalResult Impl::verifyReduction(Reduction op) {
                           "ranks or both have the same size static ranks");
 
   TensorType inputTy = op.getInput().getType();
-  if (!inputTy.hasRank())
-    return success();
-
-  // `axis` is a compile-time attribute, so always known.
-  int64_t axis = op.getAxisAttr().getInt();
   int64_t rank = inputTy.getRank();
-  if (axis < -rank || axis > rank - 1) {
-    return op.emitOpError() << "axis must be between [-" << rank << ", "
-                            << (rank - 1) << "] found " << axis;
+  if (IntegerAttr axisAttr = op.getAxisAttribute()) {
+    int64_t axis = axisAttr.getInt();
+    if (axis < -rank || axis > rank - 1)
+      return op.emitOpError() << "axis must be between [-" << rank << ", "
+                              << (rank - 1) << "] found " << axis;
+    return success();
   }
 
+  // Without `axis`, the result shape names the reduced dimension.
+  if (inputTy.getShape() == op.getResult().getType().getShape())
+    return success();
+  ErrorOr<int64_t> axis =
+      getReductionAxis(op.getInput(), op.getResult().getType());
+  if (axis.isError())
+    return op.emitOpError() << axis.getError();
   return success();
 }
 
@@ -142,8 +148,11 @@ Impl::materializeReductionShapeDefs(Reduction op,
   auto graphOp = op->getParentOfType<GraphOp>();
   Location loc = op->getLoc();
   TypedAttr inputShape = inputAttrs[0];
-  // `axis` is a compile-time `index` attribute, not an operand.
-  return materializeReduceShape(graphOp, loc, inputShape, op.getAxisAttr());
+  std::optional<int64_t> axis = op.getReductionAxis();
+  OpBuilder builder(op);
+  return materializeReduceShape(graphOp, loc, inputShape,
+                                axis ? builder.getIndexAttr(*axis)
+                                     : TypedAttr());
 }
 
 //===----------------------------------------------------------------------===//

@@ -319,10 +319,22 @@ struct LegalizeRMOMOAnalogue
                                     TypeRange(resultTypes));
 
       NamedAttrList newAttrs(result->getAttrs());
+      // An inherent RMO attribute the MO op lacks (e.g. a reduction's
+      // `axis`) is carried by the MO result type instead.
+      // TODO(GEX-3348): only reductions need this. Drop `axis` from the RMO
+      // reductions too, then copy every attribute again.
+      ArrayRef<StringAttr> rmoInherent =
+          op->getName().getRegisteredInfo()->getAttributeNames();
+      ArrayRef<StringAttr> moInherent =
+          result->getName().getRegisteredInfo()->getAttributeNames();
 
       for (auto attr : op->getAttrs()) {
-        if (attr.getName() != op.getMOAnalogueOutputParamDeclsAttrName())
-          newAttrs.set(attr.getName(), attr.getValue());
+        if (attr.getName() == op.getMOAnalogueOutputParamDeclsAttrName())
+          continue;
+        if (llvm::is_contained(rmoInherent, attr.getName()) &&
+            !llvm::is_contained(moInherent, attr.getName()))
+          continue;
+        newAttrs.set(attr.getName(), attr.getValue());
       }
 
       rewriter.modifyOpInPlace(result, [&] { result->setAttrs(newAttrs); });

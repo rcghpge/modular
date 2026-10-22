@@ -6,7 +6,7 @@
 // width.
 
 // A static axis gives the Row a compile-time length.
-// CHECK-LABEL: def __reduce_add_tmp(
+// CHECK-LABEL: def __reduce_add(
 // CHECK:       comptime [[SPEC_X:.*]] = [[MTS_X:.*]].static_spec
 // CHECK:       comptime [[SPEC_O:.*]] = [[MTS_O:.*]].static_spec
 // CHECK:       def [[BODY:body_+[0-9]+]][params : algorithm.rowwise_types.ContextParams](row_coords: layout.Coord, mut row_ctx: algorithm.rowwise_types.Context[params]) {var}:
@@ -22,20 +22,20 @@
 // CHECK:         [[ROW]].emit([[WRITE]])
 // CHECK:       {{.*}}._rowwise[builtin_kernels.monoids.ReduceSum[dtype = DType.float32, W = 1], DType.float32, DType.float32, axis = 1, target = "cpu", num_phases = 1, computationally_expensive = False, dtype_size = 0]([[BODY]], {{.*}})
 mo.graph @sum(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }
 
 // A bf16 input summed in f32: the Row and the SIMD width see both dtypes, and
 // the cast runs in the fold.
-// CHECK-LABEL: def __cast_reduce_add_tmp(
+// CHECK-LABEL: def __cast_reduce_add(
 // CHECK:       algorithm.rowwise.Row[params, DType.float32, DType.bfloat16, 1,
 // CHECK:       def {{contribute_+[0-9]+}}[w : Int](tile: SIMD[DType.bfloat16, w], idx: {{.*}}) {var} -> SIMD[DType.float32, w]:
 // CHECK-NEXT:    {{.*}}Cast{{.*}}tile
 // CHECK:       {{.*}}._rowwise[builtin_kernels.monoids.ReduceSum[dtype = DType.float32, W = 1], DType.bfloat16, DType.float32,
 mo.graph @bf16Sum(%x: !mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 1], f32> {
   %a = mo.cast(%x) : (!mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%a) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%a) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }
 
@@ -49,6 +49,6 @@ mo.graph @scaledSum(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
   %c = mo.constant <#M.dense_array<2.0> : tensor<f32>> : !mo.tensor<[], f32>
   %cb = mo.static.broadcast_to(%c) : !mo.tensor<[], f32> -> !mo.tensor<[8, 128], f32>
   %m = mo.mul(%x, %cb) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%m) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%m) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }

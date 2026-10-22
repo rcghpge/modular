@@ -192,7 +192,6 @@ MO_MatmulOp                                          # MatmulOp
 MO_MaxOp                                             # MaxOp
 MO_MaxPoolCeilOp                                     # MaxPoolCeilModeTrueOp
 MO_MaxPoolOp                                         # MaxPoolOp
-MO_MeanOp                                            # ReduceMeanOp
 MO_MinOp                                             # MinOp
 MO_ModOp                                             # ModOp
 MO_MulOp                                             # MulOp
@@ -330,7 +329,6 @@ RMO_MOLogSoftmaxOp             # MoReduceLogsoftmaxOp
 RMO_MOMaxOp                    # MoMaxOp; declares output params; graph.py reaches it structurally
 RMO_MOMaxPoolCeilOp            # MoMaxPoolCeilModeTrueOp
 RMO_MOMaxPoolOp                # MoMaxPoolOp
-RMO_MOMeanOp                   # MoReduceMeanOp
 RMO_MOMinOp                    # MoMinOp; declares output params; graph.py reaches it structurally
 RMO_MOModOp                    # MoModOp; declares output params; graph.py reaches it structurally
 RMO_MOMulOp                    # MoMulOp; declares output params; graph.py reaches it structurally

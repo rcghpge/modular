@@ -347,8 +347,16 @@ def MO_Reduction : MO_TensorOpInterfaceBase<"Reduction",
       "TensorValue", "getInput", (ins)>,
     InterfaceMethod<"Get input tensor as a MutableOperandRange",
       "::mlir::OpOperand&", "getInputMutable", (ins)>,
-    InterfaceMethod<"Get the reduction axis as an IntegerAttr",
-      "::mlir::IntegerAttr", "getAxisAttr", (ins)>,
+    InterfaceMethod<"Get the non-negative reduction axis, if known",
+      "std::optional<int64_t>", "getReductionAxis", (ins)>,
+    // TODO(GEX-3348): remove `getAxisAttribute` and `setAxisAttribute` once
+    // every reduction reads its axis from the shapes.
+    InterfaceMethod<"Get the `axis` attribute, or null for a reduction that "
+      "reads its axis from the shapes",
+      "::mlir::IntegerAttr", "getAxisAttribute", (ins)>,
+    InterfaceMethod<"Set the `axis` attribute; a no-op for a reduction that "
+      "reads its axis from the shapes",
+      "void", "setAxisAttribute", (ins "int64_t":$axis)>,
     InterfaceMethod<"Get result tensor as a TypedValue",
       "TensorValue", "getResult", (ins)>
   ];

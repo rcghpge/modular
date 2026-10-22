@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mogg-import-packages="mojo-pkg-paths=%kernel_api_test_lib" --mo-to-map | FileCheck %s
 
-// A `mo.custom` naming a reduction monoid lowers to a `map.iter.rowwise`: one
+// A reduction with a registered monoid lowers to a `map.iter.rowwise`: one
 // fold over the input, then a per-row store of each output field. The axis is
 // the one input dimension that becomes 1.
 
@@ -18,7 +18,7 @@
 // CHECK-NEXT:  } {fusionInfo = #{{.*}}}
 // CHECK-NEXT:  mo.output %[[R]]
 mo.graph @sumInnerAxis(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }
 
@@ -28,7 +28,7 @@ mo.graph @sumInnerAxis(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
 // CHECK:       outputs (%[[OUT2:.*]]: !mo.tensor<[1, N], f32>)
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceMax index ({{.*}}: !map.index<2>) -> f32 {
 mo.graph @maxOuterAxis<M, N>(%x: !mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32> {
-  %r = mo.custom [symbol = "mo.reduce.max.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32>
+  %r = mo.reduce.max(%x) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32>
   mo.output %r : !mo.tensor<[1, N], f32>
 }
 
@@ -37,7 +37,7 @@ mo.graph @maxOuterAxis<M, N>(%x: !mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], 
 // CHECK:       map.iter.rowwise<[2, 16, 4], axis = 1>
 // CHECK:       row     ({{.*}}: !map.index<3>) -> !mo.tensor<[2, 1, 4], f16> {
 mo.graph @minMiddleAxis(%x: !mo.tensor<[2, 16, 4], f16>) -> !mo.tensor<[2, 1, 4], f16> {
-  %r = mo.custom [symbol = "mo.reduce.min.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[2, 16, 4], f16>) -> !mo.tensor<[2, 1, 4], f16>
+  %r = mo.reduce.min(%x) : (!mo.tensor<[2, 16, 4], f16>) -> !mo.tensor<[2, 1, 4], f16>
   mo.output %r : !mo.tensor<[2, 1, 4], f16>
 }
 

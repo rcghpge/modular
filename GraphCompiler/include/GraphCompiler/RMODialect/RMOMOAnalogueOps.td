@@ -691,22 +691,8 @@ class RMO_MOAnaloguePureReductionOp<
     `[` `axis` `=` $axis `]` attr-dict `:`
     functional-type(operands, results)
   }];
-}
 
-def RMO_MOMeanOp : RMO_MOAnaloguePureReductionOp<"reduce.mean"> {
-  let summary = "Mean reduction operation";
-  let description = [{
-    Reduces `input` across `axis` (numpy semantics, -1 is the last axis) to
-    its mean, setting that dimension to 1.
-
-    Example:
-
-    ```mlir
-      %arg: !mo.tensor<[2, 3], f32>
-      %res = rmo.mo.reduce.mean(%arg) [axis = 1] : (
-        !mo.tensor<[2, 3], f32>) -> !mo.tensor<[2, 1], f32>
-    ```
-  }];
+  let hasVerifier = 1;
 }
 
 def RMO_MOReduceMulOp : RMO_MOAnaloguePureReductionOp<"reduce.mul"> {

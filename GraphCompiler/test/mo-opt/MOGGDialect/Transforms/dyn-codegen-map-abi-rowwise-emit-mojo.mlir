@@ -2,7 +2,7 @@
 
 // A dynamic axis reads its length from the shape. The fused square is part of
 // the fold; the bias load and add run per row, at the emit's width.
-// CHECK-LABEL: def __mul_reduce_add_tmp_add(
+// CHECK-LABEL: def __mul_reduce_add_add(
 // CHECK:       var [[ROW2:.*]] = algorithm.rowwise.Row[params, DType.float32, DType.float32, 1, {{.*}}](row_coords, Int({{.*}}[1].value()), row_ctx, {{.*}})
 // CHECK-NEXT:  def {{contribute_+[0-9]+}}[w : Int](tile: SIMD[DType.float32, w], {{.*}}) {var} -> SIMD[DType.float32, w]:
 // CHECK-NEXT:    var [[SQ:.*]] = builtin_kernels.elementwise.Mul.elementwise[{{.*}}](tile, tile)
@@ -13,7 +13,7 @@
 // CHECK-NEXT:    managed_tensor_slice.simd_store_into_tensor_pointer[{{.*}}[[Y]]))
 mo.graph @sumOfSquaresPlusBias<M, N>(%x: !mo.tensor<[M, N], f32>, %b: !mo.tensor<[M, 1], f32>) -> !mo.tensor<[M, 1], f32> {
   %sq = mo.mul(%x, %x) : !mo.tensor<[M, N], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[M, 1], f32>
+  %r = mo.reduce.add(%sq) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[M, 1], f32>
   %y = mo.add(%r, %b) : !mo.tensor<[M, 1], f32>
   mo.output %y : !mo.tensor<[M, 1], f32>
 }

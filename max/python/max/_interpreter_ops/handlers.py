@@ -1255,7 +1255,9 @@ def _handle_reduce_axis(
     assert isinstance(x, Buffer)
     _check_buffers_on_device(inputs, target_device)
 
-    axis = cast(_HasAxis, op).axis
+    axis = _reduction_axis(op, x.shape, result_type.shape)
+    if axis is None:
+        return [x]
     variant = reduce_axis_gc.variant_for(op)
     model = reduce_axis_gc.reduce_model(type(op), x.device, x.dtype, variant)
 
@@ -1264,6 +1266,22 @@ def _handle_reduce_axis(
     (out,) = model(x_view)
     out_shape = tuple(int(dim) for dim in result_type.shape)
     return [out.view(result_type.dtype, out_shape)]
+
+
+def _reduction_axis(
+    op: _core.Operation, in_shape: Sequence[int], out_shape: Sequence[Any]
+) -> int | None:
+    """Returns ``op``'s ``axis``, or for an op without one, the dimension that
+    becomes 1 in the result, or ``None`` when none does: the op is then the
+    identity."""
+    if hasattr(op, "axis"):
+        return cast(_HasAxis, op).axis
+    for axis, (in_dim, out_dim) in enumerate(
+        zip(in_shape, out_shape, strict=True)
+    ):
+        if int(in_dim) != int(out_dim):
+            return axis
+    return None
 
 
 # Wrapped in a function so the REDUCE_AXIS_GC_OPS access is deferred past the

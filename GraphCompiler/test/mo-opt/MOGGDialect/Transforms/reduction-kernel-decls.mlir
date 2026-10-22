@@ -5,9 +5,9 @@
 // one the trait's `width` alias names, and its outputs are its `SIMD` fields
 // of that width.
 
-// CHECK-DAG: reduction mo.reduce.add.tmp: width = W, outputs = [acc]
-// CHECK-DAG: reduction mo.reduce.max.tmp: width = W, outputs = [acc]
-// CHECK-DAG: reduction mo.reduce.min.tmp: width = W, outputs = [acc]
+// CHECK-DAG: reduction mo.reduce.add: width = W, outputs = [acc]
+// CHECK-DAG: reduction mo.reduce.max: width = W, outputs = [acc]
+// CHECK-DAG: reduction mo.reduce.min: width = W, outputs = [acc]
 // CHECK-DAG: reduction mo.reduce.mul.tmp: width = W, outputs = [acc]
 // CHECK-DAG: reduction mo.reduce.reduce_min_and_max.tmp: width = W, outputs = [min_acc, max_acc]
 // CHECK-DAG: reduction mo.reduce.arg_max.tmp: width = W, outputs = [acc_values, acc_indices]

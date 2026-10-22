@@ -27,11 +27,11 @@
 // CHECK:       map.iter.reduce @builtin_kernels.monoids.ReduceMin
 mo.graph @aroundReductions(%x: !mo.tensor<[8, 128], f32>) -> (!mo.tensor<[8, 128], f32>, !mo.tensor<[8], f32>, !mo.tensor<[1, 1], f32>, !mo.tensor<[8, 1], f32>) {
   %sq = mo.mul(%x, %x) : !mo.tensor<[8, 128], f32>
-  %s = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
-  %m = mo.custom [symbol = "mo.reduce.max.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %s = mo.reduce.add(%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %m = mo.reduce.max(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %sb = mo.static.broadcast_to(%s) : !mo.tensor<[8, 1], f32> -> !mo.tensor<[8, 128], f32>
   %d = mo.div(%x, %sb) : !mo.tensor<[8, 128], f32>
   %mr = mo.static.reshape(%m) : !mo.tensor<[8, 1], f32> -> !mo.tensor<[8], f32>
-  %mm = mo.custom [symbol = "mo.reduce.min.tmp", device = #M.device_ref<"cpu", 0>](%m) : (!mo.tensor<[8, 1], f32>) -> !mo.tensor<[1, 1], f32>
+  %mm = mo.reduce.min(%m) : (!mo.tensor<[8, 1], f32>) -> !mo.tensor<[1, 1], f32>
   mo.output %d, %mr, %mm, %s : !mo.tensor<[8, 128], f32>, !mo.tensor<[8], f32>, !mo.tensor<[1, 1], f32>, !mo.tensor<[8, 1], f32>
 }

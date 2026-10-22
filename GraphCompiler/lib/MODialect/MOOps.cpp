@@ -2958,15 +2958,6 @@ LogicalResult RebindOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// MeanOp
-//===----------------------------------------------------------------------===//
-
-void MeanOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                   TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<MeanOp>(odsBuilder, odsState, input, axis, outputTy);
-}
-
-//===----------------------------------------------------------------------===//
 // ReduceMulOp
 //===----------------------------------------------------------------------===//
 
@@ -2975,32 +2966,71 @@ void ReduceMulOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   buildReductionOp<ReduceMulOp>(odsBuilder, odsState, input, axis, outputTy);
 }
 
-//===----------------------------------------------------------------------===//
-// ReduceAddOp
-//===----------------------------------------------------------------------===//
+// `axis`, made non-negative.
+static std::optional<int64_t> normalizedReductionAxis(TensorValue input,
+                                                      int64_t axis) {
+  if (axis < 0)
+    axis += input.getType().getRank();
+  return axis;
+}
 
-void ReduceAddOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<ReduceAddOp>(odsBuilder, odsState, input, axis, outputTy);
+std::optional<int64_t> ReduceMulOp::getReductionAxis() {
+  return normalizedReductionAxis(getInput(), getAxisAttr().getInt());
+}
+
+std::optional<int64_t> ArgMaxOp::getReductionAxis() {
+  return normalizedReductionAxis(getInput(), getAxisAttr().getInt());
+}
+
+std::optional<int64_t> ArgMinOp::getReductionAxis() {
+  return normalizedReductionAxis(getInput(), getAxisAttr().getInt());
 }
 
 //===----------------------------------------------------------------------===//
-// ReduceMinOp
+// ReduceAddOp, ReduceMinOp, ReduceMaxOp
 //===----------------------------------------------------------------------===//
 
-void ReduceMinOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<ReduceMinOp>(odsBuilder, odsState, input, axis, outputTy);
+static void buildImplicitAxisReduction(OpBuilder &builder,
+                                       OperationState &state, TensorValue input,
+                                       int64_t axis) {
+  TensorType inputTy = input.getType();
+  state.addOperands(input);
+  state.addTypes(
+      inputTy.cloneWithNewDim(axis < 0 ? axis + inputTy.getRank() : axis, 1));
 }
 
-//===----------------------------------------------------------------------===//
-// ReduceMaxOp
-//===----------------------------------------------------------------------===//
-
-void ReduceMaxOp::build(OpBuilder &odsBuilder, OperationState &odsState,
-                        TensorValue input, int64_t axis, TensorType outputTy) {
-  buildReductionOp<ReduceMaxOp>(odsBuilder, odsState, input, axis, outputTy);
+static std::optional<int64_t> implicitReductionAxis(TensorValue input,
+                                                    TensorValue result) {
+  ErrorOr<int64_t> axis = getReductionAxis(input, result.getType());
+  if (axis.isError())
+    return std::nullopt;
+  return *axis;
 }
+
+// A reduction that changes no dimension returns its input.
+static OpFoldResult foldImplicitAxisReduction(TensorValue input,
+                                              TensorValue result) {
+  if (input.getType() == result.getType())
+    return input;
+  return {};
+}
+
+#define DEFINE_IMPLICIT_AXIS_REDUCTION(OpName)                                 \
+  void OpName::build(OpBuilder &builder, OperationState &state,                \
+                     TensorValue input, int64_t axis) {                        \
+    buildImplicitAxisReduction(builder, state, input, axis);                   \
+  }                                                                            \
+  std::optional<int64_t> OpName::getReductionAxis() {                          \
+    return implicitReductionAxis(getInput(), getResult());                     \
+  }                                                                            \
+  OpFoldResult OpName::fold(FoldAdaptor) {                                     \
+    return foldImplicitAxisReduction(getInput(), getResult());                 \
+  }
+
+DEFINE_IMPLICIT_AXIS_REDUCTION(ReduceAddOp)
+DEFINE_IMPLICIT_AXIS_REDUCTION(ReduceMinOp)
+DEFINE_IMPLICIT_AXIS_REDUCTION(ReduceMaxOp)
+#undef DEFINE_IMPLICIT_AXIS_REDUCTION
 
 //===----------------------------------------------------------------------===//
 // TopK / BottomK

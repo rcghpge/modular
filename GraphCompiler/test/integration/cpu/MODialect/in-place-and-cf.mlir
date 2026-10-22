@@ -72,7 +72,9 @@ mo.graph @basic_while(%buf: !bt) -> (!bt, !c) {
    // Really any chain could be passed in for our purposes here
    // (embedding in-place ops in a while) since mo.while isn't IsolatedFromAbove.
    %while_res:2 = mo.while (%x as %xi: !mo.tensor<[2], f32>, %ch0 as %inChain: !mo.chain) {
-     %mean0 = mo.reduce.mean (%xi) [axis = 0] : (!mo.tensor<[2], f32>) -> !mo.tensor<[1], f32>
+     %sum0 = mo.reduce.add(%xi) : (!mo.tensor<[2], f32>) -> !mo.tensor<[1], f32>
+     %len = mo.constant <#M.dense_array<2.0> : tensor<1xf32>> : !mo.tensor<[1], f32>
+     %mean0 = mo.div(%sum0, %len) : !mo.tensor<[1], f32>
      %mean1 = mo.static.reshape(%mean0) : !mo.tensor<[1], f32> -> !mo.tensor<[], f32>
      %cond = mo.greater (%y, %mean1) : (!mo.tensor<[], f32>, !mo.tensor<[], f32>) -> !mo.tensor<[], bool>
      mo.while.condition(%cond) %xi, %inChain : !mo.tensor<[2], f32>, !mo.chain

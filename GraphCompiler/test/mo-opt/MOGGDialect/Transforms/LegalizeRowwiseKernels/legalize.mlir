@@ -19,7 +19,7 @@
 mo.graph @sumOfSquaresPlusBias(%x: !mo.tensor<[8, 128], bf16>, %b: !mo.tensor<[8, 1], f32>) -> !mo.tensor<[8, 1], f32> {
   %a = mo.cast(%x) : (!mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 128], f32>
   %sq = mo.mul(%a, %a) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %y = mo.add(%r, %b) : !mo.tensor<[8, 1], f32>
   mo.output %y : !mo.tensor<[8, 1], f32>
 }
@@ -30,6 +30,6 @@ mo.graph @sumOfSquaresPlusBias(%x: !mo.tensor<[8, 128], bf16>, %b: !mo.tensor<[8
 // CHECK:         mogg.call.elementwise @builtin_kernels.elementwise.Exp
 mo.graph @sumOfExp(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
   %e = mo.exp(%x) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%e) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%e) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }

@@ -392,7 +392,7 @@ ShapeMaterializeResult materializeRangeShape(GraphOp graphOp, Location loc,
                                              TypedAttr stopAttr,
                                              TypedAttr stepAttr);
 
-/// Materialize the shape logic for reduction ops like `MO::MeanOp`.
+/// Materialize the shape logic for reduction ops like `MO::ReduceAddOp`.
 ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
                                               TypedAttr inputShape,
                                               TypedAttr axis);

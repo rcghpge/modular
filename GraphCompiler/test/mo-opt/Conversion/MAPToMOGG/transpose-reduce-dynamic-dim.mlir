@@ -14,13 +14,15 @@
 // separate strided-view-through-prologue value bug.
 
 // CHECK: mogg.tensor.create.transpose
-// The prologue shape for the reduce input carries all four transposed dims,
-// including the reduced axis D11 that lives only on the intermediate view.
-// CHECK: mogg.shape.create({{.*}}) <shape = #mosh<ape[dyn, dyn, dyn, dyn]>{{.*}} : !mogg.dim<D8>, !mogg.dim<D9>, !mogg.dim<D10>, !mogg.dim<D11>
-// CHECK: mogg.tensor.create.prologue
+// The rowwise iteration shape for the reduce input carries all four
+// transposed dims, including the reduced axis D11 that lives only on the
+// intermediate view.
+// CHECK: %[[SHAPE:.*]] = mogg.shape.create({{.*}}) <shape = #mosh<ape[dyn, dyn, dyn, dyn]>{{.*}} : !mogg.dim<D8>, !mogg.dim<D9>, !mogg.dim<D10>, !mogg.dim<D11>
+// CHECK-NEXT: mogg.with_trace {
+// CHECK-NEXT: mogg.call.rowwise shape(%[[SHAPE]]) axis(3)
 
-mo.graph @serving_default<D0, D1, D2, D3 -> D4, D5, D6, D7>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>, %arg1: !mo.tensor<[4], si32>) -> !mo.tensor<[D4, D5, D6, D7], f32> attributes {argument_names = ["input_1", "input_2"], result_names = ["lambda"]} {
+mo.graph @serving_default<D0, D1, D2, D3 -> D4, D5, D6>(%arg0: !mo.tensor<[D0, D1, D2, D3], f32>, %arg1: !mo.tensor<[4], si32>) -> !mo.tensor<[D4, D5, D6, 1], f32> attributes {argument_names = ["input_1", "input_2"], result_names = ["lambda"]} {
   %0 = mo.transpose<() -> D8, D9, D10, D11>(%arg0, %arg1) : (!mo.tensor<[D0, D1, D2, D3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[D8, D9, D10, D11], f32>
-  %1 = mo.reduce.add<() -> D12, D13, D14, D15>(%0) [axis = 3] : (!mo.tensor<[D8, D9, D10, D11], f32>) -> !mo.tensor<[D12, D13, D14, D15], f32>
-  mo.output<D12, D13, D14, D15> %1 : !mo.tensor<[D12, D13, D14, D15], f32>
+  %1 = mo.reduce.add(%0) : (!mo.tensor<[D8, D9, D10, D11], f32>) -> !mo.tensor<[D8, D9, D10, 1], f32>
+  mo.output<D8, D9, D10> %1 : !mo.tensor<[D8, D9, D10, 1], f32>
 }

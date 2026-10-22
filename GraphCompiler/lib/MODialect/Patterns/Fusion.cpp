@@ -31,6 +31,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <limits>
@@ -200,7 +201,7 @@ struct GatherSumPattern
     if (gatherOp.getAxisAttr().getInt() != 0)
       return rewriter.notifyMatchFailure(op, "gather axis must be 0");
 
-    if (op.getAxisAttr().getInt() != 1)
+    if (op.getReductionAxis() != 1)
       return rewriter.notifyMatchFailure(op, "reduce axis must be 1");
 
     // The fused op's builtin kernel handles only int32 indices and a rank-2
@@ -278,10 +279,11 @@ struct DecomposeSmallReduceAddPattern
       return rewriter.notifyMatchFailure(op,
                                          "reduce input not statically ranked");
 
+    std::optional<int64_t> axisOr = op.getReductionAxis();
+    if (!axisOr)
+      return rewriter.notifyMatchFailure(op, "reduce changes no dimension");
     int64_t rank = inputType.getRank();
-    int64_t axis = normalizeAxis(op.getAxisAttr().getInt(), rank);
-    if (axis < 0 || axis >= rank)
-      return rewriter.notifyMatchFailure(op, "reduce axis out of range");
+    int64_t axis = *axisOr;
 
     // Only the *reduced* axis needs a static extent
     int64_t extent = inputType.getIntDim(axis);
@@ -1007,16 +1009,21 @@ struct LayerNormPattern
     auto bet = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&beta));
     auto ep = m_Op<MO::Static::BroadcastToOp>(po(), m_Any(&eps));
 
-    // `axis` is an attribute on `mo.reduce.mean`, so the mean ops are captured
-    // and their axes validated after the match.
+    // A mean is a sum divided by the reduced extent. The sums and divisors
+    // are captured and checked after the match.
     mlir::Operation *meanOp = nullptr;
     mlir::Operation *varOp = nullptr;
+    Value meanDivisor, varDivisor, meanScale, varScale;
     // TODO: Current capture system can't distinguish multiple uses of the same
     // value in the pattern, need to fix, this might be slightly risky
     Value input;
     auto x = m_Ranked(3, m_Any(&input));
-    auto mean =
-        m_Op<MO::Static::BroadcastToOp>(po(), m_Op<MO::MeanOp>(&meanOp, x));
+    // Symbolic optimization may turn the divide into a multiply by 1 / N.
+    auto meanSum = m_Op<MO::ReduceAddOp>(&meanOp, x);
+    auto mean = m_Op<MO::Static::BroadcastToOp>(
+        po(), m_Optional(m_Op<MO::DivOp>(po(), meanSum, m_Any(&meanDivisor)),
+                         m_BinaryCommutativeOp<MO::MulOp>(po(), meanSum,
+                                                          m_Any(&meanScale))));
     auto diff = m_Op<MO::SubOp>(po(), x, mean);
     auto square = m_Optional(
         m_Op<MO::MulOp>(po(), diff, diff),
@@ -1024,7 +1031,10 @@ struct LayerNormPattern
             po(), diff,
             m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
                 2)));
-    auto var = m_Op<MO::MeanOp>(&varOp, square);
+    auto varSum = m_Op<MO::ReduceAddOp>(&varOp, square);
+    auto var = m_Optional(
+        m_Op<MO::DivOp>(po(), varSum, m_Any(&varDivisor)),
+        m_BinaryCommutativeOp<MO::MulOp>(po(), varSum, m_Any(&varScale)));
     // pytorch specific pattern
     auto pRatioDiv = m_Op<MO::DivOp>(
         po(), diff,
@@ -1057,17 +1067,53 @@ struct LayerNormPattern
     if (!input || !beta || !gamma || !eps)
       return rewriter.notifyMatchFailure(op, "null input value");
 
-    // Both reductions must be along the last axis (the layer-norm axis).
-    auto isLastAxis = [&](mlir::Operation *meanLikeOp) {
-      auto reduction = cast<MO::MeanOp>(meanLikeOp);
-      int64_t rank = reduction.getInput().getType().getRank();
-      int64_t axis = reduction.getAxisAttr().getInt();
-      if (axis < 0)
-        axis += rank;
-      return axis == rank - 1;
+    // Both means must reduce the last axis (the layer-norm axis), dividing by
+    // its static extent.
+    auto isLastAxisMean = [&](mlir::Operation *sumOp, Value divisor,
+                              Value scale) {
+      auto sum = cast<MO::ReduceAddOp>(sumOp);
+      TensorType inputTy = sum.getInput().getType();
+      int64_t rank = inputTy.getRank();
+      if (sum.getReductionAxis() != rank - 1)
+        return false;
+      int64_t extent = inputTy.getIntDim(rank - 1);
+      if (mlir::ShapedType::isDynamic(extent))
+        return false;
+      auto isExtent =
+          m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+              extent);
+      auto isOne =
+          m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(1);
+      if (divisor)
+        return isExtent.match(divisor);
+      if (!scale)
+        return false;
+      // The reciprocal, before or after constant folding. A folded one is
+      // rounded to the scale's dtype.
+      llvm::APFloat inverse(1.0 / static_cast<double>(extent));
+      if (const llvm::fltSemantics *semantics =
+              cast<TensorType>(scale.getType())
+                  .getDtype()
+                  .getFloatSemantics()) {
+        bool losesInfo;
+        inverse.convert(*semantics, llvm::APFloat::rmNearestTiesToEven,
+                        &losesInfo);
+        inverse.convert(llvm::APFloat::IEEEdouble(),
+                        llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+      }
+      auto isInverse =
+          m_SplatOrBroadcastedConstantOfAnyType<MO::Static::BroadcastToOp>(
+              inverse.convertToDouble());
+      Operation *scaleOp = scale.getDefiningOp();
+      return isInverse.match(scale) ||
+             (scaleOp && m_Op<MO::Static::BroadcastToOp>(
+                             po(), m_Op<MO::DivOp>(po(), isOne, isExtent))
+                             .match(scaleOp));
     };
-    if (!meanOp || !varOp || !isLastAxis(meanOp) || !isLastAxis(varOp))
-      return rewriter.notifyMatchFailure(op, "reduction axis is not last axis");
+    if (!meanOp || !varOp || !isLastAxisMean(meanOp, meanDivisor, meanScale) ||
+        !isLastAxisMean(varOp, varDivisor, varScale))
+      return rewriter.notifyMatchFailure(op,
+                                         "reductions aren't last-axis means");
 
     if (!rewriter.addOps()) {
       return rewriter.notifyMatchFailure(

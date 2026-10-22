@@ -22,7 +22,7 @@
 // CHECK-NOT:   map.iter.elementwise
 // CHECK:       mo.output %[[R]]
 mo.graph @chain(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %y = mo.add(%r, %b) : !mo.tensor<[8, 1], f32>
   %z = mo.exp(%y) : !mo.tensor<[8, 1], f32>
   mo.output %z : !mo.tensor<[8, 1], f32>
@@ -38,7 +38,7 @@ mo.graph @chain(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f32>) -> !
 // CHECK-NEXT:  map.store %[[O1]][%[[ROW2]]] = %[[E]]
 // CHECK:       mo.output %[[R2]]#1, %[[R2]]#0
 mo.graph @sideOutput(%x: !mo.tensor<[8, 128], f32>) -> (!mo.tensor<[8, 1], f32>, !mo.tensor<[8, 1], f32>) {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %z = mo.exp(%r) : !mo.tensor<[8, 1], f32>
   mo.output %z, %r : !mo.tensor<[8, 1], f32>, !mo.tensor<[8, 1], f32>
 }
@@ -70,7 +70,7 @@ mo.graph @oneField(%x: !mo.tensor<[4, 16], f32>) -> (!mo.tensor<[4, 1], f32>, !m
 // CHECK:       %[[BB:.*]] = map.call.elementwise @builtin_kernels.elementwise.Mul(%[[ROW4]],
 // CHECK-NEXT:  map.call.elementwise @builtin_kernels.elementwise.Add(%[[ROW4]], {{.*}}, %[[BB]])
 mo.graph @sinksPastInput(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %bb = mo.mul(%b, %b) : !mo.tensor<[8, 1], f32>
   %y = mo.add(%r, %bb) : !mo.tensor<[8, 1], f32>
   mo.output %y : !mo.tensor<[8, 1], f32>
@@ -85,8 +85,8 @@ mo.graph @sinksPastInput(%x: !mo.tensor<[8, 128], f32>, %b: !mo.tensor<[8, 1], f
 // CHECK:       map.iter.elementwise<[8, 1]>
 // CHECK:       inputs  (%[[R5]]: !mo.tensor<[8, 1], f32>, %{{.*}}: !mo.tensor<[8, 1], f32>)
 mo.graph @cycle(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
-  %t = mo.custom [symbol = "mo.reduce.max.tmp", device = #M.device_ref<"cpu", 0>](%r) : (!mo.tensor<[8, 1], f32>) -> !mo.tensor<[1, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %t = mo.reduce.max(%r) : (!mo.tensor<[8, 1], f32>) -> !mo.tensor<[1, 1], f32>
   %tb = mo.static.broadcast_to(%t) : !mo.tensor<[1, 1], f32> -> !mo.tensor<[8, 1], f32>
   %y = mo.div(%r, %tb) : !mo.tensor<[8, 1], f32>
   mo.output %y : !mo.tensor<[8, 1], f32>
@@ -97,7 +97,7 @@ mo.graph @cycle(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32> {
 // CHECK:       %[[R6:.*]] = map.iter.rowwise<[8, 128], axis = 1>
 // CHECK:       map.iter.elementwise<[8, 128]>
 mo.graph @fullRow(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 128], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %rb = mo.static.broadcast_to(%r) : !mo.tensor<[8, 1], f32> -> !mo.tensor<[8, 128], f32>
   %d = mo.div(%x, %rb) : !mo.tensor<[8, 128], f32>
   mo.output %d : !mo.tensor<[8, 128], f32>
@@ -110,7 +110,7 @@ mo.graph @fullRow(%x: !mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 128], f32> {
 // CHECK:       map.iter.elementwise<[8, 1]>
 // CHECK:       map.index.slice
 mo.graph @transformedRead(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32> {
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32>
   %start = mo.constant <#M.dense_array<7, 0> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %stop = mo.constant <#M.dense_array<-9, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %step = mo.constant <#M.dense_array<-1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
@@ -132,7 +132,7 @@ mo.graph @transformedRead(%x: !mo.tensor<[8, 8], f32>) -> !mo.tensor<[8, 1], f32
 // CHECK:       mo.output
 mo.graph @mutableStore(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<[8, 1], f32>) {
   %chain = mo.chain.create()
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %c = mo.mutable.store(%buf, %r, %chain) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
   mo.output
 }
@@ -145,7 +145,7 @@ mo.graph @mutableStore(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<[8, 1], f
 // CHECK:       map.call.elementwise @{{.*}}MutableStore
 mo.graph @mutableStoreChainUsed(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<[8, 1], f32>) -> !mo.chain {
   %chain = mo.chain.create()
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %c = mo.mutable.store(%buf, %r, %chain) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
   mo.output %c : !mo.chain
 }
@@ -159,7 +159,7 @@ mo.graph @mutableStoreChainUsed(%x: !mo.tensor<[8, 128], f32>, %buf: !mo.buffer<
 mo.graph @mutableStoreAfterStore(%x: !mo.tensor<[8, 128], f32>, %a: !mo.tensor<[8, 1], f32>, %buf: !mo.buffer<[8, 1], f32>) {
   %c0 = mo.chain.create()
   %c1 = mo.mutable.store(%buf, %a, %c0) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%x) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   %c2 = mo.mutable.store(%buf, %r, %c1) : (!mo.buffer<[8, 1], f32>, !mo.tensor<[8, 1], f32>, !mo.chain) -> !mo.chain
   mo.output
 }

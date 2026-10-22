@@ -1,6 +1,6 @@
 // RUN: mo-opt %s --mo-pattern-fusion | FileCheck %s
 
-// Gather + reduce.add fusion: reduce.add(gather(x, idx) [axis = 0], axis = 1)
+// Gather + reduce.add fusion: reduce.add(gather(x, idx) [axis = 0]) over axis 1
 // fuses to mo.gather_sum when the gather axis is 0 and the reduce axis is 1.
 // The fused op is single-device (MXF-821): a device-resident chain stays on
 // its device instead of round-tripping through the host.
@@ -10,7 +10,7 @@
 // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 1, 3], f32>
 mo.graph @gather_sum_fusion_cpu(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 1, 3], f32> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %res : !mo.tensor<[2, 1, 3], f32>
 }
 
@@ -21,7 +21,7 @@ mo.graph @gather_sum_fusion_cpu(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.t
 // CHECK: mo.output %[[RES]] : !mo.tensor<[2, 1, 3], f32, gpu:0>
 mo.graph @gather_sum_fusion_gpu(%table: !mo.tensor<[5, 3], f32, gpu:0>, %indices: !mo.tensor<[2, 4], si32, gpu:0>) -> !mo.tensor<[2, 1, 3], f32, gpu:0> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32, gpu:0>, !mo.tensor<[2, 4], si32, gpu:0>) -> !mo.tensor<[2, 4, 3], f32, gpu:0>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[2, 4, 3], f32, gpu:0>) -> !mo.tensor<[2, 1, 3], f32, gpu:0>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[2, 4, 3], f32, gpu:0>) -> !mo.tensor<[2, 1, 3], f32, gpu:0>
   mo.output %res : !mo.tensor<[2, 1, 3], f32, gpu:0>
 }
 
@@ -30,10 +30,10 @@ mo.graph @gather_sum_fusion_gpu(%table: !mo.tensor<[5, 3], f32, gpu:0>, %indices
 // CHECK: mo.gather
 // CHECK: mo.reduce.add
 // CHECK-NOT: mo.gather_sum
-mo.graph @gather_wrong_axis_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[2, 4], si32>) -> !mo.tensor<[4, 5, 3], f32> {
+mo.graph @gather_wrong_axis_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[2, 4], si32>) -> !mo.tensor<[4, 1, 3], f32> {
   %gather = mo.gather(%table, %indices) [axis = 1] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[4, 5, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[4, 5, 3], f32>) -> !mo.tensor<[4, 5, 3], f32>
-  mo.output %res : !mo.tensor<[4, 5, 3], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[4, 5, 3], f32>) -> !mo.tensor<[4, 1, 3], f32>
+  mo.output %res : !mo.tensor<[4, 1, 3], f32>
 }
 
 // Wrong reduce axis: no fusion.
@@ -43,7 +43,7 @@ mo.graph @gather_wrong_axis_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !
 // CHECK-NOT: mo.gather_sum
 mo.graph @reduce_wrong_axis_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[2, 4], si32>) -> !mo.tensor<[1, 4, 3], f32> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 0] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[1, 4, 3], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[1, 4, 3], f32>
   mo.output %res : !mo.tensor<[1, 4, 3], f32>
 }
 
@@ -55,7 +55,7 @@ mo.graph @reduce_wrong_axis_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !
 // CHECK-NOT: mo.gather_sum
 mo.graph @gather_i64_indices_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[2, 4], si64>) -> !mo.tensor<[2, 1, 3], f32> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[2, 4], si64>) -> !mo.tensor<[2, 4, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[2, 4, 3], f32>) -> !mo.tensor<[2, 1, 3], f32>
   mo.output %res : !mo.tensor<[2, 1, 3], f32>
 }
 
@@ -67,7 +67,7 @@ mo.graph @gather_i64_indices_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: 
 // CHECK-NOT: mo.gather_sum
 mo.graph @gather_rank1_indices_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices: !mo.tensor<[4], si32>) -> !mo.tensor<[4, 1], f32> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[5, 3], f32>, !mo.tensor<[4], si32>) -> !mo.tensor<[4, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 1], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[4, 3], f32>) -> !mo.tensor<[4, 1], f32>
   mo.output %res : !mo.tensor<[4, 1], f32>
 }
 
@@ -79,6 +79,6 @@ mo.graph @gather_rank1_indices_no_fuse(%table: !mo.tensor<[5, 3], f32>, %indices
 // CHECK-NOT: mo.gather_sum
 mo.graph @gather_rank3_table_no_fuse(%table: !mo.tensor<[2, 5, 3], f32>, %indices: !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 1, 5, 3], f32> {
   %gather = mo.gather(%table, %indices) [axis = 0] : (!mo.tensor<[2, 5, 3], f32>, !mo.tensor<[2, 4], si32>) -> !mo.tensor<[2, 4, 5, 3], f32>
-  %res = mo.reduce.add(%gather) [axis = 1] : (!mo.tensor<[2, 4, 5, 3], f32>) -> !mo.tensor<[2, 1, 5, 3], f32>
+  %res = mo.reduce.add(%gather) : (!mo.tensor<[2, 4, 5, 3], f32>) -> !mo.tensor<[2, 1, 5, 3], f32>
   mo.output %res : !mo.tensor<[2, 1, 5, 3], f32>
 }

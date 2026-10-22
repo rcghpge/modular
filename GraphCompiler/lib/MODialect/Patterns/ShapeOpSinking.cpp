@@ -2022,15 +2022,10 @@ struct SinkBroadcastsThroughReduction
       return rewriter.notifyMatchFailure(
           loc, "BCast to be statically ranked to work.");
 
-    int64_t reductionAxis = op.getAxisAttr().getInt();
-
-    // respect negative axis rules
-    int64_t initialRank = input.getType().getRank();
-    if (reductionAxis < -initialRank || reductionAxis >= initialRank)
-      return rewriter.notifyMatchFailure(
-          loc, "Axis is not within [-rank, rank - 1]");
-
-    reductionAxis = normalizeAxis(reductionAxis, input.getType().getRank());
+    std::optional<int64_t> axisOr = op.getReductionAxis();
+    if (!axisOr)
+      return rewriter.notifyMatchFailure(loc, "reduction has no axis");
+    int64_t reductionAxis = *axisOr;
 
     // Map the reduction axis onto the non-broadcasted input by counting the
     // broadcast-added dims before it. E.g. for [A, B, 1] --> [1, D, A, B, 1]
@@ -2048,8 +2043,8 @@ struct SinkBroadcastsThroughReduction
       if (bcastedDimIndex == reductionAxis) {
         auto maybeNewInput =
             TypeSwitch<Operation *, FailureOr<TensorValue>>(op)
-                .Case<ReduceMinOp, ReduceMaxOp, MeanOp>([&](auto op) {
-                  // For min / max / mean, the reduction is removed.
+                .Case<ReduceMinOp, ReduceMaxOp>([&](auto op) {
+                  // For min / max, the reduction is removed.
                   return bcastOpInput;
                 })
                 .Case<ReduceAddOp, ReduceMulOp>([&](auto op) {
@@ -2113,8 +2108,8 @@ struct SinkBroadcastsThroughReduction
     int64_t newAxis = reductionAxis - numBeforeAxis;
     auto clonedReduction = cast<MO::Reduction>(*rewriter.clone(*op));
     clonedReduction.getInputMutable().assign(bcastOpInput);
-    // `axis` is an attribute, not an operand.
-    clonedReduction->setAttr("axis", rewriter.getIndexAttr(newAxis));
+    // An `axis` attribute moves; a shape reduction reads the new result type.
+    clonedReduction.setAxisAttribute(newAxis);
 
     TensorType newTy = bcastOpInput.getType()
                            .cloneWithNewDim(newAxis, 1)

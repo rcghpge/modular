@@ -130,7 +130,7 @@ mo.graph @no_fold_slice_parameter<N, M>(%arg0: !mo.tensor<[N, M], f64>,
 
 
 mo.graph @fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
-    %res = mo.reduce.add(%arg0) [axis = 0] : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
+    %res = mo.reduce.add(%arg0) : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
 
     // CHECK-LABEL: mo.graph @fold_reduce_add
     // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
@@ -139,7 +139,7 @@ mo.graph @fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1,
 }
 
 mo.graph @fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
-    %res = mo.reduce.add(%arg0) [axis = -1] : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
+    %res = mo.reduce.add(%arg0) : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
 
     // CHECK-LABEL: mo.graph @fold_reduce_add2
     // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
@@ -147,24 +147,24 @@ mo.graph @fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1
     mo.output %res : !mo.tensor<[1, 10, 1], f32>
 }
 
-mo.graph @no_fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
-    %res = mo.reduce.add(%arg0) [axis = 1] : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
+mo.graph @no_fold_reduce_add(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 1, 1], f32> {
+    %res = mo.reduce.add(%arg0) : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 1, 1], f32>
 
     // CHECK-LABEL: mo.graph @no_fold_reduce_add
     // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
     // CHECK-NEXT: %[[OUT:.*]] = mo.reduce.add
-    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 10, 1], f32>
-    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 1, 1], f32>
+    mo.output %res : !mo.tensor<[1, 1, 1], f32>
 }
 
-mo.graph @no_fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32> {
-    %res = mo.reduce.add(%arg0) [axis = -2] : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 10, 1], f32>
+mo.graph @no_fold_reduce_add2(%arg0 : !mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 1, 1], f32> {
+    %res = mo.reduce.add(%arg0) : (!mo.tensor<[1, 10, 1], f32>) -> !mo.tensor<[1, 1, 1], f32>
 
     // CHECK-LABEL: mo.graph @no_fold_reduce_add2
     // CHECK: (%[[ARG0:.*]]: !mo.tensor<[1, 10, 1], f32>
     // CHECK-NEXT: %[[OUT:.*]] = mo.reduce.add
-    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 10, 1], f32>
-    mo.output %res : !mo.tensor<[1, 10, 1], f32>
+    // CHECK-NEXT: mo.output %[[OUT]] : !mo.tensor<[1, 1, 1], f32>
+    mo.output %res : !mo.tensor<[1, 1, 1], f32>
 }
 
 

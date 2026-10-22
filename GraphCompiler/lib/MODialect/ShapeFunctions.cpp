@@ -1065,8 +1065,12 @@ ShapeMaterializeResult materializeReduceShape(GraphOp graphOp, Location loc,
   SmallVector<ParamBinding> paramBindings;
   ParamExprBuilder b(graphOp, loc, &paramBindings);
 
-  auto axisOr = tryGetConstantInt(axis);
   auto inputShapeAttr = dyn_cast<ShapeAttr>(inputShape);
+  // A reduction without an axis changes no dimension.
+  if (!axis && inputShapeAttr)
+    return ShapeMaterializeResult::success(std::move(paramBindings),
+                                           inputShapeAttr);
+  auto axisOr = tryGetConstantInt(axis);
 
   if (!axisOr.has_value() || !inputShapeAttr)
     return ShapeMaterializeResult::nonMaterializable();

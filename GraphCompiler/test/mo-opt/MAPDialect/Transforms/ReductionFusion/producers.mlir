@@ -14,11 +14,11 @@
 // CHECK-NEXT:    %[[A:.*]] = map.call.elementwise @builtin_kernels.elementwise.Cast(%[[I]], %[[V]])
 // CHECK-NEXT:    %[[SQ:.*]] = map.call.elementwise @builtin_kernels.elementwise.Mul(%[[I]], %[[A]], %[[A]])
 // CHECK-NEXT:    map.yield %[[SQ]] : f32
-// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_rowwise<[#mogg.fusion_leaf<"mo.cast"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"custom__mo.reduce.add.tmp"
+// CHECK:       fusionInfo = #mogg.fusion<#mogg.fusion_rowwise<[#mogg.fusion_leaf<"mo.cast"{{.*}}, #mogg.fusion_leaf<"mo.mul"{{.*}}, #mogg.fusion_leaf<"mo.reduce.add"
 mo.graph @chain(%x: !mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 1], f32> {
   %a = mo.cast(%x) : (!mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 128], f32>
   %sq = mo.mul(%a, %a) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }
 
@@ -34,7 +34,7 @@ mo.graph @chain(%x: !mo.tensor<[8, 128], bf16>) -> !mo.tensor<[8, 1], f32> {
 mo.graph @broadcastGamma(%x: !mo.tensor<[8, 128], f32>, %g: !mo.tensor<[128], f32>) -> !mo.tensor<[8, 1], f32> {
   %gb = mo.static.broadcast_to(%g) : !mo.tensor<[128], f32> -> !mo.tensor<[8, 128], f32>
   %xg = mo.mul(%x, %gb) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.max.tmp", device = #M.device_ref<"cpu", 0>](%xg) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.max(%xg) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r : !mo.tensor<[8, 1], f32>
 }
 
@@ -46,7 +46,7 @@ mo.graph @broadcastGamma(%x: !mo.tensor<[8, 128], f32>, %g: !mo.tensor<[128], f3
 // CHECK:       map.call.elementwise @builtin_kernels.elementwise.Exp
 mo.graph @outerAxis<M, N>(%x: !mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32> {
   %e = mo.exp(%x) : !mo.tensor<[M, N], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%e) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32>
+  %r = mo.reduce.add(%e) : (!mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32>
   mo.output %r : !mo.tensor<[1, N], f32>
 }
 
@@ -57,7 +57,7 @@ mo.graph @outerAxis<M, N>(%x: !mo.tensor<[M, N], f32>) -> !mo.tensor<[1, N], f32
 // CHECK-NEXT:  inputs  (%[[SQ2]]: !mo.tensor<[8, 128], f32>)
 mo.graph @sharedProducer(%x: !mo.tensor<[8, 128], f32>) -> (!mo.tensor<[8, 1], f32>, !mo.tensor<[8, 128], f32>) {
   %sq = mo.mul(%x, %x) : !mo.tensor<[8, 128], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
+  %r = mo.reduce.add(%sq) : (!mo.tensor<[8, 128], f32>) -> !mo.tensor<[8, 1], f32>
   mo.output %r, %sq : !mo.tensor<[8, 1], f32>, !mo.tensor<[8, 128], f32>
 }
 
@@ -78,6 +78,6 @@ mo.graph @sliceThenReshape(%x: !mo.tensor<[16, 64], f32>) -> !mo.tensor<[4, 1, 3
   %step = mo.constant <#M.dense_array<1, 1> : tensor<2xsi64>> : !mo.tensor<[2], si64>
   %s = mo.slice(%x, %start, %stop, %step) : (!mo.tensor<[16, 64], f32>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>, !mo.tensor<[2], si64>) -> !mo.tensor<[16, 32], f32>
   %g = mo.static.reshape(%s) : !mo.tensor<[16, 32], f32> -> !mo.tensor<[4, 4, 32], f32>
-  %r = mo.custom [symbol = "mo.reduce.add.tmp", device = #M.device_ref<"cpu", 0>](%g) : (!mo.tensor<[4, 4, 32], f32>) -> !mo.tensor<[4, 1, 32], f32>
+  %r = mo.reduce.add(%g) : (!mo.tensor<[4, 4, 32], f32>) -> !mo.tensor<[4, 1, 32], f32>
   mo.output %r : !mo.tensor<[4, 1, 32], f32>
 }

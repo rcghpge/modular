@@ -390,7 +390,7 @@ def test_reduction_valid() -> None:
     input_types = _reduction_types(DType.float32, [[8, 128]])
     with Graph("test_reduction_valid", input_types=input_types) as graph:
         ops.custom(
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             device=DeviceRef.CPU(),
             values=list(graph.inputs),
             out_types=_reduction_types(DType.float32, [[8, 1]]),
@@ -401,7 +401,7 @@ def test_reduction_valid() -> None:
     ("symbol", "inputs", "outputs", "message"),
     [
         (
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             [[8, 128], [8, 128]],
             [(DType.float32, [8, 1])],
             "takes one input, got 2",
@@ -413,25 +413,25 @@ def test_reduction_valid() -> None:
             "has 2 output fields, but the op has 1 results",
         ),
         (
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             [[8, 1]],
             [(DType.float32, [8, 1])],
             "must turn exactly one input dimension into 1",
         ),
         (
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             [[8, 128]],
             [(DType.float32, [1, 1])],
             "must turn exactly one input dimension into 1",
         ),
         (
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             [[8, 128]],
             [(DType.float32, [8, 2])],
             "must turn exactly one input dimension into 1",
         ),
         (
-            "mo.reduce.add.tmp",
+            "mo.reduce.add",
             [[8, 128]],
             [(DType.float32, [8])],
             "results must be tensors of the input's rank",

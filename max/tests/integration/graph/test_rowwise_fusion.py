@@ -12,57 +12,43 @@
 # ===----------------------------------------------------------------------=== #
 """Runs reductions the graph compiler generates as rowwise kernels.
 
-Each graph reduces through a registered monoid with ``ops.custom``, fused
-with the ops around it, and is checked against numpy on random inputs, so a
-kernel that reads or writes the wrong elements fails.
+Each graph reduces with ``ops.sum`` or ``ops.max``, fused with the ops around
+it, and is checked against numpy on random inputs, so a kernel that reads or
+writes the wrong elements fails.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import pytest
 from max.driver import Buffer
 from max.dtype import DType
 from max.engine import InferenceSession
-from max.graph import (
-    BufferType,
-    DeviceRef,
-    Graph,
-    ShapeLike,
-    TensorType,
-    TensorValue,
-    ops,
-)
+from max.graph import BufferType, DeviceRef, Graph, TensorType, TensorValue, ops
 
 _CPU = DeviceRef.CPU()
 
 
-def _f32(shape: ShapeLike) -> TensorType:
+def _f32(shape: Sequence[int]) -> TensorType:
     return TensorType(DType.float32, shape, device=_CPU)
 
 
-def _reduce(symbol: str, x: TensorValue, shape: ShapeLike) -> TensorValue:
-    return ops.custom(symbol, device=_CPU, values=[x], out_types=[_f32(shape)])[
-        0
-    ].tensor
-
-
 def _sum_inner(x: TensorValue) -> TensorValue:
-    return _reduce("mo.reduce.add.tmp", x, [4, 1])
+    return ops.sum(x, axis=1)
 
 
 def _sum_outer(x: TensorValue) -> TensorValue:
-    return _reduce("mo.reduce.add.tmp", x, [1, 8])
+    return ops.sum(x, axis=0)
 
 
 def _max_inner(x: TensorValue) -> TensorValue:
-    return _reduce("mo.reduce.max.tmp", x, [4, 1])
+    return ops.max(x, axis=1)
 
 
 def _sum_of_squares_plus_bias(x: TensorValue, b: TensorValue) -> TensorValue:
-    return _reduce("mo.reduce.add.tmp", x * x, [4, 1]) + b
+    return ops.sum(x * x, axis=1) + b
 
 
 _CASES: list[
@@ -109,15 +95,51 @@ def test_rowwise_fusion(
     )
 
 
+@pytest.mark.parametrize("rows", [3, 0])
+def test_integer_mean(session: InferenceSession, rows: int) -> None:
+    """An integer mean truncates, and is 0 over an empty axis."""
+    input_type = TensorType(DType.int32, [2, "n"], device=_CPU)
+    with Graph("integer_mean", input_types=[input_type]) as graph:
+        graph.output(ops.mean(graph.inputs[0].tensor, axis=1))
+    model = session.load(graph)
+
+    x = np.arange(2 * rows, dtype=np.int32).reshape(2, rows)
+    result = model(Buffer.from_numpy(x))[0]
+    assert isinstance(result, Buffer)
+    expected = x.sum(1, keepdims=True) // max(rows, 1)
+    np.testing.assert_array_equal(result.to_numpy(), expected)
+
+
+@pytest.mark.parametrize("dim", ["n", 70000])
+def test_half_mean_of_long_axis(
+    session: InferenceSession, dim: str | int
+) -> None:
+    """An f16 mean over more elements than f16 can count, 65504, stays finite."""
+    input_type = TensorType(DType.float16, [1, dim], device=_CPU)
+    with Graph("half_mean", input_types=[input_type]) as graph:
+        graph.output(ops.mean(graph.inputs[0].tensor, axis=1))
+    model = session.load(graph)
+
+    # Mostly zeros, so the f16 sum is exact and only the scaling is tested.
+    x = np.zeros((1, 70000), dtype=np.float16)
+    x[0, :4] = 1000
+    result = model(Buffer.from_numpy(x))[0]
+    assert isinstance(result, Buffer)
+    np.testing.assert_allclose(
+        result.to_numpy().astype(np.float64), [[4000 / 70000]], rtol=5e-3
+    )
+
+
 def test_reshape_of_a_column_slice(session: InferenceSession) -> None:
     """A rowwise sum over a reshape of a column slice, with a symbolic row
     count. Only the reshape fuses: the slice is not contiguous, so it runs as
     its own kernel."""
-    with Graph("reshaped_slice", input_types=[_f32(["rows", 640])]) as graph:
+    input_type = TensorType(DType.float32, ["rows", 640], device=_CPU)
+    with Graph("reshaped_slice", input_types=[input_type]) as graph:
         x = graph.inputs[0].tensor[:, 512:640]
         n = x.shape[0] // 4
         grouped = x[: n * 4].reshape((n, 4, 128))
-        graph.output(_reduce("mo.reduce.add.tmp", grouped, [n, 1, 128]))
+        graph.output(ops.sum(grouped, axis=1))
     model = session.load(graph)
 
     for rows in (8, 129):
