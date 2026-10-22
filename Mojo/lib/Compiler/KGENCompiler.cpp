@@ -48,6 +48,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/EndianStream.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
@@ -620,6 +621,12 @@ static ElaboratorCompileOffloadRetType compileOffloads(
                                                       : target);
       SymbolTable slicedSymtab(*module);
 
+      // Collect the callee names once per group, so the callee check below is
+      // a set lookup instead of a walk of the whole module for every kernel.
+      DenseSet<FlatSymbolRefAttr> callees;
+      module->walk(
+          [&](CallOp call) { callees.insert(call.getCalleeSymbol()); });
+
       // Collect SymbolConstantAttr names to rename.
       DenseMap<SymbolRefAttr, StringAttr> symToRename;
 
@@ -656,14 +663,11 @@ static ElaboratorCompileOffloadRetType compileOffloads(
             // up with two functions with the same name one for the kernel entry
             // wrapper for instantiated stub, and one for the callee in another
             // kernel (they have different function bodies).
-            module->walk(
-                [&newCalleeName, &newName, &func, &symToRename](CallOp call) {
-                  if (call.getCalleeSymbol() == FlatSymbolRefAttr::get(func)) {
-                    newName = newCalleeName;
-                    symToRename.insert(
-                        {call.getCallee().getSymbol(), newCalleeName});
-                  }
-                });
+            auto funcSym = FlatSymbolRefAttr::get(func);
+            if (callees.contains(funcSym)) {
+              newName = newCalleeName;
+              symToRename.insert({funcSym, newCalleeName});
+            }
 
             generateInstantiateStub(func, symbol, kernelInfo.name, mapping,
                                     &slicedSymtab, kernelInfo.kernelId);
