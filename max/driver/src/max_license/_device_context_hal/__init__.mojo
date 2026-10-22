@@ -19,7 +19,7 @@ which represents a single stream of execution on a given accelerator. You can
 use this struct to allocate accelerator memory, copy data to and from the
 accelerator, and compile and execute functions on the accelerator.
 
-This variant of the module provides the `max.gpu.host.device_context`
+This variant of the module provides the `max.gpu.host._legacy.device_context`
 implementation when the HAL backend is enabled."""
 
 from std.atomic import Atomic
@@ -85,14 +85,14 @@ from max.gpu.host import (
     LaunchAttribute,
     default_accelerator,
 )
-from max.gpu.host.device_attribute import DeviceAttribute
+from max.gpu.host._legacy.device_attribute import DeviceAttribute
 from max.gpu.host.info import (
     GPUInfo,
     get_gpu_info,
     is_cpu,
     _device_type_encoder_target,
 )
-from max.gpu.host.func_attribute import Attribute, FuncAttribute
+from max.gpu.host._legacy.func_attribute import Attribute, FuncAttribute
 from max.gpu.host import _launch_args
 
 
@@ -4234,7 +4234,7 @@ struct DeviceBuffer[dtype: DType](
         oob_fill: Int32,
     ) raises:
         """Encodes a tiled TMA descriptor for this buffer via the HAL plugin.
-        Used by `max.gpu.host._tensormap.create_tensormap`."""
+        Used by `max.gpu.host._legacy._tensormap.create_tensormap`."""
         # Same-width reinterpret of the callers' signed arrays to the C ABI's
         # unsigned element types.
         self._ctx._context[].tensor_map_encode_tiled(
@@ -4270,7 +4270,8 @@ struct DeviceBuffer[dtype: DType](
         oob_fill: Int32,
     ) raises:
         """Encodes an im2col TMA descriptor for this buffer via the HAL
-        plugin. Used by `max.gpu.host._tensormap.create_tensormap_im2col`."""
+        plugin. Used by `max.gpu.host._legacy._tensormap.create_tensormap_im2col`.
+        """
         self._ctx._context[].tensor_map_encode_im2col(
             tensor_map,
             data_type,

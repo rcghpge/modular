@@ -22,9 +22,9 @@ overlay_layer(
 overlay_layer(
     name = "hal_compat",
     file_map = {
-        "//max/driver/src/max_license/_device_context_hal:__init__.mojo": "max/gpu/host/device_context.mojo",
-        "//max/driver/src/max_license/_device_context_hal:_nvidia_cuda.mojo": "max/gpu/host/_nvidia_cuda.mojo",
-        "//max/driver/src/max_license/_device_context_hal:_device_graph.mojo": "max/gpu/host/device_graph.mojo",
+        "//max/driver/src/max_license/_device_context_hal:__init__.mojo": "max/gpu/host/_legacy/device_context.mojo",
+        "//max/driver/src/max_license/_device_context_hal:_nvidia_cuda.mojo": "max/gpu/host/_legacy/_nvidia_cuda.mojo",
+        "//max/driver/src/max_license/_device_context_hal:_device_graph.mojo": "max/gpu/host/_legacy/device_graph.mojo",
         # `_hal/_machine.mojo` is shadowed by the staged-tree variant (the
         # `machine` package is nested inside `_hal` here, not a sibling).
         "//max/driver/src/max_license/_device_context_hal:_machine.mojo": "max/gpu/host/_hal/_machine.mojo",
@@ -40,9 +40,11 @@ overlay_layer(
 overlay_srcs(
     name = "max_srcs_hal",
     exclude = [
-        "max/gpu/host/_device_context_extras.mojo",
-        "max/gpu/host/_device_context_metal.mojo",
-        "max/gpu/host/_metal.mojo",
+        # These import the legacy DeviceContext. HAL replaces that module, so
+        # compiling them against the replacement fails.
+        "max/gpu/host/_legacy/_device_context_extras.mojo",
+        "max/gpu/host/_legacy/_device_context_metal.mojo",
+        "max/gpu/host/_legacy/_metal.mojo",
     ],
     layers = [
         ":max_base_layer",

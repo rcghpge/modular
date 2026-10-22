@@ -39,9 +39,9 @@ from max.gpu.host import (
     DeviceStream,
     HostBuffer,
 )
-from max.gpu.host.device_context import _CString
-from max.gpu.host.device_attribute import DeviceAttribute
-from max.gpu.host.device_context import _DeviceContextScopeHAL
+from max.gpu.host._legacy.device_context import _CString
+from max.gpu.host._legacy.device_attribute import DeviceAttribute
+from max.gpu.host._legacy.device_context import _DeviceContextScopeHAL
 from std.memory import (
     alloc,
     dealloc,
