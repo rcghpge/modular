@@ -191,9 +191,10 @@ class ServerCommand(NamedTuple):
 
 # Servers for frameworks whose serving code is internal. Their internal
 # entrypoint registers them here before running the smoke test. Each takes the
-# model and the startup timeout in seconds.
+# model, the startup timeout in seconds, and whether the model is a vision
+# model, so a framework that builds its vision graph separately builds it.
 SERVERS: dict[
-    str, Callable[[str, int], AbstractContextManager[RunningServer]]
+    str, Callable[[str, int, bool], AbstractContextManager[RunningServer]]
 ] = {}
 
 
@@ -767,7 +768,9 @@ def smoke_test(
     if framework in SERVERS:
         if recipe_path:
             raise ValueError(f"{framework} does not support recipes")
-        serving = SERVERS[framework](hf_model_path, timeout)
+        serving = SERVERS[framework](
+            hf_model_path, timeout, is_vision_model(model)
+        )
     else:
         cmd, server_env = get_server_cmd(
             framework,
@@ -784,9 +787,7 @@ def smoke_test(
     if override_tasks:
         tasks = list(override_tasks)
     # TODO(SERVSYS-1330): Run the vision task with Cascade once it accepts images.
-    # Mach serves text-only here: without a vision MEF the engine refuses
-    # image requests, and the smoke test does not export one yet.
-    elif is_vision_model(model) and not cascade and framework != "mach-ci":
+    elif is_vision_model(model) and not cascade:
         tasks = [VISION_TASK, TEXT_TASK]
     else:
         tasks = [TEXT_TASK]
