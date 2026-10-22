@@ -53,7 +53,9 @@ from extensibility import (
     StoreAccess,
     Tensor,
     TileTensorable,
+    UnsafeFusedView,
     to_tile_tensor,
+    unsafe_fused_view,
 )
 from extensibility import (
     _FusedOutputTensor as FusedOutputTensor,
@@ -709,37 +711,6 @@ def conv2d_residual_add_shape(
 def _check_conv_transpose_attrs[
     spatial_rank: Int
 ](
-    strides: InputTensor,
-    dilation: InputTensor,
-    paddings: InputTensor,
-    output_paddings: InputTensor,
-) raises:
-    comptime assert (
-        strides.dtype.is_integral()
-        and dilation.dtype.is_integral()
-        and output_paddings.dtype.is_integral()
-    )
-
-    if strides.size() != spatial_rank:
-        raise Error("(input_rank-2) values expected in convTranspose stride")
-
-    if dilation.size() != spatial_rank:
-        raise Error("(input_rank-2) values expected in convTranspose dilation")
-
-    if output_paddings.size() != spatial_rank:
-        raise Error(
-            "(input_rank-2) values expected in convTranspose output paddings"
-        )
-
-    if paddings.size() != 2 * spatial_rank:
-        raise Error(
-            "(2*(input_rank-2)) value expected in convTranspose paddings"
-        )
-
-
-def _check_conv_transpose_attrs[
-    spatial_rank: Int
-](
     strides: TileTensor,
     dilation: TileTensor,
     paddings: TileTensor,
@@ -929,68 +900,161 @@ struct ConvTransposeCPU:
         )
 
 
+# Shared by both `ConvTransposeGPU.execute` overloads: validates the attributes
+# and returns the stride, dilation, and padding cuDNN takes.
+def _conv_transpose_gpu_attrs[
+    filter_layout: StaticString
+](
+    input: TileTensor,
+    filter: TileTensor,
+    strides: TileTensor,
+    dilation: TileTensor,
+    paddings: TileTensor,
+    output_paddings: TileTensor,
+) raises -> Tuple[
+    IndexList[input.rank - 2],
+    IndexList[input.rank - 2],
+    IndexList[input.rank - 2],
+]:
+    comptime assert (
+        input.rank == 4 and filter.rank == 4
+    ), "only rank 4 tensor is supported on cuda gpu"
+    comptime assert (
+        filter_layout != "FRSCf" and filter_layout != "FQRSCf"
+    ), "only unpacked filter is supported on cuda gpu"
+    comptime spatial_rank = input.rank - 2
+
+    _check_conv_transpose_attrs[spatial_rank](
+        strides, dilation, paddings, output_paddings
+    )
+
+    var padding = IndexList[spatial_rank](0)
+    padding[0] = Int(paddings.load((0,)))
+    padding[1] = Int(paddings.load((2,)))
+    return (
+        _index_list[spatial_rank](strides),
+        _index_list[spatial_rank](dilation),
+        padding,
+    )
+
+
 @extensibility.register("mo.conv_transpose", type="gpu")
 struct ConvTransposeGPU:
-    """Registers the `mo.conv_transpose` graph op for GPU devices."""
+    """Registers the `mo.conv_transpose` graph op for GPU devices.
+
+    Two `execute` overloads under one registration: the graph compiler calls
+    the fused one when any output has a fused epilogue and the plain one when
+    none has. cuDNN writes a whole output buffer, so the fused form has it
+    write scratch and stores from there into the fused output, while the plain
+    form has cuDNN write the output directly. The pair is grandfathered on the
+    graph compiler's allow list; new kernels declare one `execute` with a
+    `StoreAccess` output.
+    """
 
     @staticmethod
     def execute[
         input_layout: StaticString,
         filter_layout: StaticString,
-        has_epilogue_fusion: Bool,
         target: StaticString,
     ](
-        output: FusedOutputTensor[...],
-        input: InputTensor[rank=output.rank, ...],
-        filter: InputTensor,
-        strides: InputTensor[rank=1, ...],
-        dilation: InputTensor[rank=1, ...],
-        paddings: InputTensor[rank=1, ...],
-        output_paddings: InputTensor[rank=1, ...],
+        output: Some[Output & Fused & StoreAccess],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilation: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
+        output_paddings: Some[Input & Tensor],
         ctx: DeviceContext,
     ) raises:
+        comptime assert (
+            conforms_to(type_of(input), TileTensorable)
+            and conforms_to(type_of(filter), TileTensorable)
+            and conforms_to(type_of(strides), TileTensorable)
+            and conforms_to(type_of(dilation), TileTensorable)
+            and conforms_to(type_of(paddings), TileTensorable)
+            and conforms_to(type_of(output_paddings), TileTensorable)
+        )
+        comptime dtype = type_of(output).dtype
+
+        # The epilogue runs in a device kernel the library launches, so it
+        # copy-captures the access-enabled view rather than the host proxy.
+        comptime assert conforms_to(type_of(output), UnsafeFusedView)
+        var out_view = unsafe_fused_view(output)
+        comptime assert conforms_to(type_of(out_view), Storable)
+
         @inline(.always)
         def output_fn[
             _dtype: DType, _width: SIMDLength, _alignment: Int = 1
-        ](coords: Coord, val: SIMD[_dtype, _width]) {var output}:
-            output._lambda_store[width=_width, element_alignment=_alignment](
-                coords, rebind[SIMD[output.dtype, _width]](val)
+        ](coords: Coord, val: SIMD[_dtype, _width]) {var out_view}:
+            out_view.store[width=Int(_width), element_alignment=_alignment](
+                coords,
+                rebind[SIMD[type_of(out_view).dtype, Int(_width)]](val),
             )
 
-        comptime assert (
-            input.rank == 4 and filter.rank == 4
-        ), "only rank 4 tensor is supported on cuda gpu"
-        comptime assert (
-            filter_layout != "FRSCf" and filter_layout != "FQRSCf"
-        ), "only unpacked filter is supported on cuda gpu"
-
-        _check_conv_transpose_attrs[input.rank - 2](
-            strides, dilation, paddings, output_paddings
+        var input_tt = input.to_tile_tensor()
+        var filter_tt = filter.to_tile_tensor()
+        var attrs = _conv_transpose_gpu_attrs[filter_layout](
+            input_tt,
+            filter_tt,
+            strides.to_tile_tensor(),
+            dilation.to_tile_tensor(),
+            paddings.to_tile_tensor(),
+            output_paddings.to_tile_tensor(),
+        )
+        conv_transposed_gpu[type_of(input).dtype, type_of(filter).dtype, dtype](
+            row_major(output.shape()),
+            input_tt,
+            filter_tt,
+            attrs[0],
+            attrs[1],
+            attrs[2],
+            output_fn,
+            ctx,
         )
 
-        var pad_tuple = IndexList[
-            type_of(input.to_tile_tensor[.int64]()).rank - 2
-        ](0)
-        pad_tuple[0] = Int(paddings[0])
-        pad_tuple[1] = Int(paddings[2])
-
+    @staticmethod
+    def execute[
+        input_layout: StaticString,
+        filter_layout: StaticString,
+        target: StaticString,
+    ](
+        output: Some[Output & Tensor],
+        input: Some[Input & Tensor],
+        filter: Some[Input & Tensor],
+        strides: Some[Input & Tensor],
+        dilation: Some[Input & Tensor],
+        paddings: Some[Input & Tensor],
+        output_paddings: Some[Input & Tensor],
+        ctx: DeviceContext,
+    ) raises where not conforms_to(type_of(output), Fused):
+        comptime assert (
+            conforms_to(type_of(output), TileTensorable)
+            and conforms_to(type_of(input), TileTensorable)
+            and conforms_to(type_of(filter), TileTensorable)
+            and conforms_to(type_of(strides), TileTensorable)
+            and conforms_to(type_of(dilation), TileTensorable)
+            and conforms_to(type_of(paddings), TileTensorable)
+            and conforms_to(type_of(output_paddings), TileTensorable)
+        )
+        var input_tt = input.to_tile_tensor()
+        var filter_tt = filter.to_tile_tensor()
+        var attrs = _conv_transpose_gpu_attrs[filter_layout](
+            input_tt,
+            filter_tt,
+            strides.to_tile_tensor(),
+            dilation.to_tile_tensor(),
+            paddings.to_tile_tensor(),
+            output_paddings.to_tile_tensor(),
+        )
         conv_transposed_gpu[
-            input.dtype,
-            filter.dtype,
-            output.dtype,
-            has_epilogue_fusion,
+            type_of(input).dtype, type_of(filter).dtype, type_of(output).dtype
         ](
-            output.to_tile_tensor[.int64](),
-            input.to_tile_tensor[.int64](),
-            filter.to_tile_tensor[.int64](),
-            _index_list[type_of(input.to_tile_tensor[.int64]()).rank - 2](
-                strides
-            ),
-            _index_list[type_of(input.to_tile_tensor[.int64]()).rank - 2](
-                dilation
-            ),
-            pad_tuple,
-            output_fn,
+            output.to_tile_tensor(),
+            input_tt,
+            filter_tt,
+            attrs[0],
+            attrs[1],
+            attrs[2],
             ctx,
         )
 

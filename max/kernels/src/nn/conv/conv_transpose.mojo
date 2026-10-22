@@ -1724,12 +1724,9 @@ def conv_transposed_cpu[
 
 
 def conv_transposed_gpu[
-    EpilogueFnType: ConvSimdEpilogueFn,
-    //,
     input_type: DType,
     filter_type: DType,
     output_type: DType,
-    has_epilogue_fusion: Bool,
 ](
     output: TileTensor[mut=True, output_type, address_space=.GENERIC, ...],
     input: TileTensor[mut=False, input_type, address_space=.GENERIC, ...],
@@ -1737,21 +1734,14 @@ def conv_transposed_gpu[
     stride: IndexList[input.rank - 2],
     dilation: IndexList[input.rank - 2],
     padding: IndexList[input.rank - 2],
-    elementwise_epilogue: EpilogueFnType,
     ctx: DeviceContext,
 ) raises:
     """Runs a transposed convolution on the GPU via the cuDNN backward-data path.
 
-    Delegates the transposed convolution to cuDNN and, when an elementwise epilogue
-    is provided, applies it as a separate elementwise pass over a temporary buffer.
-
     Parameters:
-        EpilogueFnType: Type of `elementwise_epilogue` (inferred).
         input_type: Element type of the input tensor.
         filter_type: Element type of the filter tensor.
         output_type: Element type of the output tensor.
-        has_epilogue_fusion: Whether to apply `elementwise_epilogue` after the
-            convolution.
 
     Args:
         output: Output tensor that receives the transposed convolution result.
@@ -1760,51 +1750,94 @@ def conv_transposed_gpu[
         stride: Stride along each spatial axis.
         dilation: Dilation value along each spatial axis of the filter.
         padding: Padding along each spatial axis.
-        elementwise_epilogue: Elementwise epilogue closure applied after the
-            convolution when `has_epilogue_fusion` is set.
         ctx: Device context used to access the cuDNN handle and device buffers.
     """
-    comptime if has_epilogue_fusion:
-        var output_tmp_data = ctx.enqueue_create_buffer[output_type](
-            output.num_elements()
-        )
+    conv_transposed_cudnn[input_type, filter_type, output_type](
+        input,
+        filter,
+        output,
+        rebind[IndexList[2]](stride),
+        rebind[IndexList[2]](dilation),
+        rebind[IndexList[2]](padding),
+        ctx,
+    )
 
-        var output_tmp = TileTensor(output_tmp_data, output.layout)
 
-        conv_transposed_cudnn[input_type, filter_type, output_type](
-            input,
-            filter,
-            output_tmp,
-            rebind[IndexList[2]](stride),
-            rebind[IndexList[2]](dilation),
-            rebind[IndexList[2]](padding),
-            ctx,
-        )
+def conv_transposed_gpu[
+    EpilogueFnType: ConvSimdEpilogueFn,
+    OutputLayoutType: TensorLayout,
+    //,
+    input_type: DType,
+    filter_type: DType,
+    output_type: DType,
+](
+    output_layout: OutputLayoutType,
+    input: TileTensor[mut=False, input_type, address_space=.GENERIC, ...],
+    filter: TileTensor[mut=False, filter_type, address_space=.GENERIC, ...],
+    stride: IndexList[input.rank - 2],
+    dilation: IndexList[input.rank - 2],
+    padding: IndexList[input.rank - 2],
+    elementwise_epilogue: EpilogueFnType,
+    ctx: DeviceContext,
+) raises:
+    """Runs a transposed convolution on the GPU via the cuDNN backward-data path
+    and hands every output value to an elementwise epilogue.
 
-        @inline(.always)
-        def epilogue_wrapper[
-            _width: Int, alignment: Int = 1
-        ](coords: Coord) {var}:
-            comptime align = align_of[SIMD[output_type, _width]]()
-            var vec = output_tmp.load[width=_width, alignment=align](coords)
-            elementwise_epilogue(coords, vec)
+    The same convolution as the overload that takes `output`, for a caller
+    whose epilogue owns every write, such as a graph op whose output is fused.
+    cuDNN writes into a temporary buffer and a separate elementwise pass feeds
+    it to `elementwise_epilogue`. The output is given as a layout, so the
+    kernel never sees a pointer it could write through.
 
-        elementwise[simd_width_of[output_type](), target="gpu"](
-            epilogue_wrapper, output.layout.shape_coord(), ctx
-        )
+    Parameters:
+        EpilogueFnType: Type of `elementwise_epilogue` (inferred).
+        OutputLayoutType: Type of `output_layout` (inferred).
+        input_type: Element type of the input tensor.
+        filter_type: Element type of the filter tensor.
+        output_type: Element type of the output values.
 
-        _ = output_tmp_data^
+    Args:
+        output_layout: Layout of the output; only its shape is read.
+        input: Input tensor in NHWC layout.
+        filter: Filter tensor in RSFC layout.
+        stride: Stride along each spatial axis.
+        dilation: Dilation value along each spatial axis of the filter.
+        padding: Padding along each spatial axis.
+        elementwise_epilogue: Elementwise epilogue closure that receives every
+            output value.
+        ctx: Device context used to access the cuDNN handle and device buffers.
+    """
+    var output_tmp_data = ctx.enqueue_create_buffer[output_type](
+        output_layout.product()
+    )
 
-    else:
-        conv_transposed_cudnn[input_type, filter_type, output_type](
-            input,
-            filter,
-            output,
-            rebind[IndexList[2]](stride),
-            rebind[IndexList[2]](dilation),
-            rebind[IndexList[2]](padding),
-            ctx,
-        )
+    # cuDNN describes the output as packed, so the scratch is row-major
+    # whatever strides the caller's layout carries.
+    var output_tmp = TileTensor(
+        output_tmp_data, row_major(output_layout.shape_coord())
+    )
+
+    conv_transposed_cudnn[input_type, filter_type, output_type](
+        input,
+        filter,
+        output_tmp,
+        rebind[IndexList[2]](stride),
+        rebind[IndexList[2]](dilation),
+        rebind[IndexList[2]](padding),
+        ctx,
+    )
+
+    @inline(.always)
+    def epilogue_wrapper[_width: Int, alignment: Int = 1](coords: Coord) {var}:
+        comptime align = align_of[SIMD[output_type, _width]]()
+        var vec = output_tmp.load[width=_width, alignment=align](coords)
+        elementwise_epilogue(coords, vec)
+
+    elementwise[simd_width_of[output_type](), target="gpu"](
+        epilogue_wrapper, output_layout.shape_coord(), ctx
+    )
+
+    _ = output_tmp_data^
 
 
 def _conv_transposed_cudnn[
