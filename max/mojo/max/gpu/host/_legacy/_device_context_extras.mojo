@@ -42,8 +42,11 @@ __extension DeviceExternalFunction:
 
 
 __extension DeviceContextBase:
-    def _check_supports_default_compile_function(self):
-        pass
+    comptime compile_function_wrapper[
+        declared_arg_types: TypeList[Trait=AnyType, ...],
+        //,
+        func: def(*args: *declared_arg_types) thin -> None,
+    ] = func
 
     @inline(.always)
     def enqueue_function[

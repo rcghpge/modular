@@ -2968,6 +2968,23 @@ def _is_path_like(ss: StringSlice) -> Bool:
     return ss.startswith("/") or ss.startswith("~") or ss.startswith("./")
 
 
+struct _FunctionIdentity[FuncType: AnyType, //, func: FuncType]:
+    """Gives a function value a type that is unique to that function."""
+
+    pass
+
+
+def _is_same_function[
+    LhsType: AnyType, RhsType: AnyType, //, lhs: LhsType, rhs: RhsType
+]() -> Bool:
+    """Returns whether `lhs` and `rhs` are the same function.
+
+    Function values have no `__eq__`, and the two sides may have different
+    signatures. Comparing the types of the parametrized wrappers works for both.
+    """
+    return _FunctionIdentity[lhs] == _FunctionIdentity[rhs]
+
+
 # const char *AsyncRT_DeviceContext_loadFunctionWithDebugName(
 #     const DeviceFunction **result, const DeviceContext *ctx,
 #     const char *moduleName, const char *functionName, const char *data,
@@ -4829,7 +4846,7 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
         *,
         func_attribute: OptionalReg[FuncAttribute] = None,
         out result: DeviceFunction[
-            func,
+            Self.compile_function_wrapper[func],
             declared_arg_types,
             target=Self.target,
             compile_options=compile_options,
@@ -4861,13 +4878,13 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                 as maximum shared memory size).
 
         Returns:
-            The compiled function via the `result` output parameter.
+            A compiled `DeviceFunction` parameterized over the
+            (possibly wrapped) kernel, ready to be enqueued via
+            `enqueue_function`.
 
         Raises:
             If the operation fails.
         """
-        self._check_supports_default_compile_function()
-
         if case .Some(attr) = func_attribute:
             assert (
                 attr.attribute != Attribute.MAX_DYNAMIC_SHARED_SIZE_BYTES
@@ -4876,11 +4893,24 @@ struct DeviceContextBase[target: CompilationTarget = default_accelerator()](
                     self.default_device_info.shared_memory_per_multiprocessor
                 )
             ), "Requested more than available shared memory."
+
         comptime result_type = type_of(result)
-        result = result_type(
-            self,
-            func_attribute=func_attribute,
-        )
+        comptime if not _is_same_function[
+            Self.compile_function_wrapper[func], func
+        ]():
+            # Surface the user kernel's name (not the wrapper name) as the
+            # dispatch printName for device-level profiling.
+            comptime user_name = get_linkage_name[func, target=Self.target]()
+            result = result_type(
+                self,
+                func_attribute=func_attribute,
+                name=user_name,
+            )
+        else:
+            result = result_type(
+                self,
+                func_attribute=func_attribute,
+            )
 
         result.dump_rep[
             dump_asm=dump_asm,
