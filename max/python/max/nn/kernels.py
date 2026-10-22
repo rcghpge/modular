@@ -7599,46 +7599,6 @@ def moe_sink_gate_router(
     return (results[0].tensor, results[1].tensor, results[2].tensor)
 
 
-def matmul_float32_out(a: TensorValue, b: TensorValue) -> TensorValue:
-    """Computes ``a @ b^T`` from 16-bit float inputs into a float32 output.
-
-    :func:`~max.graph.ops.matmul` returns its inputs' dtype, which rounds
-    the float32 accumulator. Use this op when that rounding matters, such as
-    for router logits whose top-k selection must not change: the result
-    equals widening both inputs to float32 before the product. GPU only.
-
-    Args:
-        a: The ``[M, K]`` left-hand side, ``bfloat16`` or ``float16``.
-        b: The ``[N, K]`` right-hand side, the same dtype as ``a``.
-
-    Returns:
-        The ``[M, N]`` float32 product.
-    """
-    _check_rank(2, a=a, b=b)
-    _check_same_device(a=a, b=b)
-    if a.dtype not in (DType.bfloat16, DType.float16) or b.dtype != a.dtype:
-        raise ValueError(
-            "matmul_float32_out takes bfloat16 or float16 inputs of one"
-            f" dtype, got {a.dtype} and {b.dtype}"
-        )
-    if a.shape[1] != b.shape[1]:
-        raise ValueError(
-            f"expected a and b to share K, got {a.shape} and {b.shape}"
-        )
-    return ops.custom(
-        "mo.matmul.float32.out",
-        device=a.device,
-        values=[a, b],
-        out_types=[
-            TensorType(
-                dtype=DType.float32,
-                shape=[a.shape[0], b.shape[0]],
-                device=a.device,
-            )
-        ],
-    )[0].tensor
-
-
 def _router_gate_mixed_gemv(
     hidden_states: TensorValue,
     gate_weight: TensorValue,

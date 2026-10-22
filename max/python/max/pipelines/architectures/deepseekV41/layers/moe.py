@@ -44,12 +44,11 @@ from max.nn.kernels import (
     grouped_matmul_block_scaled,
     grouped_matmul_blocked_swiglu,
     grouped_quantize_dynamic_block_scaled,
-    matmul_float32_out,
     moe_router_image_bias,
     swiglu_quantize_dynamic_block_scaled,
 )
 from max.nn.layer import Module
-from max.nn.linear import Linear
+from max.nn.linear import Linear, linear
 from max.nn.quant_config import (
     InputScaleSpec,
     QuantConfig,
@@ -584,8 +583,10 @@ class DeepseekV41Gate(DeepseekV4Gate):
         """
         batch, seq = x.shape[0], x.shape[1]
         rows = batch * seq
-        logits = matmul_float32_out(
-            ops.reshape(x, [rows, x.shape[2]]), self.weight
+        logits = linear(
+            ops.reshape(x, [rows, x.shape[2]]),
+            self.weight,
+            out_dtype=DType.float32,
         )
         indices, weights = moe_router_image_bias(
             sqrt_softplus(logits),

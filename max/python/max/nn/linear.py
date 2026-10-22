@@ -572,13 +572,24 @@ def linear(
     weight_scale: TensorValue | None = None,
     weight_scale_2: TensorValue | None = None,
     bias: TensorValue | None = None,
+    out_dtype: DType | None = None,
 ) -> TensorValue:
     """Computes x @ weight.T (+bias) with quantization support.
 
     ``bias`` is only consumed by the int8 W8A8 (Apple M5) path, which fuses it
     into the matmul dequant epilogue; for every other path it is ignored and
     the caller is responsible for adding it.
+
+    ``out_dtype`` sets the result dtype of an unquantized weight's matmul,
+    such as float32 from bfloat16 operands, and defaults to theirs.
+
+    Raises:
+        ValueError: If ``out_dtype`` is given with a quantized weight.
     """
+    if out_dtype is not None and (
+        quantization_encoding is not None or quant_config
+    ):
+        raise ValueError("linear: out_dtype needs an unquantized weight")
     if quantization_encoding is not None:
         return ops.qmatmul(quantization_encoding, None, x, weight)
     elif quant_config:
@@ -611,7 +622,7 @@ def linear(
 
         return res
     else:
-        return x @ weight.T
+        return ops.matmul(x, weight.T, out_dtype=out_dtype)
 
 
 class ColumnParallelLinear(Linear):

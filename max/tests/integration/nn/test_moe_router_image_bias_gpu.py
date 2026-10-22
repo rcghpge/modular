@@ -10,8 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Tests the float32-out matmul and the single-group router that picks
-each token's selection bias from its id."""
+"""Tests the router GEMM's float32 result and the single-group router that
+picks each token's selection bias from its id."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import torch
 from max.dtype import DType
 from max.engine import InferenceSession
 from max.graph import DeviceRef, Graph, TensorType, TensorValue, ops
-from max.nn.kernels import matmul_float32_out, moe_router_image_bias
+from max.nn.kernels import moe_router_image_bias
 from torch.utils.dlpack import from_dlpack
 
 N_EXPERTS = 384
@@ -39,22 +39,29 @@ def _sqrt_softplus(x: TensorValue) -> TensorValue:
     return ops.sqrt(ops.max(x, zero) + ops.log1p(ops.exp(-ops.abs(x))))
 
 
+def _logits(x: TensorValue, w: TensorValue) -> TensorValue:
+    return ops.matmul(x, ops.transpose(w, 0, 1), out_dtype=DType.float32)
+
+
+@pytest.mark.parametrize("hidden", [HIDDEN, 5120])
 @pytest.mark.parametrize("m", [1, 7, 144, 577])
-def test_matmul_float32_out(gpu_session: InferenceSession, m: int) -> None:
+def test_router_logits_float32(
+    gpu_session: InferenceSession, m: int, hidden: int
+) -> None:
     with Graph(
-        "matmul_float32_out",
+        "router_logits_float32",
         input_types=(
-            _gpu(DType.bfloat16, "m", HIDDEN),
-            _gpu(DType.bfloat16, N_EXPERTS, HIDDEN),
+            _gpu(DType.bfloat16, "m", hidden),
+            _gpu(DType.bfloat16, N_EXPERTS, hidden),
         ),
     ) as graph:
         a, b = (v.tensor for v in graph.inputs)
-        graph.output(matmul_float32_out(a, b))
+        graph.output(_logits(a, b))
     compiled = gpu_session.load(graph)
 
     torch.manual_seed(m)
-    a = torch.randn(m, HIDDEN, device="cuda", dtype=torch.bfloat16)
-    b = (torch.randn(N_EXPERTS, HIDDEN, device="cuda") * HIDDEN**-0.5).to(
+    a = torch.randn(m, hidden, device="cuda", dtype=torch.bfloat16)
+    b = (torch.randn(N_EXPERTS, hidden, device="cuda") * hidden**-0.5).to(
         torch.bfloat16
     )
     (got,) = (from_dlpack(t) for t in compiled.execute(a, b))
@@ -84,7 +91,7 @@ def _gate_graph() -> Graph:
     ) as graph:
         x, tid, w, bias, bias_vl = (v.tensor for v in graph.inputs)
         indices, weights = moe_router_image_bias(
-            _sqrt_softplus(matmul_float32_out(x, w)),
+            _sqrt_softplus(_logits(x, w)),
             bias,
             bias_vl,
             tid,
