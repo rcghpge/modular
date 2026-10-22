@@ -1246,14 +1246,6 @@ PackageASTDecl &SharedState::createBinaryPackage(StringRef path,
   return cast<PackageASTDecl>(*state.decl);
 }
 
-std::optional<std::string>
-SharedState::getModuleSourcePath(ModuleASTDecl &module) {
-  ModuleState *state = getModuleLoader().lookupState(&module);
-  if (!state)
-    return std::nullopt;
-  return state->sourcePath();
-}
-
 LogicalResult SharedState::materializeDeferredModule(ModuleASTDecl &decl,
                                                      SMLoc loc) {
   // Only a deferred source module (FileModuleOp with an invalid cursor and a

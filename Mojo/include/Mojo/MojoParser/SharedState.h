@@ -342,10 +342,6 @@ public:
   /// Create a new package from the path to the given binary package.
   PackageASTDecl &createBinaryPackage(StringRef path, StringRef name);
 
-  /// Return the source path for the given module decl, or nullopt if the decl
-  /// doesn't have a source path.
-  std::optional<std::string> getModuleSourcePath(ModuleASTDecl &module);
-
   /// Resolve a declaration that originated from bytecode to the given
   /// resolvedness.
   LogicalResult resolveDeclFromBytecode(ASTDecl &decl,

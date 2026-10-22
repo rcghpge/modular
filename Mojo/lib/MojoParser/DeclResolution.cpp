@@ -17,6 +17,7 @@
 #include "DLValues.h"
 #include "ExprNodes.h"
 #include "IREmitter.h"
+#include "ModuleStore.h"
 #include "Mojo/MojoParser/ASTDecl.h"
 #include "Mojo/MojoParser/Constraints.h"
 #include "Mojo/MojoParser/ModuleLoader.h"
@@ -2674,32 +2675,52 @@ LogicalResult PackageASTDecl::resolvePackage() {
   // are, however, navigable via ModuleState::nestedModules and are present in
   // the package IR; just not in declsInScope.
 
-  // Grab the directory that this package is defined in.
-  std::optional<std::string> directoryStr = shared.getModuleSourcePath(*this);
-  if (!directoryStr)
+  ModuleLoader &loader = shared.getModuleLoader();
+  ModuleState *state = loader.lookupState(this);
+
+  // A package decl synthesized outside the loader has no state to read.
+  if (!state || !state->spec)
     return shared.emitError(op.getLoc(), "unable to locate package directory");
 
-  std::error_code ec;
-  std::filesystem::path directory(*directoryStr);
-  if (!std::filesystem::is_directory(directory, ec) || ec)
-    return shared.emitError(op.getLoc(), "unable to locate package directory");
+  assert(state->spec->isSourcePackageLike() &&
+         "source package without a source-package state");
 
-  // Resolve __init__ (the public surface) if present, inheriting its docstring.
-  if (std::filesystem::exists(directory / "__init__.mojo", ec) && !ec) {
-    ModuleASTDecl &initModule = shared.importModule(
-        SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), op,
-        getLoc());
-    if (!initModule.isErroneous()) {
-      if (failed(resolver.resolveBody(initModule, getLoc())))
-        return failure();
-      if (auto docstring = initModule.getDocString())
-        op.setDocStringAttr(docstring);
+  // A namespace is the union of plain directories across import roots, none
+  // of which has an __init__, so its children are all it has. Its spec's path
+  // records only the first portion, which the namespace doesn't depend on.
+  if (!state->spec->isNamespace()) {
+    // Grab the directory that this package is defined in.
+    std::optional<std::string> directoryStr = state->sourcePath();
+    if (!directoryStr) {
+      return shared.emitError(op.getLoc(),
+                              "unable to locate package directory");
+    }
+
+    std::error_code ec;
+    std::filesystem::path directory(*directoryStr);
+    if (!std::filesystem::is_directory(directory, ec) || ec) {
+      return shared.emitError(op.getLoc(),
+                              "unable to locate package directory");
+    }
+
+    // Resolve __init__ (the public surface) if present, inheriting its
+    // docstring.
+    if (std::filesystem::exists(directory / "__init__.mojo", ec) && !ec) {
+      ModuleASTDecl &initModule = shared.importModule(
+          SharedState::ImportPath({"__init__"}, /*relativeLevel=*/1), op,
+          getLoc());
+      if (!initModule.isErroneous()) {
+        if (failed(resolver.resolveBody(initModule, getLoc())))
+          return failure();
+        if (auto docstring = initModule.getDocString())
+          op.setDocStringAttr(docstring);
+      }
     }
   }
 
   // Register a (deferred, unlisted) child decl for every sibling module and
   // sub-package.
-  shared.getModuleLoader().registerSourcePackageChildren(*this);
+  loader.registerSourcePackageChildren(*this);
 
   return success();
 }
