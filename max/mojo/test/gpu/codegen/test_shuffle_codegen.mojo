@@ -42,7 +42,7 @@ def _assert_nvidia_shuffle(
     llvm: String, mnemonic: StaticString, width_mask: Int
 ) raises:
     var call = String(
-        "call float @llvm.nvvm.shfl.sync.", mnemonic, ".f32(i32 -1, float "
+        "call i32 @llvm.nvvm.shfl.sync.", mnemonic, ".i32(i32 -1, i32 "
     )
     var args_tail = String(", i32 1, i32 ", width_mask, ")")
     for line in llvm.splitlines():
@@ -88,21 +88,46 @@ def test_amd() raises:
     assert_equal(llvm.count("call i32 @llvm.amdgcn.ds.bpermute("), 4)
 
 
-def _count_amd_word_shuffles[dtype: DType, width: SIMDLength]() raises -> Int:
+def _count_word_shuffles[
+    dtype: DType, width: SIMDLength, target: CompilationTarget
+](call: StaticString) raises -> Int:
     def kernel(data: Pointer[SIMD[dtype, width], MutAnyOrigin]):
         data[] = shuffle_idx(data[], 1)
 
     var llvm = String(
-        compile_info[
-            kernel, emission_kind="llvm", target=get_gpu_target["mi300x"]()
-        ]()
+        compile_info[kernel, emission_kind="llvm", target=target]()
     )
-    return llvm.count("call i32 @llvm.amdgcn.ds.bpermute(")
+    return llvm.count(call)
+
+
+def _count_nvidia_word_shuffles[
+    dtype: DType, width: SIMDLength
+]() raises -> Int:
+    return _count_word_shuffles[dtype, width, get_gpu_target["sm_80"]()](
+        "call i32 @llvm.nvvm.shfl.sync.idx.i32("
+    )
+
+
+def _count_amd_word_shuffles[dtype: DType, width: SIMDLength]() raises -> Int:
+    return _count_word_shuffles[dtype, width, get_gpu_target["mi300x"]()](
+        "call i32 @llvm.amdgcn.ds.bpermute("
+    )
+
+
+def test_nvidia_legalizes_every_width() raises:
+    # `shfl.sync` moves one 32-bit word, so narrower values are widened or
+    # packed into one and wider ones are split into several.
+    assert_equal(_count_nvidia_word_shuffles[.bool, 1](), 1)
+    assert_equal(_count_nvidia_word_shuffles[.int8, 1](), 1)
+    assert_equal(_count_nvidia_word_shuffles[.int16, 1](), 1)
+    assert_equal(_count_nvidia_word_shuffles[.float16, 4](), 2)
+    assert_equal(_count_nvidia_word_shuffles[.bfloat16, 4](), 2)
+    assert_equal(_count_nvidia_word_shuffles[.float32, 2](), 2)
+    assert_equal(_count_nvidia_word_shuffles[.float64, 2](), 4)
 
 
 def test_amd_legalizes_every_width() raises:
-    # `ds.bpermute` moves one 32-bit word, so narrower values are widened or
-    # packed into one and wider ones are split into several.
+    # `ds.bpermute` moves one 32-bit word, the same way.
     assert_equal(_count_amd_word_shuffles[.bool, 1](), 1)
     assert_equal(_count_amd_word_shuffles[.int8, 1](), 1)
     assert_equal(_count_amd_word_shuffles[.int8, 2](), 1)

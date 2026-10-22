@@ -17,9 +17,9 @@ A GPU whose hardware moves one 32-bit word between lanes at a time can still
 back every shuffle hook with it: its plugin passes the word shuffle to
 `shuffle_words`, which splits, packs or widens any value the public
 `shuffle_*` functions accept into whole words and reassembles the result. The
-HIP plugin builds its shuffles this way. A plugin with native typed shuffle
-instructions, such as CUDA's `shfl.sync` or Metal's `simd_shuffle`, calls them
-directly instead and never needs this module.
+CUDA and HIP plugins build their shuffles this way, since `shfl.sync` and
+`ds.bpermute` both move one 32-bit word. A plugin with native typed and vector
+shuffles, such as Metal's `simd_shuffle`, calls them directly instead.
 """
 
 from std.memory import bitcast

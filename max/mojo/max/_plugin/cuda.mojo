@@ -13,8 +13,7 @@
 
 from std.collections import OptionalReg
 from std.collections.string.string_span import _get_kgen_string
-from std.memory import bitcast
-from std.sys import bit_width_of, llvm_intrinsic, size_of
+from std.sys import llvm_intrinsic, size_of
 from std.sys._assembly import inlined_assembly
 from std.sys.info import CompilationTarget
 
@@ -28,6 +27,7 @@ from max.gpu.sync.sync import (
     _SyncwarpPluginHookFnType,
 )
 
+from ._shuffle import shuffle_words
 from ._trait import MaxPlugin, MaxPluginHooks
 
 
@@ -68,61 +68,12 @@ comptime _WIDTH_MASK_SHUFFLE_UP = 0
 
 
 @inline(.always)
-def _shuffle[
-    mnemonic: StringSlice,
-    dtype: DType,
-    simd_width: SIMDLength,
-    *,
-    WIDTH_MASK: Int32,
-](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
-    dtype, simd_width
-]:
-    comptime assert (
-        dtype.is_half_float() or simd_width == 1
-    ), "Unsupported simd_width"
-
-    comptime if dtype == .float32:
-        return llvm_intrinsic[
-            "llvm.nvvm.shfl.sync." + mnemonic + ".f32", Scalar[dtype]
-        ](Int32(mask), val, offset, WIDTH_MASK)
-    elif dtype in (DType.int32, DType.uint32):
-        return llvm_intrinsic[
-            "llvm.nvvm.shfl.sync." + mnemonic + ".i32", Scalar[dtype]
-        ](Int32(mask), val, offset, WIDTH_MASK)
-    elif bit_width_of[dtype]() == 64:
-        var val_bitcast = bitcast[.uint32, simd_width * 2](val)
-        var val_half1, val_half2 = val_bitcast.deinterleave()
-        var shuffle1 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val_half1, offset
-        )
-        var shuffle2 = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val_half2, offset
-        )
-        var result = shuffle1.interleave(shuffle2)
-        return bitcast[dtype, simd_width](result)
-    elif dtype.is_half_float():
-        comptime if simd_width == 1:
-            # splat and recurse to meet 32 bitwidth requirements
-            var splatted_val = SIMD[dtype, 2](val._refine[new_size=1]())
-            return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-                mask, splatted_val, offset
-            )[0]
-        else:
-            # bitcast and recurse to use i32 intrinsic. Two half values fit
-            # into an int32.
-            var packed_val = bitcast[.int32, simd_width // 2](val)
-            var result_packed = _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-                mask, packed_val, offset
-            )
-            return bitcast[dtype, simd_width](result_packed)
-    elif dtype == .bool:
-        comptime assert simd_width == 1, "unhandled simd width"
-        return _shuffle[mnemonic, WIDTH_MASK=WIDTH_MASK](
-            mask, val.cast[.int32](), offset
-        ).cast[dtype]()
-
-    else:
-        comptime assert False, "unhandled shuffle dtype"
+def _shuffle_word[
+    mnemonic: StaticString, width_mask: Int32
+](mask: UInt, word: UInt32, offset: UInt32) -> UInt32:
+    return llvm_intrinsic["llvm.nvvm.shfl.sync." + mnemonic + ".i32", UInt32](
+        Int32(mask), word, offset, width_mask
+    )
 
 
 struct CudaMaxPlugin(MaxPlugin):
@@ -152,7 +103,9 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
         dtype, simd_width
     ]:
-        return _shuffle["idx", WIDTH_MASK=Int32(_WIDTH_MASK)](mask, val, offset)
+        return shuffle_words[_shuffle_word["idx", Int32(_WIDTH_MASK)]](
+            mask, val, offset
+        )
 
     @inline(.always)
     @staticmethod
@@ -161,7 +114,7 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
         dtype, simd_width
     ]:
-        return _shuffle["up", WIDTH_MASK=_WIDTH_MASK_SHUFFLE_UP](
+        return shuffle_words[_shuffle_word["up", _WIDTH_MASK_SHUFFLE_UP]](
             mask, val, offset
         )
 
@@ -172,7 +125,7 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
         dtype, simd_width
     ]:
-        return _shuffle["down", WIDTH_MASK=Int32(_WIDTH_MASK)](
+        return shuffle_words[_shuffle_word["down", Int32(_WIDTH_MASK)]](
             mask, val, offset
         )
 
@@ -183,7 +136,7 @@ struct CudaMaxPluginHooks[target: CompilationTarget](MaxPluginHooks):
     ](mask: UInt, val: SIMD[dtype, simd_width], offset: UInt32) -> SIMD[
         dtype, simd_width
     ]:
-        return _shuffle["bfly", WIDTH_MASK=Int32(_WIDTH_MASK)](
+        return shuffle_words[_shuffle_word["bfly", Int32(_WIDTH_MASK)]](
             mask, val, offset
         )
 
