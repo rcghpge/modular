@@ -38,7 +38,7 @@ from max.serve.pipelines.echo_gen import (
 from max.serve.pipelines.llm import TokenGeneratorOutput
 from max.serve.request import register_request
 from max.serve.router import openai_routes
-from max.serve.telemetry import _trace_context, common
+from max.serve.telemetry import _log_context, _trace_context
 from max.serve.telemetry._trace_context import inject_trace_carrier
 from max.serve.telemetry.common import configure_logging
 from opentelemetry import propagate as otel_propagate
@@ -60,7 +60,7 @@ def structured(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Path]:
     """Structured file logging with tracing on, undone afterwards."""
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     root = logging.getLogger()
     saved = (list(root.handlers), root.level)
     log_path = tmp_path / "max-serve.json"
@@ -95,7 +95,7 @@ def spans(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
     provider.add_span_processor(SimpleSpanProcessor(finished))
     tracer = provider.get_tracer("test")
     monkeypatch.setattr(_trace_context, "_tracer", tracer)
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     monkeypatch.setattr(openai_routes, "_tracer", tracer)
     return finished
 
@@ -174,7 +174,7 @@ def test_server_span_ends_after_the_last_chunk(
 
     @app.get("/stream")
     async def stream() -> StreamingResponse:
-        span = trace.get_current_span(common.request_trace_ctx.get())
+        span = trace.get_current_span(_log_context.request_trace_ctx.get())
 
         async def body() -> AsyncIterator[bytes]:
             yield b"a"
@@ -228,14 +228,15 @@ def test_unsampled_server_span_still_parents_the_request(
     # worker's spans, so parent-based sampling drops them with it.
     tracer = TracerProvider(sampler=ALWAYS_OFF).get_tracer("test")
     monkeypatch.setattr(_trace_context, "_tracer", tracer)
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     app = FastAPI()
     register_request(app)
     seen: list[trace.Span] = []
 
     @app.get("/work")
     async def work() -> dict[str, bool]:
-        seen.append(trace.get_current_span(common.request_trace_ctx.get()))
+        span = trace.get_current_span(_log_context.request_trace_ctx.get())
+        seen.append(span)
         return {"ok": True}
 
     with TestClient(app) as client:

@@ -44,7 +44,7 @@ from max.pipelines.speculative.utils import (
     _SpeculativeDecodingMetrics,
 )
 from max.serve.queue import MAXPullQueue, drain_queue
-from max.serve.telemetry.common import _batch_id_ctx
+from max.serve.telemetry._log_context import batch_id_ctx
 from max.serve.telemetry.metrics import METRICS
 from max.support.human_readable_formatter import (
     to_human_readable_bytes,
@@ -1689,11 +1689,11 @@ class SchedulerLogger:
             )
             if batch_id is not None:
                 # Not ``extra``: the OTLP log handler exports extras.
-                batch_id_token = _batch_id_ctx.set(batch_id)
+                batch_id_token = batch_id_ctx.set(batch_id)
                 logger.info(
                     metrics.pretty_format(), extra=metrics.to_log_extra()
                 )
-                _batch_id_ctx.reset(batch_id_token)
+                batch_id_ctx.reset(batch_id_token)
                 return
             logger.info(metrics.pretty_format(), extra=metrics.to_log_extra())
 

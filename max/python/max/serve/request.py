@@ -24,14 +24,14 @@ from max.serve.router._disconnect import (
     CLIENT_CLOSED_REQUEST,
     ClientDisconnected,
 )
-from max.serve.telemetry import common as telemetry
+from max.serve.telemetry import _log_context, _tracing
+from max.serve.telemetry._log_context import request_id_ctx
 from max.serve.telemetry._trace_context import (
     end_span_after,
     read_trace_level_header,
     record_server_span_status,
     start_server_span,
 )
-from max.serve.telemetry.common import _request_id_ctx
 from max.serve.telemetry.metrics import METRICS
 from max.serve.telemetry.stopwatch import StopWatch
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -95,8 +95,8 @@ def register_request(app: FastAPI, *, structured_logging: bool = False) -> None:
     # Read once: the server configures tracing before it builds the app.
     # Structured logs read the request ID. Only spans, directly or through
     # the worker's trace carrier, and dd.trace_id read the trace context.
-    tracing = telemetry._tracing_enabled()
-    read_trace_levels = telemetry._trace_level_header_honored()
+    tracing = _log_context.tracing_enabled()
+    read_trace_levels = _tracing.trace_level_header_honored()
     # Added before request_session so it sits inside it, where it sees the
     # route's messages rather than the middleware's re-sent copies.
     app.add_middleware(_MidResponseDisconnectCounter)
@@ -120,7 +120,7 @@ def register_request(app: FastAPI, *, structured_logging: bool = False) -> None:
             if read_trace_levels:
                 read_trace_level_header(request.headers)
         elif structured_logging:
-            _request_id_ctx.set(request_id)
+            request_id_ctx.set(request_id)
         # Record the request against the final HTTP status code. This is the
         # authoritative place to label ``maxserve.request_count`` with the
         # return code: it sees the status of every request, including failures

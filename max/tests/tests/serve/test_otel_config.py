@@ -31,7 +31,7 @@ from unittest import mock
 import grpc
 import pytest
 from max.serve.config import Settings
-from max.serve.telemetry import common
+from max.serve.telemetry import _tracing, common
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as OTLPGrpcSpanExporter,
@@ -130,17 +130,17 @@ def test_traces_protocol_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
     """Signal-specific beats generic, as for the endpoint variables — an
     operator moving only traces onto gRPC must not have to move metrics and
     logs with them."""
-    assert common._traces_protocol() == "http/protobuf"
+    assert _tracing._traces_protocol() == "http/protobuf"
 
     monkeypatch.setenv(PROTOCOL, "grpc")
-    assert common._traces_protocol() == "grpc"
+    assert _tracing._traces_protocol() == "grpc"
 
     monkeypatch.setenv(TRACES_PROTOCOL, "http/protobuf")
-    assert common._traces_protocol() == "http/protobuf"
+    assert _tracing._traces_protocol() == "http/protobuf"
 
     monkeypatch.setenv(PROTOCOL, "http/protobuf")
     monkeypatch.setenv(TRACES_PROTOCOL, "grpc")
-    assert common._traces_protocol() == "grpc"
+    assert _tracing._traces_protocol() == "grpc"
 
 
 @pytest.mark.parametrize("value", ["http/json", " GRPC "])
@@ -152,7 +152,7 @@ def test_traces_protocol_parsing(
     typo in a deploy config should cost spans, not the server."""
     monkeypatch.setenv(PROTOCOL, value)
     expected = "grpc" if value.strip().lower() == "grpc" else "http/protobuf"
-    assert common._traces_protocol() == expected
+    assert _tracing._traces_protocol() == expected
 
 
 def test_protocol_does_not_reach_metrics_or_logs(
@@ -178,7 +178,7 @@ def test_grpc_tolerates_an_http_only_compression(
     monkeypatch.setenv(TRACES, "http://agent:4317")
     monkeypatch.setenv(PROTOCOL, "grpc")
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_COMPRESSION", value)
-    assert isinstance(common._span_exporter(), OTLPGrpcSpanExporter)
+    assert isinstance(_tracing.span_exporter(), OTLPGrpcSpanExporter)
 
 
 @pytest.mark.parametrize(
@@ -201,7 +201,7 @@ def test_grpc_warns_when_the_endpoint_omits_its_scheme(
     monkeypatch.setenv(TRACES, endpoint)
     monkeypatch.setenv(PROTOCOL, "grpc")
     with caplog.at_level("WARNING"):
-        common._span_exporter()
+        _tracing.span_exporter()
     assert ("exported over TLS" in caplog.text) is warns
 
 
@@ -211,10 +211,10 @@ def test_explicit_insecure_silences_the_scheme_warning(
     """An operator who set the insecure variable has chosen their transport,
     and the scheme no longer decides it."""
     monkeypatch.setenv(TRACES, "agent:4317")
-    assert common._tls_by_omission() == "agent:4317"
+    assert _tracing._tls_by_omission() == "agent:4317"
 
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
-    assert common._tls_by_omission() is None
+    assert _tracing._tls_by_omission() is None
 
 
 class _RecordingTraceService(trace_service_pb2_grpc.TraceServiceServicer):
@@ -247,7 +247,8 @@ def test_grpc_spans_reach_a_receiver(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(TRACES, f"http://127.0.0.1:{port}")
         monkeypatch.setenv(PROTOCOL, "grpc")
         provider = TracerProvider(resource=common.logs_resource)
-        provider.add_span_processor(BatchSpanProcessor(common._span_exporter()))
+        exporter = _tracing.span_exporter()
+        provider.add_span_processor(BatchSpanProcessor(exporter))
         with provider.get_tracer("test").start_as_current_span("max.request"):
             pass
         provider.force_flush(5000)
@@ -285,15 +286,15 @@ def test_configure_tracing_defers_to_the_sdk_sampler(
     """Captured at the call site because the global provider is write-once, so
     a test that installed one would couple to test order."""
     captured: list[TracerProvider] = []
-    monkeypatch.setattr(common, "set_tracer_provider", captured.append)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", captured.append)
     # Only the traces endpoint installs a provider.
     monkeypatch.setenv(TRACES, "http://localhost:4318/v1/traces")
     monkeypatch.setenv("OTEL_TRACES_SAMPLER", "traceidratio")
     monkeypatch.setenv("OTEL_TRACES_SAMPLER_ARG", "0.25")
-    common.configure_tracing(Settings(disable_telemetry=False))
+    _tracing.configure_tracing(Settings(disable_telemetry=False))
     captured[0].shutdown()
     sampler = captured[0].sampler
-    assert isinstance(sampler, common._LinkedRootSampler)
+    assert isinstance(sampler, _tracing._LinkedRootSampler)
     assert isinstance(sampler._fallback, sampling.TraceIdRatioBased)
 
 
@@ -316,7 +317,7 @@ def test_a_root_with_a_sampled_link_is_sampled(
 ) -> None:
     """Every other span gets the fallback's decision."""
     fallback = sampling.ParentBased(sampling.ALWAYS_OFF)
-    provider = TracerProvider(sampler=common._LinkedRootSampler(fallback))
+    provider = TracerProvider(sampler=_tracing._LinkedRootSampler(fallback))
     span = provider.get_tracer("test").start_span(
         "max.batch",
         context=None
@@ -356,16 +357,16 @@ def test_only_the_traces_endpoint_turns_tracing_on(
     monkeypatch: pytest.MonkeyPatch, env: Mapping[str, str], installed: bool
 ) -> None:
     """With no provider installed the global stays OTel's
-    ProxyTracerProvider, so spans are no-ops and ``_tracing_enabled()``
+    ProxyTracerProvider, so spans are no-ops and ``tracing_enabled()``
     skips the scheduler's bookkeeping. The generic endpoint must
     not count: a deployment may set it for metrics."""
     captured: list[TracerProvider] = []
-    reporter = mock.Mock(wraps=common._ReportingSpanExporter)
-    monkeypatch.setattr(common, "set_tracer_provider", captured.append)
-    monkeypatch.setattr(common, "_ReportingSpanExporter", reporter)
+    reporter = mock.Mock(wraps=_tracing.ReportingSpanExporter)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", captured.append)
+    monkeypatch.setattr(_tracing, "ReportingSpanExporter", reporter)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    common.configure_tracing(Settings(disable_telemetry=False))
+    _tracing.configure_tracing(Settings(disable_telemetry=False))
     assert len(captured) == int(installed)
     assert reporter.call_count == int(installed)
     for provider in captured:
@@ -376,14 +377,14 @@ def test_configure_tracing_installs_the_grpc_exporter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``configure_tracing`` installs the gRPC exporter when the traces
-    protocol is ``grpc``, not only ``_span_exporter`` in isolation."""
-    reporter = mock.Mock(wraps=common._ReportingSpanExporter)
+    protocol is ``grpc``, not only ``span_exporter`` in isolation."""
+    reporter = mock.Mock(wraps=_tracing.ReportingSpanExporter)
     captured: list[TracerProvider] = []
-    monkeypatch.setattr(common, "set_tracer_provider", captured.append)
-    monkeypatch.setattr(common, "_ReportingSpanExporter", reporter)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", captured.append)
+    monkeypatch.setattr(_tracing, "ReportingSpanExporter", reporter)
     monkeypatch.setenv(TRACES, "http://agent:4317")
     monkeypatch.setenv(TRACES_PROTOCOL, "grpc")
-    common.configure_tracing(Settings(disable_telemetry=False))
+    _tracing.configure_tracing(Settings(disable_telemetry=False))
     for provider in captured:
         provider.shutdown()
 
@@ -410,11 +411,11 @@ def test_tracing_off_warns_only_when_the_generic_endpoint_is_set(
 ) -> None:
     """The generic endpoint used to turn traces on, so an operator who set
     only it is told why spans stopped."""
-    monkeypatch.setattr(common, "set_tracer_provider", lambda _: None)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", lambda _: None)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     with caplog.at_level(logging.INFO):
-        common.configure_tracing(Settings(disable_telemetry=False))
+        _tracing.configure_tracing(Settings(disable_telemetry=False))
     assert [r.levelno for r in caplog.records] == [level]
 
 
@@ -423,7 +424,7 @@ def test_span_exporter_uses_the_traces_endpoint_as_given(
 ) -> None:
     monkeypatch.setenv(GENERIC, "http://agent:4318")
     monkeypatch.setenv(TRACES, "http://specific:4318/sink")
-    exporter = common._span_exporter()
+    exporter = _tracing.span_exporter()
     assert isinstance(exporter, OTLPSpanExporter)
     assert exporter._endpoint == "http://specific:4318/sink"
 
@@ -488,14 +489,16 @@ def test_configure_metrics_keeps_prometheus_live_when_sdk_disabled(
 
 def _install_tracing(monkeypatch: pytest.MonkeyPatch) -> TracerProvider:
     captured: list[TracerProvider] = []
-    monkeypatch.setattr(common, "set_tracer_provider", captured.append)
-    common.configure_tracing(Settings(disable_telemetry=False))
+    monkeypatch.setattr(_tracing, "set_tracer_provider", captured.append)
+    _tracing.configure_tracing(Settings(disable_telemetry=False))
     [provider] = captured
     return provider
 
 
 def _export_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
-    return [r.getMessage() for r in caplog.records if r.name == common.__name__]
+    return [
+        r.getMessage() for r in caplog.records if r.name == _tracing.__name__
+    ]
 
 
 @pytest.mark.parametrize(
@@ -540,7 +543,7 @@ def test_a_refused_endpoint_warns_once(
 
 def test_a_scheme_less_endpoint_hides_its_userinfo() -> None:
     """A gRPC endpoint may be written without a scheme."""
-    assert common._without_credentials("user:hunter2@agent:4317") == (
+    assert _tracing._without_credentials("user:hunter2@agent:4317") == (
         "agent:4317",
         ["user:hunter2"],
     )
@@ -575,7 +578,7 @@ def test_a_full_queue_and_a_recovery_each_warn_once(
 ) -> None:
     """A full queue drops its oldest spans without blocking or logging."""
     exporter = _HungExporter()
-    monkeypatch.setattr(common, "_span_exporter", lambda: exporter)
+    monkeypatch.setattr(_tracing, "span_exporter", lambda: exporter)
     monkeypatch.setenv(TRACES, "http://agent:4318/v1/traces")
     monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "4")
     monkeypatch.setenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "2")
@@ -610,13 +613,13 @@ def test_a_burst_before_any_export_warns_of_drops(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Holding the export lock keeps the worker from taking any span."""
-    monkeypatch.setattr(common, "_span_exporter", InMemorySpanExporter)
+    monkeypatch.setattr(_tracing, "span_exporter", InMemorySpanExporter)
     monkeypatch.setenv(TRACES, "http://agent:4318/v1/traces")
     monkeypatch.setenv("OTEL_BSP_MAX_QUEUE_SIZE", "4")
     monkeypatch.setenv("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "4")
     provider = _install_tracing(monkeypatch)
     [processor] = provider._active_span_processor._span_processors
-    assert isinstance(processor, common._CountingSpanProcessor)
+    assert isinstance(processor, _tracing.CountingSpanProcessor)
     with caplog.at_level(logging.WARNING):
         with processor._batch_processor._export_lock:
             for _ in range(5):

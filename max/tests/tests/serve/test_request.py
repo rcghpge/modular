@@ -374,7 +374,7 @@ def test_telemetry_common_does_not_import_propagate() -> None:
     # opentelemetry.propagate scans entry points, so the extract lives in
     # _trace_context, which the metrics worker doesn't import.
     code = (
-        "import sys, max.serve.telemetry.common; "
+        "import sys, max.serve.telemetry._tracing; "
         "assert 'opentelemetry.propagate' not in sys.modules"
     )
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}

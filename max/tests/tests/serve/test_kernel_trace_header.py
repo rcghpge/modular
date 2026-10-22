@@ -27,7 +27,7 @@ from max.pipelines.context import TextContext, TokenBuffer
 from max.pipelines.modeling.types import RequestID
 from max.serve.config import Settings
 from max.serve.request import register_request
-from max.serve.telemetry import common
+from max.serve.telemetry import _log_context, _tracing
 from max.serve.telemetry._trace_context import (
     RequestTraceLevel,
     inject_trace_carrier,
@@ -37,13 +37,13 @@ from opentelemetry.sdk.trace import TracerProvider
 
 @pytest.fixture(autouse=True)
 def restore_gate(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(common, "_trace_level_header_enabled", False)
+    monkeypatch.setattr(_tracing, "trace_level_header_enabled", False)
 
 
 def _open_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     # The gate implies a provider, which the middleware checks first.
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
-    monkeypatch.setattr(common, "_trace_level_header_enabled", True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
+    monkeypatch.setattr(_tracing, "trace_level_header_enabled", True)
 
 
 def _make_app() -> FastAPI:
@@ -95,7 +95,7 @@ def test_configure_tracing_sets_the_gate(
     expected_gate: bool,
 ) -> None:
     installed: list[TracerProvider] = []
-    monkeypatch.setattr(common, "set_tracer_provider", installed.append)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", installed.append)
     if traces_endpoint:
         monkeypatch.setenv(
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
@@ -104,7 +104,7 @@ def test_configure_tracing_sets_the_gate(
     else:
         monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
     monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
-    common.configure_tracing(
+    _tracing.configure_tracing(
         Settings(
             kernel_trace_headers=headers_on,
             disable_telemetry=telemetry_disabled,
@@ -113,7 +113,7 @@ def test_configure_tracing_sets_the_gate(
     for provider in installed:
         provider.shutdown()
     assert bool(installed) is expected_installed
-    assert common._trace_level_header_honored() is expected_gate
+    assert _tracing.trace_level_header_honored() is expected_gate
 
 
 def test_default_never_reads_the_headers(
@@ -131,7 +131,7 @@ def test_default_never_reads_the_headers(
     assert reads == []
 
     # Tracing reads them once, for the inbound trace context.
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     assert _carrier({"x-max-trace-level": "kernel"}) is None
     assert reads == ["/v1/carrier"]
 

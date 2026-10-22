@@ -27,7 +27,7 @@ from max.pipelines.lib import (
 )
 from max.serve.config import Settings
 from max.serve.pipelines import model_worker
-from max.serve.telemetry import _kernel_capture, common
+from max.serve.telemetry import _kernel_capture, _log_context, _tracing
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.trace import Link, SpanContext
 
@@ -107,8 +107,8 @@ def test_warns_once_per_raised_limit_in_use(
     batch: bool,
     warned: list[str],
 ) -> None:
-    monkeypatch.setattr(common, "batch_spans_enabled", lambda: batch)
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_tracing, "batch_spans_enabled", lambda: batch)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     with caplog.at_level(logging.WARNING, logger="max.serve"):
         model_worker._warn_raised_kernel_trace_limits(
             ProfilingConfig.model_validate(limits),
@@ -125,8 +125,8 @@ def test_no_link_warning_without_exported_spans(
 ) -> None:
     """At level batch, a worker that exports no spans has no ``max.batch``
     spans."""
-    monkeypatch.setattr(common, "batch_spans_enabled", lambda: True)
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: False)
+    monkeypatch.setattr(_tracing, "batch_spans_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: False)
     with caplog.at_level(logging.WARNING, logger="max.serve"):
         model_worker._warn_raised_kernel_trace_limits(
             ProfilingConfig(kernel_trace_max_batch_links=129),
@@ -141,8 +141,8 @@ def test_no_link_warning_in_a_disaggregated_worker(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Disaggregated schedulers emit no ``max.batch`` spans."""
-    monkeypatch.setattr(common, "batch_spans_enabled", lambda: True)
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: True)
+    monkeypatch.setattr(_tracing, "batch_spans_enabled", lambda: True)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: True)
     with caplog.at_level(logging.WARNING, logger="max.serve"):
         model_worker._warn_raised_kernel_trace_limits(
             ProfilingConfig(kernel_trace_max_batch_links=129),
@@ -168,7 +168,7 @@ def test_worker_builds_a_capture_only_when_permitted(
     permitted: bool,
     expected: bool,
 ) -> None:
-    monkeypatch.setattr(common, "_trace_level_header_enabled", headers)
+    monkeypatch.setattr(_tracing, "trace_level_header_enabled", headers)
     monkeypatch.setattr(
         _kernel_capture, "configure_kernel_capture", lambda settings: permitted
     )
@@ -183,7 +183,7 @@ def test_worker_tracing_raises_only_a_raised_link_limit(
 ) -> None:
     """128 kept from 64 means the SDK's default limit, not the value."""
     providers: list[TracerProvider] = []
-    monkeypatch.setattr(common, "set_tracer_provider", providers.append)
+    monkeypatch.setattr(_tracing, "set_tracer_provider", providers.append)
     monkeypatch.delenv("MAX_SERVE_DISABLE_TELEMETRY", raising=False)
     monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
     monkeypatch.delenv("OTEL_SPAN_LINK_COUNT_LIMIT", raising=False)

@@ -464,13 +464,13 @@ def test_replay_queue_holds_the_span_cap(
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://agent:4318"
     )
     monkeypatch.setattr(_kernel_capture, "_replay_provider", None)
-    monkeypatch.setattr(_kernel_capture, "_span_exporter", InMemorySpanExporter)
+    monkeypatch.setattr(_kernel_capture, "span_exporter", InMemorySpanExporter)
     _kernel_capture._replay_tracer(max_spans)
     provider = _kernel_capture._replay_provider
     assert provider is not None
     [processor] = provider._active_span_processor._span_processors
     provider.shutdown()
-    assert isinstance(processor, _kernel_capture._CountingSpanProcessor)
+    assert isinstance(processor, _kernel_capture.CountingSpanProcessor)
     assert processor._batch_processor._queue.maxlen == queue_size
 
 
@@ -482,7 +482,7 @@ def test_replay_follows_its_max_batch_span_not_the_configured_sampler(
         "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://agent:4318"
     )
     monkeypatch.setattr(_kernel_capture, "_replay_provider", None)
-    monkeypatch.setattr(_kernel_capture, "_span_exporter", InMemorySpanExporter)
+    monkeypatch.setattr(_kernel_capture, "span_exporter", InMemorySpanExporter)
     batch = SpanContext(1, 1, False, TraceFlags(TraceFlags.SAMPLED))
     span = _kernel_capture._replay_tracer(1).start_span(
         "max.batch.gpu",

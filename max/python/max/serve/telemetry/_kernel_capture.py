@@ -41,12 +41,12 @@ from max.serve.telemetry._trace_context import (
     TRACE_LEVEL_HEADER,
     RequestTraceLevel,
 )
-from max.serve.telemetry.common import (
-    _CountingSpanProcessor,
-    _ReportingSpanExporter,
-    _span_exporter,
-    logs_resource,
+from max.serve.telemetry._tracing import (
+    CountingSpanProcessor,
+    ReportingSpanExporter,
+    span_exporter,
 )
+from max.serve.telemetry.common import logs_resource
 from opentelemetry.context import Context as OtelContext
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.sampling import ALWAYS_OFF, ParentBased
@@ -429,9 +429,9 @@ def _replay_tracer(max_spans: int) -> Tracer:
             resource=logs_resource, sampler=ParentBased(ALWAYS_OFF)
         )
         _replay_provider.add_span_processor(
-            _CountingSpanProcessor(
-                _ReportingSpanExporter(
-                    _span_exporter(),
+            CountingSpanProcessor(
+                ReportingSpanExporter(
+                    span_exporter(),
                     "kernel replay spans",
                     max(max_spans, _SDK_EXPORT_BATCH_SIZE),
                     "kernel_trace_max_spans",

@@ -217,10 +217,8 @@ def main(ctx: click.Context, log_level: str = "INFO") -> None:
 def configure_telemetry(subcommand: str) -> None:
     try:
         from max.serve.config import Settings
-        from max.serve.telemetry.common import (
-            configure_metrics,
-            configure_tracing,
-        )
+        from max.serve.telemetry._tracing import configure_tracing
+        from max.serve.telemetry.common import configure_metrics
     except ImportError as e:
         # Note: most commands import main(), and thus run this, so this catches most subcommands.
         _handle_import_error(

@@ -59,7 +59,7 @@ from max.serve.scheduler.text_generation_scheduler import (
     TokenGenerationScheduler,
     load_text_generation_scheduler,
 )
-from max.serve.telemetry import _kernel_capture, common
+from max.serve.telemetry import _kernel_capture, _log_context, _tracing
 from max.serve.telemetry._kernel_capture import (
     KernelCapture,
     KernelCaptureThread,
@@ -188,7 +188,7 @@ def _harness(
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     # The scheduler reads it once, as it is built.
-    monkeypatch.setattr(common, "_tracing_enabled", lambda: tracing)
+    monkeypatch.setattr(_log_context, "tracing_enabled", lambda: tracing)
     scheduler_config = TokenGenerationSchedulerConfig(
         max_batch_size=4, target_tokens_per_batch_ce=64
     )
@@ -223,7 +223,7 @@ def _harness(
             memory_plan=None,
             kernel_capture=capture,
         )
-    monkeypatch.setattr(common, "_tracing_enabled", None)
+    monkeypatch.setattr(_log_context, "tracing_enabled", None)
     harness = _Harness(
         scheduler=scheduler,
         pipeline=pipeline,
@@ -711,8 +711,8 @@ def test_configure_kernel_capture_permits_capture(
     monkeypatch.setattr(
         _kernel_capture, "load_profiler_plugin", load_profiler_plugin
     )
-    monkeypatch.setattr(common, "set_gpu_profiling_state", lambda state: None)
-    monkeypatch.setattr(common, "_kernel_trace_level", KernelTraceLevel.OFF)
+    monkeypatch.setattr(_tracing, "set_gpu_profiling_state", lambda state: None)
+    monkeypatch.setattr(_tracing, "_kernel_trace_level", KernelTraceLevel.OFF)
     # The kernel level may install process-wide SIGTERM handling.
     monkeypatch.setattr(signal, "signal", lambda *args: None)
     monkeypatch.setattr(atexit, "register", lambda *args, **kwargs: None)
@@ -721,7 +721,7 @@ def test_configure_kernel_capture_permits_capture(
     monkeypatch.delenv("MODULAR_MAX_DEBUG_PROFILING_ENABLED")
     with caplog.at_level(logging.WARNING, logger="max.serve"):
         settings = Settings(kernel_trace_level=level)
-        common.configure_kernel_tracing(settings)
+        _tracing.configure_kernel_tracing(settings)
         assert _kernel_capture.configure_kernel_capture(settings) is permitted
     assert len(load_calls) == loads
     assert len(caplog.records) == warns

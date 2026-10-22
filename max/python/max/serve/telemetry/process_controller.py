@@ -33,7 +33,8 @@ from typing import Any
 import prometheus_client
 from max.serve.config import MetricRecordingMethod, Settings
 from max.serve.process_control import subprocess_manager
-from max.serve.telemetry.common import configure_metrics, configure_tracing
+from max.serve.telemetry._tracing import configure_tracing
+from max.serve.telemetry.common import configure_metrics
 from max.serve.telemetry.metrics import (
     MaxMeasurement,
     MetricClient,

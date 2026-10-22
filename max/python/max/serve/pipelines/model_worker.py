@@ -67,13 +67,12 @@ from max.serve.pipelines.telemetry_worker import MetricClient
 from max.serve.process_control import subprocess_manager
 from max.serve.scheduler import load_scheduler
 from max.serve.scheduler.base import SchedulerProgress
-from max.serve.telemetry import common as telemetry
-from max.serve.telemetry.common import (
+from max.serve.telemetry import _log_context, _tracing
+from max.serve.telemetry._tracing import (
     configure_kernel_tracing,
-    configure_logging,
-    configure_metrics,
     configure_tracing,
 )
+from max.serve.telemetry.common import configure_logging, configure_metrics
 from max.serve.telemetry.gc_utils import (
     _release_free_host_memory,
     freeze_gc_heap,
@@ -108,7 +107,7 @@ def _configure_kernel_capture(
     # other roles skip the profiler plugin, though non-text pipelines in that
     # role still load it, harmlessly.
     if (
-        not telemetry._trace_level_header_honored()
+        not _tracing.trace_level_header_honored()
         or pipeline_role != "prefill_and_decode"
     ):
         return None
@@ -152,8 +151,8 @@ def _warn_raised_kernel_trace_limits(
     # the one role whose scheduler emits them. A capture implies tracing.
     batch_spans = kernel_capture or (
         pipeline_role == "prefill_and_decode"
-        and telemetry.batch_spans_enabled()
-        and telemetry._tracing_enabled()
+        and _tracing.batch_spans_enabled()
+        and _log_context.tracing_enabled()
     )
     if not batch_spans:
         return

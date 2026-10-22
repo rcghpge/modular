@@ -33,7 +33,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 from max.serve.config import Settings
-from max.serve.telemetry.common import configure_kernel_tracing
+from max.serve.telemetry._tracing import configure_kernel_tracing
 
 class Exporter(SpanExporter):
     def export(self, spans):
@@ -59,7 +59,7 @@ uvloop.run(main())
 _EXITING_WORKER = """
 import atexit, ctypes
 from max.serve.config import Settings
-from max.serve.telemetry.common import configure_kernel_tracing
+from max.serve.telemetry._tracing import configure_kernel_tracing
 
 libc = ctypes.CDLL(None)
 # glibc doesn't export atexit, but it and macOS both export __cxa_atexit.
