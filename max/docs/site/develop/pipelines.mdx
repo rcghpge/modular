@@ -3,7 +3,7 @@ title: Model pipeline
 description: Learn how to integrate your model into a pipeline for serving with MAX.
 ---
 
-Implementing a model architecture in MAX involves more than just defining the
+Implementing a model architecture in MAX involves more than defining the
 layers and the forward pass. To serve your model, you must also integrate it
 into a pipeline that manages the entire inference lifecycle.
 
@@ -352,6 +352,7 @@ Here's how you define an architecture:
 
 ```python
 from max.graph.weights import WeightsFormat
+from max.pipelines.context import TextContext
 from max.pipelines.modeling.types import PipelineTask
 from max.pipelines.lib import (
     SupportedArchitecture,
@@ -381,6 +382,7 @@ llama_arch = SupportedArchitecture(
     # Implementation classes
     pipeline_model=Llama3Model,
     tokenizer=TextTokenizer,
+    context_type=TextContext,
 
     # Weight handling
     default_weights_format=WeightsFormat.safetensors,
@@ -390,6 +392,7 @@ llama_arch = SupportedArchitecture(
     },
 
     # Architecture-specific settings
+    config=Llama3Config,
     multi_gpu_supported=True,
 )
 ```
@@ -429,9 +432,8 @@ weights from different formats. You can use the `weight_adapters` field to
 convert weights from different formats to the default format.
 
 You use these fields to configure the pipeline for your model. In most cases,
-if you are implementing a new model architecture, you will have intimate
-knowledge of the model's architecture and you will be able to set these fields
-accordingly.
+if you implement a new model architecture, you know its architecture and can
+set these fields accordingly.
 
 ### Pipeline model
 
@@ -507,8 +509,7 @@ The base class delegates the following through `model_config_cls`:
   policy (whether the checkpoint bound is a hard cap or a default).
   `PipelineConfig.from_args()` runs it once at construction, so
   `config.model.max_length` carries the resolved value; the pipeline model
-  reads that value (or the memory plan's clamped one) rather than deriving
-  its own.
+  reads that value, or the memory plan's clamped one when a cap applies.
 
 - **KV cache parameters**: The `get_kv_params()` method constructs the KV cache
   configuration. The base class calls `model_config_cls.construct_kv_params()`

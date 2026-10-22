@@ -651,7 +651,7 @@ Layers declare how their weights split across the mesh axes.
 and `RowParallelLinear`, plus `col_parallel()` and `row_parallel()` to shard
 an existing `Linear`. `VocabParallelEmbedding` in
 `max.experimental.nn.common_layers.embedding` splits the vocabulary. The
-sharding solver inserts the collectives that these placements require. For
+sharding picker inserts the collectives that these placements require. For
 an explicit collective, call [`F.allreduce_sum()`][f-allreduce-sum],
 [`F.allgather()`][f-allgather], [`F.reduce_scatter()`][f-reduce-scatter], or
 [`F.transfer_to()`][f-transfer-to].

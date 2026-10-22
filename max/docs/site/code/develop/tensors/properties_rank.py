@@ -14,7 +14,7 @@
 
 from max.experimental.tensor import Tensor
 
-scalar = Tensor([42])  # Rank 1 (it's a 1-element vector)
+one_element = Tensor([42])  # Rank 1
 vector = Tensor([1, 2, 3])  # Rank 1
 matrix = Tensor([[1, 2], [3, 4]])  # Rank 2
 cube = Tensor([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])  # Rank 3

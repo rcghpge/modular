@@ -34,10 +34,8 @@ When a built-in layer is close and already lets you change what you need through
 a constructor argument or an overridable method, subclass it and change only
 what differs. That's how MAX implements Gemma 3's norm, `Gemma3RMSNorm` in
 [`gemma3/layers/rms_norm.py`](https://github.com/modular/modular/blob/main/max/python/max/pipelines/architectures/gemma3/layers/rms_norm.py).
-The norm is a plain `RMSNorm` that scales by `1 + weight` instead of `weight`,
-so the subclass changes a single constructor argument:
-
-{/* @sync: ../../code/develop/layers/subclass_rms_norm.py */}
+The norm is a plain `RMSNorm` that scales by `1 + weight`, where the general
+form uses `weight`, so the subclass changes a single constructor argument:
 
 ```python
 from max.dtype import DType
@@ -65,7 +63,7 @@ unchanged, and changes only the scale:
 The shipped `Gemma3RMSNorm` adds multi-GPU sharding on top of the same one-line
 change. Prefer subclassing to copying: when the base class exposes an argument
 or method for what you need, you inherit its shapes, weight names, and any
-quantization support, and you maintain one line instead of a fork. Copy a
+quantization support, and you maintain one line. Copy a
 layer's source only when nothing fits, and expect to track upstream changes
 yourself.
 
@@ -76,8 +74,6 @@ Declare each parameter as a
 [`Weight`](/api/python/generated/max.graph.Weight/#max.graph.Weight) in
 `__init__()`, then use it in `__call__()` to build the forward pass. Here a
 learnable per-channel scale owns one weight and multiplies it into the input:
-
-{/* @sync: ../../code/develop/layers/define_module.py */}
 
 ```python
 from max.dtype import DType
@@ -128,8 +124,6 @@ The following example composes a small model from custom and built-in layers.
 assigning it to an attribute beside a `Linear` and calling it in `__call__()`.
 `MiniDecoder` stacks the blocks. Every layer reads the same module-level
 `device`, so one accelerator check configures the whole model:
-
-{/* @sync: ../../code/develop/layers/compose_and_run.py */}
 
 ```python
 from max import nn
@@ -258,12 +252,13 @@ correctly:
   module](/develop/modules/#load-weights-into-the-module). When the
   checkpoint's names don't line up, a [weight
   adapter](/develop/weight-adapters/) remaps them.
-- **Stacks**: hold a repeated layer, such as a stack of transformer blocks, in a
-  [`Sequential`](/api/python/generated/max.nn.Sequential/#max.nn.Sequential),
-  never a plain Python list. A plain list doesn't register its children's
-  weights, so they load into nothing and fail silently. (`Sequential` subclasses
-  [`LayerList`](/api/python/generated/max.nn.LayerList/#max.nn.LayerList),
-  which you'll still see across existing architectures.) The
+- **Stacks**: hold a repeated layer, such as a stack of transformer blocks, in
+  a `Sequential`, never a plain Python list. A plain list still registers its
+  children's weights under index paths (`layers.0.fc1.weight`), so they load.
+  What it skips is placement: `children` and `to()` visit only `Module`
+  attributes, so a layer inside a plain list never moves to the module's
+  device. `Sequential` subclasses `ModuleList`, so placement reaches every
+  layer it holds. The
   [Model bring-up workflow](/develop/model-bringup-workflow/) explains how
   these containers resolve weight names.
 
