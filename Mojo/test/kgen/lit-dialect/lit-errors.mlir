@@ -201,7 +201,7 @@ lit.fn @unbound_region() {
 
 // -----
 
-// expected-error@below {{expected only `lit.file_module`, `lit.package`, `lit.unresolved_import`, or `lit.unresolved_wildcard_import` in its body}}
+// expected-error@below {{expected only `lit.file_module` or `lit.package` in its body}}
 lit.package @MyPackage {
   // expected-note @below {{see operation defined here}}
   hlcf.unreachable

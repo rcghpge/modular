@@ -205,11 +205,9 @@ ArrayRef<ParamDeclAttr> PackageOp::getInputParams() { return {}; }
 
 LogicalResult PackageOp::verify() {
   for (Operation &op : *getBody()) {
-    if (!isa<FileModuleOp, PackageOp, ImportOp, UnresolvedImportOp,
-             UnresolvedWildcardImportOp>(op)) {
-      return emitOpError("expected only `lit.file_module`, `lit.package`, "
-                         "`lit.unresolved_import`, or "
-                         "`lit.unresolved_wildcard_import` in its body")
+    if (!isa<FileModuleOp, PackageOp>(op)) {
+      return emitOpError(
+                 "expected only `lit.file_module` or `lit.package` in its body")
           .attachNote(op.getLoc())
           .append("see operation defined here");
     }
