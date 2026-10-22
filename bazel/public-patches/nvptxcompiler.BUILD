@@ -32,6 +32,7 @@ modular_shared_library(
     includes = ["include"],
     visibility = [
         "@//bazel:__subpackages__",
+        "@//oss/modular/bazel:__subpackages__",
         "@//utils:__subpackages__",
     ],
     # CUDAHeaders provides cuda.h from the NVIDIA cuda_cudart redistributable
